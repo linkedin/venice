@@ -9,8 +9,9 @@ public class Message {
     private int schemaVersion;
     private String payload;
 
-    public Message() {
-
+    public Message(OperationType type, String payload) {
+        operationType = type;
+        this.payload = payload;
     }
 
     public OperationType getOperationType() {
@@ -23,6 +24,10 @@ public class Message {
 
     public String getPayload() {
         return payload;
+    }
+
+    public String toString() {
+        return operationType.toString() + " " + payload;
     }
 
 }

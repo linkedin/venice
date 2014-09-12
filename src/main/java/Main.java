@@ -1,11 +1,18 @@
 import config.GlobalConfiguration;
+import kafka.KafkaProducer;
+import message.Message;
+import message.OperationType;
 import storage.Store;
+
+import java.util.Scanner;
 
 public class Main {
 
     public static void main(String[] args) {
 
         System.out.println("Hello Venice!");
+
+
 
         // Things we will need to do in workflow:
         /*
@@ -25,10 +32,29 @@ public class Main {
         Store storage = new Store();
         storage.addPartition(1);
 
-        storage.put("key_001", "value_001");
-        storage.put("key_001", "value_002");
+        KafkaProducer kp = new KafkaProducer();
+        Message msg = new Message(OperationType.PUT, "payload1");
+        kp.sendMessage(msg);
 
-        System.out.println(storage.get("key_001"));
+        Scanner reader = new Scanner(System.in);
+
+        while (true) {
+            System.out.println("Test Venice: ");
+            String input = reader.nextLine();
+
+            String[] commandArgs = input.split(" ");
+
+            if (commandArgs[0].equals("put")) {
+                storage.put(commandArgs[1], commandArgs[2]);
+                System.out.println("Run a put: " + commandArgs[1] + " " + commandArgs[2]);
+            }
+
+            if (commandArgs[0].equals("get")) {
+                System.out.println("Run a get: " + commandArgs[1]);
+                System.out.println(storage.get(commandArgs[1]));
+            }
+
+        }
 
     }
 }
