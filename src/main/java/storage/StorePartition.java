@@ -3,11 +3,15 @@ package storage;
 import java.util.HashMap;
 import java.util.Map;
 
+import org.apache.log4j.Logger;
+
 /**
  * A generalized class for a storage partition
  * Created by clfung on 9/10/14.
  */
 public class StorePartition {
+
+    static final Logger logger = Logger.getLogger(Store.class.getName());
 
     private Map<String, Object> storage;
     private int store_id;
@@ -45,6 +49,7 @@ public class StorePartition {
         if (storage.containsKey(key))
             return storage.get(key);
 
+        logger.error("Cannot find object with key: " + key);
         return null;
     }
 
