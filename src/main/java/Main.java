@@ -1,4 +1,5 @@
 import config.GlobalConfiguration;
+import kafka.KafkaConsumer;
 import kafka.KafkaProducer;
 import message.Message;
 import message.OperationType;
@@ -11,8 +12,6 @@ public class Main {
     public static void main(String[] args) {
 
         System.out.println("Hello Venice!");
-
-
 
         // Things we will need to do in workflow:
         /*
@@ -33,9 +32,12 @@ public class Main {
         storage.addPartition(1);
 
         KafkaProducer kp = new KafkaProducer();
-        Message msg = new Message(OperationType.PUT, "payload1");
-        kp.sendMessage(msg);
+        Message msg;
 
+        KafkaConsumer consumer = new KafkaConsumer("localhost:2181", "groupA", "kafka_key");
+        consumer.run(1);
+
+        // mocked input test
         Scanner reader = new Scanner(System.in);
 
         while (true) {
@@ -45,7 +47,11 @@ public class Main {
             String[] commandArgs = input.split(" ");
 
             if (commandArgs[0].equals("put")) {
-                storage.put(commandArgs[1], commandArgs[2]);
+
+                msg = new Message(OperationType.PUT, commandArgs[1] + " " + commandArgs[2]);
+                kp.sendMessage(msg);
+
+                //storage.put(commandArgs[1], commandArgs[2]);
                 System.out.println("Run a put: " + commandArgs[1] + " " + commandArgs[2]);
             }
 

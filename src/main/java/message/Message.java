@@ -5,29 +5,29 @@ package message;
  */
 public class Message {
 
-    private OperationType operationType;
-    private int schemaVersion;
-    private String payload;
+  private OperationType operationType;
+  private int schemaVersion;
+  private String payload;
 
-    public Message(OperationType type, String payload) {
-        operationType = type;
-        this.payload = payload;
-    }
+  public Message(OperationType type, String payload) {
+    operationType = type;
+    this.payload = payload;
+  }
 
-    public OperationType getOperationType() {
-        return operationType;
-    }
+  public OperationType getOperationType() {
+    return operationType;
+  }
 
-    public int getSchemaVersion() {
-        return schemaVersion;
-    }
+  public int getSchemaVersion() {
+    return schemaVersion;
+  }
 
-    public String getPayload() {
-        return payload;
-    }
+  public String getPayload() {
+    return payload;
+  }
 
-    public String toString() {
-        return operationType.toString() + " " + payload;
-    }
+  public String toString() {
+    return operationType.toString() + " " + payload;
+  }
 
 }
