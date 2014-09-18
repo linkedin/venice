@@ -18,13 +18,13 @@ import java.util.concurrent.Executors;
  */
 public class KafkaConsumer {
 
-  private final ConsumerConnector consumer;
+  private final ConsumerConnector zkConnector;
   private final String topic;
   private ExecutorService executor;
 
   public KafkaConsumer(String zookeeper, String groupId, String topic) {
 
-    consumer = Consumer.createJavaConsumerConnector(createConsumerConfig(zookeeper, groupId));
+    zkConnector = Consumer.createJavaConsumerConnector(createConsumerConfig(zookeeper, groupId));
     this.topic = topic;
 
   }
@@ -48,19 +48,19 @@ public class KafkaConsumer {
 
     Map<String, Integer> topicCountMap = new HashMap<String, Integer>();
     topicCountMap.put(topic, new Integer(numThreads));
-    Map<String, List<KafkaStream<byte[], byte[]>>> consumerMap = consumer.createMessageStreams(topicCountMap);
+    Map<String, List<KafkaStream<byte[], byte[]>>> consumerMap = zkConnector.createMessageStreams(topicCountMap);
     List<KafkaStream<byte[], byte[]>> streams = consumerMap.get(topic);
 
-    // now launch all the threads
+    // launch all the threads
     executor = Executors.newFixedThreadPool(numThreads);
 
-    // now create an object to consume the messages
+    // create an object to consume the messages
     int threadNumber = 0;
     for (final KafkaStream stream : streams) {
       executor.submit(new ConsumerTask(stream, threadNumber));
       threadNumber++;
     }
-    
+
   }
 
 }

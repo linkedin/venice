@@ -9,17 +9,17 @@ import org.apache.log4j.Logger;
  * A generalized class for a storage partition
  * Created by clfung on 9/10/14.
  */
-public class StorePartition {
+public class InMemoryStorePartition {
 
-  static final Logger logger = Logger.getLogger(Store.class.getName());
+  static final Logger logger = Logger.getLogger(VeniceStoreNode.class.getName());
 
   private Map<String, Object> storage;
-  private int store_id;
+  private int store_id = -1;
 
   /**
    * Constructor
    */
-  public StorePartition(int store_id) {
+  public InMemoryStorePartition(int store_id) {
 
     // initialize empty storage unit
     storage = new HashMap<String, Object>();
