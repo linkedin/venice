@@ -1,5 +1,8 @@
 package com.linkedin.venice.kafka.consumer;
 
+import com.linkedin.venice.Venice;
+import com.linkedin.venice.config.GlobalConfiguration;
+import com.linkedin.venice.server.VeniceServer;
 import kafka.api.FetchRequest;
 import kafka.api.FetchRequestBuilder;
 import kafka.api.FetchResponse;
@@ -12,6 +15,7 @@ import kafka.api.TopicMetadataRequest;
 import kafka.api.TopicMetadataResponse;
 import kafka.common.TopicAndPartition;
 import kafka.consumer.SimpleConsumer;
+import kafka.api.OffsetRequest;
 import kafka.message.Message;
 import kafka.message.MessageAndOffset;
 import kafka.utils.VerifiableProperties;
@@ -40,15 +44,17 @@ public class SimpleKafkaConsumerTask implements Runnable {
 
   static final Logger logger = Logger.getLogger(SimpleKafkaConsumerTask.class.getName());
 
-  private final int NUM_RETRIES = 3;
-  private final int TIMEOUT = 100000;
-  private final int FETCH_SIZE = 100000;
-  private final int BUFFER_SIZE = 64 * 1024;
   private final String ENCODING = "UTF-8";
 
   private List<String> replicaBrokers = null;
   private VeniceMessage vm = null;
   private static VeniceMessageSerializer messageSerializer = null;
+
+  // tuning variables
+  private final int NUM_RETRIES = GlobalConfiguration.getKafkaConsumerNumRetries();
+  private final int TIMEOUT = GlobalConfiguration.getKafkaConsumerTimeout();
+  private final int FETCH_SIZE = GlobalConfiguration.getKafkaConsumerMaxFetchSize();
+  private final int BUFFER_SIZE = GlobalConfiguration.getKafkaConsumerBufferSize();
 
   private long maxReads;
   private String topic;
@@ -92,7 +98,7 @@ public class SimpleKafkaConsumerTask implements Runnable {
     String clientName = "Client_" + topic + "_" + partition;
 
     SimpleConsumer consumer = new SimpleConsumer(leadBroker, port, TIMEOUT, BUFFER_SIZE, clientName);
-    long readOffset = getLastOffset(consumer, topic, partition, kafka.api.OffsetRequest.EarliestTime(), clientName);
+    long readOffset = getLastOffset(consumer, topic, partition, kafka.api.OffsetRequest.LatestTime(), clientName);
 
     int numErrors = 0;
     while (maxReads > 0) {
@@ -152,7 +158,7 @@ public class SimpleKafkaConsumerTask implements Runnable {
 
           } else {
 
-            keyString = VeniceClient.TEST_KEY;
+            keyString = Venice.DEFAULT_KEY;
 
           }
 
@@ -165,7 +171,7 @@ public class SimpleKafkaConsumerTask implements Runnable {
           vm = messageSerializer.fromBytes(payloadBytes);
 
           VeniceStoreManager manager = VeniceStoreManager.getInstance();
-          manager.storeValue(keyString, vm);
+          manager.storeValue(partition, keyString, vm);
 
           numReads++;
           maxReads--;
@@ -202,6 +208,15 @@ public class SimpleKafkaConsumerTask implements Runnable {
 
   }
 
+  /**
+   * Finds the latest offset after a given time
+   * @param consumer - A SimpleConsumer object for Kafka consumption
+   * @param topic - Kafka topic
+   * @param partition - Partition number within the topic
+   * @param whichTime - Time at which to being reading offsets
+   * @param clientName - Name of the client (combination of topic + partition)
+   * @return long - last offset after the given time
+   * */
   public static long getLastOffset(SimpleConsumer consumer, String topic, int partition, long whichTime,
                                    String clientName) {
 
@@ -210,18 +225,23 @@ public class SimpleKafkaConsumerTask implements Runnable {
         = new HashMap<TopicAndPartition, PartitionOffsetRequestInfo>();
 
     requestInfoMap.put(tp, new PartitionOffsetRequestInfo(whichTime, 1));
-    kafka.javaapi.OffsetRequest req = new kafka.javaapi.OffsetRequest(requestInfoMap, kafka.api.OffsetRequest.CurrentVersion(), clientName);
-    OffsetResponse response = consumer.getOffsetsBefore(req.underlying());
 
-    if (response.hasError()) {
-      logger.error("Error fetching data offset");
+    // TODO: Investigate if the conversion can be done in a cleaner way
+    kafka.javaapi.OffsetRequest req = new kafka.javaapi.OffsetRequest(requestInfoMap, kafka.api.OffsetRequest.CurrentVersion(), clientName);
+    kafka.api.OffsetResponse scalaResponse = consumer.getOffsetsBefore(req.underlying());
+    kafka.javaapi.OffsetResponse javaResponse = new kafka.javaapi.OffsetResponse(scalaResponse);
+
+
+    if (javaResponse.hasError()) {
+      logger.error("Error fetching data offset!!");
       return 0;
     }
 
-    // TODO: implement response.offsets() method. Need to ask Kafka office hour
-    PartitionOffsetsResponse por = JavaConversions.asJavaMap(response.offsetsGroupedByTopic()).get(topic).get(tp).get();
+    long[] offsets = javaResponse.offsets(topic, partition);
 
-    return 0;
+    logger.info("Partition " + partition + " last offset at: " + offsets[0]);
+
+    return offsets[0];
 
   }
 
@@ -275,6 +295,7 @@ public class SimpleKafkaConsumerTask implements Runnable {
     PartitionMetadata returnMetaData = null;
 
     loop:
+    /* Iterate through all the Brokers, Topics and their Partitions */
     for (String host : seedBrokers) {
 
       SimpleConsumer consumer = null;
@@ -287,7 +308,6 @@ public class SimpleKafkaConsumerTask implements Runnable {
         TopicMetadataRequest request = new TopicMetadataRequest(topics, 17);
         TopicMetadataResponse resp = consumer.send(request);
 
-        /* Iterate through all the Topics and their Partitions  */
         Seq<TopicMetadata> metaData = resp.topicsMetadata();
         Iterator<TopicMetadata> it = metaData.iterator();
 

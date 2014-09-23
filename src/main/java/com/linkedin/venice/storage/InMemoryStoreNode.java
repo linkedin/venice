@@ -1,6 +1,6 @@
 package com.linkedin.venice.storage;
 
-import com.linkedin.venice.metadata.KeyCache;
+import com.linkedin.venice.metadata.NodeCache;
 import org.apache.log4j.Logger;
 
 import java.util.HashMap;
@@ -16,8 +16,8 @@ public class InMemoryStoreNode extends VeniceStoreNode {
   private int nodeId = -1;
 
   // Map which stores the partitions and their associated ids
-  private static Map<Integer, InMemoryStorePartition> partitions = new HashMap<Integer, InMemoryStorePartition>();
-  private static KeyCache keyCache;
+  private Map<Integer, InMemoryStorePartition> partitions = new HashMap<Integer, InMemoryStorePartition>();
+  private static NodeCache nodeCache;
 
   // number of partitions in the store
   private static int partitionCount = -1;
@@ -27,83 +27,90 @@ public class InMemoryStoreNode extends VeniceStoreNode {
     // register current nodeId
     this.nodeId = nodeId;
 
-    // create static instance of keyCache
-    keyCache = KeyCache.getInstance();
-
-    // create single partition for Node
-    partitions.put(1, new InMemoryStorePartition(1));
-    partitionCount = 1;
-
+    // create static instance of nodeCache
+    nodeCache = NodeCache.getInstance();
 
   }
 
+  @Override
   public int getNodeId() {
     return nodeId;
   }
 
-  /**
-   * Initializes new partitions in a storage instance
-   * @param newPartitions - number of partitions to initialize
-   * */
-  public void addPartitions(int newPartitions) {
-
-    for (int i = 0; i < newPartitions; i++) {
-      addPartition();
-    }
-
+  @Override
+  public boolean containsPartition(int partitionId) {
+    return partitions.containsKey(partitionId);
   }
 
   /**
-   * Adds a partition to the current Store, using autoincrement ids
-   * Values start at 0
-   *
-   */
-  protected synchronized void addPartition() {
-
-    partitionCount++;
-    partitions.put(partitionCount, new InMemoryStorePartition(partitionCount));
-
-  }
-
-  /**
-   * Adds a partition to the current Store
-   * TODO: I'm not sure if this is required. Depends if auto-increment or hashing will be used for ids
+   * Adds a partitionId to the current Store
    * @param store_id - id of partition to add
    */
-  protected void addPartition(int store_id) {
+  @Override
+  public boolean addPartition(int store_id) {
 
     if (partitions.containsKey(store_id)) {
-      logger.error("Attempted to add a partition with an id that already exists: " + store_id);
-      return;
+      logger.error("Error on nodeId: " + nodeId +
+          " attempted to add a partition with an id that already exists: " + store_id);
+      return false;
     }
 
     partitions.put(store_id, new InMemoryStorePartition(store_id));
+    return true;
 
   }
 
   /**
-   * Add a key-value pair to storage. Partitioning is handled internally.
+   * Removes and returns a partitionId to the current Store
+   * @param store_id - id of partition to retrieve and remove
+   */
+  @Override
+  public InMemoryStorePartition removePartition(int store_id) {
+
+    if (!partitions.containsKey(store_id)) {
+      logger.error("Error on nodeId: " + nodeId +
+          " attempted to remove a partition with an id that does not exist: " + store_id);
+      return null;
+    }
+
+    InMemoryStorePartition toReturn = partitions.get(store_id);
+    partitions.remove(store_id);
+
+    return toReturn;
+
+  }
+
+  /**
+   * Add a key-value pair to storage.
+   * @param partitionId - The partition to add to: should map directly to Kafka
    * @param key - The key of the data in the KV pair
    * @param value - The value of the data in the KV pair
+   * @return true, if the put was successful
    */
-  public void put(String key, Object value) {
+  @Override
+  public boolean put(int partitionId, String key, Object value) {
 
-    // use the key to find the store_id
-    int partitionId = keyCache.getKeyAddress(key).getPartitionId();
+    if (!partitions.containsKey(partitionId)) {
+      logger.warn("PartitionId " + partitionId + " does not exist on NodeId " + nodeId);
+      return false;
+    }
+
     InMemoryStorePartition partition = partitions.get(partitionId);
 
     logger.info("Run a put on node: " + nodeId + " partition: " + partitionId);
     partition.put(key, value);
 
+    return true;
+
   }
 
   /**
-   * Get a value from storage. Partitioning is handled internally.
+   * Get a value from storage.
+   * @param partitionId - The partition to read from: should map directly to Kafka
    * @param key - The key of the data to be queried
    */
-  public Object get(String key) {
-
-    int partitionId = keyCache.getKeyAddress(key).getPartitionId();
+  @Override
+  public Object get(int partitionId, String key) {
 
     if (!partitions.containsKey(partitionId)) {
       logger.error("Cannot find partition id: " + partitionId);
@@ -111,6 +118,25 @@ public class InMemoryStoreNode extends VeniceStoreNode {
     }
 
     return partitions.get(partitionId).get(key);
+
+  }
+
+  /**
+   * Remove a value from storage.
+   * @param partitionId - The partition to read from: should map directly to Kafka
+   * @param key - The key of the data to be deleted
+   */
+  @Override
+  public boolean delete(int partitionId, String key) {
+
+    if (!partitions.containsKey(partitionId)) {
+      logger.error("Cannot find partition id: " + partitionId);
+      return false;
+    }
+
+    logger.info("Run a delete on node: " + nodeId + " partition: " + partitionId);
+    partitions.get(partitionId).delete(key);
+    return true;
 
   }
 

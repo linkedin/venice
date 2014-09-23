@@ -1,0 +1,112 @@
+package com.linkedin.venice.server;
+
+import com.linkedin.venice.config.GlobalConfiguration;
+import com.linkedin.venice.kafka.partitioner.KafkaPartitioner;
+import com.linkedin.venice.message.OperationType;
+import com.linkedin.venice.message.VeniceMessage;
+import com.linkedin.venice.metadata.NodeCache;
+import com.linkedin.venice.storage.VeniceStoreManager;
+import junit.framework.Assert;
+import kafka.utils.VerifiableProperties;
+import org.junit.BeforeClass;
+import org.junit.Test;
+
+/**
+ * Created by clfung on 9/29/14.
+ */
+public class TestInMemoryManager {
+
+  private static VeniceStoreManager storeManager;
+
+  @BeforeClass
+  public static void init() {
+
+    GlobalConfiguration.initialize("");         // config file for testing
+
+    // initialize the storage engine, start n nodes and p partitions.
+    storeManager = VeniceStoreManager.getInstance();
+
+    // For testing, use 2 storage nodes
+    for (int n = 0; n < GlobalConfiguration.getNumStorageNodes(); n++) {
+      storeManager.registerNewNode(n);
+    }
+
+    // For testing, use 5 partitions
+    for (int p = 0; p < GlobalConfiguration.getNumKafkaPartitions(); p++) {
+      storeManager.registerNewPartition(p);
+    }
+
+  }
+
+  @Test
+  public void testPutGetDelete() {
+
+    KafkaPartitioner kp = new KafkaPartitioner(new VerifiableProperties());
+    int partitionId = 0;
+
+    // Test 1
+    partitionId = kp.partition("k1", GlobalConfiguration.getNumKafkaPartitions());
+    storeManager.storeValue(partitionId, "k1", new VeniceMessage(OperationType.PUT, "payload"));
+    Assert.assertEquals("payload", storeManager.readValue("k1"));
+
+    // Test 2
+    partitionId = kp.partition("k2", GlobalConfiguration.getNumKafkaPartitions());
+    storeManager.storeValue(partitionId, "k2", new VeniceMessage(OperationType.PUT, "payload2"));
+    Assert.assertEquals("payload2", storeManager.readValue("k2"));
+
+    // Test 3
+    partitionId = kp.partition("k3", GlobalConfiguration.getNumKafkaPartitions());
+    storeManager.storeValue(partitionId, "k3", new VeniceMessage(OperationType.PUT, "payload3"));
+    Assert.assertEquals("payload3", storeManager.readValue("k3"));
+
+    // Test 4 - delete the key
+    storeManager.storeValue(partitionId, "k3", new VeniceMessage(OperationType.DELETE, ""));
+    Assert.assertNull(storeManager.readValue("k3"));
+
+  }
+
+  @Test
+  public void testSuccessFails() {
+
+    // fails to due partition out of bounds
+    Assert.assertFalse(storeManager.storeValue(99, "key", new VeniceMessage(OperationType.PUT, "payload")));
+
+    // fails to due null message
+    Assert.assertFalse(storeManager.storeValue(5, "key", null));
+
+    // fails to due null operation type
+    Assert.assertFalse(storeManager.storeValue(5, "key", new VeniceMessage(null, "payload")));
+
+  }
+
+  /* Tests cache clearing/failure at any step in the workflow */
+  @Test
+  public void testCacheFailure() {
+
+    KafkaPartitioner kp = new KafkaPartitioner(new VerifiableProperties());
+    NodeCache nc = NodeCache.getInstance();
+
+    int partitionId = 0;
+
+    // Test 1
+    partitionId = kp.partition("k1", GlobalConfiguration.getNumKafkaPartitions());
+    nc.clear();
+    storeManager.storeValue(partitionId, "k1", new VeniceMessage(OperationType.PUT, "payload"));
+    Assert.assertEquals("payload", storeManager.readValue("k1"));
+
+    // Test 2
+    partitionId = kp.partition("k2", GlobalConfiguration.getNumKafkaPartitions());
+    storeManager.storeValue(partitionId, "k2", new VeniceMessage(OperationType.PUT, "payload"));
+    nc.clear();
+    Assert.assertEquals("payload", storeManager.readValue("k1"));
+
+    // Test 3
+    partitionId = kp.partition("k3", GlobalConfiguration.getNumKafkaPartitions());
+    storeManager.storeValue(partitionId, "k3", new VeniceMessage(OperationType.PUT, "payload"));
+    Assert.assertEquals("payload", storeManager.readValue("k3"));
+    nc.clear();
+    Assert.assertEquals("payload", storeManager.readValue("k3"));
+
+  }
+
+}

@@ -1,5 +1,7 @@
 package com.linkedin.venice.kafka.consumer;
 
+import com.linkedin.venice.Venice;
+import com.linkedin.venice.server.VeniceServer;
 import kafka.consumer.ConsumerIterator;
 import kafka.consumer.KafkaStream;
 import kafka.utils.VerifiableProperties;
@@ -37,7 +39,7 @@ public class HighConsumerTask implements Runnable {
 
     while (it.hasNext()) {
       vm = messageSerializer.fromBytes(it.next().message());
-      manager.storeValue(VeniceClient.TEST_KEY, vm);
+      manager.storeValue(1, new String(it.next().key()), vm);
       logger.info("Consumed: " + vm.getPayload());
     }
 

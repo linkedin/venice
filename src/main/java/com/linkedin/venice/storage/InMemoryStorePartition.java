@@ -9,7 +9,7 @@ import org.apache.log4j.Logger;
  * A generalized class for a storage partition
  * Created by clfung on 9/10/14.
  */
-public class InMemoryStorePartition {
+public class InMemoryStorePartition extends VeniceStorePartition {
 
   static final Logger logger = Logger.getLogger(InMemoryStorePartition.class.getName());
 
@@ -46,6 +46,7 @@ public class InMemoryStorePartition {
    * Gets a value from the key value store
    */
   public Object get(String key) {
+
     if (storage.containsKey(key))
       return storage.get(key);
 

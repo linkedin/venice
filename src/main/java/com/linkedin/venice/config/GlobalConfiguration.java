@@ -1,36 +1,110 @@
 package com.linkedin.venice.config;
 
+import com.linkedin.venice.storage.StoreType;
+
 import java.io.File;
+import java.util.Arrays;
+import java.util.List;
 
 /**
+ * Class which reads values from Config File for Venice
  * Created by clfung on 9/11/14.
  */
 public class GlobalConfiguration {
 
-  private enum StoreType {VOLDEMORT, BDB, MEMORY};
-
-  private static int kafkaReplicationFactor;
-  private static int storageReplicationFactor;
+  // server related configs
   private static StoreType storageType;
-  private static String kafKaZookeeperUrl;
+  private static int numStorageNodes;
+  private static int numStorageCopies;
 
-  public static File configFile;
+  // kafka related configs
+  private static String kafKaZookeeperUrl;
+  private static String kafkaBrokerUrl;
+  private static int kafkaBrokerPort;
+  private static int numThreadsPerPartition;
+  private static int numKafkaPartitions;
+  private static List<String> brokerList;
+
+  // kafka consumer tuning
+  private static int kafkaConsumerNumRetries = 3;
+  private static int kafkaConsumerTimeout = 100000;
+  private static int kafkaConsumerMaxFetchSize = 100000;
+  private static int kafkaConsumerBufferSize = 64 * 1024;
+
+  private static File configFile;
+
+
+  /* Cannot instantiate object */
+  private GlobalConfiguration() {
+  }
 
   public static void initialize(String configPath) {
 
+    File configFile = new File(configPath);
+
     // normally here we would either read from file, or ZK.
-    kafkaReplicationFactor = 1;
-    storageReplicationFactor = 1;
-    storageType = StoreType.MEMORY;
+    numKafkaPartitions = 5;
+    numThreadsPerPartition = 1;
 
     kafKaZookeeperUrl = "localhost:2181";
+    kafkaBrokerUrl = "localhost:9092";
+    kafkaBrokerPort = 9092;
+    brokerList = Arrays.asList("localhost");
 
-    File configFile = new File(configPath);
+    storageType = StoreType.MEMORY;
+    numStorageNodes = 3;
+    numStorageCopies = 2;
 
   }
 
-  public String getZookeeperURL() {
+  public static String getKafkaBrokerUrl() {
+    return kafkaBrokerUrl;
+  }
+
+  public static String getZookeeperURL() {
     return kafKaZookeeperUrl;
+  }
+
+  public static int getNumThreadsPerPartition() {
+    return numThreadsPerPartition;
+  }
+
+  public static int getNumKafkaPartitions() {
+    return numKafkaPartitions;
+  }
+
+  public static StoreType getStorageType() {
+    return storageType;
+  }
+
+  public static int getNumStorageCopies() { return numStorageCopies; }
+
+  public static List<String> getBrokerList() {
+    return brokerList;
+  }
+
+  public static int getKafkaBrokerPort() {
+    return kafkaBrokerPort;
+  }
+
+  public static int getNumStorageNodes() {
+    return numStorageNodes;
+  }
+
+  public static int getKafkaConsumerBufferSize() {
+    return kafkaConsumerBufferSize;
+  }
+
+  public static int getKafkaConsumerMaxFetchSize() {
+    return kafkaConsumerMaxFetchSize;
+  }
+
+  public static int getKafkaConsumerTimeout() {
+    return kafkaConsumerTimeout;
+  }
+
+  public static int getKafkaConsumerNumRetries() {
+    return kafkaConsumerNumRetries;
   }
 
 }

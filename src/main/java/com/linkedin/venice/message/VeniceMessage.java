@@ -6,8 +6,8 @@ package com.linkedin.venice.message;
 public class VeniceMessage {
 
   // TODO: eliminate magic numbers when finished debugging
-  public static final int DEFAULT_MAGIC_BYTE = 13;
-  public static final int DEFAULT_SCHEMA_VERSION = 17;
+  public static final byte DEFAULT_MAGIC_BYTE = 13;
+  public static final byte DEFAULT_SCHEMA_VERSION = 17;
 
   private byte magicByte;
   private byte schemaVersion;

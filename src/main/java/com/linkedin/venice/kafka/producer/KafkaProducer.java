@@ -1,7 +1,9 @@
 package com.linkedin.venice.kafka.producer;
 
+import com.linkedin.venice.Venice;
 import com.linkedin.venice.message.VeniceMessage;
 
+import com.linkedin.venice.server.VeniceServer;
 import kafka.javaapi.producer.Producer;
 import kafka.producer.KeyedMessage;
 import kafka.producer.ProducerConfig;
@@ -25,8 +27,8 @@ public class KafkaProducer {
     props = new Properties();
     props.setProperty("metadata.broker.list", "localhost:9092");
     props.setProperty("key.serializer.class", "kafka.serializer.StringEncoder");
-    props.setProperty("serializer.class", "message.VeniceMessageSerializer");
-    props.setProperty("partitioner.class", "KafkaPartitioner"); // using custom partitioner
+    props.setProperty("serializer.class", "com.linkedin.venice.message.VeniceMessageSerializer");
+    props.setProperty("partitioner.class", "com.linkedin.venice.kafka.partitioner.KafkaPartitioner"); // using custom partitioner
     props.setProperty("request.required.acks", "1");
 
     config = new ProducerConfig(props);
@@ -36,7 +38,7 @@ public class KafkaProducer {
 
   public void sendMessage(String key, VeniceMessage msg) {
 
-    KeyedMessage<String, VeniceMessage> kafkaMsg = new KeyedMessage<String, VeniceMessage>(VeniceClient.TEST_TOPIC, key, msg);
+    KeyedMessage<String, VeniceMessage> kafkaMsg = new KeyedMessage<String, VeniceMessage>(Venice.DEFAULT_TOPIC, key, msg);
     producer.send(kafkaMsg);
 
   }

@@ -6,6 +6,7 @@ import com.linkedin.venice.kafka.producer.KafkaProducer;
 import com.linkedin.venice.kafka.consumer.SimpleKafkaConsumer;
 import com.linkedin.venice.message.OperationType;
 import com.linkedin.venice.message.VeniceMessage;
+import com.linkedin.venice.server.VeniceServer;
 import org.apache.log4j.Logger;
 import com.linkedin.venice.storage.InMemoryStoreNode;
 import com.linkedin.venice.storage.VeniceStoreManager;
@@ -21,55 +22,11 @@ public class VeniceClient {
   // log4j logger
   static final Logger logger = Logger.getLogger(VeniceClient.class.getName());
 
-  private static final int NUM_THREADS = 1;
-
-  private static final boolean USE_HIGH_CONSUMER = false;
-  private static final int DEFAULT_PORT = 9092;
-
-  public static final String TEST_TOPIC = "test_topic";
-  public static final String TEST_KEY = "test_key";
-
-  private GlobalConfiguration cfg;
-  private VeniceStoreManager storeManager;
+  private VeniceServer server;
 
   public VeniceClient() {
 
-    // get configuration from hardcoded constants
-    cfg = new GlobalConfiguration();
-
-    // TODO: implement file input for config
-    cfg.initialize("");
-
-    // initialize the storage engine
-    storeManager = VeniceStoreManager.getInstance();
-
-    // TODO: remove this once partitioning is established
-    // add a dummy node to the store manager
-    InMemoryStoreNode node = new InMemoryStoreNode(1);
-    storeManager.registerNode(node);
-
-    try {
-
-      // optional use of high level consumer or simple consumer
-      if (VeniceClient.USE_HIGH_CONSUMER) {
-
-        HighKafkaConsumer highConsumer = new HighKafkaConsumer(cfg.getZookeeperURL(),
-            "sample_group", VeniceClient.TEST_TOPIC);
-        highConsumer.run(1);
-
-      } else {
-
-        SimpleKafkaConsumer consumer = new SimpleKafkaConsumer(TEST_TOPIC);
-
-        // TODO: everything in partition 0 for now
-        consumer.run(NUM_THREADS, 0, Arrays.asList("localhost"), DEFAULT_PORT);
-
-      }
-
-    } catch (Exception e) {
-      logger.error("Consumer failure: " + e);
-      e.printStackTrace();
-    }
+    server = VeniceServer.getInstance();
 
   }
 
@@ -85,22 +42,29 @@ public class VeniceClient {
 
     while (true) {
 
-      logger.info("Test Venice: ");
       String input = reader.nextLine();
 
       String[] commandArgs = input.split(" ");
 
-      if (commandArgs[0].equals("put")) {
+      if (commandArgs.length > 1) {
 
-        msg = new VeniceMessage(OperationType.PUT, commandArgs[1]);
-        kp.sendMessage(VeniceClient.TEST_KEY, msg);
+        if (commandArgs[0].equals("put")) {
 
-        logger.info("Run a put: " + commandArgs[1]);
+          if (commandArgs.length > 2) {
+            msg = new VeniceMessage(OperationType.PUT, commandArgs[2]);
+            kp.sendMessage(commandArgs[1], msg);
+          }
 
-      } else if (commandArgs[0].equals(("get"))) {
+        } else if (commandArgs[0].equals(("get"))) {
 
-        logger.info("Got: " + storeManager.getValue(VeniceClient.TEST_KEY));
+          logger.info("Got: " + server.readValue(commandArgs[1]));
 
+        } else if (commandArgs[0].equals("delete")) {
+
+          msg = new VeniceMessage(OperationType.DELETE, "");
+          kp.sendMessage(commandArgs[1], msg);
+
+        }
       }
 
     }

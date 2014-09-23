@@ -13,18 +13,17 @@ public abstract class VeniceStoreNode {
   /* Constructor required for successful compile */
   public VeniceStoreNode() { }
 
-  public VeniceStoreNode(int nodeId) {
-    this.nodeId = nodeId;
-  }
-
   public abstract int getNodeId();
 
-  public abstract void put(String key, Object value);
-  public abstract Object get(String key);
+  public abstract boolean containsPartition(int partitionId);
+  public abstract boolean put(int partitionId, String key, Object value);
 
-  // TODO: once internal partitioning is done, make this method protected
-  public abstract void addPartitions(int partitionCount);
+  public abstract Object get(int partitionId, String key);
 
-  protected abstract void addPartition();
+  public abstract boolean delete(int partitionId, String key);
+
+  public abstract boolean addPartition(int partition_id);
+
+  public abstract VeniceStorePartition removePartition(int partition_id);
 
 }
