@@ -1,15 +1,14 @@
-package venice;
+package com.linkedin.venice.client;
 
-import config.GlobalConfiguration;
-import kafka.consumer.HighKafkaConsumer;
-import kafka.producer.KafkaProducer;
-import kafka.consumer.SimpleKafkaConsumer;
-import message.OperationType;
-import message.VeniceMessage;
+import com.linkedin.venice.config.GlobalConfiguration;
+import com.linkedin.venice.kafka.consumer.HighKafkaConsumer;
+import com.linkedin.venice.kafka.producer.KafkaProducer;
+import com.linkedin.venice.kafka.consumer.SimpleKafkaConsumer;
+import com.linkedin.venice.message.OperationType;
+import com.linkedin.venice.message.VeniceMessage;
 import org.apache.log4j.Logger;
-import storage.InMemoryStoreNode;
-import storage.VeniceStoreManager;
-import storage.VeniceStoreNode;
+import com.linkedin.venice.storage.InMemoryStoreNode;
+import com.linkedin.venice.storage.VeniceStoreManager;
 
 import java.util.Arrays;
 import java.util.Scanner;

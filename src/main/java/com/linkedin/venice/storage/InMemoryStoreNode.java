@@ -1,6 +1,6 @@
-package storage;
+package com.linkedin.venice.storage;
 
-import metadata.KeyCache;
+import com.linkedin.venice.metadata.KeyCache;
 import org.apache.log4j.Logger;
 
 import java.util.HashMap;

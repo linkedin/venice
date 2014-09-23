@@ -1,4 +1,4 @@
-package kafka.partitioner;
+package com.linkedin.venice.kafka.partitioner;
 
 import kafka.producer.Partitioner;
 import kafka.utils.VerifiableProperties;

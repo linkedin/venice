@@ -1,11 +1,13 @@
-package kafka.consumer;
+package com.linkedin.venice.kafka.consumer;
 
+import kafka.consumer.ConsumerIterator;
+import kafka.consumer.KafkaStream;
 import kafka.utils.VerifiableProperties;
-import message.VeniceMessageSerializer;
-import message.VeniceMessage;
+import com.linkedin.venice.message.VeniceMessageSerializer;
+import com.linkedin.venice.message.VeniceMessage;
 import org.apache.log4j.Logger;
-import storage.VeniceStoreManager;
-import venice.VeniceClient;
+import com.linkedin.venice.storage.VeniceStoreManager;
+import com.linkedin.venice.client.VeniceClient;
 
 
 /**

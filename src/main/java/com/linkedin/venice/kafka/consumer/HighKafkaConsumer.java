@@ -1,9 +1,12 @@
-package kafka.consumer;
+package com.linkedin.venice.kafka.consumer;
 
 import java.util.HashMap;
 import java.util.Map;
 import java.util.List;
 
+import kafka.consumer.Consumer;
+import kafka.consumer.ConsumerConfig;
+import kafka.consumer.KafkaStream;
 import kafka.javaapi.consumer.ConsumerConnector;
 import org.apache.log4j.Logger;
 

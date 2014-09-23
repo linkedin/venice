@@ -1,11 +1,6 @@
-package storage;
+package com.linkedin.venice.storage;
 
-import java.util.HashMap;
-import java.util.Map;
-
-import message.VeniceMessage;
-import metadata.KeyCache;
-import org.apache.log4j.Logger;
+import com.linkedin.venice.message.VeniceMessage;
 
 /**
  * Class for managing the storage system and its partitions

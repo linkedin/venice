@@ -1,4 +1,4 @@
-package kafka.consumer;
+package com.linkedin.venice.kafka.consumer;
 
 import org.apache.log4j.Logger;
 

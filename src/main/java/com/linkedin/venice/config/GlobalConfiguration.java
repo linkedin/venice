@@ -1,4 +1,4 @@
-package config;
+package com.linkedin.venice.config;
 
 import java.io.File;
 

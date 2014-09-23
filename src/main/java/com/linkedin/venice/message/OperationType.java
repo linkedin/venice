@@ -1,4 +1,4 @@
-package message;
+package com.linkedin.venice.message;
 
 /**
  * Created by clfung on 9/11/14.

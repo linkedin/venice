@@ -1,9 +1,9 @@
-package storage;
+package com.linkedin.venice.storage;
 
-import message.VeniceMessage;
-import metadata.KeyCache;
+import com.linkedin.venice.message.VeniceMessage;
+import com.linkedin.venice.metadata.KeyCache;
 import org.apache.log4j.Logger;
-import venice.VeniceClient;
+import com.linkedin.venice.client.VeniceClient;
 
 import java.util.Map;
 import java.util.HashMap;

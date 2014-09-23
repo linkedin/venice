@@ -1,4 +1,6 @@
-import venice.VeniceClient;
+package com.linkedin.venice;
+
+import com.linkedin.venice.client.VeniceClient;
 
 public class Venice {
 

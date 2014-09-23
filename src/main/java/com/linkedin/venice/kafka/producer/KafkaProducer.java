@@ -1,11 +1,11 @@
-package kafka.producer;
+package com.linkedin.venice.kafka.producer;
 
-import message.VeniceMessage;
+import com.linkedin.venice.message.VeniceMessage;
 
 import kafka.javaapi.producer.Producer;
 import kafka.producer.KeyedMessage;
 import kafka.producer.ProducerConfig;
-import venice.VeniceClient;
+import com.linkedin.venice.client.VeniceClient;
 
 import java.util.Properties;
 
@@ -26,7 +26,7 @@ public class KafkaProducer {
     props.setProperty("metadata.broker.list", "localhost:9092");
     props.setProperty("key.serializer.class", "kafka.serializer.StringEncoder");
     props.setProperty("serializer.class", "message.VeniceMessageSerializer");
-    props.setProperty("partitioner.class", "kafka.partitioner.KafkaPartitioner"); // using custom partitioner
+    props.setProperty("partitioner.class", "KafkaPartitioner"); // using custom partitioner
     props.setProperty("request.required.acks", "1");
 
     config = new ProducerConfig(props);

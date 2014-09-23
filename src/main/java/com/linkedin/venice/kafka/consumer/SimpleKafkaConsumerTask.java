@@ -1,4 +1,4 @@
-package kafka.consumer;
+package com.linkedin.venice.kafka.consumer;
 
 import kafka.api.FetchRequest;
 import kafka.api.FetchRequestBuilder;
@@ -11,17 +11,18 @@ import kafka.api.TopicMetadata;
 import kafka.api.TopicMetadataRequest;
 import kafka.api.TopicMetadataResponse;
 import kafka.common.TopicAndPartition;
+import kafka.consumer.SimpleConsumer;
 import kafka.message.Message;
 import kafka.message.MessageAndOffset;
 import kafka.utils.VerifiableProperties;
-import message.VeniceMessage;
-import message.VeniceMessageSerializer;
+import com.linkedin.venice.message.VeniceMessage;
+import com.linkedin.venice.message.VeniceMessageSerializer;
 import org.apache.log4j.Logger;
 import scala.collection.Iterator;
 import scala.collection.JavaConversions;
 import scala.collection.Seq;
-import storage.VeniceStoreManager;
-import venice.VeniceClient;
+import com.linkedin.venice.storage.VeniceStoreManager;
+import com.linkedin.venice.client.VeniceClient;
 
 import java.io.UnsupportedEncodingException;
 import java.nio.ByteBuffer;

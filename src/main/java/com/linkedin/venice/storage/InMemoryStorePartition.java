@@ -1,4 +1,4 @@
-package storage;
+package com.linkedin.venice.storage;
 
 import java.util.HashMap;
 import java.util.Map;

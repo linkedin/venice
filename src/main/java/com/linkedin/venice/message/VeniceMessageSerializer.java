@@ -1,4 +1,4 @@
-package message;
+package com.linkedin.venice.message;
 
 import kafka.serializer.Decoder;
 import kafka.serializer.Encoder;

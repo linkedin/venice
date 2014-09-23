@@ -1,4 +1,4 @@
-package metadata;
+package com.linkedin.venice.metadata;
 
 /**
  * A struct which stores the address to a certain node/partition pair.

@@ -1,7 +1,6 @@
-package metadata;
+package com.linkedin.venice.metadata;
 
 import org.apache.log4j.Logger;
-import storage.InMemoryStoreNode;
 
 import java.util.HashMap;
 import java.util.Map;
