@@ -11,7 +11,7 @@ import org.apache.log4j.Logger;
  */
 public class InMemoryStorePartition {
 
-  static final Logger logger = Logger.getLogger(VeniceStoreNode.class.getName());
+  static final Logger logger = Logger.getLogger(InMemoryStorePartition.class.getName());
 
   private Map<String, Object> storage;
   private int store_id = -1;

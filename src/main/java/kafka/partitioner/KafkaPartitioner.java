@@ -1,4 +1,4 @@
-package kafka;
+package kafka.partitioner;
 
 import kafka.producer.Partitioner;
 import kafka.utils.VerifiableProperties;
@@ -13,6 +13,7 @@ public class KafkaPartitioner implements Partitioner {
   }
 
   // TODO: Write custom partitioner
+  /* Partitioner class taken from the Kafka 0.8 example */
   public int partition(Object key, int a_numPartitions) {
 
     int partition = 0;

@@ -14,7 +14,7 @@ import java.util.HashMap;
  */
 public class VeniceStoreManager {
 
-  static final Logger logger = Logger.getLogger(VeniceStoreNode.class.getName());
+  static final Logger logger = Logger.getLogger(VeniceStoreManager.class.getName());
 
   private static VeniceStoreManager instance = null;
   private Map<Integer, VeniceStoreNode> storeNodeMap = null;
@@ -72,7 +72,36 @@ public class VeniceStoreManager {
    * @param key - the key for the KV pair
    * @param msg - A VeniceMessage to be added to storage
    */
+  public void storeValue(String key, String msg) {
+
+    int nodeId = keyCache.getKeyAddress(key).getPartitionId();
+
+    if (!storeNodeMap.containsKey(nodeId)) {
+      //registerNode(new InMemoryStoreNode());
+      logger.error("Cannot find node id: " + nodeId);
+    }
+
+    storeNodeMap.get(nodeId).put(VeniceClient.TEST_KEY, msg);
+    logger.info("Putting: " + VeniceClient.TEST_KEY + ", " + msg);
+
+  }
+
+  /**
+   * Stores a value into the storage
+   * @param key - the key for the KV pair
+   * @param msg - A VeniceMessage to be added to storage
+   */
   public void storeValue(String key, VeniceMessage msg) {
+
+    if (null == msg) {
+      logger.error("Given null Venice Message.");
+      return;
+    }
+
+    if (null == msg.getOperationType()) {
+      logger.error("Venice Message does not have operation type!");
+      return;
+    }
 
     int nodeId = keyCache.getKeyAddress(key).getPartitionId();
 
@@ -86,6 +115,7 @@ public class VeniceStoreManager {
       // adding new values
       case PUT:
         storeNodeMap.get(nodeId).put(VeniceClient.TEST_KEY, msg.getPayload());
+        logger.info("Putting: " + VeniceClient.TEST_KEY + ", " + msg.getPayload());
         break;
 
       // deleting values

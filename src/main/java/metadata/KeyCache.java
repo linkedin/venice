@@ -50,12 +50,13 @@ public class KeyCache {
 
       KeyAddress currentAddress = keyMap.get(key);
 
-      // value is the same, nothing to do here
-      if (currentAddress.equals(newAddress)) {
+      // value is the same
+      if (!currentAddress.equals(newAddress)) {
         logger.error("Key conflict on: " + key);
       }
 
       return;
+
     }
 
     // add key to cache

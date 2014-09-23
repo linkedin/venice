@@ -11,8 +11,7 @@ import java.util.Map;
  */
 public class InMemoryStoreNode extends VeniceStoreNode {
 
-  // log4j logger
-  static final Logger logger = Logger.getLogger(VeniceStoreNode.class.getName());
+  static final Logger logger = Logger.getLogger(InMemoryStoreNode.class.getName());
 
   private int nodeId = -1;
 
@@ -68,7 +67,7 @@ public class InMemoryStoreNode extends VeniceStoreNode {
 
   /**
    * Adds a partition to the current Store
-   * I'm not sure if this is required. Depends if auto-increment or hashing will be used for ids
+   * TODO: I'm not sure if this is required. Depends if auto-increment or hashing will be used for ids
    * @param store_id - id of partition to add
    */
   protected void addPartition(int store_id) {
@@ -93,7 +92,7 @@ public class InMemoryStoreNode extends VeniceStoreNode {
     int partitionId = keyCache.getKeyAddress(key).getPartitionId();
     InMemoryStorePartition partition = partitions.get(partitionId);
 
-    System.out.println("Run a put on node: " + nodeId + " partition: " + partitionId);
+    logger.info("Run a put on node: " + nodeId + " partition: " + partitionId);
     partition.put(key, value);
 
   }

@@ -7,7 +7,7 @@ import java.io.File;
  */
 public class GlobalConfiguration {
 
-  private enum StoreType {VOLDEMORT, MEMORY};
+  private enum StoreType {VOLDEMORT, BDB, MEMORY};
 
   private static int kafkaReplicationFactor;
   private static int storageReplicationFactor;

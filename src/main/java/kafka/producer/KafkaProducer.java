@@ -1,4 +1,4 @@
-package kafka;
+package kafka.producer;
 
 import message.VeniceMessage;
 
@@ -21,12 +21,12 @@ public class KafkaProducer {
   // process which will produce messages for Kafka
   public KafkaProducer() {
 
-    // TODO: figure out the actual configurations
+    // TODO: figure out the actual configurations and startup procedures
     props = new Properties();
-    props.setProperty("metadata.broker.list", "localhost:9092,localhost:9093,localhost:9094");
+    props.setProperty("metadata.broker.list", "localhost:9092");
     props.setProperty("key.serializer.class", "kafka.serializer.StringEncoder");
     props.setProperty("serializer.class", "message.VeniceMessageSerializer");
-    props.setProperty("partitioner.class", "kafka.KafkaPartitioner"); // using custom partitioner
+    props.setProperty("partitioner.class", "kafka.partitioner.KafkaPartitioner"); // using custom partitioner
     props.setProperty("request.required.acks", "1");
 
     config = new ProducerConfig(props);
@@ -34,13 +34,9 @@ public class KafkaProducer {
 
   }
 
-  public void sendMessage(VeniceMessage msg) {
+  public void sendMessage(String key, VeniceMessage msg) {
 
-    // TODO: investigate if key and payload are serialized together
-    KeyedMessage<String, VeniceMessage> kafkaMsg = new KeyedMessage<String, VeniceMessage>(VeniceClient.TEST_TOPIC,
-        VeniceClient.TEST_KEY, msg);
-
-    // TODO: investigate Kafka startup
+    KeyedMessage<String, VeniceMessage> kafkaMsg = new KeyedMessage<String, VeniceMessage>(VeniceClient.TEST_TOPIC, key, msg);
     producer.send(kafkaMsg);
 
   }

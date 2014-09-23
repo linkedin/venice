@@ -1,5 +1,6 @@
 package message;
 
+import kafka.serializer.Decoder;
 import kafka.serializer.Encoder;
 import kafka.utils.VerifiableProperties;
 import org.apache.log4j.Logger;
@@ -19,22 +20,25 @@ import java.io.*;
  *
  * Created by clfung on 9/12/14.
  */
-public class VeniceMessageSerializer implements Encoder<VeniceMessage> {
+public class VeniceMessageSerializer implements Encoder<VeniceMessage>, Decoder<VeniceMessage> {
 
   static final Logger logger = Logger.getLogger(VeniceMessageSerializer.class.getName()); // log4j logger
 
   private static final int HEADER_LENGTH = 3; // length of the VeniceMessage header in bytes
 
+
+
   public VeniceMessageSerializer(VerifiableProperties verifiableProperties) {
     /* This constructor is not used, but is required for compilation */
   }
 
+  @Override
   /**
    * Converts from a byte array to a VeniceMessage
    * @param byteArray - byte array to be converted
    * @return Converted Venice Message
    * */
-  public VeniceMessage toMessage(byte[] byteArray) {
+  public VeniceMessage fromBytes(byte[] byteArray) {
 
     byte magicByte;
     byte schemaVersion;
@@ -71,12 +75,17 @@ public class VeniceMessageSerializer implements Encoder<VeniceMessage> {
       schemaVersion = ois.readByte();
 
       /* read payload, one character at a time */
-      for (int i = HEADER_LENGTH; i < byteArray.length; i++) {
+      int byteCount = ois.available();
+
+      for (int i = 0; i < byteCount; i++) {
           payload.append(Character.toString((char) ois.readByte()));
       }
 
     } catch (IOException e) {
-      logger.error("IOException while converting ");
+
+      logger.error("IOException while converting: " + e);
+      e.printStackTrace();
+
     } finally {
 
       // safely close the input/output streams
@@ -117,7 +126,9 @@ public class VeniceMessageSerializer implements Encoder<VeniceMessage> {
           oos.write(2);
           break;
         default:
-          oos.write(0); // TODO:  this will be an error case
+          logger.error("Operation Type not recognized: " + vm.getOperationType());
+          oos.write(0);
+          break;
       }
 
       oos.writeByte(vm.getSchemaVersion());
