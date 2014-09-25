@@ -1,0 +1,23 @@
+
+storage: 
+
+  bdb:
+
+  local: 
+
+    rep_factor: 2
+
+kafka:
+
+  producer:
+
+    rep_factor : 2
+    num_threads : 1
+
+  consumer:
+
+    use_high_level: false
+
+client:
+
+  serialization: "array"
