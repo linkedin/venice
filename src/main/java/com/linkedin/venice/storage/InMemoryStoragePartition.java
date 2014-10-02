@@ -49,7 +49,7 @@ public class InMemoryStoragePartition extends VeniceStoragePartition {
     if (storage.containsKey(key))
       return storage.get(key);
 
-    logger.error("Cannot find object with key: " + key);
+    logger.warn("Cannot find object with key: " + key);
     return null;
   }
 

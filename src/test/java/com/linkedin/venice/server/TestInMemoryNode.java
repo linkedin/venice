@@ -4,6 +4,7 @@ import com.linkedin.venice.config.GlobalConfiguration;
 import com.linkedin.venice.storage.InMemoryStorageNode;
 
 import com.linkedin.venice.storage.InMemoryStoragePartition;
+import com.linkedin.venice.storage.VeniceStorageException;
 import junit.framework.Assert;
 
 import org.junit.BeforeClass;
@@ -40,25 +41,32 @@ public class TestInMemoryNode {
   public void testNodeOperations() {
 
     InMemoryStorageNode testNode = new InMemoryStorageNode(1);
-    testNode.addPartition(1);
 
-    // test basic put and get
-    testNode.put(1, "key", "value");
-    testNode.put(1, "key2", "value2");
-    Assert.assertEquals("value", testNode.get(1, "key"));
-    Assert.assertEquals("value2", testNode.get(1, "key2"));
+    try {
 
-    // test overwrite
-    testNode.put(1, "key2", "value3");
-    Assert.assertEquals("value3", testNode.get(1, "key2"));
+      testNode.addPartition(1);
 
-    // test delete
-    testNode.delete(1, "key");
-    Assert.assertNull(testNode.get(1, "key"));
-    Assert.assertEquals("value3", testNode.get(1, "key2"));
+      // test basic put and get
+      testNode.put(1, "key", "value");
+      testNode.put(1, "key2", "value2");
+      Assert.assertEquals("value", testNode.get(1, "key"));
+      Assert.assertEquals("value2", testNode.get(1, "key2"));
 
-    // test null key
-    Assert.assertNull(testNode.get(1, "null_key"));
+      // test overwrite
+      testNode.put(1, "key2", "value3");
+      Assert.assertEquals("value3", testNode.get(1, "key2"));
+
+      // test delete
+      testNode.delete(1, "key");
+      Assert.assertNull(testNode.get(1, "key"));
+      Assert.assertEquals("value3", testNode.get(1, "key2"));
+
+      // test null key
+      Assert.assertNull(testNode.get(1, "null_key"));
+
+    } catch (VeniceStorageException e) {
+      Assert.fail(e.getMessage());
+    }
 
   }
 
@@ -66,18 +74,32 @@ public class TestInMemoryNode {
   public void testNodePartitioning() {
 
     InMemoryStorageNode testNode = new InMemoryStorageNode(1);    // nodeId = 1
-
     Assert.assertFalse(testNode.containsPartition(10));
-    testNode.put(10, "dummy_key", "dummy_value");
 
+    try {
+
+      testNode.put(10, "dummy_key", "dummy_value");
+      Assert.fail("Exception not thrown on null partition put.");
+
+    } catch (VeniceStorageException e) { }
+
+    // proceed with operations
     Assert.assertFalse(testNode.containsPartition(10));
-    testNode.addPartition(10);
 
-    Assert.assertTrue(testNode.containsPartition(10));
+    try {
+      testNode.addPartition(10);
 
-    InMemoryStoragePartition partition = testNode.removePartition(10);
-    Assert.assertFalse(testNode.containsPartition(10));
-    Assert.assertEquals(partition.getId(), 10);
+      Assert.assertTrue(testNode.containsPartition(10));
+
+      InMemoryStoragePartition partition = testNode.removePartition(10);
+      Assert.assertFalse(testNode.containsPartition(10));
+      Assert.assertEquals(partition.getId(), 10);
+
+    } catch (VeniceStorageException e) {
+
+      Assert.fail(e.getMessage());
+
+    }
 
   }
 
@@ -85,17 +107,33 @@ public class TestInMemoryNode {
   public void testPartitionFails() {
 
     InMemoryStorageNode testNode = new InMemoryStorageNode(1);    // nodeId = 1
-    Assert.assertTrue(testNode.addPartition(1));
 
-    // attempting to re-add partition, should return null
-    Assert.assertFalse(testNode.addPartition(1));
+    try {
+      // successfully add a new partition
+      testNode.addPartition(1);
+    } catch (VeniceStorageException e) {
+      Assert.fail(e.getMessage());
+    }
 
-    // should return the removed partition
-    Assert.assertNotNull(testNode.removePartition(1));
+    try {
+      // attempting to re-add partition, should fail
+      testNode.addPartition(1);
+      Assert.fail("Exception not thrown on partition re-add");
+    } catch (VeniceStorageException e) {
+    }
 
-    // attempting to remove non-existant partition, should return null
-    Assert.assertNull(testNode.removePartition(1));
+    try {
+      // successfully remove the partition
+      testNode.removePartition(1);
+    } catch (VeniceStorageException e) {
+      Assert.fail(e.getMessage());
+    }
 
+    try {
+      testNode.removePartition(1);
+      Assert.fail("Exception not thrown on partition re-removal");
+    } catch (VeniceStorageException e) {
+    }
 
   }
 
@@ -103,9 +141,30 @@ public class TestInMemoryNode {
   public void testNodeNull() {
 
     InMemoryStorageNode testNode = new InMemoryStorageNode(1);    // nodeId = 1
-    Assert.assertFalse(testNode.put(1, "dummy_key", "dummy_value")); // should not work, due to lack of available partition
-    Assert.assertNull(testNode.get(1, "dummy_key"));
-    Assert.assertFalse(testNode.delete(1, "dummy_key"));
+
+    try {
+
+      // should not work, due to lack of available partition
+      testNode.put(1, "dummy_key", "dummy_value");
+      Assert.fail("Exception not thrown");
+
+    } catch (VeniceStorageException e) { }
+
+    try {
+
+      // should not work, due to lack of available partition
+      testNode.get(1, "dummy_key");
+      Assert.fail("Exception not thrown");
+
+    } catch (VeniceStorageException e) { }
+
+    try {
+
+      // should not work, due to lack of available partition
+      testNode.delete(1, "dummy_key");
+      Assert.fail("Exception not thrown");
+
+    } catch (VeniceStorageException e) { }
 
   }
 

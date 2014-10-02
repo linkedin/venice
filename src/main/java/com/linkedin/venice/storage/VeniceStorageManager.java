@@ -14,6 +14,7 @@ import java.util.ArrayList;
 
 import java.util.Set;
 import java.util.HashSet;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * A singleton class for managing storage nodes and their locations
@@ -39,7 +40,7 @@ public class VeniceStorageManager {
   private VeniceStorageManager() {
 
     // initialize node variables
-    storeNodeMap = new HashMap<Integer, VeniceStorageNode>();
+    storeNodeMap = new ConcurrentHashMap<Integer, VeniceStorageNode>();
     nodeCount = GlobalConfiguration.getNumStorageNodes();
 
     // initialize partition variables
@@ -91,17 +92,21 @@ public class VeniceStorageManager {
    * Creates a new node in the registry
    * @param nodeId - The storage node id to be registered
    * */
-  public synchronized void registerNewNode(int nodeId) {
+  public synchronized void registerNewNode(int nodeId) throws VeniceStorageException {
 
-    nodeCount++;
+    if (storeNodeMap.containsKey(nodeId)) {
+      throw new VeniceStorageException("Attempting to add a nodeId which already exists: " + nodeId);
+    }
+
     storeNodeMap.put(nodeId, createNewStoreNode(nodeId));
+    nodeCount++;
 
   }
 
   /**
    * Registers a new partitionId and adds all of its copies to its associated nodes
    * */
-  public synchronized void registerNewPartition(int partitionId) {
+  public synchronized void registerNewPartition(int partitionId) throws VeniceStorageException {
 
     // use conversion algorithm to find nodeId
     List<Integer> nodeIds = calculateNodeId(partitionId);
@@ -119,8 +124,10 @@ public class VeniceStorageManager {
   /**
    * Returns a value from the storage
    * @param key - the key for the KV pair
+   * @return The value received from Venice Storage
+   * @throws VeniceStorageException if any nodes or partitions cannot be referenced
    */
-  public Object readValue(String key) {
+  public Object readValue(String key) throws VeniceStorageException {
 
     // get partition from kafka
     KafkaPartitioner kp = new KafkaPartitioner(new VerifiableProperties());
@@ -140,8 +147,7 @@ public class VeniceStorageManager {
 
     // does not exist
     if (!storeNodeMap.containsKey(nodeId)) {
-      logger.error("NodeId does not exist: " + nodeId);
-      return null;
+      throw new VeniceStorageException("NodeId does not exist: " + nodeId);
     }
 
     return storeNodeMap.get(nodeId).get(partitionId, key);
@@ -154,24 +160,23 @@ public class VeniceStorageManager {
    * @param partitionId - The partition to look in
    * @param key - the key for the KV pair
    * @param msg - A VeniceMessage to be added to storage
-   * @return true if operation was successful
+   * @throws VeniceStorageException if any nodes or partitions cannot be referenced
+   * @throws VeniceMessageException if an invalid VeniceMessage is given
    */
-  public boolean storeValue(int partitionId, String key, VeniceMessage msg) {
+  public void storeValue(int partitionId, String key, VeniceMessage msg)
+      throws VeniceStorageException, VeniceMessageException {
 
     // check for invalid inputs
     if (null == msg) {
-      logger.error("Given null Venice Message.");
-      return false;
+      throw new VeniceMessageException("Given null Venice Message.");
     }
 
     if (null == msg.getOperationType()) {
-      logger.error("Venice Message does not have operation type!");
-      return false;
+      throw new VeniceMessageException("Venice Message does not have operation type!");
     }
 
     if (!partitionIdList.contains(partitionId)) {
-      logger.error("Partition does not exist: " + partitionId);
-      return false;
+      throw new VeniceStorageException("Partition does not exist: " + partitionId);
     }
 
     // check in cache first, returns -1 if not in cache
@@ -189,8 +194,7 @@ public class VeniceStorageManager {
 
       // sanity check for existing node
       if (!storeNodeMap.containsKey(nodeId)) {
-        logger.error("No instance of node id: " + nodeId);
-        return false;
+        throw new VeniceStorageException("No instance of node id: " + nodeId);
       }
 
     }
@@ -218,27 +222,25 @@ public class VeniceStorageManager {
 
         // error
         default:
-          logger.error("Invalid operation type submitted: " + msg.getOperationType());
-          break;
+          throw new VeniceMessageException("Invalid operation type submitted: " + msg.getOperationType());
       }
 
     }
-
-    return true;
 
   }
 
   /**
    * Method that calculates the nodeId for a given partitionId and creates the partition if does not exist
    * Must be a deterministic method for partitionIds AND their replicas
+   * @param partitionId - The Kafka partitionId to be used in calculation
+   * @return A list of all the nodeIds associated with the given partitionId
    * */
-  private List<Integer> calculateNodeId(int partitionId) {
+  private List<Integer> calculateNodeId(int partitionId) throws VeniceStorageException {
 
     int numNodes = storeNodeMap.size();
 
     if (0 == numNodes) {
-      logger.error("Cannot calculate node id for partition because there are no nodes!");
-      return new ArrayList<Integer>();
+      throw new VeniceStorageException("Cannot calculate node id for partition because there are no nodes!");
     }
 
     // TODO: improve algorithm to provide true balancing

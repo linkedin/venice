@@ -17,12 +17,14 @@ public class KafkaPartitioner implements Partitioner {
   static final Logger logger = Logger.getLogger(KafkaPartitioner.class.getName());
   static NodeCache cache = NodeCache.getInstance();
 
+  private final String HASH_ALGORITHM = "MD5";
+
   public KafkaPartitioner (VerifiableProperties props) {
 
   }
 
   /**
-  * TODO: consider how to handle partitioning if the partition count changes
+  * TODO: consider how to handle partitioning if the partition count changes after startup
   * A consistent hashing algorithm that returns the partitionId based on the key
   * Note that this is based on the number of partitions
   * @param key - A string key that will be hashed into a partition
@@ -35,7 +37,7 @@ public class KafkaPartitioner implements Partitioner {
 
     try {
 
-      MessageDigest md = MessageDigest.getInstance("MD5");
+      MessageDigest md = MessageDigest.getInstance(HASH_ALGORITHM);
       md.update(stringKey.getBytes());
 
       byte[] byteData = md.digest();
@@ -54,8 +56,8 @@ public class KafkaPartitioner implements Partitioner {
       return partition;
 
     } catch (NoSuchAlgorithmException e) {
-      logger.error(e);
-      return 0;
+      logger.error("Hashing algorithm given is not recognized: " + HASH_ALGORITHM);
+      return -1;
     }
 
   }

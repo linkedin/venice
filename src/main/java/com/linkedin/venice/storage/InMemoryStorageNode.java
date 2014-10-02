@@ -1,5 +1,6 @@
 package com.linkedin.venice.storage;
 
+import com.linkedin.venice.Venice;
 import com.linkedin.venice.metadata.NodeCache;
 import org.apache.log4j.Logger;
 
@@ -52,37 +53,37 @@ public class InMemoryStorageNode extends VeniceStorageNode {
 
   /**
    * Adds a partitionId to the current Store
-   * @param store_id - id of partition to add
+   * @param partitionId - id of partition to add
+   * @throws VeniceStorageException, if the added partitionId already exists
    */
   @Override
-  public boolean addPartition(int store_id) {
+  public void addPartition(int partitionId) throws VeniceStorageException {
 
-    if (partitions.containsKey(store_id)) {
-      logger.error("Error on nodeId: " + nodeId +
-          " attempted to add a partition with an id that already exists: " + store_id);
-      return false;
+    if (partitions.containsKey(partitionId)) {
+      throw new VeniceStorageException("Error on nodeId: " + nodeId +
+          " attempted to add a partition with an id that already exists: " + partitionId);
     }
 
-    partitions.put(store_id, new InMemoryStoragePartition(store_id));
-    return true;
+    partitions.put(partitionId, new InMemoryStoragePartition(partitionId));
 
   }
 
   /**
    * Removes and returns a partitionId to the current Store
-   * @param store_id - id of partition to retrieve and remove
+   * @param partitionId - id of partition to retrieve and remove
+   * @return The partition object removed by this operation
+   * @throws VeniceStorageException, if the removed partition does not exist
    */
   @Override
-  public InMemoryStoragePartition removePartition(int store_id) {
+  public InMemoryStoragePartition removePartition(int partitionId) throws VeniceStorageException {
 
-    if (!partitions.containsKey(store_id)) {
-      logger.error("Error on nodeId: " + nodeId +
-          " attempted to remove a partition with an id that does not exist: " + store_id);
-      return null;
+    if (!partitions.containsKey(partitionId)) {
+      throw new VeniceStorageException("Error on nodeId: " + nodeId +
+          ", attempted to remove a partition with an id that does not exist: " + partitionId);
     }
 
-    InMemoryStoragePartition toReturn = partitions.get(store_id);
-    partitions.remove(store_id);
+    InMemoryStoragePartition toReturn = partitions.get(partitionId);
+    partitions.remove(partitionId);
 
     return toReturn;
 
@@ -93,14 +94,13 @@ public class InMemoryStorageNode extends VeniceStorageNode {
    * @param partitionId - The partition to add to: should map directly to Kafka
    * @param key - The key of the data in the KV pair
    * @param value - The value of the data in the KV pair
-   * @return true, if the put was successful
+   * @throws VeniceStorageException if the specified partitionId does not exist on this node
    */
   @Override
-  public boolean put(int partitionId, String key, Object value) {
+  public void put(int partitionId, String key, Object value) throws VeniceStorageException {
 
     if (!partitions.containsKey(partitionId)) {
-      logger.warn("PartitionId " + partitionId + " does not exist on NodeId " + nodeId);
-      return false;
+      throw new VeniceStorageException("On put: PartitionId " + partitionId + " does not exist on nodeId " + nodeId);
     }
 
     InMemoryStoragePartition partition = partitions.get(partitionId);
@@ -108,21 +108,19 @@ public class InMemoryStorageNode extends VeniceStorageNode {
     logger.info("Running put on node: " + nodeId + " partition: " + partitionId);
     partition.put(key, value);
 
-    return true;
-
   }
 
   /**
    * Get a value from storage.
    * @param partitionId - The partition to read from: should map directly to Kafka
    * @param key - The key of the data to be queried
+   * @throws VeniceStorageException if the specified partitionId does not exist on this node
    */
   @Override
-  public Object get(int partitionId, String key) {
+  public Object get(int partitionId, String key) throws VeniceStorageException {
 
     if (!partitions.containsKey(partitionId)) {
-      logger.error("Cannot find partition id: " + partitionId);
-      return null;
+      throw new VeniceStorageException("On get: PartitionId " + partitionId + " does not exist on nodeId " + nodeId);
     }
 
     return partitions.get(partitionId).get(key);
@@ -133,18 +131,17 @@ public class InMemoryStorageNode extends VeniceStorageNode {
    * Remove a value from storage.
    * @param partitionId - The partition to read from: should map directly to Kafka
    * @param key - The key of the data to be deleted
+   * @throws VeniceStorageException if the specified partitionId does not exist on this node
    */
   @Override
-  public boolean delete(int partitionId, String key) {
+  public void delete(int partitionId, String key) throws VeniceStorageException {
 
     if (!partitions.containsKey(partitionId)) {
-      logger.error("Cannot find partition id: " + partitionId);
-      return false;
+      throw new VeniceStorageException("On get: PartitionId " + partitionId + " does not exist on nodeId " + nodeId);
     }
 
     logger.info("Run a delete on node: " + nodeId + " partition: " + partitionId);
     partitions.get(partitionId).delete(key);
-    return true;
 
   }
 

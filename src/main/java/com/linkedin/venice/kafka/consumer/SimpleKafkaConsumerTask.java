@@ -10,6 +10,7 @@ import kafka.api.PartitionOffsetRequestInfo;
 import kafka.api.TopicMetadata;
 import kafka.api.TopicMetadataRequest;
 import kafka.api.TopicMetadataResponse;
+import kafka.common.KafkaException;
 import kafka.common.TopicAndPartition;
 import kafka.consumer.SimpleConsumer;
 import kafka.message.Message;
@@ -220,10 +221,8 @@ public class SimpleKafkaConsumerTask implements Runnable {
     kafka.api.OffsetResponse scalaResponse = consumer.getOffsetsBefore(req.underlying());
     kafka.javaapi.OffsetResponse javaResponse = new kafka.javaapi.OffsetResponse(scalaResponse);
 
-
     if (javaResponse.hasError()) {
-      logger.error("Error fetching data offset!!");
-      return 0;
+      throw new KafkaException("Error fetching data offset for topic: " + topic + " partition: " + partition);
     }
 
     long[] offsets = javaResponse.offsets(topic, partition);

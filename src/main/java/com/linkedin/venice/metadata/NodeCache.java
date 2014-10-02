@@ -6,6 +6,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Class which stores the mappings of { Kafka partitionId -> List of nodeId }
@@ -22,7 +23,7 @@ public class NodeCache {
 
   // This class is meant to be a singleton, and will be statically called
   private NodeCache() {
-    nodeMap = new HashMap<Integer, List<Integer>>();
+    nodeMap = new ConcurrentHashMap<Integer, List<Integer>>();
   }
 
   public static synchronized NodeCache getInstance() {

@@ -14,14 +14,15 @@ public abstract class VeniceStorageNode {
   public abstract int getNodeId();
 
   public abstract boolean containsPartition(int partitionId);
-  public abstract boolean put(int partitionId, String key, Object value);
 
-  public abstract Object get(int partitionId, String key);
+  public abstract void put(int partitionId, String key, Object value) throws VeniceStorageException;
 
-  public abstract boolean delete(int partitionId, String key);
+  public abstract Object get(int partitionId, String key) throws VeniceStorageException;
 
-  public abstract boolean addPartition(int partition_id);
+  public abstract void delete(int partitionId, String key) throws VeniceStorageException;
 
-  public abstract VeniceStoragePartition removePartition(int partition_id);
+  public abstract void addPartition(int partition_id) throws VeniceStorageException;
+
+  public abstract VeniceStoragePartition removePartition(int partition_id) throws VeniceStorageException;
 
 }
