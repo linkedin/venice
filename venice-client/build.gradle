@@ -1,0 +1,53 @@
+apply plugin: 'java'
+apply plugin: 'idea'
+apply plugin: 'eclipse'
+apply plugin: 'application'
+
+sourceCompatibility = 1.6
+version = '0.1'
+
+mainClassName = "com.linkedin.venice.Venice"
+
+task buildJar(type: Jar) {
+  manifest {
+    attributes 'Main-Class': 'com.linkedin.venice.Venice',
+               'Implementation-Title': 'Venice Client', 
+               'Implementation-Version': version
+  }  
+  baseName = project.name
+  from { configurations.compile.collect { it.isDirectory()? it : zipTree(it) } }
+  with jar
+}
+
+jar {
+  manifest {
+    attributes 'Main-Class': 'com.linkedin.venice.Venice',
+               'Implementation-Title': 'Venice Client', 
+               'Implementation-Version': version
+  }
+}
+
+repositories {
+  mavenCentral()
+}
+
+dependencies {
+
+  compile 'org.apache.kafka:kafka_2.10:0.8.1.1'
+
+  // log4j for logging
+  compile 'log4j:log4j:1.2.17'
+
+  // junit, because tests are important
+  testCompile 'junit:junit:4.6'
+    
+}
+
+
+idea {
+  module {
+    downloadJavadoc = true
+    downloadSources = true
+  }
+}
+
