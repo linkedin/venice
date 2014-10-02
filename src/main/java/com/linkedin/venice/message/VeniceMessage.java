@@ -1,7 +1,7 @@
 package com.linkedin.venice.message;
 
 /**
- * Created by clfung on 9/11/14.
+ * Class which stores the components of VeniceMessage, and is the format specified in the Kafka Serializer
  */
 public class VeniceMessage {
 
@@ -50,6 +50,8 @@ public class VeniceMessage {
     return operationType.toString() + " " + payload;
   }
 
-  public Object getTimestamp() { return timestamp; }
+  public Object getTimestamp() {
+    return timestamp;
+  }
 
 }

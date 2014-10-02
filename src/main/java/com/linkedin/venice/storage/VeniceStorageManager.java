@@ -17,19 +17,18 @@ import java.util.HashSet;
 
 /**
  * A singleton class for managing storage nodes and their locations
- * Created by clfung on 9/17/14.
  */
-public class VeniceStoreManager {
+public class VeniceStorageManager {
 
-  static final Logger logger = Logger.getLogger(VeniceStoreManager.class.getName());
+  static final Logger logger = Logger.getLogger(VeniceStorageManager.class.getName());
 
-  private static VeniceStoreManager instance = null;
+  private static VeniceStorageManager instance = null;
 
   // Note: both nodes and partitions start from id = 0
-  private Map<Integer, VeniceStoreNode> storeNodeMap = null; // Map which explicitly stores the nodes, based on NodeId
+  private Map<Integer, VeniceStorageNode> storeNodeMap = null; // Map which explicitly stores the nodes, based on NodeId
   private Set<Integer> partitionIdList = null; // Set of all unique partition ids
 
-  private StoreType storeType = GlobalConfiguration.getStorageType();
+  private StorageType storageType = GlobalConfiguration.getStorageType();
 
   private final int replicationFactor = GlobalConfiguration.getNumStorageCopies();
 
@@ -37,10 +36,10 @@ public class VeniceStoreManager {
   private static NodeCache nodeCache; // cache mapping of partition to node
 
   /* Constructor: Cannot externally instantiate a singleton */
-  private VeniceStoreManager() {
+  private VeniceStorageManager() {
 
     // initialize node variables
-    storeNodeMap = new HashMap<Integer, VeniceStoreNode>();
+    storeNodeMap = new HashMap<Integer, VeniceStorageNode>();
     nodeCount = GlobalConfiguration.getNumStorageNodes();
 
     // initialize partition variables
@@ -51,26 +50,26 @@ public class VeniceStoreManager {
   }
 
   /*
-   * Return the instance of the VeniceStoreManager
+   * Return the instance of the VeniceStorageManager
    * */
-  public static synchronized VeniceStoreManager getInstance() {
+  public static synchronized VeniceStorageManager getInstance() {
 
     if (null == instance) {
-      instance = new VeniceStoreManager();
+      instance = new VeniceStorageManager();
     }
 
     return instance;
 
   }
 
-  private VeniceStoreNode createNewStoreNode(int nodeId) {
+  private VeniceStorageNode createNewStoreNode(int nodeId) {
 
-    VeniceStoreNode toReturn;
+    VeniceStorageNode toReturn;
 
     // TODO: implement other storage solutions when available
-    switch (storeType) {
+    switch (storageType) {
       case MEMORY:
-        toReturn = new InMemoryStoreNode(nodeId);
+        toReturn = new InMemoryStorageNode(nodeId);
         break;
 
       case BDB:
@@ -80,7 +79,7 @@ public class VeniceStoreManager {
         throw new UnsupportedOperationException("Voldemort storage not yet implemented");
 
       default:
-        toReturn = new InMemoryStoreNode(nodeId);
+        toReturn = new InMemoryStorageNode(nodeId);
         break;
     }
 
@@ -108,7 +107,7 @@ public class VeniceStoreManager {
     List<Integer> nodeIds = calculateNodeId(partitionId);
 
     for (int nodeId : nodeIds) {
-      VeniceStoreNode node = storeNodeMap.get(nodeId);
+      VeniceStorageNode node = storeNodeMap.get(nodeId);
       node.addPartition(partitionId);
     }
 
@@ -203,14 +202,14 @@ public class VeniceStoreManager {
 
         // adding new values
         case PUT:
-          storeNodeMap.get(nodeId).put(partitionId, key, msg.getPayload());
           logger.info("Putting: " + key + ", " + msg.getPayload());
+          storeNodeMap.get(nodeId).put(partitionId, key, msg.getPayload());
           break;
 
         // deleting values
         case DELETE:
-          storeNodeMap.get(nodeId).delete(partitionId, key);
           logger.info("Deleting: " + key);
+          storeNodeMap.get(nodeId).delete(partitionId, key);
           break;
 
         // partial update

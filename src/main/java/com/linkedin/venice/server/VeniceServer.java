@@ -4,38 +4,30 @@ import com.linkedin.venice.Venice;
 import com.linkedin.venice.config.GlobalConfiguration;
 import com.linkedin.venice.kafka.consumer.HighKafkaConsumer;
 import com.linkedin.venice.kafka.consumer.SimpleKafkaConsumer;
-import com.linkedin.venice.storage.VeniceStoreManager;
+import com.linkedin.venice.storage.VeniceStorageManager;
 import org.apache.log4j.Logger;
 
 /**
- * Created by clfung on 9/26/14.
+ * Primary Venice Server class. In the future, this will become the main class for the Server component.
  */
 public class VeniceServer {
 
   // log4j logger
   static final Logger logger = Logger.getLogger(VeniceServer.class.getName());
 
-  private static VeniceServer server = null;
-  private VeniceStoreManager storeManager;
+  private VeniceStorageManager storeManager;
 
   // TODO: Remove this code if high level consumer is to be deprecated
   private static final boolean USE_HIGH_CONSUMER = false;
 
-  /* Venice Server to be a singleton */
-  private VeniceServer() {
+  public VeniceServer() {
 
-    // initialize the storage engine, start n nodes and p partitions.
-    storeManager = VeniceStoreManager.getInstance();
+    initializeStorage();
+    initializeKakfaConsumer();
 
-    // start nodes
-    for (int n = 0; n < GlobalConfiguration.getNumStorageNodes(); n++) {
-      storeManager.registerNewNode(n);
-    }
+  }
 
-    // start partitions
-    for (int p = 0; p < GlobalConfiguration.getNumKafkaPartitions(); p++) {
-      storeManager.registerNewPartition(p);
-    }
+  private void initializeKakfaConsumer() {
 
     try {
 
@@ -65,16 +57,20 @@ public class VeniceServer {
 
   }
 
-  /**
-   * Return the singleton instance of VeniceServer
-   * */
-  public static VeniceServer getInstance() {
+  private void initializeStorage() {
 
-    if (null == server) {
-      server = new VeniceServer();
+    // initialize the storage engine, start n nodes and p partitions.
+    storeManager = VeniceStorageManager.getInstance();
+
+    // start nodes
+    for (int n = 0; n < GlobalConfiguration.getNumStorageNodes(); n++) {
+      storeManager.registerNewNode(n);
     }
 
-    return server;
+    // start partitions
+    for (int p = 0; p < GlobalConfiguration.getNumKafkaPartitions(); p++) {
+      storeManager.registerNewPartition(p);
+    }
 
   }
 

@@ -5,10 +5,15 @@ import kafka.serializer.Encoder;
 import kafka.utils.VerifiableProperties;
 import org.apache.log4j.Logger;
 
-import java.io.*;
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
+import java.io.IOException;
+
 
 /**
- * Venice's custom serialization class
+ * Venice's custom serialization class. Used by Kafka to convert to/from byte arrays.
  *
  * Message Schema (in order)
  * - Magic Byte
@@ -17,16 +22,12 @@ import java.io.*;
  * - Timestamp
  * - Payload
  *
- *
- * Created by clfung on 9/12/14.
  */
 public class VeniceMessageSerializer implements Encoder<VeniceMessage>, Decoder<VeniceMessage> {
 
   static final Logger logger = Logger.getLogger(VeniceMessageSerializer.class.getName()); // log4j logger
 
   private static final int HEADER_LENGTH = 3; // length of the VeniceMessage header in bytes
-
-
 
   public VeniceMessageSerializer(VerifiableProperties verifiableProperties) {
     /* This constructor is not used, but is required for compilation */

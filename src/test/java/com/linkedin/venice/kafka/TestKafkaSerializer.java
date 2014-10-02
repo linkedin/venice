@@ -8,7 +8,9 @@ import kafka.utils.VerifiableProperties;
 import org.junit.Test;
 
 /**
- * Created by clfung on 9/29/14.
+ * Tests for the Kafka Serialization class
+ * 1. Verify magic byte, schema version, operation type and payload are serialized/de-serialized correctly.
+ * 2. Repeat for a PUT message and a DELETE message
  */
 public class TestKafkaSerializer {
 

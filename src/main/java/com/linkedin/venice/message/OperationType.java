@@ -1,7 +1,7 @@
 package com.linkedin.venice.message;
 
 /**
- * Created by clfung on 9/11/14.
+ * Enum which declares the possible types of operation supported by Venice.
  */
 public enum OperationType {
   PUT, DELETE, PARTIAL_PUT

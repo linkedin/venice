@@ -1,17 +1,15 @@
 package com.linkedin.venice.storage;
 
-import com.linkedin.venice.message.VeniceMessage;
-
 /**
- * Class for managing the storage system and its partitions
- * Created by clfung on 9/10/14.
+ * Generalized class for a storage node in Venice
+ * All storage solutions need to extend this class.
  */
-public abstract class VeniceStoreNode {
+public abstract class VeniceStorageNode {
 
   private int nodeId = -1;
 
   /* Constructor required for successful compile */
-  public VeniceStoreNode() { }
+  public VeniceStorageNode() { }
 
   public abstract int getNodeId();
 
@@ -24,6 +22,6 @@ public abstract class VeniceStoreNode {
 
   public abstract boolean addPartition(int partition_id);
 
-  public abstract VeniceStorePartition removePartition(int partition_id);
+  public abstract VeniceStoragePartition removePartition(int partition_id);
 
 }

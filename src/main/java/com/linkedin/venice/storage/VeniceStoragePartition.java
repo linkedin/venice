@@ -1,11 +1,10 @@
 package com.linkedin.venice.storage;
 
-import java.util.HashMap;
-
 /**
- * Created by clfung on 9/29/14.
+ * A generalized implementation of a storage partition.
+ * All storage solutions need to extend this class.
  */
-public abstract class VeniceStorePartition {
+public abstract class VeniceStoragePartition {
 
   /**
    * Returns the id of this given partition

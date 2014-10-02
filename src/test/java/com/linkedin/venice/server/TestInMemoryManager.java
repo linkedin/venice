@@ -5,18 +5,21 @@ import com.linkedin.venice.kafka.partitioner.KafkaPartitioner;
 import com.linkedin.venice.message.OperationType;
 import com.linkedin.venice.message.VeniceMessage;
 import com.linkedin.venice.metadata.NodeCache;
-import com.linkedin.venice.storage.VeniceStoreManager;
+import com.linkedin.venice.storage.VeniceStorageManager;
 import junit.framework.Assert;
 import kafka.utils.VerifiableProperties;
 import org.junit.BeforeClass;
 import org.junit.Test;
 
 /**
- * Created by clfung on 9/29/14.
+ * Tests the VeniceStorageManager class with In-Memory Storage
+ * 1. Basic Put, Overwrite and Delete are covered
+ * 2. Testing failure cases: Partition out of bounds, null message, null operation
+ * 3. Testing that cache failure has no effect on correctness (cache can clear at any step)
  */
 public class TestInMemoryManager {
 
-  private static VeniceStoreManager storeManager;
+  private static VeniceStorageManager storeManager;
 
   @BeforeClass
   public static void init() {
@@ -24,7 +27,7 @@ public class TestInMemoryManager {
     GlobalConfiguration.initialize("");         // config file for testing
 
     // initialize the storage engine, start n nodes and p partitions.
-    storeManager = VeniceStoreManager.getInstance();
+    storeManager = VeniceStorageManager.getInstance();
 
     // For testing, use 2 storage nodes
     for (int n = 0; n < GlobalConfiguration.getNumStorageNodes(); n++) {
@@ -50,9 +53,9 @@ public class TestInMemoryManager {
     Assert.assertEquals("payload", storeManager.readValue("k1"));
 
     // Test 2
-    partitionId = kp.partition("k2", GlobalConfiguration.getNumKafkaPartitions());
-    storeManager.storeValue(partitionId, "k2", new VeniceMessage(OperationType.PUT, "payload2"));
-    Assert.assertEquals("payload2", storeManager.readValue("k2"));
+    partitionId = kp.partition("k1", GlobalConfiguration.getNumKafkaPartitions());
+    storeManager.storeValue(partitionId, "k1", new VeniceMessage(OperationType.PUT, "payload2"));
+    Assert.assertEquals("payload2", storeManager.readValue("k1"));
 
     // Test 3
     partitionId = kp.partition("k3", GlobalConfiguration.getNumKafkaPartitions());

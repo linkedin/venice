@@ -1,21 +1,17 @@
 package com.linkedin.venice.kafka.consumer;
 
-import com.linkedin.venice.Venice;
 import com.linkedin.venice.config.GlobalConfiguration;
-import com.linkedin.venice.server.VeniceServer;
+import com.linkedin.venice.storage.VeniceStorageManager;
 import kafka.api.FetchRequest;
 import kafka.api.FetchRequestBuilder;
 import kafka.api.FetchResponse;
-import kafka.api.OffsetResponse;
 import kafka.api.PartitionMetadata;
 import kafka.api.PartitionOffsetRequestInfo;
-import kafka.api.PartitionOffsetsResponse;
 import kafka.api.TopicMetadata;
 import kafka.api.TopicMetadataRequest;
 import kafka.api.TopicMetadataResponse;
 import kafka.common.TopicAndPartition;
 import kafka.consumer.SimpleConsumer;
-import kafka.api.OffsetRequest;
 import kafka.message.Message;
 import kafka.message.MessageAndOffset;
 import kafka.utils.VerifiableProperties;
@@ -25,8 +21,6 @@ import org.apache.log4j.Logger;
 import scala.collection.Iterator;
 import scala.collection.JavaConversions;
 import scala.collection.Seq;
-import com.linkedin.venice.storage.VeniceStoreManager;
-import com.linkedin.venice.client.VeniceClient;
 
 import java.io.UnsupportedEncodingException;
 import java.nio.ByteBuffer;
@@ -38,7 +32,7 @@ import java.util.HashMap;
 import java.util.Collections;
 
 /**
- * Created by clfung on 9/22/14.
+ * Runnable class which performs Kafka consumption from the Simple Consumer API.
  */
 public class SimpleKafkaConsumerTask implements Runnable {
 
@@ -78,6 +72,9 @@ public class SimpleKafkaConsumerTask implements Runnable {
 
   }
 
+  /**
+   *  Parallelized method which performs Kafka consumption and relays messages to the VeniceStorageManager
+   * */
   public void run() {
 
     // find the meta data
@@ -148,29 +145,21 @@ public class SimpleKafkaConsumerTask implements Runnable {
           Message msg = messageAndOffset.message();
           String keyString;
 
-          // Read Key: Note that messages from the console producer do not have a key
-          if (msg.hasKey()) {
-
-            ByteBuffer key = msg.key();
-            byte[] keyBytes = new byte[key.limit()];
-            key.get(keyBytes);
-            keyString = new String(keyBytes, ENCODING);
-
-          } else {
-
-            keyString = Venice.DEFAULT_KEY;
-
-          }
+          // Get the Venice Key
+          ByteBuffer key = msg.key();
+          byte[] keyBytes = new byte[key.limit()];
+          key.get(keyBytes);
+          keyString = new String(keyBytes, ENCODING);
 
           // Read Payload
           ByteBuffer payload = messageAndOffset.message().payload();
           byte[] payloadBytes = new byte[payload.limit()];
           payload.get(payloadBytes);
 
-          // Serialize header from payload into Venice Message format
+          // De-serialize payload into Venice Message format
           vm = messageSerializer.fromBytes(payloadBytes);
 
-          VeniceStoreManager manager = VeniceStoreManager.getInstance();
+          VeniceStorageManager manager = VeniceStorageManager.getInstance();
           manager.storeValue(partition, keyString, vm);
 
           numReads++;

@@ -15,7 +15,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 /**
- * Created by clfung on 9/12/14.
+ * An implementation of the High Level Consumer API, provided by Kafka.
  */
 public class HighKafkaConsumer {
 
@@ -51,6 +51,10 @@ public class HighKafkaConsumer {
 
   }
 
+  /**
+   * Class which creates threads for concurrent Kafka consumption.
+   * @param numThreads - Number of threads to use in Kafka consumption
+   * */
   public void run(int numThreads) {
 
     Map<String, Integer> topicCountMap = new HashMap<String, Integer>();

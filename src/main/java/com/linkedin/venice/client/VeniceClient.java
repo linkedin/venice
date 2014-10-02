@@ -1,20 +1,14 @@
 package com.linkedin.venice.client;
 
 import com.linkedin.venice.config.GlobalConfiguration;
-import com.linkedin.venice.kafka.consumer.HighKafkaConsumer;
 import com.linkedin.venice.kafka.producer.KafkaProducer;
-import com.linkedin.venice.kafka.consumer.SimpleKafkaConsumer;
 import com.linkedin.venice.message.OperationType;
 import com.linkedin.venice.message.VeniceMessage;
 import com.linkedin.venice.server.VeniceServer;
 import org.apache.log4j.Logger;
-import com.linkedin.venice.storage.InMemoryStoreNode;
-import com.linkedin.venice.storage.VeniceStoreManager;
-
-import java.util.Arrays;
-import java.util.Scanner;
 
 /**
+ * Class which acts as the primary client API
  * Created by clfung on 9/17/14.
  */
 public class VeniceClient {
@@ -23,51 +17,50 @@ public class VeniceClient {
   static final Logger logger = Logger.getLogger(VeniceClient.class.getName());
 
   private VeniceServer server;
+  private KafkaProducer kp;
+
+  private VeniceMessage msg;
 
   public VeniceClient() {
 
-    server = VeniceServer.getInstance();
+    // TODO: implement file input for config
+    GlobalConfiguration.initialize("");
+
+    server = new VeniceServer();
+    kp = new KafkaProducer();
 
   }
 
   /**
-   * A function used to mock client inputs into the Venice Server
+   * Execute a standard "get" on the key. Returns null if empty.
+   * @param key - The key to look for in storage.
+   * @return The result of the "Get" operation
    * */
-  public void getInput() {
+  public Object get(String key) {
+    return server.readValue(key);
+  }
 
-    // mocked input test
-    KafkaProducer kp = new KafkaProducer();
-    VeniceMessage msg;
-    Scanner reader = new Scanner(System.in);
+  /**
+   * Execute a standard "delete" on the key.
+   * @param key - The key to delete in storage.
+   * */
+  public void delete(String key) {
 
-    while (true) {
+    msg = new VeniceMessage(OperationType.DELETE, "");
+    kp.sendMessage(key, msg);
 
-      String input = reader.nextLine();
+  }
 
-      String[] commandArgs = input.split(" ");
+  /**
+   * Execute a standard "put" on the key.
+   * @param key - The key to put in storage.
+   * @param value - The value to be associated with the given key
+   * */
+  public void put(String key, Object value) {
 
-      if (commandArgs.length > 1) {
+    msg = new VeniceMessage(OperationType.PUT, value.toString());
+    kp.sendMessage(key, msg);
 
-        if (commandArgs[0].equals("put")) {
-
-          if (commandArgs.length > 2) {
-            msg = new VeniceMessage(OperationType.PUT, commandArgs[2]);
-            kp.sendMessage(commandArgs[1], msg);
-          }
-
-        } else if (commandArgs[0].equals(("get"))) {
-
-          logger.info("Got: " + server.readValue(commandArgs[1]));
-
-        } else if (commandArgs[0].equals("delete")) {
-
-          msg = new VeniceMessage(OperationType.DELETE, "");
-          kp.sendMessage(commandArgs[1], msg);
-
-        }
-      }
-
-    }
   }
 
 }

@@ -8,7 +8,11 @@ import org.junit.BeforeClass;
 import org.junit.Test;
 
 /**
- * Created by clfung on 9/29/14.
+ * Tests for the Kafka Partitioner. It doesn't really matter what the results are, as long as they are consistent.
+ * 1. Testing several strings and ensuring that they are partitioned consistently
+ *    - numeric
+ *    - special characters
+ *    - white space
  */
 public class TestKafkaPartitioner {
 
@@ -29,8 +33,8 @@ public class TestKafkaPartitioner {
     Assert.assertEquals(partition1, partition2);
 
     // Test 2
-    partition1 = kp.partition("00000", 7);
-    partition2 = kp.partition("00000", 7);
+    partition1 = kp.partition("    ", 7);
+    partition2 = kp.partition("    ", 7);
 
     Assert.assertEquals(partition1, partition2);
 

@@ -8,7 +8,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Created by clfung on 9/11/14.
+ * Class which stores the mappings of { Kafka partitionId -> List of nodeId }
  */
 public class NodeCache {
 

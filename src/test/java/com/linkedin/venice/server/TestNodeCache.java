@@ -4,12 +4,15 @@ import com.linkedin.venice.metadata.NodeCache;
 import junit.framework.Assert;
 import org.junit.Test;
 
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
 /**
- * Created by clfung on 9/29/14.
+ * Tests the Functions of the Node Cache
+ * 1. Registration of new mappings
+ * 2. Overwriting mapping on same partitionId with same nodeIds
+ * 3. Successfully rejects the mapping of a new new nodeId on the same partitionId
+ * 4. Successfully return the master nodeId given a list of nodeIds
  */
 public class TestNodeCache {
 

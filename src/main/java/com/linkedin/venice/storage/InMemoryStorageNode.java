@@ -7,22 +7,22 @@ import java.util.HashMap;
 import java.util.Map;
 
 /**
- * Created by clfung on 9/17/14.
+ * An in-memory hashmap implementation of a Venice storage node
  */
-public class InMemoryStoreNode extends VeniceStoreNode {
+public class InMemoryStorageNode extends VeniceStorageNode {
 
-  static final Logger logger = Logger.getLogger(InMemoryStoreNode.class.getName());
+  static final Logger logger = Logger.getLogger(InMemoryStorageNode.class.getName());
 
   private int nodeId = -1;
 
   // Map which stores the partitions and their associated ids
-  private Map<Integer, InMemoryStorePartition> partitions = new HashMap<Integer, InMemoryStorePartition>();
+  private Map<Integer, InMemoryStoragePartition> partitions = new HashMap<Integer, InMemoryStoragePartition>();
   private static NodeCache nodeCache;
 
   // number of partitions in the store
   private static int partitionCount = -1;
 
-  public InMemoryStoreNode(int nodeId) {
+  public InMemoryStorageNode(int nodeId) {
 
     // register current nodeId
     this.nodeId = nodeId;
@@ -33,11 +33,19 @@ public class InMemoryStoreNode extends VeniceStoreNode {
   }
 
   @Override
+  /**
+   * Returns the nodeId of this given node.
+   */
   public int getNodeId() {
     return nodeId;
   }
 
   @Override
+  /**
+   * Return true or false based on whether a given partition exists within this node.
+   * @param partitionId - The partition to look for
+   * @return True/False, does the partition exist on this node
+   * */
   public boolean containsPartition(int partitionId) {
     return partitions.containsKey(partitionId);
   }
@@ -55,7 +63,7 @@ public class InMemoryStoreNode extends VeniceStoreNode {
       return false;
     }
 
-    partitions.put(store_id, new InMemoryStorePartition(store_id));
+    partitions.put(store_id, new InMemoryStoragePartition(store_id));
     return true;
 
   }
@@ -65,7 +73,7 @@ public class InMemoryStoreNode extends VeniceStoreNode {
    * @param store_id - id of partition to retrieve and remove
    */
   @Override
-  public InMemoryStorePartition removePartition(int store_id) {
+  public InMemoryStoragePartition removePartition(int store_id) {
 
     if (!partitions.containsKey(store_id)) {
       logger.error("Error on nodeId: " + nodeId +
@@ -73,7 +81,7 @@ public class InMemoryStoreNode extends VeniceStoreNode {
       return null;
     }
 
-    InMemoryStorePartition toReturn = partitions.get(store_id);
+    InMemoryStoragePartition toReturn = partitions.get(store_id);
     partitions.remove(store_id);
 
     return toReturn;
@@ -95,9 +103,9 @@ public class InMemoryStoreNode extends VeniceStoreNode {
       return false;
     }
 
-    InMemoryStorePartition partition = partitions.get(partitionId);
+    InMemoryStoragePartition partition = partitions.get(partitionId);
 
-    logger.info("Run a put on node: " + nodeId + " partition: " + partitionId);
+    logger.info("Running put on node: " + nodeId + " partition: " + partitionId);
     partition.put(key, value);
 
     return true;

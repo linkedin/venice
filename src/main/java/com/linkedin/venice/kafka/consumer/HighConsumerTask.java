@@ -1,19 +1,16 @@
 package com.linkedin.venice.kafka.consumer;
 
-import com.linkedin.venice.Venice;
-import com.linkedin.venice.server.VeniceServer;
 import kafka.consumer.ConsumerIterator;
 import kafka.consumer.KafkaStream;
 import kafka.utils.VerifiableProperties;
 import com.linkedin.venice.message.VeniceMessageSerializer;
 import com.linkedin.venice.message.VeniceMessage;
 import org.apache.log4j.Logger;
-import com.linkedin.venice.storage.VeniceStoreManager;
-import com.linkedin.venice.client.VeniceClient;
+import com.linkedin.venice.storage.VeniceStorageManager;
 
 
 /**
- * Created by clfung on 9/15/14.
+ * Runnable class which performs Kafka consumption from the High Level Consumer API.
  */
 public class HighConsumerTask implements Runnable {
 
@@ -35,7 +32,7 @@ public class HighConsumerTask implements Runnable {
     ConsumerIterator<byte[], byte[]> it = stream.iterator();
     VeniceMessageSerializer messageSerializer = new VeniceMessageSerializer(new VerifiableProperties());
     VeniceMessage vm = null;
-    VeniceStoreManager manager = VeniceStoreManager.getInstance();
+    VeniceStorageManager manager = VeniceStorageManager.getInstance();
 
     while (it.hasNext()) {
       vm = messageSerializer.fromBytes(it.next().message());

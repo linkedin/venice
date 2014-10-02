@@ -1,19 +1,19 @@
 package com.linkedin.venice.config;
 
-import com.linkedin.venice.storage.StoreType;
+import com.linkedin.venice.storage.StorageType;
 
 import java.io.File;
 import java.util.Arrays;
 import java.util.List;
 
 /**
- * Class which reads values from Config File for Venice
- * Created by clfung on 9/11/14.
+ * Class which reads configuration parameters for Venice.
+ * Inputs may come from file or another service.
  */
 public class GlobalConfiguration {
 
   // server related configs
-  private static StoreType storageType;
+  private static StorageType storageType;
   private static int numStorageNodes;
   private static int numStorageCopies;
 
@@ -51,7 +51,7 @@ public class GlobalConfiguration {
     kafkaBrokerPort = 9092;
     brokerList = Arrays.asList("localhost");
 
-    storageType = StoreType.MEMORY;
+    storageType = StorageType.MEMORY;
     numStorageNodes = 3;
     numStorageCopies = 2;
 
@@ -73,11 +73,13 @@ public class GlobalConfiguration {
     return numKafkaPartitions;
   }
 
-  public static StoreType getStorageType() {
+  public static StorageType getStorageType() {
     return storageType;
   }
 
-  public static int getNumStorageCopies() { return numStorageCopies; }
+  public static int getNumStorageCopies() {
+    return numStorageCopies;
+  }
 
   public static List<String> getBrokerList() {
     return brokerList;
