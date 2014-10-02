@@ -1,7 +1,0 @@
-<Config>
-    <kafka_rep_factor>1</kafka_rep_factor>
-    <store_rep_factor>1</store_rep_factor>
-    <store_type>memory</store_type>
-    <value_type>array</value_type>
-    <Timestamp>Jan 01 2010 00:00:00 PST</Timestamp>
-</Config>
