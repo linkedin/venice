@@ -1,7 +1,50 @@
 #####################################################
-
 ######################### VENICE ####################
-
 #####################################################
 
-This is a READ ME.
+Welcome to Venice, the highly available data serving platform.
+
+Usage
+----------------------
+There are two ways to use Venice. 
+
+1) Venice is usable through its Java Client API.
+2) Venice commands are also executable through a Shell Client, which is also provided.
+
+First, ensure that each project has been built. If not, please run:
+
+> gradle clean
+> gradle installApp
+
+To start the server:
+
+> venice-server/bin/start-venice-server.sh
+
+To use the shell client:
+
+> venice-client/bin/venice-client.sh [args]
+
+Arguments
+-----------------------
+
+1) Commands
+One of: ( --get, --put, --delete ) must be present and specify the type of action to perform.
+
+2) --key
+The key to be given to Venice.
+
+3) --value (optional)
+The value to be specified with a PUT in Venice.
+
+Examples:
+
+> run-client.sh --put --key test_key --value test_value
+> run-client.sh --get --key test_key
+> run-client.sh --delete --key test_key
+
+Questions?
+-----------------------
+Felix GV  - fvillegas@linkedin.com
+Siddharth Singh - sisingh@linkedin.com
+Clement Fung - clfung@linkedin.com
+

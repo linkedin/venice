@@ -6,12 +6,12 @@ apply plugin: 'application'
 sourceCompatibility = 1.6
 version = '0.1'
 
-mainClassName = "com.linkedin.venice.Venice"
+mainClassName = "com.linkedin.venice.client.VeniceShellClient"
 
 task buildJar(type: Jar) {
   manifest {
-    attributes 'Main-Class': 'com.linkedin.venice.Venice',
-               'Implementation-Title': 'Venice Client', 
+    attributes 'Main-Class': 'com.linkedin.venice.client.VeniceShellClient',
+               'Implementation-Title': 'Venice Shell Client', 
                'Implementation-Version': version
   }  
   baseName = project.name
@@ -21,8 +21,8 @@ task buildJar(type: Jar) {
 
 jar {
   manifest {
-    attributes 'Main-Class': 'com.linkedin.venice.Venice',
-               'Implementation-Title': 'Venice Client', 
+    attributes 'Main-Class': 'com.linkedin.venice.client.VeniceShellClient',
+               'Implementation-Title': 'Venice Shell Client', 
                'Implementation-Version': version
   }
 }
