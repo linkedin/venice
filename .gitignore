@@ -1,5 +1,6 @@
 .gradle
 .idea
 build/
-venice.iml
+.settings
+*.iml
 .reviewboardrc
