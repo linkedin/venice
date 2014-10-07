@@ -1,5 +1,6 @@
 package com.linkedin.venice.storage;
 
+import com.linkedin.venice.kafka.consumer.SimpleKafkaConsumerTask;
 import com.linkedin.venice.metadata.NodeCache;
 import org.apache.log4j.Logger;
 
@@ -17,7 +18,6 @@ public class InMemoryStorageNode extends VeniceStorageNode {
 
   // Map which stores the partitions and their associated ids
   private Map<Integer, InMemoryStoragePartition> partitions = new HashMap<Integer, InMemoryStoragePartition>();
-  private static NodeCache nodeCache;
 
   // number of partitions in the store
   private static int partitionCount = -1;
@@ -26,9 +26,6 @@ public class InMemoryStorageNode extends VeniceStorageNode {
 
     // register current nodeId
     this.nodeId = nodeId;
-
-    // create static instance of nodeCache
-    nodeCache = NodeCache.getInstance();
 
   }
 
@@ -56,7 +53,7 @@ public class InMemoryStorageNode extends VeniceStorageNode {
    * @throws VeniceStorageException, if the added partitionId already exists
    */
   @Override
-  public void addPartition(int partitionId) throws VeniceStorageException {
+  public void addStoragePartition(int partitionId) throws VeniceStorageException {
 
     if (partitions.containsKey(partitionId)) {
       throw new VeniceStorageException("Error on nodeId: " + nodeId +

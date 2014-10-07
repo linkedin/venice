@@ -8,7 +8,6 @@ import org.apache.log4j.Logger;
 
 /**
  * Class which acts as the primary client API
- * Created by clfung on 9/17/14.
  */
 public class VeniceClient {
 

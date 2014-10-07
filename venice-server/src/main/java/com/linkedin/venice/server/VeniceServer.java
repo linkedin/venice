@@ -1,14 +1,16 @@
 package com.linkedin.venice.server;
 
 import com.linkedin.venice.config.GlobalConfiguration;
-import com.linkedin.venice.kafka.consumer.SimpleKafkaConsumer;
+import com.linkedin.venice.kafka.consumer.KafkaConsumerPartitionManager;
+import com.linkedin.venice.kafka.consumer.VeniceKafkaConsumerException;
 import com.linkedin.venice.storage.VeniceStorageException;
 import com.linkedin.venice.storage.VeniceStorageManager;
-import kafka.consumer.SimpleConsumer;
 import org.apache.log4j.Logger;
 
+import java.util.Arrays;
+
 /**
- * Primary Venice Server class. In the future, this will become the main class for the Server component.
+ * Primary Venice Server Main class.
  */
 public class VeniceServer {
 
@@ -17,33 +19,29 @@ public class VeniceServer {
 
   private static final String DEFAULT_TOPIC = "default_topic";
   private static VeniceStorageManager storeManager;
-  private static SimpleKafkaConsumer consumer;
+  private static KafkaConsumerPartitionManager consumer;
 
   public static void main(String args[]) {
 
     GlobalConfiguration.initialize("");
 
-    initializeStorage();
     initializeKakfaConsumer();
+    initializeStorage();
 
   }
 
   private static void initializeKakfaConsumer() {
 
-    consumer = new SimpleKafkaConsumer(DEFAULT_TOPIC);
-
-    // start one consumer for each partition
-    for (int i = 0; i < GlobalConfiguration.getNumKafkaPartitions(); i++) {
-      consumer.run(GlobalConfiguration.getNumThreadsPerPartition(), i,
-          GlobalConfiguration.getBrokerList(), GlobalConfiguration.getKafkaBrokerPort());
-    }
+    // Start the service which provides partition connections to Kafka
+    KafkaConsumerPartitionManager.initialize(DEFAULT_TOPIC,
+        GlobalConfiguration.getBrokerList(), GlobalConfiguration.getKafkaBrokerPort());
 
   }
 
   private static void initializeStorage() {
 
     // initialize the storage engine, start n nodes and p partitions.
-    storeManager = VeniceStorageManager.getInstance();
+    storeManager = new VeniceStorageManager();
 
     try {
 
@@ -60,6 +58,12 @@ public class VeniceServer {
     } catch (VeniceStorageException e) {
 
       logger.error("Could not properly initialize the storage instance.");
+      e.printStackTrace();
+      shutdown();
+
+    } catch (VeniceKafkaConsumerException e) {
+
+      logger.error("Could not properly initialize Venice Kafka instance.");
       e.printStackTrace();
       shutdown();
 

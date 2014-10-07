@@ -21,8 +21,7 @@ public class NodeCache {
   // It is assumed that the first element of the list is the "master" node, and the others are "slave" nodes.
   private static Map<Integer, List<Integer>> nodeMap;
 
-  // This class is meant to be a singleton, and will be statically called
-  private NodeCache() {
+  public NodeCache() {
     nodeMap = new ConcurrentHashMap<Integer, List<Integer>>();
   }
 

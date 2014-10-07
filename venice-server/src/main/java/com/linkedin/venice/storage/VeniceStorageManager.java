@@ -1,23 +1,17 @@
 package com.linkedin.venice.storage;
 
 import com.linkedin.venice.config.GlobalConfiguration;
+import com.linkedin.venice.kafka.consumer.VeniceKafkaConsumerException;
 import com.linkedin.venice.kafka.partitioner.KafkaPartitioner;
-import com.linkedin.venice.message.VeniceMessage;
 import com.linkedin.venice.metadata.NodeCache;
 import kafka.utils.VerifiableProperties;
 import org.apache.log4j.Logger;
 
-import java.util.Map;
-import java.util.HashMap;
-import java.util.List;
-import java.util.ArrayList;
-
-import java.util.Set;
-import java.util.HashSet;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.*;
 
 /**
- * A singleton class for managing storage nodes and their locations
+ * A class for managing storage nodes and their locations
+ * Mostly used for directing read traffic from client
  */
 public class VeniceStorageManager {
 
@@ -33,33 +27,17 @@ public class VeniceStorageManager {
 
   private final int replicationFactor = GlobalConfiguration.getNumStorageCopies();
 
-  private static int nodeCount;
   private static NodeCache nodeCache; // cache mapping of partition to node
 
-  /* Constructor: Cannot externally instantiate a singleton */
-  private VeniceStorageManager() {
+  public VeniceStorageManager() {
 
     // initialize node variables
-    storeNodeMap = new ConcurrentHashMap<Integer, VeniceStorageNode>();
-    nodeCount = GlobalConfiguration.getNumStorageNodes();
+    storeNodeMap = new HashMap<Integer, VeniceStorageNode>();
 
     // initialize partition variables
     partitionIdList = new HashSet<Integer>();
 
-    nodeCache = NodeCache.getInstance();
-
-  }
-
-  /*
-   * Return the instance of the VeniceStorageManager
-   * */
-  public static synchronized VeniceStorageManager getInstance() {
-
-    if (null == instance) {
-      instance = new VeniceStorageManager();
-    }
-
-    return instance;
+    nodeCache = new NodeCache();
 
   }
 
@@ -99,14 +77,14 @@ public class VeniceStorageManager {
     }
 
     storeNodeMap.put(nodeId, createNewStoreNode(nodeId));
-    nodeCount++;
 
   }
 
   /**
    * Registers a new partitionId and adds all of its copies to its associated nodes
    * */
-  public synchronized void registerNewPartition(int partitionId) throws VeniceStorageException {
+  public synchronized void registerNewPartition(int partitionId)
+      throws VeniceStorageException, VeniceKafkaConsumerException {
 
     // use conversion algorithm to find nodeId
     List<Integer> nodeIds = calculateNodeId(partitionId);
@@ -151,81 +129,6 @@ public class VeniceStorageManager {
     }
 
     return storeNodeMap.get(nodeId).get(partitionId, key);
-
-  }
-
-  /**
-   * TODO: For performance, implement this method in a concurrent and thread safe way
-   * Stores a value into the storage, given a partition id. If the partition is not cached, stores into cache as well.
-   * @param partitionId - The partition to look in
-   * @param key - the key for the KV pair
-   * @param msg - A VeniceMessage to be added to storage
-   * @throws VeniceStorageException if any nodes or partitions cannot be referenced
-   * @throws VeniceMessageException if an invalid VeniceMessage is given
-   */
-  public void storeValue(int partitionId, String key, VeniceMessage msg)
-      throws VeniceStorageException, VeniceMessageException {
-
-    // check for invalid inputs
-    if (null == msg) {
-      throw new VeniceMessageException("Given null Venice Message.");
-    }
-
-    if (null == msg.getOperationType()) {
-      throw new VeniceMessageException("Venice Message does not have operation type!");
-    }
-
-    if (!partitionIdList.contains(partitionId)) {
-      throw new VeniceStorageException("Partition does not exist: " + partitionId);
-    }
-
-    // check in cache first, returns -1 if not in cache
-    List<Integer> nodeIds = nodeCache.getNodeIds(partitionId);
-
-    if (nodeIds.isEmpty()) {
-
-      nodeIds = calculateNodeId(partitionId);
-      nodeCache.registerNewMapping(partitionId, nodeIds);
-
-    }
-
-    // Before performing ANY puts, check that all the nodes are valid
-    for (int nodeId : nodeIds) {
-
-      // sanity check for existing node
-      if (!storeNodeMap.containsKey(nodeId)) {
-        throw new VeniceStorageException("No instance of node id: " + nodeId);
-      }
-
-    }
-
-    // Perform a put for every replica
-    for (int nodeId : nodeIds) {
-
-      switch (msg.getOperationType()) {
-
-        // adding new values
-        case PUT:
-          logger.info("Putting: " + key + ", " + msg.getPayload());
-          storeNodeMap.get(nodeId).put(partitionId, key, msg.getPayload());
-          break;
-
-        // deleting values
-        case DELETE:
-          logger.info("Deleting: " + key);
-          storeNodeMap.get(nodeId).delete(partitionId, key);
-          break;
-
-        // partial update
-        case PARTIAL_PUT:
-          throw new UnsupportedOperationException("Partial puts not yet implemented");
-
-        // error
-        default:
-          throw new VeniceMessageException("Invalid operation type submitted: " + msg.getOperationType());
-      }
-
-    }
 
   }
 

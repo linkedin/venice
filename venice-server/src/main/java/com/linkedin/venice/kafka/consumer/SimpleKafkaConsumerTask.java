@@ -1,7 +1,10 @@
 package com.linkedin.venice.kafka.consumer;
 
 import com.linkedin.venice.config.GlobalConfiguration;
+import com.linkedin.venice.storage.VeniceMessageException;
+import com.linkedin.venice.storage.VeniceStorageException;
 import com.linkedin.venice.storage.VeniceStorageManager;
+import com.linkedin.venice.storage.VeniceStorageNode;
 import kafka.api.FetchRequest;
 import kafka.api.FetchRequestBuilder;
 import kafka.api.FetchResponse;
@@ -34,6 +37,7 @@ import java.util.Collections;
 
 /**
  * Runnable class which performs Kafka consumption from the Simple Consumer API.
+ * Consumption is performed on a single, defined partitionId
  */
 public class SimpleKafkaConsumerTask implements Runnable {
 
@@ -41,7 +45,7 @@ public class SimpleKafkaConsumerTask implements Runnable {
 
   private final String ENCODING = "UTF-8";
 
-  private List<String> replicaBrokers = null;
+  // Venice Serialization
   private VeniceMessage vm = null;
   private static VeniceMessageSerializer messageSerializer = null;
 
@@ -51,30 +55,35 @@ public class SimpleKafkaConsumerTask implements Runnable {
   private final int FETCH_SIZE = GlobalConfiguration.getKafkaConsumerMaxFetchSize();
   private final int BUFFER_SIZE = GlobalConfiguration.getKafkaConsumerBufferSize();
 
-  private long maxReads;
+  // storage destination for consumption
+  private VeniceStorageNode node;
+
+  // kafka metadata
   private String topic;
   private int partition;
   private List<String> seedBrokers;
+  private List<String> replicaBrokers;
   private int port;
-  private int threadNumber;
 
-  public SimpleKafkaConsumerTask(long maxReads, String topic, int partition, List<String> seedBrokers, int port,
-                                 int threadNumber) {
-    replicaBrokers = new ArrayList<String>();
+  public SimpleKafkaConsumerTask(VeniceStorageNode node, String topic, int partition, List<String> seedBrokers, int port) {
+
+    // The storage node which this Consumer will write to
+    this.node = node;
+
+    // Static serialization service for Venice Messages
     messageSerializer = new VeniceMessageSerializer(new VerifiableProperties());
 
-    this.maxReads = maxReads;
+    // consumer metadata
+    replicaBrokers = new ArrayList<String>();
     this.topic = topic;
     this.partition = partition;
     this.seedBrokers = seedBrokers;
     this.port = port;
 
-    this.threadNumber = threadNumber;
-
   }
 
   /**
-   *  Parallelized method which performs Kafka consumption and relays messages to the VeniceStorageManager
+   *  Parallelized method which performs Kafka consumption and relays messages to the Storage Node
    * */
   public void run() {
 
@@ -91,7 +100,6 @@ public class SimpleKafkaConsumerTask implements Runnable {
       return;
     }
 
-
     String leadBroker = metadata.leader().get().host();
     String clientName = "Client_" + topic + "_" + partition;
 
@@ -99,7 +107,9 @@ public class SimpleKafkaConsumerTask implements Runnable {
     long readOffset = getLastOffset(consumer, topic, partition, kafka.api.OffsetRequest.LatestTime(), clientName);
 
     int numErrors = 0;
-    while (maxReads > 0) {
+    boolean execute = true;
+
+    while (execute) {
 
       FetchRequest req = new FetchRequestBuilder()
           .clientId(clientName)
@@ -160,21 +170,32 @@ public class SimpleKafkaConsumerTask implements Runnable {
           // De-serialize payload into Venice Message format
           vm = messageSerializer.fromBytes(payloadBytes);
 
-          VeniceStorageManager manager = VeniceStorageManager.getInstance();
-          manager.storeValue(partition, keyString, vm);
+          readMessage(keyString, vm);
 
           numReads++;
-          maxReads--;
 
         } catch (UnsupportedEncodingException e) {
 
           logger.error("Encoding is not supported: " + ENCODING);
           logger.error(e);
 
-        } catch (Exception e) {
+          // end the thread
+          execute = false;
 
+        } catch (VeniceMessageException e) {
+
+          logger.error("Received an illegal Venice message!");
           logger.error(e);
           e.printStackTrace();
+
+        } catch (VeniceStorageException e) {
+
+          logger.error("Venice Storage Node with nodeId " + node.getNodeId() + " has been corrupted! Exiting...");
+          logger.error(e);
+          e.printStackTrace();
+
+          // end the thread
+          execute = false;
 
         }
 
@@ -194,6 +215,45 @@ public class SimpleKafkaConsumerTask implements Runnable {
     if (consumer != null) {
       logger.error("Closing consumer..");
       consumer.close();
+    }
+
+  }
+
+  /**
+   * Given the attached Node, interpret the VeniceMessage and perform the required action
+   * */
+  private void readMessage(String key, VeniceMessage msg) throws VeniceMessageException, VeniceStorageException {
+
+    // check for invalid inputs
+    if (null == msg) {
+      throw new VeniceMessageException("Given null Venice Message.");
+    }
+
+    if (null == msg.getOperationType()) {
+      throw new VeniceMessageException("Venice Message does not have operation type!");
+    }
+
+    switch (msg.getOperationType()) {
+
+      // adding new values
+      case PUT:
+        logger.info("Putting: " + key + ", " + msg.getPayload());
+        node.put(partition, key, msg.getPayload());
+        break;
+
+      // deleting values
+      case DELETE:
+        logger.info("Deleting: " + key);
+        node.delete(partition, key);
+        break;
+
+      // partial update
+      case PARTIAL_PUT:
+        throw new UnsupportedOperationException("Partial puts not yet implemented");
+
+        // error
+      default:
+        throw new VeniceMessageException("Invalid operation type submitted: " + msg.getOperationType());
     }
 
   }
