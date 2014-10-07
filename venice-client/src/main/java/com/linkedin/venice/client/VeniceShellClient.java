@@ -52,50 +52,57 @@ public class VeniceShellClient {
    * */
   public static void execute(String[] commandArgs) {
 
-    /* PUT */
-    if (commandArgs[0].equals(PUT_COMMAND)) {
+    switch (commandArgs[0]) {
 
-      if (commandArgs.length > 2) {
-        mainClient.put(commandArgs[1], commandArgs[2]);
-      } else {
-        System.out.println("Must supply both a key and value for " + PUT_COMMAND + " operations.");
-        System.out.println("USAGE");
-        System.out.println(PUT_COMMAND + " key value");
-      }
+      case PUT_COMMAND: // PUT
 
-    /* GET */
-    } else if (commandArgs[0].equals((GET_COMMAND))) {
+        if (commandArgs.length > 2) {
+          mainClient.put(commandArgs[1], commandArgs[2]);
+        } else {
+          System.out.println("Must supply both a key and value for " + PUT_COMMAND + " operations.");
+          System.out.println("USAGE");
+          System.out.println(PUT_COMMAND + " key value");
+        }
 
-      if (commandArgs.length > 1) {
-        System.out.println("Got: " + mainClient.get(commandArgs[1]));
-      } else {
-        System.out.println("Must supply a key for " + GET_COMMAND + " operations.");
-        System.out.println("USAGE");
-        System.out.println(GET_COMMAND + " key");
-      }
+        break;
 
-    /* DELETE */
-    } else if (commandArgs[0].equals(DEL_COMMAND)) {
+      case GET_COMMAND: // GET
 
-      if (commandArgs.length > 1) {
-        mainClient.delete(commandArgs[1]);
-      } else {
-        System.out.println("Must supply a key for " + DEL_COMMAND + " operations.");
-        System.out.println("USAGE");
-        System.out.println(DEL_COMMAND + " key");
-      }
+        if (commandArgs.length > 1) {
+          System.out.println("Got: " + mainClient.get(commandArgs[1]));
+        } else {
+          System.out.println("Must supply a key for " + GET_COMMAND + " operations.");
+          System.out.println("USAGE");
+          System.out.println(GET_COMMAND + " key");
+        }
 
-    /* EXIT */
-    } else if (commandArgs[0].equals(EXIT_COMMAND)) {
+        break;
 
-      System.out.println("Goodbye!");
-      System.exit(0);
+      case DEL_COMMAND: // DEL
 
-    /* INCORRECT INPUT */
-    } else {
+        if (commandArgs.length > 1) {
+          mainClient.delete(commandArgs[1]);
+        } else {
+          System.out.println("Must supply a key for " + DEL_COMMAND + " operations.");
+          System.out.println("USAGE");
+          System.out.println(DEL_COMMAND + " key");
+        }
 
-      System.out.println("Command not recognized!");
-      System.out.println("Must be one of: put, get, delete, exit.");
+        break;
+
+      case EXIT_COMMAND:
+
+        System.out.println("Goodbye!");
+        System.exit(0);
+
+        break;
+
+      default:
+
+        System.out.println("Command not recognized!");
+        System.out.println("Must be one of: put, get, delete, exit.");
+
+        break;
 
     }
 
