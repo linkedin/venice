@@ -4,6 +4,16 @@
 
 Welcome to Venice, the highly available data serving platform.
 
+Dependencies
+---------------------
+To use Venice, the following programs must be installed and running on your local machine:
+- Apache Kafka Version 0.8.1
+- Apache Zookeeper 3.4.6
+
+1) Start Apache Zookeeper on the local machine. The installation will have guides on how to do this.
+2) Start Apache Kafka on the local machine. 
+3) Start and use Venice.
+
 Usage
 ----------------------
 There are two ways to use Venice. 
@@ -11,8 +21,15 @@ There are two ways to use Venice.
 1) Venice is usable through its Java Client API.
 2) Venice commands are also executable through a Shell Client, which is also provided.
 
-First, ensure that each project has been built. If not, please run:
+First, ensure that each project has been built. If not, please run: (from the root directory)
 
+Build and install Venice client:
+> cd venice-client
+> gradle clean
+> gradle installApp
+
+Build and install Venice server:
+> cd venice-server
 > gradle clean
 > gradle installApp
 
@@ -44,7 +61,5 @@ Examples:
 
 Questions?
 -----------------------
-Felix GV  - fvillegas@linkedin.com
-Siddharth Singh - sisingh@linkedin.com
-Clement Fung - clfung@linkedin.com
+Venice Engineering Team - venice-eng@linkedin.com
 

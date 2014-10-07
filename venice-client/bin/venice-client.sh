@@ -1,11 +1,13 @@
 #!/bin/bash
 
-USAGE="USAGE: venice-client.sh [--command] --key [key] --value [value]"
+USAGE="USAGE\n$0 --get --key test_key\n$0 --put --key test_key --value test_value\n$0 --delete --key test_key"
 
 projectName="venice-client"
 
 base_dir="$( cd "$( dirname "${BASH_SOURCE[0]}" )"/.. && pwd )"
 baseScript=$base_dir"/build/install/"$projectName"/bin/"$projectName
+
+interactive=false
 
 # parse command line args
 while [[ $1 != "" ]];
@@ -23,34 +25,50 @@ do
 
     --value|-v) value=$2; shift 2;;
 
+    --interactive|-i) interactive=true; shift 1;; 
+
+    *) echo "Input variable $1 is not recognized."; echo -e $USAGE; exit 1;
+
   esac
 done
 
-# Check that a valid operation has been given.
-if [[ $operation == "" ]]
+# Running in interactive console mode
+if $interactive 
 then
-  echo "No operation has been defined! Exiting..."
-  echo $USAGE
-  exit 1
+  echo "Entering the interactive shell."
+
+  cmd=$baseScript
+  exec $cmd  
+
+else
+
+  # Check that a valid operation has been given.
+  if [[ $operation == "" ]]
+  then
+    echo "No operation has been defined! Exiting..."
+    echo -e $USAGE
+    exit 1
+  fi
+
+  # Check that a key exists
+  if [[ $key == "" ]]
+  then
+    echo "No key has been defined! Exiting...";
+    echo -e $USAGE
+    exit 1
+  fi
+
+  # Check that if a put is given, a value exists
+  if [[ $operation == "put" && $value = "" ]]
+  then
+    echo "Trying to execute a put, but no value given. Exiting...."
+    echo -e $USAGE
+    exit 1
+  fi
+
+  args="$operation $key $value"
+  cmd="$baseScript $args"
+
+  exec $cmd
+
 fi
-
-# Check that a key exists
-if [[ $key == "" ]]
-then
-  echo "No key has been defined! Exiting...";
-  echo $USAGE
-  exit 1
-fi
-
-# Check that if a put is given, a value exists
-if [[ $operation == "put" && $value = "" ]]
-then
-  echo "Trying to execute a put, but no value given. Exiting...."
-  echo $USAGE
-  exit 1
-fi
-
-args="$operation $key $value"
-cmd="$baseScript $args"
-
-exec $cmd

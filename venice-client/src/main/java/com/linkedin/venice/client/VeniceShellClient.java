@@ -9,15 +9,21 @@ public class VeniceShellClient {
 
   static VeniceClient mainClient = new VeniceClient();
 
+  private static final String PUT_COMMAND = "put";
+  private static final String DEL_COMMAND = "delete";
+  private static final String GET_COMMAND = "get";
+  private static final String EXIT_COMMAND = "exit";
+
   /*
   * Main method for running the class in an IDE.
   * The preferred method will be to use the VeniceShellClient via the client script.
   * */
   public static void main(String[] args) {
 
-    // Running in IDE; use interactive shell
+    // Use interactive shell
     if (args.length < 2) {
 
+      System.out.println("Using interactive shell...");
       Scanner reader = new Scanner(System.in);
 
       while (true) {
@@ -42,20 +48,54 @@ public class VeniceShellClient {
   /**
    * A function used to send client inputs into the Venice Server.
    * This method is used by both the Venice main class and the VeniceShellClient
+   * Error checking is required for commands coming from the interactive shell
    * */
   public static void execute(String[] commandArgs) {
 
-    if (commandArgs[0].equals("put")) {
+    /* PUT */
+    if (commandArgs[0].equals(PUT_COMMAND)) {
 
-      mainClient.put(commandArgs[1], commandArgs[2]);
+      if (commandArgs.length > 2) {
+        mainClient.put(commandArgs[1], commandArgs[2]);
+      } else {
+        System.out.println("Must supply both a key and value for " + PUT_COMMAND + " operations.");
+        System.out.println("USAGE");
+        System.out.println(PUT_COMMAND + " key value");
+      }
 
-    } else if (commandArgs[0].equals(("get"))) {
+    /* GET */
+    } else if (commandArgs[0].equals((GET_COMMAND))) {
 
-      System.out.println("Got: " + mainClient.get(commandArgs[1]));
+      if (commandArgs.length > 1) {
+        System.out.println("Got: " + mainClient.get(commandArgs[1]));
+      } else {
+        System.out.println("Must supply a key for " + GET_COMMAND + " operations.");
+        System.out.println("USAGE");
+        System.out.println(GET_COMMAND + " key");
+      }
 
-    } else if (commandArgs[0].equals("delete")) {
+    /* DELETE */
+    } else if (commandArgs[0].equals(DEL_COMMAND)) {
 
-      mainClient.delete(commandArgs[1]);
+      if (commandArgs.length > 1) {
+        mainClient.delete(commandArgs[1]);
+      } else {
+        System.out.println("Must supply a key for " + DEL_COMMAND + " operations.");
+        System.out.println("USAGE");
+        System.out.println(DEL_COMMAND + " key");
+      }
+
+    /* EXIT */
+    } else if (commandArgs[0].equals(EXIT_COMMAND)) {
+
+      System.out.println("Goodbye!");
+      System.exit(0);
+
+    /* INCORRECT INPUT */
+    } else {
+
+      System.out.println("Command not recognized!");
+      System.out.println("Must be one of: put, get, delete, exit.");
 
     }
 
