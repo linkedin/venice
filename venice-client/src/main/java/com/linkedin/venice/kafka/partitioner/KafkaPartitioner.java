@@ -17,6 +17,9 @@ public class KafkaPartitioner implements Partitioner {
 
   private final String HASH_ALGORITHM = "MD5";
 
+  /**
+   *  An abstraction on the standard Partitioner interface
+   * */
   public KafkaPartitioner (VerifiableProperties props) {
 
   }

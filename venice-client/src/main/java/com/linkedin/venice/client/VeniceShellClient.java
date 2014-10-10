@@ -15,7 +15,7 @@ public class VeniceShellClient {
   private static final String EXIT_COMMAND = "exit";
 
   /*
-  * Main method for running the class in an IDE.
+  * Main method for running the class in the interactive mode.
   * The preferred method will be to use the VeniceShellClient via the client script.
   * */
   public static void main(String[] args) {

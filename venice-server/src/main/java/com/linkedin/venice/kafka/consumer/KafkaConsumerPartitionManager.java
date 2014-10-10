@@ -51,12 +51,6 @@ public class KafkaConsumerPartitionManager {
   }
 
   /**
-   * Method which creates and starts threads for concurrent Kafka consumption.
-   * @param partition - Id of the Kafka Partition to consume from
-   * @param port - The port number to listen to
-   * */
-
-  /**
    * Given a partition id, returns a consumer task that is tied to that specific partition
    * */
   public SimpleKafkaConsumerTask getConsumerTask(VeniceStorageNode node, int partition) {

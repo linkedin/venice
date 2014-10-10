@@ -9,11 +9,14 @@ import com.linkedin.venice.message.VeniceMessage;
 import com.linkedin.venice.storage.InMemoryStorageNode;
 import com.linkedin.venice.storage.VeniceStorageException;
 import com.linkedin.venice.storage.VeniceStorageManager;
+import kafka.admin.AdminUtils;
 import kafka.producer.KeyedMessage;
 import kafka.javaapi.producer.Producer;
 import kafka.producer.ProducerConfig;
 import kafka.server.KafkaConfig;
 import kafka.server.KafkaServerStartable;
+import org.I0Itec.zkclient.ZkClient;
+import org.I0Itec.zkclient.serialize.ZkSerializer;
 import org.apache.commons.io.FileUtils;
 import org.apache.log4j.Logger;
 import org.apache.zookeeper.server.NIOServerCnxn;
@@ -233,7 +236,6 @@ public class TestKafkaConsumer {
         FileUtils.deleteDirectory(zkLogs);
       }
 
-
     } catch (IOException e) {
       Assert.fail("Encountered problem while deleting Kafka test logs.");
     }
@@ -287,6 +289,9 @@ public class TestKafkaConsumer {
 
       startKafkaConsumers(node);
       Thread.sleep(2000); // at least 2 seconds is mandatory here!!
+
+      ZkClient zkc = new ZkClient(GlobalConfiguration.getZookeeperURL(), 10000, 10000);
+      Assert.assertTrue(AdminUtils.topicExists(zkc, TEST_TOPIC));
 
       sendKafkaMessage("test_message");
       Thread.sleep(1000);

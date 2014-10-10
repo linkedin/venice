@@ -4,6 +4,7 @@
 
 Welcome to Venice, the highly available data serving platform.
 
+---------------------
 Dependencies
 ---------------------
 To use Venice, the following programs must be installed and running on your local machine:
@@ -14,24 +15,33 @@ To use Venice, the following programs must be installed and running on your loca
 2) Start Apache Kafka on the local machine. 
 3) Start and use Venice.
 
+-----------------------
+Build
+-----------------------
+First, ensure that each project has been built. If not, please run: (from the root directory)
+
+To build and install ALL PROJECTS:
+> gradle buildAll
+
+If the above does not work, you may resort to building each component seperately.
+
+To build and install Venice client:
+> cd venice-client
+> gradle clean
+> gradle installApp
+
+To build and install Venice server:
+> cd venice-server
+> gradle clean
+> gradle installApp
+
+----------------------
 Usage
 ----------------------
 There are two ways to use Venice. 
 
 1) Venice is usable through its Java Client API.
 2) Venice commands are also executable through a Shell Client, which is also provided.
-
-First, ensure that each project has been built. If not, please run: (from the root directory)
-
-Build and install Venice client:
-> cd venice-client
-> gradle clean
-> gradle installApp
-
-Build and install Venice server:
-> cd venice-server
-> gradle clean
-> gradle installApp
 
 To start the server:
 
@@ -41,11 +51,12 @@ To use the shell client:
 
 > venice-client/bin/venice-client.sh [args]
 
+-----------------------
 Arguments
 -----------------------
 
 1) Commands
-One of: ( --get, --put, --delete ) must be present and specify the type of action to perform.
+One of: ( --get, --put, --delete, --interactive ) must be present and specify the type of action to perform.
 
 2) --key
 The key to be given to Venice.
@@ -58,7 +69,9 @@ Examples:
 > run-client.sh --put --key test_key --value test_value
 > run-client.sh --get --key test_key
 > run-client.sh --delete --key test_key
+> run-client.sh --interactive
 
+-----------------------
 Questions?
 -----------------------
 Venice Engineering Team - venice-eng@linkedin.com

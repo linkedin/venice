@@ -20,8 +20,14 @@ public class VeniceClient {
 
   public VeniceClient() {
 
-    // TODO: implement file input for config
-    GlobalConfiguration.initialize("");
+    // TODO: Deprecate/refactor the config. It's really not needed for the most part
+    try {
+      GlobalConfiguration.initializeFromFile("./config/config.properties");
+    } catch (Exception e) {
+      logger.error("Error while starting up configuration for Venice Client.");
+      logger.error(e);
+      System.exit(1);
+    }
 
     kp = new KafkaProducer();
 

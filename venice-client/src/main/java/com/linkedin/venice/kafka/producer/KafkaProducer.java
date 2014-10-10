@@ -1,5 +1,6 @@
 package com.linkedin.venice.kafka.producer;
 
+import com.linkedin.venice.config.GlobalConfiguration;
 import com.linkedin.venice.message.VeniceMessage;
 
 import kafka.javaapi.producer.Producer;
@@ -24,7 +25,7 @@ public class KafkaProducer {
 
     // TODO: figure out the actual configurations and startup procedures
     props = new Properties();
-    props.setProperty("metadata.broker.list", "localhost:9092");
+    props.setProperty("metadata.broker.list", GlobalConfiguration.getKafkaBrokerUrl());
     props.setProperty("key.serializer.class", "kafka.serializer.StringEncoder");
 
     // using custom serializer

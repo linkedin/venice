@@ -100,7 +100,7 @@ public class VeniceStorageManager {
   }
 
   /**
-   * Returns a value from the storage
+   * Returns a value from the storage - this method to be deprecated
    * @param key - the key for the KV pair
    * @return The value received from Venice Storage
    * @throws VeniceStorageException if any nodes or partitions cannot be referenced

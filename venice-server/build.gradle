@@ -8,6 +8,8 @@ version = '0.1'
 
 mainClassName = "com.linkedin.venice.server.VeniceServer"
 
+installApp.dependsOn test
+
 task buildJar(type: Jar) {
   manifest {
     attributes 'Main-Class': 'com.linkedin.venice.server.VeniceServer',
@@ -53,7 +55,5 @@ idea {
 }
 
 test {
-
   useTestNG() 
-
 }

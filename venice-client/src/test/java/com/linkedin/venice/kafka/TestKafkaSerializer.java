@@ -5,7 +5,7 @@ import com.linkedin.venice.message.VeniceMessage;
 import com.linkedin.venice.message.VeniceMessageSerializer;
 import junit.framework.Assert;
 import kafka.utils.VerifiableProperties;
-import org.junit.Test;
+import org.testng.annotations.Test;
 
 /**
  * Tests for the Kafka Serialization class
