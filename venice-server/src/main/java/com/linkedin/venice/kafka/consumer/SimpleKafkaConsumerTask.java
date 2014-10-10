@@ -3,7 +3,6 @@ package com.linkedin.venice.kafka.consumer;
 import com.linkedin.venice.config.GlobalConfiguration;
 import com.linkedin.venice.storage.VeniceMessageException;
 import com.linkedin.venice.storage.VeniceStorageException;
-import com.linkedin.venice.storage.VeniceStorageManager;
 import com.linkedin.venice.storage.VeniceStorageNode;
 import kafka.api.FetchRequest;
 import kafka.api.FetchRequestBuilder;
@@ -13,6 +12,7 @@ import kafka.api.PartitionOffsetRequestInfo;
 import kafka.api.TopicMetadata;
 import kafka.api.TopicMetadataRequest;
 import kafka.api.TopicMetadataResponse;
+import kafka.cluster.Broker;
 import kafka.common.KafkaException;
 import kafka.common.TopicAndPartition;
 import kafka.consumer.SimpleConsumer;
@@ -29,11 +29,7 @@ import scala.collection.Seq;
 import java.io.UnsupportedEncodingException;
 import java.nio.ByteBuffer;
 
-import java.util.List;
-import java.util.ArrayList;
-import java.util.Map;
-import java.util.HashMap;
-import java.util.Collections;
+import java.util.*;
 
 /**
  * Runnable class which performs Kafka consumption from the Simple Consumer API.
@@ -390,6 +386,19 @@ public class SimpleKafkaConsumerTask implements Runnable {
       }
 
     } /* End of Broker Loop */
+
+    if (returnMetaData != null) {
+      replicaBrokers.clear();
+
+      Seq<Broker> replicasSequence = returnMetaData.replicas();
+      Iterator<Broker> replicaIterator = replicasSequence.iterator();
+
+      while (replicaIterator.hasNext()) {
+        Broker replica = replicaIterator.next();
+        replicaBrokers.add(replica.host());
+      }
+
+    }
 
     return returnMetaData;
 

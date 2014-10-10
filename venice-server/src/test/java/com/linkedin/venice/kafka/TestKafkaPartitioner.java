@@ -4,8 +4,9 @@ import com.linkedin.venice.config.GlobalConfiguration;
 import com.linkedin.venice.kafka.partitioner.KafkaPartitioner;
 import junit.framework.Assert;
 import kafka.utils.VerifiableProperties;
-import org.junit.BeforeClass;
-import org.junit.Test;
+import org.testng.annotations.BeforeClass;
+import org.testng.annotations.Test;
+
 
 /**
  * Tests for the Kafka Partitioner. It doesn't really matter what the results are, as long as they are consistent.
@@ -18,7 +19,13 @@ public class TestKafkaPartitioner {
 
   @BeforeClass
   public static void initConfig() {
-    GlobalConfiguration.initialize("");         // config file for testing
+
+    try {
+      GlobalConfiguration.initializeFromFile("./src/test/resources/test.properties");         // config file for testing
+    } catch (Exception e) {
+      Assert.fail(e.getMessage());
+    }
+
   }
 
   @Test

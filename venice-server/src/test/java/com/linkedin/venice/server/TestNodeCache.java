@@ -2,7 +2,7 @@ package com.linkedin.venice.server;
 
 import com.linkedin.venice.metadata.NodeCache;
 import junit.framework.Assert;
-import org.junit.Test;
+import org.testng.annotations.Test;
 
 import java.util.Arrays;
 import java.util.List;

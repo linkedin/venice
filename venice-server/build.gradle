@@ -38,9 +38,10 @@ dependencies {
   // log4j for logging
   compile 'log4j:log4j:1.2.17'
 
-  // junit, because tests are important
-  testCompile 'junit:junit:4.6'
-    
+  // testng, because tests are important
+  testCompile 'org.testng:testng:6.1.1'
+  testCompile 'commons-io:commons-io:2.4'
+
 }
 
 
@@ -51,3 +52,8 @@ idea {
   }
 }
 
+test {
+
+  useTestNG() 
+
+}

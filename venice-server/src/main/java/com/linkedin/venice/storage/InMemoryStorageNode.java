@@ -1,7 +1,5 @@
 package com.linkedin.venice.storage;
 
-import com.linkedin.venice.kafka.consumer.SimpleKafkaConsumerTask;
-import com.linkedin.venice.metadata.NodeCache;
 import org.apache.log4j.Logger;
 
 import java.util.HashMap;

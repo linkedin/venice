@@ -7,8 +7,6 @@ import com.linkedin.venice.storage.VeniceStorageException;
 import com.linkedin.venice.storage.VeniceStorageManager;
 import org.apache.log4j.Logger;
 
-import java.util.Arrays;
-
 /**
  * Primary Venice Server Main class.
  */
@@ -19,11 +17,15 @@ public class VeniceServer {
 
   private static final String DEFAULT_TOPIC = "default_topic";
   private static VeniceStorageManager storeManager;
-  private static KafkaConsumerPartitionManager consumer;
 
   public static void main(String args[]) {
 
-    GlobalConfiguration.initialize("");
+    try {
+      GlobalConfiguration.initializeFromFile(args[0]);
+    } catch (Exception e) {
+      logger.error(e.getMessage());
+      System.exit(1);
+    }
 
     initializeKakfaConsumer();
     initializeStorage();
@@ -95,10 +97,6 @@ public class VeniceServer {
    * Method which closes VeniceServer, shuts down its resources, and exits the JVM.
    * */
   public static void shutdown() {
-
-    if (consumer != null) {
-      consumer.shutdown();
-    }
 
     System.exit(1);
 

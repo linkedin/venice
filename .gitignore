@@ -3,4 +3,6 @@
 build/
 .settings
 *.iml
+*.ipr
+*.iws
 .reviewboardrc

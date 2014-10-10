@@ -5,7 +5,7 @@ import com.linkedin.venice.message.VeniceMessage;
 import com.linkedin.venice.message.VeniceMessageSerializer;
 import junit.framework.Assert;
 import kafka.utils.VerifiableProperties;
-import org.junit.Test;
+import org.testng.annotations.Test;
 
 /**
  * Tests for the Kafka Serialization class
@@ -46,8 +46,6 @@ public class TestKafkaSerializer {
 
     Assert.assertEquals(vm2.getOperationType(), OperationType.DELETE);
     Assert.assertEquals("d1", vm2.getPayload());
-
-
 
   }
 
