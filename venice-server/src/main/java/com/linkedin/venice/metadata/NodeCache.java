@@ -1,5 +1,7 @@
 package com.linkedin.venice.metadata;
 
+import com.linkedin.venice.storage.VeniceStorageException;
+import com.linkedin.venice.storage.VeniceStorageManager;
 import org.apache.log4j.Logger;
 
 import java.util.ArrayList;
@@ -7,6 +9,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+
 
 /**
  * Class which stores the mappings of { Kafka partitionId -> List of nodeId }
@@ -18,7 +21,6 @@ public class NodeCache {
   private static NodeCache instance = null;
 
   // Mapping of partitionId to nodeId list.
-  // It is assumed that the first element of the list is the "master" node, and the others are "slave" nodes.
   private static Map<Integer, List<Integer>> nodeMap;
 
   public NodeCache() {
@@ -76,8 +78,10 @@ public class NodeCache {
 
   /**
    * Registers a new partition -> node mapping in the cache
+   * @param partitionId - partitionId, an integer value for the Kafka partition
+   * @param newNodeIds - A list of nodes which are tied to the given partitionId
    * */
-  public synchronized boolean registerNewMapping(int partitionId, List<Integer> newNodeIds) {
+  public synchronized void registerNewMapping(int partitionId, List<Integer> newNodeIds) {
 
     // already registered
     if (nodeMap.containsKey(partitionId)) {
@@ -88,16 +92,13 @@ public class NodeCache {
       if (!currentNodeIds.equals(newNodeIds)) {
         logger.error("Key conflict on partitionId: " + partitionId);
         logger.error("Attempted to register nodeId list but found conflicting list in storage.");
-        return false;
+        return;  // intentionally not throwing an exception here, as I imagine the client will be calling this blindly
       }
-
-      return true;
 
     }
 
     // add key to cache
     nodeMap.put(partitionId, newNodeIds);
-    return true;
 
   }
 

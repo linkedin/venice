@@ -8,6 +8,7 @@ import org.apache.log4j.Logger;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 
+
 /**
  * Custom Partitioner Class which is jointly used by Kafka and Venice.
  * Determines the appropriate partition for each message.

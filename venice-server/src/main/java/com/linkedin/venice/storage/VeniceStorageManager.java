@@ -7,7 +7,13 @@ import com.linkedin.venice.metadata.NodeCache;
 import kafka.utils.VerifiableProperties;
 import org.apache.log4j.Logger;
 
-import java.util.*;
+import java.util.Map;
+import java.util.Set;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.ArrayList;
+
 
 /**
  * A class for managing storage nodes and their locations
@@ -41,6 +47,9 @@ public class VeniceStorageManager {
 
   }
 
+  /**
+   * Creates a new VeniceStorageNode, based on the current configuration
+   * */
   private VeniceStorageNode createNewStoreNode(int nodeId) {
 
     VeniceStorageNode toReturn;
@@ -82,6 +91,7 @@ public class VeniceStorageManager {
 
   /**
    * Registers a new partitionId and adds all of its copies to its associated nodes
+   * @param partitionId - the id of the partition to register
    * */
   public synchronized void registerNewPartition(int partitionId)
       throws VeniceStorageException, VeniceKafkaConsumerException {

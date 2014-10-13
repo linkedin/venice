@@ -7,6 +7,7 @@ import com.linkedin.venice.storage.VeniceStorageException;
 import com.linkedin.venice.storage.VeniceStorageManager;
 import org.apache.log4j.Logger;
 
+
 /**
  * Primary Venice Server Main class.
  */
@@ -73,6 +74,11 @@ public class VeniceServer {
 
   }
 
+  /**
+   * Perform a "GET" on the Venice Storage
+   * @param key - The key to query in storage
+   * @return The value associated with the given key
+   * */
   public Object readValue(String key) {
 
     Object toReturn = null;

@@ -34,6 +34,7 @@ import java.util.Properties;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
+
 /**
  *  Class which tests the Kafka Consumption class.
  *
@@ -83,7 +84,7 @@ public class TestKafkaConsumer {
       Assert.fail(e.getMessage());
     }
 
-    // TODO: Understand how topic creation is done in the Kafka API
+    // TODO: Understand how topic creation is done in the Kafka Admin API
     // An absolutely awful and terrible "hack" which allows a topic to be created on this embedded ZK instance
     startUpServices();
     startKafkaConsumers(new InMemoryStorageNode(0));

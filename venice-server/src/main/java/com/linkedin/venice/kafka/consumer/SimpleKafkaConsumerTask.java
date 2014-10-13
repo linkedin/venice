@@ -4,6 +4,10 @@ import com.linkedin.venice.config.GlobalConfiguration;
 import com.linkedin.venice.storage.VeniceMessageException;
 import com.linkedin.venice.storage.VeniceStorageException;
 import com.linkedin.venice.storage.VeniceStorageNode;
+import com.linkedin.venice.message.VeniceMessage;
+import com.linkedin.venice.message.VeniceMessageSerializer;
+import org.apache.log4j.Logger;
+
 import kafka.api.FetchRequest;
 import kafka.api.FetchRequestBuilder;
 import kafka.api.FetchResponse;
@@ -19,9 +23,7 @@ import kafka.consumer.SimpleConsumer;
 import kafka.message.Message;
 import kafka.message.MessageAndOffset;
 import kafka.utils.VerifiableProperties;
-import com.linkedin.venice.message.VeniceMessage;
-import com.linkedin.venice.message.VeniceMessageSerializer;
-import org.apache.log4j.Logger;
+
 import scala.collection.Iterator;
 import scala.collection.JavaConversions;
 import scala.collection.Seq;
@@ -29,7 +31,12 @@ import scala.collection.Seq;
 import java.io.UnsupportedEncodingException;
 import java.nio.ByteBuffer;
 
-import java.util.*;
+import java.util.List;
+import java.util.Map;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.Collections;
+
 
 /**
  * Runnable class which performs Kafka consumption from the Simple Consumer API.
@@ -291,6 +298,7 @@ public class SimpleKafkaConsumerTask implements Runnable {
 
   /**
    * This method taken from Kafka 0.8 SimpleConsumer Example
+   * Used when the lead Kafka partition dies, and the new leader needs to be elected
    * */
   private String findNewLeader(String oldLeader, String topic, int partition, int port) throws Exception {
 

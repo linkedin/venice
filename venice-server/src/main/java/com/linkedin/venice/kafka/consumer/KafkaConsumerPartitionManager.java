@@ -5,6 +5,7 @@ import org.apache.log4j.Logger;
 
 import java.util.List;
 
+
 /**
  * Singleton class which acts as the running Kafka interface for Venice
  * Manages the creation of new Kafka partitions for storage nodes
@@ -52,6 +53,9 @@ public class KafkaConsumerPartitionManager {
 
   /**
    * Given a partition id, returns a consumer task that is tied to that specific partition
+   * @param node - An instance of a VeniceStorageNode, which the consumer task will write to
+   * @param partition - The Kafka partitionId to which this consumer task is attached to
+   * @return SimpleKafkaConsumerTask object
    * */
   public SimpleKafkaConsumerTask getConsumerTask(VeniceStorageNode node, int partition) {
     return new SimpleKafkaConsumerTask(node, topic, partition, brokers, kafkaPort);

@@ -8,6 +8,7 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Properties;
 
+
 /**
  * Class which reads configuration parameters for Venice.
  * Inputs may come from file or another service.
@@ -64,8 +65,8 @@ public class GlobalConfiguration {
       throw new Exception("Specified kafka URL is of an illegal format: " + kafkaBrokerUrl);
     }
 
+    // Get storage related configs
     storageType = convertToStorageType(prop.getProperty("storage.type", "memory"));
-
     numStorageNodes = Integer.parseInt(prop.getProperty("storage.node.count", "3"));
     numStorageCopies = Integer.parseInt(prop.getProperty("storage.node.replicas", "2"));
 

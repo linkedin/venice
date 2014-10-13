@@ -5,6 +5,7 @@ import java.util.Map;
 
 import org.apache.log4j.Logger;
 
+
 /**
  * An in-memory hashmap implementation of a storage partition
  */
@@ -32,6 +33,7 @@ public class InMemoryStoragePartition extends VeniceStoragePartition {
   public int getId() {
     return store_id;
   }
+
 
   /**
    * Puts a value into the key value store

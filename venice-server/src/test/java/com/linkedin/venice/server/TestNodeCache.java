@@ -1,6 +1,7 @@
 package com.linkedin.venice.server;
 
 import com.linkedin.venice.metadata.NodeCache;
+import com.linkedin.venice.storage.VeniceStorageException;
 import junit.framework.Assert;
 import org.testng.annotations.Test;
 
@@ -25,18 +26,18 @@ public class TestNodeCache {
     List<Integer> nodes1 = Arrays.asList(1,2,3);
     List<Integer> nodes2 = Arrays.asList(4,5,6);
 
-    Assert.assertTrue(nc.registerNewMapping(1, nodes1));
-    Assert.assertTrue(nc.registerNewMapping(1, nodes1)); // valid put-overwrite operation
+    nc.registerNewMapping(1, nodes1);
+    nc.registerNewMapping(1, nodes1); // valid put-overwrite operation
 
     // verify cache data
     Assert.assertEquals(nc.getNodeIds(1), Arrays.asList(1,2,3));
 
     // attempt to overwrite cache with new data, verify original data persists
-    Assert.assertFalse(nc.registerNewMapping(1, nodes2));
+    nc.registerNewMapping(1, nodes2);
     Assert.assertEquals(nc.getNodeIds(1), Arrays.asList(1,2,3));
 
     // cache new instances
-    Assert.assertTrue(nc.registerNewMapping(2, nodes2));
+    nc.registerNewMapping(2, nodes2);
     Assert.assertEquals(nc.getNodeIds(2), Arrays.asList(4,5,6));
 
     Assert.assertEquals(1, nc.getMasterNodeId(1));

@@ -5,6 +5,7 @@ import org.apache.log4j.Logger;
 import java.util.HashMap;
 import java.util.Map;
 
+
 /**
  * An in-memory hashmap implementation of a Venice storage node
  */
@@ -27,20 +28,20 @@ public class InMemoryStorageNode extends VeniceStorageNode {
 
   }
 
-  @Override
   /**
    * Returns the nodeId of this given node.
    */
+  @Override
   public int getNodeId() {
     return nodeId;
   }
 
-  @Override
   /**
    * Return true or false based on whether a given partition exists within this node.
    * @param partitionId - The partition to look for
    * @return True/False, does the partition exist on this node
    * */
+  @Override
   public boolean containsPartition(int partitionId) {
     return partitions.containsKey(partitionId);
   }
