@@ -36,7 +36,7 @@ To build and install Venice server:
 > gradle installApp
 
 ----------------------
-Usage
+Quickstart
 ----------------------
 There are two ways to use Venice. 
 
@@ -45,11 +45,11 @@ There are two ways to use Venice.
 
 To start the server:
 
-> venice-server/bin/start-venice-server.sh
+> venice-server/quickstart/start-venice-server.sh
 
 To use the shell client:
 
-> venice-client/bin/venice-client.sh [args]
+> venice-client/quickstart/venice-client.sh [args]
 
 -----------------------
 Arguments
