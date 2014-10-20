@@ -6,9 +6,8 @@ import com.linkedin.venice.kafka.consumer.SimpleKafkaConsumerTask;
 import com.linkedin.venice.kafka.consumer.VeniceKafkaConsumerException;
 import com.linkedin.venice.message.OperationType;
 import com.linkedin.venice.message.VeniceMessage;
+import com.linkedin.venice.server.VeniceServer;
 import com.linkedin.venice.storage.InMemoryStorageNode;
-import com.linkedin.venice.storage.VeniceStorageException;
-import com.linkedin.venice.storage.VeniceStorageManager;
 import kafka.admin.AdminUtils;
 import kafka.producer.KeyedMessage;
 import kafka.javaapi.producer.Producer;
@@ -60,7 +59,6 @@ public class TestKafkaConsumer {
   static final String TEST_TOPIC = "testng-topic";
   static final String TEST_KEY = "test_key";
 
-  static VeniceStorageManager storeManager;
   static KafkaServerStartable kafkaServer;
   static Producer<String, VeniceMessage> kafkaProducer;
 
@@ -158,7 +156,7 @@ public class TestKafkaConsumer {
     Properties props = new Properties();
     props.put("metadata.broker.list", brokerUrl);
     props.put("key.serializer.class", "kafka.serializer.StringEncoder");
-    props.put("serializer.class", "com.linkedin.venice.message.VeniceMessageSerializer");
+    props.put("serializer.class", "com.linkedin.venice.serialization.VeniceMessageSerializer");
     props.setProperty("partitioner.class", "com.linkedin.venice.kafka.partitioner.KafkaPartitioner");
 
     ProducerConfig config = new ProducerConfig(props);
@@ -175,26 +173,7 @@ public class TestKafkaConsumer {
     KafkaConsumerPartitionManager.initialize(TEST_TOPIC,
         GlobalConfiguration.getBrokerList(), GlobalConfiguration.getKafkaBrokerPort());
 
-    // initialize the storage engine, start n nodes and p partitions.
-    storeManager = new VeniceStorageManager();
-
-    try {
-
-      // For testing, use 2 storage nodes
-      for (int n = 0; n < GlobalConfiguration.getNumStorageNodes(); n++) {
-        storeManager.registerNewNode(n);
-      }
-
-      // For testing, use 5 partitions
-      for (int p = 0; p < GlobalConfiguration.getNumKafkaPartitions(); p++) {
-        storeManager.registerNewPartition(p);
-      }
-
-    } catch (VeniceStorageException e) {
-      Assert.fail(e.getMessage());
-    } catch (VeniceKafkaConsumerException e) {
-      Assert.fail(e.getMessage());
-    }
+    VeniceServer.initializeStorage();
 
   }
 

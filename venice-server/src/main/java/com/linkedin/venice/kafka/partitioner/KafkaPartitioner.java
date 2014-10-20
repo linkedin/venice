@@ -1,6 +1,5 @@
 package com.linkedin.venice.kafka.partitioner;
 
-import com.linkedin.venice.metadata.NodeCache;
 import kafka.producer.Partitioner;
 import kafka.utils.VerifiableProperties;
 import org.apache.log4j.Logger;
@@ -16,7 +15,6 @@ import java.security.NoSuchAlgorithmException;
 public class KafkaPartitioner implements Partitioner {
 
   static final Logger logger = Logger.getLogger(KafkaPartitioner.class.getName());
-  static NodeCache cache = NodeCache.getInstance();
 
   private final String HASH_ALGORITHM = "MD5";
 
