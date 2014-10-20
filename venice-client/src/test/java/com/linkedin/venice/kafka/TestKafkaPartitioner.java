@@ -1,11 +1,11 @@
 package com.linkedin.venice.kafka;
 
-import com.linkedin.venice.config.GlobalConfiguration;
+
 import com.linkedin.venice.kafka.partitioner.KafkaPartitioner;
 import junit.framework.Assert;
 import kafka.utils.VerifiableProperties;
 import org.testng.annotations.Test;
-import org.testng.annotations.BeforeClass;
+
 
 /**
  * Tests for the Kafka Partitioner. It doesn't really matter what the results are, as long as they are consistent.

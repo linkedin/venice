@@ -85,24 +85,14 @@ public class GlobalConfiguration {
     FileInputStream inputStream = null;
 
     try {
-
       inputStream = new FileInputStream(configFileName);
       prop.load(inputStream);
-
-      if (null == inputStream) {
-        throw new Exception("Config File " + configFileName + " cannot be found.");
-      }
-
     } finally {
-
       // safely close input stream
       if (inputStream != null)
         inputStream.close();
-
     }
-
     return prop;
-
   }
 
   /**

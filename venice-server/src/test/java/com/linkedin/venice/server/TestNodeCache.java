@@ -1,7 +1,6 @@
 package com.linkedin.venice.server;
 
 import com.linkedin.venice.metadata.NodeCache;
-import com.linkedin.venice.storage.VeniceStorageException;
 import junit.framework.Assert;
 import org.testng.annotations.Test;
 

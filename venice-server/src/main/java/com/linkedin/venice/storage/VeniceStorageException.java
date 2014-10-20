@@ -6,6 +6,9 @@ package com.linkedin.venice.storage;
  */
 public class VeniceStorageException extends Exception {
 
+  /** */
+  private static final long serialVersionUID = 1L;
+
   public VeniceStorageException(String message) {
     super(message);
   }

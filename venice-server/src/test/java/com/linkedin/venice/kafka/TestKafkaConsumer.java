@@ -16,7 +16,6 @@ import kafka.producer.ProducerConfig;
 import kafka.server.KafkaConfig;
 import kafka.server.KafkaServerStartable;
 import org.I0Itec.zkclient.ZkClient;
-import org.I0Itec.zkclient.serialize.ZkSerializer;
 import org.apache.commons.io.FileUtils;
 import org.apache.log4j.Logger;
 import org.apache.zookeeper.server.NIOServerCnxn;

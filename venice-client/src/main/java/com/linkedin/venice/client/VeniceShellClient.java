@@ -19,30 +19,20 @@ public class VeniceShellClient {
   * The preferred method will be to use the VeniceShellClient via the client script.
   * */
   public static void main(String[] args) {
-
     // Use interactive shell
     if (args.length < 2) {
-
       System.out.println("Using interactive shell...");
       Scanner reader = new Scanner(System.in);
-
       while (true) {
-
         System.out.println("Ready for input: ");
         String input = reader.nextLine();
         String[] commandArgs = input.split(" ");
-
         execute(commandArgs);
-
       }
-
     } else {
-
       // executed from the venice-client.sh script: simply pass the arguments onwards
       execute(args);
-
     }
-
   }
 
   /**

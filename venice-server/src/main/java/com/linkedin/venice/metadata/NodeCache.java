@@ -1,7 +1,5 @@
 package com.linkedin.venice.metadata;
 
-import com.linkedin.venice.storage.VeniceStorageException;
-import com.linkedin.venice.storage.VeniceStorageManager;
 import org.apache.log4j.Logger;
 
 import java.util.ArrayList;

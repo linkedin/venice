@@ -4,8 +4,6 @@ import org.apache.log4j.Logger;
 
 import java.io.File;
 import java.io.FileInputStream;
-import java.util.Arrays;
-import java.util.List;
 import java.util.Properties;
 
 /**
@@ -31,29 +29,18 @@ public class GlobalConfiguration {
    *  @return A Java properties object with the given configurations
    * */
   public static Properties parseProperties(String configFileName) throws Exception {
-
     Properties prop = new Properties();
     FileInputStream inputStream = null;
 
     try {
-
       inputStream = new FileInputStream(configFileName);
       prop.load(inputStream);
-
-      if (null == inputStream) {
-        throw new Exception("Config File " + configFileName + " cannot be found.");
-      }
-
     } finally {
-
       // safely close input stream
       if (inputStream != null)
         inputStream.close();
-
     }
-
     return prop;
-
   }
 
   /**
