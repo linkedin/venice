@@ -2,9 +2,11 @@ package com.linkedin.venice.kafka;
 
 import com.linkedin.venice.message.OperationType;
 import com.linkedin.venice.message.VeniceMessage;
-import com.linkedin.venice.message.VeniceMessageSerializer;
+import com.linkedin.venice.serialization.VeniceMessageSerializer;
+
 import junit.framework.Assert;
 import kafka.utils.VerifiableProperties;
+
 import org.testng.annotations.Test;
 
 /**

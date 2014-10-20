@@ -1,11 +1,12 @@
 package com.linkedin.venice.kafka.consumer;
 
 import com.linkedin.venice.config.GlobalConfiguration;
+import com.linkedin.venice.serialization.VeniceMessageSerializer;
 import com.linkedin.venice.storage.VeniceMessageException;
 import com.linkedin.venice.storage.VeniceStorageException;
 import com.linkedin.venice.storage.VeniceStorageNode;
 import com.linkedin.venice.message.VeniceMessage;
-import com.linkedin.venice.message.VeniceMessageSerializer;
+
 import org.apache.log4j.Logger;
 
 import kafka.api.FetchRequest;
@@ -23,14 +24,12 @@ import kafka.consumer.SimpleConsumer;
 import kafka.message.Message;
 import kafka.message.MessageAndOffset;
 import kafka.utils.VerifiableProperties;
-
 import scala.collection.Iterator;
 import scala.collection.JavaConversions;
 import scala.collection.Seq;
 
 import java.io.UnsupportedEncodingException;
 import java.nio.ByteBuffer;
-
 import java.util.List;
 import java.util.Map;
 import java.util.ArrayList;

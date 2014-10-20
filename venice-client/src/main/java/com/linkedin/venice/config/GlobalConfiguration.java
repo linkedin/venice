@@ -17,8 +17,6 @@ public class GlobalConfiguration {
   // kafka related configs
   private static String kafkaBrokerUrl;
 
-  private static File configFile;
-
   /* Cannot instantiate object */
   private GlobalConfiguration() {
   }

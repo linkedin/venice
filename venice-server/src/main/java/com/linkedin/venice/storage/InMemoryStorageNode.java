@@ -18,9 +18,6 @@ public class InMemoryStorageNode extends VeniceStorageNode {
   // Map which stores the partitions and their associated ids
   private Map<Integer, InMemoryStoragePartition> partitions = new HashMap<Integer, InMemoryStoragePartition>();
 
-  // number of partitions in the store
-  private static int partitionCount = -1;
-
   public InMemoryStorageNode(int nodeId) {
 
     // register current nodeId

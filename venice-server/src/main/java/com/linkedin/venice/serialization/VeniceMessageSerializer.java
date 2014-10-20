@@ -1,9 +1,13 @@
-package com.linkedin.venice.message;
+package com.linkedin.venice.serialization;
 
 import kafka.serializer.Decoder;
 import kafka.serializer.Encoder;
 import kafka.utils.VerifiableProperties;
+
 import org.apache.log4j.Logger;
+
+import com.linkedin.venice.message.OperationType;
+import com.linkedin.venice.message.VeniceMessage;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
