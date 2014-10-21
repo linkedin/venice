@@ -1,6 +1,8 @@
 package com.linkedin.venice.kafka.consumer;
 
+import com.linkedin.venice.server.VeniceConfig;
 import com.linkedin.venice.storage.VeniceStorageNode;
+
 import org.apache.log4j.Logger;
 
 import java.util.List;
@@ -19,27 +21,29 @@ public class KafkaConsumerPartitionManager {
   private List<String> brokers;
   private int kafkaPort;
   private static KafkaConsumerPartitionManager manager = null;
+  
+  private static final String DEFAULT_TOPIC = "default_topic";
 
   private KafkaConsumerPartitionManager(String topic, List<String> brokers, int port) {
-
     this.topic = topic;
     this.brokers = brokers;
     this.kafkaPort = port;
-
   }
 
   /**
    * Returns an instance of the partition manager
    * */
-  public static KafkaConsumerPartitionManager getInstance() throws VeniceKafkaConsumerException {
-
+  public static KafkaConsumerPartitionManager getInstance() throws KafkaConsumerException {
     if (null == manager) {
-      throw new VeniceKafkaConsumerException("Kafka Manager has not yet been initialized");
+      throw new KafkaConsumerException("Kafka Manager has not yet been initialized");
     }
-
     return manager;
-
   }
+  
+  public static void initialize(VeniceConfig veniceConfig) {
+    manager = new KafkaConsumerPartitionManager(DEFAULT_TOPIC, veniceConfig.getBrokerList(), veniceConfig.getKafkaBrokerPort());
+  }
+
 
   /**
    * Initializes the Kafka Partition Manager with the provided variables
@@ -47,8 +51,8 @@ public class KafkaConsumerPartitionManager {
    * @param brokers - A list of hosts that the Kafka topic lives on
    * @param port - The port number on the host to read from
    * */
-  public static void initialize(String topic, List<String> brokers, int port) {
-    manager = new KafkaConsumerPartitionManager(topic, brokers, port);
+  public static void initialize(String topic, VeniceConfig veniceConfig) {
+    manager = new KafkaConsumerPartitionManager(topic, veniceConfig.getBrokerList(), veniceConfig.getKafkaBrokerPort());
   }
 
   /**
@@ -58,7 +62,8 @@ public class KafkaConsumerPartitionManager {
    * @return SimpleKafkaConsumerTask object
    * */
   public SimpleKafkaConsumerTask getConsumerTask(VeniceStorageNode node, int partition) {
-    return new SimpleKafkaConsumerTask(node, topic, partition, brokers, kafkaPort);
+	  SimpleKafkaConsumerConfig kafkaConfig = new SimpleKafkaConsumerConfig();
+    return new SimpleKafkaConsumerTask(kafkaConfig, node, topic, partition, kafkaPort);
   }
 
   /**
@@ -67,5 +72,4 @@ public class KafkaConsumerPartitionManager {
   public void shutdown() {
 
   }
-
 }

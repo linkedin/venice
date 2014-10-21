@@ -1,9 +1,11 @@
 package com.linkedin.venice.kafka;
 
-import com.linkedin.venice.config.GlobalConfiguration;
-import com.linkedin.venice.kafka.partitioner.KafkaPartitioner;
+import com.linkedin.venice.kafka.consumer.KafkaPartitioner;
+import com.linkedin.venice.server.VeniceConfig;
+
 import junit.framework.Assert;
 import kafka.utils.VerifiableProperties;
+
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
@@ -21,7 +23,7 @@ public class TestKafkaPartitioner {
   public static void initConfig() {
 
     try {
-      GlobalConfiguration.initializeFromFile("./src/test/resources/test.properties");         // config file for testing
+      VeniceConfig.initializeFromFile("./src/test/resources/test.properties");         // config file for testing
     } catch (Exception e) {
       Assert.fail(e.getMessage());
     }

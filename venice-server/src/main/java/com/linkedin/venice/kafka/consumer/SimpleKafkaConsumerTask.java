@@ -1,6 +1,6 @@
 package com.linkedin.venice.kafka.consumer;
 
-import com.linkedin.venice.config.GlobalConfiguration;
+import com.linkedin.venice.server.VeniceConfig;
 import com.linkedin.venice.serialization.VeniceMessageSerializer;
 import com.linkedin.venice.storage.VeniceMessageException;
 import com.linkedin.venice.storage.VeniceStorageException;
@@ -30,6 +30,7 @@ import scala.collection.Seq;
 
 import java.io.UnsupportedEncodingException;
 import java.nio.ByteBuffer;
+import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.ArrayList;
@@ -39,49 +40,60 @@ import java.util.Collections;
 
 /**
  * Runnable class which performs Kafka consumption from the Simple Consumer API.
- * Consumption is performed on a single, defined partitionId
+ * Consumption is performed on a map of <topic, partitionids>
  */
 public class SimpleKafkaConsumerTask implements Runnable {
 
-  static final Logger logger = Logger.getLogger(SimpleKafkaConsumerTask.class.getName());
-
+  private static final Logger logger = Logger.getLogger(SimpleKafkaConsumerTask.class.getName());
   private final String ENCODING = "UTF-8";
 
   // Venice Serialization
-  private VeniceMessage vm = null;
-  private static VeniceMessageSerializer messageSerializer = null;
+  private VeniceMessage vm;
+  private static VeniceMessageSerializer messageSerializer;
 
-  // tuning variables
-  private final int NUM_RETRIES = GlobalConfiguration.getKafkaConsumerNumRetries();
-  private final int TIMEOUT = GlobalConfiguration.getKafkaConsumerTimeout();
-  private final int FETCH_SIZE = GlobalConfiguration.getKafkaConsumerMaxFetchSize();
-  private final int BUFFER_SIZE = GlobalConfiguration.getKafkaConsumerBufferSize();
-
+  // Seed kafka brokers
+  private List<String> seedBrokers;
+  // port for seed brokers
+  private int port;
+  // SimpleConsumer fetch buffer size.
+  private final int fetchBufferSize;
+  // SimpleConsumer socket socketTimeoutMs.
+  private final int socketTimeoutMs;
+  // Number of times the SimpleConsumer will retry fetching topic-partition leadership metadata.
+  private final int numMetadataRefreshRetries;
+//Back off duration between metadata fetch retries.
+  private int metadataRefreshBackoffMs;
+  
+  // Topic-partitions that will be consumed.
+  private Map<String, Collection<Integer>> topicPartitions;
+  // Replica kafka brokers
+  private List<String> replicaBrokers;
   // storage destination for consumption
   private VeniceStorageNode node;
-
-  // kafka metadata
+  
   private String topic;
   private int partition;
-  private List<String> seedBrokers;
-  private List<String> replicaBrokers;
-  private int port;
+  
 
-  public SimpleKafkaConsumerTask(VeniceStorageNode node, String topic, int partition, List<String> seedBrokers, int port) {
+  
 
-    // The storage node which this Consumer will write to
+  public SimpleKafkaConsumerTask(SimpleKafkaConsumerConfig config,
+		                         VeniceStorageNode node, 
+		                         String topic,
+		                         int partition,
+		                         int port) {
+
+	this.seedBrokers = config.getSeedBrokers();
+	this.fetchBufferSize = config.getFetchBufferSize();
+    this.socketTimeoutMs = config.getSocketTimeoutMs();
+    this.numMetadataRefreshRetries = config.getNumMetadataRefreshRetries();
+    this.metadataRefreshBackoffMs = config.getMetadataRefreshBackoffMs();
     this.node = node;
-
-    // Static serialization service for Venice Messages
+    
     messageSerializer = new VeniceMessageSerializer(new VerifiableProperties());
-
-    // consumer metadata
-    replicaBrokers = new ArrayList<String>();
+    this.replicaBrokers = new ArrayList<String>();
     this.topic = topic;
     this.partition = partition;
-    this.seedBrokers = seedBrokers;
-    this.port = port;
-
   }
 
   /**
@@ -105,7 +117,7 @@ public class SimpleKafkaConsumerTask implements Runnable {
     String leadBroker = metadata.leader().get().host();
     String clientName = "Client_" + topic + "_" + partition;
 
-    SimpleConsumer consumer = new SimpleConsumer(leadBroker, port, TIMEOUT, BUFFER_SIZE, clientName);
+    SimpleConsumer consumer = new SimpleConsumer(leadBroker, port, socketTimeoutMs, fetchBufferSize, clientName);
     long readOffset = getLastOffset(consumer, topic, partition, kafka.api.OffsetRequest.LatestTime(), clientName);
 
     int numErrors = 0;
@@ -115,7 +127,7 @@ public class SimpleKafkaConsumerTask implements Runnable {
 
       FetchRequest req = new FetchRequestBuilder()
           .clientId(clientName)
-          .addFetch(topic, partition, readOffset, FETCH_SIZE)
+          .addFetch(topic, partition, readOffset, fetchBufferSize)
           .build();
 
       FetchResponse fetchResponse = consumer.fetch(req);
@@ -301,7 +313,7 @@ public class SimpleKafkaConsumerTask implements Runnable {
    * */
   private String findNewLeader(String oldLeader, String topic, int partition, int port) throws Exception {
 
-    for (int i = 0; i < NUM_RETRIES; i++) {
+    for (int i = 0; i < numMetadataRefreshRetries; i++) {
 
       boolean goToSleep;
       PartitionMetadata metadata = findLeader(replicaBrokers, port, topic, partition);
@@ -353,7 +365,7 @@ public class SimpleKafkaConsumerTask implements Runnable {
 
       try {
 
-        consumer = new SimpleConsumer(host, port, TIMEOUT, BUFFER_SIZE, "leaderLookup");
+        consumer = new SimpleConsumer(host, port, socketTimeoutMs, fetchBufferSize, "leaderLookup");
 
         Seq<String> topics = JavaConversions.asScalaBuffer(Collections.singletonList(topic));
         TopicMetadataRequest request = new TopicMetadataRequest(topics, 17);

@@ -1,9 +1,10 @@
 package com.linkedin.venice.storage;
 
-import com.linkedin.venice.config.GlobalConfiguration;
 import com.linkedin.venice.kafka.consumer.KafkaConsumerPartitionManager;
 import com.linkedin.venice.kafka.consumer.SimpleKafkaConsumerTask;
-import com.linkedin.venice.kafka.consumer.VeniceKafkaConsumerException;
+import com.linkedin.venice.kafka.consumer.KafkaConsumerException;
+import com.linkedin.venice.server.VeniceConfig;
+
 import org.apache.log4j.Logger;
 
 import java.util.HashMap;
@@ -47,7 +48,7 @@ public abstract class VeniceStorageNode {
   * Adds a partition to the current node. This includes the Kafka Partition and the Storage partition
   * @param partition_id - A unique integer identifier to the current partition
   * */
-  public void addPartition(int partition_id) throws VeniceStorageException, VeniceKafkaConsumerException {
+  public void addPartition(int partition_id) throws VeniceStorageException, KafkaConsumerException {
     logger.info("Registering new partition: " + partition_id + " on nodeId: " + getNodeId());
     addStoragePartition(partition_id);
     addKafkaPartition(partition_id);
@@ -57,22 +58,18 @@ public abstract class VeniceStorageNode {
    * Adds a Kafka partition to the current node and launches the given process
    * @param partition_id - The Kafka partition id to consume from
    * */
-  public void addKafkaPartition(int partition_id) throws VeniceKafkaConsumerException {
+  public void addKafkaPartition(int partition_id) throws KafkaConsumerException {
 
-    int numThreads = GlobalConfiguration.getNumThreadsPerPartition();
-
+    int numThreads = 1;
     // get partition manager
     KafkaConsumerPartitionManager manager = KafkaConsumerPartitionManager.getInstance();
-
     // Receive and start the consumer task
     SimpleKafkaConsumerTask task = manager.getConsumerTask(this, partition_id);
-
     // launch each consumer task on a new thread
     executor = Executors.newFixedThreadPool(numThreads);
     for (int i = 0; i < numThreads; i++) {
       executor.submit(task);
     }
-
     kafkaPartitions.put(partition_id, task);
 
   }
@@ -81,17 +78,11 @@ public abstract class VeniceStorageNode {
    * Cleans up the Simple Consumer Service.
    * */
   public void shutdown() {
-
     logger.error("Shutting down consumer service on nodeId: " + getNodeId());
-
     if (executor != null) {
       executor.shutdown();
     }
-
     logger.error("Shutting down storage service on nodeId: " + getNodeId());
     /* Add code to shut down storage services, such as BDB */
-
   }
-
-
 }

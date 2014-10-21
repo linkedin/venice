@@ -1,12 +1,11 @@
 package com.linkedin.venice.server;
 
-import com.linkedin.venice.config.GlobalConfiguration;
 import com.linkedin.venice.kafka.consumer.KafkaConsumerPartitionManager;
-import com.linkedin.venice.kafka.consumer.VeniceKafkaConsumerException;
+import com.linkedin.venice.kafka.consumer.KafkaConsumerException;
 import com.linkedin.venice.storage.InMemoryStorageNode;
-
 import com.linkedin.venice.storage.InMemoryStoragePartition;
 import com.linkedin.venice.storage.VeniceStorageException;
+
 import junit.framework.Assert;
 
 import org.testng.annotations.BeforeClass;
@@ -29,8 +28,8 @@ public class TestInMemoryNode {
   public static void initConfig() {
 
     try {
-      GlobalConfiguration.initializeFromFile("./src/test/resources/test.properties");         // config file for testing
-      KafkaConsumerPartitionManager.initialize("", Arrays.asList(""), 0);
+      VeniceConfig vc = VeniceConfig.initializeFromFile("./src/test/resources/test.properties");         // config file for testing
+      KafkaConsumerPartitionManager.initialize("", vc);
     } catch (Exception e) {
       Assert.fail(e.getMessage());
     }
@@ -76,7 +75,7 @@ public class TestInMemoryNode {
 
     } catch (VeniceStorageException e) {
       Assert.fail(e.getMessage());
-    } catch (VeniceKafkaConsumerException e) {
+    } catch (KafkaConsumerException e) {
       Assert.fail(e.getMessage());
     }
 
@@ -109,7 +108,7 @@ public class TestInMemoryNode {
 
     } catch (VeniceStorageException e) {
       Assert.fail(e.getMessage());
-    } catch (VeniceKafkaConsumerException e) {
+    } catch (KafkaConsumerException e) {
       Assert.fail(e.getMessage());
     }
 
@@ -125,7 +124,7 @@ public class TestInMemoryNode {
       testNode.addPartition(1);
     } catch (VeniceStorageException e) {
       Assert.fail(e.getMessage());
-    } catch (VeniceKafkaConsumerException e) {
+    } catch (KafkaConsumerException e) {
       Assert.fail(e.getMessage());
     }
 
@@ -133,7 +132,7 @@ public class TestInMemoryNode {
       // attempting to re-add partition, should fail
       testNode.addPartition(1);
       Assert.fail("Exception not thrown on partition re-add");
-    } catch (VeniceKafkaConsumerException e) {
+    } catch (KafkaConsumerException e) {
       Assert.fail(e.getMessage());
     } catch (VeniceStorageException e) {
     }

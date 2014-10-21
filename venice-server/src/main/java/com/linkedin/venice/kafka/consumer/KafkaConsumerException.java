@@ -4,16 +4,16 @@ package com.linkedin.venice.kafka.consumer;
  * Custom Exception for Venice Kafka Consumer Related Issues.
  * Currently everything is inherited from the superclass.
  */
-public class VeniceKafkaConsumerException extends Exception {
+public class KafkaConsumerException extends Exception {
 
   /** */
   private static final long serialVersionUID = 1L;
 
-  public VeniceKafkaConsumerException(String message) {
+  public KafkaConsumerException(String message) {
     super(message);
   }
 
-  public VeniceKafkaConsumerException(String message, Throwable throwable) {
+  public KafkaConsumerException(String message, Throwable throwable) {
     super(message, throwable);
   }
 
