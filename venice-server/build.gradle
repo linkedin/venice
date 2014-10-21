@@ -36,7 +36,8 @@ repositories {
 dependencies {
 
   compile 'org.apache.kafka:kafka_2.10:0.8.1.1'
-
+  compile 'com.google.guava:guava:18.0'
+ 
   // log4j for logging
   compile 'log4j:log4j:1.2.17'
 
