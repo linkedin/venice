@@ -80,7 +80,7 @@ public class TestKafkaConsumer {
     clearLogs();
     try {
       // config file for testng
-      VeniceConfig.initializeFromFile("./src/test/resources/test.properties");
+      veniceConfig = VeniceConfig.initializeFromFile("./src/test/resources/test.properties");
       startZookeeper();
       Thread.sleep(2000);
     } catch (Exception e) {
@@ -95,7 +95,6 @@ public class TestKafkaConsumer {
     tearDown();
     // The real startup procedure
     startUpServices();
-    veniceConfig = createDefaultConfig();
   }
 
   private static void startUpServices() {
@@ -149,15 +148,16 @@ public class TestKafkaConsumer {
     props.put("metadata.broker.list", brokerUrl);
     props.put("key.serializer.class", "kafka.serializer.StringEncoder");
     props.put("serializer.class", "com.linkedin.venice.serialization.VeniceMessageSerializer");
-    props.setProperty("partitioner.class", "com.linkedin.venice.kafka.partitioner.KafkaPartitioner");
+    props.setProperty("partitioner.class", "com.linkedin.venice.kafka.consumer.KafkaPartitioner");
     ProducerConfig config = new ProducerConfig(props);
     kafkaProducer = new Producer<String, VeniceMessage>(config);
   }
 
   /**
    *  Set up the nodes for Venice, such that they can be written to
+ * @throws Exception 
    * */
-  private static void startVeniceStorage() {
+  private static void startVeniceStorage() throws Exception {
     VeniceServer vs = new VeniceServer(veniceConfig);
     vs.start();
   }
