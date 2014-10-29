@@ -1,19 +1,13 @@
 apply plugin: 'java'
 apply plugin: 'idea'
 apply plugin: 'eclipse'
-apply plugin: 'application'
 
 sourceCompatibility = 1.8
 version = '0.1'
 
-mainClassName = "com.linkedin.venice.server.VeniceServer"
-
-installApp.dependsOn test
-
 task buildJar(type: Jar) {
   manifest {
-    attributes 'Main-Class': 'com.linkedin.venice.server.VeniceServer',
-               'Implementation-Title': 'Venice Server', 
+    attributes 'Implementation-Title': 'Venice Common',
                'Implementation-Version': version
   }  
   baseName = project.name
@@ -23,8 +17,7 @@ task buildJar(type: Jar) {
 
 jar {
   manifest {
-    attributes 'Main-Class': 'com.linkedin.venice.server.VeniceServer',
-               'Implementation-Title': 'Venice Server', 
+    attributes 'Implementation-Title': 'Venice Common',
                'Implementation-Version': version
   }
 }
@@ -34,19 +27,14 @@ repositories {
 }
 
 dependencies {
-  compile project(':venice-common')
-  compile 'org.apache.kafka:kafka_2.10:0.8.1.1'
-  compile 'com.google.guava:guava:18.0'
- 
+
   // log4j for logging
   compile 'log4j:log4j:1.2.17'
 
   // testng, because tests are important
   testCompile 'org.testng:testng:6.1.1'
-  testCompile 'commons-io:commons-io:2.4'
-
+    
 }
-
 
 idea {
   module {
@@ -56,5 +44,5 @@ idea {
 }
 
 test {
-  useTestNG() 
+    useTestNG()
 }

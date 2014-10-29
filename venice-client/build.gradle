@@ -35,6 +35,7 @@ repositories {
 
 dependencies {
 
+  compile project(':venice-common')
   compile 'org.apache.kafka:kafka_2.10:0.8.1.1'
 
   // log4j for logging

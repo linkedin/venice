@@ -1,7 +1,6 @@
 package com.linkedin.venice.server;
 
 import com.google.common.collect.ImmutableList;
-import com.linkedin.venice.common.service.VeniceService;
 import com.linkedin.venice.kafka.consumer.KafkaConsumerPartitionManager;
 import com.linkedin.venice.kafka.consumer.KafkaConsumerException;
 import com.linkedin.venice.storage.InMemoryStorageNode;
@@ -9,7 +8,7 @@ import com.linkedin.venice.storage.StorageType;
 import com.linkedin.venice.storage.VeniceStorageException;
 import com.linkedin.venice.storage.VeniceStorageNode;
 import com.linkedin.venice.utils.Utils;
-
+import com.linkedin.venice.service.VeniceService;
 import org.apache.log4j.Logger;
 
 import java.util.ArrayList;
