@@ -37,4 +37,20 @@ public class Utils {
         Collections.reverse(copy);
         return copy;
     }
+
+    /**
+     * Throw an IllegalArgumentException if the argument is null, otherwise just
+     * return the argument.
+     *
+     * Useful for assignment as in this.thing = Utils.notNull(thing);
+     *
+     * @param <T> The type of the thing
+     * @param t The thing to check for nullness.
+     * @param message The message to put in the exception if it is null
+     */
+    public static <T> T notNull(T t, String message) {
+        if(t == null)
+            throw new IllegalArgumentException(message);
+        return t;
+    }
 }
