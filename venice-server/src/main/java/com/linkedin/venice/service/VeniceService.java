@@ -1,4 +1,4 @@
-package com.linkedin.venice.common.service;
+package com.linkedin.venice.service;
 /**
  * Blueprint for all Services initiated from Venice Server
  *
@@ -6,9 +6,9 @@ package com.linkedin.venice.common.service;
 public interface VeniceService {
 
     /**
-     * @return The type of this service
+     * @return The name of this service
      */
-    public ServiceType getType();
+    public String getName();
 
     /**
      * Start the service.

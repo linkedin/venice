@@ -1,2 +1,3 @@
+include 'venice-common'
 include 'venice-client'
 include 'venice-server'

@@ -45,12 +45,12 @@ public class KafkaConsumerPartitionManager {
   }
 
 
-  /**
-   * Initializes the Kafka Partition Manager with the provided variables
-   * @param topic - The name of the Kafka topic being consumed from
-   * @param brokers - A list of hosts that the Kafka topic lives on
-   * @param port - The port number on the host to read from
-   * */
+    /**
+     * Initializes the Kafka Partition Manager with the provided variables
+     *
+     * @param topic - The name of the Kafka topic being consumed from
+     * @param veniceConfig -  All configs for Venice Server
+     */
   public static void initialize(String topic, VeniceConfig veniceConfig) {
     manager = new KafkaConsumerPartitionManager(topic, veniceConfig.getBrokerList(), veniceConfig.getKafkaBrokerPort());
   }
@@ -63,6 +63,7 @@ public class KafkaConsumerPartitionManager {
    * */
   public SimpleKafkaConsumerTask getConsumerTask(VeniceStorageNode node, int partition) {
 	  SimpleKafkaConsumerConfig kafkaConfig = new SimpleKafkaConsumerConfig();
+      kafkaConfig.setSeedBrokers(this.brokers);
     return new SimpleKafkaConsumerTask(kafkaConfig, node, topic, partition, kafkaPort);
   }
 
