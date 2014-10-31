@@ -44,13 +44,14 @@ public class Utils {
      *
      * Useful for assignment as in this.thing = Utils.notNull(thing);
      *
-     * @param <T> The type of the thing
      * @param t The thing to check for nullness.
      * @param message The message to put in the exception if it is null
+     * @param <T> The type of the thing
      */
     public static <T> T notNull(T t, String message) {
-        if(t == null)
+        if(t == null){
             throw new IllegalArgumentException(message);
+        }
         return t;
     }
 }
