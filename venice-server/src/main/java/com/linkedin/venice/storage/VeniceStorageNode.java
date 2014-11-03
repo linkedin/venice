@@ -27,28 +27,35 @@ public abstract class VeniceStorageNode {
   private Map<Integer, SimpleKafkaConsumerTask> kafkaPartitions = new HashMap<Integer, SimpleKafkaConsumerTask>();
 
   /* Constructor required for successful compile */
-  public VeniceStorageNode() { }
+  public VeniceStorageNode() {
+  }
 
   /* Declare abstract classes, which require extension*/
   public abstract int getNodeId();
 
   public abstract boolean containsPartition(int partitionId);
 
-  public abstract void put(int partitionId, String key, Object value) throws VeniceStorageException;
+  public abstract void put(int partitionId, String key, Object value)
+      throws VeniceStorageException;
 
-  public abstract Object get(int partitionId, String key) throws VeniceStorageException;
+  public abstract Object get(int partitionId, String key)
+      throws VeniceStorageException;
 
-  public abstract void delete(int partitionId, String key) throws VeniceStorageException;
+  public abstract void delete(int partitionId, String key)
+      throws VeniceStorageException;
 
-  public abstract void addStoragePartition(int partition_id) throws VeniceStorageException;
+  public abstract void addStoragePartition(int partition_id)
+      throws VeniceStorageException;
 
-  public abstract VeniceStoragePartition removePartition(int partition_id) throws VeniceStorageException;
+  public abstract VeniceStoragePartition removePartition(int partition_id)
+      throws VeniceStorageException;
 
   /**
-  * Adds a partition to the current node. This includes the Kafka Partition and the Storage partition
-  * @param partition_id - A unique integer identifier to the current partition
-  * */
-  public void addPartition(int partition_id) throws VeniceStorageException, KafkaConsumerException {
+   * Adds a partition to the current node. This includes the Kafka Partition and the Storage partition
+   * @param partition_id - A unique integer identifier to the current partition
+   * */
+  public void addPartition(int partition_id)
+      throws VeniceStorageException, KafkaConsumerException {
     logger.info("Registering new partition: " + partition_id + " on nodeId: " + getNodeId());
     addStoragePartition(partition_id);
     addKafkaPartition(partition_id);
@@ -58,7 +65,8 @@ public abstract class VeniceStorageNode {
    * Adds a Kafka partition to the current node and launches the given process
    * @param partition_id - The Kafka partition id to consume from
    * */
-  public void addKafkaPartition(int partition_id) throws KafkaConsumerException {
+  public void addKafkaPartition(int partition_id)
+      throws KafkaConsumerException {
 
     int numThreads = 1;
     // get partition manager
@@ -71,7 +79,6 @@ public abstract class VeniceStorageNode {
       executor.submit(task);
     }
     kafkaPartitions.put(partition_id, task);
-
   }
 
   /**

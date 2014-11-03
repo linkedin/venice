@@ -27,7 +27,6 @@ public class TestKafkaPartitioner {
     } catch (Exception e) {
       Assert.fail(e.getMessage());
     }
-
   }
 
   @Test
@@ -64,7 +63,5 @@ public class TestKafkaPartitioner {
     partition2 = kp.partition("a!b@c$d%e&f", 5);
 
     Assert.assertEquals(partition1, partition2);
-
   }
-
 }

@@ -9,6 +9,7 @@ import kafka.utils.VerifiableProperties;
 
 import org.testng.annotations.Test;
 
+
 /**
  * Tests for the Kafka Serialization class
  * 1. Verify magic byte, schema version, operation type and payload are serialized/de-serialized correctly.
@@ -48,7 +49,5 @@ public class TestKafkaSerializer {
 
     Assert.assertEquals(vm2.getOperationType(), OperationType.DELETE);
     Assert.assertEquals("d1", vm2.getPayload());
-
   }
-
 }

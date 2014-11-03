@@ -6,6 +6,7 @@ import com.linkedin.venice.message.OperationType;
 import com.linkedin.venice.message.VeniceMessage;
 import org.apache.log4j.Logger;
 
+
 /**
  * Class which acts as the primary client API
  */
@@ -30,7 +31,6 @@ public class VeniceClient {
     }
 
     kp = new KafkaProducer();
-
   }
 
   /**
@@ -50,7 +50,6 @@ public class VeniceClient {
 
     msg = new VeniceMessage(OperationType.DELETE, "");
     kp.sendMessage(key, msg);
-
   }
 
   /**
@@ -62,7 +61,5 @@ public class VeniceClient {
 
     msg = new VeniceMessage(OperationType.PUT, value.toString());
     kp.sendMessage(key, msg);
-
   }
-
 }

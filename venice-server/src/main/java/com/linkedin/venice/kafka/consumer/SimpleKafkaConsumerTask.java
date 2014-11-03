@@ -61,35 +61,29 @@ public class SimpleKafkaConsumerTask implements Runnable {
   private final int socketTimeoutMs;
   // Number of times the SimpleConsumer will retry fetching topic-partition leadership metadata.
   private final int numMetadataRefreshRetries;
-//Back off duration between metadata fetch retries.
+  //Back off duration between metadata fetch retries.
   private int metadataRefreshBackoffMs;
-  
+
   // Topic-partitions that will be consumed.
   private Map<String, Collection<Integer>> topicPartitions;
   // Replica kafka brokers
   private List<String> replicaBrokers;
   // storage destination for consumption
   private VeniceStorageNode node;
-  
+
   private String topic;
   private int partition;
-  
 
-  
+  public SimpleKafkaConsumerTask(SimpleKafkaConsumerConfig config, VeniceStorageNode node, String topic, int partition,
+      int port) {
 
-  public SimpleKafkaConsumerTask(SimpleKafkaConsumerConfig config,
-		                         VeniceStorageNode node, 
-		                         String topic,
-		                         int partition,
-		                         int port) {
-
-	this.seedBrokers = config.getSeedBrokers();
-	this.fetchBufferSize = config.getFetchBufferSize();
+    this.seedBrokers = config.getSeedBrokers();
+    this.fetchBufferSize = config.getFetchBufferSize();
     this.socketTimeoutMs = config.getSocketTimeoutMs();
     this.numMetadataRefreshRetries = config.getNumMetadataRefreshRetries();
     this.metadataRefreshBackoffMs = config.getMetadataRefreshBackoffMs();
     this.node = node;
-    
+
     messageSerializer = new VeniceMessageSerializer(new VerifiableProperties());
     this.replicaBrokers = new ArrayList<String>();
     this.topic = topic;
@@ -125,10 +119,9 @@ public class SimpleKafkaConsumerTask implements Runnable {
 
     while (execute) {
 
-      FetchRequest req = new FetchRequestBuilder()
-          .clientId(clientName)
-          .addFetch(topic, partition, readOffset, fetchBufferSize)
-          .build();
+      FetchRequest req =
+          new FetchRequestBuilder().clientId(clientName).addFetch(topic, partition, readOffset, fetchBufferSize)
+              .build();
 
       FetchResponse fetchResponse = consumer.fetch(req);
 
@@ -187,7 +180,6 @@ public class SimpleKafkaConsumerTask implements Runnable {
           readMessage(keyString, vm);
 
           numReads++;
-
         } catch (UnsupportedEncodingException e) {
 
           logger.error("Encoding is not supported: " + ENCODING);
@@ -195,13 +187,11 @@ public class SimpleKafkaConsumerTask implements Runnable {
 
           // end the thread
           execute = false;
-
         } catch (VeniceMessageException e) {
 
           logger.error("Received an illegal Venice message!");
           logger.error(e);
           e.printStackTrace();
-
         } catch (VeniceStorageException e) {
 
           logger.error("Venice Storage Node with nodeId " + node.getNodeId() + " has been corrupted! Exiting...");
@@ -210,9 +200,7 @@ public class SimpleKafkaConsumerTask implements Runnable {
 
           // end the thread
           execute = false;
-
         }
-
       }
 
       if (0 == numReads) {
@@ -221,22 +209,20 @@ public class SimpleKafkaConsumerTask implements Runnable {
           Thread.sleep(1000);
         } catch (InterruptedException ie) {
         }
-
       }
-
     }
 
     if (consumer != null) {
       logger.error("Closing consumer..");
       consumer.close();
     }
-
   }
 
   /**
    * Given the attached Node, interpret the VeniceMessage and perform the required action
    * */
-  private void readMessage(String key, VeniceMessage msg) throws VeniceMessageException, VeniceStorageException {
+  private void readMessage(String key, VeniceMessage msg)
+      throws VeniceMessageException, VeniceStorageException {
 
     // check for invalid inputs
     if (null == msg) {
@@ -269,7 +255,6 @@ public class SimpleKafkaConsumerTask implements Runnable {
       default:
         throw new VeniceMessageException("Invalid operation type submitted: " + msg.getOperationType());
     }
-
   }
 
   /**
@@ -282,16 +267,17 @@ public class SimpleKafkaConsumerTask implements Runnable {
    * @return long - last offset after the given time
    * */
   public static long getLastOffset(SimpleConsumer consumer, String topic, int partition, long whichTime,
-                                   String clientName) {
+      String clientName) {
 
     TopicAndPartition tp = new TopicAndPartition(topic, partition);
-    Map<TopicAndPartition, PartitionOffsetRequestInfo> requestInfoMap
-        = new HashMap<TopicAndPartition, PartitionOffsetRequestInfo>();
+    Map<TopicAndPartition, PartitionOffsetRequestInfo> requestInfoMap =
+        new HashMap<TopicAndPartition, PartitionOffsetRequestInfo>();
 
     requestInfoMap.put(tp, new PartitionOffsetRequestInfo(whichTime, 1));
 
     // TODO: Investigate if the conversion can be done in a cleaner way
-    kafka.javaapi.OffsetRequest req = new kafka.javaapi.OffsetRequest(requestInfoMap, kafka.api.OffsetRequest.CurrentVersion(), clientName);
+    kafka.javaapi.OffsetRequest req =
+        new kafka.javaapi.OffsetRequest(requestInfoMap, kafka.api.OffsetRequest.CurrentVersion(), clientName);
     kafka.api.OffsetResponse scalaResponse = consumer.getOffsetsBefore(req.underlying());
     kafka.javaapi.OffsetResponse javaResponse = new kafka.javaapi.OffsetResponse(scalaResponse);
 
@@ -304,14 +290,14 @@ public class SimpleKafkaConsumerTask implements Runnable {
     logger.info("Partition " + partition + " last offset at: " + offsets[0]);
 
     return offsets[0];
-
   }
 
   /**
    * This method taken from Kafka 0.8 SimpleConsumer Example
    * Used when the lead Kafka partition dies, and the new leader needs to be elected
    * */
-  private String findNewLeader(String oldLeader, String topic, int partition, int port) throws Exception {
+  private String findNewLeader(String oldLeader, String topic, int partition, int port)
+      throws Exception {
 
     for (int i = 0; i < numMetadataRefreshRetries; i++) {
 
@@ -327,7 +313,6 @@ public class SimpleKafkaConsumerTask implements Runnable {
         // first time through if the leader hasn't changed give ZooKeeper a second to recover
         // second time, assume the broker did recover before failover, or it was a non-Broker issue
         goToSleep = true;
-
       } else {
         return metadata.leader().get().host();
       }
@@ -386,16 +371,12 @@ public class SimpleKafkaConsumerTask implements Runnable {
               returnMetaData = pm;
               break loop;
             }
-
           } /* End of Partition Loop */
-
         } /* End of Topic Loop */
-
       } catch (Exception e) {
 
         logger.error("Error communicating with " + host + " to find " + topic + ", " + partition);
         logger.error(e);
-
       } finally {
 
         // safely close consumer
@@ -403,7 +384,6 @@ public class SimpleKafkaConsumerTask implements Runnable {
           consumer.close();
         }
       }
-
     } /* End of Broker Loop */
 
     if (returnMetaData != null) {
@@ -416,11 +396,8 @@ public class SimpleKafkaConsumerTask implements Runnable {
         Broker replica = replicaIterator.next();
         replicaBrokers.add(replica.host());
       }
-
     }
 
     return returnMetaData;
-
   }
-
 }

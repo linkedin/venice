@@ -13,19 +13,19 @@ installApp.dependsOn test
 task buildJar(type: Jar) {
   manifest {
     attributes 'Main-Class': 'com.linkedin.venice.server.VeniceServer',
-               'Implementation-Title': 'Venice Server', 
-               'Implementation-Version': version
-  }  
+        'Implementation-Title': 'Venice Server',
+        'Implementation-Version': version
+  }
   baseName = project.name
-  from { configurations.compile.collect { it.isDirectory()? it : zipTree(it) } }
+  from { configurations.compile.collect { it.isDirectory() ? it : zipTree(it) } }
   with jar
 }
 
 jar {
   manifest {
     attributes 'Main-Class': 'com.linkedin.venice.server.VeniceServer',
-               'Implementation-Title': 'Venice Server', 
-               'Implementation-Version': version
+        'Implementation-Title': 'Venice Server',
+        'Implementation-Version': version
   }
 }
 
@@ -37,7 +37,7 @@ dependencies {
   compile project(':venice-common')
   compile 'org.apache.kafka:kafka_2.10:0.8.1.1'
   compile 'com.google.guava:guava:18.0'
- 
+
   // log4j for logging
   compile 'log4j:log4j:1.2.17'
 
@@ -56,5 +56,5 @@ idea {
 }
 
 test {
-  useTestNG() 
+  useTestNG()
 }

@@ -13,6 +13,7 @@ import org.testng.annotations.Test;
 
 import java.util.Arrays;
 
+
 /**
  * Tests the operations of the InMemoryStorageNode class
  * 1. Constructor assigns parameters successfully
@@ -28,7 +29,8 @@ public class TestInMemoryNode {
   public static void initConfig() {
 
     try {
-      VeniceConfig vc = VeniceConfig.initializeFromFile("./src/test/resources/test.properties");         // config file for testing
+      VeniceConfig vc =
+          VeniceConfig.initializeFromFile("./src/test/resources/test.properties");         // config file for testing
       KafkaConsumerPartitionManager.initialize("", vc);
     } catch (Exception e) {
       Assert.fail(e.getMessage());
@@ -43,7 +45,6 @@ public class TestInMemoryNode {
 
     testNode = new InMemoryStorageNode(5);
     Assert.assertEquals(5, testNode.getNodeId());
-
   }
 
   @Test
@@ -72,13 +73,11 @@ public class TestInMemoryNode {
 
       // test null key
       Assert.assertNull(testNode.get(1, "null_key"));
-
     } catch (VeniceStorageException e) {
       Assert.fail(e.getMessage());
     } catch (KafkaConsumerException e) {
       Assert.fail(e.getMessage());
     }
-
   }
 
   @Test
@@ -91,8 +90,8 @@ public class TestInMemoryNode {
 
       testNode.put(10, "dummy_key", "dummy_value");
       Assert.fail("Exception not thrown on null partition put.");
-
-    } catch (VeniceStorageException e) { }
+    } catch (VeniceStorageException e) {
+    }
 
     // proceed with operations
     Assert.assertFalse(testNode.containsPartition(10));
@@ -105,13 +104,11 @@ public class TestInMemoryNode {
       InMemoryStoragePartition partition = testNode.removePartition(10);
       Assert.assertFalse(testNode.containsPartition(10));
       Assert.assertEquals(partition.getId(), 10);
-
     } catch (VeniceStorageException e) {
       Assert.fail(e.getMessage());
     } catch (KafkaConsumerException e) {
       Assert.fail(e.getMessage());
     }
-
   }
 
   @Test
@@ -149,7 +146,6 @@ public class TestInMemoryNode {
       Assert.fail("Exception not thrown on partition re-removal");
     } catch (VeniceStorageException e) {
     }
-
   }
 
   @Test
@@ -162,25 +158,23 @@ public class TestInMemoryNode {
       // should not work, due to lack of available partition
       testNode.put(1, "dummy_key", "dummy_value");
       Assert.fail("Exception not thrown");
-
-    } catch (VeniceStorageException e) { }
+    } catch (VeniceStorageException e) {
+    }
 
     try {
 
       // should not work, due to lack of available partition
       testNode.get(1, "dummy_key");
       Assert.fail("Exception not thrown");
-
-    } catch (VeniceStorageException e) { }
+    } catch (VeniceStorageException e) {
+    }
 
     try {
 
       // should not work, due to lack of available partition
       testNode.delete(1, "dummy_key");
       Assert.fail("Exception not thrown");
-
-    } catch (VeniceStorageException e) { }
-
+    } catch (VeniceStorageException e) {
+    }
   }
-
 }

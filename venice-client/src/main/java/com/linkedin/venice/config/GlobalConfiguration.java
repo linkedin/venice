@@ -6,6 +6,7 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.util.Properties;
 
+
 /**
  * Class which reads configuration parameters for Venice.
  * Inputs may come from file or another service.
@@ -26,7 +27,8 @@ public class GlobalConfiguration {
    *  @param configFileName - String path to a properties file
    *  @return A Java properties object with the given configurations
    * */
-  public static Properties parseProperties(String configFileName) throws Exception {
+  public static Properties parseProperties(String configFileName)
+      throws Exception {
     Properties prop = new Properties();
     FileInputStream inputStream = null;
 
@@ -35,8 +37,9 @@ public class GlobalConfiguration {
       prop.load(inputStream);
     } finally {
       // safely close input stream
-      if (inputStream != null)
+      if (inputStream != null) {
         inputStream.close();
+      }
     }
     return prop;
   }
@@ -46,7 +49,8 @@ public class GlobalConfiguration {
    *  @param configFileName - The path to the input configuration file
    *  @throws Exception if inputs are of an illegal format
    * */
-  public static void initializeFromFile(String configFileName) throws Exception {
+  public static void initializeFromFile(String configFileName)
+      throws Exception {
 
     logger.info("Loading config: " + configFileName);
 
@@ -55,11 +59,9 @@ public class GlobalConfiguration {
     kafkaBrokerUrl = prop.getProperty("kafka.broker.url", "localhost:9092");
 
     logger.info("Finished initialization from file");
-
   }
 
   public static String getKafkaBrokerUrl() {
     return kafkaBrokerUrl;
   }
-
 }

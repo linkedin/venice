@@ -6,7 +6,7 @@ sourceCompatibility = 1.6
 version = '0.1'
 
 task buildAll {
-   dependsOn 'venice-common:buildJar'
-   dependsOn 'venice-client:installApp'
-   dependsOn 'venice-server:installApp'
+  dependsOn 'venice-common:buildJar'
+  dependsOn 'venice-client:installApp'
+  dependsOn 'venice-server:installApp'
 }

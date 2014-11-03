@@ -8,17 +8,17 @@ version = '0.1'
 task buildJar(type: Jar) {
   manifest {
     attributes 'Implementation-Title': 'Venice Common',
-               'Implementation-Version': version
-  }  
+        'Implementation-Version': version
+  }
   baseName = project.name
-  from { configurations.compile.collect { it.isDirectory()? it : zipTree(it) } }
+  from { configurations.compile.collect { it.isDirectory() ? it : zipTree(it) } }
   with jar
 }
 
 jar {
   manifest {
     attributes 'Implementation-Title': 'Venice Common',
-               'Implementation-Version': version
+        'Implementation-Version': version
   }
 }
 
@@ -33,7 +33,7 @@ dependencies {
 
   // testng, because tests are important
   testCompile 'org.testng:testng:6.1.1'
-    
+
 }
 
 idea {
@@ -44,5 +44,5 @@ idea {
 }
 
 test {
-    useTestNG()
+  useTestNG()
 }

@@ -20,5 +20,4 @@ public class VeniceStorageException extends Exception {
   public String getMessage() {
     return super.getMessage();
   }
-
 }

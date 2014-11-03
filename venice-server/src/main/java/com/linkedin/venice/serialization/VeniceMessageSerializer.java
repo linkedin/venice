@@ -83,24 +83,26 @@ public class VeniceMessageSerializer implements Encoder<VeniceMessage>, Decoder<
       int byteCount = ois.available();
 
       for (int i = 0; i < byteCount; i++) {
-          payload.append(Character.toString((char) ois.readByte()));
+        payload.append(Character.toString((char) ois.readByte()));
       }
-
     } catch (IOException e) {
 
       logger.error("IOException while converting: " + e);
       e.printStackTrace();
-
     } finally {
 
       // safely close the input/output streams
-      try { ois.close(); } catch (IOException e) {}
-      try { bytesIn.close(); } catch (IOException e) {}
-
+      try {
+        ois.close();
+      } catch (IOException e) {
+      }
+      try {
+        bytesIn.close();
+      } catch (IOException e) {
+      }
     }
 
     return new VeniceMessage(operationType, payload.toString());
-
   }
 
   @Override
@@ -123,7 +125,7 @@ public class VeniceMessageSerializer implements Encoder<VeniceMessage>, Decoder<
       oos.writeByte(vm.getMagicByte());
 
       // serialize the operation type enum
-      switch(vm.getOperationType()) {
+      switch (vm.getOperationType()) {
         case PUT:
           oos.write(1);
           break;
@@ -143,18 +145,21 @@ public class VeniceMessageSerializer implements Encoder<VeniceMessage>, Decoder<
       oos.flush();
 
       message = bytesOut.toByteArray();
-
     } catch (IOException e) {
       logger.error("Could not serialize message: " + vm.getPayload());
     } finally {
 
       // safely close the input/output streams
-      try { oos.close(); } catch (IOException e) {}
-      try { bytesOut.close(); } catch (IOException e) {}
-
+      try {
+        oos.close();
+      } catch (IOException e) {
+      }
+      try {
+        bytesOut.close();
+      } catch (IOException e) {
+      }
     }
 
     return message;
   }
-
 }

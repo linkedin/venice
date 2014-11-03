@@ -63,9 +63,9 @@ public class TestKafkaConsumer {
 
   static KafkaServerStartable kafkaServer;
   static Producer<String, VeniceMessage> kafkaProducer;
-  
+
   static VeniceConfig veniceConfig;
-  
+
   private static VeniceConfig createDefaultConfig() {
     Properties props = new Properties();
     props.setProperty("kafka.broker.url", "localhost:9092");
@@ -73,7 +73,7 @@ public class TestKafkaConsumer {
     props.setProperty("kafka.broker.port", "9092");
     VeniceConfig veniceConfig = new VeniceConfig(props);
     return veniceConfig;
-}
+  }
 
   @BeforeClass
   private static void init() {
@@ -117,7 +117,8 @@ public class TestKafkaConsumer {
   /**
    *  Starts a local instance of ZooKeeper
    * */
-  private static void startZookeeper() throws Exception {
+  private static void startZookeeper()
+      throws Exception {
     File dir = new File(DEFAULT_ZK_LOG_DIR);
     ZooKeeperServer server = new ZooKeeperServer(dir, dir, TICKTIME);
     server.setMaxSessionTimeout(1000000);
@@ -125,7 +126,6 @@ public class TestKafkaConsumer {
         new NIOServerCnxn.Factory(new InetSocketAddress(LOCALHOST_ZK_BROKER_PORT), NUM_CONNECTIONS);
     standaloneServerFactory.startup(server);
     Thread.sleep(2000);
-
   }
 
   /**
@@ -136,7 +136,6 @@ public class TestKafkaConsumer {
     // start kafka
     kafkaServer = new KafkaServerStartable(config);
     kafkaServer.startup();
-
   }
 
   /**
@@ -155,9 +154,10 @@ public class TestKafkaConsumer {
 
   /**
    *  Set up the nodes for Venice, such that they can be written to
- * @throws Exception 
+   * @throws Exception
    * */
-  private static void startVeniceStorage() throws Exception {
+  private static void startVeniceStorage()
+      throws Exception {
     VeniceServer vs = new VeniceServer(veniceConfig);
     vs.start();
   }
@@ -194,7 +194,6 @@ public class TestKafkaConsumer {
     } catch (IOException e) {
       Assert.fail("Encountered problem while deleting Kafka test logs.");
     }
-
   }
 
   /**
@@ -203,10 +202,9 @@ public class TestKafkaConsumer {
    * */
   public static void sendKafkaMessage(String payload) {
     try {
-        KeyedMessage<String, VeniceMessage> data = new KeyedMessage<String, VeniceMessage>(TEST_TOPIC, 
-                                                                                           TEST_KEY, 
-                                                                                           new VeniceMessage(OperationType.PUT, payload));
-        kafkaProducer.send(data);
+      KeyedMessage<String, VeniceMessage> data =
+          new KeyedMessage<String, VeniceMessage>(TEST_TOPIC, TEST_KEY, new VeniceMessage(OperationType.PUT, payload));
+      kafkaProducer.send(data);
     } catch (Exception e) {
       logger.error(e.getMessage());
       e.printStackTrace();
@@ -247,12 +245,9 @@ public class TestKafkaConsumer {
       sendKafkaMessage("test_message 3");
       Thread.sleep(1000);
       Assert.assertEquals(node.get(0, TEST_KEY), "test_message 3");
-
     } catch (Exception e) {
       e.printStackTrace();
       Assert.fail(e.getMessage());
     }
-
   }
-
 }

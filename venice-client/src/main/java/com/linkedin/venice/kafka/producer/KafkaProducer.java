@@ -9,6 +9,7 @@ import kafka.producer.ProducerConfig;
 
 import java.util.Properties;
 
+
 /**
  * Implementation of the Kafka Producer.
  * Receives and sends messages to Kafka.
@@ -37,7 +38,6 @@ public class KafkaProducer {
 
     config = new ProducerConfig(props);
     producer = new Producer<String, VeniceMessage>(config);
-
   }
 
   /**
@@ -49,7 +49,5 @@ public class KafkaProducer {
 
     KeyedMessage<String, VeniceMessage> kafkaMsg = new KeyedMessage<String, VeniceMessage>(DEFAULT_TOPIC, key, msg);
     producer.send(kafkaMsg);
-
   }
-
 }

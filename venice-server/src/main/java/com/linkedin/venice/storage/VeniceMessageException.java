@@ -20,5 +20,4 @@ public class VeniceMessageException extends Exception {
   public String getMessage() {
     return super.getMessage();
   }
-
 }

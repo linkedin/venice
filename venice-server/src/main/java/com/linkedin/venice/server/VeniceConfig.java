@@ -17,7 +17,7 @@ import java.util.Properties;
 public class VeniceConfig {
 
   private static final Logger logger = Logger.getLogger(VeniceConfig.class.getName());
-  
+
   // Kafka related properties
   private int numKafkaPartitions;
   private String kafKaZookeeperUrl;
@@ -30,13 +30,12 @@ public class VeniceConfig {
   private int numStorageNodes;
   private int numStorageCopies;
 
-
   public VeniceConfig(Properties props) {
     numKafkaPartitions = Integer.parseInt(props.getProperty("kafka.number.partitions", "4"));
     kafKaZookeeperUrl = props.getProperty("kafka.zookeeper.url", "localhost:2181");
     kafkaBrokerUrl = props.getProperty("kafka.broker.url", "localhost:9092");
     kafkaBrokerPort = Integer.parseInt(props.getProperty("kafka.broker.port", "9092"));
-    
+
     numStorageNodes = Integer.parseInt(props.getProperty("kafka.number.partitions", "4"));
     try {
       storageType = convertToStorageType(props.getProperty("storage.type", "memory"));
@@ -45,24 +44,27 @@ public class VeniceConfig {
     }
     numStorageNodes = Integer.parseInt(props.getProperty("storage.node.count", "3"));
     numStorageCopies = Integer.parseInt(props.getProperty("storage.node.replicas", "2"));
-    
+
     validateParams();
   }
-  
+
   private void validateParams() {
-    if (numKafkaPartitions < 0)
+    if (numKafkaPartitions < 0) {
       throw new IllegalArgumentException("core.threads cannot be less than 1");
-    else if (kafKaZookeeperUrl.isEmpty())
+    } else if (kafKaZookeeperUrl.isEmpty()) {
       throw new IllegalArgumentException("kafkaZookeeperUrl can't be empty");
-    else if (kafkaBrokerUrl.isEmpty())
+    } else if (kafkaBrokerUrl.isEmpty()) {
       throw new IllegalArgumentException("kafkaZookeeperUrl can't be empty");
-}
+    }
+  }
+
   /**
    *  Initializes the Venice configuration from a given file input
    *  @param configFileName - The path to the input configuration file
    *  @throws Exception if inputs are of an illegal format
    * */
-  public static VeniceConfig initializeFromFile(String configFileName) throws Exception {
+  public static VeniceConfig initializeFromFile(String configFileName)
+      throws Exception {
     logger.info("Loading config: " + configFileName);
     Properties props = parseProperties(configFileName);
     return new VeniceConfig(props);
@@ -73,15 +75,17 @@ public class VeniceConfig {
    *  @param configFileName - String path to a properties file
    *  @return A Java properties object with the given configurations
    * */
-  public static Properties parseProperties(String configFileName) throws Exception {
+  public static Properties parseProperties(String configFileName)
+      throws Exception {
     Properties props = new Properties();
     FileInputStream inputStream = null;
     try {
       inputStream = new FileInputStream(configFileName);
       props.load(inputStream);
     } finally {
-      if (inputStream != null)
+      if (inputStream != null) {
         inputStream.close();
+      }
     }
     return props;
   }
@@ -91,7 +95,8 @@ public class VeniceConfig {
    *  @param type - String name of a storage type
    *  @return The enum equivalent of the given type
    * */
-  private static StorageType convertToStorageType(String type) throws Exception {
+  private static StorageType convertToStorageType(String type)
+      throws Exception {
     StorageType returnType;
     switch (type) {
       case "memory":
@@ -105,49 +110,49 @@ public class VeniceConfig {
     }
     return returnType;
   }
-  
+
   public int getNumKafkaPartitions() {
     return numKafkaPartitions;
   }
-  
+
   public void setNumKafkaPartitions(int numKafkaPartitions) {
     this.numKafkaPartitions = numKafkaPartitions;
   }
-  
+
   public String getKafKaZookeeperUrl() {
-  	return kafKaZookeeperUrl;
+    return kafKaZookeeperUrl;
   }
-  
+
   public void setKafKaZookeeperUrl(String kafKaZookeeperUrl) {
-  	this.kafKaZookeeperUrl = kafKaZookeeperUrl;
+    this.kafKaZookeeperUrl = kafKaZookeeperUrl;
   }
-  
+
   public String getKafkaBrokerUrl() {
-  	return kafkaBrokerUrl;
+    return kafkaBrokerUrl;
   }
-  
+
   public void setKafkaBrokerUrl(String kafkaBrokerUrl) {
-  	this.kafkaBrokerUrl = kafkaBrokerUrl;
+    this.kafkaBrokerUrl = kafkaBrokerUrl;
   }
-  
+
   public int getKafkaBrokerPort() {
-  	return kafkaBrokerPort;
+    return kafkaBrokerPort;
   }
-  
+
   public void setKafkaBrokerPort(int kafkaBrokerPort) {
-  	this.kafkaBrokerPort = kafkaBrokerPort;
-  } 
-  
+    this.kafkaBrokerPort = kafkaBrokerPort;
+  }
+
   public List<String> getBrokerList() {
-  	return brokerList;
+    return brokerList;
   }
-  
+
   public void setBrokerList(List<String> brokerList) {
-  	this.brokerList = brokerList;
+    this.brokerList = brokerList;
   }
-  
+
   public StorageType getStorageType() {
-  return storageType;
+    return storageType;
   }
 
   public void setStorageType(StorageType storageType) {
@@ -161,13 +166,12 @@ public class VeniceConfig {
   public void setNumStorageNodes(int numStorageNodes) {
     this.numStorageNodes = numStorageNodes;
   }
-  
+
   public int getNumStorageCopies() {
     return numStorageCopies;
   }
-  
+
   public void setNumStorageCopies(int numStorageCopies) {
     this.numStorageCopies = numStorageCopies;
   }
-  
 }

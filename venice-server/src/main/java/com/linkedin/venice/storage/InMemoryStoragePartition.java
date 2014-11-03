@@ -24,7 +24,6 @@ public class InMemoryStoragePartition extends VeniceStoragePartition {
     // initialize empty storage unit
     storage = new HashMap<String, Object>();
     this.store_id = store_id;
-
   }
 
   /**
@@ -34,7 +33,6 @@ public class InMemoryStoragePartition extends VeniceStoragePartition {
     return store_id;
   }
 
-
   /**
    * Puts a value into the key value store
    */
@@ -42,19 +40,18 @@ public class InMemoryStoragePartition extends VeniceStoragePartition {
     storage.put(key, payload);
   }
 
-
   /**
    * Gets a value from the key value store
    */
   public Object get(String key) {
 
-    if (storage.containsKey(key))
+    if (storage.containsKey(key)) {
       return storage.get(key);
+    }
 
     logger.warn("Cannot find object with key: " + key);
     return null;
   }
-
 
   /**
    * Deletes a value from the key value store
@@ -62,7 +59,6 @@ public class InMemoryStoragePartition extends VeniceStoragePartition {
   public void delete(String key) {
     storage.remove(key);
   }
-
 }
 
 

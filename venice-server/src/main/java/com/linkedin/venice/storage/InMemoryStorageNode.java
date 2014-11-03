@@ -22,7 +22,6 @@ public class InMemoryStorageNode extends VeniceStorageNode {
 
     // register current nodeId
     this.nodeId = nodeId;
-
   }
 
   /**
@@ -49,7 +48,8 @@ public class InMemoryStorageNode extends VeniceStorageNode {
    * @throws VeniceStorageException, if the added partitionId already exists
    */
   @Override
-  public void addStoragePartition(int partitionId) throws VeniceStorageException {
+  public void addStoragePartition(int partitionId)
+      throws VeniceStorageException {
 
     if (partitions.containsKey(partitionId)) {
       throw new VeniceStorageException("Error on nodeId: " + nodeId +
@@ -57,7 +57,6 @@ public class InMemoryStorageNode extends VeniceStorageNode {
     }
 
     partitions.put(partitionId, new InMemoryStoragePartition(partitionId));
-
   }
 
   /**
@@ -67,7 +66,8 @@ public class InMemoryStorageNode extends VeniceStorageNode {
    * @throws VeniceStorageException, if the removed partition does not exist
    */
   @Override
-  public InMemoryStoragePartition removePartition(int partitionId) throws VeniceStorageException {
+  public InMemoryStoragePartition removePartition(int partitionId)
+      throws VeniceStorageException {
 
     if (!partitions.containsKey(partitionId)) {
       throw new VeniceStorageException("Error on nodeId: " + nodeId +
@@ -78,7 +78,6 @@ public class InMemoryStorageNode extends VeniceStorageNode {
     partitions.remove(partitionId);
 
     return toReturn;
-
   }
 
   /**
@@ -89,7 +88,8 @@ public class InMemoryStorageNode extends VeniceStorageNode {
    * @throws VeniceStorageException if the specified partitionId does not exist on this node
    */
   @Override
-  public void put(int partitionId, String key, Object value) throws VeniceStorageException {
+  public void put(int partitionId, String key, Object value)
+      throws VeniceStorageException {
 
     if (!partitions.containsKey(partitionId)) {
       throw new VeniceStorageException("On put: PartitionId " + partitionId + " does not exist on nodeId " + nodeId);
@@ -99,7 +99,6 @@ public class InMemoryStorageNode extends VeniceStorageNode {
 
     logger.info("Running put on node: " + nodeId + " partition: " + partitionId);
     partition.put(key, value);
-
   }
 
   /**
@@ -109,14 +108,14 @@ public class InMemoryStorageNode extends VeniceStorageNode {
    * @throws VeniceStorageException if the specified partitionId does not exist on this node
    */
   @Override
-  public Object get(int partitionId, String key) throws VeniceStorageException {
+  public Object get(int partitionId, String key)
+      throws VeniceStorageException {
 
     if (!partitions.containsKey(partitionId)) {
       throw new VeniceStorageException("On get: PartitionId " + partitionId + " does not exist on nodeId " + nodeId);
     }
 
     return partitions.get(partitionId).get(key);
-
   }
 
   /**
@@ -126,7 +125,8 @@ public class InMemoryStorageNode extends VeniceStorageNode {
    * @throws VeniceStorageException if the specified partitionId does not exist on this node
    */
   @Override
-  public void delete(int partitionId, String key) throws VeniceStorageException {
+  public void delete(int partitionId, String key)
+      throws VeniceStorageException {
 
     if (!partitions.containsKey(partitionId)) {
       throw new VeniceStorageException("On get: PartitionId " + partitionId + " does not exist on nodeId " + nodeId);
@@ -134,7 +134,5 @@ public class InMemoryStorageNode extends VeniceStorageNode {
 
     logger.info("Run a delete on node: " + nodeId + " partition: " + partitionId);
     partitions.get(partitionId).delete(key);
-
   }
-
 }

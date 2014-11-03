@@ -27,7 +27,6 @@ public class VeniceMessage {
     this.payload = payload;
 
     timestamp = null;
-
   }
 
   public byte getMagicByte() {
@@ -53,5 +52,4 @@ public class VeniceMessage {
   public Object getTimestamp() {
     return timestamp;
   }
-
 }

@@ -1,6 +1,5 @@
 package com.linkedin.venice.kafka;
 
-
 import com.linkedin.venice.kafka.partitioner.KafkaPartitioner;
 import junit.framework.Assert;
 import kafka.utils.VerifiableProperties;
@@ -50,7 +49,5 @@ public class TestKafkaPartitioner {
     partition2 = kp.partition("a!b@c$d%e&f", 5);
 
     Assert.assertEquals(partition1, partition2);
-
   }
-
 }

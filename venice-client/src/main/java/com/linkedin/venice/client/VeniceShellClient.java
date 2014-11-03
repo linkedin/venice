@@ -2,6 +2,7 @@ package com.linkedin.venice.client;
 
 import java.util.Scanner;
 
+
 /**
  * Class which acts as the primary interface when calling Venice from the run-client.sh script.
  */
@@ -93,9 +94,6 @@ public class VeniceShellClient {
         System.out.println("Must be one of: put, get, delete, exit.");
 
         break;
-
     }
-
   }
-
 }

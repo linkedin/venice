@@ -2,6 +2,7 @@ package com.linkedin.venice.message;
 
 import com.linkedin.venice.message.OperationType;
 
+
 /**
  * Class which stores the components of VeniceMessage, and is the format specified in the Kafka Serializer
  */
@@ -29,7 +30,6 @@ public class VeniceMessage {
     this.payload = payload;
 
     timestamp = null;
-
   }
 
   public byte getMagicByte() {
@@ -55,5 +55,4 @@ public class VeniceMessage {
   public Object getTimestamp() {
     return timestamp;
   }
-
 }

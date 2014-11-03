@@ -7,6 +7,7 @@ import org.apache.log4j.Logger;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 
+
 /**
  * Custom Partitioner Class which is jointly used by Kafka and Venice.
  * Determines the appropriate partition for each message.
@@ -20,18 +21,18 @@ public class KafkaPartitioner implements Partitioner {
   /**
    *  An abstraction on the standard Partitioner interface
    * */
-  public KafkaPartitioner (VerifiableProperties props) {
+  public KafkaPartitioner(VerifiableProperties props) {
 
   }
 
   /**
-  * TODO: consider how to handle partitioning if the partition count changes after startup
-  * A consistent hashing algorithm that returns the partitionId based on the key
-  * Note that this is based on the number of partitions
-  * @param key - A string key that will be hashed into a partition
-  * @param numPartitions - The number of total partitions available in Kafka/storage
-  * @return The partitionId for which the given key is mapped to
-  * */
+   * TODO: consider how to handle partitioning if the partition count changes after startup
+   * A consistent hashing algorithm that returns the partitionId based on the key
+   * Note that this is based on the number of partitions
+   * @param key - A string key that will be hashed into a partition
+   * @param numPartitions - The number of total partitions available in Kafka/storage
+   * @return The partitionId for which the given key is mapped to
+   * */
   public int partition(Object key, int numPartitions) {
 
     String stringKey = (String) key;
@@ -55,12 +56,9 @@ public class KafkaPartitioner implements Partitioner {
 
       md.reset();
       return partition;
-
     } catch (NoSuchAlgorithmException e) {
       logger.error("Hashing algorithm given is not recognized: " + HASH_ALGORITHM);
       return -1;
     }
-
   }
-
 }

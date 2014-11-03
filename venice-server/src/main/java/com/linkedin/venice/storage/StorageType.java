@@ -6,6 +6,6 @@ package com.linkedin.venice.storage;
 
 public enum StorageType {
   VOLDEMORT,
-  BDB, 
-  MEMORY 
+  BDB,
+  MEMORY
 };

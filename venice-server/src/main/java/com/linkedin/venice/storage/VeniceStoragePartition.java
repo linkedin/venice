@@ -16,7 +16,6 @@ public abstract class VeniceStoragePartition {
    */
   public abstract void put(String key, Object payload);
 
-
   /**
    * Gets a value from the key value store
    */
@@ -26,5 +25,4 @@ public abstract class VeniceStoragePartition {
    * Deletes a value from the key value store
    */
   public abstract void delete(String key);
-
 }
