@@ -31,6 +31,7 @@ dependencies {
   // log4j for logging
   compile 'log4j:log4j:1.2.17'
 
+  compile 'com.google.guava:guava:18.0'
   // testng, because tests are important
   testCompile 'org.testng:testng:6.1.1'
 
