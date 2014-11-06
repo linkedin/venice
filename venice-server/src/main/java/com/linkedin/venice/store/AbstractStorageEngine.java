@@ -1,7 +1,7 @@
 package com.linkedin.venice.store;
 
 import com.linkedin.venice.storage.VeniceStorageException;
-import com.linkedin.venice.utils.ClosableIterator;
+import com.linkedin.venice.utils.CloseableIterator;
 import com.linkedin.venice.utils.Pair;
 
 
@@ -25,12 +25,12 @@ public class AbstractStorageEngine implements StorageEngine {
   }
 
   @Override
-  public ClosableIterator<Pair<byte[], byte[]>> entries() {
+  public CloseableIterator<Pair<byte[], byte[]>> entries() {
     return null;
   }
 
   @Override
-  public ClosableIterator<byte[]> keys() {
+  public CloseableIterator<byte[]> keys() {
     return null;
   }
 
@@ -40,12 +40,12 @@ public class AbstractStorageEngine implements StorageEngine {
   }
 
   @Override
-  public boolean beginBatchModifications() {
+  public boolean beginBatchWrites() {
     return false;
   }
 
   @Override
-  public boolean endBatchModifications() {
+  public boolean endBatchWrites() {
     return false;
   }
 

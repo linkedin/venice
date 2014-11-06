@@ -1,5 +1,6 @@
 package com.linkedin.venice.utils;
 
+import java.io.Closeable;
 import java.util.Iterator;
 
 
@@ -8,9 +9,5 @@ import java.util.Iterator;
  *
  * @param <T> The type being iterated over
  */
-public interface ClosableIterator<T> extends Iterator<T> {
-  /**
-   * Close the iterator
-   */
-  public void close();
+public interface CloseableIterator<T> extends Iterator<T>, Closeable{
 }

@@ -1,6 +1,6 @@
 package com.linkedin.venice.store;
 
-import com.linkedin.venice.utils.ClosableIterator;
+import com.linkedin.venice.utils.CloseableIterator;
 import com.linkedin.venice.utils.Pair;
 
 
@@ -34,7 +34,7 @@ public interface StorageEngine extends Store {
    *
    * @return An iterator over the entries in this StorageEngine.
    */
-  public ClosableIterator<Pair<byte[], byte[]>> entries();
+  public CloseableIterator<Pair<byte[], byte[]>> entries();
 
   /**
    * Get an iterator over keys in the store.
@@ -44,7 +44,7 @@ public interface StorageEngine extends Store {
    *
    * @return An iterator over the keys in this StorageEngine.
    */
-  public ClosableIterator<byte[]> keys();
+  public CloseableIterator<byte[]> keys();
 
   /**
    * Truncate all entries in the store
@@ -59,11 +59,11 @@ public interface StorageEngine extends Store {
    * @return true if the storage engine took successful action to switch to
    *         'batch-write' mode
    */
-  public boolean beginBatchModifications();
+  public boolean beginBatchWrites();
 
   /**
    *
    * @return true if the storage engine successfully returned to normal mode
    */
-  public boolean endBatchModifications();
+  public boolean endBatchWrites();
 }
