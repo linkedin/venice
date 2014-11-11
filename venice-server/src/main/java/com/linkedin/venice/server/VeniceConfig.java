@@ -1,11 +1,13 @@
 package com.linkedin.venice.server;
 
+import com.google.common.collect.ImmutableMap;
 import com.linkedin.venice.storage.StorageType;
 
+import com.linkedin.venice.utils.Utils;
+import java.io.File;
+import java.util.Map;
 import org.apache.log4j.Logger;
 
-import java.io.FileInputStream;
-import java.util.Arrays;
 import java.util.List;
 import java.util.Properties;
 
@@ -17,6 +19,15 @@ import java.util.Properties;
 public class VeniceConfig {
 
   private static final Logger logger = Logger.getLogger(VeniceConfig.class.getName());
+
+  public static final String VENICE_HOME_VAR_NAME = "VENICE_HOME";
+  public static final String VENICE_CONFIG_DIR = "VENICE_CONFIG_DIR";
+  public final static String CONFIG_FILE_NAME = "config.properties";
+  public final static String STORE_DEFINITIONS_DIR_NAME = "STORES";
+
+  private Map<String, String> storageEngineFactoryClassNameMap;
+
+  private String CONFIG_DIR_ABSOLUTE_PATH;
 
   // Kafka related properties
   private int numKafkaPartitions;
@@ -45,7 +56,19 @@ public class VeniceConfig {
     numStorageNodes = Integer.parseInt(props.getProperty("storage.node.count", "3"));
     numStorageCopies = Integer.parseInt(props.getProperty("storage.node.replicas", "2"));
 
+    //initialize StorageEngineFactory types
+    storageEngineFactoryClassNameMap = ImmutableMap
+        .of("inMemory", InMemoryStorageEngineFactory.class.getName(), "bdb", BdbStorageEngineFactory.class.getName());
+
     validateParams();
+  }
+
+  public void setConfigDirAbsolutePath(String configDirPath) {
+    this.CONFIG_DIR_ABSOLUTE_PATH = configDirPath;
+  }
+
+  public String getConfigDirAbsolutePath() {
+    return CONFIG_DIR_ABSOLUTE_PATH;
   }
 
   private void validateParams() {
@@ -59,35 +82,73 @@ public class VeniceConfig {
   }
 
   /**
-   *  Initializes the Venice configuration from a given file input
-   *  @param configFileName - The path to the input configuration file
-   *  @throws Exception if inputs are of an illegal format
-   * */
-  public static VeniceConfig initializeFromFile(String configFileName)
+   * Initializes the Venice configuration from known environment variables
+   *
+   * @return VeniceConfig object
+   * @throws Exception
+   */
+  public static VeniceConfig loadFromEnvironmentVariable()
       throws Exception {
-    logger.info("Loading config: " + configFileName);
-    Properties props = parseProperties(configFileName);
-    return new VeniceConfig(props);
+    String veniceHome = System.getenv(VeniceConfig.VENICE_HOME_VAR_NAME);
+    if (veniceHome == null) {
+      // TODO throw appropriate exception
+      throw new Exception(
+          "No environment variable " + VeniceConfig.VENICE_HOME_VAR_NAME + " has been defined, set it!");
+    }
+    String veniceConfigDir = System.getenv(VeniceConfig.VENICE_CONFIG_DIR);
+    if (veniceConfigDir == null) {
+      // TODO throw appropriate exception
+      throw new Exception("No environment variable " + VeniceConfig.VENICE_CONFIG_DIR + "  has been defined, set it!");
+    } else {
+      if (!Utils.isReadableDir(veniceConfigDir)) {
+        throw new Exception("Attempt to load configuration from VENICE_CONFIG_DIR, " + veniceConfigDir
+            + " failed. That is not a readable directory.");
+      }
+    }
+    return loadFromVeniceHome(veniceHome, veniceConfigDir);
   }
 
   /**
-   *  Given a filePath, reads into a Java Properties object
-   *  @param configFileName - String path to a properties file
-   *  @return A Java properties object with the given configurations
-   * */
-  public static Properties parseProperties(String configFileName)
+   * Initializes the Venice configuration given venice home dir path
+   *
+   * @param veniceHome absolute path to Venice Home directory
+   * @return VeniceConfig object
+   * @throws Exception
+   */
+  public static VeniceConfig loadFromVeniceHome(String veniceHome)
       throws Exception {
-    Properties props = new Properties();
-    FileInputStream inputStream = null;
-    try {
-      inputStream = new FileInputStream(configFileName);
-      props.load(inputStream);
-    } finally {
-      if (inputStream != null) {
-        inputStream.close();
-      }
+    String veniceConfigDir = veniceHome + File.separator + "config";
+    return loadFromVeniceHome(veniceHome, veniceConfigDir);
+  }
+
+  /**
+   * Initializes the Venice configuration given venice home dir path and config dir path
+   *
+   * @param veniceHome  absolute path to Venice Home directory
+   * @param veniceConfigDir absolute path to venice config directory
+   * @return VeniceConfig object
+   * @throws Exception
+   */
+  public static VeniceConfig loadFromVeniceHome(String veniceHome, String veniceConfigDir)
+      throws Exception {
+    if (!Utils.isReadableDir(veniceHome)) {
+      // TODO throw appropriate exception
+      throw new Exception("Attempt to load configuration from VENICE_HOME, " + veniceHome
+          + " failed. That is not a readable directory.");
     }
-    return props;
+    if (veniceConfigDir == null) {
+      veniceConfigDir = veniceHome + File.separator + "config";
+    }
+    String propertiesFile = veniceConfigDir + File.separator + CONFIG_FILE_NAME;
+    if (!Utils.isReadableFile(propertiesFile)) {
+      // TODO throw appropriate exception
+      throw new Exception(propertiesFile + " is not a readable configuration file.");
+    }
+    Properties props = Utils.parseProperties(propertiesFile);
+    VeniceConfig veniceConfig = new VeniceConfig(props);
+    //set the absolute config directory path
+    veniceConfig.setConfigDirAbsolutePath(new File(veniceConfigDir).getAbsolutePath());
+    return veniceConfig;
   }
 
   /**
@@ -173,5 +234,17 @@ public class VeniceConfig {
 
   public void setNumStorageCopies(int numStorageCopies) {
     this.numStorageCopies = numStorageCopies;
+  }
+
+  public Map<String, String> getAllStorageEngineFactoryClassNameMap() {
+    return this.storageEngineFactoryClassNameMap;
+  }
+
+  public String getStorageEngineFactoryClassName(String persistenceType) {
+    return this.storageEngineFactoryClassNameMap.get(persistenceType);
+  }
+
+  public void setStorageEngineFactoryClassNameMap(Map storageEngineFactoryClassNameMap) {
+    this.storageEngineFactoryClassNameMap = storageEngineFactoryClassNameMap;
   }
 }

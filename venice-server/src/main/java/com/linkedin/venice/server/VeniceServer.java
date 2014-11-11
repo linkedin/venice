@@ -146,13 +146,13 @@ public class VeniceServer {
     VeniceConfig veniceConfig = null;
     try {
       if (args.length == 0) {
-        // TODO have default configs in VENICE HOME directory and
-        // initialize Venice server from there. Assumes config directory
-        // can be obtained from venice homes directory
+        veniceConfig = VeniceConfig.loadFromEnvironmentVariable();
       } else if (args.length == 1) {
-        veniceConfig = VeniceConfig.initializeFromFile(args[0]);
-      } else {
-        Utils.croak("USAGE: java " + VeniceServer.class.getName() + " [venice_home_dir]");
+        veniceConfig = VeniceConfig.loadFromVeniceHome(args[0]);
+      } else if(args.length == 2){
+         veniceConfig = VeniceConfig.loadFromVeniceHome(args[0], args[1]);
+      } else{
+        Utils.croak("USAGE: java " + VeniceServer.class.getName() + " [venice_home_dir]  [venice_config_dir] ");
       }
     } catch (Exception e) {
       logger.error(e.getMessage());

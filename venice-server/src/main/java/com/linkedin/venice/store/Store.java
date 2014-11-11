@@ -1,28 +1,14 @@
 package com.linkedin.venice.store;
 
 import com.linkedin.venice.storage.VeniceStorageException;
+import com.linkedin.venice.utils.Utils;
 
 
 /**
  * The basic interface used for storage. Allows the usual CRUD operations.
  */
 
-public interface Store {
-
-  /**
-   * @return The name of the Store
-   */
-  public String getName();
-
-  /**
-   * Get the value associated with the given key
-   *
-   * @param key The key to check for
-   * @return The value associated with the key or an empty list if no values are found.
-   * @throws VeniceStorageException
-   */
-  public byte[] get(byte[] key)
-      throws VeniceStorageException;
+public interface Store extends QueryStore {
 
   /**
    * Associate the value with the key in this store
@@ -46,13 +32,5 @@ public interface Store {
    * @throws VeniceStorageException
    */
   public void delete(byte[] key)
-      throws VeniceStorageException;
-
-  /**
-   * Close the store.
-   *
-   * @throws VeniceStorageException If closing fails.
-   */
-  public void close()
       throws VeniceStorageException;
 }

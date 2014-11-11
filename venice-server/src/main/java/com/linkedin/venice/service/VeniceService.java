@@ -14,12 +14,14 @@ public interface VeniceService {
   /**
    * Start the service.
    */
-  public void start();
+  public void start()
+      throws Exception;
 
   /**
    * Stop the service
    */
-  public void stop();
+  public void stop()
+      throws Exception;
 
   /**
    * @return true iff the service is started
