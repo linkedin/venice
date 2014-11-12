@@ -45,18 +45,6 @@ public abstract class AbstractPartitionNodeAssignmentScheme {
   }
 
   /**
-   * Given the store name and the propagation layer's logical partition id derive the venice storage
-   * logical partition id
-   *
-   * @param storeName  The venice storeName
-   * @param logicalPartitionId The partition id of the propagating layer for the given store
-   * @return venice storage logical partition id
-   */
-  public static String getStoragePartitionId(String storeName, int logicalPartitionId) {
-    return storeName + "_" + logicalPartitionId;
-  }
-
-  /**
    * When a new Venice Store is added (a new topic is added). The corresponding logical partitions from the propagating
    * layer need to be mapped to nodes. This method returns such a mapping and the caller of this method creates
    * new Venice storage partitions based on the mapping and updates the PartitionNodeAssignmentRepository.

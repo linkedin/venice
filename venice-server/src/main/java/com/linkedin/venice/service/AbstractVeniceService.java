@@ -22,7 +22,6 @@ public abstract class AbstractVeniceService {
     return this.serviceName;
   }
 
-
   public void start()
       throws Exception {
     boolean isntStarted = isStarted.compareAndSet(false, true);

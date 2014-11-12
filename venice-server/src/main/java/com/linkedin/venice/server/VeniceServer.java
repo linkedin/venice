@@ -119,7 +119,7 @@ public class VeniceServer {
     // "Stopping services on Node: <node-id>"
     // - Need to get current ode id
     // information
-		/* Stop in reverse order */
+    /* Stop in reverse order */
     for (AbstractVeniceService service : Utils.reversed(services)) {
       try {
         service.stop();
@@ -149,9 +149,9 @@ public class VeniceServer {
         veniceConfig = VeniceConfig.loadFromEnvironmentVariable();
       } else if (args.length == 1) {
         veniceConfig = VeniceConfig.loadFromVeniceHome(args[0]);
-      } else if(args.length == 2){
-         veniceConfig = VeniceConfig.loadFromVeniceHome(args[0], args[1]);
-      } else{
+      } else if (args.length == 2) {
+        veniceConfig = VeniceConfig.loadFromVeniceHome(args[0], args[1]);
+      } else {
         Utils.croak("USAGE: java " + VeniceServer.class.getName() + " [venice_home_dir]  [venice_config_dir] ");
       }
     } catch (Exception e) {
