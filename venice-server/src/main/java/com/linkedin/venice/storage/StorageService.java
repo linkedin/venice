@@ -2,7 +2,7 @@ package com.linkedin.venice.storage;
 
 import com.linkedin.venice.server.StoreRepository;
 import com.linkedin.venice.server.VeniceConfig;
-import com.linkedin.venice.service.AbstractService;
+import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.store.StorageEngine;
 import com.linkedin.venice.store.StorageEngineFactory;
 import com.linkedin.venice.store.Store;
@@ -19,7 +19,7 @@ import java.util.concurrent.ConcurrentMap;
 import org.apache.log4j.Logger;
 
 
-public class StorageService extends AbstractService {
+public class StorageService extends AbstractVeniceService {
 
   private static final Logger logger = Logger.getLogger(StorageService.class.getName());
 
@@ -113,11 +113,9 @@ public class StorageService extends AbstractService {
   public void registerEngine(StorageEngine engine)
       throws Exception {
     storeRepository.addLocalStorageEngine(engine);
-    storeRepository.addLocalStore(engine);
   }
 
   public void removeEngine(StorageEngine engine) {
-    storeRepository.removeLocalStore(engine.getName());
     storeRepository.removeLocalStorageEngine(engine.getName());
   }
 

@@ -5,25 +5,24 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 
 /**
- * A helper template for implementing VeniceService
+ * Blueprint for all Services initiated from Venice Server
  *
  *
  */
-public abstract class AbstractService implements VeniceService {
+public abstract class AbstractVeniceService {
   private final String serviceName;
   private final AtomicBoolean isStarted;
 
-  public AbstractService(String serviceName) {
+  public AbstractVeniceService(String serviceName) {
     this.serviceName = Utils.notNull(serviceName);
     isStarted = new AtomicBoolean(false);
   }
 
-  @Override
   public String getName() {
     return this.serviceName;
   }
 
-  @Override
+
   public void start()
       throws Exception {
     boolean isntStarted = isStarted.compareAndSet(false, true);
@@ -34,7 +33,6 @@ public abstract class AbstractService implements VeniceService {
     startInner();
   }
 
-  @Override
   public void stop()
       throws Exception {
     synchronized (this) {
@@ -46,7 +44,6 @@ public abstract class AbstractService implements VeniceService {
     }
   }
 
-  @Override
   public boolean isStarted() {
     return this.isStarted.get();
   }

@@ -3,12 +3,12 @@ package com.linkedin.venice.server;
 import com.google.common.collect.ImmutableList;
 import com.linkedin.venice.kafka.consumer.KafkaConsumerPartitionManager;
 import com.linkedin.venice.kafka.consumer.KafkaConsumerException;
+import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.storage.InMemoryStorageNode;
 import com.linkedin.venice.storage.StorageType;
 import com.linkedin.venice.storage.VeniceStorageException;
 import com.linkedin.venice.storage.VeniceStorageNode;
 import com.linkedin.venice.utils.Utils;
-import com.linkedin.venice.service.VeniceService;
 import org.apache.log4j.Logger;
 
 import java.util.ArrayList;
@@ -27,7 +27,7 @@ public class VeniceServer {
 
   private StorageType storageType;
 
-  private final List<VeniceService> services;
+  private final List<AbstractVeniceService> services;
 
   // a temporary variable to store InMemory Nodes
   // NOTE: for any Non-InMemory instances, this will not be used, as each
@@ -52,9 +52,9 @@ public class VeniceServer {
     return isStarted.get();
   }
 
-  private List<VeniceService> createServices() {
+  private List<AbstractVeniceService> createServices() {
     /* Services are created in the order they must be started */
-    List<VeniceService> services = new ArrayList<VeniceService>();
+    List<AbstractVeniceService> services = new ArrayList<AbstractVeniceService>();
 
     // TODO create services for Kafka Consumer and Storage
 
@@ -67,7 +67,7 @@ public class VeniceServer {
     // TODO - Efficient way to lock java heap
     logger.info("Starting " + services.size() + " services.");
     long start = System.currentTimeMillis();
-    for (VeniceService service : services) {
+    for (AbstractVeniceService service : services) {
       service.start();
     }
     long end = System.currentTimeMillis();
@@ -120,7 +120,7 @@ public class VeniceServer {
     // - Need to get current ode id
     // information
 		/* Stop in reverse order */
-    for (VeniceService service : Utils.reversed(services)) {
+    for (AbstractVeniceService service : Utils.reversed(services)) {
       try {
         service.stop();
       } catch (Exception e) {
