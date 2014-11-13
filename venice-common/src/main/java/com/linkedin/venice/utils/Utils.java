@@ -91,8 +91,6 @@ public class Utils {
     try {
       inputStream = new FileInputStream(configFileName);
       props.load(inputStream);
-    } catch (Exception e) {
-      throw e;
     } finally {
       if (inputStream != null) {
         inputStream.close();
@@ -114,8 +112,6 @@ public class Utils {
     try {
       inputStream = new FileInputStream(propertyFile);
       props.load(inputStream);
-    } catch (Exception e) {
-      throw e;
     } finally {
       if (inputStream != null) {
         inputStream.close();
