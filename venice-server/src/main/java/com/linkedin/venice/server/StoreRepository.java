@@ -1,13 +1,9 @@
 package com.linkedin.venice.server;
 
+import com.linkedin.venice.store.AbstractStorageEngine;
 import com.linkedin.venice.store.QueryStore;
-import com.linkedin.venice.store.StorageEngine;
-import com.linkedin.venice.store.Store;
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.List;
-import java.util.Map;
-import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import org.apache.log4j.Logger;
@@ -36,11 +32,11 @@ public class StoreRepository {
   /**
    *   Local storage engine for this node. This is lowest level persistence abstraction, these StorageEngines provide an iterator over their values.
    */
-  private final ConcurrentMap<String, StorageEngine> localStorageEngines;
+  private final ConcurrentMap<String, AbstractStorageEngine> localStorageEngines;
 
   public StoreRepository() {
     this.localStores = new ConcurrentHashMap<String, QueryStore>();
-    this.localStorageEngines = new ConcurrentHashMap<String, StorageEngine>();
+    this.localStorageEngines = new ConcurrentHashMap<String, AbstractStorageEngine>();
   }
 
   /*
@@ -78,17 +74,17 @@ public class StoreRepository {
     return this.localStorageEngines.containsKey(name);
   }
 
-  public StorageEngine getLocalStorageEngine(String storeName) {
+  public AbstractStorageEngine getLocalStorageEngine(String storeName) {
     return this.localStorageEngines.get(storeName);
   }
 
-  public StorageEngine removeLocalStorageEngine(String storeName) {
+  public AbstractStorageEngine removeLocalStorageEngine(String storeName) {
     this.removeLocalStore(storeName);
     return this.localStorageEngines.remove(storeName);
   }
 
-  public void addLocalStorageEngine(StorageEngine engine) {
-    StorageEngine found = this.localStorageEngines.putIfAbsent(engine.getName(), engine);
+  public void addLocalStorageEngine(AbstractStorageEngine engine) {
+    AbstractStorageEngine found = this.localStorageEngines.putIfAbsent(engine.getName(), engine);
     if (found != null) {
       logger.error("Storage Engine '" + engine.getName() + "' has already been initialized.");
       // TODO throw VeniceException
@@ -96,7 +92,7 @@ public class StoreRepository {
     this.addLocalStore((QueryStore) engine);
   }
 
-  public List<StorageEngine> getAllLocalStorageEngines() {
-    return new ArrayList<StorageEngine>(this.localStorageEngines.values());
+  public List<AbstractStorageEngine> getAllLocalStorageEngines() {
+    return new ArrayList<AbstractStorageEngine>(this.localStorageEngines.values());
   }
 }

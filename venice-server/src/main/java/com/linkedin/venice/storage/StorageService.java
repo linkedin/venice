@@ -3,7 +3,7 @@ package com.linkedin.venice.storage;
 import com.linkedin.venice.server.StoreRepository;
 import com.linkedin.venice.server.VeniceConfig;
 import com.linkedin.venice.service.AbstractVeniceService;
-import com.linkedin.venice.store.StorageEngine;
+import com.linkedin.venice.store.AbstractStorageEngine;
 import com.linkedin.venice.store.StorageEngineFactory;
 import com.linkedin.venice.store.Store;
 import com.linkedin.venice.utils.ReflectUtils;
@@ -71,9 +71,9 @@ public class StorageService extends AbstractVeniceService {
   //TODO later change properties into StoreDefinition class
   // TODO Later change to Guice instead of Java reflections
   // This method can also be called from an admin service to add new store.
-  public StorageEngine openStore(Properties storeDefinition) {
+  public AbstractStorageEngine openStore(Properties storeDefinition) {
     String persistenceType = storeDefinition.getProperty("persistence.type");
-    StorageEngine engine = null;
+    AbstractStorageEngine engine = null;
     StorageEngineFactory factory = null;
 
     // Instantiate the factory for this persistence type if not already present
@@ -110,12 +110,12 @@ public class StorageService extends AbstractVeniceService {
     return engine;
   }
 
-  public void registerEngine(StorageEngine engine)
+  public void registerEngine(AbstractStorageEngine engine)
       throws Exception {
     storeRepository.addLocalStorageEngine(engine);
   }
 
-  public void removeEngine(StorageEngine engine) {
+  public void removeEngine(AbstractStorageEngine engine) {
     storeRepository.removeLocalStorageEngine(engine.getName());
   }
 

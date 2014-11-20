@@ -19,7 +19,7 @@ public interface StorageEngineFactory {
    * @param storeDef  store definition
    * @return The storage engine
    */
-  public StorageEngine getStore(Properties storeDef);
+  public AbstractStorageEngine getStore(Properties storeDef);
 
   /**
    *
@@ -44,6 +44,6 @@ public interface StorageEngineFactory {
    *
    * @param engine Specifies the storage engine to be removed
    */
-  public void removeStorageEngine(StorageEngine engine);
+  public void removeStorageEngine(AbstractStorageEngine engine);
 }
 

@@ -3,6 +3,9 @@ package com.linkedin.venice.server;
 import com.google.common.collect.ImmutableMap;
 import com.linkedin.venice.storage.StorageType;
 
+import com.linkedin.venice.store.memory.InMemoryStorageEngineFactory;
+import com.linkedin.venice.utils.ConfigurationException;
+import com.linkedin.venice.utils.UndefinedPropertyException;
 import com.linkedin.venice.utils.Utils;
 import java.io.File;
 import java.util.Map;
@@ -22,12 +25,15 @@ public class VeniceConfig {
 
   public static final String VENICE_HOME_VAR_NAME = "VENICE_HOME";
   public static final String VENICE_CONFIG_DIR = "VENICE_CONFIG_DIR";
-  public final static String CONFIG_FILE_NAME = "config.properties";
-  public final static String STORE_DEFINITIONS_DIR_NAME = "STORES";
+  public static final String CONFIG_FILE_NAME = "config.properties";
+  public static final String STORE_DEFINITIONS_DIR_NAME = "STORES";
+  private static final String VENICE_NODE_ID_VAR_NAME = "VENICE_NODE_ID";
 
   private Map<String, String> storageEngineFactoryClassNameMap;
 
   private String CONFIG_DIR_ABSOLUTE_PATH;
+
+  private int nodeId;
 
   // Kafka related properties
   private int numKafkaPartitions;
@@ -42,6 +48,11 @@ public class VeniceConfig {
   private int numStorageCopies;
 
   public VeniceConfig(Properties props) {
+    try {
+      this.nodeId = Integer.parseInt(props.getProperty("node.id"));
+    } catch (UndefinedPropertyException e) {
+      this.nodeId = getIntEnvVariable(VENICE_NODE_ID_VAR_NAME);
+    }
     numKafkaPartitions = Integer.parseInt(props.getProperty("kafka.number.partitions", "4"));
     kafKaZookeeperUrl = props.getProperty("kafka.zookeeper.url", "localhost:2181");
     kafkaBrokerUrl = props.getProperty("kafka.broker.url", "localhost:9092");
@@ -61,6 +72,19 @@ public class VeniceConfig {
         .of("inMemory", InMemoryStorageEngineFactory.class.getName(), "bdb", BdbStorageEngineFactory.class.getName());
 
     validateParams();
+  }
+
+  private int getIntEnvVariable(String name) {
+    String var = System.getenv(name);
+    if (var == null) {
+      throw new ConfigurationException("The environment variable " + name + " is not defined.");
+    }
+    try {
+      return Integer.parseInt(var);
+    } catch (NumberFormatException e) {
+      throw new ConfigurationException("Invalid format for environment variable " + name + ", expecting an integer.",
+          e);
+    }
   }
 
   public void setConfigDirAbsolutePath(String configDirPath) {
@@ -246,5 +270,17 @@ public class VeniceConfig {
 
   public void setStorageEngineFactoryClassNameMap(Map storageEngineFactoryClassNameMap) {
     this.storageEngineFactoryClassNameMap = storageEngineFactoryClassNameMap;
+  }
+
+  public int getNodeId() {
+    return nodeId;
+  }
+
+  /**
+   * Id of the server(a.k.a. node) within the cluster
+   * @param nodeId
+   */
+  public void setNodeId(int nodeId) {
+    this.nodeId = nodeId;
   }
 }
