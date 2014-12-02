@@ -5,7 +5,7 @@ package com.linkedin.venice.utils;
  */
 public class ConfigurationException extends RuntimeException {
 
-  final static long serialVersionUID = 1;
+  final static long serialVersionUID = 1L;
 
   public ConfigurationException(String message) {
     super(message);
