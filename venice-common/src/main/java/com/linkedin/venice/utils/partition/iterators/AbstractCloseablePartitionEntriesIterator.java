@@ -10,7 +10,7 @@ import java.util.NoSuchElementException;
 /**
  * An abstract implementation to iterate through the entries in the database
  *
- * The constructor and fetchNextKey() needs to be implemented by the specific storage engine/ storage partition implementations
+ * The constructor and fetchNextEntry() needs to be implemented by the specific storage engine/ storage partition implementations
  */
 public abstract class AbstractCloseablePartitionEntriesIterator implements Iterator<Map.Entry<byte[], byte[]>>, Closeable {
 
@@ -24,7 +24,7 @@ public abstract class AbstractCloseablePartitionEntriesIterator implements Itera
     return currentEntry != null || fetchNextEntry();
   }
 
-  public abstract boolean fetchNextEntry();
+  protected abstract boolean fetchNextEntry();
 
   @Override
   public Map.Entry<byte[], byte[]> next() {

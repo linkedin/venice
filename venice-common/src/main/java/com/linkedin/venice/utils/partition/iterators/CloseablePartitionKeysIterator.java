@@ -13,7 +13,7 @@ import java.util.Map;
  * Gets an entry iterator and filters out the value part.
  */
 public class CloseablePartitionKeysIterator implements Iterator<byte[]>, Closeable {
-  byte[] currentEntry = null;
+  byte[] currentEntry;
   private final AbstractCloseablePartitionEntriesIterator entriesIterator;
 
   public CloseablePartitionKeysIterator(AbstractCloseablePartitionEntriesIterator entriesIterator) {

@@ -10,7 +10,7 @@ import com.linkedin.venice.utils.partition.iterators.CloseablePartitionKeysItera
  * on the storage-partition model.
  */
 public abstract class AbstractStoragePartition {
-  public final Integer partitionId;
+  private final Integer partitionId;
 
   public AbstractStoragePartition(Integer partitionId) {
     this.partitionId = partitionId;
