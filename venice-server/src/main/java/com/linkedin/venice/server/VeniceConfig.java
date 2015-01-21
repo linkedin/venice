@@ -41,6 +41,7 @@ public class VeniceConfig {
   private String kafkaBrokerUrl;
   private int kafkaBrokerPort;
   private List<String> brokerList;
+  private int numKafkaConsumerThreads;
 
   // Storage related properties
   private StorageType storageType;
@@ -57,7 +58,8 @@ public class VeniceConfig {
     kafKaZookeeperUrl = props.getProperty("kafka.zookeeper.url", "localhost:2181");
     kafkaBrokerUrl = props.getProperty("kafka.broker.url", "localhost:9092");
     kafkaBrokerPort = Integer.parseInt(props.getProperty("kafka.broker.port", "9092"));
-
+    numKafkaConsumerThreads = Integer.parseInt(props.getProperty("kafka.number.consumer.threads",
+        "50"));   //TODO This variable and default value needs to be set to an appropriate value later
     numStorageNodes = Integer.parseInt(props.getProperty("kafka.number.partitions", "4"));
     try {
       storageType = convertToStorageType(props.getProperty("storage.type", "memory"));
@@ -234,6 +236,14 @@ public class VeniceConfig {
 
   public void setBrokerList(List<String> brokerList) {
     this.brokerList = brokerList;
+  }
+
+  public int getKafkaConsumerThreads() {
+    return this.numKafkaConsumerThreads;
+  }
+
+  public void setKafkaConsumerThreads(int numKafkaConsumerThreads) {
+    this.numKafkaConsumerThreads = numKafkaConsumerThreads;
   }
 
   public StorageType getStorageType() {

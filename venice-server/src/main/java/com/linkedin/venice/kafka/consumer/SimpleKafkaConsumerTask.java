@@ -1,12 +1,11 @@
 package com.linkedin.venice.kafka.consumer;
 
-import com.linkedin.venice.server.VeniceConfig;
 import com.linkedin.venice.serialization.VeniceMessageSerializer;
 import com.linkedin.venice.storage.VeniceMessageException;
 import com.linkedin.venice.storage.VeniceStorageException;
-import com.linkedin.venice.storage.VeniceStorageNode;
 import com.linkedin.venice.message.VeniceMessage;
 
+import com.linkedin.venice.store.AbstractStorageEngine;
 import org.apache.log4j.Logger;
 
 import kafka.api.FetchRequest;
@@ -40,7 +39,6 @@ import java.util.Collections;
 
 /**
  * Runnable class which performs Kafka consumption from the Simple Consumer API.
- * Consumption is performed on a map of <topic, partitionids>
  */
 public class SimpleKafkaConsumerTask implements Runnable {
 
@@ -64,25 +62,25 @@ public class SimpleKafkaConsumerTask implements Runnable {
   //Back off duration between metadata fetch retries.
   private int metadataRefreshBackoffMs;
 
-  // Topic-partitions that will be consumed.
-  private Map<String, Collection<Integer>> topicPartitions;
   // Replica kafka brokers
   private List<String> replicaBrokers;
+
   // storage destination for consumption
-  private VeniceStorageNode node;
+  private AbstractStorageEngine storageEngine;
 
   private String topic;
   private int partition;
 
-  public SimpleKafkaConsumerTask(SimpleKafkaConsumerConfig config, VeniceStorageNode node, String topic, int partition,
-      int port) {
+  public SimpleKafkaConsumerTask(SimpleKafkaConsumerConfig config, AbstractStorageEngine storageEngine, String topic,
+      int partition, int port) {
 
     this.seedBrokers = config.getSeedBrokers();
     this.fetchBufferSize = config.getFetchBufferSize();
     this.socketTimeoutMs = config.getSocketTimeoutMs();
     this.numMetadataRefreshRetries = config.getNumMetadataRefreshRetries();
     this.metadataRefreshBackoffMs = config.getMetadataRefreshBackoffMs();
-    this.node = node;
+    this.storageEngine = storageEngine;
+    this.port = port;
 
     messageSerializer = new VeniceMessageSerializer(new VerifiableProperties());
     this.replicaBrokers = new ArrayList<String>();
@@ -91,7 +89,7 @@ public class SimpleKafkaConsumerTask implements Runnable {
   }
 
   /**
-   *  Parallelized method which performs Kafka consumption and relays messages to the Storage Node
+   *  Parallelized method which performs Kafka consumption and relays messages to the Storage engine
    * */
   public void run() {
 
@@ -194,7 +192,8 @@ public class SimpleKafkaConsumerTask implements Runnable {
           e.printStackTrace();
         } catch (VeniceStorageException e) {
 
-          logger.error("Venice Storage Node with nodeId " + node.getNodeId() + " has been corrupted! Exiting...");
+          logger
+              .error("Venice Storage Engine for store: " + storageEngine.getName() + " has been corrupted! Exiting...");
           logger.error(e);
           e.printStackTrace();
 
@@ -219,7 +218,7 @@ public class SimpleKafkaConsumerTask implements Runnable {
   }
 
   /**
-   * Given the attached Node, interpret the VeniceMessage and perform the required action
+   * Given the attached storage engine, interpret the VeniceMessage and perform the required action
    * */
   private void readMessage(String key, VeniceMessage msg)
       throws VeniceMessageException, VeniceStorageException {
@@ -238,13 +237,13 @@ public class SimpleKafkaConsumerTask implements Runnable {
       // adding new values
       case PUT:
         logger.info("Putting: " + key + ", " + msg.getPayload());
-        node.put(partition, key, msg.getPayload());
+        storageEngine.put(partition, key.getBytes(), msg.getPayload().getBytes());
         break;
 
       // deleting values
       case DELETE:
         logger.info("Deleting: " + key);
-        node.delete(partition, key);
+        storageEngine.delete(partition, key.getBytes());
         break;
 
       // partial update
@@ -320,7 +319,7 @@ public class SimpleKafkaConsumerTask implements Runnable {
       // introduce thread delay - for reasons above
       if (goToSleep) {
         try {
-          Thread.sleep(1000);
+          Thread.sleep(this.metadataRefreshBackoffMs);
         } catch (InterruptedException ie) {
         }
       }

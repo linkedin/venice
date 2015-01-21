@@ -30,7 +30,7 @@ public class SimpleKafkaConsumerConfig {
     this.fetchBufferSize = 64 * 1024;
     this.socketTimeoutMs = 100;
     this.numMetadataRefreshRetries = 3;
-    this.metadataRefreshBackoffMs = 10;
+    this.metadataRefreshBackoffMs = 1000;
   }
 
   public int getFetchBufferSize() {

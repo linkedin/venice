@@ -9,6 +9,12 @@ import com.linkedin.venice.storage.StorageType;
 import com.linkedin.venice.storage.VeniceStorageException;
 import com.linkedin.venice.storage.VeniceStorageNode;
 import com.linkedin.venice.utils.Utils;
+import java.io.File;
+import java.io.FilenameFilter;
+import java.util.Arrays;
+import java.util.Properties;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 import org.apache.log4j.Logger;
 
 import java.util.ArrayList;
@@ -34,10 +40,17 @@ public class VeniceServer {
   // Venice instance should be its own Node.
   private static Map<Integer, VeniceStorageNode> storeNodeMap;
 
+  private final ConcurrentMap<String, Properties> storeDefinitionsMap;
+
   public VeniceServer(VeniceConfig veniceConfig) {
     this.isStarted = new AtomicBoolean(false);
     this.veniceConfig = veniceConfig;
     this.storageType = veniceConfig.getStorageType();
+    this.storeDefinitionsMap = new ConcurrentHashMap<String, Properties>();
+
+    //initialize all store definitions
+    this.initStoreDefinitions();
+
     this.services = createServices();
 
 		/*
@@ -50,6 +63,41 @@ public class VeniceServer {
 
   public boolean isStarted() {
     return isStarted.get();
+  }
+
+  /**
+   * Go over the list of configured stores and initialize
+   * 1. store definitions map
+   *
+   * Note that the individual configs include both storage and streaming layer (i.e. kafka) specific configs for each Venice store
+   */
+  private void initStoreDefinitions() {
+    logger.info("Initializing store definitions:");
+    File storeDefinitionsDir =
+        new File(veniceConfig.getConfigDirAbsolutePath() + File.separator + veniceConfig.STORE_DEFINITIONS_DIR_NAME);
+    if (!Utils.isReadableDir(storeDefinitionsDir)) {
+      logger.error(
+          "Either the " + VeniceConfig.STORE_DEFINITIONS_DIR_NAME + " directory does not exist or is not readable.");
+      // TODO throw exception and stop
+    }
+
+    // Get all .properties file in STORES directory
+    List<File> storeConfigurationFiles = Arrays.asList(storeDefinitionsDir.listFiles(new FilenameFilter() {
+      @Override
+      public boolean accept(File dir, String name) {
+        return name.endsWith(".properties");
+      }
+    }));
+
+    //parse the properties for each store
+    for (File storeDef : storeConfigurationFiles) {
+      try {
+        Properties prop = Utils.parseProperties(storeDef);
+        storeDefinitionsMap.putIfAbsent(prop.getProperty("name"), prop);
+      } catch (Exception e) {
+        e.printStackTrace();
+      }
+    }
   }
 
   private List<AbstractVeniceService> createServices() {

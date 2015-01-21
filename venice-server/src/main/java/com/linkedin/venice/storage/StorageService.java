@@ -19,6 +19,9 @@ import java.util.concurrent.ConcurrentMap;
 import org.apache.log4j.Logger;
 
 
+/**
+ * Storage interface to Venice Server. Manages creation and deletion of of Storage engines and maintenance of StoreRepository
+ */
 public class StorageService extends AbstractVeniceService {
 
   private static final Logger logger = Logger.getLogger(StorageService.class.getName());
@@ -28,49 +31,26 @@ public class StorageService extends AbstractVeniceService {
   private final ConcurrentMap<String, StorageEngineFactory> storageEngineFactoryMap;
   private final ConcurrentMap<String, Properties> storeDefinitionsMap;
 
-  public StorageService(StoreRepository storeRepository, VeniceConfig veniceConfig) {
+  public StorageService(StoreRepository storeRepository, VeniceConfig veniceConfig,
+      ConcurrentMap<String, Properties> storeDefinitionsMap) {
     super("storage-service");
     this.storeRepository = storeRepository;
     this.veniceConfig = veniceConfig;
     this.storageEngineFactoryMap = new ConcurrentHashMap<String, StorageEngineFactory>();
-    this.storeDefinitionsMap = new ConcurrentHashMap<String, Properties>();
-  }
-
-  /**
-   * Go over the list of configured stores and initialize
-   * 1. store definitions map
-   */
-  private void initStoreDefinitions() {
-    File storeDefinitionsDir =
-        new File(veniceConfig.getConfigDirAbsolutePath() + File.separator + veniceConfig.STORE_DEFINITIONS_DIR_NAME);
-    if (!Utils.isReadableDir(storeDefinitionsDir)) {
-      logger.error(
-          "Either the " + VeniceConfig.STORE_DEFINITIONS_DIR_NAME + " directory does not exist or is not readable.");
-      // TODO throw exception and stop
-    }
-
-    // Get all .properties file in STORES directory
-    List<File> storeConfigurationFiles = Arrays.asList(storeDefinitionsDir.listFiles(new FilenameFilter() {
-      @Override
-      public boolean accept(File dir, String name) {
-        return name.endsWith(".properties");
-      }
-    }));
-
-    //parse the properties for each store
-    for (File storeDef : storeConfigurationFiles) {
-      try {
-        Properties prop = Utils.parseProperties(storeDef);
-        storeDefinitionsMap.putIfAbsent(prop.getProperty("name"), prop);
-      } catch (Exception e) {
-        e.printStackTrace();
-      }
-    }
+    this.storeDefinitionsMap = storeDefinitionsMap;
   }
 
   //TODO later change properties into StoreDefinition class
   // TODO Later change to Guice instead of Java reflections
   // This method can also be called from an admin service to add new store.
+
+  /**
+   * Creates a StorageEngineFactory for the persistence type if not already present.
+   * Creates a new storage engine for the given store in the factory and registers the storage engine with the store repository.
+   *
+   * @param storeDefinition   The store specific properties
+   * @return StorageEngine that was created for the given store definition.
+   */
   public AbstractStorageEngine openStore(Properties storeDefinition) {
     String persistenceType = storeDefinition.getProperty("persistence.type");
     AbstractStorageEngine engine = null;
@@ -110,11 +90,22 @@ public class StorageService extends AbstractVeniceService {
     return engine;
   }
 
+  /**
+   * Adds the storage engine to the store repository.
+   *
+   * @param engine  StorageEngine to add
+   * @throws Exception
+   */
   public void registerEngine(AbstractStorageEngine engine)
       throws Exception {
     storeRepository.addLocalStorageEngine(engine);
   }
 
+  /**
+   * Removes the StorageEngine from the store repository
+   *
+   * @param engine StorageEngine to remove
+   */
   public void removeEngine(AbstractStorageEngine engine) {
     storeRepository.removeLocalStorageEngine(engine.getName());
   }
@@ -122,10 +113,6 @@ public class StorageService extends AbstractVeniceService {
   @Override
   public void startInner()
       throws Exception {
-
-    //initialize all store definitions
-    initStoreDefinitions();
-
     logger.info("Initializing stores:");
 
     /*Loop through the stores. Create the Factory if needed, open the storage engine and
