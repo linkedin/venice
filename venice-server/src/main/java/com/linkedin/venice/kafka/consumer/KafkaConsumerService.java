@@ -4,7 +4,6 @@ import com.linkedin.venice.server.PartitionNodeAssignmentRepository;
 import com.linkedin.venice.server.StoreRepository;
 import com.linkedin.venice.server.VeniceConfig;
 import com.linkedin.venice.service.AbstractVeniceService;
-import com.linkedin.venice.storage.VeniceStorageNode;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Properties;
@@ -18,8 +17,8 @@ import org.apache.log4j.Logger;
 // TODO later separate kafka global and local configs
 
 /**
- * Acts as the running Kafka interface to Venice. Manages the creation of kafka partitions for all stores hosted by
- * this node.
+ * Acts as the running Kafka interface to Venice. "Manages the consumption of Kafka partitions for each kafka topic
+ * consumed by this node.
  */
 public class KafkaConsumerService extends AbstractVeniceService {
 
@@ -28,33 +27,35 @@ public class KafkaConsumerService extends AbstractVeniceService {
   private final StoreRepository storeRepository;
   private final VeniceConfig veniceConfig;
   private final PartitionNodeAssignmentRepository partitionNodeAssignmentRepository;
-  private final ConcurrentMap<String, Properties> storeDefinitionsMap;
+  private final ConcurrentMap<String, Properties> topicToStoreConfig;
 
-  /*A repository of kafka topic to their corresponding partitions and the kafka consumer tasks. This may be used in future for monitoring purposes. etc. */
-  private final ConcurrentMap<String, Map<Integer, SimpleKafkaConsumerTask>>
-      topicNameToPartitionIdAndKafkaConsumerTasksMap;
+  /**
+   * A repository of kafka topic to their corresponding partitions and the kafka consumer tasks. This may be used in
+   * future for monitoring purposes. etc.
+   * TODO: Make this a concurrent map if atomicity is needed in future
+   */
+  private final Map<String, Map<Integer, SimpleKafkaConsumerTask>> topicNameToPartitionIdAndKafkaConsumerTasksMap;
 
-  private ExecutorService consumerWorkerThreads;
+  private ExecutorService consumerExecutorService;
 
   //TODO instantiate, populate PartitionNodeAssignmentRepository in VeniceServer and pass it here.
   public KafkaConsumerService(StoreRepository storeRepository, VeniceConfig veniceConfig,
       PartitionNodeAssignmentRepository partitionNodeAssignmentRepository,
-      ConcurrentMap<String, Properties> storeDefinitionsMap) {
+      ConcurrentMap<String, Properties> topicToStoreConfig) {
     super("kafka-consumer-service");
     this.storeRepository = storeRepository;
     this.veniceConfig = veniceConfig;
     this.partitionNodeAssignmentRepository = partitionNodeAssignmentRepository;
-    this.storeDefinitionsMap = storeDefinitionsMap;
-    this.topicNameToPartitionIdAndKafkaConsumerTasksMap =
-        new ConcurrentHashMap<String, Map<Integer, SimpleKafkaConsumerTask>>();
+    this.topicToStoreConfig = topicToStoreConfig;
+    this.topicNameToPartitionIdAndKafkaConsumerTasksMap = new HashMap<String, Map<Integer, SimpleKafkaConsumerTask>>();
   }
 
   @Override
   public void startInner()
       throws Exception {
     logger.info("starting all kafka consumer tasks on node: " + veniceConfig.getNodeId());
-    consumerWorkerThreads = Executors.newFixedThreadPool(veniceConfig.getKafkaConsumerThreads());
-    for (Map.Entry<String, Properties> entry : storeDefinitionsMap.entrySet()) {
+    consumerExecutorService = Executors.newFixedThreadPool(veniceConfig.getKafkaConsumerThreads());
+    for (Map.Entry<String, Properties> entry : topicToStoreConfig.entrySet()) {
       String topic = entry.getKey();
       Properties storeConfig = entry.getValue();
       Map<Integer, SimpleKafkaConsumerTask> partitionIdToKafkaConsumerTaskMap;
@@ -66,7 +67,7 @@ public class KafkaConsumerService extends AbstractVeniceService {
       for (int partitionId : partitionNodeAssignmentRepository
           .getLogicalPartitionIds(topic, veniceConfig.getNodeId())) {
         SimpleKafkaConsumerTask kafkaConsumerTask = getConsumerTask(topic, partitionId, entry.getValue());
-        consumerWorkerThreads.submit(kafkaConsumerTask);
+        consumerExecutorService.submit(kafkaConsumerTask);
         partitionIdToKafkaConsumerTaskMap.put(partitionId, kafkaConsumerTask);
       }
       this.topicNameToPartitionIdAndKafkaConsumerTasksMap.put(topic, partitionIdToKafkaConsumerTaskMap);
@@ -93,8 +94,8 @@ public class KafkaConsumerService extends AbstractVeniceService {
   public void stopInner()
       throws Exception {
     logger.info("Shutting down Kafka consumer service for node: " + veniceConfig.getNodeId());
-    if (consumerWorkerThreads != null) {
-      consumerWorkerThreads.shutdown();
+    if (consumerExecutorService != null) {
+      consumerExecutorService.shutdown();
     }
     logger.info("Shut down complete");
   }

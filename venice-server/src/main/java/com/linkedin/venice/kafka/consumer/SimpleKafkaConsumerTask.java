@@ -110,6 +110,19 @@ public class SimpleKafkaConsumerTask implements Runnable {
     String clientName = "Client_" + topic + "_" + partition;
 
     SimpleConsumer consumer = new SimpleConsumer(leadBroker, port, socketTimeoutMs, fetchBufferSize, clientName);
+
+    /*
+    * The LatestTime() gives the last offset from Kafka log, instead of the last consumed offset. So in case where a
+    * consumer goes down and is instantiated, it starts to consume new messages and there is a possibility for missing
+    * data that were produced in between. So we need to manage the offsets explicitly.
+    * TODO: Create a common BDB store that manages offset for each kafka partition for every topic. getLastOffset will
+    * then need to read the latest offset from the BDB store instead of using the LatestTime() offset from Kafka.
+    *
+    * The BDB store maintianing offsets should have these data - topic, partitio id , original time stamp from the
+    * message, time when it was received.offset. This BDB store sould have special properties such that it is flushed
+    * to disk only once every 5 or 10 seconds. And we update the bdb store (in memory) for every record. This will give
+    * us the capability to monitor consumption rate for each kafka partition.
+    * */
     long readOffset = getLastOffset(consumer, topic, partition, kafka.api.OffsetRequest.LatestTime(), clientName);
 
     int numErrors = 0;
