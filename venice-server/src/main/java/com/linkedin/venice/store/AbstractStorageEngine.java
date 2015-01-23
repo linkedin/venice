@@ -59,6 +59,29 @@ public abstract class AbstractStorageEngine implements Store {
   }
 
   /**
+   * Return true or false based on whether a given partition exists within this storage engine
+   * @param partitionId  The partition to look for
+   * @return True/False, does the partition exist on this node
+   */
+  public boolean containsPartition(int partitionId) {
+    return partitionIdToDataBaseMap.containsKey(partitionId);
+  }
+
+  /**
+   * Adds a partition to the current store
+   *
+   * @param partitionId  - id of partition to add
+   */
+  public abstract void addStoragePartition(int partitionId);
+
+  /**
+   * Removes and returns a partition from the current store
+   * @param partitionId  - id of partition to retrieve and remove
+   * @return The AbstractStoragePartition object removed by this operation
+   */
+  public abstract AbstractStoragePartition removePartition(int partitionId);
+
+  /**
    *
    * Get an iterator over entries in the store. The key is the first
    * element in the entry and the value is the second element.

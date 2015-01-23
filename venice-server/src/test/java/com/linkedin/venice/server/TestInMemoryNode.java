@@ -1,17 +1,12 @@
 package com.linkedin.venice.server;
 
-import com.linkedin.venice.kafka.consumer.KafkaConsumerPartitionManager;
 import com.linkedin.venice.kafka.consumer.KafkaConsumerException;
-import com.linkedin.venice.storage.InMemoryStorageNode;
-import com.linkedin.venice.storage.InMemoryStoragePartition;
 import com.linkedin.venice.storage.VeniceStorageException;
 
 import junit.framework.Assert;
 
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
-
-import java.util.Arrays;
 
 
 /**

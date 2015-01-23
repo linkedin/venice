@@ -1,6 +1,5 @@
 package com.linkedin.venice.server;
 
-import com.linkedin.venice.partition.AbstractPartitionNodeAssignmentScheme;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
@@ -135,14 +134,12 @@ public class PartitionNodeAssignmentRepository {
     //update the second view
     Map<String, Set<Integer>> storeNameToPartitionsMap;
     for (Integer nodeId : nodeToLogicalPartitionsMap.keySet()) {
-      if (nodeIdToStoreNameAndPartitionIdsMap.containsKey(nodeId)) {
-        storeNameToPartitionsMap = nodeIdToStoreNameAndPartitionIdsMap.get(nodeId);
-        storeNameToPartitionsMap.put(storeName, nodeToLogicalPartitionsMap.get(nodeId));
-        nodeIdToStoreNameAndPartitionIdsMap.put(nodeId, storeNameToPartitionsMap);
-      } else {
-        //TODO log errors and throw exception as needed
-        // ignore?
+      if (!nodeIdToStoreNameAndPartitionIdsMap.containsKey(nodeId)) {
+        nodeIdToStoreNameAndPartitionIdsMap.put(nodeId, new HashMap<String, Set<Integer>>());
       }
+      storeNameToPartitionsMap = nodeIdToStoreNameAndPartitionIdsMap.get(nodeId);
+      storeNameToPartitionsMap.put(storeName, nodeToLogicalPartitionsMap.get(nodeId));
+      nodeIdToStoreNameAndPartitionIdsMap.put(nodeId, storeNameToPartitionsMap);
     }
 
     //update the third view

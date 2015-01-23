@@ -1,18 +1,21 @@
 package com.linkedin.venice.server;
 
 import com.google.common.collect.ImmutableList;
-import com.linkedin.venice.kafka.consumer.KafkaConsumerPartitionManager;
 import com.linkedin.venice.kafka.consumer.KafkaConsumerException;
+import com.linkedin.venice.kafka.consumer.KafkaConsumerService;
+import com.linkedin.venice.partition.AbstractPartitionNodeAssignmentScheme;
 import com.linkedin.venice.service.AbstractVeniceService;
-import com.linkedin.venice.storage.InMemoryStorageNode;
+import com.linkedin.venice.storage.StorageService;
 import com.linkedin.venice.storage.StorageType;
 import com.linkedin.venice.storage.VeniceStorageException;
-import com.linkedin.venice.storage.VeniceStorageNode;
+import com.linkedin.venice.store.StorageEngineFactory;
+import com.linkedin.venice.utils.ReflectUtils;
 import com.linkedin.venice.utils.Utils;
 import java.io.File;
 import java.io.FilenameFilter;
 import java.util.Arrays;
 import java.util.Properties;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import org.apache.log4j.Logger;
@@ -30,59 +33,58 @@ public class VeniceServer {
   private static final Logger logger = Logger.getLogger(VeniceServer.class.getName());
   private final VeniceConfig veniceConfig;
   private final AtomicBoolean isStarted;
-
+  private final StoreRepository storeRepository;
+  private final PartitionNodeAssignmentRepository partitionNodeAssignmentRepository;
   private StorageType storageType;
+  private AbstractPartitionNodeAssignmentScheme partitionNodeAssignmentScheme;
 
   private final List<AbstractVeniceService> services;
 
-  // a temporary variable to store InMemory Nodes
-  // NOTE: for any Non-InMemory instances, this will not be used, as each
-  // Venice instance should be its own Node.
-  private static Map<Integer, VeniceStorageNode> storeNodeMap;
-
-  private final ConcurrentMap<String, Properties> storeDefinitionsMap;
+  private final ConcurrentMap<String, Properties> storeNameToConfigsMap;
 
   public VeniceServer(VeniceConfig veniceConfig) {
     this.isStarted = new AtomicBoolean(false);
     this.veniceConfig = veniceConfig;
     this.storageType = veniceConfig.getStorageType();
-    this.storeDefinitionsMap = new ConcurrentHashMap<String, Properties>();
+    this.storeNameToConfigsMap = new ConcurrentHashMap<String, Properties>();
+    this.storeRepository = new StoreRepository();
+    this.partitionNodeAssignmentRepository = new PartitionNodeAssignmentRepository();
 
-    //initialize all store definitions
-    this.initStoreDefinitions();
+    //initialize all store configs
+    this.initStoreConfigs();
 
-    this.services = createServices();
-
-		/*
+    /*
      * TODO - 1. Consider distribution of storage across servers. How do the servers share the same
-		 * config - For example in Voldemort we use cluster.xml and stores.xml. 
-		 * 2. Check Hostnames like in Voldemort to make sure that local host and 
+		 * config - For example in Voldemort we use cluster.xml and stores.xml.
+		 * 2. Check Hostnames like in Voldemort to make sure that local host and
          * ips match up.
 		 */
-  }
 
-  public boolean isStarted() {
-    return isStarted.get();
+    //Populates the partitionToNodeAssignmentRepository
+    this.assignPartitionToNodes();
+
+    //create all services
+    this.services = createServices();
   }
 
   /**
    * Go over the list of configured stores and initialize
-   * 1. store definitions map
+   * 1. store configs map
    *
    * Note that the individual configs include both storage and streaming layer (i.e. kafka) specific configs for each Venice store
    */
-  private void initStoreDefinitions() {
-    logger.info("Initializing store definitions:");
-    File storeDefinitionsDir =
-        new File(veniceConfig.getConfigDirAbsolutePath() + File.separator + veniceConfig.STORE_DEFINITIONS_DIR_NAME);
-    if (!Utils.isReadableDir(storeDefinitionsDir)) {
-      logger.error(
-          "Either the " + VeniceConfig.STORE_DEFINITIONS_DIR_NAME + " directory does not exist or is not readable.");
+  private void initStoreConfigs() {
+    logger.info("Initializing store configs:");
+    File storeConfigsDir =
+        new File(veniceConfig.getConfigDirAbsolutePath() + File.separator + veniceConfig.STORE_CONFIGS_DIR_NAME);
+    if (!Utils.isReadableDir(storeConfigsDir)) {
+      logger
+          .error("Either the " + VeniceConfig.STORE_CONFIGS_DIR_NAME + " directory does not exist or is not readable.");
       // TODO throw exception and stop
     }
 
     // Get all .properties file in STORES directory
-    List<File> storeConfigurationFiles = Arrays.asList(storeDefinitionsDir.listFiles(new FilenameFilter() {
+    List<File> storeConfigurationFiles = Arrays.asList(storeConfigsDir.listFiles(new FilenameFilter() {
       @Override
       public boolean accept(File dir, String name) {
         return name.endsWith(".properties");
@@ -90,25 +92,93 @@ public class VeniceServer {
     }));
 
     //parse the properties for each store
-    for (File storeDef : storeConfigurationFiles) {
+    for (File storeConfig : storeConfigurationFiles) {
       try {
-        Properties prop = Utils.parseProperties(storeDef);
-        storeDefinitionsMap.putIfAbsent(prop.getProperty("name"), prop);
+        Properties prop = Utils.parseProperties(storeConfig);
+        storeNameToConfigsMap.putIfAbsent(prop.getProperty("name"), prop);
       } catch (Exception e) {
         e.printStackTrace();
       }
     }
   }
 
+  /**
+   * Assigns logical partitions to Node for each store based on the storage replication factor and total number of nodes
+   * in the cluster. The scheme for this assignment is available in config.properties and is parsed by VeniceConfig.
+   * When this method finishes the PartitionToNodeAssignmentRepository is populated which is then used by other services.
+   */
+  private void assignPartitionToNodes() {
+    String partitionNodeAssignmentSchemeClassName =
+        veniceConfig.getPartitionNodeAssignmentSchemeClassMap(veniceConfig.getPartitionNodeAssignmentSchemeName());
+    if (partitionNodeAssignmentSchemeClassName != null) {
+      try {
+        Class<?> AssignmentSchemeClass = ReflectUtils.loadClass(partitionNodeAssignmentSchemeClassName);
+        partitionNodeAssignmentScheme = (AbstractPartitionNodeAssignmentScheme) ReflectUtils
+            .callConstructor(AssignmentSchemeClass, new Class<?>[]{}, new Object[]{});
+      } catch (IllegalStateException e) {
+        logger.error("Error loading Partition Node Assignment Class '" + partitionNodeAssignmentSchemeClassName + "'.",
+            e);
+        // TODO throw appropriate exception
+      }
+    } else {
+      // TODO throw / handle exception . This is not a known assignment scheme name.
+    }
+    for (Map.Entry<String, Properties> storeEntry : storeNameToConfigsMap.entrySet()) {
+      Map<Integer, Set<Integer>> nodeToLogicalPartitionIdsMap = partitionNodeAssignmentScheme
+          .getNodeToLogicalPartitionsMap(storeEntry.getValue(), veniceConfig.getNumStorageNodes());
+      partitionNodeAssignmentRepository.setAssignment(storeEntry.getKey(), nodeToLogicalPartitionIdsMap);
+    }
+  }
+
+  /**
+   * Instantiate all known services. Most of the services in this method intake:
+   * 1. StoreRepositry - that maps store to appropriate storage engine instance
+   * 2. VeniceConfig - which contains configs related to this cluster
+   * 3. StoreNameToConfigsMap - which contains store specific configs
+   * 4. PartitionNodeAssignmentRepository - which contains how partitions for each store are mapped to nodes in the
+   *    cluster
+   *
+   * @return
+   */
   private List<AbstractVeniceService> createServices() {
     /* Services are created in the order they must be started */
     List<AbstractVeniceService> services = new ArrayList<AbstractVeniceService>();
 
-    // TODO create services for Kafka Consumer and Storage
+    // create and add StorageService. storeRepository will be populated by StorageService,
+    StorageService storageService =
+        new StorageService(storeRepository, veniceConfig, storeNameToConfigsMap, partitionNodeAssignmentRepository);
+    services.add(storageService);
+
+    // TODO Assumption : By this time the PartitionNodeAssignmentRepository is already populated.
+
+    //create and add KafkaConsumerService
+    KafkaConsumerService kafkaConsumerService =
+        new KafkaConsumerService(storeRepository, veniceConfig, storeNameToConfigsMap,
+            partitionNodeAssignmentRepository);
+    services.add(kafkaConsumerService);
+
+    /**
+     * TODO Create an admin service later. The admin service will need both StorageService and KafkaConsumerService
+     * passed on to it.
+     *
+     * To add a new store do this in order:
+     * 1. Get the assignment plan from PartitionNodeAssignmentScheme and  populate the PartitionNodeAssignmentRepository
+     * 2. call StorageService.openStore(..) to create the appropriate storage partitions
+     * 3. call KafkaConsumerService.startConsumption(..) to create and start the consumer tasks for all kafka partitions.
+     */
 
     return ImmutableList.copyOf(services);
   }
 
+  public boolean isStarted() {
+    return isStarted.get();
+  }
+
+  /**
+   * Method which starts the services instantiate earlier
+   *
+   * @throws Exception
+   */
   public void start()
       throws Exception {
 
@@ -120,37 +190,6 @@ public class VeniceServer {
     }
     long end = System.currentTimeMillis();
     logger.info("Startup completed in " + (end - start) + " ms.");
-
-    // <<<TODO - Seperate this logic LATER - START>>>>
-    // Start the service which provides partition connections to Kafka
-    KafkaConsumerPartitionManager.initialize(veniceConfig);
-    try {
-      switch (storageType) {
-        case MEMORY:
-          storeNodeMap = new HashMap<Integer, VeniceStorageNode>();
-          // start nodes
-          for (int n = 0; n < veniceConfig.getNumStorageNodes(); n++) {
-            storeNodeMap.put(n, createNewStoreNode(n));
-          }
-          // start partitions
-          for (int p = 0; p < veniceConfig.getNumKafkaPartitions(); p++) {
-            registerNewPartition(p);
-          }
-          break;
-        default:
-          throw new UnsupportedOperationException(
-              "Only the In Memory implementation " + "is supported in this version.");
-      }
-    } catch (VeniceStorageException e) {
-      logger.error("Could not properly initialize the storage instance.");
-      e.printStackTrace();
-      shutdown();
-    } catch (KafkaConsumerException e) {
-      logger.error("Could not properly initialize Venice Kafka instance.");
-      e.printStackTrace();
-      shutdown();
-    }
-    // <<<TODO  - Seperate this logic LATER - END>>>>
   }
 
   /**
@@ -212,79 +251,5 @@ public class VeniceServer {
     }
 
     // TODO Add a shutdown hook ?
-  }
-
-  /**
-   * Creates a new VeniceStorageNode, based on the current configuration
-   * */
-  private VeniceStorageNode createNewStoreNode(int nodeId) {
-    VeniceStorageNode toReturn;
-    // TODO: implement other storage solutions when available
-    switch (storageType) {
-      case MEMORY:
-        toReturn = new InMemoryStorageNode(nodeId);
-        break;
-      case BDB:
-        throw new UnsupportedOperationException("BDB storage not yet implemented");
-      case VOLDEMORT:
-        throw new UnsupportedOperationException("Voldemort storage not yet implemented");
-      default:
-        toReturn = new InMemoryStorageNode(nodeId);
-        break;
-    }
-    return toReturn;
-  }
-
-  /**
-   * Registers a new partitionId and adds all of its copies to its associated
-   * nodes Creates a storage partition and a Kafka Consumer for the given
-   * partition, and ties it to the node
-   *
-   * @param partitionId
-   *            - the id of the partition to register
-   * */
-  public void registerNewPartition(int partitionId)
-      throws VeniceStorageException, KafkaConsumerException {
-    // use conversion algorithm to find nodeId
-    List<Integer> nodeIds = getNodeMappings(partitionId);
-    for (int nodeId : nodeIds) {
-      VeniceStorageNode node = storeNodeMap.get(nodeId);
-      node.addPartition(partitionId);
-    }
-  }
-
-  /**
-   * Perform a "GET" on the Venice Storage
-   *
-   * @param key
-   *            - The key to query in storage
-   * @return The value associated with the given key
-   * */
-  public Object readValue(String key) {
-    throw new UnsupportedOperationException("Read protocol is not yet supported");
-  }
-
-  /**
-   * Method that calculates the nodeId for a given partitionId and creates the
-   * partition if does not exist Must be a deterministic method for
-   * partitionIds AND their replicas
-   *
-   * @param partitionId
-   *            - The Kafka partitionId to be used in calculation
-   * @return A list of all the nodeIds associated with the given partitionId
-   * */
-  private List<Integer> getNodeMappings(int partitionId)
-      throws VeniceStorageException {
-    // TODO Separate the partition assignment logic and make it pluggable.
-    int numNodes = storeNodeMap.size();
-    if (0 == numNodes) {
-      throw new VeniceStorageException("Cannot calculate node id for partition because there are no nodes!");
-    }
-    // TODO: improve algorithm to provide true balancing
-    List<Integer> nodeIds = new ArrayList<Integer>();
-    for (int i = 0; i < veniceConfig.getNumStorageCopies(); i++) {
-      nodeIds.add((partitionId + i) % numNodes);
-    }
-    return nodeIds;
   }
 }

@@ -1,13 +1,11 @@
 package com.linkedin.venice.kafka;
 
-import com.linkedin.venice.kafka.consumer.KafkaConsumerPartitionManager;
 import com.linkedin.venice.kafka.consumer.SimpleKafkaConsumerTask;
 import com.linkedin.venice.kafka.consumer.KafkaConsumerException;
 import com.linkedin.venice.message.OperationType;
 import com.linkedin.venice.message.VeniceMessage;
 import com.linkedin.venice.server.VeniceConfig;
 import com.linkedin.venice.server.VeniceServer;
-import com.linkedin.venice.storage.InMemoryStorageNode;
 
 import kafka.admin.AdminUtils;
 import kafka.producer.KeyedMessage;

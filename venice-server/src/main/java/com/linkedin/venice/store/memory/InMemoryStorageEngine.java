@@ -23,13 +23,29 @@ public class InMemoryStorageEngine extends AbstractStorageEngine {
       PartitionNodeAssignmentRepository partitionNodeAssignmentRepo) {
     super(config, storeDef, partitionNodeAssignmentRepo, new ConcurrentHashMap<Integer, AbstractStoragePartition>());
 
-    //TODO Populate partition node Assignment Repo in Venice Server and pass on the reference.
-
     // Create and intialize the individual databases for each partition
     for (int partitionId : partitionNodeAssignmentRepo
         .getLogicalPartitionIds(this.getName(), this.config.getNodeId())) {
-      partitionIdToDataBaseMap.put(partitionId, new InMemoryStoragePartition(partitionId));
+      addStoragePartition(partitionId);
     }
+  }
+
+  @Override
+  public void addStoragePartition(int partitionId) {
+    if (partitionIdToDataBaseMap.containsKey(partitionId)) {
+      // TODO log error and throw appropriate exception here
+    }
+    partitionIdToDataBaseMap.put(partitionId, new InMemoryStoragePartition(partitionId));
+  }
+
+  @Override
+  public AbstractStoragePartition removePartition(int partitionId) {
+    if (!partitionIdToDataBaseMap.containsKey(partitionId)) {
+      // TODO log error and throw appropriate exception here
+    }
+    InMemoryStoragePartition inMemoryStoragePartition =
+        (InMemoryStoragePartition) partitionIdToDataBaseMap.remove(partitionId);
+    return inMemoryStoragePartition;
   }
 
   public CloseableStoreEntriesIterator storeEntries() {

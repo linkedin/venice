@@ -1,5 +1,6 @@
 package com.linkedin.venice.storage;
 
+import com.linkedin.venice.server.PartitionNodeAssignmentRepository;
 import com.linkedin.venice.server.StoreRepository;
 import com.linkedin.venice.server.VeniceConfig;
 import com.linkedin.venice.service.AbstractVeniceService;
@@ -7,11 +8,6 @@ import com.linkedin.venice.store.AbstractStorageEngine;
 import com.linkedin.venice.store.StorageEngineFactory;
 import com.linkedin.venice.store.Store;
 import com.linkedin.venice.utils.ReflectUtils;
-import com.linkedin.venice.utils.Utils;
-import java.io.File;
-import java.io.FilenameFilter;
-import java.util.Arrays;
-import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.ConcurrentHashMap;
@@ -28,16 +24,19 @@ public class StorageService extends AbstractVeniceService {
 
   private final StoreRepository storeRepository;
   private final VeniceConfig veniceConfig;
-  private final ConcurrentMap<String, StorageEngineFactory> storageEngineFactoryMap;
-  private final ConcurrentMap<String, Properties> storeDefinitionsMap;
+  private final ConcurrentMap<String, StorageEngineFactory> storeToStorageEngineFactoryMap;
+  private final ConcurrentMap<String, Properties> storeNameToStoreConfigsMap;
+  private final PartitionNodeAssignmentRepository partitionNodeAssignmentRepository;
 
   public StorageService(StoreRepository storeRepository, VeniceConfig veniceConfig,
-      ConcurrentMap<String, Properties> storeDefinitionsMap) {
+      ConcurrentMap<String, Properties> storeNameToStoreConfigsMap,
+      PartitionNodeAssignmentRepository partitionNodeAssignmentRepository) {
     super("storage-service");
     this.storeRepository = storeRepository;
     this.veniceConfig = veniceConfig;
-    this.storageEngineFactoryMap = new ConcurrentHashMap<String, StorageEngineFactory>();
-    this.storeDefinitionsMap = storeDefinitionsMap;
+    this.storeToStorageEngineFactoryMap = new ConcurrentHashMap<String, StorageEngineFactory>();
+    this.storeNameToStoreConfigsMap = storeNameToStoreConfigsMap;
+    this.partitionNodeAssignmentRepository = partitionNodeAssignmentRepository;
   }
 
   //TODO later change properties into StoreDefinition class
@@ -57,14 +56,15 @@ public class StorageService extends AbstractVeniceService {
     StorageEngineFactory factory = null;
 
     // Instantiate the factory for this persistence type if not already present
-    if (!storageEngineFactoryMap.containsKey(persistenceType)) {
+    if (!storeToStorageEngineFactoryMap.containsKey(persistenceType)) {
       String storageFactoryClassName = veniceConfig.getStorageEngineFactoryClassName(persistenceType);
       if (storageFactoryClassName != null) {
         try {
           Class<?> factoryClass = ReflectUtils.loadClass(storageFactoryClassName);
           factory = (StorageEngineFactory) ReflectUtils
-              .callConstructor(factoryClass, new Class<?>[]{VeniceConfig.class}, new Object[]{veniceConfig});
-          storageEngineFactoryMap.putIfAbsent(persistenceType, factory);
+              .callConstructor(factoryClass, new Class<?>[]{VeniceConfig.class},
+                  new Object[]{veniceConfig, partitionNodeAssignmentRepository});
+          storeToStorageEngineFactoryMap.putIfAbsent(persistenceType, factory);
         } catch (IllegalStateException e) {
           logger.error("Error loading storage engine factory '" + storageFactoryClassName + "'.", e);
         }
@@ -73,7 +73,7 @@ public class StorageService extends AbstractVeniceService {
       }
     }
 
-    factory = storageEngineFactoryMap.get(persistenceType);
+    factory = storeToStorageEngineFactoryMap.get(persistenceType);
 
     if (factory != null) {
       engine = factory.getStore(storeDefinition);
@@ -117,7 +117,7 @@ public class StorageService extends AbstractVeniceService {
 
     /*Loop through the stores. Create the Factory if needed, open the storage engine and
      register it with the Store Repository*/
-    for (Map.Entry<String, Properties> entry : storeDefinitionsMap.entrySet()) {
+    for (Map.Entry<String, Properties> entry : storeNameToStoreConfigsMap.entrySet()) {
       openStore(entry.getValue());
     }
 
@@ -141,7 +141,7 @@ public class StorageService extends AbstractVeniceService {
     logger.info("All stores closed.");
 
     /*Close all storage engine factories */
-    for (Map.Entry<String, StorageEngineFactory> storageEngineFactory : storageEngineFactoryMap.entrySet()) {
+    for (Map.Entry<String, StorageEngineFactory> storageEngineFactory : storeToStorageEngineFactoryMap.entrySet()) {
       logger.info("Closing " + storageEngineFactory.getKey() + " storage engine factory");
       try {
         storageEngineFactory.getValue().close();

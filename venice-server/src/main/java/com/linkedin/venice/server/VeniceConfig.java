@@ -1,6 +1,7 @@
 package com.linkedin.venice.server;
 
 import com.google.common.collect.ImmutableMap;
+import com.linkedin.venice.partition.ModuloPartitionNodeAssignmentScheme;
 import com.linkedin.venice.storage.StorageType;
 
 import com.linkedin.venice.store.memory.InMemoryStorageEngineFactory;
@@ -21,20 +22,17 @@ import java.util.Properties;
  */
 public class VeniceConfig {
 
-  private static final Logger logger = Logger.getLogger(VeniceConfig.class.getName());
-
   public static final String VENICE_HOME_VAR_NAME = "VENICE_HOME";
   public static final String VENICE_CONFIG_DIR = "VENICE_CONFIG_DIR";
   public static final String CONFIG_FILE_NAME = "config.properties";
-  public static final String STORE_DEFINITIONS_DIR_NAME = "STORES";
+  public static final String STORE_CONFIGS_DIR_NAME = "STORES";
+  private static final Logger logger = Logger.getLogger(VeniceConfig.class.getName());
   private static final String VENICE_NODE_ID_VAR_NAME = "VENICE_NODE_ID";
-
   private Map<String, String> storageEngineFactoryClassNameMap;
-
+  private Map<String, String> partitionNodeAssignmentSchemeClassMap;
   private String CONFIG_DIR_ABSOLUTE_PATH;
-
   private int nodeId;
-
+  private String partitionNodeAssignmentSchemeName;
   // Kafka related properties
   private int numKafkaPartitions;
   private String kafKaZookeeperUrl;
@@ -42,7 +40,6 @@ public class VeniceConfig {
   private int kafkaBrokerPort;
   private List<String> brokerList;
   private int numKafkaConsumerThreads;
-
   // Storage related properties
   private StorageType storageType;
   private int numStorageNodes;
@@ -60,7 +57,6 @@ public class VeniceConfig {
     kafkaBrokerPort = Integer.parseInt(props.getProperty("kafka.broker.port", "9092"));
     numKafkaConsumerThreads = Integer.parseInt(props.getProperty("kafka.number.consumer.threads",
         "50"));   //TODO This variable and default value needs to be set to an appropriate value later
-    numStorageNodes = Integer.parseInt(props.getProperty("kafka.number.partitions", "4"));
     try {
       storageType = convertToStorageType(props.getProperty("storage.type", "memory"));
     } catch (Exception e) {
@@ -70,41 +66,15 @@ public class VeniceConfig {
     numStorageCopies = Integer.parseInt(props.getProperty("storage.node.replicas", "2"));
 
     //initialize StorageEngineFactory types
-    storageEngineFactoryClassNameMap = ImmutableMap
+    /* TODO once we have BDB implementation, add BDB type to  storageEngineFactoryClassNameMap like shown below
+        storageEngineFactoryClassNameMap = ImmutableMap
         .of("inMemory", InMemoryStorageEngineFactory.class.getName(), "bdb", BdbStorageEngineFactory.class.getName());
-
+    */
+    storageEngineFactoryClassNameMap = ImmutableMap.of("inMemory", InMemoryStorageEngineFactory.class.getName());
+    partitionNodeAssignmentSchemeClassMap =
+        ImmutableMap.of("modulo", ModuloPartitionNodeAssignmentScheme.class.getName());
+    partitionNodeAssignmentSchemeName = props.getProperty("partition.node.assignment.scheme", "modulo");
     validateParams();
-  }
-
-  private int getIntEnvVariable(String name) {
-    String var = System.getenv(name);
-    if (var == null) {
-      throw new ConfigurationException("The environment variable " + name + " is not defined.");
-    }
-    try {
-      return Integer.parseInt(var);
-    } catch (NumberFormatException e) {
-      throw new ConfigurationException("Invalid format for environment variable " + name + ", expecting an integer.",
-          e);
-    }
-  }
-
-  public void setConfigDirAbsolutePath(String configDirPath) {
-    this.CONFIG_DIR_ABSOLUTE_PATH = configDirPath;
-  }
-
-  public String getConfigDirAbsolutePath() {
-    return CONFIG_DIR_ABSOLUTE_PATH;
-  }
-
-  private void validateParams() {
-    if (numKafkaPartitions < 0) {
-      throw new IllegalArgumentException("core.threads cannot be less than 1");
-    } else if (kafKaZookeeperUrl.isEmpty()) {
-      throw new IllegalArgumentException("kafkaZookeeperUrl can't be empty");
-    } else if (kafkaBrokerUrl.isEmpty()) {
-      throw new IllegalArgumentException("kafkaZookeeperUrl can't be empty");
-    }
   }
 
   /**
@@ -198,6 +168,37 @@ public class VeniceConfig {
     return returnType;
   }
 
+  private int getIntEnvVariable(String name) {
+    String var = System.getenv(name);
+    if (var == null) {
+      throw new ConfigurationException("The environment variable " + name + " is not defined.");
+    }
+    try {
+      return Integer.parseInt(var);
+    } catch (NumberFormatException e) {
+      throw new ConfigurationException("Invalid format for environment variable " + name + ", expecting an integer.",
+          e);
+    }
+  }
+
+  public String getConfigDirAbsolutePath() {
+    return CONFIG_DIR_ABSOLUTE_PATH;
+  }
+
+  public void setConfigDirAbsolutePath(String configDirPath) {
+    this.CONFIG_DIR_ABSOLUTE_PATH = configDirPath;
+  }
+
+  private void validateParams() {
+    if (numKafkaPartitions < 0) {
+      throw new IllegalArgumentException("core.threads cannot be less than 1");
+    } else if (kafKaZookeeperUrl.isEmpty()) {
+      throw new IllegalArgumentException("kafkaZookeeperUrl can't be empty");
+    } else if (kafkaBrokerUrl.isEmpty()) {
+      throw new IllegalArgumentException("kafkaZookeeperUrl can't be empty");
+    }
+  }
+
   public int getNumKafkaPartitions() {
     return numKafkaPartitions;
   }
@@ -282,6 +283,18 @@ public class VeniceConfig {
     this.storageEngineFactoryClassNameMap = storageEngineFactoryClassNameMap;
   }
 
+  public Map<String, String> getAllPartitionNodeAssignmentSchemeClassMap() {
+    return this.partitionNodeAssignmentSchemeClassMap;
+  }
+
+  public String getPartitionNodeAssignmentSchemeClassMap(String assignmentSchemeName) {
+    return this.partitionNodeAssignmentSchemeClassMap.get(assignmentSchemeName);
+  }
+
+  public void setPartitionNodeAssignmentSchemeClassMap(Map partitionNodeAssignmentSchemeClassMap) {
+    this.partitionNodeAssignmentSchemeClassMap = partitionNodeAssignmentSchemeClassMap;
+  }
+
   public int getNodeId() {
     return nodeId;
   }
@@ -292,5 +305,9 @@ public class VeniceConfig {
    */
   public void setNodeId(int nodeId) {
     this.nodeId = nodeId;
+  }
+
+  public String getPartitionNodeAssignmentSchemeName() {
+    return this.partitionNodeAssignmentSchemeName;
   }
 }

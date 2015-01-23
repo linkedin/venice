@@ -3,6 +3,7 @@ package com.linkedin.venice.partition;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Properties;
 import java.util.Set;
 
 
@@ -49,12 +50,9 @@ public abstract class AbstractPartitionNodeAssignmentScheme {
    * layer need to be mapped to nodes. This method returns such a mapping and the caller of this method creates
    * new Venice storage partitions based on the mapping and updates the PartitionNodeAssignmentRepository.
    *
-   *
-   * @param storeName The new store name. (If kafka is the propagating layer, then this is same as Kafka topic)
-   * @param numberOfLogicalPartitions  Number of logical partitions from the propagating layer (without counting replica) for this new store
-   * @param storageReplicationFactor  The desired replication factor in storage side
+   * @param storeConfig  The configs related to this store.
+   * @param numStorageNodes  Total number of storage nodes in the cluster
    * @return A map where key is a node ids and value is the corresponding set of logical partitions that the node is responsible for.
    */
-  public abstract Map<Integer, Set<Integer>> getNodeToLogicalPartitionsMap(String storeName,
-      int numberOfLogicalPartitions, int storageReplicationFactor);
+  public abstract Map<Integer, Set<Integer>> getNodeToLogicalPartitionsMap(Properties storeConfig, int numStorageNodes);
 }
