@@ -51,18 +51,18 @@ public class VeniceMessageSerializer implements Encoder<VeniceMessage>, Decoder<
     StringBuffer payload = new StringBuffer();
 
     ByteArrayInputStream bytesIn = null;
-    ObjectInputStream ois = null;
+    ObjectInputStream objectInputStream = null;
 
     try {
 
       bytesIn = new ByteArrayInputStream(byteArray);
-      ois = new ObjectInputStream(bytesIn);
+      objectInputStream = new ObjectInputStream(bytesIn);
 
       /* read magicByte TODO: currently unused */
-      magicByte = ois.readByte();
+      magicByte = objectInputStream.readByte();
 
       /* read operation type */
-      byte opTypeByte = ois.readByte();
+      byte opTypeByte = objectInputStream.readByte();
 
       switch (opTypeByte) {
         case 1:
@@ -73,32 +73,33 @@ public class VeniceMessageSerializer implements Encoder<VeniceMessage>, Decoder<
           break;
         default:
           operationType = null;
-          logger.error("Illegal serialized operation type found: " + opTypeByte);
+          logger.error("Operation Type not recognized: " + opTypeByte);
+          // TODO throw an appropriate exception ?
       }
 
       /* read schemaVersion - TODO: currently unused */
-      schemaVersion = ois.readByte();
+      schemaVersion = objectInputStream.readByte();
 
       /* read payload, one character at a time */
-      int byteCount = ois.available();
+      int byteCount = objectInputStream.available();
 
       for (int i = 0; i < byteCount; i++) {
-        payload.append(Character.toString((char) ois.readByte()));
+        payload.append(Character.toString((char) objectInputStream.readByte()));
       }
     } catch (IOException e) {
-
-      logger.error("IOException while converting: " + e);
+      logger.error("IOException while converting to VeniceMessage: " + e.getMessage());
       e.printStackTrace();
     } finally {
-
       // safely close the input/output streams
       try {
-        ois.close();
+        if (objectInputStream != null) {
+          objectInputStream.close();
+        }
+        if (bytesIn != null) {
+          bytesIn.close();
+        }
       } catch (IOException e) {
-      }
-      try {
-        bytesIn.close();
-      } catch (IOException e) {
+        logger.error("IOException while closing input/output streams: " + e.getMessage());
       }
     }
 
@@ -111,52 +112,54 @@ public class VeniceMessageSerializer implements Encoder<VeniceMessage>, Decoder<
    * @param byteArray - byte array to be converted
    * @return Converted Venice Message
    * */
-  public byte[] toBytes(VeniceMessage vm) {
+  public byte[] toBytes(VeniceMessage veniceMessage) {
 
     ByteArrayOutputStream bytesOut = null;
-    ObjectOutputStream oos = null;
+    ObjectOutputStream objectOutputStream = null;
     byte[] message = new byte[0];
 
     try {
 
       bytesOut = new ByteArrayOutputStream();
-      oos = new ObjectOutputStream(bytesOut);
+      objectOutputStream = new ObjectOutputStream(bytesOut);
 
-      oos.writeByte(vm.getMagicByte());
+      objectOutputStream.writeByte(veniceMessage.getMagicByte());
 
       // serialize the operation type enum
-      switch (vm.getOperationType()) {
+      switch (veniceMessage.getOperationType()) {
         case PUT:
-          oos.write(1);
+          objectOutputStream.write(1);
           break;
         case DELETE:
-          oos.write(2);
+          objectOutputStream.write(2);
           break;
         default:
-          logger.error("Operation Type not recognized: " + vm.getOperationType());
-          oos.write(0);
+          logger.error("Operation Type not recognized: " + veniceMessage.getOperationType());
+          objectOutputStream.write(0);
           break;
       }
 
-      oos.writeByte(vm.getSchemaVersion());
+      objectOutputStream.writeByte(veniceMessage.getSchemaVersion());
 
       // write the payload to the byte array
-      oos.writeBytes(vm.getPayload());
-      oos.flush();
+      objectOutputStream.writeBytes(veniceMessage.getPayload());
+      objectOutputStream.flush();
 
       message = bytesOut.toByteArray();
     } catch (IOException e) {
-      logger.error("Could not serialize message: " + vm.getPayload());
+      logger.error("IOException in serializing message \" " + veniceMessage.getPayload() + "\" : " + e.getMessage());
     } finally {
 
       // safely close the input/output streams
       try {
-        oos.close();
+        if (objectOutputStream != null) {
+          objectOutputStream.close();
+        }
+        if (bytesOut != null) {
+          bytesOut.close();
+        }
       } catch (IOException e) {
-      }
-      try {
-        bytesOut.close();
-      } catch (IOException e) {
+        logger.error("IOException while closing input/output streams: " + e.getMessage());
       }
     }
 

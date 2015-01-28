@@ -62,13 +62,15 @@ public class StorageService extends AbstractVeniceService {
         try {
           Class<?> factoryClass = ReflectUtils.loadClass(storageFactoryClassName);
           factory = (StorageEngineFactory) ReflectUtils
-              .callConstructor(factoryClass, new Class<?>[]{VeniceConfig.class},
+              .callConstructor(factoryClass, new Class<?>[]{VeniceConfig.class, PartitionNodeAssignmentRepository.class},
                   new Object[]{veniceConfig, partitionNodeAssignmentRepository});
           storeToStorageEngineFactoryMap.putIfAbsent(persistenceType, factory);
         } catch (IllegalStateException e) {
           logger.error("Error loading storage engine factory '" + storageFactoryClassName + "'.", e);
+          // TODO throw / handle exception .
         }
       } else {
+        logger.error("Unknown persistence type: " + persistenceType);
         // TODO throw / handle exception . This is not a known persistence type.
       }
     }

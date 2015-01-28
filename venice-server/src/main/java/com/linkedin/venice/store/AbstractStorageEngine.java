@@ -135,37 +135,37 @@ public abstract class AbstractStorageEngine implements Store {
 
   public void put(Integer logicalPartitionId, byte[] key, byte[] value)
       throws VeniceStorageException {
-    AbstractStoragePartition db = this.partitionIdToDataBaseMap.get(logicalPartitionId);
-    if (db == null) {
-      logger.error("put request on key " + ByteUtils.toHexString(key) + " failed due to invalid partition id: "
-          + logicalPartitionId);
+    if (!containsPartition(logicalPartitionId)) {
+      logger.error("PUT request failed for Key: " + ByteUtils.toHexString(key) + " . Invalid partition id: "
+          + logicalPartitionId );
       //TODO throw appropriate exception
       return;
     }
+    AbstractStoragePartition db = this.partitionIdToDataBaseMap.get(logicalPartitionId);
     db.put(key, value);
   }
 
   public void delete(Integer logicalPartitionId, byte[] key)
       throws VeniceStorageException {
-    AbstractStoragePartition db = this.partitionIdToDataBaseMap.get(logicalPartitionId);
-    if (db == null) {
-      logger.error("delete request on key " + ByteUtils.toHexString(key) + " failed due to invalid partition id: "
+    if (!containsPartition(logicalPartitionId)) {
+      logger.error("DELETE request failed for key: " + ByteUtils.toHexString(key) + " . Invalid partition id: "
           + logicalPartitionId);
       //TODO throw appropriate exception
       return;
     }
+    AbstractStoragePartition db = this.partitionIdToDataBaseMap.get(logicalPartitionId);
     db.delete(key);
   }
 
   public byte[] get(Integer logicalPartitionId, byte[] key)
       throws VeniceStorageException {
-    AbstractStoragePartition db = this.partitionIdToDataBaseMap.get(logicalPartitionId);
-    if (db == null) {
-      logger.error("get request on key " + ByteUtils.toHexString(key) + " failed due to invalid partition id: "
+    if (!containsPartition(logicalPartitionId)) {
+      logger.error("GET request failed for key " + ByteUtils.toHexString(key) + " . Invalid partition id: "
           + logicalPartitionId);
       //TODO throw appropriate exception
       return new byte[0]; // TODO Need to get rid of this later
     }
+    AbstractStoragePartition db = this.partitionIdToDataBaseMap.get(logicalPartitionId);
     return db.get(key);
   }
 

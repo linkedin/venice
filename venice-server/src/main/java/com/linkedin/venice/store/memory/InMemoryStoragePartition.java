@@ -1,6 +1,7 @@
 package com.linkedin.venice.store.memory;
 
 import com.linkedin.venice.store.AbstractStoragePartition;
+import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.partition.iterators.AbstractCloseablePartitionEntriesIterator;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.partition.iterators.CloseablePartitionKeysIterator;
@@ -26,7 +27,6 @@ import org.apache.log4j.Logger;
  * ConcurrentModicfictionException thrown from the iterators
  */
 public class InMemoryStoragePartition extends AbstractStoragePartition {
-  private static final Logger logger = Logger.getLogger(InMemoryStoragePartition.class.getName());
   private final ConcurrentMap<byte[], byte[]> partitionDb;
 
   public InMemoryStoragePartition(Integer partitionId) {
@@ -35,18 +35,21 @@ public class InMemoryStoragePartition extends AbstractStoragePartition {
   }
 
   public void put(byte[] key, byte[] value) {
+    Utils.notNull(key,"Key cannot be null.");
     partitionDb.put(key, value);
   }
 
   public byte[] get(byte[] key) {
+    Utils.notNull(key,"Key cannot be null.");
     if (partitionDb.containsKey(key)) {
       return partitionDb.get(key);
     }
-    logger.error("key:" + ByteUtils.toHexString(key) + " does not exist!");
+    // TODO Throw an Exception saying invalid Key. and remove the below statement.
     return null;
   }
 
   public void delete(byte[] key) {
+    Utils.notNull(key,"Key cannot be null.");
     partitionDb.remove(key);
   }
 

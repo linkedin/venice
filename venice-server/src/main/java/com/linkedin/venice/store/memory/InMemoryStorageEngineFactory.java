@@ -2,17 +2,14 @@ package com.linkedin.venice.store.memory;
 
 import com.linkedin.venice.server.PartitionNodeAssignmentRepository;
 import com.linkedin.venice.server.VeniceConfig;
-import com.linkedin.venice.storage.StorageType;
 import com.linkedin.venice.store.AbstractStorageEngine;
 import com.linkedin.venice.store.StorageEngineFactory;
 import java.util.Properties;
-import org.apache.log4j.Logger;
+
 
 
 public class InMemoryStorageEngineFactory implements StorageEngineFactory {
-
-  private static final Logger logger = Logger.getLogger(InMemoryStorageEngineFactory.class);
-  private static final StorageType TYPE_NAME = StorageType.MEMORY;
+  private static final String TYPE_NAME = "memory";
   private final Object lock = new Object();
 
   private final VeniceConfig veniceConfig;
@@ -25,15 +22,15 @@ public class InMemoryStorageEngineFactory implements StorageEngineFactory {
   }
 
   @Override
-  public StorageType getType() {
-    return TYPE_NAME;
-  }
-
-  @Override
   public AbstractStorageEngine getStore(Properties storeDef) {
     synchronized (lock) {
       return new InMemoryStorageEngine(veniceConfig, storeDef, partitionNodeAssignmentRepo);
     }
+  }
+
+  @Override
+  public String getType() {
+    return TYPE_NAME;
   }
 
   @Override

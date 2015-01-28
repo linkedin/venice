@@ -193,22 +193,19 @@ public class SimpleKafkaConsumerTask implements Runnable {
           numReads++;
         } catch (UnsupportedEncodingException e) {
 
-          logger.error("Encoding is not supported: " + ENCODING);
-          logger.error(e);
+          logger.error("Encoding is not supported: " + ENCODING, e);
 
           // end the thread
           execute = false;
         } catch (VeniceMessageException e) {
 
-          logger.error("Received an illegal Venice message!");
-          logger.error(e);
+          logger.error("Received an illegal Venice message!", e);
           e.printStackTrace();
         } catch (VeniceStorageException e) {
 
           logger
-              .error("Venice Storage Engine for store: " + storageEngine.getName() + " has been corrupted! Exiting...");
-          logger.error(e);
-          e.printStackTrace();
+              .error("Venice Storage Engine for store: " + storageEngine.getName() + " has been corrupted! Exiting...",
+                  e);
 
           // end the thread
           execute = false;
@@ -236,6 +233,8 @@ public class SimpleKafkaConsumerTask implements Runnable {
   private void readMessage(String key, VeniceMessage msg)
       throws VeniceMessageException, VeniceStorageException {
 
+    long startTimeNs = -1;
+
     // check for invalid inputs
     if (null == msg) {
       throw new VeniceMessageException("Given null Venice Message.");
@@ -249,14 +248,32 @@ public class SimpleKafkaConsumerTask implements Runnable {
 
       // adding new values
       case PUT:
-        logger.info("Putting: " + key + ", " + msg.getPayload());
+        if (logger.isTraceEnabled()) {
+          startTimeNs = System.nanoTime();
+        }
         storageEngine.put(partition, key.getBytes(), msg.getPayload().getBytes());
+
+        if (logger.isTraceEnabled()) {
+          logger.trace(
+              "Completed PUT to Store: " + topic + " for key: " + key + ", value: " + msg.getPayload() + " in " + (
+                  System.nanoTime() - startTimeNs) + " ns at " + System.currentTimeMillis());
+        }
         break;
 
       // deleting values
       case DELETE:
-        logger.info("Deleting: " + key);
+        if (logger.isTraceEnabled()) {
+          startTimeNs = System.nanoTime();
+        }
+
         storageEngine.delete(partition, key.getBytes());
+
+        if (logger.isTraceEnabled()) {
+          logger.trace(
+              "Completed DELETE to Store: " + topic + " for key: " + key + " in " + (System.nanoTime() - startTimeNs)
+                  + " ns at " + System.currentTimeMillis());
+        }
+
         break;
 
       // partial update
@@ -387,8 +404,8 @@ public class SimpleKafkaConsumerTask implements Runnable {
         } /* End of Topic Loop */
       } catch (Exception e) {
 
-        logger.error("Error communicating with " + host + " to find " + topic + ", " + partition);
-        logger.error(e);
+        logger
+            .error("Error communicating with " + host + " to find topic: " + topic + " and partition:" + partition, e);
       } finally {
 
         // safely close consumer

@@ -36,7 +36,6 @@ public class KafkaConsumerService extends AbstractVeniceService {
 
   private ExecutorService consumerExecutorService;
 
-  //TODO instantiate, populate PartitionNodeAssignmentRepository in VeniceServer and pass it here.
   public KafkaConsumerService(StoreRepository storeRepository, VeniceConfig veniceConfig,
       ConcurrentMap<String, Properties> topicToStoreConfigsMap,
       PartitionNodeAssignmentRepository partitionNodeAssignmentRepository) {
@@ -51,7 +50,7 @@ public class KafkaConsumerService extends AbstractVeniceService {
   @Override
   public void startInner()
       throws Exception {
-    logger.info("starting all kafka consumer tasks on node: " + veniceConfig.getNodeId());
+    logger.info("Starting all kafka consumer tasks on node: " + veniceConfig.getNodeId());
     consumerExecutorService = Executors.newFixedThreadPool(veniceConfig.getKafkaConsumerThreads());
     for (Map.Entry<String, Properties> entry : topicToStoreConfigsMap.entrySet()) {
       //TODO: separate this logic into a new method so admin operations can call them later.

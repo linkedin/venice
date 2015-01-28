@@ -2,7 +2,6 @@ package com.linkedin.venice.server;
 
 import com.google.common.collect.ImmutableMap;
 import com.linkedin.venice.partition.ModuloPartitionNodeAssignmentScheme;
-import com.linkedin.venice.storage.StorageType;
 
 import com.linkedin.venice.store.memory.InMemoryStorageEngineFactory;
 import com.linkedin.venice.utils.ConfigurationException;
@@ -10,7 +9,6 @@ import com.linkedin.venice.utils.UndefinedPropertyException;
 import com.linkedin.venice.utils.Utils;
 import java.io.File;
 import java.util.Map;
-import org.apache.log4j.Logger;
 
 import java.util.List;
 import java.util.Properties;
@@ -26,7 +24,6 @@ public class VeniceConfig {
   public static final String VENICE_CONFIG_DIR = "VENICE_CONFIG_DIR";
   public static final String CONFIG_FILE_NAME = "config.properties";
   public static final String STORE_CONFIGS_DIR_NAME = "STORES";
-  private static final Logger logger = Logger.getLogger(VeniceConfig.class.getName());
   private static final String VENICE_NODE_ID_VAR_NAME = "VENICE_NODE_ID";
   private Map<String, String> storageEngineFactoryClassNameMap;
   private Map<String, String> partitionNodeAssignmentSchemeClassMap;
@@ -41,7 +38,7 @@ public class VeniceConfig {
   private List<String> brokerList;
   private int numKafkaConsumerThreads;
   // Storage related properties
-  private StorageType storageType;
+  private String storageType;
   private int numStorageNodes;
   private int numStorageCopies;
 
@@ -58,7 +55,7 @@ public class VeniceConfig {
     numKafkaConsumerThreads = Integer.parseInt(props.getProperty("kafka.number.consumer.threads",
         "50"));   //TODO This variable and default value needs to be set to an appropriate value later
     try {
-      storageType = convertToStorageType(props.getProperty("storage.type", "memory"));
+      storageType = props.getProperty("storage.type", "memory");
     } catch (Exception e) {
       e.printStackTrace();
     }
@@ -147,27 +144,6 @@ public class VeniceConfig {
     return veniceConfig;
   }
 
-  /**
-   *  Given a String type, returns the enum type
-   *  @param type - String name of a storage type
-   *  @return The enum equivalent of the given type
-   * */
-  private static StorageType convertToStorageType(String type)
-      throws Exception {
-    StorageType returnType;
-    switch (type) {
-      case "memory":
-        returnType = StorageType.MEMORY;
-        break;
-      case "bdb":
-        returnType = StorageType.BDB;
-        break;
-      default:
-        throw new Exception("Bad configuration file given!");
-    }
-    return returnType;
-  }
-
   private int getIntEnvVariable(String name) {
     String var = System.getenv(name);
     if (var == null) {
@@ -247,11 +223,11 @@ public class VeniceConfig {
     this.numKafkaConsumerThreads = numKafkaConsumerThreads;
   }
 
-  public StorageType getStorageType() {
+  public String getStorageType() {
     return storageType;
   }
 
-  public void setStorageType(StorageType storageType) {
+  public void setStorageType(String storageType) {
     this.storageType = storageType;
   }
 

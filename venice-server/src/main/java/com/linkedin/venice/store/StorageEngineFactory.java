@@ -1,6 +1,5 @@
 package com.linkedin.venice.store;
 
-import com.linkedin.venice.storage.StorageType;
 import java.util.Properties;
 
 
@@ -12,7 +11,6 @@ import java.util.Properties;
  * connection pool reference
  */
 public interface StorageEngineFactory {
-
   /**
    * Get an initialized storage implementation
    *
@@ -25,7 +23,7 @@ public interface StorageEngineFactory {
    *
    * @return the type of stores returned by this configuration
    */
-  public StorageType getType();
+  public String getType();
 
   /**
    * Update the storage configuration at runtime

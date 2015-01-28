@@ -19,16 +19,6 @@ import org.testng.annotations.Test;
  */
 public class TestKafkaPartitioner {
 
-  @BeforeClass
-  public static void initConfig() {
-
-    try {
-      VeniceConfig.initializeFromFile("./src/test/resources/test.properties");         // config file for testing
-    } catch (Exception e) {
-      Assert.fail(e.getMessage());
-    }
-  }
-
   @Test
   public void testConsistentPartitioning() {
 

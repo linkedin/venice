@@ -1,14 +1,10 @@
 package com.linkedin.venice.server;
 
 import com.google.common.collect.ImmutableList;
-import com.linkedin.venice.kafka.consumer.KafkaConsumerException;
 import com.linkedin.venice.kafka.consumer.KafkaConsumerService;
 import com.linkedin.venice.partition.AbstractPartitionNodeAssignmentScheme;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.storage.StorageService;
-import com.linkedin.venice.storage.StorageType;
-import com.linkedin.venice.storage.VeniceStorageException;
-import com.linkedin.venice.store.StorageEngineFactory;
 import com.linkedin.venice.utils.ReflectUtils;
 import com.linkedin.venice.utils.Utils;
 import java.io.File;
@@ -21,7 +17,6 @@ import java.util.concurrent.ConcurrentMap;
 import org.apache.log4j.Logger;
 
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -35,7 +30,6 @@ public class VeniceServer {
   private final AtomicBoolean isStarted;
   private final StoreRepository storeRepository;
   private final PartitionNodeAssignmentRepository partitionNodeAssignmentRepository;
-  private StorageType storageType;
   private AbstractPartitionNodeAssignmentScheme partitionNodeAssignmentScheme;
 
   private final List<AbstractVeniceService> services;
@@ -45,7 +39,6 @@ public class VeniceServer {
   public VeniceServer(VeniceConfig veniceConfig) {
     this.isStarted = new AtomicBoolean(false);
     this.veniceConfig = veniceConfig;
-    this.storageType = veniceConfig.getStorageType();
     this.storeNameToConfigsMap = new ConcurrentHashMap<String, Properties>();
     this.storeRepository = new StoreRepository();
     this.partitionNodeAssignmentRepository = new PartitionNodeAssignmentRepository();
@@ -108,6 +101,7 @@ public class VeniceServer {
    * When this method finishes the PartitionToNodeAssignmentRepository is populated which is then used by other services.
    */
   private void assignPartitionToNodes() {
+    logger.info("Populating partition node assignment repository");
     String partitionNodeAssignmentSchemeClassName =
         veniceConfig.getPartitionNodeAssignmentSchemeClassMap(veniceConfig.getPartitionNodeAssignmentSchemeName());
     if (partitionNodeAssignmentSchemeClassName != null) {
@@ -121,6 +115,7 @@ public class VeniceServer {
         // TODO throw appropriate exception
       }
     } else {
+      logger.error("Unknown Partition Node Assignment Scheme: " + partitionNodeAssignmentSchemeClassName);
       // TODO throw / handle exception . This is not a known assignment scheme name.
     }
     for (Map.Entry<String, Properties> storeEntry : storeNameToConfigsMap.entrySet()) {
@@ -148,8 +143,6 @@ public class VeniceServer {
     StorageService storageService =
         new StorageService(storeRepository, veniceConfig, storeNameToConfigsMap, partitionNodeAssignmentRepository);
     services.add(storageService);
-
-    // TODO Assumption : By this time the PartitionNodeAssignmentRepository is already populated.
 
     //create and add KafkaConsumerService
     KafkaConsumerService kafkaConsumerService =
@@ -181,7 +174,10 @@ public class VeniceServer {
    */
   public void start()
       throws Exception {
-
+    boolean isntStarted = isStarted.compareAndSet(false, true);
+    if (!isntStarted) {
+      // TODO throw new Exception saying server is already started
+    }
     // TODO - Efficient way to lock java heap
     logger.info("Starting " + services.size() + " services.");
     long start = System.currentTimeMillis();
@@ -202,30 +198,35 @@ public class VeniceServer {
     List<Exception> exceptions = new ArrayList<Exception>();
     // TODO handle exceptions as necessary - Introduce Venice specific
     // Exceptions
-    logger.info("Stopping services"); // TODO -
+    logger.info("Stopping all services"); // TODO -
     // "Stopping services on Node: <node-id>"
-    // - Need to get current ode id
+    // - Need to get current node id
     // information
     /* Stop in reverse order */
-    for (AbstractVeniceService service : Utils.reversed(services)) {
-      try {
-        service.stop();
-      } catch (Exception e) {
-        exceptions.add(e);
-        logger.error(e);
+
+    synchronized (this) {
+      if (!isStarted()) {
+        logger.info("The server is already stopped, ignoring duplicate attempt.");
+        return;
       }
+      for (AbstractVeniceService service : Utils.reversed(services)) {
+        try {
+          service.stop();
+        } catch (Exception e) {
+          exceptions.add(e);
+          logger.error("Exception in stopping service: " + service.getName(), e);
+        }
+      }
+      logger.info("All services stopped"); // "All services stopped for Node:"
+      // + <node-id>);
+
+      if (exceptions.size() > 0) {
+        throw exceptions.get(0);
+      }
+      isStarted.set(false);
+
+      // TODO - Efficient way to unlock java heap
     }
-    logger.info("All services stopped"); // "All services stopped for Node:"
-    // + <node-id>);
-
-    if (exceptions.size() > 0) {
-      throw exceptions.get(0);
-    }
-
-    // TODO - Efficient way to unlock java heap
-
-    // TODO get rid of System.exit later
-    System.exit(1);
   }
 
   public static void main(String args[])
@@ -243,6 +244,7 @@ public class VeniceServer {
       }
     } catch (Exception e) {
       logger.error(e.getMessage());
+      e.printStackTrace();
       Utils.croak("Error while loading configuration: " + e.getMessage());
     }
     final VeniceServer server = new VeniceServer(veniceConfig);

@@ -48,7 +48,7 @@ public class PartitionNodeAssignmentRepository {
       //Assumes all nodes have some partitions for any given store.
       return storeNameToNodeIdAndPartitionIdsMap.get(storeName).get(nodeId);
     } else {
-      logger.error("store name '" + storeName + "' does not exist!");
+      logger.error("Store name '" + storeName + "' does not exist!");
       // TODO throw exception for non existing storename
       return null;
     }
@@ -65,7 +65,7 @@ public class PartitionNodeAssignmentRepository {
     if (storeNameToNodeIdAndPartitionIdsMap.containsKey(storeName)) {
       return storeNameToNodeIdAndPartitionIdsMap.get(storeName);
     } else {
-      logger.error("store name '" + storeName + "' does not exist!");
+      logger.error("Store name '" + storeName + "' does not exist!");
       // TODO throw exception for non existing storename
       return null;     // Need to remove this later
     }
@@ -81,7 +81,7 @@ public class PartitionNodeAssignmentRepository {
     if (nodeIdToStoreNameAndPartitionIdsMap.containsKey(nodeId)) {
       return nodeIdToStoreNameAndPartitionIdsMap.get(nodeId);
     } else {
-      logger.error("node '" + nodeId + "' does not exist!");
+      logger.error("Node '" + nodeId + "' does not exist!");
       // TODO throw exception for non existing node id
       return null;     // Need to remove this later
     }
@@ -102,12 +102,12 @@ public class PartitionNodeAssignmentRepository {
       if (partitionIdToNodeMap.containsKey(logicalPartitionId)) {
         return partitionIdToNodeMap.get(logicalPartitionId);
       } else {
-        logger.error("partition '" + logicalPartitionId + "' does not exist!");
+        logger.error("Partition '" + logicalPartitionId + "' does not exist!");
         // TODO  throw exception for non existing partition id
         return null;     // Need to remove this later
       }
     } else {
-      logger.error("store name '" + storeName + "' does not exist!");
+      logger.error("Store name '" + storeName + "' does not exist!");
       // TODO throw exception for non existing storename
       return null;     // Need to remove this later
     }
@@ -123,9 +123,15 @@ public class PartitionNodeAssignmentRepository {
    */
   public synchronized void setAssignment(String storeName, Map<Integer, Set<Integer>> nodeToLogicalPartitionsMap) {
     if (nodeToLogicalPartitionsMap == null) {
-      logger.error("node to partition assignment cannot be null!");
+      logger.error("Node to partition assignment cannot be null!");
       //TODO throw appropriate exception
       return;      // need to remove later based on exception handling
+    }
+
+    if(storeName == null){
+      logger.error("Store name cannot be null!");
+      // TODO throw appropriate exception
+      return; // need to remove later based on exception handling
     }
 
     //update the first view
@@ -160,9 +166,9 @@ public class PartitionNodeAssignmentRepository {
 
   public synchronized void deleteAssignment(String storeName) {
     if (storeName == null) {
-      logger.error("store name cannot be null!");
+      logger.error("Store name cannot be null!");
       //TODO throw exception?
-      return;
+      return;   // need to remove later based on exception handling
     }
     //update the first view
     storeNameToNodeIdAndPartitionIdsMap.remove(storeName);

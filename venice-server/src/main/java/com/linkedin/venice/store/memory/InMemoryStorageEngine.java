@@ -17,7 +17,6 @@ import org.apache.log4j.Logger;
  *
  */
 public class InMemoryStorageEngine extends AbstractStorageEngine {
-  private static final Logger logger = Logger.getLogger(InMemoryStorageEngine.class);
 
   public InMemoryStorageEngine(VeniceConfig config, Properties storeDef,
       PartitionNodeAssignmentRepository partitionNodeAssignmentRepo) {
@@ -33,7 +32,8 @@ public class InMemoryStorageEngine extends AbstractStorageEngine {
   @Override
   public void addStoragePartition(int partitionId) {
     if (partitionIdToDataBaseMap.containsKey(partitionId)) {
-      // TODO log error and throw appropriate exception here
+      logger.error("Failed to add a storage partition for partitionId: " + partitionId + " . This partition already exists!" );
+      // TODO throw appropriate exception here
     }
     partitionIdToDataBaseMap.put(partitionId, new InMemoryStoragePartition(partitionId));
   }
@@ -41,7 +41,8 @@ public class InMemoryStorageEngine extends AbstractStorageEngine {
   @Override
   public AbstractStoragePartition removePartition(int partitionId) {
     if (!partitionIdToDataBaseMap.containsKey(partitionId)) {
-      // TODO log error and throw appropriate exception here
+      logger.error("Failed to remove a non existing partition: " + partitionId);
+      // TODO throw appropriate exception here
     }
     InMemoryStoragePartition inMemoryStoragePartition =
         (InMemoryStoragePartition) partitionIdToDataBaseMap.remove(partitionId);

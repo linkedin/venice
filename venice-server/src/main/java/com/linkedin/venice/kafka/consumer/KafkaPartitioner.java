@@ -49,7 +49,9 @@ public class KafkaPartitioner implements Partitioner {
 
       partition = partition % numPartitions;
 
-      logger.info("Using hash algorithm: " + key + " goes to partitionId " + partition + " out of " + numPartitions);
+      if (logger.isDebugEnabled()) {
+        logger.debug("Using hash algorithm: " + key + " goes to partitionId " + partition + " out of " + numPartitions);
+      }
 
       md.reset();
       return partition;
