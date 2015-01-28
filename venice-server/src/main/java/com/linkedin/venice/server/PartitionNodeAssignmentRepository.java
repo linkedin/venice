@@ -48,7 +48,7 @@ public class PartitionNodeAssignmentRepository {
       //Assumes all nodes have some partitions for any given store.
       return storeNameToNodeIdAndPartitionIdsMap.get(storeName).get(nodeId);
     } else {
-      logger.error("Store name '" + storeName + "' does not exist!");
+      logger.error("Store name '" + storeName + "' in node: " + nodeId+  " does not exist!");
       // TODO throw exception for non existing storename
       return null;
     }
@@ -102,7 +102,7 @@ public class PartitionNodeAssignmentRepository {
       if (partitionIdToNodeMap.containsKey(logicalPartitionId)) {
         return partitionIdToNodeMap.get(logicalPartitionId);
       } else {
-        logger.error("Partition '" + logicalPartitionId + "' does not exist!");
+        logger.error("Partition '" + logicalPartitionId + "' for store: " + storeName +  "does not exist!");
         // TODO  throw exception for non existing partition id
         return null;     // Need to remove this later
       }

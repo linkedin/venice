@@ -147,7 +147,7 @@ public class VeniceMessageSerializer implements Encoder<VeniceMessage>, Decoder<
 
       message = bytesOut.toByteArray();
     } catch (IOException e) {
-      logger.error("IOException in serializing message \" " + veniceMessage.getPayload() + "\" : " + e.getMessage());
+      logger.error("IOException in serializing message \" " + veniceMessage.getPayload() + "\" : ", e);
     } finally {
 
       // safely close the input/output streams
@@ -159,7 +159,7 @@ public class VeniceMessageSerializer implements Encoder<VeniceMessage>, Decoder<
           bytesOut.close();
         }
       } catch (IOException e) {
-        logger.error("IOException while closing input/output streams: " + e.getMessage());
+        logger.error("IOException while closing input/output streams: ", e);
       }
     }
 

@@ -9,7 +9,7 @@ import com.linkedin.venice.store.memory.InMemoryStorageEngine;
 import java.util.Properties;
 
 
-public class inMemoryStoreTest extends AbstractStoreTest{
+public class InMemoryStoreTest extends AbstractStoreTest{
 
   PartitionNodeAssignmentRepository partitionNodeAssignmentRepository;
   AbstractPartitionNodeAssignmentScheme partitionNodeAssignmentScheme;
@@ -19,7 +19,7 @@ public class inMemoryStoreTest extends AbstractStoreTest{
   int nodeId = 0;
   VeniceConfig veniceConfig;
 
-  public inMemoryStoreTest(){
+  public InMemoryStoreTest(){
     this.numOfPartitions = 5;
     createStoreForTest();
   }

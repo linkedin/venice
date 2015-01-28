@@ -198,9 +198,7 @@ public class SimpleKafkaConsumerTask implements Runnable {
           // end the thread
           execute = false;
         } catch (VeniceMessageException e) {
-
           logger.error("Received an illegal Venice message!", e);
-          e.printStackTrace();
         } catch (VeniceStorageException e) {
 
           logger

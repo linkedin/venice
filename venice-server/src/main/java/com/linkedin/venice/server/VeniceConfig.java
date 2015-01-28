@@ -38,7 +38,7 @@ public class VeniceConfig {
   private List<String> brokerList;
   private int numKafkaConsumerThreads;
   // Storage related properties
-  private String storageType;
+  private String storageType;  //TODO StorageType should not be String in future. This needs to be changes to an Enum later.
   private int numStorageNodes;
   private int numStorageCopies;
 
