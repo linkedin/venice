@@ -8,6 +8,7 @@ import com.linkedin.venice.utils.ConfigurationException;
 import com.linkedin.venice.utils.UndefinedPropertyException;
 import com.linkedin.venice.utils.Utils;
 import java.io.File;
+import java.util.ArrayList;
 import java.util.Map;
 
 import java.util.List;
@@ -25,9 +26,12 @@ public class VeniceConfig {
   public static final String CONFIG_FILE_NAME = "config.properties";
   public static final String STORE_CONFIGS_DIR_NAME = "STORES";
   private static final String VENICE_NODE_ID_VAR_NAME = "VENICE_NODE_ID";
+
+  private String veniceHome;
+  private String veniceConfigDir;
+
   private Map<String, String> storageEngineFactoryClassNameMap;
   private Map<String, String> partitionNodeAssignmentSchemeClassMap;
-  private String CONFIG_DIR_ABSOLUTE_PATH;
   private int nodeId;
   private String partitionNodeAssignmentSchemeName;
   // Kafka related properties
@@ -38,7 +42,8 @@ public class VeniceConfig {
   private List<String> brokerList;
   private int numKafkaConsumerThreads;
   // Storage related properties
-  private String storageType;  //TODO StorageType should not be String in future. This needs to be changes to an Enum later.
+  private String storageType;
+      //TODO StorageType should not be String in future. This needs to be changes to an Enum later.
   private int numStorageNodes;
   private int numStorageCopies;
 
@@ -48,9 +53,13 @@ public class VeniceConfig {
     } catch (UndefinedPropertyException e) {
       this.nodeId = getIntEnvVariable(VENICE_NODE_ID_VAR_NAME);
     }
+    veniceHome = props.getProperty("venice.home");
+    veniceConfigDir = props.getProperty("venice.config.directory");
     numKafkaPartitions = Integer.parseInt(props.getProperty("kafka.number.partitions", "4"));
     kafKaZookeeperUrl = props.getProperty("kafka.zookeeper.url", "localhost:2181");
-    kafkaBrokerUrl = props.getProperty("kafka.broker.url", "localhost:9092");
+    kafkaBrokerUrl = props.getProperty("kafka.broker.url", "localhost:9092");// TODO change this to a list of Kafka brokers separated by comma
+    brokerList = new ArrayList<String>();
+    brokerList.add(kafkaBrokerUrl.split(":")[0]);
     kafkaBrokerPort = Integer.parseInt(props.getProperty("kafka.broker.port", "9092"));
     numKafkaConsumerThreads = Integer.parseInt(props.getProperty("kafka.number.consumer.threads",
         "50"));   //TODO This variable and default value needs to be set to an appropriate value later
@@ -138,9 +147,9 @@ public class VeniceConfig {
       throw new Exception(propertiesFile + " is not a readable configuration file.");
     }
     Properties props = Utils.parseProperties(propertiesFile);
+    props.put("venice.home", veniceHome);
+    props.put("venice.config.directory", veniceConfigDir);
     VeniceConfig veniceConfig = new VeniceConfig(props);
-    //set the absolute config directory path
-    veniceConfig.setConfigDirAbsolutePath(new File(veniceConfigDir).getAbsolutePath());
     return veniceConfig;
   }
 
@@ -158,11 +167,11 @@ public class VeniceConfig {
   }
 
   public String getConfigDirAbsolutePath() {
-    return CONFIG_DIR_ABSOLUTE_PATH;
+    return veniceConfigDir;
   }
 
   public void setConfigDirAbsolutePath(String configDirPath) {
-    this.CONFIG_DIR_ABSOLUTE_PATH = configDirPath;
+    veniceConfigDir = configDirPath;
   }
 
   private void validateParams() {

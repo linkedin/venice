@@ -4,8 +4,10 @@ import com.linkedin.venice.store.AbstractStoragePartition;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.partition.iterators.AbstractCloseablePartitionEntriesIterator;
 import com.linkedin.venice.utils.ByteUtils;
+import com.linkedin.venice.utils.partition.iterators.ByteArray;
 import com.linkedin.venice.utils.partition.iterators.CloseablePartitionKeysIterator;
 import java.io.IOException;
+import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -35,13 +37,11 @@ public class InMemoryStoragePartition extends AbstractStoragePartition {
   }
 
   public void put(byte[] key, byte[] value) {
-    Utils.notNull(key,"Key cannot be null.");
     partitionDb.put(key, value);
   }
 
   public byte[] get(byte[] key) {
-    Utils.notNull(key,"Key cannot be null.");
-    if (partitionDb.containsKey(key)) {
+    if (partitionDb.containsKey(key)){
       return partitionDb.get(key);
     }
     // TODO Throw an Exception saying invalid Key. and remove the below statement.
@@ -49,7 +49,6 @@ public class InMemoryStoragePartition extends AbstractStoragePartition {
   }
 
   public void delete(byte[] key) {
-    Utils.notNull(key,"Key cannot be null.");
     partitionDb.remove(key);
   }
 

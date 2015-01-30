@@ -1,5 +1,7 @@
 package com.linkedin.venice.Common;
 
+import com.google.common.io.Files;
+import java.io.File;
 import java.util.Random;
 
 
@@ -12,6 +14,7 @@ public class TestUtils {
 
   public static final Long SEED = System.currentTimeMillis();
   public static final Random SEEDED_RANDOM = new Random(SEED);
+  private static final CharSequence VENICE_TEST_DATA_DIRECTORY_NAME = "venice-test-data";
 
   /**
    * Generate an array of random bytes
@@ -31,7 +34,17 @@ public class TestUtils {
    * @param max The upper bound for the range of numbers
    * @return
    */
-  public static int getRandomIntInRange(int max){
+  public static int getRandomIntwithin(int max){
     return SEEDED_RANDOM.nextInt(max);
+  }
+
+  /**
+   *
+   * @param min Minimum Value
+   * @param max Maximum value. max must be greater than min.
+   * @return Integer between min and max, inclusive.
+   */
+  public static int getRandomIntInRange(int min, int max){
+    return (SEEDED_RANDOM.nextInt((max - min) + 1) + min);
   }
 }

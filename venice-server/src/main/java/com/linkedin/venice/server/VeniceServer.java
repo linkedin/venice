@@ -28,6 +28,9 @@ public class VeniceServer {
   private static final Logger logger = Logger.getLogger(VeniceServer.class.getName());
   private final VeniceConfig veniceConfig;
   private final AtomicBoolean isStarted;
+
+
+
   private final StoreRepository storeRepository;
   private final PartitionNodeAssignmentRepository partitionNodeAssignmentRepository;
   private AbstractPartitionNodeAssignmentScheme partitionNodeAssignmentScheme;
@@ -76,7 +79,7 @@ public class VeniceServer {
       // TODO throw exception and stop
     }
 
-    // Get all .properties file in STORES directory
+    // Get all .properties file in config/STORES directory
     List<File> storeConfigurationFiles = Arrays.asList(storeConfigsDir.listFiles(new FilenameFilter() {
       @Override
       public boolean accept(File dir, String name) {
@@ -227,6 +230,10 @@ public class VeniceServer {
 
       // TODO - Efficient way to unlock java heap
     }
+  }
+
+  public StoreRepository getStoreRepository() {
+    return storeRepository;
   }
 
   public static void main(String args[])

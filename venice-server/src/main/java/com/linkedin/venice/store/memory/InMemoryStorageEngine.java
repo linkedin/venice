@@ -31,6 +31,13 @@ public class InMemoryStorageEngine extends AbstractStorageEngine {
 
   @Override
   public void addStoragePartition(int partitionId) {
+    /**
+     * If this method is called by anyone other than the constructor, i.e- the admin service, the caller should ensure
+     * that after the addition of the storage partition:
+	 *  1. populate the partitio node assignment repository
+     *  2. it should also be registered with an SimpleKafkaConsumerTask
+     *     thread.
+     */
     if (partitionIdToDataBaseMap.containsKey(partitionId)) {
       logger.error("Failed to add a storage partition for partitionId: " + partitionId + " . This partition already exists!" );
       // TODO throw appropriate exception here
@@ -40,6 +47,11 @@ public class InMemoryStorageEngine extends AbstractStorageEngine {
 
   @Override
   public AbstractStoragePartition removePartition(int partitionId) {
+    /**
+     * The caller of this method should ensure that 1. first the SimpleKafkaConsumerTask associated with this partition is
+     * shutdown 2. parittion node Assignment repo is cleaned up and 3. then remove this storage partition. Else there can 
+     * be situations where the data is consumed from Kafka and not persisted.
+     */
     if (!partitionIdToDataBaseMap.containsKey(partitionId)) {
       logger.error("Failed to remove a non existing partition: " + partitionId);
       // TODO throw appropriate exception here

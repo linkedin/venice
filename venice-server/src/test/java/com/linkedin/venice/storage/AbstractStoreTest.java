@@ -21,6 +21,7 @@ public abstract class AbstractStoreTest {
   int valueSize = 500;
   int uniqueKeyOrValueSize = 350;
 
+  // creates instance for testStore
   public abstract void createStoreForTest();
 
   protected byte[] doGet(int partitionId, byte[] key)
@@ -44,7 +45,7 @@ public abstract class AbstractStoreTest {
   public void testGetAndPut() {
     byte[] key = TestUtils.getRandomBytes(keySize);
     byte[] value = TestUtils.getRandomBytes(valueSize);
-    int partitionId = TestUtils.getRandomIntInRange(numOfPartitions);
+    int partitionId = TestUtils.getRandomIntwithin(numOfPartitions);
     byte[] foundValue;
     try {
       doPut(partitionId, key, value);
@@ -59,7 +60,7 @@ public abstract class AbstractStoreTest {
   public void testDelete() {
     byte[] key = TestUtils.getRandomBytes(keySize);
     byte[] value = TestUtils.getRandomBytes(valueSize);
-    int partitionId = TestUtils.getRandomIntInRange(numOfPartitions);
+    int partitionId = TestUtils.getRandomIntwithin(numOfPartitions);
     byte[] foundValue;
     try {
       doPut(partitionId, key, value);
@@ -82,7 +83,7 @@ public abstract class AbstractStoreTest {
     byte[] key = TestUtils.getRandomBytes(keySize);
     byte[] value = TestUtils.getRandomBytes(valueSize);
     byte[] updatedValue = TestUtils.getRandomBytes(uniqueKeyOrValueSize);
-    int partitionId = TestUtils.getRandomIntInRange(numOfPartitions);
+    int partitionId = TestUtils.getRandomIntwithin(numOfPartitions);
     byte[] foundValue;
     try{
       doPut(partitionId, key, value);
@@ -99,7 +100,7 @@ public abstract class AbstractStoreTest {
   @Test
   public void testGetInvalidKeys() {
     byte[] key = TestUtils.getRandomBytes(uniqueKeyOrValueSize);
-    int partitionId = TestUtils.getRandomIntInRange(numOfPartitions);
+    int partitionId = TestUtils.getRandomIntwithin(numOfPartitions);
     byte[] foundValue;
     try{
       foundValue = doGet(partitionId,key); // TODO Check for an InvalidException here later. For now null is returned if key doesn't exist
@@ -115,7 +116,7 @@ public abstract class AbstractStoreTest {
   public void testPutNullKey(){
     byte[] key = null;
     byte[] value = TestUtils.getRandomBytes(valueSize);
-    int partitionId = TestUtils.getRandomIntInRange(numOfPartitions);
+    int partitionId = TestUtils.getRandomIntwithin(numOfPartitions);
     try{
       doPut(partitionId, key, value);
     } catch(IllegalArgumentException e){
