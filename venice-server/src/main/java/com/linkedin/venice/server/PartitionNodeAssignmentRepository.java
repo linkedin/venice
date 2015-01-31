@@ -43,14 +43,15 @@ public class PartitionNodeAssignmentRepository {
    * @param nodeId the node id to search for
    * @return set of logical partitions owned by the node @nodeId for store @storeName
    */
-  public Set<Integer> getLogicalPartitionIds(String storeName, int nodeId) {
+  public Set<Integer> getLogicalPartitionIds(String storeName, int nodeId)
+      throws Exception {
     if (storeNameToNodeIdAndPartitionIdsMap.containsKey(storeName)) {
       //Assumes all nodes have some partitions for any given store.
       return storeNameToNodeIdAndPartitionIdsMap.get(storeName).get(nodeId);
     } else {
-      logger.error("Store name '" + storeName + "' in node: " + nodeId+  " does not exist!");
-      // TODO throw exception for non existing storename
-      return null;
+      String errorMessage = "Store name '" + storeName + "' in node: " + nodeId + " does not exist!";
+      logger.error(errorMessage);
+      throw new Exception(errorMessage); //TODO change to appropriate exception type later
     }
   }
 
@@ -61,13 +62,14 @@ public class PartitionNodeAssignmentRepository {
    * @param storeName to search for
    * @return Map of <nodeId, corresponding logical partition ids >
    */
-  public Map<Integer, Set<Integer>> getNodeToLogicalPartitionIdsMap(String storeName) {
+  public Map<Integer, Set<Integer>> getNodeToLogicalPartitionIdsMap(String storeName)
+      throws Exception {
     if (storeNameToNodeIdAndPartitionIdsMap.containsKey(storeName)) {
       return storeNameToNodeIdAndPartitionIdsMap.get(storeName);
     } else {
-      logger.error("Store name '" + storeName + "' does not exist!");
-      // TODO throw exception for non existing storename
-      return null;     // Need to remove this later
+      String errorMessage = "Store name '" + storeName + "' does not exist!";
+      logger.error(errorMessage);
+      throw new Exception(errorMessage); //TODO change to appropriate exception type later
     }
   }
 
@@ -77,13 +79,14 @@ public class PartitionNodeAssignmentRepository {
    * @param nodeId the node id to look up
    * @return Map of <storename, List<logical partition ids>>
    */
-  public Map<String, Set<Integer>> getStoreToLogicalPartitionIdsMap(int nodeId) {
+  public Map<String, Set<Integer>> getStoreToLogicalPartitionIdsMap(int nodeId)
+      throws Exception {
     if (nodeIdToStoreNameAndPartitionIdsMap.containsKey(nodeId)) {
       return nodeIdToStoreNameAndPartitionIdsMap.get(nodeId);
     } else {
-      logger.error("Node '" + nodeId + "' does not exist!");
-      // TODO throw exception for non existing node id
-      return null;     // Need to remove this later
+      String errorMessage = "Node '" + nodeId + "' does not exist!";
+      logger.error(errorMessage);
+      throw new Exception(errorMessage); //TODO change to appropriate exception type later
     }
   }
 
@@ -96,20 +99,22 @@ public class PartitionNodeAssignmentRepository {
    * @param logicalPartitionId PartitionId from the propagating layer for the given store
    * @return All node ids that subscribe to the @logicalPartitionId
    */
-  public Set<Integer> getAllNodeIdsSubscribedToALogicalPartition(String storeName, int logicalPartitionId) {
+  public Set<Integer> getAllNodeIdsSubscribedToALogicalPartition(String storeName, int logicalPartitionId)
+      throws Exception {
+    String errorMessage;
     if (storeNameToPartitionIdAndNodesIdsMap.containsKey(storeName)) {
       Map<Integer, Set<Integer>> partitionIdToNodeMap = storeNameToPartitionIdAndNodesIdsMap.get(storeName);
       if (partitionIdToNodeMap.containsKey(logicalPartitionId)) {
         return partitionIdToNodeMap.get(logicalPartitionId);
       } else {
-        logger.error("Partition '" + logicalPartitionId + "' for store: " + storeName +  "does not exist!");
-        // TODO  throw exception for non existing partition id
-        return null;     // Need to remove this later
+        errorMessage = "Partition '" + logicalPartitionId + "' for store: " + storeName + "does not exist!";
+        logger.error(errorMessage);
+        throw new Exception(errorMessage); //TODO change to appropriate exception type later
       }
     } else {
-      logger.error("Store name '" + storeName + "' does not exist!");
-      // TODO throw exception for non existing storename
-      return null;     // Need to remove this later
+      errorMessage = "Store name '" + storeName + "' does not exist!";
+      logger.error(errorMessage);
+      throw new Exception(errorMessage); //TODO change to appropriate exception type later
     }
   }
 
@@ -121,17 +126,19 @@ public class PartitionNodeAssignmentRepository {
    * @param storeName storename to add or update
    * @param nodeToLogicalPartitionsMap Map representing assignment of logical partitions to each node for this store
    */
-  public synchronized void setAssignment(String storeName, Map<Integer, Set<Integer>> nodeToLogicalPartitionsMap) {
+  public synchronized void setAssignment(String storeName, Map<Integer, Set<Integer>> nodeToLogicalPartitionsMap)
+      throws Exception {
+    String errorMessage;
     if (nodeToLogicalPartitionsMap == null) {
-      logger.error("Node to partition assignment cannot be null!");
-      //TODO throw appropriate exception
-      return;      // need to remove later based on exception handling
+      errorMessage = "Node to partition assignment cannot be null!";
+      logger.error(errorMessage);
+      throw new Exception(errorMessage); //TODO change to appropriate exception type later
     }
 
-    if(storeName == null){
-      logger.error("Store name cannot be null!");
-      // TODO throw appropriate exception
-      return; // need to remove later based on exception handling
+    if (storeName == null) {
+      errorMessage = "Store name cannot be null!";
+      logger.error(errorMessage);
+      throw new Exception(errorMessage); //TODO change to appropriate exception type later
     }
 
     //update the first view
@@ -164,11 +171,12 @@ public class PartitionNodeAssignmentRepository {
     storeNameToPartitionIdAndNodesIdsMap.put(storeName, partitionToNodeIds);
   }
 
-  public synchronized void deleteAssignment(String storeName) {
+  public synchronized void deleteAssignment(String storeName)
+      throws Exception {
     if (storeName == null) {
-      logger.error("Store name cannot be null!");
-      //TODO throw exception?
-      return;   // need to remove later based on exception handling
+      String errorMessage = "Store name cannot be null!";
+      logger.error(errorMessage);
+      throw new Exception(errorMessage); //TODO change to appropriate exception type later
     }
     //update the first view
     storeNameToNodeIdAndPartitionIdsMap.remove(storeName);

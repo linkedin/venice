@@ -54,12 +54,14 @@ public class StoreRepository {
     return this.localStores.remove(storeName);
   }
 
-  private void addLocalStore(QueryStore store) {
+  private void addLocalStore(QueryStore store)
+      throws Exception {
     QueryStore found = this.localStores.putIfAbsent(store.getName(), store);
 
     if (found != null) {
-      logger.error("Store '" + store.getName() + "' has already been initialized.");
-      // TODO throw VeniceException
+      String errorMessage = "Store '" + store.getName() + "' has already been initialized.";
+      logger.error(errorMessage);
+      throw new Exception(errorMessage); // TODO change to appropriate Exception type later
     }
   }
 
@@ -83,11 +85,13 @@ public class StoreRepository {
     return this.localStorageEngines.remove(storeName);
   }
 
-  public void addLocalStorageEngine(AbstractStorageEngine engine) {
+  public void addLocalStorageEngine(AbstractStorageEngine engine)
+      throws Exception {
     AbstractStorageEngine found = this.localStorageEngines.putIfAbsent(engine.getName(), engine);
     if (found != null) {
-      logger.error("Storage Engine '" + engine.getName() + "' has already been initialized.");
-      // TODO throw VeniceException
+      String errorMessage = "Storage Engine '" + engine.getName() + "' has already been initialized.";
+      logger.error(errorMessage);
+      throw new Exception(errorMessage); // TODO change to appropriate Exception type later
     }
     this.addLocalStore((QueryStore) engine);
   }

@@ -2,6 +2,7 @@ package com.linkedin.venice.service;
 
 import com.linkedin.venice.utils.Utils;
 import java.util.concurrent.atomic.AtomicBoolean;
+import org.apache.log4j.Logger;
 
 
 /**
@@ -12,6 +13,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public abstract class AbstractVeniceService {
   private final String serviceName;
   private final AtomicBoolean isStarted;
+  private static final Logger logger = Logger.getLogger(AbstractVeniceService.class);
 
   public AbstractVeniceService(String serviceName) {
     this.serviceName = Utils.notNull(serviceName);
@@ -28,18 +30,20 @@ public abstract class AbstractVeniceService {
     if (!isntStarted) {
       throw new IllegalStateException("Service is already started!");
     }
-    // TODO: Add logging
+    logger.info("Starting " + getName());
     startInner();
   }
 
   public void stop()
       throws Exception {
+    logger.info("Stopping " + getName());
     synchronized (this) {
       if (!isStarted()) {
-        //TODO: add logging
+        logger.info("This service is already stopped, ignoring duplicate attempt.");
         return;
       }
       stopInner();
+      isStarted.set(false);
     }
   }
 

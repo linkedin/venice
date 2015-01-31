@@ -19,13 +19,15 @@ public class InMemoryStoreTest extends AbstractStoreTest{
   int nodeId = 0;
   VeniceConfig veniceConfig;
 
-  public InMemoryStoreTest(){
+  public InMemoryStoreTest()
+      throws Exception {
     this.numOfPartitions = 5;
     createStoreForTest();
   }
 
   @Override
-  public void createStoreForTest() {
+  public void createStoreForTest()
+      throws Exception {
     //Store Properties
     Properties storeConfigs = new Properties();
     storeConfigs.put("name",storeName);

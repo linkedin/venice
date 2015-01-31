@@ -31,7 +31,8 @@ public abstract class AbstractStoragePartition {
   /**
    * Get a value from the partition database
    */
-  public abstract byte[] get(byte[] key);
+  public abstract byte[] get(byte[] key)
+      throws Exception;
 
   /**
    * Delete a key from the partition database

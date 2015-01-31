@@ -1,7 +1,6 @@
 package com.linkedin.venice.store;
 
 import com.linkedin.venice.storage.VeniceStorageException;
-import com.linkedin.venice.utils.Utils;
 
 
 /**
@@ -30,7 +29,7 @@ public interface Store extends QueryStore {
    * @throws VeniceStorageException
    */
   public void put(Integer logicalPartitionId, byte[] key, byte[] value)
-      throws VeniceStorageException;
+      throws Exception;
 
   /**
    * Delete entry corresponding to the given key
@@ -40,5 +39,5 @@ public interface Store extends QueryStore {
    * @throws VeniceStorageException
    */
   public void delete(Integer logicalPartitionId, byte[] key)
-      throws VeniceStorageException;
+      throws Exception;
 }

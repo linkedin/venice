@@ -29,8 +29,6 @@ public class VeniceServer {
   private final VeniceConfig veniceConfig;
   private final AtomicBoolean isStarted;
 
-
-
   private final StoreRepository storeRepository;
   private final PartitionNodeAssignmentRepository partitionNodeAssignmentRepository;
   private AbstractPartitionNodeAssignmentScheme partitionNodeAssignmentScheme;
@@ -39,7 +37,8 @@ public class VeniceServer {
 
   private final ConcurrentMap<String, Properties> storeNameToConfigsMap;
 
-  public VeniceServer(VeniceConfig veniceConfig) {
+  public VeniceServer(VeniceConfig veniceConfig)
+      throws Exception {
     this.isStarted = new AtomicBoolean(false);
     this.veniceConfig = veniceConfig;
     this.storeNameToConfigsMap = new ConcurrentHashMap<String, Properties>();
@@ -50,10 +49,8 @@ public class VeniceServer {
     this.initStoreConfigs();
 
     /*
-     * TODO - 1. Consider distribution of storage across servers. How do the servers share the same
-		 * config - For example in Voldemort we use cluster.xml and stores.xml.
-		 * 2. Check Hostnames like in Voldemort to make sure that local host and
-         * ips match up.
+     * TODO - 1. How do the servers share the same config - For example in Voldemort we use cluster.xml and stores.xml.
+		 * 2. Check Hostnames like in Voldemort to make sure that local host and ips match up.
 		 */
 
     //Populates the partitionToNodeAssignmentRepository
@@ -69,14 +66,16 @@ public class VeniceServer {
    *
    * Note that the individual configs include both storage and streaming layer (i.e. kafka) specific configs for each Venice store
    */
-  private void initStoreConfigs() {
+  private void initStoreConfigs()
+      throws Exception {
     logger.info("Initializing store configs:");
     File storeConfigsDir =
         new File(veniceConfig.getConfigDirAbsolutePath() + File.separator + veniceConfig.STORE_CONFIGS_DIR_NAME);
     if (!Utils.isReadableDir(storeConfigsDir)) {
-      logger
-          .error("Either the " + VeniceConfig.STORE_CONFIGS_DIR_NAME + " directory does not exist or is not readable.");
-      // TODO throw exception and stop
+      String errorMessage =
+          "Either the " + VeniceConfig.STORE_CONFIGS_DIR_NAME + " directory does not exist or is not readable.";
+      logger.error(errorMessage);
+      throw new Exception(errorMessage); // TODO later change this to appropriate Exception Type.
     }
 
     // Get all .properties file in config/STORES directory
@@ -103,7 +102,8 @@ public class VeniceServer {
    * in the cluster. The scheme for this assignment is available in config.properties and is parsed by VeniceConfig.
    * When this method finishes the PartitionToNodeAssignmentRepository is populated which is then used by other services.
    */
-  private void assignPartitionToNodes() {
+  private void assignPartitionToNodes()
+      throws Exception {
     logger.info("Populating partition node assignment repository");
     String partitionNodeAssignmentSchemeClassName =
         veniceConfig.getPartitionNodeAssignmentSchemeClassMap(veniceConfig.getPartitionNodeAssignmentSchemeName());
@@ -113,13 +113,15 @@ public class VeniceServer {
         partitionNodeAssignmentScheme = (AbstractPartitionNodeAssignmentScheme) ReflectUtils
             .callConstructor(AssignmentSchemeClass, new Class<?>[]{}, new Object[]{});
       } catch (IllegalStateException e) {
-        logger.error("Error loading Partition Node Assignment Class '" + partitionNodeAssignmentSchemeClassName + "'.",
-            e);
-        // TODO throw appropriate exception
+        String errorMessage =
+            "Error loading Partition Node Assignment Class '" + partitionNodeAssignmentSchemeClassName + "'.";
+        logger.error(errorMessage, e);
+        throw new Exception(errorMessage); // TODO later change this to appropriate Exception Type.
       }
     } else {
-      logger.error("Unknown Partition Node Assignment Scheme: " + partitionNodeAssignmentSchemeClassName);
-      // TODO throw / handle exception . This is not a known assignment scheme name.
+      String erroMessage = "Unknown Partition Node Assignment Scheme: " + partitionNodeAssignmentSchemeClassName;
+      logger.error(erroMessage);
+      throw new Exception(erroMessage); // TODO later change this to appropriate Exception Type.
     }
     for (Map.Entry<String, Properties> storeEntry : storeNameToConfigsMap.entrySet()) {
       Map<Integer, Set<Integer>> nodeToLogicalPartitionIdsMap = partitionNodeAssignmentScheme
@@ -179,7 +181,7 @@ public class VeniceServer {
       throws Exception {
     boolean isntStarted = isStarted.compareAndSet(false, true);
     if (!isntStarted) {
-      // TODO throw new Exception saying server is already started
+      throw new IllegalStateException("Service is already started!");
     }
     // TODO - Efficient way to lock java heap
     logger.info("Starting " + services.size() + " services.");
@@ -199,12 +201,8 @@ public class VeniceServer {
   public void shutdown()
       throws Exception {
     List<Exception> exceptions = new ArrayList<Exception>();
-    // TODO handle exceptions as necessary - Introduce Venice specific
-    // Exceptions
-    logger.info("Stopping all services"); // TODO -
-    // "Stopping services on Node: <node-id>"
-    // - Need to get current node id
-    // information
+    logger.info("Stopping all services"); // TODO -"Stopping services on Node: <node-id>"
+    // - Need to get current node id information
     /* Stop in reverse order */
 
     synchronized (this) {

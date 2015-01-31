@@ -73,14 +73,16 @@ public abstract class AbstractStorageEngine implements Store {
    *
    * @param partitionId  - id of partition to add
    */
-  public abstract void addStoragePartition(int partitionId);
+  public abstract void addStoragePartition(int partitionId)
+      throws Exception;
 
   /**
    * Removes and returns a partition from the current store
    * @param partitionId  - id of partition to retrieve and remove
    * @return The AbstractStoragePartition object removed by this operation
    */
-  public abstract AbstractStoragePartition removePartition(int partitionId);
+  public abstract AbstractStoragePartition removePartition(int partitionId)
+      throws Exception;
 
   /**
    *
@@ -92,7 +94,8 @@ public abstract class AbstractStorageEngine implements Store {
    *
    * @return An iterator over the entries in this AbstractStorageEngine.
    */
-  public abstract CloseableStoreEntriesIterator storeEntries();
+  public abstract CloseableStoreEntriesIterator storeEntries()
+      throws Exception;
 
   /**
    *
@@ -102,7 +105,8 @@ public abstract class AbstractStorageEngine implements Store {
    *
    * @return An iterator over the keys in this AbstractStorageEngine.
    */
-  public abstract CloseableStoreKeysIterator storeKeys();
+  public abstract CloseableStoreKeysIterator storeKeys()
+      throws Exception;
 
   /**
    * Truncate all entries in the store
@@ -111,7 +115,6 @@ public abstract class AbstractStorageEngine implements Store {
     for (AbstractStoragePartition partition : this.partitionIdToDataBaseMap.values()) {
       partition.truncate();
     }
-    // TODO clear the partitionIdToDataBaseMap ?
   }
 
   /**
@@ -135,39 +138,39 @@ public abstract class AbstractStorageEngine implements Store {
   }
 
   public void put(Integer logicalPartitionId, byte[] key, byte[] value)
-      throws VeniceStorageException {
+      throws Exception {
     Utils.notNull(key, "Key cannot be null.");
     if (!containsPartition(logicalPartitionId)) {
-      logger.error("PUT request failed for Key: " + ByteUtils.toHexString(key) + " . Invalid partition id: "
-          + logicalPartitionId );
-      //TODO throw appropriate exception
-      return;
+      String errorMessage = "PUT request failed for Key: " + ByteUtils.toHexString(key) + " . Invalid partition id: "
+          + logicalPartitionId;
+      logger.error(errorMessage);
+      throw new Exception(errorMessage); // TODO Later change this to appropriate Exception type
     }
     AbstractStoragePartition db = this.partitionIdToDataBaseMap.get(logicalPartitionId);
     db.put(key, value);
   }
 
   public void delete(Integer logicalPartitionId, byte[] key)
-      throws VeniceStorageException {
+      throws Exception {
     Utils.notNull(key, "Key cannot be null.");
     if (!containsPartition(logicalPartitionId)) {
-      logger.error("DELETE request failed for key: " + ByteUtils.toHexString(key) + " . Invalid partition id: "
-          + logicalPartitionId);
-      //TODO throw appropriate exception
-      return;
+      String errorMessage = "DELETE request failed for key: " + ByteUtils.toHexString(key) + " . Invalid partition id: "
+          + logicalPartitionId;
+      logger.error(errorMessage);
+      throw new Exception(errorMessage); // TODO Later change this to appropriate Exception type
     }
     AbstractStoragePartition db = this.partitionIdToDataBaseMap.get(logicalPartitionId);
     db.delete(key);
   }
 
   public byte[] get(Integer logicalPartitionId, byte[] key)
-      throws VeniceStorageException {
+      throws Exception {
     Utils.notNull(key, "Key cannot be null.");
     if (!containsPartition(logicalPartitionId)) {
-      logger.error("GET request failed for key " + ByteUtils.toHexString(key) + " . Invalid partition id: "
-          + logicalPartitionId);
-      //TODO throw appropriate exception
-      return null; // TODO Need to get rid of this later
+      String errorMessage =
+          "GET request failed for key " + ByteUtils.toHexString(key) + " . Invalid partition id: " + logicalPartitionId;
+      logger.error(errorMessage);
+      throw new Exception(errorMessage); // TODO Later change this to appropriate Exception type
     }
     AbstractStoragePartition db = this.partitionIdToDataBaseMap.get(logicalPartitionId);
     return db.get(key);

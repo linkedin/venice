@@ -1,7 +1,5 @@
-package com.linkedin.venice.utils.partition.iterators;
+package com.linkedin.venice.utils;
 
-import com.linkedin.venice.utils.ByteUtils;
-import com.linkedin.venice.utils.Utils;
 import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.Arrays;

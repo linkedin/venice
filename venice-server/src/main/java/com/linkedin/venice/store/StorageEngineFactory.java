@@ -17,7 +17,8 @@ public interface StorageEngineFactory {
    * @param storeDef  store definition
    * @return The storage engine
    */
-  public AbstractStorageEngine getStore(Properties storeDef);
+  public AbstractStorageEngine getStore(Properties storeDef)
+      throws Exception;
 
   /**
    *

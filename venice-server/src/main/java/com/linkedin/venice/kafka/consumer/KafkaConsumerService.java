@@ -53,24 +53,27 @@ public class KafkaConsumerService extends AbstractVeniceService {
     logger.info("Starting all kafka consumer tasks on node: " + veniceConfig.getNodeId());
     consumerExecutorService = Executors.newFixedThreadPool(veniceConfig.getKafkaConsumerThreads());
     for (Map.Entry<String, Properties> entry : topicToStoreConfigsMap.entrySet()) {
-      //TODO: separate this logic into a new method so admin operations can call them later.
       String topic = entry.getKey();
       Properties storeConfig = entry.getValue();
-      Map<Integer, SimpleKafkaConsumerTask> partitionIdToKafkaConsumerTaskMap;
-      if (!this.topicNameToPartitionIdAndKafkaConsumerTasksMap.containsKey(topic)) {
-        partitionIdToKafkaConsumerTaskMap = new HashMap<Integer, SimpleKafkaConsumerTask>();
-        this.topicNameToPartitionIdAndKafkaConsumerTasksMap.put(topic, partitionIdToKafkaConsumerTaskMap);
-      }
-      partitionIdToKafkaConsumerTaskMap = this.topicNameToPartitionIdAndKafkaConsumerTasksMap.get(topic);
-      for (int partitionId : partitionNodeAssignmentRepository
-          .getLogicalPartitionIds(topic, veniceConfig.getNodeId())) {
-        SimpleKafkaConsumerTask kafkaConsumerTask = getConsumerTask(topic, partitionId, entry.getValue());
-        consumerExecutorService.submit(kafkaConsumerTask);
-        partitionIdToKafkaConsumerTaskMap.put(partitionId, kafkaConsumerTask);
-      }
-      this.topicNameToPartitionIdAndKafkaConsumerTasksMap.put(topic, partitionIdToKafkaConsumerTaskMap);
+      registerKafkaConsumers(topic, storeConfig);
     }
     logger.info("All kafka consumer tasks started.");
+  }
+
+  public void registerKafkaConsumers(String topic, Properties storeConfig)
+      throws Exception {
+    Map<Integer, SimpleKafkaConsumerTask> partitionIdToKafkaConsumerTaskMap;
+    if (!this.topicNameToPartitionIdAndKafkaConsumerTasksMap.containsKey(topic)) {
+      partitionIdToKafkaConsumerTaskMap = new HashMap<Integer, SimpleKafkaConsumerTask>();
+      this.topicNameToPartitionIdAndKafkaConsumerTasksMap.put(topic, partitionIdToKafkaConsumerTaskMap);
+    }
+    partitionIdToKafkaConsumerTaskMap = this.topicNameToPartitionIdAndKafkaConsumerTasksMap.get(topic);
+    for (int partitionId : partitionNodeAssignmentRepository.getLogicalPartitionIds(topic, veniceConfig.getNodeId())) {
+      SimpleKafkaConsumerTask kafkaConsumerTask = getConsumerTask(topic, partitionId, storeConfig);
+      consumerExecutorService.submit(kafkaConsumerTask);
+      partitionIdToKafkaConsumerTaskMap.put(partitionId, kafkaConsumerTask);
+    }
+    this.topicNameToPartitionIdAndKafkaConsumerTasksMap.put(topic, partitionIdToKafkaConsumerTaskMap);
   }
 
   /**

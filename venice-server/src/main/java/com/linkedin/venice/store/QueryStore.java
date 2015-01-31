@@ -29,7 +29,7 @@ public interface QueryStore {
    * @throws com.linkedin.venice.storage.VeniceStorageException
    */
   public byte[] get(Integer logicalPartitionId, byte[] key)
-      throws VeniceStorageException;
+      throws Exception;
 
   /**
    * Close the store.

@@ -199,8 +199,7 @@ public class SimpleKafkaConsumerTask implements Runnable {
           execute = false;
         } catch (VeniceMessageException e) {
           logger.error("Received an illegal Venice message!", e);
-        } catch (VeniceStorageException e) {
-
+        } catch (Exception e) {
           logger
               .error("Venice Storage Engine for store: " + storageEngine.getName() + " has been corrupted! Exiting...",
                   e);
@@ -229,7 +228,7 @@ public class SimpleKafkaConsumerTask implements Runnable {
    * Given the attached storage engine, interpret the VeniceMessage and perform the required action
    * */
   private void readMessage(String key, VeniceMessage msg)
-      throws VeniceMessageException, VeniceStorageException {
+      throws Exception {
 
     long startTimeNs = -1;
 

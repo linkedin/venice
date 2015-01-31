@@ -22,7 +22,8 @@ public class InMemoryStorageEngineFactory implements StorageEngineFactory {
   }
 
   @Override
-  public AbstractStorageEngine getStore(Properties storeDef) {
+  public AbstractStorageEngine getStore(Properties storeDef)
+      throws Exception {
     synchronized (lock) {
       return new InMemoryStorageEngine(veniceConfig, storeDef, partitionNodeAssignmentRepo);
     }

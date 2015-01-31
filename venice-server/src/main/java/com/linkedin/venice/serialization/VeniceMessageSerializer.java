@@ -43,7 +43,7 @@ public class VeniceMessageSerializer implements Encoder<VeniceMessage>, Decoder<
    * @param byteArray - byte array to be converted
    * @return Converted Venice Message
    * */
-  public VeniceMessage fromBytes(byte[] byteArray) {
+  public VeniceMessage fromBytes(byte[] byteArray){
 
     byte magicByte;
     byte schemaVersion;
@@ -74,7 +74,7 @@ public class VeniceMessageSerializer implements Encoder<VeniceMessage>, Decoder<
         default:
           operationType = null;
           logger.error("Operation Type not recognized: " + opTypeByte);
-          // TODO throw an appropriate exception ?
+          return null;
       }
 
       /* read schemaVersion - TODO: currently unused */
@@ -86,9 +86,8 @@ public class VeniceMessageSerializer implements Encoder<VeniceMessage>, Decoder<
       for (int i = 0; i < byteCount; i++) {
         payload.append(Character.toString((char) objectInputStream.readByte()));
       }
-    } catch (IOException e) {
-      logger.error("IOException while converting to VeniceMessage: " + e.getMessage());
-      e.printStackTrace();
+    } catch (Exception e) {
+      logger.error("IOException while converting to VeniceMessage: ", e);
     } finally {
       // safely close the input/output streams
       try {

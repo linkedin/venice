@@ -19,13 +19,15 @@ public class InMemoryStorageEngineTest extends AbstractStorageEngineTest {
   int nodeId = 0;
   VeniceConfig veniceConfig;
 
-  public InMemoryStorageEngineTest() {
+  public InMemoryStorageEngineTest()
+      throws Exception {
     this.numOfPartitions = 5;
     createStorageEngineForTest();
   }
 
   @Override
-  public void createStorageEngineForTest() {
+  public void createStorageEngineForTest()
+      throws Exception {
     //Store Properties
     Properties storeConfigs = new Properties();
     storeConfigs.put("name", storeName);

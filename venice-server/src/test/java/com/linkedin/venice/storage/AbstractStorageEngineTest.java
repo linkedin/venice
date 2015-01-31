@@ -13,18 +13,21 @@ public abstract class AbstractStorageEngineTest extends AbstractStoreTest {
   protected int partitionId;
 
   // creates instance for testStoreEngine
-  public abstract void createStorageEngineForTest();
+  public abstract void createStorageEngineForTest()
+      throws Exception;
 
   @Override
   public void createStoreForTest() {
     testStore = (Store) testStoreEngine;
   }
 
-  public void doAddPartition(int partitionId) {
+  public void doAddPartition(int partitionId)
+      throws Exception {
     testStoreEngine.addStoragePartition(partitionId);
   }
 
-  public void doRemovePartition(int partitionId) {
+  public void doRemovePartition(int partitionId)
+      throws Exception {
     testStoreEngine.removePartition(partitionId);
   }
 
@@ -60,7 +63,8 @@ public abstract class AbstractStorageEngineTest extends AbstractStoreTest {
   }
 
   @Test
-  public void testAddingAPartitionTwice()  throws Exception {
+  public void testAddingAPartitionTwice()
+      throws Exception {
     init();
 
     //add new storage partition
@@ -85,7 +89,8 @@ public abstract class AbstractStorageEngineTest extends AbstractStoreTest {
   }
 
   @Test
-  public void testRemovingPartitionTwice()  throws Exception{
+  public void testRemovingPartitionTwice()
+      throws Exception {
 
     init();
 
@@ -113,7 +118,8 @@ public abstract class AbstractStorageEngineTest extends AbstractStoreTest {
   }
 
   @Test
-  public void testOperationsOnNonExistingPartition() throws Exception {
+  public void testOperationsOnNonExistingPartition()
+      throws Exception {
     init();
 
     byte[] key = TestUtils.getRandomBytes(keySize);
@@ -122,7 +128,7 @@ public abstract class AbstractStorageEngineTest extends AbstractStoreTest {
     //test put
     try {
       testStoreEngine.put(partitionId, key, value);
-    } catch (VeniceStorageException e) {
+    } catch (Exception e) {
       //This is expected.
       //TODO recheck Exception type once exception handling is in place.
     }
@@ -130,7 +136,7 @@ public abstract class AbstractStorageEngineTest extends AbstractStoreTest {
     byte[] found = null;
     try {
       found = testStoreEngine.get(partitionId, key);
-    } catch (VeniceStorageException e) {
+    } catch (Exception e) {
       //This is expected
       //TODO recheck Exception type once exception handling is in place.
     }
@@ -141,7 +147,7 @@ public abstract class AbstractStorageEngineTest extends AbstractStoreTest {
     //test delete
     try {
       testStoreEngine.delete(partitionId, key);
-    } catch (VeniceStorageException e) {
+    } catch (Exception e) {
       //This is expected
       //TODO recheck Exception type once exception handling is in place.
       return;

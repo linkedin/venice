@@ -22,22 +22,23 @@ public abstract class AbstractStoreTest {
   int uniqueKeyOrValueSize = 350;
 
   // creates instance for testStore
-  public abstract void createStoreForTest();
+  public abstract void createStoreForTest()
+      throws Exception;
 
   protected byte[] doGet(int partitionId, byte[] key)
-      throws VeniceStorageException {
+      throws Exception {
     byte[] result;
     result = testStore.get(partitionId, key);
     return result;
   }
 
   protected void doPut(int partitionId, byte[] key, byte[] value)
-      throws VeniceStorageException {
+      throws Exception {
     testStore.put(partitionId, key, value);
   }
 
   protected void doDelete(int partitionId, byte[] key)
-      throws VeniceStorageException {
+      throws Exception {
     testStore.delete(partitionId, key);
   }
 
@@ -50,9 +51,10 @@ public abstract class AbstractStoreTest {
     try {
       doPut(partitionId, key, value);
       foundValue = doGet(partitionId, key);
-      Assert.assertEquals(value, foundValue, "The actual value: " + value.toString() + " and expected value: " + foundValue.toString() + " do not match!");
-    } catch (VeniceStorageException e) {
-      Assert.fail("VeniceStorageException was thrown: " + e.getMessage(), e);
+      Assert.assertEquals(value, foundValue,
+          "The actual value: " + value.toString() + " and expected value: " + foundValue.toString() + " do not match!");
+    } catch (Exception e) {   // TODO change to appropriate Exceptio type later
+      Assert.fail("Exception was thrown: " + e.getMessage(), e);
     }
   }
 
@@ -65,17 +67,22 @@ public abstract class AbstractStoreTest {
     try {
       doPut(partitionId, key, value);
       foundValue = doGet(partitionId, key);
-      Assert.assertEquals(value, foundValue, "The actual value: " + value.toString() + " and expected value: " + foundValue.toString() + " do not match!");
+      Assert.assertEquals(value, foundValue,
+          "The actual value: " + value.toString() + " and expected value: " + foundValue.toString() + " do not match!");
       doDelete(partitionId, key);
-      foundValue = doGet(partitionId,
-          key); // TODO Check for an InvalidException here later. For now null is returned if key doesn't exist
-      if(foundValue != null){
-        Assert.fail("Delete failed. found a value: " + foundValue.toString() + "  for the key: " + key.toString() + " after deletion. ");
+      foundValue = null;
+      try {
+        foundValue = doGet(partitionId, key);
+        if (foundValue != null) {
+          Assert.fail("Delete failed. found a value: " + foundValue.toString() + "  for the key: " + key.toString()
+              + " after deletion. ");
+        }
+      } catch (Exception e) { // TODO change to appropriate Exceptio type later.
+        // This is expected.
       }
-    } catch (VeniceStorageException e) {
-      Assert.fail("VeniceStorageException was thrown: " + e.getMessage(), e);
+    } catch (Exception e) {  // TODO change to appropriate Exceptio type later
+      Assert.fail("Exception was thrown: " + e.getMessage(), e);
     }
-
   }
 
   @Test
@@ -85,15 +92,18 @@ public abstract class AbstractStoreTest {
     byte[] updatedValue = TestUtils.getRandomBytes(uniqueKeyOrValueSize);
     int partitionId = TestUtils.getRandomIntwithin(numOfPartitions);
     byte[] foundValue;
-    try{
+    try {
       doPut(partitionId, key, value);
       foundValue = doGet(partitionId, key);
-      Assert.assertEquals(value, foundValue, "The actual value: " + value.toString() + " and expected value: " + foundValue.toString() + " do not match!");
+      Assert.assertEquals(value, foundValue,
+          "The actual value: " + value.toString() + " and expected value: " + foundValue.toString() + " do not match!");
       doPut(partitionId, key, updatedValue);
       foundValue = doGet(partitionId, key);
-      Assert.assertEquals(updatedValue, foundValue, "The updated value: " + updatedValue.toString() + " and expected value: " + foundValue.toString() + " do not match!");
-    } catch (VeniceStorageException e) {
-      Assert.fail("VeniceStorageException was thrown: " + e.getMessage(), e);
+      Assert.assertEquals(updatedValue, foundValue,
+          "The updated value: " + updatedValue.toString() + " and expected value: " + foundValue.toString()
+              + " do not match!");
+    } catch (Exception e) { // TODO change to appropriate Exceptio type later
+      Assert.fail("Exception was thrown: " + e.getMessage(), e);
     }
   }
 
@@ -101,30 +111,32 @@ public abstract class AbstractStoreTest {
   public void testGetInvalidKeys() {
     byte[] key = TestUtils.getRandomBytes(uniqueKeyOrValueSize);
     int partitionId = TestUtils.getRandomIntwithin(numOfPartitions);
-    byte[] foundValue;
-    try{
-      foundValue = doGet(partitionId,key); // TODO Check for an InvalidException here later. For now null is returned if key doesn't exist
-      if(foundValue != null){
-        Assert.fail("Get succeeded for a non Existing key. Found a value: " + foundValue.toString() + "  for the key: " + key.toString());
+    byte[] foundValue = null;
+    try {
+      foundValue = doGet(partitionId, key);
+      if (foundValue != null) {
+        Assert.fail(
+            "Get succeeded for a non Existing key. Found a value: " + foundValue.toString() + "  for the key: " + key
+                .toString());
       }
-    } catch (VeniceStorageException e) {
-      Assert.fail("VeniceStorageException was thrown: " + e.getMessage(), e);
+    } catch (Exception e) {
+      //This is expected.
     }
   }
 
   @Test
-  public void testPutNullKey(){
+  public void testPutNullKey() {
     byte[] key = null;
     byte[] value = TestUtils.getRandomBytes(valueSize);
     int partitionId = TestUtils.getRandomIntwithin(numOfPartitions);
-    try{
+    try {
       doPut(partitionId, key, value);
-    } catch(IllegalArgumentException e){
+    } catch (IllegalArgumentException e) {
       // This is expected
       return;
-    } catch (VeniceStorageException e) {
-      Assert.fail("VeniceStorageException was thrown: " + e.getMessage(), e);
+    } catch (Exception e) {
+      Assert.fail("Exception was thrown: " + e.getMessage(), e);
     }
-    Assert.fail("Put succeeded for key: null and value: " + value.toString() +" unexpectedly");
+    Assert.fail("Put succeeded for key: null and value: " + value.toString() + " unexpectedly");
   }
 }

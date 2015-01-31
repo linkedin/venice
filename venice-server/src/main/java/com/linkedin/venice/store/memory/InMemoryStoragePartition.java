@@ -1,18 +1,16 @@
 package com.linkedin.venice.store.memory;
 
 import com.linkedin.venice.store.AbstractStoragePartition;
-import com.linkedin.venice.utils.Utils;
-import com.linkedin.venice.utils.partition.iterators.AbstractCloseablePartitionEntriesIterator;
+import com.linkedin.venice.utils.ByteArray;
 import com.linkedin.venice.utils.ByteUtils;
-import com.linkedin.venice.utils.partition.iterators.ByteArray;
+import com.linkedin.venice.utils.partition.iterators.AbstractCloseablePartitionEntriesIterator;
 import com.linkedin.venice.utils.partition.iterators.CloseablePartitionKeysIterator;
 import java.io.IOException;
-import java.util.HashMap;
+import java.util.AbstractMap;
 import java.util.Iterator;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
-import org.apache.log4j.Logger;
 
 
 /**
@@ -29,27 +27,32 @@ import org.apache.log4j.Logger;
  * ConcurrentModicfictionException thrown from the iterators
  */
 public class InMemoryStoragePartition extends AbstractStoragePartition {
-  private final ConcurrentMap<byte[], byte[]> partitionDb;
+  private final ConcurrentMap<ByteArray, ByteArray> partitionDb;
 
   public InMemoryStoragePartition(Integer partitionId) {
     super(partitionId);
-    partitionDb = new ConcurrentHashMap<byte[], byte[]>();
+    partitionDb = new ConcurrentHashMap<ByteArray, ByteArray>();
   }
 
   public void put(byte[] key, byte[] value) {
-    partitionDb.put(key, value);
+    ByteArray k = new ByteArray(key);
+    ByteArray v = new ByteArray(value);
+    partitionDb.put(k, v);
   }
 
-  public byte[] get(byte[] key) {
-    if (partitionDb.containsKey(key)){
-      return partitionDb.get(key);
+  public byte[] get(byte[] key)
+      throws Exception {
+    ByteArray k = new ByteArray(key);
+    if (partitionDb.containsKey(k)) {
+      return partitionDb.get(k).get();
     }
-    // TODO Throw an Exception saying invalid Key. and remove the below statement.
-    return null;
+    throw new Exception("Get Request failed for an invalid key: " + ByteUtils
+        .toHexString(key)); // TODO Later change this to appropriate Exception type
   }
 
   public void delete(byte[] key) {
-    partitionDb.remove(key);
+    ByteArray k = new ByteArray(key);
+    partitionDb.remove(k);
   }
 
   @Override
@@ -68,9 +71,9 @@ public class InMemoryStoragePartition extends AbstractStoragePartition {
   }
 
   private class InMemoryPartitionIterator extends AbstractCloseablePartitionEntriesIterator {
-    final Iterator<Map.Entry<byte[], byte[]>> partitionDbIterator;
+    final Iterator<Map.Entry<ByteArray, ByteArray>> partitionDbIterator;
 
-    InMemoryPartitionIterator(ConcurrentMap<byte[], byte[]> partitionDb) {
+    InMemoryPartitionIterator(ConcurrentMap<ByteArray, ByteArray> partitionDb) {
       this.partitionDbIterator = partitionDb.entrySet().iterator();
     }
 
@@ -83,7 +86,8 @@ public class InMemoryStoragePartition extends AbstractStoragePartition {
     @Override
     public boolean fetchNextEntry() {
       if (partitionDbIterator.hasNext()) {
-        this.currentEntry = partitionDbIterator.next();
+        Map.Entry<ByteArray, ByteArray> temp = partitionDbIterator.next();
+        this.currentEntry = new AbstractMap.SimpleEntry(temp.getKey().get(), temp.getValue().get());
         return true;
       } else {
         return false;

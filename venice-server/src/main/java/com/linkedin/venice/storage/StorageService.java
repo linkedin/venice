@@ -50,7 +50,8 @@ public class StorageService extends AbstractVeniceService {
    * @param storeDefinition   The store specific properties
    * @return StorageEngine that was created for the given store definition.
    */
-  public AbstractStorageEngine openStore(Properties storeDefinition) {
+  public AbstractStorageEngine openStore(Properties storeDefinition)
+      throws Exception {
     String persistenceType = storeDefinition.getProperty("persistence.type");
     AbstractStorageEngine engine = null;
     StorageEngineFactory factory = null;
@@ -61,13 +62,13 @@ public class StorageService extends AbstractVeniceService {
       if (storageFactoryClassName != null) {
         try {
           Class<?> factoryClass = ReflectUtils.loadClass(storageFactoryClassName);
-          factory = (StorageEngineFactory) ReflectUtils
-              .callConstructor(factoryClass, new Class<?>[]{VeniceConfig.class, PartitionNodeAssignmentRepository.class},
-                  new Object[]{veniceConfig, partitionNodeAssignmentRepository});
+          factory = (StorageEngineFactory) ReflectUtils.callConstructor(factoryClass,
+              new Class<?>[]{VeniceConfig.class, PartitionNodeAssignmentRepository.class},
+              new Object[]{veniceConfig, partitionNodeAssignmentRepository});
           storeToStorageEngineFactoryMap.putIfAbsent(persistenceType, factory);
         } catch (IllegalStateException e) {
           logger.error("Error loading storage engine factory '" + storageFactoryClassName + "'.", e);
-          // TODO throw / handle exception .
+          throw e; // TODO throw appropriate exception .
         }
       } else {
         logger.error("Unknown persistence type: " + persistenceType);
@@ -82,12 +83,11 @@ public class StorageService extends AbstractVeniceService {
       try {
         registerEngine(engine);
       } catch (Exception e) {
-        // TODO log error
+        logger.error("Failed to register storage engine for  store: " + engine.getName(), e);
         removeEngine(engine);
-        // throw new exception
       }
     } else {
-      // TODO log error
+      logger.error("Failed to get factory from the StorageEngineFactoryMap for perisitence type: " + persistenceType);
     }
     return engine;
   }

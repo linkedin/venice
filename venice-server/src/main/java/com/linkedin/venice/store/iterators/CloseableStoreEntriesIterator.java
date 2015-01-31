@@ -30,7 +30,7 @@ public class CloseableStoreEntriesIterator implements Iterator<Map.Entry<byte[],
       throws IOException {
   }
 
-  public boolean fetchNextEntry(){
+  public boolean fetchNextEntry() {
     if (currentIterator != null && currentIterator.hasNext()) {
       currentEntry = currentIterator.next();
       return true;
@@ -44,14 +44,14 @@ public class CloseableStoreEntriesIterator implements Iterator<Map.Entry<byte[],
       *  1. if there are no more entries in the current partition
       *
       */
-      if(currentIterator != null ){
+      if (currentIterator != null) {
         // There are no more items in the current iterator. We need to dispose the current iterator
         // before we go forward.
-        try{
-        currentIterator.close();
+        try {
+          currentIterator.close();
         } catch (IOException e) {
-          //TODO Throw appropirate exception and handle it here
-          e.printStackTrace();
+          // TODO log error with the Storage engines's logger and return false
+          return false;
         }
       }
 
