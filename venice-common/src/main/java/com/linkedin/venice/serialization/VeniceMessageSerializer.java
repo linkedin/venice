@@ -1,4 +1,4 @@
-    package com.linkedin.venice.message;
+    package com.linkedin.venice.serialization;
 
     import kafka.serializer.Decoder;
     import kafka.serializer.Encoder;
@@ -10,6 +10,8 @@
     import java.io.ObjectInputStream;
     import java.io.ObjectOutputStream;
     import java.io.IOException;
+    import com.linkedin.venice.message.VeniceMessage;
+    import com.linkedin.venice.message.OperationType;
 
 
     /**

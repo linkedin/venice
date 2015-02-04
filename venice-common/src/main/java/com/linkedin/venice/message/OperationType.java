@@ -6,6 +6,7 @@ package com.linkedin.venice.message;
 public enum OperationType {
   PUT, DELETE, PARTIAL_PUT ;
 
+
     private static final OperationType values[] =values();
 
     public static OperationType getOperationType(int value) {
