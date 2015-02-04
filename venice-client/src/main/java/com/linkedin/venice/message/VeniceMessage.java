@@ -10,7 +10,7 @@ public class VeniceMessage {
   public static final byte DEFAULT_SCHEMA_VERSION = 17;
 
   private byte magicByte;
-  private byte schemaVersion;
+  private short schemaVersion;
 
   private OperationType operationType;
   private String payload;
@@ -37,7 +37,7 @@ public class VeniceMessage {
     return operationType;
   }
 
-  public byte getSchemaVersion() {
+  public short getSchemaVersion() {
     return schemaVersion;
   }
 
