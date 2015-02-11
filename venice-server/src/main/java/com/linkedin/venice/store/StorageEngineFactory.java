@@ -1,6 +1,6 @@
 package com.linkedin.venice.store;
 
-import java.util.Properties;
+import com.linkedin.venice.config.VeniceStoreConfig;
 
 
 /**
@@ -17,7 +17,7 @@ public interface StorageEngineFactory {
    * @param storeDef  store definition
    * @return The storage engine
    */
-  public AbstractStorageEngine getStore(Properties storeDef)
+  public AbstractStorageEngine getStore(VeniceStoreConfig storeDef)
       throws Exception;
 
   /**
@@ -31,7 +31,7 @@ public interface StorageEngineFactory {
    *
    * @param storeDef new store definition
    */
-  public void update(Properties storeDef);
+  public void update(VeniceStoreConfig storeDef);
 
   /**
    * Close the storage configuration

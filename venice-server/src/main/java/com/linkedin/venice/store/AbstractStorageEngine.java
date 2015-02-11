@@ -1,13 +1,12 @@
 package com.linkedin.venice.store;
 
+import com.linkedin.venice.config.VeniceStoreConfig;
 import com.linkedin.venice.server.PartitionNodeAssignmentRepository;
-import com.linkedin.venice.server.VeniceConfig;
 import com.linkedin.venice.storage.VeniceStorageException;
 import com.linkedin.venice.store.iterators.CloseableStoreEntriesIterator;
 import com.linkedin.venice.store.iterators.CloseableStoreKeysIterator;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.Utils;
-import java.util.Properties;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.apache.log4j.Logger;
@@ -33,19 +32,17 @@ import org.apache.log4j.Logger;
  */
 public abstract class AbstractStorageEngine implements Store {
   private final String storeName;
-  protected final Properties storeDef;
-  protected final VeniceConfig config;
+  protected final VeniceStoreConfig storeDef;
   protected final AtomicBoolean isOpen;
   protected final PartitionNodeAssignmentRepository partitionNodeAssignmentRepo;
   protected final Logger logger = Logger.getLogger(getClass());
   protected ConcurrentMap<Integer, AbstractStoragePartition> partitionIdToDataBaseMap;
 
-  public AbstractStorageEngine(VeniceConfig config, Properties storeDef,
+  public AbstractStorageEngine(VeniceStoreConfig storeDef,
       PartitionNodeAssignmentRepository partitionNodeAssignmentRepo,
       ConcurrentMap<Integer, AbstractStoragePartition> partitionIdToDataBaseMap) {
-    this.config = config;
     this.storeDef = storeDef;
-    storeName = storeDef.getProperty("name");
+    storeName = storeDef.getStoreName();
     this.isOpen = new AtomicBoolean(true);
     this.partitionNodeAssignmentRepo = partitionNodeAssignmentRepo;
     this.partitionIdToDataBaseMap = partitionIdToDataBaseMap;

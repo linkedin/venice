@@ -1,10 +1,9 @@
 package com.linkedin.venice.partition;
 
-import com.linkedin.venice.server.VeniceConfig;
+import com.linkedin.venice.config.VeniceStoreConfig;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
-import java.util.Properties;
 import java.util.Set;
 
 
@@ -21,13 +20,11 @@ public class ModuloPartitionNodeAssignmentScheme extends AbstractPartitionNodeAs
    * more partitions than others.. This is a just a first cut partitioning scheme.
    */
   @Override
-  public Map<Integer, Set<Integer>> getNodeToLogicalPartitionsMap(Properties storeConfig, int numStorageNodes) {
+  public Map<Integer, Set<Integer>> getNodeToLogicalPartitionsMap(VeniceStoreConfig storeConfig) {
     Map<Integer, Set<Integer>> nodeToLogicalPartitionIdsMap = new HashMap<Integer, Set<Integer>>();
-    // TODO This assumes that the store configs has properties like: 1) # of Kafka partitions, 2) Replication factor in
-    // storage etc. Make sure the storeConfig is isolated and cleaned up in VencieServer before the control reaches here.
-    for (int i = 0; i < Integer.parseInt(storeConfig.getProperty("kafka.number.partitions")); i++) {
-      for (int j = 0; j < Integer.parseInt(storeConfig.getProperty("storage.node.replicas", "2")); j++) {
-        int nodeId = (i + j) % numStorageNodes;
+    for (int i = 0; i < storeConfig.getNumKafkaPartitions(); i++) {
+      for (int j = 0; j < storeConfig.getStorageReplicationFactor(); j++) {
+        int nodeId = (i + j) % storeConfig.getStorageNodeCount();
         if (!nodeToLogicalPartitionIdsMap.containsKey(nodeId)) {
           nodeToLogicalPartitionIdsMap.put(nodeId, new HashSet<Integer>());
         }

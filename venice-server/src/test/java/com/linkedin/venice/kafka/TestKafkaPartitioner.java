@@ -1,7 +1,6 @@
 package com.linkedin.venice.kafka;
 
 import com.linkedin.venice.kafka.consumer.KafkaPartitioner;
-import com.linkedin.venice.server.VeniceConfig;
 
 import junit.framework.Assert;
 import kafka.utils.VerifiableProperties;

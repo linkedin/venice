@@ -42,7 +42,7 @@ public abstract class AbstractStoreTest {
     testStore.delete(partitionId, key);
   }
 
-  @Test
+
   public void testGetAndPut() {
     byte[] key = TestUtils.getRandomBytes(keySize);
     byte[] value = TestUtils.getRandomBytes(valueSize);
@@ -58,7 +58,7 @@ public abstract class AbstractStoreTest {
     }
   }
 
-  @Test
+
   public void testDelete() {
     byte[] key = TestUtils.getRandomBytes(keySize);
     byte[] value = TestUtils.getRandomBytes(valueSize);
@@ -85,7 +85,6 @@ public abstract class AbstractStoreTest {
     }
   }
 
-  @Test
   public void testUpdate() {
     byte[] key = TestUtils.getRandomBytes(keySize);
     byte[] value = TestUtils.getRandomBytes(valueSize);
@@ -107,7 +106,6 @@ public abstract class AbstractStoreTest {
     }
   }
 
-  @Test
   public void testGetInvalidKeys() {
     byte[] key = TestUtils.getRandomBytes(uniqueKeyOrValueSize);
     int partitionId = TestUtils.getRandomIntwithin(numOfPartitions);
@@ -124,7 +122,7 @@ public abstract class AbstractStoreTest {
     }
   }
 
-  @Test
+
   public void testPutNullKey() {
     byte[] key = null;
     byte[] value = TestUtils.getRandomBytes(valueSize);

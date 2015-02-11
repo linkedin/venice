@@ -1,51 +1,83 @@
 package com.linkedin.venice.storage;
 
+import com.linkedin.venice.config.VeniceStoreConfig;
 import com.linkedin.venice.partition.AbstractPartitionNodeAssignmentScheme;
 import com.linkedin.venice.partition.ModuloPartitionNodeAssignmentScheme;
 import com.linkedin.venice.server.PartitionNodeAssignmentRepository;
-import com.linkedin.venice.server.VeniceConfig;
+import com.linkedin.venice.server.VeniceConfigService;
 import com.linkedin.venice.store.Store;
 import com.linkedin.venice.store.memory.InMemoryStorageEngine;
-import java.util.Properties;
+import java.io.File;
+import java.util.Map;
+import org.testng.annotations.Test;
 
 
 public class InMemoryStoreTest extends AbstractStoreTest{
 
   PartitionNodeAssignmentRepository partitionNodeAssignmentRepository;
   AbstractPartitionNodeAssignmentScheme partitionNodeAssignmentScheme;
-  int numStorageNodes = 1;
-  String storeName = "test";
-  int replicationFactor = 1;
-  int nodeId = 0;
-  VeniceConfig veniceConfig;
+  VeniceConfigService veniceConfigService;
 
   public InMemoryStoreTest()
       throws Exception {
-    this.numOfPartitions = 5;
     createStoreForTest();
   }
 
   @Override
   public void createStoreForTest()
       throws Exception {
-    //Store Properties
-    Properties storeConfigs = new Properties();
-    storeConfigs.put("name",storeName);
-    storeConfigs.put("kafka.number.partitions", String.valueOf(numOfPartitions));
-    storeConfigs.put("storage.node.replicas",String.valueOf(replicationFactor));
+    File configFile = new File("src/test/resources/config"); //TODO this does not run from IDE because IDE expects
+    // relative path starting from venice-server
+    veniceConfigService = new VeniceConfigService(configFile.getAbsolutePath());
+    Map<String, VeniceStoreConfig> storeConfigs = veniceConfigService.getAllStoreConfigs();
 
+    if(storeConfigs.size() < 1){
+      throw new Exception("No stores defined for executing tests");
+    }
 
+    String storeName = null;
+    VeniceStoreConfig storeConfig = null;
+    for(String store: storeConfigs.keySet()){
+      storeName = store;
+      storeConfig = storeConfigs.get(storeName);
+      break;
+    }
+    numOfPartitions = storeConfig.getNumKafkaPartitions();
     partitionNodeAssignmentScheme = new ModuloPartitionNodeAssignmentScheme();
 
     //populate partitionNodeAssignment
     partitionNodeAssignmentRepository = new PartitionNodeAssignmentRepository();
-    partitionNodeAssignmentRepository.setAssignment(storeName, partitionNodeAssignmentScheme.getNodeToLogicalPartitionsMap(storeConfigs, numStorageNodes));
+    partitionNodeAssignmentRepository.setAssignment(storeName, partitionNodeAssignmentScheme.getNodeToLogicalPartitionsMap(storeConfig));
 
-    Properties configProps = new Properties();
-    configProps.put("node.id", String.valueOf(nodeId));
-    veniceConfig = new VeniceConfig(configProps);
-
-    Store inMemoryStorageEngine = new InMemoryStorageEngine(veniceConfig, storeConfigs, partitionNodeAssignmentRepository);
+    Store inMemoryStorageEngine = new InMemoryStorageEngine(storeConfig, partitionNodeAssignmentRepository);
     this.testStore = inMemoryStorageEngine;
   }
+
+  @Test
+  public void testGetAndPut(){
+    super.testGetAndPut();
+  }
+
+  @Test
+  public void testDelete(){
+    super.testDelete();
+  }
+
+  @Test
+  public void testUpdate() {
+    super.testUpdate();
+  }
+
+  @Test
+  public void testGetInvalidKeys()
+  {
+    super.testGetInvalidKeys();
+  }
+
+  @Test
+  public void testPutNullKey(){
+    super.testPutNullKey();
+  }
+
+
 }

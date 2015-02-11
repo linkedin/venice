@@ -46,7 +46,6 @@ public abstract class AbstractStorageEngineTest extends AbstractStoreTest {
     }
   }
 
-  @Test
   public void testPartitioning()
       throws Exception {
     init();
@@ -62,7 +61,7 @@ public abstract class AbstractStorageEngineTest extends AbstractStoreTest {
         "Failed to remove partition: " + partitionId + " from the storage engine!");
   }
 
-  @Test
+
   public void testAddingAPartitionTwice()
       throws Exception {
     init();
@@ -88,7 +87,7 @@ public abstract class AbstractStorageEngineTest extends AbstractStoreTest {
     Assert.fail("Adding the same partition:" + partitionId + " again did not throw any exception as expected.");
   }
 
-  @Test
+
   public void testRemovingPartitionTwice()
       throws Exception {
 
@@ -117,7 +116,6 @@ public abstract class AbstractStorageEngineTest extends AbstractStoreTest {
     Assert.fail("Removing the same partition:" + partitionId + " again did not throw any exception as expected.");
   }
 
-  @Test
   public void testOperationsOnNonExistingPartition()
       throws Exception {
     init();

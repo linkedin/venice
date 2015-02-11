@@ -1,21 +1,15 @@
 package com.linkedin.venice.server;
 
 import com.google.common.collect.ImmutableList;
+import com.linkedin.venice.config.VeniceStoreConfig;
 import com.linkedin.venice.kafka.consumer.KafkaConsumerService;
 import com.linkedin.venice.partition.AbstractPartitionNodeAssignmentScheme;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.storage.StorageService;
 import com.linkedin.venice.utils.ReflectUtils;
 import com.linkedin.venice.utils.Utils;
-import java.io.File;
-import java.io.FilenameFilter;
-import java.util.Arrays;
-import java.util.Properties;
 import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
 import org.apache.log4j.Logger;
-
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -26,7 +20,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public class VeniceServer {
 
   private static final Logger logger = Logger.getLogger(VeniceServer.class.getName());
-  private final VeniceConfig veniceConfig;
+  private final VeniceConfigService veniceConfigService;
   private final AtomicBoolean isStarted;
 
   private final StoreRepository storeRepository;
@@ -35,18 +29,12 @@ public class VeniceServer {
 
   private final List<AbstractVeniceService> services;
 
-  private final ConcurrentMap<String, Properties> storeNameToConfigsMap;
-
-  public VeniceServer(VeniceConfig veniceConfig)
+  public VeniceServer(VeniceConfigService veniceConfigService)
       throws Exception {
     this.isStarted = new AtomicBoolean(false);
-    this.veniceConfig = veniceConfig;
-    this.storeNameToConfigsMap = new ConcurrentHashMap<String, Properties>();
+    this.veniceConfigService = veniceConfigService;
     this.storeRepository = new StoreRepository();
     this.partitionNodeAssignmentRepository = new PartitionNodeAssignmentRepository();
-
-    //initialize all store configs
-    this.initStoreConfigs();
 
     /*
      * TODO - 1. How do the servers share the same config - For example in Voldemort we use cluster.xml and stores.xml.
@@ -61,43 +49,6 @@ public class VeniceServer {
   }
 
   /**
-   * Go over the list of configured stores and initialize
-   * 1. store configs map
-   *
-   * Note that the individual configs include both storage and streaming layer (i.e. kafka) specific configs for each Venice store
-   */
-  private void initStoreConfigs()
-      throws Exception {
-    logger.info("Initializing store configs:");
-    File storeConfigsDir =
-        new File(veniceConfig.getConfigDirAbsolutePath() + File.separator + veniceConfig.STORE_CONFIGS_DIR_NAME);
-    if (!Utils.isReadableDir(storeConfigsDir)) {
-      String errorMessage =
-          "Either the " + VeniceConfig.STORE_CONFIGS_DIR_NAME + " directory does not exist or is not readable.";
-      logger.error(errorMessage);
-      throw new Exception(errorMessage); // TODO later change this to appropriate Exception Type.
-    }
-
-    // Get all .properties file in config/STORES directory
-    List<File> storeConfigurationFiles = Arrays.asList(storeConfigsDir.listFiles(new FilenameFilter() {
-      @Override
-      public boolean accept(File dir, String name) {
-        return name.endsWith(".properties");
-      }
-    }));
-
-    //parse the properties for each store
-    for (File storeConfig : storeConfigurationFiles) {
-      try {
-        Properties prop = Utils.parseProperties(storeConfig);
-        storeNameToConfigsMap.putIfAbsent(prop.getProperty("name"), prop);
-      } catch (Exception e) {
-        e.printStackTrace();
-      }
-    }
-  }
-
-  /**
    * Assigns logical partitions to Node for each store based on the storage replication factor and total number of nodes
    * in the cluster. The scheme for this assignment is available in config.properties and is parsed by VeniceConfig.
    * When this method finishes the PartitionToNodeAssignmentRepository is populated which is then used by other services.
@@ -105,8 +56,7 @@ public class VeniceServer {
   private void assignPartitionToNodes()
       throws Exception {
     logger.info("Populating partition node assignment repository");
-    String partitionNodeAssignmentSchemeClassName =
-        veniceConfig.getPartitionNodeAssignmentSchemeClassMap(veniceConfig.getPartitionNodeAssignmentSchemeName());
+    String partitionNodeAssignmentSchemeClassName = veniceConfigService.getVeniceClusterConfig().getPartitionNodeAssignmentSchemeClassName();
     if (partitionNodeAssignmentSchemeClassName != null) {
       try {
         Class<?> AssignmentSchemeClass = ReflectUtils.loadClass(partitionNodeAssignmentSchemeClassName);
@@ -123,9 +73,9 @@ public class VeniceServer {
       logger.error(erroMessage);
       throw new Exception(erroMessage); // TODO later change this to appropriate Exception Type.
     }
-    for (Map.Entry<String, Properties> storeEntry : storeNameToConfigsMap.entrySet()) {
-      Map<Integer, Set<Integer>> nodeToLogicalPartitionIdsMap = partitionNodeAssignmentScheme
-          .getNodeToLogicalPartitionsMap(storeEntry.getValue(), veniceConfig.getNumStorageNodes());
+    for (Map.Entry<String, VeniceStoreConfig> storeEntry : veniceConfigService.getAllStoreConfigs().entrySet()) {
+      Map<Integer, Set<Integer>> nodeToLogicalPartitionIdsMap =
+          partitionNodeAssignmentScheme.getNodeToLogicalPartitionsMap(storeEntry.getValue());
       partitionNodeAssignmentRepository.setAssignment(storeEntry.getKey(), nodeToLogicalPartitionIdsMap);
     }
   }
@@ -145,13 +95,13 @@ public class VeniceServer {
     List<AbstractVeniceService> services = new ArrayList<AbstractVeniceService>();
 
     // create and add StorageService. storeRepository will be populated by StorageService,
-    StorageService storageService =
-        new StorageService(storeRepository, veniceConfig, storeNameToConfigsMap, partitionNodeAssignmentRepository);
+    StorageService storageService = new StorageService(storeRepository, veniceConfigService,
+        partitionNodeAssignmentRepository);
     services.add(storageService);
 
     //create and add KafkaConsumerService
     KafkaConsumerService kafkaConsumerService =
-        new KafkaConsumerService(storeRepository, veniceConfig, storeNameToConfigsMap,
+        new KafkaConsumerService(storeRepository, veniceConfigService,
             partitionNodeAssignmentRepository);
     services.add(kafkaConsumerService);
 
@@ -160,9 +110,10 @@ public class VeniceServer {
      * passed on to it.
      *
      * To add a new store do this in order:
-     * 1. Get the assignment plan from PartitionNodeAssignmentScheme and  populate the PartitionNodeAssignmentRepository
-     * 2. call StorageService.openStore(..) to create the appropriate storage partitions
-     * 3. call KafkaConsumerService.startConsumption(..) to create and start the consumer tasks for all kafka partitions.
+     * 1. Populate storeNameToConfigsMap
+     * 2. Get the assignment plan from PartitionNodeAssignmentScheme and  populate the PartitionNodeAssignmentRepository
+     * 3. call StorageService.openStore(..) to create the appropriate storage partitions
+     * 4. call KafkaConsumerService.startConsumption(..) to create and start the consumer tasks for all kafka partitions.
      */
 
     return ImmutableList.copyOf(services);
@@ -236,23 +187,21 @@ public class VeniceServer {
 
   public static void main(String args[])
       throws Exception {
-    VeniceConfig veniceConfig = null;
+    VeniceConfigService veniceConfigService = null;
     try {
       if (args.length == 0) {
-        veniceConfig = VeniceConfig.loadFromEnvironmentVariable();
+        veniceConfigService = VeniceConfigService.loadFromEnvironmentVariable();
       } else if (args.length == 1) {
-        veniceConfig = VeniceConfig.loadFromVeniceHome(args[0]);
-      } else if (args.length == 2) {
-        veniceConfig = VeniceConfig.loadFromVeniceHome(args[0], args[1]);
+        veniceConfigService = new VeniceConfigService(args[0]);
       } else {
-        Utils.croak("USAGE: java " + VeniceServer.class.getName() + " [venice_home_dir]  [venice_config_dir] ");
+        Utils.croak("USAGE: java " + VeniceServer.class.getName() + "[venice_config_dir] ");
       }
     } catch (Exception e) {
       logger.error(e.getMessage());
       e.printStackTrace();
       Utils.croak("Error while loading configuration: " + e.getMessage());
     }
-    final VeniceServer server = new VeniceServer(veniceConfig);
+    final VeniceServer server = new VeniceServer(veniceConfigService);
     if (!server.isStarted()) {
       server.start();
     }

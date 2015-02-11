@@ -1,13 +1,13 @@
 package com.linkedin.venice.kafka;
 
-import com.linkedin.venice.kafka.consumer.SimpleKafkaConsumerTask;
-import com.linkedin.venice.kafka.consumer.KafkaConsumerException;
+import com.linkedin.venice.config.VeniceStoreConfig;
 import com.linkedin.venice.message.OperationType;
 import com.linkedin.venice.message.VeniceMessage;
-import com.linkedin.venice.server.VeniceConfig;
+import com.linkedin.venice.server.VeniceConfigService;
 import com.linkedin.venice.server.VeniceServer;
 
 import com.linkedin.venice.store.AbstractStorageEngine;
+import java.util.Map;
 import kafka.admin.AdminUtils;
 import kafka.producer.KeyedMessage;
 import kafka.javaapi.producer.Producer;
@@ -30,8 +30,6 @@ import java.io.FileInputStream;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.util.Properties;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 
 
 /**
@@ -57,23 +55,35 @@ public class TestKafkaConsumer {
   static final int NUM_CONNECTIONS = 5000;
   static final int TICKTIME = 2000;
 
-  static final String TEST_TOPIC = "testng-topic";
   static final String TEST_KEY = "test_key";
 
   KafkaServerStartable kafkaServer;
   Producer<String, VeniceMessage> kafkaProducer;
 
-  VeniceConfig veniceConfig;
+  VeniceConfigService veniceConfigService;
   VeniceServer veniceServer;
+  String storeName;
+  VeniceStoreConfig storeConfig;
 
   @BeforeClass
   private void init()
       throws Exception {
     clearLogs();
     try {
-      File homeDir = new File("venice-server/src/test/resources");
-      File configDir = new File("venice-server/src/test/resources/config");
-      veniceConfig = VeniceConfig.loadFromVeniceHome(homeDir.getAbsolutePath(), configDir.getAbsolutePath());
+      File configFile = new File("src/test/resources/config"); //TODO this does not run from IDE because IDE expects
+      // relative path starting from venice-server
+      veniceConfigService = new VeniceConfigService(configFile.getAbsolutePath());
+      Map<String, VeniceStoreConfig> storeConfigs = veniceConfigService.getAllStoreConfigs();
+
+      if (storeConfigs.size() < 1) {
+        throw new Exception("No stores defined for executing tests");
+      }
+      for (String store : storeConfigs.keySet()) {
+        storeName = store;
+        storeConfig = storeConfigs.get(storeName);
+        break;
+      }
+
       startZookeeper();
       Thread.sleep(2000);
     } catch (Exception e) {
@@ -116,7 +126,6 @@ public class TestKafkaConsumer {
     }
   }
 
-
   /**
    *  Starts a local instance of ZooKeeper
    * */
@@ -135,11 +144,11 @@ public class TestKafkaConsumer {
     Properties kafkaProperties = new Properties();
     try {
       // start Kakfa
-      kafkaProperties.load(new FileInputStream("venice-server/src/test/resources/kafkatest.properties"));
+      kafkaProperties.load(new FileInputStream("src/test/resources/kafkatest.properties"));
       startKafkaServer(kafkaProperties);
       Thread.sleep(2000);
       // start the Kafka Producer
-      startKafkaProducer(veniceConfig.getKafkaBrokerUrl());
+      startKafkaProducer(storeConfig.getKafkaBrokerUrl());
       // start the Venice Storage nodes
       startVeniceStorage();
     } catch (Exception e) {
@@ -178,11 +187,9 @@ public class TestKafkaConsumer {
    * */
   private void startVeniceStorage()
       throws Exception {
-    veniceServer = new VeniceServer(veniceConfig);
+    veniceServer = new VeniceServer(veniceConfigService);
     veniceServer.start();
   }
-
-
 
   /**
    *  Sends a Kafka message through a Kafka Producer.
@@ -191,7 +198,7 @@ public class TestKafkaConsumer {
   public void sendKafkaMessage(String payload) {
     try {
       KeyedMessage<String, VeniceMessage> data =
-          new KeyedMessage<String, VeniceMessage>(TEST_TOPIC, TEST_KEY, new VeniceMessage(OperationType.PUT, payload));
+          new KeyedMessage<String, VeniceMessage>(storeName, TEST_KEY, new VeniceMessage(OperationType.PUT, payload));
       kafkaProducer.send(data);
     } catch (Exception e) {
       logger.error(e.getMessage());
@@ -217,11 +224,11 @@ public class TestKafkaConsumer {
    * */
   @Test(enabled = true)
   public void testKafkaBasic() {
-    AbstractStorageEngine node = veniceServer.getStoreRepository().getLocalStorageEngine(TEST_TOPIC);
+    AbstractStorageEngine node = veniceServer.getStoreRepository().getLocalStorageEngine(storeName);
     try {
       Thread.sleep(2000);
-      ZkClient zkc = new ZkClient(veniceConfig.getKafKaZookeeperUrl(), 10000, 10000);
-      Assert.assertTrue(AdminUtils.topicExists(zkc, TEST_TOPIC));
+      ZkClient zkc = new ZkClient(storeConfig.getKafkaZookeeperUrl(), 10000, 10000);
+      Assert.assertTrue(AdminUtils.topicExists(zkc, storeName));
 
       sendKafkaMessage("test_message");
       Thread.sleep(4000);

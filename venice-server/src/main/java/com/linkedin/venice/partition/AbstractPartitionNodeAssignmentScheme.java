@@ -1,9 +1,7 @@
 package com.linkedin.venice.partition;
 
-import java.util.HashMap;
-import java.util.List;
+import com.linkedin.venice.config.VeniceStoreConfig;
 import java.util.Map;
-import java.util.Properties;
 import java.util.Set;
 
 
@@ -51,8 +49,7 @@ public abstract class AbstractPartitionNodeAssignmentScheme {
    * new Venice storage partitions based on the mapping and updates the PartitionNodeAssignmentRepository.
    *
    * @param storeConfig  The configs related to this store.
-   * @param numStorageNodes  Total number of storage nodes in the cluster
    * @return A map where key is a node ids and value is the corresponding set of logical partitions that the node is responsible for.
    */
-  public abstract Map<Integer, Set<Integer>> getNodeToLogicalPartitionsMap(Properties storeConfig, int numStorageNodes);
+  public abstract Map<Integer, Set<Integer>> getNodeToLogicalPartitionsMap(VeniceStoreConfig storeConfig);
 }

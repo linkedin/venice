@@ -1,14 +1,12 @@
 package com.linkedin.venice.store.memory;
 
+import com.linkedin.venice.config.VeniceStoreConfig;
 import com.linkedin.venice.server.PartitionNodeAssignmentRepository;
-import com.linkedin.venice.server.VeniceConfig;
 import com.linkedin.venice.store.AbstractStorageEngine;
 import com.linkedin.venice.store.AbstractStoragePartition;
 import com.linkedin.venice.store.iterators.CloseableStoreEntriesIterator;
 import com.linkedin.venice.store.iterators.CloseableStoreKeysIterator;
-import java.util.Properties;
 import java.util.concurrent.ConcurrentHashMap;
-import org.apache.log4j.Logger;
 
 
 /**
@@ -18,14 +16,14 @@ import org.apache.log4j.Logger;
  */
 public class InMemoryStorageEngine extends AbstractStorageEngine {
 
-  public InMemoryStorageEngine(VeniceConfig config, Properties storeDef,
+  public InMemoryStorageEngine(VeniceStoreConfig storeDef,
       PartitionNodeAssignmentRepository partitionNodeAssignmentRepo)
       throws Exception {
-    super(config, storeDef, partitionNodeAssignmentRepo, new ConcurrentHashMap<Integer, AbstractStoragePartition>());
+    super(storeDef, partitionNodeAssignmentRepo, new ConcurrentHashMap<Integer, AbstractStoragePartition>());
 
     // Create and intialize the individual databases for each partition
     for (int partitionId : partitionNodeAssignmentRepo
-        .getLogicalPartitionIds(this.getName(), this.config.getNodeId())) {
+        .getLogicalPartitionIds(this.getName(), this.storeDef.getNodeId())) {
       addStoragePartition(partitionId);
     }
   }

@@ -80,11 +80,11 @@ public class Utils {
   }
 
   /**
-   *  Given a filePath, reads into a Java Properties object
+   *  Given a filePath, reads into a Venice Props object
    *  @param configFileName - String path to a properties file
-   *  @return A Java properties object with the given configurations
+   *  @return A @Props object with the given configurations
    * */
-  public static Properties parseProperties(String configFileName)
+  public static Props parseProperties(String configFileName)
       throws Exception {
     Properties props = new Properties();
     FileInputStream inputStream = null;
@@ -96,16 +96,16 @@ public class Utils {
         inputStream.close();
       }
     }
-    return props;
+    return new Props(props);
   }
 
   /**
-   * Given a .property file, reads into a Java Properties object
+   * Given a .property file, reads into a Venice Props object
    * @param propertyFile The .property file
-   * @return A Java properties object with the given properties
+   * @return A @Props object with the given properties
    * @throws Exception  if File not found or not accessible
    */
-  public static Properties parseProperties(File propertyFile)
+  public static Props parseProperties(File propertyFile)
       throws Exception {
     Properties props = new Properties();
     FileInputStream inputStream = null;
@@ -117,7 +117,7 @@ public class Utils {
         inputStream.close();
       }
     }
-    return props;
+    return new Props(props);
   }
 
   /**
