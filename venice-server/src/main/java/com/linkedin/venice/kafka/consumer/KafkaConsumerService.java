@@ -52,7 +52,7 @@ public class KafkaConsumerService extends AbstractVeniceService {
       throws Exception {
     logger.info("Starting all kafka consumer tasks on node: " + veniceServerConfig.getNodeId());
     consumerExecutorService =
-        Executors.newFixedThreadPool(veniceServerConfig.getNumConsumptionThreadsPerKafkaPartition());
+        Executors.newCachedThreadPool();
     for (VeniceStoreConfig storeConfig : veniceConfigService.getAllStoreConfigs().values()) {
       registerKafkaConsumers(storeConfig);
     }
@@ -68,6 +68,11 @@ public class KafkaConsumerService extends AbstractVeniceService {
    */
   public void registerKafkaConsumers(VeniceStoreConfig storeConfig)
       throws Exception {
+
+    /**
+     * TODO Make sure that admin service or any other service when registering Kafka consumers ensures that there are
+     * no active consumers for the topic/partition
+     */
     String topic = storeConfig.getStoreName();
     Map<Integer, SimpleKafkaConsumerTask> partitionIdToKafkaConsumerTaskMap;
     if (!this.topicNameToPartitionIdAndKafkaConsumerTasksMap.containsKey(topic)) {

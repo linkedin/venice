@@ -53,13 +53,32 @@ import org.apache.log4j.Logger;
  * Examples of what can be done!
  * 1. Override a database configuration at store level by defining that property in <store-name>.property. So a specific
  * store - <store-name> can have different database configurations than all other stores in the server.
- * 2. Define kafka broker urls in server.properties to have common kafka broker urls for all stores in the server.
+ * 2. Define kafka broker urls in cluster.properties to have common kafka broker urls for all stores in the cluster.
  * 3. Define specific broker urls in <store-name>.properties to be able to consume from different kafka brokers for
  * that particular store - <store-name>
  *
  * VeniceConfigService Responsibility:
  * 1. parses all property files and validates that non-overridable properties are not actually overriden.
  * 2. Provide APIs for accessing cluster, server and store level configs
+ *
+ *
+ *
+ * FIXME Current design has some gap. Ideally we would like to have a config management such that:
+ * 1. clusters have specific mandatory properties that cannot be overriden at any level.
+ * 2. Servers have specific mandatory properties that cannot be overriden at any level
+ * 3. Stores have mandatory properties like store name, etc.
+ * 4. There are certain general properties that can be defined common to a cluster but <b>can be overriden at store
+ *    level</b> but <b> cannot be overriden at server level</b>. For example:
+ *    1. kafka broker urls can be defined at cluster level. If none of the stores override this, it means a single
+ *       Venice cluster can consume from a single Kafka cluster. However if we wish to consume from different kafka
+ *       clusters, then the individual store configs can override this property. TODO This also mandates the need to
+ *       validate that all nodes in the cluster have same configs for a single store. We do not want to end up in a
+ *       situation where one node consumes from one kafka cluster and another from another kafka cluster for the same
+ *       store. Ideally this validation should be taken care by the admin service which adds/updates/deletes store
+ *       configs. Manual file editing should never be done.
+ * 5. There are certain properties that can be defined at store level and can be overriden at store level. For example:
+ *    1. ???
+ *
  */
 public class VeniceConfigService {
   private static final Logger logger = Logger.getLogger(VeniceConfigService.class.getName());
@@ -78,9 +97,8 @@ public class VeniceConfigService {
 
   // server specific properties
   public static final String NODE_ID = "node.id";
-  public static final String CONSUMPATION_THREADS_PER_KAFKA_PARTITION = "kafka.threads.per.partition";
   public static final Set<String> serverSpecificProperties =
-      new HashSet<String>(Arrays.asList(NODE_ID, CONSUMPATION_THREADS_PER_KAFKA_PARTITION));
+      new HashSet<String>(Arrays.asList(NODE_ID));
 
   // store specific properties
   public static final String STORE_NAME = "store.name";

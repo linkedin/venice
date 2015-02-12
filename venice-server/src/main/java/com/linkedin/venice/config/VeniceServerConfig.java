@@ -12,7 +12,6 @@ import com.linkedin.venice.utils.UndefinedPropertyException;
 public class VeniceServerConfig extends VeniceClusterConfig {
 
   private int nodeId;
-  private int numConsumptionThreadsPerKafkaPartition;
   private static final String VENICE_NODE_ID_VAR_NAME = "VENICE_NODE_ID";
 
   public VeniceServerConfig(Props serverProperties)
@@ -27,16 +26,10 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     } catch (UndefinedPropertyException e) {
       this.nodeId = getIntEnvVariable(VENICE_NODE_ID_VAR_NAME);
     }
-    numConsumptionThreadsPerKafkaPartition =
-        serverProps.getInt(VeniceConfigService.CONSUMPATION_THREADS_PER_KAFKA_PARTITION, 1); // Default = 1
   }
 
   public int getNodeId() {
     return nodeId;
-  }
-
-  public int getNumConsumptionThreadsPerKafkaPartition() {
-    return numConsumptionThreadsPerKafkaPartition;
   }
 
   /**
