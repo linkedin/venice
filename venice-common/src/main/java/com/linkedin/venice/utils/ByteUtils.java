@@ -11,6 +11,10 @@ import org.apache.commons.codec.binary.Hex;
  */
 public class ByteUtils {
 
+  public static final int BYTES_PER_KB = 1024;
+  public static final int BYTES_PER_MB = BYTES_PER_KB * 1024;
+  public static final long BYTES_PER_GB = BYTES_PER_MB * 1024;
+
   /**
    * Translate the given byte array into a hexidecimal string
    *
@@ -32,4 +36,5 @@ public class ByteUtils {
       throws DecoderException {
     return Hex.decodeHex(hexString.toCharArray());
   }
+
 }

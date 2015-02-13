@@ -12,12 +12,12 @@ import org.apache.log4j.Logger;
  * on the storage-partition model.
  */
 public abstract class AbstractStoragePartition {
-  private final Integer partitionId;
+
   protected final Logger logger = Logger.getLogger(getClass());
 
-  public AbstractStoragePartition(Integer partitionId) {
-    this.partitionId = partitionId;
-  }
+  protected final Integer partitionId;
+
+  public AbstractStoragePartition(Integer partitionId) { this.partitionId = partitionId; }
 
   /**
    * returns the id of this partition
@@ -43,10 +43,9 @@ public abstract class AbstractStoragePartition {
   public abstract void delete(byte[] key);
 
   /**
-   *
    * Get an iterator over pairs of entries in the partition. The key is the first
    * element in the pair and the value is the second element.
-   *
+   * <p/>
    * Note that the iterator need not be threadsafe, and that it must be
    * manually closed after use.
    *
@@ -57,7 +56,7 @@ public abstract class AbstractStoragePartition {
   /**
    * /**
    * Get an iterator over keys in the partition.
-   *
+   * <p/>
    * Note that the iterator need not be threadsafe, and that it must be
    * manually closed after use.
    *
@@ -66,7 +65,12 @@ public abstract class AbstractStoragePartition {
   public abstract CloseablePartitionKeysIterator partitionKeys();
 
   /**
-   *  Truncate all entries in the partition
+   * Truncate all entries in the partition
    */
   public abstract void truncate();
+
+  /**
+   * Close the specific partition
+   */
+  public abstract void close();
 }

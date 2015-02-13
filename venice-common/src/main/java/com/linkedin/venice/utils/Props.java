@@ -25,7 +25,7 @@ public class Props implements Map<String, String> {
   }
 
   public Props(File... files)
-      throws FileNotFoundException, IOException {
+    throws FileNotFoundException, IOException {
     this.props = new HashMap<String, String>();
     for (int i = files.length - 1; i >= 0; i--) {
       Properties properties = new Properties();

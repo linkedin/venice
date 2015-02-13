@@ -9,28 +9,28 @@ import com.linkedin.venice.store.iterators.CloseableStoreEntriesIterator;
 import com.linkedin.venice.store.iterators.CloseableStoreKeysIterator;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.Utils;
+import org.apache.log4j.Logger;
+
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicBoolean;
-import org.apache.log4j.Logger;
 
 
 /**
  * A base storage abstract class which is actually responsible for data persistence. This
  * abstract class implies all the usual responsibilities of a Store implementation,
- *
+ * <p/>
  * There are several proposals for storage-partition model:
- *
+ * <p/>
  * 1. One storage engine for all stores
- *  1.1 One store uses one database, i.e. all partitions of the store will be in one database.
- *  1.2 One store uses multiple databases, i.e. one partition per database.
+ * 1.1 One store uses one database, i.e. all partitions of the store will be in one database.
+ * 1.2 One store uses multiple databases, i.e. one partition per database.
  * 2. Each store handled by one storage engine
- *  2.1 All partitions of the store will be handled in one database (current Voldemort implementation)
- *  2.2 One partition per database (Sudha suggests)
+ * 2.1 All partitions of the store will be handled in one database (current Voldemort implementation)
+ * 2.2 One partition per database (Sudha suggests)
  * 3. Each partition handled by one storage engine (original proposal before today’s discussion, super high overhead)
- *
+ * <p/>
  * The point of having one storage engine(environment) or one database for one partition, is to simplify the complexity of rebalancing/partition migration/host swap.
  * The team agreed to take (2.2) as default storage-partition model for now, and run performance tests to see if it goes well.
- *
  */
 public abstract class AbstractStorageEngine implements Store {
   private final String storeName;
@@ -38,20 +38,22 @@ public abstract class AbstractStorageEngine implements Store {
   protected final AtomicBoolean isOpen;
   protected final PartitionNodeAssignmentRepository partitionNodeAssignmentRepo;
   protected final Logger logger = Logger.getLogger(getClass());
-  protected ConcurrentMap<Integer, AbstractStoragePartition> partitionIdToDataBaseMap;
+  protected ConcurrentMap<Integer, AbstractStoragePartition> partitionIdToPartitionMap;
 
   public AbstractStorageEngine(VeniceStoreConfig storeDef,
-      PartitionNodeAssignmentRepository partitionNodeAssignmentRepo,
-      ConcurrentMap<Integer, AbstractStoragePartition> partitionIdToDataBaseMap) {
+                               PartitionNodeAssignmentRepository partitionNodeAssignmentRepo,
+                               ConcurrentMap<Integer, AbstractStoragePartition> partitionIdToPartitionMap) {
+
     this.storeDef = storeDef;
     storeName = storeDef.getStoreName();
     this.isOpen = new AtomicBoolean(true);
     this.partitionNodeAssignmentRepo = partitionNodeAssignmentRepo;
-    this.partitionIdToDataBaseMap = partitionIdToDataBaseMap;
+    this.partitionIdToPartitionMap = partitionIdToPartitionMap;
   }
 
   /**
    * Get store name served by this storage engine
+   *
    * @return associated storeName
    */
   public String getName() {
@@ -60,58 +62,58 @@ public abstract class AbstractStorageEngine implements Store {
 
   /**
    * Return true or false based on whether a given partition exists within this storage engine
-   * @param partitionId  The partition to look for
+   *
+   * @param partitionId The partition to look for
    * @return True/False, does the partition exist on this node
    */
   public boolean containsPartition(int partitionId) {
-    return partitionIdToDataBaseMap.containsKey(partitionId);
+    return partitionIdToPartitionMap.containsKey(partitionId);
   }
 
   /**
    * Adds a partition to the current store
    *
-   * @param partitionId  - id of partition to add
+   * @param partitionId - id of partition to add
    */
   public abstract void addStoragePartition(int partitionId)
-      throws StorageInitializationException;
+    throws StorageInitializationException;
 
   /**
    * Removes and returns a partition from the current store
-   * @param partitionId  - id of partition to retrieve and remove
+   *
+   * @param partitionId - id of partition to retrieve and remove
    * @return The AbstractStoragePartition object removed by this operation
    */
   public abstract AbstractStoragePartition removePartition(int partitionId)
-      throws Exception;
+    throws VeniceException;
 
   /**
-   *
    * Get an iterator over entries in the store. The key is the first
    * element in the entry and the value is the second element.
-   *
+   * <p/>
    * The iterator iterates over every partition in the store and inside
    * each partition, iterates over the partition entries.
    *
    * @return An iterator over the entries in this AbstractStorageEngine.
    */
   public abstract CloseableStoreEntriesIterator storeEntries()
-      throws VeniceException;
+    throws VeniceException;
 
   /**
-   *
    * Get an iterator over keys in the store.
-   *
+   * <p/>
    * The iterator returns the key element from the storeEntries
    *
    * @return An iterator over the keys in this AbstractStorageEngine.
    */
   public abstract CloseableStoreKeysIterator storeKeys()
-      throws VeniceException;
+    throws VeniceException;
 
   /**
    * Truncate all entries in the store
    */
   public void truncate() {
-    for (AbstractStoragePartition partition : this.partitionIdToDataBaseMap.values()) {
+    for (AbstractStoragePartition partition : this.partitionIdToPartitionMap.values()) {
       partition.truncate();
     }
   }
@@ -122,61 +124,56 @@ public abstract class AbstractStorageEngine implements Store {
    * the storage engine in this batch write mode
    *
    * @return true if the storage engine took successful action to switch to
-   *         'batch-write' mode
+   * 'batch-write' mode
    */
   public boolean beginBatchWrites() {
     return false;
   }
 
   /**
-   *
    * @return true if the storage engine successfully returned to normal mode
    */
   public boolean endBatchWrites() {
     return false;
   }
 
-  public void put(Integer logicalPartitionId, byte[] key, byte[] value)
-      throws VeniceException {
+  public void put(Integer logicalPartitionId, byte[] key, byte[] value) throws VeniceException {
     Utils.notNull(key, "Key cannot be null.");
     if (!containsPartition(logicalPartitionId)) {
       String errorMessage = "PUT request failed for Key: " + ByteUtils.toHexString(key) + " . Invalid partition id: "
-          + logicalPartitionId;
+        + logicalPartitionId;
       logger.error(errorMessage);
       throw new PersistenceFailureException(errorMessage);
     }
-    AbstractStoragePartition db = this.partitionIdToDataBaseMap.get(logicalPartitionId);
-    db.put(key, value);
+    AbstractStoragePartition partition = this.partitionIdToPartitionMap.get(logicalPartitionId);
+    partition.put(key, value);
   }
 
-  public void delete(Integer logicalPartitionId, byte[] key)
-      throws VeniceException {
+  public void delete(Integer logicalPartitionId, byte[] key) throws VeniceException {
     Utils.notNull(key, "Key cannot be null.");
     if (!containsPartition(logicalPartitionId)) {
       String errorMessage = "DELETE request failed for key: " + ByteUtils.toHexString(key) + " . Invalid partition id: "
-          + logicalPartitionId;
+        + logicalPartitionId;
       logger.error(errorMessage);
       throw new PersistenceFailureException(errorMessage);
     }
-    AbstractStoragePartition db = this.partitionIdToDataBaseMap.get(logicalPartitionId);
-    db.delete(key);
+    AbstractStoragePartition partition = this.partitionIdToPartitionMap.get(logicalPartitionId);
+    partition.delete(key);
   }
 
-  public byte[] get(Integer logicalPartitionId, byte[] key)
-      throws VeniceException {
+  public byte[] get(Integer logicalPartitionId, byte[] key) throws VeniceException {
     Utils.notNull(key, "Key cannot be null.");
     if (!containsPartition(logicalPartitionId)) {
       String errorMessage =
-          "GET request failed for key " + ByteUtils.toHexString(key) + " . Invalid partition id: " + logicalPartitionId;
+        "GET request failed for key " + ByteUtils.toHexString(key) + " . Invalid partition id: " + logicalPartitionId;
       logger.error(errorMessage);
       throw new PersistenceFailureException(errorMessage);
     }
-    AbstractStoragePartition db = this.partitionIdToDataBaseMap.get(logicalPartitionId);
-    return db.get(key);
+    AbstractStoragePartition partition = this.partitionIdToPartitionMap.get(logicalPartitionId);
+    return partition.get(key);
   }
 
-  public void close()
-      throws PersistenceFailureException {
+  public void close() throws PersistenceFailureException {
     this.isOpen.compareAndSet(true, false);
   }
 

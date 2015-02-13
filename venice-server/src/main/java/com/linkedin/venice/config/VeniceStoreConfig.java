@@ -4,8 +4,11 @@ import com.google.common.collect.ImmutableMap;
 import com.linkedin.venice.exceptions.ConfigurationException;
 import com.linkedin.venice.exceptions.UndefinedPropertyException;
 import com.linkedin.venice.server.VeniceConfigService;
+import com.linkedin.venice.store.bdb.BdbStorageEngineFactory;
+import com.linkedin.venice.store.bdb.BdbStoreConfig;
 import com.linkedin.venice.store.memory.InMemoryStorageEngineFactory;
 import com.linkedin.venice.utils.Props;
+
 import java.util.List;
 import java.util.Map;
 
@@ -20,7 +23,8 @@ public class VeniceStoreConfig extends VeniceServerConfig {
     .of("inMemory", InMemoryStorageEngineFactory.class.getName(), "bdb", BdbStorageEngineFactory.class.getName());
 */
   public static final Map<String, String> storageEngineFactoryClassNameMap =
-      ImmutableMap.of("inMemory", InMemoryStorageEngineFactory.class.getName());
+    ImmutableMap.of("inMemory", InMemoryStorageEngineFactory.class.getName(),
+      "bdb", BdbStorageEngineFactory.class.getName());
 
   private String storeName;
   private String persistenceType;
@@ -39,15 +43,17 @@ public class VeniceStoreConfig extends VeniceServerConfig {
   private int numMetadataRefreshRetries;
   // Back off duration between metadata fetch retries.
   private int metadataRefreshBackoffMs;
+  // TODO: Store level bdb configuration, need to create StoreStorageConfig abstract class and extend from that
+  private BdbStoreConfig bdbStoreConfig;
 
   public VeniceStoreConfig(Props storeProperties)
-      throws ConfigurationException {
+    throws ConfigurationException {
     super(storeProperties);
     initAndValidateProperties(storeProperties);
   }
 
   private void initAndValidateProperties(Props storeProperties)
-      throws ConfigurationException {
+    throws ConfigurationException {
     storeName = storeProperties.getString(VeniceConfigService.STORE_NAME);
     try {
       persistenceType = storeProperties.getString(VeniceConfigService.PERSISTENCE_TYPE);   // Assign a default ?
@@ -71,7 +77,7 @@ public class VeniceStoreConfig extends VeniceServerConfig {
       throw new ConfigurationException("kafkaBrokers can't be empty");
     }
     kafkaBrokerPort = storeProperties.getInt(VeniceConfigService.KAFKA_BROKER_PORT);
-    if( kafkaBrokerPort < 0 ){
+    if (kafkaBrokerPort < 0) {
       throw new ConfigurationException("KafkaBrokerPort can't be negative");
       // TODO additional checks for valid port ?
     }
@@ -80,6 +86,11 @@ public class VeniceStoreConfig extends VeniceServerConfig {
     numMetadataRefreshRetries = storeProperties.getInt(VeniceConfigService.KAFKA_CONSUMER_NUM_METADATA_REFRESH_RETRIES, 3);
     metadataRefreshBackoffMs = storeProperties.getInt(VeniceConfigService.KAFKA_CONSUMER_METADATA_REFRESH_BACKOFF_MS, 1000);
 
+    if (persistenceType.equals("bdb")) {
+      bdbStoreConfig = new BdbStoreConfig(storeName, storeProperties);
+    } else {
+      bdbStoreConfig = null;
+    }
     // initialize all other properties here and add getters for the same.
 
   }
@@ -130,5 +141,9 @@ public class VeniceStoreConfig extends VeniceServerConfig {
 
   public String getStorageEngineFactoryClassName() {
     return storageEngineFactoryClassNameMap.get(this.persistenceType);
+  }
+
+  public BdbStoreConfig getBdbStoreConfig() {
+    return this.bdbStoreConfig;
   }
 }

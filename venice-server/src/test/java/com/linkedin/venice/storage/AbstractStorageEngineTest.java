@@ -4,9 +4,7 @@ import com.linkedin.venice.Common.TestUtils;
 import com.linkedin.venice.exceptions.PersistenceFailureException;
 import com.linkedin.venice.exceptions.StorageInitializationException;
 import com.linkedin.venice.store.AbstractStorageEngine;
-import com.linkedin.venice.store.Store;
 import org.testng.Assert;
-import org.testng.annotations.Test;
 
 
 public abstract class AbstractStorageEngineTest extends AbstractStoreTest {
@@ -20,7 +18,7 @@ public abstract class AbstractStorageEngineTest extends AbstractStoreTest {
 
   @Override
   public void createStoreForTest() {
-    testStore = (Store) testStoreEngine;
+    testStore = testStoreEngine;
   }
 
   public void doAddPartition(int partitionId)

@@ -1,5 +1,6 @@
 package com.linkedin.venice.storage;
 
+import com.linkedin.venice.config.VeniceServerConfig;
 import com.linkedin.venice.config.VeniceStoreConfig;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.server.PartitionNodeAssignmentRepository;
@@ -10,10 +11,11 @@ import com.linkedin.venice.store.AbstractStorageEngine;
 import com.linkedin.venice.store.StorageEngineFactory;
 import com.linkedin.venice.store.Store;
 import com.linkedin.venice.utils.ReflectUtils;
+import org.apache.log4j.Logger;
+
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
-import org.apache.log4j.Logger;
 
 
 /**
@@ -59,8 +61,8 @@ public class StorageService extends AbstractVeniceService {
       try {
         Class<?> factoryClass = ReflectUtils.loadClass(storageFactoryClassName);
         factory = (StorageEngineFactory) ReflectUtils
-            .callConstructor(factoryClass, new Class<?>[]{PartitionNodeAssignmentRepository.class},
-                new Object[]{partitionNodeAssignmentRepository});
+            .callConstructor(factoryClass, new Class<?>[]{VeniceServerConfig.class, PartitionNodeAssignmentRepository.class},
+                new Object[]{storeDefinition, partitionNodeAssignmentRepository});
         persistenceTypeToStorageEngineFactoryMap.putIfAbsent(persistenceType, factory);
       } catch (IllegalStateException e) {
         logger.error("Error loading storage engine factory '" + storageFactoryClassName + "'.", e);

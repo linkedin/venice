@@ -5,7 +5,6 @@ import com.linkedin.venice.exceptions.PersistenceFailureException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.store.Store;
 import org.testng.Assert;
-import org.testng.annotations.Test;
 
 
 /**

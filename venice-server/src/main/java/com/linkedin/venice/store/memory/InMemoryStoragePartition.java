@@ -71,6 +71,11 @@ public class InMemoryStoragePartition extends AbstractStoragePartition {
     partitionDb.clear();
   }
 
+  @Override
+  public void close() {
+    // Nothing to do here, since it is in memory implementation
+  }
+
   private class InMemoryPartitionIterator extends AbstractCloseablePartitionEntriesIterator {
     final Iterator<Map.Entry<ByteArray, ByteArray>> partitionDbIterator;
 
