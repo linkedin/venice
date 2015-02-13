@@ -1,5 +1,6 @@
 package com.linkedin.venice.server;
 
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.store.AbstractStorageEngine;
 import com.linkedin.venice.store.QueryStore;
 import java.util.ArrayList;
@@ -55,13 +56,13 @@ public class StoreRepository {
   }
 
   private void addLocalStore(QueryStore store)
-      throws Exception {
+      throws VeniceException {
     QueryStore found = this.localStores.putIfAbsent(store.getName(), store);
 
     if (found != null) {
       String errorMessage = "Store '" + store.getName() + "' has already been initialized.";
       logger.error(errorMessage);
-      throw new Exception(errorMessage); // TODO change to appropriate Exception type later
+      throw new VeniceException(errorMessage);
     }
   }
 
@@ -86,12 +87,12 @@ public class StoreRepository {
   }
 
   public void addLocalStorageEngine(AbstractStorageEngine engine)
-      throws Exception {
+      throws VeniceException {
     AbstractStorageEngine found = this.localStorageEngines.putIfAbsent(engine.getName(), engine);
     if (found != null) {
       String errorMessage = "Storage Engine '" + engine.getName() + "' has already been initialized.";
       logger.error(errorMessage);
-      throw new Exception(errorMessage); // TODO change to appropriate Exception type later
+      throw new VeniceException(errorMessage);
     }
     this.addLocalStore((QueryStore) engine);
   }

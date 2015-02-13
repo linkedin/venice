@@ -1,6 +1,8 @@
 package com.linkedin.venice.storage;
 
 import com.linkedin.venice.Common.TestUtils;
+import com.linkedin.venice.exceptions.PersistenceFailureException;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.store.Store;
 import org.testng.Assert;
 import org.testng.annotations.Test;
@@ -26,19 +28,19 @@ public abstract class AbstractStoreTest {
       throws Exception;
 
   protected byte[] doGet(int partitionId, byte[] key)
-      throws Exception {
+      throws VeniceException {
     byte[] result;
     result = testStore.get(partitionId, key);
     return result;
   }
 
   protected void doPut(int partitionId, byte[] key, byte[] value)
-      throws Exception {
+      throws VeniceException {
     testStore.put(partitionId, key, value);
   }
 
   protected void doDelete(int partitionId, byte[] key)
-      throws Exception {
+      throws VeniceException {
     testStore.delete(partitionId, key);
   }
 
@@ -53,7 +55,7 @@ public abstract class AbstractStoreTest {
       foundValue = doGet(partitionId, key);
       Assert.assertEquals(value, foundValue,
           "The actual value: " + value.toString() + " and expected value: " + foundValue.toString() + " do not match!");
-    } catch (Exception e) {   // TODO change to appropriate Exceptio type later
+    } catch (VeniceException e) {
       Assert.fail("Exception was thrown: " + e.getMessage(), e);
     }
   }
@@ -77,10 +79,10 @@ public abstract class AbstractStoreTest {
           Assert.fail("Delete failed. found a value: " + foundValue.toString() + "  for the key: " + key.toString()
               + " after deletion. ");
         }
-      } catch (Exception e) { // TODO change to appropriate Exceptio type later.
+      } catch (PersistenceFailureException e) {
         // This is expected.
       }
-    } catch (Exception e) {  // TODO change to appropriate Exceptio type later
+    } catch (Exception e) {
       Assert.fail("Exception was thrown: " + e.getMessage(), e);
     }
   }
@@ -101,7 +103,7 @@ public abstract class AbstractStoreTest {
       Assert.assertEquals(updatedValue, foundValue,
           "The updated value: " + updatedValue.toString() + " and expected value: " + foundValue.toString()
               + " do not match!");
-    } catch (Exception e) { // TODO change to appropriate Exceptio type later
+    } catch (VeniceException e) {
       Assert.fail("Exception was thrown: " + e.getMessage(), e);
     }
   }

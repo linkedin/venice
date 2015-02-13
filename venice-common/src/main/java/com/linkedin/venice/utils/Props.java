@@ -1,5 +1,6 @@
 package com.linkedin.venice.utils;
 
+import com.linkedin.venice.exceptions.UndefinedPropertyException;
 import java.io.BufferedInputStream;
 import java.io.File;
 import java.io.FileInputStream;

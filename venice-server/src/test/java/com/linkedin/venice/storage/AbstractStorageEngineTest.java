@@ -1,6 +1,8 @@
 package com.linkedin.venice.storage;
 
 import com.linkedin.venice.Common.TestUtils;
+import com.linkedin.venice.exceptions.PersistenceFailureException;
+import com.linkedin.venice.exceptions.StorageInitializationException;
 import com.linkedin.venice.store.AbstractStorageEngine;
 import com.linkedin.venice.store.Store;
 import org.testng.Assert;
@@ -61,7 +63,6 @@ public abstract class AbstractStorageEngineTest extends AbstractStoreTest {
         "Failed to remove partition: " + partitionId + " from the storage engine!");
   }
 
-
   public void testAddingAPartitionTwice()
       throws Exception {
     init();
@@ -74,9 +75,8 @@ public abstract class AbstractStorageEngineTest extends AbstractStoreTest {
     // add it again
     try {
       doAddPartition(partitionId);
-    } catch (Exception e) {
-      //TODO this should be the expected behavior. Please add the appropriate exception in catch phrase after exception
-      // handling is designed. Till then this test does not have any value.
+    } catch (StorageInitializationException e) {
+      //this should be the expected behavior.
       return;
     } finally {
       //do clean up
@@ -86,7 +86,6 @@ public abstract class AbstractStorageEngineTest extends AbstractStoreTest {
     }
     Assert.fail("Adding the same partition:" + partitionId + " again did not throw any exception as expected.");
   }
-
 
   public void testRemovingPartitionTwice()
       throws Exception {
@@ -126,17 +125,15 @@ public abstract class AbstractStorageEngineTest extends AbstractStoreTest {
     //test put
     try {
       testStoreEngine.put(partitionId, key, value);
-    } catch (Exception e) {
+    } catch (PersistenceFailureException e) {
       //This is expected.
-      //TODO recheck Exception type once exception handling is in place.
     }
 
     byte[] found = null;
     try {
       found = testStoreEngine.get(partitionId, key);
-    } catch (Exception e) {
+    } catch (PersistenceFailureException e) {
       //This is expected
-      //TODO recheck Exception type once exception handling is in place.
     }
 
     Assert.assertEquals((found == null), true,
@@ -145,9 +142,8 @@ public abstract class AbstractStorageEngineTest extends AbstractStoreTest {
     //test delete
     try {
       testStoreEngine.delete(partitionId, key);
-    } catch (Exception e) {
+    } catch (PersistenceFailureException e) {
       //This is expected
-      //TODO recheck Exception type once exception handling is in place.
       return;
     }
     // If we reach here it means delete succeeded unfortunately.

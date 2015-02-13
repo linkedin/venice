@@ -1,5 +1,6 @@
 package com.linkedin.venice.server;
 
+import com.linkedin.venice.exceptions.VeniceException;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
@@ -44,14 +45,14 @@ public class PartitionNodeAssignmentRepository {
    * @return set of logical partitions owned by the node @nodeId for store @storeName
    */
   public Set<Integer> getLogicalPartitionIds(String storeName, int nodeId)
-      throws Exception {
+      throws VeniceException {
     if (storeNameToNodeIdAndPartitionIdsMap.containsKey(storeName)) {
       //Assumes all nodes have some partitions for any given store.
       return storeNameToNodeIdAndPartitionIdsMap.get(storeName).get(nodeId);
     } else {
       String errorMessage = "Store name '" + storeName + "' in node: " + nodeId + " does not exist!";
       logger.error(errorMessage);
-      throw new Exception(errorMessage); //TODO change to appropriate exception type later
+      throw new VeniceException(errorMessage);
     }
   }
 
@@ -63,13 +64,13 @@ public class PartitionNodeAssignmentRepository {
    * @return Map of <nodeId, corresponding logical partition ids >
    */
   public Map<Integer, Set<Integer>> getNodeToLogicalPartitionIdsMap(String storeName)
-      throws Exception {
+      throws VeniceException {
     if (storeNameToNodeIdAndPartitionIdsMap.containsKey(storeName)) {
       return storeNameToNodeIdAndPartitionIdsMap.get(storeName);
     } else {
       String errorMessage = "Store name '" + storeName + "' does not exist!";
       logger.error(errorMessage);
-      throw new Exception(errorMessage); //TODO change to appropriate exception type later
+      throw new VeniceException(errorMessage);
     }
   }
 
@@ -80,13 +81,13 @@ public class PartitionNodeAssignmentRepository {
    * @return Map of <storename, List<logical partition ids>>
    */
   public Map<String, Set<Integer>> getStoreToLogicalPartitionIdsMap(int nodeId)
-      throws Exception {
+      throws VeniceException {
     if (nodeIdToStoreNameAndPartitionIdsMap.containsKey(nodeId)) {
       return nodeIdToStoreNameAndPartitionIdsMap.get(nodeId);
     } else {
       String errorMessage = "Node '" + nodeId + "' does not exist!";
       logger.error(errorMessage);
-      throw new Exception(errorMessage); //TODO change to appropriate exception type later
+      throw new VeniceException(errorMessage);
     }
   }
 
@@ -100,7 +101,7 @@ public class PartitionNodeAssignmentRepository {
    * @return All node ids that subscribe to the @logicalPartitionId
    */
   public Set<Integer> getAllNodeIdsSubscribedToALogicalPartition(String storeName, int logicalPartitionId)
-      throws Exception {
+      throws VeniceException {
     String errorMessage;
     if (storeNameToPartitionIdAndNodesIdsMap.containsKey(storeName)) {
       Map<Integer, Set<Integer>> partitionIdToNodeMap = storeNameToPartitionIdAndNodesIdsMap.get(storeName);
@@ -109,12 +110,12 @@ public class PartitionNodeAssignmentRepository {
       } else {
         errorMessage = "Partition '" + logicalPartitionId + "' for store: " + storeName + "does not exist!";
         logger.error(errorMessage);
-        throw new Exception(errorMessage); //TODO change to appropriate exception type later
+        throw new VeniceException(errorMessage);
       }
     } else {
       errorMessage = "Store name '" + storeName + "' does not exist!";
       logger.error(errorMessage);
-      throw new Exception(errorMessage); //TODO change to appropriate exception type later
+      throw new VeniceException(errorMessage);
     }
   }
 
@@ -127,18 +128,18 @@ public class PartitionNodeAssignmentRepository {
    * @param nodeToLogicalPartitionsMap Map representing assignment of logical partitions to each node for this store
    */
   public synchronized void setAssignment(String storeName, Map<Integer, Set<Integer>> nodeToLogicalPartitionsMap)
-      throws Exception {
+      throws VeniceException {
     String errorMessage;
     if (nodeToLogicalPartitionsMap == null) {
       errorMessage = "Node to partition assignment cannot be null!";
       logger.error(errorMessage);
-      throw new Exception(errorMessage); //TODO change to appropriate exception type later
+      throw new VeniceException(errorMessage);
     }
 
     if (storeName == null) {
       errorMessage = "Store name cannot be null!";
       logger.error(errorMessage);
-      throw new Exception(errorMessage); //TODO change to appropriate exception type later
+      throw new VeniceException(errorMessage);
     }
 
     //update the first view
@@ -172,11 +173,11 @@ public class PartitionNodeAssignmentRepository {
   }
 
   public synchronized void deleteAssignment(String storeName)
-      throws Exception {
+      throws VeniceException {
     if (storeName == null) {
       String errorMessage = "Store name cannot be null!";
       logger.error(errorMessage);
-      throw new Exception(errorMessage); //TODO change to appropriate exception type later
+      throw new VeniceException(errorMessage);
     }
     //update the first view
     storeNameToNodeIdAndPartitionIdsMap.remove(storeName);

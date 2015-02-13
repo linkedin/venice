@@ -3,6 +3,7 @@ package com.linkedin.venice.server;
 import com.linkedin.venice.config.VeniceClusterConfig;
 import com.linkedin.venice.config.VeniceServerConfig;
 import com.linkedin.venice.config.VeniceStoreConfig;
+import com.linkedin.venice.exceptions.ConfigurationException;
 import com.linkedin.venice.utils.Props;
 import com.linkedin.venice.utils.Utils;
 import java.io.File;
@@ -97,8 +98,7 @@ public class VeniceConfigService {
 
   // server specific properties
   public static final String NODE_ID = "node.id";
-  public static final Set<String> serverSpecificProperties =
-      new HashSet<String>(Arrays.asList(NODE_ID));
+  public static final Set<String> serverSpecificProperties = new HashSet<String>(Arrays.asList(NODE_ID));
 
   // store specific properties
   public static final String STORE_NAME = "store.name";
@@ -106,8 +106,12 @@ public class VeniceConfigService {
   public static final String STORAGE_REPLICATION_FACTOR = "storage.node.replicas";
   public static final String NUMBER_OF_KAFKA_PARTITIONS = "kafka.number.partitions";
   public static final String KAFKA_ZOOKEEPER_URL = "kafka.zookeeper.url";
-  public static final String KAFKA_BROKER_URL = "kafka.broker.url";
+  public static final String KAFKA_BROKERS = "kafka.brokers";
   public static final String KAFKA_BROKER_PORT = "kafka.broker.port";
+  public static final String KAFKA_CONSUMER_FETCH_BUFFER_SIZE = "kafka.consumer.fetch.buffer.size";
+  public static final String  KAFKA_CONSUMER_SOCKET_TIMEOUT_MS = "kafka.consumer.socket.timeout.ms";
+  public static final String  KAFKA_CONSUMER_NUM_METADATA_REFRESH_RETRIES = "kafka.consumer.num.metadata.refresh.retries";
+  public static final String  KAFKA_CONSUMER_METADATA_REFRESH_BACKOFF_MS = "kafka.consumer.metadata.refresh.backoff.ms";
 
   // all other properties go here
 
@@ -148,31 +152,29 @@ public class VeniceConfigService {
    * validate if all necessary config files exist and are readable
    *
    * @param configDirPath
-   * @throws Exception
    */
-  private void validateConfigPath(String configDirPath)
-      throws Exception {
+  private void validateConfigPath(String configDirPath) {
     logger.info("validating config dir path...");
     if (!Utils.isReadableDir(configDirPath)) {
-      throw new Exception(
+      throw new ConfigurationException(
           "Attempt to load configuration from , " + configDirPath + " failed. That is not a readable directory.");
     }
     veniceConfigDir = configDirPath;
     clusterPropertiesFile = veniceConfigDir + File.separator + VENICE_CLUSTER_PROPERTIES_FILE;
     if (!Utils.isReadableFile(clusterPropertiesFile)) {
-      throw new Exception(clusterPropertiesFile + " is not a readable configuration file.");
+      throw new ConfigurationException(clusterPropertiesFile + " is not a readable configuration file.");
     }
 
     serverPropertiesFile = veniceConfigDir + File.separator + VENICE_SERVER_PROPERTIES_FILE;
     if (!Utils.isReadableFile(serverPropertiesFile)) {
-      throw new Exception(serverPropertiesFile + " is not a readable configuration file.");
+      throw new ConfigurationException(serverPropertiesFile + " is not a readable configuration file.");
     }
 
     storesConfigDir = veniceConfigDir + File.separator + VeniceConfigService.STORE_CONFIGS_DIR_NAME;
     if (!Utils.isReadableDir(storesConfigDir)) {
       String errorMessage =
           "Either the " + VeniceConfigService.STORE_CONFIGS_DIR_NAME + " directory does not exist or is not readable.";
-      throw new Exception(errorMessage); // TODO later change this to appropriate Exception Type.
+      throw new ConfigurationException(errorMessage);
     }
   }
 
@@ -203,8 +205,8 @@ public class VeniceConfigService {
       for (int i = 1; i < invalidProperties.size(); i++) {
         sb.append(", " + invalidProperties.get(i));
       }
-      throw new Exception("Cluster specific properties - " + sb.toString()
-          + " , cannot be overwritten by server properties"); // TODO later change this to appropriate Exception Type.
+      throw new ConfigurationException("Cluster specific properties - " + sb.toString()
+          + " , cannot be overwritten by server properties");
     }
 
     // safe to merge both the properties
@@ -258,10 +260,10 @@ public class VeniceConfigService {
   /**
    * Verify that the store configs do not override server and cluster specific configs
    * @param storeProps individual store configs
-   * @throws Exception
+   * @throws ConfigurationException
    */
   private void checkConfigScope(Props storeProps)
-      throws Exception {
+      throws ConfigurationException {
     List<String> invalidClusterSpecificProperties = new ArrayList<String>();
     List<String> invalidServerSpecificProperties = new ArrayList<String>();
     for (String propertyKey : storeProps.keySet()) {
@@ -291,7 +293,7 @@ public class VeniceConfigService {
     if (invalidClusterSpecificProperties.size() > 0 || invalidServerSpecificProperties.size() > 0) {
       errorMessage =
           "Attempt to override non-overridable properties." + sbClusterProps.toString() + sbServerProps.toString();
-      throw new Exception(errorMessage); // TODO later change this to appropriate Exception Type.
+      throw new ConfigurationException(errorMessage);
     }
   }
 
@@ -337,12 +339,11 @@ public class VeniceConfigService {
       throws Exception {
     String veniceConfigDir = System.getenv(VeniceConfigService.VENICE_CONFIG_DIR);
     if (veniceConfigDir == null) {
-      // TODO throw appropriate exception
-      throw new Exception(
+      throw new ConfigurationException(
           "No environment variable " + VeniceConfigService.VENICE_CONFIG_DIR + " has been defined, set it!");
     } else {
       if (!Utils.isReadableDir(veniceConfigDir)) {
-        throw new Exception("Attempt to load configuration from VENICE_CONFIG_DIR, " + veniceConfigDir
+        throw new ConfigurationException("Attempt to load configuration from VENICE_CONFIG_DIR, " + veniceConfigDir
             + " failed. That is not a readable directory.");
       }
     }

@@ -1,6 +1,9 @@
 package com.linkedin.venice.store.memory;
 
 import com.linkedin.venice.config.VeniceStoreConfig;
+import com.linkedin.venice.exceptions.PersistenceFailureException;
+import com.linkedin.venice.exceptions.StorageInitializationException;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.server.PartitionNodeAssignmentRepository;
 import com.linkedin.venice.store.AbstractStorageEngine;
 import com.linkedin.venice.store.AbstractStoragePartition;
@@ -30,7 +33,7 @@ public class InMemoryStorageEngine extends AbstractStorageEngine {
 
   @Override
   public void addStoragePartition(int partitionId)
-      throws Exception {
+      throws VeniceException {
     /**
      * If this method is called by anyone other than the constructor, i.e- the admin service, the caller should ensure
      * that after the addition of the storage partition:
@@ -42,7 +45,7 @@ public class InMemoryStorageEngine extends AbstractStorageEngine {
       String errorMessage =
           "Failed to add a storage partition for partitionId: " + partitionId + " . This partition already exists!";
       logger.error(errorMessage);
-      throw new Exception(errorMessage); // TODO Later change this to appropriate Exception type
+      throw new StorageInitializationException(errorMessage);
     }
     partitionIdToDataBaseMap.put(partitionId, new InMemoryStoragePartition(partitionId));
   }
@@ -66,12 +69,12 @@ public class InMemoryStorageEngine extends AbstractStorageEngine {
   }
 
   public CloseableStoreEntriesIterator storeEntries()
-      throws Exception { // TODO Change it to Appropriate Exception later
-    return new CloseableStoreEntriesIterator(partitionIdToDataBaseMap.values());
+      throws PersistenceFailureException {
+    return new CloseableStoreEntriesIterator(partitionIdToDataBaseMap.values(), this);
   }
 
   public CloseableStoreKeysIterator storeKeys()
-      throws Exception { // TODO Change it to Appropriate Exception later
+      throws PersistenceFailureException {
     return new CloseableStoreKeysIterator(storeEntries());
   }
 

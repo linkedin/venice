@@ -1,6 +1,7 @@
 package com.linkedin.venice.store.memory;
 
 import com.linkedin.venice.config.VeniceStoreConfig;
+import com.linkedin.venice.exceptions.StorageInitializationException;
 import com.linkedin.venice.server.PartitionNodeAssignmentRepository;
 import com.linkedin.venice.store.AbstractStorageEngine;
 import com.linkedin.venice.store.StorageEngineFactory;
@@ -18,9 +19,13 @@ public class InMemoryStorageEngineFactory implements StorageEngineFactory {
 
   @Override
   public AbstractStorageEngine getStore(VeniceStoreConfig storeDef)
-      throws Exception {
+      throws StorageInitializationException {
     synchronized (lock) {
-      return new InMemoryStorageEngine(storeDef, partitionNodeAssignmentRepo);
+      try {
+        return new InMemoryStorageEngine(storeDef, partitionNodeAssignmentRepo);
+      } catch (Exception e) {
+        throw new StorageInitializationException(e);
+      }
     }
   }
 
@@ -31,7 +36,6 @@ public class InMemoryStorageEngineFactory implements StorageEngineFactory {
 
   @Override
   public void update(VeniceStoreConfig storeDef) {
-    //TODO use appropriate exception to track
     throw new UnsupportedOperationException(
         "Storage config updates not permitted for " + this.getClass().getCanonicalName());
   }

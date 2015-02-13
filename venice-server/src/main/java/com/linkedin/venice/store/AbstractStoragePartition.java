@@ -1,7 +1,9 @@
 package com.linkedin.venice.store;
 
+import com.linkedin.venice.exceptions.PersistenceFailureException;
 import com.linkedin.venice.utils.partition.iterators.AbstractCloseablePartitionEntriesIterator;
 import com.linkedin.venice.utils.partition.iterators.CloseablePartitionKeysIterator;
+import org.apache.log4j.Logger;
 
 
 /**
@@ -11,6 +13,7 @@ import com.linkedin.venice.utils.partition.iterators.CloseablePartitionKeysItera
  */
 public abstract class AbstractStoragePartition {
   private final Integer partitionId;
+  protected final Logger logger = Logger.getLogger(getClass());
 
   public AbstractStoragePartition(Integer partitionId) {
     this.partitionId = partitionId;
@@ -32,7 +35,7 @@ public abstract class AbstractStoragePartition {
    * Get a value from the partition database
    */
   public abstract byte[] get(byte[] key)
-      throws Exception;
+      throws PersistenceFailureException;
 
   /**
    * Delete a key from the partition database

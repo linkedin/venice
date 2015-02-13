@@ -1,4 +1,4 @@
-package com.linkedin.venice.utils;
+package com.linkedin.venice.exceptions;
 
 /**
  * Thrown when a config property is invalid or missing

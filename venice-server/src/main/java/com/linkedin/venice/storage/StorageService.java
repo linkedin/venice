@@ -1,6 +1,7 @@
 package com.linkedin.venice.storage;
 
 import com.linkedin.venice.config.VeniceStoreConfig;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.server.PartitionNodeAssignmentRepository;
 import com.linkedin.venice.server.StoreRepository;
 import com.linkedin.venice.server.VeniceConfigService;
@@ -24,7 +25,7 @@ public class StorageService extends AbstractVeniceService {
 
   private final StoreRepository storeRepository;
   private final VeniceConfigService veniceConfigService;
-  private final ConcurrentMap<String, StorageEngineFactory> storeToStorageEngineFactoryMap;
+  private final ConcurrentMap<String, StorageEngineFactory> persistenceTypeToStorageEngineFactoryMap;
   private final PartitionNodeAssignmentRepository partitionNodeAssignmentRepository;
 
   public StorageService(StoreRepository storeRepository, VeniceConfigService veniceConfigService,
@@ -32,7 +33,7 @@ public class StorageService extends AbstractVeniceService {
     super("storage-service");
     this.storeRepository = storeRepository;
     this.veniceConfigService = veniceConfigService;
-    this.storeToStorageEngineFactoryMap = new ConcurrentHashMap<String, StorageEngineFactory>();
+    this.persistenceTypeToStorageEngineFactoryMap = new ConcurrentHashMap<String, StorageEngineFactory>();
     this.partitionNodeAssignmentRepository = partitionNodeAssignmentRepository;
   }
 
@@ -53,32 +54,27 @@ public class StorageService extends AbstractVeniceService {
     StorageEngineFactory factory = null;
 
     // Instantiate the factory for this persistence type if not already present
-    if (!storeToStorageEngineFactoryMap.containsKey(persistenceType)) {
+    if (!persistenceTypeToStorageEngineFactoryMap.containsKey(persistenceType)) {
       String storageFactoryClassName = storeDefinition.getStorageEngineFactoryClassName();
-      if (storageFactoryClassName != null) {
-        try {
-          Class<?> factoryClass = ReflectUtils.loadClass(storageFactoryClassName);
-          factory = (StorageEngineFactory) ReflectUtils.callConstructor(factoryClass,
-              new Class<?>[]{PartitionNodeAssignmentRepository.class},
-              new Object[]{partitionNodeAssignmentRepository});
-          storeToStorageEngineFactoryMap.putIfAbsent(persistenceType, factory);
-        } catch (IllegalStateException e) {
-          logger.error("Error loading storage engine factory '" + storageFactoryClassName + "'.", e);
-          throw e; // TODO throw appropriate exception .
-        }
-      } else {
-        logger.error("Unknown persistence type: " + persistenceType);
-        // TODO throw / handle exception . This is not a known persistence type.
+      try {
+        Class<?> factoryClass = ReflectUtils.loadClass(storageFactoryClassName);
+        factory = (StorageEngineFactory) ReflectUtils
+            .callConstructor(factoryClass, new Class<?>[]{PartitionNodeAssignmentRepository.class},
+                new Object[]{partitionNodeAssignmentRepository});
+        persistenceTypeToStorageEngineFactoryMap.putIfAbsent(persistenceType, factory);
+      } catch (IllegalStateException e) {
+        logger.error("Error loading storage engine factory '" + storageFactoryClassName + "'.", e);
+        throw e;
       }
     }
 
-    factory = storeToStorageEngineFactoryMap.get(persistenceType);
+    factory = persistenceTypeToStorageEngineFactoryMap.get(persistenceType);
 
     if (factory != null) {
       engine = factory.getStore(storeDefinition);
       try {
         registerEngine(engine);
-      } catch (Exception e) {
+      } catch (VeniceException e) {
         logger.error("Failed to register storage engine for  store: " + engine.getName(), e);
         removeEngine(engine);
       }
@@ -92,10 +88,10 @@ public class StorageService extends AbstractVeniceService {
    * Adds the storage engine to the store repository.
    *
    * @param engine  StorageEngine to add
-   * @throws Exception
+   * @throws VeniceException
    */
   public void registerEngine(AbstractStorageEngine engine)
-      throws Exception {
+      throws VeniceException {
     storeRepository.addLocalStorageEngine(engine);
   }
 
@@ -124,14 +120,14 @@ public class StorageService extends AbstractVeniceService {
 
   @Override
   public void stopInner()
-      throws Exception {
-    Exception lastException = null;
+      throws VeniceException {
+    VeniceException lastException = null;
       /* This will also close the storage engines */
     for (Store store : this.storeRepository.getAllLocalStorageEngines()) {
       logger.info("Closing storage engine for " + store.getName());
       try {
         store.close();
-      } catch (Exception e) {
+      } catch (VeniceException e) {
         logger.error(e);
         lastException = e;
       }
@@ -139,11 +135,11 @@ public class StorageService extends AbstractVeniceService {
     logger.info("All stores closed.");
 
     /*Close all storage engine factories */
-    for (Map.Entry<String, StorageEngineFactory> storageEngineFactory : storeToStorageEngineFactoryMap.entrySet()) {
+    for (Map.Entry<String, StorageEngineFactory> storageEngineFactory : persistenceTypeToStorageEngineFactoryMap.entrySet()) {
       logger.info("Closing " + storageEngineFactory.getKey() + " storage engine factory");
       try {
         storageEngineFactory.getValue().close();
-      } catch (Exception e) {
+      } catch (VeniceException e) {
         logger.error(e);
         lastException = e;
       }

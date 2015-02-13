@@ -1,10 +1,10 @@
 package com.linkedin.venice.utils.partition.iterators;
 
+import com.linkedin.venice.exceptions.PersistenceFailureException;
 import java.io.Closeable;
 import java.io.IOException;
 import java.util.Iterator;
 import java.util.Map;
-import java.util.NoSuchElementException;
 
 
 /**
@@ -31,7 +31,7 @@ public abstract class AbstractCloseablePartitionEntriesIterator implements Itera
     Map.Entry<byte[], byte[]> result = null;
     if (currentEntry == null) {
       if (!fetchNextEntry()) {
-        throw new NoSuchElementException("Iterated till end.");
+        throw new PersistenceFailureException("Iterated till end.");
       }
     }
     result = currentEntry;

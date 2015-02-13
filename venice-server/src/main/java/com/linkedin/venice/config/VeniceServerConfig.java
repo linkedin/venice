@@ -1,9 +1,9 @@
 package com.linkedin.venice.config;
 
 import com.linkedin.venice.server.VeniceConfigService;
-import com.linkedin.venice.utils.ConfigurationException;
+import com.linkedin.venice.exceptions.ConfigurationException;
 import com.linkedin.venice.utils.Props;
-import com.linkedin.venice.utils.UndefinedPropertyException;
+import com.linkedin.venice.exceptions.UndefinedPropertyException;
 
 
 /**
@@ -15,7 +15,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private static final String VENICE_NODE_ID_VAR_NAME = "VENICE_NODE_ID";
 
   public VeniceServerConfig(Props serverProperties)
-      throws Exception {
+      throws ConfigurationException {
     super(serverProperties);
     verifyProperties(serverProperties);
   }

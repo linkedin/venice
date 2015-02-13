@@ -1,6 +1,6 @@
 package com.linkedin.venice.store;
 
-import com.linkedin.venice.storage.VeniceStorageException;
+import com.linkedin.venice.exceptions.VeniceException;
 
 
 /**
@@ -26,18 +26,18 @@ public interface Store extends QueryStore {
    * @param logicalPartitionId Id of the logical partition where this key belongs
    * @param key  The key to put
    * @param value  The value associated with the key
-   * @throws VeniceStorageException
+   * @throws VeniceException
    */
   public void put(Integer logicalPartitionId, byte[] key, byte[] value)
-      throws Exception;
+      throws VeniceException;
 
   /**
    * Delete entry corresponding to the given key
    *
    * @param logicalPartitionId Id of the logical partition where this key belongs
    * @param key  The key to delete
-   * @throws VeniceStorageException
+   * @throws VeniceException
    */
   public void delete(Integer logicalPartitionId, byte[] key)
-      throws Exception;
+      throws VeniceException;
 }

@@ -53,26 +53,21 @@ public class VeniceServer {
    * in the cluster. The scheme for this assignment is available in config.properties and is parsed by VeniceConfig.
    * When this method finishes the PartitionToNodeAssignmentRepository is populated which is then used by other services.
    */
-  private void assignPartitionToNodes()
-      throws Exception {
+  private void assignPartitionToNodes() {
     logger.info("Populating partition node assignment repository");
-    String partitionNodeAssignmentSchemeClassName = veniceConfigService.getVeniceClusterConfig().getPartitionNodeAssignmentSchemeClassName();
-    if (partitionNodeAssignmentSchemeClassName != null) {
-      try {
-        Class<?> AssignmentSchemeClass = ReflectUtils.loadClass(partitionNodeAssignmentSchemeClassName);
-        partitionNodeAssignmentScheme = (AbstractPartitionNodeAssignmentScheme) ReflectUtils
-            .callConstructor(AssignmentSchemeClass, new Class<?>[]{}, new Object[]{});
-      } catch (IllegalStateException e) {
-        String errorMessage =
-            "Error loading Partition Node Assignment Class '" + partitionNodeAssignmentSchemeClassName + "'.";
-        logger.error(errorMessage, e);
-        throw new Exception(errorMessage); // TODO later change this to appropriate Exception Type.
-      }
-    } else {
-      String erroMessage = "Unknown Partition Node Assignment Scheme: " + partitionNodeAssignmentSchemeClassName;
-      logger.error(erroMessage);
-      throw new Exception(erroMessage); // TODO later change this to appropriate Exception Type.
+    String partitionNodeAssignmentSchemeClassName =
+        veniceConfigService.getVeniceClusterConfig().getPartitionNodeAssignmentSchemeClassName();
+    try {
+      Class<?> AssignmentSchemeClass = ReflectUtils.loadClass(partitionNodeAssignmentSchemeClassName);
+      partitionNodeAssignmentScheme = (AbstractPartitionNodeAssignmentScheme) ReflectUtils
+          .callConstructor(AssignmentSchemeClass, new Class<?>[]{}, new Object[]{});
+    } catch (IllegalStateException e) {
+      String errorMessage =
+          "Error loading Partition Node Assignment Class '" + partitionNodeAssignmentSchemeClassName + "'.";
+      logger.error(errorMessage, e);
+      throw e;
     }
+
     for (Map.Entry<String, VeniceStoreConfig> storeEntry : veniceConfigService.getAllStoreConfigs().entrySet()) {
       Map<Integer, Set<Integer>> nodeToLogicalPartitionIdsMap =
           partitionNodeAssignmentScheme.getNodeToLogicalPartitionsMap(storeEntry.getValue());
@@ -95,14 +90,13 @@ public class VeniceServer {
     List<AbstractVeniceService> services = new ArrayList<AbstractVeniceService>();
 
     // create and add StorageService. storeRepository will be populated by StorageService,
-    StorageService storageService = new StorageService(storeRepository, veniceConfigService,
-        partitionNodeAssignmentRepository);
+    StorageService storageService =
+        new StorageService(storeRepository, veniceConfigService, partitionNodeAssignmentRepository);
     services.add(storageService);
 
     //create and add KafkaConsumerService
     KafkaConsumerService kafkaConsumerService =
-        new KafkaConsumerService(storeRepository, veniceConfigService,
-            partitionNodeAssignmentRepository);
+        new KafkaConsumerService(storeRepository, veniceConfigService, partitionNodeAssignmentRepository);
     services.add(kafkaConsumerService);
 
     /**
@@ -152,8 +146,8 @@ public class VeniceServer {
   public void shutdown()
       throws Exception {
     List<Exception> exceptions = new ArrayList<Exception>();
-    logger.info("Stopping all services"); // TODO -"Stopping services on Node: <node-id>"
-    // - Need to get current node id information
+    logger.info("Stopping all services on Node: " + veniceConfigService.getVeniceServerConfig().getNodeId());
+
     /* Stop in reverse order */
 
     synchronized (this) {

@@ -49,41 +49,42 @@
         StringBuffer payload = new StringBuffer();
 
         ByteArrayInputStream bytesIn = null;
-        ObjectInputStream ois = null;
+        ObjectInputStream objectInputStream = null;
 
         try {
 
           bytesIn = new ByteArrayInputStream(byteArray);
-          ois = new ObjectInputStream(bytesIn);
+          objectInputStream = new ObjectInputStream(bytesIn);
 
           /* read magicByte TODO: currently unused */
-          magicByte = ois.readByte();
-            byte opTypeByte = ois.readByte();
+          magicByte = objectInputStream.readByte();
+            byte opTypeByte = objectInputStream.readByte();
           operationType = OperationType.getOperationType(opTypeByte);
 
           /* read schemaVersion - TODO: currently unused */
-          schemaVersion = ois.readShort();
+          schemaVersion = objectInputStream.readShort();
 
           /* read payload, one character at a time */
-          int byteCount = ois.available();
+          int byteCount = objectInputStream.available();
 
           for (int i = 0; i < byteCount; i++) {
-            payload.append(Character.toString((char) ois.readByte()));
+            payload.append(Character.toString((char) objectInputStream.readByte()));
           }
         } catch (IOException e) {
-
-          logger.error("IOException while converting: " + e);
-          e.printStackTrace();
+            logger.error("IOException while converting to VeniceMessage: ", e);
+            return null;
         } finally {
 
           // safely close the input/output streams
           try {
-            ois.close();
+            objectInputStream.close();
           } catch (IOException e) {
+            logger.error("IOException while closing the input stream", e);
           }
           try {
             bytesIn.close();
           } catch (IOException e) {
+            logger.error("IOException while closing the input stream", e);
           }
         }
 
@@ -99,24 +100,24 @@
       public byte[] toBytes(VeniceMessage vm) {
 
         ByteArrayOutputStream bytesOut = null;
-        ObjectOutputStream oos = null;
+        ObjectOutputStream objectOutputStream = null;
         byte[] message = new byte[0];
 
         try {
 
           bytesOut = new ByteArrayOutputStream();
-          oos = new ObjectOutputStream(bytesOut);
+          objectOutputStream = new ObjectOutputStream(bytesOut);
 
-          oos.writeByte(vm.getMagicByte());
+          objectOutputStream.writeByte(vm.getMagicByte());
 
           byte opType = (byte) vm.getOperationType().ordinal();
-          oos.writeByte(opType);
+          objectOutputStream.writeByte(opType);
 
-          oos.writeShort(vm.getSchemaVersion());
+          objectOutputStream.writeShort(vm.getSchemaVersion());
 
           // write the payload to the byte array
-          oos.writeBytes(vm.getPayload());
-          oos.flush();
+          objectOutputStream.writeBytes(vm.getPayload());
+          objectOutputStream.flush();
 
           message = bytesOut.toByteArray();
         } catch (IOException e) {
@@ -125,7 +126,7 @@
 
           // safely close the input/output streams
           try {
-            oos.close();
+            objectOutputStream.close();
           } catch (IOException e) {
           }
           try {

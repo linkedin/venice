@@ -1,4 +1,7 @@
-package com.linkedin.venice.utils;
+package com.linkedin.venice.exceptions;
+
+import com.linkedin.venice.exceptions.ConfigurationException;
+
 
 /**
  *  Thrown when a required property is not present

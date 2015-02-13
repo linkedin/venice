@@ -1,6 +1,5 @@
 package com.linkedin.venice.utils.partition.iterators;
 
-import com.linkedin.venice.utils.partition.iterators.AbstractCloseablePartitionEntriesIterator;
 import java.io.Closeable;
 import java.io.IOException;
 import java.util.Iterator;

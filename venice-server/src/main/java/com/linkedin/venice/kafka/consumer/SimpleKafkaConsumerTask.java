@@ -1,8 +1,9 @@
 package com.linkedin.venice.kafka.consumer;
 
+import com.linkedin.venice.config.VeniceStoreConfig;
+import com.linkedin.venice.exceptions.KafkaConsumerException;
 import com.linkedin.venice.serialization.VeniceMessageSerializer;
-import com.linkedin.venice.storage.VeniceMessageException;
-import com.linkedin.venice.storage.VeniceStorageException;
+import com.linkedin.venice.exceptions.VeniceMessageException;
 import com.linkedin.venice.message.VeniceMessage;
 
 import com.linkedin.venice.store.AbstractStorageEngine;
@@ -29,7 +30,6 @@ import scala.collection.Seq;
 
 import java.io.UnsupportedEncodingException;
 import java.nio.ByteBuffer;
-import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.ArrayList;
@@ -49,42 +49,25 @@ public class SimpleKafkaConsumerTask implements Runnable {
   private VeniceMessage vm;
   private static VeniceMessageSerializer messageSerializer;
 
-  // Seed kafka brokers
-  private List<String> seedBrokers;
-  // port for seed brokers
-  private int port;
-  // SimpleConsumer fetch buffer size.
-  private final int fetchBufferSize;
-  // SimpleConsumer socket socketTimeoutMs.
-  private final int socketTimeoutMs;
-  // Number of times the SimpleConsumer will retry fetching topic-partition leadership metadata.
-  private final int numMetadataRefreshRetries;
-  //Back off duration between metadata fetch retries.
-  private int metadataRefreshBackoffMs;
+  // Store specific configs
+  private final VeniceStoreConfig storeConfig;
+
+  // storage destination for consumption
+  private final AbstractStorageEngine storageEngine;
 
   // Replica kafka brokers
   private List<String> replicaBrokers;
 
-  // storage destination for consumption
-  private AbstractStorageEngine storageEngine;
+  private final String topic;
+  private final int partition;
 
-  private String topic;
-  private int partition;
-
-  public SimpleKafkaConsumerTask(SimpleKafkaConsumerConfig config, AbstractStorageEngine storageEngine, String topic,
-      int partition, int port) {
-
-    this.seedBrokers = config.getSeedBrokers();
-    this.fetchBufferSize = config.getFetchBufferSize();
-    this.socketTimeoutMs = config.getSocketTimeoutMs();
-    this.numMetadataRefreshRetries = config.getNumMetadataRefreshRetries();
-    this.metadataRefreshBackoffMs = config.getMetadataRefreshBackoffMs();
+  public SimpleKafkaConsumerTask(VeniceStoreConfig storeConfig, AbstractStorageEngine storageEngine, int partition) {
+    this.storeConfig = storeConfig;
     this.storageEngine = storageEngine;
-    this.port = port;
 
     messageSerializer = new VeniceMessageSerializer(new VerifiableProperties());
     this.replicaBrokers = new ArrayList<String>();
-    this.topic = topic;
+    this.topic = storeConfig.getStoreName();
     this.partition = partition;
   }
 
@@ -94,7 +77,8 @@ public class SimpleKafkaConsumerTask implements Runnable {
   public void run() {
 
     // find the meta data
-    PartitionMetadata metadata = findLeader(seedBrokers, port, topic, partition);
+    PartitionMetadata metadata =
+        findLeader(storeConfig.getKafkaBrokers(), storeConfig.getKafkaBrokerPort(), topic, partition);
 
     if (null == metadata) {
       logger.error("Cannot find metadata for Topic: " + topic + " Partition: " + partition);
@@ -109,7 +93,9 @@ public class SimpleKafkaConsumerTask implements Runnable {
     String leadBroker = metadata.leader().get().host();
     String clientName = "Client_" + topic + "_" + partition;
 
-    SimpleConsumer consumer = new SimpleConsumer(leadBroker, port, socketTimeoutMs, fetchBufferSize, clientName);
+    SimpleConsumer consumer =
+        new SimpleConsumer(leadBroker, storeConfig.getKafkaBrokerPort(), storeConfig.getSocketTimeoutMs(),
+            storeConfig.getFetchBufferSize(), clientName);
 
     /*
     * The LatestTime() gives the last offset from Kafka log, instead of the last consumed offset. So in case where a
@@ -130,9 +116,8 @@ public class SimpleKafkaConsumerTask implements Runnable {
 
     while (execute) {
 
-      FetchRequest req =
-          new FetchRequestBuilder().clientId(clientName).addFetch(topic, partition, readOffset, fetchBufferSize)
-              .build();
+      FetchRequest req = new FetchRequestBuilder().clientId(clientName)
+          .addFetch(topic, partition, readOffset, storeConfig.getFetchBufferSize()).build();
 
       FetchResponse fetchResponse = consumer.fetch(req);
 
@@ -145,9 +130,10 @@ public class SimpleKafkaConsumerTask implements Runnable {
         consumer = null;
 
         try {
-          leadBroker = findNewLeader(leadBroker, topic, partition, port);
-        } catch (Exception e) {
+          leadBroker = findNewLeader(leadBroker, topic, partition, storeConfig.getKafkaBrokerPort());
+        } catch (KafkaConsumerException e) {
           logger.error("Error while finding new leader: " + e);
+          // TODO keep trying ?
         }
 
         continue;
@@ -192,18 +178,17 @@ public class SimpleKafkaConsumerTask implements Runnable {
 
           numReads++;
         } catch (UnsupportedEncodingException e) {
-
-          logger.error("Encoding is not supported: " + ENCODING, e);
-
+          logger.error("Unsupported encoding: " + ENCODING, e);
           // end the thread
           execute = false;
         } catch (VeniceMessageException e) {
           logger.error("Received an illegal Venice message!", e);
+        } catch (UnsupportedOperationException e) {
+          logger.error("Recieven an invalid operation type!", e);
         } catch (Exception e) {
           logger
               .error("Venice Storage Engine for store: " + storageEngine.getName() + " has been corrupted! Exiting...",
                   e);
-
           // end the thread
           execute = false;
         }
@@ -323,37 +308,35 @@ public class SimpleKafkaConsumerTask implements Runnable {
    * Used when the lead Kafka partition dies, and the new leader needs to be elected
    * */
   private String findNewLeader(String oldLeader, String topic, int partition, int port)
-      throws Exception {
+      throws KafkaConsumerException {
 
-    for (int i = 0; i < numMetadataRefreshRetries; i++) {
-
+    for (int i = 0; i < storeConfig.getNumMetadataRefreshRetries(); i++) {
+      logger.info("Retry: " + i + " to get the new leader ...");
       boolean goToSleep;
       PartitionMetadata metadata = findLeader(replicaBrokers, port, topic, partition);
 
-      if (metadata == null) {
-        goToSleep = true;
-      } else if (metadata.leader() == null) {
-        goToSleep = true;
-      } else if (oldLeader.equalsIgnoreCase(metadata.leader().get().host()) && i == 0) {
-
-        // first time through if the leader hasn't changed give ZooKeeper a second to recover
-        // second time, assume the broker did recover before failover, or it was a non-Broker issue
-        goToSleep = true;
+      if (metadata == null || metadata.leader() == null || (oldLeader.equalsIgnoreCase(metadata.leader().get().host())
+          && i == 0)) {
+        /**
+         * Introduce thread delay - for reasons above
+         *
+         * For third condition - first time through if the leader hasn't changed give ZooKeeper a second to recover
+         * second time, assume the broker did recover before failover, or it was a non-Broker issue
+         */
+        try {
+          int sleepTime = storeConfig.getMetadataRefreshBackoffMs();
+          logger.info("Will retry after " + sleepTime + " ms");
+          Thread.sleep(sleepTime);
+        } catch (InterruptedException ie) {
+          // ignore and continue with the loop
+        }
       } else {
         return metadata.leader().get().host();
       }
-
-      // introduce thread delay - for reasons above
-      if (goToSleep) {
-        try {
-          Thread.sleep(this.metadataRefreshBackoffMs);
-        } catch (InterruptedException ie) {
-        }
-      }
     }
-
-    logger.error("Unable to find new leader after Broker failure. Exiting");
-    throw new Exception("Unable to find new leader after Broker failure. Exiting");
+    String errorMsg = "Unable to find new leader after Broker failure. Exiting";
+    logger.error(errorMsg);
+    throw new KafkaConsumerException(errorMsg);
   }
 
   /**
@@ -376,7 +359,8 @@ public class SimpleKafkaConsumerTask implements Runnable {
 
       try {
 
-        consumer = new SimpleConsumer(host, port, socketTimeoutMs, fetchBufferSize, "leaderLookup");
+        consumer = new SimpleConsumer(host, port, storeConfig.getSocketTimeoutMs(), storeConfig.getFetchBufferSize(),
+            "leaderLookup");
 
         Seq<String> topics = JavaConversions.asScalaBuffer(Collections.singletonList(topic));
         TopicMetadataRequest request = new TopicMetadataRequest(topics, 17);
@@ -400,7 +384,6 @@ public class SimpleKafkaConsumerTask implements Runnable {
           } /* End of Partition Loop */
         } /* End of Topic Loop */
       } catch (Exception e) {
-
         logger
             .error("Error communicating with " + host + " to find topic: " + topic + " and partition:" + partition, e);
       } finally {

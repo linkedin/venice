@@ -1,6 +1,7 @@
 package com.linkedin.venice.store;
 
 import com.linkedin.venice.config.VeniceStoreConfig;
+import com.linkedin.venice.exceptions.StorageInitializationException;
 
 
 /**
@@ -18,7 +19,7 @@ public interface StorageEngineFactory {
    * @return The storage engine
    */
   public AbstractStorageEngine getStore(VeniceStoreConfig storeDef)
-      throws Exception;
+      throws StorageInitializationException;
 
   /**
    *

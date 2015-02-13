@@ -148,7 +148,7 @@ public class TestKafkaConsumer {
       startKafkaServer(kafkaProperties);
       Thread.sleep(2000);
       // start the Kafka Producer
-      startKafkaProducer(storeConfig.getKafkaBrokerUrl());
+      startKafkaProducer(storeConfig.getKafkaBrokers().get(0) + ":" + storeConfig.getKafkaBrokerPort());
       // start the Venice Storage nodes
       startVeniceStorage();
     } catch (Exception e) {

@@ -1,5 +1,7 @@
 package com.linkedin.venice.store.iterators;
 
+import com.linkedin.venice.exceptions.PersistenceFailureException;
+import com.linkedin.venice.store.AbstractStorageEngine;
 import com.linkedin.venice.store.AbstractStoragePartition;
 import com.linkedin.venice.utils.partition.iterators.AbstractCloseablePartitionEntriesIterator;
 import java.io.Closeable;
@@ -7,7 +9,6 @@ import java.io.IOException;
 import java.util.Collection;
 import java.util.Iterator;
 import java.util.Map;
-import java.util.NoSuchElementException;
 
 
 /**
@@ -20,9 +21,12 @@ public class CloseableStoreEntriesIterator implements Iterator<Map.Entry<byte[],
   final Iterator<AbstractStoragePartition> partitions;
   AbstractCloseablePartitionEntriesIterator currentIterator = null;
   Map.Entry<byte[], byte[]> currentEntry = null;
+  final AbstractStorageEngine storageEngine;
 
-  public CloseableStoreEntriesIterator(Collection<AbstractStoragePartition> storagePartitions) {
+  public CloseableStoreEntriesIterator(Collection<AbstractStoragePartition> storagePartitions,
+      AbstractStorageEngine storageEngine) {
     partitions = storagePartitions.iterator();
+    this.storageEngine = storageEngine;
   }
 
   @Override
@@ -50,7 +54,7 @@ public class CloseableStoreEntriesIterator implements Iterator<Map.Entry<byte[],
         try {
           currentIterator.close();
         } catch (IOException e) {
-          // TODO log error with the Storage engines's logger and return false
+          storageEngine.getLogger().error("Failure to close current Partition entries iterator", e);
           return false;
         }
       }
@@ -87,7 +91,8 @@ public class CloseableStoreEntriesIterator implements Iterator<Map.Entry<byte[],
     Map.Entry<byte[], byte[]> result = null;
     if (currentEntry == null) {
       if (!fetchNextEntry()) {
-        throw new NoSuchElementException("Iterated till end.");
+        throw new PersistenceFailureException(
+            "Either there was a problem closing the current partition entries iterated (OR) we have reached the end of all partitions");
       }
     }
     result = currentEntry;

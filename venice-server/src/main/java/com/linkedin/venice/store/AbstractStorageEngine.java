@@ -1,8 +1,10 @@
 package com.linkedin.venice.store;
 
 import com.linkedin.venice.config.VeniceStoreConfig;
+import com.linkedin.venice.exceptions.PersistenceFailureException;
+import com.linkedin.venice.exceptions.StorageInitializationException;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.server.PartitionNodeAssignmentRepository;
-import com.linkedin.venice.storage.VeniceStorageException;
 import com.linkedin.venice.store.iterators.CloseableStoreEntriesIterator;
 import com.linkedin.venice.store.iterators.CloseableStoreKeysIterator;
 import com.linkedin.venice.utils.ByteUtils;
@@ -71,7 +73,7 @@ public abstract class AbstractStorageEngine implements Store {
    * @param partitionId  - id of partition to add
    */
   public abstract void addStoragePartition(int partitionId)
-      throws Exception;
+      throws StorageInitializationException;
 
   /**
    * Removes and returns a partition from the current store
@@ -92,7 +94,7 @@ public abstract class AbstractStorageEngine implements Store {
    * @return An iterator over the entries in this AbstractStorageEngine.
    */
   public abstract CloseableStoreEntriesIterator storeEntries()
-      throws Exception;
+      throws VeniceException;
 
   /**
    *
@@ -103,7 +105,7 @@ public abstract class AbstractStorageEngine implements Store {
    * @return An iterator over the keys in this AbstractStorageEngine.
    */
   public abstract CloseableStoreKeysIterator storeKeys()
-      throws Exception;
+      throws VeniceException;
 
   /**
    * Truncate all entries in the store
@@ -135,46 +137,50 @@ public abstract class AbstractStorageEngine implements Store {
   }
 
   public void put(Integer logicalPartitionId, byte[] key, byte[] value)
-      throws Exception {
+      throws VeniceException {
     Utils.notNull(key, "Key cannot be null.");
     if (!containsPartition(logicalPartitionId)) {
       String errorMessage = "PUT request failed for Key: " + ByteUtils.toHexString(key) + " . Invalid partition id: "
           + logicalPartitionId;
       logger.error(errorMessage);
-      throw new Exception(errorMessage); // TODO Later change this to appropriate Exception type
+      throw new PersistenceFailureException(errorMessage);
     }
     AbstractStoragePartition db = this.partitionIdToDataBaseMap.get(logicalPartitionId);
     db.put(key, value);
   }
 
   public void delete(Integer logicalPartitionId, byte[] key)
-      throws Exception {
+      throws VeniceException {
     Utils.notNull(key, "Key cannot be null.");
     if (!containsPartition(logicalPartitionId)) {
       String errorMessage = "DELETE request failed for key: " + ByteUtils.toHexString(key) + " . Invalid partition id: "
           + logicalPartitionId;
       logger.error(errorMessage);
-      throw new Exception(errorMessage); // TODO Later change this to appropriate Exception type
+      throw new PersistenceFailureException(errorMessage);
     }
     AbstractStoragePartition db = this.partitionIdToDataBaseMap.get(logicalPartitionId);
     db.delete(key);
   }
 
   public byte[] get(Integer logicalPartitionId, byte[] key)
-      throws Exception {
+      throws VeniceException {
     Utils.notNull(key, "Key cannot be null.");
     if (!containsPartition(logicalPartitionId)) {
       String errorMessage =
           "GET request failed for key " + ByteUtils.toHexString(key) + " . Invalid partition id: " + logicalPartitionId;
       logger.error(errorMessage);
-      throw new Exception(errorMessage); // TODO Later change this to appropriate Exception type
+      throw new PersistenceFailureException(errorMessage);
     }
     AbstractStoragePartition db = this.partitionIdToDataBaseMap.get(logicalPartitionId);
     return db.get(key);
   }
 
   public void close()
-      throws VeniceStorageException {
+      throws PersistenceFailureException {
     this.isOpen.compareAndSet(true, false);
+  }
+
+  public Logger getLogger(){
+    return logger;
   }
 }

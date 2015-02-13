@@ -1,5 +1,6 @@
 package com.linkedin.venice.store.memory;
 
+import com.linkedin.venice.exceptions.PersistenceFailureException;
 import com.linkedin.venice.store.AbstractStoragePartition;
 import com.linkedin.venice.utils.ByteArray;
 import com.linkedin.venice.utils.ByteUtils;
@@ -41,13 +42,13 @@ public class InMemoryStoragePartition extends AbstractStoragePartition {
   }
 
   public byte[] get(byte[] key)
-      throws Exception {
+      throws PersistenceFailureException {
     ByteArray k = new ByteArray(key);
     if (partitionDb.containsKey(k)) {
       return partitionDb.get(k).get();
     }
-    throw new Exception("Get Request failed for an invalid key: " + ByteUtils
-        .toHexString(key)); // TODO Later change this to appropriate Exception type
+    throw new PersistenceFailureException("Get Request failed for an invalid key: " + ByteUtils
+        .toHexString(key));
   }
 
   public void delete(byte[] key) {
@@ -80,7 +81,7 @@ public class InMemoryStoragePartition extends AbstractStoragePartition {
     @Override
     public void close()
         throws IOException {
-      // Nothin to do here, since it is in memory implementation
+      // Nothing to do here, since it is in memory implementation
     }
 
     @Override

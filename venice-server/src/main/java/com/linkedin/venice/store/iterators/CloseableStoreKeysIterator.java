@@ -12,7 +12,6 @@ import java.util.Map;
  * Gets an store entry iterator and filters out the value part from each entry.
  */
 public class CloseableStoreKeysIterator implements Iterator<byte[]>, Closeable {
-  byte[] currentEntry = null;
   private final CloseableStoreEntriesIterator entriesIterator;
 
   public CloseableStoreKeysIterator(CloseableStoreEntriesIterator entriesIterator) {

@@ -1,6 +1,6 @@
 package com.linkedin.venice.store;
 
-import com.linkedin.venice.storage.VeniceStorageException;
+import com.linkedin.venice.exceptions.VeniceException;
 
 
 /**
@@ -26,16 +26,16 @@ public interface QueryStore {
    * @param logicalPartitionId Id of the logical partition where this key belongs
    * @param key The key to check for
    * @return The value associated with the key or an empty list if no values are found.
-   * @throws com.linkedin.venice.storage.VeniceStorageException
+   * @throws VeniceException
    */
   public byte[] get(Integer logicalPartitionId, byte[] key)
-      throws Exception;
+      throws VeniceException;
 
   /**
    * Close the store.
    *
-   * @throws VeniceStorageException If closing fails.
+   * @throws VeniceException If closing fails.
    */
   public void close()
-      throws VeniceStorageException;
+      throws VeniceException;
 }

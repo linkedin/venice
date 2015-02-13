@@ -2,18 +2,16 @@ package com.linkedin.venice.kafka.consumer;
 
 import com.linkedin.venice.config.VeniceServerConfig;
 import com.linkedin.venice.config.VeniceStoreConfig;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.server.PartitionNodeAssignmentRepository;
 import com.linkedin.venice.server.StoreRepository;
 import com.linkedin.venice.server.VeniceConfigService;
 import com.linkedin.venice.service.AbstractVeniceService;
-import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import org.apache.log4j.Logger;
-
-// TODO later separate kafka global and local configs
 
 /**
  * Acts as the running Kafka interface to Venice. "Manages the consumption of Kafka partitions for each kafka topic
@@ -49,10 +47,9 @@ public class KafkaConsumerService extends AbstractVeniceService {
 
   @Override
   public void startInner()
-      throws Exception {
+      throws VeniceException {
     logger.info("Starting all kafka consumer tasks on node: " + veniceServerConfig.getNodeId());
-    consumerExecutorService =
-        Executors.newCachedThreadPool();
+    consumerExecutorService = Executors.newCachedThreadPool();
     for (VeniceStoreConfig storeConfig : veniceConfigService.getAllStoreConfigs().values()) {
       registerKafkaConsumers(storeConfig);
     }
@@ -64,10 +61,8 @@ public class KafkaConsumerService extends AbstractVeniceService {
    * server
    *
    * @param storeConfig configs for the Venice store
-   * @throws Exception
    */
-  public void registerKafkaConsumers(VeniceStoreConfig storeConfig)
-      throws Exception {
+  public void registerKafkaConsumers(VeniceStoreConfig storeConfig) {
 
     /**
      * TODO Make sure that admin service or any other service when registering Kafka consumers ensures that there are
@@ -82,7 +77,7 @@ public class KafkaConsumerService extends AbstractVeniceService {
     partitionIdToKafkaConsumerTaskMap = this.topicNameToPartitionIdAndKafkaConsumerTasksMap.get(topic);
     for (int partitionId : partitionNodeAssignmentRepository
         .getLogicalPartitionIds(topic, veniceServerConfig.getNodeId())) {
-      SimpleKafkaConsumerTask kafkaConsumerTask = getConsumerTask(topic, partitionId, storeConfig);
+      SimpleKafkaConsumerTask kafkaConsumerTask = getConsumerTask(storeConfig, partitionId);
       consumerExecutorService.submit(kafkaConsumerTask);
       partitionIdToKafkaConsumerTaskMap.put(partitionId, kafkaConsumerTask);
     }
@@ -91,22 +86,17 @@ public class KafkaConsumerService extends AbstractVeniceService {
 
   /**
    * Given a topic and partition id, returns a consumer task that is configured and tied to that specific topic and partition
-   * @param topicName - The Kafka topic name also same as the Venice store name
-   * @param partition - The specific kafka partition id
    * @param storeConfig  - These are configs specific to a Kafka topic.
+   * @param partition - The specific kafka partition id
    * @return
    */
-  public SimpleKafkaConsumerTask getConsumerTask(String topicName, int partition, VeniceStoreConfig storeConfig) {
-    SimpleKafkaConsumerConfig kafkaConfig = new SimpleKafkaConsumerConfig();
-    kafkaConfig.setSeedBrokers(Arrays.asList(storeConfig.getKafkaBrokerUrl()
-        .split(":")[0]));   // TODO need to change the Kafka broker url to multiple urls comma separated
-    return new SimpleKafkaConsumerTask(kafkaConfig, storeRepository.getLocalStorageEngine(topicName), topicName,
-        partition, storeConfig.getKafkaBrokerPort());
+  public SimpleKafkaConsumerTask getConsumerTask(VeniceStoreConfig storeConfig, int partition) {
+    return new SimpleKafkaConsumerTask(storeConfig, storeRepository.getLocalStorageEngine(storeConfig.getStoreName()),
+        partition);
   }
 
   @Override
-  public void stopInner()
-      throws Exception {
+  public void stopInner() {
     logger.info("Shutting down Kafka consumer service for node: " + veniceServerConfig.getNodeId());
     if (consumerExecutorService != null) {
       consumerExecutorService.shutdown();

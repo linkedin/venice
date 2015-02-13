@@ -1,10 +1,11 @@
-package com.linkedin.venice.storage;
+package com.linkedin.venice.exceptions;
+
 
 /**
- * Custom Exception for Venice Storage Related Issues.
+ * Custom Exception for Venice messages.
  * Currently everything is inherited from the superclass.
  */
-public class VeniceMessageException extends Exception {
+public class VeniceMessageException extends VeniceException {
 
   /** */
   private static final long serialVersionUID = 1L;
