@@ -3,6 +3,8 @@ package com.linkedin.venice.kafka.consumer;
 import com.linkedin.venice.config.VeniceServerConfig;
 import com.linkedin.venice.config.VeniceStoreConfig;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.kafka.consumer.offsets.BDBOffsetManager;
+import com.linkedin.venice.kafka.consumer.offsets.OffsetManager;
 import com.linkedin.venice.server.PartitionNodeAssignmentRepository;
 import com.linkedin.venice.server.StoreRepository;
 import com.linkedin.venice.server.VeniceConfigService;
@@ -44,7 +46,9 @@ public class KafkaConsumerService extends AbstractVeniceService {
     this.veniceServerConfig = veniceConfigService.getVeniceServerConfig();
     this.partitionNodeAssignmentRepository = partitionNodeAssignmentRepository;
     this.topicNameToPartitionIdAndKafkaConsumerTasksMap = new HashMap<String, Map<Integer, SimpleKafkaConsumerTask>>();
-    this.offsetManager = new OffsetManager();
+
+    //TODO make offset management implementation configurable.
+    this.offsetManager = new BDBOffsetManager();
 
   }
 

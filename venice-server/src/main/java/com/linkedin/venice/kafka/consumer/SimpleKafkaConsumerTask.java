@@ -3,6 +3,7 @@ package com.linkedin.venice.kafka.consumer;
 import com.linkedin.venice.config.VeniceStoreConfig;
 import com.linkedin.venice.exceptions.KafkaConsumerException;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.kafka.consumer.offsets.OffsetManager;
 import com.linkedin.venice.serialization.VeniceMessageSerializer;
 import com.linkedin.venice.exceptions.VeniceMessageException;
 import com.linkedin.venice.message.VeniceMessage;
@@ -292,7 +293,7 @@ public class SimpleKafkaConsumerTask implements Runnable {
    * @return long - last offset after the given time
    *
    * TODO Change this piece of code so it will access the the offset management repo and fetch the last offset consumed
-   * by this partition before shutdown or crash or startup
+   * by this partition before shutdown or crash on startup
    * */
   public static long getLastOffset(SimpleConsumer consumer, String topic, int partition, long whichTime,
       String clientName) {
