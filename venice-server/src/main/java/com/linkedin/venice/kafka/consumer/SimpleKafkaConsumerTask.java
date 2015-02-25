@@ -2,6 +2,7 @@ package com.linkedin.venice.kafka.consumer;
 
 import com.linkedin.venice.config.VeniceStoreConfig;
 import com.linkedin.venice.exceptions.KafkaConsumerException;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.serialization.VeniceMessageSerializer;
 import com.linkedin.venice.exceptions.VeniceMessageException;
 import com.linkedin.venice.message.VeniceMessage;
@@ -49,6 +50,9 @@ public class SimpleKafkaConsumerTask implements Runnable {
   private VeniceMessage vm;
   private static VeniceMessageSerializer messageSerializer;
 
+  //offsetManager
+  private final OffsetManager offsetManager;
+
   // Store specific configs
   private final VeniceStoreConfig storeConfig;
 
@@ -61,7 +65,8 @@ public class SimpleKafkaConsumerTask implements Runnable {
   private final String topic;
   private final int partition;
 
-  public SimpleKafkaConsumerTask(VeniceStoreConfig storeConfig, AbstractStorageEngine storageEngine, int partition) {
+  public SimpleKafkaConsumerTask(VeniceStoreConfig storeConfig, AbstractStorageEngine storageEngine, int partition,
+      OffsetManager offsetManager) {
     this.storeConfig = storeConfig;
     this.storageEngine = storageEngine;
 
@@ -69,6 +74,7 @@ public class SimpleKafkaConsumerTask implements Runnable {
     this.replicaBrokers = new ArrayList<String>();
     this.topic = storeConfig.getStoreName();
     this.partition = partition;
+    this.offsetManager = offsetManager;
   }
 
   /**
@@ -167,14 +173,14 @@ public class SimpleKafkaConsumerTask implements Runnable {
           keyString = new String(keyBytes, ENCODING);
 
           // Read Payload
-          ByteBuffer payload = messageAndOffset.message().payload();
+          ByteBuffer payload = msg.payload();
           byte[] payloadBytes = new byte[payload.limit()];
           payload.get(payloadBytes);
 
           // De-serialize payload into Venice Message format
           vm = messageSerializer.fromBytes(payloadBytes);
 
-          readMessage(keyString, vm);
+          readMessage(keyString, vm, currentOffset);
 
           numReads++;
         } catch (UnsupportedEncodingException e) {
@@ -212,8 +218,7 @@ public class SimpleKafkaConsumerTask implements Runnable {
   /**
    * Given the attached storage engine, interpret the VeniceMessage and perform the required action
    * */
-  private void readMessage(String key, VeniceMessage msg)
-      throws Exception {
+  private void readMessage(String key, VeniceMessage msg, long msgOffset) {
 
     long startTimeNs = -1;
 
@@ -233,12 +238,18 @@ public class SimpleKafkaConsumerTask implements Runnable {
         if (logger.isTraceEnabled()) {
           startTimeNs = System.nanoTime();
         }
-        storageEngine.put(partition, key.getBytes(), msg.getPayload().getBytes());
+        try {
+          storageEngine.put(partition, key.getBytes(), msg.getPayload().getBytes());
 
-        if (logger.isTraceEnabled()) {
-          logger.trace(
-              "Completed PUT to Store: " + topic + " for key: " + key + ", value: " + msg.getPayload() + " in " + (
-                  System.nanoTime() - startTimeNs) + " ns at " + System.currentTimeMillis());
+          if (logger.isTraceEnabled()) {
+            logger.trace(
+                "Completed PUT to Store: " + topic + " for key: " + key + ", value: " + msg.getPayload() + " in " + (
+                    System.nanoTime() - startTimeNs) + " ns at " + System.currentTimeMillis());
+          }
+
+          this.offsetManager.recordOffset(storageEngine.getName(), partition, msgOffset);
+        } catch (VeniceException e) {
+          throw e;
         }
         break;
 
@@ -247,15 +258,18 @@ public class SimpleKafkaConsumerTask implements Runnable {
         if (logger.isTraceEnabled()) {
           startTimeNs = System.nanoTime();
         }
+        try {
+          storageEngine.delete(partition, key.getBytes());
 
-        storageEngine.delete(partition, key.getBytes());
-
-        if (logger.isTraceEnabled()) {
-          logger.trace(
-              "Completed DELETE to Store: " + topic + " for key: " + key + " in " + (System.nanoTime() - startTimeNs)
-                  + " ns at " + System.currentTimeMillis());
+          if (logger.isTraceEnabled()) {
+            logger.trace(
+                "Completed DELETE to Store: " + topic + " for key: " + key + " in " + (System.nanoTime() - startTimeNs)
+                    + " ns at " + System.currentTimeMillis());
+          }
+          offsetManager.recordOffset(storageEngine.getName(), partition, msgOffset);
+        } catch (VeniceException e) {
+          throw e;
         }
-
         break;
 
       // partial update
@@ -276,6 +290,9 @@ public class SimpleKafkaConsumerTask implements Runnable {
    * @param whichTime - Time at which to being reading offsets
    * @param clientName - Name of the client (combination of topic + partition)
    * @return long - last offset after the given time
+   *
+   * TODO Change this piece of code so it will access the the offset management repo and fetch the last offset consumed
+   * by this partition before shutdown or crash or startup
    * */
   public static long getLastOffset(SimpleConsumer consumer, String topic, int partition, long whichTime,
       String clientName) {
@@ -283,8 +300,9 @@ public class SimpleKafkaConsumerTask implements Runnable {
     TopicAndPartition tp = new TopicAndPartition(topic, partition);
     Map<TopicAndPartition, PartitionOffsetRequestInfo> requestInfoMap =
         new HashMap<TopicAndPartition, PartitionOffsetRequestInfo>();
-
-    requestInfoMap.put(tp, new PartitionOffsetRequestInfo(whichTime, 1));
+    int numValidOffsetsToReturn = 1; // this will return as many starting offsets for the segments before the whichTime.
+    // Say for example if the size is 3 then, the starting offset of last 3 segments are returned
+    requestInfoMap.put(tp, new PartitionOffsetRequestInfo(whichTime, numValidOffsetsToReturn));
 
     // TODO: Investigate if the conversion can be done in a cleaner way
     kafka.javaapi.OffsetRequest req =
@@ -363,22 +381,25 @@ public class SimpleKafkaConsumerTask implements Runnable {
             "leaderLookup");
 
         Seq<String> topics = JavaConversions.asScalaBuffer(Collections.singletonList(topic));
-        TopicMetadataRequest request = new TopicMetadataRequest(topics, 17);
+
+        int correlationId = 17; //This is a user-supplied integer. It will be passed back in the response by the server,
+        // unmodified. It is useful for matching request and response between the client and server.
+        TopicMetadataRequest request = new TopicMetadataRequest(topics, correlationId);
         TopicMetadataResponse resp = consumer.send(request);
 
         Seq<TopicMetadata> metaData = resp.topicsMetadata();
-        Iterator<TopicMetadata> it = metaData.iterator();
+        Iterator<TopicMetadata> metadataIterator = metaData.iterator();
 
-        while (it.hasNext()) {
-          TopicMetadata item = it.next();
+        while (metadataIterator.hasNext()) {
+          TopicMetadata item = metadataIterator.next();
 
-          Seq<PartitionMetadata> partitionMetaData = item.partitionsMetadata();
-          Iterator<PartitionMetadata> innerIt = partitionMetaData.iterator();
+          Seq<PartitionMetadata> partitionsMetaData = item.partitionsMetadata();
+          Iterator<PartitionMetadata> innerIterator = partitionsMetaData.iterator();
 
-          while (innerIt.hasNext()) {
-            PartitionMetadata pm = innerIt.next();
-            if (pm.partitionId() == partition) {
-              returnMetaData = pm;
+          while (innerIterator.hasNext()) {
+            PartitionMetadata partitionMetadata = innerIterator.next();
+            if (partitionMetadata.partitionId() == partition) {
+              returnMetaData = partitionMetadata;
               break loop;
             }
           } /* End of Partition Loop */

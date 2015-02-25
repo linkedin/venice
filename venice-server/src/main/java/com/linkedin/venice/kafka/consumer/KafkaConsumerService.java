@@ -25,6 +25,7 @@ public class KafkaConsumerService extends AbstractVeniceService {
   private final VeniceConfigService veniceConfigService;
   private final PartitionNodeAssignmentRepository partitionNodeAssignmentRepository;
   private final VeniceServerConfig veniceServerConfig;
+  private final OffsetManager offsetManager;
 
   /**
    * A repository of kafka topic to their corresponding partitions and the kafka consumer tasks. This may be used in
@@ -43,6 +44,8 @@ public class KafkaConsumerService extends AbstractVeniceService {
     this.veniceServerConfig = veniceConfigService.getVeniceServerConfig();
     this.partitionNodeAssignmentRepository = partitionNodeAssignmentRepository;
     this.topicNameToPartitionIdAndKafkaConsumerTasksMap = new HashMap<String, Map<Integer, SimpleKafkaConsumerTask>>();
+    this.offsetManager = new OffsetManager();
+
   }
 
   @Override
@@ -50,6 +53,7 @@ public class KafkaConsumerService extends AbstractVeniceService {
       throws VeniceException {
     logger.info("Starting all kafka consumer tasks on node: " + veniceServerConfig.getNodeId());
     consumerExecutorService = Executors.newCachedThreadPool();
+    // TODO Also start a background thread that will periodically checkpoint the offsets consumed to disk
     for (VeniceStoreConfig storeConfig : veniceConfigService.getAllStoreConfigs().values()) {
       registerKafkaConsumers(storeConfig);
     }
@@ -92,7 +96,7 @@ public class KafkaConsumerService extends AbstractVeniceService {
    */
   public SimpleKafkaConsumerTask getConsumerTask(VeniceStoreConfig storeConfig, int partition) {
     return new SimpleKafkaConsumerTask(storeConfig, storeRepository.getLocalStorageEngine(storeConfig.getStoreName()),
-        partition);
+        partition, offsetManager);
   }
 
   @Override
