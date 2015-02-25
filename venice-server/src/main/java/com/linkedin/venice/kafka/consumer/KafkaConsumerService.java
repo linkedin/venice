@@ -53,7 +53,6 @@ public class KafkaConsumerService extends AbstractVeniceService {
       throws VeniceException {
     logger.info("Starting all kafka consumer tasks on node: " + veniceServerConfig.getNodeId());
     consumerExecutorService = Executors.newCachedThreadPool();
-    // TODO Also start a background thread that will periodically checkpoint the offsets consumed to disk
     for (VeniceStoreConfig storeConfig : veniceConfigService.getAllStoreConfigs().values()) {
       registerKafkaConsumers(storeConfig);
     }
