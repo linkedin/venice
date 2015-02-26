@@ -45,6 +45,11 @@ import java.util.Collections;
 public class SimpleKafkaConsumerTask implements Runnable {
 
   private static final Logger logger = Logger.getLogger(SimpleKafkaConsumerTask.class.getName());
+
+  //This is a user-supplied integer. It will be passed back in the response by the server,
+  // unmodified. It is useful for matching request and response between the client and server.
+  private static final int CORELATION_ID = 17;
+
   private final String ENCODING = "UTF-8";
 
   // Venice Serialization
@@ -107,18 +112,33 @@ public class SimpleKafkaConsumerTask implements Runnable {
     /*
     * The LatestTime() gives the last offset from Kafka log, instead of the last consumed offset. So in case where a
     * consumer goes down and is instantiated, it starts to consume new messages and there is a possibility for missing
-    * data that were produced in between. So we need to manage the offsets explicitly.
-    * TODO: Create a common BDB store that manages offset for each kafka partition for every topic. getLastOffset will
-    * then need to read the latest offset from the BDB store instead of using the LatestTime() offset from Kafka.
+    * data that were produced in between.
     *
-    * The BDB store maintianing offsets should have these data - topic, partitio id , original time stamp from the
-    * message, time when it was received.offset. This BDB store sould have special properties such that it is flushed
-    * to disk only once every 5 or 10 seconds. And we update the bdb store (in memory) for every record. This will give
-    * us the capability to monitor consumption rate for each kafka partition.
+    * So we need to manage the offsets explicitly.On a best effort basis we try to get the last consumed offset. In the
+    * worst case we should start consume from earliest data in Kafka log.
+    *
     * */
-    long readOffset = getLastOffset(consumer, topic, partition, kafka.api.OffsetRequest.LatestTime(), clientName);
+    long readOffset = -1;
+    if (storeConfig.isEnableKafkaConsumersOffsetManagement()) {
+      try {
+        /**
+         * Access the the offset manager and fetch the last consumed offset that was persisted by this consumer thread
+         * before shutdown or crash
+         */
+        readOffset = offsetManager.getLastOffset(topic, partition);
+      } catch (VeniceException e) {
+        readOffset = -1;
+      }
+    }
+    if (readOffset == -1) {
+      /**
+       * Control reaches here in these cases:
+       * 1. if offsetManagement is disabled
+       * 2. some exception in trying to get the last offset. Reprocess all data from the beginning in the log.
+       */
+      readOffset = getLastOffset(consumer, topic, partition, kafka.api.OffsetRequest.EarliestTime(), clientName);
+    }
 
-    int numErrors = 0;
     boolean execute = true;
 
     while (execute) {
@@ -150,7 +170,7 @@ public class SimpleKafkaConsumerTask implements Runnable {
 
       Iterator<MessageAndOffset> messageAndOffsetIterator = fetchResponse.messageSet(topic, partition).iterator();
 
-      while (messageAndOffsetIterator.hasNext()) {
+      while (messageAndOffsetIterator.hasNext() && execute) {
 
         MessageAndOffset messageAndOffset = messageAndOffsetIterator.next();
         long currentOffset = messageAndOffset.offset();
@@ -181,7 +201,7 @@ public class SimpleKafkaConsumerTask implements Runnable {
           // De-serialize payload into Venice Message format
           vm = messageSerializer.fromBytes(payloadBytes);
 
-          readMessage(keyString, vm, currentOffset);
+          processMessage(keyString, vm, currentOffset);
 
           numReads++;
         } catch (UnsupportedEncodingException e) {
@@ -191,7 +211,7 @@ public class SimpleKafkaConsumerTask implements Runnable {
         } catch (VeniceMessageException e) {
           logger.error("Received an illegal Venice message!", e);
         } catch (UnsupportedOperationException e) {
-          logger.error("Recieven an invalid operation type!", e);
+          logger.error("Received an invalid operation type!", e);
         } catch (Exception e) {
           logger
               .error("Venice Storage Engine for store: " + storageEngine.getName() + " has been corrupted! Exiting...",
@@ -219,7 +239,7 @@ public class SimpleKafkaConsumerTask implements Runnable {
   /**
    * Given the attached storage engine, interpret the VeniceMessage and perform the required action
    * */
-  private void readMessage(String key, VeniceMessage msg, long msgOffset) {
+  private void processMessage(String key, VeniceMessage msg, long msgOffset) {
 
     long startTimeNs = -1;
 
@@ -247,8 +267,9 @@ public class SimpleKafkaConsumerTask implements Runnable {
                 "Completed PUT to Store: " + topic + " for key: " + key + ", value: " + msg.getPayload() + " in " + (
                     System.nanoTime() - startTimeNs) + " ns at " + System.currentTimeMillis());
           }
-
-          this.offsetManager.recordOffset(storageEngine.getName(), partition, msgOffset);
+          if (offsetManager != null) {
+            this.offsetManager.recordOffset(storageEngine.getName(), partition, msgOffset);
+          }
         } catch (VeniceException e) {
           throw e;
         }
@@ -267,7 +288,9 @@ public class SimpleKafkaConsumerTask implements Runnable {
                 "Completed DELETE to Store: " + topic + " for key: " + key + " in " + (System.nanoTime() - startTimeNs)
                     + " ns at " + System.currentTimeMillis());
           }
-          offsetManager.recordOffset(storageEngine.getName(), partition, msgOffset);
+          if (offsetManager != null) {
+            offsetManager.recordOffset(storageEngine.getName(), partition, msgOffset);
+          }
         } catch (VeniceException e) {
           throw e;
         }
@@ -285,6 +308,7 @@ public class SimpleKafkaConsumerTask implements Runnable {
 
   /**
    * Finds the latest offset after a given time
+   *
    * @param consumer - A SimpleConsumer object for Kafka consumption
    * @param topic - Kafka topic
    * @param partition - Partition number within the topic
@@ -292,8 +316,6 @@ public class SimpleKafkaConsumerTask implements Runnable {
    * @param clientName - Name of the client (combination of topic + partition)
    * @return long - last offset after the given time
    *
-   * TODO Change this piece of code so it will access the the offset management repo and fetch the last offset consumed
-   * by this partition before shutdown or crash on startup
    * */
   public static long getLastOffset(SimpleConsumer consumer, String topic, int partition, long whichTime,
       String clientName) {
@@ -383,9 +405,7 @@ public class SimpleKafkaConsumerTask implements Runnable {
 
         Seq<String> topics = JavaConversions.asScalaBuffer(Collections.singletonList(topic));
 
-        int correlationId = 17; //This is a user-supplied integer. It will be passed back in the response by the server,
-        // unmodified. It is useful for matching request and response between the client and server.
-        TopicMetadataRequest request = new TopicMetadataRequest(topics, correlationId);
+        TopicMetadataRequest request = new TopicMetadataRequest(topics, CORELATION_ID);
         TopicMetadataResponse resp = consumer.send(request);
 
         Seq<TopicMetadata> metaData = resp.topicsMetadata();

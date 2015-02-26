@@ -88,8 +88,13 @@ public class VeniceConfigService {
   public static final String STORAGE_NODE_COUNT = "storage.node.count";
   public static final String DATA_BASE_PATH = "data.base.path";
   public static final String PARTITION_NODE_ASSIGNMENT_SCHEME = "partition.node.assignment.scheme";
-  public static final Set<String> clusterSpecificProperties =
-    new HashSet<String>(Arrays.asList(CLUSTER_NAME, STORAGE_NODE_COUNT, PARTITION_NODE_ASSIGNMENT_SCHEME));
+  public static final String ENABLE_KAFKA_CONSUMER_OFFSET_MANAGEMENT = "enable.kafka.consumers.offset.management";
+  public static final String OFFSET_MANAGER_TYPE = "offset.manager.type";
+  public static final String OFFSET_DATA_BASE_PATH = "offsets.data.base.path";
+  public static final String OFFSET_MANAGER_FLUSH_INTERVAL_MS="offset.manager.flush.interval.ms";
+  public static final Set<String> clusterSpecificProperties = new HashSet<String>(Arrays
+      .asList(CLUSTER_NAME, STORAGE_NODE_COUNT, PARTITION_NODE_ASSIGNMENT_SCHEME,
+          ENABLE_KAFKA_CONSUMER_OFFSET_MANAGEMENT, OFFSET_MANAGER_TYPE, OFFSET_DATA_BASE_PATH, OFFSET_MANAGER_FLUSH_INTERVAL_MS));
 
   // server specific properties
   public static final String NODE_ID = "node.id";
@@ -105,7 +110,8 @@ public class VeniceConfigService {
   public static final String KAFKA_BROKER_PORT = "kafka.broker.port";
   public static final String KAFKA_CONSUMER_FETCH_BUFFER_SIZE = "kafka.consumer.fetch.buffer.size";
   public static final String KAFKA_CONSUMER_SOCKET_TIMEOUT_MS = "kafka.consumer.socket.timeout.ms";
-  public static final String KAFKA_CONSUMER_NUM_METADATA_REFRESH_RETRIES = "kafka.consumer.num.metadata.refresh.retries";
+  public static final String KAFKA_CONSUMER_NUM_METADATA_REFRESH_RETRIES =
+      "kafka.consumer.num.metadata.refresh.retries";
   public static final String KAFKA_CONSUMER_METADATA_REFRESH_BACKOFF_MS = "kafka.consumer.metadata.refresh.backoff.ms";
 
   // all other properties go here
@@ -121,7 +127,7 @@ public class VeniceConfigService {
   private Map<String, String> partitionNodeAssignmentSchemeClassMap;
 
   public VeniceConfigService(String configDirPath)
-    throws Exception {
+      throws Exception {
     /**
      * 1. validate the path to see if all needed files are present
      * 2. load properties
@@ -151,7 +157,7 @@ public class VeniceConfigService {
     logger.info("validating config dir path...");
     if (!Utils.isReadableDir(configDirPath)) {
       throw new ConfigurationException(
-        "Attempt to load configuration from , " + configDirPath + " failed. That is not a readable directory.");
+          "Attempt to load configuration from , " + configDirPath + " failed. That is not a readable directory.");
     }
     veniceConfigDir = configDirPath;
     clusterPropertiesFile = veniceConfigDir + File.separator + VENICE_CLUSTER_PROPERTIES_FILE;
@@ -167,7 +173,7 @@ public class VeniceConfigService {
     storesConfigDir = veniceConfigDir + File.separator + VeniceConfigService.STORE_CONFIGS_DIR_NAME;
     if (!Utils.isReadableDir(storesConfigDir)) {
       String errorMessage =
-        "Either the " + VeniceConfigService.STORE_CONFIGS_DIR_NAME + " directory does not exist or is not readable.";
+          "Either the " + VeniceConfigService.STORE_CONFIGS_DIR_NAME + " directory does not exist or is not readable.";
       throw new ConfigurationException(errorMessage);
     }
   }
@@ -178,7 +184,7 @@ public class VeniceConfigService {
    * @throws Exception
    */
   private void loadClusterAndServerConfigs()
-    throws Exception {
+      throws Exception {
     logger.info("loading cluster and server configs...");
     Props clusterProperties, serverProperties;
     clusterProperties = Utils.parseProperties(clusterPropertiesFile);
@@ -200,8 +206,8 @@ public class VeniceConfigService {
         sb.append(", " + invalidProperties.get(i));
       }
 
-      throw new ConfigurationException("Cluster specific properties - " + sb.toString()
-        + " , cannot be overwritten by server properties");
+      throw new ConfigurationException(
+          "Cluster specific properties - " + sb.toString() + " , cannot be overwritten by server properties");
     }
 
     // safe to merge both the properties
@@ -216,7 +222,7 @@ public class VeniceConfigService {
    * @throws Exception
    */
   private void loadStoreConfigs()
-    throws Exception {
+      throws Exception {
     logger.info("loading store configs...");
     storeToConfigsMap = new HashMap<String, VeniceStoreConfig>();
 
@@ -241,7 +247,7 @@ public class VeniceConfigService {
    * @throws Exception
    */
   private void loadStoreConfig(File storeFileName)
-    throws Exception {
+      throws Exception {
     logger.info("initializing configs for store: " + storeFileName.getName());
     Props storeProps = Utils.parseProperties(storeFileName);
     checkConfigScope(storeProps);
@@ -259,7 +265,8 @@ public class VeniceConfigService {
    * @param storeProps individual store configs
    * @throws ConfigurationException
    */
-  private void checkConfigScope(Props storeProps) throws ConfigurationException {
+  private void checkConfigScope(Props storeProps)
+      throws ConfigurationException {
     List<String> invalidClusterSpecificProperties = new ArrayList<String>();
     List<String> invalidServerSpecificProperties = new ArrayList<String>();
     for (String propertyKey : storeProps.keySet()) {
@@ -273,7 +280,7 @@ public class VeniceConfigService {
     StringBuilder sbClusterProps = new StringBuilder();
     if (invalidClusterSpecificProperties.size() > 0) {
       sbClusterProps.append(
-        "\nCluster specific properties attempted to be overridden- " + invalidClusterSpecificProperties.get(0));
+          "\nCluster specific properties attempted to be overridden- " + invalidClusterSpecificProperties.get(0));
       for (int i = 1; i < invalidClusterSpecificProperties.size(); i++) {
         sbClusterProps.append(", " + invalidClusterSpecificProperties.get(i));
       }
@@ -281,14 +288,14 @@ public class VeniceConfigService {
     StringBuilder sbServerProps = new StringBuilder();
     if (invalidServerSpecificProperties.size() > 0) {
       sbServerProps.append(
-        "\nServer specific properties  attempted to be overridden - " + invalidServerSpecificProperties.get(0));
+          "\nServer specific properties  attempted to be overridden - " + invalidServerSpecificProperties.get(0));
       for (int i = 1; i < invalidServerSpecificProperties.size(); i++) {
         sbServerProps.append(", " + invalidServerSpecificProperties.get(i));
       }
     }
     if (invalidClusterSpecificProperties.size() > 0 || invalidServerSpecificProperties.size() > 0) {
       errorMessage =
-        "Attempt to override non-overridable properties." + sbClusterProps.toString() + sbServerProps.toString();
+          "Attempt to override non-overridable properties." + sbClusterProps.toString() + sbServerProps.toString();
       throw new ConfigurationException(errorMessage);
     }
   }
@@ -332,15 +339,15 @@ public class VeniceConfigService {
    * @throws Exception
    */
   public static VeniceConfigService loadFromEnvironmentVariable()
-    throws Exception {
+      throws Exception {
     String veniceConfigDir = System.getenv(VeniceConfigService.VENICE_CONFIG_DIR);
     if (veniceConfigDir == null) {
       throw new ConfigurationException(
-        "No environment variable " + VeniceConfigService.VENICE_CONFIG_DIR + " has been defined, set it!");
+          "No environment variable " + VeniceConfigService.VENICE_CONFIG_DIR + " has been defined, set it!");
     } else {
       if (!Utils.isReadableDir(veniceConfigDir)) {
         throw new ConfigurationException("Attempt to load configuration from VENICE_CONFIG_DIR, " + veniceConfigDir
-          + " failed. That is not a readable directory.");
+            + " failed. That is not a readable directory.");
       }
     }
     return new VeniceConfigService(veniceConfigDir);

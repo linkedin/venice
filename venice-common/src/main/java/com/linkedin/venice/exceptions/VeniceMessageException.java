@@ -1,8 +1,5 @@
 package com.linkedin.venice.exceptions;
 
-
-import com.linkedin.venice.VeniceException;
-
 /**
  * Custom Exception for Venice messages.
  * Currently everything is inherited from the superclass.

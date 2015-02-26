@@ -1,5 +1,9 @@
 package com.linkedin.venice.kafka.consumer.offsets;
 
+import com.linkedin.venice.config.VeniceClusterConfig;
+import com.linkedin.venice.exceptions.VeniceException;
+
+
 /**
  * This class records the offset for every pair(topic,partition) this node is responsible for. It provides APIs that can
  * query the last consumed offset for a specific (topic,partition) pair.
@@ -12,42 +16,42 @@ package com.linkedin.venice.kafka.consumer.offsets;
  * TODO: offset manager should also be designed in case when there is a rebalance and the partition assignments to nodes
  * in the cluster are changed.
  */
-public interface OffsetManager {
+public abstract class OffsetManager {
 
+  public static final String OFFSETS_STORE_NAME="offsets_store";
 
-  /** TODO initialize and start BDB database in constructor.
+  protected final VeniceClusterConfig veniceClusterConfig;
+
+  public OffsetManager(VeniceClusterConfig veniceClusterConfig) {
+    this.veniceClusterConfig = veniceClusterConfig;
+  }
+
+  /**
+   * Records the offset with underlying/external storage. Persistence to disk happens in configurable time interval by a
+   * background thread. For example in case of BDB the check pointer thread can be configured to do this.
    *
-   * This is where we can decide one of the two models:
-   * 1. A single metadata database per store ( the number of records in this database will be the number of
-   * partitions served by this node for that store)
-   * 2. (OR) one single metadata database for all stores( here the number of records in the database will be the total
-   * number of partitions served by this node)
-   *
-   * For now we will be going with approach 2. A new environment is created and passed on to the BDBStoragePartition
-   * class that will open or create a bdb database as needed. This database will be referenced as the
-   * OffsetMetadataStore and is local to this node. Please note that this is not a regular Venice Store. A router or
-   * an admin service would need to know the node id to query the metadata on that node.
-   *
-   * The config properties for this bdb environment & database need to be tweaked to support the offset storage and
-   * persistence requirements.
-   *
+   * @param topicName  kafka topic to which the consumer thread is registered to.
+   * @param partitionId kafka partition id for which the consumer thread is registered to.
+   * @param offset non negative offset of the message consumed by the consumer thread
    */
-
-
-
-
-
-  // TODO Fill code that will persist the offset for the pair ( topic, partition ) and will throw Exception if any.
-  public void recordOffset(String topicName, int partitionId, long offset);
+  public abstract void recordOffset(String topicName, int partitionId, long offset)
+      throws VeniceException;
 
 
   /**
-   * TODO Fill code that will fetch the last consumed offset for the (topic, partition) pair in case of a restart or
-   * failure.
+   * Gets the Last Known persisted offset of this consumer.
    *
-   * It should also take care to handle if the consumer is freshly registered where there would be no last offset
-   * consumed.
+   * @param topicName  kafka topic to which the consumer thread is registered to.
+   * @param partitionId  kafka partition id for which the consumer thread is registered to.
+   * @return  offset that was persisted before the consumer thread went down (OR) -1 in case this is a newly registered
+   * consumer
    */
-  public long getLastOffset(String topicName, int partitionId);
+  public abstract long getLastOffset(String topicName, int partitionId)
+      throws VeniceException;
 
+
+  public void shutdown()
+      throws Exception {
+
+  }
 }

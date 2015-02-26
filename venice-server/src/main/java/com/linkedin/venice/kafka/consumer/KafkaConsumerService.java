@@ -15,6 +15,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import org.apache.log4j.Logger;
 
+
 /**
  * Acts as the running Kafka interface to Venice. "Manages the consumption of Kafka partitions for each kafka topic
  * consumed by this node.
@@ -46,10 +47,13 @@ public class KafkaConsumerService extends AbstractVeniceService {
     this.veniceServerConfig = veniceConfigService.getVeniceServerConfig();
     this.partitionNodeAssignmentRepository = partitionNodeAssignmentRepository;
     this.topicNameToPartitionIdAndKafkaConsumerTasksMap = new HashMap<String, Map<Integer, SimpleKafkaConsumerTask>>();
-
-    //TODO make offset management implementation configurable.
-    this.offsetManager = new BDBOffsetManager();
-
+    if (veniceServerConfig.isEnableKafkaConsumersOffsetManagement()) {
+      this.offsetManager = (veniceServerConfig.getOffsetManagerType().equals("bdb") ? new BDBOffsetManager(
+          veniceConfigService.getVeniceClusterConfig())
+          : null);  // TODO later make this into a switcase type when there is more than one implementation
+    } else {
+      this.offsetManager = null;
+    }
   }
 
   @Override

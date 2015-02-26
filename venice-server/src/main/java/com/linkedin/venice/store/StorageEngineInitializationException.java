@@ -1,6 +1,6 @@
 package com.linkedin.venice.store;
 
-import com.linkedin.venice.VeniceException;
+import com.linkedin.venice.exceptions.VeniceException;
 
 /**
  * This exception indicates that the server was unable to initialize on or more

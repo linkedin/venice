@@ -1,6 +1,6 @@
 package com.linkedin.venice.store.bdb;
 
-import com.linkedin.venice.VeniceException;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.config.VeniceStoreConfig;
 import com.linkedin.venice.exceptions.PersistenceFailureException;
 import com.linkedin.venice.exceptions.StorageInitializationException;

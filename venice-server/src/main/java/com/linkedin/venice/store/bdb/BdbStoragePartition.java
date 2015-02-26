@@ -1,6 +1,6 @@
 package com.linkedin.venice.store.bdb;
 
-import com.linkedin.venice.VeniceException;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.PersistenceFailureException;
 import com.linkedin.venice.store.AbstractStoragePartition;
 import com.linkedin.venice.utils.ByteUtils;
@@ -53,7 +53,7 @@ public class BdbStoragePartition extends AbstractStoragePartition {
     this.databaseConfig.setNodeMaxEntries(bdbServerConfig.getBdbBtreeFanout());
     this.databaseConfig.setTransactional(true);
 
-    this.database = environment.openDatabase(null, getBdbDatabaseName(), databaseConfig);
+    this.database = this.environment.openDatabase(null, getBdbDatabaseName(), databaseConfig);
 
     BdbRuntimeConfig bdbRuntimeConfig = new BdbRuntimeConfig(bdbServerConfig);
     this.readLockMode = bdbRuntimeConfig.getLockMode();

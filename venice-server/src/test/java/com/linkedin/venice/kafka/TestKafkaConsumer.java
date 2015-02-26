@@ -99,11 +99,6 @@ public class TestKafkaConsumer {
 
     // The real startup procedure
     startUpServices();
-    try {
-      startVeniceStorage();
-    } catch (Exception e) {
-      e.printStackTrace();  //To change body of catch statement use File | Settings | File Templates.
-    }
   }
 
   /**
@@ -142,7 +137,8 @@ public class TestKafkaConsumer {
     Properties kafkaProperties = new Properties();
     try {
       // start Kakfa
-      kafkaProperties.load(new FileInputStream("src/test/resources/kafkatest.properties"));
+      kafkaProperties.load(new FileInputStream("src/test/resources/kafkatest.properties")); //TODO this does not run from IDE because IDE expects
+      // relative path starting from venice-server
       startKafkaServer(kafkaProperties);
       Thread.sleep(2000);
       // start the Kafka Producer

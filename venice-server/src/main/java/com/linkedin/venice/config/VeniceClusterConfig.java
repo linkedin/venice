@@ -2,10 +2,12 @@ package com.linkedin.venice.config;
 
 import com.google.common.collect.ImmutableMap;
 import com.linkedin.venice.exceptions.ConfigurationException;
+import com.linkedin.venice.kafka.consumer.offsets.OffsetManager;
 import com.linkedin.venice.partition.ModuloPartitionNodeAssignmentScheme;
 import com.linkedin.venice.server.VeniceConfigService;
 import com.linkedin.venice.utils.Props;
 
+import java.io.File;
 import java.util.Map;
 
 
@@ -15,24 +17,39 @@ import java.util.Map;
 public class VeniceClusterConfig {
 
   public static final Map<String, String> partitionNodeAssignmentSchemeClassMap =
-    ImmutableMap.of("modulo", ModuloPartitionNodeAssignmentScheme.class.getName());
+      ImmutableMap.of("modulo", ModuloPartitionNodeAssignmentScheme.class.getName());
 
   private String clusterName;
   private int storageNodeCount;
   protected String dataBasePath;
   private String partitionNodeAssignmentSchemeName;
+  private boolean enableKafkaConsumersOffsetManagement;
+  private String offsetManagerType = null;
+  private String offsetDatabasePath = null;
+  private long offsetManagerFlushIntervalMs;
 
-  public VeniceClusterConfig(Props clusterProperties) throws ConfigurationException {
+  public VeniceClusterConfig(Props clusterProperties)
+      throws ConfigurationException {
     checkProperties(clusterProperties);
   }
 
-  protected void checkProperties(Props clusterProps) throws ConfigurationException {
+  protected void checkProperties(Props clusterProps)
+      throws ConfigurationException {
     clusterName = clusterProps.getString(VeniceConfigService.CLUSTER_NAME);
     storageNodeCount = clusterProps.getInt(VeniceConfigService.STORAGE_NODE_COUNT, 1);     // Default 1
     partitionNodeAssignmentSchemeName = clusterProps
-      .getString(VeniceConfigService.PARTITION_NODE_ASSIGNMENT_SCHEME, "modulo"); // Default "modulo" scheme
+        .getString(VeniceConfigService.PARTITION_NODE_ASSIGNMENT_SCHEME, "modulo"); // Default "modulo" scheme
     if (!partitionNodeAssignmentSchemeClassMap.containsKey(partitionNodeAssignmentSchemeName)) {
-      throw new ConfigurationException("unknown partition node assignment scheme: " + partitionNodeAssignmentSchemeName);
+      throw new ConfigurationException(
+          "unknown partition node assignment scheme: " + partitionNodeAssignmentSchemeName);
+    }
+    enableKafkaConsumersOffsetManagement =
+        clusterProps.getBoolean(VeniceConfigService.ENABLE_KAFKA_CONSUMER_OFFSET_MANAGEMENT, false);
+    if (enableKafkaConsumersOffsetManagement) {
+      offsetManagerType = clusterProps.getString(VeniceConfigService.OFFSET_MANAGER_TYPE, "bdb"); // Default "bdb"
+      offsetDatabasePath = clusterProps.getString(VeniceConfigService.OFFSET_DATA_BASE_PATH,
+          System.getProperty("java.io.tmpdir") + File.separator + OffsetManager.OFFSETS_STORE_NAME);
+      offsetManagerFlushIntervalMs = clusterProps.getLong(VeniceConfigService.OFFSET_MANAGER_FLUSH_INTERVAL_MS, 10000); // 10 sec default
     }
   }
 
@@ -47,4 +64,22 @@ public class VeniceClusterConfig {
   public String getPartitionNodeAssignmentSchemeClassName() {
     return partitionNodeAssignmentSchemeClassMap.get(partitionNodeAssignmentSchemeName);
   }
+
+  public boolean isEnableKafkaConsumersOffsetManagement() {
+    return enableKafkaConsumersOffsetManagement;
+  }
+
+  public String getOffsetManagerType() {
+    return offsetManagerType;
+  }
+
+  public String getOffsetDatabasePath() {
+    return offsetDatabasePath;
+  }
+
+  public long getOffsetManagerFlushIntervalMs() {
+    return offsetManagerFlushIntervalMs;
+  }
+
+
 }

@@ -1,7 +1,7 @@
 package com.linkedin.venice.store.bdb;
 
 import com.google.common.collect.Maps;
-import com.linkedin.venice.VeniceException;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.config.VeniceServerConfig;
 import com.linkedin.venice.config.VeniceStoreConfig;
 import com.linkedin.venice.exceptions.StorageInitializationException;
