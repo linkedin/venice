@@ -3,7 +3,7 @@ package com.linkedin.venice.kafka.consumer;
 import com.linkedin.venice.config.VeniceServerConfig;
 import com.linkedin.venice.config.VeniceStoreConfig;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.kafka.consumer.offsets.BDBOffsetManager;
+import com.linkedin.venice.kafka.consumer.offsets.BdbOffsetManager;
 import com.linkedin.venice.kafka.consumer.offsets.OffsetManager;
 import com.linkedin.venice.server.PartitionNodeAssignmentRepository;
 import com.linkedin.venice.server.StoreRepository;
@@ -48,7 +48,7 @@ public class KafkaConsumerService extends AbstractVeniceService {
     this.partitionNodeAssignmentRepository = partitionNodeAssignmentRepository;
     this.topicNameToPartitionIdAndKafkaConsumerTasksMap = new HashMap<String, Map<Integer, SimpleKafkaConsumerTask>>();
     if (veniceServerConfig.isEnableKafkaConsumersOffsetManagement()) {
-      this.offsetManager = (veniceServerConfig.getOffsetManagerType().equals("bdb") ? new BDBOffsetManager(
+      this.offsetManager = (veniceServerConfig.getOffsetManagerType().equals("bdb") ? new BdbOffsetManager(
           veniceConfigService.getVeniceClusterConfig())
           : null);  // TODO later make this into a switcase type when there is more than one implementation
     } else {

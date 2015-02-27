@@ -4,6 +4,7 @@ import com.linkedin.venice.config.VeniceStoreConfig;
 import com.linkedin.venice.exceptions.KafkaConsumerException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.consumer.offsets.OffsetManager;
+import com.linkedin.venice.kafka.consumer.offsets.OffsetRecord;
 import com.linkedin.venice.serialization.VeniceMessageSerializer;
 import com.linkedin.venice.exceptions.VeniceMessageException;
 import com.linkedin.venice.message.VeniceMessage;
@@ -125,7 +126,8 @@ public class SimpleKafkaConsumerTask implements Runnable {
          * Access the the offset manager and fetch the last consumed offset that was persisted by this consumer thread
          * before shutdown or crash
          */
-        readOffset = offsetManager.getLastOffset(topic, partition);
+        OffsetRecord offsetRecord = offsetManager.getLastOffset(topic, partition);
+        readOffset = (offsetRecord == null ? -1: offsetRecord.getOffset());
       } catch (VeniceException e) {
         readOffset = -1;
       }
@@ -268,7 +270,7 @@ public class SimpleKafkaConsumerTask implements Runnable {
                     System.nanoTime() - startTimeNs) + " ns at " + System.currentTimeMillis());
           }
           if (offsetManager != null) {
-            this.offsetManager.recordOffset(storageEngine.getName(), partition, msgOffset);
+            this.offsetManager.recordOffset(storageEngine.getName(), partition, msgOffset, System.currentTimeMillis());
           }
         } catch (VeniceException e) {
           throw e;
@@ -289,7 +291,7 @@ public class SimpleKafkaConsumerTask implements Runnable {
                     + " ns at " + System.currentTimeMillis());
           }
           if (offsetManager != null) {
-            offsetManager.recordOffset(storageEngine.getName(), partition, msgOffset);
+            offsetManager.recordOffset(storageEngine.getName(), partition, msgOffset, System.currentTimeMillis());
           }
         } catch (VeniceException e) {
           throw e;

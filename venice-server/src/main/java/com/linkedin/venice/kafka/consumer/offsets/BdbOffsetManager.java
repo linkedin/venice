@@ -2,24 +2,21 @@ package com.linkedin.venice.kafka.consumer.offsets;
 
 import com.linkedin.venice.config.VeniceClusterConfig;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.Time;
 import com.sleepycat.je.Database;
 import com.sleepycat.je.DatabaseConfig;
 import com.sleepycat.je.DatabaseEntry;
 import com.sleepycat.je.DatabaseException;
-import com.sleepycat.je.Durability;
 import com.sleepycat.je.Environment;
 import com.sleepycat.je.EnvironmentConfig;
 import com.sleepycat.je.LockMode;
 import com.sleepycat.je.OperationStatus;
-import com.sleepycat.je.Transaction;
 import java.io.File;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.apache.log4j.Logger;
 
 
-public class BDBOffsetManager extends OffsetManager {
+public class BdbOffsetManager extends OffsetManager {
 
   /**
    * This is where we can decide one of the two models:
@@ -41,12 +38,12 @@ public class BDBOffsetManager extends OffsetManager {
   private static final long LOG_FILE_MAX = 1L * 1024L * 1024L;// 1MB log file is more than enough and is the minimum
   private static final long CACHE_SIZE = 1024L * 1024L; // 1MB cache   TODO increase this later if needed
 
-  private static final Logger logger = Logger.getLogger(BDBOffsetManager.class.getName());
+  private static final Logger logger = Logger.getLogger(BdbOffsetManager.class.getName());
   private final AtomicBoolean isOpen;
   private final Environment offsetsBdbEnvironment;
   private final Database offsetsBdbDatabase;
 
-  public BDBOffsetManager(VeniceClusterConfig veniceClusterConfig) {
+  public BdbOffsetManager(VeniceClusterConfig veniceClusterConfig) {
     super(veniceClusterConfig);
 
     String bdbMasterDir = veniceClusterConfig.getOffsetDatabasePath();
@@ -99,12 +96,11 @@ public class BDBOffsetManager extends OffsetManager {
   }
 
   @Override
-  public void recordOffset(String topicName, int partitionId, long offset)
+  public void recordOffset(String topicName, int partitionId, long offset, long timeStampInMs)
       throws VeniceException {
     //assumes that the offset is not negative. Checked by the caller
     String keyStr = topicName + "_" + partitionId;
-    byte[] value = new byte[ByteUtils.SIZE_OF_LONG];
-    ByteUtils.writeLong(value, offset, 0);
+    byte[] value = new OffsetRecord(offset, timeStampInMs).toBytes();
 
     DatabaseEntry keyEntry = new DatabaseEntry(keyStr.getBytes());
     DatabaseEntry valueEntry = new DatabaseEntry(value);
@@ -123,7 +119,7 @@ public class BDBOffsetManager extends OffsetManager {
   }
 
   @Override
-  public long getLastOffset(String topicName, int partitionId)
+  public OffsetRecord getLastOffset(String topicName, int partitionId)
       throws VeniceException {
     String keyStr = topicName + "_" + partitionId;
 
@@ -133,15 +129,15 @@ public class BDBOffsetManager extends OffsetManager {
     try {
       OperationStatus status = offsetsBdbDatabase.get(null, keyEntry, valueEntry, LockMode.READ_UNCOMMITTED);
       if (OperationStatus.SUCCESS == status) {
-        byte[] value = valueEntry.getData();
-        return ByteUtils.readLong(value, 0);
+        return new OffsetRecord(valueEntry.getData(), 0);
       } else {
         // case when the key (topic,partition)  does not exist
-        return -1;
+        return null;
       }
     } catch (DatabaseException e) {
       logger.error(e);
       throw new VeniceException(e);
     }
   }
+
 }
