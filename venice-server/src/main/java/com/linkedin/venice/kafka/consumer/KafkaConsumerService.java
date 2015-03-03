@@ -50,7 +50,10 @@ public class KafkaConsumerService extends AbstractVeniceService {
     if (veniceServerConfig.isEnableKafkaConsumersOffsetManagement()) {
       this.offsetManager = (veniceServerConfig.getOffsetManagerType().equals("bdb") ? new BdbOffsetManager(
           veniceConfigService.getVeniceClusterConfig())
-          : null);  // TODO later make this into a switcase type when there is more than one implementation
+          : null);  // TODO later make this into a switch case type when there is more than one implementation
+      if (this.offsetManager == null) {
+        throw new VeniceException("OffsetManager enabled but not defined!");
+      }
     } else {
       this.offsetManager = null;
     }

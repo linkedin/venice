@@ -16,6 +16,8 @@ public class OffsetRecord {
    *
    * @param bytes to deserialize from
    * @param offset starting offset in the bytes from which this object can be constructed
+   *
+   *TODO Get rid of second parameter offset if we knw 0 is always the starting index of the bytes to be deserialized.
    */
   public OffsetRecord(byte[] bytes, int offset) {
     if (bytes == null || bytes.length <= offset) {

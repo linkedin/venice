@@ -129,7 +129,7 @@ public class SimpleKafkaConsumerTask implements Runnable {
         OffsetRecord offsetRecord = offsetManager.getLastOffset(topic, partition);
         readOffset = (offsetRecord == null ? -1: offsetRecord.getOffset());
       } catch (VeniceException e) {
-        readOffset = -1;
+        // some issue reading the last offset using offset manager.
       }
     }
     if (readOffset == -1) {

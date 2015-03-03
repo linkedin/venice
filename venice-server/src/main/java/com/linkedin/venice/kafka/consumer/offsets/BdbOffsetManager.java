@@ -25,7 +25,7 @@ public class BdbOffsetManager extends OffsetManager {
    * 2. (OR) one single metadata database for all stores( here the number of records in the database will be the total
    * number of partitions served by this node)
    *
-   * For now we will be going with approach 2. A new environment is created and passed on to the BDBStoragePartition
+   * We will be going with approach 2. A new environment is created and passed on to the BDBStoragePartition
    * class that will open or create a bdb database as needed. This database will be referenced as the
    * OffsetMetadataStore and is local to this node. Please note that this is not a regular Venice Store. A router or
    * an admin service would need to know the node id to query the metadata on that node.
@@ -48,7 +48,10 @@ public class BdbOffsetManager extends OffsetManager {
 
     String bdbMasterDir = veniceClusterConfig.getOffsetDatabasePath();
     File bdbDir = new File(bdbMasterDir);
-    createBdbDirIfNecessary(bdbDir);
+    if (!bdbDir.exists()) {
+      logger.info("Creating BDB data directory '" + bdbDir.getAbsolutePath() + ".");
+      bdbDir.mkdirs();
+    }
 
     EnvironmentConfig envConfig = new EnvironmentConfig();
     envConfig.setAllowCreate(true);
@@ -71,13 +74,6 @@ public class BdbOffsetManager extends OffsetManager {
     logger.info("Creating BDB environment for storing offsets: ");
     this.offsetsBdbDatabase = offsetsBdbEnvironment.openDatabase(null, OFFSETS_STORE_NAME, dbConfig);
     this.isOpen = new AtomicBoolean(true);
-  }
-
-  private void createBdbDirIfNecessary(File bdbDir) {
-    if (!bdbDir.exists()) {
-      logger.info("Creating BDB data directory '" + bdbDir.getAbsolutePath() + ".");
-      bdbDir.mkdirs();
-    }
   }
 
   @Override
@@ -121,6 +117,10 @@ public class BdbOffsetManager extends OffsetManager {
   @Override
   public OffsetRecord getLastOffset(String topicName, int partitionId)
       throws VeniceException {
+
+    /**
+     * This method will return null if last offset is not found.
+     */
     String keyStr = topicName + "_" + partitionId;
 
     DatabaseEntry keyEntry = new DatabaseEntry(keyStr.getBytes());
