@@ -38,7 +38,7 @@ public class VeniceClient {
    * @param key - The key to look for in storage.
    * @return The result of the "Get" operation
    * */
-  public Object get(String key) {
+  public Object get(byte[] key) {
     throw new UnsupportedOperationException("Cross communication between Client and Server is not ready.");
   }
 
@@ -46,9 +46,9 @@ public class VeniceClient {
    * Execute a standard "delete" on the key.
    * @param key - The key to delete in storage.
    * */
-  public void delete(String key) {
+  public void delete(byte[] key) {
 
-    msg = new VeniceMessage(OperationType.DELETE, "");
+    msg = new VeniceMessage(OperationType.DELETE);
     kp.sendMessage(key, msg);
   }
 
@@ -57,9 +57,9 @@ public class VeniceClient {
    * @param key - The key to put in storage.
    * @param value - The value to be associated with the given key
    * */
-  public void put(String key, Object value) {
+  public void put(byte[] key, byte[] value) {
 
-    msg = new VeniceMessage(OperationType.PUT, value.toString());
+    msg = new VeniceMessage(OperationType.PUT, value);
     kp.sendMessage(key, msg);
   }
 }

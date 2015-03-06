@@ -2,7 +2,6 @@ package com.linkedin.venice.kafka.producer;
 
 import com.linkedin.venice.config.GlobalConfiguration;
 import com.linkedin.venice.message.VeniceMessage;
-
 import kafka.javaapi.producer.Producer;
 import kafka.producer.KeyedMessage;
 import kafka.producer.ProducerConfig;
@@ -18,7 +17,7 @@ public class KafkaProducer {
 
   private Properties props;
   private ProducerConfig config;
-  private Producer<String, VeniceMessage> producer;
+  private Producer<byte[], VeniceMessage> producer;
 
   private final String DEFAULT_TOPIC = "default_topic";
 
@@ -27,7 +26,7 @@ public class KafkaProducer {
     // TODO: figure out the actual configurations and startup procedures
     props = new Properties();
     props.setProperty("metadata.broker.list", GlobalConfiguration.getKafkaBrokerUrl());
-    props.setProperty("key.serializer.class", "kafka.serializer.StringEncoder");
+    props.setProperty("key.serializer.class", "kafka.serializer.DefaultEncoder");
 
     // using custom serializer
     props.setProperty("serializer.class", "com.linkedin.venice.message.VeniceMessageSerializer");
@@ -37,7 +36,7 @@ public class KafkaProducer {
     props.setProperty("request.required.acks", "1");
 
     config = new ProducerConfig(props);
-    producer = new Producer<String, VeniceMessage>(config);
+    producer = new Producer<byte[], VeniceMessage>(config);
   }
 
   /**
@@ -45,9 +44,9 @@ public class KafkaProducer {
    * @param key - The key of the message to be sent.
    * @param msg - The VeniceMessage, which acts as the Kafka payload.
    * */
-  public void sendMessage(String key, VeniceMessage msg) {
+  public void sendMessage(byte[] key, VeniceMessage msg) {
 
-    KeyedMessage<String, VeniceMessage> kafkaMsg = new KeyedMessage<String, VeniceMessage>(DEFAULT_TOPIC, key, msg);
+    KeyedMessage<byte[], VeniceMessage> kafkaMsg = new KeyedMessage<byte[], VeniceMessage>(DEFAULT_TOPIC, key, msg);
     producer.send(kafkaMsg);
   }
 }

@@ -1,6 +1,6 @@
 package com.linkedin.venice.storage;
 
-import com.linkedin.venice.Common.TestUtils;
+import com.linkedin.venice.utils.RandomGenUtils;
 import com.linkedin.venice.exceptions.PersistenceFailureException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.store.Store;
@@ -45,9 +45,9 @@ public abstract class AbstractStoreTest {
 
 
   public void testGetAndPut() {
-    byte[] key = TestUtils.getRandomBytes(keySize);
-    byte[] value = TestUtils.getRandomBytes(valueSize);
-    int partitionId = TestUtils.getRandomIntwithin(numOfPartitions);
+    byte[] key = RandomGenUtils.getRandomBytes(keySize);
+    byte[] value = RandomGenUtils.getRandomBytes(valueSize);
+    int partitionId = RandomGenUtils.getRandomIntwithin(numOfPartitions);
     byte[] foundValue;
     try {
       doPut(partitionId, key, value);
@@ -61,9 +61,9 @@ public abstract class AbstractStoreTest {
 
 
   public void testDelete() {
-    byte[] key = TestUtils.getRandomBytes(keySize);
-    byte[] value = TestUtils.getRandomBytes(valueSize);
-    int partitionId = TestUtils.getRandomIntwithin(numOfPartitions);
+    byte[] key = RandomGenUtils.getRandomBytes(keySize);
+    byte[] value = RandomGenUtils.getRandomBytes(valueSize);
+    int partitionId = RandomGenUtils.getRandomIntwithin(numOfPartitions);
     byte[] foundValue;
     try {
       doPut(partitionId, key, value);
@@ -87,10 +87,10 @@ public abstract class AbstractStoreTest {
   }
 
   public void testUpdate() {
-    byte[] key = TestUtils.getRandomBytes(keySize);
-    byte[] value = TestUtils.getRandomBytes(valueSize);
-    byte[] updatedValue = TestUtils.getRandomBytes(uniqueKeyOrValueSize);
-    int partitionId = TestUtils.getRandomIntwithin(numOfPartitions);
+    byte[] key = RandomGenUtils.getRandomBytes(keySize);
+    byte[] value = RandomGenUtils.getRandomBytes(valueSize);
+    byte[] updatedValue = RandomGenUtils.getRandomBytes(uniqueKeyOrValueSize);
+    int partitionId = RandomGenUtils.getRandomIntwithin(numOfPartitions);
     byte[] foundValue;
     try {
       doPut(partitionId, key, value);
@@ -108,8 +108,8 @@ public abstract class AbstractStoreTest {
   }
 
   public void testGetInvalidKeys() {
-    byte[] key = TestUtils.getRandomBytes(uniqueKeyOrValueSize);
-    int partitionId = TestUtils.getRandomIntwithin(numOfPartitions);
+    byte[] key = RandomGenUtils.getRandomBytes(uniqueKeyOrValueSize);
+    int partitionId = RandomGenUtils.getRandomIntwithin(numOfPartitions);
     byte[] foundValue = null;
     try {
       foundValue = doGet(partitionId, key);
@@ -126,8 +126,8 @@ public abstract class AbstractStoreTest {
 
   public void testPutNullKey() {
     byte[] key = null;
-    byte[] value = TestUtils.getRandomBytes(valueSize);
-    int partitionId = TestUtils.getRandomIntwithin(numOfPartitions);
+    byte[] value = RandomGenUtils.getRandomBytes(valueSize);
+    int partitionId = RandomGenUtils.getRandomIntwithin(numOfPartitions);
     try {
       doPut(partitionId, key, value);
     } catch (IllegalArgumentException e) {

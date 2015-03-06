@@ -1,6 +1,6 @@
 package com.linkedin.venice.storage;
 
-import com.linkedin.venice.Common.TestUtils;
+import com.linkedin.venice.utils.RandomGenUtils;
 import com.linkedin.venice.exceptions.PersistenceFailureException;
 import com.linkedin.venice.exceptions.StorageInitializationException;
 import com.linkedin.venice.store.AbstractStorageEngine;
@@ -34,7 +34,7 @@ public abstract class AbstractStorageEngineTest extends AbstractStoreTest {
   public void init()
       throws Exception {
     // create a  unique partitionId for this test which is outside number of partitions
-    partitionId = TestUtils.getRandomIntInRange(numOfPartitions, numOfPartitions + 10);
+    partitionId = RandomGenUtils.getRandomIntInRange(numOfPartitions, numOfPartitions + 10);
 
     //ensure it does not exist
     if (testStoreEngine.containsPartition(partitionId)) {
@@ -117,8 +117,8 @@ public abstract class AbstractStorageEngineTest extends AbstractStoreTest {
       throws Exception {
     init();
 
-    byte[] key = TestUtils.getRandomBytes(keySize);
-    byte[] value = TestUtils.getRandomBytes(valueSize);
+    byte[] key = RandomGenUtils.getRandomBytes(keySize);
+    byte[] value = RandomGenUtils.getRandomBytes(valueSize);
 
     //test put
     try {

@@ -1,6 +1,6 @@
 package com.linkedin.venice.kafka;
 
-import com.linkedin.venice.Common.TestUtils;
+import com.linkedin.venice.utils.RandomGenUtils;
 import com.linkedin.venice.config.VeniceClusterConfig;
 import com.linkedin.venice.kafka.consumer.offsets.BdbOffsetManager;
 import com.linkedin.venice.kafka.consumer.offsets.OffsetRecord;
@@ -49,7 +49,7 @@ public class TestBDBOffsetManager {
     long lastOffsetTimeStamp = 0L;
 
     while (System.currentTimeMillis() < end) {
-      lastOffset = TestUtils.getRandomIntInRange(0, 9999);
+      lastOffset = RandomGenUtils.getRandomIntInRange(0, 9999);
       lastOffsetTimeStamp = System.currentTimeMillis();
       offsetManager.recordOffset(topicName, partitionId, lastOffset,lastOffsetTimeStamp);
       Thread.sleep(100);

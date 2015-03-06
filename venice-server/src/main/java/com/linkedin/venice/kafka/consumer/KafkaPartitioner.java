@@ -32,12 +32,12 @@ public class KafkaPartitioner implements Partitioner {
    * */
   public int partition(Object key, int numPartitions) {
 
-    String stringKey = (String) key;
+    byte[] keyBytes = (byte[]) key;
 
     try {
 
       MessageDigest md = MessageDigest.getInstance(HASH_ALGORITHM);
-      md.update(stringKey.getBytes());
+      md.update(keyBytes);
 
       byte[] byteData = md.digest();
 

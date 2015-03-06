@@ -1,5 +1,6 @@
 package com.linkedin.venice.kafka.partitioner;
 
+import com.linkedin.venice.utils.ByteUtils;
 import kafka.producer.Partitioner;
 import kafka.utils.VerifiableProperties;
 import org.apache.log4j.Logger;
@@ -35,12 +36,11 @@ public class KafkaPartitioner implements Partitioner {
    * */
   public int partition(Object key, int numPartitions) {
 
-    String stringKey = (String) key;
-
+    byte[] keyBytes = (byte[]) key;
     try {
 
       MessageDigest md = MessageDigest.getInstance(HASH_ALGORITHM);
-      md.update(stringKey.getBytes());
+      md.update(keyBytes);
 
       byte[] byteData = md.digest();
 
@@ -52,7 +52,7 @@ public class KafkaPartitioner implements Partitioner {
 
       partition = partition % numPartitions;
 
-      logger.info("Using hash algorithm: " + key + " goes to partitionId " + partition + " out of " + numPartitions);
+      logger.info("Using hash algorithm: " + ByteUtils.toHexString(keyBytes) + " goes to partitionId " + partition + " out of " + numPartitions);
 
       md.reset();
       return partition;

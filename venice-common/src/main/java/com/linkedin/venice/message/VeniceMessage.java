@@ -1,32 +1,46 @@
 package com.linkedin.venice.message;
 
-/**
+/**                                                                                         objectInputStream.readByte()
  * Class which stores the components of VeniceMessage, and is the format specified in the Kafka Serializer
  */
 public class VeniceMessage {
 
   // TODO: eliminate magic numbers when finished debugging
-  public static final byte DEFAULT_MAGIC_BYTE = 13;
-  public static final byte DEFAULT_SCHEMA_VERSION = 17;
+  public static final byte DEFAULT_MAGIC_BYTE = 22;
+  public static final byte DEFAULT_SCHEMA_ID = 17;
+
+  public static final byte ZONE_ID = 0; //TODO hard coded for now. Later need to get rid of this.
 
   private byte magicByte;
-  private short schemaVersion;
+  private short schemaVersionId;
 
   private OperationType operationType;
-  private String payload;
+  private long timestamp;
+  private byte zoneId;
+  private byte[] payload;
 
-  // TODO: find best data type for timestamp
-  private Object timestamp;
+  // A message without a payload (used for non put operations)
+  public VeniceMessage(OperationType type) {
+    this.magicByte = DEFAULT_MAGIC_BYTE;
+    this.schemaVersionId = DEFAULT_SCHEMA_ID;
+    this.operationType =
+        ((type == OperationType.PUT) || (type == OperationType.PARTIAL_PUT)) ? OperationType.ERROR : type;
+    this.timestamp = System.currentTimeMillis();
+    this.zoneId = ZONE_ID;
+    this.payload = new byte[0];
+  }
 
-  public VeniceMessage(OperationType type, String payload) {
-
-    magicByte = DEFAULT_MAGIC_BYTE;
-    schemaVersion = DEFAULT_SCHEMA_VERSION;
-
-    operationType = type;
+  public VeniceMessage(OperationType type, byte[] payload, short schemaId) {
+    this.magicByte = DEFAULT_MAGIC_BYTE;
+    this.schemaVersionId = schemaId;
+    this.operationType = type;
+    this.timestamp = System.currentTimeMillis();
+    this.zoneId = ZONE_ID;
     this.payload = payload;
+  }
 
-    timestamp = null;
+  public VeniceMessage(OperationType type, byte[] payload) {
+    this(type, payload, DEFAULT_SCHEMA_ID);
   }
 
   public byte getMagicByte() {
@@ -37,19 +51,23 @@ public class VeniceMessage {
     return operationType;
   }
 
-  public short getSchemaVersion() {
-    return schemaVersion;
+  public short getSchemaVersionId() {
+    return schemaVersionId;
   }
 
-  public String getPayload() {
+  public long getTimestamp() {
+    return timestamp;
+  }
+
+  public byte getZoneId() {
+    return zoneId;
+  }
+
+  public byte[] getPayload() {
     return payload;
   }
 
   public String toString() {
-    return operationType.toString() + " " + payload;
-  }
-
-  public Object getTimestamp() {
-    return timestamp;
+    return operationType.toString() + " " + payload.toString();
   }
 }

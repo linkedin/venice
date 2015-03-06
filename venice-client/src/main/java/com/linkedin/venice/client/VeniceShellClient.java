@@ -48,7 +48,7 @@ public class VeniceShellClient {
       case PUT_COMMAND: // PUT
 
         if (commandArgs.length > 2) {
-          mainClient.put(commandArgs[1], commandArgs[2]);
+          mainClient.put(commandArgs[1].getBytes(), commandArgs[2].getBytes());
         } else {
           System.out.println("Must supply both a key and value for " + PUT_COMMAND + " operations.");
           System.out.println("USAGE");
@@ -60,7 +60,7 @@ public class VeniceShellClient {
       case GET_COMMAND: // GET
 
         if (commandArgs.length > 1) {
-          System.out.println("Got: " + mainClient.get(commandArgs[1]));
+          System.out.println("Got: " + mainClient.get(commandArgs[1].getBytes()));
         } else {
           System.out.println("Must supply a key for " + GET_COMMAND + " operations.");
           System.out.println("USAGE");
@@ -72,7 +72,7 @@ public class VeniceShellClient {
       case DEL_COMMAND: // DEL
 
         if (commandArgs.length > 1) {
-          mainClient.delete(commandArgs[1]);
+          mainClient.delete(commandArgs[1].getBytes());
         } else {
           System.out.println("Must supply a key for " + DEL_COMMAND + " operations.");
           System.out.println("USAGE");

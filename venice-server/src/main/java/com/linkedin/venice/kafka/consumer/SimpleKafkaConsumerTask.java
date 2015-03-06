@@ -10,6 +10,9 @@ import com.linkedin.venice.exceptions.VeniceMessageException;
 import com.linkedin.venice.message.VeniceMessage;
 
 import com.linkedin.venice.store.AbstractStorageEngine;
+import com.linkedin.venice.utils.ByteUtils;
+import com.linkedin.venice.utils.Utils;
+import kafka.common.LeaderNotAvailableException;
 import org.apache.log4j.Logger;
 
 import kafka.api.FetchRequest;
@@ -30,8 +33,6 @@ import kafka.utils.VerifiableProperties;
 import scala.collection.Iterator;
 import scala.collection.JavaConversions;
 import scala.collection.Seq;
-
-import java.io.UnsupportedEncodingException;
 import java.nio.ByteBuffer;
 import java.util.List;
 import java.util.Map;
@@ -46,12 +47,10 @@ import java.util.Collections;
 public class SimpleKafkaConsumerTask implements Runnable {
 
   private static final Logger logger = Logger.getLogger(SimpleKafkaConsumerTask.class.getName());
-
+  private final int READ_CYCLE_DELAY = 1000;
   //This is a user-supplied integer. It will be passed back in the response by the server,
   // unmodified. It is useful for matching request and response between the client and server.
   private static final int CORELATION_ID = 17;
-
-  private final String ENCODING = "UTF-8";
 
   // Venice Serialization
   private VeniceMessage vm;
@@ -71,6 +70,7 @@ public class SimpleKafkaConsumerTask implements Runnable {
 
   private final String topic;
   private final int partition;
+  private final String clientName; // a unique client name for Kafka debugging
 
   public SimpleKafkaConsumerTask(VeniceStoreConfig storeConfig, AbstractStorageEngine storageEngine, int partition,
       OffsetManager offsetManager) {
@@ -82,35 +82,115 @@ public class SimpleKafkaConsumerTask implements Runnable {
     this.topic = storeConfig.getStoreName();
     this.partition = partition;
     this.offsetManager = offsetManager;
+    this.clientName = "Client_" + topic + "_" + partition;
   }
 
   /**
    *  Parallelized method which performs Kafka consumption and relays messages to the Storage engine
    * */
   public void run() {
+    SimpleConsumer consumer = null;
 
-    // find the meta data
-    PartitionMetadata metadata =
-        findLeader(storeConfig.getKafkaBrokers(), storeConfig.getKafkaBrokerPort(), topic, partition);
+    try {
+      // find the meta data
+      PartitionMetadata metadata =
+          findLeader(storeConfig.getKafkaBrokers(), storeConfig.getKafkaBrokerPort(), topic, partition);
+      validateConsumerMetadata(metadata);
+      String leadBroker = metadata.leader().get().host();
 
+      consumer = new SimpleConsumer(leadBroker, storeConfig.getKafkaBrokerPort(), storeConfig.getSocketTimeoutMs(),
+          storeConfig.getFetchBufferSize(), clientName);
+
+      long readOffset = getLastOffset(consumer);
+      while (true) {
+        long numReads = 0;
+        Iterator<MessageAndOffset> messageAndOffsetIterator = null;
+        try {
+          messageAndOffsetIterator = getMessageAndOffsetIterator(consumer, readOffset);
+          while (messageAndOffsetIterator.hasNext()) {
+            MessageAndOffset messageAndOffset = messageAndOffsetIterator.next();
+            long currentOffset = messageAndOffset.offset();
+
+            if (currentOffset < readOffset) {
+              logger.error("Found an old offset: " + currentOffset + " Expecting: " + readOffset);
+              continue;
+            }
+            processMessage(messageAndOffset.message(), currentOffset);
+            readOffset = messageAndOffset.nextOffset();
+            numReads++;
+          }
+        } catch (LeaderNotAvailableException e) {
+          logger.error("Kafka error found! Skipping....", e);
+
+          consumer.close();
+          consumer = null;
+
+          try {
+            leadBroker = findNewLeader(leadBroker, topic, partition, storeConfig.getKafkaBrokerPort());
+          } catch (Exception ex) {
+            logger.error("Error while finding new leader: " + ex);
+            throw new VeniceException(ex);
+          }
+        } catch (VeniceMessageException ex) {
+          logger.error("Received an illegal Venice message! Skipping the message.", ex);
+          if (logger.isDebugEnabled()) {
+            logger.debug(
+                "Skipping message at: [ Topic " + topic + ", Partition " + partition + ", Offset " + readOffset + " ]");
+          }
+          // forcefully skip over this bad offset
+          readOffset++;
+        } catch (UnsupportedOperationException ex) {
+          logger.error("Received an invalid operation type! Skipping the message.", ex);
+          if (logger.isDebugEnabled()) {
+            logger.debug(
+                "Skipping message at: [ Topic: " + topic + ", Partition: " + partition + ", Offset: " + readOffset
+                    + " ]");
+          }
+          // forcefully skip over this bad offset
+          readOffset++;
+        }
+
+        if (0 == numReads) {
+
+          try {
+            Thread.sleep(READ_CYCLE_DELAY);
+          } catch (InterruptedException ie) {
+          }
+        }
+      }
+    } catch (VeniceException e) {
+      logger.error("Killing consumer task for [ Topic: " + topic + ", Partition: " + partition + " ]", e);
+    } finally {
+      if (consumer != null) {
+        logger.error("Closing consumer..");
+        consumer.close();
+      }
+    }
+  }
+
+  /**
+   * Validates that a given PartitionMetadata is valid: it is non-null and a leader is defined.
+   *
+   * @param metadata the metadata to validate
+   */
+  private void validateConsumerMetadata(PartitionMetadata metadata) {
     if (null == metadata) {
-      logger.error("Cannot find metadata for Topic: " + topic + " Partition: " + partition);
-      return;
+      throw new VeniceException("Cannot find metadata for [ Topic: " + topic + ", Partition: " + partition + " ] ");
     }
 
     if (null == metadata.leader()) {
-      logger.error("Cannot find leader for Topic: " + topic + " Partition: " + partition);
-      return;
+      throw new VeniceException("Cannot find leader for [ Topic: " + topic + ", Partition: " + partition + " ] ");
     }
+  }
 
-    String leadBroker = metadata.leader().get().host();
-    String clientName = "Client_" + topic + "_" + partition;
-
-    SimpleConsumer consumer =
-        new SimpleConsumer(leadBroker, storeConfig.getKafkaBrokerPort(), storeConfig.getSocketTimeoutMs(),
-            storeConfig.getFetchBufferSize(), clientName);
-
-    /*
+  /**
+   * @param consumer - A SimpleConsumer object for Kafka consumption
+   * @return 1. valid offset if the offset manager is enabled and available. (OR)
+   *         2. earliest offset from kafka log if: 1) the offset manager is not enabled or 2) has issues or 3) if the
+   *         consumer is new.
+   */
+  private long getLastOffset(SimpleConsumer consumer) {
+  /*
     * The LatestTime() gives the last offset from Kafka log, instead of the last consumed offset. So in case where a
     * consumer goes down and is instantiated, it starts to consume new messages and there is a possibility for missing
     * data that were produced in between.
@@ -127,9 +207,10 @@ public class SimpleKafkaConsumerTask implements Runnable {
          * before shutdown or crash
          */
         OffsetRecord offsetRecord = offsetManager.getLastOffset(topic, partition);
-        readOffset = (offsetRecord == null ? -1: offsetRecord.getOffset());
+        readOffset = (offsetRecord == null ? -1 : offsetRecord.getOffset());
+        logger.info("Last known read offset: " + readOffset);
       } catch (VeniceException e) {
-        // some issue reading the last offset using offset manager.
+        logger.error("Some error fetching the last offset from offset manager.");
       }
     }
     if (readOffset == -1) {
@@ -138,189 +219,22 @@ public class SimpleKafkaConsumerTask implements Runnable {
        * 1. if offsetManagement is disabled
        * 2. some exception in trying to get the last offset. Reprocess all data from the beginning in the log.
        */
-      readOffset = getLastOffset(consumer, topic, partition, kafka.api.OffsetRequest.EarliestTime(), clientName);
+      logger.info(
+          "Either offset Manager is not enabled or is not available!  Starting to consume from start of the log.");
+      readOffset = getStartingOffsetFromKafkaLog(consumer, kafka.api.OffsetRequest.EarliestTime());
     }
-
-    boolean execute = true;
-
-    while (execute) {
-
-      FetchRequest req = new FetchRequestBuilder().clientId(clientName)
-          .addFetch(topic, partition, readOffset, storeConfig.getFetchBufferSize()).build();
-
-      FetchResponse fetchResponse = consumer.fetch(req);
-
-      if (fetchResponse.hasError()) {
-
-        logger.error("Kafka error found! Skipping....");
-        logger.error("Message: " + fetchResponse.errorCode(topic, partition));
-
-        consumer.close();
-        consumer = null;
-
-        try {
-          leadBroker = findNewLeader(leadBroker, topic, partition, storeConfig.getKafkaBrokerPort());
-        } catch (KafkaConsumerException e) {
-          logger.error("Error while finding new leader: " + e);
-          // TODO keep trying ?
-        }
-
-        continue;
-      }
-
-      long numReads = 0;
-
-      Iterator<MessageAndOffset> messageAndOffsetIterator = fetchResponse.messageSet(topic, partition).iterator();
-
-      while (messageAndOffsetIterator.hasNext() && execute) {
-
-        MessageAndOffset messageAndOffset = messageAndOffsetIterator.next();
-        long currentOffset = messageAndOffset.offset();
-
-        if (currentOffset < readOffset) {
-          logger.error("Found an old offset: " + currentOffset + " Expecting: " + readOffset);
-          continue;
-        }
-
-        readOffset = messageAndOffset.nextOffset();
-
-        try {
-
-          Message msg = messageAndOffset.message();
-          String keyString;
-
-          // Get the Venice Key
-          ByteBuffer key = msg.key();
-          byte[] keyBytes = new byte[key.limit()];
-          key.get(keyBytes);
-          keyString = new String(keyBytes, ENCODING);
-
-          // Read Payload
-          ByteBuffer payload = msg.payload();
-          byte[] payloadBytes = new byte[payload.limit()];
-          payload.get(payloadBytes);
-
-          // De-serialize payload into Venice Message format
-          vm = messageSerializer.fromBytes(payloadBytes);
-
-          processMessage(keyString, vm, currentOffset);
-
-          numReads++;
-        } catch (UnsupportedEncodingException e) {
-          logger.error("Unsupported encoding: " + ENCODING, e);
-          // end the thread
-          execute = false;
-        } catch (VeniceMessageException e) {
-          logger.error("Received an illegal Venice message!", e);
-        } catch (UnsupportedOperationException e) {
-          logger.error("Received an invalid operation type!", e);
-        } catch (Exception e) {
-          logger
-              .error("Venice Storage Engine for store: " + storageEngine.getName() + " has been corrupted! Exiting...",
-                  e);
-          // end the thread
-          execute = false;
-        }
-      }
-
-      if (0 == numReads) {
-
-        try {
-          Thread.sleep(1000);
-        } catch (InterruptedException ie) {
-        }
-      }
-    }
-
-    if (consumer != null) {
-      logger.error("Closing consumer..");
-      consumer.close();
-    }
-  }
-
-  /**
-   * Given the attached storage engine, interpret the VeniceMessage and perform the required action
-   * */
-  private void processMessage(String key, VeniceMessage msg, long msgOffset) {
-
-    long startTimeNs = -1;
-
-    // check for invalid inputs
-    if (null == msg) {
-      throw new VeniceMessageException("Given null Venice Message.");
-    }
-
-    if (null == msg.getOperationType()) {
-      throw new VeniceMessageException("Venice Message does not have operation type!");
-    }
-
-    switch (msg.getOperationType()) {
-
-      // adding new values
-      case PUT:
-        if (logger.isTraceEnabled()) {
-          startTimeNs = System.nanoTime();
-        }
-        try {
-          storageEngine.put(partition, key.getBytes(), msg.getPayload().getBytes());
-
-          if (logger.isTraceEnabled()) {
-            logger.trace(
-                "Completed PUT to Store: " + topic + " for key: " + key + ", value: " + msg.getPayload() + " in " + (
-                    System.nanoTime() - startTimeNs) + " ns at " + System.currentTimeMillis());
-          }
-          if (offsetManager != null) {
-            this.offsetManager.recordOffset(storageEngine.getName(), partition, msgOffset, System.currentTimeMillis());
-          }
-        } catch (VeniceException e) {
-          throw e;
-        }
-        break;
-
-      // deleting values
-      case DELETE:
-        if (logger.isTraceEnabled()) {
-          startTimeNs = System.nanoTime();
-        }
-        try {
-          storageEngine.delete(partition, key.getBytes());
-
-          if (logger.isTraceEnabled()) {
-            logger.trace(
-                "Completed DELETE to Store: " + topic + " for key: " + key + " in " + (System.nanoTime() - startTimeNs)
-                    + " ns at " + System.currentTimeMillis());
-          }
-          if (offsetManager != null) {
-            offsetManager.recordOffset(storageEngine.getName(), partition, msgOffset, System.currentTimeMillis());
-          }
-        } catch (VeniceException e) {
-          throw e;
-        }
-        break;
-
-      // partial update
-      case PARTIAL_PUT:
-        throw new UnsupportedOperationException("Partial puts not yet implemented");
-
-        // error
-      default:
-        throw new VeniceMessageException("Invalid operation type submitted: " + msg.getOperationType());
-    }
+    return readOffset;
   }
 
   /**
    * Finds the latest offset after a given time
    *
    * @param consumer - A SimpleConsumer object for Kafka consumption
-   * @param topic - Kafka topic
-   * @param partition - Partition number within the topic
    * @param whichTime - Time at which to being reading offsets
-   * @param clientName - Name of the client (combination of topic + partition)
    * @return long - last offset after the given time
    *
    * */
-  public static long getLastOffset(SimpleConsumer consumer, String topic, int partition, long whichTime,
-      String clientName) {
+  private long getStartingOffsetFromKafkaLog(SimpleConsumer consumer, long whichTime) {
 
     TopicAndPartition tp = new TopicAndPartition(topic, partition);
     Map<TopicAndPartition, PartitionOffsetRequestInfo> requestInfoMap =
@@ -336,14 +250,132 @@ public class SimpleKafkaConsumerTask implements Runnable {
     kafka.javaapi.OffsetResponse javaResponse = new kafka.javaapi.OffsetResponse(scalaResponse);
 
     if (javaResponse.hasError()) {
-      throw new KafkaException("Error fetching data offset for topic: " + topic + " partition: " + partition);
+      throw new KafkaException(
+          "Error fetching data offset for [ Topic: " + topic + ", Partition: " + partition + " ] ");
     }
 
     long[] offsets = javaResponse.offsets(topic, partition);
 
-    logger.info("Partition " + partition + " last offset at: " + offsets[0]);
+    logger.info("[ Topic: " + topic + ", Partition: " + partition + ", last known offset: " + offsets[0] + " ]");
 
     return offsets[0];
+  }
+
+  /**
+   * Returns an iterator object for the current position in the Kafka log.Handles Kafka request/response semantics
+   *
+   * @param consumer A SimpleConsumer object tied to the Kafka instance
+   * @param readOffset The offset in the Kafka log to begin reading from
+   * @return
+   */
+  private Iterator<MessageAndOffset> getMessageAndOffsetIterator(SimpleConsumer consumer, long readOffset) {
+
+    Iterator<MessageAndOffset> messageAndOffsetIterator;
+
+    FetchRequest req = new FetchRequestBuilder().clientId(clientName)
+        .addFetch(topic, partition, readOffset, storeConfig.getFetchBufferSize()).build();
+
+    try {
+      FetchResponse fetchResponse = consumer.fetch(req);
+      if (fetchResponse.hasError()) {
+        throw new Exception("FetchResponse error code: " + fetchResponse.errorCode(topic, partition));
+      }
+      messageAndOffsetIterator = fetchResponse.messageSet(topic, partition).iterator();
+    } catch (Exception e) {
+      logger.error(
+          "Consumer could not fetch message and offset iterator for [ Topic: " + topic + ", Partition: " + partition
+              + " ] ");
+      throw new LeaderNotAvailableException(e.getMessage());
+    }
+    return messageAndOffsetIterator;
+  }
+
+  /**
+   * Process the message consumed from Kafka by de-serializing it and persisting it with the storage engine.
+   * @param message Message consumed from Kafka
+   * @param currentOffset  Current offset being processed
+   */
+  private void processMessage(Message message, long currentOffset) {
+
+    // Get the Venice Key
+    ByteBuffer key = message.key();
+    byte[] keyBytes = new byte[key.limit()];
+    key.get(keyBytes);
+
+    // Read Payload
+    ByteBuffer payload = message.payload();
+    byte[] payloadBytes = new byte[payload.limit()];
+    payload.get(payloadBytes);
+
+    // De-serialize payload into Venice Message format
+    vm = messageSerializer.fromBytes(payloadBytes);
+
+    if (null == vm) {
+      throw new VeniceMessageException("Given null Venice Message.");
+    }
+
+    if (null == vm.getOperationType()) {
+      throw new VeniceMessageException("Venice Message does not have operation type!");
+    }
+    processVeniceMessage(keyBytes, vm, currentOffset);
+  }
+
+  private void processVeniceMessage(byte[] key, VeniceMessage veniceMessage, long currentOffset) {
+
+    long startTimeNs = -1;
+
+    switch (veniceMessage.getOperationType()) {
+      case PUT:
+        if (logger.isTraceEnabled()) {
+          startTimeNs = System.nanoTime();
+        }
+        try {
+          storageEngine.put(partition, key, veniceMessage.getPayload());
+
+          if (logger.isTraceEnabled()) {
+            logger.trace(
+                "Completed PUT to Store: " + topic + " for key: " + ByteUtils.toHexString(key) + ", value: " + ByteUtils
+                    .toHexString(veniceMessage.getPayload()) + " in " + (System.nanoTime() - startTimeNs) + " ns at "
+                    + System.currentTimeMillis());
+          }
+          if (offsetManager != null) {
+            this.offsetManager
+                .recordOffset(storageEngine.getName(), partition, currentOffset, System.currentTimeMillis());
+          }
+        } catch (VeniceException e) {
+          throw e;
+        }
+        break;
+
+      // deleting values
+      case DELETE:
+        if (logger.isTraceEnabled()) {
+          startTimeNs = System.nanoTime();
+        }
+        try {
+          storageEngine.delete(partition, key);
+
+          if (logger.isTraceEnabled()) {
+            logger.trace("Completed DELETE to Store: " + topic + " for key: " + ByteUtils.toHexString(key) + " in " + (
+                System.nanoTime() - startTimeNs) + " ns at " + System.currentTimeMillis());
+          }
+          if (offsetManager != null) {
+            offsetManager.recordOffset(storageEngine.getName(), partition, currentOffset, System.currentTimeMillis());
+          }
+        } catch (VeniceException e) {
+          throw e;
+        }
+        break;
+
+      // partial update
+      case PARTIAL_PUT:
+        throw new UnsupportedOperationException("Partial puts not yet implemented");
+
+        // error
+      default:
+        throw new VeniceMessageException(
+            "Invalid/Unrecognized operation type submitted: " + veniceMessage.getOperationType());
+    }
   }
 
   /**
@@ -428,8 +460,8 @@ public class SimpleKafkaConsumerTask implements Runnable {
           } /* End of Partition Loop */
         } /* End of Topic Loop */
       } catch (Exception e) {
-        logger
-            .error("Error communicating with " + host + " to find topic: " + topic + " and partition:" + partition, e);
+        logger.error(
+            "Error communicating with " + host + " to find  [ Topic: " + topic + ", Partition: " + partition + " ]", e);
       } finally {
 
         // safely close consumer

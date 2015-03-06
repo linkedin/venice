@@ -56,7 +56,7 @@ public class TestKafkaConsumer {
   static final String TEST_KEY = "test_key";
 
   KafkaServerStartable kafkaServer;
-  Producer<String, VeniceMessage> kafkaProducer;
+  Producer<byte[], VeniceMessage> kafkaProducer;
 
   VeniceConfigService veniceConfigService;
   VeniceServer veniceServer;
@@ -168,11 +168,11 @@ public class TestKafkaConsumer {
   private void startKafkaProducer(String brokerUrl) {
     Properties props = new Properties();
     props.put("metadata.broker.list", brokerUrl);
-    props.put("key.serializer.class", "kafka.serializer.StringEncoder");
+    props.put("key.serializer.class", "kafka.serializer.DefaultEncoder");
     props.put("serializer.class", "com.linkedin.venice.serialization.VeniceMessageSerializer");
     props.setProperty("partitioner.class", "com.linkedin.venice.kafka.consumer.KafkaPartitioner");
     ProducerConfig config = new ProducerConfig(props);
-    kafkaProducer = new Producer<String, VeniceMessage>(config);
+    kafkaProducer = new Producer<byte[], VeniceMessage>(config);
   }
 
   /**
@@ -191,8 +191,8 @@ public class TestKafkaConsumer {
    * */
   public void sendKafkaMessage(String payload) {
     try {
-      KeyedMessage<String, VeniceMessage> data =
-          new KeyedMessage<String, VeniceMessage>(storeName, TEST_KEY, new VeniceMessage(OperationType.PUT, payload));
+      KeyedMessage<byte[], VeniceMessage> data =
+          new KeyedMessage<byte[], VeniceMessage>(storeName, TEST_KEY.getBytes(), new VeniceMessage(OperationType.PUT, payload.getBytes()));
       kafkaProducer.send(data);
     } catch (Exception e) {
       logger.error(e.getMessage());

@@ -1,7 +1,5 @@
-package com.linkedin.venice.Common;
+package com.linkedin.venice.utils;
 
-import com.google.common.io.Files;
-import java.io.File;
 import java.util.Random;
 
 
@@ -10,7 +8,7 @@ import java.util.Random;
  *
  *
  */
-public class TestUtils {
+public class RandomGenUtils {
 
   public static final Long SEED = System.currentTimeMillis();
   public static final Random SEEDED_RANDOM = new Random(SEED);
