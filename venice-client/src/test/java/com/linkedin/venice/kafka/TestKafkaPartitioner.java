@@ -1,5 +1,6 @@
 package com.linkedin.venice.kafka;
 
+import com.linkedin.venice.kafka.partitioner.DefaultKafkaPartitioner;
 import com.linkedin.venice.kafka.partitioner.KafkaPartitioner;
 import junit.framework.Assert;
 import kafka.utils.VerifiableProperties;
@@ -18,7 +19,7 @@ public class TestKafkaPartitioner {
   @Test
   public void testConsistentPartitioning() {
 
-    KafkaPartitioner kp = new KafkaPartitioner(new VerifiableProperties());
+    KafkaPartitioner kp = new DefaultKafkaPartitioner(new VerifiableProperties());
 
     byte[] key =   "key1".getBytes();
 
