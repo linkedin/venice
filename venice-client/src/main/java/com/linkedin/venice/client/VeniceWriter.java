@@ -48,7 +48,7 @@ public class VeniceWriter<K, V> {
 
     kafkaKey = new KafkaKey(keySerializer.toBytes(key));
     kafkaValue = new KafkaValue(OperationType.DELETE);
-    kp.sendMessage(kafkaKey.getKey(), kafkaValue);
+    kp.sendMessage(kafkaKey, kafkaValue);
   }
 
   /**
@@ -60,7 +60,7 @@ public class VeniceWriter<K, V> {
 
     kafkaKey = new KafkaKey(keySerializer.toBytes(key));
     kafkaValue = new KafkaValue(OperationType.PUT, valueSerializer.toBytes(value));
-    kp.sendMessage(kafkaKey.getKey(), kafkaValue);
+    kp.sendMessage(kafkaKey, kafkaValue);
   }
 
   /**
