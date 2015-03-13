@@ -1,14 +1,23 @@
 package com.linkedin.venice.client;
 
+import com.linkedin.venice.serialization.Serializer;
+import com.linkedin.venice.serialization.StringSerializer;
+import kafka.utils.VerifiableProperties;
+
 import java.util.Scanner;
 
 
 /**
  * Class which acts as the primary interface when calling Venice from the run-client.sh script.
+ * TODO: the shell client cli only supports String as key and value, for demo purposes.
  */
 public class VeniceShellClient {
 
-  static VeniceClient mainClient = new VeniceClient();
+  static final Serializer<String> keySerializer = new StringSerializer(new VerifiableProperties());
+  static final Serializer<String> valueSerializer = new StringSerializer(new VerifiableProperties());
+
+  static VeniceReader<String, String> reader = new VeniceReader<String, String>(keySerializer, valueSerializer);
+  static VeniceWriter<String, String> writer = new VeniceWriter<String, String>(keySerializer, valueSerializer);
 
   private static final String PUT_COMMAND = "put";
   private static final String DEL_COMMAND = "delete";
@@ -43,57 +52,46 @@ public class VeniceShellClient {
    * */
   public static void execute(String[] commandArgs) {
 
-    switch (commandArgs[0]) {
+    if (commandArgs[0].equals(PUT_COMMAND)) {
+      if (commandArgs.length > 2) {
+        writer.put(commandArgs[1], commandArgs[2]);
+      } else {
+        System.out.println("Must supply both a key and value for " + PUT_COMMAND + " operations.");
+        System.out.println("USAGE");
+        System.out.println(PUT_COMMAND + " key value");
+      }
 
-      case PUT_COMMAND: // PUT
 
-        if (commandArgs.length > 2) {
-          mainClient.put(commandArgs[1].getBytes(), commandArgs[2].getBytes());
-        } else {
-          System.out.println("Must supply both a key and value for " + PUT_COMMAND + " operations.");
-          System.out.println("USAGE");
-          System.out.println(PUT_COMMAND + " key value");
-        }
+    } else if (commandArgs[0].equals(GET_COMMAND)) {
+      if (commandArgs.length > 1) {
+        System.out.println("Got: " + reader.get(commandArgs[1]));
+      } else {
+        System.out.println("Must supply a key for " + GET_COMMAND + " operations.");
+        System.out.println("USAGE");
+        System.out.println(GET_COMMAND + " key");
+      }
 
-        break;
 
-      case GET_COMMAND: // GET
+    } else if (commandArgs[0].equals(DEL_COMMAND)) {
+      if (commandArgs.length > 1) {
+        writer.delete(commandArgs[1]);
+      } else {
+        System.out.println("Must supply a key for " + DEL_COMMAND + " operations.");
+        System.out.println("USAGE");
+        System.out.println(DEL_COMMAND + " key");
+      }
 
-        if (commandArgs.length > 1) {
-          System.out.println("Got: " + mainClient.get(commandArgs[1].getBytes()));
-        } else {
-          System.out.println("Must supply a key for " + GET_COMMAND + " operations.");
-          System.out.println("USAGE");
-          System.out.println(GET_COMMAND + " key");
-        }
 
-        break;
+    } else if (commandArgs[0].equals(EXIT_COMMAND)) {
+      System.out.println("Goodbye!");
+      System.exit(0);
 
-      case DEL_COMMAND: // DEL
 
-        if (commandArgs.length > 1) {
-          mainClient.delete(commandArgs[1].getBytes());
-        } else {
-          System.out.println("Must supply a key for " + DEL_COMMAND + " operations.");
-          System.out.println("USAGE");
-          System.out.println(DEL_COMMAND + " key");
-        }
+    } else {
+      System.out.println("Command not recognized!");
+      System.out.println("Must be one of: put, get, delete, exit.");
 
-        break;
 
-      case EXIT_COMMAND:
-
-        System.out.println("Goodbye!");
-        System.exit(0);
-
-        break;
-
-      default:
-
-        System.out.println("Command not recognized!");
-        System.out.println("Must be one of: put, get, delete, exit.");
-
-        break;
     }
   }
 }
