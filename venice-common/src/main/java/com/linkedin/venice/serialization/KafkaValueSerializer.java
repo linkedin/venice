@@ -1,24 +1,19 @@
 package com.linkedin.venice.serialization;
 
 import com.linkedin.venice.exceptions.VeniceMessageException;
-import kafka.serializer.Decoder;
-import kafka.serializer.Encoder;
+import com.linkedin.venice.message.KafkaValue;
+import com.linkedin.venice.message.OperationType;
 import kafka.utils.VerifiableProperties;
 import org.apache.log4j.Logger;
 
-import java.io.ByteArrayInputStream;
-import java.io.ByteArrayOutputStream;
-import java.io.ObjectInputStream;
-import java.io.ObjectOutputStream;
-import java.io.IOException;
-import com.linkedin.venice.message.VeniceMessage;
-import com.linkedin.venice.message.OperationType;
+import java.io.*;
 
 
 /**
- * Venice's custom serialization class. Used by Kafka to convert to/from byte arrays.
+ * Serializer to encode/decode KafkaValue for Venice customized kafka message
+ * Used by Kafka to convert to/from byte arrays.
  *
- * Message Schema (in order)
+ * KafkaValue Schema (in order)
  * - Magic Byte
  * - Operation Type
  * - Schema Version
@@ -27,21 +22,21 @@ import com.linkedin.venice.message.OperationType;
  * - Payload
  *
  */
-public class VeniceMessageSerializer implements Encoder<VeniceMessage>, Decoder<VeniceMessage> {
+public class KafkaValueSerializer implements Serializer<KafkaValue> {
 
-  static final Logger logger = Logger.getLogger(VeniceMessageSerializer.class.getName()); // log4j logger
+  static final Logger logger = Logger.getLogger(KafkaValueSerializer.class.getName()); // log4j logger
 
-  public VeniceMessageSerializer(VerifiableProperties verifiableProperties) {
+  public KafkaValueSerializer(VerifiableProperties verifiableProperties) {
         /* This constructor is not used, but is required for compilation */
   }
 
   @Override
   /**
    * Converts from a byte array to a VeniceMessage
-   * @param byteArray - byte array to be converted
+   * @param bytes - byte[] to be converted
    * @return Converted Venice Message
    * */
-  public VeniceMessage fromBytes(byte[] byteArray) {
+  public KafkaValue fromBytes(byte[] bytes) {
 
     byte magicByte;
     OperationType operationType = null;
@@ -55,18 +50,17 @@ public class VeniceMessageSerializer implements Encoder<VeniceMessage>, Decoder<
 
     try {
 
-      bytesIn = new ByteArrayInputStream(byteArray);
+      bytesIn = new ByteArrayInputStream(bytes);
       objectInputStream = new ObjectInputStream(bytesIn);
 
-          /* read magicByte TODO: currently unused */
+      /* read magicByte and validate Venice message */
       magicByte = objectInputStream.readByte();
-
-      if (magicByte != VeniceMessage.DEFAULT_MAGIC_BYTE) {
+      if (magicByte != KafkaValue.DEFAULT_MAGIC_BYTE) {
         // This means a non Venice kafka message was produced.
         throw new VeniceMessageException("Illegal magic byte given: " + magicByte);
       }
 
-       /* read operationType */
+      /* read operationType */
       byte opTypeByte = objectInputStream.readByte();
       switch (opTypeByte) {
         case 1:
@@ -75,18 +69,22 @@ public class VeniceMessageSerializer implements Encoder<VeniceMessage>, Decoder<
         case 2:
           operationType = OperationType.DELETE;
           break;
+        case 3:
+          operationType = OperationType.PARTIAL_PUT;
+          break;
         default:
           operationType = null;
           logger.error("Invalid operation type found: " + operationType);
+          break;
       }
 
       /* read schemaVersionId - TODO: currently unused */
       schemaVersionId = objectInputStream.readShort();
 
-      /* read timestamp */
+      /* read timestamp  - TODO: use current time or this timestamp for new venice message? */
       timestamp = objectInputStream.readLong();
 
-      /* read zone Id */
+      /* read zone Id - TODO: not used to create new venice message */
       zoneId = objectInputStream.readByte();
 
       /* read payload, one byte at a time */
@@ -97,10 +95,10 @@ public class VeniceMessageSerializer implements Encoder<VeniceMessage>, Decoder<
       }
     } catch (VeniceMessageException e) {
       logger.error("Error occurred during deserialization of venice message", e);
-      return new VeniceMessage(OperationType.ERROR);
+      return new KafkaValue(OperationType.ERROR);
     } catch (IOException e) {
       logger.error("IOException while converting to VeniceMessage: ", e);
-      return new VeniceMessage(OperationType.ERROR);
+      return new KafkaValue(OperationType.ERROR);
     } finally {
 
       // safely close the input/output streams
@@ -116,20 +114,20 @@ public class VeniceMessageSerializer implements Encoder<VeniceMessage>, Decoder<
       }
     }
 
-    return new VeniceMessage(operationType, payload, schemaVersionId);
+    return new KafkaValue(operationType, payload, schemaVersionId);
   }
 
   @Override
   /**
-   * Converts from a VeniceMessage to a byte array
-   * @param byteArray - byte array to be converted
-   * @return Converted Venice Message
+   * Converts from a KafkaValue to a byte[]
+   * @param kafkaValue - KafkaValue to be converted
+   * @return Converted byte[]
    * */
-  public byte[] toBytes(VeniceMessage vm) {
+  public byte[] toBytes(KafkaValue kafkaValue) {
 
     ByteArrayOutputStream bytesOut = null;
     ObjectOutputStream objectOutputStream = null;
-    byte[] message = new byte[0];
+    byte[] bytes = new byte[0];
 
     try {
 
@@ -137,52 +135,54 @@ public class VeniceMessageSerializer implements Encoder<VeniceMessage>, Decoder<
       objectOutputStream = new ObjectOutputStream(bytesOut);
 
       /* write Magic byte */
-      objectOutputStream.writeByte(vm.getMagicByte());
+      objectOutputStream.writeByte(kafkaValue.getMagicByte());
 
       /* write operation type */
       // serialize the operation type enum
-      switch (vm.getOperationType()) {
+      switch (kafkaValue.getOperationType()) {
         case PUT:
           objectOutputStream.writeByte(1);
           break;
         case DELETE:
           objectOutputStream.writeByte(2);
           break;
+        case PARTIAL_PUT:
+          objectOutputStream.writeByte(3);
+          break;
         default:
-          logger.error("Operation Type not recognized: " + vm.getOperationType());
+          logger.error("Operation Type not recognized: " + kafkaValue.getOperationType());
           objectOutputStream.writeByte(0);
           break;
       }
 
       /* write schema version Id */
-      objectOutputStream.writeShort(vm.getSchemaVersionId());
+      objectOutputStream.writeShort(kafkaValue.getSchemaVersionId());
 
       /* write timestamp */
-      objectOutputStream.writeLong(vm.getTimestamp());
+      objectOutputStream.writeLong(kafkaValue.getTimestamp());
 
       /* write zone Id */
-      objectOutputStream.writeByte(vm.getZoneId());
+      objectOutputStream.writeByte(kafkaValue.getZoneId());
 
       /* write payload */
-      objectOutputStream.write(vm.getPayload());
+      objectOutputStream.write(kafkaValue.getValue());
       objectOutputStream.flush();
 
-      message = bytesOut.toByteArray();
+      bytes = bytesOut.toByteArray();
     } catch (IOException e) {
-      logger.error("Could not serialize message: " + vm.getPayload());
+      logger.error("Could not serialize KafkaValue: " + kafkaValue.getValue());
     } finally {
 
       // safely close the input/output streams
       try {
         objectOutputStream.close();
-      } catch (IOException e) {
-      }
+      } catch (IOException e) {}
+
       try {
         bytesOut.close();
-      } catch (IOException e) {
-      }
+      } catch (IOException e) {}
     }
 
-    return message;
+    return bytes;
   }
 }

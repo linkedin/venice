@@ -2,8 +2,8 @@ package com.linkedin.venice.client;
 
 import com.linkedin.venice.config.GlobalConfiguration;
 import com.linkedin.venice.kafka.producer.KafkaProducer;
+import com.linkedin.venice.message.KafkaValue;
 import com.linkedin.venice.message.OperationType;
-import com.linkedin.venice.message.VeniceMessage;
 import org.apache.log4j.Logger;
 
 
@@ -17,7 +17,7 @@ public class VeniceClient {
 
   private static KafkaProducer kp;
 
-  private VeniceMessage msg;
+  private KafkaValue msg;
 
   public VeniceClient() {
 
@@ -48,7 +48,7 @@ public class VeniceClient {
    * */
   public void delete(byte[] key) {
 
-    msg = new VeniceMessage(OperationType.DELETE);
+    msg = new KafkaValue(OperationType.DELETE);
     kp.sendMessage(key, msg);
   }
 
@@ -59,7 +59,7 @@ public class VeniceClient {
    * */
   public void put(byte[] key, byte[] value) {
 
-    msg = new VeniceMessage(OperationType.PUT, value);
+    msg = new KafkaValue(OperationType.PUT, value);
     kp.sendMessage(key, msg);
   }
 }

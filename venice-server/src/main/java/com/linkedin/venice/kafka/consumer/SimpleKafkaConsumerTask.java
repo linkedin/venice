@@ -3,42 +3,30 @@ package com.linkedin.venice.kafka.consumer;
 import com.linkedin.venice.config.VeniceStoreConfig;
 import com.linkedin.venice.exceptions.KafkaConsumerException;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.exceptions.VeniceMessageException;
 import com.linkedin.venice.kafka.consumer.offsets.OffsetManager;
 import com.linkedin.venice.kafka.consumer.offsets.OffsetRecord;
-import com.linkedin.venice.serialization.VeniceMessageSerializer;
-import com.linkedin.venice.exceptions.VeniceMessageException;
-import com.linkedin.venice.message.VeniceMessage;
-
+import com.linkedin.venice.message.KafkaValue;
+import com.linkedin.venice.serialization.KafkaKeySerializer;
+import com.linkedin.venice.serialization.KafkaValueSerializer;
 import com.linkedin.venice.store.AbstractStorageEngine;
 import com.linkedin.venice.utils.ByteUtils;
-import com.linkedin.venice.utils.Utils;
-import kafka.common.LeaderNotAvailableException;
-import org.apache.log4j.Logger;
-
-import kafka.api.FetchRequest;
-import kafka.api.FetchRequestBuilder;
-import kafka.api.FetchResponse;
-import kafka.api.PartitionMetadata;
-import kafka.api.PartitionOffsetRequestInfo;
-import kafka.api.TopicMetadata;
-import kafka.api.TopicMetadataRequest;
-import kafka.api.TopicMetadataResponse;
+import kafka.api.*;
 import kafka.cluster.Broker;
 import kafka.common.KafkaException;
+import kafka.common.LeaderNotAvailableException;
 import kafka.common.TopicAndPartition;
 import kafka.consumer.SimpleConsumer;
 import kafka.message.Message;
 import kafka.message.MessageAndOffset;
 import kafka.utils.VerifiableProperties;
+import org.apache.log4j.Logger;
 import scala.collection.Iterator;
 import scala.collection.JavaConversions;
 import scala.collection.Seq;
+
 import java.nio.ByteBuffer;
-import java.util.List;
-import java.util.Map;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.Collections;
+import java.util.*;
 
 
 /**
@@ -53,8 +41,8 @@ public class SimpleKafkaConsumerTask implements Runnable {
   private static final int CORELATION_ID = 17;
 
   // Venice Serialization
-  private VeniceMessage vm;
-  private static VeniceMessageSerializer messageSerializer;
+  private static KafkaKeySerializer kafkaKeySerializer;
+  private static KafkaValueSerializer kafkaValueSerializer;
 
   //offsetManager
   private final OffsetManager offsetManager;
@@ -77,7 +65,8 @@ public class SimpleKafkaConsumerTask implements Runnable {
     this.storeConfig = storeConfig;
     this.storageEngine = storageEngine;
 
-    messageSerializer = new VeniceMessageSerializer(new VerifiableProperties());
+    this.kafkaKeySerializer = new KafkaKeySerializer(new VerifiableProperties());
+    this.kafkaValueSerializer = new KafkaValueSerializer(new VerifiableProperties());
     this.replicaBrokers = new ArrayList<String>();
     this.topic = storeConfig.getStoreName();
     this.partition = partition;
@@ -308,19 +297,19 @@ public class SimpleKafkaConsumerTask implements Runnable {
     payload.get(payloadBytes);
 
     // De-serialize payload into Venice Message format
-    vm = messageSerializer.fromBytes(payloadBytes);
+    KafkaValue kafkaValue = kafkaValueSerializer.fromBytes(payloadBytes);
 
-    if (null == vm) {
+    if (null == kafkaValue) {
       throw new VeniceMessageException("Given null Venice Message.");
     }
 
-    if (null == vm.getOperationType()) {
+    if (null == kafkaValue.getOperationType()) {
       throw new VeniceMessageException("Venice Message does not have operation type!");
     }
-    processVeniceMessage(keyBytes, vm, currentOffset);
+    processVeniceMessage(keyBytes, kafkaValue, currentOffset);
   }
 
-  private void processVeniceMessage(byte[] key, VeniceMessage veniceMessage, long currentOffset) {
+  private void processVeniceMessage(byte[] key, KafkaValue veniceMessage, long currentOffset) {
 
     long startTimeNs = -1;
 
@@ -330,12 +319,12 @@ public class SimpleKafkaConsumerTask implements Runnable {
           startTimeNs = System.nanoTime();
         }
         try {
-          storageEngine.put(partition, key, veniceMessage.getPayload());
+          storageEngine.put(partition, key, veniceMessage.getValue());
 
           if (logger.isTraceEnabled()) {
             logger.trace(
                 "Completed PUT to Store: " + topic + " for key: " + ByteUtils.toHexString(key) + ", value: " + ByteUtils
-                    .toHexString(veniceMessage.getPayload()) + " in " + (System.nanoTime() - startTimeNs) + " ns at "
+                    .toHexString(veniceMessage.getValue()) + " in " + (System.nanoTime() - startTimeNs) + " ns at "
                     + System.currentTimeMillis());
           }
           if (offsetManager != null) {
