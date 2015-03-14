@@ -297,6 +297,8 @@ public class SimpleKafkaConsumerTask implements Runnable {
     payload.get(payloadBytes);
 
     // De-serialize payload into Venice Message format
+    // TODO: replace byte[] with KafkaKey: blocked on failed test
+    //KafkaKey kafkaKey = kafkaKeySerializer.fromBytes(keyBytes);
     KafkaValue kafkaValue = kafkaValueSerializer.fromBytes(payloadBytes);
 
     if (null == kafkaValue) {
@@ -306,6 +308,9 @@ public class SimpleKafkaConsumerTask implements Runnable {
     if (null == kafkaValue.getOperationType()) {
       throw new VeniceMessageException("Venice Message does not have operation type!");
     }
+
+    // TODO: replace byte[] with KafkaKey: blocked on failed test
+    // processVeniceMessage(KafkaKey.getKey(), kafkaValue, currentOffset);
     processVeniceMessage(keyBytes, kafkaValue, currentOffset);
   }
 

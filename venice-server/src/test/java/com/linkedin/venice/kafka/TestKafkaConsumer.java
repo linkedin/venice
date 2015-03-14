@@ -1,8 +1,8 @@
 package com.linkedin.venice.kafka;
 
 import com.linkedin.venice.config.VeniceStoreConfig;
-import com.linkedin.venice.message.OperationType;
 import com.linkedin.venice.message.KafkaValue;
+import com.linkedin.venice.message.OperationType;
 import com.linkedin.venice.server.VeniceConfigService;
 import com.linkedin.venice.server.VeniceServer;
 import com.linkedin.venice.store.AbstractStorageEngine;
@@ -56,6 +56,7 @@ public class TestKafkaConsumer {
   static final String TEST_KEY = "test_key";
 
   KafkaServerStartable kafkaServer;
+  // TODO: replace byte[] with KafkaKey: blocked on failed test
   Producer<byte[], KafkaValue> kafkaProducer;
 
   VeniceConfigService veniceConfigService;
@@ -168,11 +169,13 @@ public class TestKafkaConsumer {
   private void startKafkaProducer(String brokerUrl) {
     Properties props = new Properties();
     props.put("metadata.broker.list", brokerUrl);
+    // TODO: replace byte[] with KafkaKey: blocked on failed test
     props.put("key.serializer.class", "kafka.serializer.DefaultEncoder");
+    //props.put("key.serializer.class", "com.linkedin.venice.serialization.KafkaKeySerializer");
     props.put("serializer.class", "com.linkedin.venice.serialization.KafkaValueSerializer");
     props.setProperty("partitioner.class", "com.linkedin.venice.kafka.consumer.KafkaPartitioner");
     ProducerConfig config = new ProducerConfig(props);
-    kafkaProducer = new Producer<byte[], KafkaValue>(config);
+    kafkaProducer = new Producer<>(config);
   }
 
   /**
@@ -191,6 +194,7 @@ public class TestKafkaConsumer {
    * */
   public void sendKafkaMessage(String payload) {
     try {
+      // TODO: replace byte[] with KafkaKey: blocked on failed test
       KeyedMessage<byte[], KafkaValue> data =
           new KeyedMessage<>(storeName, TEST_KEY.getBytes(), new KafkaValue(OperationType.PUT, payload.getBytes()));
       kafkaProducer.send(data);
