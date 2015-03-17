@@ -1,6 +1,5 @@
 package com.linkedin.venice.kafka.partitioner;
 
-import com.linkedin.venice.exceptions.VeniceException;
 import kafka.producer.Partitioner;
 import kafka.utils.VerifiableProperties;
 
@@ -24,7 +23,5 @@ public abstract class KafkaPartitioner implements Partitioner {
    * @param numPartitions - The number of total partitions available in Kafka/storage
    * @return The partitionId for which the given key is mapped to
    */
-  public int partition(Object key, int numPartitions) {
-    throw new VeniceException("Kafka partitioner not implemented.");
-  }
+  public abstract int partition(Object key, int numPartitions);
 }
