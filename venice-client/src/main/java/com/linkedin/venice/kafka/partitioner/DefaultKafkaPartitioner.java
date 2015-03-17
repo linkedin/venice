@@ -1,5 +1,6 @@
 package com.linkedin.venice.kafka.partitioner;
 
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.utils.ByteUtils;
 import kafka.utils.VerifiableProperties;
 import org.apache.log4j.Logger;
@@ -46,13 +47,12 @@ public class DefaultKafkaPartitioner extends KafkaPartitioner {
 
       partition = partition % numPartitions;
 
-      logger.info("Using hash algorithm: " + ByteUtils.toHexString(keyBytes) + " goes to partitionId " + partition + " out of " + numPartitions);
+      logger.debug("Using hash algorithm: " + ByteUtils.toHexString(keyBytes) + " goes to partitionId " + partition + " out of " + numPartitions);
 
       md.reset();
       return partition;
     } catch (NoSuchAlgorithmException e) {
-      logger.error("Hashing algorithm given is not recognized: " + hashAlgorithm);
-      return -1;
+      throw new VeniceException("\"Hashing algorithm given is not recognized: \" + hashAlgorithm");
     }
   }
 }

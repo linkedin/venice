@@ -19,7 +19,7 @@ public abstract class KafkaPartitioner implements Partitioner {
    * A consistent hashing algorithm that returns the partitionId based on the key
    * Note that this is based on the number of partitions
    *
-   * @param key           - A string key that will be hashed into a partition
+   * @param key           - A key that will be hashed into a partition
    * @param numPartitions - The number of total partitions available in Kafka/storage
    * @return The partitionId for which the given key is mapped to
    */
