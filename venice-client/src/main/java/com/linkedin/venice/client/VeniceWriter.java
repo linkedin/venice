@@ -1,11 +1,13 @@
 package com.linkedin.venice.client;
 
 import com.linkedin.venice.config.GlobalConfiguration;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.producer.KafkaProducer;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.message.KafkaValue;
 import com.linkedin.venice.message.OperationType;
 import com.linkedin.venice.serialization.Serializer;
+import com.linkedin.venice.utils.Props;
 import org.apache.log4j.Logger;
 
 
@@ -17,24 +19,27 @@ public class VeniceWriter<K, V> {
   // log4j logger
   static final Logger logger = Logger.getLogger(VeniceWriter.class.getName());
 
-  private static KafkaProducer kp;
+  private final KafkaProducer kp;
 
-  private KafkaKey kafkaKey;
-  private KafkaValue kafkaValue;
-  private Serializer<K> keySerializer;
-  private Serializer<V> valueSerializer;
+  private Props props;
+  private final String kafkaBrokerUrl;
+  private final String storeName;
+  private final Serializer<K> keySerializer;
+  private final Serializer<V> valueSerializer;
 
-  public VeniceWriter(Serializer<K> keySerializer, Serializer<V> valueSerializer) {
+  public VeniceWriter(Props props, String storeName, Serializer<K> keySerializer, Serializer<V> valueSerializer) {
 
     // TODO: Deprecate/refactor the config. It's really not needed for the most part
     try {
       GlobalConfiguration.initializeFromFile("./config/config.properties");
+      this.props = props;
+      this.kafkaBrokerUrl = props.getString("kafka.broker.url", "localhost:9092");
+      this.storeName = storeName;
       this.keySerializer = keySerializer;
       this.valueSerializer = valueSerializer;
     } catch (Exception e) {
-      logger.error("Error while starting up configuration for VeniceWriter.");
-      logger.error(e);
-      System.exit(1);
+      logger.error("Error while starting up configuration for VeniceWriter.", e);
+      throw new VeniceException("Error while starting up configuration for VeniceWriter", e);
     }
 
     kp = new KafkaProducer();
@@ -46,9 +51,9 @@ public class VeniceWriter<K, V> {
    * */
   public void delete(K key) {
 
-    kafkaKey = new KafkaKey(keySerializer.toBytes(key));
-    kafkaValue = new KafkaValue(OperationType.DELETE);
-    kp.sendMessage(kafkaKey, kafkaValue);
+    KafkaKey kafkaKey = new KafkaKey(keySerializer.toBytes(key));
+    KafkaValue kafkaValue = new KafkaValue(OperationType.DELETE);
+    kp.sendMessage(storeName, kafkaKey, kafkaValue);
   }
 
   /**
@@ -58,9 +63,9 @@ public class VeniceWriter<K, V> {
    * */
   public void put(K key, V value) {
 
-    kafkaKey = new KafkaKey(keySerializer.toBytes(key));
-    kafkaValue = new KafkaValue(OperationType.PUT, valueSerializer.toBytes(value));
-    kp.sendMessage(kafkaKey, kafkaValue);
+    KafkaKey kafkaKey = new KafkaKey(keySerializer.toBytes(key));
+    KafkaValue kafkaValue = new KafkaValue(OperationType.PUT, valueSerializer.toBytes(value));
+    kp.sendMessage(storeName, kafkaKey, kafkaValue);
   }
 
   /**

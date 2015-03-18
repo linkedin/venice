@@ -9,11 +9,11 @@ public class KafkaKey {
   public static final byte DEFAULT_MAGIC_BYTE = 22;
 
   private byte magicByte;
-  private byte[] payload;
+  private byte[] key;
 
   public KafkaKey(byte[] key) {
     this.magicByte = DEFAULT_MAGIC_BYTE;
-    this.payload = key;
+    this.key = key;
   }
 
   public byte getMagicByte() {
@@ -21,10 +21,10 @@ public class KafkaKey {
   }
 
   public byte[] getKey() {
-    return payload;
+    return key;
   }
 
   public String toString() {
-    return payload.toString();
+    return key.toString();
   }
 }

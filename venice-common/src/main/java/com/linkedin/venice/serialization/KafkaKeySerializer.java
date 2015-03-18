@@ -34,7 +34,7 @@ public class KafkaKeySerializer implements Serializer<KafkaKey> {
   public KafkaKey fromBytes(byte[] bytes) {
 
     byte magicByte;
-    byte[] payload = null;
+    byte[] key = null;
 
     ByteArrayInputStream bytesIn = null;
     ObjectInputStream objectInputStream = null;
@@ -53,9 +53,9 @@ public class KafkaKeySerializer implements Serializer<KafkaKey> {
 
       /* read payload, one byte at a time */
       int byteCount = objectInputStream.available();
-      payload = new byte[byteCount];
+      key = new byte[byteCount];
       for (int i = 0; i < byteCount; i++) {
-        payload[i] = objectInputStream.readByte();
+        key[i] = objectInputStream.readByte();
       }
     } catch (VeniceMessageException e) {
       logger.error("Error occurred during deserialization of KafkaKey", e);
@@ -76,7 +76,7 @@ public class KafkaKeySerializer implements Serializer<KafkaKey> {
         logger.error("IOException while closing the input stream", e);
       }
 
-      return new KafkaKey(payload);
+      return new KafkaKey(key);
     }
   }
 

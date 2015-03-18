@@ -43,7 +43,7 @@ public class KafkaValueSerializer implements Serializer<KafkaValue> {
     short schemaVersionId;
     long timestamp;
     byte zoneId;
-    byte[] payload;
+    byte[] value;
 
     ByteArrayInputStream bytesIn = null;
     ObjectInputStream objectInputStream = null;
@@ -62,20 +62,9 @@ public class KafkaValueSerializer implements Serializer<KafkaValue> {
 
       /* read operationType */
       byte opTypeByte = objectInputStream.readByte();
-      switch (opTypeByte) {
-        case 1:
-          operationType = OperationType.PUT;
-          break;
-        case 2:
-          operationType = OperationType.DELETE;
-          break;
-        case 3:
-          operationType = OperationType.PARTIAL_PUT;
-          break;
-        default:
-          operationType = null;
-          logger.error("Invalid operation type found: " + operationType);
-          break;
+      operationType = OperationType.fromByte(opTypeByte);
+      if (operationType.equals(OperationType.ERROR)) {
+        throw new VeniceMessageException("Invalid operation type found: " + opTypeByte);
       }
 
       /* read schemaVersionId - TODO: currently unused */
@@ -89,16 +78,16 @@ public class KafkaValueSerializer implements Serializer<KafkaValue> {
 
       /* read payload, one byte at a time */
       int byteCount = objectInputStream.available();
-      payload = new byte[byteCount];
+      value = new byte[byteCount];
       for (int i = 0; i < byteCount; i++) {
-        payload[i] = objectInputStream.readByte();
+        value[i] = objectInputStream.readByte();
       }
     } catch (VeniceMessageException e) {
       logger.error("Error occurred during deserialization of venice message", e);
-      return new KafkaValue(OperationType.ERROR);
+      throw e;
     } catch (IOException e) {
       logger.error("IOException while converting to VeniceMessage: ", e);
-      return new KafkaValue(OperationType.ERROR);
+      throw new VeniceMessageException("IOException while converting to VeniceMessage: ", e);
     } finally {
 
       // safely close the input/output streams
@@ -114,7 +103,7 @@ public class KafkaValueSerializer implements Serializer<KafkaValue> {
       }
     }
 
-    return new KafkaValue(operationType, payload, schemaVersionId);
+    return new KafkaValue(operationType, value, schemaVersionId);
   }
 
   @Override
@@ -139,21 +128,11 @@ public class KafkaValueSerializer implements Serializer<KafkaValue> {
 
       /* write operation type */
       // serialize the operation type enum
-      switch (kafkaValue.getOperationType()) {
-        case PUT:
-          objectOutputStream.writeByte(1);
-          break;
-        case DELETE:
-          objectOutputStream.writeByte(2);
-          break;
-        case PARTIAL_PUT:
-          objectOutputStream.writeByte(3);
-          break;
-        default:
-          logger.error("Operation Type not recognized: " + kafkaValue.getOperationType());
-          objectOutputStream.writeByte(0);
-          break;
+      byte opTypeByte = OperationType.toByte(kafkaValue.getOperationType());
+      if (opTypeByte == 0) {
+        logger.error("Operation Type not recognized: " + kafkaValue.getOperationType());
       }
+      objectOutputStream.writeByte(opTypeByte);
 
       /* write schema version Id */
       objectOutputStream.writeShort(kafkaValue.getSchemaVersionId());

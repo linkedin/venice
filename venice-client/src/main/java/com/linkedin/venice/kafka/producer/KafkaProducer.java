@@ -16,16 +16,12 @@ import java.util.Properties;
  */
 public class KafkaProducer {
 
-  private Properties props;
-  private ProducerConfig config;
-  private Producer<KafkaKey, KafkaValue> producer;
-
-  private final String DEFAULT_TOPIC = "default_topic";
+  private final Producer<KafkaKey, KafkaValue> producer;
 
   public KafkaProducer() {
 
     // TODO: figure out the actual configurations and startup procedures
-    props = new Properties();
+    Properties props = new Properties();
     props.setProperty("metadata.broker.list", GlobalConfiguration.getKafkaBrokerUrl());
 
     // using custom serializer
@@ -36,7 +32,7 @@ public class KafkaProducer {
     props.setProperty("partitioner.class", "com.linkedin.venice.kafka.partitioner.KafkaPartitioner");
     props.setProperty("request.required.acks", "1");
 
-    config = new ProducerConfig(props);
+    ProducerConfig config = new ProducerConfig(props);
     producer = new Producer<>(config);
   }
 
@@ -45,9 +41,9 @@ public class KafkaProducer {
    * @param key - The key of the message to be sent.
    * @param msg - The VeniceMessage, which acts as the Kafka payload.
    * */
-  public void sendMessage(KafkaKey key, KafkaValue msg) {
+  public void sendMessage(String topic, KafkaKey key, KafkaValue msg) {
 
-    KeyedMessage<KafkaKey, KafkaValue> kafkaMsg = new KeyedMessage<>(DEFAULT_TOPIC, key, msg);
+    KeyedMessage<KafkaKey, KafkaValue> kafkaMsg = new KeyedMessage<>(topic, key, msg);
     producer.send(kafkaMsg);
   }
 }

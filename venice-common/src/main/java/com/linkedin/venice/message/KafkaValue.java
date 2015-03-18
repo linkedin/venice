@@ -18,7 +18,7 @@ public class KafkaValue {
   private OperationType operationType;
   private long timestamp;
   private byte zoneId;
-  private byte[] payload;
+  private byte[] value;
 
   // A message without a payload (used for non put operations)
   public KafkaValue(OperationType type) {
@@ -30,7 +30,7 @@ public class KafkaValue {
     this.operationType = type;
     this.timestamp = System.currentTimeMillis();
     this.zoneId = ZONE_ID;
-    this.payload = new byte[0];
+    this.value = new byte[0];
   }
 
   public KafkaValue(OperationType type, byte[] value, short schemaId) {
@@ -39,7 +39,7 @@ public class KafkaValue {
     this.operationType = type;
     this.timestamp = System.currentTimeMillis();
     this.zoneId = ZONE_ID;
-    this.payload = value;
+    this.value = value;
   }
 
   public KafkaValue(OperationType type, byte[] value) {
@@ -67,11 +67,11 @@ public class KafkaValue {
   }
 
   public byte[] getValue() {
-    return payload;
+    return value;
   }
 
   public String toString() {
     return operationType.toString() + " schema-id:" + schemaVersionId + " time-stamp:" + timestamp
-      + " zone-id:" + zoneId + " value:" + payload.toString();
+      + " zone-id:" + zoneId + " value:" + value.toString();
   }
 }

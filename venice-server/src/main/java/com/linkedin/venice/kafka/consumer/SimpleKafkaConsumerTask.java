@@ -305,10 +305,6 @@ public class SimpleKafkaConsumerTask implements Runnable {
       throw new VeniceMessageException("Given null Venice Message.");
     }
 
-    if (null == kafkaValue.getOperationType()) {
-      throw new VeniceMessageException("Venice Message does not have operation type!");
-    }
-
     // TODO: replace byte[] with KafkaKey: blocked on failed test
     // processVeniceMessage(KafkaKey.getKey(), kafkaValue, currentOffset);
     processVeniceMessage(keyBytes, kafkaValue, currentOffset);

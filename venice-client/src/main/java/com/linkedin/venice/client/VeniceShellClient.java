@@ -2,6 +2,7 @@ package com.linkedin.venice.client;
 
 import com.linkedin.venice.serialization.Serializer;
 import com.linkedin.venice.serialization.StringSerializer;
+import com.linkedin.venice.utils.Props;
 import kafka.utils.VerifiableProperties;
 
 import java.util.Scanner;
@@ -16,13 +17,14 @@ public class VeniceShellClient {
   static final Serializer<String> keySerializer = new StringSerializer(new VerifiableProperties());
   static final Serializer<String> valueSerializer = new StringSerializer(new VerifiableProperties());
 
-  static VeniceReader<String, String> reader = new VeniceReader<String, String>(keySerializer, valueSerializer);
-  static VeniceWriter<String, String> writer = new VeniceWriter<String, String>(keySerializer, valueSerializer);
+  static VeniceReader<String, String> reader;
+  static VeniceWriter<String, String> writer;
 
   private static final String PUT_COMMAND = "put";
   private static final String DEL_COMMAND = "delete";
   private static final String GET_COMMAND = "get";
   private static final String EXIT_COMMAND = "exit";
+  private static String storeName;
 
   /*
   * Main method for running the class in the interactive mode.
@@ -30,8 +32,13 @@ public class VeniceShellClient {
   * */
   public static void main(String[] args) {
     // Use interactive shell
-    if (args.length < 2) {
+    if (args.length < 1) {
+      System.out.println("Please provide your store name.");
+    } else if (args.length < 2) {
       System.out.println("Using interactive shell...");
+      storeName = args[0];
+      reader = new VeniceReader<>(new Props(), storeName, keySerializer, valueSerializer);
+      writer = new VeniceWriter<>(new Props(), storeName, keySerializer, valueSerializer);
       Scanner reader = new Scanner(System.in);
       while (true) {
         System.out.println("Ready for input: ");
@@ -41,7 +48,12 @@ public class VeniceShellClient {
       }
     } else {
       // executed from the venice-client.sh script: simply pass the arguments onwards
-      execute(args);
+      storeName = args[0];
+      reader = new VeniceReader<>(new Props(), storeName, keySerializer, valueSerializer);
+      writer = new VeniceWriter<>(new Props(), storeName, keySerializer, valueSerializer);
+      String[] commandArgs = new String[args.length - 1];
+      System.arraycopy(args, 1, commandArgs, 0, commandArgs.length);
+      execute(commandArgs);
     }
   }
 
@@ -49,7 +61,7 @@ public class VeniceShellClient {
    * A function used to send client inputs into the Venice Server.
    * This method is used by both the Venice main class and the VeniceShellClient
    * Error checking is required for commands coming from the interactive shell
-   * */
+   */
   public static void execute(String[] commandArgs) {
 
     if (commandArgs[0].equals(PUT_COMMAND)) {
