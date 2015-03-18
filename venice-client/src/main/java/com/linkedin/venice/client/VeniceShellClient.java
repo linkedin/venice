@@ -4,7 +4,10 @@ import com.linkedin.venice.serialization.Serializer;
 import com.linkedin.venice.serialization.StringSerializer;
 import com.linkedin.venice.utils.Props;
 import kafka.utils.VerifiableProperties;
+import org.apache.log4j.Logger;
 
+import java.io.FileInputStream;
+import java.util.Properties;
 import java.util.Scanner;
 
 
@@ -13,6 +16,8 @@ import java.util.Scanner;
  * TODO: the shell client cli only supports String as key and value, for demo purposes.
  */
 public class VeniceShellClient {
+
+  private static final Logger logger = Logger.getLogger(VeniceShellClient.class.getName()); // log4j logger
 
   static final Serializer<String> keySerializer = new StringSerializer(new VerifiableProperties());
   static final Serializer<String> valueSerializer = new StringSerializer(new VerifiableProperties());
@@ -26,6 +31,36 @@ public class VeniceShellClient {
   private static final String EXIT_COMMAND = "exit";
   private static String storeName;
 
+  /**
+   * Given a filePath, reads into a Java Properties object
+   *
+   * @param configFileName - String path to a properties file
+   * @return A Java properties object with the given configurations
+   */
+  public static Props parseProperties(String configFileName) {
+    Properties properties = new Properties();
+    FileInputStream inputStream = null;
+    Props props = null;
+
+    logger.info("Loading config: " + configFileName);
+
+    try {
+      inputStream = new FileInputStream(configFileName);
+      properties.load(inputStream);
+      props = new Props(properties);
+      // safely close input stream
+      if (inputStream != null) {
+        inputStream.close();
+      }
+      logger.info("Finished initialization from file");
+    } catch (Exception e) {
+      logger.error("An error occurs.", e);
+      System.exit(1);
+    }
+
+    return props;
+  }
+
   /*
   * Main method for running the class in the interactive mode.
   * The preferred method will be to use the VeniceShellClient via the client script.
@@ -37,8 +72,9 @@ public class VeniceShellClient {
     } else if (args.length < 2) {
       System.out.println("Using interactive shell...");
       storeName = args[0];
-      reader = new VeniceReader<>(new Props(), storeName, keySerializer, valueSerializer);
-      writer = new VeniceWriter<>(new Props(), storeName, keySerializer, valueSerializer);
+      Props props = parseProperties("./config/config.properties");
+      reader = new VeniceReader<>(props, storeName, keySerializer, valueSerializer);
+      writer = new VeniceWriter<>(props, storeName, keySerializer, valueSerializer);
       Scanner reader = new Scanner(System.in);
       while (true) {
         System.out.println("Ready for input: ");
@@ -49,8 +85,9 @@ public class VeniceShellClient {
     } else {
       // executed from the venice-client.sh script: simply pass the arguments onwards
       storeName = args[0];
-      reader = new VeniceReader<>(new Props(), storeName, keySerializer, valueSerializer);
-      writer = new VeniceWriter<>(new Props(), storeName, keySerializer, valueSerializer);
+      Props props = parseProperties("./config/config.properties");
+      reader = new VeniceReader<>(props, storeName, keySerializer, valueSerializer);
+      writer = new VeniceWriter<>(props, storeName, keySerializer, valueSerializer);
       String[] commandArgs = new String[args.length - 1];
       System.arraycopy(args, 1, commandArgs, 0, commandArgs.length);
       execute(commandArgs);

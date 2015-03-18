@@ -1,8 +1,9 @@
 package com.linkedin.venice.kafka.producer;
 
-import com.linkedin.venice.config.GlobalConfiguration;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.message.KafkaValue;
+import com.linkedin.venice.utils.Props;
 import kafka.javaapi.producer.Producer;
 import kafka.producer.KeyedMessage;
 import kafka.producer.ProducerConfig;
@@ -18,21 +19,27 @@ public class KafkaProducer {
 
   private final Producer<KafkaKey, KafkaValue> producer;
 
-  public KafkaProducer() {
+  public KafkaProducer(Props props) {
 
     // TODO: figure out the actual configurations and startup procedures
-    Properties props = new Properties();
-    props.setProperty("metadata.broker.list", GlobalConfiguration.getKafkaBrokerUrl());
+
+    Properties properties = new Properties();
+
+    if (!props.containsKey("kafka.broker.url")) {
+      throw new VeniceException("Props key not found: kafka.broker.url");
+    } else {
+      properties.setProperty("metadata.broker.list", props.getString("kafka.broker.url"));
+    }
 
     // using custom serializer
-    props.setProperty("key.serializer.class", "com.linkedin.venice.message.KafkaKeySerializer");
-    props.setProperty("serializer.class", "com.linkedin.venice.message.KafkaValueSerializer");
+    properties.setProperty("key.serializer.class", "com.linkedin.venice.message.KafkaKeySerializer");
+    properties.setProperty("serializer.class", "com.linkedin.venice.message.KafkaValueSerializer");
 
     // using custom partitioner
-    props.setProperty("partitioner.class", "com.linkedin.venice.kafka.partitioner.KafkaPartitioner");
-    props.setProperty("request.required.acks", "1");
+    properties.setProperty("partitioner.class", "com.linkedin.venice.kafka.partitioner.KafkaPartitioner");
+    properties.setProperty("request.required.acks", "1");
 
-    ProducerConfig config = new ProducerConfig(props);
+    ProducerConfig config = new ProducerConfig(properties);
     producer = new Producer<>(config);
   }
 
