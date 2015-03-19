@@ -1,8 +1,12 @@
 package com.linkedin.venice.kafka;
 
 import com.linkedin.venice.config.VeniceStoreConfig;
+import com.linkedin.venice.kafka.partitioner.DefaultKafkaPartitioner;
+import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.message.KafkaValue;
 import com.linkedin.venice.message.OperationType;
+import com.linkedin.venice.serialization.KafkaKeySerializer;
+import com.linkedin.venice.serialization.KafkaValueSerializer;
 import com.linkedin.venice.server.VeniceConfigService;
 import com.linkedin.venice.server.VeniceServer;
 import com.linkedin.venice.store.AbstractStorageEngine;
@@ -31,15 +35,14 @@ import java.util.Properties;
 
 
 /**
- *  Class which tests the Kafka Consumption class.
- *
- *  Note: This class starts many embedded services:
- *   - Zookeeper
- *   - Kafka Server
- *   - Kafka Producer
- *   - Kafka Consumer
- *   - Venice Storage
- *
+ * Class which tests the Kafka Consumption class.
+ * <p/>
+ * Note: This class starts many embedded services:
+ * - Zookeeper
+ * - Kafka Server
+ * - Kafka Producer
+ * - Kafka Consumer
+ * - Venice Storage
  */
 
 public class TestKafkaConsumer {
@@ -56,8 +59,7 @@ public class TestKafkaConsumer {
   static final String TEST_KEY = "test_key";
 
   KafkaServerStartable kafkaServer;
-  // TODO: replace byte[] with KafkaKey: blocked on failed test
-  Producer<byte[], KafkaValue> kafkaProducer;
+  Producer<KafkaKey, KafkaValue> kafkaProducer;
 
   VeniceConfigService veniceConfigService;
   VeniceServer veniceServer;
@@ -66,7 +68,7 @@ public class TestKafkaConsumer {
 
   @BeforeClass
   private void init()
-      throws Exception {
+    throws Exception {
     clearLogs();
     try {
       File configFile = new File("src/test/resources/config"); //TODO this does not run from IDE because IDE expects
@@ -104,7 +106,7 @@ public class TestKafkaConsumer {
 
   /**
    * Empties out the remaining logs in the Kafka and ZooKeeper directories
-   * */
+   */
   private void clearLogs() {
     try {
       File kafkaLogs = new File(DEFAULT_KAFKA_LOG_DIR);
@@ -121,15 +123,15 @@ public class TestKafkaConsumer {
   }
 
   /**
-   *  Starts a local instance of ZooKeeper
-   * */
+   * Starts a local instance of ZooKeeper
+   */
   private void startZookeeper()
-      throws Exception {
+    throws Exception {
     File dir = new File(DEFAULT_ZK_LOG_DIR);
     ZooKeeperServer server = new ZooKeeperServer(dir, dir, TICKTIME);
     server.setMaxSessionTimeout(1000000);
     NIOServerCnxn.Factory standaloneServerFactory =
-        new NIOServerCnxn.Factory(new InetSocketAddress(LOCALHOST_ZK_BROKER_PORT), NUM_CONNECTIONS);
+      new NIOServerCnxn.Factory(new InetSocketAddress(LOCALHOST_ZK_BROKER_PORT), NUM_CONNECTIONS);
     standaloneServerFactory.startup(server);
     Thread.sleep(2000);
   }
@@ -153,8 +155,8 @@ public class TestKafkaConsumer {
   }
 
   /**
-   *  Starts a local instance of Kafka
-   * */
+   * Starts a local instance of Kafka
+   */
   private void startKafkaServer(Properties kafkaProps) {
     KafkaConfig config = new KafkaConfig(kafkaProps);
     // start kafka
@@ -163,53 +165,50 @@ public class TestKafkaConsumer {
   }
 
   /**
-   *  Starts a Kafka producer service.
-   *  Kakfa server must be active for the producer to be started properly.
-   * */
+   * Starts a Kafka producer service.
+   * Kakfa server must be active for the producer to be started properly.
+   */
   private void startKafkaProducer(String brokerUrl) {
     Properties props = new Properties();
     props.put("metadata.broker.list", brokerUrl);
-    // TODO: replace byte[] with KafkaKey: blocked on failed test
-    props.put("key.serializer.class", "kafka.serializer.DefaultEncoder");
-    //props.put("key.serializer.class", "com.linkedin.venice.serialization.KafkaKeySerializer");
-    props.put("serializer.class", "com.linkedin.venice.serialization.KafkaValueSerializer");
-    props.setProperty("partitioner.class", "com.linkedin.venice.kafka.consumer.KafkaPartitioner");
+    props.put("key.serializer.class", KafkaKeySerializer.class.getName());
+    props.put("serializer.class", KafkaValueSerializer.class.getName());
+    props.setProperty("partitioner.class", DefaultKafkaPartitioner.class.getName());
     ProducerConfig config = new ProducerConfig(props);
     kafkaProducer = new Producer<>(config);
   }
 
   /**
-   *  Set up the nodes for Venice, such that they can be written to
+   * Set up the nodes for Venice, such that they can be written to
+   *
    * @throws Exception
-   * */
+   */
   private void startVeniceStorage()
-      throws Exception {
+    throws Exception {
     veniceServer = new VeniceServer(veniceConfigService);
     veniceServer.start();
   }
 
   /**
-   *  Sends a Kafka message through a Kafka Producer.
-   *  Kafka Producer must be active
-   * */
+   * Sends a Kafka message through a Kafka Producer.
+   * Kafka Producer must be active
+   */
   public void sendKafkaMessage(String payload) {
     try {
-      // TODO: replace byte[] with KafkaKey: blocked on failed test
-      KeyedMessage<byte[], KafkaValue> data =
-          new KeyedMessage<>(storeName, TEST_KEY.getBytes(), new KafkaValue(OperationType.PUT, payload.getBytes()));
+      KeyedMessage<KafkaKey, KafkaValue> data =
+        new KeyedMessage<>(storeName, new KafkaKey(TEST_KEY.getBytes()), new KafkaValue(OperationType.PUT, payload.getBytes()));
       kafkaProducer.send(data);
     } catch (Exception e) {
-      logger.error(e.getMessage());
-      e.printStackTrace();
+      logger.error(e.getMessage(), e);
     }
   }
 
   /**
    * Safely shutdown the services started in this class
-   * */
+   */
   @AfterClass
   public void tearDown()
-      throws Exception {
+    throws Exception {
     if (veniceServer.isStarted()) {
       veniceServer.shutdown();
     }
@@ -218,8 +217,8 @@ public class TestKafkaConsumer {
   }
 
   /**
-   *  A basic test which send messages through Kafka, and consumes them
-   * */
+   * A basic test which send messages through Kafka, and consumes them
+   */
   @Test(enabled = true)
   public void testKafkaBasic() {
     AbstractStorageEngine node = veniceServer.getStoreRepository().getLocalStorageEngine(storeName);
@@ -230,7 +229,9 @@ public class TestKafkaConsumer {
 
       sendKafkaMessage("test_message");
       Thread.sleep(4000);
+      logger.info("DEBUG: get: " + node.get(0, TEST_KEY.getBytes()) + " put: " + "test_message".getBytes());
       Assert.assertEquals(node.get(0, TEST_KEY.getBytes()), "test_message".getBytes());
+
 
       sendKafkaMessage("test_message 2");
       Thread.sleep(1000);

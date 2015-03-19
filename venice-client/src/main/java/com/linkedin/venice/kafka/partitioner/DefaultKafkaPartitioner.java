@@ -1,6 +1,7 @@
 package com.linkedin.venice.kafka.partitioner;
 
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.utils.ByteUtils;
 import kafka.utils.VerifiableProperties;
 import org.apache.log4j.Logger;
@@ -28,10 +29,13 @@ public class DefaultKafkaPartitioner extends KafkaPartitioner {
   }
 
   // TODO: consider how to handle partitioning if the partition count changes after startup
+  // TODO: change the interface to accept KafkaKey instead of Object
   @Override
   public int partition(Object key, int numPartitions) {
 
-    byte[] keyBytes = (byte[]) key;
+    KafkaKey kafkaKey = (KafkaKey) key;
+    byte[] keyBytes = kafkaKey.getKey();
+
     try {
 
       MessageDigest md = MessageDigest.getInstance(hashAlgorithm);

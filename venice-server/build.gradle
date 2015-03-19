@@ -48,6 +48,7 @@ dependencies {
   compile 'log4j:log4j:1.2.17'
 
   // testng, because tests are important
+  testCompile project(':venice-client')
   testCompile 'org.testng:testng:6.1.1'
   testCompile 'commons-io:commons-io:2.4'
 

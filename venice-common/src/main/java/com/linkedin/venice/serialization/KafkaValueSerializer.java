@@ -116,7 +116,7 @@ public class KafkaValueSerializer implements Serializer<KafkaValue> {
 
     ByteArrayOutputStream bytesOut = null;
     ObjectOutputStream objectOutputStream = null;
-    byte[] bytes = new byte[0];
+    byte[] bytes = null;
 
     try {
 

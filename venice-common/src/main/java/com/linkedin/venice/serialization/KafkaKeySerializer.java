@@ -90,7 +90,7 @@ public class KafkaKeySerializer implements Serializer<KafkaKey> {
 
     ByteArrayOutputStream bytesOut = null;
     ObjectOutputStream objectOutputStream = null;
-    byte[] bytes = new byte[0];
+    byte[] bytes = null;
 
     try {
 

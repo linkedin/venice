@@ -2,6 +2,7 @@ package com.linkedin.venice.kafka;
 
 import com.linkedin.venice.kafka.partitioner.DefaultKafkaPartitioner;
 import com.linkedin.venice.kafka.partitioner.KafkaPartitioner;
+import com.linkedin.venice.message.KafkaKey;
 import junit.framework.Assert;
 import kafka.utils.VerifiableProperties;
 import org.testng.annotations.Test;
@@ -21,7 +22,8 @@ public class TestKafkaPartitioner {
 
     KafkaPartitioner kp = new DefaultKafkaPartitioner(new VerifiableProperties());
 
-    byte[] key =   "key1".getBytes();
+    byte[] keyBytes =   "key1".getBytes();
+    KafkaKey key = new KafkaKey(keyBytes);
 
     // Test 1
     int partition1 = kp.partition(key, 3);
@@ -29,25 +31,25 @@ public class TestKafkaPartitioner {
     Assert.assertEquals(partition1, partition2);
 
     // Test 2
-    key =  "    ".getBytes();
+    key = new KafkaKey("    ".getBytes());
     partition1 = kp.partition(key, 7);
     partition2 = kp.partition(key, 7);
     Assert.assertEquals(partition1, partition2);
 
     // Test 3
-    key = "00000".getBytes();
+    key = new KafkaKey("00000".getBytes());
     partition1 = kp.partition(key, 4);
     partition2 = kp.partition(key, 4);
     Assert.assertEquals(partition1, partition2);
 
     // Test 4
-    key = "0_0_0".getBytes();
+    key = new KafkaKey("0_0_0".getBytes());
     partition1 = kp.partition(key, 6);
     partition2 = kp.partition(key, 6);
     Assert.assertEquals(partition1, partition2);
 
     // Test 5
-    key = "a!b@c$d%e&f".getBytes();
+    key = new KafkaKey("a!b@c$d%e&f".getBytes());
     partition1 = kp.partition(key, 5);
     partition2 = kp.partition(key, 5);
     Assert.assertEquals(partition1, partition2);
