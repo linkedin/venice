@@ -18,7 +18,7 @@ public class VeniceWriter<K, V> {
   // log4j logger
   static final Logger logger = Logger.getLogger(VeniceWriter.class.getName());
 
-  private final KafkaProducer kp;
+  private final KafkaProducer producer;
 
   private Props props;
   private final String storeName;
@@ -37,7 +37,7 @@ public class VeniceWriter<K, V> {
       throw new VeniceException("Error while starting up configuration for VeniceWriter", e);
     }
 
-    kp = new KafkaProducer(props);
+    producer = new KafkaProducer(props);
   }
 
   /**
@@ -48,7 +48,7 @@ public class VeniceWriter<K, V> {
 
     KafkaKey kafkaKey = new KafkaKey(keySerializer.toBytes(key));
     KafkaValue kafkaValue = new KafkaValue(OperationType.DELETE);
-    kp.sendMessage(storeName, kafkaKey, kafkaValue);
+    producer.sendMessage(storeName, kafkaKey, kafkaValue);
   }
 
   /**
@@ -60,7 +60,7 @@ public class VeniceWriter<K, V> {
 
     KafkaKey kafkaKey = new KafkaKey(keySerializer.toBytes(key));
     KafkaValue kafkaValue = new KafkaValue(OperationType.PUT, valueSerializer.toBytes(value));
-    kp.sendMessage(storeName, kafkaKey, kafkaValue);
+    producer.sendMessage(storeName, kafkaKey, kafkaValue);
   }
 
   /**
@@ -71,5 +71,9 @@ public class VeniceWriter<K, V> {
   public void putPartial(K key, V value) {
 
     throw new UnsupportedOperationException("Partial put is not supported yet.");
+  }
+
+  public void close() {
+    producer.close();
   }
 }

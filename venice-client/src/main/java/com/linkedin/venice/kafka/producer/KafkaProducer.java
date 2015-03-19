@@ -1,8 +1,11 @@
 package com.linkedin.venice.kafka.producer;
 
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.kafka.partitioner.DefaultKafkaPartitioner;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.message.KafkaValue;
+import com.linkedin.venice.serialization.KafkaKeySerializer;
+import com.linkedin.venice.serialization.KafkaValueSerializer;
 import com.linkedin.venice.utils.Props;
 import kafka.javaapi.producer.Producer;
 import kafka.producer.KeyedMessage;
@@ -32,11 +35,11 @@ public class KafkaProducer {
     }
 
     // using custom serializer
-    properties.setProperty("key.serializer.class", "com.linkedin.venice.message.KafkaKeySerializer");
-    properties.setProperty("serializer.class", "com.linkedin.venice.message.KafkaValueSerializer");
+    properties.setProperty("key.serializer.class", KafkaKeySerializer.class.getName());
+    properties.setProperty("serializer.class", KafkaValueSerializer.class.getName());
 
     // using custom partitioner
-    properties.setProperty("partitioner.class", "com.linkedin.venice.kafka.partitioner.KafkaPartitioner");
+    properties.setProperty("partitioner.class", DefaultKafkaPartitioner.class.getName());
     properties.setProperty("request.required.acks", "1");
 
     ProducerConfig config = new ProducerConfig(properties);
@@ -52,5 +55,9 @@ public class KafkaProducer {
 
     KeyedMessage<KafkaKey, KafkaValue> kafkaMsg = new KeyedMessage<>(topic, key, msg);
     producer.send(kafkaMsg);
+  }
+
+  public void close() {
+    producer.close();
   }
 }

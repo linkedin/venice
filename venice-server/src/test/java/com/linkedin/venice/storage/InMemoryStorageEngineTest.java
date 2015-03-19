@@ -7,10 +7,10 @@ import com.linkedin.venice.server.PartitionNodeAssignmentRepository;
 import com.linkedin.venice.server.VeniceConfigService;
 import com.linkedin.venice.store.AbstractStorageEngine;
 import com.linkedin.venice.store.memory.InMemoryStorageEngine;
+import org.testng.annotations.Test;
+
 import java.io.File;
 import java.util.Map;
-import org.testng.Assert;
-import org.testng.annotations.Test;
 
 
 public class InMemoryStorageEngineTest extends AbstractStorageEngineTest {
@@ -37,13 +37,8 @@ public class InMemoryStorageEngineTest extends AbstractStorageEngineTest {
       throw new Exception("No stores defined for executing tests");
     }
 
-    String storeName = null;
-    VeniceStoreConfig storeConfig = null;
-    for(String store: storeConfigs.keySet()){
-      storeName = store;
-      storeConfig = storeConfigs.get(storeName);
-      break;
-    }
+    String storeName = "testng-in-memory";
+    VeniceStoreConfig storeConfig = storeConfigs.get(storeName);
 
     partitionNodeAssignmentScheme = new ModuloPartitionNodeAssignmentScheme();
     numOfPartitions = storeConfig.getNumKafkaPartitions();

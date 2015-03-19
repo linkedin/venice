@@ -298,7 +298,6 @@ public class SimpleKafkaConsumerTask implements Runnable {
     payload.get(payloadBytes);
 
     // De-serialize payload into Venice Message format
-    // TODO: replace byte[] with KafkaKey: blocked on failed test
     KafkaKey kafkaKey = kafkaKeySerializer.fromBytes(keyBytes);
     KafkaValue kafkaValue = kafkaValueSerializer.fromBytes(payloadBytes);
 
@@ -306,15 +305,14 @@ public class SimpleKafkaConsumerTask implements Runnable {
       throw new VeniceMessageException("Given null Venice Message.");
     }
 
-    // TODO: replace byte[] with KafkaKey: blocked on failed test
-    logger.info("SIMPLE-CONSUMER: keyBytes=" + kafkaKey.getKey() + " valueBytes=" + kafkaValue.getValue());
-    processVeniceMessage(kafkaKey.getKey(), kafkaValue, currentOffset);
-    //processVeniceMessage(keyBytes, kafkaValue, currentOffset);
+    processVeniceMessage(kafkaKey, kafkaValue, currentOffset);
   }
 
-  private void processVeniceMessage(byte[] key, KafkaValue kafkaValue, long currentOffset) {
+  private void processVeniceMessage(KafkaKey kafkaKey, KafkaValue kafkaValue, long currentOffset) {
 
     long startTimeNs = -1;
+
+    byte[] keyBytes = kafkaKey.getKey();
 
     switch (kafkaValue.getOperationType()) {
       case PUT:
@@ -322,11 +320,11 @@ public class SimpleKafkaConsumerTask implements Runnable {
           startTimeNs = System.nanoTime();
         }
         try {
-          storageEngine.put(partition, key, kafkaValue.getValue());
+          storageEngine.put(partition, keyBytes, kafkaValue.getValue());
 
           if (logger.isTraceEnabled()) {
             logger.trace(
-              "Completed PUT to Store: " + topic + " for key: " + ByteUtils.toHexString(key) + ", value: " + ByteUtils
+              "Completed PUT to Store: " + topic + " for key: " + ByteUtils.toHexString(keyBytes) + ", value: " + ByteUtils
                 .toHexString(kafkaValue.getValue()) + " in " + (System.nanoTime() - startTimeNs) + " ns at "
                 + System.currentTimeMillis());
           }
@@ -345,10 +343,10 @@ public class SimpleKafkaConsumerTask implements Runnable {
           startTimeNs = System.nanoTime();
         }
         try {
-          storageEngine.delete(partition, key);
+          storageEngine.delete(partition, keyBytes);
 
           if (logger.isTraceEnabled()) {
-            logger.trace("Completed DELETE to Store: " + topic + " for key: " + ByteUtils.toHexString(key) + " in " + (
+            logger.trace("Completed DELETE to Store: " + topic + " for key: " + ByteUtils.toHexString(keyBytes) + " in " + (
               System.nanoTime() - startTimeNs) + " ns at " + System.currentTimeMillis());
           }
           if (offsetManager != null) {

@@ -36,13 +36,8 @@ public class BdbStorageEngineTest extends AbstractStorageEngineTest {
       throw new Exception("No stores defined for executing tests");
     }
 
-    String storeName = null;
-    VeniceStoreConfig storeConfig = null;
-    for (String store : storeConfigs.keySet()) {
-      storeName = store;
-      storeConfig = storeConfigs.get(storeName);
-      break;
-    }
+    String storeName = "testng-bdb";
+    VeniceStoreConfig storeConfig = storeConfigs.get(storeName);
 
     partitionNodeAssignmentScheme = new ModuloPartitionNodeAssignmentScheme();
     numOfPartitions = storeConfig.getNumKafkaPartitions();

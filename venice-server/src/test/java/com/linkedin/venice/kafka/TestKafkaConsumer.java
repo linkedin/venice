@@ -1,21 +1,16 @@
 package com.linkedin.venice.kafka;
 
+import com.linkedin.venice.client.VeniceWriter;
 import com.linkedin.venice.config.VeniceStoreConfig;
-import com.linkedin.venice.kafka.partitioner.DefaultKafkaPartitioner;
-import com.linkedin.venice.message.KafkaKey;
-import com.linkedin.venice.message.KafkaValue;
-import com.linkedin.venice.message.OperationType;
-import com.linkedin.venice.serialization.KafkaKeySerializer;
-import com.linkedin.venice.serialization.KafkaValueSerializer;
+import com.linkedin.venice.serialization.StringSerializer;
 import com.linkedin.venice.server.VeniceConfigService;
 import com.linkedin.venice.server.VeniceServer;
 import com.linkedin.venice.store.AbstractStorageEngine;
+import com.linkedin.venice.utils.Props;
 import kafka.admin.AdminUtils;
-import kafka.javaapi.producer.Producer;
-import kafka.producer.KeyedMessage;
-import kafka.producer.ProducerConfig;
 import kafka.server.KafkaConfig;
 import kafka.server.KafkaServerStartable;
+import kafka.utils.VerifiableProperties;
 import org.I0Itec.zkclient.ZkClient;
 import org.apache.commons.io.FileUtils;
 import org.apache.log4j.Logger;
@@ -59,7 +54,7 @@ public class TestKafkaConsumer {
   static final String TEST_KEY = "test_key";
 
   KafkaServerStartable kafkaServer;
-  Producer<KafkaKey, KafkaValue> kafkaProducer;
+  VeniceWriter<String, String> writer;
 
   VeniceConfigService veniceConfigService;
   VeniceServer veniceServer;
@@ -79,11 +74,9 @@ public class TestKafkaConsumer {
       if (storeConfigs.size() < 1) {
         throw new Exception("No stores defined for executing tests");
       }
-      for (String store : storeConfigs.keySet()) {
-        storeName = store;
-        storeConfig = storeConfigs.get(storeName);
-        break;
-      }
+
+      storeName = "testng-in-memory";
+      storeConfig = storeConfigs.get(storeName);
 
       startZookeeper();
       Thread.sleep(2000);
@@ -169,13 +162,11 @@ public class TestKafkaConsumer {
    * Kakfa server must be active for the producer to be started properly.
    */
   private void startKafkaProducer(String brokerUrl) {
-    Properties props = new Properties();
-    props.put("metadata.broker.list", brokerUrl);
-    props.put("key.serializer.class", KafkaKeySerializer.class.getName());
-    props.put("serializer.class", KafkaValueSerializer.class.getName());
-    props.setProperty("partitioner.class", DefaultKafkaPartitioner.class.getName());
-    ProducerConfig config = new ProducerConfig(props);
-    kafkaProducer = new Producer<>(config);
+    Props props = new Props();
+    props.put("kafka.broker.url", brokerUrl);
+
+    writer = new VeniceWriter<>(props, storeName, new StringSerializer(new VerifiableProperties()),
+      new StringSerializer(new VerifiableProperties()));
   }
 
   /**
@@ -195,9 +186,7 @@ public class TestKafkaConsumer {
    */
   public void sendKafkaMessage(String payload) {
     try {
-      KeyedMessage<KafkaKey, KafkaValue> data =
-        new KeyedMessage<>(storeName, new KafkaKey(TEST_KEY.getBytes()), new KafkaValue(OperationType.PUT, payload.getBytes()));
-      kafkaProducer.send(data);
+      writer.put(TEST_KEY, payload);
     } catch (Exception e) {
       logger.error(e.getMessage(), e);
     }
@@ -212,7 +201,7 @@ public class TestKafkaConsumer {
     if (veniceServer.isStarted()) {
       veniceServer.shutdown();
     }
-    kafkaProducer.close();
+    writer.close();
     kafkaServer.shutdown();
   }
 
@@ -231,7 +220,6 @@ public class TestKafkaConsumer {
       Thread.sleep(4000);
       logger.info("DEBUG: get: " + node.get(0, TEST_KEY.getBytes()) + " put: " + "test_message".getBytes());
       Assert.assertEquals(node.get(0, TEST_KEY.getBytes()), "test_message".getBytes());
-
 
       sendKafkaMessage("test_message 2");
       Thread.sleep(1000);
