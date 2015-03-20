@@ -218,7 +218,6 @@ public class TestKafkaConsumer {
 
       sendKafkaMessage("test_message");
       Thread.sleep(4000);
-      logger.info("DEBUG: get: " + node.get(0, TEST_KEY.getBytes()) + " put: " + "test_message".getBytes());
       Assert.assertEquals(node.get(0, TEST_KEY.getBytes()), "test_message".getBytes());
 
       sendKafkaMessage("test_message 2");

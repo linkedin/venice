@@ -40,7 +40,7 @@ public class KafkaProducer {
 
     // using custom partitioner
     properties.setProperty("partitioner.class", DefaultKafkaPartitioner.class.getName());
-    properties.setProperty("request.required.acks", "1");
+    properties.setProperty("request.required.acks", "-1");
 
     ProducerConfig config = new ProducerConfig(properties);
     producer = new Producer<>(config);
@@ -48,12 +48,13 @@ public class KafkaProducer {
 
   /**
    * Sends a message to the Kafka Producer. If everything is set up correctly, it will show up in Kafka log.
+   * @param topic - The topic to be sent to.
    * @param key - The key of the message to be sent.
-   * @param msg - The VeniceMessage, which acts as the Kafka payload.
+   * @param value - The KafkaValue, which acts as the Kafka payload.
    * */
-  public void sendMessage(String topic, KafkaKey key, KafkaValue msg) {
+  public void sendMessage(String topic, KafkaKey key, KafkaValue value) {
 
-    KeyedMessage<KafkaKey, KafkaValue> kafkaMsg = new KeyedMessage<>(topic, key, msg);
+    KeyedMessage<KafkaKey, KafkaValue> kafkaMsg = new KeyedMessage<>(topic, key, value);
     producer.send(kafkaMsg);
   }
 

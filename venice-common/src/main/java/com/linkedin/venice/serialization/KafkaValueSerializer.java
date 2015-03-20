@@ -63,9 +63,6 @@ public class KafkaValueSerializer implements Serializer<KafkaValue> {
       /* read operationType */
       byte opTypeByte = objectInputStream.readByte();
       operationType = OperationType.fromByte(opTypeByte);
-      if (operationType.equals(OperationType.ERROR)) {
-        throw new VeniceMessageException("Invalid operation type found: " + opTypeByte);
-      }
 
       /* read schemaVersionId - TODO: currently unused */
       schemaVersionId = objectInputStream.readShort();
