@@ -43,7 +43,7 @@ public class KafkaProducer {
     properties.setProperty("request.required.acks", "-1");
 
     ProducerConfig config = new ProducerConfig(properties);
-    producer = new Producer<>(config);
+    producer = new Producer<KafkaKey, KafkaValue>(config);
   }
 
   /**
@@ -54,7 +54,7 @@ public class KafkaProducer {
    * */
   public void sendMessage(String topic, KafkaKey key, KafkaValue value) {
 
-    KeyedMessage<KafkaKey, KafkaValue> kafkaMsg = new KeyedMessage<>(topic, key, value);
+    KeyedMessage<KafkaKey, KafkaValue> kafkaMsg = new KeyedMessage<KafkaKey, KafkaValue>(topic, key, value);
     producer.send(kafkaMsg);
   }
 

@@ -37,4 +37,9 @@ public class CloseableStoreKeysIterator implements Iterator<byte[]>, Closeable {
     }
     return result.getKey();
   }
+
+  @Override
+  public void remove() {
+    //To change body of implemented methods use File | Settings | File Templates.
+  }
 }

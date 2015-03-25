@@ -68,7 +68,7 @@ public class SimpleKafkaConsumerTask implements Runnable {
 
     this.kafkaKeySerializer = new KafkaKeySerializer(new VerifiableProperties());
     this.kafkaValueSerializer = new KafkaValueSerializer(new VerifiableProperties());
-    this.replicaBrokers = new ArrayList<>();
+    this.replicaBrokers = new ArrayList<String>();
     this.topic = storeConfig.getStoreName();
     this.partition = partition;
     this.offsetManager = offsetManager;

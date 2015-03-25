@@ -91,10 +91,11 @@ public class VeniceConfigService {
   public static final String ENABLE_KAFKA_CONSUMER_OFFSET_MANAGEMENT = "enable.kafka.consumers.offset.management";
   public static final String OFFSET_MANAGER_TYPE = "offset.manager.type";
   public static final String OFFSET_DATA_BASE_PATH = "offsets.data.base.path";
-  public static final String OFFSET_MANAGER_FLUSH_INTERVAL_MS="offset.manager.flush.interval.ms";
+  public static final String OFFSET_MANAGER_FLUSH_INTERVAL_MS = "offset.manager.flush.interval.ms";
   public static final Set<String> clusterSpecificProperties = new HashSet<String>(Arrays
       .asList(CLUSTER_NAME, STORAGE_NODE_COUNT, PARTITION_NODE_ASSIGNMENT_SCHEME,
-          ENABLE_KAFKA_CONSUMER_OFFSET_MANAGEMENT, OFFSET_MANAGER_TYPE, OFFSET_DATA_BASE_PATH, OFFSET_MANAGER_FLUSH_INTERVAL_MS));
+          ENABLE_KAFKA_CONSUMER_OFFSET_MANAGEMENT, OFFSET_MANAGER_TYPE, OFFSET_DATA_BASE_PATH,
+          OFFSET_MANAGER_FLUSH_INTERVAL_MS));
 
   // server specific properties
   public static final String NODE_ID = "node.id";
@@ -256,7 +257,9 @@ public class VeniceConfigService {
     Props storeProperties = clusterAndServerProperties.mergeWithProperties(storeProps);
 
     //safe to create the VeniceStoreConfig instance
-    storeToConfigsMap.putIfAbsent(storeProps.getString(STORE_NAME), new VeniceStoreConfig(storeProperties));
+    if (!storeToConfigsMap.containsKey(storeProps.getString(STORE_NAME))) {
+      storeToConfigsMap.put(storeProps.getString(STORE_NAME), new VeniceStoreConfig(storeProperties));
+    }
   }
 
   /**

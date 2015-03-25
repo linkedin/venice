@@ -38,4 +38,8 @@ public class CloseablePartitionKeysIterator implements Iterator<byte[]>, Closeab
     }
     return result.getKey();
   }
+
+  @Override
+  public void remove() {
+  }
 }

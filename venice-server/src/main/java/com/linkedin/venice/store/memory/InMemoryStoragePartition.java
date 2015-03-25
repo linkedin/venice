@@ -99,5 +99,10 @@ public class InMemoryStoragePartition extends AbstractStoragePartition {
         return false;
       }
     }
+
+    @Override
+    public void remove() {
+      //To change body of implemented methods use File | Settings | File Templates.
+    }
   }
 }

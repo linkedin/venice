@@ -99,4 +99,9 @@ public class CloseableStoreEntriesIterator implements Iterator<Map.Entry<byte[],
     currentEntry = null;
     return result;
   }
+
+  @Override
+  public void remove() {
+    //To change body of implemented methods use File | Settings | File Templates.
+  }
 }

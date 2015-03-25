@@ -165,7 +165,7 @@ public class TestKafkaConsumer {
     Props props = new Props();
     props.put("kafka.broker.url", brokerUrl);
 
-    writer = new VeniceWriter<>(props, storeName, new StringSerializer(new VerifiableProperties()),
+    writer = new VeniceWriter<String, String>(props, storeName, new StringSerializer(new VerifiableProperties()),
       new StringSerializer(new VerifiableProperties()));
   }
 
