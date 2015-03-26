@@ -12,6 +12,7 @@ import com.sleepycat.je.EnvironmentConfig;
 import com.sleepycat.je.LockMode;
 import com.sleepycat.je.OperationStatus;
 import java.io.File;
+import java.util.HashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.apache.log4j.Logger;
 
@@ -42,6 +43,10 @@ public class BdbOffsetManager extends OffsetManager {
   private final AtomicBoolean isOpen;
   private final Environment offsetsBdbEnvironment;
   private final Database offsetsBdbDatabase;
+
+  // Need to remove this later - start
+  private final HashMap<String, Integer> consumptionStats;
+  // Need to remove this later - end
 
   public BdbOffsetManager(VeniceClusterConfig veniceClusterConfig) {
     super(veniceClusterConfig);
@@ -74,6 +79,10 @@ public class BdbOffsetManager extends OffsetManager {
     logger.info("Creating BDB environment for storing offsets: ");
     this.offsetsBdbDatabase = offsetsBdbEnvironment.openDatabase(null, OFFSETS_STORE_NAME, dbConfig);
     this.isOpen = new AtomicBoolean(true);
+
+    // Need to remove this block later - start
+    consumptionStats = new HashMap<String, Integer>();
+    // Need to remove this block later - end
   }
 
   @Override
@@ -108,6 +117,21 @@ public class BdbOffsetManager extends OffsetManager {
         logger.error(errorStr);
         throw new VeniceException(errorStr);
       }
+
+      // Need to remove this block later - start
+      if (!consumptionStats.containsKey(keyStr)) {
+        consumptionStats.put(keyStr, 1);
+        logger.info(keyStr + ":" + offset + ":" + timeStampInMs);
+      } else {
+        int val = consumptionStats.get(keyStr);
+        if (val + 1 == 50) {
+          logger.info(keyStr + ":" + offset + ":" + timeStampInMs);
+          consumptionStats.put(keyStr, 0);
+        } else {
+          consumptionStats.put(keyStr, val + 1);
+        }
+      }
+      // Need to remove this block later - end
     } catch (DatabaseException e) {
       logger.error("Error in put for BDB database " + OFFSETS_STORE_NAME, e);
       throw new VeniceException(e);
