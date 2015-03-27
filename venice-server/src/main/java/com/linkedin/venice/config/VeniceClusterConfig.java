@@ -16,70 +16,95 @@ import java.util.Map;
  */
 public class VeniceClusterConfig {
 
-  public static final Map<String, String> partitionNodeAssignmentSchemeClassMap =
-      ImmutableMap.of("modulo", ModuloPartitionNodeAssignmentScheme.class.getName());
+    public static final Map<String, String> partitionNodeAssignmentSchemeClassMap =
+            ImmutableMap.of("modulo", ModuloPartitionNodeAssignmentScheme.class.getName());
 
-  private String clusterName;
-  private int storageNodeCount;
-  protected String dataBasePath;
-  private String partitionNodeAssignmentSchemeName;
-  private boolean enableKafkaConsumersOffsetManagement;
-  private String offsetManagerType = null;
-  private String offsetDatabasePath = null;
-  private long offsetManagerFlushIntervalMs;
+    private String clusterName;
+    private int storageNodeCount;
+    protected String dataBasePath;
+    private String partitionNodeAssignmentSchemeName;
+    private boolean enableKafkaConsumersOffsetManagement;
+    private String offsetManagerType = null;
+    private String offsetDatabasePath = null;
+    private long offsetManagerFlushIntervalMs;
 
-  public VeniceClusterConfig(Props clusterProperties)
-      throws ConfigurationException {
-    checkProperties(clusterProperties);
-  }
+    private boolean enableConsumptionAcksForAzkabanJobs;
 
-  protected void checkProperties(Props clusterProps)
-      throws ConfigurationException {
-    clusterName = clusterProps.getString(VeniceConfigService.CLUSTER_NAME);
-    storageNodeCount = clusterProps.getInt(VeniceConfigService.STORAGE_NODE_COUNT, 1);     // Default 1
-    partitionNodeAssignmentSchemeName = clusterProps
-        .getString(VeniceConfigService.PARTITION_NODE_ASSIGNMENT_SCHEME, "modulo"); // Default "modulo" scheme
-    if (!partitionNodeAssignmentSchemeClassMap.containsKey(partitionNodeAssignmentSchemeName)) {
-      throw new ConfigurationException(
-          "unknown partition node assignment scheme: " + partitionNodeAssignmentSchemeName);
+    private String kafkaConsumptionAcksBrokerUrl;
+
+    public VeniceClusterConfig(Props clusterProperties)
+            throws ConfigurationException {
+        checkProperties(clusterProperties);
     }
-    enableKafkaConsumersOffsetManagement =
-        clusterProps.getBoolean(VeniceConfigService.ENABLE_KAFKA_CONSUMER_OFFSET_MANAGEMENT, false);
-    if (enableKafkaConsumersOffsetManagement) {
-      offsetManagerType = clusterProps.getString(VeniceConfigService.OFFSET_MANAGER_TYPE, "bdb"); // Default "bdb"
-      offsetDatabasePath = clusterProps.getString(VeniceConfigService.OFFSET_DATA_BASE_PATH,
-          System.getProperty("java.io.tmpdir") + File.separator + OffsetManager.OFFSETS_STORE_NAME);
-      offsetManagerFlushIntervalMs = clusterProps.getLong(VeniceConfigService.OFFSET_MANAGER_FLUSH_INTERVAL_MS, 10000); // 10 sec default
+
+    protected void checkProperties(Props clusterProps)
+            throws ConfigurationException {
+        clusterName = clusterProps.getString(VeniceConfigService.CLUSTER_NAME);
+        storageNodeCount = clusterProps.getInt(VeniceConfigService.STORAGE_NODE_COUNT, 1);     // Default 1
+        partitionNodeAssignmentSchemeName = clusterProps
+                .getString(VeniceConfigService.PARTITION_NODE_ASSIGNMENT_SCHEME, "modulo"); // Default "modulo" scheme
+        if (!partitionNodeAssignmentSchemeClassMap.containsKey(partitionNodeAssignmentSchemeName)) {
+            throw new ConfigurationException(
+                    "unknown partition node assignment scheme: " + partitionNodeAssignmentSchemeName);
+        }
+        enableKafkaConsumersOffsetManagement =
+                clusterProps.getBoolean(VeniceConfigService.ENABLE_KAFKA_CONSUMER_OFFSET_MANAGEMENT, false);
+        if (enableKafkaConsumersOffsetManagement) {
+            offsetManagerType = clusterProps.getString(VeniceConfigService.OFFSET_MANAGER_TYPE, "bdb"); // Default "bdb"
+            offsetDatabasePath = clusterProps.getString(VeniceConfigService.OFFSET_DATA_BASE_PATH,
+                    System.getProperty("java.io.tmpdir") + File.separator + OffsetManager.OFFSETS_STORE_NAME);
+            offsetManagerFlushIntervalMs = clusterProps.getLong(VeniceConfigService.OFFSET_MANAGER_FLUSH_INTERVAL_MS, 10000); // 10 sec default
+        }
+        enableConsumptionAcksForAzkabanJobs = clusterProps.getBoolean(VeniceConfigService.ENABLE_CONSUMPTION_ACKS_FOR_AZKABAN_JOBS, false);
+        if(enableConsumptionAcksForAzkabanJobs){
+            kafkaConsumptionAcksBrokerUrl = clusterProps.getString(VeniceConfigService.KAFKA_CONSUMPTION_ACKS_BROKER_URL);
+            if(kafkaConsumptionAcksBrokerUrl.isEmpty()){
+                throw new ConfigurationException("The kafka broker url cannot be empty when consumption acknowledgement is enabled!");
+            }
+        }
     }
-  }
 
-  public String getClusterName() {
-    return clusterName;
-  }
+    public String getClusterName() {
+        return clusterName;
+    }
 
-  public int getStorageNodeCount() {
-    return storageNodeCount;
-  }
+    public int getStorageNodeCount() {
+        return storageNodeCount;
+    }
 
-  public String getPartitionNodeAssignmentSchemeClassName() {
-    return partitionNodeAssignmentSchemeClassMap.get(partitionNodeAssignmentSchemeName);
-  }
+    public String getPartitionNodeAssignmentSchemeClassName() {
+        return partitionNodeAssignmentSchemeClassMap.get(partitionNodeAssignmentSchemeName);
+    }
 
-  public boolean isEnableKafkaConsumersOffsetManagement() {
-    return enableKafkaConsumersOffsetManagement;
-  }
+    public boolean isEnableKafkaConsumersOffsetManagement() {
+        return enableKafkaConsumersOffsetManagement;
+    }
 
-  public String getOffsetManagerType() {
-    return offsetManagerType;
-  }
+    public String getOffsetManagerType() {
+        return offsetManagerType;
+    }
 
-  public String getOffsetDatabasePath() {
-    return offsetDatabasePath;
-  }
+    public String getOffsetDatabasePath() {
+        return offsetDatabasePath;
+    }
 
-  public long getOffsetManagerFlushIntervalMs() {
-    return offsetManagerFlushIntervalMs;
-  }
+    public long getOffsetManagerFlushIntervalMs() {
+        return offsetManagerFlushIntervalMs;
+    }
 
+    public boolean isEnableConsumptionAcksForAzkabanJobs() {
+        return enableConsumptionAcksForAzkabanJobs;
+    }
 
+    public void setEnableConsumptionAcksForAzkabanJobs(boolean enableConsumptionAcksForAzkabanJobs) {
+        this.enableConsumptionAcksForAzkabanJobs = enableConsumptionAcksForAzkabanJobs;
+    }
+
+    public String getKafkaConsumptionAcksBrokerUrl() {
+        return kafkaConsumptionAcksBrokerUrl;
+    }
+
+    public void setKafkaConsumptionAcksBrokerUrl(String kafkaConsumptionAcksBrokerUrl) {
+        this.kafkaConsumptionAcksBrokerUrl = kafkaConsumptionAcksBrokerUrl;
+    }
 }

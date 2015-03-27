@@ -15,65 +15,69 @@ import org.apache.log4j.Logger;
  */
 public class VeniceWriter<K, V> {
 
-  // log4j logger
-  static final Logger logger = Logger.getLogger(VeniceWriter.class.getName());
+    // log4j logger
+    static final Logger logger = Logger.getLogger(VeniceWriter.class.getName());
 
-  private final KafkaProducer producer;
+    protected final KafkaProducer producer;
 
-  private Props props;
-  private final String storeName;
-  private final Serializer<K> keySerializer;
-  private final Serializer<V> valueSerializer;
+    protected Props props;
+    protected final String storeName;
+    protected final Serializer<K> keySerializer;
+    protected final Serializer<V> valueSerializer;
 
-  public VeniceWriter(Props props, String storeName, Serializer<K> keySerializer, Serializer<V> valueSerializer) {
 
-    try {
-      this.props = props;
-      this.storeName = storeName;
-      this.keySerializer = keySerializer;
-      this.valueSerializer = valueSerializer;
-    } catch (Exception e) {
-      logger.error("Error while starting up configuration for VeniceWriter.", e);
-      throw new VeniceException("Error while starting up configuration for VeniceWriter", e);
+    public VeniceWriter(Props props, String storeName, Serializer<K> keySerializer, Serializer<V> valueSerializer) {
+
+        try {
+            this.props = props;
+            this.storeName = storeName;
+            this.keySerializer = keySerializer;
+            this.valueSerializer = valueSerializer;
+        } catch (Exception e) {
+            logger.error("Error while starting up configuration for VeniceWriter.", e);
+            throw new VeniceException("Error while starting up configuration for VeniceWriter", e);
+        }
+
+        producer = new KafkaProducer(props);
     }
 
-    producer = new KafkaProducer(props);
-  }
+    /**
+     * Execute a standard "delete" on the key.
+     *
+     * @param key - The key to delete in storage.
+     */
+    public void delete(K key) {
+        // Ensure the Operation type for KafkaKey is WRITE. And the actual Operation type DELETE is used in KafkaValue
+        KafkaKey kafkaKey = new KafkaKey(OperationType.WRITE, keySerializer.toBytes(key));
+        KafkaValue kafkaValue = new KafkaValue(OperationType.DELETE);
+        producer.sendMessage(storeName, kafkaKey, kafkaValue);
+    }
 
-  /**
-   * Execute a standard "delete" on the key.
-   * @param key - The key to delete in storage.
-   * */
-  public void delete(K key) {
+    /**
+     * Execute a standard "put" on the key.
+     *
+     * @param key   - The key to put in storage.
+     * @param value - The value to be associated with the given key
+     */
+    public void put(K key, V value) {
+        // Ensure the Operation type for KafkaKey is WRITE. And the actual Operation type PUT is used in KafkaValue
+        KafkaKey kafkaKey = new KafkaKey(OperationType.WRITE, keySerializer.toBytes(key));
+        KafkaValue kafkaValue = new KafkaValue(OperationType.PUT, valueSerializer.toBytes(value));
+        producer.sendMessage(storeName, kafkaKey, kafkaValue);
+    }
 
-    KafkaKey kafkaKey = new KafkaKey(keySerializer.toBytes(key));
-    KafkaValue kafkaValue = new KafkaValue(OperationType.DELETE);
-    producer.sendMessage(storeName, kafkaKey, kafkaValue);
-  }
+    /**
+     * Execute a standard "partial put" on the key.
+     *
+     * @param key   - The key to put in storage.
+     * @param value - The value to be associated with the given key
+     */
+    public void putPartial(K key, V value) {
 
-  /**
-   * Execute a standard "put" on the key.
-   * @param key - The key to put in storage.
-   * @param value - The value to be associated with the given key
-   * */
-  public void put(K key, V value) {
+        throw new UnsupportedOperationException("Partial put is not supported yet.");
+    }
 
-    KafkaKey kafkaKey = new KafkaKey(keySerializer.toBytes(key));
-    KafkaValue kafkaValue = new KafkaValue(OperationType.PUT, valueSerializer.toBytes(value));
-    producer.sendMessage(storeName, kafkaKey, kafkaValue);
-  }
-
-  /**
-   * Execute a standard "partial put" on the key.
-   * @param key - The key to put in storage.
-   * @param value - The value to be associated with the given key
-   * */
-  public void putPartial(K key, V value) {
-
-    throw new UnsupportedOperationException("Partial put is not supported yet.");
-  }
-
-  public void close() {
-    producer.close();
-  }
+    public void close() {
+        producer.close();
+    }
 }

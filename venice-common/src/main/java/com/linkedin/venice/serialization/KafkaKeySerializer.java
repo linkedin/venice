@@ -1,7 +1,9 @@
 package com.linkedin.venice.serialization;
 
 import com.linkedin.venice.exceptions.VeniceMessageException;
+import com.linkedin.venice.message.ControlFlagKafkaKey;
 import com.linkedin.venice.message.KafkaKey;
+import com.linkedin.venice.message.OperationType;
 import kafka.utils.VerifiableProperties;
 import org.apache.log4j.Logger;
 
@@ -13,7 +15,7 @@ import java.io.*;
  * Used by Kafka to convert to/from byte arrays.
  *
  * KafkaKey Schema (in order)
- * - Magic Byte
+ * - Operation Type - Either WRITE, PARTIAL_WRITE, BEGIN_OF_PUSH, END_OF_PUSH
  * - Payload (Key Object)
  *
  */
@@ -33,7 +35,9 @@ public class KafkaKeySerializer implements Serializer<KafkaKey> {
    * */
   public KafkaKey fromBytes(byte[] bytes) {
 
-    byte magicByte;
+    byte opTypeByte;
+    OperationType opType = null;
+    int jobId = -1;
     byte[] key = null;
 
     ByteArrayInputStream bytesIn = null;
@@ -44,11 +48,13 @@ public class KafkaKeySerializer implements Serializer<KafkaKey> {
       bytesIn = new ByteArrayInputStream(bytes);
       objectInputStream = new ObjectInputStream(bytesIn);
 
-      /* read magicByte and validate Venice message */
-      magicByte = objectInputStream.readByte();
-      if (magicByte != KafkaKey.DEFAULT_MAGIC_BYTE) {
-        // This means a non Venice kafka message was produced.
-        throw new VeniceMessageException("Illegal magic byte given: " + magicByte);
+      /* read opTypeByte and validate Venice message */
+      opTypeByte = objectInputStream.readByte();
+      opType = OperationType.getOperationType(opTypeByte);
+
+      /* read job Id if optype is BEGIN_OF_PUSH or END_OF_PUSH */
+      if(opType == OperationType.BEGIN_OF_PUSH || opType == OperationType.END_OF_PUSH){
+        jobId = objectInputStream.readInt();
       }
 
       /* read payload, one byte at a time */
@@ -58,9 +64,13 @@ public class KafkaKeySerializer implements Serializer<KafkaKey> {
         key[i] = objectInputStream.readByte();
       }
     } catch (VeniceMessageException e) {
-      logger.error("Error occurred during deserialization of KafkaKey", e);
+      String errorMessage = "Error occurred during deserialization of KafkaKey";
+      logger.error(errorMessage, e);
+      throw e;
+
     } catch (IOException e) {
       logger.error("IOException while converting byte[] to KafkaKey: ", e);
+      // TODO what should be done here?
     } finally {
 
       // safely close the input/output streams
@@ -75,9 +85,11 @@ public class KafkaKeySerializer implements Serializer<KafkaKey> {
       } catch (IOException e) {
         logger.error("IOException while closing the input stream", e);
       }
-
-      return new KafkaKey(key);
     }
+    if(opType == OperationType.BEGIN_OF_PUSH || opType == OperationType.END_OF_PUSH){
+        return new ControlFlagKafkaKey(opType, key, jobId);
+    }
+    return new KafkaKey(opType, key);
   }
 
   @Override
@@ -97,8 +109,19 @@ public class KafkaKeySerializer implements Serializer<KafkaKey> {
       bytesOut = new ByteArrayOutputStream();
       objectOutputStream = new ObjectOutputStream(bytesOut);
 
-      /* write Magic byte */
-      objectOutputStream.writeByte(kafkaKey.getMagicByte());
+      OperationType opType = kafkaKey.getOperationType();
+      ControlFlagKafkaKey controlFlagKafkaKey = null;
+      if(opType == OperationType.BEGIN_OF_PUSH || opType == OperationType.END_OF_PUSH){
+        controlFlagKafkaKey = (ControlFlagKafkaKey) kafkaKey;
+      }
+
+      /* write Operation Type byte */
+      objectOutputStream.writeByte(OperationType.getByteCode(opType));
+
+      /* Write jobID if its a control message */
+      if(opType == OperationType.END_OF_PUSH || opType == OperationType.END_OF_PUSH){
+          objectOutputStream.writeInt(controlFlagKafkaKey.getJobId());
+      }
 
       /* write payload */
       objectOutputStream.write(kafkaKey.getKey());
@@ -107,6 +130,7 @@ public class KafkaKeySerializer implements Serializer<KafkaKey> {
       bytes = bytesOut.toByteArray();
     } catch (IOException e) {
       logger.error("Could not serialize KafkaKey: " + kafkaKey.getKey());
+        // TODO what should be done here?
     } finally {
 
       // safely close the input/output streams

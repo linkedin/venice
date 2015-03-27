@@ -28,13 +28,9 @@ public class DefaultKafkaPartitioner extends KafkaPartitioner {
     hashAlgorithm = props.getString(HASH_ALGORITHM_KEY, DEFAULT_HASH_ALGORITHM);
   }
 
-  // TODO: consider how to handle partitioning if the partition count changes after startup
-  // TODO: change the interface to accept KafkaKey instead of Object
   @Override
-  public int partition(Object key, int numPartitions) {
-
-    KafkaKey kafkaKey = (KafkaKey) key;
-    byte[] keyBytes = kafkaKey.getKey();
+  public int getPartitionId(KafkaKey key, int numPartitions) {
+    byte[] keyBytes = key.getKey();
 
     try {
 

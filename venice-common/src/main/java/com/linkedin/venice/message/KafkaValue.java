@@ -7,71 +7,79 @@ import com.linkedin.venice.exceptions.VeniceMessageException;
  */
 public class KafkaValue {
 
-  // TODO: eliminate magic numbers when finished debugging
-  public static final byte DEFAULT_MAGIC_BYTE = 22;
-  public static final byte DEFAULT_SCHEMA_ID = 17;
-  public static final byte ZONE_ID = 0; //TODO hard coded for now. Later need to get rid of this.
+    // TODO: eliminate magic numbers when finished debugging
+    public static final byte DEFAULT_MAGIC_BYTE = 22;
+    public static final byte DEFAULT_SCHEMA_ID = 17;
+    public static final byte ZONE_ID = 0; //TODO hard coded for now. Later need to get rid of this.
 
-  private byte magicByte;
-  private short schemaVersionId;
+    private byte magicByte;
+    private short schemaVersionId;
 
-  private OperationType operationType;
-  private long timestamp;
-  private byte zoneId;
-  private byte[] value;
+    private OperationType operationType;
+    private long timestamp;
+    private byte zoneId;
+    private byte[] value;
 
-  // A message without a payload (used for non put operations)
-  public KafkaValue(OperationType type) {
-    this.magicByte = DEFAULT_MAGIC_BYTE;
-    this.schemaVersionId = DEFAULT_SCHEMA_ID;
-    if (type == OperationType.PUT || type == OperationType.PARTIAL_PUT) {
-      throw new VeniceMessageException("Operation type " + type + " is invalid for Venice message without payload.");
+    // A message without a payload (used for non put operations)
+    public KafkaValue(OperationType type) {
+        validateOperationType(type);
+        this.magicByte = DEFAULT_MAGIC_BYTE;
+        this.schemaVersionId = DEFAULT_SCHEMA_ID;
+        if (type == OperationType.PUT || type == OperationType.PARTIAL_WRITE) {
+            throw new VeniceMessageException("Operation type " + type + " is invalid for Venice message without payload.");
+        }
+        this.operationType = type;
+        this.timestamp = System.currentTimeMillis();
+        this.zoneId = ZONE_ID;
+        this.value = new byte[0];
     }
-    this.operationType = type;
-    this.timestamp = System.currentTimeMillis();
-    this.zoneId = ZONE_ID;
-    this.value = new byte[0];
-  }
 
-  public KafkaValue(OperationType type, byte[] value, short schemaId) {
-    this.magicByte = DEFAULT_MAGIC_BYTE;
-    this.schemaVersionId = schemaId;
-    this.operationType = type;
-    this.timestamp = System.currentTimeMillis();
-    this.zoneId = ZONE_ID;
-    this.value = value;
-  }
+    public KafkaValue(OperationType type, byte[] value, short schemaId) {
+        validateOperationType(type);
+        this.magicByte = DEFAULT_MAGIC_BYTE;
+        this.schemaVersionId = schemaId;
+        this.operationType = type;
+        this.timestamp = System.currentTimeMillis();
+        this.zoneId = ZONE_ID;
+        this.value = value;
+    }
 
-  public KafkaValue(OperationType type, byte[] value) {
-    this(type, value, DEFAULT_SCHEMA_ID);
-  }
+    public KafkaValue(OperationType type, byte[] value) {
+        this(type, value, DEFAULT_SCHEMA_ID);
+    }
 
-  public byte getMagicByte() {
-    return magicByte;
-  }
+    public void validateOperationType(OperationType opType) {
+        if (opType == OperationType.WRITE ) {
+            throw new VeniceMessageException("Invalid operation type: " + opType + "for KafkaValue header. Use PUT or DELETE instead");
+        }
+    }
 
-  public OperationType getOperationType() {
-    return operationType;
-  }
+    public byte getMagicByte() {
+        return magicByte;
+    }
 
-  public short getSchemaVersionId() {
-    return schemaVersionId;
-  }
+    public OperationType getOperationType() {
+        return operationType;
+    }
 
-  public long getTimestamp() {
-    return timestamp;
-  }
+    public short getSchemaVersionId() {
+        return schemaVersionId;
+    }
 
-  public byte getZoneId() {
-    return zoneId;
-  }
+    public long getTimestamp() {
+        return timestamp;
+    }
 
-  public byte[] getValue() {
-    return value;
-  }
+    public byte getZoneId() {
+        return zoneId;
+    }
 
-  public String toString() {
-    return operationType.toString() + " schema-id:" + schemaVersionId + " time-stamp:" + timestamp
-      + " zone-id:" + zoneId + " value:" + value.toString();
-  }
+    public byte[] getValue() {
+        return value;
+    }
+
+    public String toString() {
+        return operationType.toString() + " schema-id:" + schemaVersionId + " time-stamp:" + timestamp
+                + " zone-id:" + zoneId + " value:" + value.toString();
+    }
 }

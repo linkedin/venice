@@ -6,8 +6,11 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceMessageException;
 import com.linkedin.venice.kafka.consumer.offsets.OffsetManager;
 import com.linkedin.venice.kafka.consumer.offsets.OffsetRecord;
+import com.linkedin.venice.message.ControlFlagKafkaKey;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.message.KafkaValue;
+import com.linkedin.venice.message.OperationType;
+import com.linkedin.venice.serialization.Avro.AzkabanJobAvroAckRecordGenerator;
 import com.linkedin.venice.serialization.KafkaKeySerializer;
 import com.linkedin.venice.serialization.KafkaValueSerializer;
 import com.linkedin.venice.store.AbstractStorageEngine;
@@ -18,8 +21,10 @@ import kafka.common.KafkaException;
 import kafka.common.LeaderNotAvailableException;
 import kafka.common.TopicAndPartition;
 import kafka.consumer.SimpleConsumer;
+import kafka.javaapi.producer.Producer;
 import kafka.message.Message;
 import kafka.message.MessageAndOffset;
+import kafka.producer.KeyedMessage;
 import kafka.utils.VerifiableProperties;
 import org.apache.log4j.Logger;
 import scala.collection.Iterator;
@@ -48,6 +53,10 @@ public class SimpleKafkaConsumerTask implements Runnable {
   //offsetManager
   private final OffsetManager offsetManager;
 
+  //Ack producer
+  private final Producer<byte[], byte[]> ackProducer;
+  private final AzkabanJobAvroAckRecordGenerator ackRecordGenerator;
+
   // Store specific configs
   private final VeniceStoreConfig storeConfig;
 
@@ -61,8 +70,11 @@ public class SimpleKafkaConsumerTask implements Runnable {
   private final int partition;
   private final String clientName; // a unique client name for Kafka debugging
 
+  private int jobId;
+  private long totalMessagesProcessed;
+
   public SimpleKafkaConsumerTask(VeniceStoreConfig storeConfig, AbstractStorageEngine storageEngine, int partition,
-                                 OffsetManager offsetManager) {
+                                 OffsetManager offsetManager, Producer ackPartitionConsumptionProducer, AzkabanJobAvroAckRecordGenerator ackRecordGenerator) {
     this.storeConfig = storeConfig;
     this.storageEngine = storageEngine;
 
@@ -73,6 +85,8 @@ public class SimpleKafkaConsumerTask implements Runnable {
     this.partition = partition;
     this.offsetManager = offsetManager;
     this.clientName = "Client_" + topic + "_" + partition;
+    this.ackProducer = ackPartitionConsumptionProducer;
+    this.ackRecordGenerator = ackRecordGenerator;
   }
 
   /**
@@ -305,6 +319,22 @@ public class SimpleKafkaConsumerTask implements Runnable {
       throw new VeniceMessageException("Given null Venice Message.");
     }
 
+    if(kafkaKey.getOperationType() == OperationType.BEGIN_OF_PUSH){
+        ControlFlagKafkaKey controlKafkaKey = (ControlFlagKafkaKey) kafkaKey;
+        jobId = controlKafkaKey.getJobId();
+        totalMessagesProcessed = 0L; //Need to figure out what happens when multiple jobs are run parallely.
+        return; // Its fine to return here, since this is just a control message.
+    }
+    if(kafkaKey.getOperationType() == OperationType.END_OF_PUSH){
+        ControlFlagKafkaKey controlKafkaKey = (ControlFlagKafkaKey) kafkaKey;
+        if(jobId == controlKafkaKey.getJobId()) {  // check if the BOP job id matched EOP job id.
+            // TODO need to handle the case when multiple jobs are run in parallel.
+            KeyedMessage<byte[], byte[]> kafkaMessage = ackRecordGenerator.getKafkaKeyedMessage(jobId, topic, partition, this.storeConfig.getNodeId(), totalMessagesProcessed);
+            ackProducer.send(kafkaMessage);
+        }
+        return; // Its fine to return here, since this is just a control message.
+    }
+
     processVeniceMessage(kafkaKey, kafkaValue, currentOffset);
   }
 
@@ -332,6 +362,7 @@ public class SimpleKafkaConsumerTask implements Runnable {
             this.offsetManager
               .recordOffset(storageEngine.getName(), partition, currentOffset, System.currentTimeMillis());
           }
+          totalMessagesProcessed++;
         } catch (VeniceException e) {
           throw e;
         }
@@ -352,13 +383,14 @@ public class SimpleKafkaConsumerTask implements Runnable {
           if (offsetManager != null) {
             offsetManager.recordOffset(storageEngine.getName(), partition, currentOffset, System.currentTimeMillis());
           }
+          totalMessagesProcessed++;
         } catch (VeniceException e) {
           throw e;
         }
         break;
 
       // partial update
-      case PARTIAL_PUT:
+      case PARTIAL_WRITE:
         throw new UnsupportedOperationException("Partial puts not yet implemented");
 
         // error

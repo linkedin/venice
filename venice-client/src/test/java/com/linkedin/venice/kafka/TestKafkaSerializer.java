@@ -25,24 +25,24 @@ public class TestKafkaSerializer {
     byte[] key1 = "p1".getBytes();
 
     /* TEST 1 */
-    KafkaKey kafkaKey = new KafkaKey(key1);
+    KafkaKey kafkaKey = new KafkaKey(OperationType.WRITE, key1);
     byte[] byteArray = serializer.toBytes(kafkaKey);
     KafkaKey kafkaKey2 = serializer.fromBytes(byteArray);
 
     // Placeholder Magic Byte is 22
-    Assert.assertEquals(kafkaKey2.getMagicByte(), KafkaKey.DEFAULT_MAGIC_BYTE);
+    Assert.assertEquals(kafkaKey2.getOperationType(), kafkaKey.getOperationType());
 
     // Placeholder Bytes
     Assert.assertTrue(ByteUtils.compare(key1, kafkaKey2.getKey()) == 0);
 
     /* TEST 2 */
     byte[] key2 = "d1".getBytes();
-    kafkaKey = new KafkaKey(key2);
+    kafkaKey = new KafkaKey(OperationType.WRITE, key2);
     byteArray = serializer.toBytes(kafkaKey);
     kafkaKey2 = serializer.fromBytes(byteArray);
 
     // Placeholder Magic Byte is 22
-    Assert.assertEquals(kafkaKey2.getMagicByte(), KafkaKey.DEFAULT_MAGIC_BYTE);
+    Assert.assertEquals(kafkaKey2.getOperationType(), kafkaKey.getOperationType());
 
     // Placeholder Bytes
     Assert.assertTrue(ByteUtils.compare(key2, kafkaKey2.getKey()) == 0);

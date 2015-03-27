@@ -15,7 +15,7 @@ import java.io.*;
  *
  * KafkaValue Schema (in order)
  * - Magic Byte
- * - Operation Type
+ * - Operation Type  - Can be one of the types - PUT, DELETE, PARTIAL_WRITE, BEGIN_OF_PUSH, END_OF_PUSH
  * - Schema Version
  * - Timestamp
  * - ZoneId
@@ -62,7 +62,7 @@ public class KafkaValueSerializer implements Serializer<KafkaValue> {
 
       /* read operationType */
       byte opTypeByte = objectInputStream.readByte();
-      operationType = OperationType.fromByte(opTypeByte);
+      operationType = OperationType.getOperationType(opTypeByte);
 
       /* read schemaVersionId - TODO: currently unused */
       schemaVersionId = objectInputStream.readShort();
@@ -125,10 +125,8 @@ public class KafkaValueSerializer implements Serializer<KafkaValue> {
 
       /* write operation type */
       // serialize the operation type enum
-      byte opTypeByte = OperationType.toByte(kafkaValue.getOperationType());
-      if (opTypeByte == 0) {
-        logger.error("Operation Type not recognized: " + kafkaValue.getOperationType());
-      }
+      byte opTypeByte = OperationType.getByteCode(kafkaValue.getOperationType());
+
       objectOutputStream.writeByte(opTypeByte);
 
       /* write schema version Id */
