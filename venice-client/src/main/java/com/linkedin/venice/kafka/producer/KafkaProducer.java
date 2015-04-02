@@ -26,12 +26,10 @@ public class KafkaProducer {
 
     // TODO: figure out the actual configurations and startup procedures
 
-    Properties properties = new Properties();
+    Properties properties = setPropertiesFromProp(props);
 
-    if (!props.containsKey("kafka.broker.url")) {
+    if (!properties.containsKey("metadata.broker.list")) {
       throw new VeniceException("Props key not found: kafka.broker.url");
-    } else {
-      properties.setProperty("metadata.broker.list", props.getString("kafka.broker.url"));
     }
 
     // using custom serializer
@@ -60,5 +58,21 @@ public class KafkaProducer {
 
   public void close() {
     producer.close();
+  }
+
+  /**
+   * This class takes in all properties that begin with "kafka." and emits the rest of the property
+   *
+   * It omits those properties that do not begin with "kafka."
+  */
+  public Properties setPropertiesFromProp(Props props) {
+    Properties properties = new Properties();
+    for (String keyStr : props.keySet()) {
+      if (keyStr.startsWith("kafka.")) {
+        properties.put(keyStr.split("kafka.")[1], props.getString(keyStr));
+      }
+    }
+
+    return properties;
   }
 }
