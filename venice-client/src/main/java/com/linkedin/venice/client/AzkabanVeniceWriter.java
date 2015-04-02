@@ -12,7 +12,7 @@ import com.linkedin.venice.utils.Props;
 public class AzkabanVeniceWriter<K, V> extends VeniceWriter<K, V> {
 
     private final String JOB_ID = "azkaban.flow.execid";
-    private final String KAFKA_NUM_PARTITIONS = "kafka.num.partitions";
+    private final String KAFKA_NUM_PARTITIONS = "num.partitions.in.kafka";
 
     long jobId;
     int numPartitions;
