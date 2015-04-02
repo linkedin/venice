@@ -1,5 +1,6 @@
 package com.linkedin.venice.kafka;
 
+import com.linkedin.venice.message.ControlFlagKafkaKey;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.message.KafkaValue;
 import com.linkedin.venice.message.OperationType;
@@ -24,6 +25,8 @@ public class TestKafkaSerializer {
 
     byte[] key1 = "p1".getBytes();
 
+
+
     /* TEST 1 */
     KafkaKey kafkaKey = new KafkaKey(OperationType.WRITE, key1);
     byte[] byteArray = serializer.toBytes(kafkaKey);
@@ -46,6 +49,17 @@ public class TestKafkaSerializer {
 
     // Placeholder Bytes
     Assert.assertTrue(ByteUtils.compare(key2, kafkaKey2.getKey()) == 0);
+
+    /* TEST 3 */
+    kafkaKey = new ControlFlagKafkaKey(OperationType.BEGIN_OF_PUSH, key1, 2L);
+    byteArray = serializer.toBytes(kafkaKey);
+    kafkaKey2 = serializer.fromBytes(byteArray);
+
+    // Placeholder Magic Byte is 22
+    Assert.assertEquals(kafkaKey2.getOperationType(), kafkaKey.getOperationType());
+
+    // Placeholder Bytes
+    Assert.assertTrue(ByteUtils.compare(key1, kafkaKey2.getKey()) == 0);
   }
 
   @Test

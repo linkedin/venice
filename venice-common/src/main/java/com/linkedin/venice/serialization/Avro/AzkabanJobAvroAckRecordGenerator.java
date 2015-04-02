@@ -7,13 +7,13 @@ import org.apache.avro.util.Utf8;
 
 public class AzkabanJobAvroAckRecordGenerator {
 
-    private final static String AVRO_KEY_SCHEMA_FOR_ACKS_TO_AZKABAN_JOB = "{\n" +
+    public final static String AVRO_KEY_SCHEMA_FOR_ACKS_TO_AZKABAN_JOB = "{\n" +
             "    \"type\": \"record\",\n" +
             "    \"namespace\": \"com.linkedin.venice.internal\",\n" +
             "    \"name\": \"AckPartitionConsumptionKey\",\n" +
             "    \"fields\": [{\n" +
             "        \"name\": \"jobId\",\n" +
-            "        \"type\": \"int\",\n" +
+            "        \"type\": \"long\",\n" +
             "        \"doc\": \"This points to the azkaban job id\"\n" +
             "    }, {\n" +
             "        \"name\": \"kafka-topic\",\n" +
@@ -29,7 +29,7 @@ public class AzkabanJobAvroAckRecordGenerator {
             "        \"doc\": \"This is the id of the node which is sending the ack.\"\n" +
             "    }]\n" +
             "}";
-    private final static String AVRO_VALUE_SCHEMA_FOR_ACKS_TO_AZKABAN_JOB = "{\n" +
+    public final static String AVRO_VALUE_SCHEMA_FOR_ACKS_TO_AZKABAN_JOB = "{\n" +
             "    \"type\": \"record\",\n" +
             "    \"namespace\": \"com.linkedin.venice.internal\",\n" +
             "    \"name\": \"AckPartitionConsumptionValue\",\n" +
@@ -63,7 +63,7 @@ public class AzkabanJobAvroAckRecordGenerator {
      * @param count
      * @return
      */
-    public KeyedMessage<byte[], byte[]> getKafkaKeyedMessage(int jobId, String kafkaTopic, int partitionId, int nodeId, long count){
+    public KeyedMessage<byte[], byte[]> getKafkaKeyedMessage(long jobId, String kafkaTopic, int partitionId, int nodeId, long count){
         GenericData.Record keyRecord = constructKeyRecord(jobId,kafkaTopic,partitionId, nodeId);
         GenericData.Record valRecord = constructValueRecord(count);
 
@@ -74,7 +74,7 @@ public class AzkabanJobAvroAckRecordGenerator {
         return kafkaMessage;
     }
 
-    private GenericData.Record constructKeyRecord(int jobId, String kafkaTopic, int partitioId, int nodeId){
+    private GenericData.Record constructKeyRecord(long jobId, String kafkaTopic, int partitioId, int nodeId){
         GenericData.Record key = new GenericData.Record(Schema.parse(AVRO_KEY_SCHEMA_FOR_ACKS_TO_AZKABAN_JOB));
         key.put("jobId", jobId);
         key.put("kafka-topic", new Utf8(kafkaTopic));
@@ -88,4 +88,6 @@ public class AzkabanJobAvroAckRecordGenerator {
         val.put("count", count);
         return val;
     }
+
+
 }

@@ -37,7 +37,7 @@ public class KafkaKeySerializer implements Serializer<KafkaKey> {
 
     byte opTypeByte;
     OperationType opType = null;
-    int jobId = -1;
+    long jobId = -1L;
     byte[] key = null;
 
     ByteArrayInputStream bytesIn = null;
@@ -54,7 +54,7 @@ public class KafkaKeySerializer implements Serializer<KafkaKey> {
 
       /* read job Id if optype is BEGIN_OF_PUSH or END_OF_PUSH */
       if(opType == OperationType.BEGIN_OF_PUSH || opType == OperationType.END_OF_PUSH){
-        jobId = objectInputStream.readInt();
+        jobId = objectInputStream.readLong();
       }
 
       /* read payload, one byte at a time */
@@ -119,8 +119,8 @@ public class KafkaKeySerializer implements Serializer<KafkaKey> {
       objectOutputStream.writeByte(OperationType.getByteCode(opType));
 
       /* Write jobID if its a control message */
-      if(opType == OperationType.END_OF_PUSH || opType == OperationType.END_OF_PUSH){
-          objectOutputStream.writeInt(controlFlagKafkaKey.getJobId());
+      if(opType == OperationType.BEGIN_OF_PUSH || opType == OperationType.END_OF_PUSH){
+          objectOutputStream.writeLong(controlFlagKafkaKey.getJobId());
       }
 
       /* write payload */

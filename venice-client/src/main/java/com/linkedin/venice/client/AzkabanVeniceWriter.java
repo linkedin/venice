@@ -11,15 +11,15 @@ import com.linkedin.venice.utils.Props;
 
 public class AzkabanVeniceWriter<K, V> extends VeniceWriter<K, V> {
 
-    private final String JOB_ID = "azkaban.job.id";
+    private final String JOB_ID = "azkaban.flow.execid";
     private final String KAFKA_NUM_PARTITIONS = "kafka.num.partitions";
 
-    int jobId;
+    long jobId;
     int numPartitions;
 
     public AzkabanVeniceWriter(Props props, String storeName, Serializer keySerializer, Serializer valueSerializer) {
         super(props, storeName, keySerializer, valueSerializer);
-        jobId = props.getInt(JOB_ID);
+        jobId = props.getLong(JOB_ID);
         numPartitions = props.getInt(KAFKA_NUM_PARTITIONS);
     }
 
@@ -27,7 +27,7 @@ public class AzkabanVeniceWriter<K, V> extends VeniceWriter<K, V> {
         broadcast(OperationType.BEGIN_OF_PUSH);
     }
 
-    public void broadcast(OperationType opType){
+    private void broadcast(OperationType opType){
         KafkaKey key;
         KafkaValue value;
         byte[] partitionId = new byte[ByteUtils.SIZE_OF_INT];
