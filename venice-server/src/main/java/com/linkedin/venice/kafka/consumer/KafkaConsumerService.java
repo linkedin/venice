@@ -29,7 +29,7 @@ import org.apache.log4j.Logger;
 public class KafkaConsumerService extends AbstractVeniceService {
 
     private static final Logger logger = Logger.getLogger(KafkaConsumerService.class.getName());
-    private static final String ACK_PARTITION_CONSUMPTION_KAFKA_TOPIC = "venice-partition-consumption-ackknowledgement";
+    private static final String ACK_PARTITION_CONSUMPTION_KAFKA_TOPIC = "venice-partition-consumption-acknowledgement-1";
     private final StoreRepository storeRepository;
     private final VeniceConfigService veniceConfigService;
     private final PartitionNodeAssignmentRepository partitionNodeAssignmentRepository;
@@ -70,7 +70,8 @@ public class KafkaConsumerService extends AbstractVeniceService {
         if (veniceServerConfig.isEnableConsumptionAcksForAzkabanJobs()) {
             Properties properties = new Properties();
             properties.setProperty("metadata.broker.list", veniceServerConfig.getKafkaConsumptionAcksBrokerUrl());
-            properties.setProperty("request.required.acks", "-1");
+            properties.setProperty("request.required.acks", "1");
+            properties.setProperty("producer.type", "sync");
 
             ProducerConfig config = new ProducerConfig(properties);
             ackPartitionConsumptionProducer = new Producer<byte[], byte[]>(config);

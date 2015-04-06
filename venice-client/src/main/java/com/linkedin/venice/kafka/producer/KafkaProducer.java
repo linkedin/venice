@@ -38,7 +38,7 @@ public class KafkaProducer {
 
     // using custom partitioner
     properties.setProperty("partitioner.class", DefaultKafkaPartitioner.class.getName());
-    properties.setProperty("request.required.acks", "-1");
+    //properties.setProperty("request.required.acks", "1");
 
     ProducerConfig config = new ProducerConfig(properties);
     producer = new Producer<KafkaKey, KafkaValue>(config);
