@@ -37,7 +37,7 @@ public class AzkabanVeniceWriter<K, V> extends VeniceWriter<K, V> {
           byte[] partitionId = new byte[ByteUtils.SIZE_OF_INT];
             ByteUtils.writeInt(partitionId, i, 0);
             key = new ControlFlagKafkaKey(opType, partitionId, jobId);
-            logger.info("key in broadcast msg: " + ByteUtils.readInt(partitionId, 0));
+            //logger.info("key in broadcast msg: " + ByteUtils.readInt(partitionId, 0));
             value = new KafkaValue(opType);
             producer.sendMessage(storeName,key,value);
         }
