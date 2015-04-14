@@ -5,6 +5,7 @@ import com.linkedin.venice.config.VeniceStoreConfig;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.consumer.offsets.BdbOffsetManager;
 import com.linkedin.venice.kafka.consumer.offsets.OffsetManager;
+import com.linkedin.venice.kafka.partitioner.PartitionZeroPartitioner;
 import com.linkedin.venice.serialization.Avro.AzkabanJobAvroAckRecordGenerator;
 import com.linkedin.venice.server.PartitionNodeAssignmentRepository;
 import com.linkedin.venice.server.StoreRepository;
@@ -72,6 +73,7 @@ public class KafkaConsumerService extends AbstractVeniceService {
             properties.setProperty("metadata.broker.list", veniceServerConfig.getKafkaConsumptionAcksBrokerUrl());
             properties.setProperty("request.required.acks", "1");
             properties.setProperty("producer.type", "sync");
+            properties.setProperty("partitioner.class", PartitionZeroPartitioner.class.getName());
 
             ProducerConfig config = new ProducerConfig(properties);
             ackPartitionConsumptionProducer = new Producer<byte[], byte[]>(config);
