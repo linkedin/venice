@@ -69,12 +69,15 @@ public class VeniceShellClient {
     // Use interactive shell
     if (args.length < 1) {
       System.out.println("Please provide your store name.");
-    } else if (args.length < 2) {
+      return;
+    }
+    storeName = args[0];
+    Props props = parseProperties("./config/config.properties");
+    reader = new VeniceReader<String, String>(props, storeName, keySerializer, valueSerializer);
+    writer = new VeniceWriter<String, String>(props, storeName, keySerializer, valueSerializer);
+
+    if (args.length < 2) {
       System.out.println("Using interactive shell...");
-      storeName = args[0];
-      Props props = parseProperties("./config/config.properties");
-      reader = new VeniceReader<String, String>(props, storeName, keySerializer, valueSerializer);
-      writer = new VeniceWriter<String, String>(props, storeName, keySerializer, valueSerializer);
       Scanner reader = new Scanner(System.in);
       while (true) {
         System.out.println("Ready for input: ");
@@ -84,10 +87,6 @@ public class VeniceShellClient {
       }
     } else {
       // executed from the venice-client.sh script: simply pass the arguments onwards
-      storeName = args[0];
-      Props props = parseProperties("./config/config.properties");
-      reader = new VeniceReader<String, String>(props, storeName, keySerializer, valueSerializer);
-      writer = new VeniceWriter<String, String>(props, storeName, keySerializer, valueSerializer);
       String[] commandArgs = new String[args.length - 1];
       System.arraycopy(args, 1, commandArgs, 0, commandArgs.length);
       execute(commandArgs);

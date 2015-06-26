@@ -1,6 +1,6 @@
 #!/bin/bash
 
-USAGE="USAGE\n$0 --get --key test_key\n$0 --put --key test_key --value test_value\n$0 --delete --key test_key"
+USAGE="USAGE\n$0 --get --key test_key --store test_store\n$0 --put --key test_key --value test_value --store test_store\n$0 --delete --key test_key --store test_store"
 
 projectName="venice-client"
 
@@ -8,6 +8,7 @@ base_dir="$( cd "$( dirname "${BASH_SOURCE[0]}" )"/.. && pwd )"
 baseScript=$base_dir"/build/install/"$projectName"/bin/"$projectName
 
 interactive=false
+store="test_shell_store"
 
 # parse command line args
 while [[ $1 != "" ]];
@@ -25,7 +26,9 @@ do
 
     --value|-v) value=$2; shift 2;;
 
-    --interactive|-i) interactive=true; shift 1;; 
+    --interactive|-i) interactive=true; shift 1;;
+
+    --store|-s) store=$2; shift 2;; 
 
     *) echo "Input variable $1 is not recognized."; echo -e $USAGE; exit 1;
 
@@ -66,7 +69,7 @@ else
     exit 1
   fi
 
-  args="$operation $key $value"
+  args="$store $operation $key $value"
   cmd="$baseScript $args"
 
   exec $cmd

@@ -44,9 +44,9 @@ public class BdbOffsetManager extends OffsetManager {
   private final Environment offsetsBdbEnvironment;
   private final Database offsetsBdbDatabase;
 
-  // Need to remove this later - start
+  // TODO: Need to remove this later - start
   private final HashMap<String, Integer> consumptionStats;
-  // Need to remove this later - end
+  // TODO: Need to remove this later - end
 
   public BdbOffsetManager(VeniceClusterConfig veniceClusterConfig) {
     super(veniceClusterConfig);
@@ -80,9 +80,9 @@ public class BdbOffsetManager extends OffsetManager {
     this.offsetsBdbDatabase = offsetsBdbEnvironment.openDatabase(null, OFFSETS_STORE_NAME, dbConfig);
     this.isOpen = new AtomicBoolean(true);
 
-    // Need to remove this block later - start
+    // TODO: Need to remove this block later - start
     consumptionStats = new HashMap<String, Integer>();
-    // Need to remove this block later - end
+    // TODO: Need to remove this block later - end
   }
 
   @Override
@@ -118,20 +118,22 @@ public class BdbOffsetManager extends OffsetManager {
         throw new VeniceException(errorStr);
       }
 
-      // Need to remove this block later - start
+      // TODO: Need to remove this block later - start
       if (!consumptionStats.containsKey(keyStr)) {
         consumptionStats.put(keyStr, 1);
         logger.info(keyStr + ":" + offset + ":" + timeStampInMs);
+        offsetsBdbDatabase.sync();
       } else {
         int val = consumptionStats.get(keyStr);
         if (val + 1 == 50) {
           logger.info(keyStr + ":" + offset + ":" + timeStampInMs);
+          offsetsBdbDatabase.sync();
           consumptionStats.put(keyStr, 0);
         } else {
           consumptionStats.put(keyStr, val + 1);
         }
       }
-      // Need to remove this block later - end
+      // TODO: Need to remove this block later - end
     } catch (DatabaseException e) {
       logger.error("Error in put for BDB database " + OFFSETS_STORE_NAME, e);
       throw new VeniceException(e);

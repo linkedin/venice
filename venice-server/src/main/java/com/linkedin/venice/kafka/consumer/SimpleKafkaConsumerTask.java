@@ -217,6 +217,9 @@ public class SimpleKafkaConsumerTask implements Runnable {
          * before shutdown or crash
          */
         OffsetRecord offsetRecord = offsetManager.getLastOffset(topic, partition);
+        if(offsetRecord == null) {
+          logger.info("Offset record null for " + topic + "_" + partition);
+        }
         readOffset = (offsetRecord == null ? -1 : offsetRecord.getOffset());
         logger.info(consumerTaskId + " : Last known read offset: " + readOffset);
       } catch (VeniceException e) {
