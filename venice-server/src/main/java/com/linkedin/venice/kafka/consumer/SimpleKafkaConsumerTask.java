@@ -15,6 +15,7 @@ import com.linkedin.venice.serialization.KafkaKeySerializer;
 import com.linkedin.venice.serialization.KafkaValueSerializer;
 import com.linkedin.venice.store.AbstractStorageEngine;
 import com.linkedin.venice.utils.ByteUtils;
+import java.util.concurrent.atomic.AtomicBoolean;
 import kafka.api.*;
 import kafka.cluster.Broker;
 import kafka.common.KafkaException;
@@ -75,6 +76,8 @@ public class SimpleKafkaConsumerTask implements Runnable {
 
   private final String consumerTaskId;
 
+  private final AtomicBoolean canConsume;
+
   public SimpleKafkaConsumerTask(VeniceStoreConfig storeConfig, AbstractStorageEngine storageEngine, int partition,
       OffsetManager offsetManager, Producer ackPartitionConsumptionProducer,
       AzkabanJobAvroAckRecordGenerator ackRecordGenerator) {
@@ -90,6 +93,7 @@ public class SimpleKafkaConsumerTask implements Runnable {
     this.clientName = "Client_" + topic + "_" + partition;
     this.ackProducer = ackPartitionConsumptionProducer;
     this.ackRecordGenerator = ackRecordGenerator;
+    this.canConsume = new AtomicBoolean(true);
     consumerTaskId =
         "SimpleConsumerTask for [ Topic: " + topic + ", Partition: " + partition + " in node: " + storeConfig.getNodeId() + " ]";
   }
@@ -113,7 +117,7 @@ public class SimpleKafkaConsumerTask implements Runnable {
           storeConfig.getFetchBufferSize(), clientName);
 
       long readOffset = getLastOffset(consumer);
-      while (true) {
+      while (canConsume.get() == true) {
         long numReads = 0;
         Iterator<MessageAndOffset> messageAndOffsetIterator = null;
         try {
@@ -522,5 +526,12 @@ public class SimpleKafkaConsumerTask implements Runnable {
     }
 
     return returnMetaData;
+  }
+
+  /**
+   * Stops the Consumer task.
+   */
+  public void stop() {
+    this.canConsume.set(false);
   }
 }
