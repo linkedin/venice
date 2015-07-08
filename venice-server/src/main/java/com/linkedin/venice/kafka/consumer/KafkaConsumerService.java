@@ -142,4 +142,53 @@ public class KafkaConsumerService extends AbstractVeniceService {
         }
         logger.info("Shut down complete");
     }
+
+    /**
+     * Unsubscribe and stop the Kafka Consumer Task for the specified topic-partition.
+     * @param storeConfig Venice Store Config for which the partition that needs to be unsubscribed.
+     * @param partition Partition Id that needs to be unsubscribed.
+     * @throws VeniceException If the topic or the topic-partition was not subscribed.
+     */
+    public void unsubscribeKafkaPartition (VeniceStoreConfig storeConfig, int partition) throws VeniceException {
+      String topic = storeConfig.getStoreName();
+      if (!topicNameToPartitionIdAndKafkaConsumerTasksMap.containsKey(topic)) {
+        throw new VeniceException("Kafka Topic: " + topic + " not subscribed.");
+      }
+      Map<Integer, SimpleKafkaConsumerTask> partitionIdToKafkaConsumerTaskMap =
+          topicNameToPartitionIdAndKafkaConsumerTasksMap.get(topic);
+
+      if (!partitionIdToKafkaConsumerTaskMap.containsKey(partition)) {
+        throw new VeniceException("Kafka Partition: " + topic + "-" + partition + " not subscribed.");
+      }
+
+      SimpleKafkaConsumerTask kafkaConsumerTask = partitionIdToKafkaConsumerTaskMap.get(partition);
+      kafkaConsumerTask.stop();
+      partitionIdToKafkaConsumerTaskMap.remove(partition);
+      topicNameToPartitionIdAndKafkaConsumerTasksMap.put(topic, partitionIdToKafkaConsumerTaskMap);
+      logger.info("Kafka Partition: " + topic + "-" + partition + " unsubscribed.");
+    }
+
+    /**
+     * Subscribe and start the Kafka Consumer Task for the specified topic-partition.
+     * @param storeConfig storeConfig Venice Store Config for which the partition that needs to be subscribed.
+     * @param partition Partition Id that needs to be subscribed.
+     * @throws VeniceException If the topic-partition was already subscribed.
+     */
+    public void subscribeKafkaPartition (VeniceStoreConfig storeConfig, int partition) throws VeniceException {
+      String topic = storeConfig.getStoreName();
+      Map<Integer, SimpleKafkaConsumerTask> partitionIdToKafkaConsumerTaskMap;
+      if (!this.topicNameToPartitionIdAndKafkaConsumerTasksMap.containsKey(topic)) {
+        partitionIdToKafkaConsumerTaskMap = new HashMap<Integer, SimpleKafkaConsumerTask>();
+        this.topicNameToPartitionIdAndKafkaConsumerTasksMap.put(topic, partitionIdToKafkaConsumerTaskMap);
+      }
+      partitionIdToKafkaConsumerTaskMap = this.topicNameToPartitionIdAndKafkaConsumerTasksMap.get(topic);
+      if (partitionIdToKafkaConsumerTaskMap.containsKey(partition)) {
+        throw new VeniceException("Kafka Partition: " + topic + "-" + partition + " already subscribed.");
+      }
+      SimpleKafkaConsumerTask kafkaConsumerTask = getConsumerTask(storeConfig, partition);
+      consumerExecutorService.submit(kafkaConsumerTask);
+      partitionIdToKafkaConsumerTaskMap.put(partition, kafkaConsumerTask);
+      this.topicNameToPartitionIdAndKafkaConsumerTasksMap.put(topic, partitionIdToKafkaConsumerTaskMap);
+      logger.info("Kafka Partition: " + topic + "-" + partition + " subscribed.");
+    }
 }
