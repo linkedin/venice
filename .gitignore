@@ -6,3 +6,4 @@ build/
 *.ipr
 *.iws
 .reviewboardrc
+*.log
