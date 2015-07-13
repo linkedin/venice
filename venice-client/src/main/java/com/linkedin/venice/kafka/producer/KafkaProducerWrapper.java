@@ -1,5 +1,6 @@
 package com.linkedin.venice.kafka.producer;
 
+import com.linkedin.venice.exceptions.ConfigurationException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.message.KafkaValue;
@@ -26,7 +27,7 @@ public class KafkaProducerWrapper {
   public KafkaProducerWrapper(Props props) {
     Properties properties = setPropertiesFromProp(props);
     if (!properties.containsKey(PROPERTIES_KAFKA_BOOTSTRAP_KEY)) {
-      throw new VeniceException("Props key not found: " + PROPERTIES_KAFKA_PREFIX + PROPERTIES_KAFKA_BOOTSTRAP_KEY);
+      throw new ConfigurationException("Props key not found: " + PROPERTIES_KAFKA_PREFIX + PROPERTIES_KAFKA_BOOTSTRAP_KEY);
     }
     producer = new KafkaProducer<>(properties);
   }
@@ -43,7 +44,9 @@ public class KafkaProducerWrapper {
   }
 
   public void close() {
-    producer.close();
+    if(producer != null) {
+      producer.close();
+    }
   }
 
   /**

@@ -19,7 +19,11 @@ public abstract class KafkaPartitioner implements Partitioner {
     public KafkaPartitioner() {
     }
 
-    public int partition(Object key, int numPartitions) {
+    @Override
+    /**
+     * Interface method used by the KafkaProducer to figure out the correct Kafka Partition for the given key.
+     */
+    public int partition(String topic, Object key, byte[] keyBytes, Object value, byte[] valueBytes, Cluster cluster) {
         KafkaKey kafkaKey = (KafkaKey) key;
         OperationType opType = kafkaKey.getOperationType();
 
@@ -27,7 +31,7 @@ public abstract class KafkaPartitioner implements Partitioner {
         if (opType == OperationType.BEGIN_OF_PUSH || opType == OperationType.END_OF_PUSH) {
             return ByteUtils.readInt(kafkaKey.getKey(), 0);
         }
-        return getPartitionId(kafkaKey, numPartitions);
+        return getPartitionId(kafkaKey, cluster.partitionsForTopic(topic).size());
     }
 
     /**
@@ -39,14 +43,6 @@ public abstract class KafkaPartitioner implements Partitioner {
      * @return
      */
     public abstract int getPartitionId(KafkaKey key, int numPartitions);
-
-    @Override
-    /**
-     * Interface method used by the KafkaProducer to figure out the correct Kafka Partition for the given key.
-     */
-    public int partition(String topic, Object key, byte[] keyBytes, Object value, byte[] valueBytes, Cluster cluster) {
-        return partition(key, cluster.availablePartitionsForTopic(topic).size());
-    }
 
     @Override
     public void close() {
