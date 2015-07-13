@@ -3,8 +3,8 @@ package com.linkedin.venice.kafka.partitioner;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.message.OperationType;
 import com.linkedin.venice.utils.ByteUtils;
-import kafka.producer.Partitioner;
-import kafka.utils.VerifiableProperties;
+import org.apache.kafka.clients.producer.Partitioner;
+import org.apache.kafka.common.Cluster;
 
 
 /**
@@ -16,9 +16,8 @@ public abstract class KafkaPartitioner implements Partitioner {
     /**
      * An abstraction on the standard Partitioner interface
      */
-    public KafkaPartitioner(VerifiableProperties props) {
+    public KafkaPartitioner() {
     }
-
 
     public int partition(Object key, int numPartitions) {
         KafkaKey kafkaKey = (KafkaKey) key;
@@ -40,4 +39,17 @@ public abstract class KafkaPartitioner implements Partitioner {
      * @return
      */
     public abstract int getPartitionId(KafkaKey key, int numPartitions);
+
+    @Override
+    /**
+     * Interface method used by the KafkaProducer to figure out the correct Kafka Partition for the given key.
+     */
+    public int partition(String topic, Object key, byte[] keyBytes, Object value, byte[] valueBytes, Cluster cluster) {
+        return partition(key, cluster.availablePartitionsForTopic(topic).size());
+    }
+
+    @Override
+    public void close() {
+        /* Not being used. Interface method. */
+    }
 }

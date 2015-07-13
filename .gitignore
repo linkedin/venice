@@ -6,3 +6,6 @@ build/
 *.ipr
 *.iws
 .reviewboardrc
+*.log
+.DS_Store
+*/*.DS_Store

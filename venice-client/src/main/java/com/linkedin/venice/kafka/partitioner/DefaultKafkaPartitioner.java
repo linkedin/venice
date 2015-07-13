@@ -3,7 +3,7 @@ package com.linkedin.venice.kafka.partitioner;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.utils.ByteUtils;
-import kafka.utils.VerifiableProperties;
+import java.util.Map;
 import org.apache.log4j.Logger;
 
 import java.security.MessageDigest;
@@ -18,14 +18,13 @@ public class DefaultKafkaPartitioner extends KafkaPartitioner {
 
   static final Logger logger = Logger.getLogger(DefaultKafkaPartitioner.class.getName());
 
-  private final String hashAlgorithm;
+  private String hashAlgorithm;
 
   public static final String HASH_ALGORITHM_KEY = "partitioner.hash.algorithm";
   public static final String DEFAULT_HASH_ALGORITHM = "MD5";
 
-  public DefaultKafkaPartitioner(VerifiableProperties props) {
-    super(props);
-    hashAlgorithm = props.getString(HASH_ALGORITHM_KEY, DEFAULT_HASH_ALGORITHM);
+  public DefaultKafkaPartitioner () {
+    hashAlgorithm = DEFAULT_HASH_ALGORITHM;
   }
 
   @Override
@@ -53,6 +52,17 @@ public class DefaultKafkaPartitioner extends KafkaPartitioner {
       return partition;
     } catch (NoSuchAlgorithmException e) {
       throw new VeniceException("\"Hashing algorithm given is not recognized: \" + hashAlgorithm");
+    }
+  }
+
+  @Override
+  /**
+   * Configure this class with the given key-value pairs.
+   * // TODO: Get the properties from .properties file to the Map.
+   */
+  public void configure(Map<String, ?> configMap) {
+    if (configMap.containsKey(HASH_ALGORITHM_KEY)) {
+      hashAlgorithm = (String) configMap.get(HASH_ALGORITHM_KEY);
     }
   }
 }

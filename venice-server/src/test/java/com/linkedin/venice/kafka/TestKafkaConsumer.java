@@ -10,7 +10,6 @@ import com.linkedin.venice.utils.Props;
 import kafka.admin.AdminUtils;
 import kafka.server.KafkaConfig;
 import kafka.server.KafkaServerStartable;
-import kafka.utils.VerifiableProperties;
 import org.I0Itec.zkclient.ZkClient;
 import org.apache.commons.io.FileUtils;
 import org.apache.log4j.Logger;
@@ -165,8 +164,7 @@ public class TestKafkaConsumer {
     Props props = new Props();
     props.put("kafka.metadata.broker.list", brokerUrl);
 
-    writer = new VeniceWriter<String, String>(props, storeName, new StringSerializer(new VerifiableProperties()),
-      new StringSerializer(new VerifiableProperties()));
+    writer = new VeniceWriter<String, String>(props, storeName, new StringSerializer(), new StringSerializer());
   }
 
   /**
@@ -206,9 +204,13 @@ public class TestKafkaConsumer {
   }
 
   /**
-   * A basic test which send messages through Kafka, and consumes them
+   * A basic test which send messages through Kafka, and consumes them.
+   * TODO: FIX Test.
+   *  1. The Venice Server no longer uses KafkaConsumerService.
+   *  2. Currently the test is highly coupled with VeniceServer.
+   *  3. Rewrite the test such that the class can be tested independently.
    */
-  @Test(enabled = true)
+  @Test(enabled = false)
   public void testKafkaBasic() {
     AbstractStorageEngine node = veniceServer.getStoreRepository().getLocalStorageEngine(storeName);
     try {

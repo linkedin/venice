@@ -1,9 +1,9 @@
 package com.linkedin.venice.client;
 
-import com.linkedin.venice.serialization.Serializer;
+import com.linkedin.venice.serialization.KafkaKeySerializer;
+import com.linkedin.venice.serialization.VeniceSerializer;
 import com.linkedin.venice.serialization.StringSerializer;
 import com.linkedin.venice.utils.Props;
-import kafka.utils.VerifiableProperties;
 import org.apache.log4j.Logger;
 
 import java.io.FileInputStream;
@@ -19,8 +19,8 @@ public class VeniceShellClient {
 
   private static final Logger logger = Logger.getLogger(VeniceShellClient.class.getName()); // log4j logger
 
-  static final Serializer<String> keySerializer = new StringSerializer(new VerifiableProperties());
-  static final Serializer<String> valueSerializer = new StringSerializer(new VerifiableProperties());
+  static final VeniceSerializer<String> keySerializer = new StringSerializer();
+  static final VeniceSerializer<String> valueSerializer = new StringSerializer();
 
   static VeniceReader<String, String> reader;
   static VeniceWriter<String, String> writer;
@@ -91,6 +91,8 @@ public class VeniceShellClient {
       System.arraycopy(args, 1, commandArgs, 0, commandArgs.length);
       execute(commandArgs);
     }
+
+    writer.close();
   }
 
   /**

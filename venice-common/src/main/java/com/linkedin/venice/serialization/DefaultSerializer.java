@@ -1,28 +1,39 @@
 package com.linkedin.venice.serialization;
 
-import kafka.serializer.DefaultDecoder;
-import kafka.serializer.DefaultEncoder;
-import kafka.utils.VerifiableProperties;
+import java.util.Map;
+import org.apache.kafka.common.serialization.ByteArrayDeserializer;
+import org.apache.kafka.common.serialization.ByteArraySerializer;
+
 
 /**
- * Default Kafka Serializer
+ * Default Kafka VeniceSerializer
  */
-public class DefaultSerializer implements Serializer<byte[]> {
-  DefaultEncoder encoder;
-  DefaultDecoder decoder;
+public class DefaultSerializer implements VeniceSerializer<byte[]> {
+  ByteArraySerializer serializer;
+  ByteArrayDeserializer deserializer;
 
-  public DefaultSerializer(VerifiableProperties verifiableProperties) {
-    this.encoder = new DefaultEncoder(verifiableProperties);
-    this.decoder = new DefaultDecoder(verifiableProperties);
+  public DefaultSerializer() {
+    this.serializer = new ByteArraySerializer();
+    this.deserializer = new ByteArrayDeserializer();
   }
 
   @Override
-  public byte[] toBytes(byte[] bytes) {
-    return encoder.toBytes(bytes);
+  public void close() {
+    /* This function is not used, but is required for the interface. */
   }
 
   @Override
-  public byte[] fromBytes(byte[] bytes) {
-    return decoder.fromBytes(bytes);
+  public void configure(Map<String, ?> configMap, boolean isKey) {
+    /* This function is not used, but is required for the interfaces. */
+  }
+
+  @Override
+  public byte[] serialize(String topic, byte[] bytes) {
+    return serializer.serialize(topic, bytes);
+  }
+
+  @Override
+  public byte[] deserialize(String topic, byte[] bytes) {
+    return deserializer.deserialize(topic, bytes);
   }
 }

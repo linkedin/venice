@@ -1,9 +1,10 @@
 package com.linkedin.venice.serialization.Avro;
 
-import kafka.producer.KeyedMessage;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.util.Utf8;
+import org.apache.kafka.clients.producer.ProducerRecord;
+
 
 public class AzkabanJobAvroAckRecordGenerator {
 
@@ -63,14 +64,15 @@ public class AzkabanJobAvroAckRecordGenerator {
      * @param count
      * @return
      */
-    public KeyedMessage<byte[], byte[]> getKafkaKeyedMessage(long jobId, String kafkaTopic, int partitionId, int nodeId, long count){
+    public ProducerRecord<byte[], byte[]> getKafkaProducerRecord(long jobId, String kafkaTopic, int partitionId,
+        int nodeId, long count){
         GenericData.Record keyRecord = constructKeyRecord(jobId,kafkaTopic,partitionId, nodeId);
         GenericData.Record valRecord = constructValueRecord(count);
 
-        byte[] keyBytes = keySerailizer.toBytes(keyRecord);
-        byte[] valBytes = valueSerializer.toBytes(valRecord);
+        byte[] keyBytes = keySerailizer.serialize(kafkaTopic, keyRecord);
+        byte[] valBytes = valueSerializer.serialize(kafkaTopic, valRecord);
 
-        KeyedMessage<byte[], byte[]> kafkaMessage = new KeyedMessage<byte[], byte[]>(consumptionAckKafkaTopic, keyBytes, valBytes);
+        ProducerRecord<byte[], byte[]> kafkaMessage = new ProducerRecord<byte[], byte[]>(consumptionAckKafkaTopic, keyBytes, valBytes);
         return kafkaMessage;
     }
 

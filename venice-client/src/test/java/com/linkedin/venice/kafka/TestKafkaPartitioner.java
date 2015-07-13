@@ -5,7 +5,6 @@ import com.linkedin.venice.kafka.partitioner.KafkaPartitioner;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.message.OperationType;
 import junit.framework.Assert;
-import kafka.utils.VerifiableProperties;
 import org.testng.annotations.Test;
 
 
@@ -21,7 +20,7 @@ public class TestKafkaPartitioner {
     @Test
     public void testConsistentPartitioning() {
 
-        KafkaPartitioner kp = new DefaultKafkaPartitioner(new VerifiableProperties());
+        KafkaPartitioner kp = new DefaultKafkaPartitioner();
 
         byte[] keyBytes = "key1".getBytes();
         KafkaKey key = new KafkaKey(OperationType.WRITE, keyBytes);  // OperatioType doesnt matter. We are just testing the partitioning.

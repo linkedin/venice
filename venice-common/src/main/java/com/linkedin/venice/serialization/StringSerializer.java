@@ -1,10 +1,11 @@
 package com.linkedin.venice.serialization;
 
-import kafka.utils.VerifiableProperties;
+import java.util.Map;
 
-public class StringSerializer implements Serializer<String> {
 
-  public StringSerializer(VerifiableProperties verifiableProperties) {
+public class StringSerializer implements VeniceSerializer<String> {
+
+  public StringSerializer() {
     /* This constructor is not used, but is required for compilation */
   }
 
@@ -14,8 +15,29 @@ public class StringSerializer implements Serializer<String> {
    * @param byteArray - byte array to be converted
    * @return Converted string
    * */
-  public String fromBytes(byte[] byteArray) {
+  public String deserialize(String topic, byte[] byteArray) {
     return new String(byteArray);
+  }
+
+  /**
+   * Close this serializer.
+   * This method has to be idempotent if the serializer is used in KafkaProducer because it might be called
+   * multiple times.
+   */
+  @Override
+  public void close() {
+    /* This function is not used, but is required for the interfaces. */
+  }
+
+  /**
+   * Configure this class.
+
+   * @param configMap configs in key/value pairs
+   * @param isKey whether is for key or value
+   */
+  @Override
+  public void configure(Map<String, ?> configMap, boolean isKey) {
+    /* This function is not used, but is required for the interfaces. */
   }
 
   @Override
@@ -24,7 +46,7 @@ public class StringSerializer implements Serializer<String> {
    * @param byteArray - byte array to be converted
    * @return Converted string
    * */
-  public byte[] toBytes(String string) {
+  public byte[] serialize(String topic, String string) {
     return string.getBytes();
   }
 }

@@ -1,7 +1,7 @@
 package com.linkedin.venice.client;
 
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.serialization.Serializer;
+import com.linkedin.venice.serialization.VeniceSerializer;
 import com.linkedin.venice.utils.Props;
 import org.apache.log4j.Logger;
 
@@ -15,10 +15,10 @@ public class VeniceReader<K, V> {
 
   private Props props;
   private final String storeName;
-  private final Serializer<K> keySerializer;
-  private final Serializer<V> valueSerializer;
+  private final VeniceSerializer<K> keySerializer;
+  private final VeniceSerializer<V> valueSerializer;
 
-  public VeniceReader(Props props, String storeName, Serializer<K> keySerializer, Serializer<V> valueSerializer) {
+  public VeniceReader(Props props, String storeName, VeniceSerializer<K> keySerializer, VeniceSerializer<V> valueSerializer) {
 
     try {
       this.props = props;

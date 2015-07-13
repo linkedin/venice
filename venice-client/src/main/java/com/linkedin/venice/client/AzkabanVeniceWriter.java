@@ -5,11 +5,9 @@ import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.message.KafkaValue;
 import com.linkedin.venice.message.OperationType;
 import com.linkedin.venice.serialization.DefaultSerializer;
-import com.linkedin.venice.serialization.Serializer;
+import com.linkedin.venice.serialization.VeniceSerializer;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.Props;
-import java.util.Properties;
-import kafka.utils.VerifiableProperties;
 
 
 public class AzkabanVeniceWriter<K, V> extends VeniceWriter<K, V> {
@@ -20,7 +18,7 @@ public class AzkabanVeniceWriter<K, V> extends VeniceWriter<K, V> {
     long jobId;
     int numPartitions;
 
-    public AzkabanVeniceWriter(Props props, String storeName, Serializer keySerializer, Serializer valueSerializer) {
+    public AzkabanVeniceWriter(Props props, String storeName, VeniceSerializer keySerializer, VeniceSerializer valueSerializer) {
         super(props, storeName, keySerializer, valueSerializer);
         jobId = props.getLong(JOB_ID);
         numPartitions = props.getInt(KAFKA_NUM_PARTITIONS);
@@ -53,7 +51,7 @@ public class AzkabanVeniceWriter<K, V> extends VeniceWriter<K, V> {
         props.put("num.partitions.in.kafka", 8);
         props.put("kafka.metadata.broker.list", "eat1-kafka-vip-6.corp.linkedin.com:10251");
 
-        AzkabanVeniceWriter writer = new AzkabanVeniceWriter<byte[], byte[]>(props,"venice_location_7", new DefaultSerializer(new VerifiableProperties()),new DefaultSerializer(new VerifiableProperties()));
+        AzkabanVeniceWriter writer = new AzkabanVeniceWriter<byte[], byte[]>(props,"venice_location_7", new DefaultSerializer(),new DefaultSerializer());
         writer.broadcastBeginOfPush();
 
     }

@@ -46,6 +46,10 @@ public class VeniceStoreConfig extends VeniceServerConfig {
   // TODO: Store level bdb configuration, need to create StoreStorageConfig abstract class and extend from that
   private BdbStoreConfig bdbStoreConfig;
 
+  private String kafkaBootstrapServers;
+
+  private int kafkaAutoCommitIntervalMs;
+
   public VeniceStoreConfig(Props storeProperties)
     throws ConfigurationException {
     super(storeProperties);
@@ -81,6 +85,11 @@ public class VeniceStoreConfig extends VeniceServerConfig {
       throw new ConfigurationException("KafkaBrokerPort can't be negative");
       // TODO additional checks for valid port ?
     }
+    kafkaBootstrapServers = storeProperties.getString(VeniceConfigService.KAFKA_BOOTSTRAP_SERVERS);
+    if (kafkaBootstrapServers == null || kafkaBootstrapServers.isEmpty()) {
+      throw new ConfigurationException("kafkaBootstrapServers can't be empty");
+    }
+    kafkaAutoCommitIntervalMs = storeProperties.getInt(VeniceConfigService.KAFKA_AUTO_COMMIT_INTERVAL_MS);
     fetchBufferSize = storeProperties.getInt(VeniceConfigService.KAFKA_CONSUMER_FETCH_BUFFER_SIZE, 64 * 1024);
     socketTimeoutMs = storeProperties.getInt(VeniceConfigService.KAFKA_CONSUMER_SOCKET_TIMEOUT_MS, 100);
     numMetadataRefreshRetries = storeProperties.getInt(VeniceConfigService.KAFKA_CONSUMER_NUM_METADATA_REFRESH_RETRIES, 3);
@@ -119,6 +128,10 @@ public class VeniceStoreConfig extends VeniceServerConfig {
     return kafkaBrokers;
   }
 
+  public String getKafkaBootstrapServers() {
+    return kafkaBootstrapServers;
+  }
+
   public int getKafkaBrokerPort() {
     return kafkaBrokerPort;
   }
@@ -138,6 +151,8 @@ public class VeniceStoreConfig extends VeniceServerConfig {
   public int getMetadataRefreshBackoffMs() {
     return metadataRefreshBackoffMs;
   }
+
+  public int getKafkaAutoCommitIntervalMs() { return kafkaAutoCommitIntervalMs; }
 
   public String getStorageEngineFactoryClassName() {
     return storageEngineFactoryClassNameMap.get(this.persistenceType);

@@ -1,7 +1,8 @@
 package com.linkedin.venice.serialization.Avro;
 
 import com.linkedin.venice.exceptions.VeniceMessageException;
-import com.linkedin.venice.serialization.Serializer;
+import com.linkedin.venice.serialization.VeniceSerializer;
+import java.util.Map;
 import org.apache.avro.generic.GenericDatumReader;
 import org.apache.avro.io.Decoder;
 import org.apache.avro.io.DecoderFactory;
@@ -14,7 +15,7 @@ import org.apache.log4j.Logger;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 
-public class AvroGenericSerializer implements Serializer<Object> {
+public class AvroGenericSerializer implements VeniceSerializer<Object> {
 
     private final Schema typeDef;
 
@@ -25,7 +26,28 @@ public class AvroGenericSerializer implements Serializer<Object> {
         typeDef = Schema.parse(schema);
     }
 
-    public byte[] toBytes(Object object) {
+    /**
+     * Close this serializer.
+     * This method has to be idempotent if the serializer is used in KafkaProducer because it might be called
+     * multiple times.
+     */
+    @Override
+    public void close() {
+      /* This function is not used, but is required for the interfaces. */
+    }
+
+    /**
+     * Configure this class.
+
+     * @param configMap configs in key/value pairs
+     * @param isKey whether is for key or value
+     */
+    @Override
+    public void configure(Map<String, ?> configMap, boolean isKey) {
+      /* This function is not used, but is required for the interfaces. */
+    }
+
+    public byte[] serialize(String topic, Object object) {
         ByteArrayOutputStream output = new ByteArrayOutputStream();
         Encoder encoder = new BinaryEncoder(output);
         GenericDatumWriter<Object> datumWriter = null;
@@ -47,7 +69,7 @@ public class AvroGenericSerializer implements Serializer<Object> {
         return output.toByteArray();
     }
 
-    public Object fromBytes(byte[] bytes) {
+    public Object deserialize(String topic, byte[] bytes) {
         Decoder decoder = DecoderFactory.defaultFactory().createBinaryDecoder(bytes, null);
         GenericDatumReader<Object> reader = null;
         try {

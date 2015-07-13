@@ -15,6 +15,7 @@ import com.linkedin.venice.serialization.KafkaKeySerializer;
 import com.linkedin.venice.serialization.KafkaValueSerializer;
 import com.linkedin.venice.store.AbstractStorageEngine;
 import com.linkedin.venice.utils.ByteUtils;
+import java.util.concurrent.atomic.AtomicBoolean;
 import kafka.api.*;
 import kafka.cluster.Broker;
 import kafka.common.KafkaException;
@@ -24,8 +25,8 @@ import kafka.consumer.SimpleConsumer;
 import kafka.javaapi.producer.Producer;
 import kafka.message.Message;
 import kafka.message.MessageAndOffset;
-import kafka.producer.KeyedMessage;
-import kafka.utils.VerifiableProperties;
+import org.apache.kafka.clients.producer.KafkaProducer;
+import org.apache.kafka.clients.producer.ProducerRecord;
 import org.apache.log4j.Logger;
 import scala.collection.Iterator;
 import scala.collection.JavaConversions;
@@ -54,7 +55,7 @@ public class SimpleKafkaConsumerTask implements Runnable {
   private final OffsetManager offsetManager;
 
   //Ack producer
-  private final Producer<byte[], byte[]> ackProducer;
+  private final KafkaProducer<byte[], byte[]> ackProducer;
   private final AzkabanJobAvroAckRecordGenerator ackRecordGenerator;
 
   // Store specific configs
@@ -75,14 +76,16 @@ public class SimpleKafkaConsumerTask implements Runnable {
 
   private final String consumerTaskId;
 
+  private final AtomicBoolean canConsume;
+
   public SimpleKafkaConsumerTask(VeniceStoreConfig storeConfig, AbstractStorageEngine storageEngine, int partition,
-      OffsetManager offsetManager, Producer ackPartitionConsumptionProducer,
+      OffsetManager offsetManager, KafkaProducer ackPartitionConsumptionProducer,
       AzkabanJobAvroAckRecordGenerator ackRecordGenerator) {
     this.storeConfig = storeConfig;
     this.storageEngine = storageEngine;
 
-    this.kafkaKeySerializer = new KafkaKeySerializer(new VerifiableProperties());
-    this.kafkaValueSerializer = new KafkaValueSerializer(new VerifiableProperties());
+    this.kafkaKeySerializer = new KafkaKeySerializer();
+    this.kafkaValueSerializer = new KafkaValueSerializer();
     this.replicaBrokers = new ArrayList<String>();
     this.topic = storeConfig.getStoreName();
     this.partition = partition;
@@ -90,6 +93,7 @@ public class SimpleKafkaConsumerTask implements Runnable {
     this.clientName = "Client_" + topic + "_" + partition;
     this.ackProducer = ackPartitionConsumptionProducer;
     this.ackRecordGenerator = ackRecordGenerator;
+    this.canConsume = new AtomicBoolean(true);
     consumerTaskId =
         "SimpleConsumerTask for [ Topic: " + topic + ", Partition: " + partition + " in node: " + storeConfig.getNodeId() + " ]";
   }
@@ -113,7 +117,7 @@ public class SimpleKafkaConsumerTask implements Runnable {
           storeConfig.getFetchBufferSize(), clientName);
 
       long readOffset = getLastOffset(consumer);
-      while (true) {
+      while (canConsume.get() == true) {
         long numReads = 0;
         Iterator<MessageAndOffset> messageAndOffsetIterator = null;
         try {
@@ -321,8 +325,8 @@ public class SimpleKafkaConsumerTask implements Runnable {
     payload.get(payloadBytes);
 
     // De-serialize payload into Venice Message format
-    KafkaKey kafkaKey = kafkaKeySerializer.fromBytes(keyBytes);
-    KafkaValue kafkaValue = kafkaValueSerializer.fromBytes(payloadBytes);
+    KafkaKey kafkaKey = kafkaKeySerializer.deserialize(topic, keyBytes);
+    KafkaValue kafkaValue = kafkaValueSerializer.deserialize(topic, payloadBytes);
 
     if (null == kafkaValue) {
       throw new VeniceMessageException(consumerTaskId + " : Given null Venice Message.");
@@ -342,8 +346,8 @@ public class SimpleKafkaConsumerTask implements Runnable {
         // TODO need to handle the case when multiple jobs are run in parallel.
         logger.info(consumerTaskId + " : Receive End of Pushes message. Consumed #records: " + totalMessagesProcessed
             + ", from job id: " + jobId);
-        KeyedMessage<byte[], byte[]> kafkaMessage = ackRecordGenerator
-            .getKafkaKeyedMessage(jobId, topic, partition, this.storeConfig.getNodeId(), totalMessagesProcessed);
+        ProducerRecord<byte[], byte[]> kafkaMessage = ackRecordGenerator
+            .getKafkaProducerRecord(jobId, topic, partition, this.storeConfig.getNodeId(), totalMessagesProcessed);
         ackProducer.send(kafkaMessage);
       }
       return; // Its fine to return here, since this is just a control message.
@@ -365,7 +369,6 @@ public class SimpleKafkaConsumerTask implements Runnable {
         }
         try {
           storageEngine.put(partition, keyBytes, kafkaValue.getValue());
-
           if (logger.isTraceEnabled()) {
             logger.trace(
                 consumerTaskId + " : Completed PUT to Store: " + topic + " for key: " + ByteUtils.toHexString(keyBytes)
@@ -522,5 +525,12 @@ public class SimpleKafkaConsumerTask implements Runnable {
     }
 
     return returnMetaData;
+  }
+
+  /**
+   * Stops the Consumer task.
+   */
+  public void stop() {
+    this.canConsume.set(false);
   }
 }

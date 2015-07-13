@@ -2,7 +2,7 @@ package com.linkedin.venice.server;
 
 import com.google.common.collect.ImmutableList;
 import com.linkedin.venice.config.VeniceStoreConfig;
-import com.linkedin.venice.kafka.consumer.KafkaConsumerService;
+import com.linkedin.venice.kafka.consumer.KafkaPerStorePerNodeConsumerService;
 import com.linkedin.venice.partition.AbstractPartitionNodeAssignmentScheme;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.storage.StorageService;
@@ -95,9 +95,9 @@ public class VeniceServer {
     services.add(storageService);
 
     //create and add KafkaConsumerService
-    KafkaConsumerService kafkaConsumerService =
-        new KafkaConsumerService(storeRepository, veniceConfigService, partitionNodeAssignmentRepository);
-    services.add(kafkaConsumerService);
+    KafkaPerStorePerNodeConsumerService kafkaConsumerService2 =
+        new KafkaPerStorePerNodeConsumerService(storeRepository, veniceConfigService, partitionNodeAssignmentRepository);
+    services.add(kafkaConsumerService2);
 
     /**
      * TODO Create an admin service later. The admin service will need both StorageService and KafkaConsumerService

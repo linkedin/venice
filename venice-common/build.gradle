@@ -2,7 +2,7 @@ apply plugin: 'java'
 apply plugin: 'idea'
 apply plugin: 'eclipse'
 
-sourceCompatibility = 1.6
+sourceCompatibility = 1.8
 version = '0.1'
 
 task buildJar(type: Jar) {
@@ -24,12 +24,19 @@ jar {
 
 repositories {
   mavenCentral()
+  maven {
+    url "http://download.oracle.com/maven/"
+  }
+  maven {
+    url 'http://artifactory.corp.linkedin.com:8081/artifactory/all'
+  }
 }
 
 dependencies {
 
   compile 'org.apache.avro:avro:1.4.1'
   compile 'org.apache.kafka:kafka_2.10:0.8.1.1'
+  compile 'kafka:kafka-clients:0.8.2.20'
   // log4j for logging
   compile 'log4j:log4j:1.2.17'
   compile 'commons-codec:commons-codec:1.4'

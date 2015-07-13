@@ -1,11 +1,15 @@
 package com.linkedin.venice.utils;
 
+import com.linkedin.venice.exceptions.VeniceException;
 import java.io.File;
 import java.io.FileInputStream;
+import java.net.InetAddress;
+import java.net.UnknownHostException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Properties;
+import org.apache.commons.lang.StringUtils;
 
 
 /**
@@ -158,4 +162,26 @@ public class Utils {
   public static boolean isReadableFile(File f) {
     return f.exists() && f.isFile() && f.canRead();
   }
+
+  /**
+   * Get the node's host name.
+   * @return current node's host name.
+   */
+  public static String getHostName() {
+    String hostName;
+
+    try {
+      hostName = InetAddress.getLocalHost().getHostName();
+    } catch (UnknownHostException e) {
+      e.printStackTrace();
+      throw new VeniceException("Unable to get the hostname.", e);
+    }
+
+    if(StringUtils.isEmpty(hostName)) {
+      throw new VeniceException("Unable to get the hostname.");
+    }
+
+    return hostName;
+  }
+
 }

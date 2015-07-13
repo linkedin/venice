@@ -1,16 +1,18 @@
 package com.linkedin.venice.serialization;
 
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceMessageException;
 import com.linkedin.venice.message.KafkaValue;
 import com.linkedin.venice.message.OperationType;
-import kafka.utils.VerifiableProperties;
+import java.util.Map;
+import org.apache.kafka.common.serialization.Deserializer;
 import org.apache.log4j.Logger;
 
 import java.io.*;
 
 
 /**
- * Serializer to encode/decode KafkaValue for Venice customized kafka message
+ * VeniceSerializer to encode/decode KafkaValue for Venice customized kafka message
  * Used by Kafka to convert to/from byte arrays.
  *
  * KafkaValue Schema (in order)
@@ -22,12 +24,12 @@ import java.io.*;
  * - Payload
  *
  */
-public class KafkaValueSerializer implements Serializer<KafkaValue> {
+public class KafkaValueSerializer implements VeniceSerializer<KafkaValue> {
 
   static final Logger logger = Logger.getLogger(KafkaValueSerializer.class.getName()); // log4j logger
 
-  public KafkaValueSerializer(VerifiableProperties verifiableProperties) {
-        /* This constructor is not used, but is required for compilation */
+  public KafkaValueSerializer() {
+    /* This constructor is not used, but is required for compilation */
   }
 
   @Override
@@ -36,7 +38,7 @@ public class KafkaValueSerializer implements Serializer<KafkaValue> {
    * @param bytes - byte[] to be converted
    * @return Converted Venice Message
    * */
-  public KafkaValue fromBytes(byte[] bytes) {
+  public KafkaValue deserialize(String topic, byte[] bytes) {
 
     byte magicByte;
     OperationType operationType = null;
@@ -109,7 +111,7 @@ public class KafkaValueSerializer implements Serializer<KafkaValue> {
    * @param kafkaValue - KafkaValue to be converted
    * @return Converted byte[]
    * */
-  public byte[] toBytes(KafkaValue kafkaValue) {
+  public byte[] serialize(String topic, KafkaValue kafkaValue) {
 
     ByteArrayOutputStream bytesOut = null;
     ObjectOutputStream objectOutputStream = null;
@@ -158,5 +160,23 @@ public class KafkaValueSerializer implements Serializer<KafkaValue> {
     }
 
     return bytes;
+  }
+
+  @Override
+  /**
+   * Configure the Kafka Serializer.
+   * @param configMap Configuration for the serializer.
+   * @param isKey true if the serializer is going to be used for Keys.
+   * @throws VeniceException if the serializer is going to be used for Key data.
+   */
+  public void configure(Map<String, ?> configMap, boolean isKey) {
+    if(isKey == true) {
+      throw new VeniceException("Cannot use KafkaValueSerializer for Key.");
+    }
+  }
+
+  @Override
+  public void close() {
+    /* This function is not used, but is required for the interfaces. */
   }
 }

@@ -3,7 +3,7 @@ apply plugin: 'idea'
 apply plugin: 'eclipse'
 apply plugin: 'application'
 
-sourceCompatibility = 1.6
+sourceCompatibility = 1.8
 version = '0.1'
 
 mainClassName = "com.linkedin.venice.server.VeniceServer"
@@ -34,11 +34,14 @@ repositories {
   maven {
     url "http://download.oracle.com/maven/"
   }
+  maven {
+    url 'http://artifactory.corp.linkedin.com:8081/artifactory/all'
+  }
 }
 
 dependencies {
   compile project(':venice-common')
-  compile 'org.apache.kafka:kafka_2.10:0.8.1.1'
+  compile 'kafka:kafka-clients:0.8.2.20'
   compile 'com.google.guava:guava:18.0'
   compile 'commons-io:commons-io:2.4'
   compile 'com.sleepycat:je:5.0.104'
