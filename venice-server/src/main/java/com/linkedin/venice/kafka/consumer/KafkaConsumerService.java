@@ -43,6 +43,7 @@ public class KafkaConsumerService extends AbstractVeniceService {
      * A repository of kafka topic to their corresponding partitions and the kafka consumer tasks. This may be used in
      * future for monitoring purposes. etc.
      * TODO: Make this a concurrent map if atomicity is needed in future
+     * TODO: Refactor and re-implement as a class with map objects.
      */
     private final Map<String, Map<Integer, SimpleKafkaConsumerTask>> topicNameToPartitionIdAndKafkaConsumerTasksMap;
 
