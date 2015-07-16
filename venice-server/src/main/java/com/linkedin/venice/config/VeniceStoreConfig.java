@@ -50,6 +50,8 @@ public class VeniceStoreConfig extends VeniceServerConfig {
 
   private int kafkaAutoCommitIntervalMs;
 
+  private boolean kafkaEnableAutoOffsetCommit;
+
   public VeniceStoreConfig(Props storeProperties)
     throws ConfigurationException {
     super(storeProperties);
@@ -94,6 +96,7 @@ public class VeniceStoreConfig extends VeniceServerConfig {
     socketTimeoutMs = storeProperties.getInt(VeniceConfigService.KAFKA_CONSUMER_SOCKET_TIMEOUT_MS, 100);
     numMetadataRefreshRetries = storeProperties.getInt(VeniceConfigService.KAFKA_CONSUMER_NUM_METADATA_REFRESH_RETRIES, 3);
     metadataRefreshBackoffMs = storeProperties.getInt(VeniceConfigService.KAFKA_CONSUMER_METADATA_REFRESH_BACKOFF_MS, 1000);
+    kafkaEnableAutoOffsetCommit = storeProperties.getBoolean(VeniceConfigService.KAFKA_CONSUMER_ENABLE_AUTO_OFFSET_COMMIT, true);
 
     if (persistenceType.equals("bdb")) {
       bdbStoreConfig = new BdbStoreConfig(storeName, storeProperties);
@@ -130,6 +133,10 @@ public class VeniceStoreConfig extends VeniceServerConfig {
 
   public String getKafkaBootstrapServers() {
     return kafkaBootstrapServers;
+  }
+
+  public boolean kafkaEnableAutoOffsetCommit() {
+    return kafkaEnableAutoOffsetCommit;
   }
 
   public int getKafkaBrokerPort() {

@@ -45,6 +45,7 @@ dependencies {
   compile 'com.google.guava:guava:18.0'
   compile 'commons-io:commons-io:2.4'
   compile 'com.sleepycat:je:5.0.104'
+  compile 'org.apache.helix:helix-core:0.7.1'
   //compile fileTree(dir: 'lib', include: '*.jar')
 
   // log4j for logging

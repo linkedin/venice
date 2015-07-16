@@ -2,7 +2,7 @@ package com.linkedin.venice.server;
 
 import com.google.common.collect.ImmutableList;
 import com.linkedin.venice.config.VeniceStoreConfig;
-import com.linkedin.venice.kafka.consumer.KafkaPerStorePerNodeConsumerService;
+import com.linkedin.venice.kafka.consumer.KafkaConsumerPerStoreService;
 import com.linkedin.venice.partition.AbstractPartitionNodeAssignmentScheme;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.storage.StorageService;
@@ -94,20 +94,25 @@ public class VeniceServer {
         new StorageService(storeRepository, veniceConfigService, partitionNodeAssignmentRepository);
     services.add(storageService);
 
-    //create and add KafkaConsumerService
-    KafkaPerStorePerNodeConsumerService kafkaConsumerService2 =
-        new KafkaPerStorePerNodeConsumerService(storeRepository, veniceConfigService, partitionNodeAssignmentRepository);
-    services.add(kafkaConsumerService2);
+    //create and add KafkaSimpleConsumerService
+    KafkaConsumerPerStoreService kafkaConsumerService =
+        new KafkaConsumerPerStoreService(storeRepository, veniceConfigService);
+    services.add(kafkaConsumerService);
+
+    // Note: Only required when NOT using Helix.
+    if(!veniceConfigService.getVeniceClusterConfig().isHelixEnabled()) {
+      kafkaConsumerService.consumeForPartitionNodeAssignmentRepository(partitionNodeAssignmentRepository);
+    }
 
     /**
-     * TODO Create an admin service later. The admin service will need both StorageService and KafkaConsumerService
+     * TODO Create an admin service later. The admin service will need both StorageService and KafkaSimpleConsumerService
      * passed on to it.
      *
      * To add a new store do this in order:
      * 1. Populate storeNameToConfigsMap
      * 2. Get the assignment plan from PartitionNodeAssignmentScheme and  populate the PartitionNodeAssignmentRepository
      * 3. call StorageService.openStore(..) to create the appropriate storage partitions
-     * 4. call KafkaConsumerService.startConsumption(..) to create and start the consumer tasks for all kafka partitions.
+     * 4. call KafkaSimpleConsumerService.startConsumption(..) to create and start the consumer tasks for all kafka partitions.
      */
 
     return ImmutableList.copyOf(services);

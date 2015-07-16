@@ -94,10 +94,12 @@ public class VeniceConfigService {
   public static final String OFFSET_MANAGER_FLUSH_INTERVAL_MS = "offset.manager.flush.interval.ms";
   public static final String ENABLE_CONSUMPTION_ACKS_FOR_AZKABAN_JOBS = "enable.consumption.acks.for.azkaban.jobs";
   public static final String KAFKA_CONSUMPTION_ACKS_BROKER_URL = "kafka.consumptions.acks.broker.url";
+  public static final String HELIX_ENABLED = "helix.enabled";
   public static final Set<String> clusterSpecificProperties = new HashSet<String>(Arrays
       .asList(CLUSTER_NAME, STORAGE_NODE_COUNT, PARTITION_NODE_ASSIGNMENT_SCHEME,
           ENABLE_KAFKA_CONSUMER_OFFSET_MANAGEMENT, OFFSET_MANAGER_TYPE, OFFSET_DATA_BASE_PATH,
-          OFFSET_MANAGER_FLUSH_INTERVAL_MS, ENABLE_CONSUMPTION_ACKS_FOR_AZKABAN_JOBS, KAFKA_CONSUMPTION_ACKS_BROKER_URL));
+          OFFSET_MANAGER_FLUSH_INTERVAL_MS, ENABLE_CONSUMPTION_ACKS_FOR_AZKABAN_JOBS, KAFKA_CONSUMPTION_ACKS_BROKER_URL,
+          HELIX_ENABLED));
 
   // server specific properties
   public static final String NODE_ID = "node.id";
@@ -116,6 +118,7 @@ public class VeniceConfigService {
   public static final String KAFKA_CONSUMER_NUM_METADATA_REFRESH_RETRIES =
       "kafka.consumer.num.metadata.refresh.retries";
   public static final String KAFKA_CONSUMER_METADATA_REFRESH_BACKOFF_MS = "kafka.consumer.metadata.refresh.backoff.ms";
+  public static final String KAFKA_CONSUMER_ENABLE_AUTO_OFFSET_COMMIT = "kafka.enable.auto.commit";
 
   public static final String KAFKA_BOOTSTRAP_SERVERS = "kafka.bootstrap.servers";
   public static final String KAFKA_AUTO_COMMIT_INTERVAL_MS = "kafka.auto.commit.interval.ms";

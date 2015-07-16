@@ -1,8 +1,5 @@
 package com.linkedin.venice.kafka.consumer;
 
-import com.linkedin.venice.config.VeniceClusterConfig;
-import com.linkedin.venice.config.VeniceServerConfig;
-import com.linkedin.venice.config.VeniceStoreConfig;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceMessageException;
 import com.linkedin.venice.message.ControlFlagKafkaKey;
@@ -10,98 +7,77 @@ import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.message.KafkaValue;
 import com.linkedin.venice.message.OperationType;
 import com.linkedin.venice.serialization.Avro.AzkabanJobAvroAckRecordGenerator;
-import com.linkedin.venice.serialization.KafkaKeySerializer;
-import com.linkedin.venice.serialization.KafkaValueSerializer;
+import com.linkedin.venice.server.StoreRepository;
 import com.linkedin.venice.store.AbstractStorageEngine;
 import com.linkedin.venice.utils.ByteUtils;
-import com.linkedin.venice.utils.Utils;
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.HashSet;
 import java.util.Iterator;
-import java.util.Properties;
-import java.util.Set;
-import java.util.stream.Collectors;
-import org.apache.kafka.clients.CommonClientConfigs;
-import org.apache.kafka.clients.consumer.CommitType;
-import org.apache.kafka.clients.consumer.ConsumerConfig;
+import java.util.concurrent.atomic.AtomicBoolean;
+import org.apache.kafka.clients.consumer.Consumer;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.consumer.NoOffsetForPartitionException;
-import org.apache.kafka.clients.producer.KafkaProducer;
+import org.apache.kafka.clients.producer.Producer;
 import org.apache.kafka.clients.producer.ProducerRecord;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.log4j.Logger;
-import org.apache.kafka.clients.consumer.KafkaConsumer;
 
 /**
  * Assumes: One to One mapping between a Venice Store and Kafka Topic.
  * A runnable Kafka Consumer consuming messages from all the partition assigned to current node for a Kafka Topic.
  */
-public class KafkaPerStorePerNodeConsumerTask implements Runnable {
+public class KafkaPerStoreConsumptionTask implements Runnable {
 
-  private static final Logger logger = Logger.getLogger(KafkaPerStorePerNodeConsumerTask.class.getName());
+  private static final Logger logger = Logger.getLogger(KafkaPerStoreConsumptionTask.class.getName());
 
-  private static final String GROUP_ID_FORMAT = "%s_%s_%d";
-  private static final String CONSUMER_TASK_ID_FORMAT = "KafkaPerStorePerNodeConsumerTask for "
-      + "[ Node: %d, Topic: %s, Partitions: %s ]";
+  private static final String CONSUMER_TASK_ID_FORMAT = "KafkaPerStoreConsumptionTask for "
+      + "[ Node: %d, Topic: %s ]";
 
   private static final int READ_CYCLE_DELAY_MS = 1000;
 
-  // Venice Serialization
-  private final KafkaKeySerializer kafkaKeySerializer;
-  private final KafkaValueSerializer kafkaValueSerializer;
-
   //Ack producer
-  private final KafkaProducer<byte[], byte[]> ackProducer;
+  private final Producer<byte[], byte[]> ackProducer;
   private final AzkabanJobAvroAckRecordGenerator ackRecordGenerator;
 
-  // Store specific configs
-  private final VeniceStoreConfig storeConfig;
-
   // storage destination for consumption
-  private final AbstractStorageEngine storageEngine;
+  private final StoreRepository storeRepository;
 
   private final String topic;
-  private final Set<Integer> partitionIds;
+  private final int nodeId;
 
   private long jobId;
   private long totalMessagesProcessed;
 
   private final String consumerTaskId;
 
-  private KafkaConsumer kafkaConsumer;
+  private Consumer kafkaConsumer;
 
-  public KafkaPerStorePerNodeConsumerTask(VeniceStoreConfig storeConfig, AbstractStorageEngine storageEngine,
-      Set<Integer> partitionIds, KafkaProducer ackPartitionConsumptionProducer,
-      AzkabanJobAvroAckRecordGenerator ackRecordGenerator, boolean enableKafkaAutoOffsetManagement) {
+  private final AtomicBoolean canConsume;
 
-    this.storeConfig = storeConfig;
-    this.storageEngine = storageEngine;
+  public KafkaPerStoreConsumptionTask(Consumer kafkaConsumer, StoreRepository storeRepository,
+      Producer ackPartitionConsumptionProducer, AzkabanJobAvroAckRecordGenerator ackRecordGenerator, int nodeId,
+      String topic) {
 
-    this.kafkaKeySerializer = new KafkaKeySerializer();
-    this.kafkaValueSerializer = new KafkaValueSerializer();
+    this.kafkaConsumer = kafkaConsumer;
+    this.storeRepository = storeRepository;
 
-    this.topic = storeConfig.getStoreName();
-    this.partitionIds = Collections.synchronizedSet(partitionIds);
+    this.topic = topic;
+    this.nodeId = nodeId;
 
     this.ackProducer = ackPartitionConsumptionProducer;
     this.ackRecordGenerator = ackRecordGenerator;
-    this.consumerTaskId = String.format(CONSUMER_TASK_ID_FORMAT, storeConfig.getNodeId(), topic, partitionIds.toString());
+    this.consumerTaskId = String.format(CONSUMER_TASK_ID_FORMAT, nodeId, topic);
 
-    Properties kafkaConsumerProperties = getKafkaConsumerProperties(storeConfig, enableKafkaAutoOffsetManagement);
-    this.kafkaConsumer = new KafkaConsumer(kafkaConsumerProperties, null, kafkaKeySerializer, kafkaValueSerializer);
-    subscribeToPartitions();
+    canConsume = new AtomicBoolean(true);
   }
 
   @Override
   /**
-   * Parallelized method which performs Kafka consumption and relays messages to the Storage engine
+   * Polls the producer for new messages in an infinite loop and processes the new messages.
    */
   public void run() {
     logger.info("Running " + consumerTaskId);
     try {
-      while (true) {
+      while (canConsume.get() == true) {
         ConsumerRecords records = kafkaConsumer.poll(READ_CYCLE_DELAY_MS);
         processTopicConsumerRecords(records);
       }
@@ -179,7 +155,7 @@ public class KafkaPerStorePerNodeConsumerTask implements Runnable {
         logger.info(consumerTaskId + " : Receive End of Pushes message. Consumed #records: " + totalMessagesProcessed
             + ", from job id: " + jobId);
         ProducerRecord<byte[], byte[]> kafkaMessage = ackRecordGenerator
-            .getKafkaProducerRecord(jobId, topic, record.partition(), this.storeConfig.getNodeId(), totalMessagesProcessed);
+            .getKafkaProducerRecord(jobId, topic, record.partition(), nodeId, totalMessagesProcessed);
         ackProducer.send(kafkaMessage);
       }
       return; // Its fine to return here, since this is just a control message.
@@ -191,6 +167,7 @@ public class KafkaPerStorePerNodeConsumerTask implements Runnable {
   private void processVeniceMessage(KafkaKey kafkaKey, KafkaValue kafkaValue, int partition) {
 
     long startTimeNs = -1;
+    AbstractStorageEngine storageEngine = storeRepository.getLocalStorageEngine(topic);
 
     byte[] keyBytes = kafkaKey.getKey();
 
@@ -244,19 +221,6 @@ public class KafkaPerStorePerNodeConsumerTask implements Runnable {
     }
   }
 
-  private void subscribeToPartitions() {
-    TopicPartition [] partitionsArray = new TopicPartition[partitionIds.size()];
-    convertPartitionIdsToTopicPartitions(partitionIds).toArray(partitionsArray);
-    kafkaConsumer.subscribe(partitionsArray);
-    logger.info(consumerTaskId + " subscribed to KafkaPartitions: " + Arrays.toString(partitionsArray));
-  }
-
-  private Set<TopicPartition> convertPartitionIdsToTopicPartitions (Set<Integer> partitionIds) {
-    Set<TopicPartition> partitions =
-        partitionIds.stream().map(partitionId -> new TopicPartition(topic, partitionId)).collect(Collectors.toSet());
-    return partitions;
-  }
-
   /**
    * @param topic Kafka Topic to which the partition belongs.
    * @param partition Kafka Partition for which the offset is required.
@@ -276,72 +240,10 @@ public class KafkaPerStorePerNodeConsumerTask implements Runnable {
   }
 
   /**
-   * @return Group Id for kafka consumer.
+   * Stops the consumer task.
    */
-  private String getGroupId() {
-    return String.format(GROUP_ID_FORMAT, topic, Utils.getHostName(), storeConfig.getNodeId());
+  public void stop() {
+    canConsume.set(false);
   }
 
-  /**
-   * Unsubscribe Kafka Consumption for the specified topic-partition.
-   * @param topic Topic for which the partition that needs to be unsubscribed.
-   * @param partitionId Partition Id that needs to be unsubscribed.
-   * @throws VeniceException If the topic or the topic-partition was already not subscribed.
-   */
-  public void unsubscribePartition(String topic, int partitionId) throws VeniceException {
-    if(!topic.equals(this.topic)) {
-      throw new VeniceException(consumerTaskId + " is not responsible for KafkaTopic: " + topic);
-    }
-    if(!partitionIds.contains(partitionId)) {
-      throw new VeniceException(consumerTaskId + " is not subscribed for KafkaPartition: " + partitionId);
-    }
-    this.partitionIds.remove(partitionId);
-    kafkaConsumer.unsubscribe(new TopicPartition(topic, partitionId));
-    logger.info(consumerTaskId + ": Kafka Partition " + topic + "-" + partitionId + " unsubscribed.");
-  }
-
-  /**
-   * Subscribe Kafka Consumption for the specified topic-partition.
-   * @param topic Topic for which the partition that needs to be subscribed.
-   * @param partitionId Partition Id that needs to be subscribed.
-   * @throws VeniceException If the topic or the topic-partition was already subscribed.
-   */
-  public void subscribePartition(String topic, int partitionId) throws VeniceException {
-    if(!topic.equals(this.topic)) {
-      throw new VeniceException(consumerTaskId + " is not responsible for KafkaTopic: " + topic);
-    }
-    if(partitionIds.contains(partitionId)) {
-      throw new VeniceException(consumerTaskId + " is already subscribed for KafkaPartition: " + partitionId);
-    }
-    this.partitionIds.add(partitionId);
-    TopicPartition topicPartition = new TopicPartition(topic, partitionId);
-    kafkaConsumer.subscribe(topicPartition);
-    // Make sure that the consumption starts from beginning.
-    kafkaConsumer.seekToBeginning(topicPartition);
-    // Commit the beginning offset to prevent the use of old committed offset.
-    kafkaConsumer.commit(CommitType.SYNC);
-    logger.info(consumerTaskId + ": Kafka Partition " + topic + "-" + partitionId + " subscribed.");
-  }
-
-  /**
-   * @return set of partition Ids subscribed by the consumer.
-   */
-  public Set<Integer> getSubscribedPartitions() {
-    Set<Integer> subscribedPartitionIds = new HashSet<>();
-    Set<TopicPartition> subscribedTopicPartitions = kafkaConsumer.subscriptions();
-    subscribedPartitionIds
-        .addAll(subscribedTopicPartitions.stream().map(TopicPartition::partition).collect(Collectors.toList()));
-    return subscribedPartitionIds;
-  }
-
-  private Properties getKafkaConsumerProperties(VeniceStoreConfig storeConfig, boolean enableKafkaAutoOffsetManagement) {
-    Properties kafkaConsumerProperties = new Properties();
-    kafkaConsumerProperties.setProperty(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, storeConfig.getKafkaBootstrapServers());
-    kafkaConsumerProperties.setProperty(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG,
-        String.valueOf(enableKafkaAutoOffsetManagement));
-    kafkaConsumerProperties.setProperty(ConsumerConfig.AUTO_COMMIT_INTERVAL_MS_CONFIG,
-        String.valueOf(storeConfig.getKafkaAutoCommitIntervalMs()));
-    kafkaConsumerProperties.setProperty(ConsumerConfig.GROUP_ID_CONFIG, getGroupId());
-    return kafkaConsumerProperties;
-  }
 }

@@ -27,7 +27,7 @@ public class TestBDBOffsetManager {
     clusterProps.put(VeniceConfigService.ENABLE_KAFKA_CONSUMER_OFFSET_MANAGEMENT, "true");
     clusterProps.put(VeniceConfigService.OFFSET_MANAGER_TYPE, "bdb");
     clusterProps.put(VeniceConfigService.OFFSET_MANAGER_FLUSH_INTERVAL_MS, flushIntervalMs);
-
+    clusterProps.put(VeniceConfigService.HELIX_ENABLED, "true");
     clusterConfig = new VeniceClusterConfig(clusterProps);
     offsetManager = new BdbOffsetManager(clusterConfig);
   }
