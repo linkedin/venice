@@ -95,11 +95,12 @@ public class VeniceConfigService {
   public static final String ENABLE_CONSUMPTION_ACKS_FOR_AZKABAN_JOBS = "enable.consumption.acks.for.azkaban.jobs";
   public static final String KAFKA_CONSUMPTION_ACKS_BROKER_URL = "kafka.consumptions.acks.broker.url";
   public static final String HELIX_ENABLED = "helix.enabled";
+  public static final String ZOOKEEPER_ADDRESS = "zookeeper.address";
   public static final Set<String> clusterSpecificProperties = new HashSet<String>(Arrays
       .asList(CLUSTER_NAME, STORAGE_NODE_COUNT, PARTITION_NODE_ASSIGNMENT_SCHEME,
           ENABLE_KAFKA_CONSUMER_OFFSET_MANAGEMENT, OFFSET_MANAGER_TYPE, OFFSET_DATA_BASE_PATH,
           OFFSET_MANAGER_FLUSH_INTERVAL_MS, ENABLE_CONSUMPTION_ACKS_FOR_AZKABAN_JOBS, KAFKA_CONSUMPTION_ACKS_BROKER_URL,
-          HELIX_ENABLED));
+          HELIX_ENABLED, ZOOKEEPER_ADDRESS));
 
   // server specific properties
   public static final String NODE_ID = "node.id";

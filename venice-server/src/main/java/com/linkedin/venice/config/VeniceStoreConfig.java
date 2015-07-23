@@ -74,10 +74,6 @@ public class VeniceStoreConfig extends VeniceServerConfig {
     if (numKafkaPartitions < 1) {
       throw new ConfigurationException("num of Kafka partitions cannot be less than 1");
     }
-    kafkaZookeeperUrl = storeProperties.getString(VeniceConfigService.KAFKA_ZOOKEEPER_URL);
-    if (kafkaZookeeperUrl.isEmpty()) {
-      throw new ConfigurationException("kafkaZookeeperUrl can't be empty");
-    }
     kafkaBrokers = storeProperties.getList(VeniceConfigService.KAFKA_BROKERS);
     if (kafkaBrokers == null || kafkaBrokers.isEmpty()) {
       throw new ConfigurationException("kafkaBrokers can't be empty");
@@ -121,10 +117,6 @@ public class VeniceStoreConfig extends VeniceServerConfig {
 
   public int getNumKafkaPartitions() {
     return numKafkaPartitions;
-  }
-
-  public String getKafkaZookeeperUrl() {
-    return kafkaZookeeperUrl;
   }
 
   public List<String> getKafkaBrokers() {

@@ -1,13 +1,19 @@
 apply plugin: 'java'
 apply plugin: 'idea'
 apply plugin: 'eclipse'
+apply plugin: 'application'
 
 sourceCompatibility = 1.8
 version = '0.1'
 
+mainClassName = "com.linkedin.venice.controller.VeniceController"
+
+installApp.dependsOn test
+
 task buildJar(type: Jar) {
   manifest {
-    attributes 'Implementation-Title': 'Venice Common',
+    attributes 'Main-Class': 'com.linkedin.venice.controller.VeniceController',
+        'Implementation-Title': 'Venice Controller',
         'Implementation-Version': version
   }
   baseName = project.name
@@ -17,7 +23,8 @@ task buildJar(type: Jar) {
 
 jar {
   manifest {
-    attributes 'Implementation-Title': 'Venice Common',
+    attributes 'Main-Class': 'com.linkedin.venice.controller.VeniceController',
+        'Implementation-Title': 'Venice Controller',
         'Implementation-Version': version
   }
 }
@@ -33,20 +40,24 @@ repositories {
 }
 
 dependencies {
-
-  compile 'org.apache.avro:avro:1.4.1'
-  compile 'org.apache.kafka:kafka_2.10:0.8.1.1'
+  compile project(':venice-common')
   compile 'kafka:kafka-clients:0.8.2.20'
+  compile 'com.google.guava:guava:18.0'
+  compile 'commons-io:commons-io:2.4'
+  compile 'com.sleepycat:je:5.0.104'
+  compile 'org.apache.helix:helix-core:0.7.1'
+  //compile fileTree(dir: 'lib', include: '*.jar')
+
   // log4j for logging
   compile 'log4j:log4j:1.2.17'
-  compile 'commons-codec:commons-codec:1.4'
-  compile 'com.google.guava:guava:18.0'
+
   // testng, because tests are important
+  testCompile project(':venice-client')
   testCompile 'org.testng:testng:6.1.1'
-  // Helix for cluster management
-  compile 'org.apache.helix:helix-core:0.7.1'
+  testCompile 'commons-io:commons-io:2.4'
 
 }
+
 
 idea {
   module {

@@ -31,6 +31,7 @@ public class VeniceClusterConfig {
     private boolean enableConsumptionAcksForAzkabanJobs;
 
     private boolean helixEnabled;
+    private String zookeeperAddress;
 
     private String kafkaConsumptionAcksBrokerUrl;
 
@@ -52,6 +53,7 @@ public class VeniceClusterConfig {
         enableKafkaConsumersOffsetManagement =
                 clusterProps.getBoolean(VeniceConfigService.ENABLE_KAFKA_CONSUMER_OFFSET_MANAGEMENT, false);
         helixEnabled = clusterProps.getBoolean(VeniceConfigService.HELIX_ENABLED);
+        zookeeperAddress = clusterProps.getString(VeniceConfigService.ZOOKEEPER_ADDRESS);
         if (enableKafkaConsumersOffsetManagement) {
             offsetManagerType = clusterProps.getString(VeniceConfigService.OFFSET_MANAGER_TYPE, "bdb"); // Default "bdb"
             offsetDatabasePath = clusterProps.getString(VeniceConfigService.OFFSET_DATA_BASE_PATH,
@@ -105,6 +107,10 @@ public class VeniceClusterConfig {
 
     public boolean isHelixEnabled() {
         return helixEnabled;
+    }
+
+    public String getZookeeperAddress() {
+        return zookeeperAddress;
     }
 
     public String getKafkaConsumptionAcksBrokerUrl() {

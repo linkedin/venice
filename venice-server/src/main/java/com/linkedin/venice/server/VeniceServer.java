@@ -1,11 +1,14 @@
 package com.linkedin.venice.server;
 
 import com.google.common.collect.ImmutableList;
+import com.linkedin.venice.config.VeniceClusterConfig;
 import com.linkedin.venice.config.VeniceStoreConfig;
+import com.linkedin.venice.helix.HelixParticipationService;
 import com.linkedin.venice.kafka.consumer.KafkaConsumerPerStoreService;
 import com.linkedin.venice.partition.AbstractPartitionNodeAssignmentScheme;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.storage.StorageService;
+import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.ReflectUtils;
 import com.linkedin.venice.utils.Utils;
 import java.util.Set;
@@ -77,7 +80,7 @@ public class VeniceServer {
 
   /**
    * Instantiate all known services. Most of the services in this method intake:
-   * 1. StoreRepositry - that maps store to appropriate storage engine instance
+   * 1. StoreRepository - that maps store to appropriate storage engine instance
    * 2. VeniceConfig - which contains configs related to this cluster
    * 3. StoreNameToConfigsMap - which contains store specific configs
    * 4. PartitionNodeAssignmentRepository - which contains how partitions for each store are mapped to nodes in the
@@ -99,8 +102,15 @@ public class VeniceServer {
         new KafkaConsumerPerStoreService(storeRepository, veniceConfigService);
     services.add(kafkaConsumerService);
 
-    // Note: Only required when NOT using Helix.
-    if(!veniceConfigService.getVeniceClusterConfig().isHelixEnabled()) {
+    // Start venice participant service if Helix is enabled.
+    VeniceClusterConfig clusterConfig = veniceConfigService.getVeniceClusterConfig();
+    if(clusterConfig.isHelixEnabled()) {
+      HelixParticipationService helixParticipationService = new HelixParticipationService(kafkaConsumerService
+          , storeRepository, veniceConfigService, clusterConfig.getZookeeperAddress(), clusterConfig.getClusterName()
+          , HelixUtils.convertNodeIdToHelixParticipantName(veniceConfigService.getVeniceServerConfig().getNodeId()));
+      services.add(helixParticipationService);
+    } else {
+      // Note: Only required when NOT using Helix.
       kafkaConsumerService.consumeForPartitionNodeAssignmentRepository(partitionNodeAssignmentRepository);
     }
 
@@ -205,6 +215,18 @@ public class VeniceServer {
       server.start();
     }
 
-    // TODO Add a shutdown hook ?
+    Runtime.getRuntime().addShutdownHook(new Thread() {
+      @Override
+      public void run() {
+        if (server.isStarted()) {
+          try {
+            server.shutdown();
+          } catch (Exception e) {
+            logger.error("Error shutting the server. ", e);
+          }
+        }
+      }
+    });
+    Thread.currentThread().join();
   }
 }
