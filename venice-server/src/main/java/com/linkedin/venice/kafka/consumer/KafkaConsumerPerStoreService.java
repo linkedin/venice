@@ -167,6 +167,13 @@ public class KafkaConsumerPerStoreService extends AbstractVeniceService implemen
       topicNameToKafkaConsumerClientMap.put(topic, kafkaConsumer);
     }
 
+    TopicPartition topicPartition = new TopicPartition(topic, partitionId);
+    if(kafkaConsumer.subscriptions().contains(topicPartition)) {
+      logger.info("Already Consuming - Kafka Partition: " + topicPartition + ".");
+      return;
+    }
+    kafkaConsumer.subscribe(topicPartition);
+
     if(!topicNameToKafkaMessageConsumptionTaskMap.containsKey(topic)) {
       KafkaPerStoreConsumptionTask consumerTask = getConsumerTask(veniceStore, kafkaConsumer);
       topicNameToKafkaMessageConsumptionTaskMap.put(topic, consumerTask);
@@ -175,12 +182,6 @@ public class KafkaConsumerPerStoreService extends AbstractVeniceService implemen
       }
     }
 
-    TopicPartition topicPartition = new TopicPartition(topic, partitionId);
-    if(kafkaConsumer.subscriptions().contains(topicPartition)) {
-      logger.info("Already Consuming - Kafka Partition: " + topicPartition + ".");
-      return;
-    }
-    kafkaConsumer.subscribe(topicPartition);
     logger.info("Started Consuming - Kafka Partition: " + topic + "-" + partitionId + ".");
   }
 

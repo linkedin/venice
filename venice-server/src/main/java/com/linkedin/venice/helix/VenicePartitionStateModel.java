@@ -1,9 +1,11 @@
 package com.linkedin.venice.helix;
 
 import com.linkedin.venice.config.VeniceStoreConfig;
+import com.linkedin.venice.controller.State;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.consumer.KafkaConsumerService;
 import com.linkedin.venice.server.StoreRepository;
+import com.linkedin.venice.store.AbstractStorageEngine;
 import org.apache.helix.NotificationContext;
 import org.apache.helix.api.TransitionHandler;
 import org.apache.helix.model.Message;
@@ -23,14 +25,15 @@ import org.apache.log4j.Logger;
  * Error: A partition enters this state if there was some error while transitioning from one state to another.
  */
 
-@StateModelInfo(initialState = "OFFLINE", states = {
-    "ONLINE", "ERROR"
-})
+@StateModelInfo(initialState = State.OFFLINE_STATE, states = { State.ONLINE_STATE })
 
 public class VenicePartitionStateModel extends TransitionHandler {
   private static final Logger logger = Logger.getLogger(VenicePartitionStateModel.class.getName());
 
   private static final String STORE_PARTITION_NODE_DESCRIPTION_FORMAT = "%s-%d @ node %d";
+
+  private static final long RETRY_SEEK_TO_BEGINNING_WAIT_TIME_MS = 1000;
+  private static final int RETRY_SEEK_TO_BEGINNING_COUNT = 10;
 
   private final VeniceStoreConfig storeConfig;
   private final int partition;
@@ -52,16 +55,21 @@ public class VenicePartitionStateModel extends TransitionHandler {
   /**
    * Handles OFFLINE->ONLINE transition. Subscribes to the partition as part of the transition.
    */
-  @Transition(to = "ONLINE", from = "OFFLINE")
+  @Transition(to = State.ONLINE_STATE, from = State.OFFLINE_STATE)
   public void onBecomeOnlineFromOffline(Message message, NotificationContext context) {
     logger.info(storePartitionNodeDescription + " becomes ONLINE from OFFLINE.");
     kafkaConsumerService.startConsumption(storeConfig, partition);
+    AbstractStorageEngine storageEngine = storeRepository.getLocalStorageEngine(storeConfig.getStoreName());
+    if (!storageEngine.containsPartition(partition)) {
+      storageEngine.addStoragePartition(partition);
+      tryResetConsumptionOffset(storeConfig, partition);
+    }
   }
 
   /**
    * Handles ONLINE->OFFLINE transition. Unsubscribes to the partition as part of the transition.
    */
-  @Transition(to = "OFFLINE", from = "ONLINE")
+  @Transition(to = State.OFFLINE_STATE, from = State.ONLINE_STATE)
   public void onBecomeOfflineFromOnline(Message message, NotificationContext context) {
     logger.info(storePartitionNodeDescription + " becomes OFFLINE from ONLINE.");
     kafkaConsumerService.stopConsumption(storeConfig, partition);
@@ -71,7 +79,7 @@ public class VenicePartitionStateModel extends TransitionHandler {
    * Handles OFFLINE->DROPPED transition. Removes partition data from the local storage. Also, clears committed kafka
    * offset for the partition as part of the transition.
    */
-  @Transition(to = "DROPPED", from = "OFFLINE")
+  @Transition(to = State.DROPPED_STATE, from = State.OFFLINE_STATE)
   public void onBecomeDroppedFromOffline(Message message, NotificationContext context) {
     logger.info(storePartitionNodeDescription + " becomes DROPPED from OFFLINE.");
     kafkaConsumerService.resetConsumptionOffset(storeConfig, partition);
@@ -81,7 +89,7 @@ public class VenicePartitionStateModel extends TransitionHandler {
   /**
    * Handles ERROR->OFFLINE transition.
    */
-  @Transition(to = "OFFLINE", from = "ERROR")
+  @Transition(to = State.OFFLINE_STATE, from = State.ERROR_STATE)
   public void onBecomeOfflineFromError(Message message, NotificationContext context) {
     logger.info(storePartitionNodeDescription + " becomes OFFLINE from ERROR.");
     try {
@@ -97,7 +105,7 @@ public class VenicePartitionStateModel extends TransitionHandler {
    * from local storage and clears the committed offset.
    */
   @Override
-  @Transition(to = "DROPPED", from = "ERROR")
+  @Transition(to = State.DROPPED_STATE, from = State.ERROR_STATE)
   public void onBecomeDroppedFromError(Message message, NotificationContext context) {
     logger.warn(
         storePartitionNodeDescription + " becomes DROPPED from ERROR transition invoked with message: " + message
@@ -107,4 +115,31 @@ public class VenicePartitionStateModel extends TransitionHandler {
     storeRepository.getLocalStorageEngine(storeConfig.getStoreName()).removePartition(partition);
   }
 
+  /**
+   * TODO: Get rid of this workaround. Once, the Kafka Clients have been fixed.
+   * Retries resetConsumptionOffset for a partition.
+   * Because of current Kafka limitations, a partition is only subscribed after a poll call is made.
+   * In our case, after the subscribed is called, a consumptionTask is spawned which polls to consumer for messages.
+   * @param storeConfig
+   * @param partition
+   */
+  private void tryResetConsumptionOffset(VeniceStoreConfig storeConfig, int partition) {
+    int attempt = 0;
+    while (true) {
+      try {
+        logger.info(storePartitionNodeDescription + " trying resetting offset - Attempt: " + attempt);
+        kafkaConsumerService.resetConsumptionOffset(storeConfig, partition);
+        return;
+      } catch (IllegalArgumentException ex) {
+        if (++attempt >= RETRY_SEEK_TO_BEGINNING_COUNT) {
+          throw ex;
+        }
+        try {
+          Thread.sleep(RETRY_SEEK_TO_BEGINNING_WAIT_TIME_MS);
+        } catch (InterruptedException e) {
+          logger.error("Unable to sleep while retrying resetConsumptionOffset. ", e);
+        }
+      }
+    }
+  }
 }

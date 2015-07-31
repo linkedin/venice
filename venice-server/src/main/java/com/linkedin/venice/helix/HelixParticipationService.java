@@ -48,6 +48,11 @@ public class HelixParticipationService extends AbstractVeniceService {
 
   @Override
   public void stopInner() {
-    helixParticipant.stop();
+    if(helixParticipant != null) {
+      helixParticipant.stop();
+      if(helixParticipant.getConnection().isConnected()) {
+        helixParticipant.getConnection().disconnect();
+      }
+    }
   }
 }
