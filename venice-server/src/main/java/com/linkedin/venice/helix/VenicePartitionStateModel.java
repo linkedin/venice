@@ -26,7 +26,6 @@ import org.apache.log4j.Logger;
  */
 
 @StateModelInfo(initialState = State.OFFLINE_STATE, states = { State.ONLINE_STATE })
-
 public class VenicePartitionStateModel extends TransitionHandler {
   private static final Logger logger = Logger.getLogger(VenicePartitionStateModel.class.getName());
 
