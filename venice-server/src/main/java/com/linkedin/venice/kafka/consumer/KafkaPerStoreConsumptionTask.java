@@ -83,8 +83,14 @@ public class KafkaPerStoreConsumptionTask implements Runnable {
       }
     } catch (VeniceException e) {
       logger.error(consumerTaskId + " : Killing consumer task ", e);
-    } catch (Exception e) {
-      logger.error(consumerTaskId + " Unknown Exception caught: ", e);
+    } catch (IllegalStateException e) {
+      /*
+       * We can ignore the IllegalStateException when consumption has been stopped. There is a race condition where
+       * the KafkaConsumerService shuts off the consumer but the KafkaConsumerTask was blocked on the poll call.
+       */
+      if(canConsume.get()) {
+        throw e;
+      }
     } finally {
       if (kafkaConsumer != null) {
         logger.error(consumerTaskId + " : Closing consumer..");
@@ -232,7 +238,7 @@ public class KafkaPerStoreConsumptionTask implements Runnable {
     long offset = -1;
     try {
       offset = kafkaConsumer.committed(new TopicPartition(topic, partition));
-      logger.info(consumerTaskId + " : Last known read offset: " + offset);
+      logger.info(consumerTaskId + " : Last known read offset for " + topic + "-" + partition + ": " + offset);
     } catch (NoOffsetForPartitionException ex) {
       logger.info(consumerTaskId + " : No offset found for " + topic + "-" + partition);
     }

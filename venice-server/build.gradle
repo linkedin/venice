@@ -41,6 +41,7 @@ repositories {
 
 dependencies {
   compile project(':venice-common')
+  compile project(':venice-controller')
   compile 'kafka:kafka-clients:0.8.2.20'
   compile 'com.google.guava:guava:18.0'
   compile 'commons-io:commons-io:2.4'
