@@ -52,10 +52,6 @@ public class KafkaConsumerPerStoreService extends AbstractVeniceService implemen
   private AzkabanJobAvroAckRecordGenerator ackRecordGenerator;
 
   /**
-   * A repository mapping each Kafka Topic to its corresponding Kafka Consumer Client.
-   */
-  private final Map<String, Consumer> topicNameToKafkaConsumerClientMap;
-  /**
    * A repository mapping each Kafka Topic to it corresponding Consumption task responsible
    * for consuming messages and making changes to the local store accordingly.
    */
@@ -72,7 +68,6 @@ public class KafkaConsumerPerStoreService extends AbstractVeniceService implemen
     super(VENICE_SERVICE_NAME);
     this.storeRepository = storeRepository;
 
-    this.topicNameToKafkaConsumerClientMap = Collections.synchronizedMap(new HashMap<>());
     this.topicNameToKafkaMessageConsumptionTaskMap = Collections.synchronizedMap(new HashMap<>());
     canRunTasks = new AtomicBoolean(false);
 
@@ -129,8 +124,8 @@ public class KafkaConsumerPerStoreService extends AbstractVeniceService implemen
     }
   }
 
-  private KafkaPerStoreConsumptionTask getConsumerTask(VeniceStoreConfig veniceStore, Consumer kafkaConsumer) {
-    return new KafkaPerStoreConsumptionTask(kafkaConsumer, storeRepository,
+  private KafkaPerStoreConsumptionTask getConsumerTask(VeniceStoreConfig veniceStore) {
+    return new KafkaPerStoreConsumptionTask(getKafkaConsumerProperties(veniceStore), storeRepository,
         ackPartitionConsumptionProducer, ackRecordGenerator, nodeId, veniceStore.getStoreName());
   }
 
@@ -145,7 +140,7 @@ public class KafkaConsumerPerStoreService extends AbstractVeniceService implemen
     if (consumerExecutorService != null) {
       consumerExecutorService.shutdown();
     }
-    topicNameToKafkaConsumerClientMap.values().forEach(Consumer::close);
+    topicNameToKafkaMessageConsumptionTaskMap.values().forEach(KafkaPerStoreConsumptionTask::stop);
     if(ackPartitionConsumptionProducer != null) {
       ackPartitionConsumptionProducer.close();
     }
@@ -161,27 +156,15 @@ public class KafkaConsumerPerStoreService extends AbstractVeniceService implemen
   @Override
   public void startConsumption(VeniceStoreConfig veniceStore, int partitionId) {
     String topic = veniceStore.getStoreName();
-    Consumer kafkaConsumer = topicNameToKafkaConsumerClientMap.get(topic);
-    if(kafkaConsumer == null) {
-      kafkaConsumer = new KafkaConsumer(getKafkaConsumerProperties(veniceStore));
-      topicNameToKafkaConsumerClientMap.put(topic, kafkaConsumer);
-    }
-
-    TopicPartition topicPartition = new TopicPartition(topic, partitionId);
-    if(kafkaConsumer.subscriptions().contains(topicPartition)) {
-      logger.info("Already Consuming - Kafka Partition: " + topicPartition + ".");
-      return;
-    }
-    kafkaConsumer.subscribe(topicPartition);
-
-    if(!topicNameToKafkaMessageConsumptionTaskMap.containsKey(topic)) {
-      KafkaPerStoreConsumptionTask consumerTask = getConsumerTask(veniceStore, kafkaConsumer);
+    KafkaPerStoreConsumptionTask consumerTask = topicNameToKafkaMessageConsumptionTaskMap.get(topic);
+    if(consumerTask == null || !consumerTask.isRunning()) {
+      consumerTask = getConsumerTask(veniceStore);
       topicNameToKafkaMessageConsumptionTaskMap.put(topic, consumerTask);
       if(canRunTasks.get()) {
         consumerExecutorService.submit(consumerTask);
       }
     }
-
+    consumerTask.subscribePartition(topic, partitionId);
     logger.info("Started Consuming - Kafka Partition: " + topic + "-" + partitionId + ".");
   }
 
@@ -193,22 +176,10 @@ public class KafkaConsumerPerStoreService extends AbstractVeniceService implemen
   @Override
   public void stopConsumption(VeniceStoreConfig veniceStore, int partitionId) {
     String topic = veniceStore.getStoreName();
-    if(!topicNameToKafkaConsumerClientMap.containsKey(topic)) {
-      throw new VeniceException("No Consumer for - Kafka Partition: " + topic + "-" + partitionId + ".");
+    KafkaPerStoreConsumptionTask consumerTask = topicNameToKafkaMessageConsumptionTaskMap.get(topic);
+    if(consumerTask != null && consumerTask.isRunning()) {
+      consumerTask.unsubscribePartition(topic, partitionId);
     }
-    Consumer consumer = topicNameToKafkaConsumerClientMap.get(topic);
-    TopicPartition topicPartition = new TopicPartition(topic, partitionId);
-    if(!consumer.subscriptions().contains(topicPartition)) {
-      logger.info("Already not consuming - Kafka Partition: " + topic + "-" + partitionId + ".");
-      return;
-    }
-    consumer.unsubscribe(topicPartition);
-    if(consumer.subscriptions().isEmpty()) {
-      KafkaPerStoreConsumptionTask consumerTask = topicNameToKafkaMessageConsumptionTaskMap.get(topic);
-      consumerTask.stop();
-      topicNameToKafkaMessageConsumptionTaskMap.remove(topic);
-    }
-    logger.info("Stopped Consuming - Kafka Partition: " + topicPartition + ".");
   }
 
   /**
@@ -219,18 +190,10 @@ public class KafkaConsumerPerStoreService extends AbstractVeniceService implemen
   @Override
   public void resetConsumptionOffset(VeniceStoreConfig veniceStore, int partitionId) {
     String topic = veniceStore.getStoreName();
-    if(!topicNameToKafkaConsumerClientMap.containsKey(topic)) {
-      throw new VeniceException("No Consumer for - Kafka Partition: " + topic + "-" + partitionId + ".");
+    KafkaPerStoreConsumptionTask consumerTask = topicNameToKafkaMessageConsumptionTaskMap.get(topic);
+    if(consumerTask != null && consumerTask.isRunning()) {
+      consumerTask.resetPartitionConsumptionOffset(topic, partitionId);
     }
-    Consumer consumer = topicNameToKafkaConsumerClientMap.get(topic);
-
-    TopicPartition topicPartition = new TopicPartition(topic, partitionId);
-    // Change offset to beginning.
-    consumer.seekToBeginning(topicPartition);
-    // Commit the beginning offset to prevent the use of old committed offset.
-    Map<TopicPartition, Long> offsetMap = new HashMap<>();
-    offsetMap.put(topicPartition, consumer.position(topicPartition));
-    consumer.commit(offsetMap, CommitType.SYNC);
     logger.info("Offset reset to beginning - Kafka Partition: " + topic + "-" + partitionId + ".");
   }
 

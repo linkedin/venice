@@ -1,7 +1,7 @@
 package com.linkedin.venice.controller;
 
 /**
- * Created by aakapoor on 7/31/15.
+ * A class with the constants for all the states being used.
  */
 public class State {
   public static final String ONLINE_STATE = "ONLINE";
