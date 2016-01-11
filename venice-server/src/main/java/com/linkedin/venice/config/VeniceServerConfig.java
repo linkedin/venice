@@ -12,9 +12,12 @@ import com.linkedin.venice.utils.Props;
 public class VeniceServerConfig extends VeniceClusterConfig {
 
   private int nodeId;
+  private String listenerPort;
   protected BdbServerConfig bdbServerConfig;
 
   private static final String VENICE_NODE_ID_VAR_NAME = "VENICE_NODE_ID";
+  private static final String VENICE_NODE_PORT_VAR_NAME = "VENICE_LISTENER_PORT";
+
 
   public VeniceServerConfig(Props serverProperties) throws ConfigurationException {
     super(serverProperties);
@@ -26,6 +29,11 @@ public class VeniceServerConfig extends VeniceClusterConfig {
       nodeId = serverProps.getInt(VeniceConfigService.NODE_ID);
     } else {
       nodeId = getIntEnvVariable(VENICE_NODE_ID_VAR_NAME);
+    }
+    if (serverProps.containsKey(VeniceConfigService.LISTENER_PORT)) {
+      listenerPort = Integer.toString(serverProps.getInt(VeniceConfigService.LISTENER_PORT));
+    } else {
+      listenerPort = Integer.toString(getIntEnvVariable(VENICE_NODE_PORT_VAR_NAME));
     }
     dataBasePath = serverProps.getString(VeniceConfigService.DATA_BASE_PATH);
 
@@ -54,8 +62,14 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     }
   }
 
+
+
   public int getNodeId() {
     return nodeId;
+  }
+
+  public String getListenerPort() {
+    return listenerPort;
   }
 
   /**

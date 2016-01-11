@@ -1,4 +1,4 @@
-package com.linkedin.venice.controller;
+package com.linkedin.venice.helix;
 
 /**
  * A class with the constants for all the states being used.

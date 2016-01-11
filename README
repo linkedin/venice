@@ -13,7 +13,7 @@ To use Venice, the following programs must be installed and running on your loca
 
 1) Start Apache Zookeeper on the local machine. The installation will have guides on how to do this.
 2) Start Apache Kafka on the local machine. 
-3) Start and use Venice.
+3) Start and use Venice.  Note: Start the Venice Controller, then start the Venice Server
 
 -----------------------
 Build
@@ -43,6 +43,11 @@ There are two ways to use Venice.
 1) Venice is usable through its Java Client API.
 2) Venice commands are also executable through a Shell Client, which is also provided.
 
+
+To start the controller:
+> export VENICE_STORE_INFO_DIR=/path/to/venice/venice-server/config/STORES
+> bash start-venice-controller.sh test-cluster localhost:2181 venice-controller
+
 To start the server:
 
 > venice-server/quickstart/start-venice-server.sh
@@ -61,8 +66,12 @@ One of: ( --get, --put, --delete, --interactive ) must be present and specify th
 2) --key
 The key to be given to Venice.
 
-3) --value (optional)
+3) --value (only required for PUT)
 The value to be specified with a PUT in Venice.
+
+4) --store (optional)
+The name of the store to use, note store name is the same as kafka topic name
+If omitted, will use store name "test_shell_store"
 
 Examples:
 

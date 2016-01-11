@@ -40,6 +40,7 @@ public class KafkaProducerWrapper {
    * */
   public Future<RecordMetadata> sendMessage(String topic, KafkaKey key, KafkaValue value) {
     ProducerRecord<KafkaKey, KafkaValue> kafkaRecord = new ProducerRecord<>(topic, key, value);
+    //ProducerRecord<KafkaKey, KafkaValue> kafkaRecord = new ProducerRecord<>(topic, partition, key, value);  //Once routing works, specify partition here
     return producer.send(kafkaRecord);
   }
 

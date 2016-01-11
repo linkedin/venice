@@ -104,7 +104,8 @@ public class VeniceConfigService {
 
   // server specific properties
   public static final String NODE_ID = "node.id";
-  public static final Set<String> serverSpecificProperties = new HashSet<String>(Arrays.asList(NODE_ID));
+  public static final String LISTENER_PORT = "listener.port";
+  public static final Set<String> serverSpecificProperties = new HashSet<String>(Arrays.asList(NODE_ID, LISTENER_PORT));
 
   // store specific properties
   public static final String STORE_NAME = "store.name";

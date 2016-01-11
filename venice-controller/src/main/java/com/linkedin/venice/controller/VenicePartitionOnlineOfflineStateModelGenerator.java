@@ -2,6 +2,7 @@ package com.linkedin.venice.controller;
 
 import org.apache.helix.HelixDefinedState;
 import org.apache.helix.model.StateModelDefinition;
+import com.linkedin.venice.helix.State;
 
 
 /**
