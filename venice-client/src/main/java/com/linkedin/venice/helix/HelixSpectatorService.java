@@ -24,23 +24,12 @@ public class HelixSpectatorService extends AbstractVeniceService {
   private String clusterName;
 
   /*
-  Create an org.apache.helix.spectator.RoutingTableProvider and hold onto a reference to it.  Pass that object to the
-  HelixSpectatorService constructor.  Once you start the service, you will be able to query the RoutingTableProvider
+  Create a com.linkedin.venice.helix.PartitionLookup and hold onto a reference to it.  Pass that object to the
+  HelixSpectatorService constructor.  Once you start the service, you will be able to query the PartitionLookup
   for the node responsible for a partition.
-
-  Example: instances = routingTableProvider.getInstances("store-name", "partition-name", "ONLINE");
-   instances = routingTableProvider.getInstances("default_topic", "default_topic_0", "ONLINE");
-
-  We may decide to wrap the RoutingTableProvider with a Venice object to simplify the code of doing node lookups.
    */
   public HelixSpectatorService(String zkAddress, String clusterName, String instanceName, PartitionLookup partitionLookup) {
     super(VENICE_SPECTATOR_SERVICE_NAME);
-    /*
-    HelixConnection connection = new ZkHelixConnection(zkAddress);
-    connection.connect();
-    ClusterId clusterId = ClusterId.from(clusterName);
-    ParticipantId participantId = ParticipantId.from(participantName);
-    */
     manager = new ZKHelixManager(clusterName, instanceName, InstanceType.SPECTATOR, zkAddress);
     this.partitionLookup = partitionLookup;
     this.clusterName = clusterName;
@@ -63,7 +52,7 @@ public class HelixSpectatorService extends AbstractVeniceService {
       manager.addLiveInstanceChangeListener(listener);
     } catch (Exception e) {
       e.printStackTrace();
-      //TODO: Deal with a failed connection to Helix
+      throw new RuntimeException(e);
     }
   }
 

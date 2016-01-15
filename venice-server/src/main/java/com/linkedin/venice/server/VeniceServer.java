@@ -5,6 +5,7 @@ import com.linkedin.venice.config.VeniceClusterConfig;
 import com.linkedin.venice.config.VeniceStoreConfig;
 import com.linkedin.venice.helix.HelixParticipationService;
 import com.linkedin.venice.kafka.consumer.KafkaConsumerPerStoreService;
+import com.linkedin.venice.listener.ListenerService;
 import com.linkedin.venice.partition.AbstractPartitionNodeAssignmentScheme;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.storage.StorageService;
@@ -41,8 +42,8 @@ public class VeniceServer {
 
     /*
      * TODO - 1. How do the servers share the same config - For example in Voldemort we use cluster.xml and stores.xml.
-		 * 2. Check Hostnames like in Voldemort to make sure that local host and ips match up.
-		 */
+     * 2. Check Hostnames like in Voldemort to make sure that local host and ips match up.
+     */
 
     //Populates the partitionToNodeAssignmentRepository
     this.assignPartitionToNodes();
@@ -113,6 +114,12 @@ public class VeniceServer {
       // Note: Only required when NOT using Helix.
       kafkaConsumerService.consumeForPartitionNodeAssignmentRepository(partitionNodeAssignmentRepository);
     }
+
+    //create and add ListenerServer for handling GET requests
+    ListenerService listenerService =
+        new ListenerService(storeRepository, veniceConfigService, partitionNodeAssignmentRepository);
+    services.add(listenerService);
+
 
     /**
      * TODO Create an admin service later. The admin service will need both StorageService and KafkaSimpleConsumerService

@@ -40,4 +40,13 @@ public interface Store extends QueryStore {
    */
   public void delete(Integer logicalPartitionId, byte[] key)
       throws VeniceException;
+
+  /**
+   *
+   * @param logicalPartitionId Id of the logical partition where this key belongs
+   * @param key The key to check for
+   * @return
+   * @throws VeniceException
+   */
+  public byte[] get(Integer logicalPartitionId, byte[] key) throws VeniceException;
 }
