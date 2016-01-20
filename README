@@ -24,15 +24,15 @@ Build
 First, ensure that each project has been built. If not, please run: (from the project root directory)
 
 To build and install ALL PROJECTS:
-> gradle buildAll
+> ./gradlew buildAll
 
 If the above does not work, you may resort to building each component seperately.
 
 To build and install Venice client:
-> gradle :venice-client:clean venice-client:installApp
+> ./gradlew :venice-client:clean venice-client:installApp
 
 To build and install Venice server:
-> gradle :venice-server:clean :venice-server:installApp
+> ./gradlew :venice-server:clean :venice-server:installApp
 ----------------------
 Quickstart
 ----------------------
