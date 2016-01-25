@@ -10,6 +10,9 @@ Dependencies
 To use Venice, the following programs must be installed and running on your local machine:
 - Apache Kafka Version 0.8.1
 - Apache Zookeeper 3.4.6
+- Apache Helix 0.7.1 ( Not sure actually, the client lib dependencies are 0.7.1 but don't know
+whether controller or zookeeper node structures are different, but it works for sure with 0.7.1,
+LinkedIn releases Helix 0.6.5 under the LinkedIn MP version 0.7.* madness for sure )
 
 1) Start Apache Zookeeper on the local machine. The installation will have guides on how to do this.
 2) Start Apache Kafka on the local machine. 
@@ -18,23 +21,18 @@ To use Venice, the following programs must be installed and running on your loca
 -----------------------
 Build
 -----------------------
-First, ensure that each project has been built. If not, please run: (from the root directory)
+First, ensure that each project has been built. If not, please run: (from the project root directory)
 
 To build and install ALL PROJECTS:
-> gradle buildAll
+> ./gradlew buildAll
 
 If the above does not work, you may resort to building each component seperately.
 
 To build and install Venice client:
-> cd venice-client
-> gradle clean
-> gradle installApp
+> ./gradlew :venice-client:clean venice-client:installApp
 
 To build and install Venice server:
-> cd venice-server
-> gradle clean
-> gradle installApp
-
+> ./gradlew :venice-server:clean :venice-server:installApp
 ----------------------
 Quickstart
 ----------------------
@@ -50,6 +48,7 @@ To start the controller:
 
 To start the server:
 
+> export VENICE_CONFIG_DIR=`pwd`/venice-server/config
 > venice-server/quickstart/start-venice-server.sh
 
 To use the shell client:

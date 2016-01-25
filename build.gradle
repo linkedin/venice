@@ -13,3 +13,7 @@ task buildAll {
   dependsOn 'venice-server:installApp'
   dependsOn 'venice-controller:installApp'
 }
+
+task wrapper(type: Wrapper) {
+    gradleVersion = '2.10'
+}
