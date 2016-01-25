@@ -29,6 +29,7 @@ public class ReadHandler extends SimpleChannelHandler {
 
   @Override
   public void messageReceived(ChannelHandlerContext ctx, MessageEvent e){
+    //This should get split out into a decoder which can be independantly testable
     ChannelBuffer m = (ChannelBuffer) e.getMessage();
     buf.writeBytes(m);
     if (buf.readableBytes() < GetResponseObject.HEADER_SIZE){

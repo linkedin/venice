@@ -55,6 +55,9 @@ dependencies {
   // testng, because tests are important
   testCompile project(':venice-client')
 
+  //Note: we get org.jboss.netty:netty:3.2.1.Final from venice-common's dependency on avro:avro:1.4.1
+  compile 'io.netty:netty-all:4.0.33.Final'
+
   //PowerMock for mocking private methods, class members, enums, etc.
   testCompile 'org.powermock:powermock-mockito-release-full:1.5.6'
   testCompile 'org.mockito:mockito-all:1.9.5'

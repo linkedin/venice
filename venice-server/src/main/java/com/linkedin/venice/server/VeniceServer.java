@@ -117,7 +117,7 @@ public class VeniceServer {
 
     //create and add ListenerServer for handling GET requests
     ListenerService listenerService =
-        new ListenerService(storeRepository, veniceConfigService, partitionNodeAssignmentRepository);
+        new ListenerService(storeRepository, veniceConfigService);
     services.add(listenerService);
 
 

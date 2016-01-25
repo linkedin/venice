@@ -13,7 +13,7 @@ import org.jboss.netty.channel.socket.nio.NioClientSocketChannelFactory;
 
 
 /**
- * Created by mwise on 1/15/16.
+ * TODO: ReadClient creates a new factory and connection for every read.  Can we reuse them?
  */
 public class ReadClient {
   ChannelFuture connection;

@@ -13,11 +13,11 @@ public class ResponseWrapper {
     this.response = response;
   }
 
-  public synchronized byte[] getResponse(){
+  public byte[] getResponse(){
     return response;
   }
 
-  public synchronized boolean isReady(){
+  public boolean isReady(){
     return response != null;
   }
 }

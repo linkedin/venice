@@ -1,36 +1,35 @@
 package com.linkedin.venice.listener;
 
 import com.linkedin.venice.message.GetRequestObject;
-import org.jboss.netty.buffer.ChannelBuffer;
-import org.jboss.netty.channel.Channel;
-import org.jboss.netty.channel.ChannelHandlerContext;
-import org.jboss.netty.handler.codec.frame.FrameDecoder;
+import io.netty.buffer.ByteBuf;
+import io.netty.channel.ChannelHandlerContext;
+import io.netty.handler.codec.ByteToMessageDecoder;
+import java.util.List;
 
 
 /**
  * Monitors the stream, when it gets enough bytes that form a genuine object,
- * it deserialized the object and passes it along the stack.
+ * it deserializes the object and passes it along the stack.
  *
  * TODO: add a magic byte or something to prevent a random payload size byte from triggering a wait for a very long frame.
  */
-public class GetRequestDecoder extends FrameDecoder {
+public class GetRequestDecoder extends ByteToMessageDecoder {
+
   @Override
-  protected Object decode(ChannelHandlerContext ctx, Channel channel, ChannelBuffer buffer)
-      throws Exception {
-    if (buffer.readableBytes() < GetRequestObject.HEADER_SIZE){
-      return null;
+  protected void decode(ChannelHandlerContext ctx, ByteBuf in, List<Object> out) throws Exception {
+    if (in.readableBytes() < GetRequestObject.HEADER_SIZE){
+      return;
     }
     byte[] header = new byte[GetRequestObject.HEADER_SIZE];
-    buffer.getBytes(buffer.readerIndex(), header);
+    in.getBytes(in.readerIndex(), header);
     int payloadSize = GetRequestObject.parseSize(header);
-    if (buffer.readableBytes() < payloadSize){
-      return null;
-    } else {
-      ChannelBuffer completeFrame = buffer.readBytes(payloadSize);
+    if (in.readableBytes() >= payloadSize) {
+      ByteBuf completeFrame = in.readBytes(payloadSize);
       byte[] payload = new byte[payloadSize];
       completeFrame.getBytes(completeFrame.readerIndex(), payload);
-      return GetRequestObject.deserialize(payload);
+      out.add(GetRequestObject.deserialize(payload));
     }
-
   }
+
+
 }
