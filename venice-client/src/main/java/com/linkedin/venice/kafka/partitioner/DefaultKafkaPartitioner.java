@@ -39,19 +39,25 @@ public class DefaultKafkaPartitioner extends KafkaPartitioner {
       byte[] byteData = md.digest();
 
       // find partition value from basic modulus algorithm
-      int partition = 0;
+      int modulo = 0;
+      int digit = 0;
       for (int i = 0; i < byteData.length; i++) {
-        partition += Math.abs(byteData[i]);
+        // Convert byte (-128..127) to int 0..255
+        digit =  byteData[i] & 0xFF;
+        modulo = (modulo * 256 + digit) % numPartitions;
       }
 
-      partition = partition % numPartitions;
+      int partition = Math.abs(modulo % numPartitions);
 
-      logger.debug("Using hash algorithm: " + ByteUtils.toHexString(keyBytes) + " goes to partitionId " + partition + " out of " + numPartitions);
+      if(logger.isDebugEnabled()) {
+        logger.debug("Using hash algorithm: " + ByteUtils.toHexString(keyBytes) + " goes to partitionId " + partition
+                + " out of " + numPartitions);
+      }
 
       md.reset();
       return partition;
     } catch (NoSuchAlgorithmException e) {
-      throw new VeniceException("\"Hashing algorithm given is not recognized: \" + hashAlgorithm");
+      throw new VeniceException(" Hashing algorithm given is not recognized: "+ hashAlgorithm);
     }
   }
 

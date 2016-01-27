@@ -43,8 +43,8 @@ There are two ways to use Venice.
 
 
 To start the controller:
-> export VENICE_STORE_INFO_DIR=/path/to/venice/venice-server/config/STORES
-> bash start-venice-controller.sh test-cluster localhost:2181 venice-controller
+> export VENICE_STORE_INFO_DIR=`pwd`/venice-server/config/STORES
+> ./venice-controller/quickstart/start-venice-controller.sh test-cluster localhost:2181 venice-controller
 
 To start the server:
 
