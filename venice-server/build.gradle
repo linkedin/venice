@@ -1,10 +1,4 @@
-apply plugin: 'java'
-apply plugin: 'idea'
-apply plugin: 'eclipse'
 apply plugin: 'application'
-
-sourceCompatibility = 1.8
-version = '0.1'
 
 mainClassName = "com.linkedin.venice.server.VeniceServer"
 
@@ -29,39 +23,17 @@ jar {
   }
 }
 
-repositories {
-  mavenCentral()
-  maven {
-    url "http://download.oracle.com/maven/"
-  }
-  maven {
-    url 'http://artifactory.corp.linkedin.com:8081/artifactory/all'
-  }
-}
-
 dependencies {
+  compile libraries.helix
+  compile libraries.bdbJe
+  compile libraries.netty
+
   compile project(':venice-common')
   compile project(':venice-controller')
-  compile 'kafka:kafka-clients:0.8.2.20'
-  compile 'com.google.guava:guava:18.0'
-  compile 'commons-io:commons-io:2.4'
-  compile 'com.sleepycat:je:5.0.104'
-  compile 'org.apache.helix:helix-core:0.7.1'
-  //compile fileTree(dir: 'lib', include: '*.jar')
-
-  // log4j for logging
-  compile 'log4j:log4j:1.2.17'
-
-  // testng, because tests are important
-  testCompile project(':venice-client')
 
   //Note: we get org.jboss.netty:netty:3.2.1.Final from venice-common's dependency on avro:avro:1.4.1
-  compile 'io.netty:netty-all:4.0.33.Final'
 
-  //PowerMock for mocking private methods, class members, enums, etc.
-  testCompile 'org.powermock:powermock-mockito-release-full:1.5.6'
-  testCompile 'org.mockito:mockito-all:1.9.5'
-  testCompile 'org.testng:testng:6.1.1'
+  testCompile project(':venice-client')
   testCompile 'commons-io:commons-io:2.4'
 
 }

@@ -1,10 +1,4 @@
-apply plugin: 'java'
-apply plugin: 'idea'
-apply plugin: 'eclipse'
 apply plugin: 'application'
-
-sourceCompatibility = 1.8
-version = '0.1'
 
 mainClassName = "com.linkedin.venice.controller.VeniceController"
 
@@ -29,31 +23,16 @@ jar {
   }
 }
 
-repositories {
-  mavenCentral()
-  maven {
-    url "http://download.oracle.com/maven/"
-  }
-  maven {
-    url 'http://artifactory.corp.linkedin.com:8081/artifactory/all'
-  }
-}
-
 dependencies {
+
+  compile libraries.helix
   compile project(':venice-common')
-  compile 'kafka:kafka-clients:0.8.2.20'
-  compile 'com.google.guava:guava:18.0'
+
   compile 'commons-io:commons-io:2.4'
   compile 'com.sleepycat:je:5.0.104'
-  compile 'org.apache.helix:helix-core:0.7.1'
   //compile fileTree(dir: 'lib', include: '*.jar')
 
-  // log4j for logging
-  compile 'log4j:log4j:1.2.17'
-
-  // testng, because tests are important
   testCompile project(':venice-client')
-  testCompile 'org.testng:testng:6.1.1'
   testCompile 'commons-io:commons-io:2.4'
 
 }
