@@ -36,10 +36,7 @@ public class StorageWorkerThread implements Runnable {
     } catch (PersistenceFailureException e){ //thrown if no key.  TODO Subclass this for a nokey exception
       value = new byte[0];
     }
-    byte[] response = new GetResponseObject(value).serialize();
-    ByteBuf outBuffer = ctx.alloc().buffer(response.length);
-    outBuffer.writeBytes(response);
-    ctx.writeAndFlush(outBuffer);
+    ctx.writeAndFlush(value);
   }
 
 }

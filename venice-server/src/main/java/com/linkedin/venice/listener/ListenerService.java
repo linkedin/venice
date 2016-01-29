@@ -26,18 +26,18 @@ public class ListenerService extends AbstractVeniceService{
   //TODO: move netty config to a config file
   private static int nettyBacklogSize = 1000;
 
-
   public ListenerService(StoreRepository storeRepository, VeniceConfigService veniceConfigService) {
     super("listener-service");
     this.port = Integer.parseInt(veniceConfigService.getVeniceServerConfig().getListenerPort());
 
-    //TODO: configurable number of threads in the groups
-    bossGroup = new NioEventLoopGroup();
+    //TODO: configurable worker group
+    bossGroup = new NioEventLoopGroup(1);
     workerGroup = new NioEventLoopGroup();
 
     bootstrap = new ServerBootstrap();
     bootstrap.group(bossGroup, workerGroup).channel(NioServerSocketChannel.class)
-        .childHandler(new ListenerChannelInitializer(storeRepository))
+        .childHandler(new BinaryChannelInitializer(storeRepository))  // For Binary TCP reads
+        //.childHandler(new HttpChannelInitializer(storeRepository))    // For HTTP reads (GET /store/key/partition)
         .option(ChannelOption.SO_BACKLOG, nettyBacklogSize)
         .childOption(ChannelOption.SO_KEEPALIVE, true)
         .option(ChannelOption.SO_REUSEADDR, true)

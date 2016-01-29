@@ -7,7 +7,9 @@ import com.linkedin.venice.store.AbstractStorageEngine;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.UnpooledByteBufAllocator;
 import io.netty.channel.ChannelHandlerContext;
+import java.nio.ByteBuffer;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
@@ -63,17 +65,9 @@ public class StorageExecutionHandlerTest {
 
     //parsing of response
     Assert.assertEquals(outputArray.size(), 1);
-    ByteBuf response = (ByteBuf) outputArray.get(0);
-
-    //This parsing duplicates code in the client handler, TODO: abstract that out into a reusable decoder
-    Assert.assertTrue(response.readableBytes() >= 4); //4 byte header
-    int packetSize = response.getInt(response.readerIndex());
-    Assert.assertTrue(response.readableBytes() == packetSize);
-    byte[] responseBytes = new byte[packetSize];
-    response.readBytes(responseBytes); // this method should be called .readBytesInto
-    GetResponseObject responseObject = GetResponseObject.deserialize(responseBytes);
+    byte[] response = (byte[]) outputArray.get(0);
 
     //Verification
-    Assert.assertEquals(responseObject.getValue(), valueString.getBytes());
+    Assert.assertEquals(response, valueString.getBytes());
   }
 }

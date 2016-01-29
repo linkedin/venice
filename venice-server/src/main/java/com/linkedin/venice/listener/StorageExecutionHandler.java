@@ -8,6 +8,11 @@ import io.netty.channel.ChannelInboundHandlerAdapter;
 import java.util.concurrent.ThreadPoolExecutor;
 
 
+/***
+ * Expects a GetRequestObject which has store name, key, and partition
+ * Queries the local store for the associated value
+ * writes the value (as a byte[]) back down the stack
+ */
 @ChannelHandler.Sharable
 public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
 
