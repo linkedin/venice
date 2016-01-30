@@ -1,12 +1,9 @@
 package com.linkedin.venice.listener;
 
 import com.linkedin.venice.server.StoreRepository;
-import io.netty.channel.ChannelInitializer;
 import io.netty.channel.socket.SocketChannel;
 import io.netty.handler.codec.http.HttpServerCodec;
-import java.util.concurrent.LinkedBlockingQueue;
-import java.util.concurrent.ThreadPoolExecutor;
-import java.util.concurrent.TimeUnit;
+
 
 /***
  * Use this channel initializer to support a GET Http requests of the format:
@@ -23,25 +20,11 @@ import java.util.concurrent.TimeUnit;
  * that the HttpServerCodec expects
  */
 
-public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
+public class HttpChannelInitializer extends ExecutorChannelInitializer {
 
-  private final ThreadPoolExecutor threadPoolExecutor;
-    private final StorageExecutionHandler storageExecutionHandler;
-
-    private final int numRestServiceStorageThreads = 2;
-    private final int restServiceStorageThreadPoolQueueSize = 2;
-
-    public HttpChannelInitializer(StoreRepository storeRepository) {
-
-        this.threadPoolExecutor = new ThreadPoolExecutor(numRestServiceStorageThreads,
-                                                         numRestServiceStorageThreads,
-                                                         0L,
-                                                         TimeUnit.MILLISECONDS,
-                                                         new LinkedBlockingQueue<Runnable>(restServiceStorageThreadPoolQueueSize));
-
-        storageExecutionHandler = new StorageExecutionHandler(threadPoolExecutor,
-                                                              storeRepository);
-    }
+  public HttpChannelInitializer(StoreRepository storeRepository){
+    super(storeRepository);
+  }
 
     @Override
     public void initChannel(SocketChannel ch) throws Exception {

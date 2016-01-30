@@ -1,12 +1,7 @@
 package com.linkedin.venice.listener;
 
 import com.linkedin.venice.server.StoreRepository;
-import io.netty.channel.ChannelHandlerContext;
-import io.netty.channel.ChannelInitializer;
 import io.netty.channel.socket.SocketChannel;
-import java.util.concurrent.LinkedBlockingQueue;
-import java.util.concurrent.ThreadPoolExecutor;
-import java.util.concurrent.TimeUnit;
 
 
 /***
@@ -23,32 +18,18 @@ import java.util.concurrent.TimeUnit;
  * and serializes the object onto the wire
  */
 
-public class BinaryChannelInitializer extends ChannelInitializer<SocketChannel> {
+public class BinaryChannelInitializer extends ExecutorChannelInitializer {
 
-  private final ThreadPoolExecutor threadPoolExecutor;
-    private final StorageExecutionHandler storageExecutionHandler;
+      public BinaryChannelInitializer(StoreRepository storeRepository) {
+          super(storeRepository);
+      }
 
-    private final int numRestServiceStorageThreads = 2;
-    private final int restServiceStorageThreadPoolQueueSize = 2;
-
-    public BinaryChannelInitializer(StoreRepository storeRepository) {
-
-        this.threadPoolExecutor = new ThreadPoolExecutor(numRestServiceStorageThreads,
-                                                         numRestServiceStorageThreads,
-                                                         0L,
-                                                         TimeUnit.MILLISECONDS,
-                                                         new LinkedBlockingQueue<Runnable>(restServiceStorageThreadPoolQueueSize));
-
-        storageExecutionHandler = new StorageExecutionHandler(threadPoolExecutor,
-                                                              storeRepository);
-    }
-
-    @Override
-    public void initChannel(SocketChannel ch) throws Exception {
-        ch.pipeline()
-            .addLast("decoder", new GetRequestDecoder())
-            .addLast("encoder", new GetResponseEncoder())
-            .addLast("storageExecutionHandler", storageExecutionHandler);
-    }
+      @Override
+      public void initChannel(SocketChannel ch) throws Exception {
+          ch.pipeline()
+              .addLast("decoder", new GetRequestDecoder())
+              .addLast("encoder", new GetResponseEncoder())
+              .addLast("storageExecutionHandler", storageExecutionHandler);
+      }
 
 }
