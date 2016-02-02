@@ -18,7 +18,7 @@ import io.netty.channel.socket.SocketChannel;
  * and serializes the object onto the wire
  */
 
-public class BinaryChannelInitializer extends ExecutorChannelInitializer {
+public class BinaryChannelInitializer extends AbstractExecutorChannelInitializer {
 
       public BinaryChannelInitializer(StoreRepository storeRepository) {
           super(storeRepository);

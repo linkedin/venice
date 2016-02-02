@@ -20,7 +20,7 @@ import io.netty.handler.codec.http.HttpServerCodec;
  * that the HttpServerCodec expects
  */
 
-public class HttpChannelInitializer extends ExecutorChannelInitializer {
+public class HttpChannelInitializer extends AbstractExecutorChannelInitializer {
 
   public HttpChannelInitializer(StoreRepository storeRepository){
     super(storeRepository);

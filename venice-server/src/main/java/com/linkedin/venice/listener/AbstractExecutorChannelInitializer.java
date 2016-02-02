@@ -14,7 +14,7 @@ import java.util.concurrent.TimeUnit;
  * the same code to setup the storageExecutionHandler.  Extend this abstract
  * class instead of re-writing that boilerplate
  */
-public abstract class ExecutorChannelInitializer extends ChannelInitializer<SocketChannel> {
+public abstract class AbstractExecutorChannelInitializer extends ChannelInitializer<SocketChannel> {
 
   private final ThreadPoolExecutor threadPoolExecutor;
     protected final StorageExecutionHandler storageExecutionHandler;
@@ -25,7 +25,7 @@ public abstract class ExecutorChannelInitializer extends ChannelInitializer<Sock
     private static final int numRestServiceStorageThreads = 2;
     private static final int restServiceStorageThreadPoolQueueSize = 2;
 
-    public ExecutorChannelInitializer(StoreRepository storeRepository) {
+    public AbstractExecutorChannelInitializer(StoreRepository storeRepository) {
 
         this.threadPoolExecutor = new ThreadPoolExecutor(numRestServiceStorageThreads,
                                                          numRestServiceStorageThreads,
