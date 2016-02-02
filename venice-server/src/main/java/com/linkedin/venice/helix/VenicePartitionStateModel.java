@@ -1,12 +1,14 @@
 package com.linkedin.venice.helix;
 
 import com.linkedin.venice.config.VeniceStoreConfig;
+import com.linkedin.venice.controller.VeniceStateModel;
 import com.linkedin.venice.kafka.consumer.KafkaConsumerService;
 import com.linkedin.venice.server.StoreRepository;
 import com.linkedin.venice.store.AbstractStorageEngine;
 import org.apache.helix.NotificationContext;
-import org.apache.helix.api.TransitionHandler;
 import org.apache.helix.model.Message;
+import org.apache.helix.participant.statemachine.StateModel;
+import org.apache.helix.participant.statemachine.StateModelFactory;
 import org.apache.helix.participant.statemachine.StateModelInfo;
 import org.apache.helix.participant.statemachine.Transition;
 import org.apache.log4j.Logger;
@@ -24,7 +26,7 @@ import org.apache.log4j.Logger;
  */
 
 @StateModelInfo(initialState = State.OFFLINE_STATE, states = { State.ONLINE_STATE })
-public class VenicePartitionStateModel extends TransitionHandler {
+public class VenicePartitionStateModel extends StateModel {
   private static final Logger logger = Logger.getLogger(VenicePartitionStateModel.class.getName());
 
   private static final String STORE_PARTITION_NODE_DESCRIPTION_FORMAT = "%s-%d @ node %d";

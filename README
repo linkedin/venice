@@ -8,11 +8,9 @@ Welcome to Venice, the highly available data serving platform.
 Dependencies
 ---------------------
 To use Venice, the following programs must be installed and running on your local machine:
-- Apache Kafka Version 0.8.1
+- Apache Kafka Version 0.9.0
 - Apache Zookeeper 3.4.6
-- Apache Helix 0.7.1 ( Not sure actually, the client lib dependencies are 0.7.1 but don't know
-whether controller or zookeeper node structures are different, but it works for sure with 0.7.1,
-LinkedIn releases Helix 0.6.5 under the LinkedIn MP version 0.7.* madness for sure )
+- Apache Helix 0.6.5
 
 1) Start Apache Zookeeper on the local machine. The installation will have guides on how to do this.
 2) Start Apache Kafka on the local machine. 

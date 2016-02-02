@@ -12,7 +12,7 @@ import com.linkedin.venice.helix.State;
  * Offline -> Online
  * Offline -> Dropped
  */
-public class VenicePartitionOnlineOfflineStateModelGenerator {
+public class VeniceStateModel {
 
   public static final String PARTITION_ONLINE_OFFLINE_STATE_MODEL = "PartitionOnlineOfflineModel";
 
@@ -20,7 +20,7 @@ public class VenicePartitionOnlineOfflineStateModelGenerator {
 
   private static final String UPPER_BOUND_REPLICATION_FACTOR = "R";
 
-  public static StateModelDefinition generatePartitionStateModelDefinition() {
+  public static StateModelDefinition getDefinition() {
 
     StateModelDefinition.Builder builder = new StateModelDefinition.Builder(PARTITION_ONLINE_OFFLINE_STATE_MODEL);
 

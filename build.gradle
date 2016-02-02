@@ -3,7 +3,7 @@ apply plugin: 'idea'
 apply plugin: 'eclipse'
 
 ext.libraries = [ // Groovy map literal
-                  helix: 'org.apache.helix:helix-core:0.7.1',
+                  helix: 'org.apache.helix:helix-core:0.6.5',
                   avro: 'org.apache.avro:avro:1.4.1',
                   kafka: 'org.apache.kafka:kafka_2.10:0.8.1.1',
                   bdbJe: 'com.sleepycat:je:5.0.104',
