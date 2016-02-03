@@ -14,6 +14,7 @@ import org.apache.log4j.Logger;
  */
 public class PartitionCountProvider implements ExternalViewChangeListener {
   private static final Logger logger = Logger.getLogger(PartitionCountProvider.class);
+  //TODO: support multiple versions of a store (if we need to do that at this level)
   private Map<String, Integer> storeToPartitionCount = new ConcurrentHashMap<>();
 
   @Override
