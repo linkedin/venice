@@ -17,14 +17,20 @@ import org.apache.helix.spectator.RoutingTableProvider;
  */
 public class PartitionLookup {
   private RoutingTableProvider routingTableProvider;
+  private PartitionCountProvider partitionCountProvider;
   private Map<String, HostPort> instanceMap = new ConcurrentHashMap<>();
 
   public PartitionLookup(){
     routingTableProvider = new RoutingTableProvider();
+    partitionCountProvider = new PartitionCountProvider();
   }
 
   public RoutingTableProvider getRoutingTableProvider(){
     return routingTableProvider;
+  }
+
+  public PartitionCountProvider getPartitionCountProvider() {
+    return partitionCountProvider;
   }
 
   public void updateLiveInstances(List<LiveInstance> instances){
@@ -42,7 +48,6 @@ public class PartitionLookup {
     instanceMap = newInstanceMap;
   }
 
-  //TODO: this should work with a list of instances, instead of blindly grabbing the first
   public List<String> getParticipantsForPartition(String storeName, String partitionNumber){
     List<InstanceConfig> instances =
         routingTableProvider.getInstances(storeName, storeName + "_" + partitionNumber, State.ONLINE_STATE);
@@ -52,6 +57,10 @@ public class PartitionLookup {
   public List<HostPort> getHostPortForPartition(String storeName, String partitionNumber){
     List<String> participantIds = getParticipantsForPartition(storeName, partitionNumber);
     return participantIds.stream().map(id -> instanceMap.get(id)).collect(Collectors.toList());
+  }
+
+  public int getPartitionCountForStore(String storeName){
+    return partitionCountProvider.getPartitionsForStore(storeName);
   }
 
 }

@@ -3,7 +3,10 @@ package com.linkedin.venice.client;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixSpectatorService;
 import com.linkedin.venice.helix.PartitionLookup;
+import com.linkedin.venice.kafka.partitioner.DefaultKafkaPartitioner;
+import com.linkedin.venice.kafka.partitioner.KafkaPartitioner;
 import com.linkedin.venice.message.GetRequestObject;
+import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.serialization.VeniceSerializer;
 import com.linkedin.venice.utils.HostPort;
 import com.linkedin.venice.utils.Props;
@@ -22,6 +25,9 @@ public class VeniceReader<K, V> {
   private final String storeName;
   private final VeniceSerializer<K> keySerializer;
   private final VeniceSerializer<V> valueSerializer;
+
+  //TODO: configurable partitioner
+  private final KafkaPartitioner partitioner = new DefaultKafkaPartitioner();
 
   public VeniceReader(Props props, String storeName, VeniceSerializer<K> keySerializer, VeniceSerializer<V> valueSerializer) {
 
@@ -43,18 +49,22 @@ public class VeniceReader<K, V> {
    * */
   public V get(K key) {
     byte[] keyBytes = keySerializer.serialize(storeName, key);
-    int partition = 0; // No partitioning currently happens on write?.
+
     PartitionLookup lookup = new PartitionLookup();
     HelixSpectatorService spectatorService = new HelixSpectatorService(
         props.getString("zookeeper.connection.string"),
         props.getString("cluster.name"),
-        "client-spectator",
+        "client-spectator", //need some unique name for each client/spectator?
         lookup
         );
 
+    int partition;
     List<HostPort> hosts;
-    try {
+    try{
       spectatorService.start();
+      int numberOfPartitions = lookup.getPartitionCountForStore(storeName);
+      KafkaKey kafkaKey = new KafkaKey(null, keyBytes);
+      partition = partitioner.getPartitionId(kafkaKey, numberOfPartitions);
       hosts = lookup.getHostPortForPartition(storeName, Integer.toString(partition));
       spectatorService.stop();
     } catch (Exception e) {

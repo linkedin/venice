@@ -40,6 +40,7 @@ public class HelixSpectatorService extends AbstractVeniceService {
     try {
       manager.connect();
       manager.addExternalViewChangeListener(partitionLookup.getRoutingTableProvider());
+      manager.addExternalViewChangeListener(partitionLookup.getPartitionCountProvider());
       LiveInstanceChangeListener listener = new LiveInstanceChangeListener() {
         @Override
         public void onLiveInstanceChange(List<LiveInstance> liveInstances,
