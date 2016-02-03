@@ -3,8 +3,8 @@ package com.linkedin.venice.client;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixSpectatorService;
 import com.linkedin.venice.helix.PartitionLookup;
-import com.linkedin.venice.kafka.partitioner.DefaultKafkaPartitioner;
-import com.linkedin.venice.kafka.partitioner.KafkaPartitioner;
+import com.linkedin.venice.kafka.partitioner.DefaultVenicePartitioner;
+import com.linkedin.venice.kafka.partitioner.VenicePartitioner;
 import com.linkedin.venice.message.GetRequestObject;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.serialization.VeniceSerializer;
@@ -27,7 +27,7 @@ public class VeniceReader<K, V> {
   private final VeniceSerializer<V> valueSerializer;
 
   //TODO: configurable partitioner
-  private final KafkaPartitioner partitioner = new DefaultKafkaPartitioner();
+  private final VenicePartitioner partitioner = new DefaultVenicePartitioner();
 
   public VeniceReader(Props props, String storeName, VeniceSerializer<K> keySerializer, VeniceSerializer<V> valueSerializer) {
 

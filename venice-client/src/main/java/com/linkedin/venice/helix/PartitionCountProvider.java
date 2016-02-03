@@ -31,11 +31,13 @@ public class PartitionCountProvider implements ExternalViewChangeListener {
     } else {
       String errMsg = "External View does not contain partitions for store: " + storeName;
       logger.error(errMsg);
-      logger.error("Current store to partition count:");
-      for (String store : storeToPartitionCount.keySet()){
-        logger.error(store + ": " + storeToPartitionCount.get(store));
+      if (logger.isDebugEnabled()) {
+        logger.debug("Current store to partition count:");
+        for (String store : storeToPartitionCount.keySet()) {
+          logger.debug(store + ": " + storeToPartitionCount.get(store));
+        }
       }
-      throw new IllegalArgumentException(errMsg);
+      return 0;
     }
   }
 }

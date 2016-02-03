@@ -11,12 +11,12 @@ import org.apache.kafka.common.Cluster;
  * Custom Partitioner Class which is jointly used by Kafka and Venice.
  * Determines the appropriate partition for each message.
  */
-public abstract class KafkaPartitioner implements Partitioner {
+public abstract class VenicePartitioner implements Partitioner {
 
     /**
      * An abstraction on the standard Partitioner interface
      */
-    public KafkaPartitioner() {
+    public VenicePartitioner() {
     }
 
     @Override

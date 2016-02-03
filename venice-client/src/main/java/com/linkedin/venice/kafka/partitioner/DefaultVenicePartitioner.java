@@ -14,16 +14,16 @@ import java.security.NoSuchAlgorithmException;
  * Default Kafka Partitioner which uses a hashing algorithm (MD5 by default)
  * to determine the appropriate partition for each message.
  */
-public class DefaultKafkaPartitioner extends KafkaPartitioner {
+public class DefaultVenicePartitioner extends VenicePartitioner {
 
-  static final Logger logger = Logger.getLogger(DefaultKafkaPartitioner.class.getName());
+  static final Logger logger = Logger.getLogger(DefaultVenicePartitioner.class.getName());
 
   private String hashAlgorithm;
 
   public static final String HASH_ALGORITHM_KEY = "partitioner.hash.algorithm";
   public static final String DEFAULT_HASH_ALGORITHM = "MD5";
 
-  public DefaultKafkaPartitioner () {
+  public DefaultVenicePartitioner() {
     hashAlgorithm = DEFAULT_HASH_ALGORITHM;
   }
 
