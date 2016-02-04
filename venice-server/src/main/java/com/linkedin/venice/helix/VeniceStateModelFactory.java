@@ -37,7 +37,7 @@ public class VeniceStateModelFactory extends StateModelFactory<StateModel> {
    */
   @Override
   public VenicePartitionStateModel createNewStateModel(String resourceName, String partitionName) {
-    logger.info("Creating VenicePartitionStateTransitionHandler for partition: " + partitionName + " for cluster " + resourceName);
+    logger.info("Creating VenicePartitionStateTransitionHandler for partition: " + partitionName + " for Store " + resourceName);
     return new VenicePartitionStateModel(kafkaConsumerService, storeRepository
         , configService.getStoreConfig(HelixUtils.getStoreName(partitionName))
         , HelixUtils.getPartitionId(partitionName));

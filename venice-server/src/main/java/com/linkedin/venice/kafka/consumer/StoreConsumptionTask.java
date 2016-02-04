@@ -3,44 +3,37 @@ package com.linkedin.venice.kafka.consumer;
 import com.linkedin.venice.exceptions.PersistenceFailureException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceMessageException;
-import com.linkedin.venice.kafka.consumer.message.KafkaTaskMessage;
-import com.linkedin.venice.kafka.consumer.message.KafkaTaskMessageOperation;
+import com.linkedin.venice.kafka.consumer.message.ControlMessage;
+import com.linkedin.venice.kafka.consumer.message.ControlOperationType;
 import com.linkedin.venice.message.ControlFlagKafkaKey;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.message.KafkaValue;
-import com.linkedin.venice.message.OperationType;
 import com.linkedin.venice.serialization.Avro.AzkabanJobAvroAckRecordGenerator;
 import com.linkedin.venice.server.StoreRepository;
 import com.linkedin.venice.store.AbstractStorageEngine;
 import com.linkedin.venice.utils.ByteUtils;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
-import java.util.Map;
 import java.util.Properties;
 import java.util.Queue;
 import java.util.Set;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicBoolean;
-import org.apache.kafka.clients.consumer.CommitType;
-import org.apache.kafka.clients.consumer.Consumer;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
-import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.clients.consumer.NoOffsetForPartitionException;
 import org.apache.kafka.clients.producer.Producer;
 import org.apache.kafka.clients.producer.ProducerRecord;
-import org.apache.kafka.common.TopicPartition;
 import org.apache.log4j.Logger;
 
 /**
  * Assumes: One to One mapping between a Venice Store and Kafka Topic.
  * A runnable Kafka Consumer consuming messages from all the partition assigned to current node for a Kafka Topic.
  */
-public class KafkaPerStoreConsumptionTask implements Runnable {
+public class StoreConsumptionTask implements Runnable {
 
-  private static final Logger logger = Logger.getLogger(KafkaPerStoreConsumptionTask.class.getName());
+  private static final Logger logger = Logger.getLogger(StoreConsumptionTask.class.getName());
 
   private static final String CONSUMER_TASK_ID_FORMAT = "KafkaPerStoreConsumptionTask for "
       + "[ Node: %d, Topic: %s ]";
@@ -65,21 +58,21 @@ public class KafkaPerStoreConsumptionTask implements Runnable {
 
   private final String consumerTaskId;
 
-  private final Consumer kafkaConsumer;
+  private final VeniceConsumer consumer;
 
   private final AtomicBoolean isRunning;
 
-  private final Queue <KafkaTaskMessage> kafkaActionMessages;
+  private final Queue <ControlMessage> kafkaActionMessages;
 
   // The source of truth for the currently subscribed partitions. The list maintained by the kafka consumer is not
   // always up to date because of the asynchronous nature of subscriptions of partitions in Kafka Consumer.
   private final Set<Integer> subscribedPartitions;
 
-  public KafkaPerStoreConsumptionTask(Properties kafkaConsumerProperties, StoreRepository storeRepository,
-      Producer ackPartitionConsumptionProducer, AzkabanJobAvroAckRecordGenerator ackRecordGenerator, int nodeId,
-      String topic) {
+  public StoreConsumptionTask(Properties kafkaConsumerProperties, StoreRepository storeRepository,
+          Producer ackPartitionConsumptionProducer, AzkabanJobAvroAckRecordGenerator ackRecordGenerator, int nodeId,
+          String topic) {
 
-    this.kafkaConsumer = new KafkaConsumer(kafkaConsumerProperties);
+    this.consumer = new ApacheKafkaConsumer(kafkaConsumerProperties);
     this.storeRepository = storeRepository;
 
     this.topic = topic;
@@ -101,7 +94,7 @@ public class KafkaPerStoreConsumptionTask implements Runnable {
    */
   public void subscribePartition(String topic, int partition) {
     subscribedPartitions.add(partition);
-    kafkaActionMessages.add(new KafkaTaskMessage(KafkaTaskMessageOperation.SUBSCRIBE, topic, partition));
+    kafkaActionMessages.add(new ControlMessage(ControlOperationType.SUBSCRIBE, topic, partition));
   }
 
   /**
@@ -111,14 +104,14 @@ public class KafkaPerStoreConsumptionTask implements Runnable {
     if(subscribedPartitions.contains(partition)) {
       subscribedPartitions.remove(partition);
     }
-    kafkaActionMessages.add(new KafkaTaskMessage(KafkaTaskMessageOperation.UNSUBSCRIBE, topic, partition));
+    kafkaActionMessages.add(new ControlMessage(ControlOperationType.UNSUBSCRIBE, topic, partition));
   }
 
   /**
    * Adds an asynchronous resetting partition consumption offset request for the task.
    */
   public void resetPartitionConsumptionOffset(String topic, int partition) {
-    kafkaActionMessages.add(new KafkaTaskMessage(KafkaTaskMessageOperation.RESET_OFFSET, topic, partition));
+    kafkaActionMessages.add(new ControlMessage(ControlOperationType.RESET_OFFSET, topic, partition));
   }
 
   @Override
@@ -131,7 +124,7 @@ public class KafkaPerStoreConsumptionTask implements Runnable {
     try {
       while (isRunning.get()) {
         if(subscribedPartitions.size() > 0) {
-          ConsumerRecords records = kafkaConsumer.poll(READ_CYCLE_DELAY_MS);
+          ConsumerRecords records = consumer.poll(READ_CYCLE_DELAY_MS);
           processTopicConsumerRecords(records);
         }
         processKafkaActionMessages();
@@ -150,7 +143,7 @@ public class KafkaPerStoreConsumptionTask implements Runnable {
   private void processKafkaActionMessages() {
     while(!kafkaActionMessages.isEmpty()) {
       // Do not want to remove a message from the queue unless it has been processed.
-      KafkaTaskMessage message = kafkaActionMessages.peek();
+      ControlMessage message = kafkaActionMessages.peek();
       boolean removeMessage = false;
       if(message != null) {
         /**
@@ -181,39 +174,27 @@ public class KafkaPerStoreConsumptionTask implements Runnable {
     }
   }
 
-  private void processKafkaActionMessage(KafkaTaskMessage message) {
-    TopicPartition topicPartition = new TopicPartition(message.getTopic(), message.getPartition());
-    KafkaTaskMessageOperation operation = message.getOperation();
+  private void processKafkaActionMessage(ControlMessage message) {
+    ControlOperationType operation = message.getOperation();
+    String topic = message.getTopic();
+    int partition = message.getPartition();
     switch (operation) {
       case SUBSCRIBE:
-        if(!kafkaConsumer.subscriptions().contains(topicPartition)) {
-          kafkaConsumer.subscribe(topicPartition);
-          logger.info(consumerTaskId + " subscribed to: " + topicPartition);
-        }
+        consumer.subscribe(topic, partition);
+        logger.info(consumerTaskId + " subscribed to: Topic " + topic + " Partition Id " + partition);
         break;
       case UNSUBSCRIBE:
-        if(kafkaConsumer.subscriptions().contains(topicPartition)) {
-          kafkaConsumer.unsubscribe(topicPartition);
-          logger.info(consumerTaskId + " unsubscribed to: " + topicPartition);
-        }
+        consumer.unSubscribe(topic, partition);
+        logger.info(consumerTaskId + " UnSubscribed to: Topic " + topic + " Partition Id " + partition);
         break;
       case RESET_OFFSET:
-        resetPartitionOffset(topicPartition);
+        long newOffSet = consumer.resetOffset(topic, partition);
+        logger.info(consumerTaskId + " Reset OffSet : Topic " + topic + " Partition Id " + partition + " New Offset "
+                + newOffSet);
         break;
       default:
         throw new UnsupportedOperationException(operation.name() + "not implemented.");
     }
-  }
-
-
-  private void resetPartitionOffset(TopicPartition topicPartition) {
-    // Change offset to beginning.
-    kafkaConsumer.seekToBeginning(topicPartition);
-    // Commit the beginning offset to prevent the use of old committed offset.
-    Map<TopicPartition, Long> offsetMap = new HashMap<>();
-    offsetMap.put(topicPartition, kafkaConsumer.position(topicPartition));
-    kafkaConsumer.commit(offsetMap, CommitType.SYNC);
-    logger.info(consumerTaskId + " offset set to beginning for: " + topicPartition);
   }
 
   private void processTopicConsumerRecords(ConsumerRecords records) {
@@ -231,19 +212,12 @@ public class KafkaPerStoreConsumptionTask implements Runnable {
         }
         try {
           processConsumerRecord(record);
-        } catch (VeniceMessageException ex) {
-          logger.error(consumerTaskId + " : Received an illegal Venice message! Skipping the message.", ex);
+        } catch (VeniceMessageException|UnsupportedOperationException ex) {
+          logger.error(consumerTaskId + " : Received an exception ! Skipping the message.", ex);
           if (logger.isDebugEnabled()) {
             logger.debug(consumerTaskId + " : Skipping message at Offset " + readOffset);
           }
-          kafkaConsumer.seek(new TopicPartition(record.topic(), record.partition()), record.offset() + 1);
-        } catch (UnsupportedOperationException ex) {
-          logger.error(consumerTaskId + " : Received an invalid operation type! Skipping the message.", ex);
-          if (logger.isDebugEnabled()) {
-            logger.debug(consumerTaskId + " : Skipping message at Offset: " + readOffset);
-          }
-          // forcefully skip over this bad offset
-          kafkaConsumer.seek(new TopicPartition(record.topic(), record.partition()), record.offset()+1);
+          consumer.seek(record.topic(), record.partition(), record.offset() + 1);
         }
       }
     }
@@ -263,7 +237,7 @@ public class KafkaPerStoreConsumptionTask implements Runnable {
       throw new VeniceMessageException(consumerTaskId + " : Given null Venice Message.");
     }
 
-    if (kafkaKey.getOperationType() == OperationType.BEGIN_OF_PUSH) {
+    if (kafkaKey.getOperationType() == com.linkedin.venice.message.OperationType.BEGIN_OF_PUSH) {
       ControlFlagKafkaKey controlKafkaKey = (ControlFlagKafkaKey) kafkaKey;
       jobId = controlKafkaKey.getJobId();
       totalMessagesProcessed = 0L; //Need to figure out what happens when multiple jobs are run parallely.
@@ -271,7 +245,7 @@ public class KafkaPerStoreConsumptionTask implements Runnable {
           + totalMessagesProcessed);
       return; // Its fine to return here, since this is just a control message.
     }
-    if (kafkaKey.getOperationType() == OperationType.END_OF_PUSH) {
+    if (kafkaKey.getOperationType() == com.linkedin.venice.message.OperationType.END_OF_PUSH) {
       ControlFlagKafkaKey controlKafkaKey = (ControlFlagKafkaKey) kafkaKey;
       if (jobId == controlKafkaKey.getJobId()) {  // check if the BOP job id matched EOP job id.
         // TODO need to handle the case when multiple jobs are run in parallel.
@@ -365,7 +339,7 @@ public class KafkaPerStoreConsumptionTask implements Runnable {
   private long getLastOffset(String topic, int partition) {
     long offset = -1;
     try {
-      offset = kafkaConsumer.committed(new TopicPartition(topic, partition));
+      consumer.getLastOffset(topic, partition);
       logger.info(consumerTaskId + " : Last known read offset for " + topic + "-" + partition + ": " + offset);
     } catch (NoOffsetForPartitionException ex) {
       logger.info(consumerTaskId + " : No offset found for " + topic + "-" + partition);
@@ -378,8 +352,8 @@ public class KafkaPerStoreConsumptionTask implements Runnable {
    */
   public void stop() {
     isRunning.set(false);
-    if(kafkaConsumer != null){
-      kafkaConsumer.close();
+    if(consumer != null){
+      consumer.close();
     }
   }
 

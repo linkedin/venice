@@ -49,6 +49,7 @@ public class HelixParticipationService extends AbstractVeniceService {
 
   @Override
   public void startInner() {
+    logger.info("Attempting to start HelixParticipation service");
     manager = HelixManagerFactory
             .getZKHelixManager(clusterName, participantName, InstanceType.PARTICIPANT, zkAddress);
     manager.getStateMachineEngine().registerStateModelFactory(STATE_MODEL_REFERENCE_NAME, stateModelFactory);
@@ -68,6 +69,7 @@ public class HelixParticipationService extends AbstractVeniceService {
       logger.error("Error connecting to Helix Manager Cluster " + clusterName + " ZooKeeper Address " + zkAddress + " Participant " + participantName, e);
       throw new RuntimeException(e);
     }
+    logger.info(" Successfully started Helix Participation Service");
   }
 
   @Override

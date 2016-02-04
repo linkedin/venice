@@ -234,6 +234,6 @@ public class VeniceServer {
         }
       }
     });
-    Thread.currentThread().join();
+
   }
 }

@@ -2,7 +2,6 @@ package com.linkedin.venice.kafka.consumer;
 
 import com.linkedin.venice.config.VeniceServerConfig;
 import com.linkedin.venice.config.VeniceStoreConfig;
-import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.partitioner.PartitionZeroPartitioner;
 import com.linkedin.venice.serialization.Avro.AzkabanJobAvroAckRecordGenerator;
 import com.linkedin.venice.serialization.KafkaKeySerializer;
@@ -21,12 +20,8 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.apache.kafka.clients.CommonClientConfigs;
-import org.apache.kafka.clients.consumer.CommitType;
-import org.apache.kafka.clients.consumer.Consumer;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
-import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.clients.producer.KafkaProducer;
-import org.apache.kafka.common.TopicPartition;
 import org.apache.log4j.Logger;
 
 /**
@@ -55,7 +50,7 @@ public class KafkaConsumerPerStoreService extends AbstractVeniceService implemen
    * A repository mapping each Kafka Topic to it corresponding Consumption task responsible
    * for consuming messages and making changes to the local store accordingly.
    */
-  private final Map<String, KafkaPerStoreConsumptionTask> topicNameToKafkaMessageConsumptionTaskMap;
+  private final Map<String, StoreConsumptionTask> topicNameToKafkaMessageConsumptionTaskMap;
 
   private final int nodeId;
 
@@ -124,8 +119,8 @@ public class KafkaConsumerPerStoreService extends AbstractVeniceService implemen
     }
   }
 
-  private KafkaPerStoreConsumptionTask getConsumerTask(VeniceStoreConfig veniceStore) {
-    return new KafkaPerStoreConsumptionTask(getKafkaConsumerProperties(veniceStore), storeRepository,
+  private StoreConsumptionTask getConsumerTask(VeniceStoreConfig veniceStore) {
+    return new StoreConsumptionTask(getKafkaConsumerProperties(veniceStore), storeRepository,
         ackPartitionConsumptionProducer, ackRecordGenerator, nodeId, veniceStore.getStoreName());
   }
 
@@ -140,7 +135,7 @@ public class KafkaConsumerPerStoreService extends AbstractVeniceService implemen
     if (consumerExecutorService != null) {
       consumerExecutorService.shutdown();
     }
-    topicNameToKafkaMessageConsumptionTaskMap.values().forEach(KafkaPerStoreConsumptionTask::stop);
+    topicNameToKafkaMessageConsumptionTaskMap.values().forEach(StoreConsumptionTask::stop);
     if(ackPartitionConsumptionProducer != null) {
       ackPartitionConsumptionProducer.close();
     }
@@ -156,7 +151,7 @@ public class KafkaConsumerPerStoreService extends AbstractVeniceService implemen
   @Override
   public void startConsumption(VeniceStoreConfig veniceStore, int partitionId) {
     String topic = veniceStore.getStoreName();
-    KafkaPerStoreConsumptionTask consumerTask = topicNameToKafkaMessageConsumptionTaskMap.get(topic);
+    StoreConsumptionTask consumerTask = topicNameToKafkaMessageConsumptionTaskMap.get(topic);
     if(consumerTask == null || !consumerTask.isRunning()) {
       consumerTask = getConsumerTask(veniceStore);
       topicNameToKafkaMessageConsumptionTaskMap.put(topic, consumerTask);
@@ -176,7 +171,7 @@ public class KafkaConsumerPerStoreService extends AbstractVeniceService implemen
   @Override
   public void stopConsumption(VeniceStoreConfig veniceStore, int partitionId) {
     String topic = veniceStore.getStoreName();
-    KafkaPerStoreConsumptionTask consumerTask = topicNameToKafkaMessageConsumptionTaskMap.get(topic);
+    StoreConsumptionTask consumerTask = topicNameToKafkaMessageConsumptionTaskMap.get(topic);
     if(consumerTask != null && consumerTask.isRunning()) {
       consumerTask.unsubscribePartition(topic, partitionId);
     }
@@ -190,7 +185,7 @@ public class KafkaConsumerPerStoreService extends AbstractVeniceService implemen
   @Override
   public void resetConsumptionOffset(VeniceStoreConfig veniceStore, int partitionId) {
     String topic = veniceStore.getStoreName();
-    KafkaPerStoreConsumptionTask consumerTask = topicNameToKafkaMessageConsumptionTaskMap.get(topic);
+    StoreConsumptionTask consumerTask = topicNameToKafkaMessageConsumptionTaskMap.get(topic);
     if(consumerTask != null && consumerTask.isRunning()) {
       consumerTask.resetPartitionConsumptionOffset(topic, partitionId);
     }

@@ -34,8 +34,8 @@ import org.testng.annotations.Test;
 /**
  * Unit tests for the KafkaPerStoreConsumptionTask.
  */
-@PrepareForTest({KafkaPerStoreConsumptionTask.class})
-public class KafkaPerStoreConsumptionTaskTest extends PowerMockTestCase {
+@PrepareForTest({StoreConsumptionTask.class, ApacheKafkaConsumer.class})
+public class StoreConsumptionTaskTest extends PowerMockTestCase {
 
   public static final int TIMEOUT = 1000;
   private KafkaConsumer mockKafkaConsumer;
@@ -67,7 +67,7 @@ public class KafkaPerStoreConsumptionTaskTest extends PowerMockTestCase {
     taskPollingService.shutdown();
   }
 
-  private KafkaPerStoreConsumptionTask getKafkaPerStoreConsumptionTask() throws Exception {
+  private StoreConsumptionTask getKafkaPerStoreConsumptionTask() throws Exception {
     mockKafkaConsumer = PowerMockito.mock(KafkaConsumer.class);
     mockStoreRepository = PowerMockito.mock(StoreRepository.class);
     mockAckProducer = PowerMockito.mock(Producer.class);
@@ -78,7 +78,7 @@ public class KafkaPerStoreConsumptionTaskTest extends PowerMockTestCase {
     PowerMockito.whenNew(KafkaConsumer.class).withParameterTypes(Properties.class)
         .withArguments(mockKafkaConsumerProperties).thenReturn(mockKafkaConsumer);
 
-    return new KafkaPerStoreConsumptionTask(mockKafkaConsumerProperties, mockStoreRepository, mockAckProducer,
+    return new StoreConsumptionTask(mockKafkaConsumerProperties, mockStoreRepository, mockAckProducer,
         mockAckRecordGenerator, nodeId, topic);
   }
 
@@ -89,7 +89,7 @@ public class KafkaPerStoreConsumptionTaskTest extends PowerMockTestCase {
   @Test
   public void testKafkaTaskMessagesProcessing() throws Exception {
     // Get KafkaPerStoreConsumptionTask with fresh mocks to test & schedule it.
-    KafkaPerStoreConsumptionTask testSubscribeTask = getKafkaPerStoreConsumptionTask();
+    StoreConsumptionTask testSubscribeTask = getKafkaPerStoreConsumptionTask();
     Future testSubscribeTaskFuture = taskPollingService.submit(testSubscribeTask);
 
     // Verifies KafkaPerStoreConsumptionTask#subscribePartition invokes KafkaConsumer#subscribe with expected arguments.
@@ -127,7 +127,7 @@ public class KafkaPerStoreConsumptionTaskTest extends PowerMockTestCase {
   public void testVeniceMessagesProcessing() throws Exception {
 
     // Get the KafkaPerStoreConsumptionTask with fresh mocks.
-    KafkaPerStoreConsumptionTask testSubscribeTask = getKafkaPerStoreConsumptionTask();
+    StoreConsumptionTask testSubscribeTask = getKafkaPerStoreConsumptionTask();
     testSubscribeTask.subscribePartition(topic, testPartition);
 
     // Prepare poll results.

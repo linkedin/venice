@@ -3,21 +3,21 @@ package com.linkedin.venice.kafka.consumer.message;
 /**
  * Class representing Message for KafkaConsumptionTask.
  */
-public class KafkaTaskMessage {
+public class ControlMessage {
 
-  private final KafkaTaskMessageOperation operation;
+  private final ControlOperationType operation;
   private final String topic;
   private final int partition;
 
   private int attempts = 0;
 
-  public KafkaTaskMessage(KafkaTaskMessageOperation operation, String topic, int partition) {
+  public ControlMessage(ControlOperationType operation, String topic, int partition) {
     this.operation = operation;
     this.topic = topic;
     this.partition = partition;
   }
 
-  public KafkaTaskMessageOperation getOperation() {
+  public ControlOperationType getOperation() {
     return operation;
   }
 
