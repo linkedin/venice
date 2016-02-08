@@ -52,7 +52,7 @@ public class VenicePartitionStateModel extends StateModel {
   @Transition(to = State.ONLINE_STATE, from = State.OFFLINE_STATE)
   public void onBecomeOnlineFromOffline(Message message, NotificationContext context) {
     kafkaConsumerService.startConsumption(storeConfig, partition);
-    AbstractStorageEngine storageEngine = storeRepository.getLocalStorageEngine(storeConfig.getStoreName());
+    AbstractStorageEngine storageEngine = storeRepository.getOrCreateLocalStorageEngine(storeConfig, partition);
     if (!storageEngine.containsPartition(partition)) {
       storageEngine.addStoragePartition(partition);
       kafkaConsumerService.resetConsumptionOffset(storeConfig, partition);

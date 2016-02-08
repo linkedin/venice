@@ -78,6 +78,7 @@ public class VeniceStoreConfig extends VeniceServerConfig {
     if (kafkaBrokers == null || kafkaBrokers.isEmpty()) {
       throw new ConfigurationException("kafkaBrokers can't be empty");
     }
+    //TODO different brokers may use different ports.  Will necessarily be true if we run multiple local brokers for testing
     kafkaBrokerPort = storeProperties.getInt(VeniceConfigService.KAFKA_BROKER_PORT);
     if (kafkaBrokerPort < 0) {
       throw new ConfigurationException("KafkaBrokerPort can't be negative");

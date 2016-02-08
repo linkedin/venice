@@ -106,6 +106,7 @@ public class VeniceConfigService {
   public static final String NODE_ID = "node.id";
   public static final String LISTENER_PORT = "listener.port";
   public static final Set<String> serverSpecificProperties = new HashSet<String>(Arrays.asList(NODE_ID, LISTENER_PORT));
+  public static final String SERVER_PERSISTENCE_TYPE = "server.persistence.type";
 
   // store specific properties
   public static final String STORE_NAME = "store.name";
@@ -342,6 +343,30 @@ public class VeniceConfigService {
   }
 
   public VeniceStoreConfig getStoreConfig(String storeName) {
+    if (!storeToConfigsMap.containsKey(storeName)){
+      VeniceStoreConfig defaultStore = storeToConfigsMap.get("default_topic");
+      Props props = new Props(clusterAndServerProperties);
+      props.put(STORE_NAME, storeName);
+      props.put(PERSISTENCE_TYPE, clusterAndServerProperties.getString(SERVER_PERSISTENCE_TYPE));
+
+      //TODO: Kafka configs should be moved to be cluster-level configs
+      props.put(KAFKA_BROKERS, String.join(",", defaultStore.getKafkaBrokers()));
+      props.put(KAFKA_BROKER_PORT, defaultStore.getKafkaBrokerPort());
+      props.put(KAFKA_CONSUMER_FETCH_BUFFER_SIZE, defaultStore.getFetchBufferSize());
+      props.put(KAFKA_CONSUMER_SOCKET_TIMEOUT_MS, defaultStore.getSocketTimeoutMs());
+      props.put(KAFKA_CONSUMER_NUM_METADATA_REFRESH_RETRIES, defaultStore.getNumMetadataRefreshRetries());
+      props.put(KAFKA_CONSUMER_METADATA_REFRESH_BACKOFF_MS, defaultStore.getMetadataRefreshBackoffMs());
+      props.put(KAFKA_BOOTSTRAP_SERVERS, defaultStore.getKafkaBootstrapServers());
+      props.put(KAFKA_AUTO_COMMIT_INTERVAL_MS, defaultStore.getKafkaAutoCommitIntervalMs());
+      props.put(KAFKA_CONSUMER_ENABLE_AUTO_OFFSET_COMMIT, Boolean.toString(defaultStore.kafkaEnableAutoOffsetCommit()));
+
+      //These configs shouldn't matter, helix handles them
+      props.put(STORAGE_REPLICATION_FACTOR, "1");
+      props.put(NUMBER_OF_KAFKA_PARTITIONS, "1");
+
+      VeniceStoreConfig newStore = new VeniceStoreConfig(props);
+      storeToConfigsMap.put(storeName, newStore);
+    }
     return Utils.notNull(storeToConfigsMap.get(storeName));
   }
 

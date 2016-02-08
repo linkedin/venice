@@ -195,4 +195,61 @@ public class PartitionNodeAssignmentRepository {
     //update the third view
     storeNameToPartitionIdAndNodesIdsMap.remove(storeName);
   }
+
+  public synchronized void addPartition(String storeName, int nodeId, int partition){
+    //Using blocks so variables like "partitions" are restricted to block-scope
+    {//storeNameToNodeIdAndPartitionIdsMap
+      Map<Integer, Set<Integer>> nodeToPartitions;
+      if (storeNameToNodeIdAndPartitionIdsMap.containsKey(storeName)) {
+        nodeToPartitions = storeNameToNodeIdAndPartitionIdsMap.get(storeName);
+      } else {
+        nodeToPartitions = new HashMap<Integer, Set<Integer>>();
+        storeNameToNodeIdAndPartitionIdsMap.put(storeName, nodeToPartitions);
+      }
+      Set<Integer> partitions;
+      if (nodeToPartitions.containsKey(nodeId)) {
+        partitions = nodeToPartitions.get(nodeId);
+      } else {
+        partitions = new HashSet<Integer>();
+        nodeToPartitions.put(nodeId, partitions);
+      }
+      partitions.add(partition);
+    }
+
+    {//nodeIdToStoreNameAndPartitionIdsMap
+      Map<String, Set<Integer>> storeToPartitions;
+      if (nodeIdToStoreNameAndPartitionIdsMap.containsKey(nodeId)) {
+        storeToPartitions = nodeIdToStoreNameAndPartitionIdsMap.get(nodeId);
+      } else {
+        storeToPartitions = new HashMap<String, Set<Integer>>();
+        nodeIdToStoreNameAndPartitionIdsMap.put(nodeId, storeToPartitions);
+      }
+      Set<Integer> partitions;
+      if (storeToPartitions.containsKey(storeName)) {
+        partitions = storeToPartitions.get(storeName);
+      } else {
+        partitions = new HashSet<Integer>();
+        storeToPartitions.put(storeName, partitions);
+      }
+      partitions.add(partition);
+    }
+
+    {//storeNameToPartitionIdAndNodesIdsMap
+      Map<Integer, Set<Integer>> partitionToNodes;
+      if (storeNameToPartitionIdAndNodesIdsMap.containsKey(storeName)){
+        partitionToNodes = storeNameToPartitionIdAndNodesIdsMap.get(storeName);
+      } else {
+        partitionToNodes = new HashMap<Integer, Set<Integer>>();
+        storeNameToPartitionIdAndNodesIdsMap.put(storeName, partitionToNodes);
+      }
+      Set<Integer> nodes;
+      if (partitionToNodes.containsKey(partition)){
+        nodes = partitionToNodes.get(partition);
+      } else {
+        nodes = new HashSet<Integer>();
+        partitionToNodes.put(partition, nodes);
+      }
+      nodes.add(nodeId);
+    }
+  }
 }

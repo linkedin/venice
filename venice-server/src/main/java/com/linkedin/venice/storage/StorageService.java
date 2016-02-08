@@ -23,6 +23,8 @@ import java.util.concurrent.ConcurrentMap;
  */
 public class StorageService extends AbstractVeniceService {
 
+  public final static String NAME = "storage-service";
+
   private static final Logger logger = Logger.getLogger(StorageService.class.getName());
 
   private final StoreRepository storeRepository;
@@ -32,7 +34,7 @@ public class StorageService extends AbstractVeniceService {
 
   public StorageService(StoreRepository storeRepository, VeniceConfigService veniceConfigService,
       PartitionNodeAssignmentRepository partitionNodeAssignmentRepository) {
-    super("storage-service");
+    super(NAME);
     this.storeRepository = storeRepository;
     this.veniceConfigService = veniceConfigService;
     this.persistenceTypeToStorageEngineFactoryMap = new ConcurrentHashMap<String, StorageEngineFactory>();
@@ -41,6 +43,13 @@ public class StorageService extends AbstractVeniceService {
 
   // TODO Later change to Guice instead of Java reflections
   // This method can also be called from an admin service to add new store.
+
+
+  public AbstractStorageEngine openStoreForNewPartition(VeniceStoreConfig storeConfig, int partition)
+      throws Exception {
+    partitionNodeAssignmentRepository.addPartition(storeConfig.getStoreName(), veniceConfigService.getVeniceServerConfig().getNodeId(), partition);
+    return openStore(storeConfig);
+  }
 
   /**
    * Creates a StorageEngineFactory for the persistence type if not already present.

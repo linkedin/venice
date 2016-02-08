@@ -97,6 +97,7 @@ public class VeniceServer {
     StorageService storageService =
         new StorageService(storeRepository, veniceConfigService, partitionNodeAssignmentRepository);
     services.add(storageService);
+    storeRepository.setStorageService(storageService);
 
     //create and add KafkaSimpleConsumerService
     KafkaConsumerPerStoreService kafkaConsumerService =
@@ -133,6 +134,19 @@ public class VeniceServer {
      */
 
     return ImmutableList.copyOf(services);
+  }
+
+  public StorageService getStorageService(){
+    if (isStarted()){
+      for (AbstractVeniceService aService : services){
+        if (aService instanceof StorageService){
+          return (StorageService) aService;
+        }
+      }
+    } else {
+      throw new IllegalStateException("Cannot get storage service if server is not started");
+    }
+    throw new NullPointerException("Running services do not include an instance of StorageService");
   }
 
   public boolean isStarted() {
