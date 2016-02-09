@@ -21,10 +21,8 @@ dependencies {
   compile libraries.avro
   compile libraries.helix
 
-  compile libraries.kafka
-
   //TODO : This is LinkedIn only dependency
-  compile 'kafka:kafka-clients:0.8.2.20'
+  compile 'kafka:kafka-clients:0.8.2.42'
   compile 'commons-codec:commons-codec:1.4'
   compile 'com.google.guava:guava:18.0'
 
