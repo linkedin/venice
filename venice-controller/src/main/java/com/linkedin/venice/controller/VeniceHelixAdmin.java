@@ -1,6 +1,7 @@
 package com.linkedin.venice.controller;
 
 import com.linkedin.venice.config.VeniceStorePartitionInformation;
+import com.linkedin.venice.controller.kafka.TopicCreator;
 import com.linkedin.venice.exceptions.VeniceException;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -23,12 +24,13 @@ import org.apache.log4j.Logger;
 /**
  * Helix Admin based on 0.6.5 APIs.
  */
-public class VeniceHelixAdmin implements  Admin {
+public class VeniceHelixAdmin implements Admin {
     private final String controllerName;
     private final String zkConnString;
     private final Map<String, HelixManager> helixManagers = new HashMap<>();
     private static final Logger logger = Logger.getLogger(VeniceHelixAdmin.class.getName());
     private HelixAdmin admin;
+    private TopicCreator topicCreator;
 
     public VeniceHelixAdmin(String controllerName, String zkConnString) {
         /* Controller name can be generated from the hostname and
@@ -37,6 +39,7 @@ public class VeniceHelixAdmin implements  Admin {
          */
         this.controllerName = controllerName;
         this.zkConnString = zkConnString;
+        this.topicCreator = new TopicCreator(zkConnString);
 
     }
 
@@ -89,6 +92,7 @@ public class VeniceHelixAdmin implements  Admin {
         }
 
         createClusterIfRequired(clusterName);
+        topicCreator.createTopic(storePartitionInformation);
 
         String resourceName = storePartitionInformation.getStoreName();
         if(!admin.getResourcesInCluster(clusterName).contains(resourceName)) {

@@ -26,6 +26,8 @@ jar {
 dependencies {
 
   compile libraries.helix
+  compile libraries.zkclient
+  compile libraries.netty
   compile project(':venice-common')
 
   compile 'commons-io:commons-io:2.4'
