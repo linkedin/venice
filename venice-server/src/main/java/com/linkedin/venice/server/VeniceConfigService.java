@@ -344,6 +344,11 @@ public class VeniceConfigService {
 
   public VeniceStoreConfig getStoreConfig(String storeName) {
     if (!storeToConfigsMap.containsKey(storeName)){
+      /*
+       *  "default_topic" lets us get default settings for a new store from the on-disk configs for the topic
+       *  named "default_topic".  This is currently required since so many configs are only set at the store-level.
+       *  TODO: move to a config model where these configs are cluster-level or even storage node-level instad of store-level
+       */
       VeniceStoreConfig defaultStore = storeToConfigsMap.get("default_topic");
       Props props = new Props(clusterAndServerProperties);
       props.put(STORE_NAME, storeName);
@@ -360,7 +365,8 @@ public class VeniceConfigService {
       props.put(KAFKA_AUTO_COMMIT_INTERVAL_MS, defaultStore.getKafkaAutoCommitIntervalMs());
       props.put(KAFKA_CONSUMER_ENABLE_AUTO_OFFSET_COMMIT, Boolean.toString(defaultStore.kafkaEnableAutoOffsetCommit()));
 
-      //These configs shouldn't matter, helix handles them
+      // These configs shouldn't matter, helix handles them. They are currently required to pass validations.  As we
+      // update the config model, these will not be configs that the storage node needs to be aware of.
       props.put(STORAGE_REPLICATION_FACTOR, "1");
       props.put(NUMBER_OF_KAFKA_PARTITIONS, "1");
 

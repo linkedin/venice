@@ -3,6 +3,7 @@ package com.linkedin.venice.server;
 import com.google.common.collect.ImmutableList;
 import com.linkedin.venice.config.VeniceClusterConfig;
 import com.linkedin.venice.config.VeniceStoreConfig;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixParticipationService;
 import com.linkedin.venice.kafka.consumer.KafkaConsumerPerStoreService;
 import com.linkedin.venice.listener.ListenerService;
@@ -28,6 +29,7 @@ public class VeniceServer {
   private final AtomicBoolean isStarted;
 
   private final StoreRepository storeRepository;
+  private StorageService storageService;
   private final PartitionNodeAssignmentRepository partitionNodeAssignmentRepository;
   private AbstractPartitionNodeAssignmentScheme partitionNodeAssignmentScheme;
 
@@ -94,7 +96,7 @@ public class VeniceServer {
     List<AbstractVeniceService> services = new ArrayList<AbstractVeniceService>();
 
     // create and add StorageService. storeRepository will be populated by StorageService,
-    StorageService storageService =
+    storageService =
         new StorageService(storeRepository, veniceConfigService, partitionNodeAssignmentRepository);
     services.add(storageService);
     storeRepository.setStorageService(storageService);
@@ -138,15 +140,10 @@ public class VeniceServer {
 
   public StorageService getStorageService(){
     if (isStarted()){
-      for (AbstractVeniceService aService : services){
-        if (aService instanceof StorageService){
-          return (StorageService) aService;
-        }
-      }
+      return storageService;
     } else {
-      throw new IllegalStateException("Cannot get storage service if server is not started");
+      throw new VeniceException("Cannot get storage service if server is not started");
     }
-    throw new NullPointerException("Running services do not include an instance of StorageService");
   }
 
   public boolean isStarted() {
