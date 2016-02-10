@@ -36,6 +36,8 @@ public class VenicePartitionStateModelTest {
     mockAbstractStorageEngine = PowerMockito.mock(AbstractStorageEngine.class);
     PowerMockito.when(mockStoreRepository.getLocalStorageEngine(Mockito.anyString()))
         .thenReturn(mockAbstractStorageEngine);
+    PowerMockito.when(mockStoreRepository.getOrCreateLocalStorageEngine(Mockito.any(), Mockito.anyInt()))
+        .thenReturn(mockAbstractStorageEngine);
 
     mockMessage = PowerMockito.mock(Message.class);
     mockContext = PowerMockito.mock(NotificationContext.class);

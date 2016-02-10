@@ -89,32 +89,34 @@ public class StoreConsumptionTaskTest extends PowerMockTestCase {
   @Test
   public void testKafkaTaskMessagesProcessing() throws Exception {
     // Get KafkaPerStoreConsumptionTask with fresh mocks to test & schedule it.
-    StoreConsumptionTask testSubscribeTask = getKafkaPerStoreConsumptionTask();
-    Future testSubscribeTaskFuture = taskPollingService.submit(testSubscribeTask);
+    StoreConsumptionTask mockStoreConsumptionTask = getKafkaPerStoreConsumptionTask();
+    Future testSubscribeTaskFuture = taskPollingService.submit(mockStoreConsumptionTask);
 
-    // Verifies KafkaPerStoreConsumptionTask#subscribePartition invokes KafkaConsumer#subscribe with expected arguments.
-    testSubscribeTask.subscribePartition(topic, testPartition);
-    Mockito.verify(mockKafkaConsumer, Mockito.timeout(TIMEOUT).times(1)).subscribe(testTopicPartition);
-
-    // Prepare the Mocked KafkaConsumer to correctly reflect the subscribed partition.
     Set<TopicPartition> mockKafkaConsumerSubscriptions = new HashSet<>();
     mockKafkaConsumerSubscriptions.add(testTopicPartition);
-    PowerMockito.when(mockKafkaConsumer.subscriptions()).thenReturn(mockKafkaConsumerSubscriptions);
+
+    // Verifies KafkaPerStoreConsumptionTask#subscribePartition invokes KafkaConsumer#subscribe with expected arguments.
+    mockStoreConsumptionTask.subscribePartition(topic, testPartition);
+    Mockito.verify(mockKafkaConsumer, Mockito.timeout(TIMEOUT).times(1)).assign(new ArrayList<>(mockKafkaConsumerSubscriptions));
+
+    // Prepare the Mocked KafkaConsumer to correctly reflect the subscribed partition.
+    PowerMockito.when(mockKafkaConsumer.assignment()).thenReturn(mockKafkaConsumerSubscriptions);
 
     /*
      * Verifies KafkaPerStoreConsumptionTask#resetPartitionConsumptionOffset invokes KafkaConsumer#seekToBeginning &
      * KafkaConsumer#commit with expected arguments.
      */
-    testSubscribeTask.resetPartitionConsumptionOffset(topic, testPartition);
+    mockStoreConsumptionTask.resetPartitionConsumptionOffset(topic, testPartition);
     Mockito.verify(mockKafkaConsumer, Mockito.timeout(TIMEOUT).times(1)).seekToBeginning(testTopicPartition);
     Mockito.verify(mockKafkaConsumer, Mockito.timeout(TIMEOUT).times(1)).commit(Mockito.anyMap(),
         Mockito.eq(CommitType.SYNC));
 
     // Verifies KafkaPerStoreConsumptionTask#unsubscribePartition invokes KafkaConsumer#unsubscribe with expected arguments.
-    testSubscribeTask.unsubscribePartition(topic, testPartition);
-    Mockito.verify(mockKafkaConsumer, Mockito.timeout(TIMEOUT).times(1)).unsubscribe(testTopicPartition);
+    mockStoreConsumptionTask.unsubscribePartition(topic, testPartition);
+    Mockito.verify(mockKafkaConsumer, Mockito.timeout(TIMEOUT).times(1)).assign(
+            new ArrayList<>(mockKafkaConsumerSubscriptions));
 
-    testSubscribeTask.stop();
+    mockStoreConsumptionTask.stop();
     testSubscribeTaskFuture.get();
   }
 

@@ -5,7 +5,6 @@ apply plugin: 'eclipse'
 ext.libraries = [ // Groovy map literal
                   helix: 'org.apache.helix:helix-core:0.6.5',
                   avro: 'org.apache.avro:avro:1.4.1',
-                  kafka: 'org.apache.kafka:kafka_2.10:0.8.1.1',
                   bdbJe: 'com.sleepycat:je:5.0.104',
                   netty: 'io.netty:netty-all:4.0.33.Final',
                   zkclient: 'com.101tec:zkclient:0.3' //for Kafka AdminUtils, 0.3 is used by kakfka 0.8.2.x
