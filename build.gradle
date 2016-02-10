@@ -7,7 +7,9 @@ ext.libraries = [ // Groovy map literal
                   avro: 'org.apache.avro:avro:1.4.1',
                   bdbJe: 'com.sleepycat:je:5.0.104',
                   netty: 'io.netty:netty-all:4.0.33.Final',
-                  zkclient: 'com.101tec:zkclient:0.3' //for Kafka AdminUtils, 0.3 is used by kakfka 0.8.2.x
+                  zkclient: 'com.101tec:zkclient:0.7', //for Kafka AdminUtils
+                  kafka: 'org.apache.kafka:kafka_2.10:0.9.0.0'
+
 ]
 
 subprojects {
