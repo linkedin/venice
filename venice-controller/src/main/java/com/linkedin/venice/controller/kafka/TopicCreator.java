@@ -10,15 +10,11 @@ import org.I0Itec.zkclient.ZkClient;
 import org.I0Itec.zkclient.ZkConnection;
 import org.apache.log4j.Logger;
 
-
-/**
- * Created by mwise on 2/9/16.
- */
 public class TopicCreator {
 
-  private String zkConnection;
-  private int sessionTimeoutMs;
-  private int connectionTimeoutMs;
+  private final String zkConnection;
+  private final int sessionTimeoutMs;
+  private final int connectionTimeoutMs;
 
   private static final Logger logger = Logger.getLogger(TopicCreator.class.getName());
 

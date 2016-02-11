@@ -14,10 +14,7 @@ To use Venice, the following programs must be installed and running on your loca
 
 1) Start Apache Zookeeper on the local machine. The installation will have guides on how to do this.
 2) Start Apache Kafka on the local machine.
-3) Create Kafka topics for stores:
-  > bin/kafka-topics.sh --zookeeper localhost:2181 --topic default_topic --partitions 1 --replication-factor 1 --create
-  > bin/kafka-topics.sh --zookeeper localhost:2181 --topic test_shell_store --partitions 1 --replication-factor 1 --create
-4) Start and use Venice.  Note: Start the Venice Controller, then start the Venice Server
+3) Start and use Venice.  Note: Start the Venice Controller, then start the Venice Server
 
 -----------------------
 Build
