@@ -8,7 +8,7 @@ import com.linkedin.venice.kafka.consumer.message.ControlOperationType;
 import com.linkedin.venice.message.ControlFlagKafkaKey;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.message.KafkaValue;
-import com.linkedin.venice.serialization.Avro.AzkabanJobAvroAckRecordGenerator;
+import com.linkedin.venice.message.OperationType;
 import com.linkedin.venice.server.StoreRepository;
 import com.linkedin.venice.store.AbstractStorageEngine;
 import com.linkedin.venice.utils.ByteUtils;
@@ -23,8 +23,6 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.consumer.NoOffsetForPartitionException;
-import org.apache.kafka.clients.producer.Producer;
-import org.apache.kafka.clients.producer.ProducerRecord;
 import org.apache.log4j.Logger;
 
 /**
@@ -44,8 +42,7 @@ public class StoreConsumptionTask implements Runnable {
   private static final int RETRY_SEEK_TO_BEGINNING_COUNT = 10;
 
   //Ack producer
-  private final Producer<byte[], byte[]> ackProducer;
-  private final AzkabanJobAvroAckRecordGenerator ackRecordGenerator;
+  private final VeniceNotifier notifier;
 
   // storage destination for consumption
   private final StoreRepository storeRepository;
@@ -69,7 +66,7 @@ public class StoreConsumptionTask implements Runnable {
   private final Set<Integer> subscribedPartitions;
 
   public StoreConsumptionTask(Properties kafkaConsumerProperties, StoreRepository storeRepository,
-          Producer ackPartitionConsumptionProducer, AzkabanJobAvroAckRecordGenerator ackRecordGenerator, int nodeId,
+          VeniceNotifier notifier, int nodeId,
           String topic) {
 
     this.consumer = new ApacheKafkaConsumer(kafkaConsumerProperties);
@@ -82,8 +79,7 @@ public class StoreConsumptionTask implements Runnable {
 
     subscribedPartitions = Collections.synchronizedSet(new HashSet<>());
 
-    this.ackProducer = ackPartitionConsumptionProducer;
-    this.ackRecordGenerator = ackRecordGenerator;
+    this.notifier = notifier;
     this.consumerTaskId = String.format(CONSUMER_TASK_ID_FORMAT, nodeId, topic);
 
     isRunning = new AtomicBoolean(true);
@@ -237,7 +233,7 @@ public class StoreConsumptionTask implements Runnable {
       throw new VeniceMessageException(consumerTaskId + " : Given null Venice Message.");
     }
 
-    if (kafkaKey.getOperationType() == com.linkedin.venice.message.OperationType.BEGIN_OF_PUSH) {
+    if (kafkaKey.getOperationType() == OperationType.BEGIN_OF_PUSH) {
       ControlFlagKafkaKey controlKafkaKey = (ControlFlagKafkaKey) kafkaKey;
       jobId = controlKafkaKey.getJobId();
       totalMessagesProcessed = 0L; //Need to figure out what happens when multiple jobs are run parallely.
@@ -245,15 +241,17 @@ public class StoreConsumptionTask implements Runnable {
           + totalMessagesProcessed);
       return; // Its fine to return here, since this is just a control message.
     }
-    if (kafkaKey.getOperationType() == com.linkedin.venice.message.OperationType.END_OF_PUSH) {
+    if (kafkaKey.getOperationType() == OperationType.END_OF_PUSH) {
       ControlFlagKafkaKey controlKafkaKey = (ControlFlagKafkaKey) kafkaKey;
-      if (jobId == controlKafkaKey.getJobId()) {  // check if the BOP job id matched EOP job id.
+      long currentJobId = controlKafkaKey.getJobId();
+      logger.info(consumerTaskId + " : Receive End of Pushes message. Consumed #records: " + totalMessagesProcessed
+              + ", from job id: " + currentJobId + " Remembered Job Id "  + jobId);
+
+      if (jobId == currentJobId) {  // check if the BOP job id matched EOP job id.
         // TODO need to handle the case when multiple jobs are run in parallel.
-        logger.info(consumerTaskId + " : Receive End of Pushes message. Consumed #records: " + totalMessagesProcessed
-            + ", from job id: " + jobId);
-        ProducerRecord<byte[], byte[]> kafkaMessage = ackRecordGenerator
-            .getKafkaProducerRecord(jobId, topic, record.partition(), nodeId, totalMessagesProcessed);
-        ackProducer.send(kafkaMessage);
+        if(notifier != null) {
+          notifier.completed(jobId, topic, record.partition(), totalMessagesProcessed);
+        }
       }
       return; // Its fine to return here, since this is just a control message.
     }

@@ -23,6 +23,7 @@ public class ApacheKafkaConsumer implements VeniceConsumer {
     public ApacheKafkaConsumer(Properties props) {
         this.kafkaConsumer = new KafkaConsumer(props);
     }
+
     @Override
     public long getLastOffset(String topic, int partition) {
         return kafkaConsumer.committed(new TopicPartition(topic, partition));

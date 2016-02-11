@@ -3,7 +3,6 @@ package com.linkedin.venice.kafka.consumer;
 import com.linkedin.venice.config.VeniceServerConfig;
 import com.linkedin.venice.config.VeniceStoreConfig;
 import com.linkedin.venice.kafka.partitioner.PartitionZeroPartitioner;
-import com.linkedin.venice.serialization.Avro.AzkabanJobAvroAckRecordGenerator;
 import com.linkedin.venice.serialization.KafkaKeySerializer;
 import com.linkedin.venice.serialization.KafkaValueSerializer;
 import com.linkedin.venice.server.PartitionNodeAssignmentRepository;
@@ -21,7 +20,6 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
-import org.apache.kafka.clients.producer.KafkaProducer;
 import org.apache.log4j.Logger;
 
 /**
@@ -43,8 +41,7 @@ public class KafkaConsumerPerStoreService extends AbstractVeniceService implemen
   private final StoreRepository storeRepository;
   private final VeniceConfigService veniceConfigService;
 
-  private KafkaProducer<byte[], byte[]> ackPartitionConsumptionProducer;
-  private AzkabanJobAvroAckRecordGenerator ackRecordGenerator;
+  private final VeniceNotifier notifier;
 
   /**
    * A repository mapping each Kafka Topic to it corresponding Consumption task responsible
@@ -73,10 +70,10 @@ public class KafkaConsumerPerStoreService extends AbstractVeniceService implemen
 
     // initialize internal kafka producer for acknowledging consumption (if enabled)
     if (serverConfig.isEnableConsumptionAcksForAzkabanJobs()) {
-      ackPartitionConsumptionProducer = new KafkaProducer<>(getAcksKafkaProducerProperties(serverConfig));
-      ackRecordGenerator = new AzkabanJobAvroAckRecordGenerator(ACK_PARTITION_CONSUMPTION_KAFKA_TOPIC);
+      Properties ackKafkaProps = getAcksKafkaProducerProperties(serverConfig);
+      notifier = new KafkaNotifier(ACK_PARTITION_CONSUMPTION_KAFKA_TOPIC , ackKafkaProps , nodeId);
     } else {
-      ackPartitionConsumptionProducer = null;
+      notifier = null;
     }
   }
 
@@ -121,7 +118,7 @@ public class KafkaConsumerPerStoreService extends AbstractVeniceService implemen
 
   private StoreConsumptionTask getConsumerTask(VeniceStoreConfig veniceStore) {
     return new StoreConsumptionTask(getKafkaConsumerProperties(veniceStore), storeRepository,
-        ackPartitionConsumptionProducer, ackRecordGenerator, nodeId, veniceStore.getStoreName());
+            notifier, nodeId, veniceStore.getStoreName());
   }
 
   /**
@@ -136,8 +133,8 @@ public class KafkaConsumerPerStoreService extends AbstractVeniceService implemen
       consumerExecutorService.shutdown();
     }
     topicNameToKafkaMessageConsumptionTaskMap.values().forEach(StoreConsumptionTask::stop);
-    if(ackPartitionConsumptionProducer != null) {
-      ackPartitionConsumptionProducer.close();
+    if(notifier != null) {
+      notifier.close();
     }
     logger.info("Shut down complete");
   }

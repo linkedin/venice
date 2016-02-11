@@ -6,9 +6,9 @@ import org.apache.avro.util.Utf8;
 import org.apache.kafka.clients.producer.ProducerRecord;
 
 
-public class AzkabanJobAvroAckRecordGenerator {
+public class JobProgressKafkaRecord {
 
-    public final static String AVRO_KEY_SCHEMA_FOR_ACKS_TO_AZKABAN_JOB = "{\n" +
+    public final static String AVRO_KEY_STORE_INFO = "{\n" +
             "    \"type\": \"record\",\n" +
             "    \"namespace\": \"com.linkedin.venice.internal\",\n" +
             "    \"name\": \"AckPartitionConsumptionKey\",\n" +
@@ -30,7 +30,7 @@ public class AzkabanJobAvroAckRecordGenerator {
             "        \"doc\": \"This is the id of the node which is sending the ack.\"\n" +
             "    }]\n" +
             "}";
-    public final static String AVRO_VALUE_SCHEMA_FOR_ACKS_TO_AZKABAN_JOB = "{\n" +
+    public final static String AVRO_VALUE_PROGRESS = "{\n" +
             "    \"type\": \"record\",\n" +
             "    \"namespace\": \"com.linkedin.venice.internal\",\n" +
             "    \"name\": \"AckPartitionConsumptionValue\",\n" +
@@ -45,10 +45,10 @@ public class AzkabanJobAvroAckRecordGenerator {
     private final AvroGenericSerializer valueSerializer;
     private final String consumptionAckKafkaTopic;
 
-    public AzkabanJobAvroAckRecordGenerator(String consumptionAckKafkaTopic){
+    public JobProgressKafkaRecord(String consumptionAckKafkaTopic){
         this.consumptionAckKafkaTopic = consumptionAckKafkaTopic;
-        keySerailizer = new AvroGenericSerializer(AVRO_KEY_SCHEMA_FOR_ACKS_TO_AZKABAN_JOB);
-        valueSerializer = new AvroGenericSerializer(AVRO_VALUE_SCHEMA_FOR_ACKS_TO_AZKABAN_JOB);
+        keySerailizer = new AvroGenericSerializer(AVRO_KEY_STORE_INFO);
+        valueSerializer = new AvroGenericSerializer(AVRO_VALUE_PROGRESS);
     }
 
     /**
@@ -64,8 +64,8 @@ public class AzkabanJobAvroAckRecordGenerator {
      * @param count
      * @return
      */
-    public ProducerRecord<byte[], byte[]> getKafkaProducerRecord(long jobId, String kafkaTopic, int partitionId,
-        int nodeId, long count){
+    public ProducerRecord<byte[], byte[]> generate(long jobId, String kafkaTopic, int partitionId, int nodeId,
+            long count){
         GenericData.Record keyRecord = constructKeyRecord(jobId,kafkaTopic,partitionId, nodeId);
         GenericData.Record valRecord = constructValueRecord(count);
 
@@ -77,7 +77,7 @@ public class AzkabanJobAvroAckRecordGenerator {
     }
 
     private GenericData.Record constructKeyRecord(long jobId, String kafkaTopic, int partitioId, int nodeId){
-        GenericData.Record key = new GenericData.Record(Schema.parse(AVRO_KEY_SCHEMA_FOR_ACKS_TO_AZKABAN_JOB));
+        GenericData.Record key = new GenericData.Record(Schema.parse(AVRO_KEY_STORE_INFO));
         key.put("jobId", jobId);
         key.put("kafka-topic", new Utf8(kafkaTopic));
         key.put("partitionId", partitioId);
@@ -86,7 +86,7 @@ public class AzkabanJobAvroAckRecordGenerator {
     }
 
     private GenericData.Record constructValueRecord(long count){
-        GenericData.Record val = new GenericData.Record(Schema.parse(AVRO_VALUE_SCHEMA_FOR_ACKS_TO_AZKABAN_JOB));
+        GenericData.Record val = new GenericData.Record(Schema.parse(AVRO_VALUE_PROGRESS));
         val.put("count", count);
         return val;
     }

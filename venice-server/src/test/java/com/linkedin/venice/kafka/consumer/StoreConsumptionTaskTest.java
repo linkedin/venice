@@ -3,7 +3,6 @@ package com.linkedin.venice.kafka.consumer;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.message.KafkaValue;
 import com.linkedin.venice.message.OperationType;
-import com.linkedin.venice.serialization.Avro.AzkabanJobAvroAckRecordGenerator;
 import com.linkedin.venice.server.StoreRepository;
 import com.linkedin.venice.store.AbstractStorageEngine;
 import java.util.ArrayList;
@@ -20,7 +19,6 @@ import org.apache.kafka.clients.consumer.CommitType;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
-import org.apache.kafka.clients.producer.Producer;
 import org.apache.kafka.common.TopicPartition;
 import org.mockito.Mockito;
 
@@ -40,8 +38,7 @@ public class StoreConsumptionTaskTest extends PowerMockTestCase {
   public static final int TIMEOUT = 1000;
   private KafkaConsumer mockKafkaConsumer;
   private StoreRepository mockStoreRepository;
-  private Producer mockAckProducer;
-  private AzkabanJobAvroAckRecordGenerator mockAckRecordGenerator;
+  private VeniceNotifier mockNotifier;
   private Properties mockKafkaConsumerProperties;
   private AbstractStorageEngine mockAbstractStorageEngine;
 
@@ -70,16 +67,15 @@ public class StoreConsumptionTaskTest extends PowerMockTestCase {
   private StoreConsumptionTask getKafkaPerStoreConsumptionTask() throws Exception {
     mockKafkaConsumer = PowerMockito.mock(KafkaConsumer.class);
     mockStoreRepository = PowerMockito.mock(StoreRepository.class);
-    mockAckProducer = PowerMockito.mock(Producer.class);
-    mockAckRecordGenerator = PowerMockito.mock(AzkabanJobAvroAckRecordGenerator.class);
+    mockNotifier = PowerMockito.mock(KafkaNotifier.class);
     mockKafkaConsumerProperties = PowerMockito.mock(Properties.class);
     mockAbstractStorageEngine = PowerMockito.mock(AbstractStorageEngine.class);
 
     PowerMockito.whenNew(KafkaConsumer.class).withParameterTypes(Properties.class)
         .withArguments(mockKafkaConsumerProperties).thenReturn(mockKafkaConsumer);
 
-    return new StoreConsumptionTask(mockKafkaConsumerProperties, mockStoreRepository, mockAckProducer,
-        mockAckRecordGenerator, nodeId, topic);
+    return new StoreConsumptionTask(mockKafkaConsumerProperties, mockStoreRepository,
+            mockNotifier, nodeId, topic);
   }
 
   /**
