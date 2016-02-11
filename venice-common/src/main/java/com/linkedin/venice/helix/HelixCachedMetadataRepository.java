@@ -41,12 +41,8 @@ public class HelixCachedMetadataRepository extends HelixMetadataRepository {
      */
     private final ReadWriteLock metadataLock = new ReentrantReadWriteLock();
 
-    public HelixCachedMetadataRepository(@NotNull String zkAddress, @NotNull String rootPath) {
-        super(zkAddress, rootPath);
-    }
-
     public HelixCachedMetadataRepository(@NotNull ZkClient zkClient, @NotNull String rootPath) {
-        super(zkClient,rootPath);
+        super(zkClient, rootPath);
     }
 
     public void init() {

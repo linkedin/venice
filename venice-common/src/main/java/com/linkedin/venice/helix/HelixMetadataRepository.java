@@ -24,13 +24,6 @@ public class HelixMetadataRepository implements MetadataRepository {
      */
     protected final String rootPath;
 
-    public HelixMetadataRepository(@NotNull String zkAddress, @NotNull String rootPath) {
-        this.rootPath = rootPath;
-        dataAccessor = new ZkBaseDataAccessor<>(
-            new ZkClient(zkAddress, ZkClient.DEFAULT_SESSION_TIMEOUT, ZkClient.DEFAULT_CONNECTION_TIMEOUT,
-                new BasicStoreSerializer()));
-    }
-
     public HelixMetadataRepository(@NotNull ZkClient zkClient, @NotNull String rootPath) {
         this.rootPath = rootPath;
         dataAccessor = new ZkBaseDataAccessor<>(zkClient);
