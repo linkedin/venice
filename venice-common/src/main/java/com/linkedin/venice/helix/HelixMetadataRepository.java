@@ -42,7 +42,7 @@ public class HelixMetadataRepository implements MetadataRepository {
     @Override
     public void addStore(@NotNull Store store) {
         if (dataAccessor.exists(composeStorePath(store.getName()), AccessOption.PERSISTENT)) {
-            throw new IllegalArgumentException("Store" + store.getName() + " is existed.");
+            throw new IllegalArgumentException("Store" + store.getName() + " already exists.");
         }
         dataAccessor.set(composeStorePath(store.getName()), store, AccessOption.PERSISTENT);
     }
@@ -50,7 +50,7 @@ public class HelixMetadataRepository implements MetadataRepository {
     @Override
     public void updateStore(@NotNull Store store) {
         if (!dataAccessor.exists(composeStorePath(store.getName()), AccessOption.PERSISTENT)) {
-            throw new IllegalArgumentException("Store" + store.getName() + " is not existed.");
+            throw new IllegalArgumentException("Store" + store.getName() + " dose not exist.");
         }
         dataAccessor.set(composeStorePath(store.getName()), store, AccessOption.PERSISTENT);
     }

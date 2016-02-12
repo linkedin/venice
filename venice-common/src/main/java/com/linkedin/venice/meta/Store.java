@@ -6,8 +6,6 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
-import static com.linkedin.venice.meta.MetadataConstants.*;
-
 
 /**
  * Class defines the store of Venice.
@@ -22,11 +20,6 @@ public class Store implements Serializable {
      */
     private final String owner;
     /**
-     * Default partition number of this store. Each version should use this number in most of cases.  Unless there is a
-     * dramatic change on data size between different versions.
-     */
-    private final int defaultPartitionNumber;
-    /**
      * time when this store was created.
      */
     private final long createdTime;
@@ -35,36 +28,41 @@ public class Store implements Serializable {
      */
     private int currentVersion = 0;
     /**
-     * Number of essential replication.
-     */
-    private int replicationFactor = DEFAULT_REPLICATION_FACTOR;
-    /**
      * Type of persistence storage engine.
      */
-    private String persistenceType = IN_MEMORY;
+    private final PersistenceType persistenceType;
     /**
      * How to route the key to partition.
      */
-    private String routingStrategy = CONSISTENCY_HASH;
+    private final RoutingStrategy routingStrategy;
     /**
      * How to read data from multiple replications.
      */
-    private String readStrategy = ANY_OF_ONLINE;
+    private final ReadStrategy readStrategy;
     /**
      * When doing off-line push, how to decide the data is ready to serve.
      */
-    private String offLinePushStrategy = WAIT_ALL_REPLICAS;
+    private final OfflinePUshStrategy offLinePushStrategy;
     /**
-     * List of non-retiered versions.
+     * List of non-retired versions.
      */
     private List<Version> versions;
 
-    public Store(String name, String owner, int defaultPartitionNumber, long createdTime) {
+    public Store(String name, String owner, long createdTime) {
+        this(name, owner, createdTime, PersistenceType.IN_MEMORY, RoutingStrategy.CONSISTENCY_HASH,
+            ReadStrategy.ANY_OF_ONLINE, OfflinePUshStrategy.WAIT_ALL_REPLICAS);
+    }
+
+    public Store(String name, String owner, long createdTime, PersistenceType persistenceType,
+        RoutingStrategy routingStrategy, ReadStrategy readStrategy, OfflinePUshStrategy offlinePUshStrategy) {
         this.name = name;
         this.owner = owner;
-        this.defaultPartitionNumber = defaultPartitionNumber;
         this.createdTime = createdTime;
-        versions = new ArrayList<Version>();
+        this.persistenceType = persistenceType;
+        this.routingStrategy = routingStrategy;
+        this.readStrategy = readStrategy;
+        this.offLinePushStrategy = offlinePUshStrategy;
+        versions = new ArrayList<>();
     }
 
     public String getName() {
@@ -87,48 +85,20 @@ public class Store implements Serializable {
         this.currentVersion = currentVersion;
     }
 
-    public int getReplicationFactor() {
-        return replicationFactor;
-    }
-
-    public void setReplicationFactor(int replicationFactor) {
-        this.replicationFactor = replicationFactor;
-    }
-
-    public String getRoutingStrategy() {
-        return routingStrategy;
-    }
-
-    public void setRoutingStrategy(String routingStrategy) {
-        this.routingStrategy = routingStrategy;
-    }
-
-    public String getReadStrategy() {
-        return readStrategy;
-    }
-
-    public void setReadStrategy(@NotNull String readStrategy) {
-        this.readStrategy = readStrategy;
-    }
-
-    public String getOffLinePushStrategy() {
-        return offLinePushStrategy;
-    }
-
-    public void setOffLinePushStrategy(@NotNull String offLinePushStrategy) {
-        this.offLinePushStrategy = offLinePushStrategy;
-    }
-
-    public String getPersistenceType() {
+    public PersistenceType getPersistenceType() {
         return persistenceType;
     }
 
-    public void setPersistenceType(@NotNull String persistenceType) {
-        this.persistenceType = persistenceType;
+    public RoutingStrategy getRoutingStrategy() {
+        return routingStrategy;
     }
 
-    public int getDefaultPartitionNumber() {
-        return defaultPartitionNumber;
+    public ReadStrategy getReadStrategy() {
+        return readStrategy;
+    }
+
+    public OfflinePUshStrategy getOffLinePushStrategy() {
+        return offLinePushStrategy;
     }
 
     public List<Version> getVersions() {
@@ -141,6 +111,9 @@ public class Store implements Serializable {
      * @param version
      */
     public void addVersion(@NotNull Version version) {
+        if (!name.equals(version.getStoreName())) {
+            throw new IllegalArgumentException("Version dose not belong to this store.");
+        }
         int index = 0;
         for (; index < versions.size(); index++) {
             if (versions.get(index).getNumber() == version.getNumber()) {
@@ -168,6 +141,21 @@ public class Store implements Serializable {
         }
     }
 
+    /**
+     * Increase a new version to this store.
+     */
+    public void increseVersion() {
+        int versionNumber = 0;
+        if (versions.size() > 0) {
+            versionNumber = versions.get(versions.size() - 1).getNumber() + 1;
+        } else {
+            //No version in this store. Use verions 1 as the first version.
+            versionNumber = 1;
+        }
+        Version version = new Version(name, versionNumber, System.currentTimeMillis());
+        addVersion(version);
+    }
+
     @Override
     public boolean equals(Object o) {
         if (this == o) {
@@ -179,16 +167,10 @@ public class Store implements Serializable {
 
         Store store = (Store) o;
 
-        if (defaultPartitionNumber != store.defaultPartitionNumber) {
-            return false;
-        }
         if (createdTime != store.createdTime) {
             return false;
         }
         if (currentVersion != store.currentVersion) {
-            return false;
-        }
-        if (replicationFactor != store.replicationFactor) {
             return false;
         }
         if (!name.equals(store.name)) {
@@ -216,10 +198,8 @@ public class Store implements Serializable {
     public int hashCode() {
         int result = name.hashCode();
         result = 31 * result + owner.hashCode();
-        result = 31 * result + defaultPartitionNumber;
         result = 31 * result + (int) (createdTime ^ (createdTime >>> 32));
         result = 31 * result + currentVersion;
-        result = 31 * result + replicationFactor;
         result = 31 * result + persistenceType.hashCode();
         result = 31 * result + routingStrategy.hashCode();
         result = 31 * result + readStrategy.hashCode();
@@ -234,13 +214,8 @@ public class Store implements Serializable {
      * @return cloned store.
      */
     public Store cloneStore() {
-        Store clonedStore = new Store(name, owner, defaultPartitionNumber, createdTime);
+        Store clonedStore = new Store(name, owner, createdTime);
         clonedStore.setCurrentVersion(currentVersion);
-        clonedStore.setOffLinePushStrategy(offLinePushStrategy);
-        clonedStore.setPersistenceType(persistenceType);
-        clonedStore.setReadStrategy(readStrategy);
-        clonedStore.setReplicationFactor(replicationFactor);
-        clonedStore.setRoutingStrategy(routingStrategy);
 
         for (Version v : this.versions) {
             clonedStore.addVersion(v.cloneVersion());

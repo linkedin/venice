@@ -98,7 +98,7 @@ public class HelixCachedMetadataRepository extends HelixMetadataRepository {
         metadataLock.writeLock().lock();
         try {
             if (storeMap.containsKey(store.getName())) {
-                throw new IllegalArgumentException("Store" + store.getName() + " is existed.");
+                throw new IllegalArgumentException("Store" + store.getName() + " already exists.");
             }
             dataAccessor.set(composeStorePath(store.getName()), store, AccessOption.PERSISTENT);
             dataAccessor.subscribeDataChanges(composeStorePath(store.getName()), storeDataChangedListener);
@@ -112,7 +112,7 @@ public class HelixCachedMetadataRepository extends HelixMetadataRepository {
         metadataLock.writeLock().lock();
         try {
             if (!storeMap.containsKey(store.getName())) {
-                throw new IllegalArgumentException("Store" + store.getName() + " is not existed.");
+                throw new IllegalArgumentException("Store" + store.getName() + " dose not exist.");
             }
             Store originalStore = storeMap.get(store.getName());
             if (!originalStore.equals(store)) {
@@ -131,7 +131,7 @@ public class HelixCachedMetadataRepository extends HelixMetadataRepository {
             metadataLock.writeLock().lock();
             try {
                 if (!parentPath.equals(rootPath)) {
-                    logger.warn("Ignore the irrelevant children change of path:" + parentPath);
+                    logger.warn("Ignore the irrelevant children change of the path:" + parentPath);
                     return;
                 }
 

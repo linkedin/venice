@@ -3,13 +3,15 @@ package com.linkedin.venice.meta;
 import com.sun.istack.internal.NotNull;
 import java.io.Serializable;
 
-import static com.linkedin.venice.meta.MetadataConstants.*;
-
 
 /**
  * Class defines the version of Venice store.
  */
 public class Version implements Serializable {
+    /**
+     * Name of the store which this version belong to.
+     */
+    private final String storeName;
     /**
      * Version number.
      */
@@ -19,15 +21,12 @@ public class Version implements Serializable {
      */
     private final long createdTime;
     /**
-     * Kafka topic used by this version.
-     */
-    private String kafkaTopic = "";
-    /**
      * Status of version.
      */
-    private String status = INACTIVE;
+    private VersionStatus status = VersionStatus.ACTIVE;
 
-    public Version(int number, long createdTime) {
+    public Version(String storeName, int number, long createdTime) {
+        this.storeName = storeName;
         this.number = number;
         this.createdTime = createdTime;
     }
@@ -40,20 +39,16 @@ public class Version implements Serializable {
         return createdTime;
     }
 
-    public String getKafkaTopic() {
-        return kafkaTopic;
-    }
-
-    public void setKafkaTopic(@NotNull String kafkaTopic) {
-        this.kafkaTopic = kafkaTopic;
-    }
-
-    public String getStatus() {
+    public VersionStatus getStatus() {
         return status;
     }
 
-    public void setStatus(@NotNull String status) {
+    public void setStatus(VersionStatus status) {
         this.status = status;
+    }
+
+    public String getStoreName() {
+        return storeName;
     }
 
     @Override
@@ -73,7 +68,7 @@ public class Version implements Serializable {
         if (createdTime != version.createdTime) {
             return false;
         }
-        if (!kafkaTopic.equals(version.kafkaTopic)) {
+        if (!storeName.equals(version.storeName)) {
             return false;
         }
         return status.equals(version.status);
@@ -81,9 +76,9 @@ public class Version implements Serializable {
 
     @Override
     public int hashCode() {
-        int result = number;
+        int result = storeName.hashCode();
+        result = 31 * result + number;
         result = 31 * result + (int) (createdTime ^ (createdTime >>> 32));
-        result = 31 * result + kafkaTopic.hashCode();
         result = 31 * result + status.hashCode();
         return result;
     }
@@ -94,9 +89,17 @@ public class Version implements Serializable {
      * @return cloned version.
      */
     public Version cloneVersion() {
-        Version clonedVersion = new Version(number, createdTime);
-        clonedVersion.setKafkaTopic(kafkaTopic);
+        Version clonedVersion = new Version(storeName, number, createdTime);
         clonedVersion.setStatus(status);
         return clonedVersion;
+    }
+
+    /**
+     * Kafka topic name is composed by store name and version.
+     *
+     * @return kafka topic name.
+     */
+    public String getKafkaTopicName() {
+        return storeName + number;
     }
 }

@@ -1,7 +1,7 @@
 package com.linkedin.venice.meta;
 
 import java.util.List;
-import junit.framework.Assert;
+import org.testng.Assert;
 import org.testng.annotations.Test;
 
 
@@ -11,11 +11,11 @@ import org.testng.annotations.Test;
 public class TestStore {
     @Test
     public void testVersionsAreAddedInOrdered(){
-        Store s = new Store("s1","owner",1,System.currentTimeMillis());
-        s.addVersion(new Version(4,System.currentTimeMillis()));
-        s.addVersion(new Version(2,System.currentTimeMillis()));
-        s.addVersion(new Version(3,System.currentTimeMillis()));
-        s.addVersion(new Version(1,System.currentTimeMillis()));
+        Store s = new Store("s1","owner",System.currentTimeMillis());
+        s.addVersion(new Version(s.getName(),4,System.currentTimeMillis()));
+        s.addVersion(new Version(s.getName(),2,System.currentTimeMillis()));
+        s.addVersion(new Version(s.getName(),3,System.currentTimeMillis()));
+        s.addVersion(new Version(s.getName(),1,System.currentTimeMillis()));
 
         List<Version> versions = s.getVersions();
         Assert.assertEquals(4,versions.size());
@@ -26,11 +26,11 @@ public class TestStore {
 
     @Test
     public void testDeleteVersion(){
-        Store s = new Store("s1","owner",1,System.currentTimeMillis());
-        s.addVersion(new Version(4,System.currentTimeMillis()));
-        s.addVersion(new Version(2,System.currentTimeMillis()));
-        s.addVersion(new Version(3,System.currentTimeMillis()));
-        s.addVersion(new Version(1,System.currentTimeMillis()));
+        Store s = new Store("s1","owner",System.currentTimeMillis());
+        s.addVersion(new Version(s.getName(),4,System.currentTimeMillis()));
+        s.addVersion(new Version(s.getName(),2,System.currentTimeMillis()));
+        s.addVersion(new Version(s.getName(),3,System.currentTimeMillis()));
+        s.addVersion(new Version(s.getName(),1,System.currentTimeMillis()));
 
         s.deleteVersion(3);
         List<Version> versions = s.getVersions();
@@ -43,7 +43,7 @@ public class TestStore {
 
     @Test
     public void testCloneStore(){
-        Store s = new Store("s1","owner",1,System.currentTimeMillis());
+        Store s = new Store("s1","owner",System.currentTimeMillis());
         Store clonedStore = s.cloneStore();
         Assert.assertTrue(s.equals(clonedStore));
         clonedStore.setCurrentVersion(100);
