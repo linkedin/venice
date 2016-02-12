@@ -3,8 +3,6 @@ package com.linkedin.venice.controller;
 import com.linkedin.venice.config.VeniceStorePartitionInformation;
 import com.linkedin.venice.service.AbstractVeniceService;
 import java.util.Map;
-import org.apache.helix.HelixAdmin;
-import org.apache.helix.manager.zk.ZKHelixAdmin;
 import org.apache.log4j.Logger;
 
 /**
@@ -49,5 +47,9 @@ public class VeniceControllerService extends AbstractVeniceService {
     for(VeniceStorePartitionInformation storePartitionInformation: storeToPartitionInformationMap.values()) {
       admin.addStore(clusterName , storePartitionInformation);
     }
+  }
+
+  public Admin getVeniceHelixAdmin(){
+    return admin;
   }
 }

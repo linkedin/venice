@@ -2,7 +2,11 @@ package com.linkedin.venice.controller;
 
 import com.linkedin.venice.config.StoreConfigsLoader;
 import com.linkedin.venice.config.VeniceStorePartitionInformation;
+import com.linkedin.venice.controller.server.AdminServer;
+import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.utils.Utils;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import org.apache.log4j.Logger;
 
@@ -17,7 +21,7 @@ public class VeniceController {
   private static String zkAddress;
   private static String controllerName;
   private static Map<String, VeniceStorePartitionInformation> storeToPartitionInformationMap;
-  private static VeniceControllerService controllerService;
+  private static List<AbstractVeniceService> services;
 
   public static void main(String args[]) {
     if(args.length < 3) {
@@ -39,13 +43,22 @@ public class VeniceController {
       System.exit(1);
     }
 
-    controllerService = new VeniceControllerService(zkAddress, clusterName, controllerName, storeToPartitionInformationMap);
+    /* Services are created in the order they must be started */
+    services = new ArrayList<AbstractVeniceService>();
 
-    try {
-      controllerService.start();
-    } catch (Exception e) {
-      logger.error("Error starting the Controller Service. ", e);
-      System.exit(1);
+    VeniceControllerService controllerService = new VeniceControllerService(zkAddress, clusterName, controllerName, storeToPartitionInformationMap);
+    services.add(controllerService);
+    //TODO: controller config so we can configure the port
+    AdminServer adminServer = new AdminServer(8078, clusterName, controllerService.getVeniceHelixAdmin());
+    services.add(adminServer);
+
+    for (AbstractVeniceService service: services) {
+      try {
+        service.start();
+      } catch (Exception e) {
+        logger.error("Error starting the service: " + service.getName(), e);
+        System.exit(1);
+      }
     }
     addShutdownHook();
   }
@@ -54,13 +67,16 @@ public class VeniceController {
     Runtime.getRuntime().addShutdownHook(new Thread() {
       @Override
       public void run() {
-        logger.info("Disconnecting Helix Standalone Controller.");
-        try {
-          if (controllerService != null) {
-            controllerService.stop();
+
+        for (AbstractVeniceService service : services) {
+          logger.info("Stopping controller service: " + service.getName());
+          try {
+            if (service != null) {
+              service.stop();
+            }
+          } catch (Exception e) {
+            logger.error("Unable to stop service: " + service.getName(), e);
           }
-        } catch (Exception e) {
-          logger.error("Unable to stop controller service. ", e);
         }
       }
     });
