@@ -1,7 +1,6 @@
 package com.linkedin.venice.kafka.consumer;
 
 import com.linkedin.venice.exceptions.PersistenceFailureException;
-import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceMessageException;
 import com.linkedin.venice.kafka.consumer.message.ControlMessage;
 import com.linkedin.venice.kafka.consumer.message.ControlOperationType;
@@ -12,6 +11,7 @@ import com.linkedin.venice.message.OperationType;
 import com.linkedin.venice.server.StoreRepository;
 import com.linkedin.venice.store.AbstractStorageEngine;
 import com.linkedin.venice.utils.ByteUtils;
+import java.io.Closeable;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.Iterator;
@@ -29,7 +29,7 @@ import org.apache.log4j.Logger;
  * Assumes: One to One mapping between a Venice Store and Kafka Topic.
  * A runnable Kafka Consumer consuming messages from all the partition assigned to current node for a Kafka Topic.
  */
-public class StoreConsumptionTask implements Runnable {
+public class StoreConsumptionTask implements Runnable, Closeable {
 
   private static final Logger logger = Logger.getLogger(StoreConsumptionTask.class.getName());
 
@@ -38,8 +38,7 @@ public class StoreConsumptionTask implements Runnable {
 
   private static final int READ_CYCLE_DELAY_MS = 1000;
 
-  private static final long RETRY_SEEK_TO_BEGINNING_WAIT_TIME_MS = 1000;
-  private static final int RETRY_SEEK_TO_BEGINNING_COUNT = 10;
+  private static final int MAX_RETRIES = 10;
 
   //Ack producer
   private final VeniceNotifier notifier;
@@ -96,7 +95,7 @@ public class StoreConsumptionTask implements Runnable {
   /**
    * Adds an asynchronous partition unsubscription request for the task.
    */
-  public void unsubscribePartition(String topic, int partition) {
+  public void unSubscribePartition(String topic, int partition) {
     if(subscribedPartitions.contains(partition)) {
       subscribedPartitions.remove(partition);
     }
@@ -129,7 +128,7 @@ public class StoreConsumptionTask implements Runnable {
       // TODO: Figure out how to notify Helix of replica's failure.
       logger.error(consumerTaskId + " failed with Exception: ", e);
     } finally {
-      stop();
+      close();
     }
   }
 
@@ -153,7 +152,7 @@ public class StoreConsumptionTask implements Runnable {
           processKafkaActionMessage(message);
           removeMessage = true;
         } catch (Exception ex) {
-          if(message.getAttemptsCount() >= RETRY_SEEK_TO_BEGINNING_COUNT) {
+          if(message.getAttemptsCount() >= MAX_RETRIES) {
             logger.info("Ignoring message:  " + message.toString(), ex);
             removeMessage = true;
           } else {
@@ -209,11 +208,7 @@ public class StoreConsumptionTask implements Runnable {
         try {
           processConsumerRecord(record);
         } catch (VeniceMessageException|UnsupportedOperationException ex) {
-          logger.error(consumerTaskId + " : Received an exception ! Skipping the message.", ex);
-          if (logger.isDebugEnabled()) {
-            logger.debug(consumerTaskId + " : Skipping message at Offset " + readOffset);
-          }
-          consumer.seek(record.topic(), record.partition(), record.offset() + 1);
+          logger.error(consumerTaskId + " : Received an exception ! Skipping the message at offset " + readOffset, ex);
         }
       }
     }
@@ -282,19 +277,15 @@ public class StoreConsumptionTask implements Runnable {
         if (logger.isTraceEnabled()) {
           startTimeNs = System.nanoTime();
         }
-        try {
-          storageEngine.put(partition, keyBytes, kafkaValue.getValue());
-          logger.debug(new String(keyBytes) + "-" + new String(kafkaValue.getValue()) + " @ " + partition);
-          if (logger.isTraceEnabled()) {
-            logger.trace(
-                consumerTaskId + " : Completed PUT to Store: " + topic + " for key: " + ByteUtils.toHexString(keyBytes)
-                    + ", value: " + ByteUtils.toHexString(kafkaValue.getValue()) + " in " + (System.nanoTime()
-                    - startTimeNs) + " ns at " + System.currentTimeMillis());
-          }
-          totalMessagesProcessed++;
-        } catch (VeniceException e) {
-          throw e;
+        storageEngine.put(partition, keyBytes, kafkaValue.getValue());
+        logger.debug(new String(keyBytes) + "-" + new String(kafkaValue.getValue()) + " @ " + partition);
+        if (logger.isTraceEnabled()) {
+          logger.trace(
+              consumerTaskId + " : Completed PUT to Store: " + topic + " for key: " + ByteUtils.toHexString(keyBytes)
+                  + ", value: " + ByteUtils.toHexString(kafkaValue.getValue()) + " in " + (System.nanoTime()
+                  - startTimeNs) + " ns at " + System.currentTimeMillis());
         }
+        totalMessagesProcessed++;
         break;
 
       // deleting values
@@ -302,18 +293,15 @@ public class StoreConsumptionTask implements Runnable {
         if (logger.isTraceEnabled()) {
           startTimeNs = System.nanoTime();
         }
-        try {
-          storageEngine.delete(partition, keyBytes);
 
-          if (logger.isTraceEnabled()) {
-            logger.trace(consumerTaskId + " : Completed DELETE to Store: " + topic + " for key: " + ByteUtils
-                .toHexString(keyBytes) + " in " + (System.nanoTime() - startTimeNs) + " ns at " + System
-                .currentTimeMillis());
-          }
-          totalMessagesProcessed++;
-        } catch (VeniceException e) {
-          throw e;
+        storageEngine.delete(partition, keyBytes);
+
+        if (logger.isTraceEnabled()) {
+          logger.trace(consumerTaskId + " : Completed DELETE to Store: " + topic + " for key: " + ByteUtils
+              .toHexString(keyBytes) + " in " + (System.nanoTime() - startTimeNs) + " ns at " + System
+              .currentTimeMillis());
         }
+        totalMessagesProcessed++;
         break;
 
       // partial update
@@ -348,9 +336,12 @@ public class StoreConsumptionTask implements Runnable {
   /**
    * Stops the consumer task.
    */
-  public void stop() {
-    isRunning.set(false);
-    if(consumer != null){
+  public void close() {
+    boolean isStillRunning = isRunning.getAndSet(false);
+    if(isStillRunning && consumer != null){
+      // TODO : Consumer is not thread safe and close can be invoked on the other thread.
+      // Need to use wakeup, which is not available in this version yet to make this
+      // thread safe.
       consumer.close();
     }
   }
@@ -362,6 +353,5 @@ public class StoreConsumptionTask implements Runnable {
   public boolean isRunning() {
     return isRunning.get();
   }
-
 
 }

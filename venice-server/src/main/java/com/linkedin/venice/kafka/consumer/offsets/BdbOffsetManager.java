@@ -101,11 +101,11 @@ public class BdbOffsetManager extends OffsetManager {
   }
 
   @Override
-  public void recordOffset(String topicName, int partitionId, long offset, long timeStampInMs)
+  public void recordOffset(String topicName, int partitionId, OffsetRecord record)
       throws VeniceException {
     //assumes that the offset is not negative. Checked by the caller
     String keyStr = topicName + "_" + partitionId;
-    byte[] value = new OffsetRecord(offset, timeStampInMs).toBytes();
+    byte[] value = record.toBytes();
 
     DatabaseEntry keyEntry = new DatabaseEntry(keyStr.getBytes());
     DatabaseEntry valueEntry = new DatabaseEntry(value);
@@ -121,12 +121,12 @@ public class BdbOffsetManager extends OffsetManager {
       // TODO: Need to remove this block later - start
       if (!consumptionStats.containsKey(keyStr)) {
         consumptionStats.put(keyStr, 1);
-        logger.info(keyStr + ":" + offset + ":" + timeStampInMs);
+        logger.info(keyStr + ":" + record);
         offsetsBdbDatabase.sync();
       } else {
         int val = consumptionStats.get(keyStr);
         if (val + 1 == 50) {
-          logger.info(keyStr + ":" + offset + ":" + timeStampInMs);
+          logger.info(keyStr + ":" + record);
           offsetsBdbDatabase.sync();
           consumptionStats.put(keyStr, 0);
         } else {

@@ -17,7 +17,9 @@ import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import org.apache.commons.io.IOUtils;
 import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.log4j.Logger;
@@ -129,10 +131,19 @@ public class KafkaConsumerPerStoreService extends AbstractVeniceService implemen
   public void stopInner() {
     logger.info("Shutting down Kafka consumer service for node: " + nodeId);
     canRunTasks.set(false);
+
+    topicNameToKafkaMessageConsumptionTaskMap.values().forEach(StoreConsumptionTask::close);
+
     if (consumerExecutorService != null) {
       consumerExecutorService.shutdown();
+
+      try {
+        consumerExecutorService.awaitTermination(5, TimeUnit.SECONDS);
+      } catch(InterruptedException e) {
+        logger.info("Error shutting down consumer service ", e);
+      }
     }
-    topicNameToKafkaMessageConsumptionTaskMap.values().forEach(StoreConsumptionTask::stop);
+
     if(notifier != null) {
       notifier.close();
     }
@@ -170,7 +181,7 @@ public class KafkaConsumerPerStoreService extends AbstractVeniceService implemen
     String topic = veniceStore.getStoreName();
     StoreConsumptionTask consumerTask = topicNameToKafkaMessageConsumptionTaskMap.get(topic);
     if(consumerTask != null && consumerTask.isRunning()) {
-      consumerTask.unsubscribePartition(topic, partitionId);
+      consumerTask.unSubscribePartition(topic, partitionId);
     }
   }
 

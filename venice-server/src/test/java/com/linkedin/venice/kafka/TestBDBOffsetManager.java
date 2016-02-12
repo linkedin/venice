@@ -52,16 +52,19 @@ public class TestBDBOffsetManager {
     while (System.currentTimeMillis() < end) {
       lastOffset = RandomGenUtils.getRandomIntInRange(0, 9999);
       lastOffsetTimeStamp = System.currentTimeMillis();
-      offsetManager.recordOffset(topicName, partitionId, lastOffset,lastOffsetTimeStamp);
+
+      OffsetRecord record = new OffsetRecord(lastOffset, lastOffsetTimeStamp);
+
+      offsetManager.recordOffset(topicName, partitionId, record);
       Thread.sleep(100);
     }
     offsetManager.shutdown();
     offsetManager = new BdbOffsetManager(clusterConfig);
     OffsetRecord record = offsetManager.getLastOffset(topicName, partitionId);
-    long timeGap = lastOffsetTimeStamp - record.getRecordedTimeMs();
+    long timeGap = lastOffsetTimeStamp - record.getEventTimeEpochMs();
     if (timeGap < 0 && timeGap > flushIntervalMs) {
       Assert.fail(
-          "The last offset fetched from OffsetManager: " + record.getRecordedTimeMs() + ", is staler (by " + timeGap
+          "The last offset fetched from OffsetManager: " + record.getEventTimeEpochMs() + ", is staler (by " + timeGap
               + "ms) than the last emitted offset:  " + lastOffset);
     }
   }

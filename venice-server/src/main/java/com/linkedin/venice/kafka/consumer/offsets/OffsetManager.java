@@ -32,10 +32,9 @@ public abstract class OffsetManager {
    *
    * @param topicName  kafka topic to which the consumer thread is registered to.
    * @param partitionId kafka partition id for which the consumer thread is registered to.
-   * @param offset non negative offset of the message consumed by the consumer thread
-   * @param timeStampInMs the time stamp at which this offset was consumed. passed in by the caller
+   * @param record OffSetRecord containing last read offset for the topic and partition combination.
    */
-  public abstract void recordOffset(String topicName, int partitionId, long offset, long timeStampInMs)
+  public abstract void recordOffset(String topicName, int partitionId, OffsetRecord record)
       throws VeniceException;
 
 

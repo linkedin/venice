@@ -107,12 +107,12 @@ public class StoreConsumptionTaskTest extends PowerMockTestCase {
     Mockito.verify(mockKafkaConsumer, Mockito.timeout(TIMEOUT).times(1)).commit(Mockito.anyMap(),
         Mockito.eq(CommitType.SYNC));
 
-    // Verifies KafkaPerStoreConsumptionTask#unsubscribePartition invokes KafkaConsumer#unsubscribe with expected arguments.
-    mockStoreConsumptionTask.unsubscribePartition(topic, testPartition);
+    // Verifies KafkaPerStoreConsumptionTask#unSubscribePartition invokes KafkaConsumer#unsubscribe with expected arguments.
+    mockStoreConsumptionTask.unSubscribePartition(topic, testPartition);
     Mockito.verify(mockKafkaConsumer, Mockito.timeout(TIMEOUT).times(1)).assign(
             new ArrayList<>(mockKafkaConsumerSubscriptions));
 
-    mockStoreConsumptionTask.stop();
+    mockStoreConsumptionTask.close();
     testSubscribeTaskFuture.get();
   }
 
@@ -158,7 +158,7 @@ public class StoreConsumptionTaskTest extends PowerMockTestCase {
     Mockito.verify(mockAbstractStorageEngine, Mockito.timeout(TIMEOUT).atLeastOnce()).delete(testPartition,
         deleteTestKey.getBytes());
 
-    testSubscribeTask.stop();
+    testSubscribeTask.close();
     testSubscribeTaskFuture.get();
   }
 
