@@ -2,7 +2,7 @@ package com.linkedin.venice.config;
 
 import com.google.common.collect.ImmutableMap;
 import com.linkedin.venice.exceptions.ConfigurationException;
-import com.linkedin.venice.kafka.consumer.offsets.OffsetManager;
+import com.linkedin.venice.offsets.OffsetManager;
 import com.linkedin.venice.partition.ModuloPartitionNodeAssignmentScheme;
 import com.linkedin.venice.server.VeniceConfigService;
 import com.linkedin.venice.utils.Props;

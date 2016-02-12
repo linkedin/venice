@@ -2,8 +2,8 @@ package com.linkedin.venice.kafka;
 
 import com.linkedin.venice.utils.RandomGenUtils;
 import com.linkedin.venice.config.VeniceClusterConfig;
-import com.linkedin.venice.kafka.consumer.offsets.BdbOffsetManager;
-import com.linkedin.venice.kafka.consumer.offsets.OffsetRecord;
+import com.linkedin.venice.offsets.BdbOffsetManager;
+import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.server.VeniceConfigService;
 import com.linkedin.venice.utils.Props;
 import org.testng.Assert;

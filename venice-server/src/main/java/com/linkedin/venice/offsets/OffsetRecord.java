@@ -1,4 +1,4 @@
-package com.linkedin.venice.kafka.consumer.offsets;
+package com.linkedin.venice.offsets;
 
 import com.linkedin.venice.utils.ByteUtils;
 
