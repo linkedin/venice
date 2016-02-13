@@ -183,6 +183,7 @@ public class VeniceServer {
 
     /* Stop in reverse order */
 
+    //TODO: we may want a dependency structure so we ensure services are shutdown in the correct order.
     synchronized (this) {
       if (!isStarted()) {
         logger.info("The server is already stopped, ignoring duplicate attempt.");

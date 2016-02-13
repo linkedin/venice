@@ -67,7 +67,7 @@ public class VeniceController {
     Runtime.getRuntime().addShutdownHook(new Thread() {
       @Override
       public void run() {
-
+        //TODO: we may want a dependency structure so we ensure services are shutdown in the correct order.
         for (AbstractVeniceService service : Utils.reversed(services)) {
           logger.info("Stopping controller service: " + service.getName());
           try {
