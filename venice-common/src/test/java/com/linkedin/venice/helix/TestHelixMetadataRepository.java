@@ -22,7 +22,7 @@ public class TestHelixMetadataRepository {
     @BeforeTest
     public void zkSetup() {
         zkClient = new ZkClient(zkAddress, ZkClient.DEFAULT_SESSION_TIMEOUT, ZkClient.DEFAULT_CONNECTION_TIMEOUT,
-            new BasicStoreSerializer());
+            new HelixStoreSerializer(new StoreJSONSerializer()));
         zkClient.create(clusterPath, null, CreateMode.PERSISTENT);
         zkClient.create(clusterPath+storesPath, null, CreateMode.PERSISTENT);
     }

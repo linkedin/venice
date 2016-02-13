@@ -2,6 +2,8 @@ package com.linkedin.venice.helix;
 
 import com.linkedin.venice.meta.MetadataRepository;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.StoreDataChangedListener;
+import com.linkedin.venice.meta.StoreListChangedListener;
 import com.sun.istack.internal.NotNull;
 import org.apache.helix.AccessOption;
 import org.apache.helix.manager.zk.ZkBaseDataAccessor;
@@ -48,6 +50,18 @@ public class HelixMetadataRepository implements MetadataRepository {
     }
 
     @Override
+    public void subscribeStoreListChanged(@NotNull StoreListChangedListener listener) {
+        HelixStoreListChangedListener bridgeListener = new HelixStoreListChangedListener(rootPath, listener);
+        dataAccessor.subscribeChildChanges(rootPath, bridgeListener);
+    }
+
+    @Override
+    public void subscribeStoreDataChanged(@NotNull String storeName, @NotNull StoreDataChangedListener listener) {
+        HelixStoreDataChangedListener bridgeListener = new HelixStoreDataChangedListener(rootPath, storeName, listener);
+        dataAccessor.subscribeDataChanges(composeStorePath(storeName), bridgeListener);
+    }
+
+    @Override
     public void updateStore(@NotNull Store store) {
         if (!dataAccessor.exists(composeStorePath(store.getName()), AccessOption.PERSISTENT)) {
             throw new IllegalArgumentException("Store" + store.getName() + " dose not exist.");
@@ -57,13 +71,6 @@ public class HelixMetadataRepository implements MetadataRepository {
 
     protected String composeStorePath(String name) {
         return this.rootPath + "/" + name;
-    }
-
-    protected String extractStoreNameFromPath(String path) {
-        if (!path.startsWith(rootPath)) {
-            throw new IllegalArgumentException("Path:" + path + " is invalid.");
-        }
-        return path.substring(rootPath.length() + 1);
     }
 
     public String getRootPath() {

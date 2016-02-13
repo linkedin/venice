@@ -1,6 +1,8 @@
 package com.linkedin.venice.helix;
 
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.StoreDataChangedListener;
+import com.linkedin.venice.meta.StoreListChangedListener;
 import com.sun.istack.internal.NotNull;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -10,8 +12,6 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
-import org.I0Itec.zkclient.IZkChildListener;
-import org.I0Itec.zkclient.IZkDataListener;
 import org.apache.helix.AccessOption;
 import org.apache.helix.manager.zk.ZkClient;
 import org.apache.log4j.Logger;
@@ -31,11 +31,11 @@ public class HelixCachedMetadataRepository extends HelixMetadataRepository {
     /**
      * Listener used when there is any store be created or deleted.
      */
-    private final StoresChangedListener storesChangedListener = new StoresChangedListener();
+    private final CachedStoresChangedListener storesChangedListener = new CachedStoresChangedListener();
     /**
      * Listener used when the data of one store is changed.
      */
-    private final StoreDataChangedListener storeDataChangedListener = new StoreDataChangedListener();
+    private final CachedStoreDataChangedListener storeDataChangedListener = new CachedStoreDataChangedListener();
     /**
      * Lock to control the concurrency requests to stores.
      */
@@ -51,7 +51,8 @@ public class HelixCachedMetadataRepository extends HelixMetadataRepository {
             storeMap = new HashMap<>();
 
             List<Store> stores = dataAccessor.getChildren(rootPath, null, AccessOption.PERSISTENT);
-            dataAccessor.subscribeChildChanges(rootPath, storesChangedListener);
+            logger.info("Load " + stores.size() + " stores from Helix");
+            this.subscribeStoreListChanged(storesChangedListener);
 
             internalAddStores(stores);
         } finally {
@@ -59,13 +60,18 @@ public class HelixCachedMetadataRepository extends HelixMetadataRepository {
         }
     }
 
+    /**
+     * Add store to local map and register data chaned listener for each of them.
+     *
+     * @param stores
+     */
     private void internalAddStores(List<Store> stores) {
         for (Store s : stores) {
             if (storeMap.containsKey(s.getName())) {
                 continue;
             }
             storeMap.put(s.getName(), s);
-            dataAccessor.subscribeDataChanges(composeStorePath(s.getName()), storeDataChangedListener);
+            this.subscribeStoreDataChanged(s.getName(), storeDataChangedListener);
         }
     }
 
@@ -101,7 +107,7 @@ public class HelixCachedMetadataRepository extends HelixMetadataRepository {
                 throw new IllegalArgumentException("Store" + store.getName() + " already exists.");
             }
             dataAccessor.set(composeStorePath(store.getName()), store, AccessOption.PERSISTENT);
-            dataAccessor.subscribeDataChanges(composeStorePath(store.getName()), storeDataChangedListener);
+            this.subscribeStoreDataChanged(store.getName(), storeDataChangedListener);
         } finally {
             metadataLock.writeLock().unlock();
         }
@@ -124,21 +130,16 @@ public class HelixCachedMetadataRepository extends HelixMetadataRepository {
         }
     }
 
-    private class StoresChangedListener implements IZkChildListener {
+    private class CachedStoresChangedListener implements StoreListChangedListener {
+
         @Override
-        public void handleChildChange(String parentPath, List<String> currentChilds)
-            throws Exception {
+        public void handleStoreListChanged(List<String> storeNameList) {
             metadataLock.writeLock().lock();
             try {
-                if (!parentPath.equals(rootPath)) {
-                    logger.warn("Ignore the irrelevant children change of the path:" + parentPath);
-                    return;
-                }
-
                 List<String> addedChildren = new ArrayList<>();
                 Set<String> deletedChildren = new HashSet<>(storeMap.keySet());
 
-                for (String child : currentChilds) {
+                for (String child : storeNameList) {
                     if (!storeMap.containsKey(child)) {
                         addedChildren.add(composeStorePath(child));
                     } else {
@@ -153,7 +154,7 @@ public class HelixCachedMetadataRepository extends HelixMetadataRepository {
 
                 if (deletedChildren.size() > 0) {
                     //Delete from ZK at first then loccal cache.
-                    dataAccessor.remove(new ArrayList<String>(deletedChildren), AccessOption.PERSISTENT);
+                    dataAccessor.remove(new ArrayList<>(deletedChildren), AccessOption.PERSISTENT);
                     for (String deletedChild : deletedChildren) {
                         storeMap.remove(deletedChild);
                     }
@@ -164,25 +165,23 @@ public class HelixCachedMetadataRepository extends HelixMetadataRepository {
         }
     }
 
-    private class StoreDataChangedListener implements IZkDataListener {
+    private class CachedStoreDataChangedListener implements StoreDataChangedListener {
 
         @Override
-        public void handleDataChange(String dataPath, Object data)
-            throws Exception {
+        public void handleStoreUpdated(Store store) {
             metadataLock.writeLock().lock();
             try {
-                storeMap.put(extractStoreNameFromPath(dataPath), (Store) data);
+                storeMap.put(store.getName(), store);
             } finally {
                 metadataLock.writeLock().unlock();
             }
         }
 
         @Override
-        public void handleDataDeleted(String dataPath)
-            throws Exception {
+        public void handleStoreDeleted(String storeName) {
             metadataLock.writeLock().lock();
             try {
-                storeMap.remove(extractStoreNameFromPath(dataPath));
+                storeMap.remove(storeName);
             } finally {
                 metadataLock.writeLock().unlock();
             }

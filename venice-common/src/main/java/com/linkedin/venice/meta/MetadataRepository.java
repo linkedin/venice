@@ -33,4 +33,19 @@ public interface MetadataRepository {
      * @param store store need to be added.
      */
     public void addStore(Store store);
+
+    /**
+     * Add a listener into repository to listen the change of store list.
+     *
+     * @param listener Listener to get the notification.
+     */
+    public void subscribeStoreListChanged(StoreListChangedListener listener);
+
+    /**
+     * Add a listener into repository to listen the change the store data.
+     *
+     * @param storeName Name of the store which need to be listened.
+     * @param listener  listener to get the notification.
+     */
+    public void subscribeStoreDataChanged(String storeName, StoreDataChangedListener listener);
 }

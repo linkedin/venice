@@ -1,13 +1,12 @@
 package com.linkedin.venice.meta;
 
 import com.sun.istack.internal.NotNull;
-import java.io.Serializable;
 
 
 /**
  * Class defines the version of Venice store.
  */
-public class Version implements Serializable {
+public class Version{
     /**
      * Name of the store which this version belong to.
      */
@@ -25,7 +24,7 @@ public class Version implements Serializable {
      */
     private VersionStatus status = VersionStatus.ACTIVE;
 
-    public Version(String storeName, int number, long createdTime) {
+    public Version(@NotNull String storeName, int number, long createdTime) {
         this.storeName = storeName;
         this.number = number;
         this.createdTime = createdTime;
@@ -43,7 +42,7 @@ public class Version implements Serializable {
         return status;
     }
 
-    public void setStatus(VersionStatus status) {
+    public void setStatus(@NotNull VersionStatus status) {
         this.status = status;
     }
 

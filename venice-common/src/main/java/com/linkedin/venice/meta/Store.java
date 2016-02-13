@@ -1,7 +1,6 @@
 package com.linkedin.venice.meta;
 
 import com.sun.istack.internal.NotNull;
-import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -10,7 +9,7 @@ import java.util.List;
 /**
  * Class defines the store of Venice.
  */
-public class Store implements Serializable {
+public class Store {
     /**
      * Store name.
      */
@@ -48,20 +47,21 @@ public class Store implements Serializable {
      */
     private List<Version> versions;
 
-    public Store(String name, String owner, long createdTime) {
+    public Store(@NotNull String name, @NotNull String owner, long createdTime) {
         this(name, owner, createdTime, PersistenceType.IN_MEMORY, RoutingStrategy.CONSISTENCY_HASH,
             ReadStrategy.ANY_OF_ONLINE, OfflinePUshStrategy.WAIT_ALL_REPLICAS);
     }
 
-    public Store(String name, String owner, long createdTime, PersistenceType persistenceType,
-        RoutingStrategy routingStrategy, ReadStrategy readStrategy, OfflinePUshStrategy offlinePUshStrategy) {
+    public Store(@NotNull String name, @NotNull String owner, long createdTime,
+        @NotNull PersistenceType persistenceType, @NotNull RoutingStrategy routingStrategy,
+        @NotNull ReadStrategy readStrategy, @NotNull OfflinePUshStrategy offlinePushStrategy) {
         this.name = name;
         this.owner = owner;
         this.createdTime = createdTime;
         this.persistenceType = persistenceType;
         this.routingStrategy = routingStrategy;
         this.readStrategy = readStrategy;
-        this.offLinePushStrategy = offlinePUshStrategy;
+        this.offLinePushStrategy = offlinePushStrategy;
         versions = new ArrayList<>();
     }
 
@@ -103,6 +103,10 @@ public class Store implements Serializable {
 
     public List<Version> getVersions() {
         return Collections.unmodifiableList(this.versions);
+    }
+
+    public void setVersions(List<Version> versions) {
+        this.versions = versions;
     }
 
     /**
