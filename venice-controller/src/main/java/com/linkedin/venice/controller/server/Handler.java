@@ -8,6 +8,7 @@ import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelFutureListener;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
+import io.netty.handler.codec.DecoderException;
 import io.netty.handler.codec.http.DefaultFullHttpResponse;
 import io.netty.handler.codec.http.FullHttpResponse;
 import io.netty.handler.codec.http.HttpContent;
@@ -26,7 +27,6 @@ import io.netty.handler.codec.http.multipart.HttpDataFactory;
 import io.netty.handler.codec.http.multipart.HttpPostRequestDecoder;
 import io.netty.handler.codec.http.multipart.HttpPostRequestDecoder.EndOfDataDecoderException;
 import io.netty.handler.codec.http.multipart.HttpPostRequestDecoder.ErrorDataDecoderException;
-import io.netty.handler.codec.http.multipart.HttpPostRequestDecoder.IncompatibleDataDecoderException;
 import io.netty.handler.codec.http.multipart.InterfaceHttpData;
 import io.netty.handler.codec.http.multipart.InterfaceHttpData.HttpDataType;
 import io.netty.util.CharsetUtil;
@@ -34,8 +34,7 @@ import java.io.IOException;
 import java.net.URI;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.logging.Level;
-import java.util.logging.Logger;
+import org.apache.log4j.Logger;
 
 import static io.netty.buffer.Unpooled.copiedBuffer;
 import static io.netty.handler.codec.http.HttpHeaders.Names.CONNECTION;
@@ -55,8 +54,8 @@ public class Handler extends SimpleChannelInboundHandler<HttpObject> {
   private HttpRequest request;
   private boolean readingChunks;
   private final StringBuilder responseContent = new StringBuilder();
-  private String clusterName;
-  private Admin admin;
+  private final String clusterName;
+  private final Admin admin;
 
   private static final HttpDataFactory factory =
       new DefaultHttpDataFactory(DefaultHttpDataFactory.MINSIZE); // Disk if size exceed
@@ -86,7 +85,7 @@ public class Handler extends SimpleChannelInboundHandler<HttpObject> {
   @Override
   public void channelRead0(ChannelHandlerContext ctx, HttpObject msg) throws Exception {
     if (msg instanceof HttpRequest) {
-      HttpRequest request = this.request = (HttpRequest) msg;
+      request = (HttpRequest) msg;
       URI uri = new URI(request.getUri());
       if (request.getMethod().equals(HttpMethod.GET)) {
         writeMenu(ctx);
@@ -101,17 +100,8 @@ public class Handler extends SimpleChannelInboundHandler<HttpObject> {
 
       try {
         decoder = new HttpPostRequestDecoder(factory, request);
-      } catch (ErrorDataDecoderException e1) {
-        e1.printStackTrace();
-        responseContent.append(e1.getMessage());
-        writeResponse(ctx.channel());
-        ctx.channel().close();
-        return;
-      } catch (IncompatibleDataDecoderException e1) {
-        // GET Method: should not try to create a HttpPostRequestDecoder.  So OK but stop here
-        responseContent.append(e1.getMessage());
-        responseContent.append("\r\n\r\nEND OF GET CONTENT\r\n");
-        writeResponse(ctx.channel());
+      } catch (DecoderException e) {
+        handleError("Error creating HttpPostRequestDecoder", e, ctx.channel());
         return;
       }
 
@@ -129,11 +119,8 @@ public class Handler extends SimpleChannelInboundHandler<HttpObject> {
         HttpContent chunk = (HttpContent) msg;
         try {
           decoder.offer(chunk);
-        } catch (ErrorDataDecoderException e1) {
-          e1.printStackTrace();
-          responseContent.append(e1.getMessage());
-          writeResponse(ctx.channel());
-          ctx.channel().close();
+        } catch (ErrorDataDecoderException e) {
+          handleError("Error decoding chunk", e, ctx.channel());
           return;
         }
 
@@ -189,8 +176,8 @@ public class Handler extends SimpleChannelInboundHandler<HttpObject> {
             String value = attribute.getValue();
             bodyAttributes.put(attribute.getName(), value);
           } catch (IOException e) {
-            logger.warning("Failed to parse value for HTTP attribute: " + attribute.getName());
-            e.printStackTrace();  //log the error but keep parsing
+            //log the error but keep parsing
+            logger.warn("Failed to parse value for HTTP attribute: " + attribute.getName(), e);
           }
         }
       }
@@ -199,7 +186,10 @@ public class Handler extends SimpleChannelInboundHandler<HttpObject> {
     return bodyAttributes;
   }
 
-  private void writeResponse(Channel channel) {
+  private void writeResponse(Channel channel){
+    writeResponse(channel, "text/plain");
+  }
+  private void writeResponse(Channel channel, String type) {
     // Convert the response content to a ChannelBuffer.
     ByteBuf buf = copiedBuffer(responseContent.toString(), CharsetUtil.UTF_8);
     responseContent.setLength(0);
@@ -212,12 +202,8 @@ public class Handler extends SimpleChannelInboundHandler<HttpObject> {
     // Build the response object.
     FullHttpResponse response = new DefaultFullHttpResponse(
         HttpVersion.HTTP_1_1, HttpResponseStatus.OK, buf);
-    response.headers().set(CONTENT_TYPE, "text/plain; charset=UTF-8");
-
-    if (!close) {
-      // There's no need to add 'Content-Length' header if this is the last response.
-      response.headers().set(CONTENT_LENGTH, buf.readableBytes());
-    }
+    response.headers().set(CONTENT_TYPE, type + "; charset=UTF-8");
+    response.headers().set(CONTENT_LENGTH, buf.readableBytes());
 
     // Write the response.
     ChannelFuture future = channel.writeAndFlush(response);
@@ -259,21 +245,19 @@ public class Handler extends SimpleChannelInboundHandler<HttpObject> {
     responseContent.append("</body>");
     responseContent.append("</html>");
 
-    ByteBuf buf = copiedBuffer(responseContent.toString(), CharsetUtil.UTF_8);
-    // Build the response object.
-    FullHttpResponse response = new DefaultFullHttpResponse(
-        HttpVersion.HTTP_1_1, HttpResponseStatus.OK, buf);
+    writeResponse(ctx.channel(), "text/html");
+  }
 
-    response.headers().set(CONTENT_TYPE, "text/html; charset=UTF-8");
-    response.headers().set(CONTENT_LENGTH, buf.readableBytes());
-
-    // Write the response.
-    ctx.channel().writeAndFlush(response);
+  private void handleError(String message, Throwable cause, Channel channel){
+    logger.error(message, cause);
+    responseContent.append(cause.getMessage());
+    writeResponse(channel);
+    channel.close();
   }
 
   @Override
   public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) throws Exception {
-    logger.log(Level.WARNING, responseContent.toString(), cause);
+    logger.error(responseContent.toString(), cause);
     ctx.channel().close();
   }
 }

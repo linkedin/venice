@@ -23,13 +23,15 @@ public class AdminServer extends AbstractVeniceService {
   private ServerBootstrap bootstrap;
   private EventLoopGroup group;
   private ChannelFuture serverFuture;
-  private String clusterName;
-  private Admin admin;
+  private final String clusterName;
+  private final Admin admin;
 
   public AdminServer(int port, String clusterName, Admin admin){
     super("controller-admin-server");
     this.port = port;
     this.clusterName = clusterName;
+    //Note: admin is passed in as a reference.  The expectation is the source of the admin will
+    //      close it so we don't close it in stopInner()
     this.admin = admin;
   }
 

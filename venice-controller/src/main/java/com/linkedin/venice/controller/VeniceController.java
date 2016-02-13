@@ -68,7 +68,7 @@ public class VeniceController {
       @Override
       public void run() {
 
-        for (AbstractVeniceService service : services) {
+        for (AbstractVeniceService service : Utils.reversed(services)) {
           logger.info("Stopping controller service: " + service.getName());
           try {
             if (service != null) {
