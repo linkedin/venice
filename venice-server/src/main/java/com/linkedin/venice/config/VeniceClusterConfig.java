@@ -2,6 +2,7 @@ package com.linkedin.venice.config;
 
 import com.google.common.collect.ImmutableMap;
 import com.linkedin.venice.exceptions.ConfigurationException;
+import com.linkedin.venice.offsets.BdbOffsetManager;
 import com.linkedin.venice.offsets.OffsetManager;
 import com.linkedin.venice.partition.ModuloPartitionNodeAssignmentScheme;
 import com.linkedin.venice.server.VeniceConfigService;
@@ -57,7 +58,7 @@ public class VeniceClusterConfig {
         if (enableKafkaConsumersOffsetManagement) {
             offsetManagerType = clusterProps.getString(VeniceConfigService.OFFSET_MANAGER_TYPE, "bdb"); // Default "bdb"
             offsetDatabasePath = clusterProps.getString(VeniceConfigService.OFFSET_DATA_BASE_PATH,
-                    System.getProperty("java.io.tmpdir") + File.separator + OffsetManager.OFFSETS_STORE_NAME);
+                    System.getProperty("java.io.tmpdir") + File.separator + BdbOffsetManager.OFFSETS_STORE_NAME);
             offsetManagerFlushIntervalMs = clusterProps.getLong(VeniceConfigService.OFFSET_MANAGER_FLUSH_INTERVAL_MS, 10000); // 10 sec default
         }
         enableConsumptionAcksForAzkabanJobs = clusterProps.getBoolean(VeniceConfigService.ENABLE_CONSUMPTION_ACKS_FOR_AZKABAN_JOBS, false);

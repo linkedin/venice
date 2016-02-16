@@ -2,6 +2,7 @@ package com.linkedin.venice.offsets;
 
 import com.linkedin.venice.config.VeniceClusterConfig;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.utils.Time;
 import com.sleepycat.je.Database;
 import com.sleepycat.je.DatabaseConfig;
@@ -17,7 +18,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import org.apache.log4j.Logger;
 
 
-public class BdbOffsetManager extends OffsetManager {
+public class BdbOffsetManager extends AbstractVeniceService implements OffsetManager  {
 
   /**
    * This is where we can decide one of the two models:
@@ -35,21 +36,39 @@ public class BdbOffsetManager extends OffsetManager {
    * persistence requirements.
    *
    */
+  public static final String OFFSETS_STORE_NAME="offsets_store";
+
   private static final long CHECKPOINTER_BYTES_INTERVAL = 0L; // To enable time based checkpointing
   private static final long LOG_FILE_MAX = 1L * 1024L * 1024L;// 1MB log file is more than enough and is the minimum
   private static final long CACHE_SIZE = 1024L * 1024L; // 1MB cache   TODO increase this later if needed
 
   private static final Logger logger = Logger.getLogger(BdbOffsetManager.class.getName());
-  private final AtomicBoolean isOpen;
   private final Environment offsetsBdbEnvironment;
-  private final Database offsetsBdbDatabase;
+
+  private AtomicBoolean isOpen;
+  private Database offsetsBdbDatabase;
 
   // TODO: Need to remove this later - start
   private final HashMap<String, Integer> consumptionStats;
   // TODO: Need to remove this later - end
 
+  @Override
+  public void startInner()
+          throws Exception {
+    DatabaseConfig dbConfig = new DatabaseConfig();
+    dbConfig.setAllowCreate(true);
+    dbConfig.setSortedDuplicates(false);
+    dbConfig.setDeferredWrite(true);
+    dbConfig.setTransactional(false);
+
+    logger.info("Creating BDB environment for storing offsets: ");
+    this.offsetsBdbDatabase = offsetsBdbEnvironment.openDatabase(null, OFFSETS_STORE_NAME, dbConfig);
+    this.isOpen = new AtomicBoolean(true);
+  }
+
+  private static final String OFFSET_SERVICE = "Offset-Service";
   public BdbOffsetManager(VeniceClusterConfig veniceClusterConfig) {
-    super(veniceClusterConfig);
+    super(OFFSET_SERVICE);
 
     String bdbMasterDir = veniceClusterConfig.getOffsetDatabasePath();
     File bdbDir = new File(bdbMasterDir);
@@ -64,29 +83,21 @@ public class BdbOffsetManager extends OffsetManager {
     envConfig.setReadOnly(false);
     envConfig.setConfigParam(EnvironmentConfig.CHECKPOINTER_BYTES_INTERVAL, Long.toString(CHECKPOINTER_BYTES_INTERVAL));
     envConfig.setConfigParam(EnvironmentConfig.CHECKPOINTER_WAKEUP_INTERVAL,
-        Long.toString(veniceClusterConfig.getOffsetManagerFlushIntervalMs() * Time.US_PER_MS));
+            Long.toString(veniceClusterConfig.getOffsetManagerFlushIntervalMs() * Time.US_PER_MS));
     envConfig.setConfigParam(EnvironmentConfig.LOG_FILE_MAX, Long.toString(LOG_FILE_MAX));
     envConfig.setConfigParam(EnvironmentConfig.ENV_RECOVERY_FORCE_CHECKPOINT, Boolean.toString(true));
     envConfig.setCacheSize(CACHE_SIZE);
 
-    DatabaseConfig dbConfig = new DatabaseConfig();
-    dbConfig.setAllowCreate(true);
-    dbConfig.setSortedDuplicates(false);
-    dbConfig.setDeferredWrite(true);
-    dbConfig.setTransactional(false);
-
     offsetsBdbEnvironment = new Environment(bdbDir, envConfig);
-    logger.info("Creating BDB environment for storing offsets: ");
-    this.offsetsBdbDatabase = offsetsBdbEnvironment.openDatabase(null, OFFSETS_STORE_NAME, dbConfig);
-    this.isOpen = new AtomicBoolean(true);
 
     // TODO: Need to remove this block later - start
     consumptionStats = new HashMap<String, Integer>();
     // TODO: Need to remove this block later - end
+
   }
 
   @Override
-  public void shutdown()
+  public void stopInner()
       throws VeniceException {
     try {
       if (this.isOpen.compareAndSet(true, false)) {

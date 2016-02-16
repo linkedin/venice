@@ -2,6 +2,7 @@ package com.linkedin.venice.offsets;
 
 import com.linkedin.venice.config.VeniceClusterConfig;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.service.AbstractVeniceService;
 
 
 /**
@@ -16,15 +17,7 @@ import com.linkedin.venice.exceptions.VeniceException;
  * TODO: offset manager should also be designed in case when there is a rebalance and the partition assignments to nodes
  * in the cluster are changed.
  */
-public abstract class OffsetManager {
-
-  public static final String OFFSETS_STORE_NAME="offsets_store";
-
-  protected final VeniceClusterConfig veniceClusterConfig;
-
-  public OffsetManager(VeniceClusterConfig veniceClusterConfig) {
-    this.veniceClusterConfig = veniceClusterConfig;
-  }
+public interface OffsetManager {
 
   /**
    * Records the offset with underlying/external storage. Persistence to disk happens in configurable time interval by a
@@ -34,7 +27,7 @@ public abstract class OffsetManager {
    * @param partitionId kafka partition id for which the consumer thread is registered to.
    * @param record OffSetRecord containing last read offset for the topic and partition combination.
    */
-  public abstract void recordOffset(String topicName, int partitionId, OffsetRecord record)
+  void recordOffset(String topicName, int partitionId, OffsetRecord record)
       throws VeniceException;
 
 
@@ -47,12 +40,6 @@ public abstract class OffsetManager {
    * @return  OffsetRecord  - contains offset and time when it was recorded before the consumer thread went down.
    * consumer
    */
-  public abstract OffsetRecord getLastOffset(String topicName, int partitionId)
+  OffsetRecord getLastOffset(String topicName, int partitionId)
       throws VeniceException;
-
-
-  public void shutdown()
-      throws Exception {
-
-  }
 }

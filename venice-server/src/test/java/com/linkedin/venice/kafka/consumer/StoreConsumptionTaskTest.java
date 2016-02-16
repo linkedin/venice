@@ -93,10 +93,11 @@ public class StoreConsumptionTaskTest extends PowerMockTestCase {
 
     // Verifies KafkaPerStoreConsumptionTask#subscribePartition invokes KafkaConsumer#subscribe with expected arguments.
     mockStoreConsumptionTask.subscribePartition(topic, testPartition);
-    Mockito.verify(mockKafkaConsumer, Mockito.timeout(TIMEOUT).times(1)).assign(new ArrayList<>(mockKafkaConsumerSubscriptions));
+    Mockito.verify(mockKafkaConsumer, Mockito.timeout(TIMEOUT).times(1)).assign(
+            new ArrayList<>(mockKafkaConsumerSubscriptions));
 
     // Prepare the Mocked KafkaConsumer to correctly reflect the subscribed partition.
-    PowerMockito.when(mockKafkaConsumer.assignment()).thenReturn(mockKafkaConsumerSubscriptions);
+    PowerMockito.doReturn(mockKafkaConsumerSubscriptions).when(mockKafkaConsumer).assignment();
 
     /*
      * Verifies KafkaPerStoreConsumptionTask#resetPartitionConsumptionOffset invokes KafkaConsumer#seekToBeginning &

@@ -19,8 +19,14 @@ public class TestBDBOffsetManager {
   private String topicName = "test_topic";
   private int partitionId = 3;
 
+  private BdbOffsetManager getOffsetManager(VeniceClusterConfig clusterConfig) throws Exception {
+    BdbOffsetManager offsetManager = new BdbOffsetManager(clusterConfig);
+    offsetManager.start();
+    return offsetManager;
+  }
+
   @BeforeClass
-  private void init() {
+  private void init() throws Exception {
 
     Props clusterProps = new Props();
     clusterProps.put(VeniceConfigService.CLUSTER_NAME, "test_offset_manager");
@@ -30,12 +36,12 @@ public class TestBDBOffsetManager {
     clusterProps.put(VeniceConfigService.HELIX_ENABLED, "false");
     clusterProps.put(VeniceConfigService.ZOOKEEPER_ADDRESS, "localhost:2181");
     clusterConfig = new VeniceClusterConfig(clusterProps);
-    offsetManager = new BdbOffsetManager(clusterConfig);
+    offsetManager = getOffsetManager(clusterConfig);
   }
 
   @Test
   public void testFreshnessAfterRestart()
-      throws InterruptedException {
+      throws Exception {
     /**
      * 1. Start a thread/loop that constantly produces to the same topic,partition for more than flushIntervalMs time
      * 2. Note the last update and stop the thread/loop and the offset manager.
@@ -58,8 +64,8 @@ public class TestBDBOffsetManager {
       offsetManager.recordOffset(topicName, partitionId, record);
       Thread.sleep(100);
     }
-    offsetManager.shutdown();
-    offsetManager = new BdbOffsetManager(clusterConfig);
+    offsetManager.stop();
+    offsetManager = getOffsetManager(clusterConfig);
     OffsetRecord record = offsetManager.getLastOffset(topicName, partitionId);
     long timeGap = lastOffsetTimeStamp - record.getEventTimeEpochMs();
     if (timeGap < 0 && timeGap > flushIntervalMs) {

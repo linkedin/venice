@@ -7,6 +7,8 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixParticipationService;
 import com.linkedin.venice.kafka.consumer.KafkaConsumerPerStoreService;
 import com.linkedin.venice.listener.ListenerService;
+import com.linkedin.venice.offsets.BdbOffsetManager;
+import com.linkedin.venice.offsets.OffsetManager;
 import com.linkedin.venice.partition.AbstractPartitionNodeAssignmentScheme;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.storage.StorageService;
@@ -100,6 +102,11 @@ public class VeniceServer {
         new StorageService(storeRepository, veniceConfigService, partitionNodeAssignmentRepository);
     services.add(storageService);
     storeRepository.setStorageService(storageService);
+
+    // Create and add OffSet Serfice.
+
+    AbstractVeniceService offSetService = new BdbOffsetManager(veniceConfigService.getVeniceClusterConfig());
+    services.add(offSetService);
 
     //create and add KafkaSimpleConsumerService
     KafkaConsumerPerStoreService kafkaConsumerService =
