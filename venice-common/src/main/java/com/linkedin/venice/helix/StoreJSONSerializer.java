@@ -1,6 +1,6 @@
 package com.linkedin.venice.helix;
 
-import com.linkedin.venice.meta.OfflinePUshStrategy;
+import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.ReadStrategy;
 import com.linkedin.venice.meta.RoutingStrategy;
@@ -48,7 +48,7 @@ public class StoreJSONSerializer implements StoreSerializer {
             @JsonProperty("persistenceType") PersistenceType persistenceType,
             @JsonProperty("routingStrategy") RoutingStrategy routingStrategy,
             @JsonProperty("readStrategy") ReadStrategy readStrategy,
-            @JsonProperty("offLinePushStrategy") OfflinePUshStrategy offlinePushStrategy) {
+            @JsonProperty("offLinePushStrategy") OfflinePushStrategy offlinePushStrategy) {
 
         }
     }

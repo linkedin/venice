@@ -1,13 +1,15 @@
 package com.linkedin.venice.meta;
 
-import com.sun.istack.internal.NotNull;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import javax.validation.constraints.NotNull;
 
 
 /**
  * Class defines the store of Venice.
+ * <p>
+ * This class is NOT thread safe. Concurrency request to Store instance should be controlled in repository level.
  */
 public class Store {
     /**
@@ -41,27 +43,27 @@ public class Store {
     /**
      * When doing off-line push, how to decide the data is ready to serve.
      */
-    private final OfflinePUshStrategy offLinePushStrategy;
+    private final OfflinePushStrategy _offLinePushStrategy;
     /**
      * List of non-retired versions.
      */
     private List<Version> versions;
 
     public Store(@NotNull String name, @NotNull String owner, long createdTime) {
-        this(name, owner, createdTime, PersistenceType.IN_MEMORY, RoutingStrategy.CONSISTENCY_HASH,
-            ReadStrategy.ANY_OF_ONLINE, OfflinePUshStrategy.WAIT_ALL_REPLICAS);
+        this(name, owner, createdTime, PersistenceType.IN_MEMORY, RoutingStrategy.CONSISTENT_HASH,
+            ReadStrategy.ANY_OF_ONLINE, OfflinePushStrategy.WAIT_ALL_REPLICAS);
     }
 
     public Store(@NotNull String name, @NotNull String owner, long createdTime,
         @NotNull PersistenceType persistenceType, @NotNull RoutingStrategy routingStrategy,
-        @NotNull ReadStrategy readStrategy, @NotNull OfflinePUshStrategy offlinePushStrategy) {
+        @NotNull ReadStrategy readStrategy, @NotNull OfflinePushStrategy offlinePushStrategy) {
         this.name = name;
         this.owner = owner;
         this.createdTime = createdTime;
         this.persistenceType = persistenceType;
         this.routingStrategy = routingStrategy;
         this.readStrategy = readStrategy;
-        this.offLinePushStrategy = offlinePushStrategy;
+        this._offLinePushStrategy = offlinePushStrategy;
         versions = new ArrayList<>();
     }
 
@@ -97,8 +99,8 @@ public class Store {
         return readStrategy;
     }
 
-    public OfflinePUshStrategy getOffLinePushStrategy() {
-        return offLinePushStrategy;
+    public OfflinePushStrategy getOffLinePushStrategy() {
+        return _offLinePushStrategy;
     }
 
     public List<Version> getVersions() {
@@ -149,12 +151,9 @@ public class Store {
      * Increase a new version to this store.
      */
     public void increseVersion() {
-        int versionNumber = 0;
+        int versionNumber = 1;
         if (versions.size() > 0) {
             versionNumber = versions.get(versions.size() - 1).getNumber() + 1;
-        } else {
-            //No version in this store. Use verions 1 as the first version.
-            versionNumber = 1;
         }
         Version version = new Version(name, versionNumber, System.currentTimeMillis());
         addVersion(version);
@@ -192,7 +191,7 @@ public class Store {
         if (!readStrategy.equals(store.readStrategy)) {
             return false;
         }
-        if (!offLinePushStrategy.equals(store.offLinePushStrategy)) {
+        if (!_offLinePushStrategy.equals(store._offLinePushStrategy)) {
             return false;
         }
         return versions.equals(store.versions);
@@ -207,7 +206,7 @@ public class Store {
         result = 31 * result + persistenceType.hashCode();
         result = 31 * result + routingStrategy.hashCode();
         result = 31 * result + readStrategy.hashCode();
-        result = 31 * result + offLinePushStrategy.hashCode();
+        result = 31 * result + _offLinePushStrategy.hashCode();
         result = 31 * result + versions.hashCode();
         return result;
     }

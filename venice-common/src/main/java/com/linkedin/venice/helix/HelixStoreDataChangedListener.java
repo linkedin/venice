@@ -2,7 +2,7 @@ package com.linkedin.venice.helix;
 
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreDataChangedListener;
-import com.sun.istack.internal.NotNull;
+import javax.validation.constraints.NotNull;
 import org.I0Itec.zkclient.IZkDataListener;
 
 

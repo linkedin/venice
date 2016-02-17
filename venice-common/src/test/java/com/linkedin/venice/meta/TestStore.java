@@ -30,15 +30,14 @@ public class TestStore {
         s.addVersion(new Version(s.getName(),4,System.currentTimeMillis()));
         s.addVersion(new Version(s.getName(),2,System.currentTimeMillis()));
         s.addVersion(new Version(s.getName(),3,System.currentTimeMillis()));
-        s.addVersion(new Version(s.getName(),1,System.currentTimeMillis()));
+        s.addVersion(new Version(s.getName(), 1, System.currentTimeMillis()));
 
         s.deleteVersion(3);
         List<Version> versions = s.getVersions();
         Assert.assertEquals(3, versions.size());
-        for(int i=2;i<versions.size()-1;i++){
-            Assert.assertEquals(i+1,versions.get(i).getNumber());
+        for(int i: new int[] {2,3,4}){
+            Assert.assertEquals(i,versions.get(i).getNumber());
         }
-        Assert.assertEquals(4,versions.get(2).getNumber());
     }
 
     @Test

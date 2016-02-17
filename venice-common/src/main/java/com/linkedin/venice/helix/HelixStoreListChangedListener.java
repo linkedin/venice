@@ -1,8 +1,8 @@
 package com.linkedin.venice.helix;
 
 import com.linkedin.venice.meta.StoreListChangedListener;
-import com.sun.istack.internal.NotNull;
 import java.util.List;
+import javax.validation.constraints.NotNull;
 import org.I0Itec.zkclient.IZkChildListener;
 
 

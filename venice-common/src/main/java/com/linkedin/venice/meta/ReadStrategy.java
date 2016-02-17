@@ -7,5 +7,5 @@ public enum ReadStrategy {
     /*Read from any one online replication.*/
     ANY_OF_ONLINE,
     /*Read from two of replication and use the result returned by the faster one.*/
-    FASTER_OF_TOW_ONLINE
+    FASTER_OF_TWO_ONLINE
 }

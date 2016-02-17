@@ -4,7 +4,7 @@ import com.linkedin.venice.meta.MetadataRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreDataChangedListener;
 import com.linkedin.venice.meta.StoreListChangedListener;
-import com.sun.istack.internal.NotNull;
+import javax.validation.constraints.NotNull;
 import org.apache.helix.AccessOption;
 import org.apache.helix.manager.zk.ZkBaseDataAccessor;
 import org.apache.helix.manager.zk.ZkClient;
