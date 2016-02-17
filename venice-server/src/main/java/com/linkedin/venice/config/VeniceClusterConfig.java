@@ -124,7 +124,7 @@ public class VeniceClusterConfig {
         }
         kafkaAutoCommitIntervalMs = clusterProps.getInt(VeniceConfigService.KAFKA_AUTO_COMMIT_INTERVAL_MS);
         fetchBufferSize = clusterProps.getInt(VeniceConfigService.KAFKA_CONSUMER_FETCH_BUFFER_SIZE, 64 * 1024);
-        socketTimeoutMs = clusterProps.getInt(VeniceConfigService.KAFKA_CONSUMER_SOCKET_TIMEOUT_MS, 100);
+        socketTimeoutMs = clusterProps.getInt(VeniceConfigService.KAFKA_CONSUMER_SOCKET_TIMEOUT_MS, 1000);
         numMetadataRefreshRetries = clusterProps.getInt(VeniceConfigService.KAFKA_CONSUMER_NUM_METADATA_REFRESH_RETRIES, 3);
         metadataRefreshBackoffMs = clusterProps.getInt(VeniceConfigService.KAFKA_CONSUMER_METADATA_REFRESH_BACKOFF_MS, 1000);
         kafkaEnableAutoOffsetCommit = clusterProps.getBoolean(VeniceConfigService.KAFKA_CONSUMER_ENABLE_AUTO_OFFSET_COMMIT, true);
