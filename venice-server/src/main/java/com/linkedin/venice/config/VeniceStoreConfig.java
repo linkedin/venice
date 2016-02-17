@@ -18,39 +18,11 @@ import java.util.Map;
  * Includes individual store properties and other properties that can be overwritten.
  */
 public class VeniceStoreConfig extends VeniceServerConfig {
-  /* TODO once we have BDB implementation, add BDB type to  storageEngineFactoryClassNameMap like shown below
-    storageEngineFactoryClassNameMap = ImmutableMap
-    .of("inMemory", InMemoryStorageEngineFactory.class.getName(), "bdb", BdbStorageEngineFactory.class.getName());
-*/
-  public static final Map<String, String> storageEngineFactoryClassNameMap =
-    ImmutableMap.of("inMemory", InMemoryStorageEngineFactory.class.getName(),
-      "bdb", BdbStorageEngineFactory.class.getName());
 
   private String storeName;
-  private String persistenceType;
-  private int storageReplicationFactor;
 
-  private int numKafkaPartitions;
-  private String kafkaZookeeperUrl;
-  private List<String> kafkaBrokers;
-  // assumes that all kafka brokers listen on the same port
-  private int kafkaBrokerPort;
-  // SimpleConsumer fetch buffer size.
-  private int fetchBufferSize;
-  // SimpleConsumer socket timeout.
-  private int socketTimeoutMs;
-  // Number of times the SimpleConsumer will retry fetching topic-partition leadership metadata.
-  private int numMetadataRefreshRetries;
-  // Back off duration between metadata fetch retries.
-  private int metadataRefreshBackoffMs;
   // TODO: Store level bdb configuration, need to create StoreStorageConfig abstract class and extend from that
   private BdbStoreConfig bdbStoreConfig;
-
-  private String kafkaBootstrapServers;
-
-  private int kafkaAutoCommitIntervalMs;
-
-  private boolean kafkaEnableAutoOffsetCommit;
 
   public VeniceStoreConfig(Props storeProperties)
     throws ConfigurationException {
@@ -58,104 +30,23 @@ public class VeniceStoreConfig extends VeniceServerConfig {
     initAndValidateProperties(storeProperties);
   }
 
-  private void initAndValidateProperties(Props storeProperties)
-    throws ConfigurationException {
+  private void initAndValidateProperties(Props storeProperties) throws ConfigurationException {
     storeName = storeProperties.getString(VeniceConfigService.STORE_NAME);
-    try {
-      persistenceType = storeProperties.getString(VeniceConfigService.PERSISTENCE_TYPE);   // Assign a default ?
-    } catch (UndefinedPropertyException ex) {
-      throw new ConfigurationException("persistence type undefined", ex);
-    }
-    if (!storageEngineFactoryClassNameMap.containsKey(persistenceType)) {
-      throw new ConfigurationException("unknown persistence type: " + persistenceType);
-    }
-    storageReplicationFactor = storeProperties.getInt(VeniceConfigService.STORAGE_REPLICATION_FACTOR);
-    numKafkaPartitions = storeProperties.getInt(VeniceConfigService.NUMBER_OF_KAFKA_PARTITIONS);
-    if (numKafkaPartitions < 1) {
-      throw new ConfigurationException("num of Kafka partitions cannot be less than 1");
-    }
-    kafkaBrokers = storeProperties.getList(VeniceConfigService.KAFKA_BROKERS);
-    if (kafkaBrokers == null || kafkaBrokers.isEmpty()) {
-      throw new ConfigurationException("kafkaBrokers can't be empty");
-    }
-    //TODO different brokers may use different ports.  Will necessarily be true if we run multiple local brokers for testing
-    kafkaBrokerPort = storeProperties.getInt(VeniceConfigService.KAFKA_BROKER_PORT);
-    if (kafkaBrokerPort < 0) {
-      throw new ConfigurationException("KafkaBrokerPort can't be negative");
-      // TODO additional checks for valid port ?
-    }
-    kafkaBootstrapServers = storeProperties.getString(VeniceConfigService.KAFKA_BOOTSTRAP_SERVERS);
-    if (kafkaBootstrapServers == null || kafkaBootstrapServers.isEmpty()) {
-      throw new ConfigurationException("kafkaBootstrapServers can't be empty");
-    }
-    kafkaAutoCommitIntervalMs = storeProperties.getInt(VeniceConfigService.KAFKA_AUTO_COMMIT_INTERVAL_MS);
-    fetchBufferSize = storeProperties.getInt(VeniceConfigService.KAFKA_CONSUMER_FETCH_BUFFER_SIZE, 64 * 1024);
-    socketTimeoutMs = storeProperties.getInt(VeniceConfigService.KAFKA_CONSUMER_SOCKET_TIMEOUT_MS, 100);
-    numMetadataRefreshRetries = storeProperties.getInt(VeniceConfigService.KAFKA_CONSUMER_NUM_METADATA_REFRESH_RETRIES, 3);
-    metadataRefreshBackoffMs = storeProperties.getInt(VeniceConfigService.KAFKA_CONSUMER_METADATA_REFRESH_BACKOFF_MS, 1000);
-    kafkaEnableAutoOffsetCommit = storeProperties.getBoolean(VeniceConfigService.KAFKA_CONSUMER_ENABLE_AUTO_OFFSET_COMMIT, true);
 
-    if (persistenceType.equals("bdb")) {
+    if (getPersistenceType().equals("bdb")) {
       bdbStoreConfig = new BdbStoreConfig(storeName, storeProperties);
     } else {
       bdbStoreConfig = null;
     }
     // initialize all other properties here and add getters for the same.
-
   }
 
   public String getStoreName() {
     return storeName;
   }
 
-  public String getPersistenceType() {
-    return persistenceType;
-  }
-
-  public int getStorageReplicationFactor() {
-    return storageReplicationFactor;
-  }
-
-  public int getNumKafkaPartitions() {
-    return numKafkaPartitions;
-  }
-
-  public List<String> getKafkaBrokers() {
-    return kafkaBrokers;
-  }
-
-  public String getKafkaBootstrapServers() {
-    return kafkaBootstrapServers;
-  }
-
-  public boolean kafkaEnableAutoOffsetCommit() {
-    return kafkaEnableAutoOffsetCommit;
-  }
-
-  public int getKafkaBrokerPort() {
-    return kafkaBrokerPort;
-  }
-
-  public int getFetchBufferSize() {
-    return fetchBufferSize;
-  }
-
-  public int getSocketTimeoutMs() {
-    return socketTimeoutMs;
-  }
-
-  public int getNumMetadataRefreshRetries() {
-    return numMetadataRefreshRetries;
-  }
-
-  public int getMetadataRefreshBackoffMs() {
-    return metadataRefreshBackoffMs;
-  }
-
-  public int getKafkaAutoCommitIntervalMs() { return kafkaAutoCommitIntervalMs; }
-
   public String getStorageEngineFactoryClassName() {
-    return storageEngineFactoryClassNameMap.get(this.persistenceType);
+    return storageEngineFactoryClassNameMap.get(this.getPersistenceType());
   }
 
   public BdbStoreConfig getBdbStoreConfig() {

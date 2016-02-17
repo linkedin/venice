@@ -35,6 +35,12 @@ public class TestBDBOffsetManager {
     clusterProps.put(VeniceConfigService.OFFSET_MANAGER_FLUSH_INTERVAL_MS, flushIntervalMs);
     clusterProps.put(VeniceConfigService.HELIX_ENABLED, "false");
     clusterProps.put(VeniceConfigService.ZOOKEEPER_ADDRESS, "localhost:2181");
+    clusterProps.put(VeniceConfigService.PERSISTENCE_TYPE, "inMemory");
+    clusterProps.put(VeniceConfigService.KAFKA_BROKERS, "localhost");
+    clusterProps.put(VeniceConfigService.KAFKA_BROKER_PORT, "9092");
+    clusterProps.put(VeniceConfigService.KAFKA_BOOTSTRAP_SERVERS, "127.0.0.1:9092");
+    clusterProps.put(VeniceConfigService.KAFKA_AUTO_COMMIT_INTERVAL_MS, "1000");
+
     clusterConfig = new VeniceClusterConfig(clusterProps);
     offsetManager = getOffsetManager(clusterConfig);
   }

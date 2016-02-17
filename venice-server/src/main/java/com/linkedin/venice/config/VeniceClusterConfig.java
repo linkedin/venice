@@ -2,13 +2,15 @@ package com.linkedin.venice.config;
 
 import com.google.common.collect.ImmutableMap;
 import com.linkedin.venice.exceptions.ConfigurationException;
+import com.linkedin.venice.exceptions.UndefinedPropertyException;
 import com.linkedin.venice.offsets.BdbOffsetManager;
-import com.linkedin.venice.offsets.OffsetManager;
 import com.linkedin.venice.partition.ModuloPartitionNodeAssignmentScheme;
 import com.linkedin.venice.server.VeniceConfigService;
+import com.linkedin.venice.store.bdb.BdbStorageEngineFactory;
+import com.linkedin.venice.store.memory.InMemoryStorageEngineFactory;
 import com.linkedin.venice.utils.Props;
-
 import java.io.File;
+import java.util.List;
 import java.util.Map;
 
 
@@ -19,6 +21,10 @@ public class VeniceClusterConfig {
 
     public static final Map<String, String> partitionNodeAssignmentSchemeClassMap =
             ImmutableMap.of("modulo", ModuloPartitionNodeAssignmentScheme.class.getName());
+
+    public static final Map<String, String> storageEngineFactoryClassNameMap =
+        ImmutableMap.of("inMemory", InMemoryStorageEngineFactory.class.getName(),
+            "bdb", BdbStorageEngineFactory.class.getName());
 
     private String clusterName;
     private int storageNodeCount;
@@ -35,6 +41,30 @@ public class VeniceClusterConfig {
     private String zookeeperAddress;
 
     private String kafkaConsumptionAcksBrokerUrl;
+
+    private String persistenceType;
+
+    private String kafkaZookeeperUrl;
+    private List<String> kafkaBrokers;
+    // assumes that all kafka brokers listen on the same port
+    private int kafkaBrokerPort;
+    // SimpleConsumer fetch buffer size.
+    private int fetchBufferSize;
+    // SimpleConsumer socket timeout.
+    private int socketTimeoutMs;
+    // Number of times the SimpleConsumer will retry fetching topic-partition leadership metadata.
+    private int numMetadataRefreshRetries;
+    // Back off duration between metadata fetch retries.
+    private int metadataRefreshBackoffMs;
+
+
+    private String kafkaBootstrapServers;
+
+    private int kafkaAutoCommitIntervalMs;
+
+    private boolean kafkaEnableAutoOffsetCommit;
+
+
 
     public VeniceClusterConfig(Props clusterProperties)
             throws ConfigurationException {
@@ -68,6 +98,37 @@ public class VeniceClusterConfig {
                 throw new ConfigurationException("The kafka broker url cannot be empty when consumption acknowledgement is enabled!");
             }
         }
+
+        try {
+            persistenceType = clusterProps.getString(VeniceConfigService.PERSISTENCE_TYPE);   // Assign a default ?
+        } catch (UndefinedPropertyException ex) {
+            throw new ConfigurationException("persistence type undefined", ex);
+        }
+        if (!storageEngineFactoryClassNameMap.containsKey(persistenceType)) {
+            throw new ConfigurationException("unknown persistence type: " + persistenceType);
+        }
+
+        kafkaBrokers = clusterProps.getList(VeniceConfigService.KAFKA_BROKERS);
+        if (kafkaBrokers == null || kafkaBrokers.isEmpty()) {
+            throw new ConfigurationException("kafkaBrokers can't be empty");
+        }
+        //TODO different brokers may use different ports.  Will necessarily be true if we run multiple local brokers for testing
+        kafkaBrokerPort = clusterProps.getInt(VeniceConfigService.KAFKA_BROKER_PORT);
+        if (kafkaBrokerPort < 0) {
+            throw new ConfigurationException("KafkaBrokerPort can't be negative");
+            // TODO additional checks for valid port ?
+        }
+        kafkaBootstrapServers = clusterProps.getString(VeniceConfigService.KAFKA_BOOTSTRAP_SERVERS);
+        if (kafkaBootstrapServers == null || kafkaBootstrapServers.isEmpty()) {
+            throw new ConfigurationException("kafkaBootstrapServers can't be empty");
+        }
+        kafkaAutoCommitIntervalMs = clusterProps.getInt(VeniceConfigService.KAFKA_AUTO_COMMIT_INTERVAL_MS);
+        fetchBufferSize = clusterProps.getInt(VeniceConfigService.KAFKA_CONSUMER_FETCH_BUFFER_SIZE, 64 * 1024);
+        socketTimeoutMs = clusterProps.getInt(VeniceConfigService.KAFKA_CONSUMER_SOCKET_TIMEOUT_MS, 100);
+        numMetadataRefreshRetries = clusterProps.getInt(VeniceConfigService.KAFKA_CONSUMER_NUM_METADATA_REFRESH_RETRIES, 3);
+        metadataRefreshBackoffMs = clusterProps.getInt(VeniceConfigService.KAFKA_CONSUMER_METADATA_REFRESH_BACKOFF_MS, 1000);
+        kafkaEnableAutoOffsetCommit = clusterProps.getBoolean(VeniceConfigService.KAFKA_CONSUMER_ENABLE_AUTO_OFFSET_COMMIT, true);
+
     }
 
     public String getClusterName() {
@@ -121,4 +182,42 @@ public class VeniceClusterConfig {
     public void setKafkaConsumptionAcksBrokerUrl(String kafkaConsumptionAcksBrokerUrl) {
         this.kafkaConsumptionAcksBrokerUrl = kafkaConsumptionAcksBrokerUrl;
     }
+
+    public String getPersistenceType() {
+        return persistenceType;
+    }
+
+    public List<String> getKafkaBrokers() {
+        return kafkaBrokers;
+    }
+
+    public String getKafkaBootstrapServers() {
+        return kafkaBootstrapServers;
+    }
+
+    public boolean kafkaEnableAutoOffsetCommit() {
+        return kafkaEnableAutoOffsetCommit;
+    }
+
+    public int getKafkaBrokerPort() {
+        return kafkaBrokerPort;
+    }
+
+    public int getFetchBufferSize() {
+        return fetchBufferSize;
+    }
+
+    public int getSocketTimeoutMs() {
+        return socketTimeoutMs;
+    }
+
+    public int getNumMetadataRefreshRetries() {
+        return numMetadataRefreshRetries;
+    }
+
+    public int getMetadataRefreshBackoffMs() {
+        return metadataRefreshBackoffMs;
+    }
+
+    public int getKafkaAutoCommitIntervalMs() { return kafkaAutoCommitIntervalMs; }
 }

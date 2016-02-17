@@ -39,7 +39,6 @@ public class InMemoryStoreTest extends AbstractStoreTest{
     String storeName = "testng-in-memory";
     VeniceStoreConfig storeConfig = storeConfigs.get(storeName);
 
-    numOfPartitions = storeConfig.getNumKafkaPartitions();
     partitionNodeAssignmentScheme = new ModuloPartitionNodeAssignmentScheme();
 
     //populate partitionNodeAssignment

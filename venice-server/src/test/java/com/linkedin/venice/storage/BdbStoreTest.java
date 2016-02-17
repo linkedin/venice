@@ -40,7 +40,6 @@ public class BdbStoreTest extends AbstractStoreTest {
     String storeName = "testng-bdb";
     VeniceStoreConfig storeConfig = storeConfigs.get(storeName);
 
-    numOfPartitions = storeConfig.getNumKafkaPartitions();
     partitionNodeAssignmentScheme = new ModuloPartitionNodeAssignmentScheme();
 
     // populate partitionNodeAssignment

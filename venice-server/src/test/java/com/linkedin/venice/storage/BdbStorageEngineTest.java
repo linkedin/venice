@@ -40,7 +40,6 @@ public class BdbStorageEngineTest extends AbstractStorageEngineTest {
     VeniceStoreConfig storeConfig = storeConfigs.get(storeName);
 
     partitionNodeAssignmentScheme = new ModuloPartitionNodeAssignmentScheme();
-    numOfPartitions = storeConfig.getNumKafkaPartitions();
     //populate partitionNodeAssignment
     partitionNodeAssignmentRepository = new PartitionNodeAssignmentRepository();
     partitionNodeAssignmentRepository.setAssignment(storeName,

@@ -9,6 +9,7 @@ import java.util.Set;
 
 public class ModuloPartitionNodeAssignmentScheme extends AbstractPartitionNodeAssignmentScheme {
 
+  @Deprecated // Partition Node Assignment will not happen at the storage-node level.  TODO: factor out the assignment
   public ModuloPartitionNodeAssignmentScheme() {
     super("modulo");
   }
@@ -22,8 +23,10 @@ public class ModuloPartitionNodeAssignmentScheme extends AbstractPartitionNodeAs
   @Override
   public Map<Integer, Set<Integer>> getNodeToLogicalPartitionsMap(VeniceStoreConfig storeConfig) {
     Map<Integer, Set<Integer>> nodeToLogicalPartitionIdsMap = new HashMap<Integer, Set<Integer>>();
-    for (int i = 0; i < storeConfig.getNumKafkaPartitions(); i++) {
-      for (int j = 0; j < storeConfig.getStorageReplicationFactor(); j++) {
+//    for (int i = 0; i < storeConfig.getNumKafkaPartitions(); i++) {
+//      for (int j = 0; j < storeConfig.getStorageReplicationFactor(); j++) {
+    for (int i = 0; i < 1; i++) {
+      for (int j = 0; j < 1; j++) {
         int nodeId = (i + j) % storeConfig.getStorageNodeCount();
         if (!nodeToLogicalPartitionIdsMap.containsKey(nodeId)) {
           nodeToLogicalPartitionIdsMap.put(nodeId, new HashSet<Integer>());

@@ -36,7 +36,7 @@ public class InMemoryStorageEngine extends AbstractStorageEngine {
     /**
      * If this method is called by anyone other than the constructor, i.e- the admin service, the caller should ensure
      * that after the addition of the storage partition:
-     *  1. populate the partitio node assignment repository
+     *  1. populate the partition node assignment repository
      *  2. it should also be registered with an SimpleKafkaConsumerTask
      *     thread.
      */

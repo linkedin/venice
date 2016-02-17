@@ -56,6 +56,7 @@ public class ApacheKafkaConsumer implements VeniceConsumer {
 
     @Override
     public long resetOffset(String topic, int partition) {
+        subscribe(topic, partition);
         TopicPartition topicPartition = new TopicPartition(topic, partition);
         kafkaConsumer.seekToBeginning(topicPartition);
         long beginningOffSet = kafkaConsumer.position(topicPartition);

@@ -17,7 +17,7 @@ import org.testng.Assert;
 public abstract class AbstractStoreTest {
 
   protected Store testStore;
-  protected int numOfPartitions;
+  protected int numOfPartitions = 1;
   int keySize = 50;
   int valueSize = 500;
   int uniqueKeyOrValueSize = 350;
