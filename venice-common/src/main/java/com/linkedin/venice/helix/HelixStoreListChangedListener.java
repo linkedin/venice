@@ -10,7 +10,7 @@ import org.I0Itec.zkclient.IZkChildListener;
  * Listener handle the children changed event. In order to avoid exposing I0ITec API, this listener used as a bridge to
  * convert zookeeper event to Venice event.
  */
-public class HelixStoreListChangedListener implements IZkChildListener {
+class HelixStoreListChangedListener implements IZkChildListener {
     private final String rootPath;
     private final StoreListChangedListener listener;
 

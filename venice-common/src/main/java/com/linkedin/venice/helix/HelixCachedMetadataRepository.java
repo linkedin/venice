@@ -19,6 +19,9 @@ import org.apache.log4j.Logger;
 
 /**
  * Metadata repository  Helix.
+ * <p>
+ * To ensure doing read and update atomically, use the lock() and unlock() method to lock the repository at first then
+ * do operations, at last release the lock of repository.
  */
 public class HelixCachedMetadataRepository extends HelixMetadataRepository {
 
@@ -128,6 +131,20 @@ public class HelixCachedMetadataRepository extends HelixMetadataRepository {
         } finally {
             metadataLock.writeLock().unlock();
         }
+    }
+
+    /**
+     * Lock the repository to do some operations atomically.
+     */
+    public void lock() {
+        metadataLock.writeLock().lock();
+    }
+
+    /**
+     * Unlock the repository.
+     */
+    public void unLock() {
+        metadataLock.writeLock().unlock();
     }
 
     private class CachedStoresChangedListener implements StoreListChangedListener {

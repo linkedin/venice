@@ -10,7 +10,7 @@ import org.I0Itec.zkclient.IZkDataListener;
  * Listener handle the ZNode data changed event. In order to avoid exposing I0ITec API, this listener used as a bridge
  * to convert zookeeper event to Venice event.
  */
-public class HelixStoreDataChangedListener implements IZkDataListener {
+class HelixStoreDataChangedListener implements IZkDataListener {
     private final String storePath;
     private final StoreDataChangedListener listener;
 

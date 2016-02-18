@@ -11,7 +11,7 @@ import org.I0Itec.zkclient.serialize.ZkSerializer;
  * Serializer to adapt to Zookeeper serializer. Use the Venice store serializer to do the actual serialize and
  * deserialize.
  */
-public class HelixStoreSerializer implements ZkSerializer {
+class HelixStoreSerializer implements ZkSerializer {
     private final StoreSerializer serializer;
 
     public HelixStoreSerializer(StoreSerializer serializer) {
