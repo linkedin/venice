@@ -43,7 +43,7 @@ public class Store {
     /**
      * When doing off-line push, how to decide the data is ready to serve.
      */
-    private final OfflinePushStrategy _offLinePushStrategy;
+    private final OfflinePushStrategy offLinePushStrategy;
     /**
      * List of non-retired versions.
      */
@@ -63,7 +63,7 @@ public class Store {
         this.persistenceType = persistenceType;
         this.routingStrategy = routingStrategy;
         this.readStrategy = readStrategy;
-        this._offLinePushStrategy = offlinePushStrategy;
+        this.offLinePushStrategy = offlinePushStrategy;
         versions = new ArrayList<>();
     }
 
@@ -100,7 +100,7 @@ public class Store {
     }
 
     public OfflinePushStrategy getOffLinePushStrategy() {
-        return _offLinePushStrategy;
+        return offLinePushStrategy;
     }
 
     public List<Version> getVersions() {
@@ -191,7 +191,7 @@ public class Store {
         if (!readStrategy.equals(store.readStrategy)) {
             return false;
         }
-        if (!_offLinePushStrategy.equals(store._offLinePushStrategy)) {
+        if (!offLinePushStrategy.equals(store.offLinePushStrategy)) {
             return false;
         }
         return versions.equals(store.versions);
@@ -206,7 +206,7 @@ public class Store {
         result = 31 * result + persistenceType.hashCode();
         result = 31 * result + routingStrategy.hashCode();
         result = 31 * result + readStrategy.hashCode();
-        result = 31 * result + _offLinePushStrategy.hashCode();
+        result = 31 * result + offLinePushStrategy.hashCode();
         result = 31 * result + versions.hashCode();
         return result;
     }
