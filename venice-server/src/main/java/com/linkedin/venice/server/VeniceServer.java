@@ -8,7 +8,6 @@ import com.linkedin.venice.helix.HelixParticipationService;
 import com.linkedin.venice.kafka.consumer.KafkaConsumerPerStoreService;
 import com.linkedin.venice.listener.ListenerService;
 import com.linkedin.venice.offsets.BdbOffsetManager;
-import com.linkedin.venice.offsets.OffsetManager;
 import com.linkedin.venice.partition.AbstractPartitionNodeAssignmentScheme;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.storage.StorageService;
@@ -32,7 +31,7 @@ public class VeniceServer {
 
   private final StoreRepository storeRepository;
   private StorageService storageService;
-  private final PartitionNodeAssignmentRepository partitionNodeAssignmentRepository;
+  private final PartitionAssignmentRepository partitionAssignmentRepository;
   private AbstractPartitionNodeAssignmentScheme partitionNodeAssignmentScheme;
 
   private final List<AbstractVeniceService> services;
@@ -42,7 +41,7 @@ public class VeniceServer {
     this.isStarted = new AtomicBoolean(false);
     this.veniceConfigService = veniceConfigService;
     this.storeRepository = new StoreRepository();
-    this.partitionNodeAssignmentRepository = new PartitionNodeAssignmentRepository();
+    this.partitionAssignmentRepository = new PartitionAssignmentRepository();
 
     /*
      * TODO - 1. How do the servers share the same config - For example in Voldemort we use cluster.xml and stores.xml.
@@ -79,7 +78,8 @@ public class VeniceServer {
     for (Map.Entry<String, VeniceStoreConfig> storeEntry : veniceConfigService.getAllStoreConfigs().entrySet()) {
       Map<Integer, Set<Integer>> nodeToLogicalPartitionIdsMap =
           partitionNodeAssignmentScheme.getNodeToLogicalPartitionsMap(storeEntry.getValue());
-      partitionNodeAssignmentRepository.setAssignment(storeEntry.getKey(), nodeToLogicalPartitionIdsMap);
+      partitionAssignmentRepository.setAssignment(storeEntry.getKey(),
+          nodeToLogicalPartitionIdsMap.get(veniceConfigService.getVeniceServerConfig().getNodeId()));
     }
   }
 
@@ -88,7 +88,7 @@ public class VeniceServer {
    * 1. StoreRepository - that maps store to appropriate storage engine instance
    * 2. VeniceConfig - which contains configs related to this cluster
    * 3. StoreNameToConfigsMap - which contains store specific configs
-   * 4. PartitionNodeAssignmentRepository - which contains how partitions for each store are mapped to nodes in the
+   * 4. PartitionAssignmentRepository - which contains how partitions for each store are mapped to nodes in the
    *    cluster
    *
    * @return
@@ -99,7 +99,7 @@ public class VeniceServer {
 
     // create and add StorageService. storeRepository will be populated by StorageService,
     storageService =
-        new StorageService(storeRepository, veniceConfigService, partitionNodeAssignmentRepository);
+        new StorageService(storeRepository, veniceConfigService, partitionAssignmentRepository);
     services.add(storageService);
     storeRepository.setStorageService(storageService);
 
@@ -122,7 +122,7 @@ public class VeniceServer {
       services.add(helixParticipationService);
     } else {
       // Note: Only required when NOT using Helix.
-      kafkaConsumerService.consumeForPartitionNodeAssignmentRepository(partitionNodeAssignmentRepository);
+      kafkaConsumerService.consumeForPartitionNodeAssignmentRepository(partitionAssignmentRepository);
     }
 
     //create and add ListenerServer for handling GET requests
@@ -137,7 +137,7 @@ public class VeniceServer {
      *
      * To add a new store do this in order:
      * 1. Populate storeNameToConfigsMap
-     * 2. Get the assignment plan from PartitionNodeAssignmentScheme and  populate the PartitionNodeAssignmentRepository
+     * 2. Get the assignment plan from PartitionNodeAssignmentScheme and  populate the PartitionAssignmentRepository
      * 3. call StorageService.openStore(..) to create the appropriate storage partitions
      * 4. call KafkaSimpleConsumerService.startConsumption(..) to create and start the consumer tasks for all kafka partitions.
      */

@@ -3,7 +3,7 @@ package com.linkedin.venice.storage;
 import com.linkedin.venice.config.VeniceServerConfig;
 import com.linkedin.venice.config.VeniceStoreConfig;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.server.PartitionNodeAssignmentRepository;
+import com.linkedin.venice.server.PartitionAssignmentRepository;
 import com.linkedin.venice.server.StoreRepository;
 import com.linkedin.venice.server.VeniceConfigService;
 import com.linkedin.venice.service.AbstractVeniceService;
@@ -30,15 +30,15 @@ public class StorageService extends AbstractVeniceService {
   private final StoreRepository storeRepository;
   private final VeniceConfigService veniceConfigService;
   private final ConcurrentMap<String, StorageEngineFactory> persistenceTypeToStorageEngineFactoryMap;
-  private final PartitionNodeAssignmentRepository partitionNodeAssignmentRepository;
+  private final PartitionAssignmentRepository partitionAssignmentRepository;
 
   public StorageService(StoreRepository storeRepository, VeniceConfigService veniceConfigService,
-      PartitionNodeAssignmentRepository partitionNodeAssignmentRepository) {
+      PartitionAssignmentRepository partitionAssignmentRepository) {
     super(NAME);
     this.storeRepository = storeRepository;
     this.veniceConfigService = veniceConfigService;
     this.persistenceTypeToStorageEngineFactoryMap = new ConcurrentHashMap<String, StorageEngineFactory>();
-    this.partitionNodeAssignmentRepository = partitionNodeAssignmentRepository;
+    this.partitionAssignmentRepository = partitionAssignmentRepository;
   }
 
   // TODO Later change to Guice instead of Java reflections
@@ -47,7 +47,7 @@ public class StorageService extends AbstractVeniceService {
 
   public AbstractStorageEngine openStoreForNewPartition(VeniceStoreConfig storeConfig, int partition)
       throws Exception {
-    partitionNodeAssignmentRepository.addPartition(storeConfig.getStoreName(), veniceConfigService.getVeniceServerConfig().getNodeId(), partition);
+    partitionAssignmentRepository.addPartition(storeConfig.getStoreName(), partition);
     return openStore(storeConfig);
   }
 
@@ -70,8 +70,8 @@ public class StorageService extends AbstractVeniceService {
       try {
         Class<?> factoryClass = ReflectUtils.loadClass(storageFactoryClassName);
         factory = (StorageEngineFactory) ReflectUtils
-            .callConstructor(factoryClass, new Class<?>[]{VeniceServerConfig.class, PartitionNodeAssignmentRepository.class},
-                new Object[]{storeDefinition, partitionNodeAssignmentRepository});
+            .callConstructor(factoryClass, new Class<?>[]{VeniceServerConfig.class, PartitionAssignmentRepository.class},
+                new Object[]{storeDefinition, partitionAssignmentRepository});
         persistenceTypeToStorageEngineFactoryMap.putIfAbsent(persistenceType, factory);
       } catch (IllegalStateException e) {
         logger.error("Error loading storage engine factory '" + storageFactoryClassName + "'.", e);

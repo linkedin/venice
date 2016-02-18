@@ -4,7 +4,7 @@ import com.linkedin.venice.config.VeniceStoreConfig;
 import com.linkedin.venice.exceptions.PersistenceFailureException;
 import com.linkedin.venice.exceptions.StorageInitializationException;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.server.PartitionNodeAssignmentRepository;
+import com.linkedin.venice.server.PartitionAssignmentRepository;
 import com.linkedin.venice.store.iterators.CloseableStoreEntriesIterator;
 import com.linkedin.venice.store.iterators.CloseableStoreKeysIterator;
 import com.linkedin.venice.utils.ByteUtils;
@@ -36,12 +36,12 @@ public abstract class AbstractStorageEngine implements Store {
   private final String storeName;
   protected final VeniceStoreConfig storeDef;
   protected final AtomicBoolean isOpen;
-  protected final PartitionNodeAssignmentRepository partitionNodeAssignmentRepo;
+  protected final PartitionAssignmentRepository partitionNodeAssignmentRepo;
   protected final Logger logger = Logger.getLogger(getClass());
   protected ConcurrentMap<Integer, AbstractStoragePartition> partitionIdToPartitionMap;
 
   public AbstractStorageEngine(VeniceStoreConfig storeDef,
-                               PartitionNodeAssignmentRepository partitionNodeAssignmentRepo,
+                               PartitionAssignmentRepository partitionNodeAssignmentRepo,
                                ConcurrentMap<Integer, AbstractStoragePartition> partitionIdToPartitionMap) {
 
     this.storeDef = storeDef;

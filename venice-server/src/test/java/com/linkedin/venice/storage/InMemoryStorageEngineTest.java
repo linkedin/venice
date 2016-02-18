@@ -3,7 +3,7 @@ package com.linkedin.venice.storage;
 import com.linkedin.venice.config.VeniceStoreConfig;
 import com.linkedin.venice.partition.AbstractPartitionNodeAssignmentScheme;
 import com.linkedin.venice.partition.ModuloPartitionNodeAssignmentScheme;
-import com.linkedin.venice.server.PartitionNodeAssignmentRepository;
+import com.linkedin.venice.server.PartitionAssignmentRepository;
 import com.linkedin.venice.server.VeniceConfigService;
 import com.linkedin.venice.store.AbstractStorageEngine;
 import com.linkedin.venice.store.memory.InMemoryStorageEngine;
@@ -15,7 +15,7 @@ import java.util.Map;
 
 public class InMemoryStorageEngineTest extends AbstractStorageEngineTest {
 
-  PartitionNodeAssignmentRepository partitionNodeAssignmentRepository;
+  PartitionAssignmentRepository partitionAssignmentRepository;
   AbstractPartitionNodeAssignmentScheme partitionNodeAssignmentScheme;
   VeniceConfigService veniceConfigService;
 
@@ -42,12 +42,13 @@ public class InMemoryStorageEngineTest extends AbstractStorageEngineTest {
 
     partitionNodeAssignmentScheme = new ModuloPartitionNodeAssignmentScheme();
     //populate partitionNodeAssignment
-    partitionNodeAssignmentRepository = new PartitionNodeAssignmentRepository();
-    partitionNodeAssignmentRepository.setAssignment(storeName,
-        partitionNodeAssignmentScheme.getNodeToLogicalPartitionsMap(storeConfig));
+    partitionAssignmentRepository = new PartitionAssignmentRepository();
+    int nodeId = 0;
+    partitionAssignmentRepository.setAssignment(storeName,
+        partitionNodeAssignmentScheme.getNodeToLogicalPartitionsMap(storeConfig).get(nodeId));
 
     AbstractStorageEngine inMemoryStorageEngine =
-        new InMemoryStorageEngine(storeConfig, partitionNodeAssignmentRepository);
+        new InMemoryStorageEngine(storeConfig, partitionAssignmentRepository);
     this.testStoreEngine = inMemoryStorageEngine;
 
     createStoreForTest();

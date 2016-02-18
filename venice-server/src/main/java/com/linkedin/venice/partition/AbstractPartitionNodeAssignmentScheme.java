@@ -46,7 +46,7 @@ public abstract class AbstractPartitionNodeAssignmentScheme {
   /**
    * When a new Venice Store is added (a new topic is added). The corresponding logical partitions from the propagating
    * layer need to be mapped to nodes. This method returns such a mapping and the caller of this method creates
-   * new Venice storage partitions based on the mapping and updates the PartitionNodeAssignmentRepository.
+   * new Venice storage partitions based on the mapping and updates the PartitionAssignmentRepository.
    *
    * @param storeConfig  The configs related to this store.
    * @return A map where key is a node ids and value is the corresponding set of logical partitions that the node is responsible for.

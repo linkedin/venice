@@ -3,7 +3,7 @@ package com.linkedin.venice.store.memory;
 import com.linkedin.venice.config.VeniceServerConfig;
 import com.linkedin.venice.config.VeniceStoreConfig;
 import com.linkedin.venice.exceptions.StorageInitializationException;
-import com.linkedin.venice.server.PartitionNodeAssignmentRepository;
+import com.linkedin.venice.server.PartitionAssignmentRepository;
 import com.linkedin.venice.store.AbstractStorageEngine;
 import com.linkedin.venice.store.StorageEngineFactory;
 
@@ -12,9 +12,9 @@ public class InMemoryStorageEngineFactory implements StorageEngineFactory {
   private static final String TYPE_NAME = "memory";
   private final Object lock = new Object();
 
-  private final PartitionNodeAssignmentRepository partitionNodeAssignmentRepo;
+  private final PartitionAssignmentRepository partitionNodeAssignmentRepo;
 
-  public InMemoryStorageEngineFactory(VeniceServerConfig serverConfig, PartitionNodeAssignmentRepository partitionNodeAssignmentRepo) {
+  public InMemoryStorageEngineFactory(VeniceServerConfig serverConfig, PartitionAssignmentRepository partitionNodeAssignmentRepo) {
     this.partitionNodeAssignmentRepo = partitionNodeAssignmentRepo;
   }
 

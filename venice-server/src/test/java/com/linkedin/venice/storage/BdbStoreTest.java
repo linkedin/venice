@@ -4,7 +4,7 @@ import com.linkedin.venice.config.VeniceServerConfig;
 import com.linkedin.venice.config.VeniceStoreConfig;
 import com.linkedin.venice.partition.AbstractPartitionNodeAssignmentScheme;
 import com.linkedin.venice.partition.ModuloPartitionNodeAssignmentScheme;
-import com.linkedin.venice.server.PartitionNodeAssignmentRepository;
+import com.linkedin.venice.server.PartitionAssignmentRepository;
 import com.linkedin.venice.server.VeniceConfigService;
 import com.linkedin.venice.store.bdb.BdbStorageEngineFactory;
 import org.testng.annotations.Test;
@@ -15,7 +15,7 @@ import java.util.Map;
 
 public class BdbStoreTest extends AbstractStoreTest {
 
-  PartitionNodeAssignmentRepository partitionNodeAssignmentRepository;
+  PartitionAssignmentRepository partitionAssignmentRepository;
   AbstractPartitionNodeAssignmentScheme partitionNodeAssignmentScheme;
   VeniceConfigService veniceConfigService;
 
@@ -43,10 +43,12 @@ public class BdbStoreTest extends AbstractStoreTest {
     partitionNodeAssignmentScheme = new ModuloPartitionNodeAssignmentScheme();
 
     // populate partitionNodeAssignment
-    partitionNodeAssignmentRepository = new PartitionNodeAssignmentRepository();
-    partitionNodeAssignmentRepository.setAssignment(storeName, partitionNodeAssignmentScheme.getNodeToLogicalPartitionsMap(storeConfig));
+    partitionAssignmentRepository = new PartitionAssignmentRepository();
+    int nodeId = 0;
+    partitionAssignmentRepository.setAssignment(storeName,
+        partitionNodeAssignmentScheme.getNodeToLogicalPartitionsMap(storeConfig).get(nodeId));
 
-    BdbStorageEngineFactory factory = new BdbStorageEngineFactory(serverConfig, partitionNodeAssignmentRepository);
+    BdbStorageEngineFactory factory = new BdbStorageEngineFactory(serverConfig, partitionAssignmentRepository);
     testStore = factory.getStore(storeConfig);
   }
 

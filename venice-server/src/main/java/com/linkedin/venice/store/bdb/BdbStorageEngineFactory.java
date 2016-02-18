@@ -5,7 +5,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.config.VeniceServerConfig;
 import com.linkedin.venice.config.VeniceStoreConfig;
 import com.linkedin.venice.exceptions.StorageInitializationException;
-import com.linkedin.venice.server.PartitionNodeAssignmentRepository;
+import com.linkedin.venice.server.PartitionAssignmentRepository;
 import com.linkedin.venice.store.AbstractStorageEngine;
 import com.linkedin.venice.store.StorageEngineFactory;
 import com.linkedin.venice.store.StorageEngineInitializationException;
@@ -47,7 +47,7 @@ public class BdbStorageEngineFactory implements StorageEngineFactory {
   private final Object lock = new Object();
 
   private final BdbServerConfig bdbServerConfig;
-  private final PartitionNodeAssignmentRepository partitionNodeAssignmentRepo;
+  private final PartitionAssignmentRepository partitionNodeAssignmentRepo;
 
   private final Map<String, Environment> environments = Maps.newHashMap();
   private final EnvironmentConfig environmentConfig;
@@ -60,7 +60,7 @@ public class BdbStorageEngineFactory implements StorageEngineFactory {
   // private AggregatedBdbEnvironmentStats aggBdbStats;
 
   public BdbStorageEngineFactory(VeniceServerConfig serverConfig,
-                                 PartitionNodeAssignmentRepository partitionNodeAssignmentRepo) {
+                                 PartitionAssignmentRepository partitionNodeAssignmentRepo) {
     this.bdbServerConfig = serverConfig.getBdbServerConfig();
     this.partitionNodeAssignmentRepo = partitionNodeAssignmentRepo;
 

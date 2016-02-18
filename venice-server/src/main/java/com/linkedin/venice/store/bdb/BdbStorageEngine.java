@@ -4,7 +4,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.config.VeniceStoreConfig;
 import com.linkedin.venice.exceptions.PersistenceFailureException;
 import com.linkedin.venice.exceptions.StorageInitializationException;
-import com.linkedin.venice.server.PartitionNodeAssignmentRepository;
+import com.linkedin.venice.server.PartitionAssignmentRepository;
 import com.linkedin.venice.store.AbstractStorageEngine;
 import com.linkedin.venice.store.AbstractStoragePartition;
 import com.linkedin.venice.store.iterators.CloseableStoreEntriesIterator;
@@ -32,7 +32,7 @@ public class BdbStorageEngine extends AbstractStorageEngine {
   private volatile int numOutstandingBatchWriteJobs = 0;
 
   public BdbStorageEngine(VeniceStoreConfig storeDef,
-                          PartitionNodeAssignmentRepository partitionNodeAssignmentRepo,
+                          PartitionAssignmentRepository partitionNodeAssignmentRepo,
                           Environment environment) throws VeniceException {
     super(storeDef, partitionNodeAssignmentRepo, new ConcurrentHashMap<Integer, AbstractStoragePartition>());
 
@@ -44,7 +44,7 @@ public class BdbStorageEngine extends AbstractStorageEngine {
     this.checkpointerOffForBatchWrites = bdbRuntimeConfig.isCheckpointerOffForBatchWrites();
 
     // Create and initialize the individual databases for each partition
-    for (int partitionId : partitionNodeAssignmentRepo.getLogicalPartitionIds(this.getName(), storeDef.getNodeId())) {
+    for (int partitionId : partitionNodeAssignmentRepo.getLogicalPartitionIds(this.getName())) {
       addStoragePartition(partitionId);
     }
   }

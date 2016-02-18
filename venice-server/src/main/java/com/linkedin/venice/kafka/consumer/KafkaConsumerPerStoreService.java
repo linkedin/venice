@@ -5,7 +5,7 @@ import com.linkedin.venice.config.VeniceStoreConfig;
 import com.linkedin.venice.kafka.partitioner.PartitionZeroPartitioner;
 import com.linkedin.venice.serialization.KafkaKeySerializer;
 import com.linkedin.venice.serialization.KafkaValueSerializer;
-import com.linkedin.venice.server.PartitionNodeAssignmentRepository;
+import com.linkedin.venice.server.PartitionAssignmentRepository;
 import com.linkedin.venice.server.StoreRepository;
 import com.linkedin.venice.server.VeniceConfigService;
 import com.linkedin.venice.service.AbstractVeniceService;
@@ -19,7 +19,6 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
-import org.apache.commons.io.IOUtils;
 import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.log4j.Logger;
@@ -106,12 +105,12 @@ public class KafkaConsumerPerStoreService extends AbstractVeniceService implemen
   /**
    * Function to start kafka message consumption for all stores according to the PartitionNodeAssignment.
    * Ideally, should only be used when NOT using Helix.
-   * @param partitionNodeAssignmentRepository
+   * @param partitionAssignmentRepository
    */
-  public void consumeForPartitionNodeAssignmentRepository(PartitionNodeAssignmentRepository partitionNodeAssignmentRepository) {
+  public void consumeForPartitionNodeAssignmentRepository(PartitionAssignmentRepository partitionAssignmentRepository) {
     for (VeniceStoreConfig storeConfig : veniceConfigService.getAllStoreConfigs().values()) {
       String topic = storeConfig.getStoreName();
-      Set<Integer> currentTopicPartitions = partitionNodeAssignmentRepository.getLogicalPartitionIds(topic, nodeId);
+      Set<Integer> currentTopicPartitions = partitionAssignmentRepository.getLogicalPartitionIds(topic);
       for(Integer partitionId : currentTopicPartitions) {
         startConsumption(storeConfig, partitionId);
       }
