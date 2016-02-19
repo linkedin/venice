@@ -45,7 +45,7 @@ public class PartitionAssignmentRepository {
     } else {
       String errorMessage = "Store name '" + resourceName + "' in this node does not exist!";
       logger.warn(errorMessage);
-      return new HashSet<>();
+      throw new VeniceException(errorMessage);
     }
   }
 
