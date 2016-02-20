@@ -23,10 +23,7 @@ public class InMemoryStorageEngine extends AbstractStorageEngine {
     throws Exception {
     super(storeDef, partitionNodeAssignmentRepo, new ConcurrentHashMap<Integer, AbstractStoragePartition>());
 
-    // Create and intialize the individual databases for each partition
-    for (int partitionId : partitionNodeAssignmentRepo.getLogicalPartitionIds(this.getName())) {
-      addStoragePartition(partitionId);
-    }
+    initialStoreForPatitions(partitionNodeAssignmentRepo);
   }
 
   @Override

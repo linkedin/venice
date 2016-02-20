@@ -20,18 +20,18 @@ public class HelixSpectatorService extends AbstractVeniceService {
 
   private static final String VENICE_SPECTATOR_SERVICE_NAME = "venice-spectator-service";
   private HelixManager manager;
-  private PartitionLookup partitionLookup;
   private String clusterName;
+  private HelixRoutingDataRepostiory repository;
 
   /*
   Create a com.linkedin.venice.helix.PartitionLookup and hold onto a reference to it.  Pass that object to the
   HelixSpectatorService constructor.  Once you start the service, you will be able to query the PartitionLookup
   for the node responsible for a partition.
    */
-  public HelixSpectatorService(String zkAddress, String clusterName, String instanceName, PartitionLookup partitionLookup) {
+  public HelixSpectatorService(String zkAddress, String clusterName, String instanceName) {
     super(VENICE_SPECTATOR_SERVICE_NAME);
     manager = new ZKHelixManager(clusterName, instanceName, InstanceType.SPECTATOR, zkAddress);
-    this.partitionLookup = partitionLookup;
+    this.repository = new HelixRoutingDataRepostiory(manager);
     this.clusterName = clusterName;
   }
 
@@ -39,18 +39,7 @@ public class HelixSpectatorService extends AbstractVeniceService {
   public void startInner() {
     try {
       manager.connect();
-      manager.addExternalViewChangeListener(partitionLookup.getRoutingTableProvider());
-      manager.addExternalViewChangeListener(partitionLookup.getPartitionCountProvider());
-      LiveInstanceChangeListener listener = new LiveInstanceChangeListener() {
-        @Override
-        public void onLiveInstanceChange(List<LiveInstance> liveInstances,
-            NotificationContext changeContext) {
-          if (changeContext.getType() != NotificationContext.Type.FINALIZE) {
-            refreshPartitionLookup();
-          }
-        }
-      };
-      manager.addLiveInstanceChangeListener(listener);
+      repository.init();
     } catch (Exception e) {
       e.printStackTrace();
       throw new RuntimeException(e);
@@ -64,12 +53,7 @@ public class HelixSpectatorService extends AbstractVeniceService {
     }
   }
 
-  private void refreshPartitionLookup() {
-    PropertyKey.Builder propertyKeyBuilder = new PropertyKey.Builder(clusterName);
-    HelixDataAccessor helixDataAccessor = manager.getHelixDataAccessor();
-    List<LiveInstance> liveInstances =
-        helixDataAccessor.getChildValues(propertyKeyBuilder.liveInstances());
-    partitionLookup.updateLiveInstances(liveInstances);
+  public HelixRoutingDataRepostiory getRoutingDataRepository() {
+    return this.repository;
   }
-
 }

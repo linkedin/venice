@@ -1,6 +1,7 @@
 package com.linkedin.venice.helix;
 
 import com.linkedin.venice.kafka.consumer.KafkaConsumerService;
+import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.server.StoreRepository;
 import com.linkedin.venice.server.VeniceConfigService;
 import com.linkedin.venice.service.AbstractVeniceService;
@@ -10,6 +11,7 @@ import org.apache.helix.HelixManagerFactory;
 import org.apache.helix.InstanceType;
 import org.apache.helix.LiveInstanceInfoProvider;
 import org.apache.helix.ZNRecord;
+import org.apache.helix.manager.zk.ZKHelixAdmin;
 import org.apache.helix.participant.statemachine.StateModelFactory;
 import org.apache.log4j.Logger;
 
@@ -24,8 +26,7 @@ public class HelixParticipationService extends AbstractVeniceService {
   private static final String VENICE_PARTICIPANT_SERVICE_NAME = "venice-participant-service";
   private static final String STATE_MODEL_REFERENCE_NAME = "PartitionOnlineOfflineModel";
 
-  private final String hostName;
-  private final String port;
+  private final Instance instance;
   private final String clusterName;
   private final String participantName;
   private final String zkAddress;
@@ -34,15 +35,14 @@ public class HelixParticipationService extends AbstractVeniceService {
   private HelixManager manager;
 
   public HelixParticipationService(KafkaConsumerService kafkaConsumerService, StoreRepository storeRepository,
-      VeniceConfigService veniceConfigService, String zkAddress, String clusterName, String participantName) {
+      VeniceConfigService veniceConfigService, String zkAddress, String clusterName, String participantName, int
+      httpPort, int adminPort) {
 
     super(VENICE_PARTICIPANT_SERVICE_NAME);
     this.clusterName = clusterName;
     this.participantName = participantName;
     this.zkAddress = zkAddress;
-    port = veniceConfigService.getVeniceServerConfig().getListenerPort();
-    hostName = Utils.getHostName();
-
+    instance = new Instance(participantName,Utils.getHostName(),adminPort,httpPort);
     stateModelFactory
         = new VeniceStateModelFactory(kafkaConsumerService, storeRepository, veniceConfigService);
   }
@@ -50,16 +50,18 @@ public class HelixParticipationService extends AbstractVeniceService {
   @Override
   public void startInner() {
     logger.info("Attempting to start HelixParticipation service");
+    //The format of instance name must be "$host_$port", otherwise Helix can not get these information correctly.
     manager = HelixManagerFactory
-            .getZKHelixManager(clusterName, participantName, InstanceType.PARTICIPANT, zkAddress);
+            .getZKHelixManager(clusterName, instance.getHost() + "_" + instance.getHttpPort(), InstanceType.PARTICIPANT,
+                zkAddress);
     manager.getStateMachineEngine().registerStateModelFactory(STATE_MODEL_REFERENCE_NAME, stateModelFactory);
-
+    //TODO Now Helix instance config only support host and port. After talking to Helix team, they will add
+    // customize k-v data support soon. Then we don't need LiveInstanceInfoProvider here. Use the instance config
+    // is a better way because it reduce the communication times to Helix. Other wise client need to get  thsi
+    // information from ZK in the extra request and response.
     LiveInstanceInfoProvider liveInstanceInfoProvider = () -> {
       // serialize serviceMetadata to ZNRecord
-      ZNRecord rec = new ZNRecord(participantName);
-      rec.setSimpleField(LiveInstanceProperty.HOST, hostName);
-      rec.setSimpleField(LiveInstanceProperty.PORT, port);
-      return rec;
+      return HelixInstanceConverter.convertInstanceToZNRecord(instance);
     };
     manager.setLiveInstanceInfoProvider(liveInstanceInfoProvider);
 

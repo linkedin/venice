@@ -116,9 +116,12 @@ public class VeniceServer {
     // Start venice participant service if Helix is enabled.
     VeniceClusterConfig clusterConfig = veniceConfigService.getVeniceClusterConfig();
     if(clusterConfig.isHelixEnabled()) {
-      HelixParticipationService helixParticipationService = new HelixParticipationService(kafkaConsumerService
-          , storeRepository, veniceConfigService, clusterConfig.getZookeeperAddress(), clusterConfig.getClusterName()
-          , HelixUtils.convertNodeIdToHelixParticipantName(veniceConfigService.getVeniceServerConfig().getNodeId()));
+      HelixParticipationService helixParticipationService =
+          new HelixParticipationService(kafkaConsumerService, storeRepository, veniceConfigService,
+              clusterConfig.getZookeeperAddress(), clusterConfig.getClusterName(),
+              HelixUtils.convertNodeIdToHelixParticipantName(veniceConfigService.getVeniceServerConfig().getNodeId()),
+              Integer.valueOf(veniceConfigService.getVeniceServerConfig().getListenerPort()),
+              Integer.valueOf(veniceConfigService.getVeniceServerConfig().getAdminPort()));
       services.add(helixParticipationService);
     } else {
       // Note: Only required when NOT using Helix.

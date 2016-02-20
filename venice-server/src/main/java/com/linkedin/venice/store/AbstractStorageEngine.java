@@ -177,6 +177,13 @@ public abstract class AbstractStorageEngine implements Store {
     this.isOpen.compareAndSet(true, false);
   }
 
+  protected void initialStoreForPatitions(PartitionAssignmentRepository partitionAssignmentRepository){
+    // Create and initialize the individual databases for each partition
+    for (int partitionId : partitionNodeAssignmentRepo.getLogicalPartitionIds(this.getName())) {
+      addStoragePartition(partitionId);
+    }
+  }
+
   public Logger getLogger(){
     return logger;
   }

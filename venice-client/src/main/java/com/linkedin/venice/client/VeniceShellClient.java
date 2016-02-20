@@ -72,8 +72,9 @@ public class VeniceShellClient {
       return;
     }
     storeName = args[0];
-    Props props = parseProperties("./config/config.properties");
+    Props props = parseProperties("venice-client/config/config.properties");
     reader = new VeniceReader<String, String>(props, storeName, keySerializer, valueSerializer);
+    reader.init();
     writer = new VeniceWriter<String, String>(props, storeName, keySerializer, valueSerializer);
 
     if (args.length < 2) {

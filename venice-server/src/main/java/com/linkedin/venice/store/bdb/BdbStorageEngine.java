@@ -42,11 +42,7 @@ public class BdbStorageEngine extends AbstractStorageEngine {
     this.bdbServerConfig = storeDef.getBdbServerConfig();
     this.bdbRuntimeConfig = new BdbRuntimeConfig(bdbServerConfig);
     this.checkpointerOffForBatchWrites = bdbRuntimeConfig.isCheckpointerOffForBatchWrites();
-
-    // Create and initialize the individual databases for each partition
-    for (int partitionId : partitionNodeAssignmentRepo.getLogicalPartitionIds(this.getName())) {
-      addStoragePartition(partitionId);
-    }
+    initialStoreForPatitions(partitionNodeAssignmentRepo);
   }
 
   @Override

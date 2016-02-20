@@ -31,7 +31,7 @@ public class PartitionAssignmentRepository {
   // Read operations
 
   /**
-   * Given the store name and nodeId get the list of venice logical partitions served
+   * Given the resource name get the list of venice logical partitions served
    *
    * @param resourceName the resource name to look up
    *
@@ -52,7 +52,7 @@ public class PartitionAssignmentRepository {
   // write operations
 
   /**
-   * Set the Partition assignment for this resource. Updates all the three views in this repository atomically.
+   * Set the Partition assignment for this resource.
    *
    * @param resourceName      resource name to add or update
    * @param logicalPartitions Set representing assignment of logical partitions for this resource

@@ -2,13 +2,12 @@ package com.linkedin.venice.client;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixSpectatorService;
-import com.linkedin.venice.helix.PartitionLookup;
 import com.linkedin.venice.kafka.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.kafka.partitioner.VenicePartitioner;
 import com.linkedin.venice.message.GetRequestObject;
 import com.linkedin.venice.message.KafkaKey;
+import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.serialization.VeniceSerializer;
-import com.linkedin.venice.utils.HostPort;
 import com.linkedin.venice.utils.Props;
 import java.util.List;
 import org.apache.log4j.Logger;
@@ -25,6 +24,7 @@ public class VeniceReader<K, V> {
   private final String storeName;
   private final VeniceSerializer<K> keySerializer;
   private final VeniceSerializer<V> valueSerializer;
+  private HelixSpectatorService spectatorService;
 
   //TODO: configurable partitioner
   private final VenicePartitioner partitioner = new DefaultVenicePartitioner();
@@ -42,6 +42,19 @@ public class VeniceReader<K, V> {
     }
   }
 
+  public void init(){
+    spectatorService = new HelixSpectatorService(
+        props.getString("zookeeper.connection.string"),
+        props.getString("cluster.name"),
+        "client-spectator" //need some unique name for each client/spectator?
+    );
+    try{
+      spectatorService.start();
+    } catch (Exception e) {
+      e.printStackTrace();
+      throw new RuntimeException(e);
+    }
+  }
   /**
    * Execute a standard "get" on the key. Returns null if empty.
    * @param key - The key to look for in storage.
@@ -50,35 +63,19 @@ public class VeniceReader<K, V> {
   public V get(K key) {
     byte[] keyBytes = keySerializer.serialize(storeName, key);
 
-    PartitionLookup lookup = new PartitionLookup();
-    HelixSpectatorService spectatorService = new HelixSpectatorService(
-        props.getString("zookeeper.connection.string"),
-        props.getString("cluster.name"),
-        "client-spectator", //need some unique name for each client/spectator?
-        lookup
-        );
-
+    List<Instance> instances;
     int partition;
-    List<HostPort> hosts;
-    try{
-      spectatorService.start();
-      int numberOfPartitions = lookup.getPartitionCountForStore(storeName);
-      KafkaKey kafkaKey = new KafkaKey(null, keyBytes);
-      partition = partitioner.getPartitionId(kafkaKey, numberOfPartitions);
-      hosts = lookup.getHostPortForPartition(storeName, Integer.toString(partition));
-      spectatorService.stop();
-    } catch (Exception e) {
-      e.printStackTrace();
-      throw new RuntimeException(e);
-    }
-
-    if (hosts.size() < 1){
+    int numberOfPartitions = spectatorService.getRoutingDataRepository().getPartitionNumber(storeName);
+    KafkaKey kafkaKey = new KafkaKey(null, keyBytes);
+    partition = partitioner.getPartitionId(kafkaKey, numberOfPartitions);
+    instances=spectatorService.getRoutingDataRepository().getInstances(storeName, partition);
+    if (instances.size() < 1){
       throw new NullPointerException("No hosts available to serve partition: " + partition +
           ", store: " + storeName);
     }
     // Proper router will use a strategy other than "read from one"
-    String host = hosts.get(0).getHostname();
-    int port = Integer.parseInt(hosts.get(0).getPort());
+    String host = instances.get(0).getHost();
+    int port = instances.get(0).getHttpPort();
 
     GetRequestObject request = new GetRequestObject(storeName.toCharArray(), partition, keyBytes);
 

@@ -13,10 +13,12 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   private int nodeId;
   private String listenerPort;
+  private String adminPort;
   protected BdbServerConfig bdbServerConfig;
 
   private static final String VENICE_NODE_ID_VAR_NAME = "VENICE_NODE_ID";
   private static final String VENICE_NODE_PORT_VAR_NAME = "VENICE_LISTENER_PORT";
+  private static final String VENICE_NODE_ADMIN_PORT_VAR_NAME = "VENICE_ADMIN_PORT";
 
 
   public VeniceServerConfig(Props serverProperties) throws ConfigurationException {
@@ -34,6 +36,11 @@ public class VeniceServerConfig extends VeniceClusterConfig {
       listenerPort = Integer.toString(serverProps.getInt(VeniceConfigService.LISTENER_PORT));
     } else {
       listenerPort = Integer.toString(getIntEnvVariable(VENICE_NODE_PORT_VAR_NAME));
+    }
+    if (serverProps.containsKey(VeniceConfigService.ADMIN_PORT)) {
+      adminPort = Integer.toString(serverProps.getInt(VeniceConfigService.ADMIN_PORT));
+    } else {
+      adminPort = Integer.toString(getIntEnvVariable(VENICE_NODE_ADMIN_PORT_VAR_NAME));
     }
     dataBasePath = serverProps.getString(VeniceConfigService.DATA_BASE_PATH);
 
@@ -70,6 +77,10 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public String getListenerPort() {
     return listenerPort;
+  }
+
+  public String getAdminPort(){
+    return adminPort;
   }
 
   /**
