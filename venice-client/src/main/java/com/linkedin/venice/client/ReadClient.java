@@ -1,6 +1,7 @@
 package com.linkedin.venice.client;
 
 import com.linkedin.venice.message.GetRequestObject;
+import com.linkedin.venice.utils.DaemonThreadFactory;
 import java.net.InetSocketAddress;
 import java.util.concurrent.Executors;
 import org.jboss.netty.bootstrap.ClientBootstrap;
@@ -22,8 +23,8 @@ public class ReadClient {
 
   public byte[] doRead(String host, int port, GetRequestObject request){
     factory = new NioClientSocketChannelFactory(
-        Executors.newCachedThreadPool(),
-        Executors.newCachedThreadPool()
+        Executors.newCachedThreadPool(new DaemonThreadFactory("venice-netty-boss")),
+        Executors.newCachedThreadPool(new DaemonThreadFactory("venice-netty-worker"))
     );
     ClientBootstrap bootstrap = new ClientBootstrap(factory);
 

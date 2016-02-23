@@ -32,7 +32,6 @@ public class VeniceServer {
   private final StoreRepository storeRepository;
   private StorageService storageService;
   private final PartitionAssignmentRepository partitionAssignmentRepository;
-  private AbstractPartitionNodeAssignmentScheme partitionNodeAssignmentScheme;
 
   private final List<AbstractVeniceService> services;
 
@@ -48,39 +47,8 @@ public class VeniceServer {
      * 2. Check Hostnames like in Voldemort to make sure that local host and ips match up.
      */
 
-    //Populates the partitionToNodeAssignmentRepository
-    this.assignPartitionToNodes();
-
     //create all services
     this.services = createServices();
-  }
-
-  /**
-   * Assigns logical partitions to Node for each store based on the storage replication factor and total number of nodes
-   * in the cluster. The scheme for this assignment is available in config.properties and is parsed by VeniceConfig.
-   * When this method finishes the PartitionToNodeAssignmentRepository is populated which is then used by other services.
-   */
-  private void assignPartitionToNodes() {
-    logger.info("Populating partition node assignment repository");
-    String partitionNodeAssignmentSchemeClassName =
-        veniceConfigService.getVeniceClusterConfig().getPartitionNodeAssignmentSchemeClassName();
-    try {
-      Class<?> AssignmentSchemeClass = ReflectUtils.loadClass(partitionNodeAssignmentSchemeClassName);
-      partitionNodeAssignmentScheme = (AbstractPartitionNodeAssignmentScheme) ReflectUtils
-          .callConstructor(AssignmentSchemeClass, new Class<?>[]{}, new Object[]{});
-    } catch (IllegalStateException e) {
-      String errorMessage =
-          "Error loading Partition Node Assignment Class '" + partitionNodeAssignmentSchemeClassName + "'.";
-      logger.error(errorMessage, e);
-      throw e;
-    }
-
-    for (Map.Entry<String, VeniceStoreConfig> storeEntry : veniceConfigService.getAllStoreConfigs().entrySet()) {
-      Map<Integer, Set<Integer>> nodeToLogicalPartitionIdsMap =
-          partitionNodeAssignmentScheme.getNodeToLogicalPartitionsMap(storeEntry.getValue());
-      partitionAssignmentRepository.setAssignment(storeEntry.getKey(),
-          nodeToLogicalPartitionIdsMap.get(veniceConfigService.getVeniceServerConfig().getNodeId()));
-    }
   }
 
   /**

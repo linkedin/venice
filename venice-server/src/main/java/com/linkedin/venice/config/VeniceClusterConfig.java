@@ -19,9 +19,6 @@ import java.util.Map;
  */
 public class VeniceClusterConfig {
 
-    public static final Map<String, String> partitionNodeAssignmentSchemeClassMap =
-            ImmutableMap.of("modulo", ModuloPartitionNodeAssignmentScheme.class.getName());
-
     public static final Map<String, String> storageEngineFactoryClassNameMap =
         ImmutableMap.of("inMemory", InMemoryStorageEngineFactory.class.getName(),
             "bdb", BdbStorageEngineFactory.class.getName());
@@ -75,12 +72,7 @@ public class VeniceClusterConfig {
             throws ConfigurationException {
         clusterName = clusterProps.getString(VeniceConfigService.CLUSTER_NAME);
         storageNodeCount = clusterProps.getInt(VeniceConfigService.STORAGE_NODE_COUNT, 1);     // Default 1
-        partitionNodeAssignmentSchemeName = clusterProps
-                .getString(VeniceConfigService.PARTITION_NODE_ASSIGNMENT_SCHEME, "modulo"); // Default "modulo" scheme
-        if (!partitionNodeAssignmentSchemeClassMap.containsKey(partitionNodeAssignmentSchemeName)) {
-            throw new ConfigurationException(
-                    "unknown partition node assignment scheme: " + partitionNodeAssignmentSchemeName);
-        }
+
         enableKafkaConsumersOffsetManagement =
                 clusterProps.getBoolean(VeniceConfigService.ENABLE_KAFKA_CONSUMER_OFFSET_MANAGEMENT, false);
         helixEnabled = clusterProps.getBoolean(VeniceConfigService.HELIX_ENABLED);
@@ -137,10 +129,6 @@ public class VeniceClusterConfig {
 
     public int getStorageNodeCount() {
         return storageNodeCount;
-    }
-
-    public String getPartitionNodeAssignmentSchemeClassName() {
-        return partitionNodeAssignmentSchemeClassMap.get(partitionNodeAssignmentSchemeName);
     }
 
     public boolean isEnableKafkaConsumersOffsetManagement() {
