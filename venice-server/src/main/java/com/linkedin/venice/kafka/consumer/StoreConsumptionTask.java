@@ -8,22 +8,25 @@ import com.linkedin.venice.message.ControlFlagKafkaKey;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.message.KafkaValue;
 import com.linkedin.venice.message.OperationType;
+import com.linkedin.venice.offsets.OffsetManager;
+import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.server.StoreRepository;
 import com.linkedin.venice.store.AbstractStorageEngine;
 import com.linkedin.venice.utils.ByteUtils;
+import com.linkedin.venice.utils.Utils;
 import java.io.Closeable;
-import java.util.Collections;
-import java.util.HashSet;
 import java.util.Iterator;
+import java.util.Map;
 import java.util.Properties;
 import java.util.Queue;
-import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.consumer.NoOffsetForPartitionException;
 import org.apache.log4j.Logger;
+
 
 /**
  * Assumes: One to One mapping between a Venice Store and Kafka Topic.
@@ -33,8 +36,7 @@ public class StoreConsumptionTask implements Runnable, Closeable {
 
   private static final Logger logger = Logger.getLogger(StoreConsumptionTask.class.getName());
 
-  private static final String CONSUMER_TASK_ID_FORMAT = "KafkaPerStoreConsumptionTask for "
-      + "[ Node: %d, Topic: %s ]";
+  private static final String CONSUMER_TASK_ID_FORMAT = "KafkaPerStoreConsumptionTask for " + "[ Node: %d, Topic: %s ]";
 
   private static final int READ_CYCLE_DELAY_MS = 1000;
 
@@ -58,25 +60,27 @@ public class StoreConsumptionTask implements Runnable, Closeable {
 
   private final AtomicBoolean isRunning;
 
-  private final Queue <ControlMessage> kafkaActionMessages;
+  private final Queue<ControlMessage> kafkaActionMessages;
+
+  private final OffsetManager offsetManager;
 
   // The source of truth for the currently subscribed partitions. The list maintained by the kafka consumer is not
   // always up to date because of the asynchronous nature of subscriptions of partitions in Kafka Consumer.
-  private final Set<Integer> subscribedPartitions;
+  private final Map<Integer, OffsetRecord> partitionOffsets;
 
   public StoreConsumptionTask(Properties kafkaConsumerProperties, StoreRepository storeRepository,
-          VeniceNotifier notifier, int nodeId,
-          String topic) {
+          OffsetManager offsetManager, VeniceNotifier notifier, int nodeId, String topic) {
 
     this.consumer = new ApacheKafkaConsumer(kafkaConsumerProperties);
     this.storeRepository = storeRepository;
+    this.offsetManager = offsetManager;
 
     this.topic = topic;
     this.nodeId = nodeId;
 
     kafkaActionMessages = new ConcurrentLinkedQueue<>();
 
-    subscribedPartitions = Collections.synchronizedSet(new HashSet<>());
+    partitionOffsets = new ConcurrentHashMap<>();
 
     this.notifier = notifier;
     this.consumerTaskId = String.format(CONSUMER_TASK_ID_FORMAT, nodeId, topic);
@@ -88,7 +92,6 @@ public class StoreConsumptionTask implements Runnable, Closeable {
    * Adds an asynchronous partition subscription request for the task.
    */
   public void subscribePartition(String topic, int partition) {
-    subscribedPartitions.add(partition);
     kafkaActionMessages.add(new ControlMessage(ControlOperationType.SUBSCRIBE, topic, partition));
   }
 
@@ -96,9 +99,6 @@ public class StoreConsumptionTask implements Runnable, Closeable {
    * Adds an asynchronous partition unsubscription request for the task.
    */
   public void unSubscribePartition(String topic, int partition) {
-    if(subscribedPartitions.contains(partition)) {
-      subscribedPartitions.remove(partition);
-    }
     kafkaActionMessages.add(new ControlMessage(ControlOperationType.UNSUBSCRIBE, topic, partition));
   }
 
@@ -112,15 +112,19 @@ public class StoreConsumptionTask implements Runnable, Closeable {
   @Override
   /**
    * Polls the producer for new messages in an infinite loop and processes the new messages.
-   */
-  public void run() {
+   */ public void run() {
     logger.info("Running " + consumerTaskId);
 
     try {
       while (isRunning.get()) {
-        if(subscribedPartitions.size() > 0) {
+        if (partitionOffsets.size() > 0) {
           ConsumerRecords records = consumer.poll(READ_CYCLE_DELAY_MS);
           processTopicConsumerRecords(records);
+        } else {
+          // TODO : None of the partitions are consuming, probably the thread should die,
+          // but not handled yet, thread should die and inform the ConsumerService to clean up handling the synchronization.
+          logger.warn("No Partitions are subscribed to for store " + topic + " Case is not handled yet.. Please fix");
+          Utils.sleep(100);
         }
         processKafkaActionMessages();
       }
@@ -136,35 +140,33 @@ public class StoreConsumptionTask implements Runnable, Closeable {
    * Consumes the kafka actions messages in the queue.
    */
   private void processKafkaActionMessages() {
-    while(!kafkaActionMessages.isEmpty()) {
+    Iterator<ControlMessage> iter = kafkaActionMessages.iterator();
+    while (iter.hasNext()) {
       // Do not want to remove a message from the queue unless it has been processed.
-      ControlMessage message = kafkaActionMessages.peek();
-      boolean removeMessage = false;
-      if(message != null) {
-        /**
-         * TODO: Get rid of this workaround. Once, the Kafka Clients have been fixed.
-         * Retries processing messages. Because of the following Kafka limitations:
-         *  1. a partition is only subscribed after a poll call is made. (Ticket: KAFKA-2387)
-         *  2. You cannot call Subscribe/Unsubscribe multiple times without polling in between. (Ticket: KAFKA-2413)
-         */
-        try {
-          message.incrementAttempt();
-          processKafkaActionMessage(message);
+      ControlMessage message = iter.next();
+      boolean removeMessage = true;
+      /**
+       * TODO: Get rid of this workaround. Once, the Kafka Clients have been fixed.
+       * Retries processing messages. Because of the following Kafka limitations:
+       *  1. a partition is only subscribed after a poll call is made. (Ticket: KAFKA-2387)
+       *  2. You cannot call Subscribe/Unsubscribe multiple times without polling in between. (Ticket: KAFKA-2413)
+       */
+      try {
+        message.incrementAttempt();
+        processKafkaActionMessage(message);
+      } catch (Exception ex) {
+        if (message.getAttemptsCount() >= MAX_RETRIES) {
+          logger.info("Ignoring message:  " + message, ex);
           removeMessage = true;
-        } catch (Exception ex) {
-          if(message.getAttemptsCount() >= MAX_RETRIES) {
-            logger.info("Ignoring message:  " + message.toString(), ex);
-            removeMessage = true;
-          } else {
-            logger.info(ex);
-            // The message processing should be reattempted after polling
-            // Fine to return here as this message should not be removed from the queue.
-            removeMessage = false;
-          }
+        } else {
+          logger.info("Error Processing message " + message , ex);
+          // The message processing should be reattempted after polling
+          // Fine to return here as this message should not be removed from the queue.
+          removeMessage = false;
         }
-        if(removeMessage) {
-          kafkaActionMessages.remove(message);
-        }
+      }
+      if (removeMessage) {
+        iter.remove();
       }
     }
   }
@@ -175,14 +177,21 @@ public class StoreConsumptionTask implements Runnable, Closeable {
     int partition = message.getPartition();
     switch (operation) {
       case SUBSCRIBE:
-        consumer.subscribe(topic, partition);
+        OffsetRecord record = offsetManager.getLastOffset(topic, partition);
+        partitionOffsets.put(partition, record);
+        consumer.subscribe(topic, partition, record);
         logger.info(consumerTaskId + " subscribed to: Topic " + topic + " Partition Id " + partition);
         break;
       case UNSUBSCRIBE:
+        partitionOffsets.remove(partition);
         consumer.unSubscribe(topic, partition);
         logger.info(consumerTaskId + " UnSubscribed to: Topic " + topic + " Partition Id " + partition);
         break;
       case RESET_OFFSET:
+        if(partitionOffsets.containsKey(partition)) {
+          logger.error("Partition " + partition + " is not subscribed, subscribing first");
+
+        }
         long newOffSet = consumer.resetOffset(topic, partition);
         logger.info(consumerTaskId + " Reset OffSet : Topic " + topic + " Partition Id " + partition + " New Offset "
                 + newOffSet);
@@ -193,21 +202,21 @@ public class StoreConsumptionTask implements Runnable, Closeable {
   }
 
   private void processTopicConsumerRecords(ConsumerRecords records) {
-    if(records == null) {
+    if (records == null) {
       logger.info(consumerTaskId + " received null ConsumerRecords");
     }
-    if(records != null) {
+    if (records != null) {
       Iterator recordsIterator = records.iterator();
-      while(recordsIterator.hasNext()) {
-        ConsumerRecord <KafkaKey, KafkaValue> record = (ConsumerRecord<KafkaKey, KafkaValue>) recordsIterator.next();
+      while (recordsIterator.hasNext()) {
+        ConsumerRecord<KafkaKey, KafkaValue> record = (ConsumerRecord<KafkaKey, KafkaValue>) recordsIterator.next();
         long readOffset = getLastOffset(record.topic(), record.partition());
-        if(record.offset() < readOffset) {
+        if (record.offset() < readOffset) {
           logger.error(consumerTaskId + " : Found an old offset: " + record.offset() + " Expecting: " + readOffset);
           continue;
         }
         try {
           processConsumerRecord(record);
-        } catch (VeniceMessageException|UnsupportedOperationException ex) {
+        } catch (VeniceMessageException | UnsupportedOperationException ex) {
           logger.error(consumerTaskId + " : Received an exception ! Skipping the message at offset " + readOffset, ex);
         }
       }
@@ -233,18 +242,18 @@ public class StoreConsumptionTask implements Runnable, Closeable {
       jobId = controlKafkaKey.getJobId();
       totalMessagesProcessed = 0L; //Need to figure out what happens when multiple jobs are run parallely.
       logger.info(consumerTaskId + " : Received Begin of push message from job id: " + jobId + "Setting count to "
-          + totalMessagesProcessed);
+              + totalMessagesProcessed);
       return; // Its fine to return here, since this is just a control message.
     }
     if (kafkaKey.getOperationType() == OperationType.END_OF_PUSH) {
       ControlFlagKafkaKey controlKafkaKey = (ControlFlagKafkaKey) kafkaKey;
       long currentJobId = controlKafkaKey.getJobId();
       logger.info(consumerTaskId + " : Receive End of Pushes message. Consumed #records: " + totalMessagesProcessed
-              + ", from job id: " + currentJobId + " Remembered Job Id "  + jobId);
+                      + ", from job id: " + currentJobId + " Remembered Job Id " + jobId);
 
       if (jobId == currentJobId) {  // check if the BOP job id matched EOP job id.
         // TODO need to handle the case when multiple jobs are run in parallel.
-        if(notifier != null) {
+        if (notifier != null) {
           notifier.completed(jobId, topic, record.partition(), totalMessagesProcessed);
         }
       }
@@ -259,7 +268,7 @@ public class StoreConsumptionTask implements Runnable, Closeable {
        * is an asynchronous event. Thus, it is possible that the partition has been dropped from the local storage
        * engine but want unsubscribed by the Kafka Consumer. Therefore, leading to consumption of useless messages.
        */
-      if(subscribedPartitions.contains(record.partition())) {
+      if (partitionOffsets.containsKey(record.partition())) {
         throw ex;
       }
     }
@@ -278,12 +287,10 @@ public class StoreConsumptionTask implements Runnable, Closeable {
           startTimeNs = System.nanoTime();
         }
         storageEngine.put(partition, keyBytes, kafkaValue.getValue());
-        logger.debug(new String(keyBytes) + "-" + new String(kafkaValue.getValue()) + " @ " + partition);
         if (logger.isTraceEnabled()) {
-          logger.trace(
-              consumerTaskId + " : Completed PUT to Store: " + topic + " for key: " + ByteUtils.toHexString(keyBytes)
-                  + ", value: " + ByteUtils.toHexString(kafkaValue.getValue()) + " in " + (System.nanoTime()
-                  - startTimeNs) + " ns at " + System.currentTimeMillis());
+          logger.trace(consumerTaskId + " : Completed PUT to Store: " + topic + " for key: " + ByteUtils
+                  .toHexString(keyBytes) + ", value: " + ByteUtils.toHexString(kafkaValue.getValue()) + " in " + (
+                  System.nanoTime() - startTimeNs) + " ns at " + System.currentTimeMillis());
         }
         totalMessagesProcessed++;
         break;
@@ -298,8 +305,8 @@ public class StoreConsumptionTask implements Runnable, Closeable {
 
         if (logger.isTraceEnabled()) {
           logger.trace(consumerTaskId + " : Completed DELETE to Store: " + topic + " for key: " + ByteUtils
-              .toHexString(keyBytes) + " in " + (System.nanoTime() - startTimeNs) + " ns at " + System
-              .currentTimeMillis());
+                  .toHexString(keyBytes) + " in " + (System.nanoTime() - startTimeNs) + " ns at " + System
+                  .currentTimeMillis());
         }
         totalMessagesProcessed++;
         break;
@@ -308,10 +315,10 @@ public class StoreConsumptionTask implements Runnable, Closeable {
       case PARTIAL_WRITE:
         throw new UnsupportedOperationException(consumerTaskId + " : Partial puts not yet implemented");
 
-      // error
+        // error
       default:
         throw new VeniceMessageException(
-            consumerTaskId + " : Invalid/Unrecognized operation type submitted: " + kafkaValue.getOperationType());
+                consumerTaskId + " : Invalid/Unrecognized operation type submitted: " + kafkaValue.getOperationType());
     }
   }
 
@@ -338,7 +345,7 @@ public class StoreConsumptionTask implements Runnable, Closeable {
    */
   public void close() {
     boolean isStillRunning = isRunning.getAndSet(false);
-    if(isStillRunning && consumer != null){
+    if (isStillRunning && consumer != null) {
       // TODO : Consumer is not thread safe and close can be invoked on the other thread.
       // Need to use wakeup, which is not available in this version yet to make this
       // thread safe.
@@ -353,5 +360,4 @@ public class StoreConsumptionTask implements Runnable, Closeable {
   public boolean isRunning() {
     return isRunning.get();
   }
-
 }

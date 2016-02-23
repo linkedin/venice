@@ -1,5 +1,6 @@
 package com.linkedin.venice.kafka.consumer;
 
+import com.linkedin.venice.offsets.OffsetRecord;
 import java.util.Properties;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 
@@ -10,7 +11,7 @@ import org.apache.kafka.clients.consumer.ConsumerRecords;
 public interface VeniceConsumer<K,V> {
     public long getLastOffset(String topic, int partition);
 
-    public void subscribe(String topic, int partition);
+    public void subscribe(String topic, int partition, OffsetRecord offset);
 
     public void unSubscribe(String topic, int partition);
 

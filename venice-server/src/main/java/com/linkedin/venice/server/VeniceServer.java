@@ -72,12 +72,12 @@ public class VeniceServer {
 
     // Create and add OffSet Serfice.
 
-    AbstractVeniceService offSetService = new BdbOffsetManager(veniceConfigService.getVeniceClusterConfig());
+    BdbOffsetManager offSetService = new BdbOffsetManager(veniceConfigService.getVeniceClusterConfig());
     services.add(offSetService);
 
     //create and add KafkaSimpleConsumerService
     KafkaConsumerPerStoreService kafkaConsumerService =
-        new KafkaConsumerPerStoreService(storeRepository, veniceConfigService);
+        new KafkaConsumerPerStoreService(storeRepository, veniceConfigService, offSetService);
     services.add(kafkaConsumerService);
 
     // Start venice participant service if Helix is enabled.
