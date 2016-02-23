@@ -28,7 +28,7 @@ public class Instance {
         this.nodeId = nodeId;
         this.host = host;
         validatePort("http port", httpPort);
-        //TODO validate admin port after Helix team add customized K-V data support.
+        validatePort("admin port",adminPort);
         this.adminPort = adminPort;
         this.httpPort = httpPort;
     }

@@ -10,11 +10,32 @@ import java.util.List;
  * further, if Venice need more flexibility to manage cluster, some update/delete methods could be added here.
  */
 public interface RoutingDataRepository {
+    /**
+     * Query instances that belong to given resource and partition.
+     * @param resourceName
+     * @param partitionId
+     * @return
+     */
     public List<Instance> getInstances(String resourceName, int partitionId);
 
+    /**
+     * Query Ids of partitions that belong to given resource.
+     * @param resourceName
+     * @return
+     */
     public List<Integer> getPartitionIds(String resourceName);
 
-    public List<Partition> getPartitions(String resoursName);
+    /**
+     * Query all partitions that belong to given resource.
+     * @param resourceName
+     * @return
+     */
+    public List<Partition> getPartitions(String resourceName);
 
-    public int getPartitionNumber(String resourceName);
+    /**
+     * Query number of partition in given resource.
+     * @param resourceName
+     * @return
+     */
+    public int getNumberOfPartitions(String resourceName);
 }

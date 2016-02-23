@@ -119,7 +119,6 @@ public class VeniceServer {
       HelixParticipationService helixParticipationService =
           new HelixParticipationService(kafkaConsumerService, storeRepository, veniceConfigService,
               clusterConfig.getZookeeperAddress(), clusterConfig.getClusterName(),
-              HelixUtils.convertNodeIdToHelixParticipantName(veniceConfigService.getVeniceServerConfig().getNodeId()),
               Integer.valueOf(veniceConfigService.getVeniceServerConfig().getListenerPort()),
               Integer.valueOf(veniceConfigService.getVeniceServerConfig().getAdminPort()));
       services.add(helixParticipationService);

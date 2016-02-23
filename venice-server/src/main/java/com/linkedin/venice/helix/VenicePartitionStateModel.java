@@ -24,7 +24,7 @@ import org.apache.log4j.Logger;
  * there was some error while transitioning from one state to another.
  */
 
-@StateModelInfo(initialState = HelixState.OFFLINE_STATE, states = {HelixState.ONLINE_STATE, HelixState.CATCH_UP_STATE})
+@StateModelInfo(initialState = HelixState.OFFLINE_STATE, states = {HelixState.ONLINE_STATE})
 public class VenicePartitionStateModel extends StateModel {
     private static final Logger logger = Logger.getLogger(VenicePartitionStateModel.class.getName());
 
@@ -51,7 +51,7 @@ public class VenicePartitionStateModel extends StateModel {
     /**
      * Handles OFFLINE->ONLINE transition. Subscribes to the partition as part of the transition.
      */
-    @Transition(to = HelixState.OFFLINE_STATE, from = HelixState.ONLINE_STATE)
+    @Transition(to = HelixState.ONLINE_STATE, from = HelixState.OFFLINE_STATE)
     public void onBecomeOnlineFromOffline(Message message, NotificationContext context) {
         kafkaConsumerService.startConsumption(storeConfig, partition);
         AbstractStorageEngine storageEngine = storeRepository.getOrCreateLocalStorageEngine(storeConfig, partition);

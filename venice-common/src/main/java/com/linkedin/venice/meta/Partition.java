@@ -23,39 +23,41 @@ public class Partition {
      */
     private final int id;
     /**
-     * Name of partition.
+     * Name of resource that this partition belong to.
      */
     private final String resourceName;
     /**
-     * Replicas in this parition which hold the same data.
+     * Instances who hold the replicas of this partition.
      */
-    private final List<Instance> _instances;
+    private final List<Instance> instances;
 
     public Partition(int id, @NotNull String resourceNamename, @NotNull List<Instance> instances) {
         this.id = id;
         this.resourceName = resourceNamename;
-        this._instances = new ArrayList<>(instances);
-    }
-
-    public Partition(int id, @NotNull String name) {
-        this.id = id;
-        this.resourceName = name;
-        this._instances = new ArrayList<>();
+        this.instances = new ArrayList<>(instances);
     }
 
     public List<Instance> getInstances() {
-        return Collections.unmodifiableList(this._instances);
+        return Collections.unmodifiableList(this.instances);
     }
 
     public static String getPartitionName(String resourceName, int partitionId) {
         return resourceName + SEPARATOR + partitionId;
     }
 
-    public static int getParitionIdFromName(String partitionName) {
+    public static int getPartitionIdFromName(String partitionName) {
         try {
             return Integer.parseInt(partitionName.substring(partitionName.lastIndexOf(SEPARATOR) + 1));
         } catch (Throwable e) {
             throw new IllegalArgumentException("Partition name is invalid:" + partitionName);
         }
+    }
+
+    public int getId() {
+        return id;
+    }
+
+    public String getResourceName() {
+        return resourceName;
     }
 }

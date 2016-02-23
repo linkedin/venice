@@ -23,7 +23,7 @@ public class InMemoryStorageEngine extends AbstractStorageEngine {
     throws Exception {
     super(storeDef, partitionNodeAssignmentRepo, new ConcurrentHashMap<Integer, AbstractStoragePartition>());
 
-    initialStoreForPatitions(partitionNodeAssignmentRepo);
+    initialStoreForPartitions(partitionNodeAssignmentRepo);
   }
 
   @Override

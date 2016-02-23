@@ -35,12 +35,13 @@ public class HelixParticipationService extends AbstractVeniceService {
   private HelixManager manager;
 
   public HelixParticipationService(KafkaConsumerService kafkaConsumerService, StoreRepository storeRepository,
-      VeniceConfigService veniceConfigService, String zkAddress, String clusterName, String participantName, int
+      VeniceConfigService veniceConfigService, String zkAddress, String clusterName, int
       httpPort, int adminPort) {
 
     super(VENICE_PARTICIPANT_SERVICE_NAME);
     this.clusterName = clusterName;
-    this.participantName = participantName;
+    //The format of instance name must be "$host_$port", otherwise Helix can not get these information correctly.
+    this.participantName = Utils.getHostName()+"_"+httpPort;
     this.zkAddress = zkAddress;
     instance = new Instance(participantName,Utils.getHostName(),adminPort,httpPort);
     stateModelFactory
@@ -50,9 +51,8 @@ public class HelixParticipationService extends AbstractVeniceService {
   @Override
   public void startInner() {
     logger.info("Attempting to start HelixParticipation service");
-    //The format of instance name must be "$host_$port", otherwise Helix can not get these information correctly.
     manager = HelixManagerFactory
-            .getZKHelixManager(clusterName, instance.getHost() + "_" + instance.getHttpPort(), InstanceType.PARTICIPANT,
+            .getZKHelixManager(clusterName, this.participantName, InstanceType.PARTICIPANT,
                 zkAddress);
     manager.getStateMachineEngine().registerStateModelFactory(STATE_MODEL_REFERENCE_NAME, stateModelFactory);
     //TODO Now Helix instance config only support host and port. After talking to Helix team, they will add

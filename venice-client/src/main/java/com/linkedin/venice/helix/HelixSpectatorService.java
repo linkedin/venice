@@ -2,15 +2,9 @@ package com.linkedin.venice.helix;
 
 
 import com.linkedin.venice.service.AbstractVeniceService;
-import java.util.List;
-import org.apache.helix.HelixDataAccessor;
 import org.apache.helix.HelixManager;
 import org.apache.helix.InstanceType;
-import org.apache.helix.LiveInstanceChangeListener;
-import org.apache.helix.NotificationContext;
-import org.apache.helix.PropertyKey;
 import org.apache.helix.manager.zk.ZKHelixManager;
-import org.apache.helix.model.LiveInstance;
 
 
 /**
@@ -21,7 +15,7 @@ public class HelixSpectatorService extends AbstractVeniceService {
   private static final String VENICE_SPECTATOR_SERVICE_NAME = "venice-spectator-service";
   private HelixManager manager;
   private String clusterName;
-  private HelixRoutingDataRepostiory repository;
+  private HelixRoutingDataRepository repository;
 
   /*
   Create a com.linkedin.venice.helix.PartitionLookup and hold onto a reference to it.  Pass that object to the
@@ -31,7 +25,7 @@ public class HelixSpectatorService extends AbstractVeniceService {
   public HelixSpectatorService(String zkAddress, String clusterName, String instanceName) {
     super(VENICE_SPECTATOR_SERVICE_NAME);
     manager = new ZKHelixManager(clusterName, instanceName, InstanceType.SPECTATOR, zkAddress);
-    this.repository = new HelixRoutingDataRepostiory(manager);
+    this.repository = new HelixRoutingDataRepository(manager);
     this.clusterName = clusterName;
   }
 
@@ -53,7 +47,7 @@ public class HelixSpectatorService extends AbstractVeniceService {
     }
   }
 
-  public HelixRoutingDataRepostiory getRoutingDataRepository() {
+  public HelixRoutingDataRepository getRoutingDataRepository() {
     return this.repository;
   }
 }

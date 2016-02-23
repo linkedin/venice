@@ -65,7 +65,7 @@ public class VeniceReader<K, V> {
 
     List<Instance> instances;
     int partition;
-    int numberOfPartitions = spectatorService.getRoutingDataRepository().getPartitionNumber(storeName);
+    int numberOfPartitions = spectatorService.getRoutingDataRepository().getNumberOfPartitions(storeName);
     KafkaKey kafkaKey = new KafkaKey(null, keyBytes);
     partition = partitioner.getPartitionId(kafkaKey, numberOfPartitions);
     instances=spectatorService.getRoutingDataRepository().getInstances(storeName, partition);

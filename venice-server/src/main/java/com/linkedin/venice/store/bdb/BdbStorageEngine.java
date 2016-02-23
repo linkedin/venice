@@ -42,7 +42,7 @@ public class BdbStorageEngine extends AbstractStorageEngine {
     this.bdbServerConfig = storeDef.getBdbServerConfig();
     this.bdbRuntimeConfig = new BdbRuntimeConfig(bdbServerConfig);
     this.checkpointerOffForBatchWrites = bdbRuntimeConfig.isCheckpointerOffForBatchWrites();
-    initialStoreForPatitions(partitionNodeAssignmentRepo);
+    initialStoreForPartitions(partitionNodeAssignmentRepo);
   }
 
   @Override

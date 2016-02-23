@@ -5,17 +5,23 @@ import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.Partition;
 import com.linkedin.venice.meta.RoutingDataRepository;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.stream.Collectors;
 import javax.validation.constraints.NotNull;
+import org.apache.helix.HelixDataAccessor;
 import org.apache.helix.HelixManager;
 import org.apache.helix.NotificationContext;
+import org.apache.helix.PropertyKey;
 import org.apache.helix.model.ExternalView;
+import org.apache.helix.model.IdealState;
 import org.apache.helix.model.InstanceConfig;
+import org.apache.helix.model.LiveInstance;
 import org.apache.helix.spectator.RoutingTableProvider;
 import org.apache.log4j.Logger;
 
@@ -25,17 +31,27 @@ import org.apache.log4j.Logger;
  * <p>
  * As Helix RoutingTableProvider already cached routing data in local memory. Here we do not need to cache them again .
  * But as there is no way to get partition id list and partition number from RoutingTableProvider directly. this class
- * will cache the partition id list in local memory.
+ * will cache the partition id list in local memory. And get the partition number from Helix ideal state directly.
  */
 
-public class HelixRoutingDataRepostiory extends RoutingTableProvider implements RoutingDataRepository {
-    private static final Logger logger = Logger.getLogger(HelixRoutingDataRepostiory.class.getName());
-
+public class HelixRoutingDataRepository extends RoutingTableProvider implements RoutingDataRepository {
+    private static final Logger logger = Logger.getLogger(HelixRoutingDataRepository.class.getName());
+    /**
+     * Manager used to communicate with Ehlix.
+     */
     private final HelixManager manager;
+    /**
+     * Builder used to build the data path to access Helix internal data.
+     */
+    private final PropertyKey.Builder keyBuilder;
+    /**
+     * Reference of the map which contains relationship between resource and set of partition ids.
+     */
     private AtomicReference<Map<String, Set<Integer>>> resourceToPartitionIdsMap = new AtomicReference<>();
 
-    public HelixRoutingDataRepostiory(HelixManager manager) {
+    public HelixRoutingDataRepository(HelixManager manager) {
         this.manager = manager;
+        keyBuilder = new PropertyKey.Builder(manager.getClusterName());
     }
 
     public void init() {
@@ -58,10 +74,20 @@ public class HelixRoutingDataRepostiory extends RoutingTableProvider implements 
         logger.debug("Get instances of Resource:" + resourceName + ", Partition:" + partitionId + ", State:" + state);
         List<InstanceConfig> instanceConfigs =
             this.getInstances(resourceName, Partition.getPartitionName(resourceName, partitionId), state.toString());
-        List<Instance> instances = new ArrayList<>(instanceConfigs.size());
-        for (InstanceConfig config : instanceConfigs) {
-            instances.add(HelixInstanceConverter.convertZNRecordToInstance(config.getRecord()));
+        if(instanceConfigs.isEmpty()){
+            return Collections.emptyList();
         }
+        //Query live instances to get additional information live admin port.
+        List<PropertyKey> keys = new ArrayList<>(instanceConfigs.size());
+        for(InstanceConfig instanceConfig:instanceConfigs){
+            String instanceName = instanceConfig.getInstanceName();
+            keys.add(keyBuilder.liveInstance(instanceName));
+        }
+        List<LiveInstance> liveInstances = manager.getHelixDataAccessor().getProperty(keys);
+        List<Instance> instances = new ArrayList<>(liveInstances.size());
+        instances.addAll(liveInstances.stream()
+            .map(liveInstance -> HelixInstanceConverter.convertZNRecordToInstance(liveInstance.getRecord()))
+            .collect(Collectors.toList()));
         return instances;
     }
 
@@ -100,15 +126,17 @@ public class HelixRoutingDataRepostiory extends RoutingTableProvider implements 
     }
 
     @Override
-    public int getPartitionNumber(@NotNull String resourceName) {
-        Map<String, Set<Integer>> map = resourceToPartitionIdsMap.get();
-        if (map.containsKey(resourceName)) {
-            return map.get(resourceName).size();
-        } else {
+    public int getNumberOfPartitions(@NotNull String resourceName) {
+        // Number of partition should be get from ideal state configuration instead of getting from external view.
+        // Because if there is not participant in some partition, parition number in external view will be different from ideal state.
+        // But here the semantic should be give me the number of partition assigned when creating resource.
+        IdealState idealState = manager.getHelixDataAccessor().getProperty(keyBuilder.idealStates(resourceName));
+        if (idealState == null) {
             String errorMessage = "Resource:" + resourceName + " dose not exist";
             logger.warn(errorMessage);
             throw new IllegalArgumentException(errorMessage);
         }
+        return idealState.getNumPartitions();
     }
 
     @Override
@@ -118,7 +146,7 @@ public class HelixRoutingDataRepostiory extends RoutingTableProvider implements 
         for (ExternalView externalView : externalViewList) {
             HashSet<Integer> partitionIds = new HashSet<>();
             for (String partitionName : externalView.getPartitionSet()) {
-                partitionIds.add(Partition.getParitionIdFromName(partitionName));
+                partitionIds.add(Partition.getPartitionIdFromName(partitionName));
             }
             newResrouceToPartitionIdsMap.put(externalView.getResourceName(), partitionIds);
         }
