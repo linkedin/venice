@@ -87,7 +87,6 @@ public class VeniceConfigService {
   public static final String CLUSTER_NAME = "cluster.name";
   public static final String STORAGE_NODE_COUNT = "storage.node.count";
   public static final String DATA_BASE_PATH = "data.base.path";
-  public static final String PARTITION_NODE_ASSIGNMENT_SCHEME = "partition.node.assignment.scheme";
   public static final String ENABLE_KAFKA_CONSUMER_OFFSET_MANAGEMENT = "enable.kafka.consumers.offset.management";
   public static final String OFFSET_MANAGER_TYPE = "offset.manager.type";
   public static final String OFFSET_DATA_BASE_PATH = "offsets.data.base.path";
@@ -97,7 +96,7 @@ public class VeniceConfigService {
   public static final String HELIX_ENABLED = "helix.enabled";
   public static final String ZOOKEEPER_ADDRESS = "zookeeper.address";
   public static final Set<String> clusterSpecificProperties = new HashSet<String>(Arrays
-      .asList(CLUSTER_NAME, STORAGE_NODE_COUNT, PARTITION_NODE_ASSIGNMENT_SCHEME,
+      .asList(CLUSTER_NAME, STORAGE_NODE_COUNT,
           ENABLE_KAFKA_CONSUMER_OFFSET_MANAGEMENT, OFFSET_MANAGER_TYPE, OFFSET_DATA_BASE_PATH,
           OFFSET_MANAGER_FLUSH_INTERVAL_MS, ENABLE_CONSUMPTION_ACKS_FOR_AZKABAN_JOBS, KAFKA_CONSUMPTION_ACKS_BROKER_URL,
           HELIX_ENABLED, ZOOKEEPER_ADDRESS));
