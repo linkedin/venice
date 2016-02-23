@@ -9,6 +9,7 @@ import com.linkedin.venice.server.PartitionAssignmentRepository;
 import com.linkedin.venice.server.StoreRepository;
 import com.linkedin.venice.server.VeniceConfigService;
 import com.linkedin.venice.service.AbstractVeniceService;
+import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.Utils;
 import java.util.Collections;
 import java.util.HashMap;
@@ -96,7 +97,7 @@ public class KafkaConsumerPerStoreService extends AbstractVeniceService implemen
   @Override
   public void startInner() {
     logger.info("Enabling consumerExecutorService and kafka consumer tasks on node: " + nodeId);
-    consumerExecutorService = Executors.newCachedThreadPool();
+    consumerExecutorService = Executors.newCachedThreadPool(new DaemonThreadFactory("venice-consumer"));
     topicNameToKafkaMessageConsumptionTaskMap.values().forEach(consumerExecutorService::submit);
     canRunTasks.set(true);
     logger.info("Kafka consumer tasks started.");
