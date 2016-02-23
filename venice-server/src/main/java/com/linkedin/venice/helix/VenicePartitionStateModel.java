@@ -54,6 +54,7 @@ public class VenicePartitionStateModel extends StateModel {
     @Transition(to = HelixState.ONLINE_STATE, from = HelixState.OFFLINE_STATE)
     public void onBecomeOnlineFromOffline(Message message, NotificationContext context) {
         kafkaConsumerService.startConsumption(storeConfig, partition);
+        logger.info(storePartitionNodeDescription + " start consuming from Kafka.");
         AbstractStorageEngine storageEngine = storeRepository.getOrCreateLocalStorageEngine(storeConfig, partition);
         if (!storageEngine.containsPartition(partition)) {
             storageEngine.addStoragePartition(partition);
@@ -68,6 +69,7 @@ public class VenicePartitionStateModel extends StateModel {
     @Transition(to = HelixState.OFFLINE_STATE, from = HelixState.ONLINE_STATE)
     public void onBecomeOfflineFromOnline(Message message, NotificationContext context) {
         kafkaConsumerService.stopConsumption(storeConfig, partition);
+        logger.info(storePartitionNodeDescription + " stop consuming from Kafka.");
         logger.info(storePartitionNodeDescription + " becomes OFFLINE from ONLINE.");
     }
 
@@ -77,6 +79,7 @@ public class VenicePartitionStateModel extends StateModel {
      */
     @Transition(to = HelixState.DROPPED_STATE, from = HelixState.OFFLINE_STATE)
     public void onBecomeDroppedFromOffline(Message message, NotificationContext context) {
+        //TODO Add some control logic here to maintain storage engine to avoid mistake operations.
         storeRepository.getLocalStorageEngine(storeConfig.getStoreName()).removePartition(partition);
         logger.info(storePartitionNodeDescription + " becomes DROPPED from OFFLINE.");
     }

@@ -22,34 +22,25 @@ public class TestHelixMetadataRepository {
      * By default, this test is inactive. Because it depends on external zk process. It should be only used in
      * debugging.
      */
-    private boolean isActive = false;
+    private final boolean isEnable = false;
 
-    @BeforeTest
+    @BeforeTest(enabled = isEnable)
     public void zkSetup() {
-        if (!isActive) {
-            return;
-        }
         zkClient = new ZkClient(zkAddress, ZkClient.DEFAULT_SESSION_TIMEOUT, ZkClient.DEFAULT_CONNECTION_TIMEOUT,
             new HelixStoreSerializer(new StoreJSONSerializer()));
         zkClient.create(clusterPath, null, CreateMode.PERSISTENT);
         zkClient.create(clusterPath + storesPath, null, CreateMode.PERSISTENT);
     }
 
-    @AfterTest
+    @AfterTest(enabled = isEnable)
     public void zkCleanup() {
-        if (!isActive) {
-            return;
-        }
         zkClient.deleteRecursive(clusterPath);
         zkClient.delete(clusterPath);
         zkClient.close();
     }
 
-    @Test
+    @Test(enabled = isEnable)
     public void testAddAndReadStore() {
-        if (!isActive) {
-            return;
-        }
         HelixMetadataRepository repo = new HelixMetadataRepository(zkClient, clusterPath + storesPath);
         Store s1 = new Store("s1", "owner", System.currentTimeMillis());
         repo.addStore(s1);
@@ -57,11 +48,8 @@ public class TestHelixMetadataRepository {
         Assert.assertEquals(s1, s2);
     }
 
-    @Test
+    @Test(enabled = isEnable)
     public void testAddAndDeleteStore() {
-        if (!isActive) {
-            return;
-        }
         HelixMetadataRepository repo = new HelixMetadataRepository(zkClient, clusterPath + storesPath);
         Store s1 = new Store("s1", "owner", System.currentTimeMillis());
         repo.addStore(s1);

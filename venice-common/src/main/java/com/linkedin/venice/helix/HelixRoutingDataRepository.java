@@ -29,15 +29,19 @@ import org.apache.log4j.Logger;
 /**
  * Get routing data from Helix and convert it to our Venice partition and replica objects.
  * <p>
- * As Helix RoutingTableProvider already cached routing data in local memory. Here we do not need to cache them again .
- * But as there is no way to get partition id list and partition number from RoutingTableProvider directly. this class
- * will cache the partition id list in local memory. And get the partition number from Helix ideal state directly.
+ * Although Helix RoutingTableProvider already cached routing data in local memory. But it only gets data from
+ * /$cluster/EXTERNALVIEW and /$cluster/CONFIGS/PARTICIPANTS. Two parts of data are missed: Additional data in
+ * /$cluster/LIVEINSTANCES and partition number in /$cluster/IDEALSTATE. So we cached Venice partitions and instances
+ * here to include all of them and also convert them from Helix data structure to Venice data strcuture.
+ * <p>
+ * As this repository is used by Router, so here only cached the online instance at first. If Venice needs some more
+ * instances in other state, could add them in the further.
  */
 
 public class HelixRoutingDataRepository extends RoutingTableProvider implements RoutingDataRepository {
     private static final Logger logger = Logger.getLogger(HelixRoutingDataRepository.class.getName());
     /**
-     * Manager used to communicate with Ehlix.
+     * Manager used to communicate with Helix.
      */
     private final HelixManager manager;
     /**
@@ -70,8 +74,21 @@ public class HelixRoutingDataRepository extends RoutingTableProvider implements 
         return getInstances(resourceName, partitionId, HelixState.ONLINE);
     }
 
+    /**
+     * Get instances from both local memory and ZK. Instance data is composed by two parts, one is the basic data from
+     * external view which is cached in local memory when each time RoutingTableProvider get the notification from ZK.
+     * Another one is the additional data from live instances. It will be get from ZK directly.
+     *
+     * @param resourceName
+     * @param partitionId
+     * @param state
+     *
+     * @return
+     */
     public List<Instance> getInstances(@NotNull String resourceName, int partitionId, HelixState state) {
         logger.debug("Get instances of Resource:" + resourceName + ", Partition:" + partitionId + ", State:" + state);
+        // Get instance configs which are cached in local memory when RoutingTableProvider getting the notification
+        // from ZK.
         List<InstanceConfig> instanceConfigs =
             this.getInstances(resourceName, Partition.getPartitionName(resourceName, partitionId), state.toString());
         if(instanceConfigs.isEmpty()){
@@ -83,6 +100,7 @@ public class HelixRoutingDataRepository extends RoutingTableProvider implements 
             String instanceName = instanceConfig.getInstanceName();
             keys.add(keyBuilder.liveInstance(instanceName));
         }
+        // Get live instance information from ZK.
         List<LiveInstance> liveInstances = manager.getHelixDataAccessor().getProperty(keys);
         List<Instance> instances = new ArrayList<>(liveInstances.size());
         instances.addAll(liveInstances.stream()

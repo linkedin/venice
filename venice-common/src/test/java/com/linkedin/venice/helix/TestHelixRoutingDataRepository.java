@@ -37,7 +37,7 @@ import org.testng.annotations.Test;
  */
 public class TestHelixRoutingDataRepository {
   //This unit test need a running zookeeper. So only for debugging, disable by default.
-  private boolean isEnable = false;
+  private final boolean isEnable = false;
   private HelixManager manager;
   private HelixManager controller;
   private HelixAdmin admin;
@@ -47,13 +47,9 @@ public class TestHelixRoutingDataRepository {
   private int httpPort = 1234;
   private int adminPort = 2345;
 
-  @BeforeTest
+  @BeforeTest(enabled = isEnable)
   public void HelixSetup()
       throws Exception {
-    if (!isEnable) {
-      return;
-    }
-
     admin = new ZKHelixAdmin(zkAddress);
     admin.addCluster(clusterName);
     HelixConfigScope configScope = new HelixConfigScopeBuilder(HelixConfigScope.ConfigScopeProperty.CLUSTER).
@@ -87,23 +83,17 @@ public class TestHelixRoutingDataRepository {
     Thread.sleep(1000l);
   }
 
-  @AfterTest
+  @AfterTest(enabled = isEnable)
   public void HelixCleanup() {
-    if (!isEnable) {
-      return;
-    }
     manager.disconnect();
     controller.disconnect();
     admin.dropCluster(clusterName);
     admin.close();
   }
 
-  @Test
+  @Test(enabled = isEnable)
   public void testGetPartitionIds()
       throws Exception {
-    if (!isEnable) {
-      return;
-    }
     HelixManager readManager =
         HelixManagerFactory.getZKHelixManager(clusterName, "reader", InstanceType.SPECTATOR, zkAddress);
     readManager.connect();
@@ -117,12 +107,9 @@ public class TestHelixRoutingDataRepository {
     readManager.disconnect();
   }
 
-  @Test
+  @Test(enabled = isEnable)
   public void testGetInstances()
       throws Exception {
-    if (!isEnable) {
-      return;
-    }
     HelixManager readManager =
         HelixManagerFactory.getZKHelixManager(clusterName, "reader", InstanceType.SPECTATOR, zkAddress);
     readManager.connect();
@@ -139,12 +126,9 @@ public class TestHelixRoutingDataRepository {
     readManager.disconnect();
   }
 
-  @Test
+  @Test(enabled = isEnable)
   public void testGetNumberOfPartitions()
       throws Exception {
-    if (!isEnable) {
-      return;
-    }
     HelixManager readManager =
         HelixManagerFactory.getZKHelixManager(clusterName, "reader", InstanceType.SPECTATOR, zkAddress);
     readManager.connect();
@@ -154,12 +138,9 @@ public class TestHelixRoutingDataRepository {
     readManager.disconnect();
   }
 
-  @Test
+  @Test(enabled = isEnable)
   public void testGetPartitions()
       throws Exception {
-    if (!isEnable) {
-      return;
-    }
     HelixManager readManager =
         HelixManagerFactory.getZKHelixManager(clusterName, "reader", InstanceType.SPECTATOR, zkAddress);
     readManager.connect();
