@@ -2,8 +2,6 @@ package com.linkedin.venice.storage;
 
 import com.linkedin.venice.config.VeniceServerConfig;
 import com.linkedin.venice.config.VeniceStoreConfig;
-import com.linkedin.venice.partition.AbstractPartitionNodeAssignmentScheme;
-import com.linkedin.venice.partition.ModuloPartitionNodeAssignmentScheme;
 import com.linkedin.venice.server.PartitionAssignmentRepository;
 import com.linkedin.venice.server.VeniceConfigService;
 import com.linkedin.venice.store.bdb.BdbStorageEngineFactory;
@@ -16,7 +14,6 @@ import java.util.Map;
 public class BdbStorageEngineTest extends AbstractStorageEngineTest {
 
   PartitionAssignmentRepository partitionAssignmentRepository;
-  AbstractPartitionNodeAssignmentScheme partitionNodeAssignmentScheme;
   VeniceConfigService veniceConfigService;
 
   public BdbStorageEngineTest()
@@ -39,12 +36,11 @@ public class BdbStorageEngineTest extends AbstractStorageEngineTest {
     String storeName = "testng-bdb";
     VeniceStoreConfig storeConfig = storeConfigs.get(storeName);
 
-    partitionNodeAssignmentScheme = new ModuloPartitionNodeAssignmentScheme();
     //populate partitionNodeAssignment
     partitionAssignmentRepository = new PartitionAssignmentRepository();
     int nodeId = 0;
-    partitionAssignmentRepository.setAssignment(storeName,
-        partitionNodeAssignmentScheme.getNodeToLogicalPartitionsMap(storeConfig).get(nodeId));
+    // only adding 1 partition, config indicates 5 partitions
+    partitionAssignmentRepository.addPartition(storeName, 0);
 
     VeniceServerConfig serverConfig = veniceConfigService.getVeniceServerConfig();
 
