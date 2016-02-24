@@ -1,6 +1,7 @@
 package com.linkedin.venice.meta;
 
 import java.util.List;
+import java.util.Map;
 
 
 /**
@@ -23,7 +24,7 @@ public interface RoutingDataRepository {
      * @param resourceName
      * @return
      */
-    public List<Partition> getPartitions(String resourceName);
+    public Map<Integer,Partition> getPartitions(String resourceName);
 
     /**
      * Query number of partition in given resource.

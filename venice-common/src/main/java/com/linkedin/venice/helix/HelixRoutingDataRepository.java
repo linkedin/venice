@@ -14,8 +14,8 @@ import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
+import java.util.stream.Collectors;
 import javax.validation.constraints.NotNull;
-import org.apache.commons.collections.map.HashedMap;
 import org.apache.helix.HelixManager;
 import org.apache.helix.NotificationContext;
 import org.apache.helix.PropertyKey;
@@ -51,7 +51,7 @@ public class HelixRoutingDataRepository extends RoutingTableProvider implements 
     /**
      * Reference of the map which contains relationship between resource and its partitions.
      */
-    private AtomicReference<Map<String,List<Partition>>> resourceToPartitionMap = new AtomicReference<>();
+    private AtomicReference<Map<String, Map<Integer, Partition>>> resourceToPartitionMap = new AtomicReference<>();
     /**
      * Map which contains relationship between resource and its number of partitions.
      */
@@ -64,13 +64,11 @@ public class HelixRoutingDataRepository extends RoutingTableProvider implements 
     public HelixRoutingDataRepository(HelixManager manager) {
         this.manager = manager;
         keyBuilder = new PropertyKey.Builder(manager.getClusterName());
-    }
-
-    public void init() {
+        resourceToPartitionMap.set(new HashMap());
+        resourceToNumberOfPartitionsMap = new HashMap<>();
         try {
-            resourceToPartitionMap.set(new HashedMap());
             manager.addExternalViewChangeListener(this);
-        } catch (Exception e) {
+        }catch(Exception e){
             String errorMessage = "Can not register routing table into Helix";
             logger.error(errorMessage, e);
             throw new VeniceException(errorMessage, e);
@@ -87,16 +85,15 @@ public class HelixRoutingDataRepository extends RoutingTableProvider implements 
      */
     public List<Instance> getInstances(@NotNull String resourceName, int partitionId) {
         logger.debug("Get instances of Resource:" + resourceName + ", Partition:" + partitionId);
-        Map<String, List<Partition>> map = resourceToPartitionMap.get();
+        Map<String, Map<Integer, Partition>> map = resourceToPartitionMap.get();
         if (map.containsKey(resourceName)) {
-            List<Partition> partitions = map.get(resourceName);
-            for(Partition partition:partitions){
-                if(partition.getId()==partitionId){
-                    return Collections.unmodifiableList(partition.getInstances());
-                }
+            Map<Integer, Partition> partitionsMap = map.get(resourceName);
+            if (partitionsMap.containsKey(partitionId)) {
+                return Collections.unmodifiableList(partitionsMap.get(partitionId).getInstances());
+            } else {
+                //Can not find partition by given partitionId.
+                return Collections.emptyList();
             }
-            //Can not find partition by given partitionId.
-            return Collections.emptyList();
         } else {
             String errorMessage = "Resource:" + resourceName + " dose not exist";
             logger.warn(errorMessage);
@@ -111,10 +108,10 @@ public class HelixRoutingDataRepository extends RoutingTableProvider implements 
      *
      * @return
      */
-    public List<Partition> getPartitions(@NotNull String resourceName) {
-        Map<String, List<Partition>> map = resourceToPartitionMap.get();
+    public Map<Integer, Partition> getPartitions(@NotNull String resourceName) {
+        Map<String, Map<Integer, Partition>> map = resourceToPartitionMap.get();
         if (map.containsKey(resourceName)) {
-            return Collections.unmodifiableList(map.get(resourceName));
+            return Collections.unmodifiableMap(map.get(resourceName));
         } else {
             String errorMessage = "Resource:" + resourceName + " dose not exist";
             logger.warn(errorMessage);
@@ -123,7 +120,7 @@ public class HelixRoutingDataRepository extends RoutingTableProvider implements 
     }
 
     /**
-     * Get number of partition from local memory at first. If it is not cached, query it from ZK and put it to local
+     * Get number of partition from local memory.
      * cache.
      *
      * @param resourceName
@@ -136,33 +133,23 @@ public class HelixRoutingDataRepository extends RoutingTableProvider implements 
             logger.warn(errorMessage);
             throw new IllegalArgumentException(errorMessage);
         }
-        //Use lock to avoid sending duplicated query to ZK.
         lock.lock();
         try {
             if (!resourceToNumberOfPartitionsMap.containsKey(resourceName)) {
-                // Number of partition should be get from ideal state configuration instead of getting from external view.
-                // Because if there is not participant in some partition, partition number in external view will be different from ideal state.
-                // But here the semantic should be give me the number of partition assigned when creating resource.
-                // As in Venice, the number of partition can not be modified after resource being created. So we do not listen the change of IDEASTATE to sync up.
-                IdealState idealState =
-                    manager.getHelixDataAccessor().getProperty(keyBuilder.idealStates(resourceName));
-                if (idealState == null) {
-                    String errorMessage = "Resource:" + resourceName + " dose not exist";
-                    logger.warn(errorMessage);
-                    throw new IllegalArgumentException(errorMessage);
-                }
-                resourceToNumberOfPartitionsMap.put(resourceName, idealState.getNumPartitions());
+                String errorMessage = "Resource:" + resourceName + " dose not exist";
+                logger.warn(errorMessage);
+                throw new IllegalArgumentException(errorMessage);
             }
+            return resourceToNumberOfPartitionsMap.get(resourceName);
         } finally {
             lock.unlock();
         }
-        return resourceToNumberOfPartitionsMap.get(resourceName);
     }
 
     @Override
     public void onExternalViewChange(List<ExternalView> externalViewList, NotificationContext changeContext) {
         super.onExternalViewChange(externalViewList, changeContext);
-        Map<String, List<Partition>> newResourceToPartitionMap = new HashMap<>();
+        Map<String, Map<Integer, Partition>> newResourceToPartitionMap = new HashMap<>();
 
         // Get live instance information from ZK.
         List<LiveInstance> liveInstances = manager.getHelixDataAccessor().getChildValues(keyBuilder.liveInstances());
@@ -172,10 +159,16 @@ public class HelixRoutingDataRepository extends RoutingTableProvider implements 
         }
 
         Set<String> deletedResourceNames = new HashSet<>(resourceToNumberOfPartitionsMap.keySet());
+        Set<String> addedResourceNames = new HashSet<>();
         for (ExternalView externalView : externalViewList) {
-            deletedResourceNames.remove(externalView.getResourceName());
+            if (!resourceToNumberOfPartitionsMap.containsKey(externalView.getResourceName())) {
+                addedResourceNames.add(externalView.getResourceName());
+            } else {
+                //Exists in current local cache, delete it from dletedResourceNames.
+                deletedResourceNames.remove(externalView.getResourceName());
+            }
             //Match live instances and convert them to Venice Instance.
-            List<Partition> partitions = new ArrayList<>();
+            Map<Integer, Partition> partitionsMap = new HashMap<>();
             for (String partitionName : externalView.getPartitionSet()) {
                 //Get instance to state map for this partition from local memory.
                 Map<String,String> instanceStateMap = externalView.getStateMap(partitionName);
@@ -187,17 +180,42 @@ public class HelixRoutingDataRepository extends RoutingTableProvider implements 
                         logger.warn("Can not found instance:"+instanceName+" in LIVEINSTANCES");
                     }
                 }
-                partitions.add(new Partition(Partition.getPartitionIdFromName(partitionName), externalView.getResourceName(),instances));
+                int partitionId=Partition.getPartitionIdFromName(partitionName);
+                partitionsMap.put(partitionId, new Partition(partitionId, externalView.getResourceName(),instances));
             }
-            newResourceToPartitionMap.put(externalView.getResourceName(),partitions);
+            newResourceToPartitionMap.put(externalView.getResourceName(), partitionsMap);
         }
         resourceToPartitionMap.set(newResourceToPartitionMap);
 
-        //Clear cached resourceToNumberOfPartition map
+        //Get number of partitions for new resources from ZK.
+        Map<String, Integer> newResourceNamesToNumberOfParitions = getNumberOfParitionsFromIdealState(addedResourceNames);
         lock.lock();
-        deletedResourceNames.forEach(deletedResourceNames::remove);
+        //Add new added resources.
+        resourceToNumberOfPartitionsMap.putAll(newResourceNamesToNumberOfParitions);
+        //Clear cached resourceToNumberOfPartition map
+        deletedResourceNames.forEach(resourceToNumberOfPartitionsMap::remove);
         lock.unlock();
+        logger.debug("Resources are added:" + addedResourceNames.toString());
+        logger.debug("Resources are deleted:" + deletedResourceNames.toString());
         logger.info("External view is changed.");
+    }
+
+    private Map<String, Integer> getNumberOfParitionsFromIdealState(Set<String> newResourceNames) {
+        List<PropertyKey> keys = newResourceNames.stream().map(keyBuilder::idealStates).collect(Collectors.toList());
+        // Number of partition should be get from ideal state configuration instead of getting from external view.
+        // Because if there is not participant in some partition, partition number in external view will be different from ideal state.
+        // But here the semantic should be give me the number of partition assigned when creating resource.
+        // As in Venice, the number of partition can not be modified after resource being created. So we do not listen the change of IDEASTATE to sync up.
+        List<IdealState> idealStates = manager.getHelixDataAccessor().getProperty(keys);
+        Map<String, Integer> newResourceNamesToNumberOfParitions = new HashMap<>();
+        for (IdealState idealState : idealStates) {
+            if (idealState == null) {
+                logger.warn("Some resource is deleted after getting the externalVeiwChanged event.");
+            } else {
+                newResourceNamesToNumberOfParitions.put(idealState.getResourceName(), idealState.getNumPartitions());
+            }
+        }
+        return newResourceNamesToNumberOfParitions;
     }
 
 }

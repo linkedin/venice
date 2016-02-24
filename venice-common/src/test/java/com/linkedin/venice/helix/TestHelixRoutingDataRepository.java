@@ -37,7 +37,7 @@ import org.testng.annotations.Test;
  */
 public class TestHelixRoutingDataRepository {
   //This unit test need a running zookeeper. So only for debugging, disable by default.
-  private final boolean isEnable = false;
+  private final boolean isEnable = true;
   private HelixManager manager;
   private HelixManager controller;
   private HelixAdmin admin;
@@ -98,7 +98,6 @@ public class TestHelixRoutingDataRepository {
         HelixManagerFactory.getZKHelixManager(clusterName, "reader", InstanceType.SPECTATOR, zkAddress);
     readManager.connect();
     HelixRoutingDataRepository repository = new HelixRoutingDataRepository(readManager);
-    repository.init();
 
     List<Instance> instances = repository.getInstances(resourceName, 0);
     Assert.assertEquals(1, instances.size());
@@ -125,7 +124,6 @@ public class TestHelixRoutingDataRepository {
         HelixManagerFactory.getZKHelixManager(clusterName, "reader", InstanceType.SPECTATOR, zkAddress);
     readManager.connect();
     HelixRoutingDataRepository repository = new HelixRoutingDataRepository(readManager);
-    repository.init();
     Assert.assertEquals(1, repository.getNumberOfPartitions(resourceName));
     //Participant become off=line.
     manager.disconnect();
@@ -133,7 +131,28 @@ public class TestHelixRoutingDataRepository {
     Thread.sleep(1000l);
     //Result should be same.
     Assert.assertEquals(1, repository.getNumberOfPartitions(resourceName));
+
     readManager.disconnect();
+  }
+  @Test(enabled = isEnable)
+  public void testGetNumberOfPartitionsWhenResourceDropped()
+      throws Exception {
+    HelixManager readManager =
+        HelixManagerFactory.getZKHelixManager(clusterName, "reader", InstanceType.SPECTATOR, zkAddress);
+    readManager.connect();
+    HelixRoutingDataRepository repository = new HelixRoutingDataRepository(readManager);
+    //Wait notification.
+    Thread.sleep(1000l);
+    admin.dropResource(clusterName, resourceName);
+    //Wait notification.
+    Thread.sleep(1000l);
+    try {
+      //Should not find the resource.
+      repository.getNumberOfPartitions(resourceName);
+      Assert.fail("IAE should be thrown because resource dose not exist now.");
+    }catch(IllegalArgumentException iae){
+      //expected
+    }
   }
 
   @Test(enabled = isEnable)
@@ -143,8 +162,7 @@ public class TestHelixRoutingDataRepository {
         HelixManagerFactory.getZKHelixManager(clusterName, "reader", InstanceType.SPECTATOR, zkAddress);
     readManager.connect();
     HelixRoutingDataRepository repository = new HelixRoutingDataRepository(readManager);
-    repository.init();
-    List<Partition> partitions = repository.getPartitions(resourceName);
+    Map<Integer, Partition> partitions = repository.getPartitions(resourceName);
     Assert.assertEquals(1, partitions.size());
     Assert.assertEquals(1, partitions.get(0).getInstances().size());
 
