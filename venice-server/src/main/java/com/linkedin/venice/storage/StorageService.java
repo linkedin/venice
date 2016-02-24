@@ -120,11 +120,12 @@ public class StorageService extends AbstractVeniceService {
       throws Exception {
     logger.info("Initializing stores:");
 
+    //TODO comment initialize codes here because Venice now do not need to initialize stores from config files
     /*Loop through the stores. Create the Factory if needed, open the storage engine and
      register it with the Store Repository*/
-    for (Map.Entry<String, VeniceStoreConfig> entry : veniceConfigService.getAllStoreConfigs().entrySet()) {
+    /*for (Map.Entry<String, VeniceStoreConfig> entry : veniceConfigService.getAllStoreConfigs().entrySet()) {
       openStore(entry.getValue());
-    }
+    }*/
 
     logger.info("All stores initialized");
   }
