@@ -92,22 +92,6 @@ public class TestHelixRoutingDataRepository {
   }
 
   @Test(enabled = isEnable)
-  public void testGetPartitionIds()
-      throws Exception {
-    HelixManager readManager =
-        HelixManagerFactory.getZKHelixManager(clusterName, "reader", InstanceType.SPECTATOR, zkAddress);
-    readManager.connect();
-    HelixRoutingDataRepository repository = new HelixRoutingDataRepository(readManager);
-    repository.init();
-
-    List<Integer> ids = repository.getPartitionIds(resourceName);
-    Assert.assertEquals(1, ids.size());
-    Assert.assertEquals(0, ids.get(0).intValue());
-
-    readManager.disconnect();
-  }
-
-  @Test(enabled = isEnable)
   public void testGetInstances()
       throws Exception {
     HelixManager readManager =
@@ -123,6 +107,14 @@ public class TestHelixRoutingDataRepository {
     Assert.assertEquals(httpPort, instance.getHttpPort());
     Assert.assertEquals(adminPort, instance.getAdminPort());
 
+    //Participant become off=line.
+    manager.disconnect();
+    //Wait notification.
+    Thread.sleep(1000l);
+    //No online instance now.
+    instances = repository.getInstances(resourceName, 0);
+    Assert.assertEquals(0,instances.size());
+
     readManager.disconnect();
   }
 
@@ -134,6 +126,12 @@ public class TestHelixRoutingDataRepository {
     readManager.connect();
     HelixRoutingDataRepository repository = new HelixRoutingDataRepository(readManager);
     repository.init();
+    Assert.assertEquals(1, repository.getNumberOfPartitions(resourceName));
+    //Participant become off=line.
+    manager.disconnect();
+    //Wait notification.
+    Thread.sleep(1000l);
+    //Result should be same.
     Assert.assertEquals(1, repository.getNumberOfPartitions(resourceName));
     readManager.disconnect();
   }
@@ -154,6 +152,14 @@ public class TestHelixRoutingDataRepository {
     Assert.assertEquals(Utils.getHostName(), instance.getHost());
     Assert.assertEquals(httpPort, instance.getHttpPort());
     Assert.assertEquals(adminPort, instance.getAdminPort());
+
+    //Participant become off=line.
+    manager.disconnect();
+    //Wait notification.
+    Thread.sleep(1000l);
+    partitions = repository.getPartitions(resourceName);
+    //No online partition now
+    Assert.assertEquals(0,partitions.size());
 
     readManager.disconnect();
   }

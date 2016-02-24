@@ -19,14 +19,6 @@ public interface RoutingDataRepository {
     public List<Instance> getInstances(String resourceName, int partitionId);
 
     /**
-     * Query Ids of partitions that belong to given resource. In the result, each partition must have at least one
-     * online instance.
-     * @param resourceName
-     * @return
-     */
-    public List<Integer> getPartitionIds(String resourceName);
-
-    /**
      * Query all partitions that belong to given resource.
      * @param resourceName
      * @return
