@@ -15,16 +15,17 @@ import com.linkedin.venice.store.AbstractStorageEngine;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.Utils;
 import java.io.Closeable;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.Map;
 import java.util.Properties;
 import java.util.Queue;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.Set;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
-import org.apache.kafka.clients.consumer.NoOffsetForPartitionException;
 import org.apache.log4j.Logger;
 
 
@@ -35,10 +36,11 @@ import org.apache.log4j.Logger;
 public class StoreConsumptionTask implements Runnable, Closeable {
 
   private static final Logger logger = Logger.getLogger(StoreConsumptionTask.class.getName());
+  private static final int UNSET_JOB_ID  = -1;
 
   private static final String CONSUMER_TASK_ID_FORMAT = "KafkaPerStoreConsumptionTask for " + "[ Node: %d, Topic: %s ]";
 
-  private static final int READ_CYCLE_DELAY_MS = 1000;
+  public static final int READ_CYCLE_DELAY_MS = 1000;
 
   private static final int MAX_RETRIES = 10;
 
@@ -49,9 +51,8 @@ public class StoreConsumptionTask implements Runnable, Closeable {
   private final StoreRepository storeRepository;
 
   private final String topic;
-  private final int nodeId;
 
-  private long jobId;
+  private long jobId = UNSET_JOB_ID;
   private long totalMessagesProcessed;
 
   private final String consumerTaskId;
@@ -66,7 +67,7 @@ public class StoreConsumptionTask implements Runnable, Closeable {
 
   // The source of truth for the currently subscribed partitions. The list maintained by the kafka consumer is not
   // always up to date because of the asynchronous nature of subscriptions of partitions in Kafka Consumer.
-  private final Map<Integer, OffsetRecord> partitionOffsets;
+  private final Map<Integer, Long> partitionOffsets;
 
   public StoreConsumptionTask(Properties kafkaConsumerProperties, StoreRepository storeRepository,
           OffsetManager offsetManager, VeniceNotifier notifier, int nodeId, String topic) {
@@ -76,11 +77,11 @@ public class StoreConsumptionTask implements Runnable, Closeable {
     this.offsetManager = offsetManager;
 
     this.topic = topic;
-    this.nodeId = nodeId;
 
     kafkaActionMessages = new ConcurrentLinkedQueue<>();
 
-    partitionOffsets = new ConcurrentHashMap<>();
+    // Should be accessed only from a single thread.
+    partitionOffsets = new HashMap<>();
 
     this.notifier = notifier;
     this.consumerTaskId = String.format(CONSUMER_TASK_ID_FORMAT, nodeId, topic);
@@ -109,14 +110,18 @@ public class StoreConsumptionTask implements Runnable, Closeable {
     kafkaActionMessages.add(new ControlMessage(ControlOperationType.RESET_OFFSET, topic, partition));
   }
 
+
   @Override
   /**
    * Polls the producer for new messages in an infinite loop and processes the new messages.
-   */ public void run() {
+   */
+  public void run() {
     logger.info("Running " + consumerTaskId);
 
     try {
       while (isRunning.get()) {
+        processKafkaActionMessages();
+
         if (partitionOffsets.size() > 0) {
           ConsumerRecords records = consumer.poll(READ_CYCLE_DELAY_MS);
           processTopicConsumerRecords(records);
@@ -124,9 +129,8 @@ public class StoreConsumptionTask implements Runnable, Closeable {
           // TODO : None of the partitions are consuming, probably the thread should die,
           // but not handled yet, thread should die and inform the ConsumerService to clean up handling the synchronization.
           logger.warn("No Partitions are subscribed to for store " + topic + " Case is not handled yet.. Please fix");
-          Utils.sleep(100);
+          Utils.sleep(READ_CYCLE_DELAY_MS);
         }
-        processKafkaActionMessages();
       }
     } catch (Exception e) {
       // TODO: Figure out how to notify Helix of replica's failure.
@@ -155,14 +159,13 @@ public class StoreConsumptionTask implements Runnable, Closeable {
         message.incrementAttempt();
         processKafkaActionMessage(message);
       } catch (Exception ex) {
-        if (message.getAttemptsCount() >= MAX_RETRIES) {
-          logger.info("Ignoring message:  " + message, ex);
-          removeMessage = true;
-        } else {
+        if (message.getAttemptsCount() < MAX_RETRIES) {
           logger.info("Error Processing message " + message , ex);
           // The message processing should be reattempted after polling
           // Fine to return here as this message should not be removed from the queue.
           removeMessage = false;
+        } else {
+          logger.info("Ignoring message:  " + message + " after retries " + message.getAttemptsCount(), ex);
         }
       }
       if (removeMessage) {
@@ -177,49 +180,110 @@ public class StoreConsumptionTask implements Runnable, Closeable {
     int partition = message.getPartition();
     switch (operation) {
       case SUBSCRIBE:
-        OffsetRecord record = offsetManager.getLastOffset(topic, partition);
-        partitionOffsets.put(partition, record);
-        consumer.subscribe(topic, partition, record);
         logger.info(consumerTaskId + " subscribed to: Topic " + topic + " Partition Id " + partition);
+        OffsetRecord record = offsetManager.getLastOffset(topic, partition);
+        partitionOffsets.put(partition, record.getOffset());
+        consumer.subscribe(topic, partition, record);
         break;
       case UNSUBSCRIBE:
+        logger.info(consumerTaskId + " UnSubscribed to: Topic " + topic + " Partition Id " + partition);
         partitionOffsets.remove(partition);
         consumer.unSubscribe(topic, partition);
-        logger.info(consumerTaskId + " UnSubscribed to: Topic " + topic + " Partition Id " + partition);
         break;
       case RESET_OFFSET:
-        if(partitionOffsets.containsKey(partition)) {
-          logger.error("Partition " + partition + " is not subscribed, subscribing first");
 
-        }
-        long newOffSet = consumer.resetOffset(topic, partition);
-        logger.info(consumerTaskId + " Reset OffSet : Topic " + topic + " Partition Id " + partition + " New Offset "
-                + newOffSet);
+        consumer.resetOffset(topic, partition);
+        logger.info(consumerTaskId + " Reset OffSet : Topic " + topic + " Partition Id " + partition );
         break;
       default:
         throw new UnsupportedOperationException(operation.name() + "not implemented.");
     }
   }
 
+  private boolean shouldProcessRecord(ConsumerRecord<KafkaKey, KafkaValue> record) {
+    String recordTopic = record.topic();
+    if(!topic.equals(recordTopic)) {
+      throw new VeniceMessageException(consumerTaskId + "Message retrieved from different topic. Expected " + this.topic + " Actual " + recordTopic);
+    }
+
+    int partitionId = record.partition();
+    Long lastOffset = partitionOffsets.get(partitionId);
+    if(lastOffset == null) {
+      logger.info("Skipping message as partition is not actively subscribed to anymore " + " topic " + topic + " Partition Id " + partitionId );
+      return false;
+    }
+
+    if(lastOffset >= record.offset()) {
+      logger.info(consumerTaskId + "The record was already processed Partition" + partitionId + " LastKnown " + lastOffset + " Current " + record.offset());
+      return false;
+    }
+
+    return true;
+  }
+
   private void processTopicConsumerRecords(ConsumerRecords records) {
     if (records == null) {
       logger.info(consumerTaskId + " received null ConsumerRecords");
+      return;
     }
-    if (records != null) {
-      Iterator recordsIterator = records.iterator();
-      while (recordsIterator.hasNext()) {
-        ConsumerRecord<KafkaKey, KafkaValue> record = (ConsumerRecord<KafkaKey, KafkaValue>) recordsIterator.next();
-        long readOffset = getLastOffset(record.topic(), record.partition());
-        if (record.offset() < readOffset) {
-          logger.error(consumerTaskId + " : Found an old offset: " + record.offset() + " Expecting: " + readOffset);
-          continue;
-        }
+
+    Iterator recordsIterator = records.iterator();
+    Set<Integer> processedPartitions = new HashSet<>();
+    while (recordsIterator.hasNext()) {
+      ConsumerRecord<KafkaKey, KafkaValue> record = (ConsumerRecord<KafkaKey, KafkaValue>) recordsIterator.next();
+      if(shouldProcessRecord(record)) {
         try {
           processConsumerRecord(record);
+          processedPartitions.add(record.partition());
+          partitionOffsets.put(record.partition(), record.offset());
         } catch (VeniceMessageException | UnsupportedOperationException ex) {
-          logger.error(consumerTaskId + " : Received an exception ! Skipping the message at offset " + readOffset, ex);
+          logger.error(consumerTaskId + " : Received an exception ! Skipping the message at partition " + record.partition() + " offset " + record.offset(), ex);
         }
       }
+    }
+
+    for(Integer partition: processedPartitions) {
+      long partitionOffset = partitionOffsets.get(partition);
+      OffsetRecord record = new OffsetRecord(partitionOffset);
+      offsetManager.recordOffset(this.topic, partition , record);
+      notifier.progress(jobId, topic, partition, partitionOffset);
+    }
+  }
+
+  private void processControlMessage(KafkaKey kafkaKey, int partition) {
+    ControlFlagKafkaKey controlKafkaKey = (ControlFlagKafkaKey) kafkaKey;
+    // TODO : jobId should not be handled directly here. It is a function of Data Ingestion Validation
+    // The jobId will be moved there when Data Ingestion Validation starts.
+    long currentJobId = controlKafkaKey.getJobId();
+     switch(kafkaKey.getOperationType()) {
+       case BEGIN_OF_PUSH :
+         if(jobId != UNSET_JOB_ID) {
+           logger.warn(
+                   consumerTaskId + " : Received new push job message while other job is still in progress. Partition "
+                           + partition);
+         }
+         jobId = currentJobId;
+         notifier.started(jobId, topic, partition);
+         totalMessagesProcessed = 0L; //Need to figure out what happens when multiple jobs are run parallely.
+         logger.info(consumerTaskId + " : Received Begin of push message from job id: " + jobId + "Setting count to "
+                 + totalMessagesProcessed);
+
+         break;
+       case END_OF_PUSH:
+         logger.info(consumerTaskId + " : Receive End of Pushes message. Consumed #records: " + totalMessagesProcessed
+                 + ", from job id: " + currentJobId + " Remembered Job Id " + jobId);
+
+         if (jobId == currentJobId) {  // check if the BOP job id matched EOP job id.
+           if (notifier != null) {
+             notifier.completed(jobId, topic, partition, totalMessagesProcessed);
+           } else {
+             logger.warn(" Received end of Push for a different Job Id. Expected " + jobId + " Actual " + currentJobId);
+           }
+         }
+         jobId = UNSET_JOB_ID;
+         break;
+       default:
+         throw new VeniceMessageException("Unrecognized Control message type " + kafkaKey.getOperationType());
     }
   }
 
@@ -233,31 +297,14 @@ public class StoreConsumptionTask implements Runnable, Closeable {
     KafkaKey kafkaKey = record.key();
     KafkaValue kafkaValue = record.value();
 
+    if( OperationType.isControlOperation(kafkaKey.getOperationType())) {
+      processControlMessage(kafkaKey , record.partition());
+      return;
+    }
+
     if (null == kafkaValue) {
-      throw new VeniceMessageException(consumerTaskId + " : Given null Venice Message.");
-    }
-
-    if (kafkaKey.getOperationType() == OperationType.BEGIN_OF_PUSH) {
-      ControlFlagKafkaKey controlKafkaKey = (ControlFlagKafkaKey) kafkaKey;
-      jobId = controlKafkaKey.getJobId();
-      totalMessagesProcessed = 0L; //Need to figure out what happens when multiple jobs are run parallely.
-      logger.info(consumerTaskId + " : Received Begin of push message from job id: " + jobId + "Setting count to "
-              + totalMessagesProcessed);
-      return; // Its fine to return here, since this is just a control message.
-    }
-    if (kafkaKey.getOperationType() == OperationType.END_OF_PUSH) {
-      ControlFlagKafkaKey controlKafkaKey = (ControlFlagKafkaKey) kafkaKey;
-      long currentJobId = controlKafkaKey.getJobId();
-      logger.info(consumerTaskId + " : Receive End of Pushes message. Consumed #records: " + totalMessagesProcessed
-                      + ", from job id: " + currentJobId + " Remembered Job Id " + jobId);
-
-      if (jobId == currentJobId) {  // check if the BOP job id matched EOP job id.
-        // TODO need to handle the case when multiple jobs are run in parallel.
-        if (notifier != null) {
-          notifier.completed(jobId, topic, record.partition(), totalMessagesProcessed);
-        }
-      }
-      return; // Its fine to return here, since this is just a control message.
+      throw new VeniceMessageException(consumerTaskId + " : Given null Venice Message. Partition " +
+              record.partition() + " Offset " + record.offset());
     }
 
     try {
@@ -320,24 +367,6 @@ public class StoreConsumptionTask implements Runnable, Closeable {
         throw new VeniceMessageException(
                 consumerTaskId + " : Invalid/Unrecognized operation type submitted: " + kafkaValue.getOperationType());
     }
-  }
-
-  /**
-   * @param topic Kafka Topic to which the partition belongs.
-   * @param partition Kafka Partition for which the offset is required.
-   *
-   * @return 1. Valid offset for the given topic-partition for the group id to which the consumer is registered. (OR)
-   * -1 if: 1) the offset management is not enabled or 2) has issues or if the consumer is new.
-   */
-  private long getLastOffset(String topic, int partition) {
-    long offset = -1;
-    try {
-      consumer.getLastOffset(topic, partition);
-      logger.info(consumerTaskId + " : Last known read offset for " + topic + "-" + partition + ": " + offset);
-    } catch (NoOffsetForPartitionException ex) {
-      logger.info(consumerTaskId + " : No offset found for " + topic + "-" + partition);
-    }
-    return offset;
   }
 
   /**

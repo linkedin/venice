@@ -1,6 +1,9 @@
 package com.linkedin.venice.message;
 
 import com.linkedin.venice.exceptions.VeniceMessageException;
+import java.util.HashMap;
+import java.util.Map;
+
 
 /**
  * Enum which declares the possible types of operation supported by Venice.
@@ -11,43 +14,36 @@ import com.linkedin.venice.exceptions.VeniceMessageException;
  * For Kafka value, we need ways to distinguish between PUT and DELETE. So we have separate enums for them.
  */
 public enum OperationType {
-    WRITE, PARTIAL_WRITE, PUT, DELETE, BEGIN_OF_PUSH, END_OF_PUSH;
+  WRITE(0), PARTIAL_WRITE(1), PUT(2), DELETE(3), BEGIN_OF_PUSH(4), END_OF_PUSH(5);
 
-    public static byte getByteCode(OperationType operationType) {
-        switch (operationType) {
-            case WRITE:
-                return 0;
-            case PARTIAL_WRITE:
-                return 1;
-            case PUT:
-                return 2;
-            case DELETE:
-                return 3;
-            case BEGIN_OF_PUSH:
-                return 4;
-            case END_OF_PUSH:
-                return 5;
-            default:
-                throw new VeniceMessageException("Invalid operation type: " + operationType.toString());
-        }
-    }
+  private byte value;
 
-    public static OperationType getOperationType(byte opCode) {
-        switch (opCode) {
-            case 0:
-                return WRITE;
-            case 1:
-                return PARTIAL_WRITE;
-            case 2:
-                return PUT;
-            case 3:
-                return DELETE;
-            case 4:
-                return BEGIN_OF_PUSH;
-            case 5:
-                return END_OF_PUSH;
-            default:
-                throw new VeniceMessageException("Invalid opcode for operation type: " + opCode);
-        }
+  OperationType(int value) {
+    this.value = (byte) value;
+  }
+
+  public static byte getByteCode(OperationType operationType) {
+    return operationType.value;
+  }
+
+  private static final Map<Byte, OperationType> intToTypeMap = new HashMap<>();
+
+  static {
+    for (OperationType type : OperationType.values()) {
+      intToTypeMap.put(type.value, type);
     }
+  }
+
+  public static OperationType getOperationType(byte opCode) {
+    OperationType type = intToTypeMap.get(Byte.valueOf(opCode));
+    if (type == null) {
+      throw new VeniceMessageException("Invalid opcode for operation type: " + opCode);
+    }
+    return type;
+  }
+
+  public static boolean isControlOperation(OperationType type) {
+    return type == BEGIN_OF_PUSH || type == END_OF_PUSH;
+  }
+
 }

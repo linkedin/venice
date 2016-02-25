@@ -38,7 +38,7 @@ import org.testng.annotations.Test;
 @PrepareForTest({StoreConsumptionTask.class, ApacheKafkaConsumer.class})
 public class StoreConsumptionTaskTest extends PowerMockTestCase {
 
-  public static final int TIMEOUT = 1000;
+  public static final int TIMEOUT = 2 * StoreConsumptionTask.READ_CYCLE_DELAY_MS;
   private KafkaConsumer mockKafkaConsumer;
   private StoreRepository mockStoreRepository;
   private VeniceNotifier mockNotifier;
@@ -111,8 +111,6 @@ public class StoreConsumptionTaskTest extends PowerMockTestCase {
      */
     mockStoreConsumptionTask.resetPartitionConsumptionOffset(topic, testPartition);
     Mockito.verify(mockKafkaConsumer, Mockito.timeout(TIMEOUT).times(1)).seekToBeginning(testTopicPartition);
-    Mockito.verify(mockKafkaConsumer, Mockito.timeout(TIMEOUT).times(1)).commit(Mockito.anyMap(),
-        Mockito.eq(CommitType.SYNC));
 
     // Verifies KafkaPerStoreConsumptionTask#unSubscribePartition invokes KafkaConsumer#unsubscribe with expected arguments.
     mockStoreConsumptionTask.unSubscribePartition(topic, testPartition);
@@ -149,9 +147,9 @@ public class StoreConsumptionTaskTest extends PowerMockTestCase {
     ConsumerRecords testPollConsumerRecords = new ConsumerRecords(mockPollResult);
 
     // Prepare the mockKafkaConsumer to send the test poll results.
-    PowerMockito.when(mockKafkaConsumer.poll(Mockito.anyLong())).thenReturn(testPollConsumerRecords);
+    PowerMockito.doReturn(testPollConsumerRecords).when(mockKafkaConsumer).poll(Mockito.anyLong());
     // Prepare mockStoreRepository to send a mock storage engine.
-    PowerMockito.when(mockStoreRepository.getLocalStorageEngine(topic)).thenReturn(mockAbstractStorageEngine);
+    PowerMockito.doReturn(mockAbstractStorageEngine).when(mockStoreRepository).getLocalStorageEngine(topic);
 
     // MockKafkaConsumer is prepared. Schedule for polling.
     Future testSubscribeTaskFuture = taskPollingService.submit(testSubscribeTask);

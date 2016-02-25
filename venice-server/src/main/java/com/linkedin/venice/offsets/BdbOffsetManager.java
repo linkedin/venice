@@ -151,7 +151,7 @@ public class BdbOffsetManager extends AbstractVeniceService implements OffsetMan
       }
       // TODO: Need to remove this block later - end
     } catch (DatabaseException e) {
-      logger.error("Error in put for BDB database " + OFFSETS_STORE_NAME, e);
+      logger.error("Error in put for BDB database " + OFFSETS_STORE_NAME + " Key " + keyStr, e);
       throw new VeniceException(e);
     }
   }
@@ -175,7 +175,7 @@ public class BdbOffsetManager extends AbstractVeniceService implements OffsetMan
         return OffsetRecord.NON_EXISTENT_OFFSET;
       }
     } catch (DatabaseException e) {
-      logger.error(e);
+      logger.error("Error retrieving offset for Topic " + topicName + " and partition" + partitionId, e);
       throw new VeniceException(e);
     }
   }

@@ -25,9 +25,12 @@ public class ApacheKafkaConsumer implements VeniceConsumer {
         this.kafkaConsumer = new KafkaConsumer(props);
     }
 
-    @Override
-    public long getLastOffset(String topic, int partition) {
-        return kafkaConsumer.committed(new TopicPartition(topic, partition));
+    private void seek(TopicPartition topicPartition , OffsetRecord offset) {
+        if(offset.getOffset() == 0) {
+            kafkaConsumer.seekToBeginning(topicPartition);
+        } else {
+            kafkaConsumer.seek(topicPartition, offset.getOffset());
+        }
     }
 
     @Override
@@ -39,7 +42,7 @@ public class ApacheKafkaConsumer implements VeniceConsumer {
             List<TopicPartition> topicPartitionList = new ArrayList<>(topicPartitionSet);
             topicPartitionList.add(topicPartition);
             kafkaConsumer.assign(topicPartitionList);
-            kafkaConsumer.seek(topicPartition, offset.getOffset());
+            seek(topicPartition, offset);
         }
     }
 
@@ -57,23 +60,11 @@ public class ApacheKafkaConsumer implements VeniceConsumer {
     }
 
     @Override
-    public long resetOffset(String topic, int partition) {
+    public void resetOffset(String topic, int partition) {
+        // It intentionally throws an error when offset was reset for a topic
+        // that is not subscribed to.
         TopicPartition topicPartition = new TopicPartition(topic, partition);
-        kafkaConsumer.seekToBeginning(topicPartition);
-        long beginningOffSet = kafkaConsumer.position(topicPartition);
-
-        // Commit the beginning offset to prevent the use of old committed offset.
-        Map<TopicPartition, Long> offsetMap = new HashMap<>();
-        offsetMap.put(topicPartition, beginningOffSet);
-        kafkaConsumer.commit(offsetMap, CommitType.SYNC);
-
-        return beginningOffSet;
-    }
-
-    @Override
-    public void seek(String topic, int partition, long newOffset) {
-        TopicPartition topicPartition = new TopicPartition(topic, partition);
-        kafkaConsumer.seek(topicPartition, newOffset);
+        seek(topicPartition, OffsetRecord.NON_EXISTENT_OFFSET);
     }
 
     @Override

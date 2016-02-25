@@ -5,6 +5,7 @@ import com.linkedin.venice.controller.VeniceStateModel;
 import com.linkedin.venice.kafka.consumer.KafkaConsumerService;
 import com.linkedin.venice.server.StoreRepository;
 import com.linkedin.venice.store.AbstractStorageEngine;
+import javax.validation.constraints.NotNull;
 import org.apache.helix.HelixDefinedState;
 import org.apache.helix.NotificationContext;
 import org.apache.helix.model.Message;
@@ -36,9 +37,8 @@ public class VenicePartitionStateModel extends StateModel {
     private final StoreRepository storeRepository;
     private final String storePartitionNodeDescription;
 
-    public VenicePartitionStateModel(KafkaConsumerService kafkaConsumerService, StoreRepository storeRepository,
-        VeniceStoreConfig storeConfig, int partition) {
-
+    public VenicePartitionStateModel(@NotNull KafkaConsumerService kafkaConsumerService,
+            @NotNull StoreRepository storeRepository, @NotNull VeniceStoreConfig storeConfig, int partition) {
         this.storeConfig = storeConfig;
         this.partition = partition;
         this.storeRepository = storeRepository;
@@ -53,14 +53,20 @@ public class VenicePartitionStateModel extends StateModel {
      */
     @Transition(to = HelixState.ONLINE_STATE, from = HelixState.OFFLINE_STATE)
     public void onBecomeOnlineFromOffline(Message message, NotificationContext context) {
-        kafkaConsumerService.startConsumption(storeConfig, partition);
-        logger.info(storePartitionNodeDescription + " start consuming from Kafka.");
+        logEntry(HelixState.OFFLINE, HelixState.ONLINE, message, context);
+
         AbstractStorageEngine storageEngine = storeRepository.getOrCreateLocalStorageEngine(storeConfig, partition);
-        if (!storageEngine.containsPartition(partition)) {
+
+        boolean isPartitionPresent = storageEngine.containsPartition(partition);
+        if (isPartitionPresent == false) {
             storageEngine.addStoragePartition(partition);
+        }
+
+        kafkaConsumerService.startConsumption(storeConfig, partition);
+        if(isPartitionPresent == false) {
             kafkaConsumerService.resetConsumptionOffset(storeConfig, partition);
         }
-        logger.info(storePartitionNodeDescription + " becomes ONLINE from OFFLINE.");
+        logCompletion(HelixState.OFFLINE, HelixState.ONLINE, message, context);
     }
 
     /**
@@ -68,9 +74,19 @@ public class VenicePartitionStateModel extends StateModel {
      */
     @Transition(to = HelixState.OFFLINE_STATE, from = HelixState.ONLINE_STATE)
     public void onBecomeOfflineFromOnline(Message message, NotificationContext context) {
+        logEntry(HelixState.ONLINE, HelixState.OFFLINE, message, context);
         kafkaConsumerService.stopConsumption(storeConfig, partition);
-        logger.info(storePartitionNodeDescription + " stop consuming from Kafka.");
-        logger.info(storePartitionNodeDescription + " becomes OFFLINE from ONLINE.");
+        logCompletion(HelixState.ONLINE, HelixState.OFFLINE, message, context);
+
+    }
+
+    private void removePartitionFromStore( ) {
+        AbstractStorageEngine storageEngine = storeRepository.getLocalStorageEngine(storeConfig.getStoreName());
+        if(storageEngine != null) {
+            storageEngine.removePartition(partition);
+        } else {
+            logger.info(storePartitionNodeDescription + " Store could not be located, ignoring the message ." + storeConfig.getStoreName() );
+        }
     }
 
     /**
@@ -80,8 +96,9 @@ public class VenicePartitionStateModel extends StateModel {
     @Transition(to = HelixState.DROPPED_STATE, from = HelixState.OFFLINE_STATE)
     public void onBecomeDroppedFromOffline(Message message, NotificationContext context) {
         //TODO Add some control logic here to maintain storage engine to avoid mistake operations.
-        storeRepository.getLocalStorageEngine(storeConfig.getStoreName()).removePartition(partition);
-        logger.info(storePartitionNodeDescription + " becomes DROPPED from OFFLINE.");
+        logEntry(HelixState.OFFLINE, HelixState.DROPPED, message, context);
+        removePartitionFromStore();
+        logCompletion(HelixState.OFFLINE, HelixState.DROPPED, message, context);
     }
 
     /**
@@ -89,8 +106,9 @@ public class VenicePartitionStateModel extends StateModel {
      */
     @Transition(to = HelixState.OFFLINE_STATE, from = HelixState.ERROR_STATE)
     public void onBecomeOfflineFromError(Message message, NotificationContext context) {
+        logEntry(HelixState.ERROR, HelixState.OFFLINE, message, context);
         kafkaConsumerService.stopConsumption(storeConfig, partition);
-        logger.info(storePartitionNodeDescription + " becomes OFFLINE from ERROR.");
+        logCompletion(HelixState.ERROR, HelixState.OFFLINE, message, context);
     }
 
     /**
@@ -100,10 +118,21 @@ public class VenicePartitionStateModel extends StateModel {
     @Override
     @Transition(to = HelixState.DROPPED_STATE, from = HelixState.ERROR_STATE)
     public void onBecomeDroppedFromError(Message message, NotificationContext context) {
+        logEntry(HelixState.ERROR, HelixState.DROPPED, message, context);
         kafkaConsumerService.stopConsumption(storeConfig, partition);
-        storeRepository.getLocalStorageEngine(storeConfig.getStoreName()).removePartition(partition);
-        logger.warn(
-            storePartitionNodeDescription + " becomes DROPPED from ERROR transition invoked with message: " + message
-                + " and context: " + context);
+        removePartitionFromStore();
+        logCompletion(HelixState.ERROR, HelixState.DROPPED, message, context);
+    }
+
+    private void logEntry(HelixState from, HelixState to, Message message, NotificationContext context) {
+        logger.info(storePartitionNodeDescription + " initiating transition from " + from.toString() + " to " + to
+                .toString() + " Store " + storeConfig.getStoreName() + " Partition " + partition +
+                " invoked with Message " + message + " and context " + context);
+    }
+
+    private void logCompletion(HelixState from, HelixState to, Message message, NotificationContext context) {
+        logger.info(storePartitionNodeDescription + " completed transition from " + from.toString() + " to "
+                + to.toString() + " Store " + storeConfig.getStoreName() + " Partition " + partition +
+                " invoked with Message " + message + " and context " + context);
     }
 }

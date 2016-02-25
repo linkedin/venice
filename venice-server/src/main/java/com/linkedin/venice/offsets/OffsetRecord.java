@@ -16,6 +16,10 @@ public class OffsetRecord {
         }
     }
 
+    public OffsetRecord(long offset) {
+        this(offset, System.currentTimeMillis());
+    }
+
     public OffsetRecord(long offset, long recordedTime) {
         validateOffSet(offset);
         this.offset = offset;
