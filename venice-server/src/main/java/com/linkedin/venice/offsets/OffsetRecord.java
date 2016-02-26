@@ -8,6 +8,8 @@ public class OffsetRecord {
     private final long eventTimeEpochMs;
     private final long processingTimeEpochMs;
 
+    public static final OffsetRecord NON_EXISTENT_OFFSET = new OffsetRecord(0,0);
+
     private void validateOffSet(long offset) {
         if(offset < 0) {
             throw new IllegalArgumentException("Invalid OffSet " + offset);
@@ -22,19 +24,17 @@ public class OffsetRecord {
     }
 
     /**
-     *
      * @param bytes to deserialize from
-     * @param offset starting offset in the bytes from which this object can be constructed
      *
-     *TODO Get rid of second parameter offset if we knw 0 is always the starting index of the bytes to be deserialized.
+     * TODO Get rid of second parameter offset if we knw 0 is always the starting index of the bytes to be de serialized.
      */
-    public OffsetRecord(byte[] bytes, int offset) {
-        if (bytes == null || bytes.length <= offset) {
+    public OffsetRecord(byte[] bytes) {
+        if (bytes == null || bytes.length < 3*ByteUtils.SIZE_OF_LONG) {
             throw new IllegalArgumentException("Invalid byte array for serialization - no bytes to read");
         }
-        this.offset = ByteUtils.readLong(bytes, offset);
-        this.eventTimeEpochMs = ByteUtils.readLong(bytes, offset + ByteUtils.SIZE_OF_LONG);
-        this.processingTimeEpochMs = ByteUtils.readLong(bytes, offset + 2*ByteUtils.SIZE_OF_LONG);
+        this.offset = ByteUtils.readLong(bytes, 0);
+        this.eventTimeEpochMs = ByteUtils.readLong(bytes, ByteUtils.SIZE_OF_LONG);
+        this.processingTimeEpochMs = ByteUtils.readLong(bytes, 2*ByteUtils.SIZE_OF_LONG);
 
         validateOffSet(offset);
     }

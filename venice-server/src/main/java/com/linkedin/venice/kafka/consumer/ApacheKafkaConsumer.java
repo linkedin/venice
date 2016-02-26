@@ -1,5 +1,6 @@
 package com.linkedin.venice.kafka.consumer;
 
+import com.linkedin.venice.offsets.OffsetRecord;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -30,7 +31,7 @@ public class ApacheKafkaConsumer implements VeniceConsumer {
     }
 
     @Override
-    public void subscribe(String topic, int partition) {
+    public void subscribe(String topic, int partition, OffsetRecord offset) {
         TopicPartition topicPartition = new TopicPartition(topic, partition);
 
         Set<TopicPartition> topicPartitionSet = kafkaConsumer.assignment();
@@ -38,6 +39,7 @@ public class ApacheKafkaConsumer implements VeniceConsumer {
             List<TopicPartition> topicPartitionList = new ArrayList<>(topicPartitionSet);
             topicPartitionList.add(topicPartition);
             kafkaConsumer.assign(topicPartitionList);
+            kafkaConsumer.seek(topicPartition, offset.getOffset());
         }
     }
 
@@ -56,7 +58,6 @@ public class ApacheKafkaConsumer implements VeniceConsumer {
 
     @Override
     public long resetOffset(String topic, int partition) {
-        subscribe(topic, partition);
         TopicPartition topicPartition = new TopicPartition(topic, partition);
         kafkaConsumer.seekToBeginning(topicPartition);
         long beginningOffSet = kafkaConsumer.position(topicPartition);

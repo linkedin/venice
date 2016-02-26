@@ -111,13 +111,18 @@ public class BdbOffsetManager extends AbstractVeniceService implements OffsetMan
     }
   }
 
+  private String formatKey(String topic, int partitionId) {
+    return topic + "_" + partitionId;
+  }
+
   @Override
   public void recordOffset(String topicName, int partitionId, OffsetRecord record)
       throws VeniceException {
     //assumes that the offset is not negative. Checked by the caller
-    String keyStr = topicName + "_" + partitionId;
+
     byte[] value = record.toBytes();
 
+    String keyStr = formatKey(topicName , partitionId);
     DatabaseEntry keyEntry = new DatabaseEntry(keyStr.getBytes());
     DatabaseEntry valueEntry = new DatabaseEntry(value);
     try {
@@ -154,27 +159,24 @@ public class BdbOffsetManager extends AbstractVeniceService implements OffsetMan
   @Override
   public OffsetRecord getLastOffset(String topicName, int partitionId)
       throws VeniceException {
-
     /**
      * This method will return null if last offset is not found.
      */
-    String keyStr = topicName + "_" + partitionId;
-
+    String keyStr = formatKey(topicName , partitionId);
     DatabaseEntry keyEntry = new DatabaseEntry(keyStr.getBytes());
     DatabaseEntry valueEntry = new DatabaseEntry();
 
     try {
       OperationStatus status = offsetsBdbDatabase.get(null, keyEntry, valueEntry, LockMode.READ_UNCOMMITTED);
       if (OperationStatus.SUCCESS == status) {
-        return new OffsetRecord(valueEntry.getData(), 0);
+        return new OffsetRecord(valueEntry.getData());
       } else {
         // case when the key (topic,partition)  does not exist
-        return null;
+        return OffsetRecord.NON_EXISTENT_OFFSET;
       }
     } catch (DatabaseException e) {
       logger.error(e);
       throw new VeniceException(e);
     }
   }
-
 }

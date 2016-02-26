@@ -23,9 +23,7 @@ public class VeniceClusterConfig {
             "bdb", BdbStorageEngineFactory.class.getName());
 
     private String clusterName;
-    private int storageNodeCount;
     protected String dataBasePath;
-    private String partitionNodeAssignmentSchemeName;
     private boolean enableKafkaConsumersOffsetManagement;
     private String offsetManagerType = null;
     private String offsetDatabasePath = null;
@@ -40,10 +38,6 @@ public class VeniceClusterConfig {
 
     private String persistenceType;
 
-    private String kafkaZookeeperUrl;
-    private List<String> kafkaBrokers;
-    // assumes that all kafka brokers listen on the same port
-    private int kafkaBrokerPort;
     // SimpleConsumer fetch buffer size.
     private int fetchBufferSize;
     // SimpleConsumer socket timeout.
@@ -70,7 +64,6 @@ public class VeniceClusterConfig {
     protected void checkProperties(Props clusterProps)
             throws ConfigurationException {
         clusterName = clusterProps.getString(VeniceConfigService.CLUSTER_NAME);
-        storageNodeCount = clusterProps.getInt(VeniceConfigService.STORAGE_NODE_COUNT, 1);     // Default 1
 
         enableKafkaConsumersOffsetManagement =
                 clusterProps.getBoolean(VeniceConfigService.ENABLE_KAFKA_CONSUMER_OFFSET_MANAGEMENT, false);
@@ -99,16 +92,6 @@ public class VeniceClusterConfig {
             throw new ConfigurationException("unknown persistence type: " + persistenceType);
         }
 
-        kafkaBrokers = clusterProps.getList(VeniceConfigService.KAFKA_BROKERS);
-        if (kafkaBrokers == null || kafkaBrokers.isEmpty()) {
-            throw new ConfigurationException("kafkaBrokers can't be empty");
-        }
-        //TODO different brokers may use different ports.  Will necessarily be true if we run multiple local brokers for testing
-        kafkaBrokerPort = clusterProps.getInt(VeniceConfigService.KAFKA_BROKER_PORT);
-        if (kafkaBrokerPort < 0) {
-            throw new ConfigurationException("KafkaBrokerPort can't be negative");
-            // TODO additional checks for valid port ?
-        }
         kafkaBootstrapServers = clusterProps.getString(VeniceConfigService.KAFKA_BOOTSTRAP_SERVERS);
         if (kafkaBootstrapServers == null || kafkaBootstrapServers.isEmpty()) {
             throw new ConfigurationException("kafkaBootstrapServers can't be empty");
@@ -124,10 +107,6 @@ public class VeniceClusterConfig {
 
     public String getClusterName() {
         return clusterName;
-    }
-
-    public int getStorageNodeCount() {
-        return storageNodeCount;
     }
 
     public boolean isEnableKafkaConsumersOffsetManagement() {
@@ -174,20 +153,12 @@ public class VeniceClusterConfig {
         return persistenceType;
     }
 
-    public List<String> getKafkaBrokers() {
-        return kafkaBrokers;
-    }
-
     public String getKafkaBootstrapServers() {
         return kafkaBootstrapServers;
     }
 
     public boolean kafkaEnableAutoOffsetCommit() {
         return kafkaEnableAutoOffsetCommit;
-    }
-
-    public int getKafkaBrokerPort() {
-        return kafkaBrokerPort;
     }
 
     public int getFetchBufferSize() {

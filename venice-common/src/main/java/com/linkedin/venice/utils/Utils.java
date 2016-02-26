@@ -184,4 +184,12 @@ public class Utils {
     return hostName;
   }
 
+  public static void sleep(long millis) {
+    try {
+      Thread.sleep(millis);
+    } catch ( InterruptedException e) {
+
+    }
+  }
+
 }

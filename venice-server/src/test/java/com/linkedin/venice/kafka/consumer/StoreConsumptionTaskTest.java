@@ -3,6 +3,9 @@ package com.linkedin.venice.kafka.consumer;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.message.KafkaValue;
 import com.linkedin.venice.message.OperationType;
+import com.linkedin.venice.offsets.BdbOffsetManager;
+import com.linkedin.venice.offsets.OffsetManager;
+import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.server.StoreRepository;
 import com.linkedin.venice.store.AbstractStorageEngine;
 import java.util.ArrayList;
@@ -40,6 +43,7 @@ public class StoreConsumptionTaskTest extends PowerMockTestCase {
   private StoreRepository mockStoreRepository;
   private VeniceNotifier mockNotifier;
   private Properties mockKafkaConsumerProperties;
+  private OffsetManager mockOffSetRecord;
   private AbstractStorageEngine mockAbstractStorageEngine;
 
   private ExecutorService taskPollingService;
@@ -70,11 +74,13 @@ public class StoreConsumptionTaskTest extends PowerMockTestCase {
     mockNotifier = PowerMockito.mock(KafkaNotifier.class);
     mockKafkaConsumerProperties = PowerMockito.mock(Properties.class);
     mockAbstractStorageEngine = PowerMockito.mock(AbstractStorageEngine.class);
+    mockOffSetRecord = PowerMockito.mock(OffsetManager.class);
+    PowerMockito.doReturn(OffsetRecord.NON_EXISTENT_OFFSET).when(mockOffSetRecord).getLastOffset(topic, testPartition);
 
     PowerMockito.whenNew(KafkaConsumer.class).withParameterTypes(Properties.class)
         .withArguments(mockKafkaConsumerProperties).thenReturn(mockKafkaConsumer);
 
-    return new StoreConsumptionTask(mockKafkaConsumerProperties, mockStoreRepository,
+    return new StoreConsumptionTask(mockKafkaConsumerProperties, mockStoreRepository, mockOffSetRecord,
             mockNotifier, nodeId, topic);
   }
 

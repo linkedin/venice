@@ -3,6 +3,7 @@ package com.linkedin.venice.kafka.consumer;
 import com.linkedin.venice.config.VeniceServerConfig;
 import com.linkedin.venice.config.VeniceStoreConfig;
 import com.linkedin.venice.kafka.partitioner.PartitionZeroPartitioner;
+import com.linkedin.venice.offsets.OffsetManager;
 import com.linkedin.venice.serialization.KafkaKeySerializer;
 import com.linkedin.venice.serialization.KafkaValueSerializer;
 import com.linkedin.venice.server.PartitionAssignmentRepository;
@@ -44,6 +45,7 @@ public class KafkaConsumerPerStoreService extends AbstractVeniceService implemen
   private final VeniceConfigService veniceConfigService;
 
   private final VeniceNotifier notifier;
+  private final OffsetManager offsetManager;
 
   /**
    * A repository mapping each Kafka Topic to it corresponding Consumption task responsible
@@ -56,14 +58,15 @@ public class KafkaConsumerPerStoreService extends AbstractVeniceService implemen
   private ExecutorService consumerExecutorService;
 
   // Need to make sure that the service has started before start running KafkaConsumptionTask.
-  private final AtomicBoolean canRunTasks;
+  private final AtomicBoolean isRunning;
 
-  public KafkaConsumerPerStoreService(StoreRepository storeRepository, VeniceConfigService veniceConfigService) {
+  public KafkaConsumerPerStoreService(StoreRepository storeRepository, VeniceConfigService veniceConfigService, OffsetManager offsetManager) {
     super(VENICE_SERVICE_NAME);
     this.storeRepository = storeRepository;
+    this.offsetManager = offsetManager;
 
     this.topicNameToKafkaMessageConsumptionTaskMap = Collections.synchronizedMap(new HashMap<>());
-    canRunTasks = new AtomicBoolean(false);
+    isRunning = new AtomicBoolean(false);
 
     this.veniceConfigService = veniceConfigService;
 
@@ -99,7 +102,7 @@ public class KafkaConsumerPerStoreService extends AbstractVeniceService implemen
     logger.info("Enabling consumerExecutorService and kafka consumer tasks on node: " + nodeId);
     consumerExecutorService = Executors.newCachedThreadPool(new DaemonThreadFactory("venice-consumer"));
     topicNameToKafkaMessageConsumptionTaskMap.values().forEach(consumerExecutorService::submit);
-    canRunTasks.set(true);
+    isRunning.set(true);
     logger.info("Kafka consumer tasks started.");
   }
 
@@ -120,7 +123,7 @@ public class KafkaConsumerPerStoreService extends AbstractVeniceService implemen
 
   private StoreConsumptionTask getConsumerTask(VeniceStoreConfig veniceStore) {
     return new StoreConsumptionTask(getKafkaConsumerProperties(veniceStore), storeRepository,
-            notifier, nodeId, veniceStore.getStoreName());
+            offsetManager , notifier, nodeId, veniceStore.getStoreName());
   }
 
   /**
@@ -130,7 +133,7 @@ public class KafkaConsumerPerStoreService extends AbstractVeniceService implemen
   @Override
   public void stopInner() {
     logger.info("Shutting down Kafka consumer service for node: " + nodeId);
-    canRunTasks.set(false);
+    isRunning.set(false);
 
     topicNameToKafkaMessageConsumptionTaskMap.values().forEach(StoreConsumptionTask::close);
 
@@ -163,7 +166,7 @@ public class KafkaConsumerPerStoreService extends AbstractVeniceService implemen
     if(consumerTask == null || !consumerTask.isRunning()) {
       consumerTask = getConsumerTask(veniceStore);
       topicNameToKafkaMessageConsumptionTaskMap.put(topic, consumerTask);
-      if(canRunTasks.get()) {
+      if(isRunning.get()) {
         consumerExecutorService.submit(consumerTask);
       }
     }
