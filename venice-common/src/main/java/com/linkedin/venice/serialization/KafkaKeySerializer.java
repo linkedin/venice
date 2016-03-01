@@ -6,7 +6,6 @@ import com.linkedin.venice.message.ControlFlagKafkaKey;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.message.OperationType;
 import java.util.Map;
-import org.apache.kafka.common.serialization.Deserializer;
 import org.apache.log4j.Logger;
 
 import java.io.*;
@@ -118,7 +117,7 @@ public class KafkaKeySerializer implements VeniceSerializer<KafkaKey> {
       }
 
       /* write Operation Type byte */
-      objectOutputStream.writeByte(OperationType.getByteCode(opType));
+      objectOutputStream.writeByte(OperationType.getValue(opType));
 
       /* Write jobID if its a control message */
       if(opType == OperationType.BEGIN_OF_PUSH || opType == OperationType.END_OF_PUSH){

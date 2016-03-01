@@ -5,7 +5,6 @@ import com.linkedin.venice.exceptions.VeniceMessageException;
 import com.linkedin.venice.message.KafkaValue;
 import com.linkedin.venice.message.OperationType;
 import java.util.Map;
-import org.apache.kafka.common.serialization.Deserializer;
 import org.apache.log4j.Logger;
 
 import java.io.*;
@@ -127,7 +126,7 @@ public class KafkaValueSerializer implements VeniceSerializer<KafkaValue> {
 
       /* write operation type */
       // serialize the operation type enum
-      byte opTypeByte = OperationType.getByteCode(kafkaValue.getOperationType());
+      byte opTypeByte = OperationType.getValue(kafkaValue.getOperationType());
 
       objectOutputStream.writeByte(opTypeByte);
 

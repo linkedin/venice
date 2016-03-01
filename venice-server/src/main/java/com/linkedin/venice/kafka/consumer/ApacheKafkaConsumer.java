@@ -26,7 +26,7 @@ public class ApacheKafkaConsumer implements VeniceConsumer {
     }
 
     private void seek(TopicPartition topicPartition , OffsetRecord offset) {
-        if(offset.getOffset() == 0) {
+        if(offset.getOffset() == OffsetRecord.LOWEST_OFFSET) {
             kafkaConsumer.seekToBeginning(topicPartition);
         } else {
             kafkaConsumer.seek(topicPartition, offset.getOffset());

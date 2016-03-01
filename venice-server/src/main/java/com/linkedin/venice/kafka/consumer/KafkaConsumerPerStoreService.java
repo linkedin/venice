@@ -78,7 +78,7 @@ public class KafkaConsumerPerStoreService extends AbstractVeniceService implemen
       Properties ackKafkaProps = getAcksKafkaProducerProperties(serverConfig);
       notifier = new KafkaNotifier(ACK_PARTITION_CONSUMPTION_KAFKA_TOPIC , ackKafkaProps , nodeId);
     } else {
-      notifier = null;
+      notifier = new LogNotifier();
     }
   }
 

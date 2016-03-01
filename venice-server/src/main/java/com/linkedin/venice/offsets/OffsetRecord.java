@@ -8,10 +8,12 @@ public class OffsetRecord {
     private final long eventTimeEpochMs;
     private final long processingTimeEpochMs;
 
-    public static final OffsetRecord NON_EXISTENT_OFFSET = new OffsetRecord(0,0);
+    // Offset 0 is still a valid offset, Using that will cause a message to be skipped.
+    public static final long LOWEST_OFFSET = -1;
+    public static final OffsetRecord NON_EXISTENT_OFFSET = new OffsetRecord(LOWEST_OFFSET,0);
 
     private void validateOffSet(long offset) {
-        if(offset < 0) {
+        if(offset < LOWEST_OFFSET) {
             throw new IllegalArgumentException("Invalid OffSet " + offset);
         }
     }

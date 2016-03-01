@@ -36,7 +36,13 @@ import org.apache.log4j.Logger;
 public class StoreConsumptionTask implements Runnable, Closeable {
 
   private static final Logger logger = Logger.getLogger(StoreConsumptionTask.class.getName());
+
+  /* Each Venice message is associated with a job ID. Start and end of each push are denoted
+  by job Ids which are valid. UNSET_JOB_ID constant is used for error checking. JobId is used for
+   tracking and this will be eventually replaced/moved by the Data Ingestion Validation.
+   */
   private static final int UNSET_JOB_ID  = -1;
+  private long jobId = UNSET_JOB_ID;
 
   private static final String CONSUMER_TASK_ID_FORMAT = "KafkaPerStoreConsumptionTask for " + "[ Node: %d, Topic: %s ]";
 
@@ -52,7 +58,6 @@ public class StoreConsumptionTask implements Runnable, Closeable {
 
   private final String topic;
 
-  private long jobId = UNSET_JOB_ID;
   private long totalMessagesProcessed;
 
   private final String consumerTaskId;
@@ -274,11 +279,9 @@ public class StoreConsumptionTask implements Runnable, Closeable {
                  + ", from job id: " + currentJobId + " Remembered Job Id " + jobId);
 
          if (jobId == currentJobId) {  // check if the BOP job id matched EOP job id.
-           if (notifier != null) {
-             notifier.completed(jobId, topic, partition, totalMessagesProcessed);
-           } else {
-             logger.warn(" Received end of Push for a different Job Id. Expected " + jobId + " Actual " + currentJobId);
-           }
+           notifier.completed(jobId, topic, partition, totalMessagesProcessed);
+         } else {
+           logger.warn(" Received end of Push for a different Job Id. Expected " + jobId + " Actual " + currentJobId);
          }
          jobId = UNSET_JOB_ID;
          break;

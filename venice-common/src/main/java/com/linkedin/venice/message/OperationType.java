@@ -22,7 +22,7 @@ public enum OperationType {
     this.value = (byte) value;
   }
 
-  public static byte getByteCode(OperationType operationType) {
+  public static byte getValue(OperationType operationType) {
     return operationType.value;
   }
 
@@ -34,10 +34,10 @@ public enum OperationType {
     }
   }
 
-  public static OperationType getOperationType(byte opCode) {
-    OperationType type = intToTypeMap.get(Byte.valueOf(opCode));
+  public static OperationType getOperationType(byte value) {
+    OperationType type = intToTypeMap.get(Byte.valueOf(value));
     if (type == null) {
-      throw new VeniceMessageException("Invalid opcode for operation type: " + opCode);
+      throw new VeniceMessageException("Invalid opcode for operation type: " + value);
     }
     return type;
   }
