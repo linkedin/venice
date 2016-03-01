@@ -1,6 +1,5 @@
 package com.linkedin.venice.controller.server;
 
-import com.linkedin.venice.config.VeniceStorePartitionInformation;
 import com.linkedin.venice.controller.Admin;
 import io.netty.buffer.ByteBuf;
 import io.netty.channel.Channel;
@@ -48,6 +47,8 @@ public class Handler extends SimpleChannelInboundHandler<HttpObject> {
   private static final Logger logger = Logger.getLogger(Handler.class.getName());
 
   public static final String NAME = "storename";
+  public static final String OWNER = "owner";
+  public static final String VERSION = "version";
   public static final String PARTITIONS = "partitions";
   public static final String REPLICAS = "replicas";
 
@@ -131,13 +132,15 @@ public class Handler extends SimpleChannelInboundHandler<HttpObject> {
         }
         if (attributes.containsKey(NAME) && attributes.containsKey(PARTITIONS) && attributes.containsKey(REPLICAS)){
           try {
-            VeniceStorePartitionInformation storeInfo =
-                new VeniceStorePartitionInformation(
-                    attributes.get(NAME),
-                    Integer.valueOf(attributes.get(PARTITIONS)),
-                    Integer.valueOf(attributes.get(REPLICAS)));
+            String storeName=attributes.get(NAME);
+            String owner=attributes.getOrDefault(OWNER,"venice-dev");
+            int version=Integer.valueOf(attributes.getOrDefault(VERSION, "1"));
+            int numberOfPartition = Integer.valueOf(attributes.get(PARTITIONS));
+            int replicaFactor = Integer.valueOf(attributes.get(REPLICAS));
             responseContent.append("Creating Store.\r\n");
-            admin.addStore(clusterName, storeInfo);
+            //create store and versions
+            admin.addStore(clusterName,storeName,owner);
+            admin.addVersion(clusterName,storeName,version,numberOfPartition,replicaFactor);
           } catch (NumberFormatException e) {
             responseContent.append(("Partition count and replica count must be integers"));
           }

@@ -40,4 +40,30 @@ class HelixStoreDataChangedListener implements IZkDataListener {
         }
         listener.handleStoreDeleted(dataPath.substring(dataPath.lastIndexOf('/') + 1));
     }
+
+    // Here, equals and hashcode method is needed to override, because when un-subscribe from zk, we need to find the
+    // listener which is equaled to listener used in subscribing.
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) {
+            return true;
+        }
+        if (o == null || getClass() != o.getClass()) {
+            return false;
+        }
+
+        HelixStoreDataChangedListener that = (HelixStoreDataChangedListener) o;
+
+        if (!storePath.equals(that.storePath)) {
+            return false;
+        }
+        return listener.equals(that.listener);
+    }
+
+    @Override
+    public int hashCode() {
+        int result = storePath.hashCode();
+        result = 31 * result + listener.hashCode();
+        return result;
+    }
 }

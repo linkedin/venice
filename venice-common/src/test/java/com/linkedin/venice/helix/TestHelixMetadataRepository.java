@@ -16,13 +16,14 @@ import org.testng.annotations.Test;
 public class TestHelixMetadataRepository {
     private String zkAddress = "localhost:2181";
     private ZkClient zkClient;
+    private String cluster = "test-metadata-cluster";
     private String clusterPath = "/test-metadata-cluster";
     private String storesPath = "/stores";
     /**
      * By default, this test is inactive. Because it depends on external zk process. It should be only used in
      * debugging.
      */
-    private final boolean isEnable = false;
+    private final boolean isEnable = true;
 
     @BeforeTest(enabled = isEnable)
     public void zkSetup() {
@@ -41,7 +42,7 @@ public class TestHelixMetadataRepository {
 
     @Test(enabled = isEnable)
     public void testAddAndReadStore() {
-        HelixMetadataRepository repo = new HelixMetadataRepository(zkClient, clusterPath + storesPath);
+        HelixMetadataRepository repo = new HelixMetadataRepository(zkClient, cluster);
         Store s1 = new Store("s1", "owner", System.currentTimeMillis());
         repo.addStore(s1);
         Store s2 = repo.getStore("s1");
@@ -50,7 +51,7 @@ public class TestHelixMetadataRepository {
 
     @Test(enabled = isEnable)
     public void testAddAndDeleteStore() {
-        HelixMetadataRepository repo = new HelixMetadataRepository(zkClient, clusterPath + storesPath);
+        HelixMetadataRepository repo = new HelixMetadataRepository(zkClient, cluster);
         Store s1 = new Store("s1", "owner", System.currentTimeMillis());
         repo.addStore(s1);
         repo.deleteStore("s1");

@@ -6,6 +6,7 @@ import com.linkedin.venice.meta.ReadStrategy;
 import com.linkedin.venice.meta.RoutingStrategy;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreSerializer;
+import com.linkedin.venice.meta.Version;
 import java.io.IOException;
 import org.codehaus.jackson.annotate.JsonCreator;
 import org.codehaus.jackson.annotate.JsonProperty;
@@ -20,6 +21,7 @@ public class StoreJSONSerializer implements StoreSerializer {
 
     public StoreJSONSerializer() {
         mapper.getDeserializationConfig().addMixInAnnotations(Store.class, StoreSerializerMixin.class);
+        mapper.getDeserializationConfig().addMixInAnnotations(Version.class,VersionSerializerMixin.class);
     }
 
     @Override
@@ -39,7 +41,7 @@ public class StoreJSONSerializer implements StoreSerializer {
     }
 
     /**
-     * Mixin use to add the annotation to figure out the constructor used by Jackson lib when deserialize.
+     * Mixin used to add the annotation to figure out the constructor used by Jackson lib when deserialize the store.
      */
     public static class StoreSerializerMixin {
         @JsonCreator
@@ -49,6 +51,17 @@ public class StoreJSONSerializer implements StoreSerializer {
             @JsonProperty("routingStrategy") RoutingStrategy routingStrategy,
             @JsonProperty("readStrategy") ReadStrategy readStrategy,
             @JsonProperty("offLinePushStrategy") OfflinePushStrategy offlinePushStrategy) {
+
+        }
+    }
+
+    /**
+     * Mixin used to add the annotation to figure out the constructor used by Jackson lib when deserialize the version
+     */
+    public static class VersionSerializerMixin {
+        @JsonCreator
+        public VersionSerializerMixin(@JsonProperty("storeName") String storeName,
+            @JsonProperty("number") int number, @JsonProperty("createdTime") long createdTime) {
 
         }
     }

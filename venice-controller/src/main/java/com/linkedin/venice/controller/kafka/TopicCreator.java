@@ -1,6 +1,5 @@
 package com.linkedin.venice.controller.kafka;
 
-import com.linkedin.venice.config.VeniceStorePartitionInformation;
 import java.util.Properties;
 import kafka.admin.AdminUtils;
 import kafka.common.TopicExistsException;
@@ -45,9 +44,4 @@ public class TopicCreator {
       zkClient.close();
     }
   }
-
-  public void createTopic(VeniceStorePartitionInformation storeInfo){
-    createTopic(storeInfo.getStoreName(),storeInfo.getPartitionsCount(), storeInfo.getReplicationFactor());
-  }
-
 }

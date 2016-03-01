@@ -70,7 +70,7 @@ public class HelixRoutingDataRepository extends RoutingTableProvider implements 
      * This method is used to add listener after HelixManager being connected. Otherwise, it will met error because adding
      * listener before connecting.
      */
-    public void init() {
+    public void start() {
         try {
             resourceToPartitionMap.set(new HashMap());
             manager.addExternalViewChangeListener(this);

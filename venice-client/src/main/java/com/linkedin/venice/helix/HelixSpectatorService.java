@@ -33,7 +33,7 @@ public class HelixSpectatorService extends AbstractVeniceService {
   public void startInner() {
     try {
       manager.connect();
-      repository.init();
+      repository.start();
     } catch (Exception e) {
       e.printStackTrace();
       throw new RuntimeException(e);

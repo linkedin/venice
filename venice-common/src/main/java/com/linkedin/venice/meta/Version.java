@@ -96,9 +96,11 @@ public class Version{
     /**
      * Kafka topic name is composed by store name and version.
      *
+     * The Json deserializer will think it should be a filed called kafkaTopicName if we use "getKafkaTopicName" here. So use "kafkaTopicName" directly here to avoid error when deserialize.
+     *
      * @return kafka topic name.
      */
-    public String getKafkaTopicName() {
+    public String kafkaTopicName() {
         return storeName + number;
     }
 }

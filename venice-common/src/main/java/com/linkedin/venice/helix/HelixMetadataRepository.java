@@ -17,6 +17,7 @@ import org.apache.log4j.Logger;
 public class HelixMetadataRepository implements MetadataRepository {
     private static final Logger logger = Logger.getLogger(HelixMetadataRepository.class.getName());
 
+    private static final HelixStoreSerializer DEFAULT_SERIALIZER = new HelixStoreSerializer(new StoreJSONSerializer());
     /**
      * Data accessor of Zookeeper
      */
@@ -26,8 +27,20 @@ public class HelixMetadataRepository implements MetadataRepository {
      */
     protected final String rootPath;
 
-    public HelixMetadataRepository(@NotNull ZkClient zkClient, @NotNull String rootPath) {
-        this.rootPath = rootPath;
+    /**
+     * This constructor is used out of the package. We don't want to expose HelixStoreSerializer out of current package.
+     * So assign the default serializer to zk client.
+     *
+     * @param zkClient
+     * @param clusterName
+     */
+    public HelixMetadataRepository(@NotNull ZkClient zkClient, @NotNull String clusterName) {
+        this(zkClient, clusterName, DEFAULT_SERIALIZER);
+    }
+
+    public HelixMetadataRepository(@NotNull ZkClient zkClient, @NotNull String clusterName, HelixStoreSerializer helixSerializer) {
+        this.rootPath = "/" + clusterName + "/Stores";
+        zkClient.setZkSerializer(helixSerializer);
         dataAccessor = new ZkBaseDataAccessor<>(zkClient);
     }
 
@@ -59,6 +72,18 @@ public class HelixMetadataRepository implements MetadataRepository {
     public void subscribeStoreDataChanged(@NotNull String storeName, @NotNull StoreDataChangedListener listener) {
         HelixStoreDataChangedListener bridgeListener = new HelixStoreDataChangedListener(rootPath, storeName, listener);
         dataAccessor.subscribeDataChanges(composeStorePath(storeName), bridgeListener);
+    }
+
+    @Override
+    public void unSubscribeStoreListChanged(StoreListChangedListener listener) {
+        HelixStoreListChangedListener bridgeListener = new HelixStoreListChangedListener(rootPath, listener);
+        dataAccessor.unsubscribeChildChanges(rootPath, bridgeListener);
+    }
+
+    @Override
+    public void unSubscribeStoreDataChanged(String storeName, StoreDataChangedListener listener) {
+        HelixStoreDataChangedListener bridgeListener = new HelixStoreDataChangedListener(rootPath, storeName, listener);
+        dataAccessor.unsubscribeDataChanges(composeStorePath(storeName), bridgeListener);
     }
 
     @Override

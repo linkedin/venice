@@ -48,4 +48,17 @@ public interface MetadataRepository {
      * @param listener  listener to get the notification.
      */
     public void subscribeStoreDataChanged(String storeName, StoreDataChangedListener listener);
+
+    /**
+     * Remove a listener from repository to stop listening the change of store list.
+     * @param listener
+     */
+    public void unSubscribeStoreListChanged(StoreListChangedListener listener);
+
+    /**
+     * Remove a listener from repository to stop listening the change of store data.
+     * @param storeName
+     * @param listener
+     */
+    public void unSubscribeStoreDataChanged(String storeName, StoreDataChangedListener listener);
 }

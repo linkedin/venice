@@ -44,8 +44,8 @@ public class HelixCachedMetadataRepository extends HelixMetadataRepository {
      */
     private final ReadWriteLock metadataLock = new ReentrantReadWriteLock();
 
-    public HelixCachedMetadataRepository(@NotNull ZkClient zkClient, @NotNull String rootPath) {
-        super(zkClient, rootPath);
+    public HelixCachedMetadataRepository(@NotNull ZkClient zkClient, @NotNull String cluster) {
+        super(zkClient, cluster);
     }
 
     public void init() {
@@ -58,6 +58,19 @@ public class HelixCachedMetadataRepository extends HelixMetadataRepository {
             this.subscribeStoreListChanged(storesChangedListener);
 
             internalAddStores(stores);
+        } finally {
+            metadataLock.writeLock().unlock();
+        }
+    }
+
+    public void clear() {
+        metadataLock.writeLock().lock();
+        try {
+            this.unSubscribeStoreListChanged(storesChangedListener);
+            for (String storeName : storeMap.keySet()) {
+                this.unSubscribeStoreDataChanged(storeName, storeDataChangedListener);
+            }
+            storeMap.clear();
         } finally {
             metadataLock.writeLock().unlock();
         }
@@ -107,9 +120,10 @@ public class HelixCachedMetadataRepository extends HelixMetadataRepository {
         metadataLock.writeLock().lock();
         try {
             if (storeMap.containsKey(store.getName())) {
-                throw new IllegalArgumentException("Store" + store.getName() + " already exists.");
+                throw new IllegalArgumentException("Store:" + store.getName() + " already exists.");
             }
             dataAccessor.set(composeStorePath(store.getName()), store, AccessOption.PERSISTENT);
+            storeMap.put(store.getName(), store);
             this.subscribeStoreDataChanged(store.getName(), storeDataChangedListener);
         } finally {
             metadataLock.writeLock().unlock();
@@ -121,7 +135,7 @@ public class HelixCachedMetadataRepository extends HelixMetadataRepository {
         metadataLock.writeLock().lock();
         try {
             if (!storeMap.containsKey(store.getName())) {
-                throw new IllegalArgumentException("Store" + store.getName() + " dose not exist.");
+                throw new IllegalArgumentException("Store:" + store.getName() + " dose not exist.");
             }
             Store originalStore = storeMap.get(store.getName());
             if (!originalStore.equals(store)) {

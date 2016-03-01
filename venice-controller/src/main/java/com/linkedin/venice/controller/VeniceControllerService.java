@@ -1,8 +1,6 @@
 package com.linkedin.venice.controller;
 
-import com.linkedin.venice.config.VeniceStorePartitionInformation;
 import com.linkedin.venice.service.AbstractVeniceService;
-import java.util.Map;
 import org.apache.log4j.Logger;
 
 /**
@@ -14,38 +12,38 @@ public class VeniceControllerService extends AbstractVeniceService {
   private static final String VENICE_CONTROLLER_SERVICE_NAME = "venice-controller-service";
 
   private final Admin admin;
-  private final String clusterName;
 
-  private final Map<String, VeniceStorePartitionInformation> storeToPartitionInformationMap;
+  private final VeniceControllerClusterConfig config;
 
-  public VeniceControllerService (String zkAddress, String clusterName, String controllerName,
-      Map<String, VeniceStorePartitionInformation> storeToPartitionInformationMap) {
+  public VeniceControllerService(VeniceControllerClusterConfig config) {
     super(VENICE_CONTROLLER_SERVICE_NAME);
-
-    this.admin = new VeniceHelixAdmin(controllerName, zkAddress);
-    this.clusterName = clusterName;
-    this.storeToPartitionInformationMap = storeToPartitionInformationMap;
+    this.config = config;
+    this.admin = new VeniceHelixAdmin(config.getControllerName(),config.getZkAddress(),config.getKafkaZkAddress());
   }
 
   @Override
   public void startInner() {
-    addStoresAsHelixResources();
-    admin.start(clusterName);
+    admin.start(config.getClusterName(), config);
+    logger.info("Start cluster:" + config.getClusterName());
+    addDefaultStoresAsHelixResources();
   }
 
   @Override
   public void stopInner() {
-    admin.stop(clusterName);
+    admin.stop(config.getClusterName());
+    logger.info("Stop cluster:" + config.getClusterName());
   }
 
   /**
    * Adds Venice stores as a Helix Resource.
-   * TODO: Optimize this and do this only for non existing stores.
+   * <p>
+   * Add some default stores loaded from configuration file for test purpose. If store already exist, do not add it
+   * again. If store already has version-1, do not add version again.
    */
-  private void addStoresAsHelixResources() {
-
-    for(VeniceStorePartitionInformation storePartitionInformation: storeToPartitionInformationMap.values()) {
-      admin.addStore(clusterName , storePartitionInformation);
+  private void addDefaultStoresAsHelixResources() {
+    for (String storeName : config.getStores()) {
+      admin.addStore(config.getClusterName(), storeName, "venice-dev");
+      admin.addVersion(config.getClusterName(), storeName, 1);
     }
   }
 

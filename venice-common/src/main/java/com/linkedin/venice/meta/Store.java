@@ -147,16 +147,26 @@ public class Store {
         }
     }
 
+    public boolean containsVersion(int versionNumber){
+        for (int i = 0; i < versions.size(); i++) {
+            if (versions.get(i).getNumber() == versionNumber) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     /**
      * Increase a new version to this store.
      */
-    public void increseVersion() {
+    public Version increaseVersion() {
         int versionNumber = 1;
         if (versions.size() > 0) {
             versionNumber = versions.get(versions.size() - 1).getNumber() + 1;
         }
         Version version = new Version(name, versionNumber, System.currentTimeMillis());
         addVersion(version);
+        return version.cloneVersion();
     }
 
     @Override

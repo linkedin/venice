@@ -28,4 +28,30 @@ class HelixStoreListChangedListener implements IZkChildListener {
         }
         listener.handleStoreListChanged(currentChilds);
     }
+
+    // Here, equals and hashcode method is needed to override, because when un-subscribe from zk, we need to find the
+    // listener which is equaled to listener used in subscribing.
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) {
+            return true;
+        }
+        if (o == null || getClass() != o.getClass()) {
+            return false;
+        }
+
+        HelixStoreListChangedListener that = (HelixStoreListChangedListener) o;
+
+        if (!rootPath.equals(that.rootPath)) {
+            return false;
+        }
+        return listener.equals(that.listener);
+    }
+
+    @Override
+    public int hashCode() {
+        int result = rootPath.hashCode();
+        result = 31 * result + listener.hashCode();
+        return result;
+    }
 }
