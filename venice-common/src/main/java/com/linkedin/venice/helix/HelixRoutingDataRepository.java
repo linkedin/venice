@@ -64,11 +64,17 @@ public class HelixRoutingDataRepository extends RoutingTableProvider implements 
     public HelixRoutingDataRepository(HelixManager manager) {
         this.manager = manager;
         keyBuilder = new PropertyKey.Builder(manager.getClusterName());
-        resourceToPartitionMap.set(new HashMap());
-        resourceToNumberOfPartitionsMap = new HashMap<>();
+    }
+
+    /**
+     * This method is used to add listener after HelixManager being connected. Otherwise, it will met error because adding
+     * listener before connecting.
+     */
+    public void init() {
         try {
+            resourceToPartitionMap.set(new HashMap());
             manager.addExternalViewChangeListener(this);
-        }catch(Exception e){
+        } catch (Exception e) {
             String errorMessage = "Can not register routing table into Helix";
             logger.error(errorMessage, e);
             throw new VeniceException(errorMessage, e);
