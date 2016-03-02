@@ -9,7 +9,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-import com.linkedin.venice.utils.ZKTestUtils;
 import com.linkedin.venice.utils.ZkServerWrapper;
 import org.apache.helix.HelixAdmin;
 import org.apache.helix.HelixDefinedState;
