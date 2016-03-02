@@ -1,6 +1,7 @@
 package com.linkedin.venice.controller;
 
 import com.linkedin.venice.controller.kafka.TopicCreator;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixCachedMetadataRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
@@ -48,7 +49,12 @@ public class VeniceHelixAdmin implements Admin {
     @Override
     public synchronized void start(String clusterName, VeniceControllerClusterConfig config) {
         if (helixManagers.containsKey(clusterName)) {
-            throw new IllegalArgumentException("Cluster " + clusterName + " already has a helix controller ");
+            throw new VeniceException("Cluster " + clusterName + " already has a helix controller ");
+        }
+        //Simply validate cluster name here.
+        clusterName = clusterName.trim();
+        if (clusterName.startsWith("/") || clusterName.endsWith("/") || clusterName.indexOf(' ') >= 0) {
+            throw new IllegalArgumentException("Invalid cluster name:" + clusterName);
         }
         configs.put(clusterName, config);
         createClusterIfRequired(clusterName);
@@ -56,7 +62,7 @@ public class VeniceHelixAdmin implements Admin {
             .startHelixController(zkConnString, clusterName, controllerName, HelixControllerMain.STANDALONE);
         helixManagers.put(clusterName, helixManager);
         HelixCachedMetadataRepository repository = new HelixCachedMetadataRepository(zkClient, clusterName);
-        repository.init();
+        repository.start();
         repositories.put(clusterName, repository);
     }
 
@@ -64,12 +70,10 @@ public class VeniceHelixAdmin implements Admin {
     public synchronized void addStore(String clusterName, String storeName, String owner) {
         HelixCachedMetadataRepository repository = repositories.get(clusterName);
         if (repository == null) {
-            logger.info("Cluster " + clusterName + " does not initialized. Can not add store to it.");
-            return;
+            handleClusterDoseNotStart(clusterName);
         }
         if(repository.getStore(storeName)!=null){
-            logger.info("Store:"+storeName+" already exists.");
-            return;
+            handleStoreAlreadExists(clusterName,storeName);
         }
         VeniceControllerClusterConfig config = configs.get(clusterName);
         Store store = new Store(storeName, owner, System.currentTimeMillis(), config.getPersistenceType(),
@@ -81,30 +85,26 @@ public class VeniceHelixAdmin implements Admin {
     public synchronized  void addVersion(String clusterName, String storeName, int versionNumber) {
         VeniceControllerClusterConfig config = configs.get(clusterName);
         if(config == null){
-            logger.info("Cluster " + clusterName + " does not initialized. Can not add store to it.");
-            return;
+            handleClusterDoseNotStart(clusterName);
         }
-        this.addVersion(clusterName,storeName,versionNumber,config.getNumberOfPartition(),config.getReplicaFactor());
+        this.addVersion(clusterName, storeName, versionNumber, config.getNumberOfPartition(), config.getReplicaFactor());
     }
 
     @Override
     public synchronized void addVersion(String clusterName, String storeName,int versionNumber, int numberOfPartition, int replicaFactor) {
         HelixCachedMetadataRepository repository = repositories.get(clusterName);
         if (repository == null) {
-            logger.info("Cluster " + clusterName + " does not initialized. Can not add store to it.");
-            return;
+            handleClusterDoseNotStart(clusterName);
         }
         repository.lock();
         Version version = null;
         try {
             Store store = repository.getStore(storeName);
             if(store == null){
-                logger.info("Store:"+storeName+" dose not exist. Can not add a version to it");
-                return;
+               handleStoreAlreadExists(clusterName,storeName);
             }
             if(store.containsVersion(versionNumber)){
-                logger.info("Version:"+versionNumber+" already exists in store:"+storeName);
-                return;
+                handleVersionAlreadyExists(storeName,versionNumber);
             }
             version = new Version(storeName,versionNumber,System.currentTimeMillis());
             store.addVersion(version);
@@ -119,11 +119,11 @@ public class VeniceHelixAdmin implements Admin {
     }
 
     @Override
-    public synchronized void incrVersion(String clusterName, String storeName, int numberOfPartition, int replicaFactor) {
+    public synchronized void incrementVersion(String clusterName, String storeName, int numberOfPartition,
+        int replicaFactor) {
         HelixCachedMetadataRepository repository = repositories.get(clusterName);
         if (repository == null) {
-            logger.info("Cluster " + clusterName + " does not initialized. Can not add store to it.");
-            return;
+            handleClusterDoseNotStart(clusterName);
         }
 
         repository.lock();
@@ -131,8 +131,7 @@ public class VeniceHelixAdmin implements Admin {
         try {
             Store store = repository.getStore(storeName);
             if(store == null){
-                logger.info("Store:"+storeName+" dose not exist. Can not add a version to it");
-                return;
+                handleStoreAlreadExists(clusterName, storeName);
             }
             version = store.increaseVersion();
             repository.updateStore(store);
@@ -146,26 +145,36 @@ public class VeniceHelixAdmin implements Admin {
     }
 
     @Override
-    public void incrVersion(String clusterName, String storeName) {
+    public void incrementVersion(String clusterName, String storeName) {
         VeniceControllerClusterConfig config = configs.get(clusterName);
         if (config == null) {
-            logger.info("Cluster " + clusterName + " does not initialized. Can not add store to it.");
-            return;
+            handleClusterDoseNotStart(clusterName);
         }
-        this.incrVersion(clusterName, storeName, config.getNumberOfPartition(), config.getReplicaFactor());
+        this.incrementVersion(clusterName, storeName, config.getNumberOfPartition(), config.getReplicaFactor());
     }
 
-    private void addHelixResource(String clusterName, String resourceName,int numberOfPartition, int replicaFactor, int kafkaReplicaFactor){
+    @Override
+    public void addHelixResource(String clusterName, String resourceName) {
+        VeniceControllerClusterConfig config = configs.get(clusterName);
+        if (config == null) {
+            handleClusterDoseNotStart(clusterName);
+        }
+        this.addHelixResource(clusterName, resourceName, config.getNumberOfPartition(), config.getReplicaFactor(),
+            config.getKafkaReplicaFactor());
+    }
+
+    @Override
+    public synchronized void addHelixResource(String clusterName, String resourceName, int numberOfPartition,
+        int replicaFactor, int kafkaReplicaFactor) {
         topicCreator.createTopic(resourceName, numberOfPartition, kafkaReplicaFactor);
 
-        if(!admin.getResourcesInCluster(clusterName).contains(resourceName)) {
+        if (!admin.getResourcesInCluster(clusterName).contains(resourceName)) {
             admin.addResource(clusterName, resourceName, numberOfPartition,
-                VeniceStateModel.PARTITION_ONLINE_OFFLINE_STATE_MODEL,
-                IdealState.RebalanceMode.FULL_AUTO.toString());
+                VeniceStateModel.PARTITION_ONLINE_OFFLINE_STATE_MODEL, IdealState.RebalanceMode.FULL_AUTO.toString());
             admin.rebalance(clusterName, resourceName, replicaFactor);
             logger.info("Added " + resourceName + " as a resource to cluster: " + clusterName);
         } else {
-            logger.info("Already exists " + resourceName + "as a resource in cluster: " + clusterName);
+            handleResourceAlreadyExists(resourceName);
         }
     }
 
@@ -204,4 +213,31 @@ public class VeniceHelixAdmin implements Admin {
         admin.addStateModelDef(clusterName, VeniceStateModel.PARTITION_ONLINE_OFFLINE_STATE_MODEL,
             VeniceStateModel.getDefinition());
     }
+
+    private void handleStoreAlreadExists(String clusterName, String storeName) {
+        String errorMessage = "Store:" + storeName + " already exists. Can not add it to cluster:" + clusterName;
+        logger.info(errorMessage);
+        throw new VeniceException(errorMessage);
+    }
+
+    private void handleResourceAlreadyExists(String resourceName) {
+        String errorMessage = "Resource:" + resourceName + " already exists, Can not add it to Helix.";
+        logger.info(errorMessage);
+        throw new VeniceException(errorMessage);
+    }
+
+    private void handleVersionAlreadyExists(String storeName, int version) {
+        String errorMessage =
+            "Version" + version + " already exists in Store:" + storeName + ". Can not add it to store.";
+        logger.info(errorMessage);
+        throw new VeniceException(errorMessage);
+    }
+
+    private void handleClusterDoseNotStart(String clusterName) {
+        String errorMessage = "Cluster " + clusterName + " does not initialized. Can not add store to it.";
+        logger.info(errorMessage);
+        throw new VeniceException(errorMessage);
+    }
+
+
 }

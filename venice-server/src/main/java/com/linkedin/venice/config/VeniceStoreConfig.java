@@ -3,6 +3,7 @@ package com.linkedin.venice.config;
 import com.google.common.collect.ImmutableMap;
 import com.linkedin.venice.exceptions.ConfigurationException;
 import com.linkedin.venice.exceptions.UndefinedPropertyException;
+import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.server.VeniceConfigService;
 import com.linkedin.venice.store.bdb.BdbStorageEngineFactory;
 import com.linkedin.venice.store.bdb.BdbStoreConfig;
@@ -33,7 +34,7 @@ public class VeniceStoreConfig extends VeniceServerConfig {
   private void initAndValidateProperties(Props storeProperties) throws ConfigurationException {
     storeName = storeProperties.getString(VeniceConfigService.STORE_NAME);
 
-    if (getPersistenceType().equals("bdb")) {
+    if (getPersistenceType().equals(PersistenceType.BDB)) {
       bdbStoreConfig = new BdbStoreConfig(storeName, storeProperties);
     } else {
       bdbStoreConfig = null;

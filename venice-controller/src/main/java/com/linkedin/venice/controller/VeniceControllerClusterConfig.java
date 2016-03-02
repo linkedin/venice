@@ -6,19 +6,18 @@ import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.ReadStrategy;
 import com.linkedin.venice.meta.RoutingStrategy;
 import com.linkedin.venice.utils.Props;
-import com.linkedin.venice.utils.Utils;
 import java.util.List;
 import org.apache.log4j.Logger;
 
 
 /**
- * Configuration for one cluster in venice controller.
+ * Configuration which is sepcific to a Venice cluster used by Venice controller.
  */
 public class VeniceControllerClusterConfig {
   private static final Logger logger = Logger.getLogger(VeniceControllerClusterConfig.class);
 
   public static final String CLUSTER_NAME = "cluster.name";
-  public static final String ZK_ADDRESS = "zk.address";
+  public static final String ZK_ADDRESS = "zookeeper.address";
   public static final String CONTROLLER_NAME = "controller.name";
   public static final String KAFKA_REPLICA_FACTOR = "kafka.replica.factor";
   public static final String KAFKA_ZK_ADDRESS = "kafka.zk.address";
@@ -47,19 +46,13 @@ public class VeniceControllerClusterConfig {
    * Address of zookeeper that kafka used. It may be different from what Helix used.
    */
   private String kafkaZkAddress;
-  /**
-   * Default stores which should be created when controller start-up. Right now only for testing purpose.
-   */
-  private List<String> stores;
 
-  public VeniceControllerClusterConfig(String filePath) {
-    logger.info("Loading configuration from config file:" + filePath);
+  public VeniceControllerClusterConfig(Props props) {
     try {
-      Props props = Utils.parseProperties(filePath);
       checkProperties(props);
       logger.info("Loaded configuration");
     } catch (Exception e) {
-      String errorMessage = "Can not load properties from config file:" + filePath;
+      String errorMessage = "Can not load properties.";
       logger.error(errorMessage);
       throw new VeniceException(errorMessage, e);
     }
@@ -94,7 +87,6 @@ public class VeniceControllerClusterConfig {
     } else {
       routingStrategy = RoutingStrategy.CONSISTENT_HASH;
     }
-    stores = props.getList(INITIALIZING_STORES);
   }
 
   public String getClusterName() {
@@ -141,7 +133,4 @@ public class VeniceControllerClusterConfig {
     return kafkaReplicaFactor;
   }
 
-  public List<String> getStores() {
-    return stores;
-  }
 }

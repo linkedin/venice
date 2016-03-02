@@ -48,7 +48,7 @@ public class HelixCachedMetadataRepository extends HelixMetadataRepository {
         super(zkClient, cluster);
     }
 
-    public void init() {
+    public void start() {
         metadataLock.writeLock().lock();
         try {
             storeMap = new HashMap<>();

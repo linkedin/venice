@@ -1,5 +1,6 @@
 package com.linkedin.venice.kafka;
 
+import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.utils.RandomGenUtils;
 import com.linkedin.venice.config.VeniceClusterConfig;
 import com.linkedin.venice.offsets.BdbOffsetManager;
@@ -35,7 +36,7 @@ public class TestBDBOffsetManager {
     clusterProps.put(VeniceConfigService.OFFSET_MANAGER_FLUSH_INTERVAL_MS, flushIntervalMs);
     clusterProps.put(VeniceConfigService.HELIX_ENABLED, "false");
     clusterProps.put(VeniceConfigService.ZOOKEEPER_ADDRESS, "localhost:2181");
-    clusterProps.put(VeniceConfigService.PERSISTENCE_TYPE, "inMemory");
+    clusterProps.put(VeniceConfigService.PERSISTENCE_TYPE, PersistenceType.IN_MEMORY.toString());
     clusterProps.put(VeniceConfigService.KAFKA_BROKERS, "localhost");
     clusterProps.put(VeniceConfigService.KAFKA_BROKER_PORT, "9092");
     clusterProps.put(VeniceConfigService.KAFKA_BOOTSTRAP_SERVERS, "127.0.0.1:9092");
@@ -49,7 +50,7 @@ public class TestBDBOffsetManager {
   public void testFreshnessAfterRestart()
       throws Exception {
     /**
-     * 1. Start a thread/loop that constantly produces to the same topic,partition for more than flushIntervalMs time
+     * 1. start a thread/loop that constantly produces to the same topic,partition for more than flushIntervalMs time
      * 2. Note the last update and stop the thread/loop and the offset manager.
      * 3. Get the last record from offsetManager
      * 4. Match the time stamp between the one fetched and the one noted down in step 2. The time difference should not

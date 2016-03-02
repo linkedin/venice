@@ -37,7 +37,7 @@ public class StoreConsumptionTask implements Runnable, Closeable {
 
   private static final Logger logger = Logger.getLogger(StoreConsumptionTask.class.getName());
 
-  /* Each Venice message is associated with a job ID. Start and end of each push are denoted
+  /* Each Venice message is associated with a job ID. start and end of each push are denoted
   by job Ids which are valid. UNSET_JOB_ID constant is used for error checking. JobId is used for
    tracking and this will be eventually replaced/moved by the Data Ingestion Validation.
    */

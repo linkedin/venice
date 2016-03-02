@@ -109,7 +109,7 @@ public class VeniceConfigService {
 
   // store specific properties
   public static final String STORE_NAME = "store.name";
-  public static final String PERSISTENCE_TYPE = "persistence.type";
+  public static final String PERSISTENCE_TYPE = "default.persistence.type";
   public static final String STORAGE_REPLICATION_FACTOR = "storage.node.replicas";
   public static final String NUMBER_OF_KAFKA_PARTITIONS = "kafka.number.partitions";
   public static final String KAFKA_ZOOKEEPER_URL = "kafka.zookeeper.url";

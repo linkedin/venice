@@ -38,8 +38,7 @@ public class TopicCreator {
       ZkUtils zkUtils = new ZkUtils(zkClient, new ZkConnection(zkConnection), false);
       AdminUtils.createTopic(zkUtils, topicName, numPartitions, replication, new Properties());
     } catch (TopicExistsException e) {
-      logger.warn(e.getMessage());
-      e.printStackTrace();
+      logger.warn("Met error when creating kakfa topic.", e);
     } finally {
       zkClient.close();
     }

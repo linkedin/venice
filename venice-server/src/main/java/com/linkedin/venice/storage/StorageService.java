@@ -3,6 +3,7 @@ package com.linkedin.venice.storage;
 import com.linkedin.venice.config.VeniceServerConfig;
 import com.linkedin.venice.config.VeniceStoreConfig;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.server.PartitionAssignmentRepository;
 import com.linkedin.venice.server.StoreRepository;
 import com.linkedin.venice.server.VeniceConfigService;
@@ -29,7 +30,7 @@ public class StorageService extends AbstractVeniceService {
 
   private final StoreRepository storeRepository;
   private final VeniceConfigService veniceConfigService;
-  private final ConcurrentMap<String, StorageEngineFactory> persistenceTypeToStorageEngineFactoryMap;
+  private final ConcurrentMap<PersistenceType, StorageEngineFactory> persistenceTypeToStorageEngineFactoryMap;
   private final PartitionAssignmentRepository partitionAssignmentRepository;
 
   public StorageService(StoreRepository storeRepository, VeniceConfigService veniceConfigService,
@@ -37,7 +38,7 @@ public class StorageService extends AbstractVeniceService {
     super(NAME);
     this.storeRepository = storeRepository;
     this.veniceConfigService = veniceConfigService;
-    this.persistenceTypeToStorageEngineFactoryMap = new ConcurrentHashMap<String, StorageEngineFactory>();
+    this.persistenceTypeToStorageEngineFactoryMap = new ConcurrentHashMap<PersistenceType, StorageEngineFactory>();
     this.partitionAssignmentRepository = partitionAssignmentRepository;
   }
 
@@ -60,7 +61,7 @@ public class StorageService extends AbstractVeniceService {
    */
   public AbstractStorageEngine openStore(VeniceStoreConfig storeDefinition)
       throws Exception {
-    String persistenceType = storeDefinition.getPersistenceType();
+    PersistenceType persistenceType = storeDefinition.getPersistenceType();
     AbstractStorageEngine engine = null;
     StorageEngineFactory factory = null;
 
@@ -147,7 +148,7 @@ public class StorageService extends AbstractVeniceService {
     logger.info("All stores closed.");
 
     /*Close all storage engine factories */
-    for (Map.Entry<String, StorageEngineFactory> storageEngineFactory : persistenceTypeToStorageEngineFactoryMap.entrySet()) {
+    for (Map.Entry<PersistenceType, StorageEngineFactory> storageEngineFactory : persistenceTypeToStorageEngineFactoryMap.entrySet()) {
       logger.info("Closing " + storageEngineFactory.getKey() + " storage engine factory");
       try {
         storageEngineFactory.getValue().close();

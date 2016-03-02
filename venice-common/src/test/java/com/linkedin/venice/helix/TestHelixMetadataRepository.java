@@ -23,7 +23,7 @@ public class TestHelixMetadataRepository {
      * By default, this test is inactive. Because it depends on external zk process. It should be only used in
      * debugging.
      */
-    private final boolean isEnable = true;
+    private final boolean isEnable = false;
 
     @BeforeTest(enabled = isEnable)
     public void zkSetup() {

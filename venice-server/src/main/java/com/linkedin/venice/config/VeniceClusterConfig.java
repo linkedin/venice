@@ -3,13 +3,13 @@ package com.linkedin.venice.config;
 import com.google.common.collect.ImmutableMap;
 import com.linkedin.venice.exceptions.ConfigurationException;
 import com.linkedin.venice.exceptions.UndefinedPropertyException;
+import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.offsets.BdbOffsetManager;
 import com.linkedin.venice.server.VeniceConfigService;
 import com.linkedin.venice.store.bdb.BdbStorageEngineFactory;
 import com.linkedin.venice.store.memory.InMemoryStorageEngineFactory;
 import com.linkedin.venice.utils.Props;
 import java.io.File;
-import java.util.List;
 import java.util.Map;
 
 
@@ -18,9 +18,9 @@ import java.util.Map;
  */
 public class VeniceClusterConfig {
 
-    public static final Map<String, String> storageEngineFactoryClassNameMap =
-        ImmutableMap.of("inMemory", InMemoryStorageEngineFactory.class.getName(),
-            "bdb", BdbStorageEngineFactory.class.getName());
+    public static final Map<PersistenceType, String> storageEngineFactoryClassNameMap =
+        ImmutableMap.of(PersistenceType.IN_MEMORY, InMemoryStorageEngineFactory.class.getName(),
+            PersistenceType.BDB, BdbStorageEngineFactory.class.getName());
 
     private String clusterName;
     protected String dataBasePath;
@@ -36,7 +36,7 @@ public class VeniceClusterConfig {
 
     private String kafkaConsumptionAcksBrokerUrl;
 
-    private String persistenceType;
+    private PersistenceType persistenceType;
 
     // SimpleConsumer fetch buffer size.
     private int fetchBufferSize;
@@ -84,7 +84,8 @@ public class VeniceClusterConfig {
         }
 
         try {
-            persistenceType = clusterProps.getString(VeniceConfigService.PERSISTENCE_TYPE);   // Assign a default ?
+            persistenceType = PersistenceType.valueOf(clusterProps.getString(VeniceConfigService.PERSISTENCE_TYPE,
+                PersistenceType.IN_MEMORY.toString()));
         } catch (UndefinedPropertyException ex) {
             throw new ConfigurationException("persistence type undefined", ex);
         }
@@ -149,7 +150,7 @@ public class VeniceClusterConfig {
         this.kafkaConsumptionAcksBrokerUrl = kafkaConsumptionAcksBrokerUrl;
     }
 
-    public String getPersistenceType() {
+    public PersistenceType getPersistenceType() {
         return persistenceType;
     }
 

@@ -76,7 +76,7 @@ public class VeniceServer {
         new KafkaConsumerPerStoreService(storeRepository, veniceConfigService, offSetService);
     services.add(kafkaConsumerService);
 
-    // Start venice participant service if Helix is enabled.
+    // start venice participant service if Helix is enabled.
     VeniceClusterConfig clusterConfig = veniceConfigService.getVeniceClusterConfig();
     if(clusterConfig.isHelixEnabled()) {
       HelixParticipationService helixParticipationService =

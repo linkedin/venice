@@ -37,7 +37,7 @@ import org.testng.annotations.Test;
  */
 public class TestHelixRoutingDataRepository {
   //This unit test need a running zookeeper. So only for debugging, disable by default.
-  private final boolean isEnable = true;
+  private final boolean isEnable = false;
   private HelixManager manager;
   private HelixManager controller;
   private HelixAdmin admin;
@@ -98,7 +98,7 @@ public class TestHelixRoutingDataRepository {
         HelixManagerFactory.getZKHelixManager(clusterName, "reader", InstanceType.SPECTATOR, zkAddress);
     readManager.connect();
     HelixRoutingDataRepository repository = new HelixRoutingDataRepository(readManager);
-
+    repository.start();
     List<Instance> instances = repository.getInstances(resourceName, 0);
     Assert.assertEquals(1, instances.size());
     Instance instance = instances.get(0);
@@ -124,6 +124,7 @@ public class TestHelixRoutingDataRepository {
         HelixManagerFactory.getZKHelixManager(clusterName, "reader", InstanceType.SPECTATOR, zkAddress);
     readManager.connect();
     HelixRoutingDataRepository repository = new HelixRoutingDataRepository(readManager);
+    repository.start();
     Assert.assertEquals(1, repository.getNumberOfPartitions(resourceName));
     //Participant become off=line.
     manager.disconnect();
@@ -162,6 +163,7 @@ public class TestHelixRoutingDataRepository {
         HelixManagerFactory.getZKHelixManager(clusterName, "reader", InstanceType.SPECTATOR, zkAddress);
     readManager.connect();
     HelixRoutingDataRepository repository = new HelixRoutingDataRepository(readManager);
+    repository.start();
     Map<Integer, Partition> partitions = repository.getPartitions(resourceName);
     Assert.assertEquals(1, partitions.size());
     Assert.assertEquals(1, partitions.get(0).getInstances().size());

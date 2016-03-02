@@ -24,27 +24,13 @@ public class VeniceControllerService extends AbstractVeniceService {
   @Override
   public void startInner() {
     admin.start(config.getClusterName(), config);
-    logger.info("Start cluster:" + config.getClusterName());
-    addDefaultStoresAsHelixResources();
+    logger.info("start cluster:" + config.getClusterName());
   }
 
   @Override
   public void stopInner() {
     admin.stop(config.getClusterName());
     logger.info("Stop cluster:" + config.getClusterName());
-  }
-
-  /**
-   * Adds Venice stores as a Helix Resource.
-   * <p>
-   * Add some default stores loaded from configuration file for test purpose. If store already exist, do not add it
-   * again. If store already has version-1, do not add version again.
-   */
-  private void addDefaultStoresAsHelixResources() {
-    for (String storeName : config.getStores()) {
-      admin.addStore(config.getClusterName(), storeName, "venice-dev");
-      admin.addVersion(config.getClusterName(), storeName, 1);
-    }
   }
 
   public Admin getVeniceHelixAdmin(){

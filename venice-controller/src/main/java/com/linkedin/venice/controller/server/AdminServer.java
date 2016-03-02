@@ -8,6 +8,7 @@ import io.netty.channel.EventLoopGroup;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.nio.NioServerSocketChannel;
 import java.net.InetSocketAddress;
+import org.apache.log4j.Logger;
 
 
 /**
@@ -17,6 +18,7 @@ import java.net.InetSocketAddress;
  * request to another path or a GET request yields an HTML form to use
  */
 public class AdminServer extends AbstractVeniceService {
+  private static final Logger logger = Logger.getLogger(AdminServer.class);
 
   private final int port;
 
@@ -45,6 +47,7 @@ public class AdminServer extends AbstractVeniceService {
         .channel(NioServerSocketChannel.class).localAddress(new InetSocketAddress(port))
         .childHandler(new Initializer(clusterName, admin, null));
     serverFuture = bootstrap.bind().sync();
+    logger.info("Admin server is started on port:"+port);
   }
 
   @Override
@@ -52,6 +55,7 @@ public class AdminServer extends AbstractVeniceService {
     ChannelFuture shutdown = serverFuture.channel().closeFuture();
     group.shutdownGracefully();
     shutdown.sync();
+    logger.info("Admin Server is stoped on port:"+port);
   }
 
 }
