@@ -134,11 +134,6 @@ public class HelixRoutingDataRepository extends RoutingTableProvider implements 
      * @return
      */
     public int getNumberOfPartitions(@NotNull String resourceName) {
-        if (!resourceToPartitionMap.get().containsKey(resourceName)) {
-            String errorMessage = "Resource:" + resourceName + " dose not exist";
-            logger.warn(errorMessage);
-            throw new IllegalArgumentException(errorMessage);
-        }
         lock.lock();
         try {
             if (!resourceToNumberOfPartitionsMap.containsKey(resourceName)) {

@@ -2,10 +2,15 @@ package com.linkedin.venice.helix;
 
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.Partition;
+import com.linkedin.venice.utils.PortUtils;
 import com.linkedin.venice.utils.Utils;
+
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+
+import com.linkedin.venice.utils.ZKTestUtils;
+import com.linkedin.venice.utils.ZkServerWrapper;
 import org.apache.helix.HelixAdmin;
 import org.apache.helix.HelixDefinedState;
 import org.apache.helix.HelixManager;
@@ -27,8 +32,8 @@ import org.apache.helix.participant.statemachine.StateModelFactory;
 import org.apache.helix.participant.statemachine.StateModelInfo;
 import org.apache.helix.participant.statemachine.Transition;
 import org.testng.Assert;
-import org.testng.annotations.AfterTest;
-import org.testng.annotations.BeforeTest;
+import org.testng.annotations.AfterMethod;
+import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
 
@@ -36,20 +41,28 @@ import org.testng.annotations.Test;
  * Test case for HelixRoutingDataRepository.
  */
 public class TestHelixRoutingDataRepository {
-  //This unit test need a running zookeeper. So only for debugging, disable by default.
-  private final boolean isEnable = true;
+  // Test behavior configuration
+  private static final int WAIT_TIME = 1000; // FIXME: Non-deterministic. Will lead to flaky tests.
+
   private HelixManager manager;
   private HelixManager controller;
   private HelixAdmin admin;
   private String clusterName = "UnitTestCLuster";
   private String resourceName = "UnitTest";
-  private String zkAddress = "localhost:2181";
-  private int httpPort = 1234;
-  private int adminPort = 2345;
+  private String zkAddress;
+  private int httpPort;
+  private int adminPort;
+  private ZkServerWrapper zkServerWrapper;
+  private HelixRoutingDataRepository repository;
+  private HelixManager readManager;
 
-  @BeforeTest(enabled = isEnable)
+  @BeforeMethod
   public void HelixSetup()
       throws Exception {
+    zkServerWrapper = ZkServerWrapper.getZkServer();
+    zkAddress = zkServerWrapper.getZkAddress();
+    httpPort = PortUtils.getFreePort();
+    adminPort = PortUtils.getFreePort();
     admin = new ZKHelixAdmin(zkAddress);
     admin.addCluster(clusterName);
     HelixConfigScope configScope = new HelixConfigScopeBuilder(HelixConfigScope.ConfigScopeProperty.CLUSTER).
@@ -80,25 +93,27 @@ public class TestHelixRoutingDataRepository {
 
     manager.connect();
     //Waiting essential notification from ZK.
-    Thread.sleep(1000l);
+    Thread.sleep(WAIT_TIME);
+
+    readManager = HelixManagerFactory.getZKHelixManager(clusterName, "reader", InstanceType.SPECTATOR, zkAddress);
+    readManager.connect();
+    repository = new HelixRoutingDataRepository(readManager);
+    repository.init();
   }
 
-  @AfterTest(enabled = isEnable)
+  @AfterMethod
   public void HelixCleanup() {
     manager.disconnect();
+    readManager.disconnect();
     controller.disconnect();
     admin.dropCluster(clusterName);
     admin.close();
+    zkServerWrapper.close();
   }
 
-  @Test(enabled = isEnable)
+  @Test
   public void testGetInstances()
       throws Exception {
-    HelixManager readManager =
-        HelixManagerFactory.getZKHelixManager(clusterName, "reader", InstanceType.SPECTATOR, zkAddress);
-    readManager.connect();
-    HelixRoutingDataRepository repository = new HelixRoutingDataRepository(readManager);
-
     List<Instance> instances = repository.getInstances(resourceName, 0);
     Assert.assertEquals(1, instances.size());
     Instance instance = instances.get(0);
@@ -109,43 +124,33 @@ public class TestHelixRoutingDataRepository {
     //Participant become off=line.
     manager.disconnect();
     //Wait notification.
-    Thread.sleep(1000l);
+    Thread.sleep(WAIT_TIME);
     //No online instance now.
     instances = repository.getInstances(resourceName, 0);
     Assert.assertEquals(0,instances.size());
-
-    readManager.disconnect();
   }
 
-  @Test(enabled = isEnable)
+  @Test
   public void testGetNumberOfPartitions()
       throws Exception {
-    HelixManager readManager =
-        HelixManagerFactory.getZKHelixManager(clusterName, "reader", InstanceType.SPECTATOR, zkAddress);
-    readManager.connect();
-    HelixRoutingDataRepository repository = new HelixRoutingDataRepository(readManager);
     Assert.assertEquals(1, repository.getNumberOfPartitions(resourceName));
     //Participant become off=line.
     manager.disconnect();
     //Wait notification.
-    Thread.sleep(1000l);
+    Thread.sleep(WAIT_TIME);
     //Result should be same.
     Assert.assertEquals(1, repository.getNumberOfPartitions(resourceName));
-
-    readManager.disconnect();
   }
-  @Test(enabled = isEnable)
+  @Test
   public void testGetNumberOfPartitionsWhenResourceDropped()
       throws Exception {
-    HelixManager readManager =
-        HelixManagerFactory.getZKHelixManager(clusterName, "reader", InstanceType.SPECTATOR, zkAddress);
-    readManager.connect();
-    HelixRoutingDataRepository repository = new HelixRoutingDataRepository(readManager);
+    Assert.assertTrue(admin.getResourcesInCluster(clusterName).contains(resourceName));
     //Wait notification.
-    Thread.sleep(1000l);
+    Thread.sleep(WAIT_TIME);
     admin.dropResource(clusterName, resourceName);
     //Wait notification.
-    Thread.sleep(1000l);
+    Thread.sleep(WAIT_TIME);
+    Assert.assertFalse(admin.getResourcesInCluster(clusterName).contains(resourceName));
     try {
       //Should not find the resource.
       repository.getNumberOfPartitions(resourceName);
@@ -155,13 +160,9 @@ public class TestHelixRoutingDataRepository {
     }
   }
 
-  @Test(enabled = isEnable)
+  @Test
   public void testGetPartitions()
       throws Exception {
-    HelixManager readManager =
-        HelixManagerFactory.getZKHelixManager(clusterName, "reader", InstanceType.SPECTATOR, zkAddress);
-    readManager.connect();
-    HelixRoutingDataRepository repository = new HelixRoutingDataRepository(readManager);
     Map<Integer, Partition> partitions = repository.getPartitions(resourceName);
     Assert.assertEquals(1, partitions.size());
     Assert.assertEquals(1, partitions.get(0).getInstances().size());
@@ -174,12 +175,10 @@ public class TestHelixRoutingDataRepository {
     //Participant become off=line.
     manager.disconnect();
     //Wait notification.
-    Thread.sleep(1000l);
+    Thread.sleep(WAIT_TIME);
     partitions = repository.getPartitions(resourceName);
     //No online partition now
-    Assert.assertEquals(0,partitions.size());
-
-    readManager.disconnect();
+    Assert.assertEquals(0, partitions.size());
   }
 
   private static class UnitTestStateModel {
