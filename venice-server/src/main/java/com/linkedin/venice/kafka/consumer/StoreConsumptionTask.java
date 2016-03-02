@@ -24,6 +24,7 @@ import java.util.Queue;
 import java.util.Set;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicBoolean;
+import javax.validation.constraints.NotNull;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.log4j.Logger;
@@ -74,9 +75,12 @@ public class StoreConsumptionTask implements Runnable, Closeable {
   // always up to date because of the asynchronous nature of subscriptions of partitions in Kafka Consumer.
   private final Map<Integer, Long> partitionOffsets;
 
-  public StoreConsumptionTask(Properties kafkaConsumerProperties, StoreRepository storeRepository,
-          OffsetManager offsetManager, VeniceNotifier notifier, int nodeId, String topic) {
-
+  public StoreConsumptionTask(Properties kafkaConsumerProperties,
+                              @NotNull StoreRepository storeRepository,
+                              @NotNull OffsetManager offsetManager,
+                              @NotNull VeniceNotifier notifier,
+                              int nodeId,
+                              String topic) {
     this.consumer = new ApacheKafkaConsumer(kafkaConsumerProperties);
     this.storeRepository = storeRepository;
     this.offsetManager = offsetManager;
@@ -138,8 +142,9 @@ public class StoreConsumptionTask implements Runnable, Closeable {
         }
       }
     } catch (Exception e) {
-      // TODO: Figure out how to notify Helix of replica's failure.
+      // TODO : First exception from poll kills the Consumption. This needs to be robust and have retries.
       logger.error(consumerTaskId + " failed with Exception: ", e);
+      notifier.error(jobId , topic , partitionOffsets.keySet() , " Errors occured during poll " , e  );
     } finally {
       close();
     }
@@ -377,12 +382,7 @@ public class StoreConsumptionTask implements Runnable, Closeable {
    */
   public void close() {
     boolean isStillRunning = isRunning.getAndSet(false);
-    if (isStillRunning && consumer != null) {
-      // TODO : Consumer is not thread safe and close can be invoked on the other thread.
-      // Need to use wakeup, which is not available in this version yet to make this
-      // thread safe.
-      consumer.close();
-    }
+    // Close happens at the end of the cycle.
   }
 
   /**

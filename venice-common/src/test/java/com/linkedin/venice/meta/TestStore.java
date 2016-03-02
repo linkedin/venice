@@ -29,14 +29,15 @@ public class TestStore {
         Store s = new Store("s1","owner",System.currentTimeMillis());
         s.addVersion(new Version(s.getName(),4,System.currentTimeMillis()));
         s.addVersion(new Version(s.getName(),2,System.currentTimeMillis()));
-        s.addVersion(new Version(s.getName(),3,System.currentTimeMillis()));
+        s.addVersion(new Version(s.getName(), 3, System.currentTimeMillis()));
         s.addVersion(new Version(s.getName(), 1, System.currentTimeMillis()));
 
         s.deleteVersion(3);
         List<Version> versions = s.getVersions();
         Assert.assertEquals(3, versions.size());
-        for(int i: new int[] {2,3,4}){
-            Assert.assertEquals(i,versions.get(i).getNumber());
+        int[] expectedVersions = { 1, 2, 4};
+        for(int i = 0; i < expectedVersions.length ; i ++){
+            Assert.assertEquals(expectedVersions[i],versions.get(i).getNumber());
         }
     }
 

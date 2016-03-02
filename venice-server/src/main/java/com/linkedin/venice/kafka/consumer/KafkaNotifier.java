@@ -8,7 +8,7 @@ import org.apache.log4j.Logger;
 
 
 /**
- * Created by athirupa on 2/10/16.
+ * Sends confirmation to the Kafka topics.
  */
 public class KafkaNotifier extends LogNotifier {
 
@@ -24,22 +24,12 @@ public class KafkaNotifier extends LogNotifier {
     }
 
     @Override
-    public void started(long jobId, String topic, int partitionId) {
-        super.started(jobId, topic, partitionId);
-    }
-
-    @Override
     public void completed(long jobId, String topic, int partitionId, long totalMessagesProcessed) {
         super.completed(jobId, topic, partitionId, totalMessagesProcessed);
         ProducerRecord<byte[], byte[]> kafkaMessage = recordGenerator
                 .generate(jobId, topic, partitionId, nodeId, totalMessagesProcessed);
         ackProducer.send(kafkaMessage);
 
-    }
-
-    @Override
-    public void progress(long jobId, String topic, int partitionId, long counter) {
-        super.progress(jobId, topic, partitionId, counter);
     }
 
     @Override

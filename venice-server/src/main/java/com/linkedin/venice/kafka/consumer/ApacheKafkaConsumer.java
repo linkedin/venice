@@ -29,7 +29,9 @@ public class ApacheKafkaConsumer implements VeniceConsumer {
         if(offset.getOffset() == OffsetRecord.LOWEST_OFFSET) {
             kafkaConsumer.seekToBeginning(topicPartition);
         } else {
-            kafkaConsumer.seek(topicPartition, offset.getOffset());
+            // The last consumed message offset is remembered. Add +1 to the offset
+            // to prevent retrieving the last message twice.
+            kafkaConsumer.seek(topicPartition, offset.getOffset() + 1);
         }
     }
 

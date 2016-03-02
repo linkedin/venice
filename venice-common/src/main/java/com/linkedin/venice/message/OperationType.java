@@ -14,6 +14,10 @@ import java.util.Map;
  * For Kafka value, we need ways to distinguish between PUT and DELETE. So we have separate enums for them.
  */
 public enum OperationType {
+  // TODO: The below enum types are mixed and matched. Some of them are valid
+  // only for KafkaKey and some others are valid for KafkaValue. There are two
+  // ways to clean up, create pairs of what can go to gether or use two different
+  // enums.
   WRITE(0), PARTIAL_WRITE(1), PUT(2), DELETE(3), BEGIN_OF_PUSH(4), END_OF_PUSH(5);
 
   private byte value;
