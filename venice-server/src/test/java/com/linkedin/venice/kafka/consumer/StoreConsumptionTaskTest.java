@@ -3,12 +3,12 @@ package com.linkedin.venice.kafka.consumer;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.message.KafkaValue;
 import com.linkedin.venice.message.OperationType;
-import com.linkedin.venice.offsets.BdbOffsetManager;
 import com.linkedin.venice.offsets.OffsetManager;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.server.StoreRepository;
 import com.linkedin.venice.store.AbstractStorageEngine;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -18,12 +18,12 @@ import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
-import org.apache.kafka.clients.consumer.CommitType;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.common.TopicPartition;
 import org.mockito.Mockito;
+import static org.mockito.Matchers.*;
 
 import org.powermock.api.mockito.PowerMockito;
 import org.powermock.core.classloader.annotations.PrepareForTest;
@@ -43,7 +43,7 @@ public class StoreConsumptionTaskTest extends PowerMockTestCase {
   private StoreRepository mockStoreRepository;
   private VeniceNotifier mockNotifier;
   private Properties mockKafkaConsumerProperties;
-  private OffsetManager mockOffSetRecord;
+  private OffsetManager mockOffSetManager;
   private AbstractStorageEngine mockAbstractStorageEngine;
 
   private ExecutorService taskPollingService;
@@ -56,7 +56,6 @@ public class StoreConsumptionTaskTest extends PowerMockTestCase {
   private final String putTestKey = "TestKeyPut";
   private final String putTestValue = "TestValuePut";
   private final String deleteTestKey = "TestKeyDelete";
-  private final String deleteTestValue = "TestValueDelete";
 
   @BeforeSuite
   public void setUp() throws Exception {
@@ -74,13 +73,13 @@ public class StoreConsumptionTaskTest extends PowerMockTestCase {
     mockNotifier = PowerMockito.mock(KafkaNotifier.class);
     mockKafkaConsumerProperties = PowerMockito.mock(Properties.class);
     mockAbstractStorageEngine = PowerMockito.mock(AbstractStorageEngine.class);
-    mockOffSetRecord = PowerMockito.mock(OffsetManager.class);
-    PowerMockito.doReturn(OffsetRecord.NON_EXISTENT_OFFSET).when(mockOffSetRecord).getLastOffset(topic, testPartition);
+    mockOffSetManager = PowerMockito.mock(OffsetManager.class);
+    PowerMockito.doReturn(OffsetRecord.NON_EXISTENT_OFFSET).when(mockOffSetManager).getLastOffset(topic, testPartition);
 
     PowerMockito.whenNew(KafkaConsumer.class).withParameterTypes(Properties.class)
         .withArguments(mockKafkaConsumerProperties).thenReturn(mockKafkaConsumer);
 
-    return new StoreConsumptionTask(mockKafkaConsumerProperties, mockStoreRepository, mockOffSetRecord,
+    return new StoreConsumptionTask(mockKafkaConsumerProperties, mockStoreRepository, mockOffSetManager,
             mockNotifier, nodeId, topic);
   }
 
@@ -106,8 +105,7 @@ public class StoreConsumptionTaskTest extends PowerMockTestCase {
     PowerMockito.doReturn(mockKafkaConsumerSubscriptions).when(mockKafkaConsumer).assignment();
 
     /*
-     * Verifies KafkaPerStoreConsumptionTask#resetPartitionConsumptionOffset invokes KafkaConsumer#seekToBeginning &
-     * KafkaConsumer#commit with expected arguments.
+     * Verifies KafkaPerStoreConsumptionTask#resetPartitionConsumptionOffset invokes KafkaConsumer#seekToBeginning
      */
     mockStoreConsumptionTask.resetPartitionConsumptionOffset(topic, testPartition);
     Mockito.verify(mockKafkaConsumer, Mockito.timeout(TIMEOUT).times(1)).seekToBeginning(testTopicPartition);
@@ -119,6 +117,19 @@ public class StoreConsumptionTaskTest extends PowerMockTestCase {
 
     mockStoreConsumptionTask.close();
     testSubscribeTaskFuture.get();
+  }
+
+  private ConsumerRecord<KafkaKey, KafkaValue> getConsumerRecord(OperationType type, long offset, byte[] key, byte[] value) {
+    return new ConsumerRecord(topic, testPartition, offset, new KafkaKey(
+            OperationType.WRITE, key), new KafkaValue(type, value));
+  }
+
+  private ConsumerRecord<KafkaKey, KafkaValue> getPutConsumerRecord(long offset, byte[] key, byte[] value) {
+    return getConsumerRecord(OperationType.PUT, offset, key, value);
+  }
+
+  private ConsumerRecord<KafkaKey, KafkaValue> getDeleteConsumerRecord(long offset, byte[] key) {
+    return getConsumerRecord(OperationType.DELETE, offset, key, new byte[0]);
   }
 
   /**
@@ -135,14 +146,15 @@ public class StoreConsumptionTaskTest extends PowerMockTestCase {
 
     // Prepare poll results.
     Map<TopicPartition, List<ConsumerRecord>> mockPollResult = new HashMap<>();
-    List<ConsumerRecord> testVeniceMessages = new ArrayList<>();
-    ConsumerRecord<KafkaKey, KafkaValue> testPutRecord = new ConsumerRecord(topic, testPartition, 10, new KafkaKey(
-        OperationType.WRITE, putTestKey.getBytes()), new KafkaValue(OperationType.PUT, putTestValue.getBytes()));
-    ConsumerRecord<KafkaKey, KafkaValue> testDeleteRecord =
-        new ConsumerRecord(topic, testPartition, 11, new KafkaKey(OperationType.WRITE, deleteTestKey.getBytes()),
-            new KafkaValue(OperationType.DELETE, deleteTestValue.getBytes()));
-    testVeniceMessages.add(testPutRecord);
-    testVeniceMessages.add(testDeleteRecord);
+
+    final long LAST_OFFSET= 15;
+    ConsumerRecord testPutRecord = getPutConsumerRecord(10, putTestKey.getBytes(), putTestValue.getBytes());
+    ConsumerRecord testDeleteRecord = getDeleteConsumerRecord(LAST_OFFSET, deleteTestKey.getBytes());
+    ConsumerRecord ignorePutRecord = getPutConsumerRecord(13, "Low-Offset-Ignored".getBytes(),
+            "ignored-put".getBytes());
+    ConsumerRecord ignoreDeleteRecord = getDeleteConsumerRecord(15, "Equal-Offset-Ignored".getBytes());
+
+    List<ConsumerRecord> testVeniceMessages = Arrays.asList(testPutRecord, testDeleteRecord, ignorePutRecord, ignoreDeleteRecord);
     mockPollResult.put(testTopicPartition, testVeniceMessages);
     ConsumerRecords testPollConsumerRecords = new ConsumerRecords(mockPollResult);
 
@@ -154,14 +166,27 @@ public class StoreConsumptionTaskTest extends PowerMockTestCase {
     // MockKafkaConsumer is prepared. Schedule for polling.
     Future testSubscribeTaskFuture = taskPollingService.submit(testSubscribeTask);
 
+    // Verify it retrieves the offset from the OffSet Manager
+    Mockito.verify(mockOffSetManager, Mockito.timeout(TIMEOUT).times(1)).getLastOffset(topic, testPartition);
+
     // Verify KafkaConsumer#poll is invoked.
     Mockito.verify(mockKafkaConsumer, Mockito.timeout(TIMEOUT).atLeastOnce()).poll(Mockito.anyLong());
-    // Verify StorageEngine#put is invoked with appropriate key & value.
-    Mockito.verify(mockAbstractStorageEngine, Mockito.timeout(TIMEOUT).atLeastOnce())
+    // Verify StorageEngine#put is invoked only once and with appropriate key & value.
+    Mockito.verify(mockAbstractStorageEngine, Mockito.timeout(TIMEOUT).times(1))
+            .put(eq(testPartition), any(), any());
+    Mockito.verify(mockAbstractStorageEngine, Mockito.timeout(TIMEOUT).times(1))
         .put(testPartition, putTestKey.getBytes(), putTestValue.getBytes());
-    // Verify StorageEngine#put is invoked with appropriate key.
-    Mockito.verify(mockAbstractStorageEngine, Mockito.timeout(TIMEOUT).atLeastOnce()).delete(testPartition,
-        deleteTestKey.getBytes());
+
+    // Verify StorageEngine#Delete is invoked only once and with appropriate key.
+    Mockito.verify(mockAbstractStorageEngine, Mockito.timeout(TIMEOUT).times(1)).delete(eq(testPartition),
+            any());
+    Mockito.verify(mockAbstractStorageEngine, Mockito.timeout(TIMEOUT).times(1)).delete(testPartition,
+            deleteTestKey.getBytes());
+
+    // Verify it commits the offset to Offset Manager
+    OffsetRecord expected = new OffsetRecord(LAST_OFFSET);
+    Mockito.verify(mockOffSetManager, Mockito.timeout(TIMEOUT).times(1)).recordOffset(topic, testPartition, expected);
+
 
     testSubscribeTask.close();
     testSubscribeTaskFuture.get();

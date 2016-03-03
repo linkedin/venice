@@ -11,32 +11,44 @@ import org.testng.annotations.Test;
 public class TestStore {
     @Test
     public void testVersionsAreAddedInOrdered(){
-        Store s = new Store("s1","owner",System.currentTimeMillis());
-        s.addVersion(new Version(s.getName(),4,System.currentTimeMillis()));
-        s.addVersion(new Version(s.getName(),2,System.currentTimeMillis()));
-        s.addVersion(new Version(s.getName(),3,System.currentTimeMillis()));
-        s.addVersion(new Version(s.getName(),1,System.currentTimeMillis()));
+        Store s = new Store("s1", "owner", System.currentTimeMillis());
+        s.addVersion(new Version(s.getName(), 4, System.currentTimeMillis()));
+        s.addVersion(new Version(s.getName(), 2, System.currentTimeMillis()));
+        s.addVersion(new Version(s.getName(), 3, System.currentTimeMillis()));
+        s.addVersion(new Version(s.getName(), 1, System.currentTimeMillis()));
 
         List<Version> versions = s.getVersions();
-        Assert.assertEquals(4,versions.size());
+        Assert.assertEquals(versions.size(), 4, "The Store version list is expected to contain 4 items!");
         for(int i=0;i<versions.size();i++){
-           Assert.assertEquals(i+1,versions.get(i).getNumber());
+            int expectedVersion = i + 1;
+           Assert.assertEquals(versions.get(i).getNumber(), i + 1,
+                   "The Store version list is expected to contain version " + expectedVersion + " at index " + i);
         }
     }
 
     @Test
     public void testDeleteVersion(){
-        Store s = new Store("s1","owner",System.currentTimeMillis());
-        s.addVersion(new Version(s.getName(),4,System.currentTimeMillis()));
-        s.addVersion(new Version(s.getName(),2,System.currentTimeMillis()));
-        s.addVersion(new Version(s.getName(),3,System.currentTimeMillis()));
+        Store s = new Store("s1", "owner", System.currentTimeMillis());
+        s.addVersion(new Version(s.getName(), 4, System.currentTimeMillis()));
+        s.addVersion(new Version(s.getName(), 2, System.currentTimeMillis()));
+        s.addVersion(new Version(s.getName(), 3, System.currentTimeMillis()));
         s.addVersion(new Version(s.getName(), 1, System.currentTimeMillis()));
 
-        s.deleteVersion(3);
         List<Version> versions = s.getVersions();
-        Assert.assertEquals(3, versions.size());
-        for(int i: new int[] {2,3,4}){
-            Assert.assertEquals(i,versions.get(i).getNumber());
+        Assert.assertEquals(versions.size(), 4, "The Store version list is expected to contain 4 items!");
+
+        s.deleteVersion(3);
+        versions = s.getVersions();
+        Assert.assertEquals(versions.size(), 3, "The Store version list is expected to contain 3 items!");
+        for (int i: new int[] {1,2,4}) {
+            boolean foundVersion = false;
+            for (Version version: versions) {
+                if (version.getNumber() == i) {
+                    foundVersion = true;
+                    break;
+                }
+            }
+            Assert.assertTrue(foundVersion, "The expected store version " + i + " was not found!");
         }
     }
 
@@ -44,8 +56,8 @@ public class TestStore {
     public void testCloneStore(){
         Store s = new Store("s1","owner",System.currentTimeMillis());
         Store clonedStore = s.cloneStore();
-        Assert.assertTrue(s.equals(clonedStore));
+        Assert.assertTrue(s.equals(clonedStore), "The cloned store is expected to be equal!");
         clonedStore.setCurrentVersion(100);
-        Assert.assertEquals(0,s.getCurrentVersion());
+        Assert.assertEquals(s.getCurrentVersion(), 0, "The cloned store's version is expected to be 0!");
     }
 }

@@ -64,7 +64,26 @@ public class OffsetRecord {
                 '}';
     }
 
-    /**
+  @Override
+  public boolean equals(Object o) {
+    if (this == o) {
+      return true;
+    }
+    if (o == null || getClass() != o.getClass()) {
+      return false;
+    }
+
+    OffsetRecord that = (OffsetRecord) o;
+
+    return offset == that.offset;
+  }
+
+  @Override
+  public int hashCode() {
+    return (int) (offset ^ (offset >>> 32));
+  }
+
+  /**
      * serialize to bytes
      *
      * @return byte[]
