@@ -1,5 +1,6 @@
 package com.linkedin.venice.helix;
 
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreDataChangedListener;
 import com.linkedin.venice.meta.StoreListChangedListener;
@@ -77,7 +78,7 @@ public class HelixCachedMetadataRepository extends HelixMetadataRepository {
     }
 
     /**
-     * Add store to local map and register data chaned listener for each of them.
+     * Add store to local map and register data changed listener for each of them.
      *
      * @param stores
      */
@@ -120,7 +121,7 @@ public class HelixCachedMetadataRepository extends HelixMetadataRepository {
         metadataLock.writeLock().lock();
         try {
             if (storeMap.containsKey(store.getName())) {
-                throw new IllegalArgumentException("Store:" + store.getName() + " already exists.");
+                throw new VeniceException("Store:" + store.getName() + " already exists.");
             }
             dataAccessor.set(composeStorePath(store.getName()), store, AccessOption.PERSISTENT);
             storeMap.put(store.getName(), store);
@@ -135,7 +136,7 @@ public class HelixCachedMetadataRepository extends HelixMetadataRepository {
         metadataLock.writeLock().lock();
         try {
             if (!storeMap.containsKey(store.getName())) {
-                throw new IllegalArgumentException("Store:" + store.getName() + " dose not exist.");
+                throw new VeniceException("Store:" + store.getName() + " dose not exist.");
             }
             Store originalStore = storeMap.get(store.getName());
             if (!originalStore.equals(store)) {
