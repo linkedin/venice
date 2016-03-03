@@ -1,7 +1,7 @@
 package com.linkedin.venice.kafka;
 
-import com.linkedin.venice.kafka.partitioner.DefaultVenicePartitioner;
-import com.linkedin.venice.kafka.partitioner.VenicePartitioner;
+import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
+import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.message.OperationType;
 import java.util.Arrays;
@@ -31,24 +31,22 @@ public class TestVenicePartitioner {
 
         PartitionInfo [] partitionArray = {new PartitionInfo("", 0, null, null, null),
             new PartitionInfo("", 1, null, null, null), new PartitionInfo("", 2, null, null, null)};
-        Node [] nodeArray = {new Node(0, "127.0.0.1",2000)};
-        Cluster cluster = new Cluster(Arrays.asList(nodeArray), Arrays.asList(partitionArray));
 
         // Test 1
-        int partition1 = vp.partition("", key, keyBytes, null, null, cluster);
-        int partition2 = vp.partition("", key, keyBytes, null, null, cluster);
+        int partition1 = vp.getPartitionId(key, partitionArray.length);
+        int partition2 = vp.getPartitionId(key, partitionArray.length);
         Assert.assertEquals(partition1, partition2);
 
         // Test 2
         key = new KafkaKey(OperationType.WRITE, "    ".getBytes());
-        partition1 = vp.partition("", key, "    ".getBytes(), null, null, cluster);
-        partition2 = vp.partition("", key, "    ".getBytes(), null, null, cluster);
+        partition1 = vp.getPartitionId(key, partitionArray.length);
+        partition2 = vp.getPartitionId(key, partitionArray.length);
         Assert.assertEquals(partition1, partition2);
 
         // Test 3
         key = new KafkaKey(OperationType.WRITE, "00000".getBytes());
-        partition1 = vp.partition("", key, "00000".getBytes(), null, null, cluster);
-        partition2 = vp.partition("", key, "00000".getBytes(), null, null, cluster);
+        partition1 = vp.getPartitionId(key, partitionArray.length);
+        partition2 = vp.getPartitionId(key, partitionArray.length);
         Assert.assertEquals(partition1, partition2);
 
     }

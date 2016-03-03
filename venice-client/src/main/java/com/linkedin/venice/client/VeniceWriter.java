@@ -5,6 +5,7 @@ import com.linkedin.venice.kafka.producer.KafkaProducerWrapper;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.message.KafkaValue;
 import com.linkedin.venice.message.OperationType;
+import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.serialization.VeniceSerializer;
 import com.linkedin.venice.utils.Props;
 import java.util.concurrent.Future;
@@ -68,10 +69,14 @@ public class VeniceWriter<K, V> {
      * completes and then return the metadata for the record or throw any exception that occurred while sending the record.
      * */
     public Future<RecordMetadata> put(K key, V value) {
-        // Ensure the Operation type for KafkaKey is WRITE. And the actual Operation type PUT is used in KafkaValue
-        KafkaKey kafkaKey = new KafkaKey(OperationType.WRITE, keySerializer.serialize(storeName, key));
-        KafkaValue kafkaValue = new KafkaValue(OperationType.PUT, valueSerializer.serialize(storeName, value));
+      // Ensure the Operation type for KafkaKey is WRITE. And the actual Operation type PUT is used in KafkaValue
+      KafkaKey kafkaKey = new KafkaKey(OperationType.WRITE, keySerializer.serialize(storeName, key));
+      KafkaValue kafkaValue = new KafkaValue(OperationType.PUT, valueSerializer.serialize(storeName, value));
+      try {
         return producer.sendMessage(storeName, kafkaKey, kafkaValue);
+      } catch (Exception e) {
+        throw new VeniceException("Got an exception while trying to produce to Kafka.", e);
+      }
     }
 
     /**

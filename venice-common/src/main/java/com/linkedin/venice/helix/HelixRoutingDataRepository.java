@@ -75,7 +75,7 @@ public class HelixRoutingDataRepository extends RoutingTableProvider implements 
             resourceToPartitionMap.set(new HashMap());
             manager.addExternalViewChangeListener(this);
         } catch (Exception e) {
-            String errorMessage = "Can not register routing table into Helix";
+            String errorMessage = "Cannot register routing table into Helix";
             logger.error(errorMessage, e);
             throw new VeniceException(errorMessage, e);
         }
@@ -90,7 +90,7 @@ public class HelixRoutingDataRepository extends RoutingTableProvider implements 
      * @return
      */
     public List<Instance> getInstances(@NotNull String resourceName, int partitionId) {
-        logger.debug("Get instances of Resource:" + resourceName + ", Partition:" + partitionId);
+        logger.debug("Get instances of Resource: " + resourceName + ", Partition:" + partitionId);
         Map<String, Map<Integer, Partition>> map = resourceToPartitionMap.get();
         if (map.containsKey(resourceName)) {
             Map<Integer, Partition> partitionsMap = map.get(resourceName);
@@ -101,7 +101,7 @@ public class HelixRoutingDataRepository extends RoutingTableProvider implements 
                 return Collections.emptyList();
             }
         } else {
-            String errorMessage = "Resource:" + resourceName + " dose not exist";
+            String errorMessage = "Resource '" + resourceName + "' does not exist";
             logger.warn(errorMessage);
             throw new IllegalArgumentException(errorMessage);
         }
@@ -119,7 +119,7 @@ public class HelixRoutingDataRepository extends RoutingTableProvider implements 
         if (map.containsKey(resourceName)) {
             return Collections.unmodifiableMap(map.get(resourceName));
         } else {
-            String errorMessage = "Resource:" + resourceName + " dose not exist";
+            String errorMessage = "Resource '" + resourceName + "' does not exist";
             logger.warn(errorMessage);
             throw new IllegalArgumentException(errorMessage);
         }
@@ -137,7 +137,7 @@ public class HelixRoutingDataRepository extends RoutingTableProvider implements 
         lock.lock();
         try {
             if (!resourceToNumberOfPartitionsMap.containsKey(resourceName)) {
-                String errorMessage = "Resource:" + resourceName + " dose not exist";
+                String errorMessage = "Resource '" + resourceName + "' does not exist";
                 logger.warn(errorMessage);
                 throw new IllegalArgumentException(errorMessage);
             }
@@ -178,7 +178,7 @@ public class HelixRoutingDataRepository extends RoutingTableProvider implements 
                     if(liveInstanceMap.containsKey(instanceName)){
                         instances.add(HelixInstanceConverter.convertZNRecordToInstance(liveInstanceMap.get(instanceName).getRecord()));
                     }else{
-                        logger.warn("Can not found instance:"+instanceName+" in LIVEINSTANCES");
+                        logger.warn("Cannot find instance '" + instanceName + "' in LIVEINSTANCES");
                     }
                 }
                 int partitionId=Partition.getPartitionIdFromName(partitionName);
@@ -196,8 +196,8 @@ public class HelixRoutingDataRepository extends RoutingTableProvider implements 
         //Clear cached resourceToNumberOfPartition map
         deletedResourceNames.forEach(resourceToNumberOfPartitionsMap::remove);
         lock.unlock();
-        logger.debug("Resources are added:" + addedResourceNames.toString());
-        logger.debug("Resources are deleted:" + deletedResourceNames.toString());
+        logger.debug("Resources added:" + addedResourceNames.toString());
+        logger.debug("Resources deleted:" + deletedResourceNames.toString());
         logger.info("External view is changed.");
     }
 
@@ -211,7 +211,7 @@ public class HelixRoutingDataRepository extends RoutingTableProvider implements 
         Map<String, Integer> newResourceNamesToNumberOfParitions = new HashMap<>();
         for (IdealState idealState : idealStates) {
             if (idealState == null) {
-                logger.warn("Some resource is deleted after getting the externalVeiwChanged event.");
+                logger.warn("Some resource is deleted after getting the externalViewChanged event.");
             } else {
                 newResourceNamesToNumberOfParitions.put(idealState.getResourceName(), idealState.getNumPartitions());
             }

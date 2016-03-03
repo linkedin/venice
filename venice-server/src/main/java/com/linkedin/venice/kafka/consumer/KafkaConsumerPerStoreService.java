@@ -2,7 +2,7 @@ package com.linkedin.venice.kafka.consumer;
 
 import com.linkedin.venice.config.VeniceServerConfig;
 import com.linkedin.venice.config.VeniceStoreConfig;
-import com.linkedin.venice.kafka.partitioner.PartitionZeroPartitioner;
+import com.linkedin.venice.partitioner.PartitionZeroPartitioner;
 import com.linkedin.venice.offsets.OffsetManager;
 import com.linkedin.venice.serialization.KafkaKeySerializer;
 import com.linkedin.venice.serialization.KafkaValueSerializer;
@@ -39,6 +39,7 @@ import org.apache.log4j.Logger;
  */
 public class KafkaConsumerPerStoreService extends AbstractVeniceService implements KafkaConsumerService {
 
+  // FIXME: Get rid of hard-coded topic name
   private static final String ACK_PARTITION_CONSUMPTION_KAFKA_TOPIC = "venice-partition-consumption-acknowledgement-1";
   private static final String VENICE_SERVICE_NAME = "kafka-consumer-service";
   private static final String GROUP_ID_FORMAT = "%s_%s_%d";

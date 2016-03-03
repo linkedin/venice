@@ -25,6 +25,7 @@ import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.common.TopicPartition;
+import org.apache.kafka.common.record.TimestampType;
 import org.mockito.Mockito;
 import static org.mockito.Matchers.*;
 
@@ -126,8 +127,13 @@ public class StoreConsumptionTaskTest extends PowerMockTestCase {
   }
 
   private ConsumerRecord<KafkaKey, KafkaValue> getConsumerRecord(OperationType type, long offset, byte[] key, byte[] value) {
-    return new ConsumerRecord(topic, testPartition, offset, new KafkaKey(
-            OperationType.WRITE, key), new KafkaValue(type, value));
+    return new ConsumerRecord(topic,
+                              testPartition,
+                              offset,
+                              0,
+                              TimestampType.NO_TIMESTAMP_TYPE,
+                              new KafkaKey(OperationType.WRITE, key),
+                              new KafkaValue(type, value));
   }
 
   private ConsumerRecord<KafkaKey, KafkaValue> getPutConsumerRecord(long offset, byte[] key, byte[] value) {

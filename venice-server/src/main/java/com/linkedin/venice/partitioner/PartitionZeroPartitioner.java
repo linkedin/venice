@@ -1,4 +1,4 @@
-package com.linkedin.venice.kafka.partitioner;
+package com.linkedin.venice.partitioner;
 
 import java.util.Map;
 import org.apache.kafka.clients.producer.Partitioner;
