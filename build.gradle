@@ -42,6 +42,11 @@ subprojects {
 }
 
 task buildAll {
+  dependsOn 'venice-common:build'
+  dependsOn 'venice-client:build'
+  dependsOn 'venice-server:build'
+  dependsOn 'venice-controller:build'
+
   dependsOn 'venice-common:buildJar'
   dependsOn 'venice-client:installApp'
   dependsOn 'venice-server:installApp'
