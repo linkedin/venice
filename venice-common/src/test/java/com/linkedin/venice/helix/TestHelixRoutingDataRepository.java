@@ -180,7 +180,7 @@ public class TestHelixRoutingDataRepository {
     Assert.assertEquals(0, partitions.size());
   }
 
-  private static class UnitTestStateModel {
+  public static class UnitTestStateModel {
 
     public static final String UNIT_TEST_STATE_MODEL = "UnitTestStateModel";
 
@@ -201,7 +201,7 @@ public class TestHelixRoutingDataRepository {
     }
   }
 
-  private static class UnitTestStateModelFactory extends StateModelFactory<StateModel> {
+  public static class UnitTestStateModelFactory extends StateModelFactory<StateModel> {
     @Override
     public StateModel createNewStateModel(String resourceName, String partitionName) {
       OnlineOfflineStateModel stateModel = new OnlineOfflineStateModel();
