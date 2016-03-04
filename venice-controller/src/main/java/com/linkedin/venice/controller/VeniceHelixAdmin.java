@@ -114,7 +114,7 @@ public class VeniceHelixAdmin implements Admin {
             repository.unLock();
         }
 
-        addHelixResource(clusterName, version.kafkaTopicName(), numberOfPartition, replicaFactor,
+        addKafkaTopic(clusterName, version.kafkaTopicName(), numberOfPartition, replicaFactor,
             configs.get(clusterName).getKafkaReplicaFactor());
     }
 
@@ -140,7 +140,7 @@ public class VeniceHelixAdmin implements Admin {
             repository.unLock();
         }
 
-        addHelixResource(clusterName, version.kafkaTopicName(), numberOfPartition, replicaFactor,
+        addKafkaTopic(clusterName, version.kafkaTopicName(), numberOfPartition, replicaFactor,
             configs.get(clusterName).getKafkaReplicaFactor());
     }
 
@@ -153,28 +153,45 @@ public class VeniceHelixAdmin implements Admin {
         this.incrementVersion(clusterName, storeName, config.getNumberOfPartition(), config.getReplicaFactor());
     }
 
+    /**
+     * addKafkaTopic is a feature in Venice domain. Beside that we alos need to create a resource with the same name of Kafka
+     * topic in Helix.
+     *
+     * @param clusterName
+     * @param kafkaTopic
+     */
     @Override
-    public void addHelixResource(String clusterName, String resourceName) {
+    public void addKafkaTopic(String clusterName, String kafkaTopic) {
         VeniceControllerClusterConfig config = configs.get(clusterName);
         if (config == null) {
             handleClusterDoseNotStart(clusterName);
         }
-        this.addHelixResource(clusterName, resourceName, config.getNumberOfPartition(), config.getReplicaFactor(),
+        this.addKafkaTopic(clusterName, kafkaTopic, config.getNumberOfPartition(), config.getReplicaFactor(),
             config.getKafkaReplicaFactor());
     }
 
+    /**
+     * addKafkaTopic is a feature in Venice domain. Beside that we alos need to create a resource with the same name of Kafka
+     * topic in Helix.
+     *
+     * @param clusterName
+     * @param kafkaTopic
+     * @param numberOfPartition
+     * @param replicaFactor
+     * @param kafkaReplicaFactor
+     */
     @Override
-    public synchronized void addHelixResource(String clusterName, String resourceName, int numberOfPartition,
+    public synchronized void addKafkaTopic(String clusterName, String kafkaTopic, int numberOfPartition,
         int replicaFactor, int kafkaReplicaFactor) {
-        topicCreator.createTopic(resourceName, numberOfPartition, kafkaReplicaFactor);
+        topicCreator.createTopic(kafkaTopic, numberOfPartition, kafkaReplicaFactor);
 
-        if (!admin.getResourcesInCluster(clusterName).contains(resourceName)) {
-            admin.addResource(clusterName, resourceName, numberOfPartition,
+        if (!admin.getResourcesInCluster(clusterName).contains(kafkaTopic)) {
+            admin.addResource(clusterName, kafkaTopic, numberOfPartition,
                 VeniceStateModel.PARTITION_ONLINE_OFFLINE_STATE_MODEL, IdealState.RebalanceMode.FULL_AUTO.toString());
-            admin.rebalance(clusterName, resourceName, replicaFactor);
-            logger.info("Added " + resourceName + " as a resource to cluster: " + clusterName);
+            admin.rebalance(clusterName, kafkaTopic, replicaFactor);
+            logger.info("Added " + kafkaTopic + " as a resource to cluster: " + clusterName);
         } else {
-            handleResourceAlreadyExists(resourceName);
+            handleResourceAlreadyExists(kafkaTopic);
         }
     }
 

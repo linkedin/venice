@@ -32,13 +32,14 @@ public class TestHelixControlMessageChannel {
   private String kafkaTopic = "test_resource_1";
   private int partitionId = 0;
   private String instanceId = "localhost_1234";
-  private StatusUpdateMessage.Status status = StatusUpdateMessage.Status.FINALIZED;
+  private StatusUpdateMessage.Status status = StatusUpdateMessage.Status.COMPLETED;
   private ZkServerWrapper zkServerWrapper;
   private String zkAddress;
   private HelixControlMessageChannel channel;
   private HelixManager manager;
   private HelixAdmin admin;
   private HelixManager controller;
+  private final long WAIT_ZK_TIME = 1000l;
 
   @BeforeMethod
   public void setup()
@@ -128,7 +129,7 @@ public class TestHelixControlMessageChannel {
     StatusUpdateMessageHandler handler = new StatusUpdateMessageHandler();
     controllerChannel.registerHandler(StatusUpdateMessage.class, handler);
 
-    Thread.sleep(1000l);
+    Thread.sleep(WAIT_ZK_TIME);
     StatusUpdateMessage veniceMessage = new StatusUpdateMessage(kafkaTopic, partitionId, instanceId, status);
     channel.sendToController(veniceMessage);
     StatusUpdateMessage receivedMessage = handler.getStatus(veniceMessage.getKafkaTopic());

@@ -17,9 +17,10 @@ public interface Admin {
 
     public void incrementVersion(String clusterName, String storeName);
 
-    public void addHelixResource(String clusterName, String resourceName);
+    public void addKafkaTopic(String clusterName, String kafkaTopic);
 
-    public void addHelixResource(String clusterName, String resourceName,int numberOfPartition, int replicaFactor, int kafkaReplicaFactor);
+    public void addKafkaTopic(String clusterName, String kafkaTopic, int numberOfPartition, int replicaFactor,
+        int kafkaReplicaFactor);
 
     public void stop(String clusterName);
 }
