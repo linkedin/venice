@@ -8,7 +8,10 @@ ext.libraries = [ // Groovy map literal
                   bdbJe: 'com.sleepycat:je:5.0.104',
                   netty: 'io.netty:netty-all:4.0.33.Final',
                   zkclient: 'com.101tec:zkclient:0.7', //for Kafka AdminUtils
-                  kafka: 'org.apache.kafka:kafka_2.10:0.9.0.0'
+                  kafka: 'org.apache.kafka:kafka_2.10:0.9.0.0',
+                  router: 'com.linkedin.dds-storage-core:dds-storage-router-api:0.0.34',
+                  router_base: 'com.linkedin.dds-storage-core:dds-storage-common-base:0.0.34',
+                  router_netty: 'com.linkedin.dds-storage-core:dds-storage-netty-base:0.0.34',
 
 ]
 

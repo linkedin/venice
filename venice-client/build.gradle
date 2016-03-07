@@ -24,7 +24,9 @@ jar {
 }
 
 dependencies {
-
+  compile libraries.router
+//  compile libraries.router_base
+//  compile libraries.router_netty
   compile project(':venice-common')
 
 }
