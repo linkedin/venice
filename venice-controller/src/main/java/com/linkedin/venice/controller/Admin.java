@@ -13,9 +13,9 @@ public interface Admin {
     public void addVersion(String clusterName, String storeName, int versionNumber, int numberOfPartition,
         int replicaFactor);
 
-    public void incrementVersion(String clusterName, String storeName, int numberOfPartition, int replicaFactor);
+    public int incrementVersion(String clusterName, String storeName, int numberOfPartition, int replicaFactor);
 
-    public void incrementVersion(String clusterName, String storeName);
+    public int incrementVersion(String clusterName, String storeName);
 
     public void addKafkaTopic(String clusterName, String kafkaTopic);
 

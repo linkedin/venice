@@ -1,6 +1,7 @@
 package com.linkedin.venice.controller.server;
 
 import com.linkedin.venice.controller.Admin;
+import com.linkedin.venice.exceptions.VeniceException;
 import io.netty.buffer.ByteBuf;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelFuture;
@@ -9,7 +10,6 @@ import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
 import io.netty.handler.codec.DecoderException;
 import io.netty.handler.codec.http.DefaultFullHttpResponse;
-import io.netty.handler.codec.http.FullHttpResponse;
 import io.netty.handler.codec.http.HttpContent;
 import io.netty.handler.codec.http.HttpHeaders;
 import io.netty.handler.codec.http.HttpMethod;
@@ -34,6 +34,7 @@ import java.net.URI;
 import java.util.HashMap;
 import java.util.Map;
 import org.apache.log4j.Logger;
+import org.codehaus.jackson.map.ObjectMapper;
 
 import static io.netty.buffer.Unpooled.copiedBuffer;
 import static io.netty.handler.codec.http.HttpHeaders.Names.CONNECTION;
@@ -48,13 +49,16 @@ public class Handler extends SimpleChannelInboundHandler<HttpObject> {
 
   public static final String NAME = "storename";
   public static final String OWNER = "owner";
-  public static final String VERSION = "version";
-  public static final String PARTITIONS = "partitions";
-  public static final String REPLICAS = "replicas";
+  public static final String STORE_SIZE = "store_size";
+  private static final String TEXT_HTML = "text/html";
+  private static final String TEXT_PLAIN = "text/plain";
+  private static final String JSON = "application/json";
 
   private HttpRequest request;
   private boolean readingChunks;
   private final StringBuilder responseContent = new StringBuilder();
+  private Map<String, Object> responseMap = null;
+  private HttpResponseStatus responseStatus = HttpResponseStatus.OK;
   private final String clusterName;
   private final Admin admin;
 
@@ -98,6 +102,8 @@ public class Handler extends SimpleChannelInboundHandler<HttpObject> {
         return;
       }
       responseContent.setLength(0);
+      responseMap = new HashMap<>();
+      responseStatus = HttpResponseStatus.OK;
 
       try {
         decoder = new HttpPostRequestDecoder(factory, request);
@@ -127,38 +133,59 @@ public class Handler extends SimpleChannelInboundHandler<HttpObject> {
 
         Map<String, String> attributes = parseAttributes();
         responseContent.append("Parsed these parameters:\r\n");
+        responseMap.put("parameters", attributes);
         for (String key : attributes.keySet()){
           responseContent.append("  " + key + ": " + attributes.get(key) + "\r\n");
         }
-        if (attributes.containsKey(NAME) && attributes.containsKey(PARTITIONS) && attributes.containsKey(REPLICAS)){
+        if (attributes.containsKey(NAME) &&
+            attributes.containsKey(STORE_SIZE) &&
+            attributes.containsKey(OWNER) &&
+            attributes.get(NAME).length() > 0 &&
+            attributes.get(OWNER).length() > 0 ){
           try {
             String storeName=attributes.get(NAME);
-            String owner=attributes.getOrDefault(OWNER,"venice-dev");
-            int version=Integer.valueOf(attributes.getOrDefault(VERSION, "1"));
-            int numberOfPartition = Integer.valueOf(attributes.get(PARTITIONS));
-            int replicaFactor = Integer.valueOf(attributes.get(REPLICAS));
-            responseContent.append("Creating Store.\r\n");
+            String owner=attributes.get(OWNER);
+
+            int storeSizeMb = Integer.valueOf(attributes.get(STORE_SIZE));
+            responseContent.append("Creating Store-version.\r\n");
+            responseMap.put("action", "creating store-version");
             //create store and versions
-            admin.addStore(clusterName,storeName,owner);
-            admin.addVersion(clusterName,storeName,version,numberOfPartition,replicaFactor);
+            int numberOfPartitions = 3; //TODO configurable datasize per partition
+            int numberOfReplicas = 1; //TODO configurable replication factor
+
+            try {
+              admin.addStore(clusterName, storeName, owner);
+              responseMap.put("store_status", "created");
+            } catch (VeniceException e){
+              responseMap.put("store_status", e.getMessage()); //Probably already created
+              // TODO: use admin to update store with new owner?  Set owner at version level for audit history?
+            }
+            int version = admin.incrementVersion(clusterName, storeName, numberOfPartitions, numberOfReplicas);
+            responseMap.put("partitions",numberOfPartitions);
+            responseMap.put("replicas",numberOfReplicas);
+            responseMap.put("version", version);
           } catch (NumberFormatException e) {
-            responseContent.append(("Partition count and replica count must be integers"));
+            responseContent.append(("Store size must be an integer"));
+            responseMap.put("error", STORE_SIZE + " must be an integer");
+            responseStatus = HttpResponseStatus.BAD_REQUEST;
           }
         } else {
           responseContent.append("Invalid Store Definition Request!\r\n");
-          responseContent.append("Provide store name as: " + NAME + "\r\n");
-          responseContent.append("Provide integer partition count as: " + PARTITIONS + "\r\n");
-          responseContent.append("Provide integer replica count as: " + REPLICAS + "\r\n");
+          responseContent.append("Provide non-empty store name as: " + NAME + "\r\n");
+          responseContent.append("Provide integer store size as: " + STORE_SIZE + "\r\n");
+          responseContent.append("Provide non-empty owner as: " + OWNER + "\r\n");
+          responseMap.put("error", NAME + "," + STORE_SIZE + "," + OWNER + " are required parameters");
+          responseStatus = HttpResponseStatus.BAD_REQUEST;
         }
 
         if (chunk instanceof LastHttpContent) {
-          writeResponse(ctx.channel());
+          writeResponse(ctx.channel(), JSON, responseStatus);
           readingChunks = false;
           reset();
         }
       }
     } else {
-      writeResponse(ctx.channel());
+      writeResponse(ctx.channel(), JSON, responseStatus);
     }
   }
 
@@ -189,12 +216,20 @@ public class Handler extends SimpleChannelInboundHandler<HttpObject> {
     return bodyAttributes;
   }
 
-  private void writeResponse(Channel channel){
-    writeResponse(channel, "text/plain");
-  }
-  private void writeResponse(Channel channel, String type) {
+  private void writeResponse(Channel channel, String type, HttpResponseStatus httpStatus) {
     // Convert the response content to a ChannelBuffer.
-    ByteBuf buf = copiedBuffer(responseContent.toString(), CharsetUtil.UTF_8);
+    ByteBuf buf;
+    if (type.equals(JSON)){
+      ObjectMapper mapper = new ObjectMapper(); //this call is relatively rare, so it's ok to recreate the mapper each time
+      try {
+        buf = copiedBuffer(mapper.writeValueAsString(responseMap), CharsetUtil.UTF_8);
+      } catch (IOException e) {
+        buf = copiedBuffer("{\"error\":\"" + e.getMessage() + "\"}", CharsetUtil.UTF_8);
+        logger.error(e);
+      }
+    } else {
+      buf = copiedBuffer(responseContent.toString(), CharsetUtil.UTF_8);
+    }
     responseContent.setLength(0);
 
     // Decide whether to close the connection or not.
@@ -203,8 +238,8 @@ public class Handler extends SimpleChannelInboundHandler<HttpObject> {
         && !HttpHeaders.Values.KEEP_ALIVE.equalsIgnoreCase(request.headers().get(CONNECTION));
 
     // Build the response object.
-    FullHttpResponse response = new DefaultFullHttpResponse(
-        HttpVersion.HTTP_1_1, HttpResponseStatus.OK, buf);
+    DefaultFullHttpResponse response = new DefaultFullHttpResponse(
+        HttpVersion.HTTP_1_1, httpStatus, buf);
     response.headers().set(CONTENT_TYPE, type + "; charset=UTF-8");
     response.headers().set(CONTENT_LENGTH, buf.readableBytes());
 
@@ -236,10 +271,9 @@ public class Handler extends SimpleChannelInboundHandler<HttpObject> {
     responseContent.append("<CENTER><HR WIDTH=\"100%\" NOSHADE color=\"blue\"></CENTER>");
     responseContent.append("<FORM ACTION=\"/create\" METHOD=\"POST\">");
     responseContent.append("<table border=\"0\">");
-    responseContent.append("<tr><td>Store Name: <br> <input type=text name=\"storename\" size=20></td></tr>");
-    responseContent.append("<tr><td>Partitions: <br> <input type=text name=\"partitions\" size=10>");
-    responseContent.append("<tr><td>Replicas: <br> <input type=text name=\"replicas\" size=10>");
-    responseContent.append("</td></tr>");
+    responseContent.append("<tr><td>Store Name: <br> <input type=text name=\""+NAME+"\" size=20></td></tr>");
+    responseContent.append("<tr><td>Store Size (MB): <br> <input type=text name=\""+STORE_SIZE+"\" size=20></td></tr>");
+    responseContent.append("<tr><td>Owner: <br> <input type=text name=\""+OWNER+"\" size=20></td></tr>");
     responseContent.append("<tr><td><INPUT TYPE=\"submit\" NAME=\"Send\" VALUE=\"Send\"></INPUT></td>");
     responseContent.append("<td><INPUT TYPE=\"reset\" NAME=\"Clear\" VALUE=\"Clear\" ></INPUT></td></tr>");
     responseContent.append("</table></FORM>\r\n");
@@ -248,13 +282,13 @@ public class Handler extends SimpleChannelInboundHandler<HttpObject> {
     responseContent.append("</body>");
     responseContent.append("</html>");
 
-    writeResponse(ctx.channel(), "text/html");
+    writeResponse(ctx.channel(), TEXT_HTML, HttpResponseStatus.OK);
   }
 
   private void handleError(String message, Throwable cause, Channel channel){
     logger.error(message, cause);
     responseContent.append(cause.getMessage());
-    writeResponse(channel);
+    writeResponse(channel, TEXT_PLAIN, HttpResponseStatus.INTERNAL_SERVER_ERROR);
     channel.close();
   }
 

@@ -142,7 +142,7 @@ public class VeniceHelixAdmin implements Admin {
     }
 
     @Override
-    public synchronized void incrementVersion(String clusterName, String storeName, int numberOfPartition,
+    public synchronized int incrementVersion(String clusterName, String storeName, int numberOfPartition,
         int replicaFactor) {
         HelixCachedMetadataRepository repository = repositories.get(clusterName);
         if (repository == null) {
@@ -165,15 +165,16 @@ public class VeniceHelixAdmin implements Admin {
 
         addKafkaTopic(clusterName, version.kafkaTopicName(), numberOfPartition, replicaFactor,
             configs.get(clusterName).getKafkaReplicaFactor());
+        return version.getNumber();
     }
 
     @Override
-    public void incrementVersion(String clusterName, String storeName) {
+    public int incrementVersion(String clusterName, String storeName) {
         VeniceControllerClusterConfig config = configs.get(clusterName);
         if (config == null) {
             handleClusterDoseNotStart(clusterName);
         }
-        this.incrementVersion(clusterName, storeName, config.getNumberOfPartition(), config.getReplicaFactor());
+        return this.incrementVersion(clusterName, storeName, config.getNumberOfPartition(), config.getReplicaFactor());
     }
 
     /**

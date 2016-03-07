@@ -101,6 +101,6 @@ public class Version{
      * @return kafka topic name.
      */
     public String kafkaTopicName() {
-        return storeName + number;
+        return storeName + "_v" + number;
     }
 }

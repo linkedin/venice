@@ -13,8 +13,8 @@ import org.apache.log4j.Logger;
 
 /**
  * Send a POST request as if the fields are form data:
- * curl -X POST --data "storename=mystore&partitions=4&replicas=1" [host]:[port]/create
- *
+ * curl -X POST --data "storename=mystore&store_size=8000&owner=devuser" [host]:[port]/create
+ * (optionally add a -i flag to see the HTTP header on the response)
  * request to another path or a GET request yields an HTML form to use
  */
 public class AdminServer extends AbstractVeniceService {
