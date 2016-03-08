@@ -6,6 +6,6 @@ package com.linkedin.venice.router;
 public class NoopVersionFinder implements VersionFinder {
   @Override
   public int getVersion(String store) {
-    return 0;
+    return 1;
   }
 }

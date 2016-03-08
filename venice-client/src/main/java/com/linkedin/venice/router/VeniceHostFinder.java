@@ -3,11 +3,13 @@ package com.linkedin.venice.router;
 import com.linkedin.ddsstorage.router.api.HostFinder;
 import com.linkedin.ddsstorage.router.api.HostHealthMonitor;
 import com.linkedin.ddsstorage.router.api.RouterException;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.Partition;
 import com.linkedin.venice.meta.RoutingDataRepository;
 import java.util.Collection;
 import java.util.List;
+import org.jboss.netty.handler.codec.http.HttpResponseStatus;
 
 
 public class VeniceHostFinder implements HostFinder<Instance, VeniceRole> {
@@ -36,7 +38,9 @@ public class VeniceHostFinder implements HostFinder<Instance, VeniceRole> {
   }
 
   @Override
-  public Collection<Instance> findAllHosts(VeniceRole roles) throws VeniceRouterException {
-    throw new VeniceRouterException("Find All Hosts is not a supported operation");
+  public Collection<Instance> findAllHosts(VeniceRole roles) throws RouterException {
+    throw new RouterException(HttpResponseStatus.BAD_REQUEST,
+        new VeniceException("Find All Hosts is not a supported operation"),
+        true);
   }
 }

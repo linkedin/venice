@@ -10,9 +10,6 @@ ext.libraries = [ // Groovy map literal
                   zkclient: 'com.101tec:zkclient:0.7', //for Kafka AdminUtils
                   kafka: 'org.apache.kafka:kafka_2.10:0.9.0.0',
                   router: 'com.linkedin.dds-storage-core:dds-storage-router-api:0.0.34',
-                  router_base: 'com.linkedin.dds-storage-core:dds-storage-common-base:0.0.34',
-                  router_netty: 'com.linkedin.dds-storage-core:dds-storage-netty-base:0.0.34',
-
 ]
 
 subprojects {
@@ -28,8 +25,13 @@ subprojects {
     maven {
       url "http://download.oracle.com/maven/"
     }
-    maven {
-      url 'http://artifactory.corp.linkedin.com:8081/artifactory/all'
+    ivy {
+      url 'http://artifactory.corp.linkedin.com:8081/artifactory/release/'
+      layout "pattern", {
+        ivy '[organisation]/[module]/[revision]/[module]-[revision].ivy'
+        artifact '[organisation]/[module]/[revision]/[artifact]-[revision](-[classifier]).[ext]'
+        m2compatible = true
+      }
     }
   }
 

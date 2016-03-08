@@ -1,6 +1,7 @@
 package com.linkedin.venice.router;
 
 import com.linkedin.ddsstorage.router.api.ResourcePath;
+import com.linkedin.ddsstorage.router.api.RouterException;
 import java.util.Base64;
 import org.testng.Assert;
 import org.testng.annotations.Test;
@@ -12,20 +13,22 @@ import org.testng.annotations.Test;
 public class TestVenicePathParser {
 
   @Test
-  public void parsesQueries(){
+  public void parsesQueries()
+      throws RouterException {
     String uri = "read/store/key";
     VenicePathParser parser = new VenicePathParser(new NoopVersionFinder());
     Path path = parser.parseResourceUri(uri);
     String keyb64 = Base64.getEncoder().encodeToString("key".getBytes());
-    Assert.assertEquals(path.getLocation(), "read/store_v0/" + keyb64 + "?" + VenicePathParser.B64FORMAT);
+    Assert.assertEquals(path.getLocation(), "read/store_v1/" + keyb64 + "?" + VenicePathParser.B64FORMAT);
 
     Path path2 = parser.substitutePartitionKey(path, RouterKey.fromString("key2"));
     String key2b64 = Base64.getEncoder().encodeToString("key2".getBytes());
-    Assert.assertEquals(path2.getLocation(), "read/store_v0/" + key2b64 + "?" + VenicePathParser.B64FORMAT);
+    Assert.assertEquals(path2.getLocation(), "read/store_v1/" + key2b64 + "?" + VenicePathParser.B64FORMAT);
   }
 
   @Test
-  public void parsesB64Uri(){
+  public void parsesB64Uri()
+      throws RouterException {
     String myUri = "/read/storename/bXlLZXk=?f=b64";
     String expectedKey = "myKey";
     Path path = new VenicePathParser(new NoopVersionFinder()).parseResourceUri(myUri);
@@ -33,8 +36,9 @@ public class TestVenicePathParser {
         new String(path.getPartitionKey().getBytes()) + " should match " + expectedKey);
   }
 
-  @Test(expectedExceptions = VeniceRouterException.class)
-  public void failsToParseOtherActions() {
+  @Test(expectedExceptions = RouterException.class)
+  public void failsToParseOtherActions()
+      throws RouterException {
     new VenicePathParser(new NoopVersionFinder()).parseResourceUri("/badaction/storename/key");
   }
 

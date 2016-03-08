@@ -1,15 +1,15 @@
 package com.linkedin.venice.router;
 
-import com.linkedin.ddsstorage.router.api.ResourcePath;
 import com.linkedin.ddsstorage.router.api.ResourcePathParser;
+import com.linkedin.ddsstorage.router.api.RouterException;
+import com.linkedin.venice.exceptions.VeniceException;
 import java.net.URI;
 import java.net.URISyntaxException;
-import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
-import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import org.jboss.netty.handler.codec.http.HttpResponseStatus;
 
 
 /***
@@ -40,13 +40,13 @@ public class VenicePathParser implements ResourcePathParser<Path, RouterKey> {
   };
 
   @Override
-  public Path parseResourceUri(String uri) {//throws RouterException {
+  public Path parseResourceUri(String uri) throws RouterException {
     URI uriObject;
     try {
       uriObject = new URI(uri);
     } catch (URISyntaxException e) {
       e.printStackTrace();
-      throw new VeniceRouterException("Failed to parse uri: " + uri, e);
+      throw new RouterException(HttpResponseStatus.INTERNAL_SERVER_ERROR, e, true);
     }
 
     String[] path = uriObject.getPath().split("/");
@@ -55,7 +55,8 @@ public class VenicePathParser implements ResourcePathParser<Path, RouterKey> {
       offset = 1;  //leading slash in uri splits to an empty path section
     }
     if (path.length - offset < 3){
-      throw new VeniceRouterException("Request URI must have an action, storename, and key");
+      throw new RouterException(HttpResponseStatus.BAD_REQUEST,
+          new VeniceException("Request URI must have an action, storename, and key"), true);
     }
     String action = path[0+offset];
     String storename = path[1+offset];
@@ -72,7 +73,8 @@ public class VenicePathParser implements ResourcePathParser<Path, RouterKey> {
       return new Path(resourceName, Collections.singleton(routerKey));
 
     } else {
-      throw new VeniceRouterException("Requested Action: " + action + " is not a valid actions");
+      throw new RouterException(HttpResponseStatus.BAD_REQUEST,
+          new VeniceException("Requested Action: " + action + " is not a valid action"), true);
     }
   }
 
