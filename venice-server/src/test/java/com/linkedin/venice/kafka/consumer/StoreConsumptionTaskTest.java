@@ -1,5 +1,6 @@
 package com.linkedin.venice.kafka.consumer;
 
+import com.google.common.collect.Lists;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.message.KafkaValue;
 import com.linkedin.venice.message.OperationType;
@@ -14,7 +15,9 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
+import java.util.Queue;
 import java.util.Set;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
@@ -79,8 +82,11 @@ public class StoreConsumptionTaskTest extends PowerMockTestCase {
     PowerMockito.whenNew(KafkaConsumer.class).withParameterTypes(Properties.class)
         .withArguments(mockKafkaConsumerProperties).thenReturn(mockKafkaConsumer);
 
+    Queue<VeniceNotifier> notifiers = new ConcurrentLinkedQueue<>();
+    notifiers.add(mockNotifier);
+
     return new StoreConsumptionTask(mockKafkaConsumerProperties, mockStoreRepository, mockOffSetManager,
-            mockNotifier, nodeId, topic);
+            notifiers, nodeId, topic);
   }
 
   /**

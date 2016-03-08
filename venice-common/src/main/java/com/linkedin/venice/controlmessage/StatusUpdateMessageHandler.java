@@ -19,9 +19,9 @@ public class StatusUpdateMessageHandler implements ControlMessageHandler<StatusU
 
   @Override
   public void handleMessage(StatusUpdateMessage message) {
-    logger.info("Get message:"+message.getMessageId());
+    logger.info("Processing message: "+message.getMessageId() + " For topic " + message.getKafkaTopic() );
     for (Map.Entry<String, String> entry : message.getFields().entrySet()) {
-      logger.debug(entry.getKey() + ":" + entry.getValue() + ";");
+      logger.info(entry.getKey() + ":" + entry.getValue() + ";");
     }
     statusMap.put(message.getKafkaTopic(), message);
   }
