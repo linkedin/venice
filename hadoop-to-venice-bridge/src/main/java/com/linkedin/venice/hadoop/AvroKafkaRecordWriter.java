@@ -1,7 +1,7 @@
 package com.linkedin.venice.hadoop;
 
 import com.linkedin.venice.client.VeniceWriter;
-import com.linkedin.venice.serialization.Avro.AvroGenericSerializer;
+import com.linkedin.venice.serialization.avro.AvroGenericSerializer;
 import com.linkedin.venice.serialization.DefaultSerializer;
 import com.linkedin.venice.serialization.StringSerializer;
 import com.linkedin.venice.serialization.VeniceSerializer;
@@ -118,6 +118,6 @@ public class AvroKafkaRecordWriter implements RecordWriter<AvroWrapper<IndexedRe
       }
     }
 
-    veniceWriter.put(keySerializer.serialize(topicName, keyDatum), valueSerializer.serialize(topicName, valueDatum));
+    veniceWriter.put(keySerializer.serialize(keyDatum), valueSerializer.serialize(valueDatum));
   }
 }

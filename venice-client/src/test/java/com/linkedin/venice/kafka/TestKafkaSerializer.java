@@ -30,8 +30,8 @@ public class TestKafkaSerializer {
 
     /* TEST 1 */
     KafkaKey kafkaKey = new KafkaKey(OperationType.WRITE, key1);
-    byte[] byteArray = serializer.serialize(TEST_TOPIC, kafkaKey);
-    KafkaKey kafkaKey2 = serializer.deserialize(TEST_TOPIC, byteArray);
+    byte[] byteArray = serializer.serialize(kafkaKey);
+    KafkaKey kafkaKey2 = serializer.deserialize(byteArray);
 
     // Placeholder Magic Byte is 22
     Assert.assertEquals(kafkaKey2.getOperationType(), kafkaKey.getOperationType());
@@ -42,8 +42,8 @@ public class TestKafkaSerializer {
     /* TEST 2 */
     byte[] key2 = "d1".getBytes();
     kafkaKey = new KafkaKey(OperationType.WRITE, key2);
-    byteArray = serializer.serialize(TEST_TOPIC, kafkaKey);
-    kafkaKey2 = serializer.deserialize(TEST_TOPIC, byteArray);
+    byteArray = serializer.serialize(kafkaKey);
+    kafkaKey2 = serializer.deserialize(byteArray);
 
     // Placeholder Magic Byte is 22
     Assert.assertEquals(kafkaKey2.getOperationType(), kafkaKey.getOperationType());
@@ -53,8 +53,8 @@ public class TestKafkaSerializer {
 
     /* TEST 3 */
     kafkaKey = new ControlFlagKafkaKey(OperationType.BEGIN_OF_PUSH, key1, 2L);
-    byteArray = serializer.serialize(TEST_TOPIC, kafkaKey);
-    kafkaKey2 = serializer.deserialize(TEST_TOPIC, byteArray);
+    byteArray = serializer.serialize(kafkaKey);
+    kafkaKey2 = serializer.deserialize(byteArray);
 
     // Placeholder Magic Byte is 22
     Assert.assertEquals(kafkaKey2.getOperationType(), kafkaKey.getOperationType());
@@ -71,8 +71,8 @@ public class TestKafkaSerializer {
 
     /* TEST 1 */
     KafkaValue kafkaValue = new KafkaValue(OperationType.PUT, val1);
-    byte[] byteArray = serializer.serialize(TEST_TOPIC, kafkaValue);
-    KafkaValue kafkaValue2 = serializer.deserialize(TEST_TOPIC, byteArray);
+    byte[] byteArray = serializer.serialize(kafkaValue);
+    KafkaValue kafkaValue2 = serializer.deserialize(byteArray);
 
     // Placeholder Magic Byte is 13
     Assert.assertEquals(kafkaValue2.getMagicByte(), KafkaValue.DEFAULT_MAGIC_BYTE);
@@ -86,8 +86,8 @@ public class TestKafkaSerializer {
     /* TEST 2 */
     byte[] val2 = "d1".getBytes();
     kafkaValue = new KafkaValue(OperationType.DELETE, val2);
-    byteArray = serializer.serialize(TEST_TOPIC, kafkaValue);
-    kafkaValue2 = serializer.deserialize(TEST_TOPIC, byteArray);
+    byteArray = serializer.serialize(kafkaValue);
+    kafkaValue2 = serializer.deserialize(byteArray);
 
     // Placeholder Magic Byte is 13
     Assert.assertEquals(kafkaValue2.getMagicByte(), KafkaValue.DEFAULT_MAGIC_BYTE);

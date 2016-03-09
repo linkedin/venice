@@ -1,10 +1,9 @@
 package com.linkedin.venice.kafka.consumer;
 
-import com.linkedin.venice.serialization.Avro.JobProgressKafkaRecord;
+import com.linkedin.venice.controlmessage.JobProgressKafkaRecord;
 import java.util.Properties;
 import org.apache.kafka.clients.producer.KafkaProducer;
 import org.apache.kafka.clients.producer.ProducerRecord;
-import org.apache.log4j.Logger;
 
 
 /**
