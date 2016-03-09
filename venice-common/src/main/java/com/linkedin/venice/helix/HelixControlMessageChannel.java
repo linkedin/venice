@@ -75,7 +75,10 @@ public class HelixControlMessageChannel implements ControlMessageChannel {
     ControlMessageCallback callBack = new ControlMessageCallback();
     try {
       //Send and wait until getting response or time out.
-      messageService.sendAndWait(criteria, helixMessage, callBack, timeOut, retryCount);
+      int numMsg = messageService.sendAndWait(criteria, helixMessage, callBack, timeOut, retryCount);
+      if(numMsg == 0) {
+        throw new VeniceException("No controller could be found to send messages " + message.getMessageId());
+      }
     } catch (Throwable e) {
       throw new IOException("Error: Can not send message to controller.", e);
     }

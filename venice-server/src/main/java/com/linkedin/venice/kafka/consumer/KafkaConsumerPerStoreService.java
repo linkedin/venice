@@ -2,7 +2,7 @@ package com.linkedin.venice.kafka.consumer;
 
 import com.linkedin.venice.config.VeniceServerConfig;
 import com.linkedin.venice.config.VeniceStoreConfig;
-import com.linkedin.venice.kafka.partitioner.PartitionZeroPartitioner;
+import com.linkedin.venice.partitioner.PartitionZeroPartitioner;
 import com.linkedin.venice.offsets.OffsetManager;
 import com.linkedin.venice.serialization.KafkaKeySerializer;
 import com.linkedin.venice.serialization.KafkaValueSerializer;
@@ -12,11 +12,15 @@ import com.linkedin.venice.server.VeniceConfigService;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.Utils;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Properties;
+import java.util.Queue;
 import java.util.Set;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -35,6 +39,7 @@ import org.apache.log4j.Logger;
  */
 public class KafkaConsumerPerStoreService extends AbstractVeniceService implements KafkaConsumerService {
 
+  // FIXME: Get rid of hard-coded topic name
   private static final String ACK_PARTITION_CONSUMPTION_KAFKA_TOPIC = "venice-partition-consumption-acknowledgement-1";
   private static final String VENICE_SERVICE_NAME = "kafka-consumer-service";
   private static final String GROUP_ID_FORMAT = "%s_%s_%d";
@@ -44,7 +49,7 @@ public class KafkaConsumerPerStoreService extends AbstractVeniceService implemen
   private final StoreRepository storeRepository;
   private final VeniceConfigService veniceConfigService;
 
-  private final VeniceNotifier notifier;
+  private final Queue<VeniceNotifier> notifiers = new ConcurrentLinkedQueue<>();
   private final OffsetManager offsetManager;
 
   /**
@@ -73,6 +78,7 @@ public class KafkaConsumerPerStoreService extends AbstractVeniceService implemen
     VeniceServerConfig serverConfig = veniceConfigService.getVeniceServerConfig();
     nodeId = serverConfig.getNodeId();
 
+    VeniceNotifier notifier = null;
     // initialize internal kafka producer for acknowledging consumption (if enabled)
     if (serverConfig.isEnableConsumptionAcksForAzkabanJobs()) {
       Properties ackKafkaProps = getAcksKafkaProducerProperties(serverConfig);
@@ -80,6 +86,7 @@ public class KafkaConsumerPerStoreService extends AbstractVeniceService implemen
     } else {
       notifier = new LogNotifier();
     }
+    notifiers.add(notifier);
   }
 
   /**
@@ -123,7 +130,7 @@ public class KafkaConsumerPerStoreService extends AbstractVeniceService implemen
 
   private StoreConsumptionTask getConsumerTask(VeniceStoreConfig veniceStore) {
     return new StoreConsumptionTask(getKafkaConsumerProperties(veniceStore), storeRepository,
-            offsetManager , notifier, nodeId, veniceStore.getStoreName());
+            offsetManager , notifiers, nodeId, veniceStore.getStoreName());
   }
 
   /**
@@ -147,7 +154,7 @@ public class KafkaConsumerPerStoreService extends AbstractVeniceService implemen
       }
     }
 
-    if(notifier != null) {
+    for(VeniceNotifier notifier: notifiers ) {
       notifier.close();
     }
     logger.info("Shut down complete");
@@ -201,6 +208,11 @@ public class KafkaConsumerPerStoreService extends AbstractVeniceService implemen
       consumerTask.resetPartitionConsumptionOffset(topic, partitionId);
     }
     logger.info("Offset reset to beginning - Kafka Partition: " + topic + "-" + partitionId + ".");
+  }
+
+  @Override
+  public void addNotifier(VeniceNotifier notifier) {
+    notifiers.add(notifier);
   }
 
   /**

@@ -1,15 +1,19 @@
 package com.linkedin.venice.controller;
 
 import com.linkedin.venice.controller.kafka.TopicCreator;
+import com.linkedin.venice.controlmessage.StatusUpdateMessage;
+import com.linkedin.venice.controlmessage.StatusUpdateMessageHandler;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixCachedMetadataRepository;
+import com.linkedin.venice.helix.HelixControlMessageChannel;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import java.util.HashMap;
 import java.util.Map;
 import org.apache.helix.HelixAdmin;
 import org.apache.helix.HelixManager;
-import org.apache.helix.controller.HelixControllerMain;
+import org.apache.helix.HelixManagerFactory;
+import org.apache.helix.InstanceType;
 import org.apache.helix.manager.zk.ZKHelixAdmin;
 import org.apache.helix.manager.zk.ZKHelixManager;
 import org.apache.helix.manager.zk.ZkClient;
@@ -58,9 +62,27 @@ public class VeniceHelixAdmin implements Admin {
         }
         configs.put(clusterName, config);
         createClusterIfRequired(clusterName);
-        HelixManager helixManager = HelixControllerMain
-            .startHelixController(zkConnString, clusterName, controllerName, HelixControllerMain.STANDALONE);
+
+
+        HelixManager helixManager = HelixManagerFactory.getZKHelixManager(clusterName,
+                                            controllerName,
+                                            InstanceType.CONTROLLER,
+                                            zkConnString);
+        try {
+            helixManager.connect();
+        } catch (Exception ex) {
+            String errorMessage = " Error starting Helix controller cluster " +
+                    clusterName + " controller " + controllerName;
+            logger.error( errorMessage , ex );
+            throw new VeniceException(errorMessage , ex);
+        }
+
         helixManagers.put(clusterName, helixManager);
+
+        HelixControlMessageChannel controllerChannel = new HelixControlMessageChannel(helixManager);
+        StatusUpdateMessageHandler handler = new StatusUpdateMessageHandler();
+        controllerChannel.registerHandler(StatusUpdateMessage.class, handler);
+
         HelixCachedMetadataRepository repository = new HelixCachedMetadataRepository(zkClient, clusterName);
         repository.start();
         repositories.put(clusterName, repository);
@@ -119,7 +141,7 @@ public class VeniceHelixAdmin implements Admin {
     }
 
     @Override
-    public synchronized void incrementVersion(String clusterName, String storeName, int numberOfPartition,
+    public synchronized int incrementVersion(String clusterName, String storeName, int numberOfPartition,
         int replicaFactor) {
         HelixCachedMetadataRepository repository = repositories.get(clusterName);
         if (repository == null) {
@@ -142,15 +164,16 @@ public class VeniceHelixAdmin implements Admin {
 
         addKafkaTopic(clusterName, version.kafkaTopicName(), numberOfPartition, replicaFactor,
             configs.get(clusterName).getKafkaReplicaFactor());
+        return version.getNumber();
     }
 
     @Override
-    public void incrementVersion(String clusterName, String storeName) {
+    public int incrementVersion(String clusterName, String storeName) {
         VeniceControllerClusterConfig config = configs.get(clusterName);
         if (config == null) {
             handleClusterDoseNotStart(clusterName);
         }
-        this.incrementVersion(clusterName, storeName, config.getNumberOfPartition(), config.getReplicaFactor());
+        return this.incrementVersion(clusterName, storeName, config.getNumberOfPartition(), config.getReplicaFactor());
     }
 
     /**

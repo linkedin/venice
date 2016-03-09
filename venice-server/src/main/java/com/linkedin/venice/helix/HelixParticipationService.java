@@ -6,6 +6,7 @@ import com.linkedin.venice.server.StoreRepository;
 import com.linkedin.venice.server.VeniceConfigService;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.utils.Utils;
+import javax.validation.constraints.NotNull;
 import org.apache.helix.HelixManager;
 import org.apache.helix.HelixManagerFactory;
 import org.apache.helix.InstanceType;
@@ -31,14 +32,20 @@ public class HelixParticipationService extends AbstractVeniceService {
   private final String participantName;
   private final String zkAddress;
   private final StateModelFactory stateModelFactory;
+  private final KafkaConsumerService consumerService;
 
   private HelixManager manager;
 
-  public HelixParticipationService(KafkaConsumerService kafkaConsumerService, StoreRepository storeRepository,
-      VeniceConfigService veniceConfigService, String zkAddress, String clusterName, int
-      httpPort, int adminPort) {
+  public HelixParticipationService(@NotNull KafkaConsumerService kafkaConsumerService,
+          @NotNull StoreRepository storeRepository,
+          @NotNull VeniceConfigService veniceConfigService,
+          @NotNull String zkAddress,
+          @NotNull String clusterName,
+          int httpPort,
+          int adminPort) {
 
     super(VENICE_PARTICIPANT_SERVICE_NAME);
+    this.consumerService = kafkaConsumerService;
     this.clusterName = clusterName;
     //The format of instance name must be "$host_$port", otherwise Helix can not get these information correctly.
     this.participantName = Utils.getHostName()+"_"+httpPort;
@@ -71,6 +78,11 @@ public class HelixParticipationService extends AbstractVeniceService {
       logger.error("Error connecting to Helix Manager Cluster " + clusterName + " ZooKeeper Address " + zkAddress + " Participant " + participantName, e);
       throw new RuntimeException(e);
     }
+
+    // Report start, progress , completed  and error notifications to controller
+    HelixNotifier notifier = new HelixNotifier(manager , participantName);
+    consumerService.addNotifier(notifier);
+
     logger.info(" Successfully started Helix Participation Service");
   }
 

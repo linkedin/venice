@@ -28,4 +28,15 @@ public interface KafkaConsumerService {
    * @param partitionId Venice partition's id.
    */
   void resetConsumptionOffset(VeniceStoreConfig veniceStore, int partitionId);
+
+  /**
+   * Adds Notifier to get Notifications for get various status of the consumption
+   * tasks like start, completed, progress and error states.
+   *
+   * Multiple Notifiers can be added for the same consumption tasks and all of them will
+   * be notified in order.
+   *
+   * @param notifier
+   */
+  void addNotifier(VeniceNotifier notifier);
 }

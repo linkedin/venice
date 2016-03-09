@@ -2,12 +2,9 @@ package com.linkedin.venice.kafka.consumer;
 
 import com.linkedin.venice.offsets.OffsetRecord;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
-import org.apache.kafka.clients.consumer.CommitType;
 import org.apache.kafka.clients.consumer.Consumer;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.consumer.KafkaConsumer;

@@ -1,0 +1,38 @@
+dependencies {
+    compile project(':venice-common')
+    compile project(':venice-client')
+
+    compile libraries.kafkaClients
+    compile libraries.avro
+    compile libraries.avroTools
+    compile libraries.log4j
+    compile(libraries.hadoopCommon) {
+      // Exclude transitive dependency
+      exclude group: 'org.apache.avro'
+    }
+    compile libraries.metricsCore
+    compile libraries.joptSimple
+    compile libraries.jacksonCore
+    compile libraries.jdom
+
+    runtime libraries.commonsConfiguration
+    runtime libraries.commonsLang
+    runtime libraries.httpCore
+    runtime libraries.httpClient
+}
+
+jar {
+  // including all runtime dependency jars (fat jar)
+  from configurations.runtime.collect { 
+       // filtering hadoop core jars and configs as it clashes with Azkaban
+       it.isDirectory() ? it : zipTree(it).matching {
+         exclude "**/org/apache/hadoop/**"
+         exclude "**/*-default.xml"
+       }
+  }
+
+  // also include product-spec for parsing library versions at run time
+  // from "../product-spec.json"
+  // override log4j properties for hadoop job
+  from "log4j.properties"
+}

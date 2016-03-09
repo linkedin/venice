@@ -8,7 +8,7 @@ public enum TaskStatus {
   //Start consuming data from Kafka
   STARTED,
   //The progress of processing the data.
-  PRGRESS,
+  PROGRESS,
   //Data is read and put into storage engine.
   COMPLETED,
   //Met error when processing the data.

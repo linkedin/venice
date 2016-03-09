@@ -2,8 +2,8 @@ package com.linkedin.venice.client;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixSpectatorService;
-import com.linkedin.venice.kafka.partitioner.DefaultVenicePartitioner;
-import com.linkedin.venice.kafka.partitioner.VenicePartitioner;
+import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
+import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.message.GetRequestObject;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.Instance;

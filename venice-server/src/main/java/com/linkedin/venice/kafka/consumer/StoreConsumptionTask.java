@@ -15,6 +15,7 @@ import com.linkedin.venice.store.AbstractStorageEngine;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.Utils;
 import java.io.Closeable;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
@@ -52,7 +53,7 @@ public class StoreConsumptionTask implements Runnable, Closeable {
   private static final int MAX_RETRIES = 10;
 
   //Ack producer
-  private final VeniceNotifier notifier;
+  private final Queue<VeniceNotifier> notifiers;
 
   // storage destination for consumption
   private final StoreRepository storeRepository;
@@ -78,7 +79,7 @@ public class StoreConsumptionTask implements Runnable, Closeable {
   public StoreConsumptionTask(Properties kafkaConsumerProperties,
                               @NotNull StoreRepository storeRepository,
                               @NotNull OffsetManager offsetManager,
-                              @NotNull VeniceNotifier notifier,
+                              @NotNull Queue<VeniceNotifier> notifiers,
                               int nodeId,
                               String topic) {
     this.consumer = new ApacheKafkaConsumer(kafkaConsumerProperties);
@@ -92,7 +93,7 @@ public class StoreConsumptionTask implements Runnable, Closeable {
     // Should be accessed only from a single thread.
     partitionOffsets = new HashMap<>();
 
-    this.notifier = notifier;
+    this.notifiers = notifiers;
     this.consumerTaskId = String.format(CONSUMER_TASK_ID_FORMAT, nodeId, topic);
 
     isRunning = new AtomicBoolean(true);
@@ -117,6 +118,33 @@ public class StoreConsumptionTask implements Runnable, Closeable {
    */
   public void resetPartitionConsumptionOffset(String topic, int partition) {
     kafkaActionMessages.add(new ControlMessage(ControlOperationType.RESET_OFFSET, topic, partition));
+  }
+
+  private void reportProgress(int partition, long partitionOffset ) {
+    for(VeniceNotifier notifier : notifiers) {
+      notifier.progress(jobId, topic, partition, partitionOffset);
+    }
+  }
+
+  private void reportStarted(int partition) {
+    for(VeniceNotifier notifier : notifiers) {
+      notifier.started(jobId, topic, partition);
+    }
+  }
+
+  private void reportCompleted(int partition, long totalMessagesProcessed) {
+    logger.info(" Processing completed for topic " + topic + " Partition " + partition +
+            " TotalMessages processed for all partitions " + totalMessagesProcessed);
+    for(VeniceNotifier notifier : notifiers) {
+      Long lastOffset = partitionOffsets.getOrDefault(partition , 0L);
+      notifier.completed(jobId, topic, partition, lastOffset);
+    }
+  }
+
+  private void reportError(Collection<Integer> partitions, String message, Exception ex) {
+    for(VeniceNotifier notifier : notifiers) {
+      notifier.error(jobId, topic , partitions, message, ex );
+    }
   }
 
 
@@ -144,7 +172,7 @@ public class StoreConsumptionTask implements Runnable, Closeable {
     } catch (Exception e) {
       // TODO : First exception from poll kills the Consumption. This needs to be robust and have retries.
       logger.error(consumerTaskId + " failed with Exception: ", e);
-      notifier.error(jobId , topic , partitionOffsets.keySet() , " Errors occured during poll " , e  );
+      reportError(partitionOffsets.keySet() , " Errors occured during poll " , e );
     } finally {
       close();
     }
@@ -255,8 +283,8 @@ public class StoreConsumptionTask implements Runnable, Closeable {
     for(Integer partition: processedPartitions) {
       long partitionOffset = partitionOffsets.get(partition);
       OffsetRecord record = new OffsetRecord(partitionOffset);
-      offsetManager.recordOffset(this.topic, partition , record);
-      notifier.progress(jobId, topic, partition, partitionOffset);
+      offsetManager.recordOffset(this.topic, partition, record);
+      reportProgress(partition, partitionOffset);
     }
   }
 
@@ -273,7 +301,7 @@ public class StoreConsumptionTask implements Runnable, Closeable {
                            + partition);
          }
          jobId = currentJobId;
-         notifier.started(jobId, topic, partition);
+         reportStarted(partition);
          totalMessagesProcessed = 0L; //Need to figure out what happens when multiple jobs are run parallely.
          logger.info(consumerTaskId + " : Received Begin of push message from job id: " + jobId + "Setting count to "
                  + totalMessagesProcessed);
@@ -284,7 +312,7 @@ public class StoreConsumptionTask implements Runnable, Closeable {
                  + ", from job id: " + currentJobId + " Remembered Job Id " + jobId);
 
          if (jobId == currentJobId) {  // check if the BOP job id matched EOP job id.
-           notifier.completed(jobId, topic, partition, totalMessagesProcessed);
+           reportCompleted(partition, totalMessagesProcessed);
          } else {
            logger.warn(" Received end of Push for a different Job Id. Expected " + jobId + " Actual " + currentJobId);
          }
@@ -381,8 +409,11 @@ public class StoreConsumptionTask implements Runnable, Closeable {
    * Stops the consumer task.
    */
   public void close() {
-    boolean isStillRunning = isRunning.getAndSet(false);
-    // Close happens at the end of the cycle.
+    isRunning.getAndSet(false);
+
+    // KafkaConsumer is closed at the end of the run method.
+    // TODO: If the close was called without calling the run method was not even called,
+    // then KafkaConsumer is never closed
   }
 
   /**
