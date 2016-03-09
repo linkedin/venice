@@ -18,27 +18,27 @@ public class LogNotifier implements VeniceNotifier {
   }
 
   @Override
-  public void completed(long jobId, String storeName, int partitionId, long counter) {
+  public void completed(long jobId, String storeName, int partitionId, long offset) {
     logger.info("Push completed for Store " + storeName + " partitionId " + partitionId +
-            " jobId " + jobId + " TotalMessage " + counter);
+            " jobId " + jobId + " Offset " + offset);
 
   }
 
   @Override
-  public void progress(long jobId, String storeName, int partitionId, long counter) {
+  public void progress(long jobId, String storeName, int partitionId, long offset) {
     logger.info("Push progress for Store " + storeName + " partitionId " + partitionId
-            + " jobId " + jobId + " TotalMessage " + counter);
+            + " jobId " + jobId + " Offset " + offset);
   }
 
   @Override
   public void close() {
+
   }
 
   @Override
-  public void error(long jobId, String storeName, Collection<Integer> partitions, String message, Exception ex) {
-    String errorMessage = "Push errored for Store" + storeName + " partitionIds " +
-            Arrays.toString(partitions.toArray()) + " jobId " + jobId + " Message "
-            + message;
+  public void error(long jobId, String storeName, int partitionId, String message, Exception ex) {
+    String errorMessage = "Push errored for Store" + storeName + " partitionId " +
+            partitionId + " jobId " + jobId + " Message " + message;
     logger.error( errorMessage , ex);
   }
 }

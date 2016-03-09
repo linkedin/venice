@@ -3,9 +3,12 @@ package com.linkedin.venice.helix;
 import com.linkedin.venice.controlmessage.StatusUpdateMessage;
 import com.linkedin.venice.kafka.consumer.VeniceNotifier;
 import java.io.IOException;
+import java.io.PrintWriter;
+import java.io.StringWriter;
 import java.util.Collection;
 import org.apache.helix.HelixManager;
 import org.apache.log4j.Logger;
+import org.omg.CORBA.Environment;
 
 
 /**
@@ -41,16 +44,18 @@ public class HelixNotifier implements VeniceNotifier {
   }
 
   @Override
-  public void completed(long jobId, String storeName, int partitionId, long counter) {
+  public void completed(long jobId, String storeName, int partitionId, long offset) {
     StatusUpdateMessage veniceMessage = new StatusUpdateMessage(storeName, partitionId, instanceId,
             StatusUpdateMessage.Status.COMPLETED);
+    veniceMessage.setOffset(offset);
     sendMessage(veniceMessage);
   }
 
   @Override
-  public void progress(long jobId, String storeName, int partitionId, long counter) {
+  public void progress(long jobId, String storeName, int partitionId, long offset) {
     StatusUpdateMessage veniceMessage = new StatusUpdateMessage(storeName, partitionId, instanceId,
             StatusUpdateMessage.Status.PROGRESS);
+    veniceMessage.setOffset(offset);
     sendMessage(veniceMessage);
   }
 
@@ -59,12 +64,31 @@ public class HelixNotifier implements VeniceNotifier {
     // This object does not own the Helix Manager, so ignore it.
   }
 
-  @Override
-  public void error(long jobId, String storeName, Collection<Integer> partitions, String message, Exception ex) {
-    for(Integer partitionId : partitions) {
-      StatusUpdateMessage veniceMessage =
-              new StatusUpdateMessage(storeName, partitionId, instanceId, StatusUpdateMessage.Status.ERROR);
-      sendMessage(veniceMessage);
+  private String formatError(String message, Exception ex) {
+    StringBuilder sb = new StringBuilder();
+    if(message != null) {
+      sb.append("Message ");
+      sb.append(message);
+      sb.append("\n");
     }
+    if(ex != null) {
+      sb.append("Exception Message ");
+      sb.append(ex.getMessage());
+      sb.append("\n");
+      sb.append(" Stack Trace ");
+      StringWriter sw = new StringWriter();
+      ex.printStackTrace(new PrintWriter(sw));
+      sb.append(sw.toString());
+      sb.append("\n");
+    }
+    return sb.toString();
+  }
+
+  @Override
+  public void error(long jobId, String storeName, int partitionId, String message, Exception ex) {
+    StatusUpdateMessage veniceMessage =
+            new StatusUpdateMessage(storeName, partitionId, instanceId, StatusUpdateMessage.Status.ERROR);
+    veniceMessage.setDescription(formatError(message , ex));
+    sendMessage(veniceMessage);
   }
 }

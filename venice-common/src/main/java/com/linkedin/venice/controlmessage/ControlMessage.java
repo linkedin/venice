@@ -45,4 +45,13 @@ public abstract class ControlMessage {
       throw new VeniceException("Missing required field:" + key + " when building control message.");
     }
   }
+
+  protected String getOptionalField(Map<String, String> fields, String key) {
+    if (fields.containsKey(key)) {
+      return fields.get(key);
+    } else {
+      return null;
+    }
+  }
+
 }

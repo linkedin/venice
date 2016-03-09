@@ -2,11 +2,11 @@ package com.linkedin.venice.controlmessage;
 
 import java.util.HashMap;
 import java.util.Map;
-import java.util.UUID;
+import java.util.concurrent.atomic.AtomicInteger;
 
 
 /**
- * Control message used to notify controller that the status of Offline push in Storage node.
+ * Control description used to notify controller that the status of Offline push in Storage node.
  */
 public class StatusUpdateMessage extends ControlMessage {
   private static final String MESSAGE_ID = "messageId";
@@ -14,16 +14,22 @@ public class StatusUpdateMessage extends ControlMessage {
   private static final String KAFKA_TOPIC = "kafkaId";
   private static final String INSTANCE_ID = "instanceId";
   private static final String STATUS = "status";
+  private static final String OFFSET = "offset";
+  private static final String DESCRIPTION = "description";
+  private static AtomicInteger counter = new AtomicInteger(0);
 
   private final String messageId;
   private final int partitionId;
   private final String kafkaTopic;
   private final String instanceId;
 
+  private long offset;
+  private String description;
+
   private final Status status;
 
   public StatusUpdateMessage(String kafkaTopic, int partitionId, String instanceId, Status status) {
-    this.messageId = UUID.randomUUID().toString();
+    this.messageId = instanceId + "_" + Integer.toString(counter.getAndIncrement());
     this.partitionId = partitionId;
     this.kafkaTopic = kafkaTopic;
     this.instanceId = instanceId;
@@ -31,7 +37,7 @@ public class StatusUpdateMessage extends ControlMessage {
   }
 
   /**
-   * Override the constructor of ControlMessage, build message from given fiedls.
+   * Override the constructor of ControlMessage, build description from given fiedls.
    */
   public StatusUpdateMessage(Map<String, String> fields) {
     this.messageId = getRequiredField(fields, MESSAGE_ID);
@@ -39,6 +45,8 @@ public class StatusUpdateMessage extends ControlMessage {
     this.instanceId = getRequiredField(fields, INSTANCE_ID);
     this.kafkaTopic = getRequiredField(fields, KAFKA_TOPIC);
     this.status = Status.valueOf(getRequiredField(fields, STATUS));
+    this.description = getOptionalField(fields, DESCRIPTION);
+    this.offset = Integer.valueOf(getRequiredField(fields, OFFSET));
   }
 
   public String getMessageId() {
@@ -61,6 +69,22 @@ public class StatusUpdateMessage extends ControlMessage {
     return status;
   }
 
+  public long getOffset() {
+    return offset;
+  }
+
+  public void setOffset(long offset) {
+    this.offset = offset;
+  }
+
+  public String getDescription() {
+    return description;
+  }
+
+  public void setDescription(String description) {
+    this.description = description;
+  }
+
   @Override
   public Map<String, String> getFields() {
     HashMap<String, String> map = new HashMap<>();
@@ -69,7 +93,63 @@ public class StatusUpdateMessage extends ControlMessage {
     map.put(KAFKA_TOPIC, kafkaTopic);
     map.put(INSTANCE_ID, instanceId);
     map.put(STATUS, status.toString());
+    map.put(OFFSET , String.valueOf(offset));
+
+    if(description != null) {
+      map.put(DESCRIPTION, description);
+    }
+
     return map;
+  }
+
+  @Override
+  public boolean equals(Object o) {
+    if (this == o) {
+      return true;
+    }
+    if (o == null || getClass() != o.getClass()) {
+      return false;
+    }
+
+    StatusUpdateMessage that = (StatusUpdateMessage) o;
+
+    if (partitionId != that.partitionId) {
+      return false;
+    }
+    if (offset != that.offset) {
+      return false;
+    }
+    if (!messageId.equals(that.messageId)) {
+      return false;
+    }
+    if (!kafkaTopic.equals(that.kafkaTopic)) {
+      return false;
+    }
+    if (!instanceId.equals(that.instanceId)) {
+      return false;
+    }
+    if (description != null ? !description.equals(that.description) : that.description != null) {
+      return false;
+    }
+    return status == that.status;
+  }
+
+  @Override
+  public int hashCode() {
+    return messageId.hashCode();
+  }
+
+  @Override
+  public String toString() {
+    return "StatusUpdateMessage{" +
+            "messageId='" + messageId + '\'' +
+            ", partitionId=" + partitionId +
+            ", kafkaTopic='" + kafkaTopic + '\'' +
+            ", instanceId='" + instanceId + '\'' +
+            ", offset=" + offset +
+            ", description='" + description + '\'' +
+            ", status=" + status +
+            '}';
   }
 
   /**
