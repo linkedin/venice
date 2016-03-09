@@ -1,5 +1,6 @@
 package com.linkedin.venice.controlmessage;
 
+import com.linkedin.venice.job.TaskStatus;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
@@ -20,9 +21,9 @@ public class StatusUpdateMessage extends ControlMessage {
   private final String kafkaTopic;
   private final String instanceId;
 
-  private final Status status;
+  private final TaskStatus status;
 
-  public StatusUpdateMessage(String kafkaTopic, int partitionId, String instanceId, Status status) {
+  public StatusUpdateMessage(String kafkaTopic, int partitionId, String instanceId, TaskStatus status) {
     this.messageId = UUID.randomUUID().toString();
     this.partitionId = partitionId;
     this.kafkaTopic = kafkaTopic;
@@ -38,7 +39,7 @@ public class StatusUpdateMessage extends ControlMessage {
     this.partitionId = Integer.valueOf(getRequiredField(fields, PARTITION_ID));
     this.instanceId = getRequiredField(fields, INSTANCE_ID);
     this.kafkaTopic = getRequiredField(fields, KAFKA_TOPIC);
-    this.status = Status.valueOf(getRequiredField(fields, STATUS));
+    this.status = TaskStatus.valueOf(getRequiredField(fields, STATUS));
   }
 
   public String getMessageId() {
@@ -57,7 +58,7 @@ public class StatusUpdateMessage extends ControlMessage {
     return instanceId;
   }
 
-  public Status getStatus() {
+  public TaskStatus getStatus() {
     return status;
   }
 
@@ -70,21 +71,5 @@ public class StatusUpdateMessage extends ControlMessage {
     map.put(INSTANCE_ID, instanceId);
     map.put(STATUS, status.toString());
     return map;
-  }
-
-  /**
-   * Status of off-line push in storage node.
-   */
-  //TODO will add more status or refine the definition here in the further.
-  public enum Status {
-    //Start consuming data from Kafka
-    STARTED,
-    //The progress of processing the data.
-    PRGRESS,
-    //Data is read and put into storage engine.
-    COMPLETED,
-    //Met error when processing the data.
-    //TODO will separate it to different types of error later.
-    ERROR
   }
 }

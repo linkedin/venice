@@ -3,6 +3,7 @@ package com.linkedin.venice.helix;
 import com.linkedin.venice.controlmessage.StatusUpdateMessage;
 import com.linkedin.venice.controlmessage.StatusUpdateMessageHandler;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.job.TaskStatus;
 import com.linkedin.venice.utils.ZkServerWrapper;
 import java.io.IOException;
 import java.util.HashMap;
@@ -32,7 +33,7 @@ public class TestHelixControlMessageChannel {
   private String kafkaTopic = "test_resource_1";
   private int partitionId = 0;
   private String instanceId = "localhost_1234";
-  private StatusUpdateMessage.Status status = StatusUpdateMessage.Status.COMPLETED;
+  private TaskStatus status = TaskStatus.COMPLETED;
   private ZkServerWrapper zkServerWrapper;
   private String zkAddress;
   private HelixControlMessageChannel channel;
