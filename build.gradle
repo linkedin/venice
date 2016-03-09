@@ -25,7 +25,7 @@ subprojects {
     maven {
       url "http://download.oracle.com/maven/"
     }
-    ivy {
+    ivy {  //TODO: remove this before opensourcing
       url 'http://artifactory.corp.linkedin.com:8081/artifactory/release/'
       layout "pattern", {
         ivy '[organisation]/[module]/[revision]/[module]-[revision].ivy'

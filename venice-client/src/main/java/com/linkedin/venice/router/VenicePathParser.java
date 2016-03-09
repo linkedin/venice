@@ -9,6 +9,7 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import org.apache.log4j.Logger;
 import org.jboss.netty.handler.codec.http.HttpResponseStatus;
 
 
@@ -25,8 +26,10 @@ import org.jboss.netty.handler.codec.http.HttpResponseStatus;
  */
 public class VenicePathParser implements ResourcePathParser<Path, RouterKey> {
 
+  private static final Logger logger = Logger.getLogger(VenicePathParser.class.getName());
+
   public static final String STORE_VERSION_SEP = "_v";
-  public static final Pattern STORE_PATTERN = Pattern.compile("\\A[a-zA-Z][a-zA-Z0-9_-]*\\z");
+  public static final Pattern STORE_PATTERN = Pattern.compile("\\A[a-zA-Z][a-zA-Z0-9_-]*\\z"); // \A and \z are start and end of string
   public static final int STORE_MAX_LENGTH = 128;
   public static final String SEP = "/";
   public static final String ACTION_READ = "read";
@@ -45,7 +48,7 @@ public class VenicePathParser implements ResourcePathParser<Path, RouterKey> {
     try {
       uriObject = new URI(uri);
     } catch (URISyntaxException e) {
-      e.printStackTrace();
+      logger.error(e);
       throw new RouterException(HttpResponseStatus.INTERNAL_SERVER_ERROR, e, true);
     }
 
