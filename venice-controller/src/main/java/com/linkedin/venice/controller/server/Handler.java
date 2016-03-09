@@ -47,9 +47,12 @@ import static io.netty.handler.codec.http.HttpHeaders.Names.CONTENT_TYPE;
 public class Handler extends SimpleChannelInboundHandler<HttpObject> {
   private static final Logger logger = Logger.getLogger(Handler.class.getName());
 
-  public static final String NAME = "storename";
-  public static final String OWNER = "owner";
-  public static final String STORE_SIZE = "store_size";
+  private static final String NAME = "storename";
+  private static final String OWNER = "owner";
+  private static final String STORE_SIZE = "store_size";
+  private static final String VERSION = "version";
+  private static final String REPLICAS = "replicas";
+  private static final String PARTITIONS = "partitions";
   private static final String TEXT_HTML = "text/html";
   private static final String TEXT_PLAIN = "text/plain";
   private static final String JSON = "application/json";
@@ -161,9 +164,9 @@ public class Handler extends SimpleChannelInboundHandler<HttpObject> {
               // TODO: use admin to update store with new owner?  Set owner at version level for audit history?
             }
             int version = admin.incrementVersion(clusterName, storeName, numberOfPartitions, numberOfReplicas);
-            responseMap.put("partitions",numberOfPartitions);
-            responseMap.put("replicas",numberOfReplicas);
-            responseMap.put("version", version);
+            responseMap.put(PARTITIONS,numberOfPartitions);
+            responseMap.put(REPLICAS,numberOfReplicas);
+            responseMap.put(VERSION, version);
           } catch (NumberFormatException e) {
             responseContent.append(("Store size must be an integer"));
             responseMap.put("error", STORE_SIZE + " must be an integer");
