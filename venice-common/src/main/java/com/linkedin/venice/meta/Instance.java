@@ -54,4 +54,22 @@ public class Instance {
             throw new IllegalArgumentException("Invalid " + name + ": " + port);
         }
     }
+
+    @Override
+    public boolean equals(Object other){
+      if (null==other){
+        return false;
+      }
+      if (!other.getClass().equals(this.getClass())) {
+        return false;
+      }
+      Instance o = (Instance) other;
+      if (  !(this.getHost().equals(o.getHost()))  ) {
+        return false;
+      }
+      if (  !(this.getHttpPort()==o.getHttpPort())  ){
+        return false;
+      }
+      return true;
+    }
 }

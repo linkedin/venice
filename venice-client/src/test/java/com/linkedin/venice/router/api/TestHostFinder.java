@@ -1,4 +1,4 @@
-package com.linkedin.venice.router;
+package com.linkedin.venice.router.api;
 
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.RoutingDataRepository;
@@ -22,7 +22,8 @@ public class TestHostFinder {
     Instance dummyinstance = new Instance("0", "localhost", 1234, 5678);
     List<Instance> dummyList = new ArrayList<>(0);
     dummyList.add(dummyinstance);
-    when(mockRepo.getInstances(anyString(), anyInt())).thenReturn(dummyList);
+    //when(mockRepo.getInstances(anyString(), anyInt())).thenReturn(dummyList);
+    doReturn(dummyList).when(mockRepo).getInstances(anyString(), anyInt());
 
     VeniceHostFinder finder = new VeniceHostFinder(mockRepo);
 

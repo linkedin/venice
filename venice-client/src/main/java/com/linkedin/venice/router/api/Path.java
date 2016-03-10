@@ -1,4 +1,4 @@
-package com.linkedin.venice.router;
+package com.linkedin.venice.router.api;
 
 import com.linkedin.ddsstorage.router.api.ResourcePath;
 import java.util.ArrayList;

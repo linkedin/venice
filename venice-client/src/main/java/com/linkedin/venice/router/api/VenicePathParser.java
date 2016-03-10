@@ -1,4 +1,4 @@
-package com.linkedin.venice.router;
+package com.linkedin.venice.router.api;
 
 import com.linkedin.ddsstorage.router.api.ResourcePathParser;
 import com.linkedin.ddsstorage.router.api.RouterException;
@@ -36,9 +36,9 @@ public class VenicePathParser implements ResourcePathParser<Path, RouterKey> {
 
   public static final String B64FORMAT = "f=b64";
 
-  private VersionFinder versionFinder;
+  private VeniceVersionFinder versionFinder;
 
-  public VenicePathParser(VersionFinder versionFinder){
+  public VenicePathParser(VeniceVersionFinder versionFinder){
     this.versionFinder = versionFinder;
   };
 
