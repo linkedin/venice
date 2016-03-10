@@ -1,15 +1,13 @@
 package com.linkedin.venice.helix;
 
 import com.linkedin.venice.controlmessage.StatusUpdateMessage;
-import com.linkedin.venice.job.JobAndTaskStatus;
+import com.linkedin.venice.job.ExecutionStatus;
 import com.linkedin.venice.kafka.consumer.VeniceNotifier;
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.io.StringWriter;
-import java.util.Collection;
 import org.apache.helix.HelixManager;
 import org.apache.log4j.Logger;
-import org.omg.CORBA.Environment;
 
 
 /**
@@ -39,14 +37,14 @@ public class HelixNotifier implements VeniceNotifier {
 
   @Override
   public void started(long jobId, String storeName, int partitionId) {
-    StatusUpdateMessage veniceMessage = new StatusUpdateMessage(jobId, storeName, partitionId, instanceId, JobAndTaskStatus.STARTED);
+    StatusUpdateMessage veniceMessage = new StatusUpdateMessage(jobId, storeName, partitionId, instanceId, ExecutionStatus.STARTED);
     sendMessage(veniceMessage);
   }
 
   @Override
   public void completed(long jobId, String storeName, int partitionId, long offset) {
     StatusUpdateMessage veniceMessage = new StatusUpdateMessage(jobId, storeName, partitionId, instanceId,
-            JobAndTaskStatus.COMPLETED);
+            ExecutionStatus.COMPLETED);
     veniceMessage.setOffset(offset);
     sendMessage(veniceMessage);
   }
@@ -54,7 +52,7 @@ public class HelixNotifier implements VeniceNotifier {
   @Override
   public void progress(long jobId, String storeName, int partitionId, long offset) {
     StatusUpdateMessage veniceMessage = new StatusUpdateMessage(jobId, storeName, partitionId, instanceId,
-            JobAndTaskStatus.PROGRESS);
+            ExecutionStatus.PROGRESS);
     veniceMessage.setOffset(offset);
     sendMessage(veniceMessage);
   }
@@ -87,7 +85,7 @@ public class HelixNotifier implements VeniceNotifier {
   @Override
   public void error(long jobId, String storeName, int partitionId, String message, Exception ex) {
     StatusUpdateMessage veniceMessage =
-            new StatusUpdateMessage(jobId, storeName, partitionId, instanceId, JobAndTaskStatus.ERROR);
+            new StatusUpdateMessage(jobId, storeName, partitionId, instanceId, ExecutionStatus.ERROR);
     veniceMessage.setDescription(formatError(message , ex));
     sendMessage(veniceMessage);
   }

@@ -15,13 +15,14 @@ public abstract class Job {
 
   private final int replicaFactor;
 
-  private JobAndTaskStatus status = JobAndTaskStatus.UNKNOW;
+  private ExecutionStatus status;
 
   public Job(long jobId, String kafkaTopic, int numberOfPartition, int replicaFactor) {
     this.jobId = jobId;
     this.numberOfPartition = numberOfPartition;
     this.replicaFactor = replicaFactor;
     this.kafkaTopic = kafkaTopic;
+    this.status = ExecutionStatus.NEW;
   }
 
   public long getJobId() {
@@ -36,11 +37,11 @@ public abstract class Job {
     return replicaFactor;
   }
 
-  public JobAndTaskStatus getStatus() {
+  public ExecutionStatus getStatus() {
     return status;
   }
 
-  public void setStatus(JobAndTaskStatus status) {
+  public void setStatus(ExecutionStatus status) {
     this.status = status;
   }
 
@@ -55,9 +56,9 @@ public abstract class Job {
    *
    * @return Calcuated job status.
    */
-  public abstract JobAndTaskStatus checkJobStatus();
+  public abstract ExecutionStatus checkJobStatus();
 
   public abstract void updateTaskStatus(Task task);
 
-  public abstract JobAndTaskStatus getTaskStatus(int partitionId, String taskId);
+  public abstract ExecutionStatus getTaskStatus(int partitionId, String taskId);
 }

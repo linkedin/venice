@@ -227,15 +227,6 @@ public class VeniceHelixAdmin implements Admin {
     }
 
     @Override
-    public void startOfflinePush(String clusterName, String kafkaTopic) {
-        VeniceControllerClusterConfig config = configs.get(clusterName);
-        if (config == null) {
-            handleClusterDoseNotStart(clusterName);
-        }
-        this.startOfflinePush(clusterName, kafkaTopic, config.getNumberOfPartition(), config.getReplicaFactor());
-    }
-
-    @Override
     public void startOfflinePush(String clusterName, String kafkaTopic, int numberOfPartition, int replicaFactor) {
         VeniceJobManager jobManager = jobManagers.get(clusterName);
         if (jobManager == null){

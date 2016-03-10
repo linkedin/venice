@@ -21,17 +21,15 @@ public interface JobRepository {
 
   public void updateTaskStatus(long jobId, Task task);
 
-  public void stopJob(long jobId, boolean isError);
+  public void stopJob(long jobId);
+
+  public void stopJobWithError(long jobId);
 
   public void startJob(Job job);
 
-  public JobAndTaskStatus getJobStatus(long jobId);
+  public ExecutionStatus getJobStatus(long jobId);
 
   public Job getJob(long jobId);
-
-  public void lock();
-
-  public void unlock();
 
   public void clear();
 }

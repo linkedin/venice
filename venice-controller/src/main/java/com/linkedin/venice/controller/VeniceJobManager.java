@@ -4,7 +4,7 @@ import com.linkedin.venice.controlmessage.ControlMessageHandler;
 import com.linkedin.venice.controlmessage.StatusUpdateMessage;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.job.Job;
-import com.linkedin.venice.job.JobAndTaskStatus;
+import com.linkedin.venice.job.ExecutionStatus;
 import com.linkedin.venice.job.JobRepository;
 import com.linkedin.venice.job.OfflineJob;
 import com.linkedin.venice.job.Task;
@@ -12,6 +12,7 @@ import com.linkedin.venice.meta.MetadataRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
+import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.apache.log4j.Logger;
 
@@ -40,12 +41,17 @@ public class VeniceJobManager implements ControlMessageHandler<StatusUpdateMessa
 
   @Override
   public void handleMessage(StatusUpdateMessage message) {
-    jobRepository.lock();
-    try {
-      // TODO Right now, for offline-push, there is only when job running for each version. Should be change to get job
+    synchronized (jobRepository) {
+      // TODO Right now, for offline-push, there is only one job running for each version. Should be change to get job
       // by job Id when H2V can get job Id and send it thourgh kafka control message.
-      Job job = jobRepository.getRunningJobOfTopic(message.getKafkaTopic()).get(0);
-      if (!job.getStatus().equals(JobAndTaskStatus.STARTED)) {
+      List<Job> jobs = jobRepository.getRunningJobOfTopic(message.getKafkaTopic());
+      if (jobs.size() > 1) {
+        throw new VeniceException(
+            "There should be only one job runing for each kafka topic. But now there are:" + jobs.size()
+                + " jobs running.");
+      }
+      Job job = jobs.get(0);
+      if (!job.getStatus().equals(ExecutionStatus.STARTED)) {
 
         throw new VeniceException(
             "Can not handle message:" + message.getMessageId() + ". Job has not been started:" + generateJobId());
@@ -56,16 +62,14 @@ public class VeniceJobManager implements ControlMessageHandler<StatusUpdateMessa
       jobRepository.updateTaskStatus(job.getJobId(), task);
       logger.info("Update status of Task:" + task.getTaskId() + " to status:" + task.getStatus());
       //Check the job status after updating task status to see is the whole job completed or error.
-      JobAndTaskStatus status = job.checkJobStatus();
-      if (status.equals(JobAndTaskStatus.COMPLETED)) {
+      ExecutionStatus status = job.checkJobStatus();
+      if (status.equals(ExecutionStatus.COMPLETED)) {
         logger.info("All of task are completed, mark job as completed too.");
         handleJobComplete(job);
-      } else if (status.equals(JobAndTaskStatus.ERROR)) {
+      } else if (status.equals(ExecutionStatus.ERROR)) {
         logger.info("Some of tasks are failed, mark job as failed too.");
         handleJobError(job);
       }
-    } finally {
-      jobRepository.unlock();
     }
   }
 
@@ -76,14 +80,14 @@ public class VeniceJobManager implements ControlMessageHandler<StatusUpdateMessa
     store.updateVersionStatus(versionNumber, VersionStatus.ACTIVE);
     store.setCurrentVersion(versionNumber);
     metadataRepository.updateStore(store);
-    jobRepository.stopJob(job.getJobId(), false);
+    jobRepository.stopJob(job.getJobId());
     //TODO Archive job regularly instead of archive it immediately after being stopped.
     jobRepository.archiveJob(job.getJobId());
   }
 
   private void handleJobError(Job job) {
     //TODO do the roll back here.
-    jobRepository.stopJob(job.getJobId(), true);
+    jobRepository.stopJobWithError(job.getJobId());
     //TODO Archive job regularly instead of archive it immediately after being stopped.
     jobRepository.archiveJob(job.getJobId());
   }

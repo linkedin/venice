@@ -1,7 +1,7 @@
 package com.linkedin.venice.helix;
 
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.job.JobAndTaskStatus;
+import com.linkedin.venice.job.ExecutionStatus;
 import com.linkedin.venice.job.OfflineJob;
 import org.testng.Assert;
 import org.testng.annotations.AfterMethod;
@@ -31,7 +31,7 @@ public class TestHelixJobRepository {
     OfflineJob job = new OfflineJob(1, "topic1", 1, 1);
     repository.startJob(job);
     Assert.assertEquals(job, repository.getJob(1), "Can not get correct job from repository after starting the job.");
-    Assert.assertEquals(JobAndTaskStatus.STARTED, repository.getJobStatus(1), "Job should be running after being started.");
+    Assert.assertEquals(ExecutionStatus.STARTED, repository.getJobStatus(1), "Job should be running after being started.");
   }
 
   @Test
@@ -39,9 +39,9 @@ public class TestHelixJobRepository {
     OfflineJob job = new OfflineJob(1, "topic1", 1, 1);
     repository.startJob(job);
 
-    repository.stopJob(1, false);
+    repository.stopJob(1);
     Assert.assertEquals(job, repository.getJob(1), "Can not get correct job from repository after starting the job.");
-    Assert.assertEquals(JobAndTaskStatus.COMPLETED, repository.getJobStatus(1), "Job should be completed after being stopped.");
+    Assert.assertEquals(ExecutionStatus.COMPLETED, repository.getJobStatus(1), "Job should be completed after being stopped.");
 
     try {
       repository.getRunningJobOfTopic("topic1");
@@ -55,7 +55,7 @@ public class TestHelixJobRepository {
   public void testStopNotStartedJob() {
     OfflineJob job = new OfflineJob(1, "topic1", 1, 1);
     try {
-      repository.stopJob(1, false);
+      repository.stopJob(1);
       Assert.fail("Job is not started.");
     } catch (VeniceException e) {
       //expected
@@ -66,9 +66,9 @@ public class TestHelixJobRepository {
   public void testStopNotRunningJob() {
     OfflineJob job = new OfflineJob(1, "topic1", 1, 1);
     repository.startJob(job);
-    job.setStatus(JobAndTaskStatus.COMPLETED);
+    job.setStatus(ExecutionStatus.COMPLETED);
     try {
-      repository.stopJob(1, false);
+      repository.stopJob(1);
       Assert.fail("Job is not in running status.");
     } catch (VeniceException e) {
       //expected
@@ -79,7 +79,7 @@ public class TestHelixJobRepository {
   public void testArchiveJob() {
     OfflineJob job = new OfflineJob(1, "topic1", 1, 1);
     repository.startJob(job);
-    repository.stopJob(1, false);
+    repository.stopJob(1);
     repository.archiveJob(1);
     try {
       repository.getJob(1);

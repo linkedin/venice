@@ -1,12 +1,12 @@
 package com.linkedin.venice.job;
 
 /**
- * Status of off-line push in storage node.
+ * Status of executing off-line push. The status will be used by both Job and Task.
  */
 //TODO will add more status or refine the definition here in the further.
-public enum JobAndTaskStatus {
+public enum ExecutionStatus {
   //Job/Task just be created.
-  UNKNOW,
+  NEW,
   //Job is started and start consuming data from Kafka
   STARTED,
   //The progress of processing the data. Should only be used for Task.

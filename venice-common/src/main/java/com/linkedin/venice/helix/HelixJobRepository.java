@@ -2,164 +2,129 @@ package com.linkedin.venice.helix;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.job.Job;
-import com.linkedin.venice.job.JobAndTaskStatus;
+import com.linkedin.venice.job.ExecutionStatus;
 import com.linkedin.venice.job.JobRepository;
 import com.linkedin.venice.job.Task;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.locks.ReadWriteLock;
-import java.util.concurrent.locks.ReentrantReadWriteLock;
 import javax.validation.constraints.NotNull;
 
 
 /**
  * Job Repository which persist job data on Helix.
+ * <p>
+ * The transition of Job's state machine:
+ * <p>
+ * <ul> <li>NEW->STARTED</li> <li>STARTED->COMPLETED</li> <li>STARTED->ERROR</li> <li>COMPLETED->ARCHIVED</li>
+ * <li>ERROR->COMPLETED</li> </ul>
  */
 public class HelixJobRepository implements JobRepository {
   private Map<Long, Job> jobMap;
-  private Map<String, List<Job>> topicToJobMap;
-
-  private ReadWriteLock lock = new ReentrantReadWriteLock();
+  private Map<String, List<Job>> topicToJobsMap;
 
   public HelixJobRepository() {
     jobMap = new HashMap<>();
-    topicToJobMap = new HashMap<>();
+    topicToJobsMap = new HashMap<>();
   }
 
   @Override
-  public List<Job> getRunningJobOfTopic(@NotNull String kafkaTopic) {
-    lock.readLock().lock();
-    try {
-      List<Job> jobs = topicToJobMap.get(kafkaTopic);
+  public synchronized List<Job> getRunningJobOfTopic(@NotNull String kafkaTopic) {
+    List<Job> jobs = topicToJobsMap.get(kafkaTopic);
 
-      if (jobs == null) {
-        //No running jobs in this topic.
-        throw new VeniceException("Can not find running job for kafka topic:" + kafkaTopic);
-      }
-      return jobs;
-    } finally {
-      lock.readLock().unlock();
+    if (jobs == null) {
+      //No running jobs in this topic.
+      throw new VeniceException("Can not find running job for kafka topic:" + kafkaTopic);
+    }
+    return jobs;
+  }
+
+  @Override
+  public synchronized void archiveJob(long jobId) {
+    Job job = this.getJob(jobId);
+    if (job.getStatus().equals(ExecutionStatus.COMPLETED) || job.getStatus().equals(ExecutionStatus.ERROR)) {
+      job.setStatus(ExecutionStatus.ARCHIVED);
+      this.jobMap.remove(jobId);
+    } else {
+      throw new VeniceException("Job:" + jobId + " is in " + job.getStatus() + " status. Can not be archived.");
     }
   }
 
   @Override
-  public void archiveJob(long jobId) {
-    lock.writeLock().lock();
-    try {
-      Job job = this.getJob(jobId);
-      if (job.getStatus().equals(JobAndTaskStatus.COMPLETED) || job.getStatus().equals(JobAndTaskStatus.ERROR)) {
-        job.setStatus(JobAndTaskStatus.ARCHIVED);
-        this.jobMap.remove(jobId);
-      } else {
-        throw new VeniceException("Job:" + jobId + " is in " + job.getStatus() + " status. Can not be archived.");
-      }
-    } finally {
-      lock.writeLock().unlock();
-    }
+  public synchronized void updateTaskStatus(long jobId, @NotNull Task task) {
+    Job job = this.getJob(jobId);
+    job.updateTaskStatus(task);
   }
 
   @Override
-  public void updateTaskStatus(long jobId, @NotNull Task task) {
-    lock.writeLock().lock();
-    try {
-      Job job = this.getJob(jobId);
-      job.updateTaskStatus(task);
-    } finally {
-      lock.writeLock().unlock();
-    }
+  public synchronized void stopJob(long jobId) {
+    internalStopJob(jobId, ExecutionStatus.COMPLETED);
   }
 
   @Override
-  public void stopJob(long jobId, boolean isError) {
-    lock.writeLock().lock();
-    try {
-      Job job = this.getJob(jobId);
-      if (job.getStatus().equals(JobAndTaskStatus.STARTED)) {
-        job.setStatus(isError ? JobAndTaskStatus.ERROR : JobAndTaskStatus.COMPLETED);
-        List<Job> jobs = this.topicToJobMap.get(job.getKafkaTopic());
-        for (int i = 0; i < jobs.size(); i++) {
-          if (jobs.get(i).getJobId() == jobId) {
-            jobs.remove(i);
-            break;
-          }
+  public synchronized void stopJobWithError(long jobId) {
+    internalStopJob(jobId, ExecutionStatus.ERROR);
+  }
+
+  private void internalStopJob(long jobId, ExecutionStatus status) {
+    Job job = this.getJob(jobId);
+    if (job.getStatus().equals(ExecutionStatus.STARTED)) {
+      job.setStatus(status);
+      List<Job> jobs = this.topicToJobsMap.get(job.getKafkaTopic());
+      for (int i = 0; i < jobs.size(); i++) {
+        if (jobs.get(i).getJobId() == jobId) {
+          jobs.remove(i);
+          break;
         }
-        if(jobs.isEmpty()){
-          this.topicToJobMap.remove(job.getKafkaTopic());
-        }
-      } else {
-        throw new VeniceException("Job:" + jobId + " is in " + job.getStatus() + ". Can not be stopped.");
       }
-    } finally {
-      lock.writeLock().unlock();
+      if (jobs.isEmpty()) {
+        this.topicToJobsMap.remove(job.getKafkaTopic());
+      }
+    } else {
+      throw new VeniceException("Job:" + jobId + " is in " + job.getStatus() + ". Can not be stopped.");
     }
   }
 
   @Override
   public synchronized void startJob(@NotNull Job job) {
-    lock.writeLock().lock();
-    try {
-      if (!job.getStatus().equals(JobAndTaskStatus.UNKNOW)) {
-        throw new VeniceException("Job:" + job.getJobId() + " is in " + job.getStatus() + ". Can not be started.");
-      }
-      job.setStatus(JobAndTaskStatus.STARTED);
-      this.jobMap.put(job.getJobId(), job);
-      List<Job> jobs = this.topicToJobMap.get(job.getKafkaTopic());
-      if (jobs == null) {
-        jobs = new ArrayList<>();
-        topicToJobMap.put(job.getKafkaTopic(), jobs);
-      }
-      jobs.add(job);
-    } finally {
-      lock.writeLock().unlock();
+    if (!job.getStatus().equals(ExecutionStatus.NEW)) {
+      throw new VeniceException("Job:" + job.getJobId() + " is in " + job.getStatus() + ". Can not be started.");
     }
+    job.setStatus(ExecutionStatus.STARTED);
+    this.jobMap.put(job.getJobId(), job);
+    List<Job> jobs = this.topicToJobsMap.get(job.getKafkaTopic());
+    if (jobs == null) {
+      jobs = new ArrayList<>();
+      topicToJobsMap.put(job.getKafkaTopic(), jobs);
+    }
+    jobs.add(job);
   }
 
   @Override
-  public synchronized JobAndTaskStatus getJobStatus(long jobId) {
-    lock.readLock().lock();
-    try {
-      Job job = this.getJob(jobId);
-      return job.getStatus();
-    } finally {
-      lock.readLock().unlock();
-    }
+  public synchronized ExecutionStatus getJobStatus(long jobId) {
+    Job job = this.getJob(jobId);
+    return job.getStatus();
   }
 
   @Override
   public synchronized Job getJob(long jobId) {
-    lock.readLock().lock();
-    try {
-      Job job = jobMap.get(jobId);
-      if (job == null) {
-        throw new VeniceException("Job:" + jobId + " dose not exist.");
-      }
-      return job;
-    } finally {
-      lock.readLock().unlock();
+    Job job = jobMap.get(jobId);
+    if (job == null) {
+      throw new VeniceException("Job:" + jobId + " dose not exist.");
     }
-  }
-
-  @Override
-  public void lock() {
-    lock.writeLock().lock();
-  }
-
-  @Override
-  public void unlock() {
-    lock.writeLock().unlock();
+    return job;
   }
 
   //TODO connect to helix.
 
-  public void start() {
+  public synchronized void start() {
 
   }
 
   //TODO clean up related helix resource.
-  public void clear() {
+  public synchronized void clear() {
     this.jobMap.clear();
-    this.topicToJobMap.clear();
+    this.topicToJobsMap.clear();
   }
 }

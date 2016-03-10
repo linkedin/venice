@@ -1,6 +1,6 @@
 package com.linkedin.venice.controlmessage;
 
-import com.linkedin.venice.job.JobAndTaskStatus;
+import com.linkedin.venice.job.ExecutionStatus;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -26,12 +26,12 @@ public class StatusUpdateMessage extends ControlMessage {
   private final String kafkaTopic;
   private final String instanceId;
 
-  private final JobAndTaskStatus status;
+  private final ExecutionStatus status;
 
   private long offset;
   private String description;
 
-  public StatusUpdateMessage(long jobId, String kafkaTopic, int partitionId, String instanceId, JobAndTaskStatus status) {
+  public StatusUpdateMessage(long jobId, String kafkaTopic, int partitionId, String instanceId, ExecutionStatus status) {
 
     this.jobId = jobId;
     this.messageId = instanceId + "_" + Integer.toString(counter.getAndIncrement());
@@ -50,7 +50,7 @@ public class StatusUpdateMessage extends ControlMessage {
     this.partitionId = Integer.valueOf(getRequiredField(fields, PARTITION_ID));
     this.instanceId = getRequiredField(fields, INSTANCE_ID);
     this.kafkaTopic = getRequiredField(fields, KAFKA_TOPIC);
-    this.status = JobAndTaskStatus.valueOf(getRequiredField(fields, STATUS));
+    this.status = ExecutionStatus.valueOf(getRequiredField(fields, STATUS));
     this.description = getOptionalField(fields, DESCRIPTION);
     this.offset = Integer.valueOf(getRequiredField(fields, OFFSET));
   }
@@ -75,7 +75,7 @@ public class StatusUpdateMessage extends ControlMessage {
     return instanceId;
   }
 
-  public JobAndTaskStatus getStatus() {
+  public ExecutionStatus getStatus() {
     return status;
   }
 

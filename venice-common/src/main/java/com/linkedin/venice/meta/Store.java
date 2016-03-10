@@ -158,7 +158,7 @@ public class Store {
     }
 
     public void updateVersionStatus(int versionNumber, VersionStatus status){
-        for (int i = 0; i < versions.size(); i++) {
+        for (int i = versions.size() - 1; i >= 0; i--) {
             if (versions.get(i).getNumber() == versionNumber) {
                 versions.get(i).setStatus(status);
                 return;
