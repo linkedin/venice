@@ -24,6 +24,7 @@ import java.util.Properties;
 import java.util.Queue;
 import java.util.Set;
 import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import javax.validation.constraints.NotNull;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
@@ -72,9 +73,12 @@ public class StoreConsumptionTask implements Runnable, Closeable {
 
   private final OffsetManager offsetManager;
 
+  private long lastProgressReportTime = 0;
+  private static final long PROGRESS_REPORT_INTERVAL = TimeUnit.MILLISECONDS.convert(10, TimeUnit.MINUTES);
+
   // The source of truth for the currently subscribed partitions. The list maintained by the kafka consumer is not
   // always up to date because of the asynchronous nature of subscriptions of partitions in Kafka Consumer.
-  private final Map<Integer, Long> partitionOffsets;
+  private final Map<Integer, Long> partitionToOffsetMap;
 
   public StoreConsumptionTask(Properties kafkaConsumerProperties,
                               @NotNull StoreRepository storeRepository,
@@ -91,7 +95,7 @@ public class StoreConsumptionTask implements Runnable, Closeable {
     kafkaActionMessages = new ConcurrentLinkedQueue<>();
 
     // Should be accessed only from a single thread.
-    partitionOffsets = new HashMap<>();
+    partitionToOffsetMap = new HashMap<>();
 
     this.notifiers = notifiers;
     this.consumerTaskId = String.format(CONSUMER_TASK_ID_FORMAT, nodeId, topic);
@@ -121,14 +125,33 @@ public class StoreConsumptionTask implements Runnable, Closeable {
   }
 
   private void reportProgress(int partition, long partitionOffset ) {
+    // Progress reporting happens too frequently for each Kafka Pull,
+    // Report progress only if configured intervals have elapsed.
+    // This has a drawback if there are messages but the interval has not elapsed
+    // they will not be reported. But if there are no messages after that
+    // for a long time, no progress will be reported. That is OK for now.
+    long timeElapsed = System.currentTimeMillis() - lastProgressReportTime;
+    if(timeElapsed < PROGRESS_REPORT_INTERVAL) {
+      return;
+    }
+
+    lastProgressReportTime = System.currentTimeMillis();
     for(VeniceNotifier notifier : notifiers) {
-      notifier.progress(jobId, topic, partition, partitionOffset);
+      try {
+        notifier.progress(jobId, topic, partition, partitionOffset);
+      } catch(Exception ex) {
+        logger.error("Error reporting status to notifier " + notifier.getClass() , ex);
+      }
     }
   }
 
   private void reportStarted(int partition) {
     for(VeniceNotifier notifier : notifiers) {
-      notifier.started(jobId, topic, partition);
+      try {
+        notifier.started(jobId, topic, partition);
+      } catch(Exception ex) {
+        logger.error("Error reporting status to notifier " + notifier.getClass() , ex);
+      }
     }
   }
 
@@ -136,14 +159,25 @@ public class StoreConsumptionTask implements Runnable, Closeable {
     logger.info(" Processing completed for topic " + topic + " Partition " + partition +
             " TotalMessages processed for all partitions " + totalMessagesProcessed);
     for(VeniceNotifier notifier : notifiers) {
-      Long lastOffset = partitionOffsets.getOrDefault(partition , 0L);
-      notifier.completed(jobId, topic, partition, lastOffset);
+      Long lastOffset = partitionToOffsetMap.getOrDefault(partition , -1L);
+
+      try {
+        notifier.completed(jobId, topic, partition, lastOffset);
+      } catch(Exception ex) {
+        logger.error("Error reporting status to notifier " + notifier.getClass() , ex);
+      }
     }
   }
 
-  private void reportError(Collection<Integer> partitions, String message, Exception ex) {
-    for(VeniceNotifier notifier : notifiers) {
-      notifier.error(jobId, topic , partitions, message, ex );
+  private void reportError(Collection<Integer> partitions, String message, Exception consumerEx) {
+    for(Integer partitionId: partitions) {
+      for(VeniceNotifier notifier : notifiers) {
+        try {
+          notifier.error(jobId, topic, partitionId, message, consumerEx);
+        } catch(Exception notifierEx) {
+          logger.error("Error reporting status to notifier " + notifier.getClass() , notifierEx);
+        }
+      }
     }
   }
 
@@ -159,7 +193,7 @@ public class StoreConsumptionTask implements Runnable, Closeable {
       while (isRunning.get()) {
         processKafkaActionMessages();
 
-        if (partitionOffsets.size() > 0) {
+        if (partitionToOffsetMap.size() > 0) {
           ConsumerRecords records = consumer.poll(READ_CYCLE_DELAY_MS);
           processTopicConsumerRecords(records);
         } else {
@@ -172,7 +206,7 @@ public class StoreConsumptionTask implements Runnable, Closeable {
     } catch (Exception e) {
       // TODO : First exception from poll kills the Consumption. This needs to be robust and have retries.
       logger.error(consumerTaskId + " failed with Exception: ", e);
-      reportError(partitionOffsets.keySet() , " Errors occured during poll " , e );
+      reportError(partitionToOffsetMap.keySet() , " Errors occured during poll " , e );
     } finally {
       close();
     }
@@ -220,12 +254,12 @@ public class StoreConsumptionTask implements Runnable, Closeable {
       case SUBSCRIBE:
         logger.info(consumerTaskId + " subscribed to: Topic " + topic + " Partition Id " + partition);
         OffsetRecord record = offsetManager.getLastOffset(topic, partition);
-        partitionOffsets.put(partition, record.getOffset());
+        partitionToOffsetMap.put(partition, record.getOffset());
         consumer.subscribe(topic, partition, record);
         break;
       case UNSUBSCRIBE:
         logger.info(consumerTaskId + " UnSubscribed to: Topic " + topic + " Partition Id " + partition);
-        partitionOffsets.remove(partition);
+        partitionToOffsetMap.remove(partition);
         consumer.unSubscribe(topic, partition);
         break;
       case RESET_OFFSET:
@@ -245,7 +279,7 @@ public class StoreConsumptionTask implements Runnable, Closeable {
     }
 
     int partitionId = record.partition();
-    Long lastOffset = partitionOffsets.get(partitionId);
+    Long lastOffset = partitionToOffsetMap.get(partitionId);
     if(lastOffset == null) {
       logger.info("Skipping message as partition is not actively subscribed to anymore " + " topic " + topic + " Partition Id " + partitionId );
       return false;
@@ -273,7 +307,7 @@ public class StoreConsumptionTask implements Runnable, Closeable {
         try {
           processConsumerRecord(record);
           processedPartitions.add(record.partition());
-          partitionOffsets.put(record.partition(), record.offset());
+          partitionToOffsetMap.put(record.partition(), record.offset());
         } catch (VeniceMessageException | UnsupportedOperationException ex) {
           logger.error(consumerTaskId + " : Received an exception ! Skipping the message at partition " + record.partition() + " offset " + record.offset(), ex);
         }
@@ -281,7 +315,7 @@ public class StoreConsumptionTask implements Runnable, Closeable {
     }
 
     for(Integer partition: processedPartitions) {
-      long partitionOffset = partitionOffsets.get(partition);
+      long partitionOffset = partitionToOffsetMap.get(partition);
       OffsetRecord record = new OffsetRecord(partitionOffset);
       offsetManager.recordOffset(this.topic, partition, record);
       reportProgress(partition, partitionOffset);
@@ -351,7 +385,7 @@ public class StoreConsumptionTask implements Runnable, Closeable {
        * is an asynchronous event. Thus, it is possible that the partition has been dropped from the local storage
        * engine but want unsubscribed by the Kafka Consumer. Therefore, leading to consumption of useless messages.
        */
-      if (partitionOffsets.containsKey(record.partition())) {
+      if (partitionToOffsetMap.containsKey(record.partition())) {
         throw ex;
       }
     }

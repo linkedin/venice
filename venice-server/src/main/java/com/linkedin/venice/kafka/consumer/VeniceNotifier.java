@@ -27,7 +27,7 @@ public interface VeniceNotifier {
      * @param counter number of messages consumed. This may not reflect the total messages consumed,
      *                if the process is restarted.
      */
-    void completed(long jobId, String storeName, int partitionId, long counter);
+    void completed(long jobId, String storeName, int partitionId, long offset);
 
     /**
      * Periodic progress report of consumption for a store and partition.
@@ -38,7 +38,7 @@ public interface VeniceNotifier {
      * @param counter numbers of messages consumed so far, it will never decrease unless the process
      *                is restarted.
      */
-    void progress(long jobId, String storeName, int partitionId, long counter);
+    void progress(long jobId, String storeName, int partitionId, long offset);
 
     /**
      * The Process is shutting down and clean up the resources associated with the Notifier.
@@ -51,9 +51,9 @@ public interface VeniceNotifier {
      *
      * @param jobId JobId of the consumption.
      * @param storeName storeName
-     * @param partitions collection of partitions where error is encountered.
+     * @param partitionId partitionId
      * @param message debug error message
      * @param ex exception encountered.
      */
-    void error(long jobId, String storeName, Collection<Integer> partitions , String message, Exception ex);
+    void error(long jobId, String storeName, int partitionId , String message, Exception ex);
 }

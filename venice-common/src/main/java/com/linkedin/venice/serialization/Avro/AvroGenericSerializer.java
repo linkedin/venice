@@ -1,8 +1,7 @@
-package com.linkedin.venice.serialization.Avro;
+package com.linkedin.venice.serialization.avro;
 
 import com.linkedin.venice.exceptions.VeniceMessageException;
 import com.linkedin.venice.serialization.VeniceSerializer;
-import java.util.Map;
 import org.apache.avro.generic.GenericDatumReader;
 import org.apache.avro.io.Decoder;
 import org.apache.avro.io.DecoderFactory;
@@ -36,18 +35,7 @@ public class AvroGenericSerializer implements VeniceSerializer<Object> {
       /* This function is not used, but is required for the interfaces. */
     }
 
-    /**
-     * Configure this class.
-
-     * @param configMap configs in key/value pairs
-     * @param isKey whether is for key or value
-     */
-    @Override
-    public void configure(Map<String, ?> configMap, boolean isKey) {
-      /* This function is not used, but is required for the interfaces. */
-    }
-
-    public byte[] serialize(String topic, Object object) {
+    public byte[] serialize(Object object) {
         ByteArrayOutputStream output = new ByteArrayOutputStream();
         Encoder encoder = new BinaryEncoder(output);
         GenericDatumWriter<Object> datumWriter = null;
@@ -69,7 +57,7 @@ public class AvroGenericSerializer implements VeniceSerializer<Object> {
         return output.toByteArray();
     }
 
-    public Object deserialize(String topic, byte[] bytes) {
+    public Object deserialize(byte[] bytes) {
         Decoder decoder = DecoderFactory.defaultFactory().createBinaryDecoder(bytes, null);
         GenericDatumReader<Object> reader = null;
         try {

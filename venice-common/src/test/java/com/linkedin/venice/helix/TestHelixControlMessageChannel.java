@@ -82,26 +82,35 @@ public class TestHelixControlMessageChannel {
     zkServerWrapper.close();
   }
 
-  @Test
-  public void testConvertBetweenVeniceMessageAndHelixMessage()
-      throws ClassNotFoundException {
-    StatusUpdateMessage veniceMessage =
-        new StatusUpdateMessage(1, kafkaTopic, partitionId, instanceId, status);
+  private void compareConversion(StatusUpdateMessage veniceMessage) {
     Message helixMessage = channel.convertVeniceMessageToHelixMessage(veniceMessage);
     Assert.assertEquals(veniceMessage.getMessageId(), helixMessage.getMsgId(),
-        "Message Ids are different. Convert is failed.");
+            "Message Ids are different.");
     Assert.assertEquals(StatusUpdateMessage.class.getName(),
-        helixMessage.getRecord().getSimpleField(HelixControlMessageChannel.VENICE_MESSAGE_CLASS),
-        "Class names are different. Convert is failed.");
+            helixMessage.getRecord().getSimpleField(HelixControlMessageChannel.VENICE_MESSAGE_CLASS),
+            "Class names are different.");
     Map<String, String> fields = helixMessage.getRecord().getMapField(HelixControlMessageChannel.VENICE_MESSAGE_FIELD);
     for (Map.Entry<String, String> entry : veniceMessage.getFields().entrySet()) {
       Assert.assertEquals(entry.getValue(), fields.get(entry.getKey()),
-          "Message fields are different. Convert is failed.");
+              "Message fields are different.");
     }
 
     StatusUpdateMessage convertedVeniceMessage = channel.convertHelixMessageToVeniceMessage(helixMessage);
-    Assert.assertEquals(veniceMessage.getFields(), convertedVeniceMessage.getFields(),
-        "Message fields are different. Convert it failed,");
+    Assert.assertEquals(veniceMessage, convertedVeniceMessage,
+            "Message fields are different. Convert it failed,");
+  }
+
+  @Test
+  public void testConvertBetweenVeniceMessageAndHelixMessage()
+      throws ClassNotFoundException {
+    StatusUpdateMessage veniceMessage = new StatusUpdateMessage(1, kafkaTopic, partitionId, instanceId, status);
+    compareConversion(veniceMessage);
+
+    veniceMessage.setOffset(10);
+    compareConversion(veniceMessage);
+
+    veniceMessage.setDescription("Sample Description ");
+    compareConversion(veniceMessage);
   }
 
   @Test

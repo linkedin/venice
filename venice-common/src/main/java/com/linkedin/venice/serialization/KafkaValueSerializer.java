@@ -1,10 +1,8 @@
 package com.linkedin.venice.serialization;
 
-import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceMessageException;
 import com.linkedin.venice.message.KafkaValue;
 import com.linkedin.venice.message.OperationType;
-import java.util.Map;
 import org.apache.log4j.Logger;
 
 import java.io.*;
@@ -37,7 +35,7 @@ public class KafkaValueSerializer implements VeniceSerializer<KafkaValue> {
    * @param bytes - byte[] to be converted
    * @return Converted Venice Message
    * */
-  public KafkaValue deserialize(String topic, byte[] bytes) {
+  public KafkaValue deserialize(byte[] bytes) {
 
     byte magicByte;
     OperationType operationType = null;
@@ -110,7 +108,7 @@ public class KafkaValueSerializer implements VeniceSerializer<KafkaValue> {
    * @param kafkaValue - KafkaValue to be converted
    * @return Converted byte[]
    * */
-  public byte[] serialize(String topic, KafkaValue kafkaValue) {
+  public byte[] serialize(KafkaValue kafkaValue) {
 
     ByteArrayOutputStream bytesOut = null;
     ObjectOutputStream objectOutputStream = null;
@@ -159,19 +157,6 @@ public class KafkaValueSerializer implements VeniceSerializer<KafkaValue> {
     }
 
     return bytes;
-  }
-
-  @Override
-  /**
-   * Configure the Kafka Serializer.
-   * @param configMap Configuration for the serializer.
-   * @param isKey true if the serializer is going to be used for Keys.
-   * @throws VeniceException if the serializer is going to be used for Key data.
-   */
-  public void configure(Map<String, ?> configMap, boolean isKey) {
-    if(isKey == true) {
-      throw new VeniceException("Cannot use KafkaValueSerializer for Key.");
-    }
   }
 
   @Override

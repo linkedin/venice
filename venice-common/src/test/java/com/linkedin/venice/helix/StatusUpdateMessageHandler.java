@@ -21,10 +21,10 @@ public class StatusUpdateMessageHandler implements ControlMessageHandler<StatusU
 
   @Override
   public void handleMessage(StatusUpdateMessage message) {
-    logger.info("Processing message: "+message.getMessageId() + " For topic " + message.getKafkaTopic() );
-    for (Map.Entry<String, String> entry : message.getFields().entrySet()) {
-      logger.info(entry.getKey() + ":" + entry.getValue() + ";");
+    if(message == null) {
+      throw new IllegalArgumentException(" Parameter message is null");
     }
+    logger.info("Processing Message " + message);
     statusMap.put(message.getKafkaTopic(), message);
   }
 
