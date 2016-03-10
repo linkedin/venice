@@ -15,16 +15,23 @@ public interface JobRepository {
    *
    * @return
    */
-  public Job getRunningJob(String kafkaTopic);
+  public List<Job> getRunningJobOfTopic(String kafkaTopic);
 
-  public List<Task> getTasks(String jobId, int partitionId);
+  public void archiveJob(long jobId);
 
-  public void archiveJob(String jobId);
+  public void updateTaskStatus(long jobId, Task task);
 
-  public void updateTaskStatus(String taskId, TaskStatus status);
-
-  public void stopJob(String jobId);
+  public void stopJob(long jobId, boolean isError);
 
   public void startJob(Job job);
 
+  public JobAndTaskStatus getJobStatus(long jobId);
+
+  public Job getJob(long jobId);
+
+  public void lock();
+
+  public void unlock();
+
+  public void clear();
 }

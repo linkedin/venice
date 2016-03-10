@@ -22,5 +22,9 @@ public interface Admin {
     public void addKafkaTopic(String clusterName, String kafkaTopic, int numberOfPartition, int replicaFactor,
         int kafkaReplicaFactor);
 
+    public void startOfflinePush(String clusterName, String kafkaTopic);
+
+    public void startOfflinePush(String clusterName, String kafkaTopic, int numberOfPartition, int replicaFactor);
+
     public void stop(String clusterName);
 }

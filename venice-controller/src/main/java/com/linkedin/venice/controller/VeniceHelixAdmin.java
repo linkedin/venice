@@ -2,10 +2,10 @@ package com.linkedin.venice.controller;
 
 import com.linkedin.venice.controller.kafka.TopicCreator;
 import com.linkedin.venice.controlmessage.StatusUpdateMessage;
-import com.linkedin.venice.controlmessage.StatusUpdateMessageHandler;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixCachedMetadataRepository;
 import com.linkedin.venice.helix.HelixControlMessageChannel;
+import com.linkedin.venice.helix.HelixJobRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import java.util.HashMap;
@@ -36,6 +36,7 @@ public class VeniceHelixAdmin implements Admin {
     private final ZkClient zkClient;
     private final Map<String, HelixCachedMetadataRepository> repositories = new HashMap<>();
     private final Map<String, VeniceControllerClusterConfig> configs = new HashMap<>();
+    private final Map<String, VeniceJobManager> jobManagers = new HashMap<>();
 
     public VeniceHelixAdmin(String controllerName, String zkConnString, String kafkaZkConnString) {
         /* Controller name can be generated from the hostname and
@@ -79,13 +80,16 @@ public class VeniceHelixAdmin implements Admin {
 
         helixManagers.put(clusterName, helixManager);
 
-        HelixControlMessageChannel controllerChannel = new HelixControlMessageChannel(helixManager);
-        StatusUpdateMessageHandler handler = new StatusUpdateMessageHandler();
-        controllerChannel.registerHandler(StatusUpdateMessage.class, handler);
-
         HelixCachedMetadataRepository repository = new HelixCachedMetadataRepository(zkClient, clusterName);
         repository.start();
         repositories.put(clusterName, repository);
+
+        HelixJobRepository jobRepository = new HelixJobRepository();
+        jobRepository.start();
+        VeniceJobManager jobManager= new VeniceJobManager(helixManager.getSessionId().hashCode(),jobRepository,repository);
+        HelixControlMessageChannel controllerChannel = new HelixControlMessageChannel(helixManager);
+        controllerChannel.registerHandler(StatusUpdateMessage.class, jobManager);
+        jobManagers.put(clusterName,jobManager);
     }
 
     @Override
@@ -95,7 +99,7 @@ public class VeniceHelixAdmin implements Admin {
             handleClusterDoseNotStart(clusterName);
         }
         if(repository.getStore(storeName)!=null){
-            handleStoreAlreadExists(clusterName,storeName);
+            handleStoreAlreadyExists(clusterName, storeName);
         }
         VeniceControllerClusterConfig config = configs.get(clusterName);
         Store store = new Store(storeName, owner, System.currentTimeMillis(), config.getPersistenceType(),
@@ -123,7 +127,7 @@ public class VeniceHelixAdmin implements Admin {
         try {
             Store store = repository.getStore(storeName);
             if(store == null){
-               handleStoreAlreadExists(clusterName,storeName);
+               handleStoreAlreadyExists(clusterName, storeName);
             }
             if(store.containsVersion(versionNumber)){
                 handleVersionAlreadyExists(storeName,versionNumber);
@@ -138,6 +142,8 @@ public class VeniceHelixAdmin implements Admin {
 
         addKafkaTopic(clusterName, version.kafkaTopicName(), numberOfPartition, replicaFactor,
             configs.get(clusterName).getKafkaReplicaFactor());
+        //Start offline push job for this new version.
+        startOfflinePush(clusterName,version.kafkaTopicName(),numberOfPartition,replicaFactor);
     }
 
     @Override
@@ -153,7 +159,7 @@ public class VeniceHelixAdmin implements Admin {
         try {
             Store store = repository.getStore(storeName);
             if(store == null){
-                handleStoreAlreadExists(clusterName, storeName);
+                handleStoreAlreadyExists(clusterName, storeName);
             }
             version = store.increaseVersion();
             repository.updateStore(store);
@@ -164,6 +170,8 @@ public class VeniceHelixAdmin implements Admin {
 
         addKafkaTopic(clusterName, version.kafkaTopicName(), numberOfPartition, replicaFactor,
             configs.get(clusterName).getKafkaReplicaFactor());
+        //Start offline push job for this new version.
+        startOfflinePush(clusterName,version.kafkaTopicName(),numberOfPartition,replicaFactor);
         return version.getNumber();
     }
 
@@ -219,6 +227,25 @@ public class VeniceHelixAdmin implements Admin {
     }
 
     @Override
+    public void startOfflinePush(String clusterName, String kafkaTopic) {
+        VeniceControllerClusterConfig config = configs.get(clusterName);
+        if (config == null) {
+            handleClusterDoseNotStart(clusterName);
+        }
+        this.startOfflinePush(clusterName, kafkaTopic, config.getNumberOfPartition(), config.getReplicaFactor());
+    }
+
+    @Override
+    public void startOfflinePush(String clusterName, String kafkaTopic, int numberOfPartition, int replicaFactor) {
+        VeniceJobManager jobManager = jobManagers.get(clusterName);
+        if (jobManager == null){
+            handleClusterDoseNotStart(clusterName);
+        }
+
+        jobManager.startOfflineJob(kafkaTopic,numberOfPartition,replicaFactor);
+    }
+
+    @Override
     public synchronized void stop(String clusterName) {
         HelixManager helixManager = helixManagers.remove(clusterName);
         if(helixManager == null) {
@@ -228,6 +255,7 @@ public class VeniceHelixAdmin implements Admin {
         helixManager.disconnect();
         HelixCachedMetadataRepository repository = repositories.remove(clusterName);;
         repository.clear();
+        jobManagers.remove(clusterName).getJobRepository().clear();
         configs.remove(clusterName);
     }
 
@@ -254,7 +282,7 @@ public class VeniceHelixAdmin implements Admin {
             VeniceStateModel.getDefinition());
     }
 
-    private void handleStoreAlreadExists(String clusterName, String storeName) {
+    private void handleStoreAlreadyExists(String clusterName, String storeName) {
         String errorMessage = "Store:" + storeName + " already exists. Can not add it to cluster:" + clusterName;
         logger.info(errorMessage);
         throw new VeniceException(errorMessage);

@@ -1,4 +1,4 @@
-package com.linkedin.venice.controlmessage;
+package com.linkedin.venice.helix;
 
 import com.linkedin.venice.controlmessage.ControlMessageHandler;
 import com.linkedin.venice.controlmessage.StatusUpdateMessage;

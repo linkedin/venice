@@ -1,28 +1,30 @@
 package com.linkedin.venice.job;
 
-import java.util.concurrent.atomic.AtomicLong;
-
 
 /**
- * Created by yayan on 3/7/16.
+ * Job is a approach to let cluster process off-line push, stream writing or data migration. It's composed by a
+ * collection of task which will be executed by instances in cluster.
  */
-public class Job {
+public abstract class Job {
 
-  private final String jobId;
+  private final long jobId;
+
+  private final String kafkaTopic;
 
   private final int numberOfPartition;
 
   private final int replicaFactor;
 
-  private static AtomicLong idGenerator = new AtomicLong(0l);
+  private JobAndTaskStatus status = JobAndTaskStatus.UNKNOW;
 
-
-  public Job(String kafkaTopic,int numberOfPartition,int replicaFactor){
-    this.jobId = generateJobId(kafkaTopic);
-    this.numberOfPartition=numberOfPartition;
-    this.replicaFactor=replicaFactor;
+  public Job(long jobId, String kafkaTopic, int numberOfPartition, int replicaFactor) {
+    this.jobId = jobId;
+    this.numberOfPartition = numberOfPartition;
+    this.replicaFactor = replicaFactor;
+    this.kafkaTopic = kafkaTopic;
   }
-  public String getJobId() {
+
+  public long getJobId() {
     return jobId;
   }
 
@@ -34,9 +36,28 @@ public class Job {
     return replicaFactor;
   }
 
-  //TODO Generate global id for Job. Could find other better solution in the further.
-  public static String generateJobId(String kakfaTopic) {
-    //If the controller is failed  then in the same second another standby is chosen to be new master, id could be repeatable here.
-    return kakfaTopic + "+" + System.currentTimeMillis() / 1000 + idGenerator.incrementAndGet();
+  public JobAndTaskStatus getStatus() {
+    return status;
   }
+
+  public void setStatus(JobAndTaskStatus status) {
+    this.status = status;
+  }
+
+  public String getKafkaTopic() {
+    return kafkaTopic;
+  }
+
+  /**
+   * Check all of current tasks status to judge whether job is completed or error or still running.
+   * <p>
+   * Please not this method is only the query method which will not change the status of this job.
+   *
+   * @return Calcuated job status.
+   */
+  public abstract JobAndTaskStatus checkJobStatus();
+
+  public abstract void updateTaskStatus(Task task);
+
+  public abstract JobAndTaskStatus getTaskStatus(int partitionId, String taskId);
 }

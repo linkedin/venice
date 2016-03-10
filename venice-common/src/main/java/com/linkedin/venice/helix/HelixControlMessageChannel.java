@@ -76,7 +76,7 @@ public class HelixControlMessageChannel implements ControlMessageChannel {
     try {
       //Send and wait until getting response or time out.
       int numMsg = messageService.sendAndWait(criteria, helixMessage, callBack, timeOut, retryCount);
-      if(numMsg == 0) {
+      if (numMsg == 0) {
         throw new VeniceException("No controller could be found to send messages " + message.getMessageId());
       }
     } catch (Throwable e) {
@@ -209,6 +209,7 @@ public class HelixControlMessageChannel implements ControlMessageChannel {
         getHandler(msg.getClass()).handleMessage(msg);
         result.setSuccess(true);
       } catch (Throwable e) {
+        logger.error("Handle message:" + _message.getMsgId() + " failed.", e);
         result.setSuccess(false);
       }
       //TODO could put more information to result here.

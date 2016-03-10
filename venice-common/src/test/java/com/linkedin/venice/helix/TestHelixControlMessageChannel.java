@@ -1,9 +1,8 @@
 package com.linkedin.venice.helix;
 
 import com.linkedin.venice.controlmessage.StatusUpdateMessage;
-import com.linkedin.venice.controlmessage.StatusUpdateMessageHandler;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.job.TaskStatus;
+import com.linkedin.venice.job.JobAndTaskStatus;
 import com.linkedin.venice.utils.ZkServerWrapper;
 import java.io.IOException;
 import java.util.HashMap;
@@ -33,7 +32,7 @@ public class TestHelixControlMessageChannel {
   private String kafkaTopic = "test_resource_1";
   private int partitionId = 0;
   private String instanceId = "localhost_1234";
-  private TaskStatus status = TaskStatus.COMPLETED;
+  private JobAndTaskStatus status = JobAndTaskStatus.COMPLETED;
   private ZkServerWrapper zkServerWrapper;
   private String zkAddress;
   private HelixControlMessageChannel channel;
@@ -86,7 +85,8 @@ public class TestHelixControlMessageChannel {
   @Test
   public void testConvertBetweenVeniceMessageAndHelixMessage()
       throws ClassNotFoundException {
-    StatusUpdateMessage veniceMessage = new StatusUpdateMessage(kafkaTopic, partitionId, instanceId, status);
+    StatusUpdateMessage veniceMessage =
+        new StatusUpdateMessage(1, kafkaTopic, partitionId, instanceId, status);
     Message helixMessage = channel.convertVeniceMessageToHelixMessage(veniceMessage);
     Assert.assertEquals(veniceMessage.getMessageId(), helixMessage.getMsgId(),
         "Message Ids are different. Convert is failed.");
@@ -131,7 +131,8 @@ public class TestHelixControlMessageChannel {
     controllerChannel.registerHandler(StatusUpdateMessage.class, handler);
 
     Thread.sleep(WAIT_ZK_TIME);
-    StatusUpdateMessage veniceMessage = new StatusUpdateMessage(kafkaTopic, partitionId, instanceId, status);
+    StatusUpdateMessage veniceMessage =
+        new StatusUpdateMessage(1, kafkaTopic, partitionId, instanceId, status);
     channel.sendToController(veniceMessage);
     StatusUpdateMessage receivedMessage = handler.getStatus(veniceMessage.getKafkaTopic());
     Assert.assertNotNull(receivedMessage, "Message is not received.");

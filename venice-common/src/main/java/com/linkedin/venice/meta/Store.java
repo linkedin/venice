@@ -1,5 +1,6 @@
 package com.linkedin.venice.meta;
 
+import com.linkedin.venice.exceptions.VeniceException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -154,6 +155,16 @@ public class Store {
             }
         }
         return false;
+    }
+
+    public void updateVersionStatus(int versionNumber, VersionStatus status){
+        for (int i = 0; i < versions.size(); i++) {
+            if (versions.get(i).getNumber() == versionNumber) {
+                versions.get(i).setStatus(status);
+                return;
+            }
+        }
+        throw new VeniceException("Version:"+versionNumber+"dose not exist");
     }
 
     /**
