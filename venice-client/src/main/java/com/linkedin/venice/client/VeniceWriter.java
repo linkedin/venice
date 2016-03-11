@@ -5,6 +5,7 @@ import com.linkedin.venice.kafka.producer.KafkaProducerWrapper;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.message.KafkaValue;
 import com.linkedin.venice.message.OperationType;
+import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.serialization.VeniceSerializer;
 import com.linkedin.venice.utils.Props;
 import java.util.concurrent.Future;
@@ -53,7 +54,7 @@ public class VeniceWriter<K, V> {
      */
     public Future<RecordMetadata> delete(K key) {
         // Ensure the Operation type for KafkaKey is WRITE. And the actual Operation type DELETE is used in KafkaValue
-        KafkaKey kafkaKey = new KafkaKey(OperationType.WRITE, keySerializer.serialize(key));
+        KafkaKey kafkaKey = new KafkaKey(OperationType.WRITE, keySerializer.serialize(storeName, key));
         KafkaValue kafkaValue = new KafkaValue(OperationType.DELETE);
         return producer.sendMessage(storeName, kafkaKey, kafkaValue);
     }
@@ -69,8 +70,8 @@ public class VeniceWriter<K, V> {
      * */
     public Future<RecordMetadata> put(K key, V value) {
       // Ensure the Operation type for KafkaKey is WRITE. And the actual Operation type PUT is used in KafkaValue
-      KafkaKey kafkaKey = new KafkaKey(OperationType.WRITE, keySerializer.serialize(key));
-      KafkaValue kafkaValue = new KafkaValue(OperationType.PUT, valueSerializer.serialize(value));
+      KafkaKey kafkaKey = new KafkaKey(OperationType.WRITE, keySerializer.serialize(storeName, key));
+      KafkaValue kafkaValue = new KafkaValue(OperationType.PUT, valueSerializer.serialize(storeName, value));
       try {
         return producer.sendMessage(storeName, kafkaKey, kafkaValue);
       } catch (Exception e) {

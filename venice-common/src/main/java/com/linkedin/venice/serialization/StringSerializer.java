@@ -1,5 +1,7 @@
 package com.linkedin.venice.serialization;
 
+import java.util.Map;
+
 
 public class StringSerializer implements VeniceSerializer<String> {
 
@@ -13,7 +15,7 @@ public class StringSerializer implements VeniceSerializer<String> {
    * @param byteArray - byte array to be converted
    * @return Converted string
    * */
-  public String deserialize(byte[] byteArray) {
+  public String deserialize(String topic, byte[] byteArray) {
     return new String(byteArray);
   }
 
@@ -27,13 +29,24 @@ public class StringSerializer implements VeniceSerializer<String> {
     /* This function is not used, but is required for the interfaces. */
   }
 
+  /**
+   * Configure this class.
+
+   * @param configMap configs in key/value pairs
+   * @param isKey whether is for key or value
+   */
+  @Override
+  public void configure(Map<String, ?> configMap, boolean isKey) {
+    /* This function is not used, but is required for the interfaces. */
+  }
+
   @Override
   /**
    * Converts from a string to a byte array
    * @param byteArray - byte array to be converted
    * @return Converted string
    * */
-  public byte[] serialize(String string) {
+  public byte[] serialize(String topic, String string) {
     return string.getBytes();
   }
 }

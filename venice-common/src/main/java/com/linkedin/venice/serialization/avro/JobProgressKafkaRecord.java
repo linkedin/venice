@@ -1,6 +1,5 @@
-package com.linkedin.venice.controlmessage;
+package com.linkedin.venice.serialization.avro;
 
-import com.linkedin.venice.serialization.avro.AvroGenericSerializer;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.util.Utf8;
@@ -55,7 +54,7 @@ public class JobProgressKafkaRecord {
     /**
      * 1. Gets the following input params
      * 2. Creates a key and value Avro record.
-     * 3. Serializes the avro records - both key and value.
+     * 3. Serailizes the avro records - both key and value.
      * 4. Constructs and returns a KeyedMessage using the serialized key and value avro records
      *
      * @param jobId
@@ -70,18 +69,18 @@ public class JobProgressKafkaRecord {
         GenericData.Record keyRecord = constructKeyRecord(jobId,kafkaTopic,partitionId, nodeId);
         GenericData.Record valRecord = constructValueRecord(count);
 
-        byte[] keyBytes = keySerializer.serialize(keyRecord);
-        byte[] valBytes = valueSerializer.serialize(valRecord);
+        byte[] keyBytes = keySerializer.serialize(kafkaTopic, keyRecord);
+        byte[] valBytes = valueSerializer.serialize(kafkaTopic, valRecord);
 
         ProducerRecord<byte[], byte[]> kafkaMessage = new ProducerRecord<byte[], byte[]>(consumptionAckKafkaTopic, keyBytes, valBytes);
         return kafkaMessage;
     }
 
-    private GenericData.Record constructKeyRecord(long jobId, String kafkaTopic, int partitionId, int nodeId){
+    private GenericData.Record constructKeyRecord(long jobId, String kafkaTopic, int partitioId, int nodeId){
         GenericData.Record key = new GenericData.Record(Schema.parse(AVRO_KEY_STORE_INFO));
         key.put("jobId", jobId);
         key.put("kafka-topic", new Utf8(kafkaTopic));
-        key.put("partitionId", partitionId);
+        key.put("partitionId", partitioId);
         key.put("nodeId", nodeId);
         return key;
     }

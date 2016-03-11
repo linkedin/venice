@@ -61,7 +61,7 @@ public class VeniceReader<K, V> {
    * @return The result of the "Get" operation
    * */
   public V get(K key) {
-    byte[] keyBytes = keySerializer.serialize(key);
+    byte[] keyBytes = keySerializer.serialize(storeName, key);
 
     List<Instance> instances;
     int partition;
@@ -81,6 +81,6 @@ public class VeniceReader<K, V> {
 
     ReadClient client = new ReadClient();
     byte[] valueBytes = client.doRead(host, port, request);
-    return valueSerializer.deserialize(valueBytes);
+    return valueSerializer.deserialize(storeName, valueBytes);
   }
 }
