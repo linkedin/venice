@@ -45,8 +45,8 @@ public class HelixCachedMetadataRepository extends HelixMetadataRepository {
      */
     private final ReadWriteLock metadataLock = new ReentrantReadWriteLock();
 
-    public HelixCachedMetadataRepository(@NotNull ZkClient zkClient, @NotNull String cluster) {
-        super(zkClient, cluster);
+    public HelixCachedMetadataRepository(@NotNull ZkClient zkClient,@NotNull HelixAdapterSerializer adapter, @NotNull String cluster) {
+        super(zkClient, adapter, cluster);
     }
 
     public void start() {

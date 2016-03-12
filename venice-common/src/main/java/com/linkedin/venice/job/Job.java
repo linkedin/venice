@@ -1,5 +1,7 @@
 package com.linkedin.venice.job;
 
+import java.util.List;
+
 
 /**
  * Job is a approach to let cluster process off-line push, stream writing or data migration. It's composed by a
@@ -61,4 +63,12 @@ public abstract class Job {
   public abstract void updateTaskStatus(Task task);
 
   public abstract ExecutionStatus getTaskStatus(int partitionId, String taskId);
+
+  public abstract Task getTask(int partitionId, String taskId);
+
+  public abstract  void deleteTask(Task task);
+
+  public abstract void setTask(Task task);
+
+  public abstract List<Task> tasksInPartition(int partitionId);
 }

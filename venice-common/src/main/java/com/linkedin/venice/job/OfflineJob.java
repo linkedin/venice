@@ -2,7 +2,9 @@ package com.linkedin.venice.job;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.OfflinePushStrategy;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 
@@ -34,22 +36,23 @@ public class OfflineJob extends Job {
       throw new VeniceException("Job:" + getJobId() + " is not running.");
     }
     if (strategy.equals(OfflinePushStrategy.WAIT_ALL_REPLICAS)) {
+      boolean isAllCompleted = true;
       for (Map<String, Task> taskMap : partitionToTasksMap.values()) {
         if (taskMap.size() != this.getReplicaFactor()) {
           //Some of tasks did not report "Started" status.
-          return ExecutionStatus.STARTED;
+          isAllCompleted = false;
         }
         for (Task task : taskMap.values()) {
           if (task.getStatus().equals(ExecutionStatus.ERROR)) {
             //Right now we don't have any retry. If one of task is failed, the whole job is failed.
             return ExecutionStatus.ERROR;
           } else if (!task.getStatus().equals(ExecutionStatus.COMPLETED)) {
-            return ExecutionStatus.STARTED;
+            isAllCompleted = false;
           }
         }
       }
       //All of tasks status are Completed.
-      return ExecutionStatus.COMPLETED;
+      return isAllCompleted ?ExecutionStatus.COMPLETED:ExecutionStatus.STARTED;
     }
     //TODO support more off-line push strategies.
     throw new VeniceException("Strategy:" + strategy + " is not supported.");
@@ -57,6 +60,20 @@ public class OfflineJob extends Job {
 
   /**
    * Update the status of taks.
+   *
+   * @param task
+   */
+  @Override
+  public void updateTaskStatus(Task task) {
+    verifyTaskStatus(task);
+    Map<String, Task> taskMap = partitionToTasksMap.get(task.getPartitionId());
+    Task newTask = new Task(task.getTaskId(), task.getPartitionId(), task.getInstanceId(), task.getStatus());
+    newTask.setProgress(task.getProgress());
+    taskMap.put(newTask.getTaskId(), newTask);
+  }
+
+  /**
+   * Verify whether the task's status is correct to update.
    * <p>
    * The transitions of state machine:
    * <p>
@@ -65,8 +82,7 @@ public class OfflineJob extends Job {
    *
    * @param task
    */
-  @Override
-  public void updateTaskStatus(Task task) {
+  public void verifyTaskStatus(Task task) {
     Map<String, Task> taskMap = partitionToTasksMap.get(task.getPartitionId());
     if (taskMap == null) {
       throw new VeniceException("Partition:" + task.getPartitionId() + " dose not exist.");
@@ -76,18 +92,13 @@ public class OfflineJob extends Job {
       if (oldTask != null) {
         throw new VeniceException("Task:" + task.getTaskId() + "is already started");
       }
-      oldTask = new Task(task.getTaskId(), task.getPartitionId(), task.getInstanceId(), task.getStatus());
-      taskMap.put(task.getTaskId(), oldTask);
     } else {
       if (oldTask == null) {
         throw new VeniceException("Task:" + task.getTaskId() + " dose not exist.");
       }
-      if (oldTask.getStatus().equals(ExecutionStatus.COMPLETED) || oldTask.getStatus()
-          .equals(ExecutionStatus.ERROR)) {
+      if (oldTask.getStatus().equals(ExecutionStatus.COMPLETED) || oldTask.getStatus().equals(ExecutionStatus.ERROR)) {
         throw new VeniceException("Can not update a terminated task.");
       }
-      oldTask.setStatus(task.getStatus());
-      oldTask.setProgress(task.getProgress());
     }
   }
 
@@ -102,5 +113,21 @@ public class OfflineJob extends Job {
       throw new VeniceException("Task:" + taskId + " dose not exist.");
     }
     return task.getStatus();
+  }
+
+  public void setTask(Task task) {
+    partitionToTasksMap.get(task.getPartitionId()).put(task.getTaskId(), task);
+  }
+
+  public void deleteTask(Task task) {
+    partitionToTasksMap.get(task.getPartitionId()).remove(task.getTaskId());
+  }
+
+  public Task getTask(int partitionId, String taskId) {
+    return partitionToTasksMap.get(partitionId).get(taskId);
+  }
+
+  public List<Task> tasksInPartition(int partitionId) {
+    return new ArrayList<>(partitionToTasksMap.get(partitionId).values());
   }
 }
