@@ -7,8 +7,8 @@ import io.netty.handler.codec.http.HttpResponseStatus;
  * Created by mwise on 3/11/16.
  */
 public class HttpError {
-  private String message;
-  private HttpResponseStatus status;
+  private final String message;
+  private final HttpResponseStatus status;
 
   public HttpError(String message, HttpResponseStatus status){
     this.message = message;
