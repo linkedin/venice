@@ -37,6 +37,8 @@ public class HelixJobRepository implements JobRepository {
 
   private final String offlineJobsPath;
 
+  private final HelixAdapterSerializer adapter;
+
   //TODO Add the serializer for near-line job later.
   public HelixJobRepository(@NotNull ZkClient zkClient, @NotNull HelixAdapterSerializer adapter,
       @NotNull String clusterName) {
@@ -47,9 +49,10 @@ public class HelixJobRepository implements JobRepository {
       @NotNull String clusterName, VeniceSerializer<OfflineJob> jobSerializer,
       VeniceSerializer<List<Task>> taskVeniceSerializer) {
     offlineJobsPath = "/" + clusterName + "/OfflineJobs";
-    adapter.registerSerializer(offlineJobsPath, jobSerializer);
-    adapter.registerSerializer(offlineJobsPath + "/", taskVeniceSerializer);
-    zkClient.setZkSerializer(adapter);
+    this.adapter = adapter;
+    this.adapter.registerSerializer(offlineJobsPath, jobSerializer);
+    this.adapter.registerSerializer(offlineJobsPath + "/", taskVeniceSerializer);
+    zkClient.setZkSerializer(this.adapter);
     jobDataAccessor = new ZkBaseDataAccessor<>(zkClient);
     tasksDataAccessor = new ZkBaseDataAccessor<>(zkClient);
   }
@@ -195,12 +198,14 @@ public class HelixJobRepository implements JobRepository {
   private void updateTaskToZK(long jobId, int partitionId, List<Task> tasks) {
     tasksDataAccessor.set(offlineJobsPath + "/" + jobId + "/" + partitionId, tasks, AccessOption.PERSISTENT);
   }
-  //TODO connect to helix.
 
   public synchronized void start() {
     jobMap = new HashMap<>();
     topicToJobsMap = new HashMap<>();
     logger.info("Start getting offline jobs from ZK");
+    // We don't need to listen the change of jobs and tasks. The master controller is the only entrance to read/write
+    // these data. When master is failed, another controller will take over this mastership and load from ZK when
+    // becoming master.
     List<OfflineJob> offLineJobs = jobDataAccessor.getChildren(offlineJobsPath, null, AccessOption.PERSISTENT);
     logger.info("Get " + offLineJobs.size() + " offline jobs.");
     for (OfflineJob job : offLineJobs) {
@@ -238,9 +243,11 @@ public class HelixJobRepository implements JobRepository {
     logger.info("End getting offline jobs from zk");
   }
 
-  //TODO clean up related helix resource.
   public synchronized void clear() {
     this.jobMap.clear();
     this.topicToJobsMap.clear();
+    this.adapter.unregisterSeralizer(offlineJobsPath);
+    this.adapter.unregisterSeralizer(offlineJobsPath + "/");
+    //We don't need to close ZK client here. It's could be reused by other repository.
   }
 }

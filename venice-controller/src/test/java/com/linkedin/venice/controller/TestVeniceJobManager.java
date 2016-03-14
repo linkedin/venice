@@ -2,6 +2,7 @@ package com.linkedin.venice.controller;
 
 import com.linkedin.venice.controlmessage.StatusUpdateMessage;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.helix.HelixAdapterSerializer;
 import com.linkedin.venice.helix.HelixCachedMetadataRepository;
 import com.linkedin.venice.helix.HelixJobRepository;
 import com.linkedin.venice.job.Job;
@@ -36,9 +37,10 @@ public class TestVeniceJobManager {
     zkAddress = zkServerWrapper.getZkAddress();
     zkClient = new ZkClient(zkAddress);
     zkClient.createPersistent("/" + cluster + "stores");
-    jobRepository = new HelixJobRepository();
+    HelixAdapterSerializer adapterSerializer = new HelixAdapterSerializer();
+    jobRepository = new HelixJobRepository(zkClient, adapterSerializer, cluster);
     jobRepository.start();
-    metadataRepository = new HelixCachedMetadataRepository(zkClient, cluster);
+    metadataRepository = new HelixCachedMetadataRepository(zkClient, adapterSerializer, cluster);
     metadataRepository.start();
     jobManager = new VeniceJobManager(1, jobRepository, metadataRepository);
   }
@@ -61,8 +63,7 @@ public class TestVeniceJobManager {
     metadataRepository.addStore(store);
     jobManager.startOfflineJob(version.kafkaTopicName(), 1, 1);
 
-    StatusUpdateMessage message =
-        new StatusUpdateMessage(1, version.kafkaTopicName(), 0, "1", ExecutionStatus.STARTED);
+    StatusUpdateMessage message = new StatusUpdateMessage(1, version.kafkaTopicName(), 0, "1", ExecutionStatus.STARTED);
     jobManager.handleMessage(message);
     Job job = jobRepository.getRunningJobOfTopic(version.kafkaTopicName()).get(0);
     Assert.assertEquals(jobRepository.getJobStatus(job.getJobId()), ExecutionStatus.STARTED, "Job should be started.");
@@ -94,8 +95,7 @@ public class TestVeniceJobManager {
     metadataRepository.addStore(store);
     jobManager.startOfflineJob(version.kafkaTopicName(), 1, 1);
 
-    StatusUpdateMessage message =
-        new StatusUpdateMessage(1, version.kafkaTopicName(), 0, "1", ExecutionStatus.STARTED);
+    StatusUpdateMessage message = new StatusUpdateMessage(1, version.kafkaTopicName(), 0, "1", ExecutionStatus.STARTED);
     jobManager.handleMessage(message);
     Job job = jobRepository.getRunningJobOfTopic(version.kafkaTopicName()).get(0);
     Assert.assertEquals(jobRepository.getJobStatus(job.getJobId()), ExecutionStatus.STARTED, "Job should be started.");

@@ -14,7 +14,7 @@ import org.apache.helix.manager.zk.PathBasedZkSerializer;
  * <p>
  * This class let venice can re-use on ZkClient to read/write different types of Venice objects.
  */
-class HelixAdapterSerializer implements PathBasedZkSerializer {
+public class HelixAdapterSerializer implements PathBasedZkSerializer {
 
   private Map<String, VeniceSerializer> pathToSerializers;
 

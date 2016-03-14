@@ -3,6 +3,7 @@ package com.linkedin.venice.helix;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.Partition;
+import com.linkedin.venice.meta.RoutingDataChangedListener;
 import com.linkedin.venice.meta.RoutingDataRepository;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -11,6 +12,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
@@ -60,6 +62,8 @@ public class HelixRoutingDataRepository extends RoutingTableProvider implements 
      * Lock used to prevent the conflicts when operating resourceToNumberOfPartitionsMap.
      */
     private final Lock lock = new ReentrantLock();
+
+    private Map<String, HashSet<RoutingDataChangedListener>> listenersMap = new HashMap<>();
 
     public HelixRoutingDataRepository(HelixManager manager) {
         this.manager = manager;
@@ -144,6 +148,29 @@ public class HelixRoutingDataRepository extends RoutingTableProvider implements 
             return resourceToNumberOfPartitionsMap.get(resourceName);
         } finally {
             lock.unlock();
+        }
+    }
+
+    @Override
+    public void subscribeRoutingDataChange(String kafkaTopic, RoutingDataChangedListener listener) {
+        synchronized (listenersMap) {
+            HashSet<RoutingDataChangedListener> listeners = listenersMap.get(kafkaTopic);
+            if (listeners == null) {
+                listeners = new HashSet<>();
+                listenersMap.put(kafkaTopic, listeners);
+            }
+            listeners.add(listener);
+        }
+    }
+
+    @Override
+    public void unSubscribeRoutingDataChange(String kafkaTopic, RoutingDataChangedListener listener) {
+        synchronized (listenersMap) {
+            HashSet<RoutingDataChangedListener> listeners = listenersMap.get(kafkaTopic);
+            if (listeners == null) {
+                throw new VeniceException("Can not find listener in topic:" + kafkaTopic);
+            }
+            listeners.remove(listener);
         }
     }
 
