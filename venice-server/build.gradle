@@ -27,6 +27,7 @@ dependencies {
   compile libraries.helix
   compile libraries.bdbJe
   compile libraries.netty
+  compile libraries.http_client
 
   compile project(':venice-common')
   compile project(':venice-controller')

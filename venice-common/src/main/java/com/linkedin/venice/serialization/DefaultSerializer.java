@@ -1,19 +1,20 @@
 package com.linkedin.venice.serialization;
 
+import java.util.Map;
+import org.apache.kafka.common.serialization.ByteArrayDeserializer;
+import org.apache.kafka.common.serialization.ByteArraySerializer;
+
 
 /**
- * Default Kafka VeniceSerializer.
- *
- * TODO: Decide if we really need this class at all.
- *
- * We could instead use {@link com.linkedin.venice.serialization.IdentitySerializer}
- * directly where appropriate.
+ * Default Kafka VeniceSerializer
  */
 public class DefaultSerializer implements VeniceSerializer<byte[]> {
-  IdentitySerializer serializer;
+  ByteArraySerializer serializer;
+  ByteArrayDeserializer deserializer;
 
   public DefaultSerializer() {
-    this.serializer = new IdentitySerializer();
+    this.serializer = new ByteArraySerializer();
+    this.deserializer = new ByteArrayDeserializer();
   }
 
   @Override
@@ -22,12 +23,17 @@ public class DefaultSerializer implements VeniceSerializer<byte[]> {
   }
 
   @Override
-  public byte[] serialize(byte[] bytes) {
-    return serializer.serialize(bytes);
+  public void configure(Map<String, ?> configMap, boolean isKey) {
+    /* This function is not used, but is required for the interfaces. */
   }
 
   @Override
-  public byte[] deserialize(byte[] bytes) {
-    return serializer.deserialize(bytes);
+  public byte[] serialize(String topic, byte[] bytes) {
+    return serializer.serialize(topic, bytes);
+  }
+
+  @Override
+  public byte[] deserialize(String topic, byte[] bytes) {
+    return deserializer.deserialize(topic, bytes);
   }
 }

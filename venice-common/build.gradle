@@ -17,11 +17,13 @@ jar {
 }
 
 dependencies {
-  // IMPORTANT: Keep the venice-common dependencies to a minimum. 
-  //            Do NOT add Kafka, ZK, Helix or Hadoop here.
 
   compile libraries.avro
   compile libraries.helix // TODO: Get rid of Helix dependency in venice-common
+
+  //TODO : This is LinkedIn only dependency
+  //TODO : This is LinkedIn only dependency
+  compile libraries.kafkaClients // TODO: Get rid of Kafka dependency in venice-common
   compile libraries.commonsCodec
   compile libraries.guava
 }

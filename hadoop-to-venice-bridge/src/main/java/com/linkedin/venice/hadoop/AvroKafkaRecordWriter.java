@@ -118,6 +118,6 @@ public class AvroKafkaRecordWriter implements RecordWriter<AvroWrapper<IndexedRe
       }
     }
 
-    veniceWriter.put(keySerializer.serialize(keyDatum), valueSerializer.serialize(valueDatum));
+    veniceWriter.put(keySerializer.serialize(topicName, keyDatum), valueSerializer.serialize(topicName, valueDatum));
   }
 }

@@ -1,6 +1,9 @@
 package com.linkedin.venice.listener;
 
+import com.google.common.base.Charsets;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.message.GetRequestObject;
+import com.linkedin.venice.meta.QueryAction;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 import io.netty.channel.ChannelHandlerContext;
@@ -8,7 +11,15 @@ import io.netty.channel.ChannelInboundHandlerAdapter;
 import io.netty.handler.codec.ByteToMessageDecoder;
 import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpRequest;
+import io.netty.handler.codec.http.HttpResponseStatus;
+import java.net.URI;
+import java.net.URISyntaxException;
+import java.nio.charset.StandardCharsets;
+import java.util.Base64;
 import java.util.List;
+import org.apache.http.NameValuePair;
+import org.apache.http.client.utils.URLEncodedUtils;
+import org.apache.tools.ant.taskdefs.condition.Http;
 
 
 /**
@@ -19,14 +30,14 @@ import java.util.List;
 public class GetRequestHttpHandler extends ChannelInboundHandlerAdapter {
 
   @Override
-  public void channelReadComplete(ChannelHandlerContext ctx) {
-    ctx.flush();
+  public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) {
+    ctx.writeAndFlush(new HttpError(cause.getMessage(), HttpResponseStatus.INTERNAL_SERVER_ERROR));
+    ctx.close();
   }
 
   @Override
-  public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) {
-    cause.printStackTrace();
-    ctx.close();
+  public void channelReadComplete(ChannelHandlerContext ctx) {
+    ctx.flush();
   }
 
   /***
@@ -40,23 +51,69 @@ public class GetRequestHttpHandler extends ChannelInboundHandlerAdapter {
   public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
     if (msg instanceof HttpRequest) {
       HttpRequest req = (HttpRequest) msg;
-
-      if (req.getMethod().equals(HttpMethod.GET)){
-        String[] requestParts = req.getUri().split("/");
-        if (requestParts.length == 4) {//   ""/"store"/"key"/"partition"
-
-          GetRequestObject request = new GetRequestObject();
-          request.setStore(requestParts[1]);
-          request.setKey(requestParts[2].getBytes());
-          request.setPartition(requestParts[3]);
-
-          ctx.fireChannelRead(request);
-
+      try {
+        QueryAction action = getQueryActionFromRequest(req);
+        switch (action){
+          case READ:  // GET /read/store/partition/key
+            GetRequestObject request = parseReadFromUri(req.getUri());
+            ctx.fireChannelRead(request);
+            break;
+          default:
+            throw new VeniceException("Unrecognized query action");
         }
+      } catch (VeniceException e){
+        ctx.writeAndFlush(new HttpError(
+            e.getMessage(),
+            HttpResponseStatus.BAD_REQUEST
+        ));
       }
-
     }
   }
 
+  static GetRequestObject parseReadFromUri(String uri){
+    String[] requestParts = uri.split("/");
+    if (requestParts.length == 5) {//   [0]""/[1]"action"/[2]"store"/[3]"partition"/[4]"key"
+      GetRequestObject request = new GetRequestObject();
+      request.setStore(requestParts[2]);
+      request.setPartition(requestParts[3]);
+      request.setKey(getKeyBytesFromUrlKeyString(requestParts[4]));
+      return request;
+    } else {
+      throw new VeniceException("Not a valid request for a READ action: " + uri);
+    }
+  }
+
+  static QueryAction getQueryActionFromRequest(HttpRequest req){
+    String[] requestParts = req.getUri().split("/");
+    if (req.getMethod().equals(HttpMethod.GET) &&
+        requestParts.length >=2 &&
+        requestParts[1].equals("read")){
+      return QueryAction.READ;
+    } else {
+      throw new VeniceException("Only able to parse GET requests for action: read");
+    }
+  }
+
+  static Base64.Decoder decoder = Base64.getDecoder();
+  static byte[] getKeyBytesFromUrlKeyString(String keyString){
+    try {
+      URI uri = new URI(keyString);
+      List<NameValuePair> params = URLEncodedUtils.parse(new URI(keyString), "UTF-8");
+      String format = "string";
+      for (NameValuePair pair : params){
+        if (pair.getName().equals("f")) {
+          format = pair.getValue();
+        }
+      }
+      switch (format){
+        case "b64":
+          return decoder.decode(uri.getPath());
+        default:
+          return uri.getPath().getBytes(StandardCharsets.UTF_8);
+      }
+    } catch (URISyntaxException e) {
+      throw new VeniceException("Failed to parse as URI: " + keyString, e);
+    }
+  }
 
 }

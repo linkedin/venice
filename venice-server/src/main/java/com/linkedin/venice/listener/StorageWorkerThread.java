@@ -7,6 +7,7 @@ import com.linkedin.venice.server.StoreRepository;
 import com.linkedin.venice.store.AbstractStorageEngine;
 import io.netty.buffer.ByteBuf;
 import io.netty.channel.ChannelHandlerContext;
+import io.netty.handler.codec.http.HttpResponseStatus;
 import org.apache.log4j.Logger;
 
 public class StorageWorkerThread implements Runnable {
@@ -30,13 +31,16 @@ public class StorageWorkerThread implements Runnable {
     byte[] key = request.getKey();
 
     AbstractStorageEngine store = storeRepository.getLocalStorageEngine(topic);
-    byte[] value;
+
     try {
-      value = store.get(partition, key);
+      byte[] value = store.get(partition, key);
+      ctx.writeAndFlush(value);
     } catch (PersistenceFailureException e){ //thrown if no key.  TODO Subclass this for a nokey exception
-      value = new byte[0];
+      ctx.writeAndFlush(new HttpError(
+          "key not found in resource: " + topic + " and partition: " + partition,
+          HttpResponseStatus.NOT_FOUND));
     }
-    ctx.writeAndFlush(value);
+
   }
 
 }
