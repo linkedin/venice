@@ -13,6 +13,7 @@ ext.libraries = [ // Groovy map literal
                   netty: 'io.netty:netty-all:4.0.33.Final',
                   zkclient: 'com.101tec:zkclient:0.7', //for Kafka AdminUtils
                   router: 'com.linkedin.dds-storage-core:dds-storage-router-api:0.0.34',
+                  http_client: 'org.apache.httpcomponents:httpasyncclient:4.1.1',
 
                   // Hadoop to Venice Bridge dependencies
                   avroTools: 'org.apache.avro:avro-tools:1.4.0', // N.B.: 1.4.1 does not exist, hence the discrepancy

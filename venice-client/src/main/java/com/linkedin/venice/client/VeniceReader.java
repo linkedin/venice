@@ -9,7 +9,16 @@ import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.serialization.VeniceSerializer;
 import com.linkedin.venice.utils.Props;
+import java.io.IOException;
+import java.io.InputStream;
+import java.util.Base64;
 import java.util.List;
+import java.util.concurrent.ExecutionException;
+import org.apache.commons.io.IOUtils;
+import org.apache.http.HttpResponse;
+import org.apache.http.client.methods.HttpGet;
+import org.apache.http.impl.nio.client.CloseableHttpAsyncClient;
+import org.apache.http.impl.nio.client.HttpAsyncClients;
 import org.apache.log4j.Logger;
 
 /**
@@ -73,14 +82,26 @@ public class VeniceReader<K, V> {
       throw new NullPointerException("No hosts available to serve partition: " + partition +
           ", store: " + storeName);
     }
-    // Proper router will use a strategy other than "read from one"
+    // Proper router will eventually use a strategy other than "read from one"
     String host = instances.get(0).getHost();
     int port = instances.get(0).getHttpPort();
+    String keyB64 = Base64.getEncoder().encodeToString(keyBytes);
 
-    GetRequestObject request = new GetRequestObject(storeName.toCharArray(), partition, keyBytes);
-
-    ReadClient client = new ReadClient();
-    byte[] valueBytes = client.doRead(host, port, request);
-    return valueSerializer.deserialize(storeName, valueBytes);
+    CloseableHttpAsyncClient httpclient = HttpAsyncClients.createDefault();
+    try{
+      httpclient.start();
+      final HttpGet reqest = new HttpGet("http://" + host + ":" + port + "/read/" + storeName + "/" + partition + "/" + keyB64 + "?f=b64");
+      HttpResponse response = httpclient.execute(reqest, null).get(); //get is blocking
+      InputStream responseContent = response.getEntity().getContent();
+      return valueSerializer.deserialize(storeName, IOUtils.toByteArray(responseContent));
+    } catch (Exception e) {
+      throw new VeniceException("Failed to execute http request to: " + host + " for store: " + storeName, e);
+    } finally {
+      try {
+        httpclient.close();
+      } catch (IOException e) {
+        logger.warn("Error closing httpclient", e);
+      }
+    }
   }
 }

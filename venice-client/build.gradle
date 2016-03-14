@@ -25,6 +25,7 @@ jar {
 
 dependencies {
   compile libraries.router
+  compile libraries.http_client
   compile project(':venice-common')
 
 }
