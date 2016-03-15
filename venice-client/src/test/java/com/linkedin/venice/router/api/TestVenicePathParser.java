@@ -5,9 +5,10 @@ import com.linkedin.venice.meta.MetadataRepository;
 import com.linkedin.venice.meta.Store;
 import java.util.Base64;
 import org.mockito.Mockito;
-import static org.mockito.Mockito.*;
 import org.testng.Assert;
 import org.testng.annotations.Test;
+
+import static org.mockito.Mockito.doReturn;
 
 
 /**

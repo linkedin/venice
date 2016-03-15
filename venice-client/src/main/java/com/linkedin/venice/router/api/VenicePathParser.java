@@ -7,8 +7,11 @@ import java.net.URI;
 import java.net.URISyntaxException;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import org.apache.http.NameValuePair;
+import org.apache.http.client.utils.URLEncodedUtils;
 import org.apache.log4j.Logger;
 import org.jboss.netty.handler.codec.http.HttpResponseStatus;
 
@@ -68,7 +71,7 @@ public class VenicePathParser implements ResourcePathParser<Path, RouterKey> {
     if (action.equals(ACTION_READ)) {
       String resourceName = getResourceFromStoreName(storename);
       RouterKey routerKey;
-      if (isFormatB64(uriObject.getQuery())){
+      if (isFormatB64(uriObject)){
         routerKey = RouterKey.fromBase64(key);
       } else {
         routerKey = RouterKey.fromString(key);
@@ -110,11 +113,15 @@ public class VenicePathParser implements ResourcePathParser<Path, RouterKey> {
     return m.matches();
   }
 
-  private boolean isFormatB64(String query) {
-    if (null != query && query.equals(B64FORMAT)) {
-      return true;
+  protected static boolean isFormatB64(URI uri) {
+    String format = "string";
+    List<NameValuePair> params = URLEncodedUtils.parse(uri, "UTF-8");
+    for (NameValuePair pair : params) {
+      if (pair.getName().equals("f")) {
+        format = pair.getValue();
+      }
     }
-    return false;
+    return format.equals("b64");
   }
 
 

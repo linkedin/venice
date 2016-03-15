@@ -98,7 +98,7 @@ public class GetRequestHttpHandler extends ChannelInboundHandlerAdapter {
   static byte[] getKeyBytesFromUrlKeyString(String keyString){
     try {
       URI uri = new URI(keyString);
-      List<NameValuePair> params = URLEncodedUtils.parse(new URI(keyString), "UTF-8");
+      List<NameValuePair> params = URLEncodedUtils.parse(uri, "UTF-8");
       String format = "string";
       for (NameValuePair pair : params){
         if (pair.getName().equals("f")) {

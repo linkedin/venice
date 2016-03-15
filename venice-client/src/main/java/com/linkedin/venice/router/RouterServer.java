@@ -11,6 +11,8 @@ import com.linkedin.ddsstorage.netty3.misc.ShutdownableHashedWheelTimer;
 import com.linkedin.ddsstorage.netty3.misc.ShutdownableOrderedMemoryAwareExecutor;
 import com.linkedin.ddsstorage.router.api.ScatterGatherHelper;
 import com.linkedin.ddsstorage.router.impl.RouterImpl;
+import com.linkedin.venice.helix.HelixMetadataRepository;
+import com.linkedin.venice.helix.HelixRoutingDataRepository;
 import com.linkedin.venice.meta.MetadataRepository;
 import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.router.api.VeniceDispatcher;
@@ -20,11 +22,16 @@ import com.linkedin.venice.router.api.VenicePathParser;
 import com.linkedin.venice.router.api.VeniceRoleFinder;
 import com.linkedin.venice.router.api.VeniceVersionFinder;
 import com.linkedin.venice.service.AbstractVeniceService;
+import com.linkedin.venice.utils.Props;
+import java.io.File;
 import java.net.InetSocketAddress;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import org.apache.helix.HelixManager;
+import org.apache.helix.InstanceType;
+import org.apache.helix.manager.zk.ZKHelixManager;
+import org.apache.helix.manager.zk.ZkClient;
 import org.apache.log4j.Logger;
 import org.jboss.netty.channel.ChannelFuture;
 import org.jboss.netty.channel.socket.nio.NioServerBossPool;
@@ -35,17 +42,57 @@ import org.jboss.netty.util.Timer;
 
 /**
  * Note: Router uses Netty 3
+ *
+ * For now this is meant to be run from the IDE for development and testing.
+ * It won't actually work until the metadata repository starts to make versions 'active'
  */
 public class RouterServer extends AbstractVeniceService {
   private static final Logger logger = Logger.getLogger(RouterServer.class);
 
   private final int port;
-  private final String clusterName;
   private RoutingDataRepository routingDataRepository;
   private MetadataRepository metadataRepository;
+  private String clusterName;
 
   private ChannelFuture serverFuture = null;
   private NettyResourceRegistry registry = null;
+
+  public static void main(String args[])
+      throws Exception {
+
+    Props props;
+    try {
+      String clusterConfigFilePath = args[0];
+      props = new Props(new File(clusterConfigFilePath));
+    } catch (Exception e){
+      logger.warn("No config file parameter found, using default values for local testing", e);
+      props = new Props();
+    }
+
+    String zkConnection = props.getOrDefault("zookeeper.connection.string", "localhost:2181");
+    String clusterName = props.getOrDefault("cluster.name", "localhost:2181");
+    int port = props.getInt("router.port", 54333);
+
+    ZkClient zkClient = new ZkClient(zkConnection);
+    HelixManager manager = new ZKHelixManager(clusterName, null, InstanceType.SPECTATOR, zkConnection);
+
+    MetadataRepository metaRepo = new HelixMetadataRepository(zkClient, clusterName);
+    RoutingDataRepository routingRepo = new HelixRoutingDataRepository(manager);
+
+    RouterServer server = new RouterServer(port, clusterName, routingRepo, metaRepo);
+    server.start();
+    boolean go = true;
+    while (go){
+      try {
+        Thread.sleep(60000);
+      } catch (InterruptedException e){
+        go = false;
+      }
+    }
+    server.stop();
+    manager.disconnect();
+    zkClient.close();
+  }
 
   public RouterServer(int port, String clusterName,
       RoutingDataRepository routingDataRepository, MetadataRepository metadataRepository){
@@ -69,10 +116,6 @@ public class RouterServer extends AbstractVeniceService {
     TimeoutProcessor timeoutProcessor = new TimeoutProcessor(registry);
     Timer idleTimer = registry.register(new ShutdownableHashedWheelTimer(1, TimeUnit.MILLISECONDS));
     Map<String, Object> serverSocketOptions = null;
-
-    ScheduledExecutorService scheduledExecutorService
-        = registry.factory(ShutdownableExecutors.class).newScheduledThreadPool(1);
-
     ResourceRegistry routerRegistry = registry.register(new SyncResourceRegistry());
 
     RouterImpl router
