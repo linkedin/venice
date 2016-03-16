@@ -3,9 +3,12 @@ package com.linkedin.venice.controller;
 import com.linkedin.venice.controller.kafka.TopicCreator;
 import com.linkedin.venice.controlmessage.StatusUpdateMessage;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.helix.HelixAdapterSerializer;
 import com.linkedin.venice.helix.HelixCachedMetadataRepository;
 import com.linkedin.venice.helix.HelixControlMessageChannel;
 import com.linkedin.venice.helix.HelixJobRepository;
+import com.linkedin.venice.helix.HelixRoutingDataRepository;
+import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import java.util.HashMap;
@@ -70,6 +73,7 @@ public class VeniceHelixAdmin implements Admin {
                                             InstanceType.CONTROLLER,
                                             zkConnString);
         try {
+            //TODO confirm with Helix team and add the listener to handle mastership changing event here.
             helixManager.connect();
         } catch (Exception ex) {
             String errorMessage = " Error starting Helix controller cluster " +
@@ -79,12 +83,13 @@ public class VeniceHelixAdmin implements Admin {
         }
 
         helixManagers.put(clusterName, helixManager);
-
-        HelixCachedMetadataRepository repository = new HelixCachedMetadataRepository(zkClient, clusterName);
+        HelixAdapterSerializer adapter = new HelixAdapterSerializer();
+        HelixCachedMetadataRepository repository = new HelixCachedMetadataRepository(zkClient, adapter, clusterName);
         repository.start();
         repositories.put(clusterName, repository);
-
-        HelixJobRepository jobRepository = new HelixJobRepository();
+        HelixRoutingDataRepository routingDataRepository = new HelixRoutingDataRepository(helixManager);
+        routingDataRepository.start();
+        HelixJobRepository jobRepository = new HelixJobRepository(zkClient, adapter, clusterName, routingDataRepository);
         jobRepository.start();
         VeniceJobManager jobManager= new VeniceJobManager(helixManager.getSessionId().hashCode(),jobRepository,repository);
         HelixControlMessageChannel controllerChannel = new HelixControlMessageChannel(helixManager);
@@ -246,7 +251,9 @@ public class VeniceHelixAdmin implements Admin {
         helixManager.disconnect();
         HelixCachedMetadataRepository repository = repositories.remove(clusterName);;
         repository.clear();
-        jobManagers.remove(clusterName).getJobRepository().clear();
+        HelixJobRepository jobRepository = (HelixJobRepository) jobManagers.remove(clusterName).getJobRepository();
+        ((HelixRoutingDataRepository)jobRepository.getRoutingDataRepository()).clear();
+        jobRepository.clear();
         configs.remove(clusterName);
     }
 

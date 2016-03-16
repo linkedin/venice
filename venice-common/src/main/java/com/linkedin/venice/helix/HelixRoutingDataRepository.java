@@ -3,6 +3,7 @@ package com.linkedin.venice.helix;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.Partition;
+import com.linkedin.venice.meta.RoutingDataChangedListener;
 import com.linkedin.venice.meta.RoutingDataRepository;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -61,6 +62,8 @@ public class HelixRoutingDataRepository extends RoutingTableProvider implements 
      */
     private final Lock lock = new ReentrantLock();
 
+    private Map<String, HashSet<RoutingDataChangedListener>> listenersMap = new HashMap<>();
+
     public HelixRoutingDataRepository(HelixManager manager) {
         this.manager = manager;
         keyBuilder = new PropertyKey.Builder(manager.getClusterName());
@@ -79,6 +82,12 @@ public class HelixRoutingDataRepository extends RoutingTableProvider implements 
             logger.error(errorMessage, e);
             throw new VeniceException(errorMessage, e);
         }
+    }
+
+    public void clear() {
+        manager.removeListener(keyBuilder.externalViews(), this);
+        resourceToNumberOfPartitionsMap.clear();
+        resourceToPartitionMap.set(null);
     }
 
     /**
@@ -148,6 +157,29 @@ public class HelixRoutingDataRepository extends RoutingTableProvider implements 
     }
 
     @Override
+    public void subscribeRoutingDataChange(String kafkaTopic, RoutingDataChangedListener listener) {
+        synchronized (listenersMap) {
+            HashSet<RoutingDataChangedListener> listeners = listenersMap.get(kafkaTopic);
+            if (listeners == null) {
+                listeners = new HashSet<>();
+                listenersMap.put(kafkaTopic, listeners);
+            }
+            listeners.add(listener);
+        }
+    }
+
+    @Override
+    public void unSubscribeRoutingDataChange(String kafkaTopic, RoutingDataChangedListener listener) {
+        synchronized (listenersMap) {
+            HashSet<RoutingDataChangedListener> listeners = listenersMap.get(kafkaTopic);
+            if (listeners == null) {
+                throw new VeniceException("Can not find listener in topic:" + kafkaTopic);
+            }
+            listeners.remove(listener);
+        }
+    }
+
+    @Override
     public void onExternalViewChange(List<ExternalView> externalViewList, NotificationContext changeContext) {
         super.onExternalViewChange(externalViewList, changeContext);
         Map<String, Map<Integer, Partition>> newResourceToPartitionMap = new HashMap<>();
@@ -199,6 +231,16 @@ public class HelixRoutingDataRepository extends RoutingTableProvider implements 
         logger.debug("Resources added:" + addedResourceNames.toString());
         logger.debug("Resources deleted:" + deletedResourceNames.toString());
         logger.info("External view is changed.");
+        // Start sending notification to listeners. As we can not get the changed data only from Helix, so we just notfiy all the listener.
+        // And listener will compare and decide how to handle this event.
+        synchronized (listenersMap) {
+            Map<String, Map<Integer, Partition>> currentPartitionMap = resourceToPartitionMap.get();
+            for (String kafkaTopic : listenersMap.keySet()) {
+                for (RoutingDataChangedListener listener : listenersMap.get(kafkaTopic)) {
+                    listener.handleRoutingDataChange(kafkaTopic, currentPartitionMap.get(kafkaTopic));
+                }
+            }
+        }
     }
 
     private Map<String, Integer> getNumberOfParitionsFromIdealState(Set<String> newResourceNames) {

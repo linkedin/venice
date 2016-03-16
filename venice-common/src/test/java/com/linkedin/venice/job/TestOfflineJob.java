@@ -1,7 +1,15 @@
 package com.linkedin.venice.job;
 
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.meta.Instance;
+import com.linkedin.venice.meta.Partition;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import org.testng.Assert;
+import org.testng.annotations.AfterMethod;
+import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
 
@@ -13,20 +21,42 @@ public class TestOfflineJob {
   private String topic = "testTopic";
   private int numberOfPartition = 4;
   private int replicaFactor = 3;
+  private String nodeId = "localhost_1234";
+  private Map<Integer, Partition> partitions = new HashMap<>();
+
+  @BeforeMethod
+  public void setup() {
+    for (int i = 0; i < numberOfPartition; i++) {
+      List<Instance> instances = new ArrayList<>();
+      for (int j = 0; j < replicaFactor; j++) {
+        Instance instance = new Instance(nodeId + j, "localhost", 1235, 1234);
+        instances.add(instance);
+      }
+      Partition partition = new Partition(i, topic, instances);
+      partitions.put(i, partition);
+    }
+  }
+
+  @AfterMethod
+  public void cleanup() {
+    partitions.clear();
+  }
 
   @Test
   public void testUpdateTaskStatus() {
     OfflineJob job = new OfflineJob(1, topic, numberOfPartition, replicaFactor);
-
-    Task task = new Task("t1", 0, "i1", ExecutionStatus.STARTED);
+    job.updateExecutingParitions(partitions);
+    Task task = new Task(job.generateTaskId(0, nodeId + "1"), 0, nodeId + "1", ExecutionStatus.STARTED);
     job.updateTaskStatus(task);
-    Assert.assertEquals(task.getStatus(), job.getTaskStatus(0, "t1"), "Status is not corrected after updating");
+    Assert.assertEquals(task.getStatus(), job.getTaskStatus(0, task.getTaskId()),
+        "Status is not corrected after updating");
 
     task.setStatus(ExecutionStatus.COMPLETED);
-    Assert.assertEquals(ExecutionStatus.STARTED, job.getTaskStatus(0, "t1"), "Status should not be updated.");
+    Assert
+        .assertEquals(ExecutionStatus.STARTED, job.getTaskStatus(0, task.getTaskId()), "Status should not be updated.");
 
     job.updateTaskStatus(task);
-    Assert.assertEquals(ExecutionStatus.COMPLETED, job.getTaskStatus(0, "t1"), "Status should be updated.");
+    Assert.assertEquals(ExecutionStatus.COMPLETED, job.getTaskStatus(0, task.getTaskId()), "Status should be updated.");
 
     task.setStatus(ExecutionStatus.STARTED);
     try {
@@ -40,8 +70,8 @@ public class TestOfflineJob {
   @Test
   public void testUpdateNotStartedTaskStatus() {
     OfflineJob job = new OfflineJob(1, topic, numberOfPartition, replicaFactor);
-
-    Task task = new Task("t1", 0, "i1", ExecutionStatus.COMPLETED);
+    job.updateExecutingParitions(partitions);
+    Task task = new Task(job.generateTaskId(0, nodeId + "1"), 0, nodeId + "1", ExecutionStatus.COMPLETED);
     try {
       job.updateTaskStatus(task);
       Assert.fail("Task should be updated to Started at first, then to other status");
@@ -53,8 +83,9 @@ public class TestOfflineJob {
   @Test
   public void testUpdateTerminatedTaskStatus() {
     OfflineJob job = new OfflineJob(1, topic, numberOfPartition, replicaFactor);
+    job.updateExecutingParitions(partitions);
+    Task task = new Task(job.generateTaskId(0, nodeId + "1"), 0, nodeId + "1", ExecutionStatus.STARTED);
 
-    Task task = new Task("t1", 0, "i1", ExecutionStatus.STARTED);
     job.updateTaskStatus(task);
 
     task.setStatus(ExecutionStatus.COMPLETED);
@@ -83,13 +114,13 @@ public class TestOfflineJob {
   public void testCheckJobStatus() {
     OfflineJob job = new OfflineJob(1, topic, numberOfPartition, replicaFactor);
     job.setStatus(ExecutionStatus.STARTED);
-
+    job.updateExecutingParitions(partitions);
     Assert.assertEquals(ExecutionStatus.STARTED, job.checkJobStatus(),
         "Did not get any updates. SHould still be in running status.");
 
     for (int i = 0; i < numberOfPartition; i++) {
       for (int j = 0; j < replicaFactor; j++) {
-        Task t = new Task(i + "_" + j, i, String.valueOf(j), ExecutionStatus.STARTED);
+        Task t = new Task(job.generateTaskId(i, nodeId + j), i, String.valueOf(j), ExecutionStatus.STARTED);
         job.updateTaskStatus(t);
       }
     }
@@ -98,14 +129,14 @@ public class TestOfflineJob {
 
     for (int i = 0; i < numberOfPartition; i++) {
       for (int j = 0; j < replicaFactor; j++) {
-        Task t = new Task(i + "_" + j, i, String.valueOf(j), ExecutionStatus.COMPLETED);
+        Task t = new Task(job.generateTaskId(i, nodeId + j), i, String.valueOf(j), ExecutionStatus.COMPLETED);
         if (i == 1 && j == 2) {
           continue;
         }
         job.updateTaskStatus(t);
       }
     }
-    Task t = new Task("1_2", 1, "2", ExecutionStatus.PROGRESS);
+    Task t = new Task(job.generateTaskId(1, nodeId + "2"), 1, nodeId + "2", ExecutionStatus.PROGRESS);
     job.updateTaskStatus(t);
     //Only one task is not terminated
     Assert.assertEquals(ExecutionStatus.STARTED, job.checkJobStatus(),
@@ -114,16 +145,18 @@ public class TestOfflineJob {
     t.setStatus(ExecutionStatus.COMPLETED);
     job.updateTaskStatus(t);
     //Only one task is not terminated
-    Assert.assertEquals(ExecutionStatus.COMPLETED, job.checkJobStatus(), "All the tasks are completed, job is completed.");
+    Assert.assertEquals(ExecutionStatus.COMPLETED, job.checkJobStatus(),
+        "All the tasks are completed, job is completed.");
   }
 
   @Test
   public void testCheckJobStatusWhenJobFail() {
     OfflineJob job = new OfflineJob(1, topic, numberOfPartition, replicaFactor);
     job.setStatus(ExecutionStatus.STARTED);
+    job.updateExecutingParitions(partitions);
     for (int i = 0; i < numberOfPartition; i++) {
       for (int j = 0; j < replicaFactor; j++) {
-        Task t = new Task(i + "_" + j, i, String.valueOf(j), ExecutionStatus.STARTED);
+        Task t = new Task(job.generateTaskId(i, nodeId + j), i, nodeId + j, ExecutionStatus.STARTED);
         job.updateTaskStatus(t);
         if (i == 2 && j == 0) {
           continue;
@@ -133,7 +166,7 @@ public class TestOfflineJob {
       }
     }
 
-    Task t = new Task("2_0", 2, "0", ExecutionStatus.PROGRESS);
+    Task t = new Task(job.generateTaskId(2, nodeId + "0"), 2, nodeId + "0", ExecutionStatus.PROGRESS);
     job.updateTaskStatus(t);
     //Only one task is not terminated
     Assert.assertEquals(ExecutionStatus.STARTED, job.checkJobStatus(),

@@ -2,6 +2,7 @@ package com.linkedin.venice.helix;
 
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.Partition;
+import com.linkedin.venice.meta.RoutingDataChangedListener;
 import com.linkedin.venice.utils.PortUtils;
 import com.linkedin.venice.utils.Utils;
 
@@ -126,7 +127,7 @@ public class TestHelixRoutingDataRepository {
     Thread.sleep(WAIT_TIME);
     //No online instance now.
     instances = repository.getInstances(resourceName, 0);
-    Assert.assertEquals(0,instances.size());
+    Assert.assertEquals(0, instances.size());
   }
 
   @Test
@@ -178,6 +179,32 @@ public class TestHelixRoutingDataRepository {
     partitions = repository.getPartitions(resourceName);
     //No online partition now
     Assert.assertEquals(0, partitions.size());
+  }
+
+  @Test
+  public void testListeners()
+      throws Exception {
+    final boolean[] isNoticed = {false};
+    RoutingDataChangedListener listener = new RoutingDataChangedListener() {
+      @Override
+      public void handleRoutingDataChange(String kafkaTopic, Map<Integer, Partition> partitions) {
+        isNoticed[0] = true;
+      }
+    };
+
+    repository.subscribeRoutingDataChange(resourceName, listener);
+    //Participant become off=line.
+    manager.disconnect();
+    //Wait notification.
+    Thread.sleep(WAIT_TIME);
+    Assert.assertEquals(isNoticed[0], true, "Can not get notification from repository.");
+
+    isNoticed[0] = false;
+    repository.unSubscribeRoutingDataChange(resourceName, listener);
+    manager.connect();
+    //Wait notification.
+    Thread.sleep(WAIT_TIME);
+    Assert.assertEquals(isNoticed[0], false, "Should not get notification after un-registering.");
   }
 
   public static class UnitTestStateModel {

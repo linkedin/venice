@@ -1,8 +1,8 @@
 #!/bin/bash 
 
-if [ $# -gt 3 ];
+if [ $# -gt 2 ];
 then
-        echo "USAGE:   $0 [helix_cluster_name] [zookeeper_address] [controller_name]"
+        echo "USAGE:   $0 [cluster_config_file_path] [controller_config_file_path] "
         exit 1
 fi
 

@@ -5,7 +5,7 @@ import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.ReadStrategy;
 import com.linkedin.venice.meta.RoutingStrategy;
 import com.linkedin.venice.meta.Store;
-import com.linkedin.venice.meta.StoreSerializer;
+import com.linkedin.venice.meta.VeniceSerializer;
 import com.linkedin.venice.meta.Version;
 import java.io.IOException;
 import org.codehaus.jackson.annotate.JsonCreator;
@@ -16,7 +16,7 @@ import org.codehaus.jackson.map.ObjectMapper;
 /**
  * Serializer used to convert the data between Store and json.
  */
-public class StoreJSONSerializer implements StoreSerializer {
+public class StoreJSONSerializer implements VeniceSerializer<Store> {
     private final ObjectMapper mapper = new ObjectMapper();
 
     public StoreJSONSerializer() {

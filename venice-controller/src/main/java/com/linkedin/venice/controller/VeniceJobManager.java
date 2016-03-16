@@ -9,10 +9,14 @@ import com.linkedin.venice.job.JobRepository;
 import com.linkedin.venice.job.OfflineJob;
 import com.linkedin.venice.job.Task;
 import com.linkedin.venice.meta.MetadataRepository;
+import com.linkedin.venice.meta.Partition;
+import com.linkedin.venice.meta.RoutingDataChangedListener;
+import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.apache.log4j.Logger;
 
@@ -47,7 +51,7 @@ public class VeniceJobManager implements ControlMessageHandler<StatusUpdateMessa
       List<Job> jobs = jobRepository.getRunningJobOfTopic(message.getKafkaTopic());
       if (jobs.size() > 1) {
         throw new VeniceException(
-            "There should be only one job runing for each kafka topic. But now there are:" + jobs.size()
+            "There should be only one job running for each kafka topic. But now there are:" + jobs.size()
                 + " jobs running.");
       }
       Job job = jobs.get(0);
@@ -58,7 +62,8 @@ public class VeniceJobManager implements ControlMessageHandler<StatusUpdateMessa
       }
       //Update task status at first.
       Task task =
-          new Task(this.getTaskId(message), message.getPartitionId(), message.getInstanceId(), message.getStatus());
+          new Task(job.generateTaskId(message.getPartitionId(), message.getInstanceId()), message.getPartitionId(),
+              message.getInstanceId(), message.getStatus());
       jobRepository.updateTaskStatus(job.getJobId(), task);
       logger.info("Update status of Task:" + task.getTaskId() + " to status:" + task.getStatus());
       //Check the job status after updating task status to see is the whole job completed or error.
@@ -83,6 +88,7 @@ public class VeniceJobManager implements ControlMessageHandler<StatusUpdateMessa
     jobRepository.stopJob(job.getJobId());
     //TODO Archive job regularly instead of archive it immediately after being stopped.
     jobRepository.archiveJob(job.getJobId());
+    //Un-subscribe the nodes change when job have been done.
   }
 
   private void handleJobError(Job job) {
@@ -90,6 +96,7 @@ public class VeniceJobManager implements ControlMessageHandler<StatusUpdateMessa
     jobRepository.stopJobWithError(job.getJobId());
     //TODO Archive job regularly instead of archive it immediately after being stopped.
     jobRepository.archiveJob(job.getJobId());
+    //Un-subscribe the nodes change when job have been done.
   }
 
   /**
@@ -107,11 +114,6 @@ public class VeniceJobManager implements ControlMessageHandler<StatusUpdateMessa
     int generatedId = idGenerator.incrementAndGet();
     id = id | generatedId;
     return id;
-  }
-
-  //TODO for off-line push, the task should be identified by job+partition+instance. Will use another taskId for stream job.
-  public String getTaskId(StatusUpdateMessage message) {
-    return message.getJobId() + "_" + message.getPartitionId() + "_" + message.getInstanceId();
   }
 
   public JobRepository getJobRepository() {

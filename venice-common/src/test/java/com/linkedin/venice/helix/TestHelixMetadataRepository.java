@@ -1,10 +1,13 @@
 package com.linkedin.venice.helix;
 
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.utils.ZkServerWrapper;
 import org.apache.helix.manager.zk.ZkClient;
 import org.apache.zookeeper.CreateMode;
 import org.testng.Assert;
+import org.testng.annotations.AfterMethod;
 import org.testng.annotations.AfterTest;
+import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.BeforeTest;
 import org.testng.annotations.Test;
 
@@ -14,44 +17,42 @@ import org.testng.annotations.Test;
  * available for testing.
  */
 public class TestHelixMetadataRepository {
-    private String zkAddress = "localhost:2181";
+    private String zkAddress;
     private ZkClient zkClient;
     private String cluster = "test-metadata-cluster";
     private String clusterPath = "/test-metadata-cluster";
     private String storesPath = "/stores";
-    /**
-     * By default, this test is inactive. Because it depends on external zk process. It should be only used in
-     * debugging.
-     */
-    private final boolean isEnable = false;
+    private ZkServerWrapper zkServerWrapper;
+    private HelixAdapterSerializer adapter = new HelixAdapterSerializer();
 
-    @BeforeTest(enabled = isEnable)
+    @BeforeMethod
     public void zkSetup() {
-        zkClient = new ZkClient(zkAddress, ZkClient.DEFAULT_SESSION_TIMEOUT, ZkClient.DEFAULT_CONNECTION_TIMEOUT,
-            new HelixStoreSerializer(new StoreJSONSerializer()));
+        zkServerWrapper = ZkServerWrapper.getZkServer();
+        zkAddress = zkServerWrapper.getZkAddress();
+        zkClient = new ZkClient(zkAddress, ZkClient.DEFAULT_SESSION_TIMEOUT, ZkClient.DEFAULT_CONNECTION_TIMEOUT, adapter);
         zkClient.create(clusterPath, null, CreateMode.PERSISTENT);
         zkClient.create(clusterPath + storesPath, null, CreateMode.PERSISTENT);
     }
 
-    @AfterTest(enabled = isEnable)
+    @AfterMethod
     public void zkCleanup() {
         zkClient.deleteRecursive(clusterPath);
-        zkClient.delete(clusterPath);
         zkClient.close();
+        zkServerWrapper.close();
     }
 
-    @Test(enabled = isEnable)
+    @Test
     public void testAddAndReadStore() {
-        HelixMetadataRepository repo = new HelixMetadataRepository(zkClient, cluster);
+        HelixMetadataRepository repo = new HelixMetadataRepository(zkClient, adapter, cluster);
         Store s1 = new Store("s1", "owner", System.currentTimeMillis());
         repo.addStore(s1);
         Store s2 = repo.getStore("s1");
-        Assert.assertEquals(s1, s2);
+        Assert.assertEquals(s2, s1, "Store get from ZK is different with local one");
     }
 
-    @Test(enabled = isEnable)
+    @Test
     public void testAddAndDeleteStore() {
-        HelixMetadataRepository repo = new HelixMetadataRepository(zkClient, cluster);
+        HelixMetadataRepository repo = new HelixMetadataRepository(zkClient, adapter, cluster);
         Store s1 = new Store("s1", "owner", System.currentTimeMillis());
         repo.addStore(s1);
         repo.deleteStore("s1");
