@@ -31,9 +31,9 @@ public class Partition {
      */
     private final List<Instance> instances;
 
-    public Partition(int id, @NotNull String resourceNamename, @NotNull List<Instance> instances) {
+    public Partition(int id, @NotNull String resourceName, @NotNull List<Instance> instances) {
         this.id = id;
-        this.resourceName = resourceNamename;
+        this.resourceName = resourceName;
         this.instances = new ArrayList<>(instances);
     }
 

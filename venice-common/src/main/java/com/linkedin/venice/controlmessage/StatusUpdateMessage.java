@@ -3,6 +3,7 @@ package com.linkedin.venice.controlmessage;
 import com.linkedin.venice.job.ExecutionStatus;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 
 
@@ -18,7 +19,6 @@ public class StatusUpdateMessage extends ControlMessage {
   private static final String STATUS = "status";
   private static final String OFFSET = "offset";
   private static final String DESCRIPTION = "description";
-  private static AtomicInteger counter = new AtomicInteger(0);
 
   private final long jobId;
   private final String messageId;
@@ -34,7 +34,9 @@ public class StatusUpdateMessage extends ControlMessage {
   public StatusUpdateMessage(long jobId, String kafkaTopic, int partitionId, String instanceId, ExecutionStatus status) {
 
     this.jobId = jobId;
-    this.messageId = instanceId + "_" + Integer.toString(counter.getAndIncrement());
+    // Confirmed with helix team. The message Id is used as the key for zk node. So it must be a global unique Id.
+    // And Helix also use Java UUID for other helix message. So we just follow this stand here.
+    this.messageId = UUID.randomUUID().toString();
     this.partitionId = partitionId;
     this.kafkaTopic = kafkaTopic;
     this.instanceId = instanceId;

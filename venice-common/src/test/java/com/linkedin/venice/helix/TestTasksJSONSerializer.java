@@ -1,5 +1,6 @@
 package com.linkedin.venice.helix;
 
+import com.linkedin.venice.job.ExecutionStatus;
 import com.linkedin.venice.job.Task;
 import java.io.IOException;
 import java.util.ArrayList;
@@ -19,7 +20,8 @@ public class TestTasksJSONSerializer {
 
     List<Task> tasks = new ArrayList<>();
     for (int i = 0; i < 10; i++) {
-      tasks.add(new Task(String.valueOf(i), i, "instance" + i));
+      Task task = new Task(String.valueOf(i), i, "instance" + i, ExecutionStatus.ERROR);
+      tasks.add(task);
     }
 
     byte[] data = serializer.serialize(tasks);
@@ -30,6 +32,7 @@ public class TestTasksJSONSerializer {
       Assert.assertEquals(newTasks.get(i).getTaskId(), String.valueOf(i));
       Assert.assertEquals(newTasks.get(i).getPartitionId(), i);
       Assert.assertEquals(newTasks.get(i).getInstanceId(), "instance" + i);
+      Assert.assertEquals(newTasks.get(i).getStatus(), ExecutionStatus.ERROR);
     }
   }
 }

@@ -4,8 +4,24 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.job.ExecutionStatus;
 import com.linkedin.venice.job.OfflineJob;
 import com.linkedin.venice.job.Task;
+import com.linkedin.venice.meta.Instance;
+import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.ZkServerWrapper;
+import java.util.HashMap;
+import java.util.Map;
+import org.apache.helix.HelixAdmin;
+import org.apache.helix.HelixManager;
+import org.apache.helix.HelixManagerFactory;
+import org.apache.helix.InstanceType;
+import org.apache.helix.LiveInstanceInfoProvider;
+import org.apache.helix.ZNRecord;
+import org.apache.helix.controller.HelixControllerMain;
+import org.apache.helix.manager.zk.ZKHelixAdmin;
+import org.apache.helix.manager.zk.ZKHelixManager;
 import org.apache.helix.manager.zk.ZkClient;
+import org.apache.helix.model.HelixConfigScope;
+import org.apache.helix.model.IdealState;
+import org.apache.helix.model.builder.HelixConfigScopeBuilder;
 import org.apache.zookeeper.CreateMode;
 import org.testng.Assert;
 import org.testng.annotations.AfterMethod;
@@ -25,16 +41,55 @@ public class TestHelixJobRepository {
   private HelixAdapterSerializer adapter = new HelixAdapterSerializer();
   private ZkServerWrapper zkServerWrapper;
   private HelixJobRepository repository;
+  private HelixRoutingDataRepository routingDataRepository;
+  private HelixAdmin admin;
+  private HelixManager controller;
+  private HelixManager manager;
+  private String kafkaTopic = "test_resource_1";
+  private String nodeId = "localhost_9985";
 
   @BeforeMethod
-  public void setup() {
+  public void setup()
+      throws Exception {
     zkServerWrapper = ZkServerWrapper.getZkServer();
     zkAddress = zkServerWrapper.getZkAddress();
-    zkClient = new ZkClient(zkAddress, ZkClient.DEFAULT_SESSION_TIMEOUT, ZkClient.DEFAULT_CONNECTION_TIMEOUT, adapter);
-    zkClient.create(clusterPath, null, CreateMode.PERSISTENT);
-    zkClient.create(clusterPath + jobPath, null, CreateMode.PERSISTENT);
 
-    repository = new HelixJobRepository(zkClient, adapter, cluster);
+    admin = new ZKHelixAdmin(zkAddress);
+    admin.addCluster(cluster);
+    HelixConfigScope configScope = new HelixConfigScopeBuilder(HelixConfigScope.ConfigScopeProperty.CLUSTER).
+        forCluster(cluster).build();
+    Map<String, String> helixClusterProperties = new HashMap<String, String>();
+    helixClusterProperties.put(ZKHelixManager.ALLOW_PARTICIPANT_AUTO_JOIN, String.valueOf(true));
+    admin.setConfig(configScope, helixClusterProperties);
+    admin.addStateModelDef(cluster, TestHelixRoutingDataRepository.UnitTestStateModel.UNIT_TEST_STATE_MODEL,
+        TestHelixRoutingDataRepository.UnitTestStateModel.getDefinition());
+
+    admin.addResource(cluster, kafkaTopic, 1, TestHelixRoutingDataRepository.UnitTestStateModel.UNIT_TEST_STATE_MODEL,
+        IdealState.RebalanceMode.FULL_AUTO.toString());
+    admin.rebalance(cluster, kafkaTopic, 1);
+
+    controller = HelixControllerMain
+        .startHelixController(zkAddress, cluster, "UnitTestController", HelixControllerMain.STANDALONE);
+    manager = HelixManagerFactory.getZKHelixManager(cluster, nodeId, InstanceType.PARTICIPANT, zkAddress);
+    manager.getStateMachineEngine()
+        .registerStateModelFactory(TestHelixRoutingDataRepository.UnitTestStateModel.UNIT_TEST_STATE_MODEL,
+            new TestHelixRoutingDataRepository.UnitTestStateModelFactory());
+    Instance instance = new Instance(nodeId, Utils.getHostName(), 9986, 9985);
+    manager.setLiveInstanceInfoProvider(new LiveInstanceInfoProvider() {
+      @Override
+      public ZNRecord getAdditionalLiveInstanceInfo() {
+        return HelixInstanceConverter.convertInstanceToZNRecord(instance);
+      }
+    });
+    manager.connect();
+    Thread.sleep(1000l);
+    routingDataRepository = new HelixRoutingDataRepository(controller);
+    routingDataRepository.start();
+
+    zkClient = new ZkClient(zkAddress, ZkClient.DEFAULT_SESSION_TIMEOUT, ZkClient.DEFAULT_CONNECTION_TIMEOUT, adapter);
+    //zkClient.create(clusterPath, null, CreateMode.PERSISTENT);
+    zkClient.create(clusterPath + jobPath, null, CreateMode.PERSISTENT);
+    repository = new HelixJobRepository(zkClient, adapter, cluster, routingDataRepository);
     repository.start();
   }
 
@@ -42,13 +97,18 @@ public class TestHelixJobRepository {
   public void cleanup() {
     zkClient.deleteRecursive(clusterPath);
     zkClient.close();
-    zkServerWrapper.close();
     repository.clear();
+    routingDataRepository.clear();
+    manager.disconnect();
+    controller.disconnect();
+    admin.dropCluster(cluster);
+    admin.close();
+    zkServerWrapper.close();
   }
 
   @Test
   public void testStartJob() {
-    OfflineJob job = new OfflineJob(1, "topic1", 1, 1);
+    OfflineJob job = new OfflineJob(1, kafkaTopic, 1, 1);
     repository.startJob(job);
     Assert.assertEquals(job, repository.getJob(1), "Can not get correct job from repository after starting the job.");
     Assert.assertEquals(ExecutionStatus.STARTED, repository.getJobStatus(1),
@@ -57,7 +117,7 @@ public class TestHelixJobRepository {
 
   @Test
   public void testStopJob() {
-    OfflineJob job = new OfflineJob(1, "topic1", 1, 1);
+    OfflineJob job = new OfflineJob(1, kafkaTopic, 1, 1);
     repository.startJob(job);
 
     repository.stopJob(1);
@@ -75,7 +135,7 @@ public class TestHelixJobRepository {
 
   @Test
   public void testStopNotStartedJob() {
-    OfflineJob job = new OfflineJob(1, "topic1", 1, 1);
+    OfflineJob job = new OfflineJob(1, kafkaTopic, 1, 1);
     try {
       repository.stopJob(1);
       Assert.fail("Job is not started.");
@@ -86,7 +146,7 @@ public class TestHelixJobRepository {
 
   @Test
   public void testStopNotRunningJob() {
-    OfflineJob job = new OfflineJob(1, "topic1", 1, 1);
+    OfflineJob job = new OfflineJob(1, kafkaTopic, 1, 1);
     repository.startJob(job);
     job.setStatus(ExecutionStatus.COMPLETED);
     try {
@@ -99,7 +159,7 @@ public class TestHelixJobRepository {
 
   @Test
   public void testArchiveJob() {
-    OfflineJob job = new OfflineJob(1, "topic1", 1, 1);
+    OfflineJob job = new OfflineJob(1, kafkaTopic, 1, 1);
     repository.startJob(job);
     repository.stopJob(1);
     repository.archiveJob(1);
@@ -113,7 +173,7 @@ public class TestHelixJobRepository {
 
   @Test
   public void testArchiveNotCompleteJob() {
-    OfflineJob job = new OfflineJob(1, "topic1", 1, 1);
+    OfflineJob job = new OfflineJob(1, kafkaTopic, 1, 1);
     repository.startJob(job);
     try {
       repository.archiveJob(1);
@@ -124,40 +184,51 @@ public class TestHelixJobRepository {
   }
 
   @Test
-  public void testLoadFromZk() {
+  public void testLoadFromZk()
+      throws InterruptedException {
     int jobCount = 3;
     int numberOfPartition = 10;
-    int replicaFactor = 3;
+    int replicaFactor = 1;
+    for (int i = 0; i < jobCount; i++) {
+      admin.addResource(cluster, "topic" + i, numberOfPartition,
+          TestHelixRoutingDataRepository.UnitTestStateModel.UNIT_TEST_STATE_MODEL,
+          IdealState.RebalanceMode.FULL_AUTO.toString());
+      admin.rebalance(cluster, "topic" + i, 1);
+    }
+    Thread.sleep(1000l);
+    OfflineJob[] jobs = new OfflineJob[jobCount];
     for (int i = 0; i < jobCount; i++) {
       OfflineJob job = new OfflineJob(i, "topic" + i, numberOfPartition, replicaFactor);
       repository.startJob(job);
+      jobs[i] = job;
     }
 
-    Task t1 = new Task("t1", 3, "instance1", ExecutionStatus.STARTED);
     //Start one task for job0 and job1
     for (int i = 0; i < jobCount - 1; i++) {
+      OfflineJob job = jobs[i];
+      Task t1 = new Task(job.generateTaskId(3, nodeId), 3, nodeId, ExecutionStatus.STARTED);
       repository.updateTaskStatus(i, t1);
     }
     //Failed one task for job1
-    Task t2 = new Task("t1", 3, "instance2", ExecutionStatus.ERROR);
+    Task t2 = new Task(jobs[1].generateTaskId(3, nodeId), 3, nodeId, ExecutionStatus.ERROR);
     repository.updateTaskStatus(1, t2);
 
     for (int i = 0; i < numberOfPartition; i++) {
       for (int j = 0; j < replicaFactor; j++) {
-        Task task = new Task(i + "_" + j, i, "test", ExecutionStatus.STARTED);
+        Task task = new Task(jobs[2].generateTaskId(i, nodeId), i, nodeId, ExecutionStatus.STARTED);
         repository.updateTaskStatus(2, task);
-        task = new Task(i + "_" + j, i, "test", ExecutionStatus.COMPLETED);
+        task = new Task(jobs[2].generateTaskId(i, nodeId), i, nodeId, ExecutionStatus.COMPLETED);
         repository.updateTaskStatus(2, task);
       }
     }
-    HelixJobRepository newRepository = new HelixJobRepository(zkClient, adapter, cluster);
+    HelixJobRepository newRepository = new HelixJobRepository(zkClient, adapter, cluster, routingDataRepository);
     newRepository.start();
-    Assert.assertEquals(newRepository.getJob(0).getTaskStatus(3, "t1"), ExecutionStatus.STARTED,
-        "Task dose not be loaded correctly.");
-    Assert.assertEquals(newRepository.getJob(1).getTaskStatus(3, "t1"), ExecutionStatus.ERROR,
-        "Task dose not be loaded correctly.");
-    Assert.assertEquals(newRepository.getJob(2).getTaskStatus(1, "1_1"), ExecutionStatus.COMPLETED,
-        "Task dose not be loaded correctly.");
+    Assert.assertEquals(newRepository.getJob(0).getTaskStatus(3, jobs[0].generateTaskId(3, nodeId)),
+        ExecutionStatus.STARTED, "Task dose not be loaded correctly.");
+    Assert.assertEquals(newRepository.getJob(1).getTaskStatus(3, jobs[1].generateTaskId(3, nodeId)),
+        ExecutionStatus.ERROR, "Task dose not be loaded correctly.");
+    Assert.assertEquals(newRepository.getJob(2).getTaskStatus(1, jobs[2].generateTaskId(1, nodeId)),
+        ExecutionStatus.COMPLETED, "Task dose not be loaded correctly.");
 
     Assert.assertEquals(newRepository.getJobStatus(0), ExecutionStatus.STARTED,
         "Job should be started and updated to ZK");

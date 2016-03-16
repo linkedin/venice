@@ -12,7 +12,6 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
@@ -83,6 +82,12 @@ public class HelixRoutingDataRepository extends RoutingTableProvider implements 
             logger.error(errorMessage, e);
             throw new VeniceException(errorMessage, e);
         }
+    }
+
+    public void clear() {
+        manager.removeListener(keyBuilder.externalViews(), this);
+        resourceToNumberOfPartitionsMap.clear();
+        resourceToPartitionMap.set(null);
     }
 
     /**
@@ -226,6 +231,16 @@ public class HelixRoutingDataRepository extends RoutingTableProvider implements 
         logger.debug("Resources added:" + addedResourceNames.toString());
         logger.debug("Resources deleted:" + deletedResourceNames.toString());
         logger.info("External view is changed.");
+        // Start sending notification to listeners. As we can not get the changed data only from Helix, so we just notfiy all the listener.
+        // And listener will compare and decide how to handle this event.
+        synchronized (listenersMap) {
+            Map<String, Map<Integer, Partition>> currentPartitionMap = resourceToPartitionMap.get();
+            for (String kafkaTopic : listenersMap.keySet()) {
+                for (RoutingDataChangedListener listener : listenersMap.get(kafkaTopic)) {
+                    listener.handleRoutingDataChange(kafkaTopic, currentPartitionMap.get(kafkaTopic));
+                }
+            }
+        }
     }
 
     private Map<String, Integer> getNumberOfParitionsFromIdealState(Set<String> newResourceNames) {

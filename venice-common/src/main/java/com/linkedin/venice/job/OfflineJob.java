@@ -1,11 +1,16 @@
 package com.linkedin.venice.job;
 
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.OfflinePushStrategy;
+import com.linkedin.venice.meta.Partition;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import org.apache.avro.generic.GenericData;
 
 
 /**
@@ -23,10 +28,54 @@ public class OfflineJob extends Job {
       OfflinePushStrategy strategy) {
     super(jobId, kafkaTopic, numberOfPartition, replicaFactor);
     this.strategy = strategy;
-    this.partitionToTasksMap = new HashMap<>();
+    partitionToTasksMap = new HashMap<>();
     for (int i = 0; i < this.getNumberOfPartition(); i++) {
       this.partitionToTasksMap.put(i, new HashMap<>());
     }
+  }
+
+  /**
+   * When job is running, change partitions information if nodes which running tasks are changed. Note:number of
+   * partition and replica factor should not be changed during job running.
+   *
+   * @param partitions
+   */
+  public Set<Integer> updateExecutingParitions(Map<Integer, Partition> partitions) {
+    if (partitions.size() != getNumberOfPartition()) {
+      throw new VeniceException(
+          "Number of partitions+" + partitions.size() + " is different from the required number:" +
+              getNumberOfPartition() + " when creating the job.");
+    }
+
+    HashSet<Integer> changedPartitions = new HashSet<>();
+
+    for (Integer partitionId : partitions.keySet()) {
+      if (partitionId < 0 || partitionId > getNumberOfPartition()) {
+        throw new VeniceException("Invalid parition Id:" + partitionId);
+      }
+      Map<String, Task> taskMap = partitionToTasksMap.get(partitionId);
+      Partition partition = partitions.get(partitionId);
+      if (partition.getInstances().size() != getReplicaFactor()) {
+        throw new VeniceException("Replica factor:" + partition.getInstances().size() + " in partition:" + partitionId
+            + "is different from the required factor:" + getReplicaFactor() + " when creating the job.");
+      }
+      HashSet<String> taskIds = new HashSet<>(taskMap.keySet());
+      for (Instance instance : partition.getInstances()) {
+        String taskId = generateTaskId(partitionId, instance.getNodeId());
+        if (!taskMap.containsKey(taskId)) {
+          taskMap.put(taskId, new Task(taskId, partitionId, instance.getNodeId()));
+          changedPartitions.add(partitionId);
+        } else {
+          taskIds.remove(taskId);
+        }
+      }
+      //Remove failed node.
+      if (!taskIds.isEmpty()) {
+        taskIds.forEach(taskMap::remove);
+        changedPartitions.add(partitionId);
+      }
+    }
+    return changedPartitions;
   }
 
   //TODO Sync up nodes map in real-time to handle the cases like node failed, new node is assigned etc.
@@ -52,7 +101,7 @@ public class OfflineJob extends Job {
         }
       }
       //All of tasks status are Completed.
-      return isAllCompleted ?ExecutionStatus.COMPLETED:ExecutionStatus.STARTED;
+      return isAllCompleted ? ExecutionStatus.COMPLETED : ExecutionStatus.STARTED;
     }
     //TODO support more off-line push strategies.
     throw new VeniceException("Strategy:" + strategy + " is not supported.");
@@ -88,16 +137,19 @@ public class OfflineJob extends Job {
       throw new VeniceException("Partition:" + task.getPartitionId() + " dose not exist.");
     }
     Task oldTask = taskMap.get(task.getTaskId());
+    if (oldTask == null) {
+      throw new VeniceException("Can not find task:" + task.getTaskId());
+    }
     if (task.getStatus().equals(ExecutionStatus.STARTED)) {
-      if (oldTask != null) {
-        throw new VeniceException("Task:" + task.getTaskId() + "is already started");
+      if (!oldTask.getStatus().equals(ExecutionStatus.NEW)) {
+        throw new VeniceException("Task:" + task.getTaskId() + " is already started");
       }
     } else {
-      if (oldTask == null) {
-        throw new VeniceException("Task:" + task.getTaskId() + " dose not exist.");
+      if (oldTask.getStatus().equals(ExecutionStatus.NEW)) {
+        throw new VeniceException("Task should be started at first.");
       }
       if (oldTask.getStatus().equals(ExecutionStatus.COMPLETED) || oldTask.getStatus().equals(ExecutionStatus.ERROR)) {
-        throw new VeniceException("Can not update a terminated task.");
+        throw new VeniceException("Can not update a terminated task:" + task.getTaskId());
       }
     }
   }
@@ -129,5 +181,9 @@ public class OfflineJob extends Job {
 
   public List<Task> tasksInPartition(int partitionId) {
     return new ArrayList<>(partitionToTasksMap.get(partitionId).values());
+  }
+
+  public String generateTaskId(int partition, String instanceId) {
+    return getJobId() + "_" + partition + "_" + instanceId;
   }
 }

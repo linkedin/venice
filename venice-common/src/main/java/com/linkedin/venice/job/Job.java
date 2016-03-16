@@ -1,6 +1,9 @@
 package com.linkedin.venice.job;
 
+import com.linkedin.venice.meta.Partition;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 
 /**
@@ -56,7 +59,7 @@ public abstract class Job {
    * <p>
    * Please not this method is only the query method which will not change the status of this job.
    *
-   * @return Calcuated job status.
+   * @return Calculated job status.
    */
   public abstract ExecutionStatus checkJobStatus();
 
@@ -71,4 +74,8 @@ public abstract class Job {
   public abstract void setTask(Task task);
 
   public abstract List<Task> tasksInPartition(int partitionId);
+
+  public abstract String generateTaskId(int paritionId, String instanceId);
+
+  public abstract Set<Integer> updateExecutingParitions(Map<Integer, Partition> partitions);
 }
