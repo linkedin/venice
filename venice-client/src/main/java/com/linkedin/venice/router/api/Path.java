@@ -1,6 +1,7 @@
 package com.linkedin.venice.router.api;
 
 import com.linkedin.ddsstorage.router.api.ResourcePath;
+import com.linkedin.venice.RequestConstants;
 import java.util.ArrayList;
 import java.util.Collection;
 
@@ -21,7 +22,9 @@ public class Path implements ResourcePath<RouterKey> {
   @Override
   public String getLocation() {
     String sep = VenicePathParser.SEP;
-    return VenicePathParser.ACTION_READ + sep + resourceName + sep + getPartitionKey().base64Encoded() + "?" + VenicePathParser.B64FORMAT;
+    return VenicePathParser.ACTION_READ + sep +
+        resourceName + sep +
+        getPartitionKey().base64Encoded() + "?" + RequestConstants.FORMAT_KEY +"="+ RequestConstants.B64_FORMAT;
   }
 
   @Override

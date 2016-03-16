@@ -29,10 +29,12 @@ dependencies {
   compile libraries.http_client
   compile project(':venice-common')
 
+  testCompile project(':venice-common').sourceSets.test.output
+
 }
 
 configurations.all {
-  // Fixup netty group name.
+  // Router dependencies import from "org.jboss.netty" and we want them to use "io.netty"
   resolutionStrategy.eachDependency { DependencyResolveDetails details ->
     if (details.requested.group == "org.jboss.netty")
     {

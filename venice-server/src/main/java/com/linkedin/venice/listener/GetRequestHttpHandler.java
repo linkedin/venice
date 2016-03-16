@@ -1,6 +1,7 @@
 package com.linkedin.venice.listener;
 
 import com.google.common.base.Charsets;
+import com.linkedin.venice.RequestConstants;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.message.GetRequestObject;
 import com.linkedin.venice.meta.QueryAction;
@@ -12,6 +13,7 @@ import io.netty.handler.codec.ByteToMessageDecoder;
 import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpRequest;
 import io.netty.handler.codec.http.HttpResponseStatus;
+import io.netty.handler.codec.http.QueryStringDecoder;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.nio.charset.StandardCharsets;
@@ -94,26 +96,18 @@ public class GetRequestHttpHandler extends ChannelInboundHandlerAdapter {
     }
   }
 
-  static Base64.Decoder decoder = Base64.getDecoder();
+  static Base64.Decoder b64decoder = Base64.getDecoder();
   static byte[] getKeyBytesFromUrlKeyString(String keyString){
-    try {
-      URI uri = new URI(keyString);
-      List<NameValuePair> params = URLEncodedUtils.parse(uri, "UTF-8");
-      String format = "string";
-      for (NameValuePair pair : params){
-        if (pair.getName().equals("f")) {
-          format = pair.getValue();
-        }
-      }
-      switch (format){
-        case "b64":
-          return decoder.decode(uri.getPath());
-        default:
-          return uri.getPath().getBytes(StandardCharsets.UTF_8);
-      }
-    } catch (URISyntaxException e) {
-      throw new VeniceException("Failed to parse as URI: " + keyString, e);
+    QueryStringDecoder queryStringParser = new QueryStringDecoder(keyString, StandardCharsets.UTF_8);
+    String format = RequestConstants.DEFAULT_FORMAT;
+    if (queryStringParser.parameters().containsKey(RequestConstants.FORMAT_KEY)) {
+      format = queryStringParser.parameters().get(RequestConstants.FORMAT_KEY).get(0);
+    }
+    switch (format) {
+      case RequestConstants.B64_FORMAT:
+        return b64decoder.decode(queryStringParser.path());
+      default:
+        return queryStringParser.path().getBytes(StandardCharsets.UTF_8);
     }
   }
-
 }

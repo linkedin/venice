@@ -2,6 +2,7 @@ package com.linkedin.venice.router.api;
 
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
+import org.apache.commons.lang.builder.CompareToBuilder;
 
 
 /**
@@ -32,30 +33,9 @@ public class RouterKey implements Comparable<RouterKey>{
   }
 
   @Override
-  public int compareTo(RouterKey routerKey) {
-    if (null==routerKey){
-      throw new NullPointerException("Cannot compare RouterKey to null");
-    }
-    byte[] other = routerKey.getBytes();
-    int smallest = key.length;
-    if (other.length < smallest){
-      smallest = other.length;
-    }
-    for (int i=0; i<smallest; i++){
-      if (key[i] == other[i]){
-        continue;
-      } else if (key[i] < other[i]){
-        return -1;
-      } else {
-        return 1;
-      }
-    }
-    if (key.length == other.length){
-      return 0;
-    } else if (key.length < other.length){
-      return -1;
-    } else {
-      return 1;
-    }
+  public int compareTo(RouterKey other){
+    return new CompareToBuilder()
+        .append(this.key, other.key)
+        .toComparison();
   }
 }

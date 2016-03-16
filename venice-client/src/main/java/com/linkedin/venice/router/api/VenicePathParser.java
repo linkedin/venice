@@ -1,17 +1,17 @@
 package com.linkedin.venice.router.api;
 
+import com.linkedin.ddsstorage.base.misc.QueryStringDecoder;
 import com.linkedin.ddsstorage.router.api.ResourcePathParser;
 import com.linkedin.ddsstorage.router.api.RouterException;
+import com.linkedin.venice.RequestConstants;
 import com.linkedin.venice.exceptions.VeniceException;
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.nio.charset.StandardCharsets;
 import java.util.Collection;
 import java.util.Collections;
-import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-import org.apache.http.NameValuePair;
-import org.apache.http.client.utils.URLEncodedUtils;
 import org.apache.log4j.Logger;
 import org.jboss.netty.handler.codec.http.HttpResponseStatus;
 
@@ -37,8 +37,6 @@ public class VenicePathParser implements ResourcePathParser<Path, RouterKey> {
   public static final String SEP = "/";
   public static final String ACTION_READ = "read";
 
-  public static final String B64FORMAT = "f=b64";
-
   private VeniceVersionFinder versionFinder;
 
   public VenicePathParser(VeniceVersionFinder versionFinder){
@@ -54,8 +52,7 @@ public class VenicePathParser implements ResourcePathParser<Path, RouterKey> {
       logger.error(e);
       throw new RouterException(HttpResponseStatus.INTERNAL_SERVER_ERROR, e, true);
     }
-
-    String[] path = uriObject.getPath().split("/");
+    String[] path = uriObject.getPath().split("/");  //getPath strips off the querystring '?f=b64'
     int offset = 0;
     if (path[0].equals("")){
       offset = 1;  //leading slash in uri splits to an empty path section
@@ -71,7 +68,7 @@ public class VenicePathParser implements ResourcePathParser<Path, RouterKey> {
     if (action.equals(ACTION_READ)) {
       String resourceName = getResourceFromStoreName(storename);
       RouterKey routerKey;
-      if (isFormatB64(uriObject)){
+      if (isFormatB64(uri)){
         routerKey = RouterKey.fromBase64(key);
       } else {
         routerKey = RouterKey.fromString(key);
@@ -113,17 +110,12 @@ public class VenicePathParser implements ResourcePathParser<Path, RouterKey> {
     return m.matches();
   }
 
-  protected static boolean isFormatB64(URI uri) {
-    String format = "string";
-    List<NameValuePair> params = URLEncodedUtils.parse(uri, "UTF-8");
-    for (NameValuePair pair : params) {
-      if (pair.getName().equals("f")) {
-        format = pair.getValue();
-      }
+  protected static boolean isFormatB64(String key) {
+    String format = RequestConstants.DEFAULT_FORMAT; //"string"
+    QueryStringDecoder queryStringParser = new QueryStringDecoder(key, StandardCharsets.UTF_8);
+    if (queryStringParser.getParameters().keySet().contains(RequestConstants.FORMAT_KEY)) {
+      format = queryStringParser.getParameters().get(RequestConstants.FORMAT_KEY).get(0);
     }
-    return format.equals("b64");
+    return format.equals(RequestConstants.B64_FORMAT);
   }
-
-
-
 }

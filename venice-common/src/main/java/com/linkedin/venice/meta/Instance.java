@@ -55,21 +55,37 @@ public class Instance {
         }
     }
 
-    @Override
-    public boolean equals(Object other){
-      if (null==other){
-        return false;
-      }
-      if (!other.getClass().equals(this.getClass())) {
-        return false;
-      }
-      Instance o = (Instance) other;
-      if (  !(this.getHost().equals(o.getHost()))  ) {
-        return false;
-      }
-      if (  !(this.getHttpPort()==o.getHttpPort())  ){
-        return false;
-      }
+  //Autogen
+  @Override
+  public int hashCode() {
+    int result = nodeId != null ? nodeId.hashCode() : 0;
+    result = 31 * result + host.hashCode();
+    result = 31 * result + adminPort;
+    result = 31 * result + httpPort;
+    return result;
+  }
+
+  //Autogen, except for the equalsIgnoreCase
+  @Override
+  public boolean equals(Object o) {
+    if (this == o) {
       return true;
     }
+    if (o == null || getClass() != o.getClass()) {
+      return false;
+    }
+
+    Instance instance = (Instance) o;
+
+    if (getAdminPort() != instance.getAdminPort()) {
+      return false;
+    }
+    if (getHttpPort() != instance.getHttpPort()) {
+      return false;
+    }
+    if (getNodeId() != null ? !getNodeId().equals(instance.getNodeId()) : instance.getNodeId() != null) {
+      return false;
+    }
+    return !(getHost() != null ? !getHost().equalsIgnoreCase(instance.getHost()) : instance.getHost() != null);
+  }
 }

@@ -18,11 +18,13 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executor;
 import org.apache.commons.io.IOUtils;
 import org.apache.http.client.methods.HttpGet;
 import org.apache.http.concurrent.FutureCallback;
+import org.apache.http.impl.DefaultConnectionReuseStrategy;
 import org.apache.http.impl.nio.client.CloseableHttpAsyncClient;
 import org.apache.http.impl.nio.client.HttpAsyncClients;
 import org.apache.http.nio.client.HttpAsyncClient;
@@ -46,10 +48,10 @@ public class VeniceDispatcher implements PartitionDispatchHandler<Instance, Path
   private static final Logger logger = Logger.getLogger(VeniceDispatcher.class);
 
   // see: https://hc.apache.org/httpcomponents-asyncclient-dev/quickstart.html
-  private Map<Instance, CloseableHttpAsyncClient> clientPool;
+  private final Map<Instance, CloseableHttpAsyncClient> clientPool;
 
   public VeniceDispatcher(){
-    clientPool = new HashMap<>();
+    clientPool = new ConcurrentHashMap<>();
   }
 
   @Override
@@ -68,9 +70,7 @@ public class VeniceDispatcher implements PartitionDispatchHandler<Instance, Path
     try {
       int hostCount = part.getHosts().size();
       host = part.getHosts().get( ((int)System.currentTimeMillis()) % hostCount );  //cheap random host selection
-      contextExecutor.execute(() -> {
-        hostSelected.setSuccess(host);
-      });
+      hostSelected.setSuccess(host);
     } catch (Exception e) {
       hostSelected.setFailure(e);
       throw new VeniceException("Failed to route request to a host");
@@ -81,7 +81,11 @@ public class VeniceDispatcher implements PartitionDispatchHandler<Instance, Path
     if (clientPool.containsKey(host)){
       httpClient = clientPool.get(host);
     } else {
-      httpClient = HttpAsyncClients.createDefault();
+      httpClient = HttpAsyncClients.custom()
+          .setConnectionReuseStrategy(new DefaultConnectionReuseStrategy())  //Supports connection re-use if able
+          .setMaxConnPerRoute(2) // concurrent execute commands beyond this limit get queued internally by the client
+          .setMaxConnTotal(2)
+          .build();
       clientPool.put(host, httpClient);
     }
 
@@ -96,9 +100,7 @@ public class VeniceDispatcher implements PartitionDispatchHandler<Instance, Path
       @Override
       public void completed(org.apache.http.HttpResponse result) {
         HttpResponse response = new DefaultHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK);
-        InputStream contentStream;
-        try {
-          contentStream = result.getEntity().getContent();
+        try (InputStream contentStream = result.getEntity().getContent()) {
           response.setContent(ChannelBuffers.wrappedBuffer(IOUtils.toByteArray(contentStream)));
         } catch (IOException e) {
           completeWithError(HttpResponseStatus.INTERNAL_SERVER_ERROR, e);
@@ -142,6 +144,6 @@ public class VeniceDispatcher implements PartitionDispatchHandler<Instance, Path
         logger.error("Error closing an async http client", e);
       }
     }
-    clientPool = new HashMap<>();
+    clientPool.clear();
   }
 }

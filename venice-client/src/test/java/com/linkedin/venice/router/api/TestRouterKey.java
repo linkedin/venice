@@ -22,11 +22,18 @@ public class TestRouterKey {
     RouterKey b = new RouterKey("abcde".getBytes());
     RouterKey bb = new RouterKey("abcde".getBytes());
     RouterKey c = new RouterKey("b".getBytes());
-    Assert.assertEquals(a.compareTo(b), -1, "RouterKey failed compareTo ordering");
-    Assert.assertEquals(a.compareTo(c), -1, "RouterKey failed compareTo ordering");
-    Assert.assertEquals(b.compareTo(a), 1, "RouterKey failed compareTo ordering");
-    Assert.assertEquals(bb.compareTo(b), 0, "RouterKey failed compareTo ordering");
-    Assert.assertEquals(a.compareTo(c), -1, "RouterKey failed compareTo ordering");
-    Assert.assertEquals(c.compareTo(a), 1, "RouterKey failed compareTo ordering");
+    RouterKey d = new RouterKey("a".getBytes());
+    doOrderingTest(a,b,-1);
+    doOrderingTest(a,c,1);
+    doOrderingTest(b,a,1);
+    doOrderingTest(bb,b,0);
+    doOrderingTest(a,c,1);
+    doOrderingTest(c,a,-1);
+    doOrderingTest(c,d,1);
+  }
+
+  public void doOrderingTest(RouterKey left, RouterKey right, int expected){
+    Assert.assertEquals(left.compareTo(right), expected,
+        "RouterKey failed to compare " + new String(left.getBytes()) + " with " + new String(right.getBytes()));
   }
 }

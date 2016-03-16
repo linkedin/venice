@@ -20,6 +20,7 @@ dependencies {
 
 
   compile (libraries.avro){
+    // avro pulls in an older version of netty3 that causes transitive conflicts with the router
     exclude group: 'org.jboss.netty'
   }
   compile libraries.helix // TODO: Get rid of Helix dependency in venice-common

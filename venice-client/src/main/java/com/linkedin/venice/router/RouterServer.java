@@ -22,6 +22,7 @@ import com.linkedin.venice.router.api.VenicePathParser;
 import com.linkedin.venice.router.api.VeniceRoleFinder;
 import com.linkedin.venice.router.api.VeniceVersionFinder;
 import com.linkedin.venice.service.AbstractVeniceService;
+import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.Props;
 import java.io.File;
 import java.net.InetSocketAddress;
@@ -56,7 +57,15 @@ public class RouterServer extends AbstractVeniceService {
 
   private ChannelFuture serverFuture = null;
   private NettyResourceRegistry registry = null;
+  private VeniceDispatcher dispatcher;
 
+  /***
+   * This main method is not meant to be the way of invoking the router for a deployment.  It is only provided as a
+   * convenience method for developement and will eventually be replaced with a more standard invokation process.
+   *
+   * @param args
+   * @throws Exception
+   */
   public static void main(String args[])
       throws Exception {
 
@@ -81,17 +90,23 @@ public class RouterServer extends AbstractVeniceService {
 
     RouterServer server = new RouterServer(port, clusterName, routingRepo, metaRepo);
     server.start();
-    boolean go = true;
-    while (go){
-      try {
-        Thread.sleep(60000);
-      } catch (InterruptedException e){
-        go = false;
+
+    Runtime.getRuntime().addShutdownHook(new Thread() {
+      @Override
+      public void run() {
+        if (server.isStarted()) {
+          try {
+            server.stop();
+            manager.disconnect();
+            zkClient.close();
+          } catch (Exception e) {
+            logger.error("Error shutting the server. ", e);
+          }
+        }
       }
-    }
-    server.stop();
-    manager.disconnect();
-    zkClient.close();
+    });
+
+
   }
 
   public RouterServer(int port, String clusterName,
@@ -107,8 +122,11 @@ public class RouterServer extends AbstractVeniceService {
   public void startInner()
       throws Exception {
     registry = new NettyResourceRegistry();
-    ExecutorService executor = registry.factory(ShutdownableExecutors.class).newCachedThreadPool();
+    ExecutorService executor = registry
+        .factory(ShutdownableExecutors.class)
+        .newFixedThreadPool(8, new DaemonThreadFactory("RouterThread")); //TODO: configurable number of threads
     NioServerBossPool serverBossPool = registry.register(new NioServerBossPool(executor, 1));
+    //TODO: configurable workerPool size (and probably other things in this section)
     NioWorkerPool ioWorkerPool = registry.register(new NioWorkerPool(executor, 8));
     ExecutionHandler workerExecutor = new DefaultExecutionHandler(
         registry.register(new ShutdownableOrderedMemoryAwareExecutor(8, 0, 0, 60, TimeUnit.SECONDS)));
@@ -117,6 +135,7 @@ public class RouterServer extends AbstractVeniceService {
     Timer idleTimer = registry.register(new ShutdownableHashedWheelTimer(1, TimeUnit.MILLISECONDS));
     Map<String, Object> serverSocketOptions = null;
     ResourceRegistry routerRegistry = registry.register(new SyncResourceRegistry());
+    dispatcher = new VeniceDispatcher();
 
     RouterImpl router
         = routerRegistry.register(new RouterImpl(
@@ -126,7 +145,7 @@ public class RouterServer extends AbstractVeniceService {
             .pathParser(new VenicePathParser(new VeniceVersionFinder(metadataRepository)))
             .partitionFinder(new VenicePartitionFinder(routingDataRepository))
             .hostFinder(new VeniceHostFinder(routingDataRepository))
-            .dispatchHandler(new VeniceDispatcher())
+            .dispatchHandler(dispatcher)
             .build()));
 
     serverFuture = router.start(new InetSocketAddress(port), factory -> factory);
@@ -143,6 +162,7 @@ public class RouterServer extends AbstractVeniceService {
     }
     registry.shutdown();
     registry.waitForShutdown();
+    dispatcher.close();
     logger.info("Router Server is stoped");
   }
 }

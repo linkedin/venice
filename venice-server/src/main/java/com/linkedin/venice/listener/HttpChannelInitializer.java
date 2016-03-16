@@ -1,38 +1,42 @@
 package com.linkedin.venice.listener;
 
 import com.linkedin.venice.server.StoreRepository;
+import com.linkedin.venice.utils.DaemonThreadFactory;
+import io.netty.channel.ChannelInitializer;
 import io.netty.channel.socket.SocketChannel;
 import io.netty.handler.codec.http.HttpServerCodec;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 
+public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
 
-/***
- * Use this channel initializer to support a GET Http requests of the format:
- * /store/key/partition
- *
- * The HttpServerCodec handles the conversion from bytes to usable HTTP objects
- *
- * The GetRequestHttpHandler takes an HTTP object, and generates a GetRequestObject
- *
- * The StoreExecutionHandler uses te GetRequestObject, queries the datastore
- * and emits a byte[] of the value returned for that store/key/partition
- *
- * The OutboundHttpWrapper wraps the bytes of the value in an HTTP response
- * that the HttpServerCodec expects
- */
+  private final ExecutorService executor;
+    protected final StorageExecutionHandler storageExecutionHandler;
+    private static final long KEEPALIVE_ZERO = 0L;
 
-public class HttpChannelInitializer extends AbstractExecutorChannelInitializer {
+  //TODO make this configurable
+    private static final int numRestServiceStorageThreads = 8;
 
-  public HttpChannelInitializer(StoreRepository storeRepository){
-    super(storeRepository);
-  }
+    public HttpChannelInitializer(StoreRepository storeRepository) {
+      this.executor = Executors.newFixedThreadPool(
+          numRestServiceStorageThreads,
+          new DaemonThreadFactory("StorageExecutionThread"));
 
-    @Override
-    public void initChannel(SocketChannel ch) throws Exception {
-        ch.pipeline()
-            .addLast(new HttpServerCodec())
-            .addLast(new OutboundHttpWrapperHandler())
-            .addLast(new GetRequestHttpHandler())
-            .addLast("storageExecutionHandler", storageExecutionHandler);
+      storageExecutionHandler = new StorageExecutionHandler(executor,
+                                                            storeRepository);
     }
+
+  @Override
+  public void initChannel(SocketChannel ch) throws Exception {
+    ch.pipeline()
+        .addLast(new HttpServerCodec())
+        .addLast(new OutboundHttpWrapperHandler())
+        .addLast(new GetRequestHttpHandler())
+        .addLast("storageExecutionHandler", storageExecutionHandler)
+        .addLast(new ErrorCatchingHandler());
+  }
 
 }

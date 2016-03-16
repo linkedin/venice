@@ -33,11 +33,11 @@ public class TestVenicePathParser {
     VenicePathParser parser = new VenicePathParser(getVersionFinder());
     Path path = parser.parseResourceUri(uri);
     String keyb64 = Base64.getEncoder().encodeToString("key".getBytes());
-    Assert.assertEquals(path.getLocation(), "read/store_v1/" + keyb64 + "?" + VenicePathParser.B64FORMAT);
+    Assert.assertEquals(path.getLocation(), "read/store_v1/" + keyb64 + "?f=b64");
 
     Path path2 = parser.substitutePartitionKey(path, RouterKey.fromString("key2"));
     String key2b64 = Base64.getEncoder().encodeToString("key2".getBytes());
-    Assert.assertEquals(path2.getLocation(), "read/store_v1/" + key2b64 + "?" + VenicePathParser.B64FORMAT);
+    Assert.assertEquals(path2.getLocation(), "read/store_v1/" + key2b64 + "?f=b64");
   }
 
   @Test

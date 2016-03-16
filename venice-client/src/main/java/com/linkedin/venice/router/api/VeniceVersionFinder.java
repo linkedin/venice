@@ -1,6 +1,7 @@
 package com.linkedin.venice.router.api;
 
 import com.linkedin.venice.meta.MetadataRepository;
+import javax.validation.constraints.NotNull;
 
 
 /**
@@ -8,13 +9,13 @@ import com.linkedin.venice.meta.MetadataRepository;
  */
 public class VeniceVersionFinder {
 
-  private MetadataRepository metadataRepository;
+  private final MetadataRepository metadataRepository;
 
-  public VeniceVersionFinder(MetadataRepository metadataRepository){
+  public VeniceVersionFinder(@NotNull MetadataRepository metadataRepository){
     this.metadataRepository = metadataRepository;
   }
 
-  public int getVersion(String store) {
+  public int getVersion(@NotNull String store) {
     return metadataRepository.getStore(store).getCurrentVersion();
   }
 }
