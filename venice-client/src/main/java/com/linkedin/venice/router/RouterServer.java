@@ -11,6 +11,7 @@ import com.linkedin.ddsstorage.netty3.misc.ShutdownableHashedWheelTimer;
 import com.linkedin.ddsstorage.netty3.misc.ShutdownableOrderedMemoryAwareExecutor;
 import com.linkedin.ddsstorage.router.api.ScatterGatherHelper;
 import com.linkedin.ddsstorage.router.impl.RouterImpl;
+import com.linkedin.venice.helix.HelixAdapterSerializer;
 import com.linkedin.venice.helix.HelixMetadataRepository;
 import com.linkedin.venice.helix.HelixRoutingDataRepository;
 import com.linkedin.venice.meta.MetadataRepository;
@@ -85,7 +86,8 @@ public class RouterServer extends AbstractVeniceService {
     ZkClient zkClient = new ZkClient(zkConnection);
     HelixManager manager = new ZKHelixManager(clusterName, null, InstanceType.SPECTATOR, zkConnection);
 
-    MetadataRepository metaRepo = new HelixMetadataRepository(zkClient, clusterName);
+    HelixAdapterSerializer adapter = new HelixAdapterSerializer();
+    MetadataRepository metaRepo = new HelixMetadataRepository(zkClient, adapter, clusterName);
     RoutingDataRepository routingRepo = new HelixRoutingDataRepository(manager);
 
     RouterServer server = new RouterServer(port, clusterName, routingRepo, metaRepo);

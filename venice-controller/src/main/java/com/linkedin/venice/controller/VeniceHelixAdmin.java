@@ -132,7 +132,7 @@ public class VeniceHelixAdmin implements Admin {
         try {
             Store store = repository.getStore(storeName);
             if(store == null){
-               handleStoreAlreadyExists(clusterName, storeName);
+                handleStoreDoseNotExist(clusterName, storeName);
             }
             if(store.containsVersion(versionNumber)){
                 handleVersionAlreadyExists(storeName,versionNumber);
@@ -148,7 +148,7 @@ public class VeniceHelixAdmin implements Admin {
         addKafkaTopic(clusterName, version.kafkaTopicName(), numberOfPartition, replicaFactor,
             configs.get(clusterName).getKafkaReplicaFactor());
         //Start offline push job for this new version.
-        startOfflinePush(clusterName,version.kafkaTopicName(),numberOfPartition,replicaFactor);
+        startOfflinePush(clusterName, version.kafkaTopicName(), numberOfPartition, replicaFactor);
     }
 
     @Override
@@ -164,7 +164,7 @@ public class VeniceHelixAdmin implements Admin {
         try {
             Store store = repository.getStore(storeName);
             if(store == null){
-                handleStoreAlreadyExists(clusterName, storeName);
+                handleStoreDoseNotExist(clusterName, storeName);
             }
             version = store.increaseVersion();
             repository.updateStore(store);
@@ -242,7 +242,7 @@ public class VeniceHelixAdmin implements Admin {
         } catch (InterruptedException e) {
             e.printStackTrace();
         }
-        jobManager.startOfflineJob(kafkaTopic,numberOfPartition,replicaFactor);
+        jobManager.startOfflineJob(kafkaTopic, numberOfPartition, replicaFactor);
     }
 
     @Override
@@ -286,6 +286,12 @@ public class VeniceHelixAdmin implements Admin {
 
     private void handleStoreAlreadyExists(String clusterName, String storeName) {
         String errorMessage = "Store:" + storeName + " already exists. Can not add it to cluster:" + clusterName;
+        logger.info(errorMessage);
+        throw new VeniceException(errorMessage);
+    }
+
+    private void handleStoreDoseNotExist(String clusterName, String storeName) {
+        String errorMessage = "Store:" + storeName + " dose not exist in cluster:" + clusterName;
         logger.info(errorMessage);
         throw new VeniceException(errorMessage);
     }
