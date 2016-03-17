@@ -5,6 +5,7 @@ import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.Partition;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -43,22 +44,24 @@ public class OfflineJob extends Job {
   public Set<Integer> updateExecutingParitions(Map<Integer, Partition> partitions) {
     if (partitions.size() != getNumberOfPartition()) {
       throw new VeniceException(
-          "Number of partitions+" + partitions.size() + " is different from the required number:" +
+          "Number of partitions:" + partitions.size() + " is different from the required number:" +
               getNumberOfPartition() + " when creating the job.");
+    }
+    for (Partition partition : partitions.values()) {
+      if (partition.getInstances().size() != getReplicaFactor()) {
+        throw new VeniceException(
+            "Replica factor:" + partition.getInstances().size() + " in partition:" + partition.getId()
+                + "is different from the required factor:" + getReplicaFactor() + " when creating the job.");
+      }
     }
 
     HashSet<Integer> changedPartitions = new HashSet<>();
-
     for (Integer partitionId : partitions.keySet()) {
       if (partitionId < 0 || partitionId > getNumberOfPartition()) {
-        throw new VeniceException("Invalid parition Id:" + partitionId);
+        throw new VeniceException("Invalid partition Id:" + partitionId);
       }
       Map<String, Task> taskMap = partitionToTasksMap.get(partitionId);
       Partition partition = partitions.get(partitionId);
-      if (partition.getInstances().size() != getReplicaFactor()) {
-        throw new VeniceException("Replica factor:" + partition.getInstances().size() + " in partition:" + partitionId
-            + "is different from the required factor:" + getReplicaFactor() + " when creating the job.");
-      }
       HashSet<String> taskIds = new HashSet<>(taskMap.keySet());
       for (Instance instance : partition.getInstances()) {
         String taskId = generateTaskId(partitionId, instance.getNodeId());

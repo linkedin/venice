@@ -1,5 +1,6 @@
 package com.linkedin.venice.helix;
 
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.Partition;
 import com.linkedin.venice.meta.RoutingDataChangedListener;
@@ -155,7 +156,7 @@ public class TestHelixRoutingDataRepository {
       //Should not find the resource.
       repository.getNumberOfPartitions(resourceName);
       Assert.fail("IAE should be thrown because resource dose not exist now.");
-    }catch(IllegalArgumentException iae){
+    }catch(VeniceException iae){
       //expected
     }
   }

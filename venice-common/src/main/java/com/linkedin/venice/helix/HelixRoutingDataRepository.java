@@ -112,7 +112,7 @@ public class HelixRoutingDataRepository extends RoutingTableProvider implements 
         } else {
             String errorMessage = "Resource '" + resourceName + "' does not exist";
             logger.warn(errorMessage);
-            throw new IllegalArgumentException(errorMessage);
+            throw new VeniceException(errorMessage);
         }
     }
 
@@ -130,7 +130,7 @@ public class HelixRoutingDataRepository extends RoutingTableProvider implements 
         } else {
             String errorMessage = "Resource '" + resourceName + "' does not exist";
             logger.warn(errorMessage);
-            throw new IllegalArgumentException(errorMessage);
+            throw new VeniceException(errorMessage);
         }
     }
 
@@ -148,10 +148,20 @@ public class HelixRoutingDataRepository extends RoutingTableProvider implements 
             if (!resourceToNumberOfPartitionsMap.containsKey(resourceName)) {
                 String errorMessage = "Resource '" + resourceName + "' does not exist";
                 logger.warn(errorMessage);
-                throw new IllegalArgumentException(errorMessage);
+                throw new VeniceException(errorMessage);
             }
             return resourceToNumberOfPartitionsMap.get(resourceName);
         } finally {
+            lock.unlock();
+        }
+    }
+
+    @Override
+    public boolean containsKafkaTopic(String kafkaTopic) {
+        lock.lock();
+        try {
+            return resourceToNumberOfPartitionsMap.containsKey(kafkaTopic);
+        }finally {
             lock.unlock();
         }
     }
@@ -182,8 +192,11 @@ public class HelixRoutingDataRepository extends RoutingTableProvider implements 
     @Override
     public void onExternalViewChange(List<ExternalView> externalViewList, NotificationContext changeContext) {
         super.onExternalViewChange(externalViewList, changeContext);
+        if (changeContext.getType().equals(NotificationContext.Type.INIT) && externalViewList.isEmpty()) {
+            //Initializing repository and extern view is empty. Do nonthing for this case,
+            return;
+        }
         Map<String, Map<Integer, Partition>> newResourceToPartitionMap = new HashMap<>();
-
         // Get live instance information from ZK.
         List<LiveInstance> liveInstances = manager.getHelixDataAccessor().getChildValues(keyBuilder.liveInstances());
         Map<String,LiveInstance> liveInstanceMap = new HashMap<>();
@@ -207,6 +220,11 @@ public class HelixRoutingDataRepository extends RoutingTableProvider implements 
                 Map<String,String> instanceStateMap = externalView.getStateMap(partitionName);
                 List<Instance> instances = new ArrayList<>();
                 for(String instanceName:instanceStateMap.keySet()){
+                    if (!instanceStateMap.get(instanceName).equals(HelixState.ONLINE.toString())) {
+                        //ignore the instance which is not in ONLINE state.
+                        logger.info(instanceName + " is not ONLINE. State:" + instanceStateMap.get(instanceName));
+                        continue;
+                    }
                     if(liveInstanceMap.containsKey(instanceName)){
                         instances.add(HelixInstanceConverter.convertZNRecordToInstance(liveInstanceMap.get(instanceName).getRecord()));
                     }else{

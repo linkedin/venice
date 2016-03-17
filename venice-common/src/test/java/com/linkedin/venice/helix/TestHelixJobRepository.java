@@ -64,9 +64,7 @@ public class TestHelixJobRepository {
     admin.addStateModelDef(cluster, TestHelixRoutingDataRepository.UnitTestStateModel.UNIT_TEST_STATE_MODEL,
         TestHelixRoutingDataRepository.UnitTestStateModel.getDefinition());
 
-    admin.addResource(cluster, kafkaTopic, 1, TestHelixRoutingDataRepository.UnitTestStateModel.UNIT_TEST_STATE_MODEL,
-        IdealState.RebalanceMode.FULL_AUTO.toString());
-    admin.rebalance(cluster, kafkaTopic, 1);
+
 
     controller = HelixControllerMain
         .startHelixController(zkAddress, cluster, "UnitTestController", HelixControllerMain.STANDALONE);
@@ -82,7 +80,7 @@ public class TestHelixJobRepository {
       }
     });
     manager.connect();
-    Thread.sleep(1000l);
+
     routingDataRepository = new HelixRoutingDataRepository(controller);
     routingDataRepository.start();
 
@@ -91,18 +89,22 @@ public class TestHelixJobRepository {
     zkClient.create(clusterPath + jobPath, null, CreateMode.PERSISTENT);
     repository = new HelixJobRepository(zkClient, adapter, cluster, routingDataRepository);
     repository.start();
+
+    admin.addResource(cluster, kafkaTopic, 1, TestHelixRoutingDataRepository.UnitTestStateModel.UNIT_TEST_STATE_MODEL,
+        IdealState.RebalanceMode.FULL_AUTO.toString());
+    admin.rebalance(cluster, kafkaTopic, 1);
   }
 
   @AfterMethod
   public void cleanup() {
-    zkClient.deleteRecursive(clusterPath);
-    zkClient.close();
     repository.clear();
     routingDataRepository.clear();
     manager.disconnect();
     controller.disconnect();
     admin.dropCluster(cluster);
     admin.close();
+    zkClient.deleteRecursive(clusterPath);
+    zkClient.close();
     zkServerWrapper.close();
   }
 
@@ -113,6 +115,46 @@ public class TestHelixJobRepository {
     Assert.assertEquals(job, repository.getJob(1), "Can not get correct job from repository after starting the job.");
     Assert.assertEquals(ExecutionStatus.STARTED, repository.getJobStatus(1),
         "Job should be running after being started.");
+  }
+
+  @Test
+  public void testStartMultiPartitionsJob()
+      throws Exception {
+    String resource= "multi_test";
+    int partitions = 5;
+    HelixManager[] managers = new HelixManager[3];
+    for(int i=0;i<3;i++){
+      HelixManager manager = HelixManagerFactory.getZKHelixManager(cluster, "localhost_"+i, InstanceType.PARTICIPANT, zkAddress);
+      manager.getStateMachineEngine()
+          .registerStateModelFactory(TestHelixRoutingDataRepository.UnitTestStateModel.UNIT_TEST_STATE_MODEL,
+              new TestHelixRoutingDataRepository.UnitTestStateModelFactory());
+      Instance instance = new Instance("localhost_"+i, Utils.getHostName(), 9986, 9985);
+      manager.setLiveInstanceInfoProvider(new LiveInstanceInfoProvider() {
+        @Override
+        public ZNRecord getAdditionalLiveInstanceInfo() {
+          return HelixInstanceConverter.convertInstanceToZNRecord(instance);
+        }
+      });
+      manager.connect();
+      managers[i]=manager;
+    }
+    admin.addResource(cluster, resource, partitions,
+        TestHelixRoutingDataRepository.UnitTestStateModel.UNIT_TEST_STATE_MODEL,
+        IdealState.RebalanceMode.FULL_AUTO.toString());
+    admin.rebalance(cluster, resource, 1);
+
+    OfflineJob job = new OfflineJob(1,resource, partitions,1);
+    repository.startJob(job);
+
+    Assert.assertEquals(job, repository.getJob(1), "Can not get correct job from repository after starting the job.");
+    Assert.assertEquals(ExecutionStatus.STARTED, repository.getJobStatus(1),
+        "Job should be running after being started.");
+
+    admin.dropResource(cluster,resource);
+    for(HelixManager manager:managers){
+      manager.disconnect();
+    }
+
   }
 
   @Test

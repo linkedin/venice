@@ -237,7 +237,11 @@ public class VeniceHelixAdmin implements Admin {
         if (jobManager == null){
             handleClusterDoseNotStart(clusterName);
         }
-
+        try {
+            Thread.sleep(1000l);
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
         jobManager.startOfflineJob(kafkaTopic,numberOfPartition,replicaFactor);
     }
 

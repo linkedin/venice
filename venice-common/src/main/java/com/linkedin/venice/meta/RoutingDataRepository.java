@@ -39,6 +39,8 @@ public interface RoutingDataRepository {
    */
   public int getNumberOfPartitions(String kafkaTopic);
 
+  public boolean containsKafkaTopic(String kafkaTopic);
+
   /**
    * Add a listener on kafka topic to get the notification when routing data is changed.
    *

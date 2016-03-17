@@ -91,6 +91,7 @@ public class HelixJobRepository implements JobRepository, RoutingDataChangedList
         throw new VeniceException(errorMessage, e);
       }
       this.jobMap.remove(jobId);
+      removeJobFromZK(job);
     } else {
       throw new VeniceException("Job:" + jobId + " is in " + job.getStatus() + " status. Can not be archived.");
     }
@@ -157,30 +158,48 @@ public class HelixJobRepository implements JobRepository, RoutingDataChangedList
   }
 
   @Override
-  public synchronized void startJob(@NotNull Job job) {
+  public void startJob(@NotNull Job job) {
     if (!job.getStatus().equals(ExecutionStatus.NEW)) {
       throw new VeniceException("Job:" + job.getJobId() + " is in " + job.getStatus() + ". Can not be started.");
     }
-    job.updateExecutingParitions(routingDataRepository.getPartitions(job.getKafkaTopic()));
-    job.setStatus(ExecutionStatus.STARTED);
-    try {
-      updateJobToZK(job);
-      for (int partitionId = 0; partitionId < job.getNumberOfPartition(); partitionId++) {
-        updateTaskToZK(job.getJobId(), partitionId, new ArrayList<>());
+    synchronized (this) {
+      this.jobMap.put(job.getJobId(), job);
+      List<Job> jobs = this.topicToJobsMap.get(job.getKafkaTopic());
+      if (jobs == null) {
+        jobs = new ArrayList<>();
+        topicToJobsMap.put(job.getKafkaTopic(), jobs);
       }
-    } catch (Throwable e) {
-      String errorMessage = "Can not update job:" + job.getJobId() + " to ZK.";
-      logger.info(errorMessage, e);
-      throw new VeniceException(errorMessage, e);
+      jobs.add(job);
     }
-    this.jobMap.put(job.getJobId(), job);
-    List<Job> jobs = this.topicToJobsMap.get(job.getKafkaTopic());
-    if (jobs == null) {
-      jobs = new ArrayList<>();
-      topicToJobsMap.put(job.getKafkaTopic(), jobs);
-    }
-    jobs.add(job);
+
+    waitUntilJobStart(job);
+    //After job being started, sync up it to ZK.
+    updateJobAndTasksToZK(job);
+  }
+
+  private void waitUntilJobStart(Job job) {
     routingDataRepository.subscribeRoutingDataChange(job.getKafkaTopic(), this);
+    boolean isJobStarted = false;
+    if (routingDataRepository.containsKafkaTopic(job.getKafkaTopic())) {
+      try {
+        job.updateExecutingParitions(routingDataRepository.getPartitions(job.getKafkaTopic()));
+        isJobStarted = true;
+      } catch (VeniceException e) {
+        // Can not get enough paritition and replicas when resource just being created.
+      }
+    }
+    if (!isJobStarted) {
+      //There are no enough partitions and/or replicas to execute tasks. Wait until all of replicas becoming online
+      synchronized (job) {
+        try {
+          logger.info("Wait job:" + job.getJobId() + " being started.");
+          job.wait();
+          logger.info("Job:" + job.getJobId() + " could be started.");
+        } catch (InterruptedException e) {
+          throw new VeniceException("Met error when wait job being started.", e);
+        }
+      }
+    }
   }
 
   @Override
@@ -198,9 +217,38 @@ public class HelixJobRepository implements JobRepository, RoutingDataChangedList
     return job;
   }
 
+  private synchronized void updateJobAndTasksToZK(Job job) {
+    try {
+      job.setStatus(ExecutionStatus.STARTED);
+      updateJobToZK(job);
+      for (int partitionId = 0; partitionId < job.getNumberOfPartition(); partitionId++) {
+        updateTaskToZK(job.getJobId(), partitionId, new ArrayList<>());
+      }
+    } catch (Throwable e) {
+      String errorMessage = "Can not update Job:" + job.getJobId() + " to ZK.";
+      logger.info(errorMessage, e);
+      //Roll back local copy
+      jobMap.remove(job.getJobId());
+      List<Job> jobs = topicToJobsMap.get(job.getKafkaTopic());
+      jobs.remove(job);
+      if (jobs.isEmpty()) {
+        topicToJobsMap.remove(job.getKafkaTopic());
+      }
+      throw new VeniceException(errorMessage, e);
+    }
+  }
+
   private void updateJobToZK(Job job) {
     if (job instanceof OfflineJob) {
       jobDataAccessor.set(offlineJobsPath + "/" + job.getJobId(), (OfflineJob) job, AccessOption.PERSISTENT);
+    } else {
+      throw new VeniceException("Only offline job is supported now.");
+    }
+  }
+
+  public void removeJobFromZK(Job job) {
+    if (job instanceof OfflineJob) {
+      jobDataAccessor.remove(offlineJobsPath + "/" + job.getJobId(), AccessOption.PERSISTENT);
     } else {
       throw new VeniceException("Only offline job is supported now.");
     }
@@ -243,8 +291,14 @@ public class HelixJobRepository implements JobRepository, RoutingDataChangedList
       for (List<Task> task : tasks) {
         task.forEach(job::setTask);
       }
-      updateJobPartitions(job, routingDataRepository.getPartitions(job.getKafkaTopic()));
-      routingDataRepository.subscribeRoutingDataChange(job.getKafkaTopic(), this);
+      if (job.getStatus().equals(ExecutionStatus.NEW)) {
+        //Wait and start job.
+        waitUntilJobStart(job);
+      } else {
+        //Get the newest partitions info from repository and update the job if needed.
+        updateJobPartitions(job, routingDataRepository.getPartitions(job.getKafkaTopic()));
+        routingDataRepository.subscribeRoutingDataChange(job.getKafkaTopic(), this);
+      }
       logger.info("Filled tasks into job:" + job.getJobId());
       ExecutionStatus jobStatus = job.checkJobStatus();
       if (jobStatus.equals(ExecutionStatus.COMPLETED)) {
@@ -290,7 +344,14 @@ public class HelixJobRepository implements JobRepository, RoutingDataChangedList
               + " jobs running.");
     }
     Job job = jobs.get(0);
-    updateJobPartitions(job, partitions);
+    synchronized (job) {
+      try {
+        updateJobPartitions(job, partitions);
+        job.notify();
+      } catch (VeniceException e) {
+        logger.info("There are no enough partitions or replica to execute tasks.");
+      }
+    }
   }
 
   public RoutingDataRepository getRoutingDataRepository() {

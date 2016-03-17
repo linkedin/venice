@@ -43,8 +43,8 @@ There are two ways to use Venice.
 To start the controller:
 > ./venice-controller/quickstart/start-venice-controller.sh venice-server/config/cluster.properties venice-controller/config/controller.properties
 To add test stores
-> curl --data "storename=default_store&partitions=1&replicas=1" 127.0.0.1:7075/create
-> curl --data "storename=test_shell_store&partitions=1&replicas=1" 127.0.0.1:7075/create
+> curl --data "storename=default_store&store_size=10000&owner=venice-dev" 127.0.0.1:7075/create
+> curl --data "storename=test_shell_store&store_size=1000&onwer=venice-dev" 127.0.0.1:7075/create
 
 To start the server:
 
