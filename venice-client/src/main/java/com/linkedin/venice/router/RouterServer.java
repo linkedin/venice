@@ -150,7 +150,7 @@ public class RouterServer extends AbstractVeniceService {
 
     serverFuture = router.start(new InetSocketAddress(port), factory -> factory);
     serverFuture.await();
-    logger.info("Router server is started on port:"+port);
+    logger.info("Router server is started on port:" + serverFuture.getChannel().getLocalAddress());
   }
 
   @Override
@@ -163,6 +163,6 @@ public class RouterServer extends AbstractVeniceService {
     registry.shutdown();
     registry.waitForShutdown();
     dispatcher.close();
-    logger.info("Router Server is stoped");
+    logger.info("Router Server is stopped");
   }
 }
