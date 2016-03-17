@@ -1,4 +1,4 @@
-package com.linkedin.venice.router;
+package com.linkedin.venice.router.api;
 
 import com.linkedin.ddsstorage.router.api.PartitionFinder;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;

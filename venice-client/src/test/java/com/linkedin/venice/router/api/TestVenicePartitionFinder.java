@@ -1,4 +1,4 @@
-package com.linkedin.venice.router;
+package com.linkedin.venice.router.api;
 
 import com.linkedin.venice.meta.RoutingDataRepository;
 import org.mockito.Mockito;

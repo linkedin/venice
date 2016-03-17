@@ -12,7 +12,9 @@ ext.libraries = [ // Groovy map literal
                   kafkaClients: 'kafka:kafka-clients:0.9.0.2', // Internal LinkedIn release
                   netty: 'io.netty:netty-all:4.0.33.Final',
                   zkclient: 'com.101tec:zkclient:0.7', //for Kafka AdminUtils
-                  router: 'com.linkedin.dds-storage-core:dds-storage-router-api:0.0.34',
+
+                  router_api: 'com.linkedin.dds-storage-core:dds-storage-router-api:0.0.34',
+                  router_impl: 'com.linkedin.dds-storage-core:dds-storage-router-impl:0.0.34',
                   http_client: 'org.apache.httpcomponents:httpasyncclient:4.1.1',
 
                   // Hadoop to Venice Bridge dependencies
@@ -30,6 +32,9 @@ ext.libraries = [ // Groovy map literal
                   metricsCore: 'com.yammer.metrics:metrics-core:2.2.1',
                   snappy: 'org.xerial.snappy:snappy-java:1.0.4.1',
                   testng: 'org.testng:testng:6.1.1'
+
+
+
 ]
 
 subprojects {

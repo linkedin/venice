@@ -5,7 +5,7 @@ import com.linkedin.venice.server.StoreRepository;
 import io.netty.channel.ChannelHandler;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
-import java.util.concurrent.ExecutorService;
+import io.netty.handler.codec.http.HttpResponseStatus;
 import java.util.concurrent.ThreadPoolExecutor;
 
 
@@ -15,24 +15,16 @@ import java.util.concurrent.ThreadPoolExecutor;
  * writes the value (as a byte[]) back down the stack
  */
 @ChannelHandler.Sharable
-public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
+public class ErrorCatchingHandler extends ChannelInboundHandlerAdapter {
 
-  private final ExecutorService executor;
-  private StoreRepository storeRepository;
-
-  public StorageExecutionHandler(ExecutorService executor, StoreRepository storeRepository) {
-    if (executor == null) {
-      throw new IllegalArgumentException("StorageExecutionHandler created with null executor");
-    }
-    this.executor = executor;
-    this.storeRepository = storeRepository;
+  @Override
+  public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) {
+    ctx.writeAndFlush(new HttpError(cause.getMessage(), HttpResponseStatus.INTERNAL_SERVER_ERROR));
+    ctx.close();
   }
 
   @Override
   public void channelRead(ChannelHandlerContext context, Object message) throws Exception {
-    if(message instanceof GetRequestObject) {
-      executor.execute(new StorageWorkerThread(context, (GetRequestObject) message, storeRepository));
-    }
   }
 
 }
