@@ -3,7 +3,7 @@ package com.linkedin.venice.controller.server;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.StoreCreationResponse;
-import com.linkedin.venice.utils.PortUtils;
+import com.linkedin.venice.integration.utils.PortUtils;
 import org.mockito.Mockito;
 import static org.mockito.Mockito.*;
 

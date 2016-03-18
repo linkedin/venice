@@ -1,12 +1,8 @@
 package com.linkedin.venice.utils;
 
 import com.linkedin.venice.exceptions.UndefinedPropertyException;
-import java.io.BufferedInputStream;
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileNotFoundException;
-import java.io.IOException;
-import java.io.InputStream;
+
+import java.io.*;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.HashMap;
@@ -121,6 +117,10 @@ public class Props implements Map<String, String> {
     return props.put(key, value.toString());
   }
 
+  public String put(String key, Boolean value) {
+    return props.put(key, value.toString());
+  }
+
   public Props with(String key, String value) {
     put(key, value);
     return this;
@@ -131,12 +131,17 @@ public class Props implements Map<String, String> {
     return this;
   }
 
+  public Props with(String key, Long value) {
+    put(key, value);
+    return this;
+  }
+
   public Props with(String key, Double value) {
     put(key, value);
     return this;
   }
 
-  public Props with(String key, Long value) {
+  public Props with(String key, Boolean value) {
     put(key, value);
     return this;
   }
@@ -311,5 +316,34 @@ public class Props implements Map<String, String> {
       throw new UndefinedPropertyException(key);
     }
     return getList(key, null);
+  }
+
+  /**
+   * Store all properties in a file
+   *
+   * @param file to store into
+   * @throws IOException If there is an error writing
+   */
+  public void storeFlattened(File file) throws IOException {
+    try (BufferedOutputStream out = new BufferedOutputStream(new FileOutputStream(file))) {
+      storeFlattened(out);
+    }
+  }
+
+  /**
+   * Store all properties to an {@link java.io.OutputStream}
+   *
+   * @param out The stream to write to
+   * @throws IOException If there is an error writing
+   */
+  public void storeFlattened(OutputStream out) throws IOException {
+    Properties p = new Properties();
+    for (String key : keySet()) {
+      if (!p.containsKey(key)) {
+        p.setProperty(key, get(key));
+      }
+    }
+
+    p.store(out, null);
   }
 }

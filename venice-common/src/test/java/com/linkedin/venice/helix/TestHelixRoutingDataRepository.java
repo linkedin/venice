@@ -1,15 +1,16 @@
 package com.linkedin.venice.helix;
 
+import com.linkedin.venice.integration.utils.InstanceWrapper;
+import com.linkedin.venice.integration.utils.ServiceFactory;
+import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.Partition;
-import com.linkedin.venice.utils.PortUtils;
-import com.linkedin.venice.utils.Utils;
+import com.linkedin.venice.utils.*;
 
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-import com.linkedin.venice.utils.ZkServerWrapper;
 import org.apache.helix.HelixAdmin;
 import org.apache.helix.HelixDefinedState;
 import org.apache.helix.HelixManager;
@@ -58,10 +59,8 @@ public class TestHelixRoutingDataRepository {
   @BeforeMethod
   public void HelixSetup()
       throws Exception {
-    zkServerWrapper = ZkServerWrapper.getZkServer();
-    zkAddress = zkServerWrapper.getZkAddress();
-    httpPort = PortUtils.getFreePort();
-    adminPort = PortUtils.getFreePort();
+    zkServerWrapper = ServiceFactory.getZkServer();
+    zkAddress = zkServerWrapper.getAddress();
     admin = new ZKHelixAdmin(zkAddress);
     admin.addCluster(clusterName);
     HelixConfigScope configScope = new HelixConfigScopeBuilder(HelixConfigScope.ConfigScopeProperty.CLUSTER).
@@ -78,11 +77,14 @@ public class TestHelixRoutingDataRepository {
     controller = HelixControllerMain
         .startHelixController(zkAddress, clusterName, "UnitTestController", HelixControllerMain.STANDALONE);
 
-    String nodeId = Utils.getHostName() + "_" + httpPort;
+    InstanceWrapper instanceWrapper = ServiceFactory.getInstance();
+    String nodeId = instanceWrapper.getNodeId(); // Utils.getHostName() + "_" + httpPort;
+    httpPort = instanceWrapper.getPort();
+    adminPort = instanceWrapper.getAdminPort();
     manager = HelixManagerFactory.getZKHelixManager(clusterName, nodeId, InstanceType.PARTICIPANT, zkAddress);
     manager.getStateMachineEngine()
         .registerStateModelFactory(UnitTestStateModel.UNIT_TEST_STATE_MODEL, new UnitTestStateModelFactory());
-    Instance instance = new Instance(nodeId, Utils.getHostName(), adminPort, httpPort);
+    Instance instance = instanceWrapper.getInstance(); // new Instance(nodeId, Utils.getHostName(), adminPort, httpPort);
     manager.setLiveInstanceInfoProvider(new LiveInstanceInfoProvider() {
       @Override
       public ZNRecord getAdditionalLiveInstanceInfo() {

@@ -24,7 +24,11 @@ jar {
 }
 
 dependencies {
-  compile libraries.helix
+  compile(libraries.helix) {
+    // Helix pulls in an ancient version of the zkclient, which lacks some APIs and clashes with Kafka's dependency
+    exclude group: 'com.github.sgroschupf'
+  }
+  compile libraries.zkclient // It's necessary to pull in the most recent version of zkclient explicitly, otherwise Helix won't have it...
   compile libraries.bdbJe
   compile libraries.netty
   compile libraries.http_client
@@ -32,9 +36,8 @@ dependencies {
   compile project(':venice-common')
   compile project(':venice-controller')
 
-  //Note: we get org.jboss.netty:netty:3.2.1.Final from venice-common's dependency on avro:avro:1.4.1
-
   testCompile project(':venice-client')
+  testCompile project(':venice-common').sourceSets.test.output
   testCompile 'commons-io:commons-io:2.4'
 
 }

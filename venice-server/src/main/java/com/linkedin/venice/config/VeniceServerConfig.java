@@ -1,7 +1,7 @@
 package com.linkedin.venice.config;
 
+import static com.linkedin.venice.ConfigKeys.*;
 import com.linkedin.venice.exceptions.ConfigurationException;
-import com.linkedin.venice.server.VeniceConfigService;
 import com.linkedin.venice.store.bdb.BdbServerConfig;
 import com.linkedin.venice.utils.Props;
 
@@ -12,8 +12,8 @@ import com.linkedin.venice.utils.Props;
 public class VeniceServerConfig extends VeniceClusterConfig {
 
   private int nodeId;
-  private String listenerPort;
-  private String adminPort;
+  private int listenerPort;
+  private int adminPort;
   protected BdbServerConfig bdbServerConfig;
 
   private static final String VENICE_NODE_ID_VAR_NAME = "VENICE_NODE_ID";
@@ -27,22 +27,22 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   }
 
   private void verifyProperties(Props serverProps) {
-    if (serverProps.containsKey(VeniceConfigService.NODE_ID)) {
-      nodeId = serverProps.getInt(VeniceConfigService.NODE_ID);
+    if (serverProps.containsKey(NODE_ID)) {
+      nodeId = serverProps.getInt(NODE_ID);
     } else {
       nodeId = getIntEnvVariable(VENICE_NODE_ID_VAR_NAME);
     }
-    if (serverProps.containsKey(VeniceConfigService.LISTENER_PORT)) {
-      listenerPort = Integer.toString(serverProps.getInt(VeniceConfigService.LISTENER_PORT));
+    if (serverProps.containsKey(LISTENER_PORT)) {
+      listenerPort = serverProps.getInt(LISTENER_PORT);
     } else {
-      listenerPort = Integer.toString(getIntEnvVariable(VENICE_NODE_PORT_VAR_NAME));
+      listenerPort = getIntEnvVariable(VENICE_NODE_PORT_VAR_NAME);
     }
-    if (serverProps.containsKey(VeniceConfigService.ADMIN_PORT)) {
-      adminPort = Integer.toString(serverProps.getInt(VeniceConfigService.ADMIN_PORT));
+    if (serverProps.containsKey(ADMIN_PORT)) {
+      adminPort = serverProps.getInt(ADMIN_PORT);
     } else {
-      adminPort = Integer.toString(getIntEnvVariable(VENICE_NODE_ADMIN_PORT_VAR_NAME));
+      adminPort = getIntEnvVariable(VENICE_NODE_ADMIN_PORT_VAR_NAME);
     }
-    dataBasePath = serverProps.getString(VeniceConfigService.DATA_BASE_PATH);
+    dataBasePath = serverProps.getString(DATA_BASE_PATH);
 
     /* TODO: this is basically bdb environment settings. We can make it tunable for each environment.
      * In current implementation, all environments share same settings. Need further discussion on this.
@@ -75,11 +75,11 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     return nodeId;
   }
 
-  public String getListenerPort() {
+  public int getListenerPort() {
     return listenerPort;
   }
 
-  public String getAdminPort(){
+  public int getAdminPort(){
     return adminPort;
   }
 

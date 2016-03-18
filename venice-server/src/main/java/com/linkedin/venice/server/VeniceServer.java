@@ -61,13 +61,11 @@ public class VeniceServer {
     List<AbstractVeniceService> services = new ArrayList<AbstractVeniceService>();
 
     // create and add StorageService. storeRepository will be populated by StorageService,
-    storageService =
-        new StorageService(storeRepository, veniceConfigService, partitionAssignmentRepository);
+    storageService = new StorageService(storeRepository, veniceConfigService, partitionAssignmentRepository);
     services.add(storageService);
     storeRepository.setStorageService(storageService);
 
-    // Create and add OffSet Serfice.
-
+    // Create and add Offset Service.
     BdbOffsetManager offSetService = new BdbOffsetManager(veniceConfigService.getVeniceClusterConfig());
     services.add(offSetService);
 
@@ -82,8 +80,8 @@ public class VeniceServer {
       HelixParticipationService helixParticipationService =
           new HelixParticipationService(kafkaConsumerService, storeRepository, veniceConfigService,
               clusterConfig.getZookeeperAddress(), clusterConfig.getClusterName(),
-              Integer.valueOf(veniceConfigService.getVeniceServerConfig().getListenerPort()),
-              Integer.valueOf(veniceConfigService.getVeniceServerConfig().getAdminPort()));
+              veniceConfigService.getVeniceServerConfig().getListenerPort(),
+              veniceConfigService.getVeniceServerConfig().getAdminPort());
       services.add(helixParticipationService);
     } else {
       // Note: Only required when NOT using Helix.

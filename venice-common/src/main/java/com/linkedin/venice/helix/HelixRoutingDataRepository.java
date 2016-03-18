@@ -139,6 +139,7 @@ public class HelixRoutingDataRepository extends RoutingTableProvider implements 
             if (!resourceToNumberOfPartitionsMap.containsKey(resourceName)) {
                 String errorMessage = "Resource '" + resourceName + "' does not exist";
                 logger.warn(errorMessage);
+        // TODO: Might want to add some (configurable) retries here or higher up the stack. If the Helix spectator is out of sync, this fails...
                 throw new IllegalArgumentException(errorMessage);
             }
             return resourceToNumberOfPartitionsMap.get(resourceName);

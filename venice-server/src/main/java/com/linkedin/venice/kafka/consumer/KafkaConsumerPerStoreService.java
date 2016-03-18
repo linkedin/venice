@@ -12,10 +12,8 @@ import com.linkedin.venice.server.VeniceConfigService;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.Utils;
-import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.Queue;
@@ -25,6 +23,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+
 import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.log4j.Logger;
@@ -91,9 +90,12 @@ public class KafkaConsumerPerStoreService extends AbstractVeniceService implemen
 
   /**
    * Initializes internal kafka producer for acknowledging kafka message consumption (if enabled)
+   *
+   * TODO: Get rid of this function
    */
   private static Properties getAcksKafkaProducerProperties(VeniceServerConfig veniceServerConfig) {
     Properties properties = new Properties();
+    // TODO: Use constants from Kafka code (these are the old producer's config anyway...)
     properties.setProperty("metadata.broker.list", veniceServerConfig.getKafkaConsumptionAcksBrokerUrl());
     properties.setProperty("request.required.acks", "1");
     properties.setProperty("producer.type", "sync");

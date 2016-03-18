@@ -9,7 +9,8 @@ import com.linkedin.venice.job.ExecutionStatus;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
-import com.linkedin.venice.utils.ZkServerWrapper;
+import com.linkedin.venice.integration.utils.ServiceFactory;
+import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import org.apache.helix.manager.zk.ZkClient;
 import org.testng.Assert;
 import org.testng.annotations.AfterMethod;
@@ -32,8 +33,8 @@ public class TestVeniceJobManager {
 
   @BeforeMethod
   public void setup() {
-    zkServerWrapper = ZkServerWrapper.getZkServer();
-    zkAddress = zkServerWrapper.getZkAddress();
+    zkServerWrapper = ServiceFactory.getZkServer();
+    zkAddress = zkServerWrapper.getAddress();
     zkClient = new ZkClient(zkAddress);
     zkClient.createPersistent("/" + cluster + "stores");
     jobRepository = new HelixJobRepository();

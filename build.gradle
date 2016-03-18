@@ -16,6 +16,7 @@ ext.libraries = [ // Groovy map literal
                   router_api: 'com.linkedin.dds-storage-core:dds-storage-router-api:0.0.34',
                   router_impl: 'com.linkedin.dds-storage-core:dds-storage-router-impl:0.0.34',
                   http_client: 'org.apache.httpcomponents:httpasyncclient:4.1.1',
+                  zookeeper: 'org.apache.zookeeper:zookeeper:3.4.6',
 
                   // Hadoop to Venice Bridge dependencies
                   avroTools: 'org.apache.avro:avro-tools:1.4.0', // N.B.: 1.4.1 does not exist, hence the discrepancy
@@ -72,6 +73,11 @@ subprojects {
       downloadJavadoc = true
       downloadSources = true
     }
+  }
+
+  test {
+    // Tests should run in parallel
+    maxParallelForks 10
   }
 }
 

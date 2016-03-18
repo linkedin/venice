@@ -28,7 +28,7 @@ public class ListenerService extends AbstractVeniceService{
 
   public ListenerService(StoreRepository storeRepository, VeniceConfigService veniceConfigService) {
     super("listener-service");
-    this.port = Integer.parseInt(veniceConfigService.getVeniceServerConfig().getListenerPort());
+    this.port = veniceConfigService.getVeniceServerConfig().getListenerPort();
 
     //TODO: configurable worker group
     bossGroup = new NioEventLoopGroup(1);
