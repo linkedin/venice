@@ -32,9 +32,6 @@ ext.libraries = [ // Groovy map literal
                   metricsCore: 'com.yammer.metrics:metrics-core:2.2.1',
                   snappy: 'org.xerial.snappy:snappy-java:1.0.4.1',
                   testng: 'org.testng:testng:6.1.1'
-
-
-
 ]
 
 subprojects {
