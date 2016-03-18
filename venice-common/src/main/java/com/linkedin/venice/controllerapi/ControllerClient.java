@@ -5,15 +5,12 @@ import java.io.ByteArrayInputStream;
 import java.io.Closeable;
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.UnsupportedEncodingException;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ExecutionException;
 import org.apache.commons.io.IOUtils;
-import org.apache.http.Header;
 import org.apache.http.HttpHeaders;
 import org.apache.http.HttpResponse;
 import org.apache.http.NameValuePair;
@@ -22,6 +19,7 @@ import org.apache.http.client.methods.HttpPost;
 import org.apache.http.impl.nio.client.CloseableHttpAsyncClient;
 import org.apache.http.impl.nio.client.HttpAsyncClients;
 import org.apache.http.message.BasicNameValuePair;
+import org.apache.log4j.Logger;
 import org.codehaus.jackson.map.ObjectMapper;
 import org.codehaus.jackson.type.TypeReference;
 
@@ -34,6 +32,7 @@ public class ControllerClient implements Closeable {
   private String controller;
 
   private final static ObjectMapper mapper = new ObjectMapper();
+  private final static Logger logger = Logger.getLogger(ControllerClient.class.getName());
 
   public ControllerClient(String controllerHost, int controllerPort){
     client = HttpAsyncClients.createDefault();
@@ -45,7 +44,9 @@ public class ControllerClient implements Closeable {
     try {
       client.close();
     } catch (IOException e) {
-      throw new VeniceException("Error closing the controller client", e);
+      String msg = "Error closing the controller client";
+      logger.error(msg, e);
+      throw new VeniceException(msg, e);
     }
   }
 
@@ -70,9 +71,12 @@ public class ControllerClient implements Closeable {
         int replicas = (int) responseMap.get(ControllerApiConstants.REPLICAS);
         return new StoreCreationResponse(storeName, version, owner, partitions, replicas);
       } else { //non JSON response
-        throw new VeniceException("Controller returns with content-type " + contentType + ": " + responseBody);
+        String msg = "For store: " + storeName + ", controller returns with content-type " + contentType + ": " + responseBody;
+        logger.error(msg);
+        throw new VeniceException(msg);
       }
     } catch (Exception e) {
+      logger.error(e);
       throw new VeniceException(e);
     }
   }
