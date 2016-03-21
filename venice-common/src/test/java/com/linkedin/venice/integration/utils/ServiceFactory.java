@@ -78,10 +78,6 @@ public class ServiceFactory {
     return getService(VeniceClusterWrapper.SERVICE_NAME, VeniceClusterWrapper.generateService());
   }
 
-  public static InstanceWrapper getInstance() {
-    return getService(InstanceWrapper.SERVICE_NAME, InstanceWrapper.generateService());
-  }
-
   private static <S extends ProcessWrapper> S getStatefulService(String serviceName, StatefulServiceProvider<S> serviceProvider) {
     return getService(serviceName, serviceProvider);
   }
