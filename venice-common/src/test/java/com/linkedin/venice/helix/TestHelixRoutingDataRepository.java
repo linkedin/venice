@@ -76,8 +76,8 @@ public class TestHelixRoutingDataRepository {
         .startHelixController(zkAddress, clusterName, "UnitTestController", HelixControllerMain.STANDALONE);
 
 
-    httpPort = PortUtils.getFreePort(); //port never actually used
-    adminPort = PortUtils.getFreePort(); //port never actually used
+    httpPort = 50000 + (int)(System.currentTimeMillis() % 10000); //port never actually used
+    adminPort = 50000 + (int)(System.currentTimeMillis() % 10000); //port never actually used
     String nodeId = Utils.getHostName() + "_" + httpPort;
 
     manager = HelixManagerFactory.getZKHelixManager(clusterName, nodeId, InstanceType.PARTICIPANT, zkAddress);
