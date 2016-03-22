@@ -4,9 +4,9 @@ package com.linkedin.venice.listener;
  * Created by mwise on 3/22/16.
  */
 public class StorageResponseObject {
-  private byte[] value;
+  private final byte[] value;
   // The latest offset the storage node has seen for the requested partition
-  private long offset;
+  private final long offset;
 
   public StorageResponseObject(byte[] value, long offset){
     this.value = value;

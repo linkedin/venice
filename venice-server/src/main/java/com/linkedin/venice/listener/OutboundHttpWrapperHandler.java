@@ -14,6 +14,7 @@ import java.nio.charset.StandardCharsets;
 
 import static io.netty.handler.codec.http.HttpHeaders.Names.CONTENT_LENGTH;
 import static io.netty.handler.codec.http.HttpHeaders.Names.CONTENT_TYPE;
+import static io.netty.handler.codec.http.HttpResponseStatus.INTERNAL_SERVER_ERROR;
 import static io.netty.handler.codec.http.HttpResponseStatus.OK;
 import static io.netty.handler.codec.http.HttpVersion.HTTP_1_1;
 
@@ -40,7 +41,10 @@ public class OutboundHttpWrapperHandler extends ChannelOutboundHandlerAdapter {
       responseStatus = ((HttpError) msg).getStatus();
       body = Unpooled.wrappedBuffer(((HttpError) msg).getMessage().getBytes(StandardCharsets.UTF_8));
       contentType = HttpConstants.TEXT_PLAIN;
-    } else { return; }
+    } else {
+      responseStatus = INTERNAL_SERVER_ERROR;
+      body = Unpooled.wrappedBuffer("Unrecognized object in OutboundHttpWrapperHandler".getBytes(StandardCharsets.UTF_8));
+    }
     FullHttpResponse response = new DefaultFullHttpResponse(HTTP_1_1, responseStatus, body);
     response.headers().set(CONTENT_TYPE, contentType);
     response.headers().set(CONTENT_LENGTH, body.readableBytes());
