@@ -5,13 +5,11 @@ import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.Partition;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import org.apache.avro.generic.GenericData;
 
 
 /**
@@ -84,7 +82,50 @@ public class OfflineJob extends Job {
     return changedPartitions;
   }
 
-  //TODO Sync up nodes map in real-time to handle the cases like node failed, new node is assigned etc.
+  /**
+   * The transition of Job state machine:
+   * <p>
+   * <ul> <li>NEW->STARTED</li> <li>STARTED->COMPLETED</li> <li>STARTED->ERROR</li> <li>COMPLETED->ARCHIVED</li>
+   * <li>ERROR->ARCHIVED</li> </ul>
+   */
+  @Override
+  public void verifyNewJobStatus(ExecutionStatus status) {
+    boolean isValid = true;
+    switch (this.getStatus()) {
+      case NEW:
+        if (!status.equals(ExecutionStatus.STARTED)) {
+          isValid = false;
+        }
+        break;
+      case STARTED:
+        if (!status.equals(ExecutionStatus.COMPLETED) && !status.equals(ExecutionStatus.ERROR)) {
+          isValid = false;
+        }
+        break;
+      case COMPLETED:
+        //Same to ERROR status.
+      case ERROR:
+        if (!status.equals(ExecutionStatus.ARCHIVED)) {
+          isValid = false;
+        }
+        break;
+      case ARCHIVED:
+        isValid = false;
+        break;
+      default:
+        throw new VeniceException("Invalid job status:" + this.getStatus().toString());
+    }
+    if (!isValid) {
+      throw new VeniceException(
+          "Job is " + this.getStatus().toString() + " can not be update to status:" + status.toString());
+    }
+  }
+
+  /**
+   * Check all of tasks' status to see whether the job is completed/error or still running.
+   *
+   * @return
+   */
   public ExecutionStatus checkJobStatus() {
     //Only check the status of running job.
     if (!this.getStatus().equals(ExecutionStatus.STARTED)) {
@@ -114,7 +155,7 @@ public class OfflineJob extends Job {
   }
 
   /**
-   * Update the status of taks.
+   * Update the status of task.
    *
    * @param task
    */
@@ -132,8 +173,8 @@ public class OfflineJob extends Job {
    * <p>
    * The transitions of state machine:
    * <p>
-   * <ul> <li>NEW->STARTED</li> <li>STARTED->PROGRESS</li><li>STARTED->COMPLETE</li><li>STARTED->ERROR</li><li>PROGRESS->COMPLETED</li><li>PROGRESS->ERROR</li>
-   * </ul>
+   * <ul><li>NEW->STARTED</li><li>STARTED->PROGRESS</li><li>STARTED->COMPLETE</li><li>STARTED->ERROR</li>
+   * <li>PROGRESS->COMPLETED</li> <li>PROGRESS->ERROR</li></ul>
    *
    * @param task
    */
@@ -146,17 +187,35 @@ public class OfflineJob extends Job {
     if (oldTask == null) {
       throw new VeniceException("Can not find task:" + task.getTaskId());
     }
-    if (task.getStatus().equals(ExecutionStatus.STARTED)) {
-      if (!oldTask.getStatus().equals(ExecutionStatus.NEW)) {
-        throw new VeniceException("Task:" + task.getTaskId() + " is already started");
-      }
-    } else {
-      if (oldTask.getStatus().equals(ExecutionStatus.NEW)) {
-        throw new VeniceException("Task should be started at first.");
-      }
-      if (oldTask.getStatus().equals(ExecutionStatus.COMPLETED) || oldTask.getStatus().equals(ExecutionStatus.ERROR)) {
-        throw new VeniceException("Can not update a terminated task:" + task.getTaskId());
-      }
+    boolean isValid = true;
+    switch (oldTask.getStatus()) {
+      case NEW:
+        if (!task.getStatus().equals(ExecutionStatus.STARTED)) {
+          isValid = false;
+        }
+        break;
+      case STARTED:
+        if (!task.getStatus().equals(ExecutionStatus.PROGRESS) && !task.getStatus().equals(ExecutionStatus.COMPLETED)
+            && !task.getStatus().equals(ExecutionStatus.ERROR)) {
+          isValid = false;
+        }
+        break;
+      case PROGRESS:
+        if (!task.getStatus().equals(ExecutionStatus.COMPLETED) && !task.getStatus().equals(ExecutionStatus.ERROR)) {
+          isValid = false;
+        }
+        break;
+      case COMPLETED:
+        //Same to Error
+      case ERROR:
+        isValid = false;
+        break;
+      default:
+        throw new VeniceException("Invalid task status:" + oldTask.getStatus().toString());
+    }
+    if (!isValid) {
+      throw new VeniceException(
+          "Task is " + oldTask.getStatus().toString() + " can not be update to status:" + task.getStatus().toString());
     }
   }
 

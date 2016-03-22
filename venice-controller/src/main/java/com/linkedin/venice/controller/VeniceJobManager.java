@@ -15,9 +15,11 @@ import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.stream.Collectors;
 import org.apache.log4j.Logger;
 
 
@@ -38,17 +40,35 @@ public class VeniceJobManager implements ControlMessageHandler<StatusUpdateMessa
     this.metadataRepository = metadataRepository;
   }
 
-  public void startOfflineJob(String kafkaTopic, int numberOfPartition, int replicaFactor) {
+  public synchronized void startOfflineJob(String kafkaTopic, int numberOfPartition, int replicaFactor) {
     OfflineJob job = new OfflineJob(this.generateJobId(), kafkaTopic, numberOfPartition, replicaFactor);
     jobRepository.startJob(job);
   }
 
+  public synchronized ExecutionStatus getOfflineJobStatus(String kafkaTopic) {
+    List<Job> jobs;
+    try {
+      jobs = jobRepository.getRunningJobOfTopic(kafkaTopic);
+    } catch (VeniceException e) {
+      //Can not find job in running jobs. Then find it in terminated jobs.
+      jobs = jobRepository.getTerminatedJobOfTopic(kafkaTopic);
+    }
+    if (jobs.size() > 1) {
+      throw new VeniceException(
+          "There should be only one job for each kafka topic. But now there are:" + jobs.size() + " jobs running.");
+    }
+
+    Job job = jobs.get(0);
+    return job.getStatus();
+  }
+
   @Override
   public void handleMessage(StatusUpdateMessage message) {
-    synchronized (jobRepository) {
+    List<Job> jobs = jobRepository.getRunningJobOfTopic(message.getKafkaTopic());
+    // We should avoid update tasks in same kafka topic in the same time. Different kafka topics could be accessed concurrently.
+    synchronized (jobs) {
       // TODO Right now, for offline-push, there is only one job running for each version. Should be change to get job
       // by job Id when H2V can get job Id and send it thourgh kafka control message.
-      List<Job> jobs = jobRepository.getRunningJobOfTopic(message.getKafkaTopic());
       if (jobs.size() > 1) {
         throw new VeniceException(
             "There should be only one job running for each kafka topic. But now there are:" + jobs.size()
@@ -64,7 +84,7 @@ public class VeniceJobManager implements ControlMessageHandler<StatusUpdateMessa
       Task task =
           new Task(job.generateTaskId(message.getPartitionId(), message.getInstanceId()), message.getPartitionId(),
               message.getInstanceId(), message.getStatus());
-      jobRepository.updateTaskStatus(job.getJobId(), task);
+      jobRepository.updateTaskStatus(job.getJobId(), job.getKafkaTopic(), task);
       logger.info("Update status of Task:" + task.getTaskId() + " to status:" + task.getStatus());
       //Check the job status after updating task status to see is the whole job completed or error.
       ExecutionStatus status = job.checkJobStatus();
@@ -85,18 +105,25 @@ public class VeniceJobManager implements ControlMessageHandler<StatusUpdateMessa
     store.updateVersionStatus(versionNumber, VersionStatus.ACTIVE);
     store.setCurrentVersion(versionNumber);
     metadataRepository.updateStore(store);
-    jobRepository.stopJob(job.getJobId());
-    //TODO Archive job regularly instead of archive it immediately after being stopped.
-    jobRepository.archiveJob(job.getJobId());
-    //Un-subscribe the nodes change when job have been done.
+    jobRepository.stopJob(job.getJobId(), job.getKafkaTopic());
   }
 
   private void handleJobError(Job job) {
     //TODO do the roll back here.
-    jobRepository.stopJobWithError(job.getJobId());
-    //TODO Archive job regularly instead of archive it immediately after being stopped.
-    jobRepository.archiveJob(job.getJobId());
-    //Un-subscribe the nodes change when job have been done.
+    jobRepository.stopJobWithError(job.getJobId(), job.getKafkaTopic());
+  }
+
+  /**
+   * When the version is retired, archive related jobs.
+   *
+   * @param kafkaTopic
+   */
+  public synchronized void archiveJobs(String kafkaTopic) {
+    List<Job> jobs = jobRepository.getTerminatedJobOfTopic(kafkaTopic);
+    List<Long> jobIds = jobs.stream().map(Job::getJobId).collect(Collectors.toList());
+    for(Long jobId:jobIds) {
+      jobRepository.archiveJob(jobId, kafkaTopic);
+    }
   }
 
   /**

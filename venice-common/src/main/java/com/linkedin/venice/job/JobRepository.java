@@ -18,19 +18,21 @@ public interface JobRepository {
    */
   public List<Job> getRunningJobOfTopic(String kafkaTopic);
 
-  public void archiveJob(long jobId);
+  public List<Job> getTerminatedJobOfTopic(String kafkaTopic);
 
-  public void updateTaskStatus(long jobId, Task task);
+  public void archiveJob(long jobId, String kafkaTopic);
 
-  public void stopJob(long jobId);
+  public void updateTaskStatus(long jobId, String kafkaTopic, Task task);
 
-  public void stopJobWithError(long jobId);
+  public void stopJob(long jobId, String kafkaTopic);
+
+  public void stopJobWithError(long jobId, String kafkaTopic);
 
   public void startJob(Job job);
 
-  public ExecutionStatus getJobStatus(long jobId);
+  public ExecutionStatus getJobStatus(long jobId, String kafkaTopic);
 
-  public Job getJob(long jobId);
+  public Job getJob(long jobId, String kafkaTopic);
 
   public void clear();
 }

@@ -135,10 +135,12 @@ public class TestVeniceJobManager {
     metadataRepository.addStore(store);
     jobManager.startOfflineJob(version.kafkaTopicName(), 1, 1);
 
-    StatusUpdateMessage message = new StatusUpdateMessage(1, version.kafkaTopicName(), 0, nodeId, ExecutionStatus.STARTED);
+    StatusUpdateMessage message =
+        new StatusUpdateMessage(1, version.kafkaTopicName(), 0, nodeId, ExecutionStatus.STARTED);
     jobManager.handleMessage(message);
     Job job = jobRepository.getRunningJobOfTopic(version.kafkaTopicName()).get(0);
-    Assert.assertEquals(jobRepository.getJobStatus(job.getJobId()), ExecutionStatus.STARTED, "Job should be started.");
+    Assert.assertEquals(jobRepository.getJobStatus(job.getJobId(), job.getKafkaTopic()), ExecutionStatus.STARTED,
+        "Job should be started.");
 
     message = new StatusUpdateMessage(1, version.kafkaTopicName(), 0, nodeId, ExecutionStatus.COMPLETED);
     jobManager.handleMessage(message);
@@ -150,8 +152,9 @@ public class TestVeniceJobManager {
 
     Assert.assertEquals(updatedStore.getVersions().get(0).getStatus(), VersionStatus.ACTIVE,
         "Push has been done. Version should be activated.");
+    jobManager.archiveJobs(version.kafkaTopicName());
     try {
-      jobRepository.getJob(job.getJobId());
+      jobRepository.getJob(job.getJobId(), job.getKafkaTopic());
       Assert.fail("Job should be archived.");
     } catch (VeniceException e) {
       //expected.
@@ -164,10 +167,12 @@ public class TestVeniceJobManager {
     metadataRepository.addStore(store);
     jobManager.startOfflineJob(version.kafkaTopicName(), 1, 1);
 
-    StatusUpdateMessage message = new StatusUpdateMessage(1, version.kafkaTopicName(), 0, nodeId, ExecutionStatus.STARTED);
+    StatusUpdateMessage message =
+        new StatusUpdateMessage(1, version.kafkaTopicName(), 0, nodeId, ExecutionStatus.STARTED);
     jobManager.handleMessage(message);
     Job job = jobRepository.getRunningJobOfTopic(version.kafkaTopicName()).get(0);
-    Assert.assertEquals(jobRepository.getJobStatus(job.getJobId()), ExecutionStatus.STARTED, "Job should be started.");
+    Assert.assertEquals(jobRepository.getJobStatus(job.getJobId(), job.getKafkaTopic()), ExecutionStatus.STARTED,
+        "Job should be started.");
 
     message = new StatusUpdateMessage(1, version.kafkaTopicName(), 0, nodeId, ExecutionStatus.ERROR);
     jobManager.handleMessage(message);
@@ -178,12 +183,46 @@ public class TestVeniceJobManager {
         "Push was failed. No current version is active for this store.");
     Assert.assertEquals(updatedStore.getVersions().get(0).getStatus(), VersionStatus.INACTIVE,
         "Push was failed. Version should not be activated.");
-
+    jobManager.archiveJobs(version.kafkaTopicName());
     try {
-      jobRepository.getJob(job.getJobId());
+      jobRepository.getJob(job.getJobId(), job.getKafkaTopic());
       Assert.fail("Job should be archived.");
     } catch (VeniceException e) {
       //expected.
     }
+  }
+
+  @Test
+  public void testGetOfflineJobStatus() {
+    metadataRepository.addStore(store);
+    jobManager.startOfflineJob(version.kafkaTopicName(), 1, 1);
+    Assert.assertEquals(jobManager.getOfflineJobStatus(version.kafkaTopicName()), ExecutionStatus.STARTED,
+        "Job should be started.");
+
+    StatusUpdateMessage message =
+        new StatusUpdateMessage(1, version.kafkaTopicName(), 0, nodeId, ExecutionStatus.STARTED);
+    jobManager.handleMessage(message);
+
+    message = new StatusUpdateMessage(1, version.kafkaTopicName(), 0, nodeId, ExecutionStatus.COMPLETED);
+    jobManager.handleMessage(message);
+
+    Assert.assertEquals(jobManager.getOfflineJobStatus(version.kafkaTopicName()), ExecutionStatus.COMPLETED);
+  }
+
+  @Test
+  public void testGetOfflineJobStatusWhenTaskFailed() {
+    metadataRepository.addStore(store);
+    jobManager.startOfflineJob(version.kafkaTopicName(), 1, 1);
+    Assert.assertEquals(jobManager.getOfflineJobStatus(version.kafkaTopicName()), ExecutionStatus.STARTED,
+        "Job should be started.");
+
+    StatusUpdateMessage message =
+        new StatusUpdateMessage(1, version.kafkaTopicName(), 0, nodeId, ExecutionStatus.STARTED);
+    jobManager.handleMessage(message);
+
+    message = new StatusUpdateMessage(1, version.kafkaTopicName(), 0, nodeId, ExecutionStatus.ERROR);
+    jobManager.handleMessage(message);
+
+    Assert.assertEquals(jobManager.getOfflineJobStatus(version.kafkaTopicName()), ExecutionStatus.ERROR);
   }
 }

@@ -8,6 +8,7 @@ import com.linkedin.venice.helix.HelixCachedMetadataRepository;
 import com.linkedin.venice.helix.HelixControlMessageChannel;
 import com.linkedin.venice.helix.HelixJobRepository;
 import com.linkedin.venice.helix.HelixRoutingDataRepository;
+import com.linkedin.venice.job.ExecutionStatus;
 import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
@@ -137,7 +138,7 @@ public class VeniceHelixAdmin implements Admin {
                 handleStoreDoseNotExist(clusterName, storeName);
             }
             if(store.containsVersion(versionNumber)){
-                handleVersionAlreadyExists(storeName,versionNumber);
+                handleVersionAlreadyExists(storeName, versionNumber);
             }
             version = new Version(storeName,versionNumber,System.currentTimeMillis());
             store.addVersion(version);
@@ -251,8 +252,7 @@ public class VeniceHelixAdmin implements Admin {
     public synchronized void stop(String clusterName) {
         HelixManager helixManager = helixManagers.remove(clusterName);
         if(helixManager == null) {
-            logger.info("Cluster " + clusterName + " does not start, skipping stop");
-            return;
+            handleClusterNotInitialized(clusterName);
         }
         helixManager.disconnect();
         HelixCachedMetadataRepository repository = repositories.remove(clusterName);;
@@ -261,6 +261,15 @@ public class VeniceHelixAdmin implements Admin {
         ((HelixRoutingDataRepository)jobRepository.getRoutingDataRepository()).clear();
         jobRepository.clear();
         configs.remove(clusterName);
+    }
+
+    @Override
+    public ExecutionStatus getOffLineJobStatus(String clusterName, String kafkaTopic) {
+        VeniceJobManager jobManager = jobManagers.get(clusterName);
+        if(jobManager == null){
+            handleClusterNotInitialized(clusterName);
+        }
+        return jobManager.getOfflineJobStatus(kafkaTopic);
     }
 
     private void createClusterIfRequired(String clusterName) {

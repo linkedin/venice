@@ -1,8 +1,8 @@
 package com.linkedin.venice.helix;
 
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.job.Job;
 import com.linkedin.venice.job.ExecutionStatus;
+import com.linkedin.venice.job.Job;
 import com.linkedin.venice.job.JobRepository;
 import com.linkedin.venice.job.OfflineJob;
 import com.linkedin.venice.job.Task;
@@ -23,17 +23,15 @@ import org.apache.log4j.Logger;
 
 
 /**
- * Job Repository which persist job data on Helix.
- * <p>
- * The transition of Job's state machine:
- * <p>
- * <ul> <li>NEW->STARTED</li> <li>STARTED->COMPLETED</li> <li>STARTED->ERROR</li> <li>COMPLETED->ARCHIVED</li>
- * <li>ERROR->COMPLETED</li> </ul>
+ * Job Repository which persist job data on Helix. This repository also listen the external view so that it can update
+ * the partition and instances information for job when nodes are failed or assigned to the related resource.
  */
 public class HelixJobRepository implements JobRepository, RoutingDataChangedListener {
   private static final Logger logger = Logger.getLogger(HelixJobRepository.class);
-  private Map<Long, Job> jobMap;
-  private Map<String, List<Job>> topicToJobsMap;
+
+  private Map<String, List<Job>> topicToRunningJobsMap;
+
+  private Map<String, List<Job>> topicToTerminatedJobsMap;
 
   private final ZkBaseDataAccessor<OfflineJob> jobDataAccessor;
 
@@ -69,7 +67,7 @@ public class HelixJobRepository implements JobRepository, RoutingDataChangedList
 
   @Override
   public synchronized List<Job> getRunningJobOfTopic(@NotNull String kafkaTopic) {
-    List<Job> jobs = topicToJobsMap.get(kafkaTopic);
+    List<Job> jobs = topicToRunningJobsMap.get(kafkaTopic);
 
     if (jobs == null) {
       //No running jobs in this topic.
@@ -79,36 +77,44 @@ public class HelixJobRepository implements JobRepository, RoutingDataChangedList
   }
 
   @Override
-  public synchronized void archiveJob(long jobId) {
-    Job job = this.getJob(jobId);
-    if (job.isTerminated()) {
-      ExecutionStatus oldStatus = job.getStatus();
-      job.setStatus(ExecutionStatus.ARCHIVED);
-      try {
-        updateJobToZK(job);
-      } catch (Throwable e) {
-        String errorMessage = "Can not update job:" + job.getJobId() + " to ZK.";
-        logger.info(errorMessage, e);
-        job.setStatus(oldStatus);
-        throw new VeniceException(errorMessage, e);
-      }
-      this.jobMap.remove(jobId);
-      try {
-        removeJobFromZK(job);
-      } catch (Throwable e) {
-        String errorMessage = "Can not remove job:" + job.getJobId() + " from ZK.";
-        logger.info(errorMessage, e);
-        this.jobMap.put(job.getJobId(), job);
-        throw new VeniceException(errorMessage, e);
-      }
-    } else {
-      throw new VeniceException("Job:" + jobId + " is in " + job.getStatus() + " status. Can not be archived.");
+  public List<Job> getTerminatedJobOfTopic(String kafkaTopic) {
+    List<Job> jobs = topicToTerminatedJobsMap.get(kafkaTopic);
+    if (jobs == null) {
+      //No running jobs in this topic.
+      throw new VeniceException("Can not find running job for kafka topic:" + kafkaTopic);
+    }
+    return jobs;
+  }
+
+  @Override
+  public synchronized void archiveJob(long jobId, String kafkaTopic) {
+    Job job = this.getJob(jobId, kafkaTopic);
+    job.verifyNewJobStatus(ExecutionStatus.ARCHIVED);
+    ExecutionStatus oldStatus = job.getStatus();
+    job.setStatus(ExecutionStatus.ARCHIVED);
+    try {
+      updateJobToZK(job);
+    } catch (Throwable e) {
+      String errorMessage = "Can not update job:" + job.getJobId() + " to ZK.";
+      logger.info(errorMessage, e);
+      job.setStatus(oldStatus);
+      throw new VeniceException(errorMessage, e);
+    }
+    deleteJobFromMap(kafkaTopic, jobId, topicToTerminatedJobsMap);
+    try {
+      removeJobFromZK(job);
+    } catch (Throwable e) {
+      String errorMessage = "Can not remove job:" + job.getJobId() + " from ZK.";
+      logger.info(errorMessage, e);
+      List<Job> jobs = getAndCreateJobListFromMap(kafkaTopic, topicToTerminatedJobsMap);
+      jobs.add(job);
+      throw new VeniceException(errorMessage, e);
     }
   }
 
   @Override
-  public synchronized void updateTaskStatus(long jobId, @NotNull Task task) {
-    Job job = this.getJob(jobId);
+  public synchronized void updateTaskStatus(long jobId, String kafkaTopic, @NotNull Task task) {
+    Job job = this.getJob(jobId, kafkaTopic);
     Task oldTask = job.getTask(task.getPartitionId(), task.getInstanceId());
     job.updateTaskStatus(task);
     //Write updates to ZK at first.
@@ -128,42 +134,34 @@ public class HelixJobRepository implements JobRepository, RoutingDataChangedList
   }
 
   @Override
-  public synchronized void stopJob(long jobId) {
-    internalStopJob(jobId, ExecutionStatus.COMPLETED);
+  public synchronized void stopJob(long jobId, String kafkaTopic) {
+    internalStopJob(jobId, kafkaTopic, ExecutionStatus.COMPLETED);
   }
 
   @Override
-  public synchronized void stopJobWithError(long jobId) {
-    internalStopJob(jobId, ExecutionStatus.ERROR);
+  public synchronized void stopJobWithError(long jobId, String kafkaTopic) {
+    internalStopJob(jobId, kafkaTopic, ExecutionStatus.ERROR);
   }
 
-  private void internalStopJob(long jobId, ExecutionStatus status) {
-    Job job = this.getJob(jobId);
+  private void internalStopJob(long jobId, String kafkaTopic, ExecutionStatus status) {
+    Job job = this.getJob(jobId, kafkaTopic);
     routingDataRepository.unSubscribeRoutingDataChange(job.getKafkaTopic(), this);
-    if (job.getStatus().equals(ExecutionStatus.STARTED)) {
-      ExecutionStatus oldStaus = job.getStatus();
-      job.setStatus(status);
-      try {
-        updateJobToZK(job);
-      } catch (Throwable e) {
-        String errorMessage = "Can not update job:" + job.getJobId() + " to ZK. Rollback the local copy.";
-        logger.info(errorMessage, e);
-        job.setStatus(oldStaus);
-        throw new VeniceException(errorMessage, e);
-      }
-      List<Job> jobs = this.topicToJobsMap.get(job.getKafkaTopic());
-      for (int i = 0; i < jobs.size(); i++) {
-        if (jobs.get(i).getJobId() == jobId) {
-          jobs.remove(i);
-          break;
-        }
-      }
-      if (jobs.isEmpty()) {
-        this.topicToJobsMap.remove(job.getKafkaTopic());
-      }
-    } else {
-      throw new VeniceException("Job:" + jobId + " is in " + job.getStatus() + ". Can not be stopped.");
+    job.verifyNewJobStatus(status);
+    ExecutionStatus oldStaus = job.getStatus();
+    job.setStatus(status);
+    try {
+      updateJobToZK(job);
+    } catch (Throwable e) {
+      String errorMessage = "Can not update job:" + job.getJobId() + " to ZK. Rollback the local copy.";
+      logger.info(errorMessage, e);
+      //Ignore verification here. Becasue we need to rollback to original status.
+      job.setStatus(oldStaus);
+      throw new VeniceException(errorMessage, e);
     }
+    //Remove from running jobs and add it to terminated jobs.
+    deleteJobFromMap(kafkaTopic, job.getJobId(), topicToRunningJobsMap);
+    List<Job> jobs = getAndCreateJobListFromMap(kafkaTopic, topicToTerminatedJobsMap);
+    jobs.add(job);
   }
 
   @Override
@@ -172,18 +170,26 @@ public class HelixJobRepository implements JobRepository, RoutingDataChangedList
       throw new VeniceException("Job:" + job.getJobId() + " is in " + job.getStatus() + ". Can not be started.");
     }
     synchronized (this) {
-      this.jobMap.put(job.getJobId(), job);
-      List<Job> jobs = this.topicToJobsMap.get(job.getKafkaTopic());
-      if (jobs == null) {
-        jobs = new ArrayList<>();
-        topicToJobsMap.put(job.getKafkaTopic(), jobs);
-      }
+      List<Job> jobs = getAndCreateJobListFromMap(job.getKafkaTopic(), topicToRunningJobsMap);
       jobs.add(job);
     }
 
     waitUntilJobStart(job);
     //After job being started, sync up it to ZK.
-    updateJobAndTasksToZK(job);
+    try {
+      job.verifyNewJobStatus(ExecutionStatus.STARTED);
+      job.setStatus(ExecutionStatus.STARTED);
+      updateJobToZK(job);
+      for (int partitionId = 0; partitionId < job.getNumberOfPartition(); partitionId++) {
+        updateTaskToZK(job.getJobId(), partitionId, new ArrayList<>());
+      }
+    } catch (Throwable e) {
+      String errorMessage = "Can not update Job:" + job.getJobId() + " to ZK.";
+      logger.info(errorMessage, e);
+      //Roll back local copy
+      deleteJobFromMap(job.getKafkaTopic(), job.getJobId(), topicToRunningJobsMap);
+      throw new VeniceException(errorMessage, e);
+    }
   }
 
   /**
@@ -221,39 +227,22 @@ public class HelixJobRepository implements JobRepository, RoutingDataChangedList
   }
 
   @Override
-  public synchronized ExecutionStatus getJobStatus(long jobId) {
-    Job job = this.getJob(jobId);
+  public synchronized ExecutionStatus getJobStatus(long jobId, String kafkaTopic) {
+    Job job = this.getJob(jobId, kafkaTopic);
     return job.getStatus();
   }
 
   @Override
-  public synchronized Job getJob(long jobId) {
-    Job job = jobMap.get(jobId);
-    if (job == null) {
-      throw new VeniceException("Job:" + jobId + " dose not exist.");
+  public synchronized Job getJob(long jobId, String kafkaTopic) {
+    Job job = getJobFromMap(kafkaTopic, jobId, topicToRunningJobsMap);
+    if (job != null) {
+      return job;
     }
-    return job;
-  }
-
-  private synchronized void updateJobAndTasksToZK(Job job) {
-    try {
-      job.setStatus(ExecutionStatus.STARTED);
-      updateJobToZK(job);
-      for (int partitionId = 0; partitionId < job.getNumberOfPartition(); partitionId++) {
-        updateTaskToZK(job.getJobId(), partitionId, new ArrayList<>());
-      }
-    } catch (Throwable e) {
-      String errorMessage = "Can not update Job:" + job.getJobId() + " to ZK.";
-      logger.info(errorMessage, e);
-      //Roll back local copy
-      jobMap.remove(job.getJobId());
-      List<Job> jobs = topicToJobsMap.get(job.getKafkaTopic());
-      jobs.remove(job);
-      if (jobs.isEmpty()) {
-        topicToJobsMap.remove(job.getKafkaTopic());
-      }
-      throw new VeniceException(errorMessage, e);
+    job = getJobFromMap(kafkaTopic, jobId, topicToTerminatedJobsMap);
+    if (job != null) {
+      return job;
     }
+    throw new VeniceException("Job:" + jobId + " dose not exist.");
   }
 
   private void updateJobToZK(Job job) {
@@ -277,8 +266,8 @@ public class HelixJobRepository implements JobRepository, RoutingDataChangedList
   }
 
   public synchronized void start() {
-    jobMap = new HashMap<>();
-    topicToJobsMap = new HashMap<>();
+    topicToRunningJobsMap = new HashMap<>();
+    topicToTerminatedJobsMap = new HashMap<>();
     logger.info("Start getting offline jobs from ZK");
     // We don't need to listen the change of jobs and tasks. The master controller is the only entrance to read/write
     // these data. When master is failed, another controller will take over this mastership and load from ZK when
@@ -290,16 +279,12 @@ public class HelixJobRepository implements JobRepository, RoutingDataChangedList
         //Archived job, do not add it to repository.
         continue;
       }
-      jobMap.put(job.getJobId(), job);
 
+      List<Job> jobs;
       if (job.isTerminated()) {
-        //Only add running job to topicToJobsMap.
-        continue;
-      }
-      List<Job> jobs = this.topicToJobsMap.get(job.getKafkaTopic());
-      if (jobs == null) {
-        jobs = new ArrayList<>();
-        topicToJobsMap.put(job.getKafkaTopic(), jobs);
+        jobs = getAndCreateJobListFromMap(job.getKafkaTopic(), topicToTerminatedJobsMap);
+      } else {
+        jobs = getAndCreateJobListFromMap(job.getKafkaTopic(), topicToRunningJobsMap);
       }
       jobs.add(job);
 
@@ -320,17 +305,61 @@ public class HelixJobRepository implements JobRepository, RoutingDataChangedList
       logger.info("Filled tasks into job:" + job.getJobId());
       ExecutionStatus jobStatus = job.checkJobStatus();
       if (jobStatus.equals(ExecutionStatus.COMPLETED)) {
-        stopJob(job.getJobId());
+        stopJob(job.getJobId(), job.getKafkaTopic());
       } else if (jobStatus.equals(ExecutionStatus.ERROR)) {
-        stopJobWithError(job.getJobId());
+        stopJobWithError(job.getJobId(), job.getKafkaTopic());
       }
     }
     logger.info("End getting offline jobs from zk");
   }
 
+  private List<Job> getAndCreateJobListFromMap(String kafkaTopic, Map<String, List<Job>> map) {
+    List<Job> jobs = map.get(kafkaTopic);
+    if (jobs == null) {
+      jobs = new ArrayList<>();
+      map.put(kafkaTopic, jobs);
+    }
+    return jobs;
+  }
+
+  private void deleteJobFromMap(String kafkaTopic, long jobId, Map<String, List<Job>> map) {
+    List<Job> jobs = map.get(kafkaTopic);
+    if (jobs == null) {
+      throw new VeniceException("Can not find kafka topic:" + kafkaTopic + " when deleting job:" + jobId);
+    }
+    boolean isFound = false;
+    for (int i = 0; i < jobs.size(); i++) {
+      if (jobs.get(i).getJobId() == jobId) {
+        jobs.remove(i);
+        isFound = true;
+        break;
+      }
+    }
+    if (!isFound) {
+      throw new VeniceException("Can not find job:" + jobId);
+    } else {
+      if (jobs.isEmpty()) {
+        map.remove(kafkaTopic);
+      }
+    }
+  }
+
+  private Job getJobFromMap(String kafkaTopic, long jobId, Map<String, List<Job>> map) {
+    List<Job> jobs = map.get(kafkaTopic);
+    if (jobs == null) {
+      return null;
+    }
+    for (int i = 0; i < jobs.size(); i++) {
+      if (jobs.get(i).getJobId() == jobId) {
+        return jobs.get(i);
+      }
+    }
+    return null;
+  }
+
   public synchronized void clear() {
-    this.jobMap.clear();
-    this.topicToJobsMap.clear();
+    this.topicToRunningJobsMap.clear();
+    this.topicToTerminatedJobsMap.clear();
     this.adapter.unregisterSeralizer(offlineJobsPath);
     this.adapter.unregisterSeralizer(offlineJobsPath + "/");
     //We don't need to close ZK client here. It's could be reused by other repository.

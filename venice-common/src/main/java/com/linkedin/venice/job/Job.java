@@ -85,4 +85,14 @@ public abstract class Job {
   public abstract String generateTaskId(int paritionId, String instanceId);
 
   public abstract Set<Integer> updateExecutingPartitions(Map<Integer, Partition> partitions);
+
+  /**
+   * When a new status needs to be assigned to this job. Verify it at first to see whether this new status is valid or
+   * not based on current job status.
+   *
+   * @param status
+   *
+   * @throws com.linkedin.venice.exceptions.VeniceException If the given status is invalid to update.
+   */
+  public abstract void verifyNewJobStatus(ExecutionStatus status);
 }
