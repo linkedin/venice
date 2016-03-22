@@ -26,6 +26,7 @@ public class VeniceServer {
 
   private final StoreRepository storeRepository;
   private StorageService storageService;
+  private BdbOffsetManager offSetService;
   private final PartitionAssignmentRepository partitionAssignmentRepository;
 
   private final List<AbstractVeniceService> services;
@@ -66,7 +67,7 @@ public class VeniceServer {
     storeRepository.setStorageService(storageService);
 
     // Create and add Offset Service.
-    BdbOffsetManager offSetService = new BdbOffsetManager(veniceConfigService.getVeniceClusterConfig());
+    offSetService = new BdbOffsetManager(veniceConfigService.getVeniceClusterConfig());
     services.add(offSetService);
 
     //create and add KafkaSimpleConsumerService
@@ -90,7 +91,7 @@ public class VeniceServer {
 
     //create and add ListenerServer for handling GET requests
     ListenerService listenerService =
-        new ListenerService(storeRepository, veniceConfigService);
+        new ListenerService(storeRepository, offSetService, veniceConfigService);
     services.add(listenerService);
 
 

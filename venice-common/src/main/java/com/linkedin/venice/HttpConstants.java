@@ -1,0 +1,12 @@
+package com.linkedin.venice;
+
+/**
+ * Created by mwise on 3/22/16.
+ */
+public class HttpConstants {
+  public static final String TEXT_PLAIN = "text/plain";
+  public static final String APPLICATION_OCTET = "application/octet-stream";
+  public static final String VENICE_OFFSET = "X-VENICE-OFFSET";
+
+  private HttpConstants(){}
+}

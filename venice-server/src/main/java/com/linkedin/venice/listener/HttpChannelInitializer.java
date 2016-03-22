@@ -1,5 +1,6 @@
 package com.linkedin.venice.listener;
 
+import com.linkedin.venice.offsets.OffsetManager;
 import com.linkedin.venice.server.StoreRepository;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import io.netty.channel.ChannelInitializer;
@@ -7,9 +8,6 @@ import io.netty.channel.socket.SocketChannel;
 import io.netty.handler.codec.http.HttpServerCodec;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.LinkedBlockingQueue;
-import java.util.concurrent.ThreadPoolExecutor;
-import java.util.concurrent.TimeUnit;
 
 public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
 
@@ -20,13 +18,14 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
   //TODO make this configurable
     private static final int numRestServiceStorageThreads = 8;
 
-    public HttpChannelInitializer(StoreRepository storeRepository) {
+    public HttpChannelInitializer(StoreRepository storeRepository, OffsetManager offsetManager) {
       this.executor = Executors.newFixedThreadPool(
           numRestServiceStorageThreads,
           new DaemonThreadFactory("StorageExecutionThread"));
 
       storageExecutionHandler = new StorageExecutionHandler(executor,
-                                                            storeRepository);
+                                                            storeRepository,
+                                                            offsetManager);
     }
 
   @Override
