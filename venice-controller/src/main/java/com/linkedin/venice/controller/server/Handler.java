@@ -32,7 +32,9 @@ import io.netty.handler.codec.http.multipart.InterfaceHttpData.HttpDataType;
 import io.netty.util.CharsetUtil;
 import java.io.IOException;
 import java.net.URI;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import org.apache.log4j.Logger;
 import org.codehaus.jackson.map.ObjectMapper;
@@ -77,8 +79,16 @@ public class Handler extends SimpleChannelInboundHandler<HttpObject> {
 
 
   private void handleGetMethods(URI uri, ChannelHandlerContext ctx){
-    if (uri.getPath().startsWith("/create")) {
-      writeMenu(ctx);  //HTML form for creating stores
+    List<String> params = new ArrayList<>();
+    if (uri.getPath().startsWith(ControllerApiConstants.CREATE_PATH)) { // "/create"
+      params.add(ControllerApiConstants.NAME);
+      params.add(ControllerApiConstants.STORE_SIZE);
+      params.add(ControllerApiConstants.OWNER);
+      writeMenu(ctx, "Venice Store Creator", ControllerApiConstants.CREATE_PATH, params);
+    } else if (uri.getPath().startsWith(ControllerApiConstants.SETVERSION_PATH)){ // "/setversion"
+      params.add(ControllerApiConstants.NAME);
+      params.add(ControllerApiConstants.VERSION);
+      writeMenu(ctx, "Set Current Version", ControllerApiConstants.SETVERSION_PATH, params);
     } else {
       throw404(ctx);
     }
@@ -87,6 +97,8 @@ public class Handler extends SimpleChannelInboundHandler<HttpObject> {
   private void handlePostMethods(URI uri, ChannelHandlerContext ctx){
     if (uri.getPath().startsWith("/create")) {
       createStore();
+    } else if (uri.getPath().startsWith("/setversion")) {
+      setActiveVersion();
     } else {
       throw404(ctx);
     }
@@ -185,7 +197,7 @@ public class Handler extends SimpleChannelInboundHandler<HttpObject> {
           // TODO: use admin to update store with new owner?  Set owner at version level for audit history?
         }
         int version = admin.incrementVersion(clusterName, storeName, numberOfPartitions, numberOfReplicas);
-        responseMap.put(ControllerApiConstants.PARTITIONS,numberOfPartitions);
+        responseMap.put(ControllerApiConstants.PARTITIONS, numberOfPartitions);
         responseMap.put(ControllerApiConstants.REPLICAS,numberOfReplicas);
         responseMap.put(ControllerApiConstants.VERSION, version);
       } catch (NumberFormatException e) {
@@ -199,6 +211,45 @@ public class Handler extends SimpleChannelInboundHandler<HttpObject> {
       responseContent.append("Provide integer store size as: " + ControllerApiConstants.STORE_SIZE + "\r\n");
       responseContent.append("Provide non-empty owner as: " + ControllerApiConstants.OWNER + "\r\n");
       responseMap.put("error", ControllerApiConstants.NAME + "," + ControllerApiConstants.STORE_SIZE + "," + ControllerApiConstants.OWNER + " are required parameters");
+      responseStatus = HttpResponseStatus.BAD_REQUEST;
+    }
+  }
+
+  // POST /setversion
+  private void setActiveVersion(){
+    Map<String, String> attributes = parseAttributes();
+    responseContent.append("Parsed these parameters:\r\n");
+    responseMap.put("parameters", attributes);
+    for (String key : attributes.keySet()){
+      responseContent.append("  " + key + ": " + attributes.get(key) + "\r\n");
+    }
+    if (attributes.containsKey(ControllerApiConstants.NAME) &&
+        attributes.containsKey(ControllerApiConstants.VERSION) &&
+        attributes.get(ControllerApiConstants.NAME).length() > 0 &&
+        attributes.get(ControllerApiConstants.VERSION).length() > 0 ){
+      try {
+        String storeName=attributes.get(ControllerApiConstants.NAME);
+        Integer version=Integer.parseInt(attributes.get(ControllerApiConstants.VERSION));
+
+        admin.setCurrentVersion(clusterName, storeName, version);
+
+        responseMap.put("store_status", "version set");
+        responseMap.put(ControllerApiConstants.VERSION, version);
+      } catch (NumberFormatException e) {
+        responseContent.append(("Version must be an integer"));
+        responseMap.put("error", ControllerApiConstants.VERSION + " must be an integer");
+        responseStatus = HttpResponseStatus.BAD_REQUEST;
+      } catch (VeniceException e){
+        responseContent.append("Error: " + e.getMessage());
+        responseMap.put("error", e.getMessage());
+        logger.error(e);
+        responseStatus = HttpResponseStatus.INTERNAL_SERVER_ERROR;
+      }
+    } else {
+      responseContent.append("Invalid Store Definition Request!\r\n");
+      responseContent.append("Provide non-empty store name as: " + ControllerApiConstants.NAME + "\r\n");
+      responseContent.append("Provide integer store version as: " + ControllerApiConstants.VERSION + "\r\n");
+      responseMap.put("error", ControllerApiConstants.NAME + "," + ControllerApiConstants.VERSION + " are required parameters");
       responseStatus = HttpResponseStatus.BAD_REQUEST;
     }
   }
@@ -264,30 +315,29 @@ public class Handler extends SimpleChannelInboundHandler<HttpObject> {
     }
   }
 
-  // GET /create
-  private void writeMenu(ChannelHandlerContext ctx) {
+  private void writeMenu(ChannelHandlerContext ctx, String title, String postAction, List<String> parameters) {
     responseContent.setLength(0);
     responseContent.append("<html>");
     responseContent.append("<head>");
-    responseContent.append("<title>Venice Store Creator</title>\r\n");
+    responseContent.append("<title>" + title + "</title>\r\n");
     responseContent.append("</head>\r\n");
     responseContent.append("<body bgcolor=white><style>td{font-size: 12pt;}</style>");
 
     responseContent.append("<table border=\"0\">");
     responseContent.append("<tr>");
     responseContent.append("<td>");
-    responseContent.append("<h1>Venice Store Creator</h1>");
+    responseContent.append("<h1>" + title + "</h1>");
     responseContent.append("</td>");
     responseContent.append("</tr>");
     responseContent.append("</table>\r\n");
 
     // FORM
     responseContent.append("<CENTER><HR WIDTH=\"100%\" NOSHADE color=\"blue\"></CENTER>");
-    responseContent.append("<FORM ACTION=\"/create\" METHOD=\"POST\">");
+    responseContent.append("<FORM ACTION=\"" + postAction + "\" METHOD=\"POST\">");
     responseContent.append("<table border=\"0\">");
-    responseContent.append("<tr><td>Store Name: <br> <input type=text name=\""+ControllerApiConstants.NAME+"\" size=20></td></tr>");
-    responseContent.append("<tr><td>Store Size (MB): <br> <input type=text name=\""+ControllerApiConstants.STORE_SIZE+"\" size=20></td></tr>");
-    responseContent.append("<tr><td>Owner: <br> <input type=text name=\""+ControllerApiConstants.OWNER+"\" size=20></td></tr>");
+    for (String param : parameters){
+      responseContent.append("<tr><td>"+param+": <br> <input type=text name=\""+param+"\" size=20></td></tr>");
+    }
     responseContent.append("<tr><td><INPUT TYPE=\"submit\" NAME=\"Send\" VALUE=\"Send\"></INPUT></td>");
     responseContent.append("<td><INPUT TYPE=\"reset\" NAME=\"Clear\" VALUE=\"Clear\" ></INPUT></td></tr>");
     responseContent.append("</table></FORM>\r\n");

@@ -26,12 +26,12 @@ public class GetRequestHttpHandlerTest {
   @Test
   public void parsesRequests()
       throws Exception {
-    testRequestParsing("/read/store_v1/1/key1", "store_v1", 1, "key1".getBytes(StandardCharsets.UTF_8));
+    testRequestParsing("/storage/store_v1/1/key1", "store_v1", 1, "key1".getBytes(StandardCharsets.UTF_8));
     testBadRequest("/nopath", HttpMethod.GET);
-    testBadRequest("/get/store_v1/1/key1", HttpMethod.GET);
-    testBadRequest("/read/store_v1/key1", HttpMethod.GET);
-    testBadRequest("/read/store_v1/1", HttpMethod.GET);
-    testBadRequest("/read/store_v1/1/key1", HttpMethod.POST);
+    testBadRequest("/read/store_v1/1/key1", HttpMethod.GET);
+    testBadRequest("/storage/store_v1/key1", HttpMethod.GET);
+    testBadRequest("/storage/store_v1/1", HttpMethod.GET);
+    testBadRequest("/storage/store_v1/1/key1", HttpMethod.POST);
   }
 
   public void testRequestParsing(String path, String expectedStore, int expectedPartition, byte[] expectedKey)
@@ -93,17 +93,17 @@ public class GetRequestHttpHandlerTest {
 
   @Test(expectedExceptions = VeniceException.class)
   public void parsesActionBadMethod(){
-    doActionTest("/read/suffix", HttpMethod.POST, QueryAction.READ);
+    doActionTest("/storage/suffix", HttpMethod.POST, QueryAction.STORAGE);
   }
 
   @Test(expectedExceptions = VeniceException.class)
   public void parsesActionBadAction(){
-    doActionTest("/get/suffix", HttpMethod.GET, QueryAction.READ);
+    doActionTest("/get/suffix", HttpMethod.GET, QueryAction.STORAGE);
   }
 
   @Test
   public void parsesAction(){
-    doActionTest("/read/suffix", HttpMethod.GET, QueryAction.READ);
+    doActionTest("/storage/suffix", HttpMethod.GET, QueryAction.STORAGE);
   }
 
   public void doActionTest(String urlString, HttpMethod method, QueryAction expectedAction){

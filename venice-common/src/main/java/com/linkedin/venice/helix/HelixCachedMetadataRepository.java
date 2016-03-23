@@ -99,7 +99,7 @@ public class HelixCachedMetadataRepository extends HelixMetadataRepository {
             if (storeMap.containsKey(name)) {
                 return storeMap.get(name).cloneStore();
             }
-            return null;
+            return null; //TODO: don't return null.
         } finally {
             metadataLock.readLock().unlock();
         }

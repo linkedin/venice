@@ -50,7 +50,7 @@ public class VeniceHelixAdmin implements Admin {
         this.zkConnString = zkConnString;
         this.topicCreator = new TopicCreator(kafkaZkConnString);
         admin = new ZKHelixAdmin(zkConnString);
-        //There is no way to get he internal zkClient from HelixManager or HelixAdmin. So create a new one here.
+        //There is no way to get the internal zkClient from HelixManager or HelixAdmin. So create a new one here.
         zkClient = new ZkClient(zkConnString, ZkClient.DEFAULT_SESSION_TIMEOUT, ZkClient.DEFAULT_CONNECTION_TIMEOUT);
     }
 
@@ -137,7 +137,7 @@ public class VeniceHelixAdmin implements Admin {
                 handleStoreDoseNotExist(clusterName, storeName);
             }
             if(store.containsVersion(versionNumber)){
-                handleVersionAlreadyExists(storeName,versionNumber);
+                handleVersionAlreadyExists(storeName, versionNumber);
             }
             version = new Version(storeName,versionNumber,System.currentTimeMillis());
             store.addVersion(version);
@@ -178,34 +178,25 @@ public class VeniceHelixAdmin implements Admin {
         addKafkaTopic(clusterName, version.kafkaTopicName(), numberOfPartition, replicaFactor,
             configs.get(clusterName).getKafkaReplicaFactor());
         //Start offline push job for this new version.
-        startOfflinePush(clusterName,version.kafkaTopicName(),numberOfPartition,replicaFactor);
+        startOfflinePush(clusterName, version.kafkaTopicName(), numberOfPartition, replicaFactor);
         return version.getNumber();
     }
 
     @Override
-    public int incrementVersion(String clusterName, String storeName) {
-        VeniceControllerClusterConfig config = configs.get(clusterName);
-        if (config == null) {
+    public synchronized void setCurrentVersion(String clusterName, String storeName, int versionNumber){
+        HelixCachedMetadataRepository repository = repositories.get(clusterName);
+        if (repository == null) {
             handleClusterNotInitialized(clusterName);
         }
-        return this.incrementVersion(clusterName, storeName, config.getNumberOfPartition(), config.getReplicaFactor());
-    }
-
-    /**
-     * addKafkaTopic is a feature in Venice domain. Beside that we alos need to create a resource with the same name of Kafka
-     * topic in Helix.
-     *
-     * @param clusterName
-     * @param kafkaTopic
-     */
-    @Override
-    public void addKafkaTopic(String clusterName, String kafkaTopic) {
-        VeniceControllerClusterConfig config = configs.get(clusterName);
-        if (config == null) {
-            handleClusterNotInitialized(clusterName);
+        repository.lock();
+        try {
+            Store store = repository.getStore(storeName);
+            store.setCurrentVersion(versionNumber);
+            repository.updateStore(store);
+            logger.info("Set version:" + versionNumber +" for store:" + storeName);
+        } finally {
+            repository.unLock();
         }
-        this.addKafkaTopic(clusterName, kafkaTopic, config.getNumberOfPartition(), config.getReplicaFactor(),
-            config.getKafkaReplicaFactor());
     }
 
     /**

@@ -86,6 +86,7 @@ public class VeniceDispatcher implements PartitionDispatchHandler<Instance, Path
           .setMaxConnPerRoute(2) // concurrent execute commands beyond this limit get queued internally by the client
           .setMaxConnTotal(2)
           .build();
+      httpClient.start();
       clientPool.put(host, httpClient);
     }
 

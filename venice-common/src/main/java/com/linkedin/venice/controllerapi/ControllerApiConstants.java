@@ -15,5 +15,8 @@ public class ControllerApiConstants {
   public static final String TEXT_PLAIN = "text/plain";
   public static final String JSON = "application/json";
 
+  public static final String CREATE_PATH = "/create";
+  public static final String SETVERSION_PATH = "/setversion";
+
   private ControllerApiConstants(){}
 }

@@ -1,5 +1,6 @@
 package com.linkedin.venice.router.api;
 
+import com.linkedin.ddsstorage.router.api.PartitionFinder;
 import com.linkedin.ddsstorage.router.api.ResourcePath;
 import com.linkedin.venice.RequestConstants;
 import java.util.ArrayList;
@@ -13,17 +14,20 @@ public class Path implements ResourcePath<RouterKey> {
 
   private String resourceName;
   private Collection<RouterKey> keys;
+  private String partition;
 
-  public Path(String resourceName, Collection<RouterKey> keys){
+  public Path(String resourceName, Collection<RouterKey> keys, String partition){
     this.resourceName = resourceName;
     this.keys = keys;
+    this.partition = partition;
   }
 
   @Override
   public String getLocation() {
     String sep = VenicePathParser.SEP;
-    return VenicePathParser.ACTION_READ + sep +
+    return VenicePathParser.ACTION_STORAGE + sep +
         resourceName + sep +
+        partition + sep +
         getPartitionKey().base64Encoded() + "?" + RequestConstants.FORMAT_KEY +"="+ RequestConstants.B64_FORMAT;
   }
 
@@ -39,6 +43,6 @@ public class Path implements ResourcePath<RouterKey> {
 
   @Override
   public Path clone() {
-    return new Path(new String(resourceName), new ArrayList<>(keys));
+    return new Path(new String(resourceName), new ArrayList<>(keys), new String(partition));
   }
 }

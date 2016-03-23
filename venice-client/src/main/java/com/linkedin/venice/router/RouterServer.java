@@ -11,11 +11,11 @@ import com.linkedin.ddsstorage.netty3.misc.ShutdownableHashedWheelTimer;
 import com.linkedin.ddsstorage.netty3.misc.ShutdownableOrderedMemoryAwareExecutor;
 import com.linkedin.ddsstorage.router.api.ScatterGatherHelper;
 import com.linkedin.ddsstorage.router.impl.RouterImpl;
+import com.linkedin.venice.ConfigKeys;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixAdapterSerializer;
-import com.linkedin.venice.helix.HelixMetadataRepository;
+import com.linkedin.venice.helix.HelixCachedMetadataRepository;
 import com.linkedin.venice.helix.HelixRoutingDataRepository;
-import com.linkedin.venice.meta.MetadataRepository;
-import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.router.api.VeniceDispatcher;
 import com.linkedin.venice.router.api.VeniceHostFinder;
 import com.linkedin.venice.router.api.VenicePartitionFinder;
@@ -52,8 +52,10 @@ public class RouterServer extends AbstractVeniceService {
   private static final Logger logger = Logger.getLogger(RouterServer.class);
 
   private final int port;
-  private RoutingDataRepository routingDataRepository;
-  private MetadataRepository metadataRepository;
+  private ZkClient zkClient;
+  private HelixManager manager;
+  private HelixRoutingDataRepository routingDataRepository;
+  private HelixCachedMetadataRepository metadataRepository;
   private String clusterName;
 
   private ChannelFuture serverFuture = null;
@@ -67,8 +69,7 @@ public class RouterServer extends AbstractVeniceService {
    * @param args
    * @throws Exception
    */
-  public static void main(String args[])
-      throws Exception {
+  public static void main(String args[]) throws Exception {
 
     Props props;
     try {
@@ -79,18 +80,11 @@ public class RouterServer extends AbstractVeniceService {
       props = new Props();
     }
 
-    String zkConnection = props.getOrDefault("zookeeper.connection.string", "localhost:2181");
-    String clusterName = props.getOrDefault("cluster.name", "localhost:2181");
+    String zkConnection = props.getOrDefault(ConfigKeys.ZOOKEEPER_ADDRESS, "localhost:2181");
+    String clusterName = props.getOrDefault(ConfigKeys.CLUSTER_NAME, "test-cluster");
     int port = props.getInt("router.port", 54333);
 
-    ZkClient zkClient = new ZkClient(zkConnection);
-    HelixManager manager = new ZKHelixManager(clusterName, null, InstanceType.SPECTATOR, zkConnection);
-
-    HelixAdapterSerializer adapter = new HelixAdapterSerializer();
-    MetadataRepository metaRepo = new HelixMetadataRepository(zkClient, adapter, clusterName);
-    RoutingDataRepository routingRepo = new HelixRoutingDataRepository(manager);
-
-    RouterServer server = new RouterServer(port, clusterName, routingRepo, metaRepo);
+    RouterServer server = new RouterServer(port, clusterName, zkConnection);
     server.start();
 
     Runtime.getRuntime().addShutdownHook(new Thread() {
@@ -99,8 +93,6 @@ public class RouterServer extends AbstractVeniceService {
         if (server.isStarted()) {
           try {
             server.stop();
-            manager.disconnect();
-            zkClient.close();
           } catch (Exception e) {
             logger.error("Error shutting the server. ", e);
           }
@@ -109,24 +101,47 @@ public class RouterServer extends AbstractVeniceService {
     });
 
 
+    while (true){
+      Thread.sleep(60000);
+    }
+
   }
 
-  public RouterServer(int port, String clusterName,
-      RoutingDataRepository routingDataRepository, MetadataRepository metadataRepository){
+  public RouterServer(int port, String clusterName, String zkConnection){
     super(RouterServer.class.getName());
     this.port = port;
     this.clusterName = clusterName;
-    this.routingDataRepository = routingDataRepository;
+    zkClient = new ZkClient(zkConnection);
+    manager = new ZKHelixManager(clusterName, null, InstanceType.SPECTATOR, zkConnection);
+    try {
+      manager.connect();
+    } catch (Exception e) {
+      throw new VeniceException("Failed to start manager when creating Venice Router", e);
+    }
+    HelixAdapterSerializer adapter = new HelixAdapterSerializer();
+    this.metadataRepository = new HelixCachedMetadataRepository(zkClient, adapter, clusterName);
+    this.routingDataRepository = new HelixRoutingDataRepository(manager);
+  }
+
+  //Only use this constructor for testing when you want to pass mock repositories
+  RouterServer(int port, String clusterName, HelixRoutingDataRepository routingDataRepository, HelixCachedMetadataRepository metadataRepository){
+    super(RouterServer.class.getName());
+    this.port = port;
+    this.clusterName = clusterName;
     this.metadataRepository = metadataRepository;
+    this.routingDataRepository = routingDataRepository;
   }
 
   @Override
-  public void startInner()
-      throws Exception {
+  public void startInner() throws Exception {
+
+    metadataRepository.start();
+    routingDataRepository.start();
+
     registry = new NettyResourceRegistry();
     ExecutorService executor = registry
         .factory(ShutdownableExecutors.class)
-        .newFixedThreadPool(8, new DaemonThreadFactory("RouterThread")); //TODO: configurable number of threads
+        .newFixedThreadPool(10, new DaemonThreadFactory("RouterThread")); //TODO: configurable number of threads
     NioServerBossPool serverBossPool = registry.register(new NioServerBossPool(executor, 1));
     //TODO: configurable workerPool size (and probably other things in this section)
     NioWorkerPool ioWorkerPool = registry.register(new NioWorkerPool(executor, 8));
@@ -138,14 +153,15 @@ public class RouterServer extends AbstractVeniceService {
     Map<String, Object> serverSocketOptions = null;
     ResourceRegistry routerRegistry = registry.register(new SyncResourceRegistry());
     dispatcher = new VeniceDispatcher();
+    VenicePartitionFinder partitionFinder = new VenicePartitionFinder(routingDataRepository);
 
     RouterImpl router
         = routerRegistry.register(new RouterImpl(
         "test", serverBossPool, ioWorkerPool, workerExecutor, connectionLimit, timeoutProcessor, idleTimer, serverSocketOptions,
         ScatterGatherHelper.builder()
             .roleFinder(new VeniceRoleFinder())
-            .pathParser(new VenicePathParser(new VeniceVersionFinder(metadataRepository)))
-            .partitionFinder(new VenicePartitionFinder(routingDataRepository))
+            .pathParser(new VenicePathParser(new VeniceVersionFinder(metadataRepository), partitionFinder))
+            .partitionFinder(partitionFinder)
             .hostFinder(new VeniceHostFinder(routingDataRepository))
             .dispatchHandler(dispatcher)
             .build()));
@@ -165,6 +181,14 @@ public class RouterServer extends AbstractVeniceService {
     registry.shutdown();
     registry.waitForShutdown();
     dispatcher.close();
+    //routingDataRepository.clear(); //TODO: when the clear or stop method is added to the routingDataRepository
+    metadataRepository.clear();
+    if (manager != null) {
+      manager.disconnect();
+    }
+    if (zkClient != null) {
+      zkClient.close();
+    }
     logger.info("Router Server is stopped");
   }
 }

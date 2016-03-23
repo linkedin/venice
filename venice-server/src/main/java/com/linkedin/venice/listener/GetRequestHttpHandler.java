@@ -32,13 +32,6 @@ public class GetRequestHttpHandler extends ChannelInboundHandlerAdapter {
     ctx.flush();
   }
 
-  /***
-   * request format: GET /storename/key/partition
-   * Note: this doesn't work for arbitrary byte keys.  Only works for ascii/utf8 keys
-   * @param ctx
-   * @param msg
-   * @throws Exception
-   */
   @Override
   public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
     if (msg instanceof HttpRequest) {
@@ -46,7 +39,7 @@ public class GetRequestHttpHandler extends ChannelInboundHandlerAdapter {
       try {
         QueryAction action = getQueryActionFromRequest(req);
         switch (action){
-          case READ:  // GET /read/store/partition/key
+          case STORAGE:  // GET /storage/store/partition/key
             GetRequestObject request = parseReadFromUri(req.getUri());
             ctx.fireChannelRead(request);
             break;
@@ -71,7 +64,7 @@ public class GetRequestHttpHandler extends ChannelInboundHandlerAdapter {
       request.setKey(getKeyBytesFromUrlKeyString(requestParts[4]));
       return request;
     } else {
-      throw new VeniceException("Not a valid request for a READ action: " + uri);
+      throw new VeniceException("Not a valid request for a STORAGE action: " + uri);
     }
   }
 
@@ -79,10 +72,10 @@ public class GetRequestHttpHandler extends ChannelInboundHandlerAdapter {
     String[] requestParts = req.getUri().split("/");
     if (req.getMethod().equals(HttpMethod.GET) &&
         requestParts.length >=2 &&
-        requestParts[1].equals("read")){
-      return QueryAction.READ;
+        requestParts[1].equals("storage")){
+      return QueryAction.STORAGE;
     } else {
-      throw new VeniceException("Only able to parse GET requests for action: read");
+      throw new VeniceException("Only able to parse GET requests for action: storage");
     }
   }
 
