@@ -35,12 +35,14 @@ public class VenicePathParser implements ResourcePathParser<Path, RouterKey> {
   public static final Pattern STORE_PATTERN = Pattern.compile("\\A[a-zA-Z][a-zA-Z0-9_-]*\\z"); // \A and \z are start and end of string
   public static final int STORE_MAX_LENGTH = 128;
   public static final String SEP = "/";
-  public static final String ACTION_READ = "read";
+  public static final String ACTION_STORAGE = "storage";
 
   private VeniceVersionFinder versionFinder;
+  private VenicePartitionFinder partitionFinder;
 
-  public VenicePathParser(VeniceVersionFinder versionFinder){
+  public VenicePathParser(VeniceVersionFinder versionFinder, VenicePartitionFinder partitionFinder){
     this.versionFinder = versionFinder;
+    this.partitionFinder = partitionFinder;
   };
 
   @Override
@@ -65,7 +67,7 @@ public class VenicePathParser implements ResourcePathParser<Path, RouterKey> {
     String storename = path[1+offset];
     String key = path[2+offset];
 
-    if (action.equals(ACTION_READ)) {
+    if (action.equals(ACTION_STORAGE)) {
       String resourceName = getResourceFromStoreName(storename);
       RouterKey routerKey;
       if (isFormatB64(uri)){
@@ -73,7 +75,8 @@ public class VenicePathParser implements ResourcePathParser<Path, RouterKey> {
       } else {
         routerKey = RouterKey.fromString(key);
       }
-      return new Path(resourceName, Collections.singleton(routerKey));
+      String partition = Integer.toString(partitionFinder.findPartitionNumber(resourceName, routerKey));
+      return new Path(resourceName, Collections.singleton(routerKey), partition);
 
     } else {
       throw new RouterException(HttpResponseStatus.BAD_REQUEST,
@@ -83,12 +86,15 @@ public class VenicePathParser implements ResourcePathParser<Path, RouterKey> {
 
   @Override
   public Path substitutePartitionKey(Path path, RouterKey key) {
-    return new Path(path.getResourceName(), Collections.singleton(key));
+    String partition = Integer.toString(partitionFinder.findPartitionNumber(path.getResourceName(), key));
+    return new Path(path.getResourceName(), Collections.singleton(key), partition);
   }
 
   @Override
   public Path substitutePartitionKey(Path path, Collection<RouterKey> keys) {
-    return new Path(path.getResourceName(), keys);
+    // Assumes all keys on same partition
+    String partition = Integer.toString(partitionFinder.findPartitionNumber(path.getResourceName(), keys.iterator().next()));
+    return new Path(path.getResourceName(), keys, partition);
   }
 
   /***

@@ -1,5 +1,7 @@
 package com.linkedin.venice.router;
 
+import com.linkedin.venice.helix.HelixCachedMetadataRepository;
+import com.linkedin.venice.helix.HelixRoutingDataRepository;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.MetadataRepository;
 import com.linkedin.venice.meta.RoutingDataRepository;
@@ -26,10 +28,10 @@ public class TestRouter {
 
     Store mockStore = Mockito.mock(Store.class);
     doReturn(1).when(mockStore).getCurrentVersion();
-    MetadataRepository mockMetadataRepository = Mockito.mock(MetadataRepository.class);
+    HelixCachedMetadataRepository mockMetadataRepository = Mockito.mock(HelixCachedMetadataRepository.class);
     doReturn(mockStore).when(mockMetadataRepository).getStore(Mockito.anyString());
 
-    RoutingDataRepository mockRepo = Mockito.mock(RoutingDataRepository.class);
+    HelixRoutingDataRepository mockRepo = Mockito.mock(HelixRoutingDataRepository.class);
     // TODO: getFreePort() is unreliable, should be called within a loop. Refactor this code. Or if the port is actually not used for anything, hard-code to any value?
     Instance dummyinstance = new Instance("0", "localhost", PortUtils.getFreePort(), PortUtils.getFreePort());
     List<Instance> dummyList = new ArrayList<>(0);

@@ -103,7 +103,7 @@ public class VeniceReader<K, V> {
     CloseableHttpAsyncClient httpclient = HttpAsyncClients.createDefault();
     try{
       httpclient.start();
-      final HttpGet request = new HttpGet("http://" + host + ":" + port + "/read/" + storeName + "/" + partition + "/" + keyB64 + "?f=b64");
+      final HttpGet request = new HttpGet("http://" + host + ":" + port + "/storage/" + storeName + "/" + partition + "/" + keyB64 + "?f=b64");
 
       // TODO: Expose async API and let users decide if they wish to block or not.
       HttpResponse response = httpclient.execute(request, null).get(5, TimeUnit.SECONDS); //get is blocking

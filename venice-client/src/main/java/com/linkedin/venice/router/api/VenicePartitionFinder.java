@@ -13,18 +13,27 @@ import java.util.stream.Collectors;
 public class VenicePartitionFinder implements PartitionFinder<RouterKey> {
 
   private RoutingDataRepository dataRepository;
-  //TODO: the VenicePartitioner creates a kafka dependency.  Can we avoid kafka dependency in the venice router
   private final VenicePartitioner partitioner = new DefaultVenicePartitioner();
 
   public VenicePartitionFinder(RoutingDataRepository dataRepository){
     this.dataRepository = dataRepository;
   }
 
+  /***
+   *
+   * @param resourceName
+   * @param partitionKey
+   * @return partition Name, ex "store_v3_5"
+   */
   @Override
   public String findPartitionName(String resourceName, RouterKey partitionKey) {
-    KafkaKey kafkaKey = new KafkaKey(null, partitionKey.getBytes());
-    int partitionId = partitioner.getPartitionId(kafkaKey, getNumPartitions(resourceName));
+    int partitionId = findPartitionNumber(resourceName, partitionKey);
     return Partition.getPartitionName(resourceName, partitionId);
+  }
+
+  public int findPartitionNumber(String resourceName, RouterKey partitionKey){
+    KafkaKey kafkaKey = new KafkaKey(null, partitionKey.getBytes());
+    return partitioner.getPartitionId(kafkaKey, getNumPartitions(resourceName));
   }
 
   @Override
