@@ -49,7 +49,8 @@ public class StoreConsumptionTask implements Runnable, Closeable {
 
   private static final String CONSUMER_TASK_ID_FORMAT = "KafkaPerStoreConsumptionTask for " + "[ Node: %d, Topic: %s ]";
 
-  public static final int READ_CYCLE_DELAY_MS = 1000;
+  // Making it non final to shorten the time in testing.
+  public static int READ_CYCLE_DELAY_MS = 1000;
 
   private static final int MAX_RETRIES = 10;
 
@@ -252,10 +253,10 @@ public class StoreConsumptionTask implements Runnable, Closeable {
     int partition = message.getPartition();
     switch (operation) {
       case SUBSCRIBE:
-        logger.info(consumerTaskId + " subscribed to: Topic " + topic + " Partition Id " + partition);
         OffsetRecord record = offsetManager.getLastOffset(topic, partition);
         partitionToOffsetMap.put(partition, record.getOffset());
         consumer.subscribe(topic, partition, record);
+        logger.info(consumerTaskId + " subscribed to: Topic " + topic + " Partition Id " + partition + " Offset " + record.getOffset());
         break;
       case UNSUBSCRIBE:
         logger.info(consumerTaskId + " UnSubscribed to: Topic " + topic + " Partition Id " + partition);
@@ -263,7 +264,6 @@ public class StoreConsumptionTask implements Runnable, Closeable {
         consumer.unSubscribe(topic, partition);
         break;
       case RESET_OFFSET:
-
         consumer.resetOffset(topic, partition);
         logger.info(consumerTaskId + " Reset OffSet : Topic " + topic + " Partition Id " + partition );
         break;
