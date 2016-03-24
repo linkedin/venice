@@ -2,6 +2,7 @@ package com.linkedin.venice.kafka.producer;
 
 import com.linkedin.venice.exceptions.ConfigurationException;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.message.ControlFlagKafkaKey;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.message.KafkaValue;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
@@ -31,6 +32,7 @@ public class KafkaProducerWrapper {
   public KafkaProducerWrapper(Props props) {
     Properties properties = setPropertiesFromProp(props);
 
+    // TODO : For sending control message, this is not required. Move this higher in the stack.
     checkMandatoryProp(properties, ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, KafkaKeySerializer.class.getName());
     checkMandatoryProp(properties, ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, KafkaValueSerializer.class.getName());
 
@@ -58,21 +60,43 @@ public class KafkaProducerWrapper {
     }
   }
 
+  private Future<RecordMetadata> sendMessageToPartition(String topic, KafkaKey key, KafkaValue value, int partition) {
+    ProducerRecord<KafkaKey, KafkaValue> kafkaRecord = new ProducerRecord<>(topic,
+            partition,
+            key,
+            value);
+    return producer.send(kafkaRecord);
+  }
+
+  private int getNumberOfPartitions(String topic) {
+    // TODO: partitionsFor() is likely an expensive call, so consider caching with proper validation and/or eviction
+    return producer.partitionsFor(topic).size();
+  }
+
+
+    /**
+     * Sends a message to the Kafka Producer. If everything is set up correctly, it will show up in Kafka log.
+     * @param topic - The topic to be sent to.
+     * @param key - The key of the message to be sent.
+     * @param value - The KafkaValue, which acts as the Kafka payload.
+     * */
+  public Future<RecordMetadata> sendMessage(String topic, KafkaKey key, KafkaValue value) {
+    int numberOfPartitions = getNumberOfPartitions(topic);
+    int partition = partitioner.getPartitionId(key, numberOfPartitions);
+    return sendMessageToPartition(topic, key, value, partition);
+  }
+
   /**
-   * Sends a message to the Kafka Producer. If everything is set up correctly, it will show up in Kafka log.
+   * Sends a control message to all the partitions in the kafka topic for storage nodes to consume.
    * @param topic - The topic to be sent to.
    * @param key - The key of the message to be sent.
    * @param value - The KafkaValue, which acts as the Kafka payload.
-   * */
-  public Future<RecordMetadata> sendMessage(String topic, KafkaKey key, KafkaValue value) {
-    // TODO: partitionsFor() is likely an expensive call, so consider caching with proper validation and/or eviction
+   */
+  public void sendControlMessage(String topic, ControlFlagKafkaKey key, KafkaValue value) {
     int numberOfPartitions = producer.partitionsFor(topic).size();
-    int partition = partitioner.getPartitionId(key, numberOfPartitions);
-    ProducerRecord<KafkaKey, KafkaValue> kafkaRecord = new ProducerRecord<>(topic,
-                                                                            partition,
-                                                                            key,
-                                                                            value);
-    return producer.send(kafkaRecord);
+    for(int partition = 0; partition < numberOfPartitions ; partition ++) {
+      sendMessageToPartition(topic, key, value, partition);
+    }
   }
 
   public void close() {

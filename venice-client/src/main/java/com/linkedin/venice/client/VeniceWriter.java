@@ -2,6 +2,7 @@ package com.linkedin.venice.client;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.producer.KafkaProducerWrapper;
+import com.linkedin.venice.message.ControlFlagKafkaKey;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.message.KafkaValue;
 import com.linkedin.venice.message.OperationType;
@@ -32,15 +33,15 @@ public class VeniceWriter<K, V> {
 
 
   public VeniceWriter(Props props, String storeName, VeniceSerializer<K> keySerializer, VeniceSerializer<V> valueSerializer) {
+    this.props = props;
+    this.storeName = storeName;
+    this.keySerializer = keySerializer;
+    this.valueSerializer = valueSerializer;
 
     try {
-      this.props = props;
-      this.storeName = storeName;
-      this.keySerializer = keySerializer;
-      this.valueSerializer = valueSerializer;
       this.producer = new KafkaProducerWrapper(props);
     } catch (Exception e) {
-      throw new VeniceException("Error while constructing VeniceWriter", e);
+      throw new VeniceException("Error while constructing VeniceWriter KafkaProducer " + storeName, e);
     }
   }
 
@@ -75,7 +76,24 @@ public class VeniceWriter<K, V> {
     try {
       return producer.sendMessage(storeName, kafkaKey, kafkaValue);
     } catch (Exception e) {
-      throw new VeniceException("Got an exception while trying to produce to Kafka.", e);
+      throw new VeniceException(" Got an exception while trying to produce to Kafka.", e);
+    }
+  }
+
+  /**
+   * Send a control message to all the Partitions for a topic
+   *
+   * @param opType OperationType to be sent.
+   * @param jobId jobId sending the control message.
+   */
+  public void writeControlMessage(OperationType opType, long jobId) {
+    ControlFlagKafkaKey key = new ControlFlagKafkaKey(opType, new byte[]{} , jobId );
+    KafkaValue value = new KafkaValue(opType);
+
+    try {
+      producer.sendControlMessage(storeName, key, value);
+    } catch (Exception e) {
+      throw new VeniceException(" Got an exception while trying to send control message to Kafka " + opType, e);
     }
   }
 

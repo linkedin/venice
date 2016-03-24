@@ -1,5 +1,6 @@
 package com.linkedin.venice.hadoop;
 
+import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.utils.Utils;
 import org.apache.avro.mapred.AvroWrapper;
 import org.apache.avro.generic.IndexedRecord;
@@ -21,7 +22,7 @@ import java.util.Properties;
  * to write a job's output into Kafka.
  */
 public class AvroKafkaOutputFormat implements OutputFormat<AvroWrapper<IndexedRecord>, NullWritable> {
-  private Logger logger = Logger.getLogger(KafkaPushJob.class);
+  private static Logger logger = Logger.getLogger(KafkaPushJob.class);
 
   public AvroKafkaOutputFormat() {
     super();
@@ -33,24 +34,23 @@ public class AvroKafkaOutputFormat implements OutputFormat<AvroWrapper<IndexedRe
                                                                                 JobConf conf,
                                                                                 String arg2,
                                                                                 Progressable progress) throws IOException {
-    Properties props = new Properties();
-    props.put("metadata.broker.list", conf.get(KafkaPushJob.KAFKA_URL_PROP));
-    props.put("kafka.bootstrap.servers", conf.get(KafkaPushJob.KAFKA_URL_PROP));
-    props = setPropertiesFromConf(conf, props);
+    Properties props = getKafkaProperties(conf);
     return new AvroKafkaRecordWriter(props);
   }
 
   /**
-   * Adds all the custom values for the
+   * Extract Kafka Related Producer Properties from JobConfiguration.
    */
-  public Properties setPropertiesFromConf(JobConf conf, Properties props) {
+  public static Properties getKafkaProperties(JobConf conf) {
+    Properties props = new Properties();
+    props.put(ConfigKeys.KAFKA_BOOTSTRAP_SERVERS, conf.get(KafkaPushJob.KAFKA_URL_PROP));
 
     // TODO: Bridge should send the storeName, size and schema information to the
     // Controller and retrieve kafka topic, kafka broker url, kafka props for producer,
     // key, value schema id
     // TODO: jobId can be computed by the H2V bridge, probably a randomId will do.
     String kafkaTopic = conf.get(KafkaPushJob.TOPIC_PROP);
-    if (kafkaTopic != null) {
+    if (!Utils.isNullOrEmpty(kafkaTopic)) {
       props.put(KafkaPushJob.TOPIC_PROP, conf.get(KafkaPushJob.TOPIC_PROP));
       logger.info(KafkaPushJob.TOPIC_PROP + ": " + kafkaTopic);
     }
