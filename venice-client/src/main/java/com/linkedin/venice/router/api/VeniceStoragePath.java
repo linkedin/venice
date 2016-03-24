@@ -24,7 +24,7 @@ public class VeniceStoragePath implements ResourcePath<RouterKey> {
   @Override
   public String getLocation() {
     String sep = VenicePathParser.SEP;
-    return VenicePathParser.ACTION_STORAGE + sep +
+    return VenicePathParser.TYPE_STORAGE + sep +
         resourceName + sep +
         partition + sep +
         getPartitionKey().base64Encoded() + "?" + RequestConstants.FORMAT_KEY +"="+ RequestConstants.B64_FORMAT;
