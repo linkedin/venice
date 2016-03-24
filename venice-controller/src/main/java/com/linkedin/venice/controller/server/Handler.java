@@ -1,6 +1,7 @@
 package com.linkedin.venice.controller.server;
 
 import com.linkedin.venice.controller.Admin;
+import com.linkedin.venice.controllerapi.ControllerApiConstants;
 import com.linkedin.venice.exceptions.VeniceException;
 import io.netty.buffer.ByteBuf;
 import io.netty.channel.Channel;
@@ -46,16 +47,7 @@ import static io.netty.handler.codec.http.HttpHeaders.Names.CONTENT_TYPE;
  */
 public class Handler extends SimpleChannelInboundHandler<HttpObject> {
   private static final Logger logger = Logger.getLogger(Handler.class.getName());
-
-  private static final String NAME = "storename";
-  private static final String OWNER = "owner";
-  private static final String STORE_SIZE = "store_size";
-  private static final String VERSION = "version";
-  private static final String REPLICAS = "replicas";
-  private static final String PARTITIONS = "partitions";
-  private static final String TEXT_HTML = "text/html";
-  private static final String TEXT_PLAIN = "text/plain";
-  private static final String JSON = "application/json";
+  private static ObjectMapper mapper = new ObjectMapper();
 
   private HttpRequest request;
   private boolean readingChunks;
@@ -83,6 +75,23 @@ public class Handler extends SimpleChannelInboundHandler<HttpObject> {
     this.admin = admin;
   }
 
+
+  private void handleGetMethods(URI uri, ChannelHandlerContext ctx){
+    if (uri.getPath().startsWith("/create")) {
+      writeMenu(ctx);  //HTML form for creating stores
+    } else {
+      throw404(ctx);
+    }
+  }
+
+  private void handlePostMethods(URI uri, ChannelHandlerContext ctx){
+    if (uri.getPath().startsWith("/create")) {
+      createStore();
+    } else {
+      throw404(ctx);
+    }
+  }
+
   @Override
   public void channelUnregistered(ChannelHandlerContext ctx) throws Exception {
     if (decoder != null) {
@@ -96,14 +105,10 @@ public class Handler extends SimpleChannelInboundHandler<HttpObject> {
       request = (HttpRequest) msg;
       URI uri = new URI(request.getUri());
       if (request.getMethod().equals(HttpMethod.GET)) {
-        writeMenu(ctx);
+        handleGetMethods(uri, ctx);
         return;
       }
-      if (!uri.getPath().startsWith("/create")) {
-        // Write Menu
-        writeMenu(ctx);
-        return;
-      }
+
       responseContent.setLength(0);
       responseMap = new HashMap<>();
       responseStatus = HttpResponseStatus.OK;
@@ -134,61 +139,67 @@ public class Handler extends SimpleChannelInboundHandler<HttpObject> {
           return;
         }
 
-        Map<String, String> attributes = parseAttributes();
-        responseContent.append("Parsed these parameters:\r\n");
-        responseMap.put("parameters", attributes);
-        for (String key : attributes.keySet()){
-          responseContent.append("  " + key + ": " + attributes.get(key) + "\r\n");
-        }
-        if (attributes.containsKey(NAME) &&
-            attributes.containsKey(STORE_SIZE) &&
-            attributes.containsKey(OWNER) &&
-            attributes.get(NAME).length() > 0 &&
-            attributes.get(OWNER).length() > 0 ){
-          try {
-            String storeName=attributes.get(NAME);
-            String owner=attributes.get(OWNER);
-
-            int storeSizeMb = Integer.valueOf(attributes.get(STORE_SIZE));
-            responseContent.append("Creating Store-version.\r\n");
-            responseMap.put("action", "creating store-version");
-            //create store and versions
-            int numberOfPartitions = 3; //TODO configurable datasize per partition
-            int numberOfReplicas = 1; //TODO configurable replication factor
-
-            try {
-              admin.addStore(clusterName, storeName, owner);
-              responseMap.put("store_status", "created");
-            } catch (VeniceException e){
-              responseMap.put("store_status", e.getMessage()); //Probably already created
-              // TODO: use admin to update store with new owner?  Set owner at version level for audit history?
-            }
-            int version = admin.incrementVersion(clusterName, storeName, numberOfPartitions, numberOfReplicas);
-            responseMap.put(PARTITIONS,numberOfPartitions);
-            responseMap.put(REPLICAS,numberOfReplicas);
-            responseMap.put(VERSION, version);
-          } catch (NumberFormatException e) {
-            responseContent.append(("Store size must be an integer"));
-            responseMap.put("error", STORE_SIZE + " must be an integer");
-            responseStatus = HttpResponseStatus.BAD_REQUEST;
-          }
-        } else {
-          responseContent.append("Invalid Store Definition Request!\r\n");
-          responseContent.append("Provide non-empty store name as: " + NAME + "\r\n");
-          responseContent.append("Provide integer store size as: " + STORE_SIZE + "\r\n");
-          responseContent.append("Provide non-empty owner as: " + OWNER + "\r\n");
-          responseMap.put("error", NAME + "," + STORE_SIZE + "," + OWNER + " are required parameters");
-          responseStatus = HttpResponseStatus.BAD_REQUEST;
-        }
+        URI uri = new URI(request.getUri());
+        handlePostMethods(uri, ctx);
 
         if (chunk instanceof LastHttpContent) {
-          writeResponse(ctx.channel(), JSON, responseStatus);
+          writeResponse(ctx.channel(), ControllerApiConstants.JSON, responseStatus);
           readingChunks = false;
           reset();
         }
       }
     } else {
-      writeResponse(ctx.channel(), JSON, responseStatus);
+      writeResponse(ctx.channel(), ControllerApiConstants.JSON, responseStatus);
+    }
+  }
+
+  // POST /create
+  private void createStore(){
+    Map<String, String> attributes = parseAttributes();
+    responseContent.append("Parsed these parameters:\r\n");
+    responseMap.put("parameters", attributes);
+    for (String key : attributes.keySet()){
+      responseContent.append("  " + key + ": " + attributes.get(key) + "\r\n");
+    }
+    if (attributes.containsKey(ControllerApiConstants.NAME) &&
+        attributes.containsKey(ControllerApiConstants.STORE_SIZE) &&
+        attributes.containsKey(ControllerApiConstants.OWNER) &&
+        attributes.get(ControllerApiConstants.NAME).length() > 0 &&
+        attributes.get(ControllerApiConstants.OWNER).length() > 0 ){
+      try {
+        String storeName=attributes.get(ControllerApiConstants.NAME);
+        String owner=attributes.get(ControllerApiConstants.OWNER);
+
+        int storeSizeMb = Integer.valueOf(attributes.get(ControllerApiConstants.STORE_SIZE));
+        responseContent.append("Creating Store-version.\r\n");
+        responseMap.put("action", "creating store-version");
+        //create store and versions
+        int numberOfPartitions = 3; //TODO configurable datasize per partition
+        int numberOfReplicas = 1; //TODO configurable replication factor
+
+        try {
+          admin.addStore(clusterName, storeName, owner);
+          responseMap.put("store_status", "created");
+        } catch (VeniceException e){
+          responseMap.put("store_status", e.getMessage()); //Probably already created
+          // TODO: use admin to update store with new owner?  Set owner at version level for audit history?
+        }
+        int version = admin.incrementVersion(clusterName, storeName, numberOfPartitions, numberOfReplicas);
+        responseMap.put(ControllerApiConstants.PARTITIONS,numberOfPartitions);
+        responseMap.put(ControllerApiConstants.REPLICAS,numberOfReplicas);
+        responseMap.put(ControllerApiConstants.VERSION, version);
+      } catch (NumberFormatException e) {
+        responseContent.append(("Store size must be an integer"));
+        responseMap.put("error", ControllerApiConstants.STORE_SIZE + " must be an integer");
+        responseStatus = HttpResponseStatus.BAD_REQUEST;
+      }
+    } else {
+      responseContent.append("Invalid Store Definition Request!\r\n");
+      responseContent.append("Provide non-empty store name as: " + ControllerApiConstants.NAME + "\r\n");
+      responseContent.append("Provide integer store size as: " + ControllerApiConstants.STORE_SIZE + "\r\n");
+      responseContent.append("Provide non-empty owner as: " + ControllerApiConstants.OWNER + "\r\n");
+      responseMap.put("error", ControllerApiConstants.NAME + "," + ControllerApiConstants.STORE_SIZE + "," + ControllerApiConstants.OWNER + " are required parameters");
+      responseStatus = HttpResponseStatus.BAD_REQUEST;
     }
   }
 
@@ -222,8 +233,7 @@ public class Handler extends SimpleChannelInboundHandler<HttpObject> {
   private void writeResponse(Channel channel, String type, HttpResponseStatus httpStatus) {
     // Convert the response content to a ChannelBuffer.
     ByteBuf buf;
-    if (type.equals(JSON)){
-      ObjectMapper mapper = new ObjectMapper(); //this call is relatively rare, so it's ok to recreate the mapper each time
+    if (type.equals(ControllerApiConstants.JSON)){
       try {
         buf = copiedBuffer(mapper.writeValueAsString(responseMap), CharsetUtil.UTF_8);
       } catch (IOException e) {
@@ -254,6 +264,7 @@ public class Handler extends SimpleChannelInboundHandler<HttpObject> {
     }
   }
 
+  // GET /create
   private void writeMenu(ChannelHandlerContext ctx) {
     responseContent.setLength(0);
     responseContent.append("<html>");
@@ -274,9 +285,9 @@ public class Handler extends SimpleChannelInboundHandler<HttpObject> {
     responseContent.append("<CENTER><HR WIDTH=\"100%\" NOSHADE color=\"blue\"></CENTER>");
     responseContent.append("<FORM ACTION=\"/create\" METHOD=\"POST\">");
     responseContent.append("<table border=\"0\">");
-    responseContent.append("<tr><td>Store Name: <br> <input type=text name=\""+NAME+"\" size=20></td></tr>");
-    responseContent.append("<tr><td>Store Size (MB): <br> <input type=text name=\""+STORE_SIZE+"\" size=20></td></tr>");
-    responseContent.append("<tr><td>Owner: <br> <input type=text name=\""+OWNER+"\" size=20></td></tr>");
+    responseContent.append("<tr><td>Store Name: <br> <input type=text name=\""+ControllerApiConstants.NAME+"\" size=20></td></tr>");
+    responseContent.append("<tr><td>Store Size (MB): <br> <input type=text name=\""+ControllerApiConstants.STORE_SIZE+"\" size=20></td></tr>");
+    responseContent.append("<tr><td>Owner: <br> <input type=text name=\""+ControllerApiConstants.OWNER+"\" size=20></td></tr>");
     responseContent.append("<tr><td><INPUT TYPE=\"submit\" NAME=\"Send\" VALUE=\"Send\"></INPUT></td>");
     responseContent.append("<td><INPUT TYPE=\"reset\" NAME=\"Clear\" VALUE=\"Clear\" ></INPUT></td></tr>");
     responseContent.append("</table></FORM>\r\n");
@@ -285,14 +296,19 @@ public class Handler extends SimpleChannelInboundHandler<HttpObject> {
     responseContent.append("</body>");
     responseContent.append("</html>");
 
-    writeResponse(ctx.channel(), TEXT_HTML, HttpResponseStatus.OK);
+    writeResponse(ctx.channel(), ControllerApiConstants.TEXT_HTML, HttpResponseStatus.OK);
   }
 
   private void handleError(String message, Throwable cause, Channel channel){
     logger.error(message, cause);
     responseContent.append(cause.getMessage());
-    writeResponse(channel, TEXT_PLAIN, HttpResponseStatus.INTERNAL_SERVER_ERROR);
+    writeResponse(channel, ControllerApiConstants.TEXT_PLAIN, HttpResponseStatus.INTERNAL_SERVER_ERROR);
     channel.close();
+  }
+
+  private void throw404(ChannelHandlerContext ctx){
+    responseContent.append("404, resource not found");
+    writeResponse(ctx.channel(), ControllerApiConstants.TEXT_PLAIN, HttpResponseStatus.NOT_FOUND);
   }
 
   @Override

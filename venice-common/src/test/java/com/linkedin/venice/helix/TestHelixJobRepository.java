@@ -1,12 +1,13 @@
 package com.linkedin.venice.helix;
 
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.integration.utils.ServiceFactory;
+import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.job.ExecutionStatus;
 import com.linkedin.venice.job.OfflineJob;
 import com.linkedin.venice.job.Task;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.utils.Utils;
-import com.linkedin.venice.utils.ZkServerWrapper;
 import java.util.HashMap;
 import java.util.Map;
 import org.apache.helix.HelixAdmin;
@@ -39,7 +40,6 @@ public class TestHelixJobRepository {
   private String clusterPath = "/test-job-cluster";
   private String jobPath = "/jobs";
   private HelixAdapterSerializer adapter = new HelixAdapterSerializer();
-  private ZkServerWrapper zkServerWrapper;
   private HelixJobRepository repository;
   private HelixRoutingDataRepository routingDataRepository;
   private HelixAdmin admin;
@@ -47,12 +47,13 @@ public class TestHelixJobRepository {
   private HelixManager manager;
   private String kafkaTopic = "test_resource_1";
   private String nodeId = "localhost_9985";
+  private ZkServerWrapper zkServerWrapper;
 
   @BeforeMethod
   public void setup()
       throws Exception {
-    zkServerWrapper = ZkServerWrapper.getZkServer();
-    zkAddress = zkServerWrapper.getZkAddress();
+    zkServerWrapper = ServiceFactory.getZkServer();
+    zkAddress = zkServerWrapper.getAddress();
 
     admin = new ZKHelixAdmin(zkAddress);
     admin.addCluster(cluster);

@@ -1,27 +1,17 @@
 package com.linkedin.venice.listener;
 
-import com.google.common.base.Charsets;
 import com.linkedin.venice.RequestConstants;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.message.GetRequestObject;
 import com.linkedin.venice.meta.QueryAction;
-import io.netty.buffer.ByteBuf;
-import io.netty.buffer.Unpooled;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
-import io.netty.handler.codec.ByteToMessageDecoder;
 import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpRequest;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.handler.codec.http.QueryStringDecoder;
-import java.net.URI;
-import java.net.URISyntaxException;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
-import java.util.List;
-import org.apache.http.NameValuePair;
-import org.apache.http.client.utils.URLEncodedUtils;
-import org.apache.tools.ant.taskdefs.condition.Http;
 
 
 /**

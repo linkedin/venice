@@ -18,19 +18,28 @@ jar {
 
 dependencies {
 
+  // Let's try to keep it clean! (i.e.: alphabetical)
 
-  compile (libraries.avro){
+  compile (libraries.avro) {
     // avro pulls in an older version of netty3 that causes transitive conflicts with the router
     exclude group: 'org.jboss.netty'
   }
-  compile libraries.helix // TODO: Get rid of Helix dependency in venice-common
-
-  //TODO : This is LinkedIn only dependency
-  compile libraries.kafkaClients // TODO: Get rid of Kafka dependency in venice-common
   compile libraries.commonsCodec
   compile libraries.guava
+  compile (libraries.helix) { // TODO: Get rid of Helix dependency in venice-common
+    // Helix pulls in an ancient version of the zkclient, which lacks some APIs and clashes with Kafka's dependency
+    exclude group: 'com.github.sgroschupf'
+  }
+  compile libraries.http_client
+  compile libraries.kafkaClients // TODO: Get rid of Kafka dependency in venice-common
+  compile libraries.zkclient // It's necessary to pull in the most recent version of zkclient explicitly, otherwise Helix won't have it...
+  compile libraries.zookeeper // TODO: Get rid of ZK dependency in venice-common
 
-  compile libraries.helix
+  // Test dependencies are allowed to be bulkier.
+  testCompile libraries.kafka
+  testCompile libraries.zookeeper
+  testCompile project(':venice-controller')
+  testCompile project(':venice-server')
 }
 
 idea {

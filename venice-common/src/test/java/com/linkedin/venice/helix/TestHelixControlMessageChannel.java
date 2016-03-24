@@ -3,7 +3,8 @@ package com.linkedin.venice.helix;
 import com.linkedin.venice.controlmessage.StatusUpdateMessage;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.job.ExecutionStatus;
-import com.linkedin.venice.utils.ZkServerWrapper;
+import com.linkedin.venice.integration.utils.ServiceFactory;
+import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
@@ -44,8 +45,8 @@ public class TestHelixControlMessageChannel {
   @BeforeMethod
   public void setup()
       throws Exception {
-    zkServerWrapper = ZkServerWrapper.getZkServer();
-    zkAddress = zkServerWrapper.getZkAddress();
+    zkServerWrapper = ServiceFactory.getZkServer();
+    zkAddress = zkServerWrapper.getAddress();
     admin = new ZKHelixAdmin(zkAddress);
     admin.addCluster(cluster);
     HelixConfigScope configScope = new HelixConfigScopeBuilder(HelixConfigScope.ConfigScopeProperty.CLUSTER).

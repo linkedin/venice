@@ -5,6 +5,8 @@ import javax.validation.constraints.NotNull;
 
 /**
  * Class defines the Instance in Venice.
+ *
+ * // TODO: Bad name. Too generic. Let's find a better one.
  */
 public class Instance {
     /**

@@ -4,14 +4,12 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.Partition;
 import com.linkedin.venice.meta.RoutingDataChangedListener;
-import com.linkedin.venice.utils.PortUtils;
+import com.linkedin.venice.integration.utils.ServiceFactory;
+import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.utils.Utils;
-
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-
-import com.linkedin.venice.utils.ZkServerWrapper;
 import org.apache.helix.HelixAdmin;
 import org.apache.helix.HelixDefinedState;
 import org.apache.helix.HelixManager;
@@ -60,10 +58,8 @@ public class TestHelixRoutingDataRepository {
   @BeforeMethod
   public void HelixSetup()
       throws Exception {
-    zkServerWrapper = ZkServerWrapper.getZkServer();
-    zkAddress = zkServerWrapper.getZkAddress();
-    httpPort = PortUtils.getFreePort();
-    adminPort = PortUtils.getFreePort();
+    zkServerWrapper = ServiceFactory.getZkServer();
+    zkAddress = zkServerWrapper.getAddress();
     admin = new ZKHelixAdmin(zkAddress);
     admin.addCluster(clusterName);
     HelixConfigScope configScope = new HelixConfigScopeBuilder(HelixConfigScope.ConfigScopeProperty.CLUSTER).
@@ -80,7 +76,11 @@ public class TestHelixRoutingDataRepository {
     controller = HelixControllerMain
         .startHelixController(zkAddress, clusterName, "UnitTestController", HelixControllerMain.STANDALONE);
 
+
+    httpPort = 50000 + (int)(System.currentTimeMillis() % 10000); //port never actually used
+    adminPort = 50000 + (int)(System.currentTimeMillis() % 10000); //port never actually used
     String nodeId = Utils.getHostName() + "_" + httpPort;
+
     manager = HelixManagerFactory.getZKHelixManager(clusterName, nodeId, InstanceType.PARTICIPANT, zkAddress);
     manager.getStateMachineEngine()
         .registerStateModelFactory(UnitTestStateModel.UNIT_TEST_STATE_MODEL, new UnitTestStateModelFactory());
@@ -93,7 +93,7 @@ public class TestHelixRoutingDataRepository {
     });
 
     manager.connect();
-    //Waiting essential notification from ZK.
+    //Waiting essential notification from ZK. TODO: use a listener to find out when ZK is ready
     Thread.sleep(WAIT_TIME);
 
     readManager = HelixManagerFactory.getZKHelixManager(clusterName, "reader", InstanceType.SPECTATOR, zkAddress);

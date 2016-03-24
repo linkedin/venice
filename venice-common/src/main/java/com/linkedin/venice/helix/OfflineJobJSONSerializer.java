@@ -4,7 +4,9 @@ import com.linkedin.venice.job.OfflineJob;
 import com.linkedin.venice.meta.VeniceSerializer;
 import java.io.IOException;
 import org.codehaus.jackson.annotate.JsonCreator;
+import org.codehaus.jackson.annotate.JsonIgnore;
 import org.codehaus.jackson.annotate.JsonProperty;
+import org.codehaus.jackson.map.DeserializationConfig;
 import org.codehaus.jackson.map.ObjectMapper;
 
 
@@ -18,6 +20,7 @@ public class OfflineJobJSONSerializer implements VeniceSerializer<OfflineJob> {
 
   public OfflineJobJSONSerializer() {
     mapper.getDeserializationConfig().addMixInAnnotations(OfflineJob.class, OfflineJobSerializerMixin.class);
+    mapper.configure(DeserializationConfig.Feature.FAIL_ON_UNKNOWN_PROPERTIES.FAIL_ON_UNKNOWN_PROPERTIES, false);
   }
 
   @Override

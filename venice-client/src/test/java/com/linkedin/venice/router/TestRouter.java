@@ -4,7 +4,7 @@ import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.MetadataRepository;
 import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.meta.Store;
-import com.linkedin.venice.utils.PortUtils;
+import com.linkedin.venice.integration.utils.PortUtils;
 import java.util.ArrayList;
 import java.util.List;
 import org.mockito.Mockito;
@@ -30,12 +30,14 @@ public class TestRouter {
     doReturn(mockStore).when(mockMetadataRepository).getStore(Mockito.anyString());
 
     RoutingDataRepository mockRepo = Mockito.mock(RoutingDataRepository.class);
+    // TODO: getFreePort() is unreliable, should be called within a loop. Refactor this code. Or if the port is actually not used for anything, hard-code to any value?
     Instance dummyinstance = new Instance("0", "localhost", PortUtils.getFreePort(), PortUtils.getFreePort());
     List<Instance> dummyList = new ArrayList<>(0);
     dummyList.add(dummyinstance);
     doReturn(dummyList).when(mockRepo).getInstances(anyString(), anyInt());
     doReturn(3).when(mockRepo).getNumberOfPartitions(Mockito.anyString());
 
+    // TODO: Same comment as above.
     int port = PortUtils.getFreePort();
     RouterServer router = new RouterServer(port, "unit-test-cluster", mockRepo, mockMetadataRepository);
 

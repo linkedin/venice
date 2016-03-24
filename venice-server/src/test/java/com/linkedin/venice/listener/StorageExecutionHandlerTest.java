@@ -2,6 +2,9 @@ package com.linkedin.venice.listener;
 
 import com.linkedin.venice.message.GetRequestObject;
 import com.linkedin.venice.message.GetResponseObject;
+import com.linkedin.venice.offsets.BdbOffsetManager;
+import com.linkedin.venice.offsets.OffsetManager;
+import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.server.StoreRepository;
 import com.linkedin.venice.store.AbstractStorageEngine;
 import io.netty.buffer.ByteBuf;
@@ -14,12 +17,11 @@ import java.util.List;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
+import org.mockito.Mockito;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
-import static org.mockito.Mockito.any;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.*;
 
 public class StorageExecutionHandlerTest {
   @Test
@@ -29,18 +31,24 @@ public class StorageExecutionHandlerTest {
     String keyString = "testkey";
     String valueString = "testvalue";
     int partition = 3;
+    long expectedOffset = 12345L;
     List<Object> outputArray = new ArrayList<Object>();
 
     GetRequestObject testRequest = new GetRequestObject(topic.toCharArray(), partition, keyString.getBytes());
 
     AbstractStorageEngine testStore = mock(AbstractStorageEngine.class);
-    when(testStore.get(partition, keyString.getBytes())).thenReturn(valueString.getBytes());
+    doReturn(valueString.getBytes()).when(testStore).get(partition, keyString.getBytes());
 
     StoreRepository testRepository = mock(StoreRepository.class);
-    when(testRepository.getLocalStorageEngine(topic)).thenReturn(testStore);
+    doReturn(testStore).when(testRepository).getLocalStorageEngine(topic);
+
+    OffsetRecord mockOffset = mock(OffsetRecord.class);
+    doReturn(expectedOffset).when(mockOffset).getOffset();
+    OffsetManager mockOffsetManager = mock(BdbOffsetManager.class);
+    doReturn(mockOffset).when(mockOffsetManager).getLastOffset(Mockito.anyString(), Mockito.anyInt());
 
     ChannelHandlerContext mockCtx = mock(ChannelHandlerContext.class);
-    when(mockCtx.alloc()).thenReturn(new UnpooledByteBufAllocator(true));
+    doReturn(new UnpooledByteBufAllocator(true)).when(mockCtx).alloc();
     when(mockCtx.writeAndFlush(any())).then(i -> {
       outputArray.add(i.getArguments()[0]);
       return null;
@@ -50,13 +58,13 @@ public class StorageExecutionHandlerTest {
         new LinkedBlockingQueue<>(2));
 
     //Actual test
-    StorageExecutionHandler testHandler = new StorageExecutionHandler(threadPoolExecutor, testRepository);
+    StorageExecutionHandler testHandler = new StorageExecutionHandler(threadPoolExecutor, testRepository, mockOffsetManager);
     testHandler.channelRead(mockCtx, testRequest);
 
     //Wait for async stuff to finish
     int count = 1;
     while (outputArray.size()<1) {
-      Thread.sleep(10); //on my machine, consistenly fails with only 10ms, intermittent at 15ms, success at 20ms
+      Thread.sleep(10); //on my machine, consistently fails with only 10ms, intermittent at 15ms, success at 20ms
       count +=1;
       if (count > 200){ // two seconds
         throw new RuntimeException("Timeout waiting for StorageExecutionHandler output to appear");
@@ -65,9 +73,12 @@ public class StorageExecutionHandlerTest {
 
     //parsing of response
     Assert.assertEquals(outputArray.size(), 1);
-    byte[] response = (byte[]) outputArray.get(0);
+    StorageResponseObject obj = (StorageResponseObject) outputArray.get(0);
+    byte[] response = obj.getValue();
+    long offset = obj.getOffset();
 
     //Verification
     Assert.assertEquals(response, valueString.getBytes());
+    Assert.assertEquals(offset, expectedOffset);
   }
 }

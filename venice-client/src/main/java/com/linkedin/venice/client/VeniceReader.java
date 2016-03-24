@@ -1,10 +1,10 @@
 package com.linkedin.venice.client;
 
+import static com.linkedin.venice.ConfigKeys.*;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixSpectatorService;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.partitioner.VenicePartitioner;
-import com.linkedin.venice.message.GetRequestObject;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.serialization.VeniceSerializer;
@@ -13,7 +13,8 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.util.Base64;
 import java.util.List;
-import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
+
 import org.apache.commons.io.IOUtils;
 import org.apache.http.HttpResponse;
 import org.apache.http.client.methods.HttpGet;
@@ -33,35 +34,44 @@ public class VeniceReader<K, V> {
   private final String storeName;
   private final VeniceSerializer<K> keySerializer;
   private final VeniceSerializer<V> valueSerializer;
+  private boolean initialized;
   private HelixSpectatorService spectatorService;
 
   //TODO: configurable partitioner
   private final VenicePartitioner partitioner = new DefaultVenicePartitioner();
 
+  /**
+   * N.B.: This class expects the full Helix resource for its storeName parameter (i.e.: store name + data version).
+   *
+   * The logic for choosing which data version to query is handled higher up the stack.
+   */
   public VeniceReader(Props props, String storeName, VeniceSerializer<K> keySerializer, VeniceSerializer<V> valueSerializer) {
+    this.props = props;
+    this.storeName = storeName;
+    this.keySerializer = keySerializer;
+    this.valueSerializer = valueSerializer;
+    this.initialized = false;
+  }
 
-    try {
-      this.props = props;
-      this.storeName = storeName;
-      this.keySerializer = keySerializer;
-      this.valueSerializer = valueSerializer;
-    } catch (Exception e) {
-      logger.error("Error while starting up configuration for VeniceReader.", e);
-      throw new VeniceException("Error while starting up configuration for VeniceReader", e);
+  public synchronized void init(){
+    if (!initialized) {
+      spectatorService = new HelixSpectatorService(
+          props.getString(ZOOKEEPER_ADDRESS),
+          props.getString(CLUSTER_NAME),
+          "client-spectator" //need some unique name for each client/spectator?
+      );
+      try{
+        spectatorService.start();
+        initialized = true;
+      } catch (Exception e) {
+        throw new VeniceException("VeniceReader initialization failed!", e);
+      }
     }
   }
 
-  public void init(){
-    spectatorService = new HelixSpectatorService(
-        props.getString("zookeeper.connection.string"),
-        props.getString("cluster.name"),
-        "client-spectator" //need some unique name for each client/spectator?
-    );
-    try{
-      spectatorService.start();
-    } catch (Exception e) {
-      e.printStackTrace();
-      throw new RuntimeException(e);
+  private void checkInit() {
+    if (!initialized) {
+      throw new VeniceException("This VeniceReader instance has not been initialized!");
     }
   }
   /**
@@ -70,6 +80,7 @@ public class VeniceReader<K, V> {
    * @return The result of the "Get" operation
    * */
   public V get(K key) {
+    checkInit();
     byte[] keyBytes = keySerializer.serialize(storeName, key);
 
     List<Instance> instances;
@@ -79,6 +90,8 @@ public class VeniceReader<K, V> {
     partition = partitioner.getPartitionId(kafkaKey, numberOfPartitions);
     instances=spectatorService.getRoutingDataRepository().getInstances(storeName, partition);
     if (instances.size() < 1){
+      // TODO: Change this exception type. Maybe create a new subclass of VeniceException specifically for this case?
+      // TODO: Add built-in resilience. Maybe wait and retry, etc.
       throw new NullPointerException("No hosts available to serve partition: " + partition +
           ", store: " + storeName);
     }
@@ -90,10 +103,18 @@ public class VeniceReader<K, V> {
     CloseableHttpAsyncClient httpclient = HttpAsyncClients.createDefault();
     try{
       httpclient.start();
-      final HttpGet reqest = new HttpGet("http://" + host + ":" + port + "/read/" + storeName + "/" + partition + "/" + keyB64 + "?f=b64");
-      HttpResponse response = httpclient.execute(reqest, null).get(); //get is blocking
+      final HttpGet request = new HttpGet("http://" + host + ":" + port + "/read/" + storeName + "/" + partition + "/" + keyB64 + "?f=b64");
+
+      // TODO: Expose async API and let users decide if they wish to block or not.
+      HttpResponse response = httpclient.execute(request, null).get(5, TimeUnit.SECONDS); //get is blocking
       InputStream responseContent = response.getEntity().getContent();
-      return valueSerializer.deserialize(storeName, IOUtils.toByteArray(responseContent));
+      byte[] responseByteArray = IOUtils.toByteArray(responseContent);
+      if (response.getStatusLine().getStatusCode() == 404) {
+        logger.info("404: " + new String(responseByteArray)); // TODO: Choose appropriate log level (debug or trace?)
+        return null; // TODO: Choose whether to throw instead
+      } else {
+        return valueSerializer.deserialize(storeName, responseByteArray);
+      }
     } catch (Exception e) {
       throw new VeniceException("Failed to execute http request to: " + host + " for store: " + storeName, e);
     } finally {

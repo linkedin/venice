@@ -23,12 +23,18 @@ public class ApacheKafkaConsumer implements VeniceConsumer {
     }
 
     private void seek(TopicPartition topicPartition , OffsetRecord offset) {
-        if(offset.getOffset() == OffsetRecord.LOWEST_OFFSET) {
-            kafkaConsumer.seekToBeginning(topicPartition);
-        } else {
-            // The last consumed message offset is remembered. Add +1 to the offset
-            // to prevent retrieving the last message twice.
-            kafkaConsumer.seek(topicPartition, offset.getOffset() + 1);
+        // Kafka Consumer controls the default offset to start by the property
+        // "auto.offset.reset" , it is set to "earliest" to start from the
+        // beginning.
+
+        // Venice would prefer to start from the beginning and using seekToBeginning
+        // would have made it clearer. But that call always fail and can be used
+        // only after the offsets are remembered for a partition in 0.9.0.2
+
+        long lastReadOffset = offset.getOffset();
+        if(lastReadOffset != OffsetRecord.LOWEST_OFFSET) {
+            long nextReadOffset = lastReadOffset + 1;
+            kafkaConsumer.seek(topicPartition,  nextReadOffset);
         }
     }
 
@@ -63,10 +69,10 @@ public class ApacheKafkaConsumer implements VeniceConsumer {
         // It intentionally throws an error when offset was reset for a topic
         // that is not subscribed to.
         TopicPartition topicPartition = new TopicPartition(topic, partition);
-        seek(topicPartition, OffsetRecord.NON_EXISTENT_OFFSET);
+        kafkaConsumer.seekToBeginning(topicPartition);
     }
 
-    @Override
+  @Override
     public ConsumerRecords poll(long timeout) {
         return kafkaConsumer.poll(timeout);
     }

@@ -1,11 +1,11 @@
 package com.linkedin.venice.kafka;
 
+import static com.linkedin.venice.ConfigKeys.*;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.utils.RandomGenUtils;
 import com.linkedin.venice.config.VeniceClusterConfig;
 import com.linkedin.venice.offsets.BdbOffsetManager;
 import com.linkedin.venice.offsets.OffsetRecord;
-import com.linkedin.venice.server.VeniceConfigService;
 import com.linkedin.venice.utils.Props;
 import org.testng.Assert;
 import org.testng.annotations.BeforeClass;
@@ -30,17 +30,17 @@ public class TestBDBOffsetManager {
   private void init() throws Exception {
 
     Props clusterProps = new Props();
-    clusterProps.put(VeniceConfigService.CLUSTER_NAME, "test_offset_manager");
-    clusterProps.put(VeniceConfigService.ENABLE_KAFKA_CONSUMER_OFFSET_MANAGEMENT, "true");
-    clusterProps.put(VeniceConfigService.OFFSET_MANAGER_TYPE, "bdb");
-    clusterProps.put(VeniceConfigService.OFFSET_MANAGER_FLUSH_INTERVAL_MS, flushIntervalMs);
-    clusterProps.put(VeniceConfigService.HELIX_ENABLED, "false");
-    clusterProps.put(VeniceConfigService.ZOOKEEPER_ADDRESS, "localhost:2181");
-    clusterProps.put(VeniceConfigService.PERSISTENCE_TYPE, PersistenceType.IN_MEMORY.toString());
-    clusterProps.put(VeniceConfigService.KAFKA_BROKERS, "localhost");
-    clusterProps.put(VeniceConfigService.KAFKA_BROKER_PORT, "9092");
-    clusterProps.put(VeniceConfigService.KAFKA_BOOTSTRAP_SERVERS, "127.0.0.1:9092");
-    clusterProps.put(VeniceConfigService.KAFKA_AUTO_COMMIT_INTERVAL_MS, "1000");
+    clusterProps.put(CLUSTER_NAME, "test_offset_manager");
+    clusterProps.put(ENABLE_KAFKA_CONSUMER_OFFSET_MANAGEMENT, "true");
+    clusterProps.put(OFFSET_MANAGER_TYPE, "bdb");
+    clusterProps.put(OFFSET_MANAGER_FLUSH_INTERVAL_MS, flushIntervalMs);
+    clusterProps.put(HELIX_ENABLED, "false");
+    clusterProps.put(ZOOKEEPER_ADDRESS, "localhost:2181");
+    clusterProps.put(PERSISTENCE_TYPE, PersistenceType.IN_MEMORY.toString());
+    clusterProps.put(KAFKA_BROKERS, "localhost");
+    clusterProps.put(KAFKA_BROKER_PORT, "9092");
+    clusterProps.put(KAFKA_BOOTSTRAP_SERVERS, "127.0.0.1:9092");
+    clusterProps.put(KAFKA_AUTO_COMMIT_INTERVAL_MS, "1000");
 
     clusterConfig = new VeniceClusterConfig(clusterProps);
     offsetManager = getOffsetManager(clusterConfig);
