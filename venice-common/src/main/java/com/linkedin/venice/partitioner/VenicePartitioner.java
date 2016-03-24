@@ -34,7 +34,7 @@ public abstract class VenicePartitioner {
      * @param numPartitions - The number of total partitions available in Kafka/storage
      * @return
      */
-    public int getPartitionId(KafkaKey key, int numPartitions) {
+    public int getPartitionId(KafkaKey key, int numPartitions) { //TODO: Support partitioning on a raw byte[]
         OperationType opType = key.getOperationType();
 
         // Check if the key is for sending a control message

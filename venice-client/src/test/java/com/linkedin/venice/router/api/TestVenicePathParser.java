@@ -33,11 +33,11 @@ public class TestVenicePathParser {
     VenicePartitionFinder partitionFinder = Mockito.mock(VenicePartitionFinder.class);
     doReturn(3).when(partitionFinder).findPartitionNumber(Mockito.anyString(), Mockito.anyObject());
     VenicePathParser parser = new VenicePathParser(getVersionFinder(), partitionFinder);
-    Path path = parser.parseResourceUri(uri);
+    VeniceStoragePath path = parser.parseResourceUri(uri);
     String keyb64 = Base64.getEncoder().encodeToString("key".getBytes());
     Assert.assertEquals(path.getLocation(), "storage/store_v1/3/" + keyb64 + "?f=b64");
 
-    Path path2 = parser.substitutePartitionKey(path, RouterKey.fromString("key2"));
+    VeniceStoragePath path2 = parser.substitutePartitionKey(path, RouterKey.fromString("key2"));
     String key2b64 = Base64.getEncoder().encodeToString("key2".getBytes());
     Assert.assertEquals(path2.getLocation(), "storage/store_v1/3/" + key2b64 + "?f=b64");
   }
@@ -48,7 +48,7 @@ public class TestVenicePathParser {
     String expectedKey = "myKey";
     VenicePartitionFinder partitionFinder = Mockito.mock(VenicePartitionFinder.class);
 
-    Path path = new VenicePathParser(getVersionFinder(), partitionFinder).parseResourceUri(myUri);
+    VeniceStoragePath path = new VenicePathParser(getVersionFinder(), partitionFinder).parseResourceUri(myUri);
     Assert.assertEquals(path.getPartitionKey().getBytes(), expectedKey.getBytes(),
         new String(path.getPartitionKey().getBytes()) + " should match " + expectedKey);
   }

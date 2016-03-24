@@ -25,7 +25,6 @@ import org.apache.http.concurrent.FutureCallback;
 import org.apache.http.impl.DefaultConnectionReuseStrategy;
 import org.apache.http.impl.nio.client.CloseableHttpAsyncClient;
 import org.apache.http.impl.nio.client.HttpAsyncClients;
-import org.apache.log4j.Level;
 import org.apache.log4j.Logger;
 import org.jboss.netty.buffer.ChannelBuffers;
 import org.jboss.netty.handler.codec.http.DefaultHttpResponse;
@@ -38,7 +37,7 @@ import org.jboss.netty.handler.codec.http.HttpVersion;
 /**
  * Created by mwise on 3/9/16.
  */
-public class VeniceDispatcher implements PartitionDispatchHandler<Instance, Path, RouterKey>, Closeable{
+public class VeniceDispatcher implements PartitionDispatchHandler<Instance, VeniceStoragePath, RouterKey>, Closeable{
 
   private static final String HTTP = "http://";
 
@@ -56,9 +55,9 @@ public class VeniceDispatcher implements PartitionDispatchHandler<Instance, Path
 
   @Override
   public void dispatch(
-      Scatter<Instance, Path, RouterKey> scatter,
+      Scatter<Instance, VeniceStoragePath, RouterKey> scatter,
       ScatterGatherRequest<Instance, RouterKey> part,
-      Path path,
+      VeniceStoragePath path,
       BasicHttpRequest request,
       AsyncPromise<Instance> hostSelected,
       AsyncPromise<List<HttpResponse>> responseFuture,
