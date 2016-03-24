@@ -27,7 +27,7 @@ import org.jboss.netty.handler.codec.http.HttpResponseStatus;
  *
  *   The VenicePathParser is responsible for looking up the active version of the store, and constructing the store-version
  */
-public class VenicePathParser implements ResourcePathParser<Path, RouterKey> {
+public class VenicePathParser implements ResourcePathParser<VeniceStoragePath, RouterKey> {
 
   private static final Logger logger = Logger.getLogger(VenicePathParser.class.getName());
 
@@ -46,7 +46,7 @@ public class VenicePathParser implements ResourcePathParser<Path, RouterKey> {
   };
 
   @Override
-  public Path parseResourceUri(String uri) throws RouterException {
+  public VeniceStoragePath parseResourceUri(String uri) throws RouterException {
     URI uriObject;
     try {
       uriObject = new URI(uri);
@@ -76,7 +76,7 @@ public class VenicePathParser implements ResourcePathParser<Path, RouterKey> {
         routerKey = RouterKey.fromString(key);
       }
       String partition = Integer.toString(partitionFinder.findPartitionNumber(resourceName, routerKey));
-      return new Path(resourceName, Collections.singleton(routerKey), partition);
+      return new VeniceStoragePath(resourceName, Collections.singleton(routerKey), partition);
 
     } else {
       throw new RouterException(HttpResponseStatus.BAD_REQUEST,
@@ -85,16 +85,16 @@ public class VenicePathParser implements ResourcePathParser<Path, RouterKey> {
   }
 
   @Override
-  public Path substitutePartitionKey(Path path, RouterKey key) {
+  public VeniceStoragePath substitutePartitionKey(VeniceStoragePath path, RouterKey key) {
     String partition = Integer.toString(partitionFinder.findPartitionNumber(path.getResourceName(), key));
-    return new Path(path.getResourceName(), Collections.singleton(key), partition);
+    return new VeniceStoragePath(path.getResourceName(), Collections.singleton(key), partition);
   }
 
   @Override
-  public Path substitutePartitionKey(Path path, Collection<RouterKey> keys) {
+  public VeniceStoragePath substitutePartitionKey(VeniceStoragePath path, Collection<RouterKey> keys) {
     // Assumes all keys on same partition
     String partition = Integer.toString(partitionFinder.findPartitionNumber(path.getResourceName(), keys.iterator().next()));
-    return new Path(path.getResourceName(), keys, partition);
+    return new VeniceStoragePath(path.getResourceName(), keys, partition);
   }
 
   /***

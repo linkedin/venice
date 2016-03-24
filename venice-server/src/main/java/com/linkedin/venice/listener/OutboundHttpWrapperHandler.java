@@ -48,9 +48,7 @@ public class OutboundHttpWrapperHandler extends ChannelOutboundHandlerAdapter {
     FullHttpResponse response = new DefaultFullHttpResponse(HTTP_1_1, responseStatus, body);
     response.headers().set(CONTENT_TYPE, contentType);
     response.headers().set(CONTENT_LENGTH, body.readableBytes());
-    if (offset > 0) {
-      response.headers().set(HttpConstants.VENICE_OFFSET, offset);
-    }
+    response.headers().set(HttpConstants.VENICE_OFFSET, offset);
 
     ctx.write(response).addListener(ChannelFutureListener.CLOSE);
   }
