@@ -1,5 +1,13 @@
 package com.linkedin.venice.hadoop;
 
+import com.linkedin.venice.client.VeniceWriter;
+import com.linkedin.venice.message.ControlFlagKafkaKey;
+import com.linkedin.venice.message.KafkaKey;
+import com.linkedin.venice.message.OperationType;
+import com.linkedin.venice.serialization.DefaultSerializer;
+import com.linkedin.venice.serialization.KafkaKeySerializer;
+import com.linkedin.venice.serialization.VeniceSerializer;
+import com.linkedin.venice.utils.Props;
 import java.util.Arrays;
 
 import com.linkedin.venice.exceptions.VeniceException;
@@ -33,6 +41,9 @@ import java.net.URI;
 import java.net.URL;
 import java.util.Iterator;
 import java.util.Properties;
+
+import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
+
 
 /**
  * This class sets up the Hadoop job used to push data to Kafka. The job reads the input data off HDFS and pushes it to
@@ -222,10 +233,15 @@ public class KafkaPushJob {
     conf.setBoolean("mapreduce.job.classloader", true);
     logger.info("**************** mapreduce.job.classloader: " + conf.get("mapreduce.job.classloader"));
 
-    // Setup the hadoop job    
+
+    // Setup the hadoop job
     this.job = setupHadoopJob(conf);
     JobClient jc = new JobClient(job);
 
+    // TODO: Set the jobId to epoch for now. Figure out how to get unique jobId
+    // for each of the pushes.
+    long jobId = System.currentTimeMillis();
+    sendControlMessage(OperationType.BEGIN_OF_PUSH, jobId);
     // submit the job for execution
     runningJob = jc.submitJob(job);
     logger.info("Job Tracking URL: " + runningJob.getTrackingURL());
@@ -234,6 +250,23 @@ public class KafkaPushJob {
     if (!runningJob.isSuccessful()) {
       throw new RuntimeException("KafkaPushJob failed");
     }
+    sendControlMessage(OperationType.END_OF_PUSH, jobId);
+
+    logger.info("Job successfully completed");
+  }
+
+  private void sendControlMessage (OperationType opType, long jobId) {
+    Props props = new Props()
+            .with(KAFKA_BOOTSTRAP_SERVERS, kafkaUrl);
+
+    KafkaKeySerializer keySerializer = new KafkaKeySerializer();
+
+    VeniceWriter<KafkaKey, byte[]> writer =
+            new VeniceWriter<>(props, topic, keySerializer, new DefaultSerializer());
+
+    writer.writeControlMessage(opType, jobId);
+    writer.close();
+    logger.info("Successfully sent control message for topic " + topic + " Op " + opType);
   }
 
   private static void printExternalDependencies() {
@@ -287,7 +320,6 @@ public class KafkaPushJob {
     // Turn speculative execution off.
     conf.setBoolean("mapred.map.tasks.speculative.execution", false);
     conf.setBoolean("mapred.reduce.tasks.speculative.execution", false);
-    conf.setBoolean("mapreduce.job.user.classpath.first", true);
 
     if (System.getenv("HADOOP_TOKEN_FILE_LOCATION") != null) {
       conf.set("mapreduce.job.credentials.binary", System.getenv("HADOOP_TOKEN_FILE_LOCATION"));
