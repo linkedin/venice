@@ -87,7 +87,7 @@ public class KafkaPushJob {
     OptionParser parser = new OptionParser();
 
     OptionSpec<String> kafkaUrlOpt =
-        parser.accepts("venice-url", "REQUIRED: Kafka URL")
+        parser.accepts("kafka-url", "REQUIRED: Kafka URL")
             .withRequiredArg()
             .describedAs("url")
             .ofType(String.class);
@@ -106,6 +106,16 @@ public class KafkaPushJob {
             .withRequiredArg()
             .describedAs("topic")
             .ofType(String.class);
+    OptionSpec<String> keyFieldOpt =
+          parser.accepts("key-field", "REQUIRED: key field")
+              .withRequiredArg()
+              .describedAs("key")
+              .ofType(String.class);
+    OptionSpec<String> valueFieldOpt =
+            parser.accepts("value-field", "REQUIRED: value field")
+                    .withRequiredArg()
+                    .describedAs("value")
+                    .ofType(String.class);
     OptionSpec<String> queueBytesOpt =
         parser.accepts("batch-num-bytes", "Optional: max number of bytes that should be batched in a flush to kafka")
             .withRequiredArg()
@@ -115,11 +125,12 @@ public class KafkaPushJob {
 
     OptionSet options = parser.parse(args);
 
-    OptionSpec[] expectedOptions = {kafkaUrlOpt, inputPathOpt, nameNodeOpt, topicOpt};
+    OptionSpec[] expectedOptions = {kafkaUrlOpt, inputPathOpt, topicOpt, keyFieldOpt, valueFieldOpt};
     for (int i = 0; i < expectedOptions.length; i++) {
       OptionSpec opt = expectedOptions[i];
       if (!options.has(opt)) {
         logger.error("Missing required argument \"" + opt + "\"");
+        parser.printHelpOn(System.out);
         throw new RuntimeException("Missing required argument \"" + opt + "\"");
       }
     }
@@ -127,9 +138,15 @@ public class KafkaPushJob {
     Properties props = new Properties();
     props.put(KAFKA_URL_PROP, options.valueOf(kafkaUrlOpt));
     props.put(INPUT_PATH_PROP, options.valueOf(inputPathOpt));
-    props.put(NAME_NODE_PROP, options.valueOf(nameNodeOpt));
     props.put(BATCH_NUM_BYTES_PROP, options.valueOf(queueBytesOpt));
     props.put(TOPIC_PROP, options.valueOf(topicOpt));
+    props.put(AVRO_KEY_FIELD_PROP, options.valueOf(keyFieldOpt));
+    props.put(AVRO_VALUE_FIELD_PROP, options.valueOf(valueFieldOpt));
+
+    String nameNodeValue = options.valueOf(nameNodeOpt);
+    if(nameNodeValue != null && nameNodeValue.length() > 0) {
+      props.put(NAME_NODE_PROP, nameNodeValue);
+    }
 
     KafkaPushJob job = new KafkaPushJob("Console", props);
     job.run();
@@ -142,11 +159,12 @@ public class KafkaPushJob {
     this.kafkaUrl = props.getProperty(KAFKA_URL_PROP);
     this.topic = props.getProperty(TOPIC_PROP);
     this.inputDirectory = props.getProperty(INPUT_PATH_PROP);
+    this.nameNode = props.getProperty(NAME_NODE_PROP);
+
     this.keyField = props.getProperty(AVRO_KEY_FIELD_PROP);
     this.valueField = props.getProperty(AVRO_VALUE_FIELD_PROP);
     this.storeName = props.getProperty(VENICE_STORE_NAME_PROP);
     this.storeUrl = props.getProperty(VENICE_URL_PROP);
-    this.nameNode = props.getProperty(NAME_NODE_PROP);
 
     if (!props.containsKey(BATCH_NUM_BYTES_PROP)) {
       this.batchNumBytes = DEFAULT_BATCH_BYTES_SIZE;
@@ -169,10 +187,17 @@ public class KafkaPushJob {
     logger.info("Voldemort Store URL: " + storeUrl);
 
     // Check that input path exists in HDFS
-    URI namenode = new URI(nameNode);
+    URI nameNodeUri = null;
+    if(nameNode != null ) {
+      nameNodeUri = new URI(nameNode);
+    }
     // Before we run, we check the schema of the first file.
     Configuration conf = new Configuration();
-    fs = FileSystem.get(namenode, conf);
+    if(nameNodeUri != null) {
+      fs = FileSystem.get(nameNodeUri, conf);
+    } else {
+      fs = FileSystem.getLocal(conf);
+    }
 
     Path sourcePath;
     if (inputDirectory.endsWith("#LATEST") || inputDirectory.endsWith("#LATEST/")) {
@@ -254,8 +279,6 @@ public class KafkaPushJob {
     conf.set(SCHEMA_STRING_PROP, fileSchemaString);
     conf.set(AVRO_KEY_FIELD_PROP, keyField);
     conf.set(AVRO_VALUE_FIELD_PROP, valueField);
-    conf.set(VENICE_STORE_NAME_PROP, storeName);
-    conf.set(VENICE_URL_PROP, storeUrl);
 
     // Set data serialization model. Default is ReflectData.class.
     // The default causes reading records as SpecificRecords. This fails in reading records of type fixes, eg. Guid.
@@ -264,6 +287,7 @@ public class KafkaPushJob {
     // Turn speculative execution off.
     conf.setBoolean("mapred.map.tasks.speculative.execution", false);
     conf.setBoolean("mapred.reduce.tasks.speculative.execution", false);
+    conf.setBoolean("mapreduce.job.user.classpath.first", true);
 
     if (System.getenv("HADOOP_TOKEN_FILE_LOCATION") != null) {
       conf.set("mapreduce.job.credentials.binary", System.getenv("HADOOP_TOKEN_FILE_LOCATION"));
@@ -328,11 +352,12 @@ public class KafkaPushJob {
 
     FileStatus[] fileStatus = fs.listStatus(srcPath, PATH_FILTER);
 
-    if (fileStatus == null) {
+    if (fileStatus == null || fileStatus.length == 0) {
       throw new RuntimeException("No data found at source path: " + srcPath);
     }
 
     for (FileStatus status : fileStatus) {
+      System.out.println("Processing file " + status.getPath());
       if (status.isDir()) {
         continue;
       }

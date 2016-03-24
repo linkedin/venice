@@ -1,0 +1,12 @@
+How to run Hadoop To Venice Bridge Locally
+
+1) Download the Hadoop binary version hadoop-1.2.1 ( I tried various versions of Hadoop 2, they either failed with GenericRecord class missing or Avro MapRed incompatible APIs). https://www.apache.org/dist/hadoop/core/hadoop-1.2.1/hadoop-1.2.1.tar.gz
+2) Download the data required for running the hadoop locally. I downloaded the Avro data from internal Nertz cluster
+https://eat1-nertzaz01.grid.linkedin.com:8443/hdfs/user/voldtest/ha_store_data_v1
+You can use dali to download the data by running the command
+dali fs -copyToLocal dali://nertz/user/voldtest/ha_store_data_v1
+
+3) Unpack the hadoop binary ( tar -zxf hadoop-1.2.1.tar.gz)
+4) Run the Hadoop jar locally by the command
+bin/hadoop jar ~/projects/aruns-venice/hadoop-to-venice-bridge/build/libs/hadoop-to-venice-bridge-0.1.jar  com.linkedin.venice.hadoop.KafkaPushJob --kafka-url http://localhost:9092 --topic countries_v1  --input-path file:///home/athirupa/projects/hadoop/hadoop-1.2.1/ha_store_data_v1/ --key-field memberId --value-field dedupId
+
