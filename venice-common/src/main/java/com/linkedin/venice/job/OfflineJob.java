@@ -18,6 +18,9 @@ import org.apache.avro.generic.GenericData;
  * Job used to describe the off-line push.
  */
 public class OfflineJob extends Job {
+  /**
+   * The map holds the pair of partition id -> tasks map. Task map holds the pair of taskId -> Task.
+   */
   private Map<Integer, Map<String, Task>> partitionToTasksMap;
   private OfflinePushStrategy strategy;
 
@@ -41,7 +44,7 @@ public class OfflineJob extends Job {
    *
    * @param partitions
    */
-  public Set<Integer> updateExecutingParitions(Map<Integer, Partition> partitions) {
+  public Set<Integer> updateExecutingPartitions(Map<Integer, Partition> partitions) {
     if (partitions.size() != getNumberOfPartition()) {
       throw new VeniceException(
           "Number of partitions:" + partitions.size() + " is different from the required number:" +
@@ -96,7 +99,7 @@ public class OfflineJob extends Job {
         }
         for (Task task : taskMap.values()) {
           if (task.getStatus().equals(ExecutionStatus.ERROR)) {
-            //Right now we don't have any retry. If one of task is failed, the whole job is failed.
+            // TODO Right now we don't have any retry. If one of task is failed, the whole job is failed.
             return ExecutionStatus.ERROR;
           } else if (!task.getStatus().equals(ExecutionStatus.COMPLETED)) {
             isAllCompleted = false;
@@ -170,7 +173,7 @@ public class OfflineJob extends Job {
     return task.getStatus();
   }
 
-  public void setTask(Task task) {
+  public void addTask(Task task) {
     partitionToTasksMap.get(task.getPartitionId()).put(task.getTaskId(), task);
   }
 

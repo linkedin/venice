@@ -45,6 +45,8 @@ public class HelixJobRepository implements JobRepository, RoutingDataChangedList
 
   private final RoutingDataRepository routingDataRepository;
 
+  public static final String OFFLINE_JOBS_SUB_PATH = "/OfflineJobs";
+
   //TODO Add the serializer for near-line job later.
   public HelixJobRepository(@NotNull ZkClient zkClient, @NotNull HelixAdapterSerializer adapter,
       @NotNull String clusterName, RoutingDataRepository routingDataRepository) {
@@ -56,7 +58,7 @@ public class HelixJobRepository implements JobRepository, RoutingDataChangedList
       @NotNull String clusterName, RoutingDataRepository routingDataRepository,
       VeniceSerializer<OfflineJob> jobSerializer, VeniceSerializer<List<Task>> taskVeniceSerializer) {
     this.routingDataRepository = routingDataRepository;
-    offlineJobsPath = "/" + clusterName + "/OfflineJobs";
+    offlineJobsPath = "/" + clusterName + OFFLINE_JOBS_SUB_PATH;
     this.adapter = adapter;
     this.adapter.registerSerializer(offlineJobsPath, jobSerializer);
     this.adapter.registerSerializer(offlineJobsPath + "/", taskVeniceSerializer);
@@ -79,7 +81,7 @@ public class HelixJobRepository implements JobRepository, RoutingDataChangedList
   @Override
   public synchronized void archiveJob(long jobId) {
     Job job = this.getJob(jobId);
-    if (job.getStatus().equals(ExecutionStatus.COMPLETED) || job.getStatus().equals(ExecutionStatus.ERROR)) {
+    if (job.isTerminated()) {
       ExecutionStatus oldStatus = job.getStatus();
       job.setStatus(ExecutionStatus.ARCHIVED);
       try {
@@ -91,7 +93,14 @@ public class HelixJobRepository implements JobRepository, RoutingDataChangedList
         throw new VeniceException(errorMessage, e);
       }
       this.jobMap.remove(jobId);
-      removeJobFromZK(job);
+      try {
+        removeJobFromZK(job);
+      } catch (Throwable e) {
+        String errorMessage = "Can not remove job:" + job.getJobId() + " from ZK.";
+        logger.info(errorMessage, e);
+        this.jobMap.put(job.getJobId(), job);
+        throw new VeniceException(errorMessage, e);
+      }
     } else {
       throw new VeniceException("Job:" + jobId + " is in " + job.getStatus() + " status. Can not be archived.");
     }
@@ -112,7 +121,7 @@ public class HelixJobRepository implements JobRepository, RoutingDataChangedList
       if (oldTask == null) {
         job.deleteTask(task);
       } else {
-        job.setTask(oldTask);
+        job.addTask(oldTask);
       }
       throw new VeniceException(errorMessage, e);
     }
@@ -177,20 +186,29 @@ public class HelixJobRepository implements JobRepository, RoutingDataChangedList
     updateJobAndTasksToZK(job);
   }
 
+  /**
+   * When we creating a new job for new helix resource. We need to know how many tasks we need to create and which
+   * instance is assigned to execute this task. Unfortunately controller need some time to wait all of participants
+   * assigned to this resource become ONLINE, then get these information from external view, otherwise the external view
+   * is empty or uncompleted.
+   *
+   * @param job
+   */
   private void waitUntilJobStart(Job job) {
-    routingDataRepository.subscribeRoutingDataChange(job.getKafkaTopic(), this);
-    boolean isJobStarted = false;
-    if (routingDataRepository.containsKafkaTopic(job.getKafkaTopic())) {
-      try {
-        job.updateExecutingParitions(routingDataRepository.getPartitions(job.getKafkaTopic()));
-        isJobStarted = true;
-      } catch (VeniceException e) {
-        // Can not get enough paritition and replicas when resource just being created.
+
+    //There are no enough partitions and/or replicas to execute tasks. Wait until all of replicas becoming online
+    synchronized (job) {
+      routingDataRepository.subscribeRoutingDataChange(job.getKafkaTopic(), this);
+      boolean isJobStarted = false;
+      if (routingDataRepository.containsKafkaTopic(job.getKafkaTopic())) {
+        try {
+          job.updateExecutingPartitions(routingDataRepository.getPartitions(job.getKafkaTopic()));
+          isJobStarted = true;
+        } catch (VeniceException e) {
+          // Can not get enough partition and replicas when resource just being created.
+        }
       }
-    }
-    if (!isJobStarted) {
-      //There are no enough partitions and/or replicas to execute tasks. Wait until all of replicas becoming online
-      synchronized (job) {
+      if (!isJobStarted) {
         try {
           logger.info("Wait job:" + job.getJobId() + " being started.");
           job.wait();
@@ -274,7 +292,7 @@ public class HelixJobRepository implements JobRepository, RoutingDataChangedList
       }
       jobMap.put(job.getJobId(), job);
 
-      if (job.getStatus().equals(ExecutionStatus.COMPLETED) || job.getStatus().equals(ExecutionStatus.ERROR)) {
+      if (job.isTerminated()) {
         //Only add running job to topicToJobsMap.
         continue;
       }
@@ -289,7 +307,7 @@ public class HelixJobRepository implements JobRepository, RoutingDataChangedList
       List<List<Task>> tasks =
           tasksDataAccessor.getChildren(offlineJobsPath + "/" + job.getJobId(), null, AccessOption.PERSISTENT);
       for (List<Task> task : tasks) {
-        task.forEach(job::setTask);
+        task.forEach(job::addTask);
       }
       if (job.getStatus().equals(ExecutionStatus.NEW)) {
         //Wait and start job.
@@ -319,7 +337,7 @@ public class HelixJobRepository implements JobRepository, RoutingDataChangedList
   }
 
   private void updateJobPartitions(Job job, Map<Integer, Partition> partitions) {
-    Set<Integer> changedPartitions = job.updateExecutingParitions(partitions);
+    Set<Integer> changedPartitions = job.updateExecutingPartitions(partitions);
     if (!changedPartitions.isEmpty()) {
       for (Integer partitionId : changedPartitions) {
         try {

@@ -54,6 +54,13 @@ public abstract class Job {
     return kafkaTopic;
   }
 
+  public boolean isTerminated() {
+    if (status.equals(ExecutionStatus.COMPLETED) || status.equals(ExecutionStatus.ERROR)) {
+      return true;
+    }
+    return false;
+  }
+
   /**
    * Check all of current tasks status to judge whether job is completed or error or still running.
    * <p>
@@ -69,13 +76,13 @@ public abstract class Job {
 
   public abstract Task getTask(int partitionId, String taskId);
 
-  public abstract  void deleteTask(Task task);
+  public abstract void deleteTask(Task task);
 
-  public abstract void setTask(Task task);
+  public abstract void addTask(Task task);
 
   public abstract List<Task> tasksInPartition(int partitionId);
 
   public abstract String generateTaskId(int paritionId, String instanceId);
 
-  public abstract Set<Integer> updateExecutingParitions(Map<Integer, Partition> partitions);
+  public abstract Set<Integer> updateExecutingPartitions(Map<Integer, Partition> partitions);
 }

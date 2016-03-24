@@ -34,21 +34,8 @@ public class HelixAdapterSerializer implements PathBasedZkSerializer {
   public byte[] serialize(Object data, String path)
       throws ZkMarshallingError {
     try {
-      //When registering serializer, there are two types of path:
-      //1. /cluster/xxxx  : this is used for some parent objects like Job, path given here will be /cluster/Jobs/$jobId.
-      //   So we can simple drop the last part /$jobId to find the path used when registering.
-      //2. /cluster/xxxx/ : this is used for some children object. For example Task is. path given here will be
-      //   /cluster/Jobs/$jobId/$partitionId, even after ignore the last part /$paritionId, the path should be also dynamic
-      //   because $jobId are different. So we use /cluster/Jobs/ as the registering path of Task. When find serializer, drop
-      //   the last part ast first, if we still can not find the serializer, drop the second last part but kee the last '/'
-      //   to find again.
-      String registeredPath = path.substring(0, path.lastIndexOf('/'));
-      VeniceSerializer serializer = pathToSerializers.get(registeredPath);
-      if (serializer == null) {
-        serializer = pathToSerializers.get(registeredPath.substring(0, registeredPath.lastIndexOf('/') + 1));
-      }
-      return serializer.serialize(data);
-    } catch (IOException | NullPointerException | IndexOutOfBoundsException e) {
+      return getSerializer(path).serialize(data);
+    } catch (IOException e) {
       throw new ZkMarshallingError("Met error when serialize store.", e);
     }
   }
@@ -57,14 +44,26 @@ public class HelixAdapterSerializer implements PathBasedZkSerializer {
   public Object deserialize(byte[] bytes, String path)
       throws ZkMarshallingError {
     try {
-      String registeredPath = path.substring(0, path.lastIndexOf('/'));
-      VeniceSerializer serializer = pathToSerializers.get(registeredPath);
-      if (serializer == null) {
-        serializer = pathToSerializers.get(registeredPath.substring(0, registeredPath.lastIndexOf('/') + 1));
-      }
-      return serializer.deserialize(bytes);
-    } catch (IOException | NullPointerException | IndexOutOfBoundsException e) {
+      return getSerializer(path).deserialize(bytes);
+    } catch (IOException e) {
       throw new ZkMarshallingError("Met error when deserialize store.", e);
     }
+  }
+
+  private VeniceSerializer getSerializer(String path){
+    //When registering serializer, there are two types of path:
+    //1. /cluster/xxxx  : this is used for some parent objects like Job, path given here will be /cluster/Jobs/$jobId.
+    //   So we can simple drop the last part /$jobId to find the path used when registering.
+    //2. /cluster/xxxx/ : this is used for some children object. For example Task is. path given here will be
+    //   /cluster/Jobs/$jobId/$partitionId, even after ignore the last part /$partitionId, the path should be also dynamic
+    //   because $jobId are different. So we use /cluster/Jobs/ as the registering path of Task. When find serializer, drop
+    //   the last part ast first, if we still can not find the serializer, drop the second last part but kept the last '/'
+    //   to find again.
+    String registeredPath = path.substring(0, path.lastIndexOf('/'));
+    VeniceSerializer serializer = pathToSerializers.get(registeredPath);
+    if (serializer == null) {
+      serializer = pathToSerializers.get(registeredPath.substring(0, registeredPath.lastIndexOf('/') + 1));
+    }
+    return serializer;
   }
 }

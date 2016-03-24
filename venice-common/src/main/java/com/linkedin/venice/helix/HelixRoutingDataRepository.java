@@ -241,11 +241,14 @@ public class HelixRoutingDataRepository extends RoutingTableProvider implements 
         //Get number of partitions for new resources from ZK.
         Map<String, Integer> newResourceNamesToNumberOfParitions = getNumberOfParitionsFromIdealState(addedResourceNames);
         lock.lock();
-        //Add new added resources.
-        resourceToNumberOfPartitionsMap.putAll(newResourceNamesToNumberOfParitions);
-        //Clear cached resourceToNumberOfPartition map
-        deletedResourceNames.forEach(resourceToNumberOfPartitionsMap::remove);
-        lock.unlock();
+        try {
+            //Add new added resources.
+            resourceToNumberOfPartitionsMap.putAll(newResourceNamesToNumberOfParitions);
+            //Clear cached resourceToNumberOfPartition map
+            deletedResourceNames.forEach(resourceToNumberOfPartitionsMap::remove);
+        }finally {
+            lock.unlock();
+        }
         logger.debug("Resources added:" + addedResourceNames.toString());
         logger.debug("Resources deleted:" + deletedResourceNames.toString());
         logger.info("External view is changed.");
