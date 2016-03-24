@@ -1,6 +1,6 @@
 package com.linkedin.venice.listener;
 
-import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.HttpConstants;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 import io.netty.channel.ChannelFutureListener;
@@ -12,9 +12,11 @@ import io.netty.handler.codec.http.FullHttpResponse;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import java.nio.charset.StandardCharsets;
 
-import static io.netty.handler.codec.http.HttpVersion.*;
-import static io.netty.handler.codec.http.HttpResponseStatus.*;
-import static io.netty.handler.codec.http.HttpHeaders.Names.*;
+import static io.netty.handler.codec.http.HttpHeaders.Names.CONTENT_LENGTH;
+import static io.netty.handler.codec.http.HttpHeaders.Names.CONTENT_TYPE;
+import static io.netty.handler.codec.http.HttpResponseStatus.INTERNAL_SERVER_ERROR;
+import static io.netty.handler.codec.http.HttpResponseStatus.OK;
+import static io.netty.handler.codec.http.HttpVersion.HTTP_1_1;
 
 /***
  * wraps raw bytes into an HTTP response object that HttpServerCodec expects
@@ -28,20 +30,27 @@ public class OutboundHttpWrapperHandler extends ChannelOutboundHandlerAdapter {
   @Override
   public void write(ChannelHandlerContext ctx, Object msg, ChannelPromise promise) throws Exception {
     ByteBuf body;
-    String contentType = "application/octet-stream";
+    String contentType = HttpConstants.APPLICATION_OCTET;
     HttpResponseStatus responseStatus = OK;
-    if (msg instanceof byte[]){
-      body = Unpooled.wrappedBuffer((byte[]) msg);
-    } else if (msg instanceof ByteBuf) {
-      body = (ByteBuf) msg;
+    long offset = -1;
+    if (msg instanceof StorageResponseObject){
+      StorageResponseObject obj = (StorageResponseObject) msg;
+      body = Unpooled.wrappedBuffer(obj.getValue());
+      offset = obj.getOffset();
     } else if (msg instanceof HttpError){
       responseStatus = ((HttpError) msg).getStatus();
       body = Unpooled.wrappedBuffer(((HttpError) msg).getMessage().getBytes(StandardCharsets.UTF_8));
-      contentType = "text/plain";
-    } else { return; }
+      contentType = HttpConstants.TEXT_PLAIN;
+    } else {
+      responseStatus = INTERNAL_SERVER_ERROR;
+      body = Unpooled.wrappedBuffer("Unrecognized object in OutboundHttpWrapperHandler".getBytes(StandardCharsets.UTF_8));
+    }
     FullHttpResponse response = new DefaultFullHttpResponse(HTTP_1_1, responseStatus, body);
     response.headers().set(CONTENT_TYPE, contentType);
     response.headers().set(CONTENT_LENGTH, body.readableBytes());
+    if (offset > 0) {
+      response.headers().set(HttpConstants.VENICE_OFFSET, offset);
+    }
 
     ctx.write(response).addListener(ChannelFutureListener.CLOSE);
   }

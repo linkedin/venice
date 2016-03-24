@@ -42,7 +42,13 @@ import org.testng.annotations.Test;
 @PrepareForTest({StoreConsumptionTask.class, ApacheKafkaConsumer.class})
 public class StoreConsumptionTaskTest extends PowerMockTestCase {
 
-  public static final int TIMEOUT = 2 * StoreConsumptionTask.READ_CYCLE_DELAY_MS;
+  public static final int TIMEOUT;
+
+  static {
+    StoreConsumptionTask.READ_CYCLE_DELAY_MS = 100;
+    TIMEOUT = 5 * StoreConsumptionTask.READ_CYCLE_DELAY_MS;
+  }
+
   private KafkaConsumer mockKafkaConsumer;
   private StoreRepository mockStoreRepository;
   private VeniceNotifier mockNotifier;

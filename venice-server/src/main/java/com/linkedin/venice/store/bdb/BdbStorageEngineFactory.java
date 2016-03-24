@@ -5,14 +5,18 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.config.VeniceServerConfig;
 import com.linkedin.venice.config.VeniceStoreConfig;
 import com.linkedin.venice.exceptions.StorageInitializationException;
+import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.server.PartitionAssignmentRepository;
 import com.linkedin.venice.store.AbstractStorageEngine;
 import com.linkedin.venice.store.StorageEngineFactory;
 import com.linkedin.venice.store.StorageEngineInitializationException;
+import com.linkedin.venice.store.memory.InMemoryStorageEngine;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.Time;
 import com.sleepycat.je.*;
+import com.sleepycat.je.rep.impl.node.Feeder;
 import org.apache.commons.io.FileUtils;
+import org.apache.commons.lang.NotImplementedException;
 import org.apache.log4j.Logger;
 
 import java.io.File;
@@ -158,9 +162,6 @@ public class BdbStorageEngineFactory implements StorageEngineFactory {
   public AbstractStorageEngine getStore(VeniceStoreConfig storeConfig) throws StorageInitializationException {
     synchronized (lock) {
       try {
-        Environment environment = getEnvironment(storeConfig);
-        BdbStorageEngine engine = new BdbStorageEngine(storeConfig, partitionNodeAssignmentRepo, environment);
-
         // TODO: support jmx service
         /*
         if (veniceConfig.isJmxEnabled()) {
@@ -173,9 +174,21 @@ public class BdbStorageEngineFactory implements StorageEngineFactory {
           }
         }
         */
-        return engine;
-      } catch (DatabaseException d) {
-        throw new StorageInitializationException(d);
+
+        switch (storeConfig.getPersistenceType()) {
+          case BDB:
+            Environment environment = getEnvironment(storeConfig);
+            return new BdbStorageEngine(storeConfig, partitionNodeAssignmentRepo, environment);
+          case IN_MEMORY:
+            return new InMemoryStorageEngine(storeConfig, partitionNodeAssignmentRepo);
+          case ROCKS_DB:
+            throw new NotImplementedException("RocksDB support is not implemented yet!");
+          default:
+            throw new VeniceException("Persistence type '" + storeConfig.getPersistenceType() + "' is not supported.");
+        }
+
+      } catch (Exception e) {
+        throw new StorageInitializationException(e);
       }
     }
   }

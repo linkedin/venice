@@ -1,14 +1,13 @@
 package com.linkedin.venice.helix;
 
+import com.linkedin.venice.integration.utils.ServiceFactory;
+import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.meta.Store;
-import com.linkedin.venice.utils.ZkServerWrapper;
 import org.apache.helix.manager.zk.ZkClient;
 import org.apache.zookeeper.CreateMode;
 import org.testng.Assert;
 import org.testng.annotations.AfterMethod;
-import org.testng.annotations.AfterTest;
 import org.testng.annotations.BeforeMethod;
-import org.testng.annotations.BeforeTest;
 import org.testng.annotations.Test;
 
 
@@ -27,8 +26,8 @@ public class TestHelixMetadataRepository {
 
     @BeforeMethod
     public void zkSetup() {
-        zkServerWrapper = ZkServerWrapper.getZkServer();
-        zkAddress = zkServerWrapper.getZkAddress();
+        zkServerWrapper = ServiceFactory.getZkServer();
+        zkAddress = zkServerWrapper.getAddress();
         zkClient = new ZkClient(zkAddress, ZkClient.DEFAULT_SESSION_TIMEOUT, ZkClient.DEFAULT_CONNECTION_TIMEOUT, adapter);
         zkClient.create(clusterPath, null, CreateMode.PERSISTENT);
         zkClient.create(clusterPath + storesPath, null, CreateMode.PERSISTENT);

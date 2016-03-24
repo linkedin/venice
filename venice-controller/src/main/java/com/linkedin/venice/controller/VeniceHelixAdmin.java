@@ -95,13 +95,15 @@ public class VeniceHelixAdmin implements Admin {
         HelixControlMessageChannel controllerChannel = new HelixControlMessageChannel(helixManager);
         controllerChannel.registerHandler(StatusUpdateMessage.class, jobManager);
         jobManagers.put(clusterName,jobManager);
+
+      logger.info("VeniceHelixAdmin is started. Controller name: '" + controllerName + "', Cluster name: '" + clusterName + "'.");
     }
 
     @Override
     public synchronized void addStore(String clusterName, String storeName, String owner) {
         HelixCachedMetadataRepository repository = repositories.get(clusterName);
         if (repository == null) {
-            handleClusterDoseNotStart(clusterName);
+            handleClusterNotInitialized(clusterName);
         }
         if(repository.getStore(storeName)!=null){
             handleStoreAlreadyExists(clusterName, storeName);
@@ -116,7 +118,7 @@ public class VeniceHelixAdmin implements Admin {
     public synchronized  void addVersion(String clusterName, String storeName, int versionNumber) {
         VeniceControllerClusterConfig config = configs.get(clusterName);
         if(config == null){
-            handleClusterDoseNotStart(clusterName);
+            handleClusterNotInitialized(clusterName);
         }
         this.addVersion(clusterName, storeName, versionNumber, config.getNumberOfPartition(), config.getReplicaFactor());
     }
@@ -125,7 +127,7 @@ public class VeniceHelixAdmin implements Admin {
     public synchronized void addVersion(String clusterName, String storeName,int versionNumber, int numberOfPartition, int replicaFactor) {
         HelixCachedMetadataRepository repository = repositories.get(clusterName);
         if (repository == null) {
-            handleClusterDoseNotStart(clusterName);
+            handleClusterNotInitialized(clusterName);
         }
         repository.lock();
         Version version = null;
@@ -156,7 +158,7 @@ public class VeniceHelixAdmin implements Admin {
         int replicaFactor) {
         HelixCachedMetadataRepository repository = repositories.get(clusterName);
         if (repository == null) {
-            handleClusterDoseNotStart(clusterName);
+            handleClusterNotInitialized(clusterName);
         }
 
         repository.lock();
@@ -184,7 +186,7 @@ public class VeniceHelixAdmin implements Admin {
     public int incrementVersion(String clusterName, String storeName) {
         VeniceControllerClusterConfig config = configs.get(clusterName);
         if (config == null) {
-            handleClusterDoseNotStart(clusterName);
+            handleClusterNotInitialized(clusterName);
         }
         return this.incrementVersion(clusterName, storeName, config.getNumberOfPartition(), config.getReplicaFactor());
     }
@@ -200,7 +202,7 @@ public class VeniceHelixAdmin implements Admin {
     public void addKafkaTopic(String clusterName, String kafkaTopic) {
         VeniceControllerClusterConfig config = configs.get(clusterName);
         if (config == null) {
-            handleClusterDoseNotStart(clusterName);
+            handleClusterNotInitialized(clusterName);
         }
         this.addKafkaTopic(clusterName, kafkaTopic, config.getNumberOfPartition(), config.getReplicaFactor(),
             config.getKafkaReplicaFactor());
@@ -235,7 +237,7 @@ public class VeniceHelixAdmin implements Admin {
     public void startOfflinePush(String clusterName, String kafkaTopic, int numberOfPartition, int replicaFactor) {
         VeniceJobManager jobManager = jobManagers.get(clusterName);
         if (jobManager == null){
-            handleClusterDoseNotStart(clusterName);
+            handleClusterNotInitialized(clusterName);
         }
         try {
             Thread.sleep(1000l);
@@ -309,8 +311,8 @@ public class VeniceHelixAdmin implements Admin {
         throw new VeniceException(errorMessage);
     }
 
-    private void handleClusterDoseNotStart(String clusterName) {
-        String errorMessage = "Cluster " + clusterName + " does not initialized. Can not add store to it.";
+    private void handleClusterNotInitialized(String clusterName) {
+        String errorMessage = "Cluster " + clusterName + " is not initialized. Can not add store to it.";
         logger.info(errorMessage);
         throw new VeniceException(errorMessage);
     }

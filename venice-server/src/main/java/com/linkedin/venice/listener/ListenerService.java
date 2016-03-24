@@ -1,5 +1,6 @@
 package com.linkedin.venice.listener;
 
+import com.linkedin.venice.offsets.OffsetManager;
 import com.linkedin.venice.server.StoreRepository;
 import com.linkedin.venice.server.VeniceConfigService;
 import com.linkedin.venice.service.AbstractVeniceService;
@@ -26,9 +27,9 @@ public class ListenerService extends AbstractVeniceService{
   //TODO: move netty config to a config file
   private static int nettyBacklogSize = 1000;
 
-  public ListenerService(StoreRepository storeRepository, VeniceConfigService veniceConfigService) {
+  public ListenerService(StoreRepository storeRepository, OffsetManager offsetManager, VeniceConfigService veniceConfigService) {
     super("listener-service");
-    this.port = Integer.parseInt(veniceConfigService.getVeniceServerConfig().getListenerPort());
+    this.port = veniceConfigService.getVeniceServerConfig().getListenerPort();
 
     //TODO: configurable worker group
     bossGroup = new NioEventLoopGroup(1);
@@ -36,7 +37,7 @@ public class ListenerService extends AbstractVeniceService{
 
     bootstrap = new ServerBootstrap();
     bootstrap.group(bossGroup, workerGroup).channel(NioServerSocketChannel.class)
-        .childHandler(new HttpChannelInitializer(storeRepository))    // For HTTP reads (GET read/store/partition/key)
+        .childHandler(new HttpChannelInitializer(storeRepository, offsetManager))    // For HTTP reads (GET read/store/partition/key)
         .option(ChannelOption.SO_BACKLOG, nettyBacklogSize)
         .childOption(ChannelOption.SO_KEEPALIVE, true)
         .option(ChannelOption.SO_REUSEADDR, true)

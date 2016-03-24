@@ -26,6 +26,7 @@ public class VeniceServer {
 
   private final StoreRepository storeRepository;
   private StorageService storageService;
+  private BdbOffsetManager offSetService;
   private final PartitionAssignmentRepository partitionAssignmentRepository;
 
   private final List<AbstractVeniceService> services;
@@ -61,14 +62,12 @@ public class VeniceServer {
     List<AbstractVeniceService> services = new ArrayList<AbstractVeniceService>();
 
     // create and add StorageService. storeRepository will be populated by StorageService,
-    storageService =
-        new StorageService(storeRepository, veniceConfigService, partitionAssignmentRepository);
+    storageService = new StorageService(storeRepository, veniceConfigService, partitionAssignmentRepository);
     services.add(storageService);
     storeRepository.setStorageService(storageService);
 
-    // Create and add OffSet Serfice.
-
-    BdbOffsetManager offSetService = new BdbOffsetManager(veniceConfigService.getVeniceClusterConfig());
+    // Create and add Offset Service.
+    offSetService = new BdbOffsetManager(veniceConfigService.getVeniceClusterConfig());
     services.add(offSetService);
 
     //create and add KafkaSimpleConsumerService
@@ -82,8 +81,8 @@ public class VeniceServer {
       HelixParticipationService helixParticipationService =
           new HelixParticipationService(kafkaConsumerService, storeRepository, veniceConfigService,
               clusterConfig.getZookeeperAddress(), clusterConfig.getClusterName(),
-              Integer.valueOf(veniceConfigService.getVeniceServerConfig().getListenerPort()),
-              Integer.valueOf(veniceConfigService.getVeniceServerConfig().getAdminPort()));
+              veniceConfigService.getVeniceServerConfig().getListenerPort(),
+              veniceConfigService.getVeniceServerConfig().getAdminPort());
       services.add(helixParticipationService);
     } else {
       // Note: Only required when NOT using Helix.
@@ -92,7 +91,7 @@ public class VeniceServer {
 
     //create and add ListenerServer for handling GET requests
     ListenerService listenerService =
-        new ListenerService(storeRepository, veniceConfigService);
+        new ListenerService(storeRepository, offSetService, veniceConfigService);
     services.add(listenerService);
 
 

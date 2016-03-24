@@ -6,7 +6,6 @@ import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.ReadStrategy;
 import com.linkedin.venice.meta.RoutingStrategy;
 import com.linkedin.venice.utils.Props;
-import java.util.List;
 import org.apache.log4j.Logger;
 
 

@@ -15,7 +15,6 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.utils.Utils;
-import com.linkedin.venice.utils.ZkServerWrapper;
 import java.util.HashMap;
 import java.util.Map;
 import org.apache.helix.HelixAdmin;
@@ -27,6 +26,8 @@ import org.apache.helix.ZNRecord;
 import org.apache.helix.controller.HelixControllerMain;
 import org.apache.helix.manager.zk.ZKHelixAdmin;
 import org.apache.helix.manager.zk.ZKHelixManager;
+import com.linkedin.venice.integration.utils.ServiceFactory;
+import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import org.apache.helix.manager.zk.ZkClient;
 import org.apache.helix.model.HelixConfigScope;
 import org.apache.helix.model.IdealState;
@@ -63,8 +64,8 @@ public class TestVeniceJobManager {
   @BeforeMethod
   public void setup()
       throws Exception {
-    zkServerWrapper = ZkServerWrapper.getZkServer();
-    zkAddress = zkServerWrapper.getZkAddress();
+    zkServerWrapper = ServiceFactory.getZkServer();
+    zkAddress = zkServerWrapper.getAddress();
 
     admin = new ZKHelixAdmin(zkAddress);
     admin.addCluster(cluster);
