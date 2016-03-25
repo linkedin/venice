@@ -169,12 +169,8 @@ public class TestHelixJobRepository {
     Assert.assertEquals(ExecutionStatus.COMPLETED, repository.getJobStatus(1, kafkaTopic),
         "Job should be completed after being stopped.");
 
-    try {
-      repository.getRunningJobOfTopic("topic1");
-      Assert.fail("Job is stooped, should not exist in running job list.");
-    } catch (VeniceException e) {
-      //expected
-    }
+    Assert.assertTrue(repository.getRunningJobOfTopic("topic1").isEmpty(),
+        "Job is stooped, should not exist in running job list.");
   }
 
   @Test
@@ -213,18 +209,10 @@ public class TestHelixJobRepository {
     } catch (VeniceException e) {
       //expected
     }
-    try {
-      repository.getRunningJobOfTopic(kafkaTopic);
-      Assert.fail("Job is archived, should not exist in repository right now.");
-    } catch (VeniceException e) {
-      //expected
-    }
-    try {
-      repository.getTerminatedJobOfTopic(kafkaTopic);
-      Assert.fail("Job is archived, should not exist in repository right now.");
-    } catch (VeniceException e) {
-      //expected
-    }
+    Assert.assertTrue(repository.getRunningJobOfTopic(kafkaTopic).isEmpty(),
+        "Job is archived, should not exist in repository right now.");
+    Assert.assertTrue(repository.getTerminatedJobOfTopic(kafkaTopic).isEmpty(),
+        "Job is archived, should not exist in repository right now.");
   }
 
   @Test

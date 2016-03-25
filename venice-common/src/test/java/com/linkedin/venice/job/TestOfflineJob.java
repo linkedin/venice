@@ -42,102 +42,66 @@ public class TestOfflineJob {
     partitions.clear();
   }
 
+  private void testValidateJobTransition(Job job, ExecutionStatus[] validStatus, ExecutionStatus[] invalidStatus) {
+    ExecutionStatus currentStatus = job.getStatus();
+    //valid status transition
+    for (ExecutionStatus status : validStatus) {
+      try {
+        job.validateStatusTransition(status);
+      } catch (VeniceException e) {
+        Assert.fail("Job status:" + currentStatus.toString() + " should be able " + status.toString());
+      }
+    }
+    //invalid status transition.
+    for (ExecutionStatus status : invalidStatus) {
+      try {
+        job.validateStatusTransition(status);
+        Assert.fail("Job status:" + currentStatus.toString() + " should not be able " + status.toString());
+      } catch (VeniceException e) {
+
+      }
+    }
+  }
+
   @Test
-  public void verfyJobStatsus() {
+  public void validateJobStartedTransition() {
     OfflineJob job = new OfflineJob(1, topic, numberOfPartition, replicaFactor);
-    //NEW status
-    try {
-      job.verifyNewJobStatus(ExecutionStatus.STARTED);
-    } catch (VeniceException e) {
-      Assert.fail("Job should be able started.");
-    }
-
-    try {
-      job.verifyNewJobStatus(ExecutionStatus.PROGRESS);
-      Assert.fail("Job should be started at first");
-    } catch (VeniceException e) {
-
-    }
-
-    try {
-      job.verifyNewJobStatus(ExecutionStatus.ERROR);
-      Assert.fail("Job should be started at first");
-    } catch (VeniceException e) {
-    }
-
-    try {
-      job.verifyNewJobStatus(ExecutionStatus.COMPLETED);
-      Assert.fail("Job should be started at first");
-    } catch (VeniceException e) {
-    }
-
-    //STARTED
     job.setStatus(ExecutionStatus.STARTED);
-    try {
-      job.verifyNewJobStatus(ExecutionStatus.STARTED);
-      Assert.fail("Job can not be started again.");
-    } catch (VeniceException e) {
-    }
-    try {
-      job.verifyNewJobStatus(ExecutionStatus.COMPLETED);
-    } catch (VeniceException e) {
-      Assert.fail("Job should be able terminated.");
-    }
-    try {
-      job.verifyNewJobStatus(ExecutionStatus.ERROR);
-    } catch (VeniceException e) {
-      Assert.fail("Job should be able terminated.");
-    }
-    try {
-      job.verifyNewJobStatus(ExecutionStatus.ARCHIVED);
-      Assert.fail("Job should be terminated at first then archived.");
-    } catch (VeniceException e) {
-    }
+    ExecutionStatus[] validStatus = new ExecutionStatus[]{ExecutionStatus.ERROR, ExecutionStatus.COMPLETED};
+    ExecutionStatus[] invalidStatus =
+        new ExecutionStatus[]{ExecutionStatus.PROGRESS, ExecutionStatus.ARCHIVED, ExecutionStatus.STARTED};
+    testValidateJobTransition(job, validStatus, invalidStatus);
+  }
 
-    //COMPLETED
+  @Test
+  public void validateJobCompletedTransition() {
+    OfflineJob job = new OfflineJob(1, topic, numberOfPartition, replicaFactor);
     job.setStatus(ExecutionStatus.COMPLETED);
-    try {
-      job.verifyNewJobStatus(ExecutionStatus.STARTED);
-      Assert.fail("Job is already terminated.");
-    } catch (VeniceException e) {
+    ExecutionStatus[] validStatus = new ExecutionStatus[]{ExecutionStatus.ARCHIVED};
+    ExecutionStatus[] invalidStatus =
+        new ExecutionStatus[]{ExecutionStatus.STARTED, ExecutionStatus.COMPLETED, ExecutionStatus.ERROR, ExecutionStatus.NEW};
+    testValidateJobTransition(job, validStatus, invalidStatus);
+  }
 
-    }
-    try {
-      job.verifyNewJobStatus(ExecutionStatus.NEW);
-      Assert.fail("Job is already terminated.");
-    } catch (VeniceException e) {
+  @Test
+  public void validateJobErrorTransition() {
+    OfflineJob job = new OfflineJob(1, topic, numberOfPartition, replicaFactor);
+    job.setStatus(ExecutionStatus.ERROR);
+    ExecutionStatus[] validStatus = new ExecutionStatus[]{ExecutionStatus.ARCHIVED};
+    ExecutionStatus[] invalidStatus =
+        new ExecutionStatus[]{ExecutionStatus.STARTED, ExecutionStatus.COMPLETED, ExecutionStatus.ERROR, ExecutionStatus.NEW};
+    testValidateJobTransition(job, validStatus, invalidStatus);
+  }
 
-    }
-    try {
-      job.verifyNewJobStatus(ExecutionStatus.ERROR);
-      Assert.fail("Job is already terminated.");
-    } catch (VeniceException e) {
-
-    }
-    try {
-      job.verifyNewJobStatus(ExecutionStatus.COMPLETED);
-      Assert.fail("Job is already terminated.");
-    } catch (VeniceException e) {
-
-    }
-    try {
-      job.verifyNewJobStatus(ExecutionStatus.ARCHIVED);
-    } catch (VeniceException e) {
-      Assert.fail("Job could be archived.");
-    }
-
-    //Archived
+  @Test
+  public void validateJobArchivedTransition() {
+    OfflineJob job = new OfflineJob(1, topic, numberOfPartition, replicaFactor);
     job.setStatus(ExecutionStatus.ARCHIVED);
-    try {
-      job.verifyNewJobStatus(ExecutionStatus.STARTED);
-      Assert.fail("Job is already archived.");
-    } catch (VeniceException e) {
-    }
-    try {
-      job.verifyNewJobStatus(ExecutionStatus.COMPLETED);
-      Assert.fail("Job is already archived.");
-    } catch (VeniceException e) {
-    }}
+    ExecutionStatus[] validStatus = new ExecutionStatus[]{};
+    ExecutionStatus[] invalidStatus =
+        new ExecutionStatus[]{ExecutionStatus.ARCHIVED, ExecutionStatus.STARTED, ExecutionStatus.COMPLETED, ExecutionStatus.ERROR, ExecutionStatus.NEW};
+    testValidateJobTransition(job, validStatus, invalidStatus);
+  }
 
   @Test
   public void testUpdateTaskStatus() {

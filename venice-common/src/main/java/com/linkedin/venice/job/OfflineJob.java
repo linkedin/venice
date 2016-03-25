@@ -89,23 +89,24 @@ public class OfflineJob extends Job {
    * <li>ERROR->ARCHIVED</li> </ul>
    */
   @Override
-  public void verifyNewJobStatus(ExecutionStatus status) {
+  public void validateStatusTransition(ExecutionStatus newStatus) {
     boolean isValid = true;
-    switch (this.getStatus()) {
+    ExecutionStatus currentStatus = getStatus();
+    switch (currentStatus) {
       case NEW:
-        if (!status.equals(ExecutionStatus.STARTED)) {
+        if (!newStatus.equals(ExecutionStatus.STARTED)) {
           isValid = false;
         }
         break;
       case STARTED:
-        if (!status.equals(ExecutionStatus.COMPLETED) && !status.equals(ExecutionStatus.ERROR)) {
+        if (!newStatus.equals(ExecutionStatus.COMPLETED) && !newStatus.equals(ExecutionStatus.ERROR)) {
           isValid = false;
         }
         break;
       case COMPLETED:
         //Same to ERROR status.
       case ERROR:
-        if (!status.equals(ExecutionStatus.ARCHIVED)) {
+        if (!newStatus.equals(ExecutionStatus.ARCHIVED)) {
           isValid = false;
         }
         break;
@@ -113,12 +114,28 @@ public class OfflineJob extends Job {
         isValid = false;
         break;
       default:
-        throw new VeniceException("Invalid job status:" + this.getStatus().toString());
+        throw new VeniceException("Invalid job status:" + currentStatus.toString());
     }
     if (!isValid) {
       throw new VeniceException(
-          "Job is " + this.getStatus().toString() + " can not be update to status:" + status.toString());
+          "Job is " + currentStatus.toString() + " can not be update to status:" + newStatus.toString());
     }
+  }
+
+  @Override
+  public synchronized Job cloneJob() {
+    OfflineJob clonedJob = new OfflineJob(getJobId(),getKafkaTopic(),getNumberOfPartition(),getReplicaFactor(),strategy);
+    clonedJob.setStatus(getStatus());
+    for(Integer partitionId:partitionToTasksMap.keySet()){
+      Map<String, Task> taskMap = partitionToTasksMap.get(partitionId);
+      Map<String, Task> clonedTaskMap = clonedJob.partitionToTasksMap.get(partitionId);
+      for(Task task:taskMap.values()){
+        Task clonedTask = new Task(task.getTaskId(),task.getPartitionId(),task.getInstanceId());
+        clonedTask.setStatus(task.getStatus());
+        clonedTaskMap.put(clonedTask.getTaskId(),clonedTask);
+      }
+    }
+    return clonedJob;
   }
 
   /**

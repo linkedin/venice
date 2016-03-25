@@ -3,21 +3,16 @@ package com.linkedin.venice.controller;
 import com.linkedin.venice.controlmessage.ControlMessageHandler;
 import com.linkedin.venice.controlmessage.StatusUpdateMessage;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.job.Job;
 import com.linkedin.venice.job.ExecutionStatus;
+import com.linkedin.venice.job.Job;
 import com.linkedin.venice.job.JobRepository;
 import com.linkedin.venice.job.OfflineJob;
 import com.linkedin.venice.job.Task;
 import com.linkedin.venice.meta.MetadataRepository;
-import com.linkedin.venice.meta.Partition;
-import com.linkedin.venice.meta.RoutingDataChangedListener;
-import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
-import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 import org.apache.log4j.Logger;
@@ -47,13 +42,12 @@ public class VeniceJobManager implements ControlMessageHandler<StatusUpdateMessa
 
   public synchronized ExecutionStatus getOfflineJobStatus(String kafkaTopic) {
     List<Job> jobs;
-    try {
-      jobs = jobRepository.getRunningJobOfTopic(kafkaTopic);
-    } catch (VeniceException e) {
+    jobs = jobRepository.getRunningJobOfTopic(kafkaTopic);
+    if (jobs.isEmpty()) {
       //Can not find job in running jobs. Then find it in terminated jobs.
       jobs = jobRepository.getTerminatedJobOfTopic(kafkaTopic);
     }
-    if (jobs.size() > 1) {
+    if (jobs.size() != 1) {
       throw new VeniceException(
           "There should be only one job for each kafka topic. But now there are:" + jobs.size() + " jobs running.");
     }
@@ -121,7 +115,7 @@ public class VeniceJobManager implements ControlMessageHandler<StatusUpdateMessa
   public synchronized void archiveJobs(String kafkaTopic) {
     List<Job> jobs = jobRepository.getTerminatedJobOfTopic(kafkaTopic);
     List<Long> jobIds = jobs.stream().map(Job::getJobId).collect(Collectors.toList());
-    for(Long jobId:jobIds) {
+    for (Long jobId : jobIds) {
       jobRepository.archiveJob(jobId, kafkaTopic);
     }
   }
