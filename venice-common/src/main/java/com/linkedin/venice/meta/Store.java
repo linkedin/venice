@@ -175,7 +175,7 @@ public class Store {
         if (versions.size() > 0) {
             versionNumber = versions.get(versions.size() - 1).getNumber() + 1;
         }
-        Version version = new Version(name, versionNumber, System.currentTimeMillis());
+        Version version = new Version(name, versionNumber);
         addVersion(version);
         return version.cloneVersion();
     }

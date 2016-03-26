@@ -1,6 +1,7 @@
 package com.linkedin.venice.controller.server;
 
 import com.linkedin.venice.controller.Admin;
+import com.linkedin.venice.meta.Version;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 import io.netty.channel.Channel;
@@ -34,21 +35,25 @@ public class HandlerTest {
 
   static ObjectMapper objectMapper = new ObjectMapper();
 
+  private static final String STORE_NAME= "mystore";
+  private static final String OWNER = "devuser";
+  private static final int VERSION_NUMBER = 5;
+
   @Test
   public void handlerCreatesStores() throws Exception {
 
     String requestUri = "http://localhost:1234/create";
     String requestContent = "storename=mystore&store_size=8000&owner=devuser";
 
-    DefaultFullHttpResponse response = testHandler(requestUri, requestContent, 5);
+    DefaultFullHttpResponse response = testHandler(requestUri, requestContent, VERSION_NUMBER);
     Map<String, Object> parsedJson = getJsonFromHttp(response);
     Map<String,Object> params = (Map<String,Object>) parsedJson.get("parameters");
 
     //Assert it is what we expect.
-    Assert.assertEquals(params.get("storename"), "mystore");
-    Assert.assertEquals(params.get("owner"), "devuser");
+    Assert.assertEquals(params.get("storename"), STORE_NAME);
+    Assert.assertEquals(params.get("owner"), OWNER);
     Assert.assertEquals(params.get("store_size"), "8000");
-    Assert.assertEquals(parsedJson.get("version"), 5);
+    Assert.assertEquals(parsedJson.get("version"), VERSION_NUMBER);
     Assert.assertEquals(parsedJson.get("action"), "creating store-version");
     Assert.assertEquals(parsedJson.get("store_status"), "created");
 
@@ -82,7 +87,8 @@ public class HandlerTest {
       throws Exception {
     //Mock Objects
     Admin mockAdmin = Mockito.mock(Admin.class);
-    when(mockAdmin.incrementVersion(Mockito.anyString(), Mockito.anyString(), Mockito.anyInt(), Mockito.anyInt())).thenReturn(5);
+    Version version = new Version(STORE_NAME, newStoreVersion);
+    when(mockAdmin.incrementVersion(Mockito.anyString(), Mockito.anyString(), Mockito.anyInt(), Mockito.anyInt())).thenReturn(version);
     ChannelHandlerContext mockCtx = Mockito.mock(ChannelHandlerContext.class);
     Channel mockChannel = Mockito.mock(Channel.class);
     ChannelFuture mockFuture = Mockito.mock(ChannelFuture.class);

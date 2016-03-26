@@ -9,6 +9,8 @@ public class ControllerApiConstants {
   public static final String OWNER = "owner";
   public static final String STORE_SIZE = "store_size";
   public static final String VERSION = "version";
+  public static final String KAFKA_BOOTSTRAP_SERVERS = "kafka_bootstrap_servers";
+  public static final String KAFKA_TOPIC = "kafka_topic";
   public static final String REPLICAS = "replicas";
   public static final String PARTITIONS = "partitions";
   public static final String TEXT_HTML = "text/html";

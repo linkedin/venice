@@ -1,7 +1,7 @@
 package com.linkedin.venice.controller;
 
 import com.linkedin.venice.job.ExecutionStatus;
-import java.util.Map;
+import com.linkedin.venice.meta.Version;
 
 
 /**
@@ -12,17 +12,14 @@ public interface Admin {
 
     public void addStore(String clusterName, String storeName, String owner);
 
-    public void addVersion(String clusterName, String storeName, int versionNumber);
+    public Version addVersion(String clusterName, String storeName, int versionNumber);
 
-    public void addVersion(String clusterName, String storeName, int versionNumber, int numberOfPartition,
+    public Version addVersion(String clusterName, String storeName, int versionNumber, int numberOfPartition,
         int replicaFactor);
 
-    public int incrementVersion(String clusterName, String storeName, int numberOfPartition, int replicaFactor);
+    public Version incrementVersion(String clusterName, String storeName, int numberOfPartition, int replicaFactor);
 
     public void setCurrentVersion(String clusterName, String storeName, int versionNumber);
-
-    public void addKafkaTopic(String clusterName, String kafkaTopic, int numberOfPartition, int replicaFactor,
-        int kafkaReplicaFactor);
 
     public void startOfflinePush(String clusterName, String kafkaTopic, int numberOfPartition, int replicaFactor);
 
@@ -38,4 +35,14 @@ public interface Admin {
      * @return the map of job Id to job status.
      */
     public ExecutionStatus getOffLineJobStatus(String clusterName, String kafkaTopic);
+
+    /**
+     * TODO : Currently bootstrap servers are common per Venice Controller cluster
+     * This needs to be configured at per store level or per version level.
+     * The Kafka bootstrap servers should also be dynamically sent to the Storage Nodes
+     * and only controllers should be aware of them.
+     *
+     * @return kafka bootstrap servers url, if there are multiple will be comma separated.
+     */
+    public String getKafkaBootstrapServers();
 }

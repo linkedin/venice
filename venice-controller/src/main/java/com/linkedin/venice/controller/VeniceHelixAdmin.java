@@ -33,6 +33,8 @@ import org.apache.log4j.Logger;
 public class VeniceHelixAdmin implements Admin {
     private final String controllerName;
     private final String zkConnString;
+    private final String kafkaBootstrapServers;
+
     private final Map<String, HelixManager> helixManagers = new HashMap<>();
     private static final Logger logger = Logger.getLogger(VeniceHelixAdmin.class.getName());
     private final HelixAdmin admin;
@@ -42,13 +44,15 @@ public class VeniceHelixAdmin implements Admin {
     private final Map<String, VeniceControllerClusterConfig> configs = new HashMap<>();
     private final Map<String, VeniceJobManager> jobManagers = new HashMap<>();
 
-    public VeniceHelixAdmin(String controllerName, String zkConnString, String kafkaZkConnString) {
+    public VeniceHelixAdmin(String controllerName, String zkConnString,
+            String kafkaZkConnString, String kafkaBootstrapServers) {
         /* Controller name can be generated from the hostname and
         VMID https://docs.oracle.com/javase/7/docs/api/java/rmi/dgc/VMID.html
         but taking this parameter from the user for now
          */
         this.controllerName = controllerName;
         this.zkConnString = zkConnString;
+        this.kafkaBootstrapServers =  kafkaBootstrapServers;
         this.topicCreator = new TopicCreator(kafkaZkConnString);
         admin = new ZKHelixAdmin(zkConnString);
         //There is no way to get the internal zkClient from HelixManager or HelixAdmin. So create a new one here.
@@ -116,16 +120,16 @@ public class VeniceHelixAdmin implements Admin {
     }
 
     @Override
-    public synchronized  void addVersion(String clusterName, String storeName, int versionNumber) {
+    public synchronized  Version addVersion(String clusterName, String storeName, int versionNumber) {
         VeniceControllerClusterConfig config = configs.get(clusterName);
         if(config == null){
             handleClusterNotInitialized(clusterName);
         }
-        this.addVersion(clusterName, storeName, versionNumber, config.getNumberOfPartition(), config.getReplicaFactor());
+        return this.addVersion(clusterName, storeName, versionNumber, config.getNumberOfPartition(), config.getReplicaFactor());
     }
 
     @Override
-    public synchronized void addVersion(String clusterName, String storeName,int versionNumber, int numberOfPartition, int replicaFactor) {
+    public synchronized Version addVersion(String clusterName, String storeName,int versionNumber, int numberOfPartition, int replicaFactor) {
         HelixCachedMetadataRepository repository = repositories.get(clusterName);
         if (repository == null) {
             handleClusterNotInitialized(clusterName);
@@ -140,7 +144,7 @@ public class VeniceHelixAdmin implements Admin {
             if(store.containsVersion(versionNumber)){
                 handleVersionAlreadyExists(storeName, versionNumber);
             }
-            version = new Version(storeName,versionNumber,System.currentTimeMillis());
+            version = new Version(storeName,versionNumber);
             store.addVersion(version);
             repository.updateStore(store);
             logger.info("Add version:"+version.getNumber()+" for store:" + storeName);
@@ -152,10 +156,11 @@ public class VeniceHelixAdmin implements Admin {
             configs.get(clusterName).getKafkaReplicaFactor());
         //Start offline push job for this new version.
         startOfflinePush(clusterName, version.kafkaTopicName(), numberOfPartition, replicaFactor);
+        return version;
     }
 
     @Override
-    public synchronized int incrementVersion(String clusterName, String storeName, int numberOfPartition,
+    public synchronized Version incrementVersion(String clusterName, String storeName, int numberOfPartition,
         int replicaFactor) {
         HelixCachedMetadataRepository repository = repositories.get(clusterName);
         if (repository == null) {
@@ -180,7 +185,7 @@ public class VeniceHelixAdmin implements Admin {
             configs.get(clusterName).getKafkaReplicaFactor());
         //Start offline push job for this new version.
         startOfflinePush(clusterName, version.kafkaTopicName(), numberOfPartition, replicaFactor);
-        return version.getNumber();
+        return version;
     }
 
     @Override
@@ -200,18 +205,7 @@ public class VeniceHelixAdmin implements Admin {
         }
     }
 
-    /**
-     * addKafkaTopic is a feature in Venice domain. Beside that we alos need to create a resource with the same name of Kafka
-     * topic in Helix.
-     *
-     * @param clusterName
-     * @param kafkaTopic
-     * @param numberOfPartition
-     * @param replicaFactor
-     * @param kafkaReplicaFactor
-     */
-    @Override
-    public synchronized void addKafkaTopic(String clusterName, String kafkaTopic, int numberOfPartition,
+    private void addKafkaTopic(String clusterName, String kafkaTopic, int numberOfPartition,
         int replicaFactor, int kafkaReplicaFactor) {
         topicCreator.createTopic(kafkaTopic, numberOfPartition, kafkaReplicaFactor);
 
@@ -234,7 +228,7 @@ public class VeniceHelixAdmin implements Admin {
         try {
             Thread.sleep(1000l);
         } catch (InterruptedException e) {
-            e.printStackTrace();
+            logger.info(" Thread Interrupted  for cluster " + clusterName + " Topic " + kafkaTopic , e);
         }
         jobManager.startOfflineJob(kafkaTopic, numberOfPartition, replicaFactor);
     }
@@ -283,7 +277,7 @@ public class VeniceHelixAdmin implements Admin {
         logger.info("Cluster  " + clusterName + "  Completed, auto join to true. ");
 
         admin.addStateModelDef(clusterName, VeniceStateModel.PARTITION_ONLINE_OFFLINE_STATE_MODEL,
-            VeniceStateModel.getDefinition());
+                VeniceStateModel.getDefinition());
     }
 
     private void handleStoreAlreadyExists(String clusterName, String storeName) {
@@ -315,6 +309,11 @@ public class VeniceHelixAdmin implements Admin {
         String errorMessage = "Cluster " + clusterName + " is not initialized. Can not add store to it.";
         logger.info(errorMessage);
         throw new VeniceException(errorMessage);
+    }
+
+    @Override
+    public String getKafkaBootstrapServers() {
+        return this.kafkaBootstrapServers;
     }
 
 }

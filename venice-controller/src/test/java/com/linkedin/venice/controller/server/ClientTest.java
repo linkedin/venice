@@ -4,6 +4,7 @@ import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.StoreCreationResponse;
 import com.linkedin.venice.integration.utils.PortUtils;
+import com.linkedin.venice.meta.Version;
 import org.mockito.Mockito;
 import static org.mockito.Mockito.*;
 
@@ -15,6 +16,8 @@ import org.testng.annotations.Test;
  * Created by mwise on 3/17/16.
  */
 public class ClientTest {
+  private static final String STORE_NAME = "mystore";
+  private static final String OWNER = "matt-the-awesome";
   @Test
   public void serverCanTalkToClient()
       throws Exception {
@@ -25,12 +28,13 @@ public class ClientTest {
         ControllerClient client = new ControllerClient("localhost", port);
 
         Admin mockAdmin = Mockito.mock(Admin.class);
-        doReturn(5).when(mockAdmin)
+        Version version = new Version(STORE_NAME, 5 );
+        doReturn(version).when(mockAdmin)
             .incrementVersion(Mockito.anyString(), Mockito.anyString(), Mockito.anyInt(), Mockito.anyInt());
         AdminServer server = new AdminServer(port, "cluster-for-tests", mockAdmin);
         server.start();
         int storeSizeMb = 500;
-        StoreCreationResponse response = client.CreateNewStoreVersion("mystore", "matt-the-awesome", storeSizeMb);
+        StoreCreationResponse response = client.CreateNewStoreVersion(STORE_NAME, OWNER, storeSizeMb);
         server.stop();
 
         Assert.assertEquals(response.getName(), "mystore");

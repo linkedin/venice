@@ -1,5 +1,6 @@
 package com.linkedin.venice.controller;
 
+import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.PersistenceType;
@@ -37,6 +38,11 @@ public class VeniceControllerClusterConfig {
   private RoutingStrategy routingStrategy;
   private int replicaFactor;
   private int numberOfPartition;
+
+  /**
+   * kafka Bootstrap Urls . IF there is more than one url, they are separated by commas
+   */
+  private String kafkaBootstrapServers;
   /**
    * Number of replication for each kafka topic. It should be different from venice data replica factor.
    */
@@ -65,6 +71,7 @@ public class VeniceControllerClusterConfig {
     kafkaReplicaFactor = props.getInt(KAFKA_REPLICA_FACTOR);
     replicaFactor = props.getInt(REPLICA_FACTOR);
     numberOfPartition = props.getInt(NUMBER_OF_PARTITION);
+    kafkaBootstrapServers = props.getString(ConfigKeys.KAFKA_BOOTSTRAP_SERVERS);
 
     if (props.containsKey(PERSISTENCE_TYPE)) {
       persistenceType = PersistenceType.valueOf(props.getString(PERSISTENCE_TYPE));
@@ -131,5 +138,10 @@ public class VeniceControllerClusterConfig {
   public int getKafkaReplicaFactor() {
     return kafkaReplicaFactor;
   }
+
+  /**
+   * returns kafka Bootstrap Urls . IF there is more than one url, they are separated by commas.
+   */
+  public String getKafkaBootstrapServers() { return kafkaBootstrapServers; }
 
 }

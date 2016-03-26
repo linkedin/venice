@@ -29,10 +29,10 @@ public class TestStore {
     @Test
     public void testDeleteVersion(){
         Store s = new Store("s1", "owner", System.currentTimeMillis());
-        s.addVersion(new Version(s.getName(), 4, System.currentTimeMillis()));
-        s.addVersion(new Version(s.getName(), 2, System.currentTimeMillis()));
-        s.addVersion(new Version(s.getName(), 3, System.currentTimeMillis()));
-        s.addVersion(new Version(s.getName(), 1, System.currentTimeMillis()));
+        s.addVersion(new Version(s.getName(), 4));
+        s.addVersion(new Version(s.getName(), 2));
+        s.addVersion(new Version(s.getName(), 3));
+        s.addVersion(new Version(s.getName(), 1));
 
         List<Version> versions = s.getVersions();
         Assert.assertEquals(versions.size(), 4, "The Store version list is expected to contain 4 items!");

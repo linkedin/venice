@@ -66,10 +66,7 @@ public class ControllerClient implements Closeable {
       String contentType = response.getFirstHeader(HttpHeaders.CONTENT_TYPE).getValue();
       if (contentType.startsWith(ControllerApiConstants.JSON)) {
         Map<String, Object> responseMap = fromJson(responseBody);
-        int version = (int) responseMap.get(ControllerApiConstants.VERSION);
-        int partitions = (int) responseMap.get(ControllerApiConstants.PARTITIONS);
-        int replicas = (int) responseMap.get(ControllerApiConstants.REPLICAS);
-        return new StoreCreationResponse(storeName, version, owner, partitions, replicas);
+        return new StoreCreationResponse(storeName, owner, responseMap);
       } else { //non JSON response
         String msg = "For store: " + storeName + ", controller returns with content-type " + contentType + ": " + responseBody;
         logger.error(msg);

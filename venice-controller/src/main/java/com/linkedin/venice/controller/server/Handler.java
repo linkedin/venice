@@ -3,6 +3,7 @@ package com.linkedin.venice.controller.server;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controllerapi.ControllerApiConstants;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.meta.Version;
 import io.netty.buffer.ByteBuf;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelFuture;
@@ -196,10 +197,12 @@ public class Handler extends SimpleChannelInboundHandler<HttpObject> {
           responseMap.put("store_status", e.getMessage()); //Probably already created
           // TODO: use admin to update store with new owner?  Set owner at version level for audit history?
         }
-        int version = admin.incrementVersion(clusterName, storeName, numberOfPartitions, numberOfReplicas);
+        Version version = admin.incrementVersion(clusterName, storeName, numberOfPartitions, numberOfReplicas);
         responseMap.put(ControllerApiConstants.PARTITIONS, numberOfPartitions);
         responseMap.put(ControllerApiConstants.REPLICAS,numberOfReplicas);
-        responseMap.put(ControllerApiConstants.VERSION, version);
+        responseMap.put(ControllerApiConstants.VERSION, version.getNumber());
+        responseMap.put(ControllerApiConstants.KAFKA_TOPIC , version.kafkaTopicName());
+        responseMap.put(ControllerApiConstants.KAFKA_BOOTSTRAP_SERVERS, admin.getKafkaBootstrapServers());
       } catch (NumberFormatException e) {
         responseContent.append(("Store size must be an integer"));
         responseMap.put("error", ControllerApiConstants.STORE_SIZE + " must be an integer");
