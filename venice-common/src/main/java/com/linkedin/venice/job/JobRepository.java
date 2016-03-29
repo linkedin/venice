@@ -18,6 +18,8 @@ public interface JobRepository {
    */
   public List<Job> getRunningJobOfTopic(String kafkaTopic);
 
+  public List<Job> getAllRunningJobs();
+
   public List<Job> getTerminatedJobOfTopic(String kafkaTopic);
 
   public void archiveJob(long jobId, String kafkaTopic);

@@ -194,7 +194,7 @@ public class HelixRoutingDataRepository extends RoutingTableProvider implements 
     public void onExternalViewChange(List<ExternalView> externalViewList, NotificationContext changeContext) {
         super.onExternalViewChange(externalViewList, changeContext);
         if (changeContext.getType().equals(NotificationContext.Type.INIT) && externalViewList.isEmpty()) {
-            //Initializing repository and extern view is empty. Do nonthing for this case,
+            //Initializing repository and external view is empty. Do nothing for this case,
             return;
         }
         Map<String, Map<Integer, Partition>> newResourceToPartitionMap = new HashMap<>();

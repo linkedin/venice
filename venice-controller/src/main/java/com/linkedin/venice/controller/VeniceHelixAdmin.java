@@ -9,15 +9,16 @@ import com.linkedin.venice.helix.HelixControlMessageChannel;
 import com.linkedin.venice.helix.HelixJobRepository;
 import com.linkedin.venice.helix.HelixRoutingDataRepository;
 import com.linkedin.venice.job.ExecutionStatus;
-import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import java.util.HashMap;
 import java.util.Map;
+import org.apache.helix.ControllerChangeListener;
 import org.apache.helix.HelixAdmin;
 import org.apache.helix.HelixManager;
 import org.apache.helix.HelixManagerFactory;
 import org.apache.helix.InstanceType;
+import org.apache.helix.NotificationContext;
 import org.apache.helix.manager.zk.ZKHelixAdmin;
 import org.apache.helix.manager.zk.ZKHelixManager;
 import org.apache.helix.manager.zk.ZkClient;
@@ -30,7 +31,7 @@ import org.apache.log4j.Logger;
 /**
  * Helix Admin based on 0.6.5 APIs.
  */
-public class VeniceHelixAdmin implements Admin {
+public class VeniceHelixAdmin implements Admin,ControllerChangeListener {
     private final String controllerName;
     private final String zkConnString;
     private final Map<String, HelixManager> helixManagers = new HashMap<>();
@@ -41,6 +42,7 @@ public class VeniceHelixAdmin implements Admin {
     private final Map<String, HelixCachedMetadataRepository> repositories = new HashMap<>();
     private final Map<String, VeniceControllerClusterConfig> configs = new HashMap<>();
     private final Map<String, VeniceJobManager> jobManagers = new HashMap<>();
+    private final Map<String, HelixControlMessageChannel> channels = new HashMap<>();
 
     public VeniceHelixAdmin(String controllerName, String zkConnString, String kafkaZkConnString) {
         /* Controller name can be generated from the hostname and
@@ -68,13 +70,15 @@ public class VeniceHelixAdmin implements Admin {
         configs.put(clusterName, config);
         createClusterIfRequired(clusterName);
 
-
+        // Use CONTROLLER_PARTICPANT to let Helix treat controllers as a cluster and do the leader election when the
+        // master controller is failed.
+        // TODO need double check with Helix team again. If we use CONTROLLER_PARTICIPANT here, controller will also
+        // TODO receive state transition message in some cases.
         HelixManager helixManager = HelixManagerFactory.getZKHelixManager(clusterName,
                                             controllerName,
                                             InstanceType.CONTROLLER,
                                             zkConnString);
         try {
-            //TODO confirm with Helix team and add the listener to handle mastership changing event here.
             helixManager.connect();
         } catch (Exception ex) {
             String errorMessage = " Error starting Helix controller cluster " +
@@ -82,30 +86,16 @@ public class VeniceHelixAdmin implements Admin {
             logger.error( errorMessage , ex );
             throw new VeniceException(errorMessage , ex);
         }
-
         helixManagers.put(clusterName, helixManager);
-        HelixAdapterSerializer adapter = new HelixAdapterSerializer();
-        HelixCachedMetadataRepository repository = new HelixCachedMetadataRepository(zkClient, adapter, clusterName);
-        repository.start();
-        repositories.put(clusterName, repository);
-        HelixRoutingDataRepository routingDataRepository = new HelixRoutingDataRepository(helixManager);
-        routingDataRepository.start();
-        HelixJobRepository jobRepository = new HelixJobRepository(zkClient, adapter, clusterName, routingDataRepository);
-        jobRepository.start();
-        VeniceJobManager jobManager= new VeniceJobManager(helixManager.getSessionId().hashCode(),jobRepository,repository);
-        HelixControlMessageChannel controllerChannel = new HelixControlMessageChannel(helixManager);
-        controllerChannel.registerHandler(StatusUpdateMessage.class, jobManager);
-        jobManagers.put(clusterName,jobManager);
+        helixManager.addControllerListener(this);
 
-      logger.info("VeniceHelixAdmin is started. Controller name: '" + controllerName + "', Cluster name: '" + clusterName + "'.");
+        logger.info("VeniceHelixAdmin is started. Controller name: '" + controllerName + "', Cluster name: '" + clusterName + "'.");
     }
 
     @Override
     public synchronized void addStore(String clusterName, String storeName, String owner) {
+        checkControllerMastership(clusterName);
         HelixCachedMetadataRepository repository = repositories.get(clusterName);
-        if (repository == null) {
-            handleClusterNotInitialized(clusterName);
-        }
         if(repository.getStore(storeName)!=null){
             handleStoreAlreadyExists(clusterName, storeName);
         }
@@ -117,19 +107,15 @@ public class VeniceHelixAdmin implements Admin {
 
     @Override
     public synchronized  void addVersion(String clusterName, String storeName, int versionNumber) {
+        checkControllerMastership(clusterName);
         VeniceControllerClusterConfig config = configs.get(clusterName);
-        if(config == null){
-            handleClusterNotInitialized(clusterName);
-        }
         this.addVersion(clusterName, storeName, versionNumber, config.getNumberOfPartition(), config.getReplicaFactor());
     }
 
     @Override
     public synchronized void addVersion(String clusterName, String storeName,int versionNumber, int numberOfPartition, int replicaFactor) {
+        checkControllerMastership(clusterName);
         HelixCachedMetadataRepository repository = repositories.get(clusterName);
-        if (repository == null) {
-            handleClusterNotInitialized(clusterName);
-        }
         repository.lock();
         Version version = null;
         try {
@@ -157,10 +143,8 @@ public class VeniceHelixAdmin implements Admin {
     @Override
     public synchronized int incrementVersion(String clusterName, String storeName, int numberOfPartition,
         int replicaFactor) {
+        checkControllerMastership(clusterName);
         HelixCachedMetadataRepository repository = repositories.get(clusterName);
-        if (repository == null) {
-            handleClusterNotInitialized(clusterName);
-        }
 
         repository.lock();
         Version version = null;
@@ -185,10 +169,8 @@ public class VeniceHelixAdmin implements Admin {
 
     @Override
     public synchronized void setCurrentVersion(String clusterName, String storeName, int versionNumber){
+        checkControllerMastership(clusterName);
         HelixCachedMetadataRepository repository = repositories.get(clusterName);
-        if (repository == null) {
-            handleClusterNotInitialized(clusterName);
-        }
         repository.lock();
         try {
             Store store = repository.getStore(storeName);
@@ -213,6 +195,7 @@ public class VeniceHelixAdmin implements Admin {
     @Override
     public synchronized void addKafkaTopic(String clusterName, String kafkaTopic, int numberOfPartition,
         int replicaFactor, int kafkaReplicaFactor) {
+        checkControllerMastership(clusterName);
         topicCreator.createTopic(kafkaTopic, numberOfPartition, kafkaReplicaFactor);
 
         if (!admin.getResourcesInCluster(clusterName).contains(kafkaTopic)) {
@@ -227,39 +210,43 @@ public class VeniceHelixAdmin implements Admin {
 
     @Override
     public void startOfflinePush(String clusterName, String kafkaTopic, int numberOfPartition, int replicaFactor) {
+        checkControllerMastership(clusterName);
         VeniceJobManager jobManager = jobManagers.get(clusterName);
-        if (jobManager == null){
-            handleClusterNotInitialized(clusterName);
-        }
-        try {
-            Thread.sleep(1000l);
-        } catch (InterruptedException e) {
-            e.printStackTrace();
-        }
         jobManager.startOfflineJob(kafkaTopic, numberOfPartition, replicaFactor);
     }
 
     @Override
     public synchronized void stop(String clusterName) {
-        HelixManager helixManager = helixManagers.remove(clusterName);
-        if(helixManager == null) {
-            handleClusterNotInitialized(clusterName);
-        }
+        checkControllerMastership(clusterName);
+        HelixManager helixManager = helixManagers.get(clusterName);
         helixManager.disconnect();
-        HelixCachedMetadataRepository repository = repositories.remove(clusterName);;
-        repository.clear();
-        HelixJobRepository jobRepository = (HelixJobRepository) jobManagers.remove(clusterName).getJobRepository();
-        ((HelixRoutingDataRepository)jobRepository.getRoutingDataRepository()).clear();
-        jobRepository.clear();
+        //Remove from map at last. Otherwise an NullPointerException will be thrown when disconnect manager(onControolerChange will be invoked when disconnecting).
+        helixManagers.remove(clusterName);
         configs.remove(clusterName);
+        clearRepository(clusterName);
+    }
+
+    private synchronized void clearRepository(String clusterName){
+        HelixCachedMetadataRepository repository = repositories.remove(clusterName);
+        if(repository!=null){
+            repository.clear();
+        }
+        VeniceJobManager jobManager =  jobManagers.remove(clusterName);
+        HelixControlMessageChannel channel= channels.remove(clusterName);
+        if(channel!=null) {
+            channel.unRegisterHandler(StatusUpdateMessage.class, jobManager);
+        }
+        if(jobManager!=null) {
+            HelixJobRepository jobRepository = (HelixJobRepository)jobManager.getJobRepository();
+            ((HelixRoutingDataRepository) jobRepository.getRoutingDataRepository()).clear();
+            jobRepository.clear();
+        }
     }
 
     @Override
     public ExecutionStatus getOffLineJobStatus(String clusterName, String kafkaTopic) {
+        checkControllerMastership(clusterName);
         VeniceJobManager jobManager = jobManagers.get(clusterName);
-        if(jobManager == null){
-            handleClusterNotInitialized(clusterName);
-        }
         return jobManager.getOfflineJobStatus(kafkaTopic);
     }
 
@@ -312,9 +299,64 @@ public class VeniceHelixAdmin implements Admin {
     }
 
     private void handleClusterNotInitialized(String clusterName) {
-        String errorMessage = "Cluster " + clusterName + " is not initialized. Can not add store to it.";
+        String errorMessage = "Cluster " + clusterName + " is not initialized.";
         logger.info(errorMessage);
         throw new VeniceException(errorMessage);
     }
 
+    private void checkControllerMastership(String clusterName) {
+        HelixManager helixManager = helixManagers.get(clusterName);
+        if (helixManager == null) {
+            handleClusterNotInitialized(clusterName);
+        } else if (!helixManager.isLeader()) {
+            throw new VeniceException("Current controller is not the master. Can not handle the admin request.");
+        }
+    }
+
+    @Override
+    public synchronized void onControllerChange(NotificationContext changeContext) {
+        String clusterName = changeContext.getManager().getClusterName();
+        HelixManager helixManager = helixManagers.get(clusterName);
+        synchronized (helixManager) {
+            if (helixManager == null) {
+                handleClusterNotInitialized(clusterName);
+            }
+
+            if (!helixManager.isLeader() || changeContext.getType().equals(NotificationContext.Type.FINALIZE)) {
+                logger.info("Controller "+helixManager.getInstanceName()+" is not the master, clear repository resource.");
+                clearRepository(clusterName);
+                return;
+            }
+
+            if(repositories.containsKey(clusterName)){
+                //Repositories had already initialized before.
+                return;
+            }
+            logger.info("Becoming the master controller of cluster:"+clusterName+", controller name:"+controllerName);
+            //Becoming Leader
+            HelixAdapterSerializer adapter = new HelixAdapterSerializer();
+            HelixCachedMetadataRepository repository = new HelixCachedMetadataRepository(zkClient, adapter, clusterName);
+            repository.start();
+
+            repositories.put(clusterName, repository);
+            HelixRoutingDataRepository routingDataRepository = new HelixRoutingDataRepository(helixManager);
+            routingDataRepository.start();
+            HelixJobRepository jobRepository = new HelixJobRepository(zkClient, adapter, clusterName, routingDataRepository);
+            jobRepository.start();
+            VeniceJobManager jobManager = new VeniceJobManager(helixManager.getSessionId().hashCode(), jobRepository, repository);
+            HelixControlMessageChannel controllerChannel = new HelixControlMessageChannel(helixManager);
+            channels.put(clusterName, controllerChannel);
+            controllerChannel.registerHandler(StatusUpdateMessage.class, jobManager);
+            jobManagers.put(clusterName, jobManager);
+            logger.info("Repositories are initialized, could start serving admin request.");
+        }
+    }
+
+    protected VeniceJobManager getJobManager(String cluster){
+        VeniceJobManager jobManager = jobManagers.get(cluster);
+        if(jobManager == null){
+            handleClusterNotInitialized(cluster);
+        }
+        return jobManager;
+    }
 }

@@ -77,6 +77,15 @@ public class HelixJobRepository implements JobRepository, RoutingDataChangedList
   }
 
   @Override
+  public List<Job> getAllRunningJobs() {
+    List<Job> jobs = new ArrayList<>();
+    for(List<Job> jobsForTopic:topicToRunningJobsMap.values()){
+      jobs.addAll(jobsForTopic);
+    }
+    return jobs;
+  }
+
+  @Override
   public synchronized List<Job> getTerminatedJobOfTopic(String kafkaTopic) {
     List<Job> jobs = topicToTerminatedJobsMap.get(kafkaTopic);
     if (jobs == null) {
@@ -131,12 +140,12 @@ public class HelixJobRepository implements JobRepository, RoutingDataChangedList
     deleteJobFromMap(kafkaTopic, job.getJobId(), topicToRunningJobsMap);
     List<Job> jobs = getAndCreateJobListFromMap(kafkaTopic, topicToTerminatedJobsMap);
     jobs.add(job);
+    logger.debug("Terminate job:"+jobId+" for kafka topic:"+kafkaTopic);
   }
 
   @Override
   public void startJob(@NotNull Job job) {
     job.validateStatusTransition(ExecutionStatus.STARTED);
-
     synchronized (this) {
       List<Job> jobs = getAndCreateJobListFromMap(job.getKafkaTopic(), topicToRunningJobsMap);
       jobs.add(job);
@@ -184,6 +193,7 @@ public class HelixJobRepository implements JobRepository, RoutingDataChangedList
       if (!isJobStarted) {
         try {
           logger.info("Wait job:" + job.getJobId() + " being started.");
+          //TODO add a timeout to avoid wait for ever. And set status to ERROR when time out.
           job.wait();
           logger.info("Job:" + job.getJobId() + " could be started.");
         } catch (InterruptedException e) {
@@ -273,21 +283,9 @@ public class HelixJobRepository implements JobRepository, RoutingDataChangedList
       for (List<Task> task : tasks) {
         task.forEach(job::addTask);
       }
-      if (job.getStatus().equals(ExecutionStatus.NEW)) {
-        //Wait and start job.
-        waitUntilJobStart(job);
-      } else {
-        //Get the newest partitions info from repository and update the job if needed.
-        updateJobPartitions(job, routingDataRepository.getPartitions(job.getKafkaTopic()));
-        routingDataRepository.subscribeRoutingDataChange(job.getKafkaTopic(), this);
-      }
+      //Wait and start job.
+      waitUntilJobStart(job);
       logger.info("Filled tasks into job:" + job.getJobId());
-      ExecutionStatus jobStatus = job.checkJobStatus();
-      if (jobStatus.equals(ExecutionStatus.COMPLETED)) {
-        stopJob(job.getJobId(), job.getKafkaTopic());
-      } else if (jobStatus.equals(ExecutionStatus.ERROR)) {
-        stopJobWithError(job.getJobId(), job.getKafkaTopic());
-      }
     }
     logger.info("End getting offline jobs from zk");
   }
@@ -372,10 +370,14 @@ public class HelixJobRepository implements JobRepository, RoutingDataChangedList
           "There should be only one job running for each kafka topic. But now there are:" + jobs.size()
               + " jobs running.");
     }
+    if (jobs.isEmpty()) {
+      return;
+    }
     Job job = jobs.get(0);
     synchronized (job) {
       try {
         updateJobPartitions(job, partitions);
+        logger.info("Get enough instance for this job. Continue running.");
         job.notify();
       } catch (VeniceException e) {
         logger.info("There are no enough partitions or replica to execute tasks.");

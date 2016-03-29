@@ -240,6 +240,58 @@ public class TestHelixJobRepository {
   }
 
   @Test
+  public void testLoadFromZKJobAlreadyRunning()
+      throws Exception {
+    int numberOfPartition = 3;
+    int replicaFactor = 1;
+    String topic = "runningjob";
+    admin.addResource(cluster, topic, numberOfPartition,
+        TestHelixRoutingDataRepository.UnitTestStateModel.UNIT_TEST_STATE_MODEL,
+        IdealState.RebalanceMode.FULL_AUTO.toString());
+    admin.rebalance(cluster, topic, replicaFactor);
+
+    OfflineJob job = new OfflineJob(1, topic, numberOfPartition, replicaFactor);
+    repository.startJob(job);
+    routingDataRepository.clear();
+    manager.disconnect();
+    repository.clear();
+    Thread.sleep(1000l);
+
+    HelixJobRepository newRepository = new HelixJobRepository(zkClient, adapter, cluster, routingDataRepository);
+    routingDataRepository.start();
+    Thread thread = new Thread(new Runnable() {
+      @Override
+      public void run() {
+        try {
+          Thread.sleep(1000l);
+        } catch (InterruptedException e) {
+          e.printStackTrace();
+        }
+        newRepository.start();
+        Assert.assertEquals(newRepository.getJob(1, topic).getStatus(), ExecutionStatus.STARTED,
+            "Can not get job status from ZK correctly");
+        newRepository.clear();
+      }
+    });
+    thread.start();
+    //Mock up the scenario that controller start at first then participant start up.
+    manager = HelixManagerFactory.getZKHelixManager(cluster, nodeId, InstanceType.PARTICIPANT, zkAddress);
+    manager.getStateMachineEngine()
+        .registerStateModelFactory(TestHelixRoutingDataRepository.UnitTestStateModel.UNIT_TEST_STATE_MODEL,
+            new TestHelixRoutingDataRepository.UnitTestStateModelFactory());
+    Instance instance = new Instance(nodeId, Utils.getHostName(), 9986, 9985);
+    manager.setLiveInstanceInfoProvider(new LiveInstanceInfoProvider() {
+      @Override
+      public ZNRecord getAdditionalLiveInstanceInfo() {
+        return HelixInstanceConverter.convertInstanceToZNRecord(instance);
+      }
+    });
+    manager.connect();
+
+
+  }
+
+  @Test
   public void testLoadFromZk()
       throws InterruptedException {
     int jobCount = 3;
@@ -251,7 +303,6 @@ public class TestHelixJobRepository {
           IdealState.RebalanceMode.FULL_AUTO.toString());
       admin.rebalance(cluster, "topic" + i, 1);
     }
-    Thread.sleep(1000l);
     OfflineJob[] jobs = new OfflineJob[jobCount];
     for (int i = 0; i < jobCount; i++) {
       OfflineJob job = new OfflineJob(i, "topic" + i, numberOfPartition, replicaFactor);
@@ -288,10 +339,10 @@ public class TestHelixJobRepository {
 
     Assert.assertEquals(newRepository.getJobStatus(0, "topic0"), ExecutionStatus.STARTED,
         "Job should be started and updated to ZK");
-    Assert.assertEquals(newRepository.getJobStatus(1, "topic1"), ExecutionStatus.ERROR,
-        "Job should be failed because one of task is failed.");
-    Assert.assertEquals(newRepository.getJobStatus(2, "topic2"), ExecutionStatus.COMPLETED,
-        "Job should be started and updated to ZK");
+    Assert.assertEquals(newRepository.getJob(1,"topic1").checkJobStatus(), ExecutionStatus.ERROR,
+        "Job should be failed.");
+    Assert.assertEquals(newRepository.getJob(2, "topic2").checkJobStatus(), ExecutionStatus.COMPLETED,
+        "Job should be completed");
     newRepository.clear();
   }
 }

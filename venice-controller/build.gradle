@@ -42,6 +42,7 @@ dependencies {
   //Controller's unit test depends on ZkWrapper which is in tests in project venice-common
   testCompile project(':venice-common').sourceSets.test.output
   testCompile 'commons-io:commons-io:2.4'
+  testCompile project (':venice-server')
 
 }
 
