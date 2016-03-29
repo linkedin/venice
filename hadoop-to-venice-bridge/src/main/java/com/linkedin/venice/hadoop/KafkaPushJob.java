@@ -1,6 +1,8 @@
 package com.linkedin.venice.hadoop;
 
 import com.linkedin.venice.client.VeniceWriter;
+import com.linkedin.venice.controllerapi.ControllerClient;
+import com.linkedin.venice.controllerapi.StoreCreationResponse;
 import com.linkedin.venice.message.ControlFlagKafkaKey;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.message.OperationType;
@@ -8,6 +10,7 @@ import com.linkedin.venice.serialization.DefaultSerializer;
 import com.linkedin.venice.serialization.KafkaKeySerializer;
 import com.linkedin.venice.serialization.VeniceSerializer;
 import com.linkedin.venice.utils.Props;
+import com.linkedin.venice.utils.Utils;
 import java.util.Arrays;
 
 import com.linkedin.venice.exceptions.VeniceException;
@@ -53,7 +56,7 @@ public class KafkaPushJob {
 
   public static final String AVRO_KEY_FIELD_PROP = "avro.key.field";
   public static final String AVRO_VALUE_FIELD_PROP = "avro.value.field";
-  public static final String VENICE_URL_PROP = "venice.store.url";
+  public static final String VENICE_URL_PROP = "venice.controller.url";
   public static final String VENICE_STORE_NAME_PROP = "venice.store.name";
 
   public static final String SCHEMA_STRING_PROP = "schema";
@@ -100,8 +103,13 @@ public class KafkaPushJob {
     OptionSpec<String> kafkaUrlOpt =
         parser.accepts("kafka-url", "REQUIRED: Kafka URL")
             .withRequiredArg()
-            .describedAs("url")
+            .describedAs("kafka-url")
             .ofType(String.class);
+    OptionSpec<String> veniceUrlOpt =
+            parser.accepts("venice-controller-url", "REQUIRED: venice URL")
+                    .withRequiredArg()
+                    .describedAs("venice-url")
+                    .ofType(String.class);
     OptionSpec<String> inputPathOpt =
         parser.accepts("input-path", "REQUIRED: Input path")
             .withRequiredArg()
@@ -117,6 +125,11 @@ public class KafkaPushJob {
             .withRequiredArg()
             .describedAs("topic")
             .ofType(String.class);
+    OptionSpec<String> storeNameOpt =
+            parser.accepts("store-name", "REQUIRED: venice URL")
+                    .withRequiredArg()
+                    .describedAs("store-name")
+                    .ofType(String.class);
     OptionSpec<String> keyFieldOpt =
           parser.accepts("key-field", "REQUIRED: key field")
               .withRequiredArg()
@@ -136,21 +149,56 @@ public class KafkaPushJob {
 
     OptionSet options = parser.parse(args);
 
-    OptionSpec[] expectedOptions = {kafkaUrlOpt, inputPathOpt, topicOpt, keyFieldOpt, valueFieldOpt};
-    for (int i = 0; i < expectedOptions.length; i++) {
-      OptionSpec opt = expectedOptions[i];
-      if (!options.has(opt)) {
-        logger.error("Missing required argument \"" + opt + "\"");
-        parser.printHelpOn(System.out);
-        throw new RuntimeException("Missing required argument \"" + opt + "\"");
+    OptionSpec[] expectedOptions = {inputPathOpt,  keyFieldOpt, valueFieldOpt};
+    validateExpectedArguments( expectedOptions, options, parser);
+
+    // Either Kafka Url or VeniceUrl should be present
+    boolean isKafkaUrlPresent = options.has(kafkaUrlOpt);
+    boolean isVeniceUrlPresent = options.has(veniceUrlOpt);
+
+    String kafkaUrl;
+    String topicName;
+    if(isKafkaUrlPresent && isVeniceUrlPresent) {
+      String errorMessage = "Both Kafka and Venice Urls present, only one of them should be supplied. Kafka " +
+              kafkaUrlOpt + " Venice " + veniceUrlOpt;
+      logger.error(errorMessage);
+      throw new VeniceException(errorMessage);
+    } else if(isKafkaUrlPresent) {
+      validateExpectedArguments( new OptionSpec[] { kafkaUrlOpt, topicOpt}, options, parser);
+      kafkaUrl = options.valueOf(kafkaUrlOpt);
+      topicName = options.valueOf(topicOpt);
+    } else if ( isVeniceUrlPresent) {
+      String veniceUrl = options.valueOf(veniceUrlOpt);
+      String storeName = options.valueOf(storeNameOpt);
+
+      // TODO : compute the store size properly and populate the owner correctly.
+      final String DUMMY_OWNER = "dev";
+      final int DUMMY_SIZE_MB = 100;
+
+      StoreCreationResponse response = ControllerClient.createStoreVersion(veniceUrl, storeName , DUMMY_OWNER , DUMMY_SIZE_MB);
+      kafkaUrl = response.getKafkaBootstrapServers();
+      if(Utils.isNullOrEmpty(kafkaUrl)) {
+        throw new VeniceException("Returned empty kafka url " + kafkaUrl);
       }
+      topicName = response.getKafkaTopic();
+
+      if(Utils.isNullOrEmpty(topicName)) {
+        throw new VeniceException("Returned empty topic name " + topicName);
+      }
+
+      logger.info("Used the Venice Controller " + veniceUrl + " to resolve to kafka url " + kafkaUrl + " topic " + topicName );
+    }  else {
+      String errorMessage = "At least one of the Options should be present " + kafkaUrlOpt + " Or " + veniceUrlOpt;
+      logger.error(errorMessage);
+      throw new VeniceException(errorMessage);
     }
 
+
     Properties props = new Properties();
-    props.put(KAFKA_URL_PROP, options.valueOf(kafkaUrlOpt));
+    props.put(KAFKA_URL_PROP, kafkaUrl);
+    props.put(TOPIC_PROP, topicName);
     props.put(INPUT_PATH_PROP, options.valueOf(inputPathOpt));
     props.put(BATCH_NUM_BYTES_PROP, options.valueOf(queueBytesOpt));
-    props.put(TOPIC_PROP, options.valueOf(topicOpt));
     props.put(AVRO_KEY_FIELD_PROP, options.valueOf(keyFieldOpt));
     props.put(AVRO_VALUE_FIELD_PROP, options.valueOf(valueFieldOpt));
 
@@ -161,6 +209,21 @@ public class KafkaPushJob {
 
     KafkaPushJob job = new KafkaPushJob("Console", props);
     job.run();
+  }
+
+  private static void validateExpectedArguments(OptionSpec[] expectedOptions, OptionSet options, OptionParser parser)  throws IOException {
+    for (int i = 0; i < expectedOptions.length; i++) {
+      OptionSpec opt = expectedOptions[i];
+      if (!options.has(opt)) {
+        abortOnMissingArgument(opt, parser);
+      }
+    }
+  }
+
+  private static void abortOnMissingArgument(OptionSpec missingArgument, OptionParser parser)  throws IOException {
+    logger.error("Missing required argument \"" + missingArgument + "\"");
+    parser.printHelpOn(System.out);
+    throw new VeniceException("Missing required argument \"" + missingArgument + "\"");
   }
 
   // Construct the KafkaPushJob instance for Azkaban's use

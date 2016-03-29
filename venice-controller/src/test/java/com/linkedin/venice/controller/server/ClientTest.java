@@ -25,7 +25,8 @@ public class ClientTest {
     while (retry>0) {
       try {
         int port = PortUtils.getFreePort();
-        ControllerClient client = new ControllerClient("localhost", port);
+        String controllerUrl = "http://localhost:"+ port;
+        ControllerClient client = new ControllerClient(controllerUrl);
 
         Admin mockAdmin = Mockito.mock(Admin.class);
         Version version = new Version(STORE_NAME, 5 );
@@ -34,7 +35,7 @@ public class ClientTest {
         AdminServer server = new AdminServer(port, "cluster-for-tests", mockAdmin);
         server.start();
         int storeSizeMb = 500;
-        StoreCreationResponse response = client.CreateNewStoreVersion(STORE_NAME, OWNER, storeSizeMb);
+        StoreCreationResponse response = client.createNewStoreVersion(STORE_NAME, OWNER, storeSizeMb);
         server.stop();
 
         Assert.assertEquals(response.getName(), "mystore");

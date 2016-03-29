@@ -23,7 +23,7 @@ public class StoreCreationResponse {
     this.partitions = (int) responseMap.get(ControllerApiConstants.PARTITIONS);
     this.replicas = (int) responseMap.get(ControllerApiConstants.REPLICAS);
     this.kafkaTopic = (String) responseMap.get(ControllerApiConstants.KAFKA_TOPIC);
-    this.kafkaBootstrapServers = (String) responseMap.get(ConfigKeys.KAFKA_BOOTSTRAP_SERVERS);
+    this.kafkaBootstrapServers = (String) responseMap.get(ControllerApiConstants.KAFKA_BOOTSTRAP_SERVERS);
   }
 
   public String getName() {
