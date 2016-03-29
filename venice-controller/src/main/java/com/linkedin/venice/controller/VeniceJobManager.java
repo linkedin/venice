@@ -33,11 +33,33 @@ public class VeniceJobManager implements ControlMessageHandler<StatusUpdateMessa
     this.epoch = epoch;
     this.jobRepository = jobRepository;
     this.metadataRepository = metadataRepository;
+    //In some cases, all of taskss status was updated, but controller failed when updating the whole job status.
+    //After controller setting up, check all existing job to terminated them if needed.
+    checkAllExistingJobs();
+  }
+
+  private void checkAllExistingJobs() {
+    List<Job> jobs = jobRepository.getAllRunningJobs();
+    for (Job job : jobs) {
+      ExecutionStatus status = job.checkJobStatus();
+      if (status.equals(ExecutionStatus.COMPLETED)) {
+        handleJobComplete(job);
+      } else if (status.equals(ExecutionStatus.ERROR)) {
+        handleJobError(job);
+      }
+    }
   }
 
   public synchronized void startOfflineJob(String kafkaTopic, int numberOfPartition, int replicaFactor) {
     OfflineJob job = new OfflineJob(this.generateJobId(), kafkaTopic, numberOfPartition, replicaFactor);
-    jobRepository.startJob(job);
+    try {
+      jobRepository.startJob(job);
+    } catch (Exception e) {
+      logger.error(
+          "Can not start a offline job for kafka topic:" + kafkaTopic + " with number of partition:" + numberOfPartition
+              + " and replica factor:" + replicaFactor, e);
+      jobRepository.stopJobWithError(job.getJobId(), job.getKafkaTopic());
+    }
   }
 
   public synchronized ExecutionStatus getOfflineJobStatus(String kafkaTopic) {
@@ -98,7 +120,12 @@ public class VeniceJobManager implements ControlMessageHandler<StatusUpdateMessa
     int versionNumber = Version.parseVersionFromKafkaTopicName(job.getKafkaTopic());
     store.updateVersionStatus(versionNumber, VersionStatus.ACTIVE);
     store.setCurrentVersion(versionNumber);
-    metadataRepository.updateStore(store);
+    try {
+      metadataRepository.updateStore(store);
+    } catch (Exception e) {
+      logger.error("Can not activate version:" + versionNumber + "for store:" + store.getName());
+      // TODO: Retry activating version here. Or other way to repair the inconsistency between version and job.
+    }
     jobRepository.stopJob(job.getJobId(), job.getKafkaTopic());
   }
 
