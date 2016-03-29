@@ -1,6 +1,6 @@
 package com.linkedin.venice.controller;
 
-import com.linkedin.venice.controller.server.AdminServer;
+import com.linkedin.venice.controller.server.AdminSparkServer;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.utils.Props;
 import com.linkedin.venice.utils.Utils;
@@ -30,7 +30,7 @@ public class VeniceController {
     VeniceControllerService controllerService = new VeniceControllerService(config);
     services.add(controllerService);
 
-    AdminServer adminServer = new AdminServer(config.getAdminPort(), config.getClusterName(), controllerService.getVeniceHelixAdmin());
+    AdminSparkServer adminServer = new AdminSparkServer(config.getAdminPort(), config.getClusterName(), controllerService.getVeniceHelixAdmin());
     services.add(adminServer);
   }
 
