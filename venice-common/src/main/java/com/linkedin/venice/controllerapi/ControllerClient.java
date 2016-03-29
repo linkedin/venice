@@ -1,5 +1,6 @@
 package com.linkedin.venice.controllerapi;
 
+import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.utils.Utils;
 import java.io.ByteArrayInputStream;
@@ -89,9 +90,8 @@ public class ControllerClient implements Closeable {
         responseBody = IOUtils.toString(bodyStream);
       }
       String contentType = response.getFirstHeader(HttpHeaders.CONTENT_TYPE).getValue();
-      if (contentType.startsWith(ControllerApiConstants.JSON)) {
-        Map<String, Object> responseMap = fromJson(responseBody);
-        return new StoreCreationResponse(storeName, owner, responseMap);
+      if (contentType.startsWith(HttpConstants.JSON)) {
+        return mapper.readValue(responseBody, StoreCreationResponse.class);
       } else { //non JSON response
         String msg = "For store: " + storeName + ", controller returns with content-type " + contentType + ": " + responseBody;
         logger.error(msg);
@@ -99,15 +99,6 @@ public class ControllerClient implements Closeable {
       }
     } catch (Exception e) {
       logger.error(e);
-      throw new VeniceException(e);
-    }
-  }
-
-  public Map<String, Object> fromJson(String response) {
-    try {
-      return mapper.readValue(new ByteArrayInputStream(response.getBytes(StandardCharsets.UTF_8)),
-          new TypeReference<HashMap<String, Object>>() {});
-    } catch (IOException e) {
       throw new VeniceException(e);
     }
   }
