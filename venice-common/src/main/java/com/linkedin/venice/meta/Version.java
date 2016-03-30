@@ -25,6 +25,11 @@ public class Version {
    */
   private VersionStatus status = VersionStatus.INACTIVE;
 
+  public Version(@NotNull String storeName, int number) {
+    this(storeName , number, System.currentTimeMillis());
+  }
+
+
   public Version(@NotNull String storeName, int number, long createdTime) {
     this.storeName = storeName;
     this.number = number;

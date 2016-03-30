@@ -20,6 +20,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.Executor;
 import org.apache.commons.io.IOUtils;
+import org.apache.http.HttpStatus;
 import org.apache.http.client.methods.HttpGet;
 import org.apache.http.concurrent.FutureCallback;
 import org.apache.http.impl.DefaultConnectionReuseStrategy;
@@ -109,7 +110,20 @@ public class VeniceDispatcher implements PartitionDispatchHandler<Instance, Veni
           return;
         }
         offsets.put(offsetKey, offset);
-        HttpResponse response = new DefaultHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK);
+        int responseStatus = result.getStatusLine().getStatusCode();
+        HttpResponse response;
+        switch (responseStatus){
+          case HttpStatus.SC_OK:
+            response = new DefaultHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK);
+            break;
+          case HttpStatus.SC_NOT_FOUND:
+            response = new DefaultHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.NOT_FOUND);
+            break;
+          case HttpStatus.SC_INTERNAL_SERVER_ERROR:
+          default: //Path Parser will throw BAD_REQUEST responses.
+            response = new DefaultHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.BAD_GATEWAY);
+        }
+
         try (InputStream contentStream = result.getEntity().getContent()) {
           response.setContent(ChannelBuffers.wrappedBuffer(IOUtils.toByteArray(contentStream)));
         } catch (IOException e) {

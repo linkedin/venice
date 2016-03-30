@@ -1,6 +1,8 @@
 package com.linkedin.venice.controllerapi;
 
+import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.utils.Utils;
 import java.io.ByteArrayInputStream;
 import java.io.Closeable;
 import java.io.IOException;
@@ -25,34 +27,58 @@ import org.codehaus.jackson.type.TypeReference;
 
 
 /**
- * Created by mwise on 3/17/16.
+ * Controller Client to talk to Venice Controller.
+ * If close method is not called at the end of the usage, it leaks
+ * a thread and the Process never shuts down. If it is required
+ * for just making a single call use the static utility method
+ * to avoid the thread leak.
  */
 public class ControllerClient implements Closeable {
   private final CloseableHttpAsyncClient client;
-  private String controller;
+  private String controllerUrl;
 
   private final static ObjectMapper mapper = new ObjectMapper();
   private final static Logger logger = Logger.getLogger(ControllerClient.class.getName());
 
-  public ControllerClient(String controllerHost, int controllerPort){
+  /**
+   * It creates a thread for sending Http Requests.
+   *
+   * @param controllerUrl url of the Venice Controller.
+   */
+  public ControllerClient(String controllerUrl){
     client = HttpAsyncClients.createDefault();
     client.start();
-    controller = controllerHost + ":" + controllerPort;
+    if(Utils.isNullOrEmpty(controllerUrl)) {
+      throw new VeniceException("Controller Url is not valid");
+    }
+    this.controllerUrl = controllerUrl;
   }
+
+  /**
+   If close is not called, a thread is leaked
+   */
 
   public void close() {
     try {
       client.close();
     } catch (IOException e) {
-      String msg = "Error closing the controller client";
+      String msg = "Error closing the controller client for " + controllerUrl;
       logger.error(msg, e);
       throw new VeniceException(msg, e);
     }
   }
 
-  public StoreCreationResponse CreateNewStoreVersion(String storeName, String owner, int storeSizeMb){
+  private String getCreateUrl() {
+    final String CREATE_PATH = "create";
+    if(controllerUrl.endsWith("/") )
+      return controllerUrl + CREATE_PATH;
+    else
+      return controllerUrl + "/" + CREATE_PATH;
+  }
+
+  public StoreCreationResponse createNewStoreVersion(String storeName, String owner, int storeSizeMb){
     try {
-      final HttpPost post = new HttpPost("http://" + controller + "/create");
+      final HttpPost post = new HttpPost(getCreateUrl());
       List<NameValuePair> params = new ArrayList<NameValuePair>();
       params.add(new BasicNameValuePair(ControllerApiConstants.NAME, storeName));
       params.add(new BasicNameValuePair(ControllerApiConstants.OWNER, owner));
@@ -64,12 +90,8 @@ public class ControllerClient implements Closeable {
         responseBody = IOUtils.toString(bodyStream);
       }
       String contentType = response.getFirstHeader(HttpHeaders.CONTENT_TYPE).getValue();
-      if (contentType.startsWith(ControllerApiConstants.JSON)) {
-        Map<String, Object> responseMap = fromJson(responseBody);
-        int version = (int) responseMap.get(ControllerApiConstants.VERSION);
-        int partitions = (int) responseMap.get(ControllerApiConstants.PARTITIONS);
-        int replicas = (int) responseMap.get(ControllerApiConstants.REPLICAS);
-        return new StoreCreationResponse(storeName, version, owner, partitions, replicas);
+      if (contentType.startsWith(HttpConstants.JSON)) {
+        return mapper.readValue(responseBody, StoreCreationResponse.class);
       } else { //non JSON response
         String msg = "For store: " + storeName + ", controller returns with content-type " + contentType + ": " + responseBody;
         logger.error(msg);
@@ -81,12 +103,9 @@ public class ControllerClient implements Closeable {
     }
   }
 
-  public Map<String, Object> fromJson(String response) {
-    try {
-      return mapper.readValue(new ByteArrayInputStream(response.getBytes(StandardCharsets.UTF_8)),
-          new TypeReference<HashMap<String, Object>>() {});
-    } catch (IOException e) {
-      throw new VeniceException(e);
+  public static StoreCreationResponse createStoreVersion(String controllerUrl,String storeName, String owner, int storeSizeMb ) {
+    try (ControllerClient client = new ControllerClient(controllerUrl)){
+        return client.createNewStoreVersion(storeName, owner, storeSizeMb);
     }
   }
 }

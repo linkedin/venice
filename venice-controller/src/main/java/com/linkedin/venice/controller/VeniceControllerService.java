@@ -18,7 +18,10 @@ public class VeniceControllerService extends AbstractVeniceService {
   public VeniceControllerService(VeniceControllerClusterConfig config) {
     super(VENICE_CONTROLLER_SERVICE_NAME);
     this.config = config;
-    this.admin = new VeniceHelixAdmin(config.getControllerName(),config.getZkAddress(),config.getKafkaZkAddress());
+    this.admin = new VeniceHelixAdmin(config.getControllerName(),
+            config.getZkAddress(),
+            config.getKafkaZkAddress(),
+            config.getKafkaBootstrapServers());
   }
 
   @Override

@@ -30,12 +30,12 @@ dependencies {
     exclude group: 'com.github.sgroschupf'
   }
   compile libraries.zkclient // It's necessary to pull in the most recent version of zkclient explicitly, otherwise Helix won't have it...
-  compile libraries.netty
   compile libraries.kafka
   compile project(':venice-common')
 
   compile 'commons-io:commons-io:2.4'
   compile 'com.sleepycat:je:5.0.104'
+  compile 'com.sparkjava:spark-core:2.3'
   //compile fileTree(dir: 'lib', include: '*.jar')
 
   testCompile project(':venice-client')
