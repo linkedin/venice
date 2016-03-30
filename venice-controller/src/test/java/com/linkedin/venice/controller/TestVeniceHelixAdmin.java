@@ -61,7 +61,7 @@ public class TestVeniceHelixAdmin {
     controllerProps.put("kafka.zk.address", kafkaZkAddress);
     controllerProps.put("zookeeper.address", zkAddress);
     config = new VeniceControllerConfig(controllerProps);
-    veniceAdmin = new VeniceHelixAdmin("test-controller", zkAddress, kafkaZkAddress);
+    veniceAdmin = new VeniceHelixAdmin("test-controller", zkAddress, kafkaZkAddress,"");
 
     veniceAdmin.start(clusterName, config);
     startParticipant();
@@ -121,7 +121,7 @@ public class TestVeniceHelixAdmin {
     ControlMessageChannel channel = new HelixControlMessageChannel(manager, Integer.MAX_VALUE, 1);
     channel.sendToController(new StatusUpdateMessage(1, "test_v1", 0, nodeId, ExecutionStatus.STARTED));
 
-    VeniceHelixAdmin newMasterAdmin = new VeniceHelixAdmin("new-master-controller", zkAddress, kafkaZkAddress);
+    VeniceHelixAdmin newMasterAdmin = new VeniceHelixAdmin("new-master-controller", zkAddress, kafkaZkAddress,"");
     //Start stand by controller
     newMasterAdmin.start(clusterName, config);
     try {

@@ -115,11 +115,10 @@ public class VeniceHelixAdmin implements Admin,ControllerChangeListener {
     public synchronized  Version addVersion(String clusterName, String storeName, int versionNumber) {
         checkControllerMastership(clusterName);
         VeniceControllerClusterConfig config = configs.get(clusterName);
-        this.addVersion(clusterName, storeName, versionNumber, config.getNumberOfPartition(), config.getReplicaFactor());
+        return this.addVersion(clusterName, storeName, versionNumber, config.getNumberOfPartition(), config.getReplicaFactor());
     }
 
     @Override
-        
     public synchronized Version addVersion(String clusterName, String storeName,int versionNumber, int numberOfPartition, int replicaFactor) {
         checkControllerMastership(clusterName);
         HelixCachedMetadataRepository repository = repositories.get(clusterName);
