@@ -77,7 +77,7 @@ public class HelixJobRepository implements JobRepository, RoutingDataChangedList
   }
 
   @Override
-  public List<Job> getAllRunningJobs() {
+  public synchronized List<Job> getAllRunningJobs() {
     List<Job> jobs = new ArrayList<>();
     for(List<Job> jobsForTopic:topicToRunningJobsMap.values()){
       jobs.addAll(jobsForTopic);
@@ -140,7 +140,7 @@ public class HelixJobRepository implements JobRepository, RoutingDataChangedList
     deleteJobFromMap(kafkaTopic, job.getJobId(), topicToRunningJobsMap);
     List<Job> jobs = getAndCreateJobListFromMap(kafkaTopic, topicToTerminatedJobsMap);
     jobs.add(job);
-    logger.debug("Terminate job:"+jobId+" for kafka topic:"+kafkaTopic);
+    logger.info("Terminated job:"+jobId+" for kafka topic:"+kafkaTopic);
   }
 
   @Override

@@ -3,7 +3,6 @@ package com.linkedin.venice.controller;
 import com.linkedin.venice.controlmessage.ControlMessageHandler;
 import com.linkedin.venice.controlmessage.StatusUpdateMessage;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.helix.HelixJobRepository;
 import com.linkedin.venice.job.ExecutionStatus;
 import com.linkedin.venice.job.Job;
 import com.linkedin.venice.job.JobRepository;
@@ -56,7 +55,9 @@ public class VeniceJobManager implements ControlMessageHandler<StatusUpdateMessa
     try {
       jobRepository.startJob(job);
     } catch (Exception e) {
-      logger.error("Can not start a offline job.", e);
+      logger.error(
+          "Can not start a offline job for kafka topic:" + kafkaTopic + " with number of partition:" + numberOfPartition
+              + " and replica factor:" + replicaFactor, e);
       jobRepository.stopJobWithError(job.getJobId(), job.getKafkaTopic());
     }
   }
@@ -123,8 +124,7 @@ public class VeniceJobManager implements ControlMessageHandler<StatusUpdateMessa
       metadataRepository.updateStore(store);
     } catch (Exception e) {
       logger.error("Can not activate version:" + versionNumber + "for store:" + store.getName());
-      jobRepository.stopJobWithError(job.getJobId(), job.getKafkaTopic());
-      return;
+      // TODO: Retry activating version here. Or other way to repair the inconsistency between version and job.
     }
     jobRepository.stopJob(job.getJobId(), job.getKafkaTopic());
   }
