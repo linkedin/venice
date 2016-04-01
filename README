@@ -44,7 +44,9 @@ To start the controller:
 > ./venice-controller/quickstart/start-venice-controller.sh venice-server/config/cluster.properties venice-controller/config/controller.properties
 To add test stores
 > curl --data "storename=default_store&store_size=10000&owner=venice-dev" 127.0.0.1:7075/create
-> curl --data "storename=test_shell_store&store_size=1000&onwer=venice-dev" 127.0.0.1:7075/create
+> curl --data "storename=test_shell_store&store_size=1000&owner=venice-dev" 127.0.0.1:7075/create
+To query the job status
+> curl "127.0.0.1:7075/job?storename=test_shell_store&version=1"
 
 To start the server:
 

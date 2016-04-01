@@ -3,10 +3,12 @@ package com.linkedin.venice.controller.server;
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controllerapi.ControllerApiConstants;
+import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
 import com.linkedin.venice.controllerapi.StoreCreationResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.service.AbstractVeniceService;
+import com.linkedin.venice.utils.Utils;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -15,6 +17,7 @@ import org.apache.log4j.Logger;
 import org.codehaus.jackson.map.ObjectMapper;
 import spark.Request;
 import spark.Spark;
+
 
 /**
  * Controller admin API leveraging sparkjava: http://sparkjava.com/documentation.html
@@ -27,7 +30,7 @@ public class AdminSparkServer extends AbstractVeniceService {
   private final Admin admin;
   private final ObjectMapper mapper = new ObjectMapper();
 
-  public AdminSparkServer(int port, String clusterName, Admin admin){
+  public AdminSparkServer(int port, String clusterName, Admin admin) {
     super("controller-admin-server");
     this.port = port;
     this.clusterName = clusterName;
@@ -53,37 +56,40 @@ public class AdminSparkServer extends AbstractVeniceService {
     });
 
     Spark.get(ControllerApiConstants.JOB_PATH, (request, response) -> {
-      validateParams(request, ControllerApiConstants.JOB_PARMAS);
-
-      Map<String, String> responseMap = new HashMap<>();
+      int versionNumber = 0;
+      String storeName = null;
+      JobStatusQueryResponse responseObject = new JobStatusQueryResponse();
+      response.type(HttpConstants.JSON);
+      //validate parameters at first.
       try {
-        int versionNumber = Integer.valueOf(request.queryParams(ControllerApiConstants.VERSION));
-        String storeName = request.queryParams(ControllerApiConstants.NAME);
-        Version version = new Version(storeName, versionNumber);
-        //TODO Support getting streaming job's status in the further.
-        String jobStatus = admin.getOffLineJobStatus(clusterName, version.kafkaTopicName()).toString();
-
-        responseMap.put(ControllerApiConstants.STATUS, jobStatus);
-      } catch (NumberFormatException e) {
-        String errorMsg = ControllerApiConstants.VERSION + " must be an integer. Now it's:" + request
-            .queryParams(ControllerApiConstants.VERSION) + ".";
-        logger.error(errorMsg, e);
-        responseMap.put(ControllerApiConstants.ERROR, errorMsg);
-        response.status(HttpStatus.SC_BAD_REQUEST);
+        validateParams(request, ControllerApiConstants.JOB_PARMAS);
+        storeName = request.queryParams(ControllerApiConstants.NAME);
+        versionNumber = Utils
+            .parseIntFromString(request.queryParams(ControllerApiConstants.VERSION), ControllerApiConstants.VERSION);
       } catch (VeniceException e) {
-        String errorMsg =
-            "Error: when querying the job's status for store:" + request.queryParams(ControllerApiConstants.NAME)
-                + " version:" + request.queryParams(ControllerApiConstants.VERSION) + ".";
+        String errorMsg = getErrorMessage("Failed to validate parameters.", ControllerApiConstants.JOB_PARMAS, request);
         logger.error(errorMsg, e);
-        responseMap.put(ControllerApiConstants.ERROR, errorMsg + e.getMessage());
-        response.status(HttpStatus.SC_INTERNAL_SERVER_ERROR);
+        responseObject.setError(errorMsg + e.getMessage());
+        response.status(HttpStatus.SC_BAD_REQUEST);
+        return mapper.writeValueAsString(responseObject);
+      }
+      //Do the query.
+      try {
+        responseObject.setName(storeName);
+        responseObject.setVersion(versionNumber);
+        Version version = new Version(storeName, versionNumber);
+        //TODO Support getting streaming job's status in the future.
+        String jobStatus = admin.getOffLineJobStatus(clusterName, version.kafkaTopicName()).toString();
+        responseObject.setStatus(jobStatus);
       } catch (Exception e) {
-        logger.error(e);
-        responseMap.put(ControllerApiConstants.ERROR, e.getMessage());
+        String errorMsg =
+            getErrorMessage("Error: when querying the job's status from admin.", ControllerApiConstants.JOB_PARMAS,
+                request);
+        logger.error(errorMsg, e);
+        responseObject.setError(errorMsg + e.getMessage());
         response.status(HttpStatus.SC_INTERNAL_SERVER_ERROR);
       }
-      response.type(HttpConstants.JSON);
-      return mapper.writeValueAsString(responseMap);
+      return mapper.writeValueAsString(responseObject);
     });
 
     Spark.post(ControllerApiConstants.CREATE_PATH, (request, response) -> {
@@ -92,17 +98,14 @@ public class AdminSparkServer extends AbstractVeniceService {
         validateParams(request, ControllerApiConstants.CREATE_PARAMS); //throws venice exception
         responseObject.setName(request.queryParams(ControllerApiConstants.NAME));
         responseObject.setOwner(request.queryParams(ControllerApiConstants.OWNER));
-        try {
-          int storeSizeMb = Integer.valueOf(request.queryParams(ControllerApiConstants.STORE_SIZE));
-        } catch (NumberFormatException e) {
-          throw new VeniceException(ControllerApiConstants.STORE_SIZE + " must be an integer", e);
-        }
+        int storeSizeMb = Utils.parseIntFromString(request.queryParams(ControllerApiConstants.STORE_SIZE),
+            ControllerApiConstants.STORE_SIZE);
         responseObject.setPartitions(3); // TODO actual partitioning logic based on store size
         responseObject.setReplicas(1); // TODO configurable replication
         try { // TODO: use admin to update store with new owner?  Set owner at version level for audit history?
           admin.addStore(clusterName, responseObject.getName(), responseObject.getOwner());
         } catch (VeniceException e) { // TODO method on admin to see if store already created?
-          logger.warn("Store probably already created.", e);
+          logger.warn("Store" + responseObject.getName() + " probably already created.", e);
         }
         Version version = admin.incrementVersion(clusterName, responseObject.getName(), responseObject.getPartitions(),
             responseObject.getReplicas());
@@ -128,10 +131,12 @@ public class AdminSparkServer extends AbstractVeniceService {
       try {
         validateParams(request, ControllerApiConstants.SETVERSION_PARAMS); //throws venice exception
         String storeName = request.queryParams(ControllerApiConstants.NAME);
-        int version = Integer.valueOf(request.queryParams(ControllerApiConstants.VERSION));
+        int version = Utils
+            .parseIntFromString(request.queryParams(ControllerApiConstants.VERSION), ControllerApiConstants.VERSION);
         admin.setCurrentVersion(clusterName, storeName, version);
         responseMap.put(ControllerApiConstants.STATUS, "success");
       } catch (VeniceException e) {
+        logger.error(e);
         responseMap.put(ControllerApiConstants.ERROR, e.getMessage());
         response.status(HttpStatus.SC_BAD_REQUEST);
       } catch (Exception e) {
@@ -181,5 +186,13 @@ public class AdminSparkServer extends AbstractVeniceService {
         throw new VeniceException(param + " is a required parameter");
       }
     }
+  }
+
+  private String getErrorMessage(String summary, List<String> params, Request request) {
+    String errorMsg = summary + " Parameters:";
+    for (String paramName : params) {
+      errorMsg += paramName + "=" + request.queryParams(paramName);
+    }
+    return errorMsg + ".";
   }
 }

@@ -196,4 +196,11 @@ public class Utils {
     return value == null || value.length() == 0;
   }
 
+  public static int parseIntFromString(String value, String fieldName) {
+    try {
+      return Integer.parseInt(value);
+    } catch (NumberFormatException e) {
+      throw new VeniceException(fieldName + "must be integer.", e);
+    }
+  }
 }
