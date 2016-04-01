@@ -42,12 +42,48 @@ public class AdminSparkServer extends AbstractVeniceService {
 
     Spark.get(ControllerApiConstants.CREATE_PATH, (request, response) -> {
       response.type(HttpConstants.TEXT_HTML);
-      return writeMenu("Venice Store Creator", ControllerApiConstants.CREATE_PATH, ControllerApiConstants.CREATE_PARAMS);
+      return writeMenu("Venice Store Creator", ControllerApiConstants.CREATE_PATH,
+          ControllerApiConstants.CREATE_PARAMS);
     });
 
     Spark.get(ControllerApiConstants.SETVERSION_PATH, (request, response) -> {
       response.type(HttpConstants.TEXT_HTML);
-      return writeMenu("Venice Store Creator", ControllerApiConstants.SETVERSION_PATH, ControllerApiConstants.SETVERSION_PARAMS);
+      return writeMenu("Venice Store Creator", ControllerApiConstants.SETVERSION_PATH,
+          ControllerApiConstants.SETVERSION_PARAMS);
+    });
+
+    Spark.get(ControllerApiConstants.JOB_PATH, (request, response) -> {
+      validateParams(request, ControllerApiConstants.JOB_PARMAS);
+
+      Map<String, String> responseMap = new HashMap<>();
+      try {
+        int versionNumber = Integer.valueOf(request.queryParams(ControllerApiConstants.VERSION));
+        String storeName = request.queryParams(ControllerApiConstants.NAME);
+        Version version = new Version(storeName, versionNumber);
+        //TODO Support getting streaming job's status in the further.
+        String jobStatus = admin.getOffLineJobStatus(clusterName, version.kafkaTopicName()).toString();
+
+        responseMap.put(ControllerApiConstants.STATUS, jobStatus);
+      } catch (NumberFormatException e) {
+        String errorMsg = ControllerApiConstants.VERSION + " must be an integer. Now it's:" + request
+            .queryParams(ControllerApiConstants.VERSION) + ".";
+        logger.error(errorMsg, e);
+        responseMap.put(ControllerApiConstants.ERROR, errorMsg);
+        response.status(HttpStatus.SC_BAD_REQUEST);
+      } catch (VeniceException e) {
+        String errorMsg =
+            "Error: when querying the job's status for store:" + request.queryParams(ControllerApiConstants.NAME)
+                + " version:" + request.queryParams(ControllerApiConstants.VERSION) + ".";
+        logger.error(errorMsg, e);
+        responseMap.put(ControllerApiConstants.ERROR, errorMsg + e.getMessage());
+        response.status(HttpStatus.SC_INTERNAL_SERVER_ERROR);
+      } catch (Exception e) {
+        logger.error(e);
+        responseMap.put(ControllerApiConstants.ERROR, e.getMessage());
+        response.status(HttpStatus.SC_INTERNAL_SERVER_ERROR);
+      }
+      response.type(HttpConstants.JSON);
+      return mapper.writeValueAsString(responseMap);
     });
 
     Spark.post(ControllerApiConstants.CREATE_PATH, (request, response) -> {
@@ -94,13 +130,13 @@ public class AdminSparkServer extends AbstractVeniceService {
         String storeName = request.queryParams(ControllerApiConstants.NAME);
         int version = Integer.valueOf(request.queryParams(ControllerApiConstants.VERSION));
         admin.setCurrentVersion(clusterName, storeName, version);
-        responseMap.put("status", "success");
+        responseMap.put(ControllerApiConstants.STATUS, "success");
       } catch (VeniceException e) {
-        responseMap.put("error", e.getMessage());
+        responseMap.put(ControllerApiConstants.ERROR, e.getMessage());
         response.status(HttpStatus.SC_BAD_REQUEST);
       } catch (Exception e) {
         logger.error(e);
-        responseMap.put("error", e.getMessage());
+        responseMap.put(ControllerApiConstants.ERROR, e.getMessage());
         response.status(HttpStatus.SC_INTERNAL_SERVER_ERROR);
       }
       response.type(HttpConstants.JSON);
