@@ -2,6 +2,7 @@ package com.linkedin.venice.router.api;
 
 import com.linkedin.ddsstorage.router.api.ResourcePath;
 import com.linkedin.venice.RequestConstants;
+import com.linkedin.venice.meta.Version;
 import java.util.ArrayList;
 import java.util.Collection;
 
@@ -38,6 +39,10 @@ public class VeniceStoragePath implements ResourcePath<RouterKey> {
   @Override
   public String getResourceName() {
     return resourceName;
+  }
+
+  public int getVersionNumber(){
+    return Version.parseVersionFromKafkaTopicName(resourceName);
   }
 
   @Override
