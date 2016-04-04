@@ -8,5 +8,5 @@ dali fs -copyToLocal dali://nertz/user/voldtest/ha_store_data_v1
 
 3) Unpack the hadoop binary ( tar -zxf hadoop-1.2.1.tar.gz)
 4) Run the Hadoop jar locally by the command
-bin/hadoop jar ~/projects/aruns-venice/hadoop-to-venice-bridge/build/libs/hadoop-to-venice-bridge-0.1.jar  com.linkedin.venice.hadoop.KafkaPushJob --kafka-url http://localhost:9092 --topic countries_v1  --input-path file:///home/athirupa/projects/hadoop/hadoop-1.2.1/ha_store_data_v1/ --key-field memberId --value-field dedupId
 
+bin/hadoop jar ~/projects/aruns-venice/hadoop-to-venice-bridge/build/libs/hadoop-to-venice-bridge-0.1.jar  com.linkedin.venice.hadoop.KafkaPushJob --venice-controller-url http://localhost:7075 --store-name myCountry  --input-path file:///home/athirupa/projects/hadoop/hadoop-1.2.1/ha_store_data_v1/ --key-field memberId --value-field dedupId

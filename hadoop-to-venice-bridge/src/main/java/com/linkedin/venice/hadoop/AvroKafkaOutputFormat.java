@@ -64,9 +64,9 @@ public class AvroKafkaOutputFormat implements OutputFormat<AvroWrapper<IndexedRe
       props.put(KafkaPushJob.VENICE_STORE_NAME_PROP, storeName);
     }
 
-    String veniceUrl = conf.get(KafkaPushJob.VENICE_URL_PROP);
+    String veniceUrl = conf.get(KafkaPushJob.VENICE_CONTROLLER_URL_PROP);
     if(!Utils.isNullOrEmpty(veniceUrl)) {
-      props.put(KafkaPushJob.VENICE_URL_PROP,veniceUrl);
+      props.put(KafkaPushJob.VENICE_CONTROLLER_URL_PROP,veniceUrl);
     }
     return props;
 
