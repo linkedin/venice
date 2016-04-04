@@ -14,8 +14,8 @@ ext.libraries = [ // Groovy map literal
                   netty3: 'io.netty:netty:3.9.7.Final',
                   zkclient: 'com.101tec:zkclient:0.7', //for Kafka AdminUtils
 
-                  router_api: 'com.linkedin.dds-storage-core:dds-storage-router-api:0.0.45',
-                  router_impl: 'com.linkedin.dds-storage-core:dds-storage-router-impl:0.0.45',
+                  router_api: 'com.linkedin.dds-storage-core:dds-storage-router-api:0.0.53',
+                  router_impl: 'com.linkedin.dds-storage-core:dds-storage-router-impl:0.0.53',
                   http_client: 'org.apache.httpcomponents:httpasyncclient:4.1.1',
                   zookeeper: 'org.apache.zookeeper:zookeeper:3.4.6',
 

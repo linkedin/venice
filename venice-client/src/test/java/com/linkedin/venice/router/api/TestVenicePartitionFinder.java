@@ -13,13 +13,10 @@ import org.testng.annotations.Test;
  */
 public class TestVenicePartitionFinder {
 
-
-
   @Test
-  public void partitionerShouldFindPartitions()
-      throws InterruptedException {
+  public void partitionerShouldFindPartitions() throws InterruptedException {
     RoutingDataRepository mockDataRepo = Mockito.mock(RoutingDataRepository.class);
-    when(mockDataRepo.getNumberOfPartitions(anyString())).thenReturn(10);
+    doReturn(10).when(mockDataRepo).getNumberOfPartitions(anyString());
     VenicePartitionFinder finder = new VenicePartitionFinder(mockDataRepo);
 
     String store = "mystore_v2";
@@ -28,4 +25,5 @@ public class TestVenicePartitionFinder {
 
     Assert.assertEquals(partition, store+"_5");
   }
+
 }

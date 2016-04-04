@@ -2,7 +2,7 @@ package com.linkedin.venice.controller.server;
 
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.controller.Admin;
-import com.linkedin.venice.controllerapi.ControllerApiConstants;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.*;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
 import com.linkedin.venice.controllerapi.StoreCreationResponse;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -43,31 +43,29 @@ public class AdminSparkServer extends AbstractVeniceService {
   public void startInner() throws Exception {
     Spark.port(port);
 
-    Spark.get(ControllerApiConstants.CREATE_PATH, (request, response) -> {
+    Spark.get(CREATE_PATH, (request, response) -> {
       response.type(HttpConstants.TEXT_HTML);
-      return writeMenu("Venice Store Creator", ControllerApiConstants.CREATE_PATH,
-          ControllerApiConstants.CREATE_PARAMS);
+      return writeMenu("Create New Store", CREATE_PATH, CREATE_PARAMS);
     });
 
-    Spark.get(ControllerApiConstants.SETVERSION_PATH, (request, response) -> {
+    Spark.get(SETVERSION_PATH, (request, response) -> {
       response.type(HttpConstants.TEXT_HTML);
-      return writeMenu("Venice Store Creator", ControllerApiConstants.SETVERSION_PATH,
-          ControllerApiConstants.SETVERSION_PARAMS);
+      return writeMenu("Set Active Version", SETVERSION_PATH, SETVERSION_PARAMS);
     });
 
-    Spark.get(ControllerApiConstants.JOB_PATH, (request, response) -> {
+    Spark.get(JOB_PATH, (request, response) -> {
       int versionNumber = 0;
       String storeName = null;
       JobStatusQueryResponse responseObject = new JobStatusQueryResponse();
       response.type(HttpConstants.JSON);
       //validate parameters at first.
       try {
-        validateParams(request, ControllerApiConstants.JOB_PARMAS);
-        storeName = request.queryParams(ControllerApiConstants.NAME);
+        validateParams(request, JOB_PARMAS);
+        storeName = request.queryParams(NAME);
         versionNumber = Utils
-            .parseIntFromString(request.queryParams(ControllerApiConstants.VERSION), ControllerApiConstants.VERSION);
+            .parseIntFromString(request.queryParams(VERSION), VERSION);
       } catch (VeniceException e) {
-        String errorMsg = getErrorMessage("Failed to validate parameters.", ControllerApiConstants.JOB_PARMAS, request);
+        String errorMsg = getErrorMessage("Failed to validate parameters.", JOB_PARMAS, request);
         logger.error(errorMsg, e);
         responseObject.setError(errorMsg + e.getMessage());
         response.status(HttpStatus.SC_BAD_REQUEST);
@@ -83,7 +81,7 @@ public class AdminSparkServer extends AbstractVeniceService {
         responseObject.setStatus(jobStatus);
       } catch (Exception e) {
         String errorMsg =
-            getErrorMessage("Error: when querying the job's status from admin.", ControllerApiConstants.JOB_PARMAS,
+            getErrorMessage("Error: when querying the job's status from admin.", JOB_PARMAS,
                 request);
         logger.error(errorMsg, e);
         responseObject.setError(errorMsg + e.getMessage());
@@ -92,14 +90,14 @@ public class AdminSparkServer extends AbstractVeniceService {
       return mapper.writeValueAsString(responseObject);
     });
 
-    Spark.post(ControllerApiConstants.CREATE_PATH, (request, response) -> {
+    Spark.post(CREATE_PATH, (request, response) -> {
       StoreCreationResponse responseObject = new StoreCreationResponse();
       try {
-        validateParams(request, ControllerApiConstants.CREATE_PARAMS); //throws venice exception
-        responseObject.setName(request.queryParams(ControllerApiConstants.NAME));
-        responseObject.setOwner(request.queryParams(ControllerApiConstants.OWNER));
-        int storeSizeMb = Utils.parseIntFromString(request.queryParams(ControllerApiConstants.STORE_SIZE),
-            ControllerApiConstants.STORE_SIZE);
+        validateParams(request, CREATE_PARAMS); //throws venice exception
+        responseObject.setName(request.queryParams(NAME));
+        responseObject.setOwner(request.queryParams(OWNER));
+        int storeSizeMb = Utils.parseIntFromString(request.queryParams(STORE_SIZE),
+            STORE_SIZE);
         responseObject.setPartitions(3); // TODO actual partitioning logic based on store size
         responseObject.setReplicas(1); // TODO configurable replication
         try { // TODO: use admin to update store with new owner?  Set owner at version level for audit history?
@@ -126,22 +124,22 @@ public class AdminSparkServer extends AbstractVeniceService {
     });
 
     // Only to be used manually for testing purposes.  No corresponding method in controller client.
-    Spark.post(ControllerApiConstants.SETVERSION_PATH, (request, response) -> {
+    Spark.post(SETVERSION_PATH, (request, response) -> {
       Map<String, String> responseMap = new HashMap<>();
       try {
-        validateParams(request, ControllerApiConstants.SETVERSION_PARAMS); //throws venice exception
-        String storeName = request.queryParams(ControllerApiConstants.NAME);
+        validateParams(request, SETVERSION_PARAMS); //throws venice exception
+        String storeName = request.queryParams(NAME);
         int version = Utils
-            .parseIntFromString(request.queryParams(ControllerApiConstants.VERSION), ControllerApiConstants.VERSION);
+            .parseIntFromString(request.queryParams(VERSION), VERSION);
         admin.setCurrentVersion(clusterName, storeName, version);
-        responseMap.put(ControllerApiConstants.STATUS, "success");
+        responseMap.put(STATUS, "success");
       } catch (VeniceException e) {
         logger.error(e);
-        responseMap.put(ControllerApiConstants.ERROR, e.getMessage());
+        responseMap.put(ERROR, e.getMessage());
         response.status(HttpStatus.SC_BAD_REQUEST);
       } catch (Exception e) {
         logger.error(e);
-        responseMap.put(ControllerApiConstants.ERROR, e.getMessage());
+        responseMap.put(ERROR, e.getMessage());
         response.status(HttpStatus.SC_INTERNAL_SERVER_ERROR);
       }
       response.type(HttpConstants.JSON);
@@ -159,7 +157,7 @@ public class AdminSparkServer extends AbstractVeniceService {
   private String writeMenu(String title, String postAction, List<String> parameters) {
     StringBuilder sb = new StringBuilder();
     sb.append("<html>");
-    sb.append("<head><title>" + title + "</title></head>\r\n");
+    sb.append("<head><title>Venice " + title + "</title></head>\r\n");
     sb.append("<body bgcolor=white><style>td{font-size: 12pt;}</style>");
     sb.append("<table border=\"0\">");
     sb.append("<tr><td><h1>" + title + "</h1></td></tr>");

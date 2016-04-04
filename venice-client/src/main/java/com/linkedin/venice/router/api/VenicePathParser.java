@@ -103,7 +103,7 @@ public class VenicePathParser implements ResourcePathParser<VeniceStoragePath, R
    * @param storeName
    * @return store-version, matches the helix resource
    */
-  private String getResourceFromStoreName(String storeName){
+  private String getResourceFromStoreName(String storeName) throws RouterException {
     int version = versionFinder.getVersion(storeName);
     return storeName + STORE_VERSION_SEP + version;
   }
