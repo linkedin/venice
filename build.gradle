@@ -80,6 +80,15 @@ subprojects {
     // Tests should run in parallel
     maxParallelForks 10
   }
+
+  tasks.withType(Test) {
+    // Add Logging on what is running and passed, Sometimes the test hangs
+    // and is not possible to debug what is going on.
+    testLogging {
+      events "started", "passed", "skipped", "failed"
+      exceptionFormat = 'full'
+    }
+  }
 }
 
 task buildAll {

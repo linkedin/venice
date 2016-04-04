@@ -3,12 +3,10 @@ package com.linkedin.venice.hadoop;
 import com.linkedin.venice.client.VeniceWriter;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.StoreCreationResponse;
-import com.linkedin.venice.message.ControlFlagKafkaKey;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.message.OperationType;
 import com.linkedin.venice.serialization.DefaultSerializer;
 import com.linkedin.venice.serialization.KafkaKeySerializer;
-import com.linkedin.venice.serialization.VeniceSerializer;
 import com.linkedin.venice.utils.Props;
 import com.linkedin.venice.utils.Utils;
 import java.util.Arrays;
@@ -46,6 +44,7 @@ import java.util.Iterator;
 import java.util.Properties;
 
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
+import static com.linkedin.venice.ConfigKeys.clusterSpecificProperties;
 
 
 /**
@@ -56,7 +55,7 @@ public class KafkaPushJob {
 
   public static final String AVRO_KEY_FIELD_PROP = "avro.key.field";
   public static final String AVRO_VALUE_FIELD_PROP = "avro.value.field";
-  public static final String VENICE_URL_PROP = "venice.controller.url";
+  public static final String VENICE_CONTROLLER_URL_PROP = "venice.controller.url";
   public static final String VENICE_STORE_NAME_PROP = "venice.store.name";
 
   public static final String SCHEMA_STRING_PROP = "schema";
@@ -78,7 +77,7 @@ public class KafkaPushJob {
   private final String nameNode;
   private final String keyField;
   private final String valueField;
-  private final String storeUrl;
+  private final String veniceControllerUrl;
   private final String storeName;
   private final String kafkaUrl;
   private final String topic;
@@ -126,7 +125,7 @@ public class KafkaPushJob {
             .describedAs("topic")
             .ofType(String.class);
     OptionSpec<String> storeNameOpt =
-            parser.accepts("store-name", "REQUIRED: venice URL")
+            parser.accepts("store-name", "REQUIRED: store name")
                     .withRequiredArg()
                     .describedAs("store-name")
                     .ofType(String.class);
@@ -156,6 +155,8 @@ public class KafkaPushJob {
     boolean isKafkaUrlPresent = options.has(kafkaUrlOpt);
     boolean isVeniceUrlPresent = options.has(veniceUrlOpt);
 
+    Properties props = new Properties();
+
     String kafkaUrl;
     String topicName;
     if(isKafkaUrlPresent && isVeniceUrlPresent) {
@@ -167,26 +168,16 @@ public class KafkaPushJob {
       validateExpectedArguments( new OptionSpec[] { kafkaUrlOpt, topicOpt}, options, parser);
       kafkaUrl = options.valueOf(kafkaUrlOpt);
       topicName = options.valueOf(topicOpt);
+
+      props.put(KAFKA_URL_PROP, kafkaUrl);
+      props.put(TOPIC_PROP, topicName);
+
     } else if ( isVeniceUrlPresent) {
       String veniceUrl = options.valueOf(veniceUrlOpt);
       String storeName = options.valueOf(storeNameOpt);
 
-      // TODO : compute the store size properly and populate the owner correctly.
-      final String DUMMY_OWNER = "dev";
-      final int DUMMY_SIZE_MB = 100;
-
-      StoreCreationResponse response = ControllerClient.createStoreVersion(veniceUrl, storeName , DUMMY_OWNER , DUMMY_SIZE_MB);
-      kafkaUrl = response.getKafkaBootstrapServers();
-      if(Utils.isNullOrEmpty(kafkaUrl)) {
-        throw new VeniceException("Returned empty kafka url " + kafkaUrl);
-      }
-      topicName = response.getKafkaTopic();
-
-      if(Utils.isNullOrEmpty(topicName)) {
-        throw new VeniceException("Returned empty topic name " + topicName);
-      }
-
-      logger.info("Used the Venice Controller " + veniceUrl + " to resolve to kafka url " + kafkaUrl + " topic " + topicName );
+      props.put(VENICE_CONTROLLER_URL_PROP, veniceUrl);
+      props.put(VENICE_STORE_NAME_PROP, storeName);
     }  else {
       String errorMessage = "At least one of the Options should be present " + kafkaUrlOpt + " Or " + veniceUrlOpt;
       logger.error(errorMessage);
@@ -194,9 +185,6 @@ public class KafkaPushJob {
     }
 
 
-    Properties props = new Properties();
-    props.put(KAFKA_URL_PROP, kafkaUrl);
-    props.put(TOPIC_PROP, topicName);
     props.put(INPUT_PATH_PROP, options.valueOf(inputPathOpt));
     props.put(BATCH_NUM_BYTES_PROP, options.valueOf(queueBytesOpt));
     props.put(AVRO_KEY_FIELD_PROP, options.valueOf(keyFieldOpt));
@@ -226,19 +214,70 @@ public class KafkaPushJob {
     throw new VeniceException("Missing required argument \"" + missingArgument + "\"");
   }
 
-  // Construct the KafkaPushJob instance for Azkaban's use
+  public static StoreCreationResponse initiateNewStorePush(String veniceUrl, String storeName) throws Exception {
+    // TODO : compute the store size properly and populate the owner correctly.
+    final String DUMMY_OWNER = "dev";
+    final int DUMMY_SIZE_MB = 100;
+
+    StoreCreationResponse response = ControllerClient.createStoreVersion(veniceUrl, storeName,
+            DUMMY_OWNER, DUMMY_SIZE_MB);
+    String kafkaUrl = response.getKafkaBootstrapServers();
+    if(Utils.isNullOrEmpty(kafkaUrl)) {
+      throw new VeniceException("Returned empty kafka url " + kafkaUrl);
+    }
+
+    String kafkaTopic = response.getKafkaTopic();
+    if(Utils.isNullOrEmpty(kafkaTopic)) {
+      throw new VeniceException("Returned empty topic name " + kafkaTopic);
+    }
+
+    return response;
+  }
+
+  /**
+   * Do not change this method argument type
+   * Constructor used by Azkaban for creating the job.
+   * http://azkaban.github.io/azkaban/docs/latest/#hadoopjava-type
+   * @param jobId  id of the job
+   * @param props  Property bag for the job
+   * @throws Exception
+   */
   public KafkaPushJob(String jobId, Properties props) throws Exception {
     this.props = props;
     this.id = jobId;
-    this.kafkaUrl = props.getProperty(KAFKA_URL_PROP);
-    this.topic = props.getProperty(TOPIC_PROP);
+    this.veniceControllerUrl = props.getProperty(VENICE_CONTROLLER_URL_PROP);
+    this.storeName = props.getProperty(VENICE_STORE_NAME_PROP);
+
+    String kafkaUrl = props.getProperty(KAFKA_URL_PROP);
+    String kafkaTopic = props.getProperty(TOPIC_PROP);
+
+    boolean isKafkaUrlMissing = Utils.isNullOrEmpty(kafkaUrl);
+    boolean isKafkaTopicMissing = Utils.isNullOrEmpty(kafkaTopic);
+
+    if(isKafkaUrlMissing || isKafkaTopicMissing) {
+      if (Utils.isNullOrEmpty(veniceControllerUrl)) {
+        throw new VeniceException("At least one of the " + VENICE_CONTROLLER_URL_PROP + " or " + KAFKA_URL_PROP + " must be specified.");
+      }
+      if (Utils.isNullOrEmpty(storeName)) {
+        throw new VeniceException(VENICE_STORE_NAME_PROP + " is required for Starting a push");
+      }
+
+      StoreCreationResponse response = initiateNewStorePush(this.veniceControllerUrl, this.storeName);
+      kafkaUrl = response.getKafkaBootstrapServers();
+      kafkaTopic = response.getKafkaTopic();
+      logger.info("Used the Venice Controller " + veniceControllerUrl + " to resolve to kafka url " + kafkaUrl + " topic " + kafkaTopic );
+    } else {
+      logger.warn ("Running the job in debug mode, Controller will not be informed of a new push");
+    }
+
+    this.kafkaUrl = kafkaUrl;
+    this.topic = kafkaTopic;
+
     this.inputDirectory = props.getProperty(INPUT_PATH_PROP);
     this.nameNode = props.getProperty(NAME_NODE_PROP);
 
     this.keyField = props.getProperty(AVRO_KEY_FIELD_PROP);
     this.valueField = props.getProperty(AVRO_VALUE_FIELD_PROP);
-    this.storeName = props.getProperty(VENICE_STORE_NAME_PROP);
-    this.storeUrl = props.getProperty(VENICE_URL_PROP);
 
     if (!props.containsKey(BATCH_NUM_BYTES_PROP)) {
       this.batchNumBytes = DEFAULT_BATCH_BYTES_SIZE;
@@ -248,8 +287,19 @@ public class KafkaPushJob {
 
   }
 
-  // This method is used by the scheduler to run this job.
-  public void run() throws Exception {
+  /**
+   * Do not change this method argument type.
+   * Used by Azkaban
+   *
+   * http://azkaban.github.io/azkaban/docs/latest/#hadoopjava-type
+   *
+   * The run method is invoked by Azkaban dynamically for running
+   * the job.
+   *
+   * @throws Exception
+   */
+  public void run()
+          throws Exception {
 
     logger.info("Running KafkaPushJob: " + id);
     logger.info("Kafka URL: " + kafkaUrl);
@@ -257,8 +307,8 @@ public class KafkaPushJob {
     logger.info("Kafka Queue Bytes: " + batchNumBytes);
     logger.info("Input Directory: " + inputDirectory);
     logger.info("Name Node: " + nameNode);
-    logger.info("Voldemort Store Name: " + storeName);
-    logger.info("Voldemort Store URL: " + storeUrl);
+    logger.info("Venice Store Name: " + storeName);
+    logger.info("Venice Controller URL: " + veniceControllerUrl);
 
     // Check that input path exists in HDFS
     URI nameNodeUri = null;
@@ -431,12 +481,22 @@ public class KafkaPushJob {
     return job;
   }
 
-
+  /**
+   * Do not change this method argument type.
+   * Used by Azkaban
+   * http://azkaban.github.io/azkaban/docs/latest/#hadoopjava-type
+   *
+   * The cancel method is invoked dynamically by Azkaban for graceful
+   * cancelling of the Job.
+   *
+   * @throws Exception
+   */
   public void cancel() throws Exception {
     // Attempting to kill job. There's a race condition, but meh. Better kill when you know it's running
     if (runningJob != null) {
       runningJob.killJob();
     }
+    //TODO : Inform Venice Controller that the job is cancelled and it should be aborted.
   }
 
   /**
