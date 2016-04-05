@@ -81,14 +81,17 @@ subprojects {
     maxParallelForks 10
   }
 
+  // Add Logging on what is running and passed, Sometimes the test hangs
+  // and is not possible to debug what is going on.
+  // uncomment to enable - bloats log output if we don't need it.
+/*
   tasks.withType(Test) {
-    // Add Logging on what is running and passed, Sometimes the test hangs
-    // and is not possible to debug what is going on.
     testLogging {
       events "started", "passed", "skipped", "failed"
       exceptionFormat = 'full'
     }
   }
+*/
 }
 
 task buildAll {

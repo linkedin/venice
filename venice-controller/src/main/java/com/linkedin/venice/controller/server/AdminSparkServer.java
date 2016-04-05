@@ -6,6 +6,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.*;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
 import com.linkedin.venice.controllerapi.StoreCreationResponse;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.exceptions.VeniceHttpException;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.utils.Utils;
@@ -16,6 +17,7 @@ import org.apache.http.HttpStatus;
 import org.apache.log4j.Logger;
 import org.codehaus.jackson.map.ObjectMapper;
 import spark.Request;
+import spark.Response;
 import spark.Spark;
 
 
@@ -54,46 +56,27 @@ public class AdminSparkServer extends AbstractVeniceService {
     });
 
     Spark.get(JOB_PATH, (request, response) -> {
-      int versionNumber = 0;
-      String storeName = null;
       JobStatusQueryResponse responseObject = new JobStatusQueryResponse();
-      response.type(HttpConstants.JSON);
-      //validate parameters at first.
       try {
         validateParams(request, JOB_PARMAS);
-        storeName = request.queryParams(NAME);
-        versionNumber = Utils
-            .parseIntFromString(request.queryParams(VERSION), VERSION);
-      } catch (VeniceException e) {
-        String errorMsg = getErrorMessage("Failed to validate parameters.", JOB_PARMAS, request);
-        logger.error(errorMsg, e);
-        responseObject.setError(errorMsg + e.getMessage());
-        response.status(HttpStatus.SC_BAD_REQUEST);
-        return mapper.writeValueAsString(responseObject);
-      }
-      //Do the query.
-      try {
-        responseObject.setName(storeName);
-        responseObject.setVersion(versionNumber);
-        Version version = new Version(storeName, versionNumber);
+        responseObject.setName(request.queryParams(NAME));
+        responseObject.setVersion(Utils.parseIntFromString(request.queryParams(VERSION), VERSION));
+        Version version = new Version(responseObject.getName(), responseObject.getVersion());
         //TODO Support getting streaming job's status in the future.
         String jobStatus = admin.getOffLineJobStatus(clusterName, version.kafkaTopicName()).toString();
         responseObject.setStatus(jobStatus);
-      } catch (Exception e) {
-        String errorMsg =
-            getErrorMessage("Error: when querying the job's status from admin.", JOB_PARMAS,
-                request);
-        logger.error(errorMsg, e);
-        responseObject.setError(errorMsg + e.getMessage());
-        response.status(HttpStatus.SC_INTERNAL_SERVER_ERROR);
+      } catch (VeniceException e) {
+        responseObject.setError(e.getMessage());
+        handleError(e, request, response);
       }
+      response.type(HttpConstants.JSON);
       return mapper.writeValueAsString(responseObject);
     });
 
     Spark.post(CREATE_PATH, (request, response) -> {
       StoreCreationResponse responseObject = new StoreCreationResponse();
       try {
-        validateParams(request, CREATE_PARAMS); //throws venice exception
+        validateParams(request, CREATE_PARAMS);
         responseObject.setName(request.queryParams(NAME));
         responseObject.setOwner(request.queryParams(OWNER));
         int storeSizeMb = Utils.parseIntFromString(request.queryParams(STORE_SIZE),
@@ -111,13 +94,8 @@ public class AdminSparkServer extends AbstractVeniceService {
         responseObject.setKafkaTopic(version.kafkaTopicName());
         responseObject.setKafkaBootstrapServers(admin.getKafkaBootstrapServers());
       } catch (VeniceException e) {
-        logger.error(e);
         responseObject.setError(e.getMessage());
-        response.status(HttpStatus.SC_BAD_REQUEST);
-      } catch (Exception e) {
-        logger.error(e);
-        responseObject.setError(e.getMessage());
-        response.status(HttpStatus.SC_INTERNAL_SERVER_ERROR);
+        handleError(e, request, response);
       }
       response.type(HttpConstants.JSON);
       return mapper.writeValueAsString(responseObject);
@@ -134,13 +112,8 @@ public class AdminSparkServer extends AbstractVeniceService {
         admin.setCurrentVersion(clusterName, storeName, version);
         responseMap.put(STATUS, "success");
       } catch (VeniceException e) {
-        logger.error(e);
         responseMap.put(ERROR, e.getMessage());
-        response.status(HttpStatus.SC_BAD_REQUEST);
-      } catch (Exception e) {
-        logger.error(e);
-        responseMap.put(ERROR, e.getMessage());
-        response.status(HttpStatus.SC_INTERNAL_SERVER_ERROR);
+        handleError(e, request, response);
       }
       response.type(HttpConstants.JSON);
       return mapper.writeValueAsString(responseMap);
@@ -160,7 +133,7 @@ public class AdminSparkServer extends AbstractVeniceService {
     sb.append("<head><title>Venice " + title + "</title></head>\r\n");
     sb.append("<body bgcolor=white><style>td{font-size: 12pt;}</style>");
     sb.append("<table border=\"0\">");
-    sb.append("<tr><td><h1>" + title + "</h1></td></tr>");
+    sb.append("<tr><td><h1>Venice " + title + "</h1></td></tr>");
     sb.append("</table>\r\n");
     // FORM
     sb.append("<CENTER><HR WIDTH=\"100%\" NOSHADE color=\"blue\"></CENTER>");
@@ -180,17 +153,23 @@ public class AdminSparkServer extends AbstractVeniceService {
 
   private void validateParams(Request request, List<String> requiredParams){
     for (String param : requiredParams){
-      if (null == request.queryParams(param)){
-        throw new VeniceException(param + " is a required parameter");
+      if (Utils.isNullOrEmpty(request.queryParams(param))){
+        throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, param + " is a required parameter");
       }
     }
   }
 
-  private String getErrorMessage(String summary, List<String> params, Request request) {
-    String errorMsg = summary + " Parameters:";
-    for (String paramName : params) {
-      errorMsg += paramName + "=" + request.queryParams(paramName);
-    }
-    return errorMsg + ".";
+  private void handleError(VeniceException e, Request request, Response response){
+    StringBuilder sb = new StringBuilder("Request params were: ");
+    request.queryMap().toMap().forEach((k, v) -> {  /* Map<String, String[]> */
+      sb.append(k).append("=").append(String.join(",",v)).append(" ");
+    });
+    String errMsg = sb.toString();
+    logger.error(errMsg, e);
+    int statusCode = e instanceof VeniceHttpException ?
+        ((VeniceHttpException) e).getHttpStatusCode() :
+        HttpStatus.SC_INTERNAL_SERVER_ERROR;
+    response.status(statusCode);
   }
+
 }

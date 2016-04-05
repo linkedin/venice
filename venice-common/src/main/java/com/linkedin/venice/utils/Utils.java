@@ -1,6 +1,7 @@
 package com.linkedin.venice.utils;
 
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.exceptions.VeniceHttpException;
 import java.io.File;
 import java.io.FileInputStream;
 import java.net.InetAddress;
@@ -10,6 +11,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Properties;
 import org.apache.commons.lang.StringUtils;
+import org.apache.http.HttpStatus;
 
 
 /**
@@ -200,7 +202,7 @@ public class Utils {
     try {
       return Integer.parseInt(value);
     } catch (NumberFormatException e) {
-      throw new VeniceException(fieldName + "must be integer.", e);
+      throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, fieldName + " must be an integer", e);
     }
   }
 }
