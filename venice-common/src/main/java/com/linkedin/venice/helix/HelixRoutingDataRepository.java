@@ -12,6 +12,9 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.CopyOnWriteArraySet;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
@@ -62,7 +65,7 @@ public class HelixRoutingDataRepository extends RoutingTableProvider implements 
      */
     private final Lock lock = new ReentrantLock();
 
-    private Map<String, HashSet<RoutingDataChangedListener>> listenersMap = new HashMap<>();
+    private ConcurrentMap<String, Set<RoutingDataChangedListener>> listenersMap = new ConcurrentHashMap<>();
 
     public HelixRoutingDataRepository(HelixManager manager) {
         this.manager = manager;
@@ -170,11 +173,14 @@ public class HelixRoutingDataRepository extends RoutingTableProvider implements 
     @Override
     public void subscribeRoutingDataChange(String kafkaTopic, RoutingDataChangedListener listener) {
         synchronized (listenersMap) {
-            HashSet<RoutingDataChangedListener> listeners = listenersMap.get(kafkaTopic);
+            Set<RoutingDataChangedListener> listeners = listenersMap.get(kafkaTopic);
             if (listeners == null) {
-                listeners = new HashSet<>();
+                listeners = new CopyOnWriteArraySet<>();
                 listenersMap.put(kafkaTopic, listeners);
             }
+            //TODO write to CopyOnWriteArraySet is expensive because it copy all of objects in set.
+            //TODO But, right now, the size of set should be small and also the number of writes is small. In the
+            //TODO future, we can optimize this is the numbers become bigger.
             listeners.add(listener);
         }
     }
@@ -182,11 +188,14 @@ public class HelixRoutingDataRepository extends RoutingTableProvider implements 
     @Override
     public void unSubscribeRoutingDataChange(String kafkaTopic, RoutingDataChangedListener listener) {
         synchronized (listenersMap) {
-            HashSet<RoutingDataChangedListener> listeners = listenersMap.get(kafkaTopic);
+            Set<RoutingDataChangedListener> listeners = listenersMap.get(kafkaTopic);
             if (listeners == null) {
                 throw new VeniceException("Can not find listener in topic:" + kafkaTopic);
             }
             listeners.remove(listener);
+            if (listeners.isEmpty()) {
+                listenersMap.remove(kafkaTopic);
+            }
         }
     }
 
@@ -255,12 +264,11 @@ public class HelixRoutingDataRepository extends RoutingTableProvider implements 
         logger.info("External view is changed.");
         // Start sending notification to listeners. As we can not get the changed data only from Helix, so we just notfiy all the listener.
         // And listener will compare and decide how to handle this event.
-        synchronized (listenersMap) {
-            Map<String, Map<Integer, Partition>> currentPartitionMap = resourceToPartitionMap.get();
-            for (String kafkaTopic : listenersMap.keySet()) {
-                for (RoutingDataChangedListener listener : listenersMap.get(kafkaTopic)) {
-                    listener.handleRoutingDataChange(kafkaTopic, currentPartitionMap.get(kafkaTopic));
-                }
+        Map<String, Map<Integer, Partition>> currentPartitionMap = resourceToPartitionMap.get();
+        for (String kafkaTopic : listenersMap.keySet()) {
+            //Create a snapshot of listeners to avoid current modification error because a new listener is being subscribed in a same time.
+            for (RoutingDataChangedListener listener : listenersMap.get(kafkaTopic)) {
+                listener.handleRoutingDataChange(kafkaTopic, currentPartitionMap.get(kafkaTopic));
             }
         }
     }
