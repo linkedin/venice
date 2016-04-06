@@ -2,6 +2,8 @@ package com.linkedin.venice.controllerapi;
 
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.job.ExecutionStatus;
+import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.Utils;
 import java.io.ByteArrayInputStream;
 import java.io.Closeable;
@@ -58,7 +60,7 @@ public class ControllerClient implements Closeable {
     } else {
       this.controllerUrl = controllerUrl;
     }
-    logger.info("Created client with URL: " + this.controllerUrl + " from input: " + controllerUrl);
+    logger.debug("Created client with URL: " + this.controllerUrl + " from input: " + controllerUrl);
   }
 
   /**
@@ -108,7 +110,9 @@ public class ControllerClient implements Closeable {
     }
   }
 
-  private JobStatusQueryResponse queryJobStatus(String storeName, int version){
+  private JobStatusQueryResponse queryJobStatus(String kafkaTopic){
+    String storeName = Version.parseStoreFromKafkaTopicName(kafkaTopic);
+    int version = Version.parseVersionFromKafkaTopicName(kafkaTopic);
     try{
       List<NameValuePair> queryParams = new ArrayList<>();
       queryParams.add(new BasicNameValuePair(ControllerApiConstants.NAME, storeName));
@@ -135,9 +139,67 @@ public class ControllerClient implements Closeable {
     }
   }
 
-  public static JobStatusQueryResponse queryJobStatus(String controllerUrl,String storeName, int version) {
+  public static JobStatusQueryResponse queryJobStatus(String controllerUrl, String kafkaTopic){
     try (ControllerClient client = new ControllerClient(controllerUrl)){
-      return client.queryJobStatus(storeName, version);
+      return client.queryJobStatus(kafkaTopic);
+    }
+  }
+
+  /**
+   *
+   * @param startSleep initial amount of time to wait between successive polls
+   * @param maxSleep max amount of time to wait between successive polls
+   * @param veniceControllerUrl URL for connecting to Venice Controller
+   * @param topic kafka topic for the store we want to query
+   */
+  public static void pollJobStatusUntilFinished(long startSleep, long maxSleep, String veniceControllerUrl, String topic) {
+    JobStatusQueryResponse queryResponse = null;
+    String status = null;
+    long sleepTime = startSleep;
+    boolean jobDone = false;
+    try (ControllerClient client = new ControllerClient(veniceControllerUrl)) {
+      while (!jobDone) {
+
+        int retry = 2; /* if the query returns an error object, retry a couple times before failing */
+        for(;;) { //TODO: switch to exponential backoff retry policy
+          queryResponse = client.queryJobStatus(topic);
+          if (queryResponse.getError() != null) {
+            if (retry <= 0) {
+              throw new VeniceException("Error getting status of push: " + queryResponse.getError());
+            } else {
+              logger.warn("Error querying push status: " + queryResponse.getError() + " Retrying...");
+              Thread.sleep(1000);
+              retry--;
+            }
+          } else {
+            break;
+          }
+        }
+
+        status = queryResponse.getStatus();
+        if (status.equals(ExecutionStatus.NEW.toString())
+            || status.equals(ExecutionStatus.STARTED.toString())
+            || status.equals(ExecutionStatus.PROGRESS.toString())) {
+          logger.info("Push status: " + status + "...");
+          Thread.sleep(sleepTime);
+          sleepTime = sleepTime * 2;
+          if (sleepTime > maxSleep) {
+            sleepTime = maxSleep;
+          }
+        } else {
+          jobDone = true;
+        }
+      }  //end while
+
+    /* If we get here, status exists and is not null (error threw an exception) */
+      if (status.equals(ExecutionStatus.COMPLETED.toString())) {
+        logger.info("Push job completed successfully");
+      } else {
+        throw new VeniceException("Push job resulted in a status of: " + status);
+      }
+    } catch (InterruptedException e) {
+      logger.error(e);
+      throw new VeniceException("Polling of push status was interrupted");
     }
   }
 }

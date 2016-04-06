@@ -2,12 +2,15 @@ package com.linkedin.venice.hadoop;
 
 import com.linkedin.venice.client.VeniceWriter;
 import com.linkedin.venice.controllerapi.ControllerClient;
+import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
 import com.linkedin.venice.controllerapi.StoreCreationResponse;
+import com.linkedin.venice.job.ExecutionStatus;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.message.OperationType;
 import com.linkedin.venice.serialization.DefaultSerializer;
 import com.linkedin.venice.serialization.KafkaKeySerializer;
 import com.linkedin.venice.utils.Props;
+import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import java.util.Arrays;
 
@@ -365,7 +368,12 @@ public class KafkaPushJob {
     }
     sendControlMessage(OperationType.END_OF_PUSH, jobId);
 
-    logger.info("Job successfully completed");
+    if (Utils.isNullOrEmpty(veniceControllerUrl)){
+      logger.info("No controller provided, skipping poll of push status, job completed");
+    } else {
+      // Throws a VeniceException if the job completes with a failed status
+      ControllerClient.pollJobStatusUntilFinished(Time.MS_PER_SECOND, 5*Time.MS_PER_MINUTE, veniceControllerUrl, topic);
+    }
   }
 
   private void sendControlMessage (OperationType opType, long jobId) {

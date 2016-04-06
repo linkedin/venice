@@ -37,7 +37,7 @@ public class ClientTest {
         server.start();
         int storeSizeMb = 500;
         StoreCreationResponse response = ControllerClient.createStoreVersion(controllerUrl, STORE_NAME, OWNER, storeSizeMb);
-        JobStatusQueryResponse jobQuery = ControllerClient.queryJobStatus(controllerUrl, STORE_NAME, VERSION);
+        JobStatusQueryResponse jobQuery = ControllerClient.queryJobStatus(controllerUrl, version.kafkaTopicName());
         server.stop();
 
         Assert.assertEquals(response.getName(), STORE_NAME);

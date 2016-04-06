@@ -36,6 +36,7 @@ public interface Time {
   public final static long SECONDS_PER_DAY = HOURS_PER_DAY * SECONDS_PER_HOUR;
   public final static long MS_PER_HOUR = SECONDS_PER_HOUR * MS_PER_SECOND;
   public final static long MS_PER_DAY = SECONDS_PER_DAY * MS_PER_SECOND;
+  public final static long MS_PER_MINUTE = 60 * MS_PER_SECOND;
 
   public long getMilliseconds();
 
