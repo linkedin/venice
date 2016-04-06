@@ -262,18 +262,13 @@ public class TestHelixJobRepository {
     Thread thread = new Thread(new Runnable() {
       @Override
       public void run() {
-        try {
-          Thread.sleep(1000l);
-        } catch (InterruptedException e) {
-          e.printStackTrace();
-        }
         newRepository.start();
         Assert.assertEquals(newRepository.getJob(1, topic).getStatus(), ExecutionStatus.STARTED,
             "Can not get job status from ZK correctly");
-        newRepository.clear();
       }
     });
     thread.start();
+    Thread.sleep(1000l);
     //Mock up the scenario that controller start at first then participant start up.
     manager = HelixManagerFactory.getZKHelixManager(cluster, nodeId, InstanceType.PARTICIPANT, zkAddress);
     manager.getStateMachineEngine()
@@ -288,7 +283,7 @@ public class TestHelixJobRepository {
     });
     manager.connect();
 
-
+    newRepository.clear();
   }
 
   @Test

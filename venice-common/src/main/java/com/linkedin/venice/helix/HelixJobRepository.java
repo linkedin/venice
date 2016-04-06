@@ -252,39 +252,47 @@ public class HelixJobRepository implements JobRepository, RoutingDataChangedList
     tasksDataAccessor.setChildren(paths, values, AccessOption.PERSISTENT);
   }
 
-  public synchronized void start() {
-    topicToRunningJobsMap = new HashMap<>();
-    topicToTerminatedJobsMap = new HashMap<>();
-    logger.info("Start getting offline jobs from ZK");
-    // We don't need to listen the change of jobs and tasks. The master controller is the only entrance to read/write
-    // these data. When master is failed, another controller will take over this mastership and load from ZK when
-    // becoming master.
-    List<OfflineJob> offLineJobs = jobDataAccessor.getChildren(offlineJobsPath, null, AccessOption.PERSISTENT);
-    logger.info("Get " + offLineJobs.size() + " offline jobs.");
-    for (OfflineJob job : offLineJobs) {
-      if (job.getStatus().equals(ExecutionStatus.ARCHIVED)) {
-        //Archived job, do not add it to repository.
-        continue;
-      }
+  public void start() {
+    List<Job> waitJobList = new ArrayList<>();
+    synchronized (this) {
+      topicToRunningJobsMap = new HashMap<>();
+      topicToTerminatedJobsMap = new HashMap<>();
+      logger.info("Start getting offline jobs from ZK");
+      // We don't need to listen the change of jobs and tasks. The master controller is the only entrance to read/write
+      // these data. When master is failed, another controller will take over this mastership and load from ZK when
+      // becoming master.
+      List<OfflineJob> offLineJobs = jobDataAccessor.getChildren(offlineJobsPath, null, AccessOption.PERSISTENT);
+      logger.info("Get " + offLineJobs.size() + " offline jobs.");
+      for (OfflineJob job : offLineJobs) {
+        if (job.getStatus().equals(ExecutionStatus.ARCHIVED)) {
+          //Archived job, do not add it to repository.
+          continue;
+        }
 
-      List<Job> jobs;
-      if (job.isTerminated()) {
-        jobs = getAndCreateJobListFromMap(job.getKafkaTopic(), topicToTerminatedJobsMap);
-      } else {
-        jobs = getAndCreateJobListFromMap(job.getKafkaTopic(), topicToRunningJobsMap);
-      }
-      jobs.add(job);
+        List<Job> jobs;
+        if (job.isTerminated()) {
+          jobs = getAndCreateJobListFromMap(job.getKafkaTopic(), topicToTerminatedJobsMap);
+        } else if (job.getStatus().equals(ExecutionStatus.STARTED)) {
+          jobs = getAndCreateJobListFromMap(job.getKafkaTopic(), topicToRunningJobsMap);
+        } else {
+          //New job. We need to wait it started instead of loading tasks from ZK. Because we don't assign tasks to it before.
+          logger.info("Job:" + job.getJobId() + " is NEW, add it to waiting list.");
+          waitJobList.add(job);
+          continue;
+        }
+        jobs.add(job);
 
-      logger.info("Start getting tasks for job:" + job.getJobId());
-      List<List<Task>> tasks =
-          tasksDataAccessor.getChildren(offlineJobsPath + "/" + job.getJobId(), null, AccessOption.PERSISTENT);
-      for (List<Task> task : tasks) {
-        task.forEach(job::addTask);
+        logger.info("Start getting tasks for job:" + job.getJobId());
+        List<List<Task>> tasks = tasksDataAccessor.getChildren(offlineJobsPath + "/" + job.getJobId(), null, AccessOption.PERSISTENT);
+        for (List<Task> task : tasks) {
+          task.forEach(job::addTask);
+        }
+        logger.info("Filled tasks into job:" + job.getJobId());
       }
-      //Wait and start job.
-      waitUntilJobStart(job);
-      logger.info("Filled tasks into job:" + job.getJobId());
     }
+    //Wait and start job in other thread to avoid blocking starting.
+    //Only the job in NEW will be added into wait list. So it should not be a big number, just one thread is enough.
+    new Thread(new WaitWorker(waitJobList)).start();
     logger.info("End getting offline jobs from zk");
   }
 
@@ -385,5 +393,18 @@ public class HelixJobRepository implements JobRepository, RoutingDataChangedList
 
   public RoutingDataRepository getRoutingDataRepository() {
     return routingDataRepository;
+  }
+
+  private class WaitWorker implements Runnable {
+    private List<Job>  waitJobs;
+
+    WaitWorker(List<Job> jobs) {
+      waitJobs = jobs;
+    }
+
+    @Override
+    public void run() {
+      waitJobs.forEach(HelixJobRepository.this::startJob);
+    }
   }
 }
