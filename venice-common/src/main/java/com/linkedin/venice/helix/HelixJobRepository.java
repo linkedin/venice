@@ -274,6 +274,7 @@ public class HelixJobRepository implements JobRepository, RoutingDataChangedList
           jobs = getAndCreateJobListFromMap(job.getKafkaTopic(), topicToTerminatedJobsMap);
         } else if (job.getStatus().equals(ExecutionStatus.STARTED)) {
           jobs = getAndCreateJobListFromMap(job.getKafkaTopic(), topicToRunningJobsMap);
+          routingDataRepository.subscribeRoutingDataChange(job.getKafkaTopic(), this);
         } else {
           //New job. We need to wait it started instead of loading tasks from ZK. Because we don't assign tasks to it before.
           logger.info("Job:" + job.getJobId() + " is NEW, add it to waiting list.");
