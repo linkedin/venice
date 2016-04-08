@@ -79,7 +79,7 @@ public class GetRequestHttpHandler extends ChannelInboundHandlerAdapter {
     }
   }
 
-  static Base64.Decoder b64decoder = Base64.getDecoder();
+  static Base64.Decoder b64decoder = Base64.getUrlDecoder();
   static byte[] getKeyBytesFromUrlKeyString(String keyString){
     QueryStringDecoder queryStringParser = new QueryStringDecoder(keyString, StandardCharsets.UTF_8);
     String format = RequestConstants.DEFAULT_FORMAT;

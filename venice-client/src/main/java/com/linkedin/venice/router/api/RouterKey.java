@@ -10,8 +10,8 @@ import org.apache.commons.lang.builder.CompareToBuilder;
  */
 public class RouterKey implements Comparable<RouterKey>{
 
-  private static final Base64.Encoder encoder = Base64.getEncoder();
-  private static final Base64.Decoder decoder = Base64.getDecoder();
+  private static final Base64.Encoder encoder = Base64.getUrlEncoder();
+  private static final Base64.Decoder decoder = Base64.getUrlDecoder();
 
   private byte[] key;
   public RouterKey(byte[] key){

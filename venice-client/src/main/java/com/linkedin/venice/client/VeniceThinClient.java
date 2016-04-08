@@ -28,7 +28,7 @@ public class VeniceThinClient implements Closeable {
   private final String routerHost;
   private final int routerPort;
   private final CloseableHttpAsyncClient httpClient;
-  private static final Base64.Encoder encoder = Base64.getEncoder();
+  private static final Base64.Encoder encoder = Base64.getUrlEncoder();
   private static final String STORAGE_TYPE = "storage";
   private static final String B64_FORMAT = "?f=b64";
 

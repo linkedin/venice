@@ -75,7 +75,7 @@ public class GetRequestHttpHandlerTest {
   @Test
   public void parsesKeys(){
     String b64Key = "bWF0dCB3aXNlIGlzIGF3ZXNvbWU=";
-    Base64.Decoder d = Base64.getDecoder();
+    Base64.Decoder d = Base64.getUrlDecoder();
     doKeyTest("myKey", "myKey".getBytes());
     doKeyTest("myKey?a=b", "myKey".getBytes());
     doKeyTest("myKey?f=string", "myKey".getBytes());
