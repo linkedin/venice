@@ -18,6 +18,7 @@ import com.linkedin.venice.helix.HelixCachedMetadataRepository;
 import com.linkedin.venice.helix.HelixRoutingDataRepository;
 import com.linkedin.venice.router.api.VeniceDispatcher;
 import com.linkedin.venice.router.api.VeniceHostFinder;
+import com.linkedin.venice.router.api.VeniceHostHealth;
 import com.linkedin.venice.router.api.VenicePartitionFinder;
 import com.linkedin.venice.router.api.VenicePathParser;
 import com.linkedin.venice.router.api.VeniceRoleFinder;
@@ -152,8 +153,9 @@ public class RouterServer extends AbstractVeniceService {
     Timer idleTimer = registry.register(new ShutdownableHashedWheelTimer(1, TimeUnit.MILLISECONDS));
     Map<String, Object> serverSocketOptions = null;
     ResourceRegistry routerRegistry = registry.register(new SyncResourceRegistry());
-    dispatcher = new VeniceDispatcher();
     VenicePartitionFinder partitionFinder = new VenicePartitionFinder(routingDataRepository);
+    VeniceHostHealth healthMonitor = new VeniceHostHealth();
+    dispatcher = new VeniceDispatcher(healthMonitor);
 
     RouterImpl router
         = routerRegistry.register(new RouterImpl(
@@ -163,6 +165,7 @@ public class RouterServer extends AbstractVeniceService {
             .pathParser(new VenicePathParser(new VeniceVersionFinder(metadataRepository), partitionFinder))
             .partitionFinder(partitionFinder)
             .hostFinder(new VeniceHostFinder(routingDataRepository))
+            .hostHealthMonitor(healthMonitor)
             .dispatchHandler(dispatcher)
             .build()));
 

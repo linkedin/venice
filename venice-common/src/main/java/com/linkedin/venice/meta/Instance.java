@@ -57,11 +57,11 @@ public class Instance {
         }
     }
 
-  //Autogen
+  //Autogen except for .toLowerCase()
   @Override
   public int hashCode() {
     int result = nodeId != null ? nodeId.hashCode() : 0;
-    result = 31 * result + host.hashCode();
+    result = 31 * result + host.toLowerCase().hashCode();
     result = 31 * result + adminPort;
     result = 31 * result + httpPort;
     return result;

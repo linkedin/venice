@@ -14,11 +14,13 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.Collections;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.Executor;
+import java.util.function.Function;
 import org.apache.commons.io.IOUtils;
 import org.apache.http.HttpStatus;
 import org.apache.http.client.methods.HttpGet;
@@ -49,9 +51,14 @@ public class VeniceDispatcher implements PartitionDispatchHandler<Instance, Veni
 
   // key is (resource + "_" + partition)
   private final ConcurrentMap<String, Long> offsets = new ConcurrentHashMap<>();
+  private final VeniceHostHealth healthMontior;
 
-  public VeniceDispatcher(){
+  // How many offsets behind can a storage node be for a partition and still be considered 'caught up'
+  private long acceptableOffsetLag = 0; /* TODO: make this configurable for streaming use-case */
+
+  public VeniceDispatcher(VeniceHostHealth healthMonitor){
     clientPool = new ConcurrentHashMap<>();
+    this.healthMontior = healthMonitor;
   }
 
   @Override
@@ -77,18 +84,16 @@ public class VeniceDispatcher implements PartitionDispatchHandler<Instance, Veni
     }
     logger.debug("Routing request to host: " + host.getHost() + ":" + host.getHttpPort());
 
-    CloseableHttpAsyncClient httpClient;
-    if (clientPool.containsKey(host)){
-      httpClient = clientPool.get(host);
-    } else {
-      httpClient = HttpAsyncClients.custom()
-          .setConnectionReuseStrategy(new DefaultConnectionReuseStrategy())  //Supports connection re-use if able
-          .setMaxConnPerRoute(2) // concurrent execute commands beyond this limit get queued internally by the client
-          .setMaxConnTotal(2)
-          .build();
-      httpClient.start();
-      clientPool.put(host, httpClient);
-    }
+    CloseableHttpAsyncClient httpClient = clientPool.computeIfAbsent(host, new Function<Instance, CloseableHttpAsyncClient>() {
+      @Override
+      public CloseableHttpAsyncClient apply(Instance instance) {
+        CloseableHttpAsyncClient httpClient = HttpAsyncClients.custom().setConnectionReuseStrategy(new DefaultConnectionReuseStrategy())  //Supports connection re-use if able
+            .setMaxConnPerRoute(2) // concurrent execute commands beyond this limit get queued internally by the client
+            .setMaxConnTotal(2).build();
+        httpClient.start();
+        return httpClient;
+      }
+    });
 
     String requestPath = path.getLocation();
     logger.debug("Using request path: " + requestPath);
@@ -100,9 +105,16 @@ public class VeniceDispatcher implements PartitionDispatchHandler<Instance, Veni
 
       @Override
       public void completed(org.apache.http.HttpResponse result) {
+        Iterator<String> partitionNames = part.getPartitionsNames().iterator();
+        String partitionName = partitionNames.next();
+        if (partitionNames.hasNext()){
+          logger.error("There must be only one partition in a request, handling request as if there is only one partition");
+        }
         long offset = Long.parseLong(result.getFirstHeader(HttpConstants.VENICE_OFFSET).getValue());
-        String offsetKey = path.getResourceName() + "_" + part.getPartitionsNames().iterator().next();
-        if ( offsets.containsKey(offsetKey) && offset < offsets.get(offsetKey) ) {
+        String offsetKey = path.getResourceName() + "_" + partitionName;
+        if (offsets.containsKey(offsetKey)
+            && offset + acceptableOffsetLag < offsets.get(offsetKey) ) {
+          healthMontior.setHostAsSlow(host, partitionName);
           contextExecutor.execute(() -> {
             // Triggers an immediate router retry excluding the host we selected.
             retryFuture.setSuccess(HttpResponseStatus.SERVICE_UNAVAILABLE);
