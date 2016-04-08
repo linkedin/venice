@@ -22,7 +22,7 @@ public class TestVeniceVersionFinder {
       versionFinder.getVersion("");
       Assert.fail("versionFinder.getVersion() on previous line should throw a RouterException");
     } catch (RouterException e) {
-      Assert.assertEquals(e.getCode(), 404);
+      Assert.assertEquals(e.getCode(), 400);
     }
   }
 }
