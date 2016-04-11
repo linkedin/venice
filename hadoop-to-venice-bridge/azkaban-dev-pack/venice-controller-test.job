@@ -1,0 +1,24 @@
+type=hadoopJava
+job.class=com.linkedin.venice.hadoop.KafkaPushJob
+classpath=libs/*
+azkaban.should.proxy=true
+user.to.proxy=voldtest
+input.path=/user/voldtest/ha_store_data_v1
+avro.key.field=memberId
+avro.value.field=dedupId
+
+# NEVER USE KAFKA CORP CLUSTER FOR TESTING
+# FOR KAFKA, CORP IS PROD, AS THE INGRAPH DATA IS RELAYED
+# BACK FROM PROD TO CORP FOR INGRAPH AND OTHER ALERTING
+
+# NEVER USE OTHER KAFKA CLUSTERS AS WELL, AS KAFKA
+# PRODUCER WE USE PRODUCE MESSAGES THAT CAN'T BE
+# UNDERSTOOD BY OLDER KAFKA CLUSTERS AND IT CRASHES THEM.
+
+# THERE ARE 4 MACHINES IN NAGINI CLUSTER WHICH HAVE PORTS
+# 6666, 6667 OPENED FOR VOLDEMORT TESTING.
+# eat1-app316.stg; eat1-app317.stg; eat1-app320.stg;eat1-app319.stg
+# SET UP KAFKA ON ONE PORT AND VENICE-CONTROLLER ON OTHER
+# PORT FOR TESTING.
+venice.controller.url=http://eat1-app316.stg.linkedin.com:6667
+venice.store.name=venice_test_member

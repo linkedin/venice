@@ -66,7 +66,6 @@ public class KafkaPushJob {
   public static final String KAFKA_URL_PROP = "kafka.url";
   public static final String TOPIC_PROP = "kafka.topic";
   public static final String INPUT_PATH_PROP = "input.path";
-  public static final String NAME_NODE_PROP = "name.node";
   public static final String BATCH_NUM_BYTES_PROP = "batch.num.bytes";
   public static final String PRODUCT_SPEC_JSON = "product-spec.json";
 
@@ -77,7 +76,6 @@ public class KafkaPushJob {
 
   // Immutable state
   private final String id;
-  private final String nameNode;
   private final String keyField;
   private final String valueField;
   private final String veniceControllerUrl;
@@ -116,11 +114,6 @@ public class KafkaPushJob {
         parser.accepts("input-path", "REQUIRED: Input path")
             .withRequiredArg()
             .describedAs("path")
-            .ofType(String.class);
-    OptionSpec<String> nameNodeOpt =
-        parser.accepts("name-node", "REQUIRED: Name node")
-            .withRequiredArg()
-            .describedAs("name-node")
             .ofType(String.class);
     OptionSpec<String> topicOpt =
         parser.accepts("topic", "REQUIRED: topic")
@@ -192,11 +185,6 @@ public class KafkaPushJob {
     props.put(BATCH_NUM_BYTES_PROP, options.valueOf(queueBytesOpt));
     props.put(AVRO_KEY_FIELD_PROP, options.valueOf(keyFieldOpt));
     props.put(AVRO_VALUE_FIELD_PROP, options.valueOf(valueFieldOpt));
-
-    String nameNodeValue = options.valueOf(nameNodeOpt);
-    if(nameNodeValue != null && nameNodeValue.length() > 0) {
-      props.put(NAME_NODE_PROP, nameNodeValue);
-    }
 
     KafkaPushJob job = new KafkaPushJob("Console", props);
     job.run();
@@ -277,8 +265,6 @@ public class KafkaPushJob {
     this.topic = kafkaTopic;
 
     this.inputDirectory = props.getProperty(INPUT_PATH_PROP);
-    this.nameNode = props.getProperty(NAME_NODE_PROP);
-
     this.keyField = props.getProperty(AVRO_KEY_FIELD_PROP);
     this.valueField = props.getProperty(AVRO_VALUE_FIELD_PROP);
 
@@ -309,36 +295,32 @@ public class KafkaPushJob {
     logger.info("Kafka Topic: " + topic);
     logger.info("Kafka Queue Bytes: " + batchNumBytes);
     logger.info("Input Directory: " + inputDirectory);
-    logger.info("Name Node: " + nameNode);
     logger.info("Venice Store Name: " + storeName);
     logger.info("Venice Controller URL: " + veniceControllerUrl);
 
-    // Check that input path exists in HDFS
-    URI nameNodeUri = null;
-    if(nameNode != null ) {
-      nameNodeUri = new URI(nameNode);
-    }
-    // Before we run, we check the schema of the first file.
-    Configuration conf = new Configuration();
-    if(nameNodeUri != null) {
-      fs = FileSystem.get(nameNodeUri, conf);
-    } else {
-      fs = FileSystem.getLocal(conf);
-    }
 
     Path sourcePath;
+    boolean computeLatestPath = false;
     if (inputDirectory.endsWith("#LATEST") || inputDirectory.endsWith("#LATEST/")) {
       int poundSign = inputDirectory.lastIndexOf('#');
       sourcePath = new Path(inputDirectory.substring(0, poundSign));
-      sourcePath = getLatestPath(sourcePath, fs);
-      inputDirectory = sourcePath.toString();
-      logger.info("Actual Input Directory: " + inputDirectory);
+      computeLatestPath = true;
     } else {
       sourcePath = new Path(inputDirectory);
     }
 
+    Configuration conf = new Configuration();
+    fs = sourcePath.getFileSystem(new Configuration());
+
+    if(computeLatestPath) {
+      sourcePath = getLatestPath(sourcePath, fs);
+      inputDirectory = sourcePath.toString();
+    }
+
+    logger.info("Input Directory: " + inputDirectory);
     printExternalDependencies();
 
+    // Before we run, we check the schema of the first file.
     // If overridden using config, register schema.
     fileSchemaString = getSchemaFromHDFSSource(sourcePath);
     parsedFileSchema = Schema.parse(fileSchemaString.toString());

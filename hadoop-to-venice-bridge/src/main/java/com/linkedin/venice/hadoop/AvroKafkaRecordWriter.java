@@ -23,7 +23,7 @@ import java.util.Properties;
  */
 public class AvroKafkaRecordWriter implements RecordWriter<AvroWrapper<IndexedRecord>, NullWritable> {
 
-  private static Logger logger = Logger.getLogger(KafkaPushJob.class);
+  private static Logger logger = Logger.getLogger(AvroKafkaRecordWriter.class);
   private final String topicName;
 
   private VeniceWriter<byte[], byte[]> veniceWriter;
@@ -60,6 +60,9 @@ public class AvroKafkaRecordWriter implements RecordWriter<AvroWrapper<IndexedRe
     Object keyDatum;
     Object valueDatum;
 
+    // TODO : The Key Serializer and Value serializer are initialized for every record.
+    // See if there is a way to reuse them. The code is redundant copy for both serializers
+    // reuse the code by using common functions.
     if (keyField.equals("*")) {
       keyDatum = datum;
       keySerializer = new AvroGenericSerializer(datum.getSchema().toString());
