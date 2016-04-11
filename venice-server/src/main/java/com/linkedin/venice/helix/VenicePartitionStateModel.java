@@ -63,9 +63,6 @@ public class VenicePartitionStateModel extends StateModel {
         }
 
         kafkaConsumerService.startConsumption(storeConfig, partition);
-        if(isPartitionPresent == false) {
-            kafkaConsumerService.resetConsumptionOffset(storeConfig, partition);
-        }
         logCompletion(HelixState.OFFLINE, HelixState.ONLINE, message, context);
     }
 

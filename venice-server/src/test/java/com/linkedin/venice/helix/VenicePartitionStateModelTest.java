@@ -68,7 +68,6 @@ public class VenicePartitionStateModelTest {
     testStateModel.onBecomeOnlineFromOffline(mockMessage, mockContext);
     Mockito.verify(mockKafkaConsumerService, Mockito.atLeastOnce()).startConsumption(mockStoreConfig, testPartition);
     Mockito.verify(mockAbstractStorageEngine, Mockito.atLeastOnce()).addStoragePartition(testPartition);
-    Mockito.verify(mockKafkaConsumerService, Mockito.atLeastOnce()).resetConsumptionOffset(mockStoreConfig, testPartition);
   }
 
   /**
