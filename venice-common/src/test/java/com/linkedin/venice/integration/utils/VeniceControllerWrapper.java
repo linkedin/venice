@@ -2,6 +2,7 @@ package com.linkedin.venice.integration.utils;
 
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.controller.VeniceControllerClusterConfig;
+import com.linkedin.venice.controller.VeniceControllerConfig;
 import com.linkedin.venice.controller.VeniceControllerService;
 import com.linkedin.venice.utils.Props;
 
@@ -54,7 +55,7 @@ public class VeniceControllerWrapper extends ProcessWrapper {
       controllerProps.put(ConfigKeys.ADMIN_PORT, adminPort);
 
       Props props = clusterProps.mergeWithProperties(controllerProps);
-      VeniceControllerClusterConfig config = new VeniceControllerClusterConfig(props);
+      VeniceControllerConfig config = new VeniceControllerConfig(props);
       VeniceControllerService veniceController = new VeniceControllerService(config);
       return new VeniceControllerWrapper(serviceName, dataDirectory, veniceController, clusterName, adminPort);
     };

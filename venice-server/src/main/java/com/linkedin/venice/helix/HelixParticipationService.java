@@ -41,16 +41,15 @@ public class HelixParticipationService extends AbstractVeniceService {
           @NotNull VeniceConfigService veniceConfigService,
           @NotNull String zkAddress,
           @NotNull String clusterName,
-          int httpPort,
-          int adminPort) {
+          int port) {
 
     super(VENICE_PARTICIPANT_SERVICE_NAME);
     this.consumerService = kafkaConsumerService;
     this.clusterName = clusterName;
     //The format of instance name must be "$host_$port", otherwise Helix can not get these information correctly.
-    this.participantName = Utils.getHostName()+"_"+httpPort;
+    this.participantName = Utils.getHelixNodeIdentifier(port);
     this.zkAddress = zkAddress;
-    instance = new Instance(participantName,Utils.getHostName(),adminPort,httpPort);
+    instance = new Instance(participantName,Utils.getHostName(), port);
     stateModelFactory
         = new VeniceStateModelFactory(kafkaConsumerService, storeRepository, veniceConfigService);
   }

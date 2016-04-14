@@ -82,12 +82,12 @@ public class TestVeniceJobManager {
     admin.rebalance(cluster, kafkaTopic, 1);
 
     controller = HelixControllerMain
-        .startHelixController(zkAddress, cluster, "UnitTestController", HelixControllerMain.STANDALONE);
+        .startHelixController(zkAddress, cluster, Utils.getHelixNodeIdentifier(12345), HelixControllerMain.STANDALONE);
     manager = HelixManagerFactory.getZKHelixManager(cluster, nodeId, InstanceType.PARTICIPANT, zkAddress);
     manager.getStateMachineEngine()
         .registerStateModelFactory(TestHelixRoutingDataRepository.UnitTestStateModel.UNIT_TEST_STATE_MODEL,
             new TestHelixRoutingDataRepository.UnitTestStateModelFactory());
-    Instance instance = new Instance(nodeId, Utils.getHostName(), 9986, 9985);
+    Instance instance = new Instance(nodeId, Utils.getHostName(), 9986);
     manager.setLiveInstanceInfoProvider(new LiveInstanceInfoProvider() {
       @Override
       public ZNRecord getAdditionalLiveInstanceInfo() {

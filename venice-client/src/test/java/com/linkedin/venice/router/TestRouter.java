@@ -33,7 +33,7 @@ public class TestRouter {
 
     HelixRoutingDataRepository mockRepo = Mockito.mock(HelixRoutingDataRepository.class);
     // TODO: getFreePort() is unreliable, should be called within a loop. Refactor this code. Or if the port is actually not used for anything, hard-code to any value?
-    Instance dummyinstance = new Instance("0", "localhost", PortUtils.getFreePort(), PortUtils.getFreePort());
+    Instance dummyinstance = new Instance("0", "localhost", PortUtils.getFreePort());
     List<Instance> dummyList = new ArrayList<>(0);
     dummyList.add(dummyinstance);
     doReturn(dummyList).when(mockRepo).getInstances(anyString(), anyInt());

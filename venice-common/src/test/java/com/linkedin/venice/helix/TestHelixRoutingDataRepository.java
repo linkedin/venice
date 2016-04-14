@@ -73,18 +73,16 @@ public class TestHelixRoutingDataRepository {
         IdealState.RebalanceMode.FULL_AUTO.toString());
     admin.rebalance(clusterName, resourceName, 1);
 
-    controller = HelixControllerMain
-        .startHelixController(zkAddress, clusterName, "UnitTestController", HelixControllerMain.STANDALONE);
-
-
     httpPort = 50000 + (int)(System.currentTimeMillis() % 10000); //port never actually used
-    adminPort = 50000 + (int)(System.currentTimeMillis() % 10000); //port never actually used
-    String nodeId = Utils.getHostName() + "_" + httpPort;
+    adminPort = 50000 + (int)(System.currentTimeMillis() % 10000) +1; //port never actually used
+    controller = HelixControllerMain
+        .startHelixController(zkAddress, clusterName, Utils.getHelixNodeIdentifier(adminPort), HelixControllerMain.STANDALONE);
 
-    manager = HelixManagerFactory.getZKHelixManager(clusterName, nodeId, InstanceType.PARTICIPANT, zkAddress);
+
+    manager = HelixManagerFactory.getZKHelixManager(clusterName, Utils.getHelixNodeIdentifier(httpPort), InstanceType.PARTICIPANT, zkAddress);
     manager.getStateMachineEngine()
         .registerStateModelFactory(UnitTestStateModel.UNIT_TEST_STATE_MODEL, new UnitTestStateModelFactory());
-    Instance instance = new Instance(nodeId, Utils.getHostName(), adminPort, httpPort);
+    Instance instance = new Instance(Utils.getHelixNodeIdentifier(httpPort), Utils.getHostName(), httpPort);
     manager.setLiveInstanceInfoProvider(new LiveInstanceInfoProvider() {
       @Override
       public ZNRecord getAdditionalLiveInstanceInfo() {
@@ -119,8 +117,7 @@ public class TestHelixRoutingDataRepository {
     Assert.assertEquals(1, instances.size());
     Instance instance = instances.get(0);
     Assert.assertEquals(Utils.getHostName(), instance.getHost());
-    Assert.assertEquals(httpPort, instance.getHttpPort());
-    Assert.assertEquals(adminPort, instance.getAdminPort());
+    Assert.assertEquals(httpPort, instance.getPort());
 
     //Participant become off=line.
     manager.disconnect();
@@ -170,8 +167,7 @@ public class TestHelixRoutingDataRepository {
 
     Instance instance = partitions.get(0).getInstances().get(0);
     Assert.assertEquals(Utils.getHostName(), instance.getHost());
-    Assert.assertEquals(httpPort, instance.getHttpPort());
-    Assert.assertEquals(adminPort, instance.getAdminPort());
+    Assert.assertEquals(httpPort, instance.getPort());
 
     //Participant become off=line.
     manager.disconnect();
@@ -206,6 +202,28 @@ public class TestHelixRoutingDataRepository {
     //Wait notification.
     Thread.sleep(WAIT_TIME);
     Assert.assertEquals(isNoticed[0], false, "Should not get notification after un-registering.");
+  }
+
+  @Test
+  public void testControllerChanged()
+      throws Exception {
+    Instance master = repository.getMasterController();
+    Assert.assertEquals(master.getHost(), Utils.getHostName());
+    Assert.assertEquals(master.getPort(), adminPort);
+
+    //Start up stand by controller by different port
+    int newAdminPort = adminPort + 1;
+    HelixManager newMaster = HelixManagerFactory
+        .getZKHelixManager(clusterName, Utils.getHelixNodeIdentifier(newAdminPort), InstanceType.CONTROLLER, zkAddress);
+    newMaster.connect();
+    //Stop master and wait stand by become master
+    controller.disconnect();
+    Thread.sleep(1000l);
+    master = repository.getMasterController();
+    Assert.assertEquals(master.getHost(), Utils.getHostName());
+    Assert.assertEquals(master.getPort(), newAdminPort);
+
+    newMaster.disconnect();
   }
 
   public static class UnitTestStateModel {

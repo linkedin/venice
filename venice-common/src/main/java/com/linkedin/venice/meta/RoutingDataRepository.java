@@ -39,7 +39,18 @@ public interface RoutingDataRepository {
    */
   public int getNumberOfPartitions(String kafkaTopic);
 
+  /**
+   * Whether this repository contains routing data for given kafka topic or not.
+   * @param kafkaTopic
+   * @return
+   */
   public boolean containsKafkaTopic(String kafkaTopic);
+
+  /**
+   * Query the master controller of current cluster.
+   * @return
+   */
+  public Instance getMasterController();
 
   /**
    * Add a listener on kafka topic to get the notification when routing data is changed.

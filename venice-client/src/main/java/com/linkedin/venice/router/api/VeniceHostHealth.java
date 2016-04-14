@@ -33,6 +33,6 @@ public class VeniceHostHealth implements HostHealthMonitor<Instance> {
   }
 
   private static String hostPartitionString(Instance host, String partition){
-    return host.getHost() + ":" + host.getHttpPort() + "_" + partition;
+    return host.getHost() + ":" + host.getPort() + "_" + partition;
   }
 }

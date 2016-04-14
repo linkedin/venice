@@ -97,7 +97,7 @@ public class VeniceReader<K, V> {
     }
     // Proper router will eventually use a strategy other than "read from one"
     String host = instances.get(0).getHost();
-    int port = instances.get(0).getHttpPort();
+    int port = instances.get(0).getPort();
     String keyB64 = Base64.getEncoder().encodeToString(keyBytes);
 
     CloseableHttpAsyncClient httpclient = HttpAsyncClients.createDefault();

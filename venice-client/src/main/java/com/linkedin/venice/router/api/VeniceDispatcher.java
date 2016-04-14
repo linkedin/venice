@@ -82,7 +82,7 @@ public class VeniceDispatcher implements PartitionDispatchHandler<Instance, Veni
       hostSelected.setFailure(e);
       throw new VeniceException("Failed to route request to a host");
     }
-    logger.debug("Routing request to host: " + host.getHost() + ":" + host.getHttpPort());
+    logger.debug("Routing request to host: " + host.getHost() + ":" + host.getPort());
 
     CloseableHttpAsyncClient httpClient = clientPool.computeIfAbsent(host, new Function<Instance, CloseableHttpAsyncClient>() {
       @Override
@@ -99,7 +99,7 @@ public class VeniceDispatcher implements PartitionDispatchHandler<Instance, Veni
     logger.debug("Using request path: " + requestPath);
 
     //  http://host:port/path
-    String address = HTTP + host.getHost() + ":" + host.getHttpPort() + "/" + requestPath;
+    String address = HTTP + host.getHost() + ":" + host.getPort() + "/" + requestPath;
     final HttpGet requestToNode = new HttpGet(address);
     httpClient.execute(requestToNode, new FutureCallback<org.apache.http.HttpResponse>() {
 

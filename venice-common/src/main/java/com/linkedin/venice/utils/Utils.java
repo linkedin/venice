@@ -205,4 +205,16 @@ public class Utils {
       throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, fieldName + " must be an integer", e);
     }
   }
+
+  public static String getHelixNodeIdentifier(int port) {
+    return Utils.getHostName() + "_" + port;
+  }
+
+  public static String parseHostFromHelixNodeIdentifier(String nodeId) {
+    return nodeId.substring(0, nodeId.lastIndexOf('_'));
+  }
+
+  public static int parsePortFromHelixNodeIdentifier(String nodeId) {
+    return parseIntFromString(nodeId.substring(nodeId.lastIndexOf('_') + 1), "port");
+  }
 }

@@ -19,7 +19,7 @@ public class TestHostFinder {
   @Test
   public void hostFinderShouldFindHosts(){
     RoutingDataRepository mockRepo = Mockito.mock(RoutingDataRepository.class);
-    Instance dummyinstance = new Instance("0", "localhost", 1234, 5678);
+    Instance dummyinstance = new Instance("0", "localhost", 1234);
     List<Instance> dummyList = new ArrayList<>(0);
     dummyList.add(dummyinstance);
     //when(mockRepo.getInstances(anyString(), anyInt())).thenReturn(dummyList);

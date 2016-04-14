@@ -29,7 +29,7 @@ public class TestOfflineJob {
     for (int i = 0; i < numberOfPartition; i++) {
       List<Instance> instances = new ArrayList<>();
       for (int j = 0; j < replicaFactor; j++) {
-        Instance instance = new Instance(nodeId + j, "localhost", 1235, 1234);
+        Instance instance = new Instance(nodeId + j, "localhost", 1235);
         instances.add(instance);
       }
       Partition partition = new Partition(i, topic, instances);

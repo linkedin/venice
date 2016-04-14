@@ -18,21 +18,15 @@ public class Instance {
      */
     private final String host;
     /**
-     * Port of the node used to accept the admin request.
-     */
-    private final int adminPort;
-    /**
-     * Port of the node used to accept the read request.
-     */
-    private final int httpPort;
+    * Port of the node used to accept the request. For controller it's admin request, for storage node it's data request.
+    */
+    private final int port;
 
-    public Instance(@NotNull String nodeId, @NotNull String host, int adminPort, int httpPort) {
+    public Instance(@NotNull String nodeId, @NotNull String host, int port) {
         this.nodeId = nodeId;
         this.host = host;
-        validatePort("http port", httpPort);
-        validatePort("admin port",adminPort);
-        this.adminPort = adminPort;
-        this.httpPort = httpPort;
+        validatePort("port", port);
+        this.port = port;
     }
 
     public String getNodeId() {
@@ -43,15 +37,11 @@ public class Instance {
         return host;
     }
 
-    public int getAdminPort() {
-        return adminPort;
+    public int getPort() {
+       return port;
     }
 
-    public int getHttpPort() {
-        return httpPort;
-    }
-
-    private void validatePort(String name, int port) {
+  private void validatePort(String name, int port) {
         if (port < 0 || port > 65535) {
             throw new IllegalArgumentException("Invalid " + name + ": " + port);
         }
@@ -62,8 +52,7 @@ public class Instance {
   public int hashCode() {
     int result = nodeId != null ? nodeId.hashCode() : 0;
     result = 31 * result + host.toLowerCase().hashCode();
-    result = 31 * result + adminPort;
-    result = 31 * result + httpPort;
+    result = 31 * result + port;
     return result;
   }
 
@@ -79,10 +68,7 @@ public class Instance {
 
     Instance instance = (Instance) o;
 
-    if (getAdminPort() != instance.getAdminPort()) {
-      return false;
-    }
-    if (getHttpPort() != instance.getHttpPort()) {
+    if (getPort() != instance.getPort()) {
       return false;
     }
     if (getNodeId() != null ? !getNodeId().equals(instance.getNodeId()) : instance.getNodeId() != null) {

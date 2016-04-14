@@ -5,6 +5,7 @@ import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.Partition;
 import com.linkedin.venice.meta.RoutingDataChangedListener;
 import com.linkedin.venice.meta.RoutingDataRepository;
+import com.linkedin.venice.utils.Utils;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -20,6 +21,7 @@ import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.stream.Collectors;
 import javax.validation.constraints.NotNull;
+import org.apache.helix.ControllerChangeListener;
 import org.apache.helix.HelixManager;
 import org.apache.helix.NotificationContext;
 import org.apache.helix.PropertyKey;
@@ -42,7 +44,7 @@ import org.apache.log4j.Logger;
  * instances in other state, could add them in the further.
  */
 
-public class HelixRoutingDataRepository extends RoutingTableProvider implements RoutingDataRepository {
+public class HelixRoutingDataRepository extends RoutingTableProvider implements RoutingDataRepository, ControllerChangeListener {
     private static final Logger logger = Logger.getLogger(HelixRoutingDataRepository.class.getName());
     /**
      * Manager used to communicate with Helix.
@@ -60,6 +62,10 @@ public class HelixRoutingDataRepository extends RoutingTableProvider implements 
      * Map which contains relationship between resource and its number of partitions.
      */
     private Map<String, Integer> resourceToNumberOfPartitionsMap = new HashMap<>();
+    /**
+     * Master controller of cluster.
+     */
+    private Instance masterController = null;
     /**
      * Lock used to prevent the conflicts when operating resourceToNumberOfPartitionsMap.
      */
@@ -80,6 +86,7 @@ public class HelixRoutingDataRepository extends RoutingTableProvider implements 
         try {
             resourceToPartitionMap.set(new HashMap());
             manager.addExternalViewChangeListener(this);
+            manager.addControllerListener(this);
         } catch (Exception e) {
             String errorMessage = "Cannot register routing table into Helix";
             logger.error(errorMessage, e);
@@ -166,6 +173,19 @@ public class HelixRoutingDataRepository extends RoutingTableProvider implements 
         try {
             return resourceToNumberOfPartitionsMap.containsKey(kafkaTopic);
         }finally {
+            lock.unlock();
+        }
+    }
+
+    @Override
+    public Instance getMasterController() {
+        lock.lock();
+        try {
+            if(masterController == null){
+                throw new VeniceException("There are not master controller for this controller or we didn't rec");
+            }
+            return masterController;
+        } finally {
             lock.unlock();
         }
     }
@@ -291,4 +311,26 @@ public class HelixRoutingDataRepository extends RoutingTableProvider implements 
         return newResourceNamesToNumberOfParitions;
     }
 
+    @Override
+    public void onControllerChange(NotificationContext changeContext) {
+        if (changeContext.getType().equals(NotificationContext.Type.FINALIZE)) {
+            //Finalized notification, listener will be removed.
+            return;
+        }
+        logger.info("Got notification type:" + changeContext.getType() +". Master controller is changed.");
+        LiveInstance leader = manager.getHelixDataAccessor().getProperty(keyBuilder.controllerLeader());
+        lock.lock();
+        try {
+            if(leader == null){
+                this.masterController = null;
+                logger.info("Cluster do not have master controller now!");
+            }else {
+                this.masterController =
+                    new Instance(leader.getId(), Utils.parseHostFromHelixNodeIdentifier(leader.getId()), Utils.parsePortFromHelixNodeIdentifier(leader.getId()));
+                logger.info("Controller is:" + masterController.getHost() + ":" + masterController.getPort());
+            }
+        } finally {
+            lock.unlock();
+        }
+    }
 }

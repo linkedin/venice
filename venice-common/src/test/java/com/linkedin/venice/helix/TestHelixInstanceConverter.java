@@ -15,18 +15,15 @@ public class TestHelixInstanceConverter {
     String id="testId";
     String host="localhost";
     int httpPort=1234;
-    int adminPort=2345;
     ZNRecord record = new ZNRecord(id);
     record.setSimpleField("HOST", host);
-    record.setIntField("HTTP_PORT", httpPort);
-    record.setIntField("ADMIN_PORT", adminPort);
+    record.setIntField("PORT", httpPort);
 
     Instance instance = HelixInstanceConverter.convertZNRecordToInstance(record);
 
     Assert.assertEquals(id,instance.getNodeId());
     Assert.assertEquals(host,instance.getHost());
-    Assert.assertEquals(httpPort,instance.getHttpPort());
-    Assert.assertEquals(adminPort,instance.getAdminPort());
+    Assert.assertEquals(httpPort,instance.getPort());
   }
 
   @Test
@@ -52,12 +49,10 @@ public class TestHelixInstanceConverter {
     String id="testId";
     String host="localhost";
     int httpPort=1234;
-    int adminPort=2345;
-    Instance instance = new Instance(id,host,adminPort,httpPort);
+    Instance instance = new Instance(id, host, httpPort);
     ZNRecord record = HelixInstanceConverter.convertInstanceToZNRecord(instance);
     Assert.assertEquals(id,record.getId());
     Assert.assertEquals(host,record.getSimpleField("HOST"));
-    Assert.assertEquals(httpPort,record.getIntField("HTTP_PORT",-1));
-    Assert.assertEquals(adminPort,record.getIntField("ADMIN_PORT",-1));
+    Assert.assertEquals(httpPort,record.getIntField("PORT",-1));
   }
 }
