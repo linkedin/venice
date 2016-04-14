@@ -1,8 +1,5 @@
-package com.linkedin.venice.kafka.consumer;
+package com.linkedin.venice.notifier;
 
-import com.linkedin.venice.kafka.consumer.VeniceNotifier;
-import java.util.Arrays;
-import java.util.Collection;
 import org.apache.log4j.Logger;
 
 

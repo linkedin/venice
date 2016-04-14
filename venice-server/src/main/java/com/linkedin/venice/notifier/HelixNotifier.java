@@ -1,8 +1,8 @@
-package com.linkedin.venice.helix;
+package com.linkedin.venice.notifier;
 
 import com.linkedin.venice.controlmessage.StatusUpdateMessage;
+import com.linkedin.venice.helix.HelixControlMessageChannel;
 import com.linkedin.venice.job.ExecutionStatus;
-import com.linkedin.venice.kafka.consumer.VeniceNotifier;
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.io.StringWriter;

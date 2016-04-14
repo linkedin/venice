@@ -2,6 +2,9 @@ package com.linkedin.venice.kafka.consumer;
 
 import com.linkedin.venice.config.VeniceServerConfig;
 import com.linkedin.venice.config.VeniceStoreConfig;
+import com.linkedin.venice.notifier.KafkaNotifier;
+import com.linkedin.venice.notifier.LogNotifier;
+import com.linkedin.venice.notifier.VeniceNotifier;
 import com.linkedin.venice.partitioner.PartitionZeroPartitioner;
 import com.linkedin.venice.offsets.OffsetManager;
 import com.linkedin.venice.serialization.KafkaKeySerializer;

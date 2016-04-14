@@ -1,6 +1,7 @@
 package com.linkedin.venice.kafka.consumer;
 
 import com.linkedin.venice.config.VeniceStoreConfig;
+import com.linkedin.venice.notifier.VeniceNotifier;
 
 
 /**

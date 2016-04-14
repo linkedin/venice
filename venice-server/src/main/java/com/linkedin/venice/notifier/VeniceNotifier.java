@@ -1,4 +1,4 @@
-package com.linkedin.venice.kafka.consumer;
+package com.linkedin.venice.notifier;
 
 import java.util.Collection;
 

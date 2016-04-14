@@ -1,9 +1,10 @@
 package com.linkedin.venice.kafka.consumer;
 
-import com.google.common.collect.Lists;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.message.KafkaValue;
 import com.linkedin.venice.message.OperationType;
+import com.linkedin.venice.notifier.KafkaNotifier;
+import com.linkedin.venice.notifier.VeniceNotifier;
 import com.linkedin.venice.offsets.OffsetManager;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.server.StoreRepository;

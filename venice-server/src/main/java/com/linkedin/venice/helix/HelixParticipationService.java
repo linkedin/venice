@@ -2,6 +2,7 @@ package com.linkedin.venice.helix;
 
 import com.linkedin.venice.kafka.consumer.KafkaConsumerService;
 import com.linkedin.venice.meta.Instance;
+import com.linkedin.venice.notifier.HelixNotifier;
 import com.linkedin.venice.server.StoreRepository;
 import com.linkedin.venice.server.VeniceConfigService;
 import com.linkedin.venice.service.AbstractVeniceService;
@@ -11,8 +12,6 @@ import org.apache.helix.HelixManager;
 import org.apache.helix.HelixManagerFactory;
 import org.apache.helix.InstanceType;
 import org.apache.helix.LiveInstanceInfoProvider;
-import org.apache.helix.ZNRecord;
-import org.apache.helix.manager.zk.ZKHelixAdmin;
 import org.apache.helix.participant.statemachine.StateModelFactory;
 import org.apache.log4j.Logger;
 
