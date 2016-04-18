@@ -1,11 +1,11 @@
 package com.linkedin.venice.router.api;
 
 import com.linkedin.ddsstorage.router.api.PartitionFinder;
-import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
-import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.Partition;
 import com.linkedin.venice.meta.RoutingDataRepository;
+import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
+import com.linkedin.venice.partitioner.VenicePartitioner;
 import java.util.List;
 import java.util.stream.Collectors;
 

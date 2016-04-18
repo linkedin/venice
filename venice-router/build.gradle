@@ -1,0 +1,56 @@
+apply plugin: 'application'
+
+mainClassName = "com.linkedin.venice.router.RouterServer"
+
+installApp.dependsOn test
+
+task buildJar(type: Jar) {
+    manifest {
+        attributes 'Main-Class': 'com.linkedin.venice.router.RouterServer',
+            'Implementation-Title': 'Venice Router',
+            'Implementation-Version': version
+    }
+    baseName = project.name
+    from { configurations.compile.collect { it.isDirectory() ? it : zipTree(it) } }
+    with jar
+}
+
+jar {
+    manifest {
+        attributes 'Main-Class': 'com.linkedin.venice.router.RouterServer',
+            'Implementation-Title': 'Venice Router',
+            'Implementation-Version': version
+    }
+}
+
+dependencies {
+    compile libraries.router_api
+    compile libraries.router_impl
+    compile libraries.http_client
+    compile project(':venice-common')
+
+    testCompile project(':venice-common').sourceSets.test.output
+
+}
+
+configurations.all {
+    // Router dependencies import from "org.jboss.netty" and we want them to use "io.netty"
+    resolutionStrategy.eachDependency { DependencyResolveDetails details ->
+        if (details.requested.group == "org.jboss.netty")
+        {
+            details.useTarget group: "io.netty", name: details.requested.name, version: "3.9.6.Final"
+        }
+    }
+
+}
+
+idea {
+    module {
+        downloadJavadoc = true
+        downloadSources = true
+    }
+}
+
+test {
+    useTestNG()
+}

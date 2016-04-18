@@ -110,6 +110,27 @@ public class ControllerClient implements Closeable {
     }
   }
 
+  private void overrideSetActiveVersion(String storeName, int version){
+    try {
+      final HttpPost post = new HttpPost(controllerUrl + ControllerApiConstants.SETVERSION_PATH);
+      List<NameValuePair> params = new ArrayList<NameValuePair>();
+      params.add(new BasicNameValuePair(ControllerApiConstants.NAME, storeName));
+      params.add(new BasicNameValuePair(ControllerApiConstants.VERSION, Integer.toString(version)));
+      post.setEntity(new UrlEncodedFormEntity(params));
+      HttpResponse response = client.execute(post, null).get();
+    } catch(Exception e){
+      String msg = "Error setting version.  Storename: " + storeName + " Version: " + version;
+      logger.error(msg, e);
+      throw new VeniceException(msg, e);
+    }
+  }
+
+  public static void overrideSetActiveVersion(String controllerUrl, String storeName, int version){
+    try (ControllerClient client = new ControllerClient(controllerUrl)){
+      client.overrideSetActiveVersion(storeName, version);
+    }
+  }
+
   private JobStatusQueryResponse queryJobStatus(String kafkaTopic){
     String storeName = Version.parseStoreFromKafkaTopicName(kafkaTopic);
     int version = Version.parseVersionFromKafkaTopicName(kafkaTopic);

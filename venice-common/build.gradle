@@ -44,6 +44,7 @@ dependencies {
   testCompile libraries.zookeeper
   testCompile project(':venice-controller')
   testCompile project(':venice-server')
+  testCompile project(':venice-router')
 }
 
 idea {

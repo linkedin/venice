@@ -45,9 +45,6 @@ import org.jboss.netty.util.Timer;
 
 /**
  * Note: Router uses Netty 3
- *
- * For now this is meant to be run from the IDE for development and testing.
- * It won't actually work until the metadata repository starts to make versions 'active'
  */
 public class RouterServer extends AbstractVeniceService {
   private static final Logger logger = Logger.getLogger(RouterServer.class);
@@ -63,13 +60,6 @@ public class RouterServer extends AbstractVeniceService {
   private NettyResourceRegistry registry = null;
   private VeniceDispatcher dispatcher;
 
-  /***
-   * This main method is not meant to be the way of invoking the router for a deployment.  It is only provided as a
-   * convenience method for developement and will eventually be replaced with a more standard invokation process.
-   *
-   * @param args
-   * @throws Exception
-   */
   public static void main(String args[]) throws Exception {
 
     Props props;
@@ -77,13 +67,16 @@ public class RouterServer extends AbstractVeniceService {
       String clusterConfigFilePath = args[0];
       props = new Props(new File(clusterConfigFilePath));
     } catch (Exception e){
-      logger.warn("No config file parameter found, using default values for local testing", e);
-      props = new Props();
+      throw new VeniceException("No config file parameter found", e);
     }
 
-    String zkConnection = props.getOrDefault(ConfigKeys.ZOOKEEPER_ADDRESS, "localhost:2181");
-    String clusterName = props.getOrDefault(ConfigKeys.CLUSTER_NAME, "test-cluster");
-    int port = props.getInt("router.port", 54333);
+    String zkConnection = props.get(ConfigKeys.ZOOKEEPER_ADDRESS);
+    String clusterName = props.get(ConfigKeys.CLUSTER_NAME);
+    int port = props.getInt(ConfigKeys.ROUTER_PORT);
+
+    logger.info("Zookeeper: " + zkConnection);
+    logger.info("Cluster: " + clusterName);
+    logger.info("Port: " + port);
 
     RouterServer server = new RouterServer(port, clusterName, zkConnection);
     server.start();
@@ -101,9 +94,8 @@ public class RouterServer extends AbstractVeniceService {
       }
     });
 
-
-    while (true){
-      Thread.sleep(60000);
+    while(true) {
+      Thread.sleep(TimeUnit.HOURS.toMillis(1));
     }
 
   }
@@ -113,19 +105,20 @@ public class RouterServer extends AbstractVeniceService {
     this.port = port;
     this.clusterName = clusterName;
     zkClient = new ZkClient(zkConnection);
-    manager = new ZKHelixManager(clusterName, null, InstanceType.SPECTATOR, zkConnection);
+    manager = new ZKHelixManager(this.clusterName, null, InstanceType.SPECTATOR, zkConnection);
     try {
       manager.connect();
     } catch (Exception e) {
       throw new VeniceException("Failed to start manager when creating Venice Router", e);
     }
     HelixAdapterSerializer adapter = new HelixAdapterSerializer();
-    this.metadataRepository = new HelixCachedMetadataRepository(zkClient, adapter, clusterName);
+    this.metadataRepository = new HelixCachedMetadataRepository(zkClient, adapter, this.clusterName);
     this.routingDataRepository = new HelixRoutingDataRepository(manager);
   }
 
   //Only use this constructor for testing when you want to pass mock repositories
-  RouterServer(int port, String clusterName, HelixRoutingDataRepository routingDataRepository, HelixCachedMetadataRepository metadataRepository){
+  RouterServer(int port, String clusterName, HelixRoutingDataRepository routingDataRepository,
+      HelixCachedMetadataRepository metadataRepository){
     super(RouterServer.class.getName());
     this.port = port;
     this.clusterName = clusterName;
@@ -171,6 +164,7 @@ public class RouterServer extends AbstractVeniceService {
 
     serverFuture = router.start(new InetSocketAddress(port), factory -> factory);
     serverFuture.await();
+
     logger.info("Router server is started on port:" + serverFuture.getChannel().getLocalAddress());
   }
 

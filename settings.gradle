@@ -3,3 +3,5 @@ include 'venice-client'
 include 'venice-server'
 include 'venice-controller'
 include 'hadoop-to-venice-bridge'
+include 'venice-router'
+

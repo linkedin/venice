@@ -99,12 +99,14 @@ task buildAll {
   dependsOn 'venice-client:build'
   dependsOn 'venice-server:build'
   dependsOn 'venice-controller:build'
+  dependsOn 'venice-router:build'
   dependsOn 'hadoop-to-venice-bridge:build'
 
   dependsOn 'venice-common:buildJar'
   dependsOn 'venice-client:installApp'
   dependsOn 'venice-server:installApp'
   dependsOn 'venice-controller:installApp'
+  dependsOn 'venice-router:installApp'
   // dependsOn 'hadoop-to-venice-bridge:installApp'
 }
 
