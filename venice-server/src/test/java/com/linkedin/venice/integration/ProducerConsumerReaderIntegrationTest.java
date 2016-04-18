@@ -3,14 +3,18 @@ package com.linkedin.venice.integration;
 import static com.linkedin.venice.ConfigKeys.*;
 
 import com.linkedin.venice.client.VeniceReader;
+import com.linkedin.venice.client.VeniceThinClient;
 import com.linkedin.venice.client.VeniceWriter;
+import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.serialization.StringSerializer;
 import com.linkedin.venice.serialization.VeniceSerializer;
 import com.linkedin.venice.utils.Props;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.TestUtils;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
+import java.nio.charset.StandardCharsets;
 import org.apache.log4j.Logger;
 import org.testng.Assert;
 import org.testng.annotations.AfterMethod;
@@ -35,17 +39,19 @@ public class ProducerConsumerReaderIntegrationTest {
   private static final int MAX_WAIT_TIME = 10000;
 
   private VeniceClusterWrapper veniceCluster;
+  private String storeVersionName;
 
   // TODO: Make serializers parameterized so we test them all.
   private VeniceWriter<String, String> veniceWriter;
   private VeniceReader<String, String> veniceReader;
+  private VeniceThinClient thinClient;
 
   @BeforeMethod
   public void setUp() throws InterruptedException, ExecutionException {
     veniceCluster = ServiceFactory.getVeniceCluster();
 
     // Create test store
-    String storeName = veniceCluster.getNewStoreVersion();
+    storeVersionName = veniceCluster.getNewStoreVersion();
 
     Props clientProps = new Props()
         .with(KAFKA_BOOTSTRAP_SERVERS, veniceCluster.getKafka().getAddress())
@@ -56,13 +62,17 @@ public class ProducerConsumerReaderIntegrationTest {
     VeniceSerializer keySerializer = new StringSerializer();
     VeniceSerializer valueSerializer = new StringSerializer();
 
-    veniceWriter = new VeniceWriter(clientProps, storeName, keySerializer, valueSerializer);
-    veniceReader = new VeniceReader<String, String>(clientProps, storeName, keySerializer, valueSerializer);
+    veniceWriter = new VeniceWriter(clientProps, storeVersionName, keySerializer, valueSerializer);
+    veniceReader = new VeniceReader<String, String>(clientProps, storeVersionName, keySerializer, valueSerializer);
     veniceReader.init();
+    thinClient = new VeniceThinClient(
+        veniceCluster.getVeniceRouter().getHost(),
+        veniceCluster.getVeniceRouter().getPort());
   }
 
   @AfterMethod
   public void cleanUp() {
+    thinClient.close();
     if (veniceCluster != null) {
       veniceCluster.close();
     }
@@ -141,6 +151,7 @@ public class ProducerConsumerReaderIntegrationTest {
     // Insert test record and wait synchronously for it to succeed
     veniceWriter.put(key, value).get();
 
+    // Read from the storage node
     // This may fail non-deterministically, if the storage node is not done consuming yet, hence the retries.
     Assert.assertTrue(retry((attempt, timeElapsed) -> {
       String newValue = veniceReader.get(key);
@@ -153,6 +164,11 @@ public class ProducerConsumerReaderIntegrationTest {
         return true;
       }
     }), "Not able to retrieve key '" + key + "' which was written into Venice!");
+
+    // Read from the router
+    String storeName = Version.parseStoreFromKafkaTopicName(storeVersionName);
+    byte[] thinClientValueBytes = thinClient.get(storeName, key.getBytes(StandardCharsets.UTF_8)).get();
+    Assert.assertEquals(new String(thinClientValueBytes, StandardCharsets.UTF_8), value);
   }
 
   // TODO: Add tests with more complex scenarios (multiple records, record overwrites, multiple partitions, multiple storage nodes, etc.)

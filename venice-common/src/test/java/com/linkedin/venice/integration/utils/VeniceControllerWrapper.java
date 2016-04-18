@@ -71,6 +71,10 @@ public class VeniceControllerWrapper extends ProcessWrapper {
     return adminPort;
   }
 
+  public String getControllerUrl() {
+    return "http://" + getHost() + ":" + getPort();
+  }
+
   @Override
   protected void start() throws Exception {
     service.start();
@@ -91,6 +95,7 @@ public class VeniceControllerWrapper extends ProcessWrapper {
     String storeOwner = TestUtils.getUniqueString("store-owner");
     this.service.getVeniceHelixAdmin().addStore(clusterName, storeName, storeOwner);
     this.service.getVeniceHelixAdmin().addVersion(clusterName, storeName, 1);
+    this.service.getVeniceHelixAdmin().setCurrentVersion(clusterName, storeName, 1);
 
     return storeName + "_v1"; // TODO: Decide if it is acceptable to hard-code this here...
   }

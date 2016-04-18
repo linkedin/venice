@@ -18,19 +18,22 @@ public class VeniceClusterWrapper extends ProcessWrapper {
   private final KafkaBrokerWrapper kafkaBrokerWrapper;
   private final VeniceControllerWrapper veniceControllerWrapper;
   private final VeniceServerWrapper veniceServerWrapper;
+  private final VeniceRouterWrapper veniceRouterWrapper;
 
   VeniceClusterWrapper(File dataDirectory,
                        String clusterName,
                        ZkServerWrapper zkServerWrapper,
                        KafkaBrokerWrapper kafkaBrokerWrapper,
                        VeniceControllerWrapper veniceControllerWrapper,
-                       VeniceServerWrapper veniceServerWrapper) {
+                       VeniceServerWrapper veniceServerWrapper,
+                       VeniceRouterWrapper veniceRouterWrapper) {
     super(SERVICE_NAME, dataDirectory);
     this.clusterName = clusterName;
     this.zkServerWrapper = zkServerWrapper;
     this.kafkaBrokerWrapper = kafkaBrokerWrapper;
     this.veniceControllerWrapper = veniceControllerWrapper;
     this.veniceServerWrapper = veniceServerWrapper;
+    this.veniceRouterWrapper = veniceRouterWrapper;
   }
 
   static ServiceProvider<VeniceClusterWrapper> generateService() {
@@ -43,11 +46,13 @@ public class VeniceClusterWrapper extends ProcessWrapper {
     String clusterName = TestUtils.getUniqueString("venice-cluster");
     ZkServerWrapper zkServerWrapper = ServiceFactory.getZkServer();
     KafkaBrokerWrapper kafkaBrokerWrapper = ServiceFactory.getKafkaBroker(zkServerWrapper);
-    VeniceControllerWrapper veniceControllerWrapper = ServiceFactory.getVeniceController(clusterName, kafkaBrokerWrapper);
+    VeniceControllerWrapper veniceControllerWrapper = ServiceFactory.getVeniceController(clusterName,
+        kafkaBrokerWrapper);
     VeniceServerWrapper veniceServerWrapper = ServiceFactory.getVeniceServer(clusterName, kafkaBrokerWrapper);
+    VeniceRouterWrapper veniceRouterWrapper = ServiceFactory.getVeniceRouter(clusterName, kafkaBrokerWrapper);
 
     return (serviceName, port) -> new VeniceClusterWrapper(
-        null, clusterName, zkServerWrapper, kafkaBrokerWrapper, veniceControllerWrapper, veniceServerWrapper);
+        null, clusterName, zkServerWrapper, kafkaBrokerWrapper, veniceControllerWrapper, veniceServerWrapper, veniceRouterWrapper);
   }
 
   public String getClusterName() {
@@ -68,6 +73,10 @@ public class VeniceClusterWrapper extends ProcessWrapper {
 
   public VeniceServerWrapper getVeniceServer() {
     return veniceServerWrapper;
+  }
+
+  public VeniceRouterWrapper getVeniceRouter(){
+    return veniceRouterWrapper;
   }
 
   @Override

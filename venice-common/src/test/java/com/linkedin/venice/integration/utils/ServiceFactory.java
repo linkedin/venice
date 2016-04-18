@@ -42,36 +42,25 @@ public class ServiceFactory {
   /**
    * @return an instance of {@link com.linkedin.venice.controller.VeniceControllerService}
    */
-  public static VeniceControllerWrapper getVeniceController() {
-    /**
-     * Get the Kafka dependency outside of the lambda, to avoid time complexity of
-     * O({@value MAX_ATTEMPT} ^2) on the amount of retries. {@link #getKafkaBroker()}
-     * has its own retries, so we can assume it's reliable enough.
-     */
-
-    return getVeniceController(TestUtils.getUniqueString("venice-cluster"), getKafkaBroker());
-  }
-
   static VeniceControllerWrapper getVeniceController(String clusterName, KafkaBrokerWrapper kafkaBrokerWrapper) {
     return getStatefulService(
         VeniceControllerWrapper.SERVICE_NAME,
         VeniceControllerWrapper.generateService(clusterName, kafkaBrokerWrapper));
   }
 
-  public static VeniceServerWrapper getVeniceServer() {
-    /**
-     * Get the Kafka dependency outside of the lambda, to avoid time complexity of
-     * O({@value MAX_ATTEMPT} ^2) on the amount of retries. {@link #getKafkaBroker()}
-     * has its own retries, so we can assume it's reliable enough.
-     */
-
-    return getVeniceServer(TestUtils.getUniqueString("venice-cluster"), getKafkaBroker());
-  }
-
   static VeniceServerWrapper getVeniceServer(String clusterName, KafkaBrokerWrapper kafkaBrokerWrapper) {
     return getStatefulService(
         VeniceServerWrapper.SERVICE_NAME,
         VeniceServerWrapper.generateService(clusterName, kafkaBrokerWrapper));
+  }
+
+  /**
+   * Note: Assumes that helix and kafka are using the same zookeeper, uses the zookeeper from the kafkaBrokerWrapper
+   */
+  static VeniceRouterWrapper getVeniceRouter(String clusterName, KafkaBrokerWrapper kafkaBrokerWrapper){
+    return getService(
+        VeniceRouterWrapper.SERVICE_NAME,
+        VeniceRouterWrapper.generateService(clusterName, kafkaBrokerWrapper));
   }
 
   public static VeniceClusterWrapper getVeniceCluster() {
