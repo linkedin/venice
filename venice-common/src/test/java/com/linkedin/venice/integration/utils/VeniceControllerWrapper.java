@@ -1,9 +1,13 @@
 package com.linkedin.venice.integration.utils;
 
 import com.linkedin.venice.ConfigKeys;
+import com.linkedin.venice.controller.VeniceController;
 import com.linkedin.venice.controller.VeniceControllerClusterConfig;
 import com.linkedin.venice.controller.VeniceControllerConfig;
 import com.linkedin.venice.controller.VeniceControllerService;
+import com.linkedin.venice.controllerapi.ControllerClient;
+import com.linkedin.venice.controllerapi.StoreCreationResponse;
+import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.Props;
 
 import java.io.File;
@@ -17,20 +21,20 @@ public class VeniceControllerWrapper extends ProcessWrapper {
 
   public static final String SERVICE_NAME = "VeniceController";
 
-  private final VeniceControllerService service;
+  private final VeniceController service;
   private final String clusterName;
-  private final int adminPort;
+  private final int port;
 
   VeniceControllerWrapper(
       String serviceName,
       File dataDirectory,
-      VeniceControllerService service,
+      VeniceController service,
       String clusterName,
-      int adminPort) {
+      int port) {
     super(serviceName, dataDirectory);
     this.service = service;
     this.clusterName = clusterName;
-    this.adminPort = adminPort;
+    this.port = port;
   }
 
   static StatefulServiceProvider<VeniceControllerWrapper> generateService(String clusterName, KafkaBrokerWrapper kafkaBrokerWrapper) {
@@ -55,8 +59,7 @@ public class VeniceControllerWrapper extends ProcessWrapper {
       controllerProps.put(ConfigKeys.ADMIN_PORT, adminPort);
 
       Props props = clusterProps.mergeWithProperties(controllerProps);
-      VeniceControllerConfig config = new VeniceControllerConfig(props);
-      VeniceControllerService veniceController = new VeniceControllerService(config);
+      VeniceController veniceController = new VeniceController(props);
       return new VeniceControllerWrapper(serviceName, dataDirectory, veniceController, clusterName, adminPort);
     };
   }
@@ -68,7 +71,7 @@ public class VeniceControllerWrapper extends ProcessWrapper {
 
   @Override
   public int getPort() {
-    return adminPort;
+    return port;
   }
 
   public String getControllerUrl() {
@@ -88,15 +91,38 @@ public class VeniceControllerWrapper extends ProcessWrapper {
   /**
    * Creates a new store and initializes version 1 of that store.
    *
-   * @return the name of the newly-created store-version
+   * @return the kafka topic name of the newly-created store-version
    */
   public String getNewStoreVersion() {
+    String controllerUrl = getControllerUrl();
     String storeName = TestUtils.getUniqueString("venice-store");
     String storeOwner = TestUtils.getUniqueString("store-owner");
-    this.service.getVeniceHelixAdmin().addStore(clusterName, storeName, storeOwner);
-    this.service.getVeniceHelixAdmin().addVersion(clusterName, storeName, 1);
-    this.service.getVeniceHelixAdmin().setCurrentVersion(clusterName, storeName, 1);
+    int storeSizeMb = 10;
+    StoreCreationResponse newStore = ControllerClient.createStoreVersion(
+        controllerUrl,
+        storeName,
+        storeOwner,
+        storeSizeMb);
+    return newStore.getKafkaTopic();
+  }
 
-    return storeName + "_v1"; // TODO: Decide if it is acceptable to hard-code this here...
+  /***
+   * Sets a version to be active for a given store and version
+   *
+   * @param storeName
+   * @param version
+   */
+  public void setActiveVersion(String storeName, int version){
+    ControllerClient.overrideSetActiveVersion(getControllerUrl(), storeName, version);
+  }
+
+  /***
+   * Set a version to be active, parsing store name and version number from a kafka topic name
+   * @param kafkaTopic
+   */
+  public void setActiveVersion(String kafkaTopic){
+    String storeName = Version.parseStoreFromKafkaTopicName(kafkaTopic);
+    int version = Version.parseVersionFromKafkaTopicName(kafkaTopic);
+    setActiveVersion(storeName, version);
   }
 }

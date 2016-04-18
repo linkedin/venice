@@ -1,5 +1,6 @@
 package com.linkedin.venice.service;
 
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.utils.Utils;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.apache.log4j.Logger;
@@ -24,14 +25,19 @@ public abstract class AbstractVeniceService {
     return this.serviceName;
   }
 
-  public void start()
-      throws Exception {
-    boolean isntStarted = isStarted.compareAndSet(false, true);
-    if (!isntStarted) {
-      throw new IllegalStateException("Service is already started!");
+  public void start() {
+    try {
+      boolean isntStarted = isStarted.compareAndSet(false, true);
+      if (!isntStarted) {
+        throw new IllegalStateException("Service is already started!");
+      }
+      logger.info("Starting " + getName());
+      startInner();
+    } catch (Exception e) {
+      String errMsg = "Error starting service: " + getName();
+      logger.error(errMsg, e);
+      throw new VeniceException(errMsg, e);
     }
-    logger.info("Starting " + getName());
-    startInner();
   }
 
   public void stop()
@@ -56,4 +62,14 @@ public abstract class AbstractVeniceService {
 
   public abstract void stopInner()
       throws Exception;
+
+  public static void stopIfNotNull(AbstractVeniceService service){
+    if (null != service){
+      try {
+        service.stop();
+      } catch (Exception e) {
+        logger.error("Unable to stop service: " + service.getName(), e);
+      }
+    }
+  }
 }

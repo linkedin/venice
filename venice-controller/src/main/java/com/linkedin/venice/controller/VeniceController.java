@@ -1,6 +1,7 @@
 package com.linkedin.venice.controller;
 
 import com.linkedin.venice.controller.server.AdminSparkServer;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.utils.Props;
 import com.linkedin.venice.utils.Utils;
@@ -15,38 +16,35 @@ public class VeniceController {
 
   private static final Logger logger = Logger.getLogger(VeniceController.class.getName());
 
-  private static List<AbstractVeniceService> services;
+  //services
+  VeniceControllerService controllerService;
+  AdminSparkServer adminServer;
 
   private final VeniceControllerConfig config;
 
   public VeniceController(Props props){
     config = new VeniceControllerConfig(props);
+    createServices();
   }
 
   public void createServices(){
-     /* Services are created in the order they must be started */
-    services = new ArrayList<AbstractVeniceService>();
-
-    VeniceControllerService controllerService = new VeniceControllerService(config);
-    services.add(controllerService);
-
-    AdminSparkServer adminServer = new AdminSparkServer(config.getAdminPort(), config.getClusterName(), controllerService.getVeniceHelixAdmin());
-    services.add(adminServer);
+    controllerService = new VeniceControllerService(config);
+    adminServer = new AdminSparkServer(config.getAdminPort(), config.getClusterName(), controllerService.getVeniceHelixAdmin());
   }
 
   public void start(){
     logger.info("Starting controller: " + config.getControllerName() + " for cluster: " + config.getClusterName()
         + " with ZKAddress: " + config.getZkAddress());
-    for (AbstractVeniceService service: services) {
-      try {
-        service.start();
-      } catch (Exception e) {
-        logger.error("Error starting the service: " + service.getName(), e);
-        System.exit(1);
-      }
-    }
-    addShutdownHook();
+    controllerService.start();
+    adminServer.start();
     logger.info("Controller is started.");
+  }
+
+
+  public void stop(){
+    //TODO: we may want a dependency structure so we ensure services are shutdown in the correct order.
+    AbstractVeniceService.stopIfNotNull(adminServer);
+    AbstractVeniceService.stopIfNotNull(controllerService);
   }
 
   public static void main(String args[]) {
@@ -65,25 +63,15 @@ public class VeniceController {
     }
 
     VeniceController controller = new VeniceController(controllerProps);
-    controller.createServices();
     controller.start();
+    addShutdownHook(controller);
   }
 
-  private static void addShutdownHook() {
+  private static void addShutdownHook(VeniceController controller) {
     Runtime.getRuntime().addShutdownHook(new Thread() {
       @Override
       public void run() {
-        //TODO: we may want a dependency structure so we ensure services are shutdown in the correct order.
-        for (AbstractVeniceService service : Utils.reversed(services)) {
-          logger.info("Stopping controller service: " + service.getName());
-          try {
-            if (service != null) {
-              service.stop();
-            }
-          } catch (Exception e) {
-            logger.error("Unable to stop service: " + service.getName(), e);
-          }
-        }
+        controller.stop();
       }
     });
     try {

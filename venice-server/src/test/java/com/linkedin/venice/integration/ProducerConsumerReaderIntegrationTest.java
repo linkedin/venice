@@ -52,6 +52,7 @@ public class ProducerConsumerReaderIntegrationTest {
 
     // Create test store
     storeVersionName = veniceCluster.getNewStoreVersion();
+    veniceCluster.getVeniceController().setActiveVersion(storeVersionName);
 
     Props clientProps = new Props()
         .with(KAFKA_BOOTSTRAP_SERVERS, veniceCluster.getKafka().getAddress())
@@ -167,6 +168,7 @@ public class ProducerConsumerReaderIntegrationTest {
 
     // Read from the router
     String storeName = Version.parseStoreFromKafkaTopicName(storeVersionName);
+    int storeVersion = Version.parseVersionFromKafkaTopicName(storeVersionName);
     byte[] thinClientValueBytes = thinClient.get(storeName, key.getBytes(StandardCharsets.UTF_8)).get();
     Assert.assertEquals(new String(thinClientValueBytes, StandardCharsets.UTF_8), value);
   }
