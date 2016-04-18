@@ -76,13 +76,16 @@ public class ControllerClient implements Closeable {
     }
   }
 
-  private StoreCreationResponse createNewStoreVersion(String storeName, String owner, int storeSizeMb){
+  private StoreCreationResponse createNewStoreVersion(String storeName, String owner, long storeSize,
+                                                      String keySchema, String valueSchema){
     try {
       final HttpPost post = new HttpPost(controllerUrl + ControllerApiConstants.CREATE_PATH);
       List<NameValuePair> params = new ArrayList<NameValuePair>();
       params.add(new BasicNameValuePair(ControllerApiConstants.NAME, storeName));
       params.add(new BasicNameValuePair(ControllerApiConstants.OWNER, owner));
-      params.add(new BasicNameValuePair(ControllerApiConstants.STORE_SIZE, Integer.toString(storeSizeMb)));
+      params.add(new BasicNameValuePair(ControllerApiConstants.STORE_SIZE, Long.toString(storeSize)));
+      params.add(new BasicNameValuePair(ControllerApiConstants.KEY_SCHEMA, keySchema));
+      params.add(new BasicNameValuePair(ControllerApiConstants.VALUE_SCHEMA, valueSchema));
       post.setEntity(new UrlEncodedFormEntity(params));
       HttpResponse response = client.execute(post, null).get();
       String responseBody;
@@ -98,15 +101,16 @@ public class ControllerClient implements Closeable {
         throw new VeniceException(msg);
       }
     } catch (Exception e) {
-      String msg = "Error creating Store: " + storeName + " Owner: " + owner + " Size: " + storeSizeMb;
+      String msg = "Error creating Store: " + storeName + " Owner: " + owner + " Size: " + storeSize + " bytes";
       logger.error(msg, e);
       throw new VeniceException(msg, e);
     }
   }
 
-  public static StoreCreationResponse createStoreVersion(String controllerUrl,String storeName, String owner, int storeSizeMb ) {
+  public static StoreCreationResponse createStoreVersion(String controllerUrl,String storeName, String owner,
+                                                         long storeSize, String keySchema, String valueSchema) {
     try (ControllerClient client = new ControllerClient(controllerUrl)){
-        return client.createNewStoreVersion(storeName, owner, storeSizeMb);
+        return client.createNewStoreVersion(storeName, owner, storeSize, keySchema, valueSchema);
     }
   }
 

@@ -35,8 +35,9 @@ public class ClientTest {
             .getOffLineJobStatus(anyString(), anyString());
         AdminSparkServer server = new AdminSparkServer(port, "cluster-for-tests", mockAdmin);
         server.start();
-        int storeSizeMb = 500;
-        StoreCreationResponse response = ControllerClient.createStoreVersion(controllerUrl, STORE_NAME, OWNER, storeSizeMb);
+        long storeSize = 500 * 1024 * 1024;
+        StoreCreationResponse response = ControllerClient.createStoreVersion(controllerUrl, STORE_NAME, OWNER,
+                storeSize, "long", "string");
         JobStatusQueryResponse jobQuery = ControllerClient.queryJobStatus(controllerUrl, version.kafkaTopicName());
         server.stop();
 

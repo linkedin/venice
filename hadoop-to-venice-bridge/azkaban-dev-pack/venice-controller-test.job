@@ -22,3 +22,4 @@ avro.value.field=dedupId
 # PORT FOR TESTING.
 venice.controller.url=http://eat1-app316.stg.linkedin.com:6667
 venice.store.name=venice_test_member
+venice.store.owners=your_name@linkedin.com

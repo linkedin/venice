@@ -2,9 +2,10 @@ package com.linkedin.venice.hadoop;
 
 import com.linkedin.venice.client.VeniceWriter;
 import com.linkedin.venice.controllerapi.ControllerClient;
-import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
 import com.linkedin.venice.controllerapi.StoreCreationResponse;
-import com.linkedin.venice.job.ExecutionStatus;
+import com.linkedin.venice.hadoop.exceptions.VeniceInconsistentSchemaException;
+import com.linkedin.venice.hadoop.exceptions.VeniceSchemaFieldNotFoundException;
+import com.linkedin.venice.hadoop.exceptions.VeniceStoreCreationException;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.message.OperationType;
 import com.linkedin.venice.serialization.DefaultSerializer;
@@ -41,13 +42,11 @@ import org.codehaus.jackson.node.ObjectNode;
 
 import java.io.IOException;
 import java.io.InputStream;
-import java.net.URI;
 import java.net.URL;
 import java.util.Iterator;
 import java.util.Properties;
 
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
-import static com.linkedin.venice.ConfigKeys.clusterSpecificProperties;
 
 
 /**
@@ -60,6 +59,7 @@ public class KafkaPushJob {
   public static final String AVRO_VALUE_FIELD_PROP = "avro.value.field";
   public static final String VENICE_CONTROLLER_URL_PROP = "venice.controller.url";
   public static final String VENICE_STORE_NAME_PROP = "venice.store.name";
+  public static final String VENICE_STORE_OWNERS_PROP = "venice.store.owners";
 
   public static final String SCHEMA_STRING_PROP = "schema";
   public static final String SCHEMA_ID_PROP = "schema.id";
@@ -74,15 +74,20 @@ public class KafkaPushJob {
 
   public static int DEFAULT_BATCH_BYTES_SIZE = 1000000;
 
+  // Since the job is calculating the raw data file size, which is not accurate because of compression, key/value schema and backend storage overhead,
+  // we are applying this factor to provide a more reasonable estimation.
+  public static final int INPUT_DATA_SIZE_FACTOR = 2;
+
   // Immutable state
   private final String id;
   private final String keyField;
   private final String valueField;
   private final String veniceControllerUrl;
   private final String storeName;
-  private final String kafkaUrl;
-  private final String topic;
+  private final String storeOwners;
   private final int batchNumBytes;
+  // Whether the current job is for venice store push or just Kafka push
+  private final boolean storePush;
 
   // Mutable state
   private String inputDirectory;
@@ -90,8 +95,15 @@ public class KafkaPushJob {
   private JobConf job;
   private RunningJob runningJob;
   private String fileSchemaString;
+  private String keySchemaString;
+  private String valueSchemaString;
   private Schema parsedFileSchema;
   private Properties props;
+  // We will override kafkaUrl and topic if it is a store push
+  private String kafkaUrl;
+  private String topic;
+  // Total input data size, which is used to talk to controller to decide whether we have enough quota or not
+  private long inputFileDataSize;
 
   // This main method is not called by azkaban, this is only for testing purposes.
   public static void main(String[] args) throws Exception {
@@ -124,6 +136,11 @@ public class KafkaPushJob {
             parser.accepts("store-name", "REQUIRED: store name")
                     .withRequiredArg()
                     .describedAs("store-name")
+                    .ofType(String.class);
+    OptionSpec<String> storeOwnersOpt =
+            parser.accepts("store-owners", "REQUIRED: store owners that should be a comma-separated list of email addresses")
+                    .withRequiredArg()
+                    .describedAs("store-owners")
                     .ofType(String.class);
     OptionSpec<String> keyFieldOpt =
           parser.accepts("key-field", "REQUIRED: key field")
@@ -169,22 +186,28 @@ public class KafkaPushJob {
       props.put(TOPIC_PROP, topicName);
 
     } else if ( isVeniceUrlPresent) {
+      validateExpectedArguments(new OptionSpec[] {veniceUrlOpt, storeNameOpt, storeOwnersOpt}, options, parser);
       String veniceUrl = options.valueOf(veniceUrlOpt);
       String storeName = options.valueOf(storeNameOpt);
+      String storeOwners = options.valueOf(storeOwnersOpt);
 
       props.put(VENICE_CONTROLLER_URL_PROP, veniceUrl);
       props.put(VENICE_STORE_NAME_PROP, storeName);
+      props.put(VENICE_STORE_OWNERS_PROP, storeOwners);
     }  else {
       String errorMessage = "At least one of the Options should be present " + kafkaUrlOpt + " Or " + veniceUrlOpt;
       logger.error(errorMessage);
       throw new VeniceException(errorMessage);
     }
 
-
+    // Required options
+    validateExpectedArguments(new OptionSpec[] {inputPathOpt, keyFieldOpt, valueFieldOpt}, options, parser);
     props.put(INPUT_PATH_PROP, options.valueOf(inputPathOpt));
-    props.put(BATCH_NUM_BYTES_PROP, options.valueOf(queueBytesOpt));
     props.put(AVRO_KEY_FIELD_PROP, options.valueOf(keyFieldOpt));
     props.put(AVRO_VALUE_FIELD_PROP, options.valueOf(valueFieldOpt));
+
+    // Optional ones
+    props.put(BATCH_NUM_BYTES_PROP, options.valueOf(queueBytesOpt));
 
     KafkaPushJob job = new KafkaPushJob("Console", props);
     job.run();
@@ -205,26 +228,6 @@ public class KafkaPushJob {
     throw new VeniceException("Missing required argument \"" + missingArgument + "\"");
   }
 
-  public static StoreCreationResponse initiateNewStorePush(String veniceUrl, String storeName) throws Exception {
-    // TODO : compute the store size properly and populate the owner correctly.
-    final String DUMMY_OWNER = "dev";
-    final int DUMMY_SIZE_MB = 100;
-
-    StoreCreationResponse response = ControllerClient.createStoreVersion(veniceUrl, storeName,
-            DUMMY_OWNER, DUMMY_SIZE_MB);
-    String kafkaUrl = response.getKafkaBootstrapServers();
-    if(Utils.isNullOrEmpty(kafkaUrl)) {
-      throw new VeniceException("Returned empty kafka url " + kafkaUrl);
-    }
-
-    String kafkaTopic = response.getKafkaTopic();
-    if(Utils.isNullOrEmpty(kafkaTopic)) {
-      throw new VeniceException("Returned empty topic name " + kafkaTopic);
-    }
-
-    return response;
-  }
-
   /**
    * Do not change this method argument type
    * Constructor used by Azkaban for creating the job.
@@ -238,6 +241,7 @@ public class KafkaPushJob {
     this.id = jobId;
     this.veniceControllerUrl = props.getProperty(VENICE_CONTROLLER_URL_PROP);
     this.storeName = props.getProperty(VENICE_STORE_NAME_PROP);
+    this.storeOwners = props.getProperty(VENICE_STORE_OWNERS_PROP);
 
     String kafkaUrl = props.getProperty(KAFKA_URL_PROP);
     String kafkaTopic = props.getProperty(TOPIC_PROP);
@@ -252,17 +256,16 @@ public class KafkaPushJob {
       if (Utils.isNullOrEmpty(storeName)) {
         throw new VeniceException(VENICE_STORE_NAME_PROP + " is required for Starting a push");
       }
-
-      StoreCreationResponse response = initiateNewStorePush(this.veniceControllerUrl, this.storeName);
-      kafkaUrl = response.getKafkaBootstrapServers();
-      kafkaTopic = response.getKafkaTopic();
-      logger.info("Used the Venice Controller " + veniceControllerUrl + " to resolve to kafka url " + kafkaUrl + " topic " + kafkaTopic );
+      if (Utils.isNullOrEmpty(storeOwners)) {
+        throw new VeniceException(VENICE_STORE_OWNERS_PROP + " is required for Starting a push");
+      }
+      this.storePush = true;
     } else {
+      this.storePush = false;
+      this.kafkaUrl = kafkaUrl;
+      this.topic = kafkaTopic;
       logger.warn ("Running the job in debug mode, Controller will not be informed of a new push");
     }
-
-    this.kafkaUrl = kafkaUrl;
-    this.topic = kafkaTopic;
 
     this.inputDirectory = props.getProperty(INPUT_PATH_PROP);
     this.keyField = props.getProperty(AVRO_KEY_FIELD_PROP);
@@ -273,7 +276,6 @@ public class KafkaPushJob {
     } else {
       this.batchNumBytes = Integer.parseInt(props.getProperty(BATCH_NUM_BYTES_PROP));
     }
-
   }
 
   /**
@@ -289,48 +291,29 @@ public class KafkaPushJob {
    */
   public void run()
           throws Exception {
-
     logger.info("Running KafkaPushJob: " + id);
-    logger.info("Kafka URL: " + kafkaUrl);
-    logger.info("Kafka Topic: " + topic);
-    logger.info("Kafka Queue Bytes: " + batchNumBytes);
-    logger.info("Input Directory: " + inputDirectory);
-    logger.info("Venice Store Name: " + storeName);
-    logger.info("Venice Controller URL: " + veniceControllerUrl);
 
-
-    Path sourcePath;
-    boolean computeLatestPath = false;
-    if (inputDirectory.endsWith("#LATEST") || inputDirectory.endsWith("#LATEST/")) {
-      int poundSign = inputDirectory.lastIndexOf('#');
-      sourcePath = new Path(inputDirectory.substring(0, poundSign));
-      computeLatestPath = true;
-    } else {
-      sourcePath = new Path(inputDirectory);
-    }
-
+    // Create FileSystem handle, which will be shared in multiple functions
     Configuration conf = new Configuration();
-    fs = sourcePath.getFileSystem(new Configuration());
+    fs = FileSystem.get(conf);
 
-    if(computeLatestPath) {
-      sourcePath = getLatestPath(sourcePath, fs);
-      inputDirectory = sourcePath.toString();
+    // This will try to extract the source folder if the input path has 'latest' anchor.
+    Path sourcePath = getLatestPathOfInputDirectory();
+
+    // Check Avro file schema consistency, data size
+    inspectHdfsSource(sourcePath);
+
+    // If the current job is for a store push, we need to pull Kafka Url/Topic from Venice Controller
+    if (storePush) {
+      populateKafkaInfoForNewStorePush();
     }
-
-    logger.info("Input Directory: " + inputDirectory);
-    printExternalDependencies();
-
-    // Before we run, we check the schema of the first file.
-    // If overridden using config, register schema.
-    fileSchemaString = getSchemaFromHDFSSource(sourcePath);
-    parsedFileSchema = Schema.parse(fileSchemaString.toString());
-    logger.info("File Schema: " + fileSchemaString);
+    // Log job properties
+    logJobProperties();
 
     // Hadoop2 dev cluster provides a newer version of an avro dependency.
     // Set mapreduce.job.classloader to true to force the use of the older avro dependency.
     conf.setBoolean("mapreduce.job.classloader", true);
     logger.info("**************** mapreduce.job.classloader: " + conf.get("mapreduce.job.classloader"));
-
 
     // Setup the hadoop job
     this.job = setupHadoopJob(conf);
@@ -338,6 +321,7 @@ public class KafkaPushJob {
 
     // TODO: Set the jobId to epoch for now. Figure out how to get unique jobId
     // for each of the pushes.
+    // We should get jobId from Venice Controller.
     long jobId = System.currentTimeMillis();
     sendControlMessage(OperationType.BEGIN_OF_PUSH, jobId);
     // submit the job for execution
@@ -350,12 +334,47 @@ public class KafkaPushJob {
     }
     sendControlMessage(OperationType.END_OF_PUSH, jobId);
 
-    if (Utils.isNullOrEmpty(veniceControllerUrl)){
+    if (!storePush){
       logger.info("No controller provided, skipping poll of push status, job completed");
     } else {
       // Throws a VeniceException if the job completes with a failed status
       ControllerClient.pollJobStatusUntilFinished(Time.MS_PER_SECOND, 5*Time.MS_PER_MINUTE, veniceControllerUrl, topic);
     }
+  }
+
+  private void populateKafkaInfoForNewStorePush() {
+    if (!storePush) {
+      return;
+    }
+    StoreCreationResponse response = ControllerClient.createStoreVersion(veniceControllerUrl, storeName,
+            storeOwners, inputFileDataSize, keySchemaString, valueSchemaString);
+    if (response.isError()) {
+      throw new VeniceStoreCreationException(storeName, "Received error from Venice Controller for new store push: " +
+              response.getError());
+    }
+    kafkaUrl = response.getKafkaBootstrapServers();
+    if (Utils.isNullOrEmpty(kafkaUrl)) {
+      throw new VeniceStoreCreationException(storeName, "Venice Controller returned empty kafka url " + kafkaUrl);
+    }
+    topic = response.getKafkaTopic();
+    if (Utils.isNullOrEmpty(topic)) {
+      throw new VeniceStoreCreationException(storeName, "Venice Controller returned empty topic name " + topic);
+    }
+    logger.info("Used the Venice Controller: " + veniceControllerUrl + " to resolve to kafka url: " +
+            kafkaUrl + " and topic: " + topic );
+  }
+
+  private void logJobProperties() {
+    logger.info("Kafka URL: " + kafkaUrl);
+    logger.info("Kafka Topic: " + topic);
+    logger.info("Kafka Queue Bytes: " + batchNumBytes);
+    logger.info("Input Directory: " + inputDirectory);
+    logger.info("Venice Store Name: " + storeName);
+    logger.info("Venice Controller URL: " + veniceControllerUrl);
+    logger.info("File Schema: " + fileSchemaString);
+    logger.info("Avro key schema: " + keySchemaString);
+    logger.info("Avro value schema: " + valueSchemaString);
+    logger.info("Total input data file size: " + ((double)inputFileDataSize / 1024 / 1024) + " MB");
   }
 
   private void sendControlMessage (OperationType opType, long jobId) {
@@ -462,6 +481,9 @@ public class KafkaPushJob {
     // Setting up the Input format for the mapper
     job.setInputFormat(AvroInputFormat.class);
     AvroJob.setMapperClass(job, KafkaOutputMapper.class);
+    // TODO:The job is using path-filter to check the consistency of avro file schema ,
+    // but doesn't specify the path filter for the input directory of map-reduce job.
+    // We need to revisit it if any failure because of this happens.
     FileInputFormat.setInputPaths(job, new Path(inputDirectory));
     AvroJob.setInputSchema(job, parsedFileSchema);
 
@@ -490,11 +512,16 @@ public class KafkaPushJob {
   }
 
   /**
-   * Pulls out the schema from an avro file. The first avro file it finds, ignoring directories and prefix "."
+   * Pulls out the schema from an avro file, ignoring directories and prefix "."
+   * This function will do the following tasks as well:
+   * 1. Check whether we have sub-directory in inputDirectory or not;
+   * 2. Calculate total data size of input directory;
+   * 3. Check schema consistency;
+   * 4. Populate key schema, value schema;
    */
-  private String getSchemaFromHDFSSource(Path srcPath) throws IOException {
-    Schema newSchema = null;
-
+  private void inspectHdfsSource(Path srcPath) throws IOException {
+    parsedFileSchema = null;
+    inputFileDataSize = 0;
     FileStatus[] fileStatus = fs.listStatus(srcPath, PATH_FILTER);
 
     if (fileStatus == null || fileStatus.length == 0) {
@@ -502,25 +529,49 @@ public class KafkaPushJob {
     }
 
     for (FileStatus status : fileStatus) {
-      System.out.println("Processing file " + status.getPath());
+     logger.info("Processing file " + status.getPath());
       if (status.isDir()) {
-        continue;
+        // Map-reduce job will fail if the input directory has sub-directory and 'recursive' is not specified.
+        throw new RuntimeException("Input directory: " + srcPath.getName() +
+                " should not have sub directory: " + status.getPath().getName());
       }
 
       Path path = status.getPath();
-      newSchema = getAvroFileHeader(fs, path);
+      Schema newSchema = getAvroFileHeader(path);
       if (newSchema == null) {
         logger.error("Was not able to grab file schema for " + path);
-        throw new RuntimeException("Invalid Avro file.");
+        throw new RuntimeException("Invalid Avro file: " + path.getName());
       } else {
-        break;
+        if (parsedFileSchema == null) {
+          parsedFileSchema = newSchema;
+        } else {
+          // Need to check whether schema is consistent or not
+          if (!parsedFileSchema.equals(newSchema)) {
+            throw new VeniceInconsistentSchemaException("Avro schema is not consistent in the input directory: schema 1: " +
+                    parsedFileSchema.toString() + ", schema 2: " + newSchema.toString());
+          }
+        }
       }
+      inputFileDataSize += status.getLen();
     }
+    // Since the job is calculating the raw data file size, which is not accurate because of compression, key/value schema and backend storage overhead,
+    // we are applying this factor to provide a more reasonable estimation.
+    inputFileDataSize *= INPUT_DATA_SIZE_FACTOR;
 
-    return newSchema.toString();
+    fileSchemaString = parsedFileSchema.toString();
+    Schema.Field keyField = parsedFileSchema.getField(this.keyField);
+    if (keyField == null) {
+      throw new VeniceSchemaFieldNotFoundException(this.keyField, "The configured key field: " + this.keyField + " is not found in the input data");
+    }
+    keySchemaString = keyField.schema().toString();
+    Schema.Field valueField = parsedFileSchema.getField(this.valueField);
+    if (valueField == null) {
+      throw new VeniceSchemaFieldNotFoundException(this.valueField, "The configured value field: " + this.valueField + " is not found in the input data");
+    }
+    valueSchemaString = valueField.schema().toString();
   }
 
-  private Schema getAvroFileHeader(FileSystem fs, Path path) throws IOException {
+  private Schema getAvroFileHeader(Path path) throws IOException {
     logger.debug("path:" + path.toUri().getPath());
 
     GenericDatumReader<Object> avroReader = new GenericDatumReader<Object>();
@@ -536,6 +587,49 @@ public class KafkaPushJob {
     }
 
     return schema;
+  }
+
+  private Path getLatestPathOfInputDirectory() throws IOException{
+    Path sourcePath = null;
+    boolean computeLatestPath = false;
+    if (inputDirectory.endsWith("#LATEST") || inputDirectory.endsWith("#LATEST/")) {
+      int poundSign = inputDirectory.lastIndexOf('#');
+      sourcePath = new Path(inputDirectory.substring(0, poundSign));
+      computeLatestPath = true;
+    } else {
+      sourcePath = new Path(inputDirectory);
+    }
+
+    if(computeLatestPath) {
+      sourcePath = getLatestPath(sourcePath, fs);
+      inputDirectory = sourcePath.toString();
+    }
+
+    return sourcePath;
+  }
+
+  public String getKafkaTopic() {
+    return topic;
+  }
+
+  public String getInputDirectory() {
+    return inputDirectory;
+  }
+
+  public String getFileSchemaString() {
+    return fileSchemaString;
+  }
+
+  public String getKeySchemaString() {
+    return keySchemaString;
+  }
+
+  public String getValueSchemaString() {
+    return valueSchemaString;
+  }
+
+  public long getInputFileDataSize() {
+    return inputFileDataSize;
   }
 
   private static Path getLatestPath(Path path, FileSystem fs) throws IOException {

@@ -202,10 +202,17 @@ public class Utils {
     try {
       return Integer.parseInt(value);
     } catch (NumberFormatException e) {
-      throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, fieldName + " must be an integer", e);
+      throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, fieldName + " must be an integer, but value: " + value, e);
     }
   }
 
+  public static long parseLongFromString(String value, String fieldName) {
+    try {
+      return Long.parseLong(value);
+    } catch (NumberFormatException e) {
+      throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, fieldName + " must be a long, but value: " + value, e);
+    }
+  }
   public static String getHelixNodeIdentifier(int port) {
     return Utils.getHostName() + "_" + port;
   }

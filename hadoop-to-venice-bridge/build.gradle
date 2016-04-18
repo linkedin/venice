@@ -8,7 +8,11 @@ dependencies {
       exclude group: 'org.slf4j'        // Avro pulls in slf4j 1.5 which is API incompatible with 1.6
     }
 
-    compile libraries.avroTools
+    compile (libraries.mapreduceClientCore) {
+        exclude group: 'org.apache.avro'
+        exclude group: 'javax.servlet'
+    }
+
     // gradle dependencyInsight is not showing any dependency on the slf4j-simple
     // But if this version is not forced, it causes the slf4j to fail with NoSuchMethodError
     compile 'org.slf4j:slf4j-simple:1.6.2'
@@ -17,11 +21,23 @@ dependencies {
     compile(libraries.hadoopCommon) {
       // Exclude transitive dependency
       exclude group: 'org.apache.avro'
+      exclude group: 'javax.servlet'
     }
     compile libraries.metricsCore
     compile libraries.joptSimple
     compile libraries.jacksonCore
     compile libraries.jdom
+
+    testCompile project(':venice-client')
+    testCompile project(':venice-common').sourceSets.test.output
+    testCompile project(':venice-controller')
+    testCompile project(':venice-server')
+    testCompile project(':venice-router')
+    testCompile (libraries.mapreduceClientJobClient) {
+        exclude group: 'org.apache.avro'
+        exclude group: 'javax.servlet'
+    }
+    testCompile libraries.jacksonMapper
 
     runtime libraries.commonsConfiguration
     runtime libraries.commonsLang
@@ -43,7 +59,7 @@ configurations.all {
 
 jar {
   // including all runtime dependency jars (fat jar)
-  from configurations.runtime.collect { 
+  from configurations.runtime.collect {
        // filtering hadoop core jars and configs as it clashes with Azkaban
        it.isDirectory() ? it : zipTree(it).matching {
          exclude "**/org/apache/hadoop/**"
@@ -66,5 +82,9 @@ task zipAzkabanDev(type: Zip, dependsOn: jar) {
   from (tasks.jar.archivePath) {
     into 'libs'
   }
+}
+
+test {
+    useTestNG()
 }
 

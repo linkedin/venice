@@ -20,7 +20,7 @@ ext.libraries = [ // Groovy map literal
                   zookeeper: 'org.apache.zookeeper:zookeeper:3.4.6',
 
                   // Hadoop to Venice Bridge dependencies
-                  avroTools: 'org.apache.avro:avro-tools:1.4.0', // N.B.: 1.4.1 does not exist, hence the discrepancy
+                  mapreduceClientCore: 'org.apache.hadoop:hadoop-mapreduce-client-core:2.3.0',
                   commonsConfiguration: 'commons-configuration:commons-configuration:1.9',
                   commonsLang: 'commons-lang:commons-lang:2.6',
                   hadoopCommon: 'org.apache.hadoop:hadoop-common:2.3.0',
@@ -33,7 +33,10 @@ ext.libraries = [ // Groovy map literal
                   log4j: 'log4j:log4j:1.2.17',
                   metricsCore: 'com.yammer.metrics:metrics-core:2.2.1',
                   snappy: 'org.xerial.snappy:snappy-java:1.0.4.1',
-                  testng: 'org.testng:testng:6.1.1'
+                  testng: 'org.testng:testng:6.1.1',
+
+                  // Hadoop to Venice Bridge test dependencies
+                  mapreduceClientJobClient: 'org.apache.hadoop:hadoop-mapreduce-client-jobclient:2.3.0'
 ]
 
 subprojects {

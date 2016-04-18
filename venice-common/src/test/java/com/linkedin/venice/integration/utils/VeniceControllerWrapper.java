@@ -3,8 +3,6 @@ package com.linkedin.venice.integration.utils;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.controller.VeniceController;
 import com.linkedin.venice.controller.VeniceControllerClusterConfig;
-import com.linkedin.venice.controller.VeniceControllerConfig;
-import com.linkedin.venice.controller.VeniceControllerService;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.StoreCreationResponse;
 import com.linkedin.venice.meta.Version;
@@ -20,7 +18,6 @@ import java.io.File;
 public class VeniceControllerWrapper extends ProcessWrapper {
 
   public static final String SERVICE_NAME = "VeniceController";
-
   private final VeniceController service;
   private final String clusterName;
   private final int port;
@@ -59,6 +56,7 @@ public class VeniceControllerWrapper extends ProcessWrapper {
       controllerProps.put(ConfigKeys.ADMIN_PORT, adminPort);
 
       Props props = clusterProps.mergeWithProperties(controllerProps);
+
       VeniceController veniceController = new VeniceController(props);
       return new VeniceControllerWrapper(serviceName, dataDirectory, veniceController, clusterName, adminPort);
     };
@@ -97,12 +95,16 @@ public class VeniceControllerWrapper extends ProcessWrapper {
     String controllerUrl = getControllerUrl();
     String storeName = TestUtils.getUniqueString("venice-store");
     String storeOwner = TestUtils.getUniqueString("store-owner");
-    int storeSizeMb = 10;
+    long storeSize = 10 * 1024 * 1024;
+    String keySchema = "\"long\"";
+    String valueSchema = "\"string\"";
     StoreCreationResponse newStore = ControllerClient.createStoreVersion(
-        controllerUrl,
-        storeName,
-        storeOwner,
-        storeSizeMb);
+            controllerUrl,
+            storeName,
+            storeOwner,
+            storeSize,
+            keySchema,
+            valueSchema);
     return newStore.getKafkaTopic();
   }
 

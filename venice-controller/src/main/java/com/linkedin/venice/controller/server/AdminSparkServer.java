@@ -79,7 +79,8 @@ public class AdminSparkServer extends AbstractVeniceService {
         validateParams(request, CREATE_PARAMS);
         responseObject.setName(request.queryParams(NAME));
         responseObject.setOwner(request.queryParams(OWNER));
-        int storeSizeMb = Utils.parseIntFromString(request.queryParams(STORE_SIZE),
+        // Store size in Bytes
+        long storeSize = Utils.parseLongFromString(request.queryParams(STORE_SIZE),
             STORE_SIZE);
         responseObject.setPartitions(3); // TODO actual partitioning logic based on store size
         responseObject.setReplicas(1); // TODO configurable replication
