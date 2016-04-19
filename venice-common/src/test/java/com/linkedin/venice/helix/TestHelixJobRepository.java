@@ -81,13 +81,13 @@ public class TestHelixJobRepository {
     manager.connect();
 
     routingDataRepository = new HelixRoutingDataRepository(controller);
-    routingDataRepository.start();
+    routingDataRepository.refresh();
 
     zkClient = new ZkClient(zkAddress, ZkClient.DEFAULT_SESSION_TIMEOUT, ZkClient.DEFAULT_CONNECTION_TIMEOUT, adapter);
     //zkClient.create(clusterPath, null, CreateMode.PERSISTENT);
     zkClient.create(clusterPath + jobPath, null, CreateMode.PERSISTENT);
     repository = new HelixJobRepository(zkClient, adapter, cluster, routingDataRepository);
-    repository.start();
+    repository.refresh();
 
     admin.addResource(cluster, kafkaTopic, 1, TestHelixRoutingDataRepository.UnitTestStateModel.UNIT_TEST_STATE_MODEL,
         IdealState.RebalanceMode.FULL_AUTO.toString());
@@ -258,18 +258,18 @@ public class TestHelixJobRepository {
     Thread.sleep(1000l);
 
     HelixJobRepository newRepository = new HelixJobRepository(zkClient, adapter, cluster, routingDataRepository);
-    routingDataRepository.start();
+    routingDataRepository.refresh();
     Thread thread = new Thread(new Runnable() {
       @Override
       public void run() {
-        newRepository.start();
+        newRepository.refresh();
         Assert.assertEquals(newRepository.getJob(1, topic).getStatus(), ExecutionStatus.STARTED,
             "Can not get job status from ZK correctly");
       }
     });
     thread.start();
     Thread.sleep(1000l);
-    //Mock up the scenario that controller start at first then participant start up.
+    //Mock up the scenario that controller refresh at first then participant refresh up.
     manager = HelixManagerFactory.getZKHelixManager(cluster, nodeId, InstanceType.PARTICIPANT, zkAddress);
     manager.getStateMachineEngine()
         .registerStateModelFactory(TestHelixRoutingDataRepository.UnitTestStateModel.UNIT_TEST_STATE_MODEL,
@@ -324,7 +324,7 @@ public class TestHelixJobRepository {
       }
     }
     HelixJobRepository newRepository = new HelixJobRepository(zkClient, adapter, cluster, routingDataRepository);
-    newRepository.start();
+    newRepository.refresh();
     Assert.assertEquals(newRepository.getJob(0, "topic0").getTaskStatus(3, jobs[0].generateTaskId(3, nodeId)),
         ExecutionStatus.STARTED, "Task dose not be loaded correctly.");
     Assert.assertEquals(newRepository.getJob(1, "topic1").getTaskStatus(3, jobs[1].generateTaskId(3, nodeId)),

@@ -82,7 +82,7 @@ public class HelixRoutingDataRepository extends RoutingTableProvider implements 
      * This method is used to add listener after HelixManager being connected. Otherwise, it will met error because adding
      * listener before connecting.
      */
-    public void start() { //TODO: close or clear method
+    public void refresh() {
         try {
             resourceToPartitionMap.set(new HashMap());
             manager.addExternalViewChangeListener(this);
@@ -209,12 +209,11 @@ public class HelixRoutingDataRepository extends RoutingTableProvider implements 
     public void unSubscribeRoutingDataChange(String kafkaTopic, RoutingDataChangedListener listener) {
         synchronized (listenersMap) {
             Set<RoutingDataChangedListener> listeners = listenersMap.get(kafkaTopic);
-            if (listeners == null) {
-                throw new VeniceException("Can not find listener in topic:" + kafkaTopic);
-            }
-            listeners.remove(listener);
-            if (listeners.isEmpty()) {
-                listenersMap.remove(kafkaTopic);
+            if (listeners != null) {
+                listeners.remove(listener);
+                if (listeners.isEmpty()) {
+                    listenersMap.remove(kafkaTopic);
+                }
             }
         }
     }

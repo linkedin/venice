@@ -104,4 +104,14 @@ public class HelixMetadataRepository implements MetadataRepository {
     public String getRootPath() {
         return rootPath;
     }
+
+    @Override
+    public void refresh() {
+       //Do not need refresh for non-cache repository. This class will be removed.
+    }
+
+    @Override
+    public void clear() {
+        //Do not need clear for non-cache repository. This class will be removed.
+    }
 }

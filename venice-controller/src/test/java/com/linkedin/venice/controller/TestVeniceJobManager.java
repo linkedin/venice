@@ -97,17 +97,17 @@ public class TestVeniceJobManager {
     manager.connect();
     Thread.sleep(1000l);
     routingDataRepository = new HelixRoutingDataRepository(controller);
-    routingDataRepository.start();
+    routingDataRepository.refresh();
 
     zkClient = new ZkClient(zkAddress);
     zkClient.createPersistent("/" + cluster + "stores");
     HelixAdapterSerializer adapterSerializer = new HelixAdapterSerializer();
     routingDataRepository = new HelixRoutingDataRepository(manager);
-    routingDataRepository.start();
+    routingDataRepository.refresh();
     jobRepository = new HelixJobRepository(zkClient, adapterSerializer, cluster, routingDataRepository);
-    jobRepository.start();
+    jobRepository.refresh();
     metadataRepository = new HelixCachedMetadataRepository(zkClient, adapterSerializer, cluster);
-    metadataRepository.start();
+    metadataRepository.refresh();
     jobManager = new VeniceJobManager(1, jobRepository, metadataRepository);
 
     store = new Store(storeName, "test", System.currentTimeMillis());

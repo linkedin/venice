@@ -1,9 +1,12 @@
 package com.linkedin.venice.meta;
 
+import com.linkedin.venice.VeniceResource;
+
+
 /**
  * Interface of metadata repository to provide operations of stores and versions.
  */
-public interface MetadataRepository {
+public interface MetadataRepository extends VeniceResource {
     /**
      * Get one store by given name from repository.
      *

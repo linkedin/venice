@@ -29,10 +29,12 @@ import org.apache.log4j.Logger;
  */
 public class HelixJobRepository implements JobRepository, RoutingDataChangedListener {
   private static final Logger logger = Logger.getLogger(HelixJobRepository.class);
+  /**
+   * All of access to this map are protected by synchronized block. The repository is thread-safe.
+   */
+  private Map<String, List<Job>> topicToRunningJobsMap = new HashMap<>();;
 
-  private Map<String, List<Job>> topicToRunningJobsMap;
-
-  private Map<String, List<Job>> topicToTerminatedJobsMap;
+  private Map<String, List<Job>> topicToTerminatedJobsMap = new HashMap<>();;
 
   private final ZkBaseDataAccessor<OfflineJob> jobDataAccessor;
 
@@ -43,6 +45,10 @@ public class HelixJobRepository implements JobRepository, RoutingDataChangedList
   private final HelixAdapterSerializer adapter;
 
   private final RoutingDataRepository routingDataRepository;
+
+  private VeniceSerializer<OfflineJob> jobSerializer;
+
+  private VeniceSerializer<List<Task>> taskVeniceSerializer;
 
   public static final String OFFLINE_JOBS_SUB_PATH = "/OfflineJobs";
 
@@ -59,8 +65,8 @@ public class HelixJobRepository implements JobRepository, RoutingDataChangedList
     this.routingDataRepository = routingDataRepository;
     offlineJobsPath = "/" + clusterName + OFFLINE_JOBS_SUB_PATH;
     this.adapter = adapter;
-    this.adapter.registerSerializer(offlineJobsPath, jobSerializer);
-    this.adapter.registerSerializer(offlineJobsPath + "/", taskVeniceSerializer);
+    this.jobSerializer = jobSerializer;
+    this.taskVeniceSerializer = taskVeniceSerializer;
     zkClient.setZkSerializer(this.adapter);
     jobDataAccessor = new ZkBaseDataAccessor<>(zkClient);
     tasksDataAccessor = new ZkBaseDataAccessor<>(zkClient);
@@ -138,7 +144,7 @@ public class HelixJobRepository implements JobRepository, RoutingDataChangedList
     deleteJobFromMap(kafkaTopic, job.getJobId(), topicToRunningJobsMap);
     List<Job> jobs = getAndCreateJobListFromMap(kafkaTopic, topicToTerminatedJobsMap);
     jobs.add(job);
-    logger.info("Terminated job:"+jobId+" for kafka topic:"+kafkaTopic);
+    logger.info("Terminated job:" + jobId + " for kafka topic:" + kafkaTopic);
   }
 
   @Override
@@ -252,11 +258,12 @@ public class HelixJobRepository implements JobRepository, RoutingDataChangedList
     tasksDataAccessor.setChildren(paths, values, AccessOption.PERSISTENT);
   }
 
-  public void start() {
+  public void refresh() {
+    clear();
+    this.adapter.registerSerializer(offlineJobsPath, jobSerializer);
+    this.adapter.registerSerializer(offlineJobsPath + "/", taskVeniceSerializer);
     List<Job> waitJobList = new ArrayList<>();
     synchronized (this) {
-      topicToRunningJobsMap = new HashMap<>();
-      topicToTerminatedJobsMap = new HashMap<>();
       logger.info("Start getting offline jobs from ZK");
       // We don't need to listen the change of jobs and tasks. The master controller is the only entrance to read/write
       // these data. When master is failed, another controller will take over this mastership and load from ZK when
@@ -291,7 +298,7 @@ public class HelixJobRepository implements JobRepository, RoutingDataChangedList
         logger.info("Filled tasks into job:" + job.getJobId());
       }
     }
-    //Wait and start job in other thread to avoid blocking starting.
+    //Wait and refresh job in other thread to avoid blocking starting.
     //Only the job in NEW will be added into wait list. So it should not be a big number, just one thread is enough.
     new Thread(new WaitWorker(waitJobList)).start();
     logger.info("End getting offline jobs from zk");

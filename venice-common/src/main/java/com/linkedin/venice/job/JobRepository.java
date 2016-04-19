@@ -1,13 +1,13 @@
 package com.linkedin.venice.job;
 
+import com.linkedin.venice.VeniceResource;
 import java.util.List;
-import java.util.Set;
 
 
 /**
  * Created by yayan on 3/7/16.
  */
-public interface JobRepository {
+public interface JobRepository extends VeniceResource {
   /**
    * Get the running job for given kafka topic. Currently, only one job should be running for one kafatopic/Helix
    * resource. But in the further, a off-line and a near-line maybe running in a same time.
@@ -35,6 +35,4 @@ public interface JobRepository {
   public ExecutionStatus getJobStatus(long jobId, String kafkaTopic);
 
   public Job getJob(long jobId, String kafkaTopic);
-
-  public void clear();
 }

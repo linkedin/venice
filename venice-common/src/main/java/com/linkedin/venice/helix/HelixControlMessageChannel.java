@@ -98,7 +98,8 @@ public class HelixControlMessageChannel implements ControlMessageChannel {
   @Override
   public <T extends ControlMessage> void unRegisterHandler(Class<T> clazz, ControlMessageHandler<T> handler) {
     if (!handlers.containsKey(clazz.getName())) {
-      throw new VeniceException("Handler have not been registered for message type:" + clazz.getName());
+      // If no listener is found by given class, just skip this un-register request.
+      return;
     }
     if (handler.equals(this.handlers.get(clazz.getName()))) {
       this.handlers.remove(clazz.getName());

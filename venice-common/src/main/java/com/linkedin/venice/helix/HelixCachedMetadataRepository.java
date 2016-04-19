@@ -24,14 +24,14 @@ import org.apache.log4j.Logger;
  * To ensure doing read and update atomically, use the lock() and unlock() method to lock the repository at first then
  * do operations, at last release the lock of repository.
  */
-public class HelixCachedMetadataRepository extends HelixMetadataRepository {
+public class HelixCachedMetadataRepository extends HelixMetadataRepository{
 
     private static final Logger logger = Logger.getLogger(HelixCachedMetadataRepository.class.getName());
 
     /**
      * Local map of all stores read from Zookeeper.
      */
-    private Map<String, Store> storeMap;
+    private Map<String, Store> storeMap = new HashMap<>();;
     /**
      * Listener used when there is any store be created or deleted.
      */
@@ -49,11 +49,10 @@ public class HelixCachedMetadataRepository extends HelixMetadataRepository {
         super(zkClient, adapter, cluster);
     }
 
-    public void start() {
+    public void refresh() {
         metadataLock.writeLock().lock();
+        clear();
         try {
-            storeMap = new HashMap<>();
-
             List<Store> stores = dataAccessor.getChildren(rootPath, null, AccessOption.PERSISTENT);
             logger.info("Load " + stores.size() + " stores from Helix");
             this.subscribeStoreListChanged(storesChangedListener);

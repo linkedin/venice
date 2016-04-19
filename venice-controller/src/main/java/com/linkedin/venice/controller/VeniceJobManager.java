@@ -33,12 +33,11 @@ public class VeniceJobManager implements ControlMessageHandler<StatusUpdateMessa
     this.epoch = epoch;
     this.jobRepository = jobRepository;
     this.metadataRepository = metadataRepository;
-    //In some cases, all of taskss status was updated, but controller failed when updating the whole job status.
-    //After controller setting up, check all existing job to terminated them if needed.
-    checkAllExistingJobs();
   }
 
-  private void checkAllExistingJobs() {
+  public void checkAllExistingJobs() {
+    //In some cases, all of tasks status was updated, but controller failed when updating the whole job status.
+    //After controller setting up, check all existing job to terminated them if needed.
     List<Job> jobs = jobRepository.getAllRunningJobs();
     for (Job job : jobs) {
       ExecutionStatus status = job.checkJobStatus();
@@ -56,7 +55,7 @@ public class VeniceJobManager implements ControlMessageHandler<StatusUpdateMessa
       jobRepository.startJob(job);
     } catch (Exception e) {
       logger.error(
-          "Can not start a offline job for kafka topic:" + kafkaTopic + " with number of partition:" + numberOfPartition
+          "Can not refresh a offline job for kafka topic:" + kafkaTopic + " with number of partition:" + numberOfPartition
               + " and replica factor:" + replicaFactor, e);
       jobRepository.stopJobWithError(job.getJobId(), job.getKafkaTopic());
     }

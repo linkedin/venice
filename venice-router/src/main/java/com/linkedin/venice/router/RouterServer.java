@@ -129,8 +129,8 @@ public class RouterServer extends AbstractVeniceService {
   @Override
   public void startInner() throws Exception {
 
-    metadataRepository.start();
-    routingDataRepository.start();
+    metadataRepository.refresh();
+    routingDataRepository.refresh();
 
     registry = new NettyResourceRegistry();
     ExecutorService executor = registry

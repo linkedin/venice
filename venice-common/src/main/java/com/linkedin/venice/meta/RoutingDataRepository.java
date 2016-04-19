@@ -1,5 +1,6 @@
 package com.linkedin.venice.meta;
 
+import com.linkedin.venice.VeniceResource;
 import java.util.List;
 import java.util.Map;
 
@@ -10,7 +11,7 @@ import java.util.Map;
  * In Helix Full-auto model, Helix manage how to assign partitions to nodes. So here repository is read-only. In the
  * further, if Venice need more flexibility to manage cluster, some update/delete methods could be added here.
  */
-public interface RoutingDataRepository {
+public interface RoutingDataRepository extends VeniceResource {
   /**
    * Query instances that belong to given kafka topic and partition.
    *

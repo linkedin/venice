@@ -97,7 +97,7 @@ public class TestHelixRoutingDataRepository {
     readManager = HelixManagerFactory.getZKHelixManager(clusterName, "reader", InstanceType.SPECTATOR, zkAddress);
     readManager.connect();
     repository = new HelixRoutingDataRepository(readManager);
-    repository.start();
+    repository.refresh();
   }
 
   @AfterMethod

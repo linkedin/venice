@@ -146,8 +146,7 @@ public class TestVeniceHelixAdmin {
 
     // Stop and start participant to use new master to trigger state transition.
     stopParticipant();
-    HelixRoutingDataRepository routing =
-        (HelixRoutingDataRepository) ((HelixJobRepository)newMasterAdmin.getJobManager(clusterName).getJobRepository()).getRoutingDataRepository();
+    HelixRoutingDataRepository routing = newMasterAdmin.getVeniceHelixResource(clusterName).getRoutingDataRepository();
     //Assert routing data repository can find the new master controller.
     Assert.assertEquals(routing.getMasterController().getPort(), newAdminPort, "Master controller is changed, now"+newAdminPort+" is used.");
     Thread.sleep(1000l);
