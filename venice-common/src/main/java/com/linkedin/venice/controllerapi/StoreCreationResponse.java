@@ -1,8 +1,5 @@
 package com.linkedin.venice.controllerapi;
 
-import com.linkedin.venice.ConfigKeys;
-import java.beans.Transient;
-import java.util.Map;
 import org.codehaus.jackson.annotate.JsonIgnore;
 
 
@@ -10,6 +7,7 @@ import org.codehaus.jackson.annotate.JsonIgnore;
  * Created by mwise on 3/17/16.
  */
 public class StoreCreationResponse {
+  private String cluster = null;
   private String name = null;
   private int version = -1;
   private String owner = null;
@@ -24,6 +22,14 @@ public class StoreCreationResponse {
   @JsonIgnore
   public boolean isError(){
     return null!=error;
+  }
+
+  public String getCluster() {
+    return cluster;
+  }
+
+  public void setCluster(String cluster) {
+    this.cluster = cluster;
   }
 
   public void setName(String name) {

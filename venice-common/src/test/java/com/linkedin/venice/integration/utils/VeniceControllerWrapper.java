@@ -19,18 +19,15 @@ public class VeniceControllerWrapper extends ProcessWrapper {
 
   public static final String SERVICE_NAME = "VeniceController";
   private final VeniceController service;
-  private final String clusterName;
   private final int port;
 
   VeniceControllerWrapper(
       String serviceName,
       File dataDirectory,
       VeniceController service,
-      String clusterName,
       int port) {
     super(serviceName, dataDirectory);
     this.service = service;
-    this.clusterName = clusterName;
     this.port = port;
   }
 
@@ -58,7 +55,7 @@ public class VeniceControllerWrapper extends ProcessWrapper {
       Props props = clusterProps.mergeWithProperties(controllerProps);
 
       VeniceController veniceController = new VeniceController(props);
-      return new VeniceControllerWrapper(serviceName, dataDirectory, veniceController, clusterName, adminPort);
+      return new VeniceControllerWrapper(serviceName, dataDirectory, veniceController, adminPort);
     };
   }
 
@@ -91,7 +88,7 @@ public class VeniceControllerWrapper extends ProcessWrapper {
    *
    * @return the kafka topic name of the newly-created store-version
    */
-  public String getNewStoreVersion() {
+  public String getNewStoreVersion(String clusterName) {
     String controllerUrl = getControllerUrl();
     String storeName = TestUtils.getUniqueString("venice-store");
     String storeOwner = TestUtils.getUniqueString("store-owner");
@@ -99,12 +96,13 @@ public class VeniceControllerWrapper extends ProcessWrapper {
     String keySchema = "\"long\"";
     String valueSchema = "\"string\"";
     StoreCreationResponse newStore = ControllerClient.createStoreVersion(
-            controllerUrl,
-            storeName,
-            storeOwner,
-            storeSize,
-            keySchema,
-            valueSchema);
+        controllerUrl,
+        clusterName,
+        storeName,
+        storeOwner,
+        storeSize,
+        keySchema,
+        valueSchema);
     return newStore.getKafkaTopic();
   }
 
@@ -114,17 +112,17 @@ public class VeniceControllerWrapper extends ProcessWrapper {
    * @param storeName
    * @param version
    */
-  public void setActiveVersion(String storeName, int version){
-    ControllerClient.overrideSetActiveVersion(getControllerUrl(), storeName, version);
+  public void setActiveVersion(String clusterName, String storeName, int version){
+    ControllerClient.overrideSetActiveVersion(getControllerUrl(), clusterName, storeName, version);
   }
 
   /***
    * Set a version to be active, parsing store name and version number from a kafka topic name
    * @param kafkaTopic
    */
-  public void setActiveVersion(String kafkaTopic){
+  public void setActiveVersion(String clusterName, String kafkaTopic){
     String storeName = Version.parseStoreFromKafkaTopicName(kafkaTopic);
     int version = Version.parseVersionFromKafkaTopicName(kafkaTopic);
-    setActiveVersion(storeName, version);
+    setActiveVersion(clusterName, storeName, version);
   }
 }

@@ -28,14 +28,12 @@ public class AdminSparkServer extends AbstractVeniceService {
   private static final Logger logger = Logger.getLogger(AdminSparkServer.class);
 
   private final int port;
-  private final String clusterName;
   private final Admin admin;
   private final ObjectMapper mapper = new ObjectMapper();
 
-  public AdminSparkServer(int port, String clusterName, Admin admin) {
+  public AdminSparkServer(int port, Admin admin) {
     super("controller-admin-server");
     this.port = port;
-    this.clusterName = clusterName;
     //Note: admin is passed in as a reference.  The expectation is the source of the admin will
     //      close it so we don't close it in stopInner()
     this.admin = admin;
@@ -59,11 +57,12 @@ public class AdminSparkServer extends AbstractVeniceService {
       JobStatusQueryResponse responseObject = new JobStatusQueryResponse();
       try {
         validateParams(request, JOB_PARMAS);
+        responseObject.setCluster(request.queryParams(CLUSTER));
         responseObject.setName(request.queryParams(NAME));
         responseObject.setVersion(Utils.parseIntFromString(request.queryParams(VERSION), VERSION));
         Version version = new Version(responseObject.getName(), responseObject.getVersion());
         //TODO Support getting streaming job's status in the future.
-        String jobStatus = admin.getOffLineJobStatus(clusterName, version.kafkaTopicName()).toString();
+        String jobStatus = admin.getOffLineJobStatus(responseObject.getCluster(), version.kafkaTopicName()).toString();
         responseObject.setStatus(jobStatus);
       } catch (VeniceException e) {
         responseObject.setError(e.getMessage());
@@ -77,6 +76,7 @@ public class AdminSparkServer extends AbstractVeniceService {
       StoreCreationResponse responseObject = new StoreCreationResponse();
       try {
         validateParams(request, CREATE_PARAMS);
+        responseObject.setCluster(request.queryParams(CLUSTER));
         responseObject.setName(request.queryParams(NAME));
         responseObject.setOwner(request.queryParams(OWNER));
         // Store size in Bytes
@@ -85,11 +85,11 @@ public class AdminSparkServer extends AbstractVeniceService {
         responseObject.setPartitions(3); // TODO actual partitioning logic based on store size
         responseObject.setReplicas(1); // TODO configurable replication
         try { // TODO: use admin to update store with new owner?  Set owner at version level for audit history?
-          admin.addStore(clusterName, responseObject.getName(), responseObject.getOwner());
+          admin.addStore(responseObject.getCluster(), responseObject.getName(), responseObject.getOwner());
         } catch (VeniceException e) { // TODO method on admin to see if store already created?
           logger.warn("Store" + responseObject.getName() + " probably already created.", e);
         }
-        Version version = admin.incrementVersion(clusterName, responseObject.getName(), responseObject.getPartitions(),
+        Version version = admin.incrementVersion(responseObject.getCluster(), responseObject.getName(), responseObject.getPartitions(),
             responseObject.getReplicas());
         responseObject.setVersion(version.getNumber());
         responseObject.setKafkaTopic(version.kafkaTopicName());
@@ -107,6 +107,7 @@ public class AdminSparkServer extends AbstractVeniceService {
       Map<String, String> responseMap = new HashMap<>();
       try {
         validateParams(request, SETVERSION_PARAMS); //throws venice exception
+        String clusterName = request.queryParams(CLUSTER);
         String storeName = request.queryParams(NAME);
         int version = Utils
             .parseIntFromString(request.queryParams(VERSION), VERSION);

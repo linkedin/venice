@@ -33,12 +33,12 @@ public class ClientTest {
             .incrementVersion(anyString(), anyString(), anyInt(), anyInt());
         doReturn(ExecutionStatus.COMPLETED).when(mockAdmin)
             .getOffLineJobStatus(anyString(), anyString());
-        AdminSparkServer server = new AdminSparkServer(port, "cluster-for-tests", mockAdmin);
+        AdminSparkServer server = new AdminSparkServer(port, mockAdmin);
         server.start();
         long storeSize = 500 * 1024 * 1024;
-        StoreCreationResponse response = ControllerClient.createStoreVersion(controllerUrl, STORE_NAME, OWNER,
+        StoreCreationResponse response = ControllerClient.createStoreVersion(controllerUrl, "dummy-cluster-name", STORE_NAME, OWNER,
                 storeSize, "long", "string");
-        JobStatusQueryResponse jobQuery = ControllerClient.queryJobStatus(controllerUrl, version.kafkaTopicName());
+        JobStatusQueryResponse jobQuery = ControllerClient.queryJobStatus(controllerUrl, "dummy-cluster-name", version.kafkaTopicName());
         server.stop();
 
         Assert.assertEquals(response.getName(), STORE_NAME);

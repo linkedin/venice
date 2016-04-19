@@ -108,9 +108,9 @@ public class VeniceClusterWrapper extends ProcessWrapper {
   }
 
   /**
-   * @see {@link VeniceControllerWrapper#getNewStoreVersion()}
+   * @see {@link VeniceControllerWrapper#getNewStoreVersion(String clusterName)}
    */
   public String getNewStoreVersion() {
-    return veniceControllerWrapper.getNewStoreVersion();
+    return veniceControllerWrapper.getNewStoreVersion(clusterName);
   }
 }

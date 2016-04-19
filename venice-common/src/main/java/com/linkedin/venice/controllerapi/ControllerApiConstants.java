@@ -9,7 +9,8 @@ import java.util.List;
  */
 public class ControllerApiConstants {
 
-  public static final String NAME = "storename";
+  public static final String CLUSTER = "cluster_name";
+  public static final String NAME = "store_name";
   public static final String OWNER = "owner";
   public static final String STORE_SIZE = "store_size";
   public static final String VERSION = "version";
@@ -21,6 +22,7 @@ public class ControllerApiConstants {
   public static final String CREATE_PATH = "/create";
   public static final List<String> CREATE_PARAMS = new ArrayList<>();
   static {
+    CREATE_PARAMS.add(CLUSTER);
     CREATE_PARAMS.add(NAME);
     CREATE_PARAMS.add(STORE_SIZE);
     CREATE_PARAMS.add(OWNER);
@@ -29,6 +31,7 @@ public class ControllerApiConstants {
   public static final String SETVERSION_PATH = "/setversion";
   public static final List<String> SETVERSION_PARAMS = new ArrayList<>();
   static{
+    SETVERSION_PARAMS.add(CLUSTER);
     SETVERSION_PARAMS.add(NAME);
     SETVERSION_PARAMS.add(VERSION);
   }
@@ -37,6 +40,7 @@ public class ControllerApiConstants {
   public static final String JOB_PATH = "/job";
   public static final List<String> JOB_PARMAS = new ArrayList<>();
   static {
+    JOB_PARMAS.add(CLUSTER);
     JOB_PARMAS.add(NAME);
     JOB_PARMAS.add(VERSION);
   }

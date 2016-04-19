@@ -76,11 +76,12 @@ public class ControllerClient implements Closeable {
     }
   }
 
-  private StoreCreationResponse createNewStoreVersion(String storeName, String owner, long storeSize,
+  private StoreCreationResponse createNewStoreVersion(String clusterName, String storeName, String owner, long storeSize,
                                                       String keySchema, String valueSchema){
     try {
       final HttpPost post = new HttpPost(controllerUrl + ControllerApiConstants.CREATE_PATH);
       List<NameValuePair> params = new ArrayList<NameValuePair>();
+      params.add(new BasicNameValuePair(ControllerApiConstants.CLUSTER, clusterName));
       params.add(new BasicNameValuePair(ControllerApiConstants.NAME, storeName));
       params.add(new BasicNameValuePair(ControllerApiConstants.OWNER, owner));
       params.add(new BasicNameValuePair(ControllerApiConstants.STORE_SIZE, Long.toString(storeSize)));
@@ -107,17 +108,18 @@ public class ControllerClient implements Closeable {
     }
   }
 
-  public static StoreCreationResponse createStoreVersion(String controllerUrl,String storeName, String owner,
+  public static StoreCreationResponse createStoreVersion(String controllerUrl, String clusterName, String storeName, String owner,
                                                          long storeSize, String keySchema, String valueSchema) {
     try (ControllerClient client = new ControllerClient(controllerUrl)){
-        return client.createNewStoreVersion(storeName, owner, storeSize, keySchema, valueSchema);
+        return client.createNewStoreVersion(clusterName, storeName, owner, storeSize, keySchema, valueSchema);
     }
   }
 
-  private void overrideSetActiveVersion(String storeName, int version){
+  private void overrideSetActiveVersion(String clusterName, String storeName, int version){
     try {
       final HttpPost post = new HttpPost(controllerUrl + ControllerApiConstants.SETVERSION_PATH);
       List<NameValuePair> params = new ArrayList<NameValuePair>();
+      params.add(new BasicNameValuePair(ControllerApiConstants.CLUSTER, clusterName));
       params.add(new BasicNameValuePair(ControllerApiConstants.NAME, storeName));
       params.add(new BasicNameValuePair(ControllerApiConstants.VERSION, Integer.toString(version)));
       post.setEntity(new UrlEncodedFormEntity(params));
@@ -129,17 +131,18 @@ public class ControllerClient implements Closeable {
     }
   }
 
-  public static void overrideSetActiveVersion(String controllerUrl, String storeName, int version){
+  public static void overrideSetActiveVersion(String controllerUrl, String clusterName, String storeName, int version){
     try (ControllerClient client = new ControllerClient(controllerUrl)){
-      client.overrideSetActiveVersion(storeName, version);
+      client.overrideSetActiveVersion(clusterName, storeName, version);
     }
   }
 
-  private JobStatusQueryResponse queryJobStatus(String kafkaTopic){
+  private JobStatusQueryResponse queryJobStatus(String clusterName, String kafkaTopic){
     String storeName = Version.parseStoreFromKafkaTopicName(kafkaTopic);
     int version = Version.parseVersionFromKafkaTopicName(kafkaTopic);
     try{
       List<NameValuePair> queryParams = new ArrayList<>();
+      queryParams.add(new BasicNameValuePair(ControllerApiConstants.CLUSTER, clusterName));
       queryParams.add(new BasicNameValuePair(ControllerApiConstants.NAME, storeName));
       queryParams.add(new BasicNameValuePair(ControllerApiConstants.VERSION, Integer.toString(version)));
       String queryString = URLEncodedUtils.format(queryParams, StandardCharsets.UTF_8);
@@ -164,9 +167,9 @@ public class ControllerClient implements Closeable {
     }
   }
 
-  public static JobStatusQueryResponse queryJobStatus(String controllerUrl, String kafkaTopic){
+  public static JobStatusQueryResponse queryJobStatus(String controllerUrl, String clusterName, String kafkaTopic){
     try (ControllerClient client = new ControllerClient(controllerUrl)){
-      return client.queryJobStatus(kafkaTopic);
+      return client.queryJobStatus(clusterName, kafkaTopic);
     }
   }
 
@@ -177,7 +180,7 @@ public class ControllerClient implements Closeable {
    * @param veniceControllerUrl URL for connecting to Venice Controller
    * @param topic kafka topic for the store we want to query
    */
-  public static void pollJobStatusUntilFinished(long startSleep, long maxSleep, String veniceControllerUrl, String topic) {
+  public static void pollJobStatusUntilFinished(long startSleep, long maxSleep, String veniceControllerUrl, String clusterName, String topic) {
     JobStatusQueryResponse queryResponse = null;
     String status = null;
     long sleepTime = startSleep;
@@ -187,7 +190,7 @@ public class ControllerClient implements Closeable {
 
         int retry = 2; /* if the query returns an error object, retry a couple times before failing */
         for(;;) { //TODO: switch to exponential backoff retry policy
-          queryResponse = client.queryJobStatus(topic);
+          queryResponse = client.queryJobStatus(clusterName, topic);
           if (queryResponse.getError() != null) {
             if (retry <= 0) {
               throw new VeniceException("Error getting status of push: " + queryResponse.getError());

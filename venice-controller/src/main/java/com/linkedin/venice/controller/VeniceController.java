@@ -29,7 +29,7 @@ public class VeniceController {
 
   public void createServices(){
     controllerService = new VeniceControllerService(config);
-    adminServer = new AdminSparkServer(config.getAdminPort(), config.getClusterName(), controllerService.getVeniceHelixAdmin());
+    adminServer = new AdminSparkServer(config.getAdminPort(), controllerService.getVeniceHelixAdmin());
   }
 
   public void start(){

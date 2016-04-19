@@ -1,13 +1,32 @@
 package com.linkedin.venice.controllerapi;
 
+import org.codehaus.jackson.annotate.JsonIgnore;
+
+
 /**
  * Response for querying job status.
  */
 public class JobStatusQueryResponse {
+
+
+  private String cluster;
   private String name;
   private int version;
   private String status;
   private String error;
+
+  @JsonIgnore
+  public boolean isError(){
+    return null!=error;
+  }
+
+  public String getCluster() {
+    return cluster;
+  }
+
+  public void setCluster(String cluster) {
+    this.cluster = cluster;
+  }
 
   public String getName() {
     return name;
