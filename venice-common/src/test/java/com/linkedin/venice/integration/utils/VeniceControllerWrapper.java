@@ -6,7 +6,8 @@ import com.linkedin.venice.controller.VeniceControllerClusterConfig;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.StoreCreationResponse;
 import com.linkedin.venice.meta.Version;
-import com.linkedin.venice.utils.Props;
+import com.linkedin.venice.utils.PropertyBuilder;
+import com.linkedin.venice.utils.VeniceProperties;
 
 import java.io.File;
 
@@ -36,23 +37,22 @@ public class VeniceControllerWrapper extends ProcessWrapper {
     String zkAddress = kafkaBrokerWrapper.getZkAddress();
 
     return (serviceName, port, dataDirectory) -> {
-      Props clusterProps = TestUtils.getClusterProps(clusterName, dataDirectory, kafkaBrokerWrapper);
+      VeniceProperties clusterProps = TestUtils.getClusterProps(clusterName, dataDirectory, kafkaBrokerWrapper);
+
+      int adminPort = TestUtils.getFreePort();
 
       // TODO: Validate that these configs are all still used.
       // TODO: Centralize default config values in a single place
+      PropertyBuilder builder = new PropertyBuilder()
+              .put(clusterProps.toProperties())
+              .put(VeniceControllerClusterConfig.KAFKA_REPLICA_FACTOR, 1)
+              .put(VeniceControllerClusterConfig.KAFKA_ZK_ADDRESS, zkAddress)
+              .put(VeniceControllerClusterConfig.CONTROLLER_NAME, "venice-controller") // Why is this configurable?
+              .put(VeniceControllerClusterConfig.REPLICA_FACTOR, 1)
+              .put(VeniceControllerClusterConfig.NUMBER_OF_PARTITION, 1)
+              .put(ConfigKeys.ADMIN_PORT, adminPort);
 
-      clusterProps.put(VeniceControllerClusterConfig.KAFKA_REPLICA_FACTOR, 1);
-      clusterProps.put(VeniceControllerClusterConfig.KAFKA_ZK_ADDRESS, zkAddress);
-      clusterProps.put(VeniceControllerClusterConfig.CONTROLLER_NAME, "venice-controller"); // Why is this configurable?
-      clusterProps.put(VeniceControllerClusterConfig.REPLICA_FACTOR, 1);
-      clusterProps.put(VeniceControllerClusterConfig.NUMBER_OF_PARTITION, 1);
-
-      Props controllerProps = new Props();
-
-      int adminPort = TestUtils.getFreePort();
-      controllerProps.put(ConfigKeys.ADMIN_PORT, adminPort);
-
-      Props props = clusterProps.mergeWithProperties(controllerProps);
+      VeniceProperties props = builder.build();
 
       VeniceController veniceController = new VeniceController(props);
       return new VeniceControllerWrapper(serviceName, dataDirectory, veniceController, adminPort);

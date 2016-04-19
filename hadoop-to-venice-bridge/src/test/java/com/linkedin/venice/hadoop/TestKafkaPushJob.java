@@ -8,7 +8,8 @@ import com.linkedin.venice.integration.utils.TestUtils;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.serialization.StringSerializer;
 import com.linkedin.venice.serialization.VeniceSerializer;
-import com.linkedin.venice.utils.Props;
+import com.linkedin.venice.utils.PropertyBuilder;
+import com.linkedin.venice.utils.VeniceProperties;
 import junit.framework.Assert;
 import org.apache.avro.Schema;
 import org.apache.avro.file.DataFileWriter;
@@ -119,10 +120,10 @@ public class TestKafkaPushJob {
     }
 
     private VeniceReader<String, String> initVeniceReader(String storeName) {
-        Props clientProps = new Props()
-                .with(KAFKA_BOOTSTRAP_SERVERS, veniceCluster.getKafka().getAddress())
-                .with(ZOOKEEPER_ADDRESS, veniceCluster.getZk().getAddress())
-                .with(CLUSTER_NAME, veniceCluster.getClusterName());
+        VeniceProperties clientProps = new PropertyBuilder()
+        .put(KAFKA_BOOTSTRAP_SERVERS, veniceCluster.getKafka().getAddress())
+        .put(ZOOKEEPER_ADDRESS, veniceCluster.getZk().getAddress())
+        .put(CLUSTER_NAME, veniceCluster.getClusterName()).build();
         VeniceSerializer keySerializer = new StringSerializer();
         VeniceSerializer valueSerializer = new StringSerializer();
         VeniceReader veniceReader = new VeniceReader<String, String>(clientProps, storeName, keySerializer, valueSerializer);

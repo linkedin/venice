@@ -8,7 +8,7 @@ import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.serialization.VeniceSerializer;
-import com.linkedin.venice.utils.Props;
+import com.linkedin.venice.utils.VeniceProperties;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.Base64;
@@ -30,7 +30,7 @@ public class VeniceReader<K, V> {
   // log4j logger
   static final Logger logger = Logger.getLogger(VeniceReader.class.getName());
 
-  private Props props;
+  private VeniceProperties props;
   private final String storeName;
   private final VeniceSerializer<K> keySerializer;
   private final VeniceSerializer<V> valueSerializer;
@@ -45,7 +45,7 @@ public class VeniceReader<K, V> {
    *
    * The logic for choosing which data version to query is handled higher up the stack.
    */
-  public VeniceReader(Props props, String storeName, VeniceSerializer<K> keySerializer, VeniceSerializer<V> valueSerializer) {
+  public VeniceReader(VeniceProperties props, String storeName, VeniceSerializer<K> keySerializer, VeniceSerializer<V> valueSerializer) {
     this.props = props;
     this.storeName = storeName;
     this.keySerializer = keySerializer;

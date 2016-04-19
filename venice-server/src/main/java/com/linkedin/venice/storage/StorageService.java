@@ -6,7 +6,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.server.PartitionAssignmentRepository;
 import com.linkedin.venice.server.StoreRepository;
-import com.linkedin.venice.server.VeniceConfigService;
+import com.linkedin.venice.server.VeniceConfigLoader;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.store.AbstractStorageEngine;
 import com.linkedin.venice.store.StorageEngineFactory;
@@ -29,15 +29,12 @@ public class StorageService extends AbstractVeniceService {
   private static final Logger logger = Logger.getLogger(StorageService.class.getName());
 
   private final StoreRepository storeRepository;
-  private final VeniceConfigService veniceConfigService;
   private final ConcurrentMap<PersistenceType, StorageEngineFactory> persistenceTypeToStorageEngineFactoryMap;
   private final PartitionAssignmentRepository partitionAssignmentRepository;
 
-  public StorageService(StoreRepository storeRepository, VeniceConfigService veniceConfigService,
-      PartitionAssignmentRepository partitionAssignmentRepository) {
+  public StorageService(StoreRepository storeRepository, PartitionAssignmentRepository partitionAssignmentRepository) {
     super(NAME);
     this.storeRepository = storeRepository;
-    this.veniceConfigService = veniceConfigService;
     this.persistenceTypeToStorageEngineFactoryMap = new ConcurrentHashMap<PersistenceType, StorageEngineFactory>();
     this.partitionAssignmentRepository = partitionAssignmentRepository;
   }

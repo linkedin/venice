@@ -6,7 +6,7 @@ import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.ReadStrategy;
 import com.linkedin.venice.meta.RoutingStrategy;
-import com.linkedin.venice.utils.Props;
+import com.linkedin.venice.utils.VeniceProperties;
 import org.apache.log4j.Logger;
 
 
@@ -52,7 +52,7 @@ public class VeniceControllerClusterConfig {
    */
   private String kafkaZkAddress;
 
-  public VeniceControllerClusterConfig(Props props) {
+  public VeniceControllerClusterConfig(VeniceProperties props) {
     try {
       checkProperties(props);
       logger.info("Loaded configuration");
@@ -63,7 +63,7 @@ public class VeniceControllerClusterConfig {
     }
   }
 
-  private void checkProperties(Props props) {
+  private void checkProperties(VeniceProperties props) {
     clusterName = props.getString(CLUSTER_NAME);
     zkAddress = props.getString(ZK_ADDRESS);
     controllerName = props.getString(CONTROLLER_NAME);

@@ -3,7 +3,10 @@ package com.linkedin.venice.partitioner;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.message.OperationType;
 import com.linkedin.venice.utils.ByteUtils;
-import com.linkedin.venice.utils.Props;
+import com.linkedin.venice.utils.PropertyBuilder;
+import com.linkedin.venice.utils.VeniceProperties;
+import java.util.Properties;
+
 
 /**
  * Determines partitioning, which is used for producing messages into the right
@@ -13,16 +16,16 @@ import com.linkedin.venice.utils.Props;
  */
 public abstract class VenicePartitioner {
 
-    protected final Props props; // available for sub-classes to use.
+    protected final VeniceProperties props; // available for sub-classes to use.
 
     /**
      * An abstraction on the standard Partitioner interface
      */
     public VenicePartitioner() {
-        this(new Props());
+        this(new VeniceProperties(new Properties()));
     }
 
-    public VenicePartitioner(Props props) {
+    public VenicePartitioner(VeniceProperties props) {
         this.props = props;
     }
 

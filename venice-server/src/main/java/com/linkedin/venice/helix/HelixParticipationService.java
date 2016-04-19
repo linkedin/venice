@@ -4,7 +4,7 @@ import com.linkedin.venice.kafka.consumer.KafkaConsumerService;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.notifier.HelixNotifier;
 import com.linkedin.venice.server.StoreRepository;
-import com.linkedin.venice.server.VeniceConfigService;
+import com.linkedin.venice.server.VeniceConfigLoader;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.utils.Utils;
 import javax.validation.constraints.NotNull;
@@ -37,7 +37,7 @@ public class HelixParticipationService extends AbstractVeniceService {
 
   public HelixParticipationService(@NotNull KafkaConsumerService kafkaConsumerService,
           @NotNull StoreRepository storeRepository,
-          @NotNull VeniceConfigService veniceConfigService,
+          @NotNull VeniceConfigLoader veniceConfigLoader,
           @NotNull String zkAddress,
           @NotNull String clusterName,
           int port) {
@@ -50,7 +50,7 @@ public class HelixParticipationService extends AbstractVeniceService {
     this.zkAddress = zkAddress;
     instance = new Instance(participantName,Utils.getHostName(), port);
     stateModelFactory
-        = new VeniceStateModelFactory(kafkaConsumerService, storeRepository, veniceConfigService);
+        = new VeniceStateModelFactory(kafkaConsumerService, storeRepository, veniceConfigLoader);
   }
 
   @Override

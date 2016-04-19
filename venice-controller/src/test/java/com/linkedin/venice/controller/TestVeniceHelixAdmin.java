@@ -1,11 +1,11 @@
 package com.linkedin.venice.controller;
 
+import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.controlmessage.ControlMessageChannel;
 import com.linkedin.venice.controlmessage.StatusUpdateMessage;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixControlMessageChannel;
 import com.linkedin.venice.helix.HelixInstanceConverter;
-import com.linkedin.venice.helix.HelixJobRepository;
 import com.linkedin.venice.helix.HelixRoutingDataRepository;
 import com.linkedin.venice.helix.TestHelixRoutingDataRepository;
 import com.linkedin.venice.integration.utils.KafkaBrokerWrapper;
@@ -13,7 +13,8 @@ import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.job.ExecutionStatus;
 import com.linkedin.venice.meta.Instance;
-import com.linkedin.venice.utils.Props;
+import com.linkedin.venice.utils.PropertyBuilder;
+import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.Utils;
 import java.io.IOException;
 import java.nio.file.Paths;
@@ -51,16 +52,23 @@ public class TestVeniceHelixAdmin {
     zkAddress = zkServerWrapper.getAddress();
     kafkaBrokerWrapper = ServiceFactory.getKafkaBroker();
     kafkaZkAddress = kafkaBrokerWrapper.getZkAddress();
-    Props controllerProps = null;
     String currentPath = Paths.get("").toAbsolutePath().toString();
     if (currentPath.endsWith("venice-controller")) {
       currentPath += "/..";
     }
-    Props clusterProps = Utils.parseProperties(currentPath + "/venice-server/config/cluster.properties");
-    controllerProps = clusterProps
-        .mergeWithProperties(Utils.parseProperties(currentPath + "/venice-controller/config/controller.properties"));
-    controllerProps.put("kafka.zk.address", kafkaZkAddress);
-    controllerProps.put("zookeeper.address", zkAddress);
+    VeniceProperties clusterProps = Utils.parseProperties(currentPath + "/venice-server/config/cluster.properties");
+    VeniceProperties baseControllerProps = Utils.parseProperties(
+            currentPath + "/venice-controller/config/controller.properties");
+
+    clusterProps.getString(ConfigKeys.CLUSTER_NAME);
+    PropertyBuilder builder = new PropertyBuilder()
+            .put(clusterProps.toProperties())
+            .put(baseControllerProps.toProperties())
+            .put("kafka.zk.address", kafkaZkAddress)
+            .put("zookeeper.address", zkAddress);
+
+    VeniceProperties controllerProps = builder.build();
+
     config = new VeniceControllerConfig(controllerProps);
     veniceAdmin = new VeniceHelixAdmin(Utils.getHelixNodeIdentifier(config.getAdminPort()), zkAddress, kafkaZkAddress,"");
 

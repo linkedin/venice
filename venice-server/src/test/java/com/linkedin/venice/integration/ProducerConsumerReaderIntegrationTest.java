@@ -1,28 +1,29 @@
 package com.linkedin.venice.integration;
 
-import static com.linkedin.venice.ConfigKeys.*;
-
 import com.linkedin.venice.client.VeniceReader;
 import com.linkedin.venice.client.VeniceThinClient;
 import com.linkedin.venice.client.VeniceWriter;
-import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.meta.Version;
-import com.linkedin.venice.serialization.StringSerializer;
-import com.linkedin.venice.serialization.VeniceSerializer;
-import com.linkedin.venice.utils.Props;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.TestUtils;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
+import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.serialization.StringSerializer;
+import com.linkedin.venice.serialization.VeniceSerializer;
+import com.linkedin.venice.utils.PropertyBuilder;
+import com.linkedin.venice.utils.VeniceProperties;
 import java.nio.charset.StandardCharsets;
+import java.util.concurrent.ExecutionException;
+import java.util.function.Consumer;
 import org.apache.log4j.Logger;
 import org.testng.Assert;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
-import java.util.concurrent.ExecutionException;
-import java.util.function.Consumer;
+import static com.linkedin.venice.ConfigKeys.CLUSTER_NAME;
+import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
+import static com.linkedin.venice.ConfigKeys.ZOOKEEPER_ADDRESS;
 
 /**
  * This class spins up ZK and Kafka, and a complete Venice cluster, and tests that
@@ -54,10 +55,10 @@ public class ProducerConsumerReaderIntegrationTest {
     storeVersionName = veniceCluster.getNewStoreVersion();
     veniceCluster.getVeniceController().setActiveVersion(veniceCluster.getClusterName(), storeVersionName);
 
-    Props clientProps = new Props()
-        .with(KAFKA_BOOTSTRAP_SERVERS, veniceCluster.getKafka().getAddress())
-        .with(ZOOKEEPER_ADDRESS, veniceCluster.getZk().getAddress())
-        .with(CLUSTER_NAME, veniceCluster.getClusterName());
+    VeniceProperties clientProps =
+            new PropertyBuilder().put(KAFKA_BOOTSTRAP_SERVERS, veniceCluster.getKafka().getAddress())
+                    .put(ZOOKEEPER_ADDRESS, veniceCluster.getZk().getAddress())
+                    .put(CLUSTER_NAME, veniceCluster.getClusterName()).build();
 
     // TODO: Make serializers parameterized so we test them all.
     VeniceSerializer keySerializer = new StringSerializer();

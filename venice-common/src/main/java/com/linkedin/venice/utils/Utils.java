@@ -1,9 +1,11 @@
 package com.linkedin.venice.utils;
 
+import com.linkedin.venice.exceptions.ConfigurationException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceHttpException;
 import java.io.File;
 import java.io.FileInputStream;
+import java.io.IOException;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
 import java.util.ArrayList;
@@ -90,19 +92,36 @@ public class Utils {
    *  @param configFileName - String path to a properties file
    *  @return A @Props object with the given configurations
    * */
-  public static Props parseProperties(String configFileName)
+  public static VeniceProperties parseProperties(String configFileName)
       throws Exception {
     Properties props = new Properties();
-    FileInputStream inputStream = null;
-    try {
-      inputStream = new FileInputStream(configFileName);
+    try (FileInputStream inputStream = new FileInputStream(configFileName)) {
       props.load(inputStream);
-    } finally {
-      if (inputStream != null) {
-        inputStream.close();
+    }
+    return new VeniceProperties(props);
+  }
+
+  public static VeniceProperties parseProperties(String directory, String fileName, boolean isFileOptional) throws Exception {
+    String propsFilePath = directory + File.separator + fileName;
+
+    File propsFile = new File(propsFilePath);
+    boolean fileExists = propsFile.exists();
+    if(fileExists == false ) {
+      if(isFileOptional) {
+        return new VeniceProperties(new Properties());
+      }
+      else {
+        String fullFilePath = Utils.getCanonicalPath(propsFilePath);
+        throw new ConfigurationException(fullFilePath + " does not exist.");
       }
     }
-    return new Props(props);
+
+    if (!Utils.isReadableFile(propsFilePath)) {
+      String fullFilePath = Utils.getCanonicalPath(propsFilePath);
+      throw new ConfigurationException(fullFilePath + " is not a readable configuration file.");
+    }
+
+    return Utils.parseProperties(propsFilePath);
   }
 
   /**
@@ -111,7 +130,7 @@ public class Utils {
    * @return A @Props object with the given properties
    * @throws Exception  if File not found or not accessible
    */
-  public static Props parseProperties(File propertyFile)
+  public static VeniceProperties parseProperties(File propertyFile)
       throws Exception {
     Properties props = new Properties();
     FileInputStream inputStream = null;
@@ -123,7 +142,7 @@ public class Utils {
         inputStream.close();
       }
     }
-    return new Props(props);
+    return new VeniceProperties(props);
   }
 
   /**
@@ -163,6 +182,20 @@ public class Utils {
    */
   public static boolean isReadableFile(File f) {
     return f.exists() && f.isFile() && f.canRead();
+  }
+
+  /**
+   * Get the full Path of the file. Useful in logging/error output
+   *
+   * @param fileName
+   * @return canonicalPath of the file.
+   */
+  public static String getCanonicalPath(String fileName) {
+    try {
+      return new File(fileName).getCanonicalPath();
+    } catch(IOException ex) {
+      return fileName;
+    }
   }
 
   /**

@@ -7,11 +7,10 @@ import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.message.KafkaValue;
 import com.linkedin.venice.message.OperationType;
 import com.linkedin.venice.serialization.VeniceSerializer;
-import com.linkedin.venice.utils.Props;
+import com.linkedin.venice.utils.VeniceProperties;
 
 import java.util.concurrent.Future;
 
-import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.clients.producer.RecordMetadata;
 import org.apache.log4j.Logger;
 
@@ -26,13 +25,13 @@ public class VeniceWriter<K, V> {
 
   protected final KafkaProducerWrapper producer;
 
-  protected Props props;
+  protected VeniceProperties props;
   protected final String storeName;
   protected final VeniceSerializer<K> keySerializer;
   protected final VeniceSerializer<V> valueSerializer;
 
 
-  public VeniceWriter(Props props, String storeName, VeniceSerializer<K> keySerializer, VeniceSerializer<V> valueSerializer) {
+  public VeniceWriter(VeniceProperties props, String storeName, VeniceSerializer<K> keySerializer, VeniceSerializer<V> valueSerializer) {
     this.props = props;
     this.storeName = storeName;
     this.keySerializer = keySerializer;

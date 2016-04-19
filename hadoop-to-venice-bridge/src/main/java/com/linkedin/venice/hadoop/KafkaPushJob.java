@@ -10,7 +10,7 @@ import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.message.OperationType;
 import com.linkedin.venice.serialization.DefaultSerializer;
 import com.linkedin.venice.serialization.KafkaKeySerializer;
-import com.linkedin.venice.utils.Props;
+import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import java.util.Arrays;
@@ -385,8 +385,10 @@ public class KafkaPushJob {
   }
 
   private void sendControlMessage (OperationType opType, long jobId) {
-    Props props = new Props()
-            .with(KAFKA_BOOTSTRAP_SERVERS, kafkaUrl);
+    Properties properties = new Properties();
+    properties.put(KAFKA_BOOTSTRAP_SERVERS, kafkaUrl);
+
+    VeniceProperties props = new VeniceProperties(properties);
 
     KafkaKeySerializer keySerializer = new KafkaKeySerializer();
 

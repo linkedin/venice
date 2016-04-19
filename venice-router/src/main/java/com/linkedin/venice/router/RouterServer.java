@@ -25,7 +25,8 @@ import com.linkedin.venice.router.api.VeniceRoleFinder;
 import com.linkedin.venice.router.api.VeniceVersionFinder;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.utils.DaemonThreadFactory;
-import com.linkedin.venice.utils.Props;
+import com.linkedin.venice.utils.Utils;
+import com.linkedin.venice.utils.VeniceProperties;
 import java.io.File;
 import java.net.InetSocketAddress;
 import java.util.Map;
@@ -62,16 +63,16 @@ public class RouterServer extends AbstractVeniceService {
 
   public static void main(String args[]) throws Exception {
 
-    Props props;
+    VeniceProperties props;
     try {
       String clusterConfigFilePath = args[0];
-      props = new Props(new File(clusterConfigFilePath));
+      props = Utils.parseProperties(clusterConfigFilePath);
     } catch (Exception e){
       throw new VeniceException("No config file parameter found", e);
     }
 
-    String zkConnection = props.get(ConfigKeys.ZOOKEEPER_ADDRESS);
-    String clusterName = props.get(ConfigKeys.CLUSTER_NAME);
+    String zkConnection = props.getString(ConfigKeys.ZOOKEEPER_ADDRESS);
+    String clusterName = props.getString(ConfigKeys.CLUSTER_NAME);
     int port = props.getInt(ConfigKeys.ROUTER_PORT);
 
     logger.info("Zookeeper: " + zkConnection);

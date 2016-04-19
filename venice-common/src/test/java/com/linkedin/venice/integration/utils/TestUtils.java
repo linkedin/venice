@@ -1,6 +1,8 @@
 package com.linkedin.venice.integration.utils;
 
-import com.linkedin.venice.utils.Props;
+import com.linkedin.venice.meta.PersistenceType;
+import com.linkedin.venice.utils.PropertyBuilder;
+import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.RandomGenUtils;
 
 import static com.linkedin.venice.ConfigKeys.*;
@@ -8,6 +10,7 @@ import static com.linkedin.venice.ConfigKeys.*;
 import java.io.File;
 import java.io.IOException;
 import java.net.ServerSocket;
+
 
 /**
  * Utility class to get a free port.
@@ -44,32 +47,32 @@ public class TestUtils {
   /**
    * N.B.: Visibility is package-private on purpose.
    */
-  static Props getClusterProps(String clusterName, File dataDirectory, KafkaBrokerWrapper kafkaBrokerWrapper) {
+  static VeniceProperties getClusterProps(String clusterName, File dataDirectory, KafkaBrokerWrapper kafkaBrokerWrapper) {
     // TODO: Validate that these configs are all still used.
     // TODO: Centralize default config values in a single place
 
-    Props clusterProps = new Props()
+    VeniceProperties clusterProperties = new PropertyBuilder()
 
         // Helix-related config
-        .with(HELIX_ENABLED, true)
-        .with(ZOOKEEPER_ADDRESS, kafkaBrokerWrapper.getZkAddress())
+    .put(HELIX_ENABLED, true)
+    .put(ZOOKEEPER_ADDRESS, kafkaBrokerWrapper.getZkAddress())
 
-        // Kafka-related config
-        .with(KAFKA_CONSUMER_FETCH_BUFFER_SIZE, 65536)
-        .with(KAFKA_CONSUMER_SOCKET_TIMEOUT_MS, 100)
-        .with(KAFKA_CONSUMER_NUM_METADATA_REFRESH_RETRIES, 3)
-        .with(KAFKA_CONSUMER_METADATA_REFRESH_BACKOFF_MS, 1000)
-        .with(KAFKA_BOOTSTRAP_SERVERS, kafkaBrokerWrapper.getAddress())
-        .with(KAFKA_AUTO_COMMIT_INTERVAL_MS, 1000)
+    // Kafka-related config
+    .put(KAFKA_CONSUMER_FETCH_BUFFER_SIZE, 65536)
+    .put(KAFKA_CONSUMER_SOCKET_TIMEOUT_MS, 100)
+    .put(KAFKA_CONSUMER_NUM_METADATA_REFRESH_RETRIES, 3)
+    .put(KAFKA_CONSUMER_METADATA_REFRESH_BACKOFF_MS, 1000)
+    .put(KAFKA_BOOTSTRAP_SERVERS, kafkaBrokerWrapper.getAddress())
+    .put(KAFKA_AUTO_COMMIT_INTERVAL_MS, 1000)
 
         // Other configs
-        .with(CLUSTER_NAME, clusterName)
-        .with(OFFSET_MANAGER_TYPE, "bdb") // FIXME: Make this an enum
-        .with(OFFSET_MANAGER_FLUSH_INTERVAL_MS, 1000)
-        .with(OFFSET_DATA_BASE_PATH, dataDirectory.getAbsolutePath())
-        .with(PERSISTENCE_TYPE, "BDB"); // FIXME: Make this an enum
+    .put(CLUSTER_NAME, clusterName)
+    .put(OFFSET_MANAGER_TYPE, PersistenceType.BDB.toString())
+    .put(OFFSET_MANAGER_FLUSH_INTERVAL_MS, 1000)
+    .put(OFFSET_DATA_BASE_PATH, dataDirectory.getAbsolutePath())
+    .put(PERSISTENCE_TYPE, PersistenceType.BDB.toString()).build();
 
-    return clusterProps;
+    return clusterProperties;
   }
 
   public static String getUniqueString(String base) {

@@ -1,7 +1,7 @@
 package com.linkedin.venice.store.bdb;
 
 import com.google.common.base.Objects;
-import com.linkedin.venice.utils.Props;
+import com.linkedin.venice.utils.VeniceProperties;
 
 import java.io.Serializable;
 
@@ -17,7 +17,7 @@ public class BdbStoreConfig implements Serializable {
 
   private static final String MEMORY_FOOTPRINT_MB = "memory.footprint.mb";
 
-  public BdbStoreConfig(String storeName, Props props) {
+  public BdbStoreConfig(String storeName, VeniceProperties props) {
     this.storeName = storeName;
     this.memoryFootprintMB = props.getLong(MEMORY_FOOTPRINT_MB, 0L);
   }

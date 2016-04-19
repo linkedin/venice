@@ -5,12 +5,11 @@ import static com.linkedin.venice.ConfigKeys.*;
 import com.google.common.collect.ImmutableMap;
 import com.linkedin.venice.exceptions.ConfigurationException;
 import com.linkedin.venice.exceptions.UndefinedPropertyException;
-import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.offsets.BdbOffsetManager;
 import com.linkedin.venice.store.bdb.BdbStorageEngineFactory;
 import com.linkedin.venice.store.memory.InMemoryStorageEngineFactory;
-import com.linkedin.venice.utils.Props;
+import com.linkedin.venice.utils.VeniceProperties;
 
 import java.io.File;
 import java.util.Map;
@@ -57,17 +56,17 @@ public class VeniceClusterConfig {
   private boolean kafkaEnableAutoOffsetCommit;
 
 
-  public VeniceClusterConfig(Props clusterProperties)
+  public VeniceClusterConfig(VeniceProperties clusterProperties)
       throws ConfigurationException {
     checkProperties(clusterProperties);
   }
 
-  protected void checkProperties(Props clusterProps) throws ConfigurationException {
+  protected void checkProperties(VeniceProperties clusterProps) throws ConfigurationException {
     clusterName = clusterProps.getString(CLUSTER_NAME);
 
     helixEnabled = clusterProps.getBoolean(HELIX_ENABLED);
     zookeeperAddress = clusterProps.getString(ZOOKEEPER_ADDRESS);
-    offsetManagerType = clusterProps.getString(OFFSET_MANAGER_TYPE, "bdb"); // Default "bdb"
+    offsetManagerType = clusterProps.getString(OFFSET_MANAGER_TYPE, PersistenceType.BDB.toString()); // Default "bdb"
     offsetDatabasePath = clusterProps.getString(OFFSET_DATA_BASE_PATH,
         System.getProperty("java.io.tmpdir") + File.separator + BdbOffsetManager.OFFSETS_STORE_NAME);
     offsetManagerFlushIntervalMs = clusterProps.getLong(OFFSET_MANAGER_FLUSH_INTERVAL_MS, 10000); // 10 sec default
@@ -121,10 +120,6 @@ public class VeniceClusterConfig {
     return enableConsumptionAcksForAzkabanJobs;
   }
 
-  public void setEnableConsumptionAcksForAzkabanJobs(boolean enableConsumptionAcksForAzkabanJobs) {
-    this.enableConsumptionAcksForAzkabanJobs = enableConsumptionAcksForAzkabanJobs;
-  }
-
   public boolean isHelixEnabled() {
     return helixEnabled;
   }
@@ -137,10 +132,6 @@ public class VeniceClusterConfig {
     return kafkaConsumptionAcksBrokerUrl;
   }
 
-  public void setKafkaConsumptionAcksBrokerUrl(String kafkaConsumptionAcksBrokerUrl) {
-    this.kafkaConsumptionAcksBrokerUrl = kafkaConsumptionAcksBrokerUrl;
-  }
-
   public PersistenceType getPersistenceType() {
     return persistenceType;
   }
@@ -151,22 +142,6 @@ public class VeniceClusterConfig {
 
   public boolean kafkaEnableAutoOffsetCommit() {
     return kafkaEnableAutoOffsetCommit;
-  }
-
-  public int getFetchBufferSize() {
-    return fetchBufferSize;
-  }
-
-  public int getSocketTimeoutMs() {
-    return socketTimeoutMs;
-  }
-
-  public int getNumMetadataRefreshRetries() {
-    return numMetadataRefreshRetries;
-  }
-
-  public int getMetadataRefreshBackoffMs() {
-    return metadataRefreshBackoffMs;
   }
 
   public int getKafkaAutoCommitIntervalMs() {

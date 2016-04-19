@@ -5,7 +5,7 @@ import com.linkedin.venice.serialization.avro.AvroGenericSerializer;
 import com.linkedin.venice.serialization.DefaultSerializer;
 import com.linkedin.venice.serialization.StringSerializer;
 import com.linkedin.venice.serialization.VeniceSerializer;
-import com.linkedin.venice.utils.Props;
+import com.linkedin.venice.utils.VeniceProperties;
 import org.apache.avro.Schema;
 import org.apache.avro.mapred.AvroWrapper;
 import org.apache.avro.generic.IndexedRecord;
@@ -31,7 +31,7 @@ public class AvroKafkaRecordWriter implements RecordWriter<AvroWrapper<IndexedRe
   private String valueField;
 
   public AvroKafkaRecordWriter(Properties properties) {
-    Props props = new Props(properties);
+    VeniceProperties props = new VeniceProperties(properties);
 
     // N.B.: These getters will throw an UndefinedPropertyException if anything is missing
     keyField = props.getString(KafkaPushJob.AVRO_KEY_FIELD_PROP);

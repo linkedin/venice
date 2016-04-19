@@ -1,7 +1,8 @@
 package com.linkedin.venice.store.bdb;
 
-import com.linkedin.venice.utils.Props;
+import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.Time;
+
 
 public class BdbServerConfig {
 
@@ -80,7 +81,7 @@ public class BdbServerConfig {
   private boolean bdbRecoveryForceCheckpoint;
   private String bdbRawPropertyString;
 
-  public BdbServerConfig(Props props) {
+  public BdbServerConfig(VeniceProperties props) {
     this.bdbCacheSize = props.getBytes(BDB_CACHE_SIZE, 200 * 1024 * 1024);
     this.bdbWriteTransactions = props.getBoolean(BDB_WRITE_TRANSACTIONS, false);
     this.bdbFlushTransactions = props.getBoolean(BDB_FLUSH_TRANSACTIONS, false);

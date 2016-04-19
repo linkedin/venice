@@ -2,19 +2,18 @@ package com.linkedin.venice.storage;
 
 import com.linkedin.venice.config.VeniceStoreConfig;
 import com.linkedin.venice.server.PartitionAssignmentRepository;
-import com.linkedin.venice.server.VeniceConfigService;
+import com.linkedin.venice.server.VeniceConfigLoader;
 import com.linkedin.venice.store.AbstractStorageEngine;
 import com.linkedin.venice.store.memory.InMemoryStorageEngine;
 import org.testng.annotations.Test;
 
 import java.io.File;
-import java.util.Map;
 
 
 public class InMemoryStorageEngineTest extends AbstractStorageEngineTest {
 
   PartitionAssignmentRepository partitionAssignmentRepository;
-  VeniceConfigService veniceConfigService;
+  VeniceConfigLoader veniceConfigLoader;
 
 
   public InMemoryStorageEngineTest()
@@ -27,15 +26,10 @@ public class InMemoryStorageEngineTest extends AbstractStorageEngineTest {
       throws Exception {
     File configFile = new File("src/test/resources/config");  //TODO this does not run from IDE because IDE expects
     // relative path starting from venice-server
-    veniceConfigService = new VeniceConfigService(configFile.getAbsolutePath());
-    Map<String, VeniceStoreConfig> storeConfigs = veniceConfigService.getAllStoreConfigs();
-
-    if(storeConfigs.size() < 1){
-      throw new Exception("No stores defined for executing tests");
-    }
-
+    veniceConfigLoader = VeniceConfigLoader.loadFromConfigDirectory(configFile.getAbsolutePath());
     String storeName = "testng-in-memory";
-    VeniceStoreConfig storeConfig = storeConfigs.get(storeName);
+    VeniceStoreConfig storeConfig = veniceConfigLoader.getStoreConfig(storeName);
+
 
     //populate partitionNodeAssignment
     partitionAssignmentRepository = new PartitionAssignmentRepository();

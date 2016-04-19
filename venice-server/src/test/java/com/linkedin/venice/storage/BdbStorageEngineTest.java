@@ -3,18 +3,17 @@ package com.linkedin.venice.storage;
 import com.linkedin.venice.config.VeniceServerConfig;
 import com.linkedin.venice.config.VeniceStoreConfig;
 import com.linkedin.venice.server.PartitionAssignmentRepository;
-import com.linkedin.venice.server.VeniceConfigService;
+import com.linkedin.venice.server.VeniceConfigLoader;
 import com.linkedin.venice.store.bdb.BdbStorageEngineFactory;
 import org.testng.annotations.Test;
 
 import java.io.File;
-import java.util.Map;
 
 
 public class BdbStorageEngineTest extends AbstractStorageEngineTest {
 
   PartitionAssignmentRepository partitionAssignmentRepository;
-  VeniceConfigService veniceConfigService;
+  VeniceConfigLoader veniceConfigLoader;
 
   public BdbStorageEngineTest()
     throws Exception {
@@ -26,15 +25,9 @@ public class BdbStorageEngineTest extends AbstractStorageEngineTest {
     throws Exception {
     File configFile = new File("src/test/resources/config");  //TODO this does not run from IDE because IDE expects
     // relative path starting from venice-server
-    veniceConfigService = new VeniceConfigService(configFile.getAbsolutePath());
-    Map<String, VeniceStoreConfig> storeConfigs = veniceConfigService.getAllStoreConfigs();
-
-    if (storeConfigs.size() < 1) {
-      throw new Exception("No stores defined for executing tests");
-    }
-
+    veniceConfigLoader = VeniceConfigLoader.loadFromConfigDirectory(configFile.getAbsolutePath());
     String storeName = "testng-bdb";
-    VeniceStoreConfig storeConfig = storeConfigs.get(storeName);
+    VeniceStoreConfig storeConfig = veniceConfigLoader.getStoreConfig(storeName);
 
     //populate partitionNodeAssignment
     partitionAssignmentRepository = new PartitionAssignmentRepository();
@@ -42,7 +35,7 @@ public class BdbStorageEngineTest extends AbstractStorageEngineTest {
     // only adding 1 partition, config indicates 5 partitions
     partitionAssignmentRepository.addPartition(storeName, 0);
 
-    VeniceServerConfig serverConfig = veniceConfigService.getVeniceServerConfig();
+    VeniceServerConfig serverConfig = veniceConfigLoader.getVeniceServerConfig();
 
     BdbStorageEngineFactory factory = new BdbStorageEngineFactory(serverConfig, partitionAssignmentRepository);
     testStoreEngine = factory.getStore(storeConfig);

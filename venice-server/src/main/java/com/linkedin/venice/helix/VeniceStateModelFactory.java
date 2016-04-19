@@ -2,7 +2,7 @@ package com.linkedin.venice.helix;
 
 import com.linkedin.venice.kafka.consumer.KafkaConsumerService;
 import com.linkedin.venice.server.StoreRepository;
-import com.linkedin.venice.server.VeniceConfigService;
+import com.linkedin.venice.server.VeniceConfigLoader;
 import com.linkedin.venice.utils.HelixUtils;
 import org.apache.helix.participant.statemachine.StateModel;
 import org.apache.helix.participant.statemachine.StateModelFactory;
@@ -18,10 +18,10 @@ public class VeniceStateModelFactory extends StateModelFactory<StateModel> {
 
   private final KafkaConsumerService kafkaConsumerService;
   private final StoreRepository storeRepository;
-  private final VeniceConfigService configService;
+  private final VeniceConfigLoader configService;
 
   public VeniceStateModelFactory(KafkaConsumerService kafkaConsumerService, StoreRepository storeRepository,
-          VeniceConfigService configService) {
+          VeniceConfigLoader configService) {
     logger.info("Creating VenicePartitionStateTransitionHandlerFactory for Node: "
         + configService.getVeniceServerConfig().getNodeId());
     this.kafkaConsumerService = kafkaConsumerService;

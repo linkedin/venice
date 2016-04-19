@@ -9,9 +9,8 @@ import com.linkedin.venice.partitioner.PartitionZeroPartitioner;
 import com.linkedin.venice.offsets.OffsetManager;
 import com.linkedin.venice.serialization.KafkaKeySerializer;
 import com.linkedin.venice.serialization.KafkaValueSerializer;
-import com.linkedin.venice.server.PartitionAssignmentRepository;
 import com.linkedin.venice.server.StoreRepository;
-import com.linkedin.venice.server.VeniceConfigService;
+import com.linkedin.venice.server.VeniceConfigLoader;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.Utils;
@@ -20,7 +19,6 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Properties;
 import java.util.Queue;
-import java.util.Set;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -49,7 +47,7 @@ public class KafkaConsumerPerStoreService extends AbstractVeniceService implemen
   private static final Logger logger = Logger.getLogger(KafkaConsumerPerStoreService.class.getName());
 
   private final StoreRepository storeRepository;
-  private final VeniceConfigService veniceConfigService;
+  private final VeniceConfigLoader veniceConfigLoader;
 
   private final Queue<VeniceNotifier> notifiers = new ConcurrentLinkedQueue<>();
   private final OffsetManager offsetManager;
@@ -67,7 +65,7 @@ public class KafkaConsumerPerStoreService extends AbstractVeniceService implemen
   // Need to make sure that the service has started before start running KafkaConsumptionTask.
   private final AtomicBoolean isRunning;
 
-  public KafkaConsumerPerStoreService(StoreRepository storeRepository, VeniceConfigService veniceConfigService, OffsetManager offsetManager) {
+  public KafkaConsumerPerStoreService(StoreRepository storeRepository, VeniceConfigLoader veniceConfigLoader, OffsetManager offsetManager) {
     super(VENICE_SERVICE_NAME);
     this.storeRepository = storeRepository;
     this.offsetManager = offsetManager;
@@ -75,9 +73,9 @@ public class KafkaConsumerPerStoreService extends AbstractVeniceService implemen
     this.topicNameToKafkaMessageConsumptionTaskMap = Collections.synchronizedMap(new HashMap<>());
     isRunning = new AtomicBoolean(false);
 
-    this.veniceConfigService = veniceConfigService;
+    this.veniceConfigLoader = veniceConfigLoader;
 
-    VeniceServerConfig serverConfig = veniceConfigService.getVeniceServerConfig();
+    VeniceServerConfig serverConfig = veniceConfigLoader.getVeniceServerConfig();
     nodeId = serverConfig.getNodeId();
 
     VeniceNotifier notifier = null;
@@ -116,21 +114,6 @@ public class KafkaConsumerPerStoreService extends AbstractVeniceService implemen
     topicNameToKafkaMessageConsumptionTaskMap.values().forEach(consumerExecutorService::submit);
     isRunning.set(true);
     logger.info("Kafka consumer tasks started.");
-  }
-
-  /**
-   * Function to start kafka message consumption for all stores according to the PartitionNodeAssignment.
-   * Ideally, should only be used when NOT using Helix.
-   * @param partitionAssignmentRepository
-   */
-  public void consumeForPartitionNodeAssignmentRepository(PartitionAssignmentRepository partitionAssignmentRepository) {
-    for (VeniceStoreConfig storeConfig : veniceConfigService.getAllStoreConfigs().values()) {
-      String topic = storeConfig.getStoreName();
-      Set<Integer> currentTopicPartitions = partitionAssignmentRepository.getLogicalPartitionIds(topic);
-      for(Integer partitionId : currentTopicPartitions) {
-        startConsumption(storeConfig, partitionId);
-      }
-    }
   }
 
   private StoreConsumptionTask getConsumerTask(VeniceStoreConfig veniceStore) {

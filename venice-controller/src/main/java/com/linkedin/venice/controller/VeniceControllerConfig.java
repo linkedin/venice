@@ -1,6 +1,6 @@
 package com.linkedin.venice.controller;
 
-import com.linkedin.venice.utils.Props;
+import com.linkedin.venice.utils.VeniceProperties;
 
 
 /**
@@ -11,12 +11,12 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
 
   private int adminPort;
 
-  public VeniceControllerConfig(Props props) {
+  public VeniceControllerConfig(VeniceProperties props) {
     super(props);
     checkProperties(props);
   }
 
-  private void checkProperties(Props props) {
+  private void checkProperties(VeniceProperties props) {
     adminPort = props.getInt(ADMIN_PORT);
   }
 

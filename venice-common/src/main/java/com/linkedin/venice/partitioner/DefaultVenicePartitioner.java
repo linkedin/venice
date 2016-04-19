@@ -4,7 +4,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.utils.ByteUtils;
 
-import com.linkedin.venice.utils.Props;
+import com.linkedin.venice.utils.VeniceProperties;
 import org.apache.log4j.Logger;
 
 import java.security.MessageDigest;
@@ -28,7 +28,7 @@ public class DefaultVenicePartitioner extends VenicePartitioner {
     super();
   }
 
-  public DefaultVenicePartitioner(Props props) {
+  public DefaultVenicePartitioner(VeniceProperties props) {
     super(props);
   }
 

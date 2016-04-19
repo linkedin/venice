@@ -1,11 +1,12 @@
 package com.linkedin.venice.config;
 
-import static com.linkedin.venice.ConfigKeys.*;
 import com.linkedin.venice.exceptions.ConfigurationException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.store.bdb.BdbStoreConfig;
-import com.linkedin.venice.utils.Props;
+import com.linkedin.venice.utils.VeniceProperties;
+import javax.validation.constraints.NotNull;
+
 
 /**
  * class that maintains all properties that are not specific to a venice server and cluster.
@@ -18,15 +19,14 @@ public class VeniceStoreConfig extends VeniceServerConfig {
   // TODO: Store level bdb configuration, need to create StoreStorageConfig abstract class and extend from that
   private BdbStoreConfig bdbStoreConfig;
 
-  public VeniceStoreConfig(Props storeProperties)
+  public VeniceStoreConfig(@NotNull String storeName, @NotNull VeniceProperties storeProperties)
     throws ConfigurationException {
     super(storeProperties);
+    this.storeName = storeName;
     initAndValidateProperties(storeProperties);
   }
 
-  private void initAndValidateProperties(Props storeProperties) throws ConfigurationException {
-    storeName = storeProperties.getString(STORE_NAME);
-
+  private void initAndValidateProperties(VeniceProperties storeProperties) throws ConfigurationException {
     if (getPersistenceType().equals(PersistenceType.BDB)) {
       bdbStoreConfig = new BdbStoreConfig(storeName, storeProperties);
     } else {

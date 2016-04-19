@@ -1,9 +1,8 @@
 package com.linkedin.venice.client;
 
-import com.linkedin.venice.serialization.KafkaKeySerializer;
 import com.linkedin.venice.serialization.VeniceSerializer;
 import com.linkedin.venice.serialization.StringSerializer;
-import com.linkedin.venice.utils.Props;
+import com.linkedin.venice.utils.VeniceProperties;
 import org.apache.log4j.Logger;
 
 import java.io.FileInputStream;
@@ -37,17 +36,17 @@ public class VeniceShellClient {
    * @param configFileName - String path to a properties file
    * @return A Java properties object with the given configurations
    */
-  public static Props parseProperties(String configFileName) {
+  public static VeniceProperties parseProperties(String configFileName) {
     Properties properties = new Properties();
     FileInputStream inputStream = null;
-    Props props = null;
+    VeniceProperties props = null;
 
     logger.info("Loading config: " + configFileName);
 
     try {
       inputStream = new FileInputStream(configFileName);
       properties.load(inputStream);
-      props = new Props(properties);
+      props = new VeniceProperties(properties);
       // safely close input stream
       if (inputStream != null) {
         inputStream.close();
@@ -72,7 +71,7 @@ public class VeniceShellClient {
       return;
     }
     storeName = args[0];
-    Props props = parseProperties("venice-client/config/config.properties");
+    VeniceProperties props = parseProperties("venice-client/config/config.properties");
     reader = new VeniceReader<String, String>(props, storeName, keySerializer, valueSerializer);
     reader.init();
     writer = new VeniceWriter<String, String>(props, storeName, keySerializer, valueSerializer);

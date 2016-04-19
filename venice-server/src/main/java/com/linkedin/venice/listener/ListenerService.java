@@ -2,7 +2,7 @@ package com.linkedin.venice.listener;
 
 import com.linkedin.venice.offsets.OffsetManager;
 import com.linkedin.venice.server.StoreRepository;
-import com.linkedin.venice.server.VeniceConfigService;
+import com.linkedin.venice.server.VeniceConfigLoader;
 import com.linkedin.venice.service.AbstractVeniceService;
 import io.netty.bootstrap.ServerBootstrap;
 import io.netty.channel.ChannelFuture;
@@ -27,9 +27,9 @@ public class ListenerService extends AbstractVeniceService{
   //TODO: move netty config to a config file
   private static int nettyBacklogSize = 1000;
 
-  public ListenerService(StoreRepository storeRepository, OffsetManager offsetManager, VeniceConfigService veniceConfigService) {
+  public ListenerService(StoreRepository storeRepository, OffsetManager offsetManager, VeniceConfigLoader veniceConfigLoader) {
     super("listener-service");
-    this.port = veniceConfigService.getVeniceServerConfig().getListenerPort();
+    this.port = veniceConfigLoader.getVeniceServerConfig().getListenerPort();
 
     //TODO: configurable worker group
     bossGroup = new NioEventLoopGroup(1);

@@ -9,7 +9,6 @@ import com.linkedin.venice.listener.ListenerService;
 import com.linkedin.venice.offsets.BdbOffsetManager;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.storage.StorageService;
-import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.Utils;
 import java.util.ArrayList;
 import java.util.List;
@@ -21,7 +20,7 @@ import org.apache.log4j.Logger;
 public class VeniceServer {
 
   private static final Logger logger = Logger.getLogger(VeniceServer.class.getName());
-  private final VeniceConfigService veniceConfigService;
+  private final VeniceConfigLoader veniceConfigLoader;
   private final AtomicBoolean isStarted;
 
   private final StoreRepository storeRepository;
@@ -31,10 +30,10 @@ public class VeniceServer {
 
   private final List<AbstractVeniceService> services;
 
-  public VeniceServer(VeniceConfigService veniceConfigService)
+  public VeniceServer(VeniceConfigLoader veniceConfigLoader)
       throws Exception {
     this.isStarted = new AtomicBoolean(false);
-    this.veniceConfigService = veniceConfigService;
+    this.veniceConfigLoader = veniceConfigLoader;
     this.storeRepository = new StoreRepository();
     this.partitionAssignmentRepository = new PartitionAssignmentRepository();
 
@@ -62,35 +61,35 @@ public class VeniceServer {
     List<AbstractVeniceService> services = new ArrayList<AbstractVeniceService>();
 
     // create and add StorageService. storeRepository will be populated by StorageService,
-    storageService = new StorageService(storeRepository, veniceConfigService, partitionAssignmentRepository);
+    storageService = new StorageService(storeRepository, partitionAssignmentRepository);
     services.add(storageService);
     storeRepository.setStorageService(storageService);
 
     // Create and add Offset Service.
-    offSetService = new BdbOffsetManager(veniceConfigService.getVeniceClusterConfig());
+    offSetService = new BdbOffsetManager(veniceConfigLoader.getVeniceClusterConfig());
     services.add(offSetService);
 
     //create and add KafkaSimpleConsumerService
     KafkaConsumerPerStoreService kafkaConsumerService =
-        new KafkaConsumerPerStoreService(storeRepository, veniceConfigService, offSetService);
+        new KafkaConsumerPerStoreService(storeRepository, veniceConfigLoader, offSetService);
     services.add(kafkaConsumerService);
 
     // start venice participant service if Helix is enabled.
-    VeniceClusterConfig clusterConfig = veniceConfigService.getVeniceClusterConfig();
+    VeniceClusterConfig clusterConfig = veniceConfigLoader.getVeniceClusterConfig();
     if(clusterConfig.isHelixEnabled()) {
       HelixParticipationService helixParticipationService =
-          new HelixParticipationService(kafkaConsumerService, storeRepository, veniceConfigService,
+          new HelixParticipationService(kafkaConsumerService, storeRepository, veniceConfigLoader,
               clusterConfig.getZookeeperAddress(), clusterConfig.getClusterName(),
-              veniceConfigService.getVeniceServerConfig().getListenerPort());
+              veniceConfigLoader.getVeniceServerConfig().getListenerPort());
       services.add(helixParticipationService);
     } else {
       // Note: Only required when NOT using Helix.
-      kafkaConsumerService.consumeForPartitionNodeAssignmentRepository(partitionAssignmentRepository);
+      throw new UnsupportedOperationException("Only Helix mode of operation is supported");
     }
 
     //create and add ListenerServer for handling GET requests
     ListenerService listenerService =
-        new ListenerService(storeRepository, offSetService, veniceConfigService);
+        new ListenerService(storeRepository, offSetService, veniceConfigLoader);
     services.add(listenerService);
 
 
@@ -149,7 +148,7 @@ public class VeniceServer {
   public void shutdown()
       throws Exception {
     List<Exception> exceptions = new ArrayList<Exception>();
-    logger.info("Stopping all services on Node: " + veniceConfigService.getVeniceServerConfig().getNodeId());
+    logger.info("Stopping all services on Node: " + veniceConfigLoader.getVeniceServerConfig().getNodeId());
 
     /* Stop in reverse order */
 
@@ -185,12 +184,12 @@ public class VeniceServer {
 
   public static void main(String args[])
       throws Exception {
-    VeniceConfigService veniceConfigService = null;
+    VeniceConfigLoader veniceConfigService = null;
     try {
       if (args.length == 0) {
-        veniceConfigService = VeniceConfigService.loadFromEnvironmentVariable();
+        veniceConfigService = VeniceConfigLoader.loadFromEnvironmentVariable();
       } else if (args.length == 1) {
-        veniceConfigService = new VeniceConfigService(args[0]);
+        veniceConfigService = VeniceConfigLoader.loadFromConfigDirectory(args[0]);
       } else {
         Utils.croak("USAGE: java " + VeniceServer.class.getName() + "[venice_config_dir] ");
       }

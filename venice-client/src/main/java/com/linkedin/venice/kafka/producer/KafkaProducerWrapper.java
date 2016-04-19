@@ -9,9 +9,8 @@ import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.serialization.KafkaKeySerializer;
 import com.linkedin.venice.serialization.KafkaValueSerializer;
-import com.linkedin.venice.utils.Props;
+import com.linkedin.venice.utils.VeniceProperties;
 
-import java.util.Iterator;
 import java.util.Properties;
 import java.util.concurrent.Future;
 import org.apache.kafka.clients.producer.KafkaProducer;
@@ -29,8 +28,8 @@ public class KafkaProducerWrapper {
   private final String PROPERTIES_KAFKA_PREFIX = "kafka.";
   private final VenicePartitioner partitioner;
 
-  public KafkaProducerWrapper(Props props) {
-    Properties properties = setPropertiesFromProp(props);
+  public KafkaProducerWrapper(VeniceProperties props) {
+    Properties properties = getKafkaPropertiesFromVeniceProps(props);
 
     // TODO : For sending control message, this is not required. Move this higher in the stack.
     checkMandatoryProp(properties, ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, KafkaKeySerializer.class.getName());
@@ -110,14 +109,8 @@ public class KafkaProducerWrapper {
    *
    * It omits those properties that do not begin with "venice."
   */
-  public Properties setPropertiesFromProp(Props props) {
-    Properties properties = new Properties();
-    for (Iterator<String> iterator = props.keySet().iterator(); iterator.hasNext(); ) {
-      String keyStr = iterator.next();
-      if (keyStr.startsWith(PROPERTIES_KAFKA_PREFIX)) {
-        properties.put(keyStr.split(PROPERTIES_KAFKA_PREFIX)[1], props.getString(keyStr));
-      }
-    }
-    return properties;
+  public Properties getKafkaPropertiesFromVeniceProps(VeniceProperties props) {
+    VeniceProperties kafkaProps = props.extractProperties(PROPERTIES_KAFKA_PREFIX);
+    return kafkaProps.toProperties();
   }
 }

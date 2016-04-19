@@ -1,12 +1,10 @@
 package com.linkedin.venice.controller;
 
 import com.linkedin.venice.controller.server.AdminSparkServer;
-import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.service.AbstractVeniceService;
-import com.linkedin.venice.utils.Props;
+import com.linkedin.venice.utils.PropertyBuilder;
+import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.Utils;
-import java.util.ArrayList;
-import java.util.List;
 import org.apache.log4j.Logger;
 
 /**
@@ -22,7 +20,7 @@ public class VeniceController {
 
   private final VeniceControllerConfig config;
 
-  public VeniceController(Props props){
+  public VeniceController(VeniceProperties props){
     config = new VeniceControllerConfig(props);
     createServices();
   }
@@ -52,10 +50,15 @@ public class VeniceController {
       Utils.croak("USAGE: java " + VeniceController.class.getName()
           + " [cluster_config_file_path] [controller_config_file_path] ");
     }
-    Props controllerProps = null;
+    VeniceProperties controllerProps = null;
     try {
-      Props clusterProps = Utils.parseProperties(args[0]);
-      controllerProps = clusterProps.mergeWithProperties(Utils.parseProperties(args[1]));
+      VeniceProperties clusterProps = Utils.parseProperties(args[0]);
+      VeniceProperties controllerBaseProps = Utils.parseProperties(args[1]);
+
+      controllerProps = new PropertyBuilder()
+              .put(clusterProps.toProperties())
+              .put(controllerBaseProps.toProperties())
+              .build();
     } catch (Exception e) {
       String errorMessage = "Can not load configuration from file.";
       logger.error(errorMessage, e);
