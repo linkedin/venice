@@ -100,6 +100,8 @@ public class StoreConsumptionTaskTest extends PowerMockTestCase {
   /**
    * Verifies that the KafkaTaskMessages are processed appropriately by invoking corresponding method on the
    * KafkaConsumer.
+   *
+   * TODO: This test needs to be fixed. It's flaky.
    */
   @Test
   public void testKafkaTaskMessagesProcessing() throws Exception {
