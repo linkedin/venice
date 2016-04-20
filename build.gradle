@@ -1,3 +1,14 @@
+if (project.hasProperty('overrideBuildEnvironment')) {
+  if(project.overrideBuildEnvironment) {
+    apply from: file(project.overrideBuildEnvironment)
+    product {
+      codeQuality {
+        ignoreFailures = true
+      }
+    }
+  }
+}
+
 apply plugin: 'java'
 apply plugin: 'idea'
 apply plugin: 'eclipse'
