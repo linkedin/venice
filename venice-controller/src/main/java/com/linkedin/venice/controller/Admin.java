@@ -45,4 +45,11 @@ public interface Admin {
      * @return kafka bootstrap servers url, if there are multiple will be comma separated.
      */
     public String getKafkaBootstrapServers();
+
+    /**
+     * Check if this controller itself is the master controller of given cluster or not.
+     * @param clusterName
+     * @return
+     */
+    public boolean isMasterController(String clusterName);
 }

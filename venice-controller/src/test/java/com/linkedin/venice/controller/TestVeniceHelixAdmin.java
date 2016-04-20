@@ -15,6 +15,7 @@ import com.linkedin.venice.job.ExecutionStatus;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.utils.Props;
 import com.linkedin.venice.utils.Utils;
+import java.io.IOException;
 import java.nio.file.Paths;
 import org.apache.helix.HelixManager;
 import org.apache.helix.HelixManagerFactory;
@@ -169,5 +170,29 @@ public class TestVeniceHelixAdmin {
     }
 
     newMasterAdmin.stop(clusterName);
+  }
+
+  @Test
+  public void testIsMasterController()
+      throws IOException, InterruptedException {
+    Assert.assertTrue(veniceAdmin.isMasterController(clusterName),
+        "The default controller should be the master controller.");
+
+    int newAdminPort = config.getAdminPort()+1;
+    VeniceHelixAdmin newMasterAdmin = new VeniceHelixAdmin(Utils.getHelixNodeIdentifier(newAdminPort), zkAddress, kafkaZkAddress,"");
+    //Start stand by controller
+    newMasterAdmin.start(clusterName, config);
+
+    Assert.assertFalse(newMasterAdmin.isMasterController(clusterName),
+        "The new controller should be stand-by right now.");
+    veniceAdmin.stop(clusterName);
+
+    Thread.sleep(1000l);
+    veniceAdmin.start(clusterName, config);
+    Assert.assertTrue(newMasterAdmin.isMasterController(clusterName),
+        "The new controller should be the master controller right now.");
+    Assert.assertFalse(veniceAdmin.isMasterController(clusterName),
+        "The default controller should be the stand-by right now.");
+
   }
 }

@@ -280,6 +280,15 @@ public class VeniceHelixAdmin implements Admin,ControllerChangeListener {
         return this.kafkaBootstrapServers;
     }
 
+    @Override
+    public synchronized boolean isMasterController(String clusterName) {
+        HelixManager helixManager = helixManagers.get(clusterName);
+        if (helixManager == null) {
+            handleClusterNotInitialized(clusterName);
+        }
+        return helixManager.isLeader();
+    }
+
     /**
      * Check whether this controller is master or not. If not, throw the VeniceException to skip the request to
      * this controller.
@@ -287,12 +296,9 @@ public class VeniceHelixAdmin implements Admin,ControllerChangeListener {
      * @param clusterName
      */
     private void checkControllerMastership(String clusterName) {
-        HelixManager helixManager = helixManagers.get(clusterName);
-        if (helixManager == null) {
-            handleClusterNotInitialized(clusterName);
-        } else if (!helixManager.isLeader()) {
-            throw new VeniceException("This controller:" + helixManager.getInstanceName()
-                + " is not the master. Can not handle the admin request.");
+        if (!isMasterController(clusterName)) {
+            throw new VeniceException("This controller:" + controllerName + " is not the master of '" + clusterName
+                + "'. Can not handle the admin request.");
         }
     }
 
