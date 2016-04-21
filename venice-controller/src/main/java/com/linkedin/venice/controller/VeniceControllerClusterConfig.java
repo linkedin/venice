@@ -16,6 +16,7 @@ import org.apache.log4j.Logger;
 public class VeniceControllerClusterConfig {
   private static final Logger logger = Logger.getLogger(VeniceControllerClusterConfig.class);
 
+  // TODO: Refactor to use ConfigKeys
   public static final String CLUSTER_NAME = "cluster.name";
   public static final String ZK_ADDRESS = "zookeeper.address";
   public static final String CONTROLLER_NAME = "controller.name";

@@ -12,5 +12,7 @@ public class HttpConstants {
   public static final String VENICE_OFFSET = "X-VENICE-OFFSET";
   public static final String VENICE_STORE_VERSION = "X-VENICE-STORE-VERSION";
 
+  public static final int SC_MISDIRECTED_REQUEST = 421;
+
   private HttpConstants(){}
 }

@@ -2,7 +2,6 @@ package com.linkedin.venice.controller.server;
 
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.controller.Admin;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.*;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
 import com.linkedin.venice.controllerapi.StoreCreationResponse;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -19,6 +18,8 @@ import org.codehaus.jackson.map.ObjectMapper;
 import spark.Request;
 import spark.Response;
 import spark.Spark;
+
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.*;
 
 
 /**
@@ -154,6 +155,14 @@ public class AdminSparkServer extends AbstractVeniceService {
   }
 
   private void validateParams(Request request, List<String> requiredParams){
+    String clusterName = request.queryParams(CLUSTER);
+    if (Utils.isNullOrEmpty(clusterName)){
+      throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, CLUSTER + " is a required parameter");
+    }
+    if (!admin.isMasterController(clusterName)){
+      throw new VeniceHttpException(HttpConstants.SC_MISDIRECTED_REQUEST, "This is not the active controller");
+    }
+
     for (String param : requiredParams){
       if (Utils.isNullOrEmpty(request.queryParams(param))){
         throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, param + " is a required parameter");
@@ -173,5 +182,4 @@ public class AdminSparkServer extends AbstractVeniceService {
         HttpStatus.SC_INTERNAL_SERVER_ERROR;
     response.status(statusCode);
   }
-
 }

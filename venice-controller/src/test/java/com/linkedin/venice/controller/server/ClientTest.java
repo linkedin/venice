@@ -33,6 +33,8 @@ public class ClientTest {
             .incrementVersion(anyString(), anyString(), anyInt(), anyInt());
         doReturn(ExecutionStatus.COMPLETED).when(mockAdmin)
             .getOffLineJobStatus(anyString(), anyString());
+        doReturn(true).when(mockAdmin)
+            .isMasterController(anyString());
         AdminSparkServer server = new AdminSparkServer(port, mockAdmin);
         server.start();
         long storeSize = 500 * 1024 * 1024;

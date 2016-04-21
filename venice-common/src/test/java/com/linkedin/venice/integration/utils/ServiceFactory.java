@@ -42,7 +42,7 @@ public class ServiceFactory {
   /**
    * @return an instance of {@link com.linkedin.venice.controller.VeniceControllerService}
    */
-  static VeniceControllerWrapper getVeniceController(String clusterName, KafkaBrokerWrapper kafkaBrokerWrapper) {
+  public static VeniceControllerWrapper getVeniceController(String clusterName, KafkaBrokerWrapper kafkaBrokerWrapper) {
     return getStatefulService(
         VeniceControllerWrapper.SERVICE_NAME,
         VeniceControllerWrapper.generateService(clusterName, kafkaBrokerWrapper));
