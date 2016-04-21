@@ -27,7 +27,7 @@ ext.libraries = [ // Groovy map literal
 
                   router_api: 'com.linkedin.dds-storage-core:dds-storage-router-api:0.0.60',
                   router_impl: 'com.linkedin.dds-storage-core:dds-storage-router-impl:0.0.60',
-                  http_client: 'org.apache.httpcomponents:httpasyncclient:4.1.1',
+                  http_client: 'org.apache.httpcomponents:httpasyncclient:4.0.1',
                   zookeeper: 'org.apache.zookeeper:zookeeper:3.4.6',
 
                   // Hadoop to Venice Bridge dependencies
