@@ -56,7 +56,6 @@ subprojects {
   apply plugin: 'eclipse'
 
   sourceCompatibility = 1.8
-  version = '0.1'
 
   repositories {
     mavenCentral()
