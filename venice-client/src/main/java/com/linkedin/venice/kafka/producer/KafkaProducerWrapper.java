@@ -110,7 +110,7 @@ public class KafkaProducerWrapper {
    * It omits those properties that do not begin with "venice."
   */
   public Properties getKafkaPropertiesFromVeniceProps(VeniceProperties props) {
-    VeniceProperties kafkaProps = props.extractProperties(PROPERTIES_KAFKA_PREFIX);
+    VeniceProperties kafkaProps = props.clipAndFilterNamespace(PROPERTIES_KAFKA_PREFIX);
     return kafkaProps.toProperties();
   }
 }

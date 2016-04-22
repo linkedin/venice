@@ -93,7 +93,7 @@ public class Utils {
    *  @return A @Props object with the given configurations
    * */
   public static VeniceProperties parseProperties(String configFileName)
-      throws Exception {
+      throws IOException {
     Properties props = new Properties();
     try (FileInputStream inputStream = new FileInputStream(configFileName)) {
       props.load(inputStream);
@@ -101,12 +101,26 @@ public class Utils {
     return new VeniceProperties(props);
   }
 
-  public static VeniceProperties parseProperties(String directory, String fileName, boolean isFileOptional) throws Exception {
+  /**
+   * Generate VeniceProperties object from a given directory, file.
+   *
+   * @param directory directory that contains the Property file
+   * @param fileName fileName of the Property file
+   * @param isFileOptional set this to true if the file is optional. If
+   *                       file is missing and set to true, empty property
+   *                       will be returned. If file is missing and set
+   *                       to false, this will throw an exception.
+   * @return
+   * @throws Exception
+   */
+  public static VeniceProperties parseProperties(String directory,
+          String fileName,
+          boolean isFileOptional) throws IOException {
     String propsFilePath = directory + File.separator + fileName;
 
     File propsFile = new File(propsFilePath);
     boolean fileExists = propsFile.exists();
-    if(fileExists == false ) {
+    if(!fileExists) {
       if(isFileOptional) {
         return new VeniceProperties(new Properties());
       }
@@ -131,7 +145,7 @@ public class Utils {
    * @throws Exception  if File not found or not accessible
    */
   public static VeniceProperties parseProperties(File propertyFile)
-      throws Exception {
+      throws IOException {
     Properties props = new Properties();
     FileInputStream inputStream = null;
     try {

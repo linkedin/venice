@@ -82,10 +82,10 @@ public class BdbServerConfig {
   private String bdbRawPropertyString;
 
   public BdbServerConfig(VeniceProperties props) {
-    this.bdbCacheSize = props.getBytes(BDB_CACHE_SIZE, 200 * 1024 * 1024);
+    this.bdbCacheSize = props.getSizeInBytes(BDB_CACHE_SIZE, 200 * 1024 * 1024);
     this.bdbWriteTransactions = props.getBoolean(BDB_WRITE_TRANSACTIONS, false);
     this.bdbFlushTransactions = props.getBoolean(BDB_FLUSH_TRANSACTIONS, false);
-    this.bdbMaxLogFileSize = props.getBytes(BDB_MAX_LOGFILE_SIZE, 60 * 1024 * 1024);
+    this.bdbMaxLogFileSize = props.getSizeInBytes(BDB_MAX_LOGFILE_SIZE, 60 * 1024 * 1024);
     this.bdbBtreeFanout = props.getInt(BDB_BTREE_FANOUT, 512);
     this.bdbMaxDelta = props.getInt(BDB_MAX_DELTA, 100);
     this.bdbBinDelta = props.getInt(BDB_BIN_DELTA, 75);

@@ -1,22 +1,16 @@
 package com.linkedin.venice.utils;
 
 import com.linkedin.venice.exceptions.UndefinedPropertyException;
-import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
 import java.io.File;
-import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
-import java.io.InputStream;
 import java.io.OutputStream;
 import java.util.Arrays;
-import java.util.Collection;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
-import java.util.Set;
 
 
 public class VeniceProperties {
@@ -43,7 +37,19 @@ public class VeniceProperties {
     }
   }
 
-  public VeniceProperties extractProperties(String nameSpace) {
+  /**
+   * This method looks for all properties that begins with the given
+   * namespace. Once those properties are identified it removes
+   * the namespace and returns the properties.
+   *
+   * This enables support of dynamic kafka configurations. All Kafka
+   * Properties can follow an convention of namespace and the properties
+   * are extracted and supplied to the Kafka Producer/Consumer.
+   *
+   * @param nameSpace namespace to look for
+   * @return properties matches a namespace, but after removing the namespace.
+   */
+  public VeniceProperties clipAndFilterNamespace(String nameSpace) {
     PropertyBuilder builder = new PropertyBuilder();
     if(!nameSpace.endsWith(".")) {
       nameSpace = nameSpace + ".";
@@ -60,28 +66,55 @@ public class VeniceProperties {
   }
 
   private static final String STORE_PREFIX = "store-";
+
+  /**
+   * Get store related properties. properties that do not begin
+   * with store- are considered common to all stores. out of
+   * properties that begins with store- , only properties
+   * that matches the store name are related to current
+   * store. These matching properties override the base properties
+   * if they are present.
+   *
+   * @param storeName name of the store
+   * @return Properties for the current store.
+   */
+
   public VeniceProperties getStoreProperties(String storeName) {
     String nameSpace = STORE_PREFIX + storeName + ".";
 
     PropertyBuilder builder = new PropertyBuilder();
+    Properties storeOverrideProperties = new Properties();
 
     for (Map.Entry<String,String> entry: this.props.entrySet()) {
       String key = entry.getKey();
-      if(key.startsWith(STORE_PREFIX)) {
-        if(key.startsWith(nameSpace)) {
+      if(key.startsWith(STORE_PREFIX)) { // Filter all store related overrides
+        if(key.startsWith(nameSpace)) {  // Save only current store related properties.
           String extractedKey = key.substring(nameSpace.length());
-          builder.put(extractedKey, entry.getValue());
+          storeOverrideProperties.setProperty(extractedKey, entry.getValue());
         }
       } else {
-        builder.put(key, this.props.get(key));
+        // Non store related properties.
+        builder.put(key, entry.getValue());
       }
     }
+
+    // Apply the store related overrides on top of the current properties.
+    builder.put(storeOverrideProperties);
     return builder.build();
   }
 
   @Override
   public boolean equals(Object o) {
-    return this.props.equals(o);
+    if (this == o) {
+      return true;
+    }
+    if (o == null || getClass() != o.getClass()) {
+      return false;
+    }
+
+    VeniceProperties that = (VeniceProperties) o;
+
+    return props.equals(that.props);
   }
 
   @Override
@@ -211,14 +244,14 @@ public class VeniceProperties {
     }
   }
 
-  public long getBytes(String name, long defaultValue) {
+  public long getSizeInBytes(String name, long defaultValue) {
     if (containsKey(name)) {
-      return getBytes(name);
+      return getSizeInBytes(name);
     } else {
       return defaultValue;
     }
   }
-  public long getBytes(String name) {
+  public long getSizeInBytes(String name) {
     if (!containsKey(name)) {
       throw new UndefinedPropertyException(name);
     }

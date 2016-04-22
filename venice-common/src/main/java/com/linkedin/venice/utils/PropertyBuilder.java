@@ -11,7 +11,14 @@ import javax.swing.*;
 
 
 /**
- * Created by athirupa on 4/20/16.
+ * PropertyBuilder is the suggested Way to construct VeniceProperties.
+ *
+ * Ideally you use the PropertyBuilder APIs to add properties
+ * and once all the properties are added, call the build method
+ * to get the VeniceProperties object.
+ *
+ * All the put methods overwrite the property if it already exists.
+ *
  */
 public class PropertyBuilder {
 
@@ -20,27 +27,8 @@ public class PropertyBuilder {
   public PropertyBuilder() {
 
   }
-  public PropertyBuilder put(String key, String value) {
-    props.put(key, value);
-    return this;
-  }
 
-  public PropertyBuilder put(String key, Integer value) {
-    props.put(key, value.toString());
-    return this;
-  }
-
-  public PropertyBuilder put(String key, Long value) {
-    props.put(key, value.toString());
-    return this;
-  }
-
-  public PropertyBuilder put(String key, Double value) {
-    props.put(key, value.toString());
-    return this;
-  }
-
-  public PropertyBuilder put(String key, Boolean value) {
+  public PropertyBuilder put(String key, Object value) {
     props.put(key, value.toString());
     return this;
   }
