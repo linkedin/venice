@@ -35,7 +35,9 @@ public class VenicePathParser implements ResourcePathParser<VeniceStoragePath, R
   public static final Pattern STORE_PATTERN = Pattern.compile("\\A[a-zA-Z][a-zA-Z0-9_-]*\\z"); // \A and \z are start and end of string
   public static final int STORE_MAX_LENGTH = 128;
   public static final String SEP = "/";
+
   public static final String TYPE_STORAGE = "storage";
+  public static final String TYPE_CONTROLLER = "controller";
 
   private VeniceVersionFinder versionFinder;
   private VenicePartitionFinder partitionFinder;
@@ -47,25 +49,14 @@ public class VenicePathParser implements ResourcePathParser<VeniceStoragePath, R
 
   @Override
   public VeniceStoragePath parseResourceUri(String uri) throws RouterException {
-    URI uriObject;
-    try {
-      uriObject = new URI(uri);
-    } catch (URISyntaxException e) {
-      logger.error(e);
-      throw new RouterException(HttpResponseStatus.INTERNAL_SERVER_ERROR, e, true);
-    }
-    String[] path = uriObject.getPath().split(SEP);  //getPath strips off the querystring '?f=b64'
-    int offset = 0;
-    if (path[0].equals("")){
-      offset = 1;  //leading slash in uri splits to an empty path section
-    }
-    if (path.length - offset < 3){
+    VenicePathParserHelper pathHelper = new VenicePathParserHelper(uri);
+    if (pathHelper.isInvalidStorageRequest()){
       throw new RouterException(HttpResponseStatus.BAD_REQUEST,
-          new VeniceException("Request URI must have a resource type, storename, and key"), true);
+          "Request URI must have a resource type, storename, and key", true);
     }
-    String resourceType = path[0+offset];
-    String storename = path[1+offset];
-    String key = path[2+offset];
+    String resourceType = pathHelper.getResourceType();
+    String storename = pathHelper.getResourceName();
+    String key = pathHelper.getKey();
 
     if (resourceType.equals(TYPE_STORAGE)) {
       String resourceName = getResourceFromStoreName(storename);
@@ -80,7 +71,7 @@ public class VenicePathParser implements ResourcePathParser<VeniceStoragePath, R
 
     } else {
       throw new RouterException(HttpResponseStatus.BAD_REQUEST,
-          new VeniceException("Requested resource type: " + resourceType + " is not a valid type"), true);
+          "Requested resource type: " + resourceType + " is not a valid type", true);
     }
   }
 
@@ -93,7 +84,8 @@ public class VenicePathParser implements ResourcePathParser<VeniceStoragePath, R
   @Override
   public VeniceStoragePath substitutePartitionKey(VeniceStoragePath path, Collection<RouterKey> keys) {
     // Assumes all keys on same partition
-    String partition = Integer.toString(partitionFinder.findPartitionNumber(path.getResourceName(), keys.iterator().next()));
+    String partition = Integer.toString(
+        partitionFinder.findPartitionNumber(path.getResourceName(), keys.iterator().next()));
     return new VeniceStoragePath(path.getResourceName(), keys, partition);
   }
 
@@ -124,4 +116,6 @@ public class VenicePathParser implements ResourcePathParser<VeniceStoragePath, R
     }
     return format.equals(RequestConstants.B64_FORMAT);
   }
+
+
 }

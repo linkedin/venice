@@ -22,30 +22,42 @@ import static org.mockito.Mockito.doReturn;
  */
 public class TestRouter {
 
+  public static final String CONTROLLER = "http://localhost:1234";
+
   @Test
-  public void testRouter()
-      throws Exception {
+  public void testRouter() throws Exception {
+    int retry = 5;
+    while (retry>0) {
+      try {
 
-    Store mockStore = Mockito.mock(Store.class);
-    doReturn(1).when(mockStore).getCurrentVersion();
-    HelixCachedMetadataRepository mockMetadataRepository = Mockito.mock(HelixCachedMetadataRepository.class);
-    doReturn(mockStore).when(mockMetadataRepository).getStore(Mockito.anyString());
+        Store mockStore = Mockito.mock(Store.class);
+        doReturn(1).when(mockStore).getCurrentVersion();
+        HelixCachedMetadataRepository mockMetadataRepository = Mockito.mock(HelixCachedMetadataRepository.class);
+        doReturn(mockStore).when(mockMetadataRepository).getStore(Mockito.anyString());
 
-    HelixRoutingDataRepository mockRepo = Mockito.mock(HelixRoutingDataRepository.class);
-    // TODO: getFreePort() is unreliable, should be called within a loop. Refactor this code. Or if the port is actually not used for anything, hard-code to any value?
-    Instance dummyinstance = new Instance("0", "localhost", PortUtils.getFreePort());
-    List<Instance> dummyList = new ArrayList<>(0);
-    dummyList.add(dummyinstance);
-    doReturn(dummyList).when(mockRepo).getInstances(anyString(), anyInt());
-    doReturn(3).when(mockRepo).getNumberOfPartitions(Mockito.anyString());
+        HelixRoutingDataRepository mockRepo = Mockito.mock(HelixRoutingDataRepository.class);
 
-    // TODO: Same comment as above.
-    int port = PortUtils.getFreePort();
-    RouterServer router = new RouterServer(port, "unit-test-cluster", mockRepo, mockMetadataRepository);
+        Instance mockControllerInstance = Mockito.mock(Instance.class);
+        doReturn(CONTROLLER).when(mockControllerInstance).getUrl();
+        doReturn(mockControllerInstance).when(mockRepo).getMasterController();
 
-    router.start();
-    // Doesn't actually test anything other than the router can startup and doesn't crash
-    router.stop();
+        // TODO: PortUtils is deprecated.
+        int port = PortUtils.getFreePort();
+        RouterServer router = new RouterServer(port, "unit-test-cluster", mockRepo, mockMetadataRepository);
+
+        router.start();
+        // Doesn't actually test anything other than the router can startup and doesn't crash
+        //TODO: when controller client can ask router for controller host, test that here
+        router.stop();
+        break;
+
+      } catch (java.net.BindException e) {
+        System.err.println("Failed to bind to port, trying again " + retry-- + " more times");
+        if (retry <= 0){
+          throw new Exception(TestRouter.class.toString() + " couldn't get a free port", e);
+        }
+      }
+    }
   }
 
 }

@@ -10,7 +10,6 @@ import com.linkedin.ddsstorage.netty3.misc.NettyResourceRegistry;
 import com.linkedin.ddsstorage.netty3.misc.ShutdownableHashedWheelTimer;
 import com.linkedin.ddsstorage.netty3.misc.ShutdownableOrderedMemoryAwareExecutor;
 import com.linkedin.ddsstorage.router.api.ScatterGatherHelper;
-import com.linkedin.ddsstorage.router.impl.RouterImpl;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixAdapterSerializer;
@@ -27,7 +26,6 @@ import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
-import java.io.File;
 import java.net.InetSocketAddress;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
@@ -151,8 +149,8 @@ public class RouterServer extends AbstractVeniceService {
     VeniceHostHealth healthMonitor = new VeniceHostHealth();
     dispatcher = new VeniceDispatcher(healthMonitor);
 
-    RouterImpl router
-        = routerRegistry.register(new RouterImpl(
+    VeniceRouterImpl router
+        = routerRegistry.register(new VeniceRouterImpl(
         "test", serverBossPool, ioWorkerPool, workerExecutor, connectionLimit, timeoutProcessor, idleTimer, serverSocketOptions,
         ScatterGatherHelper.builder()
             .roleFinder(new VeniceRoleFinder())
@@ -161,7 +159,8 @@ public class RouterServer extends AbstractVeniceService {
             .hostFinder(new VeniceHostFinder(routingDataRepository))
             .hostHealthMonitor(healthMonitor)
             .dispatchHandler(dispatcher)
-            .build()));
+            .build(),
+        new ControllerLookupHandler(routingDataRepository)));
 
     serverFuture = router.start(new InetSocketAddress(port), factory -> factory);
     serverFuture.await();

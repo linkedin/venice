@@ -9,37 +9,49 @@ import javax.validation.constraints.NotNull;
  * // TODO: Bad name. Too generic. Let's find a better one.
  */
 public class Instance {
-    /**
-     * Id of the node who holds this replica.
-     */
-    private final String nodeId;
-    /**
-     * Host of the node.
-     */
-    private final String host;
-    /**
-    * Port of the node used to accept the request. For controller it's admin request, for storage node it's data request.
-    */
-    private final int port;
+  /**
+   * Id of the node who holds this replica.
+   */
+  private final String nodeId;
+  /**
+   * Host of the node.
+   */
+  private final String host;
+  /**
+  * Port of the node used to accept the request. For controller it's admin request, for storage node it's data request.
+  */
+  private final int port;
 
-    public Instance(@NotNull String nodeId, @NotNull String host, int port) {
-        this.nodeId = nodeId;
-        this.host = host;
-        validatePort("port", port);
-        this.port = port;
-    }
+  public Instance(@NotNull String nodeId, @NotNull String host, int port) {
+      this.nodeId = nodeId;
+      this.host = host;
+      validatePort("port", port);
+      this.port = port;
+  }
 
-    public String getNodeId() {
-        return nodeId;
-    }
+  public String getNodeId() {
+      return nodeId;
+  }
 
-    public String getHost() {
-        return host;
-    }
+  public String getHost() {
+      return host;
+  }
 
-    public int getPort() {
+  public int getPort() {
        return port;
     }
+
+  /***
+   * Convenience method for getting a host and port based url.
+   * Wraps IPv6 host strings in square brackets
+   * @return http:// + host + : + port
+   */
+  public String getUrl(){
+    String scheme = "http";
+    return host.contains(":") ? /* for IPv6 support per https://www.ietf.org/rfc/rfc2732.txt */
+        scheme + "://[" + host + "]:" + port :
+        scheme + "://" + host + ":" + port;
+  }
 
   private void validatePort(String name, int port) {
         if (port < 0 || port > 65535) {
