@@ -6,7 +6,7 @@ if (project.hasProperty('overrideBuildEnvironment')) {
         ignoreFailures = true
       }
     }
-  }
+  } 
 }
 
 apply plugin: 'java'
@@ -56,7 +56,10 @@ subprojects {
   apply plugin: 'eclipse'
 
   sourceCompatibility = 1.8
-
+  if (!project.hasProperty('overrideBuildEnvironment') ||
+     !project.overrideBuildEnvironment) {
+     version = '0.1'
+  }
   repositories {
     mavenCentral()
     maven {
