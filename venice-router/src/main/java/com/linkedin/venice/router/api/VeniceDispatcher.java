@@ -145,6 +145,7 @@ public class VeniceDispatcher implements PartitionDispatchHandler<Instance, Veni
         HttpHeaders.setContentLength(response, response.getContent().readableBytes());
         HttpHeaders.setHeader(response, HttpHeaders.Names.CONTENT_TYPE, HttpConstants.APPLICATION_OCTET);
         HttpHeaders.setHeader(response, HttpConstants.VENICE_STORE_VERSION, path.getVersionNumber());
+        HttpHeaders.setHeader(response, HttpConstants.VENICE_PARTITION, numberFromPartitionName(partitionName));
         contextExecutor.execute(() -> {
           responseFuture.setSuccess(Collections.singletonList(response));
         });
@@ -182,5 +183,9 @@ public class VeniceDispatcher implements PartitionDispatchHandler<Instance, Veni
       }
     }
     clientPool.clear();
+  }
+
+  protected static String numberFromPartitionName(String partitionName){
+    return partitionName.substring(partitionName.lastIndexOf("_")+1);
   }
 }
