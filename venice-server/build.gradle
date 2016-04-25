@@ -31,7 +31,7 @@ dependencies {
   compile libraries.zkclient // It's necessary to pull in the most recent version of zkclient explicitly, otherwise Helix won't have it...
   compile libraries.bdbJe
   compile libraries.netty
-  compile libraries.http_client
+  compile libraries.asyncHttpClient
 
   compile project(':venice-common')
   compile project(':venice-controller')

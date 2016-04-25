@@ -111,6 +111,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
    * @see {@link VeniceControllerWrapper#getNewStoreVersion(String clusterName)}
    */
   public String getNewStoreVersion() {
-    return veniceControllerWrapper.getNewStoreVersion(clusterName);
+    String routerUrl = "http://" + getVeniceRouter().getAddress();
+    return veniceControllerWrapper.getNewStoreVersion(routerUrl, clusterName);
   }
 }

@@ -57,7 +57,7 @@ public class KafkaPushJob {
 
   public static final String AVRO_KEY_FIELD_PROP = "avro.key.field";
   public static final String AVRO_VALUE_FIELD_PROP = "avro.value.field";
-  public static final String VENICE_CONTROLLER_URL_PROP = "venice.controller.url";
+  public static final String VENICE_ROUTER_URL_PROP = "venice.router.urls";
   public static final String VENICE_CLUSTER_NAME_PROP = "cluster.name";
   public static final String VENICE_STORE_NAME_PROP = "venice.store.name";
   public static final String VENICE_STORE_OWNERS_PROP = "venice.store.owners";
@@ -83,7 +83,7 @@ public class KafkaPushJob {
   private final String id;
   private final String keyField;
   private final String valueField;
-  private final String veniceControllerUrl;
+  private final String veniceRouterUrl;
   private final String clusterName;
   private final String storeName;
   private final String storeOwners;
@@ -120,7 +120,7 @@ public class KafkaPushJob {
             .describedAs("kafka-url")
             .ofType(String.class);
     OptionSpec<String> veniceUrlOpt =
-            parser.accepts("venice-controller-url", "REQUIRED: venice URL")
+            parser.accepts("venice-router-url", "REQUIRED: comma-delimeted venice URLs")
                     .withRequiredArg()
                     .describedAs("venice-url")
                     .ofType(String.class);
@@ -196,7 +196,7 @@ public class KafkaPushJob {
       validateExpectedArguments(new OptionSpec[] {clusterNameOpt, veniceUrlOpt, storeNameOpt, storeOwnersOpt}, options, parser);
 
       props.put(VENICE_CLUSTER_NAME_PROP, options.valueOf(clusterNameOpt));
-      props.put(VENICE_CONTROLLER_URL_PROP, options.valueOf(veniceUrlOpt));
+      props.put(VENICE_ROUTER_URL_PROP, options.valueOf(veniceUrlOpt));
       props.put(VENICE_STORE_NAME_PROP, options.valueOf(storeNameOpt));
       props.put(VENICE_STORE_OWNERS_PROP, options.valueOf(storeOwnersOpt));
     }  else {
@@ -245,7 +245,7 @@ public class KafkaPushJob {
     this.props = props;
     this.id = jobId;
     this.clusterName = props.getProperty(VENICE_CLUSTER_NAME_PROP);
-    this.veniceControllerUrl = props.getProperty(VENICE_CONTROLLER_URL_PROP);
+    this.veniceRouterUrl = props.getProperty(VENICE_ROUTER_URL_PROP);
     this.storeName = props.getProperty(VENICE_STORE_NAME_PROP);
     this.storeOwners = props.getProperty(VENICE_STORE_OWNERS_PROP);
 
@@ -256,8 +256,8 @@ public class KafkaPushJob {
     boolean isKafkaTopicMissing = Utils.isNullOrEmpty(kafkaTopic);
 
     if(isKafkaUrlMissing || isKafkaTopicMissing) {
-      if (Utils.isNullOrEmpty(veniceControllerUrl)) {
-        throw new VeniceException("At least one of the " + VENICE_CONTROLLER_URL_PROP + " or " + KAFKA_URL_PROP + " must be specified.");
+      if (Utils.isNullOrEmpty(veniceRouterUrl)) {
+        throw new VeniceException("At least one of the " + VENICE_ROUTER_URL_PROP + " or " + KAFKA_URL_PROP + " must be specified.");
       }
       if (Utils.isNullOrEmpty(storeName)) {
         throw new VeniceException(VENICE_STORE_NAME_PROP + " is required for Starting a push");
@@ -344,7 +344,7 @@ public class KafkaPushJob {
       logger.info("No controller provided, skipping poll of push status, job completed");
     } else {
       // Throws a VeniceException if the job completes with a failed status
-      ControllerClient.pollJobStatusUntilFinished(Time.MS_PER_SECOND, 5*Time.MS_PER_MINUTE, veniceControllerUrl, clusterName, topic);
+      ControllerClient.pollJobStatusUntilFinished(Time.MS_PER_SECOND, 5*Time.MS_PER_MINUTE, veniceRouterUrl, clusterName, topic);
     }
   }
 
@@ -352,7 +352,7 @@ public class KafkaPushJob {
     if (!storePush) {
       return;
     }
-    StoreCreationResponse response = ControllerClient.createStoreVersion(veniceControllerUrl, clusterName, storeName,
+    StoreCreationResponse response = ControllerClient.createStoreVersion(veniceRouterUrl, clusterName, storeName,
             storeOwners, inputFileDataSize, keySchemaString, valueSchemaString);
     if (response.isError()) {
       throw new VeniceStoreCreationException(storeName, "Received error from Venice Controller for new store push: " +
@@ -366,7 +366,7 @@ public class KafkaPushJob {
     if (Utils.isNullOrEmpty(topic)) {
       throw new VeniceStoreCreationException(storeName, "Venice Controller returned empty topic name " + topic);
     }
-    logger.info("Used the Venice Controller: " + veniceControllerUrl + " to resolve to kafka url: " +
+    logger.info("Used the Venice Controller to resolve to kafka url: " +
             kafkaUrl + " and topic: " + topic );
   }
 
@@ -377,7 +377,7 @@ public class KafkaPushJob {
     logger.info("Input Directory: " + inputDirectory);
     logger.info("Venice Store Name: " + storeName);
     logger.info("Venice Cluster Name: " + clusterName);
-    logger.info("Venice Controller URL: " + veniceControllerUrl);
+    logger.info("Venice Router URL: " + veniceRouterUrl);
     logger.info("File Schema: " + fileSchemaString);
     logger.info("Avro key schema: " + keySchemaString);
     logger.info("Avro value schema: " + valueSchemaString);

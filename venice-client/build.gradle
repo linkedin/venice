@@ -24,7 +24,7 @@ jar {
 }
 
 dependencies {
-  compile libraries.http_client
+  compile libraries.asyncHttpClient
   compile project(':venice-common')
 
   testCompile project(':venice-common').sourceSets.test.output

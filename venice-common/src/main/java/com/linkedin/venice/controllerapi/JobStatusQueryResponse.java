@@ -59,4 +59,10 @@ public class JobStatusQueryResponse {
   public void setError(String error) {
     this.error = error;
   }
+
+  public static JobStatusQueryResponse createErrorResponse(String errorMessage){
+    JobStatusQueryResponse response = new JobStatusQueryResponse();
+    response.setError(errorMessage);
+    return response;
+  }
 }

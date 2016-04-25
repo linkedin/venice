@@ -5,18 +5,18 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.job.ExecutionStatus;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.Utils;
-import java.io.ByteArrayInputStream;
 import java.io.Closeable;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
-import java.util.HashMap;
+import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
-import java.util.Map;
 import org.apache.commons.io.IOUtils;
 import org.apache.http.HttpHeaders;
 import org.apache.http.HttpResponse;
+import org.apache.http.HttpStatus;
 import org.apache.http.NameValuePair;
 import org.apache.http.client.entity.UrlEncodedFormEntity;
 import org.apache.http.client.methods.HttpGet;
@@ -27,7 +27,6 @@ import org.apache.http.impl.nio.client.HttpAsyncClients;
 import org.apache.http.message.BasicNameValuePair;
 import org.apache.log4j.Logger;
 import org.codehaus.jackson.map.ObjectMapper;
-import org.codehaus.jackson.type.TypeReference;
 
 
 /**
@@ -40,6 +39,7 @@ import org.codehaus.jackson.type.TypeReference;
 public class ControllerClient implements Closeable {
   private final CloseableHttpAsyncClient client;
   private String controllerUrl;
+  private String routerUrls;
 
   private final static ObjectMapper mapper = new ObjectMapper();
   private final static Logger logger = Logger.getLogger(ControllerClient.class.getName());
@@ -47,20 +47,27 @@ public class ControllerClient implements Closeable {
   /**
    * It creates a thread for sending Http Requests.
    *
-   * @param controllerUrl url of the Venice Controller.
+   * @param routerUrls comma-delimeted urls for the Venice Routers.
    */
-  private ControllerClient(String controllerUrl){
+  private ControllerClient(String routerUrls){
     client = HttpAsyncClients.createDefault();
     client.start();
-    if(Utils.isNullOrEmpty(controllerUrl)) {
-      throw new VeniceException("Controller Url is not valid");
+    if(Utils.isNullOrEmpty(routerUrls)) {
+      throw new VeniceException("Router Urls: "+routerUrls+" is not valid");
     }
+    this.routerUrls = routerUrls;
+
+    refreshControllerUrl();
+  }
+
+  private void refreshControllerUrl(){
+    String controllerUrl = controllerUrlFromRouter(routerUrls);
     if (controllerUrl.endsWith("/")){
       this.controllerUrl = controllerUrl.substring(0, controllerUrl.length()-1);
     } else {
       this.controllerUrl = controllerUrl;
     }
-    logger.debug("Created client with URL: " + this.controllerUrl + " from input: " + controllerUrl);
+    logger.info("Identified controller URL: " + this.controllerUrl + " from router: " + routerUrls);
   }
 
   /**
@@ -74,6 +81,31 @@ public class ControllerClient implements Closeable {
       logger.error(msg, e);
       throw new VeniceException(msg, e);
     }
+  }
+
+  private String controllerUrlFromRouter(String routerUrls){
+    List<String> routerUrlList = Arrays.asList(routerUrls.split(","));
+    Collections.shuffle(routerUrlList);
+    Throwable lastException = null;
+    for (String routerUrl : routerUrlList) {
+      try {
+        final HttpGet get = new HttpGet(routerUrl + "/controller");
+        HttpResponse response = client.execute(get, null).get();
+        if (response.getStatusLine().getStatusCode() == HttpStatus.SC_OK) {
+          String responseBody;
+          try (InputStream bodyStream = response.getEntity().getContent()) {
+            responseBody = IOUtils.toString(bodyStream);
+          }
+          return responseBody;
+        } else {
+          throw new VeniceException("Router: " + routerUrl + " returns status code: " + response.getStatusLine().getStatusCode());
+        }
+      } catch (Exception e) {
+        logger.warn("Failed to get controller URL from router: " + routerUrl, e);
+        lastException = e;
+      }
+    }
+    throw new VeniceException("Could not get controller url from any router: " + routerUrls, lastException);
   }
 
   private StoreCreationResponse createNewStoreVersion(String clusterName, String storeName, String owner, long storeSize,
@@ -108,9 +140,9 @@ public class ControllerClient implements Closeable {
     }
   }
 
-  public static StoreCreationResponse createStoreVersion(String controllerUrl, String clusterName, String storeName, String owner,
+  public static StoreCreationResponse createStoreVersion(String routerUrl, String clusterName, String storeName, String owner,
                                                          long storeSize, String keySchema, String valueSchema) {
-    try (ControllerClient client = new ControllerClient(controllerUrl)){
+    try (ControllerClient client = new ControllerClient(routerUrl)){
         return client.createNewStoreVersion(clusterName, storeName, owner, storeSize, keySchema, valueSchema);
     }
   }
@@ -131,8 +163,8 @@ public class ControllerClient implements Closeable {
     }
   }
 
-  public static void overrideSetActiveVersion(String controllerUrl, String clusterName, String storeName, int version){
-    try (ControllerClient client = new ControllerClient(controllerUrl)){
+  public static void overrideSetActiveVersion(String routerUrl, String clusterName, String storeName, int version){
+    try (ControllerClient client = new ControllerClient(routerUrl)){
       client.overrideSetActiveVersion(clusterName, storeName, version);
     }
   }
@@ -161,14 +193,14 @@ public class ControllerClient implements Closeable {
         throw new VeniceException(msg);
       }
     } catch (Exception e) {
-      String msg = "Error creating Store: " + storeName + " Version: " + version;
+      String msg = "Error querying job status: " + storeName + " Version: " + version;
       logger.error(msg, e);
       throw new VeniceException(msg, e);
     }
   }
 
-  public static JobStatusQueryResponse queryJobStatus(String controllerUrl, String clusterName, String kafkaTopic){
-    try (ControllerClient client = new ControllerClient(controllerUrl)){
+  public static JobStatusQueryResponse queryJobStatus(String routerUrl, String clusterName, String kafkaTopic){
+    try (ControllerClient client = new ControllerClient(routerUrl)){
       return client.queryJobStatus(clusterName, kafkaTopic);
     }
   }
@@ -188,9 +220,15 @@ public class ControllerClient implements Closeable {
     try (ControllerClient client = new ControllerClient(veniceControllerUrl)) {
       while (!jobDone) {
 
-        int retry = 2; /* if the query returns an error object, retry a couple times before failing */
+        int retry = 3; /* if the query returns an error object, retry a couple times before failing */
         for(;;) { //TODO: switch to exponential backoff retry policy
-          queryResponse = client.queryJobStatus(clusterName, topic);
+          try{
+            queryResponse = client.queryJobStatus(clusterName, topic);
+          } catch (VeniceException e){
+            logger.error(e);
+            queryResponse = JobStatusQueryResponse.createErrorResponse(e.getMessage());
+            client.refreshControllerUrl(); /* support controller failover */
+          }
           if (queryResponse.getError() != null) {
             if (retry <= 0) {
               throw new VeniceException("Error getting status of push: " + queryResponse.getError());
@@ -230,4 +268,5 @@ public class ControllerClient implements Closeable {
       throw new VeniceException("Polling of push status was interrupted");
     }
   }
+
 }

@@ -88,15 +88,14 @@ public class VeniceControllerWrapper extends ProcessWrapper {
    *
    * @return the kafka topic name of the newly-created store-version
    */
-  public String getNewStoreVersion(String clusterName) {
-    String controllerUrl = getControllerUrl();
+  public String getNewStoreVersion(String routerUrl, String clusterName) {
     String storeName = TestUtils.getUniqueString("venice-store");
     String storeOwner = TestUtils.getUniqueString("store-owner");
     long storeSize = 10 * 1024 * 1024;
     String keySchema = "\"long\"";
     String valueSchema = "\"string\"";
     StoreCreationResponse newStore = ControllerClient.createStoreVersion(
-        controllerUrl,
+        routerUrl,
         clusterName,
         storeName,
         storeOwner,
@@ -112,17 +111,17 @@ public class VeniceControllerWrapper extends ProcessWrapper {
    * @param storeName
    * @param version
    */
-  public void setActiveVersion(String clusterName, String storeName, int version){
-    ControllerClient.overrideSetActiveVersion(getControllerUrl(), clusterName, storeName, version);
+  public void setActiveVersion(String routerUrl, String clusterName, String storeName, int version){
+    ControllerClient.overrideSetActiveVersion(routerUrl, clusterName, storeName, version);
   }
 
   /***
    * Set a version to be active, parsing store name and version number from a kafka topic name
    * @param kafkaTopic
    */
-  public void setActiveVersion(String clusterName, String kafkaTopic){
+  public void setActiveVersion(String routerUrl, String clusterName, String kafkaTopic){
     String storeName = Version.parseStoreFromKafkaTopicName(kafkaTopic);
     int version = Version.parseVersionFromKafkaTopicName(kafkaTopic);
-    setActiveVersion(clusterName, storeName, version);
+    setActiveVersion(routerUrl, clusterName, storeName, version);
   }
 }

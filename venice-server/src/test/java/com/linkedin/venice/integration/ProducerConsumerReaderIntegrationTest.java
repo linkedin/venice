@@ -53,7 +53,8 @@ public class ProducerConsumerReaderIntegrationTest {
 
     // Create test store
     storeVersionName = veniceCluster.getNewStoreVersion();
-    veniceCluster.getVeniceController().setActiveVersion(veniceCluster.getClusterName(), storeVersionName);
+    String routerUrl = "http://" + veniceCluster.getVeniceRouter().getAddress();
+    veniceCluster.getVeniceController().setActiveVersion(routerUrl, veniceCluster.getClusterName(), storeVersionName);
 
     VeniceProperties clientProps =
             new PropertyBuilder().put(KAFKA_BOOTSTRAP_SERVERS, veniceCluster.getKafka().getAddress())

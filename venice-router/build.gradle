@@ -24,9 +24,9 @@ jar {
 }
 
 dependencies {
-    compile libraries.router_api
-    compile libraries.router_impl
-    compile libraries.http_client
+    compile libraries.routerApi
+    compile libraries.routerImpl
+    compile libraries.asyncHttpClient
     compile project(':venice-common')
 
     testCompile project(':venice-common').sourceSets.test.output

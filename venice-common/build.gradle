@@ -34,7 +34,7 @@ dependencies {
     exclude group: 'io.netty'
   }
   compile libraries.netty3
-  compile libraries.http_client
+  compile libraries.asyncHttpClient
   compile libraries.kafkaClients // TODO: Get rid of Kafka dependency in venice-common
   compile libraries.zkclient // It's necessary to pull in the most recent version of zkclient explicitly, otherwise Helix won't have it...
   compile libraries.zookeeper // TODO: Get rid of ZK dependency in venice-common
