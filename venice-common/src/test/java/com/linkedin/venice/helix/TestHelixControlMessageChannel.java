@@ -1,6 +1,6 @@
 package com.linkedin.venice.helix;
 
-import com.linkedin.venice.controlmessage.StatusUpdateMessage;
+import com.linkedin.venice.controlmessage.StoreStatusMessage;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.job.ExecutionStatus;
 import com.linkedin.venice.integration.utils.ServiceFactory;
@@ -83,11 +83,11 @@ public class TestHelixControlMessageChannel {
     zkServerWrapper.close();
   }
 
-  private void compareConversion(StatusUpdateMessage veniceMessage) {
+  private void compareConversion(StoreStatusMessage veniceMessage) {
     Message helixMessage = channel.convertVeniceMessageToHelixMessage(veniceMessage);
     Assert.assertEquals(veniceMessage.getMessageId(), helixMessage.getMsgId(),
             "Message Ids are different.");
-    Assert.assertEquals(StatusUpdateMessage.class.getName(),
+    Assert.assertEquals(StoreStatusMessage.class.getName(),
             helixMessage.getRecord().getSimpleField(HelixControlMessageChannel.VENICE_MESSAGE_CLASS),
             "Class names are different.");
     Map<String, String> fields = helixMessage.getRecord().getMapField(HelixControlMessageChannel.VENICE_MESSAGE_FIELD);
@@ -96,7 +96,7 @@ public class TestHelixControlMessageChannel {
               "Message fields are different.");
     }
 
-    StatusUpdateMessage convertedVeniceMessage = channel.convertHelixMessageToVeniceMessage(helixMessage);
+    StoreStatusMessage convertedVeniceMessage = (StoreStatusMessage) channel.convertHelixMessageToVeniceMessage(helixMessage);
     Assert.assertEquals(veniceMessage, convertedVeniceMessage,
             "Message fields are different. Convert it failed,");
   }
@@ -104,7 +104,7 @@ public class TestHelixControlMessageChannel {
   @Test
   public void testConvertBetweenVeniceMessageAndHelixMessage()
       throws ClassNotFoundException {
-    StatusUpdateMessage veniceMessage = new StatusUpdateMessage(1, kafkaTopic, partitionId, instanceId, status);
+    StoreStatusMessage veniceMessage = new StoreStatusMessage(1, kafkaTopic, partitionId, instanceId, status);
     compareConversion(veniceMessage);
 
     veniceMessage.setOffset(10);
@@ -116,16 +116,16 @@ public class TestHelixControlMessageChannel {
 
   @Test
   public void testRegisterHandler() {
-    StatusUpdateMessageHandler hander = new StatusUpdateMessageHandler();
+    StoreStatusMessageHandler hander = new StoreStatusMessageHandler();
 
-    channel.registerHandler(StatusUpdateMessage.class, hander);
+    channel.registerHandler(StoreStatusMessage.class, hander);
 
-    Assert.assertEquals(hander, channel.getHandler(StatusUpdateMessage.class),
+    Assert.assertEquals(hander, channel.getHandler(StoreStatusMessage.class),
         "Can not get correct handler.Register is failed.");
 
-    channel.unRegisterHandler(StatusUpdateMessage.class, hander);
+    channel.unRegisterHandler(StoreStatusMessage.class, hander);
     try {
-      channel.getHandler(StatusUpdateMessage.class);
+      channel.getHandler(StoreStatusMessage.class);
       Assert.fail("Handler should be un-register before.");
     } catch (VeniceException e) {
       //Expected.
@@ -137,14 +137,14 @@ public class TestHelixControlMessageChannel {
       throws IOException, InterruptedException {
     //Register handler for message in controler side.
     HelixControlMessageChannel controllerChannel = new HelixControlMessageChannel(controller);
-    StatusUpdateMessageHandler handler = new StatusUpdateMessageHandler();
-    controllerChannel.registerHandler(StatusUpdateMessage.class, handler);
+    StoreStatusMessageHandler handler = new StoreStatusMessageHandler();
+    controllerChannel.registerHandler(StoreStatusMessage.class, handler);
 
     Thread.sleep(WAIT_ZK_TIME);
-    StatusUpdateMessage veniceMessage =
-        new StatusUpdateMessage(1, kafkaTopic, partitionId, instanceId, status);
+    StoreStatusMessage veniceMessage =
+        new StoreStatusMessage(1, kafkaTopic, partitionId, instanceId, status);
     channel.sendToController(veniceMessage);
-    StatusUpdateMessage receivedMessage = handler.getStatus(veniceMessage.getKafkaTopic());
+    StoreStatusMessage receivedMessage = handler.getStatus(veniceMessage.getKafkaTopic());
     Assert.assertNotNull(receivedMessage, "Message is not received.");
     Assert.assertEquals(veniceMessage.getMessageId(), receivedMessage.getMessageId(),
         "Message is not received correctly. Id is wrong.");

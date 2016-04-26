@@ -46,7 +46,7 @@ public class StoreConsumptionTaskTest extends PowerMockTestCase {
   public static final int TIMEOUT;
 
   static {
-    StoreConsumptionTask.READ_CYCLE_DELAY_MS = 100;
+    StoreConsumptionTask.READ_CYCLE_DELAY_MS = 500;
     TIMEOUT = 5 * StoreConsumptionTask.READ_CYCLE_DELAY_MS;
   }
 

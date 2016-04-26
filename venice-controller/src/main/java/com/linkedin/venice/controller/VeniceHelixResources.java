@@ -1,7 +1,7 @@
 package com.linkedin.venice.controller;
 
 import com.linkedin.venice.VeniceResource;
-import com.linkedin.venice.controlmessage.StatusUpdateMessage;
+import com.linkedin.venice.controlmessage.StoreStatusMessage;
 import com.linkedin.venice.helix.HelixAdapterSerializer;
 import com.linkedin.venice.helix.HelixCachedMetadataRepository;
 import com.linkedin.venice.helix.HelixControlMessageChannel;
@@ -36,7 +36,7 @@ public class VeniceHelixResources implements VeniceResource {
   @Override
   public void refresh() {
     clear();
-    messageChannel.registerHandler(StatusUpdateMessage.class, jobManager);
+    messageChannel.registerHandler(StoreStatusMessage.class, jobManager);
     metadataRepository.refresh();
     routingDataRepository.refresh();
     jobRepository.refresh();
@@ -48,7 +48,7 @@ public class VeniceHelixResources implements VeniceResource {
       jobRepository.clear();
       metadataRepository.clear();
       routingDataRepository.clear();
-      messageChannel.unRegisterHandler(StatusUpdateMessage.class, jobManager);
+      messageChannel.unRegisterHandler(StoreStatusMessage.class, jobManager);
   }
 
   public HelixCachedMetadataRepository getMetadataRepository() {

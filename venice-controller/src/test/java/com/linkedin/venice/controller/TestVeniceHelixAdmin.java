@@ -2,7 +2,7 @@ package com.linkedin.venice.controller;
 
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.controlmessage.ControlMessageChannel;
-import com.linkedin.venice.controlmessage.StatusUpdateMessage;
+import com.linkedin.venice.controlmessage.StoreStatusMessage;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixControlMessageChannel;
 import com.linkedin.venice.helix.HelixInstanceConverter;
@@ -128,7 +128,7 @@ public class TestVeniceHelixAdmin {
     veniceAdmin.incrementVersion(clusterName, "test", 1, 1);
 
     ControlMessageChannel channel = new HelixControlMessageChannel(manager, Integer.MAX_VALUE, 1);
-    channel.sendToController(new StatusUpdateMessage(1, "test_v1", 0, nodeId, ExecutionStatus.STARTED));
+    channel.sendToController(new StoreStatusMessage(1, "test_v1", 0, nodeId, ExecutionStatus.STARTED));
 
     int newAdminPort = config.getAdminPort()+1;
     VeniceHelixAdmin newMasterAdmin = new VeniceHelixAdmin(Utils.getHelixNodeIdentifier(newAdminPort), zkAddress, kafkaZkAddress,"");
@@ -148,7 +148,7 @@ public class TestVeniceHelixAdmin {
     //Now get status from new master controller.
     Assert.assertEquals(newMasterAdmin.getOffLineJobStatus(clusterName, "test_v1"), ExecutionStatus.STARTED,
         "Can not get offline job status correctly.");
-    channel.sendToController(new StatusUpdateMessage(1, "test_v1", 0, nodeId, ExecutionStatus.COMPLETED));
+    channel.sendToController(new StoreStatusMessage(1, "test_v1", 0, nodeId, ExecutionStatus.COMPLETED));
 
     Assert.assertEquals(newMasterAdmin.getOffLineJobStatus(clusterName, "test_v1"), ExecutionStatus.COMPLETED,
         "Job should be completed after getting update from message channel");

@@ -134,11 +134,12 @@ public class StorageService extends AbstractVeniceService {
     VeniceException lastException = null;
       /* This will also close the storage engines */
     for (Store store : this.storeRepository.getAllLocalStorageEngines()) {
-      logger.info("Closing storage engine for " + store.getName());
+      String storeName = store.getName();
+      logger.info("Closing storage engine for " + storeName );
       try {
         store.close();
       } catch (VeniceException e) {
-        logger.error(e);
+        logger.error("Error closing storage engine for store" + storeName , e);
         lastException = e;
       }
     }
@@ -146,11 +147,12 @@ public class StorageService extends AbstractVeniceService {
 
     /*Close all storage engine factories */
     for (Map.Entry<PersistenceType, StorageEngineFactory> storageEngineFactory : persistenceTypeToStorageEngineFactoryMap.entrySet()) {
-      logger.info("Closing " + storageEngineFactory.getKey() + " storage engine factory");
+      PersistenceType factoryType =  storageEngineFactory.getKey();
+      logger.info("Closing " + factoryType + " storage engine factory");
       try {
         storageEngineFactory.getValue().close();
       } catch (VeniceException e) {
-        logger.error(e);
+        logger.error("Error closing " + factoryType , e);
         lastException = e;
       }
     }

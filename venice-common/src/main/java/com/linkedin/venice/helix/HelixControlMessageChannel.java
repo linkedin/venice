@@ -3,9 +3,9 @@ package com.linkedin.venice.helix;
 import com.linkedin.venice.controlmessage.ControlMessage;
 import com.linkedin.venice.controlmessage.ControlMessageChannel;
 import com.linkedin.venice.controlmessage.ControlMessageHandler;
+import com.linkedin.venice.controlmessage.StoreStatusMessage;
 import com.linkedin.venice.exceptions.VeniceException;
 import java.io.IOException;
-import java.lang.reflect.InvocationTargetException;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import org.apache.helix.ClusterMessagingService;
@@ -112,21 +112,18 @@ public class HelixControlMessageChannel implements ControlMessageChannel {
    * Convert Helix message to Venice Message.
    *
    * @param helixMessage
-   * @param <T>
    *
    * @return
    */
-  protected <T extends ControlMessage> T convertHelixMessageToVeniceMessage(Message helixMessage) {
-    try {
-      Class<T> clazz = (Class<T>) Class.forName(helixMessage.getRecord().getSimpleField(VENICE_MESSAGE_CLASS));
+  protected ControlMessage convertHelixMessageToVeniceMessage(Message helixMessage) {
+      String className = helixMessage.getRecord().getSimpleField(VENICE_MESSAGE_CLASS);
       Map<String, String> fields = helixMessage.getRecord().getMapField(VENICE_MESSAGE_FIELD);
-      T veniceMessage = clazz.getConstructor(Map.class).newInstance(fields);
-      return veniceMessage;
-    } catch (ClassNotFoundException e) {
-      throw new VeniceException("Can not find message class for message:" + helixMessage.getMsgId(), e);
-    } catch (InstantiationException | IllegalAccessException | NoSuchMethodException | InvocationTargetException e) {
-      throw new VeniceException("Can not create instance for message:" + helixMessage.getMsgId(), e);
-    }
+
+      if(StoreStatusMessage.class.getName().equals(className)) {
+        return new StoreStatusMessage(fields);
+      } else {
+        throw new VeniceException("Message handler not implemented yet for class." + className);
+      }
   }
 
   /**

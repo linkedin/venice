@@ -1,7 +1,7 @@
 package com.linkedin.venice.helix;
 
 import com.linkedin.venice.controlmessage.ControlMessageHandler;
-import com.linkedin.venice.controlmessage.StatusUpdateMessage;
+import com.linkedin.venice.controlmessage.StoreStatusMessage;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import org.apache.log4j.Logger;
@@ -10,17 +10,17 @@ import org.apache.log4j.Logger;
 /**
  * Handler in controller side used to deal with status update message from storage node.
  */
-public class StatusUpdateMessageHandler implements ControlMessageHandler<StatusUpdateMessage> {
+public class StoreStatusMessageHandler implements ControlMessageHandler<StoreStatusMessage> {
   private static final Logger logger = Logger.getLogger(ControlMessageHandler.class);
   //TODO will process the status in the further. Maybe here will become Map<KafkaTopic,Map<Partition,Map<Instance,Status>>>.
-  private Map<String, StatusUpdateMessage> statusMap;
+  private Map<String, StoreStatusMessage> statusMap;
 
-  public StatusUpdateMessageHandler() {
+  public StoreStatusMessageHandler() {
     statusMap = new ConcurrentHashMap<>();
   }
 
   @Override
-  public void handleMessage(StatusUpdateMessage message) {
+  public void handleMessage(StoreStatusMessage message) {
     if(message == null) {
       throw new IllegalArgumentException(" Parameter message is null");
     }
@@ -29,7 +29,7 @@ public class StatusUpdateMessageHandler implements ControlMessageHandler<StatusU
   }
 
   //TODO will be changed to get the status from kafkaTopic+partition+instance later.
-  public StatusUpdateMessage getStatus(String kafkaTopic) {
+  public StoreStatusMessage getStatus(String kafkaTopic) {
     return statusMap.get(kafkaTopic);
   }
 }

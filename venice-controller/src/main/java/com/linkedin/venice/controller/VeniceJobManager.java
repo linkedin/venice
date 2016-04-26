@@ -1,7 +1,7 @@
 package com.linkedin.venice.controller;
 
 import com.linkedin.venice.controlmessage.ControlMessageHandler;
-import com.linkedin.venice.controlmessage.StatusUpdateMessage;
+import com.linkedin.venice.controlmessage.StoreStatusMessage;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.job.ExecutionStatus;
 import com.linkedin.venice.job.Job;
@@ -22,7 +22,7 @@ import org.apache.log4j.Logger;
  * Venice job manager to handle all of control messages to update job/task status and do actions based the status
  * change.
  */
-public class VeniceJobManager implements ControlMessageHandler<StatusUpdateMessage> {
+public class VeniceJobManager implements ControlMessageHandler<StoreStatusMessage> {
   private static final Logger logger = Logger.getLogger(VeniceJobManager.class);
   private final JobRepository jobRepository;
   private final MetadataRepository metadataRepository;
@@ -78,7 +78,7 @@ public class VeniceJobManager implements ControlMessageHandler<StatusUpdateMessa
   }
 
   @Override
-  public void handleMessage(StatusUpdateMessage message) {
+  public void handleMessage(StoreStatusMessage message) {
     List<Job> jobs = jobRepository.getRunningJobOfTopic(message.getKafkaTopic());
     // We should avoid update tasks in same kafka topic in the same time. Different kafka topics could be accessed concurrently.
     synchronized (jobs) {

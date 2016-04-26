@@ -1,6 +1,6 @@
 package com.linkedin.venice.controller;
 
-import com.linkedin.venice.controlmessage.StatusUpdateMessage;
+import com.linkedin.venice.controlmessage.StoreStatusMessage;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixAdapterSerializer;
 import com.linkedin.venice.helix.HelixCachedMetadataRepository;
@@ -135,14 +135,14 @@ public class TestVeniceJobManager {
     metadataRepository.addStore(store);
     jobManager.startOfflineJob(version.kafkaTopicName(), 1, 1);
 
-    StatusUpdateMessage message =
-        new StatusUpdateMessage(1, version.kafkaTopicName(), 0, nodeId, ExecutionStatus.STARTED);
+    StoreStatusMessage message =
+        new StoreStatusMessage(1, version.kafkaTopicName(), 0, nodeId, ExecutionStatus.STARTED);
     jobManager.handleMessage(message);
     Job job = jobRepository.getRunningJobOfTopic(version.kafkaTopicName()).get(0);
     Assert.assertEquals(jobRepository.getJobStatus(job.getJobId(), job.getKafkaTopic()), ExecutionStatus.STARTED,
         "Job should be started.");
 
-    message = new StatusUpdateMessage(1, version.kafkaTopicName(), 0, nodeId, ExecutionStatus.COMPLETED);
+    message = new StoreStatusMessage(1, version.kafkaTopicName(), 0, nodeId, ExecutionStatus.COMPLETED);
     jobManager.handleMessage(message);
     //Wait ZK notification.
     Thread.sleep(1000l);
@@ -167,14 +167,14 @@ public class TestVeniceJobManager {
     metadataRepository.addStore(store);
     jobManager.startOfflineJob(version.kafkaTopicName(), 1, 1);
 
-    StatusUpdateMessage message =
-        new StatusUpdateMessage(1, version.kafkaTopicName(), 0, nodeId, ExecutionStatus.STARTED);
+    StoreStatusMessage message =
+        new StoreStatusMessage(1, version.kafkaTopicName(), 0, nodeId, ExecutionStatus.STARTED);
     jobManager.handleMessage(message);
     Job job = jobRepository.getRunningJobOfTopic(version.kafkaTopicName()).get(0);
     Assert.assertEquals(jobRepository.getJobStatus(job.getJobId(), job.getKafkaTopic()), ExecutionStatus.STARTED,
         "Job should be started.");
 
-    message = new StatusUpdateMessage(1, version.kafkaTopicName(), 0, nodeId, ExecutionStatus.ERROR);
+    message = new StoreStatusMessage(1, version.kafkaTopicName(), 0, nodeId, ExecutionStatus.ERROR);
     jobManager.handleMessage(message);
     //Wait ZK notification.
     Thread.sleep(1000l);
@@ -199,11 +199,11 @@ public class TestVeniceJobManager {
     Assert.assertEquals(jobManager.getOfflineJobStatus(version.kafkaTopicName()), ExecutionStatus.STARTED,
         "Job should be started.");
 
-    StatusUpdateMessage message =
-        new StatusUpdateMessage(1, version.kafkaTopicName(), 0, nodeId, ExecutionStatus.STARTED);
+    StoreStatusMessage message =
+        new StoreStatusMessage(1, version.kafkaTopicName(), 0, nodeId, ExecutionStatus.STARTED);
     jobManager.handleMessage(message);
 
-    message = new StatusUpdateMessage(1, version.kafkaTopicName(), 0, nodeId, ExecutionStatus.COMPLETED);
+    message = new StoreStatusMessage(1, version.kafkaTopicName(), 0, nodeId, ExecutionStatus.COMPLETED);
     jobManager.handleMessage(message);
 
     Assert.assertEquals(jobManager.getOfflineJobStatus(version.kafkaTopicName()), ExecutionStatus.COMPLETED);
@@ -216,11 +216,11 @@ public class TestVeniceJobManager {
     Assert.assertEquals(jobManager.getOfflineJobStatus(version.kafkaTopicName()), ExecutionStatus.STARTED,
         "Job should be started.");
 
-    StatusUpdateMessage message =
-        new StatusUpdateMessage(1, version.kafkaTopicName(), 0, nodeId, ExecutionStatus.STARTED);
+    StoreStatusMessage message =
+        new StoreStatusMessage(1, version.kafkaTopicName(), 0, nodeId, ExecutionStatus.STARTED);
     jobManager.handleMessage(message);
 
-    message = new StatusUpdateMessage(1, version.kafkaTopicName(), 0, nodeId, ExecutionStatus.ERROR);
+    message = new StoreStatusMessage(1, version.kafkaTopicName(), 0, nodeId, ExecutionStatus.ERROR);
     jobManager.handleMessage(message);
 
     Assert.assertEquals(jobManager.getOfflineJobStatus(version.kafkaTopicName()), ExecutionStatus.ERROR);

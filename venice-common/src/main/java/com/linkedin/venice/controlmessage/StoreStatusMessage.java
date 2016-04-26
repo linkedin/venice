@@ -4,13 +4,12 @@ import com.linkedin.venice.job.ExecutionStatus;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
-import java.util.concurrent.atomic.AtomicInteger;
 
 
 /**
  * Control description used to notify controller that the status of Offline push in Storage node.
  */
-public class StatusUpdateMessage extends ControlMessage {
+public class StoreStatusMessage extends ControlMessage {
   private static final String JOB_ID = "jobId";
   private static final String MESSAGE_ID = "messageId";
   private static final String PARTITION_ID = "partitionId";
@@ -31,7 +30,7 @@ public class StatusUpdateMessage extends ControlMessage {
   private long offset;
   private String description;
 
-  public StatusUpdateMessage(long jobId, String kafkaTopic, int partitionId, String instanceId, ExecutionStatus status) {
+  public StoreStatusMessage(long jobId, String kafkaTopic, int partitionId, String instanceId, ExecutionStatus status) {
 
     this.jobId = jobId;
     // Confirmed with helix team. The message Id is used as the key for zk node. So it must be a global unique Id.
@@ -46,7 +45,7 @@ public class StatusUpdateMessage extends ControlMessage {
   /**
    * Override the constructor of ControlMessage, build description from given fiedls.
    */
-  public StatusUpdateMessage(Map<String, String> fields) {
+  public StoreStatusMessage(Map<String, String> fields) {
     this.jobId = Long.valueOf(getRequiredField(fields, JOB_ID));
     this.messageId = getRequiredField(fields, MESSAGE_ID);
     this.partitionId = Integer.valueOf(getRequiredField(fields, PARTITION_ID));
@@ -124,7 +123,7 @@ public class StatusUpdateMessage extends ControlMessage {
       return false;
     }
 
-    StatusUpdateMessage that = (StatusUpdateMessage) o;
+    StoreStatusMessage that = (StoreStatusMessage) o;
 
     if (partitionId != that.partitionId) {
       return false;
@@ -154,7 +153,7 @@ public class StatusUpdateMessage extends ControlMessage {
 
   @Override
   public String toString() {
-    return "StatusUpdateMessage{" +
+    return "StoreStatusMessage{" +
             "jobId='" + jobId + '\'' +
             ", messageId='" + messageId + '\'' +
             ", partitionId=" + partitionId +

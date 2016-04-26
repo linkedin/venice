@@ -1,6 +1,7 @@
 package com.linkedin.venice.notifier;
 
-import com.linkedin.venice.controlmessage.StatusUpdateMessage;
+import com.linkedin.venice.controlmessage.StoreStatusMessage;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixControlMessageChannel;
 import com.linkedin.venice.job.ExecutionStatus;
 import java.io.IOException;
@@ -25,25 +26,26 @@ public class HelixNotifier implements VeniceNotifier {
     this.instanceId = instanceId;
   }
 
-  private void sendMessage(StatusUpdateMessage message) {
+  private void sendMessage(StoreStatusMessage message) {
     try {
        messageChannel.sendToController(message);
     } catch(IOException ex) {
       String errorMessage = "Error Sending Message to Helix Controller " + message.getMessageId();
       logger.error(errorMessage , ex);
-      throw new RuntimeException(errorMessage , ex);
+      throw new VeniceException(errorMessage , ex);
     }
   }
 
   @Override
   public void started(long jobId, String storeName, int partitionId) {
-    StatusUpdateMessage veniceMessage = new StatusUpdateMessage(jobId, storeName, partitionId, instanceId, ExecutionStatus.STARTED);
+    StoreStatusMessage
+            veniceMessage = new StoreStatusMessage(jobId, storeName, partitionId, instanceId, ExecutionStatus.STARTED);
     sendMessage(veniceMessage);
   }
 
   @Override
   public void completed(long jobId, String storeName, int partitionId, long offset) {
-    StatusUpdateMessage veniceMessage = new StatusUpdateMessage(jobId, storeName, partitionId, instanceId,
+    StoreStatusMessage veniceMessage = new StoreStatusMessage(jobId, storeName, partitionId, instanceId,
             ExecutionStatus.COMPLETED);
     veniceMessage.setOffset(offset);
     sendMessage(veniceMessage);
@@ -51,7 +53,7 @@ public class HelixNotifier implements VeniceNotifier {
 
   @Override
   public void progress(long jobId, String storeName, int partitionId, long offset) {
-    StatusUpdateMessage veniceMessage = new StatusUpdateMessage(jobId, storeName, partitionId, instanceId,
+    StoreStatusMessage veniceMessage = new StoreStatusMessage(jobId, storeName, partitionId, instanceId,
             ExecutionStatus.PROGRESS);
     veniceMessage.setOffset(offset);
     sendMessage(veniceMessage);
@@ -84,8 +86,8 @@ public class HelixNotifier implements VeniceNotifier {
 
   @Override
   public void error(long jobId, String storeName, int partitionId, String message, Exception ex) {
-    StatusUpdateMessage veniceMessage =
-            new StatusUpdateMessage(jobId, storeName, partitionId, instanceId, ExecutionStatus.ERROR);
+    StoreStatusMessage veniceMessage =
+            new StoreStatusMessage(jobId, storeName, partitionId, instanceId, ExecutionStatus.ERROR);
     veniceMessage.setDescription(formatError(message , ex));
     sendMessage(veniceMessage);
   }
