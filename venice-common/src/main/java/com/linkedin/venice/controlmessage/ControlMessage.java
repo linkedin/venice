@@ -1,7 +1,9 @@
 package com.linkedin.venice.controlmessage;
 
 import com.linkedin.venice.exceptions.VeniceException;
+import java.util.HashMap;
 import java.util.Map;
+import java.util.UUID;
 
 
 /**
@@ -9,36 +11,57 @@ import java.util.Map;
  * controller could control the whole cluster and make the global decision.
  */
 public abstract class ControlMessage {
+
+  /* DO NOT CHANGE the field names. The field names are used
+  in serialization/de-serialization across two processes
+  storage node and controller. If the field names are removed
+  or modified, it will cause serialization, de-serialization
+  issues.
+
+  Adding fields and when not available doing the default thing
+  should be fine.
+   */
+  private static final String MESSAGE_ID = "messageId";
+  protected  final String messageId;
+
   /**
    * Create message from given fields map. Should be override in each sub-class.
    *
    * @param fields
    */
-  public ControlMessage(Map<String, String> fields) {
+  protected ControlMessage(Map<String, String> fields) {
+    this.messageId = getRequiredField(fields, MESSAGE_ID);
   }
 
   /**
-   * Default constructor, only used in constructor of sub-class. So visible level is procted but not pulic.
+   * Default constructor, only used in constructor of sub-class. So visible level is protected but not public.
    */
-  protected ControlMessage() {
-
+  protected  ControlMessage() {
+    // Confirmed with helix team. The message Id is used as the key for zk node. So it must be a global unique Id.
+    // And Helix also use Java UUID for other helix message. So we just follow this stand here.
+    this.messageId = UUID.randomUUID().toString();
   }
 
   /**
    * Get Id of message.
-   *
    * @return
    */
-  public abstract String getMessageId();
+  public final String getMessageId() {
+    return this.messageId;
+  }
 
   /**
    * Get K-V paris of all the fields in message.
    *
    * @return
    */
-  public abstract Map<String, String> getFields();
+  public Map<String, String> getFields() {
+    Map<String , String> fields = new HashMap<>();
+    fields.put(MESSAGE_ID, messageId);
+    return fields;
+  }
 
-  protected String getRequiredField(Map<String, String> fields, String key) {
+  protected static String getRequiredField(Map<String, String> fields, String key) {
     if (fields.containsKey(key)) {
       return fields.get(key);
     } else {
@@ -46,7 +69,7 @@ public abstract class ControlMessage {
     }
   }
 
-  protected String getOptionalField(Map<String, String> fields, String key) {
+  protected static String getOptionalField(Map<String, String> fields, String key) {
     if (fields.containsKey(key)) {
       return fields.get(key);
     } else {

@@ -1,17 +1,30 @@
 package com.linkedin.venice.controlmessage;
 
 import com.linkedin.venice.job.ExecutionStatus;
-import java.util.HashMap;
 import java.util.Map;
-import java.util.UUID;
 
 
 /**
  * Control description used to notify controller that the status of Offline push in Storage node.
+ *
+ * DO NOT CHANGE THE PACKAGE OR CLASS NAME. The class name is used by the
+ * HelixControlMessageChannel. When the class name is updated and if the
+ * Controller and Storage Node is not updated at the same time, one
+ * can't parse the message sent by the other as they embed the name
+ * in the message.
  */
 public class StoreStatusMessage extends ControlMessage {
+
+  /* DO NOT CHANGE the field names. The field names are used
+  in serialization/de-serialization across two processes
+  storage node and controller. If the field names are removed
+  or modified, it will cause serialization, de-serialization
+  issues.
+
+  Adding fields and when not available doing the default thing
+  should be fine.
+   */
   private static final String JOB_ID = "jobId";
-  private static final String MESSAGE_ID = "messageId";
   private static final String PARTITION_ID = "partitionId";
   private static final String KAFKA_TOPIC = "kafkaId";
   private static final String INSTANCE_ID = "instanceId";
@@ -20,7 +33,6 @@ public class StoreStatusMessage extends ControlMessage {
   private static final String DESCRIPTION = "description";
 
   private final long jobId;
-  private final String messageId;
   private final int partitionId;
   private final String kafkaTopic;
   private final String instanceId;
@@ -31,11 +43,8 @@ public class StoreStatusMessage extends ControlMessage {
   private String description;
 
   public StoreStatusMessage(long jobId, String kafkaTopic, int partitionId, String instanceId, ExecutionStatus status) {
-
+    super();
     this.jobId = jobId;
-    // Confirmed with helix team. The message Id is used as the key for zk node. So it must be a global unique Id.
-    // And Helix also use Java UUID for other helix message. So we just follow this stand here.
-    this.messageId = UUID.randomUUID().toString();
     this.partitionId = partitionId;
     this.kafkaTopic = kafkaTopic;
     this.instanceId = instanceId;
@@ -46,8 +55,8 @@ public class StoreStatusMessage extends ControlMessage {
    * Override the constructor of ControlMessage, build description from given fiedls.
    */
   public StoreStatusMessage(Map<String, String> fields) {
+    super(fields);
     this.jobId = Long.valueOf(getRequiredField(fields, JOB_ID));
-    this.messageId = getRequiredField(fields, MESSAGE_ID);
     this.partitionId = Integer.valueOf(getRequiredField(fields, PARTITION_ID));
     this.instanceId = getRequiredField(fields, INSTANCE_ID);
     this.kafkaTopic = getRequiredField(fields, KAFKA_TOPIC);
@@ -58,10 +67,6 @@ public class StoreStatusMessage extends ControlMessage {
 
   public long getJobId() {
     return jobId;
-  }
-
-  public String getMessageId() {
-    return messageId;
   }
 
   public int getPartitionId() {
@@ -98,9 +103,8 @@ public class StoreStatusMessage extends ControlMessage {
 
   @Override
   public Map<String, String> getFields() {
-    HashMap<String, String> map = new HashMap<>();
+    Map<String, String> map = super.getFields();
     map.put(JOB_ID, String.valueOf(jobId));
-    map.put(MESSAGE_ID, messageId);
     map.put(PARTITION_ID, String.valueOf(partitionId));
     map.put(KAFKA_TOPIC, kafkaTopic);
     map.put(INSTANCE_ID, instanceId);
