@@ -99,6 +99,7 @@ public class HelixControlMessageChannel implements ControlMessageChannel {
   public <T extends ControlMessage> void unRegisterHandler(Class<T> clazz, ControlMessageHandler<T> handler) {
     if (!handlers.containsKey(clazz.getName())) {
       // If no listener is found by given class, just skip this un-register request.
+      logger.info("Can not find any handler for given message type:" + clazz.toGenericString());
       return;
     }
     if (handler.equals(this.handlers.get(clazz.getName()))) {

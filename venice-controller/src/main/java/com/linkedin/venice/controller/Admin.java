@@ -8,7 +8,7 @@ import com.linkedin.venice.meta.Version;
  * Created by athirupa on 2/1/16.
  */
 public interface Admin {
-    public void start(String clusterName, VeniceControllerClusterConfig config);
+    public void start(String clusterName);
 
     public void addStore(String clusterName, String storeName, String owner);
 
@@ -52,4 +52,6 @@ public interface Admin {
      * @return
      */
     public boolean isMasterController(String clusterName);
+
+    public void close();
 }

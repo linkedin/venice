@@ -15,6 +15,7 @@ import org.apache.helix.manager.zk.ZkClient;
  * Aggregate all of essentials resources which is required by controller in one place.
  */
 public class VeniceHelixResources implements VeniceResource {
+  private final HelixManager controller;
   private final HelixCachedMetadataRepository metadataRepository;
   private final HelixRoutingDataRepository routingDataRepository;
   private final HelixJobRepository jobRepository;
@@ -25,6 +26,7 @@ public class VeniceHelixResources implements VeniceResource {
   public VeniceHelixResources(String clusterName, ZkClient zkClient, HelixManager helixManager,
       VeniceControllerClusterConfig config) {
     this.config = config;
+    this.controller = helixManager;
     HelixAdapterSerializer adapter = new HelixAdapterSerializer();
     metadataRepository = new HelixCachedMetadataRepository(zkClient, adapter, clusterName);
     routingDataRepository = new HelixRoutingDataRepository(helixManager);
@@ -69,6 +71,10 @@ public class VeniceHelixResources implements VeniceResource {
 
   public HelixControlMessageChannel getMessageChannel() {
     return messageChannel;
+  }
+
+  public HelixManager getController() {
+    return controller;
   }
 
   public VeniceControllerClusterConfig getConfig() {

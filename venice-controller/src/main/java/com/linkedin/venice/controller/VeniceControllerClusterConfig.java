@@ -28,7 +28,6 @@ public class VeniceControllerClusterConfig {
   public static final String ROUTING_STRATEGY = "default.routing.strategy";
   public static final String REPLICA_FACTOR = "default.replica.factor";
   public static final String NUMBER_OF_PARTITION = "default.partition.count";
-  public static final String INITIALIZING_STORES = "default.initializing.stores";
 
   private String clusterName;
   private String zkAddress;

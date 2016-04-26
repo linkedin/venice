@@ -181,8 +181,9 @@ public class HelixRoutingDataRepository extends RoutingTableProvider implements 
     public Instance getMasterController() {
         lock.lock();
         try {
-            if(masterController == null){
-                throw new VeniceException("There are not master controller for this controller or we didn't rec");
+            if (masterController == null) {
+                throw new VeniceException(
+                    "There are not master controller for this controller or we have not received master changed event from helix.");
             }
             return masterController;
         } finally {

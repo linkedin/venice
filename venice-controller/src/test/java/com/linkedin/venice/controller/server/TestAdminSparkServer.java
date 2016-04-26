@@ -43,7 +43,7 @@ public class TestAdminSparkServer {
 
 
     VeniceHelixAdmin veniceAdmin; /* First controller, comes up as active controller */
-    int bogusPort = 54345; /* nothing runs here, doesn't need to bind.since not launching AdminSparkServer */
+    int bogusPort = 21; /* nothing runs here, doesn't need to bind.since not launching AdminSparkServer */
     String controllerName = Utils.getHelixNodeIdentifier(bogusPort);
     VeniceProperties controllerOneProps = new PropertyBuilder()
         .put(VeniceControllerClusterConfig.KAFKA_ZK_ADDRESS, kafka.getZkAddress())
@@ -57,8 +57,8 @@ public class TestAdminSparkServer {
         .put(ConfigKeys.ADMIN_PORT, bogusPort)
         .build();
     VeniceControllerConfig config = new VeniceControllerConfig(controllerOneProps);
-    veniceAdmin = new VeniceHelixAdmin(controllerName, kafka.getZkAddress(), kafka.getZkAddress(), kafkaBootstrap);
-    veniceAdmin.start(clusterName, config);
+    veniceAdmin = new VeniceHelixAdmin(config);
+    veniceAdmin.start(clusterName);
 
     /* ControllerWrapper is second controller, comes up as inactive standby controller */
     VeniceControllerWrapper controller = ServiceFactory.getVeniceController(clusterName, kafka);

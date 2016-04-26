@@ -19,15 +19,12 @@ public class VeniceControllerService extends AbstractVeniceService {
   public VeniceControllerService(VeniceControllerConfig config) {
     super(VENICE_CONTROLLER_SERVICE_NAME);
     this.config = config;
-    this.admin = new VeniceHelixAdmin(Utils.getHelixNodeIdentifier(config.getAdminPort()),
-            config.getZkAddress(),
-            config.getKafkaZkAddress(),
-            config.getKafkaBootstrapServers());
+    this.admin = new VeniceHelixAdmin(config);
   }
 
   @Override
   public void startInner() {
-    admin.start(config.getClusterName(), config);
+    admin.start(config.getClusterName());
     logger.info("start cluster:" + config.getClusterName());
   }
 

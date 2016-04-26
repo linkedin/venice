@@ -45,6 +45,8 @@ public class TestVeniceHelixAdmin {
 
   private HelixManager manager;
 
+  private VeniceProperties controllerProps;
+
   @BeforeMethod
   public void setup()
       throws Exception {
@@ -58,7 +60,7 @@ public class TestVeniceHelixAdmin {
     }
     VeniceProperties clusterProps = Utils.parseProperties(currentPath + "/venice-server/config/cluster.properties");
     VeniceProperties baseControllerProps = Utils.parseProperties(
-            currentPath + "/venice-controller/config/controller.properties");
+        currentPath + "/venice-controller/config/controller.properties");
 
     clusterProps.getString(ConfigKeys.CLUSTER_NAME);
     PropertyBuilder builder = new PropertyBuilder()
@@ -67,12 +69,11 @@ public class TestVeniceHelixAdmin {
             .put("kafka.zk.address", kafkaZkAddress)
             .put("zookeeper.address", zkAddress);
 
-    VeniceProperties controllerProps = builder.build();
+    controllerProps = builder.build();
 
     config = new VeniceControllerConfig(controllerProps);
-    veniceAdmin = new VeniceHelixAdmin(Utils.getHelixNodeIdentifier(config.getAdminPort()), zkAddress, kafkaZkAddress,"");
-
-    veniceAdmin.start(clusterName, config);
+    veniceAdmin = new VeniceHelixAdmin(config);
+    veniceAdmin.start(clusterName);
     startParticipant();
   }
 
@@ -81,6 +82,7 @@ public class TestVeniceHelixAdmin {
     stopParticipant();
     try {
       veniceAdmin.stop(clusterName);
+      veniceAdmin.close();
     } catch (Exception e) {
     }
     zkServerWrapper.close();
@@ -131,9 +133,15 @@ public class TestVeniceHelixAdmin {
     channel.sendToController(new StoreStatusMessage(1, "test_v1", 0, nodeId, ExecutionStatus.STARTED));
 
     int newAdminPort = config.getAdminPort()+1;
-    VeniceHelixAdmin newMasterAdmin = new VeniceHelixAdmin(Utils.getHelixNodeIdentifier(newAdminPort), zkAddress, kafkaZkAddress,"");
+    PropertyBuilder builder = new PropertyBuilder()
+        .put(controllerProps.toProperties())
+        .put("admin.port", newAdminPort);
+
+    VeniceProperties newControllerProps = builder.build();
+    VeniceControllerConfig newConfig = new VeniceControllerConfig(newControllerProps);
+    VeniceHelixAdmin newMasterAdmin = new VeniceHelixAdmin(newConfig);
     //Start stand by controller
-    newMasterAdmin.start(clusterName, config);
+    newMasterAdmin.start(clusterName);
     try {
       newMasterAdmin.addStore(clusterName, "failedstore", "dev");
       Assert.fail("Can not add store through a standby controller");
@@ -168,13 +176,12 @@ public class TestVeniceHelixAdmin {
     Assert.assertEquals(newMasterAdmin.getOffLineJobStatus(clusterName, "test_v2"), ExecutionStatus.STARTED,
         "Can not trigger state transition from new master");
 
-    //Start original controller again, now it should be a stand by
-    veniceAdmin.start(clusterName, config);
+    //Start original controller again, now it should become leader again based on Helix's logic.
+    veniceAdmin.start(clusterName);
     try {
       veniceAdmin.addStore(clusterName, "failedstore", "dev");
-      Assert.fail("Can not add store through a standby controller");
     } catch (VeniceException e) {
-      //expected
+      Assert.fail("Original conttroller should become leader again");
     }
 
     newMasterAdmin.stop(clusterName);
@@ -187,20 +194,45 @@ public class TestVeniceHelixAdmin {
         "The default controller should be the master controller.");
 
     int newAdminPort = config.getAdminPort()+1;
-    VeniceHelixAdmin newMasterAdmin = new VeniceHelixAdmin(Utils.getHelixNodeIdentifier(newAdminPort), zkAddress, kafkaZkAddress,"");
-    //Start stand by controller
-    newMasterAdmin.start(clusterName, config);
+    PropertyBuilder builder = new PropertyBuilder()
+        .put(controllerProps.toProperties())
+        .put("admin.port", newAdminPort);
 
+    VeniceProperties newControllerProps = builder.build();
+    VeniceControllerConfig newConfig = new VeniceControllerConfig(newControllerProps);
+    VeniceHelixAdmin newMasterAdmin = new VeniceHelixAdmin(newConfig);
+    //Start stand by controller
+    newMasterAdmin.start(clusterName);
     Assert.assertFalse(newMasterAdmin.isMasterController(clusterName),
         "The new controller should be stand-by right now.");
     veniceAdmin.stop(clusterName);
-
-    Thread.sleep(1000l);
-    veniceAdmin.start(clusterName, config);
+    // Waiting state transition from standby->leader on new admin
+    Thread.sleep(1000L);
     Assert.assertTrue(newMasterAdmin.isMasterController(clusterName),
         "The new controller should be the master controller right now.");
-    Assert.assertFalse(veniceAdmin.isMasterController(clusterName),
-        "The default controller should be the stand-by right now.");
+    veniceAdmin.start(clusterName);
+    // After the first admin start again. The Helix will assign leader to it again and kick-out the current leader. After confirming with Helix team, it's the correct Helix logic.
+    Assert.assertTrue(veniceAdmin.isMasterController(clusterName));
+    Assert.assertFalse(newMasterAdmin.isMasterController(clusterName));
+    newMasterAdmin.close();
+  }
+
+  @Test
+  public void testMultiCluster(){
+    String newClusterName = "new_test_cluster";
+    PropertyBuilder builder = new PropertyBuilder()
+        .put(controllerProps.toProperties())
+        .put("cluster.name", newClusterName);
+
+    VeniceProperties newClusterProps = builder.build();
+    VeniceControllerConfig newClusterConfig = new VeniceControllerConfig(newClusterProps);
+
+    veniceAdmin.addConfig(newClusterName, newClusterConfig);
+    veniceAdmin.start(newClusterName);
+
+    Assert.assertTrue(veniceAdmin.isMasterController(clusterName));
+    Assert.assertTrue(veniceAdmin.isMasterController(newClusterName));
+
 
   }
 }
