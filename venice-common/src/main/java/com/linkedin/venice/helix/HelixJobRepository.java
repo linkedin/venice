@@ -127,10 +127,13 @@ public class HelixJobRepository implements JobRepository, RoutingDataChangedList
     internalStopJob(jobId, kafkaTopic, ExecutionStatus.COMPLETED);
   }
 
+  // TODO stopping a job, does not clean up the resources on storage node.
+  // As Helix resource is not updated to Error/offline.
   @Override
   public synchronized void stopJobWithError(long jobId, String kafkaTopic) {
     internalStopJob(jobId, kafkaTopic, ExecutionStatus.ERROR);
   }
+
 
   private void internalStopJob(long jobId, String kafkaTopic, ExecutionStatus status) {
     Job job = this.getJob(jobId, kafkaTopic);

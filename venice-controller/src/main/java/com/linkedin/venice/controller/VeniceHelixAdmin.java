@@ -143,31 +143,41 @@ public class VeniceHelixAdmin implements Admin {
             config.getReplicaFactor());
     }
 
+    private final static int VERSION_ID_UNSET = -1;
+
     @Override
     public synchronized Version addVersion(String clusterName, String storeName,int versionNumber, int numberOfPartition, int replicaFactor) {
         checkControllerMastership(clusterName);
         HelixCachedMetadataRepository repository =
             controllerStateModelFactory.getModel(clusterName).getResources().getMetadataRepository();
-        repository.lock();
+
         Version version = null;
+        repository.lock();
         try {
             Store store = repository.getStore(storeName);
             if(store == null){
                 handleStoreDoseNotExist(clusterName, storeName);
             }
-            if(store.containsVersion(versionNumber)){
-                handleVersionAlreadyExists(storeName, versionNumber);
+
+            if(versionNumber == VERSION_ID_UNSET) {
+                // No Version supplied, generate new verion.
+                version = store.increaseVersion();
+            } else {
+                if (store.containsVersion(versionNumber)) {
+                    handleVersionAlreadyExists(storeName, versionNumber);
+                }
+                version = new Version(storeName, versionNumber);
+                store.addVersion(version);
             }
-            version = new Version(storeName,versionNumber);
-            store.addVersion(version);
             repository.updateStore(store);
             logger.info("Add version:"+version.getNumber()+" for store:" + storeName);
         } finally {
             repository.unLock();
         }
 
-        addKafkaTopic(clusterName, version.kafkaTopicName(), numberOfPartition, replicaFactor,
-            controllerStateModelFactory.getModel(clusterName).getResources().getConfig().getKafkaReplicaFactor());
+        VeniceControllerClusterConfig clusterConfig = controllerStateModelFactory.getModel(clusterName).getResources().getConfig();
+        createKafkaTopic(clusterName, version.kafkaTopicName(), numberOfPartition, clusterConfig.getKafkaReplicaFactor());
+        createHelixResources(clusterName , version.kafkaTopicName() , numberOfPartition , replicaFactor);
         //Start offline push job for this new version.
         startOfflinePush(clusterName, version.kafkaTopicName(), numberOfPartition, replicaFactor);
         return version;
@@ -176,29 +186,7 @@ public class VeniceHelixAdmin implements Admin {
     @Override
     public synchronized Version incrementVersion(String clusterName, String storeName, int numberOfPartition,
         int replicaFactor) {
-        checkControllerMastership(clusterName);
-        HelixCachedMetadataRepository repository =
-            controllerStateModelFactory.getModel(clusterName).getResources().getMetadataRepository();
-
-        repository.lock();
-        Version version = null;
-        try {
-            Store store = repository.getStore(storeName);
-            if(store == null){
-                handleStoreDoseNotExist(clusterName, storeName);
-            }
-            version = store.increaseVersion();
-            repository.updateStore(store);
-            logger.info("Add version:"+version.getNumber()+" for store:" + storeName);
-        } finally {
-            repository.unLock();
-        }
-
-        addKafkaTopic(clusterName, version.kafkaTopicName(), numberOfPartition, replicaFactor,
-            controllerStateModelFactory.getModel(clusterName).getResources().getConfig().getKafkaReplicaFactor());
-        //Start offline push job for this new version.
-        startOfflinePush(clusterName, version.kafkaTopicName(), numberOfPartition, replicaFactor);
-        return version;
+        return addVersion(clusterName , storeName , VERSION_ID_UNSET , numberOfPartition , replicaFactor);
     }
 
     @Override
@@ -217,19 +205,24 @@ public class VeniceHelixAdmin implements Admin {
         }
     }
 
-    private void addKafkaTopic(String clusterName, String kafkaTopic, int numberOfPartition,
-        int replicaFactor, int kafkaReplicaFactor) {
+    // TODO: Though controller can control, multiple Venice-clusters, kafka topic name needs to be unique
+    // among them. If there the same store name is present in two different venice clusters, the code
+    // will fail and might exhibit other issues.
+    private void createKafkaTopic(String clusterName, String kafkaTopic, int numberOfPartition, int kafkaReplicaFactor) {
         checkControllerMastership(clusterName);
         topicCreator.createTopic(kafkaTopic, numberOfPartition, kafkaReplicaFactor);
+    }
 
+    private void createHelixResources(String clusterName, String kafkaTopic , int numberOfPartition , int replicaFactor) {
         if (!admin.getResourcesInCluster(clusterName).contains(kafkaTopic)) {
             admin.addResource(clusterName, kafkaTopic, numberOfPartition,
-                VeniceStateModel.PARTITION_ONLINE_OFFLINE_STATE_MODEL, IdealState.RebalanceMode.FULL_AUTO.toString());
+                    VeniceStateModel.PARTITION_ONLINE_OFFLINE_STATE_MODEL, IdealState.RebalanceMode.FULL_AUTO.toString());
             admin.rebalance(clusterName, kafkaTopic, replicaFactor);
             logger.info("Added " + kafkaTopic + " as a resource to cluster: " + clusterName);
         } else {
             handleResourceAlreadyExists(kafkaTopic);
         }
+
     }
 
     @Override
