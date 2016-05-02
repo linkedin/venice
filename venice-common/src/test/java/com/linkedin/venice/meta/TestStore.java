@@ -1,5 +1,6 @@
 package com.linkedin.venice.meta;
 
+import com.linkedin.venice.utils.TestUtils;
 import java.util.List;
 import org.testng.Assert;
 import org.testng.annotations.Test;
@@ -11,7 +12,7 @@ import org.testng.annotations.Test;
 public class TestStore {
     @Test
     public void testVersionsAreAddedInOrdered(){
-        Store s = new Store("s1", "owner", System.currentTimeMillis());
+        Store s = TestUtils.createTestStore("s1", "owner", System.currentTimeMillis());
         s.addVersion(new Version(s.getName(), 4, System.currentTimeMillis()));
         s.addVersion(new Version(s.getName(), 2, System.currentTimeMillis()));
         s.addVersion(new Version(s.getName(), 3, System.currentTimeMillis()));
@@ -28,7 +29,7 @@ public class TestStore {
 
     @Test
     public void testDeleteVersion(){
-        Store s = new Store("s1", "owner", System.currentTimeMillis());
+        Store s = TestUtils.createTestStore("s1", "owner", System.currentTimeMillis());
         s.addVersion(new Version(s.getName(), 4));
         s.addVersion(new Version(s.getName(), 2));
         s.addVersion(new Version(s.getName(), 3));
@@ -54,7 +55,7 @@ public class TestStore {
 
     @Test
     public void testCloneStore(){
-        Store s = new Store("s1","owner",System.currentTimeMillis());
+        Store s = TestUtils.createTestStore("s1", "owner", System.currentTimeMillis());
         Store clonedStore = s.cloneStore();
         Assert.assertTrue(s.equals(clonedStore), "The cloned store is expected to be equal!");
         clonedStore.setCurrentVersion(100);

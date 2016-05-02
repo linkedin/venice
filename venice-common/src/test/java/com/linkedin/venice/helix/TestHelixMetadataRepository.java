@@ -3,6 +3,7 @@ package com.linkedin.venice.helix;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.utils.TestUtils;
 import org.apache.helix.manager.zk.ZkClient;
 import org.apache.zookeeper.CreateMode;
 import org.testng.Assert;
@@ -43,7 +44,7 @@ public class TestHelixMetadataRepository {
     @Test
     public void testAddAndReadStore() {
         HelixMetadataRepository repo = new HelixMetadataRepository(zkClient, adapter, cluster);
-        Store s1 = new Store("s1", "owner", System.currentTimeMillis());
+        Store s1 = TestUtils.createTestStore("s1", "owner", System.currentTimeMillis());
         repo.addStore(s1);
         Store s2 = repo.getStore("s1");
         Assert.assertEquals(s2, s1, "Store get from ZK is different with local one");
@@ -52,7 +53,7 @@ public class TestHelixMetadataRepository {
     @Test
     public void testAddAndDeleteStore() {
         HelixMetadataRepository repo = new HelixMetadataRepository(zkClient, adapter, cluster);
-        Store s1 = new Store("s1", "owner", System.currentTimeMillis());
+        Store s1 = TestUtils.createTestStore("s1", "owner", System.currentTimeMillis());
         repo.addStore(s1);
         repo.deleteStore("s1");
         Assert.assertNull(repo.getStore("s1"));

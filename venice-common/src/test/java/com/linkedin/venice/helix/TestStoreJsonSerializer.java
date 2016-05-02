@@ -1,6 +1,7 @@
 package com.linkedin.venice.helix;
 
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.utils.TestUtils;
 import java.io.IOException;
 import org.testng.Assert;
 import org.testng.annotations.Test;
@@ -13,7 +14,7 @@ public class TestStoreJsonSerializer {
     @Test
     public void testSerializeAndDeserializeStore()
         throws IOException {
-        Store store = new Store("s1", "owner", 1l);
+        Store store = TestUtils.createTestStore("s1", "owner", 1l);
         StoreJSONSerializer serializer = new StoreJSONSerializer();
         byte[] data = serializer.serialize(store);
 

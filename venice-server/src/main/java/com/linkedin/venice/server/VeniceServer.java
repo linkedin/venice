@@ -166,8 +166,7 @@ public class VeniceServer {
           logger.error("Exception in stopping service: " + service.getName(), e);
         }
       }
-      logger.info("All services stopped"); // "All services stopped for Node:"
-      // + <node-id>);
+      logger.info("All services stopped");
 
       if (exceptions.size() > 0) {
         throw exceptions.get(0);
@@ -191,11 +190,10 @@ public class VeniceServer {
       } else if (args.length == 1) {
         veniceConfigService = VeniceConfigLoader.loadFromConfigDirectory(args[0]);
       } else {
-        Utils.croak("USAGE: java " + VeniceServer.class.getName() + "[venice_config_dir] ");
+        Utils.croak("USAGE: java " + VeniceServer.class.getName() + " [venice_config_dir] ");
       }
     } catch (Exception e) {
-      logger.error(e.getMessage());
-      e.printStackTrace();
+      logger.error("Error starting Venice Server ", e);
       Utils.croak("Error while loading configuration: " + e.getMessage());
     }
     final VeniceServer server = new VeniceServer(veniceConfigService);

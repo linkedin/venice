@@ -14,6 +14,7 @@ import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
+import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import java.util.HashMap;
 import java.util.Map;
@@ -110,7 +111,7 @@ public class TestVeniceJobManager {
     metadataRepository.refresh();
     jobManager = new VeniceJobManager(1, jobRepository, metadataRepository);
 
-    store = new Store(storeName, "test", System.currentTimeMillis());
+    store = TestUtils.createTestStore(storeName, "test", System.currentTimeMillis());
     version = store.increaseVersion();
   }
 

@@ -50,11 +50,6 @@ public class Store {
      */
     private List<Version> versions;
 
-    public Store(@NotNull String name, @NotNull String owner, long createdTime) {
-        this(name, owner, createdTime, PersistenceType.IN_MEMORY, RoutingStrategy.CONSISTENT_HASH,
-            ReadStrategy.ANY_OF_ONLINE, OfflinePushStrategy.WAIT_ALL_REPLICAS);
-    }
-
     public Store(@NotNull String name, @NotNull String owner, long createdTime,
         @NotNull PersistenceType persistenceType, @NotNull RoutingStrategy routingStrategy,
         @NotNull ReadStrategy readStrategy, @NotNull OfflinePushStrategy offlinePushStrategy) {
@@ -238,7 +233,8 @@ public class Store {
      * @return cloned store.
      */
     public Store cloneStore() {
-        Store clonedStore = new Store(name, owner, createdTime);
+        Store clonedStore = new Store(name, owner, createdTime, persistenceType ,
+                routingStrategy , readStrategy , offLinePushStrategy);
         clonedStore.setCurrentVersion(currentVersion);
 
         for (Version v : this.versions) {

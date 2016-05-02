@@ -1,6 +1,12 @@
 package com.linkedin.venice.utils;
 
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.meta.OfflinePushStrategy;
+import com.linkedin.venice.meta.PersistenceType;
+import com.linkedin.venice.meta.ReadStrategy;
+import com.linkedin.venice.meta.RoutingStrategy;
+import com.linkedin.venice.meta.Store;
+import javax.validation.constraints.NotNull;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -9,6 +15,11 @@ import org.testng.annotations.Test;
  * Test cases for Venice Utils
  */
 public class TestUtils {
+
+  public static Store createTestStore(@NotNull String name, @NotNull String owner, long createdTime) {
+      return new Store(name, owner, createdTime, PersistenceType.IN_MEMORY, RoutingStrategy.CONSISTENT_HASH,
+          ReadStrategy.ANY_OF_ONLINE, OfflinePushStrategy.WAIT_ALL_REPLICAS);
+  }
 
   @Test
   public void testGetHelixNodeIdentifier() {

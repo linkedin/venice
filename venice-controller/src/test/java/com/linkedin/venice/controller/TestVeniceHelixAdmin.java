@@ -154,7 +154,7 @@ public class TestVeniceHelixAdmin {
     allAdmins.add(newMasterAdmin);
     waitForAMaster(allAdmins, clusterName, MASTER_CHANGE_TIMEOUT);
     try {
-      newMasterAdmin.addStore(clusterName, "failedstore", "dev");
+      newMasterAdmin.addStore(clusterName, "failedStore", "dev");
       Assert.fail("Can not add store through a standby controller");
     } catch (VeniceException e) {
       //expected
@@ -176,7 +176,8 @@ public class TestVeniceHelixAdmin {
     stopParticipant();
     HelixRoutingDataRepository routing = newMasterAdmin.getVeniceHelixResource(clusterName).getRoutingDataRepository();
     //Assert routing data repository can find the new master controller.
-    Assert.assertEquals(routing.getMasterController().getPort(), newAdminPort, "Master controller is changed, now"+newAdminPort+" is used.");
+    Assert.assertEquals(routing.getMasterController().getPort(), newAdminPort,
+        "Master controller is changed, now" + newAdminPort + " is used.");
     Thread.sleep(1000l);
     Assert.assertTrue(routing.getInstances("test_v1", 0).isEmpty(),
         "Participant became offline. No instance should be living in test_v1");
@@ -185,17 +186,13 @@ public class TestVeniceHelixAdmin {
     //New master controller create resource and trigger state transition on participant.
     newMasterAdmin.incrementVersion(clusterName, "test", 1, 1);
     Assert.assertEquals(newMasterAdmin.getOffLineJobStatus(clusterName, "test_v2"), ExecutionStatus.STARTED,
-        "Can not trigger state transition from new master");
+            "Can not trigger state transition from new master");
 
     //Start original controller again, now it should become leader again based on Helix's logic.
     veniceAdmin.start(clusterName);
     waitForAMaster(allAdmins, clusterName, MASTER_CHANGE_TIMEOUT);
-    try {
-      veniceAdmin.addStore(clusterName, "failedstore", "dev");
-    } catch (VeniceException e) {
-      Assert.fail("Original conttroller should become leader again");
-    }
-
+    // This should not fail, as it  should be the master again.
+    veniceAdmin.addStore(clusterName, "failedStore", "dev");
     newMasterAdmin.stop(clusterName);
   }
 
