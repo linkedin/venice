@@ -1,10 +1,13 @@
 package com.linkedin.venice.listener;
 
+import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.message.GetRequestObject;
 import com.linkedin.venice.meta.QueryAction;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.handler.codec.http.DefaultFullHttpRequest;
+import io.netty.handler.codec.http.DefaultHttpHeaders;
+import io.netty.handler.codec.http.HttpHeaders;
 import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpRequest;
 import io.netty.handler.codec.http.HttpResponseStatus;
@@ -111,5 +114,22 @@ public class GetRequestHttpHandlerTest {
     QueryAction parsedAction = GetRequestHttpHandler.getQueryActionFromRequest(request);
     Assert.assertEquals(parsedAction, expectedAction, "parsed wrong query action from string: " + urlString);
   }
+
+  @Test(expectedExceptions = VeniceException.class)
+  public void verifyBadApiVersionIsCaught(){
+    HttpHeaders headers = new DefaultHttpHeaders();
+    headers.add(HttpConstants.VENICE_API_VERSION, "2");
+    GetRequestHttpHandler.verifyApiVersion(headers, "1");
+  }
+
+  @Test
+  public void verifyGoodApiVersionOk(){
+    HttpHeaders headers = new DefaultHttpHeaders();
+    GetRequestHttpHandler.verifyApiVersion(headers, "1"); /* missing header parsed as current version */
+
+    headers.add(HttpConstants.VENICE_API_VERSION, "1");
+    GetRequestHttpHandler.verifyApiVersion(headers, "1");
+  }
+
 
 }

@@ -42,6 +42,7 @@ import org.jboss.netty.handler.codec.http.HttpVersion;
  */
 public class VeniceDispatcher implements PartitionDispatchHandler<Instance, VeniceStoragePath, RouterKey>, Closeable{
 
+  private static final String REQUIRED_API_VERSION = "1";
   private static final String HTTP = "http://";
 
   private static final Logger logger = Logger.getLogger(VeniceDispatcher.class);
@@ -101,6 +102,7 @@ public class VeniceDispatcher implements PartitionDispatchHandler<Instance, Veni
     //  http://host:port/path
     String address = HTTP + host.getHost() + ":" + host.getPort() + "/" + requestPath;
     final HttpGet requestToNode = new HttpGet(address);
+    requestToNode.addHeader(HttpConstants.VENICE_API_VERSION, REQUIRED_API_VERSION);
     httpClient.execute(requestToNode, new FutureCallback<org.apache.http.HttpResponse>() {
 
       @Override

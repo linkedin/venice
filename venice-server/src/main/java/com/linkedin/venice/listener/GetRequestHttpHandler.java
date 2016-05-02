@@ -1,11 +1,13 @@
 package com.linkedin.venice.listener;
 
+import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.RequestConstants;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.message.GetRequestObject;
 import com.linkedin.venice.meta.QueryAction;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
+import io.netty.handler.codec.http.HttpHeaders;
 import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpRequest;
 import io.netty.handler.codec.http.HttpResponseStatus;
@@ -13,13 +15,13 @@ import io.netty.handler.codec.http.QueryStringDecoder;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 
-
 /**
  * Monitors the stream, when it gets enough bytes that form a genuine object,
  * it deserializes the object and passes it along the stack.
  */
 
 public class GetRequestHttpHandler extends ChannelInboundHandlerAdapter {
+  private static final String API_VERSION = "1";
 
   @Override
   public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) {
@@ -37,6 +39,7 @@ public class GetRequestHttpHandler extends ChannelInboundHandlerAdapter {
     if (msg instanceof HttpRequest) {
       HttpRequest req = (HttpRequest) msg;
       try {
+        verifyApiVersion(req.headers(), API_VERSION);
         QueryAction action = getQueryActionFromRequest(req);
         switch (action){
           case STORAGE:  // GET /storage/store/partition/key
@@ -76,6 +79,19 @@ public class GetRequestHttpHandler extends ChannelInboundHandlerAdapter {
       return QueryAction.STORAGE;
     } else {
       throw new VeniceException("Only able to parse GET requests for action: storage");
+    }
+  }
+
+  /***
+   * throws VeniceException if we don't handle the specified api version
+   * @param headers
+   */
+  static void verifyApiVersion(HttpHeaders headers, String expectedVersion){
+    if (headers.contains(HttpConstants.VENICE_API_VERSION)) { /* if not present, assume latest version */
+      String clientApiVersion = headers.get(HttpConstants.VENICE_API_VERSION);
+      if (!clientApiVersion.equals(expectedVersion)) {
+        throw new VeniceException("Storage node is not compatible with requested API version: " + clientApiVersion);
+      }
     }
   }
 
