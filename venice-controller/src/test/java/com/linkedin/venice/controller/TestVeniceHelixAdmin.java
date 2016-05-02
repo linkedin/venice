@@ -18,6 +18,10 @@ import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.Utils;
 import java.io.IOException;
 import java.nio.file.Paths;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.List;
 import org.apache.helix.HelixManager;
 import org.apache.helix.HelixManagerFactory;
 import org.apache.helix.InstanceType;
@@ -47,6 +51,8 @@ public class TestVeniceHelixAdmin {
 
   private VeniceProperties controllerProps;
 
+  public static final long MASTER_CHANGE_TIMEOUT = 10*1000; /* 10 seconds */
+
   @BeforeMethod
   public void setup()
       throws Exception {
@@ -75,6 +81,7 @@ public class TestVeniceHelixAdmin {
     veniceAdmin = new VeniceHelixAdmin(config);
     veniceAdmin.start(clusterName);
     startParticipant();
+    waitUntilIsMaster(veniceAdmin, clusterName, MASTER_CHANGE_TIMEOUT);
   }
 
   @AfterMethod
@@ -142,6 +149,10 @@ public class TestVeniceHelixAdmin {
     VeniceHelixAdmin newMasterAdmin = new VeniceHelixAdmin(newConfig);
     //Start stand by controller
     newMasterAdmin.start(clusterName);
+    List<VeniceHelixAdmin> allAdmins = new ArrayList<>();
+    allAdmins.add(veniceAdmin);
+    allAdmins.add(newMasterAdmin);
+    waitForAMaster(allAdmins, clusterName, MASTER_CHANGE_TIMEOUT);
     try {
       newMasterAdmin.addStore(clusterName, "failedstore", "dev");
       Assert.fail("Can not add store through a standby controller");
@@ -152,7 +163,7 @@ public class TestVeniceHelixAdmin {
     //Stop original master.
     veniceAdmin.stop(clusterName);
     //wait master change event
-    Thread.sleep(1000l);
+    waitUntilIsMaster(newMasterAdmin, clusterName, MASTER_CHANGE_TIMEOUT);
     //Now get status from new master controller.
     Assert.assertEquals(newMasterAdmin.getOffLineJobStatus(clusterName, "test_v1"), ExecutionStatus.STARTED,
         "Can not get offline job status correctly.");
@@ -178,6 +189,7 @@ public class TestVeniceHelixAdmin {
 
     //Start original controller again, now it should become leader again based on Helix's logic.
     veniceAdmin.start(clusterName);
+    waitForAMaster(allAdmins, clusterName, MASTER_CHANGE_TIMEOUT);
     try {
       veniceAdmin.addStore(clusterName, "failedstore", "dev");
     } catch (VeniceException e) {
@@ -208,12 +220,15 @@ public class TestVeniceHelixAdmin {
     veniceAdmin.stop(clusterName);
     // Waiting state transition from standby->leader on new admin
     Thread.sleep(1000L);
+    waitUntilIsMaster(newMasterAdmin, clusterName, MASTER_CHANGE_TIMEOUT);
     Assert.assertTrue(newMasterAdmin.isMasterController(clusterName),
         "The new controller should be the master controller right now.");
     veniceAdmin.start(clusterName);
-    // After the first admin start again. The Helix will assign leader to it again and kick-out the current leader. After confirming with Helix team, it's the correct Helix logic.
-    Assert.assertTrue(veniceAdmin.isMasterController(clusterName));
-    Assert.assertFalse(newMasterAdmin.isMasterController(clusterName));
+    waitForAMaster(Arrays.asList(veniceAdmin, newMasterAdmin), clusterName, MASTER_CHANGE_TIMEOUT);
+
+    /* XOR */
+    Assert.assertTrue(veniceAdmin.isMasterController(clusterName) || newMasterAdmin.isMasterController(clusterName));
+    Assert.assertFalse(veniceAdmin.isMasterController(clusterName) && newMasterAdmin.isMasterController(clusterName));
     newMasterAdmin.close();
   }
 
@@ -229,10 +244,40 @@ public class TestVeniceHelixAdmin {
 
     veniceAdmin.addConfig(newClusterName, newClusterConfig);
     veniceAdmin.start(newClusterName);
+    waitUntilIsMaster(veniceAdmin, newClusterName, MASTER_CHANGE_TIMEOUT);
 
     Assert.assertTrue(veniceAdmin.isMasterController(clusterName));
     Assert.assertTrue(veniceAdmin.isMasterController(newClusterName));
-
-
   }
+
+  void waitUntilIsMaster(VeniceHelixAdmin admin, String cluster, long timeout){
+    List<VeniceHelixAdmin> admins = Collections.singletonList(admin);
+    waitForAMaster(admins, cluster, timeout);
+  }
+
+  void waitForAMaster(List<VeniceHelixAdmin> admins, String cluster, long timeout){
+    int sleepDuration = 100;
+    for (long i=0; i<timeout; i+= sleepDuration){
+
+      boolean aMaster = false;
+      for (VeniceHelixAdmin admin : admins){
+        if (admin.isMasterController(cluster)){
+          aMaster = true;
+          break;
+        }
+      }
+
+      if (aMaster){
+        return;
+      } else {
+        try {
+          Thread.sleep(sleepDuration);
+        } catch (InterruptedException e) {
+          break;
+        }
+      }
+    }
+    Assert.fail("No VeniceHelixAdmin became master for cluster: " + cluster + " after timeout: " + timeout);
+  }
+
 }
