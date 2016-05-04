@@ -6,35 +6,16 @@ import org.codehaus.jackson.annotate.JsonIgnore;
 /**
  * Created by mwise on 3/17/16.
  */
-public class StoreCreationResponse {
-  private String cluster = null;
-  private String name = null;
+public class StoreCreationResponse extends ControllerResponse {
+
   private int version = -1;
   private String owner = null;
   private int partitions = 0;
   private int replicas = 0;
   private String kafkaTopic = null;
   private String kafkaBootstrapServers = null;
-  private String error = null;
 
   public StoreCreationResponse(){  }
-
-  @JsonIgnore
-  public boolean isError(){
-    return null!=error;
-  }
-
-  public String getCluster() {
-    return cluster;
-  }
-
-  public void setCluster(String cluster) {
-    this.cluster = cluster;
-  }
-
-  public void setName(String name) {
-    this.name = name;
-  }
 
   public void setVersion(int version) {
     this.version = version;
@@ -58,14 +39,6 @@ public class StoreCreationResponse {
 
   public void setKafkaBootstrapServers(String kafkaBootstrapServers) {
     this.kafkaBootstrapServers = kafkaBootstrapServers;
-  }
-
-  public void setError(String error){
-    this.error = error;
-  }
-
-  public String getName() {
-    return name;
   }
 
   public int getVersion() {
@@ -92,7 +65,4 @@ public class StoreCreationResponse {
     return kafkaBootstrapServers;
   }
 
-  public String getError() {
-    return error;
-  }
 }

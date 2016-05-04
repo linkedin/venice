@@ -6,9 +6,13 @@ import com.linkedin.venice.controller.VeniceControllerClusterConfig;
 import com.linkedin.venice.controller.VeniceControllerConfig;
 import com.linkedin.venice.controller.VeniceHelixAdmin;
 import com.linkedin.venice.controllerapi.ControllerApiConstants;
+import com.linkedin.venice.controllerapi.ControllerClient;
+import com.linkedin.venice.controllerapi.NextVersionResponse;
 import com.linkedin.venice.integration.utils.KafkaBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
+import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
+import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -86,6 +90,26 @@ public class TestAdminSparkServer {
     Assert.assertEquals(responseStatus2, HttpConstants.SC_MISDIRECTED_REQUEST);
 
     httpClient.close();
+    controller.close();
+    veniceAdmin.close();
+    kafka.close();
+  }
+
+  @Test
+  public void controllerClientCanQueryNextVersion(){
+    VeniceClusterWrapper venice = ServiceFactory.getVeniceCluster();
+
+    String routerUrl = "http://" + venice.getVeniceRouter().getAddress();
+    String kafkaTopic = venice.getNewStoreVersion();
+    String storeName = Version.parseStoreFromKafkaTopicName(kafkaTopic);
+    int currentVersion = Version.parseVersionFromKafkaTopicName(kafkaTopic);
+
+    NextVersionResponse nextVersionResponse = ControllerClient.queryNextVersion(routerUrl, venice.getClusterName(), storeName);
+    Assert.assertEquals(nextVersionResponse.getVersion(), currentVersion + 1);
+    NextVersionResponse badVersionResponse = ControllerClient.queryNextVersion(routerUrl, venice.getClusterName(), "does-not-exist" + storeName);
+    Assert.assertTrue(badVersionResponse.isError());
+
+    venice.close();
   }
 
 }

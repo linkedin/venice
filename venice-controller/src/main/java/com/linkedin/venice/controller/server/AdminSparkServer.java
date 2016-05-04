@@ -3,6 +3,7 @@ package com.linkedin.venice.controller.server;
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
+import com.linkedin.venice.controllerapi.NextVersionResponse;
 import com.linkedin.venice.controllerapi.StoreCreationResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceHttpException;
@@ -110,8 +111,7 @@ public class AdminSparkServer extends AbstractVeniceService {
         validateParams(request, SETVERSION_PARAMS); //throws venice exception
         String clusterName = request.queryParams(CLUSTER);
         String storeName = request.queryParams(NAME);
-        int version = Utils
-            .parseIntFromString(request.queryParams(VERSION), VERSION);
+        int version = Utils.parseIntFromString(request.queryParams(VERSION), VERSION);
         admin.setCurrentVersion(clusterName, storeName, version);
         responseMap.put(STATUS, "success");
       } catch (VeniceException e) {
@@ -120,6 +120,25 @@ public class AdminSparkServer extends AbstractVeniceService {
       }
       response.type(HttpConstants.JSON);
       return mapper.writeValueAsString(responseMap);
+    });
+
+    /**
+     * Query the controller for the next version of a store that should be created
+     */
+    Spark.get(NEXTVERSION_PATH, (request, response) -> {
+      NextVersionResponse responseObject = new NextVersionResponse();
+      try{
+        validateParams(request, NEXTVERSION_PARAMS);
+        responseObject.setCluster(request.queryParams(CLUSTER));
+        responseObject.setName(request.queryParams(NAME));
+        Version version = admin.peekNextVersion(responseObject.getCluster(), responseObject.getName());
+        responseObject.setVersion(version.getNumber());
+      } catch (VeniceException e) {
+        responseObject.setError(e.getMessage());
+        handleError(e, request, response);
+      }
+      response.type(HttpConstants.JSON);
+      return mapper.writeValueAsString(responseObject);
     });
 
     Spark.awaitInitialization(); // Wait for server to be initialized

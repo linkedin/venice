@@ -19,6 +19,8 @@ public interface Admin {
 
     public Version incrementVersion(String clusterName, String storeName, int numberOfPartition, int replicaFactor);
 
+    public Version peekNextVersion(String clusterName, String storeName);
+
     public void setCurrentVersion(String clusterName, String storeName, int versionNumber);
 
     public void startOfflinePush(String clusterName, String kafkaTopic, int numberOfPartition, int replicaFactor);

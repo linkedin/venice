@@ -8,7 +8,6 @@ import com.linkedin.venice.job.ExecutionStatus;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.Utils;
-import com.linkedin.venice.utils.VeniceProperties;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -125,7 +124,7 @@ public class VeniceHelixAdmin implements Admin {
         HelixCachedMetadataRepository repository =
             controllerStateModelFactory.getModel(clusterName).getResources().getMetadataRepository();
         if (repository.getStore(storeName) != null) {
-            handleStoreAlreadyExists(clusterName, storeName);
+            throwStoreAlreadyExists(clusterName, storeName);
         }
         VeniceControllerClusterConfig config =
             controllerStateModelFactory.getModel(clusterName).getResources().getConfig();
@@ -156,7 +155,7 @@ public class VeniceHelixAdmin implements Admin {
         try {
             Store store = repository.getStore(storeName);
             if(store == null){
-                handleStoreDoseNotExist(clusterName, storeName);
+                throwStoreDoesNotExist(clusterName, storeName);
             }
 
             if(versionNumber == VERSION_ID_UNSET) {
@@ -164,7 +163,7 @@ public class VeniceHelixAdmin implements Admin {
                 version = store.increaseVersion();
             } else {
                 if (store.containsVersion(versionNumber)) {
-                    handleVersionAlreadyExists(storeName, versionNumber);
+                    throwVersionAlreadyExists(storeName, versionNumber);
                 }
                 version = new Version(storeName, versionNumber);
                 store.addVersion(version);
@@ -187,6 +186,26 @@ public class VeniceHelixAdmin implements Admin {
     public synchronized Version incrementVersion(String clusterName, String storeName, int numberOfPartition,
         int replicaFactor) {
         return addVersion(clusterName , storeName , VERSION_ID_UNSET , numberOfPartition , replicaFactor);
+    }
+
+    @Override
+    public Version peekNextVersion(String clusterName, String storeName) {
+        checkControllerMastership(clusterName);
+        HelixCachedMetadataRepository repository =
+            controllerStateModelFactory.getModel(clusterName).getResources().getMetadataRepository();
+        Version version = null;
+        repository.lock();
+        try {
+            Store store = repository.getStore(storeName);
+            if(store == null){
+                throw new VeniceException("Store: " + storeName + " does not exit.  Cannot identify next version");
+            }
+            version = store.increaseVersion(false); /* Does not modify the store */
+            logger.info("Next version would be: "+version.getNumber()+" for store:" + storeName);
+        } finally {
+            repository.unLock();
+        }
+        return version;
     }
 
     @Override
@@ -220,7 +239,7 @@ public class VeniceHelixAdmin implements Admin {
             admin.rebalance(clusterName, kafkaTopic, replicaFactor);
             logger.info("Added " + kafkaTopic + " as a resource to cluster: " + clusterName);
         } else {
-            handleResourceAlreadyExists(kafkaTopic);
+            throwResourceAlreadyExists(kafkaTopic);
         }
 
     }
@@ -296,32 +315,32 @@ public class VeniceHelixAdmin implements Admin {
         admin.rebalance(controllerClusterName, clusterName, controllerClusterReplica);
     }
 
-    private void handleStoreAlreadyExists(String clusterName, String storeName) {
+    private void throwStoreAlreadyExists(String clusterName, String storeName) {
         String errorMessage = "Store:" + storeName + " already exists. Can not add it to cluster:" + clusterName;
         logger.info(errorMessage);
         throw new VeniceException(errorMessage);
     }
 
-    private void handleStoreDoseNotExist(String clusterName, String storeName) {
-        String errorMessage = "Store:" + storeName + " dose not exist in cluster:" + clusterName;
+    private void throwStoreDoesNotExist(String clusterName, String storeName) {
+        String errorMessage = "Store:" + storeName + " does not exist in cluster:" + clusterName;
         logger.info(errorMessage);
         throw new VeniceException(errorMessage);
     }
 
-    private void handleResourceAlreadyExists(String resourceName) {
+    private void throwResourceAlreadyExists(String resourceName) {
         String errorMessage = "Resource:" + resourceName + " already exists, Can not add it to Helix.";
         logger.info(errorMessage);
         throw new VeniceException(errorMessage);
     }
 
-    private void handleVersionAlreadyExists(String storeName, int version) {
+    private void throwVersionAlreadyExists(String storeName, int version) {
         String errorMessage =
             "Version" + version + " already exists in Store:" + storeName + ". Can not add it to store.";
         logger.info(errorMessage);
         throw new VeniceException(errorMessage);
     }
 
-    private void handleClusterNotInitialized(String clusterName) {
+    private void throwClusterNotInitialized(String clusterName) {
         String errorMessage = "Cluster " + clusterName + " is not initialized.";
         logger.info(errorMessage);
         throw new VeniceException(errorMessage);
@@ -336,7 +355,7 @@ public class VeniceHelixAdmin implements Admin {
     public synchronized boolean isMasterController(String clusterName) {
         VeniceDistClusterControllerStateModel model = controllerStateModelFactory.getModel(clusterName);
         if (model == null ) {
-            handleClusterNotInitialized(clusterName);
+            throwClusterNotInitialized(clusterName);
         }
         return model.getCurrentState().equals(LeaderStandbySMD.States.LEADER.toString());
     }
@@ -363,7 +382,7 @@ public class VeniceHelixAdmin implements Admin {
     protected VeniceHelixResources getVeniceHelixResource(String cluster){
         VeniceHelixResources resources = controllerStateModelFactory.getModel(cluster).getResources();
         if(resources == null){
-            handleClusterNotInitialized(cluster);
+            throwClusterNotInitialized(cluster);
         }
         return resources;
     }

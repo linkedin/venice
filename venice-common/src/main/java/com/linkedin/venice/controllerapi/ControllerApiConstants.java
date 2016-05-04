@@ -36,6 +36,13 @@ public class ControllerApiConstants {
     SETVERSION_PARAMS.add(VERSION);
   }
 
+  public static final String NEXTVERSION_PATH = "/nextversion";
+  public static final List<String> NEXTVERSION_PARAMS = new ArrayList<>();
+  static{
+    NEXTVERSION_PARAMS.add(CLUSTER);
+    NEXTVERSION_PARAMS.add(NAME);
+  }
+
 
   public static final String JOB_PATH = "/job";
   public static final List<String> JOB_PARMAS = new ArrayList<>();

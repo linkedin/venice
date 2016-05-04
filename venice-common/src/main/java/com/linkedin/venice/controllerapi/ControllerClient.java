@@ -121,18 +121,8 @@ public class ControllerClient implements Closeable {
       params.add(new BasicNameValuePair(ControllerApiConstants.VALUE_SCHEMA, valueSchema));
       post.setEntity(new UrlEncodedFormEntity(params));
       HttpResponse response = client.execute(post, null).get();
-      String responseBody;
-      try (InputStream bodyStream = response.getEntity().getContent()) {
-        responseBody = IOUtils.toString(bodyStream);
-      }
-      String contentType = response.getFirstHeader(HttpHeaders.CONTENT_TYPE).getValue();
-      if (contentType.startsWith(HttpConstants.JSON)) {
-        return mapper.readValue(responseBody, StoreCreationResponse.class);
-      } else { //non JSON response
-        String msg = "For store: " + storeName + ", controller returns with content-type " + contentType + ": " + responseBody;
-        logger.error(msg);
-        throw new VeniceException(msg);
-      }
+      String responseJson = getJsonFromHttpResponse(response);
+      return mapper.readValue(responseJson, StoreCreationResponse.class);
     } catch (Exception e) {
       String msg = "Error creating Store: " + storeName + " Owner: " + owner + " Size: " + storeSize + " bytes";
       logger.error(msg, e);
@@ -140,10 +130,10 @@ public class ControllerClient implements Closeable {
     }
   }
 
-  public static StoreCreationResponse createStoreVersion(String routerUrl, String clusterName, String storeName, String owner,
-                                                         long storeSize, String keySchema, String valueSchema) {
+  public static StoreCreationResponse createStoreVersion(
+      String routerUrl, String clusterName, String storeName, String owner, long storeSize, String keySchema, String valueSchema) {
     try (ControllerClient client = new ControllerClient(routerUrl)){
-        return client.createNewStoreVersion(clusterName, storeName, owner, storeSize, keySchema, valueSchema);
+      return client.createNewStoreVersion(clusterName, storeName, owner, storeSize, keySchema, valueSchema);
     }
   }
 
@@ -163,8 +153,8 @@ public class ControllerClient implements Closeable {
     }
   }
 
-  public static void overrideSetActiveVersion(String routerUrl, String clusterName, String storeName, int version){
-    try (ControllerClient client = new ControllerClient(routerUrl)){
+  public static void overrideSetActiveVersion(String routerUrls, String clusterName, String storeName, int version){
+    try (ControllerClient client = new ControllerClient(routerUrls)){
       client.overrideSetActiveVersion(clusterName, storeName, version);
     }
   }
@@ -180,18 +170,8 @@ public class ControllerClient implements Closeable {
       String queryString = URLEncodedUtils.format(queryParams, StandardCharsets.UTF_8);
       final HttpGet get = new HttpGet(controllerUrl + ControllerApiConstants.JOB_PATH + "?" + queryString);
       HttpResponse response = client.execute(get, null).get();
-      String responseBody;
-      try (InputStream bodyStream = response.getEntity().getContent()) {
-        responseBody = IOUtils.toString(bodyStream);
-      }
-      String contentType = response.getFirstHeader(HttpHeaders.CONTENT_TYPE).getValue();
-      if (contentType.startsWith(HttpConstants.JSON)) {
-        return mapper.readValue(responseBody, JobStatusQueryResponse.class);
-      } else { //non JSON response
-        String msg = "For store: " + storeName + ", controller returns with content-type " + contentType + ": " + responseBody;
-        logger.error(msg);
-        throw new VeniceException(msg);
-      }
+      String responseJson = getJsonFromHttpResponse(response);
+      return mapper.readValue(responseJson, JobStatusQueryResponse.class);
     } catch (Exception e) {
       String msg = "Error querying job status: " + storeName + " Version: " + version;
       logger.error(msg, e);
@@ -199,9 +179,32 @@ public class ControllerClient implements Closeable {
     }
   }
 
-  public static JobStatusQueryResponse queryJobStatus(String routerUrl, String clusterName, String kafkaTopic){
-    try (ControllerClient client = new ControllerClient(routerUrl)){
+  public static JobStatusQueryResponse queryJobStatus(String routerUrls, String clusterName, String kafkaTopic){
+    try (ControllerClient client = new ControllerClient(routerUrls)){
       return client.queryJobStatus(clusterName, kafkaTopic);
+    }
+  }
+
+  private NextVersionResponse queryNextVersion(String clusterName, String storeName){
+    try{
+      List<NameValuePair> queryParams = new ArrayList<>();
+      queryParams.add(new BasicNameValuePair(ControllerApiConstants.CLUSTER, clusterName));
+      queryParams.add(new BasicNameValuePair(ControllerApiConstants.NAME, storeName));
+      String queryString = URLEncodedUtils.format(queryParams, StandardCharsets.UTF_8);
+      final HttpGet get = new HttpGet(controllerUrl + ControllerApiConstants.NEXTVERSION_PATH + "?" + queryString);
+      HttpResponse response = client.execute(get, null).get();
+      String responseJson = getJsonFromHttpResponse(response);
+      return mapper.readValue(responseJson, NextVersionResponse.class);
+    } catch (Exception e) {
+      String msg = "Error querying next version for store: " + storeName;
+      logger.error(msg, e);
+      throw new VeniceException(msg, e);
+    }
+  }
+
+  public static NextVersionResponse queryNextVersion(String routerUrls, String clusterName, String storeName){
+    try (ControllerClient client = new ControllerClient(routerUrls)){
+      return client.queryNextVersion(clusterName, storeName);
     }
   }
 
@@ -266,6 +269,24 @@ public class ControllerClient implements Closeable {
     } catch (InterruptedException e) {
       logger.error(e);
       throw new VeniceException("Polling of push status was interrupted");
+    }
+  }
+
+
+  private static String getJsonFromHttpResponse(HttpResponse response){
+    String responseBody;
+    try (InputStream bodyStream = response.getEntity().getContent()) {
+      responseBody = IOUtils.toString(bodyStream);
+    } catch (IOException e) {
+      throw new VeniceException(e);
+    }
+    String contentType = response.getFirstHeader(HttpHeaders.CONTENT_TYPE).getValue();
+    if (contentType.startsWith(HttpConstants.JSON)) {
+      return responseBody;
+    } else { //non JSON response
+      String msg = "controller returns with content-type " + contentType + ": " + responseBody;
+      logger.error(msg);
+      throw new VeniceException(msg);
     }
   }
 
