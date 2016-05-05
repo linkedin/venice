@@ -4,7 +4,7 @@ import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.controller.VeniceController;
 import com.linkedin.venice.controller.VeniceControllerClusterConfig;
 import com.linkedin.venice.controllerapi.ControllerClient;
-import com.linkedin.venice.controllerapi.StoreCreationResponse;
+import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -94,7 +94,7 @@ public class VeniceControllerWrapper extends ProcessWrapper {
     long storeSize = 10 * 1024 * 1024;
     String keySchema = "\"long\"";
     String valueSchema = "\"string\"";
-    StoreCreationResponse newStore = ControllerClient.createStoreVersion(
+    VersionCreationResponse newStore = ControllerClient.createStoreVersion(
         routerUrl,
         clusterName,
         storeName,

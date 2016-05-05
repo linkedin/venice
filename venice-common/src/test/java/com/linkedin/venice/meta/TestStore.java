@@ -1,5 +1,6 @@
 package com.linkedin.venice.meta;
 
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.utils.TestUtils;
 import java.util.List;
 import org.testng.Assert;
@@ -74,15 +75,23 @@ public class TestStore {
   public void testVersionReservation(){
     Store store = TestUtils.createTestStore("myStore", "owner", System.currentTimeMillis());
     Assert.assertEquals(store.peekNextVersion().getNumber(), 1);
-    Assert.assertTrue(store.reserveVersionNumber(2), "Store must be able to reserve version 2");
-    Assert.assertFalse(store.reserveVersionNumber(2), "Store shouldn't reserve an already reserved version");
+    store.reserveVersionNumber(2);
+    reserveVersionFails(store, 2);
     Assert.assertEquals(store.peekNextVersion().getNumber(), 3, "next version should respect reservation");
     Version increasedV = store.increaseVersion();
     Assert.assertEquals(increasedV.getNumber(), 3, "increased version must be greater than reserved versions");
     Assert.assertEquals(store.peekNextVersion().getNumber(), 4, "peek must be greater than existing versions");
-    Assert.assertTrue(store.reserveVersionNumber(8), "can reserve non-sequential version");
-    Assert.assertFalse(store.reserveVersionNumber(7), "cant reserve smaller than currently reserved");
-    Assert.assertFalse(store.reserveVersionNumber(8), "cant reserve already reserved");
+    store.reserveVersionNumber(8);
+    reserveVersionFails(store, 7);
+    reserveVersionFails(store, 8);
     Assert.assertEquals(store.peekNextVersion().getNumber(), 9, "peek is bigger than reserved");
+  }
+
+  public static void reserveVersionFails(Store store, int version){
+   try{
+     store.reserveVersionNumber(version);
+     Assert.fail("Shouldn't be able to reserve version " + version);
+   } catch (VeniceException e) {
+   }
   }
 }

@@ -19,6 +19,13 @@ public class ControllerApiConstants {
   public static final String KEY_SCHEMA = "key_schema";
   public static final String VALUE_SCHEMA = "value_schema";
 
+  public static final List<String> VERSION_PARAMS = new ArrayList<>();
+  static {
+    VERSION_PARAMS.add(CLUSTER);
+    VERSION_PARAMS.add(NAME);
+    VERSION_PARAMS.add(VERSION);
+  }
+
   public static final String CREATE_PATH = "/create";
   public static final List<String> CREATE_PARAMS = new ArrayList<>();
   static {
@@ -28,11 +35,12 @@ public class ControllerApiConstants {
     CREATE_PARAMS.add(OWNER);
   }
 
-  public static final List<String> VERSION_PARAMS = new ArrayList<>();
+  public static final String NEWSTORE_PATH = "/newstore";
+  public static final List<String> NEWSTORE_PARAMS = new ArrayList<>();
   static {
-    VERSION_PARAMS.add(CLUSTER);
-    VERSION_PARAMS.add(NAME);
-    VERSION_PARAMS.add(VERSION);
+    NEWSTORE_PARAMS.add(CLUSTER);
+    NEWSTORE_PARAMS.add(NAME);
+    NEWSTORE_PARAMS.add(OWNER);
   }
 
   public static final String SETVERSION_PATH = "/setversion";

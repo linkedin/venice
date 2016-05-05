@@ -1,7 +1,6 @@
 package com.linkedin.venice.controllerapi;
 
 import java.io.IOException;
-import org.codehaus.jackson.JsonGenerationException;
 import org.codehaus.jackson.map.ObjectMapper;
 import org.testng.Assert;
 import org.testng.annotations.Test;
@@ -21,7 +20,7 @@ public class TestStoreCreationResponse {
   @Test
   public void creationResponseCanBeSerialized()
       throws IOException {
-    StoreCreationResponse obj = new StoreCreationResponse();
+    VersionCreationResponse obj = new VersionCreationResponse();
     obj.setName(STORENAME);
     obj.setOwner(OWNER);
     obj.setKafkaBootstrapServers(KAFKA);
@@ -29,7 +28,7 @@ public class TestStoreCreationResponse {
 
     String serialized = mapper.writeValueAsString(obj);
 
-    StoreCreationResponse deserialized = mapper.readValue(serialized, StoreCreationResponse.class);
+    VersionCreationResponse deserialized = mapper.readValue(serialized, VersionCreationResponse.class);
 
     Assert.assertEquals(deserialized.getName(), STORENAME);
     Assert.assertEquals(deserialized.getOwner(), OWNER);

@@ -3,8 +3,9 @@ package com.linkedin.venice.controller.server;
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
+import com.linkedin.venice.controllerapi.NewStoreResponse;
 import com.linkedin.venice.controllerapi.VersionResponse;
-import com.linkedin.venice.controllerapi.StoreCreationResponse;
+import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceHttpException;
 import com.linkedin.venice.meta.Version;
@@ -75,15 +76,14 @@ public class AdminSparkServer extends AbstractVeniceService {
     });
 
     Spark.post(CREATE_PATH, (request, response) -> {
-      StoreCreationResponse responseObject = new StoreCreationResponse();
+      VersionCreationResponse responseObject = new VersionCreationResponse();
       try {
         validateParams(request, CREATE_PARAMS);
         responseObject.setCluster(request.queryParams(CLUSTER));
         responseObject.setName(request.queryParams(NAME));
         responseObject.setOwner(request.queryParams(OWNER));
         // Store size in Bytes
-        long storeSize = Utils.parseLongFromString(request.queryParams(STORE_SIZE),
-            STORE_SIZE);
+        long storeSize = Utils.parseLongFromString(request.queryParams(STORE_SIZE), STORE_SIZE);
         responseObject.setPartitions(3); // TODO actual partitioning logic based on store size
         responseObject.setReplicas(1); // TODO configurable replication
         try { // TODO: use admin to update store with new owner?  Set owner at version level for audit history?
@@ -91,11 +91,28 @@ public class AdminSparkServer extends AbstractVeniceService {
         } catch (VeniceException e) { // TODO method on admin to see if store already created?
           logger.warn("Store" + responseObject.getName() + " probably already created.", e);
         }
-        Version version = admin.incrementVersion(responseObject.getCluster(), responseObject.getName(), responseObject.getPartitions(),
-            responseObject.getReplicas());
+        Version version = admin
+            .incrementVersion(responseObject.getCluster(), responseObject.getName(), responseObject.getPartitions(),
+                responseObject.getReplicas());
         responseObject.setVersion(version.getNumber());
         responseObject.setKafkaTopic(version.kafkaTopicName());
         responseObject.setKafkaBootstrapServers(admin.getKafkaBootstrapServers());
+      } catch (VeniceException e) {
+        responseObject.setError(e.getMessage());
+        handleError(e, request, response);
+      }
+      response.type(HttpConstants.JSON);
+      return mapper.writeValueAsString(responseObject);
+    });
+
+    Spark.post(NEWSTORE_PATH, (request, response) -> {
+      NewStoreResponse responseObject = new NewStoreResponse();
+      try {
+        validateParams(request, NEWSTORE_PARAMS);
+        responseObject.setCluster(request.queryParams(CLUSTER));
+        responseObject.setName(request.queryParams(NAME));
+        responseObject.setOwner(request.queryParams(OWNER));
+        admin.addStore(responseObject.getCluster(), responseObject.getName(), responseObject.getOwner());
       } catch (VeniceException e) {
         responseObject.setError(e.getMessage());
         handleError(e, request, response);
@@ -148,12 +165,7 @@ public class AdminSparkServer extends AbstractVeniceService {
         responseObject.setCluster(request.queryParams(CLUSTER));
         responseObject.setName(request.queryParams(NAME));
         responseObject.setVersion(Utils.parseIntFromString(request.queryParams(VERSION), VERSION));
-        boolean reservationSuccess =
-            admin.reserveVersion(responseObject.getCluster(), responseObject.getName(), responseObject.getVersion());
-        if (!reservationSuccess) {
-          responseObject.setError(
-              "Failed to make reservation.  Version number " + responseObject.getVersion() + " not available.");
-        }
+        admin.reserveVersion(responseObject.getCluster(), responseObject.getName(), responseObject.getVersion());
       } catch (VeniceException e) {
         responseObject.setError(e.getMessage());
         handleError(e, request, response);

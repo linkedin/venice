@@ -7,6 +7,7 @@ import com.linkedin.venice.controller.VeniceControllerConfig;
 import com.linkedin.venice.controller.VeniceHelixAdmin;
 import com.linkedin.venice.controllerapi.ControllerApiConstants;
 import com.linkedin.venice.controllerapi.ControllerClient;
+import com.linkedin.venice.controllerapi.NewStoreResponse;
 import com.linkedin.venice.controllerapi.VersionResponse;
 import com.linkedin.venice.integration.utils.KafkaBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
@@ -103,15 +104,18 @@ public class TestAdminSparkServer {
     String routerUrl = "http://" + venice.getVeniceRouter().getAddress();
     String kafkaTopic = venice.getNewStoreVersion();
     String storeName = Version.parseStoreFromKafkaTopicName(kafkaTopic);
+    String storeToCreate = "does-not-yet-exist-"+storeName;
     int currentVersion = Version.parseVersionFromKafkaTopicName(kafkaTopic);
 
+    // queryNextVersion
     VersionResponse nextVersionResponse = ControllerClient.queryNextVersion(routerUrl, venice.getClusterName(),
         storeName);
     Assert.assertEquals(nextVersionResponse.getVersion(), currentVersion + 1);
     VersionResponse badVersionResponse = ControllerClient.queryNextVersion(routerUrl, venice.getClusterName(),
-        "does-not-exist" + storeName);
+        storeToCreate);
     Assert.assertTrue(badVersionResponse.isError());
 
+    // reserveVersion
     VersionResponse badReservation = ControllerClient.reserveVersion(routerUrl, venice.getClusterName(), storeName,
         currentVersion);
     Assert.assertTrue(badReservation.isError(), "controller client should not allow reservation of current version");
@@ -122,8 +126,21 @@ public class TestAdminSparkServer {
     VersionResponse afterReservationPeek = ControllerClient.queryNextVersion(routerUrl, venice.getClusterName(),
         storeName);
     Assert.assertEquals(afterReservationPeek.getVersion(), goodReservation.getVersion() + 1);
-    VersionResponse doubleReservation = ControllerClient.reserveVersion(routerUrl, venice.getClusterName(), storeName, reserveVersion);
+    VersionResponse doubleReservation = ControllerClient.reserveVersion(routerUrl, venice.getClusterName(), storeName,
+        reserveVersion);
     Assert.assertTrue(doubleReservation.isError(), "controller client should not allow duplicate version reservation");
+
+    // create Store
+    NewStoreResponse newStoreResponse = ControllerClient.createNewStore(routerUrl, venice.getClusterName(),
+        storeToCreate, "owner");
+    Assert.assertFalse(newStoreResponse.isError(), "create new store shoulld succeed for a store that doesn't exist");
+    VersionResponse newVersionResponse = ControllerClient.queryNextVersion(routerUrl, venice.getClusterName(),
+        storeToCreate);
+    Assert.assertFalse(newVersionResponse.isError());
+    NewStoreResponse duplicateNewStoreResponse = ControllerClient.createNewStore(routerUrl, venice.getClusterName(),
+        storeToCreate, "owner");
+    Assert.assertTrue(duplicateNewStoreResponse.isError(),
+        "create new store should fail for duplicate store creation");
 
     venice.close();
   }

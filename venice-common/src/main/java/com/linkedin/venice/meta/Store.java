@@ -123,13 +123,11 @@ public class Store {
 
 
 
-  public boolean reserveVersionNumber(int version){
-    if (version >= peekNextVersion().getNumber()){
-      reservedVersion = version;
-      return true;
-    } else {
-      return false;
+  public void reserveVersionNumber(int version){
+    if (version < peekNextVersion().getNumber()){
+      throw new VeniceException("Cannot reserve a version number smaller than next available version number");
     }
+    reservedVersion = version;
   }
 
   /**

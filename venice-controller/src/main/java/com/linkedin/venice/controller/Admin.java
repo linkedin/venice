@@ -21,7 +21,7 @@ public interface Admin {
 
     public Version peekNextVersion(String clusterName, String storeName);
 
-    public boolean reserveVersion(String clusterName, String storeName, int versionNumberToReserve);
+    public void reserveVersion(String clusterName, String storeName, int versionNumberToReserve);
 
     public void setCurrentVersion(String clusterName, String storeName, int versionNumber);
 

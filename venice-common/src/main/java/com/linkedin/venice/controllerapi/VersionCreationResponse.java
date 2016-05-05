@@ -6,20 +6,15 @@ import org.codehaus.jackson.annotate.JsonIgnore;
 /**
  * Created by mwise on 3/17/16.
  */
-public class StoreCreationResponse extends ControllerResponse {
+public class VersionCreationResponse extends VersionResponse {
 
-  private int version = -1;
   private String owner = null;
   private int partitions = 0;
   private int replicas = 0;
   private String kafkaTopic = null;
   private String kafkaBootstrapServers = null;
 
-  public StoreCreationResponse(){  }
-
-  public void setVersion(int version) {
-    this.version = version;
-  }
+  public VersionCreationResponse(){  }
 
   public void setOwner(String owner) {
     this.owner = owner;
@@ -39,10 +34,6 @@ public class StoreCreationResponse extends ControllerResponse {
 
   public void setKafkaBootstrapServers(String kafkaBootstrapServers) {
     this.kafkaBootstrapServers = kafkaBootstrapServers;
-  }
-
-  public int getVersion() {
-    return version;
   }
 
   public String getOwner() {

@@ -108,7 +108,7 @@ public class ControllerClient implements Closeable {
     throw new VeniceException("Could not get controller url from any router: " + routerUrls, lastException);
   }
 
-  private StoreCreationResponse createNewStoreVersion(String clusterName, String storeName, String owner, long storeSize,
+  private VersionCreationResponse createNewStoreVersion(String clusterName, String storeName, String owner, long storeSize,
                                                       String keySchema, String valueSchema){
     try {
       final HttpPost post = new HttpPost(controllerUrl + ControllerApiConstants.CREATE_PATH);
@@ -122,7 +122,7 @@ public class ControllerClient implements Closeable {
       post.setEntity(new UrlEncodedFormEntity(params));
       HttpResponse response = client.execute(post, null).get();
       String responseJson = getJsonFromHttpResponse(response);
-      return mapper.readValue(responseJson, StoreCreationResponse.class);
+      return mapper.readValue(responseJson, VersionCreationResponse.class);
     } catch (Exception e) {
       String msg = "Error creating Store: " + storeName + " Owner: " + owner + " Size: " + storeSize + " bytes";
       logger.error(msg, e);
@@ -130,10 +130,34 @@ public class ControllerClient implements Closeable {
     }
   }
 
-  public static StoreCreationResponse createStoreVersion(
+  public static VersionCreationResponse createStoreVersion(
       String routerUrl, String clusterName, String storeName, String owner, long storeSize, String keySchema, String valueSchema) {
     try (ControllerClient client = new ControllerClient(routerUrl)){
       return client.createNewStoreVersion(clusterName, storeName, owner, storeSize, keySchema, valueSchema);
+    }
+  }
+
+  private NewStoreResponse createNewStore(String clusterName, String storeName, String owner){
+    try {
+      final HttpPost post = new HttpPost(controllerUrl + ControllerApiConstants.NEWSTORE_PATH);
+      List<NameValuePair> params = new ArrayList<NameValuePair>();
+      params.add(new BasicNameValuePair(ControllerApiConstants.CLUSTER, clusterName));
+      params.add(new BasicNameValuePair(ControllerApiConstants.NAME, storeName));
+      params.add(new BasicNameValuePair(ControllerApiConstants.OWNER, owner));
+      post.setEntity(new UrlEncodedFormEntity(params));
+      HttpResponse response = client.execute(post, null).get();
+      String responseJson = getJsonFromHttpResponse(response);
+      return mapper.readValue(responseJson, NewStoreResponse.class);
+    } catch (Exception e) {
+      String msg = "Error creating Store: " + storeName + " Owner: " + owner;
+      logger.error(msg, e);
+      throw new VeniceException(msg, e);
+    }
+  }
+
+  public static NewStoreResponse createNewStore(String routerUrls, String clusterName, String storeName, String owner){
+    try (ControllerClient client = new ControllerClient(routerUrls)){
+      return client.createNewStore(clusterName, storeName, owner);
     }
   }
 

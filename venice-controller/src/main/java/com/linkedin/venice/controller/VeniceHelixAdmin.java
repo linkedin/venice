@@ -142,8 +142,15 @@ public class VeniceHelixAdmin implements Admin {
             config.getReplicaFactor());
     }
 
+    /**
+     * Throws VeniceException if the version is unavailable for reservation
+     *
+     * @param clusterName
+     * @param storeName
+     * @param versionNumberToReserve
+     */
     @Override
-    public synchronized boolean reserveVersion(String clusterName, String storeName, int versionNumberToReserve){
+    public synchronized void reserveVersion(String clusterName, String storeName, int versionNumberToReserve){
         checkControllerMastership(clusterName);
         boolean success = false;
         HelixCachedMetadataRepository repository =
@@ -154,17 +161,12 @@ public class VeniceHelixAdmin implements Admin {
             if (store == null) {
                 throwStoreDoesNotExist(clusterName, storeName);
             }
-            success = store.reserveVersionNumber(versionNumberToReserve);
-            if (success){
-                repository.updateStore(store);
-                logger.info("Successfully reserved version " + versionNumberToReserve + " for store " + storeName);
-            } else {
-                logger.info("Failed to reserve version " + versionNumberToReserve + " for store " + storeName);
-            }
+            store.reserveVersionNumber(versionNumberToReserve); /* throws VeniceException on failure */
+            repository.updateStore(store);
+            logger.info("Successfully reserved version " + versionNumberToReserve + " for store " + storeName);
         } finally {
             repository.unLock();
         }
-        return success;
     }
 
     private final static int VERSION_ID_UNSET = -1;

@@ -2,7 +2,7 @@ package com.linkedin.venice.hadoop;
 
 import com.linkedin.venice.client.VeniceWriter;
 import com.linkedin.venice.controllerapi.ControllerClient;
-import com.linkedin.venice.controllerapi.StoreCreationResponse;
+import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.hadoop.exceptions.VeniceInconsistentSchemaException;
 import com.linkedin.venice.hadoop.exceptions.VeniceSchemaFieldNotFoundException;
 import com.linkedin.venice.hadoop.exceptions.VeniceStoreCreationException;
@@ -352,7 +352,7 @@ public class KafkaPushJob {
     if (!storePush) {
       return;
     }
-    StoreCreationResponse response = ControllerClient.createStoreVersion(veniceRouterUrl, clusterName, storeName,
+    VersionCreationResponse response = ControllerClient.createStoreVersion(veniceRouterUrl, clusterName, storeName,
             storeOwners, inputFileDataSize, keySchemaString, valueSchemaString);
     if (response.isError()) {
       throw new VeniceStoreCreationException(storeName, "Received error from Venice Controller for new store push: " +
