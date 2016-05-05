@@ -28,13 +28,18 @@ public class ControllerApiConstants {
     CREATE_PARAMS.add(OWNER);
   }
 
-  public static final String SETVERSION_PATH = "/setversion";
-  public static final List<String> SETVERSION_PARAMS = new ArrayList<>();
-  static{
-    SETVERSION_PARAMS.add(CLUSTER);
-    SETVERSION_PARAMS.add(NAME);
-    SETVERSION_PARAMS.add(VERSION);
+  public static final List<String> VERSION_PARAMS = new ArrayList<>();
+  static {
+    VERSION_PARAMS.add(CLUSTER);
+    VERSION_PARAMS.add(NAME);
+    VERSION_PARAMS.add(VERSION);
   }
+
+  public static final String SETVERSION_PATH = "/setversion";
+  public static final List<String> SETVERSION_PARAMS = VERSION_PARAMS;
+
+  public static final String RESERVE_VERSION_PATH = "/reserveversion";
+  public static final List<String> RESERVE_VERSION_PARAMS = VERSION_PARAMS;
 
   public static final String NEXTVERSION_PATH = "/nextversion";
   public static final List<String> NEXTVERSION_PARAMS = new ArrayList<>();
@@ -43,14 +48,8 @@ public class ControllerApiConstants {
     NEXTVERSION_PARAMS.add(NAME);
   }
 
-
   public static final String JOB_PATH = "/job";
-  public static final List<String> JOB_PARMAS = new ArrayList<>();
-  static {
-    JOB_PARMAS.add(CLUSTER);
-    JOB_PARMAS.add(NAME);
-    JOB_PARMAS.add(VERSION);
-  }
+  public static final List<String> JOB_PARMAS = VERSION_PARAMS;
 
   private ControllerApiConstants(){}
 }

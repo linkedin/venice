@@ -3,7 +3,7 @@ package com.linkedin.venice.controller.server;
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
-import com.linkedin.venice.controllerapi.NextVersionResponse;
+import com.linkedin.venice.controllerapi.VersionResponse;
 import com.linkedin.venice.controllerapi.StoreCreationResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceHttpException;
@@ -104,7 +104,7 @@ public class AdminSparkServer extends AbstractVeniceService {
       return mapper.writeValueAsString(responseObject);
     });
 
-    // Only to be used manually for testing purposes.  No corresponding method in controller client.
+    // Only to be used manually and for testing purposes.
     Spark.post(SETVERSION_PATH, (request, response) -> {
       Map<String, String> responseMap = new HashMap<>();
       try {
@@ -126,8 +126,8 @@ public class AdminSparkServer extends AbstractVeniceService {
      * Query the controller for the next version of a store that should be created
      */
     Spark.get(NEXTVERSION_PATH, (request, response) -> {
-      NextVersionResponse responseObject = new NextVersionResponse();
-      try{
+      VersionResponse responseObject = new VersionResponse();
+      try {
         validateParams(request, NEXTVERSION_PARAMS);
         responseObject.setCluster(request.queryParams(CLUSTER));
         responseObject.setName(request.queryParams(NAME));
@@ -140,6 +140,27 @@ public class AdminSparkServer extends AbstractVeniceService {
       response.type(HttpConstants.JSON);
       return mapper.writeValueAsString(responseObject);
     });
+
+    Spark.post(RESERVE_VERSION_PATH, (request, response) -> {
+      VersionResponse responseObject = new VersionResponse();
+      try {
+        validateParams(request, RESERVE_VERSION_PARAMS);
+        responseObject.setCluster(request.queryParams(CLUSTER));
+        responseObject.setName(request.queryParams(NAME));
+        responseObject.setVersion(Utils.parseIntFromString(request.queryParams(VERSION), VERSION));
+        boolean reservationSuccess =
+            admin.reserveVersion(responseObject.getCluster(), responseObject.getName(), responseObject.getVersion());
+        if (!reservationSuccess) {
+          responseObject.setError(
+              "Failed to make reservation.  Version number " + responseObject.getVersion() + " not available.");
+        }
+      } catch (VeniceException e) {
+        responseObject.setError(e.getMessage());
+        handleError(e, request, response);
+      }
+      response.type(HttpConstants.JSON);
+      return mapper.writeValueAsString(responseObject);
+  });
 
     Spark.awaitInitialization(); // Wait for server to be initialized
   }

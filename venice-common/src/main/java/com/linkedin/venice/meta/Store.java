@@ -11,6 +11,8 @@ import javax.validation.constraints.NotNull;
  * Class defines the store of Venice.
  * <p>
  * This class is NOT thread safe. Concurrency request to Store instance should be controlled in repository level.
+ * When adding fields to this method, make sure to update equals, hashcode, clone,
+ * and make sure json serialization still works
  */
 public class Store {
   /**
@@ -29,6 +31,10 @@ public class Store {
    * The number of version which is used currently.
    */
   private int currentVersion = 0;
+  /**
+   * Version number that has been claimed by an upstream (H2V) system which will create the corresponding kafka topic.
+   */
+  private int reservedVersion = 0;
   /**
    * Type of persistence storage engine.
    */
@@ -83,6 +89,14 @@ public class Store {
     this.currentVersion = currentVersion;
   }
 
+  public int getReservedVersion() {
+    return this.reservedVersion;
+  }
+
+  public void setReservedVersion(int reservedVersion){
+    this.reservedVersion = reservedVersion;
+  }
+
   public PersistenceType getPersistenceType() {
     return persistenceType;
   }
@@ -105,6 +119,17 @@ public class Store {
 
   public void setVersions(List<Version> versions) {
     this.versions = versions;
+  }
+
+
+
+  public boolean reserveVersionNumber(int version){
+    if (version >= peekNextVersion().getNumber()){
+      reservedVersion = version;
+      return true;
+    } else {
+      return false;
+    }
   }
 
   /**
@@ -168,16 +193,26 @@ public class Store {
     return increaseVersion(true);
   }
 
-  public Version increaseVersion(boolean createNewVersion) {
+  public Version peekNextVersion(){
+    return increaseVersion(false);
+  }
+
+  private Version increaseVersion(boolean createNewVersion) {
     int versionNumber = 1;
     if (versions.size() > 0) {
       versionNumber = versions.get(versions.size() - 1).getNumber() + 1;
     }
+    if (reservedVersion >= versionNumber){
+      versionNumber = reservedVersion + 1; /* must skip past any reserved versions */
+    }
     Version version = new Version(name, versionNumber);
     if (createNewVersion) {
       addVersion(version);
+      return version.cloneVersion();
+    } else {
+      return version;
     }
-    return version.cloneVersion();
+
   }
 
   @Override
@@ -196,6 +231,9 @@ public class Store {
     }
     if (currentVersion != store.currentVersion) {
       return false;
+    }
+    if (reservedVersion != store.reservedVersion) {
+      return  false;
     }
     if (!name.equals(store.name)) {
       return false;
@@ -224,6 +262,7 @@ public class Store {
     result = 31 * result + owner.hashCode();
     result = 31 * result + (int) (createdTime ^ (createdTime >>> 32));
     result = 31 * result + currentVersion;
+    result = 31 * result + reservedVersion;
     result = 31 * result + persistenceType.hashCode();
     result = 31 * result + routingStrategy.hashCode();
     result = 31 * result + readStrategy.hashCode();
@@ -241,6 +280,7 @@ public class Store {
     Store clonedStore =
         new Store(name, owner, createdTime, persistenceType, routingStrategy, readStrategy, offLinePushStrategy);
     clonedStore.setCurrentVersion(currentVersion);
+    clonedStore.setReservedVersion(reservedVersion);
 
     for (Version v : this.versions) {
       clonedStore.addVersion(v.cloneVersion());

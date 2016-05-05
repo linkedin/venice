@@ -45,7 +45,9 @@ public class StoreJSONSerializer implements VeniceSerializer<Store> {
      */
     public static class StoreSerializerMixin {
         @JsonCreator
-        public StoreSerializerMixin(@JsonProperty("name") String name, @JsonProperty("owner") String owner,
+        public StoreSerializerMixin(
+            @JsonProperty("name") String name,
+            @JsonProperty("owner") String owner,
             @JsonProperty("createdTime") long createdTime,
             @JsonProperty("persistenceType") PersistenceType persistenceType,
             @JsonProperty("routingStrategy") RoutingStrategy routingStrategy,

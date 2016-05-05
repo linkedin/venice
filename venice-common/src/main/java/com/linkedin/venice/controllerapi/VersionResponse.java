@@ -3,7 +3,7 @@ package com.linkedin.venice.controllerapi;
 /**
  * Created by mwise on 5/3/16.
  */
-public class NextVersionResponse extends ControllerResponse {
+public class VersionResponse extends ControllerResponse {
   private int version;
 
   public int getVersion() {

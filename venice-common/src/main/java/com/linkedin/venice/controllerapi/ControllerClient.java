@@ -185,7 +185,7 @@ public class ControllerClient implements Closeable {
     }
   }
 
-  private NextVersionResponse queryNextVersion(String clusterName, String storeName){
+  private VersionResponse queryNextVersion(String clusterName, String storeName){
     try{
       List<NameValuePair> queryParams = new ArrayList<>();
       queryParams.add(new BasicNameValuePair(ControllerApiConstants.CLUSTER, clusterName));
@@ -194,7 +194,7 @@ public class ControllerClient implements Closeable {
       final HttpGet get = new HttpGet(controllerUrl + ControllerApiConstants.NEXTVERSION_PATH + "?" + queryString);
       HttpResponse response = client.execute(get, null).get();
       String responseJson = getJsonFromHttpResponse(response);
-      return mapper.readValue(responseJson, NextVersionResponse.class);
+      return mapper.readValue(responseJson, VersionResponse.class);
     } catch (Exception e) {
       String msg = "Error querying next version for store: " + storeName;
       logger.error(msg, e);
@@ -202,9 +202,51 @@ public class ControllerClient implements Closeable {
     }
   }
 
-  public static NextVersionResponse queryNextVersion(String routerUrls, String clusterName, String storeName){
+  /**
+   * Query the controller for the next version number that can be created.  This number and larger numbers are available
+   * Before creating a kafka topic using this version number, be sure to reserve it using the #reserveVersion method
+   *
+   * @param routerUrls
+   * @param clusterName
+   * @param storeName
+   * @return A VersionResponse object.  the .getVersion() method returns the next available version.
+   */
+  public static VersionResponse queryNextVersion(String routerUrls, String clusterName, String storeName){
     try (ControllerClient client = new ControllerClient(routerUrls)){
       return client.queryNextVersion(clusterName, storeName);
+    }
+  }
+
+  private VersionResponse reserveVersion(String clusterName, String storeName, int version){
+    try{
+      List<NameValuePair> queryParams = new ArrayList<>();
+      queryParams.add(new BasicNameValuePair(ControllerApiConstants.CLUSTER, clusterName));
+      queryParams.add(new BasicNameValuePair(ControllerApiConstants.NAME, storeName));
+      queryParams.add(new BasicNameValuePair(ControllerApiConstants.VERSION, Integer.toString(version)));
+      final HttpPost post = new HttpPost(controllerUrl + ControllerApiConstants.RESERVE_VERSION_PATH);
+      post.setEntity(new UrlEncodedFormEntity(queryParams));
+      HttpResponse response = client.execute(post, null).get();
+      String responseJson = getJsonFromHttpResponse(response);
+      return mapper.readValue(responseJson, VersionResponse.class);
+    } catch (Exception e) {
+      String msg = "Error reserving next version for store: " + storeName;
+      logger.error(msg, e);
+      throw new VeniceException(msg, e);
+    }
+  }
+
+  /**
+   * Reserves a version number so another process doens't try and create a store version using that number
+   *
+   * @param routerUrls
+   * @param clusterName
+   * @param storeName
+   * @param version
+   * @return VersionResponse object.  If the reservation fails, this object's .isError() method will return true.
+   */
+  public static VersionResponse reserveVersion(String routerUrls, String clusterName, String storeName, int version){
+    try (ControllerClient client = new ControllerClient(routerUrls)){
+      return client.reserveVersion(clusterName, storeName, version);
     }
   }
 

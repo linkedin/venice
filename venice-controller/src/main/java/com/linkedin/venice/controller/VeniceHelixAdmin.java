@@ -75,7 +75,7 @@ public class VeniceHelixAdmin implements Admin {
         createControllerClusterIfRequired();
         controllerStateModelFactory =
             new VeniceDistClusterControllerStateModelFactory(zkClient);
-        controllerStateModelFactory.addClusterConfig(config.getClusterName(),config);
+        controllerStateModelFactory.addClusterConfig(config.getClusterName(), config);
         manager = HelixManagerFactory
             .getZKHelixManager(controllerClusterName, controllerName, InstanceType.CONTROLLER_PARTICIPANT, config.getControllerClusterZkAddresss());
         StateMachineEngine stateMachine = manager.getStateMachineEngine();
@@ -142,6 +142,31 @@ public class VeniceHelixAdmin implements Admin {
             config.getReplicaFactor());
     }
 
+    @Override
+    public synchronized boolean reserveVersion(String clusterName, String storeName, int versionNumberToReserve){
+        checkControllerMastership(clusterName);
+        boolean success = false;
+        HelixCachedMetadataRepository repository =
+            controllerStateModelFactory.getModel(clusterName).getResources().getMetadataRepository();
+        repository.lock();
+        try {
+            Store store = repository.getStore(storeName);
+            if (store == null) {
+                throwStoreDoesNotExist(clusterName, storeName);
+            }
+            success = store.reserveVersionNumber(versionNumberToReserve);
+            if (success){
+                repository.updateStore(store);
+                logger.info("Successfully reserved version " + versionNumberToReserve + " for store " + storeName);
+            } else {
+                logger.info("Failed to reserve version " + versionNumberToReserve + " for store " + storeName);
+            }
+        } finally {
+            repository.unLock();
+        }
+        return success;
+    }
+
     private final static int VERSION_ID_UNSET = -1;
 
     @Override
@@ -176,7 +201,7 @@ public class VeniceHelixAdmin implements Admin {
 
         VeniceControllerClusterConfig clusterConfig = controllerStateModelFactory.getModel(clusterName).getResources().getConfig();
         createKafkaTopic(clusterName, version.kafkaTopicName(), numberOfPartition, clusterConfig.getKafkaReplicaFactor());
-        createHelixResources(clusterName , version.kafkaTopicName() , numberOfPartition , replicaFactor);
+        createHelixResources(clusterName, version.kafkaTopicName(), numberOfPartition, replicaFactor);
         //Start offline push job for this new version.
         startOfflinePush(clusterName, version.kafkaTopicName(), numberOfPartition, replicaFactor);
         return version;
@@ -200,7 +225,7 @@ public class VeniceHelixAdmin implements Admin {
             if(store == null){
                 throw new VeniceException("Store: " + storeName + " does not exit.  Cannot identify next version");
             }
-            version = store.increaseVersion(false); /* Does not modify the store */
+            version = store.peekNextVersion(); /* Does not modify the store */
             logger.info("Next version would be: "+version.getNumber()+" for store:" + storeName);
         } finally {
             repository.unLock();
