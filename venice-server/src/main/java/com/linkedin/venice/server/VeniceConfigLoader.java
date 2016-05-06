@@ -4,6 +4,7 @@ import com.linkedin.venice.config.VeniceClusterConfig;
 import com.linkedin.venice.config.VeniceServerConfig;
 import com.linkedin.venice.config.VeniceStoreConfig;
 import com.linkedin.venice.exceptions.ConfigurationException;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -84,7 +85,7 @@ public class VeniceConfigLoader {
    * @throws Exception
    */
   public VeniceConfigLoader(@NotNull VeniceProperties clusterProperties, @NotNull VeniceProperties serverProperties,@NotNull VeniceProperties serverOverrideProperties)
-      throws Exception {
+      throws VeniceException {
     this.clusterProperties = clusterProperties;
     this.serverProperties = serverProperties;
     this.serverOverrideProperties = serverOverrideProperties;
@@ -136,8 +137,7 @@ public class VeniceConfigLoader {
    * @return VeniceConfigService object
    * @throws Exception
    */
-  public static VeniceConfigLoader loadFromEnvironmentVariable()
-      throws Exception {
+  public static VeniceConfigLoader loadFromEnvironmentVariable() {
     String veniceConfigDir = System.getenv(VeniceConfigLoader.VENICE_CONFIG_DIR);
     if (veniceConfigDir == null) {
       throw new ConfigurationException(
@@ -147,8 +147,7 @@ public class VeniceConfigLoader {
     return loadFromConfigDirectory(veniceConfigDir);
   }
 
-  public static VeniceConfigLoader loadFromConfigDirectory (String configDirPath)
-          throws Exception {
+  public static VeniceConfigLoader loadFromConfigDirectory (String configDirPath) {
 
     logger.info("loading cluster and server configs...");
 
@@ -161,10 +160,14 @@ public class VeniceConfigLoader {
     String veniceConfigDir = configDirPath;
 
     VeniceProperties clusterProperties, serverProperties, serverOverrideProperties;
-    clusterProperties = Utils.parseProperties(veniceConfigDir, CLUSTER_PROPERTIES_FILE, false);
-    serverProperties = Utils.parseProperties(veniceConfigDir, SERVER_PROPERTIES_FILE, false);
-    serverOverrideProperties = Utils.parseProperties(veniceConfigDir, SERVER_PROPERTIES_OVERRIDE_FILE, true);
-
+    try {
+      clusterProperties = Utils.parseProperties(veniceConfigDir, CLUSTER_PROPERTIES_FILE, false);
+      serverProperties = Utils.parseProperties(veniceConfigDir, SERVER_PROPERTIES_FILE, false);
+      serverOverrideProperties = Utils.parseProperties(veniceConfigDir, SERVER_PROPERTIES_OVERRIDE_FILE, true);
+    } catch (Exception e) {
+      throw new ConfigurationException(
+              "Loading configuration files failed", e);
+    }
     return new VeniceConfigLoader(clusterProperties, serverProperties, serverOverrideProperties);
   }
 

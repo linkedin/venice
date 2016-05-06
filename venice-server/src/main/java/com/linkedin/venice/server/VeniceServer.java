@@ -31,7 +31,7 @@ public class VeniceServer {
   private final List<AbstractVeniceService> services;
 
   public VeniceServer(VeniceConfigLoader veniceConfigLoader)
-      throws Exception {
+      throws VeniceException {
     this.isStarted = new AtomicBoolean(false);
     this.veniceConfigLoader = veniceConfigLoader;
     this.storeRepository = new StoreRepository();
@@ -125,7 +125,7 @@ public class VeniceServer {
    * @throws Exception
    */
   public void start()
-      throws Exception {
+      throws VeniceException {
     boolean isntStarted = isStarted.compareAndSet(false, true);
     if (!isntStarted) {
       throw new IllegalStateException("Service is already started!");
@@ -146,7 +146,7 @@ public class VeniceServer {
    * @throws Exception
    * */
   public void shutdown()
-      throws Exception {
+      throws VeniceException {
     List<Exception> exceptions = new ArrayList<Exception>();
     logger.info("Stopping all services on Node: " + veniceConfigLoader.getVeniceServerConfig().getNodeId());
 
@@ -169,7 +169,7 @@ public class VeniceServer {
       logger.info("All services stopped");
 
       if (exceptions.size() > 0) {
-        throw exceptions.get(0);
+        throw new VeniceException(exceptions.get(0));
       }
       isStarted.set(false);
 
