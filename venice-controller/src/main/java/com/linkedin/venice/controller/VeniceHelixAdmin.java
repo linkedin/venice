@@ -44,7 +44,7 @@ public class VeniceHelixAdmin implements Admin {
     private final String kafkaBootstrapServers;
 
 
-    public static final int CONTROOLER_CLUSTER_NUMBER_OF_PARTITION = 1;
+    public static final int CONTROLLER_CLUSTER_NUMBER_OF_PARTITION = 1;
     private static final Logger logger = Logger.getLogger(VeniceHelixAdmin.class.getName());
     private final HelixAdmin admin;
     private TopicCreator topicCreator;
@@ -337,7 +337,7 @@ public class VeniceHelixAdmin implements Admin {
             VeniceStateModel.getDefinition());
 
         admin
-            .addResource(controllerClusterName, clusterName, CONTROOLER_CLUSTER_NUMBER_OF_PARTITION, LeaderStandbySMD.name,
+            .addResource(controllerClusterName, clusterName, CONTROLLER_CLUSTER_NUMBER_OF_PARTITION, LeaderStandbySMD.name,
                 IdealState.RebalanceMode.FULL_AUTO.toString());
         admin.rebalance(controllerClusterName, clusterName, controllerClusterReplica);
     }

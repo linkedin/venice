@@ -68,9 +68,11 @@ public class VeniceJobManager implements ControlMessageHandler<StoreStatusMessag
       //Can not find job in running jobs. Then find it in terminated jobs.
       jobs = jobRepository.getTerminatedJobOfTopic(kafkaTopic);
     }
-    if (jobs.size() != 1) {
+    if (jobs.size() > 1) {
       throw new VeniceException(
           "There should be only one job for each kafka topic. But now there are:" + jobs.size() + " jobs running.");
+    } else if (jobs.size() <= 0) {
+      return ExecutionStatus.NOT_CREATED;
     }
 
     Job job = jobs.get(0);
@@ -83,7 +85,7 @@ public class VeniceJobManager implements ControlMessageHandler<StoreStatusMessag
     // We should avoid update tasks in same kafka topic in the same time. Different kafka topics could be accessed concurrently.
     synchronized (jobs) {
       // TODO Right now, for offline-push, there is only one job running for each version. Should be change to get job
-      // by job Id when H2V can get job Id and send it thourgh kafka control message.
+      // by job Id when H2V can get job Id and send it through kafka control message.
       if (jobs.size() > 1) {
         throw new VeniceException(
             "There should be only one job running for each kafka topic. But now there are:" + jobs.size()

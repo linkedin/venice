@@ -8,6 +8,8 @@ package com.linkedin.venice.job;
  * backward compat needs to be fixed, after things are in production at least.
  */
 public enum ExecutionStatus {
+  //Job doesn't yet exist
+  NOT_CREATED,
   //Job/Task just be created.
   NEW,
   //Job is started and start consuming data from Kafka

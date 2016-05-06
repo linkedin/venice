@@ -312,7 +312,8 @@ public class ControllerClient implements Closeable {
         }
 
         status = queryResponse.getStatus();
-        if (status.equals(ExecutionStatus.NEW.toString())
+        if (status.equals(ExecutionStatus.NOT_CREATED.toString())
+            || status.equals(ExecutionStatus.NEW.toString())
             || status.equals(ExecutionStatus.STARTED.toString())
             || status.equals(ExecutionStatus.PROGRESS.toString())) {
           logger.info("Push status: " + status + "...");
