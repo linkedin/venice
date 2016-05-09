@@ -2,7 +2,6 @@ package com.linkedin.venice.meta;
 
 import javax.validation.constraints.NotNull;
 
-
 /**
  * Class defines the version of Venice store.
  */
@@ -118,4 +117,14 @@ public class Version {
   public static int parseVersionFromKafkaTopicName(@NotNull String kafkaTopic) {
     return Integer.valueOf(kafkaTopic.substring(kafkaTopic.lastIndexOf(SEPARATOR) + SEPARATOR.length()));
   }
+
+  public static boolean topicIsValidStoreVersion(String kafkaTopic){
+    try{
+      parseVersionFromKafkaTopicName(kafkaTopic);
+    } catch (NumberFormatException e){
+      return false;
+    }
+    return true;
+  }
+
 }

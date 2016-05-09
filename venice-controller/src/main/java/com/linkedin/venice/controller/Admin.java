@@ -2,6 +2,7 @@ package com.linkedin.venice.controller;
 
 import com.linkedin.venice.job.ExecutionStatus;
 import com.linkedin.venice.meta.Version;
+import java.util.List;
 
 
 /**
@@ -20,6 +21,8 @@ public interface Admin {
     public Version incrementVersion(String clusterName, String storeName, int numberOfPartition, int replicaFactor);
 
     public Version peekNextVersion(String clusterName, String storeName);
+
+    public List<Version> versionsForStore(String clusterName, String storeName);
 
     public void reserveVersion(String clusterName, String storeName, int versionNumberToReserve);
 

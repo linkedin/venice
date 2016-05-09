@@ -2,6 +2,7 @@ package com.linkedin.venice.controller;
 
 import com.linkedin.venice.controller.kafka.TopicCreator;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.helix.HelixCachedMetadataRepository;
 import com.linkedin.venice.helix.HelixState;
 import com.linkedin.venice.job.ExecutionStatus;
@@ -225,14 +226,33 @@ public class VeniceHelixAdmin implements Admin {
         try {
             Store store = repository.getStore(storeName);
             if(store == null){
-                throw new VeniceException("Store: " + storeName + " does not exit.  Cannot identify next version");
+                throw new VeniceNoStoreException(storeName);
             }
             version = store.peekNextVersion(); /* Does not modify the store */
-            logger.info("Next version would be: "+version.getNumber()+" for store:" + storeName);
+            logger.info("Next version would be: " + version.getNumber() + " for store: " + storeName);
         } finally {
             repository.unLock();
         }
         return version;
+    }
+
+    @Override
+    public List<Version> versionsForStore(String clusterName, String storeName){
+        checkControllerMastership(clusterName);
+        HelixCachedMetadataRepository repository =
+            controllerStateModelFactory.getModel(clusterName).getResources().getMetadataRepository();
+        List<Version> versions;
+        repository.lock();
+        try {
+            Store store = repository.getStore(storeName);
+            if(store == null){
+                throw new VeniceNoStoreException(storeName);
+            }
+            versions = store.getVersions();
+        } finally {
+            repository.unLock();
+        }
+        return versions;
     }
 
     @Override
