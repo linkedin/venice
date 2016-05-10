@@ -24,7 +24,7 @@ public class UnitTestVeniceJobManager {
     HelixJobRepository jobRepo = Mockito.mock(HelixJobRepository.class);
     doReturn(new ArrayList<Job>()).when(jobRepo).getRunningJobOfTopic(anyString());
 
-    VeniceJobManager testManager = new VeniceJobManager(0, jobRepo, metaRepo);
+    VeniceJobManager testManager = new VeniceJobManager("cluster" , 0, jobRepo, metaRepo);
     Assert.assertEquals(testManager.getOfflineJobStatus("atopic"), ExecutionStatus.NOT_CREATED,
         "VeniceJobManager must return NOT_CREATED on missing topic");
   }

@@ -2,6 +2,9 @@ package com.linkedin.venice.meta;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.utils.TestUtils;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashSet;
 import java.util.List;
 import org.testng.Assert;
 import org.testng.annotations.Test;
@@ -87,11 +90,62 @@ public class TestStore {
     Assert.assertEquals(store.peekNextVersion().getNumber(), 9, "peek is bigger than reserved");
   }
 
-  public static void reserveVersionFails(Store store, int version){
-   try{
-     store.reserveVersionNumber(version);
-     Assert.fail("Shouldn't be able to reserve version " + version);
-   } catch (VeniceException e) {
-   }
+  private static void reserveVersionFails(Store store, int version) {
+    try {
+      store.reserveVersionNumber(version);
+      Assert.fail("Shouldn't be able to reserve version " + version);
+    } catch (VeniceException e) {
+    }
+  }
+
+  private static void assertVersionsEquals(Store store, int versionToPreserve, List<Version> versions, String message) {
+    Assert.assertEquals(new HashSet<Version>(store.retrieveVersionsToDelete(versionToPreserve)),
+        new HashSet<Version>(versions), message);
+  }
+
+
+  @Test
+  public void testRetrieveVersionsToDelete() {
+    Store store = TestUtils.createTestStore("retrieveDeleteStore", "owner", System.currentTimeMillis());
+    Assert.assertEquals(store.retrieveVersionsToDelete(1).size(), 0, "Store with no active version returns empty array");
+
+    Version version1 = new Version(store.getName(), 1);
+    store.addVersion(version1);
+    Assert.assertEquals(store.retrieveVersionsToDelete(1).size(), 0, "all unfinished version returns empty array ");
+
+    Version version2 = new Version(store.getName(), 2);
+    store.addVersion(version2);
+    Assert.assertEquals(store.retrieveVersionsToDelete(1).size(), 0, "all unfinished versions returns empty array ");
+
+    version1.setStatus(VersionStatus.ACTIVE);
+    Assert.assertEquals(store.retrieveVersionsToDelete(1).size(), 0, "Only one active version there, nothing to delete");
+
+    version2.setStatus(VersionStatus.ACTIVE);
+    assertVersionsEquals(store, 1, Arrays.asList(version1), "two version active, one should be deleted");
+    Assert.assertEquals(store.retrieveVersionsToDelete(2).size(), 0, "Only two active versions, nothing to delete");
+
+    // Add one more version in error.
+    Version version3 = new Version(store.getName(), 3);
+    store.addVersion(version3);
+    assertVersionsEquals(store, 1, Arrays.asList(version1), "two version active, one should be deleted");
+
+    version3.setStatus(VersionStatus.ERROR);
+    assertVersionsEquals( store, 1, Arrays.asList(version1), "highest version is never deleted");
+
+    Version version4 = new Version(store.getName(), 4);
+    store.addVersion(version4);
+
+    version4.setStatus(VersionStatus.ERROR);
+    assertVersionsEquals(store, 2, Arrays.asList(version3), "lower error versions should be deleted.");
+
+    assertVersionsEquals( store, 1, Arrays.asList(version1, version3), "lower active and error version should be deleted");
+
+    Version version5 = new Version(store.getName(), 5);
+    store.addVersion(version5);
+    version5.setStatus(VersionStatus.ACTIVE);
+
+    assertVersionsEquals(store, 2, Arrays.asList(version1, version3, version4), "delete all but 2 active versions");
+
+    assertVersionsEquals( store, 5, Arrays.asList(version3 , version4),"delete all error versions");
   }
 }

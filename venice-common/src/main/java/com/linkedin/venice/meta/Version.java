@@ -5,7 +5,7 @@ import javax.validation.constraints.NotNull;
 /**
  * Class defines the version of Venice store.
  */
-public class Version {
+public class Version implements Comparable<Version> {
   private static final String SEPARATOR = "_v";
   /**
    * Name of the store which this version belong to.
@@ -22,7 +22,7 @@ public class Version {
   /**
    * Status of version.
    */
-  private VersionStatus status = VersionStatus.INACTIVE;
+  private VersionStatus status = VersionStatus.STARTED;
 
   public Version(@NotNull String storeName, int number) {
     this(storeName , number, System.currentTimeMillis());
@@ -53,6 +53,26 @@ public class Version {
 
   public String getStoreName() {
     return storeName;
+  }
+
+  @Override
+  public String toString() {
+    return "Version{" +
+        "storeName='" + storeName + '\'' +
+        ", number=" + number +
+        ", createdTime=" + createdTime +
+        ", status=" + status +
+        '}';
+  }
+
+  @Override
+  public int compareTo(Version o) {
+    if(o == null) {
+      throw new IllegalArgumentException("Input argument is null");
+    }
+
+    Integer num = this.number;
+    return num.compareTo(o.number);
   }
 
   @Override

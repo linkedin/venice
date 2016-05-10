@@ -77,6 +77,7 @@ public class Store {
     return owner;
   }
 
+  @SuppressWarnings("unused") // Used by Serializer/De-serializer for storing to Zoo Keeper
   public long getCreatedTime() {
     return createdTime;
   }
@@ -89,6 +90,7 @@ public class Store {
     this.currentVersion = currentVersion;
   }
 
+  @SuppressWarnings("unused") // Used by Serializer/De-serializer for storing to Zoo Keeper
   public int getReservedVersion() {
     return this.reservedVersion;
   }
@@ -97,18 +99,22 @@ public class Store {
     this.reservedVersion = reservedVersion;
   }
 
+  @SuppressWarnings("unused") // Used by Serializer/De-serializer for storing to Zoo Keeper
   public PersistenceType getPersistenceType() {
     return persistenceType;
   }
 
+  @SuppressWarnings("unused") // Used by Serializer/De-serializer for storing to Zoo Keeper
   public RoutingStrategy getRoutingStrategy() {
     return routingStrategy;
   }
 
+  @SuppressWarnings("unused") // Used by Serializer/De-serializer for storing to Zoo Keeper
   public ReadStrategy getReadStrategy() {
     return readStrategy;
   }
 
+  @SuppressWarnings("unused") // Used by Serializer/De-serializer for storing to Zoo Keeper
   public OfflinePushStrategy getOffLinePushStrategy() {
     return offLinePushStrategy;
   }
@@ -117,6 +123,7 @@ public class Store {
     return Collections.unmodifiableList(this.versions);
   }
 
+  @SuppressWarnings("unused") // Used by Serializer/De-serializer for storing to Zoo Keeper
   public void setVersions(List<Version> versions) {
     this.versions = versions;
   }
@@ -211,6 +218,52 @@ public class Store {
       return version;
     }
 
+  }
+
+  public List<Version> retrieveVersionsToDelete(int numVersionsToPreserve) {
+    // when numVersionsToPreserve is less than 1, it usually means a config issue.
+    // Setting it to zero, will cause the store to be deleted as soon as push completes.
+    if(numVersionsToPreserve < 1) {
+      throw new IllegalArgumentException("At least 1 version should be preserved. Parameter " + numVersionsToPreserve);
+    }
+
+    if(versions.size() == 0) {
+      return new ArrayList<>();
+    }
+
+    List<Version> versionsToDelete = new ArrayList<>();
+
+    // Ignore the last version from considering it for delete.
+    // If a version gets deleted the same version number will be generated for the next version
+    // in the current code. Due to timing and synchronization issues as well as reasoning
+    // this case is difficult to handle.
+    // TODO : but this still wastes the space on storage node by preserving the highest version
+    // regardless of its state. It can be solved better by always incrementing the versions
+    // and never re-using it.
+
+    // The code assumes that Versions are sorted in increasing order by addVersion and increaseVersion
+    int lastElementIndex =  versions.size() - 1;
+    Version latestVersion = versions.get(lastElementIndex);
+    if(VersionStatus.preserveLastFew(latestVersion.getStatus())) {
+      // Last version is always preserved and it can be archived, reduce the number of versions to preserveLastFew by 1.
+      numVersionsToPreserve --;
+    }
+
+    for(int i = lastElementIndex - 1;i >= 0 ; i --){
+      Version version = versions.get(i);
+      // Error Versions are deleted immediately
+      if(VersionStatus.canDelete(version.getStatus())) {
+        versionsToDelete.add(version);
+      } else if (VersionStatus.preserveLastFew(version.getStatus())) {
+        if(numVersionsToPreserve > 0) {
+          numVersionsToPreserve --;
+        } else {
+          versionsToDelete.add(version);
+        }
+      }
+    }
+
+    return versionsToDelete;
   }
 
   @Override

@@ -9,28 +9,30 @@ import java.util.List;
  * Created by athirupa on 2/1/16.
  */
 public interface Admin {
-    public void start(String clusterName);
+    void start(String clusterName);
 
-    public void addStore(String clusterName, String storeName, String owner);
+    void addStore(String clusterName, String storeName, String owner);
 
-    public Version addVersion(String clusterName, String storeName, int versionNumber);
+    Version addVersion(String clusterName, String storeName, int versionNumber);
 
-    public Version addVersion(String clusterName, String storeName, int versionNumber, int numberOfPartition,
+    Version addVersion(String clusterName, String storeName, int versionNumber, int numberOfPartition,
         int replicaFactor);
 
-    public Version incrementVersion(String clusterName, String storeName, int numberOfPartition, int replicaFactor);
+    Version incrementVersion(String clusterName, String storeName, int numberOfPartition, int replicaFactor);
 
-    public Version peekNextVersion(String clusterName, String storeName);
+    Version peekNextVersion(String clusterName, String storeName);
 
-    public List<Version> versionsForStore(String clusterName, String storeName);
+    List<Version> versionsForStore(String clusterName, String storeName);
 
-    public void reserveVersion(String clusterName, String storeName, int versionNumberToReserve);
+    void reserveVersion(String clusterName, String storeName, int versionNumberToReserve);
 
-    public void setCurrentVersion(String clusterName, String storeName, int versionNumber);
+    void setCurrentVersion(String clusterName, String storeName, int versionNumber);
 
-    public void startOfflinePush(String clusterName, String kafkaTopic, int numberOfPartition, int replicaFactor);
+    void startOfflinePush(String clusterName, String kafkaTopic, int numberOfPartition, int replicaFactor);
 
-    public void stop(String clusterName);
+    void deleteOldStoreVersion(String clusterName, String kafkaTopic);
+
+    void stop(String clusterName);
 
     /**
      * Query the status of the offline job by given kafka topic.
@@ -41,7 +43,7 @@ public interface Admin {
      * @param kafkaTopic
      * @return the map of job Id to job status.
      */
-    public ExecutionStatus getOffLineJobStatus(String clusterName, String kafkaTopic);
+    ExecutionStatus getOffLineJobStatus(String clusterName, String kafkaTopic);
 
     /**
      * TODO : Currently bootstrap servers are common per Venice Controller cluster
@@ -51,14 +53,14 @@ public interface Admin {
      *
      * @return kafka bootstrap servers url, if there are multiple will be comma separated.
      */
-    public String getKafkaBootstrapServers();
+    String getKafkaBootstrapServers();
 
     /**
      * Check if this controller itself is the master controller of given cluster or not.
      * @param clusterName
      * @return
      */
-    public boolean isMasterController(String clusterName);
+    boolean isMasterController(String clusterName);
 
-    public void close();
+    void close();
 }

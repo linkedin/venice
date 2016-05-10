@@ -28,11 +28,18 @@ public class VeniceJobManager implements ControlMessageHandler<StoreStatusMessag
   private final MetadataRepository metadataRepository;
   private final AtomicInteger idGenerator = new AtomicInteger(0);
   private final int epoch;
+  private Admin helixAdmin;
+  private final String clusterName;
 
-  public VeniceJobManager(int epoch, JobRepository jobRepository, MetadataRepository metadataRepository) {
+  public VeniceJobManager(String clusterName, int epoch, JobRepository jobRepository, MetadataRepository metadataRepository) {
+    this.clusterName = clusterName;
     this.epoch = epoch;
     this.jobRepository = jobRepository;
     this.metadataRepository = metadataRepository;
+  }
+
+  public void setAdmin(Admin helixAdmin) {
+    this.helixAdmin = helixAdmin;
   }
 
   public void checkAllExistingJobs() {
@@ -115,29 +122,61 @@ public class VeniceJobManager implements ControlMessageHandler<StoreStatusMessag
     }
   }
 
+  private void updateStoreVersionStatus(Job job, Store store, VersionStatus status) {
+    int versionNumber = Version.parseVersionFromKafkaTopicName(job.getKafkaTopic());
+    store.updateVersionStatus(versionNumber, status);
+
+    if(status == VersionStatus.ACTIVE) {
+      if (versionNumber > store.getCurrentVersion()) {
+        store.setCurrentVersion(versionNumber);
+      } else {
+        logger.warn("Ignoring older version job complete message. Version " + versionNumber +
+                " Store " + store.getName() + " Topic " + job.getKafkaTopic());
+      }
+    }
+  }
+
+  // TODO : instead of running when the store version completes, it should run from
+  // a timer job/service which runs every few hours.
+  private void deleteOldStoreVersions(Store store) {
+    if(helixAdmin == null) {
+      return;
+    }
+    // TODO : versions to preserveLastFew must read from config
+    final int NUM_VERSIONS_TO_PRESERVE = 2;
+    List<Version> versionsToDelete = store.retrieveVersionsToDelete(NUM_VERSIONS_TO_PRESERVE);
+    for (Version version : versionsToDelete) {
+      helixAdmin.deleteOldStoreVersion(clusterName, version.kafkaTopicName());
+      store.deleteVersion(version.getNumber());
+    }
+  }
+
   private void handleJobComplete(Job job) {
     //Do the swap. Change version to active so that router could get the notification and sending the message to this version.
     Store store = metadataRepository.getStore(Version.parseStoreFromKafkaTopicName(job.getKafkaTopic()));
-    int versionNumber = Version.parseVersionFromKafkaTopicName(job.getKafkaTopic());
-    store.updateVersionStatus(versionNumber, VersionStatus.ACTIVE);
-    if (versionNumber > store.getCurrentVersion()) {
-      store.setCurrentVersion(versionNumber);
-    }
+    updateStoreVersionStatus(job, store, VersionStatus.ACTIVE);
     for (int retry = 2; retry >= 0; retry--) {
       try {
         metadataRepository.updateStore(store);
         break;
       } catch (Exception e) {
+        int versionNumber = Version.parseVersionFromKafkaTopicName(job.getKafkaTopic());
         logger.error("Can not activate version: " + versionNumber + " for store: " + store.getName());
         // TODO: Reconcile inconsistency between version and job in case of fatal failure
       }
     }
     jobRepository.stopJob(job.getJobId(), job.getKafkaTopic());
+
+    deleteOldStoreVersions(store);
   }
 
   private void handleJobError(Job job) {
     //TODO do the roll back here.
+    Store store = metadataRepository.getStore(Version.parseStoreFromKafkaTopicName(job.getKafkaTopic()));
+    updateStoreVersionStatus(job, store , VersionStatus.ERROR);
     jobRepository.stopJobWithError(job.getJobId(), job.getKafkaTopic());
+
+    deleteOldStoreVersions(store);
   }
 
   /**

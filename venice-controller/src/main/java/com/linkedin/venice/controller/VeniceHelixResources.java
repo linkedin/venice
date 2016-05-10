@@ -31,7 +31,7 @@ public class VeniceHelixResources implements VeniceResource {
     metadataRepository = new HelixCachedMetadataRepository(zkClient, adapter, clusterName);
     routingDataRepository = new HelixRoutingDataRepository(helixManager);
     jobRepository = new HelixJobRepository(zkClient, adapter, clusterName, routingDataRepository);
-    jobManager = new VeniceJobManager(helixManager.getSessionId().hashCode(), jobRepository, metadataRepository);
+    jobManager = new VeniceJobManager(clusterName , helixManager.getSessionId().hashCode(), jobRepository, metadataRepository);
     messageChannel = new HelixControlMessageChannel(helixManager);
   }
 

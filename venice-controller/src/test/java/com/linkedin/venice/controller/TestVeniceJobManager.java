@@ -109,8 +109,7 @@ public class TestVeniceJobManager {
     jobRepository.refresh();
     metadataRepository = new HelixCachedMetadataRepository(zkClient, adapterSerializer, cluster);
     metadataRepository.refresh();
-    jobManager = new VeniceJobManager(1, jobRepository, metadataRepository);
-
+    jobManager = new VeniceJobManager(cluster , 1, jobRepository, metadataRepository);
     store = TestUtils.createTestStore(storeName, "test", System.currentTimeMillis());
     version = store.increaseVersion();
   }
@@ -182,7 +181,7 @@ public class TestVeniceJobManager {
     Store updatedStore = metadataRepository.getStore(storeName);
     Assert.assertEquals(updatedStore.getCurrentVersion(), 0,
         "Push was failed. No current version is active for this store.");
-    Assert.assertEquals(updatedStore.getVersions().get(0).getStatus(), VersionStatus.INACTIVE,
+    Assert.assertEquals(updatedStore.getVersions().get(0).getStatus(), VersionStatus.STARTED,
         "Push was failed. Version should not be activated.");
     jobManager.archiveJobs(version.kafkaTopicName());
     try {

@@ -59,10 +59,6 @@ public class VeniceHelixAdmin implements Admin {
     private VeniceDistClusterControllerStateModelFactory controllerStateModelFactory;
     //TODO Use different configs for different clusters when creating helix admin.
     public VeniceHelixAdmin(VeniceControllerConfig config) {
-        /* Controller name can be generated from the hostname and
-        VMID https://docs.oracle.com/javase/7/docs/api/java/rmi/dgc/VMID.html
-        but taking this parameter from the user for now
-         */
         this.controllerName = Utils.getHelixNodeIdentifier(config.getAdminPort());
         this.controllerClusterName = config.getControllerClusterName();
         this.controllerClusterReplica = config.getControllerClusterReplica();
@@ -77,6 +73,7 @@ public class VeniceHelixAdmin implements Admin {
         controllerStateModelFactory =
             new VeniceDistClusterControllerStateModelFactory(zkClient);
         controllerStateModelFactory.addClusterConfig(config.getClusterName(), config);
+        // TODO should the Manager initialization be part of start method instead of the constructor.
         manager = HelixManagerFactory
             .getZKHelixManager(controllerClusterName, controllerName, InstanceType.CONTROLLER_PARTICIPANT, config.getControllerClusterZkAddresss());
         StateMachineEngine stateMachine = manager.getStateMachineEngine();
@@ -85,10 +82,20 @@ public class VeniceHelixAdmin implements Admin {
             manager.connect();
         } catch (Exception ex) {
             String errorMessage = " Error starting Helix controller cluster " +
-                config.getControllerClusterName() + " controller " + controllerName;
+                    controllerClusterName + " controller " + controllerName;
             logger.error(errorMessage, ex);
             throw new VeniceException(errorMessage, ex);
         }
+    }
+
+    private void setJobManagerAdmin(VeniceJobManager jobManager) {
+        // TODO : Alternative ways of doing admin operation need to be explored. In the current code Admin has
+        // relationship to all the resources and stores, but resources and stores are not aware of the admin.
+        // This creates one centralized point, where all the admin operations need to flow through.
+        // IF Admin object is shared, but stores/resources implement their own operation, it might be easier
+        // to maintain and understand the code.
+
+        jobManager.setAdmin(this);
     }
 
     @Override
@@ -109,14 +116,14 @@ public class VeniceHelixAdmin implements Admin {
                 String errorMsg = "Controller for " + clusterName + " is not started, because we met error when doing Helix state transition.";
                 throw new VeniceException(errorMsg);
             }
-            logger.info(
-                "VeniceHelixAdmin is started. Controller name: '" + controllerName + "', Cluster name: '" + clusterName
-                    + "'.");
         } catch (InterruptedException e) {
             String errorMsg = "Controller for " + clusterName + " is not started";
             logger.error(errorMsg, e);
             throw new VeniceException(errorMsg, e);
         }
+
+        logger.info("VeniceHelixAdmin is started. Controller name: '" + controllerName +
+            "', Cluster name: '" + clusterName + "'.");
     }
 
     @Override
@@ -295,10 +302,18 @@ public class VeniceHelixAdmin implements Admin {
     public void startOfflinePush(String clusterName, String kafkaTopic, int numberOfPartition, int replicaFactor) {
         checkControllerMastership(clusterName);
         VeniceJobManager jobManager = controllerStateModelFactory.getModel(clusterName).getResources().getJobManager();
+        setJobManagerAdmin(jobManager);
         jobManager.startOfflineJob(kafkaTopic, numberOfPartition, replicaFactor);
     }
 
     @Override
+    public void deleteOldStoreVersion(String clusterName, String kafkaTopic) {
+        checkControllerMastership(clusterName);
+        admin.dropResource(clusterName, kafkaTopic);
+        logger.info("Successfully dropped the resource " + kafkaTopic + " for cluster " + clusterName);
+    }
+
+  @Override
     public synchronized void stop(String clusterName) {
         // Instead of disconnecting the sub-controller for the given cluster, we should disable it for this controller,
         // then the LEADER->STANDBY and STANDBY->OFFLINE will be triggered, our handler will handle the resource collection.
