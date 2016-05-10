@@ -120,12 +120,17 @@ public class VeniceJobManager implements ControlMessageHandler<StoreStatusMessag
     Store store = metadataRepository.getStore(Version.parseStoreFromKafkaTopicName(job.getKafkaTopic()));
     int versionNumber = Version.parseVersionFromKafkaTopicName(job.getKafkaTopic());
     store.updateVersionStatus(versionNumber, VersionStatus.ACTIVE);
-    store.setCurrentVersion(versionNumber);
-    try {
-      metadataRepository.updateStore(store);
-    } catch (Exception e) {
-      logger.error("Can not activate version:" + versionNumber + "for store:" + store.getName());
-      // TODO: Retry activating version here. Or other way to repair the inconsistency between version and job.
+    if (versionNumber > store.getCurrentVersion()) {
+      store.setCurrentVersion(versionNumber);
+    }
+    for (int retry = 2; retry >= 0; retry--) {
+      try {
+        metadataRepository.updateStore(store);
+        break;
+      } catch (Exception e) {
+        logger.error("Can not activate version: " + versionNumber + " for store: " + store.getName());
+        // TODO: Reconcile inconsistency between version and job in case of fatal failure
+      }
     }
     jobRepository.stopJob(job.getJobId(), job.getKafkaTopic());
   }
