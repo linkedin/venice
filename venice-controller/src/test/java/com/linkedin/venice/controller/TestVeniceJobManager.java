@@ -3,9 +3,10 @@ package com.linkedin.venice.controller;
 import com.linkedin.venice.controlmessage.StoreStatusMessage;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixAdapterSerializer;
-import com.linkedin.venice.helix.HelixCachedMetadataRepository;
 import com.linkedin.venice.helix.HelixInstanceConverter;
 import com.linkedin.venice.helix.HelixJobRepository;
+import com.linkedin.venice.helix.HelixReadWriteStoreRepository;
+import com.linkedin.venice.helix.HelixReadonlyStoreRepository;
 import com.linkedin.venice.helix.HelixRoutingDataRepository;
 import com.linkedin.venice.helix.TestHelixRoutingDataRepository;
 import com.linkedin.venice.job.Job;
@@ -45,7 +46,7 @@ import org.testng.annotations.Test;
 public class TestVeniceJobManager {
   private VeniceJobManager jobManager;
   private HelixJobRepository jobRepository;
-  private HelixCachedMetadataRepository metadataRepository;
+  private HelixReadWriteStoreRepository metadataRepository;
 
   private String zkAddress;
   private ZkServerWrapper zkServerWrapper;
@@ -107,7 +108,7 @@ public class TestVeniceJobManager {
     routingDataRepository.refresh();
     jobRepository = new HelixJobRepository(zkClient, adapterSerializer, cluster, routingDataRepository);
     jobRepository.refresh();
-    metadataRepository = new HelixCachedMetadataRepository(zkClient, adapterSerializer, cluster);
+    metadataRepository = new HelixReadWriteStoreRepository(zkClient, adapterSerializer, cluster);
     metadataRepository.refresh();
     jobManager = new VeniceJobManager(cluster , 1, jobRepository, metadataRepository);
     store = TestUtils.createTestStore(storeName, "test", System.currentTimeMillis());

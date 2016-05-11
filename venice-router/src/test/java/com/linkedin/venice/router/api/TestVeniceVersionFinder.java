@@ -1,7 +1,7 @@
 package com.linkedin.venice.router.api;
 
 import com.linkedin.ddsstorage.router.api.RouterException;
-import com.linkedin.venice.meta.MetadataRepository;
+import com.linkedin.venice.meta.ReadonlyStoreRepository;
 import org.mockito.Mockito;
 import static org.mockito.Mockito.*;
 
@@ -15,7 +15,7 @@ import org.testng.annotations.Test;
 public class TestVeniceVersionFinder {
   @Test
   public void throws404onMissingStore(){
-    MetadataRepository mockRepo = Mockito.mock(MetadataRepository.class);
+    ReadonlyStoreRepository mockRepo = Mockito.mock(ReadonlyStoreRepository.class);
     doReturn(null).when(mockRepo).getStore(anyString());
     VeniceVersionFinder versionFinder = new VeniceVersionFinder(mockRepo);
     try{

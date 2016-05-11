@@ -1,7 +1,7 @@
 package com.linkedin.venice.router.api;
 
 import com.linkedin.ddsstorage.router.api.RouterException;
-import com.linkedin.venice.meta.MetadataRepository;
+import com.linkedin.venice.meta.ReadonlyStoreRepository;
 import com.linkedin.venice.meta.Store;
 import javax.validation.constraints.NotNull;
 import org.jboss.netty.handler.codec.http.HttpResponseStatus;
@@ -12,9 +12,9 @@ import org.jboss.netty.handler.codec.http.HttpResponseStatus;
  */
 public class VeniceVersionFinder {
 
-  private final MetadataRepository metadataRepository;
+  private final ReadonlyStoreRepository metadataRepository;
 
-  public VeniceVersionFinder(@NotNull MetadataRepository metadataRepository){
+  public VeniceVersionFinder(@NotNull ReadonlyStoreRepository metadataRepository){
     this.metadataRepository = metadataRepository;
   }
 

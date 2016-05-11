@@ -14,7 +14,7 @@ import com.linkedin.ddsstorage.router.api.ScatterGatherHelper;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixAdapterSerializer;
-import com.linkedin.venice.helix.HelixCachedMetadataRepository;
+import com.linkedin.venice.helix.HelixReadonlyStoreRepository;
 import com.linkedin.venice.helix.HelixRoutingDataRepository;
 import com.linkedin.venice.router.api.VeniceDispatcher;
 import com.linkedin.venice.router.api.VeniceHostFinder;
@@ -55,7 +55,7 @@ public class RouterServer extends AbstractVeniceService {
   private ZkClient zkClient;
   private HelixManager manager;
   private HelixRoutingDataRepository routingDataRepository;
-  private HelixCachedMetadataRepository metadataRepository;
+  private HelixReadonlyStoreRepository metadataRepository;
   private String clusterName;
 
   private ChannelFuture serverFuture = null;
@@ -123,7 +123,7 @@ public class RouterServer extends AbstractVeniceService {
       throw new VeniceException("Failed to start manager when creating Venice Router", e);
     }
     HelixAdapterSerializer adapter = new HelixAdapterSerializer();
-    this.metadataRepository = new HelixCachedMetadataRepository(zkClient, adapter, this.clusterName);
+    this.metadataRepository = new HelixReadonlyStoreRepository(zkClient, adapter, this.clusterName);
     this.routingDataRepository = new HelixRoutingDataRepository(manager);
     this.d2ServerList = d2ServerList;
   }
@@ -136,7 +136,7 @@ public class RouterServer extends AbstractVeniceService {
    * @param metadataRepository
    */
   public RouterServer(int port, String clusterName, HelixRoutingDataRepository routingDataRepository,
-      HelixCachedMetadataRepository metadataRepository, List<D2Server> d2ServerList){
+      HelixReadonlyStoreRepository metadataRepository, List<D2Server> d2ServerList){
     super(RouterServer.class.getName());
     this.port = port;
     this.clusterName = clusterName;

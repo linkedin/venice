@@ -3,7 +3,7 @@ package com.linkedin.venice.controller;
 import com.linkedin.venice.controller.kafka.TopicCreator;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
-import com.linkedin.venice.helix.HelixCachedMetadataRepository;
+import com.linkedin.venice.helix.HelixReadWriteStoreRepository;
 import com.linkedin.venice.helix.HelixState;
 import com.linkedin.venice.job.ExecutionStatus;
 import com.linkedin.venice.meta.Store;
@@ -129,7 +129,7 @@ public class VeniceHelixAdmin implements Admin {
     @Override
     public synchronized void addStore(String clusterName, String storeName, String owner) {
         checkControllerMastership(clusterName);
-        HelixCachedMetadataRepository repository =
+        HelixReadWriteStoreRepository repository =
             controllerStateModelFactory.getModel(clusterName).getResources().getMetadataRepository();
         if (repository.getStore(storeName) != null) {
             throwStoreAlreadyExists(clusterName, storeName);
@@ -161,7 +161,7 @@ public class VeniceHelixAdmin implements Admin {
     public synchronized void reserveVersion(String clusterName, String storeName, int versionNumberToReserve){
         checkControllerMastership(clusterName);
         boolean success = false;
-        HelixCachedMetadataRepository repository =
+        HelixReadWriteStoreRepository repository =
             controllerStateModelFactory.getModel(clusterName).getResources().getMetadataRepository();
         repository.lock();
         try {
@@ -182,7 +182,7 @@ public class VeniceHelixAdmin implements Admin {
     @Override
     public synchronized Version addVersion(String clusterName, String storeName,int versionNumber, int numberOfPartition, int replicaFactor) {
         checkControllerMastership(clusterName);
-        HelixCachedMetadataRepository repository =
+        HelixReadWriteStoreRepository repository =
             controllerStateModelFactory.getModel(clusterName).getResources().getMetadataRepository();
 
         Version version = null;
@@ -226,7 +226,7 @@ public class VeniceHelixAdmin implements Admin {
     @Override
     public Version peekNextVersion(String clusterName, String storeName) {
         checkControllerMastership(clusterName);
-        HelixCachedMetadataRepository repository =
+        HelixReadWriteStoreRepository repository =
             controllerStateModelFactory.getModel(clusterName).getResources().getMetadataRepository();
         Version version = null;
         repository.lock();
@@ -246,7 +246,7 @@ public class VeniceHelixAdmin implements Admin {
     @Override
     public List<Version> versionsForStore(String clusterName, String storeName){
         checkControllerMastership(clusterName);
-        HelixCachedMetadataRepository repository =
+        HelixReadWriteStoreRepository repository =
             controllerStateModelFactory.getModel(clusterName).getResources().getMetadataRepository();
         List<Version> versions;
         repository.lock();
@@ -265,7 +265,7 @@ public class VeniceHelixAdmin implements Admin {
     @Override
     public synchronized void setCurrentVersion(String clusterName, String storeName, int versionNumber){
         checkControllerMastership(clusterName);
-        HelixCachedMetadataRepository repository =
+        HelixReadWriteStoreRepository repository =
             controllerStateModelFactory.getModel(clusterName).getResources().getMetadataRepository();
         repository.lock();
         try {

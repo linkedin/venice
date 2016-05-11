@@ -11,3 +11,5 @@ build/
 */*.DS_Store
 */*.class
 *.swp
+out/
+*/target/

@@ -15,11 +15,9 @@ public class TestStoreJsonSerializer {
     public void testSerializeAndDeserializeStore()
         throws IOException {
         Store store = TestUtils.createTestStore("s1", "owner", 1l);
+        store.increaseVersion();
         StoreJSONSerializer serializer = new StoreJSONSerializer();
         byte[] data = serializer.serialize(store);
-
-        System.out.println(new String(data));
-
         Store newStore = serializer.deserialize(data);
         Assert.assertEquals(store,newStore);
     }

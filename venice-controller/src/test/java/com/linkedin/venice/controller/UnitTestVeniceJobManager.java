@@ -1,7 +1,7 @@
 package com.linkedin.venice.controller;
 
-import com.linkedin.venice.helix.HelixCachedMetadataRepository;
 import com.linkedin.venice.helix.HelixJobRepository;
+import com.linkedin.venice.helix.HelixReadWriteStoreRepository;
 import com.linkedin.venice.job.ExecutionStatus;
 import com.linkedin.venice.job.Job;
 import java.util.ArrayList;
@@ -20,7 +20,7 @@ public class UnitTestVeniceJobManager {
 
   @Test
   public void notCreatedStatusOnMissingJob(){
-    HelixCachedMetadataRepository metaRepo = Mockito.mock(HelixCachedMetadataRepository.class);
+    HelixReadWriteStoreRepository metaRepo = Mockito.mock(HelixReadWriteStoreRepository.class);
     HelixJobRepository jobRepo = Mockito.mock(HelixJobRepository.class);
     doReturn(new ArrayList<Job>()).when(jobRepo).getRunningJobOfTopic(anyString());
 

@@ -3,6 +3,7 @@ package com.linkedin.venice.helix;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.TestUtils;
 import org.apache.helix.manager.zk.ZkClient;
 import org.apache.zookeeper.CreateMode;
@@ -13,10 +14,10 @@ import org.testng.annotations.Test;
 
 
 /**
- * Test cases for HelixMetadataRepository. All the tests depend on Zookeeper. Please ensure there is a zookeeper
+ * Test cases for HelixReadWriteStoreRepository. All the tests depend on Zookeeper. Please ensure there is a zookeeper
  * available for testing.
  */
-public class TestHelixMetadataRepository {
+public class TestHelixReadWriteStoreRepository {
     private String zkAddress;
     private ZkClient zkClient;
     private String cluster = "test-metadata-cluster";
@@ -25,6 +26,8 @@ public class TestHelixMetadataRepository {
     private ZkServerWrapper zkServerWrapper;
     private HelixAdapterSerializer adapter = new HelixAdapterSerializer();
 
+    HelixReadWriteStoreRepository repo;
+
     @BeforeMethod
     public void zkSetup() {
         zkServerWrapper = ServiceFactory.getZkServer();
@@ -32,10 +35,14 @@ public class TestHelixMetadataRepository {
         zkClient = new ZkClient(zkAddress, ZkClient.DEFAULT_SESSION_TIMEOUT, ZkClient.DEFAULT_CONNECTION_TIMEOUT, adapter);
         zkClient.create(clusterPath, null, CreateMode.PERSISTENT);
         zkClient.create(clusterPath + storesPath, null, CreateMode.PERSISTENT);
+
+        repo = new HelixReadWriteStoreRepository(zkClient, adapter, cluster);
+        repo.refresh();
     }
 
     @AfterMethod
     public void zkCleanup() {
+        repo.clear();
         zkClient.deleteRecursive(clusterPath);
         zkClient.close();
         zkServerWrapper.close();
@@ -43,19 +50,50 @@ public class TestHelixMetadataRepository {
 
     @Test
     public void testAddAndReadStore() {
-        HelixMetadataRepository repo = new HelixMetadataRepository(zkClient, adapter, cluster);
+        repo.refresh();
         Store s1 = TestUtils.createTestStore("s1", "owner", System.currentTimeMillis());
+        s1.increaseVersion();
         repo.addStore(s1);
         Store s2 = repo.getStore("s1");
-        Assert.assertEquals(s2, s1, "Store get from ZK is different with local one");
+        Assert.assertEquals(s2, s1, "Store was not added successfully");
     }
 
     @Test
     public void testAddAndDeleteStore() {
-        HelixMetadataRepository repo = new HelixMetadataRepository(zkClient, adapter, cluster);
         Store s1 = TestUtils.createTestStore("s1", "owner", System.currentTimeMillis());
         repo.addStore(s1);
         repo.deleteStore("s1");
         Assert.assertNull(repo.getStore("s1"));
+    }
+
+    @Test
+    public void testUpdateAndReadStore() {
+        Store s1 = TestUtils.createTestStore("s1", "owner", System.currentTimeMillis());
+        s1.increaseVersion();
+        repo.addStore(s1);
+        Store s2 = repo.getStore(s1.getName());
+        s2.increaseVersion();
+        repo.updateStore(s2);
+        Store s3 = repo.getStore(s2.getName());
+        Assert.assertEquals(s3, s2, "Store was not updated successfully.");
+    }
+
+    @Test
+    public void testLoadFromZK() {
+        repo.refresh();
+        Store s1 = TestUtils.createTestStore("s1", "owner", System.currentTimeMillis());
+        s1.increaseVersion();
+        repo.addStore(s1);
+        Store s2 = TestUtils.createTestStore("s2", "owner", System.currentTimeMillis());
+        s2.addVersion(new Version(s2.getName(), 3));
+        repo.addStore(s2);
+
+        HelixReadWriteStoreRepository newRepo = new HelixReadWriteStoreRepository(zkClient, adapter, cluster);
+        newRepo.refresh();
+        Assert.assertEquals(newRepo.getStore(s1.getName()), s1, "Can not load stores from ZK successfully");
+        Assert.assertEquals(newRepo.getStore(s2.getName()), s2, "Can not load stores from ZK successfully");
+        newRepo.clear();
+        Assert.assertNull(newRepo.getStore(s1.getName()));
+        Assert.assertNull(newRepo.getStore(s2.getName()));
     }
 }

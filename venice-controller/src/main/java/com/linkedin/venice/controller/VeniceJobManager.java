@@ -8,7 +8,7 @@ import com.linkedin.venice.job.Job;
 import com.linkedin.venice.job.JobRepository;
 import com.linkedin.venice.job.OfflineJob;
 import com.linkedin.venice.job.Task;
-import com.linkedin.venice.meta.MetadataRepository;
+import com.linkedin.venice.meta.ReadWriteStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
@@ -25,13 +25,13 @@ import org.apache.log4j.Logger;
 public class VeniceJobManager implements ControlMessageHandler<StoreStatusMessage> {
   private static final Logger logger = Logger.getLogger(VeniceJobManager.class);
   private final JobRepository jobRepository;
-  private final MetadataRepository metadataRepository;
+  private final ReadWriteStoreRepository metadataRepository;
   private final AtomicInteger idGenerator = new AtomicInteger(0);
   private final int epoch;
   private Admin helixAdmin;
   private final String clusterName;
 
-  public VeniceJobManager(String clusterName, int epoch, JobRepository jobRepository, MetadataRepository metadataRepository) {
+  public VeniceJobManager(String clusterName, int epoch, JobRepository jobRepository, ReadWriteStoreRepository metadataRepository) {
     this.clusterName = clusterName;
     this.epoch = epoch;
     this.jobRepository = jobRepository;
@@ -207,13 +207,5 @@ public class VeniceJobManager implements ControlMessageHandler<StoreStatusMessag
     int generatedId = idGenerator.incrementAndGet();
     id = id | generatedId;
     return id;
-  }
-
-  public JobRepository getJobRepository() {
-    return jobRepository;
-  }
-
-  public MetadataRepository getMetadataRepository() {
-    return metadataRepository;
   }
 }

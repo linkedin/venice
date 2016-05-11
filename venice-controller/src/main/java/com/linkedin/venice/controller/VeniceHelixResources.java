@@ -3,9 +3,9 @@ package com.linkedin.venice.controller;
 import com.linkedin.venice.VeniceResource;
 import com.linkedin.venice.controlmessage.StoreStatusMessage;
 import com.linkedin.venice.helix.HelixAdapterSerializer;
-import com.linkedin.venice.helix.HelixCachedMetadataRepository;
 import com.linkedin.venice.helix.HelixControlMessageChannel;
 import com.linkedin.venice.helix.HelixJobRepository;
+import com.linkedin.venice.helix.HelixReadWriteStoreRepository;
 import com.linkedin.venice.helix.HelixRoutingDataRepository;
 import org.apache.helix.HelixManager;
 import org.apache.helix.manager.zk.ZkClient;
@@ -16,7 +16,7 @@ import org.apache.helix.manager.zk.ZkClient;
  */
 public class VeniceHelixResources implements VeniceResource {
   private final HelixManager controller;
-  private final HelixCachedMetadataRepository metadataRepository;
+  private final HelixReadWriteStoreRepository metadataRepository;
   private final HelixRoutingDataRepository routingDataRepository;
   private final HelixJobRepository jobRepository;
   private final VeniceJobManager jobManager;
@@ -28,7 +28,7 @@ public class VeniceHelixResources implements VeniceResource {
     this.config = config;
     this.controller = helixManager;
     HelixAdapterSerializer adapter = new HelixAdapterSerializer();
-    metadataRepository = new HelixCachedMetadataRepository(zkClient, adapter, clusterName);
+    metadataRepository = new HelixReadWriteStoreRepository(zkClient, adapter, clusterName);
     routingDataRepository = new HelixRoutingDataRepository(helixManager);
     jobRepository = new HelixJobRepository(zkClient, adapter, clusterName, routingDataRepository);
     jobManager = new VeniceJobManager(clusterName , helixManager.getSessionId().hashCode(), jobRepository, metadataRepository);
@@ -53,7 +53,7 @@ public class VeniceHelixResources implements VeniceResource {
       messageChannel.unRegisterHandler(StoreStatusMessage.class, jobManager);
   }
 
-  public HelixCachedMetadataRepository getMetadataRepository() {
+  public HelixReadWriteStoreRepository getMetadataRepository() {
     return metadataRepository;
   }
 

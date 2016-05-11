@@ -168,7 +168,6 @@ public class TestVeniceHelixAdmin {
     Assert.assertEquals(newMasterAdmin.getOffLineJobStatus(clusterName, "test_v1"), ExecutionStatus.STARTED,
         "Can not get offline job status correctly.");
     channel.sendToController(new StoreStatusMessage("test_v1", 0, nodeId, ExecutionStatus.COMPLETED));
-
     Assert.assertEquals(newMasterAdmin.getOffLineJobStatus(clusterName, "test_v1"), ExecutionStatus.COMPLETED,
         "Job should be completed after getting update from message channel");
 
