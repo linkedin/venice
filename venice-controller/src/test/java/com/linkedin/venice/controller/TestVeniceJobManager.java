@@ -136,13 +136,13 @@ public class TestVeniceJobManager {
     jobManager.startOfflineJob(version.kafkaTopicName(), 1, 1);
 
     StoreStatusMessage message =
-        new StoreStatusMessage(1, version.kafkaTopicName(), 0, nodeId, ExecutionStatus.STARTED);
+        new StoreStatusMessage(version.kafkaTopicName(), 0, nodeId, ExecutionStatus.STARTED);
     jobManager.handleMessage(message);
     Job job = jobRepository.getRunningJobOfTopic(version.kafkaTopicName()).get(0);
     Assert.assertEquals(jobRepository.getJobStatus(job.getJobId(), job.getKafkaTopic()), ExecutionStatus.STARTED,
         "Job should be started.");
 
-    message = new StoreStatusMessage(1, version.kafkaTopicName(), 0, nodeId, ExecutionStatus.COMPLETED);
+    message = new StoreStatusMessage(version.kafkaTopicName(), 0, nodeId, ExecutionStatus.COMPLETED);
     jobManager.handleMessage(message);
     //Wait ZK notification.
     Thread.sleep(1000l);
@@ -168,13 +168,13 @@ public class TestVeniceJobManager {
     jobManager.startOfflineJob(version.kafkaTopicName(), 1, 1);
 
     StoreStatusMessage message =
-        new StoreStatusMessage(1, version.kafkaTopicName(), 0, nodeId, ExecutionStatus.STARTED);
+        new StoreStatusMessage(version.kafkaTopicName(), 0, nodeId, ExecutionStatus.STARTED);
     jobManager.handleMessage(message);
     Job job = jobRepository.getRunningJobOfTopic(version.kafkaTopicName()).get(0);
     Assert.assertEquals(jobRepository.getJobStatus(job.getJobId(), job.getKafkaTopic()), ExecutionStatus.STARTED,
         "Job should be started.");
 
-    message = new StoreStatusMessage(1, version.kafkaTopicName(), 0, nodeId, ExecutionStatus.ERROR);
+    message = new StoreStatusMessage(version.kafkaTopicName(), 0, nodeId, ExecutionStatus.ERROR);
     jobManager.handleMessage(message);
     //Wait ZK notification.
     Thread.sleep(1000l);
@@ -200,10 +200,10 @@ public class TestVeniceJobManager {
         "Job should be started.");
 
     StoreStatusMessage message =
-        new StoreStatusMessage(1, version.kafkaTopicName(), 0, nodeId, ExecutionStatus.STARTED);
+        new StoreStatusMessage(version.kafkaTopicName(), 0, nodeId, ExecutionStatus.STARTED);
     jobManager.handleMessage(message);
 
-    message = new StoreStatusMessage(1, version.kafkaTopicName(), 0, nodeId, ExecutionStatus.COMPLETED);
+    message = new StoreStatusMessage(version.kafkaTopicName(), 0, nodeId, ExecutionStatus.COMPLETED);
     jobManager.handleMessage(message);
 
     Assert.assertEquals(jobManager.getOfflineJobStatus(version.kafkaTopicName()), ExecutionStatus.COMPLETED);
@@ -217,10 +217,10 @@ public class TestVeniceJobManager {
         "Job should be started.");
 
     StoreStatusMessage message =
-        new StoreStatusMessage(1, version.kafkaTopicName(), 0, nodeId, ExecutionStatus.STARTED);
+        new StoreStatusMessage(version.kafkaTopicName(), 0, nodeId, ExecutionStatus.STARTED);
     jobManager.handleMessage(message);
 
-    message = new StoreStatusMessage(1, version.kafkaTopicName(), 0, nodeId, ExecutionStatus.ERROR);
+    message = new StoreStatusMessage(version.kafkaTopicName(), 0, nodeId, ExecutionStatus.ERROR);
     jobManager.handleMessage(message);
 
     Assert.assertEquals(jobManager.getOfflineJobStatus(version.kafkaTopicName()), ExecutionStatus.ERROR);

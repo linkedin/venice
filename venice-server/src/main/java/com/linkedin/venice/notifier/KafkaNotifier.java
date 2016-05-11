@@ -23,10 +23,10 @@ public class KafkaNotifier extends LogNotifier {
     }
 
     @Override
-    public void completed(long jobId, String topic, int partitionId, long offset) {
-        super.completed(jobId, topic, partitionId, offset);
+    public void completed(String topic, int partitionId, long offset) {
+        super.completed(topic, partitionId, offset);
         ProducerRecord<byte[], byte[]> kafkaMessage = recordGenerator
-                .generate(jobId, topic, partitionId, nodeId, offset);
+                .generate(topic, partitionId, nodeId, offset);
         ackProducer.send(kafkaMessage);
     }
 

@@ -137,7 +137,7 @@ public class TestVeniceHelixAdmin {
     veniceAdmin.incrementVersion(clusterName, "test", 1, 1);
 
     ControlMessageChannel channel = new HelixControlMessageChannel(manager, Integer.MAX_VALUE, 1);
-    channel.sendToController(new StoreStatusMessage(1, "test_v1", 0, nodeId, ExecutionStatus.STARTED));
+    channel.sendToController(new StoreStatusMessage("test_v1", 0, nodeId, ExecutionStatus.STARTED));
 
     int newAdminPort = config.getAdminPort()+1;
     PropertyBuilder builder = new PropertyBuilder()
@@ -167,7 +167,7 @@ public class TestVeniceHelixAdmin {
     //Now get status from new master controller.
     Assert.assertEquals(newMasterAdmin.getOffLineJobStatus(clusterName, "test_v1"), ExecutionStatus.STARTED,
         "Can not get offline job status correctly.");
-    channel.sendToController(new StoreStatusMessage(1, "test_v1", 0, nodeId, ExecutionStatus.COMPLETED));
+    channel.sendToController(new StoreStatusMessage("test_v1", 0, nodeId, ExecutionStatus.COMPLETED));
 
     Assert.assertEquals(newMasterAdmin.getOffLineJobStatus(clusterName, "test_v1"), ExecutionStatus.COMPLETED,
         "Job should be completed after getting update from message channel");

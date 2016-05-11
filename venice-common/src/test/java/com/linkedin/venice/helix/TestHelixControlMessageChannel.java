@@ -104,7 +104,7 @@ public class TestHelixControlMessageChannel {
   @Test
   public void testConvertBetweenVeniceMessageAndHelixMessage()
       throws ClassNotFoundException {
-    StoreStatusMessage veniceMessage = new StoreStatusMessage(1, kafkaTopic, partitionId, instanceId, status);
+    StoreStatusMessage veniceMessage = new StoreStatusMessage(kafkaTopic, partitionId, instanceId, status);
     compareConversion(veniceMessage);
 
     veniceMessage.setOffset(10);
@@ -142,7 +142,7 @@ public class TestHelixControlMessageChannel {
 
     Thread.sleep(WAIT_ZK_TIME);
     StoreStatusMessage veniceMessage =
-        new StoreStatusMessage(1, kafkaTopic, partitionId, instanceId, status);
+        new StoreStatusMessage(kafkaTopic, partitionId, instanceId, status);
     channel.sendToController(veniceMessage);
     StoreStatusMessage receivedMessage = handler.getStatus(veniceMessage.getKafkaTopic());
     Assert.assertNotNull(receivedMessage, "Message is not received.");

@@ -155,7 +155,7 @@ public class KafkaConsumerPerStoreService extends AbstractVeniceService implemen
    * @param partitionId Venice partition's id.
    */
   @Override
-  public void startConsumption(VeniceStoreConfig veniceStore, int partitionId) {
+  public synchronized void startConsumption(VeniceStoreConfig veniceStore, int partitionId) {
     String topic = veniceStore.getStoreName();
     StoreConsumptionTask consumerTask = topicNameToKafkaMessageConsumptionTaskMap.get(topic);
     if(consumerTask == null || !consumerTask.isRunning()) {
@@ -175,7 +175,7 @@ public class KafkaConsumerPerStoreService extends AbstractVeniceService implemen
    * @param partitionId Venice partition's id.
    */
   @Override
-  public void stopConsumption(VeniceStoreConfig veniceStore, int partitionId) {
+  public synchronized void stopConsumption(VeniceStoreConfig veniceStore, int partitionId) {
     String topic = veniceStore.getStoreName();
     StoreConsumptionTask consumerTask = topicNameToKafkaMessageConsumptionTaskMap.get(topic);
     if(consumerTask != null && consumerTask.isRunning()) {

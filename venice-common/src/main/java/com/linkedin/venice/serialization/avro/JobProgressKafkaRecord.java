@@ -57,16 +57,15 @@ public class JobProgressKafkaRecord {
      * 3. Serailizes the avro records - both key and value.
      * 4. Constructs and returns a KeyedMessage using the serialized key and value avro records
      *
-     * @param jobId
      * @param kafkaTopic
      * @param partitionId
      * @param nodeId
      * @param count
      * @return
      */
-    public ProducerRecord<byte[], byte[]> generate(long jobId, String kafkaTopic, int partitionId, int nodeId,
+    public ProducerRecord<byte[], byte[]> generate(String kafkaTopic, int partitionId, int nodeId,
             long count){
-        GenericData.Record keyRecord = constructKeyRecord(jobId,kafkaTopic,partitionId, nodeId);
+        GenericData.Record keyRecord = constructKeyRecord(kafkaTopic,partitionId, nodeId);
         GenericData.Record valRecord = constructValueRecord(count);
 
         byte[] keyBytes = keySerializer.serialize(kafkaTopic, keyRecord);
@@ -76,11 +75,11 @@ public class JobProgressKafkaRecord {
         return kafkaMessage;
     }
 
-    private GenericData.Record constructKeyRecord(long jobId, String kafkaTopic, int partitioId, int nodeId){
+    private GenericData.Record constructKeyRecord(String kafkaTopic, int partitionId, int nodeId){
         GenericData.Record key = new GenericData.Record(Schema.parse(AVRO_KEY_STORE_INFO));
-        key.put("jobId", jobId);
+        key.put("jobId", -1); // TODO : This should be replaced by Producer GUID and not long.
         key.put("kafka-topic", new Utf8(kafkaTopic));
-        key.put("partitionId", partitioId);
+        key.put("partitionId", partitionId);
         key.put("nodeId", nodeId);
         return key;
     }

@@ -10,21 +10,21 @@ public class LogNotifier implements VeniceNotifier {
 
   private static final Logger logger = Logger.getLogger(LogNotifier.class.getName());
   @Override
-  public void started(long jobId, String storeName, int partitionId) {
-    logger.info("Push started for Store " + storeName + " partitionId " + partitionId + " jobId " + jobId);
+  public void started(String storeName, int partitionId) {
+    logger.info("Push started for Store " + storeName + " partitionId " + partitionId );
   }
 
   @Override
-  public void completed(long jobId, String storeName, int partitionId, long offset) {
+  public void completed(String storeName, int partitionId, long offset) {
     logger.info("Push completed for Store " + storeName + " partitionId " + partitionId +
-            " jobId " + jobId + " Offset " + offset);
+            " Offset " + offset);
 
   }
 
   @Override
-  public void progress(long jobId, String storeName, int partitionId, long offset) {
+  public void progress(String storeName, int partitionId, long offset) {
     logger.info("Push progress for Store " + storeName + " partitionId " + partitionId
-            + " jobId " + jobId + " Offset " + offset);
+            + " Offset " + offset);
   }
 
   @Override
@@ -33,9 +33,9 @@ public class LogNotifier implements VeniceNotifier {
   }
 
   @Override
-  public void error(long jobId, String storeName, int partitionId, String message, Exception ex) {
+  public void error(String storeName, int partitionId, String message, Exception ex) {
     String errorMessage = "Push errored for Store" + storeName + " partitionId " +
-            partitionId + " jobId " + jobId + " Message " + message;
+            partitionId + " Message " + message;
     logger.error( errorMessage , ex);
   }
 }

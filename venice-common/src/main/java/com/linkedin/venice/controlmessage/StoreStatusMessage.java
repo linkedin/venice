@@ -15,16 +15,20 @@ import java.util.Map;
  */
 public class StoreStatusMessage extends ControlMessage {
 
-  /* DO NOT CHANGE the field names. The field names are used
-  in serialization/de-serialization across two processes
-  storage node and controller. If the field names are removed
-  or modified, it will cause serialization, de-serialization
-  issues.
+  /* DO NOT CHANGE or REMOVE the field names.
+  The contents of this class are serialized using JSON
+  Serialization on the storage node and sent to the controller.
+  Controller uses JSON De-Serializer and uses reflection to
+  initialize the members of this object.
 
-  Adding fields and when not available doing the default thing
-  should be fine.
+  Changing the fieldName will not generate compile time error,
+  but will cause it to fail on the controller side.
+
+  Removing/Adding the field will have the same effect. But can be
+  controlled to a certain extent by making the controller deployed
+  first to be backward compatible and then deploying the storage
+  node.
    */
-  private static final String JOB_ID = "jobId";
   private static final String PARTITION_ID = "partitionId";
   private static final String KAFKA_TOPIC = "kafkaId";
   private static final String INSTANCE_ID = "instanceId";
@@ -32,7 +36,6 @@ public class StoreStatusMessage extends ControlMessage {
   private static final String OFFSET = "offset";
   private static final String DESCRIPTION = "description";
 
-  private final long jobId;
   private final int partitionId;
   private final String kafkaTopic;
   private final String instanceId;
@@ -42,9 +45,8 @@ public class StoreStatusMessage extends ControlMessage {
   private long offset;
   private String description;
 
-  public StoreStatusMessage(long jobId, String kafkaTopic, int partitionId, String instanceId, ExecutionStatus status) {
+  public StoreStatusMessage(String kafkaTopic, int partitionId, String instanceId, ExecutionStatus status) {
     super();
-    this.jobId = jobId;
     this.partitionId = partitionId;
     this.kafkaTopic = kafkaTopic;
     this.instanceId = instanceId;
@@ -56,7 +58,6 @@ public class StoreStatusMessage extends ControlMessage {
    */
   public StoreStatusMessage(Map<String, String> fields) {
     super(fields);
-    this.jobId = Long.valueOf(getRequiredField(fields, JOB_ID));
     this.partitionId = Integer.valueOf(getRequiredField(fields, PARTITION_ID));
     this.instanceId = getRequiredField(fields, INSTANCE_ID);
     this.kafkaTopic = getRequiredField(fields, KAFKA_TOPIC);
@@ -65,9 +66,6 @@ public class StoreStatusMessage extends ControlMessage {
     this.offset = Integer.valueOf(getRequiredField(fields, OFFSET));
   }
 
-  public long getJobId() {
-    return jobId;
-  }
 
   public int getPartitionId() {
     return partitionId;
@@ -104,7 +102,6 @@ public class StoreStatusMessage extends ControlMessage {
   @Override
   public Map<String, String> getFields() {
     Map<String, String> map = super.getFields();
-    map.put(JOB_ID, String.valueOf(jobId));
     map.put(PARTITION_ID, String.valueOf(partitionId));
     map.put(KAFKA_TOPIC, kafkaTopic);
     map.put(INSTANCE_ID, instanceId);
@@ -158,7 +155,6 @@ public class StoreStatusMessage extends ControlMessage {
   @Override
   public String toString() {
     return "StoreStatusMessage{" +
-            "jobId='" + jobId + '\'' +
             ", messageId='" + messageId + '\'' +
             ", partitionId=" + partitionId +
             ", kafkaTopic='" + kafkaTopic + '\'' +

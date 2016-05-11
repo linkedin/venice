@@ -37,23 +37,23 @@ public class HelixNotifier implements VeniceNotifier {
   }
 
   @Override
-  public void started(long jobId, String storeName, int partitionId) {
+  public void started(String storeName, int partitionId) {
     StoreStatusMessage
-            veniceMessage = new StoreStatusMessage(jobId, storeName, partitionId, instanceId, ExecutionStatus.STARTED);
+            veniceMessage = new StoreStatusMessage(storeName, partitionId, instanceId, ExecutionStatus.STARTED);
     sendMessage(veniceMessage);
   }
 
   @Override
-  public void completed(long jobId, String storeName, int partitionId, long offset) {
-    StoreStatusMessage veniceMessage = new StoreStatusMessage(jobId, storeName, partitionId, instanceId,
+  public void completed(String storeName, int partitionId, long offset) {
+    StoreStatusMessage veniceMessage = new StoreStatusMessage(storeName, partitionId, instanceId,
             ExecutionStatus.COMPLETED);
     veniceMessage.setOffset(offset);
     sendMessage(veniceMessage);
   }
 
   @Override
-  public void progress(long jobId, String storeName, int partitionId, long offset) {
-    StoreStatusMessage veniceMessage = new StoreStatusMessage(jobId, storeName, partitionId, instanceId,
+  public void progress(String storeName, int partitionId, long offset) {
+    StoreStatusMessage veniceMessage = new StoreStatusMessage(storeName, partitionId, instanceId,
             ExecutionStatus.PROGRESS);
     veniceMessage.setOffset(offset);
     sendMessage(veniceMessage);
@@ -85,9 +85,9 @@ public class HelixNotifier implements VeniceNotifier {
   }
 
   @Override
-  public void error(long jobId, String storeName, int partitionId, String message, Exception ex) {
+  public void error(String storeName, int partitionId, String message, Exception ex) {
     StoreStatusMessage veniceMessage =
-            new StoreStatusMessage(jobId, storeName, partitionId, instanceId, ExecutionStatus.ERROR);
+            new StoreStatusMessage(storeName, partitionId, instanceId, ExecutionStatus.ERROR);
     veniceMessage.setDescription(formatError(message , ex));
     sendMessage(veniceMessage);
   }

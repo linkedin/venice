@@ -41,13 +41,6 @@ public class StoreConsumptionTask implements Runnable, Closeable {
 
   private static final Logger logger = Logger.getLogger(StoreConsumptionTask.class.getName());
 
-  /* Each Venice message is associated with a job ID. start and end of each push are denoted
-  by job Ids which are valid. UNSET_JOB_ID constant is used for error checking. JobId is used for
-   tracking and this will be eventually replaced/moved by the Data Ingestion Validation.
-   */
-  private static final int UNSET_JOB_ID  = -1;
-  private long jobId = UNSET_JOB_ID;
-
   private static final String CONSUMER_TASK_ID_FORMAT = "KafkaPerStoreConsumptionTask for " + "[ Node: %d, Topic: %s ]";
 
   // Making it non final to shorten the time in testing.
@@ -62,8 +55,6 @@ public class StoreConsumptionTask implements Runnable, Closeable {
   private final StoreRepository storeRepository;
 
   private final String topic;
-
-  private long totalMessagesProcessed;
 
   private final String consumerTaskId;
 
@@ -140,7 +131,7 @@ public class StoreConsumptionTask implements Runnable, Closeable {
     lastProgressReportTime = System.currentTimeMillis();
     for(VeniceNotifier notifier : notifiers) {
       try {
-        notifier.progress(jobId, topic, partition, partitionOffset);
+        notifier.progress(topic, partition, partitionOffset);
       } catch(Exception ex) {
         logger.error("Error reporting status to notifier " + notifier.getClass() , ex);
       }
@@ -150,21 +141,21 @@ public class StoreConsumptionTask implements Runnable, Closeable {
   private void reportStarted(int partition) {
     for(VeniceNotifier notifier : notifiers) {
       try {
-        notifier.started(jobId, topic, partition);
+        notifier.started(topic, partition);
       } catch(Exception ex) {
         logger.error("Error reporting status to notifier " + notifier.getClass() , ex);
       }
     }
   }
 
-  private void reportCompleted(int partition, long totalMessagesProcessed) {
-    logger.info(" Processing completed for topic " + topic + " Partition " + partition +
-            " TotalMessages processed for all partitions " + totalMessagesProcessed);
-    for(VeniceNotifier notifier : notifiers) {
-      Long lastOffset = partitionToOffsetMap.getOrDefault(partition , -1L);
+  private void reportCompleted(int partition) {
 
+    Long lastOffset = partitionToOffsetMap.getOrDefault(partition , -1L);
+
+    logger.info(" Processing completed for topic " + topic + " Partition " + partition +" Last Offset " + lastOffset);
+    for(VeniceNotifier notifier : notifiers) {
       try {
-        notifier.completed(jobId, topic, partition, lastOffset);
+        notifier.completed(topic, partition, lastOffset);
       } catch(Exception ex) {
         logger.error("Error reporting status to notifier " + notifier.getClass() , ex);
       }
@@ -175,7 +166,7 @@ public class StoreConsumptionTask implements Runnable, Closeable {
     for(Integer partitionId: partitions) {
       for(VeniceNotifier notifier : notifiers) {
         try {
-          notifier.error(jobId, topic, partitionId, message, consumerEx);
+          notifier.error(topic, partitionId, message, consumerEx);
         } catch(Exception notifierEx) {
           logger.error("Error reporting status to notifier " + notifier.getClass() , notifierEx);
         }
@@ -323,35 +314,21 @@ public class StoreConsumptionTask implements Runnable, Closeable {
     }
   }
 
-  private void processControlMessage(KafkaKey kafkaKey, int partition) {
+  private void processControlMessage(KafkaKey kafkaKey, int partition, long offset) {
     ControlFlagKafkaKey controlKafkaKey = (ControlFlagKafkaKey) kafkaKey;
     // TODO : jobId should not be handled directly here. It is a function of Data Ingestion Validation
     // The jobId will be moved there when Data Ingestion Validation starts.
     long currentJobId = controlKafkaKey.getJobId();
      switch(kafkaKey.getOperationType()) {
        case BEGIN_OF_PUSH :
-         if(jobId != UNSET_JOB_ID) {
-           logger.warn(
-                   consumerTaskId + " : Received new push job message while other job is still in progress. Partition "
-                           + partition);
-         }
-         jobId = currentJobId;
          reportStarted(partition);
-         totalMessagesProcessed = 0L; //Need to figure out what happens when multiple jobs are run parallely.
-         logger.info(consumerTaskId + " : Received Begin of push message from job id: " + jobId + "Setting count to "
-                 + totalMessagesProcessed);
-
+         logger.info(consumerTaskId + " : Received Begin of push message Setting resetting count. JobId " +
+             currentJobId + " partition " + partition + "Offset " + offset  );
          break;
        case END_OF_PUSH:
-         logger.info(consumerTaskId + " : Receive End of Pushes message. Consumed #records: " + totalMessagesProcessed
-                 + ", from job id: " + currentJobId + " Remembered Job Id " + jobId);
-
-         if (jobId == currentJobId) {  // check if the BOP job id matched EOP job id.
-           reportCompleted(partition, totalMessagesProcessed);
-         } else {
-           logger.warn(" Received end of Push for a different Job Id. Expected " + jobId + " Actual " + currentJobId);
-         }
-         jobId = UNSET_JOB_ID;
+         logger.info(consumerTaskId + " : Receive End of Pushes message. " +
+              " JobId: " + currentJobId + " partition " + partition + " offset " + offset);
+         reportCompleted(partition);
          break;
        default:
          throw new VeniceMessageException("Unrecognized Control message type " + kafkaKey.getOperationType());
@@ -369,7 +346,7 @@ public class StoreConsumptionTask implements Runnable, Closeable {
     KafkaValue kafkaValue = record.value();
 
     if( OperationType.isControlOperation(kafkaKey.getOperationType())) {
-      processControlMessage(kafkaKey , record.partition());
+      processControlMessage(kafkaKey , record.partition(), record.offset());
       return;
     }
 
@@ -410,7 +387,6 @@ public class StoreConsumptionTask implements Runnable, Closeable {
                   .toHexString(keyBytes) + ", value: " + ByteUtils.toHexString(kafkaValue.getValue()) + " in " + (
                   System.nanoTime() - startTimeNs) + " ns at " + System.currentTimeMillis());
         }
-        totalMessagesProcessed++;
         break;
 
       // deleting values
@@ -426,7 +402,6 @@ public class StoreConsumptionTask implements Runnable, Closeable {
                   .toHexString(keyBytes) + " in " + (System.nanoTime() - startTimeNs) + " ns at " + System
                   .currentTimeMillis());
         }
-        totalMessagesProcessed++;
         break;
 
       // partial update
