@@ -8,6 +8,7 @@ import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.integration.utils.PortUtils;
+import java.util.ArrayList;
 import org.mockito.Mockito;
 import org.testng.annotations.Test;
 
@@ -24,7 +25,7 @@ public class TestRouter {
 
   @Test
   public void testMockRouter() {
-    MockVeniceRouterWrapper router = ServiceFactory.getMockVeniceRouter(new ArrayList<D2Server>());
+    MockVeniceRouterWrapper router = ServiceFactory.getMockVeniceRouter(new ArrayList<>());
     // Doesn't actually test anything other than the router can startup and doesn't crash
     router.close();
   }
