@@ -36,6 +36,7 @@ dependencies {
   compile project(':venice-common')
   compile project(':venice-controller')
 
+  testCompile project(':venice-thin-client')
   testCompile project(':venice-client')
   testCompile project(':venice-common').sourceSets.test.output
   testCompile project(':venice-router')

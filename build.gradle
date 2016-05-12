@@ -17,6 +17,7 @@ ext.libraries = [ // Groovy map literal
                   avro: 'org.apache.avro:avro:1.4.1',
                   bdbJe: 'com.sleepycat:je:5.0.104',
                   commonsCodec: 'commons-codec:commons-codec:1.4',
+                  commonsIo: 'commons-io:commons-io:1.4',
                   guava: 'com.google.guava:guava:18.0',
                   helix: 'org.apache.helix:helix-core:0.6.5',
                   kafka: 'kafka:kafka_2.10:0.9.0.2', // Internal LinkedIn release
@@ -113,6 +114,8 @@ subprojects {
 task buildAll {
   dependsOn 'venice-common:build'
   dependsOn 'venice-client:build'
+  dependsOn 'venice-thin-client:build'
+  dependsOn 'venice-thin-client:test'
   dependsOn 'venice-server:build'
   dependsOn 'venice-controller:build'
   dependsOn 'venice-router:build'
