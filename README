@@ -41,6 +41,7 @@ There are two ways to use Venice.
 
 
 To start the controller:
+
 > ./venice-controller/quickstart/start-venice-controller.sh venice-server/config/cluster.properties venice-controller/config/controller.properties
 To add test stores
 > curl --data "storename=default_store&store_size=10000&owner=venice-dev" 127.0.0.1:7075/create
@@ -53,9 +54,20 @@ To start the server:
 > export VENICE_CONFIG_DIR=`pwd`/venice-server/config
 > venice-server/quickstart/start-venice-server.sh
 
+To start the router:
+
+> venice-router/quickstart/start-venice-router.sh venice-server/config/cluster.properties
+
 To use the shell client:
 
 > venice-client/quickstart/venice-client.sh [args]
+
+---------------------------------------------------------------------
+WORK IN PROGRESS / CURRENT LIMITATIONS OF CLIENT SHELL
+---------------------------------------------------------------------
+
+1) Client shell only works with Primitive types for key. 
+2) Client shell expects the topic name ( <storename>_v<versionNumber> or the Kafka topic name for the store name).
 
 -----------------------
 Arguments
@@ -76,10 +88,10 @@ If omitted, will use store name "test_shell_store"
 
 Examples:
 
-> run-client.sh --put --key test_key --value test_value
-> run-client.sh --get --key test_key
-> run-client.sh --delete --key test_key
-> run-client.sh --interactive
+> ./venice-client/quickstart/venice-client.sh --get --key 151780654 --store myCountry_v1
+> ./venice-client/quickstart/venice-client.sh --put --key 151780654 --value test_value --store myCountry_v1
+> ./venice-client/quickstart/venice-client.sh --delete --key 151780654 --store myCountry_v1
+> ./venice-client/quickstart/venice-client.sh --interactive
 
 -----------------------
 Questions?
