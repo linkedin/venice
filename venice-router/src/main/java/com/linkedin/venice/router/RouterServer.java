@@ -1,5 +1,6 @@
 package com.linkedin.venice.router;
 
+import com.linkedin.d2.server.factory.D2Server;
 import com.linkedin.ddsstorage.base.concurrency.TimeoutProcessor;
 import com.linkedin.ddsstorage.base.registry.ResourceRegistry;
 import com.linkedin.ddsstorage.base.registry.ShutdownableExecutors;
@@ -27,6 +28,8 @@ import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.net.InetSocketAddress;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeUnit;
@@ -59,6 +62,8 @@ public class RouterServer extends AbstractVeniceService {
   private NettyResourceRegistry registry = null;
   private VeniceDispatcher dispatcher;
 
+  private final List<D2Server> d2ServerList;
+
   public static void main(String args[]) throws Exception {
 
     VeniceProperties props;
@@ -77,7 +82,7 @@ public class RouterServer extends AbstractVeniceService {
     logger.info("Cluster: " + clusterName);
     logger.info("Port: " + port);
 
-    RouterServer server = new RouterServer(port, clusterName, zkConnection);
+    RouterServer server = new RouterServer(port, clusterName, zkConnection, new ArrayList<>());
     server.start();
 
     Runtime.getRuntime().addShutdownHook(new Thread() {
@@ -99,7 +104,14 @@ public class RouterServer extends AbstractVeniceService {
 
   }
 
-  public RouterServer(int port, String clusterName, String zkConnection){
+  /**
+   *
+   * @param port
+   * @param clusterName
+   * @param zkConnection
+   * @param d2ServerList
+   */
+  public RouterServer(int port, String clusterName, String zkConnection, List<D2Server> d2ServerList){
     super(RouterServer.class.getName());
     this.port = port;
     this.clusterName = clusterName;
@@ -113,16 +125,24 @@ public class RouterServer extends AbstractVeniceService {
     HelixAdapterSerializer adapter = new HelixAdapterSerializer();
     this.metadataRepository = new HelixCachedMetadataRepository(zkClient, adapter, this.clusterName);
     this.routingDataRepository = new HelixRoutingDataRepository(manager);
+    this.d2ServerList = d2ServerList;
   }
 
-  //Only use this constructor for testing when you want to pass mock repositories
-  RouterServer(int port, String clusterName, HelixRoutingDataRepository routingDataRepository,
-      HelixCachedMetadataRepository metadataRepository){
+  /**
+   * Only use this constructor for testing when you want to pass mock repositories
+   * @param port
+   * @param clusterName
+   * @param routingDataRepository
+   * @param metadataRepository
+   */
+  public RouterServer(int port, String clusterName, HelixRoutingDataRepository routingDataRepository,
+      HelixCachedMetadataRepository metadataRepository, List<D2Server> d2ServerList){
     super(RouterServer.class.getName());
     this.port = port;
     this.clusterName = clusterName;
     this.metadataRepository = metadataRepository;
     this.routingDataRepository = routingDataRepository;
+    this.d2ServerList = d2ServerList;
   }
 
   @Override
@@ -165,11 +185,25 @@ public class RouterServer extends AbstractVeniceService {
     serverFuture = router.start(new InetSocketAddress(port), factory -> factory);
     serverFuture.await();
 
+    for (D2Server d2Server : d2ServerList){
+      logger.info("Starting d2 announcer: " + d2Server);
+      d2Server.forceStart(); /* This is normal usage for d2, nothing is really being forced */
+    }
+
     logger.info("Router server is started on port:" + serverFuture.getChannel().getLocalAddress());
   }
 
   @Override
   public void stopInner() throws Exception {
+    for(D2Server d2Server : d2ServerList)
+    {
+      logger.info("Stopping d2 announcer: " + d2Server);
+      try {
+        d2Server.notifyShutdown();
+      } catch (RuntimeException e){
+        logger.error("D2 announcer " + d2Server + " failed to shutdown properly", e);
+      }
+    }
     if (!serverFuture.cancel()){
       if (serverFuture.awaitUninterruptibly().isSuccess()){
         serverFuture.getChannel().close().awaitUninterruptibly();

@@ -2,6 +2,8 @@ package com.linkedin.venice.integration.utils;
 
 import com.linkedin.venice.router.RouterServer;
 import java.io.File;
+import java.util.ArrayList;
+
 
 /**
  * A wrapper for the {@link VeniceRouterWrapper}.
@@ -24,7 +26,7 @@ public class VeniceRouterWrapper extends ProcessWrapper {
     String zkAddress = kafkaBrokerWrapper.getZkAddress();
 
     return (serviceName, port, dataDirectory) -> {
-      RouterServer router = new RouterServer(port, clusterName, zkAddress);
+      RouterServer router = new RouterServer(port, clusterName, zkAddress, new ArrayList<>());
       return new VeniceRouterWrapper(serviceName, dataDirectory, router, clusterName, port);
     };
   }

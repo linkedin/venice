@@ -1,6 +1,8 @@
 package com.linkedin.venice.integration.utils;
 
+import com.linkedin.d2.server.factory.D2Server;
 import com.linkedin.venice.exceptions.VeniceException;
+import java.util.List;
 import org.apache.log4j.Logger;
 
 /**
@@ -49,8 +51,7 @@ public class ServiceFactory {
   }
 
   static VeniceServerWrapper getVeniceServer(String clusterName, KafkaBrokerWrapper kafkaBrokerWrapper) {
-    return getStatefulService(
-        VeniceServerWrapper.SERVICE_NAME,
+    return getStatefulService(VeniceServerWrapper.SERVICE_NAME,
         VeniceServerWrapper.generateService(clusterName, kafkaBrokerWrapper));
   }
 
@@ -58,9 +59,14 @@ public class ServiceFactory {
    * Note: Assumes that helix and kafka are using the same zookeeper, uses the zookeeper from the kafkaBrokerWrapper
    */
   static VeniceRouterWrapper getVeniceRouter(String clusterName, KafkaBrokerWrapper kafkaBrokerWrapper){
-    return getService(
-        VeniceRouterWrapper.SERVICE_NAME,
+    return getService(VeniceRouterWrapper.SERVICE_NAME,
         VeniceRouterWrapper.generateService(clusterName, kafkaBrokerWrapper));
+  }
+
+  public static MockVeniceRouterWrapper getMockVeniceRouter(List<D2Server> d2ServerList){
+    return getService(
+        MockVeniceRouterWrapper.SERVICE_NAME,
+        MockVeniceRouterWrapper.generateService(d2ServerList));
   }
 
   public static VeniceClusterWrapper getVeniceCluster() {
