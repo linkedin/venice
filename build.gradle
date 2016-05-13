@@ -6,7 +6,7 @@ if (project.hasProperty('overrideBuildEnvironment')) {
         ignoreFailures = true
       }
     }
-  } 
+  }
 }
 
 apply plugin: 'java'
@@ -38,8 +38,8 @@ ext.libraries = [ // Groovy map literal
                   hadoopCommon: 'org.apache.hadoop:hadoop-common:2.3.0',
                   httpClient: 'org.apache.httpcomponents:httpclient:4.2.1',
                   httpCore: 'org.apache.httpcomponents:httpcore:4.2.1',
-                  jacksonCore: 'org.codehaus.jackson:jackson-core-asl:1.9.11',
-                  jacksonMapper: 'org.codehaus.jackson:jackson-mapper-asl:1.9.11',
+                  jacksonCore: 'org.codehaus.jackson:jackson-core-asl:1.8.5',
+                  jacksonMapper: 'org.codehaus.jackson:jackson-mapper-asl:1.8.5',
                   jdom: 'org.jdom:jdom:1.1',
                   joptSimple: 'net.sf.jopt-simple:jopt-simple:3.2',
                   log4j: 'log4j:log4j:1.2.17',

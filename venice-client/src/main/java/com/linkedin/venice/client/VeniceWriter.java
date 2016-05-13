@@ -110,4 +110,8 @@ public class VeniceWriter<K, V> {
   public void close() {
     producer.close();
   }
+
+  public String getStoreName() {
+    return storeName;
+  }
 }

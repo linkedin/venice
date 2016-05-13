@@ -38,6 +38,7 @@ dependencies {
   compile libraries.kafkaClients // TODO: Get rid of Kafka dependency in venice-common
   compile libraries.zkclient // It's necessary to pull in the most recent version of zkclient explicitly, otherwise Helix won't have it...
   compile libraries.zookeeper // TODO: Get rid of ZK dependency in venice-common
+  compile libraries.jacksonMapper
 
   // Test dependencies are allowed to be bulkier.
   testCompile libraries.kafka

@@ -20,6 +20,7 @@ avro.value.field=dedupId
 # eat1-app316.stg; eat1-app317.stg; eat1-app320.stg;eat1-app319.stg
 # SET UP KAFKA ON ONE PORT AND VENICE-CONTROLLER ON OTHER
 # PORT FOR TESTING.
-venice.controller.url=http://eat1-app316.stg.linkedin.com:6667
+venice.router.urls=http://eat1-app316.stg.linkedin.com:6668
 venice.store.name=venice_test_member
 venice.store.owners=your_name@linkedin.com
+cluster.name=test-cluster

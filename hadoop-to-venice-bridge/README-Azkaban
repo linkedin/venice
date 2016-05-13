@@ -10,7 +10,7 @@ There are 4 machines in Voldemort performance cluster which have
 ports opened from Nertz Cluster.  Set up Kafka on one of these
 ports and Venice controller on the other port.
 
-All the 4 machines below have ports 6666, 6667 open from Nertz
+All the 4 machines below have ports 6666, 6667, 6668 open from Nertz
 eat1-app316.stg; eat1-app317.stg; eat1-app320.stg;eat1-app319.stg
 
 Venice Cluster Setup
@@ -29,6 +29,7 @@ ZooKeeper on eat1-app316.stg:2181
 venice-controller on eat1-app316.stg:6667
 kafka broker on eat1-app316.stg:6666
 Venice-Server on eat1-app316.stg:7072
+Venice-Router on eat1-app316.stg:6668
 
 I tweaked the following properties at the time of this writing.
 
@@ -37,9 +38,11 @@ Property : admin.port=6667
 
 File : ./venice-server/config/cluster.properties
 Property : kafka.bootstrap.servers=eat1-app316.stg.linkedin.com:6666
+Property : router.port=6668
 
 File : ./venice-client/config/config.properties
 Property : kafka.bootstrap.servers=eat1-app316.stg.linkedin.com:6666
+Property : router.port = "6668"
 
 I also deleted the files under the directory ./venice-server/config/STORES/
 as I was not interested in the default stores. You may choose to fix the

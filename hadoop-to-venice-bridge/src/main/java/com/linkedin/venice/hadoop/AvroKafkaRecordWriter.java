@@ -1,6 +1,7 @@
 package com.linkedin.venice.hadoop;
 
 import com.linkedin.venice.client.VeniceWriter;
+import com.linkedin.venice.exceptions.UndefinedPropertyException;
 import com.linkedin.venice.serialization.avro.AvroGenericSerializer;
 import com.linkedin.venice.serialization.DefaultSerializer;
 import com.linkedin.venice.serialization.StringSerializer;
@@ -26,23 +27,63 @@ public class AvroKafkaRecordWriter implements RecordWriter<AvroWrapper<IndexedRe
   private static Logger logger = Logger.getLogger(AvroKafkaRecordWriter.class);
   private final String topicName;
 
-  private VeniceWriter<byte[], byte[]> veniceWriter;
-  private String keyField;
-  private String valueField;
+  private final VeniceWriter<byte[], byte[]> veniceWriter;
+  private final String keyField;
+  private final String valueField;
+  private final int keyFieldPos;
+  private final int valueFieldPos;
+  private final VeniceSerializer keySerializer;
+  private final VeniceSerializer valueSerializer;
 
   public AvroKafkaRecordWriter(Properties properties) {
-    VeniceProperties props = new VeniceProperties(properties);
+    this(properties,
+        new VeniceWriter<>(
+            new VeniceProperties(properties),
+            getPropString(properties, KafkaPushJob.TOPIC_PROP),
+            new DefaultSerializer(),
+            new DefaultSerializer()
+        )
+    );
+  }
+
+  public AvroKafkaRecordWriter(Properties properties, VeniceWriter<byte[], byte[]> veniceWriter) {
+    this.veniceWriter = veniceWriter;
 
     // N.B.: These getters will throw an UndefinedPropertyException if anything is missing
-    keyField = props.getString(KafkaPushJob.AVRO_KEY_FIELD_PROP);
-    valueField = props.getString(KafkaPushJob.AVRO_VALUE_FIELD_PROP);
+    keyField = getPropString(properties, KafkaPushJob.AVRO_KEY_FIELD_PROP);
+    valueField = getPropString(properties, KafkaPushJob.AVRO_VALUE_FIELD_PROP);
     // FIXME: Communicate with controller to get topic name
-    this.topicName = props.getString(KafkaPushJob.TOPIC_PROP);
+    topicName = veniceWriter.getStoreName();
 
-    veniceWriter = new VeniceWriter<>(props,
-        topicName,
-        new DefaultSerializer(),
-        new DefaultSerializer());
+    String schemaStr = getPropString(properties, KafkaPushJob.SCHEMA_STRING_PROP);
+    keySerializer = getSerializer(schemaStr, keyField);
+    keyFieldPos = getFieldPos(schemaStr, keyField);
+    valueSerializer = getSerializer(schemaStr, valueField);
+    valueFieldPos = getFieldPos(schemaStr, valueField);
+  }
+
+  private static String getPropString(Properties properties, String field) {
+    String value = properties.getProperty(field);
+    if (null == value) {
+      throw new UndefinedPropertyException(field);
+    }
+    return value;
+  }
+
+  private VeniceSerializer getSerializer(String schemaStr, String field) {
+    // The upstream has already checked that the key/value fields must exist in the given schema,
+    // so we won't check it again here
+    Schema schema = Schema.parse(schemaStr).getField(field).schema();
+    if (schema.getType() == Schema.Type.STRING) {
+      // TODO: Theoretically, we should always use AvroGenricSerializer when schema registry is ready;
+      // Right now, we still want to use StringSerializer for String type since venice-client is passing whatever it receives to the backend.
+      return new StringSerializer();
+    }
+    return new AvroGenericSerializer(schema.toString());
+  }
+
+  private int getFieldPos(String schemaStr, String field) {
+    return Schema.parse(schemaStr).getField(field).pos();
   }
 
   @Override
@@ -52,73 +93,28 @@ public class AvroKafkaRecordWriter implements RecordWriter<AvroWrapper<IndexedRe
 
   @Override
   public void write(AvroWrapper<IndexedRecord> record, NullWritable nullArg) throws IOException {
-
     IndexedRecord datum = record.datum();
 
-    VeniceSerializer keySerializer;
-    VeniceSerializer valueSerializer;
-    Object keyDatum;
-    Object valueDatum;
-
-    // TODO : The Key Serializer and Value serializer are initialized for every record.
-    // See if there is a way to reuse them. The code is redundant copy for both serializers
-    // reuse the code by using common functions.
-    if (keyField.equals("*")) {
-      keyDatum = datum;
-      keySerializer = new AvroGenericSerializer(datum.getSchema().toString());
-    } else {
-
-    /* Parse the Key */
-      Schema.Field avroKeyField = datum.getSchema().getField(keyField);
-      if (null == avroKeyField) {
-        throw new RuntimeException("Key field name: " + keyField + " could not be found in Avro schema.");
-      }
-
-      keyDatum = datum.get(avroKeyField.pos());
-      if (null == keyDatum) {
-        logger.warn("Skipping record with null key value.");
-        return;
-      }
-
-      if (avroKeyField.schema().getType() == Schema.Type.RECORD) {
-        // Write as an avro RECORD type, can cast to IndexedRecord
-        String keySchema = ((IndexedRecord) keyDatum).getSchema().toString();
-        keySerializer = new AvroGenericSerializer(keySchema);
-      } else {
-        // serialize the object as a string
-        keyDatum = keyDatum.toString();
-        keySerializer = new StringSerializer();
-      }
+    Object keyDatum = datum.get(keyFieldPos);
+    if (null == keyDatum) {
+      // Invalid data
+      // Theoretically it should not happen since all the avro records are sharing the same schema in the same file
+      logger.warn("Skipping record with null key value.");
+      return;
     }
-
-    if (valueField.equals("*")) {
-      valueDatum = datum;
-      valueSerializer = new AvroGenericSerializer(datum.getSchema().toString());
-
-    } else {
-
-      /* Parse the Value */
-      Schema.Field avroValueField = datum.getSchema().getField(valueField);
-
-      if (null == avroValueField) {
-        throw new RuntimeException("Value field name: " + valueField + " could not be found in Avro schema.");
-      }
-
-      valueDatum = datum.get(avroValueField.pos());
-
-      if (null == valueDatum) {
-        // TODO: maybe we want to write a null value anyways?
-        logger.warn("Skipping record with null value.");
-        return;
-      }
-
-      if (avroValueField.schema().getType() == Schema.Type.RECORD) {
-        String valueSchema = ((IndexedRecord) valueDatum).getSchema().toString();
-        valueSerializer = new AvroGenericSerializer(valueSchema);
-      } else {
-        valueDatum = valueDatum.toString();
-        valueSerializer = new StringSerializer();
-      }
+    // TODO: remove the following hack when schema registry is fully supported
+    if (keySerializer instanceof StringSerializer) {
+      keyDatum = keyDatum.toString();
+    }
+    Object valueDatum = datum.get(valueFieldPos);
+    if (null == valueDatum) {
+      // TODO: maybe we want to write a null value anyways?
+      logger.warn("Skipping record with null value.");
+      return;
+    }
+    // TODO: remove the following hack when schema registry is fully supported
+    if (valueSerializer instanceof StringSerializer) {
+      valueDatum = valueDatum.toString();
     }
 
     veniceWriter.put(keySerializer.serialize(topicName, keyDatum), valueSerializer.serialize(topicName, valueDatum));

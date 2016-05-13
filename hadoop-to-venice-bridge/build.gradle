@@ -25,8 +25,8 @@ dependencies {
     }
     compile libraries.metricsCore
     compile libraries.joptSimple
-    compile libraries.jacksonCore
     compile libraries.jdom
+    compile libraries.jacksonCore
 
     testCompile project(':venice-client')
     testCompile project(':venice-common').sourceSets.test.output
@@ -37,7 +37,6 @@ dependencies {
         exclude group: 'org.apache.avro'
         exclude group: 'javax.servlet'
     }
-    testCompile libraries.jacksonMapper
 
     runtime libraries.commonsConfiguration
     runtime libraries.commonsLang
@@ -62,8 +61,15 @@ jar {
   from configurations.runtime.collect {
        // filtering hadoop core jars and configs as it clashes with Azkaban
        it.isDirectory() ? it : zipTree(it).matching {
-         exclude "**/org/apache/hadoop/**"
-         exclude "**/*-default.xml"
+         exclude("**/*-default.xml")
+         exclude("**/org/apache/commons/**")
+         exclude("**/org/apache/hadoop/**")
+         exclude("**/com/linkedin/azkaban**")
+         exclude("**/com/linkedin/hadoop**")
+         exclude("hdfs*.xml")
+         exclude("mapred*.xml")
+         exclude("core*.xml")
+         exclude("**/org.apache.hadoop*")
        }
   }
 
