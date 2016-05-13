@@ -1,7 +1,7 @@
 package com.linkedin.venice.integration.utils;
 
 import com.linkedin.d2.server.factory.D2Server;
-import com.linkedin.venice.helix.HelixCachedMetadataRepository;
+import com.linkedin.venice.helix.HelixReadonlyStoreRepository;
 import com.linkedin.venice.helix.HelixRoutingDataRepository;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.Store;
@@ -38,7 +38,7 @@ public class MockVeniceRouterWrapper extends ProcessWrapper {
 
     Store mockStore = Mockito.mock(Store.class);
     doReturn(1).when(mockStore).getCurrentVersion();
-    HelixCachedMetadataRepository mockMetadataRepository = Mockito.mock(HelixCachedMetadataRepository.class);
+    HelixReadonlyStoreRepository mockMetadataRepository = Mockito.mock(HelixReadonlyStoreRepository.class);
     doReturn(mockStore).when(mockMetadataRepository).getStore(Mockito.anyString());
 
     HelixRoutingDataRepository mockRepo = Mockito.mock(HelixRoutingDataRepository.class);
