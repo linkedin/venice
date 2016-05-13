@@ -21,4 +21,15 @@ public class TestStoreJsonSerializer {
         Store newStore = serializer.deserialize(data);
         Assert.assertEquals(store,newStore);
     }
+
+    @Test
+    public void testSerializeAndDeserializeStoreMissingSomeFields()
+        throws IOException {
+        String jsonStr = "{\"name\":\"s1\"}";
+        StoreJSONSerializer serializer = new StoreJSONSerializer();
+        Store store = serializer.deserialize(jsonStr.getBytes());
+        Assert.assertEquals(store.getName(), "s1");
+        Assert.assertEquals(store.getOwner(), null);
+        Assert.assertEquals(store.getCreatedTime(), 0);
+    }
 }

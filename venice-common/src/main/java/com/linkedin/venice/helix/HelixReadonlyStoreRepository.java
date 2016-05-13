@@ -16,6 +16,7 @@ import java.util.logging.Logger;
 import javax.validation.constraints.NotNull;
 import org.I0Itec.zkclient.IZkChildListener;
 import org.I0Itec.zkclient.IZkDataListener;
+import org.apache.commons.collections.map.HashedMap;
 import org.apache.helix.AccessOption;
 import org.apache.helix.manager.zk.ZkBaseDataAccessor;
 import org.apache.helix.manager.zk.ZkClient;
@@ -37,11 +38,11 @@ public class HelixReadonlyStoreRepository implements ReadonlyStoreRepository {
   /**
    * Listener used when there is any store be created or deleted.
    */
-  private final CachedStoresChangedListener storesChangedListener = new CachedStoresChangedListener();
+  private final StoreCreatedDeleteListener storeCreateDeleteListener = new StoreCreatedDeleteListener();
   /**
    * Listener used when the data of one store is changed.
    */
-  private final CachedStoreDataChangedListener storeDataChangedListener = new CachedStoreDataChangedListener();
+  private final StoreUpdateListener storeUpdateListener = new StoreUpdateListener();
   /**
    * Lock to control the concurrency requests to stores.
    */
@@ -57,9 +58,9 @@ public class HelixReadonlyStoreRepository implements ReadonlyStoreRepository {
    */
   protected final String rootPath;
 
-  public HelixReadonlyStoreRepository(@NotNull ZkClient zkClient, @NotNull HelixAdapterSerializer adaper,
+  public HelixReadonlyStoreRepository(@NotNull ZkClient zkClient, @NotNull HelixAdapterSerializer adapter,
       @NotNull String clusterName) {
-    this(zkClient, adaper, clusterName, new StoreJSONSerializer());
+    this(zkClient, adapter, clusterName, new StoreJSONSerializer());
   }
 
   public HelixReadonlyStoreRepository(@NotNull ZkClient zkClient, @NotNull HelixAdapterSerializer adapter,
@@ -87,16 +88,21 @@ public class HelixReadonlyStoreRepository implements ReadonlyStoreRepository {
   @Override
   public void refresh() {
     metadataLock.writeLock().lock();
-    clear();
     try {
+      Map<String, Store> newStoreMap = new HashedMap();
       List<Store> stores = dataAccessor.getChildren(rootPath, null, AccessOption.PERSISTENT);
       logger.info("Load " + stores.size() + " stores from Helix");
-      dataAccessor.subscribeChildChanges(rootPath, storesChangedListener);
-
-      // Add stores to local copy and add listeners.
+      // Add stores to local copy.
       for (Store s : stores) {
-        storeMap.put(s.getName(), s);
-        dataAccessor.subscribeDataChanges(composeStorePath(s.getName()), storeDataChangedListener);
+        newStoreMap.put(s.getName(), s);
+      }
+      clear(); // clear local copy only if loading from ZK successfully.
+      // replace the original map
+      storeMap = newStoreMap;
+      // add listeners.
+      dataAccessor.subscribeChildChanges(rootPath, storeCreateDeleteListener);
+      for (Store s : storeMap.values()) {
+        dataAccessor.subscribeDataChanges(composeStorePath(s.getName()), storeUpdateListener);
       }
       logger.info("Put " + stores.size() + " stores to local copy.");
     } finally {
@@ -108,9 +114,9 @@ public class HelixReadonlyStoreRepository implements ReadonlyStoreRepository {
   public void clear() {
     metadataLock.writeLock().lock();
     try {
-      dataAccessor.unsubscribeChildChanges(rootPath, storesChangedListener);
+      dataAccessor.unsubscribeChildChanges(rootPath, storeCreateDeleteListener);
       for (String storeName : storeMap.keySet()) {
-        dataAccessor.unsubscribeDataChanges(composeStorePath(storeName), storeDataChangedListener);
+        dataAccessor.unsubscribeDataChanges(composeStorePath(storeName), storeUpdateListener);
       }
       storeMap.clear();
       logger.info("Clear stores from local copy.");
@@ -123,7 +129,16 @@ public class HelixReadonlyStoreRepository implements ReadonlyStoreRepository {
     return this.rootPath + "/" + name;
   }
 
-  private class CachedStoresChangedListener implements IZkChildListener {
+  protected String parseStoreNameFromPath(String path) {
+    if (path.startsWith(rootPath + "/") && path.lastIndexOf('/') == rootPath.length()
+        && path.lastIndexOf('/') < path.length() - 1) {
+      return path.substring(path.lastIndexOf('/') + 1);
+    } else {
+      throw new VeniceException("Data path is invalid, expected:" + rootPath + "/${storename}");
+    }
+  }
+
+  private class StoreCreatedDeleteListener implements IZkChildListener {
 
     @Override
     public void handleChildChange(String parentPath, List<String> storeNameList)
@@ -146,35 +161,37 @@ public class HelixReadonlyStoreRepository implements ReadonlyStoreRepository {
         }
 
         // Add new stores to local copy and add listeners.
-        if (addedChildren.size() > 0) {
+        if (!addedChildren.isEmpty()) {
           // Get new stores from ZK.
           List<Store> addedStores = dataAccessor.get(addedChildren, null, AccessOption.PERSISTENT);
           for (Store store : addedStores) {
             storeMap.put(store.getName(), store);
-            dataAccessor.subscribeDataChanges(composeStorePath(store.getName()), storeDataChangedListener);
+            dataAccessor.subscribeDataChanges(composeStorePath(store.getName()), storeUpdateListener);
+            logger.info("Store:" + store.getName() + " is added.");
           }
         }
 
         // Delete useless stores from local copy
-        if (deletedChildren.size() > 0) {
-          for (String storeName : deletedChildren) {
-            dataAccessor.unsubscribeDataChanges(composeStorePath(storeName), storeDataChangedListener);
-            storeMap.remove(storeName);
-          }
+        for (String storeName : deletedChildren) {
+          dataAccessor.unsubscribeDataChanges(composeStorePath(storeName), storeUpdateListener);
+          storeMap.remove(storeName);
+          logger.info("Store:" + storeName + " is deleted.");
         }
       } finally {
         metadataLock.writeLock().unlock();
       }
-
-      // Notify venice lisener
+      //TODO invoke all of venice listeners here to notify the changes of stores.
     }
   }
 
-  private class CachedStoreDataChangedListener implements IZkDataListener {
+  private class StoreUpdateListener implements IZkDataListener {
 
     @Override
     public void handleDataChange(String dataPath, Object data)
         throws Exception {
+      if (!(data instanceof Store)) {
+        throw new VeniceException("Invalid notification, changed data is not a store.");
+      }
       Store store = (Store) data;
       if (!dataPath.equals(composeStorePath(store.getName()))) {
         throw new VeniceException(
@@ -191,14 +208,11 @@ public class HelixReadonlyStoreRepository implements ReadonlyStoreRepository {
     @Override
     public void handleDataDeleted(String dataPath)
         throws Exception {
-      String storeName = dataPath.substring(dataPath.lastIndexOf('/') + 1);
-      if (!dataPath.startsWith(rootPath) || storeName.isEmpty()) {
-        throw new VeniceException(
-            "The path of event is mismatched. Expected:" + rootPath + "/$StoreName Actual:" + dataPath);
-      }
+      String storeName = parseStoreNameFromPath(dataPath);
       metadataLock.writeLock().lock();
       try {
         storeMap.remove(storeName);
+        logger.info("Store:" + storeName + " is deleted.");
       } finally {
         metadataLock.writeLock().unlock();
       }
