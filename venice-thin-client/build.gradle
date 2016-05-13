@@ -8,6 +8,9 @@ dependencies {
   compile libraries.asyncHttpClient
   compile libraries.guava
   compile libraries.commonsIo
+  compile (libraries.d2){
+    exclude group: 'com.oracle', module: 'ojdbc14' /* unused transitive dependencies, doesnt exist in repo */
+  }
 }
 
 idea {

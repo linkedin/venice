@@ -28,12 +28,13 @@ dependencies {
     compile libraries.routerImpl
     compile libraries.asyncHttpClient
     compile project(':venice-common')
-    compile ("com.linkedin.container:pegasus-d2-server-factory:16.0.23"){
+    compile (libraries.d2){
         exclude group: 'com.oracle', module: 'ojdbc14' /* unused transitive dependencies, doesnt exist in repo */
     }
 
     testCompile project(':venice-common').sourceSets.test.output
     testCompile project(':venice-router')
+    testCompile project(':venice-thin-client')
 
 }
 

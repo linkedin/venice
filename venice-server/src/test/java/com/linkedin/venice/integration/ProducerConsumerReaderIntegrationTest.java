@@ -1,6 +1,7 @@
 package com.linkedin.venice.integration;
 
 import com.linkedin.venice.client.VeniceReader;
+import com.linkedin.venice.client.VeniceHttpClient;
 import com.linkedin.venice.client.VeniceThinClient;
 import com.linkedin.venice.client.VeniceWriter;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -68,7 +69,7 @@ public class ProducerConsumerReaderIntegrationTest {
     veniceWriter = new VeniceWriter(clientProps, storeVersionName, keySerializer, valueSerializer);
     veniceReader = new VeniceReader<String, String>(clientProps, storeVersionName, keySerializer, valueSerializer);
     veniceReader.init();
-    thinClient = new VeniceThinClient(
+    thinClient = new VeniceHttpClient(
         veniceCluster.getVeniceRouter().getHost(),
         veniceCluster.getVeniceRouter().getPort());
   }
