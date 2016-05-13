@@ -57,8 +57,9 @@ public class StoreConsumptionTask implements Runnable, Closeable {
   private final String topic;
 
   private final String consumerTaskId;
+  private final Properties kafkaProps;
 
-  private final VeniceConsumer consumer;
+  private VeniceConsumer consumer;
 
   private final AtomicBoolean isRunning;
 
@@ -79,7 +80,7 @@ public class StoreConsumptionTask implements Runnable, Closeable {
                               @NotNull Queue<VeniceNotifier> notifiers,
                               int nodeId,
                               String topic) {
-    this.consumer = new ApacheKafkaConsumer(kafkaConsumerProperties);
+    this.kafkaProps = kafkaConsumerProperties;
     this.storeRepository = storeRepository;
     this.offsetManager = offsetManager;
 
@@ -174,7 +175,6 @@ public class StoreConsumptionTask implements Runnable, Closeable {
     }
   }
 
-
   @Override
   /**
    * Polls the producer for new messages in an infinite loop and processes the new messages.
@@ -183,6 +183,8 @@ public class StoreConsumptionTask implements Runnable, Closeable {
     logger.info("Running " + consumerTaskId);
 
     try {
+      this.consumer = new ApacheKafkaConsumer(kafkaProps);
+
       while (isRunning.get()) {
         processKafkaActionMessages();
 
@@ -197,11 +199,16 @@ public class StoreConsumptionTask implements Runnable, Closeable {
         }
       }
     } catch (Exception e) {
-      // TODO : First exception from poll kills the Consumption. This needs to be robust and have retries.
+      // TODO : The Exception is handled inconsistently here.
+      // An Error is reported to the controller, so the controller will abort the job.
+      // But the Storage Node might eventually recover and the job may complete in success
+      // This will confused the controller.
       logger.error(consumerTaskId + " failed with Exception: ", e);
-      reportError(partitionToOffsetMap.keySet() , " Errors occured during poll " , e );
+      reportError(partitionToOffsetMap.keySet() , " Errors occurred during poll " , e );
     } finally {
-      close();
+      if(consumer != null) {
+        consumer.close();
+      }
     }
   }
 
@@ -422,8 +429,9 @@ public class StoreConsumptionTask implements Runnable, Closeable {
     isRunning.getAndSet(false);
 
     // KafkaConsumer is closed at the end of the run method.
-    // TODO: If the close was called without calling the run method was not even called,
-    // then KafkaConsumer is never closed
+    // The operation is executed on a single thread in run method.
+    // This method signals the run method to end, which closes the
+    // resources before exiting.
   }
 
   /**
