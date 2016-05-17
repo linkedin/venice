@@ -24,13 +24,12 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
-import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.record.TimestampType;
+import org.apache.log4j.ConsoleAppender;
+import org.apache.log4j.Logger;
+import org.apache.log4j.PatternLayout;
 import org.mockito.Mockito;
-import org.powermock.api.mockito.PowerMockito;
-import org.powermock.core.classloader.annotations.PrepareForTest;
-import org.powermock.modules.testng.PowerMockTestCase;
 import org.testng.annotations.AfterSuite;
 import org.testng.annotations.BeforeSuite;
 import org.testng.annotations.Test;
@@ -41,20 +40,26 @@ import static org.mockito.Matchers.eq;
 /**
  * Unit tests for the KafkaPerStoreConsumptionTask.
  */
-@PrepareForTest({StoreConsumptionTask.class, ApacheKafkaConsumer.class})
-public class StoreConsumptionTaskTest extends PowerMockTestCase {
+public class StoreConsumptionTaskTest{
 
   public static final int TIMEOUT;
 
   static {
     StoreConsumptionTask.READ_CYCLE_DELAY_MS = 500;
     TIMEOUT = 5 * StoreConsumptionTask.READ_CYCLE_DELAY_MS;
+
+    // TODO Hack, after trying to configure the log4j with log4j.properties
+    // at multiple places ( test root directory, test resources)
+    // log4j does not produce any log with no appender error message
+    // So configuring it in the code as a hack now.
+    Logger rootLogger = Logger.getRootLogger();
+    rootLogger.setLevel(org.apache.log4j.Level.INFO);
+    rootLogger.addAppender(new ConsoleAppender(new PatternLayout("%-6r [%p] %c - %m%n")));
   }
 
-  private KafkaConsumer mockKafkaConsumer;
+  private ApacheKafkaConsumer mockKafkaConsumer;
   private StoreRepository mockStoreRepository;
   private VeniceNotifier mockNotifier;
-  private Properties mockKafkaConsumerProperties;
   private OffsetManager mockOffSetManager;
   private AbstractStorageEngine mockAbstractStorageEngine;
 
@@ -80,24 +85,23 @@ public class StoreConsumptionTaskTest extends PowerMockTestCase {
   }
 
   private StoreConsumptionTask getKafkaPerStoreConsumptionTask(int... partitions) throws Exception {
-    mockKafkaConsumer = PowerMockito.mock(KafkaConsumer.class);
-    mockStoreRepository = PowerMockito.mock(StoreRepository.class);
-    mockNotifier = PowerMockito.mock(KafkaNotifier.class);
-    mockKafkaConsumerProperties = PowerMockito.mock(Properties.class);
-    mockAbstractStorageEngine = PowerMockito.mock(AbstractStorageEngine.class);
-    mockOffSetManager = PowerMockito.mock(OffsetManager.class);
+    mockKafkaConsumer = Mockito.mock(ApacheKafkaConsumer.class);
+    mockStoreRepository = Mockito.mock(StoreRepository.class);
+    mockNotifier = Mockito.mock(KafkaNotifier.class);
+    mockAbstractStorageEngine = Mockito.mock(AbstractStorageEngine.class);
+    mockOffSetManager = Mockito.mock(OffsetManager.class);
+    VeniceConsumerFactory mockFactory = Mockito.mock(VeniceConsumerFactory.class);
+    Properties kafkaProps = new Properties();
+    Mockito.doReturn(mockKafkaConsumer).when(mockFactory).getConsumer(kafkaProps);
     for(int partition: partitions) {
-      PowerMockito.doReturn(OffsetRecord.NON_EXISTENT_OFFSET).when(mockOffSetManager)
-          .getLastOffset(topic, partition);
+      Mockito.doReturn(OffsetRecord.NON_EXISTENT_OFFSET).when(mockOffSetManager).getLastOffset(topic, partition);
     }
 
-    PowerMockito.whenNew(KafkaConsumer.class).withParameterTypes(Properties.class)
-        .withArguments(mockKafkaConsumerProperties).thenReturn(mockKafkaConsumer);
 
     Queue<VeniceNotifier> notifiers = new ConcurrentLinkedQueue<>();
     notifiers.add(mockNotifier);
 
-    StoreConsumptionTask task = new StoreConsumptionTask(mockKafkaConsumerProperties, mockStoreRepository, mockOffSetManager,
+    StoreConsumptionTask task = new StoreConsumptionTask(mockFactory , kafkaProps, mockStoreRepository, mockOffSetManager,
             notifiers, nodeId, topic);
     return task;
   }
@@ -119,22 +123,18 @@ public class StoreConsumptionTaskTest extends PowerMockTestCase {
 
     // Verifies KafkaPerStoreConsumptionTask#subscribePartition invokes KafkaConsumer#subscribe with expected arguments.
     mockStoreConsumptionTask.subscribePartition(topic, testPartition);
-    Mockito.verify(mockKafkaConsumer, Mockito.timeout(TIMEOUT).times(1)).assign(
-            new ArrayList<>(mockKafkaConsumerSubscriptions));
-
-    // Prepare the Mocked KafkaConsumer to correctly reflect the subscribed partition.
-    PowerMockito.doReturn(mockKafkaConsumerSubscriptions).when(mockKafkaConsumer).assignment();
+    Mockito.verify(mockKafkaConsumer, Mockito.timeout(TIMEOUT).times(1))
+        .subscribe(topic, testPartition, OffsetRecord.NON_EXISTENT_OFFSET);
 
     /*
      * Verifies KafkaPerStoreConsumptionTask#resetPartitionConsumptionOffset invokes KafkaConsumer#seekToBeginning
      */
     mockStoreConsumptionTask.resetPartitionConsumptionOffset(topic, testPartition);
-    Mockito.verify(mockKafkaConsumer, Mockito.timeout(TIMEOUT).times(1)).seekToBeginning(testTopicPartition);
+    Mockito.verify(mockKafkaConsumer, Mockito.timeout(TIMEOUT).times(1)).resetOffset(topic, testPartition);
 
     // Verifies KafkaPerStoreConsumptionTask#unSubscribePartition invokes KafkaConsumer#unsubscribe with expected arguments.
     mockStoreConsumptionTask.unSubscribePartition(topic, testPartition);
-    Mockito.verify(mockKafkaConsumer, Mockito.timeout(TIMEOUT).times(1)).assign(
-        new ArrayList<>(mockKafkaConsumerSubscriptions));
+    Mockito.verify(mockKafkaConsumer, Mockito.timeout(TIMEOUT).times(1)).unSubscribe(topic, testPartition);
 
     mockStoreConsumptionTask.close();
     testSubscribeTaskFuture.get();
@@ -166,25 +166,23 @@ public class StoreConsumptionTaskTest extends PowerMockTestCase {
     return new ConsumerRecord<>(topic, partition, offset, 0, TimestampType.NO_TIMESTAMP_TYPE, key, value);
   }
 
-  private void  mockKafkaPollResult( ConsumerRecord<KafkaKey, KafkaValue>... records) {
+  private ConsumerRecords  mockKafkaPollResult( ConsumerRecord<KafkaKey, KafkaValue>... records) {
     Map<TopicPartition, List<ConsumerRecord>> mockPollResult = new HashMap<>();
 
-    List<ConsumerRecord> testVeniceMessages = null;
     if(records.length > 0) {
       for(ConsumerRecord record: records) {
         TopicPartition topicPartition = new TopicPartition(topic , record.partition());
         if(mockPollResult.containsKey(topicPartition)) {
           mockPollResult.get(topicPartition).add(record);
         } else {
-          List<ConsumerRecord> list = new ArrayList<ConsumerRecord>();
+          List<ConsumerRecord> list = new ArrayList<>();
           list.add(record);
           mockPollResult.put(topicPartition, list);
         }
       }
     }
 
-    ConsumerRecords mockResult =  new ConsumerRecords(mockPollResult);
-    PowerMockito.doReturn(mockResult).when(mockKafkaConsumer).poll(Mockito.anyLong());
+    return new ConsumerRecords(mockPollResult);
   }
 
   /**
@@ -206,10 +204,11 @@ public class StoreConsumptionTaskTest extends PowerMockTestCase {
     ConsumerRecord ignoreDeleteRecord = getDeleteConsumerRecord(testPartition, 15, "Equal-Offset-Ignored".getBytes());
 
     // Prepare the mockKafkaConsumer to send the test poll results.
-    mockKafkaPollResult(testPutRecord, testDeleteRecord, ignorePutRecord, ignoreDeleteRecord);
+    ConsumerRecords mockResult = mockKafkaPollResult(testPutRecord, testDeleteRecord, ignorePutRecord, ignoreDeleteRecord);
+    Mockito.doReturn(mockResult).when(mockKafkaConsumer).poll(StoreConsumptionTask.READ_CYCLE_DELAY_MS);
 
     // Prepare mockStoreRepository to send a mock storage engine.
-    PowerMockito.doReturn(mockAbstractStorageEngine).when(mockStoreRepository).getLocalStorageEngine(topic);
+    Mockito.doReturn(mockAbstractStorageEngine).when(mockStoreRepository).getLocalStorageEngine(topic);
 
     // MockKafkaConsumer is prepared. Schedule for polling.
     Future testSubscribeTaskFuture = taskPollingService.submit(testSubscribeTask);
@@ -251,35 +250,45 @@ public class StoreConsumptionTaskTest extends PowerMockTestCase {
     testSubscribeTask.subscribePartition(topic, PARTITION_FOO);
     testSubscribeTask.subscribePartition(topic, PARTITION_BAR);
 
-    Map<TopicPartition, List<ConsumerRecord>> mockPollResult = new HashMap<>();
-    ConsumerRecord fooStartRecord = getControlRecord(OperationType.BEGIN_OF_PUSH, currentOffset++ , PARTITION_FOO);
+    ConsumerRecord fooStartRecord = getControlRecord(OperationType.BEGIN_OF_PUSH, currentOffset++, PARTITION_FOO);
     int fooLastOffset = currentOffset++;
     ConsumerRecord fooPutRecord = getPutConsumerRecord(PARTITION_FOO , fooLastOffset, putTestKey.getBytes(), putTestValue.getBytes());
 
-    mockKafkaPollResult(fooStartRecord, fooPutRecord);
+    ConsumerRecords mockResult1 = mockKafkaPollResult(fooStartRecord, fooPutRecord);
+
+    ConsumerRecord barStartRecord = getControlRecord(OperationType.BEGIN_OF_PUSH, currentOffset++, PARTITION_BAR);
+    int barLastOffset = currentOffset++;
+    ConsumerRecord barPutRecord = getPutConsumerRecord(PARTITION_BAR, barLastOffset, putTestKey.getBytes(),
+        putTestValue.getBytes());
+
+    ConsumerRecords mockResult2 = mockKafkaPollResult(barStartRecord, barPutRecord);
+
+    ConsumerRecord fooEndRecord = getControlRecord(OperationType.END_OF_PUSH, currentOffset++, PARTITION_FOO);
+    ConsumerRecords mockResult3 = mockKafkaPollResult(fooEndRecord);
+
+    ConsumerRecord barEndRecord = getControlRecord(OperationType.END_OF_PUSH, currentOffset++, PARTITION_BAR);
+    ConsumerRecords mockResult4 = mockKafkaPollResult(barEndRecord);
+
+    // Tried breaking them into 4 separate lines with verify calls
+    // But there was intermittent failures where the new return value was ignored
+    // and it used only old return value. Chaining them in 4, did not have
+    // intermittent failures on 200 repeated runs.
+    Mockito.doReturn(mockResult1)
+        .doReturn(mockResult2)
+        .doReturn(mockResult3)
+        .doReturn(mockResult4)
+        .when(mockKafkaConsumer).poll(StoreConsumptionTask.READ_CYCLE_DELAY_MS);
 
     // Prepare mockStoreRepository to send a mock storage engine.
-    PowerMockito.doReturn(mockAbstractStorageEngine).when(mockStoreRepository).getLocalStorageEngine(topic);
+    Mockito.doReturn(mockAbstractStorageEngine).when(mockStoreRepository).getLocalStorageEngine(topic);
 
     // MockKafkaConsumer is prepared. Schedule for polling.
     Future testSubscribeTaskFuture = taskPollingService.submit(testSubscribeTask);
 
     // Verify KafkaConsumer#poll is invoked.
     Mockito.verify(mockNotifier, Mockito.timeout(TIMEOUT).atLeastOnce()).started(topic, PARTITION_FOO);
-
-    ConsumerRecord barStartRecord = getControlRecord(OperationType.BEGIN_OF_PUSH, currentOffset++ , PARTITION_BAR);
-    int barLastOffset = currentOffset++;
-    ConsumerRecord barPutRecord = getPutConsumerRecord(PARTITION_BAR , barLastOffset, putTestKey.getBytes(), putTestValue.getBytes());
-
-    mockKafkaPollResult(barStartRecord, barPutRecord);
     Mockito.verify(mockNotifier, Mockito.timeout(TIMEOUT).atLeastOnce()).started(topic, PARTITION_BAR);
-
-    ConsumerRecord fooEndRecord = getControlRecord(OperationType.END_OF_PUSH, currentOffset ++, PARTITION_FOO);
-    mockKafkaPollResult(fooEndRecord);
     Mockito.verify(mockNotifier, Mockito.timeout(TIMEOUT).atLeastOnce()).completed(topic, PARTITION_FOO, fooLastOffset);
-
-    ConsumerRecord barEndRecord = getControlRecord(OperationType.END_OF_PUSH, currentOffset ++ , PARTITION_BAR);
-    mockKafkaPollResult(barEndRecord);
     Mockito.verify(mockNotifier, Mockito.timeout(TIMEOUT).atLeastOnce()).completed(topic, PARTITION_BAR, barLastOffset);
 
     testSubscribeTask.close();

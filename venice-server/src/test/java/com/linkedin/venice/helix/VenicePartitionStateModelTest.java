@@ -7,7 +7,6 @@ import com.linkedin.venice.store.AbstractStorageEngine;
 import org.apache.helix.NotificationContext;
 import org.apache.helix.model.Message;
 import org.mockito.Mockito;
-import org.powermock.api.mockito.PowerMockito;
 import org.testng.annotations.BeforeSuite;
 import org.testng.annotations.Test;
 
@@ -29,18 +28,18 @@ public class VenicePartitionStateModelTest {
 
   @BeforeSuite
   public void setUp() throws Exception {
-    mockKafkaConsumerService = PowerMockito.mock(KafkaConsumerService.class);
-    mockStoreRepository = PowerMockito.mock(StoreRepository.class);
-    mockStoreConfig = PowerMockito.mock(VeniceStoreConfig.class);
+    mockKafkaConsumerService = Mockito.mock(KafkaConsumerService.class);
+    mockStoreRepository = Mockito.mock(StoreRepository.class);
+    mockStoreConfig = Mockito.mock(VeniceStoreConfig.class);
 
-    mockAbstractStorageEngine = PowerMockito.mock(AbstractStorageEngine.class);
-    PowerMockito.when(mockStoreRepository.getLocalStorageEngine(Mockito.anyString()))
+    mockAbstractStorageEngine = Mockito.mock(AbstractStorageEngine.class);
+    Mockito.when(mockStoreRepository.getLocalStorageEngine(Mockito.anyString()))
         .thenReturn(mockAbstractStorageEngine);
-    PowerMockito.when(mockStoreRepository.getOrCreateLocalStorageEngine(Mockito.any(), Mockito.anyInt()))
+    Mockito.when(mockStoreRepository.getOrCreateLocalStorageEngine(Mockito.any(), Mockito.anyInt()))
         .thenReturn(mockAbstractStorageEngine);
 
-    mockMessage = PowerMockito.mock(Message.class);
-    mockContext = PowerMockito.mock(NotificationContext.class);
+    mockMessage = Mockito.mock(Message.class);
+    mockContext = Mockito.mock(NotificationContext.class);
 
     testStateModel = new VenicePartitionStateModel(mockKafkaConsumerService, mockStoreRepository, mockStoreConfig,
         testPartition);
@@ -55,7 +54,7 @@ public class VenicePartitionStateModelTest {
   @Test
   public void testOnBecomeOnlineFromOffline() throws Exception {
     // Check that only KafkaConsumption is started when corresponding partition information exists on local storage.
-    PowerMockito.when(mockAbstractStorageEngine.containsPartition(testPartition)).thenReturn(true);
+    Mockito.when(mockAbstractStorageEngine.containsPartition(testPartition)).thenReturn(true);
     testStateModel.onBecomeOnlineFromOffline(mockMessage, mockContext);
     Mockito.verify(mockKafkaConsumerService, Mockito.atLeastOnce()).startConsumption(mockStoreConfig, testPartition);
     Mockito.verify(mockAbstractStorageEngine, Mockito.never()).addStoragePartition(testPartition);
@@ -64,7 +63,7 @@ public class VenicePartitionStateModelTest {
      * When partition information does not exists on local storage, Check that KafkaConsumption is started,
      * local partition is created and kafka offset is reset.
      */
-    PowerMockito.when(mockAbstractStorageEngine.containsPartition(testPartition)).thenReturn(false);
+    Mockito.when(mockAbstractStorageEngine.containsPartition(testPartition)).thenReturn(false);
     testStateModel.onBecomeOnlineFromOffline(mockMessage, mockContext);
     Mockito.verify(mockKafkaConsumerService, Mockito.atLeastOnce()).startConsumption(mockStoreConfig, testPartition);
     Mockito.verify(mockAbstractStorageEngine, Mockito.atLeastOnce()).addStoragePartition(testPartition);

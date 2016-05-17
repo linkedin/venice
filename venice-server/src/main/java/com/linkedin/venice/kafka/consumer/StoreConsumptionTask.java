@@ -58,6 +58,7 @@ public class StoreConsumptionTask implements Runnable, Closeable {
 
   private final String consumerTaskId;
   private final Properties kafkaProps;
+  private final VeniceConsumerFactory factory;
 
   private VeniceConsumer consumer;
 
@@ -74,12 +75,14 @@ public class StoreConsumptionTask implements Runnable, Closeable {
   // always up to date because of the asynchronous nature of subscriptions of partitions in Kafka Consumer.
   private final Map<Integer, Long> partitionToOffsetMap;
 
-  public StoreConsumptionTask(Properties kafkaConsumerProperties,
+  public StoreConsumptionTask(@NotNull VeniceConsumerFactory factory,
+                              @NotNull Properties kafkaConsumerProperties,
                               @NotNull StoreRepository storeRepository,
                               @NotNull OffsetManager offsetManager,
                               @NotNull Queue<VeniceNotifier> notifiers,
                               int nodeId,
                               String topic) {
+    this.factory = factory;
     this.kafkaProps = kafkaConsumerProperties;
     this.storeRepository = storeRepository;
     this.offsetManager = offsetManager;
@@ -183,7 +186,7 @@ public class StoreConsumptionTask implements Runnable, Closeable {
     logger.info("Running " + consumerTaskId);
 
     try {
-      this.consumer = new ApacheKafkaConsumer(kafkaProps);
+      this.consumer = factory.getConsumer(kafkaProps);
 
       while (isRunning.get()) {
         processKafkaActionMessages();

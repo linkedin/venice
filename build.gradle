@@ -81,8 +81,6 @@ subprojects {
     compile 'javax.validation:validation-api:1.0.0.GA'
     testCompile 'org.testng:testng:6.1.1'
 
-    //PowerMock for mocking private methods, class members, enums, etc.
-    testCompile 'org.powermock:powermock-mockito-release-full:1.5.6'
     testCompile 'org.mockito:mockito-all:1.9.5'
   }
 

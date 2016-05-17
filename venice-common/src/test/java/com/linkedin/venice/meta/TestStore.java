@@ -98,9 +98,16 @@ public class TestStore {
     }
   }
 
-  private static void assertVersionsEquals(Store store, int versionToPreserve, List<Version> versions, String message) {
-    Assert.assertEquals(new HashSet<Version>(store.retrieveVersionsToDelete(versionToPreserve)),
-        new HashSet<Version>(versions), message);
+  private static void assertVersionsEquals(Store store, int versionToPreserve, List<Version> expectedVersions, String message) {
+    List<Version> actualVersions = store.retrieveVersionsToDelete(versionToPreserve);
+    // TestNG calls the assertEquals(Collection, Collection) though it should have called
+    // assertEquals(set,set) when using the HashSet intermittently.
+    // Doing manual set comparison for now
+
+    Assert.assertEquals(actualVersions.size(), expectedVersions.size(),  message + " -->size of lists does not match");
+    for(Version version: expectedVersions) {
+      Assert.assertTrue( actualVersions.contains(version) , message + " --> version " + version + " is missing in actual");
+    }
   }
 
 
