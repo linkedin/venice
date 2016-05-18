@@ -1,6 +1,7 @@
 package com.linkedin.venice.kafka.consumer;
 
 import com.linkedin.venice.exceptions.PersistenceFailureException;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceMessageException;
 import com.linkedin.venice.kafka.consumer.message.ControlMessage;
 import com.linkedin.venice.kafka.consumer.message.ControlOperationType;
@@ -100,10 +101,17 @@ public class StoreConsumptionTask implements Runnable, Closeable {
     isRunning = new AtomicBoolean(true);
   }
 
+  private void validateState() {
+    if(!isRunning()) {
+      throw new VeniceException(" Topic " + topic + " is shutting down, no more messages accepted");
+    }
+  }
+
   /**
    * Adds an asynchronous partition subscription request for the task.
    */
   public void subscribePartition(String topic, int partition) {
+    validateState();
     kafkaActionMessages.add(new ControlMessage(ControlOperationType.SUBSCRIBE, topic, partition));
   }
 
@@ -111,6 +119,7 @@ public class StoreConsumptionTask implements Runnable, Closeable {
    * Adds an asynchronous partition unsubscription request for the task.
    */
   public void unSubscribePartition(String topic, int partition) {
+    validateState();
     kafkaActionMessages.add(new ControlMessage(ControlOperationType.UNSUBSCRIBE, topic, partition));
   }
 
@@ -118,6 +127,7 @@ public class StoreConsumptionTask implements Runnable, Closeable {
    * Adds an asynchronous resetting partition consumption offset request for the task.
    */
   public void resetPartitionConsumptionOffset(String topic, int partition) {
+    validateState();
     kafkaActionMessages.add(new ControlMessage(ControlOperationType.RESET_OFFSET, topic, partition));
   }
 
@@ -209,9 +219,22 @@ public class StoreConsumptionTask implements Runnable, Closeable {
       logger.error(consumerTaskId + " failed with Exception: ", e);
       reportError(partitionToOffsetMap.keySet() , " Errors occurred during poll " , e );
     } finally {
-      if(consumer != null) {
-        consumer.close();
-      }
+      internalClose();
+    }
+  }
+
+  private void internalClose() {
+    // Process left over kafka action messages if any.
+    try {
+      processKafkaActionMessages();
+    } catch(Exception e) {
+      logger.info("Error clearing Kafka Action Messages for topic " + topic, e);
+    }
+    if(!kafkaActionMessages.isEmpty()) {
+      logger.warn("Some Kafka Action messages are ignored during close for topic " + topic);
+    }
+    if(consumer != null) {
+      consumer.close();
     }
   }
 
@@ -266,6 +289,7 @@ public class StoreConsumptionTask implements Runnable, Closeable {
         consumer.unSubscribe(topic, partition);
         break;
       case RESET_OFFSET:
+        offsetManager.clearOffset(topic, partition);
         consumer.resetOffset(topic, partition);
         logger.info(consumerTaskId + " Reset OffSet : Topic " + topic + " Partition Id " + partition );
         break;
@@ -283,7 +307,7 @@ public class StoreConsumptionTask implements Runnable, Closeable {
     int partitionId = record.partition();
     Long lastOffset = partitionToOffsetMap.get(partitionId);
     if(lastOffset == null) {
-      logger.info("Skipping message as partition is not actively subscribed to anymore " + " topic " + topic + " Partition Id " + partitionId );
+      logger.info("Skipping message as partition is no longer actively subscribed. Topic: " + topic + " Partition Id: " + partitionId );
       return false;
     }
 

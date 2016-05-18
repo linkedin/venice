@@ -121,24 +121,22 @@ public class StoreConsumptionTaskTest{
     Set<TopicPartition> mockKafkaConsumerSubscriptions = new HashSet<>();
     mockKafkaConsumerSubscriptions.add(testTopicPartition);
 
-    // Verifies KafkaPerStoreConsumptionTask#subscribePartition invokes KafkaConsumer#subscribe with expected arguments.
+    // Verify subscribe behavior
     mockStoreConsumptionTask.subscribePartition(topic, testPartition);
     Mockito.verify(mockKafkaConsumer, Mockito.timeout(TIMEOUT).times(1))
         .subscribe(topic, testPartition, OffsetRecord.NON_EXISTENT_OFFSET);
 
-    /*
-     * Verifies KafkaPerStoreConsumptionTask#resetPartitionConsumptionOffset invokes KafkaConsumer#seekToBeginning
-     */
+    // Verify the reset behavior
     mockStoreConsumptionTask.resetPartitionConsumptionOffset(topic, testPartition);
+    Mockito.verify(mockOffSetManager, Mockito.timeout(TIMEOUT).times(1)).clearOffset(topic, testPartition);
     Mockito.verify(mockKafkaConsumer, Mockito.timeout(TIMEOUT).times(1)).resetOffset(topic, testPartition);
 
-    // Verifies KafkaPerStoreConsumptionTask#unSubscribePartition invokes KafkaConsumer#unsubscribe with expected arguments.
+    // Verify unSubscribe behavior
     mockStoreConsumptionTask.unSubscribePartition(topic, testPartition);
     Mockito.verify(mockKafkaConsumer, Mockito.timeout(TIMEOUT).times(1)).unSubscribe(topic, testPartition);
 
     mockStoreConsumptionTask.close();
     testSubscribeTaskFuture.get();
-
     Mockito.verify(mockKafkaConsumer, Mockito.timeout(TIMEOUT).times(1)).close();
   }
 

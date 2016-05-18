@@ -30,6 +30,7 @@ public interface OffsetManager {
   void recordOffset(String topicName, int partitionId, OffsetRecord record)
       throws VeniceException;
 
+  void clearOffset(String topicName, int partitionId);
 
   /**
    * Gets the Last Known persisted offset of this consumer.

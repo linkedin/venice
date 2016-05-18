@@ -161,9 +161,11 @@ public class KafkaConsumerPerStoreService extends AbstractVeniceService implemen
     if(consumerTask == null || !consumerTask.isRunning()) {
       consumerTask = getConsumerTask(veniceStore);
       topicNameToKafkaMessageConsumptionTaskMap.put(topic, consumerTask);
-      if(isRunning.get()) {
-        consumerExecutorService.submit(consumerTask);
+      if(!isRunning.get()) {
+        logger.info("Ignoring Start consumption message as service is stopping. Topic " + topic + " Partition " + partitionId);
+        return;
       }
+      consumerExecutorService.submit(consumerTask);
     }
     consumerTask.subscribePartition(topic, partitionId);
     logger.info("Started Consuming - Kafka Partition: " + topic + "-" + partitionId + ".");
@@ -180,6 +182,8 @@ public class KafkaConsumerPerStoreService extends AbstractVeniceService implemen
     StoreConsumptionTask consumerTask = topicNameToKafkaMessageConsumptionTaskMap.get(topic);
     if(consumerTask != null && consumerTask.isRunning()) {
       consumerTask.unSubscribePartition(topic, partitionId);
+    } else {
+      logger.warn("Ignoring stop consumption message for Topic " + topic + " Partition " + partitionId);
     }
   }
 
@@ -194,6 +198,10 @@ public class KafkaConsumerPerStoreService extends AbstractVeniceService implemen
     StoreConsumptionTask consumerTask = topicNameToKafkaMessageConsumptionTaskMap.get(topic);
     if(consumerTask != null && consumerTask.isRunning()) {
       consumerTask.resetPartitionConsumptionOffset(topic, partitionId);
+    } else {
+      logger.info("There is no active task for Topic " + topic + " Partition " + partitionId
+          +" Using offset manager directly");
+      offsetManager.clearOffset(topic, partitionId);
     }
     logger.info("Offset reset to beginning - Kafka Partition: " + topic + "-" + partitionId + ".");
   }

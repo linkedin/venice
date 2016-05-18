@@ -76,6 +76,6 @@ public class TestUtils {
   }
 
   public static String getUniqueString(String base) {
-    return base + "-" + System.currentTimeMillis() + "-" + RandomGenUtils.getRandomIntwithin(Integer.MAX_VALUE);
+    return base + "-" + System.currentTimeMillis() + "-" + RandomGenUtils.getRandomIntWithIn(Integer.MAX_VALUE);
   }
 }

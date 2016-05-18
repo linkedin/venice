@@ -13,6 +13,7 @@ import com.sleepycat.je.EnvironmentConfig;
 import com.sleepycat.je.LockMode;
 import com.sleepycat.je.OperationStatus;
 import java.io.File;
+import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.apache.log4j.Logger;
@@ -47,10 +48,6 @@ public class BdbOffsetManager extends AbstractVeniceService implements OffsetMan
 
   private AtomicBoolean isOpen;
   private Database offsetsBdbDatabase;
-
-  // TODO: Need to remove this later - start
-  private final HashMap<String, Integer> consumptionStats;
-  // TODO: Need to remove this later - end
 
   @Override
   public void startInner()
@@ -89,11 +86,6 @@ public class BdbOffsetManager extends AbstractVeniceService implements OffsetMan
     envConfig.setCacheSize(CACHE_SIZE);
 
     offsetsBdbEnvironment = new Environment(bdbDir, envConfig);
-
-    // TODO: Need to remove this block later - start
-    consumptionStats = new HashMap<String, Integer>();
-    // TODO: Need to remove this block later - end
-
   }
 
   @Override
@@ -111,49 +103,56 @@ public class BdbOffsetManager extends AbstractVeniceService implements OffsetMan
     }
   }
 
-  private String formatKey(String topic, int partitionId) {
-    return topic + "_" + partitionId;
+  private DatabaseEntry getBDBKey(String topic, int partitionId) {
+    String keyStr = topic + "_" + partitionId;
+    byte[] key = keyStr.getBytes(StandardCharsets.UTF_8);
+    return new DatabaseEntry(key);
   }
 
   @Override
   public void recordOffset(String topicName, int partitionId, OffsetRecord record)
       throws VeniceException {
-    //assumes that the offset is not negative. Checked by the caller
+
+    DatabaseEntry keyEntry = getBDBKey(topicName, partitionId);
 
     byte[] value = record.toBytes();
-
-    String keyStr = formatKey(topicName , partitionId);
-    DatabaseEntry keyEntry = new DatabaseEntry(keyStr.getBytes());
     DatabaseEntry valueEntry = new DatabaseEntry(value);
+
     try {
       OperationStatus status = offsetsBdbDatabase.put(null, keyEntry, valueEntry);
 
       if (status != OperationStatus.SUCCESS) {
-        String errorStr = "Put failed with  " + status + " for key " + keyStr;
+        String errorStr = "Put failed with  " + status + " for Topic: " + topicName + " PartitionId: " + partitionId;
         logger.error(errorStr);
         throw new VeniceException(errorStr);
       }
-
-      // TODO: Need to remove this block later - start
-      if (!consumptionStats.containsKey(keyStr)) {
-        consumptionStats.put(keyStr, 1);
-        logger.info(keyStr + ":" + record);
-        offsetsBdbDatabase.sync();
-      } else {
-        int val = consumptionStats.get(keyStr);
-        if (val + 1 == 50) {
-          logger.info(keyStr + ":" + record);
-          offsetsBdbDatabase.sync();
-          consumptionStats.put(keyStr, 0);
-        } else {
-          consumptionStats.put(keyStr, val + 1);
-        }
-      }
-      // TODO: Need to remove this block later - end
     } catch (DatabaseException e) {
-      logger.error("Error in put for BDB database " + OFFSETS_STORE_NAME + " Key " + keyStr, e);
+      String errorMessage = "Error in put for BDB database " + OFFSETS_STORE_NAME +
+          " for Topic: " + topicName + " PartitionId: " + partitionId;
+      logger.error(errorMessage , e);
       throw new VeniceException(e);
     }
+  }
+
+  @Override
+  public void clearOffset(String topicName, int partitionId) {
+    DatabaseEntry keyEntry = getBDBKey(topicName , partitionId);
+
+    try {
+      OperationStatus status = offsetsBdbDatabase.delete(null, keyEntry);
+
+      if (status != OperationStatus.SUCCESS) {
+        String errorStr = "Delete failed with  " + status + " for Topic " + topicName + " PartitionId: " + partitionId;
+        logger.error(errorStr);
+        throw new VeniceException(errorStr);
+      }
+    } catch (DatabaseException e) {
+      String errorMessage = "Error in clearOffset for BDB database " + OFFSETS_STORE_NAME +
+          " Topic " + topicName + " PartitionId: " + partitionId;
+      logger.error(errorMessage , e);
+      throw new VeniceException(errorMessage, e);
+    }
+
   }
 
   @Override
@@ -162,8 +161,7 @@ public class BdbOffsetManager extends AbstractVeniceService implements OffsetMan
     /**
      * This method will return null if last offset is not found.
      */
-    String keyStr = formatKey(topicName , partitionId);
-    DatabaseEntry keyEntry = new DatabaseEntry(keyStr.getBytes());
+    DatabaseEntry keyEntry = getBDBKey(topicName , partitionId);
     DatabaseEntry valueEntry = new DatabaseEntry();
 
     try {
@@ -175,8 +173,9 @@ public class BdbOffsetManager extends AbstractVeniceService implements OffsetMan
         return OffsetRecord.NON_EXISTENT_OFFSET;
       }
     } catch (DatabaseException e) {
-      logger.error("Error retrieving offset for Topic " + topicName + " and partition" + partitionId, e);
-      throw new VeniceException(e);
+      String errorMessage = "Error retrieving offset for Topic " + topicName + " and partition" + partitionId;
+      logger.error(errorMessage, e);
+      throw new VeniceException(errorMessage, e);
     }
   }
 }

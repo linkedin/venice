@@ -32,7 +32,7 @@ public class RandomGenUtils {
    * @param max The upper bound for the range of numbers
    * @return
    */
-  public static int getRandomIntwithin(int max){
+  public static int getRandomIntWithIn(int max){
     return SEEDED_RANDOM.nextInt(max);
   }
 

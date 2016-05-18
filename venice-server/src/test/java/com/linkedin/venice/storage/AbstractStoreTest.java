@@ -47,7 +47,7 @@ public abstract class AbstractStoreTest {
   public void testGetAndPut() {
     byte[] key = RandomGenUtils.getRandomBytes(keySize);
     byte[] value = RandomGenUtils.getRandomBytes(valueSize);
-    int partitionId = RandomGenUtils.getRandomIntwithin(numOfPartitions);
+    int partitionId = RandomGenUtils.getRandomIntWithIn(numOfPartitions);
     byte[] foundValue;
     try {
       doPut(partitionId, key, value);
@@ -63,7 +63,7 @@ public abstract class AbstractStoreTest {
   public void testDelete() {
     byte[] key = RandomGenUtils.getRandomBytes(keySize);
     byte[] value = RandomGenUtils.getRandomBytes(valueSize);
-    int partitionId = RandomGenUtils.getRandomIntwithin(numOfPartitions);
+    int partitionId = RandomGenUtils.getRandomIntWithIn(numOfPartitions);
     byte[] foundValue;
     try {
       doPut(partitionId, key, value);
@@ -90,7 +90,7 @@ public abstract class AbstractStoreTest {
     byte[] key = RandomGenUtils.getRandomBytes(keySize);
     byte[] value = RandomGenUtils.getRandomBytes(valueSize);
     byte[] updatedValue = RandomGenUtils.getRandomBytes(uniqueKeyOrValueSize);
-    int partitionId = RandomGenUtils.getRandomIntwithin(numOfPartitions);
+    int partitionId = RandomGenUtils.getRandomIntWithIn(numOfPartitions);
     byte[] foundValue;
     try {
       doPut(partitionId, key, value);
@@ -109,7 +109,7 @@ public abstract class AbstractStoreTest {
 
   public void testGetInvalidKeys() {
     byte[] key = RandomGenUtils.getRandomBytes(uniqueKeyOrValueSize);
-    int partitionId = RandomGenUtils.getRandomIntwithin(numOfPartitions);
+    int partitionId = RandomGenUtils.getRandomIntWithIn(numOfPartitions);
     byte[] foundValue = null;
     try {
       foundValue = doGet(partitionId, key);
@@ -127,7 +127,7 @@ public abstract class AbstractStoreTest {
   public void testPutNullKey() {
     byte[] key = null;
     byte[] value = RandomGenUtils.getRandomBytes(valueSize);
-    int partitionId = RandomGenUtils.getRandomIntwithin(numOfPartitions);
+    int partitionId = RandomGenUtils.getRandomIntWithIn(numOfPartitions);
     try {
       doPut(partitionId, key, value);
     } catch (IllegalArgumentException e) {

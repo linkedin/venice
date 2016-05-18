@@ -17,9 +17,10 @@ import static com.linkedin.venice.ConfigKeys.*;
 public class TestBDBOffsetManager {
 
   private VeniceClusterConfig clusterConfig;
-  private Long flushIntervalMs = 4000L;
+  // BDB allowed minimum wakeup interval is 1 second
+  private Long flushIntervalMs = 1001L;
   private BdbOffsetManager offsetManager;
-  private String topicName = "test_topic";
+
   private int partitionId = 3;
 
   private BdbOffsetManager getOffsetManager(VeniceClusterConfig clusterConfig) throws Exception {
@@ -45,36 +46,64 @@ public class TestBDBOffsetManager {
   @Test
   public void testFreshnessAfterRestart()
       throws Exception {
-    /**
-     * 1. start a thread/loop that constantly produces to the same topic,partition for more than flushIntervalMs time
-     * 2. Note the last update and stop the thread/loop and the offset manager.
-     * 3. Get the last record from offsetManager
-     * 4. Match the time stamp between the one fetched and the one noted down in step 2. The time difference should not
-     * be greater than flushIntervalMs
-     */
 
-    long start = System.currentTimeMillis();
-    long end = start + (flushIntervalMs * 5);
-    long lastOffset = -1;
-    long lastOffsetTimeStamp = 0L;
+    String topicName = "test_topic";
+    OffsetRecord expectedRecord = null, actualRecord =  null;
 
-    while (System.currentTimeMillis() < end) {
-      lastOffset = RandomGenUtils.getRandomIntInRange(0, 9999);
-      lastOffsetTimeStamp = System.currentTimeMillis();
+    for(int i = 0; i < 10; i ++){
+      //Write 10 times randomly to the offset Store and verify the read.
+      for(int j = 0; j < 10; j ++) {
+        long lastOffset = RandomGenUtils.getRandomIntWithIn(Integer.MAX_VALUE);
+        long lastOffsetTimeStamp = System.currentTimeMillis();
 
-      OffsetRecord record = new OffsetRecord(lastOffset, lastOffsetTimeStamp);
+        expectedRecord = new OffsetRecord(lastOffset, lastOffsetTimeStamp);
+        offsetManager.recordOffset(topicName, partitionId, expectedRecord);
+        actualRecord = offsetManager.getLastOffset(topicName, partitionId);
+        Assert.assertEquals(expectedRecord, actualRecord, "Offset Manager returned different record");
+      }
 
-      offsetManager.recordOffset(topicName, partitionId, record);
-      Thread.sleep(100);
+      offsetManager.stop();
+
+      try {
+        offsetManager.getLastOffset(topicName, partitionId);
+        Assert.fail("stopped offset manager should throw IllegalStateException");
+      } catch(IllegalStateException ex) {
+        //Expected
+      }
+
+      offsetManager = getOffsetManager(clusterConfig);
+      actualRecord = offsetManager.getLastOffset(topicName, partitionId);
+      Assert.assertEquals(expectedRecord, actualRecord, "Offset Manager does not persist across restarts");
+
     }
-    offsetManager.stop();
-    offsetManager = getOffsetManager(clusterConfig);
-    OffsetRecord record = offsetManager.getLastOffset(topicName, partitionId);
-    long timeGap = lastOffsetTimeStamp - record.getEventTimeEpochMs();
-    if (timeGap < 0 && timeGap > flushIntervalMs) {
-      Assert.fail(
-          "The last offset fetched from OffsetManager: " + record.getEventTimeEpochMs() + ", is staler (by " + timeGap
-              + "ms) than the last emitted offset:  " + lastOffset);
-    }
+  }
+
+  @Test
+  public void testCRUD() {
+    final String NON_EXISTENT_OFFSET_TOPIC =  "NonExistentOffsetTopic";
+    OffsetRecord actualRecord = offsetManager.getLastOffset(NON_EXISTENT_OFFSET_TOPIC, partitionId);
+    Assert.assertEquals(OffsetRecord.NON_EXISTENT_OFFSET ,actualRecord , "NonExistentTopic should return non existent offset" );
+
+    // Create
+    long offset = RandomGenUtils.getRandomIntWithIn(Integer.MAX_VALUE);
+    OffsetRecord expectedRecord = new OffsetRecord(offset, System.currentTimeMillis());
+    offsetManager.recordOffset(NON_EXISTENT_OFFSET_TOPIC, partitionId, expectedRecord);
+
+    //Read
+    actualRecord = offsetManager.getLastOffset(NON_EXISTENT_OFFSET_TOPIC, partitionId);
+    Assert.assertEquals(expectedRecord , actualRecord, "Offset Manager returned different record");
+
+    // Update
+    offset = RandomGenUtils.getRandomIntWithIn(Integer.MAX_VALUE);
+    expectedRecord = new OffsetRecord(offset, System.currentTimeMillis());
+    offsetManager.recordOffset(NON_EXISTENT_OFFSET_TOPIC, partitionId, expectedRecord);
+
+    actualRecord = offsetManager.getLastOffset(NON_EXISTENT_OFFSET_TOPIC, partitionId);
+    Assert.assertEquals(expectedRecord, actualRecord, "Offset Manager returned different record");
+
+    //Delete
+    offsetManager.clearOffset(NON_EXISTENT_OFFSET_TOPIC , partitionId);
+    actualRecord = offsetManager.getLastOffset(NON_EXISTENT_OFFSET_TOPIC, partitionId);
+    Assert.assertEquals(OffsetRecord.NON_EXISTENT_OFFSET ,actualRecord , "cleared offset should return non existent offset" );
   }
 }
