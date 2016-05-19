@@ -56,6 +56,12 @@ public class ControllerApiConstants {
     NEXTVERSION_PARAMS.add(NAME);
   }
 
+  public static final String CURRENT_VERSION_PATH = "/currentversion";
+  public static final List<String> CURRENT_VERSION_PARAMS = NEXTVERSION_PARAMS; /* cluster and storename */
+
+  public static final String ACTIVE_VERSIONS_PATH = "/activeversions";
+  public static final List<String> ACTIVE_VERSIONS_PARAMS = NEXTVERSION_PARAMS; /* cluster and storename */
+
   public static final String JOB_PATH = "/job";
   public static final List<String> JOB_PARMAS = VERSION_PARAMS;
 

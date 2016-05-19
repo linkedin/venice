@@ -126,6 +126,7 @@ task buildAll {
   dependsOn 'venice-controller:installApp'
   dependsOn 'venice-router:installApp'
   // dependsOn 'hadoop-to-venice-bridge:installApp'
+  dependsOn 'venice-admin-tool:build'
 }
 
 task wrapper(type: Wrapper) {

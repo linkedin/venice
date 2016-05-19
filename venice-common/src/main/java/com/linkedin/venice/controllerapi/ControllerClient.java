@@ -67,7 +67,7 @@ public class ControllerClient implements Closeable {
     } else {
       this.controllerUrl = controllerUrl;
     }
-    logger.info("Identified controller URL: " + this.controllerUrl + " from router: " + routerUrls);
+    logger.debug("Identified controller URL: " + this.controllerUrl + " from router: " + routerUrls);
   }
 
   /**
@@ -240,6 +240,54 @@ public class ControllerClient implements Closeable {
       return client.queryNextVersion(clusterName, storeName);
     }
   }
+
+
+  private VersionResponse queryCurrentVersion(String clusterName, String storeName){
+    try{
+      List<NameValuePair> queryParams = new ArrayList<>();
+      queryParams.add(new BasicNameValuePair(ControllerApiConstants.CLUSTER, clusterName));
+      queryParams.add(new BasicNameValuePair(ControllerApiConstants.NAME, storeName));
+      String queryString = URLEncodedUtils.format(queryParams, StandardCharsets.UTF_8);
+      final HttpGet get = new HttpGet(controllerUrl + ControllerApiConstants.CURRENT_VERSION_PATH + "?" + queryString);
+      HttpResponse response = client.execute(get, null).get();
+      String responseJson = getJsonFromHttpResponse(response);
+      return mapper.readValue(responseJson, VersionResponse.class);
+    } catch (Exception e) {
+      String msg = "Error querying current version of store: " + storeName;
+      logger.error(msg, e);
+      throw new VeniceException(msg, e);
+    }
+  }
+
+  public static VersionResponse queryCurrentVersion(String routerUrls, String clusterName, String storeName){
+    try (ControllerClient client = new ControllerClient(routerUrls)){
+      return client.queryCurrentVersion(clusterName, storeName);
+    }
+  }
+
+  private MultiVersionResponse queryActiveVersions(String clusterName, String storeName){
+    try{
+      List<NameValuePair> queryParams = new ArrayList<>();
+      queryParams.add(new BasicNameValuePair(ControllerApiConstants.CLUSTER, clusterName));
+      queryParams.add(new BasicNameValuePair(ControllerApiConstants.NAME, storeName));
+      String queryString = URLEncodedUtils.format(queryParams, StandardCharsets.UTF_8);
+      final HttpGet get = new HttpGet(controllerUrl + ControllerApiConstants.ACTIVE_VERSIONS_PATH + "?" + queryString);
+      HttpResponse response = client.execute(get, null).get();
+      String responseJson = getJsonFromHttpResponse(response);
+      return mapper.readValue(responseJson, MultiVersionResponse.class);
+    } catch (Exception e) {
+      String msg = "Error querying active versions for store: " + storeName;
+      logger.error(msg, e);
+      throw new VeniceException(msg, e);
+    }
+  }
+
+  public static MultiVersionResponse queryActiveVersions(String routerUrls, String clusterName, String storeName){
+    try (ControllerClient client = new ControllerClient(routerUrls)){
+      return client.queryActiveVersions(clusterName, storeName);
+    }
+  }
+
 
   private VersionResponse reserveVersion(String clusterName, String storeName, int version){
     try{

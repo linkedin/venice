@@ -1,0 +1,55 @@
+Venice Admin Tool
+-----------------
+
+For directly affecting administrative actions and queries on a Venice cluster
+
+```
+usage: java -jar venice-admin-tool-0.1.jar [options]
+ -c,--cluster <arg>   REQUIRED: Name of Venice cluster
+ -h,--help            Show usage
+ -q,--query <arg>     REQUIRED: Query one of NEXT, AVAILABLE, CURRENT, JOB
+                      for store
+ -r,--router <arg>    REQUIRED: Venice router url, eg.
+                      http://localhost:54333
+ -s,--store <arg>     Name of Venice store
+ -v,--version <arg>   Venice store version number
+```
+
+## Overview of Queries
+
+Note:  All queries require a router (of form `http://<host>:<port>`) and a cluster.
+
+### NEXT
+
+Requires: store
+
+Next available (unreserved) version number.  Returns an integer.
+
+### AVAILABLE
+
+Requires: store
+
+All version numbers that the storage nodes can serve.  These are the only versions that we can set as current (for example for a rollback).  Returns a list of integers, eg: [3, 4]
+
+### CURRENT
+
+Requires: store
+
+The version that is currently being served by the router.  Returns an integer.
+
+### JOB
+
+Requires: store, version
+
+Job status for storage node consumption.
+
+### Future commands to add:
+
+ * Set version
+ * Delete version
+ * List stores
+ * Describe store (show all status)
+ * Delete store?
+ * ???
+
+ * Put clusters and routers into a passed-in config file to query multiple clusters at once

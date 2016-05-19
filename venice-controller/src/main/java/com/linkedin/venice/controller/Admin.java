@@ -20,6 +20,8 @@ public interface Admin {
 
     Version incrementVersion(String clusterName, String storeName, int numberOfPartition, int replicaFactor);
 
+    int getCurrentVersion(String clusterName, String storeName);
+
     Version peekNextVersion(String clusterName, String storeName);
 
     List<Version> versionsForStore(String clusterName, String storeName);

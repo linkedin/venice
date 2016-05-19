@@ -224,23 +224,41 @@ public class VeniceHelixAdmin implements Admin {
     }
 
     @Override
+    public int getCurrentVersion(String clusterName, String storeName){
+        Store store = getStoreForReadOnly(clusterName, storeName);
+        int version = store.getCurrentVersion(); /* Does not modify the store */
+        return version;
+    }
+
+    @Override
     public Version peekNextVersion(String clusterName, String storeName) {
+        Store store = getStoreForReadOnly(clusterName, storeName);
+        Version version = store.peekNextVersion(); /* Does not modify the store */
+        logger.info("Next version would be: " + version.getNumber() + " for store: " + storeName);
+        return version;
+    }
+
+    /***
+     * If you need to do mutations on the store, then you must hold onto the lock until you've persisted your mutations.
+     * Only use this method if you're doing read-only operations on the store.
+     * @param clusterName
+     * @param storeName
+     * @return
+     */
+    private Store getStoreForReadOnly(String clusterName, String storeName){
         checkControllerMastership(clusterName);
         HelixReadWriteStoreRepository repository =
             controllerStateModelFactory.getModel(clusterName).getResources().getMetadataRepository();
-        Version version = null;
         repository.lock();
         try {
             Store store = repository.getStore(storeName);
             if(store == null){
                 throw new VeniceNoStoreException(storeName);
             }
-            version = store.peekNextVersion(); /* Does not modify the store */
-            logger.info("Next version would be: " + version.getNumber() + " for store: " + storeName);
+            return store; /* is a clone */
         } finally {
             repository.unLock();
         }
-        return version;
     }
 
     @Override
