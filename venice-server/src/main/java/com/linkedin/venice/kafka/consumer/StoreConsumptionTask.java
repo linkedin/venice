@@ -289,6 +289,7 @@ public class StoreConsumptionTask implements Runnable, Closeable {
         consumer.unSubscribe(topic, partition);
         break;
       case RESET_OFFSET:
+        partitionToOffsetMap.put(partition , OffsetRecord.LOWEST_OFFSET);
         offsetManager.clearOffset(topic, partition);
         consumer.resetOffset(topic, partition);
         logger.info(consumerTaskId + " Reset OffSet : Topic " + topic + " Partition Id " + partition );

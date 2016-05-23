@@ -292,4 +292,34 @@ public class StoreConsumptionTaskTest{
     testSubscribeTask.close();
     testSubscribeTaskFuture.get();
   }
+
+  @Test
+  public void testResetPartition() throws Exception {
+
+    StoreConsumptionTask testSubscribeTask = getKafkaPerStoreConsumptionTask(testPartition);
+    testSubscribeTask.subscribePartition(topic, testPartition);
+
+    ConsumerRecord testPutRecord = getPutConsumerRecord(testPartition, 10, putTestKey.getBytes(), putTestValue.getBytes());
+    ConsumerRecords mockResult = mockKafkaPollResult(testPutRecord);
+
+    Mockito.doReturn(mockResult)
+        .when(mockKafkaConsumer).poll(StoreConsumptionTask.READ_CYCLE_DELAY_MS);
+
+    // Prepare mockStoreRepository to send a mock storage engine.
+    Mockito.doReturn(mockAbstractStorageEngine).when(mockStoreRepository).getLocalStorageEngine(topic);
+
+    Future testSubscribeTaskFuture = taskPollingService.submit(testSubscribeTask);
+
+    Mockito.verify(mockAbstractStorageEngine, Mockito.timeout(TIMEOUT).times(1))
+        .put(testPartition, putTestKey.getBytes(), putTestValue.getBytes());
+
+    testSubscribeTask.resetPartitionConsumptionOffset(topic, testPartition);
+
+    Mockito.verify(mockAbstractStorageEngine, Mockito.timeout(TIMEOUT).times(2))
+        .put(testPartition, putTestKey.getBytes(), putTestValue.getBytes());
+
+    testSubscribeTask.close();
+    testSubscribeTaskFuture.get();
+
+  }
 }
