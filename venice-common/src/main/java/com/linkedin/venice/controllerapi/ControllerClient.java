@@ -209,6 +209,28 @@ public class ControllerClient implements Closeable {
     }
   }
 
+  private MultiStoreResponse queryStoreList(String clusterName){
+    try{
+      List<NameValuePair> queryParams = new ArrayList<>();
+      queryParams.add(new BasicNameValuePair(ControllerApiConstants.CLUSTER, clusterName));
+      String queryString = URLEncodedUtils.format(queryParams, StandardCharsets.UTF_8);
+      final HttpGet get = new HttpGet(controllerUrl + ControllerApiConstants.LIST_STORES_PATH + "?" + queryString);
+      HttpResponse response = client.execute(get, null).get();
+      String responseJson = getJsonFromHttpResponse(response);
+      return mapper.readValue(responseJson, MultiStoreResponse.class);
+    } catch (Exception e) {
+      String msg = "Error querying store list";
+      logger.error(msg, e);
+      throw new VeniceException(msg, e);
+    }
+  }
+
+  public static MultiStoreResponse queryStoreList(String routerUrls, String clusterName){
+    try (ControllerClient client = new ControllerClient(routerUrls)){
+      return client.queryStoreList(clusterName);
+    }
+  }
+
   private VersionResponse queryNextVersion(String clusterName, String storeName){
     try{
       List<NameValuePair> queryParams = new ArrayList<>();

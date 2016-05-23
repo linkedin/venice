@@ -2,44 +2,39 @@ package com.linkedin.venice.controller.server;
 
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.controller.Admin;
+import com.linkedin.venice.controllerapi.MultiStoreResponse;
 import com.linkedin.venice.controllerapi.MultiVersionResponse;
-import com.linkedin.venice.controllerapi.VersionResponse;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
 import java.util.ArrayList;
 import java.util.List;
 import spark.Route;
 
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.ACTIVE_VERSIONS_PARAMS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.CLUSTER;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.CURRENT_VERSION_PARAMS;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.LIST_STORES_PARAMS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.NAME;
 
 
 /**
  * Created by mwise on 5/18/16.
  */
-public class ActiveVersions {
+public class AllStores {
   public static Route getRoute(Admin admin) {
     return (request, response) -> {
-      MultiVersionResponse responseObject = new MultiVersionResponse();
+      MultiStoreResponse responseObject = new MultiStoreResponse();
       try {
-        AdminSparkServer.validateParams(request, ACTIVE_VERSIONS_PARAMS, admin);
+        AdminSparkServer.validateParams(request, LIST_STORES_PARAMS, admin);
         responseObject.setCluster(request.queryParams(CLUSTER));
         responseObject.setName(request.queryParams(NAME));
-        List<Version> versionsList = admin.versionsForStore(responseObject.getCluster(), responseObject.getName());
-        List<Integer> activeVersions = new ArrayList<>();
-        for (Version version : versionsList){
-          if (version.getStatus().equals(VersionStatus.ACTIVE)){
-            activeVersions.add(version.getNumber());
-          }
+        List<Store> storeList = admin.getAllStores(responseObject.getCluster());
+        String[] storeNameList = new String[storeList.size()];
+        for (int i=0; i<storeList.size(); i++){
+          storeNameList[i] = storeList.get(i).getName();
         }
-        int[] versions = new int[activeVersions.size()];
-        for (int i=0; i<activeVersions.size(); i++){
-          versions[i] = activeVersions.get(i);
-        }
-        responseObject.setVersions(versions);
+        responseObject.setStores(storeNameList);
       } catch (VeniceException e) {
         responseObject.setError(e.getMessage());
         AdminSparkServer.handleError(e, request, response);

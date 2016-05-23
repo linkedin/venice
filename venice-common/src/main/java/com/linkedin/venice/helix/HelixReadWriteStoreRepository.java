@@ -5,6 +5,9 @@ import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.meta.ReadWriteStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.VeniceSerializer;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import javax.validation.constraints.NotNull;
@@ -74,6 +77,20 @@ public class HelixReadWriteStoreRepository extends HelixReadonlyStoreRepository 
     } finally {
       unLock();
     }
+  }
+
+  public List<Store> listStores() {
+    List<Store> storeList = new ArrayList<>();
+    lock();
+    try{
+      Iterator<Store> storeIter = storeMap.values().iterator();
+      while (storeIter.hasNext()){
+        storeList.add(storeIter.next().cloneStore());
+      }
+    } finally {
+      unLock();
+    }
+    return storeList;
   }
 
   @Override

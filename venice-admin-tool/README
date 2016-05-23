@@ -7,8 +7,8 @@ For directly affecting administrative actions and queries on a Venice cluster
 usage: java -jar venice-admin-tool-0.1.jar [options]
  -c,--cluster <arg>   REQUIRED: Name of Venice cluster
  -h,--help            Show usage
- -q,--query <arg>     REQUIRED: Query one of NEXT, AVAILABLE, CURRENT, JOB
-                      for store
+ -q,--query <arg>     REQUIRED: Query one of NEXT, AVAILABLE, CURRENT,
+                      JOB, LIST, DESCRIBE
  -r,--router <arg>    REQUIRED: Venice router url, eg.
                       http://localhost:54333
  -s,--store <arg>     Name of Venice store
@@ -43,12 +43,23 @@ Requires: store, version
 
 Job status for storage node consumption.
 
+### LIST
+
+Displays (newline delimited) all stores in the cluster
+
+### DESCRIBE
+
+Displays all version information about all stores in the cluster.  If a store is specified, then it only shows details for that store.
+
+```
+Store: myCountry2	Available versions: [1]	Current version: 1	Next version: 2
+Store: myCountry	Available versions: [2, 3, 4]	Current version: 4	Next version: 6
+```
+
 ### Future commands to add:
 
  * Set version
  * Delete version
- * List stores
- * Describe store (show all status)
  * Delete store?
  * ???
 

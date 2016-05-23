@@ -281,6 +281,19 @@ public class VeniceHelixAdmin implements Admin {
     }
 
     @Override
+    public List<Store> getAllStores(String clusterName){
+        checkControllerMastership(clusterName);
+        HelixReadWriteStoreRepository repository =
+            controllerStateModelFactory.getModel(clusterName).getResources().getMetadataRepository();
+        repository.lock();
+        try {
+            return repository.listStores();
+        } finally {
+            repository.unLock();
+        }
+    }
+
+    @Override
     public synchronized void setCurrentVersion(String clusterName, String storeName, int versionNumber){
         checkControllerMastership(clusterName);
         HelixReadWriteStoreRepository repository =

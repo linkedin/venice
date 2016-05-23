@@ -60,6 +60,8 @@ public class AdminSparkServer extends AbstractVeniceService {
 
     Spark.post(NEWSTORE_PATH, CreateStore.getRoute(admin));
 
+    Spark.get(LIST_STORES_PATH, AllStores.getRoute(admin));
+
     // Only to be used manually and for testing purposes.
     Spark.post(SETVERSION_PATH, SetVersion.getRoute(admin));
 

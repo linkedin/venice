@@ -1,6 +1,7 @@
 package com.linkedin.venice.controllerapi;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 
 
@@ -19,51 +20,33 @@ public class ControllerApiConstants {
   public static final String KEY_SCHEMA = "key_schema";
   public static final String VALUE_SCHEMA = "value_schema";
 
-  public static final List<String> VERSION_PARAMS = new ArrayList<>();
-  static {
-    VERSION_PARAMS.add(CLUSTER);
-    VERSION_PARAMS.add(NAME);
-    VERSION_PARAMS.add(VERSION);
-  }
-
   public static final String CREATE_PATH = "/create";
-  public static final List<String> CREATE_PARAMS = new ArrayList<>();
-  static {
-    CREATE_PARAMS.add(CLUSTER);
-    CREATE_PARAMS.add(NAME);
-    CREATE_PARAMS.add(STORE_SIZE);
-    CREATE_PARAMS.add(OWNER);
-  }
+  public static final List<String> CREATE_PARAMS = Arrays.asList(CLUSTER, NAME, STORE_SIZE, OWNER);
 
   public static final String NEWSTORE_PATH = "/newstore";
-  public static final List<String> NEWSTORE_PARAMS = new ArrayList<>();
-  static {
-    NEWSTORE_PARAMS.add(CLUSTER);
-    NEWSTORE_PARAMS.add(NAME);
-    NEWSTORE_PARAMS.add(OWNER);
-  }
+  public static final List<String> NEWSTORE_PARAMS = Arrays.asList(CLUSTER, NAME, OWNER);
 
   public static final String SETVERSION_PATH = "/setversion";
-  public static final List<String> SETVERSION_PARAMS = VERSION_PARAMS;
+  public static final List<String> SETVERSION_PARAMS = Arrays.asList(CLUSTER, NAME, VERSION);;
 
   public static final String RESERVE_VERSION_PATH = "/reserveversion";
-  public static final List<String> RESERVE_VERSION_PARAMS = VERSION_PARAMS;
+  public static final List<String> RESERVE_VERSION_PARAMS = Arrays.asList(CLUSTER, NAME, VERSION);;
 
   public static final String NEXTVERSION_PATH = "/nextversion";
-  public static final List<String> NEXTVERSION_PARAMS = new ArrayList<>();
-  static{
-    NEXTVERSION_PARAMS.add(CLUSTER);
-    NEXTVERSION_PARAMS.add(NAME);
-  }
+  public static final List<String> NEXTVERSION_PARAMS = Arrays.asList(CLUSTER, NAME);
 
   public static final String CURRENT_VERSION_PATH = "/currentversion";
-  public static final List<String> CURRENT_VERSION_PARAMS = NEXTVERSION_PARAMS; /* cluster and storename */
+  public static final List<String> CURRENT_VERSION_PARAMS = Arrays.asList(CLUSTER, NAME);
 
   public static final String ACTIVE_VERSIONS_PATH = "/activeversions";
-  public static final List<String> ACTIVE_VERSIONS_PARAMS = NEXTVERSION_PARAMS; /* cluster and storename */
+  public static final List<String> ACTIVE_VERSIONS_PARAMS = Arrays.asList(CLUSTER, NAME);
 
   public static final String JOB_PATH = "/job";
-  public static final List<String> JOB_PARMAS = VERSION_PARAMS;
+  public static final List<String> JOB_PARMAS = Arrays.asList(CLUSTER, NAME, VERSION);;
+
+  public static final String LIST_STORES_PATH = "/liststores";
+  public static final List<String> LIST_STORES_PARAMS = Arrays.asList(CLUSTER);
+
 
   private ControllerApiConstants(){}
 }
