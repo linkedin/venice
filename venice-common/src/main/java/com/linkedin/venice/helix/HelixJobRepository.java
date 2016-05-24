@@ -17,6 +17,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import javax.validation.constraints.NotNull;
+
+import com.linkedin.venice.utils.PathResourceRegistry;
 import org.apache.helix.AccessOption;
 import org.apache.helix.manager.zk.ZkBaseDataAccessor;
 import org.apache.helix.manager.zk.ZkClient;
@@ -263,8 +265,14 @@ public class HelixJobRepository implements JobRepository, RoutingDataChangedList
 
   public void refresh() {
     clear();
-    this.adapter.registerSerializer(offlineJobsPath, jobSerializer);
-    this.adapter.registerSerializer(offlineJobsPath + "/", taskVeniceSerializer);
+    String jobsPath = offlineJobsPath + "/" + PathResourceRegistry.WILDCARD_MATCH_ANY;
+    String tasksPath = jobsPath + "/" + PathResourceRegistry.WILDCARD_MATCH_ANY;
+    // TODO: Considering serializer should be thread-safe, we can share the serializer across multiple
+    // clusters, which means we can register the following paths:
+    // job serializer: /*/OfflineJobs/*
+    // task serializer: /*/OfflineJobs/*/*
+    this.adapter.registerSerializer(jobsPath, jobSerializer);
+    this.adapter.registerSerializer(tasksPath, taskVeniceSerializer);
     List<Job> waitJobList = new ArrayList<>();
     synchronized (this) {
       logger.info("Start getting offline jobs from ZK");

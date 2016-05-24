@@ -14,6 +14,8 @@ import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.logging.Logger;
 import javax.validation.constraints.NotNull;
+
+import com.linkedin.venice.utils.PathResourceRegistry;
 import org.I0Itec.zkclient.IZkChildListener;
 import org.I0Itec.zkclient.IZkDataListener;
 import org.apache.commons.collections.map.HashedMap;
@@ -66,7 +68,11 @@ public class HelixReadonlyStoreRepository implements ReadonlyStoreRepository {
   public HelixReadonlyStoreRepository(@NotNull ZkClient zkClient, @NotNull HelixAdapterSerializer adapter,
       @NotNull String clusterName, @NotNull VeniceSerializer<Store> serializer) {
     this.rootPath = "/" + clusterName + STORES_PATH;
-    adapter.registerSerializer(rootPath, serializer);
+    // TODO: Considering serializer should be thread-safe, we can share serializer across multiple
+    // clusters, which means we can register the following paths:
+    // Store serializer: /*/Stores/*
+    String storesPath = rootPath + "/" + PathResourceRegistry.WILDCARD_MATCH_ANY;
+    adapter.registerSerializer(storesPath, serializer);
     zkClient.setZkSerializer(adapter);
     dataAccessor = new ZkBaseDataAccessor<>(zkClient);
   }

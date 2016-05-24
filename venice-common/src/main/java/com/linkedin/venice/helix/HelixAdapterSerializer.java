@@ -2,8 +2,9 @@ package com.linkedin.venice.helix;
 
 import com.linkedin.venice.meta.VeniceSerializer;
 import java.io.IOException;
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
+
+import com.linkedin.venice.utils.PathResourceRegistry;
+import com.linkedin.venice.utils.TrieBasedPathResourceRegistry;
 import org.I0Itec.zkclient.exception.ZkMarshallingError;
 import org.apache.helix.manager.zk.PathBasedZkSerializer;
 
@@ -16,18 +17,18 @@ import org.apache.helix.manager.zk.PathBasedZkSerializer;
  */
 public class HelixAdapterSerializer implements PathBasedZkSerializer {
 
-  private Map<String, VeniceSerializer> pathToSerializers;
+  private PathResourceRegistry<VeniceSerializer> pathResourceRegistry;
 
   public HelixAdapterSerializer() {
-    pathToSerializers = new ConcurrentHashMap<>();
+    pathResourceRegistry = new TrieBasedPathResourceRegistry<>();
   }
 
   public void registerSerializer(String path, VeniceSerializer serializer) {
-    pathToSerializers.put(path, serializer);
+    pathResourceRegistry.register(path, serializer);
   }
 
   public void unregisterSeralizer(String path) {
-    pathToSerializers.remove(path);
+    pathResourceRegistry.unregister(path);
   }
 
   @Override
@@ -51,19 +52,6 @@ public class HelixAdapterSerializer implements PathBasedZkSerializer {
   }
 
   private VeniceSerializer getSerializer(String path){
-    //When registering serializer, there are two types of path:
-    //1. /cluster/xxxx  : this is used for some parent objects like Job, path given here will be /cluster/Jobs/$jobId.
-    //   So we can simple drop the last part /$jobId to find the path used when registering.
-    //2. /cluster/xxxx/ : this is used for some children object. For example Task is. path given here will be
-    //   /cluster/Jobs/$jobId/$partitionId, even after ignore the last part /$partitionId, the path should be also dynamic
-    //   because $jobId are different. So we use /cluster/Jobs/ as the registering path of Task. When find serializer, drop
-    //   the last part ast first, if we still can not find the serializer, drop the second last part but kept the last '/'
-    //   to find again.
-    String registeredPath = path.substring(0, path.lastIndexOf('/'));
-    VeniceSerializer serializer = pathToSerializers.get(registeredPath);
-    if (serializer == null) {
-      serializer = pathToSerializers.get(registeredPath.substring(0, registeredPath.lastIndexOf('/') + 1));
-    }
-    return serializer;
+    return pathResourceRegistry.find(path);
   }
 }
