@@ -65,5 +65,15 @@ public interface Admin {
      */
     boolean isMasterController(String clusterName);
 
+    /**
+    * Calculate how many partitions are needed for the given store and size.
+    * @param storeName
+    * @param storeSize
+    * @return
+    */
+    int calculateNumberOfPartitions(String clusterName, String storeName, long storeSize);
+
+    int getReplicaFactor(String clusterName, String storeName);
+
     void close();
 }

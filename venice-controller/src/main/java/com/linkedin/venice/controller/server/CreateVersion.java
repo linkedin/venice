@@ -30,15 +30,18 @@ public class CreateVersion {
         responseObject.setCluster(request.queryParams(CLUSTER));
         responseObject.setName(request.queryParams(NAME));
         responseObject.setOwner(request.queryParams(OWNER));
-        // Store size in Bytes
-        long storeSize = Utils.parseLongFromString(request.queryParams(STORE_SIZE), STORE_SIZE);
-        responseObject.setPartitions(3); // TODO actual partitioning logic based on store size
-        responseObject.setReplicas(1); // TODO configurable replication
+        // TODO we should verify the data size at first. If it exceeds the quota, controller should reject this request.
+        // TODO And also we should use quota to calculate partition count to avoid this case that data size of first
+        // push is very small but grow dramatically because quota of this store is very large.
         try { // TODO: use admin to update store with new owner?  Set owner at version level for audit history?
           admin.addStore(responseObject.getCluster(), responseObject.getName(), responseObject.getOwner());
         } catch (VeniceException e) { // TODO method on admin to see if store already created?
           logger.warn("Store" + responseObject.getName() + " probably already created.", e);
         }
+        // Store size in Bytes
+        long storeSize = Utils.parseLongFromString(request.queryParams(STORE_SIZE), STORE_SIZE);
+        responseObject.setPartitions(admin.calculateNumberOfPartitions(responseObject.getCluster(),responseObject.getName(),storeSize));
+        responseObject.setReplicas(admin.getReplicaFactor(responseObject.getCluster(),responseObject.getName()));
         Version version = admin
             .incrementVersion(responseObject.getCluster(), responseObject.getName(), responseObject.getPartitions(),
                 responseObject.getReplicas());

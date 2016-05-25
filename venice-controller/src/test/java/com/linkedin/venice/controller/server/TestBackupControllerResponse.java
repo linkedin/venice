@@ -49,6 +49,8 @@ public class TestBackupControllerResponse {
         .put(VeniceControllerClusterConfig.KAFKA_REPLICA_FACTOR, 1)
         .put(VeniceControllerClusterConfig.REPLICA_FACTOR, 1)
         .put(VeniceControllerClusterConfig.NUMBER_OF_PARTITION, 3)
+        .put(VeniceControllerClusterConfig.MAX_NUMBER_OF_PARTITIONS, 10)
+        .put(VeniceControllerClusterConfig.PARTITION_SIZE, 100)
         .put(ConfigKeys.KAFKA_BOOTSTRAP_SERVERS, kafkaBootstrap)
         .put(ConfigKeys.ZOOKEEPER_ADDRESS, kafka.getZkAddress())
         .put(ConfigKeys.CLUSTER_NAME, clusterName)

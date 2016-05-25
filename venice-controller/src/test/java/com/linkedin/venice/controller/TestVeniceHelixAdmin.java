@@ -13,6 +13,8 @@ import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.job.ExecutionStatus;
 import com.linkedin.venice.meta.Instance;
+import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.Utils;
@@ -73,7 +75,9 @@ public class TestVeniceHelixAdmin {
             .put(clusterProps.toProperties())
             .put(baseControllerProps.toProperties())
             .put("kafka.zk.address", kafkaZkAddress)
-            .put("zookeeper.address", zkAddress);
+            .put("zookeeper.address", zkAddress)
+            .put(VeniceControllerClusterConfig.MAX_NUMBER_OF_PARTITIONS,10)
+            .put(VeniceControllerClusterConfig.PARTITION_SIZE, 100);
 
     controllerProps = builder.build();
 
@@ -117,7 +121,7 @@ public class TestVeniceHelixAdmin {
     }
   }
 
-  @Test
+  @Test(timeOut = 15000)
   public void testStartClusterAndCreatePush()
       throws Exception {
     try {
@@ -130,7 +134,7 @@ public class TestVeniceHelixAdmin {
     }
   }
 
-  @Test
+  @Test(timeOut = 15000)
   public void testControllerFailOver()
       throws Exception {
     veniceAdmin.addStore(clusterName, "test", "dev");
@@ -195,7 +199,7 @@ public class TestVeniceHelixAdmin {
     newMasterAdmin.stop(clusterName);
   }
 
-  @Test
+  @Test(timeOut = 15000)
   public void testIsMasterController()
       throws IOException, InterruptedException {
     Assert.assertTrue(veniceAdmin.isMasterController(clusterName),
@@ -228,7 +232,7 @@ public class TestVeniceHelixAdmin {
     newMasterAdmin.close();
   }
 
-  @Test
+  @Test(timeOut = 15000)
   public void testMultiCluster(){
     String newClusterName = "new_test_cluster";
     PropertyBuilder builder = new PropertyBuilder()
@@ -244,6 +248,58 @@ public class TestVeniceHelixAdmin {
 
     Assert.assertTrue(veniceAdmin.isMasterController(clusterName));
     Assert.assertTrue(veniceAdmin.isMasterController(newClusterName));
+  }
+
+  @Test(timeOut = 15000)
+  public void testGetNumberOfPartition(){
+    long partitionSize = config.getPartitionSize();
+    int maxPartitionNumber = config.getMaxNumberOfPartition();
+    int minPartitionNumber = config.getNumberOfPartition();
+    veniceAdmin.addStore(clusterName, "test", "dev");
+
+    long storeSize = partitionSize*(minPartitionNumber+1);
+    int numberOfPartition = veniceAdmin.calculateNumberOfPartitions(clusterName, "test", storeSize);
+    Assert.assertEquals(numberOfPartition, storeSize / partitionSize,
+        "Number partition is smaller than max and bigger than min. So use the calculated result.");
+    storeSize = 1;
+    numberOfPartition = veniceAdmin.calculateNumberOfPartitions(clusterName, "test", storeSize);
+    Assert.assertEquals(numberOfPartition,minPartitionNumber, "Store size is too small so should use min number of partitions.");
+    storeSize = partitionSize*(maxPartitionNumber+1);
+    numberOfPartition = veniceAdmin.calculateNumberOfPartitions(clusterName, "test", storeSize);
+    Assert.assertEquals(numberOfPartition,maxPartitionNumber, "Store size is too big, should use max number of paritions.");
+
+    storeSize = Long.MAX_VALUE;
+    numberOfPartition = veniceAdmin.calculateNumberOfPartitions(clusterName, "test", storeSize);
+    Assert.assertEquals(numberOfPartition, maxPartitionNumber, "Partition is overflow from Integer, use max one.");
+    storeSize = -1;
+    try{
+      numberOfPartition = veniceAdmin.calculateNumberOfPartitions(clusterName, "test", storeSize);
+      Assert.fail("Invalid store.");
+    }catch (VeniceException e){
+      //expected.
+    }
+  }
+
+  @Test(timeOut = 15000)
+  public void testGetNumberOfPartitionsFromPreviousVersion() {
+    long partitionSize = config.getPartitionSize();
+    int maxPartitionNumber = config.getMaxNumberOfPartition();
+    int minPartitionNumber = config.getNumberOfPartition();
+    veniceAdmin.addStore(clusterName, "test", "dev");
+    long storeSize = partitionSize * (minPartitionNumber) + 1;
+    int numberOfParition = veniceAdmin.calculateNumberOfPartitions(clusterName, "test", storeSize);
+    Version v = veniceAdmin.incrementVersion(clusterName, "test", numberOfParition, 1);
+    veniceAdmin.setCurrentVersion(clusterName, "test", v.getNumber());
+    Store store = veniceAdmin.getVeniceHelixResource(clusterName).getMetadataRepository().getStore("test");
+    store.setPartitionCount(numberOfParition);
+    veniceAdmin.getVeniceHelixResource(clusterName).getMetadataRepository().updateStore(store);
+
+    v = veniceAdmin.incrementVersion(clusterName, "test", maxPartitionNumber, 1);
+    veniceAdmin.setCurrentVersion(clusterName, "test", v.getNumber());
+    storeSize = partitionSize * (maxPartitionNumber - 2);
+    numberOfParition = veniceAdmin.calculateNumberOfPartitions(clusterName, "test", storeSize);
+    Assert.assertEquals(numberOfParition, minPartitionNumber,
+        "Should use the number of partition from previous version");
   }
 
   void waitUntilIsMaster(VeniceHelixAdmin admin, String cluster, long timeout){

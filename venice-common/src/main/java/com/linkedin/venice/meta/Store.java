@@ -36,6 +36,11 @@ public class Store {
    */
   private int reservedVersion = 0;
   /**
+   * Default partition count for all of versions in this store. Once first version is activated, the number will be
+   * assigned.
+   */
+  private int partitionCount = 0;
+  /**
    * Type of persistence storage engine.
    */
   private final PersistenceType persistenceType;
@@ -128,7 +133,9 @@ public class Store {
     this.versions = versions;
   }
 
-
+  public int getPartitionCount() {
+    return partitionCount;
+  }
 
   public void reserveVersionNumber(int version){
     if (version < peekNextVersion().getNumber()){
@@ -292,6 +299,9 @@ public class Store {
     if (!owner.equals(store.owner)) {
       return false;
     }
+    if (partitionCount != store.partitionCount) {
+      return false;
+    }
     if (!persistenceType.equals(store.persistenceType)) {
       return false;
     }
@@ -307,6 +317,10 @@ public class Store {
     return versions.equals(store.versions);
   }
 
+  public void setPartitionCount(int partitionCount) {
+    this.partitionCount = partitionCount;
+  }
+
   @Override
   public int hashCode() {
     int result = name.hashCode();
@@ -314,6 +328,8 @@ public class Store {
     result = 31 * result + (int) (createdTime ^ (createdTime >>> 32));
     result = 31 * result + currentVersion;
     result = 31 * result + reservedVersion;
+    result = 31 * result + partitionCount;
+
     result = 31 * result + persistenceType.hashCode();
     result = 31 * result + routingStrategy.hashCode();
     result = 31 * result + readStrategy.hashCode();
@@ -332,6 +348,7 @@ public class Store {
         new Store(name, owner, createdTime, persistenceType, routingStrategy, readStrategy, offLinePushStrategy);
     clonedStore.setCurrentVersion(currentVersion);
     clonedStore.setReservedVersion(reservedVersion);
+    clonedStore.setPartitionCount(partitionCount);
 
     for (Version v : this.versions) {
       clonedStore.addVersion(v.cloneVersion());

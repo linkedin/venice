@@ -28,6 +28,8 @@ public class VeniceControllerClusterConfig {
   public static final String ROUTING_STRATEGY = "default.routing.strategy";
   public static final String REPLICA_FACTOR = "default.replica.factor";
   public static final String NUMBER_OF_PARTITION = "default.partition.count";
+  public static final String MAX_NUMBER_OF_PARTITIONS = "default.partition.max.count";
+  public static final String PARTITION_SIZE = "default.partition.size";
 
   private String clusterName;
   private String zkAddress;
@@ -38,6 +40,8 @@ public class VeniceControllerClusterConfig {
   private RoutingStrategy routingStrategy;
   private int replicaFactor;
   private int numberOfPartition;
+  private int maxNumberOfPartition;
+  private long partitionSize;
 
   /**
    * kafka Bootstrap Urls . IF there is more than one url, they are separated by commas
@@ -72,6 +76,8 @@ public class VeniceControllerClusterConfig {
     replicaFactor = props.getInt(REPLICA_FACTOR);
     numberOfPartition = props.getInt(NUMBER_OF_PARTITION);
     kafkaBootstrapServers = props.getString(ConfigKeys.KAFKA_BOOTSTRAP_SERVERS);
+    partitionSize = props.getSizeInBytes(PARTITION_SIZE);
+    maxNumberOfPartition = props.getInt(MAX_NUMBER_OF_PARTITIONS);
 
     if (props.containsKey(PERSISTENCE_TYPE)) {
       persistenceType = PersistenceType.valueOf(props.getString(PERSISTENCE_TYPE));
@@ -137,6 +143,14 @@ public class VeniceControllerClusterConfig {
 
   public int getKafkaReplicaFactor() {
     return kafkaReplicaFactor;
+  }
+
+  public long getPartitionSize() {
+    return partitionSize;
+  }
+
+  public int getMaxNumberOfPartition() {
+    return maxNumberOfPartition;
   }
 
   /**

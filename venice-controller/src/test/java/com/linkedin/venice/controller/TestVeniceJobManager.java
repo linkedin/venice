@@ -7,7 +7,6 @@ import com.linkedin.venice.helix.HelixControlMessageChannel;
 import com.linkedin.venice.helix.HelixInstanceConverter;
 import com.linkedin.venice.helix.HelixJobRepository;
 import com.linkedin.venice.helix.HelixReadWriteStoreRepository;
-import com.linkedin.venice.helix.HelixReadonlyStoreRepository;
 import com.linkedin.venice.helix.HelixRoutingDataRepository;
 import com.linkedin.venice.helix.TestHelixRoutingDataRepository;
 import com.linkedin.venice.job.Job;
@@ -21,7 +20,6 @@ import com.linkedin.venice.utils.Utils;
 import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.concurrent.ThreadPoolExecutor;
 import org.apache.helix.HelixAdmin;
 import org.apache.helix.HelixManager;
 import org.apache.helix.HelixManagerFactory;
@@ -133,7 +131,7 @@ public class TestVeniceJobManager {
     zkServerWrapper.close();
   }
 
-  @Test
+  @Test(timeOut = 15000)
   public void testHandleMessage()
       throws InterruptedException {
 
@@ -166,7 +164,7 @@ public class TestVeniceJobManager {
     }
   }
 
-  @Test
+  @Test(timeOut = 15000)
   public void testHandleMessageWhenTaskFailed()
       throws InterruptedException {
     metadataRepository.addStore(store);
@@ -197,7 +195,7 @@ public class TestVeniceJobManager {
     }
   }
 
-  @Test
+  @Test(timeOut = 15000)
   public void testGetOfflineJobStatus() {
     metadataRepository.addStore(store);
     jobManager.startOfflineJob(version.kafkaTopicName(), 1, 1);
@@ -214,7 +212,7 @@ public class TestVeniceJobManager {
     Assert.assertEquals(jobManager.getOfflineJobStatus(version.kafkaTopicName()), ExecutionStatus.COMPLETED);
   }
 
-  @Test
+  @Test(timeOut = 15000)
   public void testGetOfflineJobStatusWhenTaskFailed() {
     metadataRepository.addStore(store);
     jobManager.startOfflineJob(version.kafkaTopicName(), 1, 1);
@@ -231,7 +229,7 @@ public class TestVeniceJobManager {
     Assert.assertEquals(jobManager.getOfflineJobStatus(version.kafkaTopicName()), ExecutionStatus.ERROR);
   }
 
-  @Test
+  @Test(timeOut = 15000)
   public void testExecutorFailedDuringPush()
       throws Exception {
     jobManager.startOfflineJob(version.kafkaTopicName(), 1, 1);
@@ -268,7 +266,7 @@ public class TestVeniceJobManager {
     newNode.disconnect();
   }
 
-  @Test
+  @Test(timeOut = 15000)
   public void testHandleOutOfOrderMessages()
       throws IOException, InterruptedException {
     metadataRepository.addStore(store);
@@ -282,8 +280,12 @@ public class TestVeniceJobManager {
     message = new StoreStatusMessage(version.kafkaTopicName(), 0, nodeId, ExecutionStatus.COMPLETED);
     nodeChannel.sendToController(message);
     // Wait until job manager has processed update message.
+    long startTime = System.currentTimeMillis();
     do {
       Thread.sleep(300);
+      if(System.currentTimeMillis()- startTime > 3000){
+        Assert.fail("Time out when waiting receiving status udpate message");
+      }
     } while (!jobManager.getOfflineJobStatus(version.kafkaTopicName()).equals(ExecutionStatus.COMPLETED));
     //Send message again after job is completed. Exception will be catch and process dose not exit.
     nodeChannel.sendToController(message);
@@ -303,8 +305,12 @@ public class TestVeniceJobManager {
     Assert.assertEquals(jobManager.getOfflineJobStatus(newVersion.kafkaTopicName()), ExecutionStatus.STARTED);
     message = new StoreStatusMessage(newVersion.kafkaTopicName(), 0, nodeId, ExecutionStatus.COMPLETED);
     nodeChannel.sendToController(message);
+    startTime = System.currentTimeMillis();
     do {
       Thread.sleep(300);
+      if(System.currentTimeMillis()- startTime > 3000){
+        Assert.fail("Time out when waiting receiving status udpate message");
+      }
     } while (!jobManager.getOfflineJobStatus(newVersion.kafkaTopicName()).equals(ExecutionStatus.COMPLETED));
     //Assert everything works well for the new push.
     Assert.assertEquals(jobManager.getOfflineJobStatus(newVersion.kafkaTopicName()), ExecutionStatus.COMPLETED);

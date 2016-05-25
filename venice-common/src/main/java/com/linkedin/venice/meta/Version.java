@@ -127,7 +127,7 @@ public class Version implements Comparable<Version> {
    * @return kafka topic name.
    */
   public String kafkaTopicName() {
-    return storeName + SEPARATOR + number;
+    return composeKafkaTopic(storeName,number);
   }
 
   public static String parseStoreFromKafkaTopicName(@NotNull String kafkaTopic) {
@@ -136,6 +136,10 @@ public class Version implements Comparable<Version> {
 
   public static int parseVersionFromKafkaTopicName(@NotNull String kafkaTopic) {
     return Integer.valueOf(kafkaTopic.substring(kafkaTopic.lastIndexOf(SEPARATOR) + SEPARATOR.length()));
+  }
+
+  public static String composeKafkaTopic(String storeName,int versionNumber){
+    return storeName + SEPARATOR + versionNumber;
   }
 
   public static boolean topicIsValidStoreVersion(String kafkaTopic){

@@ -50,7 +50,9 @@ public class VeniceControllerWrapper extends ProcessWrapper {
               .put(VeniceControllerClusterConfig.CONTROLLER_NAME, "venice-controller") // Why is this configurable?
               .put(VeniceControllerClusterConfig.REPLICA_FACTOR, 1)
               .put(VeniceControllerClusterConfig.NUMBER_OF_PARTITION, 1)
-              .put(ConfigKeys.ADMIN_PORT, adminPort);
+              .put(ConfigKeys.ADMIN_PORT, adminPort)
+              .put(VeniceControllerClusterConfig.MAX_NUMBER_OF_PARTITIONS, 10)
+              .put(VeniceControllerClusterConfig.PARTITION_SIZE, 100);
 
       VeniceProperties props = builder.build();
 

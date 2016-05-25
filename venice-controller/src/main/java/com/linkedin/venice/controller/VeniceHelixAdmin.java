@@ -8,6 +8,7 @@ import com.linkedin.venice.helix.HelixState;
 import com.linkedin.venice.job.ExecutionStatus;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.utils.PartitionCountUtils;
 import com.linkedin.venice.utils.Utils;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -129,13 +130,11 @@ public class VeniceHelixAdmin implements Admin {
     @Override
     public synchronized void addStore(String clusterName, String storeName, String owner) {
         checkControllerMastership(clusterName);
-        HelixReadWriteStoreRepository repository =
-            controllerStateModelFactory.getModel(clusterName).getResources().getMetadataRepository();
+        HelixReadWriteStoreRepository repository = getVeniceHelixResource(clusterName).getMetadataRepository();
         if (repository.getStore(storeName) != null) {
             throwStoreAlreadyExists(clusterName, storeName);
         }
-        VeniceControllerClusterConfig config =
-            controllerStateModelFactory.getModel(clusterName).getResources().getConfig();
+        VeniceControllerClusterConfig config = getVeniceHelixResource(clusterName).getConfig();
         Store store = new Store(storeName, owner, System.currentTimeMillis(), config.getPersistenceType(),
             config.getRoutingStrategy(), config.getReadStrategy(), config.getOfflinePushStrategy());
         repository.addStore(store);
@@ -152,8 +151,7 @@ public class VeniceHelixAdmin implements Admin {
     public synchronized void reserveVersion(String clusterName, String storeName, int versionNumberToReserve){
         checkControllerMastership(clusterName);
         boolean success = false;
-        HelixReadWriteStoreRepository repository =
-            controllerStateModelFactory.getModel(clusterName).getResources().getMetadataRepository();
+        HelixReadWriteStoreRepository repository = getVeniceHelixResource(clusterName).getMetadataRepository();
         repository.lock();
         try {
             Store store = repository.getStore(storeName);
@@ -173,8 +171,7 @@ public class VeniceHelixAdmin implements Admin {
     @Override
     public synchronized Version addVersion(String clusterName, String storeName,int versionNumber, int numberOfPartition, int replicaFactor) {
         checkControllerMastership(clusterName);
-        HelixReadWriteStoreRepository repository =
-            controllerStateModelFactory.getModel(clusterName).getResources().getMetadataRepository();
+        HelixReadWriteStoreRepository repository = getVeniceHelixResource(clusterName).getMetadataRepository();
 
         Version version = null;
         repository.lock();
@@ -185,7 +182,7 @@ public class VeniceHelixAdmin implements Admin {
             }
 
             if(versionNumber == VERSION_ID_UNSET) {
-                // No Version supplied, generate new verion.
+                // No Version supplied, generate new version.
                 version = store.increaseVersion();
             } else {
                 if (store.containsVersion(versionNumber)) {
@@ -193,6 +190,10 @@ public class VeniceHelixAdmin implements Admin {
                 }
                 version = new Version(storeName, versionNumber);
                 store.addVersion(version);
+            }
+            // Update default partition count if it have not been assigned.
+            if(store.getPartitionCount() == 0){
+                store.setPartitionCount(numberOfPartition);
             }
             repository.updateStore(store);
             logger.info("Add version:"+version.getNumber()+" for store:" + storeName);
@@ -238,8 +239,7 @@ public class VeniceHelixAdmin implements Admin {
      */
     private Store getStoreForReadOnly(String clusterName, String storeName){
         checkControllerMastership(clusterName);
-        HelixReadWriteStoreRepository repository =
-            controllerStateModelFactory.getModel(clusterName).getResources().getMetadataRepository();
+        HelixReadWriteStoreRepository repository = getVeniceHelixResource(clusterName).getMetadataRepository();
         repository.lock();
         try {
             Store store = repository.getStore(storeName);
@@ -255,8 +255,7 @@ public class VeniceHelixAdmin implements Admin {
     @Override
     public List<Version> versionsForStore(String clusterName, String storeName){
         checkControllerMastership(clusterName);
-        HelixReadWriteStoreRepository repository =
-            controllerStateModelFactory.getModel(clusterName).getResources().getMetadataRepository();
+        HelixReadWriteStoreRepository repository = getVeniceHelixResource(clusterName).getMetadataRepository();
         List<Version> versions;
         repository.lock();
         try {
@@ -274,8 +273,7 @@ public class VeniceHelixAdmin implements Admin {
     @Override
     public List<Store> getAllStores(String clusterName){
         checkControllerMastership(clusterName);
-        HelixReadWriteStoreRepository repository =
-            controllerStateModelFactory.getModel(clusterName).getResources().getMetadataRepository();
+        HelixReadWriteStoreRepository repository = getVeniceHelixResource(clusterName).getMetadataRepository();
         repository.lock();
         try {
             return repository.listStores();
@@ -287,12 +285,17 @@ public class VeniceHelixAdmin implements Admin {
     @Override
     public synchronized void setCurrentVersion(String clusterName, String storeName, int versionNumber){
         checkControllerMastership(clusterName);
-        HelixReadWriteStoreRepository repository =
-            controllerStateModelFactory.getModel(clusterName).getResources().getMetadataRepository();
+        HelixReadWriteStoreRepository repository = getVeniceHelixResource(clusterName).getMetadataRepository();
         repository.lock();
         try {
             Store store = repository.getStore(storeName);
-            store.setCurrentVersion(versionNumber);
+            if(store.containsVersion(versionNumber)) {
+                store.setCurrentVersion(versionNumber);
+            } else {
+                String errorMsg = "Version:" + versionNumber + " does not exist for store:" + storeName;
+                logger.error(errorMsg);
+                throw new VeniceException(errorMsg);
+            }
             repository.updateStore(store);
             logger.info("Set version:" + versionNumber +" for store:" + storeName);
         } finally {
@@ -347,7 +350,7 @@ public class VeniceHelixAdmin implements Admin {
     @Override
     public ExecutionStatus getOffLineJobStatus(String clusterName, String kafkaTopic) {
         checkControllerMastership(clusterName);
-        VeniceJobManager jobManager = controllerStateModelFactory.getModel(clusterName).getResources().getJobManager();
+        VeniceJobManager jobManager = getVeniceHelixResource(clusterName).getJobManager();
         return jobManager.getOfflineJobStatus(kafkaTopic);
     }
 
@@ -442,6 +445,30 @@ public class VeniceHelixAdmin implements Admin {
             throwClusterNotInitialized(clusterName);
         }
         return model.getCurrentState().equals(LeaderStandbySMD.States.LEADER.toString());
+    }
+
+  /**
+   * Calculate number of partition for given store by give size.
+   *
+   * @param clusterName
+   * @param storeName
+   * @param storeSize
+   * @return
+   */
+    @Override
+    public int calculateNumberOfPartitions(String clusterName, String storeName, long storeSize) {
+        checkControllerMastership(clusterName);
+        VeniceControllerClusterConfig config = getVeniceHelixResource(clusterName).getConfig();
+        return PartitionCountUtils.calculatePartitionCount(clusterName, storeName, storeSize,
+            getVeniceHelixResource(clusterName).getMetadataRepository(),
+            getVeniceHelixResource(clusterName).getRoutingDataRepository(), config.getPartitionSize(),
+            config.getNumberOfPartition(), config.getMaxNumberOfPartition());
+  }
+
+    @Override
+    public int getReplicaFactor(String clusterName, String storeName) {
+        //TODO if there is special config for the given store, use that value.
+        return getVeniceHelixResource(clusterName).getConfig().getReplicaFactor();
     }
 
     @Override
