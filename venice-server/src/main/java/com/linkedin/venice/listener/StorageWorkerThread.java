@@ -32,18 +32,17 @@ public class StorageWorkerThread implements Runnable {
     byte[] key = request.getKey();
 
     AbstractStorageEngine store = storeRepository.getLocalStorageEngine(topic);
-
-    try {
-      byte[] value = store.get(partition, key);
+    //TODO : handle other exceptions here, if there is uncaught exception
+    // the caller times out with no exception relayed back.
+    byte[] value = store.get(partition, key);
+    if( value != null) {
       long offset = offsetManager.getLastOffset(topic, partition).getOffset();
       StorageResponseObject resp = new StorageResponseObject(value, offset);
       ctx.writeAndFlush(resp);
-    } catch (PersistenceFailureException e){ //thrown if no key.  TODO Subclass this for a nokey exception
-      ctx.writeAndFlush(new HttpError(
-          "key not found in resource: " + topic + " and partition: " + partition,
+    } else {
+      ctx.writeAndFlush(new HttpError("key not found in resource: " + topic + " and partition: " + partition,
           HttpResponseStatus.NOT_FOUND));
     }
-
   }
 
 }

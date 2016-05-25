@@ -1,12 +1,10 @@
 package com.linkedin.venice.helix;
 
 import com.linkedin.venice.config.VeniceStoreConfig;
-import com.linkedin.venice.controller.VeniceStateModel;
 import com.linkedin.venice.kafka.consumer.KafkaConsumerService;
 import com.linkedin.venice.server.StoreRepository;
 import com.linkedin.venice.store.AbstractStorageEngine;
 import javax.validation.constraints.NotNull;
-import org.apache.helix.HelixDefinedState;
 import org.apache.helix.NotificationContext;
 import org.apache.helix.model.Message;
 import org.apache.helix.participant.statemachine.StateModel;
@@ -80,9 +78,10 @@ public class VenicePartitionStateModel extends StateModel {
     private void removePartitionFromStore( ) {
         AbstractStorageEngine storageEngine = storeRepository.getLocalStorageEngine(storeConfig.getStoreName());
         if(storageEngine != null) {
-            storageEngine.removePartition(partition);
+            storageEngine.dropPartition(partition);
+            logger.info(storePartitionNodeDescription + " partition successfully removed");
         } else {
-            logger.info(storePartitionNodeDescription + " Store could not be located, ignoring the message ." + storeConfig.getStoreName() );
+            logger.info(storePartitionNodeDescription + " Store could not be located, ignoring the remove partition message.");
         }
     }
 

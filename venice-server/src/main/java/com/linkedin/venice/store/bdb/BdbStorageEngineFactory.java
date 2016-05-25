@@ -178,7 +178,7 @@ public class BdbStorageEngineFactory implements StorageEngineFactory {
         switch (storeConfig.getPersistenceType()) {
           case BDB:
             Environment environment = getEnvironment(storeConfig);
-            return new BdbStorageEngine(storeConfig, partitionNodeAssignmentRepo, environment);
+            return new BdbStorageEngine(storeConfig, partitionNodeAssignmentRepo, environment, this);
           case IN_MEMORY:
             return new InMemoryStorageEngine(storeConfig, partitionNodeAssignmentRepo);
           case ROCKS_DB:
@@ -344,8 +344,7 @@ public class BdbStorageEngineFactory implements StorageEngineFactory {
 
         // otherwise create a new environment
         BdbServerConfig bdbServerConfig = storeConfig.getBdbServerConfig();
-        File bdbDir = new File(bdbMasterDir, storeName);
-        createBdbDirIfNecessary(bdbDir);
+        File bdbDir = createBdbDirIfNecessary(storeName);
 
         // configure the BDB cache
         if (bdbStoreConfig.hasMemoryFootprint()) {
@@ -387,8 +386,7 @@ public class BdbStorageEngineFactory implements StorageEngineFactory {
         if (!environments.isEmpty())
           return environments.get(SHARED_ENV_KEY);
 
-        File bdbDir = new File(bdbMasterDir);
-        createBdbDirIfNecessary(bdbDir);
+        File bdbDir = createBdbDirIfNecessary(storeName);
 
         Environment environment = new Environment(bdbDir, environmentConfig);
         logger.info("Creating shared BDB environment: ");
@@ -399,11 +397,17 @@ public class BdbStorageEngineFactory implements StorageEngineFactory {
     }
   }
 
-  private void createBdbDirIfNecessary(File bdbDir) {
+  public File getStorePath(String storeName) {
+    return useOneEnvPerStore ?  new File(bdbMasterDir, storeName) : new File(bdbMasterDir);
+  }
+
+  private File createBdbDirIfNecessary(String storeName) {
+    File bdbDir = getStorePath(storeName);
     if (!bdbDir.exists()) {
-      logger.info("Creating BDB data directory '" + bdbDir.getAbsolutePath() + ".");
+      logger.info("Creating BDB data directory '" + bdbDir.getAbsolutePath());
       bdbDir.mkdirs();
     }
+    return bdbDir;
   }
 
   /**

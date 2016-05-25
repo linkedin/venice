@@ -27,17 +27,19 @@ public class BdbStorageEngine extends AbstractStorageEngine {
   private final AtomicBoolean isOpen;
   private final BdbServerConfig bdbServerConfig;
   private final BdbRuntimeConfig bdbRuntimeConfig;
+  private final BdbStorageEngineFactory factory;
   //protected final BdbEnvironmentStats bdbEnvironmentStats;
   protected final boolean checkpointerOffForBatchWrites;
   private volatile int numOutstandingBatchWriteJobs = 0;
 
   public BdbStorageEngine(VeniceStoreConfig storeDef,
                           PartitionAssignmentRepository partitionNodeAssignmentRepo,
-                          Environment environment) throws VeniceException {
+                          Environment environment,
+                          BdbStorageEngineFactory factory) throws VeniceException {
     super(storeDef, partitionNodeAssignmentRepo, new ConcurrentHashMap<Integer, AbstractStoragePartition>());
 
     this.environment = environment;
-
+    this.factory = factory;
     this.isOpen = new AtomicBoolean(true);
     this.bdbServerConfig = storeDef.getBdbServerConfig();
     this.bdbRuntimeConfig = new BdbRuntimeConfig(bdbServerConfig);
@@ -46,7 +48,7 @@ public class BdbStorageEngine extends AbstractStorageEngine {
   }
 
   @Override
-  public void addStoragePartition(int partitionId) {
+  public synchronized void addStoragePartition(int partitionId) {
     /**
      * If this method is called by anyone other than the constructor, i.e- the admin service, the caller should ensure
      * that after the addition of the storage partition:
@@ -54,7 +56,7 @@ public class BdbStorageEngine extends AbstractStorageEngine {
      *  2. it should also be registered with an SimpleKafkaConsumerTask thread.
      */
     if (partitionIdToPartitionMap.containsKey(partitionId)) {
-      logger.error("Failed to add a storage partition for partitionId: " + partitionId + " . This partition already exists!");
+      logger.error("Failed to add a storage partition for partitionId: " + partitionId + " Store " + this.getName() +" . This partition already exists!");
       throw new StorageInitializationException("Partition " + partitionId + " of store " + this.getName() + " already exists.");
     }
     BdbStoragePartition partition = new BdbStoragePartition(this.getName(), partitionId, environment, bdbServerConfig);
@@ -62,7 +64,7 @@ public class BdbStorageEngine extends AbstractStorageEngine {
   }
 
   @Override
-  public BdbStoragePartition removePartition(int partitionId) {
+  public synchronized void dropPartition(int partitionId) {
     /**
      * The caller of this method should ensure that:
      * 1. The SimpleKafkaConsumerTask associated with this partition is shutdown
@@ -70,13 +72,17 @@ public class BdbStorageEngine extends AbstractStorageEngine {
      *    Else there can be situations where the data is consumed from Kafka and not persisted.
      */
     if (!partitionIdToPartitionMap.containsKey(partitionId)) {
-      logger.error("Failed to remove a non existing partition: " + partitionId);
+      logger.error("Failed to remove a non existing partition: " + partitionId + " Store " + this.getName() );
       throw new VeniceException("Partition " + partitionId + " of store " + this.getName() + " does not exist.");
     }
     /* NOTE: bdb database is not closed here. */
+    logger.info("Removing Partition: " + partitionId + " Store " + this.getName() );
     BdbStoragePartition partition = (BdbStoragePartition) partitionIdToPartitionMap.remove(partitionId);
-    partition.close();
-    return partition;
+    partition.drop();
+    if(partitionIdToPartitionMap.size() == 0) {
+      logger.info("All Partitions deleted for Store " + this.getName() + " deleting the entire directory");
+      factory.removeStorageEngine(this);
+    }
   }
 
   public CloseableStoreEntriesIterator storeEntries() {
@@ -125,10 +131,10 @@ public class BdbStorageEngine extends AbstractStorageEngine {
     return false;
   }
 
-  public void close() throws PersistenceFailureException {
+  public void close() {
     if (this.isOpen.compareAndSet(true, false)) {
-      for (Integer partitionId : partitionIdToPartitionMap.keySet()) {
-        this.removePartition(partitionId);
+      for (AbstractStoragePartition partition : partitionIdToPartitionMap.values()) {
+        partition.close();
       }
     }
   }

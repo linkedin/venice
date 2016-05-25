@@ -33,9 +33,10 @@ public abstract class AbstractStoragePartition {
 
   /**
    * Get a value from the partition database
+   * @param key key to be retrieved
+   * @return null if the key does not exist, byte[] value if it exists.
    */
-  public abstract byte[] get(byte[] key)
-      throws PersistenceFailureException;
+  public abstract byte[] get(byte[] key);
 
   /**
    * Delete a key from the partition database
@@ -65,9 +66,15 @@ public abstract class AbstractStoragePartition {
   public abstract CloseablePartitionKeysIterator partitionKeys();
 
   /**
-   * Truncate all entries in the partition
+   * Truncate all entries in the partition.
+   *
    */
   public abstract void truncate();
+
+  /**
+   * Drop when it is not required anymore.
+   */
+  public abstract void drop();
 
   /**
    * Close the specific partition

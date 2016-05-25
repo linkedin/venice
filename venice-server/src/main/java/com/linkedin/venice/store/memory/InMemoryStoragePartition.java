@@ -47,8 +47,7 @@ public class InMemoryStoragePartition extends AbstractStoragePartition {
     if (partitionDb.containsKey(k)) {
       return partitionDb.get(k).get();
     }
-    throw new PersistenceFailureException("Get Request failed for an invalid key: " + ByteUtils
-        .toHexString(key));
+    return null;
   }
 
   public void delete(byte[] key) {
@@ -69,6 +68,11 @@ public class InMemoryStoragePartition extends AbstractStoragePartition {
   @Override
   public synchronized void truncate() {
     partitionDb.clear();
+  }
+
+  @Override
+  public void drop() {
+    truncate();
   }
 
   @Override

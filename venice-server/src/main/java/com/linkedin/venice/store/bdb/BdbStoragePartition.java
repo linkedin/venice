@@ -84,7 +84,7 @@ public class BdbStoragePartition extends AbstractStoragePartition {
       OperationStatus status = getBdbDatabase().put(transaction, keyEntry, valueEntry);
 
       if (status != OperationStatus.SUCCESS) {
-        throw new VeniceException("Put operation failed with status: " + status);
+        throw new VeniceException("Put operation failed with status: " + status + " Store " + getBdbDatabaseName() );
       }
 
       succeeded = true;
@@ -108,7 +108,7 @@ public class BdbStoragePartition extends AbstractStoragePartition {
 
   public byte[] get(byte[] key) throws VeniceException {
 
-    boolean succeeded = false;
+    boolean succeeded = true;
     long startTimeNs = -1;
 
     DatabaseEntry keyEntry = new DatabaseEntry(key);
@@ -124,13 +124,12 @@ public class BdbStoragePartition extends AbstractStoragePartition {
       // je-delete() in put()
       OperationStatus status = getBdbDatabase().get(null, keyEntry, valueEntry, readLockMode);
       if (OperationStatus.SUCCESS == status) {
-        succeeded = true;
         return valueEntry.getData();
       } else {
-        throw new PersistenceFailureException("Get Request failed for an invalid key: " + ByteUtils
-          .toHexString(key));
+        return null;
       }
     } catch (DatabaseException e) {
+      succeeded = false;
       //this.bdbEnvironmentStats.reportException(e);
       logger.error(e);
       throw new VeniceException(e);
@@ -160,15 +159,7 @@ public class BdbStoragePartition extends AbstractStoragePartition {
       DatabaseEntry keyEntry = new DatabaseEntry(key);
 
       OperationStatus status = getBdbDatabase().delete(transaction, keyEntry);
-      if (status != OperationStatus.SUCCESS && status != OperationStatus.NOTFOUND) {
-        throw new VeniceException("Unsuccessful DELETE (" + getBdbDatabaseName() + ") of key "
-          + ByteUtils.toHexString(key) + " (keyRef: "
-          + System.identityHashCode(key) + ") in "
-          + (System.nanoTime() - startTimeNs) + " ns at "
-          + System.currentTimeMillis());
-      } else {
-        succeeded = true;
-      }
+      succeeded = true;
     } catch (DatabaseException e) {
       //this.bdbEnvironmentStats.reportException(e);
       logger.error(e);
@@ -178,7 +169,7 @@ public class BdbStoragePartition extends AbstractStoragePartition {
       if (logger.isTraceEnabled()) {
         logger.trace(succeeded ? "Successfully completed" : "Failed to complete"
           + " DELETE (" + getBdbDatabaseName() + ") of key "
-          + ByteUtils.toHexString(key) + " (keyRef: "
+          + ByteUtils.toLogString(key) + " (keyRef: "
           + System.identityHashCode(key) + ") in "
           + (System.nanoTime() - startTimeNs) + " ns at "
           + System.currentTimeMillis());
@@ -208,38 +199,53 @@ public class BdbStoragePartition extends AbstractStoragePartition {
     return new CloseablePartitionKeysIterator(partitionEntries());
   }
 
-  /**
-   * This method provides truncate functionality.
-   */
-  public synchronized void truncate() {
-    if (isTruncating.compareAndSet(false, true)) {
-      Transaction transaction = null;
-      boolean succeeded = false;
 
-      try {
-        transaction = this.environment.beginTransaction(null, null);
+  interface BDBOperation {
+    void perform(Transaction x);
+  }
 
-        // close current bdbDatabase first
-        database.close();
+  private synchronized  void performOperation(String operationType, BDBOperation operation) {
+    Transaction transaction = null;
+    boolean succeeded = false;
 
-        // truncate the database
-        environment.truncateDatabase(transaction, getBdbDatabaseName(), false);
-        succeeded = true;
-      } catch (DatabaseException e) {
-        //this.bdbEnvironmentStats.reportException(e);
-        logger.error(e);
-        throw new VeniceException("Failed to truncate BDB database " + getBdbDatabaseName(), e);
+    try {
+      transaction = this.environment.beginTransaction(null, null);
 
-      } finally {
-        commitOrAbort(succeeded, transaction);
-        // reopen the bdb database for future queries.
-        reopenBdbDatabase();
-        isTruncating.compareAndSet(true, false);
-      }
-    } else {
-      throw new VeniceException("BDB database " + getBdbDatabaseName()
-        + " is already truncating, cannot start another one.");
+      // close current bdbDatabase first
+      database.close();
+      // truncate the database
+      operation.perform(transaction);
+      succeeded = true;
+    } catch (DatabaseException e) {
+      String errorMessage = "Failed to " + operationType + " BDB database " + getBdbDatabaseName();
+      logger.error(errorMessage, e);
+      throw new VeniceException(errorMessage , e);
+
+    } finally {
+      commitOrAbort(succeeded, transaction);
     }
+
+  }
+
+  /**
+   * Drop the BDB database, when it is not required anymore.
+   */
+  @Override
+  public synchronized void drop() {
+    BDBOperation dropDB =(tx) -> environment.removeDatabase(tx, getBdbDatabaseName());
+    performOperation("DROP" , dropDB );
+  }
+
+  /**
+   * Truncate all the entries in the BDB database.
+   */
+  @Override
+  public synchronized void truncate() {
+    BDBOperation truncateDB = (tx) -> environment.truncateDatabase(tx, getBdbDatabaseName(), false);
+    performOperation("TRUNCATE" , truncateDB );
+
+    //After truncation re-open the BDB database for Read.
+    reopenBdbDatabase();
   }
 
   @Override

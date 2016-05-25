@@ -54,7 +54,7 @@ public class DefaultVenicePartitioner extends VenicePartitioner {
       int partition = Math.abs(modulo % numPartitions);
 
       if (logger.isDebugEnabled()) {
-        logger.debug("Using hash algorithm: " + ByteUtils.toHexString(keyBytes) + " goes to partitionId " + partition
+        logger.debug("Using hash algorithm: " + ByteUtils.toLogString(keyBytes) + " goes to partitionId " + partition
             + " out of " + numPartitions);
       }
 

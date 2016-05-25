@@ -45,7 +45,7 @@ public abstract class AbstractStorageEngine implements Store {
                                ConcurrentMap<Integer, AbstractStoragePartition> partitionIdToPartitionMap) {
 
     this.storeDef = storeDef;
-    storeName = storeDef.getStoreName();
+    this.storeName = storeDef.getStoreName();
     this.isOpen = new AtomicBoolean(true);
     this.partitionNodeAssignmentRepo = partitionNodeAssignmentRepo;
     this.partitionIdToPartitionMap = partitionIdToPartitionMap;
@@ -84,7 +84,7 @@ public abstract class AbstractStorageEngine implements Store {
    * @param partitionId - id of partition to retrieve and remove
    * @return The AbstractStoragePartition object removed by this operation
    */
-  public abstract AbstractStoragePartition removePartition(int partitionId)
+  public abstract void dropPartition(int partitionId)
     throws VeniceException;
 
   /**
@@ -140,8 +140,8 @@ public abstract class AbstractStorageEngine implements Store {
   public void put(Integer logicalPartitionId, byte[] key, byte[] value) throws VeniceException {
     Utils.notNull(key, "Key cannot be null.");
     if (!containsPartition(logicalPartitionId)) {
-      String errorMessage = "PUT request failed for Key: " + ByteUtils.toHexString(key) + " . Invalid partition id: "
-        + logicalPartitionId;
+      String errorMessage = "PUT request failed for Key: " + ByteUtils.toLogString(key) + " . Invalid partition id: "
+        + logicalPartitionId + " Store " + getName();
       logger.error(errorMessage);
       throw new PersistenceFailureException(errorMessage);
     }
@@ -152,8 +152,8 @@ public abstract class AbstractStorageEngine implements Store {
   public void delete(Integer logicalPartitionId, byte[] key) throws VeniceException {
     Utils.notNull(key, "Key cannot be null.");
     if (!containsPartition(logicalPartitionId)) {
-      String errorMessage = "DELETE request failed for key: " + ByteUtils.toHexString(key) + " . Invalid partition id: "
-        + logicalPartitionId;
+      String errorMessage = "DELETE request failed for key: " + ByteUtils.toLogString(key) + " . Invalid partition id: "
+        + logicalPartitionId + " Store " + getName();
       logger.error(errorMessage);
       throw new PersistenceFailureException(errorMessage);
     }
@@ -165,7 +165,8 @@ public abstract class AbstractStorageEngine implements Store {
     Utils.notNull(key, "Key cannot be null.");
     if (!containsPartition(logicalPartitionId)) {
       String errorMessage =
-        "GET request failed for key " + ByteUtils.toHexString(key) + " . Invalid partition id: " + logicalPartitionId;
+        "GET request failed for key " + ByteUtils.toLogString(key) + " . Invalid partition id: " + logicalPartitionId
+            + " Store " + getName();
       logger.error(errorMessage);
       throw new PersistenceFailureException(errorMessage);
     }

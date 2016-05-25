@@ -1,16 +1,45 @@
 package com.linkedin.venice.storage;
 
+import com.linkedin.venice.meta.PersistenceType;
+import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.RandomGenUtils;
 import com.linkedin.venice.exceptions.PersistenceFailureException;
 import com.linkedin.venice.exceptions.StorageInitializationException;
 import com.linkedin.venice.store.AbstractStorageEngine;
+import com.linkedin.venice.utils.VeniceProperties;
 import org.testng.Assert;
+
+import static com.linkedin.venice.ConfigKeys.*;
 
 
 public abstract class AbstractStorageEngineTest extends AbstractStoreTest {
 
   protected AbstractStorageEngine testStoreEngine;
   protected int partitionId;
+
+  public static VeniceProperties getServerProperties(PersistenceType type) {
+    return getServerProperties(type, 1000);
+  }
+
+  public static VeniceProperties getServerProperties(PersistenceType persistenceType, long flushIntervalMs) {
+    return new PropertyBuilder()
+        .put(CLUSTER_NAME, "test_offset_manager")
+        .put(ENABLE_KAFKA_CONSUMER_OFFSET_MANAGEMENT, "true")
+        .put(OFFSET_MANAGER_TYPE, "bdb")
+        .put(OFFSET_MANAGER_FLUSH_INTERVAL_MS, flushIntervalMs)
+        .put(HELIX_ENABLED, "false")
+        .put(ZOOKEEPER_ADDRESS, "localhost:2181")
+        .put(PERSISTENCE_TYPE, persistenceType.toString())
+        .put(KAFKA_BROKERS, "localhost")
+        .put(KAFKA_BROKER_PORT, "9092")
+        .put(KAFKA_BOOTSTRAP_SERVERS, "127.0.0.1:9092")
+        .put(KAFKA_AUTO_COMMIT_INTERVAL_MS, "1000")
+        .put(NODE_ID, "0")
+        .put(LISTENER_PORT , 7072)
+        .put(ADMIN_PORT , 7073)
+        .put(DATA_BASE_PATH, "/tmp/data")
+        .build();
+  }
 
   // creates instance for testStoreEngine
   public abstract void createStorageEngineForTest()
@@ -28,18 +57,18 @@ public abstract class AbstractStorageEngineTest extends AbstractStoreTest {
 
   public void doRemovePartition(int partitionId)
       throws Exception {
-    testStoreEngine.removePartition(partitionId);
+    testStoreEngine.dropPartition(partitionId);
   }
 
   public void init()
       throws Exception {
     // create a  unique partitionId for this test which is outside number of partitions
-    partitionId = RandomGenUtils.getRandomIntInRange(numOfPartitions, numOfPartitions + 10);
+    partitionId = RandomGenUtils.getRandomIntInRange(numOfPartitions+100, numOfPartitions + 500);
 
     //ensure it does not exist
     if (testStoreEngine.containsPartition(partitionId)) {
       try {
-        testStoreEngine.removePartition(partitionId);
+        testStoreEngine.dropPartition(partitionId);
       } catch (Exception e) {
         throw new Exception("Removing an existing partition failed");
       }

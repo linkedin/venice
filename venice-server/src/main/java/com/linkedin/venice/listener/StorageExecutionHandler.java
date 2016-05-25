@@ -36,6 +36,8 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
   @Override
   public void channelRead(ChannelHandlerContext context, Object message) throws Exception {
     if(message instanceof GetRequestObject) {
+      // TODO : This creates one thread per request, it is costly and needs to be fixed.
+      // TODO : If there is uncaught exception from the thread, it hangs the client requests.
       executor.execute(new StorageWorkerThread(context, (GetRequestObject) message, storeRepository, offsetManager));
     } else {
       context.writeAndFlush(new HttpError("Unrecognized object in StorageExecutionHandler", HttpResponseStatus.INTERNAL_SERVER_ERROR));

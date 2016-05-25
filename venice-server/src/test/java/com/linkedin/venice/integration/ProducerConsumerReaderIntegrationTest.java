@@ -16,7 +16,9 @@ import com.linkedin.venice.utils.VeniceProperties;
 import java.nio.charset.StandardCharsets;
 import java.util.concurrent.ExecutionException;
 import java.util.function.Consumer;
+import org.apache.log4j.ConsoleAppender;
 import org.apache.log4j.Logger;
+import org.apache.log4j.PatternLayout;
 import org.testng.Assert;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
@@ -129,11 +131,9 @@ public class ProducerConsumerReaderIntegrationTest {
         if (testLambda.execute(attempt, timeElapsed)) {
           return true;
         }
-      } catch (NullPointerException|IllegalArgumentException|VeniceException e) {
+      } catch (VeniceException e) {
         // TODO: Change to proper exception types once the VeniceReader and other components are changed accordingly.
-        handleRetry(attempt, timeElapsed, e.getClass().getSimpleName(), (message) -> {
-          throw new VeniceException(message, e);
-        });
+        handleRetry(attempt, timeElapsed, e.getClass().getSimpleName(), (message) -> {throw new VeniceException(message, e);} );
       }
     }
     return false;
@@ -146,11 +146,9 @@ public class ProducerConsumerReaderIntegrationTest {
 
     // TODO: Refactor the retry code into a re-usable (and less hacky) class
 
-    Assert.assertTrue(retry((attempt, timeElapsed) -> {
-      String initialValue = veniceReader.get(key);
-      Assert.assertNull(initialValue);
-      return true;
-    }), "The test environment is not pristine! Key '" + key + "' already exists!");
+
+    String initialValue = veniceReader.get(key);
+    Assert.assertNull(initialValue, "The test environment is not pristine! Key '" + key + "' already exists!");
 
     // Insert test record and wait synchronously for it to succeed
     veniceWriter.put(key, value).get();

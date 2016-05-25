@@ -15,6 +15,8 @@ public class ByteUtils {
     public static final int SIZE_OF_LONG = Long.SIZE / Byte.SIZE;
     public static final int SIZE_OF_INT = Integer.SIZE / Byte.SIZE;
 
+    private final static int MAX_LENGTH_TO_LOG = 50;
+
     /**
      * Translate the given byte array into a hexidecimal string
      *
@@ -23,6 +25,25 @@ public class ByteUtils {
      */
     public static String toHexString(byte[] bytes) {
         return Hex.encodeHexString(bytes);
+    }
+
+    /**
+     * Translate the given byte array to a String so that it can be used in logging.
+     * This function handles truncation of the String to prevent log from overflowing.
+     *
+     * @param bytes
+     * @return String
+     */
+    public static String toLogString(byte[] bytes) {
+        if(bytes == null) {
+            return "null";
+        }
+
+        String str = toHexString(bytes);
+        if(str.length() > MAX_LENGTH_TO_LOG) {
+            return str.substring(0, MAX_LENGTH_TO_LOG) + "...truncated";
+        }
+        return str;
     }
 
     /**

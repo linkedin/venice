@@ -46,7 +46,7 @@ public class InMemoryStorageEngine extends AbstractStorageEngine {
   }
 
   @Override
-  public AbstractStoragePartition removePartition(int partitionId)
+  public void dropPartition(int partitionId)
     throws VeniceException {
     /**
      * The caller of this method should ensure that 1. first the SimpleKafkaConsumerTask associated with this partition is
@@ -58,9 +58,9 @@ public class InMemoryStorageEngine extends AbstractStorageEngine {
       logger.error(errorMessage);
       throw new VeniceException(errorMessage); // TODO Later change this to appropriate Exception type
     }
+    logger.error("Removing Partition " + partitionId + " Store " + getName());
     InMemoryStoragePartition inMemoryStoragePartition =
       (InMemoryStoragePartition) partitionIdToPartitionMap.remove(partitionId);
-    return inMemoryStoragePartition;
   }
 
   public CloseableStoreEntriesIterator storeEntries() throws PersistenceFailureException {
