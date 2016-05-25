@@ -3,13 +3,14 @@ package com.linkedin.venice.helix;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.Partition;
-import com.linkedin.venice.meta.RoutingDataChangedListener;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
+import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.utils.Utils;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ThreadPoolExecutor;
 import org.apache.helix.HelixAdmin;
 import org.apache.helix.HelixDefinedState;
 import org.apache.helix.HelixManager;
@@ -78,18 +79,7 @@ public class TestHelixRoutingDataRepository {
     controller = HelixControllerMain
         .startHelixController(zkAddress, clusterName, Utils.getHelixNodeIdentifier(adminPort), HelixControllerMain.STANDALONE);
 
-
-    manager = HelixManagerFactory.getZKHelixManager(clusterName, Utils.getHelixNodeIdentifier(httpPort), InstanceType.PARTICIPANT, zkAddress);
-    manager.getStateMachineEngine()
-        .registerStateModelFactory(UnitTestStateModel.UNIT_TEST_STATE_MODEL, new UnitTestStateModelFactory());
-    Instance instance = new Instance(Utils.getHelixNodeIdentifier(httpPort), Utils.getHostName(), httpPort);
-    manager.setLiveInstanceInfoProvider(new LiveInstanceInfoProvider() {
-      @Override
-      public ZNRecord getAdditionalLiveInstanceInfo() {
-        return HelixInstanceConverter.convertInstanceToZNRecord(instance);
-      }
-    });
-
+    manager = createPartcipant(httpPort);
     manager.connect();
     //Waiting essential notification from ZK. TODO: use a listener to find out when ZK is ready
     Thread.sleep(WAIT_TIME);
@@ -110,6 +100,20 @@ public class TestHelixRoutingDataRepository {
     zkServerWrapper.close();
   }
 
+  private HelixManager createPartcipant(int port){
+    HelixManager manager = HelixManagerFactory.getZKHelixManager(clusterName, Utils.getHelixNodeIdentifier(port), InstanceType.PARTICIPANT, zkAddress);
+    manager.getStateMachineEngine()
+        .registerStateModelFactory(UnitTestStateModel.UNIT_TEST_STATE_MODEL, new UnitTestStateModelFactory());
+    Instance instance = new Instance(Utils.getHelixNodeIdentifier(port), Utils.getHostName(), port);
+    manager.setLiveInstanceInfoProvider(new LiveInstanceInfoProvider() {
+      @Override
+      public ZNRecord getAdditionalLiveInstanceInfo() {
+        return HelixInstanceConverter.convertInstanceToZNRecord(instance);
+      }
+    });
+    return manager;
+  }
+
   @Test
   public void testGetInstances()
       throws Exception {
@@ -118,7 +122,6 @@ public class TestHelixRoutingDataRepository {
     Instance instance = instances.get(0);
     Assert.assertEquals(Utils.getHostName(), instance.getHost());
     Assert.assertEquals(httpPort, instance.getPort());
-
     //Participant become off=line.
     manager.disconnect();
     //Wait notification.
@@ -126,6 +129,14 @@ public class TestHelixRoutingDataRepository {
     //No online instance now.
     instances = repository.getInstances(resourceName, 0);
     Assert.assertEquals(0, instances.size());
+    int newHttpPort = httpPort+10;
+    HelixManager newManager = createPartcipant(newHttpPort);
+    newManager.connect();
+    Thread.sleep(WAIT_TIME);
+    instances = repository.getInstances(resourceName, 0);
+    Assert.assertEquals(instances.size(), 1);
+    Assert.assertEquals(instances.get(0).getPort(), newHttpPort);
+    newManager.disconnect();
   }
 
   @Test
@@ -182,9 +193,9 @@ public class TestHelixRoutingDataRepository {
   public void testListeners()
       throws Exception {
     final boolean[] isNoticed = {false};
-    RoutingDataChangedListener listener = new RoutingDataChangedListener() {
+    RoutingDataRepository.RoutingDataChangedListener listener = new RoutingDataRepository.RoutingDataChangedListener() {
       @Override
-      public void handleRoutingDataChange(String kafkaTopic, Map<Integer, Partition> partitions) {
+      public void onRoutingDataChanged(String kafkaTopic, Map<Integer, Partition> partitions) {
         isNoticed[0] = true;
       }
     };
@@ -224,6 +235,13 @@ public class TestHelixRoutingDataRepository {
     Assert.assertEquals(master.getPort(), newAdminPort);
 
     newMaster.disconnect();
+  }
+
+  @Test
+  public void testNodeChanged()
+      throws InterruptedException {
+    manager.disconnect();
+    Thread.sleep(1000L);
   }
 
   public static class UnitTestStateModel {

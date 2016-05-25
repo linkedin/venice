@@ -30,27 +30,30 @@ public class VeniceHelixResources implements VeniceResource {
     HelixAdapterSerializer adapter = new HelixAdapterSerializer();
     metadataRepository = new HelixReadWriteStoreRepository(zkClient, adapter, clusterName);
     routingDataRepository = new HelixRoutingDataRepository(helixManager);
-    jobRepository = new HelixJobRepository(zkClient, adapter, clusterName, routingDataRepository);
-    jobManager = new VeniceJobManager(clusterName , helixManager.getSessionId().hashCode(), jobRepository, metadataRepository);
+    jobRepository = new HelixJobRepository(zkClient, adapter, clusterName);
+    jobManager =
+        new VeniceJobManager(clusterName, helixManager.getSessionId().hashCode(), jobRepository, metadataRepository,
+            routingDataRepository);
     messageChannel = new HelixControlMessageChannel(helixManager);
   }
 
   @Override
   public void refresh() {
     clear();
-    messageChannel.registerHandler(StoreStatusMessage.class, jobManager);
     metadataRepository.refresh();
     routingDataRepository.refresh();
     jobRepository.refresh();
     jobManager.checkAllExistingJobs();
+    // After all of resource being refreshed, start accepting message again.
+    messageChannel.registerHandler(StoreStatusMessage.class, jobManager);
   }
 
   @Override
   public void clear() {
+      messageChannel.unRegisterHandler(StoreStatusMessage.class, jobManager);
       jobRepository.clear();
       metadataRepository.clear();
       routingDataRepository.clear();
-      messageChannel.unRegisterHandler(StoreStatusMessage.class, jobManager);
   }
 
   public HelixReadWriteStoreRepository getMetadataRepository() {

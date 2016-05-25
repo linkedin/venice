@@ -19,6 +19,7 @@ import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.ThreadPoolExecutor;
 import org.apache.helix.HelixAdmin;
 import org.apache.helix.HelixManager;
 import org.apache.helix.HelixManagerFactory;
@@ -58,7 +59,9 @@ public class TestVeniceJobManager {
   private HelixManager manager;
   private String storeName = "ts1";
   private String kafkaTopic = "ts1_v1";
-  private String nodeId = "localhost_9985";
+  private String nodeId;
+  private int httpPort = 9985;
+  private int adminPort = 12345;
 
   private Store store;
   private Version version;
@@ -66,6 +69,7 @@ public class TestVeniceJobManager {
   @BeforeMethod
   public void setup()
       throws Exception {
+    nodeId = Utils.getHelixNodeIdentifier(httpPort);
     zkServerWrapper = ServiceFactory.getZkServer();
     zkAddress = zkServerWrapper.getAddress();
 
@@ -84,12 +88,12 @@ public class TestVeniceJobManager {
     admin.rebalance(cluster, kafkaTopic, 1);
 
     controller = HelixControllerMain
-        .startHelixController(zkAddress, cluster, Utils.getHelixNodeIdentifier(12345), HelixControllerMain.STANDALONE);
+        .startHelixController(zkAddress, cluster, Utils.getHelixNodeIdentifier(adminPort), HelixControllerMain.STANDALONE);
     manager = HelixManagerFactory.getZKHelixManager(cluster, nodeId, InstanceType.PARTICIPANT, zkAddress);
     manager.getStateMachineEngine()
         .registerStateModelFactory(TestHelixRoutingDataRepository.UnitTestStateModel.UNIT_TEST_STATE_MODEL,
             new TestHelixRoutingDataRepository.UnitTestStateModelFactory());
-    Instance instance = new Instance(nodeId, Utils.getHostName(), 9986);
+    Instance instance = new Instance(nodeId, Utils.getHostName(), httpPort);
     manager.setLiveInstanceInfoProvider(new LiveInstanceInfoProvider() {
       @Override
       public ZNRecord getAdditionalLiveInstanceInfo() {
@@ -104,13 +108,11 @@ public class TestVeniceJobManager {
     zkClient = new ZkClient(zkAddress);
     zkClient.createPersistent("/" + cluster + "stores");
     HelixAdapterSerializer adapterSerializer = new HelixAdapterSerializer();
-    routingDataRepository = new HelixRoutingDataRepository(manager);
-    routingDataRepository.refresh();
-    jobRepository = new HelixJobRepository(zkClient, adapterSerializer, cluster, routingDataRepository);
+    jobRepository = new HelixJobRepository(zkClient, adapterSerializer, cluster);
     jobRepository.refresh();
     metadataRepository = new HelixReadWriteStoreRepository(zkClient, adapterSerializer, cluster);
     metadataRepository.refresh();
-    jobManager = new VeniceJobManager(cluster , 1, jobRepository, metadataRepository);
+    jobManager = new VeniceJobManager(cluster , 1, jobRepository, metadataRepository, routingDataRepository);
     store = TestUtils.createTestStore(storeName, "test", System.currentTimeMillis());
     version = store.increaseVersion();
   }
@@ -225,5 +227,42 @@ public class TestVeniceJobManager {
     jobManager.handleMessage(message);
 
     Assert.assertEquals(jobManager.getOfflineJobStatus(version.kafkaTopicName()), ExecutionStatus.ERROR);
+  }
+
+  @Test
+  public void testExecutorFailedDuringPush()
+      throws Exception {
+    jobManager.startOfflineJob(version.kafkaTopicName(), 1, 1);
+    Assert.assertEquals(jobManager.getOfflineJobStatus(version.kafkaTopicName()), ExecutionStatus.STARTED,
+        "Job should be started.");
+    StoreStatusMessage message = new StoreStatusMessage(version.kafkaTopicName(), 0, nodeId, ExecutionStatus.STARTED);
+    jobManager.handleMessage(message);
+    Job job = jobRepository.getRunningJobOfTopic(version.kafkaTopicName()).get(0);
+    Assert.assertEquals(job.tasksInPartition(0).size(), 1, "One executor is running now.");
+    // Node failed
+    this.manager.disconnect();
+    Thread.sleep(1000L);
+
+    //Start a new node
+    HelixManager newNode =
+        HelixManagerFactory.getZKHelixManager(cluster, Utils.getHelixNodeIdentifier(9990), InstanceType.PARTICIPANT,
+            zkAddress);
+    newNode.getStateMachineEngine()
+        .registerStateModelFactory(TestHelixRoutingDataRepository.UnitTestStateModel.UNIT_TEST_STATE_MODEL,
+            new TestHelixRoutingDataRepository.UnitTestStateModelFactory());
+    Instance newInstance = new Instance(Utils.getHelixNodeIdentifier(9990), Utils.getHostName(), 9990);
+    newNode.setLiveInstanceInfoProvider(new LiveInstanceInfoProvider() {
+      @Override
+      public ZNRecord getAdditionalLiveInstanceInfo() {
+        return HelixInstanceConverter.convertInstanceToZNRecord(newInstance);
+      }
+    });
+    newNode.connect();
+
+    //Waiting for assignment
+    Thread.sleep(3000l);
+    Assert.assertEquals(job.tasksInPartition(0).get(0).getInstanceId(), newInstance.getNodeId(),
+        "New node should take over the failed node");
+    newNode.disconnect();
   }
 }

@@ -68,4 +68,16 @@ public interface RoutingDataRepository extends VeniceResource {
    * @param listener
    */
   public void unSubscribeRoutingDataChange(String kafkaTopic, RoutingDataChangedListener listener);
+
+  interface RoutingDataChangedListener {
+    /**
+     * Handle routing data changed event.
+     *
+     * @param kafkaTopic
+     * @param partitions Newest partitions information. If it's null, it means the kafka topic is deleted. The key of
+     *                   map is partition id and the value of map are the partition information including instances
+     *                   assigned to this partition.
+     */
+    void onRoutingDataChanged(String kafkaTopic, Map<Integer, Partition> partitions);
+  }
 }

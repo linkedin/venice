@@ -1,5 +1,9 @@
 package com.linkedin.venice.utils;
 
+import com.linkedin.venice.exceptions.VeniceException;
+import java.util.List;
+import org.apache.helix.AccessOption;
+import org.apache.helix.manager.zk.ZkBaseDataAccessor;
 
 
 /**
@@ -35,4 +39,48 @@ public class HelixUtils {
     return storeName;
   }
 
+  public static <T> void updateToHelix(ZkBaseDataAccessor<T> dataAccessor, String path, T data, int retryCount) {
+    int retry = 0;
+    while (retry < retryCount) {
+      if (dataAccessor.set(path, data, AccessOption.PERSISTENT)) {
+        return;
+      }
+      retry++;
+    }
+    throw new VeniceException("Can not update data to Helix after " + retryCount + " times retry");
+  }
+
+  //TODO there is not atomic operations to update multiple node to ZK. We should ask Helix library to rollback if it's only partial successful.
+  public static <T> void updateChildrenToHelix(ZkBaseDataAccessor<T> dataAccessor, List<String> pathes, List<T> data,
+      int retryCount) {
+    int retry = 0;
+    while (retry < retryCount) {
+      boolean[] results = dataAccessor.setChildren(pathes, data, AccessOption.PERSISTENT);
+      boolean isAllSuccessful = true;
+      for (Boolean r : results) {
+        if (!r) {
+          isAllSuccessful = false;
+          break;
+        }
+      }
+      if (isAllSuccessful) {
+        return;
+      }
+      retry++;
+      if (retry == retryCount) {
+        throw new VeniceException("Can not update data to Helix after " + retryCount + " times retry");
+      }
+    }
+  }
+
+  public static <T> void removeFromHelix(ZkBaseDataAccessor<T> dataAccessor, String path, int retryCount) {
+    int retry = 0;
+    while (retry < retryCount) {
+      if (dataAccessor.remove(path, AccessOption.PERSISTENT)) {
+        return;
+      }
+      retry++;
+    }
+    throw new VeniceException("Can not remove data from Helix after " + retryCount + " times retry");
+  }
 }

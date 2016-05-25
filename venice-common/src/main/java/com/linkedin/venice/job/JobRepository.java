@@ -1,11 +1,13 @@
 package com.linkedin.venice.job;
 
 import com.linkedin.venice.VeniceResource;
+import com.linkedin.venice.meta.Partition;
 import java.util.List;
+import java.util.Map;
 
 
 /**
- * Created by yayan on 3/7/16.
+ * Interface that defines the read operations to access jobs and tasks.
  */
 public interface JobRepository extends VeniceResource {
   /**
@@ -26,6 +28,15 @@ public interface JobRepository extends VeniceResource {
 
   public void updateTaskStatus(long jobId, String kafkaTopic, Task task);
 
+  /**
+   * Give the partitions which is assigned to this job and update if they are different from what job knew before.
+   *
+   * @param jobId
+   * @param kafkaTopic
+   * @param partitions
+   */
+  public void updateJobExecutors(long jobId, String kafkaTopic, Map<Integer, Partition> partitions);
+
   public void stopJob(long jobId, String kafkaTopic);
 
   public void stopJobWithError(long jobId, String kafkaTopic);
@@ -35,4 +46,16 @@ public interface JobRepository extends VeniceResource {
   public ExecutionStatus getJobStatus(long jobId, String kafkaTopic);
 
   public Job getJob(long jobId, String kafkaTopic);
+
+  public void subscribeJobStatusChange(String kafkaTopic, JobStatusChangedListener listener);
+
+  public void unsubscribeJobStatusChange(String kafkaTopic, JobStatusChangedListener listener);
+
+  interface JobStatusChangedListener{
+    /**
+     * Handle job status change event.
+     * @param job The changed job.
+     */
+    void onJobStatusChange(Job job);
+  }
 }

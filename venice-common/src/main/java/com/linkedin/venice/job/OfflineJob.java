@@ -85,7 +85,7 @@ public class OfflineJob extends Job {
   /**
    * The transition of Job state machine:
    * <p>
-   * <ul> <li>NEW->STARTED</li> <li>STARTED->COMPLETED</li> <li>STARTED->ERROR</li> <li>COMPLETED->ARCHIVED</li>
+   * <ul> <li>NEW->STARTED</li> <li>NEW->ERROR</li> <li>STARTED->COMPLETED</li> <li>STARTED->ERROR</li> <li>COMPLETED->ARCHIVED</li>
    * <li>ERROR->ARCHIVED</li> </ul>
    */
   @Override
@@ -94,7 +94,7 @@ public class OfflineJob extends Job {
     ExecutionStatus currentStatus = getStatus();
     switch (currentStatus) {
       case NEW:
-        if (!newStatus.equals(ExecutionStatus.STARTED)) {
+        if (!newStatus.equals(ExecutionStatus.STARTED) && !newStatus.equals(ExecutionStatus.ERROR)) {
           isValid = false;
         }
         break;

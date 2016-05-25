@@ -8,11 +8,16 @@ import com.linkedin.venice.job.Job;
 import com.linkedin.venice.job.JobRepository;
 import com.linkedin.venice.job.OfflineJob;
 import com.linkedin.venice.job.Task;
+import com.linkedin.venice.meta.Partition;
 import com.linkedin.venice.meta.ReadWriteStoreRepository;
+import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 import org.apache.log4j.Logger;
@@ -22,20 +27,25 @@ import org.apache.log4j.Logger;
  * Venice job manager to handle all of control messages to update job/task status and do actions based the status
  * change.
  */
-public class VeniceJobManager implements ControlMessageHandler<StoreStatusMessage> {
+public class VeniceJobManager implements ControlMessageHandler<StoreStatusMessage>, RoutingDataRepository.RoutingDataChangedListener, JobRepository.JobStatusChangedListener {
   private static final Logger logger = Logger.getLogger(VeniceJobManager.class);
   private final JobRepository jobRepository;
+  private final RoutingDataRepository routingDataRepository;
   private final ReadWriteStoreRepository metadataRepository;
   private final AtomicInteger idGenerator = new AtomicInteger(0);
   private final int epoch;
   private Admin helixAdmin;
   private final String clusterName;
+  private ConcurrentMap<String, Job> waitingJobMap;
 
-  public VeniceJobManager(String clusterName, int epoch, JobRepository jobRepository, ReadWriteStoreRepository metadataRepository) {
+  public VeniceJobManager(String clusterName, int epoch, JobRepository jobRepository,
+      ReadWriteStoreRepository metadataRepository, RoutingDataRepository routingDataRepository) {
     this.clusterName = clusterName;
     this.epoch = epoch;
     this.jobRepository = jobRepository;
     this.metadataRepository = metadataRepository;
+    this.routingDataRepository = routingDataRepository;
+    waitingJobMap = new ConcurrentHashMap<>();
   }
 
   public void setAdmin(Admin helixAdmin) {
@@ -49,21 +59,32 @@ public class VeniceJobManager implements ControlMessageHandler<StoreStatusMessag
     for (Job job : jobs) {
       ExecutionStatus status = job.checkJobStatus();
       if (status.equals(ExecutionStatus.COMPLETED)) {
-        handleJobComplete(job);
+        jobRepository.stopJob(job.getJobId(), job.getKafkaTopic());
       } else if (status.equals(ExecutionStatus.ERROR)) {
-        handleJobError(job);
+        jobRepository.stopJobWithError(job.getJobId(), job.getKafkaTopic());
+      } else if (status.equals(ExecutionStatus.STARTED)) {
+        // If job is still running, take over this job including refresh executors' information, subscribe status change event etc.
+        routingDataRepository.subscribeRoutingDataChange(job.getKafkaTopic(), this);
+        // subscribe the status change of this job.
+        jobRepository.subscribeJobStatusChange(job.getKafkaTopic(), this);
+        // Sync up with routing data again to avoid missing some change during the controller's failure.
+        jobRepository.updateJobExecutors(job.getJobId(), job.getKafkaTopic(),
+            routingDataRepository.getPartitions(job.getKafkaTopic()));
+      } else {
+        throw new VeniceException("Invalid status:" + status.toString() + " for job:" + job.getJobId());
       }
     }
   }
 
-  public synchronized void startOfflineJob(String kafkaTopic, int numberOfPartition, int replicaFactor) {
+  public void startOfflineJob(String kafkaTopic, int numberOfPartition, int replicaFactor) {
     OfflineJob job = new OfflineJob(this.generateJobId(), kafkaTopic, numberOfPartition, replicaFactor);
     try {
+      waitUntilJobStart(job);
       jobRepository.startJob(job);
+      jobRepository.subscribeJobStatusChange(kafkaTopic,this);
     } catch (Exception e) {
-      logger.error(
-          "Can not refresh a offline job for kafka topic:" + kafkaTopic + " with number of partition:" + numberOfPartition
-              + " and replica factor:" + replicaFactor, e);
+      logger.error("Can not refresh a offline job for kafka topic:" + kafkaTopic + " with number of partition:"
+          + numberOfPartition + " and replica factor:" + replicaFactor, e);
       jobRepository.stopJobWithError(job.getJobId(), job.getKafkaTopic());
     }
   }
@@ -114,10 +135,10 @@ public class VeniceJobManager implements ControlMessageHandler<StoreStatusMessag
       ExecutionStatus status = job.checkJobStatus();
       if (status.equals(ExecutionStatus.COMPLETED)) {
         logger.info("All of task are completed, mark job as completed too.");
-        handleJobComplete(job);
+        jobRepository.stopJob(job.getJobId(), job.getKafkaTopic());
       } else if (status.equals(ExecutionStatus.ERROR)) {
         logger.info("Some of tasks are failed, mark job as failed too.");
-        handleJobError(job);
+        jobRepository.stopJobWithError(job.getJobId(), job.getKafkaTopic());
       }
     }
   }
@@ -126,12 +147,12 @@ public class VeniceJobManager implements ControlMessageHandler<StoreStatusMessag
     int versionNumber = Version.parseVersionFromKafkaTopicName(job.getKafkaTopic());
     store.updateVersionStatus(versionNumber, status);
 
-    if(status == VersionStatus.ACTIVE) {
+    if (status == VersionStatus.ACTIVE) {
       if (versionNumber > store.getCurrentVersion()) {
         store.setCurrentVersion(versionNumber);
       } else {
         logger.warn("Ignoring older version job complete message. Version " + versionNumber +
-                " Store " + store.getName() + " Topic " + job.getKafkaTopic());
+            " Store " + store.getName() + " Topic " + job.getKafkaTopic());
       }
     }
   }
@@ -139,7 +160,7 @@ public class VeniceJobManager implements ControlMessageHandler<StoreStatusMessag
   // TODO : instead of running when the store version completes, it should run from
   // a timer job/service which runs every few hours.
   private void deleteOldStoreVersions(Store store) {
-    if(helixAdmin == null) {
+    if (helixAdmin == null) {
       return;
     }
     // TODO : versions to preserveLastFew must read from config
@@ -152,6 +173,8 @@ public class VeniceJobManager implements ControlMessageHandler<StoreStatusMessag
   }
 
   private void handleJobComplete(Job job) {
+    routingDataRepository.unSubscribeRoutingDataChange(job.getKafkaTopic(), this);
+    jobRepository.unsubscribeJobStatusChange(job.getKafkaTopic(), this);
     //Do the swap. Change version to active so that router could get the notification and sending the message to this version.
     Store store = metadataRepository.getStore(Version.parseStoreFromKafkaTopicName(job.getKafkaTopic()));
     updateStoreVersionStatus(job, store, VersionStatus.ACTIVE);
@@ -165,17 +188,15 @@ public class VeniceJobManager implements ControlMessageHandler<StoreStatusMessag
         // TODO: Reconcile inconsistency between version and job in case of fatal failure
       }
     }
-    jobRepository.stopJob(job.getJobId(), job.getKafkaTopic());
-
     deleteOldStoreVersions(store);
   }
 
   private void handleJobError(Job job) {
     //TODO do the roll back here.
+    routingDataRepository.unSubscribeRoutingDataChange(job.getKafkaTopic(), this);
+    jobRepository.unsubscribeJobStatusChange(job.getKafkaTopic(), this);
     Store store = metadataRepository.getStore(Version.parseStoreFromKafkaTopicName(job.getKafkaTopic()));
-    updateStoreVersionStatus(job, store , VersionStatus.ERROR);
-    jobRepository.stopJobWithError(job.getJobId(), job.getKafkaTopic());
-
+    updateStoreVersionStatus(job, store, VersionStatus.ERROR);
     deleteOldStoreVersions(store);
   }
 
@@ -207,5 +228,78 @@ public class VeniceJobManager implements ControlMessageHandler<StoreStatusMessag
     int generatedId = idGenerator.incrementAndGet();
     id = id | generatedId;
     return id;
+  }
+
+  /**
+   * When we creating a new job for new helix resource. We need to know how many tasks we need to create and which
+   * instance is assigned to execute this task. Unfortunately controller need some time to wait all of participants
+   * assigned to this resource become ONLINE, then get these information from external view, otherwise the external view
+   * is empty or uncompleted.
+   *
+   * @param job
+   */
+  private void waitUntilJobStart(Job job) {
+    //There are no enough partitions and/or replicas to execute tasks. Wait until all of replicas becoming online
+    synchronized (job) {
+      waitingJobMap.put(job.getKafkaTopic(), job);
+      routingDataRepository.subscribeRoutingDataChange(job.getKafkaTopic(), this);
+      if (routingDataRepository.containsKafkaTopic(job.getKafkaTopic())) {
+        if (areEnoughExecutors(job, routingDataRepository.getPartitions(job.getKafkaTopic()))) {
+          logger.info("Job:" + job.getJobId() + " could be started.");
+          return;
+        }
+      }
+      // Wait until getting enough nodes to execute job.
+      try {
+        logger.info("Wait job:" + job.getJobId() + " being started.");
+        //TODO add a timeout to avoid wait for ever. And set status to ERROR when time out.
+        job.wait();
+        waitingJobMap.remove(job.getKafkaTopic());
+        logger.info("Job:" + job.getJobId() + " could be started.");
+      } catch (InterruptedException e) {
+        throw new VeniceException("Met error when wait job being started.", e);
+      }
+    }
+  }
+
+  private boolean areEnoughExecutors(Job job, Map<Integer, Partition> partitions) {
+    try {
+      job.updateExecutingPartitions(partitions);
+      return true;
+    } catch (VeniceException e) {
+      return false;
+    }
+  }
+
+  @Override
+  public void onJobStatusChange(Job job) {
+    if (job.getStatus().equals(ExecutionStatus.ERROR)) {
+      handleJobError(job);
+    } else if (job.getStatus().equals(ExecutionStatus.COMPLETED)) {
+      handleJobComplete(job);
+    }
+  }
+
+  @Override
+  public void onRoutingDataChanged(String kafkaTopic, Map<Integer, Partition> partitions) {
+    Job job = waitingJobMap.get(kafkaTopic);
+    if (job != null) {
+      // Some job is waiting for starting.
+      synchronized (job) {
+        if (areEnoughExecutors(job, partitions)) {
+          logger.info("Get enough executor for job:" + job.getJobId() + " Continue running.");
+          job.notify();
+        }
+      }
+    } else {
+      // Update executors for running jobs
+      List<Job> jobs = jobRepository.getRunningJobOfTopic(kafkaTopic);
+      if (jobs.isEmpty()) {
+        return;
+      }
+      for (Job runningJob : jobs) {
+        jobRepository.updateJobExecutors(runningJob.getJobId(), kafkaTopic, partitions);
+      }
+    }
   }
 }

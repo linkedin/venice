@@ -6,16 +6,18 @@ import com.linkedin.venice.job.Job;
 import com.linkedin.venice.job.JobRepository;
 import com.linkedin.venice.job.OfflineJob;
 import com.linkedin.venice.job.Task;
+import com.linkedin.venice.listener.ListenerManager;
 import com.linkedin.venice.meta.Partition;
-import com.linkedin.venice.meta.RoutingDataChangedListener;
-import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.meta.VeniceSerializer;
+import com.linkedin.venice.utils.HelixUtils;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Function;
 import javax.validation.constraints.NotNull;
 
 import com.linkedin.venice.utils.PathResourceRegistry;
@@ -26,17 +28,17 @@ import org.apache.log4j.Logger;
 
 
 /**
- * Job Repository which persist job data on Helix. This repository also listen the external view so that it can update
- * the partition and instances information for job when nodes are failed or assigned to the related resource.
+ * Job Repository which persist job data on Helix. For each job, there is one znode in path /OfflineJobs/$jobId. And for
+ * tasks in the job, they will be grouped by partition and stored in znode /OfflineJobs/$jobId/$partitionId
  */
-public class HelixJobRepository implements JobRepository, RoutingDataChangedListener {
+public class HelixJobRepository implements JobRepository {
   private static final Logger logger = Logger.getLogger(HelixJobRepository.class);
   /**
    * All of access to this map are protected by synchronized block. The repository is thread-safe.
    */
-  private Map<String, List<Job>> topicToRunningJobsMap = new HashMap<>();;
+  private Map<String, List<Job>> topicToRunningJobsMap = new HashMap<>();
 
-  private Map<String, List<Job>> topicToTerminatedJobsMap = new HashMap<>();;
+  private Map<String, List<Job>> topicToTerminatedJobsMap = new HashMap<>();
 
   private final ZkBaseDataAccessor<OfflineJob> jobDataAccessor;
 
@@ -46,25 +48,26 @@ public class HelixJobRepository implements JobRepository, RoutingDataChangedList
 
   private final HelixAdapterSerializer adapter;
 
-  private final RoutingDataRepository routingDataRepository;
-
   private VeniceSerializer<OfflineJob> jobSerializer;
 
   private VeniceSerializer<List<Task>> taskVeniceSerializer;
 
+  //TODO get retry count from configuration.
+  private int retryCount = 3;
+
   public static final String OFFLINE_JOBS_SUB_PATH = "/OfflineJobs";
+
+  private ListenerManager<JobStatusChangedListener> listenerManager;
 
   //TODO Add the serializer for near-line job later.
   public HelixJobRepository(@NotNull ZkClient zkClient, @NotNull HelixAdapterSerializer adapter,
-      @NotNull String clusterName, RoutingDataRepository routingDataRepository) {
-    this(zkClient, adapter, clusterName, routingDataRepository, new OfflineJobJSONSerializer(),
-        new TasksJSONSerializer());
+      @NotNull String clusterName) {
+    this(zkClient, adapter, clusterName, new OfflineJobJSONSerializer(), new TasksJSONSerializer());
   }
 
   public HelixJobRepository(@NotNull ZkClient zkClient, @NotNull HelixAdapterSerializer adapter,
-      @NotNull String clusterName, RoutingDataRepository routingDataRepository,
-      VeniceSerializer<OfflineJob> jobSerializer, VeniceSerializer<List<Task>> taskVeniceSerializer) {
-    this.routingDataRepository = routingDataRepository;
+      @NotNull String clusterName, VeniceSerializer<OfflineJob> jobSerializer,
+      VeniceSerializer<List<Task>> taskVeniceSerializer) {
     offlineJobsPath = "/" + clusterName + OFFLINE_JOBS_SUB_PATH;
     this.adapter = adapter;
     this.jobSerializer = jobSerializer;
@@ -72,6 +75,7 @@ public class HelixJobRepository implements JobRepository, RoutingDataChangedList
     zkClient.setZkSerializer(this.adapter);
     jobDataAccessor = new ZkBaseDataAccessor<>(zkClient);
     tasksDataAccessor = new ZkBaseDataAccessor<>(zkClient);
+    listenerManager = new ListenerManager<>();
   }
 
   @Override
@@ -103,25 +107,51 @@ public class HelixJobRepository implements JobRepository, RoutingDataChangedList
   @Override
   public synchronized void archiveJob(long jobId, String kafkaTopic) {
     Job job = this.getJob(jobId, kafkaTopic);
-    job.validateStatusTransition(ExecutionStatus.ARCHIVED);
-    Job cloneJob = job.cloneJob();
-    cloneJob.setStatus(ExecutionStatus.ARCHIVED);
-    //update zk at first
-    updateJobToZK(cloneJob);
-    //update local copy
-    job.setStatus(ExecutionStatus.ARCHIVED);
-    //TODO we should move the archived job from ZK to other storage which store all archived jobs.
-    removeJobFromZK(job);
+    //TODO we should put archived job to some code/historic storage at first then delete it from zk.
+    //updateJobStatus(job, ExecutionStatus.ARCHIVED);
+    HelixUtils.removeFromHelix(jobDataAccessor, getJobZKPath(job), retryCount);
     deleteJobFromMap(kafkaTopic, jobId, topicToTerminatedJobsMap);
+    triggerJobStatusChangeEvent(job.cloneJob());
   }
 
   @Override
   public synchronized void updateTaskStatus(long jobId, String kafkaTopic, @NotNull Task task) {
     Job job = this.getJob(jobId, kafkaTopic);
+    // Clone job and update status.
     Job clonedJob = job.cloneJob();
     clonedJob.updateTaskStatus(task);
-    updateTaskToZK(clonedJob.getJobId(), task.getPartitionId(), clonedJob.tasksInPartition(task.getPartitionId()));
+    // Udate to ZK
+    String path = getJobZKPath(clonedJob) + "/" + task.getPartitionId();
+    HelixUtils.updateToHelix(tasksDataAccessor, path, clonedJob.tasksInPartition(task.getPartitionId()), retryCount);
+    // Update local copy at last.
     job.updateTaskStatus(task);
+  }
+
+  @Override
+  public synchronized void updateJobExecutors(long jobId, String kafkaTopic, Map<Integer, Partition> partitions) {
+    Job job = getJob(jobId, kafkaTopic);
+    if (job.isTerminated()) {
+      logger.warn("Job:" + jobId + " is terminated before, can not be updated again.");
+      return;
+    }
+    // Clone job and verify the updates.
+    Job cloneJob = job.cloneJob();
+    Set<Integer> changedPartitions = cloneJob.updateExecutingPartitions(partitions);
+    // update zk
+    if (!changedPartitions.isEmpty()) {
+      try {
+        updateTasksForPartitions(cloneJob, changedPartitions);
+      } catch (VeniceException e) {
+        // We don't need to break the whole update process here. Because even if the local copy is different from ZK,
+        // it will be sync up again when task status is changed. The worst case is before next task status update
+        // happening, controller is failed. But new controller will read job and tasks from zk and check the
+        // partitions again which will also fix this problem.
+        logger.error(
+            "Can not update tasks to ZK for job:" + job.getJobId() + " for kafka topic:+" + job.getKafkaTopic());
+      }
+    }
+    // Update local copy.
+    job.updateExecutingPartitions(partitions);
   }
 
   @Override
@@ -136,80 +166,29 @@ public class HelixJobRepository implements JobRepository, RoutingDataChangedList
     internalStopJob(jobId, kafkaTopic, ExecutionStatus.ERROR);
   }
 
-
   private void internalStopJob(long jobId, String kafkaTopic, ExecutionStatus status) {
     Job job = this.getJob(jobId, kafkaTopic);
-    routingDataRepository.unSubscribeRoutingDataChange(job.getKafkaTopic(), this);
-    job.validateStatusTransition(status);
-    Job clonedJob = job.cloneJob();
-    clonedJob.setStatus(status);
-    updateJobToZK(clonedJob);
-    job.setStatus(status);
+    updateJobStatus(job, status);
     //Remove from running jobs and add it to terminated jobs.
     deleteJobFromMap(kafkaTopic, job.getJobId(), topicToRunningJobsMap);
-    List<Job> jobs = getAndCreateJobListFromMap(kafkaTopic, topicToTerminatedJobsMap);
-    jobs.add(job);
+    addJobToMap(kafkaTopic, job, topicToTerminatedJobsMap);
     logger.info("Terminated job:" + jobId + " for kafka topic:" + kafkaTopic);
+    triggerJobStatusChangeEvent(job.cloneJob());
   }
 
   @Override
-  public void startJob(@NotNull Job job) {
-    job.validateStatusTransition(ExecutionStatus.STARTED);
-    synchronized (this) {
-      List<Job> jobs = getAndCreateJobListFromMap(job.getKafkaTopic(), topicToRunningJobsMap);
-      jobs.add(job);
+  public synchronized void startJob(@NotNull Job job) {
+    // Update job to ZK and local copy.
+    updateJobStatus(job, ExecutionStatus.STARTED);
+    //Update tasks of all partitions to ZK.
+    Set<Integer> partitions = new HashSet<>();
+    for (int i = 0; i < job.getNumberOfPartition(); i++) {
+      partitions.add(i);
     }
-
-    waitUntilJobStart(job);
-    //After job being started, sync up it to ZK.
-    Job clonedJob = job.cloneJob();
-    clonedJob.setStatus(ExecutionStatus.STARTED);
-    updateJobToZK(clonedJob);
-
-    Map<Integer, List<Task>> partitionToTaskMap = new HashMap<>();
-
-    for (int partitionId = 0; partitionId < clonedJob.getNumberOfPartition(); partitionId++) {
-      partitionToTaskMap.put(partitionId, clonedJob.tasksInPartition(partitionId));
-    }
-    updateTasksToZk(clonedJob.getJobId(), partitionToTaskMap);
-
-    job.setStatus(ExecutionStatus.STARTED);
-  }
-
-  /**
-   * When we creating a new job for new helix resource. We need to know how many tasks we need to create and which
-   * instance is assigned to execute this task. Unfortunately controller need some time to wait all of participants
-   * assigned to this resource become ONLINE, then get these information from external view, otherwise the external view
-   * is empty or uncompleted.
-   *
-   * @param job
-   */
-
-  private void waitUntilJobStart(Job job) {
-
-    //There are no enough partitions and/or replicas to execute tasks. Wait until all of replicas becoming online
-    synchronized (job) {
-      routingDataRepository.subscribeRoutingDataChange(job.getKafkaTopic(), this);
-      boolean isJobStarted = false;
-      if (routingDataRepository.containsKafkaTopic(job.getKafkaTopic())) {
-        try {
-          job.updateExecutingPartitions(routingDataRepository.getPartitions(job.getKafkaTopic()));
-          isJobStarted = true;
-        } catch (VeniceException e) {
-          // Can not get enough partition and replicas when resource just being created.
-        }
-      }
-      if (!isJobStarted) {
-        try {
-          logger.info("Wait job:" + job.getJobId() + " being started.");
-          //TODO add a timeout to avoid wait for ever. And set status to ERROR when time out.
-          job.wait();
-          logger.info("Job:" + job.getJobId() + " could be started.");
-        } catch (InterruptedException e) {
-          throw new VeniceException("Met error when wait job being started.", e);
-        }
-      }
-    }
+    updateTasksForPartitions(job, partitions);
+    // Add job in to running job map.
+    addJobToMap(job.getKafkaTopic(), job, topicToRunningJobsMap);
+    triggerJobStatusChangeEvent(job.cloneJob());
   }
 
   @Override
@@ -231,36 +210,39 @@ public class HelixJobRepository implements JobRepository, RoutingDataChangedList
     throw new VeniceException("Job for kafka topic:" + kafkaTopic + " does not exist.");
   }
 
-  private void updateJobToZK(Job job) {
-    if (job instanceof OfflineJob) {
-      jobDataAccessor.set(offlineJobsPath + "/" + job.getJobId(), (OfflineJob) job, AccessOption.PERSISTENT);
-    } else {
-      throw new VeniceException("Only offline job is supported now.");
-    }
+  @Override
+  public void subscribeJobStatusChange(String kafkaTopic, JobStatusChangedListener listener) {
+    listenerManager.subscribe(kafkaTopic, listener);
   }
 
-  public void removeJobFromZK(Job job) {
-    if (job instanceof OfflineJob) {
-      jobDataAccessor.remove(offlineJobsPath + "/" + job.getJobId(), AccessOption.PERSISTENT);
-    } else {
-      throw new VeniceException("Only offline job is supported now.");
-    }
+  @Override
+  public void unsubscribeJobStatusChange(String kafkaTopic, JobStatusChangedListener listener) {
+    listenerManager.unsubscribe(kafkaTopic, listener);
   }
 
-  private void updateTaskToZK(long jobId, int partitionId, List<Task> tasks) {
-    tasksDataAccessor.set(offlineJobsPath + "/" + jobId + "/" + partitionId, tasks, AccessOption.PERSISTENT);
+  private void updateJobStatus(Job job, ExecutionStatus status) {
+    // Validate the status at first.
+    job.validateStatusTransition(status);
+    // Clone job and update status.
+    Job clonedJob = job.cloneJob();
+    clonedJob.setStatus(status);
+    // Update clone job to ZK.
+    HelixUtils.updateToHelix(jobDataAccessor, getJobZKPath(clonedJob), (OfflineJob) clonedJob, retryCount);
+    // Update local copy at last.
+    job.setStatus(status);
   }
 
   // TODO Helix bulk update API is not the atomic operation. When some of znode is failed to be updated, local copy and
   // TODO zk is inconsistent. Should test and handle this case in the further.
-  private void updateTasksToZk(long jobId, Map<Integer, List<Task>> partitionTaskMap) {
+  private void updateTasksForPartitions(Job job, Set<Integer> partitions) {
     List<String> paths = new ArrayList<>();
     List<List<Task>> values = new ArrayList<>();
-    for (Integer partitionId : partitionTaskMap.keySet()) {
-      paths.add(offlineJobsPath + "/" + jobId + "/" + partitionId);
-      values.add(partitionTaskMap.get(partitionId));
+    for (Integer partition : partitions) {
+      paths.add(getJobZKPath(job) + "/" + partition);
+      List<Task> tasks = job.tasksInPartition(partition);
+      values.add(tasks);
     }
-    tasksDataAccessor.setChildren(paths, values, AccessOption.PERSISTENT);
+    HelixUtils.updateChildrenToHelix(tasksDataAccessor,paths,values,retryCount);
   }
 
   public void refresh() {
@@ -273,7 +255,6 @@ public class HelixJobRepository implements JobRepository, RoutingDataChangedList
     // task serializer: /*/OfflineJobs/*/*
     this.adapter.registerSerializer(jobsPath, jobSerializer);
     this.adapter.registerSerializer(tasksPath, taskVeniceSerializer);
-    List<Job> waitJobList = new ArrayList<>();
     synchronized (this) {
       logger.info("Start getting offline jobs from ZK");
       // We don't need to listen the change of jobs and tasks. The master controller is the only entrance to read/write
@@ -282,46 +263,60 @@ public class HelixJobRepository implements JobRepository, RoutingDataChangedList
       List<OfflineJob> offLineJobs = jobDataAccessor.getChildren(offlineJobsPath, null, AccessOption.PERSISTENT);
       logger.info("Get " + offLineJobs.size() + " offline jobs.");
       for (OfflineJob job : offLineJobs) {
-        if (job.getStatus().equals(ExecutionStatus.ARCHIVED)) {
-          //Archived job, do not add it to repository.
-          continue;
+        switch (job.getStatus()) {
+          case ERROR:
+          case COMPLETED:
+            addJobToMap(job.getKafkaTopic(), job, topicToTerminatedJobsMap);
+            loadTasksForJob(job);
+            break;
+          case STARTED:
+            addJobToMap(job.getKafkaTopic(), job, topicToRunningJobsMap);
+            loadTasksForJob(job);
+            break;
+          case ARCHIVED:
+            // remove archived job from zk.
+            HelixUtils.removeFromHelix(jobDataAccessor, getJobZKPath(job), retryCount);
+            //TODO add archived job to some code/historic storage.
+            break;
+          case NEW:
+            // If job is new in ZK, it means when creating the job, the previous controller is failed. So client
+            // already got the exception. So we treat this job as error job and need  to collect the related resource
+            // like helix resource and kill the ingestion in storage node..
+            updateJobStatus(job, ExecutionStatus.ERROR);
+            addJobToMap(job.getKafkaTopic(), job, topicToTerminatedJobsMap);
+            triggerJobStatusChangeEvent(job.cloneJob());
+            logger.info("job:" + job.getJobId() + " status is NEW. Need to collect related resource.");
+          default:
+            logger.error("Invalid job status:" + job.getStatus() + " for job:" + job.getJobId());
         }
-
-        List<Job> jobs;
-        if (job.isTerminated()) {
-          jobs = getAndCreateJobListFromMap(job.getKafkaTopic(), topicToTerminatedJobsMap);
-        } else if (job.getStatus().equals(ExecutionStatus.STARTED)) {
-          jobs = getAndCreateJobListFromMap(job.getKafkaTopic(), topicToRunningJobsMap);
-          routingDataRepository.subscribeRoutingDataChange(job.getKafkaTopic(), this);
-        } else {
-          //New job. We need to wait it started instead of loading tasks from ZK. Because we don't assign tasks to it before.
-          logger.info("Job:" + job.getJobId() + " is NEW, add it to waiting list.");
-          waitJobList.add(job);
-          continue;
-        }
-        jobs.add(job);
-
-        logger.info("Start getting tasks for job:" + job.getJobId());
-        List<List<Task>> tasks = tasksDataAccessor.getChildren(offlineJobsPath + "/" + job.getJobId(), null, AccessOption.PERSISTENT);
-        for (List<Task> task : tasks) {
-          task.forEach(job::addTask);
-        }
-        logger.info("Filled tasks into job:" + job.getJobId());
       }
     }
-    //Wait and refresh job in other thread to avoid blocking starting.
-    //Only the job in NEW will be added into wait list. So it should not be a big number, just one thread is enough.
-    new Thread(new WaitWorker(waitJobList)).start();
     logger.info("End getting offline jobs from zk");
   }
 
-  private List<Job> getAndCreateJobListFromMap(String kafkaTopic, Map<String, List<Job>> map) {
+  private void loadTasksForJob(Job job){
+    logger.info("Start getting tasks for job:" + job.getJobId());
+    List<List<Task>> tasks = tasksDataAccessor.getChildren(getJobZKPath(job), null, AccessOption.PERSISTENT);
+    for (List<Task> task : tasks) {
+      task.forEach(job::addTask);
+    }
+    logger.info("Filled tasks into job:" + job.getJobId());
+  }
+
+  private String getJobZKPath(Job job) {
+    if (job instanceof OfflineJob) {
+      return offlineJobsPath + "/" + job.getJobId();
+    }
+    throw new VeniceException("Only offline job is supported right now.");
+  }
+
+  private void addJobToMap(String kafkaTopic, Job job, Map<String, List<Job>> map) {
     List<Job> jobs = map.get(kafkaTopic);
     if (jobs == null) {
       jobs = new ArrayList<>();
       map.put(kafkaTopic, jobs);
     }
-    return jobs;
+    jobs.add(job);
   }
 
   private void deleteJobFromMap(String kafkaTopic, long jobId, Map<String, List<Job>> map) {
@@ -359,6 +354,16 @@ public class HelixJobRepository implements JobRepository, RoutingDataChangedList
     return null;
   }
 
+  private void triggerJobStatusChangeEvent(Job job) {
+    listenerManager.trigger(job.getKafkaTopic(), new Function<JobStatusChangedListener, Void>() {
+      @Override
+      public Void apply(JobStatusChangedListener listener) {
+        listener.onJobStatusChange(job);
+        return null;
+      }
+    });
+  }
+
   public synchronized void clear() {
     this.topicToRunningJobsMap.clear();
     this.topicToTerminatedJobsMap.clear();
@@ -367,63 +372,4 @@ public class HelixJobRepository implements JobRepository, RoutingDataChangedList
     //We don't need to close ZK client here. It's could be reused by other repository.
   }
 
-  private void updateJobPartitions(Job job, Map<Integer, Partition> partitions) {
-    Set<Integer> changedPartitions = job.updateExecutingPartitions(partitions);
-    if (!changedPartitions.isEmpty()) {
-      Map<Integer, List<Task>> partitionToTaskMap = new HashMap<>();
-      for (Integer partitionId : changedPartitions) {
-        partitionToTaskMap.put(partitionId, job.tasksInPartition(partitionId));
-      }
-      try {
-        updateTasksToZk(job.getJobId(), partitionToTaskMap);
-      } catch (Exception e) {
-        // We don't need to break the whole update process here. Because even if the local copy is different from ZK,
-        // it will be sync up again when task status is changed. The worst case is before next task status update
-        // happening, controller is failed. But new controller will read job and tasks from zk and check the
-        // partitions again which will also fix this problem.
-        logger
-            .error("Can not update tasks to ZK for job:" + job.getJobId() + " for kafka topic:+" + job.getKafkaTopic());
-      }
-    }
-  }
-
-  @Override
-  public synchronized void handleRoutingDataChange(String kafkaTopic, Map<Integer, Partition> partitions) {
-    List<Job> jobs = this.getRunningJobOfTopic(kafkaTopic);
-    if (jobs.size() > 1) {
-      throw new VeniceException(
-          "There should be only one job running for each kafka topic. But now there are:" + jobs.size()
-              + " jobs running.");
-    }
-    if (jobs.isEmpty()) {
-      return;
-    }
-    Job job = jobs.get(0);
-    synchronized (job) {
-      try {
-        updateJobPartitions(job, partitions);
-        logger.info("Get enough instance for this job. Continue running.");
-        job.notify();
-      } catch (VeniceException e) {
-        logger.info("There are no enough partitions or replica to execute tasks.");
-      }
-    }
-  }
-
-  public RoutingDataRepository getRoutingDataRepository() {
-    return routingDataRepository;
-  }
-
-  private class WaitWorker implements Runnable {
-    private List<Job>  waitJobs;
-
-    WaitWorker(List<Job> jobs) {
-      waitJobs = jobs;
-    }
-
-    @Override
-    public void run() {
-      waitJobs.forEach(HelixJobRepository.this::startJob);
-    }
-  }
 }

@@ -1,9 +1,9 @@
 package com.linkedin.venice.helix;
 
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.listener.ListenerManager;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.Partition;
-import com.linkedin.venice.meta.RoutingDataChangedListener;
 import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.utils.Utils;
 import java.util.ArrayList;
@@ -13,12 +13,10 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
-import java.util.concurrent.CopyOnWriteArraySet;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 import javax.validation.constraints.NotNull;
 import org.apache.helix.ControllerChangeListener;
@@ -71,10 +69,11 @@ public class HelixRoutingDataRepository extends RoutingTableProvider implements 
      */
     private final Lock lock = new ReentrantLock();
 
-    private ConcurrentMap<String, Set<RoutingDataChangedListener>> listenersMap = new ConcurrentHashMap<>();
+    private ListenerManager<RoutingDataChangedListener> listenerManager;
 
     public HelixRoutingDataRepository(HelixManager manager) {
         this.manager = manager;
+        listenerManager = new ListenerManager<>(); //TODO make thread count configurable
         keyBuilder = new PropertyKey.Builder(manager.getClusterName());
     }
 
@@ -193,30 +192,12 @@ public class HelixRoutingDataRepository extends RoutingTableProvider implements 
 
     @Override
     public void subscribeRoutingDataChange(String kafkaTopic, RoutingDataChangedListener listener) {
-        synchronized (listenersMap) {
-            Set<RoutingDataChangedListener> listeners = listenersMap.get(kafkaTopic);
-            if (listeners == null) {
-                listeners = new CopyOnWriteArraySet<>();
-                listenersMap.put(kafkaTopic, listeners);
-            }
-            //TODO write to CopyOnWriteArraySet is expensive because it copy all of objects in set.
-            //TODO But, right now, the size of set should be small and also the number of writes is small. In the
-            //TODO future, we can optimize this is the numbers become bigger.
-            listeners.add(listener);
-        }
+        listenerManager.subscribe(kafkaTopic,listener);
     }
 
     @Override
     public void unSubscribeRoutingDataChange(String kafkaTopic, RoutingDataChangedListener listener) {
-        synchronized (listenersMap) {
-            Set<RoutingDataChangedListener> listeners = listenersMap.get(kafkaTopic);
-            if (listeners != null) {
-                listeners.remove(listener);
-                if (listeners.isEmpty()) {
-                    listenersMap.remove(kafkaTopic);
-                }
-            }
-        }
+        listenerManager.unsubscribe(kafkaTopic,listener);
     }
 
     @Override
@@ -285,11 +266,24 @@ public class HelixRoutingDataRepository extends RoutingTableProvider implements 
         // Start sending notification to listeners. As we can not get the changed data only from Helix, so we just notfiy all the listener.
         // And listener will compare and decide how to handle this event.
         Map<String, Map<Integer, Partition>> currentPartitionMap = resourceToPartitionMap.get();
-        for (String kafkaTopic : listenersMap.keySet()) {
-            //Create a snapshot of listeners to avoid current modification error because a new listener is being subscribed in a same time.
-            for (RoutingDataChangedListener listener : listenersMap.get(kafkaTopic)) {
-                listener.handleRoutingDataChange(kafkaTopic, currentPartitionMap.get(kafkaTopic));
-            }
+        for (String kafkaTopic : currentPartitionMap.keySet()) {
+            Map<Integer, Partition> partitions = currentPartitionMap.get(kafkaTopic);
+            listenerManager.trigger(kafkaTopic, new Function<RoutingDataChangedListener, Void>() {
+                @Override
+                public Void apply(RoutingDataChangedListener listener) {
+                    listener.onRoutingDataChanged(kafkaTopic, partitions);
+                    return null;
+                }
+            });
+        }
+        for (String kakfaTopic : deletedResourceNames) {
+            listenerManager.trigger(kakfaTopic, new Function<RoutingDataChangedListener, Void>() {
+                @Override
+                public Void apply(RoutingDataChangedListener listener) {
+                    listener.onRoutingDataChanged(kakfaTopic, null);
+                    return null;
+                }
+            });
         }
     }
 

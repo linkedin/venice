@@ -86,7 +86,7 @@ public class TestHelixJobRepository {
     zkClient = new ZkClient(zkAddress, ZkClient.DEFAULT_SESSION_TIMEOUT, ZkClient.DEFAULT_CONNECTION_TIMEOUT, adapter);
     //zkClient.create(clusterPath, null, CreateMode.PERSISTENT);
     zkClient.create(clusterPath + jobPath, null, CreateMode.PERSISTENT);
-    repository = new HelixJobRepository(zkClient, adapter, cluster, routingDataRepository);
+    repository = new HelixJobRepository(zkClient, adapter, cluster);
     repository.refresh();
 
     admin.addResource(cluster, kafkaTopic, 1, TestHelixRoutingDataRepository.UnitTestStateModel.UNIT_TEST_STATE_MODEL,
@@ -169,8 +169,25 @@ public class TestHelixJobRepository {
     Assert.assertEquals(ExecutionStatus.COMPLETED, repository.getJobStatus(1, kafkaTopic),
         "Job should be completed after being stopped.");
 
-    Assert.assertTrue(repository.getRunningJobOfTopic("topic1").isEmpty(),
+    Assert.assertTrue(repository.getRunningJobOfTopic(kafkaTopic).isEmpty(),
         "Job is stooped, should not exist in running job list.");
+    Assert.assertEquals(repository.getTerminatedJobOfTopic(kafkaTopic).size(), 1);
+  }
+
+  @Test
+  public void testStopJobWithError() {
+    OfflineJob job = new OfflineJob(1, kafkaTopic, 1, 1);
+    repository.startJob(job);
+
+    repository.stopJobWithError(1, kafkaTopic);
+    Assert.assertEquals(job, repository.getJob(1, kafkaTopic),
+        "Can not get correct job from repository after starting the job.");
+    Assert.assertEquals(ExecutionStatus.ERROR, repository.getJobStatus(1, kafkaTopic),
+        "Job should be completed after being stopped.");
+
+    Assert.assertTrue(repository.getRunningJobOfTopic(kafkaTopic).isEmpty(),
+        "Job is stooped, should not exist in running job list.");
+    Assert.assertEquals(repository.getTerminatedJobOfTopic(kafkaTopic).size(), 1);
   }
 
   @Test
@@ -257,7 +274,7 @@ public class TestHelixJobRepository {
     repository.clear();
     Thread.sleep(1000l);
 
-    HelixJobRepository newRepository = new HelixJobRepository(zkClient, adapter, cluster, routingDataRepository);
+    HelixJobRepository newRepository = new HelixJobRepository(zkClient, adapter, cluster);
     routingDataRepository.refresh();
     Thread thread = new Thread(new Runnable() {
       @Override
@@ -298,10 +315,13 @@ public class TestHelixJobRepository {
           IdealState.RebalanceMode.FULL_AUTO.toString());
       admin.rebalance(cluster, "topic" + i, 1);
     }
+    // Waiting routing data updated.
+    Thread.sleep(1000);
     OfflineJob[] jobs = new OfflineJob[jobCount];
     for (int i = 0; i < jobCount; i++) {
       OfflineJob job = new OfflineJob(i, "topic" + i, numberOfPartition, replicaFactor);
       repository.startJob(job);
+      job.updateExecutingPartitions(routingDataRepository.getPartitions("topic"+i));
       jobs[i] = job;
     }
 
@@ -323,7 +343,7 @@ public class TestHelixJobRepository {
         repository.updateTaskStatus(2, "topic2", task);
       }
     }
-    HelixJobRepository newRepository = new HelixJobRepository(zkClient, adapter, cluster, routingDataRepository);
+    HelixJobRepository newRepository = new HelixJobRepository(zkClient, adapter, cluster);
     newRepository.refresh();
     Assert.assertEquals(newRepository.getJob(0, "topic0").getTaskStatus(3, jobs[0].generateTaskId(3, nodeId)),
         ExecutionStatus.STARTED, "Task dose not be loaded correctly.");
@@ -338,6 +358,10 @@ public class TestHelixJobRepository {
         "Job should be failed.");
     Assert.assertEquals(newRepository.getJob(2, "topic2").checkJobStatus(), ExecutionStatus.COMPLETED,
         "Job should be completed");
+
+    Assert.assertEquals(newRepository.getAllRunningJobs().size(), 3);
+    Assert.assertEquals(newRepository.getRunningJobOfTopic("topic0").size(), 1);
+
     newRepository.clear();
   }
 }
