@@ -31,19 +31,39 @@ public class VeniceD2Client implements VeniceThinClient {
   private final D2Client d2Client;
   private final String d2ServiceName;
 
-  public VeniceD2Client(String zkConnection, String d2ServiceName) throws InterruptedException {
-    this(zkConnection, d2ServiceName, "/d2", 5000, null);
+  /***
+   * Create a VeniceD2Client from an existing D2Client (such as from the pegasus-d2-client-default-cmpt)
+   * @param d2ServiceName The name of the d2 service we want to use.
+   * @param d2Client This must be a started D2Client object.
+   */
+  public VeniceD2Client(String d2ServiceName, D2Client d2Client){
+    this.d2ServiceName = d2ServiceName;
+    this.d2Client = d2Client;
   }
-  public VeniceD2Client(String zkConnection, String d2ServiceName, String zkBasePath, int zkTimeout, String d2BackupFsPath) throws InterruptedException {
+
+  /***
+   * Create a VeniceD2Client that uses a custom specified zookeeper cluster
+   * @param zkConnection zookeeper connection string for your D2 zookeeper cluster
+   * @param d2ServiceName name of the venice d2 service
+   */
+  public VeniceD2Client(String zkConnection, String d2ServiceName) {
+    this(zkConnection, d2ServiceName, "/d2", 5000);
+  }
+
+  /***
+   * Create a VeniceD2Client that uses customized zookeeper and other configs
+   * @param zkConnection zookeeper connection string for your D2 zookeeper cluster
+   * @param d2ServiceName name of the venice d2 service
+   * @param zkBasePath path in zookeeper where D2 configs are stored.  Usually /d2
+   * @param zkTimeout timeout in milliseconds for the zookeeper connection
+   */
+  public VeniceD2Client(String zkConnection, String d2ServiceName, String zkBasePath, int zkTimeout) {
     this.d2ServiceName = d2ServiceName;
     D2ClientBuilder builder = new D2ClientBuilder().setZkHosts(zkConnection)
         .setZkSessionTimeout(zkTimeout, TimeUnit.MILLISECONDS)
         .setZkStartupTimeout(zkTimeout, TimeUnit.MILLISECONDS)
         .setLbWaitTimeout(zkTimeout, TimeUnit.MILLISECONDS)
         .setBasePath(zkBasePath);
-    if (d2BackupFsPath != null){
-      builder.setFsBasePath(d2BackupFsPath);
-    }
     d2Client = builder.build();
 
     CountDownLatch latch = new CountDownLatch(1);
@@ -52,7 +72,7 @@ public class VeniceD2Client implements VeniceThinClient {
       @Override
       public void onError(Throwable e) {
         latch.countDown();
-        throw new RuntimeException("d2client throws error on startup", e);
+        logger.error("d2client throws error on startup", e);
       }
 
       @Override
@@ -62,8 +82,11 @@ public class VeniceD2Client implements VeniceThinClient {
       }
     });
 
-    latch.await(d2StartupTimeoutMs, TimeUnit.MILLISECONDS);
-    if (latch.getCount() > 0){
+    try {
+      latch.await(d2StartupTimeoutMs, TimeUnit.MILLISECONDS);
+    } catch (InterruptedException e) {
+      logger.warn("latch wait was interrupted, d2client may not have had enough time to startup", e);
+    } if (latch.getCount() > 0){
       throw new RuntimeException("Timed out after " + d2StartupTimeoutMs + "ms waiting for D2Client to startup");
     }
     if (!d2StartupSuccess.get()){
@@ -82,7 +105,7 @@ public class VeniceD2Client implements VeniceThinClient {
    * You can examine this with .getCause() to see the underlying VeniceClientException.
    * We throw a VeniceNotFoundException if the key is not found
    * We throw a VeniceServerErrorException if the server throws a 500 error
-   * We throw a VeniceClientException for any other errors during the request.
+   * We throw a VeniceClientException for any other errors during the request (such as 400 Bad Request)
    *
    * @param storeName
    * @param key
