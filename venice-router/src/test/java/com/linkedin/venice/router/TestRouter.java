@@ -30,11 +30,10 @@ public class TestRouter {
   @Test
   public void testRouterWithD2() throws Exception {
     ZkServerWrapper zk = ServiceFactory.getZkServer();
+    MockVeniceRouterWrapper.setupD2Config(zk.getAddress());
 
     List<D2Server> d2List = MockVeniceRouterWrapper.getD2Servers(zk.getAddress());
-
     MockVeniceRouterWrapper router = ServiceFactory.getMockVeniceRouter(d2List);
-
     D2Client d2Client = MockVeniceRouterWrapper.getAndStartD2Client(zk.getAddress());
 
     URI requestUri = new URI("d2://venice-service/storage/myStore/myKey"); /* D2 client only supports d2:// scheme */

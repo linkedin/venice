@@ -36,6 +36,10 @@ dependencies {
     testCompile project(':venice-router')
     testCompile project(':venice-thin-client')
 
+    testCompile (libraries.d2){
+        exclude group: 'com.oracle', module: 'ojdbc14' /* unused transitive dependencies, doesnt exist in repo */
+    }
+
 }
 
 configurations.all {

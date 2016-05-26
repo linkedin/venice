@@ -40,6 +40,7 @@ public class MockVeniceRouterWrapper extends ProcessWrapper {
 
   static final String SERVICE_NAME = "MockVeniceRouter";
   public static final String CONTROLLER = "http://localhost:1234";
+  private static final ObjectMapper mapper = new ObjectMapper();
 
   private final RouterServer service;
   private final String clusterName;
@@ -108,18 +109,12 @@ public class MockVeniceRouterWrapper extends ProcessWrapper {
     }
   }
 
-  /**
-   * This method should only be called once.  It has the side-effect of setting up the d2 environment in zookeeper
-   * @param zkHosts
-   * @return
-   */
-  public static List<D2Server> getD2Servers(String zkHosts){
-    ObjectMapper mapper = new ObjectMapper();
+  public static void setupD2Config(String zkHosts){
+
     int sessionTimeout = 5000;
     String basePath = "/d2";
     int retryLimit = 10;
 
-    // Set up D2 environment in ZK
     D2Config d2Config;
     try {
       Map<String, Object> clusterDefaults = Collections.EMPTY_MAP;
@@ -146,6 +141,12 @@ public class MockVeniceRouterWrapper extends ProcessWrapper {
     } catch (Exception e) {
       throw new VeniceException(e);
     }
+  }
+
+  public static List<D2Server> getD2Servers(String zkHosts){
+
+    int sessionTimeout = 5000;
+    String basePath = "/d2";
 
     // Set up D2 server/announcer
     ZKUriStoreFactory storeFactory = new ZKUriStoreFactory();

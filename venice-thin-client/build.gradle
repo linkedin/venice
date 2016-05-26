@@ -1,14 +1,8 @@
-task buildJar(type: Jar) {
-  baseName = project.name
-  from { configurations.compile.collect { it.isDirectory() ? it : zipTree(it) } }
-  with jar
-}
-
 dependencies {
   compile libraries.asyncHttpClient
   compile libraries.guava
   compile libraries.commonsIo
-  compile (libraries.d2){
+  compile (libraries.d2Client){
     exclude group: 'com.oracle', module: 'ojdbc14' /* unused transitive dependencies, doesnt exist in repo */
   }
 }
