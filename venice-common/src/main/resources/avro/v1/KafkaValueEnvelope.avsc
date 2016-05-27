@@ -5,7 +5,7 @@
   "fields": [
     {
       "name": "messageType",
-      "doc": "Using int because Avro Enums are not evolvable. Readers should always handle the 'unknown' value edge case, to account for future evolutions of this protocol. The mapping is the following: 0 => ControlMessage, 1 => PutValue.",
+      "doc": "Using int because Avro Enums are not evolvable. Readers should always handle the 'unknown' value edge case, to account for future evolutions of this protocol. The mapping is the following: 0 => Put, 1 => Delete, 2 => ControlMessage.",
       "type": "int"
     }, {
       "name": "producerMetadata",
@@ -42,6 +42,26 @@
       "doc": "This contains the main payload of the message. Which branch of the union is present is based on the previously-defined MessageType field.",
       "type": [
         {
+          "name": "Put",
+          "doc": "Put payloads contain a record value, and information on how to deserialize it.",
+          "type": "record",
+          "fields": [
+            {
+              "name": "schemaId",
+              "doc": "An identifier used to determine how the PutValue can be deserialized.",
+              "type": "int"
+            }, {
+              "name": "putValue",
+              "doc": "The record's value to be persisted in the storage engine.",
+              "type": "bytes"
+            }
+          ]
+        }, {
+          "name": "Delete",
+          "doc": "Delete payloads contain no extra fields.",
+          "type": "record",
+          "fields": []
+        }, {
           "name": "ControlMessage",
           "doc": "ControlMessage payloads contain metadata about the stream of data, for validation and debuggability purposes.",
           "type": "record",
@@ -113,21 +133,6 @@
                   ]
                 }
               ]
-            }
-          ]
-        }, {
-          "name": "PutValue",
-          "doc": "Put payloads contain a record value, and information on how to deserialize it.",
-          "type": "record",
-          "fields": [
-            {
-              "name": "schemaId",
-              "doc": "An identifier used to determine how the PutValue can be deserialized.",
-              "type": "int"
-            }, {
-              "name": "putValue",
-              "doc": "The record's value to be persisted in the storage engine.",
-              "type": "bytes"
             }
           ]
         }

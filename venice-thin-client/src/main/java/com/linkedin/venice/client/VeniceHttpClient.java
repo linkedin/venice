@@ -97,4 +97,9 @@ public class VeniceHttpClient implements VeniceThinClient {
     }
   }
 
+  public static int main(String[] args) throws VeniceClientException {
+    throw new VeniceClientException("The " + VeniceHttpClient.class.getSimpleName() +
+        " is not usable interactively. Stay tuned!!");
+  }
+
 }

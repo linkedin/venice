@@ -6,8 +6,8 @@ import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.hadoop.exceptions.VeniceInconsistentSchemaException;
 import com.linkedin.venice.hadoop.exceptions.VeniceSchemaFieldNotFoundException;
 import com.linkedin.venice.hadoop.exceptions.VeniceStoreCreationException;
+import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
 import com.linkedin.venice.message.KafkaKey;
-import com.linkedin.venice.message.OperationType;
 import com.linkedin.venice.serialization.DefaultSerializer;
 import com.linkedin.venice.serialization.KafkaKeySerializer;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -325,11 +325,7 @@ public class KafkaPushJob {
     this.job = setupHadoopJob(conf);
     JobClient jc = new JobClient(job);
 
-    // TODO: Set the jobId to epoch for now. Figure out how to get unique jobId
-    // for each of the pushes.
-    // We should get jobId from Venice Controller.
-    long jobId = System.currentTimeMillis();
-    sendControlMessage(OperationType.BEGIN_OF_PUSH, jobId);
+    sendControlMessage(ControlMessageType.START_OF_PUSH);
     // submit the job for execution
     runningJob = jc.submitJob(job);
     logger.info("Job Tracking URL: " + runningJob.getTrackingURL());
@@ -338,7 +334,7 @@ public class KafkaPushJob {
     if (!runningJob.isSuccessful()) {
       throw new RuntimeException("KafkaPushJob failed");
     }
-    sendControlMessage(OperationType.END_OF_PUSH, jobId);
+    sendControlMessage(ControlMessageType.END_OF_PUSH);
 
     if (!storePush){
       logger.info("No controller provided, skipping poll of push status, job completed");
@@ -384,7 +380,7 @@ public class KafkaPushJob {
     logger.info("Total input data file size: " + ((double)inputFileDataSize / 1024 / 1024) + " MB");
   }
 
-  private void sendControlMessage (OperationType opType, long jobId) {
+  private void sendControlMessage(ControlMessageType controlMessageType) {
     Properties properties = new Properties();
     properties.put(KAFKA_BOOTSTRAP_SERVERS, kafkaUrl);
 
@@ -395,9 +391,9 @@ public class KafkaPushJob {
     VeniceWriter<KafkaKey, byte[]> writer =
             new VeniceWriter<>(props, topic, keySerializer, new DefaultSerializer());
 
-    writer.writeControlMessage(opType, jobId);
+    writer.broadcastControlMessage(controlMessageType);
     writer.close();
-    logger.info("Successfully sent control message for topic " + topic + " Op " + opType);
+    logger.info("Successfully sent " + controlMessageType.name() + " Control Message for topic '" + topic + "'.");
   }
 
   private static void printExternalDependencies() {

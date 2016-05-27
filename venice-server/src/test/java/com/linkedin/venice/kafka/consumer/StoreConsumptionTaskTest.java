@@ -1,15 +1,17 @@
 package com.linkedin.venice.kafka.consumer;
 
-import com.linkedin.venice.message.ControlFlagKafkaKey;
+import com.linkedin.venice.kafka.protocol.*;
+import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
+import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.message.KafkaKey;
-import com.linkedin.venice.message.KafkaValue;
-import com.linkedin.venice.message.OperationType;
 import com.linkedin.venice.notifier.KafkaNotifier;
 import com.linkedin.venice.notifier.VeniceNotifier;
 import com.linkedin.venice.offsets.OffsetManager;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.server.StoreRepository;
 import com.linkedin.venice.store.AbstractStorageEngine;
+
+import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -140,31 +142,48 @@ public class StoreConsumptionTaskTest{
     Mockito.verify(mockKafkaConsumer, Mockito.timeout(TIMEOUT).times(1)).close();
   }
 
-  private ConsumerRecord<KafkaKey, KafkaValue> getConsumerRecord(OperationType type, int partition,long offset, byte[] key, byte[] value) {
+  private ProducerMetadata getProducerMetadata() {
+    // TODO: Populate producer metadata properly
+    ProducerMetadata producerMetadata = new ProducerMetadata();
+    producerMetadata.producerGUID = new GUID();
+    producerMetadata.producerGUID.bytes(new byte[16]);
+    producerMetadata.messageSequenceNumber = -1;
+    producerMetadata.segmentNumber = -1;
+    producerMetadata.messageTimestamp = -1;
+    return producerMetadata;
+  }
+
+  private ConsumerRecord<KafkaKey, KafkaMessageEnvelope> getConsumerRecord(MessageType type, int partition,long offset, byte[] key, Object kafkaValuePayload) {
+    KafkaMessageEnvelope kafkaValue = new KafkaMessageEnvelope();
+    kafkaValue.messageType = type.getValue();
+    kafkaValue.payloadUnion = kafkaValuePayload;
+    kafkaValue.producerMetadata = getProducerMetadata();
+
     return new ConsumerRecord<>(topic, partition, offset, 0, TimestampType.NO_TIMESTAMP_TYPE,
-        new KafkaKey(OperationType.WRITE, key), new KafkaValue(type, value));
+        new KafkaKey(type, key), kafkaValue);
   }
 
-  private ConsumerRecord<KafkaKey, KafkaValue> getPutConsumerRecord(int partition, long offset,  byte[] key, byte[] value) {
-    return getConsumerRecord(OperationType.PUT, partition, offset, key, value);
+  private ConsumerRecord<KafkaKey, KafkaMessageEnvelope> getPutConsumerRecord(int partition, long offset,  byte[] key, byte[] value) {
+    Put put = new Put();
+    put.schemaId = -1;
+    put.putValue = ByteBuffer.wrap(value);
+    return getConsumerRecord(MessageType.PUT, partition, offset, key, put);
   }
 
-  private ConsumerRecord<KafkaKey, KafkaValue> getDeleteConsumerRecord(int partition, long offset, byte[] key) {
-    return getConsumerRecord(OperationType.DELETE, partition, offset, key, new byte[0]);
+  private ConsumerRecord<KafkaKey, KafkaMessageEnvelope> getDeleteConsumerRecord(int partition, long offset, byte[] key) {
+    return getConsumerRecord(MessageType.DELETE, partition, offset, key, new Delete());
   }
 
-  private ConsumerRecord<KafkaKey, KafkaValue> getControlRecord(OperationType type, long offset, int partition) {
-    long jobId = -1;
-    if (type != OperationType.BEGIN_OF_PUSH && type != OperationType.END_OF_PUSH) {
-      throw new IllegalArgumentException("Only begin and end are control messages");
-    }
-    KafkaKey key = new ControlFlagKafkaKey(type, new byte[]{}, jobId);
-    KafkaValue value = new KafkaValue(type);
-
-    return new ConsumerRecord<>(topic, partition, offset, 0, TimestampType.NO_TIMESTAMP_TYPE, key, value);
+  private ConsumerRecord<KafkaKey, KafkaMessageEnvelope> getControlRecord(ControlMessageType controlMessageType, long offset, int partition) {
+    com.linkedin.venice.kafka.protocol.ControlMessage controlMessage =
+        (com.linkedin.venice.kafka.protocol.ControlMessage) MessageType.CONTROL_MESSAGE.getNewInstance();
+    controlMessage.controlMessageType = controlMessageType.getValue();
+    controlMessage.controlMessageUnion = controlMessageType.getNewInstance();
+    controlMessage.debugInfo = new HashMap<>();
+    return getConsumerRecord(MessageType.CONTROL_MESSAGE, partition, offset, new byte[]{}, controlMessage);
   }
 
-  private ConsumerRecords  mockKafkaPollResult( ConsumerRecord<KafkaKey, KafkaValue>... records) {
+  private ConsumerRecords  mockKafkaPollResult( ConsumerRecord<KafkaKey, KafkaMessageEnvelope>... records) {
     Map<TopicPartition, List<ConsumerRecord>> mockPollResult = new HashMap<>();
 
     if(records.length > 0) {
@@ -248,23 +267,23 @@ public class StoreConsumptionTaskTest{
     testSubscribeTask.subscribePartition(topic, PARTITION_FOO);
     testSubscribeTask.subscribePartition(topic, PARTITION_BAR);
 
-    ConsumerRecord fooStartRecord = getControlRecord(OperationType.BEGIN_OF_PUSH, currentOffset++, PARTITION_FOO);
+    ConsumerRecord fooStartRecord = getControlRecord(ControlMessageType.START_OF_PUSH, currentOffset++, PARTITION_FOO);
     int fooLastOffset = currentOffset++;
     ConsumerRecord fooPutRecord = getPutConsumerRecord(PARTITION_FOO , fooLastOffset, putTestKey.getBytes(), putTestValue.getBytes());
 
     ConsumerRecords mockResult1 = mockKafkaPollResult(fooStartRecord, fooPutRecord);
 
-    ConsumerRecord barStartRecord = getControlRecord(OperationType.BEGIN_OF_PUSH, currentOffset++, PARTITION_BAR);
+    ConsumerRecord barStartRecord = getControlRecord(ControlMessageType.START_OF_PUSH, currentOffset++, PARTITION_BAR);
     int barLastOffset = currentOffset++;
     ConsumerRecord barPutRecord = getPutConsumerRecord(PARTITION_BAR, barLastOffset, putTestKey.getBytes(),
         putTestValue.getBytes());
 
     ConsumerRecords mockResult2 = mockKafkaPollResult(barStartRecord, barPutRecord);
 
-    ConsumerRecord fooEndRecord = getControlRecord(OperationType.END_OF_PUSH, currentOffset++, PARTITION_FOO);
+    ConsumerRecord fooEndRecord = getControlRecord(ControlMessageType.END_OF_PUSH, currentOffset++, PARTITION_FOO);
     ConsumerRecords mockResult3 = mockKafkaPollResult(fooEndRecord);
 
-    ConsumerRecord barEndRecord = getControlRecord(OperationType.END_OF_PUSH, currentOffset++, PARTITION_BAR);
+    ConsumerRecord barEndRecord = getControlRecord(ControlMessageType.END_OF_PUSH, currentOffset++, PARTITION_BAR);
     ConsumerRecords mockResult4 = mockKafkaPollResult(barEndRecord);
 
     // Tried breaking them into 4 separate lines with verify calls

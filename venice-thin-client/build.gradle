@@ -1,3 +1,13 @@
+apply plugin: 'application'
+
+mainClassName = "com.linkedin.venice.client.VeniceHttpClient"
+
+task buildJar(type: Jar) {
+  baseName = project.name
+  from { configurations.compile.collect { it.isDirectory() ? it : zipTree(it) } }
+  with jar
+}
+
 dependencies {
   compile libraries.asyncHttpClient
   compile libraries.guava

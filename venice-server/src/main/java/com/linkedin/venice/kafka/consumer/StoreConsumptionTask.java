@@ -5,10 +5,11 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceMessageException;
 import com.linkedin.venice.kafka.consumer.message.ControlMessage;
 import com.linkedin.venice.kafka.consumer.message.ControlOperationType;
-import com.linkedin.venice.message.ControlFlagKafkaKey;
+import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
+import com.linkedin.venice.kafka.protocol.Put;
+import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
+import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.message.KafkaKey;
-import com.linkedin.venice.message.KafkaValue;
-import com.linkedin.venice.message.OperationType;
 import com.linkedin.venice.notifier.VeniceNotifier;
 import com.linkedin.venice.offsets.OffsetManager;
 import com.linkedin.venice.offsets.OffsetRecord;
@@ -216,6 +217,8 @@ public class StoreConsumptionTask implements Runnable, Closeable {
       // An Error is reported to the controller, so the controller will abort the job.
       // But the Storage Node might eventually recover and the job may complete in success
       // This will confused the controller.
+      // FGV: Actually, the Controller doesn't seem to be aware at all that the consumer failed.
+      //      It just keeps reporting "Push status: STARTED..." indefinitely to the H2V job. TODO: fix this
       logger.error(consumerTaskId + " failed with Exception: ", e);
       reportError(partitionToOffsetMap.keySet() , " Errors occurred during poll " , e );
     } finally {
@@ -299,7 +302,7 @@ public class StoreConsumptionTask implements Runnable, Closeable {
     }
   }
 
-  private boolean shouldProcessRecord(ConsumerRecord<KafkaKey, KafkaValue> record) {
+  private boolean shouldProcessRecord(ConsumerRecord record) {
     String recordTopic = record.topic();
     if(!topic.equals(recordTopic)) {
       throw new VeniceMessageException(consumerTaskId + "Message retrieved from different topic. Expected " + this.topic + " Actual " + recordTopic);
@@ -329,7 +332,7 @@ public class StoreConsumptionTask implements Runnable, Closeable {
     Iterator recordsIterator = records.iterator();
     Set<Integer> processedPartitions = new HashSet<>();
     while (recordsIterator.hasNext()) {
-      ConsumerRecord<KafkaKey, KafkaValue> record = (ConsumerRecord<KafkaKey, KafkaValue>) recordsIterator.next();
+      ConsumerRecord<KafkaKey, KafkaMessageEnvelope> record = (ConsumerRecord<KafkaKey, KafkaMessageEnvelope>) recordsIterator.next();
       if(shouldProcessRecord(record)) {
         try {
           processConsumerRecord(record);
@@ -349,24 +352,19 @@ public class StoreConsumptionTask implements Runnable, Closeable {
     }
   }
 
-  private void processControlMessage(KafkaKey kafkaKey, int partition, long offset) {
-    ControlFlagKafkaKey controlKafkaKey = (ControlFlagKafkaKey) kafkaKey;
-    // TODO : jobId should not be handled directly here. It is a function of Data Ingestion Validation
-    // The jobId will be moved there when Data Ingestion Validation starts.
-    long currentJobId = controlKafkaKey.getJobId();
-     switch(kafkaKey.getOperationType()) {
-       case BEGIN_OF_PUSH :
+  private void processControlMessage(com.linkedin.venice.kafka.protocol.ControlMessage controlMessage, int partition, long offset) {
+     switch(ControlMessageType.valueOf(controlMessage)) {
+       case START_OF_PUSH:
          reportStarted(partition);
-         logger.info(consumerTaskId + " : Received Begin of push message Setting resetting count. JobId " +
-             currentJobId + " partition " + partition + "Offset " + offset  );
+         logger.info(consumerTaskId + " : Received Begin of push message Setting resetting count. Partition: " +
+             partition + ", Offset: " + offset);
          break;
        case END_OF_PUSH:
-         logger.info(consumerTaskId + " : Receive End of Pushes message. " +
-              " JobId: " + currentJobId + " partition " + partition + " offset " + offset);
+         logger.info(consumerTaskId + " : Receive End of Pushes message. Partition: " + partition + ", Offset: " + offset);
          reportCompleted(partition);
          break;
        default:
-         throw new VeniceMessageException("Unrecognized Control message type " + kafkaKey.getOperationType());
+         throw new VeniceMessageException("Unrecognized Control message type " + controlMessage.controlMessageType);
     }
   }
 
@@ -375,13 +373,15 @@ public class StoreConsumptionTask implements Runnable, Closeable {
    *
    * @param record       ConsumerRecord consumed from Kafka
    */
-  private void processConsumerRecord(ConsumerRecord<KafkaKey, KafkaValue> record) {
+  private void processConsumerRecord(ConsumerRecord<KafkaKey, KafkaMessageEnvelope> record) {
     // De-serialize payload into Venice Message format
     KafkaKey kafkaKey = record.key();
-    KafkaValue kafkaValue = record.value();
+    KafkaMessageEnvelope kafkaValue = record.value();
 
-    if( OperationType.isControlOperation(kafkaKey.getOperationType())) {
-      processControlMessage(kafkaKey , record.partition(), record.offset());
+    if(kafkaKey.isControlMessage()) {
+      // TODO: Clean up our many kinds of "ControlMessage". There should be at most one thing called as such.
+      com.linkedin.venice.kafka.protocol.ControlMessage controlMessage = (com.linkedin.venice.kafka.protocol.ControlMessage) kafkaValue.payloadUnion;
+      processControlMessage(controlMessage, record.partition(), record.offset());
       return;
     }
 
@@ -404,27 +404,28 @@ public class StoreConsumptionTask implements Runnable, Closeable {
     }
   }
 
-  private void processVeniceMessage(KafkaKey kafkaKey, KafkaValue kafkaValue, int partition) {
+  private void processVeniceMessage(KafkaKey kafkaKey, KafkaMessageEnvelope kafkaValue, int partition) {
 
     long startTimeNs = -1;
     AbstractStorageEngine storageEngine = storeRepository.getLocalStorageEngine(topic);
 
     byte[] keyBytes = kafkaKey.getKey();
 
-    switch (kafkaValue.getOperationType()) {
+    switch (MessageType.valueOf(kafkaValue)) {
       case PUT:
         if (logger.isTraceEnabled()) {
           startTimeNs = System.nanoTime();
         }
-        storageEngine.put(partition, keyBytes, kafkaValue.getValue());
+        // If single-threaded, we can re-use (and clobber) the same Put instance. // TODO: explore GC tuning later.
+        Put put = (Put) kafkaValue.payloadUnion;
+        storageEngine.put(partition, keyBytes, put.putValue.array());
         if (logger.isTraceEnabled()) {
-          logger.trace(consumerTaskId + " : Completed PUT to Store: " + topic + " for key: " + ByteUtils
-                  .toHexString(keyBytes) + ", value: " + ByteUtils.toHexString(kafkaValue.getValue()) + " in " + (
-                  System.nanoTime() - startTimeNs) + " ns at " + System.currentTimeMillis());
+          logger.trace(consumerTaskId + " : Completed PUT to Store: " + topic + " for key: " +
+                  ByteUtils.toHexString(keyBytes) + ", value: " + ByteUtils.toHexString(put.putValue.array()) + " in " +
+                  (System.nanoTime() - startTimeNs) + " ns at " + System.currentTimeMillis());
         }
         break;
 
-      // deleting values
       case DELETE:
         if (logger.isTraceEnabled()) {
           startTimeNs = System.nanoTime();
@@ -433,20 +434,18 @@ public class StoreConsumptionTask implements Runnable, Closeable {
         storageEngine.delete(partition, keyBytes);
 
         if (logger.isTraceEnabled()) {
-          logger.trace(consumerTaskId + " : Completed DELETE to Store: " + topic + " for key: " + ByteUtils
-                  .toHexString(keyBytes) + " in " + (System.nanoTime() - startTimeNs) + " ns at " + System
-                  .currentTimeMillis());
+          logger.trace(consumerTaskId + " : Completed DELETE to Store: " + topic + " for key: " +
+                  ByteUtils.toHexString(keyBytes) + " in " + (System.nanoTime() - startTimeNs) + " ns at " +
+                  System.currentTimeMillis());
         }
         break;
 
-      // partial update
-      case PARTIAL_WRITE:
-        throw new UnsupportedOperationException(consumerTaskId + " : Partial puts not yet implemented");
-
-        // error
+      case CONTROL_MESSAGE:
+        logger.info("Received a control message! Marvelous.");
+        break;
       default:
         throw new VeniceMessageException(
-                consumerTaskId + " : Invalid/Unrecognized operation type submitted: " + kafkaValue.getOperationType());
+                consumerTaskId + " : Invalid/Unrecognized operation type submitted: " + kafkaValue.messageType);
     }
   }
 

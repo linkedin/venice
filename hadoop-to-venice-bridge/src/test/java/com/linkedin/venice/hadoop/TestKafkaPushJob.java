@@ -186,6 +186,8 @@ public class TestKafkaPushJob {
 
     KafkaPushJob job = new KafkaPushJob("Test push job", props);
     job.run();
+
+    // No need for asserts, because we are expecting an exception to be thrown!
   }
 
   @Test(expectedExceptions = VeniceSchemaFieldNotFoundException.class, expectedExceptionsMessageRegExp = ".*key field: id1 is not found.*")
@@ -200,6 +202,8 @@ public class TestKafkaPushJob {
 
     KafkaPushJob job = new KafkaPushJob("Test push job", props);
     job.run();
+
+    // No need for asserts, because we are expecting an exception to be thrown!
   }
 
   @Test(expectedExceptions = VeniceSchemaFieldNotFoundException.class, expectedExceptionsMessageRegExp = ".*value field: name1 is not found.*")
@@ -215,6 +219,8 @@ public class TestKafkaPushJob {
 
     KafkaPushJob job = new KafkaPushJob("Test push job", props);
     job.run();
+
+    // No need for asserts, because we are expecting an exception to be thrown!
   }
 
   @Test(expectedExceptions = RuntimeException.class, expectedExceptionsMessageRegExp = ".*should not have sub directory: sub-dir.*")
@@ -231,6 +237,8 @@ public class TestKafkaPushJob {
 
     KafkaPushJob job = new KafkaPushJob("Test push job", props);
     job.run();
+
+    // No need for asserts, because we are expecting an exception to be thrown!
   }
 
   @Test

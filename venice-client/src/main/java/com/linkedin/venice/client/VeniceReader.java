@@ -3,6 +3,7 @@ package com.linkedin.venice.client;
 import static com.linkedin.venice.ConfigKeys.*;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixSpectatorService;
+import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.message.KafkaKey;
@@ -86,7 +87,8 @@ public class VeniceReader<K, V> {
     List<Instance> instances;
     int partition;
     int numberOfPartitions = spectatorService.getRoutingDataRepository().getNumberOfPartitions(storeName);
-    KafkaKey kafkaKey = new KafkaKey(null, keyBytes);
+    // Probably not appropriate to use a KafkaKey here... The name is pretty self-explanatory, it's intended for Kafka. TODO: fix this
+    KafkaKey kafkaKey = new KafkaKey(MessageType.PUT, keyBytes);
     partition = partitioner.getPartitionId(kafkaKey, numberOfPartitions);
     instances=spectatorService.getRoutingDataRepository().getInstances(storeName, partition);
     if (instances.size() < 1){

@@ -2,13 +2,15 @@ package com.linkedin.venice.client;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.producer.KafkaProducerWrapper;
-import com.linkedin.venice.message.ControlFlagKafkaKey;
+import com.linkedin.venice.kafka.protocol.*;
+import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
+import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.message.KafkaKey;
-import com.linkedin.venice.message.KafkaValue;
-import com.linkedin.venice.message.OperationType;
 import com.linkedin.venice.serialization.VeniceSerializer;
 import com.linkedin.venice.utils.VeniceProperties;
 
+import java.nio.ByteBuffer;
+import java.util.HashMap;
 import java.util.concurrent.Future;
 
 import org.apache.kafka.clients.producer.RecordMetadata;
@@ -23,13 +25,11 @@ public class VeniceWriter<K, V> {
   // log4j logger
   static final Logger logger = Logger.getLogger(VeniceWriter.class.getName());
 
-  protected final KafkaProducerWrapper producer;
-
-  protected VeniceProperties props;
+  protected final VeniceProperties props;
   protected final String storeName;
   protected final VeniceSerializer<K> keySerializer;
   protected final VeniceSerializer<V> valueSerializer;
-
+  protected final KafkaProducerWrapper producer;
 
   public VeniceWriter(VeniceProperties props, String storeName, VeniceSerializer<K> keySerializer, VeniceSerializer<V> valueSerializer) {
     this.props = props;
@@ -53,9 +53,10 @@ public class VeniceWriter<K, V> {
    * completes and then return the metadata for the record or throw any exception that occurred while sending the record.
    */
   public Future<RecordMetadata> delete(K key) {
-    // Ensure the Operation type for KafkaKey is WRITE. And the actual Operation type DELETE is used in KafkaValue
-    KafkaKey kafkaKey = new KafkaKey(OperationType.WRITE, keySerializer.serialize(storeName, key));
-    KafkaValue kafkaValue = new KafkaValue(OperationType.DELETE);
+    KafkaKey kafkaKey = new KafkaKey(MessageType.DELETE, keySerializer.serialize(storeName, key));
+
+    KafkaMessageEnvelope kafkaValue = getKafkaMessageEnvelope(MessageType.DELETE);
+
     return producer.sendMessage(storeName, kafkaKey, kafkaValue);
   }
 
@@ -69,42 +70,44 @@ public class VeniceWriter<K, V> {
    * completes and then return the metadata for the record or throw any exception that occurred while sending the record.
    */
   public Future<RecordMetadata> put(K key, V value) {
-    // Ensure the Operation type for KafkaKey is WRITE. And the actual Operation type PUT is used in KafkaValue
-    KafkaKey kafkaKey = new KafkaKey(OperationType.WRITE, keySerializer.serialize(storeName, key));
-    KafkaValue kafkaValue = new KafkaValue(OperationType.PUT, valueSerializer.serialize(storeName, value));
+    KafkaKey kafkaKey = new KafkaKey(MessageType.PUT, keySerializer.serialize(storeName, key));
+
+    // Initialize the SpecificRecord instances used by the Avro-based Kafka protocol
+    KafkaMessageEnvelope kafkaValue = getKafkaMessageEnvelope(MessageType.PUT);
+    Put putPayload = new Put();
+    putPayload.putValue = ByteBuffer.wrap(valueSerializer.serialize(storeName, value));
+    putPayload.schemaId = -1; // TODO: Use proper schema ID.
+    kafkaValue.payloadUnion = putPayload;
+
     try {
       return producer.sendMessage(storeName, kafkaKey, kafkaValue);
     } catch (Exception e) {
-      throw new VeniceException(" Got an exception while trying to produce to Kafka.", e);
+      throw new VeniceException("Got an error while trying to produce to Kafka.", e);
     }
   }
 
   /**
    * Send a control message to all the Partitions for a topic
    *
-   * @param opType OperationType to be sent.
-   * @param jobId jobId sending the control message.
+   * @param controlMessageType OperationType to be sent.
    */
-  public void writeControlMessage(OperationType opType, long jobId) {
-    ControlFlagKafkaKey key = new ControlFlagKafkaKey(opType, new byte[]{} , jobId );
-    KafkaValue value = new KafkaValue(opType);
+  public void broadcastControlMessage(ControlMessageType controlMessageType) {
+    KafkaKey kafkaKey = new KafkaKey(MessageType.CONTROL_MESSAGE, new byte[]{});
+
+    // Initialize the SpecificRecord instances used by the Avro-based Kafka protocol
+    KafkaMessageEnvelope value = getKafkaMessageEnvelope(MessageType.CONTROL_MESSAGE);
+    ControlMessage controlMessage = new ControlMessage();
+    controlMessage.controlMessageType = controlMessageType.getValue();
+    controlMessage.debugInfo = new HashMap<>(); // TODO: Expose this in the API
+    controlMessage.controlMessageUnion = controlMessageType.getNewInstance();
+    value.payloadUnion = controlMessage;
 
     try {
-      producer.sendControlMessage(storeName, key, value);
+      producer.broadcastMessage(storeName, kafkaKey, value);
     } catch (Exception e) {
-      throw new VeniceException(" Got an exception while trying to send control message to Kafka " + opType, e);
+      throw new VeniceException("Got an error while trying to broadcast '" + controlMessageType.name() +
+          "' control message to Kafka.", e);
     }
-  }
-
-  /**
-   * Execute a standard "partial put" on the key.
-   *
-   * @param key   - The key to put in storage.
-   * @param value - The value to be associated with the given key
-   */
-  public void putPartial(K key, V value) {
-
-    throw new UnsupportedOperationException("Partial put is not supported yet.");
   }
 
   public void close() {
@@ -113,5 +116,30 @@ public class VeniceWriter<K, V> {
 
   public String getStoreName() {
     return storeName;
+  }
+
+  /**
+   * A utility function to centralize some boiler plate code for the instantiation of
+   * {@link org.apache.avro.specific.SpecificRecord} classes holding the content of our
+   * Kafka values.
+   *
+   * @param messageType an instance of the {@link MessageType} enum.
+   * @return A {@link KafkaMessageEnvelope} suitable for producing into Kafka
+   */
+  private KafkaMessageEnvelope getKafkaMessageEnvelope(MessageType messageType) {
+    // If single-threaded, the kafkaValue could be re-used (and clobbered). TODO: explore GC tuning later.
+    KafkaMessageEnvelope kafkaValue = new KafkaMessageEnvelope();
+    kafkaValue.messageType = messageType.getValue();
+
+    // TODO: Populate producer metadata properly
+    ProducerMetadata producerMetadata = new ProducerMetadata();
+    producerMetadata.producerGUID = new GUID();
+    producerMetadata.producerGUID.bytes(new byte[16]);
+    producerMetadata.messageSequenceNumber = -1;
+    producerMetadata.segmentNumber = -1;
+    producerMetadata.messageTimestamp = -1;
+    kafkaValue.producerMetadata = producerMetadata;
+
+    return kafkaValue;
   }
 }

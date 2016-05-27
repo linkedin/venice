@@ -7,8 +7,8 @@ package com.linkedin.venice.kafka.protocol;
 
 @SuppressWarnings("all")
 /** Put payloads contain a record value, and information on how to deserialize it. */
-public class PutValue extends org.apache.avro.specific.SpecificRecordBase implements org.apache.avro.specific.SpecificRecord {
-  public static final org.apache.avro.Schema SCHEMA$ = org.apache.avro.Schema.parse("{\"type\":\"record\",\"name\":\"PutValue\",\"namespace\":\"com.linkedin.venice.kafka.protocol\",\"fields\":[{\"name\":\"schemaId\",\"type\":\"int\",\"doc\":\"An identifier used to determine how the PutValue can be deserialized.\"},{\"name\":\"putValue\",\"type\":\"bytes\",\"doc\":\"The record's value to be persisted in the storage engine.\"}]}");
+public class Put extends org.apache.avro.specific.SpecificRecordBase implements org.apache.avro.specific.SpecificRecord {
+  public static final org.apache.avro.Schema SCHEMA$ = org.apache.avro.Schema.parse("{\"type\":\"record\",\"name\":\"Put\",\"namespace\":\"com.linkedin.venice.kafka.protocol\",\"fields\":[{\"name\":\"schemaId\",\"type\":\"int\",\"doc\":\"An identifier used to determine how the PutValue can be deserialized.\"},{\"name\":\"putValue\",\"type\":\"bytes\",\"doc\":\"The record's value to be persisted in the storage engine.\"}]}");
   /** An identifier used to determine how the PutValue can be deserialized. */
   public int schemaId;
   /** The record's value to be persisted in the storage engine. */

@@ -1,9 +1,8 @@
 package com.linkedin.venice.partitioner;
 
+import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.message.KafkaKey;
-import com.linkedin.venice.message.OperationType;
 import com.linkedin.venice.utils.ByteUtils;
-import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.util.Properties;
 
@@ -38,10 +37,8 @@ public abstract class VenicePartitioner {
      * @return
      */
     public int getPartitionId(KafkaKey key, int numPartitions) { //TODO: Support partitioning on a raw byte[]
-        OperationType opType = key.getOperationType();
-
         // Check if the key is for sending a control message
-        if (opType == OperationType.BEGIN_OF_PUSH || opType == OperationType.END_OF_PUSH) {
+        if (key.isControlMessage()) {
             return ByteUtils.readInt(key.getKey(), 0);
         }
         return getPartitionIdImplementation(key, numPartitions);

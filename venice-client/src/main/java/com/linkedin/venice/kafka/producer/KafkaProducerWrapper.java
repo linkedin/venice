@@ -2,9 +2,8 @@ package com.linkedin.venice.kafka.producer;
 
 import com.linkedin.venice.exceptions.ConfigurationException;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.message.ControlFlagKafkaKey;
+import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.message.KafkaKey;
-import com.linkedin.venice.message.KafkaValue;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.serialization.KafkaKeySerializer;
@@ -24,7 +23,7 @@ import org.apache.kafka.clients.producer.RecordMetadata;
  */
 public class KafkaProducerWrapper {
 
-  private final KafkaProducer<KafkaKey, KafkaValue> producer;
+  private final KafkaProducer<KafkaKey, KafkaMessageEnvelope> producer;
   private final String PROPERTIES_KAFKA_PREFIX = "kafka.";
   private final VenicePartitioner partitioner;
 
@@ -59,8 +58,8 @@ public class KafkaProducerWrapper {
     }
   }
 
-  private Future<RecordMetadata> sendMessageToPartition(String topic, KafkaKey key, KafkaValue value, int partition) {
-    ProducerRecord<KafkaKey, KafkaValue> kafkaRecord = new ProducerRecord<>(topic,
+  private Future<RecordMetadata> sendMessageToPartition(String topic, KafkaKey key, KafkaMessageEnvelope value, int partition) {
+    ProducerRecord<KafkaKey, KafkaMessageEnvelope> kafkaRecord = new ProducerRecord<>(topic,
             partition,
             key,
             value);
@@ -77,21 +76,24 @@ public class KafkaProducerWrapper {
      * Sends a message to the Kafka Producer. If everything is set up correctly, it will show up in Kafka log.
      * @param topic - The topic to be sent to.
      * @param key - The key of the message to be sent.
-     * @param value - The KafkaValue, which acts as the Kafka payload.
+     * @param value - The {@link KafkaMessageEnvelope}, which acts as the Kafka value.
      * */
-  public Future<RecordMetadata> sendMessage(String topic, KafkaKey key, KafkaValue value) {
+  public Future<RecordMetadata> sendMessage(String topic, KafkaKey key, KafkaMessageEnvelope value) {
     int numberOfPartitions = getNumberOfPartitions(topic);
     int partition = partitioner.getPartitionId(key, numberOfPartitions);
     return sendMessageToPartition(topic, key, value, partition);
   }
 
   /**
-   * Sends a control message to all the partitions in the kafka topic for storage nodes to consume.
+   * Sends a message to all the partitions in the kafka topic for storage nodes to consume.
+   *
+   * Useful for some of the {@link com.linkedin.venice.kafka.protocol.ControlMessage}.
+   *
    * @param topic - The topic to be sent to.
    * @param key - The key of the message to be sent.
-   * @param value - The KafkaValue, which acts as the Kafka payload.
+   * @param value - The {@link KafkaMessageEnvelope}, which acts as the Kafka value.
    */
-  public void sendControlMessage(String topic, ControlFlagKafkaKey key, KafkaValue value) {
+  public void broadcastMessage(String topic, KafkaKey key, KafkaMessageEnvelope value) {
     int numberOfPartitions = producer.partitionsFor(topic).size();
     for(int partition = 0; partition < numberOfPartitions ; partition ++) {
       sendMessageToPartition(topic, key, value, partition);
