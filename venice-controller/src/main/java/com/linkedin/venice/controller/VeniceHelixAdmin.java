@@ -141,15 +141,6 @@ public class VeniceHelixAdmin implements Admin {
         repository.addStore(store);
     }
 
-    @Override
-    public synchronized  Version addVersion(String clusterName, String storeName, int versionNumber) {
-        checkControllerMastership(clusterName);
-        VeniceControllerClusterConfig config =
-            controllerStateModelFactory.getModel(clusterName).getResources().getConfig();
-        return this.addVersion(clusterName, storeName, versionNumber, config.getNumberOfPartition(),
-            config.getReplicaFactor());
-    }
-
     /**
      * Throws VeniceException if the version is unavailable for reservation
      *

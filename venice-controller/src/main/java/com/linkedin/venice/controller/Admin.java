@@ -14,8 +14,6 @@ public interface Admin {
 
     void addStore(String clusterName, String storeName, String owner);
 
-    Version addVersion(String clusterName, String storeName, int versionNumber);
-
     Version addVersion(String clusterName, String storeName, int versionNumber, int numberOfPartition,
         int replicaFactor);
 
