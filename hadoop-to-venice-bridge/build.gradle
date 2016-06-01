@@ -28,6 +28,9 @@ dependencies {
     compile libraries.jdom
     compile libraries.jacksonCore
 
+    compile libraries.xerces
+    compile libraries.xalan
+
     testCompile project(':venice-client')
     testCompile project(':venice-common').sourceSets.test.output
     testCompile project(':venice-controller')

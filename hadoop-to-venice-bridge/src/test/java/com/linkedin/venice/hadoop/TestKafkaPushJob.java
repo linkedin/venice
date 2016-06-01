@@ -135,6 +135,8 @@ public class TestKafkaPushJob {
   private Properties setupDefaultProps(String inputDirPath) {
     Properties props = new Properties();
     props.put(KafkaPushJob.VENICE_ROUTER_URL_PROP, "http://" + veniceCluster.getVeniceRouter().getAddress());
+    props.put(KafkaPushJob.KAFKA_URL_PROP, veniceCluster.getKafka().getAddress());
+    props.put(KafkaPushJob.KAFKA_ZOOKEEPER_PROP, veniceCluster.getZk().getAddress());
     props.put(KafkaPushJob.VENICE_CLUSTER_NAME_PROP, veniceCluster.getClusterName());
     props.put(KafkaPushJob.VENICE_STORE_NAME_PROP, "user");
     props.put(KafkaPushJob.VENICE_STORE_OWNERS_PROP, "test@linkedin.com");

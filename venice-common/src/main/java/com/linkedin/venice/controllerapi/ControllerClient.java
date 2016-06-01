@@ -134,6 +134,10 @@ public class ControllerClient implements Closeable {
       String routerUrl, String clusterName, String storeName, String owner, long storeSize, String keySchema, String valueSchema) {
     try (ControllerClient client = new ControllerClient(routerUrl)){
       return client.createNewStoreVersion(clusterName, storeName, owner, storeSize, keySchema, valueSchema);
+    } catch (VeniceException e){
+      VersionCreationResponse errorResponse = new VersionCreationResponse();
+      errorResponse.setError(e.getMessage());
+      return errorResponse;
     }
   }
 
@@ -158,6 +162,10 @@ public class ControllerClient implements Closeable {
   public static NewStoreResponse createNewStore(String routerUrls, String clusterName, String storeName, String owner){
     try (ControllerClient client = new ControllerClient(routerUrls)){
       return client.createNewStore(clusterName, storeName, owner);
+    } catch (VeniceException e){
+      NewStoreResponse errorResponse = new NewStoreResponse();
+      errorResponse.setError(e.getMessage());
+      return errorResponse;
     }
   }
 
@@ -206,6 +214,10 @@ public class ControllerClient implements Closeable {
   public static JobStatusQueryResponse queryJobStatus(String routerUrls, String clusterName, String kafkaTopic){
     try (ControllerClient client = new ControllerClient(routerUrls)){
       return client.queryJobStatus(clusterName, kafkaTopic);
+    } catch (VeniceException e){
+      JobStatusQueryResponse errorResponse = new JobStatusQueryResponse();
+      errorResponse.setError(e.getMessage());
+      return errorResponse;
     }
   }
 
@@ -228,6 +240,10 @@ public class ControllerClient implements Closeable {
   public static MultiStoreResponse queryStoreList(String routerUrls, String clusterName){
     try (ControllerClient client = new ControllerClient(routerUrls)){
       return client.queryStoreList(clusterName);
+    } catch (VeniceException e){
+      MultiStoreResponse errorResponse = new MultiStoreResponse();
+      errorResponse.setError(e.getMessage());
+      return errorResponse;
     }
   }
 
@@ -260,6 +276,10 @@ public class ControllerClient implements Closeable {
   public static VersionResponse queryNextVersion(String routerUrls, String clusterName, String storeName){
     try (ControllerClient client = new ControllerClient(routerUrls)){
       return client.queryNextVersion(clusterName, storeName);
+    } catch (VeniceException e){
+      VersionResponse errorResponse = new VersionResponse();
+      errorResponse.setError(e.getMessage());
+      return errorResponse;
     }
   }
 
@@ -284,6 +304,10 @@ public class ControllerClient implements Closeable {
   public static VersionResponse queryCurrentVersion(String routerUrls, String clusterName, String storeName){
     try (ControllerClient client = new ControllerClient(routerUrls)){
       return client.queryCurrentVersion(clusterName, storeName);
+    } catch (VeniceException e){
+      VersionResponse errorResponse = new VersionResponse();
+      errorResponse.setError(e.getMessage());
+      return errorResponse;
     }
   }
 
@@ -307,6 +331,10 @@ public class ControllerClient implements Closeable {
   public static MultiVersionResponse queryActiveVersions(String routerUrls, String clusterName, String storeName){
     try (ControllerClient client = new ControllerClient(routerUrls)){
       return client.queryActiveVersions(clusterName, storeName);
+    } catch (VeniceException e){
+      MultiVersionResponse errorResponse = new MultiVersionResponse();
+      errorResponse.setError(e.getMessage());
+      return errorResponse;
     }
   }
 
@@ -341,6 +369,10 @@ public class ControllerClient implements Closeable {
   public static VersionResponse reserveVersion(String routerUrls, String clusterName, String storeName, int version){
     try (ControllerClient client = new ControllerClient(routerUrls)){
       return client.reserveVersion(clusterName, storeName, version);
+    } catch (VeniceException e){
+      VersionResponse errorResponse = new VersionResponse();
+      errorResponse.setError(e.getMessage());
+      return errorResponse;
     }
   }
 

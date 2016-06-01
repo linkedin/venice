@@ -1,10 +1,12 @@
 package com.linkedin.venice.controller;
 
+import com.linkedin.venice.controller.kafka.TopicMonitor;
 import com.linkedin.venice.controller.server.AdminSparkServer;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.Utils;
+import java.util.concurrent.TimeUnit;
 import org.apache.log4j.Logger;
 
 /**
@@ -17,6 +19,7 @@ public class VeniceController {
   //services
   VeniceControllerService controllerService;
   AdminSparkServer adminServer;
+  TopicMonitor topicMonitor;
 
   private final VeniceControllerConfig config;
 
@@ -30,6 +33,11 @@ public class VeniceController {
     adminServer = new AdminSparkServer(
         config.getAdminPort(),
         controllerService.getVeniceHelixAdmin());
+    topicMonitor = new TopicMonitor(
+        controllerService.getVeniceHelixAdmin(),
+        config.getClusterName(),
+        config.getReplicaFactor(),
+        10, TimeUnit.SECONDS); /* poll every 10 sec, TODO: configurable, long poll makes tests slower */
   }
 
   public void start(){
@@ -37,12 +45,14 @@ public class VeniceController {
         + " with ZKAddress: " + config.getZkAddress());
     controllerService.start();
     adminServer.start();
+    topicMonitor.start();
     logger.info("Controller is started.");
   }
 
 
   public void stop(){
     //TODO: we may want a dependency structure so we ensure services are shutdown in the correct order.
+    AbstractVeniceService.stopIfNotNull(topicMonitor);
     AbstractVeniceService.stopIfNotNull(adminServer);
     AbstractVeniceService.stopIfNotNull(controllerService);
   }

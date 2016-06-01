@@ -1,4 +1,4 @@
-package com.linkedin.venice.controller.kafka;
+package com.linkedin.venice;
 
 import java.util.Properties;
 import kafka.admin.AdminUtils;

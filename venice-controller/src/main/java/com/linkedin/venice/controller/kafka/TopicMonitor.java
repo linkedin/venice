@@ -27,12 +27,14 @@ public class TopicMonitor extends AbstractVeniceService {
   private long pollIntervalMs;
   private TopicMonitorRunnable monitor;
   private Thread runner;
+  private int replicationFactor;
 
 
-  public TopicMonitor(Admin admin, String clusterName, long pollInterval, TimeUnit pollIntervalUnits) {
+  public TopicMonitor(Admin admin, String clusterName, int replicationFactor, long pollInterval, TimeUnit pollIntervalUnits) {
     super("TOPIC-MONITOR-SERVICE");
     this.admin = admin;
     this.clusterName = clusterName;
+    this.replicationFactor = replicationFactor;
     this.pollIntervalMs = pollIntervalUnits.toMillis(pollInterval);
   }
 
@@ -93,8 +95,7 @@ public class TopicMonitor extends AbstractVeniceService {
                   List<Version> currentVersions = admin.versionsForStore(clusterName, storeName); /* throws VeniceNoStore */
                   if (isValidNewVersion(version, currentVersions)) {
                     int partitions = entry.getValue().size();
-                    int replication = 3;
-                    admin.addVersion(clusterName, storeName, version, partitions, replication);
+                    admin.addVersion(clusterName, storeName, version, partitions, replicationFactor);
                   }
                 } catch (VeniceNoStoreException e) {
                   logger.warn("There is a topic " + topic + " for store " + storeName + " but that store is not initialized in Venice");

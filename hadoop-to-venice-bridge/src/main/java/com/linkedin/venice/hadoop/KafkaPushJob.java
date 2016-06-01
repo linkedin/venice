@@ -1,13 +1,15 @@
 package com.linkedin.venice.hadoop;
 
+import com.linkedin.venice.TopicCreator;
 import com.linkedin.venice.client.VeniceWriter;
 import com.linkedin.venice.controllerapi.ControllerClient;
-import com.linkedin.venice.controllerapi.VersionCreationResponse;
+import com.linkedin.venice.controllerapi.NewStoreResponse;
+import com.linkedin.venice.controllerapi.VersionResponse;
 import com.linkedin.venice.hadoop.exceptions.VeniceInconsistentSchemaException;
 import com.linkedin.venice.hadoop.exceptions.VeniceSchemaFieldNotFoundException;
-import com.linkedin.venice.hadoop.exceptions.VeniceStoreCreationException;
 import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
 import com.linkedin.venice.message.KafkaKey;
+import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.serialization.DefaultSerializer;
 import com.linkedin.venice.serialization.KafkaKeySerializer;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -65,6 +67,7 @@ public class KafkaPushJob {
   public static final String SCHEMA_STRING_PROP = "schema";
   public static final String SCHEMA_ID_PROP = "schema.id";
   public static final String KAFKA_URL_PROP = "kafka.url";
+  public static final String KAFKA_ZOOKEEPER_PROP = "kafka.zk";
   public static final String TOPIC_PROP = "kafka.topic";
   public static final String INPUT_PATH_PROP = "input.path";
   public static final String BATCH_NUM_BYTES_PROP = "batch.num.bytes";
@@ -101,8 +104,9 @@ public class KafkaPushJob {
   private String valueSchemaString;
   private Schema parsedFileSchema;
   private Properties props;
-  // We will override kafkaUrl and topic if it is a store push
   private String kafkaUrl;
+  private String kafkaZk;
+  // We will override topic if it is a store push
   private String topic;
   // Total input data size, which is used to talk to controller to decide whether we have enough quota or not
   private long inputFileDataSize;
@@ -119,8 +123,14 @@ public class KafkaPushJob {
             .withRequiredArg()
             .describedAs("kafka-url")
             .ofType(String.class);
+    OptionSpec<String> kafkaZkOpt =
+        parser.accepts("kafka-zk", "REQUIRED: Zookeeper connection string for Kafka")
+        .withRequiredArg()
+        .describedAs("kafka-zk")
+        .ofType(String.class);
     OptionSpec<String> veniceUrlOpt =
-            parser.accepts("venice-router-url", "REQUIRED: comma-delimeted venice URLs")
+            parser.accepts("venice-router-url", "REQUIRED: comma-delimeted venice URLs.  "
+                +"If pushing to multiple datacenters, use a semi-colon to separate lists of URLs")
                     .withRequiredArg()
                     .describedAs("venice-url")
                     .ofType(String.class);
@@ -171,20 +181,20 @@ public class KafkaPushJob {
     OptionSpec[] expectedOptions = {inputPathOpt,  keyFieldOpt, valueFieldOpt};
     validateExpectedArguments( expectedOptions, options, parser);
 
-    // Either Kafka Url or VeniceUrl should be present
-    boolean isKafkaUrlPresent = options.has(kafkaUrlOpt);
+    // Only one of the VeniceUrl and Topic must be specified
     boolean isVeniceUrlPresent = options.has(veniceUrlOpt);
+    boolean isTopicPresent = options.has(topicOpt);
 
     Properties props = new Properties();
 
     String kafkaUrl;
     String topicName;
-    if(isKafkaUrlPresent && isVeniceUrlPresent) {
-      String errorMessage = "Both Kafka and Venice Urls present, only one of them should be supplied. Kafka " +
-              kafkaUrlOpt + " Venice " + veniceUrlOpt;
+    if(isTopicPresent && isVeniceUrlPresent) {
+      String errorMessage = "Both Topic and Venice Urls present, only one of them should be supplied. Topic " +
+              topicOpt + " Venice " + veniceUrlOpt;
       logger.error(errorMessage);
       throw new VeniceException(errorMessage);
-    } else if(isKafkaUrlPresent) {
+    } else if(isTopicPresent) {
       validateExpectedArguments( new OptionSpec[] { kafkaUrlOpt, topicOpt}, options, parser);
       kafkaUrl = options.valueOf(kafkaUrlOpt);
       topicName = options.valueOf(topicOpt);
@@ -193,14 +203,17 @@ public class KafkaPushJob {
       props.put(TOPIC_PROP, topicName);
 
     } else if ( isVeniceUrlPresent) {
-      validateExpectedArguments(new OptionSpec[] {clusterNameOpt, veniceUrlOpt, storeNameOpt, storeOwnersOpt}, options, parser);
+      validateExpectedArguments(new OptionSpec[] {clusterNameOpt, veniceUrlOpt, kafkaUrlOpt, kafkaZkOpt, storeNameOpt, storeOwnersOpt},
+          options, parser);
 
       props.put(VENICE_CLUSTER_NAME_PROP, options.valueOf(clusterNameOpt));
       props.put(VENICE_ROUTER_URL_PROP, options.valueOf(veniceUrlOpt));
+      props.put(KAFKA_URL_PROP, options.valueOf(kafkaUrlOpt));
+      props.put(KAFKA_ZOOKEEPER_PROP, options.valueOf(kafkaZkOpt));
       props.put(VENICE_STORE_NAME_PROP, options.valueOf(storeNameOpt));
       props.put(VENICE_STORE_OWNERS_PROP, options.valueOf(storeOwnersOpt));
     }  else {
-      String errorMessage = "At least one of the Options should be present " + kafkaUrlOpt + " Or " + veniceUrlOpt;
+      String errorMessage = "At least one of the Options should be present " + topicOpt + " Or " + veniceUrlOpt;
       logger.error(errorMessage);
       throw new VeniceException(errorMessage);
     }
@@ -248,16 +261,16 @@ public class KafkaPushJob {
     this.veniceRouterUrl = props.getProperty(VENICE_ROUTER_URL_PROP);
     this.storeName = props.getProperty(VENICE_STORE_NAME_PROP);
     this.storeOwners = props.getProperty(VENICE_STORE_OWNERS_PROP);
+    this.kafkaUrl = props.getProperty(KAFKA_URL_PROP);
+    this.kafkaZk = props.getProperty(KAFKA_ZOOKEEPER_PROP);
 
-    String kafkaUrl = props.getProperty(KAFKA_URL_PROP);
     String kafkaTopic = props.getProperty(TOPIC_PROP);
 
-    boolean isKafkaUrlMissing = Utils.isNullOrEmpty(kafkaUrl);
     boolean isKafkaTopicMissing = Utils.isNullOrEmpty(kafkaTopic);
 
-    if(isKafkaUrlMissing || isKafkaTopicMissing) {
+    if(isKafkaTopicMissing) {
       if (Utils.isNullOrEmpty(veniceRouterUrl)) {
-        throw new VeniceException("At least one of the " + VENICE_ROUTER_URL_PROP + " or " + KAFKA_URL_PROP + " must be specified.");
+        throw new VeniceException("At least one of the " + VENICE_ROUTER_URL_PROP + " or " + TOPIC_PROP + " must be specified.");
       }
       if (Utils.isNullOrEmpty(storeName)) {
         throw new VeniceException(VENICE_STORE_NAME_PROP + " is required for Starting a push");
@@ -265,10 +278,15 @@ public class KafkaPushJob {
       if (Utils.isNullOrEmpty(storeOwners)) {
         throw new VeniceException(VENICE_STORE_OWNERS_PROP + " is required for Starting a push");
       }
+      if (Utils.isNullOrEmpty(kafkaUrl)) {
+        throw new VeniceException(KAFKA_URL_PROP + " is required for Starting a push");
+      }
+      if (Utils.isNullOrEmpty(kafkaZk)) {
+        throw new VeniceException(KAFKA_ZOOKEEPER_PROP + " is required for Starting a push");
+      }
       this.storePush = true;
     } else {
       this.storePush = false;
-      this.kafkaUrl = kafkaUrl;
       this.topic = kafkaTopic;
       logger.warn ("Running the job in debug mode, Controller will not be informed of a new push");
     }
@@ -311,7 +329,11 @@ public class KafkaPushJob {
 
     // If the current job is for a store push, we need to pull Kafka Url/Topic from Venice Controller
     if (storePush) {
-      populateKafkaInfoForNewStorePush();
+      createStoreIfNeeded();
+      int nextVersion = getNextVersionFromVenice();
+      reserveNextVersion(nextVersion); /* Throws VeniceException if reservation fails */
+      topic = new Version(storeName, nextVersion).kafkaTopicName();
+      createTopic();
     }
     // Log job properties
     logJobProperties();
@@ -334,36 +356,88 @@ public class KafkaPushJob {
     if (!runningJob.isSuccessful()) {
       throw new RuntimeException("KafkaPushJob failed");
     }
-    sendControlMessage(ControlMessageType.END_OF_PUSH);
+    sendControlMessage(ControlMessageType.END_OF_PUSH); //TODO: send a failure END OF PUSH message if something went wrong
 
     if (!storePush){
       logger.info("No controller provided, skipping poll of push status, job completed");
     } else {
-      // Throws a VeniceException if the job completes with a failed status
-      ControllerClient.pollJobStatusUntilFinished(Time.MS_PER_SECOND, 5*Time.MS_PER_MINUTE, veniceRouterUrl, clusterName, topic);
+
+      String[] perDatacenterRouterUrls = veniceRouterUrl.split(";");
+      for (String routerUrl : perDatacenterRouterUrls) {
+        // Throws a VeniceException if the job completes with a failed status
+        // TODO: break out polling logic to distinguish returned error (which should fail the job)
+        //       from connection error (which should be ignored as long as another datacenter returns happy)
+        ControllerClient
+            .pollJobStatusUntilFinished(Time.MS_PER_SECOND, 5 * Time.MS_PER_MINUTE, routerUrl, clusterName, topic);
+      }
     }
   }
 
-  private void populateKafkaInfoForNewStorePush() {
-    if (!storePush) {
-      return;
+  // TODO: remove this.  Store creation should be done out-of-band
+  private void createStoreIfNeeded(){
+    String[] perDatacenterRouterUrls = veniceRouterUrl.split(";");
+    for (String routerUrl : perDatacenterRouterUrls){
+      NewStoreResponse response = ControllerClient.createNewStore(routerUrl, clusterName, storeName, "H2V-user");
+      if (response.isError()){
+        logger.warn("Error creating new store with routers: " + routerUrl + "  " + response.getError());
+      }
     }
-    VersionCreationResponse response = ControllerClient.createStoreVersion(veniceRouterUrl, clusterName, storeName,
-            storeOwners, inputFileDataSize, keySchemaString, valueSchemaString);
-    if (response.isError()) {
-      throw new VeniceStoreCreationException(storeName, "Received error from Venice Controller for new store push: " +
-              response.getError());
+  }
+
+  private int getNextVersionFromVenice(){
+    String[] perDatacenterRouterUrls = veniceRouterUrl.split(";");
+    int numberOfDatacenters = perDatacenterRouterUrls.length;
+    int requiredNumberOfDatacenters = (numberOfDatacenters / 2) + 1; /* strict majority */
+    int numberOfDatacentersResponding = 0;
+    int maxNextVersion = -1;
+    for (String routerUrl : perDatacenterRouterUrls){
+      VersionResponse nextVersionResponse = ControllerClient.queryNextVersion(routerUrl, clusterName, storeName);
+      if (nextVersionResponse.isError()){ /* Also triggers on connection failure or timeout */
+        logger.warn("Could not query next version from routers: " + routerUrl + "  " + nextVersionResponse.getError());
+      } else {
+        if (nextVersionResponse.getVersion() > maxNextVersion){
+          maxNextVersion = nextVersionResponse.getVersion();
+        }
+        numberOfDatacentersResponding++;
+      }
     }
-    kafkaUrl = response.getKafkaBootstrapServers();
-    if (Utils.isNullOrEmpty(kafkaUrl)) {
-      throw new VeniceStoreCreationException(storeName, "Venice Controller returned empty kafka url " + kafkaUrl);
+    if (numberOfDatacentersResponding < requiredNumberOfDatacenters){
+      throw new VeniceException("Unable to query next version from minimum of "
+          + requiredNumberOfDatacenters + "/" + numberOfDatacenters + " datacenters."
+          + "  Only " + numberOfDatacentersResponding + " respond.");
     }
-    topic = response.getKafkaTopic();
-    if (Utils.isNullOrEmpty(topic)) {
-      throw new VeniceStoreCreationException(storeName, "Venice Controller returned empty topic name " + topic);
+    logger.info("Next version number is " + maxNextVersion);
+    return maxNextVersion;
+  }
+
+  private void reserveNextVersion(int nextVersion) {
+    String[] perDatacenterRouterUrls = veniceRouterUrl.split(";");
+    int numberOfDatacenters = perDatacenterRouterUrls.length;
+    int requiredNumberOfDatacenters = (numberOfDatacenters / 2) + 1; /* strict majority */
+    int numberOfDatacentersResponding = 0;
+    for (String routerUrl : perDatacenterRouterUrls){
+      VersionResponse reserveResponse = ControllerClient.reserveVersion(routerUrl, clusterName, storeName, nextVersion);
+      if (reserveResponse.isError()) {  /* Also triggers on connection failure or timeout */
+        logger.warn("Could not reserve version " + nextVersion + " from routers: " + routerUrl + "  " + reserveResponse.getError());
+      } else {
+        numberOfDatacentersResponding++;
+      }
     }
-    logger.info("Used the Venice Controller to resolve to kafka url: " +
-            kafkaUrl + " and topic: " + topic );
+    if (numberOfDatacentersResponding < requiredNumberOfDatacenters){
+      throw new VeniceException("Unable to reserve version from minimum of "
+          + requiredNumberOfDatacenters + "/" + numberOfDatacenters + " datacenters."
+          + "  Only " + numberOfDatacentersResponding + " respond.");
+    }
+    logger.info("Reserved version " + nextVersion);
+
+  }
+
+  private void createTopic(){
+    //TODO generate these according to logic, must support single replication factor for local testing.
+    int partitionCount = 3;
+    int replicationFactor = 1;
+
+    new TopicCreator(kafkaZk).createTopic(topic, partitionCount, replicationFactor);
   }
 
   private void logJobProperties() {
@@ -377,7 +451,7 @@ public class KafkaPushJob {
     logger.info("File Schema: " + fileSchemaString);
     logger.info("Avro key schema: " + keySchemaString);
     logger.info("Avro value schema: " + valueSchemaString);
-    logger.info("Total input data file size: " + ((double)inputFileDataSize / 1024 / 1024) + " MB");
+    logger.info("Total input data file size: " + ((double) inputFileDataSize / 1024 / 1024) + " MB");
   }
 
   private void sendControlMessage(ControlMessageType controlMessageType) {

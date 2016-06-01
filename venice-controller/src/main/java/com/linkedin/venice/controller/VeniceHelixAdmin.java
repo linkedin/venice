@@ -1,6 +1,6 @@
 package com.linkedin.venice.controller;
 
-import com.linkedin.venice.controller.kafka.TopicCreator;
+import com.linkedin.venice.TopicCreator;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.helix.HelixReadWriteStoreRepository;

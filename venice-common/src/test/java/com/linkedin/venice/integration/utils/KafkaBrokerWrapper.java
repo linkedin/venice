@@ -42,6 +42,9 @@ public class KafkaBrokerWrapper extends ProcessWrapper {
       configMap.put(KafkaConfig.OffsetsTopicReplicationFactorProp(), OFFSET_TOPIC_REPLICATION_FACTOR);
       configMap.put(KafkaConfig.LogCleanerEnableProp(), LOG_CLEANER_ENABLE);
 
+      configMap.put(KafkaConfig.AutoCreateTopicsEnableProp(), false);
+      configMap.put(KafkaConfig.DeleteTopicEnableProp(), true);
+
       KafkaConfig kafkaConfig = new KafkaConfig(configMap, true);
       // kafka.server.KafkaServerStartable kafkaServerStartable = new KafkaServerStartable(kafkaConfig);
       KafkaServer kafkaServer = new KafkaServer(kafkaConfig, SystemTime$.MODULE$, None$.empty());

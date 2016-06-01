@@ -51,8 +51,10 @@ dependencies {
   compile libraries.zookeeper // TODO: Get rid of ZK dependency in venice-common
   compile libraries.jacksonMapper
 
+  compile libraries.kafka // TODO: Get rid of Kafka dependency in venice-common (used by TopicCreator)
+
   // Test dependencies are allowed to be bulkier.
-  testCompile libraries.kafka
+  // testCompile libraries.kafka //restore this if we remove it from the compile dependencies
   testCompile libraries.zookeeper
   testCompile project(':venice-controller')
   testCompile project(':venice-server')

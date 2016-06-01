@@ -1,5 +1,6 @@
 package com.linkedin.venice.controller.kafka;
 
+import com.linkedin.venice.TopicCreator;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.VeniceHelixAdmin;
 import com.linkedin.venice.integration.utils.KafkaBrokerWrapper;
@@ -38,7 +39,8 @@ public class TestTopicMonitor {
     doReturn(kafka.getAddress()).when(mockAdmin).getKafkaBootstrapServers();
 
     int pollIntervalMs = 1; /* ms */
-    TopicMonitor mon = new TopicMonitor(mockAdmin, clusterName, pollIntervalMs, TimeUnit.MILLISECONDS);
+    int replicationFactor = 1;
+    TopicMonitor mon = new TopicMonitor(mockAdmin, clusterName, replicationFactor, pollIntervalMs, TimeUnit.MILLISECONDS);
     mon.start();
 
     TopicCreator topicCreator = new TopicCreator(kafka.getZkAddress());

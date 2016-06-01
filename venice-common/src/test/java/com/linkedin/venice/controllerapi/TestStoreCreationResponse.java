@@ -36,4 +36,5 @@ public class TestStoreCreationResponse {
     Assert.assertEquals(deserialized.getKafkaTopic(), TOPIC);
     Assert.assertFalse(deserialized.isError());
   }
+
 }
