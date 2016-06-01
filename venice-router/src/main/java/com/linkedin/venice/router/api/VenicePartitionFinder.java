@@ -1,8 +1,6 @@
 package com.linkedin.venice.router.api;
 
 import com.linkedin.ddsstorage.router.api.PartitionFinder;
-import com.linkedin.venice.kafka.protocol.enums.MessageType;
-import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.Partition;
 import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
@@ -33,9 +31,7 @@ public class VenicePartitionFinder implements PartitionFinder<RouterKey> {
   }
 
   public int findPartitionNumber(String resourceName, RouterKey partitionKey){
-    // TODO: Let's try to decouple Kafka stuff from partitioning logic
-    KafkaKey kafkaKey = new KafkaKey(MessageType.PUT, partitionKey.getBytes());
-    return partitioner.getPartitionId(kafkaKey, getNumPartitions(resourceName));
+    return partitioner.getPartitionId(partitionKey.getBytes(), getNumPartitions(resourceName));
   }
 
   @Override

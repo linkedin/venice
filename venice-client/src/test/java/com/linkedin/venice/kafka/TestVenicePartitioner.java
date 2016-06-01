@@ -30,20 +30,20 @@ public class TestVenicePartitioner {
             new PartitionInfo("", 1, null, null, null), new PartitionInfo("", 2, null, null, null)};
 
         // Test 1
-        int partition1 = vp.getPartitionId(key, partitionArray.length);
-        int partition2 = vp.getPartitionId(key, partitionArray.length);
+        int partition1 = vp.getPartitionId(keyBytes, partitionArray.length);
+        int partition2 = vp.getPartitionId(keyBytes, partitionArray.length);
         Assert.assertEquals(partition1, partition2);
 
         // Test 2
-        key = new KafkaKey(MessageType.PUT, "    ".getBytes());
-        partition1 = vp.getPartitionId(key, partitionArray.length);
-        partition2 = vp.getPartitionId(key, partitionArray.length);
+      keyBytes = "    ".getBytes();
+        partition1 = vp.getPartitionId(keyBytes, partitionArray.length);
+        partition2 = vp.getPartitionId(keyBytes, partitionArray.length);
         Assert.assertEquals(partition1, partition2);
 
         // Test 3
-        key = new KafkaKey(MessageType.PUT, "00000".getBytes());
-        partition1 = vp.getPartitionId(key, partitionArray.length);
-        partition2 = vp.getPartitionId(key, partitionArray.length);
+        keyBytes = "00000".getBytes();
+        partition1 = vp.getPartitionId(keyBytes, partitionArray.length);
+        partition2 = vp.getPartitionId(keyBytes, partitionArray.length);
         Assert.assertEquals(partition1, partition2);
 
     }

@@ -87,9 +87,7 @@ public class VeniceReader<K, V> {
     List<Instance> instances;
     int partition;
     int numberOfPartitions = spectatorService.getRoutingDataRepository().getNumberOfPartitions(storeName);
-    // Probably not appropriate to use a KafkaKey here... The name is pretty self-explanatory, it's intended for Kafka. TODO: fix this
-    KafkaKey kafkaKey = new KafkaKey(MessageType.PUT, keyBytes);
-    partition = partitioner.getPartitionId(kafkaKey, numberOfPartitions);
+    partition = partitioner.getPartitionId(keyBytes, numberOfPartitions);
     instances=spectatorService.getRoutingDataRepository().getInstances(storeName, partition);
     if (instances.size() < 1){
       // TODO: Change this exception type. Maybe create a new subclass of VeniceException specifically for this case?

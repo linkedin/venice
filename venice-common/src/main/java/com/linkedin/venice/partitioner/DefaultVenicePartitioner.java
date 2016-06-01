@@ -1,7 +1,6 @@
 package com.linkedin.venice.partitioner;
 
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.utils.ByteUtils;
 
 import com.linkedin.venice.utils.VeniceProperties;
@@ -10,10 +9,11 @@ import org.apache.log4j.Logger;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 
-
 /**
- * Default Kafka Partitioner which uses a hashing algorithm (MD5 by default)
- * to determine the appropriate partition for each message.
+ * Default implementation of the {@link VenicePartitioner} class.
+ *
+ * It uses a hashing algorithm (MD5 by default) to determine the appropriate partition
+ * for each message.
  */
 public class DefaultVenicePartitioner extends VenicePartitioner {
 
@@ -32,9 +32,7 @@ public class DefaultVenicePartitioner extends VenicePartitioner {
     super(props);
   }
 
-  public int getPartitionIdImplementation(KafkaKey key, int numPartitions) {
-    byte[] keyBytes = key.getKey();
-
+  public int getPartitionId(byte[] keyBytes, int numPartitions) {
     try {
 
       MessageDigest md = MessageDigest.getInstance(hashAlgorithm);

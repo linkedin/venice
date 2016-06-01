@@ -1,25 +1,19 @@
 package com.linkedin.venice.partitioner;
 
-import com.linkedin.venice.kafka.protocol.enums.MessageType;
-import com.linkedin.venice.message.KafkaKey;
-import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.util.Properties;
-
 
 /**
  * Determines partitioning, which is used for producing messages into the right
  * Kafka partitions and routing reads to the correct Venice storage nodes.
  *
- * .
+ * N.B.: This is purposefully de-coupled from Kafka, so that the Router does
+ *       not need to depend on Kafka.
  */
 public abstract class VenicePartitioner {
 
     protected final VeniceProperties props; // available for sub-classes to use.
 
-    /**
-     * An abstraction on the standard Partitioner interface
-     */
     public VenicePartitioner() {
         this(new VeniceProperties(new Properties()));
     }
@@ -29,21 +23,11 @@ public abstract class VenicePartitioner {
     }
 
     /**
-     * A function that returns the partitionId based on the key.
-     * Note that this is based on the number of partitions.
+     * A function that returns the partitionId based on the key and partition count.
      *
-     * @param key           - A key that will be mapped into a partition
+     * @param keyBytes      - A key that will be mapped into a partition
      * @param numPartitions - The number of total partitions available in Kafka/storage
      * @return
      */
-    public int getPartitionId(KafkaKey key, int numPartitions) { //TODO: Support partitioning on a raw byte[]
-        // Check if the key is for sending a control message
-        if (key.isControlMessage()) {
-            return ByteUtils.readInt(key.getKey(), 0);
-        }
-        return getPartitionIdImplementation(key, numPartitions);
-    }
-
-    protected abstract int getPartitionIdImplementation(KafkaKey key, int numPartitions);
-
+    public abstract int getPartitionId(byte[] keyBytes, int numPartitions);
 }

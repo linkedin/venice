@@ -80,7 +80,7 @@ public class KafkaProducerWrapper {
      * */
   public Future<RecordMetadata> sendMessage(String topic, KafkaKey key, KafkaMessageEnvelope value) {
     int numberOfPartitions = getNumberOfPartitions(topic);
-    int partition = partitioner.getPartitionId(key, numberOfPartitions);
+    int partition = partitioner.getPartitionId(key.getKey(), numberOfPartitions);
     return sendMessageToPartition(topic, key, value, partition);
   }
 
