@@ -7,6 +7,7 @@ Welcome to Venice, the highly available data serving platform.
 ---------------------
 Dependencies
 ---------------------
+
 To use Venice, the following programs must be installed and running on your local machine:
 - Apache Kafka Version 0.9.0
 - Apache Zookeeper 3.4.6
@@ -19,6 +20,7 @@ To use Venice, the following programs must be installed and running on your loca
 -----------------------
 Build
 -----------------------
+
 First, ensure that each project has been built. If not, please run: (from the project root directory)
 
 To build and install ALL PROJECTS:
@@ -31,32 +33,40 @@ To build and install Venice client:
 
 To build and install Venice server:
 > ./gradlew :venice-server:clean :venice-server:installApp
+
 ----------------------
 Quickstart
 ----------------------
-There are two ways to use Venice. 
+
+To start the controller:
+
+> ./quickstart/start-venice-controller.sh
+
+To start the server:
+
+> ./quickstart/start-venice-server.sh
+
+To start the router:
+
+> ./quickstart/start-venice-router.sh
+
+----------------------
+Interact with Venice
+----------------------
+
+There are two ways to read data out of Venice. 
 
 1) Venice is usable through its Java Client API.
 2) Venice commands are also executable through a Shell Client, which is also provided.
 
+To add test stores (not necessary if you're going to run H2V):
 
-To start the controller:
-
-> ./venice-controller/quickstart/start-venice-controller.sh venice-server/config/cluster.properties venice-controller/config/controller.properties
-To add test stores
 > curl --data "storename=default_store&store_size=10000&owner=venice-dev" 127.0.0.1:7075/create
 > curl --data "storename=test_shell_store&store_size=1000&owner=venice-dev" 127.0.0.1:7075/create
-To query the job status
+
+To query a job status:
+
 > curl "127.0.0.1:7075/job?storename=test_shell_store&version=1"
-
-To start the server:
-
-> export VENICE_CONFIG_DIR=`pwd`/venice-server/config
-> venice-server/quickstart/start-venice-server.sh
-
-To start the router:
-
-> venice-router/quickstart/start-venice-router.sh venice-server/config/cluster.properties
 
 To use the shell client:
 
