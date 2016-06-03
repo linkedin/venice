@@ -22,9 +22,9 @@ public class TestJobJSONSerializer {
     OfflineJob job  = new OfflineJob(jobId,topic,numberOfPartition,replicaFactor);
     job.setStatus(ExecutionStatus.COMPLETED);
 
-    byte[] data = serializer.serialize(job);
+    byte[] data = serializer.serialize(job, "");
 
-    OfflineJob newJob = serializer.deserialize(data);
+    OfflineJob newJob = serializer.deserialize(data, "");
     Assert.assertEquals(newJob.getJobId(),jobId);
     Assert.assertEquals(newJob.getKafkaTopic(),topic);
     Assert.assertEquals(newJob.getNumberOfPartition(),numberOfPartition);

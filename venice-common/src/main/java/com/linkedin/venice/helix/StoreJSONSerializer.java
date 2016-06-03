@@ -25,13 +25,13 @@ public class StoreJSONSerializer implements VeniceSerializer<Store> {
     }
 
     @Override
-    public byte[] serialize(Store store)
+    public byte[] serialize(Store store, String path)
         throws IOException {
         return mapper.writeValueAsBytes(store);
     }
 
     @Override
-    public Store deserialize(byte[] bytes)
+    public Store deserialize(byte[] bytes, String path)
         throws IOException {
         return mapper.readValue(bytes, Store.class);
     }

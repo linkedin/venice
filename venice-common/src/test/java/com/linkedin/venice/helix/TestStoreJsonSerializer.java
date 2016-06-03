@@ -17,8 +17,8 @@ public class TestStoreJsonSerializer {
         Store store = TestUtils.createTestStore("s1", "owner", 1l);
         store.increaseVersion();
         StoreJSONSerializer serializer = new StoreJSONSerializer();
-        byte[] data = serializer.serialize(store);
-        Store newStore = serializer.deserialize(data);
+        byte[] data = serializer.serialize(store, "");
+        Store newStore = serializer.deserialize(data, "");
         Assert.assertEquals(store,newStore);
     }
 
@@ -27,7 +27,7 @@ public class TestStoreJsonSerializer {
         throws IOException {
         String jsonStr = "{\"name\":\"s1\"}";
         StoreJSONSerializer serializer = new StoreJSONSerializer();
-        Store store = serializer.deserialize(jsonStr.getBytes());
+        Store store = serializer.deserialize(jsonStr.getBytes(), "");
         Assert.assertEquals(store.getName(), "s1");
         Assert.assertEquals(store.getOwner(), null);
         Assert.assertEquals(store.getCreatedTime(), 0);

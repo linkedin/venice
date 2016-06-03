@@ -4,12 +4,15 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.meta.ReadWriteStoreRepository;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.StoreDataChangedListener;
 import com.linkedin.venice.meta.VeniceSerializer;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import javax.validation.constraints.NotNull;
 import org.apache.commons.collections.map.HashedMap;
 import org.apache.helix.AccessOption;
@@ -57,6 +60,7 @@ public class HelixReadWriteStoreRepository extends HelixReadonlyStoreRepository 
       if (storeMap.containsKey(name)) {
         dataAccessor.remove(composeStorePath(name), AccessOption.PERSISTENT);
         storeMap.remove(name);
+        triggerStoreDeletionListener(name);
         logger.info("Store:" + name + " is deleted.");
       }
     } finally {
@@ -73,6 +77,7 @@ public class HelixReadWriteStoreRepository extends HelixReadonlyStoreRepository 
       }
       dataAccessor.set(composeStorePath(store.getName()), store, AccessOption.PERSISTENT);
       storeMap.put(store.getName(), store);
+      triggerStoreCreationListener(store);
       logger.info("Store:" + store.getName() + " is added.");
     } finally {
       unLock();

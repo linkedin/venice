@@ -3,6 +3,7 @@ package com.linkedin.venice.helix;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.ReadonlyStoreRepository;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.StoreDataChangedListener;
 import com.linkedin.venice.meta.VeniceSerializer;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -32,6 +33,7 @@ public class HelixReadonlyStoreRepository implements ReadonlyStoreRepository {
   private static final Logger logger = Logger.getLogger(HelixReadonlyStoreRepository.class);
 
   public static final String STORES_PATH = "/Stores";
+
   /**
    * Interface defined readonly operations to access stores.
    */
@@ -54,6 +56,11 @@ public class HelixReadonlyStoreRepository implements ReadonlyStoreRepository {
    * Data accessor of Zookeeper
    */
   protected ZkBaseDataAccessor<Store> dataAccessor;
+
+  /**
+   * A set of listeners which will be triggered when store created/deleted
+   */
+  protected Set<StoreDataChangedListener> dataChangedListenerSet = new HashSet<>();
 
   /**
    * Root path of stores in Zookeeper.
@@ -86,6 +93,16 @@ public class HelixReadonlyStoreRepository implements ReadonlyStoreRepository {
       } else {
         return null;
       }
+    } finally {
+      metadataLock.readLock().unlock();
+    }
+  }
+
+  @Override
+  public boolean hasStore(String name) {
+    metadataLock.readLock().lock();
+    try {
+      return storeMap.containsKey(name);
     } finally {
       metadataLock.readLock().unlock();
     }
@@ -144,6 +161,38 @@ public class HelixReadonlyStoreRepository implements ReadonlyStoreRepository {
     }
   }
 
+  @Override
+  public void registerStoreDataChangedListener(StoreDataChangedListener listener) {
+    metadataLock.writeLock().lock();
+    try {
+      dataChangedListenerSet.add(listener);
+    } finally {
+      metadataLock.writeLock().unlock();
+    }
+  }
+
+  @Override
+  public void unregisterStoreDataChangedListener(StoreDataChangedListener listener) {
+    metadataLock.writeLock().lock();
+    try {
+      dataChangedListenerSet.remove(listener);
+    } finally {
+      metadataLock.writeLock().unlock();
+    }
+  }
+
+  protected void triggerStoreCreationListener(Store store) {
+    for (StoreDataChangedListener listener : dataChangedListenerSet) {
+      listener.handleStoreCreated(store);
+    }
+  }
+
+  protected void triggerStoreDeletionListener(String storeName) {
+    for (StoreDataChangedListener listener : dataChangedListenerSet) {
+      listener.handleStoreDeleted(storeName);
+    }
+  }
+
   private class StoreCreatedDeleteListener implements IZkChildListener {
 
     @Override
@@ -173,6 +222,7 @@ public class HelixReadonlyStoreRepository implements ReadonlyStoreRepository {
           for (Store store : addedStores) {
             storeMap.put(store.getName(), store);
             dataAccessor.subscribeDataChanges(composeStorePath(store.getName()), storeUpdateListener);
+            triggerStoreCreationListener(store);
             logger.info("Store:" + store.getName() + " is added.");
           }
         }
@@ -181,6 +231,7 @@ public class HelixReadonlyStoreRepository implements ReadonlyStoreRepository {
         for (String storeName : deletedChildren) {
           dataAccessor.unsubscribeDataChanges(composeStorePath(storeName), storeUpdateListener);
           storeMap.remove(storeName);
+          triggerStoreDeletionListener(storeName);
           logger.info("Store:" + storeName + " is deleted.");
         }
       } finally {
@@ -217,11 +268,14 @@ public class HelixReadonlyStoreRepository implements ReadonlyStoreRepository {
       String storeName = parseStoreNameFromPath(dataPath);
       metadataLock.writeLock().lock();
       try {
+        dataAccessor.unsubscribeDataChanges(composeStorePath(storeName), storeUpdateListener);
         storeMap.remove(storeName);
+        triggerStoreDeletionListener(storeName);
         logger.info("Store:" + storeName + " is deleted.");
       } finally {
         metadataLock.writeLock().unlock();
       }
     }
   }
+
 }

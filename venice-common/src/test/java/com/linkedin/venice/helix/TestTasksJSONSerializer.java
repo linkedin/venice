@@ -24,9 +24,9 @@ public class TestTasksJSONSerializer {
       tasks.add(task);
     }
 
-    byte[] data = serializer.serialize(tasks);
+    byte[] data = serializer.serialize(tasks, "");
 
-    List<Task> newTasks = serializer.deserialize(data);
+    List<Task> newTasks = serializer.deserialize(data, "");
     Assert.assertEquals(newTasks.size(), 10);
     for (int i = 0; i < 10; i++) {
       Assert.assertEquals(newTasks.get(i).getTaskId(), String.valueOf(i));

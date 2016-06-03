@@ -46,6 +46,12 @@ public class HelixJobRepository implements JobRepository {
 
   private final String offlineJobsPath;
 
+  // Patterned path for all jobs
+  private final String offlineJobPathPattern;
+
+  // Patterned path for all tasks
+  private final String offlineTaskPathPattern;
+
   private final HelixAdapterSerializer adapter;
 
   private VeniceSerializer<OfflineJob> jobSerializer;
@@ -68,14 +74,16 @@ public class HelixJobRepository implements JobRepository {
   public HelixJobRepository(@NotNull ZkClient zkClient, @NotNull HelixAdapterSerializer adapter,
       @NotNull String clusterName, VeniceSerializer<OfflineJob> jobSerializer,
       VeniceSerializer<List<Task>> taskVeniceSerializer) {
-    offlineJobsPath = "/" + clusterName + OFFLINE_JOBS_SUB_PATH;
+    this.offlineJobsPath = "/" + clusterName + OFFLINE_JOBS_SUB_PATH;
+    this.offlineJobPathPattern = this.offlineJobsPath + "/" + PathResourceRegistry.WILDCARD_MATCH_ANY;
+    this.offlineTaskPathPattern = this.offlineJobPathPattern + "/" + PathResourceRegistry.WILDCARD_MATCH_ANY;
     this.adapter = adapter;
     this.jobSerializer = jobSerializer;
     this.taskVeniceSerializer = taskVeniceSerializer;
     zkClient.setZkSerializer(this.adapter);
-    jobDataAccessor = new ZkBaseDataAccessor<>(zkClient);
-    tasksDataAccessor = new ZkBaseDataAccessor<>(zkClient);
-    listenerManager = new ListenerManager<>();
+    this.jobDataAccessor = new ZkBaseDataAccessor<>(zkClient);
+    this.tasksDataAccessor = new ZkBaseDataAccessor<>(zkClient);
+    this.listenerManager = new ListenerManager<>();
   }
 
   @Override
@@ -247,14 +255,12 @@ public class HelixJobRepository implements JobRepository {
 
   public void refresh() {
     clear();
-    String jobsPath = offlineJobsPath + "/" + PathResourceRegistry.WILDCARD_MATCH_ANY;
-    String tasksPath = jobsPath + "/" + PathResourceRegistry.WILDCARD_MATCH_ANY;
     // TODO: Considering serializer should be thread-safe, we can share the serializer across multiple
     // clusters, which means we can register the following paths:
     // job serializer: /*/OfflineJobs/*
     // task serializer: /*/OfflineJobs/*/*
-    this.adapter.registerSerializer(jobsPath, jobSerializer);
-    this.adapter.registerSerializer(tasksPath, taskVeniceSerializer);
+    this.adapter.registerSerializer(offlineJobPathPattern, jobSerializer);
+    this.adapter.registerSerializer(offlineTaskPathPattern, taskVeniceSerializer);
     synchronized (this) {
       logger.info("Start getting offline jobs from ZK");
       // We don't need to listen the change of jobs and tasks. The master controller is the only entrance to read/write
@@ -367,8 +373,8 @@ public class HelixJobRepository implements JobRepository {
   public synchronized void clear() {
     this.topicToRunningJobsMap.clear();
     this.topicToTerminatedJobsMap.clear();
-    this.adapter.unregisterSeralizer(offlineJobsPath);
-    this.adapter.unregisterSeralizer(offlineJobsPath + "/");
+    this.adapter.unregisterSeralizer(offlineJobPathPattern);
+    this.adapter.unregisterSeralizer(offlineTaskPathPattern);
     //We don't need to close ZK client here. It's could be reused by other repository.
   }
 

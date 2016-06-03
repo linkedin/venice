@@ -35,7 +35,7 @@ public class HelixAdapterSerializer implements PathBasedZkSerializer {
   public byte[] serialize(Object data, String path)
       throws ZkMarshallingError {
     try {
-      return getSerializer(path).serialize(data);
+      return getSerializer(path).serialize(data, path);
     } catch (IOException e) {
       throw new ZkMarshallingError("Met error when serialize store.", e);
     }
@@ -45,7 +45,7 @@ public class HelixAdapterSerializer implements PathBasedZkSerializer {
   public Object deserialize(byte[] bytes, String path)
       throws ZkMarshallingError {
     try {
-      return getSerializer(path).deserialize(bytes);
+      return getSerializer(path).deserialize(bytes, path);
     } catch (IOException e) {
       throw new ZkMarshallingError("Met error when deserialize store.", e);
     }

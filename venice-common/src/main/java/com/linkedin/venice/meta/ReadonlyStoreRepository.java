@@ -15,4 +15,25 @@ public interface ReadonlyStoreRepository extends VeniceResource {
    * @return Store for given name.
    */
   public Store getStore(String name);
+
+  /**
+   * Whether the store exists or not.
+   *
+   * @param name store name
+   * @return
+   */
+  boolean hasStore(String name);
+
+  /**
+   * Register store data change listener.
+   *
+   * @param listener
+   */
+  void registerStoreDataChangedListener(StoreDataChangedListener listener);
+
+  /**
+   * Unregister store data change listener.
+   * @param listener
+   */
+  void unregisterStoreDataChangedListener(StoreDataChangedListener listener);
 }

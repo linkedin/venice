@@ -26,13 +26,13 @@ public class TasksJSONSerializer implements VeniceSerializer<List<Task>> {
   }
 
   @Override
-  public byte[] serialize(List<Task> object)
+  public byte[] serialize(List<Task> object, String path)
       throws IOException {
     return mapper.writeValueAsBytes(object);
   }
 
   @Override
-  public List<Task> deserialize(byte[] bytes)
+  public List<Task> deserialize(byte[] bytes, String path)
       throws IOException {
     return mapper.readValue(bytes, typeReference);
   }

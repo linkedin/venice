@@ -24,13 +24,13 @@ public class OfflineJobJSONSerializer implements VeniceSerializer<OfflineJob> {
   }
 
   @Override
-  public byte[] serialize(OfflineJob object)
+  public byte[] serialize(OfflineJob object, String path)
       throws IOException {
     return mapper.writeValueAsBytes(object);
   }
 
   @Override
-  public OfflineJob deserialize(byte[] bytes)
+  public OfflineJob deserialize(byte[] bytes, String path)
       throws IOException {
     return mapper.readValue(bytes, OfflineJob.class);
   }
