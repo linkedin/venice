@@ -114,10 +114,10 @@ public class VeniceJobManager implements ControlMessageHandler<StoreStatusMessag
     synchronized (jobs) {
       // TODO Right now, for offline-push, there is only one job running for each version. Should be change to get job
       // by job Id when H2V can get job Id and send it through kafka control message.
-      if (jobs.size() > 1) {
+      if (jobs.size() != 1) {
         throw new VeniceException(
-            "There should be only one job running for each kafka topic. But now there are:" + jobs.size()
-                + " jobs running.");
+            "There should be only one job running for kafka topic:" + message.getKafkaTopic() + ". But now there are:"
+                + jobs.size() + " jobs running.");
       }
       Job job = jobs.get(0);
       if (!job.getStatus().equals(ExecutionStatus.STARTED)) {
@@ -181,6 +181,7 @@ public class VeniceJobManager implements ControlMessageHandler<StoreStatusMessag
     for (int retry = 2; retry >= 0; retry--) {
       try {
         metadataRepository.updateStore(store);
+        logger.info("Activate version:" + job.getKafkaTopic() + " for store:" + store.getName());
         break;
       } catch (Exception e) {
         int versionNumber = Version.parseVersionFromKafkaTopicName(job.getKafkaTopic());

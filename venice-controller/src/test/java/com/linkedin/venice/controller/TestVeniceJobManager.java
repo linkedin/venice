@@ -3,6 +3,7 @@ package com.linkedin.venice.controller;
 import com.linkedin.venice.controlmessage.StoreStatusMessage;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixAdapterSerializer;
+import com.linkedin.venice.helix.HelixControlMessageChannel;
 import com.linkedin.venice.helix.HelixInstanceConverter;
 import com.linkedin.venice.helix.HelixJobRepository;
 import com.linkedin.venice.helix.HelixReadWriteStoreRepository;
@@ -17,6 +18,7 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
+import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.ThreadPoolExecutor;
@@ -58,7 +60,6 @@ public class TestVeniceJobManager {
   private HelixManager controller;
   private HelixManager manager;
   private String storeName = "ts1";
-  private String kafkaTopic = "ts1_v1";
   private String nodeId;
   private int httpPort = 9985;
   private int adminPort = 12345;
@@ -73,6 +74,9 @@ public class TestVeniceJobManager {
     zkServerWrapper = ServiceFactory.getZkServer();
     zkAddress = zkServerWrapper.getAddress();
 
+    store = TestUtils.createTestStore(storeName, "test", System.currentTimeMillis());
+    version = store.increaseVersion();
+
     admin = new ZKHelixAdmin(zkAddress);
     admin.addCluster(cluster);
     HelixConfigScope configScope = new HelixConfigScopeBuilder(HelixConfigScope.ConfigScopeProperty.CLUSTER).
@@ -83,9 +87,9 @@ public class TestVeniceJobManager {
     admin.addStateModelDef(cluster, TestHelixRoutingDataRepository.UnitTestStateModel.UNIT_TEST_STATE_MODEL,
         TestHelixRoutingDataRepository.UnitTestStateModel.getDefinition());
 
-    admin.addResource(cluster, kafkaTopic, 1, TestHelixRoutingDataRepository.UnitTestStateModel.UNIT_TEST_STATE_MODEL,
+    admin.addResource(cluster, version.kafkaTopicName(), 1, TestHelixRoutingDataRepository.UnitTestStateModel.UNIT_TEST_STATE_MODEL,
         IdealState.RebalanceMode.FULL_AUTO.toString());
-    admin.rebalance(cluster, kafkaTopic, 1);
+    admin.rebalance(cluster, version.kafkaTopicName(), 1);
 
     controller = HelixControllerMain
         .startHelixController(zkAddress, cluster, Utils.getHelixNodeIdentifier(adminPort), HelixControllerMain.STANDALONE);
@@ -113,8 +117,6 @@ public class TestVeniceJobManager {
     metadataRepository = new HelixReadWriteStoreRepository(zkClient, adapterSerializer, cluster);
     metadataRepository.refresh();
     jobManager = new VeniceJobManager(cluster , 1, jobRepository, metadataRepository, routingDataRepository);
-    store = TestUtils.createTestStore(storeName, "test", System.currentTimeMillis());
-    version = store.increaseVersion();
   }
 
   @AfterMethod
@@ -264,5 +266,48 @@ public class TestVeniceJobManager {
     Assert.assertEquals(job.tasksInPartition(0).get(0).getInstanceId(), newInstance.getNodeId(),
         "New node should take over the failed node");
     newNode.disconnect();
+  }
+
+  @Test
+  public void testHandleOutOfOrderMessages()
+      throws IOException, InterruptedException {
+    metadataRepository.addStore(store);
+    HelixControlMessageChannel controllerChannel = new HelixControlMessageChannel(controller);
+    controllerChannel.registerHandler(StoreStatusMessage.class, jobManager);
+    HelixControlMessageChannel nodeChannel = new HelixControlMessageChannel(manager);
+
+    jobManager.startOfflineJob(version.kafkaTopicName(), 1, 1);
+    StoreStatusMessage message = new StoreStatusMessage(version.kafkaTopicName(), 0, nodeId, ExecutionStatus.STARTED);
+    nodeChannel.sendToController(message);
+    message = new StoreStatusMessage(version.kafkaTopicName(), 0, nodeId, ExecutionStatus.COMPLETED);
+    nodeChannel.sendToController(message);
+    // Wait until job manager has processed update message.
+    do {
+      Thread.sleep(300);
+    } while (!jobManager.getOfflineJobStatus(version.kafkaTopicName()).equals(ExecutionStatus.COMPLETED));
+    //Send message again after job is completed. Exception will be catch and process dose not exit.
+    nodeChannel.sendToController(message);
+
+    //Start a new push
+    store = metadataRepository.getStore(storeName);
+    Version newVersion = store.increaseVersion();
+    Assert.assertEquals(newVersion.getNumber(), version.getNumber()+1);
+    metadataRepository.updateStore(store);
+    admin.addResource(cluster, newVersion.kafkaTopicName(), 1, TestHelixRoutingDataRepository.UnitTestStateModel.UNIT_TEST_STATE_MODEL,
+        IdealState.RebalanceMode.FULL_AUTO.toString());
+    admin.rebalance(cluster, newVersion.kafkaTopicName(), 1);
+    Assert.assertEquals(metadataRepository.getStore(storeName).getCurrentVersion(), version.getNumber());
+    jobManager.startOfflineJob(newVersion.kafkaTopicName(), 1, 1);
+    message = new StoreStatusMessage(newVersion.kafkaTopicName(), 0, nodeId, ExecutionStatus.STARTED);
+    nodeChannel.sendToController(message);
+    Assert.assertEquals(jobManager.getOfflineJobStatus(newVersion.kafkaTopicName()), ExecutionStatus.STARTED);
+    message = new StoreStatusMessage(newVersion.kafkaTopicName(), 0, nodeId, ExecutionStatus.COMPLETED);
+    nodeChannel.sendToController(message);
+    do {
+      Thread.sleep(300);
+    } while (!jobManager.getOfflineJobStatus(newVersion.kafkaTopicName()).equals(ExecutionStatus.COMPLETED));
+    //Assert everything works well for the new push.
+    Assert.assertEquals(jobManager.getOfflineJobStatus(newVersion.kafkaTopicName()), ExecutionStatus.COMPLETED);
+    Assert.assertEquals(metadataRepository.getStore(storeName).getCurrentVersion(), newVersion.getNumber());
   }
 }
