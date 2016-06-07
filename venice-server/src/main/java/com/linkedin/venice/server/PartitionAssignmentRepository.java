@@ -80,4 +80,16 @@ public class PartitionAssignmentRepository {
     Set<Integer> partitions = resourceNameToPartitionIdsMap.get(resourceName);
     partitions.add(partition);
   }
+
+  public synchronized void dropPartition(String resourceName, int partition){
+    if (!resourceNameToPartitionIdsMap.containsKey(resourceName)) {
+      return;
+    }
+    Set<Integer> partitions = resourceNameToPartitionIdsMap.get(resourceName);
+    partitions.remove(partition);
+
+    if(partitions.isEmpty()) {
+      resourceNameToPartitionIdsMap.remove(resourceName);
+    }
+  }
 }

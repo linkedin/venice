@@ -39,10 +39,6 @@ public class VeniceStoreConfig extends VeniceServerConfig {
     return storeName;
   }
 
-  public String getStorageEngineFactoryClassName() {
-    return storageEngineFactoryClassNameMap.get(this.getPersistenceType());
-  }
-
   // TODO: This function doesn't belong here, does it ?!?!?
   public BdbStoreConfig getBdbStoreConfig() {
     if (getPersistenceType().equals(PersistenceType.BDB)) {

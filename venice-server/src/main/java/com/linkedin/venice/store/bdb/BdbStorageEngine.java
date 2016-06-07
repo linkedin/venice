@@ -13,6 +13,7 @@ import com.sleepycat.je.Environment;
 import com.sleepycat.je.EnvironmentConfig;
 import com.sleepycat.je.EnvironmentMutableConfig;
 
+import java.util.Collection;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -27,19 +28,16 @@ public class BdbStorageEngine extends AbstractStorageEngine {
   private final AtomicBoolean isOpen;
   private final BdbServerConfig bdbServerConfig;
   private final BdbRuntimeConfig bdbRuntimeConfig;
-  private final BdbStorageEngineFactory factory;
   //protected final BdbEnvironmentStats bdbEnvironmentStats;
   protected final boolean checkpointerOffForBatchWrites;
   private volatile int numOutstandingBatchWriteJobs = 0;
 
   public BdbStorageEngine(VeniceStoreConfig storeDef,
                           PartitionAssignmentRepository partitionNodeAssignmentRepo,
-                          Environment environment,
-                          BdbStorageEngineFactory factory) throws VeniceException {
+                          Environment environment ) throws VeniceException {
     super(storeDef, partitionNodeAssignmentRepo, new ConcurrentHashMap<Integer, AbstractStoragePartition>());
 
     this.environment = environment;
-    this.factory = factory;
     this.isOpen = new AtomicBoolean(true);
     this.bdbServerConfig = storeDef.getBdbServerConfig();
     this.bdbRuntimeConfig = new BdbRuntimeConfig(bdbServerConfig);
@@ -80,8 +78,7 @@ public class BdbStorageEngine extends AbstractStorageEngine {
     BdbStoragePartition partition = (BdbStoragePartition) partitionIdToPartitionMap.remove(partitionId);
     partition.drop();
     if(partitionIdToPartitionMap.size() == 0) {
-      logger.info("All Partitions deleted for Store " + this.getName() + " deleting the entire directory");
-      factory.removeStorageEngine(this);
+      logger.info("All Partitions deleted for Store " + this.getName() );
     }
   }
 

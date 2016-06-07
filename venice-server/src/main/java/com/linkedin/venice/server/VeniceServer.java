@@ -2,6 +2,7 @@ package com.linkedin.venice.server;
 
 import com.google.common.collect.ImmutableList;
 import com.linkedin.venice.config.VeniceClusterConfig;
+import com.linkedin.venice.config.VeniceServerConfig;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixParticipationService;
 import com.linkedin.venice.kafka.consumer.KafkaConsumerPerStoreService;
@@ -23,10 +24,8 @@ public class VeniceServer {
   private final VeniceConfigLoader veniceConfigLoader;
   private final AtomicBoolean isStarted;
 
-  private final StoreRepository storeRepository;
   private StorageService storageService;
   private BdbOffsetManager offSetService;
-  private final PartitionAssignmentRepository partitionAssignmentRepository;
 
   private final List<AbstractVeniceService> services;
 
@@ -34,8 +33,6 @@ public class VeniceServer {
       throws VeniceException {
     this.isStarted = new AtomicBoolean(false);
     this.veniceConfigLoader = veniceConfigLoader;
-    this.storeRepository = new StoreRepository();
-    this.partitionAssignmentRepository = new PartitionAssignmentRepository();
 
     /*
      * TODO - 1. How do the servers share the same config - For example in Voldemort we use cluster.xml and stores.xml.
@@ -60,10 +57,12 @@ public class VeniceServer {
     /* Services are created in the order they must be started */
     List<AbstractVeniceService> services = new ArrayList<AbstractVeniceService>();
 
+    VeniceClusterConfig clusterConfig = veniceConfigLoader.getVeniceClusterConfig();
+    VeniceServerConfig serverConfig = veniceConfigLoader.getVeniceServerConfig();
+
     // create and add StorageService. storeRepository will be populated by StorageService,
-    storageService = new StorageService(storeRepository, partitionAssignmentRepository);
+    storageService = new StorageService(serverConfig);
     services.add(storageService);
-    storeRepository.setStorageService(storageService);
 
     // Create and add Offset Service.
     offSetService = new BdbOffsetManager(veniceConfigLoader.getVeniceClusterConfig());
@@ -71,14 +70,13 @@ public class VeniceServer {
 
     //create and add KafkaSimpleConsumerService
     KafkaConsumerPerStoreService kafkaConsumerService =
-        new KafkaConsumerPerStoreService(storeRepository, veniceConfigLoader, offSetService);
+        new KafkaConsumerPerStoreService(storageService.getStoreRepository(), veniceConfigLoader, offSetService);
     services.add(kafkaConsumerService);
 
     // start venice participant service if Helix is enabled.
-    VeniceClusterConfig clusterConfig = veniceConfigLoader.getVeniceClusterConfig();
     if(clusterConfig.isHelixEnabled()) {
       HelixParticipationService helixParticipationService =
-          new HelixParticipationService(kafkaConsumerService, storeRepository, veniceConfigLoader,
+          new HelixParticipationService(kafkaConsumerService, storageService, veniceConfigLoader,
               clusterConfig.getZookeeperAddress(), clusterConfig.getClusterName(),
               veniceConfigLoader.getVeniceServerConfig().getListenerPort());
       services.add(helixParticipationService);
@@ -89,7 +87,7 @@ public class VeniceServer {
 
     //create and add ListenerServer for handling GET requests
     ListenerService listenerService =
-        new ListenerService(storeRepository, offSetService, veniceConfigLoader);
+        new ListenerService(storageService.getStoreRepository(), offSetService, veniceConfigLoader);
     services.add(listenerService);
 
 
@@ -175,10 +173,6 @@ public class VeniceServer {
 
       // TODO - Efficient way to unlock java heap
     }
-  }
-
-  public StoreRepository getStoreRepository() {
-    return storeRepository;
   }
 
   public static void main(String args[])

@@ -9,6 +9,8 @@ import com.linkedin.venice.store.iterators.CloseableStoreEntriesIterator;
 import com.linkedin.venice.store.iterators.CloseableStoreKeysIterator;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.Utils;
+import java.util.Collection;
+import java.util.Set;
 import org.apache.log4j.Logger;
 
 import java.util.concurrent.ConcurrentMap;
@@ -82,10 +84,18 @@ public abstract class AbstractStorageEngine implements Store {
    * Removes and returns a partition from the current store
    *
    * @param partitionId - id of partition to retrieve and remove
-   * @return The AbstractStoragePartition object removed by this operation
    */
   public abstract void dropPartition(int partitionId)
     throws VeniceException;
+
+  /**
+   * Get all Partition Ids which are assigned to the current Node.
+   *
+   * @return partition Ids that are hosted in the current Storage Engine.
+   */
+  public synchronized Set<Integer> getPartitionIds() {
+    return partitionIdToPartitionMap.keySet();
+  }
 
   /**
    * Get an iterator over entries in the store. The key is the first

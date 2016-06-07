@@ -1,10 +1,15 @@
 package com.linkedin.venice.storage;
 
+import com.linkedin.venice.config.VeniceServerConfig;
 import com.linkedin.venice.config.VeniceStoreConfig;
+import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.server.PartitionAssignmentRepository;
 import com.linkedin.venice.server.VeniceConfigLoader;
 import com.linkedin.venice.store.AbstractStorageEngine;
 import com.linkedin.venice.store.memory.InMemoryStorageEngine;
+import com.linkedin.venice.utils.VeniceProperties;
+import org.testng.annotations.AfterClass;
+import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
 import java.io.File;
@@ -12,35 +17,35 @@ import java.io.File;
 
 public class InMemoryStorageEngineTest extends AbstractStorageEngineTest {
 
-  PartitionAssignmentRepository partitionAssignmentRepository;
-  VeniceConfigLoader veniceConfigLoader;
+  StorageService service;
+  VeniceStoreConfig storeConfig;
+  final String STORE_NAME = "testng-in-memory";
+  final int PARTITION_ID = 0;
 
+  public InMemoryStorageEngineTest() {
+  }
 
-  public InMemoryStorageEngineTest()
-      throws Exception {
+  @BeforeClass
+  public void setup() {
     createStorageEngineForTest();
   }
 
+  @AfterClass
+  public void tearDown() {
+    if(service != null && storeConfig != null) {
+      service.dropStorePartition(storeConfig , PARTITION_ID);
+    }
+  }
+
   @Override
-  public void createStorageEngineForTest()
-      throws Exception {
-    File configFile = new File("src/test/resources/config");  //TODO this does not run from IDE because IDE expects
-    // relative path starting from venice-server
-    veniceConfigLoader = VeniceConfigLoader.loadFromConfigDirectory(configFile.getAbsolutePath());
-    String storeName = "testng-in-memory";
-    VeniceStoreConfig storeConfig = veniceConfigLoader.getStoreConfig(storeName);
+  public void createStorageEngineForTest() {
+    VeniceProperties serverProperties = AbstractStorageEngineTest.getServerProperties(PersistenceType.IN_MEMORY);
+    VeniceServerConfig serverConfig = new VeniceServerConfig(serverProperties);
 
+    service = new StorageService(serverConfig);
+    storeConfig = new VeniceStoreConfig(STORE_NAME, serverProperties);
 
-    //populate partitionNodeAssignment
-    partitionAssignmentRepository = new PartitionAssignmentRepository();
-    int nodeId = 0;
-    // only adding 1 partition, config indicates 5 partitions
-    partitionAssignmentRepository.addPartition(storeName, 0);
-
-    AbstractStorageEngine inMemoryStorageEngine =
-        new InMemoryStorageEngine(storeConfig, partitionAssignmentRepository);
-    this.testStoreEngine = inMemoryStorageEngine;
-
+    testStoreEngine = service.openStoreForNewPartition(storeConfig , PARTITION_ID);
     createStoreForTest();
   }
 

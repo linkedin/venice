@@ -3,6 +3,7 @@ package com.linkedin.venice.helix;
 import com.linkedin.venice.kafka.consumer.KafkaConsumerService;
 import com.linkedin.venice.server.StoreRepository;
 import com.linkedin.venice.server.VeniceConfigLoader;
+import com.linkedin.venice.storage.StorageService;
 import com.linkedin.venice.utils.HelixUtils;
 import org.apache.helix.participant.statemachine.StateModel;
 import org.apache.helix.participant.statemachine.StateModelFactory;
@@ -17,15 +18,16 @@ public class VeniceStateModelFactory extends StateModelFactory<StateModel> {
   private static final Logger logger = Logger.getLogger(VeniceStateModelFactory.class.getName());
 
   private final KafkaConsumerService kafkaConsumerService;
-  private final StoreRepository storeRepository;
+  private final StorageService storageService;
   private final VeniceConfigLoader configService;
 
-  public VeniceStateModelFactory(KafkaConsumerService kafkaConsumerService, StoreRepository storeRepository,
+  public VeniceStateModelFactory(KafkaConsumerService kafkaConsumerService,
+          StorageService storageService,
           VeniceConfigLoader configService) {
     logger.info("Creating VenicePartitionStateTransitionHandlerFactory for Node: "
         + configService.getVeniceServerConfig().getNodeId());
     this.kafkaConsumerService = kafkaConsumerService;
-    this.storeRepository = storeRepository;
+    this.storageService = storageService;
     this.configService = configService;
   }
 
@@ -38,7 +40,7 @@ public class VeniceStateModelFactory extends StateModelFactory<StateModel> {
   @Override
   public VenicePartitionStateModel createNewStateModel(String resourceName, String partitionName) {
     logger.info("Creating VenicePartitionStateTransitionHandler for partition: " + partitionName + " for Store " + resourceName);
-    return new VenicePartitionStateModel(kafkaConsumerService, storeRepository
+    return new VenicePartitionStateModel(kafkaConsumerService, storageService
         , configService.getStoreConfig(HelixUtils.getStoreName(partitionName))
         , HelixUtils.getPartitionId(partitionName));
   }

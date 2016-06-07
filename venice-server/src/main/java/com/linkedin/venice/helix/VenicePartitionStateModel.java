@@ -2,8 +2,7 @@ package com.linkedin.venice.helix;
 
 import com.linkedin.venice.config.VeniceStoreConfig;
 import com.linkedin.venice.kafka.consumer.KafkaConsumerService;
-import com.linkedin.venice.server.StoreRepository;
-import com.linkedin.venice.store.AbstractStorageEngine;
+import com.linkedin.venice.storage.StorageService;
 import javax.validation.constraints.NotNull;
 import org.apache.helix.NotificationContext;
 import org.apache.helix.model.Message;
@@ -32,14 +31,14 @@ public class VenicePartitionStateModel extends StateModel {
     private final VeniceStoreConfig storeConfig;
     private final int partition;
     private final KafkaConsumerService kafkaConsumerService;
-    private final StoreRepository storeRepository;
+    private final StorageService storageService;
     private final String storePartitionNodeDescription;
 
     public VenicePartitionStateModel(@NotNull KafkaConsumerService kafkaConsumerService,
-            @NotNull StoreRepository storeRepository, @NotNull VeniceStoreConfig storeConfig, int partition) {
+            @NotNull StorageService storageService, @NotNull VeniceStoreConfig storeConfig, int partition) {
         this.storeConfig = storeConfig;
         this.partition = partition;
-        this.storeRepository = storeRepository;
+        this.storageService = storageService;
         this.kafkaConsumerService = kafkaConsumerService;
         this.storePartitionNodeDescription = String
             .format(STORE_PARTITION_NODE_DESCRIPTION_FORMAT, storeConfig.getStoreName(), partition,
@@ -53,13 +52,7 @@ public class VenicePartitionStateModel extends StateModel {
     public void onBecomeOnlineFromOffline(Message message, NotificationContext context) {
         logEntry(HelixState.OFFLINE, HelixState.ONLINE, message, context);
 
-        AbstractStorageEngine storageEngine = storeRepository.getOrCreateLocalStorageEngine(storeConfig, partition);
-
-        boolean isPartitionPresent = storageEngine.containsPartition(partition);
-        if (isPartitionPresent == false) {
-            storageEngine.addStoragePartition(partition);
-        }
-
+        storageService.openStoreForNewPartition(storeConfig , partition);
         kafkaConsumerService.startConsumption(storeConfig, partition);
         logCompletion(HelixState.OFFLINE, HelixState.ONLINE, message, context);
     }
@@ -76,13 +69,7 @@ public class VenicePartitionStateModel extends StateModel {
     }
 
     private void removePartitionFromStore( ) {
-        AbstractStorageEngine storageEngine = storeRepository.getLocalStorageEngine(storeConfig.getStoreName());
-        if(storageEngine != null) {
-            storageEngine.dropPartition(partition);
-            logger.info(storePartitionNodeDescription + " partition successfully removed");
-        } else {
-            logger.info(storePartitionNodeDescription + " Store could not be located, ignoring the remove partition message.");
-        }
+        storageService.dropStorePartition(storeConfig, partition);
     }
 
     /**

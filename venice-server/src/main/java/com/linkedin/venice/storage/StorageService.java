@@ -11,7 +11,11 @@ import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.store.AbstractStorageEngine;
 import com.linkedin.venice.store.StorageEngineFactory;
 import com.linkedin.venice.store.Store;
+import com.linkedin.venice.store.bdb.BdbStorageEngineFactory;
+import com.linkedin.venice.store.memory.InMemoryStorageEngineFactory;
 import com.linkedin.venice.utils.ReflectUtils;
+import java.util.Arrays;
+import java.util.Set;
 import org.apache.log4j.Logger;
 
 import java.util.Map;
@@ -20,7 +24,10 @@ import java.util.concurrent.ConcurrentMap;
 
 
 /**
- * Storage interface to Venice Server. Manages creation and deletion of of Storage engines and maintenance of StoreRepository
+ * Storage interface to Venice Server. Manages creation and deletion of of Storage engines
+ * and Partitions.
+ *
+ * Use StoreRepository, if read only access is desired for the Storage Engines.
  */
 public class StorageService extends AbstractVeniceService {
 
@@ -29,121 +36,135 @@ public class StorageService extends AbstractVeniceService {
   private static final Logger logger = Logger.getLogger(StorageService.class.getName());
 
   private final StoreRepository storeRepository;
+  private final VeniceServerConfig serverConfig;
+
+
   private final ConcurrentMap<PersistenceType, StorageEngineFactory> persistenceTypeToStorageEngineFactoryMap;
   private final PartitionAssignmentRepository partitionAssignmentRepository;
 
-  public StorageService(StoreRepository storeRepository, PartitionAssignmentRepository partitionAssignmentRepository) {
+  public StorageService(VeniceServerConfig config) {
     super(NAME);
-    this.storeRepository = storeRepository;
-    this.persistenceTypeToStorageEngineFactoryMap = new ConcurrentHashMap<PersistenceType, StorageEngineFactory>();
-    this.partitionAssignmentRepository = partitionAssignmentRepository;
+    this.serverConfig = config;
+    this.storeRepository = new StoreRepository();
+    this.persistenceTypeToStorageEngineFactoryMap = new ConcurrentHashMap<>();
+    this.partitionAssignmentRepository = new PartitionAssignmentRepository();
   }
 
   // TODO Later change to Guice instead of Java reflections
   // This method can also be called from an admin service to add new store.
 
+  public AbstractStorageEngine openStoreForNewPartition(VeniceStoreConfig storeConfig, int partitionId) {
+    partitionAssignmentRepository.addPartition(storeConfig.getStoreName(), partitionId);
 
-  public AbstractStorageEngine openStoreForNewPartition(VeniceStoreConfig storeConfig, int partition)
-      throws Exception {
-    partitionAssignmentRepository.addPartition(storeConfig.getStoreName(), partition);
-    return openStore(storeConfig);
+    AbstractStorageEngine engine = openStore(storeConfig);
+    if(!engine.containsPartition(partitionId)) {
+      engine.addStoragePartition(partitionId);
+    }
+    return engine;
+  }
+
+  /**
+   * This method should ideally be Private, but marked as public for validating the result.
+   *
+   * @param storeConfig StoreConfig of the store.
+   * @return Factory corresponding to the store.
+   */
+  public synchronized StorageEngineFactory getInternalStorageEngineFactory(VeniceStoreConfig storeConfig) {
+
+    PersistenceType persistenceType = storeConfig.getPersistenceType();
+    // Instantiate the factory for this persistence type if not already present
+    if (persistenceTypeToStorageEngineFactoryMap.containsKey(persistenceType)) {
+      return persistenceTypeToStorageEngineFactoryMap.get(persistenceType);
+    }
+
+    StorageEngineFactory factory;
+    switch(persistenceType) {
+      case BDB:
+        factory = new BdbStorageEngineFactory(serverConfig , partitionAssignmentRepository);
+        break;
+      case IN_MEMORY:
+        factory = new InMemoryStorageEngineFactory(serverConfig, partitionAssignmentRepository);
+        break;
+      default:
+        throw new VeniceException("Unrecognized persistence type " + persistenceType);
+    }
+    persistenceTypeToStorageEngineFactoryMap.put(persistenceType, factory);
+    return factory;
   }
 
   /**
    * Creates a StorageEngineFactory for the persistence type if not already present.
    * Creates a new storage engine for the given store in the factory and registers the storage engine with the store repository.
    *
-   * @param storeDefinition   The store specific properties
+   * @param storeConfig   The store specific properties
    * @return StorageEngine that was created for the given store definition.
    */
-  public AbstractStorageEngine openStore(VeniceStoreConfig storeDefinition)
-      throws Exception {
-    PersistenceType persistenceType = storeDefinition.getPersistenceType();
-    AbstractStorageEngine engine = null;
-    StorageEngineFactory factory = null;
-
-    // Instantiate the factory for this persistence type if not already present
-    if (!persistenceTypeToStorageEngineFactoryMap.containsKey(persistenceType)) {
-      String storageFactoryClassName = storeDefinition.getStorageEngineFactoryClassName();
-      try {
-        Class<?> factoryClass = ReflectUtils.loadClass(storageFactoryClassName);
-        factory = (StorageEngineFactory) ReflectUtils
-            .callConstructor(factoryClass, new Class<?>[]{VeniceServerConfig.class, PartitionAssignmentRepository.class},
-                new Object[]{storeDefinition, partitionAssignmentRepository});
-        persistenceTypeToStorageEngineFactoryMap.putIfAbsent(persistenceType, factory);
-      } catch (IllegalStateException e) {
-        logger.error("Error loading storage engine factory '" + storageFactoryClassName + "'.", e);
-        throw e;
-      }
+  private synchronized AbstractStorageEngine openStore(VeniceStoreConfig storeConfig) {
+    String storeName = storeConfig.getStoreName();
+    AbstractStorageEngine engine = storeRepository.getLocalStorageEngine(storeName);
+    if(engine != null) {
+      return engine;
     }
 
-    factory = persistenceTypeToStorageEngineFactoryMap.get(persistenceType);
-
-    if (factory != null) {
-      engine = factory.getStore(storeDefinition);
-      try {
-        registerEngine(engine);
-      } catch (VeniceException e) {
-        logger.error("Failed to register storage engine for  store: " + engine.getName(), e);
-        removeEngine(engine);
-      }
-    } else {
-      logger.error("Failed to get factory from the StorageEngineFactoryMap for perisitence type: " + persistenceType);
-    }
+    logger.info("Creating new Storage Engine " + storeName);
+    StorageEngineFactory factory = getInternalStorageEngineFactory(storeConfig);
+    engine = factory.getStore(storeConfig);
+    storeRepository.addLocalStorageEngine(engine);
     return engine;
   }
 
   /**
-   * Adds the storage engine to the store repository.
-   *
-   * @param engine  StorageEngine to add
-   * @throws VeniceException
+   * Removes the Store, Partition from the Storage service.
    */
-  public void registerEngine(AbstractStorageEngine engine)
-      throws VeniceException {
-    storeRepository.addLocalStorageEngine(engine);
+  public synchronized void dropStorePartition(VeniceStoreConfig storeConfig, int partitionId) {
+    String storeName = storeConfig.getStoreName();
+
+    partitionAssignmentRepository.dropPartition(storeName , partitionId);
+    AbstractStorageEngine storageEngine = storeRepository.getLocalStorageEngine(storeName);
+    if(storageEngine == null) {
+      logger.info(storeName + " Store could not be located, ignoring the remove partition message.");
+      return;
+    }
+
+    storageEngine.dropPartition(partitionId);
+    Set<Integer> assignedPartitions = storageEngine.getPartitionIds();
+
+    logger.info("Dropped Partition " + partitionId + " Store " + storeName + " Remaining " + Arrays.toString(assignedPartitions.toArray()));
+    if(assignedPartitions.isEmpty()) {
+      logger.info("All partitions for Store " + storeName + " are removed... cleaning up state");
+
+      // Drop the directory completely.
+      StorageEngineFactory factory = getInternalStorageEngineFactory(storeConfig);
+      factory.removeStorageEngine(storageEngine);
+
+      // Clean up the state
+      storeRepository.removeLocalStorageEngine(storeName);
+    }
   }
 
-  /**
-   * Removes the StorageEngine from the store repository
-   *
-   * @param engine StorageEngine to remove
-   */
-  public void removeEngine(AbstractStorageEngine engine) {
-    storeRepository.removeLocalStorageEngine(engine.getName());
+  public StoreRepository getStoreRepository() {
+    return storeRepository;
   }
 
   @Override
   public void startInner()
       throws Exception {
-    logger.info("Initializing stores:");
-
-    //TODO comment initialize codes here because Venice now do not need to initialize stores from config files
-    /*Loop through the stores. Create the Factory if needed, open the storage engine and
-     register it with the Store Repository*/
-    /*for (Map.Entry<String, VeniceStoreConfig> entry : veniceConfigService.getAllStoreConfigs().entrySet()) {
-      openStore(entry.getValue());
-    }*/
-
-    logger.info("All stores initialized");
+    /*
+    After Storage Node starts, Helix controller initiates the state transition
+    for the Stores that should be consumed/served by the router.
+     */
+    logger.info("Storage Service started");
   }
 
   @Override
   public void stopInner()
       throws VeniceException {
     VeniceException lastException = null;
-      /* This will also close the storage engines */
-    for (Store store : this.storeRepository.getAllLocalStorageEngines()) {
-      String storeName = store.getName();
-      logger.info("Closing storage engine for " + storeName );
-      try {
-        store.close();
-      } catch (VeniceException e) {
-        logger.error("Error closing storage engine for store" + storeName , e);
-        lastException = e;
-      }
+    try {
+      this.storeRepository.close();
+    } catch( VeniceException e) {
+      lastException = e;
     }
-    logger.info("All stores closed.");
 
     /*Close all storage engine factories */
     for (Map.Entry<PersistenceType, StorageEngineFactory> storageEngineFactory : persistenceTypeToStorageEngineFactoryMap.entrySet()) {

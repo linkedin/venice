@@ -19,11 +19,6 @@ import java.util.Map;
  * class that maintains config very specific to a Venice cluster
  */
 public class VeniceClusterConfig {
-
-  public static final Map<PersistenceType, String> storageEngineFactoryClassNameMap =
-      ImmutableMap.of(PersistenceType.IN_MEMORY, InMemoryStorageEngineFactory.class.getName(),
-          PersistenceType.BDB, BdbStorageEngineFactory.class.getName());
-
   private String clusterName;
   protected String dataBasePath;
   private String offsetManagerType = null;
@@ -39,6 +34,7 @@ public class VeniceClusterConfig {
 
   private PersistenceType persistenceType;
 
+  // TODO : All these properties must be passed on to the simple consumer.
   // SimpleConsumer fetch buffer size.
   private int fetchBufferSize;
   // SimpleConsumer socket timeout.
@@ -83,9 +79,6 @@ public class VeniceClusterConfig {
           PersistenceType.IN_MEMORY.toString()));
     } catch (UndefinedPropertyException ex) {
       throw new ConfigurationException("persistence type undefined", ex);
-    }
-    if (!storageEngineFactoryClassNameMap.containsKey(persistenceType)) {
-      throw new ConfigurationException("unknown persistence type: " + persistenceType);
     }
 
     kafkaBootstrapServers = clusterProps.getString(KAFKA_BOOTSTRAP_SERVERS);

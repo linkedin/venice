@@ -10,6 +10,7 @@ import com.linkedin.venice.store.AbstractStoragePartition;
 import com.linkedin.venice.store.iterators.CloseableStoreEntriesIterator;
 import com.linkedin.venice.store.iterators.CloseableStoreKeysIterator;
 
+import java.util.Collection;
 import java.util.concurrent.ConcurrentHashMap;
 
 

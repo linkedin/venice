@@ -3,6 +3,7 @@ package com.linkedin.venice.helix;
 import com.linkedin.venice.config.VeniceStoreConfig;
 import com.linkedin.venice.kafka.consumer.KafkaConsumerService;
 import com.linkedin.venice.server.StoreRepository;
+import com.linkedin.venice.storage.StorageService;
 import com.linkedin.venice.store.AbstractStorageEngine;
 import org.apache.helix.NotificationContext;
 import org.apache.helix.model.Message;
@@ -16,9 +17,8 @@ import org.testng.annotations.Test;
 public class VenicePartitionStateModelTest {
 
   private KafkaConsumerService mockKafkaConsumerService;
-  private StoreRepository mockStoreRepository;
+  private StorageService mockStorageService;
   private VeniceStoreConfig mockStoreConfig;
-  private AbstractStorageEngine mockAbstractStorageEngine;
   private int testPartition = 0;
 
   private Message mockMessage;
@@ -29,19 +29,13 @@ public class VenicePartitionStateModelTest {
   @BeforeSuite
   public void setUp() throws Exception {
     mockKafkaConsumerService = Mockito.mock(KafkaConsumerService.class);
-    mockStoreRepository = Mockito.mock(StoreRepository.class);
+    mockStorageService = Mockito.mock(StorageService.class);
     mockStoreConfig = Mockito.mock(VeniceStoreConfig.class);
-
-    mockAbstractStorageEngine = Mockito.mock(AbstractStorageEngine.class);
-    Mockito.when(mockStoreRepository.getLocalStorageEngine(Mockito.anyString()))
-        .thenReturn(mockAbstractStorageEngine);
-    Mockito.when(mockStoreRepository.getOrCreateLocalStorageEngine(Mockito.any(), Mockito.anyInt()))
-        .thenReturn(mockAbstractStorageEngine);
 
     mockMessage = Mockito.mock(Message.class);
     mockContext = Mockito.mock(NotificationContext.class);
 
-    testStateModel = new VenicePartitionStateModel(mockKafkaConsumerService, mockStoreRepository, mockStoreConfig,
+    testStateModel = new VenicePartitionStateModel(mockKafkaConsumerService, mockStorageService, mockStoreConfig,
         testPartition);
   }
 
@@ -53,20 +47,9 @@ public class VenicePartitionStateModelTest {
    */
   @Test
   public void testOnBecomeOnlineFromOffline() throws Exception {
-    // Check that only KafkaConsumption is started when corresponding partition information exists on local storage.
-    Mockito.when(mockAbstractStorageEngine.containsPartition(testPartition)).thenReturn(true);
     testStateModel.onBecomeOnlineFromOffline(mockMessage, mockContext);
-    Mockito.verify(mockKafkaConsumerService, Mockito.atLeastOnce()).startConsumption(mockStoreConfig, testPartition);
-    Mockito.verify(mockAbstractStorageEngine, Mockito.never()).addStoragePartition(testPartition);
-
-    /*
-     * When partition information does not exists on local storage, Check that KafkaConsumption is started,
-     * local partition is created and kafka offset is reset.
-     */
-    Mockito.when(mockAbstractStorageEngine.containsPartition(testPartition)).thenReturn(false);
-    testStateModel.onBecomeOnlineFromOffline(mockMessage, mockContext);
-    Mockito.verify(mockKafkaConsumerService, Mockito.atLeastOnce()).startConsumption(mockStoreConfig, testPartition);
-    Mockito.verify(mockAbstractStorageEngine, Mockito.atLeastOnce()).addStoragePartition(testPartition);
+    Mockito.verify(mockKafkaConsumerService, Mockito.times(1)).startConsumption(mockStoreConfig, testPartition);
+    Mockito.verify(mockStorageService, Mockito.times(1)).openStoreForNewPartition(mockStoreConfig, testPartition);
   }
 
   /**
@@ -86,7 +69,7 @@ public class VenicePartitionStateModelTest {
   @Test
   public void testOnBecomeDroppedFromOffline() throws Exception {
     testStateModel.onBecomeDroppedFromOffline(mockMessage, mockContext);
-    Mockito.verify(mockAbstractStorageEngine, Mockito.atLeastOnce()).dropPartition(testPartition);
+    Mockito.verify(mockStorageService, Mockito.atLeastOnce()).dropStorePartition(mockStoreConfig , testPartition);
   }
 
   /**
@@ -108,6 +91,6 @@ public class VenicePartitionStateModelTest {
   public void testOnBecomeDroppedFromError() throws Exception {
     testStateModel.onBecomeDroppedFromError(mockMessage, mockContext);
     Mockito.verify(mockKafkaConsumerService, Mockito.atLeastOnce()).stopConsumption(mockStoreConfig, testPartition);
-    Mockito.verify(mockAbstractStorageEngine, Mockito.atLeastOnce()).dropPartition(testPartition);
+    Mockito.verify(mockStorageService, Mockito.atLeastOnce()).dropStorePartition(mockStoreConfig, testPartition);
   }
 }

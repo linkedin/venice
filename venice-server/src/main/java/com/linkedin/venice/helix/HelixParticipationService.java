@@ -6,6 +6,7 @@ import com.linkedin.venice.notifier.HelixNotifier;
 import com.linkedin.venice.server.StoreRepository;
 import com.linkedin.venice.server.VeniceConfigLoader;
 import com.linkedin.venice.service.AbstractVeniceService;
+import com.linkedin.venice.storage.StorageService;
 import com.linkedin.venice.utils.Utils;
 import javax.validation.constraints.NotNull;
 import org.apache.helix.HelixManager;
@@ -36,7 +37,7 @@ public class HelixParticipationService extends AbstractVeniceService {
   private HelixManager manager;
 
   public HelixParticipationService(@NotNull KafkaConsumerService kafkaConsumerService,
-          @NotNull StoreRepository storeRepository,
+          @NotNull StorageService storageService,
           @NotNull VeniceConfigLoader veniceConfigLoader,
           @NotNull String zkAddress,
           @NotNull String clusterName,
@@ -50,7 +51,7 @@ public class HelixParticipationService extends AbstractVeniceService {
     this.zkAddress = zkAddress;
     instance = new Instance(participantName,Utils.getHostName(), port);
     stateModelFactory
-        = new VeniceStateModelFactory(kafkaConsumerService, storeRepository, veniceConfigLoader);
+        = new VeniceStateModelFactory(kafkaConsumerService, storageService, veniceConfigLoader);
   }
 
   @Override
