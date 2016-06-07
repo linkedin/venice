@@ -33,7 +33,7 @@ public class StorageService extends AbstractVeniceService {
 
   public final static String NAME = "storage-service";
 
-  private static final Logger logger = Logger.getLogger(StorageService.class.getName());
+  private static final Logger logger = Logger.getLogger(StorageService.class);
 
   private final StoreRepository storeRepository;
   private final VeniceServerConfig serverConfig;

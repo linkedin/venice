@@ -15,7 +15,7 @@ import org.apache.log4j.Logger;
  */
 public class VeniceStateModelFactory extends StateModelFactory<StateModel> {
 
-  private static final Logger logger = Logger.getLogger(VeniceStateModelFactory.class.getName());
+  private static final Logger logger = Logger.getLogger(VeniceStateModelFactory.class);
 
   private final KafkaConsumerService kafkaConsumerService;
   private final StorageService storageService;

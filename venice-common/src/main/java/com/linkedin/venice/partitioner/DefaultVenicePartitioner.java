@@ -17,7 +17,7 @@ import java.security.NoSuchAlgorithmException;
  */
 public class DefaultVenicePartitioner extends VenicePartitioner {
 
-  static final Logger logger = Logger.getLogger(DefaultVenicePartitioner.class.getName());
+  static final Logger logger = Logger.getLogger(DefaultVenicePartitioner.class);
 
   public static final String HASH_ALGORITHM_KEY = "partitioner.hash.algorithm";
   public static final String DEFAULT_HASH_ALGORITHM = "MD5";

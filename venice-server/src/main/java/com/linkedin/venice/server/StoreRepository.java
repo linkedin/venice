@@ -21,7 +21,7 @@ import org.apache.log4j.Logger;
  */
 public class StoreRepository {
 
-  private static final Logger logger = Logger.getLogger(StoreRepository.class.getName());
+  private static final Logger logger = Logger.getLogger(StoreRepository.class);
 
   /**
    *   Local storage engine for this node. This is lowest level persistence abstraction, these StorageEngines provide an iterator over their values.

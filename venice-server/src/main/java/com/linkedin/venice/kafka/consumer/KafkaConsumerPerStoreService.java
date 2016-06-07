@@ -44,7 +44,7 @@ public class KafkaConsumerPerStoreService extends AbstractVeniceService implemen
   private static final String VENICE_SERVICE_NAME = "kafka-consumer-service";
   private static final String GROUP_ID_FORMAT = "%s_%s_%d";
 
-  private static final Logger logger = Logger.getLogger(KafkaConsumerPerStoreService.class.getName());
+  private static final Logger logger = Logger.getLogger(KafkaConsumerPerStoreService.class);
 
   private final StoreRepository storeRepository;
   private final VeniceConfigLoader veniceConfigLoader;

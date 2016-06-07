@@ -23,7 +23,7 @@ import org.apache.log4j.Logger;
 public class VeniceWriter<K, V> {
 
   // log4j logger
-  static final Logger logger = Logger.getLogger(VeniceWriter.class.getName());
+  static final Logger logger = Logger.getLogger(VeniceWriter.class);
 
   protected final VeniceProperties props;
   protected final String storeName;

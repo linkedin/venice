@@ -19,7 +19,7 @@ import java.util.Set;
  * ids.
  */
 public class PartitionAssignmentRepository {
-  private static final Logger logger = Logger.getLogger(PartitionAssignmentRepository.class.getName());
+  private static final Logger logger = Logger.getLogger(PartitionAssignmentRepository.class);
 
   private final Map<String, Set<Integer>> resourceNameToPartitionIdsMap;
 

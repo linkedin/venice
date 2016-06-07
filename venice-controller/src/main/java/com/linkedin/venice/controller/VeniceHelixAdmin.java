@@ -46,7 +46,7 @@ public class VeniceHelixAdmin implements Admin {
 
 
     public static final int CONTROLLER_CLUSTER_NUMBER_OF_PARTITION = 1;
-    private static final Logger logger = Logger.getLogger(VeniceHelixAdmin.class.getName());
+    private static final Logger logger = Logger.getLogger(VeniceHelixAdmin.class);
     private final HelixAdmin admin;
     private TopicCreator topicCreator;
     private final ZkClient zkClient;

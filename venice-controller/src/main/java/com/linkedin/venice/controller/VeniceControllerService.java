@@ -9,7 +9,7 @@ import org.apache.log4j.Logger;
  */
 public class VeniceControllerService extends AbstractVeniceService {
 
-  private static final Logger logger = Logger.getLogger(VeniceControllerService.class.getName());
+  private static final Logger logger = Logger.getLogger(VeniceControllerService.class);
   private static final String VENICE_CONTROLLER_SERVICE_NAME = "venice-controller-service";
 
   private final Admin admin;

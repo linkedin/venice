@@ -11,7 +11,7 @@ import org.apache.log4j.Logger;
  * Created by mwise on 4/25/16.
  */
 public class VenicePathParserHelper {
-  private static final Logger logger = Logger.getLogger(VenicePathParserHelper.class.getName());
+  private static final Logger logger = Logger.getLogger(VenicePathParserHelper.class);
 
   private String resourceType = null;
   private String resourceName = null;

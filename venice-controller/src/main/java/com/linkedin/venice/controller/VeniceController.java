@@ -14,7 +14,7 @@ import org.apache.log4j.Logger;
  */
 public class VeniceController {
 
-  private static final Logger logger = Logger.getLogger(VeniceController.class.getName());
+  private static final Logger logger = Logger.getLogger(VeniceController.class);
 
   //services
   VeniceControllerService controllerService;

@@ -24,7 +24,7 @@ import org.apache.log4j.Logger;
  * stores.
  */
 public class HelixReadWriteStoreRepository extends HelixReadonlyStoreRepository implements ReadWriteStoreRepository {
-  private static final Logger logger = Logger.getLogger(HelixReadWriteStoreRepository.class.getName());
+  private static final Logger logger = Logger.getLogger(HelixReadWriteStoreRepository.class);
 
   public HelixReadWriteStoreRepository(@NotNull ZkClient zkClient, @NotNull HelixAdapterSerializer adapter,
       @NotNull String clusterName) {

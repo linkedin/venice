@@ -20,7 +20,7 @@ import org.apache.log4j.Logger;
 // TODO curate all comments later
 public class VeniceServer {
 
-  private static final Logger logger = Logger.getLogger(VeniceServer.class.getName());
+  private static final Logger logger = Logger.getLogger(VeniceServer.class);
   private final VeniceConfigLoader veniceConfigLoader;
   private final AtomicBoolean isStarted;
 

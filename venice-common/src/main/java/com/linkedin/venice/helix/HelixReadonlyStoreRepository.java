@@ -12,10 +12,10 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
-import java.util.logging.Logger;
 import javax.validation.constraints.NotNull;
 
 import com.linkedin.venice.utils.PathResourceRegistry;
+import org.apache.log4j.Logger;
 import org.I0Itec.zkclient.IZkChildListener;
 import org.I0Itec.zkclient.IZkDataListener;
 import org.apache.commons.collections.map.HashedMap;
@@ -29,7 +29,7 @@ import org.apache.helix.manager.zk.ZkClient;
  * changed in ZK, this repository will get notification and update local copy to keep consistent with ZK copy.
  */
 public class HelixReadonlyStoreRepository implements ReadonlyStoreRepository {
-  private static final Logger logger = Logger.getLogger(HelixReadonlyStoreRepository.class.getName());
+  private static final Logger logger = Logger.getLogger(HelixReadonlyStoreRepository.class);
 
   public static final String STORES_PATH = "/Stores";
   /**

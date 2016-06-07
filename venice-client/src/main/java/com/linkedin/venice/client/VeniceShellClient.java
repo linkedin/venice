@@ -16,7 +16,7 @@ import java.util.Scanner;
  */
 public class VeniceShellClient {
 
-  private static final Logger logger = Logger.getLogger(VeniceShellClient.class.getName()); // log4j logger
+  private static final Logger logger = Logger.getLogger(VeniceShellClient.class); // log4j logger
 
   static final VeniceSerializer<String> keySerializer = new StringSerializer();
   static final VeniceSerializer<String> valueSerializer = new StringSerializer();

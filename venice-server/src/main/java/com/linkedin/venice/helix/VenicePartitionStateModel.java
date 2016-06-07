@@ -24,7 +24,7 @@ import org.apache.log4j.Logger;
 
 @StateModelInfo(initialState = HelixState.OFFLINE_STATE, states = {HelixState.ONLINE_STATE})
 public class VenicePartitionStateModel extends StateModel {
-    private static final Logger logger = Logger.getLogger(VenicePartitionStateModel.class.getName());
+    private static final Logger logger = Logger.getLogger(VenicePartitionStateModel.class);
 
     private static final String STORE_PARTITION_NODE_DESCRIPTION_FORMAT = "%s-%d @ node %d";
 

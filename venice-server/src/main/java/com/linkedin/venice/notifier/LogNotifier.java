@@ -8,7 +8,7 @@ import org.apache.log4j.Logger;
  */
 public class LogNotifier implements VeniceNotifier {
 
-  private static final Logger logger = Logger.getLogger(LogNotifier.class.getName());
+  private static final Logger logger = Logger.getLogger(LogNotifier.class);
   @Override
   public void started(String storeName, int partitionId) {
     logger.info("Push started for Store " + storeName + " partitionId " + partitionId );

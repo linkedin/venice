@@ -16,7 +16,7 @@ import org.apache.log4j.Logger;
  */
 public class HelixNotifier implements VeniceNotifier {
 
-  private static final Logger logger = Logger.getLogger(HelixNotifier.class.getName());
+  private static final Logger logger = Logger.getLogger(HelixNotifier.class);
 
   private final HelixControlMessageChannel messageChannel;
   private final String instanceId;

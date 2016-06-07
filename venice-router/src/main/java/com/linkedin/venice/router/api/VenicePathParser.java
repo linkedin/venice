@@ -29,7 +29,7 @@ import org.jboss.netty.handler.codec.http.HttpResponseStatus;
  */
 public class VenicePathParser implements ResourcePathParser<VeniceStoragePath, RouterKey> {
 
-  private static final Logger logger = Logger.getLogger(VenicePathParser.class.getName());
+  private static final Logger logger = Logger.getLogger(VenicePathParser.class);
 
   public static final String STORE_VERSION_SEP = "_v";
   public static final Pattern STORE_PATTERN = Pattern.compile("\\A[a-zA-Z][a-zA-Z0-9_-]*\\z"); // \A and \z are start and end of string

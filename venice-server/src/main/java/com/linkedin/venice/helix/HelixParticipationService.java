@@ -22,7 +22,7 @@ import org.apache.log4j.Logger;
  */
 public class HelixParticipationService extends AbstractVeniceService {
 
-  private static final Logger logger = Logger.getLogger(HelixParticipationService.class.getName());
+  private static final Logger logger = Logger.getLogger(HelixParticipationService.class);
 
   private static final String VENICE_PARTICIPANT_SERVICE_NAME = "venice-participant-service";
   private static final String STATE_MODEL_REFERENCE_NAME = "PartitionOnlineOfflineModel";

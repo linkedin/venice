@@ -29,7 +29,7 @@ import org.apache.log4j.Logger;
 public class VeniceReader<K, V> {
 
   // log4j logger
-  static final Logger logger = Logger.getLogger(VeniceReader.class.getName());
+  static final Logger logger = Logger.getLogger(VeniceReader.class);
 
   private VeniceProperties props;
   private final String storeName;

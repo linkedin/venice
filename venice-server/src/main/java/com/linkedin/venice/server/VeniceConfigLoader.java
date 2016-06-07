@@ -66,7 +66,7 @@ import static com.linkedin.venice.ConfigKeys.clusterSpecificProperties;
  *  patterns are narrowed down, checks can be enforced if necessary.
  */
 public class VeniceConfigLoader {
-  private static final Logger logger = Logger.getLogger(VeniceConfigLoader.class.getName());
+  private static final Logger logger = Logger.getLogger(VeniceConfigLoader.class);
 
   public static final String VENICE_CONFIG_DIR = "VENICE_CONFIG_DIR";
   public static final String SERVER_PROPERTIES_FILE = "server.properties";

@@ -30,7 +30,7 @@ import static org.jboss.netty.handler.codec.http.HttpVersion.HTTP_1_1;
 public class ControllerLookupHandler extends SimpleChannelUpstreamHandler {
 
   private static final String SEP = "/";
-  private static final Logger logger = Logger.getLogger(ControllerLookupHandler.class.getName());
+  private static final Logger logger = Logger.getLogger(ControllerLookupHandler.class);
   private final RoutingDataRepository routing;
 
   public ControllerLookupHandler(RoutingDataRepository routing){

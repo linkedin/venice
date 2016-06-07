@@ -43,7 +43,7 @@ import org.apache.log4j.Logger;
  */
 
 public class HelixRoutingDataRepository extends RoutingTableProvider implements RoutingDataRepository, ControllerChangeListener {
-    private static final Logger logger = Logger.getLogger(HelixRoutingDataRepository.class.getName());
+    private static final Logger logger = Logger.getLogger(HelixRoutingDataRepository.class);
     /**
      * Manager used to communicate with Helix.
      */

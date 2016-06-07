@@ -15,7 +15,7 @@ public class TopicCreator {
   private final int sessionTimeoutMs;
   private final int connectionTimeoutMs;
 
-  private static final Logger logger = Logger.getLogger(TopicCreator.class.getName());
+  private static final Logger logger = Logger.getLogger(TopicCreator.class);
 
   public TopicCreator(String zkConnection, int sessionTimeoutMs, int connectionTimeoutMs){
     this.zkConnection = zkConnection;

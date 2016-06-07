@@ -43,7 +43,7 @@ public class BdbOffsetManager extends AbstractVeniceService implements OffsetMan
   private static final long LOG_FILE_MAX = 1L * 1024L * 1024L;// 1MB log file is more than enough and is the minimum
   private static final long CACHE_SIZE = 1024L * 1024L; // 1MB cache   TODO increase this later if needed
 
-  private static final Logger logger = Logger.getLogger(BdbOffsetManager.class.getName());
+  private static final Logger logger = Logger.getLogger(BdbOffsetManager.class);
   private final Environment offsetsBdbEnvironment;
 
   private AtomicBoolean isOpen;

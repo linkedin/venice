@@ -16,7 +16,7 @@ import org.apache.log4j.Logger;
  * Service that listens on configured port to accept incoming GET requests
  */
 public class ListenerService extends AbstractVeniceService{
-  private static final Logger logger = Logger.getLogger(ListenerService.class.getName());
+  private static final Logger logger = Logger.getLogger(ListenerService.class);
 
   private ServerBootstrap bootstrap;
   private EventLoopGroup bossGroup;

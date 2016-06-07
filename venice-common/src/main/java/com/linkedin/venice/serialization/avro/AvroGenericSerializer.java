@@ -19,7 +19,7 @@ public class AvroGenericSerializer implements VeniceSerializer<Object> {
 
     private final Schema typeDef;
 
-    private static final Logger logger = Logger.getLogger(AvroGenericSerializer.class.getName());
+    private static final Logger logger = Logger.getLogger(AvroGenericSerializer.class);
 
     // general constructor
     public AvroGenericSerializer(String schema) {

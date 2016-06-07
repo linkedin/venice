@@ -42,7 +42,7 @@ public class ControllerClient implements Closeable {
   private String routerUrls;
 
   private final static ObjectMapper mapper = new ObjectMapper();
-  private final static Logger logger = Logger.getLogger(ControllerClient.class.getName());
+  private final static Logger logger = Logger.getLogger(ControllerClient.class);
 
   /**
    * It creates a thread for sending Http Requests.

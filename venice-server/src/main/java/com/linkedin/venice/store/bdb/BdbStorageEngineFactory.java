@@ -41,7 +41,7 @@ import java.util.concurrent.TimeUnit;
 
 public class BdbStorageEngineFactory implements StorageEngineFactory {
 
-  private static final Logger logger = Logger.getLogger(BdbStorageEngineFactory.class.getName());
+  private static final Logger logger = Logger.getLogger(BdbStorageEngineFactory.class);
 
   private static final String TYPE_NAME = "bdb";
   private static final String SHARED_ENV_KEY = "shared";
