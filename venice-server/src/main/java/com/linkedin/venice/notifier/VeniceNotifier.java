@@ -1,7 +1,5 @@
 package com.linkedin.venice.notifier;
 
-import java.util.Collection;
-
 
 /**
  * Interface for listening to Notifications for Store consumption.

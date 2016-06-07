@@ -16,17 +16,6 @@ jar {
   }
 }
 
-sourceSets {
-  // Tests work in IntelliJ regardless of whether this config is present or not,
-  // but it is necessary in order for Gradle's tests to find the main resources.
-  test {
-    // At the time of this writing, the only relevant resources under main which
-    // the code needs are the Avro schema definitions under: src/main/resources/avro/
-    output.resourcesDir = "build/resources/main"
-  }
-}
-
-
 dependencies {
 
   // Let's try to keep it clean! (i.e.: alphabetical)

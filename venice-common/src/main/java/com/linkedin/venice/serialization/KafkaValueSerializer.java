@@ -11,12 +11,10 @@ import org.apache.avro.io.DecoderFactory;
 import org.apache.avro.io.Encoder;
 import org.apache.avro.specific.SpecificDatumReader;
 import org.apache.avro.specific.SpecificDatumWriter;
+import org.apache.commons.io.IOUtils;
 import org.apache.log4j.Logger;
 
-import java.io.ByteArrayOutputStream;
-import java.io.File;
-import java.io.IOException;
-import java.net.URL;
+import java.io.*;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -183,21 +181,19 @@ public class KafkaValueSerializer implements VeniceSerializer<KafkaMessageEnvelo
   /**
    * Utility function to get schemas out of embedded resources.
    *
-   * N.B.: For this to work in Gradle tests, a special sourceSets definition is included
-   *       in the venice-common module's build.gradle file. This does not affect IDEs.
-   *
    * @param resourcePath The path of the file under the src/main/resources directory
    * @return the {@link org.apache.avro.Schema} instance corresponding to the file at {@param resourcePath}
    * @throws IOException
    */
   private static Schema getSchemaFromResource(String resourcePath) throws IOException {
-    ClassLoader thisClassLoader = KafkaValueSerializer.class.getClassLoader();
-    URL resourceURL = thisClassLoader.getResource(resourcePath);
-    if (resourceURL == null) {
+    ClassLoader classLoader = KafkaValueSerializer.class.getClassLoader();
+    InputStream inputStream = classLoader.getResourceAsStream(resourcePath);
+    if (inputStream == null) {
       throw new IOException("Resource path '" + resourcePath + "' does not exist!");
     }
-    Schema schema = Schema.parse(new File(resourceURL.getFile()));
-    logger.debug("Loaded schema from resource path '" + resourcePath + "': " + schema.toString(true));
+    String schemaString = IOUtils.toString(inputStream);
+    Schema schema = Schema.parse(schemaString);
+    logger.info("Loaded schema from resource path '" + resourcePath + "':\n" + schema.toString(true));
     return schema;
   }
 }

@@ -41,9 +41,9 @@ import org.apache.log4j.Logger;
  */
 public class StoreConsumptionTask implements Runnable, Closeable {
 
-  private static final Logger logger = Logger.getLogger(StoreConsumptionTask.class.getName());
+  private static final Logger logger = Logger.getLogger(StoreConsumptionTask.class);
 
-  private static final String CONSUMER_TASK_ID_FORMAT = "KafkaPerStoreConsumptionTask for " + "[ Node: %d, Topic: %s ]";
+  private static final String CONSUMER_TASK_ID_FORMAT = StoreConsumptionTask.class.getSimpleName() + " for [ Node: %d, Topic: %s ]";
 
   // Making it non final to shorten the time in testing.
   public static int READ_CYCLE_DELAY_MS = 1000;
@@ -219,8 +219,12 @@ public class StoreConsumptionTask implements Runnable, Closeable {
       // This will confused the controller.
       // FGV: Actually, the Controller doesn't seem to be aware at all that the consumer failed.
       //      It just keeps reporting "Push status: STARTED..." indefinitely to the H2V job. TODO: fix this
-      logger.error(consumerTaskId + " failed with Exception: ", e);
-      reportError(partitionToOffsetMap.keySet() , " Errors occurred during poll " , e );
+      logger.error(consumerTaskId + " failed with Exception.", e);
+      reportError(partitionToOffsetMap.keySet() , "Exception caught during poll." , e);
+    } catch (Throwable t) {
+      logger.error(consumerTaskId + " failed with Throwable!!!", t);
+      reportError(partitionToOffsetMap.keySet(), "Non-exception Throwable caught in " + getClass().getSimpleName() +
+          "'s run() function.", new VeniceException(t));
     } finally {
       internalClose();
     }
