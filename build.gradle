@@ -61,6 +61,7 @@ subprojects {
   apply plugin: 'java'
   apply plugin: 'idea'
   apply plugin: 'eclipse'
+  apply plugin: 'jacoco'
 
   sourceCompatibility = 1.8
   if (!project.hasProperty('overrideBuildEnvironment') ||
@@ -100,6 +101,15 @@ subprojects {
   test {
     // Tests should run in parallel
     maxParallelForks 10
+  }
+
+  jacocoTestReport {
+    dependsOn test
+    reports {
+      xml.enabled false
+      csv.enabled false
+      html.destination "${buildDir}/jacocoHtml"
+    }
   }
 
   // Add Logging on what is running and passed, Sometimes the test hangs
