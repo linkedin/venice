@@ -1,6 +1,6 @@
 package com.linkedin.venice.controller;
 
-import com.linkedin.venice.TopicCreator;
+import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.helix.HelixReadWriteStoreRepository;
@@ -48,7 +48,7 @@ public class VeniceHelixAdmin implements Admin {
     public static final int CONTROLLER_CLUSTER_NUMBER_OF_PARTITION = 1;
     private static final Logger logger = Logger.getLogger(VeniceHelixAdmin.class);
     private final HelixAdmin admin;
-    private TopicCreator topicCreator;
+    private TopicManager topicManager;
     private final ZkClient zkClient;
     /**
      * Parent controller, it always being connected to Helix. And will create sub-controller for specific cluster when
@@ -63,7 +63,7 @@ public class VeniceHelixAdmin implements Admin {
         this.controllerClusterName = config.getControllerClusterName();
         this.controllerClusterReplica = config.getControllerClusterReplica();
         this.kafkaBootstrapServers =  config.getKafkaBootstrapServers();
-        this.topicCreator = new TopicCreator(config.getKafkaZkAddress());
+        this.topicManager = new TopicManager(config.getKafkaZkAddress());
         admin = new ZKHelixAdmin(config.getZkAddress());
         //There is no way to get the internal zkClient from HelixManager or HelixAdmin. So create a new one here.
         zkClient = new ZkClient(config.getZkAddress(), ZkClient.DEFAULT_SESSION_TIMEOUT, ZkClient.DEFAULT_CONNECTION_TIMEOUT);
@@ -305,7 +305,7 @@ public class VeniceHelixAdmin implements Admin {
     // will fail and might exhibit other issues.
     private void createKafkaTopic(String clusterName, String kafkaTopic, int numberOfPartition, int kafkaReplicaFactor) {
         checkControllerMastership(clusterName);
-        topicCreator.createTopic(kafkaTopic, numberOfPartition, kafkaReplicaFactor);
+        topicManager.createTopic(kafkaTopic, numberOfPartition, kafkaReplicaFactor);
     }
 
     private void createHelixResources(String clusterName, String kafkaTopic , int numberOfPartition , int replicaFactor) {

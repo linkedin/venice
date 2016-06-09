@@ -1,6 +1,6 @@
 package com.linkedin.venice.hadoop;
 
-import com.linkedin.venice.TopicCreator;
+import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.client.VeniceWriter;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.NewStoreResponse;
@@ -437,7 +437,7 @@ public class KafkaPushJob {
     int partitionCount = 3;
     int replicationFactor = 1;
 
-    new TopicCreator(kafkaZk).createTopic(topic, partitionCount, replicationFactor);
+    new TopicManager(kafkaZk).createTopic(topic, partitionCount, replicationFactor);
   }
 
   private void logJobProperties() {
