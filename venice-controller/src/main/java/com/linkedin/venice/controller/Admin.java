@@ -1,6 +1,7 @@
 package com.linkedin.venice.controller;
 
 import com.linkedin.venice.job.ExecutionStatus;
+import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import java.util.List;
@@ -57,6 +58,8 @@ public interface Admin {
      * @return kafka bootstrap servers url, if there are multiple will be comma separated.
      */
     String getKafkaBootstrapServers();
+
+    TopicManager getTopicManager();
 
     /**
      * Check if this controller itself is the master controller of given cluster or not.
