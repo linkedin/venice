@@ -8,14 +8,17 @@ import com.linkedin.venice.job.Job;
 import com.linkedin.venice.job.JobRepository;
 import com.linkedin.venice.job.OfflineJob;
 import com.linkedin.venice.job.Task;
+import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.meta.Partition;
 import com.linkedin.venice.meta.ReadWriteStoreRepository;
 import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -167,8 +170,32 @@ public class VeniceJobManager implements ControlMessageHandler<StoreStatusMessag
     final int NUM_VERSIONS_TO_PRESERVE = 2;
     List<Version> versionsToDelete = store.retrieveVersionsToDelete(NUM_VERSIONS_TO_PRESERVE);
     for (Version version : versionsToDelete) {
-      helixAdmin.deleteOldStoreVersion(clusterName, version.kafkaTopicName());
-      store.deleteVersion(version.getNumber());
+      deleteOneStoreVersion(store, version.getNumber());
+    }
+  }
+
+  /***
+   * Delete the version specified from the store, remove the helix resource, and update zookeeper.
+   * @param store
+   * @param versionNumber
+   */
+  private void deleteOneStoreVersion(Store store, int versionNumber){
+    helixAdmin.deleteOldStoreVersion(clusterName, new Version(store.getName(), versionNumber).kafkaTopicName());
+    store.deleteVersion(versionNumber);
+    metadataRepository.updateStore(store);
+  }
+
+  /***
+   * Delete all kafka topics for this store that correspond to a version older than
+   * still exists for the store.
+   */
+  private void deleteOldKafkaTopics(Store store){
+    Optional<Integer> minAvailableVersion = store.getVersions().stream() /* all available versions */
+        .map(version -> version.getNumber()) /* version numbers */
+        .min(Comparator.<Integer>naturalOrder()); /* min available */
+    if (minAvailableVersion.isPresent()){
+      helixAdmin.getTopicManager()
+          .deleteTopicsForStoreOlderThanVersion(store.getName(), minAvailableVersion.get());
     }
   }
 
@@ -190,6 +217,7 @@ public class VeniceJobManager implements ControlMessageHandler<StoreStatusMessag
       }
     }
     deleteOldStoreVersions(store);
+    deleteOldKafkaTopics(store);
   }
 
   private void handleJobError(Job job) {
@@ -198,7 +226,9 @@ public class VeniceJobManager implements ControlMessageHandler<StoreStatusMessag
     jobRepository.unsubscribeJobStatusChange(job.getKafkaTopic(), this);
     Store store = metadataRepository.getStore(Version.parseStoreFromKafkaTopicName(job.getKafkaTopic()));
     updateStoreVersionStatus(job, store, VersionStatus.ERROR);
-    deleteOldStoreVersions(store);
+    deleteOneStoreVersion(store, Version.parseVersionFromKafkaTopicName(job.getKafkaTopic()));
+    helixAdmin.getTopicManager()
+        .deleteTopic(job.getKafkaTopic());
   }
 
   /**

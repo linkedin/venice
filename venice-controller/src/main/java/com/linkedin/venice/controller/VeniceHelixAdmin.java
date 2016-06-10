@@ -439,6 +439,11 @@ public class VeniceHelixAdmin implements Admin {
     }
 
     @Override
+    public TopicManager getTopicManager() {
+        return this.topicManager;
+    }
+
+    @Override
     public synchronized boolean isMasterController(String clusterName) {
         VeniceDistClusterControllerStateModel model = controllerStateModelFactory.getModel(clusterName);
         if (model == null ) {
