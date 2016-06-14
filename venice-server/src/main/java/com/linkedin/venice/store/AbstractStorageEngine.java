@@ -5,12 +5,14 @@ import com.linkedin.venice.exceptions.PersistenceFailureException;
 import com.linkedin.venice.exceptions.StorageInitializationException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.server.PartitionAssignmentRepository;
+import com.linkedin.venice.store.bdb.BdbStoragePartition;
 import com.linkedin.venice.store.iterators.CloseableStoreEntriesIterator;
 import com.linkedin.venice.store.iterators.CloseableStoreKeysIterator;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.Utils;
 import java.util.Collection;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import org.apache.log4j.Logger;
 
 import java.util.concurrent.ConcurrentMap;
@@ -36,21 +38,62 @@ import java.util.concurrent.atomic.AtomicBoolean;
  */
 public abstract class AbstractStorageEngine implements Store {
   private final String storeName;
-  protected final VeniceStoreConfig storeDef;
   protected final AtomicBoolean isOpen;
-  protected final PartitionAssignmentRepository partitionNodeAssignmentRepo;
   protected final Logger logger = Logger.getLogger(getClass());
   protected ConcurrentMap<Integer, AbstractStoragePartition> partitionIdToPartitionMap;
 
-  public AbstractStorageEngine(VeniceStoreConfig storeDef,
-                               PartitionAssignmentRepository partitionNodeAssignmentRepo,
-                               ConcurrentMap<Integer, AbstractStoragePartition> partitionIdToPartitionMap) {
+  public AbstractStorageEngine(String storeName) {
 
-    this.storeDef = storeDef;
-    this.storeName = storeDef.getStoreName();
+    this.storeName = storeName;
     this.isOpen = new AtomicBoolean(true);
-    this.partitionNodeAssignmentRepo = partitionNodeAssignmentRepo;
-    this.partitionIdToPartitionMap = partitionIdToPartitionMap;
+    this.partitionIdToPartitionMap = new ConcurrentHashMap<>();
+  }
+
+
+  public abstract AbstractStoragePartition createStoragePartition(int partitionId);
+
+  /**
+   * Adds a partition to the current store
+   *
+   * @param partitionId - id of partition to add
+   */
+  public synchronized void addStoragePartition(int partitionId) {
+    /**
+     * If this method is called by anyone other than the constructor, i.e- the admin service, the caller should ensure
+     * that after the addition of the storage partition:
+     *  1. populate the partition node assignment repository
+     */
+    if (partitionIdToPartitionMap.containsKey(partitionId)) {
+      logger.error("Failed to add a storage partition for partitionId: " + partitionId + " Store " + this.getName() +" . This partition already exists!");
+      throw new StorageInitializationException("Partition " + partitionId + " of store " + this.getName() + " already exists.");
+    }
+    AbstractStoragePartition partition = createStoragePartition(partitionId);
+    partitionIdToPartitionMap.put(partitionId, partition);
+  }
+
+  /**
+   * Removes and returns a partition from the current store
+   *
+   * @param partitionId - id of partition to retrieve and remove
+   */
+  public synchronized void dropPartition(int partitionId) {
+    /**
+     * The caller of this method should ensure that:
+     * 1. The SimpleKafkaConsumerTask associated with this partition is shutdown
+     * 2. The partition node assignment repo is cleaned up and then remove this storage partition.
+     *    Else there can be situations where the data is consumed from Kafka and not persisted.
+     */
+    if (!partitionIdToPartitionMap.containsKey(partitionId)) {
+      logger.error("Failed to remove a non existing partition: " + partitionId + " Store " + this.getName() );
+      throw new VeniceException("Partition " + partitionId + " of store " + this.getName() + " does not exist.");
+    }
+    /* NOTE: bdb database is not closed here. */
+    logger.info("Removing Partition: " + partitionId + " Store " + this.getName() );
+    AbstractStoragePartition partition = partitionIdToPartitionMap.remove(partitionId);
+    partition.drop();
+    if(partitionIdToPartitionMap.size() == 0) {
+      logger.info("All Partitions deleted for Store " + this.getName() );
+    }
   }
 
   /**
@@ -71,22 +114,6 @@ public abstract class AbstractStorageEngine implements Store {
   public boolean containsPartition(int partitionId) {
     return partitionIdToPartitionMap.containsKey(partitionId);
   }
-
-  /**
-   * Adds a partition to the current store
-   *
-   * @param partitionId - id of partition to add
-   */
-  public abstract void addStoragePartition(int partitionId)
-    throws StorageInitializationException;
-
-  /**
-   * Removes and returns a partition from the current store
-   *
-   * @param partitionId - id of partition to retrieve and remove
-   */
-  public abstract void dropPartition(int partitionId)
-    throws VeniceException;
 
   /**
    * Get all Partition Ids which are assigned to the current Node.
@@ -186,13 +213,6 @@ public abstract class AbstractStorageEngine implements Store {
 
   public void close() throws PersistenceFailureException {
     this.isOpen.compareAndSet(true, false);
-  }
-
-  protected void initialStoreForPartitions(PartitionAssignmentRepository partitionAssignmentRepository){
-    // Create and initialize the individual databases for each partition
-    for (int partitionId : partitionNodeAssignmentRepo.getLogicalPartitionIds(this.getName())) {
-      addStoragePartition(partitionId);
-    }
   }
 
   public Logger getLogger(){

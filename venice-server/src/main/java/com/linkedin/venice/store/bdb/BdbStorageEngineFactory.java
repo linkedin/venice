@@ -48,7 +48,6 @@ public class BdbStorageEngineFactory implements StorageEngineFactory {
   private final Object lock = new Object();
 
   private final BdbServerConfig bdbServerConfig;
-  private final PartitionAssignmentRepository partitionNodeAssignmentRepo;
 
   private final Map<String, Environment> environments = Maps.newHashMap();
   private final EnvironmentConfig environmentConfig;
@@ -60,10 +59,8 @@ public class BdbStorageEngineFactory implements StorageEngineFactory {
   // TODO: add aggregated bdb environment stats
   // private AggregatedBdbEnvironmentStats aggBdbStats;
 
-  public BdbStorageEngineFactory(VeniceServerConfig serverConfig,
-                                 PartitionAssignmentRepository partitionNodeAssignmentRepo) {
+  public BdbStorageEngineFactory(VeniceServerConfig serverConfig) {
     this.bdbServerConfig = serverConfig.getBdbServerConfig();
-    this.partitionNodeAssignmentRepo = partitionNodeAssignmentRepo;
 
     this.environmentConfig = new EnvironmentConfig().setTransactional(true);
 
@@ -163,7 +160,7 @@ public class BdbStorageEngineFactory implements StorageEngineFactory {
       if(persistenceType == PersistenceType.BDB) {
         try {
           Environment environment = getEnvironment(storeConfig);
-          return new BdbStorageEngine(storeConfig, partitionNodeAssignmentRepo, environment);
+          return new BdbStorageEngine(storeConfig, environment);
         } catch (Exception e) {
           throw new StorageInitializationException("Error opening store " + storeName , e);
         }

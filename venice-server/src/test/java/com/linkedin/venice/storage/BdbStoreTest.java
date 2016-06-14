@@ -5,6 +5,7 @@ import com.linkedin.venice.config.VeniceStoreConfig;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.server.PartitionAssignmentRepository;
 import com.linkedin.venice.server.VeniceConfigLoader;
+import com.linkedin.venice.store.AbstractStorageEngine;
 import com.linkedin.venice.store.bdb.BdbStorageEngineFactory;
 import com.linkedin.venice.utils.VeniceProperties;
 import org.testng.annotations.Test;
@@ -32,8 +33,12 @@ public class BdbStoreTest extends AbstractStoreTest {
     partitionAssignmentRepository.addPartition(storeName, partitionId);
 
     VeniceServerConfig serverConfig = new VeniceServerConfig(storeProps);
-    BdbStorageEngineFactory factory = new BdbStorageEngineFactory(serverConfig, partitionAssignmentRepository);
-    testStore = factory.getStore(storeConfig);
+    BdbStorageEngineFactory factory = new BdbStorageEngineFactory(serverConfig);
+    AbstractStorageEngine engine = factory.getStore(storeConfig);
+    engine.addStoragePartition(partitionId);
+
+    testStore = engine;
+
   }
 
   @Test

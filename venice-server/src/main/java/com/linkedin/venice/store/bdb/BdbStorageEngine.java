@@ -28,58 +28,23 @@ public class BdbStorageEngine extends AbstractStorageEngine {
   private final AtomicBoolean isOpen;
   private final BdbServerConfig bdbServerConfig;
   private final BdbRuntimeConfig bdbRuntimeConfig;
-  //protected final BdbEnvironmentStats bdbEnvironmentStats;
   protected final boolean checkpointerOffForBatchWrites;
   private volatile int numOutstandingBatchWriteJobs = 0;
 
   public BdbStorageEngine(VeniceStoreConfig storeDef,
-                          PartitionAssignmentRepository partitionNodeAssignmentRepo,
                           Environment environment ) throws VeniceException {
-    super(storeDef, partitionNodeAssignmentRepo, new ConcurrentHashMap<Integer, AbstractStoragePartition>());
+    super(storeDef.getStoreName());
 
     this.environment = environment;
     this.isOpen = new AtomicBoolean(true);
     this.bdbServerConfig = storeDef.getBdbServerConfig();
     this.bdbRuntimeConfig = new BdbRuntimeConfig(bdbServerConfig);
     this.checkpointerOffForBatchWrites = bdbRuntimeConfig.isCheckpointerOffForBatchWrites();
-    initialStoreForPartitions(partitionNodeAssignmentRepo);
   }
 
   @Override
-  public synchronized void addStoragePartition(int partitionId) {
-    /**
-     * If this method is called by anyone other than the constructor, i.e- the admin service, the caller should ensure
-     * that after the addition of the storage partition:
-     *  1. populate the partition node assignment repository
-     *  2. it should also be registered with an SimpleKafkaConsumerTask thread.
-     */
-    if (partitionIdToPartitionMap.containsKey(partitionId)) {
-      logger.error("Failed to add a storage partition for partitionId: " + partitionId + " Store " + this.getName() +" . This partition already exists!");
-      throw new StorageInitializationException("Partition " + partitionId + " of store " + this.getName() + " already exists.");
-    }
-    BdbStoragePartition partition = new BdbStoragePartition(this.getName(), partitionId, environment, bdbServerConfig);
-    partitionIdToPartitionMap.put(partitionId, partition);
-  }
-
-  @Override
-  public synchronized void dropPartition(int partitionId) {
-    /**
-     * The caller of this method should ensure that:
-     * 1. The SimpleKafkaConsumerTask associated with this partition is shutdown
-     * 2. The partition node assignment repo is cleaned up and then remove this storage partition.
-     *    Else there can be situations where the data is consumed from Kafka and not persisted.
-     */
-    if (!partitionIdToPartitionMap.containsKey(partitionId)) {
-      logger.error("Failed to remove a non existing partition: " + partitionId + " Store " + this.getName() );
-      throw new VeniceException("Partition " + partitionId + " of store " + this.getName() + " does not exist.");
-    }
-    /* NOTE: bdb database is not closed here. */
-    logger.info("Removing Partition: " + partitionId + " Store " + this.getName() );
-    BdbStoragePartition partition = (BdbStoragePartition) partitionIdToPartitionMap.remove(partitionId);
-    partition.drop();
-    if(partitionIdToPartitionMap.size() == 0) {
-      logger.info("All Partitions deleted for Store " + this.getName() );
-    }
+  public AbstractStoragePartition createStoragePartition(int partitionId) {
+    return new BdbStoragePartition(this.getName(), partitionId, environment, bdbServerConfig);
   }
 
   public CloseableStoreEntriesIterator storeEntries() {
