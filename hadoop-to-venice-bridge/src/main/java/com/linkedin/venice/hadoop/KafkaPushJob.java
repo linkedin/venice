@@ -63,6 +63,7 @@ public class KafkaPushJob {
   public static final String VENICE_CLUSTER_NAME_PROP = "cluster.name";
   public static final String VENICE_STORE_NAME_PROP = "venice.store.name";
   public static final String VENICE_STORE_OWNERS_PROP = "venice.store.owners";
+  public static final String VENICE_TOPIC_RETENTION = "venice.topic.retention";
 
   public static final String SCHEMA_STRING_PROP = "schema";
   public static final String SCHEMA_ID_PROP = "schema.id";
@@ -91,6 +92,7 @@ public class KafkaPushJob {
   private final String storeName;
   private final String storeOwners;
   private final int batchNumBytes;
+  private final int topicRetention;
   // Whether the current job is for venice store push or just Kafka push
   private final boolean storePush;
 
@@ -175,6 +177,11 @@ public class KafkaPushJob {
             .describedAs("batch-num-bytes")
             .ofType(String.class)
             .defaultsTo(Integer.toString(1000000));
+    OptionSpec<String> topicRetentionOpt =
+        parser.accepts("topic-retention", "Optional: number of historical kafka topics that should be retained for this store")
+            .withRequiredArg()
+            .describedAs("num-topics-to-retain")
+            .ofType(String.class);
 
     OptionSet options = parser.parse(args);
 
@@ -184,6 +191,7 @@ public class KafkaPushJob {
     // Only one of the VeniceUrl and Topic must be specified
     boolean isVeniceUrlPresent = options.has(veniceUrlOpt);
     boolean isTopicPresent = options.has(topicOpt);
+    boolean cleanupKafkaTopics = options.has(topicRetentionOpt);
 
     Properties props = new Properties();
 
@@ -212,6 +220,9 @@ public class KafkaPushJob {
       props.put(KAFKA_ZOOKEEPER_PROP, options.valueOf(kafkaZkOpt));
       props.put(VENICE_STORE_NAME_PROP, options.valueOf(storeNameOpt));
       props.put(VENICE_STORE_OWNERS_PROP, options.valueOf(storeOwnersOpt));
+      if (cleanupKafkaTopics){
+        props.put(VENICE_TOPIC_RETENTION, options.valueOf(topicRetentionOpt));
+      }
     }  else {
       String errorMessage = "At least one of the Options should be present " + topicOpt + " Or " + veniceUrlOpt;
       logger.error(errorMessage);
@@ -263,6 +274,10 @@ public class KafkaPushJob {
     this.storeOwners = props.getProperty(VENICE_STORE_OWNERS_PROP);
     this.kafkaUrl = props.getProperty(KAFKA_URL_PROP);
     this.kafkaZk = props.getProperty(KAFKA_ZOOKEEPER_PROP);
+
+    String defaultRetention = Integer.toString(Integer.MAX_VALUE);
+    String retentionValue = props.getProperty(VENICE_TOPIC_RETENTION, defaultRetention);
+    this.topicRetention = Utils.parseIntFromString(retentionValue, VENICE_TOPIC_RETENTION);
 
     String kafkaTopic = props.getProperty(TOPIC_PROP);
 
@@ -370,6 +385,7 @@ public class KafkaPushJob {
         ControllerClient
             .pollJobStatusUntilFinished(Time.MS_PER_SECOND, 5 * Time.MS_PER_MINUTE, routerUrl, clusterName, topic);
       }
+      new TopicManager(kafkaZk).deleteOldTopicsForStore(storeName, topicRetention);
     }
   }
 
