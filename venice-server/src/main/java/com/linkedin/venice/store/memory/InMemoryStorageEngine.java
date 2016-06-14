@@ -19,49 +19,14 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public class InMemoryStorageEngine extends AbstractStorageEngine {
 
-  public InMemoryStorageEngine(VeniceStoreConfig storeDef,
-                               PartitionAssignmentRepository partitionNodeAssignmentRepo)
+  public InMemoryStorageEngine(VeniceStoreConfig storeDef)
     throws Exception {
-    super(storeDef, partitionNodeAssignmentRepo, new ConcurrentHashMap<Integer, AbstractStoragePartition>());
-
-    initialStoreForPartitions(partitionNodeAssignmentRepo);
+    super(storeDef.getStoreName());
   }
 
   @Override
-  public void addStoragePartition(int partitionId)
-    throws VeniceException {
-    /**
-     * If this method is called by anyone other than the constructor, i.e- the admin service, the caller should ensure
-     * that after the addition of the storage partition:
-     *  1. populate the partition node assignment repository
-     *  2. it should also be registered with an SimpleKafkaConsumerTask
-     *     thread.
-     */
-    if (partitionIdToPartitionMap.containsKey(partitionId)) {
-      String errorMessage =
-        "Failed to add a storage partition for partitionId: " + partitionId + " . This partition already exists!";
-      logger.error(errorMessage);
-      throw new StorageInitializationException(errorMessage);
-    }
-    partitionIdToPartitionMap.put(partitionId, new InMemoryStoragePartition(partitionId));
-  }
-
-  @Override
-  public void dropPartition(int partitionId)
-    throws VeniceException {
-    /**
-     * The caller of this method should ensure that 1. first the SimpleKafkaConsumerTask associated with this partition is
-     * shutdown 2. parittion node Assignment repo is cleaned up and 3. then remove this storage partition. Else there can 
-     * be situations where the data is consumed from Kafka and not persisted.
-     */
-    if (!partitionIdToPartitionMap.containsKey(partitionId)) {
-      String errorMessage = "Failed to remove a non existing partition: " + partitionId;
-      logger.error(errorMessage);
-      throw new VeniceException(errorMessage); // TODO Later change this to appropriate Exception type
-    }
-    logger.error("Removing Partition " + partitionId + " Store " + getName());
-    InMemoryStoragePartition inMemoryStoragePartition =
-      (InMemoryStoragePartition) partitionIdToPartitionMap.remove(partitionId);
+  public AbstractStoragePartition createStoragePartition(int partitionId) {
+    return  new InMemoryStoragePartition(partitionId);
   }
 
   public CloseableStoreEntriesIterator storeEntries() throws PersistenceFailureException {

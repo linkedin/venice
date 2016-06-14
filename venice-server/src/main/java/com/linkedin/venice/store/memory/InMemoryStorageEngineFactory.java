@@ -12,10 +12,9 @@ public class InMemoryStorageEngineFactory implements StorageEngineFactory {
   private static final String TYPE_NAME = "memory";
   private final Object lock = new Object();
 
-  private final PartitionAssignmentRepository partitionNodeAssignmentRepo;
 
-  public InMemoryStorageEngineFactory(VeniceServerConfig serverConfig, PartitionAssignmentRepository partitionNodeAssignmentRepo) {
-    this.partitionNodeAssignmentRepo = partitionNodeAssignmentRepo;
+  public InMemoryStorageEngineFactory(VeniceServerConfig serverConfig) {
+
   }
 
   @Override
@@ -23,7 +22,7 @@ public class InMemoryStorageEngineFactory implements StorageEngineFactory {
       throws StorageInitializationException {
     synchronized (lock) {
       try {
-        return new InMemoryStorageEngine(storeDef, partitionNodeAssignmentRepo);
+        return new InMemoryStorageEngine(storeDef);
       } catch (Exception e) {
         throw new StorageInitializationException(e);
       }

@@ -1,6 +1,7 @@
 package com.linkedin.venice.server;
 
 import com.linkedin.venice.exceptions.VeniceException;
+import java.util.concurrent.ConcurrentHashMap;
 import javax.validation.constraints.NotNull;
 import org.apache.log4j.Logger;
 
@@ -40,8 +41,10 @@ public class PartitionAssignmentRepository {
   public synchronized Set<Integer> getLogicalPartitionIds(String resourceName)
       throws VeniceException {
     if (resourceNameToPartitionIdsMap.containsKey(resourceName)) {
-      //Assumes all nodes have some partitions for any given resource.
-      return resourceNameToPartitionIdsMap.get(resourceName);
+      Set<Integer> partitionIds = resourceNameToPartitionIdsMap.get(resourceName);
+      // Create a copy if the underlying set is returned, and another caller
+      // modify the set, it will receive ConcurrentModificationException on the iteration.
+      return new HashSet<>(partitionIds);
     } else {
       String errorMessage = "Store name '" + resourceName + "' in this node does not exist!";
       logger.warn(errorMessage);

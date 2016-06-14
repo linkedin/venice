@@ -80,10 +80,10 @@ public class StorageService extends AbstractVeniceService {
     StorageEngineFactory factory;
     switch(persistenceType) {
       case BDB:
-        factory = new BdbStorageEngineFactory(serverConfig , partitionAssignmentRepository);
+        factory = new BdbStorageEngineFactory(serverConfig);
         break;
       case IN_MEMORY:
-        factory = new InMemoryStorageEngineFactory(serverConfig, partitionAssignmentRepository);
+        factory = new InMemoryStorageEngineFactory(serverConfig);
         break;
       default:
         throw new VeniceException("Unrecognized persistence type " + persistenceType);

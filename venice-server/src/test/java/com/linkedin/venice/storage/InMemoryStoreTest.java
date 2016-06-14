@@ -12,7 +12,6 @@ import java.io.File;
 
 public class InMemoryStoreTest extends AbstractStoreTest{
 
-  PartitionAssignmentRepository partitionAssignmentRepository;
   VeniceConfigLoader veniceConfigLoader;
 
   public InMemoryStoreTest()
@@ -29,13 +28,8 @@ public class InMemoryStoreTest extends AbstractStoreTest{
     String storeName = "testng-in-memory";
     VeniceStoreConfig storeConfig = veniceConfigLoader.getStoreConfig(storeName);
 
-    //populate partitionNodeAssignment
-    partitionAssignmentRepository = new PartitionAssignmentRepository();
-    int nodeId = 0;
-    // only adding 1 partition, config indicates 5 partitions
-    partitionAssignmentRepository.addPartition(storeName, 0);
-
-    Store inMemoryStorageEngine = new InMemoryStorageEngine(storeConfig, partitionAssignmentRepository);
+    InMemoryStorageEngine inMemoryStorageEngine = new InMemoryStorageEngine(storeConfig);
+    inMemoryStorageEngine.addStoragePartition(0);
     this.testStore = inMemoryStorageEngine;
   }
 
