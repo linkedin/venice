@@ -482,6 +482,15 @@ public class KafkaPushJob {
     logger.info("Successfully sent " + controlMessageType.name() + " Control Message for topic '" + topic + "'.");
   }
 
+  /***
+   * High level, we want to poll the consumption job status until it errors or is complete.  This is more complicated
+   * because we might be dealing with multiple destination clusters and we might not be able to reach all of them. We
+   * are using a semantic of "poll until all accessible datacenters report success".
+   *
+   * If a datacenter is not accessible, we ignore it.  As long as at least one datacenter is able to report success
+   * we are willing to mark the job as successful.  If any datacenters report an explicit error status, we throw an
+   * exception and fail the job.
+   */
   private void pollStatusUntilComplete(){
     String[] perDatacenterRouterUrls = veniceRouterUrl.split(";");
     Map<String, ExecutionStatus> perDatacenterStatus = new HashMap<>();
@@ -494,24 +503,41 @@ public class KafkaPushJob {
       keepChecking = false;
       for (String routerUrl : perDatacenterStatus.keySet()){
         switch (perDatacenterStatus.get(routerUrl)) {
+          /* Note that we're storing a status of ERROR if the response object .isError() returns true.
+             If .isError() is false and the response object's status is ERROR we throw an exception since the job has failed
+             Otherwise we store the response object's status.
+             This is a potentially confusing overloaded use of the ERROR status, since it means something different
+               in the response object compared to the stored perDatacenterStatus.
+           */
           case COMPLETED: /* jobs done */
-          case ERROR: /* failure to query (treat as connection issue) */
+          case ARCHIVED: /* This shouldn't happen, but presumably wont change on further polls */
             continue;
-          default:
-              /* This could take 90 seconds if connection is down.  30 second timeout with 3 attempts */
+          case ERROR: /* failure to query (treat as connection issue, so we retry if we're still polling */
+          case NOT_CREATED:
+          case NEW:
+          case STARTED:
+          case PROGRESS:
+            /* This could take 90 seconds if connection is down.  30 second timeout with 3 attempts */
             JobStatusQueryResponse response = ControllerClient.queryJobStatusWithRetry(routerUrl, clusterName, topic, 3);
+            /*  Note: .isError means the status could not be queried.  This may be due to a communication error, or
+                a caught exception.
+             */
             if (response.isError()){
               logger.error("Error querying job status from: " + routerUrl + ", error message: " + response.getError());
               perDatacenterStatus.put(routerUrl, ExecutionStatus.ERROR); /* Note: overloading usage of ERROR */
             } else {
               ExecutionStatus status = ExecutionStatus.valueOf(response.getStatus());
               logger.info("Status: " + status + " from : " + routerUrl);
+              /* Status of ERROR means that the job status was queried, and the job is in an error status */
               if (status.equals(ExecutionStatus.ERROR)){
                 throw new RuntimeException("Push job triggered error for: " + routerUrl);
               }
               perDatacenterStatus.put(routerUrl, status);
               keepChecking = true;
             }
+            break;
+          default:
+            throw new VeniceException("Unexpected status returned by job status poll: " + perDatacenterStatus.get(routerUrl));
         }
       }
     }
