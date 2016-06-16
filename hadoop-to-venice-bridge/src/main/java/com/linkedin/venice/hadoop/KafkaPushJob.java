@@ -1,5 +1,7 @@
 package com.linkedin.venice.hadoop;
 
+import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
+import com.linkedin.venice.job.ExecutionStatus;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.client.VeniceWriter;
 import com.linkedin.venice.controllerapi.ControllerClient;
@@ -18,6 +20,8 @@ import com.linkedin.venice.utils.Utils;
 import java.util.Arrays;
 
 import com.linkedin.venice.exceptions.VeniceException;
+import java.util.HashMap;
+import java.util.Map;
 import joptsimple.OptionParser;
 import joptsimple.OptionSet;
 import joptsimple.OptionSpec;
@@ -376,15 +380,7 @@ public class KafkaPushJob {
     if (!storePush){
       logger.info("No controller provided, skipping poll of push status, job completed");
     } else {
-
-      String[] perDatacenterRouterUrls = veniceRouterUrl.split(";");
-      for (String routerUrl : perDatacenterRouterUrls) {
-        // Throws a VeniceException if the job completes with a failed status
-        // TODO: break out polling logic to distinguish returned error (which should fail the job)
-        //       from connection error (which should be ignored as long as another datacenter returns happy)
-        ControllerClient
-            .pollJobStatusUntilFinished(Time.MS_PER_SECOND, 5 * Time.MS_PER_MINUTE, routerUrl, clusterName, topic);
-      }
+      pollStatusUntilComplete();
       new TopicManager(kafkaZk).deleteOldTopicsForStore(storeName, topicRetention);
     }
   }
@@ -484,6 +480,53 @@ public class KafkaPushJob {
     writer.broadcastControlMessage(controlMessageType);
     writer.close();
     logger.info("Successfully sent " + controlMessageType.name() + " Control Message for topic '" + topic + "'.");
+  }
+
+  private void pollStatusUntilComplete(){
+    String[] perDatacenterRouterUrls = veniceRouterUrl.split(";");
+    Map<String, ExecutionStatus> perDatacenterStatus = new HashMap<>();
+    for (String routerUrl : perDatacenterRouterUrls) {
+      perDatacenterStatus.put(routerUrl, ExecutionStatus.NOT_CREATED);
+    }
+    boolean keepChecking = true;
+    while (keepChecking){
+      Utils.sleep(5000); /* TODO better polling policy */
+      keepChecking = false;
+      for (String routerUrl : perDatacenterStatus.keySet()){
+        switch (perDatacenterStatus.get(routerUrl)) {
+          case COMPLETED: /* jobs done */
+          case ERROR: /* failure to query (treat as connection issue) */
+            continue;
+          default:
+              /* This could take 90 seconds if connection is down.  30 second timeout with 3 attempts */
+            JobStatusQueryResponse response = ControllerClient.queryJobStatusWithRetry(routerUrl, clusterName, topic, 3);
+            if (response.isError()){
+              logger.error("Error querying job status from: " + routerUrl + ", error message: " + response.getError());
+              perDatacenterStatus.put(routerUrl, ExecutionStatus.ERROR); /* Note: overloading usage of ERROR */
+            } else {
+              ExecutionStatus status = ExecutionStatus.valueOf(response.getStatus());
+              logger.info("Status: " + status + " from : " + routerUrl);
+              if (status.equals(ExecutionStatus.ERROR)){
+                throw new RuntimeException("Push job triggered error for: " + routerUrl);
+              }
+              perDatacenterStatus.put(routerUrl, status);
+              keepChecking = true;
+            }
+        }
+      }
+    }
+      /* At this point all datacenters either report success, or had connection issues */
+    int numberOfDatacenters = perDatacenterStatus.size();
+    int successCount = (int) perDatacenterStatus.values().stream()
+        .filter(status -> status.equals(ExecutionStatus.COMPLETED)).count();
+    if (successCount < numberOfDatacenters){
+      logger.error("Only verified successful push to " + successCount + " of " + numberOfDatacenters + " datacenters");
+    } else {
+      logger.info("Successfully pushed to all " + numberOfDatacenters + " datacenters");
+    }
+    if (successCount < 1){
+      throw new RuntimeException("Failed to connect to any datacenters to verify push was successful");
+    }
   }
 
   private static void printExternalDependencies() {

@@ -203,6 +203,25 @@ public class ControllerClient implements Closeable {
     }
   }
 
+  public static JobStatusQueryResponse queryJobStatusWithRetry(String routerUrls, String clusterName, String kafkaTopic, int attempts){
+    if (attempts < 1){
+      throw new VeniceException("Querying with retries requires at least one attempt, called with " + attempts + " attempts");
+    }
+    int attemptsRemaining = attempts;
+    JobStatusQueryResponse response = JobStatusQueryResponse.createErrorResponse("Request was not attempted");
+    while (attemptsRemaining > 0){
+      response = queryJobStatus(routerUrls, clusterName, kafkaTopic); /* should allways return a valid object */
+      if (! response.isError()){
+        return response;
+      } else {
+        attemptsRemaining--;
+        logger.warn("Error querying job status: " + response.getError() + " -- Retrying " + attemptsRemaining + " more times...");
+        Utils.sleep(2000);
+      }
+    }
+    return response;
+  }
+
   private MultiStoreResponse queryStoreList(String clusterName)
       throws IOException, ExecutionException, InterruptedException {
     List<NameValuePair> queryParams = new ArrayList<>();
@@ -322,67 +341,13 @@ public class ControllerClient implements Closeable {
     }
   }
 
-  /**
-   *
-   * @param startSleep initial amount of time to wait between successive polls
-   * @param maxSleep max amount of time to wait between successive polls
-   * @param veniceControllerUrl URL for connecting to Venice Controller
-   * @param topic kafka topic for the store we want to query
-   */
-  public static void pollJobStatusUntilFinished(long startSleep, long maxSleep, String veniceControllerUrl, String clusterName, String topic) {
-    JobStatusQueryResponse queryResponse = null;
-    String status = null;
-    long sleepTime = startSleep;
-    boolean jobDone = false;
-    try {
-      while (!jobDone) {
-        int retry = 3; /* if the query returns an error object, retry a couple times before failing */
-        for(;;) { //TODO: switch to exponential backoff retry policy
-          queryResponse = ControllerClient.queryJobStatus(veniceControllerUrl, clusterName, topic);
-          if (queryResponse.getError() != null) {
-            if (retry <= 0) {
-              throw new VeniceException("Error getting status of push: " + queryResponse.getError());
-            } else {
-              logger.warn("Error querying push status: " + queryResponse.getError() + " Retrying...");
-              Thread.sleep(1000);
-              retry--;
-            }
-          } else {
-            break;
-          }
-        }
-
-        status = queryResponse.getStatus();
-        if (status.equals(ExecutionStatus.NOT_CREATED.toString())
-            || status.equals(ExecutionStatus.NEW.toString())
-            || status.equals(ExecutionStatus.STARTED.toString())
-            || status.equals(ExecutionStatus.PROGRESS.toString())) {
-          logger.info("Push status: " + status + "...");
-          Thread.sleep(sleepTime);
-          sleepTime = sleepTime * 2;
-          if (sleepTime > maxSleep) {
-            sleepTime = maxSleep;
-          }
-        } else {
-          jobDone = true;
-        }
-      }  //end while
-
-    /* If we get here, status exists and is not null (error threw an exception) */
-      if (status.equals(ExecutionStatus.COMPLETED.toString())) {
-        logger.info("Push job completed successfully");
-      } else {
-        throw new VeniceException("Push job resulted in a status of: " + status);
-      }
-    } catch (InterruptedException e) {
-      logger.error(e);
-      throw new VeniceException("Polling of push status was interrupted");
-    }
-  }
-
   private static <R extends ControllerResponse> R handleError(Exception e, R errorResponse){
-    logger.error(e.getMessage(), e);
-    errorResponse.setError(e.getMessage());
+    String message = e.getMessage();
+    if (e.getCause() != null) {
+      message += " -- " + e.getCause().getMessage();
+    }
+    logger.error(message, e);
+    errorResponse.setError(message);
     return errorResponse;
   }
 
