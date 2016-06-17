@@ -191,6 +191,7 @@ public class VeniceHelixAdmin implements Admin {
                 if (store.containsVersion(versionNumber)) {
                     throwVersionAlreadyExists(storeName, versionNumber);
                 }
+                //TODO add constraints that added version should be smaller than reserved one.
                 version = new Version(storeName, versionNumber);
                 store.addVersion(version);
             }

@@ -39,7 +39,7 @@ public class HelixUtils {
     return storeName;
   }
 
-  public static <T> void updateToHelix(ZkBaseDataAccessor<T> dataAccessor, String path, T data, int retryCount) {
+  public static <T> void update(ZkBaseDataAccessor<T> dataAccessor, String path, T data, int retryCount) {
     int retry = 0;
     while (retry < retryCount) {
       if (dataAccessor.set(path, data, AccessOption.PERSISTENT)) {
@@ -51,7 +51,7 @@ public class HelixUtils {
   }
 
   //TODO there is not atomic operations to update multiple node to ZK. We should ask Helix library to rollback if it's only partial successful.
-  public static <T> void updateChildrenToHelix(ZkBaseDataAccessor<T> dataAccessor, List<String> pathes, List<T> data,
+  public static <T> void updateChildren(ZkBaseDataAccessor<T> dataAccessor, List<String> pathes, List<T> data,
       int retryCount) {
     int retry = 0;
     while (retry < retryCount) {
@@ -73,7 +73,7 @@ public class HelixUtils {
     }
   }
 
-  public static <T> void removeFromHelix(ZkBaseDataAccessor<T> dataAccessor, String path, int retryCount) {
+  public static <T> void remove(ZkBaseDataAccessor<T> dataAccessor, String path, int retryCount) {
     int retry = 0;
     while (retry < retryCount) {
       if (dataAccessor.remove(path, AccessOption.PERSISTENT)) {

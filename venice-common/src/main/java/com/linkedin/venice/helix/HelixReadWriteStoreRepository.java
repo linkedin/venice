@@ -4,15 +4,12 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.meta.ReadWriteStoreRepository;
 import com.linkedin.venice.meta.Store;
-import com.linkedin.venice.meta.StoreDataChangedListener;
 import com.linkedin.venice.meta.VeniceSerializer;
+import com.linkedin.venice.utils.HelixUtils;
 import java.util.ArrayList;
-import java.util.Collection;
-import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import javax.validation.constraints.NotNull;
 import org.apache.commons.collections.map.HashedMap;
 import org.apache.helix.AccessOption;
@@ -29,6 +26,9 @@ import org.apache.log4j.Logger;
 public class HelixReadWriteStoreRepository extends HelixReadonlyStoreRepository implements ReadWriteStoreRepository {
   private static final Logger logger = Logger.getLogger(HelixReadWriteStoreRepository.class);
 
+  //TODO get retry count from configuration.
+  private int retryCount = 2;
+
   public HelixReadWriteStoreRepository(@NotNull ZkClient zkClient, @NotNull HelixAdapterSerializer adapter,
       @NotNull String clusterName) {
     super(zkClient, adapter, clusterName);
@@ -44,9 +44,9 @@ public class HelixReadWriteStoreRepository extends HelixReadonlyStoreRepository 
     lock();
     try {
       if (!storeMap.containsKey(store.getName())) {
-        throw new VeniceNoStoreException("Store:" + store.getName() + " dose not exist.");
+        throw new VeniceNoStoreException("Store:" + store.getName() + " does not exist.");
       }
-      dataAccessor.set(composeStorePath(store.getName()), store, AccessOption.PERSISTENT);
+      HelixUtils.update(dataAccessor,composeStorePath(store.getName()),store,retryCount);
       storeMap.put(store.getName(), store);
     } finally {
       unLock();
@@ -58,7 +58,7 @@ public class HelixReadWriteStoreRepository extends HelixReadonlyStoreRepository 
     lock();
     try {
       if (storeMap.containsKey(name)) {
-        dataAccessor.remove(composeStorePath(name), AccessOption.PERSISTENT);
+        HelixUtils.remove(dataAccessor,composeStorePath(name),retryCount);
         storeMap.remove(name);
         triggerStoreDeletionListener(name);
         logger.info("Store:" + name + " is deleted.");
@@ -75,7 +75,7 @@ public class HelixReadWriteStoreRepository extends HelixReadonlyStoreRepository 
       if (storeMap.containsKey(store.getName())) {
         throw new VeniceException("Store:" + store.getName() + " already exists.");
       }
-      dataAccessor.set(composeStorePath(store.getName()), store, AccessOption.PERSISTENT);
+      HelixUtils.update(dataAccessor,composeStorePath(store.getName()),store,retryCount);
       storeMap.put(store.getName(), store);
       triggerStoreCreationListener(store);
       logger.info("Store:" + store.getName() + " is added.");

@@ -11,6 +11,8 @@ import com.linkedin.venice.helix.HelixRoutingDataRepository;
 import com.linkedin.venice.helix.TestHelixRoutingDataRepository;
 import com.linkedin.venice.job.Job;
 import com.linkedin.venice.job.ExecutionStatus;
+import com.linkedin.venice.job.OfflineJob;
+import com.linkedin.venice.job.Task;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
@@ -114,7 +116,7 @@ public class TestVeniceJobManager {
     jobRepository.refresh();
     metadataRepository = new HelixReadWriteStoreRepository(zkClient, adapterSerializer, cluster);
     metadataRepository.refresh();
-    jobManager = new VeniceJobManager(cluster , 1, jobRepository, metadataRepository, routingDataRepository);
+    jobManager = new VeniceJobManager(cluster, 1, jobRepository, metadataRepository, routingDataRepository);
   }
 
   @AfterMethod
@@ -138,8 +140,7 @@ public class TestVeniceJobManager {
     metadataRepository.addStore(store);
     jobManager.startOfflineJob(version.kafkaTopicName(), 1, 1);
 
-    StoreStatusMessage message =
-        new StoreStatusMessage(version.kafkaTopicName(), 0, nodeId, ExecutionStatus.STARTED);
+    StoreStatusMessage message = new StoreStatusMessage(version.kafkaTopicName(), 0, nodeId, ExecutionStatus.STARTED);
     jobManager.handleMessage(message);
     Job job = jobRepository.getRunningJobOfTopic(version.kafkaTopicName()).get(0);
     Assert.assertEquals(jobRepository.getJobStatus(job.getJobId(), job.getKafkaTopic()), ExecutionStatus.STARTED,
@@ -170,8 +171,7 @@ public class TestVeniceJobManager {
     metadataRepository.addStore(store);
     jobManager.startOfflineJob(version.kafkaTopicName(), 1, 1);
 
-    StoreStatusMessage message =
-        new StoreStatusMessage(version.kafkaTopicName(), 0, nodeId, ExecutionStatus.STARTED);
+    StoreStatusMessage message = new StoreStatusMessage(version.kafkaTopicName(), 0, nodeId, ExecutionStatus.STARTED);
     jobManager.handleMessage(message);
     Job job = jobRepository.getRunningJobOfTopic(version.kafkaTopicName()).get(0);
     Assert.assertEquals(jobRepository.getJobStatus(job.getJobId(), job.getKafkaTopic()), ExecutionStatus.STARTED,
@@ -202,8 +202,7 @@ public class TestVeniceJobManager {
     Assert.assertEquals(jobManager.getOfflineJobStatus(version.kafkaTopicName()), ExecutionStatus.STARTED,
         "Job should be started.");
 
-    StoreStatusMessage message =
-        new StoreStatusMessage(version.kafkaTopicName(), 0, nodeId, ExecutionStatus.STARTED);
+    StoreStatusMessage message = new StoreStatusMessage(version.kafkaTopicName(), 0, nodeId, ExecutionStatus.STARTED);
     jobManager.handleMessage(message);
 
     message = new StoreStatusMessage(version.kafkaTopicName(), 0, nodeId, ExecutionStatus.COMPLETED);
@@ -219,8 +218,7 @@ public class TestVeniceJobManager {
     Assert.assertEquals(jobManager.getOfflineJobStatus(version.kafkaTopicName()), ExecutionStatus.STARTED,
         "Job should be started.");
 
-    StoreStatusMessage message =
-        new StoreStatusMessage(version.kafkaTopicName(), 0, nodeId, ExecutionStatus.STARTED);
+    StoreStatusMessage message = new StoreStatusMessage(version.kafkaTopicName(), 0, nodeId, ExecutionStatus.STARTED);
     jobManager.handleMessage(message);
 
     message = new StoreStatusMessage(version.kafkaTopicName(), 0, nodeId, ExecutionStatus.ERROR);
@@ -283,7 +281,7 @@ public class TestVeniceJobManager {
     long startTime = System.currentTimeMillis();
     do {
       Thread.sleep(300);
-      if(System.currentTimeMillis()- startTime > 3000){
+      if (System.currentTimeMillis() - startTime > 3000) {
         Assert.fail("Time out when waiting receiving status udpate message");
       }
     } while (!jobManager.getOfflineJobStatus(version.kafkaTopicName()).equals(ExecutionStatus.COMPLETED));
@@ -293,9 +291,10 @@ public class TestVeniceJobManager {
     //Start a new push
     store = metadataRepository.getStore(storeName);
     Version newVersion = store.increaseVersion();
-    Assert.assertEquals(newVersion.getNumber(), version.getNumber()+1);
+    Assert.assertEquals(newVersion.getNumber(), version.getNumber() + 1);
     metadataRepository.updateStore(store);
-    admin.addResource(cluster, newVersion.kafkaTopicName(), 1, TestHelixRoutingDataRepository.UnitTestStateModel.UNIT_TEST_STATE_MODEL,
+    admin.addResource(cluster, newVersion.kafkaTopicName(), 1,
+        TestHelixRoutingDataRepository.UnitTestStateModel.UNIT_TEST_STATE_MODEL,
         IdealState.RebalanceMode.FULL_AUTO.toString());
     admin.rebalance(cluster, newVersion.kafkaTopicName(), 1);
     Assert.assertEquals(metadataRepository.getStore(storeName).getCurrentVersion(), version.getNumber());
@@ -307,13 +306,44 @@ public class TestVeniceJobManager {
     nodeChannel.sendToController(message);
     startTime = System.currentTimeMillis();
     do {
+      store = metadataRepository.getStore(storeName);
       Thread.sleep(300);
-      if(System.currentTimeMillis()- startTime > 3000){
+      if (System.currentTimeMillis() - startTime > 3000) {
         Assert.fail("Time out when waiting receiving status udpate message");
       }
-    } while (!jobManager.getOfflineJobStatus(newVersion.kafkaTopicName()).equals(ExecutionStatus.COMPLETED));
+    } while (store.getCurrentVersion() != newVersion.getNumber());
     //Assert everything works well for the new push.
     Assert.assertEquals(jobManager.getOfflineJobStatus(newVersion.kafkaTopicName()), ExecutionStatus.COMPLETED);
     Assert.assertEquals(metadataRepository.getStore(storeName).getCurrentVersion(), newVersion.getNumber());
+  }
+
+  @Test
+  public void testLoadJobsFromZKWithCompletedTask() {
+    testLoadJobsFromZk(ExecutionStatus.COMPLETED);
+  }
+
+  @Test
+  public void testLoadJobsFromZkWithErrorTask(){
+    testLoadJobsFromZk(ExecutionStatus.ERROR);
+  }
+
+  private void testLoadJobsFromZk(ExecutionStatus taskStatus) {
+    metadataRepository.addStore(store);
+
+    jobManager.startOfflineJob(version.kafkaTopicName(), 1, 1);
+    OfflineJob job = (OfflineJob) jobRepository.getRunningJobOfTopic(version.kafkaTopicName()).get(0);
+    Task task = new Task(job.generateTaskId(0, nodeId), 0, nodeId, ExecutionStatus.STARTED);
+    job.updateTaskStatus(task);
+    task = new Task(job.generateTaskId(0, nodeId), 0, nodeId, taskStatus);
+    // Mock the situation that all of tasks are completed, but do not update job's status because controller is failed.
+    jobRepository.updateTaskStatus(job.getJobId(), version.kafkaTopicName(), task);
+
+    //Refresh repository to load data from ZK again
+    jobRepository.refresh();
+    Assert.assertEquals(jobRepository.getRunningJobOfTopic(version.kafkaTopicName()).size(), 1);
+    jobManager.checkAllExistingJobs();
+    // After checking all existing jobs, job status should be updated corespondingly.
+    Assert.assertEquals(jobRepository.getRunningJobOfTopic(version.kafkaTopicName()).size(), 0);
+    Assert.assertEquals(jobRepository.getTerminatedJobOfTopic(version.kafkaTopicName()).size(), 1);
   }
 }
