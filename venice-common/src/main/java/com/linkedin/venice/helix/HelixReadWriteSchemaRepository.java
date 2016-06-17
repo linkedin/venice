@@ -2,7 +2,6 @@ package com.linkedin.venice.helix;
 
 import com.linkedin.venice.exceptions.StoreKeySchemaExistException;
 import com.linkedin.venice.exceptions.SchemaIncompatibilityException;
-import com.linkedin.venice.exceptions.StoreValueSchemaExistException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.meta.ReadWriteSchemaRepository;
@@ -172,7 +171,6 @@ public class HelixReadWriteSchemaRepository implements ReadWriteSchemaRepository
    *
    * @throws {@link com.linkedin.venice.exceptions.VeniceNoStoreException} if the store doesn't exist;
    * @throws {@link org.apache.avro.SchemaParseException}, if key schema is invalid;
-   * @throws {@link com.linkedin.venice.exceptions.StoreValueSchemaExistException}, if value schema already exists;
    * @throws {@link SchemaIncompatibilityException}, if the new schema is
    *  incompatible with the previous value schemas;
    * @throws {@link com.linkedin.venice.exceptions.VeniceException}, if updating zookeeper fails;
@@ -180,6 +178,7 @@ public class HelixReadWriteSchemaRepository implements ReadWriteSchemaRepository
    * @param storeName
    * @param schemaStr
    * @return
+   *    schema entry if the schema is successfully added or already exists.
    */
   @Override
   public SchemaEntry addValueSchema(String storeName, String schemaStr) {
@@ -191,7 +190,7 @@ public class HelixReadWriteSchemaRepository implements ReadWriteSchemaRepository
     int maxValueSchemaId = 0;
     for (SchemaEntry entry : valueSchemas) {
       if (entry.equals(newValueSchemaWithInvalidId)) {
-        throw new StoreValueSchemaExistException(storeName, schemaStr);
+        return entry;
       }
       if (!entry.isCompatible(newValueSchemaWithInvalidId)) {
         throw new SchemaIncompatibilityException(entry, newValueSchemaWithInvalidId);

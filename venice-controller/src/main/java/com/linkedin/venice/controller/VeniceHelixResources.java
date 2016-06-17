@@ -5,6 +5,7 @@ import com.linkedin.venice.controlmessage.StoreStatusMessage;
 import com.linkedin.venice.helix.HelixAdapterSerializer;
 import com.linkedin.venice.helix.HelixControlMessageChannel;
 import com.linkedin.venice.helix.HelixJobRepository;
+import com.linkedin.venice.helix.HelixReadWriteSchemaRepository;
 import com.linkedin.venice.helix.HelixReadWriteStoreRepository;
 import com.linkedin.venice.helix.HelixRoutingDataRepository;
 import org.apache.helix.HelixManager;
@@ -19,6 +20,7 @@ public class VeniceHelixResources implements VeniceResource {
   private final HelixReadWriteStoreRepository metadataRepository;
   private final HelixRoutingDataRepository routingDataRepository;
   private final HelixJobRepository jobRepository;
+  private final HelixReadWriteSchemaRepository schemaRepository;
   private final VeniceJobManager jobManager;
   private final HelixControlMessageChannel messageChannel;
   private final VeniceControllerClusterConfig config;
@@ -28,19 +30,24 @@ public class VeniceHelixResources implements VeniceResource {
     this.config = config;
     this.controller = helixManager;
     HelixAdapterSerializer adapter = new HelixAdapterSerializer();
-    metadataRepository = new HelixReadWriteStoreRepository(zkClient, adapter, clusterName);
-    routingDataRepository = new HelixRoutingDataRepository(helixManager);
-    jobRepository = new HelixJobRepository(zkClient, adapter, clusterName);
-    jobManager =
-        new VeniceJobManager(clusterName, helixManager.getSessionId().hashCode(), jobRepository, metadataRepository,
-            routingDataRepository);
-    messageChannel = new HelixControlMessageChannel(helixManager);
+    this.metadataRepository = new HelixReadWriteStoreRepository(zkClient, adapter, clusterName);
+    this.schemaRepository = new HelixReadWriteSchemaRepository(this.metadataRepository,
+        zkClient, adapter, clusterName);
+    this.routingDataRepository = new HelixRoutingDataRepository(helixManager);
+    this.jobRepository = new HelixJobRepository(zkClient, adapter, clusterName);
+    this.jobManager = new VeniceJobManager(clusterName,
+        helixManager.getSessionId().hashCode(),
+        this.jobRepository,
+        this.metadataRepository,
+        this.routingDataRepository);
+    this.messageChannel = new HelixControlMessageChannel(helixManager);
   }
 
   @Override
   public void refresh() {
     clear();
     metadataRepository.refresh();
+    schemaRepository.refresh();
     routingDataRepository.refresh();
     jobRepository.refresh();
     jobManager.checkAllExistingJobs();
@@ -50,14 +57,19 @@ public class VeniceHelixResources implements VeniceResource {
 
   @Override
   public void clear() {
-      messageChannel.unRegisterHandler(StoreStatusMessage.class, jobManager);
-      jobRepository.clear();
-      metadataRepository.clear();
-      routingDataRepository.clear();
+    messageChannel.unRegisterHandler(StoreStatusMessage.class, jobManager);
+    jobRepository.clear();
+    metadataRepository.clear();
+    schemaRepository.clear();
+    routingDataRepository.clear();
   }
 
   public HelixReadWriteStoreRepository getMetadataRepository() {
     return metadataRepository;
+  }
+
+  public HelixReadWriteSchemaRepository getSchemaRepository() {
+    return schemaRepository;
   }
 
   public HelixRoutingDataRepository getRoutingDataRepository() {

@@ -10,6 +10,7 @@ import com.linkedin.venice.meta.RoutingStrategy;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.schema.SchemaEntry;
+import com.linkedin.venice.utils.Utils;
 import org.apache.avro.Schema;
 import org.apache.helix.manager.zk.ZkClient;
 import org.apache.zookeeper.CreateMode;
@@ -61,6 +62,9 @@ public class TestHelixReadOnlySchemaRepository {
   private void createStore(String storeName) {
     Store store = new Store(storeName, "abc@linkedin.com", 10, PersistenceType.BDB, RoutingStrategy.CONSISTENT_HASH, ReadStrategy.ANY_OF_ONLINE, OfflinePushStrategy.WAIT_ALL_REPLICAS);
     storeRWRepo.addStore(store);
+    Utils.waitForNonDeterministicCompetion(3, TimeUnit.SECONDS, () -> {
+      return storeRORepo.hasStore(storeName);
+    });
   }
 
   @Test
@@ -72,7 +76,9 @@ public class TestHelixReadOnlySchemaRepository {
     // Query key schema again after setting up key schema
     String keySchemaStr = "\"string\"";
     schemaRWRepo.initKeySchema(storeName, keySchemaStr);
-    TimeUnit.SECONDS.sleep(3);
+    Utils.waitForNonDeterministicCompetion(3, TimeUnit.SECONDS, () -> {
+      return schemaRORepo.getKeySchema(storeName) != null;
+    });
     SchemaEntry keySchema = schemaRORepo.getKeySchema(storeName);
     Assert.assertNotNull(keySchema);
     Assert.assertEquals(keySchema.getId(), Integer.parseInt(HelixReadOnlySchemaRepository.KEY_SCHEMA_ID));
@@ -91,7 +97,9 @@ public class TestHelixReadOnlySchemaRepository {
     String valueSchemaStr = "\"string\"";
     createStore(storeName);
     schemaRWRepo.addValueSchema(storeName, valueSchemaStr);
-    TimeUnit.SECONDS.sleep(3);
+    Utils.waitForNonDeterministicCompetion(3, TimeUnit.SECONDS, () -> {
+      return 1 == schemaRORepo.getValueSchemas(storeName).size();
+    });
     Assert.assertNotEquals(SchemaData.INVALID_VALUE_SCHEMA_ID, schemaRORepo.getValueSchemaId(storeName, valueSchemaStr));
   }
 
@@ -99,7 +107,6 @@ public class TestHelixReadOnlySchemaRepository {
   public void testGetValueSchemaIdByInvalidStore() throws InterruptedException {
     String storeName = "test_store1";
     String valueSchemaStr = "\"string\"";
-    TimeUnit.SECONDS.sleep(3);
     schemaRORepo.getValueSchemaId(storeName, valueSchemaStr);
   }
 
@@ -126,7 +133,9 @@ public class TestHelixReadOnlySchemaRepository {
 
     schemaRWRepo.addValueSchema(storeName, valueSchemaStr1);
     schemaRWRepo.addValueSchema(storeName, valueSchemaStr2);
-    TimeUnit.SECONDS.sleep(3);
+    Utils.waitForNonDeterministicCompetion(3, TimeUnit.SECONDS, () -> {
+      return 2 == schemaRORepo.getValueSchemas(storeName).size();
+    });
     SchemaEntry valueSchema1 = schemaRORepo.getValueSchema(storeName, 1);
     Assert.assertNotNull(valueSchema1);
     Assert.assertEquals(valueSchema1.getSchema().toString(), Schema.parse(valueSchemaStr1).toString());
@@ -145,7 +154,9 @@ public class TestHelixReadOnlySchemaRepository {
     // After removing the store, we should not be able to get schema for it any more
     Assert.assertNotNull(schemaRORepo.getValueSchema(storeName, 1));
     storeRWRepo.deleteStore(storeName);
-    TimeUnit.SECONDS.sleep(3);
+    Utils.waitForNonDeterministicCompetion(3, TimeUnit.SECONDS, () -> {
+      return !storeRORepo.hasStore(storeName);
+    });
     try {
       schemaRORepo.getValueSchema(storeName, 1);
       Assert.assertTrue(false);
@@ -174,7 +185,9 @@ public class TestHelixReadOnlySchemaRepository {
         "}";
 
     schemaRWRepo.addValueSchema(storeName, valueSchemaStr1);
-    TimeUnit.SECONDS.sleep(3);
+    Utils.waitForNonDeterministicCompetion(3, TimeUnit.SECONDS, () -> {
+      return 1 == schemaRORepo.getValueSchemas(storeName).size();
+    });
     SchemaEntry valueSchema1 = schemaRORepo.getValueSchema(storeName, 1);
     Assert.assertNotNull(valueSchema1);
 
@@ -182,9 +195,10 @@ public class TestHelixReadOnlySchemaRepository {
     storeRWRepo.deleteStore(storeName);
     // TODO:If we execute deleteStore and createStore without sleep, the RO store repo will
     // only receive one notification for store creation.
-    TimeUnit.SECONDS.sleep(3);
+    Utils.waitForNonDeterministicCompetion(3, TimeUnit.SECONDS, () -> {
+      return !storeRORepo.hasStore(storeName);
+    });
     createStore(storeName);
-    TimeUnit.SECONDS.sleep(3);
     // The legacy value schema should not be there
     Assert.assertNull(schemaRORepo.getValueSchema(storeName, 1));
   }

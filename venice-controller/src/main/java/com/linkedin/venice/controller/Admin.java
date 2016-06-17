@@ -4,6 +4,9 @@ import com.linkedin.venice.job.ExecutionStatus;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.schema.SchemaEntry;
+
+import java.util.Collection;
 import java.util.List;
 
 
@@ -35,6 +38,18 @@ public interface Admin {
     void startOfflinePush(String clusterName, String kafkaTopic, int numberOfPartition, int replicaFactor);
 
     void deleteOldStoreVersion(String clusterName, String kafkaTopic);
+
+    SchemaEntry getKeySchema(String clusterName, String storeName);
+
+    SchemaEntry initKeySchema(String clusterName, String storeName, String keySchemaStr);
+
+    Collection<SchemaEntry> getValueSchemas(String clusterName, String storeName);
+
+    int getValueSchemaId(String clusterName, String storeName, String valueSchemaStr);
+
+    SchemaEntry getValueSchema(String clusterName, String storeName, int id);
+
+    SchemaEntry addValueSchema(String clusterName, String storeName, String valueSchemaStr);
 
     void stop(String clusterName);
 

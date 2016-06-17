@@ -2,7 +2,6 @@ package com.linkedin.venice.helix;
 
 import com.linkedin.venice.exceptions.StoreKeySchemaExistException;
 import com.linkedin.venice.exceptions.SchemaIncompatibilityException;
-import com.linkedin.venice.exceptions.StoreValueSchemaExistException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
@@ -175,7 +174,7 @@ public class TestHelixReadWriteSchemaRepository {
     Assert.assertEquals(schemaRepo.getValueSchemaId(storeName, valueSchemaStr2), 2);
   }
 
-  @Test(expectedExceptions = StoreValueSchemaExistException.class)
+  @Test
   public void testAddDuplicateValueSchema() {
     String storeName = "test_store1";
     String valueSchemaStr1 = "{\n" +
@@ -194,9 +193,10 @@ public class TestHelixReadWriteSchemaRepository {
         "           ]\n" +
         "        }";
     createStore(storeName);
-    schemaRepo.addValueSchema(storeName, valueSchemaStr1);
+    SchemaEntry entry1 = schemaRepo.addValueSchema(storeName, valueSchemaStr1);
     // Add the same value schema
-    schemaRepo.addValueSchema(storeName, valueSchemaStr1);
+    SchemaEntry entry2 = schemaRepo.addValueSchema(storeName, valueSchemaStr1);
+    Assert.assertEquals(entry2, entry1);
   }
 
   @Test(expectedExceptions = SchemaIncompatibilityException.class)

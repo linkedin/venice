@@ -1,5 +1,6 @@
 package com.linkedin.venice.controller;
 
+import com.linkedin.venice.helix.HelixReadWriteSchemaRepository;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
@@ -8,9 +9,11 @@ import com.linkedin.venice.helix.HelixState;
 import com.linkedin.venice.job.ExecutionStatus;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.utils.PartitionCountUtils;
 import com.linkedin.venice.utils.Utils;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -338,7 +341,49 @@ public class VeniceHelixAdmin implements Admin {
         logger.info("Successfully dropped the resource " + kafkaTopic + " for cluster " + clusterName);
     }
 
-  @Override
+    @Override
+    public SchemaEntry getKeySchema(String clusterName, String storeName) {
+        checkControllerMastership(clusterName);
+        HelixReadWriteSchemaRepository schemaRepo = getVeniceHelixResource(clusterName).getSchemaRepository();
+        return schemaRepo.getKeySchema(storeName);
+    }
+
+    @Override
+    public SchemaEntry initKeySchema(String clusterName, String storeName, String keySchemaStr) {
+        checkControllerMastership(clusterName);
+        HelixReadWriteSchemaRepository schemaRepo = getVeniceHelixResource(clusterName).getSchemaRepository();
+        return schemaRepo.initKeySchema(storeName, keySchemaStr);
+    }
+
+    @Override
+    public Collection<SchemaEntry> getValueSchemas(String clusterName, String storeName) {
+        checkControllerMastership(clusterName);
+        HelixReadWriteSchemaRepository schemaRepo = getVeniceHelixResource(clusterName).getSchemaRepository();
+        return schemaRepo.getValueSchemas(storeName);
+    }
+
+    @Override
+    public int getValueSchemaId(String clusterName, String storeName, String valueSchemaStr) {
+        checkControllerMastership(clusterName);
+        HelixReadWriteSchemaRepository schemaRepo = getVeniceHelixResource(clusterName).getSchemaRepository();
+        return schemaRepo.getValueSchemaId(storeName, valueSchemaStr);
+    }
+
+    @Override
+    public SchemaEntry getValueSchema(String clusterName, String storeName, int id) {
+        checkControllerMastership(clusterName);
+        HelixReadWriteSchemaRepository schemaRepo = getVeniceHelixResource(clusterName).getSchemaRepository();
+        return schemaRepo.getValueSchema(storeName, id);
+    }
+
+    @Override
+    public SchemaEntry addValueSchema(String clusterName, String storeName, String valueSchemaStr) {
+        checkControllerMastership(clusterName);
+        HelixReadWriteSchemaRepository schemaRepo = getVeniceHelixResource(clusterName).getSchemaRepository();
+        return schemaRepo.addValueSchema(storeName, valueSchemaStr);
+    }
+
+    @Override
     public synchronized void stop(String clusterName) {
         // Instead of disconnecting the sub-controller for the given cluster, we should disable it for this controller,
         // then the LEADER->STANDBY and STANDBY->OFFLINE will be triggered, our handler will handle the resource collection.

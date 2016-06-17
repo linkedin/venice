@@ -11,7 +11,10 @@ task buildJar(type: Jar) {
 dependencies {
   compile libraries.asyncHttpClient
   compile libraries.guava
-  compile libraries.commonsIo
+  compile libraries.zookeeper
+  compile (libraries.commonsIo) {
+    exclude group: 'org.apapche.zookeeper'
+  }
   compile (libraries.d2Client){
     exclude group: 'com.oracle', module: 'ojdbc14' /* unused transitive dependencies, doesnt exist in repo */
   }
