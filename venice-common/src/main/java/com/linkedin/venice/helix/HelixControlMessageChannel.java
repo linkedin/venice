@@ -79,7 +79,7 @@ public class HelixControlMessageChannel implements ControlMessageChannel {
       if (numMsg == 0) {
         throw new VeniceException("No controller could be found to send messages " + message.getMessageId());
       }
-    } catch (Throwable e) {
+    } catch (Exception e) {
       throw new IOException("Error: Can not send message to controller.", e);
     }
     if (callBack.isTimeOut) {

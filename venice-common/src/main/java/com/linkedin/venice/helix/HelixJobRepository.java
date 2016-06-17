@@ -117,7 +117,7 @@ public class HelixJobRepository implements JobRepository {
     Job job = this.getJob(jobId, kafkaTopic);
     //TODO we should put archived job to some code/historic storage at first then delete it from zk.
     //updateJobStatus(job, ExecutionStatus.ARCHIVED);
-    HelixUtils.removeFromHelix(jobDataAccessor, getJobZKPath(job), retryCount);
+    HelixUtils.remove(jobDataAccessor, getJobZKPath(job), retryCount);
     deleteJobFromMap(kafkaTopic, jobId, topicToTerminatedJobsMap);
     triggerJobStatusChangeEvent(job.cloneJob());
   }
@@ -130,7 +130,7 @@ public class HelixJobRepository implements JobRepository {
     clonedJob.updateTaskStatus(task);
     // Udate to ZK
     String path = getJobZKPath(clonedJob) + "/" + task.getPartitionId();
-    HelixUtils.updateToHelix(tasksDataAccessor, path, clonedJob.tasksInPartition(task.getPartitionId()), retryCount);
+    HelixUtils.update(tasksDataAccessor, path, clonedJob.tasksInPartition(task.getPartitionId()), retryCount);
     // Update local copy at last.
     job.updateTaskStatus(task);
   }
@@ -235,7 +235,7 @@ public class HelixJobRepository implements JobRepository {
     Job clonedJob = job.cloneJob();
     clonedJob.setStatus(status);
     // Update clone job to ZK.
-    HelixUtils.updateToHelix(jobDataAccessor, getJobZKPath(clonedJob), (OfflineJob) clonedJob, retryCount);
+    HelixUtils.update(jobDataAccessor, getJobZKPath(clonedJob), (OfflineJob) clonedJob, retryCount);
     // Update local copy at last.
     job.setStatus(status);
   }
@@ -250,7 +250,7 @@ public class HelixJobRepository implements JobRepository {
       List<Task> tasks = job.tasksInPartition(partition);
       values.add(tasks);
     }
-    HelixUtils.updateChildrenToHelix(tasksDataAccessor,paths,values,retryCount);
+    HelixUtils.updateChildren(tasksDataAccessor,paths,values,retryCount);
   }
 
   public void refresh() {
@@ -281,17 +281,15 @@ public class HelixJobRepository implements JobRepository {
             break;
           case ARCHIVED:
             // remove archived job from zk.
-            HelixUtils.removeFromHelix(jobDataAccessor, getJobZKPath(job), retryCount);
+            HelixUtils.remove(jobDataAccessor, getJobZKPath(job), retryCount);
             //TODO add archived job to some code/historic storage.
             break;
           case NEW:
-            // If job is new in ZK, it means when creating the job, the previous controller is failed. So client
-            // already got the exception. So we treat this job as error job and need  to collect the related resource
-            // like helix resource and kill the ingestion in storage node..
-            updateJobStatus(job, ExecutionStatus.ERROR);
-            addJobToMap(job.getKafkaTopic(), job, topicToTerminatedJobsMap);
-            triggerJobStatusChangeEvent(job.cloneJob());
-            logger.info("job:" + job.getJobId() + " status is NEW. Need to collect related resource.");
+            // We never put NEW status job to ZK. After job is created, its status is NEW by default. Then job manager
+            // will waiting for enough executor being assigned. After that job will become STARTED and be updated to ZK.
+            // If controller is failed during waiting, new controller can not recover NEW job from ZK. At last H2V query
+            // the status of this job and get exception. The version for this failed job should be collected later by
+            // schedule service.
           default:
             logger.error("Invalid job status:" + job.getStatus() + " for job:" + job.getJobId());
         }

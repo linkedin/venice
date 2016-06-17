@@ -332,4 +332,73 @@ public class TestVeniceHelixAdmin {
     Assert.fail("No VeniceHelixAdmin became master for cluster: " + cluster + " after timeout: " + timeout);
   }
 
+  @Test
+  public void testDeleteOldVersions()
+      throws InterruptedException {
+    String storeName = "test";
+    veniceAdmin.addStore(clusterName,storeName,"owner");
+    Version version = null;
+    for(int i=0;i<3;i++) {
+      version = veniceAdmin.incrementVersion(clusterName, storeName, 1, 1);
+      VeniceJobManager jobManager = veniceAdmin.getVeniceHelixResource(clusterName).getJobManager();
+      jobManager.handleMessage(new StoreStatusMessage(version.kafkaTopicName(), 0, nodeId, ExecutionStatus.STARTED));
+      jobManager.handleMessage(new StoreStatusMessage(version.kafkaTopicName(), 0, nodeId, ExecutionStatus.COMPLETED));
+
+      long startTime = System.currentTimeMillis();
+      Store store = null;
+      do {
+        Thread.sleep(300);
+        if (System.currentTimeMillis() - startTime > 3000) {
+          Assert.fail("Time out while waiting for status update message for topic:"+version.kafkaTopicName());
+        }
+      }while(veniceAdmin.getCurrentVersion(clusterName,storeName)!=version.getNumber());
+    }
+
+    Assert.assertEquals(veniceAdmin.versionsForStore(clusterName,storeName).size(),2, "Only keep 2 version for each store");
+    Assert.assertEquals(veniceAdmin.getCurrentVersion(clusterName,storeName), version.getNumber());
+    Assert.assertEquals(veniceAdmin.versionsForStore(clusterName,storeName).get(0).getNumber(), version.getNumber()-1);
+    Assert.assertEquals(veniceAdmin.versionsForStore(clusterName,storeName).get(1).getNumber(), version.getNumber());
+  }
+
+  @Test
+  public void testCurrentVersion(){
+    String storeName = "test";
+    veniceAdmin.addStore(clusterName,storeName,"owner");
+    Version version = veniceAdmin.incrementVersion(clusterName,storeName,1,1);
+    Assert.assertEquals(veniceAdmin.getCurrentVersion(clusterName,storeName),0);
+    veniceAdmin.setCurrentVersion(clusterName,storeName,version.getNumber());
+    Assert.assertEquals(veniceAdmin.getCurrentVersion(clusterName,storeName),version.getNumber());
+
+    try{
+      veniceAdmin.setCurrentVersion(clusterName,storeName,100);
+      Assert.fail("Version 100 does not exist. Should be failed.");
+    }catch (VeniceException e){
+      //expected
+    }
+  }
+
+  @Test
+  public void testAddVersion(){
+    String storeName = "test";
+    try {
+      veniceAdmin.incrementVersion(clusterName, storeName, 1, 1);
+      Assert.fail(storeName+" does not exist.");
+    }catch(VeniceException e){
+      //Expected
+    }
+
+    veniceAdmin.addStore(clusterName,storeName,"owner");
+    veniceAdmin.addVersion(clusterName,storeName,1,1,1);
+    Assert.assertEquals(veniceAdmin.versionsForStore(clusterName,storeName).size(), 1);
+    try {
+      veniceAdmin.addVersion(clusterName, storeName, 1, 1, 1);
+      Assert.fail("Version 1 has already existed");
+    }catch(Exception e){
+      //Expected
+    }
+
+    veniceAdmin.reserveVersion(clusterName,storeName,100);
+    veniceAdmin.addVersion(clusterName,storeName,101,1,1);
+    Assert.assertEquals(veniceAdmin.versionsForStore(clusterName,storeName).size(),2);
+  }
 }
