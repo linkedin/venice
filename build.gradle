@@ -103,6 +103,10 @@ subprojects {
     maxParallelForks 10
   }
 
+  jacoco {
+    toolVersion = "0.7.6.201602180812"
+  }
+
   jacocoTestReport {
     dependsOn test
     reports {

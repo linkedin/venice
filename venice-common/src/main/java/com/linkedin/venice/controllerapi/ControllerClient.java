@@ -2,7 +2,6 @@ package com.linkedin.venice.controllerapi;
 
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.job.ExecutionStatus;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.Utils;
 import java.io.Closeable;
@@ -28,7 +27,6 @@ import org.apache.http.impl.nio.client.CloseableHttpAsyncClient;
 import org.apache.http.impl.nio.client.HttpAsyncClients;
 import org.apache.http.message.BasicNameValuePair;
 import org.apache.log4j.Logger;
-import org.codehaus.jackson.JsonParseException;
 import org.codehaus.jackson.map.ObjectMapper;
 
 
@@ -338,6 +336,124 @@ public class ControllerClient implements Closeable {
       return client.reserveVersion(clusterName, storeName, version);
     } catch (Exception e){
       return handleError(new VeniceException("Error reserving version " + version + " for store: " + storeName, e), new VersionResponse());
+    }
+  }
+
+  private SchemaResponse createKeySchema(String clusterName, String storeName, String keySchemaStr) throws IOException, ExecutionException, InterruptedException {
+    List<NameValuePair> queryParams = new ArrayList<>();
+    queryParams.add(new BasicNameValuePair(ControllerApiConstants.CLUSTER, clusterName));
+    queryParams.add(new BasicNameValuePair(ControllerApiConstants.NAME, storeName));
+    queryParams.add(new BasicNameValuePair(ControllerApiConstants.KEY_SCHEMA, keySchemaStr));
+    final HttpPost post = new HttpPost(controllerUrl + ControllerApiConstants.INIT_KEY_SCHEMA);
+    post.setEntity(new UrlEncodedFormEntity(queryParams));
+    HttpResponse response = client.execute(post, null).get();
+    String responseJson = getJsonFromHttpResponse(response);
+    return mapper.readValue(responseJson, SchemaResponse.class);
+  }
+
+  public static SchemaResponse createKeySchema(String routerUrls, String clusterName, String storeName, String keySchemaStr) {
+    try (ControllerClient client = new ControllerClient(routerUrls)){
+      return client.createKeySchema(clusterName, storeName, keySchemaStr);
+    } catch (Exception e){
+      return handleError(new VeniceException("Error creating key schema: " + keySchemaStr + " for store: " + storeName, e), new SchemaResponse());
+    }
+  }
+
+  private SchemaResponse getKeySchema(String clusterName, String storeName) throws ExecutionException, InterruptedException, IOException {
+    List<NameValuePair> queryParams = new ArrayList<>();
+    queryParams.add(new BasicNameValuePair(ControllerApiConstants.CLUSTER, clusterName));
+    queryParams.add(new BasicNameValuePair(ControllerApiConstants.NAME, storeName));
+    String queryString = URLEncodedUtils.format(queryParams, StandardCharsets.UTF_8);
+    final HttpGet get = new HttpGet(controllerUrl + ControllerApiConstants.GET_KEY_SCHEMA_PATH + "?" + queryString);
+    HttpResponse response = client.execute(get, null).get();
+    String responseJson = getJsonFromHttpResponse(response);
+    return mapper.readValue(responseJson, SchemaResponse.class);
+  }
+
+  public static SchemaResponse getKeySchema(String routerUrls, String clusterName, String storeName) {
+    try (ControllerClient client = new ControllerClient(routerUrls)){
+      return client.getKeySchema(clusterName, storeName);
+    } catch (Exception e){
+      return handleError(new VeniceException("Error getting key schema for store: " + storeName, e), new SchemaResponse());
+    }
+  }
+
+  private SchemaResponse addValueSchema(String clusterName, String storeName, String valueSchemaStr) throws IOException, ExecutionException, InterruptedException {
+    List<NameValuePair> queryParams = new ArrayList<>();
+    queryParams.add(new BasicNameValuePair(ControllerApiConstants.CLUSTER, clusterName));
+    queryParams.add(new BasicNameValuePair(ControllerApiConstants.NAME, storeName));
+    queryParams.add(new BasicNameValuePair(ControllerApiConstants.VALUE_SCHEMA, valueSchemaStr));
+    final HttpPost post = new HttpPost(controllerUrl + ControllerApiConstants.ADD_VALUE_SCHEMA_PATH);
+    post.setEntity(new UrlEncodedFormEntity(queryParams));
+    HttpResponse response = client.execute(post, null).get();
+    String responseJson = getJsonFromHttpResponse(response);
+    return mapper.readValue(responseJson, SchemaResponse.class);
+  }
+
+  public static SchemaResponse addValueSchema(String routerUrls, String clusterName, String storeName, String valueSchemaStr) {
+    try (ControllerClient client = new ControllerClient(routerUrls)){
+      return client.addValueSchema(clusterName, storeName, valueSchemaStr);
+    } catch (Exception e){
+      return handleError(new VeniceException("Error adding value schema: " + valueSchemaStr + " for store: " + storeName, e), new SchemaResponse());
+    }
+  }
+
+  private SchemaResponse getValueSchema(String clusterName, String storeName, int valueSchemaId) throws IOException, ExecutionException, InterruptedException {
+    List<NameValuePair> queryParams = new ArrayList<>();
+    queryParams.add(new BasicNameValuePair(ControllerApiConstants.CLUSTER, clusterName));
+    queryParams.add(new BasicNameValuePair(ControllerApiConstants.NAME, storeName));
+    queryParams.add(new BasicNameValuePair(ControllerApiConstants.SCHEMA_ID, Integer.toString(valueSchemaId)));
+    String queryString = URLEncodedUtils.format(queryParams, StandardCharsets.UTF_8);
+    final HttpGet get = new HttpGet(controllerUrl + ControllerApiConstants.GET_VALUE_SCHEMA_PATH + "?" + queryString);
+    HttpResponse response = client.execute(get, null).get();
+    String responseJson = getJsonFromHttpResponse(response);
+    return mapper.readValue(responseJson, SchemaResponse.class);
+  }
+
+  public static SchemaResponse getValueSchema(String routerUrls, String clusterName, String storeName, int valueSchemaId) {
+    try (ControllerClient client = new ControllerClient(routerUrls)){
+      return client.getValueSchema(clusterName, storeName, valueSchemaId);
+    } catch (Exception e){
+      return handleError(new VeniceException("Error getting value schema for schema id: " + valueSchemaId + " for store: " + storeName, e), new SchemaResponse());
+    }
+  }
+
+  private SchemaResponse getValueSchemaID(String clusterName, String storeName, String valueSchemaStr) throws IOException, ExecutionException, InterruptedException {
+    List<NameValuePair> queryParams = new ArrayList<>();
+    queryParams.add(new BasicNameValuePair(ControllerApiConstants.CLUSTER, clusterName));
+    queryParams.add(new BasicNameValuePair(ControllerApiConstants.NAME, storeName));
+    queryParams.add(new BasicNameValuePair(ControllerApiConstants.VALUE_SCHEMA, valueSchemaStr));
+    final HttpPost post = new HttpPost(controllerUrl + ControllerApiConstants.GET_VALUE_SCHEMA_ID_PATH);
+    post.setEntity(new UrlEncodedFormEntity(queryParams));
+    HttpResponse response = client.execute(post, null).get();
+    String responseJson = getJsonFromHttpResponse(response);
+    return mapper.readValue(responseJson, SchemaResponse.class);
+  }
+
+  public static SchemaResponse getValueSchemaID(String routerUrls, String clusterName, String storeName, String valueSchemaStr) {
+    try (ControllerClient client = new ControllerClient(routerUrls)){
+      return client.getValueSchemaID(clusterName, storeName, valueSchemaStr);
+    } catch (Exception e){
+      return handleError(new VeniceException("Error getting value schema for schema: " + valueSchemaStr + " for store: " + storeName, e), new SchemaResponse());
+    }
+  }
+
+  private MultiSchemaResponse getAllValueSchema(String clusterName, String storeName) throws IOException, ExecutionException, InterruptedException {
+    List<NameValuePair> queryParams = new ArrayList<>();
+    queryParams.add(new BasicNameValuePair(ControllerApiConstants.CLUSTER, clusterName));
+    queryParams.add(new BasicNameValuePair(ControllerApiConstants.NAME, storeName));
+    String queryString = URLEncodedUtils.format(queryParams, StandardCharsets.UTF_8);
+    final HttpGet get = new HttpGet(controllerUrl + ControllerApiConstants.GET_ALL_VALUE_SCHEMA_PATH + "?" + queryString);
+    HttpResponse response = client.execute(get, null).get();
+    String responseJson = getJsonFromHttpResponse(response);
+    return mapper.readValue(responseJson, MultiSchemaResponse.class);
+  }
+
+  public static MultiSchemaResponse getAllValueSchema(String routerUrls, String clusterName, String storeName) {
+    try (ControllerClient client = new ControllerClient(routerUrls)){
+      return client.getAllValueSchema(clusterName, storeName);
+    } catch (Exception e){
+      return handleError(new VeniceException("Error getting value schema for store: " + storeName, e), new MultiSchemaResponse());
     }
   }
 

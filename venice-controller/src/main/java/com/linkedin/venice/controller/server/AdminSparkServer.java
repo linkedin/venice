@@ -2,7 +2,6 @@ package com.linkedin.venice.controller.server;
 
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.controller.Admin;
-import com.linkedin.venice.controllerapi.VersionResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceHttpException;
 import com.linkedin.venice.service.AbstractVeniceService;
@@ -71,6 +70,14 @@ public class AdminSparkServer extends AbstractVeniceService {
     Spark.get(NEXTVERSION_PATH, NextVersion.getRoute(admin));
 
     Spark.post(RESERVE_VERSION_PATH, ReserveVersion.getRoute(admin));
+
+    // Operations for key schema/value schema
+    Spark.post(INIT_KEY_SCHEMA, SchemaRoutes.initKeySchema(admin));
+    Spark.get(GET_KEY_SCHEMA_PATH, SchemaRoutes.getKeySchema(admin));
+    Spark.post(ADD_VALUE_SCHEMA_PATH, SchemaRoutes.addValueSchema(admin));
+    Spark.get(GET_VALUE_SCHEMA_PATH, SchemaRoutes.getValueSchema(admin));
+    Spark.post(GET_VALUE_SCHEMA_ID_PATH, SchemaRoutes.getValueSchemaID(admin));
+    Spark.get(GET_ALL_VALUE_SCHEMA_PATH, SchemaRoutes.getAllValueSchema(admin));
 
     Spark.awaitInitialization(); // Wait for server to be initialized
   }
