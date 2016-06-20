@@ -67,6 +67,7 @@ public class TestTopicMonitor {
 
     mon.stop();
     kafka.close();
+    topicManager.close();
 
   }
 

@@ -15,7 +15,6 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.serialization.DefaultSerializer;
 import com.linkedin.venice.serialization.KafkaKeySerializer;
 import com.linkedin.venice.utils.VeniceProperties;
-import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import java.util.Arrays;
 
@@ -31,6 +30,7 @@ import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericDatumReader;
 import org.apache.avro.mapred.AvroInputFormat;
 import org.apache.avro.mapred.AvroJob;
+import org.apache.commons.io.IOUtils;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.filecache.DistributedCache;
 import org.apache.hadoop.fs.FileStatus;
@@ -97,7 +97,11 @@ public class KafkaPushJob {
   private final String storeOwners;
   private final int batchNumBytes;
   private final int topicRetention;
-  // Whether the current job is for venice store push or just Kafka push
+  private final Properties props;
+  private final String kafkaUrl;
+  private final String kafkaZk;
+  private final TopicManager topicManager;
+  /** Whether the current job is for venice store push or just Kafka push */
   private final boolean storePush;
 
   // Mutable state
@@ -109,9 +113,6 @@ public class KafkaPushJob {
   private String keySchemaString;
   private String valueSchemaString;
   private Schema parsedFileSchema;
-  private Properties props;
-  private String kafkaUrl;
-  private String kafkaZk;
   // We will override topic if it is a store push
   private String topic;
   // Total input data size, which is used to talk to controller to decide whether we have enough quota or not
@@ -319,6 +320,8 @@ public class KafkaPushJob {
     } else {
       this.batchNumBytes = Integer.parseInt(props.getProperty(BATCH_NUM_BYTES_PROP));
     }
+
+    this.topicManager = new TopicManager(kafkaZk);
   }
 
   /**
@@ -330,58 +333,65 @@ public class KafkaPushJob {
    * The run method is invoked by Azkaban dynamically for running
    * the job.
    *
-   * @throws Exception
+   * @throws VeniceException
    */
-  public void run()
-          throws Exception {
-    logger.info("Running KafkaPushJob: " + id);
+  public void run() {
+    try {
+      logger.info("Running KafkaPushJob: " + id);
 
-    // Create FileSystem handle, which will be shared in multiple functions
-    Configuration conf = new Configuration();
-    fs = FileSystem.get(conf);
+      // Create FileSystem handle, which will be shared in multiple functions
+      Configuration conf = new Configuration();
+      fs = FileSystem.get(conf);
 
-    // This will try to extract the source folder if the input path has 'latest' anchor.
-    Path sourcePath = getLatestPathOfInputDirectory();
+      // This will try to extract the source folder if the input path has 'latest' anchor.
+      Path sourcePath = getLatestPathOfInputDirectory();
 
-    // Check Avro file schema consistency, data size
-    inspectHdfsSource(sourcePath);
+      // Check Avro file schema consistency, data size
+      inspectHdfsSource(sourcePath);
 
-    // If the current job is for a store push, we need to pull Kafka Url/Topic from Venice Controller
-    if (storePush) {
-      createStoreIfNeeded();
-      int nextVersion = getNextVersionFromVenice();
-      reserveNextVersion(nextVersion); /* Throws VeniceException if reservation fails */
-      topic = new Version(storeName, nextVersion).kafkaTopicName();
-      createTopic();
-    }
-    // Log job properties
-    logJobProperties();
+      // If the current job is for a store push, we need to pull Kafka Url/Topic from Venice Controller
+      if (storePush) {
+        createStoreIfNeeded();
+        int nextVersion = getNextVersionFromVenice();
+        reserveNextVersion(nextVersion); /* Throws VeniceException if reservation fails */
+        topic = new Version(storeName, nextVersion).kafkaTopicName();
+        createTopic();
+      }
+      // Log job properties
+      logJobProperties();
 
-    // Hadoop2 dev cluster provides a newer version of an avro dependency.
-    // Set mapreduce.job.classloader to true to force the use of the older avro dependency.
-    conf.setBoolean("mapreduce.job.classloader", true);
-    logger.info("**************** mapreduce.job.classloader: " + conf.get("mapreduce.job.classloader"));
+      // Hadoop2 dev cluster provides a newer version of an avro dependency.
+      // Set mapreduce.job.classloader to true to force the use of the older avro dependency.
+      conf.setBoolean("mapreduce.job.classloader", true);
+      logger.info("**************** mapreduce.job.classloader: " + conf.get("mapreduce.job.classloader"));
 
-    // Setup the hadoop job
-    this.job = setupHadoopJob(conf);
-    JobClient jc = new JobClient(job);
+      // Setup the hadoop job
+      this.job = setupHadoopJob(conf);
+      JobClient jc = new JobClient(job);
 
-    sendControlMessage(ControlMessageType.START_OF_PUSH);
-    // submit the job for execution
-    runningJob = jc.submitJob(job);
-    logger.info("Job Tracking URL: " + runningJob.getTrackingURL());
-    runningJob.waitForCompletion();
+      sendControlMessage(ControlMessageType.START_OF_PUSH);
+      // submit the job for execution
+      runningJob = jc.submitJob(job);
+      logger.info("Job Tracking URL: " + runningJob.getTrackingURL());
+      runningJob.waitForCompletion();
 
-    if (!runningJob.isSuccessful()) {
-      throw new RuntimeException("KafkaPushJob failed");
-    }
-    sendControlMessage(ControlMessageType.END_OF_PUSH); //TODO: send a failure END OF PUSH message if something went wrong
+      if (!runningJob.isSuccessful()) {
+        throw new RuntimeException("KafkaPushJob failed");
+      }
+      sendControlMessage(ControlMessageType.END_OF_PUSH); //TODO: send a failure END OF PUSH message if something went wrong
 
-    if (!storePush){
-      logger.info("No controller provided, skipping poll of push status, job completed");
-    } else {
-      pollStatusUntilComplete();
-      new TopicManager(kafkaZk).deleteOldTopicsForStore(storeName, topicRetention);
+      if (!storePush) {
+        logger.info("No controller provided, skipping poll of push status, job completed");
+      } else {
+        pollStatusUntilComplete();
+        topicManager.deleteOldTopicsForStore(storeName, topicRetention);
+      }
+    } catch (VeniceException ve) {
+      throw ve;
+    } catch (Exception e) {
+      throw new VeniceException("Exception caught during Hadoop to Venice Bridge!", e);
+    } finally {
+      IOUtils.closeQuietly(topicManager);
     }
   }
 
@@ -449,7 +459,7 @@ public class KafkaPushJob {
     int partitionCount = 3;
     int replicationFactor = 1;
 
-    new TopicManager(kafkaZk).createTopic(topic, partitionCount, replicationFactor);
+    topicManager.createTopic(topic, partitionCount, replicationFactor);
   }
 
   private void logJobProperties() {
@@ -696,7 +706,7 @@ public class KafkaPushJob {
      logger.info("Processing file " + status.getPath());
       if (status.isDir()) {
         // Map-reduce job will fail if the input directory has sub-directory and 'recursive' is not specified.
-        throw new RuntimeException("Input directory: " + srcPath.getName() +
+        throw new VeniceException("Input directory: " + srcPath.getName() +
                 " should not have sub directory: " + status.getPath().getName());
       }
 

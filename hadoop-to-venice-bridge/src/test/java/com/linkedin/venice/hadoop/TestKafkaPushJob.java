@@ -1,6 +1,7 @@
 package com.linkedin.venice.hadoop;
 
 import com.linkedin.venice.client.VeniceReader;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.exceptions.VeniceInconsistentSchemaException;
 import com.linkedin.venice.hadoop.exceptions.VeniceSchemaFieldNotFoundException;
 import com.linkedin.venice.integration.utils.ServiceFactory;
@@ -225,7 +226,7 @@ public class TestKafkaPushJob {
     // No need for asserts, because we are expecting an exception to be thrown!
   }
 
-  @Test(expectedExceptions = RuntimeException.class, expectedExceptionsMessageRegExp = ".*should not have sub directory: sub-dir.*")
+  @Test(expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = ".*should not have sub directory: sub-dir.*")
   public void testRunJobWithSubDirInInputDir() throws Exception {
     File inputDir = getTempDataDirectory();
     writeSimpleAvroFileWithUserSchema(inputDir);

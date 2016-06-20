@@ -2,6 +2,7 @@ dependencies {
     compile project(':venice-common')
     compile project(':venice-client')
 
+    compile libraries.commonsIo
     compile libraries.kafkaClients
     compile libraries.kafka
     compile (libraries.avro) {

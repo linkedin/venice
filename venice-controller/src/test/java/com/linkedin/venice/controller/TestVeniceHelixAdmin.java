@@ -16,6 +16,7 @@ import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.PropertyBuilder;
+import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.Utils;
 import java.io.IOException;
@@ -53,7 +54,9 @@ public class TestVeniceHelixAdmin {
 
   private VeniceProperties controllerProps;
 
-  public static final long MASTER_CHANGE_TIMEOUT = 10*1000; /* 10 seconds */
+  public static final long MASTER_CHANGE_TIMEOUT = 10 * Time.MS_PER_SECOND;
+  public static final long TOTAL_TIMEOUT_FOR_LONG_TEST = 30 * Time.MS_PER_SECOND;
+  public static final long TOTAL_TIMEOUT_FOR_SHORT_TEST = 10 * Time.MS_PER_SECOND;
 
   @BeforeMethod
   public void setup()
@@ -121,7 +124,7 @@ public class TestVeniceHelixAdmin {
     }
   }
 
-  @Test(timeOut = 15000)
+  @Test(timeOut = TOTAL_TIMEOUT_FOR_SHORT_TEST)
   public void testStartClusterAndCreatePush()
       throws Exception {
     try {
@@ -134,7 +137,7 @@ public class TestVeniceHelixAdmin {
     }
   }
 
-  @Test(timeOut = 15000)
+  @Test(timeOut = TOTAL_TIMEOUT_FOR_LONG_TEST)
   public void testControllerFailOver()
       throws Exception {
     veniceAdmin.addStore(clusterName, "test", "dev");
@@ -199,7 +202,7 @@ public class TestVeniceHelixAdmin {
     newMasterAdmin.stop(clusterName);
   }
 
-  @Test(timeOut = 15000)
+  @Test(timeOut = TOTAL_TIMEOUT_FOR_LONG_TEST)
   public void testIsMasterController()
       throws IOException, InterruptedException {
     Assert.assertTrue(veniceAdmin.isMasterController(clusterName),
@@ -232,7 +235,7 @@ public class TestVeniceHelixAdmin {
     newMasterAdmin.close();
   }
 
-  @Test(timeOut = 15000)
+  @Test(timeOut = TOTAL_TIMEOUT_FOR_SHORT_TEST)
   public void testMultiCluster(){
     String newClusterName = "new_test_cluster";
     PropertyBuilder builder = new PropertyBuilder()
@@ -250,7 +253,7 @@ public class TestVeniceHelixAdmin {
     Assert.assertTrue(veniceAdmin.isMasterController(newClusterName));
   }
 
-  @Test(timeOut = 15000)
+  @Test(timeOut = TOTAL_TIMEOUT_FOR_SHORT_TEST)
   public void testGetNumberOfPartition(){
     long partitionSize = config.getPartitionSize();
     int maxPartitionNumber = config.getMaxNumberOfPartition();
@@ -280,7 +283,7 @@ public class TestVeniceHelixAdmin {
     }
   }
 
-  @Test(timeOut = 15000)
+  @Test(timeOut = TOTAL_TIMEOUT_FOR_SHORT_TEST)
   public void testGetNumberOfPartitionsFromPreviousVersion() {
     long partitionSize = config.getPartitionSize();
     int maxPartitionNumber = config.getMaxNumberOfPartition();

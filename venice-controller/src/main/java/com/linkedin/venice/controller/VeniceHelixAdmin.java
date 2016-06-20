@@ -17,6 +17,8 @@ import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+
+import org.apache.commons.io.IOUtils;
 import org.apache.helix.HelixAdmin;
 import org.apache.helix.HelixManager;
 import org.apache.helix.HelixManagerFactory;
@@ -67,10 +69,12 @@ public class VeniceHelixAdmin implements Admin {
         this.controllerClusterName = config.getControllerClusterName();
         this.controllerClusterReplica = config.getControllerClusterReplica();
         this.kafkaBootstrapServers =  config.getKafkaBootstrapServers();
-        this.topicManager = new TopicManager(config.getKafkaZkAddress());
-        admin = new ZKHelixAdmin(config.getZkAddress());
+
+        // TODO: Re-use the internal zkClient for the ZKHelixAdmin and TopicManager.
+        this.admin = new ZKHelixAdmin(config.getZkAddress());
         //There is no way to get the internal zkClient from HelixManager or HelixAdmin. So create a new one here.
-        zkClient = new ZkClient(config.getZkAddress(), ZkClient.DEFAULT_SESSION_TIMEOUT, ZkClient.DEFAULT_CONNECTION_TIMEOUT);
+        this.zkClient = new ZkClient(config.getZkAddress(), ZkClient.DEFAULT_SESSION_TIMEOUT, ZkClient.DEFAULT_CONNECTION_TIMEOUT);
+        this.topicManager = new TopicManager(config.getKafkaZkAddress());
 
         // Create the parent controller and related cluster if required.
         createControllerClusterIfRequired();
@@ -526,6 +530,7 @@ public class VeniceHelixAdmin implements Admin {
     public void close() {
         manager.disconnect();
         zkClient.close();
+        IOUtils.closeQuietly(topicManager);
     }
 
     /**

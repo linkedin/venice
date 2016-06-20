@@ -1,6 +1,7 @@
 package com.linkedin.venice.integration.utils;
 
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.utils.Time;
 import org.apache.log4j.Logger;
 import org.apache.zookeeper.server.ServerCnxnFactory;
 import org.apache.zookeeper.server.ServerConfig;
@@ -22,11 +23,15 @@ public class ZkServerWrapper extends ProcessWrapper {
 
   public static final String SERVICE_NAME = "Zookeeper";
 
-  private static final int MAX_WAIT_TIME_DURING_STARTUP = 5000;
+  private static final int MAX_WAIT_TIME_DURING_STARTUP = 5 * Time.MS_PER_SECOND;
 
   // TODO: Make sure the hardcoded defaults below make sense
-  private static final int TICK_TIME = 2000;
-  private static final int MAX_SESSION_TIMEOUT = 1000000;
+
+  /**
+   * The tick time can be low because this Zookeeper instance is intended to be used locally.
+   */
+  private static final int TICK_TIME = 200;
+  private static final int MAX_SESSION_TIMEOUT = 10 * Time.MS_PER_SECOND;
   private static final int NUM_CONNECTIONS = 5000;
   private static final String ZK_HOSTNAME = "localhost"; // Retrieving Utils.getHostName() doesn't work...
 
