@@ -58,12 +58,8 @@ public class TestTopicMonitor {
     KafkaConsumer<String, String> kafkaClient = new KafkaConsumer<String, String>(kafkaProps);
 
     /* wait for kafka broker to create the topic */
-    boolean topicCreated = false;
-    while(!topicCreated) {
-      if (kafkaClient.listTopics().containsKey(storeName + "_v1")) {
-        topicCreated = true;
-      }
-    }
+    Utils.waitForNonDeterministicCompetion(5, TimeUnit.SECONDS,
+        () -> kafkaClient.listTopics().containsKey(storeName + "_v1"));
     kafkaClient.close();
     Thread.sleep(10);
 
