@@ -2,7 +2,10 @@ package com.linkedin.venice.kafka;
 
 import com.linkedin.venice.integration.utils.KafkaBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
+import com.linkedin.venice.integration.utils.TestUtils;
 import com.linkedin.venice.meta.Version;
+
+import java.io.IOException;
 import java.util.Set;
 import junit.framework.Assert;
 import org.testng.annotations.AfterClass;
@@ -25,14 +28,15 @@ public class TopicManagerTest {
   }
 
   @AfterClass
-  public void teardown(){
+  public void teardown() throws IOException {
     kafka.close();
+    manager.close();
   }
 
   @Test
   public void testCreateTopic() throws Exception {
     Set<String> topicsInCluster = null;
-    String topicName = "mytopic";
+    String topicName = TestUtils.getUniqueString("testCreateTopic");
     int partitions = 1;
     int replicas = 1;
     manager.createTopic(topicName, partitions, replicas);
@@ -53,7 +57,7 @@ public class TopicManagerTest {
 
     // Create a topic
     Set<String> topicsInCluster = null;
-    String topicName = "mytopic2";
+    String topicName = TestUtils.getUniqueString("testDeleteTopic");
     int partitions = 1;
     int replicas = 1;
     manager.createTopic(topicName, partitions, replicas);
@@ -86,7 +90,7 @@ public class TopicManagerTest {
   public void testDeleteOldTopics() throws InterruptedException {
 
     // Create 4 version topics, myStore_v1, myStore_v2, ...
-    String storeName = "myStore";
+    String storeName = TestUtils.getUniqueString("testDeleteOldTopics");
     int maxVersion = 4;
     for (int i=1;i<=maxVersion;i++){
       String topic = new Version(storeName, i).kafkaTopicName();
@@ -125,7 +129,7 @@ public class TopicManagerTest {
   public void testDeleteOldTopicsByOldestToKeep() throws InterruptedException {
 
     // Create 4 version topics, myStore_v1, myStore_v2, ...
-    String storeName = "myStore";
+    String storeName = TestUtils.getUniqueString("testDeleteOldTopicsByOldestToKeep");
     int maxVersion = 4;
     for (int i=1;i<=maxVersion;i++){
       String topic = new Version(storeName, i).kafkaTopicName();
