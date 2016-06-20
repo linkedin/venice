@@ -12,6 +12,9 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Properties;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
+import java.util.function.BooleanSupplier;
 import org.apache.commons.lang.StringUtils;
 import org.apache.http.HttpStatus;
 
@@ -233,11 +236,36 @@ public class Utils {
     return hostName;
   }
 
+  /***
+   * Sleep until number of milliseconds have passed, or the operation is interrupted.  This method will swallow the
+   * InterruptedException and terminate, if this is used in a loop it may become difficult to cleanly break out
+   * of the loop.
+   *
+   * @param millis
+   */
   public static void sleep(long millis) {
     try {
       Thread.sleep(millis);
-    } catch ( InterruptedException e) {
+    } catch (InterruptedException e) {
 
+    }
+  }
+
+  /***
+   * To be used for tests when we need to wait for an async operation to complete.  Pass a timeout, and a labmda
+   * for checking if the operation is complete.
+   *
+   * @param timeout
+   * @param timeoutUnits
+   * @param conditionToWaitFor
+   */
+  public static void waitForNonDeterministicCompetion(long timeout, TimeUnit timeoutUnits, BooleanSupplier conditionToWaitFor){
+    long timeoutTime = System.currentTimeMillis() + timeoutUnits.toMillis(timeout);
+    while (!conditionToWaitFor.getAsBoolean()){
+      if (System.currentTimeMillis() > timeoutTime){
+        throw new RuntimeException("Operation did not complete in time");
+      }
+      sleep(30);
     }
   }
 
