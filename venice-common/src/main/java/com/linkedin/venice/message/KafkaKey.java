@@ -50,6 +50,8 @@ public class KafkaKey {
     return key;
   }
 
+  public int getLength() { return Byte.SIZE + (key == null ?  0 : key.length);}
+
   public String toString() {
     return getClass().getSimpleName() + "(" +
         (isControlMessage() ? "CONTROL_MESSAGE" : "PUT or DELETE")
