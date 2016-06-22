@@ -60,6 +60,8 @@ public class KafkaConsumerPerStoreService extends AbstractVeniceService implemen
 
   private final int nodeId;
 
+  private final EventThrottler throttler;
+
   private ExecutorService consumerExecutorService;
 
   // Need to make sure that the service has started before start running KafkaConsumptionTask.
@@ -77,6 +79,9 @@ public class KafkaConsumerPerStoreService extends AbstractVeniceService implemen
 
     VeniceServerConfig serverConfig = veniceConfigLoader.getVeniceServerConfig();
     nodeId = serverConfig.getNodeId();
+
+    long maxKafkaFetchBytesPerSecond = serverConfig.getMaxKafkaFetchBytesPerSecond();
+    throttler = new EventThrottler(maxKafkaFetchBytesPerSecond);
 
     VeniceNotifier notifier = null;
     // initialize internal kafka producer for acknowledging consumption (if enabled)
@@ -118,7 +123,7 @@ public class KafkaConsumerPerStoreService extends AbstractVeniceService implemen
 
   private StoreConsumptionTask getConsumerTask(VeniceStoreConfig veniceStore) {
     return new StoreConsumptionTask(new VeniceConsumerFactory(), getKafkaConsumerProperties(veniceStore), storeRepository,
-            offsetManager , notifiers, nodeId, veniceStore.getStoreName());
+            offsetManager , notifiers, throttler , nodeId, veniceStore.getStoreName());
   }
 
   /**

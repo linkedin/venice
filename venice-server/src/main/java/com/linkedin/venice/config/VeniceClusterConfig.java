@@ -51,6 +51,8 @@ public class VeniceClusterConfig {
 
   private boolean kafkaEnableAutoOffsetCommit;
 
+  private long maxKafkaFetchBytesPerSecond = 0;
+
 
   public VeniceClusterConfig(VeniceProperties clusterProperties)
       throws ConfigurationException {
@@ -91,7 +93,11 @@ public class VeniceClusterConfig {
     numMetadataRefreshRetries = clusterProps.getInt(KAFKA_CONSUMER_NUM_METADATA_REFRESH_RETRIES, 3);
     metadataRefreshBackoffMs = clusterProps.getInt(KAFKA_CONSUMER_METADATA_REFRESH_BACKOFF_MS, 1000);
     kafkaEnableAutoOffsetCommit = clusterProps.getBoolean(KAFKA_CONSUMER_ENABLE_AUTO_OFFSET_COMMIT, false);
+    maxKafkaFetchBytesPerSecond = clusterProps.getSizeInBytes(MAX_KAFKA_FETCH_BYTES_PER_SECOND, 0);
   }
+
+
+  public long getMaxKafkaFetchBytesPerSecond() { return maxKafkaFetchBytesPerSecond; }
 
   public String getClusterName() {
     return clusterName;
