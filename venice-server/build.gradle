@@ -32,6 +32,7 @@ dependencies {
   compile libraries.bdbJe
   compile libraries.netty
   compile libraries.asyncHttpClient
+  compile libraries.tehuti
 
   compile project(':venice-common')
   compile project(':venice-controller')

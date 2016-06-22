@@ -48,6 +48,7 @@ ext.libraries = [ // Groovy map literal
                   metricsCore: 'com.yammer.metrics:metrics-core:2.2.1',
                   snappy: 'org.xerial.snappy:snappy-java:1.0.4.1',
                   testng: 'org.testng:testng:6.1.1',
+                  tehuti: 'io.tehuti:tehuti:0.7.0',
 
                   // Resolves java.lang.UnsupportedOperationException:  setXIncludeAware is not supported on this JAXP implementation or earlier: class org.apache.xerces.jaxp.DocumentBuilderFactoryImpl
                   xalan: 'xalan:xalan:2.7.1',

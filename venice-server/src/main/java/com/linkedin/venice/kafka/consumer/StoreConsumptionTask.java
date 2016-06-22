@@ -70,6 +70,8 @@ public class StoreConsumptionTask implements Runnable, Closeable {
 
   private final OffsetManager offsetManager;
 
+  private final EventThrottler throttler;
+
   private long lastProgressReportTime = 0;
   private static final long PROGRESS_REPORT_INTERVAL = TimeUnit.MILLISECONDS.convert(10, TimeUnit.MINUTES);
 
@@ -85,21 +87,21 @@ public class StoreConsumptionTask implements Runnable, Closeable {
                               @NotNull StoreRepository storeRepository,
                               @NotNull OffsetManager offsetManager,
                               @NotNull Queue<VeniceNotifier> notifiers,
+                              @NotNull EventThrottler throttler,
                               int nodeId,
                               String topic) {
     this.factory = factory;
     this.kafkaProps = kafkaConsumerProperties;
     this.storeRepository = storeRepository;
     this.offsetManager = offsetManager;
-
+    this.notifiers = notifiers;
+    this.throttler = throttler;
     this.topic = topic;
 
     controlMessages = new ConcurrentLinkedQueue<>();
 
     // Should be accessed only from a single thread.
     partitionToOffsetMap = new HashMap<>();
-
-    this.notifiers = notifiers;
     this.consumerTaskId = String.format(CONSUMER_TASK_ID_FORMAT, nodeId, topic);
 
     isRunning = new AtomicBoolean(true);
@@ -346,24 +348,23 @@ public class StoreConsumptionTask implements Runnable, Closeable {
       return;
     }
 
-    Set<Integer> processedPartitions = new HashSet<>();
-    long totalSize = 0;
-    long totalRecords = 0;
+    int totalSize = 0;
+    int totalRecords = 0;
     while (recordsIterator.hasNext()) {
       ConsumerRecord<KafkaKey, KafkaMessageEnvelope> record = (ConsumerRecord<KafkaKey, KafkaMessageEnvelope>) recordsIterator.next();
       totalRecords++;
       if(shouldProcessRecord(record)) {
         try {
           totalSize += processConsumerRecord(record);
-          processedPartitions.add(record.partition());
-          partitionToOffsetMap.put(record.partition(), record.offset());
         } catch (VeniceMessageException | UnsupportedOperationException ex) {
           logger.error(consumerTaskId + " : Received an exception ! Skipping the message at partition " + record.partition() + " offset " + record.offset(), ex);
         }
       }
     }
 
-    for(Integer partition: processedPartitions) {
+    throttler.maybeThrottle(totalSize);
+
+    for(Integer partition: partitionToOffsetMap.keySet()) {
       long partitionOffset = partitionToOffsetMap.get(partition);
       OffsetRecord record = new OffsetRecord(partitionOffset);
       offsetManager.recordOffset(this.topic, partition, record);
@@ -424,6 +425,7 @@ public class StoreConsumptionTask implements Runnable, Closeable {
         throw ex;
       }
     }
+    partitionToOffsetMap.put(record.partition() , record.offset());
     return keySize + valueSize;
   }
 

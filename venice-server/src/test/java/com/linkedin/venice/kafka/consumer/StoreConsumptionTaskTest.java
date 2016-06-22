@@ -64,6 +64,7 @@ public class StoreConsumptionTaskTest{
   private VeniceNotifier mockNotifier;
   private OffsetManager mockOffSetManager;
   private AbstractStorageEngine mockAbstractStorageEngine;
+  private EventThrottler mockThrottler;
 
   private ExecutorService taskPollingService;
 
@@ -92,6 +93,8 @@ public class StoreConsumptionTaskTest{
     mockNotifier = Mockito.mock(KafkaNotifier.class);
     mockAbstractStorageEngine = Mockito.mock(AbstractStorageEngine.class);
     mockOffSetManager = Mockito.mock(OffsetManager.class);
+    mockThrottler = Mockito.mock(EventThrottler.class);
+
     VeniceConsumerFactory mockFactory = Mockito.mock(VeniceConsumerFactory.class);
     Properties kafkaProps = new Properties();
     Mockito.doReturn(mockKafkaConsumer).when(mockFactory).getConsumer(kafkaProps);
@@ -99,12 +102,11 @@ public class StoreConsumptionTaskTest{
       Mockito.doReturn(OffsetRecord.NON_EXISTENT_OFFSET).when(mockOffSetManager).getLastOffset(topic, partition);
     }
 
-
     Queue<VeniceNotifier> notifiers = new ConcurrentLinkedQueue<>();
     notifiers.add(mockNotifier);
 
     StoreConsumptionTask task = new StoreConsumptionTask(mockFactory , kafkaProps, mockStoreRepository, mockOffSetManager,
-            notifiers, nodeId, topic);
+            notifiers, mockThrottler, nodeId, topic);
     return task;
   }
 
