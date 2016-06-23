@@ -112,6 +112,8 @@ public class TestHelixReadWriteSchemaRepository {
     schemaRepo.addValueSchema(storeName, valueSchemaStr);
     Assert.assertEquals(1, schemaRepo.getValueSchemaId(storeName, valueSchemaStr));
     Assert.assertEquals(SchemaData.INVALID_VALUE_SCHEMA_ID, schemaRepo.getValueSchemaId(storeName, "\"string\""));
+    Assert.assertTrue(schemaRepo.hasValueSchema(storeName, 1));
+    Assert.assertFalse(schemaRepo.hasValueSchema(storeName, 2));
   }
 
   @Test(expectedExceptions = SchemaParseException.class)

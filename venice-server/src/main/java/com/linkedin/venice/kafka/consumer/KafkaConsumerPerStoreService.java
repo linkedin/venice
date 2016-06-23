@@ -2,6 +2,7 @@ package com.linkedin.venice.kafka.consumer;
 
 import com.linkedin.venice.config.VeniceServerConfig;
 import com.linkedin.venice.config.VeniceStoreConfig;
+import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.notifier.KafkaNotifier;
 import com.linkedin.venice.notifier.LogNotifier;
 import com.linkedin.venice.notifier.VeniceNotifier;
@@ -52,6 +53,8 @@ public class KafkaConsumerPerStoreService extends AbstractVeniceService implemen
   private final Queue<VeniceNotifier> notifiers = new ConcurrentLinkedQueue<>();
   private final OffsetManager offsetManager;
 
+  private final ReadOnlySchemaRepository schemaRepo;
+
   /**
    * A repository mapping each Kafka Topic to it corresponding Consumption task responsible
    * for consuming messages and making changes to the local store accordingly.
@@ -67,10 +70,14 @@ public class KafkaConsumerPerStoreService extends AbstractVeniceService implemen
   // Need to make sure that the service has started before start running KafkaConsumptionTask.
   private final AtomicBoolean isRunning;
 
-  public KafkaConsumerPerStoreService(StoreRepository storeRepository, VeniceConfigLoader veniceConfigLoader, OffsetManager offsetManager) {
+  public KafkaConsumerPerStoreService(StoreRepository storeRepository,
+                                      VeniceConfigLoader veniceConfigLoader,
+                                      OffsetManager offsetManager,
+                                      ReadOnlySchemaRepository schemaRepo) {
     super(VENICE_SERVICE_NAME);
     this.storeRepository = storeRepository;
     this.offsetManager = offsetManager;
+    this.schemaRepo = schemaRepo;
 
     this.topicNameToKafkaMessageConsumptionTaskMap = Collections.synchronizedMap(new HashMap<>());
     isRunning = new AtomicBoolean(false);
@@ -123,7 +130,7 @@ public class KafkaConsumerPerStoreService extends AbstractVeniceService implemen
 
   private StoreConsumptionTask getConsumerTask(VeniceStoreConfig veniceStore) {
     return new StoreConsumptionTask(new VeniceConsumerFactory(), getKafkaConsumerProperties(veniceStore), storeRepository,
-            offsetManager , notifiers, throttler , nodeId, veniceStore.getStoreName());
+            offsetManager , notifiers, throttler , nodeId, veniceStore.getStoreName(), schemaRepo);
   }
 
   /**

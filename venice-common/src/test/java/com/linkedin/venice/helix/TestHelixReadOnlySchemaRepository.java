@@ -101,6 +101,8 @@ public class TestHelixReadOnlySchemaRepository {
       return 1 == schemaRORepo.getValueSchemas(storeName).size();
     });
     Assert.assertNotEquals(SchemaData.INVALID_VALUE_SCHEMA_ID, schemaRORepo.getValueSchemaId(storeName, valueSchemaStr));
+    Assert.assertTrue(schemaRORepo.hasValueSchema(storeName, 1));
+    Assert.assertFalse(schemaRORepo.hasValueSchema(storeName, 2));
   }
 
   @Test(expectedExceptions = VeniceNoStoreException.class)

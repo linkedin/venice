@@ -242,6 +242,14 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository {
    */
   @Override
   public SchemaEntry getValueSchema(String storeName, int id) {
+    SchemaEntry valueSchema = getValueSchemaInternally(storeName, id);
+    if (null == valueSchema) {
+      return null;
+    }
+    return valueSchema.clone();
+  }
+
+  private SchemaEntry getValueSchemaInternally(String storeName, int id) {
     fetchStoreSchemaIfNotInCache(storeName);
     schemaLock.readLock().lock();
     try {
@@ -250,13 +258,26 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository {
         throw new VeniceNoStoreException(storeName);
       }
       SchemaEntry valueSchema = schemaData.getValueSchema(id);
-      if (null == valueSchema) {
-        return null;
-      }
-      return valueSchema.clone();
+      return valueSchema;
     } finally {
       schemaLock.readLock().unlock();
     }
+  }
+
+  /**
+   * This function is used to check whether the value schema id is valid in the given store.
+   *
+   * @throws {@link com.linkedin.venice.exceptions.VeniceNoStoreException} if the store doesn't exist;
+   *
+   * @param storeName
+   * @param id
+   * @return
+   */
+  @Override
+  public boolean hasValueSchema(String storeName, int id) {
+    SchemaEntry valueSchema = getValueSchemaInternally(storeName, id);
+
+    return null != valueSchema;
   }
 
   /**

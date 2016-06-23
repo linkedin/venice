@@ -4,9 +4,14 @@ import com.google.common.collect.ImmutableList;
 import com.linkedin.venice.config.VeniceClusterConfig;
 import com.linkedin.venice.config.VeniceServerConfig;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.helix.HelixAdapterSerializer;
 import com.linkedin.venice.helix.HelixParticipationService;
+import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
+import com.linkedin.venice.helix.HelixReadonlyStoreRepository;
 import com.linkedin.venice.kafka.consumer.KafkaConsumerPerStoreService;
 import com.linkedin.venice.listener.ListenerService;
+import com.linkedin.venice.meta.ReadOnlySchemaRepository;
+import com.linkedin.venice.meta.ReadonlyStoreRepository;
 import com.linkedin.venice.offsets.BdbOffsetManager;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.storage.StorageService;
@@ -14,6 +19,8 @@ import com.linkedin.venice.utils.Utils;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
+
+import org.apache.helix.manager.zk.ZkClient;
 import org.apache.log4j.Logger;
 
 
@@ -26,6 +33,8 @@ public class VeniceServer {
 
   private StorageService storageService;
   private BdbOffsetManager offSetService;
+
+  private ReadOnlySchemaRepository schemaRepo;
 
   private final List<AbstractVeniceService> services;
 
@@ -68,9 +77,12 @@ public class VeniceServer {
     offSetService = new BdbOffsetManager(veniceConfigLoader.getVeniceClusterConfig());
     services.add(offSetService);
 
+    // Create ReadOnlySchemaRepository
+    schemaRepo = createSchemaRepository(clusterConfig);
+
     //create and add KafkaSimpleConsumerService
     KafkaConsumerPerStoreService kafkaConsumerService =
-        new KafkaConsumerPerStoreService(storageService.getStoreRepository(), veniceConfigLoader, offSetService);
+        new KafkaConsumerPerStoreService(storageService.getStoreRepository(), veniceConfigLoader, offSetService, schemaRepo);
     services.add(kafkaConsumerService);
 
     // start venice participant service if Helix is enabled.
@@ -103,6 +115,19 @@ public class VeniceServer {
      */
 
     return ImmutableList.copyOf(services);
+  }
+
+  private ReadOnlySchemaRepository createSchemaRepository(VeniceClusterConfig clusterConfig) {
+    ZkClient zkClient = new ZkClient(clusterConfig.getZookeeperAddress(), ZkClient.DEFAULT_SESSION_TIMEOUT, ZkClient.DEFAULT_CONNECTION_TIMEOUT);
+    HelixAdapterSerializer adapter = new HelixAdapterSerializer();
+    String clusterName = clusterConfig.getClusterName();
+    ReadonlyStoreRepository storeRepo = new HelixReadonlyStoreRepository(zkClient, adapter, clusterName);
+    // Load existing store config and setup watches
+    storeRepo.refresh();
+    ReadOnlySchemaRepository schemaRepo = new HelixReadOnlySchemaRepository(storeRepo, zkClient, adapter, clusterName);
+    schemaRepo.refresh();
+
+    return schemaRepo;
   }
 
   public StorageService getStorageService(){

@@ -25,6 +25,15 @@ public interface ReadOnlySchemaRepository extends VeniceResource, StoreDataChang
   SchemaEntry getValueSchema(String storeName, int id);
 
   /**
+   * Check whether the specified schema id is valid or not
+   *
+   * @param storeName
+   * @param id
+   * @return
+   */
+  boolean hasValueSchema(String storeName, int id);
+
+  /**
    * Look up the schema id by store name and value schema.
    *
    * @param storeName
