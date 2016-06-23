@@ -4,6 +4,7 @@ import com.linkedin.venice.kafka.protocol.*;
 import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.message.KafkaKey;
+import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.notifier.KafkaNotifier;
 import com.linkedin.venice.notifier.VeniceNotifier;
 import com.linkedin.venice.offsets.OffsetManager;
@@ -24,6 +25,8 @@ import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+
+import com.linkedin.venice.utils.Utils;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.common.TopicPartition;
@@ -48,6 +51,7 @@ public class StoreConsumptionTaskTest{
 
   static {
     StoreConsumptionTask.READ_CYCLE_DELAY_MS = 500;
+    StoreConsumptionTask.POLLING_SCHEMA_DELAY_MS = 500;
     TIMEOUT = 5 * StoreConsumptionTask.READ_CYCLE_DELAY_MS;
 
     // TODO Hack, after trying to configure the log4j with log4j.properties
@@ -65,11 +69,13 @@ public class StoreConsumptionTaskTest{
   private OffsetManager mockOffSetManager;
   private AbstractStorageEngine mockAbstractStorageEngine;
   private EventThrottler mockThrottler;
+  private ReadOnlySchemaRepository mockSchemaRepo;
 
   private ExecutorService taskPollingService;
 
   private final int nodeId = 0;
-  private final String topic = "TestTopic";
+  private final String topic = "TestTopic_v1";
+  private final String storeNameWithoutVersionInfo = "TestTopic";
   private final int testPartition = 0;
   private final TopicPartition testTopicPartition = new TopicPartition(topic, testPartition);
 
@@ -95,6 +101,7 @@ public class StoreConsumptionTaskTest{
     mockOffSetManager = Mockito.mock(OffsetManager.class);
     mockThrottler = Mockito.mock(EventThrottler.class);
 
+    mockSchemaRepo = Mockito.mock(ReadOnlySchemaRepository.class);
     VeniceConsumerFactory mockFactory = Mockito.mock(VeniceConsumerFactory.class);
     Properties kafkaProps = new Properties();
     Mockito.doReturn(mockKafkaConsumer).when(mockFactory).getConsumer(kafkaProps);
@@ -106,7 +113,7 @@ public class StoreConsumptionTaskTest{
     notifiers.add(mockNotifier);
 
     StoreConsumptionTask task = new StoreConsumptionTask(mockFactory , kafkaProps, mockStoreRepository, mockOffSetManager,
-            notifiers, mockThrottler, nodeId, topic);
+            notifiers, mockThrottler, nodeId, topic, mockSchemaRepo);
     return task;
   }
 
@@ -165,9 +172,9 @@ public class StoreConsumptionTaskTest{
         new KafkaKey(type, key), kafkaValue);
   }
 
-  private ConsumerRecord<KafkaKey, KafkaMessageEnvelope> getPutConsumerRecord(int partition, long offset,  byte[] key, byte[] value) {
+  private ConsumerRecord<KafkaKey, KafkaMessageEnvelope> getPutConsumerRecord(int partition, long offset,  byte[] key, byte[] value, int schemaId) {
     Put put = new Put();
-    put.schemaId = -1;
+    put.schemaId = schemaId;
     put.putValue = ByteBuffer.wrap(value);
     return getConsumerRecord(MessageType.PUT, partition, offset, key, put);
   }
@@ -207,7 +214,7 @@ public class StoreConsumptionTaskTest{
   /**
    * Verifies that the VeniceMessages from KafkaConsumer are processed appropriately as follows:
    *   1. A VeniceMessage with PUT requests leads to invoking of AbstractStorageEngine#put.
-   *   2. A VeniceMessage with DELETE requests leads to invoking of AbstractStorageEngine#put.
+   *   2. A VeniceMessage with DELETE requests leads to invoking of AbstractStorageEngine#delete.
    */
   @Test
   public void testVeniceMessagesProcessing() throws Exception {
@@ -217,9 +224,9 @@ public class StoreConsumptionTaskTest{
     testSubscribeTask.subscribePartition(topic, testPartition);
 
     final long LAST_OFFSET= 15;
-    ConsumerRecord testPutRecord = getPutConsumerRecord(testPartition, 10, putTestKey.getBytes(), putTestValue.getBytes());
+    ConsumerRecord testPutRecord = getPutConsumerRecord(testPartition, 10, putTestKey.getBytes(), putTestValue.getBytes(), -1);
     ConsumerRecord testDeleteRecord = getDeleteConsumerRecord(testPartition, LAST_OFFSET, deleteTestKey.getBytes());
-    ConsumerRecord ignorePutRecord = getPutConsumerRecord(testPartition, 13, "Low-Offset-Ignored".getBytes(), "ignored-put".getBytes());
+    ConsumerRecord ignorePutRecord = getPutConsumerRecord(testPartition, 13, "Low-Offset-Ignored".getBytes(), "ignored-put".getBytes(), -1);
     ConsumerRecord ignoreDeleteRecord = getDeleteConsumerRecord(testPartition, 15, "Equal-Offset-Ignored".getBytes());
 
     // Prepare the mockKafkaConsumer to send the test poll results.
@@ -259,6 +266,162 @@ public class StoreConsumptionTaskTest{
   }
 
   @Test
+  public void testVeniceMessagesProcessingWithExistingSchemaId() throws Exception {
+    // Get the KafkaPerStoreConsumptionTask with fresh mocks.
+    StoreConsumptionTask testSubscribeTask = getKafkaPerStoreConsumptionTask(testPartition);
+    testSubscribeTask.subscribePartition(topic, testPartition);
+
+    final long LAST_OFFSET= 10;
+    final int existingSchemaId = 1;
+    Mockito.doReturn(true).when(mockSchemaRepo).hasValueSchema(storeNameWithoutVersionInfo, existingSchemaId);
+
+    ConsumerRecord testPutRecordWithExistingSchemaId = getPutConsumerRecord(testPartition, LAST_OFFSET, putTestKey.getBytes(), putTestValue.getBytes(), existingSchemaId);
+
+    // Prepare the mockKafkaConsumer to send the test poll results.
+    ConsumerRecords mockResult = mockKafkaPollResult(testPutRecordWithExistingSchemaId);
+    Mockito.doReturn(mockResult).when(mockKafkaConsumer).poll(StoreConsumptionTask.READ_CYCLE_DELAY_MS);
+
+    // Prepare mockStoreRepository to send a mock storage engine.
+    Mockito.doReturn(mockAbstractStorageEngine).when(mockStoreRepository).getLocalStorageEngine(topic);
+
+    // MockKafkaConsumer is prepared. Schedule for polling.
+    Future testSubscribeTaskFuture = taskPollingService.submit(testSubscribeTask);
+
+    // Verify it retrieves the offset from the OffSet Manager
+    Mockito.verify(mockOffSetManager, Mockito.timeout(TIMEOUT).times(1)).getLastOffset(topic, testPartition);
+
+    // Verify KafkaConsumer#poll is invoked.
+    Mockito.verify(mockKafkaConsumer, Mockito.timeout(TIMEOUT).atLeastOnce()).poll(Mockito.anyLong());
+    // Verify StorageEngine#put is invoked only once and with appropriate key & value.
+    Mockito.verify(mockAbstractStorageEngine, Mockito.timeout(TIMEOUT).times(1))
+        .put(eq(testPartition), any(), any());
+    Mockito.verify(mockAbstractStorageEngine, Mockito.timeout(TIMEOUT).times(1))
+        .put(testPartition, putTestKey.getBytes(), putTestValue.getBytes());
+    Mockito.verify(mockSchemaRepo, Mockito.timeout(TIMEOUT).times(1))
+        .hasValueSchema(storeNameWithoutVersionInfo, existingSchemaId);
+
+    // Verify it commits the offset to Offset Manager
+    OffsetRecord expected = new OffsetRecord(LAST_OFFSET);
+    Mockito.verify(mockOffSetManager, Mockito.timeout(TIMEOUT).times(1)).recordOffset(topic, testPartition, expected);
+
+    testSubscribeTask.close();
+    testSubscribeTaskFuture.get();
+  }
+
+  @Test
+  public void testVeniceMessagesProcessingWithTemporarilyNotAvailableSchemaId() throws Exception {
+    // Get the KafkaPerStoreConsumptionTask with fresh mocks.
+    StoreConsumptionTask testSubscribeTask = getKafkaPerStoreConsumptionTask(testPartition);
+    testSubscribeTask.subscribePartition(topic, testPartition);
+
+    final long OFFSET_WITH_TEMP_NOT_AVAILABLE_SCHEMA = 10;
+    final long OFFSET_WITH_VALID_SCHEMA = 11;
+    final int existingSchemaId = 1;
+    final int nonExistingSchemaId = 2;
+    //Mockito.doReturn(false).doReturn(false).doReturn(true).when(mockSchemaRepo).hasValueSchema(storeNameWithoutVersionInfo, nonExistingSchemaId);
+    Mockito.when(mockSchemaRepo.hasValueSchema(storeNameWithoutVersionInfo, nonExistingSchemaId))
+        .thenReturn(false, false, true);
+
+    Mockito.doReturn(true).when(mockSchemaRepo).hasValueSchema(storeNameWithoutVersionInfo, existingSchemaId);
+
+    ConsumerRecord testPutRecordWithNonExistingSchemaId = getPutConsumerRecord(testPartition, OFFSET_WITH_TEMP_NOT_AVAILABLE_SCHEMA, putTestKey.getBytes(), putTestValue.getBytes(), nonExistingSchemaId);
+    ConsumerRecord testPutRecordWithExistingSchemaId = getPutConsumerRecord(testPartition, OFFSET_WITH_VALID_SCHEMA, putTestKey.getBytes(), putTestValue.getBytes(), existingSchemaId);
+
+    // Prepare the mockKafkaConsumer to send the test poll results.
+    ConsumerRecords mockResult = mockKafkaPollResult(testPutRecordWithNonExistingSchemaId, testPutRecordWithExistingSchemaId);
+    Mockito.doReturn(mockResult).when(mockKafkaConsumer).poll(StoreConsumptionTask.READ_CYCLE_DELAY_MS);
+
+    // Prepare mockStoreRepository to send a mock storage engine.
+    Mockito.doReturn(mockAbstractStorageEngine).when(mockStoreRepository).getLocalStorageEngine(topic);
+
+    // MockKafkaConsumer is prepared. Schedule for polling.
+    Future testSubscribeTaskFuture = taskPollingService.submit(testSubscribeTask);
+
+    // Verify it retrieves the offset from the OffSet Manager
+    Mockito.verify(mockOffSetManager, Mockito.timeout(TIMEOUT).times(1)).getLastOffset(topic, testPartition);
+
+    // Verify KafkaConsumer#poll is invoked.
+    Mockito.verify(mockKafkaConsumer, Mockito.timeout(TIMEOUT).atLeastOnce()).poll(Mockito.anyLong());
+    // Verify StorageEngine#put is invoked only once and with appropriate key & value.
+    Mockito.verify(mockAbstractStorageEngine, Mockito.timeout(TIMEOUT).never())
+        .put(eq(testPartition), any(), any());
+    Mockito.verify(mockAbstractStorageEngine, Mockito.timeout(TIMEOUT).never())
+        .put(testPartition, putTestKey.getBytes(), putTestValue.getBytes());
+    Mockito.verify(mockSchemaRepo, Mockito.timeout(TIMEOUT).times(1))
+        .hasValueSchema(storeNameWithoutVersionInfo, nonExistingSchemaId);
+    Mockito.verify(mockSchemaRepo, Mockito.timeout(TIMEOUT).never())
+        .hasValueSchema(storeNameWithoutVersionInfo, existingSchemaId);
+
+    // Verify no offset commit to Offset Manager
+    Mockito.verify(mockOffSetManager, Mockito.timeout(TIMEOUT).never()).recordOffset(eq(topic), eq(testPartition), any(OffsetRecord.class));
+    // Internally, StoreConsumptionTask will sleep POLLING_SCHEMA_DELAY_MS
+    // to check for every round to check whether the value schema is available or not.
+    // Since POLLING_SCHEMA_DELAY_MS might be bigger than the default TIMEOUT,
+    // and the check will only get 'true' response in thrid retry,
+    // so I would like to sleep for some time to make sure, the assertion does run after the third retry.
+    Utils.sleep(2 * StoreConsumptionTask.POLLING_SCHEMA_DELAY_MS);
+
+    Mockito.verify(mockAbstractStorageEngine, Mockito.timeout(2 * StoreConsumptionTask.POLLING_SCHEMA_DELAY_MS).times(2))
+        .put(testPartition, putTestKey.getBytes(), putTestValue.getBytes());
+
+    OffsetRecord expected = new OffsetRecord(OFFSET_WITH_VALID_SCHEMA);
+    Mockito.verify(mockOffSetManager, Mockito.timeout(TIMEOUT).times(1)).recordOffset(topic, testPartition, expected);
+
+    testSubscribeTask.close();
+    testSubscribeTaskFuture.get();
+  }
+
+  @Test
+  public void testVeniceMessagesProcessingWithNonExistingSchemaId() throws Exception {
+    // Get the KafkaPerStoreConsumptionTask with fresh mocks.
+    StoreConsumptionTask testSubscribeTask = getKafkaPerStoreConsumptionTask(testPartition);
+    testSubscribeTask.subscribePartition(topic, testPartition);
+
+    final long OFFSET_WITH_INVALID_SCHEMA = 10;
+    final long OFFSET_WITH_VALID_SCHEMA = 11;
+    final int existingSchemaId = 1;
+    final int nonExistingSchemaId = 2;
+    Mockito.doReturn(false).when(mockSchemaRepo).hasValueSchema(storeNameWithoutVersionInfo, nonExistingSchemaId);
+    Mockito.doReturn(true).when(mockSchemaRepo).hasValueSchema(storeNameWithoutVersionInfo, existingSchemaId);
+
+    ConsumerRecord testPutRecordWithNonExistingSchemaId = getPutConsumerRecord(testPartition, OFFSET_WITH_INVALID_SCHEMA, putTestKey.getBytes(), putTestValue.getBytes(), nonExistingSchemaId);
+    ConsumerRecord testPutRecordWithExistingSchemaId = getPutConsumerRecord(testPartition, OFFSET_WITH_VALID_SCHEMA, putTestKey.getBytes(), putTestValue.getBytes(), existingSchemaId);
+
+    // Prepare the mockKafkaConsumer to send the test poll results.
+    ConsumerRecords mockResult = mockKafkaPollResult(testPutRecordWithNonExistingSchemaId, testPutRecordWithExistingSchemaId);
+    Mockito.doReturn(mockResult).when(mockKafkaConsumer).poll(StoreConsumptionTask.READ_CYCLE_DELAY_MS);
+
+    // Prepare mockStoreRepository to send a mock storage engine.
+    Mockito.doReturn(mockAbstractStorageEngine).when(mockStoreRepository).getLocalStorageEngine(topic);
+
+    // MockKafkaConsumer is prepared. Schedule for polling.
+    Future testSubscribeTaskFuture = taskPollingService.submit(testSubscribeTask);
+
+    Utils.sleep(StoreConsumptionTask.POLLING_SCHEMA_DELAY_MS);
+
+    // Verify it retrieves the offset from the OffSet Manager
+    Mockito.verify(mockOffSetManager, Mockito.timeout(TIMEOUT).times(1)).getLastOffset(topic, testPartition);
+
+    // Verify KafkaConsumer#poll is invoked.
+    Mockito.verify(mockKafkaConsumer, Mockito.timeout(TIMEOUT).atLeastOnce()).poll(Mockito.anyLong());
+    // Verify StorageEngine#put is invoked only once and with appropriate key & value.
+    Mockito.verify(mockAbstractStorageEngine, Mockito.timeout(TIMEOUT).never())
+        .put(eq(testPartition), any(), any());
+    Mockito.verify(mockAbstractStorageEngine, Mockito.timeout(TIMEOUT).never())
+        .put(testPartition, putTestKey.getBytes(), putTestValue.getBytes());
+    Mockito.verify(mockSchemaRepo, Mockito.timeout(TIMEOUT).atLeastOnce())
+        .hasValueSchema(storeNameWithoutVersionInfo, nonExistingSchemaId);
+    Mockito.verify(mockSchemaRepo, Mockito.timeout(TIMEOUT).never())
+        .hasValueSchema(storeNameWithoutVersionInfo, existingSchemaId);
+
+    // Verify no offset commit to Offset Manager
+    Mockito.verify(mockOffSetManager, Mockito.timeout(TIMEOUT).never()).recordOffset(eq(topic), eq(testPartition), any(OffsetRecord.class));
+
+    testSubscribeTask.close();
+    testSubscribeTaskFuture.get();
+  }
+
+  @Test
   public void testNotifier() throws Exception {
     // Get the KafkaPerStoreConsumptionTask with fresh mocks.
     final int PARTITION_FOO = 1;
@@ -271,14 +434,14 @@ public class StoreConsumptionTaskTest{
 
     ConsumerRecord fooStartRecord = getControlRecord(ControlMessageType.START_OF_PUSH, currentOffset++, PARTITION_FOO);
     int fooLastOffset = currentOffset++;
-    ConsumerRecord fooPutRecord = getPutConsumerRecord(PARTITION_FOO , fooLastOffset, putTestKey.getBytes(), putTestValue.getBytes());
+    ConsumerRecord fooPutRecord = getPutConsumerRecord(PARTITION_FOO , fooLastOffset, putTestKey.getBytes(), putTestValue.getBytes(), -1);
 
     ConsumerRecords mockResult1 = mockKafkaPollResult(fooStartRecord, fooPutRecord);
 
     ConsumerRecord barStartRecord = getControlRecord(ControlMessageType.START_OF_PUSH, currentOffset++, PARTITION_BAR);
     int barLastOffset = currentOffset++;
     ConsumerRecord barPutRecord = getPutConsumerRecord(PARTITION_BAR, barLastOffset, putTestKey.getBytes(),
-        putTestValue.getBytes());
+        putTestValue.getBytes(), -1);
 
     ConsumerRecords mockResult2 = mockKafkaPollResult(barStartRecord, barPutRecord);
 
@@ -320,7 +483,7 @@ public class StoreConsumptionTaskTest{
     StoreConsumptionTask testSubscribeTask = getKafkaPerStoreConsumptionTask(testPartition);
     testSubscribeTask.subscribePartition(topic, testPartition);
 
-    ConsumerRecord testPutRecord = getPutConsumerRecord(testPartition, 10, putTestKey.getBytes(), putTestValue.getBytes());
+    ConsumerRecord testPutRecord = getPutConsumerRecord(testPartition, 10, putTestKey.getBytes(), putTestValue.getBytes(), -1);
     ConsumerRecords mockResult = mockKafkaPollResult(testPutRecord);
 
     Mockito.doReturn(mockResult)

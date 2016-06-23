@@ -10,6 +10,8 @@ import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.message.KafkaKey;
+import com.linkedin.venice.meta.ReadOnlySchemaRepository;
+import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.notifier.VeniceNotifier;
 import com.linkedin.venice.offsets.OffsetManager;
 import com.linkedin.venice.offsets.OffsetRecord;
@@ -46,7 +48,9 @@ public class StoreConsumptionTask implements Runnable, Closeable {
   private static final String CONSUMER_TASK_ID_FORMAT = StoreConsumptionTask.class.getSimpleName() + " for [ Node: %d, Topic: %s ]";
 
   // Making it non final to shorten the time in testing.
+  // TODO: consider to make those delay time configurable for operability purpose
   public static int READ_CYCLE_DELAY_MS = 1000;
+  public static int POLLING_SCHEMA_DELAY_MS = 5 * READ_CYCLE_DELAY_MS;
 
   private static final int MAX_CONTROL_MESSAGE_RETRIES = 3;
 
@@ -57,6 +61,11 @@ public class StoreConsumptionTask implements Runnable, Closeable {
   private final StoreRepository storeRepository;
 
   private final String topic;
+
+  private final String storeNameWithoutVersionInfo;
+
+  private final ReadOnlySchemaRepository schemaRepo;
+  private Set<Integer> schemaIdSet;
 
   private final String consumerTaskId;
   private final Properties kafkaProps;
@@ -89,7 +98,8 @@ public class StoreConsumptionTask implements Runnable, Closeable {
                               @NotNull Queue<VeniceNotifier> notifiers,
                               @NotNull EventThrottler throttler,
                               int nodeId,
-                              String topic) {
+                              String topic,
+                              @NotNull ReadOnlySchemaRepository schemaRepo) {
     this.factory = factory;
     this.kafkaProps = kafkaConsumerProperties;
     this.storeRepository = storeRepository;
@@ -97,6 +107,9 @@ public class StoreConsumptionTask implements Runnable, Closeable {
     this.notifiers = notifiers;
     this.throttler = throttler;
     this.topic = topic;
+    this.schemaRepo = schemaRepo;
+    this.storeNameWithoutVersionInfo = Version.parseStoreFromKafkaTopicName(topic);
+    this.schemaIdSet = new HashSet<>();
 
     controlMessages = new ConcurrentLinkedQueue<>();
 
@@ -460,6 +473,9 @@ public class StoreConsumptionTask implements Runnable, Closeable {
         }
         // If single-threaded, we can re-use (and clobber) the same Put instance. // TODO: explore GC tuning later.
         Put put = (Put) kafkaValue.payloadUnion;
+        // Validate schema id first
+        checkValueSchemaAvail(put.schemaId);
+
         byte[] valueBytes = put.putValue.array();
         storageEngine.put(partition, keyBytes, valueBytes);
         if (logger.isTraceEnabled()) {
@@ -486,6 +502,45 @@ public class StoreConsumptionTask implements Runnable, Closeable {
         throw new VeniceMessageException(
                 consumerTaskId + " : Invalid/Unrecognized operation type submitted: " + kafkaValue.messageType);
     }
+  }
+
+  /**
+   * Check whether the given schema id is available for current store.
+   * The function will bypass the check if schema id is -1 (H2V job is still using it before we finishes t he integration with schema registry).
+   * Right now, this function is maintaining a local cache for schema id of current store considering that the value schema is immutable;
+   * If the schema id is not available, this function will polling until the schema appears;
+   *
+   * @param schemaId
+   */
+  private void checkValueSchemaAvail(int schemaId) {
+    if (-1 == schemaId) {
+      // TODO: Once H2V finishes the integration with schema registry, we need to remove this check here.
+      return;
+    }
+    // Considering value schema is immutable for an existing store, we can cache it locally
+    if (schemaIdSet.contains(schemaId)) {
+      return;
+    }
+    boolean hasValueSchema = schemaRepo.hasValueSchema(storeNameWithoutVersionInfo, schemaId);
+    while (!hasValueSchema && isRunning()) {
+      // Since schema registration topic might be slower than data topic,
+      // the consumer will be pending until the new schema arrives.
+      // TODO: better polling policy
+      // TODO: Need to add metrics to track this scenario
+      // In the future, we might consider other polling policies,
+      // such as throwing error after certain amount of time;
+      // Or we might want to propagate our state to the Controller via the VeniceNotifier,
+      // if we're stuck polling more than a certain threshold of time?
+      logger.warn("Value schema id: " + schemaId + " is not available for store:" + storeNameWithoutVersionInfo);
+      Utils.sleep(POLLING_SCHEMA_DELAY_MS);
+      hasValueSchema = schemaRepo.hasValueSchema(storeNameWithoutVersionInfo, schemaId);
+    }
+    logger.info("Get value schema from zookeeper for schema id: " + schemaId + " in store: " + storeNameWithoutVersionInfo);
+    if (!hasValueSchema) {
+      throw new VeniceException("Value schema id: " + schemaId + " is still not available for store: "
+          + storeNameWithoutVersionInfo + ", and it will stop waiting since the consumption task is being shutdown");
+    }
+    schemaIdSet.add(schemaId);
   }
 
 

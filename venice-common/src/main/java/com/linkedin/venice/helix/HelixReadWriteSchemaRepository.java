@@ -90,6 +90,23 @@ public class HelixReadWriteSchemaRepository implements ReadWriteSchemaRepository
   }
 
   /**
+   * Check whether the given value schema id exists in the given store or not.
+   * Fetch from zookeeper directly.
+   *
+   * @throws {@link com.linkedin.venice.exceptions.VeniceNoStoreException} if the store doesn't exist;
+   *
+   * @param storeName
+   * @param id
+   * @return
+   *    null if the schema doesn't exist;
+   *    schema entry if exists;
+   */
+  @Override
+  public boolean hasValueSchema(String storeName, int id) {
+    return null != getValueSchema(storeName, id);
+  }
+
+  /**
    * This function is used to retrieve value schema id for the given store and schema.
    *
    * @throws {@link com.linkedin.venice.exceptions.VeniceNoStoreException} if the store doesn't exist;
