@@ -350,12 +350,14 @@ public class StoreConsumptionTask implements Runnable, Closeable {
 
     int totalSize = 0;
     int totalRecords = 0;
+    Set<Integer> processedPartitions = new HashSet<>();
     while (recordsIterator.hasNext()) {
       ConsumerRecord<KafkaKey, KafkaMessageEnvelope> record = (ConsumerRecord<KafkaKey, KafkaMessageEnvelope>) recordsIterator.next();
       totalRecords++;
       if(shouldProcessRecord(record)) {
         try {
           totalSize += processConsumerRecord(record);
+          processedPartitions.add(record.partition());
         } catch (VeniceMessageException | UnsupportedOperationException ex) {
           logger.error(consumerTaskId + " : Received an exception ! Skipping the message at partition " + record.partition() + " offset " + record.offset(), ex);
         }
@@ -364,7 +366,11 @@ public class StoreConsumptionTask implements Runnable, Closeable {
 
     throttler.maybeThrottle(totalSize);
 
-    for(Integer partition: partitionToOffsetMap.keySet()) {
+    for(Integer partition: processedPartitions) {
+      if(!partitionToOffsetMap.containsKey(partition)) {
+        // Partition is completed or unSubscribed.
+        continue;
+      }
       long partitionOffset = partitionToOffsetMap.get(partition);
       OffsetRecord record = new OffsetRecord(partitionOffset);
       offsetManager.recordOffset(this.topic, partition, record);
