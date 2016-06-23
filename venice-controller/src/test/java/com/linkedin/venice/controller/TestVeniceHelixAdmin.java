@@ -10,6 +10,7 @@ import com.linkedin.venice.helix.HelixRoutingDataRepository;
 import com.linkedin.venice.helix.TestHelixRoutingDataRepository;
 import com.linkedin.venice.integration.utils.KafkaBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
+import com.linkedin.venice.integration.utils.TestUtils;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.job.ExecutionStatus;
 import com.linkedin.venice.meta.Instance;
@@ -24,6 +25,7 @@ import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.List;
 import org.apache.helix.HelixManager;
 import org.apache.helix.HelixManagerFactory;
@@ -38,6 +40,8 @@ import org.testng.annotations.Test;
 
 /**
  * Test cases for VeniceHelixAdmin
+ *
+ * TODO: separate out tests that can share enviornment to save time when running tests
  */
 public class TestVeniceHelixAdmin {
   private VeniceHelixAdmin veniceAdmin;
@@ -128,10 +132,42 @@ public class TestVeniceHelixAdmin {
   public void testStartClusterAndCreatePush()
       throws Exception {
     try {
-      veniceAdmin.addStore(clusterName, "test", "dev");
-      veniceAdmin.incrementVersion(clusterName, "test", 1, 1);
-      Assert.assertEquals(veniceAdmin.getOffLineJobStatus(clusterName, "test_v1"), ExecutionStatus.STARTED,
+      String storeName = TestUtils.getUniqueString("test-store");
+      veniceAdmin.addStore(clusterName, storeName, "dev");
+      veniceAdmin.incrementVersion(clusterName, storeName, 1, 1);
+      Assert.assertEquals(veniceAdmin.getOffLineJobStatus(clusterName, new Version(storeName, 1).kafkaTopicName()), ExecutionStatus.STARTED,
           "Can not get offline job status correctly.");
+    } catch (VeniceException e) {
+      Assert.fail("Should be able to create store after starting cluster");
+    }
+  }
+
+  @Test(timeOut = TOTAL_TIMEOUT_FOR_SHORT_TEST)
+  public void reserveAndCreateVersion() throws Exception {
+    String storeName = TestUtils.getUniqueString("store");
+    String owner = "owner";
+    try {
+      veniceAdmin.addStore(clusterName, storeName, owner);
+      veniceAdmin.incrementVersion(clusterName, storeName, 1, 1);
+
+      int maxVersionBeforeAction = veniceAdmin
+          .versionsForStore(clusterName, storeName)
+          .stream().map(v -> v.getNumber())
+          .max(Comparator.<Integer>naturalOrder()).orElseGet(() -> -1);
+
+      int nextVersion = veniceAdmin.peekNextVersion(clusterName, storeName).getNumber();
+      veniceAdmin.reserveVersion(clusterName, storeName, nextVersion);
+      veniceAdmin.addVersion(clusterName, storeName, nextVersion, 1, 1);
+
+      int maxVersionAfterAction = veniceAdmin
+          .versionsForStore(clusterName, storeName)
+          .stream().map(v -> v.getNumber())
+          .max(Comparator.<Integer>naturalOrder()).orElseGet(() -> -1);
+
+      Assert.assertEquals(maxVersionAfterAction, nextVersion,
+          "Max version after creation must be same as peeked version");
+      Assert.assertNotEquals(maxVersionAfterAction, maxVersionBeforeAction,
+          "Max version after creation must be different than before");
     } catch (VeniceException e) {
       Assert.fail("Should be able to create store after starting cluster");
     }
@@ -140,13 +176,14 @@ public class TestVeniceHelixAdmin {
   @Test(timeOut = TOTAL_TIMEOUT_FOR_LONG_TEST)
   public void testControllerFailOver()
       throws Exception {
-    veniceAdmin.addStore(clusterName, "test", "dev");
-    veniceAdmin.incrementVersion(clusterName, "test", 1, 1);
+    String storeName = TestUtils.getUniqueString("test");
+    veniceAdmin.addStore(clusterName, storeName, "dev");
+    veniceAdmin.incrementVersion(clusterName, storeName, 1, 1);
 
     ControlMessageChannel channel = new HelixControlMessageChannel(manager, Integer.MAX_VALUE, 1);
-    channel.sendToController(new StoreStatusMessage("test_v1", 0, nodeId, ExecutionStatus.STARTED));
+    channel.sendToController(new StoreStatusMessage(new Version(storeName, 1).kafkaTopicName(), 0, nodeId, ExecutionStatus.STARTED));
 
-    int newAdminPort = config.getAdminPort()+1;
+    int newAdminPort = config.getAdminPort()+1; /* Note: this is a dummy port */
     PropertyBuilder builder = new PropertyBuilder()
         .put(controllerProps.toProperties())
         .put("admin.port", newAdminPort);
@@ -208,7 +245,7 @@ public class TestVeniceHelixAdmin {
     Assert.assertTrue(veniceAdmin.isMasterController(clusterName),
         "The default controller should be the master controller.");
 
-    int newAdminPort = config.getAdminPort()+1;
+    int newAdminPort = config.getAdminPort()+1; /* Note: dummy port */
     PropertyBuilder builder = new PropertyBuilder()
         .put(controllerProps.toProperties())
         .put("admin.port", newAdminPort);
