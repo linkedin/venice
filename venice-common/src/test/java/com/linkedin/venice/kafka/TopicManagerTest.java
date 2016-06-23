@@ -53,34 +53,19 @@ public class TopicManagerTest {
   public void testDeleteTopic() throws InterruptedException {
 
     // Create a topic
-    Set<String> topicsInCluster = null;
     String topicName = TestUtils.getUniqueString("testDeleteTopic");
     int partitions = 1;
     int replicas = 1;
     manager.createTopic(topicName, partitions, replicas);
-    for (int attempts = 100; attempts>0; attempts--) {
-      topicsInCluster = manager.listTopics();
-      if (topicsInCluster.contains(topicName)){
-        break;
-      }
-      Thread.sleep(10);
-    }
-    Assert.assertTrue(topicsInCluster.contains(topicName));
+    Utils.waitForNonDeterministicCompetion(10, TimeUnit.SECONDS, () -> manager.listTopics().contains(topicName));
+    Assert.assertTrue(manager.listTopics().contains(topicName));
 
     // Delete that topic
     manager.deleteTopic(topicName);
-
     // Wait for it to go away (delete is async)
-    for (int attempts = 100; attempts>0; attempts--) {
-      topicsInCluster = manager.listTopics();
-      if (!topicsInCluster.contains(topicName)){
-        break;
-      }
-      Thread.sleep(10);
-    }
-
+    Utils.waitForNonDeterministicCompetion(10, TimeUnit.SECONDS, () -> !manager.listTopics().contains(topicName));
     // Assert that it is gone
-    Assert.assertFalse(topicsInCluster.contains(topicName));
+    Assert.assertFalse(manager.listTopics().contains(topicName));
   }
 
   @Test
@@ -92,24 +77,16 @@ public class TopicManagerTest {
     for (int i=1;i<=maxVersion;i++){
       String topic = new Version(storeName, i).kafkaTopicName();
       manager.createTopic(topic, 1, 1);
-      while (!manager.listTopics().contains(topic)){
-        Thread.sleep(10); /* wait for topic to appear */
-      }
+      Utils.waitForNonDeterministicCompetion(10, TimeUnit.SECONDS, () -> manager.listTopics().contains(topic));
     }
 
     // Delete every version topic except for the newest 2 (by version number)
     manager.deleteOldTopicsForStore(storeName, 2);
-    Set<String> topicsInCluster = null;
-    for (int attempts = 100; attempts>0; attempts--) {
-      topicsInCluster = manager.listTopics();
-      if (
-          !topicsInCluster.contains(new Version(storeName, 1).kafkaTopicName())
-          && !topicsInCluster.contains(new Version(storeName, 2).kafkaTopicName())
-          ){
-        break;
-      }
-      Thread.sleep(10);
-    }
+    Utils.waitForNonDeterministicCompetion(10, TimeUnit.SECONDS, () -> {
+      Set<String> topics = manager.listTopics();
+      return !topics.contains(new Version(storeName, 1).kafkaTopicName()) && !topics.contains(new Version(storeName, 2).kafkaTopicName());
+    });
+    Set<String> topicsInCluster = manager.listTopics();
     Assert.assertFalse(topicsInCluster.contains(new Version(storeName, 1).kafkaTopicName()));
     Assert.assertFalse(topicsInCluster.contains(new Version(storeName, 2).kafkaTopicName()));
     Assert.assertTrue(topicsInCluster.contains(new Version(storeName, 3).kafkaTopicName()));
@@ -131,24 +108,17 @@ public class TopicManagerTest {
     for (int i=1;i<=maxVersion;i++){
       String topic = new Version(storeName, i).kafkaTopicName();
       manager.createTopic(topic, 1, 1);
-      while (!manager.listTopics().contains(topic)){
-        Thread.sleep(10); /* wait for topic to appear */
-      }
+      Utils.waitForNonDeterministicCompetion(10, TimeUnit.SECONDS, () -> manager.listTopics().contains(topic));
     }
 
     // Delete every topic with a version number older than 3
     manager.deleteTopicsForStoreOlderThanVersion(storeName, 3);
-    Set<String> topicsInCluster = null;
-    for (int attempts = 100; attempts>0; attempts--) {
-      topicsInCluster = manager.listTopics();
-      if (
-          !topicsInCluster.contains(new Version(storeName, 1).kafkaTopicName())
-          && !topicsInCluster.contains(new Version(storeName, 2).kafkaTopicName())
-          ){
-        break;
-      }
-      Thread.sleep(10);
-    }
+    Utils.waitForNonDeterministicCompetion(10, TimeUnit.SECONDS, () -> {
+      Set<String> topics = manager.listTopics();
+      return !topics.contains(new Version(storeName, 1).kafkaTopicName()) && !topics.contains(new Version(storeName, 2).kafkaTopicName());
+    });
+
+    Set<String> topicsInCluster = manager.listTopics();
     Assert.assertFalse(topicsInCluster.contains(new Version(storeName, 1).kafkaTopicName()));
     Assert.assertFalse(topicsInCluster.contains(new Version(storeName, 2).kafkaTopicName()));
     Assert.assertTrue(topicsInCluster.contains(new Version(storeName, 3).kafkaTopicName()));
