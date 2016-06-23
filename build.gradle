@@ -1,3 +1,9 @@
+// The start parameters below enable parallelization of many independent modules.
+// We can't enable it by default because it breaks buildAll. We can still use 
+// parallel execution by doing: `./gradlew clean build --parallel`
+// gradle.startParameter.setParallelProjectExecutionEnabled(true)
+// gradle.startParameter.setMaxWorkerCount(10)
+
 if (project.hasProperty('overrideBuildEnvironment')) {
   if(project.overrideBuildEnvironment) {
     apply from: file(project.overrideBuildEnvironment)
@@ -100,7 +106,9 @@ subprojects {
   }
 
   test {
-    // Tests should run in parallel
+    useTestNG()
+
+    // Tests should run in parallel (this controls the number of parallel tests within a single module)
     maxParallelForks 10
   }
 
@@ -152,5 +160,5 @@ task buildAll {
 }
 
 task wrapper(type: Wrapper) {
-    gradleVersion = '2.10'
+    gradleVersion = '2.14'
 }

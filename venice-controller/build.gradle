@@ -46,14 +46,3 @@ dependencies {
   testCompile 'commons-io:commons-io:2.4'
 }
 
-
-idea {
-  module {
-    downloadJavadoc = true
-    downloadSources = true
-  }
-}
-
-test {
-  useTestNG()
-}

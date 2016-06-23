@@ -61,7 +61,7 @@ public class TestTopicMonitor {
     Utils.waitForNonDeterministicCompetion(5, TimeUnit.SECONDS,
         () -> kafkaClient.listTopics().containsKey(storeName + "_v1"));
     kafkaClient.close();
-    Thread.sleep(10);
+    Thread.sleep(100);
 
     Mockito.verify(mockAdmin, atLeastOnce()).addVersion(anyString(), anyString(), anyInt(), anyInt(), anyInt());
 

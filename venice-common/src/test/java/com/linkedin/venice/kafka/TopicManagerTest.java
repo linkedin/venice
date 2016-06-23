@@ -7,6 +7,9 @@ import com.linkedin.venice.meta.Version;
 
 import java.io.IOException;
 import java.util.Set;
+import java.util.concurrent.TimeUnit;
+
+import com.linkedin.venice.utils.Utils;
 import junit.framework.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
@@ -35,18 +38,12 @@ public class TopicManagerTest {
 
   @Test
   public void testCreateTopic() throws Exception {
-    Set<String> topicsInCluster = null;
     String topicName = TestUtils.getUniqueString("testCreateTopic");
     int partitions = 1;
     int replicas = 1;
     manager.createTopic(topicName, partitions, replicas);
-    for (int attempts = 100; attempts>0; attempts--) {
-      topicsInCluster = manager.listTopics();
-      if (topicsInCluster.contains(topicName)){
-        break;
-      }
-      Thread.sleep(10);
-    }
+    Utils.waitForNonDeterministicCompetion(5, TimeUnit.SECONDS, () -> manager.listTopics().contains(topicName));
+    Set<String> topicsInCluster = manager.listTopics();
     Assert.assertTrue(topicsInCluster.contains(topicName));
     manager.createTopic(topicName, partitions, replicas); /* should be noop */
     Assert.assertTrue(topicsInCluster.contains(topicName));

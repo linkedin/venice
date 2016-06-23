@@ -2,14 +2,18 @@ package com.linkedin.venice.helix;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.integration.utils.ServiceFactory;
+import com.linkedin.venice.integration.utils.TestUtils;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.job.ExecutionStatus;
 import com.linkedin.venice.job.OfflineJob;
 import com.linkedin.venice.job.Task;
 import com.linkedin.venice.meta.Instance;
+import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
+
 import org.apache.helix.HelixAdmin;
 import org.apache.helix.HelixManager;
 import org.apache.helix.HelixManagerFactory;
@@ -23,6 +27,7 @@ import org.apache.helix.manager.zk.ZkClient;
 import org.apache.helix.model.HelixConfigScope;
 import org.apache.helix.model.IdealState;
 import org.apache.helix.model.builder.HelixConfigScopeBuilder;
+import org.apache.log4j.Logger;
 import org.apache.zookeeper.CreateMode;
 import org.testng.Assert;
 import org.testng.annotations.AfterMethod;
@@ -34,10 +39,12 @@ import org.testng.annotations.Test;
  * Test cases for HelixJobRepository
  */
 public class TestHelixJobRepository {
+  private static final Logger LOG = Logger.getLogger(TestHelixJobRepository.class);
+
   private String zkAddress;
   private ZkClient zkClient;
-  private String cluster = "test-job-cluster";
-  private String clusterPath = "/test-job-cluster";
+  private String cluster; // = "test-job-cluster";
+  private String clusterPath; // = "/test-job-cluster";
   private String jobPath = "/jobs";
   private HelixAdapterSerializer adapter = new HelixAdapterSerializer();
   private HelixJobRepository repository;
@@ -45,7 +52,7 @@ public class TestHelixJobRepository {
   private HelixAdmin admin;
   private HelixManager controller;
   private HelixManager manager;
-  private String kafkaTopic = "test_resource_1";
+  private String kafkaTopic; // = "test_resource_1";
   private String nodeId = "localhost_9985";
   private ZkServerWrapper zkServerWrapper;
 
@@ -54,6 +61,10 @@ public class TestHelixJobRepository {
       throws Exception {
     zkServerWrapper = ServiceFactory.getZkServer();
     zkAddress = zkServerWrapper.getAddress();
+
+    kafkaTopic = TestUtils.getUniqueString("test_resource");
+    cluster = TestUtils.getUniqueString("test-job-cluster");
+    clusterPath = "/" + cluster;
 
     admin = new ZKHelixAdmin(zkAddress);
     admin.addCluster(cluster);
@@ -120,7 +131,7 @@ public class TestHelixJobRepository {
   @Test
   public void testStartMultiPartitionsJob()
       throws Exception {
-    String resource = "multi_test";
+    String resource = TestUtils.getUniqueString("multi_test");
     int partitions = 5;
     HelixManager[] managers = new HelixManager[3];
     for (int i = 0; i < 3; i++) {
@@ -261,7 +272,7 @@ public class TestHelixJobRepository {
       throws Exception {
     int numberOfPartition = 3;
     int replicaFactor = 1;
-    String topic = "runningjob";
+    String topic = TestUtils.getUniqueString("runningjob");
     admin.addResource(cluster, topic, numberOfPartition,
         TestHelixRoutingDataRepository.UnitTestStateModel.UNIT_TEST_STATE_MODEL,
         IdealState.RebalanceMode.FULL_AUTO.toString());
@@ -315,13 +326,27 @@ public class TestHelixJobRepository {
           IdealState.RebalanceMode.FULL_AUTO.toString());
       admin.rebalance(cluster, "topic" + i, 1);
     }
-    // Waiting routing data updated.
-    Thread.sleep(1000);
+
+    // There is a non-deterministic wait-time while the routing data is updated.
+    long totalWaitTime = 10 * Time.MS_PER_SECOND;
+    long startTime = System.currentTimeMillis();
     OfflineJob[] jobs = new OfflineJob[jobCount];
+    LOG.info("Starting the OfflineJob update process.");
     for (int i = 0; i < jobCount; i++) {
-      OfflineJob job = new OfflineJob(i, "topic" + i, numberOfPartition, replicaFactor);
+      String topicName = "topic" + i;
+      final OfflineJob job = new OfflineJob(i, topicName, numberOfPartition, replicaFactor);
       repository.startJob(job);
-      job.updateExecutingPartitions(routingDataRepository.getPartitions("topic"+i));
+      long elapsedTime = System.currentTimeMillis() - startTime;
+      long timeOut = Math.max(1, totalWaitTime - elapsedTime);
+      Utils.waitForNonDeterministicCompetion(timeOut, TimeUnit.MILLISECONDS, () -> {
+        try {
+          job.updateExecutingPartitions(routingDataRepository.getPartitions(topicName));
+          return true;
+        } catch (VeniceException ve) {
+          LOG.error("Got a VeniceException from job.updateExecutingPartitions()", ve);
+          return false;
+        }
+      });
       jobs[i] = job;
     }
 

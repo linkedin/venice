@@ -94,7 +94,3 @@ task zipAzkabanDev(type: Zip, dependsOn: jar) {
   }
 }
 
-test {
-    useTestNG()
-}
-

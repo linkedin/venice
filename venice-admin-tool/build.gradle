@@ -10,14 +10,3 @@ jar {
 dependencies {
     compile project(':venice-common')
 }
-
-idea {
-    module {
-        downloadJavadoc = true
-        downloadSources = true
-    }
-}
-
-test {
-    useTestNG()
-}
