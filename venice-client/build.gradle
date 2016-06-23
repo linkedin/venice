@@ -30,14 +30,3 @@ dependencies {
   testCompile project(':venice-common').sourceSets.test.output
 
 }
-
-idea {
-  module {
-    downloadJavadoc = true
-    downloadSources = true
-  }
-}
-
-test {
-  useTestNG()
-}

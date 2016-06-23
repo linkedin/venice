@@ -5,6 +5,7 @@ import com.linkedin.venice.config.VeniceStoreConfig;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.store.AbstractStorageEngine;
 import com.linkedin.venice.store.bdb.BdbStorageEngineFactory;
+import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.io.File;
 import java.util.AbstractMap;
@@ -24,7 +25,7 @@ public class StorageServiceTest {
   @Test
   public void testMultiThreadedBDB() throws Throwable {
     final int NUM_THREADS = 15;
-
+    final int TOTAL_THREAD_JOIN_TIME = 30 * Time.MS_PER_SECOND;
 
     String storeName = "bdb-add-and-delete";
     VeniceProperties serverProps = AbstractStorageEngineTest.getServerProperties(PersistenceType.BDB);
@@ -54,11 +55,13 @@ public class StorageServiceTest {
         t.start();
       }
 
+      long startTime = System.currentTimeMillis();
       for (Thread t : threads) {
-        long timeout = 10 * 1000;
-        t.join(timeout);
+        long elapsedTime = System.currentTimeMillis() - startTime;
+        long timeOut = Math.max(1, TOTAL_THREAD_JOIN_TIME - (elapsedTime));
+        t.join(timeOut);
         if (t.isAlive()) {
-          throw new RuntimeException("Thread did not completed in millis" + timeout + " Name " + t.getName());
+          throw new RuntimeException("Thread did not complete in " + timeOut + " ms. Thread name: " + t.getName());
         }
       }
 

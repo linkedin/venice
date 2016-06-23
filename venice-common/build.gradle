@@ -50,14 +50,3 @@ dependencies {
   testCompile project(':venice-server')
   testCompile project(':venice-router')
 }
-
-idea {
-  module {
-    downloadJavadoc = true
-    downloadSources = true
-  }
-}
-
-test {
-  useTestNG()
-}

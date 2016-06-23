@@ -19,14 +19,3 @@ dependencies {
     exclude group: 'com.oracle', module: 'ojdbc14' /* unused transitive dependencies, doesnt exist in repo */
   }
 }
-
-idea {
-  module {
-    downloadJavadoc = true
-    downloadSources = true
-  }
-}
-
-test {
-  useTestNG()
-}
