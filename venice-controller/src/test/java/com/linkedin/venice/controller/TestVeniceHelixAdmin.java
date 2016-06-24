@@ -173,15 +173,17 @@ public class TestVeniceHelixAdmin {
     }
   }
 
-  @Test(timeOut = TOTAL_TIMEOUT_FOR_LONG_TEST)
+  //@Test(timeOut = TOTAL_TIMEOUT_FOR_LONG_TEST)
+  @Test
   public void testControllerFailOver()
       throws Exception {
     String storeName = TestUtils.getUniqueString("test");
+    Version version = new Version(storeName, 1);
     veniceAdmin.addStore(clusterName, storeName, "dev");
     veniceAdmin.incrementVersion(clusterName, storeName, 1, 1);
 
     ControlMessageChannel channel = new HelixControlMessageChannel(manager, Integer.MAX_VALUE, 1);
-    channel.sendToController(new StoreStatusMessage(new Version(storeName, 1).kafkaTopicName(), 0, nodeId, ExecutionStatus.STARTED));
+    channel.sendToController(new StoreStatusMessage(version.kafkaTopicName(), 0, nodeId, ExecutionStatus.STARTED));
 
     int newAdminPort = config.getAdminPort()+1; /* Note: this is a dummy port */
     PropertyBuilder builder = new PropertyBuilder()
@@ -209,10 +211,10 @@ public class TestVeniceHelixAdmin {
     //wait master change event
     waitUntilIsMaster(newMasterAdmin, clusterName, MASTER_CHANGE_TIMEOUT);
     //Now get status from new master controller.
-    Assert.assertEquals(newMasterAdmin.getOffLineJobStatus(clusterName, "test_v1"), ExecutionStatus.STARTED,
+    Assert.assertEquals(newMasterAdmin.getOffLineJobStatus(clusterName, version.kafkaTopicName()), ExecutionStatus.STARTED,
         "Can not get offline job status correctly.");
-    channel.sendToController(new StoreStatusMessage("test_v1", 0, nodeId, ExecutionStatus.COMPLETED));
-    Assert.assertEquals(newMasterAdmin.getOffLineJobStatus(clusterName, "test_v1"), ExecutionStatus.COMPLETED,
+    channel.sendToController(new StoreStatusMessage(version.kafkaTopicName(), 0, nodeId, ExecutionStatus.COMPLETED));
+    Assert.assertEquals(newMasterAdmin.getOffLineJobStatus(clusterName, version.kafkaTopicName()), ExecutionStatus.COMPLETED,
         "Job should be completed after getting update from message channel");
 
     // Stop and start participant to use new master to trigger state transition.
@@ -222,13 +224,14 @@ public class TestVeniceHelixAdmin {
     Assert.assertEquals(routing.getMasterController().getPort(), newAdminPort,
         "Master controller is changed, now" + newAdminPort + " is used.");
     Thread.sleep(1000l);
-    Assert.assertTrue(routing.getInstances("test_v1", 0).isEmpty(),
+    Assert.assertTrue(routing.getInstances(version.kafkaTopicName(), 0).isEmpty(),
         "Participant became offline. No instance should be living in test_v1");
     startParticipant();
     Thread.sleep(1000l);
     //New master controller create resource and trigger state transition on participant.
-    newMasterAdmin.incrementVersion(clusterName, "test", 1, 1);
-    Assert.assertEquals(newMasterAdmin.getOffLineJobStatus(clusterName, "test_v2"), ExecutionStatus.STARTED,
+    newMasterAdmin.incrementVersion(clusterName, storeName, 1, 1);
+    Version newVersion = new Version(storeName,2);
+    Assert.assertEquals(newMasterAdmin.getOffLineJobStatus(clusterName, newVersion.kafkaTopicName()), ExecutionStatus.STARTED,
             "Can not trigger state transition from new master");
 
     //Start original controller again, now it should become leader again based on Helix's logic.
