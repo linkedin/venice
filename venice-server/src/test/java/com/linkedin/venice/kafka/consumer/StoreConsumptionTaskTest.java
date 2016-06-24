@@ -5,6 +5,7 @@ import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
+import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.notifier.KafkaNotifier;
 import com.linkedin.venice.notifier.VeniceNotifier;
 import com.linkedin.venice.offsets.OffsetManager;
@@ -74,8 +75,9 @@ public class StoreConsumptionTaskTest{
   private ExecutorService taskPollingService;
 
   private final int nodeId = 0;
-  private final String topic = "TestTopic_v1";
   private final String storeNameWithoutVersionInfo = "TestTopic";
+  private final String topic = Version.composeKafkaTopic(storeNameWithoutVersionInfo, 1);
+
   private final int testPartition = 0;
   private final TopicPartition testTopicPartition = new TopicPartition(topic, testPartition);
 

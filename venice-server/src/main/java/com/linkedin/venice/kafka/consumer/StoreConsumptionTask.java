@@ -98,7 +98,7 @@ public class StoreConsumptionTask implements Runnable, Closeable {
                               @NotNull Queue<VeniceNotifier> notifiers,
                               @NotNull EventThrottler throttler,
                               int nodeId,
-                              String topic,
+                              @NotNull String topic,
                               @NotNull ReadOnlySchemaRepository schemaRepo) {
     this.factory = factory;
     this.kafkaProps = kafkaConsumerProperties;
