@@ -22,16 +22,16 @@ public class ControllerApiConstants {
   public static final String SCHEMA_ID = "schema_id";
 
   public static final String CREATE_PATH = "/create";
-  public static final List<String> CREATE_PARAMS = Arrays.asList(CLUSTER, NAME, STORE_SIZE, OWNER);
+  public static final List<String> CREATE_PARAMS = Arrays.asList(CLUSTER, NAME, STORE_SIZE, OWNER, KEY_SCHEMA, VALUE_SCHEMA);
 
   public static final String NEWSTORE_PATH = "/new_store";
   public static final List<String> NEWSTORE_PARAMS = Arrays.asList(CLUSTER, NAME, OWNER);
 
   public static final String SETVERSION_PATH = "/set_version";
-  public static final List<String> SETVERSION_PARAMS = Arrays.asList(CLUSTER, NAME, VERSION);;
+  public static final List<String> SETVERSION_PARAMS = Arrays.asList(CLUSTER, NAME, VERSION);
 
   public static final String RESERVE_VERSION_PATH = "/reserve_version";
-  public static final List<String> RESERVE_VERSION_PARAMS = Arrays.asList(CLUSTER, NAME, VERSION);;
+  public static final List<String> RESERVE_VERSION_PARAMS = Arrays.asList(CLUSTER, NAME, VERSION);
 
   public static final String NEXTVERSION_PATH = "/next_version";
   public static final List<String> NEXTVERSION_PARAMS = Arrays.asList(CLUSTER, NAME);
@@ -43,7 +43,7 @@ public class ControllerApiConstants {
   public static final List<String> ACTIVE_VERSIONS_PARAMS = Arrays.asList(CLUSTER, NAME);
 
   public static final String JOB_PATH = "/job";
-  public static final List<String> JOB_PARMAS = Arrays.asList(CLUSTER, NAME, VERSION);;
+  public static final List<String> JOB_PARMAS = Arrays.asList(CLUSTER, NAME, VERSION);
 
   public static final String LIST_STORES_PATH = "/list_stores";
   public static final List<String> LIST_STORES_PARAMS = Arrays.asList(CLUSTER);

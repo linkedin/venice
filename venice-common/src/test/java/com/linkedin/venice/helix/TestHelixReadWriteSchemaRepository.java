@@ -93,6 +93,16 @@ public class TestHelixReadWriteSchemaRepository {
     schemaRepo.initKeySchema(storeName, invalidKeySchemaStr);
   }
 
+  @Test
+  public void testSetKeySchemaMultipleTimesWithSameSchema() {
+    String storeName = "test_store1";
+    String keySchemaStr = "\"long\"";
+    createStore(storeName);
+    schemaRepo.initKeySchema(storeName, keySchemaStr);
+    Assert.assertNotNull(schemaRepo.getKeySchema(storeName));
+    schemaRepo.initKeySchema(storeName, keySchemaStr);
+  }
+
   @Test(expectedExceptions = StoreKeySchemaExistException.class)
   public void testSetKeySchemaMultipleTimes() {
     String storeName = "test_store1";
@@ -101,7 +111,7 @@ public class TestHelixReadWriteSchemaRepository {
     schemaRepo.initKeySchema(storeName, keySchemaStr);
     Assert.assertNotNull(schemaRepo.getKeySchema(storeName));
     String newKeySchemaStr = "\"string\"";
-    schemaRepo.initKeySchema(storeName, keySchemaStr);
+    schemaRepo.initKeySchema(storeName, newKeySchemaStr);
   }
 
   @Test

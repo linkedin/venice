@@ -30,6 +30,7 @@ import java.util.concurrent.Future;
 public class TestAvroKafkaRecordWriter {
   private static class MockVeniceWriter extends VeniceWriter<byte[], byte[]> {
     private Map<String, String> messages = new HashMap<>();
+    private Map<String, Integer> keyValueSchemaIdMapping = new HashMap<>();
 
     public MockVeniceWriter(Properties properties) {
       super(new VeniceProperties(properties),
@@ -40,13 +41,18 @@ public class TestAvroKafkaRecordWriter {
     }
 
     @Override
-    public Future<RecordMetadata> put(byte[] key, byte[] value) {
+    public Future<RecordMetadata> put(byte[] key, byte[] value, int schemaId) {
       messages.put(new String(key), new String(value));
+      keyValueSchemaIdMapping.put(new String(key), schemaId);
       return null;
     }
 
     public String getValue(String key) {
       return messages.get(key);
+    }
+
+    public int getValueSchemaId(String key) {
+      return keyValueSchemaIdMapping.get(key);
     }
 
     public void printMessages() {
@@ -58,6 +64,7 @@ public class TestAvroKafkaRecordWriter {
   }
 
   private KafkaBrokerWrapper kafkaBrokerWrapper;
+  private int valueSchemaId = 1;
 
   @BeforeClass
   public void setUp() {
@@ -79,6 +86,7 @@ public class TestAvroKafkaRecordWriter {
     conf.set(KafkaPushJob.AVRO_KEY_FIELD_PROP, keyField);
     conf.set(KafkaPushJob.AVRO_VALUE_FIELD_PROP, valueField);
     conf.set(KafkaPushJob.BATCH_NUM_BYTES_PROP, Integer.toString(KafkaPushJob.DEFAULT_BATCH_BYTES_SIZE));
+    conf.set(KafkaPushJob.VALUE_SCHEMA_ID_PROP, Integer.toString(valueSchemaId));
 
     return AvroKafkaOutputFormat.getKafkaProperties(new JobConf(conf));
   }
@@ -118,6 +126,7 @@ public class TestAvroKafkaRecordWriter {
     Assert.assertEquals(veniceWriter.getValue(keyStr), "test_name");
     Assert.assertNull(veniceWriter.getValue("123"));
     Assert.assertNull(veniceWriter.getValue("124"));
+    Assert.assertEquals(veniceWriter.getValueSchemaId(keyStr), valueSchemaId);
   }
 
   @Test

@@ -59,6 +59,7 @@ public class AvroKafkaOutputFormat implements OutputFormat<AvroWrapper<IndexedRe
     props.put(KafkaPushJob.AVRO_KEY_FIELD_PROP, conf.get(KafkaPushJob.AVRO_KEY_FIELD_PROP));
     props.put(KafkaPushJob.AVRO_VALUE_FIELD_PROP, conf.get(KafkaPushJob.AVRO_VALUE_FIELD_PROP));
     props.put(KafkaPushJob.SCHEMA_STRING_PROP, conf.get(KafkaPushJob.SCHEMA_STRING_PROP));
+    props.put(KafkaPushJob.VALUE_SCHEMA_ID_PROP, conf.get(KafkaPushJob.VALUE_SCHEMA_ID_PROP));
 
     String storeName = conf.get(KafkaPushJob.VENICE_STORE_NAME_PROP);
     if(!Utils.isNullOrEmpty(storeName)) {

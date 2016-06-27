@@ -1,6 +1,7 @@
 package com.linkedin.venice.hadoop;
 
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
+import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.job.ExecutionStatus;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.client.VeniceWriter;
@@ -70,7 +71,7 @@ public class KafkaPushJob {
   public static final String VENICE_TOPIC_RETENTION = "venice.topic.retention";
 
   public static final String SCHEMA_STRING_PROP = "schema";
-  public static final String SCHEMA_ID_PROP = "schema.id";
+  public static final String VALUE_SCHEMA_ID_PROP = "value.schema.id";
   public static final String KAFKA_URL_PROP = "kafka.url";
   public static final String KAFKA_ZOOKEEPER_PROP = "kafka.zk";
   public static final String TOPIC_PROP = "kafka.topic";
@@ -92,6 +93,8 @@ public class KafkaPushJob {
   private final String keyField;
   private final String valueField;
   private final String veniceRouterUrl;
+  // This value is parsed from veniceRouterUrl
+  private final String[] perDatacenterRouterUrls;
   private final String clusterName;
   private final String storeName;
   private final String storeOwners;
@@ -112,6 +115,8 @@ public class KafkaPushJob {
   private String fileSchemaString;
   private String keySchemaString;
   private String valueSchemaString;
+  // Value schema id retrieved from backend for valueSchemaString
+  private int valueSchemaId;
   private Schema parsedFileSchema;
   // We will override topic if it is a store push
   private String topic;
@@ -275,6 +280,7 @@ public class KafkaPushJob {
     this.id = jobId;
     this.clusterName = props.getProperty(VENICE_CLUSTER_NAME_PROP);
     this.veniceRouterUrl = props.getProperty(VENICE_ROUTER_URL_PROP);
+    this.perDatacenterRouterUrls = this.veniceRouterUrl.split(";");
     this.storeName = props.getProperty(VENICE_STORE_NAME_PROP);
     this.storeOwners = props.getProperty(VENICE_STORE_OWNERS_PROP);
     this.kafkaUrl = props.getProperty(KAFKA_URL_PROP);
@@ -352,6 +358,7 @@ public class KafkaPushJob {
       // If the current job is for a store push, we need to pull Kafka Url/Topic from Venice Controller
       if (storePush) {
         createStoreIfNeeded();
+        createSchemaIfNeeded();
         int nextVersion = getNextVersionFromVenice();
         reserveNextVersion(nextVersion); /* Throws VeniceException if reservation fails */
         topic = new Version(storeName, nextVersion).kafkaTopicName();
@@ -397,7 +404,6 @@ public class KafkaPushJob {
 
   // TODO: remove this.  Store creation should be done out-of-band
   private void createStoreIfNeeded(){
-    String[] perDatacenterRouterUrls = veniceRouterUrl.split(";");
     for (String routerUrl : perDatacenterRouterUrls){
       NewStoreResponse response = ControllerClient.createNewStore(routerUrl, clusterName, storeName, "H2V-user");
       if (response.isError()){
@@ -406,8 +412,37 @@ public class KafkaPushJob {
     }
   }
 
+  // TODO: In the future, schema creation should be moved to Nuage or admin tools.
+  private void createSchemaIfNeeded() {
+    for (String routerUrl : perDatacenterRouterUrls) {
+      // Check key schema first
+      // If the key schema doesn't exist, will create it;
+      // If the key schema already exists and the key schema is same as the one in schema repo,
+      // initKeySchema will return directly, otherwise it will report error since key schema is
+      // immutable;
+      // For now, the returned keySchemaResponse is not quite useful for H2V job;
+      SchemaResponse keySchemaResponse = ControllerClient.initKeySchema(routerUrl, clusterName, storeName, keySchemaString);
+      if (keySchemaResponse.isError()) {
+        throw new VeniceException("Fail to validate/create key schema: " + keySchemaString + " for store: "
+            + storeName+ ", error: " + keySchemaResponse.getError());
+      }
+      logger.info("Key schema: " + keySchemaString + " is valid for store: " + storeName);
+
+      // Check value schema
+      // If the value schema already exists, will return it directly;
+      // If the value schema doesn't exist and is fully compatible with previous ones, will create it;
+      // Otherwise, will report error for incompatible value schema update
+      SchemaResponse valueSchemaResponse = ControllerClient.addValueSchema(routerUrl, clusterName, storeName, valueSchemaString);
+      if (valueSchemaResponse.isError()) {
+        throw new VeniceException("Fail to validate/create value schema: " + valueSchemaString + " for store: "
+            + storeName + ", error: " + valueSchemaResponse.getError());
+      }
+      valueSchemaId = valueSchemaResponse.getId();
+      logger.info("Get value schema id: " + valueSchemaId + " for value schema: " + valueSchemaString + " of store: " + storeName);
+    }
+  }
+
   private int getNextVersionFromVenice(){
-    String[] perDatacenterRouterUrls = veniceRouterUrl.split(";");
     int numberOfDatacenters = perDatacenterRouterUrls.length;
     int requiredNumberOfDatacenters = (numberOfDatacenters / 2) + 1; /* strict majority */
     int numberOfDatacentersResponding = 0;
@@ -433,7 +468,6 @@ public class KafkaPushJob {
   }
 
   private void reserveNextVersion(int nextVersion) {
-    String[] perDatacenterRouterUrls = veniceRouterUrl.split(";");
     int numberOfDatacenters = perDatacenterRouterUrls.length;
     int requiredNumberOfDatacenters = (numberOfDatacenters / 2) + 1; /* strict majority */
     int numberOfDatacentersResponding = 0;
@@ -502,7 +536,6 @@ public class KafkaPushJob {
    * exception and fail the job.
    */
   private void pollStatusUntilComplete(){
-    String[] perDatacenterRouterUrls = veniceRouterUrl.split(";");
     Map<String, ExecutionStatus> perDatacenterStatus = new HashMap<>();
     for (String routerUrl : perDatacenterRouterUrls) {
       perDatacenterStatus.put(routerUrl, ExecutionStatus.NOT_CREATED);
@@ -608,6 +641,7 @@ public class KafkaPushJob {
     conf.set(SCHEMA_STRING_PROP, fileSchemaString);
     conf.set(AVRO_KEY_FIELD_PROP, keyField);
     conf.set(AVRO_VALUE_FIELD_PROP, valueField);
+    conf.set(VALUE_SCHEMA_ID_PROP, Integer.toString(valueSchemaId));
 
     // Set data serialization model. Default is ReflectData.class.
     // The default causes reading records as SpecificRecords. This fails in reading records of type fixes, eg. Guid.

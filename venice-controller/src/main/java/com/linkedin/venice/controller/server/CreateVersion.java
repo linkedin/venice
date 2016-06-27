@@ -5,19 +5,26 @@ import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.utils.Utils;
 import org.apache.log4j.Logger;
 import spark.Route;
 
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.CLUSTER;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.CREATE_PARAMS;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.KEY_SCHEMA;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.NAME;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.OWNER;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_SIZE;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.VALUE_SCHEMA;
 
 
 /**
  * Created by mwise on 5/18/16.
+ *
+ * TODO: remove store creation and schema creation from this class.
+ * Right now, it seems only unit test is using this path, and it won't be used by other
+ * production logic in the future, we should remove this class.
  */
 public class CreateVersion {
   private static final Logger logger = Logger.getLogger(CreateVersion.class);
@@ -48,6 +55,11 @@ public class CreateVersion {
         responseObject.setVersion(version.getNumber());
         responseObject.setKafkaTopic(version.kafkaTopicName());
         responseObject.setKafkaBootstrapServers(admin.getKafkaBootstrapServers());
+        // Schema validation/creation
+        admin.initKeySchema(responseObject.getCluster(), responseObject.getName(), request.queryParams(KEY_SCHEMA));
+        SchemaEntry valueSchemaEntry = admin.addValueSchema(responseObject.getCluster(),
+            responseObject.getName(), request.queryParams(VALUE_SCHEMA));
+        responseObject.setValueSchemaId(valueSchemaEntry.getId());
       } catch (VeniceException e) {
         responseObject.setError(e.getMessage());
         AdminSparkServer.handleError(e, request, response);

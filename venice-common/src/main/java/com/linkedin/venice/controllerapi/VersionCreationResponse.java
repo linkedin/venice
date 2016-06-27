@@ -13,6 +13,8 @@ public class VersionCreationResponse extends VersionResponse {
   private int replicas = 0;
   private String kafkaTopic = null;
   private String kafkaBootstrapServers = null;
+  // value schema id
+  private int valueSchemaId = -1;
 
   public VersionCreationResponse(){  }
 
@@ -54,6 +56,14 @@ public class VersionCreationResponse extends VersionResponse {
 
   public String getKafkaBootstrapServers() {
     return kafkaBootstrapServers;
+  }
+
+  public void setValueSchemaId(int valueSchemaId) {
+    this.valueSchemaId = valueSchemaId;
+  }
+
+  public int getValueSchemaId() {
+    return valueSchemaId;
   }
 
 }

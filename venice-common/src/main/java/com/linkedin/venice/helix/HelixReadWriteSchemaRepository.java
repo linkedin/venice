@@ -169,10 +169,15 @@ public class HelixReadWriteSchemaRepository implements ReadWriteSchemaRepository
     if (!storeRepository.hasStore(storeName)) {
       throw new VeniceNoStoreException(storeName);
     }
-    if (null != getKeySchema(storeName)) {
-      throw StoreKeySchemaExistException.newExceptionForStore(storeName);
-    }
     SchemaEntry keySchema = new SchemaEntry(Integer.parseInt(HelixReadOnlySchemaRepository.KEY_SCHEMA_ID), schemaStr);
+    SchemaEntry existingKeySchema = getKeySchema(storeName);
+    if (null != existingKeySchema) {
+      if (existingKeySchema.equals(keySchema)) {
+        return existingKeySchema;
+      } else {
+        throw StoreKeySchemaExistException.newExceptionForStore(storeName);
+      }
+    }
     boolean ret = dataAccessor.create(HelixReadOnlySchemaRepository.getKeySchemaPath(clusterName, storeName),
         keySchema, AccessOption.PERSISTENT);
     if (!ret) {

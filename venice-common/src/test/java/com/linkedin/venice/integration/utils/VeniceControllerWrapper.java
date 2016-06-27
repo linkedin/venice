@@ -88,9 +88,9 @@ public class VeniceControllerWrapper extends ProcessWrapper {
   /**
    * Creates a new store and initializes version 1 of that store.
    *
-   * @return the kafka topic name of the newly-created store-version
+   * @return VersionCreationResponse
    */
-  public String getNewStoreVersion(String routerUrl, String clusterName) {
+  public VersionCreationResponse getNewStoreVersion(String routerUrl, String clusterName) {
     String storeName = TestUtils.getUniqueString("venice-store");
     String storeOwner = TestUtils.getUniqueString("store-owner");
     long storeSize = 10 * 1024 * 1024;
@@ -104,7 +104,7 @@ public class VeniceControllerWrapper extends ProcessWrapper {
         storeSize,
         keySchema,
         valueSchema);
-    return newStore.getKafkaTopic();
+    return newStore;
   }
 
   /***
