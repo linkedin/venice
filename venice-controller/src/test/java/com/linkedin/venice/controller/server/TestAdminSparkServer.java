@@ -40,7 +40,7 @@ public class TestAdminSparkServer {
 
   @Test
   public void controllerClientCanQueryNextVersion() throws InterruptedException {
-    String kafkaTopic = venice.getNewStoreVersion();
+    String kafkaTopic = venice.getNewStoreVersion().getKafkaTopic();
     String storeName = Version.parseStoreFromKafkaTopicName(kafkaTopic);
     int currentVersion = Version.parseVersionFromKafkaTopicName(kafkaTopic);
 
@@ -55,7 +55,7 @@ public class TestAdminSparkServer {
 
   @Test
   public void controllerClientCanReserverVersions() {
-    String kafkaTopic = venice.getNewStoreVersion();
+    String kafkaTopic = venice.getNewStoreVersion().getKafkaTopic();
     String storeName = Version.parseStoreFromKafkaTopicName(kafkaTopic);
     int currentVersion = Version.parseVersionFromKafkaTopicName(kafkaTopic);
 
@@ -94,7 +94,7 @@ public class TestAdminSparkServer {
   public void controllerClientShouldListStores(){
     List<String> storeNames = new ArrayList<>();
     for (int i=0; i<10; i++){ //add 10 stores;
-      storeNames.add(Version.parseStoreFromKafkaTopicName(venice.getNewStoreVersion()));
+      storeNames.add(Version.parseStoreFromKafkaTopicName(venice.getNewStoreVersion().getKafkaTopic()));
     }
 
     MultiStoreResponse storeResponse = ControllerClient.queryStoreList(routerUrl, venice.getClusterName());
@@ -112,23 +112,25 @@ public class TestAdminSparkServer {
     String invalidKeySchemaStr = "\"abc\"";
     String validKeySchemaStr = "\"string\"";
     // Create key schema of non-existed store
-    SchemaResponse sr0 = ControllerClient.createKeySchema(routerUrl, clusterName, storeToCreate, validKeySchemaStr);
+    SchemaResponse sr0 = ControllerClient.initKeySchema(routerUrl, clusterName, storeToCreate, validKeySchemaStr);
     Assert.assertTrue(sr0.isError());
     // Create Store
     NewStoreResponse newStoreResponse = ControllerClient.createNewStore(routerUrl, clusterName,
         storeToCreate, "owner");
     Assert.assertFalse(newStoreResponse.isError(), "create new store should succeed for a store that doesn't exist");
     // Create key schema with invalid schema
-
-    SchemaResponse sr1 = ControllerClient.createKeySchema(routerUrl, clusterName, storeToCreate, invalidKeySchemaStr);
+    SchemaResponse sr1 = ControllerClient.initKeySchema(routerUrl, clusterName, storeToCreate, invalidKeySchemaStr);
     Assert.assertTrue(sr1.isError());
     // Create key schema with valid schema
-
-    SchemaResponse sr2 = ControllerClient.createKeySchema(routerUrl, clusterName, storeToCreate, validKeySchemaStr);
+    SchemaResponse sr2 = ControllerClient.initKeySchema(routerUrl, clusterName, storeToCreate, validKeySchemaStr);
     Assert.assertEquals(sr2.getSchemaStr(), validKeySchemaStr);
-    // Create key schema when it already exists
-    SchemaResponse sr3 = ControllerClient.createKeySchema(routerUrl, clusterName, storeToCreate, validKeySchemaStr);
-    Assert.assertTrue(sr3.isError());
+    // Create key schema multiple times with the same key schema
+    SchemaResponse sr3 = ControllerClient.initKeySchema(routerUrl, clusterName, storeToCreate, validKeySchemaStr);
+    Assert.assertFalse(sr3.isError());
+    // Create key schema multiple times with different key schema
+    String anotherValidKeySchemaStr = "\"long\"";
+    SchemaResponse sr4 = ControllerClient.initKeySchema(routerUrl, clusterName, storeToCreate, anotherValidKeySchemaStr);
+    Assert.assertTrue(sr4.isError());
   }
 
   @Test
@@ -147,7 +149,7 @@ public class TestAdminSparkServer {
     Assert.assertTrue(sr1.isError());
     // Create key schema with valid schema
     String validKeySchemaStr = "\"string\"";
-    SchemaResponse sr2 = ControllerClient.createKeySchema(routerUrl, clusterName, storeToCreate, validKeySchemaStr);
+    SchemaResponse sr2 = ControllerClient.initKeySchema(routerUrl, clusterName, storeToCreate, validKeySchemaStr);
     Assert.assertEquals(sr2.getSchemaStr(), validKeySchemaStr);
     SchemaResponse sr3 = ControllerClient.getKeySchema(routerUrl, clusterName, storeToCreate);
     Assert.assertEquals(sr3.getId(), 1);

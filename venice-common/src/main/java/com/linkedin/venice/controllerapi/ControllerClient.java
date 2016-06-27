@@ -339,7 +339,7 @@ public class ControllerClient implements Closeable {
     }
   }
 
-  private SchemaResponse createKeySchema(String clusterName, String storeName, String keySchemaStr) throws IOException, ExecutionException, InterruptedException {
+  private SchemaResponse initKeySchema(String clusterName, String storeName, String keySchemaStr) throws IOException, ExecutionException, InterruptedException {
     List<NameValuePair> queryParams = new ArrayList<>();
     queryParams.add(new BasicNameValuePair(ControllerApiConstants.CLUSTER, clusterName));
     queryParams.add(new BasicNameValuePair(ControllerApiConstants.NAME, storeName));
@@ -351,9 +351,9 @@ public class ControllerClient implements Closeable {
     return mapper.readValue(responseJson, SchemaResponse.class);
   }
 
-  public static SchemaResponse createKeySchema(String routerUrls, String clusterName, String storeName, String keySchemaStr) {
+  public static SchemaResponse initKeySchema(String routerUrls, String clusterName, String storeName, String keySchemaStr) {
     try (ControllerClient client = new ControllerClient(routerUrls)){
-      return client.createKeySchema(clusterName, storeName, keySchemaStr);
+      return client.initKeySchema(clusterName, storeName, keySchemaStr);
     } catch (Exception e){
       return handleError(new VeniceException("Error creating key schema: " + keySchemaStr + " for store: " + storeName, e), new SchemaResponse());
     }

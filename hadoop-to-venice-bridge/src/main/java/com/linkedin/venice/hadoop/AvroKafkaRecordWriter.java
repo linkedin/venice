@@ -34,6 +34,7 @@ public class AvroKafkaRecordWriter implements RecordWriter<AvroWrapper<IndexedRe
   private final int valueFieldPos;
   private final VeniceSerializer keySerializer;
   private final VeniceSerializer valueSerializer;
+  private final int valueSchemaId;
 
   public AvroKafkaRecordWriter(Properties properties) {
     this(properties,
@@ -60,6 +61,7 @@ public class AvroKafkaRecordWriter implements RecordWriter<AvroWrapper<IndexedRe
     keyFieldPos = getFieldPos(schemaStr, keyField);
     valueSerializer = getSerializer(schemaStr, valueField);
     valueFieldPos = getFieldPos(schemaStr, valueField);
+    valueSchemaId = Integer.parseInt(getPropString(properties, KafkaPushJob.VALUE_SCHEMA_ID_PROP));
   }
 
   private static String getPropString(Properties properties, String field) {
@@ -117,6 +119,6 @@ public class AvroKafkaRecordWriter implements RecordWriter<AvroWrapper<IndexedRe
       valueDatum = valueDatum.toString();
     }
 
-    veniceWriter.put(keySerializer.serialize(topicName, keyDatum), valueSerializer.serialize(topicName, valueDatum));
+    veniceWriter.put(keySerializer.serialize(topicName, keyDatum), valueSerializer.serialize(topicName, valueDatum), valueSchemaId);
   }
 }

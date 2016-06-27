@@ -11,7 +11,6 @@ import com.linkedin.venice.serialization.StringSerializer;
 import com.linkedin.venice.serialization.VeniceSerializer;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.VeniceProperties;
-import junit.framework.Assert;
 import org.apache.avro.Schema;
 import org.apache.avro.file.DataFileWriter;
 import org.apache.avro.generic.GenericData;
@@ -19,6 +18,7 @@ import org.apache.avro.generic.GenericDatumWriter;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.io.DatumWriter;
 import org.apache.log4j.Logger;
+import org.testng.Assert;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
@@ -55,7 +55,7 @@ public class TestKafkaPushJob {
         "  \"fields\": [           " +
         "       { \"name\": \"id\", \"type\": \"string\" },  " +
         "       { \"name\": \"name\", \"type\": \"string\" },  " +
-        "       { \"name\": \"age\", \"type\": \"int\" }  " +
+        "       { \"name\": \"age\", \"type\": \"int\" }" +
         "  ] " +
         " } ";
     Schema schema = Schema.parse(schemaStr);
@@ -75,6 +75,51 @@ public class TestKafkaPushJob {
 
     dataFileWriter.close();
   }
+
+  private void writeComplicateAvroFileWithUserSchema(File parentDir, boolean addFieldWithDefaultValue) throws IOException {
+    String schemaStr = "{\"namespace\": \"example.avro\",\n" +
+        " \"type\": \"record\",\n" +
+        " \"name\": \"User\",\n" +
+        " \"fields\": [\n" +
+        "      { \"name\": \"id\", \"type\": \"string\"},\n" +
+        "      {\n" +
+        "       \"name\": \"value\",\n" +
+        "       \"type\": {\n" +
+        "           \"type\": \"record\",\n" +
+        "           \"name\": \"ValueRecord\",\n" +
+        "           \"fields\" : [\n" +
+        "              {\"name\": \"favorite_number\", \"type\": \"int\"}\n";
+    if (addFieldWithDefaultValue) {
+      schemaStr += ",{\"name\": \"favorite_color\", \"type\": \"string\", \"default\": \"blue\"}\n";
+    }
+    schemaStr +=
+        "           ]\n" +
+        "        }\n" +
+        "      }\n" +
+        " ]\n" +
+        "}";
+    Schema schema = Schema.parse(schemaStr);
+    File file = new File(parentDir, "simple_user.avro");
+    DatumWriter<GenericRecord> datumWriter = new GenericDatumWriter<>(schema);
+    DataFileWriter<GenericRecord> dataFileWriter = new DataFileWriter<>(datumWriter);
+    dataFileWriter.create(schema, file);
+
+    String name = "test_name_";
+    for (int i = 1; i <= 100; ++i) {
+      GenericRecord user = new GenericData.Record(schema);
+      user.put("id", Integer.toString(i));
+      GenericRecord oldValue = new GenericData.Record(schema.getField("value").schema());
+      oldValue.put("favorite_number", i);
+      if (addFieldWithDefaultValue) {
+        oldValue.put("favorite_color", "red");
+      }
+      user.put("value", oldValue);
+      dataFileWriter.append(user);
+    }
+
+    dataFileWriter.close();
+  }
+
 
   private void writeSimpleAvroFileWithDifferentUserSchema(File parentDir) throws IOException {
     String schemaStr = "{" +
@@ -159,20 +204,20 @@ public class TestKafkaPushJob {
     job.run();
 
     // Verify job properties
-    Assert.assertEquals("user_v1", job.getKafkaTopic());
-    Assert.assertEquals(inputDirPath, job.getInputDirectory());
+    Assert.assertEquals(job.getKafkaTopic(), "user_v1");
+    Assert.assertEquals(job.getInputDirectory(), inputDirPath);
     String schema = "{\"type\":\"record\",\"name\":\"User\",\"namespace\":\"example.avro\",\"fields\":[{\"name\":\"id\",\"type\":\"string\"},{\"name\":\"name\",\"type\":\"string\"},{\"name\":\"age\",\"type\":\"int\"}]}";
-    Assert.assertEquals(schema, job.getFileSchemaString());
-    Assert.assertEquals("\"string\"", job.getKeySchemaString());
-    Assert.assertEquals("\"string\"", job.getValueSchemaString());
-    Assert.assertEquals(3872, job.getInputFileDataSize());
+    Assert.assertEquals(job.getFileSchemaString(), schema);
+    Assert.assertEquals(job.getKeySchemaString(), "\"string\"");
+    Assert.assertEquals(job.getValueSchemaString(), "\"string\"");
+    Assert.assertEquals(job.getInputFileDataSize(), 3872);
 
     // Verify the data in Venice Store
     String storeName = job.getKafkaTopic();
     VeniceReader reader = initVeniceReader(storeName);
 
     for (int i = 1; i <= 100; ++i) {
-      Assert.assertEquals("test_name_" + i, reader.get(Integer.toString(i)));
+      Assert.assertEquals(reader.get(Integer.toString(i)), "test_name_" + i);
     }
     Assert.assertNull(reader.get("101"));
   }
@@ -262,13 +307,13 @@ public class TestKafkaPushJob {
     job.run();
 
     // Verify job properties
-    Assert.assertEquals("user_v1", job.getKafkaTopic());
-    Assert.assertEquals("file:" + newFolder.getAbsolutePath(), job.getInputDirectory());
+    Assert.assertEquals(job.getKafkaTopic(), "user_v1");
+    Assert.assertEquals(job.getInputDirectory(), "file:" + newFolder.getAbsolutePath());
     String schema = "{\"type\":\"record\",\"name\":\"User\",\"namespace\":\"example.avro\",\"fields\":[{\"name\":\"id\",\"type\":\"string\"},{\"name\":\"name\",\"type\":\"string\"},{\"name\":\"age\",\"type\":\"int\"}]}";
-    Assert.assertEquals(schema, job.getFileSchemaString());
-    Assert.assertEquals("\"string\"", job.getKeySchemaString());
-    Assert.assertEquals("\"string\"", job.getValueSchemaString());
-    Assert.assertEquals(3872, job.getInputFileDataSize());
+    Assert.assertEquals(job.getFileSchemaString(), schema);
+    Assert.assertEquals(job.getKeySchemaString(), "\"string\"");
+    Assert.assertEquals(job.getValueSchemaString(), "\"string\"");
+    Assert.assertEquals(job.getInputFileDataSize(), 3872);
 
     // Verify the data in Venice Store
     String storeName = job.getKafkaTopic();
@@ -278,5 +323,91 @@ public class TestKafkaPushJob {
       Assert.assertEquals("test_name_" + i, reader.get(Integer.toString(i)));
     }
     Assert.assertNull(reader.get("101"));
+  }
+
+  @Test(expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = ".*Fail to validate/create key schema.*")
+  public void testRunJobMultipleTimesWithDifferentKeySchemaConfig() throws Exception {
+    File inputDir = getTempDataDirectory();
+    writeSimpleAvroFileWithUserSchema(inputDir);
+    String inputDirPath = "file://" + inputDir.getAbsolutePath();
+    Properties props = setupDefaultProps(inputDirPath);
+    String jobName = "Test push job";
+
+    KafkaPushJob job = new KafkaPushJob(jobName, props);
+    job.run();
+
+    // Verify the data in Venice Store
+    String storeName = job.getKafkaTopic();
+    VeniceReader reader = initVeniceReader(storeName);
+
+    // Job should success
+    for (int i = 1; i <= 100; ++i) {
+      Assert.assertEquals(reader.get(Integer.toString(i)), "test_name_" + i);
+    }
+    Assert.assertNull(reader.get("101"));
+
+    // Run job with different key schema (from 'string' to 'int')
+    props.setProperty(KafkaPushJob.AVRO_KEY_FIELD_PROP, "age");
+    job = new KafkaPushJob(jobName, props);
+    job.run();
+  }
+
+  @Test(expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = ".*Fail to validate/create value schema.*")
+  public void testRunJobMultipleTimesWithInCompatibleValueSchemaConfig() throws Exception {
+    File inputDir = getTempDataDirectory();
+    writeSimpleAvroFileWithUserSchema(inputDir);
+    String inputDirPath = "file://" + inputDir.getAbsolutePath();
+    Properties props = setupDefaultProps(inputDirPath);
+    String jobName = "Test push job";
+
+    KafkaPushJob job = new KafkaPushJob(jobName, props);
+    job.run();
+
+    // Verify the data in Venice Store
+    String storeName = job.getKafkaTopic();
+    VeniceReader reader = initVeniceReader(storeName);
+
+    // Job should success
+    for (int i = 1; i <= 100; ++i) {
+      Assert.assertEquals(reader.get(Integer.toString(i)), "test_name_" + i);
+    }
+    Assert.assertNull(reader.get("101"));
+
+    // Run job with different value schema (from 'string' to 'int')
+    props.setProperty(KafkaPushJob.AVRO_VALUE_FIELD_PROP, "age");
+    job = new KafkaPushJob(jobName, props);
+    job.run();
+  }
+
+  @Test
+  public void testRunJobMultipleTimesWithCompatibleValueSchemaConfig() throws Exception {
+    File inputDir = getTempDataDirectory();
+    writeComplicateAvroFileWithUserSchema(inputDir, false);
+    String inputDirPath = "file://" + inputDir.getAbsolutePath();
+    Properties props = setupDefaultProps(inputDirPath);
+    String jobName = "Test push job";
+    props.setProperty(KafkaPushJob.AVRO_VALUE_FIELD_PROP, "value");
+
+    KafkaPushJob job = new KafkaPushJob(jobName, props);
+    job.run();
+
+    // Verify the data in Venice Store
+    String storeName = job.getKafkaTopic();
+    VeniceReader reader = initVeniceReader(storeName);
+
+    // Job should success
+    for (int i = 1; i <= 100; ++i) {
+      Assert.assertNotNull(reader.get(Integer.toString(i)));
+    }
+    Assert.assertNull(reader.get("101"));
+
+    // Run job with different but compatible value schema
+    inputDir = getTempDataDirectory();
+    writeComplicateAvroFileWithUserSchema(inputDir, true);
+    inputDirPath = "file://" + inputDir.getAbsolutePath();
+    props = setupDefaultProps(inputDirPath);
+    props.setProperty(KafkaPushJob.AVRO_VALUE_FIELD_PROP, "value");
+    job = new KafkaPushJob(jobName, props);
+    job.run();
   }
 }

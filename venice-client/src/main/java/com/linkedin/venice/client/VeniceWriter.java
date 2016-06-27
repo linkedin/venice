@@ -60,23 +60,29 @@ public class VeniceWriter<K, V> {
     return producer.sendMessage(storeName, kafkaKey, kafkaValue);
   }
 
+  // TODO: Once we finishes venice client/schema registry integration, we need to remove this interface
+  public Future<RecordMetadata> put(K key, V value) {
+    return put(key, value, -1);
+  }
+
   /**
    * Execute a standard "put" on the key.
    *
    * @param key   - The key to put in storage.
    * @param value - The value to be associated with the given key
+   * @param valueSchemaId - value schema id for the given value
    * @return a java.util.concurrent.Future Future for the RecordMetadata that will be assigned to this
    * record. Invoking java.util.concurrent.Future's get() on this future will block until the associated request
    * completes and then return the metadata for the record or throw any exception that occurred while sending the record.
    */
-  public Future<RecordMetadata> put(K key, V value) {
+  public Future<RecordMetadata> put(K key, V value, int valueSchemaId) {
     KafkaKey kafkaKey = new KafkaKey(MessageType.PUT, keySerializer.serialize(storeName, key));
 
     // Initialize the SpecificRecord instances used by the Avro-based Kafka protocol
     KafkaMessageEnvelope kafkaValue = getKafkaMessageEnvelope(MessageType.PUT);
     Put putPayload = new Put();
     putPayload.putValue = ByteBuffer.wrap(valueSerializer.serialize(storeName, value));
-    putPayload.schemaId = -1; // TODO: Use proper schema ID.
+    putPayload.schemaId = valueSchemaId;
     kafkaValue.payloadUnion = putPayload;
 
     try {
@@ -85,6 +91,7 @@ public class VeniceWriter<K, V> {
       throw new VeniceException("Got an error while trying to produce to Kafka.", e);
     }
   }
+
 
   /**
    * Send a control message to all the Partitions for a topic

@@ -1,5 +1,6 @@
 package com.linkedin.venice.integration.utils;
 
+import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 
 import java.io.File;
@@ -110,7 +111,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
   /**
    * @see {@link VeniceControllerWrapper#getNewStoreVersion(String routerUrls, String clusterName)}
    */
-  public String getNewStoreVersion() {
+  public VersionCreationResponse getNewStoreVersion() {
     String routerUrl = "http://" + getVeniceRouter().getAddress();
     return veniceControllerWrapper.getNewStoreVersion(routerUrl, clusterName);
   }

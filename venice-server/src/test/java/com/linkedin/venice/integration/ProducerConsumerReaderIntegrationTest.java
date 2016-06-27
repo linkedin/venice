@@ -4,6 +4,7 @@ import com.linkedin.venice.client.VeniceReader;
 import com.linkedin.venice.client.VeniceHttpClient;
 import com.linkedin.venice.client.VeniceThinClient;
 import com.linkedin.venice.client.VeniceWriter;
+import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.TestUtils;
@@ -44,6 +45,7 @@ public class ProducerConsumerReaderIntegrationTest {
 
   private VeniceClusterWrapper veniceCluster;
   private String storeVersionName;
+  private int valueSchemaId;
 
   // TODO: Make serializers parameterized so we test them all.
   private VeniceWriter<String, String> veniceWriter;
@@ -55,7 +57,9 @@ public class ProducerConsumerReaderIntegrationTest {
     veniceCluster = ServiceFactory.getVeniceCluster();
 
     // Create test store
-    storeVersionName = veniceCluster.getNewStoreVersion();
+    VersionCreationResponse creationResponse = veniceCluster.getNewStoreVersion();
+    storeVersionName = creationResponse.getKafkaTopic();
+    valueSchemaId = creationResponse.getValueSchemaId();
     String routerUrl = "http://" + veniceCluster.getVeniceRouter().getAddress();
     veniceCluster.getVeniceController().setActiveVersion(routerUrl, veniceCluster.getClusterName(), storeVersionName);
 
@@ -151,7 +155,7 @@ public class ProducerConsumerReaderIntegrationTest {
     Assert.assertNull(initialValue, "The test environment is not pristine! Key '" + key + "' already exists!");
 
     // Insert test record and wait synchronously for it to succeed
-    veniceWriter.put(key, value).get();
+    veniceWriter.put(key, value, valueSchemaId).get();
 
     // Read from the storage node
     // This may fail non-deterministically, if the storage node is not done consuming yet, hence the retries.

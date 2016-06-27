@@ -522,7 +522,8 @@ public class StoreConsumptionTask implements Runnable, Closeable {
    */
   private void checkValueSchemaAvail(int schemaId) {
     if (-1 == schemaId) {
-      // TODO: Once H2V finishes the integration with schema registry, we need to remove this check here.
+      // TODO: Once Venice Client (VeniceShellClient) finish the integration with schema registry,
+      // we need to remove this check here.
       return;
     }
     // Considering value schema is immutable for an existing store, we can cache it locally
