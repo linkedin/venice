@@ -195,7 +195,7 @@ public class TestVeniceJobManager {
     }
   }
 
-  @Test(timeOut = 15000)
+  @Test (timeOut = 15000)
   public void testGetOfflineJobStatus() {
     metadataRepository.addStore(store);
     jobManager.startOfflineJob(version.kafkaTopicName(), 1, 1);
@@ -230,6 +230,7 @@ public class TestVeniceJobManager {
   @Test(timeOut = 15000)
   public void testExecutorFailedDuringPush()
       throws Exception {
+    metadataRepository.addStore(store);
     jobManager.startOfflineJob(version.kafkaTopicName(), 1, 1);
     Assert.assertEquals(jobManager.getOfflineJobStatus(version.kafkaTopicName()), ExecutionStatus.STARTED,
         "Job should be started.");
@@ -240,28 +241,8 @@ public class TestVeniceJobManager {
     // Node failed
     this.manager.disconnect();
     Thread.sleep(1000L);
-
-    //Start a new node
-    HelixManager newNode =
-        HelixManagerFactory.getZKHelixManager(cluster, Utils.getHelixNodeIdentifier(9990), InstanceType.PARTICIPANT,
-            zkAddress);
-    newNode.getStateMachineEngine()
-        .registerStateModelFactory(TestHelixRoutingDataRepository.UnitTestStateModel.UNIT_TEST_STATE_MODEL,
-            new TestHelixRoutingDataRepository.UnitTestStateModelFactory());
-    Instance newInstance = new Instance(Utils.getHelixNodeIdentifier(9990), Utils.getHostName(), 9990);
-    newNode.setLiveInstanceInfoProvider(new LiveInstanceInfoProvider() {
-      @Override
-      public ZNRecord getAdditionalLiveInstanceInfo() {
-        return HelixInstanceConverter.convertInstanceToZNRecord(newInstance);
-      }
-    });
-    newNode.connect();
-
-    //Waiting for assignment
-    Thread.sleep(3000l);
-    Assert.assertEquals(job.tasksInPartition(0).get(0).getInstanceId(), newInstance.getNodeId(),
-        "New node should take over the failed node");
-    newNode.disconnect();
+    Assert.assertEquals(jobManager.getOfflineJobStatus(version.kafkaTopicName()), ExecutionStatus.ERROR,
+        "Job should be terminated with ERROR. Because one of node is failed.");
   }
 
   @Test(timeOut = 15000)

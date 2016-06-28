@@ -35,7 +35,7 @@ public interface JobRepository extends VeniceResource {
    * @param kafkaTopic
    * @param partitions
    */
-  public void updateJobExecutors(long jobId, String kafkaTopic, Map<Integer, Partition> partitions);
+  public void updateJobExecutingTasks(long jobId, String kafkaTopic, Map<Integer, Partition> partitions);
 
   public void stopJob(long jobId, String kafkaTopic);
 

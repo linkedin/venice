@@ -106,7 +106,7 @@ public class TestOfflineJob {
   @Test
   public void testUpdateTaskStatus() {
     OfflineJob job = new OfflineJob(1, topic, numberOfPartition, replicaFactor);
-    job.updateExecutingPartitions(partitions);
+    job.updateExecutingTasks(partitions);
     Task task = new Task(job.generateTaskId(0, nodeId + "1"), 0, nodeId + "1", ExecutionStatus.STARTED);
     job.updateTaskStatus(task);
     Assert.assertEquals(task.getStatus(), job.getTaskStatus(0, task.getTaskId()),
@@ -131,7 +131,7 @@ public class TestOfflineJob {
   @Test
   public void testUpdateNotStartedTaskStatus() {
     OfflineJob job = new OfflineJob(1, topic, numberOfPartition, replicaFactor);
-    job.updateExecutingPartitions(partitions);
+    job.updateExecutingTasks(partitions);
     Task task = new Task(job.generateTaskId(0, nodeId + "1"), 0, nodeId + "1", ExecutionStatus.COMPLETED);
     try {
       job.updateTaskStatus(task);
@@ -144,7 +144,7 @@ public class TestOfflineJob {
   @Test
   public void testUpdateTerminatedTaskStatus() {
     OfflineJob job = new OfflineJob(1, topic, numberOfPartition, replicaFactor);
-    job.updateExecutingPartitions(partitions);
+    job.updateExecutingTasks(partitions);
     Task task = new Task(job.generateTaskId(0, nodeId + "1"), 0, nodeId + "1", ExecutionStatus.STARTED);
 
     job.updateTaskStatus(task);
@@ -175,7 +175,7 @@ public class TestOfflineJob {
   public void testCheckJobStatus() {
     OfflineJob job = new OfflineJob(1, topic, numberOfPartition, replicaFactor);
     job.setStatus(ExecutionStatus.STARTED);
-    job.updateExecutingPartitions(partitions);
+    job.updateExecutingTasks(partitions);
     Assert.assertEquals(ExecutionStatus.STARTED, job.checkJobStatus(),
         "Did not get any updates. SHould still be in running status.");
 
@@ -214,7 +214,7 @@ public class TestOfflineJob {
   public void testCheckJobStatusWhenJobFail() {
     OfflineJob job = new OfflineJob(1, topic, numberOfPartition, replicaFactor);
     job.setStatus(ExecutionStatus.STARTED);
-    job.updateExecutingPartitions(partitions);
+    job.updateExecutingTasks(partitions);
     for (int i = 0; i < numberOfPartition; i++) {
       for (int j = 0; j < replicaFactor; j++) {
         Task t = new Task(job.generateTaskId(i, nodeId + j), i, nodeId + j, ExecutionStatus.STARTED);

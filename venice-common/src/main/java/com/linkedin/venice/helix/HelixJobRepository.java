@@ -136,7 +136,7 @@ public class HelixJobRepository implements JobRepository {
   }
 
   @Override
-  public synchronized void updateJobExecutors(long jobId, String kafkaTopic, Map<Integer, Partition> partitions) {
+  public synchronized void updateJobExecutingTasks(long jobId, String kafkaTopic, Map<Integer, Partition> partitions) {
     Job job = getJob(jobId, kafkaTopic);
     if (job.isTerminated()) {
       logger.warn("Job:" + jobId + " is terminated before, can not be updated again.");
@@ -144,7 +144,7 @@ public class HelixJobRepository implements JobRepository {
     }
     // Clone job and verify the updates.
     Job cloneJob = job.cloneJob();
-    Set<Integer> changedPartitions = cloneJob.updateExecutingPartitions(partitions);
+    Set<Integer> changedPartitions = cloneJob.updateExecutingTasks(partitions);
     // update zk
     if (!changedPartitions.isEmpty()) {
       try {
@@ -159,7 +159,7 @@ public class HelixJobRepository implements JobRepository {
       }
     }
     // Update local copy.
-    job.updateExecutingPartitions(partitions);
+    job.updateExecutingTasks(partitions);
   }
 
   @Override

@@ -37,45 +37,37 @@ public class OfflineJob extends Job {
   }
 
   /**
-   * When job is running, change partitions information if nodes which running tasks are changed. Note:number of
-   * partition and replica factor should not be changed during job running.
+   * When job is running, change partitions information if nodes which running tasks are changed. Job do not care about
+   * the number of partitions and replicas for this new partition mapping. They should be guaranteed by invoker. Eg job
+   * manager.
    *
    * @param partitions
    */
-  public Set<Integer> updateExecutingPartitions(Map<Integer, Partition> partitions) {
-    if (partitions.size() != getNumberOfPartition()) {
-      throw new VeniceException(
-          "Number of partitions:" + partitions.size() + " is different from the required number:" +
-              getNumberOfPartition() + " when creating the job.");
-    }
-    for (Partition partition : partitions.values()) {
-      if (partition.getInstances().size() != getReplicaFactor()) {
-        throw new VeniceException(
-            "Replica factor:" + partition.getInstances().size() + " in partition:" + partition.getId()
-                + "is different from the required factor:" + getReplicaFactor() + " when creating the job.");
-      }
-    }
-
+  public Set<Integer> updateExecutingTasks(Map<Integer, Partition> partitions) {
     HashSet<Integer> changedPartitions = new HashSet<>();
     for (Integer partitionId : partitions.keySet()) {
-      if (partitionId < 0 || partitionId > getNumberOfPartition()) {
-        throw new VeniceException("Invalid partition Id:" + partitionId);
+      if (partitionId < 0 || partitionId >= getNumberOfPartition()) {
+        throw new VeniceException(
+            "Invalid partition Id:" + partitionId + ". Valid partition id should be in range: [0, " + (
+                getNumberOfPartition() - 1) + "]");
       }
-      Map<String, Task> taskMap = partitionToTasksMap.get(partitionId);
+      Map<String, Task> oldTaskMap = partitionToTasksMap.get(partitionId);
       Partition partition = partitions.get(partitionId);
-      HashSet<String> taskIds = new HashSet<>(taskMap.keySet());
+      HashSet<String> removeTaskIds = new HashSet<>(oldTaskMap.keySet());
       for (Instance instance : partition.getInstances()) {
         String taskId = generateTaskId(partitionId, instance.getNodeId());
-        if (!taskMap.containsKey(taskId)) {
-          taskMap.put(taskId, new Task(taskId, partitionId, instance.getNodeId()));
+        if (!oldTaskMap.containsKey(taskId)) {
+          // New replica
+          oldTaskMap.put(taskId, new Task(taskId, partitionId, instance.getNodeId()));
           changedPartitions.add(partitionId);
         } else {
-          taskIds.remove(taskId);
+          // Existing replica
+          removeTaskIds.remove(taskId);
         }
       }
-      //Remove failed node.
-      if (!taskIds.isEmpty()) {
-        taskIds.forEach(taskMap::remove);
+      //Remove non-existing replicas.
+      if (!removeTaskIds.isEmpty()) {
+        removeTaskIds.forEach(oldTaskMap::remove);
         changedPartitions.add(partitionId);
       }
     }
