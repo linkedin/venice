@@ -5,14 +5,18 @@ For directly affecting administrative actions and queries on a Venice cluster
 
 ```
 usage: java -jar venice-admin-tool-0.1.jar [options]
- -c,--cluster <arg>   REQUIRED: Name of Venice cluster
- -h,--help            Show usage
- -q,--query <arg>     REQUIRED: Query one of NEXT, AVAILABLE, CURRENT,
-                      JOB, LIST, DESCRIBE
- -r,--router <arg>    REQUIRED: Venice router url, eg.
-                      http://localhost:54333
- -s,--store <arg>     Name of Venice store
- -v,--version <arg>   Venice store version number
+ -c,--cluster <arg>             REQUIRED: Name of Venice cluster
+ -h,--help                      Show usage
+ -k,--key-schema-file <arg>     Path to text file with key schema
+ -l,--value-schema-file <arg>   Path to text file with value schema
+ -n,--new <arg>                 OPTIONAL: Create one of: store
+ -o,--owner <arg>               Owner email for new store
+ -q,--query <arg>               OPTIONAL: Query one of: next, available,
+                                current, job, list, describe
+ -r,--router <arg>              REQUIRED: Venice router url, eg.
+                                http://localhost:54333
+ -s,--store <arg>               Name of Venice store
+ -v,--version <arg>             Venice store version number
 ```
 
 ## Overview of Queries
@@ -56,7 +60,15 @@ Store: myCountry2	Available versions: [1]	Current version: 1	Next version: 2
 Store: myCountry	Available versions: [2, 3, 4]	Current version: 4	Next version: 6
 ```
 
-### Future commands to add:
+## Overview of New
+
+### STORE
+
+Requires: store, owner, key-schema-file, value-schema-file
+
+Creates a new store.
+
+## Future commands to add:
 
  * Set version
  * Delete version
