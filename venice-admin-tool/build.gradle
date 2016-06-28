@@ -9,4 +9,5 @@ jar {
 
 dependencies {
     compile project(':venice-common')
+    compile libraries.avro
 }

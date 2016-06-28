@@ -4,16 +4,22 @@ package com.linkedin.venice;
  * Created by mwise on 5/23/16.
  */
 public enum Arg {
-  ROUTER("router"),
-  CLUSTER("cluster"),
-  STORE("store"),
-  VERSION("version"),
-  QUERY("query"),
-  HELP("help");
+  ROUTER("router", "r"),
+  CLUSTER("cluster", "c"),
+  STORE("store", "s"),
+  VERSION("version", "v"),
+  QUERY("query", "q"),
+  HELP("help", "h"),
+  NEW("new", "n"),
+  KEY_SCHEMA("key-schema-file", "k"),
+  VALUE_SCHEMA("value-schema-file", "l"),
+  OWNER("owner", "o");
 
   private final String argName;
-  Arg(String argName){
+  private final String first;
+  Arg(String argName, String first){
     this.argName = argName;
+    this.first = first;
   }
 
   @Override
@@ -22,6 +28,6 @@ public enum Arg {
   }
 
   public String first(){
-    return argName.substring(0,1);
+    return first;
   }
 }
