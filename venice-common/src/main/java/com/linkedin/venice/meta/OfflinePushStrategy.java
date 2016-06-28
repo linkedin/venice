@@ -6,6 +6,8 @@ package com.linkedin.venice.meta;
 public enum OfflinePushStrategy {
     /*Wait all replica is ready, the version is ready to serve.*/
     WAIT_ALL_REPLICAS,
+    /*Wait until N-1 replicas are ready, the version is ready to serve*/
+    WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION,
     /*Wait at least one replica in each parition is ready, the version is ready to server.*/
     WAIT_ONE_REPLICA_PER_PARTITION
 }

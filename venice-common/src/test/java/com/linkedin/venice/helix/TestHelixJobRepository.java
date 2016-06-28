@@ -8,6 +8,7 @@ import com.linkedin.venice.job.ExecutionStatus;
 import com.linkedin.venice.job.OfflineJob;
 import com.linkedin.venice.job.Task;
 import com.linkedin.venice.meta.Instance;
+import com.linkedin.venice.meta.Partition;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import java.util.HashMap;
@@ -340,13 +341,24 @@ public class TestHelixJobRepository {
       long timeOut = Math.max(1, totalWaitTime - elapsedTime);
       Utils.waitForNonDeterministicCompetion(timeOut, TimeUnit.MILLISECONDS, () -> {
         try {
-          job.updateExecutingPartitions(routingDataRepository.getPartitions(topicName));
+          //Enough partition count and replica factor in each partition.
+          Map<Integer, Partition> partitions = routingDataRepository.getPartitions(topicName);
+          if (partitions.size() != numberOfPartition) {
+            return false;
+          }
+          for (Partition p : partitions.values()) {
+            if (p.getInstances().size() != replicaFactor) {
+              return false;
+            }
+          }
           return true;
         } catch (VeniceException ve) {
-          LOG.error("Got a VeniceException from job.updateExecutingPartitions()", ve);
+          LOG.error("Got a VeniceException from job.updateExecutingTasks()", ve);
           return false;
         }
       });
+
+      job.updateExecutingTasks(routingDataRepository.getPartitions(topicName));
       jobs[i] = job;
     }
 

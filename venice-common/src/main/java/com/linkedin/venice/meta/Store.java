@@ -195,7 +195,7 @@ public class Store {
         return;
       }
     }
-    throw new VeniceException("Version:" + versionNumber + "does not exist");
+    throw new VeniceException("Version:" + versionNumber + " does not exist");
   }
 
   /**
