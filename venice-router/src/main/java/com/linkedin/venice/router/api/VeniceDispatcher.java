@@ -148,6 +148,8 @@ public class VeniceDispatcher implements PartitionDispatchHandler<Instance, Veni
         HttpHeaders.setHeader(response, HttpHeaders.Names.CONTENT_TYPE, HttpConstants.APPLICATION_OCTET);
         HttpHeaders.setHeader(response, HttpConstants.VENICE_STORE_VERSION, path.getVersionNumber());
         HttpHeaders.setHeader(response, HttpConstants.VENICE_PARTITION, numberFromPartitionName(partitionName));
+        int valueSchemaId = Integer.parseInt(result.getFirstHeader(HttpConstants.VENICE_SCHEMA_ID).getValue());
+        HttpHeaders.setHeader(response, HttpConstants.VENICE_SCHEMA_ID, valueSchemaId);
         contextExecutor.execute(() -> {
           responseFuture.setSuccess(Collections.singletonList(response));
         });

@@ -7,6 +7,8 @@ import com.linkedin.venice.offsets.OffsetManager;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.server.StoreRepository;
 import com.linkedin.venice.store.AbstractStorageEngine;
+import com.linkedin.venice.store.record.ValueRecord;
+import com.linkedin.venice.utils.ByteUtils;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.UnpooledByteBufAllocator;
 import io.netty.channel.ChannelHandlerContext;
@@ -30,14 +32,16 @@ public class StorageExecutionHandlerTest {
     String topic = "temp-test-topic";
     String keyString = "testkey";
     String valueString = "testvalue";
+    int schemaId = 1;
     int partition = 3;
     long expectedOffset = 12345L;
     List<Object> outputArray = new ArrayList<Object>();
+    byte[] valueBytes = ValueRecord.create(schemaId, valueString.getBytes()).serialize();
 
     GetRequestObject testRequest = new GetRequestObject(topic.toCharArray(), partition, keyString.getBytes());
 
     AbstractStorageEngine testStore = mock(AbstractStorageEngine.class);
-    doReturn(valueString.getBytes()).when(testStore).get(partition, keyString.getBytes());
+    doReturn(valueBytes).when(testStore).get(partition, keyString.getBytes());
 
     StoreRepository testRepository = mock(StoreRepository.class);
     doReturn(testStore).when(testRepository).getLocalStorageEngine(topic);
@@ -74,11 +78,12 @@ public class StorageExecutionHandlerTest {
     //parsing of response
     Assert.assertEquals(outputArray.size(), 1);
     StorageResponseObject obj = (StorageResponseObject) outputArray.get(0);
-    byte[] response = obj.getValue();
+    byte[] response = obj.getValueRecord().getDataInBytes();
     long offset = obj.getOffset();
 
     //Verification
     Assert.assertEquals(response, valueString.getBytes());
     Assert.assertEquals(offset, expectedOffset);
+    Assert.assertEquals(obj.getValueRecord().getSchemaId(), schemaId);
   }
 }

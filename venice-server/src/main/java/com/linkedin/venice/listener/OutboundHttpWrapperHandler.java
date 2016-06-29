@@ -24,18 +24,17 @@ import static io.netty.handler.codec.http.HttpVersion.HTTP_1_1;
 
 public class OutboundHttpWrapperHandler extends ChannelOutboundHandlerAdapter {
 
-
-
-
   @Override
   public void write(ChannelHandlerContext ctx, Object msg, ChannelPromise promise) throws Exception {
     ByteBuf body;
     String contentType = HttpConstants.APPLICATION_OCTET;
     HttpResponseStatus responseStatus = OK;
     long offset = -1;
+    int schemaId = -1;
     if (msg instanceof StorageResponseObject){
       StorageResponseObject obj = (StorageResponseObject) msg;
-      body = Unpooled.wrappedBuffer(obj.getValue());
+      body = obj.getValueRecord().getData();
+      schemaId = obj.getValueRecord().getSchemaId();
       offset = obj.getOffset();
     } else if (msg instanceof HttpError){
       responseStatus = ((HttpError) msg).getStatus();
@@ -49,9 +48,8 @@ public class OutboundHttpWrapperHandler extends ChannelOutboundHandlerAdapter {
     response.headers().set(CONTENT_TYPE, contentType);
     response.headers().set(CONTENT_LENGTH, body.readableBytes());
     response.headers().set(HttpConstants.VENICE_OFFSET, offset);
+    response.headers().set(HttpConstants.VENICE_SCHEMA_ID, schemaId);
 
     ctx.write(response).addListener(ChannelFutureListener.CLOSE);
   }
-
-
 }

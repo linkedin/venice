@@ -17,6 +17,7 @@ import com.linkedin.venice.offsets.OffsetManager;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.server.StoreRepository;
 import com.linkedin.venice.store.AbstractStorageEngine;
+import com.linkedin.venice.store.record.ValueRecord;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.Utils;
 import java.io.Closeable;
@@ -475,9 +476,16 @@ public class StoreConsumptionTask implements Runnable, Closeable {
         Put put = (Put) kafkaValue.payloadUnion;
         // Validate schema id first
         checkValueSchemaAvail(put.schemaId);
-
         byte[] valueBytes = put.putValue.array();
-        storageEngine.put(partition, keyBytes, valueBytes);
+        /** TODO: Right now, the concatenation part will allocate a new byte array and copy over schema id and data,
+          * which might cause some GC issue since this operation will be triggered for every 'PUT'.
+          * If this issue happens, we need to consider other ways to improve it:
+          * 1. Maybe we can do the concatenation in VeniceWriter, which is being used by KafkaPushJob;
+          * 2. Investigate whether DB can accept multiple binary arrays for 'PUT' operation;
+          * 3. ...
+          */
+        ValueRecord valueRecord = ValueRecord.create(put.schemaId, valueBytes);
+        storageEngine.put(partition, keyBytes, valueRecord.serialize());
         if (logger.isTraceEnabled()) {
           logger.trace(consumerTaskId + " : Completed PUT to Store: " + topic + " for key: " +
                   ByteUtils.toHexString(keyBytes) + ", value: " + ByteUtils.toHexString(put.putValue.array()) + " in " +
