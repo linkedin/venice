@@ -27,6 +27,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 
+import com.linkedin.venice.store.record.ValueRecord;
 import com.linkedin.venice.utils.Utils;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
@@ -226,9 +227,10 @@ public class StoreConsumptionTaskTest{
     testSubscribeTask.subscribePartition(topic, testPartition);
 
     final long LAST_OFFSET= 15;
-    ConsumerRecord testPutRecord = getPutConsumerRecord(testPartition, 10, putTestKey.getBytes(), putTestValue.getBytes(), -1);
+    final int schemaId = -1;
+    ConsumerRecord testPutRecord = getPutConsumerRecord(testPartition, 10, putTestKey.getBytes(), putTestValue.getBytes(), schemaId);
     ConsumerRecord testDeleteRecord = getDeleteConsumerRecord(testPartition, LAST_OFFSET, deleteTestKey.getBytes());
-    ConsumerRecord ignorePutRecord = getPutConsumerRecord(testPartition, 13, "Low-Offset-Ignored".getBytes(), "ignored-put".getBytes(), -1);
+    ConsumerRecord ignorePutRecord = getPutConsumerRecord(testPartition, 13, "Low-Offset-Ignored".getBytes(), "ignored-put".getBytes(), schemaId);
     ConsumerRecord ignoreDeleteRecord = getDeleteConsumerRecord(testPartition, 15, "Equal-Offset-Ignored".getBytes());
 
     // Prepare the mockKafkaConsumer to send the test poll results.
@@ -250,7 +252,7 @@ public class StoreConsumptionTaskTest{
     Mockito.verify(mockAbstractStorageEngine, Mockito.timeout(TIMEOUT).times(1))
             .put(eq(testPartition), any(), any());
     Mockito.verify(mockAbstractStorageEngine, Mockito.timeout(TIMEOUT).times(1))
-        .put(testPartition, putTestKey.getBytes(), putTestValue.getBytes());
+        .put(testPartition, putTestKey.getBytes(), ValueRecord.create(schemaId, putTestValue.getBytes()).serialize());
 
     // Verify StorageEngine#Delete is invoked only once and with appropriate key.
     Mockito.verify(mockAbstractStorageEngine, Mockito.timeout(TIMEOUT).times(1)).delete(eq(testPartition),
@@ -298,7 +300,7 @@ public class StoreConsumptionTaskTest{
     Mockito.verify(mockAbstractStorageEngine, Mockito.timeout(TIMEOUT).times(1))
         .put(eq(testPartition), any(), any());
     Mockito.verify(mockAbstractStorageEngine, Mockito.timeout(TIMEOUT).times(1))
-        .put(testPartition, putTestKey.getBytes(), putTestValue.getBytes());
+        .put(testPartition, putTestKey.getBytes(), ValueRecord.create(existingSchemaId, putTestValue.getBytes()).serialize());
     Mockito.verify(mockSchemaRepo, Mockito.timeout(TIMEOUT).times(1))
         .hasValueSchema(storeNameWithoutVersionInfo, existingSchemaId);
 
@@ -348,7 +350,7 @@ public class StoreConsumptionTaskTest{
     Mockito.verify(mockAbstractStorageEngine, Mockito.timeout(TIMEOUT).never())
         .put(eq(testPartition), any(), any());
     Mockito.verify(mockAbstractStorageEngine, Mockito.timeout(TIMEOUT).never())
-        .put(testPartition, putTestKey.getBytes(), putTestValue.getBytes());
+        .put(eq(testPartition), eq(putTestKey.getBytes()), any());
     Mockito.verify(mockSchemaRepo, Mockito.timeout(TIMEOUT).times(1))
         .hasValueSchema(storeNameWithoutVersionInfo, nonExistingSchemaId);
     Mockito.verify(mockSchemaRepo, Mockito.timeout(TIMEOUT).never())
@@ -363,8 +365,11 @@ public class StoreConsumptionTaskTest{
     // so I would like to sleep for some time to make sure, the assertion does run after the third retry.
     Utils.sleep(2 * StoreConsumptionTask.POLLING_SCHEMA_DELAY_MS);
 
-    Mockito.verify(mockAbstractStorageEngine, Mockito.timeout(2 * StoreConsumptionTask.POLLING_SCHEMA_DELAY_MS).times(2))
-        .put(testPartition, putTestKey.getBytes(), putTestValue.getBytes());
+    Mockito.verify(mockAbstractStorageEngine, Mockito.timeout(2 * StoreConsumptionTask.POLLING_SCHEMA_DELAY_MS).times(1))
+        .put(testPartition, putTestKey.getBytes(), ValueRecord.create(nonExistingSchemaId, putTestValue.getBytes()).serialize());
+
+    Mockito.verify(mockAbstractStorageEngine, Mockito.timeout(2 * StoreConsumptionTask.POLLING_SCHEMA_DELAY_MS).times(1))
+        .put(testPartition, putTestKey.getBytes(), ValueRecord.create(existingSchemaId, putTestValue.getBytes()).serialize());
 
     OffsetRecord expected = new OffsetRecord(OFFSET_WITH_VALID_SCHEMA);
     Mockito.verify(mockOffSetManager, Mockito.timeout(TIMEOUT).times(1)).recordOffset(topic, testPartition, expected);
@@ -481,11 +486,11 @@ public class StoreConsumptionTaskTest{
 
   @Test
   public void testResetPartition() throws Exception {
-
+    final int schemaId = -1;
     StoreConsumptionTask testSubscribeTask = getKafkaPerStoreConsumptionTask(testPartition);
     testSubscribeTask.subscribePartition(topic, testPartition);
 
-    ConsumerRecord testPutRecord = getPutConsumerRecord(testPartition, 10, putTestKey.getBytes(), putTestValue.getBytes(), -1);
+    ConsumerRecord testPutRecord = getPutConsumerRecord(testPartition, 10, putTestKey.getBytes(), putTestValue.getBytes(), schemaId);
     ConsumerRecords mockResult = mockKafkaPollResult(testPutRecord);
 
     Mockito.doReturn(mockResult)
@@ -497,15 +502,14 @@ public class StoreConsumptionTaskTest{
     Future testSubscribeTaskFuture = taskPollingService.submit(testSubscribeTask);
 
     Mockito.verify(mockAbstractStorageEngine, Mockito.timeout(TIMEOUT).times(1))
-        .put(testPartition, putTestKey.getBytes(), putTestValue.getBytes());
+        .put(testPartition, putTestKey.getBytes(), ValueRecord.create(schemaId, putTestValue.getBytes()).serialize());
 
     testSubscribeTask.resetPartitionConsumptionOffset(topic, testPartition);
 
     Mockito.verify(mockAbstractStorageEngine, Mockito.timeout(TIMEOUT).times(2))
-        .put(testPartition, putTestKey.getBytes(), putTestValue.getBytes());
+        .put(testPartition, putTestKey.getBytes(), ValueRecord.create(schemaId, putTestValue.getBytes()).serialize());
 
     testSubscribeTask.close();
     testSubscribeTaskFuture.get();
-
   }
 }
