@@ -27,6 +27,9 @@ import org.testng.annotations.Test;
  */
 public class TestRouter {
 
+  /**
+   * TODO: Make this test more resilient. It is flaky on slower hardware.
+   */
   @Test
   public void testRouterWithD2() throws Exception {
     ZkServerWrapper zk = ServiceFactory.getZkServer();

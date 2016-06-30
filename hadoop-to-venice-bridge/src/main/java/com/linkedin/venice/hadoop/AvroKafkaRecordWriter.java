@@ -1,5 +1,6 @@
 package com.linkedin.venice.hadoop;
 
+import com.linkedin.venice.client.AbstractVeniceWriter;
 import com.linkedin.venice.client.VeniceWriter;
 import com.linkedin.venice.exceptions.UndefinedPropertyException;
 import com.linkedin.venice.serialization.avro.AvroGenericSerializer;
@@ -27,7 +28,7 @@ public class AvroKafkaRecordWriter implements RecordWriter<AvroWrapper<IndexedRe
   private static Logger logger = Logger.getLogger(AvroKafkaRecordWriter.class);
   private final String topicName;
 
-  private final VeniceWriter<byte[], byte[]> veniceWriter;
+  private final AbstractVeniceWriter<byte[], byte[]> veniceWriter;
   private final String keyField;
   private final String valueField;
   private final int keyFieldPos;
@@ -47,14 +48,14 @@ public class AvroKafkaRecordWriter implements RecordWriter<AvroWrapper<IndexedRe
     );
   }
 
-  public AvroKafkaRecordWriter(Properties properties, VeniceWriter<byte[], byte[]> veniceWriter) {
+  public AvroKafkaRecordWriter(Properties properties, AbstractVeniceWriter<byte[], byte[]> veniceWriter) {
     this.veniceWriter = veniceWriter;
 
     // N.B.: These getters will throw an UndefinedPropertyException if anything is missing
     keyField = getPropString(properties, KafkaPushJob.AVRO_KEY_FIELD_PROP);
     valueField = getPropString(properties, KafkaPushJob.AVRO_VALUE_FIELD_PROP);
     // FIXME: Communicate with controller to get topic name
-    topicName = veniceWriter.getStoreName();
+    topicName = veniceWriter.getTopicName();
 
     String schemaStr = getPropString(properties, KafkaPushJob.SCHEMA_STRING_PROP);
     keySerializer = getSerializer(schemaStr, keyField);

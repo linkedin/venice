@@ -1,9 +1,14 @@
 package com.linkedin.venice.kafka.consumer;
 
+import com.google.common.collect.Lists;
 import com.linkedin.venice.exceptions.PersistenceFailureException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceMessageException;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
+import com.linkedin.venice.exceptions.validation.DuplicateDataException;
+import com.linkedin.venice.exceptions.validation.FatalDataValidationException;
+import com.linkedin.venice.kafka.consumer.validation.ProducerTracker;
+import com.linkedin.venice.kafka.protocol.GUID;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
@@ -43,6 +48,7 @@ import org.apache.log4j.Logger;
  */
 public class StoreConsumptionTask implements Runnable, Closeable {
 
+  // TOOD: Make this logger prefix everything with the CONSUMER_TASK_ID_FORMAT
   private static final Logger logger = Logger.getLogger(StoreConsumptionTask.class);
 
   private static final String CONSUMER_TASK_ID_FORMAT = StoreConsumptionTask.class.getSimpleName() + " for [ Node: %d, Topic: %s ]";
@@ -84,9 +90,16 @@ public class StoreConsumptionTask implements Runnable, Closeable {
   private long lastProgressReportTime = 0;
   private static final long PROGRESS_REPORT_INTERVAL = TimeUnit.MILLISECONDS.convert(10, TimeUnit.MINUTES);
 
-  // The source of truth for the currently subscribed partitions. The list maintained by the kafka consumer is not
-  // always up to date because of the asynchronous nature of subscriptions of partitions in Kafka Consumer.
+  /**
+   * The source of truth for the currently subscribed partitions. The list maintained by the kafka consumer
+   * is not always up to date because of the asynchronous nature of subscriptions of partitions in Kafka Consumer.
+   */
   private final Map<Integer, Long> partitionToOffsetMap;
+
+  /**
+   * Keeps track of every upstream producer this consumer task has seen so far.
+   */
+  private final Map<GUID, ProducerTracker> producerTrackerMap;
 
   private static int MAX_IDLE_COUNTER  = 100;
   private int idleCounter = 0;
@@ -114,13 +127,14 @@ public class StoreConsumptionTask implements Runnable, Closeable {
 
     // Should be accessed only from a single thread.
     this.partitionToOffsetMap = new HashMap<>();
+    this.producerTrackerMap = new HashMap<>();
     this.consumerTaskId = String.format(CONSUMER_TASK_ID_FORMAT, nodeId, topic);
 
     this.isRunning = new AtomicBoolean(true);
   }
 
   private void validateState() {
-    if(!isRunning()) {
+    if(!this.isRunning.get()) {
       throw new VeniceException(" Topic " + topic + " is shutting down, no more messages accepted");
     }
   }
@@ -242,8 +256,6 @@ public class StoreConsumptionTask implements Runnable, Closeable {
       // An Error is reported to the controller, so the controller will abort the job.
       // But the Storage Node might eventually recover and the job may complete in success
       // This will confused the controller.
-      // FGV: Actually, the Controller doesn't seem to be aware at all that the consumer failed.
-      //      It just keeps reporting "Push status: STARTED..." indefinitely to the H2V job. TODO: fix this
       logger.error(consumerTaskId + " failed with Exception.", e);
       reportError(partitionToOffsetMap.keySet() , "Exception caught during poll." , e);
     } catch (Throwable t) {
@@ -316,10 +328,16 @@ public class StoreConsumptionTask implements Runnable, Closeable {
       case UNSUBSCRIBE:
         logger.info(consumerTaskId + " UnSubscribed to: Topic " + topic + " Partition Id " + partition);
         partitionToOffsetMap.remove(partition);
+        producerTrackerMap.values().stream().forEach(
+            producerTracker -> producerTracker.clearPartition(partition)
+        );
         consumer.unSubscribe(topic, partition);
         break;
       case RESET_OFFSET:
-        partitionToOffsetMap.put(partition , OffsetRecord.LOWEST_OFFSET);
+        partitionToOffsetMap.put(partition, OffsetRecord.LOWEST_OFFSET);
+        producerTrackerMap.values().stream().forEach(
+            producerTracker -> producerTracker.clearPartition(partition)
+        );
         offsetManager.clearOffset(topic, partition);
         consumer.resetOffset(topic, partition);
         logger.info(consumerTaskId + " Reset OffSet : Topic " + topic + " Partition Id " + partition );
@@ -355,7 +373,7 @@ public class StoreConsumptionTask implements Runnable, Closeable {
       return;
     }
 
-    Iterator recordsIterator = records.iterator();
+    Iterator<ConsumerRecord<KafkaKey, KafkaMessageEnvelope>> recordsIterator = records.iterator();
     if(!recordsIterator.hasNext()) {
       return;
     }
@@ -364,12 +382,16 @@ public class StoreConsumptionTask implements Runnable, Closeable {
     int totalRecords = 0;
     Set<Integer> processedPartitions = new HashSet<>();
     while (recordsIterator.hasNext()) {
-      ConsumerRecord<KafkaKey, KafkaMessageEnvelope> record = (ConsumerRecord<KafkaKey, KafkaMessageEnvelope>) recordsIterator.next();
+      ConsumerRecord<KafkaKey, KafkaMessageEnvelope> record = recordsIterator.next();
       totalRecords++;
       if(shouldProcessRecord(record)) {
         try {
           totalSize += processConsumerRecord(record);
           processedPartitions.add(record.partition());
+        } catch (FatalDataValidationException e) {
+          int faultyPartition = record.partition();
+          reportError(Lists.newArrayList(faultyPartition), "Fatal data validation problem with partition " + faultyPartition, e);
+          unSubscribePartition(topic, faultyPartition);
         } catch (VeniceMessageException | UnsupportedOperationException ex) {
           logger.error(consumerTaskId + " : Received an exception ! Skipping the message at partition " + record.partition() + " offset " + record.offset(), ex);
         }
@@ -410,54 +432,61 @@ public class StoreConsumptionTask implements Runnable, Closeable {
   /**
    * Process the message consumed from Kafka by de-serializing it and persisting it with the storage engine.
    *
-   * @param record       ConsumerRecord consumed from Kafka
+   * @param record {@link ConsumerRecord} consumed from Kafka.
+   * @return the size of the data written to persistent storage.
    */
   private int processConsumerRecord(ConsumerRecord<KafkaKey, KafkaMessageEnvelope> record) {
     // De-serialize payload into Venice Message format
     KafkaKey kafkaKey = record.key();
     KafkaMessageEnvelope kafkaValue = record.value();
+    int sizeOfPersistedData = 0;
 
-    int keySize = kafkaKey.getLength();
-    if(kafkaKey.isControlMessage()) {
-      ControlMessage controlMessage = (ControlMessage) kafkaValue.payloadUnion;
-      processControlMessage(controlMessage, record.partition(), record.offset());
-      return keySize;
-    }
-
-    if (null == kafkaValue) {
-      throw new VeniceMessageException(consumerTaskId + " : Given null Venice Message. Partition " +
-              record.partition() + " Offset " + record.offset());
-    }
-
-    int valueSize = 0;
     try {
-      valueSize = processVeniceMessage(kafkaKey, kafkaValue, record.partition());
+      validateMessage(record.partition(), kafkaValue);
+
+      if (kafkaKey.isControlMessage()) {
+        ControlMessage controlMessage = (ControlMessage) kafkaValue.payloadUnion;
+        processControlMessage(controlMessage, record.partition(), record.offset());
+      } else if (null == kafkaValue) {
+        throw new VeniceMessageException(consumerTaskId + " : Given null Venice Message. Partition " +
+              record.partition() + " Offset " + record.offset());
+      } else {
+        sizeOfPersistedData = kafkaKey.getKeyLength() + processVeniceMessage(kafkaKey, kafkaValue, record.partition());
+      }
+    } catch (DuplicateDataException e) {
+      logger.info("Skipping a duplicate record in topic: " + topic);
     } catch (PersistenceFailureException ex) {
-      /*
-       * We can ignore this exception for unsubscribed partitions. The unsubscription of partitions in Kafka Consumer
-       * is an asynchronous event. Thus, it is possible that the partition has been dropped from the local storage
-       * engine but want unsubscribed by the Kafka Consumer. Therefore, leading to consumption of useless messages.
-       */
       if (partitionToOffsetMap.containsKey(record.partition())) {
+        // If we actually intend to be consuming this partition, then we need to bubble up the failure to persist.
         throw ex;
+      } else {
+        /*
+         * We can ignore this exception for unsubscribed partitions. The unsubscription of partitions in Kafka Consumer
+         * is an asynchronous event. Thus, it is possible that the partition has been dropped from the local storage
+         * engine but want unsubscribed by the Kafka Consumer. Therefore, leading to consumption of useless messages.
+         */
+        return 0;
       }
     }
-    partitionToOffsetMap.put(record.partition() , record.offset());
-    return keySize + valueSize;
+
+    // We want to update offsets in all cases, except when we hit the PersistenceFailureException
+    partitionToOffsetMap.put(record.partition(), record.offset());
+    return sizeOfPersistedData;
   }
 
-  /* TODO : There should be a better place for calculating the header size
-    Kafka returns de-serialized value, Avro record does not expose the size
-    Classes are auto-created by Avro, so it is not possible to enhance these
-    classes as well.
+  private void validateMessage(int partition, KafkaMessageEnvelope message) {
+    final GUID producerGUID = message.producerMetadata.producerGUID;
+    ProducerTracker producerTracker = producerTrackerMap.get(producerGUID);
+    if (producerTracker == null) {
+      producerTracker = new ProducerTracker();
+      producerTrackerMap.put(producerGUID, producerTracker);
+    }
+    producerTracker.addMessage(partition, message);
+  }
+
+  /**
+   * @return the size of the data which was written to persistent storage.
    */
-  private static int VALUE_HEADER_SIZE = ByteUtils.SIZE_OF_INT + //  messageType
-                                          16 + // Size of GUID
-                                          ByteUtils.SIZE_OF_INT + // segment number
-                                          ByteUtils.SIZE_OF_INT + // message sequence number
-                                          ByteUtils.SIZE_OF_LONG; // message time stamp;
-
-
   private int processVeniceMessage(KafkaKey kafkaKey, KafkaMessageEnvelope kafkaValue, int partition) {
     long startTimeNs = -1;
     AbstractStorageEngine storageEngine = storeRepository.getLocalStorageEngine(topic);
@@ -488,7 +517,7 @@ public class StoreConsumptionTask implements Runnable, Closeable {
                   ByteUtils.toHexString(keyBytes) + ", value: " + ByteUtils.toHexString(put.putValue.array()) + " in " +
                   (System.nanoTime() - startTimeNs) + " ns at " + System.currentTimeMillis());
         }
-        return VALUE_HEADER_SIZE + (valueBytes == null ? 0 : valueBytes.length);
+        return valueBytes == null ? 0 : valueBytes.length;
 
       case DELETE:
         if (logger.isTraceEnabled()) {
@@ -502,7 +531,7 @@ public class StoreConsumptionTask implements Runnable, Closeable {
                   ByteUtils.toHexString(keyBytes) + " in " + (System.nanoTime() - startTimeNs) + " ns at " +
                   System.currentTimeMillis());
         }
-        return VALUE_HEADER_SIZE;
+        return 0;
       default:
         throw new VeniceMessageException(
                 consumerTaskId + " : Invalid/Unrecognized operation type submitted: " + kafkaValue.messageType);
@@ -528,7 +557,7 @@ public class StoreConsumptionTask implements Runnable, Closeable {
       return;
     }
     boolean hasValueSchema = schemaRepo.hasValueSchema(storeNameWithoutVersionInfo, schemaId);
-    while (!hasValueSchema && isRunning()) {
+    while (!hasValueSchema && this.isRunning.get()) {
       // Since schema registration topic might be slower than data topic,
       // the consumer will be pending until the new schema arrives.
       // TODO: better polling policy
@@ -550,11 +579,11 @@ public class StoreConsumptionTask implements Runnable, Closeable {
   }
 
 
-  private synchronized  void complete() {
+  private synchronized void complete() {
     if (consumerActionsQueue.isEmpty()) {
       close();
     } else {
-      logger.info(consumerTaskId + "Control messages not empty, ignoring complete ");
+      logger.info(consumerTaskId + " consumerActionsQueue is not empty, ignoring complete() call.");
     }
   }
 
