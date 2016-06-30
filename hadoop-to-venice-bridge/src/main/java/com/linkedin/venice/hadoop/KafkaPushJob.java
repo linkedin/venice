@@ -1,5 +1,6 @@
 package com.linkedin.venice.hadoop;
 
+import com.google.common.collect.Maps;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.job.ExecutionStatus;
@@ -126,6 +127,7 @@ public class KafkaPushJob {
   private String topic;
   // Total input data size, which is used to talk to controller to decide whether we have enough quota or not
   private long inputFileDataSize;
+  private VeniceWriter<KafkaKey, byte[]> veniceWriter; // Lazily initialized
 
   // This main method is not called by azkaban, this is only for testing purposes.
   public static void main(String[] args) throws Exception {
@@ -392,7 +394,7 @@ public class KafkaPushJob {
       this.job = setupHadoopJob(conf);
       JobClient jc = new JobClient(job);
 
-      sendControlMessage(ControlMessageType.START_OF_PUSH);
+      getVeniceWriter().broadcastStartOfPush(Maps.newHashMap());
       // submit the job for execution
       runningJob = jc.submitJob(job);
       logger.info("Job Tracking URL: " + runningJob.getTrackingURL());
@@ -401,7 +403,8 @@ public class KafkaPushJob {
       if (!runningJob.isSuccessful()) {
         throw new RuntimeException("KafkaPushJob failed");
       }
-      sendControlMessage(ControlMessageType.END_OF_PUSH); //TODO: send a failure END OF PUSH message if something went wrong
+      //TODO: send a failure END OF PUSH message if something went wrong
+      getVeniceWriter().broadcastEndOfPush(Maps.newHashMap());
 
       if (!storePush) {
         logger.info("No controller provided, skipping poll of push status, job completed");
@@ -415,10 +418,11 @@ public class KafkaPushJob {
       throw new VeniceException("Exception caught during Hadoop to Venice Bridge!", e);
     } finally {
       IOUtils.closeQuietly(topicManager);
+      IOUtils.closeQuietly(veniceWriter);
     }
   }
 
-  // TODO: remove this.  Store creation should be done out-of-band
+  // TODO: Add config to selectively disable this.
   private void createStoreIfNeeded(){
     for (String routerUrl : perDatacenterRouterUrls){
       NewStoreResponse response = ControllerClient.createNewStore(routerUrl, clusterName, storeName, "H2V-user");
@@ -613,6 +617,22 @@ public class KafkaPushJob {
     topicManager.createTopic(topic, partitionCount, replicationFactor);
   }
 
+  private synchronized VeniceWriter<KafkaKey, byte[]> getVeniceWriter() {
+    if (null == this.veniceWriter) {
+      // Initialize VeniceWriter
+      Properties veniceWriterProperties = new Properties();
+      veniceWriterProperties.put(KAFKA_BOOTSTRAP_SERVERS, kafkaUrl);
+      VeniceWriter<KafkaKey, byte[]> newVeniceWriter = new VeniceWriter<>(
+          new VeniceProperties(veniceWriterProperties),
+          topic,
+          new KafkaKeySerializer(),
+          new DefaultSerializer());
+      logger.info("Created VeniceWriter: " + newVeniceWriter.toString());
+      this.veniceWriter = newVeniceWriter;
+    }
+    return this.veniceWriter;
+  }
+
   private void logJobProperties() {
     logger.info("Kafka URL: " + kafkaUrl);
     logger.info("Kafka Topic: " + topic);
@@ -625,22 +645,6 @@ public class KafkaPushJob {
     logger.info("Avro key schema: " + keySchemaString);
     logger.info("Avro value schema: " + valueSchemaString);
     logger.info("Total input data file size: " + ((double) inputFileDataSize / 1024 / 1024) + " MB");
-  }
-
-  private void sendControlMessage(ControlMessageType controlMessageType) {
-    Properties properties = new Properties();
-    properties.put(KAFKA_BOOTSTRAP_SERVERS, kafkaUrl);
-
-    VeniceProperties props = new VeniceProperties(properties);
-
-    KafkaKeySerializer keySerializer = new KafkaKeySerializer();
-
-    VeniceWriter<KafkaKey, byte[]> writer =
-            new VeniceWriter<>(props, topic, keySerializer, new DefaultSerializer());
-
-    writer.broadcastControlMessage(controlMessageType);
-    writer.close();
-    logger.info("Successfully sent " + controlMessageType.name() + " Control Message for topic '" + topic + "'.");
   }
 
   /***

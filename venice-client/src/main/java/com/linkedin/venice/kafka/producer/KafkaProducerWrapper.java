@@ -4,8 +4,6 @@ import com.linkedin.venice.exceptions.ConfigurationException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.message.KafkaKey;
-import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
-import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.serialization.KafkaKeySerializer;
 import com.linkedin.venice.serialization.KafkaValueSerializer;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -25,7 +23,6 @@ public class KafkaProducerWrapper {
 
   private final KafkaProducer<KafkaKey, KafkaMessageEnvelope> producer;
   private final String PROPERTIES_KAFKA_PREFIX = "kafka.";
-  private final VenicePartitioner partitioner;
 
   public KafkaProducerWrapper(VeniceProperties props) {
     Properties properties = getKafkaPropertiesFromVeniceProps(props);
@@ -34,12 +31,14 @@ public class KafkaProducerWrapper {
     checkMandatoryProp(properties, ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, KafkaKeySerializer.class.getName());
     checkMandatoryProp(properties, ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, KafkaValueSerializer.class.getName());
 
+    // This is to guarantee ordering, even in the face of failures.
+    checkMandatoryProp(properties, ProducerConfig.MAX_IN_FLIGHT_REQUESTS_PER_CONNECTION, "1");
+
     if (!properties.containsKey(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG)) {
       throw new ConfigurationException("Props key not found: " + PROPERTIES_KAFKA_PREFIX + ProducerConfig.BOOTSTRAP_SERVERS_CONFIG);
     }
     producer = new KafkaProducer<>(properties);
     // TODO: Consider making the choice of partitioner implementation configurable
-    this.partitioner = new DefaultVenicePartitioner(props);
   }
 
   /**
@@ -54,20 +53,20 @@ public class KafkaProducerWrapper {
       properties.setProperty(requiredConfigKey, requiredConfigValue);
     } else if (!actualConfigValue.equals(requiredConfigValue)) {
       // We fail fast rather than attempting to use non-standard serializers
-      throw new VeniceException("The Kafka Producer must use the Venice serializers in order to work properly.");
+      throw new VeniceException("The Kafka Producer must use certain configuration settings in order to work properly. " +
+          "requiredConfigKey: '" + requiredConfigKey +
+          "', requiredConfigValue: '" + requiredConfigValue +
+          "', actualConfigValue: '" + actualConfigValue + "'.");
     }
   }
 
-  private Future<RecordMetadata> sendMessageToPartition(String topic, KafkaKey key, KafkaMessageEnvelope value, int partition) {
-    ProducerRecord<KafkaKey, KafkaMessageEnvelope> kafkaRecord = new ProducerRecord<>(topic,
-            partition,
-            key,
-            value);
-    return producer.send(kafkaRecord);
-  }
-
-  private int getNumberOfPartitions(String topic) {
-    // TODO: partitionsFor() is likely an expensive call, so consider caching with proper validation and/or eviction
+  /**
+   * N.B.: This is an expensive call, the result of which should be cached.
+   *
+   * @param topic for which we want to request the number of partitions.
+   * @return the number of partitions for this topic.
+   */
+  public int getNumberOfPartitions(String topic) {
     return producer.partitionsFor(topic).size();
   }
 
@@ -78,26 +77,18 @@ public class KafkaProducerWrapper {
      * @param key - The key of the message to be sent.
      * @param value - The {@link KafkaMessageEnvelope}, which acts as the Kafka value.
      * */
-  public Future<RecordMetadata> sendMessage(String topic, KafkaKey key, KafkaMessageEnvelope value) {
-    int numberOfPartitions = getNumberOfPartitions(topic);
-    int partition = partitioner.getPartitionId(key.getKey(), numberOfPartitions);
-    return sendMessageToPartition(topic, key, value, partition);
-  }
-
-  /**
-   * Sends a message to all the partitions in the kafka topic for storage nodes to consume.
-   *
-   * Useful for some of the {@link com.linkedin.venice.kafka.protocol.ControlMessage}.
-   *
-   * @param topic - The topic to be sent to.
-   * @param key - The key of the message to be sent.
-   * @param value - The {@link KafkaMessageEnvelope}, which acts as the Kafka value.
-   */
-  public void broadcastMessage(String topic, KafkaKey key, KafkaMessageEnvelope value) {
-    int numberOfPartitions = producer.partitionsFor(topic).size();
-    for(int partition = 0; partition < numberOfPartitions ; partition ++) {
-      sendMessageToPartition(topic, key, value, partition);
+  public Future<RecordMetadata> sendMessage(String topic, KafkaKey key, KafkaMessageEnvelope value, int partition) {
+    try {
+      ProducerRecord<KafkaKey, KafkaMessageEnvelope> kafkaRecord = new ProducerRecord<>(topic,
+          partition,
+          key,
+          value);
+      return producer.send(kafkaRecord);
+    } catch (Exception e) {
+      throw new VeniceException("Got an error while trying to produce message into Kafka. Topic: '" + topic +
+          "', partition: " + partition, e);
     }
+
   }
 
   public void close() {

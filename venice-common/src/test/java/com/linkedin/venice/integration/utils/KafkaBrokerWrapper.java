@@ -1,6 +1,6 @@
 package com.linkedin.venice.integration.utils;
 
-import com.beust.jcommander.internal.Maps;
+import com.google.common.collect.Maps;
 import kafka.server.KafkaConfig;
 import kafka.server.KafkaServer;
 import kafka.utils.*;

@@ -1,13 +1,9 @@
 package com.linkedin.venice.hadoop;
 
-import com.linkedin.venice.client.VeniceWriter;
+import com.linkedin.venice.client.MockVeniceWriter;
 import com.linkedin.venice.integration.utils.KafkaBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
-import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
-import com.linkedin.venice.integration.utils.ZkServerWrapper;
-import com.linkedin.venice.serialization.DefaultSerializer;
 import com.linkedin.venice.serialization.avro.AvroGenericSerializer;
-import com.linkedin.venice.utils.VeniceProperties;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.IndexedRecord;
@@ -15,7 +11,6 @@ import org.apache.avro.mapred.AvroWrapper;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.io.NullWritable;
 import org.apache.hadoop.mapred.JobConf;
-import org.apache.kafka.clients.producer.RecordMetadata;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
@@ -25,43 +20,8 @@ import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Properties;
-import java.util.concurrent.Future;
 
 public class TestAvroKafkaRecordWriter {
-  private static class MockVeniceWriter extends VeniceWriter<byte[], byte[]> {
-    private Map<String, String> messages = new HashMap<>();
-    private Map<String, Integer> keyValueSchemaIdMapping = new HashMap<>();
-
-    public MockVeniceWriter(Properties properties) {
-      super(new VeniceProperties(properties),
-          properties.getProperty(KafkaPushJob.TOPIC_PROP),
-          new DefaultSerializer(),
-          new DefaultSerializer()
-      );
-    }
-
-    @Override
-    public Future<RecordMetadata> put(byte[] key, byte[] value, int schemaId) {
-      messages.put(new String(key), new String(value));
-      keyValueSchemaIdMapping.put(new String(key), schemaId);
-      return null;
-    }
-
-    public String getValue(String key) {
-      return messages.get(key);
-    }
-
-    public int getValueSchemaId(String key) {
-      return keyValueSchemaIdMapping.get(key);
-    }
-
-    public void printMessages() {
-      System.out.println("messages:");
-      for (Map.Entry<String, String> entry : messages.entrySet()) {
-        System.out.println(entry.getKey() + " => " + entry.getValue());
-      }
-    }
-  }
 
   private KafkaBrokerWrapper kafkaBrokerWrapper;
   private int valueSchemaId = 1;
