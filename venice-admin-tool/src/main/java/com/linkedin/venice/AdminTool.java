@@ -207,7 +207,17 @@ public class AdminTool {
         .getLocation()
         .getPath())
         .getName();
-    new HelpFormatter().printHelp(command + " [options]", options);
+    new HelpFormatter().printHelp(command + " --router <router_uri> --cluster <cluster_name> (--query|--new) <arg> [options]\n\nOptions:",
+        options);
+    System.err.println(
+            "\nExamples:\n"
+            + "--query list (no other arguments required)\n"
+            + "--query describe (optionally takes --store to only describe one store.  Otherwise describes all stores)\n"
+            + "--query next, --query available, --query current (Requires --store)\n"
+            + "--query job (Requires --store, --version)\n"
+            + "--new store (Requires --store, --owner, --key-schema-file, --value-schema-file)"
+    );
+
     System.exit(1);
   }
 
