@@ -25,6 +25,7 @@ import java.util.Map;
 import joptsimple.OptionParser;
 import joptsimple.OptionSet;
 import joptsimple.OptionSpec;
+import joptsimple.OptionSpecBuilder;
 import org.apache.avro.Schema;
 import org.apache.avro.file.DataFileStream;
 import org.apache.avro.generic.GenericData;
@@ -69,6 +70,7 @@ public class KafkaPushJob {
   public static final String VENICE_STORE_NAME_PROP = "venice.store.name";
   public static final String VENICE_STORE_OWNERS_PROP = "venice.store.owners";
   public static final String VENICE_TOPIC_RETENTION = "venice.topic.retention";
+  public static final String AUTO_CREATE_STORE = "auto.create.store";
 
   public static final String SCHEMA_STRING_PROP = "schema";
   public static final String VALUE_SCHEMA_ID_PROP = "value.schema.id";
@@ -106,6 +108,7 @@ public class KafkaPushJob {
   private final TopicManager topicManager;
   /** Whether the current job is for venice store push or just Kafka push */
   private final boolean storePush;
+  private final boolean autoCreateStoreIfNeeded;
 
   // Mutable state
   private String inputDirectory;
@@ -141,7 +144,7 @@ public class KafkaPushJob {
         .describedAs("kafka-zk")
         .ofType(String.class);
     OptionSpec<String> veniceUrlOpt =
-            parser.accepts("venice-router-url", "REQUIRED: comma-delimeted venice URLs.  "
+            parser.accepts("venice-router-url", "Optional: comma-delimeted venice URLs.  "
                 +"If pushing to multiple datacenters, use a semi-colon to separate lists of URLs")
                     .withRequiredArg()
                     .describedAs("venice-url")
@@ -152,7 +155,7 @@ public class KafkaPushJob {
             .describedAs("path")
             .ofType(String.class);
     OptionSpec<String> topicOpt =
-        parser.accepts("topic", "REQUIRED: topic") // is this really required?
+        parser.accepts("topic", "Optional: topic") // is this really required?
             .withRequiredArg()
             .describedAs("topic")
             .ofType(String.class);
@@ -192,6 +195,8 @@ public class KafkaPushJob {
             .withRequiredArg()
             .describedAs("num-topics-to-retain")
             .ofType(String.class);
+    OptionSpecBuilder autoCreateOpt =
+        parser.accepts("create-store", "Flag: auto create store if it does not exist");
 
     OptionSet options = parser.parse(args);
 
@@ -202,6 +207,7 @@ public class KafkaPushJob {
     boolean isVeniceUrlPresent = options.has(veniceUrlOpt);
     boolean isTopicPresent = options.has(topicOpt);
     boolean cleanupKafkaTopics = options.has(topicRetentionOpt);
+    boolean autoCreateStore = options.has(autoCreateOpt);
 
     Properties props = new Properties();
 
@@ -232,6 +238,9 @@ public class KafkaPushJob {
       props.put(VENICE_STORE_OWNERS_PROP, options.valueOf(storeOwnersOpt));
       if (cleanupKafkaTopics){
         props.put(VENICE_TOPIC_RETENTION, options.valueOf(topicRetentionOpt));
+      }
+      if (autoCreateStore){
+        props.put(AUTO_CREATE_STORE, "true");
       }
     }  else {
       String errorMessage = "At least one of the Options should be present " + topicOpt + " Or " + veniceUrlOpt;
@@ -289,6 +298,7 @@ public class KafkaPushJob {
     String defaultRetention = Integer.toString(Integer.MAX_VALUE);
     String retentionValue = props.getProperty(VENICE_TOPIC_RETENTION, defaultRetention);
     this.topicRetention = Utils.parseIntFromString(retentionValue, VENICE_TOPIC_RETENTION);
+    this.autoCreateStoreIfNeeded = Boolean.valueOf(props.getProperty(AUTO_CREATE_STORE, "false"));
 
     String kafkaTopic = props.getProperty(TOPIC_PROP);
 
@@ -357,8 +367,10 @@ public class KafkaPushJob {
 
       // If the current job is for a store push, we need to pull Kafka Url/Topic from Venice Controller
       if (storePush) {
-        createStoreIfNeeded();
-        createSchemaIfNeeded();
+        if (autoCreateStoreIfNeeded) {
+          createStoreIfNeeded();
+          createSchemaIfNeeded();
+        }
         int nextVersion = getNextVersionFromVenice();
         reserveNextVersion(nextVersion); /* Throws VeniceException if reservation fails */
         topic = new Version(storeName, nextVersion).kafkaTopicName();
