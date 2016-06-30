@@ -189,6 +189,7 @@ public class TestKafkaPushJob {
     props.put(KafkaPushJob.INPUT_PATH_PROP, inputDirPath);
     props.put(KafkaPushJob.AVRO_KEY_FIELD_PROP, "id");
     props.put(KafkaPushJob.AVRO_VALUE_FIELD_PROP, "name");
+    props.put(KafkaPushJob.AUTO_CREATE_STORE, "true");
 
     return props;
   }
