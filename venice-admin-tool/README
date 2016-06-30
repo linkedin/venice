@@ -4,20 +4,28 @@ Venice Admin Tool
 For directly affecting administrative actions and queries on a Venice cluster
 
 ```
-usage: java -jar venice-admin-tool-0.1.jar [options]
+usage: java -jar venice-admin-tool-0.1.jar --router <router_uri> --cluster
+            <cluster_name> (--query|--new) <arg> [options]
+            Options:
  -c,--cluster <arg>             REQUIRED: Name of Venice cluster
  -h,--help                      Show usage
  -k,--key-schema-file <arg>     Path to text file with key schema
  -l,--value-schema-file <arg>   Path to text file with value schema
  -n,--new <arg>                 OPTIONAL: Create one of: store
- -o,--owner <arg>               Owner email for new store
+ -o,--owner <arg>               Owner email for new store creation
  -q,--query <arg>               OPTIONAL: Query one of: next, available,
                                 current, job, list, describe
  -r,--router <arg>              REQUIRED: Venice router url, eg.
                                 http://localhost:54333
  -s,--store <arg>               Name of Venice store
  -v,--version <arg>             Venice store version number
-```
+
+Examples:
+--query list (no other arguments required)
+--query describe (optionally takes --store to only describe one store.  Otherwise describes all stores)
+--query next, --query available, --query current (Requires --store)
+--query job (Requires --store, --version)
+--new store (Requires --store, --owner, --key-schema-file, --value-schema-file)
 
 ## Overview of Queries
 
