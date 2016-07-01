@@ -38,6 +38,8 @@ public class VenicePathParser implements ResourcePathParser<VeniceStoragePath, R
 
   public static final String TYPE_STORAGE = "storage";
   public static final String TYPE_CONTROLLER = "controller";
+  public static final String TYPE_KEY_SCHEMA = "key_schema";
+  public static final String TYPE_VALUE_SCHEMA = "value_schema";
 
   private VeniceVersionFinder versionFinder;
   private VenicePartitionFinder partitionFinder;

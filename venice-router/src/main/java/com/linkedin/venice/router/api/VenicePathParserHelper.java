@@ -30,7 +30,7 @@ public class VenicePathParserHelper {
           resourceType = path[0 + offset];
           if (path.length - offset >= 2){
             resourceName = path[1+offset];
-            if (path.length - offset >= 2){
+            if (path.length - offset >= 3){
               key = path[2+offset];
             }
           }

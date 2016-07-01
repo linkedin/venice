@@ -14,6 +14,7 @@ import com.linkedin.ddsstorage.router.api.ScatterGatherHelper;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixAdapterSerializer;
+import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
 import com.linkedin.venice.helix.HelixReadonlyStoreRepository;
 import com.linkedin.venice.helix.HelixRoutingDataRepository;
 import com.linkedin.venice.router.api.VeniceDispatcher;
@@ -56,6 +57,7 @@ public class RouterServer extends AbstractVeniceService {
   private HelixManager manager;
   private HelixRoutingDataRepository routingDataRepository;
   private HelixReadonlyStoreRepository metadataRepository;
+  private HelixReadOnlySchemaRepository schemaRepository;
   private String clusterName;
 
   private ChannelFuture serverFuture = null;
@@ -124,6 +126,8 @@ public class RouterServer extends AbstractVeniceService {
     }
     HelixAdapterSerializer adapter = new HelixAdapterSerializer();
     this.metadataRepository = new HelixReadonlyStoreRepository(zkClient, adapter, this.clusterName);
+    this.schemaRepository = new HelixReadOnlySchemaRepository(this.metadataRepository,
+        this.zkClient, adapter, this.clusterName);
     this.routingDataRepository = new HelixRoutingDataRepository(manager);
     this.d2ServerList = d2ServerList;
   }
@@ -147,9 +151,9 @@ public class RouterServer extends AbstractVeniceService {
 
   @Override
   public void startInner() throws Exception {
-
     metadataRepository.refresh();
     routingDataRepository.refresh();
+    // No need to call schemaRepository.refresh() since it will do nothing.
 
     registry = new NettyResourceRegistry();
     ExecutorService executor = registry
@@ -180,7 +184,7 @@ public class RouterServer extends AbstractVeniceService {
             .hostHealthMonitor(healthMonitor)
             .dispatchHandler(dispatcher)
             .build(),
-        new ControllerLookupHandler(routingDataRepository)));
+        new MetaDataHandler(routingDataRepository, schemaRepository, clusterName)));
 
     serverFuture = router.start(new InetSocketAddress(port), factory -> factory);
     serverFuture.await();
