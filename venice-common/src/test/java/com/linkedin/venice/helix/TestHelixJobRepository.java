@@ -7,6 +7,7 @@ import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.job.ExecutionStatus;
 import com.linkedin.venice.job.OfflineJob;
 import com.linkedin.venice.job.Task;
+import com.linkedin.venice.job.WaitAllJobStatsDecider;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.Partition;
 import com.linkedin.venice.utils.Time;
@@ -391,9 +392,10 @@ public class TestHelixJobRepository {
 
     Assert.assertEquals(newRepository.getJobStatus(0, "topic0"), ExecutionStatus.STARTED,
         "Job should be started and updated to ZK");
-    Assert.assertEquals(newRepository.getJob(1,"topic1").checkJobStatus(), ExecutionStatus.ERROR,
+    WaitAllJobStatsDecider decider = new WaitAllJobStatsDecider();
+    Assert.assertEquals(decider.checkJobStatus(newRepository.getJob(1,"topic1")), ExecutionStatus.ERROR,
         "Job should be failed.");
-    Assert.assertEquals(newRepository.getJob(2, "topic2").checkJobStatus(), ExecutionStatus.COMPLETED,
+    Assert.assertEquals(decider.checkJobStatus(newRepository.getJob(2, "topic2")), ExecutionStatus.COMPLETED,
         "Job should be completed");
 
     Assert.assertEquals(newRepository.getAllRunningJobs().size(), 3);

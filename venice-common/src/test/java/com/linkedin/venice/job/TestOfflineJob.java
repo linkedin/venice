@@ -17,7 +17,6 @@ import org.testng.annotations.Test;
  * Test cases for Offline Job.
  */
 public class TestOfflineJob {
-  private long jobId = 1;
   private String topic = "testTopic";
   private int numberOfPartition = 4;
   private int replicaFactor = 3;
@@ -157,85 +156,5 @@ public class TestOfflineJob {
     } catch (VeniceException e) {
       //expected.
     }
-  }
-
-  @Test
-  public void testCheckJobStatusNotRunning() {
-    OfflineJob job = new OfflineJob(1, topic, numberOfPartition, replicaFactor);
-
-    try {
-      job.checkJobStatus();
-      Assert.fail("Job is not running.");
-    } catch (VeniceException e) {
-      //expected
-    }
-  }
-
-  @Test
-  public void testCheckJobStatus() {
-    OfflineJob job = new OfflineJob(1, topic, numberOfPartition, replicaFactor);
-    job.setStatus(ExecutionStatus.STARTED);
-    job.updateExecutingTasks(partitions);
-    Assert.assertEquals(ExecutionStatus.STARTED, job.checkJobStatus(),
-        "Did not get any updates. SHould still be in running status.");
-
-    for (int i = 0; i < numberOfPartition; i++) {
-      for (int j = 0; j < replicaFactor; j++) {
-        Task t = new Task(job.generateTaskId(i, nodeId + j), i, String.valueOf(j), ExecutionStatus.STARTED);
-        job.updateTaskStatus(t);
-      }
-    }
-    Assert.assertEquals(ExecutionStatus.STARTED, job.checkJobStatus(),
-        "All of tasks are just started, should be in runing status.");
-
-    for (int i = 0; i < numberOfPartition; i++) {
-      for (int j = 0; j < replicaFactor; j++) {
-        Task t = new Task(job.generateTaskId(i, nodeId + j), i, String.valueOf(j), ExecutionStatus.COMPLETED);
-        if (i == 1 && j == 2) {
-          continue;
-        }
-        job.updateTaskStatus(t);
-      }
-    }
-    Task t = new Task(job.generateTaskId(1, nodeId + "2"), 1, nodeId + "2", ExecutionStatus.PROGRESS);
-    job.updateTaskStatus(t);
-    //Only one task is not terminated
-    Assert.assertEquals(ExecutionStatus.STARTED, job.checkJobStatus(),
-        "There is still one task in progress status, job is still running.");
-
-    t.setStatus(ExecutionStatus.COMPLETED);
-    job.updateTaskStatus(t);
-    //Only one task is not terminated
-    Assert.assertEquals(ExecutionStatus.COMPLETED, job.checkJobStatus(),
-        "All the tasks are completed, job is completed.");
-  }
-
-  @Test
-  public void testCheckJobStatusWhenJobFail() {
-    OfflineJob job = new OfflineJob(1, topic, numberOfPartition, replicaFactor);
-    job.setStatus(ExecutionStatus.STARTED);
-    job.updateExecutingTasks(partitions);
-    for (int i = 0; i < numberOfPartition; i++) {
-      for (int j = 0; j < replicaFactor; j++) {
-        Task t = new Task(job.generateTaskId(i, nodeId + j), i, nodeId + j, ExecutionStatus.STARTED);
-        job.updateTaskStatus(t);
-        if (i == 2 && j == 0) {
-          continue;
-        }
-        t.setStatus(ExecutionStatus.COMPLETED);
-        job.updateTaskStatus(t);
-      }
-    }
-
-    Task t = new Task(job.generateTaskId(2, nodeId + "0"), 2, nodeId + "0", ExecutionStatus.PROGRESS);
-    job.updateTaskStatus(t);
-    //Only one task is not terminated
-    Assert.assertEquals(ExecutionStatus.STARTED, job.checkJobStatus(),
-        "There is still one task in progress status, job is still running.");
-    t.setStatus(ExecutionStatus.ERROR);
-    job.updateTaskStatus(t);
-    //Only one task is not terminated
-    Assert.assertEquals(ExecutionStatus.ERROR, job.checkJobStatus(),
-        "One task is failed, based on current strategy, job should be failed.");
   }
 }

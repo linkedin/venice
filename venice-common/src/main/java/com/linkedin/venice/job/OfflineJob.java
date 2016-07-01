@@ -116,7 +116,7 @@ public class OfflineJob extends Job {
 
   @Override
   public synchronized Job cloneJob() {
-    OfflineJob clonedJob = new OfflineJob(getJobId(),getKafkaTopic(),getNumberOfPartition(),getReplicaFactor(),strategy);
+    OfflineJob clonedJob = new OfflineJob(getJobId(),getKafkaTopic(),getNumberOfPartition(), getReplicationFactor(),strategy);
     clonedJob.setStatus(getStatus());
     for(Integer partitionId:partitionToTasksMap.keySet()){
       Map<String, Task> taskMap = partitionToTasksMap.get(partitionId);
@@ -128,39 +128,6 @@ public class OfflineJob extends Job {
       }
     }
     return clonedJob;
-  }
-
-  /**
-   * Check all of tasks' status to see whether the job is completed/error or still running.
-   *
-   * @return
-   */
-  public ExecutionStatus checkJobStatus() {
-    //Only check the status of running job.
-    if (!this.getStatus().equals(ExecutionStatus.STARTED)) {
-      throw new VeniceException("Job:" + getJobId() + " is not running.");
-    }
-    if (strategy.equals(OfflinePushStrategy.WAIT_ALL_REPLICAS)) {
-      boolean isAllCompleted = true;
-      for (Map<String, Task> taskMap : partitionToTasksMap.values()) {
-        if (taskMap.size() != this.getReplicaFactor()) {
-          //Some of tasks did not report "Started" status.
-          isAllCompleted = false;
-        }
-        for (Task task : taskMap.values()) {
-          if (task.getStatus().equals(ExecutionStatus.ERROR)) {
-            // TODO Right now we don't have any retry. If one of task is failed, the whole job is failed.
-            return ExecutionStatus.ERROR;
-          } else if (!task.getStatus().equals(ExecutionStatus.COMPLETED)) {
-            isAllCompleted = false;
-          }
-        }
-      }
-      //All of tasks status are Completed.
-      return isAllCompleted ? ExecutionStatus.COMPLETED : ExecutionStatus.STARTED;
-    }
-    //TODO support more off-line push strategies.
-    throw new VeniceException("Strategy:" + strategy + " is not supported.");
   }
 
   /**
