@@ -13,6 +13,7 @@ import com.linkedin.venice.hadoop.exceptions.VeniceSchemaFieldNotFoundException;
 import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.serialization.DefaultSerializer;
 import com.linkedin.venice.serialization.KafkaKeySerializer;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -369,8 +370,11 @@ public class KafkaPushJob {
       if (storePush) {
         if (autoCreateStoreIfNeeded) {
           createStoreIfNeeded();
-          createSchemaIfNeeded();
+          createKeySchemaIfNeeded();
+          uploadValueSchema();
         }
+        validateKeySchema();
+        validateValueSchema();
         int nextVersion = getNextVersionFromVenice();
         reserveNextVersion(nextVersion); /* Throws VeniceException if reservation fails */
         topic = new Version(storeName, nextVersion).kafkaTopicName();
@@ -425,7 +429,7 @@ public class KafkaPushJob {
   }
 
   // TODO: In the future, schema creation should be moved to Nuage or admin tools.
-  private void createSchemaIfNeeded() {
+  private void createKeySchemaIfNeeded() {
     for (String routerUrl : perDatacenterRouterUrls) {
       // Check key schema first
       // If the key schema doesn't exist, will create it;
@@ -433,24 +437,125 @@ public class KafkaPushJob {
       // initKeySchema will return directly, otherwise it will report error since key schema is
       // immutable;
       // For now, the returned keySchemaResponse is not quite useful for H2V job;
-      SchemaResponse keySchemaResponse = ControllerClient.initKeySchema(routerUrl, clusterName, storeName, keySchemaString);
+      SchemaResponse keySchemaResponse = ControllerClient.initKeySchema(routerUrl, clusterName, storeName,
+          keySchemaString);
       if (keySchemaResponse.isError()) {
         throw new VeniceException("Fail to validate/create key schema: " + keySchemaString + " for store: "
-            + storeName+ ", error: " + keySchemaResponse.getError());
+            + storeName + " using router: " + routerUrl +", error: " + keySchemaResponse.getError());
       }
       logger.info("Key schema: " + keySchemaString + " is valid for store: " + storeName);
 
-      // Check value schema
-      // If the value schema already exists, will return it directly;
-      // If the value schema doesn't exist and is fully compatible with previous ones, will create it;
-      // Otherwise, will report error for incompatible value schema update
-      SchemaResponse valueSchemaResponse = ControllerClient.addValueSchema(routerUrl, clusterName, storeName, valueSchemaString);
+    }
+  }
+
+  /**
+   * Get the key schema for this store from the controller and make sure it is the same as the key schema H2V wants to use
+   * Checks all datacenters, requires a successful query from a strict majority.  Any datacenter that provides
+   * an invalid schema fails the validation.
+   */
+  private void validateKeySchema(){
+    int valid = 0;
+    int error = 0;
+    for (String routerUrl : perDatacenterRouterUrls) {
+      SchemaResponse keySchemaResponse = ControllerClient.getKeySchema(routerUrl, clusterName, storeName);
+      int attempts = 3;
+      while(keySchemaResponse.isError() && attempts > 0){
+        attempts -= 1;
+        logger.warn(keySchemaResponse.getError());
+        Utils.sleep(2000);
+        keySchemaResponse = ControllerClient.getKeySchema(routerUrl, clusterName, storeName);
+      }
+      if (keySchemaResponse.isError()){
+        error += 1;
+        logger.error(keySchemaResponse.getError());
+      } else {
+        SchemaEntry serverSchema = new SchemaEntry(keySchemaResponse.getId(), keySchemaResponse.getSchemaStr());
+        SchemaEntry clientSchema = new SchemaEntry(1, keySchemaString);
+        if (serverSchema.equals(clientSchema)){
+          valid += 1;
+          logger.info("Provided key schema matches key schema for store " + storeName + " on server: " + routerUrl);
+        } else {
+          throw new VeniceException("Key schema mis-match for store " + storeName + " on server: " + routerUrl);
+        }
+      }
+    }
+    if (valid > 0 && (valid > (valid + error)/2)) {
+      logger.info("Key schema validated for store: " + storeName);
+    } else {
+      throw new VeniceException("Unable to validate schema for store: " + storeName + ". Could not identify current key schema");
+    }
+  }
+
+  /***
+   * TODO: rip out this method when we don't need to auto create stores any more
+   */
+  private void uploadValueSchema() {
+    for (String routerUrl : perDatacenterRouterUrls) {
+      SchemaResponse valueSchemaResponse = ControllerClient.addValueSchema(routerUrl, clusterName, storeName,
+          valueSchemaString);
+      int attempts = 3;
+      while (valueSchemaResponse.isError() && attempts > 0){
+        attempts -= 1;
+        logger.warn(valueSchemaResponse.getError());
+        Utils.sleep(2000);
+        valueSchemaResponse = ControllerClient.addValueSchema(routerUrl, clusterName, storeName, valueSchemaString);
+      }
       if (valueSchemaResponse.isError()) {
-        throw new VeniceException("Fail to validate/create value schema: " + valueSchemaString + " for store: "
+
+        logger.error("Fail to validate/create value schema: " + valueSchemaString + " for store: "
             + storeName + ", error: " + valueSchemaResponse.getError());
       }
-      valueSchemaId = valueSchemaResponse.getId();
-      logger.info("Get value schema id: " + valueSchemaId + " for value schema: " + valueSchemaString + " of store: " + storeName);
+    }
+  }
+
+  /***
+   * For each datacenter, uploads value schema and asks for ID.
+   *  Server will return existing ID if schema already exists, will return an error if schema doesn't already exist.
+   *  This method requires that strict majority of servers respond, and that all responding servers provide the same ID.
+   */
+  private void validateValueSchema() {
+    int valid = 0;
+    int error = 0;
+    Map<String, Integer> schemaIdByDatacenter = new HashMap<>();
+    for (String routerUrl : perDatacenterRouterUrls) {
+      SchemaResponse valueSchemaResponse = ControllerClient.getValueSchemaID(routerUrl, clusterName, storeName,
+          valueSchemaString);
+      int attempts = 3;
+      while (valueSchemaResponse.isError() && attempts > 0){
+        attempts -= 1;
+        logger.warn(valueSchemaResponse.getError());
+        Utils.sleep(2000);
+        valueSchemaResponse = ControllerClient.getValueSchemaID(routerUrl, clusterName, storeName, valueSchemaString);
+      }
+      if (valueSchemaResponse.isError()) {
+        error += 1;
+        logger.error("Fail to validate value schema: " + valueSchemaString + " for store: "
+            + storeName + ", error: " + valueSchemaResponse.getError());
+      } else {
+        valid += 1;
+        schemaIdByDatacenter.put(routerUrl, valueSchemaResponse.getId());
+      }
+    }
+    if (valid > 0 && (valid > (valid + error)/2)) { /* response from strict majority of datacenters */
+      boolean unset = true; /* valueSchemaId has not yet been set */
+      for (Integer id : schemaIdByDatacenter.values()){
+        if (unset){
+          valueSchemaId = id.intValue();
+          unset = false;
+        } else {
+          if (valueSchemaId != id.intValue()){
+            StringBuilder sb = new StringBuilder();
+            sb.append("Found conflicting value schema IDs from different servers: ");
+            for (String server : schemaIdByDatacenter.keySet()){
+              sb.append(server + ":" + schemaIdByDatacenter.get(server).toString() + ", ");
+            }
+            throw new VeniceException(sb.toString());
+          }
+        }
+      }
+      logger.info("Value schema validated for store: " + storeName);
+    } else {
+      throw new VeniceException("Unable to validate schema for store: " + storeName + ". Could only identify value schema from " + valid + " of " + (valid + error) + " datacenters");
     }
   }
 
