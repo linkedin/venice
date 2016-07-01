@@ -353,7 +353,7 @@ public class TestKafkaPushJob {
     job.run();
   }
 
-  @Test(expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = ".*Fail to validate/create value schema.*")
+  @Test(expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = ".*Unable to validate schema for store.*")
   public void testRunJobMultipleTimesWithInCompatibleValueSchemaConfig() throws Exception {
     File inputDir = getTempDataDirectory();
     writeSimpleAvroFileWithUserSchema(inputDir);
@@ -376,6 +376,7 @@ public class TestKafkaPushJob {
 
     // Run job with different value schema (from 'string' to 'int')
     props.setProperty(KafkaPushJob.AVRO_VALUE_FIELD_PROP, "age");
+    props.setProperty(KafkaPushJob.AUTO_CREATE_STORE, "false");
     job = new KafkaPushJob(jobName, props);
     job.run();
   }
