@@ -28,7 +28,7 @@ public class TestJobJSONSerializer {
     Assert.assertEquals(newJob.getJobId(),jobId);
     Assert.assertEquals(newJob.getKafkaTopic(),topic);
     Assert.assertEquals(newJob.getNumberOfPartition(),numberOfPartition);
-    Assert.assertEquals(newJob.getReplicaFactor(),replicaFactor);
+    Assert.assertEquals(newJob.getReplicationFactor(),replicaFactor);
     Assert.assertEquals(newJob.getStatus(),ExecutionStatus.COMPLETED);
   }
 }

@@ -38,7 +38,7 @@ public class OfflineJobJSONSerializer implements VeniceSerializer<OfflineJob> {
   public static class OfflineJobSerializerMixin {
     @JsonCreator
     public OfflineJobSerializerMixin(@JsonProperty("jobId") long jobId, @JsonProperty("kafkaTopic") String kafkaTopic,
-        @JsonProperty("numberOfPartition") int numberOfPartition, @JsonProperty("replicaFactor") int replicaFactor) {
+        @JsonProperty("numberOfPartition") int numberOfPartition, @JsonProperty("replicationFactor") int replicationFactor) {
 
     }
   }

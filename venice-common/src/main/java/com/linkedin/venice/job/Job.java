@@ -1,5 +1,6 @@
 package com.linkedin.venice.job;
 
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Partition;
 import java.util.List;
 import java.util.Map;
@@ -18,14 +19,20 @@ public abstract class Job {
 
   private final int numberOfPartition;
 
-  private final int replicaFactor;
+  private final int replicationFactor;
 
   private ExecutionStatus status;
 
-  public Job(long jobId, String kafkaTopic, int numberOfPartition, int replicaFactor) {
+  public Job(long jobId, String kafkaTopic, int numberOfPartition, int replicationFactor) {
     this.jobId = jobId;
+    if (numberOfPartition < 1) {
+      throw new VeniceException("Partition count should be larger than 0. Given value is:" + numberOfPartition);
+    }
     this.numberOfPartition = numberOfPartition;
-    this.replicaFactor = replicaFactor;
+    if (replicationFactor < 1) {
+      throw new VeniceException("Replication factor should larger than 0. Given value is:" + replicationFactor);
+    }
+    this.replicationFactor = replicationFactor;
     this.kafkaTopic = kafkaTopic;
     this.status = ExecutionStatus.NEW;
   }
@@ -38,8 +45,8 @@ public abstract class Job {
     return numberOfPartition;
   }
 
-  public int getReplicaFactor() {
-    return replicaFactor;
+  public int getReplicationFactor() {
+    return replicationFactor;
   }
 
   public ExecutionStatus getStatus() {
@@ -60,15 +67,6 @@ public abstract class Job {
     }
     return false;
   }
-
-  /**
-   * Check all of current tasks status to judge whether job is completed or error or still running.
-   * <p>
-   * Please not this method is only the query method which will not change the status of this job.
-   *
-   * @return Calculated job status.
-   */
-  public abstract ExecutionStatus checkJobStatus();
 
   public abstract void updateTaskStatus(Task task);
 

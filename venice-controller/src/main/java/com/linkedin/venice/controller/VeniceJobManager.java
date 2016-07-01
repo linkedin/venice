@@ -6,8 +6,11 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.job.ExecutionStatus;
 import com.linkedin.venice.job.Job;
 import com.linkedin.venice.job.JobRepository;
+import com.linkedin.venice.job.JobStatusDecider;
 import com.linkedin.venice.job.OfflineJob;
 import com.linkedin.venice.job.Task;
+import com.linkedin.venice.job.WaitAllJobStatsDecider;
+import com.linkedin.venice.job.WaitNMinusOneJobStatusDeicder;
 import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.Partition;
 import com.linkedin.venice.meta.ReadWriteStoreRepository;
@@ -19,6 +22,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
+import java.util.HashMap;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
@@ -64,21 +68,33 @@ public class VeniceJobManager implements StatusMessageHandler<StoreStatusMessage
     //After controller setting up, check all existing job to terminated them if needed.
     List<Job> jobs = jobRepository.getAllRunningJobs();
     for (Job job : jobs) {
-      ExecutionStatus status = job.checkJobStatus();
+      ExecutionStatus status = getJobStatusDecider(job).checkJobStatus(job);
       if (status.equals(ExecutionStatus.COMPLETED)) {
         jobRepository.stopJob(job.getJobId(), job.getKafkaTopic());
       } else if (status.equals(ExecutionStatus.ERROR)) {
         jobRepository.stopJobWithError(job.getJobId(), job.getKafkaTopic());
       } else if (status.equals(ExecutionStatus.STARTED)) {
-        // If job is still running, take over this job including refresh executors' information, subscribe status change event etc.
-        routingDataRepository.subscribeRoutingDataChange(job.getKafkaTopic(), this);
-        // subscribe the status change of this job.
-        jobRepository.subscribeJobStatusChange(job.getKafkaTopic(), this);
-        // Sync up with routing data again to avoid missing some change during the controller's failure.
-        if (hasEnoughExecutors(job, routingDataRepository.getPartitions(job.getKafkaTopic()))) {
-          jobRepository.updateJobExecutingTasks(job.getJobId(), job.getKafkaTopic(),
-              routingDataRepository.getPartitions(job.getKafkaTopic()));
+        if (routingDataRepository.containsKafkaTopic(job.getKafkaTopic())) {
+          // If job is still running, take over this job including refresh executors' information, subscribe status change event etc.
+          routingDataRepository.subscribeRoutingDataChange(job.getKafkaTopic(), this);
+          // subscribe the status change of this job.
+          jobRepository.subscribeJobStatusChange(job.getKafkaTopic(), this);
+          // Sync up with routing data again to avoid missing some change during the controller's failure.
+          if (getJobStatusDecider(job).hasEnoughTaskExecutors(job,
+              routingDataRepository.getPartitions(job.getKafkaTopic()).values())) {
+            jobRepository.updateJobExecutingTasks(job.getJobId(), job.getKafkaTopic(),
+                routingDataRepository.getPartitions(job.getKafkaTopic()));
+          } else {
+            // Can not get enough task executors, stop job and un-register listeners
+            logger.error("Job:" + job.getJobId() + " for topic:" + job.getKafkaTopic()
+                + " dose not have enough replicas. Stop it and mark as ERROR status.");
+            routingDataRepository.unSubscribeRoutingDataChange(job.getKafkaTopic(), this);
+            jobRepository.unsubscribeJobStatusChange(job.getKafkaTopic(), this);
+            jobRepository.stopJobWithError(job.getJobId(), job.getKafkaTopic());
+          }
         } else {
+          // Topic does not exist, stop this job.
+          logger.error("Kafka topic" + job.getKafkaTopic() + " dose not exist. Stop job:" + job.getJobId());
           jobRepository.stopJobWithError(job.getJobId(), job.getKafkaTopic());
         }
       } else {
@@ -145,7 +161,7 @@ public class VeniceJobManager implements StatusMessageHandler<StoreStatusMessage
       jobRepository.updateTaskStatus(job.getJobId(), job.getKafkaTopic(), task);
       logger.info("Update status of Task:" + task.getTaskId() + " to status:" + task.getStatus());
       //Check the job status after updating task status to see is the whole job completed or error.
-      ExecutionStatus status = job.checkJobStatus();
+      ExecutionStatus status = getJobStatusDecider(job).checkJobStatus(job);
       if (status.equals(ExecutionStatus.COMPLETED)) {
         logger.info("All of task are completed, mark job as completed too.");
         jobRepository.stopJob(job.getJobId(), job.getKafkaTopic());
@@ -295,8 +311,8 @@ public class VeniceJobManager implements StatusMessageHandler<StoreStatusMessage
       // Read current partition and decide whether there are enough assigned replicas at first. It avoids the case:
       // Before subscribing the listener to routing data, all replicas have already been assigned, so will not get any
       // notification.
-      if (routingDataRepository.containsKafkaTopic(job.getKafkaTopic()) && hasEnoughExecutors(job,
-          routingDataRepository.getPartitions(job.getKafkaTopic()))) {
+      if (routingDataRepository.containsKafkaTopic(job.getKafkaTopic()) && getJobStatusDecider(
+          job).hasEnoughTaskExecutors(job, routingDataRepository.getPartitions(job.getKafkaTopic()).values())) {
         // Job has not been updated to ZK. So we update it's local copy at first. Then they will be update to ZK when starting the job.
         job.updateExecutingTasks(routingDataRepository.getPartitions(job.getKafkaTopic()));
         waitingJobMap.remove(job.getKafkaTopic());
@@ -311,8 +327,8 @@ public class VeniceJobManager implements StatusMessageHandler<StoreStatusMessage
           job.wait(nextWaitTime);
           long spentTime = System.currentTimeMillis() - startTime;
           // In order to avoid incorrect notification, judge whether there are enough executors.
-          if (routingDataRepository.containsKafkaTopic(job.getKafkaTopic()) && hasEnoughExecutors(job,
-              routingDataRepository.getPartitions(job.getKafkaTopic()))) {
+          if (routingDataRepository.containsKafkaTopic(job.getKafkaTopic()) && getJobStatusDecider(
+              job).hasEnoughTaskExecutors(job, routingDataRepository.getPartitions(job.getKafkaTopic()).values())) {
             job.updateExecutingTasks(routingDataRepository.getPartitions(job.getKafkaTopic()));
             waitingJobMap.remove(job.getKafkaTopic());
             logger.info("Wait is completed on job:" + job.getJobId() + " topic:" + job.getKafkaTopic() + " wait time:"
@@ -333,37 +349,10 @@ public class VeniceJobManager implements StatusMessageHandler<StoreStatusMessage
     }
   }
 
-  private boolean hasEnoughExecutors(Job job, Map<Integer, Partition> partitions) {
-    if (partitions.size() != job.getNumberOfPartition()) {
-      logger.info("Number of partitions:" + partitions.size() + " is different from the number required when job was created:" +
-          job.getNumberOfPartition());
-      return false;
-    }
-
+  private JobStatusDecider getJobStatusDecider(Job job) {
     Store store = metadataRepository.getStore(Version.parseStoreFromKafkaTopicName(job.getKafkaTopic()));
     OfflinePushStrategy strategy = store.getOffLinePushStrategy();
-    for (Partition partition : partitions.values()) {
-      int replicaNumberDifference = job.getReplicaFactor() - partition.getInstances().size();
-      if (job.getReplicaFactor() == 1 || strategy.equals(OfflinePushStrategy.WAIT_ALL_REPLICAS)) {
-        // If only only one replica is required, the situation is as same as WAIT_ALL_REPLICAS strategy.
-        if (replicaNumberDifference > 0) {
-          //Some of nodes are failed.
-          logger.info("Replica factor:" + partition.getInstances().size() + " in partition:" + partition.getId()
-              + "is smaller from the required factor:" + job.getReplicaFactor());
-          return false;
-        }
-      } else if (strategy.equals(OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION)) {
-        if (replicaNumberDifference > 1) {
-          //More then one nodes are failed in this partition
-          logger.info("Replica factor:" + partition.getInstances().size() + " in partition:" + partition.getId()
-              + "is smaller from the required factor:" + (job.getReplicaFactor() - 1));
-          return false;
-        }
-      } else {
-        throw new VeniceException("Do not support offline push strategy:" + strategy);
-      }
-    }
-    return true;
+    return JobStatusDecider.getDecider(strategy);
   }
 
   @Override
@@ -386,7 +375,7 @@ public class VeniceJobManager implements StatusMessageHandler<StoreStatusMessage
     if (job != null) {
       // Some job is waiting for starting.
       synchronized (job) {
-        if (hasEnoughExecutors(job, partitions)) {
+        if (getJobStatusDecider(job).hasEnoughTaskExecutors(job, partitions.values())) {
           logger.info("Get enough executor for job:" + job.getJobId() + " Continue running.");
           job.notify();
         }
@@ -401,7 +390,7 @@ public class VeniceJobManager implements StatusMessageHandler<StoreStatusMessage
       }
       // Fail the job if the partition mapping was changed.  enough replicas here to decide whether stop job or not in the future.
       for (Job runningJob : jobs) {
-        if (hasEnoughExecutors(runningJob, partitions)) {
+        if (getJobStatusDecider(runningJob).hasEnoughTaskExecutors(runningJob, partitions.values())) {
           // Job has been started and updated to zk. So we need to update ZK by through job repository.
           jobRepository.updateJobExecutingTasks(runningJob.getJobId(), kafkaTopic, partitions);
         } else {
@@ -409,6 +398,8 @@ public class VeniceJobManager implements StatusMessageHandler<StoreStatusMessage
           // we need to fail the whole job.  Note that we could have different policies to judge "enough replicas".
           // So here it does not mean that job should be failed after ONE node is failed. Please see method
           // hasEnoughExecutors for more details.
+          logger.error("Partition allocation is changed, but there are not enough replicas for job" + runningJob.getJobId()
+              + ". Stop it and mark it as ERROR status.");
           jobRepository.stopJobWithError(runningJob.getJobId(), runningJob.getKafkaTopic());
         }
       }
