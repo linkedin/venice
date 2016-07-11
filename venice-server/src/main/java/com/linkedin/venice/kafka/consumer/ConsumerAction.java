@@ -1,24 +1,27 @@
-package com.linkedin.venice.kafka.consumer.message;
+package com.linkedin.venice.kafka.consumer;
 
 /**
- * Class representing Message for KafkaConsumptionTask.
+ * The class is used to asynchronously trigger behavior changes in the {@link StoreConsumptionTask}.
+ *
+ * The kinds of changes that can be triggered by a {@link ConsumerAction} are defined in the
+ * {@link ConsumerActionType} enum.
  */
-public class ControlMessage {
+public class ConsumerAction {
 
-  private final ControlOperationType operation;
+  private final ConsumerActionType type;
   private final String topic;
   private final int partition;
 
   private int attempts = 0;
 
-  public ControlMessage(ControlOperationType operation, String topic, int partition) {
-    this.operation = operation;
+  public ConsumerAction(ConsumerActionType type, String topic, int partition) {
+    this.type = type;
     this.topic = topic;
     this.partition = partition;
   }
 
-  public ControlOperationType getOperation() {
-    return operation;
+  public ConsumerActionType getType() {
+    return type;
   }
 
   public String getTopic() {
@@ -40,7 +43,7 @@ public class ControlMessage {
   @Override
   public String toString() {
     return "KafkaTaskMessage{" +
-        "operation=" + operation +
+        "type=" + type +
         ", topic='" + topic + '\'' +
         ", partition=" + partition +
         ", attempts=" + attempts +

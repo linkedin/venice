@@ -3,8 +3,7 @@ package com.linkedin.venice.kafka.consumer;
 import com.linkedin.venice.exceptions.PersistenceFailureException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceMessageException;
-import com.linkedin.venice.kafka.consumer.message.ControlMessage;
-import com.linkedin.venice.kafka.consumer.message.ControlOperationType;
+import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
@@ -76,7 +75,7 @@ public class StoreConsumptionTask implements Runnable, Closeable {
 
   private final AtomicBoolean isRunning;
 
-  private final Queue<ControlMessage> controlMessages;
+  private final Queue<ConsumerAction> consumerActionsQueue;
 
   private final OffsetManager offsetManager;
 
@@ -111,14 +110,13 @@ public class StoreConsumptionTask implements Runnable, Closeable {
     this.schemaRepo = schemaRepo;
     this.storeNameWithoutVersionInfo = Version.parseStoreFromKafkaTopicName(topic);
     this.schemaIdSet = new HashSet<>();
-
-    controlMessages = new ConcurrentLinkedQueue<>();
+    this.consumerActionsQueue = new ConcurrentLinkedQueue<>();
 
     // Should be accessed only from a single thread.
-    partitionToOffsetMap = new HashMap<>();
+    this.partitionToOffsetMap = new HashMap<>();
     this.consumerTaskId = String.format(CONSUMER_TASK_ID_FORMAT, nodeId, topic);
 
-    isRunning = new AtomicBoolean(true);
+    this.isRunning = new AtomicBoolean(true);
   }
 
   private void validateState() {
@@ -132,7 +130,7 @@ public class StoreConsumptionTask implements Runnable, Closeable {
    */
   public synchronized void subscribePartition(String topic, int partition) {
     validateState();
-    controlMessages.add(new ControlMessage(ControlOperationType.SUBSCRIBE, topic, partition));
+    consumerActionsQueue.add(new ConsumerAction(ConsumerActionType.SUBSCRIBE, topic, partition));
   }
 
   /**
@@ -140,7 +138,7 @@ public class StoreConsumptionTask implements Runnable, Closeable {
    */
   public synchronized void unSubscribePartition(String topic, int partition) {
     validateState();
-    controlMessages.add(new ControlMessage(ControlOperationType.UNSUBSCRIBE, topic, partition));
+    consumerActionsQueue.add(new ConsumerAction(ConsumerActionType.UNSUBSCRIBE, topic, partition));
   }
 
   /**
@@ -148,7 +146,7 @@ public class StoreConsumptionTask implements Runnable, Closeable {
    */
   public synchronized void resetPartitionConsumptionOffset(String topic, int partition) {
     validateState();
-    controlMessages.add(new ControlMessage(ControlOperationType.RESET_OFFSET, topic, partition));
+    consumerActionsQueue.add(new ConsumerAction(ConsumerActionType.RESET_OFFSET, topic, partition));
   }
 
   private void reportProgress(int partition, long partitionOffset ) {
@@ -261,9 +259,9 @@ public class StoreConsumptionTask implements Runnable, Closeable {
 
     // Only reset Offset Messages are important, subscribe/unSubscribe will be handled
     // on the restart by Helix Controller notifications on the new StoreConsumptionTask.
-    for(ControlMessage message : controlMessages) {
-      ControlOperationType opType = message.getOperation();
-      if(opType == ControlOperationType.RESET_OFFSET) {
+    for(ConsumerAction message : consumerActionsQueue) {
+      ConsumerActionType opType = message.getType();
+      if(opType == ConsumerActionType.RESET_OFFSET) {
         String topic = message.getTopic();
         int partition = message.getPartition();
         logger.info(consumerTaskId + " Cleanup Reset OffSet : Topic " + topic + " Partition Id " + partition );
@@ -285,10 +283,10 @@ public class StoreConsumptionTask implements Runnable, Closeable {
    * Consumes the kafka actions messages in the queue.
    */
   private void processControlMessages() {
-    Iterator<ControlMessage> iter = controlMessages.iterator();
+    Iterator<ConsumerAction> iter = consumerActionsQueue.iterator();
     while (iter.hasNext()) {
       // Do not want to remove a message from the queue unless it has been processed.
-      ControlMessage message = iter.next();
+      ConsumerAction message = iter.next();
       try {
         message.incrementAttempt();
         processControlMessage(message);
@@ -304,8 +302,8 @@ public class StoreConsumptionTask implements Runnable, Closeable {
     }
   }
 
-  private void processControlMessage(ControlMessage message) {
-    ControlOperationType operation = message.getOperation();
+  private void processControlMessage(ConsumerAction message) {
+    ConsumerActionType operation = message.getType();
     String topic = message.getTopic();
     int partition = message.getPartition();
     switch (operation) {
@@ -392,7 +390,7 @@ public class StoreConsumptionTask implements Runnable, Closeable {
     }
   }
 
-  private void processControlMessage(com.linkedin.venice.kafka.protocol.ControlMessage controlMessage, int partition, long offset) {
+  private void processControlMessage(ControlMessage controlMessage, int partition, long offset) {
      switch(ControlMessageType.valueOf(controlMessage)) {
        case START_OF_PUSH:
          reportStarted(partition);
@@ -421,8 +419,7 @@ public class StoreConsumptionTask implements Runnable, Closeable {
 
     int keySize = kafkaKey.getLength();
     if(kafkaKey.isControlMessage()) {
-      // TODO: Clean up our many kinds of "ControlMessage". There should be at most one thing called as such.
-      com.linkedin.venice.kafka.protocol.ControlMessage controlMessage = (com.linkedin.venice.kafka.protocol.ControlMessage) kafkaValue.payloadUnion;
+      ControlMessage controlMessage = (ControlMessage) kafkaValue.payloadUnion;
       processControlMessage(controlMessage, record.partition(), record.offset());
       return keySize;
     }
@@ -554,7 +551,7 @@ public class StoreConsumptionTask implements Runnable, Closeable {
 
 
   private synchronized  void complete() {
-    if(controlMessages.isEmpty()) {
+    if (consumerActionsQueue.isEmpty()) {
       close();
     } else {
       logger.info(consumerTaskId + "Control messages not empty, ignoring complete ");

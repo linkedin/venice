@@ -1,4 +1,4 @@
-package com.linkedin.venice.controlmessage;
+package com.linkedin.venice.status;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import java.util.HashMap;
@@ -10,7 +10,7 @@ import java.util.UUID;
  * Venice control message which is used to transfer command and status between storage node and controller, so that
  * controller could control the whole cluster and make the global decision.
  */
-public abstract class ControlMessage {
+public abstract class StatusMessage {
 
   /* DO NOT CHANGE the field names. The field names are used
   in serialization/de-serialization across two processes
@@ -29,14 +29,14 @@ public abstract class ControlMessage {
    *
    * @param fields
    */
-  protected ControlMessage(Map<String, String> fields) {
+  protected StatusMessage(Map<String, String> fields) {
     this.messageId = getRequiredField(fields, MESSAGE_ID);
   }
 
   /**
    * Default constructor, only used in constructor of sub-class. So visible level is protected but not public.
    */
-  protected  ControlMessage() {
+  protected StatusMessage() {
     // Confirmed with helix team. The message Id is used as the key for zk node. So it must be a global unique Id.
     // And Helix also use Java UUID for other helix message. So we just follow this stand here.
     this.messageId = UUID.randomUUID().toString();

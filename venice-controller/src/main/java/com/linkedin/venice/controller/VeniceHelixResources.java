@@ -1,9 +1,9 @@
 package com.linkedin.venice.controller;
 
 import com.linkedin.venice.VeniceResource;
-import com.linkedin.venice.controlmessage.StoreStatusMessage;
+import com.linkedin.venice.helix.HelixStatusMessageChannel;
+import com.linkedin.venice.status.StoreStatusMessage;
 import com.linkedin.venice.helix.HelixAdapterSerializer;
-import com.linkedin.venice.helix.HelixControlMessageChannel;
 import com.linkedin.venice.helix.HelixJobRepository;
 import com.linkedin.venice.helix.HelixReadWriteSchemaRepository;
 import com.linkedin.venice.helix.HelixReadWriteStoreRepository;
@@ -22,7 +22,7 @@ public class VeniceHelixResources implements VeniceResource {
   private final HelixJobRepository jobRepository;
   private final HelixReadWriteSchemaRepository schemaRepository;
   private final VeniceJobManager jobManager;
-  private final HelixControlMessageChannel messageChannel;
+  private final HelixStatusMessageChannel messageChannel;
   private final VeniceControllerClusterConfig config;
 
   public VeniceHelixResources(String clusterName, ZkClient zkClient, HelixManager helixManager,
@@ -40,7 +40,7 @@ public class VeniceHelixResources implements VeniceResource {
         this.jobRepository,
         this.metadataRepository,
         this.routingDataRepository);
-    this.messageChannel = new HelixControlMessageChannel(helixManager);
+    this.messageChannel = new HelixStatusMessageChannel(helixManager);
   }
 
   @Override
@@ -84,7 +84,7 @@ public class VeniceHelixResources implements VeniceResource {
     return jobManager;
   }
 
-  public HelixControlMessageChannel getMessageChannel() {
+  public HelixStatusMessageChannel getMessageChannel() {
     return messageChannel;
   }
 

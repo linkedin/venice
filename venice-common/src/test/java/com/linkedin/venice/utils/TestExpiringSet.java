@@ -7,6 +7,8 @@ import org.testng.annotations.Test;
 
 /**
  * Created by mwise on 4/12/16.
+ *
+ * TODO: This test is flaky. We need to make it deterministic using the {@link Time} interface.
  */
 public class TestExpiringSet {
 
