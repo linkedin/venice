@@ -1,9 +1,9 @@
 package com.linkedin.venice.controller;
 
-import com.linkedin.venice.controlmessage.StoreStatusMessage;
+import com.linkedin.venice.helix.HelixStatusMessageChannel;
+import com.linkedin.venice.status.StoreStatusMessage;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixAdapterSerializer;
-import com.linkedin.venice.helix.HelixControlMessageChannel;
 import com.linkedin.venice.helix.HelixInstanceConverter;
 import com.linkedin.venice.helix.HelixJobRepository;
 import com.linkedin.venice.helix.HelixReadWriteStoreRepository;
@@ -249,9 +249,9 @@ public class TestVeniceJobManager {
   public void testHandleOutOfOrderMessages()
       throws IOException, InterruptedException {
     metadataRepository.addStore(store);
-    HelixControlMessageChannel controllerChannel = new HelixControlMessageChannel(controller);
+    HelixStatusMessageChannel controllerChannel = new HelixStatusMessageChannel(controller);
     controllerChannel.registerHandler(StoreStatusMessage.class, jobManager);
-    HelixControlMessageChannel nodeChannel = new HelixControlMessageChannel(manager);
+    HelixStatusMessageChannel nodeChannel = new HelixStatusMessageChannel(manager);
 
     jobManager.startOfflineJob(version.kafkaTopicName(), 1, 1);
     StoreStatusMessage message = new StoreStatusMessage(version.kafkaTopicName(), 0, nodeId, ExecutionStatus.STARTED);

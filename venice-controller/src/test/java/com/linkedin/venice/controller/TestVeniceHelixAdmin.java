@@ -1,10 +1,10 @@
 package com.linkedin.venice.controller;
 
 import com.linkedin.venice.ConfigKeys;
-import com.linkedin.venice.controlmessage.ControlMessageChannel;
-import com.linkedin.venice.controlmessage.StoreStatusMessage;
+import com.linkedin.venice.helix.HelixStatusMessageChannel;
+import com.linkedin.venice.status.StatusMessageChannel;
+import com.linkedin.venice.status.StoreStatusMessage;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.helix.HelixControlMessageChannel;
 import com.linkedin.venice.helix.HelixInstanceConverter;
 import com.linkedin.venice.helix.HelixRoutingDataRepository;
 import com.linkedin.venice.helix.TestHelixRoutingDataRepository;
@@ -182,7 +182,7 @@ public class TestVeniceHelixAdmin {
     veniceAdmin.addStore(clusterName, storeName, "dev");
     veniceAdmin.incrementVersion(clusterName, storeName, 1, 1);
 
-    ControlMessageChannel channel = new HelixControlMessageChannel(manager, Integer.MAX_VALUE, 1);
+    StatusMessageChannel channel = new HelixStatusMessageChannel(manager, Integer.MAX_VALUE, 1);
     channel.sendToController(new StoreStatusMessage(version.kafkaTopicName(), 0, nodeId, ExecutionStatus.STARTED));
 
     int newAdminPort = config.getAdminPort()+1; /* Note: this is a dummy port */

@@ -1,9 +1,9 @@
 package com.linkedin.venice.helix;
 
-import com.linkedin.venice.controlmessage.ControlMessage;
-import com.linkedin.venice.controlmessage.ControlMessageChannel;
-import com.linkedin.venice.controlmessage.ControlMessageHandler;
-import com.linkedin.venice.controlmessage.StoreStatusMessage;
+import com.linkedin.venice.status.StatusMessage;
+import com.linkedin.venice.status.StatusMessageChannel;
+import com.linkedin.venice.status.StatusMessageHandler;
+import com.linkedin.venice.status.StoreStatusMessage;
 import com.linkedin.venice.exceptions.VeniceException;
 import java.io.IOException;
 import java.util.Map;
@@ -29,8 +29,8 @@ import org.apache.log4j.Logger;
  * Only one Helix message type is used, so channel is similar to a dispatcher that receive all of control messages and
  * dispatch them to related handlers.
  */
-public class HelixControlMessageChannel implements ControlMessageChannel {
-  private static final Logger logger = Logger.getLogger(HelixControlMessageChannel.class);
+public class HelixStatusMessageChannel implements StatusMessageChannel {
+  private static final Logger logger = Logger.getLogger(HelixStatusMessageChannel.class);
 
   public static final int WAIT_TIME_OUT = 1000;
 
@@ -44,17 +44,17 @@ public class HelixControlMessageChannel implements ControlMessageChannel {
 
   private final ClusterMessagingService messageService;
 
-  private final Map<String, ControlMessageHandler> handlers = new ConcurrentHashMap<>();
+  private final Map<String, StatusMessageHandler> handlers = new ConcurrentHashMap<>();
 
   private final int timeOut;
 
   private final int retryCount;
 
-  public HelixControlMessageChannel(HelixManager manager) {
+  public HelixStatusMessageChannel(HelixManager manager) {
     this(manager, WAIT_TIME_OUT, RETRY_COUNT);
   }
 
-  public HelixControlMessageChannel(HelixManager manager, int timeOut, int retryCount) {
+  public HelixStatusMessageChannel(HelixManager manager, int timeOut, int retryCount) {
     messageService = manager.getMessagingService();
     this.timeOut = timeOut;
     this.retryCount = retryCount;
@@ -62,7 +62,7 @@ public class HelixControlMessageChannel implements ControlMessageChannel {
   }
 
   @Override
-  public void sendToController(ControlMessage message)
+  public void sendToController(StatusMessage message)
       throws IOException {
     Message helixMessage = convertVeniceMessageToHelixMessage(message);
     //TODO will confirm with Helix team that do we need to specify session Id here.
@@ -88,7 +88,7 @@ public class HelixControlMessageChannel implements ControlMessageChannel {
   }
 
   @Override
-  public <T extends ControlMessage> void registerHandler(Class<T> clazz, ControlMessageHandler<T> handler) {
+  public <T extends StatusMessage> void registerHandler(Class<T> clazz, StatusMessageHandler<T> handler) {
     if (this.handlers.containsKey(clazz.getName())) {
       throw new VeniceException("Handler already exists for message type:" + clazz.getName());
     }
@@ -96,7 +96,7 @@ public class HelixControlMessageChannel implements ControlMessageChannel {
   }
 
   @Override
-  public <T extends ControlMessage> void unRegisterHandler(Class<T> clazz, ControlMessageHandler<T> handler) {
+  public <T extends StatusMessage> void unRegisterHandler(Class<T> clazz, StatusMessageHandler<T> handler) {
     if (!handlers.containsKey(clazz.getName())) {
       // If no listener is found by given class, just skip this un-register request.
       logger.info("Can not find any handler for given message type:" + clazz.toGenericString());
@@ -116,7 +116,7 @@ public class HelixControlMessageChannel implements ControlMessageChannel {
    *
    * @return
    */
-  protected ControlMessage convertHelixMessageToVeniceMessage(Message helixMessage) {
+  protected StatusMessage convertHelixMessageToVeniceMessage(Message helixMessage) {
       String className = helixMessage.getRecord().getSimpleField(VENICE_MESSAGE_CLASS);
       Map<String, String> fields = helixMessage.getRecord().getMapField(VENICE_MESSAGE_FIELD);
 
@@ -134,7 +134,7 @@ public class HelixControlMessageChannel implements ControlMessageChannel {
    *
    * @return
    */
-  protected Message convertVeniceMessageToHelixMessage(ControlMessage veniceMessage) {
+  protected Message convertVeniceMessageToHelixMessage(StatusMessage veniceMessage) {
     Message helixMessage = new Message(HELIX_MESSAGE_TYPE, veniceMessage.getMessageId());
     helixMessage.getRecord().setMapField(VENICE_MESSAGE_FIELD, veniceMessage.getFields());
     helixMessage.getRecord().setSimpleField(VENICE_MESSAGE_CLASS, veniceMessage.getClass().getName());
@@ -149,8 +149,8 @@ public class HelixControlMessageChannel implements ControlMessageChannel {
    *
    * @return
    */
-  protected <T extends ControlMessage> ControlMessageHandler getHandler(Class<T> clazz) {
-    ControlMessageHandler handler = handlers.get(clazz.getName());
+  protected <T extends StatusMessage> StatusMessageHandler getHandler(Class<T> clazz) {
+    StatusMessageHandler handler = handlers.get(clazz.getName());
     if (handler == null) {
       throw new VeniceException("No handler for this type of message:" + clazz.getName());
     } else {
@@ -166,7 +166,7 @@ public class HelixControlMessageChannel implements ControlMessageChannel {
     @Override
     public MessageHandler createHandler(Message message, NotificationContext context) {
       if (message.getMsgType().equals(HELIX_MESSAGE_TYPE)) {
-        return new HelixControlMessageHandler(message, context);
+        return new HelixStatusMessageHandler(message, context);
       } else {
         throw new VeniceException(
             "Unexpected message type:" + message.getMsgType() + " for message:" + message.getMsgId());
@@ -187,21 +187,21 @@ public class HelixControlMessageChannel implements ControlMessageChannel {
   /**
    * Helix message handler used to deal with all of control messages.
    */
-  private class HelixControlMessageHandler extends MessageHandler {
+  private class HelixStatusMessageHandler extends MessageHandler {
     /**
      * The constructor. The message and notification context must be provided via creation.
      *
      * @param message
      * @param context
      */
-    public HelixControlMessageHandler(Message message, NotificationContext context) {
+    public HelixStatusMessageHandler(Message message, NotificationContext context) {
       super(message, context);
     }
 
     @Override
     public HelixTaskResult handleMessage()
         throws InterruptedException {
-      ControlMessage msg = convertHelixMessageToVeniceMessage(_message);
+      StatusMessage msg = convertHelixMessageToVeniceMessage(_message);
       HelixTaskResult result = new HelixTaskResult();
       try {
         //Dispatch venice message to related hander.

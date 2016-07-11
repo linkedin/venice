@@ -1,6 +1,6 @@
 package com.linkedin.venice.helix;
 
-import com.linkedin.venice.controlmessage.StoreStatusMessage;
+import com.linkedin.venice.status.StoreStatusMessage;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.job.ExecutionStatus;
 import com.linkedin.venice.integration.utils.ServiceFactory;
@@ -26,7 +26,7 @@ import org.testng.annotations.Test;
 
 
 /**
- * Test cases for HelixControlMessageChannel
+ * Test cases for HelixStatusMessageChannel
  */
 public class TestHelixControlMessageChannel {
   private String cluster = "UnitTestCluster";
@@ -36,7 +36,7 @@ public class TestHelixControlMessageChannel {
   private ExecutionStatus status = ExecutionStatus.COMPLETED;
   private ZkServerWrapper zkServerWrapper;
   private String zkAddress;
-  private HelixControlMessageChannel channel;
+  private HelixStatusMessageChannel channel;
   private HelixManager manager;
   private HelixAdmin admin;
   private HelixManager controller;
@@ -71,7 +71,7 @@ public class TestHelixControlMessageChannel {
             new TestHelixRoutingDataRepository.UnitTestStateModelFactory());
 
     manager.connect();
-    channel = new HelixControlMessageChannel(manager);
+    channel = new HelixStatusMessageChannel(manager);
   }
 
   @AfterMethod
@@ -88,9 +88,9 @@ public class TestHelixControlMessageChannel {
     Assert.assertEquals(veniceMessage.getMessageId(), helixMessage.getMsgId(),
             "Message Ids are different.");
     Assert.assertEquals(StoreStatusMessage.class.getName(),
-            helixMessage.getRecord().getSimpleField(HelixControlMessageChannel.VENICE_MESSAGE_CLASS),
+            helixMessage.getRecord().getSimpleField(HelixStatusMessageChannel.VENICE_MESSAGE_CLASS),
             "Class names are different.");
-    Map<String, String> fields = helixMessage.getRecord().getMapField(HelixControlMessageChannel.VENICE_MESSAGE_FIELD);
+    Map<String, String> fields = helixMessage.getRecord().getMapField(HelixStatusMessageChannel.VENICE_MESSAGE_FIELD);
     for (Map.Entry<String, String> entry : veniceMessage.getFields().entrySet()) {
       Assert.assertEquals(entry.getValue(), fields.get(entry.getKey()),
               "Message fields are different.");
@@ -136,7 +136,7 @@ public class TestHelixControlMessageChannel {
   public void testSendMessage()
       throws IOException, InterruptedException {
     //Register handler for message in controler side.
-    HelixControlMessageChannel controllerChannel = new HelixControlMessageChannel(controller);
+    HelixStatusMessageChannel controllerChannel = new HelixStatusMessageChannel(controller);
     StoreStatusMessageHandler handler = new StoreStatusMessageHandler();
     controllerChannel.registerHandler(StoreStatusMessage.class, handler);
 

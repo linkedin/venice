@@ -1,4 +1,4 @@
-package com.linkedin.venice.controlmessage;
+package com.linkedin.venice.status;
 
 import com.linkedin.venice.job.ExecutionStatus;
 import java.util.Map;
@@ -8,12 +8,12 @@ import java.util.Map;
  * Control description used to notify controller that the status of Offline push in Storage node.
  *
  * DO NOT CHANGE THE PACKAGE OR CLASS NAME. The class name is used by the
- * HelixControlMessageChannel. When the class name is updated and if the
- * Controller and Storage Node is not updated at the same time, one
- * can't parse the message sent by the other as they embed the name
- * in the message.
+ * {@link com.linkedin.venice.helix.HelixStatusMessageChannel}. When the
+ * class name is updated and if the Controller and Storage Node is not
+ * updated at the same time, one can't parse the message sent by the other
+ * as they embed the name in the message.
  */
-public class StoreStatusMessage extends ControlMessage {
+public class StoreStatusMessage extends StatusMessage {
 
   /* DO NOT CHANGE or REMOVE the field names.
   The contents of this class are serialized using JSON
@@ -54,7 +54,7 @@ public class StoreStatusMessage extends ControlMessage {
   }
 
   /**
-   * Override the constructor of ControlMessage, build description from given fiedls.
+   * Override the constructor of {@link StatusMessage}, build description from given fiedls.
    */
   public StoreStatusMessage(Map<String, String> fields) {
     super(fields);

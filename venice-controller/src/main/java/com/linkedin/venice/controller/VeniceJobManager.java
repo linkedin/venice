@@ -1,7 +1,7 @@
 package com.linkedin.venice.controller;
 
-import com.linkedin.venice.controlmessage.ControlMessageHandler;
-import com.linkedin.venice.controlmessage.StoreStatusMessage;
+import com.linkedin.venice.status.StatusMessageHandler;
+import com.linkedin.venice.status.StoreStatusMessage;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.job.ExecutionStatus;
 import com.linkedin.venice.job.Job;
@@ -31,7 +31,7 @@ import org.apache.log4j.Logger;
  * Venice job manager to handle all of control messages to update job/task status and do actions based the status
  * change.
  */
-public class VeniceJobManager implements ControlMessageHandler<StoreStatusMessage>, RoutingDataRepository.RoutingDataChangedListener, JobRepository.JobStatusChangedListener {
+public class VeniceJobManager implements StatusMessageHandler<StoreStatusMessage>, RoutingDataRepository.RoutingDataChangedListener, JobRepository.JobStatusChangedListener {
   private static final Logger logger = Logger.getLogger(VeniceJobManager.class);
   private final JobRepository jobRepository;
   private final RoutingDataRepository routingDataRepository;

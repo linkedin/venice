@@ -1,8 +1,8 @@
 package com.linkedin.venice.notifier;
 
-import com.linkedin.venice.controlmessage.StoreStatusMessage;
+import com.linkedin.venice.helix.HelixStatusMessageChannel;
+import com.linkedin.venice.status.StoreStatusMessage;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.helix.HelixControlMessageChannel;
 import com.linkedin.venice.job.ExecutionStatus;
 import java.io.IOException;
 import java.io.PrintWriter;
@@ -18,11 +18,11 @@ public class HelixNotifier implements VeniceNotifier {
 
   private static final Logger logger = Logger.getLogger(HelixNotifier.class);
 
-  private final HelixControlMessageChannel messageChannel;
+  private final HelixStatusMessageChannel messageChannel;
   private final String instanceId;
 
   public HelixNotifier(HelixManager manager, String instanceId) {
-    this.messageChannel = new HelixControlMessageChannel(manager);
+    this.messageChannel = new HelixStatusMessageChannel(manager);
     this.instanceId = instanceId;
   }
 
