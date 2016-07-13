@@ -243,7 +243,7 @@ public class StoreConsumptionTaskTest {
         mockSchemaRepo);
   }
 
-  private ConsumerRecords mockKafkaPollResult(ConsumerRecord<KafkaKey, KafkaMessageEnvelope>... records) {
+  private ConsumerRecords createConsumerRecords(ConsumerRecord<KafkaKey, KafkaMessageEnvelope>... records) {
     Map<TopicPartition, List<ConsumerRecord>> mockPollResult = new HashMap<>();
 
     if (records.length > 0) {
@@ -282,7 +282,8 @@ public class StoreConsumptionTaskTest {
       ConsumerRecord ignoreDeleteRecord = producer.getDeleteConsumerRecord(testPartition, 15, "Equal-Offset-Ignored".getBytes());
 
       // Prepare the mockKafkaConsumer to send the test poll results.
-      ConsumerRecords mockResult = mockKafkaPollResult(testPutRecord, testDeleteRecord, ignorePutRecord, ignoreDeleteRecord);
+      ConsumerRecords mockResult = createConsumerRecords(testPutRecord, testDeleteRecord, ignorePutRecord,
+          ignoreDeleteRecord);
       Mockito.doReturn(mockResult).when(mockKafkaConsumer).poll(StoreConsumptionTask.READ_CYCLE_DELAY_MS);
 
       // Prepare mockStoreRepository to send a mock storage engine.
@@ -336,7 +337,8 @@ public class StoreConsumptionTaskTest {
       ConsumerRecord ignoreDeleteRecord = producer.getDeleteConsumerRecord(testPartition, 15, "Equal-Offset-Ignored".getBytes());
 
       // Prepare the mockKafkaConsumer to send the test poll results.
-      ConsumerRecords mockResult = mockKafkaPollResult(testPutRecord, testDeleteRecord, ignorePutRecord, ignoreDeleteRecord);
+      ConsumerRecords mockResult = createConsumerRecords(testPutRecord, testDeleteRecord, ignorePutRecord,
+          ignoreDeleteRecord);
       Mockito.doReturn(mockResult).when(mockKafkaConsumer).poll(StoreConsumptionTask.READ_CYCLE_DELAY_MS);
 
       // Prepare mockStoreRepository to send a mock storage engine.
@@ -383,7 +385,7 @@ public class StoreConsumptionTaskTest {
       ConsumerRecord testPutRecordWithExistingSchemaId = producer.getPutConsumerRecord(testPartition, LAST_OFFSET, putKey, putValue, existingSchemaId);
 
       // Prepare the mockKafkaConsumer to send the test poll results.
-      ConsumerRecords mockResult = mockKafkaPollResult(testPutRecordWithExistingSchemaId);
+      ConsumerRecords mockResult = createConsumerRecords(testPutRecordWithExistingSchemaId);
       Mockito.doReturn(mockResult).when(mockKafkaConsumer).poll(StoreConsumptionTask.READ_CYCLE_DELAY_MS);
 
       // Prepare mockStoreRepository to send a mock storage engine.
@@ -435,7 +437,8 @@ public class StoreConsumptionTaskTest {
       ConsumerRecord testPutRecordWithExistingSchemaId = producer.getPutConsumerRecord(testPartition, OFFSET_WITH_VALID_SCHEMA, putKey, putValue, existingSchemaId);
 
       // Prepare the mockKafkaConsumer to send the test poll results.
-      ConsumerRecords mockResult = mockKafkaPollResult(testPutRecordWithNonExistingSchemaId, testPutRecordWithExistingSchemaId);
+      ConsumerRecords mockResult = createConsumerRecords(testPutRecordWithNonExistingSchemaId,
+          testPutRecordWithExistingSchemaId);
       Mockito.doReturn(mockResult).when(mockKafkaConsumer).poll(StoreConsumptionTask.READ_CYCLE_DELAY_MS);
 
       // Prepare mockStoreRepository to send a mock storage engine.
@@ -500,7 +503,8 @@ public class StoreConsumptionTaskTest {
       ConsumerRecord testPutRecordWithExistingSchemaId = producer.getPutConsumerRecord(testPartition, OFFSET_WITH_VALID_SCHEMA, putKey, putValue, existingSchemaId);
 
       // Prepare the mockKafkaConsumer to send the test poll results.
-      ConsumerRecords mockResult = mockKafkaPollResult(testPutRecordWithNonExistingSchemaId, testPutRecordWithExistingSchemaId);
+      ConsumerRecords mockResult = createConsumerRecords(testPutRecordWithNonExistingSchemaId,
+          testPutRecordWithExistingSchemaId);
       Mockito.doReturn(mockResult).when(mockKafkaConsumer).poll(StoreConsumptionTask.READ_CYCLE_DELAY_MS);
 
       // Prepare mockStoreRepository to send a mock storage engine.
@@ -552,7 +556,7 @@ public class StoreConsumptionTaskTest {
       ConsumerRecord fooPutRecord =
           producer.getPutConsumerRecord(PARTITION_FOO, fooLastOffset, putKey, putValue, -1);
 
-      ConsumerRecords mockResult1 = mockKafkaPollResult(fooStartRecord, fooPutRecord);
+      ConsumerRecords mockResult1 = createConsumerRecords(fooStartRecord, fooPutRecord);
 
       ConsumerRecord barStartRecord =
           producer.getControlRecord(ControlMessageType.START_OF_PUSH, currentOffset++, PARTITION_BAR);
@@ -560,15 +564,15 @@ public class StoreConsumptionTaskTest {
       ConsumerRecord barPutRecord =
           producer.getPutConsumerRecord(PARTITION_BAR, barLastOffset, putKey, putValue, -1);
 
-      ConsumerRecords mockResult2 = mockKafkaPollResult(barStartRecord, barPutRecord);
+      ConsumerRecords mockResult2 = createConsumerRecords(barStartRecord, barPutRecord);
 
       ConsumerRecord fooEndRecord =
           producer.getControlRecord(ControlMessageType.END_OF_PUSH, currentOffset++, PARTITION_FOO);
-      ConsumerRecords mockResult3 = mockKafkaPollResult(fooEndRecord);
+      ConsumerRecords mockResult3 = createConsumerRecords(fooEndRecord);
 
       ConsumerRecord barEndRecord =
           producer.getControlRecord(ControlMessageType.END_OF_PUSH, currentOffset++, PARTITION_BAR);
-      ConsumerRecords mockResult4 = mockKafkaPollResult(barEndRecord);
+      ConsumerRecords mockResult4 = createConsumerRecords(barEndRecord);
 
       // Tried breaking them into 4 separate lines with verify calls
       // But there was intermittent failures where the new return value was ignored
@@ -589,8 +593,10 @@ public class StoreConsumptionTaskTest {
       // Verify KafkaConsumer#poll is invoked.
       Mockito.verify(mockNotifier, Mockito.timeout(TIMEOUT).atLeastOnce()).started(topic, PARTITION_FOO);
       Mockito.verify(mockNotifier, Mockito.timeout(TIMEOUT).atLeastOnce()).started(topic, PARTITION_BAR);
-      Mockito.verify(mockNotifier, Mockito.timeout(TIMEOUT).atLeastOnce()).completed(topic, PARTITION_FOO, fooLastOffset);
-      Mockito.verify(mockNotifier, Mockito.timeout(TIMEOUT).atLeastOnce()).completed(topic, PARTITION_BAR, barLastOffset);
+      Mockito.verify(mockNotifier, Mockito.timeout(TIMEOUT).atLeastOnce()).completed(topic, PARTITION_FOO,
+          fooLastOffset);
+      Mockito.verify(mockNotifier, Mockito.timeout(TIMEOUT).atLeastOnce()).completed(topic, PARTITION_BAR,
+          barLastOffset);
 
       mockStoreConsumptionTask.close();
       testSubscribeTaskFuture.get(10, TimeUnit.SECONDS);
@@ -607,7 +613,7 @@ public class StoreConsumptionTaskTest {
       mockStoreConsumptionTask.subscribePartition(topic, testPartition);
 
       ConsumerRecord testPutRecord = producer.getPutConsumerRecord(testPartition, 10, putKey, putValue, schemaId);
-      ConsumerRecords mockResult = mockKafkaPollResult(testPutRecord);
+      ConsumerRecords mockResult = createConsumerRecords(testPutRecord);
 
       Mockito.doReturn(mockResult)
           .when(mockKafkaConsumer).poll(StoreConsumptionTask.READ_CYCLE_DELAY_MS);
@@ -656,7 +662,7 @@ public class StoreConsumptionTaskTest {
       ConsumerRecord fooPutRecord =
           producer.getPutConsumerRecord(PARTITION_FOO, fooLastOffset, putKey, putValue, -1);
 
-      ConsumerRecords mockResult1 = mockKafkaPollResult(fooStartRecord, fooPutRecord);
+      ConsumerRecords mockResult1 = createConsumerRecords(fooStartRecord, fooPutRecord);
 
       // BAR: Start of Push
       ConsumerRecord<KafkaKey, KafkaMessageEnvelope> barStartRecord =
@@ -669,17 +675,17 @@ public class StoreConsumptionTaskTest {
       ConsumerRecord<KafkaKey, KafkaMessageEnvelope> barPutRecord =
           producer.getPutConsumerRecord(PARTITION_BAR, barLastOffset, putKey, putValue, -1);
 
-      ConsumerRecords mockResult2 = mockKafkaPollResult(barStartRecord, barPutRecord);
+      ConsumerRecords mockResult2 = createConsumerRecords(barStartRecord, barPutRecord);
 
       // FOO: End of Push
       ConsumerRecord fooEndRecord =
           producer.getControlRecord(ControlMessageType.END_OF_PUSH, currentFooKafkaOffset++, PARTITION_FOO);
-      ConsumerRecords mockResult3 = mockKafkaPollResult(fooEndRecord);
+      ConsumerRecords mockResult3 = createConsumerRecords(fooEndRecord);
 
       // BAR: End of Push
       ConsumerRecord barEndRecord =
           producer.getControlRecord(ControlMessageType.END_OF_PUSH, currentBarKafkaOffset++, PARTITION_BAR);
-      ConsumerRecords mockResult4 = mockKafkaPollResult(barEndRecord);
+      ConsumerRecords mockResult4 = createConsumerRecords(barEndRecord);
 
       Mockito.doReturn(mockResult1)
           .doReturn(mockResult2)
@@ -745,7 +751,7 @@ public class StoreConsumptionTaskTest {
       ConsumerRecord fooPutRecord =
           producer.getPutConsumerRecord(PARTITION_FOO, fooLastOffset, putKey, putValue, -1);
 
-      ConsumerRecords mockResult1 = mockKafkaPollResult(fooStartRecord, fooPutRecord);
+      ConsumerRecords mockResult1 = createConsumerRecords(fooStartRecord, fooPutRecord);
 
       // BAR: Start of Push
       ConsumerRecord<KafkaKey, KafkaMessageEnvelope> barStartRecord =
@@ -767,17 +773,18 @@ public class StoreConsumptionTaskTest {
           barPutRecord.value()
       );
 
-      ConsumerRecords mockResult2 = mockKafkaPollResult(barStartRecord, barPutRecord, barPutRecord, duplicateBarPutRecord);
+      ConsumerRecords mockResult2 = createConsumerRecords(barStartRecord, barPutRecord, barPutRecord,
+          duplicateBarPutRecord);
 
       // FOO: End of Push
       ConsumerRecord fooEndRecord =
           producer.getControlRecord(ControlMessageType.END_OF_PUSH, currentFooKafkaOffset++, PARTITION_FOO);
-      ConsumerRecords mockResult3 = mockKafkaPollResult(fooEndRecord);
+      ConsumerRecords mockResult3 = createConsumerRecords(fooEndRecord);
 
       // BAR: End of Push
       ConsumerRecord barEndRecord =
           producer.getControlRecord(ControlMessageType.END_OF_PUSH, currentBarKafkaOffset++, PARTITION_BAR);
-      ConsumerRecords mockResult4 = mockKafkaPollResult(barEndRecord);
+      ConsumerRecords mockResult4 = createConsumerRecords(barEndRecord);
 
       Mockito.doReturn(mockResult1)
           .doReturn(mockResult2)
@@ -795,7 +802,48 @@ public class StoreConsumptionTaskTest {
       Mockito.verify(mockNotifier, Mockito.timeout(TIMEOUT).atLeastOnce()).started(topic, PARTITION_FOO);
       Mockito.verify(mockNotifier, Mockito.timeout(TIMEOUT).atLeastOnce()).started(topic, PARTITION_BAR);
       Mockito.verify(mockNotifier, Mockito.timeout(TIMEOUT).atLeastOnce()).completed(topic, PARTITION_FOO, fooLastOffset);
-      Mockito.verify(mockNotifier, Mockito.timeout(TIMEOUT).atLeastOnce()).completed(topic, PARTITION_BAR, barLastOffset);
+      Mockito.verify(mockNotifier, Mockito.timeout(TIMEOUT).atLeastOnce()).completed(topic, PARTITION_BAR,
+          barLastOffset);
+
+      mockStoreConsumptionTask.close();
+      testSubscribeTaskFuture.get(10, TimeUnit.SECONDS);
+    }
+  }
+
+  @Test
+  public void testThrottling() throws Exception {
+    final int PARTITION_FOO = 1;
+    int currentFooKafkaOffset = 0;
+
+    try (StoreConsumptionTask mockStoreConsumptionTask = getKafkaPerStoreConsumptionTask(PARTITION_FOO)) {
+      mockStoreConsumptionTask.subscribePartition(topic, PARTITION_FOO);
+      MockProducer producer = new MockProducer(topic, SystemTime.INSTANCE);
+
+      ConsumerRecord fooStartRecord =
+        producer.getControlRecord(ControlMessageType.START_OF_PUSH, currentFooKafkaOffset++, PARTITION_FOO);
+
+      ConsumerRecord fooPutRecord =
+          producer.getPutConsumerRecord(PARTITION_FOO, currentFooKafkaOffset++, putKey, putValue, -1);
+
+      ConsumerRecord fooDeleteRecord = producer.getDeleteConsumerRecord(PARTITION_FOO, currentFooKafkaOffset++,
+          deleteKey);
+
+      ConsumerRecords mockResult1 = createConsumerRecords(fooStartRecord, fooPutRecord, fooDeleteRecord);
+
+      ConsumerRecords emptyResult = new ConsumerRecords<>(new HashMap<>());
+      Mockito.doReturn(emptyResult)
+          .doReturn(mockResult1)
+          .doReturn(emptyResult)
+          .when(mockKafkaConsumer).poll(StoreConsumptionTask.READ_CYCLE_DELAY_MS);
+
+      // Prepare mockStoreRepository to send a mock storage engine.
+      Mockito.doReturn(mockAbstractStorageEngine).when(mockStoreRepository).getLocalStorageEngine(topic);
+
+      // MockKafkaConsumer is prepared. Schedule for polling.
+      Future testSubscribeTaskFuture = taskPollingService.submit(mockStoreConsumptionTask);
+
+      int totalRecordsSize = putKey.length + putValue.length + deleteKey.length;
+      Mockito.verify(mockThrottler, Mockito.timeout(TIMEOUT).times(1)).maybeThrottle(totalRecordsSize);
 
       mockStoreConsumptionTask.close();
       testSubscribeTaskFuture.get(10, TimeUnit.SECONDS);
