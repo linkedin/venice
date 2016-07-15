@@ -70,7 +70,15 @@ public class ServiceFactory {
   }
 
   public static VeniceClusterWrapper getVeniceCluster() {
-    return getService(VeniceClusterWrapper.SERVICE_NAME, VeniceClusterWrapper.generateService());
+    return getVeniceCluster(1);
+  }
+
+  public static VeniceClusterWrapper getVeniceCluster(int numberOfServers) {
+    // As we introduce bootstrap state in to venice and transition from bootstrap to online will be blocked until get
+    // "end of push" message. We need more venice server for testing, because there is a limitation in helix about how
+    // many uncompleted transitions one server could handle. So if we still use one server and that limitation is
+    // reached, venice can not create new resource which will cause failed tests.
+    return getService(VeniceClusterWrapper.SERVICE_NAME, VeniceClusterWrapper.generateService(numberOfServers));
   }
 
   private static <S extends ProcessWrapper> S getStatefulService(String serviceName, StatefulServiceProvider<S> serviceProvider) {

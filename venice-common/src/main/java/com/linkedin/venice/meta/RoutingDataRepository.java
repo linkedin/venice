@@ -13,7 +13,7 @@ import java.util.Map;
  */
 public interface RoutingDataRepository extends VeniceResource {
   /**
-   * Query instances that belong to given kafka topic and partition.
+   * Query instances that belong to given kafka topic and partition. All of instances in result are ready to serve.
    *
    * @param kafkaTopic
    * @param partitionId
@@ -23,7 +23,8 @@ public interface RoutingDataRepository extends VeniceResource {
   public List<Instance> getInstances(String kafkaTopic, int partitionId);
 
   /**
-   * Query all partitions that belong to given kafka topic.
+   * Query all partitions allocations that belong to given kafka topic. The instances in returned allocations are ready
+   * to serve OR being bootstrap.
    *
    * @param kafkaTopic
    *

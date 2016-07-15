@@ -44,9 +44,9 @@ public abstract class JobStatusDecider {
             "Invalid partition Id:" + partition.getId() + ". Valid partition id should be in range: [0, " + (
                 partitions.size() - 1) + "]");
       }
-      if (!hasEnoughReplicasForOnePartition(partition.getInstances().size(), job.getReplicationFactor())) {
+      if (!hasEnoughReplicasForOnePartition(partition.getAllLivingInstances().size(), job.getReplicationFactor())) {
         //Some of nodes are failed.
-        logger.info("Number of replicas:" + partition.getInstances().size() + " in partition:" + partition.getId()
+        logger.info("Number of replicas:" + partition.getAllLivingInstances().size() + " in partition:" + partition.getId()
             + "is smaller from the required. Replication factor:" + job.getReplicationFactor() + ", Strategy:" + getStrategy());
         return false;
       }

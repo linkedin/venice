@@ -31,7 +31,7 @@ public class TestOfflineJob {
         Instance instance = new Instance(nodeId + j, "localhost", 1235);
         instances.add(instance);
       }
-      Partition partition = new Partition(i, topic, instances);
+      Partition partition = new Partition(i, topic, instances, instances);
       partitions.put(i, partition);
     }
   }

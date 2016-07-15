@@ -15,6 +15,7 @@ import com.linkedin.venice.serialization.VeniceSerializer;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.nio.charset.StandardCharsets;
+import java.util.HashMap;
 import java.util.concurrent.ExecutionException;
 import java.util.function.Consumer;
 import org.apache.log4j.Logger;
@@ -149,12 +150,14 @@ public class ProducerConsumerReaderIntegrationTest {
     // TODO: Refactor the retry code into a re-usable (and less hacky) class
 
 
-    String initialValue = veniceReader.get(key);
-    Assert.assertNull(initialValue, "The test environment is not pristine! Key '" + key + "' already exists!");
+    // Can not execute following code, because right now status of node is "BOOTSTRAP" so can not find any online instance to read.
+    //String initialValue = veniceReader.get(key);
+    //Assert.assertNull(initialValue, "The test environment is not pristine! Key '" + key + "' already exists!");
 
     // Insert test record and wait synchronously for it to succeed
     veniceWriter.put(key, value, valueSchemaId).get();
-
+    // Write end of push message to make node become ONLINE from BOOTSTRAP
+    veniceWriter.broadcastEndOfPush(new HashMap<String,String>());
     // Read from the storage node
     // This may fail non-deterministically, if the storage node is not done consuming yet, hence the retries.
     Assert.assertTrue(retry((attempt, timeElapsed) -> {

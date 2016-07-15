@@ -17,7 +17,9 @@ public class TestJobStatusDecider {
 
   protected void createPartitions(int numberOfPartition, int replicationFactor) {
     for (int i = 0; i < numberOfPartition; i++) {
-      Partition partition = new Partition(i, topic, createInstances(replicationFactor));
+      List<Instance> instances = createInstances(replicationFactor);
+      Partition partition =
+          new Partition(i, topic, instances, instances);
       partitions.put(i, partition);
     }
   }
