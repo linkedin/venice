@@ -148,12 +148,12 @@ public class ProducerConsumerReaderIntegrationTest {
     String value = TestUtils.getUniqueString("value");
 
     // TODO: Refactor the retry code into a re-usable (and less hacky) class
-
-
-    // Can not execute following code, because right now status of node is "BOOTSTRAP" so can not find any online instance to read.
-    //String initialValue = veniceReader.get(key);
-    //Assert.assertNull(initialValue, "The test environment is not pristine! Key '" + key + "' already exists!");
-
+    try {
+      String initialValue = veniceReader.get(key);
+      Assert.fail("Not online instances exist in cluster, should throw exception for this read operation.");
+    } catch (VeniceException e) {
+      // Expected result. Because right now status of node is "BOOTSTRAP" so can not find any online instance to read.
+    }
     // Insert test record and wait synchronously for it to succeed
     veniceWriter.put(key, value, valueSchemaId).get();
     // Write end of push message to make node become ONLINE from BOOTSTRAP
