@@ -233,7 +233,7 @@ public class HelixRoutingDataRepository extends RoutingTableProvider implements 
             for (String partitionName : externalView.getPartitionSet()) {
                 //Get instance to state map for this partition from local memory.
                 Map<String, String> instanceStateMap = externalView.getStateMap(partitionName);
-                List<Instance> allLivingInstances = new ArrayList<>();
+                List<Instance> bootstrapInstances = new ArrayList<>();
                 List<Instance> onlineInstances = new ArrayList<>();
                 for (String instanceName : instanceStateMap.keySet()) {
                     if (instanceStateMap.get(instanceName).equals(HelixState.ONLINE.toString())) {
@@ -241,7 +241,6 @@ public class HelixRoutingDataRepository extends RoutingTableProvider implements 
                         if (liveInstanceMap.containsKey(instanceName)) {
                             Instance onlineInstance = HelixInstanceConverter.convertZNRecordToInstance(
                                 liveInstanceMap.get(instanceName).getRecord());
-                            allLivingInstances.add(onlineInstance);
                             onlineInstances.add(onlineInstance);
                         } else {
                             logger.warn("Cannot find instance '" + instanceName + "' in LIVEINSTANCES");
@@ -251,7 +250,7 @@ public class HelixRoutingDataRepository extends RoutingTableProvider implements 
                         if (liveInstanceMap.containsKey(instanceName)) {
                             Instance bootstrapInstance = HelixInstanceConverter.convertZNRecordToInstance(
                                 liveInstanceMap.get(instanceName).getRecord());
-                            allLivingInstances.add(bootstrapInstance);
+                            bootstrapInstances.add(bootstrapInstance);
                         } else {
                             logger.warn("Cannot find instance '" + instanceName + "' in LIVEINSTANCES");
                         }
@@ -261,8 +260,10 @@ public class HelixRoutingDataRepository extends RoutingTableProvider implements 
                     }
                 }
                 int partitionId = Partition.getPartitionIdFromName(partitionName);
+                ArrayList<Instance> allLiveInstances = new ArrayList<>(onlineInstances);
+                allLiveInstances.addAll(bootstrapInstances);
                 partitionsMap.put(partitionId,
-                    new Partition(partitionId, externalView.getResourceName(), allLivingInstances, onlineInstances));
+                    new Partition(partitionId, externalView.getResourceName(), allLiveInstances, onlineInstances));
             }
             newResourceToPartitionMap.put(externalView.getResourceName(), partitionsMap);
         }

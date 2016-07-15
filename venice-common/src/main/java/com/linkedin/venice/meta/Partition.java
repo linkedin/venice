@@ -1,6 +1,5 @@
 package com.linkedin.venice.meta;
 
-import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import javax.validation.constraints.NotNull;
@@ -27,18 +26,18 @@ public class Partition {
      */
     private final String resourceName;
     /**
-     * Instances who hold the replicas of this partition and still living. Living stands for it's ready to serve or doing
+     * Instances who hold the replicas of this partition and still live. Live stands for it's ready to serve or doing
      * the bootstrap.
      */
-    private final List<Instance> allLivingInstances;
+    private final List<Instance> allLiveInstances;
 
     private final List<Instance> readyToServeInstance;
 
-    public Partition(int id, @NotNull String resourceName, @NotNull List<Instance> allLivingInstances,
+    public Partition(int id, @NotNull String resourceName, @NotNull List<Instance> allLiveInstances,
         @NotNull List<Instance> readyToServeInstance) {
         this.id = id;
         this.resourceName = resourceName;
-        this.allLivingInstances = Collections.unmodifiableList(allLivingInstances);
+        this.allLiveInstances = Collections.unmodifiableList(allLiveInstances);
         this.readyToServeInstance = Collections.unmodifiableList(readyToServeInstance);
     }
 
@@ -46,8 +45,8 @@ public class Partition {
         return readyToServeInstance;
     }
 
-    public List<Instance> getAllLivingInstances() {
-        return allLivingInstances;
+    public List<Instance> getAllLiveInstances() {
+        return allLiveInstances;
     }
 
     public static String getPartitionName(String resourceName, int partitionId) {

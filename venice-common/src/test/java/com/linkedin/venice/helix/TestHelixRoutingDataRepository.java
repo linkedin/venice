@@ -180,13 +180,13 @@ public class TestHelixRoutingDataRepository {
     Map<Integer, Partition> partitions = repository.getPartitions(resourceName);
     Assert.assertEquals(1, partitions.size());
     Assert.assertEquals(1, partitions.get(0).getInstances().size());
-    Assert.assertEquals(1, partitions.get(0).getAllLivingInstances().size());
+    Assert.assertEquals(1, partitions.get(0).getAllLiveInstances().size());
 
     Instance instance = partitions.get(0).getInstances().get(0);
     Assert.assertEquals(Utils.getHostName(), instance.getHost());
     Assert.assertEquals(httpPort, instance.getPort());
 
-    Instance liveInstance = partitions.get(0).getAllLivingInstances().get(0);
+    Instance liveInstance = partitions.get(0).getAllLiveInstances().get(0);
     Assert.assertEquals(liveInstance, instance);
 
     //Participant become off=line.
@@ -269,14 +269,14 @@ public class TestHelixRoutingDataRepository {
     Assert.assertEquals(repository.getInstances(resourceName, 0).size(), 0,
         "Transition should be delayed, so there is no online instance.");
     Assert.assertEquals(repository.getPartitions(resourceName).size(), 1);
-    Assert.assertEquals(repository.getPartitions(resourceName).get(0).getAllLivingInstances().size(), 1,
+    Assert.assertEquals(repository.getPartitions(resourceName).get(0).getAllLiveInstances().size(), 1,
         "One bootstrap instance should be found");
     // make bootstrap to online transition completed, now there is one online instance.
     factory.makeTransitionCompleted(resourceName, 0);
     Thread.sleep(WAIT_TIME);
     Assert.assertEquals(repository.getInstances(resourceName, 0).size(), 1, "One online instance should be found");
     Assert.assertEquals(repository.getPartitions(resourceName).size(), 1);
-    Assert.assertEquals(repository.getPartitions(resourceName).get(0).getAllLivingInstances().size(), 1,
+    Assert.assertEquals(repository.getPartitions(resourceName).get(0).getAllLiveInstances().size(), 1,
         "One online instance should be found");
     Assert.assertEquals(repository.getPartitions(resourceName).get(0).getInstances().size(), 1,
         "One online instance should be found");

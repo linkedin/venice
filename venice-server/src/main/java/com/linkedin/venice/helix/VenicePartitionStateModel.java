@@ -4,7 +4,6 @@ import com.linkedin.venice.config.VeniceStoreConfig;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.consumer.KafkaConsumerService;
 import com.linkedin.venice.storage.StorageService;
-import com.linkedin.venice.utils.HelixUtils;
 import javax.validation.constraints.NotNull;
 import org.apache.helix.NotificationContext;
 import org.apache.helix.model.Message;
@@ -82,7 +81,7 @@ public class VenicePartitionStateModel extends StateModel {
      */
     @Transition(to = HelixState.OFFLINE_STATE, from = HelixState.ONLINE_STATE)
     public void onBecomeOfflineFromOnline(Message message, NotificationContext context) {
-        logEntry(HelixState.OFFLINE, HelixState.ONLINE, message, context);
+        logEntry(HelixState.ONLINE, HelixState.OFFLINE, message, context);
         kafkaConsumerService.stopConsumption(storeConfig, partition);
         logCompletion(HelixState.OFFLINE, HelixState.ONLINE, message, context);
 
@@ -129,13 +128,13 @@ public class VenicePartitionStateModel extends StateModel {
 
     private void logEntry(HelixState from, HelixState to, Message message, NotificationContext context) {
         logger.info(storePartitionNodeDescription + " initiating transition from " + from.toString() + " to " + to
-                .toString() + " Resource " + storeConfig.getStoreName() + " Partition " + partition +
+                .toString() + " Store" + storeConfig.getStoreName() + " Partition " + partition +
                 " invoked with Message " + message + " and context " + context);
     }
 
     private void logCompletion(HelixState from, HelixState to, Message message, NotificationContext context) {
         logger.info(storePartitionNodeDescription + " completed transition from " + from.toString() + " to "
-                + to.toString() + " Resource " + storeConfig.getStoreName() + " Partition " + partition +
+                + to.toString() + " Store " + storeConfig.getStoreName() + " Partition " + partition +
                 " invoked with Message " + message + " and context " + context);
     }
 }
