@@ -27,18 +27,27 @@ public class Partition {
      */
     private final String resourceName;
     /**
-     * Instances who hold the replicas of this partition.
+     * Instances who hold the replicas of this partition and still living. Living stands for it's ready to serve or doing
+     * the bootstrap.
      */
-    private final List<Instance> instances;
+    private final List<Instance> allLivingInstances;
 
-    public Partition(int id, @NotNull String resourceName, @NotNull List<Instance> instances) {
+    private final List<Instance> readyToServeInstance;
+
+    public Partition(int id, @NotNull String resourceName, @NotNull List<Instance> allLivingInstances,
+        @NotNull List<Instance> readyToServeInstance) {
         this.id = id;
         this.resourceName = resourceName;
-        this.instances = new ArrayList<>(instances);
+        this.allLivingInstances = Collections.unmodifiableList(allLivingInstances);
+        this.readyToServeInstance = Collections.unmodifiableList(readyToServeInstance);
     }
 
     public List<Instance> getInstances() {
-        return Collections.unmodifiableList(this.instances);
+        return readyToServeInstance;
+    }
+
+    public List<Instance> getAllLivingInstances() {
+        return allLivingInstances;
     }
 
     public static String getPartitionName(String resourceName, int partitionId) {

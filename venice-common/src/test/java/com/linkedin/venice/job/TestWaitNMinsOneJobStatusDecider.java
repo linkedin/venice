@@ -1,8 +1,10 @@
 package com.linkedin.venice.job;
 
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.Partition;
 import java.util.HashMap;
+import java.util.List;
 import org.testng.Assert;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
@@ -81,14 +83,16 @@ public class TestWaitNMinsOneJobStatusDecider extends TestJobStatusDecider {
     Assert.assertTrue(waitNMinsOneDecider.hasEnoughTaskExecutors(job, partitions.values()), "No enough executors");
 
     partitions.remove(1);
-    partitions.put(1, new Partition(1, topic, createInstances(replicationFactor - 1)));
+    List<Instance> instances = createInstances(replicationFactor - 1);
+    partitions.put(1, new Partition(1, topic, instances, instances));
 
     Assert.assertTrue(waitNMinsOneDecider.hasEnoughTaskExecutors(job, partitions.values()),
         "Partition-1 miss one replica, In N-1 strategy, decider should return true.");
 
     partitions.remove(1);
+    instances = createInstances(replicationFactor);
     partitions.put(numberOfPartition + 1,
-        new Partition(numberOfPartition + 1, topic, createInstances(replicationFactor)));
+        new Partition(numberOfPartition + 1, topic, instances, instances));
 
     try {
       waitNMinsOneDecider.hasEnoughTaskExecutors(job, partitions.values());

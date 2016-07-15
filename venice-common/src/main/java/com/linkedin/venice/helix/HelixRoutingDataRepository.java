@@ -19,6 +19,7 @@ import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import javax.validation.constraints.NotNull;
+import org.apache.commons.collections.map.HashedMap;
 import org.apache.helix.ControllerChangeListener;
 import org.apache.helix.HelixManager;
 import org.apache.helix.NotificationContext;
@@ -83,7 +84,9 @@ public class HelixRoutingDataRepository extends RoutingTableProvider implements 
      */
     public void refresh() {
         try {
-            resourceToPartitionMap.set(new HashMap());
+            clear();
+            // After adding the listener, helix will initialize the callback which will get the entire external view
+            // and trigger the external view change event. In other words, venice will read the newest external view immediately.
             manager.addExternalViewChangeListener(this);
             manager.addControllerListener(this);
         } catch (Exception e) {
@@ -95,8 +98,9 @@ public class HelixRoutingDataRepository extends RoutingTableProvider implements 
 
     public void clear() {
         manager.removeListener(keyBuilder.externalViews(), this);
+        manager.removeListener(keyBuilder.controller(), this);
         resourceToNumberOfPartitionsMap.clear();
-        resourceToPartitionMap.set(null);
+        resourceToPartitionMap.set(new HashedMap());
     }
 
     /**
@@ -113,7 +117,7 @@ public class HelixRoutingDataRepository extends RoutingTableProvider implements 
         if (map.containsKey(resourceName)) {
             Map<Integer, Partition> partitionsMap = map.get(resourceName);
             if (partitionsMap.containsKey(partitionId)) {
-                return Collections.unmodifiableList(partitionsMap.get(partitionId).getInstances());
+                return partitionsMap.get(partitionId).getInstances();
             } else {
                 //Can not find partition by given partitionId.
                 return Collections.emptyList();
@@ -228,22 +232,37 @@ public class HelixRoutingDataRepository extends RoutingTableProvider implements 
             Map<Integer, Partition> partitionsMap = new HashMap<>();
             for (String partitionName : externalView.getPartitionSet()) {
                 //Get instance to state map for this partition from local memory.
-                Map<String,String> instanceStateMap = externalView.getStateMap(partitionName);
-                List<Instance> instances = new ArrayList<>();
-                for(String instanceName:instanceStateMap.keySet()){
-                    if (!instanceStateMap.get(instanceName).equals(HelixState.ONLINE.toString())) {
+                Map<String, String> instanceStateMap = externalView.getStateMap(partitionName);
+                List<Instance> allLivingInstances = new ArrayList<>();
+                List<Instance> onlineInstances = new ArrayList<>();
+                for (String instanceName : instanceStateMap.keySet()) {
+                    if (instanceStateMap.get(instanceName).equals(HelixState.ONLINE.toString())) {
+                        // Add online instance both to online instances list and all living instances list.
+                        if (liveInstanceMap.containsKey(instanceName)) {
+                            Instance onlineInstance = HelixInstanceConverter.convertZNRecordToInstance(
+                                liveInstanceMap.get(instanceName).getRecord());
+                            allLivingInstances.add(onlineInstance);
+                            onlineInstances.add(onlineInstance);
+                        } else {
+                            logger.warn("Cannot find instance '" + instanceName + "' in LIVEINSTANCES");
+                        }
+                    } else if (instanceStateMap.get(instanceName).equals(HelixState.BOOTSTRAP.toString())) {
+                        // Add bootstrap instance only to all living instances list.
+                        if (liveInstanceMap.containsKey(instanceName)) {
+                            Instance bootstrapInstance = HelixInstanceConverter.convertZNRecordToInstance(
+                                liveInstanceMap.get(instanceName).getRecord());
+                            allLivingInstances.add(bootstrapInstance);
+                        } else {
+                            logger.warn("Cannot find instance '" + instanceName + "' in LIVEINSTANCES");
+                        }
+                    } else {
                         //ignore the instance which is not in ONLINE state.
                         logger.info(instanceName + " is not ONLINE. State:" + instanceStateMap.get(instanceName));
-                        continue;
-                    }
-                    if(liveInstanceMap.containsKey(instanceName)){
-                        instances.add(HelixInstanceConverter.convertZNRecordToInstance(liveInstanceMap.get(instanceName).getRecord()));
-                    }else{
-                        logger.warn("Cannot find instance '" + instanceName + "' in LIVEINSTANCES");
                     }
                 }
-                int partitionId=Partition.getPartitionIdFromName(partitionName);
-                partitionsMap.put(partitionId, new Partition(partitionId, externalView.getResourceName(),instances));
+                int partitionId = Partition.getPartitionIdFromName(partitionName);
+                partitionsMap.put(partitionId,
+                    new Partition(partitionId, externalView.getResourceName(), allLivingInstances, onlineInstances));
             }
             newResourceToPartitionMap.put(externalView.getResourceName(), partitionsMap);
         }

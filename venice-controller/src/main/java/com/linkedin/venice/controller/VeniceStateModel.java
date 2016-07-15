@@ -9,7 +9,8 @@ import org.apache.helix.model.StateModelDefinition;
  * Venice Partition state model generator describes the transition for segment states.
  *
  * Online -> Offline
- * Offline -> Online
+ * Offline -> Bootstrap
+ * Bootstrap -> Online
  * Offline -> Dropped
  */
 public class VeniceStateModel {
@@ -26,13 +27,15 @@ public class VeniceStateModel {
 
     // States and their priority in which we want the instances to be in.
     builder.addState(HelixState.ONLINE.toString(), PRIORITY_HIGHEST);
+    builder.addState(HelixState.BOOTSTRAP_STATE.toString());
     builder.addState(HelixState.OFFLINE.toString());
     builder.addState(HelixDefinedState.DROPPED.toString());
 
     builder.initialState(HelixState.OFFLINE.toString());
 
     // Valid transitions between the states.
-    builder.addTransition(HelixState.OFFLINE.toString(), HelixState.ONLINE.toString());
+    builder.addTransition(HelixState.OFFLINE.toString(), HelixState.BOOTSTRAP.toString());
+    builder.addTransition(HelixState.BOOTSTRAP.toString(), HelixState.ONLINE.toString());
     builder.addTransition(HelixState.ONLINE.toString(), HelixState.OFFLINE.toString());
     builder.addTransition(HelixState.OFFLINE.toString(), HelixDefinedState.DROPPED.toString());
 

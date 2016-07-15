@@ -9,8 +9,6 @@ import com.linkedin.venice.job.JobRepository;
 import com.linkedin.venice.job.JobStatusDecider;
 import com.linkedin.venice.job.OfflineJob;
 import com.linkedin.venice.job.Task;
-import com.linkedin.venice.job.WaitAllJobStatsDecider;
-import com.linkedin.venice.job.WaitNMinusOneJobStatusDeicder;
 import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.Partition;
 import com.linkedin.venice.meta.ReadWriteStoreRepository;
@@ -22,7 +20,6 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
-import java.util.HashMap;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
@@ -117,7 +114,7 @@ public class VeniceJobManager implements StatusMessageHandler<StoreStatusMessage
       try {
         jobRepository.stopJobWithError(job.getJobId(), job.getKafkaTopic());
       } catch (Exception e1) {
-        logger.error("Can not put job:" + job.getJobId() + " for topic:" + job.getKafkaTopic() + " to error status.");
+        logger.error("Can not put job:" + job.getJobId() + " for topic:" + job.getKafkaTopic() + " to error status.", e1);
       }
       throw new VeniceException(errorMsg, e);
     }

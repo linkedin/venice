@@ -29,6 +29,7 @@ public class TestAdminSparkServer {
 
   @BeforeClass
   public void setUp(){
+    // Start cluster with 3 venice storage nodes.
     venice = ServiceFactory.getVeniceCluster();
     routerUrl = "http://" + venice.getVeniceRouter().getAddress();
   }
@@ -92,6 +93,10 @@ public class TestAdminSparkServer {
 
   @Test
   public void controllerClientShouldListStores(){
+    venice.close();
+    //Need more server to handle 10 resources creation.
+    venice = ServiceFactory.getVeniceCluster(3);
+    routerUrl = "http://" + venice.getVeniceRouter().getAddress();
     List<String> storeNames = new ArrayList<>();
     for (int i=0; i<10; i++){ //add 10 stores;
       storeNames.add(Version.parseStoreFromKafkaTopicName(venice.getNewStoreVersion().getKafkaTopic()));

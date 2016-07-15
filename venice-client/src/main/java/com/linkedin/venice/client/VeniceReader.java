@@ -89,7 +89,7 @@ public class VeniceReader<K, V> {
     if (instances.size() < 1){
       // TODO: Change this exception type. Maybe create a new subclass of VeniceException specifically for this case?
       // TODO: Add built-in resilience. Maybe wait and retry, etc.
-      throw new NullPointerException("No hosts available to serve partition: " + partition +
+      throw new VeniceException("No hosts available to serve partition: " + partition +
           ", store: " + resourceName);
     }
     // Proper router will eventually use a strategy other than "read from one"

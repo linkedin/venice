@@ -3,7 +3,11 @@ package com.linkedin.venice.integration.utils;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 
+import com.linkedin.venice.server.VeniceServer;
 import java.io.File;
+import java.util.ArrayList;
+import java.util.List;
+
 
 /**
  * This is the whole enchilada:
@@ -18,7 +22,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
   private final ZkServerWrapper zkServerWrapper;
   private final KafkaBrokerWrapper kafkaBrokerWrapper;
   private final VeniceControllerWrapper veniceControllerWrapper;
-  private final VeniceServerWrapper veniceServerWrapper;
+  private final List<VeniceServerWrapper> veniceServerWrappers;
   private final VeniceRouterWrapper veniceRouterWrapper;
 
   VeniceClusterWrapper(File dataDirectory,
@@ -26,18 +30,18 @@ public class VeniceClusterWrapper extends ProcessWrapper {
                        ZkServerWrapper zkServerWrapper,
                        KafkaBrokerWrapper kafkaBrokerWrapper,
                        VeniceControllerWrapper veniceControllerWrapper,
-                       VeniceServerWrapper veniceServerWrapper,
+                       List<VeniceServerWrapper> veniceServerWrappers,
                        VeniceRouterWrapper veniceRouterWrapper) {
     super(SERVICE_NAME, dataDirectory);
     this.clusterName = clusterName;
     this.zkServerWrapper = zkServerWrapper;
     this.kafkaBrokerWrapper = kafkaBrokerWrapper;
     this.veniceControllerWrapper = veniceControllerWrapper;
-    this.veniceServerWrapper = veniceServerWrapper;
+    this.veniceServerWrappers = veniceServerWrappers;
     this.veniceRouterWrapper = veniceRouterWrapper;
   }
 
-  static ServiceProvider<VeniceClusterWrapper> generateService() {
+  static ServiceProvider<VeniceClusterWrapper> generateService(int numberOfServers) {
     /**
      * We get the various dependencies outside of the lambda, to avoid having a time
      * complexity of O(N^2) on the amount of retries. The calls have their own retries,
@@ -49,11 +53,15 @@ public class VeniceClusterWrapper extends ProcessWrapper {
     KafkaBrokerWrapper kafkaBrokerWrapper = ServiceFactory.getKafkaBroker(zkServerWrapper);
     VeniceControllerWrapper veniceControllerWrapper = ServiceFactory.getVeniceController(clusterName,
         kafkaBrokerWrapper);
-    VeniceServerWrapper veniceServerWrapper = ServiceFactory.getVeniceServer(clusterName, kafkaBrokerWrapper);
+    List<VeniceServerWrapper> veniceServerWrappers = new ArrayList<>();
+    for(int i=0;i<numberOfServers;i++){
+
+      veniceServerWrappers.add(ServiceFactory.getVeniceServer(clusterName, kafkaBrokerWrapper));
+    }
     VeniceRouterWrapper veniceRouterWrapper = ServiceFactory.getVeniceRouter(clusterName, kafkaBrokerWrapper);
 
     return (serviceName, port) -> new VeniceClusterWrapper(
-        null, clusterName, zkServerWrapper, kafkaBrokerWrapper, veniceControllerWrapper, veniceServerWrapper, veniceRouterWrapper);
+        null, clusterName, zkServerWrapper, kafkaBrokerWrapper, veniceControllerWrapper, veniceServerWrappers, veniceRouterWrapper);
   }
 
   public String getClusterName() {
@@ -72,8 +80,8 @@ public class VeniceClusterWrapper extends ProcessWrapper {
     return veniceControllerWrapper;
   }
 
-  public VeniceServerWrapper getVeniceServer() {
-    return veniceServerWrapper;
+  public List<VeniceServerWrapper> getVeniceServers() {
+    return veniceServerWrappers;
   }
 
   public VeniceRouterWrapper getVeniceRouter(){
@@ -102,7 +110,9 @@ public class VeniceClusterWrapper extends ProcessWrapper {
   @Override
   protected void stop() throws Exception {
     // Stop called in reverse order of dependency
-    veniceServerWrapper.stop();
+    for(VeniceServerWrapper veniceServerWrapper:veniceServerWrappers) {
+      veniceServerWrapper.stop();
+    }
     veniceControllerWrapper.stop();
     kafkaBrokerWrapper.stop();
     zkServerWrapper.stop();

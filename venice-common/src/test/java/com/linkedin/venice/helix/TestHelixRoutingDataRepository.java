@@ -6,11 +6,12 @@ import com.linkedin.venice.meta.Partition;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.meta.RoutingDataRepository;
+import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.Utils;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.CountDownLatch;
 import org.apache.helix.HelixAdmin;
 import org.apache.helix.HelixDefinedState;
 import org.apache.helix.HelixManager;
@@ -79,7 +80,7 @@ public class TestHelixRoutingDataRepository {
     controller = HelixControllerMain
         .startHelixController(zkAddress, clusterName, Utils.getHelixNodeIdentifier(adminPort), HelixControllerMain.STANDALONE);
 
-    manager = createPartcipant(httpPort);
+    manager = createParticipant(httpPort);
     manager.connect();
     //Waiting essential notification from ZK. TODO: use a listener to find out when ZK is ready
     Thread.sleep(WAIT_TIME);
@@ -100,10 +101,10 @@ public class TestHelixRoutingDataRepository {
     zkServerWrapper.close();
   }
 
-  private HelixManager createPartcipant(int port){
+  private HelixManager createParticipant(int port, UnitTestStateModelFactory factory){
     HelixManager manager = HelixManagerFactory.getZKHelixManager(clusterName, Utils.getHelixNodeIdentifier(port), InstanceType.PARTICIPANT, zkAddress);
     manager.getStateMachineEngine()
-        .registerStateModelFactory(UnitTestStateModel.UNIT_TEST_STATE_MODEL, new UnitTestStateModelFactory());
+        .registerStateModelFactory(UnitTestStateModel.UNIT_TEST_STATE_MODEL, factory);
     Instance instance = new Instance(Utils.getHelixNodeIdentifier(port), Utils.getHostName(), port);
     manager.setLiveInstanceInfoProvider(new LiveInstanceInfoProvider() {
       @Override
@@ -112,6 +113,10 @@ public class TestHelixRoutingDataRepository {
       }
     });
     return manager;
+  }
+  private HelixManager createParticipant(int port){
+    //Create participatn with out transition delay.
+    return createParticipant(port, new UnitTestStateModelFactory());
   }
 
   @Test
@@ -130,7 +135,7 @@ public class TestHelixRoutingDataRepository {
     instances = repository.getInstances(resourceName, 0);
     Assert.assertEquals(0, instances.size());
     int newHttpPort = httpPort+10;
-    HelixManager newManager = createPartcipant(newHttpPort);
+    HelixManager newManager = createParticipant(newHttpPort);
     newManager.connect();
     Thread.sleep(WAIT_TIME);
     instances = repository.getInstances(resourceName, 0);
@@ -175,10 +180,14 @@ public class TestHelixRoutingDataRepository {
     Map<Integer, Partition> partitions = repository.getPartitions(resourceName);
     Assert.assertEquals(1, partitions.size());
     Assert.assertEquals(1, partitions.get(0).getInstances().size());
+    Assert.assertEquals(1, partitions.get(0).getAllLivingInstances().size());
 
     Instance instance = partitions.get(0).getInstances().get(0);
     Assert.assertEquals(Utils.getHostName(), instance.getHost());
     Assert.assertEquals(httpPort, instance.getPort());
+
+    Instance liveInstance = partitions.get(0).getAllLivingInstances().get(0);
+    Assert.assertEquals(liveInstance, instance);
 
     //Participant become off=line.
     manager.disconnect();
@@ -241,7 +250,36 @@ public class TestHelixRoutingDataRepository {
   public void testNodeChanged()
       throws InterruptedException {
     manager.disconnect();
-    Thread.sleep(1000L);
+    Thread.sleep(WAIT_TIME);
+    Assert.assertEquals(repository.getInstances(resourceName,0).size(), 0);
+  }
+
+  @Test
+  public void testGetBootstrapInstances()
+      throws Exception {
+    manager.disconnect();
+    //Create new factory to create delayed state model.
+    UnitTestStateModelFactory factory = new UnitTestStateModelFactory();
+    factory.isDelay = true;
+    manager = createParticipant(httpPort + 1, factory);
+    manager.connect();
+    Thread.sleep(WAIT_TIME);
+
+    // because bootstrap to online transition is blocked, so there is only one bootstrap instance.
+    Assert.assertEquals(repository.getInstances(resourceName, 0).size(), 0,
+        "Transition should be delayed, so there is no online instance.");
+    Assert.assertEquals(repository.getPartitions(resourceName).size(), 1);
+    Assert.assertEquals(repository.getPartitions(resourceName).get(0).getAllLivingInstances().size(), 1,
+        "One bootstrap instance should be found");
+    // make bootstrap to online transition completed, now there is one online instance.
+    factory.makeTransitionCompleted(resourceName, 0);
+    Thread.sleep(WAIT_TIME);
+    Assert.assertEquals(repository.getInstances(resourceName, 0).size(), 1, "One online instance should be found");
+    Assert.assertEquals(repository.getPartitions(resourceName).size(), 1);
+    Assert.assertEquals(repository.getPartitions(resourceName).get(0).getAllLivingInstances().size(), 1,
+        "One online instance should be found");
+    Assert.assertEquals(repository.getPartitions(resourceName).get(0).getInstances().size(), 1,
+        "One online instance should be found");
   }
 
   public static class UnitTestStateModel {
@@ -254,9 +292,11 @@ public class TestHelixRoutingDataRepository {
 
       builder.addState(HelixState.ONLINE.toString(), 1);
       builder.addState(HelixState.OFFLINE.toString());
+      builder.addState(HelixState.BOOTSTRAP.toString());
       builder.addState(HelixState.DROPPED.toString());
       builder.initialState(HelixState.OFFLINE.toString());
-      builder.addTransition(HelixState.OFFLINE.toString(), HelixState.ONLINE.toString());
+      builder.addTransition(HelixState.OFFLINE.toString(), HelixState.BOOTSTRAP.toString());
+      builder.addTransition(HelixState.BOOTSTRAP.toString(), HelixState.ONLINE.toString());
       builder.addTransition(HelixState.ONLINE.toString(), HelixState.OFFLINE.toString());
       builder.addTransition(HelixState.OFFLINE.toString(), HelixDefinedState.DROPPED.toString());
       builder.dynamicUpperBound(HelixState.ONLINE.toString(), "R");
@@ -266,16 +306,45 @@ public class TestHelixRoutingDataRepository {
   }
 
   public static class UnitTestStateModelFactory extends StateModelFactory<StateModel> {
+    private boolean isDelay = false;
+    private Map<String, CountDownLatch> modelTolatchMap = new HashMap<>();
     @Override
     public StateModel createNewStateModel(String resourceName, String partitionName) {
-      OnlineOfflineStateModel stateModel = new OnlineOfflineStateModel();
+      OnlineOfflineStateModel stateModel = new OnlineOfflineStateModel(isDelay);
+      CountDownLatch latch = new CountDownLatch(1);
+      modelTolatchMap.put(resourceName + "_" + HelixUtils.getPartitionId(partitionName) , latch);
+      stateModel.latch = latch;
       return stateModel;
     }
 
-    @StateModelInfo(states = "{'OFFLINE','ONLINE'}", initialState = "OFFLINE")
+    public void setDelayTransistion(boolean isDelay){
+      this.isDelay = isDelay;
+    }
+
+    public void makeTransitionCompleted(String resourceName, int partitionId) {
+      modelTolatchMap.get(resourceName + "_" + partitionId).countDown();
+    }
+
+    @StateModelInfo(states = "{'OFFLINE','ONLINE','BOOTSTRAP'}", initialState = "OFFLINE")
     public static class OnlineOfflineStateModel extends StateModel {
-      @Transition(from = "OFFLINE", to = "ONLINE")
-      public void onBecomeOnlineFromOffline(Message message, NotificationContext context) {
+      private boolean isDelay;
+
+      OnlineOfflineStateModel(boolean isDelay){
+        this.isDelay = isDelay;
+      }
+
+      private CountDownLatch latch;
+      @Transition(from = "OFFLINE", to = "BOOTSTRAP")
+      public void onBecomeBootstrapFromOffline(Message message, NotificationContext context) {
+      }
+
+      @Transition(from = "BOOTSTRAP", to = "ONLINE")
+      public void onBecomeOnlineFromBootstrap(Message message, NotificationContext context)
+          throws InterruptedException {
+        if (isDelay) {
+          // mock the delay during becoming online.
+          latch.await();
+        }
       }
 
       @Transition(from = "ONLINE", to = "OFFLINE")

@@ -1,13 +1,17 @@
 package com.linkedin.venice.helix;
 
 import com.linkedin.venice.config.VeniceStoreConfig;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.consumer.KafkaConsumerService;
 import com.linkedin.venice.server.StoreRepository;
 import com.linkedin.venice.storage.StorageService;
 import com.linkedin.venice.store.AbstractStorageEngine;
+import java.util.concurrent.CountDownLatch;
 import org.apache.helix.NotificationContext;
 import org.apache.helix.model.Message;
 import org.mockito.Mockito;
+import org.testng.Assert;
+import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.BeforeSuite;
 import org.testng.annotations.Test;
 
@@ -26,7 +30,9 @@ public class VenicePartitionStateModelTest {
 
   private VenicePartitionStateModel testStateModel;
 
-  @BeforeSuite
+  private VeniceStateModelFactory.StateModelNotifier mockNotifier;
+
+  @BeforeMethod
   public void setUp() throws Exception {
     mockKafkaConsumerService = Mockito.mock(KafkaConsumerService.class);
     mockStorageService = Mockito.mock(StorageService.class);
@@ -35,8 +41,10 @@ public class VenicePartitionStateModelTest {
     mockMessage = Mockito.mock(Message.class);
     mockContext = Mockito.mock(NotificationContext.class);
 
+    mockNotifier = Mockito.mock(VeniceStateModelFactory.StateModelNotifier.class);
+
     testStateModel = new VenicePartitionStateModel(mockKafkaConsumerService, mockStorageService, mockStoreConfig,
-        testPartition);
+        testPartition, mockNotifier);
   }
 
   /**
@@ -44,12 +52,56 @@ public class VenicePartitionStateModelTest {
    *  1. Kafka Partition consumption turned on.
    *  2. Partition is added to local storage engine if required.
    *    2.1 KafkaConsumption offset is reset if new local partition created.
+   *  3. Notifier knows the consumption is started.
    */
   @Test
-  public void testOnBecomeOnlineFromOffline() throws Exception {
-    testStateModel.onBecomeOnlineFromOffline(mockMessage, mockContext);
+  public void testOnBecomeBootstrapFromOffline() throws Exception {
+    testStateModel.onBecomeBootstrapFromOffline(mockMessage, mockContext);
     Mockito.verify(mockKafkaConsumerService, Mockito.times(1)).startConsumption(mockStoreConfig, testPartition);
     Mockito.verify(mockStorageService, Mockito.times(1)).openStoreForNewPartition(mockStoreConfig, testPartition);
+    Mockito.verify(mockNotifier, Mockito.times(1)).startConsumption(mockMessage.getResourceName(), testPartition);
+  }
+
+  /**
+   * Verify wait on notifier is processed.
+   * @throws Exception
+   */
+  @Test
+  public void testOnBecomeOnlineFromBootstrap()
+      throws Exception {
+    testStateModel.onBecomeOnlineFromBootstrap(mockMessage, mockContext);
+    Mockito.verify(mockNotifier, Mockito.times(1))
+        .waitConsumptionCompleted(mockMessage.getResourceName(), testPartition);
+  }
+
+  /**
+   * Test a state model transit from offline to bootstrap then from bootstrap to online.
+   */
+  @Test
+  public void testOfflineToBootstrapToOnline() {
+    VeniceStateModelFactory.StateModelNotifier notifier = new VeniceStateModelFactory.StateModelNotifier();
+    testStateModel =
+        new VenicePartitionStateModel(mockKafkaConsumerService, mockStorageService, mockStoreConfig, testPartition,
+            notifier);
+    testStateModel.onBecomeBootstrapFromOffline(mockMessage, mockContext);
+    CountDownLatch latch = notifier.getLatch(mockMessage.getResourceName(), testPartition);
+    Assert.assertEquals(latch.getCount(), 1);
+    Thread comumptionThread = new Thread(new Runnable() {
+      @Override
+      public void run() {
+        try {
+          Thread.sleep(1000l);
+          // Notify that consumption is completed.
+          notifier.completed(mockMessage.getResourceName(), testPartition, 0);
+        } catch (InterruptedException e) {
+          Assert.fail(e.getMessage());
+        }
+      }
+    });
+    comumptionThread.start();
+    testStateModel.onBecomeOnlineFromBootstrap(mockMessage, mockContext);
+    latch = notifier.getLatch(mockMessage.getResourceName(), testPartition);
+    Assert.assertNull(latch);
   }
 
   /**
