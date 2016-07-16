@@ -58,6 +58,7 @@ public class VenicePartitionStateModel extends StateModel {
                 "Can not complete consumption for resource:" + message.getResourceName() + "par" + " partition:"
                     + partition;
             logger.error(errorMsg, e);
+            // Please note, after throwing this exception, this node will become ERROR for this resource.
             throw new VeniceException(errorMsg, e);
         }
         logCompletion(HelixState.BOOTSTRAP, HelixState.ONLINE, message, context);

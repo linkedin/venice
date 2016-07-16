@@ -19,7 +19,6 @@ import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import javax.validation.constraints.NotNull;
-import org.apache.commons.collections.map.HashedMap;
 import org.apache.helix.ControllerChangeListener;
 import org.apache.helix.HelixManager;
 import org.apache.helix.NotificationContext;
@@ -100,24 +99,24 @@ public class HelixRoutingDataRepository extends RoutingTableProvider implements 
         manager.removeListener(keyBuilder.externalViews(), this);
         manager.removeListener(keyBuilder.controller(), this);
         resourceToNumberOfPartitionsMap.clear();
-        resourceToPartitionMap.set(new HashedMap());
+        resourceToPartitionMap.set(new HashMap<>());
     }
 
     /**
-     * Get instances from local memory.
+     * Get instances from local memory. All of instances are in {@link HelixState#ONLINE} state.
      *
      * @param resourceName
      * @param partitionId
      *
      * @return
      */
-    public List<Instance> getInstances(@NotNull String resourceName, int partitionId) {
+    public List<Instance> getReadyToServeInstances(@NotNull String resourceName, int partitionId) {
         logger.debug("Get instances of Resource: " + resourceName + ", Partition:" + partitionId);
         Map<String, Map<Integer, Partition>> map = resourceToPartitionMap.get();
         if (map.containsKey(resourceName)) {
             Map<Integer, Partition> partitionsMap = map.get(resourceName);
             if (partitionsMap.containsKey(partitionId)) {
-                return partitionsMap.get(partitionId).getInstances();
+                return partitionsMap.get(partitionId).getReadyToServeInstances();
             } else {
                 //Can not find partition by given partitionId.
                 return Collections.emptyList();

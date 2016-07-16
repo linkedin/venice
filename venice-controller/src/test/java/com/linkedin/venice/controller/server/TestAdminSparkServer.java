@@ -29,7 +29,6 @@ public class TestAdminSparkServer {
 
   @BeforeClass
   public void setUp(){
-    // Start cluster with 3 venice storage nodes.
     venice = ServiceFactory.getVeniceCluster();
     routerUrl = "http://" + venice.getVeniceRouter().getAddress();
   }
@@ -89,25 +88,6 @@ public class TestAdminSparkServer {
     NewStoreResponse duplicateNewStoreResponse = ControllerClient.createNewStore(routerUrl, venice.getClusterName(),
         storeToCreate, "owner");
     Assert.assertTrue(duplicateNewStoreResponse.isError(), "create new store should fail for duplicate store creation");
-  }
-
-  @Test
-  public void controllerClientShouldListStores(){
-    venice.close();
-    //Need more server to handle 10 resources creation.
-    venice = ServiceFactory.getVeniceCluster(3);
-    routerUrl = "http://" + venice.getVeniceRouter().getAddress();
-    List<String> storeNames = new ArrayList<>();
-    for (int i=0; i<10; i++){ //add 10 stores;
-      storeNames.add(Version.parseStoreFromKafkaTopicName(venice.getNewStoreVersion().getKafkaTopic()));
-    }
-
-    MultiStoreResponse storeResponse = ControllerClient.queryStoreList(routerUrl, venice.getClusterName());
-    Assert.assertFalse(storeResponse.isError());
-    List<String> returnedStoreNames = Arrays.asList(storeResponse.getStores());
-    for (String expectedStore : storeNames){
-      Assert.assertTrue(returnedStoreNames.contains(expectedStore), "Query store list should include " + expectedStore);
-    }
   }
 
   @Test
