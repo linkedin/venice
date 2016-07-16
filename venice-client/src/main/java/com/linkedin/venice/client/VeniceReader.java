@@ -85,7 +85,7 @@ public class VeniceReader<K, V> {
     int partition;
     int numberOfPartitions = spectatorService.getRoutingDataRepository().getNumberOfPartitions(resourceName);
     partition = partitioner.getPartitionId(keyBytes, numberOfPartitions);
-    instances=spectatorService.getRoutingDataRepository().getInstances(resourceName, partition);
+    instances=spectatorService.getRoutingDataRepository().getReadyToServeInstances(resourceName, partition);
     if (instances.size() < 1){
       // TODO: Change this exception type. Maybe create a new subclass of VeniceException specifically for this case?
       // TODO: Add built-in resilience. Maybe wait and retry, etc.

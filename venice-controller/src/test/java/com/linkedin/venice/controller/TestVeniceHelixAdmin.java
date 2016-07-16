@@ -224,7 +224,7 @@ public class TestVeniceHelixAdmin {
     Assert.assertEquals(routing.getMasterController().getPort(), newAdminPort,
         "Master controller is changed, now" + newAdminPort + " is used.");
     Thread.sleep(1000l);
-    Assert.assertTrue(routing.getInstances(version.kafkaTopicName(), 0).isEmpty(),
+    Assert.assertTrue(routing.getReadyToServeInstances(version.kafkaTopicName(), 0).isEmpty(),
         "Participant became offline. No instance should be living in test_v1");
     startParticipant();
     Thread.sleep(1000l);

@@ -22,8 +22,8 @@ public class TestHostFinder {
     Instance dummyinstance = new Instance("0", "localhost", 1234);
     List<Instance> dummyList = new ArrayList<>(0);
     dummyList.add(dummyinstance);
-    //when(mockRepo.getInstances(anyString(), anyInt())).thenReturn(dummyList);
-    doReturn(dummyList).when(mockRepo).getInstances(anyString(), anyInt());
+    //when(mockRepo.getReadyToServeInstances(anyString(), anyInt())).thenReturn(dummyList);
+    doReturn(dummyList).when(mockRepo).getReadyToServeInstances(anyString(), anyInt());
 
     VeniceHostFinder finder = new VeniceHostFinder(mockRepo);
 

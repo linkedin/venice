@@ -54,7 +54,7 @@ public class OfflineJob extends Job {
       Map<String, Task> oldTaskMap = partitionToTasksMap.get(partitionId);
       Partition partition = partitions.get(partitionId);
       HashSet<String> removeTaskIds = new HashSet<>(oldTaskMap.keySet());
-      for (Instance instance : partition.getAllLiveInstances()) {
+      for (Instance instance : partition.getBootstrapAndReadyToServeInstances()) {
         String taskId = generateTaskId(partitionId, instance.getNodeId());
         if (!oldTaskMap.containsKey(taskId)) {
           // New replica

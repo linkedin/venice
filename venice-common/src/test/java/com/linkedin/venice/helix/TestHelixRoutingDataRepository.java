@@ -122,7 +122,7 @@ public class TestHelixRoutingDataRepository {
   @Test
   public void testGetInstances()
       throws Exception {
-    List<Instance> instances = repository.getInstances(resourceName, 0);
+    List<Instance> instances = repository.getReadyToServeInstances(resourceName, 0);
     Assert.assertEquals(1, instances.size());
     Instance instance = instances.get(0);
     Assert.assertEquals(Utils.getHostName(), instance.getHost());
@@ -132,13 +132,13 @@ public class TestHelixRoutingDataRepository {
     //Wait notification.
     Thread.sleep(WAIT_TIME);
     //No online instance now.
-    instances = repository.getInstances(resourceName, 0);
+    instances = repository.getReadyToServeInstances(resourceName, 0);
     Assert.assertEquals(0, instances.size());
     int newHttpPort = httpPort+10;
     HelixManager newManager = createParticipant(newHttpPort);
     newManager.connect();
     Thread.sleep(WAIT_TIME);
-    instances = repository.getInstances(resourceName, 0);
+    instances = repository.getReadyToServeInstances(resourceName, 0);
     Assert.assertEquals(instances.size(), 1);
     Assert.assertEquals(instances.get(0).getPort(), newHttpPort);
     newManager.disconnect();
@@ -179,14 +179,14 @@ public class TestHelixRoutingDataRepository {
       throws Exception {
     Map<Integer, Partition> partitions = repository.getPartitions(resourceName);
     Assert.assertEquals(1, partitions.size());
-    Assert.assertEquals(1, partitions.get(0).getInstances().size());
-    Assert.assertEquals(1, partitions.get(0).getAllLiveInstances().size());
+    Assert.assertEquals(1, partitions.get(0).getReadyToServeInstances().size());
+    Assert.assertEquals(1, partitions.get(0).getBootstrapAndReadyToServeInstances().size());
 
-    Instance instance = partitions.get(0).getInstances().get(0);
+    Instance instance = partitions.get(0).getReadyToServeInstances().get(0);
     Assert.assertEquals(Utils.getHostName(), instance.getHost());
     Assert.assertEquals(httpPort, instance.getPort());
 
-    Instance liveInstance = partitions.get(0).getAllLiveInstances().get(0);
+    Instance liveInstance = partitions.get(0).getBootstrapAndReadyToServeInstances().get(0);
     Assert.assertEquals(liveInstance, instance);
 
     //Participant become off=line.
@@ -251,7 +251,7 @@ public class TestHelixRoutingDataRepository {
       throws InterruptedException {
     manager.disconnect();
     Thread.sleep(WAIT_TIME);
-    Assert.assertEquals(repository.getInstances(resourceName,0).size(), 0);
+    Assert.assertEquals(repository.getReadyToServeInstances(resourceName,0).size(), 0);
   }
 
   @Test
@@ -266,19 +266,19 @@ public class TestHelixRoutingDataRepository {
     Thread.sleep(WAIT_TIME);
 
     // because bootstrap to online transition is blocked, so there is only one bootstrap instance.
-    Assert.assertEquals(repository.getInstances(resourceName, 0).size(), 0,
+    Assert.assertEquals(repository.getReadyToServeInstances(resourceName, 0).size(), 0,
         "Transition should be delayed, so there is no online instance.");
     Assert.assertEquals(repository.getPartitions(resourceName).size(), 1);
-    Assert.assertEquals(repository.getPartitions(resourceName).get(0).getAllLiveInstances().size(), 1,
+    Assert.assertEquals(repository.getPartitions(resourceName).get(0).getBootstrapAndReadyToServeInstances().size(), 1,
         "One bootstrap instance should be found");
     // make bootstrap to online transition completed, now there is one online instance.
     factory.makeTransitionCompleted(resourceName, 0);
     Thread.sleep(WAIT_TIME);
-    Assert.assertEquals(repository.getInstances(resourceName, 0).size(), 1, "One online instance should be found");
+    Assert.assertEquals(repository.getReadyToServeInstances(resourceName, 0).size(), 1, "One online instance should be found");
     Assert.assertEquals(repository.getPartitions(resourceName).size(), 1);
-    Assert.assertEquals(repository.getPartitions(resourceName).get(0).getAllLiveInstances().size(), 1,
+    Assert.assertEquals(repository.getPartitions(resourceName).get(0).getBootstrapAndReadyToServeInstances().size(), 1,
         "One online instance should be found");
-    Assert.assertEquals(repository.getPartitions(resourceName).get(0).getInstances().size(), 1,
+    Assert.assertEquals(repository.getPartitions(resourceName).get(0).getReadyToServeInstances().size(), 1,
         "One online instance should be found");
   }
 

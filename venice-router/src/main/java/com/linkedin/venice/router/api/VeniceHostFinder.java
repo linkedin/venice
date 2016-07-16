@@ -34,7 +34,7 @@ public class VeniceHostFinder implements HostFinder<Instance, VeniceRole> {
   @Override
   public List<Instance> findHosts(String requestMethod, String resourceName, String partitionName,
       HostHealthMonitor<Instance> hostHealthMonitor, VeniceRole roles) {
-    return dataRepository.getInstances(resourceName, Partition.getPartitionIdFromName(partitionName));
+    return dataRepository.getReadyToServeInstances(resourceName, Partition.getPartitionIdFromName(partitionName));
   }
 
   @Override

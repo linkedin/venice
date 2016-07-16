@@ -14,67 +14,43 @@ import java.util.Map;
 public interface RoutingDataRepository extends VeniceResource {
   /**
    * Query instances that belong to given kafka topic and partition. All of instances in result are ready to serve.
-   *
-   * @param kafkaTopic
-   * @param partitionId
-   *
-   * @return
    */
-  public List<Instance> getInstances(String kafkaTopic, int partitionId);
+  public List<Instance> getReadyToServeInstances(String kafkaTopic, int partitionId);
 
   /**
    * Query all partitions allocations that belong to given kafka topic. The instances in returned allocations are ready
    * to serve OR being bootstrap.
-   *
-   * @param kafkaTopic
-   *
-   * @return
    */
   public Map<Integer, Partition> getPartitions(String kafkaTopic);
 
   /**
    * Query number of partition in given kafka topic.
-   *
-   * @param kafkaTopic
-   *
-   * @return
    */
   public int getNumberOfPartitions(String kafkaTopic);
 
   /**
    * Whether this repository contains routing data for given kafka topic or not.
-   * @param kafkaTopic
-   * @return
    */
   public boolean containsKafkaTopic(String kafkaTopic);
 
   /**
    * Query the master controller of current cluster.
-   * @return
    */
   public Instance getMasterController();
 
   /**
    * Add a listener on kafka topic to get the notification when routing data is changed.
-   *
-   * @param kafkaTopic
-   * @param listener
    */
   public void subscribeRoutingDataChange(String kafkaTopic, RoutingDataChangedListener listener);
 
   /**
    * Remove the listener for given kafka topic.
-   *
-   * @param kafkaTopic
-   * @param listener
    */
   public void unSubscribeRoutingDataChange(String kafkaTopic, RoutingDataChangedListener listener);
 
   interface RoutingDataChangedListener {
     /**
      * Handle routing data changed event.
-     *
-     * @param kafkaTopic
      * @param partitions Newest partitions information. If it's null, it means the kafka topic is deleted. The key of
      *                   map is partition id and the value of map are the partition information including instances
      *                   assigned to this partition.

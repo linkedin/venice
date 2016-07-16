@@ -348,7 +348,7 @@ public class TestHelixJobRepository {
             return false;
           }
           for (Partition p : partitions.values()) {
-            if (p.getInstances().size() != replicaFactor) {
+            if (p.getReadyToServeInstances().size() != replicaFactor) {
               return false;
             }
           }
