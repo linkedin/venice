@@ -1,6 +1,7 @@
 package com.linkedin.venice.hadoop;
 
 import com.linkedin.venice.client.VeniceReader;
+import com.linkedin.venice.client.VeniceWriter;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.exceptions.VeniceInconsistentSchemaException;
 import com.linkedin.venice.hadoop.exceptions.VeniceSchemaFieldNotFoundException;
@@ -10,7 +11,10 @@ import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.serialization.StringSerializer;
 import com.linkedin.venice.serialization.VeniceSerializer;
 import com.linkedin.venice.utils.PropertyBuilder;
+import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.VeniceProperties;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import org.apache.avro.Schema;
 import org.apache.avro.file.DataFileWriter;
 import org.apache.avro.generic.GenericData;
@@ -33,6 +37,7 @@ import static com.linkedin.venice.ConfigKeys.ZOOKEEPER_ADDRESS;
 
 public class TestKafkaPushJob {
   private static final Logger LOGGER = Logger.getLogger(TestKafkaPushJob.class);
+  private static final int TEST_TIMEOUT = 60 * Time.MS_PER_SECOND;
 
   private VeniceClusterWrapper veniceCluster;
 
@@ -190,11 +195,13 @@ public class TestKafkaPushJob {
     props.put(KafkaPushJob.AVRO_KEY_FIELD_PROP, "id");
     props.put(KafkaPushJob.AVRO_VALUE_FIELD_PROP, "name");
     props.put(KafkaPushJob.AUTO_CREATE_STORE, "true");
+    // No need for a big close timeout in tests. This is just to speed up discovery of certain regressions.
+    props.put(VeniceWriter.CLOSE_TIMEOUT_MS, 500);
 
     return props;
   }
 
-  @Test
+  @Test(timeOut = TEST_TIMEOUT)
   public void testRunJob() throws Exception {
     File inputDir = getTempDataDirectory();
     writeSimpleAvroFileWithUserSchema(inputDir);
@@ -223,7 +230,8 @@ public class TestKafkaPushJob {
     Assert.assertNull(reader.get("101"));
   }
 
-  @Test(expectedExceptions = VeniceInconsistentSchemaException.class)
+  @Test(timeOut = TEST_TIMEOUT,
+      expectedExceptions = VeniceInconsistentSchemaException.class)
   public void testRunJobWithInputHavingDifferentSchema() throws Exception {
     File inputDir = getTempDataDirectory();
     writeSimpleAvroFileWithUserSchema(inputDir);
@@ -255,7 +263,9 @@ public class TestKafkaPushJob {
     // No need for asserts, because we are expecting an exception to be thrown!
   }
 
-  @Test(expectedExceptions = VeniceSchemaFieldNotFoundException.class, expectedExceptionsMessageRegExp = ".*value field: name1 is not found.*")
+  @Test(timeOut = TEST_TIMEOUT,
+      expectedExceptions = VeniceSchemaFieldNotFoundException.class,
+      expectedExceptionsMessageRegExp = ".*value field: name1 is not found.*")
   public void testRunJobWithInvalidValueField() throws Exception {
     File inputDir = getTempDataDirectory();
     writeSimpleAvroFileWithUserSchema(inputDir);
@@ -272,7 +282,9 @@ public class TestKafkaPushJob {
     // No need for asserts, because we are expecting an exception to be thrown!
   }
 
-  @Test(expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = ".*should not have sub directory: sub-dir.*")
+  @Test(timeOut = TEST_TIMEOUT,
+      expectedExceptions = VeniceException.class,
+      expectedExceptionsMessageRegExp = ".*should not have sub directory: sub-dir.*")
   public void testRunJobWithSubDirInInputDir() throws Exception {
     File inputDir = getTempDataDirectory();
     writeSimpleAvroFileWithUserSchema(inputDir);
@@ -290,7 +302,7 @@ public class TestKafkaPushJob {
     // No need for asserts, because we are expecting an exception to be thrown!
   }
 
-  @Test
+  @Test(timeOut = TEST_TIMEOUT)
   public void testRunJobByPickingUpLatestFolder() throws Exception {
     File inputDir = getTempDataDirectory();
     // Create two folders, and the latest folder with the input data file
@@ -326,7 +338,9 @@ public class TestKafkaPushJob {
     Assert.assertNull(reader.get("101"));
   }
 
-  @Test(expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = ".*Fail to validate/create key schema.*")
+  @Test(timeOut = TEST_TIMEOUT,
+      expectedExceptions = VeniceException.class,
+      expectedExceptionsMessageRegExp = ".*Fail to validate/create key schema.*")
   public void testRunJobMultipleTimesWithDifferentKeySchemaConfig() throws Exception {
     File inputDir = getTempDataDirectory();
     writeSimpleAvroFileWithUserSchema(inputDir);
@@ -353,7 +367,9 @@ public class TestKafkaPushJob {
     job.run();
   }
 
-  @Test(expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = ".*Unable to validate schema for store.*")
+  @Test(timeOut = TEST_TIMEOUT,
+      expectedExceptions = VeniceException.class,
+      expectedExceptionsMessageRegExp = ".*Unable to validate schema for store.*")
   public void testRunJobMultipleTimesWithInCompatibleValueSchemaConfig() throws Exception {
     File inputDir = getTempDataDirectory();
     writeSimpleAvroFileWithUserSchema(inputDir);
@@ -381,7 +397,7 @@ public class TestKafkaPushJob {
     job.run();
   }
 
-  @Test
+  @Test(timeOut = TEST_TIMEOUT)
   public void testRunJobMultipleTimesWithCompatibleValueSchemaConfig() throws Exception {
     File inputDir = getTempDataDirectory();
     writeComplicateAvroFileWithUserSchema(inputDir, false);

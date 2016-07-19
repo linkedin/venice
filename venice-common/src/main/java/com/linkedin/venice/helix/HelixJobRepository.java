@@ -230,7 +230,7 @@ public class HelixJobRepository implements JobRepository {
 
   private void updateJobStatus(Job job, ExecutionStatus status) {
     // Validate the status at first.
-    job.validateStatusTransition(status);
+    job.validateJobStatusTransition(status);
     // Clone job and update status.
     Job clonedJob = job.cloneJob();
     clonedJob.setStatus(status);

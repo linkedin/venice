@@ -1,10 +1,12 @@
 package com.linkedin.venice.job;
 
 import com.linkedin.venice.exceptions.VeniceException;
+import static com.linkedin.venice.job.ExecutionStatus.*;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.Partition;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -77,30 +79,29 @@ public class OfflineJob extends Job {
   /**
    * The transition of Job state machine:
    * <p>
-   * <ul> <li>NEW->STARTED</li> <li>NEW->ERROR</li> <li>STARTED->COMPLETED</li> <li>STARTED->ERROR</li> <li>COMPLETED->ARCHIVED</li>
-   * <li>ERROR->ARCHIVED</li> </ul>
+   * <ul>
+   *   <li>NEW->STARTED</li>
+   *   <li>STARTED->COMPLETED</li>
+   *   <li>STARTED->ERROR</li>
+   *   <li>COMPLETED->ARCHIVED</li>
+   *   <li>ERROR->ARCHIVED</li>
+   * </ul>
    */
   @Override
-  public void validateStatusTransition(ExecutionStatus newStatus) {
+  public void validateJobStatusTransition(ExecutionStatus newStatus) {
     boolean isValid = true;
     ExecutionStatus currentStatus = getStatus();
     switch (currentStatus) {
       case NEW:
-        if (!newStatus.equals(ExecutionStatus.STARTED) && !newStatus.equals(ExecutionStatus.ERROR)) {
-          isValid = false;
-        }
+        isValid = verifyTransition(newStatus, STARTED, ERROR);
         break;
       case STARTED:
-        if (!newStatus.equals(ExecutionStatus.COMPLETED) && !newStatus.equals(ExecutionStatus.ERROR)) {
-          isValid = false;
-        }
+        isValid = verifyTransition(newStatus, COMPLETED, ERROR);
         break;
       case COMPLETED:
-        //Same to ERROR status.
+        //Same as ERROR.
       case ERROR:
-        if (!newStatus.equals(ExecutionStatus.ARCHIVED)) {
-          isValid = false;
-        }
+        isValid = verifyTransition(newStatus, ARCHIVED);
         break;
       case ARCHIVED:
         isValid = false;
@@ -137,7 +138,7 @@ public class OfflineJob extends Job {
    */
   @Override
   public void updateTaskStatus(Task task) {
-    verifyTaskStatus(task);
+    verifyTaskStatusTransition(task);
     Map<String, Task> taskMap = partitionToTasksMap.get(task.getPartitionId());
     Task newTask = new Task(task.getTaskId(), task.getPartitionId(), task.getInstanceId(), task.getStatus());
     newTask.setProgress(task.getProgress());
@@ -149,12 +150,19 @@ public class OfflineJob extends Job {
    * <p>
    * The transitions of state machine:
    * <p>
-   * <ul><li>NEW->STARTED</li><li>STARTED->PROGRESS</li><li>STARTED->COMPLETE</li><li>STARTED->ERROR</li>
-   * <li>PROGRESS->COMPLETED</li> <li>PROGRESS->ERROR</li></ul>
+   * <ul>
+   *   <li>NEW->STARTED</li>
+   *   <li>NEW->ERROR</li>
+   *   <li>STARTED->PROGRESS</li>
+   *   <li>STARTED->COMPLETED</li>
+   *   <li>STARTED->ERROR</li>
+   *   <li>PROGRESS->COMPLETED</li>
+   *   <li>PROGRESS->ERROR</li>
+   * </ul>
    *
    * @param task
    */
-  public void verifyTaskStatus(Task task) {
+  public void verifyTaskStatusTransition(Task task) {
     Map<String, Task> taskMap = partitionToTasksMap.get(task.getPartitionId());
     if (taskMap == null) {
       throw new VeniceException("Partition:" + task.getPartitionId() + " dose not exist.");
@@ -166,23 +174,16 @@ public class OfflineJob extends Job {
     boolean isValid = true;
     switch (oldTask.getStatus()) {
       case NEW:
-        if (!task.getStatus().equals(ExecutionStatus.STARTED)) {
-          isValid = false;
-        }
+        isValid = verifyTransition(task.getStatus(), STARTED, ERROR);
         break;
       case STARTED:
-        if (!task.getStatus().equals(ExecutionStatus.PROGRESS) && !task.getStatus().equals(ExecutionStatus.COMPLETED)
-            && !task.getStatus().equals(ExecutionStatus.ERROR)) {
-          isValid = false;
-        }
+        isValid = verifyTransition(task.getStatus(), PROGRESS, COMPLETED, ERROR);
         break;
       case PROGRESS:
-        if (!task.getStatus().equals(ExecutionStatus.COMPLETED) && !task.getStatus().equals(ExecutionStatus.ERROR)) {
-          isValid = false;
-        }
+        isValid = verifyTransition(task.getStatus(), COMPLETED, ERROR);
         break;
       case COMPLETED:
-        //Same to Error
+        // Same as ERROR.
       case ERROR:
         isValid = false;
         break;
@@ -193,6 +194,10 @@ public class OfflineJob extends Job {
       throw new VeniceException(
           "Task is " + oldTask.getStatus().toString() + " can not be update to status:" + task.getStatus().toString());
     }
+  }
+
+  private boolean verifyTransition(ExecutionStatus newStatus, ExecutionStatus... allowed) {
+    return Arrays.asList(allowed).contains(newStatus);
   }
 
   @Override

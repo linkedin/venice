@@ -6,10 +6,12 @@ import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.serialization.KafkaKeySerializer;
 import com.linkedin.venice.serialization.KafkaValueSerializer;
+import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.VeniceProperties;
 
 import java.util.Properties;
 import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import org.apache.kafka.clients.producer.KafkaProducer;
 import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.clients.producer.ProducerRecord;
@@ -21,8 +23,9 @@ import org.apache.kafka.clients.producer.RecordMetadata;
  */
 public class KafkaProducerWrapper {
 
+  private static final String PROPERTIES_KAFKA_PREFIX = "kafka.";
+
   private final KafkaProducer<KafkaKey, KafkaMessageEnvelope> producer;
-  private final String PROPERTIES_KAFKA_PREFIX = "kafka.";
 
   public KafkaProducerWrapper(VeniceProperties props) {
     Properties properties = getKafkaPropertiesFromVeniceProps(props);
@@ -91,9 +94,9 @@ public class KafkaProducerWrapper {
 
   }
 
-  public void close() {
-    if(producer != null) {
-      producer.close();
+  public void close(int closeTimeOutMs) {
+    if (producer != null) {
+      producer.close(closeTimeOutMs, TimeUnit.MILLISECONDS);
     }
   }
 

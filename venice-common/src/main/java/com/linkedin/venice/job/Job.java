@@ -92,7 +92,7 @@ public abstract class Job {
    *
    * @throws com.linkedin.venice.exceptions.VeniceException If the given status is invalid to update.
    */
-  public abstract void validateStatusTransition(ExecutionStatus status);
+  public abstract void validateJobStatusTransition(ExecutionStatus status);
 
   public abstract Job cloneJob();
 }

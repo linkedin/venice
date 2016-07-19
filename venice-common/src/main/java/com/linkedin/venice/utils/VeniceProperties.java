@@ -18,9 +18,12 @@ public class VeniceProperties {
   private final Map<String, String> props;
 
   public VeniceProperties(Properties properties) {
-    this.props = new HashMap<String, String>();
+    this.props = new HashMap<>();
     for (Map.Entry<Object, Object> e : properties.entrySet()) {
-      this.props.put((String) e.getKey(), (String) e.getValue());
+      this.props.put(
+          (String) e.getKey(),
+          null == e.getValue() ? null : e.getValue().toString()
+      );
     }
   }
 

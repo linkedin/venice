@@ -46,7 +46,7 @@ public class TestOfflineJob {
     //valid status transition
     for (ExecutionStatus status : validStatus) {
       try {
-        job.validateStatusTransition(status);
+        job.validateJobStatusTransition(status);
       } catch (VeniceException e) {
         Assert.fail("Job status:" + currentStatus.toString() + " should be able " + status.toString());
       }
@@ -54,7 +54,7 @@ public class TestOfflineJob {
     //invalid status transition.
     for (ExecutionStatus status : invalidStatus) {
       try {
-        job.validateStatusTransition(status);
+        job.validateJobStatusTransition(status);
         Assert.fail("Job status:" + currentStatus.toString() + " should not be able " + status.toString());
       } catch (VeniceException e) {
 
