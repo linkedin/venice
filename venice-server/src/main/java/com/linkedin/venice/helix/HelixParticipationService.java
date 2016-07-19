@@ -1,5 +1,6 @@
 package com.linkedin.venice.helix;
 
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.consumer.KafkaConsumerService;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.notifier.HelixNotifier;
@@ -7,6 +8,7 @@ import com.linkedin.venice.server.StoreRepository;
 import com.linkedin.venice.server.VeniceConfigLoader;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.storage.StorageService;
+import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.Utils;
 import javax.validation.constraints.NotNull;
 import org.apache.helix.HelixManager;
@@ -15,6 +17,7 @@ import org.apache.helix.InstanceType;
 import org.apache.helix.LiveInstanceInfoProvider;
 import org.apache.helix.participant.statemachine.StateModelFactory;
 import org.apache.log4j.Logger;
+import java.util.concurrent.CompletableFuture;
 
 
 /**
@@ -71,16 +74,8 @@ public class HelixParticipationService extends AbstractVeniceService {
     };
     manager.setLiveInstanceInfoProvider(liveInstanceInfoProvider);
 
-    try {
-      manager.connect();
-    } catch (Exception e) {
-      logger.error("Error connecting to Helix Manager Cluster " + clusterName + " ZooKeeper Address " + zkAddress + " Participant " + participantName, e);
-      throw new RuntimeException(e);
-    }
-
-    // Report start, progress , completed  and error notifications to controller
-    HelixNotifier notifier = new HelixNotifier(manager , participantName);
-    consumerService.addNotifier(notifier);
+    //TODO Venice Listener should not be started, until the HelixService is started.
+    asyncStart();
 
     logger.info(" Successfully started Helix Participation Service");
   }
@@ -90,5 +85,26 @@ public class HelixParticipationService extends AbstractVeniceService {
     if(manager != null) {
       manager.disconnect();
     }
+  }
+
+  /**
+   * check RouterServer#asyncStart() for details about asyncStart
+   */
+  private void asyncStart() {
+    CompletableFuture.runAsync(() -> {
+      try {
+        HelixUtils.connectHelixManager(manager, 3, 30);
+      } catch (VeniceException ve) {
+        logger.error(ve.getMessage(), ve);
+        logger.error("Venice server is about to close");
+
+        //Since helix manager is necessary. We force to exit the program if it is not able to connected.
+        System.exit(1);
+      }
+
+      // Report start, progress , completed  and error notifications to controller
+      HelixNotifier notifier = new HelixNotifier(manager, participantName);
+      consumerService.addNotifier(notifier);
+    });
   }
 }
