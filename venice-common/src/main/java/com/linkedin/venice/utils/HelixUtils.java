@@ -2,14 +2,19 @@ package com.linkedin.venice.utils;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import java.util.List;
+
 import org.apache.helix.AccessOption;
+import org.apache.helix.HelixManager;
 import org.apache.helix.manager.zk.ZkBaseDataAccessor;
+import org.apache.log4j.Logger;
 
 
 /**
  * Helper functions for Helix.
  */
 public class HelixUtils {
+
+  private static final Logger logger = Logger.getLogger(HelixUtils.class);
 
   /**
    * Converts the Venice Server Node Id to Helix Participant name.
@@ -82,5 +87,33 @@ public class HelixUtils {
       retry++;
     }
     throw new VeniceException("Can not remove data from Helix after " + retryCount + " times retry");
+  }
+
+  /**
+   * Try to connect Helix Manger. If failed, waits for certain time and retry. If Helix Manager can not be
+   * connected after certain number of retry, throws exception. This method is most likely being used asynchronously since
+   * it is going to block and wait if connection fails.
+   * @param manager HelixManager instance
+   * @param maxRetries retry time
+   * @param sleepTimeSeconds time in second that it blocks until next retry.
+   * @exception VeniceException if connection keeps failing after certain number of retry
+   */
+  public static void connectHelixManager(HelixManager manager, int maxRetries, int sleepTimeSeconds) {
+    int attempt = 0;
+    boolean isSuccess = false;
+    while (!isSuccess) {
+      try {
+        manager.connect();
+        isSuccess = true;
+      } catch (Exception e) {
+        if (attempt < maxRetries) {
+          logger.warn("failed to connect Helix manager. Will retry in " + sleepTimeSeconds + " seconds");
+          attempt++;
+          Utils.sleep(sleepTimeSeconds * 1000);
+        } else
+          throw new VeniceException("Error connecting to Helix Manager Cluster " +
+          manager.getClusterName(), e);
+      }
+    }
   }
 }

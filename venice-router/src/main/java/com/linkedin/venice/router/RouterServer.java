@@ -26,12 +26,14 @@ import com.linkedin.venice.router.api.VeniceRoleFinder;
 import com.linkedin.venice.router.api.VeniceVersionFinder;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.utils.DaemonThreadFactory;
+import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.net.InetSocketAddress;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeUnit;
 import org.apache.helix.HelixManager;
@@ -103,7 +105,6 @@ public class RouterServer extends AbstractVeniceService {
     while(true) {
       Thread.sleep(TimeUnit.HOURS.toMillis(1));
     }
-
   }
 
   /**
@@ -119,11 +120,7 @@ public class RouterServer extends AbstractVeniceService {
     this.clusterName = clusterName;
     zkClient = new ZkClient(zkConnection);
     manager = new ZKHelixManager(this.clusterName, null, InstanceType.SPECTATOR, zkConnection);
-    try {
-      manager.connect();
-    } catch (Exception e) {
-      throw new VeniceException("Failed to start manager when creating Venice Router", e);
-    }
+
     HelixAdapterSerializer adapter = new HelixAdapterSerializer();
     this.metadataRepository = new HelixReadonlyStoreRepository(zkClient, adapter, this.clusterName);
     this.schemaRepository = new HelixReadOnlySchemaRepository(this.metadataRepository,
@@ -149,10 +146,13 @@ public class RouterServer extends AbstractVeniceService {
     this.d2ServerList = d2ServerList;
   }
 
+
+
   @Override
   public void startInner() throws Exception {
+    asyncStart();
+
     metadataRepository.refresh();
-    routingDataRepository.refresh();
     // No need to call schemaRepository.refresh() since it will do nothing.
 
     registry = new NettyResourceRegistry();
@@ -189,11 +189,6 @@ public class RouterServer extends AbstractVeniceService {
     serverFuture = router.start(new InetSocketAddress(port), factory -> factory);
     serverFuture.await();
 
-    for (D2Server d2Server : d2ServerList){
-      logger.info("Starting d2 announcer: " + d2Server);
-      d2Server.forceStart(); /* This is normal usage for d2, nothing is really being forced */
-    }
-
     logger.info("Router server is started on port:" + serverFuture.getChannel().getLocalAddress());
   }
 
@@ -225,5 +220,33 @@ public class RouterServer extends AbstractVeniceService {
       zkClient.close();
     }
     logger.info("Router Server is stopped");
+  }
+
+
+  /**
+   * a few tasks will be done asynchronously during the service startup and are moved into this method.
+   * We are doing this because there is no way to specify Venice component startup order in "mint deploy".
+   * This method prevents "mint deploy" failure (When server or router starts earlier than controller,
+   * helix manager throw unknown cluster name exception.) We terminate the process if helix connection
+   * cannot be established.
+   */
+  private void asyncStart() {
+    CompletableFuture.runAsync(() -> {
+      try {
+        HelixUtils.connectHelixManager(manager, 3, 30);
+      } catch (VeniceException ve) {
+        logger.error(ve.getMessage(), ve);
+        logger.error("Venice router is about to close");
+
+        System.exit(1);
+      }
+
+      routingDataRepository.refresh();
+
+      for (D2Server d2Server : d2ServerList) {
+        logger.info("Starting d2 announcer: " + d2Server);
+        d2Server.forceStart();
+      }
+    });
   }
 }
