@@ -11,7 +11,6 @@ import com.linkedin.venice.controllerapi.NewStoreResponse;
 import com.linkedin.venice.controllerapi.VersionResponse;
 import com.linkedin.venice.hadoop.exceptions.VeniceInconsistentSchemaException;
 import com.linkedin.venice.hadoop.exceptions.VeniceSchemaFieldNotFoundException;
-import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.schema.SchemaEntry;
@@ -622,6 +621,7 @@ public class KafkaPushJob {
       // Initialize VeniceWriter
       Properties veniceWriterProperties = new Properties();
       veniceWriterProperties.put(KAFKA_BOOTSTRAP_SERVERS, kafkaUrl);
+      veniceWriterProperties.put(VeniceWriter.CLOSE_TIMEOUT_MS, props.get(VeniceWriter.CLOSE_TIMEOUT_MS));
       VeniceWriter<KafkaKey, byte[]> newVeniceWriter = new VeniceWriter<>(
           new VeniceProperties(veniceWriterProperties),
           topic,

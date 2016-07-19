@@ -393,7 +393,8 @@ public class StoreConsumptionTask implements Runnable, Closeable {
           reportError(Lists.newArrayList(faultyPartition), "Fatal data validation problem with partition " + faultyPartition, e);
           unSubscribePartition(topic, faultyPartition);
         } catch (VeniceMessageException | UnsupportedOperationException ex) {
-          logger.error(consumerTaskId + " : Received an exception ! Skipping the message at partition " + record.partition() + " offset " + record.offset(), ex);
+          throw new VeniceException(consumerTaskId + " : Received an exception for message at partition: "
+              + record.partition() + ", offset: " + record.offset() + ". Bubbling up.", ex);
         }
       }
     }
@@ -423,6 +424,13 @@ public class StoreConsumptionTask implements Runnable, Closeable {
          logger.info(consumerTaskId + " : Receive End of Pushes message. Partition: " + partition + ", Offset: " + offset);
          reportCompleted(partition);
          partitionToOffsetMap.remove(partition);
+         break;
+       case START_OF_SEGMENT:
+       case END_OF_SEGMENT:
+         /**
+          * No-op for {@link ControlMessageType#START_OF_SEGMENT} and {@link ControlMessageType#END_OF_SEGMENT}.
+          * These are handled in the {@link ProducerTracker}.
+          */
          break;
        default:
          throw new VeniceMessageException("Unrecognized Control message type " + controlMessage.controlMessageType);

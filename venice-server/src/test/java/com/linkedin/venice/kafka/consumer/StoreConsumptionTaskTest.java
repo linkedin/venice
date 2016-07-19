@@ -1,6 +1,8 @@
 package com.linkedin.venice.kafka.consumer;
 
 import com.google.common.collect.Maps;
+import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.exceptions.VeniceMessageException;
 import com.linkedin.venice.exceptions.validation.MissingDataException;
 import com.linkedin.venice.kafka.protocol.*;
 import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
@@ -42,6 +44,7 @@ import org.apache.log4j.Logger;
 import org.apache.log4j.PatternLayout;
 import org.mockito.ArgumentMatcher;
 import org.mockito.Mockito;
+import org.testng.Assert;
 import org.testng.annotations.AfterSuite;
 import org.testng.annotations.BeforeSuite;
 import org.testng.annotations.Test;
@@ -175,15 +178,19 @@ public class StoreConsumptionTaskTest {
           new KafkaKey(type, key), kafkaValue);
     }
 
+    private Put getPutRecord(byte[] value, int schemaId) {
+      Put put = new Put();
+      put.schemaId = schemaId;
+      put.putValue = ByteBuffer.wrap(value);
+      return put;
+    }
+
     public ConsumerRecord<KafkaKey, KafkaMessageEnvelope> getPutConsumerRecord(int partition,
                                                                                long offset,
                                                                                byte[] key,
                                                                                byte[] value,
                                                                                int schemaId) {
-      Put put = new Put();
-      put.schemaId = schemaId;
-      put.putValue = ByteBuffer.wrap(value);
-      return getConsumerRecord(MessageType.PUT, partition, offset, key, put);
+      return getConsumerRecord(MessageType.PUT, partition, offset, key, getPutRecord(value, schemaId));
     }
 
     public ConsumerRecord<KafkaKey, KafkaMessageEnvelope> getDeleteConsumerRecord(int partition,
@@ -195,8 +202,7 @@ public class StoreConsumptionTaskTest {
     public ConsumerRecord<KafkaKey, KafkaMessageEnvelope> getControlRecord(ControlMessageType controlMessageType,
                                                                            long offset,
                                                                            int partition) {
-      com.linkedin.venice.kafka.protocol.ControlMessage controlMessage =
-          (com.linkedin.venice.kafka.protocol.ControlMessage) MessageType.CONTROL_MESSAGE.getNewInstance();
+      ControlMessage controlMessage = (ControlMessage) MessageType.CONTROL_MESSAGE.getNewInstance();
       controlMessage.controlMessageType = controlMessageType.getValue();
       controlMessage.controlMessageUnion = controlMessageType.getNewInstance();
       controlMessage.debugInfo = new HashMap<>();
@@ -206,6 +212,25 @@ public class StoreConsumptionTaskTest {
           segmentNumbers.put(partition, segmentNumbers.get(partition) + 1);
         }
       }
+
+      return getConsumerRecord(MessageType.CONTROL_MESSAGE, partition, offset, new byte[]{}, controlMessage);
+    }
+
+    public ConsumerRecord<KafkaKey, KafkaMessageEnvelope> getMessageWithArbitraryType(int partition, long offset, int messageType) {
+      KafkaMessageEnvelope kafkaValue = new KafkaMessageEnvelope();
+      kafkaValue.messageType = messageType;
+      kafkaValue.payloadUnion = getPutRecord(new byte[]{}, 0);
+      kafkaValue.producerMetadata = getProducerMetadata(partition);
+
+      return new ConsumerRecord<>(topic, partition, offset, 0, TimestampType.NO_TIMESTAMP_TYPE,
+          new KafkaKey(MessageType.PUT, new byte[]{}), kafkaValue);
+    }
+
+    public ConsumerRecord<KafkaKey, KafkaMessageEnvelope> getControlMessageWithArbitraryType(int partition, long offset, int controlMessageType) {
+      ControlMessage controlMessage = (ControlMessage) MessageType.CONTROL_MESSAGE.getNewInstance();
+      controlMessage.controlMessageType = controlMessageType;
+      controlMessage.controlMessageUnion = ControlMessageType.START_OF_PUSH.getNewInstance();
+      controlMessage.debugInfo = new HashMap<>();
 
       return getConsumerRecord(MessageType.CONTROL_MESSAGE, partition, offset, new byte[]{}, controlMessage);
     }
@@ -706,18 +731,8 @@ public class StoreConsumptionTaskTest {
       Mockito.verify(mockNotifier, Mockito.timeout(TIMEOUT).atLeastOnce()).error(
           eq(topic),
           eq(PARTITION_BAR),
-          argThat(new ArgumentMatcher<String>() {
-            @Override
-            public boolean matches(Object argument) {
-              return argument instanceof String && !((String) argument).isEmpty();
-            }
-          }),
-          argThat(new ArgumentMatcher<Exception>() {
-            @Override
-            public boolean matches(Object argument) {
-              return argument instanceof MissingDataException;
-            }
-          }));
+          argThat(new NonEmptyStringMatcher()),
+          argThat(new ExceptionClassMacther(MissingDataException.class)));
 
       mockStoreConsumptionTask.close();
       testSubscribeTaskFuture.get(10, TimeUnit.SECONDS);
@@ -847,6 +862,97 @@ public class StoreConsumptionTaskTest {
 
       mockStoreConsumptionTask.close();
       testSubscribeTaskFuture.get(10, TimeUnit.SECONDS);
+    }
+  }
+
+  @Test
+  public void testBadMessageTypesFailFast() throws Exception {
+    final int partitionWithBadMessageType = 0,
+        partitionWithBadControlMessageType = 1;
+    try (StoreConsumptionTask mockStoreConsumptionTask =
+        getKafkaPerStoreConsumptionTask(partitionWithBadMessageType, partitionWithBadControlMessageType)) {
+      MockProducer producer = new MockProducer(topic, SystemTime.INSTANCE);
+
+      // Let's craft a bad message on purpose
+
+      int badMessageTypeId = 99; // Venice got 99 problems, but a bad message type ain't one.
+
+      ConsumerRecord testMessageWithWrongType =
+          producer.getMessageWithArbitraryType(partitionWithBadMessageType, 0, badMessageTypeId);
+      ConsumerRecord testControlMessageWithWrongType =
+          producer.getControlMessageWithArbitraryType(partitionWithBadControlMessageType, 0, badMessageTypeId);
+
+      // Dear future maintainer,
+      //
+      // I sincerely hope Venice never ends up with 99 distinct message types, but I'll
+      // make sure anyway. If you end up breaking this check, holla at me, I'm curious
+      // to know how you managed to end up in this mess ;)
+      //
+      // - @felixgv on the twitters
+
+      try {
+        KafkaMessageEnvelope messageEnvelope = (KafkaMessageEnvelope) testMessageWithWrongType.value();
+        MessageType.valueOf(messageEnvelope);
+        Assert.fail("The message type " + badMessageTypeId + " is valid. "
+            + "This test needs to be updated in order to send an invalid message type...");
+      } catch (VeniceMessageException e) {
+        // Good
+      }
+
+      try {
+        KafkaMessageEnvelope messageEnvelope = (KafkaMessageEnvelope) testControlMessageWithWrongType.value();
+        ControlMessage controlMessage = (ControlMessage) messageEnvelope.payloadUnion;
+        ControlMessageType.valueOf(controlMessage);
+        Assert.fail("The control message type " + badMessageTypeId + " is valid. "
+            + "This test needs to be updated in order to send an invalid control message type...");
+      } catch (VeniceMessageException e) {
+        // Good
+      }
+
+      mockStoreConsumptionTask.subscribePartition(topic, partitionWithBadMessageType);
+      mockStoreConsumptionTask.subscribePartition(topic, partitionWithBadControlMessageType);
+
+      ConsumerRecords mockResult1 = createConsumerRecords(testMessageWithWrongType);
+      ConsumerRecords mockResult2 = createConsumerRecords(testControlMessageWithWrongType);
+
+      Mockito.doReturn(mockResult1)
+          .doReturn(mockResult2)
+          .when(mockKafkaConsumer).poll(StoreConsumptionTask.READ_CYCLE_DELAY_MS);
+
+      Future testSubscribeTaskFuture = taskPollingService.submit(mockStoreConsumptionTask);
+
+      Mockito.verify(mockNotifier, Mockito.timeout(TIMEOUT).atLeastOnce()).error(
+          eq(topic),
+          eq(partitionWithBadMessageType),
+          argThat(new NonEmptyStringMatcher()),
+          argThat(new ExceptionClassMacther(VeniceException.class)));
+
+      Mockito.verify(mockNotifier, Mockito.timeout(TIMEOUT).atLeastOnce()).error(
+          eq(topic),
+          eq(partitionWithBadControlMessageType),
+          argThat(new NonEmptyStringMatcher()),
+          argThat(new ExceptionClassMacther(VeniceException.class)));
+
+      mockStoreConsumptionTask.close();
+      testSubscribeTaskFuture.get(10, TimeUnit.SECONDS);
+    }
+  }
+
+  private static class NonEmptyStringMatcher extends ArgumentMatcher<String> {
+    @Override
+    public boolean matches(Object argument) {
+      return argument instanceof String && !((String) argument).isEmpty();
+    }
+  }
+
+  private static class ExceptionClassMacther extends ArgumentMatcher<Exception> {
+    private final Class exceptionClass;
+    ExceptionClassMacther(Class exceptionClass) {
+      this.exceptionClass = exceptionClass;
+    }
+    @Override
+    public boolean matches(Object argument) {
+      return exceptionClass.isInstance(argument);
     }
   }
 }

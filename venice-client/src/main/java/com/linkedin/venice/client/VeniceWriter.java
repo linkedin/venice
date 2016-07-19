@@ -37,6 +37,9 @@ public class VeniceWriter<K, V> extends AbstractVeniceWriter<K, V> {
   // log4j logger
   private static final Logger LOGGER = Logger.getLogger(VeniceWriter.class);
 
+  public static final String CLOSE_TIMEOUT_MS = "venice.writer.close.timeout.ms";
+  public static final int DEFAULT_CLOSE_TIMEOUT_MS = 30 * Time.MS_PER_SECOND;
+
   // Immutable state
   private final VeniceSerializer<K> keySerializer;
   private final VeniceSerializer<V> valueSerializer;
@@ -48,6 +51,7 @@ public class VeniceWriter<K, V> extends AbstractVeniceWriter<K, V> {
   /** Map of partition to {@link Segment}, which keeps track of all segment-related state. */
   private final Map<Integer, Segment> segmentsMap = Maps.newHashMap();
   private final int checksumType = 0; // TODO: Make configurable
+  private final int closeTimeOut;
 
   public VeniceWriter(
       VeniceProperties props,
@@ -60,6 +64,7 @@ public class VeniceWriter<K, V> extends AbstractVeniceWriter<K, V> {
     this.valueSerializer = valueSerializer;
     this.time = time;
     this.partitioner = new DefaultVenicePartitioner(props);
+    this.closeTimeOut = props.getInt(CLOSE_TIMEOUT_MS, DEFAULT_CLOSE_TIMEOUT_MS);
 
     try {
       this.producer = new KafkaProducerWrapper(props);
@@ -248,7 +253,7 @@ public class VeniceWriter<K, V> extends AbstractVeniceWriter<K, V> {
     segmentsMap.values().stream()
         .filter(segment -> segment.isStarted() && !segment.isEnded())
         .forEach(segment -> endSegment(segment.getPartition()));
-    producer.close();
+    producer.close(closeTimeOut);
   }
 
   public String toString() {
