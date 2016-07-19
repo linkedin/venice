@@ -12,6 +12,8 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.function.BooleanSupplier;
 import org.apache.helix.HelixAdmin;
 import org.apache.helix.HelixDefinedState;
 import org.apache.helix.HelixManager;
@@ -250,8 +252,14 @@ public class TestHelixRoutingDataRepository {
   public void testNodeChanged()
       throws InterruptedException {
     manager.disconnect();
-    Thread.sleep(WAIT_TIME);
-    Assert.assertEquals(repository.getReadyToServeInstances(resourceName,0).size(), 0);
+    Utils.waitForNonDeterministicCompetion(WAIT_TIME, TimeUnit.MILLISECONDS, new BooleanSupplier() {
+      @Override
+      public boolean getAsBoolean() {
+        return repository.getReadyToServeInstances(resourceName, 0).size() == 0;
+      }
+    });
+    Assert.assertEquals(repository.getReadyToServeInstances(resourceName, 0).size(), 0);
+    Assert.assertEquals(repository.getPartitions(resourceName).size(), 0);
   }
 
   @Test

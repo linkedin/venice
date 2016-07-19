@@ -88,6 +88,7 @@ public class HelixRoutingDataRepository extends RoutingTableProvider implements 
             // and trigger the external view change event. In other words, venice will read the newest external view immediately.
             manager.addExternalViewChangeListener(this);
             manager.addControllerListener(this);
+            // TODO subscribe zk state change event after we can get zk client from HelixManager(Should be fixed by Helix team soon)
         } catch (Exception e) {
             String errorMessage = "Cannot register routing table into Helix";
             logger.error(errorMessage, e);
@@ -235,27 +236,22 @@ public class HelixRoutingDataRepository extends RoutingTableProvider implements 
                 List<Instance> bootstrapInstances = new ArrayList<>();
                 List<Instance> onlineInstances = new ArrayList<>();
                 for (String instanceName : instanceStateMap.keySet()) {
-                    if (instanceStateMap.get(instanceName).equals(HelixState.ONLINE.toString())) {
-                        // Add online instance both to online instances list and all living instances list.
-                        if (liveInstanceMap.containsKey(instanceName)) {
+                    if (liveInstanceMap.containsKey(instanceName)) {
+                        if (instanceStateMap.get(instanceName).equals(HelixState.ONLINE.toString())) {
                             Instance onlineInstance = HelixInstanceConverter.convertZNRecordToInstance(
                                 liveInstanceMap.get(instanceName).getRecord());
                             onlineInstances.add(onlineInstance);
-                        } else {
-                            logger.warn("Cannot find instance '" + instanceName + "' in LIVEINSTANCES");
-                        }
-                    } else if (instanceStateMap.get(instanceName).equals(HelixState.BOOTSTRAP.toString())) {
-                        // Add bootstrap instance only to all living instances list.
-                        if (liveInstanceMap.containsKey(instanceName)) {
+                        } else if (instanceStateMap.get(instanceName).equals(HelixState.BOOTSTRAP.toString())) {
                             Instance bootstrapInstance = HelixInstanceConverter.convertZNRecordToInstance(
                                 liveInstanceMap.get(instanceName).getRecord());
                             bootstrapInstances.add(bootstrapInstance);
                         } else {
-                            logger.warn("Cannot find instance '" + instanceName + "' in LIVEINSTANCES");
+                            logger.info(
+                                instanceName + " is not in ONLINE or BOOTSTRAP state. State:" + instanceStateMap.get(
+                                    instanceName));
                         }
                     } else {
-                        //ignore the instance which is not in ONLINE state.
-                        logger.info(instanceName + " is not ONLINE. State:" + instanceStateMap.get(instanceName));
+                        logger.warn("Cannot find instance '" + instanceName + "' in /LIVEINSTANCES");
                     }
                 }
                 int partitionId = Partition.getPartitionIdFromName(partitionName);
