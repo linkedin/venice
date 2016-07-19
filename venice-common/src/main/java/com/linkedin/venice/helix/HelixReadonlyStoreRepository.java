@@ -57,11 +57,14 @@ public class HelixReadonlyStoreRepository implements ReadonlyStoreRepository {
    */
   protected ZkBaseDataAccessor<Store> dataAccessor;
 
+  private final ZkClient zkClient;
+
   /**
    * A set of listeners which will be triggered when store created/deleted
    */
   protected Set<StoreDataChangedListener> dataChangedListenerSet = new HashSet<>();
 
+  private final CachedResourceZkStateListener zkStateListener;
   /**
    * Root path of stores in Zookeeper.
    */
@@ -81,7 +84,9 @@ public class HelixReadonlyStoreRepository implements ReadonlyStoreRepository {
     String storesPath = rootPath + "/" + PathResourceRegistry.WILDCARD_MATCH_ANY;
     adapter.registerSerializer(storesPath, serializer);
     zkClient.setZkSerializer(adapter);
+    this.zkClient = zkClient;
     dataAccessor = new ZkBaseDataAccessor<>(zkClient);
+    zkStateListener = new CachedResourceZkStateListener(this);
   }
 
   @Override
@@ -131,10 +136,14 @@ public class HelixReadonlyStoreRepository implements ReadonlyStoreRepository {
     } finally {
       metadataLock.writeLock().unlock();
     }
+    // subscribe is the thread safe method
+    zkClient.subscribeStateChanges(zkStateListener);
   }
 
   @Override
   public void clear() {
+    // un-subscribe is the thread safe method
+    zkClient.unsubscribeStateChanges(zkStateListener);
     metadataLock.writeLock().lock();
     try {
       dataAccessor.unsubscribeChildChanges(rootPath, storeCreateDeleteListener);

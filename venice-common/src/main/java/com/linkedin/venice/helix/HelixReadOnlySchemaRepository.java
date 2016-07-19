@@ -51,6 +51,10 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository {
 
   private ZkBaseDataAccessor<SchemaEntry> dataAccessor;
 
+  private final ZkClient zkClient;
+
+  private final CachedResourceZkStateListener zkStateListener;
+
   // Store repository to check store related info
   private ReadonlyStoreRepository storeRepository;
 
@@ -78,9 +82,11 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository {
     // Register schema serializer
     registerSerializerForSchema(clusterName, zkClient, adapter);
     dataAccessor = new ZkBaseDataAccessor<>(zkClient);
+    this.zkClient = zkClient;
 
     // Register store data change listener
     storeRepository.registerStoreDataChangedListener(this);
+    zkStateListener = new CachedResourceZkStateListener(this);
   }
 
   public static void registerSerializerForSchema(String clusterName,
@@ -342,6 +348,8 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository {
   @Override
   public void refresh() {
     clear();
+    // subscribe is thread safe method.
+    zkClient.subscribeStateChanges(zkStateListener);
   }
 
   /**
@@ -349,6 +357,8 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository {
    */
   @Override
   public void clear() {
+    // un-subscribe is thread safe method
+    zkClient.unsubscribeStateChanges(zkStateListener);
     schemaLock.writeLock().lock();
     try {
       Set<String> storeNameSet = schemaMap.keySet();
