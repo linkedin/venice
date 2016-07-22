@@ -2,6 +2,7 @@ package com.linkedin.venice.integration.utils;
 
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.utils.PropertyBuilder;
+import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.RandomGenUtils;
 
@@ -18,6 +19,8 @@ import java.net.ServerSocket;
  * N.B.: The visibility of some of the functions in this class is package-private on purpose.
  */
 public class TestUtils {
+  public static final int MAX_ASYNC_START_WAIT_TIME_MS = 10 * Time.MS_PER_SECOND;
+
   /**
    * WARNING: The code which generates the free port and uses it must always be called within
    * a try/catch and a loop. There is no guarantee that the port returned will still be

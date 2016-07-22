@@ -31,7 +31,6 @@ public class TopicMonitor extends AbstractVeniceService {
 
 
   public TopicMonitor(Admin admin, String clusterName, int replicationFactor, long pollInterval, TimeUnit pollIntervalUnits) {
-    super("TOPIC-MONITOR-SERVICE");
     this.admin = admin;
     this.clusterName = clusterName;
     this.replicationFactor = replicationFactor;
@@ -39,13 +38,18 @@ public class TopicMonitor extends AbstractVeniceService {
   }
 
   @Override
-  public void startInner() throws Exception {
+  public boolean startInner() throws Exception {
     String kafkaString = admin.getKafkaBootstrapServers();
     monitor = new TopicMonitorRunnable(admin);
     runner = new Thread(monitor);
     runner.setName("TopicMonitor - " + kafkaString);
     runner.setDaemon(true);
     runner.start();
+
+    // Although the TopicMonitorRunnable is now running in its own thread, there is no async
+    // process that needs to finish before the TopicMonitor can be considered started, so we
+    // are done with the start up process.
+    return true;
   }
 
   @Override

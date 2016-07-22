@@ -4,7 +4,6 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.consumer.KafkaConsumerService;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.notifier.HelixNotifier;
-import com.linkedin.venice.server.StoreRepository;
 import com.linkedin.venice.server.VeniceConfigLoader;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.storage.StorageService;
@@ -27,7 +26,6 @@ public class HelixParticipationService extends AbstractVeniceService {
 
   private static final Logger logger = Logger.getLogger(HelixParticipationService.class);
 
-  private static final String VENICE_PARTICIPANT_SERVICE_NAME = "venice-participant-service";
   private static final String STATE_MODEL_REFERENCE_NAME = "PartitionOnlineOfflineModel";
 
   private final Instance instance;
@@ -45,8 +43,6 @@ public class HelixParticipationService extends AbstractVeniceService {
           @NotNull String zkAddress,
           @NotNull String clusterName,
           int port) {
-
-    super(VENICE_PARTICIPANT_SERVICE_NAME);
     this.consumerService = kafkaConsumerService;
     this.clusterName = clusterName;
     //The format of instance name must be "$host_$port", otherwise Helix can not get these information correctly.
@@ -58,7 +54,7 @@ public class HelixParticipationService extends AbstractVeniceService {
   }
 
   @Override
-  public void startInner() {
+  public boolean startInner() {
     logger.info("Attempting to start HelixParticipation service");
     manager = HelixManagerFactory
             .getZKHelixManager(clusterName, this.participantName, InstanceType.PARTICIPANT,
@@ -77,7 +73,8 @@ public class HelixParticipationService extends AbstractVeniceService {
     //TODO Venice Listener should not be started, until the HelixService is started.
     asyncStart();
 
-    logger.info(" Successfully started Helix Participation Service");
+    // The start up process may not be finished yet, because it is continuing asynchronously.
+    return false;
   }
 
   @Override
@@ -93,7 +90,7 @@ public class HelixParticipationService extends AbstractVeniceService {
   private void asyncStart() {
     CompletableFuture.runAsync(() -> {
       try {
-        HelixUtils.connectHelixManager(manager, 3, 30);
+        HelixUtils.connectHelixManager(manager, 30, 1);
       } catch (VeniceException ve) {
         logger.error(ve.getMessage(), ve);
         logger.error("Venice server is about to close");
@@ -105,6 +102,10 @@ public class HelixParticipationService extends AbstractVeniceService {
       // Report start, progress , completed  and error notifications to controller
       HelixNotifier notifier = new HelixNotifier(manager, participantName);
       consumerService.addNotifier(notifier);
+
+      serviceState.set(ServiceState.STARTED);
+
+      logger.info("Successfully started Helix Participation Service");
     });
   }
 }

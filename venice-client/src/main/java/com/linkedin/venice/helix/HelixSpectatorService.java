@@ -12,7 +12,6 @@ import org.apache.helix.manager.zk.ZKHelixManager;
  */
 public class HelixSpectatorService extends AbstractVeniceService {
 
-  private static final String VENICE_SPECTATOR_SERVICE_NAME = "venice-spectator-service";
   private HelixManager manager;
   private String clusterName;
   private HelixRoutingDataRepository repository;
@@ -23,17 +22,19 @@ public class HelixSpectatorService extends AbstractVeniceService {
   for the node responsible for a partition.
    */
   public HelixSpectatorService(String zkAddress, String clusterName, String instanceName) {
-    super(VENICE_SPECTATOR_SERVICE_NAME);
     manager = new ZKHelixManager(clusterName, instanceName, InstanceType.SPECTATOR, zkAddress);
     this.repository = new HelixRoutingDataRepository(manager);
     this.clusterName = clusterName;
   }
 
   @Override
-  public void startInner() {
+  public boolean startInner() {
     try {
       manager.connect();
       repository.refresh();
+
+      // There is no async process in this function, so we are completely finished with the start up process.
+      return true;
     } catch (Exception e) {
       e.printStackTrace();
       throw new RuntimeException(e);

@@ -3,6 +3,8 @@ package com.linkedin.venice.integration.utils;
 import com.linkedin.d2.server.factory.D2Server;
 import com.linkedin.venice.exceptions.VeniceException;
 import java.util.List;
+
+import com.linkedin.venice.utils.Time;
 import org.apache.log4j.Logger;
 
 /**
@@ -16,6 +18,7 @@ public class ServiceFactory {
 
   // Test config
   private static final int MAX_ATTEMPT = 10;
+  private static final int MAX_ASYNC_WAIT_TIME_MS = 10 * Time.MS_PER_SECOND;
 
   /**
    * @return an instance of {@link ZkServerWrapper}
@@ -93,6 +96,8 @@ public class ServiceFactory {
     for (int attempt = 1; attempt <= MAX_ATTEMPT; attempt++) {
       try {
         S wrapper = serviceProvider.get(serviceName, TestUtils.getFreePort());
+
+        // N.B.: The contract for start() is that it should block until the wrapped service is fully started.
         wrapper.start();
         return wrapper;
       } catch (Exception e) {
