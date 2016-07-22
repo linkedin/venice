@@ -54,19 +54,23 @@ import org.jboss.netty.util.Timer;
 public class RouterServer extends AbstractVeniceService {
   private static final Logger logger = Logger.getLogger(RouterServer.class);
 
+  // Immutable state
   private final int port;
+  private final HelixRoutingDataRepository routingDataRepository;
+  private final HelixReadonlyStoreRepository metadataRepository;
+  private final String clusterName;
+  private final List<D2Server> d2ServerList;
+
+  // Mutable state
+  // TODO: Make these final once the test constructors are cleaned up.
   private ZkClient zkClient;
   private HelixManager manager;
-  private HelixRoutingDataRepository routingDataRepository;
-  private HelixReadonlyStoreRepository metadataRepository;
   private HelixReadOnlySchemaRepository schemaRepository;
-  private String clusterName;
 
+  // These are initialized in startInner()... TODO: Consider refactoring this to be immutable as well.
   private ChannelFuture serverFuture = null;
   private NettyResourceRegistry registry = null;
   private VeniceDispatcher dispatcher;
-
-  private final List<D2Server> d2ServerList;
 
   public static void main(String args[]) throws Exception {
 
@@ -115,7 +119,6 @@ public class RouterServer extends AbstractVeniceService {
    * @param d2ServerList
    */
   public RouterServer(int port, String clusterName, String zkConnection, List<D2Server> d2ServerList){
-    super(RouterServer.class.getName());
     this.port = port;
     this.clusterName = clusterName;
     zkClient = new ZkClient(zkConnection);
@@ -131,6 +134,12 @@ public class RouterServer extends AbstractVeniceService {
 
   /**
    * Only use this constructor for testing when you want to pass mock repositories
+   *
+   * TODO: This needs to be cleaned up. These constructors should be telescopic.
+   *
+   * Having separate constructors just for tests is hard to maintain, especially since in this case,
+   * the test constructor does not initialize manager...
+   *
    * @param port
    * @param clusterName
    * @param routingDataRepository
@@ -138,7 +147,6 @@ public class RouterServer extends AbstractVeniceService {
    */
   public RouterServer(int port, String clusterName, HelixRoutingDataRepository routingDataRepository,
       HelixReadonlyStoreRepository metadataRepository, List<D2Server> d2ServerList){
-    super(RouterServer.class.getName());
     this.port = port;
     this.clusterName = clusterName;
     this.metadataRepository = metadataRepository;
@@ -149,9 +157,7 @@ public class RouterServer extends AbstractVeniceService {
 
 
   @Override
-  public void startInner() throws Exception {
-    asyncStart();
-
+  public boolean startInner() throws Exception {
     metadataRepository.refresh();
     // No need to call schemaRepository.refresh() since it will do nothing.
 
@@ -189,7 +195,10 @@ public class RouterServer extends AbstractVeniceService {
     serverFuture = router.start(new InetSocketAddress(port), factory -> factory);
     serverFuture.await();
 
-    logger.info("Router server is started on port:" + serverFuture.getChannel().getLocalAddress());
+    asyncStart();
+
+    // The start up process is not finished yet, because it is continuing asynchronously.
+    return false;
   }
 
   @Override
@@ -219,7 +228,7 @@ public class RouterServer extends AbstractVeniceService {
     if (zkClient != null) {
       zkClient.close();
     }
-    logger.info("Router Server is stopped");
+    logger.info(this.toString() + " is stopped");
   }
 
 
@@ -233,10 +242,16 @@ public class RouterServer extends AbstractVeniceService {
   private void asyncStart() {
     CompletableFuture.runAsync(() -> {
       try {
-        HelixUtils.connectHelixManager(manager, 3, 30);
+        if (null == this.manager) {
+          // TODO: Remove this check once test constructor is removed or otherwise fixed.
+          logger.info("Not connecting to Helix because the HelixManager is null (the test constructor was used)");
+        } else {
+          HelixUtils.connectHelixManager(manager, 30, 1);
+          logger.info(this.toString() + " finished connectHelixManager()");
+        }
       } catch (VeniceException ve) {
-        logger.error(ve.getMessage(), ve);
-        logger.error("Venice router is about to close");
+        logger.error(this.toString() + " got an exception while trying to connectHelixManager()", ve);
+        logger.error(this.toString() + " is about to exit");
 
         System.exit(1);
       }
@@ -247,6 +262,10 @@ public class RouterServer extends AbstractVeniceService {
         logger.info("Starting d2 announcer: " + d2Server);
         d2Server.forceStart();
       }
+
+      serviceState.set(ServiceState.STARTED);
+
+      logger.info(this.toString() + " is started on port:" + serverFuture.getChannel().getLocalAddress());
     });
   }
 }

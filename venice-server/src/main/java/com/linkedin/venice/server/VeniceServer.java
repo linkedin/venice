@@ -138,8 +138,13 @@ public class VeniceServer {
     }
   }
 
+  /**
+   * @return true if the {@link VeniceServer} and all of its inner services are fully started
+   *         false if the {@link VeniceServer} was not started or if any of its inner services
+   *         are not finished starting.
+   */
   public boolean isStarted() {
-    return isStarted.get();
+    return isStarted.get() && services.stream().allMatch(abstractVeniceService -> abstractVeniceService.isStarted());
   }
 
   /**

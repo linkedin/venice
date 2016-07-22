@@ -28,7 +28,6 @@ public class AdminSparkServer extends AbstractVeniceService {
   protected static final ObjectMapper mapper = new ObjectMapper();
 
   public AdminSparkServer(int port, Admin admin) {
-    super("controller-admin-server");
     this.port = port;
     //Note: admin is passed in as a reference.  The expectation is the source of the admin will
     //      close it so we don't close it in stopInner()
@@ -36,7 +35,7 @@ public class AdminSparkServer extends AbstractVeniceService {
   }
 
   @Override
-  public void startInner() throws Exception {
+  public boolean startInner() throws Exception {
     Spark.port(port);
 
     Spark.get(CREATE_PATH, (request, response) -> {
@@ -80,6 +79,9 @@ public class AdminSparkServer extends AbstractVeniceService {
     Spark.get(GET_ALL_VALUE_SCHEMA_PATH, SchemaRoutes.getAllValueSchema(admin));
 
     Spark.awaitInitialization(); // Wait for server to be initialized
+
+    // There is no async process in this function, so we are completely finished with the start up process.
+    return true;
   }
 
   @Override

@@ -41,8 +41,21 @@ public abstract class ProcessWrapper implements Closeable {
     return getHost() + ":" + getPort();
   }
 
+  /**
+   * This function should start the wrapped service AND block until the service is fully started.
+   *
+   * @throws Exception if there is any problem during the start up
+   */
   protected abstract void start() throws Exception;
 
+  /**
+   * This function should stop the wrapped service. At this time, there is no expectation that the
+   * service is fully stopped before this function returns (i.e.: it is acceptable if some things
+   * finish asynchronously).
+   *
+   * @throws Exception if there are any problems while trying to stop the service (typically, these
+   *                   exceptions will be ignored).
+   */
   protected abstract void stop() throws Exception;
 
   public void close() {

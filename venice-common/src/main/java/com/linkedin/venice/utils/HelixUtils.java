@@ -99,20 +99,22 @@ public class HelixUtils {
    * @exception VeniceException if connection keeps failing after certain number of retry
    */
   public static void connectHelixManager(HelixManager manager, int maxRetries, int sleepTimeSeconds) {
-    int attempt = 0;
+    int attempt = 1;
     boolean isSuccess = false;
     while (!isSuccess) {
       try {
         manager.connect();
         isSuccess = true;
       } catch (Exception e) {
-        if (attempt < maxRetries) {
-          logger.warn("failed to connect Helix manager. Will retry in " + sleepTimeSeconds + " seconds");
+        if (attempt <= maxRetries) {
+          logger.warn("failed to connect " + manager.toString() + " on attempt " + attempt + "/" + maxRetries +
+              ". Will retry in " + sleepTimeSeconds + " seconds.");
           attempt++;
           Utils.sleep(sleepTimeSeconds * 1000);
-        } else
-          throw new VeniceException("Error connecting to Helix Manager Cluster " +
-          manager.getClusterName(), e);
+        } else {
+          throw new VeniceException("Error connecting to Helix Manager for Cluster '" +
+              manager.getClusterName() + "' after " + maxRetries + " attempts.", e);
+        }
       }
     }
   }

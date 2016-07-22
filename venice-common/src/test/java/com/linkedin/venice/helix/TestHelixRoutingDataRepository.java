@@ -124,12 +124,13 @@ public class TestHelixRoutingDataRepository {
   @Test
   public void testGetInstances()
       throws Exception {
+    // TODO: Fix this test. It is flaky, especially when running on a slow or heavily loaded machine.
     List<Instance> instances = repository.getReadyToServeInstances(resourceName, 0);
     Assert.assertEquals(1, instances.size());
     Instance instance = instances.get(0);
     Assert.assertEquals(Utils.getHostName(), instance.getHost());
     Assert.assertEquals(httpPort, instance.getPort());
-    //Participant become off=line.
+    //Participant become offline.
     manager.disconnect();
     //Wait notification.
     Thread.sleep(WAIT_TIME);
@@ -150,7 +151,7 @@ public class TestHelixRoutingDataRepository {
   public void testGetNumberOfPartitions()
       throws Exception {
     Assert.assertEquals(1, repository.getNumberOfPartitions(resourceName));
-    //Participant become off=line.
+    //Participant become offline.
     manager.disconnect();
     //Wait notification.
     Thread.sleep(WAIT_TIME);
@@ -191,7 +192,7 @@ public class TestHelixRoutingDataRepository {
     Instance liveInstance = partitions.get(0).getBootstrapAndReadyToServeInstances().get(0);
     Assert.assertEquals(liveInstance, instance);
 
-    //Participant become off=line.
+    //Participant become offline.
     manager.disconnect();
     //Wait notification.
     Thread.sleep(WAIT_TIME);
@@ -212,7 +213,7 @@ public class TestHelixRoutingDataRepository {
     };
 
     repository.subscribeRoutingDataChange(resourceName, listener);
-    //Participant become off=line.
+    //Participant become offline.
     manager.disconnect();
     //Wait notification.
     Thread.sleep(WAIT_TIME);

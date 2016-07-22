@@ -1,8 +1,8 @@
 package com.linkedin.venice.service;
 
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.utils.Utils;
-import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
+
 import org.apache.log4j.Logger;
 
 
@@ -12,13 +12,20 @@ import org.apache.log4j.Logger;
  *
  */
 public abstract class AbstractVeniceService {
+
+  protected enum ServiceState {
+    STOPPED,
+    STARTING,
+    STARTED
+  }
+
   private final String serviceName;
-  private final AtomicBoolean isStarted;
+  protected final AtomicReference<ServiceState> serviceState;
   private static final Logger logger = Logger.getLogger(AbstractVeniceService.class);
 
-  public AbstractVeniceService(String serviceName) {
-    this.serviceName = Utils.notNull(serviceName);
-    isStarted = new AtomicBoolean(false);
+  public AbstractVeniceService() {
+    this.serviceName = this.getClass().getSimpleName();
+    this.serviceState = new AtomicReference<>(ServiceState.STOPPED);
   }
 
   public String getName() {
@@ -27,12 +34,22 @@ public abstract class AbstractVeniceService {
 
   public void start() {
     try {
-      boolean isntStarted = isStarted.compareAndSet(false, true);
-      if (!isntStarted) {
-        throw new IllegalStateException("Service is already started!");
+      if (!serviceState.compareAndSet(ServiceState.STOPPED, ServiceState.STARTING)) {
+        throw new IllegalStateException("Service can only be started when in " + ServiceState.STOPPED +
+            " state! Current state: " + serviceState.get());
       }
+
       logger.info("Starting " + getName());
-      startInner();
+      if (startInner()) {
+        serviceState.set(ServiceState.STARTED);
+        logger.info("Service '" + serviceName + "' has finished starting!");
+      } else {
+        /**
+         * N.B.: It is the Service implementer's responsibility to set {@link #serviceState} to
+         * {@link ServiceState#STARTED} upon completion of the async work.
+         */
+        logger.info("Service '" + serviceName + "' may not be done starting. The process will finish asynchronously.");
+      }
     } catch (Exception e) {
       String errMsg = "Error starting service: " + getName();
       logger.error(errMsg, e);
@@ -49,15 +66,23 @@ public abstract class AbstractVeniceService {
         return;
       }
       stopInner();
-      isStarted.set(false);
+      serviceState.set(ServiceState.STOPPED);
     }
   }
 
   public boolean isStarted() {
-    return this.isStarted.get();
+    return this.serviceState.get() == ServiceState.STARTED;
   }
 
-  public abstract void startInner()
+  /**
+   *
+   * @return true if the service is completely started,
+   *         false if it is still starting asynchronously (in this case, it is the implementer's
+   *         responsibility to set {@link #serviceState} to {@link ServiceState#STARTED} upon
+   *         completion of the async work).
+   * @throws Exception
+   */
+  public abstract boolean startInner()
       throws Exception;
 
   public abstract void stopInner()

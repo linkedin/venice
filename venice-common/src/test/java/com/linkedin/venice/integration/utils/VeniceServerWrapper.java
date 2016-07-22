@@ -4,10 +4,12 @@ import static com.linkedin.venice.ConfigKeys.*;
 import com.linkedin.venice.server.VeniceConfigLoader;
 import com.linkedin.venice.server.VeniceServer;
 import com.linkedin.venice.utils.PropertyBuilder;
+import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import org.apache.commons.io.FileUtils;
 
 import java.io.File;
+import java.util.concurrent.TimeUnit;
 
 /**
  * A wrapper for the {@link com.linkedin.venice.server.VeniceServer}.
@@ -53,7 +55,6 @@ public class VeniceServerWrapper extends ProcessWrapper {
     };
   }
 
-
   @Override
   public String getHost() {
     return DEFAULT_HOST_NAME;
@@ -77,6 +78,11 @@ public class VeniceServerWrapper extends ProcessWrapper {
   @Override
   public void start() throws Exception {
     veniceServer.start();
+
+    Utils.waitForNonDeterministicCompetion(
+        TestUtils.MAX_ASYNC_START_WAIT_TIME_MS,
+        TimeUnit.MILLISECONDS,
+        () -> veniceServer.isStarted());
   }
 
   @Override

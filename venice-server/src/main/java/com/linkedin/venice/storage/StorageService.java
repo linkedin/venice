@@ -28,8 +28,6 @@ import java.util.concurrent.ConcurrentMap;
  */
 public class StorageService extends AbstractVeniceService {
 
-  public final static String NAME = "storage-service";
-
   private static final Logger logger = Logger.getLogger(StorageService.class);
 
   private final StoreRepository storeRepository;
@@ -40,7 +38,6 @@ public class StorageService extends AbstractVeniceService {
   private final PartitionAssignmentRepository partitionAssignmentRepository;
 
   public StorageService(VeniceServerConfig config) {
-    super(NAME);
     this.serverConfig = config;
     this.storeRepository = new StoreRepository();
     this.persistenceTypeToStorageEngineFactoryMap = new ConcurrentHashMap<>();
@@ -144,13 +141,12 @@ public class StorageService extends AbstractVeniceService {
   }
 
   @Override
-  public void startInner()
-      throws Exception {
-    /*
-    After Storage Node starts, Helix controller initiates the state transition
-    for the Stores that should be consumed/served by the router.
-     */
-    logger.info("Storage Service started");
+  public boolean startInner() throws Exception {
+    // After Storage Node starts, Helix controller initiates the state transition for the Stores that
+    // should be consumed/served by the router.
+
+    // There is no async process in this function, so we are completely finished with the start up process.
+    return true;
   }
 
   @Override

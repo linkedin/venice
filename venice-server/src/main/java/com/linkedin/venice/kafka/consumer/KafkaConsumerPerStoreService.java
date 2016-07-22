@@ -42,7 +42,6 @@ public class KafkaConsumerPerStoreService extends AbstractVeniceService implemen
 
   // FIXME: Get rid of hard-coded topic name
   private static final String ACK_PARTITION_CONSUMPTION_KAFKA_TOPIC = "venice-partition-consumption-acknowledgement-1";
-  private static final String VENICE_SERVICE_NAME = "kafka-consumer-service";
   private static final String GROUP_ID_FORMAT = "%s_%s_%d";
 
   private static final Logger logger = Logger.getLogger(KafkaConsumerPerStoreService.class);
@@ -74,7 +73,6 @@ public class KafkaConsumerPerStoreService extends AbstractVeniceService implemen
                                       VeniceConfigLoader veniceConfigLoader,
                                       OffsetManager offsetManager,
                                       ReadOnlySchemaRepository schemaRepo) {
-    super(VENICE_SERVICE_NAME);
     this.storeRepository = storeRepository;
     this.offsetManager = offsetManager;
     this.schemaRepo = schemaRepo;
@@ -120,12 +118,16 @@ public class KafkaConsumerPerStoreService extends AbstractVeniceService implemen
    * Starts the Kafka consumption tasks for already subscribed partitions.
    */
   @Override
-  public void startInner() {
+  public boolean startInner() {
     logger.info("Enabling consumerExecutorService and kafka consumer tasks on node: " + nodeId);
     consumerExecutorService = Executors.newCachedThreadPool(new DaemonThreadFactory("venice-consumer"));
     topicNameToKafkaMessageConsumptionTaskMap.values().forEach(consumerExecutorService::submit);
     isRunning.set(true);
-    logger.info("Kafka consumer tasks started.");
+
+    // Although the StoreConsumptionTasks are now running in their own threads, there is no async
+    // process that needs to finish before the KafkaConsumerPerStoreService can be considered
+    // started, so we are done with the start up process.
+    return true;
   }
 
   private StoreConsumptionTask getConsumerTask(VeniceStoreConfig veniceStore) {

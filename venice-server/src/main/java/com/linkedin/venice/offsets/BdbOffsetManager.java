@@ -14,7 +14,6 @@ import com.sleepycat.je.LockMode;
 import com.sleepycat.je.OperationStatus;
 import java.io.File;
 import java.nio.charset.StandardCharsets;
-import java.util.HashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.apache.log4j.Logger;
 
@@ -50,7 +49,7 @@ public class BdbOffsetManager extends AbstractVeniceService implements OffsetMan
   private Database offsetsBdbDatabase;
 
   @Override
-  public void startInner()
+  public boolean startInner()
           throws Exception {
     DatabaseConfig dbConfig = new DatabaseConfig();
     dbConfig.setAllowCreate(true);
@@ -61,12 +60,12 @@ public class BdbOffsetManager extends AbstractVeniceService implements OffsetMan
     logger.info("Creating BDB environment for storing offsets: ");
     this.offsetsBdbDatabase = offsetsBdbEnvironment.openDatabase(null, OFFSETS_STORE_NAME, dbConfig);
     this.isOpen = new AtomicBoolean(true);
+
+    // There is no async process in this function, so we are completely finished with the start up process.
+    return true;
   }
 
-  private static final String OFFSET_SERVICE = "Offset-Service";
   public BdbOffsetManager(VeniceClusterConfig veniceClusterConfig) {
-    super(OFFSET_SERVICE);
-
     String bdbMasterDir = veniceClusterConfig.getOffsetDatabasePath();
     File bdbDir = new File(bdbMasterDir);
     if (!bdbDir.exists()) {
