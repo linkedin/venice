@@ -1,0 +1,9 @@
+{
+	"type": "record",
+	"name": "TestValueRecord",
+	"namespace": "com.linkedin.venice.client.store.schemas",
+	"fields" : [
+	 	{"name": "long_field", "type": "long"},
+		{"name": "string_field", "type": "string"}
+	]
+}

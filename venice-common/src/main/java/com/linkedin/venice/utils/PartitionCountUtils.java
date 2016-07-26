@@ -1,10 +1,9 @@
 package com.linkedin.venice.utils;
 
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.meta.ReadonlyStoreRepository;
+import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.meta.Store;
-import com.linkedin.venice.meta.Version;
 import org.apache.log4j.Logger;
 
 
@@ -18,8 +17,8 @@ public class PartitionCountUtils {
 
   // TODO. As there are a lot of parameters, we could transfer a configuration and keep some state instead of a utility static method.
   public static int calculatePartitionCount(String clusterName, String storeName, long storeSizeBytes,
-      ReadonlyStoreRepository storeRepository, RoutingDataRepository routingDataRepository, long partitionSize,
-      int minPartitionCount, int maxPartitionCount) {
+                                            ReadOnlyStoreRepository storeRepository, RoutingDataRepository routingDataRepository, long partitionSize,
+                                            int minPartitionCount, int maxPartitionCount) {
     if (storeSizeBytes <= 0) {
       throw new VeniceException("Store size:" + storeSizeBytes + "is invalid.");
     }

@@ -1,0 +1,10 @@
+{
+	"type": "record",
+	"name": "TestValueRecordWithMoreFields",
+	"namespace": "com.linkedin.venice.client.store.schemas",
+	"fields" : [
+	 	{"name": "long_field", "type": "long"},
+		{"name": "string_field", "type": "string"},
+		{"name": "int_field", "type": "int", "default": 10}
+	]
+}

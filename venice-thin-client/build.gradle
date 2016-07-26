@@ -1,8 +1,8 @@
-apply plugin: 'application'
-
-mainClassName = "com.linkedin.venice.client.VeniceHttpClient"
-
 task buildJar(type: Jar) {
+  manifest {
+    attributes 'Implementation-Title': 'Venice Thin Client',
+            'Implementation-Version': version
+  }
   baseName = project.name
   from { configurations.compile.collect { it.isDirectory() ? it : zipTree(it) } }
   with jar
@@ -17,5 +17,16 @@ dependencies {
   }
   compile (libraries.d2Client){
     exclude group: 'com.oracle', module: 'ojdbc14' /* unused transitive dependencies, doesnt exist in repo */
+    exclude group: 'org.mockito', module: 'mockito-all'
+  }
+  // TODO: get rid of venice-common dependency
+  // Create another small repo for schema related lib, which can be shared by both client and server
+  compile project(':venice-common')
+
+  testCompile project(':venice-common').sourceSets.test.output
+  testCompile libraries.netty
+  testCompile (libraries.d2){
+    exclude group: 'com.oracle', module: 'ojdbc14' /* unused transitive dependencies, doesnt exist in repo */
+    exclude group: 'org.mockito', module: 'mockito-all'
   }
 }

@@ -97,7 +97,7 @@ public class VeniceControllerWrapper extends ProcessWrapper {
     String storeName = TestUtils.getUniqueString("venice-store");
     String storeOwner = TestUtils.getUniqueString("store-owner");
     long storeSize = 10 * 1024 * 1024;
-    String keySchema = "\"long\"";
+    String keySchema = "\"string\"";
     String valueSchema = "\"string\"";
     VersionCreationResponse newStore = ControllerClient.createStoreVersion(
         routerUrl,

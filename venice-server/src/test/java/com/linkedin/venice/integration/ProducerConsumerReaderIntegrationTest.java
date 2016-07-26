@@ -1,20 +1,21 @@
 package com.linkedin.venice.integration;
 
 import com.linkedin.venice.client.VeniceReader;
-import com.linkedin.venice.client.VeniceHttpClient;
-import com.linkedin.venice.client.VeniceThinClient;
 import com.linkedin.venice.writer.VeniceWriter;
+import com.linkedin.venice.client.exceptions.VeniceClientException;
+import com.linkedin.venice.client.store.AvroGenericStoreClient;
+import com.linkedin.venice.client.store.AvroStoreClientFactory;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.meta.Version;
-import com.linkedin.venice.serialization.StringSerializer;
 import com.linkedin.venice.serialization.VeniceSerializer;
+import com.linkedin.venice.serialization.avro.AvroGenericSerializer;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.VeniceProperties;
-import java.nio.charset.StandardCharsets;
+
 import java.util.HashMap;
 import java.util.concurrent.ExecutionException;
 import java.util.function.Consumer;
@@ -45,19 +46,21 @@ public class ProducerConsumerReaderIntegrationTest {
   private VeniceClusterWrapper veniceCluster;
   private String storeVersionName;
   private int valueSchemaId;
+  private String storeName;
 
   // TODO: Make serializers parameterized so we test them all.
-  private VeniceWriter<String, String> veniceWriter;
-  private VeniceReader<String, String> veniceReader;
-  private VeniceThinClient thinClient;
+  private VeniceWriter<Object, Object> veniceWriter;
+  private VeniceReader<Object, Object> veniceReader;
+  private AvroGenericStoreClient<Object> storeClient;
 
   @BeforeMethod
-  public void setUp() throws InterruptedException, ExecutionException {
+  public void setUp() throws InterruptedException, ExecutionException, VeniceClientException {
     veniceCluster = ServiceFactory.getVeniceCluster();
 
     // Create test store
     VersionCreationResponse creationResponse = veniceCluster.getNewStoreVersion();
     storeVersionName = creationResponse.getKafkaTopic();
+    storeName = Version.parseStoreFromKafkaTopicName(storeVersionName);
     valueSchemaId = creationResponse.getValueSchemaId();
     String routerUrl = "http://" + veniceCluster.getVeniceRouter().getAddress();
     veniceCluster.getVeniceController().setActiveVersion(routerUrl, veniceCluster.getClusterName(), storeVersionName);
@@ -68,20 +71,23 @@ public class ProducerConsumerReaderIntegrationTest {
                     .put(CLUSTER_NAME, veniceCluster.getClusterName()).build();
 
     // TODO: Make serializers parameterized so we test them all.
-    VeniceSerializer keySerializer = new StringSerializer();
-    VeniceSerializer valueSerializer = new StringSerializer();
+    String stringSchema = "\"string\"";
+    VeniceSerializer keySerializer = new AvroGenericSerializer(stringSchema);
+    VeniceSerializer valueSerializer = new AvroGenericSerializer(stringSchema);
 
-    veniceWriter = new VeniceWriter(clientProps, storeVersionName, keySerializer, valueSerializer);
-    veniceReader = new VeniceReader<String, String>(clientProps, storeVersionName, keySerializer, valueSerializer);
+    veniceWriter = new VeniceWriter<>(clientProps, storeVersionName, keySerializer, valueSerializer);
+    veniceReader = new VeniceReader<>(clientProps, storeVersionName, keySerializer, valueSerializer);
     veniceReader.init();
-    thinClient = new VeniceHttpClient(
-        veniceCluster.getVeniceRouter().getHost(),
-        veniceCluster.getVeniceRouter().getPort());
+
+    String routerServerUrl = "http://" + veniceCluster.getVeniceRouter().getHost() + ":"
+        + veniceCluster.getVeniceRouter().getPort() + "/";
+
+    storeClient = AvroStoreClientFactory.getAvroGenericStoreClient(routerServerUrl, storeName);
   }
 
   @AfterMethod
   public void cleanUp() {
-    thinClient.close();
+    storeClient.close();
     if (veniceCluster != null) {
       veniceCluster.close();
     }
@@ -149,7 +155,7 @@ public class ProducerConsumerReaderIntegrationTest {
 
     // TODO: Refactor the retry code into a re-usable (and less hacky) class
     try {
-      String initialValue = veniceReader.get(key);
+      veniceReader.get(key);
       Assert.fail("Not online instances exist in cluster, should throw exception for this read operation.");
     } catch (VeniceException e) {
       // Expected result. Because right now status of node is "BOOTSTRAP" so can not find any online instance to read.
@@ -160,22 +166,22 @@ public class ProducerConsumerReaderIntegrationTest {
     veniceWriter.broadcastEndOfPush(new HashMap<String,String>());
     // Read from the storage node
     // This may fail non-deterministically, if the storage node is not done consuming yet, hence the retries.
+
     Assert.assertTrue(retry((attempt, timeElapsed) -> {
-      String newValue = veniceReader.get(key);
+      Object newValue = veniceReader.get(key);
       if (newValue == null) {
         handleRetry(attempt, timeElapsed, "null value", (message) -> Assert.fail(message));
         return false;
       } else {
-        Assert.assertEquals(newValue, value, "The key '" + key + "' does not contain the expected value!");
+        Assert.assertEquals(newValue.toString(), value, "The key '" + key + "' does not contain the expected value!");
         LOGGER.info("Successfully completed the single record end-to-end test (:");
         return true;
       }
     }), "Not able to retrieve key '" + key + "' which was written into Venice!");
 
     // Read from the router
-    String storeName = Version.parseStoreFromKafkaTopicName(storeVersionName);
-    byte[] thinClientValueBytes = thinClient.get(storeName, key.getBytes(StandardCharsets.UTF_8)).get();
-    Assert.assertEquals(new String(thinClientValueBytes, StandardCharsets.UTF_8), value);
+    Object storeClientValue = storeClient.get(key).get();
+    Assert.assertEquals(storeClientValue.toString(), value);
   }
 
   // TODO: Add tests with more complex scenarios (multiple records, record overwrites, multiple partitions, multiple storage nodes, etc.)

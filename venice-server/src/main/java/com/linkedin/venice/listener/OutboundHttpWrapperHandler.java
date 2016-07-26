@@ -50,6 +50,7 @@ public class OutboundHttpWrapperHandler extends ChannelOutboundHandlerAdapter {
     response.headers().set(HttpConstants.VENICE_OFFSET, offset);
     response.headers().set(HttpConstants.VENICE_SCHEMA_ID, schemaId);
 
+    // TODO: keep-alive support?
     ctx.write(response).addListener(ChannelFutureListener.CLOSE);
   }
 }

@@ -72,6 +72,18 @@ public class ServiceFactory {
         MockVeniceRouterWrapper.generateService(d2ServerList));
   }
 
+  /**
+   * Initialize MockHttpServerWrapper, this function will setup a simple http server if d2ServerList is null.
+   * If param: d2ServerList is null, it will create a pure http server.
+   *
+   * @param serviceName
+   * @param d2ServerList
+   * @return
+   */
+  public static MockHttpServerWrapper getMockHttpServer(String serviceName, List<D2Server> d2ServerList) {
+    return getService(serviceName, MockHttpServerWrapper.generateService(d2ServerList));
+  }
+
   public static VeniceClusterWrapper getVeniceCluster() {
     return getVeniceCluster(1);
   }

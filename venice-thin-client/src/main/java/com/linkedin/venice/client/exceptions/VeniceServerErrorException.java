@@ -1,4 +1,4 @@
-package com.linkedin.venice.client;
+package com.linkedin.venice.client.exceptions;
 
 /***
  * Thrown by the venice thin client if the server responds with a 500

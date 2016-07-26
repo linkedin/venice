@@ -15,7 +15,7 @@ import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixAdapterSerializer;
 import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
-import com.linkedin.venice.helix.HelixReadonlyStoreRepository;
+import com.linkedin.venice.helix.HelixReadOnlyStoreRepository;
 import com.linkedin.venice.helix.HelixRoutingDataRepository;
 import com.linkedin.venice.router.api.VeniceDispatcher;
 import com.linkedin.venice.router.api.VeniceHostFinder;
@@ -57,7 +57,7 @@ public class RouterServer extends AbstractVeniceService {
   // Immutable state
   private final int port;
   private final HelixRoutingDataRepository routingDataRepository;
-  private final HelixReadonlyStoreRepository metadataRepository;
+  private final HelixReadOnlyStoreRepository metadataRepository;
   private final String clusterName;
   private final List<D2Server> d2ServerList;
 
@@ -125,7 +125,7 @@ public class RouterServer extends AbstractVeniceService {
     manager = new ZKHelixManager(this.clusterName, null, InstanceType.SPECTATOR, zkConnection);
 
     HelixAdapterSerializer adapter = new HelixAdapterSerializer();
-    this.metadataRepository = new HelixReadonlyStoreRepository(zkClient, adapter, this.clusterName);
+    this.metadataRepository = new HelixReadOnlyStoreRepository(zkClient, adapter, this.clusterName);
     this.schemaRepository = new HelixReadOnlySchemaRepository(this.metadataRepository,
         this.zkClient, adapter, this.clusterName);
     this.routingDataRepository = new HelixRoutingDataRepository(manager);
@@ -144,12 +144,19 @@ public class RouterServer extends AbstractVeniceService {
    * @param clusterName
    * @param routingDataRepository
    * @param metadataRepository
+   * @param schemaRepository
+   * @param d2ServerList
    */
-  public RouterServer(int port, String clusterName, HelixRoutingDataRepository routingDataRepository,
-      HelixReadonlyStoreRepository metadataRepository, List<D2Server> d2ServerList){
+  public RouterServer(int port,
+                      String clusterName,
+                      HelixRoutingDataRepository routingDataRepository,
+                      HelixReadOnlyStoreRepository metadataRepository,
+                      HelixReadOnlySchemaRepository schemaRepository,
+                      List<D2Server> d2ServerList){
     this.port = port;
     this.clusterName = clusterName;
     this.metadataRepository = metadataRepository;
+    this.schemaRepository = schemaRepository;
     this.routingDataRepository = routingDataRepository;
     this.d2ServerList = d2ServerList;
   }

@@ -51,7 +51,7 @@ public final class SchemaData {
 
   public int getMaxValueSchemaId() {
     if (valueSchemaMap.isEmpty()) {
-      return 0;
+      return INVALID_VALUE_SCHEMA_ID;
     }
     return valueSchemaMap.lastKey().intValue();
   }

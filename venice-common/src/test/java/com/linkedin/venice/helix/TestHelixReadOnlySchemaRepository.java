@@ -32,7 +32,7 @@ public class TestHelixReadOnlySchemaRepository {
   private HelixAdapterSerializer adapter = new HelixAdapterSerializer();
 
   HelixReadWriteStoreRepository storeRWRepo;
-  HelixReadonlyStoreRepository storeRORepo;
+  HelixReadOnlyStoreRepository storeRORepo;
   HelixReadWriteSchemaRepository schemaRWRepo;
   HelixReadOnlySchemaRepository schemaRORepo;
 
@@ -46,7 +46,7 @@ public class TestHelixReadOnlySchemaRepository {
 
     storeRWRepo = new HelixReadWriteStoreRepository(zkClient, adapter, cluster);
     storeRWRepo.refresh();
-    storeRORepo = new HelixReadonlyStoreRepository(zkClient, adapter, cluster);
+    storeRORepo = new HelixReadOnlyStoreRepository(zkClient, adapter, cluster);
     storeRORepo.refresh();
     schemaRWRepo = new HelixReadWriteSchemaRepository(storeRWRepo, zkClient, adapter, cluster);
     schemaRORepo = new HelixReadOnlySchemaRepository(storeRORepo, zkClient, adapter, cluster);

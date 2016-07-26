@@ -1,7 +1,7 @@
 package com.linkedin.venice.helix;
 
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.meta.ReadonlyStoreRepository;
+import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreDataChangedListener;
 import com.linkedin.venice.meta.VeniceSerializer;
@@ -29,8 +29,8 @@ import org.apache.helix.manager.zk.ZkClient;
  * Use Helix as storage for stores. Cached all of stores in local copy and provide read operations. Once stores are
  * changed in ZK, this repository will get notification and update local copy to keep consistent with ZK copy.
  */
-public class HelixReadonlyStoreRepository implements ReadonlyStoreRepository {
-  private static final Logger logger = Logger.getLogger(HelixReadonlyStoreRepository.class);
+public class HelixReadOnlyStoreRepository implements ReadOnlyStoreRepository {
+  private static final Logger logger = Logger.getLogger(HelixReadOnlyStoreRepository.class);
 
   public static final String STORES_PATH = "/Stores";
 
@@ -70,13 +70,13 @@ public class HelixReadonlyStoreRepository implements ReadonlyStoreRepository {
    */
   protected final String rootPath;
 
-  public HelixReadonlyStoreRepository(@NotNull ZkClient zkClient, @NotNull HelixAdapterSerializer adapter,
-      @NotNull String clusterName) {
+  public HelixReadOnlyStoreRepository(@NotNull ZkClient zkClient, @NotNull HelixAdapterSerializer adapter,
+                                      @NotNull String clusterName) {
     this(zkClient, adapter, clusterName, new StoreJSONSerializer());
   }
 
-  public HelixReadonlyStoreRepository(@NotNull ZkClient zkClient, @NotNull HelixAdapterSerializer adapter,
-      @NotNull String clusterName, @NotNull VeniceSerializer<Store> serializer) {
+  public HelixReadOnlyStoreRepository(@NotNull ZkClient zkClient, @NotNull HelixAdapterSerializer adapter,
+                                      @NotNull String clusterName, @NotNull VeniceSerializer<Store> serializer) {
     this.rootPath = "/" + clusterName + STORES_PATH;
     // TODO: Considering serializer should be thread-safe, we can share serializer across multiple
     // clusters, which means we can register the following paths:

@@ -1,8 +1,8 @@
-package com.linkedin.venice.client;
+package com.linkedin.venice.client.exceptions;
 
 /***
  * Thrown by the venice thin client if something goes wrong with the request
- * Parent class to VeniceNotFoundException and VeniceServerErrorException
+ * Parent class to VeniceServerErrorException
  */
 public class VeniceClientException extends Exception{
 

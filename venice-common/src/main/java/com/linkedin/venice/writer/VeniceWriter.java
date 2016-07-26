@@ -100,7 +100,7 @@ public class VeniceWriter<K, V> extends AbstractVeniceWriter<K, V> {
     return producer.sendMessage(topicName, kafkaKey, kafkaValue, partition);
   }
 
-  // TODO: Once we finishes venice client/schema registry integration, we need to remove this interface
+  // TODO: We need to deprecate VeniceShellClient to remove this function
   @Deprecated
   public Future<RecordMetadata> put(K key, V value) {
     return put(key, value, -1);
