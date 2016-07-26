@@ -3,7 +3,7 @@ package com.linkedin.venice.job;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.Partition;
-import java.util.Collection;
+import com.linkedin.venice.meta.PartitionAssignment;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -26,24 +26,20 @@ public abstract class JobStatusDecider {
    * Check given partition and instances to see whether job has enough task executors.
    *
    * @param job
-   * @param partitions collection of partitions
+   * @param partitionAssignment partition assignment for resource
    *
    * @return
    */
-  public boolean hasEnoughTaskExecutors(Job job, Collection<Partition> partitions) {
-    if (partitions.size() != job.getNumberOfPartition()) {
+  public boolean hasEnoughTaskExecutors(Job job, PartitionAssignment partitionAssignment) {
+    int actualNumberOfPartition = partitionAssignment.getAssignedNumberOfPartitions();
+    if (actualNumberOfPartition != job.getNumberOfPartition()) {
       logger.info(
-          "Number of partitions:" + partitions.size() + " is different from the number required when job was created:" +
+          "Number of partitions:" + actualNumberOfPartition + " is different from the number required when job was created:" +
               job.getNumberOfPartition());
       return false;
     }
 
-    for (Partition partition : partitions) {
-      if (partition.getId() < 0 || partition.getId() >= partitions.size()) {
-        throw new VeniceException(
-            "Invalid partition Id:" + partition.getId() + ". Valid partition id should be in range: [0, " + (
-                partitions.size() - 1) + "]");
-      }
+    for (Partition partition : partitionAssignment.getAllPartitions()) {
       if (!hasEnoughReplicasForOnePartition(partition.getBootstrapAndReadyToServeInstances().size(), job.getReplicationFactor())) {
         //Some of nodes are failed.
         logger.info("Number of replicas:" + partition.getBootstrapAndReadyToServeInstances().size() + " in partition:" + partition.getId()

@@ -8,6 +8,7 @@ import com.linkedin.venice.job.OfflineJob;
 import com.linkedin.venice.job.Task;
 import com.linkedin.venice.listener.ListenerManager;
 import com.linkedin.venice.meta.Partition;
+import com.linkedin.venice.meta.PartitionAssignment;
 import com.linkedin.venice.meta.VeniceSerializer;
 import com.linkedin.venice.utils.HelixUtils;
 import java.util.ArrayList;
@@ -136,15 +137,15 @@ public class HelixJobRepository implements JobRepository {
   }
 
   @Override
-  public synchronized void updateJobExecutingTasks(long jobId, String kafkaTopic, Map<Integer, Partition> partitions) {
-    Job job = getJob(jobId, kafkaTopic);
+  public synchronized void updateJobExecutingTasks(long jobId, PartitionAssignment partitionAssignment) {
+    Job job = getJob(jobId, partitionAssignment.getTopic());
     if (job.isTerminated()) {
       logger.warn("Job:" + jobId + " is terminated before, can not be updated again.");
       return;
     }
     // Clone job and verify the updates.
     Job cloneJob = job.cloneJob();
-    Set<Integer> changedPartitions = cloneJob.updateExecutingTasks(partitions);
+    Set<Integer> changedPartitions = cloneJob.updateExecutingTasks(partitionAssignment);
     // update zk
     if (!changedPartitions.isEmpty()) {
       try {
@@ -159,7 +160,7 @@ public class HelixJobRepository implements JobRepository {
       }
     }
     // Update local copy.
-    job.updateExecutingTasks(partitions);
+    job.updateExecutingTasks(partitionAssignment);
   }
 
   @Override

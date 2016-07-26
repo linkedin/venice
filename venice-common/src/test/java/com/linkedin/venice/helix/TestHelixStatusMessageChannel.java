@@ -28,7 +28,7 @@ import org.testng.annotations.Test;
 /**
  * Test cases for HelixStatusMessageChannel
  */
-public class TestHelixControlMessageChannel {
+public class TestHelixStatusMessageChannel {
   private String cluster = "UnitTestCluster";
   private String kafkaTopic = "test_resource_1";
   private int partitionId = 0;

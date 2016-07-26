@@ -1,6 +1,7 @@
 package com.linkedin.venice.listener;
 
 import com.linkedin.venice.meta.Partition;
+import com.linkedin.venice.meta.PartitionAssignment;
 import com.linkedin.venice.meta.RoutingDataRepository;
 import java.util.Map;
 import java.util.function.Function;
@@ -20,7 +21,7 @@ public class TestListenerManager {
     manager.trigger(key, new Function<RoutingDataRepository.RoutingDataChangedListener, Void>() {
       @Override
       public Void apply(RoutingDataRepository.RoutingDataChangedListener listener) {
-        listener.onRoutingDataChanged("", null);
+        listener.onRoutingDataChanged(new PartitionAssignment(key, 1));
         return null;
       }
     });
@@ -33,7 +34,7 @@ public class TestListenerManager {
     manager.trigger(key, new Function<RoutingDataRepository.RoutingDataChangedListener, Void>() {
       @Override
       public Void apply(RoutingDataRepository.RoutingDataChangedListener listener) {
-        listener.onRoutingDataChanged("", null);
+        listener.onRoutingDataDeleted(key);
         return  null;
       }
     });
@@ -45,8 +46,13 @@ public class TestListenerManager {
     private boolean isExecuted = false;
 
     @Override
-    public void onRoutingDataChanged(String kafkaTopic, Map<Integer, Partition> partitions) {
+    public void onRoutingDataChanged(PartitionAssignment partitionAssignment) {
       isExecuted = true;
+    }
+
+    @Override
+    public void onRoutingDataDeleted(String kafkaTopic) {
+     isExecuted = true;
     }
   }
 }

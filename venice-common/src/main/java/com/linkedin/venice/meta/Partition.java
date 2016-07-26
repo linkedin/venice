@@ -1,5 +1,6 @@
 package com.linkedin.venice.meta;
 
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import javax.validation.constraints.NotNull;
@@ -22,23 +23,21 @@ public class Partition {
      */
     private final int id;
     /**
-     * Name of resource that this partition belong to.
-     */
-    private final String resourceName;
-    /**
      * Instances who hold the replicas of this partition and still live. Live stands for it's ready to serve or doing
      * the bootstrap.
      */
-    private final List<Instance> bootstrapAndReadyToServeInstances;
+    private final List<Instance> bootstrapInstances;
 
     private final List<Instance> readyToServeInstance;
 
-    public Partition(int id, @NotNull String resourceName, @NotNull List<Instance> bootstrapAndReadyToServeInstances,
-        @NotNull List<Instance> readyToServeInstance) {
+    private final List<Instance> errorInstances;
+
+    public Partition(int id, @NotNull List<Instance> bootstrapInstances,
+        @NotNull List<Instance> readyToServeInstance, List<Instance> errorInstances) {
         this.id = id;
-        this.resourceName = resourceName;
-        this.bootstrapAndReadyToServeInstances = Collections.unmodifiableList(bootstrapAndReadyToServeInstances);
+        this.bootstrapInstances = Collections.unmodifiableList(bootstrapInstances);
         this.readyToServeInstance = Collections.unmodifiableList(readyToServeInstance);
+        this.errorInstances = Collections.unmodifiableList(errorInstances);
     }
 
     public List<Instance> getReadyToServeInstances() {
@@ -46,7 +45,17 @@ public class Partition {
     }
 
     public List<Instance> getBootstrapAndReadyToServeInstances() {
-        return bootstrapAndReadyToServeInstances;
+        List<Instance> instances = new ArrayList<>(readyToServeInstance);
+        instances.addAll(bootstrapInstances);
+        return instances;
+    }
+
+    public List<Instance> getErrorInstances() {
+        return errorInstances;
+    }
+
+    public List<Instance> getBootstrapInstances() {
+        return bootstrapInstances;
     }
 
     public static String getPartitionName(String resourceName, int partitionId) {
@@ -63,9 +72,5 @@ public class Partition {
 
     public int getId() {
         return id;
-    }
-
-    public String getResourceName() {
-        return resourceName;
     }
 }

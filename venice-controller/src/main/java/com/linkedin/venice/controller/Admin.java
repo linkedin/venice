@@ -1,5 +1,6 @@
 package com.linkedin.venice.controller;
 
+import com.linkedin.venice.helix.Replica;
 import com.linkedin.venice.job.ExecutionStatus;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.meta.Store;
@@ -92,6 +93,16 @@ public interface Admin {
     int calculateNumberOfPartitions(String clusterName, String storeName, long storeSize);
 
     int getReplicaFactor(String clusterName, String storeName);
+
+    /**
+    * Get all of replicas which are bootstrapping from given kafka topic.
+    */
+    List<Replica> getBootstrapReplicas(String clusterName, String kafkaTopic);
+
+    /**
+    * Get all of replicas which are in the error status of given kafka topic.
+    */
+    List<Replica> getErrorReplicas(String clusterName, String kafkaTopic);
 
     void close();
 }

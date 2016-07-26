@@ -4,18 +4,15 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.listener.ListenerManager;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.Partition;
+import com.linkedin.venice.meta.PartitionAssignment;
 import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.utils.Utils;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.atomic.AtomicReference;
-import java.util.concurrent.locks.Lock;
-import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import javax.validation.constraints.NotNull;
@@ -52,22 +49,12 @@ public class HelixRoutingDataRepository extends RoutingTableProvider implements 
      * Builder used to build the data path to access Helix internal data.
      */
     private final PropertyKey.Builder keyBuilder;
-    /**
-     * Reference of the map which contains relationship between resource and its partitions.
-     */
-    private AtomicReference<Map<String, Map<Integer, Partition>>> resourceToPartitionMap = new AtomicReference<>();
-    /**
-     * Map which contains relationship between resource and its number of partitions.
-     */
-    private Map<String, Integer> resourceToNumberOfPartitionsMap = new HashMap<>();
+
+    private ResourceAssignment resourceAssignment = new ResourceAssignment();
     /**
      * Master controller of cluster.
      */
-    private Instance masterController = null;
-    /**
-     * Lock used to prevent the conflicts when operating resourceToNumberOfPartitionsMap.
-     */
-    private final Lock lock = new ReentrantLock();
+    private volatile Instance masterController = null;
 
     private ListenerManager<RoutingDataChangedListener> listenerManager;
 
@@ -83,7 +70,6 @@ public class HelixRoutingDataRepository extends RoutingTableProvider implements 
      */
     public void refresh() {
         try {
-            clear();
             // After adding the listener, helix will initialize the callback which will get the entire external view
             // and trigger the external view change event. In other words, venice will read the newest external view immediately.
             manager.addExternalViewChangeListener(this);
@@ -97,10 +83,9 @@ public class HelixRoutingDataRepository extends RoutingTableProvider implements 
     }
 
     public void clear() {
+        // removeListener method is a thread safe method, we don't need to lock here again.
         manager.removeListener(keyBuilder.externalViews(), this);
         manager.removeListener(keyBuilder.controller(), this);
-        resourceToNumberOfPartitionsMap.clear();
-        resourceToPartitionMap.set(new HashMap<>());
     }
 
     /**
@@ -113,19 +98,11 @@ public class HelixRoutingDataRepository extends RoutingTableProvider implements 
      */
     public List<Instance> getReadyToServeInstances(@NotNull String resourceName, int partitionId) {
         logger.debug("Get instances of Resource: " + resourceName + ", Partition:" + partitionId);
-        Map<String, Map<Integer, Partition>> map = resourceToPartitionMap.get();
-        if (map.containsKey(resourceName)) {
-            Map<Integer, Partition> partitionsMap = map.get(resourceName);
-            if (partitionsMap.containsKey(partitionId)) {
-                return partitionsMap.get(partitionId).getReadyToServeInstances();
-            } else {
-                //Can not find partition by given partitionId.
-                return Collections.emptyList();
-            }
+        Partition partition = resourceAssignment.getPartition(resourceName, partitionId);
+        if (partition == null) {
+            return Collections.emptyList();
         } else {
-            String errorMessage = "Resource '" + resourceName + "' does not exist";
-            logger.warn(errorMessage);
-            throw new VeniceException(errorMessage);
+            return partition.getReadyToServeInstances();
         }
     }
 
@@ -136,62 +113,33 @@ public class HelixRoutingDataRepository extends RoutingTableProvider implements 
      *
      * @return
      */
-    public Map<Integer, Partition> getPartitions(@NotNull String resourceName) {
-        Map<String, Map<Integer, Partition>> map = resourceToPartitionMap.get();
-        if (map.containsKey(resourceName)) {
-            return Collections.unmodifiableMap(map.get(resourceName));
-        } else {
-            String errorMessage = "Resource '" + resourceName + "' does not exist";
-            logger.warn(errorMessage);
-            throw new VeniceException(errorMessage);
-        }
+    public PartitionAssignment getPartitionAssignments(@NotNull String resourceName) {
+        return resourceAssignment.getPartitionAssignment(resourceName);
     }
 
     /**
-     * Get number of partition from local memory.
-     * cache.
+     * Get number of partition from local memory cache.
      *
      * @param resourceName
      *
      * @return
      */
     public int getNumberOfPartitions(@NotNull String resourceName) {
-        lock.lock();
-        try {
-            if (!resourceToNumberOfPartitionsMap.containsKey(resourceName)) {
-                String errorMessage = "Resource '" + resourceName + "' does not exist";
-                logger.warn(errorMessage);
-                // TODO: Might want to add some (configurable) retries here or higher up the stack. If the Helix spectator is out of sync, this fails...
-                throw new VeniceException(errorMessage);
-            }
-            return resourceToNumberOfPartitionsMap.get(resourceName);
-        } finally {
-            lock.unlock();
-        }
+        return resourceAssignment.getPartitionAssignment(resourceName).getExpectedNumberOfPartitions();
     }
 
     @Override
     public boolean containsKafkaTopic(String kafkaTopic) {
-        lock.lock();
-        try {
-            return resourceToNumberOfPartitionsMap.containsKey(kafkaTopic);
-        }finally {
-            lock.unlock();
-        }
+        return resourceAssignment.containsResource(kafkaTopic);
     }
 
     @Override
     public Instance getMasterController() {
-        lock.lock();
-        try {
-            if (masterController == null) {
-                throw new VeniceException(
-                    "There are not master controller for this controller or we have not received master changed event from helix.");
-            }
-            return masterController;
-        } finally {
-            lock.unlock();
+        if (masterController == null) {
+            throw new VeniceException(
+                "There are not master controller for this controller or we have not received master changed event from helix.");
         }
+        return masterController;
     }
 
     @Override
@@ -211,43 +159,37 @@ public class HelixRoutingDataRepository extends RoutingTableProvider implements 
             //Initializing repository and external view is empty. Do nothing for this case,
             return;
         }
-        Map<String, Map<Integer, Partition>> newResourceToPartitionMap = new HashMap<>();
         // Get live instance information from ZK.
-        List<LiveInstance> liveInstances = manager.getHelixDataAccessor().getChildValues(keyBuilder.liveInstances());
-        Map<String,LiveInstance> liveInstanceMap = new HashMap<>();
-        for(LiveInstance liveInstance:liveInstances){
-            liveInstanceMap.put(liveInstance.getId(),liveInstance);
-        }
+        Map<String, LiveInstance> liveInstanceMap = getLiveInstancesFromZk();
 
-        Set<String> deletedResourceNames = new HashSet<>(resourceToNumberOfPartitionsMap.keySet());
-        Set<String> addedResourceNames = new HashSet<>();
+        //Get number of partitions from Ideal state category in ZK.
+        Set<String> resourcesInExternalView =
+            externalViewList.stream().map(ExternalView::getResourceName).collect(Collectors.toSet());
+        Map<String, Integer> resourceToPartitionCountMap = getNumberOfPartitionsFromIdealState(resourcesInExternalView);
+        ResourceAssignment newResourceAssignment = new ResourceAssignment();
         for (ExternalView externalView : externalViewList) {
-            if (!resourceToNumberOfPartitionsMap.containsKey(externalView.getResourceName())) {
-                addedResourceNames.add(externalView.getResourceName());
-            } else {
-                //Exists in current local cache, delete it from dletedResourceNames.
-                deletedResourceNames.remove(externalView.getResourceName());
-            }
-            //Match live instances and convert them to Venice Instance.
-            Map<Integer, Partition> partitionsMap = new HashMap<>();
+            PartitionAssignment partitionAssignment = new PartitionAssignment(externalView.getResourceName(),
+                resourceToPartitionCountMap.get(externalView.getResourceName()));
+
             for (String partitionName : externalView.getPartitionSet()) {
                 //Get instance to state map for this partition from local memory.
                 Map<String, String> instanceStateMap = externalView.getStateMap(partitionName);
                 List<Instance> bootstrapInstances = new ArrayList<>();
                 List<Instance> onlineInstances = new ArrayList<>();
+                List<Instance> errorInstances = new ArrayList<>();
                 for (String instanceName : instanceStateMap.keySet()) {
                     if (liveInstanceMap.containsKey(instanceName)) {
+                        Instance instance = HelixInstanceConverter.convertZNRecordToInstance(
+                            liveInstanceMap.get(instanceName).getRecord());
                         if (instanceStateMap.get(instanceName).equals(HelixState.ONLINE.toString())) {
-                            Instance onlineInstance = HelixInstanceConverter.convertZNRecordToInstance(
-                                liveInstanceMap.get(instanceName).getRecord());
-                            onlineInstances.add(onlineInstance);
+                            onlineInstances.add(instance);
                         } else if (instanceStateMap.get(instanceName).equals(HelixState.BOOTSTRAP.toString())) {
-                            Instance bootstrapInstance = HelixInstanceConverter.convertZNRecordToInstance(
-                                liveInstanceMap.get(instanceName).getRecord());
-                            bootstrapInstances.add(bootstrapInstance);
+                            bootstrapInstances.add(instance);
+                        } else if (instanceStateMap.get(instanceName).equals(HelixState.ERROR.toString())) {
+                            errorInstances.add(instance);
                         } else {
                             logger.info(
-                                instanceName + " is not in ONLINE or BOOTSTRAP state. State:" + instanceStateMap.get(
+                                "Instance:" + instanceName + " unrecognized state:" + instanceStateMap.get(
                                     instanceName));
                         }
                     } else {
@@ -255,54 +197,42 @@ public class HelixRoutingDataRepository extends RoutingTableProvider implements 
                     }
                 }
                 int partitionId = Partition.getPartitionIdFromName(partitionName);
-                ArrayList<Instance> allLiveInstances = new ArrayList<>(onlineInstances);
-                allLiveInstances.addAll(bootstrapInstances);
-                partitionsMap.put(partitionId,
-                    new Partition(partitionId, externalView.getResourceName(), allLiveInstances, onlineInstances));
+                partitionAssignment.addPartition(
+                    new Partition(partitionId, bootstrapInstances, onlineInstances, errorInstances));
             }
-            newResourceToPartitionMap.put(externalView.getResourceName(), partitionsMap);
+            newResourceAssignment.setPartitionAssignment(externalView.getResourceName(), partitionAssignment);
         }
-        resourceToPartitionMap.set(newResourceToPartitionMap);
-
-        //Get number of partitions for new resources from ZK.
-        Map<String, Integer> newResourceNamesToNumberOfParitions = getNumberOfParitionsFromIdealState(addedResourceNames);
-        lock.lock();
-        try {
-            //Add new added resources.
-            resourceToNumberOfPartitionsMap.putAll(newResourceNamesToNumberOfParitions);
-            //Clear cached resourceToNumberOfPartition map
-            deletedResourceNames.forEach(resourceToNumberOfPartitionsMap::remove);
-        }finally {
-            lock.unlock();
+        Set<String> deletedResourceNames;
+        synchronized (resourceAssignment) {
+            deletedResourceNames = resourceAssignment.compareAndGetDeletedResources(newResourceAssignment);
+            resourceAssignment.refreshAssignment(newResourceAssignment);
         }
-        logger.debug("Resources added:" + addedResourceNames.toString());
-        logger.debug("Resources deleted:" + deletedResourceNames.toString());
         logger.info("External view is changed.");
         // Start sending notification to listeners. As we can not get the changed data only from Helix, so we just notfiy all the listener.
         // And listener will compare and decide how to handle this event.
-        Map<String, Map<Integer, Partition>> currentPartitionMap = resourceToPartitionMap.get();
-        for (String kafkaTopic : currentPartitionMap.keySet()) {
-            Map<Integer, Partition> partitions = currentPartitionMap.get(kafkaTopic);
+        for (String kafkaTopic : resourceAssignment.getAssignedResources()) {
+            PartitionAssignment partitionAssignment = resourceAssignment.getPartitionAssignment(kafkaTopic);
             listenerManager.trigger(kafkaTopic, new Function<RoutingDataChangedListener, Void>() {
                 @Override
                 public Void apply(RoutingDataChangedListener listener) {
-                    listener.onRoutingDataChanged(kafkaTopic, partitions);
+                    listener.onRoutingDataChanged(partitionAssignment);
                     return null;
                 }
             });
         }
-        for (String kakfaTopic : deletedResourceNames) {
-            listenerManager.trigger(kakfaTopic, new Function<RoutingDataChangedListener, Void>() {
+        //Notify events to the listeners which listen on deleted resources.
+        for (String kafkaTopic : deletedResourceNames) {
+            listenerManager.trigger(kafkaTopic, new Function<RoutingDataChangedListener, Void>() {
                 @Override
                 public Void apply(RoutingDataChangedListener listener) {
-                    listener.onRoutingDataChanged(kakfaTopic, null);
+                    listener.onRoutingDataDeleted(kafkaTopic);
                     return null;
                 }
             });
         }
     }
 
-    private Map<String, Integer> getNumberOfParitionsFromIdealState(Set<String> newResourceNames) {
+    private Map<String, Integer> getNumberOfPartitionsFromIdealState(Set<String> newResourceNames) {
         List<PropertyKey> keys = newResourceNames.stream().map(keyBuilder::idealStates).collect(Collectors.toList());
         // Number of partition should be get from ideal state configuration instead of getting from external view.
         // Because if there is not participant in some partition, partition number in external view will be different from ideal state.
@@ -320,6 +250,15 @@ public class HelixRoutingDataRepository extends RoutingTableProvider implements 
         return newResourceNamesToNumberOfParitions;
     }
 
+    private Map<String, LiveInstance> getLiveInstancesFromZk(){
+        List<LiveInstance> liveInstances = manager.getHelixDataAccessor().getChildValues(keyBuilder.liveInstances());
+        Map<String,LiveInstance> liveInstanceMap = new HashMap<>();
+        for(LiveInstance liveInstance:liveInstances){
+            liveInstanceMap.put(liveInstance.getId(),liveInstance);
+        }
+        return liveInstanceMap;
+    }
+
     @Override
     public void onControllerChange(NotificationContext changeContext) {
         if (changeContext.getType().equals(NotificationContext.Type.FINALIZE)) {
@@ -328,18 +267,13 @@ public class HelixRoutingDataRepository extends RoutingTableProvider implements 
         }
         logger.info("Got notification type:" + changeContext.getType() +". Master controller is changed.");
         LiveInstance leader = manager.getHelixDataAccessor().getProperty(keyBuilder.controllerLeader());
-        lock.lock();
-        try {
-            if(leader == null){
-                this.masterController = null;
-                logger.info("Cluster do not have master controller now!");
-            }else {
-                this.masterController =
-                    new Instance(leader.getId(), Utils.parseHostFromHelixNodeIdentifier(leader.getId()), Utils.parsePortFromHelixNodeIdentifier(leader.getId()));
-                logger.info("Controller is:" + masterController.getHost() + ":" + masterController.getPort());
-            }
-        } finally {
-            lock.unlock();
+        if (leader == null) {
+            this.masterController = null;
+            logger.info("Cluster do not have master controller now!");
+        } else {
+            this.masterController = new Instance(leader.getId(), Utils.parseHostFromHelixNodeIdentifier(leader.getId()),
+                Utils.parsePortFromHelixNodeIdentifier(leader.getId()));
+            logger.info("Controller is:" + masterController.getHost() + ":" + masterController.getPort());
         }
     }
 }

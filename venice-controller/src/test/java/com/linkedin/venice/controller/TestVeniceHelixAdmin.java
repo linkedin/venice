@@ -1,7 +1,10 @@
 package com.linkedin.venice.controller;
 
 import com.linkedin.venice.ConfigKeys;
+import com.linkedin.venice.helix.HelixState;
 import com.linkedin.venice.helix.HelixStatusMessageChannel;
+import com.linkedin.venice.helix.Replica;
+import com.linkedin.venice.meta.PartitionAssignment;
 import com.linkedin.venice.status.StatusMessageChannel;
 import com.linkedin.venice.status.StoreStatusMessage;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -24,6 +27,7 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 import org.apache.helix.HelixManager;
 import org.apache.helix.HelixManagerFactory;
 import org.apache.helix.InstanceType;
@@ -54,6 +58,7 @@ public class TestVeniceHelixAdmin {
   private HelixManager manager;
 
   private VeniceProperties controllerProps;
+  private TestHelixRoutingDataRepository.UnitTestStateModelFactory stateModelFactory;
 
   public static final long MASTER_CHANGE_TIMEOUT = 10 * Time.MS_PER_SECOND;
   public static final long TOTAL_TIMEOUT_FOR_LONG_TEST = 30 * Time.MS_PER_SECOND;
@@ -66,6 +71,7 @@ public class TestVeniceHelixAdmin {
     zkAddress = zkServerWrapper.getAddress();
     kafkaBrokerWrapper = ServiceFactory.getKafkaBroker();
     kafkaZkAddress = kafkaBrokerWrapper.getZkAddress();
+    stateModelFactory = new TestHelixRoutingDataRepository.UnitTestStateModelFactory();
     String currentPath = Paths.get("").toAbsolutePath().toString();
     if (currentPath.endsWith("venice-controller")) {
       currentPath += "/..";
@@ -106,9 +112,14 @@ public class TestVeniceHelixAdmin {
 
   private void startParticipant()
       throws Exception {
+    startParticipant(false);
+  }
+
+  private void startParticipant(boolean isDelay)
+      throws Exception {
+    stateModelFactory.setDelayTransistion(isDelay);
     manager = HelixManagerFactory.getZKHelixManager(clusterName, nodeId, InstanceType.PARTICIPANT, zkAddress);
-    manager.getStateMachineEngine().registerStateModelFactory("PartitionOnlineOfflineModel",
-        new TestHelixRoutingDataRepository.UnitTestStateModelFactory());
+    manager.getStateMachineEngine().registerStateModelFactory("PartitionOnlineOfflineModel", stateModelFactory);
     Instance instance = new Instance(nodeId, Utils.getHostName(), 9985);
     manager.setLiveInstanceInfoProvider(new LiveInstanceInfoProvider() {
       @Override
@@ -450,4 +461,37 @@ public class TestVeniceHelixAdmin {
     veniceAdmin.addVersion(clusterName,storeName,101,1,1);
     Assert.assertEquals(veniceAdmin.versionsForStore(clusterName,storeName).size(),2);
   }
+
+  @Test
+  public void testGetBootstrapReplicas()
+      throws Exception {
+    stopParticipant();
+    startParticipant(true);
+    String storeName = "test";
+    veniceAdmin.addStore(clusterName,storeName,"owner");
+    veniceAdmin.addVersion(clusterName,storeName,1,1,1);
+    TestUtils.waitForNonDeterministicCompletion(2000, TimeUnit.MILLISECONDS, () -> {
+      PartitionAssignment partitionAssignment = veniceAdmin.getVeniceHelixResource(clusterName)
+          .getRoutingDataRepository()
+          .getPartitionAssignments(Version.composeKafkaTopic(storeName, 1));
+      return partitionAssignment.getAssignedNumberOfPartitions() == 1;
+    });
+
+    List<Replica> replicas = veniceAdmin.getBootstrapReplicas(clusterName,Version.composeKafkaTopic(storeName,1));
+    Assert.assertEquals(replicas.size() , 1);
+    Assert.assertEquals(replicas.get(0).getStatus(), HelixState.BOOTSTRAP_STATE);
+    Assert.assertEquals(replicas.get(0).getPartitionId(), 0);
+
+    // Make participant complete BOOTSTRAP->ONLINE
+    stateModelFactory.makeTransitionCompleted(Version.composeKafkaTopic(storeName,1),0);
+    TestUtils.waitForNonDeterministicCompletion(2000, TimeUnit.MILLISECONDS, () -> {
+      PartitionAssignment partitionAssignment = veniceAdmin.getVeniceHelixResource(clusterName)
+          .getRoutingDataRepository()
+          .getPartitionAssignments(Version.composeKafkaTopic(storeName, 1));
+      return partitionAssignment.getPartition(0).getReadyToServeInstances().size() == 1;
+    });
+    replicas = veniceAdmin.getBootstrapReplicas(clusterName,Version.composeKafkaTopic(storeName,1));
+    Assert.assertEquals(replicas.size() , 0);
+  }
+
 }

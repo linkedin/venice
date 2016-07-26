@@ -58,7 +58,7 @@ public class HelixStatusMessageChannel implements StatusMessageChannel {
     messageService = manager.getMessagingService();
     this.timeOut = timeOut;
     this.retryCount = retryCount;
-    messageService.registerMessageHandlerFactory(HELIX_MESSAGE_TYPE, new HelixControlMessageHandleFactory());
+    messageService.registerMessageHandlerFactory(HELIX_MESSAGE_TYPE, new HelixStatusMessageHandleFactory());
   }
 
   @Override
@@ -161,7 +161,7 @@ public class HelixStatusMessageChannel implements StatusMessageChannel {
   /**
    * Helix message handler factory to create handler to deal with Helix message.
    */
-  private class HelixControlMessageHandleFactory implements MessageHandlerFactory {
+  private class HelixStatusMessageHandleFactory implements MessageHandlerFactory {
 
     @Override
     public MessageHandler createHandler(Message message, NotificationContext context) {
