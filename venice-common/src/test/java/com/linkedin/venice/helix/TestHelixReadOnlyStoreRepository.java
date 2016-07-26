@@ -12,7 +12,7 @@ import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
 
-public class TestHelixReadonlyStoreRepository {
+public class TestHelixReadOnlyStoreRepository {
   private String zkAddress;
   private ZkClient zkClient;
   private String cluster = "test-metadata-cluster";
@@ -21,7 +21,7 @@ public class TestHelixReadonlyStoreRepository {
   private ZkServerWrapper zkServerWrapper;
   private HelixAdapterSerializer adapter = new HelixAdapterSerializer();
 
-  private HelixReadonlyStoreRepository repo;
+  private HelixReadOnlyStoreRepository repo;
   private HelixReadWriteStoreRepository writeRepo;
 
   @BeforeMethod
@@ -32,7 +32,7 @@ public class TestHelixReadonlyStoreRepository {
     zkClient.create(clusterPath, null, CreateMode.PERSISTENT);
     zkClient.create(clusterPath + storesPath, null, CreateMode.PERSISTENT);
 
-    repo = new HelixReadonlyStoreRepository(zkClient, adapter, cluster);
+    repo = new HelixReadOnlyStoreRepository(zkClient, adapter, cluster);
     writeRepo = new HelixReadWriteStoreRepository(zkClient, adapter, cluster);
     repo.refresh();
     writeRepo.refresh();

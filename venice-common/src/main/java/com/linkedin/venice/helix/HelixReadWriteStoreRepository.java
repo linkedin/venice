@@ -23,7 +23,7 @@ import org.apache.log4j.Logger;
  * This repository do NOT listen the change of store from ZK. Because in Venice, this is the only once place to modify
  * stores.
  */
-public class HelixReadWriteStoreRepository extends HelixReadonlyStoreRepository implements ReadWriteStoreRepository {
+public class HelixReadWriteStoreRepository extends HelixReadOnlyStoreRepository implements ReadWriteStoreRepository {
   private static final Logger logger = Logger.getLogger(HelixReadWriteStoreRepository.class);
 
   //TODO get retry count from configuration.

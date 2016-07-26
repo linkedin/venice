@@ -1,7 +1,7 @@
 package com.linkedin.venice.router.api;
 
 import com.linkedin.ddsstorage.router.api.RouterException;
-import com.linkedin.venice.meta.ReadonlyStoreRepository;
+import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
 import java.util.Base64;
 import org.mockito.Mockito;
@@ -21,7 +21,7 @@ public class TestVenicePathParser {
     //Mock objects
     Store mockStore = Mockito.mock(Store.class);
     doReturn(1).when(mockStore).getCurrentVersion();
-    ReadonlyStoreRepository mockMetadataRepository = Mockito.mock(ReadonlyStoreRepository.class);
+    ReadOnlyStoreRepository mockMetadataRepository = Mockito.mock(ReadOnlyStoreRepository.class);
     doReturn(mockStore).when(mockMetadataRepository).getStore(Mockito.anyString());
 
     return new VeniceVersionFinder(mockMetadataRepository);

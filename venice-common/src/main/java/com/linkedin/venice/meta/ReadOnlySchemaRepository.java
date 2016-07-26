@@ -6,7 +6,6 @@ import com.linkedin.venice.schema.SchemaEntry;
 import java.util.Collection;
 
 public interface ReadOnlySchemaRepository extends VeniceResource, StoreDataChangedListener {
-
   /**
    * Get key schema for the given store.
    *
@@ -23,7 +22,6 @@ public interface ReadOnlySchemaRepository extends VeniceResource, StoreDataChang
    * @return
    */
   SchemaEntry getValueSchema(String storeName, int id);
-
   /**
    * Check whether the specified schema id is valid or not
    *

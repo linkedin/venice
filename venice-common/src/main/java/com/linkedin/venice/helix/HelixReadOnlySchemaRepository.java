@@ -2,7 +2,7 @@ package com.linkedin.venice.helix;
 
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
-import com.linkedin.venice.meta.ReadonlyStoreRepository;
+import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.VeniceSerializer;
 import com.linkedin.venice.schema.SchemaData;
@@ -56,7 +56,7 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository {
   private final CachedResourceZkStateListener zkStateListener;
 
   // Store repository to check store related info
-  private ReadonlyStoreRepository storeRepository;
+  private ReadOnlyStoreRepository storeRepository;
 
   // Venice cluster name
   private String clusterName;
@@ -70,7 +70,7 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository {
   // Mutex for local cache
   private final ReadWriteLock schemaLock = new ReentrantReadWriteLock();
 
-  public HelixReadOnlySchemaRepository(@NotNull ReadonlyStoreRepository storeRepository,
+  public HelixReadOnlySchemaRepository(@NotNull ReadOnlyStoreRepository storeRepository,
                                        @NotNull ZkClient zkClient,
                                        @NotNull HelixAdapterSerializer adapter,
                                        @NotNull String clusterName) {
@@ -106,7 +106,7 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository {
     StringBuilder sb = new StringBuilder();
     sb.append("/")
         .append(clusterName)
-        .append(HelixReadonlyStoreRepository.STORES_PATH)
+        .append(HelixReadOnlyStoreRepository.STORES_PATH)
         .append("/")
         .append(storeName)
         .append("/");

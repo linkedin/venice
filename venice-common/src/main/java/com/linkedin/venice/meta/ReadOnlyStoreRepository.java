@@ -6,7 +6,7 @@ import com.linkedin.venice.VeniceResource;
 /**
  * Interface defined readonly operations to access stores.
  */
-public interface ReadonlyStoreRepository extends VeniceResource {
+public interface ReadOnlyStoreRepository extends VeniceResource {
   /**
    * Get one store by given name from repository.
    *

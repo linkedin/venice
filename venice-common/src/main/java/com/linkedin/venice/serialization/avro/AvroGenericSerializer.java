@@ -16,14 +16,17 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 
 public class AvroGenericSerializer implements VeniceSerializer<Object> {
-
     private final Schema typeDef;
+    private GenericDatumWriter<Object> datumWriter;
+    private GenericDatumReader<Object> reader;
 
     private static final Logger logger = Logger.getLogger(AvroGenericSerializer.class);
 
     // general constructor
     public AvroGenericSerializer(String schema) {
         typeDef = Schema.parse(schema);
+        datumWriter = new GenericDatumWriter<>(typeDef);
+        reader = new GenericDatumReader<>(typeDef);
     }
 
     /**
@@ -50,9 +53,7 @@ public class AvroGenericSerializer implements VeniceSerializer<Object> {
     public byte[] serialize(String topic, Object object) {
         ByteArrayOutputStream output = new ByteArrayOutputStream();
         Encoder encoder = new BinaryEncoder(output);
-        GenericDatumWriter<Object> datumWriter = null;
         try {
-            datumWriter = new GenericDatumWriter<Object>(typeDef);
             datumWriter.write(object, encoder);
             encoder.flush();
         } catch(IOException e) {
@@ -71,9 +72,7 @@ public class AvroGenericSerializer implements VeniceSerializer<Object> {
 
     public Object deserialize(String topic, byte[] bytes) {
         Decoder decoder = DecoderFactory.defaultFactory().createBinaryDecoder(bytes, null);
-        GenericDatumReader<Object> reader = null;
         try {
-            reader = new GenericDatumReader<Object>(typeDef);
             return reader.read(null, decoder);
         } catch(IOException e) {
             throw new VeniceMessageException("Could not deserialze bytes back into Avro Abject" + e);

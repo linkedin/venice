@@ -7,11 +7,11 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixAdapterSerializer;
 import com.linkedin.venice.helix.HelixParticipationService;
 import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
-import com.linkedin.venice.helix.HelixReadonlyStoreRepository;
+import com.linkedin.venice.helix.HelixReadOnlyStoreRepository;
 import com.linkedin.venice.kafka.consumer.KafkaConsumerPerStoreService;
 import com.linkedin.venice.listener.ListenerService;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
-import com.linkedin.venice.meta.ReadonlyStoreRepository;
+import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.offsets.BdbOffsetManager;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.storage.StorageService;
@@ -121,7 +121,7 @@ public class VeniceServer {
     ZkClient zkClient = new ZkClient(clusterConfig.getZookeeperAddress(), ZkClient.DEFAULT_SESSION_TIMEOUT, ZkClient.DEFAULT_CONNECTION_TIMEOUT);
     HelixAdapterSerializer adapter = new HelixAdapterSerializer();
     String clusterName = clusterConfig.getClusterName();
-    ReadonlyStoreRepository storeRepo = new HelixReadonlyStoreRepository(zkClient, adapter, clusterName);
+    ReadOnlyStoreRepository storeRepo = new HelixReadOnlyStoreRepository(zkClient, adapter, clusterName);
     // Load existing store config and setup watches
     storeRepo.refresh();
     ReadOnlySchemaRepository schemaRepo = new HelixReadOnlySchemaRepository(storeRepo, zkClient, adapter, clusterName);

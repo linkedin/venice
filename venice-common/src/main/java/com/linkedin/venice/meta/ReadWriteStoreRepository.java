@@ -1,12 +1,10 @@
 package com.linkedin.venice.meta;
 
-import com.linkedin.venice.VeniceResource;
-
 
 /**
  * Interface defined read and write operations to access stores.
  */
-public interface ReadWriteStoreRepository extends ReadonlyStoreRepository {
+public interface ReadWriteStoreRepository extends ReadOnlyStoreRepository {
   /**
    * Update store in repository.
    *
