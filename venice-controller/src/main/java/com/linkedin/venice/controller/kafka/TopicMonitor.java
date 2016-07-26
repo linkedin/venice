@@ -8,7 +8,6 @@ import com.linkedin.venice.utils.Utils;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
-import java.util.concurrent.TimeUnit;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.common.PartitionInfo;
@@ -30,11 +29,11 @@ public class TopicMonitor extends AbstractVeniceService {
   private int replicationFactor;
 
 
-  public TopicMonitor(Admin admin, String clusterName, int replicationFactor, long pollInterval, TimeUnit pollIntervalUnits) {
+  public TopicMonitor(Admin admin, String clusterName, int replicationFactor, long pollIntervalMs) {
     this.admin = admin;
     this.clusterName = clusterName;
     this.replicationFactor = replicationFactor;
-    this.pollIntervalMs = pollIntervalUnits.toMillis(pollInterval);
+    this.pollIntervalMs = pollIntervalMs;
   }
 
   @Override

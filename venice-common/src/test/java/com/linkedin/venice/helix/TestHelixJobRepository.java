@@ -2,7 +2,6 @@ package com.linkedin.venice.helix;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.integration.utils.ServiceFactory;
-import com.linkedin.venice.integration.utils.TestUtils;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.job.ExecutionStatus;
 import com.linkedin.venice.job.OfflineJob;
@@ -10,6 +9,7 @@ import com.linkedin.venice.job.Task;
 import com.linkedin.venice.job.WaitAllJobStatsDecider;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.Partition;
+import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import java.util.HashMap;
@@ -340,7 +340,7 @@ public class TestHelixJobRepository {
       repository.startJob(job);
       long elapsedTime = System.currentTimeMillis() - startTime;
       long timeOut = Math.max(1, totalWaitTime - elapsedTime);
-      Utils.waitForNonDeterministicCompetion(timeOut, TimeUnit.MILLISECONDS, () -> {
+      TestUtils.waitForNonDeterministicCompletion(timeOut, TimeUnit.MILLISECONDS, () -> {
         try {
           //Enough partition count and replica factor in each partition.
           Map<Integer, Partition> partitions = routingDataRepository.getPartitions(topicName);

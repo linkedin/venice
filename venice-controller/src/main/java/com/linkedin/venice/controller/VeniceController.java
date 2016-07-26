@@ -6,7 +6,6 @@ import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.Utils;
-import java.util.concurrent.TimeUnit;
 import org.apache.log4j.Logger;
 
 /**
@@ -37,7 +36,7 @@ public class VeniceController {
         controllerService.getVeniceHelixAdmin(),
         config.getClusterName(),
         config.getReplicaFactor(),
-        10, TimeUnit.SECONDS); /* poll every 10 sec, TODO: configurable, long poll makes tests slower */
+        config.getTopicMonitorPollIntervalMs());
   }
 
   public void start(){

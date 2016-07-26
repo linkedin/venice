@@ -1,10 +1,7 @@
 package com.linkedin.venice.integration.utils;
 
 import com.linkedin.venice.meta.PersistenceType;
-import com.linkedin.venice.utils.PropertyBuilder;
-import com.linkedin.venice.utils.Time;
-import com.linkedin.venice.utils.VeniceProperties;
-import com.linkedin.venice.utils.RandomGenUtils;
+import com.linkedin.venice.utils.*;
 
 import static com.linkedin.venice.ConfigKeys.*;
 
@@ -14,12 +11,12 @@ import java.net.ServerSocket;
 
 
 /**
- * Utility class to get a free port.
+ * Utility class to help with integration tests.
  *
- * N.B.: The visibility of some of the functions in this class is package-private on purpose.
+ * N.B.: The visibility of this class and its functions is package-private on purpose.
  */
-public class TestUtils {
-  public static final int MAX_ASYNC_START_WAIT_TIME_MS = 10 * Time.MS_PER_SECOND;
+class IntegrationTestUtils {
+  static final int MAX_ASYNC_START_WAIT_TIME_MS = 10 * Time.MS_PER_SECOND;
 
   /**
    * WARNING: The code which generates the free port and uses it must always be called within
@@ -43,7 +40,7 @@ public class TestUtils {
    */
   static File getDataDirectory(String serviceName) {
     String tmpDirectory = System.getProperty("java.io.tmpdir");
-    String directoryName = getUniqueString(serviceName + "-Data");
+    String directoryName = TestUtils.getUniqueString(serviceName + "-Data");
     return new File(tmpDirectory, directoryName).getAbsoluteFile();
   }
 
@@ -78,7 +75,4 @@ public class TestUtils {
     return clusterProperties;
   }
 
-  public static String getUniqueString(String base) {
-    return base + "-" + System.currentTimeMillis() + "-" + RandomGenUtils.getRandomIntWithIn(Integer.MAX_VALUE);
-  }
 }

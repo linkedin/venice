@@ -95,7 +95,7 @@ public class ServiceFactory {
 
     for (int attempt = 1; attempt <= MAX_ATTEMPT; attempt++) {
       try {
-        S wrapper = serviceProvider.get(serviceName, TestUtils.getFreePort());
+        S wrapper = serviceProvider.get(serviceName, IntegrationTestUtils.getFreePort());
 
         // N.B.: The contract for start() is that it should block until the wrapped service is fully started.
         wrapper.start();

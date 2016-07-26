@@ -2,8 +2,8 @@ package com.linkedin.venice.integration.utils;
 
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.utils.TestUtils;
 
-import com.linkedin.venice.server.VeniceServer;
 import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
