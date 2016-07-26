@@ -2,14 +2,13 @@ package com.linkedin.venice.kafka;
 
 import com.linkedin.venice.integration.utils.KafkaBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
-import com.linkedin.venice.integration.utils.TestUtils;
 import com.linkedin.venice.meta.Version;
 
 import java.io.IOException;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
-import com.linkedin.venice.utils.Utils;
+import com.linkedin.venice.utils.TestUtils;
 import junit.framework.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
@@ -20,6 +19,9 @@ import org.testng.annotations.Test;
  * Created by mwise on 6/9/16.
  */
 public class TopicManagerTest {
+
+  /** Wait time for {@link #manager} operations, in seconds */
+  private static final int WAIT_TIME = 10;
 
   private KafkaBrokerWrapper kafka;
   private TopicManager manager;
@@ -42,7 +44,7 @@ public class TopicManagerTest {
     int partitions = 1;
     int replicas = 1;
     manager.createTopic(topicName, partitions, replicas);
-    Utils.waitForNonDeterministicCompetion(5, TimeUnit.SECONDS, () -> manager.listTopics().contains(topicName));
+    TestUtils.waitForNonDeterministicCompletion(WAIT_TIME, TimeUnit.SECONDS, () -> manager.listTopics().contains(topicName));
     Set<String> topicsInCluster = manager.listTopics();
     Assert.assertTrue(topicsInCluster.contains(topicName));
     manager.createTopic(topicName, partitions, replicas); /* should be noop */
@@ -57,13 +59,13 @@ public class TopicManagerTest {
     int partitions = 1;
     int replicas = 1;
     manager.createTopic(topicName, partitions, replicas);
-    Utils.waitForNonDeterministicCompetion(10, TimeUnit.SECONDS, () -> manager.listTopics().contains(topicName));
+    TestUtils.waitForNonDeterministicCompletion(WAIT_TIME, TimeUnit.SECONDS, () -> manager.listTopics().contains(topicName));
     Assert.assertTrue(manager.listTopics().contains(topicName));
 
     // Delete that topic
     manager.deleteTopic(topicName);
     // Wait for it to go away (delete is async)
-    Utils.waitForNonDeterministicCompetion(10, TimeUnit.SECONDS, () -> !manager.listTopics().contains(topicName));
+    TestUtils.waitForNonDeterministicCompletion(WAIT_TIME, TimeUnit.SECONDS, () -> !manager.listTopics().contains(topicName));
     // Assert that it is gone
     Assert.assertFalse(manager.listTopics().contains(topicName));
   }
@@ -77,12 +79,12 @@ public class TopicManagerTest {
     for (int i=1;i<=maxVersion;i++){
       String topic = new Version(storeName, i).kafkaTopicName();
       manager.createTopic(topic, 1, 1);
-      Utils.waitForNonDeterministicCompetion(10, TimeUnit.SECONDS, () -> manager.listTopics().contains(topic));
+      TestUtils.waitForNonDeterministicCompletion(WAIT_TIME, TimeUnit.SECONDS, () -> manager.listTopics().contains(topic));
     }
 
     // Delete every version topic except for the newest 2 (by version number)
     manager.deleteOldTopicsForStore(storeName, 2);
-    Utils.waitForNonDeterministicCompetion(10, TimeUnit.SECONDS, () -> {
+    TestUtils.waitForNonDeterministicCompletion(WAIT_TIME, TimeUnit.SECONDS, () -> {
       Set<String> topics = manager.listTopics();
       return !topics.contains(new Version(storeName, 1).kafkaTopicName()) && !topics.contains(new Version(storeName, 2).kafkaTopicName());
     });
@@ -108,12 +110,12 @@ public class TopicManagerTest {
     for (int i=1;i<=maxVersion;i++){
       String topic = new Version(storeName, i).kafkaTopicName();
       manager.createTopic(topic, 1, 1);
-      Utils.waitForNonDeterministicCompetion(10, TimeUnit.SECONDS, () -> manager.listTopics().contains(topic));
+      TestUtils.waitForNonDeterministicCompletion(WAIT_TIME, TimeUnit.SECONDS, () -> manager.listTopics().contains(topic));
     }
 
     // Delete every topic with a version number older than 3
     manager.deleteTopicsForStoreOlderThanVersion(storeName, 3);
-    Utils.waitForNonDeterministicCompetion(10, TimeUnit.SECONDS, () -> {
+    TestUtils.waitForNonDeterministicCompletion(WAIT_TIME, TimeUnit.SECONDS, () -> {
       Set<String> topics = manager.listTopics();
       return !topics.contains(new Version(storeName, 1).kafkaTopicName()) && !topics.contains(new Version(storeName, 2).kafkaTopicName());
     });

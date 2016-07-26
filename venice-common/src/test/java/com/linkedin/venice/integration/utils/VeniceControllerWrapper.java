@@ -3,10 +3,12 @@ package com.linkedin.venice.integration.utils;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.controller.VeniceController;
 import com.linkedin.venice.controller.VeniceControllerClusterConfig;
+import com.linkedin.venice.controller.VeniceControllerConfig;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.PropertyBuilder;
+import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.VeniceProperties;
 
 import java.io.File;
@@ -37,9 +39,9 @@ public class VeniceControllerWrapper extends ProcessWrapper {
     String zkAddress = kafkaBrokerWrapper.getZkAddress();
 
     return (serviceName, port, dataDirectory) -> {
-      VeniceProperties clusterProps = TestUtils.getClusterProps(clusterName, dataDirectory, kafkaBrokerWrapper);
+      VeniceProperties clusterProps = IntegrationTestUtils.getClusterProps(clusterName, dataDirectory, kafkaBrokerWrapper);
 
-      int adminPort = TestUtils.getFreePort();
+      int adminPort = IntegrationTestUtils.getFreePort();
 
       // TODO: Validate that these configs are all still used.
       // TODO: Centralize default config values in a single place
@@ -52,7 +54,8 @@ public class VeniceControllerWrapper extends ProcessWrapper {
               .put(VeniceControllerClusterConfig.NUMBER_OF_PARTITION, 1)
               .put(ConfigKeys.ADMIN_PORT, adminPort)
               .put(VeniceControllerClusterConfig.MAX_NUMBER_OF_PARTITIONS, 10)
-              .put(VeniceControllerClusterConfig.PARTITION_SIZE, 100);
+              .put(VeniceControllerClusterConfig.PARTITION_SIZE, 100)
+              .put(VeniceControllerConfig.TOPIC_MONITOR_POLL_INTERVAL_MS, 100);
 
       VeniceProperties props = builder.build();
 

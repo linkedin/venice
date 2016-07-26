@@ -2,9 +2,8 @@ package com.linkedin.venice.meta;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.utils.TestUtils;
-import java.util.ArrayList;
+
 import java.util.Arrays;
-import java.util.HashSet;
 import java.util.List;
 import org.testng.Assert;
 import org.testng.annotations.Test;

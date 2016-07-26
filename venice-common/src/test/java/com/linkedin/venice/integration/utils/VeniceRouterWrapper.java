@@ -1,7 +1,7 @@
 package com.linkedin.venice.integration.utils;
 
 import com.linkedin.venice.router.RouterServer;
-import com.linkedin.venice.utils.Utils;
+import com.linkedin.venice.utils.TestUtils;
 
 import java.io.File;
 import java.util.ArrayList;
@@ -48,8 +48,8 @@ public class VeniceRouterWrapper extends ProcessWrapper {
   protected void start() throws Exception {
     service.start();
 
-    Utils.waitForNonDeterministicCompetion(
-        TestUtils.MAX_ASYNC_START_WAIT_TIME_MS,
+    TestUtils.waitForNonDeterministicCompletion(
+        IntegrationTestUtils.MAX_ASYNC_START_WAIT_TIME_MS,
         TimeUnit.MILLISECONDS,
         () -> service.isStarted());
   }

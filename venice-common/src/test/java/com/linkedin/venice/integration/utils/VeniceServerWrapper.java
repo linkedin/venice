@@ -4,7 +4,7 @@ import static com.linkedin.venice.ConfigKeys.*;
 import com.linkedin.venice.server.VeniceConfigLoader;
 import com.linkedin.venice.server.VeniceServer;
 import com.linkedin.venice.utils.PropertyBuilder;
-import com.linkedin.venice.utils.Utils;
+import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.VeniceProperties;
 import org.apache.commons.io.FileUtils;
 
@@ -33,15 +33,15 @@ public class VeniceServerWrapper extends ProcessWrapper {
       FileUtils.forceMkdir(configDirectory);
 
       // Generate cluster.properties in config directory
-      VeniceProperties clusterProps = TestUtils.getClusterProps(clusterName, dataDirectory, kafkaBrokerWrapper);
+      VeniceProperties clusterProps = IntegrationTestUtils.getClusterProps(clusterName, dataDirectory, kafkaBrokerWrapper);
       File clusterConfigFile = new File(configDirectory, VeniceConfigLoader.CLUSTER_PROPERTIES_FILE);
       clusterProps.storeFlattened(clusterConfigFile);
 
       // Generate server.properties in config directory
       VeniceProperties serverProps = new PropertyBuilder()
       .put(NODE_ID, 0)
-      .put(LISTENER_PORT, TestUtils.getFreePort())
-      .put(ADMIN_PORT, TestUtils.getFreePort())
+      .put(LISTENER_PORT, IntegrationTestUtils.getFreePort())
+      .put(ADMIN_PORT, IntegrationTestUtils.getFreePort())
       .put(DATA_BASE_PATH, dataDirectory.getAbsolutePath()).build();
 
       File serverConfigFile = new File(configDirectory, VeniceConfigLoader.SERVER_PROPERTIES_FILE);
@@ -79,8 +79,8 @@ public class VeniceServerWrapper extends ProcessWrapper {
   public void start() throws Exception {
     veniceServer.start();
 
-    Utils.waitForNonDeterministicCompetion(
-        TestUtils.MAX_ASYNC_START_WAIT_TIME_MS,
+    TestUtils.waitForNonDeterministicCompletion(
+        IntegrationTestUtils.MAX_ASYNC_START_WAIT_TIME_MS,
         TimeUnit.MILLISECONDS,
         () -> veniceServer.isStarted());
   }

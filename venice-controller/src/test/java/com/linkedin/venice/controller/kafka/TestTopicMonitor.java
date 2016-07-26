@@ -6,6 +6,7 @@ import com.linkedin.venice.controller.VeniceHelixAdmin;
 import com.linkedin.venice.integration.utils.KafkaBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import java.util.ArrayList;
 import java.util.List;
@@ -40,7 +41,7 @@ public class TestTopicMonitor {
 
     int pollIntervalMs = 1; /* ms */
     int replicationFactor = 1;
-    TopicMonitor mon = new TopicMonitor(mockAdmin, clusterName, replicationFactor, pollIntervalMs, TimeUnit.MILLISECONDS);
+    TopicMonitor mon = new TopicMonitor(mockAdmin, clusterName, replicationFactor, pollIntervalMs);
     mon.start();
 
     TopicManager topicManager = new TopicManager(kafka.getZkAddress());
@@ -58,7 +59,7 @@ public class TestTopicMonitor {
     KafkaConsumer<String, String> kafkaClient = new KafkaConsumer<String, String>(kafkaProps);
 
     /* wait for kafka broker to create the topic */
-    Utils.waitForNonDeterministicCompetion(5, TimeUnit.SECONDS,
+    TestUtils.waitForNonDeterministicCompletion(5, TimeUnit.SECONDS,
         () -> kafkaClient.listTopics().containsKey(storeName + "_v1"));
     kafkaClient.close();
     Thread.sleep(100);

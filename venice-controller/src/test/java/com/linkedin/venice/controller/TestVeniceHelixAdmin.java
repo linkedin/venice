@@ -10,16 +10,13 @@ import com.linkedin.venice.helix.HelixRoutingDataRepository;
 import com.linkedin.venice.helix.TestHelixRoutingDataRepository;
 import com.linkedin.venice.integration.utils.KafkaBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
-import com.linkedin.venice.integration.utils.TestUtils;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.job.ExecutionStatus;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
-import com.linkedin.venice.utils.PropertyBuilder;
-import com.linkedin.venice.utils.Time;
-import com.linkedin.venice.utils.VeniceProperties;
-import com.linkedin.venice.utils.Utils;
+import com.linkedin.venice.utils.*;
+
 import java.io.IOException;
 import java.nio.file.Paths;
 import java.util.ArrayList;

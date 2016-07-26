@@ -6,13 +6,13 @@ import java.util.concurrent.atomic.AtomicInteger;
 /**
  * Utility class to get a free port.
  *
- * TODO: Get rid of this. Replaced by {@link TestUtils}.
+ * TODO: Get rid of this. Replaced by {@link IntegrationTestUtils}.
  */
 @Deprecated
 public class PortUtils {
     private static AtomicInteger lastPort = new AtomicInteger(50000);
     /**
-     * TODO: Get rid of this. Replaced by {@link TestUtils#getFreePort()}.
+     * TODO: Get rid of this. Replaced by {@link IntegrationTestUtils#getFreePort()}.
      * @return a free port to be used by tests.
      */
     @Deprecated

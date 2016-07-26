@@ -27,7 +27,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 
-import com.linkedin.venice.utils.Utils;
+import com.linkedin.venice.utils.TestUtils;
 import org.mockito.Mockito;
 
 import static org.mockito.Matchers.anyString;
@@ -95,8 +95,8 @@ public class MockVeniceRouterWrapper extends ProcessWrapper {
   protected void start() throws Exception {
     service.start();
 
-    Utils.waitForNonDeterministicCompetion(
-        TestUtils.MAX_ASYNC_START_WAIT_TIME_MS,
+    TestUtils.waitForNonDeterministicCompletion(
+        IntegrationTestUtils.MAX_ASYNC_START_WAIT_TIME_MS,
         TimeUnit.MILLISECONDS,
         () -> service.isStarted());
   }

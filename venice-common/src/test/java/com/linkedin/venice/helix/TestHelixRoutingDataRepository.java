@@ -7,6 +7,7 @@ import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.utils.HelixUtils;
+import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import java.util.HashMap;
 import java.util.List;
@@ -124,7 +125,6 @@ public class TestHelixRoutingDataRepository {
   @Test
   public void testGetInstances()
       throws Exception {
-    // TODO: Fix this test. It is flaky, especially when running on a slow or heavily loaded machine.
     List<Instance> instances = repository.getReadyToServeInstances(resourceName, 0);
     Assert.assertEquals(1, instances.size());
     Instance instance = instances.get(0);
@@ -132,18 +132,24 @@ public class TestHelixRoutingDataRepository {
     Assert.assertEquals(httpPort, instance.getPort());
     //Participant become offline.
     manager.disconnect();
-    //Wait notification.
-    Thread.sleep(WAIT_TIME);
+    //Wait for notification.
+    TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
+          List<Instance> instancesList = repository.getReadyToServeInstances(resourceName, 0);
+          Assert.assertEquals(0, instancesList.size());
+        }
+    );
     //No online instance now.
     instances = repository.getReadyToServeInstances(resourceName, 0);
     Assert.assertEquals(0, instances.size());
     int newHttpPort = httpPort+10;
     HelixManager newManager = createParticipant(newHttpPort);
     newManager.connect();
-    Thread.sleep(WAIT_TIME);
-    instances = repository.getReadyToServeInstances(resourceName, 0);
-    Assert.assertEquals(instances.size(), 1);
-    Assert.assertEquals(instances.get(0).getPort(), newHttpPort);
+    TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
+          List<Instance> instancesList = repository.getReadyToServeInstances(resourceName, 0);
+          Assert.assertEquals(instancesList.size(), 1);
+          Assert.assertEquals(instancesList.get(0).getPort(), newHttpPort);
+        }
+    );
     newManager.disconnect();
   }
 
@@ -253,7 +259,7 @@ public class TestHelixRoutingDataRepository {
   public void testNodeChanged()
       throws InterruptedException {
     manager.disconnect();
-    Utils.waitForNonDeterministicCompetion(WAIT_TIME, TimeUnit.MILLISECONDS, new BooleanSupplier() {
+    TestUtils.waitForNonDeterministicCompletion(WAIT_TIME, TimeUnit.MILLISECONDS, new BooleanSupplier() {
       @Override
       public boolean getAsBoolean() {
         return repository.getReadyToServeInstances(resourceName, 0).size() == 0;

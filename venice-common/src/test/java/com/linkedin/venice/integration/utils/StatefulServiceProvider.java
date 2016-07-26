@@ -10,7 +10,7 @@ import java.io.File;
  */
 interface StatefulServiceProvider<S extends ProcessWrapper> extends ServiceProvider<S> {
   default S get(String serviceName, int port) throws Exception {
-    File dir = TestUtils.getDataDirectory(serviceName);
+    File dir = IntegrationTestUtils.getDataDirectory(serviceName);
     return get(serviceName, port, dir);
   }
 

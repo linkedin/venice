@@ -8,6 +8,8 @@ import com.linkedin.venice.meta.Version;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+
+import com.linkedin.venice.utils.FlakyTestRetryAnalyzer;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
@@ -34,9 +36,11 @@ public class TestAdminSparkServerWithMultiServers {
     venice.close();
   }
 
-  @Test
+  /**
+   * TODO: This test should be fixed. It is flaky, especially on a slow or heavily loaded machine.
+   */
+  @Test(retryAnalyzer = FlakyTestRetryAnalyzer.class)
   public void controllerClientShouldListStores() {
-
     List<String> storeNames = new ArrayList<>();
     for (int i = 0; i < 10; i++) { //add 10 stores;
       storeNames.add(Version.parseStoreFromKafkaTopicName(venice.getNewStoreVersion().getKafkaTopic()));

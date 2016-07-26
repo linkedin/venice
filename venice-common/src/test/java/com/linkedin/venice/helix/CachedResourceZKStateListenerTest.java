@@ -3,7 +3,8 @@ package com.linkedin.venice.helix;
 import com.linkedin.venice.VeniceResource;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
-import com.linkedin.venice.utils.Utils;
+import com.linkedin.venice.utils.TestUtils;
+
 import java.util.concurrent.TimeUnit;
 import java.util.function.BooleanSupplier;
 import org.apache.helix.manager.zk.ZkClient;
@@ -46,7 +47,7 @@ public class CachedResourceZKStateListenerTest {
     zkClient.process(disconnectEvent);
     // process connect event
     zkClient.process(connectEvent);
-    Utils.waitForNonDeterministicCompetion(WAIT_TIME, TimeUnit.MILLISECONDS, new BooleanSupplier() {
+    TestUtils.waitForNonDeterministicCompletion(WAIT_TIME, TimeUnit.MILLISECONDS, new BooleanSupplier() {
       @Override
       public boolean getAsBoolean() {
         return resource.isRefreshed;
