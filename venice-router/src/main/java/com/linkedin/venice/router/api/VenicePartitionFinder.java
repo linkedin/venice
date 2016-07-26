@@ -36,7 +36,7 @@ public class VenicePartitionFinder implements PartitionFinder<RouterKey> {
 
   @Override
   public List<String> getAllPartitionNames(String resourceName) {
-    return dataRepository.getPartitions(resourceName).values()
+    return dataRepository.getPartitionAssignments(resourceName).getAllPartitions()
         .stream()
         .map(p -> Partition.getPartitionName(resourceName, p.getId()))
         .collect(Collectors.toList());

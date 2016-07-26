@@ -21,7 +21,7 @@ public interface RoutingDataRepository extends VeniceResource {
    * Query all partitions allocations that belong to given kafka topic. The instances in returned allocations are ready
    * to serve OR being bootstrap.
    */
-  public Map<Integer, Partition> getPartitions(String kafkaTopic);
+  public PartitionAssignment getPartitionAssignments(String kafkaTopic);
 
   /**
    * Query number of partition in given kafka topic.
@@ -51,10 +51,11 @@ public interface RoutingDataRepository extends VeniceResource {
   interface RoutingDataChangedListener {
     /**
      * Handle routing data changed event.
-     * @param partitions Newest partitions information. If it's null, it means the kafka topic is deleted. The key of
-     *                   map is partition id and the value of map are the partition information including instances
-     *                   assigned to this partition.
+     * @param partitionAssignment Newest partitions assignments information including resource name and  all of instances assigned to this resource.
+     *                            If the number of partition is 0, it means the kafka topic is deleted.
      */
-    void onRoutingDataChanged(String kafkaTopic, Map<Integer, Partition> partitions);
+    void onRoutingDataChanged(PartitionAssignment partitionAssignment);
+
+    void onRoutingDataDeleted(String kafkaTopic);
   }
 }

@@ -3,7 +3,9 @@ package com.linkedin.venice.job;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.Partition;
+import com.linkedin.venice.meta.PartitionAssignment;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -21,24 +23,20 @@ public class TestOfflineJob {
   private int numberOfPartition = 4;
   private int replicaFactor = 3;
   private String nodeId = "localhost_1234";
-  private Map<Integer, Partition> partitions = new HashMap<>();
+  private PartitionAssignment partitionAssignment;
 
   @BeforeMethod
   public void setup() {
+    partitionAssignment = new PartitionAssignment(topic, numberOfPartition);
     for (int i = 0; i < numberOfPartition; i++) {
       List<Instance> instances = new ArrayList<>();
       for (int j = 0; j < replicaFactor; j++) {
         Instance instance = new Instance(nodeId + j, "localhost", 1235);
         instances.add(instance);
       }
-      Partition partition = new Partition(i, topic, instances, instances);
-      partitions.put(i, partition);
+      Partition partition = new Partition(i, instances, instances, Collections.emptyList());
+      partitionAssignment.addPartition(partition);
     }
-  }
-
-  @AfterMethod
-  public void cleanup() {
-    partitions.clear();
   }
 
   private void testValidateJobTransition(Job job, ExecutionStatus[] validStatus, ExecutionStatus[] invalidStatus) {
@@ -105,7 +103,7 @@ public class TestOfflineJob {
   @Test
   public void testUpdateTaskStatus() {
     OfflineJob job = new OfflineJob(1, topic, numberOfPartition, replicaFactor);
-    job.updateExecutingTasks(partitions);
+    job.updateExecutingTasks(partitionAssignment);
     Task task = new Task(job.generateTaskId(0, nodeId + "1"), 0, nodeId + "1", ExecutionStatus.STARTED);
     job.updateTaskStatus(task);
     Assert.assertEquals(task.getStatus(), job.getTaskStatus(0, task.getTaskId()),
@@ -130,7 +128,7 @@ public class TestOfflineJob {
   @Test
   public void testUpdateNotStartedTaskStatus() {
     OfflineJob job = new OfflineJob(1, topic, numberOfPartition, replicaFactor);
-    job.updateExecutingTasks(partitions);
+    job.updateExecutingTasks(partitionAssignment);
     Task task = new Task(job.generateTaskId(0, nodeId + "1"), 0, nodeId + "1", ExecutionStatus.COMPLETED);
     try {
       job.updateTaskStatus(task);
@@ -143,7 +141,7 @@ public class TestOfflineJob {
   @Test
   public void testUpdateTerminatedTaskStatus() {
     OfflineJob job = new OfflineJob(1, topic, numberOfPartition, replicaFactor);
-    job.updateExecutingTasks(partitions);
+    job.updateExecutingTasks(partitionAssignment);
     Task task = new Task(job.generateTaskId(0, nodeId + "1"), 0, nodeId + "1", ExecutionStatus.STARTED);
 
     job.updateTaskStatus(task);

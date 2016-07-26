@@ -10,6 +10,7 @@ import com.linkedin.venice.job.WaitAllJobStatsDecider;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.Partition;
 import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.meta.PartitionAssignment;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import java.util.HashMap;
@@ -343,11 +344,11 @@ public class TestHelixJobRepository {
       TestUtils.waitForNonDeterministicCompletion(timeOut, TimeUnit.MILLISECONDS, () -> {
         try {
           //Enough partition count and replica factor in each partition.
-          Map<Integer, Partition> partitions = routingDataRepository.getPartitions(topicName);
-          if (partitions.size() != numberOfPartition) {
+          PartitionAssignment partitionAssignment = routingDataRepository.getPartitionAssignments(topicName);
+          if (partitionAssignment.getAssignedNumberOfPartitions() != numberOfPartition) {
             return false;
           }
-          for (Partition p : partitions.values()) {
+          for (Partition p : partitionAssignment.getAllPartitions()) {
             if (p.getReadyToServeInstances().size() != replicaFactor) {
               return false;
             }
@@ -359,7 +360,7 @@ public class TestHelixJobRepository {
         }
       });
 
-      job.updateExecutingTasks(routingDataRepository.getPartitions(topicName));
+      job.updateExecutingTasks(routingDataRepository.getPartitionAssignments(topicName));
       jobs[i] = job;
     }
 

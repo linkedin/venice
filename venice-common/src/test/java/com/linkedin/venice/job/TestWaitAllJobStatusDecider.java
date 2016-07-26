@@ -3,6 +3,8 @@ package com.linkedin.venice.job;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.Partition;
+import com.linkedin.venice.meta.PartitionAssignment;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import org.testng.Assert;
@@ -16,12 +18,8 @@ public class TestWaitAllJobStatusDecider extends TestJobStatusDecider {
 
   @BeforeMethod
   public void setup() {
+    partitionAssignment = new PartitionAssignment(topic, numberOfPartition);
     createPartitions(numberOfPartition, replicationFactor);
-  }
-
-  @AfterMethod
-  public void cleanup() {
-    partitions.clear();
   }
 
   @Test
@@ -39,7 +37,7 @@ public class TestWaitAllJobStatusDecider extends TestJobStatusDecider {
   public void testCheckJobStatus() {
     OfflineJob job = new OfflineJob(1, topic, numberOfPartition, replicationFactor);
     job.setStatus(ExecutionStatus.STARTED);
-    job.updateExecutingTasks(partitions);
+    job.updateExecutingTasks(partitionAssignment);
     Assert.assertEquals(waitAllDecider.checkJobStatus(job), ExecutionStatus.STARTED,
         "Did not get any updates. SHould still be in running status.");
 
@@ -64,7 +62,7 @@ public class TestWaitAllJobStatusDecider extends TestJobStatusDecider {
   public void testCheckJobStatusWhenJobFail() {
     OfflineJob job = new OfflineJob(1, topic, numberOfPartition, replicationFactor);
     job.setStatus(ExecutionStatus.STARTED);
-    job.updateExecutingTasks(partitions);
+    job.updateExecutingTasks(partitionAssignment);
     createTasksAndUpdateJob(job,numberOfPartition,replicationFactor,ExecutionStatus.STARTED,-1,-1);
     createTasksAndUpdateJob(job, numberOfPartition,replicationFactor,ExecutionStatus.COMPLETED, 2, 0);
 
@@ -83,33 +81,32 @@ public class TestWaitAllJobStatusDecider extends TestJobStatusDecider {
   @Test
   public void testHasEnoughTaskExecutor() {
     OfflineJob job = new OfflineJob(1, topic, numberOfPartition, replicationFactor);
-    Assert.assertTrue(waitAllDecider.hasEnoughTaskExecutors(job, partitions.values()), "No enough executors");
+    Assert.assertTrue(waitAllDecider.hasEnoughTaskExecutors(job, partitionAssignment), "No enough executors");
 
-    partitions.remove(1);
+    partitionAssignment.removePartition(1);
     List<Instance> instances = createInstances(replicationFactor - 1);
-    partitions.put(1, new Partition(1, topic, instances, instances));
+    partitionAssignment.addPartition(new Partition(1, instances, Collections.emptyList(), Collections.emptyList()));
 
-    Assert.assertFalse(waitAllDecider.hasEnoughTaskExecutors(job, partitions.values()),
+    Assert.assertFalse(waitAllDecider.hasEnoughTaskExecutors(job, partitionAssignment),
         "Partition-1 miss one replica, decider should return false to indicate no enough task executors.");
 
-    partitions.remove(1);
+    partitionAssignment.removePartition(1);
     instances = createInstances(replicationFactor);
-    partitions.put(numberOfPartition + 1,
-        new Partition(numberOfPartition + 1, topic, instances, instances));
 
     try {
-      waitAllDecider.hasEnoughTaskExecutors(job, partitions.values());
+      partitionAssignment.addPartition(
+          new Partition(numberOfPartition + 1, instances, instances, Collections.emptyList()));
+      waitAllDecider.hasEnoughTaskExecutors(job, partitionAssignment);
       Assert.fail("Invalid partition id, decider should throw an exception.");
     } catch (VeniceException e) {
       //expected
     }
 
-    partitions.remove(numberOfPartition + 1);
-    Assert.assertFalse(waitAllDecider.hasEnoughTaskExecutors(job, partitions.values()),
+    partitionAssignment.removePartition(numberOfPartition + 1);
+    Assert.assertFalse(waitAllDecider.hasEnoughTaskExecutors(job, partitionAssignment),
         "Partition number is smaller than required, decider should return false.");
-    partitions = new HashMap<>();
-    waitAllDecider.hasEnoughTaskExecutors(job, partitions.values());
-    Assert.assertFalse(waitAllDecider.hasEnoughTaskExecutors(job, partitions.values()),
+    partitionAssignment = new PartitionAssignment(topic, numberOfPartition);
+    Assert.assertFalse(waitAllDecider.hasEnoughTaskExecutors(job, partitionAssignment),
         "Partition number is smaller than required, decider should return false.");
   }
 }

@@ -2,7 +2,10 @@ package com.linkedin.venice.job;
 
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.Partition;
+import com.linkedin.venice.meta.PartitionAssignment;
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -13,14 +16,14 @@ public class TestJobStatusDecider {
   protected int numberOfPartition = 4;
   protected int replicationFactor = 3;
   protected String nodeId = "localhost_1234";
-  protected Map<Integer, Partition> partitions = new HashMap<>();
+  protected PartitionAssignment partitionAssignment;
 
   protected void createPartitions(int numberOfPartition, int replicationFactor) {
     for (int i = 0; i < numberOfPartition; i++) {
       List<Instance> instances = createInstances(replicationFactor);
       Partition partition =
-          new Partition(i, topic, instances, instances);
-      partitions.put(i, partition);
+          new Partition(i, instances, instances, Collections.emptyList());
+      partitionAssignment.addPartition(partition);
     }
   }
 

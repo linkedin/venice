@@ -1,12 +1,16 @@
 package com.linkedin.venice.controller;
 
 import com.linkedin.venice.helix.HelixReadWriteSchemaRepository;
+import com.linkedin.venice.helix.Replica;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.helix.HelixReadWriteStoreRepository;
 import com.linkedin.venice.helix.HelixState;
 import com.linkedin.venice.job.ExecutionStatus;
+import com.linkedin.venice.meta.Instance;
+import com.linkedin.venice.meta.Partition;
+import com.linkedin.venice.meta.PartitionAssignment;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.schema.SchemaEntry;
@@ -524,6 +528,36 @@ public class VeniceHelixAdmin implements Admin {
     public int getReplicaFactor(String clusterName, String storeName) {
         //TODO if there is special config for the given store, use that value.
         return getVeniceHelixResource(clusterName).getConfig().getReplicaFactor();
+    }
+
+    @Override
+    public List<Replica> getBootstrapReplicas(String clusterName, String kafkaTopic) {
+        checkControllerMastership(clusterName);
+        List<Replica> replicas = new ArrayList<>();
+        PartitionAssignment partitionAssignment = getVeniceHelixResource(clusterName).getRoutingDataRepository().getPartitionAssignments(kafkaTopic);
+        for(Partition partition:partitionAssignment.getAllPartitions()){
+            for(Instance instance: partition.getBootstrapInstances()){
+                Replica replica = new Replica(instance, partition.getId());
+                replica.setStatus(HelixState.BOOTSTRAP_STATE);
+                replicas.add(replica);
+            }
+        }
+        return replicas;
+    }
+
+    @Override
+    public List<Replica> getErrorReplicas(String clusterName, String kafkaTopic) {
+        checkControllerMastership(clusterName);
+        List<Replica> replicas = new ArrayList<>();
+        PartitionAssignment partitionAssignment = getVeniceHelixResource(clusterName).getRoutingDataRepository().getPartitionAssignments(kafkaTopic);
+        for(Partition partition:partitionAssignment.getAllPartitions()){
+            for(Instance instance: partition.getErrorInstances()){
+                Replica replica = new Replica(instance, partition.getId());
+                replica.setStatus(HelixState.ERROR_STATE);
+                replicas.add(replica);
+            }
+        }
+        return replicas;
     }
 
     @Override

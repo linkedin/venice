@@ -5,6 +5,7 @@ import static com.linkedin.venice.job.ExecutionStatus.*;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.Partition;
+import com.linkedin.venice.meta.PartitionAssignment;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -42,19 +43,12 @@ public class OfflineJob extends Job {
    * When job is running, change partitions information if nodes which running tasks are changed. Job do not care about
    * the number of partitions and replicas for this new partition mapping. They should be guaranteed by invoker. Eg job
    * manager.
-   *
-   * @param partitions
    */
-  public Set<Integer> updateExecutingTasks(Map<Integer, Partition> partitions) {
+  public Set<Integer> updateExecutingTasks(PartitionAssignment partitionAssignment) {
     HashSet<Integer> changedPartitions = new HashSet<>();
-    for (Integer partitionId : partitions.keySet()) {
-      if (partitionId < 0 || partitionId >= getNumberOfPartition()) {
-        throw new VeniceException(
-            "Invalid partition Id:" + partitionId + ". Valid partition id should be in range: [0, " + (
-                getNumberOfPartition() - 1) + "]");
-      }
+    for(Partition partition:partitionAssignment.getAllPartitions()){
+      int partitionId = partition.getId();
       Map<String, Task> oldTaskMap = partitionToTasksMap.get(partitionId);
-      Partition partition = partitions.get(partitionId);
       HashSet<String> removeTaskIds = new HashSet<>(oldTaskMap.keySet());
       for (Instance instance : partition.getBootstrapAndReadyToServeInstances()) {
         String taskId = generateTaskId(partitionId, instance.getNodeId());

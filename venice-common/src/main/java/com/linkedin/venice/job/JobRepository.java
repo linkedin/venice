@@ -2,6 +2,7 @@ package com.linkedin.venice.job;
 
 import com.linkedin.venice.VeniceResource;
 import com.linkedin.venice.meta.Partition;
+import com.linkedin.venice.meta.PartitionAssignment;
 import java.util.List;
 import java.util.Map;
 
@@ -30,12 +31,8 @@ public interface JobRepository extends VeniceResource {
 
   /**
    * Give the partitions which is assigned to this job and update if they are different from what job knew before.
-   *
-   * @param jobId
-   * @param kafkaTopic
-   * @param partitions
    */
-  public void updateJobExecutingTasks(long jobId, String kafkaTopic, Map<Integer, Partition> partitions);
+  public void updateJobExecutingTasks(long jobId, PartitionAssignment partitionAssignment);
 
   public void stopJob(long jobId, String kafkaTopic);
 

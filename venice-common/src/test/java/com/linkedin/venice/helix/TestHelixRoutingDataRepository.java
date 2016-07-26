@@ -2,9 +2,9 @@ package com.linkedin.venice.helix;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Instance;
-import com.linkedin.venice.meta.Partition;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
+import com.linkedin.venice.meta.PartitionAssignment;
 import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.TestUtils;
@@ -186,25 +186,25 @@ public class TestHelixRoutingDataRepository {
   @Test
   public void testGetPartitions()
       throws Exception {
-    Map<Integer, Partition> partitions = repository.getPartitions(resourceName);
-    Assert.assertEquals(1, partitions.size());
-    Assert.assertEquals(1, partitions.get(0).getReadyToServeInstances().size());
-    Assert.assertEquals(1, partitions.get(0).getBootstrapAndReadyToServeInstances().size());
+    PartitionAssignment partitionAssignment = repository.getPartitionAssignments(resourceName);
+    Assert.assertEquals(1, partitionAssignment.getAssignedNumberOfPartitions());
+    Assert.assertEquals(1, partitionAssignment.getPartition(0).getReadyToServeInstances().size());
+    Assert.assertEquals(1, partitionAssignment.getPartition(0).getBootstrapAndReadyToServeInstances().size());
 
-    Instance instance = partitions.get(0).getReadyToServeInstances().get(0);
+    Instance instance = partitionAssignment.getPartition(0).getReadyToServeInstances().get(0);
     Assert.assertEquals(Utils.getHostName(), instance.getHost());
     Assert.assertEquals(httpPort, instance.getPort());
 
-    Instance liveInstance = partitions.get(0).getBootstrapAndReadyToServeInstances().get(0);
+    Instance liveInstance = partitionAssignment.getPartition(0).getBootstrapAndReadyToServeInstances().get(0);
     Assert.assertEquals(liveInstance, instance);
 
     //Participant become offline.
     manager.disconnect();
     //Wait notification.
     Thread.sleep(WAIT_TIME);
-    partitions = repository.getPartitions(resourceName);
+    partitionAssignment = repository.getPartitionAssignments(resourceName);
     //No online partition now
-    Assert.assertEquals(0, partitions.size());
+    Assert.assertEquals(0, partitionAssignment.getAssignedNumberOfPartitions());
   }
 
   @Test
@@ -213,7 +213,12 @@ public class TestHelixRoutingDataRepository {
     final boolean[] isNoticed = {false};
     RoutingDataRepository.RoutingDataChangedListener listener = new RoutingDataRepository.RoutingDataChangedListener() {
       @Override
-      public void onRoutingDataChanged(String kafkaTopic, Map<Integer, Partition> partitions) {
+      public void onRoutingDataChanged(PartitionAssignment partitionAssignment) {
+        isNoticed[0] = true;
+      }
+
+      @Override
+      public void onRoutingDataDeleted(String kafkaTopic) {
         isNoticed[0] = true;
       }
     };
@@ -266,7 +271,7 @@ public class TestHelixRoutingDataRepository {
       }
     });
     Assert.assertEquals(repository.getReadyToServeInstances(resourceName, 0).size(), 0);
-    Assert.assertEquals(repository.getPartitions(resourceName).size(), 0);
+    Assert.assertEquals(repository.getPartitionAssignments(resourceName).getAssignedNumberOfPartitions(), 0);
   }
 
   @Test
@@ -283,17 +288,17 @@ public class TestHelixRoutingDataRepository {
     // because bootstrap to online transition is blocked, so there is only one bootstrap instance.
     Assert.assertEquals(repository.getReadyToServeInstances(resourceName, 0).size(), 0,
         "Transition should be delayed, so there is no online instance.");
-    Assert.assertEquals(repository.getPartitions(resourceName).size(), 1);
-    Assert.assertEquals(repository.getPartitions(resourceName).get(0).getBootstrapAndReadyToServeInstances().size(), 1,
+    Assert.assertEquals(repository.getPartitionAssignments(resourceName).getAssignedNumberOfPartitions(), 1);
+    Assert.assertEquals(repository.getPartitionAssignments(resourceName).getPartition(0).getBootstrapAndReadyToServeInstances().size(), 1,
         "One bootstrap instance should be found");
     // make bootstrap to online transition completed, now there is one online instance.
     factory.makeTransitionCompleted(resourceName, 0);
     Thread.sleep(WAIT_TIME);
     Assert.assertEquals(repository.getReadyToServeInstances(resourceName, 0).size(), 1, "One online instance should be found");
-    Assert.assertEquals(repository.getPartitions(resourceName).size(), 1);
-    Assert.assertEquals(repository.getPartitions(resourceName).get(0).getBootstrapAndReadyToServeInstances().size(), 1,
+    Assert.assertEquals(repository.getPartitionAssignments(resourceName).getAssignedNumberOfPartitions(), 1);
+    Assert.assertEquals(repository.getPartitionAssignments(resourceName).getPartition(0).getBootstrapAndReadyToServeInstances().size(), 1,
         "One online instance should be found");
-    Assert.assertEquals(repository.getPartitions(resourceName).get(0).getReadyToServeInstances().size(), 1,
+    Assert.assertEquals(repository.getPartitionAssignments(resourceName).getPartition(0).getReadyToServeInstances().size(), 1,
         "One online instance should be found");
   }
 

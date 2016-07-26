@@ -2,6 +2,7 @@ package com.linkedin.venice.job;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Partition;
+import com.linkedin.venice.meta.PartitionAssignment;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -82,7 +83,7 @@ public abstract class Job {
 
   public abstract String generateTaskId(int paritionId, String instanceId);
 
-  public abstract Set<Integer> updateExecutingTasks(Map<Integer, Partition> partitions);
+  public abstract Set<Integer> updateExecutingTasks(PartitionAssignment partitionAssignment);
 
   /**
    * When a new status needs to be assigned to this job. Verify it at first to see whether this new status is valid or
