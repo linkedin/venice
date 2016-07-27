@@ -36,9 +36,7 @@ dependencies {
   compile 'commons-io:commons-io:2.4'
   compile 'com.sleepycat:je:5.0.104'
   compile 'com.sparkjava:spark-core:2.3'
-  //compile fileTree(dir: 'lib', include: '*.jar')
 
-  testCompile project(':venice-client')
   //Controller's unit test depends on ZkWrapper which is in tests in project venice-common
   testCompile project(':venice-common').sourceSets.test.output
   testCompile project(':venice-server')

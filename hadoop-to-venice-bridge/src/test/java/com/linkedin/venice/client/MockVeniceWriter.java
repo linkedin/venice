@@ -1,6 +1,8 @@
 package com.linkedin.venice.client;
 
 import com.linkedin.venice.hadoop.KafkaPushJob;
+import com.linkedin.venice.writer.AbstractVeniceWriter;
+import com.linkedin.venice.writer.VeniceWriter;
 import org.apache.kafka.clients.producer.RecordMetadata;
 
 import java.nio.charset.Charset;

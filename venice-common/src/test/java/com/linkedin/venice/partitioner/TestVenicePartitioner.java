@@ -1,8 +1,6 @@
-package com.linkedin.venice.kafka;
+package com.linkedin.venice.partitioner;
 
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
-import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
-import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.message.KafkaKey;
 import org.apache.kafka.common.PartitionInfo;
 import org.testng.Assert;

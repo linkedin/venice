@@ -3,7 +3,7 @@ package com.linkedin.venice.integration;
 import com.linkedin.venice.client.VeniceReader;
 import com.linkedin.venice.client.VeniceHttpClient;
 import com.linkedin.venice.client.VeniceThinClient;
-import com.linkedin.venice.client.VeniceWriter;
+import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.integration.utils.ServiceFactory;

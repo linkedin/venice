@@ -1,4 +1,4 @@
-package com.linkedin.venice.kafka;
+package com.linkedin.venice.serialization;
 
 import com.linkedin.venice.kafka.protocol.*;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;

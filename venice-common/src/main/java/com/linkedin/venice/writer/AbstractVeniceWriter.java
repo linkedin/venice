@@ -1,10 +1,8 @@
-package com.linkedin.venice.client;
-
-import org.apache.kafka.clients.producer.RecordMetadata;
+package com.linkedin.venice.writer;
 
 import java.io.Closeable;
-import java.io.IOException;
 import java.util.concurrent.Future;
+import org.apache.kafka.clients.producer.RecordMetadata;
 
 /**
  * A base class which users of {@link VeniceWriter} can leverage in order to

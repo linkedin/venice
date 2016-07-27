@@ -1,4 +1,4 @@
-package com.linkedin.venice.kafka.producer;
+package com.linkedin.venice.writer;
 
 import com.linkedin.venice.exceptions.ConfigurationException;
 import com.linkedin.venice.exceptions.VeniceException;
