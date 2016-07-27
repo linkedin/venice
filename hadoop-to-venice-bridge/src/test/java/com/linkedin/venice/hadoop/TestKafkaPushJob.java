@@ -1,7 +1,7 @@
 package com.linkedin.venice.hadoop;
 
 import com.linkedin.venice.client.VeniceReader;
-import com.linkedin.venice.client.VeniceWriter;
+import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.exceptions.VeniceInconsistentSchemaException;
 import com.linkedin.venice.hadoop.exceptions.VeniceSchemaFieldNotFoundException;

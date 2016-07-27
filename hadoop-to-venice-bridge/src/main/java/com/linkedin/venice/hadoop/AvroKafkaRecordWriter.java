@@ -1,7 +1,7 @@
 package com.linkedin.venice.hadoop;
 
-import com.linkedin.venice.client.AbstractVeniceWriter;
-import com.linkedin.venice.client.VeniceWriter;
+import com.linkedin.venice.writer.AbstractVeniceWriter;
+import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.exceptions.UndefinedPropertyException;
 import com.linkedin.venice.serialization.avro.AvroGenericSerializer;
 import com.linkedin.venice.serialization.DefaultSerializer;
@@ -21,7 +21,7 @@ import java.util.Properties;
 
 /**
  * A {@link org.apache.hadoop.mapred.RecordWriter} implementation which writes into
- * Kafka using a {@link com.linkedin.venice.client.VeniceWriter}.
+ * Kafka using a {@link VeniceWriter}.
  */
 public class AvroKafkaRecordWriter implements RecordWriter<AvroWrapper<IndexedRecord>, NullWritable> {
 

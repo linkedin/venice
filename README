@@ -28,9 +28,6 @@ To build and install ALL PROJECTS:
 
 If the above does not work, you may resort to building each component seperately.
 
-To build and install Venice client:
-> ./gradlew :venice-client:clean venice-client:installApp
-
 To build and install Venice server:
 > ./gradlew :venice-server:clean :venice-server:installApp
 
@@ -65,7 +62,7 @@ Interact with Venice
 There are two ways to read data out of Venice. 
 
 1) Venice is usable through its Java Client API.
-2) Venice commands are also executable through a Shell Client, which is also provided.
+2) Venice can be queried from the router using curl
 
 To add test stores (not necessary if you're going to run H2V):
 
@@ -75,41 +72,6 @@ To add test stores (not necessary if you're going to run H2V):
 To query a job status:
 
 > curl "127.0.0.1:7075/job?storename=test_shell_store&version=1"
-
-To use the shell client:
-
-> venice-client/quickstart/venice-client.sh [args]
-
----------------------------------------------------------------------
-WORK IN PROGRESS / CURRENT LIMITATIONS OF CLIENT SHELL
----------------------------------------------------------------------
-
-1) Client shell only works with Primitive types for key. 
-2) Client shell expects the topic name ( <storename>_v<versionNumber> or the Kafka topic name for the store name).
-
------------------------
-Arguments
------------------------
-
-1) Commands
-One of: ( --get, --put, --delete, --interactive ) must be present and specify the type of action to perform.
-
-2) --key
-The key to be given to Venice.
-
-3) --value (only required for PUT)
-The value to be specified with a PUT in Venice.
-
-4) --store (optional)
-The name of the store to use, note store name is the same as kafka topic name
-If omitted, will use store name "test_shell_store"
-
-Examples:
-
-> ./venice-client/quickstart/venice-client.sh --get --key 151780654 --store myCountry_v1
-> ./venice-client/quickstart/venice-client.sh --put --key 151780654 --value test_value --store myCountry_v1
-> ./venice-client/quickstart/venice-client.sh --delete --key 151780654 --store myCountry_v1
-> ./venice-client/quickstart/venice-client.sh --interactive
 
 -----------------------
 Questions?

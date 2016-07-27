@@ -10,6 +10,7 @@ import com.linkedin.venice.serialization.VeniceSerializer;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.io.IOException;
 import java.io.InputStream;
+import java.lang.Deprecated;
 import java.util.Base64;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
@@ -24,6 +25,7 @@ import org.apache.log4j.Logger;
 /**
  * Class which acts as the primary reader API
  */
+@Deprecated
 public class VeniceReader<K, V> {
 
   // log4j logger

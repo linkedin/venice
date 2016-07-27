@@ -1,10 +1,9 @@
-package com.linkedin.venice.client;
+package com.linkedin.venice.writer;
 
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.guid.GuidUtils;
-import com.linkedin.venice.kafka.producer.KafkaProducerWrapper;
 import com.linkedin.venice.kafka.protocol.*;
 import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;

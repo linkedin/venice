@@ -1,4 +1,4 @@
-package com.linkedin.venice.client;
+package com.linkedin.venice.writer;
 
 import java.util.concurrent.atomic.AtomicInteger;
 
