@@ -10,13 +10,13 @@ import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.controllerapi.VersionResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.utils.Utils;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.util.Arrays;
 import java.util.List;
-import java.util.function.Supplier;
 import org.apache.avro.Schema;
 import org.apache.commons.cli.BasicParser;
 import org.apache.commons.cli.CommandLine;
@@ -45,16 +45,21 @@ public class AdminTool {
   public static final String STORE = "store";
   public static final List<String> CREATE_OPTIONS = Arrays.asList(STORE);
 
+  /* apply options */
+  public static final String VERSION = "version";
+  public static final List<String> APPLY_OPTIONS = Arrays.asList(VERSION);
+
   public static void main(String args[])
       throws ParseException, IOException {
 
     Options options = new Options();
+    createOpt(Arg.QUERY, true, "OPTIONAL: Query one of: " + String.join(", ", QUERY_OPTIONS), options);
+    createOpt(Arg.NEW, true, "OPTIONAL: Create one of: " + String.join(", ", CREATE_OPTIONS), options);
+    createOpt(Arg.APPLY, true, "OPTIONAL: Apply (or set) one of: " + String.join(", ", APPLY_OPTIONS), options);
     createOpt(Arg.ROUTER, true, "REQUIRED: Venice router url, eg. http://localhost:54333", options);
     createOpt(Arg.CLUSTER, true, "REQUIRED: Name of Venice cluster", options);
     createOpt(Arg.STORE, true, "Name of Venice store", options);
     createOpt(Arg.VERSION, true, "Venice store version number", options);
-    createOpt(Arg.QUERY, true, "OPTIONAL: Query one of: " + String.join(", ", QUERY_OPTIONS), options);
-    createOpt(Arg.NEW, true, "OPTIONAL: Create one of: " + String.join(", ", CREATE_OPTIONS), options);
     createOpt(Arg.KEY_SCHEMA, true, "Path to text file with key schema", options);
     createOpt(Arg.VALUE_SCHEMA, true, "Path to text file with value schema", options);
     createOpt(Arg.OWNER, true, "Owner email for new store creation", options);
@@ -84,8 +89,10 @@ public class AdminTool {
           default:
             throw new VeniceException(newAction + " NOT IMPLEMENTED" + " for --" + Arg.NEW.toString());
         }
-      } else { /* not --query or --new */
-        throw new VeniceException("--query or --new is a required argument");
+      } else if (cmd.hasOption(Arg.APPLY.first())) {
+        applyVersionToStore(cmd, routerHosts, clusterName);
+      }  else { /* not --query or --new or --apply */
+        throw new VeniceException("--query, --new, or --apply is a required argument");
       }
     } catch (VeniceException e){
       printErrAndExit(e.getMessage());
@@ -151,7 +158,7 @@ public class AdminTool {
 
   private static void createNewStore(CommandLine cmd, String routerHosts, String clusterName)
       throws IOException {
-    String newClause = " when using --" + Arg.NEW.toString();
+    String newClause = " when using --" + Arg.NEW.toString() + " " + STORE;
     String store = getRequiredArgument(cmd, Arg.STORE, newClause);
     String keySchemaFile = getRequiredArgument(cmd, Arg.KEY_SCHEMA, newClause);
     String keySchema = readFile(keySchemaFile);
@@ -161,10 +168,7 @@ public class AdminTool {
     verifyValidSchema(keySchema);
     verifyValidSchema(valueSchema);
     verifyConnection(routerHosts, clusterName);
-    boolean storeExists = !ControllerClient.queryNextVersion(routerHosts, clusterName, store).isError();
-    if (storeExists) {
-      throw new VeniceException("Store " + store + " already exists, cannot create it");
-    }
+    verifyStoreExistence(routerHosts, clusterName, store, false);
           /* TODO: createNewStore should be modified to require a key and value schema */
     NewStoreResponse newStore = ControllerClient.createNewStore(routerHosts, clusterName, store, owner);
     if (newStore.isError()) {
@@ -178,6 +182,33 @@ public class AdminTool {
       }
     }
     System.out.println("Created Store: " + store);
+
+  }
+
+  private static void applyVersionToStore(CommandLine cmd, String routerHosts, String clusterName){
+    String newClause = " when using --" + Arg.APPLY.toString() + " " + VERSION;
+    String store = getRequiredArgument(cmd, Arg.STORE, newClause);
+    String version = getRequiredArgument(cmd, Arg.VERSION, newClause);
+    int intVersion = Utils.parseIntFromString(version, Arg.VERSION.name());
+    verifyConnection(routerHosts, clusterName);
+    verifyStoreExistence(routerHosts, clusterName, store, true);
+
+    boolean versionExists = false;
+    MultiVersionResponse allVersions = ControllerClient.queryActiveVersions(routerHosts, clusterName, store);
+    if (allVersions.isError()){
+      throw new VeniceException("Error querying versions for store: " + store + " -- " + allVersions.getError());
+    }
+    for (int v : allVersions.getVersions()){
+      if (v == intVersion){
+        versionExists = true;
+        break;
+      }
+    }
+    if (!versionExists){
+      throw new VeniceException("Version " + version + " does not exist for store " + store + ".  Store only has versions: " + Arrays.toString(allVersions.getVersions()));
+    }
+    ControllerClient.overrideSetActiveVersion(routerHosts, clusterName, store, intVersion);
+    System.out.println("SUCCESS");
   }
 
   private static void printStoreDescription(String routerHosts, String clusterName, String storeName){
@@ -207,16 +238,14 @@ public class AdminTool {
         .getLocation()
         .getPath())
         .getName();
-    new HelpFormatter().printHelp(command + " --router <router_uri> --cluster <cluster_name> (--query|--new) <arg> [options]\n\nOptions:",
+    new HelpFormatter().printHelp(command + " --router <router_uri> --cluster <cluster_name> (--query|--new|--apply) <arg> [options]\n\nOptions:",
         options);
-    System.err.println(
-            "\nExamples:\n"
-            + "--query list (no other arguments required)\n"
+    System.err.println("\nExamples:\n" + "--query list (no other arguments required)\n"
             + "--query describe (optionally takes --store to only describe one store.  Otherwise describes all stores)\n"
             + "--query next, --query available, --query current (Requires --store)\n"
             + "--query job (Requires --store, --version)\n"
-            + "--new store (Requires --store, --owner, --key-schema-file, --value-schema-file)"
-    );
+            + "--new store (Requires --store, --owner, --key-schema-file, --value-schema-file)\n"
+            + "--apply version (Requires --store, --version)");
 
     System.exit(1);
   }
@@ -233,9 +262,27 @@ public class AdminTool {
   }
 
   private static void verifyConnection(String routerHosts, String cluster){
-    boolean canConnect = !ControllerClient.queryStoreList(routerHosts, cluster).isError();
-    if (!canConnect){
-      printErrAndExit("Cannot connect to cluster " + cluster + " with routers " + routerHosts);
+    MultiStoreResponse response = ControllerClient.queryStoreList(routerHosts, cluster);
+    if (response.isError()){
+      throw new VeniceException("Cannot connect to cluster " + cluster + " with routers " + routerHosts + ": " + response.getError());
+    }
+  }
+
+  private static void verifyStoreExistence(String routerHosts, String cluster, String storename, boolean desiredExistence){
+    MultiStoreResponse storeResponse = ControllerClient.queryStoreList(routerHosts, cluster);
+    if (storeResponse.isError()){
+      throw new VeniceException("Error verifying store exists: " + storeResponse.getError());
+    }
+    boolean storeExists = false;
+    for (String s : storeResponse.getStores()){
+      if (s.equals(storename)){
+        storeExists = true;
+        break;
+      }
+    }
+    if (storeExists != desiredExistence) {
+      throw new VeniceException("Store " + storename +
+          (storeExists ? " already exists" : " does not exist"));
     }
   }
 
@@ -243,7 +290,7 @@ public class AdminTool {
     try {
       Schema.parse(schema);
     } catch (Exception e){
-      printErrAndExit("Invalid Schema: " + schema);
+      printErrAndExit("Invalid Schema: " + schema + " -- " + e.getMessage());
     }
   }
 

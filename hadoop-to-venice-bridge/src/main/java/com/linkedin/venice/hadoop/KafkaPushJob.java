@@ -505,8 +505,9 @@ public class KafkaPushJob {
       }
       if (valueSchemaResponse.isError()) {
 
-        logger.error("Fail to validate/create value schema: " + valueSchemaString + " for store: "
-            + storeName + ", error: " + valueSchemaResponse.getError());
+        logger.error(
+            "Fail to validate/create value schema: " + valueSchemaString + " for store: " + storeName + ", error: "
+                + valueSchemaResponse.getError());
       }
     }
   }
@@ -621,7 +622,9 @@ public class KafkaPushJob {
       // Initialize VeniceWriter
       Properties veniceWriterProperties = new Properties();
       veniceWriterProperties.put(KAFKA_BOOTSTRAP_SERVERS, kafkaUrl);
-      veniceWriterProperties.put(VeniceWriter.CLOSE_TIMEOUT_MS, props.get(VeniceWriter.CLOSE_TIMEOUT_MS));
+      if (props.containsKey(VeniceWriter.CLOSE_TIMEOUT_MS)){ /* Writer uses default if not specified */
+        veniceWriterProperties.put(VeniceWriter.CLOSE_TIMEOUT_MS, props.get(VeniceWriter.CLOSE_TIMEOUT_MS));
+      }
       VeniceWriter<KafkaKey, byte[]> newVeniceWriter = new VeniceWriter<>(
           new VeniceProperties(veniceWriterProperties),
           topic,
