@@ -4,13 +4,16 @@ package com.linkedin.venice;
  * Created by mwise on 5/23/16.
  */
 public enum Arg {
+  /* commands */
+  QUERY("query", "q"),
+  NEW("new", "n"),
+  APPLY("apply", "a"),
+  /* options */
   ROUTER("router", "r"),
   CLUSTER("cluster", "c"),
   STORE("store", "s"),
   VERSION("version", "v"),
-  QUERY("query", "q"),
   HELP("help", "h"),
-  NEW("new", "n"),
   KEY_SCHEMA("key-schema-file", "k"),
   VALUE_SCHEMA("value-schema-file", "l"),
   OWNER("owner", "o");
