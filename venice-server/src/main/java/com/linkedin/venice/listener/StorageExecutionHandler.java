@@ -1,6 +1,5 @@
 package com.linkedin.venice.listener;
 
-import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.message.GetRequestObject;
 import com.linkedin.venice.offsets.OffsetManager;
 import com.linkedin.venice.server.StoreRepository;
@@ -40,7 +39,7 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
       // TODO : If there is uncaught exception from the thread, it hangs the client requests.
       executor.execute(new StorageWorkerThread(context, (GetRequestObject) message, storeRepository, offsetManager));
     } else {
-      context.writeAndFlush(new HttpError("Unrecognized object in StorageExecutionHandler", HttpResponseStatus.INTERNAL_SERVER_ERROR));
+      context.writeAndFlush(new HttpShortcutResponse("Unrecognized object in StorageExecutionHandler", HttpResponseStatus.INTERNAL_SERVER_ERROR));
     }
   }
 

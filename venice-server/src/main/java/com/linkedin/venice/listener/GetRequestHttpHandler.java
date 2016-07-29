@@ -25,7 +25,7 @@ public class GetRequestHttpHandler extends ChannelInboundHandlerAdapter {
 
   @Override
   public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) {
-    ctx.writeAndFlush(new HttpError(cause.getMessage(), HttpResponseStatus.INTERNAL_SERVER_ERROR));
+    ctx.writeAndFlush(new HttpShortcutResponse(cause.getMessage(), HttpResponseStatus.INTERNAL_SERVER_ERROR));
     ctx.close();
   }
 
@@ -46,11 +46,14 @@ public class GetRequestHttpHandler extends ChannelInboundHandlerAdapter {
             GetRequestObject request = parseReadFromUri(req.getUri());
             ctx.fireChannelRead(request);
             break;
+          case HEALTH:
+            ctx.writeAndFlush(new HttpShortcutResponse("OK", HttpResponseStatus.OK));
+            break;
           default:
             throw new VeniceException("Unrecognized query action");
         }
       } catch (VeniceException e){
-        ctx.writeAndFlush(new HttpError(
+        ctx.writeAndFlush(new HttpShortcutResponse(
             e.getMessage(),
             HttpResponseStatus.BAD_REQUEST
         ));
@@ -75,10 +78,14 @@ public class GetRequestHttpHandler extends ChannelInboundHandlerAdapter {
     String[] requestParts = req.getUri().split("/");
     if (req.getMethod().equals(HttpMethod.GET) &&
         requestParts.length >=2 &&
-        requestParts[1].equals("storage")){
+        requestParts[1].equals("storage")) {
       return QueryAction.STORAGE;
+    } else if (req.getMethod().equals(HttpMethod.GET) &&
+        requestParts.length >=2 &&
+        requestParts[1].equals("health")) {
+      return QueryAction.HEALTH;
     } else {
-      throw new VeniceException("Only able to parse GET requests for action: storage");
+      throw new VeniceException("Only able to parse GET requests for actions: storage, health");
     }
   }
 

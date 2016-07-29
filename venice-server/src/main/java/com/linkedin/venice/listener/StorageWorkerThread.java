@@ -1,6 +1,5 @@
 package com.linkedin.venice.listener;
 
-import com.linkedin.venice.exceptions.PersistenceFailureException;
 import com.linkedin.venice.message.GetRequestObject;
 import com.linkedin.venice.offsets.OffsetManager;
 import com.linkedin.venice.server.StoreRepository;
@@ -40,7 +39,7 @@ public class StorageWorkerThread implements Runnable {
       StorageResponseObject resp = new StorageResponseObject(value, offset);
       ctx.writeAndFlush(resp);
     } else {
-      ctx.writeAndFlush(new HttpError("key not found in resource: " + topic + " and partition: " + partition,
+      ctx.writeAndFlush(new HttpShortcutResponse("key not found in resource: " + topic + " and partition: " + partition,
           HttpResponseStatus.NOT_FOUND));
     }
   }
