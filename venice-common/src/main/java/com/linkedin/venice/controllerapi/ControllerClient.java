@@ -109,6 +109,7 @@ public class ControllerClient implements Closeable {
     throw new VeniceException("Could not get controller url from any router: " + routerUrls, lastException);
   }
 
+  @Deprecated
   private VersionCreationResponse createNewStoreVersion(String clusterName, String storeName, String owner, long storeSize,
                                                       String keySchema, String valueSchema)
       throws IOException, ExecutionException, InterruptedException {
@@ -126,6 +127,8 @@ public class ControllerClient implements Closeable {
     return mapper.readValue(responseJson, VersionCreationResponse.class);
   }
 
+  /** Only used for tests */
+  @Deprecated
   public static VersionCreationResponse createStoreVersion(
       String routerUrl, String clusterName, String storeName, String owner, long storeSize, String keySchema, String valueSchema) {
     try (ControllerClient client = new ControllerClient(routerUrl)){
