@@ -6,11 +6,11 @@ import io.netty.handler.codec.http.HttpResponseStatus;
 /**
  * Created by mwise on 3/11/16.
  */
-public class HttpError {
+public class HttpShortcutResponse {
   private final String message;
   private final HttpResponseStatus status;
 
-  public HttpError(String message, HttpResponseStatus status){
+  public HttpShortcutResponse(String message, HttpResponseStatus status){
     this.message = message;
     this.status = status;
   }

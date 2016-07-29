@@ -37,6 +37,19 @@ public class GetRequestHttpHandlerTest {
     testBadRequest("/storage/store_v1/1/key1", HttpMethod.POST);
   }
 
+  @Test
+  public void respondsToHealthCheck() throws Exception {
+    GetRequestHttpHandler testHander = new GetRequestHttpHandler();
+    ChannelHandlerContext mockContext = Mockito.mock(ChannelHandlerContext.class);
+    ArgumentCaptor<HttpShortcutResponse> argumentCaptor = ArgumentCaptor.forClass(HttpShortcutResponse.class);
+    HttpRequest healthMsg = new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET, "/health");
+    testHander.channelRead(mockContext, healthMsg);
+    verify(mockContext).writeAndFlush(argumentCaptor.capture());
+    HttpShortcutResponse responseObject = argumentCaptor.getValue();
+    Assert.assertEquals(responseObject.getStatus(), HttpResponseStatus.OK);
+    Assert.assertEquals(responseObject.getMessage(), "OK");
+  }
+
   public void testRequestParsing(String path, String expectedStore, int expectedPartition, byte[] expectedKey)
       throws Exception {
 
@@ -67,12 +80,12 @@ public class GetRequestHttpHandlerTest {
       throws Exception {
     GetRequestHttpHandler testHander = new GetRequestHttpHandler();
     ChannelHandlerContext mockContext = Mockito.mock(ChannelHandlerContext.class);
-    ArgumentCaptor<HttpError> argumentCaptor = ArgumentCaptor.forClass(HttpError.class);
+    ArgumentCaptor<HttpShortcutResponse> argumentCaptor = ArgumentCaptor.forClass(HttpShortcutResponse.class);
     HttpRequest msg = new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, method, path);
     testHander.channelRead(mockContext, msg);
     verify(mockContext).writeAndFlush(argumentCaptor.capture());
-    HttpError httpError = argumentCaptor.getValue();
-    Assert.assertEquals(httpError.getStatus(), HttpResponseStatus.BAD_REQUEST);
+    HttpShortcutResponse httpShortcutResponse = argumentCaptor.getValue();
+    Assert.assertEquals(httpShortcutResponse.getStatus(), HttpResponseStatus.BAD_REQUEST);
   }
 
   @Test

@@ -36,9 +36,9 @@ public class OutboundHttpWrapperHandler extends ChannelOutboundHandlerAdapter {
       body = obj.getValueRecord().getData();
       schemaId = obj.getValueRecord().getSchemaId();
       offset = obj.getOffset();
-    } else if (msg instanceof HttpError){
-      responseStatus = ((HttpError) msg).getStatus();
-      body = Unpooled.wrappedBuffer(((HttpError) msg).getMessage().getBytes(StandardCharsets.UTF_8));
+    } else if (msg instanceof HttpShortcutResponse){
+      responseStatus = ((HttpShortcutResponse) msg).getStatus();
+      body = Unpooled.wrappedBuffer(((HttpShortcutResponse) msg).getMessage().getBytes(StandardCharsets.UTF_8));
       contentType = HttpConstants.TEXT_PLAIN;
     } else {
       responseStatus = INTERNAL_SERVER_ERROR;
