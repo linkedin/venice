@@ -7,7 +7,8 @@ For directly affecting administrative actions and queries on a Venice cluster
 usage: java -jar venice-admin-tool-0.1.jar --router <router_uri> --cluster
             <cluster_name> (--query|--new|--apply) <arg> [options]
             Options:
- -a,--apply <arg>               OPTIONAL: Apply (or set) one of: version
+ -a,--apply <arg>               OPTIONAL: Apply (or set) one of: version,
+                                schema
  -c,--cluster <arg>             REQUIRED: Name of Venice cluster
  -h,--help                      Show usage
  -k,--key-schema-file <arg>     Path to text file with key schema
@@ -28,6 +29,7 @@ Examples:
 --query job (Requires --store, --version)
 --new store (Requires --store, --owner, --key-schema-file, --value-schema-file)
 --apply version (Requires --store, --version)
+--apply schema (Requires --store, --value-schema-file)
 ```
 
 ## Overview of Queries
@@ -87,9 +89,14 @@ Requires: store, version
 
 Sets the specified version to active for the specified store
 
+### SCHEMA
+
+Requires: store, value-schema-file
+
+Adds the specified value schema to the store
+
 ## Future commands to add:
 
- * Set version
  * Delete version
  * Delete store?
  * ???

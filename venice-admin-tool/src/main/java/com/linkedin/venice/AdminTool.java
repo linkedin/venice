@@ -46,8 +46,9 @@ public class AdminTool {
   public static final List<String> CREATE_OPTIONS = Arrays.asList(STORE);
 
   /* apply options */
-  public static final String VERSION = "version";
-  public static final List<String> APPLY_OPTIONS = Arrays.asList(VERSION);
+  public static final String VERSION = "version"; /* set active version */
+  public static final String SCHEMA = "schema"; /* upload new value schema for existing store */
+  public static final List<String> APPLY_OPTIONS = Arrays.asList(VERSION, SCHEMA);
 
   public static void main(String args[])
       throws ParseException, IOException {
@@ -90,7 +91,17 @@ public class AdminTool {
             throw new VeniceException(newAction + " NOT IMPLEMENTED" + " for --" + Arg.NEW.toString());
         }
       } else if (cmd.hasOption(Arg.APPLY.first())) {
-        applyVersionToStore(cmd, routerHosts, clusterName);
+        String applyAction = cmd.getOptionValue(Arg.APPLY.first());
+        switch (applyAction.toLowerCase()){
+          case VERSION:
+            applyVersionToStore(cmd, routerHosts, clusterName);
+            break;
+          case SCHEMA:
+            applyValueSchemaToStore(cmd, routerHosts, clusterName);
+            break;
+          default:
+            throw new VeniceException(applyAction + " NOT IMPLEMENTED" + " for --" + Arg.APPLY.toString());
+        }
       }  else { /* not --query or --new or --apply */
         throw new VeniceException("--query, --new, or --apply is a required argument");
       }
@@ -174,6 +185,7 @@ public class AdminTool {
     if (newStore.isError()) {
       throw new VeniceException("Error creating store " + store + ": " + newStore.getError());
     }
+    System.out.println("Created Store: " + store);
     SchemaResponse keyResponse = ControllerClient.initKeySchema(routerHosts, clusterName, store, keySchema);
     SchemaResponse valueResponse = ControllerClient.addValueSchema(routerHosts, clusterName, store, valueSchema);
     for (SchemaResponse response : Arrays.asList(keyResponse, valueResponse)) {
@@ -181,8 +193,6 @@ public class AdminTool {
         System.err.println("Error initializing store with schema: " + response.getError());
       }
     }
-    System.out.println("Created Store: " + store);
-
   }
 
   private static void applyVersionToStore(CommandLine cmd, String routerHosts, String clusterName){
@@ -209,6 +219,22 @@ public class AdminTool {
     }
     ControllerClient.overrideSetActiveVersion(routerHosts, clusterName, store, intVersion);
     System.out.println("SUCCESS");
+  }
+
+  private static void applyValueSchemaToStore(CommandLine cmd, String routerHosts, String clusterName)
+      throws IOException {
+    String newClause = " when using --" + Arg.APPLY.toString() + " " + SCHEMA;
+    String store = getRequiredArgument(cmd, Arg.STORE, newClause);
+    String valueSchemaFile = getRequiredArgument(cmd, Arg.VALUE_SCHEMA, newClause);
+    String valueSchema = readFile(valueSchemaFile);
+    verifyValidSchema(valueSchema);
+    verifyConnection(routerHosts, clusterName);
+    verifyStoreExistence(routerHosts, clusterName, store, true);
+    SchemaResponse valueResponse = ControllerClient.addValueSchema(routerHosts, clusterName, store, valueSchema);
+    if (valueResponse.isError()) {
+      throw new VeniceException("Error updating store with schema: " + valueResponse.getError());
+    }
+    System.out.println("Uploaded schema has ID: " + valueResponse.getId());
   }
 
   private static void printStoreDescription(String routerHosts, String clusterName, String storeName){
@@ -241,11 +267,12 @@ public class AdminTool {
     new HelpFormatter().printHelp(command + " --router <router_uri> --cluster <cluster_name> (--query|--new|--apply) <arg> [options]\n\nOptions:",
         options);
     System.err.println("\nExamples:\n" + "--query list (no other arguments required)\n"
-            + "--query describe (optionally takes --store to only describe one store.  Otherwise describes all stores)\n"
-            + "--query next, --query available, --query current (Requires --store)\n"
-            + "--query job (Requires --store, --version)\n"
-            + "--new store (Requires --store, --owner, --key-schema-file, --value-schema-file)\n"
-            + "--apply version (Requires --store, --version)");
+        + "--query describe (optionally takes --store to only describe one store.  Otherwise describes all stores)\n"
+        + "--query next, --query available, --query current (Requires --store)\n"
+        + "--query job (Requires --store, --version)\n"
+        + "--new store (Requires --store, --owner, --key-schema-file, --value-schema-file)\n"
+        + "--apply version (Requires --store, --version)\n"
+        + "--apply schema (Requires --store, --value-schema-file)");
 
     System.exit(1);
   }
