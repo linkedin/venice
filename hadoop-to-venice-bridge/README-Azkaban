@@ -6,12 +6,9 @@ the bridge uses 0.9 producer. This produces a message that
 can't be understood by the older brokers and it breaks the mirror
 maker.
 
-There are 4 machines in Voldemort performance cluster which have
-ports opened from Nertz Cluster.  Set up Kafka on one of these
-ports and Venice controller on the other port.
-
-All the 4 machines below have ports 6666, 6667, 6668 open from Nertz
-eat1-app316.stg; eat1-app317.stg; eat1-app320.stg;eat1-app319.stg
+The Voldemort perf lab machines have ports opened from Holdem (
+or ask SRE to open the ports)
+https://jira01.corp.linkedin.com:8443/browse/HARD-7382
 
 Venice Cluster Setup
 
@@ -25,11 +22,11 @@ machine port for the controller, please don't forget to update the job
 properties to reflect the machine:port.
 
 In my case, I brought up the
-ZooKeeper on eat1-app316.stg:2181
+ZooKeeper on <SomeHost>:2181
 venice-controller on eat1-app316.stg:6667
-kafka broker on eat1-app316.stg:6666
-Venice-Server on eat1-app316.stg:7072
-Venice-Router on eat1-app316.stg:6668
+kafka broker on <SomeHost>:6666
+Venice-Server on <SomeHost>:7072
+Venice-Router on <SomeHost>:6668
 
 I tweaked the following properties at the time of this writing.
 
@@ -37,17 +34,12 @@ File : ./venice-controller/config/controller.properties
 Property : admin.port=6667
 
 File : ./venice-server/config/cluster.properties
-Property : kafka.bootstrap.servers=eat1-app316.stg.linkedin.com:6666
+Property : kafka.bootstrap.servers=<SomeHost>:6666
 Property : router.port=6668
 
 File : ./venice-client/config/config.properties
-Property : kafka.bootstrap.servers=eat1-app316.stg.linkedin.com:6666
+Property : kafka.bootstrap.servers=<SomeHost>:6666
 Property : router.port = "6668"
-
-I also deleted the files under the directory ./venice-server/config/STORES/
-as I was not interested in the default stores. You may choose to fix the
-settings in that file or delete it.
-
 
 Azkaban SetUp
 
@@ -57,7 +49,7 @@ Azkaban SetUp
 2) The Zip Pack should be created here.
 ./hadoop-to-venice-bridge/build/distributions/hadoop-to-venice-bridge-0.1-azkaban-dev.zip
 
-3) Open the Browser go to go/nertz, login to Azkaban
+3) Open the Browser go to go/holdem, login to Azkaban
 
 4) Click Projects tab, Select (if you have existing one) or Create a project ( if this is your first time).
 Click permissions on the created project and add user voldtest as proxy users to this project.
