@@ -13,7 +13,9 @@ import java.util.concurrent.CompletableFuture;
  * Define the common functions for call back of {@link TransportClient}
  * @param <T>
  */
-class TransportClientCallback<T> {
+public class TransportClientCallback<T> {
+  public static String HEADER_VENICE_SCHEMA_ID = "X-VENICE-SCHEMA-ID";
+
   private final CompletableFuture<T> valueFuture;
   private final DeserializerFetcher<T> deserializerFetcher;
   private final boolean needRawResult;

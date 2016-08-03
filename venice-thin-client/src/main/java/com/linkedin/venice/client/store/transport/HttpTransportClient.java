@@ -1,6 +1,5 @@
 package com.linkedin.venice.client.store.transport;
 
-import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.exceptions.VeniceServerErrorException;
 import com.linkedin.venice.client.store.DeserializerFetcher;
@@ -102,11 +101,11 @@ public class HttpTransportClient<V> extends TransportClient<V> {
       String schemaId = null;
       // If we try to retrieve the header value directly, and the 'getValue' will hang if the header doesn't exist.
       if (!isNeedRawResult()) {
-        Header schemaIdHeader = result.getFirstHeader(HttpConstants.VENICE_SCHEMA_ID);
+        Header schemaIdHeader = result.getFirstHeader(HEADER_VENICE_SCHEMA_ID);
         if (HttpStatus.SC_OK == statusCode) {
           if (null == schemaIdHeader) {
             getValueFuture().completeExceptionally(new VeniceServerErrorException("Header: " +
-                HttpConstants.VENICE_SCHEMA_ID + " doesn't exist"));
+                HEADER_VENICE_SCHEMA_ID + " doesn't exist"));
             return;
           }
           schemaId = schemaIdHeader.getValue();

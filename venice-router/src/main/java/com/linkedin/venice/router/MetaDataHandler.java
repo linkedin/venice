@@ -75,8 +75,10 @@ public class MetaDataHandler extends SimpleChannelUpstreamHandler {
     }
     response.headers().set(CONTENT_LENGTH, response.getContent().readableBytes());
     ChannelFuture f = Channels.future(ch);
-    // TODO: keep-alive support?
-    f.addListener(ChannelFutureListener.CLOSE);
+    /**
+     * There is a {@link com.linkedin.ddsstorage.netty3.handlers.StaleConnectionHandler}, which
+     * handles closing idle connections, so we don't need to explicitly close the connection here.
+     */
     Channels.write(ctx, f, response);
   }
 

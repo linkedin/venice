@@ -50,7 +50,11 @@ public class OutboundHttpWrapperHandler extends ChannelOutboundHandlerAdapter {
     response.headers().set(HttpConstants.VENICE_OFFSET, offset);
     response.headers().set(HttpConstants.VENICE_SCHEMA_ID, schemaId);
 
-    // TODO: keep-alive support?
-    ctx.write(response).addListener(ChannelFutureListener.CLOSE);
+    /** {@link io.netty.handler.timeout.IdleStateHandler} is in charge of detecting the state
+     *  of connection, and {@link GetRequestHttpHandler} will close the connection if necessary.
+     *
+     *  writeAndFlush may have some performance issue since it will call the actual send every time.
+     */
+    ctx.writeAndFlush(response);
   }
 }

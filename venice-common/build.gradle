@@ -43,6 +43,8 @@ dependencies {
 
   compile libraries.kafka // TODO: Get rid of Kafka dependency in venice-common (used by TopicCreator)
 
+  compile project(':venice-schema-common')
+
   // Test dependencies are allowed to be bulkier.
   // testCompile libraries.kafka //restore this if we remove it from the compile dependencies
   testCompile libraries.zookeeper

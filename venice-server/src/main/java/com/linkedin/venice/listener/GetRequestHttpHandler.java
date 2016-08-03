@@ -12,6 +12,9 @@ import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpRequest;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.handler.codec.http.QueryStringDecoder;
+import io.netty.handler.timeout.IdleState;
+import io.netty.handler.timeout.IdleStateEvent;
+
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 
@@ -59,6 +62,28 @@ public class GetRequestHttpHandler extends ChannelInboundHandlerAdapter {
         ));
       }
     }
+  }
+
+  /**
+   * This function is used to support http keep-alive.
+   * For now, the connection will keep open if the idle time is less than the configured
+   * threshold, we might need to consider to close it after a long period of time,
+   * such as 12 hours.
+   * @param ctx
+   * @param evt
+   * @throws Exception
+   */
+  @Override
+  public void userEventTriggered(ChannelHandlerContext ctx, Object evt) throws Exception {
+    if (evt instanceof IdleStateEvent) {
+      IdleStateEvent e = (IdleStateEvent)evt;
+      if (e.state() == IdleState.ALL_IDLE) {
+        // Close the connection after idling for a certain period
+        ctx.close();
+        return;
+      }
+    }
+    super.userEventTriggered(ctx, evt);
   }
 
   static GetRequestObject parseReadFromUri(String uri){

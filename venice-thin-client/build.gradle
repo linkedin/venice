@@ -19,10 +19,10 @@ dependencies {
     exclude group: 'com.oracle', module: 'ojdbc14' /* unused transitive dependencies, doesnt exist in repo */
     exclude group: 'org.mockito', module: 'mockito-all'
   }
-  // TODO: get rid of venice-common dependency
-  // Create another small repo for schema related lib, which can be shared by both client and server
-  compile project(':venice-common')
+  // Schema related dependencies
+  compile project(':venice-schema-common')
 
+  testCompile project(':venice-common')
   testCompile project(':venice-common').sourceSets.test.output
   testCompile libraries.netty
   testCompile (libraries.d2){
