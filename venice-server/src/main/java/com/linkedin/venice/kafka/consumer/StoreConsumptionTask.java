@@ -97,6 +97,7 @@ public class StoreConsumptionTask implements Runnable, Closeable {
    * is not always up to date because of the asynchronous nature of subscriptions of partitions in Kafka Consumer.
    */
   private final Map<Integer, Long> partitionToOffsetMap;
+  private final Set<Integer> completedPartition;
 
   private final Set<Integer> partitionsWithErrors;
 
@@ -130,6 +131,7 @@ public class StoreConsumptionTask implements Runnable, Closeable {
 
     // Should be accessed only from a single thread.
     this.partitionToOffsetMap = new HashMap<>();
+    this.completedPartition = new HashSet<>();
     this.producerTrackerMap = new HashMap<>();
     this.partitionsWithErrors = new HashSet<>();
     this.consumerTaskId = String.format(CONSUMER_TASK_ID_FORMAT, topic);
@@ -332,13 +334,20 @@ public class StoreConsumptionTask implements Runnable, Closeable {
     switch (operation) {
       case SUBSCRIBE:
         OffsetRecord record = offsetManager.getLastOffset(topic, partition);
-        partitionToOffsetMap.put(partition, record.getOffset());
-        consumer.subscribe(topic, partition, record);
-        logger.info(consumerTaskId + " subscribed to: Topic " + topic + " Partition Id " + partition + " Offset " + record.getOffset());
+        if (record.isCompleted()) {
+          // Already completed, report it directly
+          reportCompleted(partition);
+          logger.info("Topic: " + topic + ", Partition Id: " + partition + " is already done.");
+        } else {
+          partitionToOffsetMap.put(partition, record.getOffset());
+          consumer.subscribe(topic, partition, record);
+          logger.info(consumerTaskId + " subscribed to: Topic " + topic + " Partition Id " + partition + " Offset " + record.getOffset());
+        }
         break;
       case UNSUBSCRIBE:
         logger.info(consumerTaskId + " UnSubscribed to: Topic " + topic + " Partition Id " + partition);
         partitionToOffsetMap.remove(partition);
+        completedPartition.remove(partition);
         producerTrackerMap.values().stream().forEach(
             producerTracker -> producerTracker.clearPartition(partition)
         );
@@ -346,6 +355,7 @@ public class StoreConsumptionTask implements Runnable, Closeable {
         break;
       case RESET_OFFSET:
         partitionToOffsetMap.put(partition, OffsetRecord.LOWEST_OFFSET);
+        completedPartition.remove(partition);
         producerTrackerMap.values().stream().forEach(
             producerTracker -> producerTracker.clearPartition(partition)
         );
@@ -416,11 +426,14 @@ public class StoreConsumptionTask implements Runnable, Closeable {
 
     for(Integer partition: processedPartitions) {
       if(!partitionToOffsetMap.containsKey(partition)) {
-        // Partition is completed or unSubscribed.
+        // Partition is unSubscribed.
         continue;
       }
       long partitionOffset = partitionToOffsetMap.get(partition);
       OffsetRecord record = new OffsetRecord(partitionOffset);
+      if (completedPartition.contains(partition)) {
+        record.complete();
+      }
       offsetManager.recordOffset(this.topic, partition, record);
       reportProgress(partition, partitionOffset);
     }
@@ -436,7 +449,7 @@ public class StoreConsumptionTask implements Runnable, Closeable {
        case END_OF_PUSH:
          logger.info(consumerTaskId + " : Receive End of Pushes message. Partition: " + partition + ", Offset: " + offset);
          reportCompleted(partition);
-         partitionToOffsetMap.remove(partition);
+         completedPartition.add(partition);
          break;
        case START_OF_SEGMENT:
        case END_OF_SEGMENT:

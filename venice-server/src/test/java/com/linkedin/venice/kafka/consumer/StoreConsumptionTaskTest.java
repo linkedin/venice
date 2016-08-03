@@ -414,6 +414,18 @@ public class StoreConsumptionTaskTest {
       Mockito.verify(mockNotifier, Mockito.timeout(TEST_TIMEOUT).atLeastOnce()).completed(topic, PARTITION_BAR,
           barLastOffset);
 
+      // Verify offset recorded for completed partition
+      // Considering venice writer will send out end_of_push and end_of_segment,
+      // we need to add 2 to last data message offset
+      OffsetRecord fooCompletedOffsetRecord = new OffsetRecord(fooLastOffset + 2);
+      fooCompletedOffsetRecord.complete();
+      Mockito.verify(mockOffSetManager, Mockito.timeout(TEST_TIMEOUT).atLeastOnce())
+          .recordOffset(eq(topic), eq(PARTITION_FOO), eq(fooCompletedOffsetRecord));
+      OffsetRecord barCompletedOffsetRecord = new OffsetRecord(barLastOffset + 2);
+      barCompletedOffsetRecord.complete();
+      Mockito.verify(mockOffSetManager, Mockito.timeout(TEST_TIMEOUT).atLeastOnce())
+          .recordOffset(eq(topic), eq(PARTITION_BAR), eq(barCompletedOffsetRecord));
+
       mockStoreConsumptionTask.close();
       testSubscribeTaskFuture.get(10, TimeUnit.SECONDS);
     }
@@ -709,4 +721,22 @@ public class StoreConsumptionTaskTest {
     }
   }
 
+  @Test
+  public void testSubscribeCompletedPartition() throws Exception {
+    final int PARTITION_FOO = 1;
+
+    try (StoreConsumptionTask mockStoreConsumptionTask = getKafkaPerStoreConsumptionTask(PARTITION_FOO)) {
+      OffsetRecord completedOffsetRecord = new OffsetRecord(100);
+      completedOffsetRecord.complete();
+      Mockito.doReturn(completedOffsetRecord).when(mockOffSetManager).getLastOffset(topic, PARTITION_FOO);
+      mockStoreConsumptionTask.subscribePartition(topic, PARTITION_FOO);
+
+      // MockKafkaConsumer is prepared. Schedule for polling.
+      Future testSubscribeTaskFuture = taskPollingService.submit(mockStoreConsumptionTask);
+
+      Mockito.verify(mockNotifier, Mockito.timeout(TEST_TIMEOUT).times(1)).completed(topic, PARTITION_FOO, -1);
+      mockStoreConsumptionTask.close();
+      testSubscribeTaskFuture.get(10, TimeUnit.SECONDS);
+    }
+  }
 }
