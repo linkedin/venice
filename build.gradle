@@ -1,5 +1,5 @@
 // The start parameters below enable parallelization of many independent modules.
-// We can't enable it by default because it breaks buildAll. We can still use 
+// We can't enable it by default because it breaks buildAll. We can still use
 // parallel execution by doing: `./gradlew clean build --parallel`
 // gradle.startParameter.setParallelProjectExecutionEnabled(true)
 // gradle.startParameter.setMaxWorkerCount(10)
@@ -148,6 +148,7 @@ task buildAll {
   dependsOn 'venice-controller:build'
   dependsOn 'venice-router:build'
   dependsOn 'hadoop-to-venice-bridge:build'
+  dependsOn 'venice-schema-common:build'
 
   dependsOn 'venice-common:buildJar'
   dependsOn 'venice-server:installApp'

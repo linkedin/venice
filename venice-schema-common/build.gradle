@@ -1,0 +1,27 @@
+task buildJar(type: Jar) {
+    manifest {
+        attributes 'Implementation-Title': 'Venice Schema Common',
+                'Implementation-Version': version
+    }
+    baseName = project.name
+    from { configurations.compile.collect { it.isDirectory() ? it : zipTree(it) } }
+    with jar
+}
+
+jar {
+    manifest {
+        attributes 'Implementation-Title': 'Venice Schema Common',
+                'Implementation-Version': version
+    }
+}
+
+dependencies {
+    // Let's try to keep it clean! (i.e.: alphabetical)
+    compile (libraries.avro) {
+        exclude group: 'org.jboss.netty' // older version of netty3 causes transitive conflicts with the router
+        exclude group: 'org.mortbay.jetty' // jetty 6 conflicts with spark-java used in controller api
+        exclude group: 'org.slf4j'        // Avro pulls in slf4j 1.5 which is API incompatible with 1.6
+    }
+
+    compile libraries.jacksonMapper
+}

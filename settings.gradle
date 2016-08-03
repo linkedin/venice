@@ -5,6 +5,6 @@ include 'venice-server'
 include 'venice-controller'
 include 'hadoop-to-venice-bridge'
 include 'venice-router'
-
+include 'venice-schema-common'
 include 'venice-admin-tool'
 

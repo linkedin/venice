@@ -1,10 +1,10 @@
 package com.linkedin.venice.client.utils;
 
 import com.google.common.net.HttpHeaders;
-import com.linkedin.venice.HttpConstants;
+import com.linkedin.venice.client.exceptions.VeniceClientException;
+import com.linkedin.venice.client.store.transport.TransportClientCallback;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
-import com.linkedin.venice.exceptions.VeniceMessageException;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 import io.netty.handler.codec.http.DefaultFullHttpResponse;
@@ -71,7 +71,7 @@ public class StoreClientTestUtils {
     ByteBuf body = Unpooled.wrappedBuffer(value);
     FullHttpResponse response = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK, body);
     response.headers().set(HttpHeaders.CONTENT_TYPE, "text/plain");
-    response.headers().set(HttpConstants.VENICE_SCHEMA_ID, Integer.toString(schemaId));
+    response.headers().set(TransportClientCallback.HEADER_VENICE_SCHEMA_ID, Integer.toString(schemaId));
     // We must specify content_length header, otherwise netty will keep polling, since it
     // doesn't know when to finish writing the response.
     response.headers().set(HttpHeaders.CONTENT_LENGTH, response.content().readableBytes());
@@ -79,7 +79,7 @@ public class StoreClientTestUtils {
     return response;
   }
 
-  public static byte[] serializeRecord(Object object, Schema schema) {
+  public static byte[] serializeRecord(Object object, Schema schema) throws VeniceClientException {
     ByteArrayOutputStream output = new ByteArrayOutputStream();
     Encoder encoder = new BinaryEncoder(output);
     GenericDatumWriter<Object> datumWriter = null;
@@ -88,7 +88,7 @@ public class StoreClientTestUtils {
       datumWriter.write(object, encoder);
       encoder.flush();
     } catch(IOException e) {
-      throw new VeniceMessageException("Could not serialize the Avro object" + e);
+      throw new VeniceClientException("Could not serialize the Avro object" + e);
     } finally {
       if(output != null) {
         try {

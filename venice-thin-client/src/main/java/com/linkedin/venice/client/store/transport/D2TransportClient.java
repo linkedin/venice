@@ -8,13 +8,11 @@ import com.linkedin.r2.message.rest.RestException;
 import com.linkedin.r2.message.rest.RestRequest;
 import com.linkedin.r2.message.rest.RestRequestBuilder;
 import com.linkedin.r2.message.rest.RestResponse;
-import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.exceptions.VeniceServerErrorException;
 import com.linkedin.venice.client.store.DeserializerFetcher;
 import org.apache.commons.httpclient.HttpStatus;
 import org.apache.log4j.Logger;
-import org.jboss.netty.channel.CompleteChannelFuture;
 
 import java.net.URI;
 import java.net.URISyntaxException;
@@ -189,10 +187,10 @@ public class D2TransportClient<V> extends TransportClient<V> {
       int statusCode = result.getStatus();
       String schemaId = null;
       if (!isNeedRawResult() && HttpStatus.SC_OK == statusCode) {
-        schemaId = result.getHeader(HttpConstants.VENICE_SCHEMA_ID);
+        schemaId = result.getHeader(HEADER_VENICE_SCHEMA_ID);
         if (null == schemaId) {
           getValueFuture().completeExceptionally(new VeniceServerErrorException("Header: "
-              + HttpConstants.VENICE_SCHEMA_ID + " doesn't exist"));
+              + HEADER_VENICE_SCHEMA_ID + " doesn't exist"));
           return;
         }
       }
