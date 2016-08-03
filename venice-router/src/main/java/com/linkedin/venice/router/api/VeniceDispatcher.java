@@ -21,6 +21,9 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.Executor;
 import java.util.function.Function;
+
+import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.router.stats.RouterAggStats;
 import org.apache.commons.io.IOUtils;
 import org.apache.http.HttpStatus;
 import org.apache.http.client.methods.HttpGet;
@@ -54,6 +57,8 @@ public class VeniceDispatcher implements PartitionDispatchHandler<Instance, Veni
   private final ConcurrentMap<String, Long> offsets = new ConcurrentHashMap<>();
   private final VeniceHostHealth healthMontior;
 
+  private final RouterAggStats stats = RouterAggStats.getStats();
+
   // How many offsets behind can a storage node be for a partition and still be considered 'caught up'
   private long acceptableOffsetLag = 0; /* TODO: make this configurable for streaming use-case */
 
@@ -73,6 +78,13 @@ public class VeniceDispatcher implements PartitionDispatchHandler<Instance, Veni
       AsyncPromise<HttpResponseStatus> retryFuture,
       AsyncFuture<Void> timeoutFuture,
       Executor contextExecutor) {
+
+    long startTime = System.currentTimeMillis();
+
+    String storeName = Version.parseStoreFromKafkaTopicName(path.getResourceName());
+    int keySize = path.getPartitionKey().getBytes().length;
+    stats.addRequest(storeName);
+    stats.addKeySize(storeName, keySize);
 
     Instance host;
     try {
@@ -126,22 +138,40 @@ public class VeniceDispatcher implements PartitionDispatchHandler<Instance, Veni
         offsets.put(offsetKey, offset);
         int responseStatus = result.getStatusLine().getStatusCode();
         HttpResponse response;
+
+        //TODO: timeout should be configurable and be defined by the HttpAysncClient
+        boolean timeout = System.currentTimeMillis() - startTime > 50 * 1000 ? true : false;
         switch (responseStatus){
           case HttpStatus.SC_OK:
             response = new DefaultHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK);
+            if (timeout)
+              stats.addUnhealthyRequest(storeName);
+            else
+              stats.addHealthyRequest(storeName);
             break;
           case HttpStatus.SC_NOT_FOUND:
             response = new DefaultHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.NOT_FOUND);
+            if (timeout)
+              stats.addUnhealthyRequest(storeName);
+            else
+              stats.addHealthyRequest(storeName);
             break;
           case HttpStatus.SC_INTERNAL_SERVER_ERROR:
           default: //Path Parser will throw BAD_REQUEST responses.
             response = new DefaultHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.BAD_GATEWAY);
+            stats.addUnhealthyRequest(storeName);
         }
 
         try (InputStream contentStream = result.getEntity().getContent()) {
-          response.setContent(ChannelBuffers.wrappedBuffer(IOUtils.toByteArray(contentStream)));
+          byte[] contentToByte = IOUtils.toByteArray(contentStream);
+          response.setContent(ChannelBuffers.wrappedBuffer(contentToByte));
+          if (contentToByte != null)
+            stats.addValueSize(storeName, contentToByte.length);
+          else
+            stats.addValueSize(storeName, 0);
         } catch (IOException e) {
           completeWithError(HttpResponseStatus.INTERNAL_SERVER_ERROR, e);
+          stats.addUnhealthyRequest(storeName);
           return;
         }
         HttpHeaders.setContentLength(response, response.getContent().readableBytes());
@@ -153,6 +183,8 @@ public class VeniceDispatcher implements PartitionDispatchHandler<Instance, Veni
         contextExecutor.execute(() -> {
           responseFuture.setSuccess(Collections.singletonList(response));
         });
+
+        stats.addLatency(storeName, System.currentTimeMillis() - startTime);
       }
 
       @Override

@@ -24,6 +24,7 @@ import com.linkedin.venice.router.api.VenicePartitionFinder;
 import com.linkedin.venice.router.api.VenicePathParser;
 import com.linkedin.venice.router.api.VeniceRoleFinder;
 import com.linkedin.venice.router.api.VeniceVersionFinder;
+import com.linkedin.venice.router.stats.RouterAggStats;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.HelixUtils;
@@ -36,6 +37,9 @@ import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeUnit;
+
+import io.tehuti.metrics.JmxReporter;
+import io.tehuti.metrics.MetricsRepository;
 import org.apache.helix.HelixManager;
 import org.apache.helix.InstanceType;
 import org.apache.helix.manager.zk.ZKHelixManager;
@@ -60,7 +64,7 @@ public class RouterServer extends AbstractVeniceService {
   private final HelixReadOnlyStoreRepository metadataRepository;
   private final String clusterName;
   private final List<D2Server> d2ServerList;
-
+  private final MetricsRepository metricsRepository;
   // Mutable state
   // TODO: Make these final once the test constructors are cleaned up.
   private ZkClient zkClient;
@@ -119,17 +123,28 @@ public class RouterServer extends AbstractVeniceService {
    * @param d2ServerList
    */
   public RouterServer(int port, String clusterName, String zkConnection, List<D2Server> d2ServerList){
+    this(port, clusterName, zkConnection, d2ServerList, jmxReporterMetricsRepo());
+  }
+
+  public RouterServer(int port, String clusterName, String zkConnection, List<D2Server> d2ServerList, MetricsRepository metricsRepository) {
     this.port = port;
     this.clusterName = clusterName;
     zkClient = new ZkClient(zkConnection);
     manager = new ZKHelixManager(this.clusterName, null, InstanceType.SPECTATOR, zkConnection);
 
+    if (metricsRepository != null)
+      this.metricsRepository = metricsRepository;
+    else
+      this.metricsRepository = jmxReporterMetricsRepo();
+
     HelixAdapterSerializer adapter = new HelixAdapterSerializer();
     this.metadataRepository = new HelixReadOnlyStoreRepository(zkClient, adapter, this.clusterName);
     this.schemaRepository = new HelixReadOnlySchemaRepository(this.metadataRepository,
-        this.zkClient, adapter, this.clusterName);
+            this.zkClient, adapter, this.clusterName);
     this.routingDataRepository = new HelixRoutingDataRepository(manager);
     this.d2ServerList = d2ServerList;
+
+    RouterAggStats.init(this.metricsRepository);
   }
 
   /**
@@ -159,6 +174,7 @@ public class RouterServer extends AbstractVeniceService {
     this.schemaRepository = schemaRepository;
     this.routingDataRepository = routingDataRepository;
     this.d2ServerList = d2ServerList;
+    this.metricsRepository = new MetricsRepository();
   }
 
 
@@ -274,5 +290,11 @@ public class RouterServer extends AbstractVeniceService {
 
       logger.info(this.toString() + " is started on port:" + serverFuture.getChannel().getLocalAddress());
     });
+  }
+
+  private static MetricsRepository jmxReporterMetricsRepo() {
+    MetricsRepository metricsRepository = new MetricsRepository();
+    metricsRepository.addReporter(new JmxReporter("venice-router"));
+    return metricsRepository;
   }
 }

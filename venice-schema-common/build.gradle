@@ -24,4 +24,5 @@ dependencies {
     }
 
     compile libraries.jacksonMapper
+    compile libraries.tehuti
 }
