@@ -16,6 +16,7 @@ public class ByteUtils {
   public static final int SIZE_OF_LONG = Long.SIZE / Byte.SIZE;
   public static final int SIZE_OF_INT = Integer.SIZE / Byte.SIZE;
   public static final int SIZE_OF_SHORT = Short.SIZE / Byte.SIZE;
+  public static final int SIZE_OF_BOOLEAN = 1;
 
   private final static int MAX_LENGTH_TO_LOG = 50;
 
@@ -139,5 +140,27 @@ public class ByteUtils {
    */
   public static short readShort(byte[] bytes, int offset) {
     return (short) ((bytes[offset] << 8) | (bytes[offset + 1] & 0xff));
+  }
+
+  /**
+   * Write a boolean to the byte array starting at the given offset
+   *
+   * @param bytes  The byte array
+   * @param value  The boolean to write
+   * @param offset The offset to begin writing at
+   */
+  public static void writeBoolean(byte[] bytes, Boolean value, int offset) {
+    bytes[offset] = (byte) (value ? 0x01 : 0x00);
+  }
+
+  /**
+   * Read a boolean from the byte array starting at the given offset
+   *
+   * @param bytes  The byte array to read from
+   * @param offset The offset to start reading at
+   * @return The boolean read
+   */
+  public static boolean readBoolean(byte[] bytes, int offset) {
+    return bytes[offset] == 0x01;
   }
 }

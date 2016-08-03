@@ -69,8 +69,6 @@ public class VenicePartitionStateModel extends StateModel {
         // If given store and partition have already exist in this node, openStoreForNewPartition is idempotent so it
         // will not create them again.
         storageService.openStoreForNewPartition(storeConfig , partition);
-        // TODO For offline use case, We need a way to know whether this node consumed all of messages before nor not.
-        // TODO If it already up to date then failed. Once it's recovered, it should NOT consume from start of topic again here.
         kafkaConsumerService.startConsumption(storeConfig, partition);
         notifier.startConsumption(message.getResourceName(), partition);
         logCompletion(HelixState.OFFLINE, HelixState.BOOTSTRAP, message, context);
