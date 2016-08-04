@@ -53,9 +53,9 @@ public enum MessageType {
    * Simple utility function to generate the right type of payload, based on message type.
    *
    * @return an empty instance of either:
-   *         - {@value com.linkedin.venice.kafka.protocol.Put}
-   *         - {@value com.linkedin.venice.kafka.protocol.Delete}
-   *         - {@value com.linkedin.venice.kafka.protocol.ControlMessage}
+   *         - {@link com.linkedin.venice.kafka.protocol.Put}
+   *         - {@link com.linkedin.venice.kafka.protocol.Delete}
+   *         - {@link com.linkedin.venice.kafka.protocol.ControlMessage}
    */
   public Object getNewInstance() {
     switch (valueOf(value)) {
@@ -74,7 +74,7 @@ public enum MessageType {
     return intToTypeMap;
   }
 
-  private static MessageType valueOf(int value) {
+  public static MessageType valueOf(int value) {
     MessageType type = MESSAGE_TYPE_MAP.get(value);
     if (type == null) {
       throw new VeniceMessageException("Invalid message type: " + value);

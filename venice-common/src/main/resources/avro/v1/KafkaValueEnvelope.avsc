@@ -98,7 +98,7 @@
                   "fields": [
                     {
                       "name": "checksumType",
-                      "doc": "Using int because Avro Enums are not evolvable. Readers should always handle the 'unknown' value edge case, to account for future evolutions of this protocol. The downstream consumer is expected to compute this checksum and use it to validate the incoming stream of data. The current mapping is the following: 0 => MD5, 1 => Adler32, 2 => CRC32.",
+                      "doc": "Using int because Avro Enums are not evolvable. Readers should always handle the 'unknown' value edge case, to account for future evolutions of this protocol. The downstream consumer is expected to compute this checksum and use it to validate the incoming stream of data. The current mapping is the following: 0 => None, 1 => MD5, 2 => Adler32, 3 => CRC32.",
                       "type": "int"
                     }, {
                       "name": "upcomingAggregates",
