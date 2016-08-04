@@ -32,16 +32,16 @@ public class HelixUtils {
     return Integer.valueOf(helixPartitionName.substring(lastUnderscoreIdx+1));
   }
 
-  public static String getStoreName(String helixPartitionName) {
+  public static String getResourceName(String helixPartitionName){
     int lastUnderscoreIdx = helixPartitionName.lastIndexOf(SEPARATOR);
     if(lastUnderscoreIdx == -1) {
       throw new IllegalArgumentException(" Incorrect Helix Partition Name " + helixPartitionName);
     }
-    String storeName = helixPartitionName.substring(0, lastUnderscoreIdx);
-    if(storeName == null || storeName.length() == 0) {
-       throw new IllegalArgumentException(" Could not determine store name from Helix Partition Id " + helixPartitionName);
+    String resourceName = helixPartitionName.substring(0, lastUnderscoreIdx);
+    if(resourceName == null || resourceName.length() == 0) {
+      throw new IllegalArgumentException(" Could not determine resource name from Helix Partition Id " + helixPartitionName);
     }
-    return storeName;
+    return resourceName;
   }
 
   public static <T> void update(ZkBaseDataAccessor<T> dataAccessor, String path, T data, int retryCount) {

@@ -27,12 +27,14 @@ import org.apache.helix.HelixAdmin;
 import org.apache.helix.HelixManager;
 import org.apache.helix.HelixManagerFactory;
 import org.apache.helix.InstanceType;
+import org.apache.helix.PropertyKey;
 import org.apache.helix.manager.zk.ZKHelixAdmin;
 import org.apache.helix.manager.zk.ZKHelixManager;
 import org.apache.helix.manager.zk.ZkClient;
 import org.apache.helix.model.HelixConfigScope;
 import org.apache.helix.model.IdealState;
 import org.apache.helix.model.LeaderStandbySMD;
+import org.apache.helix.model.LiveInstance;
 import org.apache.helix.model.builder.HelixConfigScopeBuilder;
 import org.apache.helix.participant.StateMachineEngine;
 import org.apache.log4j.Logger;
@@ -558,6 +560,23 @@ public class VeniceHelixAdmin implements Admin {
             }
         }
         return replicas;
+    }
+
+    @Override
+    public boolean isInstanceRemovable(String clusterName, String instanceId) {
+        checkControllerMastership(clusterName);
+        return InstanceStatusDecider.isRemovable(getVeniceHelixResource(clusterName), clusterName, instanceId);
+    }
+
+    @Override
+    public String getMasterController(String clusterName) {
+        PropertyKey.Builder keyBuilder = new PropertyKey.Builder(clusterName);
+        LiveInstance instance = manager.getHelixDataAccessor().getProperty(keyBuilder.controllerLeader());
+        if (instance == null) {
+            throw new VeniceException("Can not find a master controller in the cluster:" + clusterName);
+        } else {
+            return instance.getInstanceName();
+        }
     }
 
     @Override
