@@ -51,7 +51,7 @@ public class StoreConsumptionTask implements Runnable, Closeable {
   // TOOD: Make this logger prefix everything with the CONSUMER_TASK_ID_FORMAT
   private static final Logger logger = Logger.getLogger(StoreConsumptionTask.class);
 
-  private static final String CONSUMER_TASK_ID_FORMAT = StoreConsumptionTask.class.getSimpleName() + " for [ Node: %d, Topic: %s ]";
+  private static final String CONSUMER_TASK_ID_FORMAT = StoreConsumptionTask.class.getSimpleName() + " for [ Topic: %s ]";
 
   // Making it non final to shorten the time in testing.
   // TODO: consider to make those delay time configurable for operability purpose
@@ -110,7 +110,6 @@ public class StoreConsumptionTask implements Runnable, Closeable {
                               @NotNull OffsetManager offsetManager,
                               @NotNull Queue<VeniceNotifier> notifiers,
                               @NotNull EventThrottler throttler,
-                              int nodeId,
                               @NotNull String topic,
                               @NotNull ReadOnlySchemaRepository schemaRepo) {
     this.factory = factory;
@@ -128,7 +127,7 @@ public class StoreConsumptionTask implements Runnable, Closeable {
     // Should be accessed only from a single thread.
     this.partitionToOffsetMap = new HashMap<>();
     this.producerTrackerMap = new HashMap<>();
-    this.consumerTaskId = String.format(CONSUMER_TASK_ID_FORMAT, nodeId, topic);
+    this.consumerTaskId = String.format(CONSUMER_TASK_ID_FORMAT, topic);
 
     this.isRunning = new AtomicBoolean(true);
   }

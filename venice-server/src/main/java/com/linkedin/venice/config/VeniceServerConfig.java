@@ -6,7 +6,6 @@ import com.linkedin.venice.utils.VeniceProperties;
 
 import static com.linkedin.venice.ConfigKeys.DATA_BASE_PATH;
 import static com.linkedin.venice.ConfigKeys.LISTENER_PORT;
-import static com.linkedin.venice.ConfigKeys.NODE_ID;
 
 
 /**
@@ -14,21 +13,14 @@ import static com.linkedin.venice.ConfigKeys.NODE_ID;
  */
 public class VeniceServerConfig extends VeniceClusterConfig {
 
-  private final int nodeId;
   private final int listenerPort;
   private final  BdbServerConfig bdbServerConfig;
 
   public VeniceServerConfig(VeniceProperties serverProperties) throws ConfigurationException {
     super(serverProperties);
-
-    nodeId = serverProperties.getInt(NODE_ID);
     listenerPort = serverProperties.getInt(LISTENER_PORT);
     dataBasePath = serverProperties.getString(DATA_BASE_PATH);
     bdbServerConfig = new BdbServerConfig(serverProperties);
-  }
-
-  public int getNodeId() {
-    return nodeId;
   }
 
   public int getListenerPort() {

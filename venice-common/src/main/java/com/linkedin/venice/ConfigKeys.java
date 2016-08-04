@@ -31,11 +31,8 @@ public class ConfigKeys {
           HELIX_ENABLED, ZOOKEEPER_ADDRESS));
   public static final String ROUTER_PORT = "router.port";
 
-  // server specific properties
-  public static final String NODE_ID = "node.id";
   public static final String LISTENER_PORT = "listener.port";
   public static final String ADMIN_PORT="admin.port";
-  public static final Set<String> serverSpecificProperties = new HashSet<String>(Arrays.asList(NODE_ID, LISTENER_PORT));
 
   // store specific properties
   public static final String STORE_NAME = "store.name";

@@ -32,8 +32,7 @@ public class VeniceStateModelFactory extends StateModelFactory<StateModel> {
   public VeniceStateModelFactory(KafkaConsumerService kafkaConsumerService,
           StorageService storageService,
           VeniceConfigLoader configService) {
-    logger.info("Creating VenicePartitionStateTransitionHandlerFactory for Node: "
-        + configService.getVeniceServerConfig().getNodeId());
+    logger.info("Creating VenicePartitionStateTransitionHandlerFactory ");
     this.kafkaConsumerService = kafkaConsumerService;
     this.storageService = storageService;
     this.configService = configService;
