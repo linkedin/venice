@@ -84,7 +84,6 @@ public class StoreConsumptionTaskTest {
 
   private ExecutorService taskPollingService;
 
-  private final int nodeId = 0;
   private final String storeNameWithoutVersionInfo = "TestTopic";
   private final String topic = Version.composeKafkaTopic(storeNameWithoutVersionInfo, 1);
 
@@ -263,7 +262,6 @@ public class StoreConsumptionTaskTest {
         mockOffSetManager,
         notifiers,
         mockThrottler,
-        nodeId,
         topic,
         mockSchemaRepo);
   }

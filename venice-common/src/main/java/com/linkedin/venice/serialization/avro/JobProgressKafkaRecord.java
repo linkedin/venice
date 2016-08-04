@@ -24,10 +24,6 @@ public class JobProgressKafkaRecord {
             "        \"name\": \"partitionId\",\n" +
             "        \"type\": \"int\",\n" +
             "        \"doc\": \"This is the kafka partition id for which the consumption is done.\"\n" +
-            "    }, {\n" +
-            "        \"name\": \"nodeId\",\n" +
-            "        \"type\": \"int\",\n" +
-            "        \"doc\": \"This is the id of the node which is sending the ack.\"\n" +
             "    }]\n" +
             "}";
     public final static String AVRO_VALUE_PROGRESS = "{\n" +
@@ -59,13 +55,11 @@ public class JobProgressKafkaRecord {
      *
      * @param kafkaTopic
      * @param partitionId
-     * @param nodeId
      * @param count
      * @return
      */
-    public ProducerRecord<byte[], byte[]> generate(String kafkaTopic, int partitionId, int nodeId,
-            long count){
-        GenericData.Record keyRecord = constructKeyRecord(kafkaTopic,partitionId, nodeId);
+    public ProducerRecord<byte[], byte[]> generate(String kafkaTopic, int partitionId, long count){
+        GenericData.Record keyRecord = constructKeyRecord(kafkaTopic,partitionId);
         GenericData.Record valRecord = constructValueRecord(count);
 
         byte[] keyBytes = keySerializer.serialize(kafkaTopic, keyRecord);
@@ -75,12 +69,11 @@ public class JobProgressKafkaRecord {
         return kafkaMessage;
     }
 
-    private GenericData.Record constructKeyRecord(String kafkaTopic, int partitionId, int nodeId){
+    private GenericData.Record constructKeyRecord(String kafkaTopic, int partitionId){
         GenericData.Record key = new GenericData.Record(Schema.parse(AVRO_KEY_STORE_INFO));
         key.put("jobId", -1); // TODO : This should be replaced by Producer GUID and not long.
         key.put("kafka-topic", new Utf8(kafkaTopic));
         key.put("partitionId", partitionId);
-        key.put("nodeId", nodeId);
         return key;
     }
 

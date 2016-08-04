@@ -13,20 +13,17 @@ public class KafkaNotifier extends LogNotifier {
 
     private final JobProgressKafkaRecord recordGenerator;
     private final KafkaProducer<byte[], byte[]> ackProducer;
-    private final int nodeId;
 
-    public KafkaNotifier(String topic, Properties  props, int nodeId) {
+    public KafkaNotifier(String topic, Properties  props) {
         super();
         ackProducer = new KafkaProducer<>(props);
         recordGenerator = new JobProgressKafkaRecord(topic);
-        this.nodeId = nodeId;
     }
 
     @Override
     public void completed(String topic, int partitionId, long offset) {
         super.completed(topic, partitionId, offset);
-        ProducerRecord<byte[], byte[]> kafkaMessage = recordGenerator
-                .generate(topic, partitionId, nodeId, offset);
+        ProducerRecord<byte[], byte[]> kafkaMessage = recordGenerator.generate(topic, partitionId, offset);
         ackProducer.send(kafkaMessage);
     }
 

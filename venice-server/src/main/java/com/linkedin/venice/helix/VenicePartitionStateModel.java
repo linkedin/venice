@@ -27,13 +27,13 @@ import org.apache.log4j.Logger;
 public class VenicePartitionStateModel extends StateModel {
     private static final Logger logger = Logger.getLogger(VenicePartitionStateModel.class);
 
-    private static final String STORE_PARTITION_NODE_DESCRIPTION_FORMAT = "%s-%d @ node %d";
+    private static final String STORE_PARTITION_DESCRIPTION_FORMAT = "%s-%d";
 
     private final VeniceStoreConfig storeConfig;
     private final int partition;
     private final KafkaConsumerService kafkaConsumerService;
     private final StorageService storageService;
-    private final String storePartitionNodeDescription;
+    private final String storePartitionDescription;
     private final VeniceStateModelFactory.StateModelNotifier notifier;
 
     public VenicePartitionStateModel(@NotNull KafkaConsumerService kafkaConsumerService,
@@ -42,9 +42,8 @@ public class VenicePartitionStateModel extends StateModel {
         this.partition = partition;
         this.storageService = storageService;
         this.kafkaConsumerService = kafkaConsumerService;
-        this.storePartitionNodeDescription = String
-            .format(STORE_PARTITION_NODE_DESCRIPTION_FORMAT, storeConfig.getStoreName(), partition,
-                storeConfig.getNodeId());
+        this.storePartitionDescription = String
+            .format(STORE_PARTITION_DESCRIPTION_FORMAT, storeConfig.getStoreName(), partition);
         this.notifier = notifer;
     }
 
@@ -128,13 +127,13 @@ public class VenicePartitionStateModel extends StateModel {
     }
 
     private void logEntry(HelixState from, HelixState to, Message message, NotificationContext context) {
-        logger.info(storePartitionNodeDescription + " initiating transition from " + from.toString() + " to " + to
+        logger.info(storePartitionDescription + " initiating transition from " + from.toString() + " to " + to
                 .toString() + " Store" + storeConfig.getStoreName() + " Partition " + partition +
                 " invoked with Message " + message + " and context " + context);
     }
 
     private void logCompletion(HelixState from, HelixState to, Message message, NotificationContext context) {
-        logger.info(storePartitionNodeDescription + " completed transition from " + from.toString() + " to "
+        logger.info(storePartitionDescription + " completed transition from " + from.toString() + " to "
                 + to.toString() + " Store " + storeConfig.getStoreName() + " Partition " + partition +
                 " invoked with Message " + message + " and context " + context);
     }

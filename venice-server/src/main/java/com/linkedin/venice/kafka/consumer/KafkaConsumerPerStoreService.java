@@ -42,7 +42,7 @@ public class KafkaConsumerPerStoreService extends AbstractVeniceService implemen
 
   // FIXME: Get rid of hard-coded topic name
   private static final String ACK_PARTITION_CONSUMPTION_KAFKA_TOPIC = "venice-partition-consumption-acknowledgement-1";
-  private static final String GROUP_ID_FORMAT = "%s_%s_%d";
+  private static final String GROUP_ID_FORMAT = "%s_%s";
 
   private static final Logger logger = Logger.getLogger(KafkaConsumerPerStoreService.class);
 
@@ -59,9 +59,6 @@ public class KafkaConsumerPerStoreService extends AbstractVeniceService implemen
    * for consuming messages and making changes to the local store accordingly.
    */
   private final Map<String, StoreConsumptionTask> topicNameToKafkaMessageConsumptionTaskMap;
-
-  private final int nodeId;
-
   private final EventThrottler throttler;
 
   private ExecutorService consumerExecutorService;
@@ -83,7 +80,6 @@ public class KafkaConsumerPerStoreService extends AbstractVeniceService implemen
     this.veniceConfigLoader = veniceConfigLoader;
 
     VeniceServerConfig serverConfig = veniceConfigLoader.getVeniceServerConfig();
-    nodeId = serverConfig.getNodeId();
 
     long maxKafkaFetchBytesPerSecond = serverConfig.getMaxKafkaFetchBytesPerSecond();
     throttler = new EventThrottler(maxKafkaFetchBytesPerSecond);
@@ -92,7 +88,7 @@ public class KafkaConsumerPerStoreService extends AbstractVeniceService implemen
     // initialize internal kafka producer for acknowledging consumption (if enabled)
     if (serverConfig.isEnableConsumptionAcksForAzkabanJobs()) {
       Properties ackKafkaProps = getAcksKafkaProducerProperties(serverConfig);
-      notifier = new KafkaNotifier(ACK_PARTITION_CONSUMPTION_KAFKA_TOPIC , ackKafkaProps , nodeId);
+      notifier = new KafkaNotifier(ACK_PARTITION_CONSUMPTION_KAFKA_TOPIC , ackKafkaProps );
     } else {
       notifier = new LogNotifier();
     }
@@ -119,7 +115,7 @@ public class KafkaConsumerPerStoreService extends AbstractVeniceService implemen
    */
   @Override
   public boolean startInner() {
-    logger.info("Enabling consumerExecutorService and kafka consumer tasks on node: " + nodeId);
+    logger.info("Enabling consumerExecutorService and kafka consumer tasks ");
     consumerExecutorService = Executors.newCachedThreadPool(new DaemonThreadFactory("venice-consumer"));
     topicNameToKafkaMessageConsumptionTaskMap.values().forEach(consumerExecutorService::submit);
     isRunning.set(true);
@@ -132,7 +128,7 @@ public class KafkaConsumerPerStoreService extends AbstractVeniceService implemen
 
   private StoreConsumptionTask getConsumerTask(VeniceStoreConfig veniceStore) {
     return new StoreConsumptionTask(new VeniceConsumerFactory(), getKafkaConsumerProperties(veniceStore), storeRepository,
-            offsetManager , notifiers, throttler , nodeId, veniceStore.getStoreName(), schemaRepo);
+            offsetManager , notifiers, throttler , veniceStore.getStoreName(), schemaRepo);
   }
 
   /**
@@ -141,7 +137,7 @@ public class KafkaConsumerPerStoreService extends AbstractVeniceService implemen
    */
   @Override
   public void stopInner() {
-    logger.info("Shutting down Kafka consumer service for node: " + nodeId);
+    logger.info("Shutting down Kafka consumer service");
     isRunning.set(false);
 
     topicNameToKafkaMessageConsumptionTaskMap.values().forEach(StoreConsumptionTask::close);
@@ -228,8 +224,8 @@ public class KafkaConsumerPerStoreService extends AbstractVeniceService implemen
   /**
    * @return Group Id for kafka consumer.
    */
-  private static String getGroupId(String topic, int nodeId) {
-    return String.format(GROUP_ID_FORMAT, topic, Utils.getHostName(), nodeId);
+  private static String getGroupId(String topic) {
+    return String.format(GROUP_ID_FORMAT, topic, Utils.getHostName());
   }
 
   /**
@@ -244,7 +240,7 @@ public class KafkaConsumerPerStoreService extends AbstractVeniceService implemen
     kafkaConsumerProperties.setProperty(ConsumerConfig.AUTO_COMMIT_INTERVAL_MS_CONFIG,
         String.valueOf(storeConfig.getKafkaAutoCommitIntervalMs()));
     kafkaConsumerProperties.setProperty(ConsumerConfig.GROUP_ID_CONFIG,
-        getGroupId(storeConfig.getStoreName(), storeConfig.getNodeId()));
+        getGroupId(storeConfig.getStoreName()));
     kafkaConsumerProperties.setProperty(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG,
         KafkaKeySerializer.class.getName());
     kafkaConsumerProperties.setProperty(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG,

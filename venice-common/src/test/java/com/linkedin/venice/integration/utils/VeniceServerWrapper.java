@@ -39,7 +39,6 @@ public class VeniceServerWrapper extends ProcessWrapper {
 
       // Generate server.properties in config directory
       VeniceProperties serverProps = new PropertyBuilder()
-      .put(NODE_ID, 0)
       .put(LISTENER_PORT, IntegrationTestUtils.getFreePort())
       .put(ADMIN_PORT, IntegrationTestUtils.getFreePort())
       .put(DATA_BASE_PATH, dataDirectory.getAbsolutePath()).build();

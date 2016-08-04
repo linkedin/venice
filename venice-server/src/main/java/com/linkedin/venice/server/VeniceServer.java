@@ -176,7 +176,7 @@ public class VeniceServer {
   public void shutdown()
       throws VeniceException {
     List<Exception> exceptions = new ArrayList<Exception>();
-    logger.info("Stopping all services on Node: " + veniceConfigLoader.getVeniceServerConfig().getNodeId());
+    logger.info("Stopping all services ");
 
     /* Stop in reverse order */
 
