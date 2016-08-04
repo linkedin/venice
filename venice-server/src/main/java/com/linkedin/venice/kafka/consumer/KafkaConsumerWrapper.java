@@ -1,9 +1,11 @@
 package com.linkedin.venice.kafka.consumer;
 
+import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
+import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.offsets.OffsetRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 
-public interface VeniceConsumer<K, V> {
+public interface KafkaConsumerWrapper {
   void subscribe(String topic, int partition, OffsetRecord offset);
 
   void unSubscribe(String topic, int partition);
@@ -12,5 +14,5 @@ public interface VeniceConsumer<K, V> {
 
   void close();
 
-  ConsumerRecords<K, V> poll(long timeout);
+  ConsumerRecords<KafkaKey, KafkaMessageEnvelope> poll(long timeout);
 }

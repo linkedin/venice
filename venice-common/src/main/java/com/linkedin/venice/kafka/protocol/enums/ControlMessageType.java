@@ -36,10 +36,10 @@ public enum ControlMessageType {
    * Simple utility function to generate the right type of control message, based on message type.
    *
    * @return an empty instance of either:
-   *         - {@value com.linkedin.venice.kafka.protocol.StartOfPush}
-   *         - {@value com.linkedin.venice.kafka.protocol.EndOfPush}
-   *         - {@value com.linkedin.venice.kafka.protocol.StartOfSegment}
-   *         - {@value com.linkedin.venice.kafka.protocol.EndOfSegment}
+   *         - {@link com.linkedin.venice.kafka.protocol.StartOfPush}
+   *         - {@link com.linkedin.venice.kafka.protocol.EndOfPush}
+   *         - {@link com.linkedin.venice.kafka.protocol.StartOfSegment}
+   *         - {@link com.linkedin.venice.kafka.protocol.EndOfSegment}
    */
   public Object getNewInstance() {
     switch (valueOf(value)) {
@@ -59,7 +59,7 @@ public enum ControlMessageType {
     return intToTypeMap;
   }
 
-  private static ControlMessageType valueOf(int value) {
+  public static ControlMessageType valueOf(int value) {
     ControlMessageType type = MESSAGE_TYPE_MAP.get(value);
     if (type == null) {
       throw new VeniceMessageException("Invalid control message type: " + value);

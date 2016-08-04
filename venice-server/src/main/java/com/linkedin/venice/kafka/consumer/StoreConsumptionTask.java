@@ -4,10 +4,11 @@ import com.google.common.collect.Lists;
 import com.linkedin.venice.exceptions.PersistenceFailureException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceMessageException;
+import com.linkedin.venice.exceptions.validation.UnsupportedMessageTypeException;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.exceptions.validation.DuplicateDataException;
 import com.linkedin.venice.exceptions.validation.FatalDataValidationException;
-import com.linkedin.venice.kafka.consumer.validation.ProducerTracker;
+import com.linkedin.venice.kafka.validation.ProducerTracker;
 import com.linkedin.venice.kafka.protocol.GUID;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.Put;
@@ -78,7 +79,7 @@ public class StoreConsumptionTask implements Runnable, Closeable {
   private final Properties kafkaProps;
   private final VeniceConsumerFactory factory;
 
-  private VeniceConsumer consumer;
+  private KafkaConsumerWrapper consumer;
 
   private final AtomicBoolean isRunning;
 
@@ -96,6 +97,8 @@ public class StoreConsumptionTask implements Runnable, Closeable {
    * is not always up to date because of the asynchronous nature of subscriptions of partitions in Kafka Consumer.
    */
   private final Map<Integer, Long> partitionToOffsetMap;
+
+  private final Set<Integer> partitionsWithErrors;
 
   /**
    * Keeps track of every upstream producer this consumer task has seen so far.
@@ -128,6 +131,7 @@ public class StoreConsumptionTask implements Runnable, Closeable {
     // Should be accessed only from a single thread.
     this.partitionToOffsetMap = new HashMap<>();
     this.producerTrackerMap = new HashMap<>();
+    this.partitionsWithErrors = new HashSet<>();
     this.consumerTaskId = String.format(CONSUMER_TASK_ID_FORMAT, topic);
 
     this.isRunning = new AtomicBoolean(true);
@@ -195,15 +199,21 @@ public class StoreConsumptionTask implements Runnable, Closeable {
   }
 
   private void reportCompleted(int partition) {
-
     Long lastOffset = partitionToOffsetMap.getOrDefault(partition , -1L);
 
-    logger.info(" Processing completed for topic " + topic + " Partition " + partition +" Last Offset " + lastOffset);
-    for(VeniceNotifier notifier : notifiers) {
-      try {
-        notifier.completed(topic, partition, lastOffset);
-      } catch(Exception ex) {
-        logger.error("Error reporting status to notifier " + notifier.getClass() , ex);
+
+    if (partitionsWithErrors.contains(partition)) {
+      // Notifiers will not be sent a completion notification, they should only receive the previously-sent
+      // error notification.
+      logger.error("Processing completed WITH ERRORS for topic " + topic + " Partition " + partition + " Last Offset " + lastOffset);
+    } else {
+      logger.info("Processing completed for topic " + topic + " Partition " + partition + " Last Offset " + lastOffset);
+      for(VeniceNotifier notifier : notifiers) {
+        try {
+          notifier.completed(topic, partition, lastOffset);
+        } catch(Exception ex) {
+          logger.error("Error reporting status to notifier " + notifier.getClass() , ex);
+        }
       }
     }
   }
@@ -212,6 +222,7 @@ public class StoreConsumptionTask implements Runnable, Closeable {
     for(Integer partitionId: partitions) {
       for(VeniceNotifier notifier : notifiers) {
         try {
+          partitionsWithErrors.add(partitionId);
           notifier.error(topic, partitionId, message, consumerEx);
         } catch(Exception notifierEx) {
           logger.error(consumerTaskId + " Error reporting status to notifier " + notifier.getClass() , notifierEx);
@@ -435,7 +446,7 @@ public class StoreConsumptionTask implements Runnable, Closeable {
           */
          break;
        default:
-         throw new VeniceMessageException("Unrecognized Control message type " + controlMessage.controlMessageType);
+         throw new UnsupportedMessageTypeException("Unrecognized Control message type " + controlMessage.controlMessageType);
     }
   }
 
@@ -452,7 +463,7 @@ public class StoreConsumptionTask implements Runnable, Closeable {
     int sizeOfPersistedData = 0;
 
     try {
-      validateMessage(record.partition(), kafkaValue);
+      validateMessage(record.partition(), kafkaKey, kafkaValue);
 
       if (kafkaKey.isControlMessage()) {
         ControlMessage controlMessage = (ControlMessage) kafkaValue.payloadUnion;
@@ -464,7 +475,7 @@ public class StoreConsumptionTask implements Runnable, Closeable {
         sizeOfPersistedData = kafkaKey.getKeyLength() + processVeniceMessage(kafkaKey, kafkaValue, record.partition());
       }
     } catch (DuplicateDataException e) {
-      logger.info("Skipping a duplicate record in topic: " + topic);
+      logger.info("Skipping a duplicate record in topic: '" + topic + "', offset: " + record.offset());
     } catch (PersistenceFailureException ex) {
       if (partitionToOffsetMap.containsKey(record.partition())) {
         // If we actually intend to be consuming this partition, then we need to bubble up the failure to persist.
@@ -484,14 +495,14 @@ public class StoreConsumptionTask implements Runnable, Closeable {
     return sizeOfPersistedData;
   }
 
-  private void validateMessage(int partition, KafkaMessageEnvelope message) {
+  private void validateMessage(int partition, KafkaKey key, KafkaMessageEnvelope message) {
     final GUID producerGUID = message.producerMetadata.producerGUID;
     ProducerTracker producerTracker = producerTrackerMap.get(producerGUID);
     if (producerTracker == null) {
       producerTracker = new ProducerTracker();
       producerTrackerMap.put(producerGUID, producerTracker);
     }
-    producerTracker.addMessage(partition, message);
+    producerTracker.addMessage(partition, key, message);
   }
 
   /**

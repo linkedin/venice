@@ -7,6 +7,9 @@ import com.linkedin.venice.guid.GuidUtils;
 import com.linkedin.venice.kafka.protocol.*;
 import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
+import com.linkedin.venice.kafka.validation.Segment;
+import com.linkedin.venice.kafka.validation.checksum.CheckSumType;
+import com.linkedin.venice.kafka.validation.checksum.MD5CheckSum;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.partitioner.VenicePartitioner;
@@ -19,6 +22,7 @@ import java.nio.ByteBuffer;
 import java.util.Map;
 import java.util.concurrent.Future;
 
+import java.util.function.Supplier;
 import org.apache.avro.specific.FixedSize;
 import org.apache.http.annotation.NotThreadSafe;
 import org.apache.kafka.clients.producer.RecordMetadata;
@@ -36,8 +40,11 @@ public class VeniceWriter<K, V> extends AbstractVeniceWriter<K, V> {
   // log4j logger
   private static final Logger LOGGER = Logger.getLogger(VeniceWriter.class);
 
-  public static final String CLOSE_TIMEOUT_MS = "venice.writer.close.timeout.ms";
+  private static final String VENICE_WRITER_CONFIG_PREFIX = "venice.writer.";
+  public static final String CLOSE_TIMEOUT_MS = VENICE_WRITER_CONFIG_PREFIX + "close.timeout.ms";
   public static final int DEFAULT_CLOSE_TIMEOUT_MS = 30 * Time.MS_PER_SECOND;
+  public static final String CHECK_SUM_TYPE = VENICE_WRITER_CONFIG_PREFIX + "checksum.type";
+  public static final String DEFAULT_CHECK_SUM_TYPE = CheckSumType.MD5.name();
 
   // Immutable state
   private final VeniceSerializer<K> keySerializer;
@@ -49,24 +56,27 @@ public class VeniceWriter<K, V> extends AbstractVeniceWriter<K, V> {
   private final int numberOfPartitions;
   /** Map of partition to {@link Segment}, which keeps track of all segment-related state. */
   private final Map<Integer, Segment> segmentsMap = Maps.newHashMap();
-  private final int checksumType = 0; // TODO: Make configurable
   private final int closeTimeOut;
+  private final CheckSumType checkSumType;
 
   public VeniceWriter(
       VeniceProperties props,
       String topicName,
       VeniceSerializer<K> keySerializer,
       VeniceSerializer<V> valueSerializer,
-      Time time) {
+      VenicePartitioner partitioner,
+      Time time,
+      Supplier<KafkaProducerWrapper> producerWrapperSupplier) {
     super(topicName);
     this.keySerializer = keySerializer;
     this.valueSerializer = valueSerializer;
     this.time = time;
-    this.partitioner = new DefaultVenicePartitioner(props);
+    this.partitioner = partitioner;
     this.closeTimeOut = props.getInt(CLOSE_TIMEOUT_MS, DEFAULT_CLOSE_TIMEOUT_MS);
+    this.checkSumType = CheckSumType.valueOf(props.getString(CHECK_SUM_TYPE, DEFAULT_CHECK_SUM_TYPE));
 
     try {
-      this.producer = new KafkaProducerWrapper(props);
+      this.producer = producerWrapperSupplier.get();
       // We cache the number of partitions, as it is expected to be immutable, and the call to Kafka is expensive.
       this.numberOfPartitions = producer.getNumberOfPartitions(topicName);
       this.producerGUID = GuidUtils.getGUID(props);
@@ -74,6 +84,22 @@ public class VeniceWriter<K, V> extends AbstractVeniceWriter<K, V> {
       throw new VeniceException("Error while constructing VeniceWriter for store name: " + topicName, e);
     }
   }
+  public VeniceWriter(
+      VeniceProperties props,
+      String topicName,
+      VeniceSerializer<K> keySerializer,
+      VeniceSerializer<V> valueSerializer,
+      Time time) {
+    this(
+        props,
+        topicName,
+        keySerializer,
+        valueSerializer,
+        new DefaultVenicePartitioner(props),
+        time,
+        () -> new ApacheKafkaProducer(props));
+  }
+
 
   public VeniceWriter(
       VeniceProperties props,
@@ -81,6 +107,25 @@ public class VeniceWriter<K, V> extends AbstractVeniceWriter<K, V> {
       VeniceSerializer<K> keySerializer,
       VeniceSerializer<V> valueSerializer) {
     this(props, topicName, keySerializer, valueSerializer, SystemTime.INSTANCE);
+  }
+
+  public void close() {
+    endAllSegments();
+    producer.close(closeTimeOut);
+  }
+
+  public String toString() {
+    return this.getClass().getSimpleName()
+        + "{topicName: " + topicName
+        + ", producerGUID: " + producerGUID
+        + ", numberOfPartitions: " + numberOfPartitions + "}";
+  }
+
+  /**
+   * @return the Kafka topic name that this {@link VeniceWriter} instance writes into.
+   */
+  public String getTopicName() {
+    return topicName;
   }
 
   /**
@@ -97,13 +142,7 @@ public class VeniceWriter<K, V> extends AbstractVeniceWriter<K, V> {
 
     KafkaMessageEnvelope kafkaValue = getKafkaMessageEnvelope(MessageType.DELETE, partition);
 
-    return producer.sendMessage(topicName, kafkaKey, kafkaValue, partition);
-  }
-
-  // TODO: We need to deprecate VeniceShellClient to remove this function
-  @Deprecated
-  public Future<RecordMetadata> put(K key, V value) {
-    return put(key, value, -1);
+    return sendMessage(kafkaKey, kafkaValue, partition);
   }
 
   /**
@@ -128,7 +167,27 @@ public class VeniceWriter<K, V> extends AbstractVeniceWriter<K, V> {
     putPayload.schemaId = valueSchemaId;
     kafkaValue.payloadUnion = putPayload;
 
-    return producer.sendMessage(topicName, kafkaKey, kafkaValue, partition);
+    return sendMessage(kafkaKey, kafkaValue, partition);
+  }
+
+  /**
+   * @param debugInfo arbitrary key/value pairs of information that will be propagated alongside the control message.
+   */
+  public void broadcastStartOfPush(Map<String, String> debugInfo) {
+    broadcastControlMessage(getEmptyControlMessage(ControlMessageType.START_OF_PUSH), debugInfo);
+  }
+
+  /**
+   * @param debugInfo arbitrary key/value pairs of information that will be propagated alongside the control message.
+   */
+  public void broadcastEndOfPush(Map<String, String> debugInfo) {
+    broadcastControlMessage(getEmptyControlMessage(ControlMessageType.END_OF_PUSH), debugInfo);
+    endAllSegments();
+  }
+
+  private Future<RecordMetadata> sendMessage(KafkaKey key, KafkaMessageEnvelope value, int partition) {
+    segmentsMap.get(partition).addToCheckSum(key, value);
+    return producer.sendMessage(topicName, key, value, partition);
   }
 
   /**
@@ -141,7 +200,7 @@ public class VeniceWriter<K, V> extends AbstractVeniceWriter<K, V> {
     ControlMessage controlMessage = new ControlMessage();
     controlMessage.controlMessageType = ControlMessageType.START_OF_SEGMENT.getValue();
     StartOfSegment startOfSegment = new StartOfSegment();
-    startOfSegment.checksumType = checksumType;
+    startOfSegment.checksumType = checkSumType.getValue();
     startOfSegment.upcomingAggregates = Lists.newArrayList(); // TODO Add extra aggregates
     controlMessage.controlMessageUnion = startOfSegment;
     sendControlMessage(controlMessage, partition, debugInfo);
@@ -159,7 +218,7 @@ public class VeniceWriter<K, V> extends AbstractVeniceWriter<K, V> {
     ControlMessage controlMessage = new ControlMessage();
     controlMessage.controlMessageType = ControlMessageType.END_OF_SEGMENT.getValue();
     EndOfSegment endOfSegment = new EndOfSegment();
-    endOfSegment.checksumValue = ByteBuffer.allocate(16); // TODO: Populate checksum
+    endOfSegment.checksumValue = ByteBuffer.wrap(segmentsMap.get(partition).getCurrentCheckSum());
     endOfSegment.computedAggregates = Lists.newArrayList(); // TODO Add extra aggregates
     endOfSegment.finalSegment = finalSegment;
     controlMessage.controlMessageUnion = endOfSegment;
@@ -181,20 +240,6 @@ public class VeniceWriter<K, V> extends AbstractVeniceWriter<K, V> {
   }
 
   /**
-   * @param debugInfo arbitrary key/value pairs of information that will be propagated alongside the control message.
-   */
-  public void broadcastStartOfPush(Map<String, String> debugInfo) {
-    broadcastControlMessage(getEmptyControlMessage(ControlMessageType.START_OF_PUSH), debugInfo);
-  }
-
-  /**
-   * @param debugInfo arbitrary key/value pairs of information that will be propagated alongside the control message.
-   */
-  public void broadcastEndOfPush(Map<String, String> debugInfo) {
-    broadcastControlMessage(getEmptyControlMessage(ControlMessageType.END_OF_PUSH), debugInfo);
-  }
-
-  /**
    * @param controlMessage a {@link ControlMessage} instance to persist into all Kafka partitions.
    * @param debugInfo arbitrary key/value pairs of information that will be propagated alongside the control message.
    */
@@ -202,7 +247,7 @@ public class VeniceWriter<K, V> extends AbstractVeniceWriter<K, V> {
     for(int partition = 0; partition < numberOfPartitions ; partition ++) {
       sendControlMessage(controlMessage, partition, debugInfo);
     }
-    LOGGER.info("Successfully broadcasted" + ControlMessageType.valueOf(controlMessage)
+    LOGGER.info("Successfully broadcasted " + ControlMessageType.valueOf(controlMessage)
         + " Control Message for topic '" + topicName + "'.");
   }
 
@@ -219,7 +264,7 @@ public class VeniceWriter<K, V> extends AbstractVeniceWriter<K, V> {
     // Initialize the SpecificRecord instances used by the Avro-based Kafka protocol
     KafkaMessageEnvelope kafkaValue = getKafkaMessageEnvelope(MessageType.CONTROL_MESSAGE, partition);
     kafkaValue.payloadUnion = controlMessage;
-    producer.sendMessage(topicName, getControlMessageKey(kafkaValue), kafkaValue, partition);
+    sendMessage(getControlMessageKey(kafkaValue), kafkaValue, partition);
   }
 
   /**
@@ -246,27 +291,6 @@ public class VeniceWriter<K, V> extends AbstractVeniceWriter<K, V> {
             .putInt(kafkaValue.producerMetadata.segmentNumber)
             .putInt(kafkaValue.producerMetadata.messageSequenceNumber)
             .array());
-  }
-
-  public void close() {
-    segmentsMap.values().stream()
-        .filter(segment -> segment.isStarted() && !segment.isEnded())
-        .forEach(segment -> endSegment(segment.getPartition()));
-    producer.close(closeTimeOut);
-  }
-
-  public String toString() {
-    return this.getClass().getSimpleName()
-        + "{topicName: " + topicName
-        + ", producerGUID: " + producerGUID
-        + ", numberOfPartitions: " + numberOfPartitions + "}";
-  }
-
-  /**
-   * @return the Kafka topic name that this {@link VeniceWriter} instance writes into.
-   */
-  public String getTopicName() {
-    return topicName;
   }
 
   /**
@@ -322,11 +346,11 @@ public class VeniceWriter<K, V> extends AbstractVeniceWriter<K, V> {
     Segment currentSegment = segmentsMap.get(partition);
 
     if (null == currentSegment) {
-      currentSegment = new Segment(partition, 0);
+      currentSegment = new Segment(partition, 0, checkSumType);
       segmentsMap.put(partition, currentSegment);
     } else if (currentSegment.isEnded()) {
       int newSegmentNumber = currentSegment.getSegmentNumber() + 1;
-      currentSegment = new Segment(partition, newSegmentNumber);
+      currentSegment = new Segment(partition, newSegmentNumber, checkSumType);
       segmentsMap.put(partition, currentSegment);
     }
 
@@ -340,6 +364,10 @@ public class VeniceWriter<K, V> extends AbstractVeniceWriter<K, V> {
     }
 
     return currentSegment;
+  }
+
+  private void endAllSegments() {
+    segmentsMap.keySet().stream().forEach(partition -> endSegment(partition));
   }
 
   /**

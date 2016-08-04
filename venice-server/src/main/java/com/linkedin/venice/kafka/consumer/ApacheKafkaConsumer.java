@@ -11,7 +11,7 @@ import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.common.TopicPartition;
 
 
-public class ApacheKafkaConsumer implements VeniceConsumer {
+public class ApacheKafkaConsumer implements KafkaConsumerWrapper {
 
   private final Consumer kafkaConsumer;
   public ApacheKafkaConsumer(Properties props) {

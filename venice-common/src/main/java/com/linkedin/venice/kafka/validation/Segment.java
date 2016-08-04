@@ -1,0 +1,199 @@
+package com.linkedin.venice.kafka.validation;
+
+import com.linkedin.venice.exceptions.validation.*;
+import com.linkedin.venice.kafka.protocol.ControlMessage;
+import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
+import com.linkedin.venice.kafka.protocol.Put;
+import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
+import com.linkedin.venice.kafka.protocol.enums.MessageType;
+import com.linkedin.venice.kafka.validation.checksum.CheckSum;
+import com.linkedin.venice.kafka.validation.checksum.CheckSumType;
+import com.linkedin.venice.message.KafkaKey;
+
+import java.util.concurrent.atomic.AtomicInteger;
+
+/**
+ * A segment is a sequence of messages sent by a single producer into a single partition.
+ *
+ * The same producer will maintain a different segment in each of the partitions it writes
+ * into. On the other hand, many distinct producers can maintain their own segment for the
+ * same partition, in which case, the messages contained in these various segments will be
+ * interleaved.
+ *
+ * This class keeps track of the state of a segment:
+ * - The partition it belongs to.
+ * - Its segmentNumber number within its partition.
+ * - Whether it has started.
+ * - Whether it has ended.
+ * - The current sequence number.
+ * - The running checksum.
+ */
+public class Segment {
+  // Immutable state
+  private final int partition;
+  private final int segmentNumber;
+  private final CheckSum checkSum;
+  private final AtomicInteger sequenceNumber;
+
+  // Mutable state
+  private boolean started;
+  private boolean ended;
+
+  public Segment(int partition, int segmentNumber, CheckSumType checkSumType) {
+    this.partition = partition;
+    this.segmentNumber = segmentNumber;
+    this.checkSum = CheckSum.getInstance(checkSumType);
+    this.sequenceNumber = new AtomicInteger(0);
+    this.started = false;
+    this.ended = false;
+  }
+
+  public int getSegmentNumber() {
+    return segmentNumber;
+  }
+
+  public int getPartition() {
+    return partition;
+  }
+
+  public int getAndIncrementSequenceNumber() {
+    return sequenceNumber.getAndIncrement();
+  }
+
+  public int getSequenceNumber() {
+    return sequenceNumber.get();
+  }
+
+  public boolean isStarted() {
+    return started;
+  }
+
+  public boolean isEnded() {
+    return ended;
+  }
+
+  public void start() {
+    started = true;
+  }
+
+  public void end() {
+    ended = true;
+  }
+
+  /**
+   * This function updates the running checksum as follows, depending on the {@link MessageType}:
+   *
+   * 1. {@link MessageType#CONTROL_MESSAGE}, depending on the specific type:
+   *    1.1. {@link ControlMessageType#END_OF_SEGMENT}: No-op.
+   *    1.2. All others: Message type, control message type.
+   * 2. {@link MessageType#PUT}: Message type, key, schema ID and value.
+   * 3. {@link MessageType#DELETE}: Message type, key.
+   *
+   * Both Producer and Consumer should use this same function in order to ensure coherent behavior.
+   *
+   * @param key of the message to add into the running checksum
+   * @param messageEnvelope to add into the running checksum
+   * @return true if something was added to checksum,
+   *         false otherwise (which happens when hitting an {@link ControlMessageType#END_OF_SEGMENT}).
+   * @throws UnsupportedMessageTypeException if the {@link MessageType} or {@link ControlMessageType} is unknown.
+   */
+  public boolean addToCheckSum(KafkaKey key, KafkaMessageEnvelope messageEnvelope) throws
+                                                                                   UnsupportedMessageTypeException {
+    // Some of the instances could be re-used and clobbered in a single-threaded setting. TODO: Explore GC tuning later.
+    switch (MessageType.valueOf(messageEnvelope)) {
+      case CONTROL_MESSAGE:
+        ControlMessage controlMessage = (ControlMessage) messageEnvelope.payloadUnion;
+        switch (ControlMessageType.valueOf(controlMessage)) {
+          case END_OF_SEGMENT:
+            // No-op for an end of segment.
+            return false;
+          case START_OF_SEGMENT:
+          case START_OF_PUSH:
+          case END_OF_PUSH:
+            // All other control messages are handled the same way.
+            updateCheckSum(messageEnvelope.messageType);
+            updateCheckSum(controlMessage.controlMessageType);
+            return true;
+          default:
+            throw new UnsupportedMessageTypeException(
+                "This version of Venice does not support the following control message type: " +
+                    controlMessage.controlMessageType);
+        }
+      case PUT:
+        updateCheckSum(messageEnvelope.messageType);
+        updateCheckSum(key.getKey());
+        Put putPayload = (Put) messageEnvelope.payloadUnion;
+        updateCheckSum(putPayload.schemaId);
+        updateCheckSum(putPayload.putValue.array());
+        return true;
+      case DELETE:
+        updateCheckSum(messageEnvelope.messageType);
+        updateCheckSum(key.getKey());
+        return true;
+      default:
+        throw new UnsupportedMessageTypeException(
+            "This version of Venice does not support the following message type: " +
+                messageEnvelope.messageType);
+    }
+  }
+
+  /**
+   * This is a simple safeguard in case {@link CheckSumType#NONE} is selected, in which case,
+   * the {@link CheckSum} instance is null.
+   *
+   * @param content to add into the running checksum
+   */
+  private void updateCheckSum(byte[] content) {
+    if (null != this.checkSum) {
+      checkSum.update(content);
+    }
+  }
+
+  /**
+   * This is a simple safeguard in case {@link CheckSumType#NONE} is selected, in which case,
+   * the {@link CheckSum} instance is null.
+   *
+   * @param content to add into the running checksum
+   */
+  private void updateCheckSum(int content) {
+    if (null != this.checkSum) {
+      checkSum.update(content);
+    }
+  }
+
+  public byte[] getCurrentCheckSum() {
+    if (null == this.checkSum) {
+      return new byte[]{};
+    } else {
+      return checkSum.getCheckSum();
+    }
+  }
+
+  @Override
+  public int hashCode() {
+    int hash = 17;
+    hash = hash * 31 + partition;
+    hash = hash * 31 + segmentNumber;
+    return hash;
+  }
+
+  @Override
+  public boolean equals(Object obj) {
+    if (obj instanceof Segment) {
+      Segment otherSegment = (Segment) obj;
+      return otherSegment.partition == this.partition && otherSegment.segmentNumber == this.segmentNumber;
+    } else {
+      return false;
+    }
+  }
+
+  @Override
+  public String toString() {
+    return "Segment(partition: " + partition
+        + ", segment: " + segmentNumber
+        + ", sequence: " + sequenceNumber
+        + ", started: " + started
+        + ", ended: " + ended
+        + ", checksum: " + checkSum + ")";
+  }
+}
