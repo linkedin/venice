@@ -104,5 +104,20 @@ public interface Admin {
     */
     List<Replica> getErrorReplicas(String clusterName, String kafkaTopic);
 
+    /**
+     * Is the given instance able to remove out from given cluster. For example, if there is only one replica alive in this
+     * cluster which is hosted on given instance. This instance should not be removed out of cluster, otherwise Venice will
+     * lose data.
+     *
+     * @param instanceId nodeId of helix participant. HOST_PORT.
+     */
+    boolean isInstanceRemovable(String clusterName, String instanceId);
+
+    /**
+     * Get instance name of master controller. Instance is in HOST_PORT format. If there is no master controller for the
+     * given cluster, throw a VeniceException.
+     */
+    String getMasterController(String clusterName);
+
     void close();
 }

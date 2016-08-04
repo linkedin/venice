@@ -26,7 +26,9 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import org.apache.helix.HelixManager;
 import org.apache.helix.HelixManagerFactory;
@@ -55,7 +57,7 @@ public class TestVeniceHelixAdmin {
   private ZkServerWrapper zkServerWrapper;
   private KafkaBrokerWrapper kafkaBrokerWrapper;
 
-  private HelixManager manager;
+  private Map<String, HelixManager> participants = new HashMap<>();
 
   private VeniceProperties controllerProps;
   private TestHelixRoutingDataRepository.UnitTestStateModelFactory stateModelFactory;
@@ -100,7 +102,7 @@ public class TestVeniceHelixAdmin {
 
   @AfterMethod
   public void cleanup() {
-    stopParticipant();
+    stopParticipants();
     try {
       veniceAdmin.stop(clusterName);
       veniceAdmin.close();
@@ -112,13 +114,13 @@ public class TestVeniceHelixAdmin {
 
   private void startParticipant()
       throws Exception {
-    startParticipant(false);
+    startParticipant(false, nodeId);
   }
 
-  private void startParticipant(boolean isDelay)
+  private void startParticipant(boolean isDelay, String nodeId)
       throws Exception {
     stateModelFactory.setDelayTransistion(isDelay);
-    manager = HelixManagerFactory.getZKHelixManager(clusterName, nodeId, InstanceType.PARTICIPANT, zkAddress);
+    HelixManager manager = HelixManagerFactory.getZKHelixManager(clusterName, nodeId, InstanceType.PARTICIPANT, zkAddress);
     manager.getStateMachineEngine().registerStateModelFactory("PartitionOnlineOfflineModel", stateModelFactory);
     Instance instance = new Instance(nodeId, Utils.getHostName(), 9985);
     manager.setLiveInstanceInfoProvider(new LiveInstanceInfoProvider() {
@@ -127,12 +129,21 @@ public class TestVeniceHelixAdmin {
         return HelixInstanceConverter.convertInstanceToZNRecord(instance);
       }
     });
+    participants.put(nodeId, manager);
     manager.connect();
   }
 
-  private void stopParticipant() {
-    if (manager != null) {
-      manager.disconnect();
+  private void stopParticipants() {
+    for(String nodeId:participants.keySet()){
+      participants.get(nodeId).disconnect();
+    }
+    participants.clear();
+  }
+
+  private void stopParticipant(String nodeId) {
+    if(participants.containsKey(nodeId)){
+      participants.get(nodeId).disconnect();
+      participants.remove(nodeId);
     }
   }
 
@@ -190,7 +201,7 @@ public class TestVeniceHelixAdmin {
     veniceAdmin.addStore(clusterName, storeName, "dev");
     veniceAdmin.incrementVersion(clusterName, storeName, 1, 1);
 
-    StatusMessageChannel channel = new HelixStatusMessageChannel(manager, Integer.MAX_VALUE, 1);
+    StatusMessageChannel channel = new HelixStatusMessageChannel(participants.get(nodeId), Integer.MAX_VALUE, 1);
     channel.sendToController(new StoreStatusMessage(version.kafkaTopicName(), 0, nodeId, ExecutionStatus.STARTED));
 
     int newAdminPort = config.getAdminPort()+1; /* Note: this is a dummy port */
@@ -226,7 +237,7 @@ public class TestVeniceHelixAdmin {
         "Job should be completed after getting update from message channel");
 
     // Stop and start participant to use new master to trigger state transition.
-    stopParticipant();
+    stopParticipants();
     HelixRoutingDataRepository routing = newMasterAdmin.getVeniceHelixResource(clusterName).getRoutingDataRepository();
     //Assert routing data repository can find the new master controller.
     Assert.assertEquals(routing.getMasterController().getPort(), newAdminPort,
@@ -465,8 +476,8 @@ public class TestVeniceHelixAdmin {
   @Test
   public void testGetBootstrapReplicas()
       throws Exception {
-    stopParticipant();
-    startParticipant(true);
+    stopParticipants();
+    startParticipant(true, nodeId);
     String storeName = "test";
     veniceAdmin.addStore(clusterName,storeName,"owner");
     veniceAdmin.addVersion(clusterName,storeName,1,1,1);
@@ -492,6 +503,94 @@ public class TestVeniceHelixAdmin {
     });
     replicas = veniceAdmin.getBootstrapReplicas(clusterName,Version.composeKafkaTopic(storeName,1));
     Assert.assertEquals(replicas.size() , 0);
+  }
+
+  @Test
+  public void testIsInstanceRemovable()
+      throws Exception {
+    // Create another participant so we will get two running instances.
+    String newNodeId = "localhost_9900";
+    startParticipant(false, newNodeId);
+    int partitionCount = 2;
+    int replicas = 2;
+    String storeName = "testMovable";
+
+    veniceAdmin.addStore(clusterName, storeName, "test");
+    veniceAdmin.incrementVersion(clusterName, storeName, partitionCount, replicas);
+    TestUtils.waitForNonDeterministicCompletion(2000, TimeUnit.MILLISECONDS, () -> {
+      PartitionAssignment partitionAssignment = veniceAdmin.getVeniceHelixResource(clusterName)
+          .getRoutingDataRepository()
+          .getPartitionAssignments(Version.composeKafkaTopic(storeName, 1));
+      if (partitionAssignment.getAssignedNumberOfPartitions() != partitionCount) {
+        return false;
+      }
+      for (int i = 0; i < partitionCount; i++) {
+        if (partitionAssignment.getPartition(i).getReadyToServeInstances().size() != replicas) {
+          return false;
+        }
+      }
+      return true;
+    });
+
+
+    //Enough number of replicas, any of instance is able to moved out.
+    Assert.assertTrue(veniceAdmin.isInstanceRemovable(clusterName, nodeId));
+    Assert.assertTrue(veniceAdmin.isInstanceRemovable(clusterName, newNodeId));
+
+    //Shutdown one instance
+    stopParticipant(nodeId);
+    TestUtils.waitForNonDeterministicCompletion(2000, TimeUnit.MILLISECONDS, () -> {
+      PartitionAssignment partitionAssignment = veniceAdmin.getVeniceHelixResource(clusterName)
+          .getRoutingDataRepository()
+          .getPartitionAssignments(Version.composeKafkaTopic(storeName, 1));
+      return partitionAssignment.getPartition(0).getReadyToServeInstances().size() == 1;
+    });
+
+    Assert.assertFalse(veniceAdmin.isInstanceRemovable(clusterName, newNodeId),
+        "Only one instance is alive, can not be moved out.");
+    Assert.assertTrue(veniceAdmin.isInstanceRemovable(clusterName, nodeId), "Instance is shutdown.");
+  }
+
+  @Test
+  public void testGetMasterController() {
+    Assert.assertEquals(veniceAdmin.getMasterController(clusterName),
+        Utils.getHelixNodeIdentifier(config.getAdminPort()));
+
+    // Create a new controller and test getMasterController again.
+    int newAdminPort = config.getAdminPort() - 10;
+    PropertyBuilder builder = new PropertyBuilder().put(controllerProps.toProperties()).put("admin.port", newAdminPort);
+
+    VeniceProperties newControllerProps = builder.build();
+    VeniceControllerConfig newConfig = new VeniceControllerConfig(newControllerProps);
+    VeniceHelixAdmin newMasterAdmin = new VeniceHelixAdmin(newConfig);
+    List<VeniceHelixAdmin> admins = new ArrayList<>();
+    admins.add(veniceAdmin);
+    admins.add(newMasterAdmin);
+    waitForAMaster(admins, clusterName, MASTER_CHANGE_TIMEOUT);
+    if (veniceAdmin.isMasterController(clusterName)) {
+      Assert.assertEquals(veniceAdmin.getMasterController(clusterName),
+          Utils.getHelixNodeIdentifier(config.getAdminPort()));
+    } else {
+      Assert.assertEquals(veniceAdmin.getMasterController(clusterName),
+          Utils.getHelixNodeIdentifier(newAdminPort));
+    }
+
+    newMasterAdmin.stop(clusterName);
+    admins.remove(newMasterAdmin);
+    waitForAMaster(admins, clusterName, MASTER_CHANGE_TIMEOUT);
+
+    Assert.assertEquals(veniceAdmin.getMasterController(clusterName),
+        Utils.getHelixNodeIdentifier(config.getAdminPort()), "Controller should be back to original one.");
+
+    veniceAdmin.stop(clusterName);
+    TestUtils.waitForNonDeterministicCompletion(MASTER_CHANGE_TIMEOUT, TimeUnit.MILLISECONDS,
+        () -> !veniceAdmin.isMasterController(clusterName));
+    try {
+      veniceAdmin.getMasterController(clusterName);
+      Assert.fail("There is no master controller for cluster:" + clusterName);
+    } catch (VeniceException e) {
+
+    }
   }
 
 }
