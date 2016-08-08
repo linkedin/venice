@@ -3,10 +3,8 @@ package com.linkedin.venice.kafka.consumer;
 import com.linkedin.venice.config.VeniceServerConfig;
 import com.linkedin.venice.config.VeniceStoreConfig;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
-import com.linkedin.venice.notifier.KafkaNotifier;
 import com.linkedin.venice.notifier.LogNotifier;
 import com.linkedin.venice.notifier.VeniceNotifier;
-import com.linkedin.venice.partitioner.PartitionZeroPartitioner;
 import com.linkedin.venice.offsets.OffsetManager;
 import com.linkedin.venice.serialization.KafkaKeySerializer;
 import com.linkedin.venice.serialization.KafkaValueSerializer;
@@ -84,30 +82,8 @@ public class KafkaConsumerPerStoreService extends AbstractVeniceService implemen
     long maxKafkaFetchBytesPerSecond = serverConfig.getMaxKafkaFetchBytesPerSecond();
     throttler = new EventThrottler(maxKafkaFetchBytesPerSecond);
 
-    VeniceNotifier notifier = null;
-    // initialize internal kafka producer for acknowledging consumption (if enabled)
-    if (serverConfig.isEnableConsumptionAcksForAzkabanJobs()) {
-      Properties ackKafkaProps = getAcksKafkaProducerProperties(serverConfig);
-      notifier = new KafkaNotifier(ACK_PARTITION_CONSUMPTION_KAFKA_TOPIC , ackKafkaProps );
-    } else {
-      notifier = new LogNotifier();
-    }
+    VeniceNotifier notifier = new LogNotifier();
     notifiers.add(notifier);
-  }
-
-  /**
-   * Initializes internal kafka producer for acknowledging kafka message consumption (if enabled)
-   *
-   * TODO: Get rid of this function
-   */
-  private static Properties getAcksKafkaProducerProperties(VeniceServerConfig veniceServerConfig) {
-    Properties properties = new Properties();
-    // TODO: Use constants from Kafka code (these are the old producer's config anyway...)
-    properties.setProperty("metadata.broker.list", veniceServerConfig.getKafkaConsumptionAcksBrokerUrl());
-    properties.setProperty("request.required.acks", "1");
-    properties.setProperty("producer.type", "sync");
-    properties.setProperty("partitioner.class", PartitionZeroPartitioner.class.getName());
-    return properties;
   }
 
   /**

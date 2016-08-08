@@ -20,15 +20,12 @@ public class ConfigKeys {
   public static final String OFFSET_MANAGER_TYPE = "offset.manager.type";
   public static final String OFFSET_DATA_BASE_PATH = "offsets.data.base.path";
   public static final String OFFSET_MANAGER_FLUSH_INTERVAL_MS = "offset.manager.flush.interval.ms";
-  public static final String ENABLE_CONSUMPTION_ACKS_FOR_AZKABAN_JOBS = "enable.consumption.acks.for.azkaban.jobs";
-  public static final String KAFKA_CONSUMPTION_ACKS_BROKER_URL = "kafka.consumptions.acks.broker.url";
   public static final String HELIX_ENABLED = "helix.enabled";
   public static final String ZOOKEEPER_ADDRESS = "zookeeper.address";
   public static final Set<String> clusterSpecificProperties = new HashSet<String>(Arrays
       .asList(CLUSTER_NAME, STORAGE_NODE_COUNT, PARTITION_NODE_ASSIGNMENT_SCHEME,
           ENABLE_KAFKA_CONSUMER_OFFSET_MANAGEMENT, OFFSET_MANAGER_TYPE, OFFSET_DATA_BASE_PATH,
-          OFFSET_MANAGER_FLUSH_INTERVAL_MS, ENABLE_CONSUMPTION_ACKS_FOR_AZKABAN_JOBS, KAFKA_CONSUMPTION_ACKS_BROKER_URL,
-          HELIX_ENABLED, ZOOKEEPER_ADDRESS));
+          OFFSET_MANAGER_FLUSH_INTERVAL_MS, HELIX_ENABLED, ZOOKEEPER_ADDRESS));
   public static final String ROUTER_PORT = "router.port";
 
   public static final String LISTENER_PORT = "listener.port";
