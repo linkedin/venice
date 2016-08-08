@@ -25,12 +25,9 @@ public class VeniceClusterConfig {
   private String offsetDatabasePath = null;
   private long offsetManagerFlushIntervalMs;
 
-  private boolean enableConsumptionAcksForAzkabanJobs;
 
   private boolean helixEnabled;
   private String zookeeperAddress;
-
-  private String kafkaConsumptionAcksBrokerUrl;
 
   private PersistenceType persistenceType;
 
@@ -68,13 +65,6 @@ public class VeniceClusterConfig {
     offsetDatabasePath = clusterProps.getString(OFFSET_DATA_BASE_PATH,
         System.getProperty("java.io.tmpdir") + File.separator + BdbOffsetManager.OFFSETS_STORE_NAME);
     offsetManagerFlushIntervalMs = clusterProps.getLong(OFFSET_MANAGER_FLUSH_INTERVAL_MS, 10000); // 10 sec default
-    enableConsumptionAcksForAzkabanJobs = clusterProps.getBoolean(ENABLE_CONSUMPTION_ACKS_FOR_AZKABAN_JOBS, false);
-    if (enableConsumptionAcksForAzkabanJobs) {
-      kafkaConsumptionAcksBrokerUrl = clusterProps.getString(KAFKA_CONSUMPTION_ACKS_BROKER_URL);
-      if (kafkaConsumptionAcksBrokerUrl.isEmpty()) {
-        throw new ConfigurationException("The kafka broker url cannot be empty when consumption acknowledgement is enabled!");
-      }
-    }
 
     try {
       persistenceType = PersistenceType.valueOf(clusterProps.getString(PERSISTENCE_TYPE,
@@ -115,20 +105,12 @@ public class VeniceClusterConfig {
     return offsetManagerFlushIntervalMs;
   }
 
-  public boolean isEnableConsumptionAcksForAzkabanJobs() {
-    return enableConsumptionAcksForAzkabanJobs;
-  }
-
   public boolean isHelixEnabled() {
     return helixEnabled;
   }
 
   public String getZookeeperAddress() {
     return zookeeperAddress;
-  }
-
-  public String getKafkaConsumptionAcksBrokerUrl() {
-    return kafkaConsumptionAcksBrokerUrl;
   }
 
   public PersistenceType getPersistenceType() {

@@ -10,7 +10,6 @@ import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.Version;
-import com.linkedin.venice.notifier.KafkaNotifier;
 import com.linkedin.venice.notifier.LogNotifier;
 import com.linkedin.venice.notifier.VeniceNotifier;
 import com.linkedin.venice.offsets.OffsetManager;
@@ -238,7 +237,7 @@ public class StoreConsumptionTaskTest {
   private StoreConsumptionTask getKafkaPerStoreConsumptionTask(int... partitions) throws Exception {
     mockKafkaConsumer = Mockito.mock(ApacheKafkaConsumer.class);
     mockStoreRepository = Mockito.mock(StoreRepository.class);
-    mockNotifier = Mockito.mock(KafkaNotifier.class);
+    mockNotifier = Mockito.mock(LogNotifier.class);
     mockAbstractStorageEngine = Mockito.mock(AbstractStorageEngine.class);
     mockOffSetManager = Mockito.mock(OffsetManager.class);
     mockThrottler = Mockito.mock(EventThrottler.class);
