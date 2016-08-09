@@ -1,5 +1,6 @@
 package com.linkedin.venice.controller;
 
+import com.linkedin.venice.helix.HelixInstanceConverter;
 import com.linkedin.venice.helix.HelixReadWriteSchemaRepository;
 import com.linkedin.venice.helix.Replica;
 import com.linkedin.venice.kafka.TopicManager;
@@ -569,13 +570,15 @@ public class VeniceHelixAdmin implements Admin {
     }
 
     @Override
-    public String getMasterController(String clusterName) {
+    public Instance getMasterController(String clusterName) {
         PropertyKey.Builder keyBuilder = new PropertyKey.Builder(clusterName);
         LiveInstance instance = manager.getHelixDataAccessor().getProperty(keyBuilder.controllerLeader());
         if (instance == null) {
             throw new VeniceException("Can not find a master controller in the cluster:" + clusterName);
         } else {
-            return instance.getInstanceName();
+            String instanceId = instance.getId();
+            return new Instance(instanceId, Utils.parseHostFromHelixNodeIdentifier(instanceId),
+                Utils.parsePortFromHelixNodeIdentifier(instanceId));
         }
     }
 
@@ -609,5 +612,9 @@ public class VeniceHelixAdmin implements Admin {
 
     public void addConfig(String clusterName,VeniceControllerConfig config){
         controllerStateModelFactory.addClusterConfig(clusterName, config);
+    }
+
+    public String getControllerName(){
+        return controllerName;
     }
 }
