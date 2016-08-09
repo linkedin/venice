@@ -3,6 +3,7 @@ package com.linkedin.venice.controller;
 import com.linkedin.venice.helix.Replica;
 import com.linkedin.venice.job.ExecutionStatus;
 import com.linkedin.venice.kafka.TopicManager;
+import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.schema.SchemaEntry;
@@ -114,10 +115,10 @@ public interface Admin {
     boolean isInstanceRemovable(String clusterName, String instanceId);
 
     /**
-     * Get instance name of master controller. Instance is in HOST_PORT format. If there is no master controller for the
-     * given cluster, throw a VeniceException.
+     * Get instance of master controller. If there is no master controller for the given cluster, throw a
+     * VeniceException.
      */
-    String getMasterController(String clusterName);
+    Instance getMasterController(String clusterName);
 
     void close();
 }

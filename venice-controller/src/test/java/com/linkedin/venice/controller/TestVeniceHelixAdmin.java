@@ -553,7 +553,7 @@ public class TestVeniceHelixAdmin {
 
   @Test
   public void testGetMasterController() {
-    Assert.assertEquals(veniceAdmin.getMasterController(clusterName),
+    Assert.assertEquals(veniceAdmin.getMasterController(clusterName).getNodeId(),
         Utils.getHelixNodeIdentifier(config.getAdminPort()));
 
     // Create a new controller and test getMasterController again.
@@ -568,10 +568,10 @@ public class TestVeniceHelixAdmin {
     admins.add(newMasterAdmin);
     waitForAMaster(admins, clusterName, MASTER_CHANGE_TIMEOUT);
     if (veniceAdmin.isMasterController(clusterName)) {
-      Assert.assertEquals(veniceAdmin.getMasterController(clusterName),
+      Assert.assertEquals(veniceAdmin.getMasterController(clusterName).getNodeId(),
           Utils.getHelixNodeIdentifier(config.getAdminPort()));
     } else {
-      Assert.assertEquals(veniceAdmin.getMasterController(clusterName),
+      Assert.assertEquals(veniceAdmin.getMasterController(clusterName).getNodeId(),
           Utils.getHelixNodeIdentifier(newAdminPort));
     }
 
@@ -579,7 +579,7 @@ public class TestVeniceHelixAdmin {
     admins.remove(newMasterAdmin);
     waitForAMaster(admins, clusterName, MASTER_CHANGE_TIMEOUT);
 
-    Assert.assertEquals(veniceAdmin.getMasterController(clusterName),
+    Assert.assertEquals(veniceAdmin.getMasterController(clusterName).getNodeId(),
         Utils.getHelixNodeIdentifier(config.getAdminPort()), "Controller should be back to original one.");
 
     veniceAdmin.stop(clusterName);

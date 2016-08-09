@@ -66,6 +66,8 @@ public class ControllerApiConstants {
   public static final String GET_VALUE_SCHEMA_ID_PATH = "/get_value_schema_id";
   public static final List<String> GET_VALUE_SCHEMA_ID_PARAMS = Arrays.asList(CLUSTER, NAME, VALUE_SCHEMA);
 
+  public static final String GET_MASTER_CONTROLLER_PATH = "/get_master_controller";
+  public static final List<String> GET_MASTER_CONTROLLER_PARAMS = Arrays.asList(CLUSTER);
 
   private ControllerApiConstants(){}
 }
