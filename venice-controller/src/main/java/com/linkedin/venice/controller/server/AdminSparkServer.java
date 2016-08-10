@@ -71,7 +71,7 @@ public class AdminSparkServer extends AbstractVeniceService {
     Spark.post(RESERVE_VERSION_PATH, ReserveVersion.getRoute(admin));
 
     // Operations for key schema/value schema
-    Spark.post(INIT_KEY_SCHEMA, SchemaRoutes.initKeySchema(admin));
+    Spark.post(INIT_KEY_SCHEMA_PATH, SchemaRoutes.initKeySchema(admin));
     Spark.get(GET_KEY_SCHEMA_PATH, SchemaRoutes.getKeySchema(admin));
     Spark.post(ADD_VALUE_SCHEMA_PATH, SchemaRoutes.addValueSchema(admin));
     Spark.get(GET_VALUE_SCHEMA_PATH, SchemaRoutes.getValueSchema(admin));

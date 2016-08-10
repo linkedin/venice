@@ -4,10 +4,13 @@ import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.Utils;
+import java.io.BufferedInputStream;
 import java.io.Closeable;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.UnsupportedEncodingException;
+import java.net.InetAddress;
+import java.net.UnknownHostException;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -29,18 +32,11 @@ import org.apache.http.message.BasicNameValuePair;
 import org.apache.log4j.Logger;
 import org.codehaus.jackson.map.ObjectMapper;
 
-
-/**
- * Controller Client to talk to Venice Controller.
- * If close method is not called at the end of the usage, it leaks
- * a thread and the Process never shuts down. If it is required
- * for just making a single call use the static utility method
- * to avoid the thread leak.
- */
 public class ControllerClient implements Closeable {
   private final CloseableHttpAsyncClient client;
   private String controllerUrl;
   private String routerUrls;
+  private String localHostname;
 
   private final static ObjectMapper mapper = new ObjectMapper();
   private final static Logger logger = Logger.getLogger(ControllerClient.class);
@@ -57,7 +53,8 @@ public class ControllerClient implements Closeable {
       throw new VeniceException("Router Urls: "+routerUrls+" is not valid");
     }
     this.routerUrls = routerUrls;
-
+    this.localHostname = Utils.getHostName();
+    logger.info("Parsed hostname as: " + localHostname);
     refreshControllerUrl();
   }
 
@@ -113,17 +110,14 @@ public class ControllerClient implements Closeable {
   private VersionCreationResponse createNewStoreVersion(String clusterName, String storeName, String owner, long storeSize,
                                                       String keySchema, String valueSchema)
       throws IOException, ExecutionException, InterruptedException {
-    final HttpPost post = new HttpPost(controllerUrl + ControllerApiConstants.CREATE_PATH);
-    List<NameValuePair> params = new ArrayList<NameValuePair>();
+    List<NameValuePair> params = newParams();
     params.add(new BasicNameValuePair(ControllerApiConstants.CLUSTER, clusterName));
     params.add(new BasicNameValuePair(ControllerApiConstants.NAME, storeName));
     params.add(new BasicNameValuePair(ControllerApiConstants.OWNER, owner));
     params.add(new BasicNameValuePair(ControllerApiConstants.STORE_SIZE, Long.toString(storeSize)));
     params.add(new BasicNameValuePair(ControllerApiConstants.KEY_SCHEMA, keySchema));
     params.add(new BasicNameValuePair(ControllerApiConstants.VALUE_SCHEMA, valueSchema));
-    post.setEntity(new UrlEncodedFormEntity(params));
-    HttpResponse response = client.execute(post, null).get();
-    String responseJson = getJsonFromHttpResponse(response);
+    String responseJson = postRequest(ControllerApiConstants.CREATE_PATH, params);
     return mapper.readValue(responseJson, VersionCreationResponse.class);
   }
 
@@ -141,14 +135,11 @@ public class ControllerClient implements Closeable {
 
   private NewStoreResponse createNewStore(String clusterName, String storeName, String owner)
       throws IOException, ExecutionException, InterruptedException {
-    final HttpPost post = new HttpPost(controllerUrl + ControllerApiConstants.NEWSTORE_PATH);
-    List<NameValuePair> params = new ArrayList<NameValuePair>();
+    List<NameValuePair> params = newParams();
     params.add(new BasicNameValuePair(ControllerApiConstants.CLUSTER, clusterName));
     params.add(new BasicNameValuePair(ControllerApiConstants.NAME, storeName));
     params.add(new BasicNameValuePair(ControllerApiConstants.OWNER, owner));
-    post.setEntity(new UrlEncodedFormEntity(params));
-    HttpResponse response = client.execute(post, null).get();
-    String responseJson = getJsonFromHttpResponse(response);
+    String responseJson = postRequest(ControllerApiConstants.NEWSTORE_PATH, params);
     return mapper.readValue(responseJson, NewStoreResponse.class);
   }
 
@@ -160,24 +151,21 @@ public class ControllerClient implements Closeable {
     }
   }
 
-  private void overrideSetActiveVersion(String clusterName, String storeName, int version)
-      throws UnsupportedEncodingException, ExecutionException, InterruptedException {
-    final HttpPost post = new HttpPost(controllerUrl + ControllerApiConstants.SETVERSION_PATH);
-    List<NameValuePair> params = new ArrayList<NameValuePair>();
+  private VersionResponse overrideSetActiveVersion(String clusterName, String storeName, int version)
+      throws InterruptedException, IOException, ExecutionException {
+    List<NameValuePair> params = newParams();
     params.add(new BasicNameValuePair(ControllerApiConstants.CLUSTER, clusterName));
     params.add(new BasicNameValuePair(ControllerApiConstants.NAME, storeName));
     params.add(new BasicNameValuePair(ControllerApiConstants.VERSION, Integer.toString(version)));
-    post.setEntity(new UrlEncodedFormEntity(params));
-    client.execute(post, null).get();
+    String responseJson = postRequest(ControllerApiConstants.SETVERSION_PATH, params);
+    return mapper.readValue(responseJson, VersionResponse.class);
   }
 
-  public static void overrideSetActiveVersion(String routerUrls, String clusterName, String storeName, int version){
+  public static VersionResponse overrideSetActiveVersion(String routerUrls, String clusterName, String storeName, int version){
     try (ControllerClient client = new ControllerClient(routerUrls)){
-      client.overrideSetActiveVersion(clusterName, storeName, version);
+      return client.overrideSetActiveVersion(clusterName, storeName, version);
     } catch(Exception e){
-      String msg = "Error setting version.  Storename: " + storeName + " Version: " + version;
-      logger.error(msg, e);
-      throw new VeniceException(msg, e);
+      return handleError(new VeniceException("Error setting version.  Storename: " + storeName + " Version: " + version), new VersionResponse());
     }
   }
 
@@ -185,14 +173,11 @@ public class ControllerClient implements Closeable {
       throws ExecutionException, InterruptedException, IOException {
     String storeName = Version.parseStoreFromKafkaTopicName(kafkaTopic);
     int version = Version.parseVersionFromKafkaTopicName(kafkaTopic);
-    List<NameValuePair> queryParams = new ArrayList<>();
+    List<NameValuePair> queryParams = newParams();
     queryParams.add(new BasicNameValuePair(ControllerApiConstants.CLUSTER, clusterName));
     queryParams.add(new BasicNameValuePair(ControllerApiConstants.NAME, storeName));
     queryParams.add(new BasicNameValuePair(ControllerApiConstants.VERSION, Integer.toString(version)));
-    String queryString = URLEncodedUtils.format(queryParams, StandardCharsets.UTF_8);
-    final HttpGet get = new HttpGet(controllerUrl + ControllerApiConstants.JOB_PATH + "?" + queryString);
-    HttpResponse response = client.execute(get, null).get();
-    String responseJson = getJsonFromHttpResponse(response);
+    String responseJson = getRequest(ControllerApiConstants.JOB_PATH, queryParams);
     return mapper.readValue(responseJson, JobStatusQueryResponse.class);
   }
 
@@ -225,12 +210,9 @@ public class ControllerClient implements Closeable {
 
   private MultiStoreResponse queryStoreList(String clusterName)
       throws IOException, ExecutionException, InterruptedException {
-    List<NameValuePair> queryParams = new ArrayList<>();
+    List<NameValuePair> queryParams = newParams();
     queryParams.add(new BasicNameValuePair(ControllerApiConstants.CLUSTER, clusterName));
-    String queryString = URLEncodedUtils.format(queryParams, StandardCharsets.UTF_8);
-    final HttpGet get = new HttpGet(controllerUrl + ControllerApiConstants.LIST_STORES_PATH + "?" + queryString);
-    HttpResponse response = client.execute(get, null).get();
-    String responseJson = getJsonFromHttpResponse(response);
+    String responseJson = getRequest(ControllerApiConstants.LIST_STORES_PATH, queryParams);
     return mapper.readValue(responseJson, MultiStoreResponse.class);
   }
 
@@ -244,13 +226,10 @@ public class ControllerClient implements Closeable {
 
   private VersionResponse queryNextVersion(String clusterName, String storeName)
       throws ExecutionException, InterruptedException, IOException {
-    List<NameValuePair> queryParams = new ArrayList<>();
+    List<NameValuePair> queryParams = newParams();
     queryParams.add(new BasicNameValuePair(ControllerApiConstants.CLUSTER, clusterName));
     queryParams.add(new BasicNameValuePair(ControllerApiConstants.NAME, storeName));
-    String queryString = URLEncodedUtils.format(queryParams, StandardCharsets.UTF_8);
-    final HttpGet get = new HttpGet(controllerUrl + ControllerApiConstants.NEXTVERSION_PATH + "?" + queryString);
-    HttpResponse response = client.execute(get, null).get();
-    String responseJson = getJsonFromHttpResponse(response);
+    String responseJson = getRequest(ControllerApiConstants.NEXTVERSION_PATH, queryParams);
     return mapper.readValue(responseJson, VersionResponse.class);
   }
 
@@ -274,13 +253,10 @@ public class ControllerClient implements Closeable {
 
   private VersionResponse queryCurrentVersion(String clusterName, String storeName)
       throws ExecutionException, InterruptedException, IOException {
-    List<NameValuePair> queryParams = new ArrayList<>();
+    List<NameValuePair> queryParams = newParams();
     queryParams.add(new BasicNameValuePair(ControllerApiConstants.CLUSTER, clusterName));
     queryParams.add(new BasicNameValuePair(ControllerApiConstants.NAME, storeName));
-    String queryString = URLEncodedUtils.format(queryParams, StandardCharsets.UTF_8);
-    final HttpGet get = new HttpGet(controllerUrl + ControllerApiConstants.CURRENT_VERSION_PATH + "?" + queryString);
-    HttpResponse response = client.execute(get, null).get();
-    String responseJson = getJsonFromHttpResponse(response);
+    String responseJson = getRequest(ControllerApiConstants.CURRENT_VERSION_PATH, queryParams);
     return mapper.readValue(responseJson, VersionResponse.class);
   }
 
@@ -294,13 +270,10 @@ public class ControllerClient implements Closeable {
 
   private MultiVersionResponse queryActiveVersions(String clusterName, String storeName)
       throws ExecutionException, InterruptedException, IOException {
-    List<NameValuePair> queryParams = new ArrayList<>();
+    List<NameValuePair> queryParams = newParams();
     queryParams.add(new BasicNameValuePair(ControllerApiConstants.CLUSTER, clusterName));
     queryParams.add(new BasicNameValuePair(ControllerApiConstants.NAME, storeName));
-    String queryString = URLEncodedUtils.format(queryParams, StandardCharsets.UTF_8);
-    final HttpGet get = new HttpGet(controllerUrl + ControllerApiConstants.ACTIVE_VERSIONS_PATH + "?" + queryString);
-    HttpResponse response = client.execute(get, null).get();
-    String responseJson = getJsonFromHttpResponse(response);
+    String responseJson = getRequest(ControllerApiConstants.ACTIVE_VERSIONS_PATH, queryParams);
     return mapper.readValue(responseJson, MultiVersionResponse.class);
   }
 
@@ -314,14 +287,11 @@ public class ControllerClient implements Closeable {
 
   private VersionResponse reserveVersion(String clusterName, String storeName, int version)
       throws IOException, ExecutionException, InterruptedException {
-    List<NameValuePair> queryParams = new ArrayList<>();
+    List<NameValuePair> queryParams = newParams();
     queryParams.add(new BasicNameValuePair(ControllerApiConstants.CLUSTER, clusterName));
     queryParams.add(new BasicNameValuePair(ControllerApiConstants.NAME, storeName));
     queryParams.add(new BasicNameValuePair(ControllerApiConstants.VERSION, Integer.toString(version)));
-    final HttpPost post = new HttpPost(controllerUrl + ControllerApiConstants.RESERVE_VERSION_PATH);
-    post.setEntity(new UrlEncodedFormEntity(queryParams));
-    HttpResponse response = client.execute(post, null).get();
-    String responseJson = getJsonFromHttpResponse(response);
+    String responseJson = postRequest(ControllerApiConstants.RESERVE_VERSION_PATH, queryParams);
     return mapper.readValue(responseJson, VersionResponse.class);
   }
 
@@ -343,14 +313,11 @@ public class ControllerClient implements Closeable {
   }
 
   private SchemaResponse initKeySchema(String clusterName, String storeName, String keySchemaStr) throws IOException, ExecutionException, InterruptedException {
-    List<NameValuePair> queryParams = new ArrayList<>();
+    List<NameValuePair> queryParams = newParams();
     queryParams.add(new BasicNameValuePair(ControllerApiConstants.CLUSTER, clusterName));
     queryParams.add(new BasicNameValuePair(ControllerApiConstants.NAME, storeName));
     queryParams.add(new BasicNameValuePair(ControllerApiConstants.KEY_SCHEMA, keySchemaStr));
-    final HttpPost post = new HttpPost(controllerUrl + ControllerApiConstants.INIT_KEY_SCHEMA);
-    post.setEntity(new UrlEncodedFormEntity(queryParams));
-    HttpResponse response = client.execute(post, null).get();
-    String responseJson = getJsonFromHttpResponse(response);
+    String responseJson = postRequest(ControllerApiConstants.INIT_KEY_SCHEMA_PATH, queryParams);
     return mapper.readValue(responseJson, SchemaResponse.class);
   }
 
@@ -363,13 +330,10 @@ public class ControllerClient implements Closeable {
   }
 
   private SchemaResponse getKeySchema(String clusterName, String storeName) throws ExecutionException, InterruptedException, IOException {
-    List<NameValuePair> queryParams = new ArrayList<>();
+    List<NameValuePair> queryParams = newParams();
     queryParams.add(new BasicNameValuePair(ControllerApiConstants.CLUSTER, clusterName));
     queryParams.add(new BasicNameValuePair(ControllerApiConstants.NAME, storeName));
-    String queryString = URLEncodedUtils.format(queryParams, StandardCharsets.UTF_8);
-    final HttpGet get = new HttpGet(controllerUrl + ControllerApiConstants.GET_KEY_SCHEMA_PATH + "?" + queryString);
-    HttpResponse response = client.execute(get, null).get();
-    String responseJson = getJsonFromHttpResponse(response);
+    String responseJson = getRequest(ControllerApiConstants.GET_KEY_SCHEMA_PATH, queryParams);
     return mapper.readValue(responseJson, SchemaResponse.class);
   }
 
@@ -382,14 +346,11 @@ public class ControllerClient implements Closeable {
   }
 
   private SchemaResponse addValueSchema(String clusterName, String storeName, String valueSchemaStr) throws IOException, ExecutionException, InterruptedException {
-    List<NameValuePair> queryParams = new ArrayList<>();
+    List<NameValuePair> queryParams = newParams();
     queryParams.add(new BasicNameValuePair(ControllerApiConstants.CLUSTER, clusterName));
     queryParams.add(new BasicNameValuePair(ControllerApiConstants.NAME, storeName));
     queryParams.add(new BasicNameValuePair(ControllerApiConstants.VALUE_SCHEMA, valueSchemaStr));
-    final HttpPost post = new HttpPost(controllerUrl + ControllerApiConstants.ADD_VALUE_SCHEMA_PATH);
-    post.setEntity(new UrlEncodedFormEntity(queryParams));
-    HttpResponse response = client.execute(post, null).get();
-    String responseJson = getJsonFromHttpResponse(response);
+    String responseJson = postRequest(ControllerApiConstants.ADD_VALUE_SCHEMA_PATH, queryParams);
     return mapper.readValue(responseJson, SchemaResponse.class);
   }
 
@@ -402,14 +363,11 @@ public class ControllerClient implements Closeable {
   }
 
   private SchemaResponse getValueSchema(String clusterName, String storeName, int valueSchemaId) throws IOException, ExecutionException, InterruptedException {
-    List<NameValuePair> queryParams = new ArrayList<>();
+    List<NameValuePair> queryParams = newParams();
     queryParams.add(new BasicNameValuePair(ControllerApiConstants.CLUSTER, clusterName));
     queryParams.add(new BasicNameValuePair(ControllerApiConstants.NAME, storeName));
     queryParams.add(new BasicNameValuePair(ControllerApiConstants.SCHEMA_ID, Integer.toString(valueSchemaId)));
-    String queryString = URLEncodedUtils.format(queryParams, StandardCharsets.UTF_8);
-    final HttpGet get = new HttpGet(controllerUrl + ControllerApiConstants.GET_VALUE_SCHEMA_PATH + "?" + queryString);
-    HttpResponse response = client.execute(get, null).get();
-    String responseJson = getJsonFromHttpResponse(response);
+    String responseJson = getRequest(ControllerApiConstants.GET_VALUE_SCHEMA_PATH, queryParams);
     return mapper.readValue(responseJson, SchemaResponse.class);
   }
 
@@ -422,14 +380,11 @@ public class ControllerClient implements Closeable {
   }
 
   private SchemaResponse getValueSchemaID(String clusterName, String storeName, String valueSchemaStr) throws IOException, ExecutionException, InterruptedException {
-    List<NameValuePair> queryParams = new ArrayList<>();
+    List<NameValuePair> queryParams = newParams();
     queryParams.add(new BasicNameValuePair(ControllerApiConstants.CLUSTER, clusterName));
     queryParams.add(new BasicNameValuePair(ControllerApiConstants.NAME, storeName));
     queryParams.add(new BasicNameValuePair(ControllerApiConstants.VALUE_SCHEMA, valueSchemaStr));
-    final HttpPost post = new HttpPost(controllerUrl + ControllerApiConstants.GET_VALUE_SCHEMA_ID_PATH);
-    post.setEntity(new UrlEncodedFormEntity(queryParams));
-    HttpResponse response = client.execute(post, null).get();
-    String responseJson = getJsonFromHttpResponse(response);
+    String responseJson = postRequest(ControllerApiConstants.GET_VALUE_SCHEMA_ID_PATH, queryParams);
     return mapper.readValue(responseJson, SchemaResponse.class);
   }
 
@@ -442,14 +397,38 @@ public class ControllerClient implements Closeable {
   }
 
   private MultiSchemaResponse getAllValueSchema(String clusterName, String storeName) throws IOException, ExecutionException, InterruptedException {
-    List<NameValuePair> queryParams = new ArrayList<>();
+    List<NameValuePair> queryParams = newParams();
     queryParams.add(new BasicNameValuePair(ControllerApiConstants.CLUSTER, clusterName));
     queryParams.add(new BasicNameValuePair(ControllerApiConstants.NAME, storeName));
-    String queryString = URLEncodedUtils.format(queryParams, StandardCharsets.UTF_8);
-    final HttpGet get = new HttpGet(controllerUrl + ControllerApiConstants.GET_ALL_VALUE_SCHEMA_PATH + "?" + queryString);
-    HttpResponse response = client.execute(get, null).get();
-    String responseJson = getJsonFromHttpResponse(response);
+    String responseJson = getRequest(ControllerApiConstants.GET_ALL_VALUE_SCHEMA_PATH, queryParams);
     return mapper.readValue(responseJson, MultiSchemaResponse.class);
+  }
+
+  /***
+   * Add all global parameters in this method. Always use this method to generate
+   * a new list of NameValuePair objects for making HTTP requests.
+   * @return
+   */
+  private List<NameValuePair> newParams(){
+    List<NameValuePair> params = new ArrayList<>();
+    params.add(new BasicNameValuePair(ControllerApiConstants.HOSTNAME, localHostname));
+    return params;
+  }
+
+  private String getRequest(String path, List<NameValuePair> params)
+      throws ExecutionException, InterruptedException {
+    String queryString = URLEncodedUtils.format(params, StandardCharsets.UTF_8);
+    final HttpGet get = new HttpGet(controllerUrl + path + "?" + queryString);
+    HttpResponse response = client.execute(get, null).get();
+    return getJsonFromHttpResponse(response);
+  }
+
+  private String postRequest(String path, List<NameValuePair> params)
+      throws UnsupportedEncodingException, ExecutionException, InterruptedException {
+    final HttpPost post = new HttpPost(controllerUrl + path);
+    post.setEntity(new UrlEncodedFormEntity(params));
+    HttpResponse response = client.execute(post, null).get();
+    return getJsonFromHttpResponse(response);
   }
 
   public static MultiSchemaResponse getAllValueSchema(String routerUrls, String clusterName, String storeName) {
