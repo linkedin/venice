@@ -2,6 +2,8 @@ package com.linkedin.venice.controller.server;
 
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.controller.Admin;
+import com.linkedin.venice.controllerapi.ControllerResponse;
+import com.linkedin.venice.controllerapi.VersionResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.utils.Utils;
 import java.util.HashMap;
@@ -17,20 +19,22 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.*;
 public class SetVersion {
   public static Route getRoute(Admin admin) {
     return (request, response) -> {
-      Map<String, String> responseMap = new HashMap<>();
+      VersionResponse responseObj = new VersionResponse();
       try {
         AdminSparkServer.validateParams(request, SETVERSION_PARAMS, admin); //throws venice exception
         String clusterName = request.queryParams(CLUSTER);
         String storeName = request.queryParams(NAME);
         int version = Utils.parseIntFromString(request.queryParams(VERSION), VERSION);
+        responseObj.setCluster(clusterName);
+        responseObj.setVersion(version);
+        responseObj.setName(storeName);
         admin.setCurrentVersion(clusterName, storeName, version);
-        responseMap.put(STATUS, "success");
       } catch (VeniceException e) {
-        responseMap.put(ERROR, e.getMessage());
+        responseObj.setError(e.getMessage());
         AdminSparkServer.handleError(e, request, response);
       }
       response.type(HttpConstants.JSON);
-      return AdminSparkServer.mapper.writeValueAsString(responseMap);
+      return AdminSparkServer.mapper.writeValueAsString(responseObj);
     };
   }
 }
