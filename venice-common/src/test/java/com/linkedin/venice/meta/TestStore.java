@@ -1,5 +1,6 @@
 package com.linkedin.venice.meta;
 
+import com.linkedin.venice.exceptions.StorePausedException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.utils.TestUtils;
 
@@ -153,5 +154,56 @@ public class TestStore {
     assertVersionsEquals(store, 2, Arrays.asList(version1, version3, version4), "delete all but 2 active versions");
 
     assertVersionsEquals( store, 5, Arrays.asList(version3 , version4),"delete all error versions");
+  }
+
+
+  @Test
+  public void testOperatingPausedStore(){
+    String storeName = "testPausedStore";
+    Store store = TestUtils.createTestStore(storeName, "owner", System.currentTimeMillis());
+    store.setPaused(true);
+    // add a new version to paused store.
+    try{
+      store.addVersion(new Version(storeName, 1));
+      Assert.fail("Store is paused, can not add new store to it.");
+    }catch (StorePausedException e){
+    }
+    // increase version number for paused store.
+    try{
+      store.increaseVersion();
+      Assert.fail("Store is paused, can not add new store to it.");
+    }catch (StorePausedException e){
+    }
+    // reserve version for paused store.
+    try{
+      store.reserveVersionNumber(2);
+      Assert.fail("Store is paused, can not reserve a new version.");
+    }catch (StorePausedException e){
+    }
+
+    try{
+      store.setCurrentVersion(1);
+      Assert.fail("Store is paused, can not set current version.");
+    }catch (StorePausedException e){
+    }
+
+    try{
+      store.updateVersionStatus(1, VersionStatus.ACTIVE);
+      Assert.fail("Store is paused, can not activated a new version");
+    }catch (StorePausedException e){
+    }
+
+    store.setPaused(false);
+    // After store is resume, add/increase/reserve version for this store as normal
+    store.addVersion(new Version(storeName, 1));
+    Assert.assertEquals(store.getVersions().get(0).getNumber(), 1);
+    store.increaseVersion();
+    Assert.assertEquals(store.getVersions().get(1).getNumber(), 2);
+    store.reserveVersionNumber(3);
+    Assert.assertEquals(store.peekNextVersion().getNumber(), 4);
+    store.setCurrentVersion(1);
+    Assert.assertEquals(store.getCurrentVersion(), 1);
+    store.updateVersionStatus(2, VersionStatus.ACTIVE);
+    Assert.assertEquals(store.getVersions().get(1).getStatus(), VersionStatus.ACTIVE);
   }
 }

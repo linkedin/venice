@@ -118,5 +118,15 @@ public interface Admin {
      */
     Instance getMasterController(String clusterName);
 
+    /**
+    * Pause a store will stop push from going to this store.
+    */
+    void pauseStore(String clusterName, String storeName);
+
+    /**
+    * Resume a store will allow push to go to this store.
+    */
+    void resumeStore(String clusterName, String storeName);
+
     void close();
 }
