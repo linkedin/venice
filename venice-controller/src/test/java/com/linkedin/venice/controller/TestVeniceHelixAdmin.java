@@ -1,6 +1,7 @@
 package com.linkedin.venice.controller;
 
 import com.linkedin.venice.ConfigKeys;
+import com.linkedin.venice.helix.HelixJobRepository;
 import com.linkedin.venice.helix.HelixState;
 import com.linkedin.venice.helix.HelixStatusMessageChannel;
 import com.linkedin.venice.helix.Replica;
@@ -592,5 +593,51 @@ public class TestVeniceHelixAdmin {
 
     }
   }
+
+  @Test
+  public void testPauseStore() {
+    String storeName = "testPausedStore";
+    veniceAdmin.addStore(clusterName, storeName, "unittest");
+    veniceAdmin.pauseStore(clusterName, storeName);
+    Store store = veniceAdmin.getAllStores(clusterName).get(0);
+
+    try {
+      veniceAdmin.addVersion(clusterName, storeName, 1, 1, 1);
+      Assert.fail("Store has been paused, can not accept a new version");
+    } catch (VeniceException e) {
+    }
+    Assert.assertEquals(veniceAdmin.getAllStores(clusterName).get(0), store);
+
+    try {
+      veniceAdmin.incrementVersion(clusterName, storeName, 1, 1);
+      Assert.fail("Store has been paused, can not accept a new version");
+    } catch (VeniceException e) {
+    }
+    Assert.assertEquals(veniceAdmin.getAllStores(clusterName).get(0), store);
+
+    try {
+      veniceAdmin.reserveVersion(clusterName, storeName, 2);
+      Assert.fail("Store has been paused, can not accept a new version");
+    } catch (VeniceException e) {
+    }
+    Assert.assertEquals(veniceAdmin.getAllStores(clusterName).get(0), store);
+
+    veniceAdmin.resumeStore(clusterName ,storeName);
+
+    veniceAdmin.addVersion(clusterName, storeName, 1, 1,1);
+    veniceAdmin.incrementVersion(clusterName, storeName, 1, 1);
+    veniceAdmin.reserveVersion(clusterName, storeName, 3);
+
+    store = veniceAdmin.getAllStores(clusterName).get(0);
+    // version 1 and version 2 are added to this store. And version 3 is reserved.
+    Assert.assertFalse(store.isPaused());
+    Assert.assertEquals(store.getVersions().size(), 2);
+    Assert.assertEquals(store.peekNextVersion().getNumber(), 4);
+    // two offline jobs are running.
+    HelixJobRepository jobRepository = veniceAdmin.getVeniceHelixResource(clusterName).getJobRepository();
+    Assert.assertEquals(jobRepository.getRunningJobOfTopic(Version.composeKafkaTopic(storeName, 1)).size(), 1);
+    Assert.assertEquals(jobRepository.getRunningJobOfTopic(Version.composeKafkaTopic(storeName, 2)).size(), 1);
+  }
+
 
 }

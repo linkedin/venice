@@ -4,7 +4,7 @@ package com.linkedin.venice.meta;
  * Enums of status of verion.
  */
 public enum VersionStatus {
-    STARTED, ACTIVE, ERROR;
+    STARTED, PUSHED, ACTIVE, ERROR;
 
     /**
      * check if a status can be deleted immediately.

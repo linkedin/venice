@@ -1,6 +1,5 @@
 package com.linkedin.venice.controller;
 
-import com.linkedin.venice.helix.HelixInstanceConverter;
 import com.linkedin.venice.helix.HelixReadWriteSchemaRepository;
 import com.linkedin.venice.helix.Replica;
 import com.linkedin.venice.kafka.TopicManager;
@@ -624,6 +623,29 @@ public class VeniceHelixAdmin implements Admin {
             String instanceId = instance.getId();
             return new Instance(instanceId, Utils.parseHostFromHelixNodeIdentifier(instanceId),
                 Utils.parsePortFromHelixNodeIdentifier(instanceId));
+        }
+    }
+
+    @Override
+    public void pauseStore(String clusterName, String storeName) {
+        setPausedForStore(clusterName, storeName, true);
+    }
+
+    @Override
+    public void resumeStore(String clusterName, String storeName) {
+        setPausedForStore(clusterName, storeName, false);
+    }
+
+    private void setPausedForStore(String clusterName, String storeName, boolean paused) {
+        checkControllerMastership(clusterName);
+        HelixReadWriteStoreRepository repository = getVeniceHelixResource(clusterName).getMetadataRepository();
+        repository.lock();
+        try {
+            Store store = repository.getStore(storeName);
+            store.setPaused(paused);
+            repository.updateStore(store);
+        } finally {
+            repository.unLock();
         }
     }
 

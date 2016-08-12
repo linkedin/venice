@@ -121,6 +121,7 @@ public class VeniceJobManager implements StatusMessageHandler<StoreStatusMessage
     }
   }
 
+  //TODO after job is complete, return status of the version.
   public synchronized ExecutionStatus getOfflineJobStatus(String kafkaTopic) {
     List<Job> jobs;
     jobs = jobRepository.getRunningJobOfTopic(kafkaTopic);
@@ -232,11 +233,18 @@ public class VeniceJobManager implements StatusMessageHandler<StoreStatusMessage
     jobRepository.unsubscribeJobStatusChange(job.getKafkaTopic(), this);
     //Do the swap. Change version to active so that router could get the notification and sending the message to this version.
     Store store = metadataRepository.getStore(Version.parseStoreFromKafkaTopicName(job.getKafkaTopic()));
-    updateStoreVersionStatus(job, store, VersionStatus.ACTIVE);
+    VersionStatus newStatus;
+    if (store.isPaused()) {
+      newStatus = VersionStatus.PUSHED;
+    } else {
+      newStatus = VersionStatus.ACTIVE;
+    }
+    updateStoreVersionStatus(job, store, newStatus);
     for (int retry = 2; retry >= 0; retry--) {
       try {
         metadataRepository.updateStore(store);
-        logger.info("Activate version:" + job.getKafkaTopic() + " for store:" + store.getName());
+        logger.info("Update version:" + job.getKafkaTopic() + " for store:" + store.getName() + " to status:"
+            + newStatus);
         break;
       } catch (Exception e) {
         int versionNumber = Version.parseVersionFromKafkaTopicName(job.getKafkaTopic());

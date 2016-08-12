@@ -1,5 +1,6 @@
 package com.linkedin.venice.meta;
 
+import com.linkedin.venice.exceptions.StorePausedException;
 import com.linkedin.venice.exceptions.VeniceException;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -40,6 +41,10 @@ public class Store {
    * assigned.
    */
   private int partitionCount = 0;
+  /**
+   * If a store is paused, new version can not be created for it.
+   */
+  private boolean paused = false;
   /**
    * Type of persistence storage engine.
    */
@@ -92,6 +97,7 @@ public class Store {
   }
 
   public void setCurrentVersion(int currentVersion) {
+    checkPausedStore("setCurrentVersion", currentVersion);
     this.currentVersion = currentVersion;
   }
 
@@ -100,7 +106,7 @@ public class Store {
     return this.reservedVersion;
   }
 
-  public void setReservedVersion(int reservedVersion){
+  public void setReservedVersion(int reservedVersion) {
     this.reservedVersion = reservedVersion;
   }
 
@@ -137,8 +143,17 @@ public class Store {
     return partitionCount;
   }
 
-  public void reserveVersionNumber(int version){
-    if (version < peekNextVersion().getNumber()){
+  public boolean isPaused() {
+    return paused;
+  }
+
+  public void setPaused(boolean paused) {
+    this.paused = paused;
+  }
+
+  public void reserveVersionNumber(int version) {
+    checkPausedStore("reserve", version);
+    if (version < peekNextVersion().getNumber()) {
       throw new VeniceException("Cannot reserve a version number smaller than next available version number");
     }
     reservedVersion = version;
@@ -150,13 +165,14 @@ public class Store {
    * @param version
    */
   public void addVersion(@NotNull Version version) {
+    checkPausedStore("add", version.getNumber());
     if (!name.equals(version.getStoreName())) {
-      throw new IllegalArgumentException("Version dose not belong to this store.");
+      throw new VeniceException("Version dose not belong to this store.");
     }
     int index = 0;
     for (; index < versions.size(); index++) {
       if (versions.get(index).getNumber() == version.getNumber()) {
-        throw new IllegalArgumentException("Version is repeated.Store:" + name + " Number:" + version.getNumber());
+        throw new VeniceException("Version is repeated.Store:" + name + " Number:" + version.getNumber());
       }
       if (versions.get(index).getNumber() > version.getNumber()) {
         break;
@@ -189,6 +205,9 @@ public class Store {
   }
 
   public void updateVersionStatus(int versionNumber, VersionStatus status) {
+    if (status.equals(VersionStatus.ACTIVE)) {
+      checkPausedStore("Activate", versionNumber);
+    }
     for (int i = versions.size() - 1; i >= 0; i--) {
       if (versions.get(i).getNumber() == versionNumber) {
         versions.get(i).setStatus(status);
@@ -205,7 +224,7 @@ public class Store {
     return increaseVersion(true);
   }
 
-  public Version peekNextVersion(){
+  public Version peekNextVersion() {
     return increaseVersion(false);
   }
 
@@ -217,6 +236,7 @@ public class Store {
     if (reservedVersion >= versionNumber){
       versionNumber = reservedVersion + 1; /* must skip past any reserved versions */
     }
+    checkPausedStore("increase", versionNumber);
     Version version = new Version(name, versionNumber);
     if (createNewVersion) {
       addVersion(version);
@@ -224,7 +244,6 @@ public class Store {
     } else {
       return version;
     }
-
   }
 
   public List<Version> retrieveVersionsToDelete(int numVersionsToPreserve) {
@@ -314,6 +333,9 @@ public class Store {
     if (!offLinePushStrategy.equals(store.offLinePushStrategy)) {
       return false;
     }
+    if (paused != store.paused) {
+      return false;
+    }
     return versions.equals(store.versions);
   }
 
@@ -329,6 +351,7 @@ public class Store {
     result = 31 * result + currentVersion;
     result = 31 * result + reservedVersion;
     result = 31 * result + partitionCount;
+    result = 31 * result + (paused ? 1 : 0);
 
     result = 31 * result + persistenceType.hashCode();
     result = 31 * result + routingStrategy.hashCode();
@@ -349,10 +372,17 @@ public class Store {
     clonedStore.setCurrentVersion(currentVersion);
     clonedStore.setReservedVersion(reservedVersion);
     clonedStore.setPartitionCount(partitionCount);
+    clonedStore.setPaused(paused);
 
     for (Version v : this.versions) {
       clonedStore.addVersion(v.cloneVersion());
     }
     return clonedStore;
+  }
+
+  private void checkPausedStore(String action, int version) {
+    if (paused) {
+      throw new StorePausedException(name, action, version);
+    }
   }
 }
