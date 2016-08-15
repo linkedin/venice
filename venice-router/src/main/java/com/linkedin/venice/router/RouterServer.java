@@ -17,6 +17,7 @@ import com.linkedin.venice.helix.HelixAdapterSerializer;
 import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
 import com.linkedin.venice.helix.HelixReadOnlyStoreRepository;
 import com.linkedin.venice.helix.HelixRoutingDataRepository;
+import com.linkedin.venice.router.api.RouterHeartbeat;
 import com.linkedin.venice.router.api.VeniceDispatcher;
 import com.linkedin.venice.router.api.VeniceHostFinder;
 import com.linkedin.venice.router.api.VeniceHostHealth;
@@ -75,6 +76,7 @@ public class RouterServer extends AbstractVeniceService {
   private ChannelFuture serverFuture = null;
   private NettyResourceRegistry registry = null;
   private VeniceDispatcher dispatcher;
+  private RouterHeartbeat heartbeat;
 
   public static void main(String args[]) throws Exception {
 
@@ -201,7 +203,8 @@ public class RouterServer extends AbstractVeniceService {
     VenicePartitionFinder partitionFinder = new VenicePartitionFinder(routingDataRepository);
     VeniceHostHealth healthMonitor = new VeniceHostHealth();
     dispatcher = new VeniceDispatcher(healthMonitor);
-
+    heartbeat = new RouterHeartbeat(dispatcher.getClientPool(), healthMonitor);
+    heartbeat.startInner();
     VeniceRouterImpl router
         = routerRegistry.register(new VeniceRouterImpl(
         "test", serverBossPool, ioWorkerPool, workerExecutor, connectionLimit, timeoutProcessor, idleTimer, serverSocketOptions,
@@ -251,6 +254,7 @@ public class RouterServer extends AbstractVeniceService {
     if (zkClient != null) {
       zkClient.close();
     }
+    heartbeat.stopInner();
     logger.info(this.toString() + " is stopped");
   }
 

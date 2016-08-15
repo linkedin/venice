@@ -103,11 +103,11 @@ public class GetRequestHttpHandler extends ChannelInboundHandlerAdapter {
     String[] requestParts = req.getUri().split("/");
     if (req.getMethod().equals(HttpMethod.GET) &&
         requestParts.length >=2 &&
-        requestParts[1].equals("storage")) {
+        requestParts[1].equalsIgnoreCase(QueryAction.STORAGE.toString())) {
       return QueryAction.STORAGE;
     } else if (req.getMethod().equals(HttpMethod.GET) &&
         requestParts.length >=2 &&
-        requestParts[1].equals("health")) {
+        requestParts[1].equalsIgnoreCase(QueryAction.HEALTH.toString())) {
       return QueryAction.HEALTH;
     } else {
       throw new VeniceException("Only able to parse GET requests for actions: storage, health");
