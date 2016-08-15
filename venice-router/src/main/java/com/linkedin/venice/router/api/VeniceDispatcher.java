@@ -102,7 +102,7 @@ public class VeniceDispatcher implements PartitionDispatchHandler<Instance, Veni
       public CloseableHttpAsyncClient apply(Instance instance) {
         CloseableHttpAsyncClient httpClient = HttpAsyncClients.custom().setConnectionReuseStrategy(new DefaultConnectionReuseStrategy())  //Supports connection re-use if able
             .setMaxConnPerRoute(2) // concurrent execute commands beyond this limit get queued internally by the client
-            .setMaxConnTotal(2).build();
+            .setMaxConnTotal(2).build(); // testing shows that > 2 concurrent request increase failure rate, hence using connection pool.
         httpClient.start();
         return httpClient;
       }
@@ -128,7 +128,7 @@ public class VeniceDispatcher implements PartitionDispatchHandler<Instance, Veni
         String offsetKey = path.getResourceName() + "_" + partitionName;
         if (offsets.containsKey(offsetKey)
             && offset + acceptableOffsetLag < offsets.get(offsetKey) ) {
-          healthMontior.setHostAsSlow(host, partitionName);
+          healthMontior.setPartitionAsSlow(host, partitionName);
           contextExecutor.execute(() -> {
             // Triggers an immediate router retry excluding the host we selected.
             retryFuture.setSuccess(HttpResponseStatus.SERVICE_UNAVAILABLE);
@@ -223,5 +223,9 @@ public class VeniceDispatcher implements PartitionDispatchHandler<Instance, Veni
 
   protected static String numberFromPartitionName(String partitionName){
     return partitionName.substring(partitionName.lastIndexOf("_")+1);
+  }
+
+  public Map<Instance, CloseableHttpAsyncClient> getClientPool(){
+    return clientPool;
   }
 }
