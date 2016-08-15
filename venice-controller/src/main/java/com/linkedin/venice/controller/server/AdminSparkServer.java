@@ -15,6 +15,7 @@ import spark.Response;
 import spark.Spark;
 
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.*;
+import static com.linkedin.venice.controllerapi.ControllerRoute.*;
 
 
 /**
@@ -38,48 +39,48 @@ public class AdminSparkServer extends AbstractVeniceService {
   public boolean startInner() throws Exception {
     Spark.port(port);
 
-    Spark.get(CREATE_PATH, (request, response) -> {
+    Spark.get(CREATE.getPath(), (request, response) -> {
       response.type(HttpConstants.TEXT_HTML);
-      return writeMenu("Create New Store", CREATE_PATH, CREATE_PARAMS);
+      return writeMenu("Create New Store", CREATE.getPath(), CREATE.getParams());
     });
 
-    Spark.get(SETVERSION_PATH, (request, response) -> {
+    Spark.get(SETVERSION.getPath(), (request, response) -> {
       response.type(HttpConstants.TEXT_HTML);
-      return writeMenu("Set Active Version", SETVERSION_PATH, SETVERSION_PARAMS);
+      return writeMenu("Set Active Version", SETVERSION.getPath(), SETVERSION.getParams());
     });
 
-    Spark.get(CURRENT_VERSION_PATH, CurrentVersion.getRoute(admin));
+    Spark.get(CURRENT_VERSION.getPath(), CurrentVersion.getRoute(admin));
 
-    Spark.get(ACTIVE_VERSIONS_PATH, ActiveVersions.getRoute(admin));
+    Spark.get(ACTIVE_VERSIONS.getPath(), ActiveVersions.getRoute(admin));
 
-    Spark.get(JOB_PATH, JobStatus.getRoute(admin));
+    Spark.get(JOB.getPath(), JobStatus.getRoute(admin));
 
-    Spark.post(CREATE_PATH, CreateVersion.getRoute(admin));
+    Spark.post(CREATE.getPath(), CreateVersion.getRoute(admin));
 
-    Spark.post(NEWSTORE_PATH, CreateStore.getRoute(admin));
+    Spark.post(NEWSTORE.getPath(), CreateStore.getRoute(admin));
 
-    Spark.get(LIST_STORES_PATH, AllStores.getRoute(admin));
+    Spark.get(LIST_STORES.getPath(), AllStores.getRoute(admin));
 
     // Only to be used manually and for testing purposes.
-    Spark.post(SETVERSION_PATH, SetVersion.getRoute(admin));
+    Spark.post(SETVERSION.getPath(), SetVersion.getRoute(admin));
 
     /**
      * Query the controller for the next version of a store that should be created
      */
-    Spark.get(NEXTVERSION_PATH, NextVersion.getRoute(admin));
+    Spark.get(NEXTVERSION.getPath(), NextVersion.getRoute(admin));
 
-    Spark.post(RESERVE_VERSION_PATH, ReserveVersion.getRoute(admin));
+    Spark.post(RESERVE_VERSION.getPath(), ReserveVersion.getRoute(admin));
 
     // Operations for key schema/value schema
-    Spark.post(INIT_KEY_SCHEMA_PATH, SchemaRoutes.initKeySchema(admin));
-    Spark.get(GET_KEY_SCHEMA_PATH, SchemaRoutes.getKeySchema(admin));
-    Spark.post(ADD_VALUE_SCHEMA_PATH, SchemaRoutes.addValueSchema(admin));
-    Spark.get(GET_VALUE_SCHEMA_PATH, SchemaRoutes.getValueSchema(admin));
-    Spark.post(GET_VALUE_SCHEMA_ID_PATH, SchemaRoutes.getValueSchemaID(admin));
-    Spark.get(GET_ALL_VALUE_SCHEMA_PATH, SchemaRoutes.getAllValueSchema(admin));
+    Spark.post(INIT_KEY_SCHEMA.getPath(), SchemaRoutes.initKeySchema(admin));
+    Spark.get(GET_KEY_SCHEMA.getPath(), SchemaRoutes.getKeySchema(admin));
+    Spark.post(ADD_VALUE_SCHEMA.getPath(), SchemaRoutes.addValueSchema(admin));
+    Spark.get(GET_VALUE_SCHEMA.getPath(), SchemaRoutes.getValueSchema(admin));
+    Spark.post(GET_VALUE_SCHEMA_ID.getPath(), SchemaRoutes.getValueSchemaID(admin));
+    Spark.get(GET_ALL_VALUE_SCHEMA.getPath(), SchemaRoutes.getAllValueSchema(admin));
     // This API should be used by CORP controller only. H2V could talk to any of controllers in CORP to find who is the
     // current master CORP controller. In other colos, router will find the master controller instead of calling this API.
-    Spark.get(GET_MASTER_CONTROLLER_PATH, MasterController.getRoute(admin));
+    Spark.get(GET_MASTER_CONTROLLER.getPath(), MasterController.getRoute(admin));
 
     Spark.awaitInitialization(); // Wait for server to be initialized
 

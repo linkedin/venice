@@ -3,19 +3,14 @@ package com.linkedin.venice.controller.server;
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controllerapi.MultiStoreResponse;
-import com.linkedin.venice.controllerapi.MultiVersionResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Store;
-import com.linkedin.venice.meta.Version;
-import com.linkedin.venice.meta.VersionStatus;
-import java.util.ArrayList;
 import java.util.List;
 import spark.Route;
 
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.CLUSTER;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.CURRENT_VERSION_PARAMS;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.LIST_STORES_PARAMS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.NAME;
+import static com.linkedin.venice.controllerapi.ControllerRoute.LIST_STORES;
 
 
 /**
@@ -26,7 +21,7 @@ public class AllStores {
     return (request, response) -> {
       MultiStoreResponse responseObject = new MultiStoreResponse();
       try {
-        AdminSparkServer.validateParams(request, LIST_STORES_PARAMS, admin);
+        AdminSparkServer.validateParams(request, LIST_STORES.getParams(), admin);
         responseObject.setCluster(request.queryParams(CLUSTER));
         responseObject.setName(request.queryParams(NAME));
         List<Store> storeList = admin.getAllStores(responseObject.getCluster());

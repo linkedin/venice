@@ -2,15 +2,15 @@ package com.linkedin.venice.controller.server;
 
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.controller.Admin;
-import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.VersionResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.utils.Utils;
-import java.util.HashMap;
-import java.util.Map;
 import spark.Route;
 
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.*;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.CLUSTER;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.NAME;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.VERSION;
+import static com.linkedin.venice.controllerapi.ControllerRoute.SETVERSION;
 
 
 /**
@@ -21,7 +21,7 @@ public class SetVersion {
     return (request, response) -> {
       VersionResponse responseObj = new VersionResponse();
       try {
-        AdminSparkServer.validateParams(request, SETVERSION_PARAMS, admin); //throws venice exception
+        AdminSparkServer.validateParams(request, SETVERSION.getParams(), admin); //throws venice exception
         String clusterName = request.queryParams(CLUSTER);
         String storeName = request.queryParams(NAME);
         int version = Utils.parseIntFromString(request.queryParams(VERSION), VERSION);

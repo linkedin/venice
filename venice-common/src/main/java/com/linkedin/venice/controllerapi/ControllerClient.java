@@ -117,7 +117,7 @@ public class ControllerClient implements Closeable {
     params.add(new BasicNameValuePair(ControllerApiConstants.STORE_SIZE, Long.toString(storeSize)));
     params.add(new BasicNameValuePair(ControllerApiConstants.KEY_SCHEMA, keySchema));
     params.add(new BasicNameValuePair(ControllerApiConstants.VALUE_SCHEMA, valueSchema));
-    String responseJson = postRequest(ControllerApiConstants.CREATE_PATH, params);
+    String responseJson = postRequest(ControllerRoute.CREATE.getPath(), params);
     return mapper.readValue(responseJson, VersionCreationResponse.class);
   }
 
@@ -139,7 +139,7 @@ public class ControllerClient implements Closeable {
     params.add(new BasicNameValuePair(ControllerApiConstants.CLUSTER, clusterName));
     params.add(new BasicNameValuePair(ControllerApiConstants.NAME, storeName));
     params.add(new BasicNameValuePair(ControllerApiConstants.OWNER, owner));
-    String responseJson = postRequest(ControllerApiConstants.NEWSTORE_PATH, params);
+    String responseJson = postRequest(ControllerRoute.NEWSTORE.getPath(), params);
     return mapper.readValue(responseJson, NewStoreResponse.class);
   }
 
@@ -157,7 +157,7 @@ public class ControllerClient implements Closeable {
     params.add(new BasicNameValuePair(ControllerApiConstants.CLUSTER, clusterName));
     params.add(new BasicNameValuePair(ControllerApiConstants.NAME, storeName));
     params.add(new BasicNameValuePair(ControllerApiConstants.VERSION, Integer.toString(version)));
-    String responseJson = postRequest(ControllerApiConstants.SETVERSION_PATH, params);
+    String responseJson = postRequest(ControllerRoute.SETVERSION.getPath(), params);
     return mapper.readValue(responseJson, VersionResponse.class);
   }
 
@@ -177,7 +177,7 @@ public class ControllerClient implements Closeable {
     queryParams.add(new BasicNameValuePair(ControllerApiConstants.CLUSTER, clusterName));
     queryParams.add(new BasicNameValuePair(ControllerApiConstants.NAME, storeName));
     queryParams.add(new BasicNameValuePair(ControllerApiConstants.VERSION, Integer.toString(version)));
-    String responseJson = getRequest(ControllerApiConstants.JOB_PATH, queryParams);
+    String responseJson = getRequest(ControllerRoute.JOB.getPath(), queryParams);
     return mapper.readValue(responseJson, JobStatusQueryResponse.class);
   }
 
@@ -212,7 +212,7 @@ public class ControllerClient implements Closeable {
       throws IOException, ExecutionException, InterruptedException {
     List<NameValuePair> queryParams = newParams();
     queryParams.add(new BasicNameValuePair(ControllerApiConstants.CLUSTER, clusterName));
-    String responseJson = getRequest(ControllerApiConstants.LIST_STORES_PATH, queryParams);
+    String responseJson = getRequest(ControllerRoute.LIST_STORES.getPath(), queryParams);
     return mapper.readValue(responseJson, MultiStoreResponse.class);
   }
 
@@ -229,7 +229,7 @@ public class ControllerClient implements Closeable {
     List<NameValuePair> queryParams = newParams();
     queryParams.add(new BasicNameValuePair(ControllerApiConstants.CLUSTER, clusterName));
     queryParams.add(new BasicNameValuePair(ControllerApiConstants.NAME, storeName));
-    String responseJson = getRequest(ControllerApiConstants.NEXTVERSION_PATH, queryParams);
+    String responseJson = getRequest(ControllerRoute.NEXTVERSION.getPath(), queryParams);
     return mapper.readValue(responseJson, VersionResponse.class);
   }
 
@@ -256,7 +256,7 @@ public class ControllerClient implements Closeable {
     List<NameValuePair> queryParams = newParams();
     queryParams.add(new BasicNameValuePair(ControllerApiConstants.CLUSTER, clusterName));
     queryParams.add(new BasicNameValuePair(ControllerApiConstants.NAME, storeName));
-    String responseJson = getRequest(ControllerApiConstants.CURRENT_VERSION_PATH, queryParams);
+    String responseJson = getRequest(ControllerRoute.CURRENT_VERSION.getPath(), queryParams);
     return mapper.readValue(responseJson, VersionResponse.class);
   }
 
@@ -273,7 +273,7 @@ public class ControllerClient implements Closeable {
     List<NameValuePair> queryParams = newParams();
     queryParams.add(new BasicNameValuePair(ControllerApiConstants.CLUSTER, clusterName));
     queryParams.add(new BasicNameValuePair(ControllerApiConstants.NAME, storeName));
-    String responseJson = getRequest(ControllerApiConstants.ACTIVE_VERSIONS_PATH, queryParams);
+    String responseJson = getRequest(ControllerRoute.ACTIVE_VERSIONS.getPath(), queryParams);
     return mapper.readValue(responseJson, MultiVersionResponse.class);
   }
 
@@ -291,7 +291,7 @@ public class ControllerClient implements Closeable {
     queryParams.add(new BasicNameValuePair(ControllerApiConstants.CLUSTER, clusterName));
     queryParams.add(new BasicNameValuePair(ControllerApiConstants.NAME, storeName));
     queryParams.add(new BasicNameValuePair(ControllerApiConstants.VERSION, Integer.toString(version)));
-    String responseJson = postRequest(ControllerApiConstants.RESERVE_VERSION_PATH, queryParams);
+    String responseJson = postRequest(ControllerRoute.RESERVE_VERSION.getPath(), queryParams);
     return mapper.readValue(responseJson, VersionResponse.class);
   }
 
@@ -317,7 +317,7 @@ public class ControllerClient implements Closeable {
     queryParams.add(new BasicNameValuePair(ControllerApiConstants.CLUSTER, clusterName));
     queryParams.add(new BasicNameValuePair(ControllerApiConstants.NAME, storeName));
     queryParams.add(new BasicNameValuePair(ControllerApiConstants.KEY_SCHEMA, keySchemaStr));
-    String responseJson = postRequest(ControllerApiConstants.INIT_KEY_SCHEMA_PATH, queryParams);
+    String responseJson = postRequest(ControllerRoute.INIT_KEY_SCHEMA.getPath(), queryParams);
     return mapper.readValue(responseJson, SchemaResponse.class);
   }
 
@@ -333,7 +333,7 @@ public class ControllerClient implements Closeable {
     List<NameValuePair> queryParams = newParams();
     queryParams.add(new BasicNameValuePair(ControllerApiConstants.CLUSTER, clusterName));
     queryParams.add(new BasicNameValuePair(ControllerApiConstants.NAME, storeName));
-    String responseJson = getRequest(ControllerApiConstants.GET_KEY_SCHEMA_PATH, queryParams);
+    String responseJson = getRequest(ControllerRoute.GET_KEY_SCHEMA.getPath(), queryParams);
     return mapper.readValue(responseJson, SchemaResponse.class);
   }
 
@@ -350,7 +350,7 @@ public class ControllerClient implements Closeable {
     queryParams.add(new BasicNameValuePair(ControllerApiConstants.CLUSTER, clusterName));
     queryParams.add(new BasicNameValuePair(ControllerApiConstants.NAME, storeName));
     queryParams.add(new BasicNameValuePair(ControllerApiConstants.VALUE_SCHEMA, valueSchemaStr));
-    String responseJson = postRequest(ControllerApiConstants.ADD_VALUE_SCHEMA_PATH, queryParams);
+    String responseJson = postRequest(ControllerRoute.ADD_VALUE_SCHEMA.getPath(), queryParams);
     return mapper.readValue(responseJson, SchemaResponse.class);
   }
 
@@ -367,7 +367,7 @@ public class ControllerClient implements Closeable {
     queryParams.add(new BasicNameValuePair(ControllerApiConstants.CLUSTER, clusterName));
     queryParams.add(new BasicNameValuePair(ControllerApiConstants.NAME, storeName));
     queryParams.add(new BasicNameValuePair(ControllerApiConstants.SCHEMA_ID, Integer.toString(valueSchemaId)));
-    String responseJson = getRequest(ControllerApiConstants.GET_VALUE_SCHEMA_PATH, queryParams);
+    String responseJson = getRequest(ControllerRoute.GET_VALUE_SCHEMA.getPath(), queryParams);
     return mapper.readValue(responseJson, SchemaResponse.class);
   }
 
@@ -384,7 +384,7 @@ public class ControllerClient implements Closeable {
     queryParams.add(new BasicNameValuePair(ControllerApiConstants.CLUSTER, clusterName));
     queryParams.add(new BasicNameValuePair(ControllerApiConstants.NAME, storeName));
     queryParams.add(new BasicNameValuePair(ControllerApiConstants.VALUE_SCHEMA, valueSchemaStr));
-    String responseJson = postRequest(ControllerApiConstants.GET_VALUE_SCHEMA_ID_PATH, queryParams);
+    String responseJson = postRequest(ControllerRoute.GET_VALUE_SCHEMA_ID.getPath(), queryParams);
     return mapper.readValue(responseJson, SchemaResponse.class);
   }
 
@@ -400,18 +400,29 @@ public class ControllerClient implements Closeable {
     List<NameValuePair> queryParams = newParams();
     queryParams.add(new BasicNameValuePair(ControllerApiConstants.CLUSTER, clusterName));
     queryParams.add(new BasicNameValuePair(ControllerApiConstants.NAME, storeName));
-    String responseJson = getRequest(ControllerApiConstants.GET_ALL_VALUE_SCHEMA_PATH, queryParams);
+    String responseJson = getRequest(ControllerRoute.GET_ALL_VALUE_SCHEMA.getPath(), queryParams);
     return mapper.readValue(responseJson, MultiSchemaResponse.class);
   }
 
   /***
-   * Add all global parameters in this method. Always use this method to generate
+   * Add all global parameters in this method. Always use a form of this method to generate
    * a new list of NameValuePair objects for making HTTP requests.
    * @return
    */
   private List<NameValuePair> newParams(){
     List<NameValuePair> params = new ArrayList<>();
     params.add(new BasicNameValuePair(ControllerApiConstants.HOSTNAME, localHostname));
+    return params;
+  }
+
+  /**
+   * Add global parameters and also set the clustername parameter to the passed in value.
+   * @param clusterName
+   * @return
+   */
+  private List<NameValuePair> newParams(String clusterName){
+    List<NameValuePair> params = newParams();
+    params.add(new BasicNameValuePair(ControllerApiConstants.CLUSTER, clusterName));
     return params;
   }
 

@@ -10,13 +10,8 @@ import com.linkedin.venice.utils.Utils;
 import org.apache.log4j.Logger;
 import spark.Route;
 
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.CLUSTER;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.CREATE_PARAMS;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.KEY_SCHEMA;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.NAME;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.OWNER;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORE_SIZE;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.VALUE_SCHEMA;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.*;
+import static com.linkedin.venice.controllerapi.ControllerRoute.CREATE;
 
 
 /**
@@ -33,7 +28,7 @@ public class CreateVersion {
     return (request, response) -> {
       VersionCreationResponse responseObject = new VersionCreationResponse();
       try {
-        AdminSparkServer.validateParams(request, CREATE_PARAMS, admin);
+        AdminSparkServer.validateParams(request, CREATE.getParams(), admin);
         responseObject.setCluster(request.queryParams(CLUSTER));
         responseObject.setName(request.queryParams(NAME));
         responseObject.setOwner(request.queryParams(OWNER));

@@ -7,7 +7,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import spark.Route;
 
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.CLUSTER;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.GET_MASTER_CONTROLLER_PARAMS;
+import static com.linkedin.venice.controllerapi.ControllerRoute.GET_MASTER_CONTROLLER;
 
 
 public class MasterController {
@@ -15,7 +15,7 @@ public class MasterController {
     return (request, response) -> {
       MasterControllerResponse responseObject = new MasterControllerResponse();
       try {
-        AdminSparkServer.validateParams(request, GET_MASTER_CONTROLLER_PARAMS, admin);
+        AdminSparkServer.validateParams(request, GET_MASTER_CONTROLLER.getParams(), admin);
         String cluster = request.queryParams(CLUSTER);
 
         responseObject.setCluster(cluster);

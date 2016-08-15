@@ -7,8 +7,8 @@ import com.linkedin.venice.exceptions.VeniceException;
 import spark.Route;
 
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.CLUSTER;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.CURRENT_VERSION_PARAMS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.NAME;
+import static com.linkedin.venice.controllerapi.ControllerRoute.CURRENT_VERSION;
 
 
 /**
@@ -19,7 +19,7 @@ public class CurrentVersion {
     return (request, response) -> {
       VersionResponse responseObject = new VersionResponse();
       try {
-        AdminSparkServer.validateParams(request, CURRENT_VERSION_PARAMS, admin);
+        AdminSparkServer.validateParams(request, CURRENT_VERSION.getParams(), admin);
         responseObject.setCluster(request.queryParams(CLUSTER));
         responseObject.setName(request.queryParams(NAME));
         int version = admin.getCurrentVersion(responseObject.getCluster(), responseObject.getName());

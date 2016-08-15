@@ -27,6 +27,9 @@ import org.apache.http.message.BasicNameValuePair;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
+import static com.linkedin.venice.controllerapi.ControllerRoute.CREATE;
+import static com.linkedin.venice.controllerapi.ControllerRoute.JOB;
+
 
 /**
  * Created by mwise on 5/23/16.
@@ -68,7 +71,7 @@ public class TestBackupControllerResponse {
     httpClient.start();
     String controllerUrl = controller.getControllerUrl();
 
-    final HttpPost post = new HttpPost(controllerUrl + ControllerApiConstants.CREATE_PATH);
+    final HttpPost post = new HttpPost(controllerUrl + CREATE.getPath());
     List<NameValuePair> params = new ArrayList<NameValuePair>();
     params.add(new BasicNameValuePair(ControllerApiConstants.CLUSTER, clusterName));
     post.setEntity(new UrlEncodedFormEntity(params));
@@ -80,7 +83,7 @@ public class TestBackupControllerResponse {
     List<NameValuePair> queryParams = new ArrayList<>();
     queryParams.add(new BasicNameValuePair(ControllerApiConstants.CLUSTER, clusterName));
     String queryString = URLEncodedUtils.format(queryParams, StandardCharsets.UTF_8);
-    final HttpGet get = new HttpGet(controllerUrl + ControllerApiConstants.JOB_PATH + "?" + queryString);
+    final HttpGet get = new HttpGet(controllerUrl + JOB.getPath() + "?" + queryString);
     HttpResponse response2 = httpClient.execute(get, null).get();
 
     int responseStatus2 = response2.getStatusLine().getStatusCode();

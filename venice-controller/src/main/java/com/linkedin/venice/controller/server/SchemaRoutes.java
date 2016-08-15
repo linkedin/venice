@@ -13,6 +13,9 @@ import spark.Route;
 
 import java.util.Collection;
 
+import static com.linkedin.venice.controllerapi.ControllerRoute.*;
+
+
 public class SchemaRoutes {
   private SchemaRoutes() {}
 
@@ -21,7 +24,7 @@ public class SchemaRoutes {
     return (request, response) -> {
       SchemaResponse responseObject = new SchemaResponse();
       try {
-        AdminSparkServer.validateParams(request, ControllerApiConstants.INIT_KEY_SCHEMA_PARAMS, admin);
+        AdminSparkServer.validateParams(request, INIT_KEY_SCHEMA.getParams(), admin);
         responseObject.setCluster(request.queryParams(ControllerApiConstants.CLUSTER));
         responseObject.setName(request.queryParams(ControllerApiConstants.NAME));
         SchemaEntry keySchemaEntry = admin.initKeySchema(responseObject.getCluster(),
@@ -43,7 +46,7 @@ public class SchemaRoutes {
     return (request, response) -> {
       SchemaResponse responseObject = new SchemaResponse();
       try {
-        AdminSparkServer.validateParams(request, ControllerApiConstants.GET_KEY_SCHEMA_PARAMS, admin);
+        AdminSparkServer.validateParams(request, GET_KEY_SCHEMA.getParams(), admin);
         responseObject.setCluster(request.queryParams(ControllerApiConstants.CLUSTER));
         responseObject.setName(request.queryParams(ControllerApiConstants.NAME));
         SchemaEntry keySchemaEntry = admin.getKeySchema(responseObject.getCluster(),
@@ -67,7 +70,7 @@ public class SchemaRoutes {
     return (request, response) -> {
       SchemaResponse responseObject = new SchemaResponse();
       try {
-        AdminSparkServer.validateParams(request, ControllerApiConstants.ADD_VALUE_SCHEMA_PARAMS, admin);
+        AdminSparkServer.validateParams(request, ADD_VALUE_SCHEMA.getParams(), admin);
         responseObject.setCluster(request.queryParams(ControllerApiConstants.CLUSTER));
         responseObject.setName(request.queryParams(ControllerApiConstants.NAME));
         SchemaEntry valueSchemaEntry = admin.addValueSchema(responseObject.getCluster(),
@@ -89,7 +92,7 @@ public class SchemaRoutes {
     return (request, response) -> {
       SchemaResponse responseObject = new SchemaResponse();
       try {
-        AdminSparkServer.validateParams(request, ControllerApiConstants.GET_VALUE_SCHEMA_PARAMS, admin);
+        AdminSparkServer.validateParams(request, GET_VALUE_SCHEMA.getParams(), admin);
         responseObject.setCluster(request.queryParams(ControllerApiConstants.CLUSTER));
         responseObject.setName(request.queryParams(ControllerApiConstants.NAME));
         String schemaId = request.queryParams(ControllerApiConstants.SCHEMA_ID);
@@ -116,7 +119,7 @@ public class SchemaRoutes {
     return (request, response) -> {
       SchemaResponse responseObject = new SchemaResponse();
       try {
-        AdminSparkServer.validateParams(request, ControllerApiConstants.GET_VALUE_SCHEMA_ID_PARAMS, admin);
+        AdminSparkServer.validateParams(request, GET_VALUE_SCHEMA_ID.getParams(), admin);
         responseObject.setCluster(request.queryParams(ControllerApiConstants.CLUSTER));
         responseObject.setName(request.queryParams(ControllerApiConstants.NAME));
         responseObject.setSchemaStr(request.queryParams(ControllerApiConstants.VALUE_SCHEMA));
@@ -141,7 +144,7 @@ public class SchemaRoutes {
     return (request, response) -> {
       MultiSchemaResponse responseObject = new MultiSchemaResponse();
       try {
-        AdminSparkServer.validateParams(request, ControllerApiConstants.GET_ALL_VALUE_SCHEMA_PARAMS, admin);
+        AdminSparkServer.validateParams(request, GET_ALL_VALUE_SCHEMA.getParams(), admin);
         responseObject.setCluster(request.queryParams(ControllerApiConstants.CLUSTER));
         responseObject.setName(request.queryParams(ControllerApiConstants.NAME));
         Collection<SchemaEntry> valueSchemaEntries = admin.getValueSchemas(responseObject.getCluster(), responseObject.getName());
