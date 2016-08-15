@@ -9,8 +9,8 @@ import spark.Route;
 
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.CLUSTER;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.NAME;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.RESERVE_VERSION_PARAMS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.VERSION;
+import static com.linkedin.venice.controllerapi.ControllerRoute.RESERVE_VERSION;
 
 
 /**
@@ -21,7 +21,7 @@ public class ReserveVersion {
     return (request, response) -> {
       VersionResponse responseObject = new VersionResponse();
       try {
-        AdminSparkServer.validateParams(request, RESERVE_VERSION_PARAMS, admin);
+        AdminSparkServer.validateParams(request, RESERVE_VERSION.getParams(), admin);
         responseObject.setCluster(request.queryParams(CLUSTER));
         responseObject.setName(request.queryParams(NAME));
         responseObject.setVersion(Utils.parseIntFromString(request.queryParams(VERSION), VERSION));

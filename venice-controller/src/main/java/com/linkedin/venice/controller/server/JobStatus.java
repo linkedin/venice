@@ -9,9 +9,9 @@ import com.linkedin.venice.utils.Utils;
 import spark.Route;
 
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.CLUSTER;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.JOB_PARMAS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.NAME;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.VERSION;
+import static com.linkedin.venice.controllerapi.ControllerRoute.JOB;
 
 
 /**
@@ -22,7 +22,7 @@ public class JobStatus {
     return (request, response) -> {
       JobStatusQueryResponse responseObject = new JobStatusQueryResponse();
       try {
-        AdminSparkServer.validateParams(request, JOB_PARMAS, admin);
+        AdminSparkServer.validateParams(request, JOB.getParams(), admin);
         responseObject.setCluster(request.queryParams(CLUSTER));
         responseObject.setName(request.queryParams(NAME));
         responseObject.setVersion(Utils.parseIntFromString(request.queryParams(VERSION), VERSION));

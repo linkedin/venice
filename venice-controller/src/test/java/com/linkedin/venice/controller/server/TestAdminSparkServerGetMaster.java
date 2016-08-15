@@ -1,7 +1,6 @@
 package com.linkedin.venice.controller.server;
 
 import com.linkedin.venice.controllerapi.ControllerApiConstants;
-import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.MasterControllerResponse;
 import com.linkedin.venice.integration.utils.KafkaBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
@@ -26,6 +25,7 @@ import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
 import static com.linkedin.venice.controller.server.AdminSparkServer.mapper;
+import static com.linkedin.venice.controllerapi.ControllerRoute.GET_MASTER_CONTROLLER;
 
 
 /**
@@ -59,7 +59,7 @@ public class TestAdminSparkServerGetMaster {
     queryParams.add(new BasicNameValuePair(ControllerApiConstants.HOSTNAME, "some-hostname"));
     String queryString = URLEncodedUtils.format(queryParams, StandardCharsets.UTF_8);
 
-    HttpGet get = new HttpGet(controllerUrl + ControllerApiConstants.GET_MASTER_CONTROLLER_PATH + "?" + queryString);
+    HttpGet get = new HttpGet(controllerUrl + GET_MASTER_CONTROLLER.getPath() + "?" + queryString);
     HttpResponse response = client.execute(get);
     String jsonStr;
     try (InputStream bodyStream = response.getEntity().getContent()) {

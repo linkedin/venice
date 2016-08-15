@@ -8,8 +8,8 @@ import spark.Route;
 
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.CLUSTER;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.NAME;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.NEWSTORE_PARAMS;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.OWNER;
+import static com.linkedin.venice.controllerapi.ControllerRoute.NEWSTORE;
 
 
 /**
@@ -20,7 +20,7 @@ public class CreateStore {
     return (request, response) -> {
       NewStoreResponse responseObject = new NewStoreResponse();
       try {
-        AdminSparkServer.validateParams(request, NEWSTORE_PARAMS, admin);
+        AdminSparkServer.validateParams(request, NEWSTORE.getParams(), admin);
         responseObject.setCluster(request.queryParams(CLUSTER));
         responseObject.setName(request.queryParams(NAME));
         responseObject.setOwner(request.queryParams(OWNER));
