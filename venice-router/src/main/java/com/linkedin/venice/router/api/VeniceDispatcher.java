@@ -26,6 +26,7 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.router.stats.RouterAggStats;
 import org.apache.commons.io.IOUtils;
 import org.apache.http.HttpStatus;
+import org.apache.http.client.config.RequestConfig;
 import org.apache.http.client.methods.HttpGet;
 import org.apache.http.concurrent.FutureCallback;
 import org.apache.http.impl.DefaultConnectionReuseStrategy;
@@ -61,10 +62,17 @@ public class VeniceDispatcher implements PartitionDispatchHandler<Instance, Veni
 
   // How many offsets behind can a storage node be for a partition and still be considered 'caught up'
   private long acceptableOffsetLag = 0; /* TODO: make this configurable for streaming use-case */
+  private int clientTimeoutMillis;
 
-  public VeniceDispatcher(VeniceHostHealth healthMonitor){
+  public VeniceDispatcher(VeniceHostHealth healthMonitor, int clientTimeoutMillis){
     clientPool = new ConcurrentHashMap<>();
     this.healthMontior = healthMonitor;
+    this.clientTimeoutMillis = clientTimeoutMillis;
+  }
+
+  @Deprecated
+  public VeniceDispatcher(VeniceHostHealth healthMonitor){
+    this(healthMonitor, 10000);
   }
 
   @Override
@@ -102,7 +110,14 @@ public class VeniceDispatcher implements PartitionDispatchHandler<Instance, Veni
       public CloseableHttpAsyncClient apply(Instance instance) {
         CloseableHttpAsyncClient httpClient = HttpAsyncClients.custom().setConnectionReuseStrategy(new DefaultConnectionReuseStrategy())  //Supports connection re-use if able
             .setMaxConnPerRoute(2) // concurrent execute commands beyond this limit get queued internally by the client
-            .setMaxConnTotal(2).build(); // testing shows that > 2 concurrent request increase failure rate, hence using connection pool.
+            .setMaxConnTotal(2) // testing shows that > 2 concurrent request increase failure rate, hence using connection pool.
+            .setDefaultRequestConfig(
+                RequestConfig.custom()
+                    .setSocketTimeout(clientTimeoutMillis)
+                    .setConnectTimeout(clientTimeoutMillis)
+                    .setConnectionRequestTimeout(clientTimeoutMillis).build() // 10 second sanity timeout.
+            )
+            .build();
         httpClient.start();
         return httpClient;
       }
