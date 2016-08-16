@@ -36,7 +36,7 @@ public class TestRouterHeartbeat {
 
     Assert.assertTrue(healthMon.isHostHealthy(dummyInstance, "partition"));
 
-    RouterHeartbeat heartbeat = new RouterHeartbeat(clientPool, healthMon);
+    RouterHeartbeat heartbeat = new RouterHeartbeat(clientPool, healthMon, 10, TimeUnit.SECONDS, 1000);
     heartbeat.start();
     TestUtils.waitForNonDeterministicAssertion(1, TimeUnit.SECONDS,
         () -> Assert.assertFalse(healthMon.isHostHealthy(dummyInstance, "partition")));
@@ -59,7 +59,7 @@ public class TestRouterHeartbeat {
     server.addResponseForUri(QueryAction.HEALTH.toString().toLowerCase(), goodHealthResponse);
     Instance dummyInstance = new Instance("nodeId", "localhost", server.getPort());
     clientPool.put(dummyInstance, httpClient);
-    RouterHeartbeat heartbeat = new RouterHeartbeat(clientPool, healthMon);
+    RouterHeartbeat heartbeat = new RouterHeartbeat(clientPool, healthMon, 10, TimeUnit.SECONDS, 1000);
     heartbeat.start();
     Thread.sleep(20); /* Just to give the heartbeat time to do something */
     Assert.assertTrue(healthMon.isHostHealthy(dummyInstance, "partition"));

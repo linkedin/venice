@@ -66,6 +66,9 @@ public class RouterServer extends AbstractVeniceService {
   private final String clusterName;
   private final List<D2Server> d2ServerList;
   private final MetricsRepository metricsRepository;
+  private final int clientTimeout;
+  private final int heartbeatTimeout;
+
   // Mutable state
   // TODO: Make these final once the test constructors are cleaned up.
   private ZkClient zkClient;
@@ -91,12 +94,14 @@ public class RouterServer extends AbstractVeniceService {
     String zkConnection = props.getString(ConfigKeys.ZOOKEEPER_ADDRESS);
     String clusterName = props.getString(ConfigKeys.CLUSTER_NAME);
     int port = props.getInt(ConfigKeys.ROUTER_PORT);
+    int clientTimeout = props.getInt(ConfigKeys.CLIENT_TIMEOUT);
+    int heartbeatTimeout = props.getInt(ConfigKeys.HEARTBEAT_TIMEOUT);
 
     logger.info("Zookeeper: " + zkConnection);
     logger.info("Cluster: " + clusterName);
     logger.info("Port: " + port);
 
-    RouterServer server = new RouterServer(port, clusterName, zkConnection, new ArrayList<>());
+    RouterServer server = new RouterServer(port, clusterName, zkConnection, new ArrayList<>(), clientTimeout, heartbeatTimeout);
     server.start();
 
     Runtime.getRuntime().addShutdownHook(new Thread() {
@@ -117,19 +122,19 @@ public class RouterServer extends AbstractVeniceService {
     }
   }
 
-  /**
-   *
-   * @param port
-   * @param clusterName
-   * @param zkConnection
-   * @param d2ServerList
-   */
-  public RouterServer(int port, String clusterName, String zkConnection, List<D2Server> d2ServerList){
-    this(port, clusterName, zkConnection, d2ServerList, jmxReporterMetricsRepo());
+  public RouterServer(int port, String clusterName, String zkConnection, List<D2Server> d2Servers){
+    this(port, clusterName, zkConnection, d2Servers, 10000, 1000);
   }
 
-  public RouterServer(int port, String clusterName, String zkConnection, List<D2Server> d2ServerList, MetricsRepository metricsRepository) {
+  // TODO: Do we need both of these constructors?  If we're always going to use the jmxReporterMetricsRepo() method, then drop the explicit constructor
+  public RouterServer(int port, String clusterName, String zkConnection, List<D2Server> d2ServerList, int clientTimeout, int heartbeatTimeout){
+    this(port, clusterName, zkConnection, d2ServerList, clientTimeout, heartbeatTimeout, jmxReporterMetricsRepo());
+  }
+
+  public RouterServer(int port, String clusterName, String zkConnection, List<D2Server> d2ServerList, int clientTimeout, int heartbeatTimeout, MetricsRepository metricsRepository) {
     this.port = port;
+    this.clientTimeout = clientTimeout;
+    this.heartbeatTimeout = heartbeatTimeout;
     this.clusterName = clusterName;
     zkClient = new ZkClient(zkConnection);
     manager = new ZKHelixManager(this.clusterName, null, InstanceType.SPECTATOR, zkConnection);
@@ -177,6 +182,8 @@ public class RouterServer extends AbstractVeniceService {
     this.routingDataRepository = routingDataRepository;
     this.d2ServerList = d2ServerList;
     this.metricsRepository = new MetricsRepository();
+    this.clientTimeout = 10000;
+    this.heartbeatTimeout = 1000;
     RouterAggStats.init(this.metricsRepository); //TODO: re-evaluate doing a global init for the RouterAggStats class.
   }
 
@@ -203,8 +210,8 @@ public class RouterServer extends AbstractVeniceService {
     ResourceRegistry routerRegistry = registry.register(new SyncResourceRegistry());
     VenicePartitionFinder partitionFinder = new VenicePartitionFinder(routingDataRepository);
     VeniceHostHealth healthMonitor = new VeniceHostHealth();
-    dispatcher = new VeniceDispatcher(healthMonitor);
-    heartbeat = new RouterHeartbeat(dispatcher.getClientPool(), healthMonitor);
+    dispatcher = new VeniceDispatcher(healthMonitor, clientTimeout);
+    heartbeat = new RouterHeartbeat(dispatcher.getClientPool(), healthMonitor, 10, TimeUnit.SECONDS, heartbeatTimeout);
     heartbeat.startInner();
     VeniceRouterImpl router
         = routerRegistry.register(new VeniceRouterImpl(
