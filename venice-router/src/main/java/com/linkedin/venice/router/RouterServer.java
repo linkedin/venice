@@ -177,6 +177,7 @@ public class RouterServer extends AbstractVeniceService {
     this.routingDataRepository = routingDataRepository;
     this.d2ServerList = d2ServerList;
     this.metricsRepository = new MetricsRepository();
+    RouterAggStats.init(this.metricsRepository); //TODO: re-evaluate doing a global init for the RouterAggStats class.
   }
 
 
