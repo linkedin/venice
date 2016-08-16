@@ -87,7 +87,9 @@ public class TopicMonitor extends AbstractVeniceService {
         while (!stop) {
           try {
             Thread.sleep(pollIntervalMs);
-            logger.info("Polling kafka: " + admin.getKafkaBootstrapServers() + " for new topics");
+            if (logger.isDebugEnabled()) {
+              logger.debug("Polling kafka: " + admin.getKafkaBootstrapServers() + " for new topics");
+            }
             Map<String, List<PartitionInfo>> topics = kafkaClient.listTopics();
             for (Map.Entry<String, List<PartitionInfo>> entry : topics.entrySet()) {
               String topic = entry.getKey();

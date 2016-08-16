@@ -1,5 +1,6 @@
 package com.linkedin.venice.controller.server;
 
+import com.linkedin.venice.controller.AuditInfo;
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -38,6 +39,11 @@ public class AdminSparkServer extends AbstractVeniceService {
   @Override
   public boolean startInner() throws Exception {
     Spark.port(port);
+
+    Spark.before((request, response) -> {
+      AuditInfo audit = new AuditInfo(request);
+      logger.info(audit.toString());
+    });
 
     Spark.get(CREATE.getPath(), (request, response) -> {
       response.type(HttpConstants.TEXT_HTML);
@@ -78,6 +84,7 @@ public class AdminSparkServer extends AbstractVeniceService {
     Spark.get(GET_VALUE_SCHEMA.getPath(), SchemaRoutes.getValueSchema(admin));
     Spark.post(GET_VALUE_SCHEMA_ID.getPath(), SchemaRoutes.getValueSchemaID(admin));
     Spark.get(GET_ALL_VALUE_SCHEMA.getPath(), SchemaRoutes.getAllValueSchema(admin));
+
     // This API should be used by CORP controller only. H2V could talk to any of controllers in CORP to find who is the
     // current master CORP controller. In other colos, router will find the master controller instead of calling this API.
     Spark.get(GET_MASTER_CONTROLLER.getPath(), MasterController.getRoute(admin));

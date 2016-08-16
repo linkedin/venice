@@ -54,7 +54,9 @@ public class ControllerClient implements Closeable {
     }
     this.routerUrls = routerUrls;
     this.localHostname = Utils.getHostName();
-    logger.info("Parsed hostname as: " + localHostname);
+    if (logger.isDebugEnabled()) {
+      logger.debug("Parsed hostname as: " + localHostname);
+    }
     refreshControllerUrl();
   }
 
