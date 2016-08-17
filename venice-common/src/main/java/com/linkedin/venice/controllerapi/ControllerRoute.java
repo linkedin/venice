@@ -18,12 +18,16 @@ public enum ControllerRoute {
   ACTIVE_VERSIONS("/active_versions", Arrays.asList(NAME)),
   JOB("/job", Arrays.asList(NAME, VERSION)),
   LIST_STORES("/list_stores", Arrays.asList()),
+  LIST_NODES("/list_instances", Arrays.asList()),
+  LIST_REPLICAS("/list_replicas", Arrays.asList(NAME, VERSION)),
+
   INIT_KEY_SCHEMA("/init_key_schema", Arrays.asList(NAME, KEY_SCHEMA)),
   GET_KEY_SCHEMA("/get_key_schema", Arrays.asList(NAME)),
   ADD_VALUE_SCHEMA("/add_value_schema", Arrays.asList(NAME, VALUE_SCHEMA)),
   GET_ALL_VALUE_SCHEMA("/get_all_value_schema", Arrays.asList(NAME)),
   GET_VALUE_SCHEMA("/get_value_schema", Arrays.asList(NAME, SCHEMA_ID)),
   GET_VALUE_SCHEMA_ID("/get_value_schema_id", Arrays.asList(NAME, VALUE_SCHEMA)),
+
   GET_MASTER_CONTROLLER("/get_master_controller", Arrays.asList());
 
   private final String path;

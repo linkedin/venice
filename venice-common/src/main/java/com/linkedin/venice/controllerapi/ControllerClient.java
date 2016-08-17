@@ -4,13 +4,10 @@ import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.Utils;
-import java.io.BufferedInputStream;
 import java.io.Closeable;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.UnsupportedEncodingException;
-import java.net.InetAddress;
-import java.net.UnknownHostException;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -314,6 +311,40 @@ public class ControllerClient implements Closeable {
     }
   }
 
+  private MultiNodeResponse listStorageNodes(String clusterName)
+      throws InterruptedException, IOException, ExecutionException {
+    List<NameValuePair> queryParams = newParams(clusterName);
+    String responseJson = getRequest(ControllerRoute.LIST_NODES.getPath(), queryParams);
+    return mapper.readValue(responseJson, MultiNodeResponse.class);
+  }
+
+  public static MultiNodeResponse listStorageNodes(String routerUrls, String clusterName){
+    try (ControllerClient client = new ControllerClient(routerUrls)){
+      return client.listStorageNodes(clusterName);
+    } catch (Exception e){
+      return handleError(new VeniceException("Error listing nodes", e), new MultiNodeResponse());
+    }
+  }
+
+  private MultiReplicaResponse listReplicas(String clusterName, String storeName, int version)
+      throws ExecutionException, InterruptedException, IOException {
+    List<NameValuePair> params = newParams(clusterName);
+    params.add(new BasicNameValuePair(ControllerApiConstants.NAME, storeName));
+    params.add(new BasicNameValuePair(ControllerApiConstants.VERSION, Integer.toString(version)));
+    String responseJson = getRequest(ControllerRoute.LIST_REPLICAS.getPath(), params);
+    return mapper.readValue(responseJson, MultiReplicaResponse.class);
+  }
+
+  public static MultiReplicaResponse listReplicas(String routerUrls, String clusterName, String storeName, int version){
+    try (ControllerClient client = new ControllerClient(routerUrls)){
+      return client.listReplicas(clusterName, storeName, version);
+    } catch (Exception e){
+      return handleError(new VeniceException("Error listing replicas for store: " + storeName + " version: " + version, e), new MultiReplicaResponse());
+    }
+  }
+
+  /* SCHEMA */
+
   private SchemaResponse initKeySchema(String clusterName, String storeName, String keySchemaStr) throws IOException, ExecutionException, InterruptedException {
     List<NameValuePair> queryParams = newParams();
     queryParams.add(new BasicNameValuePair(ControllerApiConstants.CLUSTER, clusterName));
@@ -405,6 +436,8 @@ public class ControllerClient implements Closeable {
     String responseJson = getRequest(ControllerRoute.GET_ALL_VALUE_SCHEMA.getPath(), queryParams);
     return mapper.readValue(responseJson, MultiSchemaResponse.class);
   }
+
+
 
   /***
    * Add all global parameters in this method. Always use a form of this method to generate

@@ -7,7 +7,7 @@ import org.codehaus.jackson.annotate.JsonIgnore;
  * Extend this class to create response objects for the controller
  * Any fields that must be in all responses can go here.
  */
-public class ControllerResponse {
+public class ControllerResponse { /* Uses Json Reflective Serializer, get without set may break things */
   private String cluster;
   private String name;
   private String error;

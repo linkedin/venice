@@ -1,6 +1,9 @@
 package com.linkedin.venice.helix;
 
 import com.linkedin.venice.meta.Instance;
+import java.util.StringJoiner;
+import org.codehaus.jackson.annotate.JsonIgnore;
+import org.codehaus.jackson.annotate.JsonProperty;
 
 
 /**
@@ -11,7 +14,7 @@ public class Replica {
   private final int partitionId;
   private String status;
 
-  public Replica(Instance instance, int partitionId) {
+  public Replica(@JsonProperty("instance") Instance instance, @JsonProperty("partitionId") int partitionId) {
     this.instance = instance;
     this.partitionId = partitionId;
   }
@@ -30,5 +33,15 @@ public class Replica {
 
   public void setStatus(String status) {
     this.status = status;
+  }
+
+  @Override
+  @JsonIgnore
+  public String toString(){
+    StringJoiner joiner = new StringJoiner(" ");
+    joiner.add("Host:").add(instance.getUrl());
+    joiner.add("Partition:").add(Integer.toString(partitionId));
+    joiner.add("Status:").add(status);
+    return joiner.toString();
   }
 }

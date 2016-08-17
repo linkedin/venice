@@ -1,6 +1,8 @@
 package com.linkedin.venice.meta;
 
 import javax.validation.constraints.NotNull;
+import org.codehaus.jackson.annotate.JsonIgnore;
+import org.codehaus.jackson.annotate.JsonProperty;
 
 
 /**
@@ -22,11 +24,14 @@ public class Instance {
   */
   private final int port;
 
-  public Instance(@NotNull String nodeId, @NotNull String host, int port) {
-      this.nodeId = nodeId;
-      this.host = host;
-      validatePort("port", port);
-      this.port = port;
+  public Instance(
+      @JsonProperty("nodeId") @NotNull String nodeId,
+      @JsonProperty("host") @NotNull String host,
+      @JsonProperty("port") int port) {
+    this.nodeId = nodeId;
+    this.host = host;
+    validatePort("port", port);
+    this.port = port;
   }
 
   public String getNodeId() {
@@ -46,17 +51,18 @@ public class Instance {
    * Wraps IPv6 host strings in square brackets
    * @return http:// + host + : + port
    */
+  @JsonIgnore
   public String getUrl(){
     String scheme = "http";
     return host.contains(":") ? /* for IPv6 support per https://www.ietf.org/rfc/rfc2732.txt */
-        scheme + "://[" + host + "]:" + port :
-        scheme + "://" + host + ":" + port;
+      scheme + "://[" + host + "]:" + port :
+      scheme + "://" + host + ":" + port;
   }
 
   private void validatePort(String name, int port) {
-        if (port < 0 || port > 65535) {
-            throw new IllegalArgumentException("Invalid " + name + ": " + port);
-        }
+      if (port < 0 || port > 65535) {
+        throw new IllegalArgumentException("Invalid " + name + ": " + port);
+      }
     }
 
   //Autogen except for .toLowerCase()

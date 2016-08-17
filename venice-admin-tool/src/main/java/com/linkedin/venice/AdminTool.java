@@ -3,16 +3,18 @@ package com.linkedin.venice;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
+import com.linkedin.venice.controllerapi.MultiNodeResponse;
+import com.linkedin.venice.controllerapi.MultiReplicaResponse;
 import com.linkedin.venice.controllerapi.MultiStoreResponse;
 import com.linkedin.venice.controllerapi.MultiVersionResponse;
 import com.linkedin.venice.controllerapi.NewStoreResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.controllerapi.VersionResponse;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.helix.Replica;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.Utils;
 import java.io.IOException;
-import java.io.PrintWriter;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Paths;
@@ -122,6 +124,10 @@ public class AdminTool {
         applyVersionToStore(cmd, routerHosts, clusterName);
       } else if (cmd.hasOption(Command.ADD_SCHEMA.toString())){
         applyValueSchemaToStore(cmd, routerHosts, clusterName);
+      } else if (cmd.hasOption(Command.LIST_STORAGE_NODES.toString())) {
+        printStorageNodeList(routerHosts, clusterName);
+      } else if (cmd.hasOption(Command.LIST_REPLICAS.toString())){
+        printReplicaList(cmd, routerHosts, clusterName);
       } else {
         StringJoiner availableCommands = new StringJoiner(", ");
         for (Command c : Command.values()){
@@ -236,6 +242,24 @@ public class AdminTool {
     }
     System.out.println(output.toString());
   }
+
+  private static void printStorageNodeList(String routerHosts, String clusterName){
+    MultiNodeResponse nodeResponse = ControllerClient.listStorageNodes(routerHosts, clusterName);
+    for (String node : nodeResponse.getNodes()){
+      System.out.println(node);
+    }
+  }
+
+  private static void printReplicaList(CommandLine cmd, String routerHosts, String clusterName){
+    String store = getRequiredArgument(cmd, Arg.STORE, Command.LIST_REPLICAS);
+    int version = Utils.parseIntFromString(getRequiredArgument(cmd, Arg.VERSION, Command.LIST_REPLICAS), Arg.VERSION.toString());
+    MultiReplicaResponse response = ControllerClient.listReplicas(routerHosts, clusterName, store, version);
+    for (Replica r : response.getReplicas()){
+      System.out.println(r.toString());
+    }
+  }
+
+  /* Things that are not commands */
 
   private static void printUsageAndExit(OptionGroup commandGroup, Options options){
 

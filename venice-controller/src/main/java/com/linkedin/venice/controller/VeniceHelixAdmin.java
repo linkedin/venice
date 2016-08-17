@@ -396,6 +396,12 @@ public class VeniceHelixAdmin implements Admin {
     }
 
     @Override
+    public List<String> getStorageNodes(String clusterName){
+        checkControllerMastership(clusterName);
+        return admin.getInstancesInCluster(clusterName);
+    }
+
+    @Override
     public synchronized void stop(String clusterName) {
         // Instead of disconnecting the sub-controller for the given cluster, we should disable it for this controller,
         // then the LEADER->STANDBY and STANDBY->OFFLINE will be triggered, our handler will handle the resource collection.
@@ -539,11 +545,7 @@ public class VeniceHelixAdmin implements Admin {
         List<Replica> replicas = new ArrayList<>();
         PartitionAssignment partitionAssignment = getVeniceHelixResource(clusterName).getRoutingDataRepository().getPartitionAssignments(kafkaTopic);
         for(Partition partition:partitionAssignment.getAllPartitions()){
-            for(Instance instance: partition.getBootstrapInstances()){
-                Replica replica = new Replica(instance, partition.getId());
-                replica.setStatus(HelixState.BOOTSTRAP_STATE);
-                replicas.add(replica);
-            }
+            addInstancesToReplicaList(replicas, partition.getBootstrapInstances(), partition.getId(), HelixState.BOOTSTRAP_STATE);
         }
         return replicas;
     }
@@ -554,13 +556,30 @@ public class VeniceHelixAdmin implements Admin {
         List<Replica> replicas = new ArrayList<>();
         PartitionAssignment partitionAssignment = getVeniceHelixResource(clusterName).getRoutingDataRepository().getPartitionAssignments(kafkaTopic);
         for(Partition partition:partitionAssignment.getAllPartitions()){
-            for(Instance instance: partition.getErrorInstances()){
-                Replica replica = new Replica(instance, partition.getId());
-                replica.setStatus(HelixState.ERROR_STATE);
-                replicas.add(replica);
-            }
+            addInstancesToReplicaList(replicas, partition.getErrorInstances(), partition.getId(), HelixState.ERROR_STATE);
         }
         return replicas;
+    }
+
+    @Override
+    public List<Replica> getReplicas(String clusterName, String kafkaTopic) {
+        checkControllerMastership(clusterName);
+        List<Replica> replicas = new ArrayList<>();
+        PartitionAssignment partitionAssignment = getVeniceHelixResource(clusterName).getRoutingDataRepository().getPartitionAssignments(kafkaTopic);
+        for(Partition partition:partitionAssignment.getAllPartitions()){
+            addInstancesToReplicaList(replicas, partition.getErrorInstances(), partition.getId(), HelixState.ERROR_STATE);
+            addInstancesToReplicaList(replicas, partition.getBootstrapInstances(), partition.getId(), HelixState.BOOTSTRAP_STATE);
+            addInstancesToReplicaList(replicas, partition.getReadyToServeInstances(), partition.getId(), HelixState.ONLINE_STATE);
+        }
+        return replicas;
+    }
+
+    private void addInstancesToReplicaList(List<Replica> replicaList, List<Instance> instancesToAdd, int partitionId, String stateOfAddedReplicas){
+        for (Instance instance : instancesToAdd){
+            Replica replica = new Replica(instance, partitionId);
+            replica.setStatus(stateOfAddedReplicas);
+            replicaList.add(replica);
+        }
     }
 
     @Override

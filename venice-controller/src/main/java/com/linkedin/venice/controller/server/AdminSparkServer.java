@@ -56,26 +56,21 @@ public class AdminSparkServer extends AbstractVeniceService {
     });
 
     Spark.get(CURRENT_VERSION.getPath(), CurrentVersion.getRoute(admin));
-
     Spark.get(ACTIVE_VERSIONS.getPath(), ActiveVersions.getRoute(admin));
-
     Spark.get(JOB.getPath(), JobStatus.getRoute(admin));
-
     Spark.post(CREATE.getPath(), CreateVersion.getRoute(admin));
-
     Spark.post(NEWSTORE.getPath(), CreateStore.getRoute(admin));
-
     Spark.get(LIST_STORES.getPath(), AllStores.getRoute(admin));
 
-    // Only to be used manually and for testing purposes.
+    /** Only to be used manually and for testing purposes. */
     Spark.post(SETVERSION.getPath(), SetVersion.getRoute(admin));
 
-    /**
-     * Query the controller for the next version of a store that should be created
-     */
+    /** Query the controller for the next version of a store that should be created  */
     Spark.get(NEXTVERSION.getPath(), NextVersion.getRoute(admin));
-
     Spark.post(RESERVE_VERSION.getPath(), ReserveVersion.getRoute(admin));
+
+    Spark.get(LIST_NODES.getPath(), NodesAndReplicas.listAllNodes(admin));
+    Spark.get(LIST_REPLICAS.getPath(), NodesAndReplicas.listReplicasForStore(admin));
 
     // Operations for key schema/value schema
     Spark.post(INIT_KEY_SCHEMA.getPath(), SchemaRoutes.initKeySchema(admin));
@@ -85,8 +80,10 @@ public class AdminSparkServer extends AbstractVeniceService {
     Spark.post(GET_VALUE_SCHEMA_ID.getPath(), SchemaRoutes.getValueSchemaID(admin));
     Spark.get(GET_ALL_VALUE_SCHEMA.getPath(), SchemaRoutes.getAllValueSchema(admin));
 
-    // This API should be used by CORP controller only. H2V could talk to any of controllers in CORP to find who is the
-    // current master CORP controller. In other colos, router will find the master controller instead of calling this API.
+    /**
+     * This API should be used by CORP controller only. H2V could talk to any of controllers in CORP to find who is the
+     * current master CORP controller. In other colos, router will find the master controller instead of calling this API.
+     */
     Spark.get(GET_MASTER_CONTROLLER.getPath(), MasterController.getRoute(admin));
 
     Spark.awaitInitialization(); // Wait for server to be initialized

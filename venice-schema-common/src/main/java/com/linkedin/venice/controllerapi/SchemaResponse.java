@@ -1,6 +1,6 @@
 package com.linkedin.venice.controllerapi;
 
-public class SchemaResponse extends ControllerResponse {
+public class SchemaResponse extends ControllerResponse { /* Uses Json Reflective Serializer, get without set may break things */
   int id;
   String schemaStr;
 
