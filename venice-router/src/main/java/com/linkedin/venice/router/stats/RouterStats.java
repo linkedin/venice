@@ -1,83 +1,58 @@
 package com.linkedin.venice.router.stats;
 
-import com.linkedin.venice.tehuti.TehutiUtils;
+import com.linkedin.venice.stats.AbstractVeniceStats;
+import com.linkedin.venice.stats.TehutiUtils;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
 import io.tehuti.metrics.stats.Count;
 import io.tehuti.metrics.stats.OccurrenceRate;
 
-public class RouterStats {
+public class RouterStats extends AbstractVeniceStats {
 
-  final protected MetricsRepository metricsRepository;
-  final protected String name;
+  final private Sensor requestSensor;
+  final private Sensor healthySensor;
+  final private Sensor unhealthySensor;
+  final private Sensor latencySensor;
+  final private Sensor keySizeSensor;
+  final private Sensor valueSizeSensor;
 
   //QPS metrics
   //TODO: implement a simple Tehuti class that just return the current value to calculate unhealthy ratio
-  private Sensor healthyRequest;
-
-  private Sensor unhealthyRequest;
-
-  private Sensor requestSensor;
-
-  private Sensor latencySensor;
-
-  private Sensor keySizeSensor;
-
-  private Sensor valueSizeSensor;
-
   public RouterStats(MetricsRepository metricsRepository, String name) {
-    this.metricsRepository = metricsRepository;
-    this.name = "." + name;
+    super(metricsRepository, name);
 
-    String healthyRequestSensorName = this.name + "_healthy_request";
-    healthyRequest = metricsRepository.sensor(healthyRequestSensorName);
-    healthyRequest.add(healthyRequestSensorName + ".count", new Count());
+    requestSensor = registerSensor("request", new Count(), new OccurrenceRate());
+    healthySensor = registerSensor("healthy_request", new Count());
+    unhealthySensor = registerSensor("unhealthy_request", new Count());
 
-    String unhealthyRequestSensorName = this.name + "_unhealthy_request";
-    unhealthyRequest = metricsRepository.sensor(unhealthyRequestSensorName);
-    unhealthyRequest.add(unhealthyRequestSensorName+ ".count", new Count());
-
-    String requestSensorName = this.name + "_request";
-    requestSensor = metricsRepository.sensor(name);
-    requestSensor.add(requestSensorName + ".count", new Count());
-    requestSensor.add(requestSensorName + ".QPS", new OccurrenceRate());
-
-    //TODO: make the values configurable in Percentiles constructor
-    String latencySensorName = this.name + "_latency";
-    latencySensor = TehutiUtils.getPercentileSensor(metricsRepository, latencySensorName);
-
-    String keySizeSensorName = this.name + "_key-size";
-    keySizeSensor = TehutiUtils.getPercentileSensor(metricsRepository, keySizeSensorName);
-
-    String valueSizeSensorName = this.name + "_value-size";
-    valueSizeSensor = TehutiUtils.getPercentileSensor(metricsRepository, valueSizeSensorName);
+    //we have to explicitly pass the anme again for PercentilesStat here.
+    //TODO: remove the redundancy once Tehuti library is updated.
+    latencySensor = registerSensor("latency", TehutiUtils.getPercentileStat(getName() + "_" + "latency"));
+    keySizeSensor = registerSensor("key_size", TehutiUtils.getPercentileStat(getName() + "_" + "key_size"));
+    valueSizeSensor = registerSensor("value_size", TehutiUtils.getPercentileStat(getName() + "_" + "value_size"));
   }
 
   public void addRequest() {
-    this.requestSensor.record();
+    record(requestSensor);
   }
 
   public void addHealthyRequest() {
-    this.healthyRequest.record();
+    record(healthySensor);
   }
 
   public void addUnhealthyRequest() {
-    this.unhealthyRequest.record();
+    record(unhealthySensor);
   }
 
   public void addLatency(double latency) {
-    this.latencySensor.record(latency);
+    record(latencySensor, latency);
   }
 
   public void addKeySize(double keySize) {
-    this.keySizeSensor.record(keySize);
+    record(keySizeSensor, keySize);
   }
 
   public void addValueSize(double valueSize) {
-    this.valueSizeSensor.record(valueSize);
-  }
-
-  public void close() {
-    metricsRepository.close();
-  }
+    record(valueSizeSensor, valueSize);
+  };
 }
