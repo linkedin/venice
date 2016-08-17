@@ -20,12 +20,12 @@ public class RouterAggStatsTest {
     metrics.addReporter(reporter);
 
     RouterAggStats.init(metrics);
-    stats = RouterAggStats.getStats();
+    stats = RouterAggStats.getInstance();
   }
 
   @Test
   public void RouterMetricsTest() {
-    stats.addRequest();
+    stats.addRequest("store5");
     Assert.assertEquals(reporter.query(".total_request.count").value(), 1d);
 
     stats.addRequest("store1");

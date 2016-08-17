@@ -58,7 +58,7 @@ public class VeniceDispatcher implements PartitionDispatchHandler<Instance, Veni
   private final ConcurrentMap<String, Long> offsets = new ConcurrentHashMap<>();
   private final VeniceHostHealth healthMontior;
 
-  private final RouterAggStats stats = RouterAggStats.getStats();
+  private final RouterAggStats stats = RouterAggStats.getInstance();
 
   // How many offsets behind can a storage node be for a partition and still be considered 'caught up'
   private long acceptableOffsetLag = 0; /* TODO: make this configurable for streaming use-case */

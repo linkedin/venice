@@ -1,19 +1,83 @@
 package com.linkedin.venice.router.stats;
 
-public interface RouterStats {
-  //thread-safe is done at Tehuti level
-  //TODO: we should clssify unhealthRequest in a more specific way. Such as timeout request, internal_error request
-  void addRequest();
+import com.linkedin.venice.tehuti.TehutiUtils;
+import io.tehuti.metrics.MetricsRepository;
+import io.tehuti.metrics.Sensor;
+import io.tehuti.metrics.stats.Count;
+import io.tehuti.metrics.stats.OccurrenceRate;
 
-  void addHealthyRequest();
+public class RouterStats {
 
-  void addUnhealthyRequest();
+  final protected MetricsRepository metricsRepository;
+  final protected String name;
 
-  void addLatency(double latency);
+  //QPS metrics
+  //TODO: implement a simple Tehuti class that just return the current value to calculate unhealthy ratio
+  private Sensor healthyRequest;
 
-  void addKeySize(double keySize);
+  private Sensor unhealthyRequest;
 
-  void addValueSize(double valueSize);
+  private Sensor requestSensor;
 
-  void close();
+  private Sensor latencySensor;
+
+  private Sensor keySizeSensor;
+
+  private Sensor valueSizeSensor;
+
+  public RouterStats(MetricsRepository metricsRepository, String name) {
+    this.metricsRepository = metricsRepository;
+    this.name = "." + name;
+
+    String healthyRequestSensorName = this.name + "_healthy_request";
+    healthyRequest = metricsRepository.sensor(healthyRequestSensorName);
+    healthyRequest.add(healthyRequestSensorName + ".count", new Count());
+
+    String unhealthyRequestSensorName = this.name + "_unhealthy_request";
+    unhealthyRequest = metricsRepository.sensor(unhealthyRequestSensorName);
+    unhealthyRequest.add(unhealthyRequestSensorName+ ".count", new Count());
+
+    String requestSensorName = this.name + "_request";
+    requestSensor = metricsRepository.sensor(name);
+    requestSensor.add(requestSensorName + ".count", new Count());
+    requestSensor.add(requestSensorName + ".QPS", new OccurrenceRate());
+
+    //TODO: make the values configurable in Percentiles constructor
+    String latencySensorName = this.name + "_latency";
+    latencySensor = TehutiUtils.getPercentileSensor(metricsRepository, latencySensorName);
+
+    String keySizeSensorName = this.name + "_key-size";
+    keySizeSensor = TehutiUtils.getPercentileSensor(metricsRepository, keySizeSensorName);
+
+    String valueSizeSensorName = this.name + "_value-size";
+    valueSizeSensor = TehutiUtils.getPercentileSensor(metricsRepository, valueSizeSensorName);
+  }
+
+  public void addRequest() {
+    this.requestSensor.record();
+  }
+
+  public void addHealthyRequest() {
+    this.healthyRequest.record();
+  }
+
+  public void addUnhealthyRequest() {
+    this.unhealthyRequest.record();
+  }
+
+  public void addLatency(double latency) {
+    this.latencySensor.record(latency);
+  }
+
+  public void addKeySize(double keySize) {
+    this.keySizeSensor.record(keySize);
+  }
+
+  public void addValueSize(double valueSize) {
+    this.valueSizeSensor.record(valueSize);
+  }
+
+  public void close() {
+    metricsRepository.close();
+  }
 }
