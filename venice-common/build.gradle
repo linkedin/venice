@@ -51,4 +51,5 @@ dependencies {
   testCompile project(':venice-controller')
   testCompile project(':venice-server')
   testCompile project(':venice-router')
+  testCompile libraries.tehuti
 }
