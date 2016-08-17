@@ -3,7 +3,7 @@ package com.linkedin.venice.controllerapi;
 /**
  * Response for querying job status.
  */
-public class JobStatusQueryResponse extends ControllerResponse{
+public class JobStatusQueryResponse extends ControllerResponse{ /* Uses Json Reflective Serializer, get without set may break things */
 
   private int version;
   private String status;

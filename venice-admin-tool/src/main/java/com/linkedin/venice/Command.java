@@ -21,7 +21,11 @@ public enum Command {
   SET_VERSION("set-version",
       new Arg[] {Arg.ROUTER, Arg.CLUSTER, Arg.STORE, Arg.VERSION}),
   ADD_SCHEMA("add-schema",
-      new Arg[] {Arg.ROUTER, Arg.CLUSTER, Arg.STORE, Arg.VALUE_SCHEMA});
+      new Arg[] {Arg.ROUTER, Arg.CLUSTER, Arg.STORE, Arg.VALUE_SCHEMA}),
+  LIST_STORAGE_NODES("list-storage-nodes",
+      new Arg[] {Arg.ROUTER, Arg.CLUSTER}),
+  LIST_REPLICAS("list-replicas",
+      new Arg[] {Arg.ROUTER, Arg.CLUSTER, Arg.STORE, Arg.VERSION});
 
   private final String commandName;
   private final Arg[] requiredArgs;

@@ -1,6 +1,8 @@
 package com.linkedin.venice.controller.server;
 
 import com.linkedin.venice.controllerapi.ControllerClient;
+import com.linkedin.venice.controllerapi.MultiNodeResponse;
+import com.linkedin.venice.controllerapi.MultiReplicaResponse;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.controllerapi.NewStoreResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
@@ -32,6 +34,23 @@ public class TestAdminSparkServer {
   @AfterClass
   public void tearDown(){
     venice.close();
+  }
+
+  @Test
+  public void controllerClientCanQueryNodesInCluster(){
+    MultiNodeResponse nodeResponse = ControllerClient.listStorageNodes(routerUrl, venice.getClusterName());
+    Assert.assertFalse(nodeResponse.isError(), nodeResponse.getError());
+    Assert.assertEquals(nodeResponse.getNodes().length, 1, "Node count does not match");
+  }
+
+  @Test
+  public void controllerClientCanQueryReplicasForTopic(){
+    String kafkaTopic = venice.getNewStoreVersion().getKafkaTopic();
+    String store = Version.parseStoreFromKafkaTopicName(kafkaTopic);
+    int version = Version.parseVersionFromKafkaTopicName(kafkaTopic);
+    MultiReplicaResponse response = ControllerClient.listReplicas(routerUrl, venice.getClusterName(), store, version);
+    Assert.assertFalse(response.isError(), response.getError());
+    Assert.assertEquals(response.getReplicas().length, 10, "Replica count does not match"); /* 10 partitions, replication factor 1 */
   }
 
   @Test

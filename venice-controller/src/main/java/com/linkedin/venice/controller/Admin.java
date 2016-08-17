@@ -53,6 +53,8 @@ public interface Admin {
 
     SchemaEntry addValueSchema(String clusterName, String storeName, String valueSchemaStr);
 
+    List<String> getStorageNodes(String clusterName);
+
     void stop(String clusterName);
 
     /**
@@ -95,15 +97,9 @@ public interface Admin {
 
     int getReplicaFactor(String clusterName, String storeName);
 
-    /**
-    * Get all of replicas which are bootstrapping from given kafka topic.
-    */
     List<Replica> getBootstrapReplicas(String clusterName, String kafkaTopic);
-
-    /**
-    * Get all of replicas which are in the error status of given kafka topic.
-    */
     List<Replica> getErrorReplicas(String clusterName, String kafkaTopic);
+    List<Replica> getReplicas(String clusterName, String kafkaTopic);
 
     /**
      * Is the given instance able to remove out from given cluster. For example, if there is only one replica alive in this

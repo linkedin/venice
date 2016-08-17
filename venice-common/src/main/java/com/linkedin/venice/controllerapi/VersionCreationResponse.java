@@ -6,7 +6,7 @@ import org.codehaus.jackson.annotate.JsonIgnore;
 /**
  * Created by mwise on 3/17/16.
  */
-public class VersionCreationResponse extends VersionResponse {
+public class VersionCreationResponse extends VersionResponse { /* Uses Json Reflective Serializer, get without set may break things */
 
   private String owner = null;
   private int partitions = 0;
