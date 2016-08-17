@@ -7,80 +7,77 @@ import org.apache.log4j.Logger;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
-public class RouterAggStats extends AbstractRouterStats {
-  private static Logger logger = Logger.getLogger(RouterAggStats.class);
-
-  private static RouterAggStats stats;
+public class RouterAggStats {
+  private static RouterAggStats instance;
+  private static MetricsRepository metricsRepository;
 
     //per store metrics
     final Map<String, RouterStats> storeMetrics;
+    final RouterStats totalStats;
 
     public static synchronized void init(MetricsRepository metricsRepository) {
-      if (stats == null) {
-          stats = new RouterAggStats(metricsRepository, "total");
+      if(metricsRepository == null) {
+        throw new IllegalArgumentException("metricsRepository is null");
+      }
+      if (instance == null) {
+          RouterAggStats.metricsRepository = metricsRepository;
+          instance = new RouterAggStats();
       }
     }
 
-    public static RouterAggStats getStats() {
-      if (stats == null) {
+    public static RouterAggStats getInstance() {
+      if (instance == null) {
           throw new VeniceException("RouterAggStats has not been initialized yet");
       }
-      return stats;
+      return instance;
     }
 
-    private RouterAggStats(MetricsRepository metricsRepository, String name) {
-      super(metricsRepository, name);
-      storeMetrics = new ConcurrentHashMap<>();
+    private RouterStats getStoreStats(String storeName) {
+      RouterStats storeStats = storeMetrics.computeIfAbsent(storeName,
+              k -> new RouterStats(metricsRepository, storeName));
+      return storeStats;
+    }
+
+    private RouterAggStats() {
+      this.storeMetrics = new ConcurrentHashMap<>();
+      this.totalStats = new RouterStats(metricsRepository, "total");
     }
 
     public void addRequest(String storeName) {
-      this.addRequest();
-      RouterStats storeStats = storeMetrics.computeIfAbsent(storeName,
-              k -> new RouterStoreStats(metricsRepository, storeName));
-      storeStats.addRequest();
+      totalStats.addRequest();
+      getStoreStats(storeName).addRequest();
     }
 
     public void addHealthyRequest(String storeName) {
-      this.addHealthyRequest();
-      RouterStats storeStats = storeMetrics.computeIfAbsent(storeName,
-              k -> new RouterStoreStats(metricsRepository, storeName));
-      storeStats.addHealthyRequest();
+      totalStats.addHealthyRequest();
+      getStoreStats(storeName).addHealthyRequest();
     }
 
     public void addUnhealthyRequest(String storeName) {
-      this.addUnhealthyRequest();
-      RouterStats storeStats = storeMetrics.computeIfAbsent(storeName,
-              k -> new RouterStoreStats(metricsRepository, storeName));
-      storeStats.addUnhealthyRequest();
+      totalStats.addUnhealthyRequest();
+      getStoreStats(storeName).addUnhealthyRequest();
     }
 
     public void addLatency(String storeName, double latency) {
-      this.addLatency(latency);
-      RouterStats storeStats = storeMetrics.computeIfAbsent(storeName,
-              k -> new RouterStoreStats(metricsRepository, storeName));
-      storeStats.addLatency(latency);
+      totalStats.addLatency(latency);
+      getStoreStats(storeName).addLatency(latency);
     }
 
     public void addKeySize(String storeName, double keySize) {
-      this.addLatency(keySize);
-      RouterStats storeStats = storeMetrics.computeIfAbsent(storeName,
-              k -> new RouterStoreStats(metricsRepository, storeName));
-      storeStats.addKeySize(keySize);
+      totalStats.addLatency(keySize);
+      getStoreStats(storeName).addKeySize(keySize);
     }
 
     public void addValueSize(String storeName, double valueSize) {
-      this.addValueSize(valueSize);
-      RouterStats storeStats = storeMetrics.computeIfAbsent(storeName,
-              k -> new RouterStoreStats(metricsRepository, storeName));
-      storeStats.addValueSize(valueSize);
+      totalStats.addValueSize(valueSize);
+      getStoreStats(storeName).addValueSize(valueSize);
     }
 
-    @Override
     public void close() {
       for (RouterStats sotreStats : storeMetrics.values()) {
           sotreStats.close();
       }
 
-      super.close();
+      totalStats.close();
     }
 }
