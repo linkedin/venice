@@ -2,11 +2,16 @@ package com.linkedin.venice.controller;
 
 import com.linkedin.venice.controller.kafka.TopicMonitor;
 import com.linkedin.venice.controller.server.AdminSparkServer;
+import com.linkedin.venice.controller.stats.ControllerStats;
 import com.linkedin.venice.service.AbstractVeniceService;
+import com.linkedin.venice.stats.TehutiUtils;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.Utils;
+import io.tehuti.metrics.MetricsRepository;
 import org.apache.log4j.Logger;
+
+import javax.validation.constraints.NotNull;
 
 /**
  * Venice Controller to manage the cluster. Internally wraps Helix Controller.
@@ -21,9 +26,20 @@ public class VeniceController {
   TopicMonitor topicMonitor;
 
   private final VeniceControllerConfig config;
+  private final MetricsRepository metricsRepository;
 
-  public VeniceController(VeniceProperties props){
+  private final static String CONTROLLER_SERVICE_NAME = "venice-controller";
+
+  public VeniceController(VeniceProperties props) {
+    this(props, TehutiUtils.getMetricsRepository(CONTROLLER_SERVICE_NAME));
+  }
+
+  public VeniceController(VeniceProperties props, @NotNull MetricsRepository metricsRepository){
     config = new VeniceControllerConfig(props);
+
+    this.metricsRepository = metricsRepository;
+    ControllerStats.init(this.metricsRepository);
+
     createServices();
   }
 

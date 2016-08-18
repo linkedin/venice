@@ -3,6 +3,7 @@ package com.linkedin.venice.controller.server;
 import com.linkedin.venice.controller.AuditInfo;
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.controller.Admin;
+import com.linkedin.venice.controller.stats.ControllerStats;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceHttpException;
 import com.linkedin.venice.service.AbstractVeniceService;
@@ -28,6 +29,10 @@ public class AdminSparkServer extends AbstractVeniceService {
   private final int port;
   private final Admin admin;
   protected static final ObjectMapper mapper = new ObjectMapper();
+  private final ControllerStats stats = ControllerStats.getInstance();
+
+  private static String REQUEST_START_TIME =  "startTime";
+  private static String REQUEST_SUCCEED = "succeed";
 
   public AdminSparkServer(int port, Admin admin) {
     this.port = port;
@@ -43,6 +48,21 @@ public class AdminSparkServer extends AbstractVeniceService {
     Spark.before((request, response) -> {
       AuditInfo audit = new AuditInfo(request);
       logger.info(audit.toString());
+
+      stats.recordRequest();
+      request.attribute(REQUEST_START_TIME, System.currentTimeMillis());
+      request.attribute(REQUEST_SUCCEED, true);
+    });
+
+    Spark.after((request, response) -> {
+      long latency = System.currentTimeMillis() - (long)request.attribute(REQUEST_START_TIME);
+      if ((boolean)request.attribute(REQUEST_SUCCEED)) {
+        stats.recordSuccessfulRequest();
+        stats.recordSuccessfulRequestLatency(latency);
+      } else {
+        stats.recordFailedRequest();
+        stats.recordFailedRequestLatency(latency);
+      }
     });
 
     Spark.get(CREATE.getPath(), (request, response) -> {
@@ -148,5 +168,7 @@ public class AdminSparkServer extends AbstractVeniceService {
         ((VeniceHttpException) e).getHttpStatusCode() :
         HttpStatus.SC_INTERNAL_SERVER_ERROR;
     response.status(statusCode);
+
+    request.attribute(REQUEST_SUCCEED, false);
   }
 }

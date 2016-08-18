@@ -53,6 +53,8 @@ import org.jboss.netty.channel.socket.nio.NioWorkerPool;
 import org.jboss.netty.handler.execution.ExecutionHandler;
 import org.jboss.netty.util.Timer;
 
+import javax.validation.constraints.NotNull;
+
 
 /**
  * Note: Router uses Netty 3
@@ -136,9 +138,11 @@ public class RouterServer extends AbstractVeniceService {
   // TODO: Do we need both of these constructors?  If we're always going to use the jmxReporterMetricsRepo() method, then drop the explicit constructor
   public RouterServer(int port, String clusterName, String zkConnection, List<D2Server> d2ServerList, int clientTimeout, int heartbeatTimeout){
     this(port, clusterName, zkConnection, d2ServerList, clientTimeout, heartbeatTimeout, createMetricsRepository());
+
   }
 
-  public RouterServer(int port, String clusterName, String zkConnection, List<D2Server> d2ServerList, int clientTimeout, int heartbeatTimeout, MetricsRepository metricsRepository) {
+  public RouterServer(int port, String clusterName, String zkConnection, List<D2Server> d2ServerList,
+                      int clientTimeout, int heartbeatTimeout, @NotNull MetricsRepository metricsRepository) {
     this.port = port;
     this.clientTimeout = clientTimeout;
     this.heartbeatTimeout = heartbeatTimeout;
@@ -146,10 +150,8 @@ public class RouterServer extends AbstractVeniceService {
     zkClient = new ZkClient(zkConnection);
     manager = new ZKHelixManager(this.clusterName, null, InstanceType.SPECTATOR, zkConnection);
 
-    if (metricsRepository != null)
-      this.metricsRepository = metricsRepository;
-    else
-      this.metricsRepository = createMetricsRepository();
+    this.metricsRepository = metricsRepository;
+
 
     HelixAdapterSerializer adapter = new HelixAdapterSerializer();
     this.metadataRepository = new HelixReadOnlyStoreRepository(zkClient, adapter, this.clusterName);
@@ -310,6 +312,4 @@ public class RouterServer extends AbstractVeniceService {
       logger.info(this.toString() + " is started on port:" + serverFuture.getChannel().getLocalAddress());
     });
   }
-
-
 }

@@ -91,8 +91,8 @@ public class VeniceDispatcher implements PartitionDispatchHandler<Instance, Veni
 
     String storeName = Version.parseStoreFromKafkaTopicName(path.getResourceName());
     int keySize = path.getPartitionKey().getBytes().length;
-    stats.addRequest(storeName);
-    stats.addKeySize(storeName, keySize);
+    stats.recordRequest(storeName);
+    stats.recordKeySize(storeName, keySize);
 
     Instance host;
     try {
@@ -155,38 +155,36 @@ public class VeniceDispatcher implements PartitionDispatchHandler<Instance, Veni
         HttpResponse response;
 
         //TODO: timeout should be configurable and be defined by the HttpAysncClient
-        boolean timeout = System.currentTimeMillis() - startTime > 50 * 1000 ? true : false;
+        boolean timeout = System.currentTimeMillis() - startTime > 50 * 1000;
         switch (responseStatus){
           case HttpStatus.SC_OK:
             response = new DefaultHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK);
             if (timeout)
-              stats.addUnhealthyRequest(storeName);
+              stats.recordUnhealthyRequest(storeName);
             else
-              stats.addHealthyRequest(storeName);
+              stats.recordHealthyRequest(storeName);
             break;
           case HttpStatus.SC_NOT_FOUND:
             response = new DefaultHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.NOT_FOUND);
             if (timeout)
-              stats.addUnhealthyRequest(storeName);
+              stats.recordUnhealthyRequest(storeName);
             else
-              stats.addHealthyRequest(storeName);
+              stats.recordHealthyRequest(storeName);
             break;
           case HttpStatus.SC_INTERNAL_SERVER_ERROR:
           default: //Path Parser will throw BAD_REQUEST responses.
             response = new DefaultHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.BAD_GATEWAY);
-            stats.addUnhealthyRequest(storeName);
+            stats.recordUnhealthyRequest(storeName);
         }
 
         try (InputStream contentStream = result.getEntity().getContent()) {
           byte[] contentToByte = IOUtils.toByteArray(contentStream);
           response.setContent(ChannelBuffers.wrappedBuffer(contentToByte));
-          if (contentToByte != null)
-            stats.addValueSize(storeName, contentToByte.length);
-          else
-            stats.addValueSize(storeName, 0);
+            stats.recordValueSize(storeName, contentToByte.length);
+
         } catch (IOException e) {
           completeWithError(HttpResponseStatus.INTERNAL_SERVER_ERROR, e);
-          stats.addUnhealthyRequest(storeName);
+          stats.recordUnhealthyRequest(storeName);
           return;
         }
         HttpHeaders.setContentLength(response, response.getContent().readableBytes());
@@ -199,7 +197,7 @@ public class VeniceDispatcher implements PartitionDispatchHandler<Instance, Veni
           responseFuture.setSuccess(Collections.singletonList(response));
         });
 
-        stats.addLatency(storeName, System.currentTimeMillis() - startTime);
+        stats.recordLatency(storeName, System.currentTimeMillis() - startTime);
       }
 
       @Override

@@ -22,7 +22,7 @@ public class TehutiUtils {
 
   public static MetricsRepository getMetricsRepository(String serviceName) {
     MetricsRepository metricsRepository = new MetricsRepository();
-    metricsRepository.addReporter(new JmxReporter("venice-router"));
+    metricsRepository.addReporter(new JmxReporter(serviceName));
     return metricsRepository;
   }
 }
