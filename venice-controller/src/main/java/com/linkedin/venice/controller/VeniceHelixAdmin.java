@@ -15,6 +15,7 @@ import com.linkedin.venice.meta.PartitionAssignment;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.schema.SchemaEntry;
+import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.PartitionCountUtils;
 import com.linkedin.venice.utils.Utils;
 import java.util.ArrayList;
@@ -23,6 +24,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+import java.util.Set;
 import org.apache.commons.io.IOUtils;
 import org.apache.helix.HelixAdmin;
 import org.apache.helix.HelixManager;
@@ -32,6 +34,7 @@ import org.apache.helix.PropertyKey;
 import org.apache.helix.manager.zk.ZKHelixAdmin;
 import org.apache.helix.manager.zk.ZKHelixManager;
 import org.apache.helix.manager.zk.ZkClient;
+import org.apache.helix.model.ExternalView;
 import org.apache.helix.model.HelixConfigScope;
 import org.apache.helix.model.IdealState;
 import org.apache.helix.model.LeaderStandbySMD;
@@ -545,7 +548,7 @@ public class VeniceHelixAdmin implements Admin {
         List<Replica> replicas = new ArrayList<>();
         PartitionAssignment partitionAssignment = getVeniceHelixResource(clusterName).getRoutingDataRepository().getPartitionAssignments(kafkaTopic);
         for(Partition partition:partitionAssignment.getAllPartitions()){
-            addInstancesToReplicaList(replicas, partition.getBootstrapInstances(), partition.getId(), HelixState.BOOTSTRAP_STATE);
+            addInstancesToReplicaList(replicas, partition.getBootstrapInstances(), kafkaTopic, partition.getId(), HelixState.BOOTSTRAP_STATE);
         }
         return replicas;
     }
@@ -556,7 +559,7 @@ public class VeniceHelixAdmin implements Admin {
         List<Replica> replicas = new ArrayList<>();
         PartitionAssignment partitionAssignment = getVeniceHelixResource(clusterName).getRoutingDataRepository().getPartitionAssignments(kafkaTopic);
         for(Partition partition:partitionAssignment.getAllPartitions()){
-            addInstancesToReplicaList(replicas, partition.getErrorInstances(), partition.getId(), HelixState.ERROR_STATE);
+            addInstancesToReplicaList(replicas, partition.getErrorInstances(), kafkaTopic, partition.getId(), HelixState.ERROR_STATE);
         }
         return replicas;
     }
@@ -567,19 +570,42 @@ public class VeniceHelixAdmin implements Admin {
         List<Replica> replicas = new ArrayList<>();
         PartitionAssignment partitionAssignment = getVeniceHelixResource(clusterName).getRoutingDataRepository().getPartitionAssignments(kafkaTopic);
         for(Partition partition:partitionAssignment.getAllPartitions()){
-            addInstancesToReplicaList(replicas, partition.getErrorInstances(), partition.getId(), HelixState.ERROR_STATE);
-            addInstancesToReplicaList(replicas, partition.getBootstrapInstances(), partition.getId(), HelixState.BOOTSTRAP_STATE);
-            addInstancesToReplicaList(replicas, partition.getReadyToServeInstances(), partition.getId(), HelixState.ONLINE_STATE);
+            addInstancesToReplicaList(replicas, partition.getErrorInstances(), kafkaTopic, partition.getId(), HelixState.ERROR_STATE);
+            addInstancesToReplicaList(replicas, partition.getBootstrapInstances(), kafkaTopic, partition.getId(), HelixState.BOOTSTRAP_STATE);
+            addInstancesToReplicaList(replicas, partition.getReadyToServeInstances(), kafkaTopic, partition.getId(), HelixState.ONLINE_STATE);
         }
         return replicas;
     }
 
-    private void addInstancesToReplicaList(List<Replica> replicaList, List<Instance> instancesToAdd, int partitionId, String stateOfAddedReplicas){
+    private void addInstancesToReplicaList(List<Replica> replicaList, List<Instance> instancesToAdd, String resource, int partitionId, String stateOfAddedReplicas){
         for (Instance instance : instancesToAdd){
-            Replica replica = new Replica(instance, partitionId);
+            Replica replica = new Replica(instance, partitionId, resource);
             replica.setStatus(stateOfAddedReplicas);
             replicaList.add(replica);
         }
+    }
+
+    @Override
+    public List<Replica> getReplicasOfStorageNode(String cluster, String instanceId){
+        List<Replica> replicas = new ArrayList<>();
+        List<String> resources = admin.getResourcesInCluster(cluster);
+        for (String resource : resources){
+            ExternalView ev = admin.getResourceExternalView(cluster, resource);
+            Set<String> partitions = ev.getPartitionSet();
+            for (String partition : partitions) {
+                Map<String, String> InstanceAndStatusMap = ev.getStateMap(partition);
+                for (Map.Entry<String, String> pair : InstanceAndStatusMap.entrySet()){
+                    if (pair.getKey().equals(instanceId)){
+                        String status = pair.getValue();
+                        Instance instance = Instance.fromNodeId(instanceId);
+                        Replica replica = new Replica(instance, HelixUtils.getPartitionId(partition), resource);
+                        replica.setStatus(status);
+                        replicas.add(replica);
+                    }
+                }
+            }
+        }
+        return replicas;
     }
 
     @Override

@@ -6,31 +6,35 @@ For directly affecting administrative actions and queries on a Venice cluster
 ```
 usage: java -jar venice-admin-tool-0.1.jar --<command> [parameters]
             Commands:
-    --add-schema           Requires: --router, --cluster, --store,
-                           --value-schema-file
-    --available-versions   Requires: --router, --cluster, --store
-    --current-version      Requires: --router, --cluster, --store
-    --describe-store       Requires: --router, --cluster, --store
-    --describe-stores      Requires: --router, --cluster
-    --job-status           Requires: --router, --cluster, --store,
-                           --version
-    --list-replicas        Requires: --router, --cluster, --store,
-                           --version
-    --list-storage-nodes   Requires: --router, --cluster
-    --list-stores          Requires: --router, --cluster
-    --new-store            Requires: --router, --cluster, --store,
-                           --version, --key-schema-file,
-                           --value-schema-file
-    --next-version         Requires: --router, --cluster, --store
-    --set-version          Requires: --router, --cluster, --store,
-                           --version
+    --add-schema              Requires: --router, --cluster, --store,
+                              --value-schema-file
+    --available-versions      Requires: --router, --cluster, --store
+    --current-version         Requires: --router, --cluster, --store
+    --describe-store          Requires: --router, --cluster, --store
+    --describe-stores         Requires: --router, --cluster
+    --job-status              Requires: --router, --cluster, --store,
+                              --version
+    --list-replicas           Requires: --router, --cluster, --store,
+                              --version
+    --list-storage-nodes      Requires: --router, --cluster
+    --list-stores             Requires: --router, --cluster
+    --new-store               Requires: --router, --cluster, --store,
+                              --version, --key-schema-file,
+                              --value-schema-file
+    --next-version            Requires: --router, --cluster, --store
+    --set-version             Requires: --router, --cluster, --store,
+                              --version
+    --storage-node-replicas   Requires: --router, --cluster,
+                              --storage-node
 usage: Parameters:
  -c,--cluster <arg>              Name of Venice cluster
  -h,--help                       Show usage
  -ks,--key-schema-file <arg>     Path to text file with key schema
+ -n,--storage-node <arg>         Helix instance ID for a storage node, eg.
+                                 lva1-app1234_1690
  -o,--owner <arg>                Owner email for new store creation
  -r,--router <arg>               Venice router url, eg.
-                                 http://localhost:54333
+                                 http://localhost:1689
  -s,--store <arg>                Name of Venice store
  -v,--version <arg>              Venice store version number
  -vs,--value-schema-file <arg>   Path to text file with value schema
@@ -48,75 +52,5 @@ java -jar venice-admin-tool-0.1.jar --set-version --router <router> --cluster <c
 java -jar venice-admin-tool-0.1.jar --add-schema --router <router> --cluster <cluster> --store <store> --value-schema-file <value-schema-file>
 java -jar venice-admin-tool-0.1.jar --list-storage-nodes --router <router> --cluster <cluster>
 java -jar venice-admin-tool-0.1.jar --list-replicas --router <router> --cluster <cluster> --store <store> --version <version>
+java -jar venice-admin-tool-0.1.jar --storage-node-replicas --router <router> --cluster <cluster> --storage-node <storage-node>
 ```
-
-## Overview of Queries
-
-Note:  All queries require a router (of form `http://<host>:<port>`) and a cluster.
-
-### NEXT
-
-Requires: store
-
-Next available (unreserved) version number.  Returns an integer.
-
-### AVAILABLE
-
-Requires: store
-
-All version numbers that the storage nodes can serve.  These are the only versions that we can set as current (for example for a rollback).  Returns a list of integers, eg: [3, 4]
-
-### CURRENT
-
-Requires: store
-
-The version that is currently being served by the router.  Returns an integer.
-
-### JOB
-
-Requires: store, version
-
-Job status for storage node consumption.
-
-### LIST
-
-Displays (newline delimited) all stores in the cluster
-
-### DESCRIBE
-
-Displays all version information about all stores in the cluster.  If a store is specified, then it only shows details for that store.
-
-```
-Store: myCountry2	Available versions: [1]	Current version: 1	Next version: 2
-Store: myCountry	Available versions: [2, 3, 4]	Current version: 4	Next version: 6
-```
-
-## Overview of New
-
-### STORE
-
-Requires: store, owner, key-schema-file, value-schema-file
-
-Creates a new store.
-
-## Overview of Apply
-
-### VERSION
-
-Requires: store, version
-
-Sets the specified version to active for the specified store
-
-### SCHEMA
-
-Requires: store, value-schema-file
-
-Adds the specified value schema to the store
-
-## Future commands to add:
-
- * Delete version
- * Delete store?
- * ???
-
- * Put clusters and routers into a passed-in config file to query multiple clusters at once

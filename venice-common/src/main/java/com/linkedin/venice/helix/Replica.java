@@ -12,11 +12,13 @@ import org.codehaus.jackson.annotate.JsonProperty;
 public class Replica {
   private final Instance instance;
   private final int partitionId;
+  private final String resource;
   private String status;
 
-  public Replica(@JsonProperty("instance") Instance instance, @JsonProperty("partitionId") int partitionId) {
+  public Replica(@JsonProperty("instance") Instance instance, @JsonProperty("partitionId") int partitionId, @JsonProperty("resource") String resource) {
     this.instance = instance;
     this.partitionId = partitionId;
+    this.resource = resource;
   }
 
   public Instance getInstance() {
@@ -25,6 +27,10 @@ public class Replica {
 
   public int getPartitionId() {
     return partitionId;
+  }
+
+  public String getResource(){
+    return resource;
   }
 
   public String getStatus() {
@@ -40,6 +46,7 @@ public class Replica {
   public String toString(){
     StringJoiner joiner = new StringJoiner(" ");
     joiner.add("Host:").add(instance.getUrl());
+    joiner.add("Resource:").add(resource);
     joiner.add("Partition:").add(Integer.toString(partitionId));
     joiner.add("Status:").add(status);
     return joiner.toString();

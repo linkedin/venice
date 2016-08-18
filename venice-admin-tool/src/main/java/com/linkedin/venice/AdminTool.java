@@ -46,13 +46,14 @@ public class AdminTool {
       createCommandOpt(c, commandGroup);
     }
 
-    createOpt(Arg.ROUTER, true, "Venice router url, eg. http://localhost:54333", options);
+    createOpt(Arg.ROUTER, true, "Venice router url, eg. http://localhost:1689", options);
     createOpt(Arg.CLUSTER, true, "Name of Venice cluster", options);
     createOpt(Arg.STORE, true, "Name of Venice store", options);
     createOpt(Arg.VERSION, true, "Venice store version number", options);
     createOpt(Arg.KEY_SCHEMA, true, "Path to text file with key schema", options);
     createOpt(Arg.VALUE_SCHEMA, true, "Path to text file with value schema", options);
     createOpt(Arg.OWNER, true, "Owner email for new store creation", options);
+    createOpt(Arg.STORAGE_NODE, true, "Helix instance ID for a storage node, eg. lva1-app1234_1690", options);
 
     createOpt(Arg.HELP, false, "Show usage", options);
 
@@ -126,8 +127,10 @@ public class AdminTool {
         applyValueSchemaToStore(cmd, routerHosts, clusterName);
       } else if (cmd.hasOption(Command.LIST_STORAGE_NODES.toString())) {
         printStorageNodeList(routerHosts, clusterName);
-      } else if (cmd.hasOption(Command.LIST_REPLICAS.toString())){
-        printReplicaList(cmd, routerHosts, clusterName);
+      } else if (cmd.hasOption(Command.REPLICAS_OF_STORE.toString())) {
+        printReplicaListForStoreVersion(cmd, routerHosts, clusterName);
+      } else if (cmd.hasOption(Command.REPLICAS_ON_STORAGE_NODE.toString())){
+        printReplicaListForStorageNode(cmd, routerHosts, clusterName);
       } else {
         StringJoiner availableCommands = new StringJoiner(", ");
         for (Command c : Command.values()){
@@ -250,10 +253,18 @@ public class AdminTool {
     }
   }
 
-  private static void printReplicaList(CommandLine cmd, String routerHosts, String clusterName){
-    String store = getRequiredArgument(cmd, Arg.STORE, Command.LIST_REPLICAS);
-    int version = Utils.parseIntFromString(getRequiredArgument(cmd, Arg.VERSION, Command.LIST_REPLICAS), Arg.VERSION.toString());
+  private static void printReplicaListForStoreVersion(CommandLine cmd, String routerHosts, String clusterName){
+    String store = getRequiredArgument(cmd, Arg.STORE, Command.REPLICAS_OF_STORE);
+    int version = Utils.parseIntFromString(getRequiredArgument(cmd, Arg.VERSION, Command.REPLICAS_OF_STORE), Arg.VERSION.toString());
     MultiReplicaResponse response = ControllerClient.listReplicas(routerHosts, clusterName, store, version);
+    for (Replica r : response.getReplicas()){
+      System.out.println(r.toString());
+    }
+  }
+
+  private static void printReplicaListForStorageNode(CommandLine cmd, String routerHosts, String clusterName){
+    String storageNodeId = getRequiredArgument(cmd, Arg.STORAGE_NODE);
+    MultiReplicaResponse response = ControllerClient.listStorageNodeReplicas(routerHosts, clusterName, storageNodeId);
     for (Replica r : response.getReplicas()){
       System.out.println(r.toString());
     }

@@ -36,7 +36,7 @@ public class InstanceStatusDecider {
       String sessionId = instance.getSessionId();
       List<CurrentState> currentStates = accessor.getChildValues(keyBuilder.currentStates(instanceId, sessionId));
       if (logger.isDebugEnabled()) {
-        logger.debug("Found " + currentStates.size() + " resources for instance:" + instanceId);
+        logger.debug("Found " + currentStates.size() + " resources for instance: " + instanceId);
       }
       RoutingDataRepository routingDataRepository = resources.getRoutingDataRepository();
 
@@ -51,10 +51,10 @@ public class InstanceStatusDecider {
             int partitionId = HelixUtils.getPartitionId(partitionState.getKey());
             Partition partition = routingDataRepository.getPartitionAssignments(resourceName).getPartition(partitionId);
 
-            // Compare the number of reday to serve instance to minimum required number of replicas. Could add more criteria in the future.
+            // Compare the number of ready to serve instance to minimum required number of replicas. Could add more criteria in the future.
             int currentReplicas = partition.getReadyToServeInstances().size();
             if (logger.isDebugEnabled()) {
-              logger.debug(partitionState.getKey() + " have " + currentReplicas + " replicas. Minimum required:"
+              logger.debug(partitionState.getKey() + " have " + currentReplicas + " replicas. Minimum required: "
                   + MIN_NUMBER_REPLICA);
             }
             if (currentReplicas <= MIN_NUMBER_REPLICA) {

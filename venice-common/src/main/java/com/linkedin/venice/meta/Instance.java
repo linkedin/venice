@@ -1,5 +1,7 @@
 package com.linkedin.venice.meta;
 
+import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.utils.Utils;
 import javax.validation.constraints.NotNull;
 import org.codehaus.jackson.annotate.JsonIgnore;
 import org.codehaus.jackson.annotate.JsonProperty;
@@ -24,7 +26,7 @@ public class Instance {
   */
   private final int port;
 
-  public Instance(
+  public Instance( // TODO: generate nodeId from host and port, should be "host_port", or generate host and port from id.
       @JsonProperty("nodeId") @NotNull String nodeId,
       @JsonProperty("host") @NotNull String host,
       @JsonProperty("port") int port) {
@@ -32,6 +34,20 @@ public class Instance {
     this.host = host;
     validatePort("port", port);
     this.port = port;
+  }
+
+  public static Instance fromNodeId(String nodeId){
+    try {
+      String[] parts = nodeId.split("_");
+      if (parts.length != 2) {
+        throw new VeniceException(); /* gets caught and new message is thrown */
+      }
+      String host = parts[0];
+      int port = Utils.parseIntFromString(parts[1], "Port");
+      return new Instance(nodeId, host, port);
+    } catch (Exception e){
+      throw new VeniceException("nodeId or instanceId must be of form 'host_port', found: " + nodeId);
+    }
   }
 
   public String getNodeId() {

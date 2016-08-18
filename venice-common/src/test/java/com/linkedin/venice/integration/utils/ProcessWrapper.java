@@ -42,6 +42,17 @@ public abstract class ProcessWrapper implements Closeable {
   }
 
   /**
+   * Use this method for logging errors when we don't actually need an address and we cannot throw exceptions
+   */
+  public String getAddressForLogging() {
+    try {
+      return getAddress();
+    } catch (Exception e){ /* VeniceClusterWrapper throws exceptions on getHost() and getPort() */
+      return "No Address";
+    }
+  }
+
+  /**
    * This function should start the wrapped service AND block until the service is fully started.
    *
    * @throws Exception if there is any problem during the start up
@@ -62,7 +73,7 @@ public abstract class ProcessWrapper implements Closeable {
     try {
       stop();
     } catch (Exception e) {
-      LOGGER.error("Failed to shutdown " + serviceName + " service running at " + getAddress(), e);
+      LOGGER.error("Failed to shutdown " + serviceName + " service running at " + getAddressForLogging(), e);
     }
     try {
       if (dataDirectory != null) {
