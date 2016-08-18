@@ -14,8 +14,11 @@ import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.offsets.BdbOffsetManager;
 import com.linkedin.venice.service.AbstractVeniceService;
+import com.linkedin.venice.stats.ServerAggStats;
+import com.linkedin.venice.stats.TehutiUtils;
 import com.linkedin.venice.storage.StorageService;
 import com.linkedin.venice.utils.Utils;
+import io.tehuti.metrics.MetricsRepository;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -38,8 +41,14 @@ public class VeniceServer {
 
   private final List<AbstractVeniceService> services;
 
+  public final static String SERVER_SERVICE_NAME = "venice-server";
+
   public VeniceServer(VeniceConfigLoader veniceConfigLoader)
       throws VeniceException {
+    this(veniceConfigLoader, TehutiUtils.getMetricsRepository(SERVER_SERVICE_NAME));
+  }
+
+  public VeniceServer(VeniceConfigLoader veniceConfigLoader, MetricsRepository  metricsRepository) {
     this.isStarted = new AtomicBoolean(false);
     this.veniceConfigLoader = veniceConfigLoader;
 
@@ -50,6 +59,8 @@ public class VeniceServer {
 
     //create all services
     this.services = createServices();
+
+    ServerAggStats.init(metricsRepository);
   }
 
   /**

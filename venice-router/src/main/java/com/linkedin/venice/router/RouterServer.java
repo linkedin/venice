@@ -27,6 +27,7 @@ import com.linkedin.venice.router.api.VeniceRoleFinder;
 import com.linkedin.venice.router.api.VeniceVersionFinder;
 import com.linkedin.venice.router.stats.RouterAggStats;
 import com.linkedin.venice.service.AbstractVeniceService;
+import com.linkedin.venice.stats.TehutiUtils;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.Utils;
@@ -81,6 +82,8 @@ public class RouterServer extends AbstractVeniceService {
   private VeniceDispatcher dispatcher;
   private RouterHeartbeat heartbeat;
 
+  private final static String ROUTER_SERVICE_NAME = "venice-router";
+
   public static void main(String args[]) throws Exception {
 
     VeniceProperties props;
@@ -122,13 +125,17 @@ public class RouterServer extends AbstractVeniceService {
     }
   }
 
+  private static MetricsRepository createMetricsRepository() {
+    return TehutiUtils.getMetricsRepository(ROUTER_SERVICE_NAME);
+  }
+
   public RouterServer(int port, String clusterName, String zkConnection, List<D2Server> d2Servers){
     this(port, clusterName, zkConnection, d2Servers, 10000, 1000);
   }
 
   // TODO: Do we need both of these constructors?  If we're always going to use the jmxReporterMetricsRepo() method, then drop the explicit constructor
   public RouterServer(int port, String clusterName, String zkConnection, List<D2Server> d2ServerList, int clientTimeout, int heartbeatTimeout){
-    this(port, clusterName, zkConnection, d2ServerList, clientTimeout, heartbeatTimeout, jmxReporterMetricsRepo());
+    this(port, clusterName, zkConnection, d2ServerList, clientTimeout, heartbeatTimeout, createMetricsRepository());
   }
 
   public RouterServer(int port, String clusterName, String zkConnection, List<D2Server> d2ServerList, int clientTimeout, int heartbeatTimeout, MetricsRepository metricsRepository) {
@@ -142,7 +149,7 @@ public class RouterServer extends AbstractVeniceService {
     if (metricsRepository != null)
       this.metricsRepository = metricsRepository;
     else
-      this.metricsRepository = jmxReporterMetricsRepo();
+      this.metricsRepository = createMetricsRepository();
 
     HelixAdapterSerializer adapter = new HelixAdapterSerializer();
     this.metadataRepository = new HelixReadOnlyStoreRepository(zkClient, adapter, this.clusterName);
@@ -304,9 +311,5 @@ public class RouterServer extends AbstractVeniceService {
     });
   }
 
-  private static MetricsRepository jmxReporterMetricsRepo() {
-    MetricsRepository metricsRepository = new MetricsRepository();
-    metricsRepository.addReporter(new JmxReporter("venice-router"));
-    return metricsRepository;
-  }
+
 }

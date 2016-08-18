@@ -20,6 +20,7 @@ import com.linkedin.venice.notifier.VeniceNotifier;
 import com.linkedin.venice.offsets.OffsetManager;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.server.StoreRepository;
+import com.linkedin.venice.stats.ServerAggStats;
 import com.linkedin.venice.store.AbstractStorageEngine;
 import com.linkedin.venice.store.record.ValueRecord;
 import com.linkedin.venice.utils.ByteUtils;
@@ -399,6 +400,8 @@ public class StoreConsumptionTask implements Runnable, Closeable {
     }
 
     throttler.maybeThrottle(totalSize);
+    ServerAggStats.getInstance().addBytesConsumed(storeNameWithoutVersionInfo , totalSize);
+    ServerAggStats.getInstance().addRecordsConsumed(storeNameWithoutVersionInfo, totalRecords);
 
     for(Integer partition: processedPartitions) {
       if(!partitionToOffsetMap.containsKey(partition)) {
