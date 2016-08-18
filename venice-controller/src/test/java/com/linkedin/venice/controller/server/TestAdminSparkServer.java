@@ -44,6 +44,16 @@ public class TestAdminSparkServer {
   }
 
   @Test
+  public void controllerClientCanQueryReplicasOnAStrageNode(){
+    String topic = venice.getNewStoreVersion().getKafkaTopic();
+    MultiNodeResponse nodeResponse = ControllerClient.listStorageNodes(routerUrl, venice.getClusterName());
+    String nodeId = nodeResponse.getNodes()[0];
+    MultiReplicaResponse replicas = ControllerClient.listStorageNodeReplicas(routerUrl, venice.getClusterName(), nodeId);
+    Assert.assertFalse(replicas.isError(), replicas.getError());
+    Assert.assertTrue(replicas.getReplicas().length >= 10, "Number of replicas is incorrect");
+  }
+
+  @Test
   public void controllerClientCanQueryReplicasForTopic(){
     String kafkaTopic = venice.getNewStoreVersion().getKafkaTopic();
     String store = Version.parseStoreFromKafkaTopicName(kafkaTopic);

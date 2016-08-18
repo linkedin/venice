@@ -10,6 +10,7 @@ import com.linkedin.venice.schema.SchemaEntry;
 
 import java.util.Collection;
 import java.util.List;
+import org.apache.helix.model.ExternalView;
 
 
 /**
@@ -101,6 +102,7 @@ public interface Admin {
     List<Replica> getErrorReplicas(String clusterName, String kafkaTopic);
     List<Replica> getReplicas(String clusterName, String kafkaTopic);
 
+    List<Replica> getReplicasOfStorageNode(String clusterName, String instanceId);
     /**
      * Is the given instance able to remove out from given cluster. For example, if there is only one replica alive in this
      * cluster which is hosted on given instance. This instance should not be removed out of cluster, otherwise Venice will

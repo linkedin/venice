@@ -91,6 +91,7 @@ public class AdminSparkServer extends AbstractVeniceService {
 
     Spark.get(LIST_NODES.getPath(), NodesAndReplicas.listAllNodes(admin));
     Spark.get(LIST_REPLICAS.getPath(), NodesAndReplicas.listReplicasForStore(admin));
+    Spark.get(NODE_REPLICAS.getPath(), NodesAndReplicas.listReplicasForStorageNode(admin));
 
     // Operations for key schema/value schema
     Spark.post(INIT_KEY_SCHEMA.getPath(), SchemaRoutes.initKeySchema(admin));

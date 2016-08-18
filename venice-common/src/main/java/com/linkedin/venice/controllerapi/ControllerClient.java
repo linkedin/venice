@@ -343,6 +343,22 @@ public class ControllerClient implements Closeable {
     }
   }
 
+  private MultiReplicaResponse listStorageNodeReplicas(String clusterName, String instanceId)
+      throws ExecutionException, InterruptedException, IOException {
+    List<NameValuePair> params = newParams(clusterName);
+    params.add(new BasicNameValuePair(ControllerApiConstants.STORAGE_NODE_ID, instanceId));
+    String responseJson = getRequest(ControllerRoute.NODE_REPLICAS.getPath(), params);
+    return mapper.readValue(responseJson, MultiReplicaResponse.class);
+  }
+
+  public static MultiReplicaResponse listStorageNodeReplicas(String routerUrls, String clusterName, String instanceId){
+    try (ControllerClient client = new ControllerClient(routerUrls)){
+      return client.listStorageNodeReplicas(clusterName, instanceId);
+    } catch (Exception e){
+      return handleError(new VeniceException("Error listing replicas for storage node: " + instanceId, e), new MultiReplicaResponse());
+    }
+  }
+
   /* SCHEMA */
 
   private SchemaResponse initKeySchema(String clusterName, String storeName, String keySchemaStr) throws IOException, ExecutionException, InterruptedException {

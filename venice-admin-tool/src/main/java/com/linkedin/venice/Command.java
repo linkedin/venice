@@ -24,8 +24,10 @@ public enum Command {
       new Arg[] {Arg.ROUTER, Arg.CLUSTER, Arg.STORE, Arg.VALUE_SCHEMA}),
   LIST_STORAGE_NODES("list-storage-nodes",
       new Arg[] {Arg.ROUTER, Arg.CLUSTER}),
-  LIST_REPLICAS("list-replicas",
-      new Arg[] {Arg.ROUTER, Arg.CLUSTER, Arg.STORE, Arg.VERSION});
+  REPLICAS_OF_STORE("replicas-of-store",
+      new Arg[] {Arg.ROUTER, Arg.CLUSTER, Arg.STORE, Arg.VERSION}),
+  REPLICAS_ON_STORAGE_NODE("replicas-on-storage-node",
+      new Arg[] {Arg.ROUTER, Arg.CLUSTER, Arg.STORAGE_NODE});
 
   private final String commandName;
   private final Arg[] requiredArgs;

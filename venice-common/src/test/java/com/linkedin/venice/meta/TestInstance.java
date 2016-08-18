@@ -16,4 +16,11 @@ public class TestInstance {
     Instance ip6 = new Instance("0", "::1", 4567);
     Assert.assertEquals(ip6.getUrl(), "http://[::1]:4567");
   }
+
+  @Test
+  public void parsesNodeId(){
+    Instance host = Instance.fromNodeId("localhost_1234");
+    Assert.assertEquals(host.getHost(), "localhost");
+    Assert.assertEquals(host.getPort(), 1234);
+  }
 }

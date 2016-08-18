@@ -20,6 +20,7 @@ public enum ControllerRoute {
   LIST_STORES("/list_stores", Arrays.asList()),
   LIST_NODES("/list_instances", Arrays.asList()),
   LIST_REPLICAS("/list_replicas", Arrays.asList(NAME, VERSION)),
+  NODE_REPLICAS("/storage_node_replicas", Arrays.asList(STORAGE_NODE_ID)),
 
   INIT_KEY_SCHEMA("/init_key_schema", Arrays.asList(NAME, KEY_SCHEMA)),
   GET_KEY_SCHEMA("/get_key_schema", Arrays.asList(NAME)),

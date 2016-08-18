@@ -12,7 +12,8 @@ public enum Arg {
   HELP("help", "h"),
   KEY_SCHEMA("key-schema-file", "ks"),
   VALUE_SCHEMA("value-schema-file", "vs"),
-  OWNER("owner", "o");
+  OWNER("owner", "o"),
+  STORAGE_NODE("storage-node", "n");
 
   private final String argName;
   private final String first;
