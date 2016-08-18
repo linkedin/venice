@@ -4,8 +4,8 @@ import com.linkedin.venice.stats.AbstractVeniceStats;
 import com.linkedin.venice.stats.TehutiUtils;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
-import io.tehuti.metrics.stats.Count;
 import io.tehuti.metrics.stats.OccurrenceRate;
+import io.tehuti.metrics.stats.SampledCount;
 
 public class RouterStats extends AbstractVeniceStats {
 
@@ -21,9 +21,9 @@ public class RouterStats extends AbstractVeniceStats {
   public RouterStats(MetricsRepository metricsRepository, String name) {
     super(metricsRepository, name);
 
-    requestSensor = registerSensor("request", new Count(), new OccurrenceRate());
-    healthySensor = registerSensor("healthy_request", new Count());
-    unhealthySensor = registerSensor("unhealthy_request", new Count());
+    requestSensor = registerSensor("request", new SampledCount(), new OccurrenceRate());
+    healthySensor = registerSensor("healthy_request", new SampledCount());
+    unhealthySensor = registerSensor("unhealthy_request", new SampledCount());
 
     //we have to explicitly pass the anme again for PercentilesStat here.
     //TODO: remove the redundancy once Tehuti library is updated.
@@ -32,27 +32,27 @@ public class RouterStats extends AbstractVeniceStats {
     valueSizeSensor = registerSensor("value_size", TehutiUtils.getPercentileStat(getName() + "_" + "value_size"));
   }
 
-  public void addRequest() {
+  public void recordRequest() {
     record(requestSensor);
   }
 
-  public void addHealthyRequest() {
+  public void recordHealthyRequest() {
     record(healthySensor);
   }
 
-  public void addUnhealthyRequest() {
+  public void recordUnhealthyRequest() {
     record(unhealthySensor);
   }
 
-  public void addLatency(double latency) {
+  public void recordLatency(double latency) {
     record(latencySensor, latency);
   }
 
-  public void addKeySize(double keySize) {
+  public void recordKeySize(double keySize) {
     record(keySizeSensor, keySize);
   }
 
-  public void addValueSize(double valueSize) {
+  public void recordValueSize(double valueSize) {
     record(valueSizeSensor, valueSize);
   };
 }

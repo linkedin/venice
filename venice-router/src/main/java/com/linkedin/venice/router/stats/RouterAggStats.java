@@ -43,34 +43,34 @@ public class RouterAggStats {
       this.totalStats = new RouterStats(metricsRepository, "total");
     }
 
-    public void addRequest(String storeName) {
-      totalStats.addRequest();
-      getStoreStats(storeName).addRequest();
+    public void recordRequest(String storeName) {
+      totalStats.recordRequest();
+      getStoreStats(storeName).recordRequest();
     }
 
-    public void addHealthyRequest(String storeName) {
-      totalStats.addHealthyRequest();
-      getStoreStats(storeName).addHealthyRequest();
+    public void recordHealthyRequest(String storeName) {
+      totalStats.recordHealthyRequest();
+      getStoreStats(storeName).recordHealthyRequest();
     }
 
-    public void addUnhealthyRequest(String storeName) {
-      totalStats.addUnhealthyRequest();
-      getStoreStats(storeName).addUnhealthyRequest();
+    public void recordUnhealthyRequest(String storeName) {
+      totalStats.recordUnhealthyRequest();
+      getStoreStats(storeName).recordUnhealthyRequest();
     }
 
-    public void addLatency(String storeName, double latency) {
-      totalStats.addLatency(latency);
-      getStoreStats(storeName).addLatency(latency);
+    public void recordLatency(String storeName, double latency) {
+      totalStats.recordLatency(latency);
+      getStoreStats(storeName).recordLatency(latency);
     }
 
-    public void addKeySize(String storeName, double keySize) {
-      totalStats.addLatency(keySize);
-      getStoreStats(storeName).addKeySize(keySize);
+    public void recordKeySize(String storeName, double keySize) {
+      totalStats.recordKeySize(keySize);
+      getStoreStats(storeName).recordKeySize(keySize);
     }
 
-    public void addValueSize(String storeName, double valueSize) {
-      totalStats.addValueSize(valueSize);
-      getStoreStats(storeName).addValueSize(valueSize);
+    public void recordValueSize(String storeName, double valueSize) {
+      totalStats.recordValueSize(valueSize);
+      getStoreStats(storeName).recordValueSize(valueSize);
     }
 
     public void close() {
