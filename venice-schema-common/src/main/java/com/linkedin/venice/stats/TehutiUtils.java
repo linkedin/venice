@@ -20,10 +20,9 @@ public class TehutiUtils {
         new Percentile(name + ".99thPercentile", 99));
   }
 
-  //TODO: remove this method once MetricsRepository has the constructor that takes Reporter as parameter.
-  public static MetricsRepository jmxReporterMetricsRepo(String name) {
+  public static MetricsRepository getMetricsRepository(String serviceName) {
     MetricsRepository metricsRepository = new MetricsRepository();
-    metricsRepository.addReporter(new JmxReporter(name));
+    metricsRepository.addReporter(new JmxReporter("venice-router"));
     return metricsRepository;
   }
 }
