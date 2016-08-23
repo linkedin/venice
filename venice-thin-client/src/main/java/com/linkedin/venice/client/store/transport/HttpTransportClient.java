@@ -2,6 +2,7 @@ package com.linkedin.venice.client.store.transport;
 
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.exceptions.VeniceServerException;
+import com.linkedin.venice.client.store.ClientCallback;
 import com.linkedin.venice.client.store.DeserializerFetcher;
 import org.apache.commons.httpclient.HttpStatus;
 import org.apache.commons.io.IOUtils;
@@ -36,10 +37,10 @@ public class HttpTransportClient<V> extends TransportClient<V> {
   }
 
   @Override
-  public Future<V> get(String requestPath) {
+  public Future<V> get(String requestPath, ClientCallback callback) {
     HttpGet request = getHttpRequest(requestPath);
     CompletableFuture<V> valueFuture = new CompletableFuture<>();
-    httpClient.execute(request, new HttpTransportClientCallback<>(valueFuture, getDeserializerFetcher()));
+    httpClient.execute(request, new HttpTransportClientCallback<>(valueFuture, getDeserializerFetcher(), callback));
     return valueFuture;
   }
 
@@ -76,8 +77,8 @@ public class HttpTransportClient<V> extends TransportClient<V> {
   }
 
   private static class HttpTransportClientCallback<T> extends TransportClientCallback<T> implements FutureCallback<HttpResponse> {
-    public HttpTransportClientCallback(CompletableFuture<T> valueFuture, DeserializerFetcher<T> fetcher) {
-      super(valueFuture, fetcher);
+    public HttpTransportClientCallback(CompletableFuture<T> valueFuture, DeserializerFetcher<T> fetcher, ClientCallback callback) {
+      super(valueFuture, fetcher, callback);
     }
 
     public HttpTransportClientCallback(CompletableFuture<T> valueFuture) {
@@ -86,11 +87,13 @@ public class HttpTransportClient<V> extends TransportClient<V> {
 
     @Override
     public void failed(Exception ex) {
+      callback.executeOnError();
       getValueFuture().completeExceptionally(new VeniceClientException(ex));
     }
 
     @Override
     public void cancelled() {
+      callback.executeOnError();
       getValueFuture().completeExceptionally(new VeniceClientException("Request cancelled"));
     }
 
@@ -105,6 +108,7 @@ public class HttpTransportClient<V> extends TransportClient<V> {
         if (HttpStatus.SC_OK == statusCode) {
           if (null == schemaIdHeader) {
             getValueFuture().completeExceptionally(new VeniceServerException("Header: " + HEADER_VENICE_SCHEMA_ID + " doesn't exist"));
+            callback.executeOnError();
             return;
           }
           schemaId = schemaIdHeader.getValue();
@@ -115,6 +119,7 @@ public class HttpTransportClient<V> extends TransportClient<V> {
         body = IOUtils.toByteArray(bodyStream);
       } catch (IOException e) {
         getValueFuture().completeExceptionally(new VeniceClientException(e));
+        callback.executeOnError();
         return;
       }
 

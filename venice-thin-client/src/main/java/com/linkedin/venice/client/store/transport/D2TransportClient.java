@@ -10,10 +10,8 @@ import com.linkedin.r2.message.rest.RestRequestBuilder;
 import com.linkedin.r2.message.rest.RestResponse;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.exceptions.VeniceServerException;
+import com.linkedin.venice.client.store.ClientCallback;
 import com.linkedin.venice.client.store.DeserializerFetcher;
-import java.util.concurrent.locks.Lock;
-import java.util.concurrent.locks.ReadWriteLock;
-import java.util.concurrent.locks.ReentrantReadWriteLock;
 import org.apache.commons.httpclient.HttpStatus;
 import org.apache.log4j.Logger;
 
@@ -110,10 +108,10 @@ public class D2TransportClient<V> extends TransportClient<V> {
   }
 
   @Override
-  public Future<V> get(String requestPath) {
+  public Future<V> get(String requestPath, ClientCallback callback) {
     RestRequest request = getRestRequest(requestPath);
     CompletableFuture<V> valueFuture = new CompletableFuture<>();
-    d2Client.restRequest(request, new D2TransportClientCallback<>(valueFuture, getDeserializerFetcher()));
+    d2Client.restRequest(request, new D2TransportClientCallback<>(valueFuture, getDeserializerFetcher(), callback));
     return valueFuture;
   }
 
@@ -165,8 +163,8 @@ public class D2TransportClient<V> extends TransportClient<V> {
   private static class D2TransportClientCallback<T> extends TransportClientCallback<T> implements Callback<RestResponse> {
     private Logger logger = Logger.getLogger(D2TransportClient.class);
 
-    public D2TransportClientCallback(CompletableFuture<T> valueFuture, DeserializerFetcher<T> fetcher) {
-      super(valueFuture, fetcher);
+    public D2TransportClientCallback(CompletableFuture<T> valueFuture, DeserializerFetcher<T> fetcher, ClientCallback callback) {
+      super(valueFuture, fetcher, callback);
     }
 
     public D2TransportClientCallback(CompletableFuture<T> valueFuture) {
@@ -181,6 +179,7 @@ public class D2TransportClient<V> extends TransportClient<V> {
         onSuccess(result);
       } else {
         logger.error(e);
+        callback.executeOnError();
         getValueFuture().completeExceptionally(new VeniceClientException(e));
       }
     }
@@ -194,6 +193,7 @@ public class D2TransportClient<V> extends TransportClient<V> {
         if (null == schemaId) {
           getValueFuture().completeExceptionally(new VeniceServerException("Header: "
               + HEADER_VENICE_SCHEMA_ID + " doesn't exist"));
+          callback.executeOnError();
           return;
         }
       }

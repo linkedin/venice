@@ -34,10 +34,11 @@ public class VeniceController {
     this(props, TehutiUtils.getMetricsRepository(CONTROLLER_SERVICE_NAME));
   }
 
-  public VeniceController(VeniceProperties props, @NotNull MetricsRepository metricsRepository){
+  public VeniceController(VeniceProperties props, MetricsRepository metricsRepository){
     config = new VeniceControllerConfig(props);
 
     this.metricsRepository = metricsRepository;
+
     ControllerStats.init(this.metricsRepository);
 
     createServices();

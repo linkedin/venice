@@ -3,6 +3,7 @@ package com.linkedin.venice.client.store.transport;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.exceptions.VeniceServerException;
 import com.linkedin.venice.client.serializer.RecordDeserializer;
+import com.linkedin.venice.client.store.ClientCallback;
 import com.linkedin.venice.client.store.DeserializerFetcher;
 import org.apache.http.HttpStatus;
 
@@ -20,10 +21,13 @@ public class TransportClientCallback<T> {
   private final DeserializerFetcher<T> deserializerFetcher;
   private final boolean needRawResult;
 
-  public TransportClientCallback(CompletableFuture<T> valueFuture, DeserializerFetcher<T> fetcher) {
+  protected ClientCallback callback;
+
+  public TransportClientCallback(CompletableFuture<T> valueFuture, DeserializerFetcher<T> fetcher, ClientCallback callback) {
     this.valueFuture = valueFuture;
     this.deserializerFetcher = fetcher;
     this.needRawResult = false;
+    this.callback = callback;
   }
 
   public TransportClientCallback(CompletableFuture<T> valueFuture) {
@@ -52,18 +56,18 @@ public class TransportClientCallback<T> {
         } else {
           try {
             RecordDeserializer<T> deserializer = deserializerFetcher.fetch(Integer.parseInt(schemaId));
-            if (null == deserializer) {
-              System.out.println("null deserializer");
-            }
             T result = deserializer.deserialize(body);
             valueFuture.complete(result);
           } catch (VeniceClientException e) {
             valueFuture.completeExceptionally(e);
+          } finally {
+            callback.executeOnSuccess();
           }
         }
         break;
       case HttpStatus.SC_NOT_FOUND:
         valueFuture.complete(null);
+        callback.executeOnSuccess();
         break;
       case HttpStatus.SC_INTERNAL_SERVER_ERROR:
       case HttpStatus.SC_SERVICE_UNAVAILABLE:
@@ -72,6 +76,7 @@ public class TransportClientCallback<T> {
         } else {
           valueFuture.completeExceptionally(new VeniceServerException());
         }
+        callback.executeOnError();
         break;
       case HttpStatus.SC_BAD_REQUEST:
       default:
@@ -81,6 +86,7 @@ public class TransportClientCallback<T> {
           valueFuture
               .completeExceptionally(new VeniceClientException("Router responds with status code: " + statusCode));
         }
+        callback.executeOnError();
     }
   }
 }

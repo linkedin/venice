@@ -3,7 +3,8 @@ package com.linkedin.venice.exceptions;
 /**
  * Base exception that all other Venice exceptions extend
  */
-public class VeniceException extends RuntimeException {
+public class
+    VeniceException extends RuntimeException {
   private static final long serialVersionUID = 1L;
 
   public VeniceException(){
