@@ -53,9 +53,10 @@ public class ServiceFactory {
         VeniceControllerWrapper.generateService(clusterName, kafkaBrokerWrapper));
   }
 
-  static VeniceServerWrapper getVeniceServer(String clusterName, KafkaBrokerWrapper kafkaBrokerWrapper) {
+  public static VeniceServerWrapper getVeniceServer(String clusterName, KafkaBrokerWrapper kafkaBrokerWrapper,
+      boolean enableServerWhitelist, boolean autoJoinWhitelist) {
     return getStatefulService(VeniceServerWrapper.SERVICE_NAME,
-        VeniceServerWrapper.generateService(clusterName, kafkaBrokerWrapper));
+        VeniceServerWrapper.generateService(clusterName, kafkaBrokerWrapper, enableServerWhitelist, autoJoinWhitelist));
   }
 
   /**

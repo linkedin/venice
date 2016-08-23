@@ -5,6 +5,7 @@ import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreDataChangedListener;
 import com.linkedin.venice.meta.VeniceSerializer;
+import com.linkedin.venice.utils.HelixUtils;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -77,7 +78,7 @@ public class HelixReadOnlyStoreRepository implements ReadOnlyStoreRepository {
 
   public HelixReadOnlyStoreRepository(@NotNull ZkClient zkClient, @NotNull HelixAdapterSerializer adapter,
                                       @NotNull String clusterName, @NotNull VeniceSerializer<Store> serializer) {
-    this.rootPath = "/" + clusterName + STORES_PATH;
+    this.rootPath = HelixUtils.getHelixClusterZkPath(clusterName) + STORES_PATH;
     // TODO: Considering serializer should be thread-safe, we can share serializer across multiple
     // clusters, which means we can register the following paths:
     // Store serializer: /*/Stores/*

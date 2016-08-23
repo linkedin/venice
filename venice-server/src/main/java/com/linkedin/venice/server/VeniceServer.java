@@ -8,6 +8,8 @@ import com.linkedin.venice.helix.HelixAdapterSerializer;
 import com.linkedin.venice.helix.HelixParticipationService;
 import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
 import com.linkedin.venice.helix.HelixReadOnlyStoreRepository;
+import com.linkedin.venice.helix.WhitelistAccessor;
+import com.linkedin.venice.helix.ZkWhitelistAccessor;
 import com.linkedin.venice.kafka.consumer.KafkaConsumerPerStoreService;
 import com.linkedin.venice.listener.ListenerService;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
@@ -51,6 +53,13 @@ public class VeniceServer {
   public VeniceServer(VeniceConfigLoader veniceConfigLoader, MetricsRepository  metricsRepository) {
     this.isStarted = new AtomicBoolean(false);
     this.veniceConfigLoader = veniceConfigLoader;
+    if (!isServerInWhiteList(veniceConfigLoader.getVeniceClusterConfig().getZookeeperAddress(),
+                             veniceConfigLoader.getVeniceClusterConfig().getClusterName(),
+                             veniceConfigLoader.getVeniceServerConfig().getListenerPort(),
+                             veniceConfigLoader.getVeniceServerConfig().isServerWhiteLIstEnabled())) {
+      throw new VeniceException(
+          "Can not create a venice server because this server has not been added into white list.");
+    }
 
     /*
      * TODO - 1. How do the servers share the same config - For example in Voldemort we use cluster.xml and stores.xml.
@@ -101,7 +110,8 @@ public class VeniceServer {
       HelixParticipationService helixParticipationService =
           new HelixParticipationService(kafkaConsumerService, storageService, veniceConfigLoader,
               clusterConfig.getZookeeperAddress(), clusterConfig.getClusterName(),
-              veniceConfigLoader.getVeniceServerConfig().getListenerPort());
+              veniceConfigLoader.getVeniceServerConfig().getListenerPort(),
+              veniceConfigLoader.getVeniceServerConfig().isServerWhiteLIstEnabled());
       services.add(helixParticipationService);
     } else {
       // Note: Only required when NOT using Helix.
@@ -213,6 +223,30 @@ public class VeniceServer {
       isStarted.set(false);
 
       // TODO - Efficient way to unlock java heap
+    }
+  }
+
+  protected boolean isServerInWhiteList(String zkAddress, String clusterName, int listenPort,
+      boolean enableServerWhitelist) {
+    if (!enableServerWhitelist) {
+      logger.info("Check whitelist is disable, continue to start participant.");
+      return true;
+    }
+    try (WhitelistAccessor accessor = new ZkWhitelistAccessor(zkAddress)) {
+      // Note: If a server has been added in to the white list, then node is failed or shutdown by SRE. once it
+      // start up again, it will automatically join the cluster because it already exists in the white list.
+      String participantName = Utils.getHelixNodeIdentifier(listenPort);
+      if (!accessor.isInstanceInWhitelist(clusterName, participantName)) {
+        logger.info(participantName + " is not in the white list of " + clusterName + ", stop starting venice server");
+        return false;
+      } else {
+        logger.info(participantName + " has been added into white list, continue to start participant.");
+        return true;
+      }
+    } catch (Exception e) {
+      String errorMsg = "Met error during checking white list.";
+      logger.error(errorMsg, e);
+      throw new VeniceException(errorMsg, e);
     }
   }
 

@@ -16,6 +16,9 @@ public class HelixUtils {
 
   private static final Logger logger = Logger.getLogger(HelixUtils.class);
 
+  public static String getHelixClusterZkPath(String clusterName){
+    return "/"+clusterName;
+  }
   /**
    * Converts the Venice Server Node Id to Helix Participant name.
    */

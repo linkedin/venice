@@ -34,6 +34,7 @@ public class HelixParticipationService extends AbstractVeniceService {
   private final String zkAddress;
   private final StateModelFactory stateModelFactory;
   private final KafkaConsumerService consumerService;
+  private final boolean enableServerWhitelist;
 
   private HelixManager manager;
 
@@ -42,12 +43,14 @@ public class HelixParticipationService extends AbstractVeniceService {
           @NotNull VeniceConfigLoader veniceConfigLoader,
           @NotNull String zkAddress,
           @NotNull String clusterName,
-          int port) {
+          int port,
+          boolean enableServerWhitelist) {
     this.consumerService = kafkaConsumerService;
     this.clusterName = clusterName;
     //The format of instance name must be "$host_$port", otherwise Helix can not get these information correctly.
     this.participantName = Utils.getHelixNodeIdentifier(port);
     this.zkAddress = zkAddress;
+    this.enableServerWhitelist = enableServerWhitelist;
     instance = new Instance(participantName,Utils.getHostName(), port);
     stateModelFactory
         = new VeniceStateModelFactory(kafkaConsumerService, storageService, veniceConfigLoader);
@@ -108,4 +111,5 @@ public class HelixParticipationService extends AbstractVeniceService {
       logger.info("Successfully started Helix Participation Service");
     });
   }
+
 }

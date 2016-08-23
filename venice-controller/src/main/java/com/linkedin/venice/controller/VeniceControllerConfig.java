@@ -2,20 +2,13 @@ package com.linkedin.venice.controller;
 
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.VeniceProperties;
+import static com.linkedin.venice.ConfigKeys.*;
 
 
 /**
  * Configuration which is specific to a Venice controller.
  */
 public class VeniceControllerConfig extends VeniceControllerClusterConfig {
-  private static final String ADMIN_PORT = "admin.port";
-  private static final String CONTROLLER_CLUSTER_ZK_ADDRESSS = "controller.cluster.zk.address";
-  /** Cluster name for all parent controllers */
-  public static final String CONTROLLER_CLUSTER = "controller.cluster.name";
-  /** How many parent controllers are assigned to each venice cluster. */
-  public static final String CONTROLLER_CLUSTER_REPLICA = "controller.cluster.replica";
-  /** The interval, in ms, between each polling iteration of the TopicMonitor */
-  public static final String TOPIC_MONITOR_POLL_INTERVAL_MS = "topic.monitor.poll.interval.ms";
 
   private final int adminPort;
   private final int controllerClusterReplica;

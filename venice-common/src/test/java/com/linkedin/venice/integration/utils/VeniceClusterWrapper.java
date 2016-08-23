@@ -56,7 +56,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
     List<VeniceServerWrapper> veniceServerWrappers = new ArrayList<>();
     for(int i=0;i<numberOfServers;i++){
 
-      veniceServerWrappers.add(ServiceFactory.getVeniceServer(clusterName, kafkaBrokerWrapper));
+      veniceServerWrappers.add(ServiceFactory.getVeniceServer(clusterName, kafkaBrokerWrapper, false, false));
     }
     VeniceRouterWrapper veniceRouterWrapper = ServiceFactory.getVeniceRouter(clusterName, kafkaBrokerWrapper);
 
