@@ -5,6 +5,8 @@ import com.linkedin.venice.client.schema.SchemaReader;
 import com.linkedin.venice.client.serializer.AvroSerializerDeserializerFactory;
 import com.linkedin.venice.client.serializer.RecordDeserializer;
 import com.linkedin.venice.client.store.transport.TransportClient;
+import com.linkedin.venice.stats.TehutiUtils;
+import io.tehuti.metrics.MetricsRepository;
 import org.apache.avro.Schema;
 
 /**
@@ -13,10 +15,16 @@ import org.apache.avro.Schema;
  */
 public class AvroGenericStoreClientImpl<V> extends AbstractAvroStoreClient<V> {
   public AvroGenericStoreClientImpl(TransportClient<V> transportClient, String storeName) throws VeniceClientException {
-    this(transportClient, storeName, true);
+    this(transportClient, storeName, AbstractAvroStoreClient.getDeafultClientMetricsRepository(storeName));
   }
-  private AvroGenericStoreClientImpl(TransportClient<V> transportClient, String storeName, boolean needSchemaReader) throws VeniceClientException {
-    super(transportClient, storeName, needSchemaReader);
+
+  public AvroGenericStoreClientImpl(TransportClient<V> transportClient, String storeName,
+                                    MetricsRepository metricsRepository) throws VeniceClientException {
+    this(transportClient, storeName, true, metricsRepository);
+  }
+  private AvroGenericStoreClientImpl(TransportClient<V> transportClient, String storeName,
+                                     boolean needSchemaReader, MetricsRepository metricsRepository) throws VeniceClientException {
+    super(transportClient, storeName, needSchemaReader, metricsRepository);
   }
 
   /**
@@ -26,7 +34,7 @@ public class AvroGenericStoreClientImpl<V> extends AbstractAvroStoreClient<V> {
    */
   @Override
   protected AbstractAvroStoreClient<V> getStoreClientForSchemaReader() throws VeniceClientException {
-    return new AvroGenericStoreClientImpl<V>(getTransportClient().getCopyIfNotUsableInCallback(), getStoreName(), false);
+    return new AvroGenericStoreClientImpl<V>(getTransportClient().getCopyIfNotUsableInCallback(), getStoreName(), false, getMetricsRepository() );
   }
 
   @Override

@@ -39,8 +39,6 @@ import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeUnit;
-
-import io.tehuti.metrics.JmxReporter;
 import io.tehuti.metrics.MetricsRepository;
 import org.apache.helix.HelixManager;
 import org.apache.helix.InstanceType;
@@ -142,7 +140,7 @@ public class RouterServer extends AbstractVeniceService {
   }
 
   public RouterServer(int port, String clusterName, String zkConnection, List<D2Server> d2ServerList,
-                      int clientTimeout, int heartbeatTimeout, @NotNull MetricsRepository metricsRepository) {
+                      int clientTimeout, int heartbeatTimeout, MetricsRepository metricsRepository) {
     this.port = port;
     this.clientTimeout = clientTimeout;
     this.heartbeatTimeout = heartbeatTimeout;
@@ -151,7 +149,6 @@ public class RouterServer extends AbstractVeniceService {
     manager = new ZKHelixManager(this.clusterName, null, InstanceType.SPECTATOR, zkConnection);
 
     this.metricsRepository = metricsRepository;
-
 
     HelixAdapterSerializer adapter = new HelixAdapterSerializer();
     this.metadataRepository = new HelixReadOnlyStoreRepository(zkClient, adapter, this.clusterName);

@@ -2,11 +2,14 @@ package com.linkedin.venice.client.store;
 
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.schema.SchemaReader;
-import com.linkedin.venice.client.serializer.AvroGenericSerializer;
 import com.linkedin.venice.client.serializer.AvroSerializerDeserializerFactory;
 import com.linkedin.venice.client.serializer.RecordSerializer;
 import com.linkedin.venice.client.store.transport.HttpTransportClient;
+import com.linkedin.venice.client.stats.ClientStats;
 import com.linkedin.venice.client.store.transport.TransportClient;
+import com.linkedin.venice.stats.TehutiUtils;
+import io.tehuti.metrics.MetricsRepository;
+import io.tehuti.utils.Time;
 import org.apache.avro.Schema;
 import org.apache.commons.io.IOUtils;
 
@@ -17,6 +20,11 @@ import java.util.concurrent.Future;
 public abstract class AbstractAvroStoreClient<V> implements AvroGenericStoreClient<V>, DeserializerFetcher<V> {
   public static final String STORAGE_TYPE = "storage";
   public static final String B64_FORMAT = "?f=b64";
+  public static final String VENICE_CLIENT_NAME = "venice_client";
+  public static final int TIMEOUT_IN_SECOND = 50;
+
+  private final MetricsRepository metricsRepository;
+  private final ClientStats stats;
 
   /** Encoder to encode store key object */
   private final Base64.Encoder encoder = Base64.getUrlEncoder();
@@ -30,7 +38,13 @@ public abstract class AbstractAvroStoreClient<V> implements AvroGenericStoreClie
 
   public AbstractAvroStoreClient(TransportClient<V> transportClient,
                                  String storeName,
-                                 boolean needSchemaReader) throws VeniceClientException {
+                                 boolean needSchemaReader,
+                                 MetricsRepository metricsRepository) throws VeniceClientException {
+    this.metricsRepository = metricsRepository;
+
+    ClientStats.init(this.metricsRepository);
+    stats = ClientStats.getInstance();
+
     this.transportClient = transportClient;
     this.storeName = storeName;
     if (needSchemaReader) {
@@ -78,10 +92,28 @@ public abstract class AbstractAvroStoreClient<V> implements AvroGenericStoreClie
 
   @Override
   public Future<V> get(Object key) throws VeniceClientException {
+    long startTime = System.currentTimeMillis();
+    stats.recordRequest();
     byte[] serializedKey = keySerializer.serialize(key);
     String requestPath = getRequestPathByStoreKey(serializedKey);
 
-    return transportClient.get(requestPath);
+    return transportClient.get(requestPath, new ClientCallback() {
+      @Override
+      public void executeOnSuccess() {
+        if (System.currentTimeMillis() - startTime > TIMEOUT_IN_SECOND * Time.MS_PER_SECOND) {
+          executeOnError();
+        } else {
+          stats.recordHealthyRequest();
+          stats.recordHealthyLatency(System.currentTimeMillis() - startTime);
+        }
+      }
+
+      @Override
+      public void executeOnError() {
+        stats.recordUnhealthyRequest();
+        stats.recordUnhealthyLatency(System.currentTimeMillis() - startTime);
+      }
+    });
   }
 
   public Future<byte[]> getRaw(String requestPath) {
@@ -99,4 +131,11 @@ public abstract class AbstractAvroStoreClient<V> implements AvroGenericStoreClie
 
   protected abstract AbstractAvroStoreClient<V> getStoreClientForSchemaReader() throws VeniceClientException;
 
+  static protected MetricsRepository getDeafultClientMetricsRepository(String storeName) {
+    return TehutiUtils.getMetricsRepository(VENICE_CLIENT_NAME + "_" + storeName);
+  }
+
+  protected MetricsRepository getMetricsRepository() {
+    return this.metricsRepository;
+  }
 }

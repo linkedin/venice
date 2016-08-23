@@ -1,5 +1,6 @@
 package com.linkedin.venice.client.store.transport;
 
+import com.linkedin.venice.client.store.ClientCallback;
 import com.linkedin.venice.client.store.DeserializerFetcher;
 
 import java.io.Closeable;
@@ -12,7 +13,7 @@ import java.util.concurrent.Future;
 public abstract class TransportClient<V> implements Closeable {
   private DeserializerFetcher<V> deserializerFetcher;
 
-  public abstract Future<V> get(String requestPath);
+  public abstract Future<V> get(String requestPath, ClientCallback callback);
 
   public abstract Future<byte[]> getRaw(String requestPath);
 
