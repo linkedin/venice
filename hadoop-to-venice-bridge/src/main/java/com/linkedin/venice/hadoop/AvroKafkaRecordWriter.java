@@ -1,5 +1,6 @@
 package com.linkedin.venice.hadoop;
 
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.writer.AbstractVeniceWriter;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.exceptions.UndefinedPropertyException;
@@ -77,11 +78,6 @@ public class AvroKafkaRecordWriter implements RecordWriter<AvroWrapper<IndexedRe
     // The upstream has already checked that the key/value fields must exist in the given schema,
     // so we won't check it again here
     Schema schema = Schema.parse(schemaStr).getField(field).schema();
-    if (schema.getType() == Schema.Type.STRING) {
-      // TODO: Theoretically, we should always use AvroGenricSerializer when schema registry is ready;
-      // Right now, we still want to use StringSerializer for String type since venice-client is passing whatever it receives to the backend.
-      return new StringSerializer();
-    }
     return new AvroGenericSerializer(schema.toString());
   }
 
@@ -102,22 +98,14 @@ public class AvroKafkaRecordWriter implements RecordWriter<AvroWrapper<IndexedRe
     if (null == keyDatum) {
       // Invalid data
       // Theoretically it should not happen since all the avro records are sharing the same schema in the same file
-      logger.warn("Skipping record with null key value.");
-      return;
+      throw new VeniceException("Encountered record with null key");
     }
-    // TODO: remove the following hack when schema registry is fully supported
-    if (keySerializer instanceof StringSerializer) {
-      keyDatum = keyDatum.toString();
-    }
+
     Object valueDatum = datum.get(valueFieldPos);
     if (null == valueDatum) {
       // TODO: maybe we want to write a null value anyways?
       logger.warn("Skipping record with null value.");
       return;
-    }
-    // TODO: remove the following hack when schema registry is fully supported
-    if (valueSerializer instanceof StringSerializer) {
-      valueDatum = valueDatum.toString();
     }
 
     veniceWriter.put(keySerializer.serialize(topicName, keyDatum), valueSerializer.serialize(topicName, valueDatum), valueSchemaId);

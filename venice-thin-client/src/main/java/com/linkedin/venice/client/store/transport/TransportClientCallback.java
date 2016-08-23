@@ -1,7 +1,7 @@
 package com.linkedin.venice.client.store.transport;
 
 import com.linkedin.venice.client.exceptions.VeniceClientException;
-import com.linkedin.venice.client.exceptions.VeniceServerErrorException;
+import com.linkedin.venice.client.exceptions.VeniceServerException;
 import com.linkedin.venice.client.serializer.RecordDeserializer;
 import com.linkedin.venice.client.store.DeserializerFetcher;
 import org.apache.http.HttpStatus;
@@ -68,9 +68,9 @@ public class TransportClientCallback<T> {
       case HttpStatus.SC_INTERNAL_SERVER_ERROR:
       case HttpStatus.SC_SERVICE_UNAVAILABLE:
         if (msg != null) {
-          valueFuture.completeExceptionally(new VeniceServerErrorException(msg));
+          valueFuture.completeExceptionally(new VeniceServerException(msg));
         } else {
-          valueFuture.completeExceptionally(new VeniceServerErrorException());
+          valueFuture.completeExceptionally(new VeniceServerException());
         }
         break;
       case HttpStatus.SC_BAD_REQUEST:

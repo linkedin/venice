@@ -7,7 +7,7 @@ import com.linkedin.r2.message.rest.RestException;
 import com.linkedin.r2.message.rest.RestRequest;
 import com.linkedin.r2.message.rest.RestRequestBuilder;
 import com.linkedin.r2.message.rest.RestResponse;
-import com.linkedin.venice.client.exceptions.VeniceServerErrorException;
+import com.linkedin.venice.client.exceptions.VeniceServerException;
 import com.linkedin.venice.client.store.AbstractAvroStoreClient;
 import com.linkedin.venice.client.store.AvroStoreClientFactory;
 import com.linkedin.venice.integration.utils.D2TestUtils;
@@ -59,9 +59,9 @@ public class TestRouter {
 
     try {
       byte[] value = storeClient.getRaw("storage/myStore/myKey").get();
-      Assert.fail("Router with Mock components should trigger VeniceServerErrorException");
+      Assert.fail("Router with Mock components should trigger VeniceServerException");
     } catch (ExecutionException e){
-      if (e.getCause() instanceof VeniceServerErrorException){
+      if (e.getCause() instanceof VeniceServerException){
         // expected.
       } else {
         throw e;

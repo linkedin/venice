@@ -31,11 +31,11 @@ dependencies {
     compile libraries.xerces
     compile libraries.xalan
 
-    testCompile project(':venice-client')
     testCompile project(':venice-common').sourceSets.test.output
     testCompile project(':venice-controller')
     testCompile project(':venice-server')
     testCompile project(':venice-router')
+    testCompile project(':venice-thin-client')
     testCompile (libraries.mapreduceClientJobClient) {
         exclude group: 'org.apache.avro'
         exclude group: 'javax.servlet'

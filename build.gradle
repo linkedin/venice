@@ -141,7 +141,6 @@ subprojects {
 
 task buildAll {
   dependsOn 'venice-common:build'
-  dependsOn 'venice-client:build'
   dependsOn 'venice-thin-client:build'
   dependsOn 'venice-thin-client:test'
   dependsOn 'venice-server:build'

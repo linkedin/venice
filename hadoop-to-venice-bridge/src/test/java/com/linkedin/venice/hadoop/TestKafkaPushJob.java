@@ -1,15 +1,19 @@
 package com.linkedin.venice.hadoop;
 
-import com.linkedin.venice.client.VeniceReader;
-import com.linkedin.venice.writer.VeniceWriter;
+import com.linkedin.venice.client.store.AvroGenericStoreClient;
+import com.linkedin.venice.client.store.AvroStoreClientFactory;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.exceptions.VeniceInconsistentSchemaException;
 import com.linkedin.venice.hadoop.exceptions.VeniceSchemaFieldNotFoundException;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
-import com.linkedin.venice.serialization.StringSerializer;
-import com.linkedin.venice.serialization.VeniceSerializer;
-import com.linkedin.venice.utils.*;
+import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.Time;
+import com.linkedin.venice.writer.VeniceWriter;
+import java.io.File;
+import java.io.IOException;
+import java.util.Properties;
 import org.apache.avro.Schema;
 import org.apache.avro.file.DataFileWriter;
 import org.apache.avro.generic.GenericData;
@@ -22,21 +26,16 @@ import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
-import java.io.File;
-import java.io.IOException;
-import java.util.Properties;
-
-import static com.linkedin.venice.ConfigKeys.CLUSTER_NAME;
-import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
-import static com.linkedin.venice.ConfigKeys.ZOOKEEPER_ADDRESS;
-
 public class TestKafkaPushJob {
   private static final Logger LOGGER = Logger.getLogger(TestKafkaPushJob.class);
-  private static final int TEST_TIMEOUT = 60 * Time.MS_PER_SECOND;
+  private static final int TEST_TIMEOUT = 60 * Time.MS_PER_SECOND;  /* TODO: Really?  60 seconds? This is way too long for most tests to timeout */
+private static final String STRING_SCHEMA = "\"string\"";
+
 
   private VeniceClusterWrapper veniceCluster;
 
-  private static File getTempDataDirectory() {
+  /* TODO: This leaves temp directories lying around, make it clean up */
+  protected static File getTempDataDirectory() {
     String tmpDirectory = System.getProperty("java.io.tmpdir");
     String directoryName = TestUtils.getUniqueString("Venice-Data");
     File dir = new File(tmpDirectory, directoryName).getAbsoluteFile();
@@ -47,7 +46,7 @@ public class TestKafkaPushJob {
   /**
    * This function is used to generate a small avro file with 'user' schema.
    */
-  private void writeSimpleAvroFileWithUserSchema(File parentDir) throws IOException {
+  protected static void writeSimpleAvroFileWithUserSchema(File parentDir) throws IOException {
     String schemaStr = "{" +
         "  \"namespace\" : \"example.avro\",  " +
         "  \"type\": \"record\",   " +
@@ -76,7 +75,7 @@ public class TestKafkaPushJob {
     dataFileWriter.close();
   }
 
-  private void writeComplicateAvroFileWithUserSchema(File parentDir, boolean addFieldWithDefaultValue) throws IOException {
+  protected static void writeComplicatedAvroFileWithUserSchema(File parentDir, boolean addFieldWithDefaultValue) throws IOException {
     String schemaStr = "{\"namespace\": \"example.avro\",\n" +
         " \"type\": \"record\",\n" +
         " \"name\": \"User\",\n" +
@@ -121,7 +120,7 @@ public class TestKafkaPushJob {
   }
 
 
-  private void writeSimpleAvroFileWithDifferentUserSchema(File parentDir) throws IOException {
+  protected static void writeSimpleAvroFileWithDifferentUserSchema(File parentDir) throws IOException {
     String schemaStr = "{" +
         "  \"namespace\" : \"example.avro\",  " +
         "  \"type\": \"record\",   " +
@@ -165,26 +164,13 @@ public class TestKafkaPushJob {
     }
   }
 
-  private VeniceReader<String, String> initVeniceReader(String storeName) {
-    VeniceProperties clientProps = new PropertyBuilder()
-        .put(KAFKA_BOOTSTRAP_SERVERS, veniceCluster.getKafka().getAddress())
-        .put(ZOOKEEPER_ADDRESS, veniceCluster.getZk().getAddress())
-        .put(CLUSTER_NAME, veniceCluster.getClusterName()).build();
-    VeniceSerializer keySerializer = new StringSerializer();
-    VeniceSerializer valueSerializer = new StringSerializer();
-    VeniceReader veniceReader = new VeniceReader<String, String>(clientProps, storeName, keySerializer, valueSerializer);
-    veniceReader.init();
-
-    return veniceReader;
-  }
-
-  private Properties setupDefaultProps(String inputDirPath) {
+  private Properties setupDefaultProps(String inputDirPath, String storeName) {
     Properties props = new Properties();
     props.put(KafkaPushJob.VENICE_ROUTER_URL_PROP, "http://" + veniceCluster.getVeniceRouter().getAddress());
     props.put(KafkaPushJob.KAFKA_URL_PROP, veniceCluster.getKafka().getAddress());
     props.put(KafkaPushJob.KAFKA_ZOOKEEPER_PROP, veniceCluster.getZk().getAddress());
     props.put(KafkaPushJob.VENICE_CLUSTER_NAME_PROP, veniceCluster.getClusterName());
-    props.put(KafkaPushJob.VENICE_STORE_NAME_PROP, "user");
+    props.put(KafkaPushJob.VENICE_STORE_NAME_PROP, storeName);
     props.put(KafkaPushJob.VENICE_STORE_OWNERS_PROP, "test@linkedin.com");
     props.put(KafkaPushJob.INPUT_PATH_PROP, inputDirPath);
     props.put(KafkaPushJob.AVRO_KEY_FIELD_PROP, "id");
@@ -201,30 +187,36 @@ public class TestKafkaPushJob {
     File inputDir = getTempDataDirectory();
     writeSimpleAvroFileWithUserSchema(inputDir);
     String inputDirPath = "file://" + inputDir.getAbsolutePath();
-    Properties props = setupDefaultProps(inputDirPath);
+    String storeName = TestUtils.getUniqueString("store");
+    Properties props = setupDefaultProps(inputDirPath, storeName);
 
     KafkaPushJob job = new KafkaPushJob("Test push job", props);
     job.run();
 
     // Verify job properties
-    Assert.assertEquals(job.getKafkaTopic(), "user_v1");
+    Assert.assertEquals(job.getKafkaTopic(), Version.composeKafkaTopic(storeName, 1));
     Assert.assertEquals(job.getInputDirectory(), inputDirPath);
     String schema = "{\"type\":\"record\",\"name\":\"User\",\"namespace\":\"example.avro\",\"fields\":[{\"name\":\"id\",\"type\":\"string\"},{\"name\":\"name\",\"type\":\"string\"},{\"name\":\"age\",\"type\":\"int\"}]}";
     Assert.assertEquals(job.getFileSchemaString(), schema);
-    Assert.assertEquals(job.getKeySchemaString(), "\"string\"");
-    Assert.assertEquals(job.getValueSchemaString(), "\"string\"");
+    Assert.assertEquals(job.getKeySchemaString(), STRING_SCHEMA);
+    Assert.assertEquals(job.getValueSchemaString(), STRING_SCHEMA);
     Assert.assertEquals(job.getInputFileDataSize(), 3872);
 
     // Verify the data in Venice Store
-    String storeName = job.getKafkaTopic();
-    VeniceReader reader = initVeniceReader(storeName);
+    String routerUrl = "http://" + veniceCluster.getVeniceRouter().getAddress();
+    AvroGenericStoreClient<Object> client = AvroStoreClientFactory.getAvroGenericStoreClient(routerUrl, storeName);
 
     for (int i = 1; i <= 100; ++i) {
-      Assert.assertEquals(reader.get(Integer.toString(i)), "test_name_" + i);
+      String expected = "test_name_" + i;
+      String actual = client.get(Integer.toString(i)).get().toString(); /* client.get().get() returns a Utf8 object */
+      Assert.assertEquals(actual, expected);
     }
-    Assert.assertNull(reader.get("101"));
   }
 
+  /**
+   * TODO: This test can be reduced to just a test case on the code that detects inconsistent schema instead of an integration test
+   * @throws Exception
+   */
   @Test(timeOut = TEST_TIMEOUT,
       expectedExceptions = VeniceInconsistentSchemaException.class)
   public void testRunJobWithInputHavingDifferentSchema() throws Exception {
@@ -234,21 +226,26 @@ public class TestKafkaPushJob {
 
     // Setup job properties
     String inputDirPath = "file://" + inputDir.getAbsolutePath();
-    Properties props = setupDefaultProps(inputDirPath);
+    String storeName = TestUtils.getUniqueString("store");
+    Properties props = setupDefaultProps(inputDirPath, storeName);
 
     KafkaPushJob job = new KafkaPushJob("Test push job", props);
     job.run();
-
     // No need for asserts, because we are expecting an exception to be thrown!
   }
 
+  /**
+   * TODO: This test can be reduced to just a test case on that detects an invalid key field instead of an integration test
+   * @throws Exception
+   */
   @Test(expectedExceptions = VeniceSchemaFieldNotFoundException.class, expectedExceptionsMessageRegExp = ".*key field: id1 is not found.*")
   public void testRunJobWithInvalidKeyField() throws Exception {
     File inputDir = getTempDataDirectory();
     writeSimpleAvroFileWithUserSchema(inputDir);
     // Setup job properties
+    String storeName = TestUtils.getUniqueString("store");
     String inputDirPath = "file://" + inputDir.getAbsolutePath();
-    Properties props = setupDefaultProps(inputDirPath);
+    Properties props = setupDefaultProps(inputDirPath, storeName);
     // Override with not-existing key field
     props.put(KafkaPushJob.AVRO_KEY_FIELD_PROP, "id1");
 
@@ -258,6 +255,10 @@ public class TestKafkaPushJob {
     // No need for asserts, because we are expecting an exception to be thrown!
   }
 
+  /**
+   * TODO: This test can be reduced to just a test case on that detects an invalid value field instead of an integration test
+   * @throws Exception
+   */
   @Test(timeOut = TEST_TIMEOUT,
       expectedExceptions = VeniceSchemaFieldNotFoundException.class,
       expectedExceptionsMessageRegExp = ".*value field: name1 is not found.*")
@@ -267,7 +268,8 @@ public class TestKafkaPushJob {
 
     // Setup job properties
     String inputDirPath = "file://" + inputDir.getAbsolutePath();
-    Properties props = setupDefaultProps(inputDirPath);
+    String storeName = TestUtils.getUniqueString("store");
+    Properties props = setupDefaultProps(inputDirPath, storeName);
     // Override with not-existing value field
     props.put(KafkaPushJob.AVRO_VALUE_FIELD_PROP, "name1");
 
@@ -277,6 +279,10 @@ public class TestKafkaPushJob {
     // No need for asserts, because we are expecting an exception to be thrown!
   }
 
+  /**
+   * TODO: This test can be reduced to just a test case on that detects an invalid directory structure instead of an integration test
+   * @throws Exception
+   */
   @Test(timeOut = TEST_TIMEOUT,
       expectedExceptions = VeniceException.class,
       expectedExceptionsMessageRegExp = ".*should not have sub directory: sub-dir.*")
@@ -289,7 +295,8 @@ public class TestKafkaPushJob {
 
     // Setup job properties
     String inputDirPath = "file://" + inputDir.getAbsolutePath();
-    Properties props = setupDefaultProps(inputDirPath);
+    String storeName = TestUtils.getUniqueString("store");
+    Properties props = setupDefaultProps(inputDirPath, storeName);
 
     KafkaPushJob job = new KafkaPushJob("Test push job", props);
     job.run();
@@ -309,13 +316,14 @@ public class TestKafkaPushJob {
     newFolder.mkdir();
     writeSimpleAvroFileWithUserSchema(newFolder);
     String inputDirPath = "file:" + inputDir.getAbsolutePath() + "/#LATEST";
-    Properties props = setupDefaultProps(inputDirPath);
+    String storeName = TestUtils.getUniqueString("store");
+    Properties props = setupDefaultProps(inputDirPath, storeName);
 
     KafkaPushJob job = new KafkaPushJob("Test push job", props);
     job.run();
 
     // Verify job properties
-    Assert.assertEquals(job.getKafkaTopic(), "user_v1");
+    Assert.assertEquals(job.getKafkaTopic(), Version.composeKafkaTopic(storeName, 1));
     Assert.assertEquals(job.getInputDirectory(), "file:" + newFolder.getAbsolutePath());
     String schema = "{\"type\":\"record\",\"name\":\"User\",\"namespace\":\"example.avro\",\"fields\":[{\"name\":\"id\",\"type\":\"string\"},{\"name\":\"name\",\"type\":\"string\"},{\"name\":\"age\",\"type\":\"int\"}]}";
     Assert.assertEquals(job.getFileSchemaString(), schema);
@@ -324,44 +332,56 @@ public class TestKafkaPushJob {
     Assert.assertEquals(job.getInputFileDataSize(), 3872);
 
     // Verify the data in Venice Store
-    String storeName = job.getKafkaTopic();
-    VeniceReader reader = initVeniceReader(storeName);
+    String routerUrl = "http://" + veniceCluster.getVeniceRouter().getAddress();
+    AvroGenericStoreClient<Object> client = AvroStoreClientFactory.getAvroGenericStoreClient(routerUrl, storeName);
 
     for (int i = 1; i <= 100; ++i) {
-      Assert.assertEquals("test_name_" + i, reader.get(Integer.toString(i)));
+      String expected = "test_name_" + i;
+      String actual = client.get(Integer.toString(i)).get().toString(); /* client.get().get() returns a Utf8 object */
+      Assert.assertEquals(actual, expected);
     }
-    Assert.assertNull(reader.get("101"));
+    Assert.assertNull(client.get("101").get());
   }
 
+  /**
+   * TODO: This test can be reduced to just a test case on that detects a key schema mismatch instead of an integration test
+   * @throws Exception
+   */
   @Test(timeOut = TEST_TIMEOUT,
       expectedExceptions = VeniceException.class,
-      expectedExceptionsMessageRegExp = ".*Fail to validate/create key schema.*")
+      expectedExceptionsMessageRegExp = ".*Key schema mis-match for store.*")
   public void testRunJobMultipleTimesWithDifferentKeySchemaConfig() throws Exception {
     File inputDir = getTempDataDirectory();
     writeSimpleAvroFileWithUserSchema(inputDir);
     String inputDirPath = "file://" + inputDir.getAbsolutePath();
-    Properties props = setupDefaultProps(inputDirPath);
+    String storeName = TestUtils.getUniqueString("store");
+    Properties props = setupDefaultProps(inputDirPath, storeName);
     String jobName = "Test push job";
 
     KafkaPushJob job = new KafkaPushJob(jobName, props);
     job.run();
 
     // Verify the data in Venice Store
-    String storeName = job.getKafkaTopic();
-    VeniceReader reader = initVeniceReader(storeName);
+    String routerUrl = "http://" + veniceCluster.getVeniceRouter().getAddress();
+    AvroGenericStoreClient<Object> client = AvroStoreClientFactory.getAvroGenericStoreClient(routerUrl, storeName);
 
-    // Job should success
-    for (int i = 1; i <= 100; ++i) {
-      Assert.assertEquals(reader.get(Integer.toString(i)), "test_name_" + i);
+    for (int i = 1; i <= 10; ++i) {
+      String expected = "test_name_" + i;
+      String actual = client.get(Integer.toString(i)).get().toString(); /* client.get().get() returns a Utf8 object */
+      Assert.assertEquals(actual, expected);
     }
-    Assert.assertNull(reader.get("101"));
 
     // Run job with different key schema (from 'string' to 'int')
     props.setProperty(KafkaPushJob.AVRO_KEY_FIELD_PROP, "age");
+    props.setProperty(KafkaPushJob.AUTO_CREATE_STORE, "false");
     job = new KafkaPushJob(jobName, props);
     job.run();
   }
 
+  /**
+   * TODO: This test can be reduced to just a test case on that detects a value schema mismatch instead of an integration test
+   * @throws Exception
+   */
   @Test(timeOut = TEST_TIMEOUT,
       expectedExceptions = VeniceException.class,
       expectedExceptionsMessageRegExp = ".*Unable to validate schema for store.*")
@@ -369,21 +389,22 @@ public class TestKafkaPushJob {
     File inputDir = getTempDataDirectory();
     writeSimpleAvroFileWithUserSchema(inputDir);
     String inputDirPath = "file://" + inputDir.getAbsolutePath();
-    Properties props = setupDefaultProps(inputDirPath);
+    String storeName = TestUtils.getUniqueString("store");
+    Properties props = setupDefaultProps(inputDirPath, storeName);
     String jobName = "Test push job";
 
     KafkaPushJob job = new KafkaPushJob(jobName, props);
     job.run();
 
     // Verify the data in Venice Store
-    String storeName = job.getKafkaTopic();
-    VeniceReader reader = initVeniceReader(storeName);
+    String routerUrl = "http://" + veniceCluster.getVeniceRouter().getAddress();
+    AvroGenericStoreClient<Object> client = AvroStoreClientFactory.getAvroGenericStoreClient(routerUrl, storeName);
 
-    // Job should success
-    for (int i = 1; i <= 100; ++i) {
-      Assert.assertEquals(reader.get(Integer.toString(i)), "test_name_" + i);
+    for (int i = 1; i <= 10; ++i) {
+      String expected = "test_name_" + i;
+      String actual = client.get(Integer.toString(i)).get().toString(); /* client.get().get() returns a Utf8 object */
+      Assert.assertEquals(actual, expected);
     }
-    Assert.assertNull(reader.get("101"));
 
     // Run job with different value schema (from 'string' to 'int')
     props.setProperty(KafkaPushJob.AVRO_VALUE_FIELD_PROP, "age");
@@ -395,9 +416,10 @@ public class TestKafkaPushJob {
   @Test(timeOut = TEST_TIMEOUT)
   public void testRunJobMultipleTimesWithCompatibleValueSchemaConfig() throws Exception {
     File inputDir = getTempDataDirectory();
-    writeComplicateAvroFileWithUserSchema(inputDir, false);
+    writeComplicatedAvroFileWithUserSchema(inputDir, false);
     String inputDirPath = "file://" + inputDir.getAbsolutePath();
-    Properties props = setupDefaultProps(inputDirPath);
+    String storeName = TestUtils.getUniqueString("store");
+    Properties props = setupDefaultProps(inputDirPath, storeName);
     String jobName = "Test push job";
     props.setProperty(KafkaPushJob.AVRO_VALUE_FIELD_PROP, "value");
 
@@ -405,22 +427,23 @@ public class TestKafkaPushJob {
     job.run();
 
     // Verify the data in Venice Store
-    String storeName = job.getKafkaTopic();
-    VeniceReader reader = initVeniceReader(storeName);
+    String routerUrl = "http://" + veniceCluster.getVeniceRouter().getAddress();
+    AvroGenericStoreClient<Object> client = AvroStoreClientFactory.getAvroGenericStoreClient(routerUrl, storeName);
 
-    // Job should success
-    for (int i = 1; i <= 100; ++i) {
-      Assert.assertNotNull(reader.get(Integer.toString(i)));
+    for (int i = 1; i <= 10; ++i) {
+      String actual = client.get(Integer.toString(i)).get().toString(); /* client.get().get() returns a Utf8 object */
+      Assert.assertNotNull(actual);
     }
-    Assert.assertNull(reader.get("101"));
 
     // Run job with different but compatible value schema
     inputDir = getTempDataDirectory();
-    writeComplicateAvroFileWithUserSchema(inputDir, true);
+    writeComplicatedAvroFileWithUserSchema(inputDir, true);
     inputDirPath = "file://" + inputDir.getAbsolutePath();
-    props = setupDefaultProps(inputDirPath);
-    props.setProperty(KafkaPushJob.AVRO_VALUE_FIELD_PROP, "value");
-    job = new KafkaPushJob(jobName, props);
+    props = setupDefaultProps(inputDirPath, storeName);
+    props.setProperty(KafkaPushJob.AVRO_VALUE_FIELD_PROP, "value"); /* TODO: This should be a different value field */
+    job = new KafkaPushJob(jobName, props); /* TODO: AUTO_CREATE_STORE to false, but this causes test to fail??? */
     job.run();
+    /* TODO: add assertions */
   }
+
 }

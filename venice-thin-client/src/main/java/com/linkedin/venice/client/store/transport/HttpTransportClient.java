@@ -1,7 +1,7 @@
 package com.linkedin.venice.client.store.transport;
 
 import com.linkedin.venice.client.exceptions.VeniceClientException;
-import com.linkedin.venice.client.exceptions.VeniceServerErrorException;
+import com.linkedin.venice.client.exceptions.VeniceServerException;
 import com.linkedin.venice.client.store.DeserializerFetcher;
 import org.apache.commons.httpclient.HttpStatus;
 import org.apache.commons.io.IOUtils;
@@ -30,7 +30,7 @@ public class HttpTransportClient<V> extends TransportClient<V> {
   private final CloseableHttpAsyncClient httpClient;
 
   public HttpTransportClient(String routerUrl) {
-    this.routerUrl = routerUrl;
+    this.routerUrl = ensureTrailingSlash(routerUrl);
     httpClient = HttpAsyncClients.createDefault();
     httpClient.start();
   }
@@ -104,8 +104,7 @@ public class HttpTransportClient<V> extends TransportClient<V> {
         Header schemaIdHeader = result.getFirstHeader(HEADER_VENICE_SCHEMA_ID);
         if (HttpStatus.SC_OK == statusCode) {
           if (null == schemaIdHeader) {
-            getValueFuture().completeExceptionally(new VeniceServerErrorException("Header: " +
-                HEADER_VENICE_SCHEMA_ID + " doesn't exist"));
+            getValueFuture().completeExceptionally(new VeniceServerException("Header: " + HEADER_VENICE_SCHEMA_ID + " doesn't exist"));
             return;
           }
           schemaId = schemaIdHeader.getValue();
@@ -122,4 +121,13 @@ public class HttpTransportClient<V> extends TransportClient<V> {
       completeFuture(statusCode, body, schemaId);
     }
   }
+
+  public static String ensureTrailingSlash(String input) {
+    if (input.endsWith("/")) {
+      return input;
+    } else {
+      return input + "/";
+    }
+  }
+
 }

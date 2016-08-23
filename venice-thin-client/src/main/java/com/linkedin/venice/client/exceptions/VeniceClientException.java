@@ -2,7 +2,7 @@ package com.linkedin.venice.client.exceptions;
 
 /***
  * Thrown by the venice thin client if something goes wrong with the request
- * Parent class to VeniceServerErrorException
+ * Parent class to VeniceServerException
  */
 public class VeniceClientException extends Exception{
 
