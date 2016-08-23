@@ -27,7 +27,9 @@ public enum Command {
   REPLICAS_OF_STORE("replicas-of-store",
       new Arg[] {Arg.ROUTER, Arg.CLUSTER, Arg.STORE, Arg.VERSION}),
   REPLICAS_ON_STORAGE_NODE("replicas-on-storage-node",
-      new Arg[] {Arg.ROUTER, Arg.CLUSTER, Arg.STORAGE_NODE});
+      new Arg[] {Arg.ROUTER, Arg.CLUSTER, Arg.STORAGE_NODE}),
+  QUERY("query",
+      new Arg[] {Arg.ROUTER, Arg.CLUSTER, Arg.STORE, Arg.KEY});
 
   private final String commandName;
   private final Arg[] requiredArgs;

@@ -1,13 +1,21 @@
 apply plugin: 'java'
 
 jar {
-    from { configurations.compile.collect { it.isDirectory() ? it : zipTree(it) } }
     manifest {
-        attributes 'Main-Class': 'com.linkedin.venice.AdminTool'
+        attributes 'Implementation-Title': 'Venice Admin Tool',
+            'Implementation-Version': version,
+            'Main-Class': 'com.linkedin.venice.AdminTool'
+    }
+    baseName = project.name
+    from { configurations.compile
+        .filter {!it.absolutePath.endsWith(".xml")} // Resolves Could not expand ZIP '.../pegasus-d2-client-factory-cmpt-def-16.0.23.xml'.
+        .collect { it.isDirectory() ? it : zipTree(it) }
     }
 }
 
+
 dependencies {
     compile project(':venice-common')
+    compile project(':venice-thin-client')
     compile libraries.avro
 }

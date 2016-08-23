@@ -5,6 +5,7 @@ import com.linkedin.venice.client.schema.SchemaReader;
 import com.linkedin.venice.client.serializer.AvroGenericSerializer;
 import com.linkedin.venice.client.serializer.AvroSerializerDeserializerFactory;
 import com.linkedin.venice.client.serializer.RecordSerializer;
+import com.linkedin.venice.client.store.transport.HttpTransportClient;
 import com.linkedin.venice.client.store.transport.TransportClient;
 import org.apache.avro.Schema;
 import org.apache.commons.io.IOUtils;
@@ -89,8 +90,10 @@ public abstract class AbstractAvroStoreClient<V> implements AvroGenericStoreClie
 
   @Override
   public void close() {
-    if (null != transportClient) {
-      IOUtils.closeQuietly(transportClient);
+    boolean isHttp = transportClient instanceof HttpTransportClient;
+    IOUtils.closeQuietly(transportClient);
+    if (isHttp) { // TODO make d2client close method idempotent.  d2client re-uses the transport client for the schema reader
+      IOUtils.closeQuietly(schemaReader);
     }
   }
 

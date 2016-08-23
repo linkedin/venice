@@ -54,7 +54,7 @@ public class VenicePathParser implements ResourcePathParser<VeniceStoragePath, R
     VenicePathParserHelper pathHelper = new VenicePathParserHelper(uri);
     if (pathHelper.isInvalidStorageRequest()){
       throw new RouterException(HttpResponseStatus.BAD_REQUEST,
-          "Request URI must have a resource type, storename, and key", true);
+          "Request URI must have a resource type, storename, and key.  Uri is: " + uri, true);
     }
     String resourceType = pathHelper.getResourceType();
     String storename = pathHelper.getResourceName();

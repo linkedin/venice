@@ -12,3 +12,7 @@ dali fs -copyToLocal dali://nertz/user/voldtest/ha_store_data_v1
 bin/hadoop jar ~/projects/aruns-venice/hadoop-to-venice-bridge/build/libs/hadoop-to-venice-bridge-0.1.jar  com.linkedin.venice.hadoop.KafkaPushJob --venice-router-url http://localhost:54333 --kafka-url localhost:9092 --kafka-zk localhost:2181 --cluster-name test-cluster --store-name myCountry --input-path file:///home/athirupa/projects/hadoop/hadoop-1.2.1/ha_store_data_v1/ --key-field memberId --value-field dedupId --store-owners your_name@linkedin.com
 
 Note:  Either use the venice-admin-tool to create your store first, or add the --create-store flag to have H2V auto create your store when it runs the first time.
+
+You can query the router with curl.  (-i means show headers, this assumes router running on localhost with port 54333)
+
+curl -i http://localhost:54333/storage/myCountry/6J_eTg==?f=b64
