@@ -18,15 +18,22 @@ dependencies {
   compile (libraries.d2Client){
     exclude group: 'com.oracle', module: 'ojdbc14' /* unused transitive dependencies, doesnt exist in repo */
     exclude group: 'org.mockito', module: 'mockito-all'
+    exclude group: 'xerces', module: 'xerces'
   }
+  compile libraries.xerces /* d2Client brings in an old version of xerces */
+
   // Schema related dependencies
   compile project(':venice-schema-common')
 
   testCompile project(':venice-common')
   testCompile project(':venice-common').sourceSets.test.output
   testCompile libraries.netty
+
   testCompile (libraries.d2){
     exclude group: 'com.oracle', module: 'ojdbc14' /* unused transitive dependencies, doesnt exist in repo */
     exclude group: 'org.mockito', module: 'mockito-all'
+    exclude group: 'xerces', module: 'xerces'
   }
+  compile libraries.xerces /* d2Client brings in an old version of xerces */
+
 }

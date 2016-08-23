@@ -142,7 +142,8 @@ public class VeniceDispatcher implements PartitionDispatchHandler<Instance, Veni
         long offset = Long.parseLong(result.getFirstHeader(HttpConstants.VENICE_OFFSET).getValue());
         String offsetKey = path.getResourceName() + "_" + partitionName;
         if (offsets.containsKey(offsetKey)
-            && offset + acceptableOffsetLag < offsets.get(offsetKey) ) {
+            && offset + acceptableOffsetLag < offsets.get(offsetKey)
+            && part.getHosts().size() > 1) {
           healthMontior.setPartitionAsSlow(host, partitionName);
           contextExecutor.execute(() -> {
             // Triggers an immediate router retry excluding the host we selected.

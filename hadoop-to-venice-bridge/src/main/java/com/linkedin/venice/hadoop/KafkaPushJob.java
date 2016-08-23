@@ -447,7 +447,6 @@ public class KafkaPushJob {
             + storeName + " using router: " + routerUrl +", error: " + keySchemaResponse.getError());
       }
       logger.info("Key schema: " + keySchemaString + " is valid for store: " + storeName);
-
     }
   }
 

@@ -9,7 +9,7 @@ import com.linkedin.r2.message.rest.RestRequest;
 import com.linkedin.r2.message.rest.RestRequestBuilder;
 import com.linkedin.r2.message.rest.RestResponse;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
-import com.linkedin.venice.client.exceptions.VeniceServerErrorException;
+import com.linkedin.venice.client.exceptions.VeniceServerException;
 import com.linkedin.venice.client.store.DeserializerFetcher;
 import org.apache.commons.httpclient.HttpStatus;
 import org.apache.log4j.Logger;
@@ -189,7 +189,7 @@ public class D2TransportClient<V> extends TransportClient<V> {
       if (!isNeedRawResult() && HttpStatus.SC_OK == statusCode) {
         schemaId = result.getHeader(HEADER_VENICE_SCHEMA_ID);
         if (null == schemaId) {
-          getValueFuture().completeExceptionally(new VeniceServerErrorException("Header: "
+          getValueFuture().completeExceptionally(new VeniceServerException("Header: "
               + HEADER_VENICE_SCHEMA_ID + " doesn't exist"));
           return;
         }

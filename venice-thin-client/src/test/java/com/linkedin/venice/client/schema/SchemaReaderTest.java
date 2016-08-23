@@ -1,7 +1,7 @@
 package com.linkedin.venice.client.schema;
 
 import com.linkedin.venice.client.exceptions.VeniceClientException;
-import com.linkedin.venice.client.exceptions.VeniceServerErrorException;
+import com.linkedin.venice.client.exceptions.VeniceServerException;
 import com.linkedin.venice.client.store.AbstractAvroStoreClient;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
@@ -59,7 +59,7 @@ public class SchemaReaderTest {
     AbstractAvroStoreClient mockClient = Mockito.mock(AbstractAvroStoreClient.class);
     Mockito.doReturn(storeName).when(mockClient).getStoreName();
     Future<byte[]> mockFuture = Mockito.mock(Future.class);
-    Mockito.doThrow(new ExecutionException(new VeniceServerErrorException("Server error"))).when(mockFuture).get();
+    Mockito.doThrow(new ExecutionException(new VeniceServerException("Server error"))).when(mockFuture).get();
     Mockito.doReturn(mockFuture).when(mockClient).getRaw("key_schema/" + storeName);
     new SchemaReader(mockClient);
   }
@@ -146,7 +146,7 @@ public class SchemaReaderTest {
     Mockito.doReturn(mapper.writeValueAsBytes(schemaResponse)).when(mockFuture).get();
     Mockito.doReturn(mockFuture).when(mockClient).getRaw("key_schema/" + storeName);
     SchemaReader schemaReader = new SchemaReader(mockClient);
-    Mockito.doThrow(new ExecutionException(new VeniceServerErrorException("Server error"))).when(mockFuture).get();
+    Mockito.doThrow(new ExecutionException(new VeniceServerException("Server error"))).when(mockFuture).get();
     Mockito.doReturn(mockFuture).when(mockClient).getRaw("value_schema/" + storeName + "/" + valueSchemaId);
     schemaReader.getValueSchema(valueSchemaId);
 
@@ -231,7 +231,7 @@ public class SchemaReaderTest {
     Mockito.doReturn(mockFuture).when(mockClient).getRaw("key_schema/" + storeName);
     SchemaReader schemaReader = new SchemaReader(mockClient);
 
-    Mockito.doThrow(new ExecutionException(new VeniceServerErrorException("Server error"))).when(mockFuture).get();
+    Mockito.doThrow(new ExecutionException(new VeniceServerException("Server error"))).when(mockFuture).get();
     Mockito.doReturn(mockFuture).when(mockClient).getRaw("value_schema/" + storeName);
     schemaReader.getLatestValueSchema();
   }

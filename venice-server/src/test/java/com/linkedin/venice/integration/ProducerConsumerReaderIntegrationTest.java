@@ -1,6 +1,6 @@
 package com.linkedin.venice.integration;
 
-import com.linkedin.venice.client.VeniceReader;
+import com.linkedin.venice.client.exceptions.VeniceServerException;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
@@ -50,7 +50,6 @@ public class ProducerConsumerReaderIntegrationTest {
 
   // TODO: Make serializers parameterized so we test them all.
   private VeniceWriter<Object, Object> veniceWriter;
-  private VeniceReader<Object, Object> veniceReader;
   private AvroGenericStoreClient<Object> storeClient;
 
   @BeforeMethod
@@ -76,13 +75,7 @@ public class ProducerConsumerReaderIntegrationTest {
     VeniceSerializer valueSerializer = new AvroGenericSerializer(stringSchema);
 
     veniceWriter = new VeniceWriter<>(clientProps, storeVersionName, keySerializer, valueSerializer);
-    veniceReader = new VeniceReader<>(clientProps, storeVersionName, keySerializer, valueSerializer);
-    veniceReader.init();
-
-    String routerServerUrl = "http://" + veniceCluster.getVeniceRouter().getHost() + ":"
-        + veniceCluster.getVeniceRouter().getPort() + "/";
-
-    storeClient = AvroStoreClientFactory.getAvroGenericStoreClient(routerServerUrl, storeName);
+    storeClient = AvroStoreClientFactory.getAvroGenericStoreClient(routerUrl, storeName);
   }
 
   @AfterMethod
@@ -94,7 +87,7 @@ public class ProducerConsumerReaderIntegrationTest {
   }
 
   private String logRetryMessage(int attempt, long timeElapsed, String problem, boolean willTryAgain) {
-    return "Got " + problem + " from VeniceReader. " +
+    return "Got " + problem + " from reader. " +
         "Attempt #" + attempt + "/" + MAX_ATTEMPTS +
         ". Elapsed time: " + timeElapsed + "/" + MAX_WAIT_TIME +  "ms. " +
         (willTryAgain ? "Will try again in " + WAIT_TIME_MS + "ms." : "Aborting");
@@ -140,7 +133,7 @@ public class ProducerConsumerReaderIntegrationTest {
         if (testLambda.execute(attempt, timeElapsed)) {
           return true;
         }
-      } catch (VeniceException e) {
+      } catch (VeniceException | ExecutionException e) {
         // TODO: Change to proper exception types once the VeniceReader and other components are changed accordingly.
         handleRetry(attempt, timeElapsed, e.getClass().getSimpleName(), (message) -> {throw new VeniceException(message, e);} );
       }
@@ -155,9 +148,12 @@ public class ProducerConsumerReaderIntegrationTest {
 
     // TODO: Refactor the retry code into a re-usable (and less hacky) class
     try {
-      veniceReader.get(key);
+      storeClient.get(key).get();
       Assert.fail("Not online instances exist in cluster, should throw exception for this read operation.");
-    } catch (VeniceException e) {
+    } catch (ExecutionException e) {
+      if (!(e.getCause() instanceof VeniceServerException)){
+        throw e;
+      }
       // Expected result. Because right now status of node is "BOOTSTRAP" so can not find any online instance to read.
     }
     // Insert test record and wait synchronously for it to succeed
@@ -168,7 +164,7 @@ public class ProducerConsumerReaderIntegrationTest {
     // This may fail non-deterministically, if the storage node is not done consuming yet, hence the retries.
 
     Assert.assertTrue(retry((attempt, timeElapsed) -> {
-      Object newValue = veniceReader.get(key);
+      Object newValue = storeClient.get(key).get();
       if (newValue == null) {
         handleRetry(attempt, timeElapsed, "null value", (message) -> Assert.fail(message));
         return false;

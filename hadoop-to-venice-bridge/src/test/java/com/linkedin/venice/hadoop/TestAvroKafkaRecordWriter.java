@@ -1,9 +1,12 @@
 package com.linkedin.venice.hadoop;
 
 import com.linkedin.venice.client.MockVeniceWriter;
+import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.integration.utils.KafkaBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
+import com.linkedin.venice.serialization.VeniceSerializer;
 import com.linkedin.venice.serialization.avro.AvroGenericSerializer;
+import java.nio.charset.StandardCharsets;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.IndexedRecord;
@@ -52,7 +55,7 @@ public class TestAvroKafkaRecordWriter {
   }
 
   @Test
-  public void testWriteSimpleKeyValuePairWithKeyAsInteger() throws IOException {
+  public void testWriteSimpleKeyValuePairWithKeyAsInteger() throws Exception {
     String schemaString = "{" +
         "  \"namespace\" : \"example.avro\",  " +
         "  \"type\": \"record\",   " +
@@ -67,6 +70,7 @@ public class TestAvroKafkaRecordWriter {
     String valueField = "name";
     Schema schema = Schema.parse(schemaString);
     Schema keySchema = schema.getField(keyField).schema();
+    Schema valueSchema = schema.getField(valueField).schema();
 
     Properties kafkaProps = getKafkaProperties(schemaString, keyField, valueField);
     MockVeniceWriter veniceWriter = new MockVeniceWriter(kafkaProps);
@@ -80,12 +84,11 @@ public class TestAvroKafkaRecordWriter {
 
     recordWriter.write(new AvroWrapper<IndexedRecord>(simpleRecord), NullWritable.get());
 
-    //veniceWriter.printMessages();
-
-    String keyStr = new String(new AvroGenericSerializer(keySchema.toString()).serialize("test_topic", new Integer(123)));
-    Assert.assertEquals(veniceWriter.getValue(keyStr), "test_name");
+    assertKeyGetsValue(new Integer(123), "test_name", keySchema, valueSchema, veniceWriter);
     Assert.assertNull(veniceWriter.getValue("123"));
     Assert.assertNull(veniceWriter.getValue("124"));
+
+    String keyStr = new String(new AvroGenericSerializer(keySchema.toString()).serialize("test_topic", new Integer(123)));
     Assert.assertEquals(veniceWriter.getValueSchemaId(keyStr), valueSchemaId);
   }
 
@@ -105,6 +108,7 @@ public class TestAvroKafkaRecordWriter {
     String valueField = "name";
     Schema schema = Schema.parse(schemaString);
     Schema keySchema = schema.getField(keyField).schema();
+    Schema valueSchema = schema.getField(valueField).schema();
 
     Properties kafkaProps = getKafkaProperties(schemaString, keyField, valueField);
     MockVeniceWriter veniceWriter = new MockVeniceWriter(kafkaProps);
@@ -118,13 +122,12 @@ public class TestAvroKafkaRecordWriter {
 
     recordWriter.write(new AvroWrapper<IndexedRecord>(simpleRecord), NullWritable.get());
 
-    //veniceWriter.printMessages();
-    Assert.assertEquals(veniceWriter.getValue("123"), "test_name");
+    assertKeyGetsValue("123", "test_name", keySchema, valueSchema, veniceWriter);
     Assert.assertNull(veniceWriter.getValue("124"));
   }
 
   @Test
-  public void testWriteComplicateKeyValuePair() throws IOException {
+  public void testWriteComplicatedKeyValuePair() throws IOException {
     String schemaString = "{\"namespace\": \"example.avro\",\n" +
         " \"type\": \"record\",\n" +
         " \"name\": \"User\",\n" +
@@ -179,12 +182,7 @@ public class TestAvroKafkaRecordWriter {
 
     recordWriter.write(new AvroWrapper<IndexedRecord>(record), NullWritable.get());
 
-    //veniceWriter.printMessages();
-
-    String keyStr = new String(new AvroGenericSerializer(keySchema.toString()).serialize("test_topic", keyRecord));
-    String valueStr = new String(new AvroGenericSerializer(valueSchema.toString()).serialize("test_topic", valueRecord));
-
-    Assert.assertEquals(veniceWriter.getValue(keyStr), valueStr);
+    assertKeyGetsValue(keyRecord, valueRecord, keySchema, valueSchema, veniceWriter);
     Assert.assertNull(veniceWriter.getValue("unknown_key"));
   }
 
@@ -240,12 +238,21 @@ public class TestAvroKafkaRecordWriter {
 
     recordWriter.write(new AvroWrapper<IndexedRecord>(record), NullWritable.get());
 
-    veniceWriter.printMessages();
-
-    String keyStr = new String(new AvroGenericSerializer(keySchema.toString()).serialize("test_topic", keyMap));
-    String valueStr = new String(new AvroGenericSerializer(valueSchema.toString()).serialize("test_topic", valueRecord));
-    Assert.assertEquals(veniceWriter.getValue(keyStr), valueStr);
-    // Since recordWriter is using avro serialization logic instead of map.toString
-    Assert.assertNull(veniceWriter.getValue(keyMap.toString()));
+    assertKeyGetsValue(keyMap, valueRecord, keySchema, valueSchema, veniceWriter);
+    Assert.assertNull(veniceWriter.getValue(keyMap.toString())); /* not serialized */
   }
+
+  private void assertKeyGetsValue(Object key, Object value, Schema keySchema, Schema valueSchema, MockVeniceWriter writer){
+    AvroGenericSerializer keySerializer = new AvroGenericSerializer(keySchema.toString());
+    AvroGenericSerializer valueSerializer = new AvroGenericSerializer(valueSchema.toString());
+
+    String keyString = new String(keySerializer.serialize("", key), StandardCharsets.UTF_8);
+    String valueString = new String(valueSerializer.serialize("", value), StandardCharsets.UTF_8);
+
+    Assert.assertEquals(
+        writer.getValue(keyString), valueString,
+        "Request for key: " + key + " should return value: " + value
+    );
+  }
+
 }
