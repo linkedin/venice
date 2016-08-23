@@ -1,11 +1,16 @@
 package com.linkedin.venice.integration.utils;
 
 import static com.linkedin.venice.ConfigKeys.*;
+
+import com.linkedin.venice.helix.WhitelistAccessor;
+import com.linkedin.venice.helix.ZkWhitelistAccessor;
 import com.linkedin.venice.server.VeniceConfigLoader;
 import com.linkedin.venice.server.VeniceServer;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
+import java.io.IOException;
 import org.apache.commons.io.FileUtils;
 
 import java.io.File;
@@ -26,7 +31,7 @@ public class VeniceServerWrapper extends ProcessWrapper {
     this.serverProps = serverProps;
   }
 
-  static StatefulServiceProvider<VeniceServerWrapper> generateService(String clusterName, KafkaBrokerWrapper kafkaBrokerWrapper) {
+  static StatefulServiceProvider<VeniceServerWrapper> generateService(String clusterName, KafkaBrokerWrapper kafkaBrokerWrapper, boolean enableServerWhitelist, boolean isAutoJoin) {
     return (serviceName, port, dataDirectory) -> {
       /** Create config directory under {@link dataDirectory} */
       File configDirectory = new File(dataDirectory.getAbsolutePath(), "config");
@@ -38,10 +43,12 @@ public class VeniceServerWrapper extends ProcessWrapper {
       clusterProps.storeFlattened(clusterConfigFile);
 
       // Generate server.properties in config directory
+      int listenPort = IntegrationTestUtils.getFreePort();
       VeniceProperties serverProps = new PropertyBuilder()
-      .put(LISTENER_PORT, IntegrationTestUtils.getFreePort())
+      .put(LISTENER_PORT, listenPort)
       .put(ADMIN_PORT, IntegrationTestUtils.getFreePort())
-      .put(DATA_BASE_PATH, dataDirectory.getAbsolutePath()).build();
+      .put(DATA_BASE_PATH, dataDirectory.getAbsolutePath())
+      .put(ENABLE_SERVER_WHITE_LIST, enableServerWhitelist).build();
 
       File serverConfigFile = new File(configDirectory, VeniceConfigLoader.SERVER_PROPERTIES_FILE);
       serverProps.storeFlattened(serverConfigFile);
@@ -49,9 +56,20 @@ public class VeniceServerWrapper extends ProcessWrapper {
       VeniceConfigLoader veniceConfigLoader = VeniceConfigLoader.loadFromConfigDirectory(
               configDirectory.getAbsolutePath());
 
+      if (isAutoJoin) {
+        joinClusterWhitelist(veniceConfigLoader.getVeniceClusterConfig().getZookeeperAddress(), clusterName,
+            listenPort);
+      }
       VeniceServer server = new VeniceServer(veniceConfigLoader);
       return new VeniceServerWrapper(serviceName, dataDirectory, server, serverProps);
     };
+  }
+
+  private static void joinClusterWhitelist(String zkAddress, String clusterName, int port)
+      throws IOException {
+    try (WhitelistAccessor accessor = new ZkWhitelistAccessor(zkAddress)) {
+      accessor.addInstanceToWhiteList(clusterName, Utils.getHelixNodeIdentifier(port));
+    }
   }
 
   @Override
@@ -87,5 +105,9 @@ public class VeniceServerWrapper extends ProcessWrapper {
   @Override
   public void stop() throws Exception {
     veniceServer.shutdown();
+  }
+
+  public VeniceServer getVeniceServer(){
+    return veniceServer;
   }
 }

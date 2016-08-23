@@ -9,27 +9,13 @@ import com.linkedin.venice.meta.RoutingStrategy;
 import com.linkedin.venice.utils.VeniceProperties;
 import org.apache.log4j.Logger;
 
+import static com.linkedin.venice.ConfigKeys.*;
 
 /**
  * Configuration which is sepcific to a Venice cluster used by Venice controller.
  */
 public class VeniceControllerClusterConfig {
   private static final Logger logger = Logger.getLogger(VeniceControllerClusterConfig.class);
-
-  // TODO: Refactor to use ConfigKeys
-  public static final String CLUSTER_NAME = "cluster.name";
-  public static final String ZK_ADDRESS = "zookeeper.address";
-  public static final String CONTROLLER_NAME = "controller.name";
-  public static final String KAFKA_REPLICA_FACTOR = "kafka.replica.factor";
-  public static final String KAFKA_ZK_ADDRESS = "kafka.zk.address";
-  public static final String PERSISTENCE_TYPE = "default.persistence.type";
-  public static final String READ_STRATEGY = "default.read.strategy";
-  public static final String OFFLINE_PUSH_STRATEGY = "default.offline.push.strategy";
-  public static final String ROUTING_STRATEGY = "default.routing.strategy";
-  public static final String REPLICA_FACTOR = "default.replica.factor";
-  public static final String NUMBER_OF_PARTITION = "default.partition.count";
-  public static final String MAX_NUMBER_OF_PARTITIONS = "default.partition.max.count";
-  public static final String PARTITION_SIZE = "default.partition.size";
 
   private String clusterName;
   private String zkAddress;
@@ -69,33 +55,33 @@ public class VeniceControllerClusterConfig {
 
   private void checkProperties(VeniceProperties props) {
     clusterName = props.getString(CLUSTER_NAME);
-    zkAddress = props.getString(ZK_ADDRESS);
+    zkAddress = props.getString(ZOOKEEPER_ADDRESS);
     controllerName = props.getString(CONTROLLER_NAME);
     kafkaZkAddress = props.getString(KAFKA_ZK_ADDRESS);
     kafkaReplicaFactor = props.getInt(KAFKA_REPLICA_FACTOR);
-    replicaFactor = props.getInt(REPLICA_FACTOR);
-    numberOfPartition = props.getInt(NUMBER_OF_PARTITION);
-    kafkaBootstrapServers = props.getString(ConfigKeys.KAFKA_BOOTSTRAP_SERVERS);
-    partitionSize = props.getSizeInBytes(PARTITION_SIZE);
-    maxNumberOfPartition = props.getInt(MAX_NUMBER_OF_PARTITIONS);
+    replicaFactor = props.getInt(DEFAULT_REPLICA_FACTOR);
+    numberOfPartition = props.getInt(DEFAULT_NUMBER_OF_PARTITION);
+    kafkaBootstrapServers = props.getString(KAFKA_BOOTSTRAP_SERVERS);
+    partitionSize = props.getSizeInBytes(DEFAULT_PARTITION_SIZE);
+    maxNumberOfPartition = props.getInt(DEFAULT_MAX_NUMBER_OF_PARTITIONS);
 
     if (props.containsKey(PERSISTENCE_TYPE)) {
       persistenceType = PersistenceType.valueOf(props.getString(PERSISTENCE_TYPE));
     } else {
       persistenceType = PersistenceType.IN_MEMORY;
     }
-    if (props.containsKey(READ_STRATEGY)) {
-      readStrategy = ReadStrategy.valueOf(props.getString(READ_STRATEGY));
+    if (props.containsKey(DEFAULT_READ_STRATEGY)) {
+      readStrategy = ReadStrategy.valueOf(props.getString(DEFAULT_READ_STRATEGY));
     } else {
       readStrategy = ReadStrategy.ANY_OF_ONLINE;
     }
-    if (props.containsKey(OFFLINE_PUSH_STRATEGY)) {
-      offlinePushStrategy = OfflinePushStrategy.valueOf(props.getString(OFFLINE_PUSH_STRATEGY));
+    if (props.containsKey(DEFAULT_OFFLINE_PUSH_STRATEGY)) {
+      offlinePushStrategy = OfflinePushStrategy.valueOf(props.getString(DEFAULT_OFFLINE_PUSH_STRATEGY));
     } else {
       offlinePushStrategy = OfflinePushStrategy.WAIT_ALL_REPLICAS;
     }
-    if (props.containsKey(ROUTING_STRATEGY)) {
-      routingStrategy = RoutingStrategy.valueOf(props.getString(ROUTING_STRATEGY));
+    if (props.containsKey(DEFAULT_ROUTING_STRATEGY)) {
+      routingStrategy = RoutingStrategy.valueOf(props.getString(DEFAULT_ROUTING_STRATEGY));
     } else {
       routingStrategy = RoutingStrategy.CONSISTENT_HASH;
     }

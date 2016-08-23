@@ -13,6 +13,9 @@ import com.linkedin.venice.utils.VeniceProperties;
 
 import java.io.File;
 
+import static com.linkedin.venice.ConfigKeys.*;
+
+
 /**
  * A wrapper for the {@link VeniceControllerWrapper}.
  *
@@ -47,15 +50,15 @@ public class VeniceControllerWrapper extends ProcessWrapper {
       // TODO: Centralize default config values in a single place
       PropertyBuilder builder = new PropertyBuilder()
               .put(clusterProps.toProperties())
-              .put(VeniceControllerClusterConfig.KAFKA_REPLICA_FACTOR, 1)
-              .put(VeniceControllerClusterConfig.KAFKA_ZK_ADDRESS, zkAddress)
-              .put(VeniceControllerClusterConfig.CONTROLLER_NAME, "venice-controller") // Why is this configurable?
-              .put(VeniceControllerClusterConfig.REPLICA_FACTOR, 1)
-              .put(VeniceControllerClusterConfig.NUMBER_OF_PARTITION, 1)
-              .put(ConfigKeys.ADMIN_PORT, adminPort)
-              .put(VeniceControllerClusterConfig.MAX_NUMBER_OF_PARTITIONS, 10)
-              .put(VeniceControllerClusterConfig.PARTITION_SIZE, 100)
-              .put(VeniceControllerConfig.TOPIC_MONITOR_POLL_INTERVAL_MS, 100);
+              .put(KAFKA_REPLICA_FACTOR, 1)
+              .put(KAFKA_ZK_ADDRESS, zkAddress)
+              .put(CONTROLLER_NAME, "venice-controller") // Why is this configurable?
+              .put(DEFAULT_REPLICA_FACTOR, 1)
+              .put(DEFAULT_NUMBER_OF_PARTITION, 1)
+              .put(ADMIN_PORT, adminPort)
+              .put(DEFAULT_MAX_NUMBER_OF_PARTITIONS, 10)
+              .put(DEFAULT_PARTITION_SIZE, 100)
+              .put(TOPIC_MONITOR_POLL_INTERVAL_MS, 100);
 
       VeniceProperties props = builder.build();
 

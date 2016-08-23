@@ -7,6 +7,7 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.VeniceSerializer;
 import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.schema.SchemaEntry;
+import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.PathResourceRegistry;
 import org.I0Itec.zkclient.IZkChildListener;
 import org.apache.helix.AccessOption;
@@ -103,10 +104,8 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository {
   }
 
   private static String getStorePath(String clusterName, String storeName) {
-    StringBuilder sb = new StringBuilder();
-    sb.append("/")
-        .append(clusterName)
-        .append(HelixReadOnlyStoreRepository.STORES_PATH)
+    StringBuilder sb = new StringBuilder(HelixUtils.getHelixClusterZkPath(clusterName));
+    sb.append(HelixReadOnlyStoreRepository.STORES_PATH)
         .append("/")
         .append(storeName)
         .append("/");

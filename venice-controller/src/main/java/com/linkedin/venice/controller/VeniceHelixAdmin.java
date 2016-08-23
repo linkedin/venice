@@ -2,6 +2,7 @@ package com.linkedin.venice.controller;
 
 import com.linkedin.venice.helix.HelixReadWriteSchemaRepository;
 import com.linkedin.venice.helix.Replica;
+import com.linkedin.venice.helix.ZkWhitelistAccessor;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
@@ -65,6 +66,7 @@ public class VeniceHelixAdmin implements Admin {
     private final HelixAdmin admin;
     private TopicManager topicManager;
     private final ZkClient zkClient;
+    private ZkWhitelistAccessor whitelistAccessor;
     /**
      * Parent controller, it always being connected to Helix. And will create sub-controller for specific cluster when
      * getting notification from Helix.
@@ -84,6 +86,7 @@ public class VeniceHelixAdmin implements Admin {
         //There is no way to get the internal zkClient from HelixManager or HelixAdmin. So create a new one here.
         this.zkClient = new ZkClient(config.getZkAddress(), ZkClient.DEFAULT_SESSION_TIMEOUT, ZkClient.DEFAULT_CONNECTION_TIMEOUT);
         this.topicManager = new TopicManager(config.getKafkaZkAddress());
+        this.whitelistAccessor = new ZkWhitelistAccessor(zkClient);
 
         // Create the parent controller and related cluster if required.
         createControllerClusterIfRequired();
@@ -608,9 +611,9 @@ public class VeniceHelixAdmin implements Admin {
     }
 
     @Override
-    public boolean isInstanceRemovable(String clusterName, String instanceId) {
+    public boolean isInstanceRemovable(String clusterName, String helixNodeId) {
         checkControllerMastership(clusterName);
-        return InstanceStatusDecider.isRemovable(getVeniceHelixResource(clusterName), clusterName, instanceId);
+        return InstanceStatusDecider.isRemovable(getVeniceHelixResource(clusterName), clusterName, helixNodeId);
     }
 
     @Override
@@ -634,6 +637,24 @@ public class VeniceHelixAdmin implements Admin {
     @Override
     public void resumeStore(String clusterName, String storeName) {
         setPausedForStore(clusterName, storeName, false);
+    }
+
+    @Override
+    public void addInstanceToWhitelist(String clusterName, String helixNodeId) {
+        checkControllerMastership(clusterName);
+        whitelistAccessor.addInstanceToWhiteList(clusterName, helixNodeId);
+    }
+
+    @Override
+    public void removeInstanceFromWhiteList(String clusterName, String helixNodeId) {
+        checkControllerMastership(clusterName);
+        whitelistAccessor.removeInstanceFromWhiteList(clusterName, helixNodeId);
+    }
+
+    @Override
+    public Set<String> getWhitelist(String clusterName) {
+        checkControllerMastership(clusterName);
+        return whitelistAccessor.getWhiteList(clusterName);
     }
 
     private void setPausedForStore(String clusterName, String storeName, boolean paused) {
@@ -679,6 +700,10 @@ public class VeniceHelixAdmin implements Admin {
 
     public void addConfig(String clusterName,VeniceControllerConfig config){
         controllerStateModelFactory.addClusterConfig(clusterName, config);
+    }
+
+    public ZkWhitelistAccessor getWhitelistAccessor() {
+        return whitelistAccessor;
     }
 
     public String getControllerName(){

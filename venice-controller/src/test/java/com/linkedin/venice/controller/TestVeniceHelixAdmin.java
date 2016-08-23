@@ -41,6 +41,8 @@ import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
+import static com.linkedin.venice.ConfigKeys.*;
+
 
 /**
  * Test cases for VeniceHelixAdmin
@@ -89,8 +91,8 @@ public class TestVeniceHelixAdmin {
             .put(baseControllerProps.toProperties())
             .put("kafka.zk.address", kafkaZkAddress)
             .put("zookeeper.address", zkAddress)
-            .put(VeniceControllerClusterConfig.MAX_NUMBER_OF_PARTITIONS,10)
-            .put(VeniceControllerClusterConfig.PARTITION_SIZE, 100);
+            .put(DEFAULT_MAX_NUMBER_OF_PARTITIONS,10)
+            .put(DEFAULT_PARTITION_SIZE, 100);
 
     controllerProps = builder.build();
 
@@ -637,6 +639,22 @@ public class TestVeniceHelixAdmin {
     HelixJobRepository jobRepository = veniceAdmin.getVeniceHelixResource(clusterName).getJobRepository();
     Assert.assertEquals(jobRepository.getRunningJobOfTopic(Version.composeKafkaTopic(storeName, 1)).size(), 1);
     Assert.assertEquals(jobRepository.getRunningJobOfTopic(Version.composeKafkaTopic(storeName, 2)).size(), 1);
+  }
+
+  @Test
+  public void testWhitelist() {
+    int testPort = 5555;
+    Assert.assertEquals(veniceAdmin.getWhitelist(clusterName).size(), 0, "White list should be empty.");
+
+    veniceAdmin.addInstanceToWhitelist(clusterName, Utils.getHelixNodeIdentifier(testPort));
+    Assert.assertEquals(veniceAdmin.getWhitelist(clusterName).size(), 1,
+        "After adding a instance into white list, the size of white list should be 1");
+
+    Assert.assertEquals(veniceAdmin.getWhitelist(clusterName).iterator().next(), Utils.getHelixNodeIdentifier(testPort),
+        "Instance in the white list is not the one added before.");
+    veniceAdmin.removeInstanceFromWhiteList(clusterName, Utils.getHelixNodeIdentifier(testPort));
+    Assert.assertEquals(veniceAdmin.getWhitelist(clusterName).size(), 0,
+        "After removing the instance, white list should be empty.");
   }
 
 

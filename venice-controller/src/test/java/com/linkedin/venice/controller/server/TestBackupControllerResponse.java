@@ -2,7 +2,6 @@ package com.linkedin.venice.controller.server;
 
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.HttpConstants;
-import com.linkedin.venice.controller.VeniceControllerClusterConfig;
 import com.linkedin.venice.controller.VeniceControllerConfig;
 import com.linkedin.venice.controller.VeniceHelixAdmin;
 import com.linkedin.venice.controllerapi.ControllerApiConstants;
@@ -27,6 +26,7 @@ import org.apache.http.message.BasicNameValuePair;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
+import static com.linkedin.venice.ConfigKeys.*;
 import static com.linkedin.venice.controllerapi.ControllerRoute.CREATE;
 import static com.linkedin.venice.controllerapi.ControllerRoute.JOB;
 
@@ -48,16 +48,16 @@ public class TestBackupControllerResponse {
     int bogusPort = 21; /* nothing runs here, doesn't need to bind.since not launching AdminSparkServer */
     String controllerName = Utils.getHelixNodeIdentifier(bogusPort);
     VeniceProperties controllerOneProps = new PropertyBuilder()
-        .put(VeniceControllerClusterConfig.KAFKA_ZK_ADDRESS, kafka.getZkAddress())
-        .put(VeniceControllerClusterConfig.KAFKA_REPLICA_FACTOR, 1)
-        .put(VeniceControllerClusterConfig.REPLICA_FACTOR, 1)
-        .put(VeniceControllerClusterConfig.NUMBER_OF_PARTITION, 3)
-        .put(VeniceControllerClusterConfig.MAX_NUMBER_OF_PARTITIONS, 10)
-        .put(VeniceControllerClusterConfig.PARTITION_SIZE, 100)
-        .put(ConfigKeys.KAFKA_BOOTSTRAP_SERVERS, kafkaBootstrap)
-        .put(ConfigKeys.ZOOKEEPER_ADDRESS, kafka.getZkAddress())
-        .put(ConfigKeys.CLUSTER_NAME, clusterName)
-        .put(VeniceControllerClusterConfig.CONTROLLER_NAME, controllerName)
+        .put(KAFKA_ZK_ADDRESS, kafka.getZkAddress())
+        .put(KAFKA_REPLICA_FACTOR, 1)
+        .put(DEFAULT_REPLICA_FACTOR, 1)
+        .put(DEFAULT_NUMBER_OF_PARTITION, 3)
+        .put(DEFAULT_MAX_NUMBER_OF_PARTITIONS, 10)
+        .put(DEFAULT_PARTITION_SIZE, 100)
+        .put(KAFKA_BOOTSTRAP_SERVERS, kafkaBootstrap)
+        .put(ZOOKEEPER_ADDRESS, kafka.getZkAddress())
+        .put(CLUSTER_NAME, clusterName)
+        .put(CONTROLLER_NAME, controllerName)
         .put(ConfigKeys.ADMIN_PORT, bogusPort)
         .build();
     VeniceControllerConfig config = new VeniceControllerConfig(controllerOneProps);

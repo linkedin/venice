@@ -10,6 +10,7 @@ import com.linkedin.venice.schema.SchemaEntry;
 
 import java.util.Collection;
 import java.util.List;
+import java.util.Set;
 import org.apache.helix.model.ExternalView;
 
 
@@ -108,9 +109,9 @@ public interface Admin {
      * cluster which is hosted on given instance. This instance should not be removed out of cluster, otherwise Venice will
      * lose data.
      *
-     * @param instanceId nodeId of helix participant. HOST_PORT.
+     * @param helixNodeId nodeId of helix participant. HOST_PORT.
      */
-    boolean isInstanceRemovable(String clusterName, String instanceId);
+    boolean isInstanceRemovable(String clusterName, String helixNodeId);
 
     /**
      * Get instance of master controller. If there is no master controller for the given cluster, throw a
@@ -127,6 +128,12 @@ public interface Admin {
     * Resume a store will allow push to go to this store.
     */
     void resumeStore(String clusterName, String storeName);
+
+    void addInstanceToWhitelist(String clusterName, String helixNodeId);
+
+    void removeInstanceFromWhiteList(String clusterName, String helixNodeId);
+
+    Set<String> getWhitelist(String clusterName);
 
     void close();
 }

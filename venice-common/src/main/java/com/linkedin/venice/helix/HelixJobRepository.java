@@ -75,7 +75,7 @@ public class HelixJobRepository implements JobRepository {
   public HelixJobRepository(@NotNull ZkClient zkClient, @NotNull HelixAdapterSerializer adapter,
       @NotNull String clusterName, VeniceSerializer<OfflineJob> jobSerializer,
       VeniceSerializer<List<Task>> taskVeniceSerializer) {
-    this.offlineJobsPath = "/" + clusterName + OFFLINE_JOBS_SUB_PATH;
+    this.offlineJobsPath = HelixUtils.getHelixClusterZkPath(clusterName) + OFFLINE_JOBS_SUB_PATH;
     this.offlineJobPathPattern = this.offlineJobsPath + "/" + PathResourceRegistry.WILDCARD_MATCH_ANY;
     this.offlineTaskPathPattern = this.offlineJobPathPattern + "/" + PathResourceRegistry.WILDCARD_MATCH_ANY;
     this.adapter = adapter;
