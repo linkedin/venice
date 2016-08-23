@@ -6,7 +6,10 @@ import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.schema.SchemaEntry;
+import java.io.Closeable;
+import java.io.IOException;
 import org.apache.avro.Schema;
+import org.apache.commons.io.IOUtils;
 import org.apache.log4j.Logger;
 import org.codehaus.jackson.map.ObjectMapper;
 
@@ -18,7 +21,7 @@ import java.util.concurrent.atomic.AtomicReference;
 /**
  * This class is used to fetch key/value schema for a given store.
  */
-public class SchemaReader {
+public class SchemaReader implements Closeable {
   public static final String TYPE_KEY_SCHEMA = "key_schema";
   public static final String TYPE_VALUE_SCHEMA = "value_schema";
   private static final ObjectMapper mapper = new ObjectMapper();
@@ -151,4 +154,8 @@ public class SchemaReader {
     return fetchSingleSchema(requestPath);
   }
 
+  @Override
+  public void close() {
+    IOUtils.closeQuietly(storeClient);
+  }
 }

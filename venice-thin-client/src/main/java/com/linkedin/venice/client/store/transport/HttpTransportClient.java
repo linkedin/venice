@@ -60,7 +60,7 @@ public class HttpTransportClient<V> extends TransportClient<V> {
   public void close() {
     try {
       httpClient.close();
-      logger.info("HttpStoreClient closed");
+      logger.debug("HttpStoreClient closed");
     } catch (IOException e) {
       logger.error("Failed to close internal CloseableHttpAsyncClient", e);
     }

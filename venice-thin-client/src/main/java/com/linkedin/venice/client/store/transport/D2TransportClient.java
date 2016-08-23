@@ -11,6 +11,9 @@ import com.linkedin.r2.message.rest.RestResponse;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.exceptions.VeniceServerException;
 import com.linkedin.venice.client.store.DeserializerFetcher;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReadWriteLock;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
 import org.apache.commons.httpclient.HttpStatus;
 import org.apache.log4j.Logger;
 
@@ -134,7 +137,7 @@ public class D2TransportClient<V> extends TransportClient<V> {
     return new RestRequestBuilder(requestUri).setMethod("get").build();
   }
   @Override
-  public void close() {
+  public synchronized void close() {
     CountDownLatch stopLatch = new CountDownLatch(1);
     d2Client.shutdown(new Callback<None>() {
       @Override
@@ -145,7 +148,7 @@ public class D2TransportClient<V> extends TransportClient<V> {
 
       @Override
       public void onSuccess(None result) {
-        logger.info("D2StoreClient shutdown complete");
+        logger.debug("D2StoreClient shutdown complete");
         stopLatch.countDown();
       }
     });

@@ -1,5 +1,11 @@
 package com.linkedin.venice;
 
+import com.linkedin.venice.client.exceptions.VeniceClientException;
+import com.linkedin.venice.client.schema.SchemaReader;
+import com.linkedin.venice.client.store.AbstractAvroStoreClient;
+import com.linkedin.venice.client.store.AvroGenericStoreClient;
+import com.linkedin.venice.client.store.AvroGenericStoreClientImpl;
+import com.linkedin.venice.client.store.AvroStoreClientFactory;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
@@ -20,6 +26,7 @@ import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.util.Arrays;
 import java.util.StringJoiner;
+import java.util.concurrent.ExecutionException;
 import org.apache.avro.Schema;
 import org.apache.commons.cli.BasicParser;
 import org.apache.commons.cli.CommandLine;
@@ -31,31 +38,21 @@ import org.apache.commons.cli.OptionGroup;
 import org.apache.commons.cli.Options;
 import org.apache.commons.cli.ParseException;
 
-
-/**
- * Created by mwise on 5/17/16.
- */
 public class AdminTool {
 
   public static void main(String args[])
-      throws ParseException, IOException {
+      throws ParseException, IOException, InterruptedException, ExecutionException, VeniceClientException {
 
+    /* Command Options are split up for help text formatting, see printUsageAndExit() */
     Options options = new Options();
     OptionGroup commandGroup = new OptionGroup();
     for (Command c : Command.values()){
       createCommandOpt(c, commandGroup);
     }
 
-    createOpt(Arg.ROUTER, true, "Venice router url, eg. http://localhost:1689", options);
-    createOpt(Arg.CLUSTER, true, "Name of Venice cluster", options);
-    createOpt(Arg.STORE, true, "Name of Venice store", options);
-    createOpt(Arg.VERSION, true, "Venice store version number", options);
-    createOpt(Arg.KEY_SCHEMA, true, "Path to text file with key schema", options);
-    createOpt(Arg.VALUE_SCHEMA, true, "Path to text file with value schema", options);
-    createOpt(Arg.OWNER, true, "Owner email for new store creation", options);
-    createOpt(Arg.STORAGE_NODE, true, "Helix instance ID for a storage node, eg. lva1-app1234_1690", options);
-
-    createOpt(Arg.HELP, false, "Show usage", options);
+    for (Arg arg : Arg.values()){
+      createOpt(arg, arg.isParameterized(), arg.getHelpText(), options);
+    }
 
     Options parameterOptionsForHelp = new Options();
     for (Object obj : options.getOptions()){
@@ -129,8 +126,10 @@ public class AdminTool {
         printStorageNodeList(routerHosts, clusterName);
       } else if (cmd.hasOption(Command.REPLICAS_OF_STORE.toString())) {
         printReplicaListForStoreVersion(cmd, routerHosts, clusterName);
-      } else if (cmd.hasOption(Command.REPLICAS_ON_STORAGE_NODE.toString())){
+      } else if (cmd.hasOption(Command.REPLICAS_ON_STORAGE_NODE.toString())) {
         printReplicaListForStorageNode(cmd, routerHosts, clusterName);
+      } else if (cmd.hasOption(Command.QUERY.toString())){
+        queryStoreForKey(cmd, routerHosts);
       } else {
         StringJoiner availableCommands = new StringJoiner(", ");
         for (Command c : Command.values()){
@@ -156,6 +155,45 @@ public class AdminTool {
       }
     }
   }
+
+  private static void queryStoreForKey(CommandLine cmd, String routerHosts)
+      throws VeniceClientException, ExecutionException, InterruptedException, IOException {
+    String store = getRequiredArgument(cmd, Arg.STORE);
+    AvroGenericStoreClient<Object> schemaClient = AvroStoreClientFactory.getAvroGenericStoreClient(routerHosts, store);
+    AbstractAvroStoreClient<Object> castClient = (AvroGenericStoreClientImpl<Object>) schemaClient;
+    SchemaReader schemaReader = new SchemaReader(castClient);
+    Schema keySchema = schemaReader.getKeySchema();
+    schemaReader.close(); /* closes internal client that was passed in */
+    String keyString = getRequiredArgument(cmd, Arg.KEY);
+    Object key = null;
+    switch (keySchema.getType()){
+      case DOUBLE:
+        key = Double.parseDouble(keyString);
+        break;
+      case LONG:
+        key = Long.parseLong(keyString);
+        break;
+      case STRING:
+        key = keyString;
+        break;
+      /*
+      case RECORD: // This probably wont work, we can revisit with future testing
+        key = new GenericDatumReader<>(keySchema)
+            .read(null, new JsonDecoder(keySchema, new ByteArrayInputStream(keyString.getBytes())));
+        break;
+      */
+      default:
+        throw new VeniceException("Cannot handle key type, found key schema: " + keySchema.toString());
+    }
+    System.out.println("Key Class: " + key.getClass().getCanonicalName());
+    Object value;
+    try(AvroGenericStoreClient<Object> client = AvroStoreClientFactory.getAvroGenericStoreClient(routerHosts, store)) {
+      value = client.get(key).get();
+    }
+    System.out.println("Value Class: " + value.getClass().getCanonicalName());
+    System.out.println("Value: " + value);
+  }
+
 
 
   private static void createNewStore(CommandLine cmd, String routerHosts, String clusterName)

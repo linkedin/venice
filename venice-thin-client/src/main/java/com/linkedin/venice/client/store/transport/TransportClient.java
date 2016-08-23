@@ -33,4 +33,12 @@ public abstract class TransportClient<V> implements Closeable {
   protected DeserializerFetcher<V> getDeserializerFetcher() {
     return deserializerFetcher;
   }
+
+  public static String ensureTrailingSlash(String input){
+    if (input.endsWith("/")){
+      return input;
+    } else {
+      return input + "/";
+    }
+  }
 }
