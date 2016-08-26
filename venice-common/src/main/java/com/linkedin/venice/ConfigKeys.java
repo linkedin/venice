@@ -78,5 +78,8 @@ public class ConfigKeys {
   public static final String CONTROLLER_CLUSTER_REPLICA = "controller.cluster.replica";
   /** The interval, in ms, between each polling iteration of the TopicMonitor */
   public static final String TOPIC_MONITOR_POLL_INTERVAL_MS = "topic.monitor.poll.interval.ms";
-
+  /** Whether current controller is parent or not */
+  public static final String CONTROLLER_PARENT_MODE = "controller.parent.mode";
+  /** Waiting time in ms before returning error in Parent Controller Cluster */
+  public static final String PARENT_CONTROLLER_WAITING_TIME_FOR_CONSUMPTION_MS = "parent.controller.waiting.time.for.consumption.ms";
 }

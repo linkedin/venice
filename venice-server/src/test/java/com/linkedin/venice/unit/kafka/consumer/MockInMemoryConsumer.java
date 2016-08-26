@@ -4,10 +4,11 @@ import com.linkedin.venice.kafka.consumer.KafkaConsumerWrapper;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.unit.kafka.InMemoryKafkaBroker;
 import com.linkedin.venice.unit.kafka.consumer.poll.PollStrategy;
-import com.linkedin.venice.unit.kafka.consumer.poll.RandomPollStrategy;
+
 import java.util.HashMap;
 import java.util.Map;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
+import org.apache.kafka.clients.consumer.OffsetAndMetadata;
 import org.apache.kafka.common.TopicPartition;
 
 /**
@@ -49,5 +50,15 @@ public class MockInMemoryConsumer implements KafkaConsumerWrapper {
   @Override
   public ConsumerRecords poll(long timeout) {
     return pollStrategy.poll(broker, offsets, timeout);
+  }
+
+  @Override
+  public void commitSync(String topic, int partition, OffsetAndMetadata offsetAndMeta) {
+
+  }
+
+  @Override
+  public OffsetAndMetadata committed(String topic, int partition) {
+    return null;
   }
 }

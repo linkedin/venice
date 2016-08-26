@@ -75,7 +75,7 @@ public class AvroGenericSerializer implements VeniceSerializer<Object> {
         try {
             return reader.read(null, decoder);
         } catch(IOException e) {
-            throw new VeniceMessageException("Could not deserialze bytes back into Avro Abject" + e);
+            throw new VeniceMessageException("Could not deserialize bytes back into Avro object" + e);
         }
     }
 }

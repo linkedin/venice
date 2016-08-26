@@ -50,7 +50,16 @@ public class ServiceFactory {
   public static VeniceControllerWrapper getVeniceController(String clusterName, KafkaBrokerWrapper kafkaBrokerWrapper) {
     return getStatefulService(
         VeniceControllerWrapper.SERVICE_NAME,
-        VeniceControllerWrapper.generateService(clusterName, kafkaBrokerWrapper));
+        VeniceControllerWrapper.generateService(clusterName, kafkaBrokerWrapper, false));
+  }
+
+  /**
+   * @return an instance of {@link com.linkedin.venice.controller.VeniceControllerService}, which will be working in parent mode.
+   */
+  public static VeniceControllerWrapper getVeniceParentController(String clusterName, KafkaBrokerWrapper kafkaBrokerWrapper) {
+    return getStatefulService(
+        VeniceControllerWrapper.SERVICE_NAME,
+        VeniceControllerWrapper.generateService(clusterName, kafkaBrokerWrapper, true));
   }
 
   public static VeniceServerWrapper getVeniceServer(String clusterName, KafkaBrokerWrapper kafkaBrokerWrapper,
@@ -117,7 +126,7 @@ public class ServiceFactory {
         lastException = e;
         errorMessage = "Got " + e.getClass().getSimpleName() + " while trying to start " + serviceName +
             ". Attempt #" + attempt + "/" + MAX_ATTEMPT + ".";
-        LOGGER.info(errorMessage);
+        LOGGER.info(errorMessage, e);
       }
     }
 

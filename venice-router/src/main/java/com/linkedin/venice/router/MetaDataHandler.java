@@ -1,5 +1,6 @@
 package com.linkedin.venice.router;
 
+import com.linkedin.venice.controllerapi.MasterControllerResponse;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -20,7 +21,6 @@ import org.codehaus.jackson.map.ObjectMapper;
 import org.jboss.netty.buffer.ChannelBuffers;
 import org.jboss.netty.channel.Channel;
 import org.jboss.netty.channel.ChannelFuture;
-import org.jboss.netty.channel.ChannelFutureListener;
 import org.jboss.netty.channel.ChannelHandlerContext;
 import org.jboss.netty.channel.Channels;
 import org.jboss.netty.channel.ExceptionEvent;
@@ -90,8 +90,8 @@ public class MetaDataHandler extends SimpleChannelUpstreamHandler {
       HttpRequest req = (HttpRequest) msg;
       VenicePathParserHelper helper = new VenicePathParserHelper(req.getUri());
       String resourceType = helper.getResourceType(); //may be null
-      if (VenicePathParser.TYPE_CONTROLLER.equals(resourceType)){
-        // URI: /controller
+      if (VenicePathParser.TYPE_MASTER_CONTROLLER.equals(resourceType)){
+        // URI: /master_controller
         handleControllerLookup(ctx, ch);
       } else if (VenicePathParser.TYPE_KEY_SCHEMA.equals(resourceType)) {
         // URI: /key_schema/${storeName}
@@ -109,9 +109,11 @@ public class MetaDataHandler extends SimpleChannelUpstreamHandler {
     }
   }
 
-  private void handleControllerLookup(ChannelHandlerContext ctx, Channel ch) {
-    byte[] masterControllerUrl = routing.getMasterController().getUrl().getBytes(StandardCharsets.UTF_8);
-    setupResponseAndFlush(OK, masterControllerUrl, false, ctx, ch);
+  private void handleControllerLookup(ChannelHandlerContext ctx, Channel ch) throws IOException {
+    MasterControllerResponse responseObject = new MasterControllerResponse();
+    responseObject.setCluster(clusterName);
+    responseObject.setUrl(routing.getMasterController().getUrl());
+    setupResponseAndFlush(OK, mapper.writeValueAsBytes(responseObject), true, ctx, ch);
   }
 
   private void handleKeySchemaLookup(ChannelHandlerContext ctx, Channel ch, VenicePathParserHelper helper) throws IOException {

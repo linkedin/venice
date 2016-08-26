@@ -49,11 +49,16 @@ public class VeniceController {
     adminServer = new AdminSparkServer(
         config.getAdminPort(),
         controllerService.getVeniceHelixAdmin());
-    topicMonitor = new TopicMonitor(
-        controllerService.getVeniceHelixAdmin(),
-        config.getClusterName(),
-        config.getReplicaFactor(),
-        config.getTopicMonitorPollIntervalMs());
+    // TODO: disable TopicMonitor in Corp cluster for now.
+    // If we decide to continue to use TopicMonitor for version creation, we need to update the existing VeniceParentHelixAdmin to support it
+    if (!config.isParent())
+    {
+      topicMonitor = new TopicMonitor(
+          controllerService.getVeniceHelixAdmin(),
+          config.getClusterName(),
+          config.getReplicaFactor(),
+          config.getTopicMonitorPollIntervalMs());
+    }
   }
 
   public void start(){
@@ -61,7 +66,9 @@ public class VeniceController {
         + " with ZKAddress: " + config.getZkAddress());
     controllerService.start();
     adminServer.start();
-    topicMonitor.start();
+    if (null != topicMonitor) {
+      topicMonitor.start();
+    }
     logger.info("Controller is started.");
   }
 

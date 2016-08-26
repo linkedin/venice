@@ -33,8 +33,7 @@ public enum ControllerRoute {
   GET_ALL_VALUE_SCHEMA("/get_all_value_schema", Arrays.asList(NAME)),
   GET_VALUE_SCHEMA("/get_value_schema", Arrays.asList(NAME, SCHEMA_ID)),
   GET_VALUE_SCHEMA_ID("/get_value_schema_id", Arrays.asList(NAME, VALUE_SCHEMA)),
-
-  GET_MASTER_CONTROLLER("/get_master_controller", Arrays.asList());
+  MASTER_CONTROLLER("/master_controller", Arrays.asList());
 
   private final String path;
   private final List<String> params;

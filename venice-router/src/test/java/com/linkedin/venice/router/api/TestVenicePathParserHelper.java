@@ -10,8 +10,8 @@ import org.testng.annotations.Test;
 public class TestVenicePathParserHelper {
   @Test
   public void parsesResourceTypes(){
-    String controllerUri = "http://myhost:1234/" + VenicePathParser.TYPE_CONTROLLER;
-    Assert.assertEquals(new VenicePathParserHelper(controllerUri).getResourceType(), VenicePathParser.TYPE_CONTROLLER);
+    String controllerUri = "http://myhost:1234/" + VenicePathParser.TYPE_MASTER_CONTROLLER;
+    Assert.assertEquals(new VenicePathParserHelper(controllerUri).getResourceType(), VenicePathParser.TYPE_MASTER_CONTROLLER);
     Assert.assertTrue(new VenicePathParserHelper(controllerUri).isInvalidStorageRequest());
 
     String storageUri = "http://myhost:1234/" + VenicePathParser.TYPE_STORAGE + "/storename/key?f=b64";

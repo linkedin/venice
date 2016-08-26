@@ -25,8 +25,10 @@ public class VeniceHelixResources implements VeniceResource {
   private final HelixStatusMessageChannel messageChannel;
   private final VeniceControllerClusterConfig config;
 
-  public VeniceHelixResources(String clusterName, ZkClient zkClient, HelixManager helixManager,
-      VeniceControllerClusterConfig config) {
+  public VeniceHelixResources(String clusterName,
+                              ZkClient zkClient,
+                              HelixManager helixManager,
+                              VeniceControllerClusterConfig config) {
     this.config = config;
     this.controller = helixManager;
     HelixAdapterSerializer adapter = new HelixAdapterSerializer();
