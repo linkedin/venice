@@ -55,11 +55,14 @@ public class AdminSparkServer extends AbstractVeniceService {
     });
 
     Spark.after((request, response) -> {
+      AuditInfo audit = new AuditInfo(request);
       long latency = System.currentTimeMillis() - (long)request.attribute(REQUEST_START_TIME);
       if ((boolean)request.attribute(REQUEST_SUCCEED)) {
+        logger.info(audit.successString());
         stats.recordSuccessfulRequest();
         stats.recordSuccessfulRequestLatency(latency);
       } else {
+        logger.info(audit.failureString(response.body()));
         stats.recordFailedRequest();
         stats.recordFailedRequestLatency(latency);
       }
