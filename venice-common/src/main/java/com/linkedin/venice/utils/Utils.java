@@ -6,22 +6,26 @@ import com.linkedin.venice.exceptions.VeniceHttpException;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Properties;
-import java.util.concurrent.TimeUnit;
-import java.util.function.BooleanSupplier;
+
+import org.apache.avro.Schema;
+import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang.StringUtils;
 import org.apache.http.HttpStatus;
+import org.apache.log4j.Logger;
 
 
 /**
  * Helper functions
  */
 public class Utils {
+  private static Logger LOGGER = Logger.getLogger(Utils.class);
   /**
    * Print an error and exit with error code 1
    *
@@ -279,5 +283,24 @@ public class Utils {
 
   public static int parsePortFromHelixNodeIdentifier(String nodeId) {
     return parseIntFromString(nodeId.substring(nodeId.lastIndexOf('_') + 1), "port");
+  }
+
+  /**
+   * Utility function to get schemas out of embedded resources.
+   *
+   * @param resourcePath The path of the file under the src/main/resources directory
+   * @return the {@link org.apache.avro.Schema} instance corresponding to the file at {@param resourcePath}
+   * @throws IOException
+   */
+  public static Schema getSchemaFromResource(String resourcePath) throws IOException {
+    ClassLoader classLoader = Utils.class.getClassLoader();
+    InputStream inputStream = classLoader.getResourceAsStream(resourcePath);
+    if (inputStream == null) {
+      throw new IOException("Resource path '" + resourcePath + "' does not exist!");
+    }
+    String schemaString = IOUtils.toString(inputStream);
+    Schema schema = Schema.parse(schemaString);
+    LOGGER.info("Loaded schema from resource path '" + resourcePath + "':\n" + schema.toString(true));
+    return schema;
   }
 }

@@ -4,6 +4,7 @@ import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.Utils;
+
 import java.io.Closeable;
 import java.io.IOException;
 import java.io.InputStream;
@@ -31,8 +32,9 @@ import org.codehaus.jackson.map.ObjectMapper;
 
 public class ControllerClient implements Closeable {
   private final CloseableHttpAsyncClient client;
-  private String controllerUrl;
-  private String routerUrls;
+  private String masterControllerUrl;
+  private String clusterName;
+  private String urlsToFindMasterController;
   private String localHostname;
 
   private final static ObjectMapper mapper = new ObjectMapper();
@@ -41,15 +43,16 @@ public class ControllerClient implements Closeable {
   /**
    * It creates a thread for sending Http Requests.
    *
-   * @param routerUrls comma-delimeted urls for the Venice Routers.
+   * @param urlsToFindMasterController comma-delimited urls to find master controller.
    */
-  private ControllerClient(String routerUrls){
+  private ControllerClient(String clusterName, String urlsToFindMasterController){
     client = HttpAsyncClients.createDefault();
     client.start();
-    if(Utils.isNullOrEmpty(routerUrls)) {
-      throw new VeniceException("Router Urls: "+routerUrls+" is not valid");
+    if(Utils.isNullOrEmpty(urlsToFindMasterController)) {
+      throw new VeniceException("urlsToFindMasterController: "+ urlsToFindMasterController +" is not valid");
     }
-    this.routerUrls = routerUrls;
+    this.clusterName = clusterName;
+    this.urlsToFindMasterController = urlsToFindMasterController;
     this.localHostname = Utils.getHostName();
     if (logger.isDebugEnabled()) {
       logger.debug("Parsed hostname as: " + localHostname);
@@ -58,13 +61,13 @@ public class ControllerClient implements Closeable {
   }
 
   private void refreshControllerUrl(){
-    String controllerUrl = controllerUrlFromRouter(routerUrls);
+    String controllerUrl = getMasterControllerUrl(urlsToFindMasterController);
     if (controllerUrl.endsWith("/")){
-      this.controllerUrl = controllerUrl.substring(0, controllerUrl.length()-1);
+      this.masterControllerUrl = controllerUrl.substring(0, controllerUrl.length()-1);
     } else {
-      this.controllerUrl = controllerUrl;
+      this.masterControllerUrl = controllerUrl;
     }
-    logger.debug("Identified controller URL: " + this.controllerUrl + " from router: " + routerUrls);
+    logger.debug("Identified controller URL: " + this.masterControllerUrl + " from url: " + urlsToFindMasterController);
   }
 
   /**
@@ -74,35 +77,32 @@ public class ControllerClient implements Closeable {
     try {
       client.close();
     } catch (IOException e) {
-      String msg = "Error closing the controller client for " + controllerUrl;
+      String msg = "Error closing the controller client for " + masterControllerUrl;
       logger.error(msg, e);
       throw new VeniceException(msg, e);
     }
   }
 
-  private String controllerUrlFromRouter(String routerUrls){
-    List<String> routerUrlList = Arrays.asList(routerUrls.split(","));
-    Collections.shuffle(routerUrlList);
+  private String getMasterControllerUrl(String urlsToFindMasterController){
+    List<String> urlList = Arrays.asList(urlsToFindMasterController.split(","));
+    Collections.shuffle(urlList);
     Throwable lastException = null;
-    for (String routerUrl : routerUrlList) {
+    for (String url : urlList) {
       try {
-        final HttpGet get = new HttpGet(routerUrl + "/controller");
-        HttpResponse response = client.execute(get, null).get();
-        if (response.getStatusLine().getStatusCode() == HttpStatus.SC_OK) {
-          String responseBody;
-          try (InputStream bodyStream = response.getEntity().getContent()) {
-            responseBody = IOUtils.toString(bodyStream);
-          }
-          return responseBody;
-        } else {
-          throw new VeniceException("Router: " + routerUrl + " returns status code: " + response.getStatusLine().getStatusCode());
+        List<NameValuePair> params = newParams(clusterName);
+        String responseBody = getRequest(url, ControllerRoute.MASTER_CONTROLLER.getPath(), params);
+        MasterControllerResponse controllerResponse = mapper.readValue(responseBody, MasterControllerResponse.class);
+        if (controllerResponse.isError()) {
+          throw new VeniceException("Received error response: [" + mapper.writeValueAsString(controllerResponse) + "] from url: " + url);
         }
+
+        return controllerResponse.getUrl();
       } catch (Exception e) {
-        logger.warn("Failed to get controller URL from router: " + routerUrl, e);
+        logger.warn("Failed to get controller URL from url: " + url, e);
         lastException = e;
       }
     }
-    throw new VeniceException("Could not get controller url from any router: " + routerUrls, lastException);
+    throw new VeniceException("Could not get controller url from urls: " + urlsToFindMasterController, lastException);
   }
 
   private StoreResponse getStore(String clusterName, String storeName)
@@ -113,8 +113,8 @@ public class ControllerClient implements Closeable {
     return mapper.readValue(responseJson, StoreResponse.class);
   }
 
-  public static StoreResponse getStore(String routerUrls, String clusterName, String storeName){
-    try (ControllerClient client = new ControllerClient(routerUrls)){
+  public static StoreResponse getStore(String urlsToFindMasterController, String clusterName, String storeName){
+    try (ControllerClient client = new ControllerClient(clusterName,urlsToFindMasterController)){
       return client.getStore(clusterName, storeName);
     } catch (Exception e){
       return handleError(new VeniceException("Error getting store: " + storeName, e), new StoreResponse());
@@ -138,8 +138,8 @@ public class ControllerClient implements Closeable {
   /** Only used for tests */
   @Deprecated
   public static VersionCreationResponse createStoreVersion(
-      String routerUrl, String clusterName, String storeName, String owner, long storeSize, String keySchema, String valueSchema) {
-    try (ControllerClient client = new ControllerClient(routerUrl)){
+      String urlsToFindMasterController, String clusterName, String storeName, String owner, long storeSize, String keySchema, String valueSchema) {
+    try (ControllerClient client = new ControllerClient(clusterName, urlsToFindMasterController)){
       return client.createNewStoreVersion(clusterName, storeName, owner, storeSize, keySchema, valueSchema);
     } catch (Exception e){
       return handleError(
@@ -149,16 +149,15 @@ public class ControllerClient implements Closeable {
 
   private NewStoreResponse createNewStore(String clusterName, String storeName, String owner)
       throws IOException, ExecutionException, InterruptedException {
-    List<NameValuePair> params = newParams();
-    params.add(new BasicNameValuePair(ControllerApiConstants.CLUSTER, clusterName));
+    List<NameValuePair> params = newParams(clusterName);
     params.add(new BasicNameValuePair(ControllerApiConstants.NAME, storeName));
     params.add(new BasicNameValuePair(ControllerApiConstants.OWNER, owner));
     String responseJson = postRequest(ControllerRoute.NEWSTORE.getPath(), params);
     return mapper.readValue(responseJson, NewStoreResponse.class);
   }
 
-  public static NewStoreResponse createNewStore(String routerUrls, String clusterName, String storeName, String owner){
-    try (ControllerClient client = new ControllerClient(routerUrls)){
+  public static NewStoreResponse createNewStore(String urlsToFindMasterController, String clusterName, String storeName, String owner){
+    try (ControllerClient client = new ControllerClient(clusterName, urlsToFindMasterController)){
       return client.createNewStore(clusterName, storeName, owner);
     } catch (Exception e){
       return handleError(new VeniceException("Error creating store: " + storeName, e), new NewStoreResponse());
@@ -167,16 +166,15 @@ public class ControllerClient implements Closeable {
 
   private VersionResponse overrideSetActiveVersion(String clusterName, String storeName, int version)
       throws InterruptedException, IOException, ExecutionException {
-    List<NameValuePair> params = newParams();
-    params.add(new BasicNameValuePair(ControllerApiConstants.CLUSTER, clusterName));
+    List<NameValuePair> params = newParams(clusterName);
     params.add(new BasicNameValuePair(ControllerApiConstants.NAME, storeName));
     params.add(new BasicNameValuePair(ControllerApiConstants.VERSION, Integer.toString(version)));
     String responseJson = postRequest(ControllerRoute.SETVERSION.getPath(), params);
     return mapper.readValue(responseJson, VersionResponse.class);
   }
 
-  public static VersionResponse overrideSetActiveVersion(String routerUrls, String clusterName, String storeName, int version){
-    try (ControllerClient client = new ControllerClient(routerUrls)){
+  public static VersionResponse overrideSetActiveVersion(String urlsToFindMasterController, String clusterName, String storeName, int version){
+    try (ControllerClient client = new ControllerClient(clusterName, urlsToFindMasterController)){
       return client.overrideSetActiveVersion(clusterName, storeName, version);
     } catch(Exception e){
       return handleError(new VeniceException("Error setting version.  Storename: " + storeName + " Version: " + version), new VersionResponse());
@@ -187,30 +185,29 @@ public class ControllerClient implements Closeable {
       throws ExecutionException, InterruptedException, IOException {
     String storeName = Version.parseStoreFromKafkaTopicName(kafkaTopic);
     int version = Version.parseVersionFromKafkaTopicName(kafkaTopic);
-    List<NameValuePair> queryParams = newParams();
-    queryParams.add(new BasicNameValuePair(ControllerApiConstants.CLUSTER, clusterName));
+    List<NameValuePair> queryParams = newParams(clusterName);
     queryParams.add(new BasicNameValuePair(ControllerApiConstants.NAME, storeName));
     queryParams.add(new BasicNameValuePair(ControllerApiConstants.VERSION, Integer.toString(version)));
     String responseJson = getRequest(ControllerRoute.JOB.getPath(), queryParams);
     return mapper.readValue(responseJson, JobStatusQueryResponse.class);
   }
 
-  public static JobStatusQueryResponse queryJobStatus(String routerUrls, String clusterName, String kafkaTopic){
-    try (ControllerClient client = new ControllerClient(routerUrls)){
+  public static JobStatusQueryResponse queryJobStatus(String urlsToFindMasterController, String clusterName, String kafkaTopic){
+    try (ControllerClient client = new ControllerClient(clusterName, urlsToFindMasterController)){
       return client.queryJobStatus(clusterName, kafkaTopic);
     } catch (Exception e){
       return handleError(new VeniceException("Error querying job status for topic: " + kafkaTopic, e), new JobStatusQueryResponse());
     }
   }
 
-  public static JobStatusQueryResponse queryJobStatusWithRetry(String routerUrls, String clusterName, String kafkaTopic, int attempts){
+  public static JobStatusQueryResponse queryJobStatusWithRetry(String urlsToFindMasterController, String clusterName, String kafkaTopic, int attempts){
     if (attempts < 1){
       throw new VeniceException("Querying with retries requires at least one attempt, called with " + attempts + " attempts");
     }
     int attemptsRemaining = attempts;
     JobStatusQueryResponse response = JobStatusQueryResponse.createErrorResponse("Request was not attempted");
     while (attemptsRemaining > 0){
-      response = queryJobStatus(routerUrls, clusterName, kafkaTopic); /* should allways return a valid object */
+      response = queryJobStatus(urlsToFindMasterController, clusterName, kafkaTopic); /* should allways return a valid object */
       if (! response.isError()){
         return response;
       } else {
@@ -224,14 +221,13 @@ public class ControllerClient implements Closeable {
 
   private MultiStoreResponse queryStoreList(String clusterName)
       throws IOException, ExecutionException, InterruptedException {
-    List<NameValuePair> queryParams = newParams();
-    queryParams.add(new BasicNameValuePair(ControllerApiConstants.CLUSTER, clusterName));
+    List<NameValuePair> queryParams = newParams(clusterName);
     String responseJson = getRequest(ControllerRoute.LIST_STORES.getPath(), queryParams);
     return mapper.readValue(responseJson, MultiStoreResponse.class);
   }
 
-  public static MultiStoreResponse queryStoreList(String routerUrls, String clusterName){
-    try (ControllerClient client = new ControllerClient(routerUrls)){
+  public static MultiStoreResponse queryStoreList(String urlsToFindMasterController, String clusterName){
+    try (ControllerClient client = new ControllerClient(clusterName, urlsToFindMasterController)){
       return client.queryStoreList(clusterName);
     } catch (Exception e){
       return handleError(new VeniceException("Error querying store list for cluster: " + clusterName, e), new MultiStoreResponse());
@@ -241,8 +237,7 @@ public class ControllerClient implements Closeable {
   @Deprecated // use getStore
   private VersionResponse queryNextVersion(String clusterName, String storeName)
       throws ExecutionException, InterruptedException, IOException {
-    List<NameValuePair> queryParams = newParams();
-    queryParams.add(new BasicNameValuePair(ControllerApiConstants.CLUSTER, clusterName));
+    List<NameValuePair> queryParams = newParams(clusterName);
     queryParams.add(new BasicNameValuePair(ControllerApiConstants.NAME, storeName));
     String responseJson = getRequest(ControllerRoute.NEXTVERSION.getPath(), queryParams);
     return mapper.readValue(responseJson, VersionResponse.class);
@@ -252,14 +247,15 @@ public class ControllerClient implements Closeable {
    * Query the controller for the next version number that can be created.  This number and larger numbers are available
    * Before creating a kafka topic using this version number, be sure to reserve it using the #reserveVersion method
    *
-   * @param routerUrls
+   * @param urlsToFindMasterController
    * @param clusterName
    * @param storeName
    * @return A VersionResponse object.  the .getVersion() method returns the next available version.
    */
+
   @Deprecated // use getStore
-  public static VersionResponse queryNextVersion(String routerUrls, String clusterName, String storeName){
-    try (ControllerClient client = new ControllerClient(routerUrls)){
+  public static VersionResponse queryNextVersion(String urlsToFindMasterController, String clusterName, String storeName){
+    try (ControllerClient client = new ControllerClient(clusterName, urlsToFindMasterController)){
       return client.queryNextVersion(clusterName, storeName);
     } catch (Exception e){
       return handleError(new VeniceException("Error querying next version for store: " + storeName, e), new VersionResponse());
@@ -269,16 +265,15 @@ public class ControllerClient implements Closeable {
   @Deprecated // use getStore
   private VersionResponse queryCurrentVersion(String clusterName, String storeName)
       throws ExecutionException, InterruptedException, IOException {
-    List<NameValuePair> queryParams = newParams();
-    queryParams.add(new BasicNameValuePair(ControllerApiConstants.CLUSTER, clusterName));
+    List<NameValuePair> queryParams = newParams(clusterName);
     queryParams.add(new BasicNameValuePair(ControllerApiConstants.NAME, storeName));
     String responseJson = getRequest(ControllerRoute.CURRENT_VERSION.getPath(), queryParams);
     return mapper.readValue(responseJson, VersionResponse.class);
   }
 
   @Deprecated // use getStore
-  public static VersionResponse queryCurrentVersion(String routerUrls, String clusterName, String storeName){
-    try (ControllerClient client = new ControllerClient(routerUrls)){
+  public static VersionResponse queryCurrentVersion(String urlsToFindMasterController, String clusterName, String storeName){
+    try (ControllerClient client = new ControllerClient(clusterName, urlsToFindMasterController)){
       return client.queryCurrentVersion(clusterName, storeName);
     } catch (Exception e){
       return handleError(new VeniceException("Error querying current version for store: " + storeName, e), new VersionResponse());
@@ -295,8 +290,8 @@ public class ControllerClient implements Closeable {
   }
 
   @Deprecated // use getStore
-  public static MultiVersionResponse queryActiveVersions(String routerUrls, String clusterName, String storeName){
-    try (ControllerClient client = new ControllerClient(routerUrls)){
+  public static MultiVersionResponse queryActiveVersions(String urlsToFindMasterController, String clusterName, String storeName){
+    try (ControllerClient client = new ControllerClient(clusterName, urlsToFindMasterController)){
       return client.queryActiveVersions(clusterName, storeName);
     } catch (Exception e){
       return handleError(new VeniceException("Error querying active version for store: " + storeName, e), new MultiVersionResponse());
@@ -315,14 +310,14 @@ public class ControllerClient implements Closeable {
   /**
    * Reserves a version number so another process does not try and create a store version using that number
    *
-   * @param routerUrls
+   * @param urlsToFindMasterController
    * @param clusterName
    * @param storeName
    * @param version
    * @return VersionResponse object.  If the reservation fails, this object's .isError() method will return true.
    */
-  public static VersionResponse reserveVersion(String routerUrls, String clusterName, String storeName, int version){
-    try (ControllerClient client = new ControllerClient(routerUrls)){
+  public static VersionResponse reserveVersion(String urlsToFindMasterController, String clusterName, String storeName, int version){
+    try (ControllerClient client = new ControllerClient(clusterName, urlsToFindMasterController)){
       return client.reserveVersion(clusterName, storeName, version);
     } catch (Exception e){
       return handleError(new VeniceException("Error reserving version " + version + " for store: " + storeName, e), new VersionResponse());
@@ -338,8 +333,8 @@ public class ControllerClient implements Closeable {
     return mapper.readValue(responseJson, ControllerResponse.class);
   }
 
-  public static ControllerResponse setPauseStatus(String routerUrls, String clusterName, String storeName, boolean pause){
-    try (ControllerClient client = new ControllerClient(routerUrls)){
+  public static ControllerResponse setPauseStatus(String urlsToFindMasterController, String clusterName, String storeName, boolean pause){
+    try (ControllerClient client = new ControllerClient(clusterName, urlsToFindMasterController)){
       return client.setPauseStatus(clusterName, storeName, pause);
     } catch (Exception e){
       String msg = pause ?
@@ -357,8 +352,8 @@ public class ControllerClient implements Closeable {
     return mapper.readValue(responseJson, ControllerResponse.class);
   }
 
-  public static ControllerResponse isNodeRemovable(String routerUrls, String clusterName, String instanceId){
-    try (ControllerClient client = new ControllerClient(routerUrls)){
+  public static ControllerResponse isNodeRemovable(String urlsToFindMasterController, String clusterName, String instanceId){
+    try (ControllerClient client = new ControllerClient(clusterName, urlsToFindMasterController)){
       return client.isNodeRemovable(clusterName, instanceId);
     } catch (Exception e){
       return handleError(new VeniceException("Could not identify if node: " + instanceId + " is removable", e), new ControllerResponse());
@@ -372,8 +367,8 @@ public class ControllerClient implements Closeable {
     return mapper.readValue(responseJson, MultiNodeResponse.class);
   }
 
-  public static MultiNodeResponse listStorageNodes(String routerUrls, String clusterName){
-    try (ControllerClient client = new ControllerClient(routerUrls)){
+  public static MultiNodeResponse listStorageNodes(String urlsToFindMasterController, String clusterName){
+    try (ControllerClient client = new ControllerClient(clusterName, urlsToFindMasterController)){
       return client.listStorageNodes(clusterName);
     } catch (Exception e){
       return handleError(new VeniceException("Error listing nodes", e), new MultiNodeResponse());
@@ -389,8 +384,8 @@ public class ControllerClient implements Closeable {
     return mapper.readValue(responseJson, MultiReplicaResponse.class);
   }
 
-  public static MultiReplicaResponse listReplicas(String routerUrls, String clusterName, String storeName, int version){
-    try (ControllerClient client = new ControllerClient(routerUrls)){
+  public static MultiReplicaResponse listReplicas(String urlsToFindMasterController, String clusterName, String storeName, int version){
+    try (ControllerClient client = new ControllerClient(clusterName, urlsToFindMasterController)){
       return client.listReplicas(clusterName, storeName, version);
     } catch (Exception e){
       return handleError(new VeniceException("Error listing replicas for store: " + storeName + " version: " + version, e), new MultiReplicaResponse());
@@ -405,8 +400,8 @@ public class ControllerClient implements Closeable {
     return mapper.readValue(responseJson, MultiReplicaResponse.class);
   }
 
-  public static MultiReplicaResponse listStorageNodeReplicas(String routerUrls, String clusterName, String instanceId){
-    try (ControllerClient client = new ControllerClient(routerUrls)){
+  public static MultiReplicaResponse listStorageNodeReplicas(String urlsToFindMasterController, String clusterName, String instanceId){
+    try (ControllerClient client = new ControllerClient(clusterName, urlsToFindMasterController)){
       return client.listStorageNodeReplicas(clusterName, instanceId);
     } catch (Exception e){
       return handleError(new VeniceException("Error listing replicas for storage node: " + instanceId, e), new MultiReplicaResponse());
@@ -416,16 +411,15 @@ public class ControllerClient implements Closeable {
   /* SCHEMA */
 
   private SchemaResponse initKeySchema(String clusterName, String storeName, String keySchemaStr) throws IOException, ExecutionException, InterruptedException {
-    List<NameValuePair> queryParams = newParams();
-    queryParams.add(new BasicNameValuePair(ControllerApiConstants.CLUSTER, clusterName));
+    List<NameValuePair> queryParams = newParams(clusterName);
     queryParams.add(new BasicNameValuePair(ControllerApiConstants.NAME, storeName));
     queryParams.add(new BasicNameValuePair(ControllerApiConstants.KEY_SCHEMA, keySchemaStr));
     String responseJson = postRequest(ControllerRoute.INIT_KEY_SCHEMA.getPath(), queryParams);
     return mapper.readValue(responseJson, SchemaResponse.class);
   }
 
-  public static SchemaResponse initKeySchema(String routerUrls, String clusterName, String storeName, String keySchemaStr) {
-    try (ControllerClient client = new ControllerClient(routerUrls)){
+  public static SchemaResponse initKeySchema(String urlsToFindMasterController, String clusterName, String storeName, String keySchemaStr) {
+    try (ControllerClient client = new ControllerClient(clusterName, urlsToFindMasterController)){
       return client.initKeySchema(clusterName, storeName, keySchemaStr);
     } catch (Exception e){
       return handleError(new VeniceException("Error creating key schema: " + keySchemaStr + " for store: " + storeName, e), new SchemaResponse());
@@ -433,15 +427,14 @@ public class ControllerClient implements Closeable {
   }
 
   private SchemaResponse getKeySchema(String clusterName, String storeName) throws ExecutionException, InterruptedException, IOException {
-    List<NameValuePair> queryParams = newParams();
-    queryParams.add(new BasicNameValuePair(ControllerApiConstants.CLUSTER, clusterName));
+    List<NameValuePair> queryParams = newParams(clusterName);
     queryParams.add(new BasicNameValuePair(ControllerApiConstants.NAME, storeName));
     String responseJson = getRequest(ControllerRoute.GET_KEY_SCHEMA.getPath(), queryParams);
     return mapper.readValue(responseJson, SchemaResponse.class);
   }
 
-  public static SchemaResponse getKeySchema(String routerUrls, String clusterName, String storeName) {
-    try (ControllerClient client = new ControllerClient(routerUrls)){
+  public static SchemaResponse getKeySchema(String urlsToFindMasterController, String clusterName, String storeName) {
+    try (ControllerClient client = new ControllerClient(clusterName, urlsToFindMasterController)){
       return client.getKeySchema(clusterName, storeName);
     } catch (Exception e){
       return handleError(new VeniceException("Error getting key schema for store: " + storeName, e), new SchemaResponse());
@@ -449,16 +442,15 @@ public class ControllerClient implements Closeable {
   }
 
   private SchemaResponse addValueSchema(String clusterName, String storeName, String valueSchemaStr) throws IOException, ExecutionException, InterruptedException {
-    List<NameValuePair> queryParams = newParams();
-    queryParams.add(new BasicNameValuePair(ControllerApiConstants.CLUSTER, clusterName));
+    List<NameValuePair> queryParams = newParams(clusterName);
     queryParams.add(new BasicNameValuePair(ControllerApiConstants.NAME, storeName));
     queryParams.add(new BasicNameValuePair(ControllerApiConstants.VALUE_SCHEMA, valueSchemaStr));
     String responseJson = postRequest(ControllerRoute.ADD_VALUE_SCHEMA.getPath(), queryParams);
     return mapper.readValue(responseJson, SchemaResponse.class);
   }
 
-  public static SchemaResponse addValueSchema(String routerUrls, String clusterName, String storeName, String valueSchemaStr) {
-    try (ControllerClient client = new ControllerClient(routerUrls)){
+  public static SchemaResponse addValueSchema(String urlsToFindMasterController, String clusterName, String storeName, String valueSchemaStr) {
+    try (ControllerClient client = new ControllerClient(clusterName, urlsToFindMasterController)){
       return client.addValueSchema(clusterName, storeName, valueSchemaStr);
     } catch (Exception e){
       return handleError(new VeniceException("Error adding value schema: " + valueSchemaStr + " for store: " + storeName, e), new SchemaResponse());
@@ -466,16 +458,15 @@ public class ControllerClient implements Closeable {
   }
 
   private SchemaResponse getValueSchema(String clusterName, String storeName, int valueSchemaId) throws IOException, ExecutionException, InterruptedException {
-    List<NameValuePair> queryParams = newParams();
-    queryParams.add(new BasicNameValuePair(ControllerApiConstants.CLUSTER, clusterName));
+    List<NameValuePair> queryParams = newParams(clusterName);
     queryParams.add(new BasicNameValuePair(ControllerApiConstants.NAME, storeName));
     queryParams.add(new BasicNameValuePair(ControllerApiConstants.SCHEMA_ID, Integer.toString(valueSchemaId)));
     String responseJson = getRequest(ControllerRoute.GET_VALUE_SCHEMA.getPath(), queryParams);
     return mapper.readValue(responseJson, SchemaResponse.class);
   }
 
-  public static SchemaResponse getValueSchema(String routerUrls, String clusterName, String storeName, int valueSchemaId) {
-    try (ControllerClient client = new ControllerClient(routerUrls)){
+  public static SchemaResponse getValueSchema(String urlsToFindMasterController, String clusterName, String storeName, int valueSchemaId) {
+    try (ControllerClient client = new ControllerClient(clusterName, urlsToFindMasterController)){
       return client.getValueSchema(clusterName, storeName, valueSchemaId);
     } catch (Exception e){
       return handleError(new VeniceException("Error getting value schema for schema id: " + valueSchemaId + " for store: " + storeName, e), new SchemaResponse());
@@ -483,16 +474,15 @@ public class ControllerClient implements Closeable {
   }
 
   private SchemaResponse getValueSchemaID(String clusterName, String storeName, String valueSchemaStr) throws IOException, ExecutionException, InterruptedException {
-    List<NameValuePair> queryParams = newParams();
-    queryParams.add(new BasicNameValuePair(ControllerApiConstants.CLUSTER, clusterName));
+    List<NameValuePair> queryParams = newParams(clusterName);
     queryParams.add(new BasicNameValuePair(ControllerApiConstants.NAME, storeName));
     queryParams.add(new BasicNameValuePair(ControllerApiConstants.VALUE_SCHEMA, valueSchemaStr));
     String responseJson = postRequest(ControllerRoute.GET_VALUE_SCHEMA_ID.getPath(), queryParams);
     return mapper.readValue(responseJson, SchemaResponse.class);
   }
 
-  public static SchemaResponse getValueSchemaID(String routerUrls, String clusterName, String storeName, String valueSchemaStr) {
-    try (ControllerClient client = new ControllerClient(routerUrls)){
+  public static SchemaResponse getValueSchemaID(String urlsToFindMasterController, String clusterName, String storeName, String valueSchemaStr) {
+    try (ControllerClient client = new ControllerClient(clusterName, urlsToFindMasterController)){
       return client.getValueSchemaID(clusterName, storeName, valueSchemaStr);
     } catch (Exception e){
       return handleError(new VeniceException("Error getting value schema for schema: " + valueSchemaStr + " for store: " + storeName, e), new SchemaResponse());
@@ -500,14 +490,11 @@ public class ControllerClient implements Closeable {
   }
 
   private MultiSchemaResponse getAllValueSchema(String clusterName, String storeName) throws IOException, ExecutionException, InterruptedException {
-    List<NameValuePair> queryParams = newParams();
-    queryParams.add(new BasicNameValuePair(ControllerApiConstants.CLUSTER, clusterName));
+    List<NameValuePair> queryParams = newParams(clusterName);
     queryParams.add(new BasicNameValuePair(ControllerApiConstants.NAME, storeName));
     String responseJson = getRequest(ControllerRoute.GET_ALL_VALUE_SCHEMA.getPath(), queryParams);
     return mapper.readValue(responseJson, MultiSchemaResponse.class);
   }
-
-
 
   /***
    * Add all global parameters in this method. Always use a form of this method to generate
@@ -533,22 +520,27 @@ public class ControllerClient implements Closeable {
 
   private String getRequest(String path, List<NameValuePair> params)
       throws ExecutionException, InterruptedException {
+    return getRequest(masterControllerUrl, path, params);
+  }
+
+  private String getRequest(String url, String path, List<NameValuePair> params)
+      throws ExecutionException, InterruptedException {
     String queryString = URLEncodedUtils.format(params, StandardCharsets.UTF_8);
-    final HttpGet get = new HttpGet(controllerUrl + path + "?" + queryString);
+    final HttpGet get = new HttpGet(url + path + "?" + queryString);
     HttpResponse response = client.execute(get, null).get();
     return getJsonFromHttpResponse(response);
   }
 
   private String postRequest(String path, List<NameValuePair> params)
       throws UnsupportedEncodingException, ExecutionException, InterruptedException {
-    final HttpPost post = new HttpPost(controllerUrl + path);
+    final HttpPost post = new HttpPost(masterControllerUrl + path);
     post.setEntity(new UrlEncodedFormEntity(params));
     HttpResponse response = client.execute(post, null).get();
     return getJsonFromHttpResponse(response);
   }
 
-  public static MultiSchemaResponse getAllValueSchema(String routerUrls, String clusterName, String storeName) {
-    try (ControllerClient client = new ControllerClient(routerUrls)){
+  public static MultiSchemaResponse getAllValueSchema(String urlsToFindMasterController, String clusterName, String storeName) {
+    try (ControllerClient client = new ControllerClient(clusterName, urlsToFindMasterController)){
       return client.getAllValueSchema(clusterName, storeName);
     } catch (Exception e){
       return handleError(new VeniceException("Error getting value schema for store: " + storeName, e), new MultiSchemaResponse());

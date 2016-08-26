@@ -1,8 +1,6 @@
 package com.linkedin.venice.offsets;
 
-import com.linkedin.venice.config.VeniceClusterConfig;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.service.AbstractVeniceService;
 
 
 /**

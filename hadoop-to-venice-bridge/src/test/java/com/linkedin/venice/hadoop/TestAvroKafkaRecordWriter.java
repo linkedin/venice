@@ -1,10 +1,8 @@
 package com.linkedin.venice.hadoop;
 
 import com.linkedin.venice.client.MockVeniceWriter;
-import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.integration.utils.KafkaBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
-import com.linkedin.venice.serialization.VeniceSerializer;
 import com.linkedin.venice.serialization.avro.AvroGenericSerializer;
 import java.nio.charset.StandardCharsets;
 import org.apache.avro.Schema;

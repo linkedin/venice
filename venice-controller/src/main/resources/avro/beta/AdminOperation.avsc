@@ -1,0 +1,78 @@
+{
+  "name": "AdminOperation",
+  "namespace": "com.linkedin.venice.controller.kafka.protocol.admin",
+  "type": "record",
+  "fields": [
+    {
+      "name": "operationType",
+      "doc": "0 => StoreCreation, 1 => KeySchemaCreation, 2 => ValueSchemaCreation",
+      "type": "int"
+    }, {
+      "name": "payloadUnion",
+      "doc": "This contains the main payload of the admin operation",
+      "type": [
+        {
+          "name": "StoreCreation",
+          "type": "record",
+          "fields": [
+            {
+              "name": "clusterName",
+              "type": "string"
+            },
+            {
+              "name": "storeName",
+              "type": "string"
+            },
+            {
+              "name": "owner",
+              "type": "string"
+            }
+          ]
+        },
+        {
+          "name": "KeySchemaCreation",
+          "type": "record",
+          "fields": [
+            {
+              "name": "clusterName",
+              "type": "string"
+            },
+            {
+              "name": "storeName",
+              "type": "string"
+            },
+            {
+              "name": "schema",
+              "type": {
+                "type": "record",
+                "name": "SchemaMeta",
+                "fields": [
+                  {"name": "schemaType", "type": "int", "doc": "0 => Avro-1.4, and we can add more if necessary"},
+                  {"name": "definition", "type": "string"}
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "ValueSchemaCreation",
+          "type": "record",
+          "fields": [
+            {
+              "name": "clusterName",
+              "type": "string"
+            },
+            {
+              "name": "storeName",
+              "type": "string"
+            },
+            {
+              "name": "schema",
+              "type": "SchemaMeta"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -38,7 +38,7 @@ public class VeniceControllerWrapper extends ProcessWrapper {
     this.port = port;
   }
 
-  static StatefulServiceProvider<VeniceControllerWrapper> generateService(String clusterName, KafkaBrokerWrapper kafkaBrokerWrapper) {
+  static StatefulServiceProvider<VeniceControllerWrapper> generateService(String clusterName, KafkaBrokerWrapper kafkaBrokerWrapper, boolean isParent) {
     // TODO: Once the ZK address used by Controller and Kafka are decoupled, change this
     String zkAddress = kafkaBrokerWrapper.getZkAddress();
 
@@ -59,7 +59,8 @@ public class VeniceControllerWrapper extends ProcessWrapper {
               .put(ADMIN_PORT, adminPort)
               .put(DEFAULT_MAX_NUMBER_OF_PARTITIONS, 10)
               .put(DEFAULT_PARTITION_SIZE, 100)
-              .put(TOPIC_MONITOR_POLL_INTERVAL_MS, 100);
+              .put(TOPIC_MONITOR_POLL_INTERVAL_MS, 100)
+              .put(CONTROLLER_PARENT_MODE, isParent);
 
       VeniceProperties props = builder.build();
 

@@ -1,5 +1,6 @@
 package com.linkedin.venice.router;
 
+import com.linkedin.venice.controllerapi.MasterControllerResponse;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -39,7 +40,7 @@ public class TestMetaDataHandler {
     // Mock MessageEvent
     MessageEvent event = Mockito.mock(MessageEvent.class);
     HttpRequest httpRequest = Mockito.mock(HttpRequest.class);
-    Mockito.doReturn("http://myRouterHost:4567/controller").when(httpRequest).getUri();
+    Mockito.doReturn("http://myRouterHost:4567/master_controller").when(httpRequest).getUri();
     Mockito.doReturn(httpRequest).when(event).getMessage();
 
     // Mock ChannelHandlerContext
@@ -54,9 +55,10 @@ public class TestMetaDataHandler {
     DownstreamMessageEvent messageEvent = captor.getValue();
     DefaultHttpResponse response = (DefaultHttpResponse)messageEvent.getMessage();
     Assert.assertEquals(response.getStatus().getCode(), 200);
-    Assert.assertEquals(response.headers().get(CONTENT_TYPE), "text/plain");
-    String actualBody = new String(response.getContent().array());
-    Assert.assertEquals(actualBody, "http://" + masterControllerHost + ":" + masterControllerPort);
+    Assert.assertEquals(response.headers().get(CONTENT_TYPE), "application/json");
+    MasterControllerResponse controllerResponse = mapper.readValue(response.getContent().array(),
+        MasterControllerResponse.class);
+    Assert.assertEquals(controllerResponse.getUrl(), "http://" + masterControllerHost + ":" + masterControllerPort);
   }
 
   @Test

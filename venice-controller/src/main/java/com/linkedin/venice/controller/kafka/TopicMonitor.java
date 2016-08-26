@@ -94,6 +94,10 @@ public class TopicMonitor extends AbstractVeniceService {
             Map<String, List<PartitionInfo>> topics = kafkaClient.listTopics();
             for (Map.Entry<String, List<PartitionInfo>> entry : topics.entrySet()) {
               String topic = entry.getKey();
+              if (AdminTopicUtils.isAdminTopic(topic)) {
+                logger.debug("Skip admin topic: " + topic + " in Topic Monitor thread.");
+                continue;
+              }
               if (Version.topicIsValidStoreVersion(topic)) {
                 String storeName = Version.parseStoreFromKafkaTopicName(topic);
                 int version = Version.parseVersionFromKafkaTopicName(topic);

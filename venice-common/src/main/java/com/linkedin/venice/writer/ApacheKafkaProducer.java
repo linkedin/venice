@@ -22,7 +22,7 @@ import org.apache.kafka.clients.producer.RecordMetadata;
  */
 public class ApacheKafkaProducer implements KafkaProducerWrapper {
 
-  private static final String PROPERTIES_KAFKA_PREFIX = "kafka.";
+  public static final String PROPERTIES_KAFKA_PREFIX = "kafka.";
 
   private final KafkaProducer<KafkaKey, KafkaMessageEnvelope> producer;
 

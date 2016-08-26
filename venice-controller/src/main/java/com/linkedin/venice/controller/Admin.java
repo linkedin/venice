@@ -16,6 +16,8 @@ import org.apache.helix.model.ExternalView;
 public interface Admin {
     void start(String clusterName);
 
+    boolean isClusterValid(String clusterName);
+
     void addStore(String clusterName, String storeName, String owner);
 
     Version addVersion(String clusterName, String storeName, int versionNumber, int numberOfPartition,
@@ -31,6 +33,8 @@ public interface Admin {
 
     List<Store> getAllStores(String clusterName);
     Store getStore(String clusterName, String storeName);
+
+    boolean hasStore(String clusterName, String storeName);
 
     void reserveVersion(String clusterName, String storeName, int versionNumberToReserve);
 
@@ -133,4 +137,17 @@ public interface Admin {
     Set<String> getWhitelist(String clusterName);
 
     void close();
+
+    /**
+     * Function used by {@link com.linkedin.venice.controller.kafka.consumer.AdminConsumptionTask} to share
+     * exception received during consuming admin messages.
+     */
+    void setLastException(String clusterName, Exception e);
+
+  /**
+   * Function used by {@link VeniceParentHelixAdmin} to pick up the latest exception occurred
+   * while consuming admin messages.
+   * @return
+   */
+  Exception getLastException(String clusterName);
 }

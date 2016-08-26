@@ -1,5 +1,6 @@
 package com.linkedin.venice.controller;
 
+import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.VeniceProperties;
 import static com.linkedin.venice.ConfigKeys.*;
@@ -15,6 +16,8 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
   private final String controllerClusterName;
   private final String controllerClusterZkAddresss;
   private final int topicMonitorPollIntervalMs;
+  private final boolean parent;
+  private final int parentControllerWaitingTimeForConsumptionMs;
 
   public VeniceControllerConfig(VeniceProperties props) {
     super(props);
@@ -23,6 +26,8 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
     this.controllerClusterReplica = props.getInt(CONTROLLER_CLUSTER_REPLICA, 3);
     this.controllerClusterZkAddresss = props.getString(CONTROLLER_CLUSTER_ZK_ADDRESSS, getZkAddress());
     this.topicMonitorPollIntervalMs = props.getInt(TOPIC_MONITOR_POLL_INTERVAL_MS, 10 * Time.MS_PER_SECOND);
+    this.parent = props.getBoolean(ConfigKeys.CONTROLLER_PARENT_MODE, false);
+    this.parentControllerWaitingTimeForConsumptionMs = props.getInt(ConfigKeys.PARENT_CONTROLLER_WAITING_TIME_FOR_CONSUMPTION_MS, 30 * Time.MS_PER_SECOND);
   }
 
   public int getAdminPort() {
@@ -42,4 +47,12 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
   }
 
   public int getTopicMonitorPollIntervalMs() { return topicMonitorPollIntervalMs; }
+
+  public boolean isParent() {
+    return parent;
+  }
+
+  public int getParentControllerWaitingTimeForConsumptionMs() {
+    return parentControllerWaitingTimeForConsumptionMs;
+  }
 }

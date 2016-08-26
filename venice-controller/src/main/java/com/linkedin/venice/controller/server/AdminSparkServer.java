@@ -107,11 +107,9 @@ public class AdminSparkServer extends AbstractVeniceService {
     Spark.post(GET_VALUE_SCHEMA_ID.getPath(), SchemaRoutes.getValueSchemaID(admin));
     Spark.get(GET_ALL_VALUE_SCHEMA.getPath(), SchemaRoutes.getAllValueSchema(admin));
 
-    /**
-     * This API should be used by CORP controller only. H2V could talk to any of controllers in CORP to find who is the
-     * current master CORP controller. In other colos, router will find the master controller instead of calling this API.
-     */
-    Spark.get(GET_MASTER_CONTROLLER.getPath(), MasterController.getRoute(admin));
+    // This API should be used by CORP controller only. H2V could talk to any of controllers in CORP to find who is the
+    // current master CORP controller. In other colos, router will find the master controller instead of calling this API.
+    Spark.get(MASTER_CONTROLLER.getPath(), MasterController.getRoute(admin));
 
     Spark.awaitInitialization(); // Wait for server to be initialized
 

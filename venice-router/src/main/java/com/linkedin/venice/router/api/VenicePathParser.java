@@ -4,6 +4,7 @@ import com.linkedin.ddsstorage.base.misc.QueryStringDecoder;
 import com.linkedin.ddsstorage.router.api.ResourcePathParser;
 import com.linkedin.ddsstorage.router.api.RouterException;
 import com.linkedin.venice.RequestConstants;
+import com.linkedin.venice.controllerapi.ControllerRoute;
 import com.linkedin.venice.exceptions.VeniceException;
 import java.net.URI;
 import java.net.URISyntaxException;
@@ -37,7 +38,11 @@ public class VenicePathParser implements ResourcePathParser<VeniceStoragePath, R
   public static final String SEP = "/";
 
   public static final String TYPE_STORAGE = "storage";
-  public static final String TYPE_CONTROLLER = "controller";
+  // Right now, we hardcoded url path for getting master controller to be same as the one
+  // being used in Venice Controller, so that ControllerClient can use the same API to get
+  // master controller without knowing whether the host is Router or Controller.
+  // Without good reason, please don't update this path.
+  public static final String TYPE_MASTER_CONTROLLER = ControllerRoute.MASTER_CONTROLLER.getPath().replace("/", "");
   public static final String TYPE_KEY_SCHEMA = "key_schema";
   public static final String TYPE_VALUE_SCHEMA = "value_schema";
 

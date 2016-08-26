@@ -4,6 +4,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceMessageException;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.utils.ByteUtils;
+import com.linkedin.venice.utils.Utils;
 import org.apache.avro.Schema;
 import org.apache.avro.io.BinaryEncoder;
 import org.apache.avro.io.Decoder;
@@ -168,7 +169,7 @@ public class KafkaValueSerializer implements VeniceSerializer<KafkaMessageEnvelo
   private static Map<Byte, Schema> initializeProtocolSchemaMap() {
     try {
       Map protocolSchemaMap = new HashMap<>();
-      protocolSchemaMap.put((byte) 1, getSchemaFromResource("avro/v1/KafkaValueEnvelope.avsc"));
+      protocolSchemaMap.put((byte) 1, Utils.getSchemaFromResource("avro/v1/KafkaValueEnvelope.avsc"));
 
       // TODO: If we add more versions to the protocol, they should be initialized here.
 
@@ -176,24 +177,5 @@ public class KafkaValueSerializer implements VeniceSerializer<KafkaMessageEnvelo
     } catch (IOException e) {
       throw new VeniceMessageException("Could not initialize " + KafkaValueSerializer.class.getSimpleName(), e);
     }
-  }
-
-  /**
-   * Utility function to get schemas out of embedded resources.
-   *
-   * @param resourcePath The path of the file under the src/main/resources directory
-   * @return the {@link org.apache.avro.Schema} instance corresponding to the file at {@param resourcePath}
-   * @throws IOException
-   */
-  private static Schema getSchemaFromResource(String resourcePath) throws IOException {
-    ClassLoader classLoader = KafkaValueSerializer.class.getClassLoader();
-    InputStream inputStream = classLoader.getResourceAsStream(resourcePath);
-    if (inputStream == null) {
-      throw new IOException("Resource path '" + resourcePath + "' does not exist!");
-    }
-    String schemaString = IOUtils.toString(inputStream);
-    Schema schema = Schema.parse(schemaString);
-    logger.info("Loaded schema from resource path '" + resourcePath + "':\n" + schema.toString(true));
-    return schema;
   }
 }

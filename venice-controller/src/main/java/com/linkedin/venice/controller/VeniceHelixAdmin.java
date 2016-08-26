@@ -1,5 +1,8 @@
 package com.linkedin.venice.controller;
 
+import com.linkedin.venice.exceptions.SchemaIncompatibilityException;
+import com.linkedin.venice.exceptions.StoreKeySchemaExistException;
+import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
 import com.linkedin.venice.helix.HelixReadWriteSchemaRepository;
 import com.linkedin.venice.helix.Replica;
 import com.linkedin.venice.helix.ZkWhitelistAccessor;
@@ -14,6 +17,7 @@ import com.linkedin.venice.meta.Partition;
 import com.linkedin.venice.meta.PartitionAssignment;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.PartitionCountUtils;
@@ -25,6 +29,9 @@ import java.util.List;
 import java.util.Map;
 
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
+
 import org.apache.commons.io.IOUtils;
 import org.apache.helix.HelixAdmin;
 import org.apache.helix.HelixManager;
@@ -60,6 +67,8 @@ public class VeniceHelixAdmin implements Admin {
     private final String controllerName;
     private final String kafkaBootstrapServers;
 
+    // Track last exception when necessary
+    private Map<String, Exception> lastExceptionMap = new ConcurrentHashMap<String, Exception>();
 
     public static final int CONTROLLER_CLUSTER_NUMBER_OF_PARTITION = 1;
     private static final Logger logger = Logger.getLogger(VeniceHelixAdmin.class);
@@ -147,16 +156,26 @@ public class VeniceHelixAdmin implements Admin {
     }
 
     @Override
+    public boolean isClusterValid(String clusterName) {
+        return admin.getClusters().contains(clusterName);
+    }
+
+    @Override
     public synchronized void addStore(String clusterName, String storeName, String owner) {
+        checkPreConditionForAddStore(clusterName, storeName, owner);
+        VeniceControllerClusterConfig config = getVeniceHelixResource(clusterName).getConfig();
+        Store store = new Store(storeName, owner, System.currentTimeMillis(), config.getPersistenceType(),
+            config.getRoutingStrategy(), config.getReadStrategy(), config.getOfflinePushStrategy());
+        HelixReadWriteStoreRepository repository = getVeniceHelixResource(clusterName).getMetadataRepository();
+        repository.addStore(store);
+    }
+
+    protected void checkPreConditionForAddStore(String clusterName, String storeName, String owner) {
         checkControllerMastership(clusterName);
         HelixReadWriteStoreRepository repository = getVeniceHelixResource(clusterName).getMetadataRepository();
         if (repository.getStore(storeName) != null) {
             throwStoreAlreadyExists(clusterName, storeName);
         }
-        VeniceControllerClusterConfig config = getVeniceHelixResource(clusterName).getConfig();
-        Store store = new Store(storeName, owner, System.currentTimeMillis(), config.getPersistenceType(),
-            config.getRoutingStrategy(), config.getReadStrategy(), config.getOfflinePushStrategy());
-        repository.addStore(store);
     }
 
     /**
@@ -303,6 +322,18 @@ public class VeniceHelixAdmin implements Admin {
     }
 
     @Override
+    public boolean hasStore(String clusterName, String storeName) {
+        checkControllerMastership(clusterName);
+        HelixReadWriteStoreRepository repository = getVeniceHelixResource(clusterName).getMetadataRepository();
+        repository.lock();
+        try {
+            return repository.hasStore(storeName);
+        } finally {
+            repository.unLock();
+        }
+    }
+
+    @Override
     public Store getStore(String clusterName, String storeName){
         checkControllerMastership(clusterName);
         HelixReadWriteStoreRepository repository = getVeniceHelixResource(clusterName).getMetadataRepository();
@@ -379,9 +410,28 @@ public class VeniceHelixAdmin implements Admin {
 
     @Override
     public SchemaEntry initKeySchema(String clusterName, String storeName, String keySchemaStr) {
-        checkControllerMastership(clusterName);
+        checkPreConditionForInitKeySchema(clusterName, storeName, keySchemaStr);
         HelixReadWriteSchemaRepository schemaRepo = getVeniceHelixResource(clusterName).getSchemaRepository();
         return schemaRepo.initKeySchema(storeName, keySchemaStr);
+    }
+
+    protected void checkPreConditionForInitKeySchema(String clusterName, String storeName, String keySchemaStr) {
+        checkControllerMastership(clusterName);
+        HelixReadWriteStoreRepository repository = getVeniceHelixResource(clusterName).getMetadataRepository();
+        if (!repository.hasStore(storeName)) {
+            throw new VeniceNoStoreException(storeName);
+        }
+        // This will check whether the Avro Schema is valid or not.
+        SchemaEntry newKeySchemaEntry = new SchemaEntry(Integer.parseInt(HelixReadOnlySchemaRepository.KEY_SCHEMA_ID), keySchemaStr);
+        SchemaEntry existingKeySchema = getKeySchema(clusterName, storeName);
+        if (null != existingKeySchema) {
+            // If the key schema str is same as the existing one, just return ok to make it idempotent
+            if (existingKeySchema.equals(newKeySchemaEntry)) {
+                return;
+            } else {
+                throw StoreKeySchemaExistException.newExceptionForStore(storeName);
+            }
+        }
     }
 
     @Override
@@ -407,9 +457,29 @@ public class VeniceHelixAdmin implements Admin {
 
     @Override
     public SchemaEntry addValueSchema(String clusterName, String storeName, String valueSchemaStr) {
-        checkControllerMastership(clusterName);
+        checkPreConditionForAddValueSchema(clusterName, storeName, valueSchemaStr);
         HelixReadWriteSchemaRepository schemaRepo = getVeniceHelixResource(clusterName).getSchemaRepository();
         return schemaRepo.addValueSchema(storeName, valueSchemaStr);
+    }
+
+    protected void checkPreConditionForAddValueSchema(String clusterName, String storeName, String valueSchemaStr) {
+        checkControllerMastership(clusterName);
+        HelixReadWriteStoreRepository repository = getVeniceHelixResource(clusterName).getMetadataRepository();
+        if (!repository.hasStore(storeName)) {
+            throw new VeniceNoStoreException(storeName);
+        }
+        // Check compatibility
+        SchemaEntry newValueSchemaWithInvalidId = new SchemaEntry(SchemaData.INVALID_VALUE_SCHEMA_ID, valueSchemaStr);
+        Collection<SchemaEntry> valueSchemas = getValueSchemas(clusterName, storeName);
+        for (SchemaEntry entry : valueSchemas) {
+            // Idempotent
+            if (entry.equals(newValueSchemaWithInvalidId)) {
+                return;
+            }
+            if (!entry.isCompatible(newValueSchemaWithInvalidId)) {
+                throw new SchemaIncompatibilityException(entry, newValueSchemaWithInvalidId);
+            }
+        }
     }
 
     @Override
@@ -667,6 +737,16 @@ public class VeniceHelixAdmin implements Admin {
     public Set<String> getWhitelist(String clusterName) {
         checkControllerMastership(clusterName);
         return whitelistAccessor.getWhiteList(clusterName);
+    }
+
+    @Override
+    public synchronized void setLastException(String clusterName, Exception e) {
+        lastExceptionMap.put(clusterName, e);
+    }
+
+    @Override
+    public synchronized Exception getLastException(String clusterName) {
+        return lastExceptionMap.get(clusterName);
     }
 
     private void setPausedForStore(String clusterName, String storeName, boolean paused) {
