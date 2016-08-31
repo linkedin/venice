@@ -20,16 +20,24 @@ public class HelixNotifier implements VeniceNotifier {
 
   private final HelixStatusMessageChannel messageChannel;
   private final String instanceId;
+  private final int retryCount;
+  private final long retryDurationMs;
 
-  public HelixNotifier(HelixManager manager, String instanceId) {
+  public HelixNotifier(HelixManager manager, String instanceId, int retryCount, long retryDurationMs) {
     this.messageChannel = new HelixStatusMessageChannel(manager);
     this.instanceId = instanceId;
+    this.retryCount = retryCount;
+    this.retryDurationMs = retryDurationMs;
   }
 
   private void sendMessage(StoreStatusMessage message) {
+    sendMessageWithRetry(message, 0, 0);
+  }
+
+  private void sendMessageWithRetry(StoreStatusMessage message, int retryCount, long retryDurationMs) {
     try {
-       messageChannel.sendToController(message);
-    } catch(IOException ex) {
+      messageChannel.sendToController(message,retryCount, retryDurationMs);
+    } catch(Exception ex) {
       String errorMessage = "Error Sending Message to Helix Controller " + message.getMessageId();
       logger.error(errorMessage , ex);
       throw new VeniceException(errorMessage , ex);
@@ -40,7 +48,7 @@ public class HelixNotifier implements VeniceNotifier {
   public void started(String storeName, int partitionId) {
     StoreStatusMessage
             veniceMessage = new StoreStatusMessage(storeName, partitionId, instanceId, ExecutionStatus.STARTED);
-    sendMessage(veniceMessage);
+    sendMessageWithRetry(veniceMessage, retryCount, retryDurationMs);
   }
 
   @Override
@@ -48,7 +56,7 @@ public class HelixNotifier implements VeniceNotifier {
     StoreStatusMessage veniceMessage = new StoreStatusMessage(storeName, partitionId, instanceId,
             ExecutionStatus.COMPLETED);
     veniceMessage.setOffset(offset);
-    sendMessage(veniceMessage);
+    sendMessageWithRetry(veniceMessage, retryCount, retryDurationMs);
   }
 
   @Override
@@ -56,6 +64,7 @@ public class HelixNotifier implements VeniceNotifier {
     StoreStatusMessage veniceMessage = new StoreStatusMessage(storeName, partitionId, instanceId,
             ExecutionStatus.PROGRESS);
     veniceMessage.setOffset(offset);
+    //Do not need to retry, because losing a progress message will not affect the whole job status.
     sendMessage(veniceMessage);
   }
 
@@ -89,6 +98,6 @@ public class HelixNotifier implements VeniceNotifier {
     StoreStatusMessage veniceMessage =
             new StoreStatusMessage(storeName, partitionId, instanceId, ExecutionStatus.ERROR);
     veniceMessage.setDescription(formatError(message , ex));
-    sendMessage(veniceMessage);
+    sendMessageWithRetry(veniceMessage, retryCount, retryDurationMs);
   }
 }

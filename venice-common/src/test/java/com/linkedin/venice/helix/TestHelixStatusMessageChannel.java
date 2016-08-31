@@ -1,5 +1,6 @@
 package com.linkedin.venice.helix;
 
+import com.linkedin.venice.status.StatusMessageHandler;
 import com.linkedin.venice.status.StoreStatusMessage;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.job.ExecutionStatus;
@@ -136,13 +137,10 @@ public class TestHelixStatusMessageChannel {
   public void testSendMessage()
       throws IOException, InterruptedException {
     //Register handler for message in controler side.
-    HelixStatusMessageChannel controllerChannel = new HelixStatusMessageChannel(controller);
     StoreStatusMessageHandler handler = new StoreStatusMessageHandler();
-    controllerChannel.registerHandler(StoreStatusMessage.class, handler);
+    HelixStatusMessageChannel controllerChannel = getControllerChannel(handler);
 
-    Thread.sleep(WAIT_ZK_TIME);
-    StoreStatusMessage veniceMessage =
-        new StoreStatusMessage(kafkaTopic, partitionId, instanceId, status);
+    StoreStatusMessage veniceMessage = new StoreStatusMessage(kafkaTopic, partitionId, instanceId, status);
     channel.sendToController(veniceMessage);
     StoreStatusMessage receivedMessage = handler.getStatus(veniceMessage.getKafkaTopic());
     Assert.assertNotNull(receivedMessage, "Message is not received.");
@@ -151,5 +149,124 @@ public class TestHelixStatusMessageChannel {
 
     Assert.assertEquals(veniceMessage.getFields(), receivedMessage.getFields(),
         "Message is not received correctly. Fields are wrong");
+  }
+
+  private HelixStatusMessageChannel getControllerChannel(StatusMessageHandler<StoreStatusMessage> handler) {
+    HelixStatusMessageChannel controllerChannel = new HelixStatusMessageChannel(controller);
+    controllerChannel.registerHandler(StoreStatusMessage.class, handler);
+    return controllerChannel;
+  }
+
+  @Test(expectedExceptions = VeniceException.class)
+  public void testSendMessageFailed()
+      throws IOException, InterruptedException {
+    int retryCount = 1;
+    FailedTestStoreStatusMessageHandler handler = new FailedTestStoreStatusMessageHandler(retryCount);
+    HelixStatusMessageChannel controllerChannel = getControllerChannel(handler);
+
+    StoreStatusMessage veniceMessage = new StoreStatusMessage(kafkaTopic, partitionId, instanceId, status);
+    channel.sendToController(veniceMessage, 0, 0);
+    Assert.fail("Sending should be failed, because we thrown an exception during handing message.");
+  }
+
+  @Test(expectedExceptions = VeniceException.class)
+  public void testSendMessageRetryFailed()
+      throws IOException, InterruptedException {
+    int retryCount = 5;
+    FailedTestStoreStatusMessageHandler handler = new FailedTestStoreStatusMessageHandler(retryCount);
+    HelixStatusMessageChannel controllerChannel = getControllerChannel(handler);
+
+    StoreStatusMessage veniceMessage = new StoreStatusMessage(kafkaTopic, partitionId, instanceId, status);
+    channel.sendToController(veniceMessage, 2, 0);
+    Assert.fail("Sending should be failed, because after retrying 2 times, handling message is stil failed.");
+  }
+
+  @Test
+  public void testSendMessageRetrySuccessful()
+      throws IOException, InterruptedException {
+    int retryCount = 2;
+    FailedTestStoreStatusMessageHandler handler = new FailedTestStoreStatusMessageHandler(retryCount);
+    HelixStatusMessageChannel controllerChannel = getControllerChannel(handler);
+
+    StoreStatusMessage veniceMessage = new StoreStatusMessage(kafkaTopic, partitionId, instanceId, status);
+    try {
+      channel.sendToController(veniceMessage, retryCount, 0);
+    } catch (VeniceException e) {
+      Assert.fail("Sending should be successful after retrying " + retryCount + " times", e);
+    }
+  }
+
+  @Test(expectedExceptions = VeniceException.class)
+  public void testSendMessageTimeout()
+      throws IOException, InterruptedException {
+    int timeoutCount = 1;
+    TimeoutTestStoreStatusMessageHandler handler = new TimeoutTestStoreStatusMessageHandler(timeoutCount);
+    HelixStatusMessageChannel controllerChannel = getControllerChannel(handler);
+
+    StoreStatusMessage veniceMessage = new StoreStatusMessage(kafkaTopic, partitionId, instanceId, status);
+    channel.sendToController(veniceMessage, 0, 0);
+    Assert.fail("Sending should be failed, because timeout");
+  }
+
+  @Test
+  public void testSendMessageHandleTimeout()
+      throws IOException, InterruptedException {
+    int timeoutCount = 1;
+    TimeoutTestStoreStatusMessageHandler handler = new TimeoutTestStoreStatusMessageHandler(timeoutCount);
+    HelixStatusMessageChannel controllerChannel = getControllerChannel(handler);
+
+    StoreStatusMessage veniceMessage = new StoreStatusMessage(kafkaTopic, partitionId, instanceId, status);
+    try {
+      channel.sendToController(veniceMessage, timeoutCount, 0);
+    } catch (VeniceException e) {
+      Assert.fail("Sending should be successful after retry " + timeoutCount + " times", e);
+    }
+  }
+
+  /**
+   * Handler in controller side used to deal with status update message from storage node.
+   */
+  private static class FailedTestStoreStatusMessageHandler implements StatusMessageHandler<StoreStatusMessage> {
+    private int errorReplyCount;
+    private int errorReply = 0;
+
+    public FailedTestStoreStatusMessageHandler(int errorReplyCount) {
+      this.errorReplyCount = errorReplyCount;
+    }
+
+    @Override
+    public void handleMessage(StoreStatusMessage message) {
+      if (errorReply == errorReplyCount) {
+        //handle message correctly.
+      } else {
+        errorReply++;
+        throw new VeniceException("Failed to handle message." + " ErrorReply #" + errorReply);
+      }
+    }
+  }
+
+  /**
+   * Handler in controller side used to deal with status update message from storage node.
+   */
+  private static class TimeoutTestStoreStatusMessageHandler implements StatusMessageHandler<StoreStatusMessage> {
+    private int timeOutReplyCount;
+    private int timeOutReply = 0;
+
+    public TimeoutTestStoreStatusMessageHandler(int timeOutReplyCount) {
+      this.timeOutReplyCount = timeOutReplyCount;
+    }
+
+    @Override
+    public void handleMessage(StoreStatusMessage message) {
+      if (timeOutReply == timeOutReplyCount) {
+        //handle message correctly.
+      } else {
+        timeOutReply++;
+        try {
+          Thread.sleep(HelixStatusMessageChannel.WAIT_TIME_OUT + 300);
+        } catch (InterruptedException e) {
+        }
+      }
+    }
   }
 }

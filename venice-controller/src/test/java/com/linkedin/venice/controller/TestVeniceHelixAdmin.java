@@ -205,7 +205,7 @@ public class TestVeniceHelixAdmin {
     veniceAdmin.addStore(clusterName, storeName, "dev");
     veniceAdmin.incrementVersion(clusterName, storeName, 1, 1);
 
-    StatusMessageChannel channel = new HelixStatusMessageChannel(participants.get(nodeId), Integer.MAX_VALUE, 1);
+    StatusMessageChannel channel = new HelixStatusMessageChannel(participants.get(nodeId), Integer.MAX_VALUE);
     channel.sendToController(new StoreStatusMessage(version.kafkaTopicName(), 0, nodeId, ExecutionStatus.STARTED));
 
     int newAdminPort = config.getAdminPort()+1; /* Note: this is a dummy port */

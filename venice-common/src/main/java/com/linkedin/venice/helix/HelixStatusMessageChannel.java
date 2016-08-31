@@ -5,6 +5,7 @@ import com.linkedin.venice.status.StatusMessageChannel;
 import com.linkedin.venice.status.StatusMessageHandler;
 import com.linkedin.venice.status.StoreStatusMessage;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.utils.Utils;
 import java.io.IOException;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -34,8 +35,6 @@ public class HelixStatusMessageChannel implements StatusMessageChannel {
 
   public static final int WAIT_TIME_OUT = 1000;
 
-  public static final int RETRY_COUNT = 1;
-
   public static final String HELIX_MESSAGE_TYPE = "control_message";
 
   public static final String VENICE_MESSAGE_CLASS = "veniceMessageClass";
@@ -48,22 +47,18 @@ public class HelixStatusMessageChannel implements StatusMessageChannel {
 
   private final int timeOut;
 
-  private final int retryCount;
-
   public HelixStatusMessageChannel(HelixManager manager) {
-    this(manager, WAIT_TIME_OUT, RETRY_COUNT);
+    this(manager, WAIT_TIME_OUT);
   }
 
-  public HelixStatusMessageChannel(HelixManager manager, int timeOut, int retryCount) {
+  public HelixStatusMessageChannel(HelixManager manager, int timeOut) {
     messageService = manager.getMessagingService();
     this.timeOut = timeOut;
-    this.retryCount = retryCount;
     messageService.registerMessageHandlerFactory(HELIX_MESSAGE_TYPE, new HelixStatusMessageHandleFactory());
   }
 
   @Override
-  public void sendToController(StatusMessage message)
-      throws IOException {
+  public void sendToController(StatusMessage message, int retryCount, long retryDurationMs) {
     Message helixMessage = convertVeniceMessageToHelixMessage(message);
     //TODO will confirm with Helix team that do we need to specify session Id here.
     //TODO If we assign a session Id of participant here, when this session be expired/changed by any reason,
@@ -72,19 +67,53 @@ public class HelixStatusMessageChannel implements StatusMessageChannel {
     Criteria criteria = new Criteria();
     criteria.setRecipientInstanceType(InstanceType.CONTROLLER);
     criteria.setSessionSpecific(false);
-    ControlMessageCallback callBack = new ControlMessageCallback();
-    try {
-      //Send and wait until getting response or time out.
-      int numMsg = messageService.sendAndWait(criteria, helixMessage, callBack, timeOut, retryCount);
-      if (numMsg == 0) {
-        throw new VeniceException("No controller could be found to send messages " + message.getMessageId());
+    boolean isSuccess = false;
+    int attempt = 0;
+    while (!isSuccess && attempt <= retryCount) {
+      attempt++;
+      if (attempt > 1) {
+        // only wait and print the log of the retry.
+        logger.info("Wait "+retryDurationMs +"ms to retry.");
+        Utils.sleep(retryDurationMs);
+        logger.info("Attempt #" + attempt + ": Sending message to controller.");
       }
-    } catch (Exception e) {
-      throw new IOException("Error: Can not send message to controller.", e);
+      try {
+        ControlMessageCallback callBack = new ControlMessageCallback();
+        //Send and wait until getting response or time out.
+        int numMsg = messageService.sendAndWait(criteria, helixMessage, callBack, timeOut);
+        if (numMsg == 0) {
+          logger.error("No controller could be found to send messages " + message.getMessageId());
+          continue;
+        }
+        if (callBack.isTimeOut) {
+          logger.error("Error: Can not send message to controller. Sending is time out.");
+          continue;
+        }
+        Message replyMessage = callBack.getMessageReplied().get(0);
+        String result = replyMessage.getResultMap().get("SUCCESS");
+        isSuccess = Boolean.valueOf(result);
+        if (!isSuccess) {
+          logger.error("Error: controller can not handle this message correctly. " + replyMessage.getResultMap()
+              .get("ERRORINFO"));
+        }
+        continue;
+      } catch (Exception e) {
+        logger.error("Error: Can not send message to controller.", e);
+        continue;
+      }
     }
-    if (callBack.isTimeOut) {
-      throw new IOException("Error: Can not send message to controller. Sending is time out.");
+
+    if (!isSuccess) {
+      String errorMsg = "Error: After attempting " + attempt + " times, sending is still failed.";
+      logger.error(errorMsg);
+      throw new VeniceException(errorMsg);
     }
+  }
+
+  @Override
+  public void sendToController(StatusMessage message)
+      throws IOException {
+    this.sendToController(message, 0, 0);
   }
 
   @Override
@@ -199,19 +228,19 @@ public class HelixStatusMessageChannel implements StatusMessageChannel {
     }
 
     @Override
-    public HelixTaskResult handleMessage()
-        throws InterruptedException {
+    public HelixTaskResult handleMessage() {
       StatusMessage msg = convertHelixMessageToVeniceMessage(_message);
       HelixTaskResult result = new HelixTaskResult();
+      //Dispatch venice message to related hander.
+      // Do no need to handle exception here, Helix will help to catch and set success of result to false.
       try {
-        //Dispatch venice message to related hander.
         getHandler(msg.getClass()).handleMessage(msg);
-        result.setSuccess(true);
-      } catch (Throwable e) {
-        logger.error("Handle message:" + _message.getMsgId() + " failed.", e);
-        result.setSuccess(false);
+      } catch (Exception e) {
+        logger.error("Handle message " + _message.getId() + " failed", e);
+        // re-throw exception to helix.
+        throw e;
       }
-      //TODO could put more information to result here.
+      result.setSuccess(true);
       return result;
     }
 

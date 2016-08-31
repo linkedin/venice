@@ -1,6 +1,8 @@
 package com.linkedin.venice.controller;
 
 import com.linkedin.venice.helix.HelixStatusMessageChannel;
+import com.linkedin.venice.meta.RoutingDataRepository;
+import com.linkedin.venice.status.StatusMessage;
 import com.linkedin.venice.status.StoreStatusMessage;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixAdapterSerializer;
@@ -21,7 +23,10 @@ import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import java.io.IOException;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.TimeUnit;
 import org.apache.helix.HelixAdmin;
 import org.apache.helix.HelixManager;
 import org.apache.helix.HelixManagerFactory;
@@ -326,5 +331,91 @@ public class TestVeniceJobManager {
     // After checking all existing jobs, job status should be updated corespondingly.
     Assert.assertEquals(jobRepository.getRunningJobOfTopic(version.kafkaTopicName()).size(), 0);
     Assert.assertEquals(jobRepository.getTerminatedJobOfTopic(version.kafkaTopicName()).size(), 1);
+  }
+
+  /**
+   * Test receive status message for the job which has not been started. Basic idea is create a new version with 1
+   * partition and 2 replicas per partition, but only start one participant at first. Then start a offline push job for
+   * this new version. In that case, job should be blocked on waiting another participant up. During the waiting time,
+   * send the status message to controller. Start up the second participant. If the retry mechanism works well, status
+   * message will be processed eventually.
+   */
+  @Test
+  public void testReceiveMessageBeforeJobStart()
+      throws InterruptedException {
+    int partitionCount = 1;
+    int replciaCount = 2;
+    HelixStatusMessageChannel controllerChannel = new HelixStatusMessageChannel(controller);
+    controllerChannel.registerHandler(StoreStatusMessage.class, jobManager);
+
+    Version newVersion = store.increaseVersion();
+    metadataRepository.addStore(store);
+    //create a helix resource with 1 partition and 2 replica per partition.
+    admin.addResource(cluster, newVersion.kafkaTopicName(), partitionCount, TestHelixRoutingDataRepository.UnitTestStateModel.UNIT_TEST_STATE_MODEL,
+        IdealState.RebalanceMode.FULL_AUTO.toString());
+    admin.rebalance(cluster, newVersion.kafkaTopicName(), replciaCount);
+
+    //Create a thread to send status message before job is started.
+    Thread sendThread = new Thread(new Runnable() {
+      @Override
+      public void run() {
+        HelixStatusMessageChannel channel = new HelixStatusMessageChannel(manager);
+        StoreStatusMessage veniceMessage = new StoreStatusMessage(newVersion.kafkaTopicName(), 0, manager.getInstanceName(), ExecutionStatus.STARTED);
+        try {
+          channel.sendToController(veniceMessage, 20, 200l);
+          Assert.assertEquals(routingDataRepository.getPartitionAssignments(newVersion.kafkaTopicName())
+              .getAssignedNumberOfPartitions(), partitionCount);
+          Assert.assertEquals(routingDataRepository.getPartitionAssignments(newVersion.kafkaTopicName())
+              .getPartition(0)
+              .getBootstrapAndReadyToServeInstances()
+              .size(), replciaCount);
+        } catch (VeniceException e) {
+          Assert.fail("Message should be handled correclty before job starting.");
+        }
+      }
+    });
+    sendThread.start();
+
+    // Create a new participant
+    final String newNodeId = Utils.getHelixNodeIdentifier(13467);
+    HelixManager newParticipant = HelixManagerFactory.getZKHelixManager(cluster, newNodeId, InstanceType.PARTICIPANT, zkAddress);
+    newParticipant.getStateMachineEngine()
+        .registerStateModelFactory(TestHelixRoutingDataRepository.UnitTestStateModel.UNIT_TEST_STATE_MODEL,
+            new TestHelixRoutingDataRepository.UnitTestStateModelFactory());
+    newParticipant.setLiveInstanceInfoProvider(new LiveInstanceInfoProvider() {
+      @Override
+      public ZNRecord getAdditionalLiveInstanceInfo() {
+        return HelixInstanceConverter.convertInstanceToZNRecord(new Instance(newNodeId, Utils.getHostName(), httpPort));
+      }
+    });
+
+    Thread newParticipantThread = new Thread(new Runnable() {
+      @Override
+      public void run() {
+        try {
+          //Delayed start participant to keep job waiting for starting.
+          Thread.sleep(1000l);
+          newParticipant.connect();
+        } catch (Exception e) {
+          Assert.fail("New participant can not be started.");
+        }
+      }
+    });
+    newParticipantThread.start();
+
+    try {
+      jobManager.startOfflineJob(newVersion.kafkaTopicName(), partitionCount, replciaCount);
+      Set<String> nodeIdSet = new HashSet<>();
+      for (Instance instance : routingDataRepository.getPartitionAssignments(newVersion.kafkaTopicName())
+          .getPartition(0)
+          .getBootstrapAndReadyToServeInstances()) {
+        nodeIdSet.add(instance.getNodeId());
+      }
+      // Ensure after job is started, two participants are allocated for this job.
+      Assert.assertTrue(nodeIdSet.contains(newNodeId));
+      sendThread.join();
+    } finally {
+      newParticipant.disconnect();
+    }
   }
 }
