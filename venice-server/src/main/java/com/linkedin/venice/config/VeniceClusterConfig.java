@@ -50,6 +50,9 @@ public class VeniceClusterConfig {
 
   private long maxKafkaFetchBytesPerSecond = 0;
 
+  private int statusMessageRetryCount;
+  private long statusMessageRetryDurationMs ;
+
 
   public VeniceClusterConfig(VeniceProperties clusterProperties)
       throws ConfigurationException {
@@ -84,8 +87,17 @@ public class VeniceClusterConfig {
     metadataRefreshBackoffMs = clusterProps.getInt(KAFKA_CONSUMER_METADATA_REFRESH_BACKOFF_MS, 1000);
     kafkaEnableAutoOffsetCommit = clusterProps.getBoolean(KAFKA_CONSUMER_ENABLE_AUTO_OFFSET_COMMIT, false);
     maxKafkaFetchBytesPerSecond = clusterProps.getSizeInBytes(MAX_KAFKA_FETCH_BYTES_PER_SECOND, 0);
+    statusMessageRetryCount = clusterProps.getInt(STATUS_MESSAGE_RETRY_COUNT, 5);
+    statusMessageRetryDurationMs = clusterProps.getLong(STATUS_MESSAGE_RETRY_DURATION_MS, 1000l);
   }
 
+  public int getStatusMessageRetryCount() {
+    return statusMessageRetryCount;
+  }
+
+  public long getStatusMessageRetryDurationMs() {
+    return statusMessageRetryDurationMs;
+  }
 
   public long getMaxKafkaFetchBytesPerSecond() { return maxKafkaFetchBytesPerSecond; }
 

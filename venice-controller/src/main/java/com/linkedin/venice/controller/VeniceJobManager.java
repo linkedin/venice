@@ -11,7 +11,6 @@ import com.linkedin.venice.job.JobStatusDecider;
 import com.linkedin.venice.job.OfflineJob;
 import com.linkedin.venice.job.Task;
 import com.linkedin.venice.meta.OfflinePushStrategy;
-import com.linkedin.venice.meta.Partition;
 import com.linkedin.venice.meta.ReadWriteStoreRepository;
 import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.meta.Store;
@@ -20,7 +19,6 @@ import com.linkedin.venice.meta.VersionStatus;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
@@ -103,11 +101,13 @@ public class VeniceJobManager implements StatusMessageHandler<StoreStatusMessage
 
   public void startOfflineJob(String kafkaTopic, int numberOfPartition, int replicaFactor) {
     OfflineJob job = new OfflineJob(this.generateJobId(), kafkaTopic, numberOfPartition, replicaFactor);
+    logger.info("Starting job:" + job.getJobId() + " for topic:" + job.getKafkaTopic());
     try {
       waitUntilJobStart(job);
       // Subscribe at first to prevent missing some event happen just after job is started.
       jobRepository.subscribeJobStatusChange(kafkaTopic,this);
       jobRepository.startJob(job);
+      logger.info("Job has been started. Id:" + job.getJobId() + " topic:" + job.getKafkaTopic());
     } catch (Exception e) {
       String errorMsg = "Can not start an offline job for kafka topic:" + kafkaTopic + " with number of partition:"
           + numberOfPartition + " and replica factor:" + replicaFactor;
@@ -142,32 +142,52 @@ public class VeniceJobManager implements StatusMessageHandler<StoreStatusMessage
 
   @Override
   public void handleMessage(StoreStatusMessage message) {
+    logger.info("Received message from:" + message.getInstanceId() + " for topic:" + message.getKafkaTopic());
     List<Job> jobs = jobRepository.getRunningJobOfTopic(message.getKafkaTopic());
     // We should avoid update tasks in same kafka topic in the same time. Different kafka topics could be accessed concurrently.
     synchronized (jobs) {
       // TODO Right now, for offline-push, there is only one job running for each version. Should be change to get job
       // by job Id when H2V can get job Id and send it through kafka control message.
-      if (jobs.size() != 1) {
-        throw new VeniceException(
-            "There should be only one job running for kafka topic:" + message.getKafkaTopic() + ". But now there are:"
-                + jobs.size() + " jobs running.");
+      if (jobs.size() == 0) {
+        // Can not find the running job for the status message, try to find a terminated job.
+        // For example, if Venice use wait n-1 strategy, job might be terminated before the last one replica becoming
+        // online. So controller will still receiving the message from the last replica even if the job has been
+        // terminated before.
+        List<Job> terminatedJobs = jobRepository.getTerminatedJobOfTopic(message.getKafkaTopic());
+        synchronized (terminatedJobs) {
+          if (terminatedJobs.size() == 1) {
+            // Just ignore the message, because its job has been termianted before.
+            logger.info("Received a message for the terminated job of topic:" + message.getKafkaTopic() + ", status:"
+                + message.getStatus() + " from:" + message.getInstanceId() + ". Just ignore it.");
+            return;
+          }
+        }
+      } else if (jobs.size() == 1) {
+        //Find only one running job for the given topic.
+        Job job = jobs.get(0);
+        //Update task status at first.
+        Task task =
+            new Task(job.generateTaskId(message.getPartitionId(), message.getInstanceId()), message.getPartitionId(),
+                message.getInstanceId(), message.getStatus());
+        jobRepository.updateTaskStatus(job.getJobId(), job.getKafkaTopic(), task);
+        logger.info("Update status of Task:" + task.getTaskId() + " to status:" + task.getStatus() + " for topic:"
+            + message.getKafkaTopic());
+        //Check the job status after updating task status to see is the whole job completed or error.
+        ExecutionStatus status = getJobStatusDecider(job).checkJobStatus(job);
+        if (status.equals(ExecutionStatus.COMPLETED)) {
+          logger.info("All of task are completed, mark job:" + job.getJobId() + " for topic:" + job.getKafkaTopic()
+              + " as completed too.");
+          jobRepository.stopJob(job.getJobId(), job.getKafkaTopic());
+        } else if (status.equals(ExecutionStatus.ERROR)) {
+          logger.info("Some of tasks are failed, mark job:" + job.getJobId() + " for topic:" + job.getKafkaTopic()
+              + " as failed too.");
+          jobRepository.stopJobWithError(job.getJobId(), job.getKafkaTopic());
+        }
+        return;
       }
-      Job job = jobs.get(0);
-      //Update task status at first.
-      Task task =
-          new Task(job.generateTaskId(message.getPartitionId(), message.getInstanceId()), message.getPartitionId(),
-              message.getInstanceId(), message.getStatus());
-      jobRepository.updateTaskStatus(job.getJobId(), job.getKafkaTopic(), task);
-      logger.info("Update status of Task:" + task.getTaskId() + " to status:" + task.getStatus());
-      //Check the job status after updating task status to see is the whole job completed or error.
-      ExecutionStatus status = getJobStatusDecider(job).checkJobStatus(job);
-      if (status.equals(ExecutionStatus.COMPLETED)) {
-        logger.info("All of task are completed, mark job as completed too.");
-        jobRepository.stopJob(job.getJobId(), job.getKafkaTopic());
-      } else if (status.equals(ExecutionStatus.ERROR)) {
-        logger.info("Some of tasks are failed, mark job as failed too.");
-        jobRepository.stopJobWithError(job.getJobId(), job.getKafkaTopic());
-      }
+      // Can not find a correct running or terminated start job.
+      throw new VeniceException(
+          "Can not handle this message because no proper job is found. kafka topic:" + message.getKafkaTopic());
     }
   }
 
@@ -330,6 +350,7 @@ public class VeniceJobManager implements StatusMessageHandler<StoreStatusMessage
         long startTime = System.currentTimeMillis();
         long nextWaitTime = jobWaitTimeInMilliseconds;
         while (System.currentTimeMillis() - startTime < jobWaitTimeInMilliseconds) {
+          logger.info("Wait on starting job:"+job.getJobId() +" topic:"+job.getKafkaTopic());
           job.wait(nextWaitTime);
           long spentTime = System.currentTimeMillis() - startTime;
           // In order to avoid incorrect notification, judge whether there are enough executors.

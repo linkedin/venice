@@ -34,7 +34,8 @@ public class HelixParticipationService extends AbstractVeniceService {
   private final String zkAddress;
   private final StateModelFactory stateModelFactory;
   private final KafkaConsumerService consumerService;
-  private final boolean enableServerWhitelist;
+  private final int statusMessageRetryCOunt;
+  private final long statusMessageRetryDuration;
 
   private HelixManager manager;
 
@@ -43,14 +44,14 @@ public class HelixParticipationService extends AbstractVeniceService {
           @NotNull VeniceConfigLoader veniceConfigLoader,
           @NotNull String zkAddress,
           @NotNull String clusterName,
-          int port,
-          boolean enableServerWhitelist) {
+          int port) {
     this.consumerService = kafkaConsumerService;
     this.clusterName = clusterName;
     //The format of instance name must be "$host_$port", otherwise Helix can not get these information correctly.
     this.participantName = Utils.getHelixNodeIdentifier(port);
     this.zkAddress = zkAddress;
-    this.enableServerWhitelist = enableServerWhitelist;
+    statusMessageRetryCOunt = veniceConfigLoader.getVeniceClusterConfig().getStatusMessageRetryCount();
+    statusMessageRetryDuration = veniceConfigLoader.getVeniceClusterConfig().getStatusMessageRetryDurationMs();
     instance = new Instance(participantName,Utils.getHostName(), port);
     stateModelFactory
         = new VeniceStateModelFactory(kafkaConsumerService, storageService, veniceConfigLoader);
@@ -103,7 +104,8 @@ public class HelixParticipationService extends AbstractVeniceService {
       }
 
       // Report start, progress , completed  and error notifications to controller
-      HelixNotifier notifier = new HelixNotifier(manager, participantName);
+      HelixNotifier notifier =
+          new HelixNotifier(manager, participantName, statusMessageRetryCOunt, statusMessageRetryDuration);
       consumerService.addNotifier(notifier);
 
       serviceState.set(ServiceState.STARTED);

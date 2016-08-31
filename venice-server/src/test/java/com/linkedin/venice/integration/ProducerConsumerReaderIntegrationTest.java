@@ -156,6 +156,7 @@ public class ProducerConsumerReaderIntegrationTest {
       }
       // Expected result. Because right now status of node is "BOOTSTRAP" so can not find any online instance to read.
     }
+    veniceWriter.broadcastStartOfPush(new HashMap<>());
     // Insert test record and wait synchronously for it to succeed
     veniceWriter.put(key, value, valueSchemaId).get();
     // Write end of push message to make node become ONLINE from BOOTSTRAP

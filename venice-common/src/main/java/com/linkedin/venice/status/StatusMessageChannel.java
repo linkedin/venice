@@ -8,11 +8,20 @@ import java.io.IOException;
  */
 public interface StatusMessageChannel {
   /**
-   * Send message to controller.
+   * Send message to controller. If met any error during the seding, retry it after waiting @retryDurationMs ms.
    *
    * @param message
+   * @param retryCount      retry how many times.
+   * @param retryDurationMs the duration between two retries.
    *
-   * @throws IOException Met any errors when sending the meesage through network.
+   * @throws IOException Met any errors when sending the message through network.
+   */
+  public void sendToController(StatusMessage message, int retryCount, long retryDurationMs);
+
+  /**
+   * Send message to controller.
+   *
+   * @throws IOException Met any errors when sending the message through network.
    */
   public void sendToController(StatusMessage message)
       throws IOException;

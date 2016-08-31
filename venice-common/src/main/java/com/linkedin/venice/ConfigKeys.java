@@ -33,6 +33,9 @@ public class ConfigKeys {
   public static final String LISTENER_PORT = "listener.port";
   public static final String ADMIN_PORT="admin.port";
 
+  public static final String STATUS_MESSAGE_RETRY_COUNT = "status.message.retry.count";
+  public static final String STATUS_MESSAGE_RETRY_DURATION_MS = "status.message.retry.duration.ms";
+
   // store specific properties
   public static final String STORE_NAME = "store.name";
   public static final String PERSISTENCE_TYPE = "persistence.type";

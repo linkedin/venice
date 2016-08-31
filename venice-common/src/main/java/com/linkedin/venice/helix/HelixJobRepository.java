@@ -7,7 +7,6 @@ import com.linkedin.venice.job.JobRepository;
 import com.linkedin.venice.job.OfflineJob;
 import com.linkedin.venice.job.Task;
 import com.linkedin.venice.listener.ListenerManager;
-import com.linkedin.venice.meta.Partition;
 import com.linkedin.venice.meta.PartitionAssignment;
 import com.linkedin.venice.meta.VeniceSerializer;
 import com.linkedin.venice.utils.HelixUtils;
@@ -310,7 +309,8 @@ public class HelixJobRepository implements JobRepository {
 
   private String getJobZKPath(Job job) {
     if (job instanceof OfflineJob) {
-      return offlineJobsPath + "/" + job.getJobId();
+      // Add kafka topic of this job in the path to make it easier to find the job during debugging.
+      return offlineJobsPath + "/" + job.getKafkaTopic() + "-" + job.getJobId();
     }
     throw new VeniceException("Only offline job is supported right now.");
   }
