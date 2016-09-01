@@ -1,5 +1,8 @@
 package com.linkedin.venice;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.ObjectWriter;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.schema.SchemaReader;
 import com.linkedin.venice.client.store.AbstractAvroStoreClient;
@@ -15,6 +18,7 @@ import com.linkedin.venice.controllerapi.MultiStoreResponse;
 import com.linkedin.venice.controllerapi.MultiVersionResponse;
 import com.linkedin.venice.controllerapi.NewStoreResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
+import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.VersionResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.Replica;
@@ -39,6 +43,10 @@ import org.apache.commons.cli.Options;
 import org.apache.commons.cli.ParseException;
 
 public class AdminTool {
+
+  /* TODO: change all output to use jsonWriter for json output */
+  /* TODO: allow a config flag to change the jsonWriter to a single-line writer instead of pretty print */
+  private static ObjectWriter jsonWriter = new ObjectMapper().writerWithDefaultPrettyPrinter();
 
   public static void main(String args[])
       throws ParseException, IOException, InterruptedException, ExecutionException, VeniceClientException {
@@ -116,14 +124,20 @@ public class AdminTool {
         String topicName = new Version(storeName, version).kafkaTopicName();
         JobStatusQueryResponse jobStatus = ControllerClient.queryJobStatus(routerHosts, clusterName, topicName);
         System.out.println(jobStatus.getStatus());
-      } else if (cmd.hasOption(Command.NEW_STORE.toString())){
+      } else if (cmd.hasOption(Command.NEW_STORE.toString())) {
         createNewStore(cmd, routerHosts, clusterName);
+      } else if (cmd.hasOption(Command.PAUSE_STORE.toString())) {
+        setStorePaused(cmd, routerHosts, clusterName, true);
+      } else if (cmd.hasOption(Command.RESUME_STORE.toString())){
+        setStorePaused(cmd, routerHosts, clusterName, false);
       } else if (cmd.hasOption(Command.SET_VERSION.toString())){
         applyVersionToStore(cmd, routerHosts, clusterName);
       } else if (cmd.hasOption(Command.ADD_SCHEMA.toString())){
         applyValueSchemaToStore(cmd, routerHosts, clusterName);
       } else if (cmd.hasOption(Command.LIST_STORAGE_NODES.toString())) {
         printStorageNodeList(routerHosts, clusterName);
+      } else if (cmd.hasOption(Command.NODE_REMOVABLE.toString())){
+        isNodeRemovable(cmd, routerHosts, clusterName);
       } else if (cmd.hasOption(Command.REPLICAS_OF_STORE.toString())) {
         printReplicaListForStoreVersion(cmd, routerHosts, clusterName);
       } else if (cmd.hasOption(Command.REPLICAS_ON_STORAGE_NODE.toString())) {
@@ -194,8 +208,6 @@ public class AdminTool {
     System.out.println("Value: " + value);
   }
 
-
-
   private static void createNewStore(CommandLine cmd, String routerHosts, String clusterName)
       throws IOException {
     String store = getRequiredArgument(cmd, Arg.STORE, Command.NEW_STORE);
@@ -206,7 +218,6 @@ public class AdminTool {
     String owner = getRequiredArgument(cmd, Arg.OWNER, Command.NEW_STORE);
     verifyValidSchema(keySchema);
     verifyValidSchema(valueSchema);
-    verifyConnection(routerHosts, clusterName);
     verifyStoreExistence(routerHosts, clusterName, store, false);
           /* TODO: createNewStore should be modified to require a key and value schema */
     NewStoreResponse newStore = ControllerClient.createNewStore(routerHosts, clusterName, store, owner);
@@ -223,13 +234,17 @@ public class AdminTool {
     }
   }
 
+  private static void setStorePaused(CommandLine cmd, String routerHosts, String clusterName, boolean newPauseStatus){
+    String store = getRequiredArgument(cmd, Arg.STORE, Command.SET_VERSION);
+    ControllerResponse response = ControllerClient.setPauseStatus(routerHosts, clusterName, store, newPauseStatus);
+    printSuccess(response);
+
+  }
+
   private static void applyVersionToStore(CommandLine cmd, String routerHosts, String clusterName){
     String store = getRequiredArgument(cmd, Arg.STORE, Command.SET_VERSION);
     String version = getRequiredArgument(cmd, Arg.VERSION, Command.SET_VERSION);
     int intVersion = Utils.parseIntFromString(version, Arg.VERSION.name());
-    verifyConnection(routerHosts, clusterName);
-    verifyStoreExistence(routerHosts, clusterName, store, true);
-
     boolean versionExists = false;
     MultiVersionResponse allVersions = ControllerClient.queryActiveVersions(routerHosts, clusterName, store);
     if (allVersions.isError()){
@@ -244,8 +259,8 @@ public class AdminTool {
     if (!versionExists){
       throw new VeniceException("Version " + version + " does not exist for store " + store + ".  Store only has versions: " + Arrays.toString(allVersions.getVersions()));
     }
-    ControllerClient.overrideSetActiveVersion(routerHosts, clusterName, store, intVersion);
-    System.out.println("SUCCESS");
+    VersionResponse response = ControllerClient.overrideSetActiveVersion(routerHosts, clusterName, store, intVersion);
+    printSuccess(response);
   }
 
   private static void applyValueSchemaToStore(CommandLine cmd, String routerHosts, String clusterName)
@@ -254,8 +269,6 @@ public class AdminTool {
     String valueSchemaFile = getRequiredArgument(cmd, Arg.VALUE_SCHEMA, Command.ADD_SCHEMA);
     String valueSchema = readFile(valueSchemaFile);
     verifyValidSchema(valueSchema);
-    verifyConnection(routerHosts, clusterName);
-    verifyStoreExistence(routerHosts, clusterName, store, true);
     SchemaResponse valueResponse = ControllerClient.addValueSchema(routerHosts, clusterName, store, valueSchema);
     if (valueResponse.isError()) {
       throw new VeniceException("Error updating store with schema: " + valueResponse.getError());
@@ -263,25 +276,11 @@ public class AdminTool {
     System.out.println("Uploaded schema has ID: " + valueResponse.getId());
   }
 
-  private static void printStoreDescription(String routerHosts, String clusterName, String storeName){
-    VersionResponse currentResponse = ControllerClient.queryCurrentVersion(routerHosts, clusterName, storeName);
-    MultiVersionResponse availableResponse = ControllerClient.queryActiveVersions(routerHosts, clusterName, storeName);
-    VersionResponse nextResponse = ControllerClient.queryNextVersion(routerHosts, clusterName, storeName);
-    StringBuilder output = new StringBuilder().append("Store: " + storeName + "\t");
-    boolean isError = false;
-    for (ControllerResponse response : Arrays.asList(currentResponse, availableResponse, nextResponse)){
-      if (response.isError()){
-        output.append("Error: " + response.getError());
-        isError = true;
-        break;
-      }
-    }
-    if (!isError) {
-      output.append("Available versions: " + Arrays.toString(availableResponse.getVersions()) + "\t")
-          .append("Current version: " + currentResponse.getVersion() + "\t")
-          .append("Next version: " + nextResponse.getVersion());
-    }
-    System.out.println(output.toString());
+  private static void printStoreDescription(String routerHosts, String clusterName, String storeName)
+      throws JsonProcessingException {
+    StoreResponse response = ControllerClient.getStore(routerHosts, clusterName, storeName);
+    String json = jsonWriter.writeValueAsString(response);
+    System.out.println(json);
   }
 
   private static void printStorageNodeList(String routerHosts, String clusterName){
@@ -307,6 +306,13 @@ public class AdminTool {
       System.out.println(r.toString());
     }
   }
+
+  private static void isNodeRemovable(CommandLine cmd, String routerHosts, String clusterName){
+    String storageNodeId = getRequiredArgument(cmd, Arg.STORAGE_NODE);
+    ControllerResponse response = ControllerClient.isNodeRemovable(routerHosts, clusterName, storageNodeId);
+    printSuccess(response);
+  }
+
 
   /* Things that are not commands */
 
@@ -351,13 +357,6 @@ public class AdminTool {
     return cmd.getOptionValue(arg.first());
   }
 
-  private static void verifyConnection(String routerHosts, String cluster){
-    MultiStoreResponse response = ControllerClient.queryStoreList(routerHosts, cluster);
-    if (response.isError()){
-      throw new VeniceException("Cannot connect to cluster " + cluster + " with routers " + routerHosts + ": " + response.getError());
-    }
-  }
-
   private static void verifyStoreExistence(String routerHosts, String cluster, String storename, boolean desiredExistence){
     MultiStoreResponse storeResponse = ControllerClient.queryStoreList(routerHosts, cluster);
     if (storeResponse.isError()){
@@ -396,15 +395,10 @@ public class AdminTool {
 
 
   private static void createCommandOpt(Command command, OptionGroup group){
-    StringJoiner arguments = new StringJoiner(", ");
-    for (Arg arg : command.getRequiredArgs()){
-      arguments.add("--" + arg.toString());
-    }
-
     group.addOption(
         OptionBuilder
             .withLongOpt(command.toString())
-            .withDescription("Requires: " + arguments.toString())
+            .withDescription(command.getDesc())
             .create()
     );
   }
@@ -413,6 +407,15 @@ public class AdminTool {
     String fullPath = path.replace("~", System.getProperty("user.home"));
     byte[] encoded = Files.readAllBytes(Paths.get(fullPath));
     return new String(encoded, StandardCharsets.UTF_8).trim();
+  }
+
+  static void printSuccess(ControllerResponse response){
+    if (response.isError()){
+      System.out.println("ERROR: " + response.getError());
+      System.exit(1);
+    } else {
+      System.out.println("SUCCESS");
+    }
   }
 
 }
