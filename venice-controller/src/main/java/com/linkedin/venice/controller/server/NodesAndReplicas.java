@@ -2,6 +2,7 @@ package com.linkedin.venice.controller.server;
 
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.controller.Admin;
+import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.MultiNodeResponse;
 import com.linkedin.venice.controllerapi.MultiReplicaResponse;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -16,7 +17,9 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORAGE_N
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.VERSION;
 import static com.linkedin.venice.controllerapi.ControllerRoute.LIST_NODES;
 import static com.linkedin.venice.controllerapi.ControllerRoute.LIST_REPLICAS;
+import static com.linkedin.venice.controllerapi.ControllerRoute.NODE_REMOVABLE;
 import static com.linkedin.venice.controllerapi.ControllerRoute.NODE_REPLICAS;
+import static com.linkedin.venice.controllerapi.ControllerRoute.PAUSE_STORE;
 
 
 public class NodesAndReplicas {
@@ -87,4 +90,22 @@ public class NodesAndReplicas {
     };
   }
 
+  public static Route isNodeRemovable(Admin admin){
+    return (request, response) -> {
+      ControllerResponse responseObject = new ControllerResponse();
+      try {
+        AdminSparkServer.validateParams(request, NODE_REMOVABLE.getParams(), admin);
+        responseObject.setCluster(request.queryParams(CLUSTER));
+        String nodeId = request.queryParams(STORAGE_NODE_ID);
+        if (!admin.isInstanceRemovable(responseObject.getCluster(), nodeId)){
+          responseObject.setError("Cannot remove node with ID: " + nodeId);
+        }
+      } catch (VeniceException e) {
+        responseObject.setError(e.getMessage());
+        AdminSparkServer.handleError(e, request, response);
+      }
+      response.type(HttpConstants.JSON);
+      return AdminSparkServer.mapper.writeValueAsString(responseObject);
+    };
+  }
 }

@@ -78,23 +78,26 @@ public class AdminSparkServer extends AbstractVeniceService {
       return writeMenu("Set Active Version", SETVERSION.getPath(), SETVERSION.getParams());
     });
 
+    Spark.get(LIST_STORES.getPath(), StoresRoutes.getAllStores(admin));
+    Spark.get(STORE.getPath(), StoresRoutes.getStore(admin));
+    // With the get STORE endpoint above, the following endpoints can be deprecated.
     Spark.get(CURRENT_VERSION.getPath(), CurrentVersion.getRoute(admin));
     Spark.get(ACTIVE_VERSIONS.getPath(), ActiveVersions.getRoute(admin));
-    Spark.get(JOB.getPath(), JobStatus.getRoute(admin));
-    Spark.post(CREATE.getPath(), CreateVersion.getRoute(admin));
-    Spark.post(NEWSTORE.getPath(), CreateStore.getRoute(admin));
-    Spark.get(LIST_STORES.getPath(), AllStores.getRoute(admin));
-
-    /** Only to be used manually and for testing purposes. */
-    Spark.post(SETVERSION.getPath(), SetVersion.getRoute(admin));
-
-    /** Query the controller for the next version of a store that should be created  */
     Spark.get(NEXTVERSION.getPath(), NextVersion.getRoute(admin));
+
+    Spark.get(JOB.getPath(), JobStatus.getRoute(admin));
+
+    Spark.post(CREATE.getPath(), CreateVersion.getRoute(admin)); /* create new store-version for testing */
+    Spark.post(NEWSTORE.getPath(), CreateStore.getRoute(admin));
+
+    Spark.post(PAUSE_STORE.getPath(), StoresRoutes.pauseStore(admin));
+    Spark.post(SETVERSION.getPath(), SetVersion.getRoute(admin));
     Spark.post(RESERVE_VERSION.getPath(), ReserveVersion.getRoute(admin));
 
     Spark.get(LIST_NODES.getPath(), NodesAndReplicas.listAllNodes(admin));
     Spark.get(LIST_REPLICAS.getPath(), NodesAndReplicas.listReplicasForStore(admin));
     Spark.get(NODE_REPLICAS.getPath(), NodesAndReplicas.listReplicasForStorageNode(admin));
+    Spark.get(NODE_REMOVABLE.getPath(), NodesAndReplicas.isNodeRemovable(admin));
 
     // Operations for key schema/value schema
     Spark.post(INIT_KEY_SCHEMA.getPath(), SchemaRoutes.initKeySchema(admin));

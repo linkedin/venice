@@ -6,6 +6,7 @@ import com.linkedin.venice.controller.VeniceControllerClusterConfig;
 import com.linkedin.venice.controller.VeniceControllerConfig;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.TestUtils;
@@ -110,6 +111,9 @@ public class VeniceControllerWrapper extends ProcessWrapper {
         storeSize,
         keySchema,
         valueSchema);
+    if (newStore.isError()){
+      throw new VeniceException(newStore.getError());
+    }
     return newStore;
   }
 

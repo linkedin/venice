@@ -13,10 +13,6 @@ import java.util.List;
 import java.util.Set;
 import org.apache.helix.model.ExternalView;
 
-
-/**
- * Created by athirupa on 2/1/16.
- */
 public interface Admin {
     void start(String clusterName);
 
@@ -34,6 +30,7 @@ public interface Admin {
     List<Version> versionsForStore(String clusterName, String storeName);
 
     List<Store> getAllStores(String clusterName);
+    Store getStore(String clusterName, String storeName);
 
     void reserveVersion(String clusterName, String storeName, int versionNumberToReserve);
 
