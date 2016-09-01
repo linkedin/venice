@@ -1,6 +1,9 @@
 package com.linkedin.venice.meta;
 
 import javax.validation.constraints.NotNull;
+import org.codehaus.jackson.annotate.JsonIgnore;
+import org.codehaus.jackson.annotate.JsonProperty;
+
 
 /**
  * Class defines the version of Venice store.
@@ -24,12 +27,12 @@ public class Version implements Comparable<Version> {
    */
   private VersionStatus status = VersionStatus.STARTED;
 
-  public Version(@NotNull String storeName, int number) {
+  public Version(String storeName, int number) {
     this(storeName , number, System.currentTimeMillis());
   }
 
 
-  public Version(@NotNull String storeName, int number, long createdTime) {
+  public Version(@JsonProperty("storeName") @NotNull String storeName, @JsonProperty("number") int number,@JsonProperty("createdTime")  long createdTime) {
     this.storeName = storeName;
     this.number = number;
     this.createdTime = createdTime;
@@ -112,6 +115,7 @@ public class Version implements Comparable<Version> {
    *
    * @return cloned version.
    */
+  @JsonIgnore
   public Version cloneVersion() {
     Version clonedVersion = new Version(storeName, number, createdTime);
     clonedVersion.setStatus(status);
@@ -126,6 +130,7 @@ public class Version implements Comparable<Version> {
    *
    * @return kafka topic name.
    */
+  @JsonIgnore
   public String kafkaTopicName() {
     return composeKafkaTopic(storeName,number);
   }

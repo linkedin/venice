@@ -1,37 +1,38 @@
 package com.linkedin.venice.controller.server;
 
 import com.linkedin.venice.controllerapi.ControllerClient;
+import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.MultiNodeResponse;
 import com.linkedin.venice.controllerapi.MultiReplicaResponse;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.controllerapi.NewStoreResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
+import com.linkedin.venice.controllerapi.StoreResponse;
+import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.controllerapi.VersionResponse;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
+import com.linkedin.venice.integration.utils.VeniceServerWrapper;
+import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
-
+import java.util.List;
 import org.apache.avro.Schema;
 import org.testng.Assert;
-import org.testng.annotations.AfterClass;
-import org.testng.annotations.BeforeClass;
+import org.testng.annotations.AfterMethod;
+import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
-
-/**
- * Created by mwise on 4/20/16.
- */
 public class TestAdminSparkServer {
   private VeniceClusterWrapper venice;
   private String routerUrl;
 
-  @BeforeClass
+  @BeforeMethod // TODO figure out why tests are stepping on each other and switch this back to @BeforeClass
   public void setUp(){
     venice = ServiceFactory.getVeniceCluster();
     routerUrl = "http://" + venice.getVeniceRouter().getAddress();
   }
 
-  @AfterClass
+  @AfterMethod
   public void tearDown(){
     venice.close();
   }
@@ -55,7 +56,12 @@ public class TestAdminSparkServer {
 
   @Test
   public void controllerClientCanQueryReplicasForTopic(){
+    VersionCreationResponse versionCreationResponse = venice.getNewStoreVersion();
+    Assert.assertFalse(versionCreationResponse.isError(), versionCreationResponse.getError());
     String kafkaTopic = venice.getNewStoreVersion().getKafkaTopic();
+    Assert.assertNotNull(kafkaTopic, "venice.getNewStoreVersion() should not return a null topic name\n" + versionCreationResponse.toString());
+
+
     String store = Version.parseStoreFromKafkaTopicName(kafkaTopic);
     int version = Version.parseVersionFromKafkaTopicName(kafkaTopic);
     MultiReplicaResponse response = ControllerClient.listReplicas(routerUrl, venice.getClusterName(), store, version);
@@ -79,7 +85,7 @@ public class TestAdminSparkServer {
   }
 
   @Test
-  public void controllerClientCanReserverVersions() {
+  public void controllerClientCanReserveVersions() {
     String kafkaTopic = venice.getNewStoreVersion().getKafkaTopic();
     String storeName = Version.parseStoreFromKafkaTopicName(kafkaTopic);
     int currentVersion = Version.parseVersionFromKafkaTopicName(kafkaTopic);
@@ -276,5 +282,46 @@ public class TestAdminSparkServer {
     Assert.assertTrue(sr2.isError());
     MultiSchemaResponse msr1 = ControllerClient.getAllValueSchema(routerUrl, clusterName, nonExistedStore);
     Assert.assertTrue(msr1.isError());
+  }
+
+  @Test
+  public void controllerClientCanGetStoreInfo(){
+    String topic = venice.getNewStoreVersion().getKafkaTopic();
+    String storeName = Version.parseStoreFromKafkaTopicName(topic);
+    StoreResponse storeResponse = ControllerClient.getStore(routerUrl, venice.getClusterName(), storeName);
+    Assert.assertFalse(storeResponse.isError(), storeResponse.getError());
+
+    StoreInfo store = storeResponse.getStore();
+    Assert.assertEquals(store.getName(), storeName, "Store Info should have same store name as request");
+    Assert.assertFalse(store.isPaused(), "New store should not be paused");
+    List<Version> versions = store.getVersions();
+    Assert.assertEquals(versions.size(), 1, "Store from new store-version should only have one version");
+  }
+
+  @Test
+  public void controllerClientCanPauseStores()
+      throws InterruptedException {
+    String topic = venice.getNewStoreVersion().getKafkaTopic();
+
+    String storeName = Version.parseStoreFromKafkaTopicName(topic);
+
+    StoreInfo store = ControllerClient.getStore(routerUrl, venice.getClusterName(), storeName).getStore();
+    Assert.assertFalse(store.isPaused(), "Store should NOT be paused after creating new store-version");
+
+    ControllerResponse response = ControllerClient.setPauseStatus(routerUrl, venice.getClusterName(), storeName, true);
+    Assert.assertFalse(response.isError(), response.getError());
+
+    store = ControllerClient.getStore(routerUrl, venice.getClusterName(), storeName).getStore();
+    Assert.assertTrue(store.isPaused(), "Store should be paused after setting pause status to true");
+  }
+
+  @Test
+  public void controllerClientCanQueryRemovability(){
+    String topic = venice.getNewStoreVersion().getKafkaTopic();
+    VeniceServerWrapper server = venice.getVeniceServers().get(0);
+    String nodeId = server.getHost() + "_" + server.getPort();
+
+    ControllerResponse response = ControllerClient.isNodeRemovable(routerUrl, venice.getClusterName(), nodeId);
+    Assert.assertFalse(response.isError(), response.getError());
   }
 }

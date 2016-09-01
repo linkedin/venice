@@ -164,15 +164,30 @@ public class Store {
    *
    * @param version
    */
-  public void addVersion(@NotNull Version version) {
-    checkPausedStore("add", version.getNumber());
+  public void addVersion(Version version){
+    addVersion(version, true);
+  }
+  private void forceAddVersion(Version version){
+    addVersion(version, false);
+  }
+
+  /**
+   * Add a version into store
+   * @param version
+   * @param checkPaused if checkPaused is true, and the store is paused, then this will throw a StorePausedException.
+   *                    Setting to false will ignore the paused status of the store (for example for cloning a store).
+   */
+  private void addVersion(Version version, boolean checkPaused) {
+    if (checkPaused) {
+      checkPausedStore("add", version.getNumber());
+    }
     if (!name.equals(version.getStoreName())) {
-      throw new VeniceException("Version dose not belong to this store.");
+      throw new VeniceException("Version does not belong to this store.");
     }
     int index = 0;
     for (; index < versions.size(); index++) {
       if (versions.get(index).getNumber() == version.getNumber()) {
-        throw new VeniceException("Version is repeated.Store:" + name + " Number:" + version.getNumber());
+        throw new VeniceException("Version is repeated. Store: " + name + " Version: " + version.getNumber());
       }
       if (versions.get(index).getNumber() > version.getNumber()) {
         break;
@@ -375,7 +390,7 @@ public class Store {
     clonedStore.setPaused(paused);
 
     for (Version v : this.versions) {
-      clonedStore.addVersion(v.cloneVersion());
+      clonedStore.forceAddVersion(v.cloneVersion());
     }
     return clonedStore;
   }

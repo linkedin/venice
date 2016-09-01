@@ -6,6 +6,7 @@ import com.linkedin.venice.helix.HelixState;
 import com.linkedin.venice.helix.HelixStatusMessageChannel;
 import com.linkedin.venice.helix.Replica;
 import com.linkedin.venice.meta.PartitionAssignment;
+import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.status.StatusMessageChannel;
 import com.linkedin.venice.status.StoreStatusMessage;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -599,7 +600,7 @@ public class TestVeniceHelixAdmin {
   @Test
   public void testPauseStore() {
     String storeName = "testPausedStore";
-    veniceAdmin.addStore(clusterName, storeName, "unittest");
+    veniceAdmin.addStore(clusterName, storeName, "unittestOwner");
     veniceAdmin.pauseStore(clusterName, storeName);
     Store store = veniceAdmin.getAllStores(clusterName).get(0);
 

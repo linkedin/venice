@@ -206,4 +206,15 @@ public class TestStore {
     store.updateVersionStatus(2, VersionStatus.ACTIVE);
     Assert.assertEquals(store.getVersions().get(1).getStatus(), VersionStatus.ACTIVE);
   }
+
+  @Test
+  public void canClonePausedStore(){
+    String storeName = TestUtils.getUniqueString("store");
+    Store store = TestUtils.createTestStore(storeName, "owner", System.currentTimeMillis());
+    store.addVersion(new Version(storeName, 1));
+    store.setPaused(true);
+    Assert.assertTrue(store.isPaused());
+    Store cloned = store.cloneStore();
+    Assert.assertTrue(cloned.isPaused(), "clone of paused store must be paused");
+  }
 }

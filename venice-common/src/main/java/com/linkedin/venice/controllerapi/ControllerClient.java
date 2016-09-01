@@ -105,12 +105,27 @@ public class ControllerClient implements Closeable {
     throw new VeniceException("Could not get controller url from any router: " + routerUrls, lastException);
   }
 
+  private StoreResponse getStore(String clusterName, String storeName)
+      throws ExecutionException, InterruptedException, IOException {
+    List<NameValuePair> params = newParams(clusterName);
+    params.add(new BasicNameValuePair(ControllerApiConstants.NAME, storeName));
+    String responseJson = getRequest(ControllerRoute.STORE.getPath(), params);
+    return mapper.readValue(responseJson, StoreResponse.class);
+  }
+
+  public static StoreResponse getStore(String routerUrls, String clusterName, String storeName){
+    try (ControllerClient client = new ControllerClient(routerUrls)){
+      return client.getStore(clusterName, storeName);
+    } catch (Exception e){
+      return handleError(new VeniceException("Error getting store: " + storeName, e), new StoreResponse());
+    }
+  }
+
   @Deprecated
   private VersionCreationResponse createNewStoreVersion(String clusterName, String storeName, String owner, long storeSize,
                                                       String keySchema, String valueSchema)
       throws IOException, ExecutionException, InterruptedException {
-    List<NameValuePair> params = newParams();
-    params.add(new BasicNameValuePair(ControllerApiConstants.CLUSTER, clusterName));
+    List<NameValuePair> params = newParams(clusterName);
     params.add(new BasicNameValuePair(ControllerApiConstants.NAME, storeName));
     params.add(new BasicNameValuePair(ControllerApiConstants.OWNER, owner));
     params.add(new BasicNameValuePair(ControllerApiConstants.STORE_SIZE, Long.toString(storeSize)));
@@ -223,6 +238,7 @@ public class ControllerClient implements Closeable {
     }
   }
 
+  @Deprecated // use getStore
   private VersionResponse queryNextVersion(String clusterName, String storeName)
       throws ExecutionException, InterruptedException, IOException {
     List<NameValuePair> queryParams = newParams();
@@ -241,6 +257,7 @@ public class ControllerClient implements Closeable {
    * @param storeName
    * @return A VersionResponse object.  the .getVersion() method returns the next available version.
    */
+  @Deprecated // use getStore
   public static VersionResponse queryNextVersion(String routerUrls, String clusterName, String storeName){
     try (ControllerClient client = new ControllerClient(routerUrls)){
       return client.queryNextVersion(clusterName, storeName);
@@ -249,7 +266,7 @@ public class ControllerClient implements Closeable {
     }
   }
 
-
+  @Deprecated // use getStore
   private VersionResponse queryCurrentVersion(String clusterName, String storeName)
       throws ExecutionException, InterruptedException, IOException {
     List<NameValuePair> queryParams = newParams();
@@ -259,6 +276,7 @@ public class ControllerClient implements Closeable {
     return mapper.readValue(responseJson, VersionResponse.class);
   }
 
+  @Deprecated // use getStore
   public static VersionResponse queryCurrentVersion(String routerUrls, String clusterName, String storeName){
     try (ControllerClient client = new ControllerClient(routerUrls)){
       return client.queryCurrentVersion(clusterName, storeName);
@@ -267,15 +285,16 @@ public class ControllerClient implements Closeable {
     }
   }
 
+  @Deprecated // use getStore
   private MultiVersionResponse queryActiveVersions(String clusterName, String storeName)
       throws ExecutionException, InterruptedException, IOException {
-    List<NameValuePair> queryParams = newParams();
-    queryParams.add(new BasicNameValuePair(ControllerApiConstants.CLUSTER, clusterName));
+    List<NameValuePair> queryParams = newParams(clusterName);
     queryParams.add(new BasicNameValuePair(ControllerApiConstants.NAME, storeName));
     String responseJson = getRequest(ControllerRoute.ACTIVE_VERSIONS.getPath(), queryParams);
     return mapper.readValue(responseJson, MultiVersionResponse.class);
   }
 
+  @Deprecated // use getStore
   public static MultiVersionResponse queryActiveVersions(String routerUrls, String clusterName, String storeName){
     try (ControllerClient client = new ControllerClient(routerUrls)){
       return client.queryActiveVersions(clusterName, storeName);
@@ -286,8 +305,7 @@ public class ControllerClient implements Closeable {
 
   private VersionResponse reserveVersion(String clusterName, String storeName, int version)
       throws IOException, ExecutionException, InterruptedException {
-    List<NameValuePair> queryParams = newParams();
-    queryParams.add(new BasicNameValuePair(ControllerApiConstants.CLUSTER, clusterName));
+    List<NameValuePair> queryParams = newParams(clusterName);
     queryParams.add(new BasicNameValuePair(ControllerApiConstants.NAME, storeName));
     queryParams.add(new BasicNameValuePair(ControllerApiConstants.VERSION, Integer.toString(version)));
     String responseJson = postRequest(ControllerRoute.RESERVE_VERSION.getPath(), queryParams);
@@ -295,7 +313,7 @@ public class ControllerClient implements Closeable {
   }
 
   /**
-   * Reserves a version number so another process doens't try and create a store version using that number
+   * Reserves a version number so another process does not try and create a store version using that number
    *
    * @param routerUrls
    * @param clusterName
@@ -308,6 +326,42 @@ public class ControllerClient implements Closeable {
       return client.reserveVersion(clusterName, storeName, version);
     } catch (Exception e){
       return handleError(new VeniceException("Error reserving version " + version + " for store: " + storeName, e), new VersionResponse());
+    }
+  }
+
+  private ControllerResponse setPauseStatus(String clusterName, String storeName, boolean pause)
+      throws ExecutionException, InterruptedException, IOException {
+    List<NameValuePair> queryParams = newParams(clusterName);
+    queryParams.add(new BasicNameValuePair(ControllerApiConstants.NAME, storeName));
+    queryParams.add(new BasicNameValuePair(ControllerApiConstants.STATUS, Boolean.toString(pause)));
+    String responseJson = postRequest(ControllerRoute.PAUSE_STORE.getPath(), queryParams);
+    return mapper.readValue(responseJson, ControllerResponse.class);
+  }
+
+  public static ControllerResponse setPauseStatus(String routerUrls, String clusterName, String storeName, boolean pause){
+    try (ControllerClient client = new ControllerClient(routerUrls)){
+      return client.setPauseStatus(clusterName, storeName, pause);
+    } catch (Exception e){
+      String msg = pause ?
+          "Could not pause store: " + storeName :
+          "Could not resume store: " + storeName;
+      return handleError(new VeniceException(msg, e), new ControllerResponse());
+    }
+  }
+
+  private ControllerResponse isNodeRemovable(String clusterName, String instanceId)
+      throws ExecutionException, InterruptedException, IOException {
+    List<NameValuePair> queryParams = newParams(clusterName);
+    queryParams.add(new BasicNameValuePair(ControllerApiConstants.STORAGE_NODE_ID, instanceId));
+    String responseJson = getRequest(ControllerRoute.NODE_REMOVABLE.getPath(), queryParams);
+    return mapper.readValue(responseJson, ControllerResponse.class);
+  }
+
+  public static ControllerResponse isNodeRemovable(String routerUrls, String clusterName, String instanceId){
+    try (ControllerClient client = new ControllerClient(routerUrls)){
+      return client.isNodeRemovable(clusterName, instanceId);
+    } catch (Exception e){
+      return handleError(new VeniceException("Could not identify if node: " + instanceId + " is removable", e), new ControllerResponse());
     }
   }
 

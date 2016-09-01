@@ -303,6 +303,18 @@ public class VeniceHelixAdmin implements Admin {
     }
 
     @Override
+    public Store getStore(String clusterName, String storeName){
+        checkControllerMastership(clusterName);
+        HelixReadWriteStoreRepository repository = getVeniceHelixResource(clusterName).getMetadataRepository();
+        repository.lock();
+        try {
+            return repository.getStore(storeName);
+        } finally {
+            repository.unLock();
+        }
+    }
+
+    @Override
     public synchronized void setCurrentVersion(String clusterName, String storeName, int versionNumber){
         checkControllerMastership(clusterName);
         HelixReadWriteStoreRepository repository = getVeniceHelixResource(clusterName).getMetadataRepository();
