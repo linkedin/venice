@@ -29,6 +29,8 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.util.Arrays;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.StringJoiner;
 import java.util.concurrent.ExecutionException;
 import org.apache.avro.Schema;
@@ -47,6 +49,9 @@ public class AdminTool {
   /* TODO: change all output to use jsonWriter for json output */
   /* TODO: allow a config flag to change the jsonWriter to a single-line writer instead of pretty print */
   private static ObjectWriter jsonWriter = new ObjectMapper().writerWithDefaultPrettyPrinter();
+  private static final String STATUS = "status";
+  private static final String ERROR = "error";
+  private static final String SUCCESS = "success";
 
   public static void main(String args[])
       throws ParseException, IOException, InterruptedException, ExecutionException, VeniceClientException {
@@ -86,9 +91,13 @@ public class AdminTool {
       String routerHosts = getRequiredArgument(cmd, Arg.ROUTER);
       String clusterName = getRequiredArgument(cmd, Arg.CLUSTER);
 
+      if (cmd.hasOption(Arg.FLAT_JSON.toString())){
+        jsonWriter = new ObjectMapper().writer();
+      }
+
       if (cmd.hasOption(Command.LIST_STORES.toString())){
         MultiStoreResponse storeResponse = ControllerClient.queryStoreList(routerHosts, clusterName);
-        System.out.println(String.join("\n", storeResponse.getStores()));
+        printControllerResponse(storeResponse);
       } else if (cmd.hasOption(Command.DESCRIBE_STORE.toString())){
         String storeName = getRequiredArgument(cmd, Arg.STORE, Command.DESCRIBE_STORE);
         for (String store : storeName.split(",")) {
@@ -99,31 +108,13 @@ public class AdminTool {
         for (String store : storeResponse.getStores()) {
           printStoreDescription(routerHosts, clusterName, store);
         }
-      } else if (cmd.hasOption(Command.NEXT_VERSION.toString())){
-        String storeName = getRequiredArgument(cmd, Arg.STORE, Command.NEXT_VERSION);
-        for (String store : storeName.split(",")) {
-          VersionResponse nextResponse = ControllerClient.queryNextVersion(routerHosts, clusterName, store);
-          System.out.println(nextResponse.getVersion());
-        }
-      } else if (cmd.hasOption(Command.CURRENT_VERSION.toString())){
-        String storeName = getRequiredArgument(cmd, Arg.STORE, Command.CURRENT_VERSION);
-        for (String store : storeName.split(",")) {
-          VersionResponse currentResponse = ControllerClient.queryCurrentVersion(routerHosts, clusterName, store);
-          System.out.println(currentResponse.getVersion());
-        }
-      } else if (cmd.hasOption(Command.AVAILABLE_VERSIONS.toString())){
-        String storeName = getRequiredArgument(cmd, Arg.STORE, Command.AVAILABLE_VERSIONS);
-        for (String store : storeName.split(",")) {
-          MultiVersionResponse availableResponse = ControllerClient.queryActiveVersions(routerHosts, clusterName, store);
-          System.out.println(Arrays.toString(availableResponse.getVersions()));
-        }
       } else if (cmd.hasOption(Command.JOB_STATUS.toString())){
         String storeName = getRequiredArgument(cmd, Arg.STORE, Command.JOB_STATUS);
         String versionString = getRequiredArgument(cmd, Arg.VERSION, Command.JOB_STATUS);
         int version = Integer.parseInt(versionString);
         String topicName = new Version(storeName, version).kafkaTopicName();
         JobStatusQueryResponse jobStatus = ControllerClient.queryJobStatus(routerHosts, clusterName, topicName);
-        System.out.println(jobStatus.getStatus());
+        printControllerResponse(jobStatus);
       } else if (cmd.hasOption(Command.NEW_STORE.toString())) {
         createNewStore(cmd, routerHosts, clusterName);
       } else if (cmd.hasOption(Command.PAUSE_STORE.toString())) {
@@ -171,7 +162,7 @@ public class AdminTool {
   }
 
   private static void queryStoreForKey(CommandLine cmd, String routerHosts)
-      throws VeniceClientException, ExecutionException, InterruptedException, IOException {
+      throws VeniceClientException, ExecutionException, InterruptedException, JsonProcessingException {
     String store = getRequiredArgument(cmd, Arg.STORE);
     AvroGenericStoreClient<Object> schemaClient = AvroStoreClientFactory.getAvroGenericStoreClient(routerHosts, store);
     AbstractAvroStoreClient<Object> castClient = (AvroGenericStoreClientImpl<Object>) schemaClient;
@@ -199,13 +190,18 @@ public class AdminTool {
       default:
         throw new VeniceException("Cannot handle key type, found key schema: " + keySchema.toString());
     }
-    System.out.println("Key Class: " + key.getClass().getCanonicalName());
+
+    Map<String, String> outputMap = new HashMap<>();
+    outputMap.put("key-class", key.getClass().getCanonicalName());
+    outputMap.put("key", keyString);
+
     Object value;
     try(AvroGenericStoreClient<Object> client = AvroStoreClientFactory.getAvroGenericStoreClient(routerHosts, store)) {
       value = client.get(key).get();
     }
-    System.out.println("Value Class: " + value.getClass().getCanonicalName());
-    System.out.println("Value: " + value);
+    outputMap.put("value-class", value.getClass().getCanonicalName());
+    outputMap.put("value", value.toString());
+    System.out.println(jsonWriter.writeValueAsString(outputMap));
   }
 
   private static void createNewStore(CommandLine cmd, String routerHosts, String clusterName)
@@ -221,10 +217,7 @@ public class AdminTool {
     verifyStoreExistence(routerHosts, clusterName, store, false);
           /* TODO: createNewStore should be modified to require a key and value schema */
     NewStoreResponse newStore = ControllerClient.createNewStore(routerHosts, clusterName, store, owner);
-    if (newStore.isError()) {
-      throw new VeniceException("Error creating store " + store + ": " + newStore.getError());
-    }
-    System.out.println("Created Store: " + store);
+    printControllerResponse(newStore);
     SchemaResponse keyResponse = ControllerClient.initKeySchema(routerHosts, clusterName, store, keySchema);
     SchemaResponse valueResponse = ControllerClient.addValueSchema(routerHosts, clusterName, store, valueSchema);
     for (SchemaResponse response : Arrays.asList(keyResponse, valueResponse)) {
@@ -238,7 +231,6 @@ public class AdminTool {
     String store = getRequiredArgument(cmd, Arg.STORE, Command.SET_VERSION);
     ControllerResponse response = ControllerClient.setPauseStatus(routerHosts, clusterName, store, newPauseStatus);
     printSuccess(response);
-
   }
 
   private static void applyVersionToStore(CommandLine cmd, String routerHosts, String clusterName){
@@ -273,37 +265,39 @@ public class AdminTool {
     if (valueResponse.isError()) {
       throw new VeniceException("Error updating store with schema: " + valueResponse.getError());
     }
-    System.out.println("Uploaded schema has ID: " + valueResponse.getId());
+    printControllerResponse(valueResponse);
   }
 
   private static void printStoreDescription(String routerHosts, String clusterName, String storeName)
       throws JsonProcessingException {
     StoreResponse response = ControllerClient.getStore(routerHosts, clusterName, storeName);
-    String json = jsonWriter.writeValueAsString(response);
-    System.out.println(json);
+    printControllerResponse(response);
   }
 
   private static void printStorageNodeList(String routerHosts, String clusterName){
     MultiNodeResponse nodeResponse = ControllerClient.listStorageNodes(routerHosts, clusterName);
-    for (String node : nodeResponse.getNodes()){
-      System.out.println(node);
-    }
+    printControllerResponse(nodeResponse);
   }
 
   private static void printReplicaListForStoreVersion(CommandLine cmd, String routerHosts, String clusterName){
     String store = getRequiredArgument(cmd, Arg.STORE, Command.REPLICAS_OF_STORE);
     int version = Utils.parseIntFromString(getRequiredArgument(cmd, Arg.VERSION, Command.REPLICAS_OF_STORE), Arg.VERSION.toString());
     MultiReplicaResponse response = ControllerClient.listReplicas(routerHosts, clusterName, store, version);
-    for (Replica r : response.getReplicas()){
-      System.out.println(r.toString());
-    }
+    printControllerResponse(response);
   }
 
   private static void printReplicaListForStorageNode(CommandLine cmd, String routerHosts, String clusterName){
     String storageNodeId = getRequiredArgument(cmd, Arg.STORAGE_NODE);
     MultiReplicaResponse response = ControllerClient.listStorageNodeReplicas(routerHosts, clusterName, storageNodeId);
-    for (Replica r : response.getReplicas()){
-      System.out.println(r.toString());
+    printControllerResponse(response);
+  }
+
+  private static void printControllerResponse(ControllerResponse response){
+    try {
+      System.out.println(jsonWriter.writeValueAsString(response));
+    } catch (JsonProcessingException e) {
+      System.out.println("{\"" + ERROR + "\":\"" + e.getMessage() + "\"}");
+      System.exit(1);
     }
   }
 
@@ -375,17 +369,36 @@ public class AdminTool {
     }
   }
 
-  private static void verifyValidSchema(String schema){
+  private static void verifyValidSchema(String schema) {
     try {
       Schema.parse(schema);
     } catch (Exception e){
-      printErrAndExit("Invalid Schema: " + schema + " -- " + e.getMessage());
+      Map<String, String> errMap = new HashMap<>();
+      errMap.put("schema", schema);
+      printErrAndExit("Invalid Schema: " + e.getMessage(), errMap);
     }
   }
 
-  private static void printErrAndExit(String err){
-    System.err.println(err);
-    System.err.println("--help for usage");
+  private static void printErrAndExit(String err) {
+    Map<String, String> errMap = new HashMap<>();
+    printErrAndExit(err, errMap);
+  }
+
+  private static void printErrAndExit(String errorMessage, Map<String, String> customMessages) {
+    Map<String, String> errMap = new HashMap<>();
+    for (Map.Entry<String, String> messagePair : customMessages.entrySet()){
+      errMap.put(messagePair.getKey(), messagePair.getValue());
+    }
+    if (errMap.keySet().contains(ERROR)){
+      errMap.put(ERROR, errMap.get(ERROR) + " " + errorMessage);
+    } else {
+      errMap.put(ERROR, errorMessage);
+    }
+    try {
+      System.out.println(jsonWriter.writeValueAsString(errMap));
+    } catch (JsonProcessingException e) {
+      System.out.println("{\"" + ERROR + "\":\"" + e.getMessage() + "\"}");
+    }
     System.exit(1);
   }
 
@@ -411,10 +424,9 @@ public class AdminTool {
 
   static void printSuccess(ControllerResponse response){
     if (response.isError()){
-      System.out.println("ERROR: " + response.getError());
-      System.exit(1);
+      printErrAndExit(response.getError());
     } else {
-      System.out.println("SUCCESS");
+      System.out.println("{\"" + STATUS + "\":\"" + SUCCESS + "\"}");
     }
   }
 
