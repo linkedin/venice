@@ -15,7 +15,9 @@ public enum Arg {
   STORAGE_NODE("storage-node", "n", true, "Helix instance ID for a storage node, eg. lva1-app1234_1690"),
   KEY("key", "k", true, "Plain-text key for identifying a record in a store"),
 
+  FLAT_JSON("flat-json", "fj", false, "Display output as flat json, without pretty-print indentation and line breaks"),
   HELP("help", "h", false, "Show usage");
+
 
   private final String argName;
   private final String first;
