@@ -2,9 +2,21 @@
 
 DEFAULT_AVRO_TOOLS_JAR=`find ~/.gradle/caches/ | grep 'avro-tools-1.4.0.jar' | head -n 1`
 
-AVRO_SCHEMAS_PATH="venice-common/src/main/resources/avro/*/*"
-CODE_GEN_PATH="venice-common/src/main/java"
-FULL_CODE_GEN_PATH="$CODE_GEN_PATH/com/linkedin/venice/kafka/protocol/*.java"
+AVRO_SCHEMAS_PATH=(
+  "venice-common/src/main/resources/avro/*/*"
+  "venice-controller/src/main/resources/avro/*/*"
+  "venice-server/src/main/resources/avro/*/*/*"
+)
+CODE_GEN_PATH=(
+  "venice-common/src/main/java"
+  "venice-controller/src/main/java"
+  "venice-server/src/main/java"
+)
+FULL_CODE_GEN_PATH=(
+  "${CODE_GEN_PATH[0]}/com/linkedin/venice/kafka/protocol/*.java"
+  "${CODE_GEN_PATH[1]}/com/linkedin/venice/controller/kafka/protocol/admin/*.java"
+  "${CODE_GEN_PATH[2]}/com/linkedin/venice/kafka/protocol/state/*.java"
+)
 
 if [[ $# < 1 ]]; then
   echo "Usage: $0 avro_tools_path"
@@ -15,11 +27,15 @@ if [[ $# < 1 ]]; then
   echo ""
   echo "The $0 script uses avro-tools to generate SpecificRecord classes for the Avro schemas stored in:"
   echo ""
-  echo "    $AVRO_SCHEMAS_PATH"
+  for path in ${AVRO_SCHEMAS_PATH[@]}; do
+      echo "    $path"
+  done
   echo ""
   echo "The auto-generated classes are purged before each run and then re-generated here:"
   echo ""
-  echo "    $FULL_CODE_GEN_PATH"
+  for path in ${FULL_CODE_GEN_PATH[@]}; do
+      echo "    $path"
+  done
   echo ""
   exit 1
 fi
@@ -34,10 +50,14 @@ fi
 
 echo "Using AVRO_TOOLS_JAR=$AVRO_TOOLS_JAR"
 
-rm $FULL_CODE_GEN_PATH
+for path in ${FULL_CODE_GEN_PATH[@]}; do
+  rm $path
+done
 
 echo "Finished deleting old files. About to generate new ones..."
 
-java -jar $AVRO_TOOLS_JAR compile schema $AVRO_SCHEMAS_PATH $CODE_GEN_PATH
+for (( i=0; i<${#FULL_CODE_GEN_PATH[@]}; i++ )); do
+  java -jar $AVRO_TOOLS_JAR compile schema ${AVRO_SCHEMAS_PATH[i]} ${CODE_GEN_PATH[i]}
+done
 
 echo "Done!"
