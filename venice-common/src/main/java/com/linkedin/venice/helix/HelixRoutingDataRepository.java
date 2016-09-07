@@ -159,6 +159,11 @@ public class HelixRoutingDataRepository extends RoutingTableProvider implements 
             //Initializing repository and external view is empty. Do nothing for this case,
             return;
         }
+
+        if (changeContext.getType().equals(NotificationContext.Type.FINALIZE)) {
+            logger.info("Session has been expired, get the FINALIZE notification.");
+            return;
+        }
         // Get live instance information from ZK.
         Map<String, LiveInstance> liveInstanceMap = getLiveInstancesFromZk();
 
@@ -168,8 +173,13 @@ public class HelixRoutingDataRepository extends RoutingTableProvider implements 
         Map<String, Integer> resourceToPartitionCountMap = getNumberOfPartitionsFromIdealState(resourcesInExternalView);
         ResourceAssignment newResourceAssignment = new ResourceAssignment();
         for (ExternalView externalView : externalViewList) {
-            PartitionAssignment partitionAssignment = new PartitionAssignment(externalView.getResourceName(),
-                resourceToPartitionCountMap.get(externalView.getResourceName()));
+            String resourceName = externalView.getResourceName();
+            if(!resourceToPartitionCountMap.containsKey(resourceName)) {
+                logger.info(resourceName + "has been deleted from ideal state. Ignore its external view update.");
+                continue;
+            }
+            PartitionAssignment partitionAssignment =
+                new PartitionAssignment(resourceName, resourceToPartitionCountMap.get(resourceName));
 
             for (String partitionName : externalView.getPartitionSet()) {
                 //Get instance to state map for this partition from local memory.
@@ -200,7 +210,7 @@ public class HelixRoutingDataRepository extends RoutingTableProvider implements 
                 partitionAssignment.addPartition(
                     new Partition(partitionId, bootstrapInstances, onlineInstances, errorInstances));
             }
-            newResourceAssignment.setPartitionAssignment(externalView.getResourceName(), partitionAssignment);
+            newResourceAssignment.setPartitionAssignment(resourceName, partitionAssignment);
         }
         Set<String> deletedResourceNames;
         synchronized (resourceAssignment) {
