@@ -57,3 +57,7 @@ Click permissions on the created project and add user voldtest as proxy users to
 5) Upload the zip file you have from the step 2.
 
 6) Run the Azkaban job this should push the data to the Venice cluster.
+
+------------------------------------------------------------------------------------------------------
+Sample command to upload plan to Azkaban Faro:
+python azkaban-upload.py -U <your_azkaban_id> -z build/distributions/hadoop-to-venice-bridge-0.1-azkaban-dev.zip faro.plan

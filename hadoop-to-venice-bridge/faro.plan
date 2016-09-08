@@ -1,0 +1,23 @@
+{
+        "baseurl": "https://ltx1-faroaz01.grid.linkedin.com:8443/",
+        "project": "H2V-Test",
+        "steps": [
+        {
+        "action": "upload",
+        "basedir": "azkaban-dev-pack",
+        "matches": [
+        ]
+        },
+        {
+        "action": "schedule",
+        "matches": [ "venice-controller-test", "\\d+k-entry-test", "100-entry-test" ],
+        "period": "1 hour"
+        },
+        {
+        "action": "sla",
+        "matches": [ "venice-controller-test", "\\d+k-entry-test", "100-entry-test" ],
+        "emails": "venice-alerts@linkedin.com",
+        "duration": "45 minutes"
+        }
+    ]
+}
