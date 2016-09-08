@@ -3,9 +3,9 @@ job.class=com.linkedin.venice.hadoop.KafkaPushJob
 classpath=libs/*
 azkaban.should.proxy=true
 user.to.proxy=goliu
-input.path=/user/goliu/ha_store_data_v1
-avro.key.field=memberId
-avro.value.field=dedupId
+input.path=/user/goliu/h2v_test/100
+avro.key.field=key
+avro.value.field=value
 
 # NEVER USE KAFKA CORP CLUSTER FOR TESTING
 # FOR KAFKA, CORP IS PROD, AS THE INGRAPH DATA IS RELAYED
@@ -16,7 +16,7 @@ avro.value.field=dedupId
 # UNDERSTOOD BY OLDER KAFKA CLUSTERS AND IT CRASHES THEM.
 
 venice.router.urls=http://ltx1-app1085.stg.linkedin.com:1689,http://ltx1-app1325.stg.linkedin.com:1689
-venice.store.name=venice_test_member_1
+venice.store.name=venice_h2v_test_100_1
 venice.store.owners=<your_linkedin_email>
 cluster.name=test-cluster
 kafka.zk=zk-ltx1-kafka.stg.linkedin.com:12913/kafka-venice
