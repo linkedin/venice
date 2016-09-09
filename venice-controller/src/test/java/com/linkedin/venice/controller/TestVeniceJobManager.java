@@ -19,6 +19,7 @@ import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
+import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import java.io.IOException;
@@ -42,6 +43,7 @@ import org.apache.helix.manager.zk.ZkClient;
 import org.apache.helix.model.HelixConfigScope;
 import org.apache.helix.model.IdealState;
 import org.apache.helix.model.builder.HelixConfigScopeBuilder;
+import org.apache.helix.tools.IntegrationTestUtil;
 import org.testng.Assert;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
@@ -121,7 +123,7 @@ public class TestVeniceJobManager {
     jobRepository.refresh();
     metadataRepository = new HelixReadWriteStoreRepository(zkClient, adapterSerializer, cluster);
     metadataRepository.refresh();
-    jobManager = new VeniceJobManager(cluster, 1, jobRepository, metadataRepository, routingDataRepository);
+    jobManager = new VeniceJobManager(cluster, 1, jobRepository, metadataRepository, routingDataRepository, 2000);
   }
 
   @AfterMethod
@@ -417,5 +419,65 @@ public class TestVeniceJobManager {
     } finally {
       newParticipant.disconnect();
     }
+  }
+
+  @Test(expectedExceptions = VeniceException.class)
+  public void testHandleRoutingDataChangedJobNotStart(){
+    metadataRepository.addStore(store);
+    // Starting a job with 1 partition and 2 replicas, as we only started one participant in setup method, so the job
+    // can not be started due to not enough executor.
+    jobManager.startOfflineJob(version.kafkaTopicName(), 1, 2);
+  }
+
+  @Test
+  public void testHandleRoutingDataChangedJobIsRunning()
+      throws Exception {
+
+    Version newVersion = store.increaseVersion();
+    metadataRepository.addStore(store);
+    //create a helix resource with 1 partition and 2 replica per partition.
+    admin.addResource(cluster, newVersion.kafkaTopicName(), 1 , TestHelixRoutingDataRepository.UnitTestStateModel.UNIT_TEST_STATE_MODEL,
+        IdealState.RebalanceMode.FULL_AUTO.toString());
+    admin.rebalance(cluster, newVersion.kafkaTopicName(), 2);
+
+
+    int newPort = httpPort + 1;
+    HelixManager newParticipant =
+        HelixManagerFactory.getZKHelixManager(cluster, Utils.getHelixNodeIdentifier(newPort), InstanceType.PARTICIPANT,
+            zkAddress);
+    newParticipant.getStateMachineEngine()
+        .registerStateModelFactory(TestHelixRoutingDataRepository.UnitTestStateModel.UNIT_TEST_STATE_MODEL,
+            new TestHelixRoutingDataRepository.UnitTestStateModelFactory());
+    Instance instance = new Instance(Utils.getHelixNodeIdentifier(newPort), Utils.getHostName(), newPort);
+    newParticipant.setLiveInstanceInfoProvider(new LiveInstanceInfoProvider() {
+      @Override
+      public ZNRecord getAdditionalLiveInstanceInfo() {
+        return HelixInstanceConverter.convertInstanceToZNRecord(instance);
+      }
+    });
+    newParticipant.connect();
+
+    jobManager.startOfflineJob(newVersion.kafkaTopicName(), 1, 2);
+
+    newParticipant.disconnect();
+    TestUtils.waitForNonDeterministicCompletion(2, TimeUnit.SECONDS, () ->
+        routingDataRepository.getPartitionAssignments(newVersion.kafkaTopicName())
+            .getPartition(0)
+            .getBootstrapAndReadyToServeInstances().size() == 1);
+    //Lost one replica, job is still running.
+    Assert.assertEquals(ExecutionStatus.STARTED, jobManager.getOfflineJobStatus(newVersion.kafkaTopicName()));
+
+    HelixStatusMessageChannel controllerChannel = new HelixStatusMessageChannel(controller);
+    controllerChannel.registerHandler(StoreStatusMessage.class, jobManager);
+    HelixStatusMessageChannel channel = new HelixStatusMessageChannel(manager);
+    StoreStatusMessage veniceMessage = new StoreStatusMessage(newVersion.kafkaTopicName(), 0, manager.getInstanceName(), ExecutionStatus.STARTED);
+    channel.sendToController(veniceMessage);
+    veniceMessage = new StoreStatusMessage(newVersion.kafkaTopicName(), 0, manager.getInstanceName(), ExecutionStatus.ERROR);
+    channel.sendToController(veniceMessage);
+    //Lost one replica, and another replica report ERROR status.
+
+    TestUtils.waitForNonDeterministicCompletion(2, TimeUnit.SECONDS,
+        () -> jobManager.getOfflineJobStatus(newVersion.kafkaTopicName()).equals(ExecutionStatus.ERROR));
+
   }
 }

@@ -1,6 +1,5 @@
 package com.linkedin.venice.controller;
 
-import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.PersistenceType;
@@ -28,6 +27,7 @@ public class VeniceControllerClusterConfig {
   private int numberOfPartition;
   private int maxNumberOfPartition;
   private long partitionSize;
+  private long offLinejobWaitTimeInMilliseconds;
 
   /**
    * kafka Bootstrap Urls . IF there is more than one url, they are separated by commas
@@ -64,6 +64,7 @@ public class VeniceControllerClusterConfig {
     kafkaBootstrapServers = props.getString(KAFKA_BOOTSTRAP_SERVERS);
     partitionSize = props.getSizeInBytes(DEFAULT_PARTITION_SIZE);
     maxNumberOfPartition = props.getInt(DEFAULT_MAX_NUMBER_OF_PARTITIONS);
+    offLinejobWaitTimeInMilliseconds = props.getLong(OFFLINE_JOB_START_TIMEOUT_MS, 15000);
 
     if (props.containsKey(PERSISTENCE_TYPE)) {
       persistenceType = PersistenceType.valueOf(props.getString(PERSISTENCE_TYPE));
@@ -137,6 +138,10 @@ public class VeniceControllerClusterConfig {
 
   public int getMaxNumberOfPartition() {
     return maxNumberOfPartition;
+  }
+
+  public long getOffLinejobWaitTimeInMilliseconds() {
+    return offLinejobWaitTimeInMilliseconds;
   }
 
   /**

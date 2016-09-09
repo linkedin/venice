@@ -22,9 +22,13 @@ public abstract class Job {
 
   private final int replicationFactor;
 
+  private final int minimumReplicas;
+
   private ExecutionStatus status;
 
-  public Job(long jobId, String kafkaTopic, int numberOfPartition, int replicationFactor) {
+  public static final int DEFAULT_MIN_REPLCIAS = 1;
+
+  public Job(long jobId, String kafkaTopic, int numberOfPartition, int replicationFactor, int minimumReplicas) {
     this.jobId = jobId;
     if (numberOfPartition < 1) {
       throw new VeniceException("Partition count should be larger than 0. Given value is:" + numberOfPartition);
@@ -34,11 +38,22 @@ public abstract class Job {
       throw new VeniceException("Replication factor should larger than 0. Given value is:" + replicationFactor);
     }
     this.replicationFactor = replicationFactor;
+    if (minimumReplicas < 1 || minimumReplicas > replicationFactor) {
+      throw new VeniceException(
+          "Minimum replicas should be larger than 0 and smaller than Replication Factor:" + replicationFactor
+              + ". Given value is: " + minimumReplicas);
+    }
+    this.minimumReplicas = minimumReplicas;
     this.kafkaTopic = kafkaTopic;
     this.status = ExecutionStatus.NEW;
   }
 
-  public long getJobId() {
+  public Job(long jobId, String kafkaTopic, int numberOfPartition, int replicationFactor) {
+    this(jobId, kafkaTopic, numberOfPartition, replicationFactor , DEFAULT_MIN_REPLCIAS);
+  }
+
+
+    public long getJobId() {
     return jobId;
   }
 
@@ -48,6 +63,10 @@ public abstract class Job {
 
   public int getReplicationFactor() {
     return replicationFactor;
+  }
+
+  public int getMinimumReplicas() {
+    return minimumReplicas;
   }
 
   public ExecutionStatus getStatus() {
