@@ -32,11 +32,13 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
 
   @Override
   public void initChannel(SocketChannel ch) throws Exception {
+    StatsHandler statsHandler = new StatsHandler();
     ch.pipeline()
+        .addLast(statsHandler)
         .addLast(new HttpServerCodec())
-        .addLast(new OutboundHttpWrapperHandler())
+        .addLast(new OutboundHttpWrapperHandler(statsHandler))
         .addLast(new IdleStateHandler(0, 0, NETTY_IDLE_TIME_IN_SECONDS))
-        .addLast(new GetRequestHttpHandler())
+        .addLast(new GetRequestHttpHandler(statsHandler))
         .addLast("storageExecutionHandler", storageExecutionHandler)
         .addLast(new ErrorCatchingHandler());
   }

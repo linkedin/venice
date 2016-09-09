@@ -22,6 +22,12 @@ import static io.netty.handler.codec.http.HttpVersion.HTTP_1_1;
  */
 
 public class OutboundHttpWrapperHandler extends ChannelOutboundHandlerAdapter {
+  private final StatsHandler statsHandler;
+
+  public OutboundHttpWrapperHandler(StatsHandler handler) {
+    super();
+    statsHandler = handler;
+  }
 
   @Override
   public void write(ChannelHandlerContext ctx, Object msg, ChannelPromise promise) throws Exception {
@@ -43,6 +49,8 @@ public class OutboundHttpWrapperHandler extends ChannelOutboundHandlerAdapter {
       responseStatus = INTERNAL_SERVER_ERROR;
       body = Unpooled.wrappedBuffer("Unrecognized object in OutboundHttpWrapperHandler".getBytes(StandardCharsets.UTF_8));
     }
+
+    statsHandler.setResponseStatus(responseStatus);
     FullHttpResponse response = new DefaultFullHttpResponse(HTTP_1_1, responseStatus, body);
     response.headers().set(CONTENT_TYPE, contentType);
     response.headers().set(CONTENT_LENGTH, body.readableBytes());

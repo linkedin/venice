@@ -39,7 +39,7 @@ public class GetRequestHttpHandlerTest {
 
   @Test
   public void respondsToHealthCheck() throws Exception {
-    GetRequestHttpHandler testHander = new GetRequestHttpHandler();
+    GetRequestHttpHandler testHander = new GetRequestHttpHandler(Mockito.mock(StatsHandler.class));
     ChannelHandlerContext mockContext = Mockito.mock(ChannelHandlerContext.class);
     ArgumentCaptor<HttpShortcutResponse> argumentCaptor = ArgumentCaptor.forClass(HttpShortcutResponse.class);
     HttpRequest healthMsg = new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET, "/health");
@@ -54,7 +54,7 @@ public class GetRequestHttpHandlerTest {
       throws Exception {
 
     // Test handler
-    GetRequestHttpHandler testHander = new GetRequestHttpHandler();
+    GetRequestHttpHandler testHander = new GetRequestHttpHandler(Mockito.mock(StatsHandler.class));
     ChannelHandlerContext mockContext = Mockito.mock(ChannelHandlerContext.class);
     ArgumentCaptor<GetRequestObject> argumentCaptor = ArgumentCaptor.forClass(GetRequestObject.class);
     HttpRequest msg = new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET, path);
@@ -78,7 +78,7 @@ public class GetRequestHttpHandlerTest {
 
   public void testBadRequest(String path, HttpMethod method)
       throws Exception {
-    GetRequestHttpHandler testHander = new GetRequestHttpHandler();
+    GetRequestHttpHandler testHander = new GetRequestHttpHandler(Mockito.mock(StatsHandler.class));
     ChannelHandlerContext mockContext = Mockito.mock(ChannelHandlerContext.class);
     ArgumentCaptor<HttpShortcutResponse> argumentCaptor = ArgumentCaptor.forClass(HttpShortcutResponse.class);
     HttpRequest msg = new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, method, path);
