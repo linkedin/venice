@@ -1,8 +1,10 @@
 package com.linkedin.venice.listener;
 
 import com.linkedin.venice.message.GetRequestObject;
+import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.offsets.OffsetManager;
 import com.linkedin.venice.server.StoreRepository;
+import com.linkedin.venice.stats.ServerAggStats;
 import com.linkedin.venice.store.AbstractStorageEngine;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.handler.codec.http.HttpResponseStatus;
@@ -14,6 +16,7 @@ public class StorageWorkerThread implements Runnable {
   private StoreRepository storeRepository;
   private OffsetManager offsetManager;
   private ChannelHandlerContext ctx;
+  private ServerAggStats stats = ServerAggStats.getInstance();
 
   private final Logger logger = Logger.getLogger(StorageWorkerThread.class);
 
@@ -29,11 +32,16 @@ public class StorageWorkerThread implements Runnable {
     int partition = request.getPartition();
     String topic = request.getTopicString();
     byte[] key = request.getKey();
+    String storeName = Version.parseStoreFromKafkaTopicName(topic);
 
     AbstractStorageEngine store = storeRepository.getLocalStorageEngine(topic);
     //TODO : handle other exceptions here, if there is uncaught exception
     // the caller times out with no exception relayed back.
+
+    long queryStartTime = System.nanoTime();
     byte[] value = store.get(partition, key);
+    stats.recordBdbQueryLatency(storeName,
+      System.nanoTime() - queryStartTime);
     if( value != null) {
       long offset = offsetManager.getLastOffset(topic, partition).getOffset();
       StorageResponseObject resp = new StorageResponseObject(value, offset);

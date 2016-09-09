@@ -25,7 +25,7 @@ public class StorageExecutionHandlerTest {
   @Test
   public static void storageExecutionHandlerPassesRequestsAndGeneratesResponses()
       throws Exception {
-    String topic = "temp-test-topic";
+    String topic = "temp-test-topic_v1";
     String keyString = "testkey";
     String valueString = "testvalue";
     int schemaId = 1;

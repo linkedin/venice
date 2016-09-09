@@ -421,8 +421,8 @@ public class StoreConsumptionTask implements Runnable, Closeable {
     }
 
     throttler.maybeThrottle(totalSize);
-    ServerAggStats.getInstance().addBytesConsumed(storeNameWithoutVersionInfo , totalSize);
-    ServerAggStats.getInstance().addRecordsConsumed(storeNameWithoutVersionInfo, totalRecords);
+    ServerAggStats.getInstance().recordBytesConsumed(storeNameWithoutVersionInfo , totalSize);
+    ServerAggStats.getInstance().recordRecordsConsumed(storeNameWithoutVersionInfo, totalRecords);
 
     for(Integer partition: processedPartitions) {
       if(!partitionToOffsetMap.containsKey(partition)) {

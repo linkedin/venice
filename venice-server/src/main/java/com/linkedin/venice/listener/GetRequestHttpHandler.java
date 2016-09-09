@@ -5,6 +5,7 @@ import com.linkedin.venice.RequestConstants;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.message.GetRequestObject;
 import com.linkedin.venice.meta.QueryAction;
+import com.linkedin.venice.meta.Version;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
 import io.netty.handler.codec.http.HttpHeaders;
@@ -25,6 +26,12 @@ import java.util.Base64;
 
 public class GetRequestHttpHandler extends ChannelInboundHandlerAdapter {
   private static final String API_VERSION = "1";
+  private final StatsHandler statsHandler;
+
+  public GetRequestHttpHandler(StatsHandler handler) {
+    super();
+    this.statsHandler = handler;
+  }
 
   @Override
   public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) {
@@ -47,9 +54,11 @@ public class GetRequestHttpHandler extends ChannelInboundHandlerAdapter {
         switch (action){
           case STORAGE:  // GET /storage/store/partition/key
             GetRequestObject request = parseReadFromUri(req.getUri());
+            statsHandler.setStoreName(Version.parseStoreFromKafkaTopicName(request.getTopicString()));
             ctx.fireChannelRead(request);
             break;
           case HEALTH:
+            statsHandler.setHealthCheck(true);
             ctx.writeAndFlush(new HttpShortcutResponse("OK", HttpResponseStatus.OK));
             break;
           default:
