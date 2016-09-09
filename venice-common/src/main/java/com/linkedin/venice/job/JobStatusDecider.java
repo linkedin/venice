@@ -23,27 +23,66 @@ public abstract class JobStatusDecider {
   }
 
   /**
-   * Check given partition and instances to see whether job has enough task executors.
+   * Check given partitions and instances to see whether there are enough task executors to start a new job.
    *
-   * @param job
+   * @param job                 Job need to be started.
    * @param partitionAssignment partition assignment for resource
    *
-   * @return
+   * @return true if the job could be started. false if at least one of partition does not have enough instances.
    */
-  public boolean hasEnoughTaskExecutors(Job job, PartitionAssignment partitionAssignment) {
+  public boolean hasEnoughTaskExecutorsToStart(Job job, PartitionAssignment partitionAssignment) {
     int actualNumberOfPartition = partitionAssignment.getAssignedNumberOfPartitions();
-    if (actualNumberOfPartition != job.getNumberOfPartition()) {
-      logger.info(
-          "Number of partitions:" + actualNumberOfPartition + " is different from the number required when job was created:" +
-              job.getNumberOfPartition());
+    if (!hasEnoughPartitions(actualNumberOfPartition, job)) {
       return false;
     }
 
     for (Partition partition : partitionAssignment.getAllPartitions()) {
       if (!hasEnoughReplicasForOnePartition(partition.getBootstrapAndReadyToServeInstances().size(), job.getReplicationFactor())) {
-        //Some of nodes are failed.
-        logger.info("Number of replicas:" + partition.getBootstrapAndReadyToServeInstances().size() + " in partition:" + partition.getId()
-            + "is smaller from the required. Replication factor:" + job.getReplicationFactor() + ", Strategy:" + getStrategy());
+        //Some of nodes are failed OR some of replicas haven't been allocated.
+        logger.info("Number of replicas:" + partition.getBootstrapAndReadyToServeInstances().size() + " in partition:"
+            + partition.getId() + " is smaller than the required replication factor:" + job.getReplicationFactor()
+            + ", Job:" + job.getJobId() + " Strategy:" + getStrategy());
+        return false;
+      }
+    }
+    return true;
+  }
+
+  /**
+   * Check given partitions and instances to see whether there are minimum task executors to keep job running.
+   *
+   *
+   * @param job                 a running job.
+   * @param partitionAssignment partition assignment for resource
+   *
+   * @return true if the job could continue running. false if at least one of partition dose NOT have minimum instances.
+   */
+  public boolean hasMinimumTaskExecutorsToKeepRunning(Job job, PartitionAssignment partitionAssignment) {
+    int actualNumberOfPartition = partitionAssignment.getAssignedNumberOfPartitions();
+    if (!hasEnoughPartitions(actualNumberOfPartition, job)) {
+      return false;
+    }
+
+    for (Partition partition : partitionAssignment.getAllPartitions()) {
+      /*
+      * Note: The side effect of using minimum replicas to judge whether job is failed is job could never be terminated.
+      * For example, replica factor=3, strategy=wait n-1, minimum replica=1. Two of replicas become ERROR, so job is neither
+      * successful nor failed. Helix will not re-balance the ERROR replicas until we do the manual operation. So job keeps
+      * running and never be terminated.
+      * In order to avoid this type of deadlock, if number of error replicas is larger than n-strategy, we fail the job.
+      * For the example above, there are 2 error replicas, which is larger than n-strategy(3-(3-1)=1), job should be failed.
+       */
+      if (!hasEnoughReplicasForOnePartition(job.getReplicationFactor() - partition.getErrorInstances().size(),
+          job.getReplicationFactor())) {
+        logger.info("Number of error replicas:" + partition.getErrorInstances().size()
+            + " is larger than n-strategy in partition:" + partition.getId() + " in job:" + job.getJobId()
+            + ", strategy:" + getStrategy());
+        return false;
+      }
+      if (!hasMinimumReplicasForOnePartition(partition.getBootstrapAndReadyToServeInstances().size(), job)) {
+        logger.info("Number of replicas:" + partition.getBootstrapAndReadyToServeInstances().size() + " in partition:"
+            + partition.getId() + " is smaller than minimum replicas:" + job.getMinimumReplicas() + " in job:"
+            + job.getJobId());
         return false;
       }
     }
@@ -67,6 +106,7 @@ public abstract class JobStatusDecider {
       List<Task> tasksInPartition = job.tasksInPartition(partitionId);
       int errorTaskCount = 0;
       int completeTaskCount = 0;
+      int totalTaskCount = tasksInPartition.size();
       for (Task task : tasksInPartition) {
         if (task.getStatus().equals(ExecutionStatus.ERROR)) {
           errorTaskCount++;
@@ -79,10 +119,14 @@ public abstract class JobStatusDecider {
             + job.getJobId() + " topic:" + job.getKafkaTopic());
       }
       if (!hasEnoughReplicasForOnePartition(job.getReplicationFactor() - errorTaskCount, job.getReplicationFactor())) {
-        logger.info(
-            "Number of non-error tasks:" + (job.getReplicationFactor() - errorTaskCount) + " in partition:" + partitionId
-                + " is smaller than required. Replication factor:" + job.getReplicationFactor() + ", Strategy:"
-                + getStrategy());
+        logger.info("Number or error task:" + errorTaskCount + " in partition:" + partitionId
+            + " is larger than n-strategy, job:" + job.getJobId() + ", strategy:" + getStrategy());
+        return ExecutionStatus.ERROR;
+      }
+      if (!hasMinimumReplicasForOnePartition(totalTaskCount - errorTaskCount, job)) {
+        logger.info("Number of non-error tasks:" + (totalTaskCount - errorTaskCount) + " in partition:"
+            + partitionId + " is smaller than minimum replicas:" + job.getMinimumReplicas() + ", Job:" + job.getJobId()
+            + " Strategy:" + getStrategy());
         return ExecutionStatus.ERROR;
       } else if (!hasEnoughReplicasForOnePartition(completeTaskCount, job.getReplicationFactor())) {
         if (logger.isDebugEnabled()) {
@@ -106,6 +150,22 @@ public abstract class JobStatusDecider {
    * @return
    */
   protected abstract boolean hasEnoughReplicasForOnePartition(int actual, int expected);
+
+  protected static boolean hasMinimumReplicasForOnePartition(int actual, Job job) {
+    return actual >= job.getMinimumReplicas();
+  }
+
+  private boolean hasEnoughPartitions(int actual, Job job) {
+    if (actual != job.getNumberOfPartition()) {
+      logger.info("Number of partitions:" + actual + " is different from the number required when job was created:" +
+          job.getNumberOfPartition() + " Job:" + job.getJobId());
+      return false;
+    } else {
+      return true;
+    }
+  }
+
+
 
   public abstract OfflinePushStrategy getStrategy();
 

@@ -5,10 +5,8 @@ import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.Partition;
 import com.linkedin.venice.meta.PartitionAssignment;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.List;
 import org.testng.Assert;
-import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
@@ -64,7 +62,6 @@ public class TestWaitAllJobStatusDecider extends TestJobStatusDecider {
     job.setStatus(ExecutionStatus.STARTED);
     job.updateExecutingTasks(partitionAssignment);
     createTasksAndUpdateJob(job,numberOfPartition,replicationFactor,ExecutionStatus.STARTED,-1,-1);
-    createTasksAndUpdateJob(job, numberOfPartition,replicationFactor,ExecutionStatus.COMPLETED, 2, 0);
 
     Task t = new Task(job.generateTaskId(2, nodeId + "0"), 2, nodeId + "0", ExecutionStatus.PROGRESS);
     job.updateTaskStatus(t);
@@ -73,21 +70,30 @@ public class TestWaitAllJobStatusDecider extends TestJobStatusDecider {
         "There is still one task in progress status, job is still running.");
     t.setStatus(ExecutionStatus.ERROR);
     job.updateTaskStatus(t);
-    //Only one task is not terminated
+    //Only one task is error
     Assert.assertEquals(ExecutionStatus.ERROR, waitAllDecider.checkJobStatus(job),
         "One task is failed, based on current strategy, job should be failed.");
+    t = new Task(job.generateTaskId(2, nodeId + "1"), 2, nodeId + "1", ExecutionStatus.ERROR);
+    job.updateTaskStatus(t);
+    //Two tasks are error
+    Assert.assertEquals(ExecutionStatus.ERROR, waitAllDecider.checkJobStatus(job),
+        "One task is failed, based on current strategy, job should be failed.");
+    // all of tasks are error.
+    t = new Task(job.generateTaskId(2, nodeId + "2"), 2, nodeId + "2", ExecutionStatus.ERROR);
+    job.updateTaskStatus(t);
+    Assert.assertEquals(ExecutionStatus.ERROR, waitAllDecider.checkJobStatus(job));
   }
 
   @Test
   public void testHasEnoughTaskExecutor() {
     OfflineJob job = new OfflineJob(1, topic, numberOfPartition, replicationFactor);
-    Assert.assertTrue(waitAllDecider.hasEnoughTaskExecutors(job, partitionAssignment), "No enough executors");
+    Assert.assertTrue(waitAllDecider.hasEnoughTaskExecutorsToStart(job, partitionAssignment), "Not enough executors");
 
     partitionAssignment.removePartition(1);
     List<Instance> instances = createInstances(replicationFactor - 1);
     partitionAssignment.addPartition(new Partition(1, instances, Collections.emptyList(), Collections.emptyList()));
 
-    Assert.assertFalse(waitAllDecider.hasEnoughTaskExecutors(job, partitionAssignment),
+    Assert.assertFalse(waitAllDecider.hasEnoughTaskExecutorsToStart(job, partitionAssignment),
         "Partition-1 miss one replica, decider should return false to indicate no enough task executors.");
 
     partitionAssignment.removePartition(1);
@@ -96,17 +102,17 @@ public class TestWaitAllJobStatusDecider extends TestJobStatusDecider {
     try {
       partitionAssignment.addPartition(
           new Partition(numberOfPartition + 1, instances, instances, Collections.emptyList()));
-      waitAllDecider.hasEnoughTaskExecutors(job, partitionAssignment);
+      waitAllDecider.hasEnoughTaskExecutorsToStart(job, partitionAssignment);
       Assert.fail("Invalid partition id, decider should throw an exception.");
     } catch (VeniceException e) {
       //expected
     }
 
     partitionAssignment.removePartition(numberOfPartition + 1);
-    Assert.assertFalse(waitAllDecider.hasEnoughTaskExecutors(job, partitionAssignment),
+    Assert.assertFalse(waitAllDecider.hasEnoughTaskExecutorsToStart(job, partitionAssignment),
         "Partition number is smaller than required, decider should return false.");
     partitionAssignment = new PartitionAssignment(topic, numberOfPartition);
-    Assert.assertFalse(waitAllDecider.hasEnoughTaskExecutors(job, partitionAssignment),
+    Assert.assertFalse(waitAllDecider.hasEnoughTaskExecutorsToStart(job, partitionAssignment),
         "Partition number is smaller than required, decider should return false.");
   }
 }

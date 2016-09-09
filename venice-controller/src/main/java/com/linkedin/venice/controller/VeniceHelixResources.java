@@ -41,7 +41,8 @@ public class VeniceHelixResources implements VeniceResource {
         helixManager.getSessionId().hashCode(),
         this.jobRepository,
         this.metadataRepository,
-        this.routingDataRepository);
+        this.routingDataRepository,
+        config.getOffLinejobWaitTimeInMilliseconds());
     this.messageChannel = new HelixStatusMessageChannel(helixManager);
   }
 

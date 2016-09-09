@@ -42,16 +42,17 @@ public class VeniceJobManager implements StatusMessageHandler<StoreStatusMessage
   private final String clusterName;
   private ConcurrentMap<String, Job> waitingJobMap;
 
-  //TODO read from configuration
-  private final long jobWaitTimeInMilliseconds = 15000;
+  private final long jobWaitTimeInMilliseconds;
 
   public VeniceJobManager(String clusterName, int epoch, JobRepository jobRepository,
-      ReadWriteStoreRepository metadataRepository, RoutingDataRepository routingDataRepository) {
+      ReadWriteStoreRepository metadataRepository, RoutingDataRepository routingDataRepository,
+      long jobWaitTimeInMilliseconds) {
     this.clusterName = clusterName;
     this.epoch = epoch;
     this.jobRepository = jobRepository;
     this.metadataRepository = metadataRepository;
     this.routingDataRepository = routingDataRepository;
+    this.jobWaitTimeInMilliseconds = jobWaitTimeInMilliseconds;
     waitingJobMap = new ConcurrentHashMap<>();
   }
 
@@ -76,7 +77,7 @@ public class VeniceJobManager implements StatusMessageHandler<StoreStatusMessage
           // subscribe the status change of this job.
           jobRepository.subscribeJobStatusChange(job.getKafkaTopic(), this);
           // Sync up with routing data again to avoid missing some change during the controller's failure.
-          if (getJobStatusDecider(job).hasEnoughTaskExecutors(job,
+          if (getJobStatusDecider(job).hasMinimumTaskExecutorsToKeepRunning(job,
               routingDataRepository.getPartitionAssignments(job.getKafkaTopic()))) {
             jobRepository.updateJobExecutingTasks(job.getJobId(),
                 routingDataRepository.getPartitionAssignments(job.getKafkaTopic()));
@@ -338,7 +339,7 @@ public class VeniceJobManager implements StatusMessageHandler<StoreStatusMessage
       // Before subscribing the listener to routing data, all replicas have already been assigned, so will not get any
       // notification.
       if (routingDataRepository.containsKafkaTopic(job.getKafkaTopic()) && getJobStatusDecider(
-          job).hasEnoughTaskExecutors(job, routingDataRepository.getPartitionAssignments(job.getKafkaTopic()))) {
+          job).hasEnoughTaskExecutorsToStart(job, routingDataRepository.getPartitionAssignments(job.getKafkaTopic()))) {
         // Job has not been updated to ZK. So we update it's local copy at first. Then they will be update to ZK when starting the job.
         job.updateExecutingTasks(routingDataRepository.getPartitionAssignments(job.getKafkaTopic()));
         waitingJobMap.remove(job.getKafkaTopic());
@@ -355,7 +356,7 @@ public class VeniceJobManager implements StatusMessageHandler<StoreStatusMessage
           long spentTime = System.currentTimeMillis() - startTime;
           // In order to avoid incorrect notification, judge whether there are enough executors.
           if (routingDataRepository.containsKafkaTopic(job.getKafkaTopic()) && getJobStatusDecider(
-              job).hasEnoughTaskExecutors(job, routingDataRepository.getPartitionAssignments(job.getKafkaTopic()))) {
+              job).hasEnoughTaskExecutorsToStart(job, routingDataRepository.getPartitionAssignments(job.getKafkaTopic()))) {
             job.updateExecutingTasks(routingDataRepository.getPartitionAssignments(job.getKafkaTopic()));
             waitingJobMap.remove(job.getKafkaTopic());
             logger.info("Wait is completed on job:" + job.getJobId() + " topic:" + job.getKafkaTopic() + " wait time:"
@@ -402,7 +403,7 @@ public class VeniceJobManager implements StatusMessageHandler<StoreStatusMessage
     if (job != null) {
       // Some job is waiting for starting.
       synchronized (job) {
-        if (getJobStatusDecider(job).hasEnoughTaskExecutors(job, partitionAssignment)) {
+        if (getJobStatusDecider(job).hasEnoughTaskExecutorsToStart(job, partitionAssignment)) {
           logger.info("Get enough executor for job:" + job.getJobId() + " Continue running.");
           job.notify();
         }
@@ -417,7 +418,7 @@ public class VeniceJobManager implements StatusMessageHandler<StoreStatusMessage
       }
       // Fail the job if the partition mapping was changed.  enough replicas here to decide whether stop job or not in the future.
       for (Job runningJob : jobs) {
-        if (getJobStatusDecider(runningJob).hasEnoughTaskExecutors(runningJob, partitionAssignment)) {
+        if (getJobStatusDecider(runningJob).hasMinimumTaskExecutorsToKeepRunning(runningJob, partitionAssignment)) {
           // Job has been started and updated to zk. So we need to update ZK by through job repository.
           jobRepository.updateJobExecutingTasks(runningJob.getJobId(), partitionAssignment);
         } else {

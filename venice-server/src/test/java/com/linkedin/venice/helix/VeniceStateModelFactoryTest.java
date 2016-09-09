@@ -76,7 +76,7 @@ public class VeniceStateModelFactoryTest {
     Assert.assertNull(factory.getNotifier().getLatch(resourceName, testPartition));
   }
 
-  @Test(timeOut = 3000)
+  @Test(timeOut = 3000, expectedExceptions = VeniceException.class)
   public void testConsumptionFail() {
     stateModel.onBecomeBootstrapFromOffline(mockMessage, mockContext);
     Thread consumeThread = new Thread(new Runnable() {
@@ -93,7 +93,6 @@ public class VeniceStateModelFactoryTest {
     });
     consumeThread.start();
     stateModel.onBecomeOnlineFromBootstrap(mockMessage, mockContext);
-    Assert.assertNull(factory.getNotifier().getLatch(resourceName, testPartition));
   }
 
   @Test

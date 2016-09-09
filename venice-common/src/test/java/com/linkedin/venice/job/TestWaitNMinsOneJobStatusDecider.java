@@ -5,10 +5,8 @@ import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.Partition;
 import com.linkedin.venice.meta.PartitionAssignment;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.List;
 import org.testng.Assert;
-import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
@@ -58,50 +56,55 @@ public class TestWaitNMinsOneJobStatusDecider extends TestJobStatusDecider {
   }
 
   @Test
-  public void testCheckJobStatusWhenJobFail() {
-    OfflineJob job = new OfflineJob(1, topic, numberOfPartition, replicationFactor);
-    job.setStatus(ExecutionStatus.STARTED);
-    job.updateExecutingTasks(partitionAssignment);
-    createTasksAndUpdateJob(job, numberOfPartition,replicationFactor,ExecutionStatus.STARTED, -1,-1);
-    createTasksAndUpdateJob(job, numberOfPartition,1,ExecutionStatus.ERROR,-1,-1);
-    Assert.assertEquals(ExecutionStatus.STARTED, waitNMinsOneDecider.checkJobStatus(job),
-        "Only one task is failed for each of partition. Job should be running");
-
-    Task t = new Task(job.generateTaskId(0, nodeId + "1"), 0, nodeId + "1", ExecutionStatus.STARTED);
-    t.setStatus(ExecutionStatus.ERROR);
-    job.updateTaskStatus(t);
-
-    Assert.assertEquals(ExecutionStatus.ERROR, waitNMinsOneDecider.checkJobStatus(job),
-        "In partition 0, 2 tasks are failed, job should be failed.");
-  }
-
-  @Test
   public void testHasEnoughTaskExecutor() {
     OfflineJob job = new OfflineJob(1, topic, numberOfPartition, replicationFactor);
-    Assert.assertTrue(waitNMinsOneDecider.hasEnoughTaskExecutors(job, partitionAssignment), "No enough executors");
+    Assert.assertTrue(waitNMinsOneDecider.hasEnoughTaskExecutorsToStart(job, partitionAssignment), "No enough executors");
 
     partitionAssignment.removePartition(1);
     List<Instance> instances = createInstances(replicationFactor - 1);
     partitionAssignment.addPartition(new Partition(1, instances, instances, Collections.emptyList()));
 
-    Assert.assertTrue(waitNMinsOneDecider.hasEnoughTaskExecutors(job, partitionAssignment),
+    Assert.assertTrue(waitNMinsOneDecider.hasEnoughTaskExecutorsToStart(job, partitionAssignment),
         "Partition-1 miss one replica, In N-1 strategy, decider should return true.");
 
     partitionAssignment.removePartition(1);
     instances = createInstances(replicationFactor);
     try {
       partitionAssignment.addPartition(new Partition(numberOfPartition + 1, instances, instances, Collections.emptyList()));
-      waitNMinsOneDecider.hasEnoughTaskExecutors(job, partitionAssignment);
+      waitNMinsOneDecider.hasEnoughTaskExecutorsToStart(job, partitionAssignment);
       Assert.fail("Invalid partition id, decider should throw an exception.");
     } catch (VeniceException e) {
       //expected
     }
 
     partitionAssignment.removePartition(numberOfPartition + 1);
-    Assert.assertFalse(waitNMinsOneDecider.hasEnoughTaskExecutors(job, partitionAssignment),
+    Assert.assertFalse(waitNMinsOneDecider.hasEnoughTaskExecutorsToStart(job, partitionAssignment),
         "Partition number is smaller than required, decider should return false.");
     partitionAssignment = new PartitionAssignment(topic , numberOfPartition);
-    Assert.assertFalse(waitNMinsOneDecider.hasEnoughTaskExecutors(job, partitionAssignment),
+    Assert.assertFalse(waitNMinsOneDecider.hasEnoughTaskExecutorsToStart(job, partitionAssignment),
         "Partition number is smaller than required, decider should return false.");
+  }
+
+  @Test
+  public void testHasMinimumTaskExecutorsToKeepRunning() {
+    OfflineJob job = new OfflineJob(1, topic, numberOfPartition, replicationFactor);
+    partitionAssignment.removePartition(1);
+    List<Instance> errorInstances = createInstances(1);
+    List<Instance> readyInstances = createInstances(replicationFactor - 2);
+    partitionAssignment.addPartition(new Partition(1,Collections.emptyList(),readyInstances,errorInstances));
+
+    Assert.assertTrue(waitNMinsOneDecider.hasMinimumTaskExecutorsToKeepRunning(job, partitionAssignment));
+
+    partitionAssignment.removePartition(1);
+    errorInstances = createInstances(2);
+    readyInstances = createInstances(replicationFactor - 2);
+    partitionAssignment.addPartition(new Partition(1,Collections.emptyList(),readyInstances,errorInstances));
+
+    Assert.assertFalse(waitNMinsOneDecider.hasMinimumTaskExecutorsToKeepRunning(job, partitionAssignment));
+
+    partitionAssignment.removePartition(1);
+    partitionAssignment.addPartition(new Partition(1,Collections.emptyList(),Collections.emptyList(),Collections.emptyList()));
+
+    Assert.assertFalse(waitNMinsOneDecider.hasMinimumTaskExecutorsToKeepRunning(job, partitionAssignment));
   }
 }

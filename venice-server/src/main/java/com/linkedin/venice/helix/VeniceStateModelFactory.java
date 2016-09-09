@@ -6,6 +6,7 @@ import com.linkedin.venice.notifier.VeniceNotifier;
 import com.linkedin.venice.server.VeniceConfigLoader;
 import com.linkedin.venice.storage.StorageService;
 import com.linkedin.venice.utils.HelixUtils;
+import com.sun.org.apache.xpath.internal.operations.Bool;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.CountDownLatch;
@@ -64,6 +65,8 @@ public class VeniceStateModelFactory extends StateModelFactory<StateModel> {
   public static class StateModelNotifier implements VeniceNotifier {
     private ConcurrentMap<String, CountDownLatch> stateModelToLatchMap = new ConcurrentHashMap<>();
 
+    private ConcurrentMap<String, Boolean> stateModelToSuccessMap = new ConcurrentHashMap<>();
+
     /**
      * Create a latch to wait on.
      * @param resourceName
@@ -72,6 +75,7 @@ public class VeniceStateModelFactory extends StateModelFactory<StateModel> {
     void startConsumption(String resourceName, int partitionId) {
       CountDownLatch latch = new CountDownLatch(1);
       stateModelToLatchMap.put(getStateModelIdentification(resourceName, partitionId), latch);
+      stateModelToSuccessMap.put(getStateModelIdentification(resourceName, partitionId), false);
     }
 
     /**
@@ -82,7 +86,8 @@ public class VeniceStateModelFactory extends StateModelFactory<StateModel> {
      */
     void waitConsumptionCompleted(String resourceName, int partitionId)
         throws InterruptedException {
-      CountDownLatch latch = stateModelToLatchMap.get(getStateModelIdentification(resourceName, partitionId));
+      String stateModeId = getStateModelIdentification(resourceName , partitionId);
+      CountDownLatch latch = stateModelToLatchMap.get(stateModeId);
       if (latch == null) {
         String errorMsg = "No latch is found for resource:" + resourceName + " partition:" + partitionId;
         logger.error(errorMsg);
@@ -96,7 +101,12 @@ public class VeniceStateModelFactory extends StateModelFactory<StateModel> {
           logger.error(errorMsg);
           throw new VeniceException(errorMsg);
         }
-        stateModelToLatchMap.remove(getStateModelIdentification(resourceName, partitionId));
+        stateModelToLatchMap.remove(stateModeId);
+        // If consumption is failed, throw an exception here, Helix will put this replcia to ERROR state.
+        if (!stateModelToSuccessMap.remove(stateModeId)) {
+          throw new VeniceException(
+              "Consumption is failed. Thrown an exception to put this replica:" + stateModeId + " to ERROR state.");
+        }
       }
     }
 
@@ -129,6 +139,7 @@ public class VeniceStateModelFactory extends StateModelFactory<StateModel> {
      */
     @Override
     public void completed(String resourceName, int partitionId, long offset) {
+      stateModelToSuccessMap.put(getStateModelIdentification(resourceName, partitionId), true);
       countDownTheLatch(resourceName, partitionId);
     }
 
@@ -142,8 +153,6 @@ public class VeniceStateModelFactory extends StateModelFactory<StateModel> {
 
     @Override
     public void error(String resourceName, int partitionId, String message, Exception ex) {
-      // Even if this node met the error during consuming, it will become online. But this new version is not activated,
-      // so router will not send request to it. And this version should be deleted by controller later.
       countDownTheLatch(resourceName,partitionId);
     }
 
