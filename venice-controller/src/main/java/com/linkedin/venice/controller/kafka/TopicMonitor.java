@@ -6,9 +6,12 @@ import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.utils.Utils;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
+import java.util.StringJoiner;
+import java.util.stream.Collectors;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.common.PartitionInfo;
@@ -103,7 +106,7 @@ public class TopicMonitor extends AbstractVeniceService {
                 int version = Version.parseVersionFromKafkaTopicName(topic);
                 try {
                   List<Version> currentVersions = admin.versionsForStore(clusterName, storeName); /* throws VeniceNoStore */
-                  if (isValidNewVersion(version, currentVersions)) {
+                  if (isNewerVersion(version, currentVersions)) {
                     int partitions = entry.getValue().size();
                     admin.addVersion(clusterName, storeName, version, partitions, replicationFactor);
                   }
@@ -129,43 +132,25 @@ public class TopicMonitor extends AbstractVeniceService {
         logger.info("Topic monitor stopped");
       }
     }
-
-
   }
 
-  /**
-   * A valid new version is a version that doesn't currently exist,
-   * and is a larger version number than at least one of the existing versions
-   * If there are no existing versions, a new version is also valid
-   *
-   * This should cover a couple of different cases.
-   * 1. New store gets it's first version. If there are no existing versions, any version number should be valid.
-   * 2. Existing store gets a next version, existing versions 4 and 5, version 6 (or 7) should be valid.
-   * 3. Versions come in out-of-order for some (possibly unexpected) reason.  existing versions 4 and 6, 5 should
-   *     be valid to support roll-back.
-   * 4. Legacy versions still have kafka topics.  Existing versions are 4, 5, and 6.  New version 3 is not valid,
-   *     the version was probably already deleted and the topic just hasn't been cleaned up yet.
-   *
-   * @param newVersion
-   * @param existingVersions
-   * @return
-   */
-  protected static boolean isValidNewVersion(int newVersion, List<Version> existingVersions){
+  protected static boolean isNewerVersion(int newVersion, List<Version> existingVersions){
+    logger.info("Checking validity of version: " + newVersion + ", existingVersions are: " + logVersionNumbers(existingVersions));
     if (newVersion < 1){
-      return false;
+      return false; /* Not valid */
     }
-    if (existingVersions.isEmpty()){
-      return true;
-    }
-    boolean isGreater = false;
     for (Version version : existingVersions){
-      if (newVersion == version.getNumber()){
-        return false; /* version already exists */
-      }
-      if (newVersion > version.getNumber()){
-        isGreater = true;
+      if (newVersion <= version.getNumber()){
+        return false;
       }
     }
-    return isGreater;
+    return true;
+  }
+
+  private static String logVersionNumbers(List<Version> version){
+    return version.stream()
+        .map(v -> v.getNumber())
+        .map(n -> Integer.toString(n))
+        .collect(Collectors.joining(", "));
   }
 }
