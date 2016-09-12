@@ -73,31 +73,30 @@ public class TestTopicMonitor {
   }
 
   @Test
-  public void validVersionsGetIdentified(){
+  public void newerVersionsAreIdentified(){
     List<Version> versionList = new ArrayList<Version>();
 
-    Assert.assertTrue(TopicMonitor.isValidNewVersion(1, versionList),
+    Assert.assertTrue(TopicMonitor.isNewerVersion(1, versionList),
         "new version on empty version set must be valid");
-    Assert.assertTrue(TopicMonitor.isValidNewVersion(2, versionList),
+    Assert.assertTrue(TopicMonitor.isNewerVersion(2, versionList),
         "new version on empty version set must be valid");
-    Assert.assertTrue(TopicMonitor.isValidNewVersion(20, versionList),
+    Assert.assertTrue(TopicMonitor.isNewerVersion(20, versionList),
         "new version on empty version set must be valid");
 
     versionList.add(new Version("myStore", 5));
 
-    Assert.assertFalse(TopicMonitor.isValidNewVersion(1, versionList),
+    Assert.assertFalse(TopicMonitor.isNewerVersion(1, versionList),
         "smaller than all existing versions must make invalid new version");
-    Assert.assertFalse(TopicMonitor.isValidNewVersion(5, versionList), "existing version must make invalid new version");
-    Assert.assertTrue(TopicMonitor.isValidNewVersion(6, versionList), "next version must make valid new version");
-    Assert.assertFalse(TopicMonitor.isValidNewVersion(0, versionList), "0 must make invalid new version");
-    Assert.assertFalse(TopicMonitor.isValidNewVersion(-1, versionList), "-1 must make invalid new version");
+    Assert.assertFalse(TopicMonitor.isNewerVersion(5, versionList), "existing version must make invalid new version");
+    Assert.assertTrue(TopicMonitor.isNewerVersion(6, versionList), "next version must make valid new version");
+    Assert.assertFalse(TopicMonitor.isNewerVersion(0, versionList), "0 must make invalid new version");
+    Assert.assertFalse(TopicMonitor.isNewerVersion(-1, versionList), "-1 must make invalid new version");
 
     versionList.add(new Version("myStore", 8));
-    Assert.assertFalse(TopicMonitor.isValidNewVersion(1, versionList),
-        "smaller than all existing versions must make invalid new version");
-    Assert.assertFalse(TopicMonitor.isValidNewVersion(5, versionList), "existing version must make invalid new version");
-    Assert.assertFalse(TopicMonitor.isValidNewVersion(8, versionList), "existing version must make invalid new version");
-    Assert.assertTrue(TopicMonitor.isValidNewVersion(7, versionList), "rollback version must make valid new version");
-    Assert.assertTrue(TopicMonitor.isValidNewVersion(9, versionList), "next version must make valid new version");
+    Assert.assertFalse(TopicMonitor.isNewerVersion(1, versionList), "smaller than all existing versions must make invalid new version");
+    Assert.assertFalse(TopicMonitor.isNewerVersion(5, versionList), "existing version must make invalid new version");
+    Assert.assertFalse(TopicMonitor.isNewerVersion(8, versionList), "existing version must make invalid new version");
+    Assert.assertFalse(TopicMonitor.isNewerVersion(7, versionList), "rollback version must make invalid newer version"); /* difference between isValid and isNewer */
+    Assert.assertTrue(TopicMonitor.isNewerVersion(9, versionList), "next version must make valid new version");
   }
 }
