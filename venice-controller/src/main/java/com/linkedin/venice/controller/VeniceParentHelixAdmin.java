@@ -282,8 +282,8 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   @Override
-  public void deleteOldStoreVersion(String clusterName, String kafkaTopic) {
-    throw new VeniceException("deleteOldStoreVersion is not supported yet!");
+  public void deleteHelixResource(String clusterName, String kafkaTopic) {
+    throw new VeniceException("deleteHelixResource is not supported yet!");
   }
 
   @Override

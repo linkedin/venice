@@ -4,7 +4,7 @@ package com.linkedin.venice.meta;
  * Enums of status of verion.
  */
 public enum VersionStatus {
-    STARTED, PUSHED, ACTIVE, ERROR;
+    STARTED, PUSHED, ONLINE, ERROR;
 
     /**
      * check if a status can be deleted immediately.
@@ -20,13 +20,13 @@ public enum VersionStatus {
      * For all the status which returns true, last few versions
      * (few count, controlled by config) will be preserved.
      *
-     * For a store typically last few active versions should be
+     * For a store typically last few online versions should be
      * preserved.
      *
      * @param status
      * @return true if it should be considered, false otherwise
      */
     public static boolean preserveLastFew(VersionStatus status) {
-        return ACTIVE == status;
+        return ONLINE == status;
     }
 }

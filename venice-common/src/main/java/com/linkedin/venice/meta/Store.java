@@ -37,7 +37,7 @@ public class Store {
    */
   private int reservedVersion = 0;
   /**
-   * Default partition count for all of versions in this store. Once first version is activated, the number will be
+   * Default partition count for all of versions in this store. Once first version become online, the number will be
    * assigned.
    */
   private int partitionCount = 0;
@@ -65,6 +65,11 @@ public class Store {
    * List of non-retired versions.
    */
   private List<Version> versions;
+
+  /**
+   * The largest version number ever used before for this store.
+   */
+  private int largestUsedVersionNumber = 0;
 
   public Store(@NotNull String name, @NotNull String owner, long createdTime, @NotNull PersistenceType persistenceType,
       @NotNull RoutingStrategy routingStrategy, @NotNull ReadStrategy readStrategy,
@@ -137,6 +142,20 @@ public class Store {
   @SuppressWarnings("unused") // Used by Serializer/De-serializer for storing to Zoo Keeper
   public void setVersions(List<Version> versions) {
     this.versions = versions;
+    //Backward capability for the old store in ZK.
+    if (largestUsedVersionNumber == 0 && !versions.isEmpty()) {
+      largestUsedVersionNumber = versions.get(versions.size() - 1).getNumber();
+    }
+  }
+
+  @SuppressWarnings("unused") // Used by Serializer/De-serializer for storing to Zoo Keeper
+  public int getLargestUsedVersionNumber() {
+    return largestUsedVersionNumber;
+  }
+
+  @SuppressWarnings("unused") // Used by Serializer/De-serializer for storing to Zoo Keeper
+  public void setLargestUsedVersionNumber(int largestUsedVersionNumber) {
+    this.largestUsedVersionNumber = largestUsedVersionNumber;
   }
 
   public int getPartitionCount() {
@@ -149,6 +168,9 @@ public class Store {
 
   public void setPaused(boolean paused) {
     this.paused = paused;
+    if (!this.paused) {
+      setPushedVersionsOnline();
+    }
   }
 
   public void reserveVersionNumber(int version) {
@@ -194,6 +216,9 @@ public class Store {
       }
     }
     versions.add(index, version);
+    if (version.getNumber() > largestUsedVersionNumber) {
+      largestUsedVersionNumber = version.getNumber();
+    }
   }
 
   /**
@@ -220,8 +245,8 @@ public class Store {
   }
 
   public void updateVersionStatus(int versionNumber, VersionStatus status) {
-    if (status.equals(VersionStatus.ACTIVE)) {
-      checkPausedStore("Activate", versionNumber);
+    if (status.equals(VersionStatus.ONLINE)) {
+      checkPausedStore("become ONLINE", versionNumber);
     }
     for (int i = versions.size() - 1; i >= 0; i--) {
       if (versions.get(i).getNumber() == versionNumber) {
@@ -244,10 +269,7 @@ public class Store {
   }
 
   private Version increaseVersion(boolean createNewVersion) {
-    int versionNumber = 1;
-    if (versions.size() > 0) {
-      versionNumber = versions.get(versions.size() - 1).getNumber() + 1;
-    }
+    int versionNumber = largestUsedVersionNumber + 1;
     if (reservedVersion >= versionNumber){
       versionNumber = reservedVersion + 1; /* must skip past any reserved versions */
     }
@@ -302,9 +324,20 @@ public class Store {
           versionsToDelete.add(version);
         }
       }
+      // TODO here we don't deal with the STARTED and PUSHED version, just keep all of them, need to consider collect them too in the future.
     }
 
     return versionsToDelete;
+  }
+
+  /**
+   * Set all of PUSHED version to ONLINE once store is resumed.
+   */
+  private void setPushedVersionsOnline() {
+    // TODO, if the PUSHED version is the latest vesion, after store is resumed, shall we put this version as the current version?
+    versions.stream().filter(version -> version.getStatus().equals(VersionStatus.PUSHED)).forEach(version -> {
+      updateVersionStatus(version.getNumber(), VersionStatus.ONLINE);
+    });
   }
 
   @Override
@@ -351,6 +384,9 @@ public class Store {
     if (paused != store.paused) {
       return false;
     }
+    if (largestUsedVersionNumber != store.largestUsedVersionNumber){
+      return false;
+    }
     return versions.equals(store.versions);
   }
 
@@ -367,6 +403,7 @@ public class Store {
     result = 31 * result + reservedVersion;
     result = 31 * result + partitionCount;
     result = 31 * result + (paused ? 1 : 0);
+    result = 31 * result + largestUsedVersionNumber;
 
     result = 31 * result + persistenceType.hashCode();
     result = 31 * result + routingStrategy.hashCode();
@@ -388,6 +425,7 @@ public class Store {
     clonedStore.setReservedVersion(reservedVersion);
     clonedStore.setPartitionCount(partitionCount);
     clonedStore.setPaused(paused);
+    clonedStore.setLargestUsedVersionNumber(largestUsedVersionNumber);
 
     for (Version v : this.versions) {
       clonedStore.forceAddVersion(v.cloneVersion());

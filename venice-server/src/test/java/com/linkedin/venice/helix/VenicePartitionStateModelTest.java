@@ -9,6 +9,7 @@ import com.linkedin.venice.store.AbstractStorageEngine;
 import java.util.concurrent.CountDownLatch;
 import org.apache.helix.NotificationContext;
 import org.apache.helix.model.Message;
+import org.apache.helix.participant.statemachine.StateTransitionError;
 import org.mockito.Mockito;
 import org.testng.Assert;
 import org.testng.annotations.BeforeMethod;
@@ -146,5 +147,13 @@ public class VenicePartitionStateModelTest {
     Mockito.verify(mockKafkaConsumerService, Mockito.atLeastOnce()).stopConsumption(mockStoreConfig, testPartition);
     Mockito.verify(mockStorageService, Mockito.atLeastOnce()).dropStorePartition(mockStoreConfig, testPartition);
     Mockito.verify(mockKafkaConsumerService, Mockito.atLeastOnce()).resetConsumptionOffset(mockStoreConfig, testPartition);
+  }
+
+  @Test
+  public void testRollbackOnError()
+      throws Exception {
+    StateTransitionError mockError = Mockito.mock(StateTransitionError.class);
+    testStateModel.rollbackOnError(mockMessage, mockContext, mockError);
+    Mockito.verify(mockKafkaConsumerService, Mockito.atLeastOnce()).stopConsumption(mockStoreConfig, testPartition);
   }
 }
