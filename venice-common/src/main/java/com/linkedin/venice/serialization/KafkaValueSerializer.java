@@ -169,7 +169,7 @@ public class KafkaValueSerializer implements VeniceSerializer<KafkaMessageEnvelo
   private static Map<Byte, Schema> initializeProtocolSchemaMap() {
     try {
       Map protocolSchemaMap = new HashMap<>();
-      protocolSchemaMap.put((byte) 1, Utils.getSchemaFromResource("avro/v1/KafkaValueEnvelope.avsc"));
+      protocolSchemaMap.put((byte) 1, Utils.getSchemaFromResource("avro/KafkaValueEnvelope/v1/KafkaValueEnvelope.avsc"));
 
       // TODO: If we add more versions to the protocol, they should be initialized here.
 

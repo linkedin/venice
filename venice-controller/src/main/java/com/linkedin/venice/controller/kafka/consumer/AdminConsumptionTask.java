@@ -3,7 +3,6 @@ package com.linkedin.venice.controller.kafka.consumer;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.kafka.AdminTopicUtils;
 import com.linkedin.venice.controller.kafka.protocol.admin.AdminOperation;
-import com.linkedin.venice.controller.kafka.protocol.admin.KeySchemaCreation;
 import com.linkedin.venice.controller.kafka.protocol.admin.StoreCreation;
 import com.linkedin.venice.controller.kafka.protocol.admin.ValueSchemaCreation;
 import com.linkedin.venice.controller.kafka.protocol.enums.AdminMessageType;
@@ -178,9 +177,6 @@ public class AdminConsumptionTask implements Runnable, Closeable {
           case STORE_CREATION:
             handleStoreCreation((StoreCreation) adminMessage.payloadUnion);
             break;
-          case KEY_SCHEMA_CREATION:
-            handleKeySchemaCreation((KeySchemaCreation) adminMessage.payloadUnion);
-            break;
           case VALUE_SCHEMA_CREATION:
             handleValueSchemaCreation((ValueSchemaCreation) adminMessage.payloadUnion);
             break;
@@ -234,27 +230,16 @@ public class AdminConsumptionTask implements Runnable, Closeable {
     String clusterName = message.clusterName.toString();
     String storeName = message.storeName.toString();
     String owner = message.owner.toString();
+    String keySchema = message.keySchema.definition.toString();
+    String valueSchema = message.valueSchema.definition.toString();
     // Check whether the store exists or not, the duplicate message could be
     // introduced by Kafka retry
     if (admin.hasStore(clusterName, storeName)) {
       logger.info("Adding store: " + storeName + ", which already exists, so just skip this message: " + message);
     } else {
       // Adding store
-      admin.addStore(clusterName, storeName, owner);
+      admin.addStore(clusterName, storeName, owner, keySchema, valueSchema);
       logger.info("Added store: " + storeName + " to cluster: " + clusterName);
-    }
-  }
-
-  private void handleKeySchemaCreation(KeySchemaCreation message) {
-    String clusterName = message.clusterName.toString();
-    String storeName = message.storeName.toString();
-    String schemaStr = message.schema.definition.toString();
-
-    if (null == admin.getKeySchema(clusterName, storeName)) {
-      admin.initKeySchema(clusterName, storeName, schemaStr);
-      logger.info("Added key schema: " + schemaStr + "  to store: " + storeName);
-    } else {
-      logger.info("Key schema of store: " + storeName + " already exists, just skip this message: " + message);
     }
   }
 
@@ -262,8 +247,9 @@ public class AdminConsumptionTask implements Runnable, Closeable {
     String clusterName = message.clusterName.toString();
     String storeName = message.storeName.toString();
     String schemaStr = message.schema.definition.toString();
+    int schemaId = message.schemaId;
 
-    SchemaEntry valueSchemaEntry = admin.addValueSchema(clusterName, storeName, schemaStr);
+    SchemaEntry valueSchemaEntry = admin.addValueSchema(clusterName, storeName, schemaStr, schemaId);
     logger.info("Added value schema: " + schemaStr + " to store: " + storeName + ", schema id: " + valueSchemaEntry.getId());
   }
 }

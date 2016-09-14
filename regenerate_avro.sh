@@ -3,9 +3,9 @@
 DEFAULT_AVRO_TOOLS_JAR=`find ~/.gradle/caches/ | grep 'avro-tools-1.4.0.jar' | head -n 1`
 
 AVRO_SCHEMAS_PATH=(
-  "venice-common/src/main/resources/avro/*/*"
-  "venice-controller/src/main/resources/avro/*/*"
-  "venice-server/src/main/resources/avro/*/*/*"
+  "venice-common/src/main/resources/avro/KafkaValueEnvelope/v1/*"
+  "venice-controller/src/main/resources/avro/AdminOperation/v1/*"
+  "venice-server/src/main/resources/avro/PartitionState/v1/*"
 )
 CODE_GEN_PATH=(
   "venice-common/src/main/java"

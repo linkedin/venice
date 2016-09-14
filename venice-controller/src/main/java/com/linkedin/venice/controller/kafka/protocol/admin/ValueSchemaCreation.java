@@ -7,10 +7,11 @@ package com.linkedin.venice.controller.kafka.protocol.admin;
 
 @SuppressWarnings("all")
 public class ValueSchemaCreation extends org.apache.avro.specific.SpecificRecordBase implements org.apache.avro.specific.SpecificRecord {
-  public static final org.apache.avro.Schema SCHEMA$ = org.apache.avro.Schema.parse("{\"type\":\"record\",\"name\":\"ValueSchemaCreation\",\"namespace\":\"com.linkedin.venice.controller.kafka.protocol.admin\",\"fields\":[{\"name\":\"clusterName\",\"type\":\"string\"},{\"name\":\"storeName\",\"type\":\"string\"},{\"name\":\"schema\",\"type\":{\"type\":\"record\",\"name\":\"SchemaMeta\",\"fields\":[{\"name\":\"schemaType\",\"type\":\"int\",\"doc\":\"0 => Avro-1.4, and we can add more if necessary\"},{\"name\":\"definition\",\"type\":\"string\"}]}}]}");
+  public static final org.apache.avro.Schema SCHEMA$ = org.apache.avro.Schema.parse("{\"type\":\"record\",\"name\":\"ValueSchemaCreation\",\"namespace\":\"com.linkedin.venice.controller.kafka.protocol.admin\",\"fields\":[{\"name\":\"clusterName\",\"type\":\"string\"},{\"name\":\"storeName\",\"type\":\"string\"},{\"name\":\"schema\",\"type\":{\"type\":\"record\",\"name\":\"SchemaMeta\",\"fields\":[{\"name\":\"schemaType\",\"type\":\"int\",\"doc\":\"0 => Avro-1.4, and we can add more if necessary\"},{\"name\":\"definition\",\"type\":\"string\"}]}},{\"name\":\"schemaId\",\"type\":\"int\"}]}");
   public java.lang.CharSequence clusterName;
   public java.lang.CharSequence storeName;
   public com.linkedin.venice.controller.kafka.protocol.admin.SchemaMeta schema;
+  public int schemaId;
   public org.apache.avro.Schema getSchema() { return SCHEMA$; }
   // Used by DatumWriter.  Applications should not call. 
   public java.lang.Object get(int field$) {
@@ -18,6 +19,7 @@ public class ValueSchemaCreation extends org.apache.avro.specific.SpecificRecord
     case 0: return clusterName;
     case 1: return storeName;
     case 2: return schema;
+    case 3: return schemaId;
     default: throw new org.apache.avro.AvroRuntimeException("Bad index");
     }
   }
@@ -28,6 +30,7 @@ public class ValueSchemaCreation extends org.apache.avro.specific.SpecificRecord
     case 0: clusterName = (java.lang.CharSequence)value$; break;
     case 1: storeName = (java.lang.CharSequence)value$; break;
     case 2: schema = (com.linkedin.venice.controller.kafka.protocol.admin.SchemaMeta)value$; break;
+    case 3: schemaId = (java.lang.Integer)value$; break;
     default: throw new org.apache.avro.AvroRuntimeException("Bad index");
     }
   }

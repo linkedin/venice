@@ -109,73 +109,46 @@ public class TestAdminSparkServer {
   @Test
   public void controllerClientCanCreateNewStore(){
     String storeToCreate = "newTestStore123";
+    String keySchema = "\"string\"";
+    String valueSchema = "\"long\"";
+    String clusterName = venice.getClusterName();
     // create Store
-    NewStoreResponse newStoreResponse = ControllerClient.createNewStore(routerUrl, venice.getClusterName(),
-        storeToCreate, "owner");
+    NewStoreResponse newStoreResponse = ControllerClient.createNewStore(routerUrl, clusterName,
+        storeToCreate, "owner", keySchema, valueSchema);
     Assert.assertFalse(newStoreResponse.isError(), "create new store should succeed for a store that doesn't exist");
-    VersionResponse newVersionResponse = ControllerClient.queryNextVersion(routerUrl, venice.getClusterName(),
+    VersionResponse newVersionResponse = ControllerClient.queryNextVersion(routerUrl, clusterName,
         storeToCreate);
     Assert.assertFalse(newVersionResponse.isError());
+    Assert.assertEquals(ControllerClient.getKeySchema(routerUrl, clusterName, storeToCreate).getSchemaStr(), keySchema);
+    Assert.assertEquals(ControllerClient.getValueSchema(routerUrl, clusterName, storeToCreate, 1).getSchemaStr(), valueSchema);
     NewStoreResponse duplicateNewStoreResponse = ControllerClient.createNewStore(routerUrl, venice.getClusterName(),
-        storeToCreate, "owner");
+        storeToCreate, "owner", keySchema, valueSchema);
     Assert.assertTrue(duplicateNewStoreResponse.isError(), "create new store should fail for duplicate store creation");
-  }
-
-  @Test
-  public void controllerClientCreateKeySchema(){
-    String storeToCreate = "newTestStore124";
-    String clusterName = venice.getClusterName();
-    String invalidKeySchemaStr = "\"abc\"";
-    String validKeySchemaStr = "\"string\"";
-    // Create key schema of non-existed store
-    SchemaResponse sr0 = ControllerClient.initKeySchema(routerUrl, clusterName, storeToCreate, validKeySchemaStr);
-    Assert.assertTrue(sr0.isError());
-    // Create Store
-    NewStoreResponse newStoreResponse = ControllerClient.createNewStore(routerUrl, clusterName,
-        storeToCreate, "owner");
-    Assert.assertFalse(newStoreResponse.isError(), "create new store should succeed for a store that doesn't exist");
-    // Create key schema with invalid schema
-    SchemaResponse sr1 = ControllerClient.initKeySchema(routerUrl, clusterName, storeToCreate, invalidKeySchemaStr);
-    Assert.assertTrue(sr1.isError());
-    // Create key schema with valid schema
-    SchemaResponse sr2 = ControllerClient.initKeySchema(routerUrl, clusterName, storeToCreate, validKeySchemaStr);
-    Assert.assertEquals(sr2.getSchemaStr(), validKeySchemaStr);
-    // Create key schema multiple times with the same key schema
-    SchemaResponse sr3 = ControllerClient.initKeySchema(routerUrl, clusterName, storeToCreate, validKeySchemaStr);
-    Assert.assertFalse(sr3.isError());
-    // Create key schema multiple times with different key schema
-    String anotherValidKeySchemaStr = "\"long\"";
-    SchemaResponse sr4 = ControllerClient.initKeySchema(routerUrl, clusterName, storeToCreate, anotherValidKeySchemaStr);
-    Assert.assertTrue(sr4.isError());
   }
 
   @Test
   public void controllerClientGetKeySchema() {
     String storeToCreate = "newTestStore125";
     String clusterName = venice.getClusterName();
+    String keySchemaStr = "\"string\"";
+    String valueSchemaStr = "\"long\"";
     // Get key schema from non-existed store
     SchemaResponse sr0 = ControllerClient.getKeySchema(routerUrl, clusterName, storeToCreate);
     Assert.assertTrue(sr0.isError());
     // Create Store
     NewStoreResponse newStoreResponse = ControllerClient.createNewStore(routerUrl, clusterName,
-        storeToCreate, "owner");
+        storeToCreate, "owner", keySchemaStr, valueSchemaStr);
     Assert.assertFalse(newStoreResponse.isError(), "create new store should succeed for a store that doesn't exist");
     SchemaResponse sr1 = ControllerClient.getKeySchema(routerUrl, clusterName, storeToCreate);
-    // Key schema doesn't exist
-    Assert.assertTrue(sr1.isError());
-    // Create key schema with valid schema
-    String validKeySchemaStr = "\"string\"";
-    SchemaResponse sr2 = ControllerClient.initKeySchema(routerUrl, clusterName, storeToCreate, validKeySchemaStr);
-    Assert.assertEquals(sr2.getSchemaStr(), validKeySchemaStr);
-    SchemaResponse sr3 = ControllerClient.getKeySchema(routerUrl, clusterName, storeToCreate);
-    Assert.assertEquals(sr3.getId(), 1);
-    Assert.assertEquals(sr3.getSchemaStr(), validKeySchemaStr);
+    Assert.assertEquals(sr1.getId(), 1);
+    Assert.assertEquals(sr1.getSchemaStr(), keySchemaStr);
   }
 
   @Test
   public void controllerClientManageValueSchema() {
     String storeToCreate = "newTestStore126";
     String clusterName = venice.getClusterName();
+    String keySchemaStr = "\"string\"";
     String schema1 = "{\n" +
         "           \"type\": \"record\",\n" +
         "           \"name\": \"KeyRecord\",\n" +
@@ -213,7 +186,7 @@ public class TestAdminSparkServer {
     Assert.assertTrue(sr0.isError());
     // Add value schema to an existing store
     NewStoreResponse newStoreResponse = ControllerClient.createNewStore(routerUrl, clusterName,
-        storeToCreate, "owner");
+        storeToCreate, "owner", keySchemaStr, schema1);
     Assert.assertFalse(newStoreResponse.isError(), "create new store should succeed for a store that doesn't exist");
     SchemaResponse sr1 = ControllerClient.addValueSchema(routerUrl, clusterName, storeToCreate, schema1);
     Assert.assertFalse(sr1.isError());

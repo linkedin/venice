@@ -19,28 +19,6 @@ import static com.linkedin.venice.controllerapi.ControllerRoute.*;
 public class SchemaRoutes {
   private SchemaRoutes() {}
 
-  // Route to handle creating key schema request
-  public static Route initKeySchema(Admin admin) {
-    return (request, response) -> {
-      SchemaResponse responseObject = new SchemaResponse();
-      try {
-        AdminSparkServer.validateParams(request, INIT_KEY_SCHEMA.getParams(), admin);
-        responseObject.setCluster(request.queryParams(ControllerApiConstants.CLUSTER));
-        responseObject.setName(request.queryParams(ControllerApiConstants.NAME));
-        SchemaEntry keySchemaEntry = admin.initKeySchema(responseObject.getCluster(),
-            responseObject.getName(),
-            request.queryParams(ControllerApiConstants.KEY_SCHEMA));
-        responseObject.setId(keySchemaEntry.getId());
-        responseObject.setSchemaStr(keySchemaEntry.getSchema().toString());
-      } catch (Exception e) {
-        responseObject.setError(e.getMessage());
-        AdminSparkServer.handleError(new VeniceException(e), request, response);
-      }
-      response.type(HttpConstants.JSON);
-      return AdminSparkServer.mapper.writeValueAsString(responseObject);
-    };
-  }
-
   // Route to handle retrieving key schema request
   public static Route getKeySchema(Admin admin) {
     return (request, response) -> {

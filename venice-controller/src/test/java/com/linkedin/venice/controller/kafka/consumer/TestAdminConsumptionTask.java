@@ -3,8 +3,10 @@ package com.linkedin.venice.controller.kafka.consumer;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.kafka.AdminTopicUtils;
 import com.linkedin.venice.controller.kafka.protocol.admin.AdminOperation;
+import com.linkedin.venice.controller.kafka.protocol.admin.SchemaMeta;
 import com.linkedin.venice.controller.kafka.protocol.admin.StoreCreation;
 import com.linkedin.venice.controller.kafka.protocol.enums.AdminMessageType;
+import com.linkedin.venice.controller.kafka.protocol.enums.SchemaType;
 import com.linkedin.venice.controller.kafka.protocol.serializer.AdminOperationSerializer;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.TopicManager;
@@ -138,7 +140,9 @@ public class TestAdminConsumptionTask {
   public void testRun() throws InterruptedException, IOException {
     String storeName = "test_store";
     String owner = "test_owner";
-    initTaskRelatedArgs(getStoreCreationMessage(clusterName, storeName, owner, 1));
+    String keySchema = "\"string\"";
+    String valueSchema = "\"string\"";
+    initTaskRelatedArgs(getStoreCreationMessage(clusterName, storeName, owner, 1, keySchema, valueSchema));
     // The store doesn't exist
     Mockito.doReturn(false).when(admin).hasStore(clusterName, storeName);
     AtomicInteger counter = new AtomicInteger(0);
@@ -157,7 +161,7 @@ public class TestAdminConsumptionTask {
         .subscribe(Mockito.any(), Mockito.anyInt(), Mockito.any());
     Mockito.verify(consumer, Mockito.timeout(TIMEOUT).times(1))
         .unSubscribe(Mockito.any(), Mockito.anyInt());
-    Mockito.verify(admin, Mockito.timeout(TIMEOUT).times(1)).addStore(clusterName, storeName, owner);
+    Mockito.verify(admin, Mockito.timeout(TIMEOUT).times(1)).addStore(clusterName, storeName, owner, keySchema, valueSchema);
     Mockito.verify(offsetManager, Mockito.timeout(TIMEOUT).times(1)).recordOffset(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID, new OffsetRecord(1));
   }
 
@@ -165,7 +169,9 @@ public class TestAdminConsumptionTask {
   public void testRunWhenStoreCreationGotExceptionForTheFirstTime() throws InterruptedException, IOException {
     String storeName = "test_store";
     String owner = "test_owner";
-    initTaskRelatedArgs(getStoreCreationMessage(clusterName, storeName, owner, 1));
+    String keySchema = "\"string\"";
+    String valueSchema = "\"string\"";
+    initTaskRelatedArgs(getStoreCreationMessage(clusterName, storeName, owner, 1, keySchema, valueSchema));
     AtomicInteger counter = new AtomicInteger(0);
     setupCounterForIsMasterControllerInvocation(true, counter);
     // The store doesn't exist
@@ -173,7 +179,7 @@ public class TestAdminConsumptionTask {
     Mockito.doThrow(new VeniceException("Mock store creation exception"))
         .doNothing()
         .when(admin)
-        .addStore(clusterName, storeName, owner);
+        .addStore(clusterName, storeName, owner, keySchema, valueSchema);
 
     AdminConsumptionTask task = new AdminConsumptionTask(clusterName, consumer, offsetManager, admin);
     executor.submit(task);
@@ -188,7 +194,7 @@ public class TestAdminConsumptionTask {
         .subscribe(Mockito.any(), Mockito.anyInt(), Mockito.any());
     Mockito.verify(consumer, Mockito.timeout(TIMEOUT).times(1))
         .unSubscribe(Mockito.any(), Mockito.anyInt());
-    Mockito.verify(admin, Mockito.timeout(TIMEOUT).times(2)).addStore(clusterName, storeName, owner);
+    Mockito.verify(admin, Mockito.timeout(TIMEOUT).times(2)).addStore(clusterName, storeName, owner, keySchema, valueSchema);
     Mockito.verify(offsetManager, Mockito.timeout(TIMEOUT).times(1)).recordOffset(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID, new OffsetRecord(1));
   }
 
@@ -196,7 +202,9 @@ public class TestAdminConsumptionTask {
   public void testRunWithDuplicateMessagesWithSameOffset() throws InterruptedException, IOException {
     String storeName = "test_store";
     String owner = "test_owner";
-    ConsumerRecord storeCreationRecord = getStoreCreationMessage(clusterName, storeName, owner, 1);
+    String keySchema = "\"string\"";
+    String valueSchema = "\"string\"";
+    ConsumerRecord storeCreationRecord = getStoreCreationMessage(clusterName, storeName, owner, 1, keySchema, valueSchema);
     initTaskRelatedArgs(storeCreationRecord, storeCreationRecord);
     AtomicInteger counter = new AtomicInteger(0);
     setupCounterForIsMasterControllerInvocation(true, counter);
@@ -216,7 +224,7 @@ public class TestAdminConsumptionTask {
         .subscribe(Mockito.any(), Mockito.anyInt(), Mockito.any());
     Mockito.verify(consumer, Mockito.timeout(TIMEOUT).times(1))
         .unSubscribe(Mockito.any(), Mockito.anyInt());
-    Mockito.verify(admin, Mockito.timeout(TIMEOUT).times(1)).addStore(clusterName, storeName, owner);
+    Mockito.verify(admin, Mockito.timeout(TIMEOUT).times(1)).addStore(clusterName, storeName, owner, keySchema, valueSchema);
     Mockito.verify(offsetManager, Mockito.timeout(TIMEOUT).times(1)).recordOffset(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID, new OffsetRecord(1));
   }
 
@@ -224,8 +232,10 @@ public class TestAdminConsumptionTask {
   public void testRunWithDuplicateMessagesWithDifferentOffset() throws InterruptedException, IOException {
     String storeName = "test_store";
     String owner = "test_owner";
-    ConsumerRecord storeCreationRecord1 = getStoreCreationMessage(clusterName, storeName, owner, 1);
-    ConsumerRecord storeCreationRecord2 = getStoreCreationMessage(clusterName, storeName, owner, 2);
+    String keySchema = "\"string\"";
+    String valueSchema = "\"string\"";
+    ConsumerRecord storeCreationRecord1 = getStoreCreationMessage(clusterName, storeName, owner, 1, keySchema, valueSchema);
+    ConsumerRecord storeCreationRecord2 = getStoreCreationMessage(clusterName, storeName, owner, 2, keySchema, valueSchema);
     initTaskRelatedArgs(storeCreationRecord1, storeCreationRecord2);
     AtomicInteger counter = new AtomicInteger(0);
     setupCounterForIsMasterControllerInvocation(true, counter);
@@ -247,7 +257,7 @@ public class TestAdminConsumptionTask {
         .subscribe(Mockito.any(), Mockito.anyInt(), Mockito.any());
     Mockito.verify(consumer, Mockito.timeout(TIMEOUT).times(1))
         .unSubscribe(Mockito.any(), Mockito.anyInt());
-    Mockito.verify(admin, Mockito.timeout(TIMEOUT).times(1)).addStore(clusterName, storeName, owner);
+    Mockito.verify(admin, Mockito.timeout(TIMEOUT).times(1)).addStore(clusterName, storeName, owner, keySchema, valueSchema);
     Mockito.verify(offsetManager, Mockito.timeout(TIMEOUT).times(1)).recordOffset(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID, new OffsetRecord(1));
     Mockito.verify(offsetManager, Mockito.timeout(TIMEOUT).times(1)).recordOffset(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID, new OffsetRecord(2));
   }
@@ -256,7 +266,9 @@ public class TestAdminConsumptionTask {
   public void testRunWithBiggerStartingOffset() throws InterruptedException, IOException {
     String storeName = "test_store";
     String owner = "test_owner";
-    initTaskRelatedArgs(getStoreCreationMessage(clusterName, storeName, owner, 1));
+    String keySchema = "\"string\"";
+    String valueSchema = "\"string\"";
+    initTaskRelatedArgs(getStoreCreationMessage(clusterName, storeName, owner, 1, keySchema, valueSchema));
     AtomicInteger counter = new AtomicInteger(0);
     setupCounterForIsMasterControllerInvocation(true, counter);
     // The store doesn't exist
@@ -277,16 +289,22 @@ public class TestAdminConsumptionTask {
         .subscribe(Mockito.any(), Mockito.anyInt(), Mockito.any());
     Mockito.verify(consumer, Mockito.timeout(TIMEOUT).times(1))
         .unSubscribe(Mockito.any(), Mockito.anyInt());
-    Mockito.verify(admin, Mockito.timeout(TIMEOUT).never()).addStore(clusterName, storeName, owner);
+    Mockito.verify(admin, Mockito.timeout(TIMEOUT).never()).addStore(clusterName, storeName, owner, keySchema, valueSchema);
     Mockito.verify(offsetManager, Mockito.timeout(TIMEOUT).never()).recordOffset(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID, new OffsetRecord(1));
   }
 
-  private ConsumerRecord getStoreCreationMessage(String clusterName, String storeName, String owner, long offset) {
+  private ConsumerRecord getStoreCreationMessage(String clusterName, String storeName, String owner, long offset, String keySchema, String valueSchema) {
     AdminOperationSerializer serializer = new AdminOperationSerializer();
     StoreCreation storeCreation = new StoreCreation();
     storeCreation.clusterName = clusterName;
     storeCreation.storeName = storeName;
     storeCreation.owner = owner;
+    storeCreation.keySchema = new SchemaMeta();
+    storeCreation.keySchema.definition = keySchema;
+    storeCreation.keySchema.schemaType = SchemaType.AVRO_1_4.ordinal();
+    storeCreation.valueSchema = new SchemaMeta();
+    storeCreation.valueSchema.definition = valueSchema;
+    storeCreation.valueSchema.schemaType = SchemaType.AVRO_1_4.ordinal();
     AdminOperation adminMessage = new AdminOperation();
     adminMessage.operationType = AdminMessageType.STORE_CREATION.ordinal();
     adminMessage.payloadUnion = storeCreation;

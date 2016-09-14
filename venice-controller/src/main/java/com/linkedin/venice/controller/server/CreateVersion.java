@@ -29,14 +29,20 @@ public class CreateVersion {
       VersionCreationResponse responseObject = new VersionCreationResponse();
       try {
         AdminSparkServer.validateParams(request, CREATE.getParams(), admin);
-        responseObject.setCluster(request.queryParams(CLUSTER));
-        responseObject.setName(request.queryParams(NAME));
-        responseObject.setOwner(request.queryParams(OWNER));
+        String clusterName = request.queryParams(CLUSTER);
+        String storeName = request.queryParams(NAME);
+        String owner = request.queryParams(OWNER);
+        String keySchema = request.queryParams(KEY_SCHEMA);
+        String valueSchema = request.queryParams(VALUE_SCHEMA);
+
+        responseObject.setCluster(clusterName);
+        responseObject.setName(storeName);
+        responseObject.setOwner(owner);
         // TODO we should verify the data size at first. If it exceeds the quota, controller should reject this request.
         // TODO And also we should use quota to calculate partition count to avoid this case that data size of first
         // push is very small but grow dramatically because quota of this store is very large.
         try { // TODO: use admin to update store with new owner?  Set owner at version level for audit history?
-          admin.addStore(responseObject.getCluster(), responseObject.getName(), responseObject.getOwner());
+          admin.addStore(clusterName, storeName, owner, keySchema, valueSchema);
         } catch (VeniceException e) { // TODO method on admin to see if store already created?
           logger.warn("Store" + responseObject.getName() + " probably already created.", e);
         }
@@ -50,11 +56,7 @@ public class CreateVersion {
         responseObject.setVersion(version.getNumber());
         responseObject.setKafkaTopic(version.kafkaTopicName());
         responseObject.setKafkaBootstrapServers(admin.getKafkaBootstrapServers());
-        // Schema validation/creation
-        admin.initKeySchema(responseObject.getCluster(), responseObject.getName(), request.queryParams(KEY_SCHEMA));
-        SchemaEntry valueSchemaEntry = admin.addValueSchema(responseObject.getCluster(),
-            responseObject.getName(), request.queryParams(VALUE_SCHEMA));
-        responseObject.setValueSchemaId(valueSchemaEntry.getId());
+        responseObject.setValueSchemaId(admin.getValueSchemaId(clusterName, storeName, valueSchema));
       } catch (VeniceException e) {
         responseObject.setError(e.getMessage());
         AdminSparkServer.handleError(e, request, response);
