@@ -147,18 +147,22 @@ public class ControllerClient implements Closeable {
     }
   }
 
-  private NewStoreResponse createNewStore(String clusterName, String storeName, String owner)
+  private NewStoreResponse createNewStore(String clusterName, String storeName, String owner,
+                                          String keySchema, String valueSchema)
       throws IOException, ExecutionException, InterruptedException {
     List<NameValuePair> params = newParams(clusterName);
     params.add(new BasicNameValuePair(ControllerApiConstants.NAME, storeName));
     params.add(new BasicNameValuePair(ControllerApiConstants.OWNER, owner));
+    params.add(new BasicNameValuePair(ControllerApiConstants.KEY_SCHEMA, keySchema));
+    params.add(new BasicNameValuePair(ControllerApiConstants.VALUE_SCHEMA, valueSchema));
     String responseJson = postRequest(ControllerRoute.NEWSTORE.getPath(), params);
     return mapper.readValue(responseJson, NewStoreResponse.class);
   }
 
-  public static NewStoreResponse createNewStore(String urlsToFindMasterController, String clusterName, String storeName, String owner){
+  public static NewStoreResponse createNewStore(String urlsToFindMasterController, String clusterName,
+      String storeName, String owner, String keySchema, String valueSchema){
     try (ControllerClient client = new ControllerClient(clusterName, urlsToFindMasterController)){
-      return client.createNewStore(clusterName, storeName, owner);
+      return client.createNewStore(clusterName, storeName, owner, keySchema, valueSchema);
     } catch (Exception e){
       return handleError(new VeniceException("Error creating store: " + storeName, e), new NewStoreResponse());
     }
@@ -409,23 +413,6 @@ public class ControllerClient implements Closeable {
   }
 
   /* SCHEMA */
-
-  private SchemaResponse initKeySchema(String clusterName, String storeName, String keySchemaStr) throws IOException, ExecutionException, InterruptedException {
-    List<NameValuePair> queryParams = newParams(clusterName);
-    queryParams.add(new BasicNameValuePair(ControllerApiConstants.NAME, storeName));
-    queryParams.add(new BasicNameValuePair(ControllerApiConstants.KEY_SCHEMA, keySchemaStr));
-    String responseJson = postRequest(ControllerRoute.INIT_KEY_SCHEMA.getPath(), queryParams);
-    return mapper.readValue(responseJson, SchemaResponse.class);
-  }
-
-  public static SchemaResponse initKeySchema(String urlsToFindMasterController, String clusterName, String storeName, String keySchemaStr) {
-    try (ControllerClient client = new ControllerClient(clusterName, urlsToFindMasterController)){
-      return client.initKeySchema(clusterName, storeName, keySchemaStr);
-    } catch (Exception e){
-      return handleError(new VeniceException("Error creating key schema: " + keySchemaStr + " for store: " + storeName, e), new SchemaResponse());
-    }
-  }
-
   private SchemaResponse getKeySchema(String clusterName, String storeName) throws ExecutionException, InterruptedException, IOException {
     List<NameValuePair> queryParams = newParams(clusterName);
     queryParams.add(new BasicNameValuePair(ControllerApiConstants.NAME, storeName));

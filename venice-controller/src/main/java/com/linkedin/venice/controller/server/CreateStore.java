@@ -7,8 +7,10 @@ import com.linkedin.venice.exceptions.VeniceException;
 import spark.Route;
 
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.CLUSTER;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.KEY_SCHEMA;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.NAME;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.OWNER;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.VALUE_SCHEMA;
 import static com.linkedin.venice.controllerapi.ControllerRoute.NEWSTORE;
 
 
@@ -21,10 +23,16 @@ public class CreateStore {
       NewStoreResponse responseObject = new NewStoreResponse();
       try {
         AdminSparkServer.validateParams(request, NEWSTORE.getParams(), admin);
-        responseObject.setCluster(request.queryParams(CLUSTER));
-        responseObject.setName(request.queryParams(NAME));
-        responseObject.setOwner(request.queryParams(OWNER));
-        admin.addStore(responseObject.getCluster(), responseObject.getName(), responseObject.getOwner());
+        String clusterName = request.queryParams(CLUSTER);
+        String storeName = request.queryParams(NAME);
+        String owner = request.queryParams(OWNER);
+        String keySchema = request.queryParams(KEY_SCHEMA);
+        String valueSchema = request.queryParams(VALUE_SCHEMA);
+
+        responseObject.setCluster(clusterName);
+        responseObject.setName(storeName);
+        responseObject.setOwner(owner);
+        admin.addStore(clusterName, storeName, owner, keySchema, valueSchema);
       } catch (VeniceException e) {
         responseObject.setError(e.getMessage());
         AdminSparkServer.handleError(e, request, response);

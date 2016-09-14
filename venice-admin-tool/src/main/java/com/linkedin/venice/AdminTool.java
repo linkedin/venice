@@ -215,16 +215,8 @@ public class AdminTool {
     verifyValidSchema(keySchema);
     verifyValidSchema(valueSchema);
     verifyStoreExistence(routerHosts, clusterName, store, false);
-          /* TODO: createNewStore should be modified to require a key and value schema */
-    NewStoreResponse newStore = ControllerClient.createNewStore(routerHosts, clusterName, store, owner);
+    NewStoreResponse newStore = ControllerClient.createNewStore(routerHosts, clusterName, store, owner, keySchema, valueSchema);
     printControllerResponse(newStore);
-    SchemaResponse keyResponse = ControllerClient.initKeySchema(routerHosts, clusterName, store, keySchema);
-    SchemaResponse valueResponse = ControllerClient.addValueSchema(routerHosts, clusterName, store, valueSchema);
-    for (SchemaResponse response : Arrays.asList(keyResponse, valueResponse)) {
-      if (response.isError()) {
-        System.err.println("Error initializing store with schema: " + response.getError());
-      }
-    }
   }
 
   private static void setStorePaused(CommandLine cmd, String routerHosts, String clusterName, boolean newPauseStatus){

@@ -18,7 +18,7 @@ public interface Admin {
 
     boolean isClusterValid(String clusterName);
 
-    void addStore(String clusterName, String storeName, String owner);
+    void addStore(String clusterName, String storeName, String owner, String keySchema, String valueSchema);
 
     Version addVersion(String clusterName, String storeName, int versionNumber, int numberOfPartition,
         int replicaFactor);
@@ -46,8 +46,6 @@ public interface Admin {
 
     SchemaEntry getKeySchema(String clusterName, String storeName);
 
-    SchemaEntry initKeySchema(String clusterName, String storeName, String keySchemaStr);
-
     Collection<SchemaEntry> getValueSchemas(String clusterName, String storeName);
 
     int getValueSchemaId(String clusterName, String storeName, String valueSchemaStr);
@@ -55,6 +53,8 @@ public interface Admin {
     SchemaEntry getValueSchema(String clusterName, String storeName, int id);
 
     SchemaEntry addValueSchema(String clusterName, String storeName, String valueSchemaStr);
+
+    SchemaEntry addValueSchema(String clusterName, String storeName, String valueSchemaStr, int schemaId);
 
     List<String> getStorageNodes(String clusterName);
 

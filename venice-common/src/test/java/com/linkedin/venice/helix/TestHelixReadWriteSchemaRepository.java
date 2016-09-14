@@ -291,4 +291,24 @@ public class TestHelixReadWriteSchemaRepository {
         "        }";
     schemaRepo.addValueSchema(storeName, valueSchemaStr1);
   }
+
+  @Test
+  public void testAddValueSchemaWithSchemaId() {
+    String storeName = "test_store1";
+    String valueSchemaStr = "\"long\"";
+    int valueSchemaId = 10;
+    createStore(storeName);
+    schemaRepo.addValueSchema(storeName, valueSchemaStr, valueSchemaId);
+    SchemaEntry valueSchemaEntry = schemaRepo.getValueSchema(storeName, valueSchemaId);
+    Assert.assertEquals(valueSchemaEntry.getSchema().toString(), valueSchemaStr);
+    // Add the same schema again with the same schema id
+    schemaRepo.addValueSchema(storeName, valueSchemaStr, valueSchemaId);
+    valueSchemaEntry = schemaRepo.getValueSchema(storeName, valueSchemaId);
+    Assert.assertEquals(valueSchemaEntry.getSchema().toString(), valueSchemaStr);
+    // Add the same schema with different schema id
+    int newValueSchemaId = 11;
+    schemaRepo.addValueSchema(storeName, valueSchemaStr, newValueSchemaId);
+    valueSchemaEntry = schemaRepo.getValueSchema(storeName, newValueSchemaId);
+    Assert.assertEquals(valueSchemaEntry.getSchema().toString(), valueSchemaStr);
+  }
 }

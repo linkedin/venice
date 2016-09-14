@@ -5,7 +5,7 @@
   "fields": [
     {
       "name": "operationType",
-      "doc": "0 => StoreCreation, 1 => KeySchemaCreation, 2 => ValueSchemaCreation",
+      "doc": "0 => StoreCreation, 1 => ValueSchemaCreation",
       "type": "int"
     }, {
       "name": "payloadUnion",
@@ -26,31 +26,21 @@
             {
               "name": "owner",
               "type": "string"
-            }
-          ]
-        },
-        {
-          "name": "KeySchemaCreation",
-          "type": "record",
-          "fields": [
-            {
-              "name": "clusterName",
-              "type": "string"
             },
             {
-              "name": "storeName",
-              "type": "string"
+               "name": "keySchema",
+               "type": {
+                 "type": "record",
+                 "name": "SchemaMeta",
+                 "fields": [
+                    {"name": "schemaType", "type": "int", "doc": "0 => Avro-1.4, and we can add more if necessary"},
+                     {"name": "definition", "type": "string"}
+                 ]
+               }
             },
             {
-              "name": "schema",
-              "type": {
-                "type": "record",
-                "name": "SchemaMeta",
-                "fields": [
-                  {"name": "schemaType", "type": "int", "doc": "0 => Avro-1.4, and we can add more if necessary"},
-                  {"name": "definition", "type": "string"}
-                ]
-              }
+              "name": "valueSchema",
+              "type": "SchemaMeta"
             }
           ]
         },
@@ -69,6 +59,10 @@
             {
               "name": "schema",
               "type": "SchemaMeta"
+            },
+            {
+              "name": "schemaId",
+              "type": "int"
             }
           ]
         }

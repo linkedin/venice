@@ -371,7 +371,6 @@ public class KafkaPushJob {
       if (storePush) {
         if (autoCreateStoreIfNeeded) {
           createStoreIfNeeded();
-          createKeySchemaIfNeeded();
           uploadValueSchema();
         }
         validateKeySchema();
@@ -424,29 +423,10 @@ public class KafkaPushJob {
   // TODO: Add config to selectively disable this.
   private void createStoreIfNeeded(){
     for (String routerUrl : perDatacenterRouterUrls){
-      NewStoreResponse response = ControllerClient.createNewStore(routerUrl, clusterName, storeName, "H2V-user");
+      NewStoreResponse response = ControllerClient.createNewStore(routerUrl, clusterName, storeName, "H2V-user", keySchemaString, valueSchemaString);
       if (response.isError()){
         logger.warn("Error creating new store with routers: " + routerUrl + "  " + response.getError());
       }
-    }
-  }
-
-  // TODO: In the future, schema creation should be moved to Nuage or admin tools.
-  private void createKeySchemaIfNeeded() {
-    for (String routerUrl : perDatacenterRouterUrls) {
-      // Check key schema first
-      // If the key schema doesn't exist, will create it;
-      // If the key schema already exists and the key schema is same as the one in schema repo,
-      // initKeySchema will return directly, otherwise it will report error since key schema is
-      // immutable;
-      // For now, the returned keySchemaResponse is not quite useful for H2V job;
-      SchemaResponse keySchemaResponse = ControllerClient.initKeySchema(routerUrl, clusterName, storeName,
-          keySchemaString);
-      if (keySchemaResponse.isError()) {
-        throw new VeniceException("Fail to validate/create key schema: " + keySchemaString + " for store: "
-            + storeName + " using router: " + routerUrl +", error: " + keySchemaResponse.getError());
-      }
-      logger.info("Key schema: " + keySchemaString + " is valid for store: " + storeName);
     }
   }
 

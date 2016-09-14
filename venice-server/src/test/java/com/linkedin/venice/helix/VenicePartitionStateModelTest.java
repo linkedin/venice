@@ -122,6 +122,7 @@ public class VenicePartitionStateModelTest {
   public void testOnBecomeDroppedFromOffline() throws Exception {
     testStateModel.onBecomeDroppedFromOffline(mockMessage, mockContext);
     Mockito.verify(mockStorageService, Mockito.atLeastOnce()).dropStorePartition(mockStoreConfig , testPartition);
+    Mockito.verify(mockKafkaConsumerService, Mockito.atLeastOnce()).resetConsumptionOffset(mockStoreConfig, testPartition);
   }
 
   /**
@@ -144,5 +145,6 @@ public class VenicePartitionStateModelTest {
     testStateModel.onBecomeDroppedFromError(mockMessage, mockContext);
     Mockito.verify(mockKafkaConsumerService, Mockito.atLeastOnce()).stopConsumption(mockStoreConfig, testPartition);
     Mockito.verify(mockStorageService, Mockito.atLeastOnce()).dropStorePartition(mockStoreConfig, testPartition);
+    Mockito.verify(mockKafkaConsumerService, Mockito.atLeastOnce()).resetConsumptionOffset(mockStoreConfig, testPartition);
   }
 }

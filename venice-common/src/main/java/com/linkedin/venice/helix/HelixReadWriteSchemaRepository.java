@@ -209,7 +209,7 @@ public class HelixReadWriteSchemaRepository implements ReadWriteSchemaRepository
     }
     SchemaEntry newValueSchemaWithInvalidId = new SchemaEntry(SchemaData.INVALID_VALUE_SCHEMA_ID, schemaStr);
     Collection<SchemaEntry> valueSchemas = getValueSchemas(storeName);
-    int maxValueSchemaId = 0;
+    int maxValueSchemaId = SchemaData.INVALID_VALUE_SCHEMA_ID;
     for (SchemaEntry entry : valueSchemas) {
       if (entry.equals(newValueSchemaWithInvalidId)) {
         return entry;
@@ -222,17 +222,45 @@ public class HelixReadWriteSchemaRepository implements ReadWriteSchemaRepository
         maxValueSchemaId = entryId;
       }
     }
-    int newValueSchemaId = maxValueSchemaId + 1;
+    int newValueSchemaId = HelixReadOnlySchemaRepository.VALUE_SCHEMA_STARTING_ID;
+    if (SchemaData.INVALID_VALUE_SCHEMA_ID != maxValueSchemaId) {
+      newValueSchemaId = maxValueSchemaId + 1;
+    }
     SchemaEntry newValueSchema = new SchemaEntry(newValueSchemaId, newValueSchemaWithInvalidId.getSchema());
     String newValueSchemaPath = HelixReadOnlySchemaRepository.getValueSchemaPath(clusterName,
         storeName, Integer.toString(newValueSchemaId));
     boolean ret = dataAccessor.create(newValueSchemaPath, newValueSchema, AccessOption.PERSISTENT);
     if (!ret) {
-      throw new VeniceException("Failed to set value schema: " + schemaStr + " for store: " + storeName);
+      throw new VeniceException("Failed to create value schema: " + schemaStr + " for store: " + storeName);
     }
     logger.info("Add value schema: " + newValueSchema.toString() + " for store: " + storeName);
 
     return newValueSchema;
+  }
+
+  @Override
+  public SchemaEntry addValueSchema(String storeName, String schemaStr, int schemaId) {
+    if (!storeRepository.hasStore(storeName)) {
+      throw new VeniceNoStoreException(storeName);
+    }
+    SchemaEntry newValueSchemaEntry = new SchemaEntry(schemaId, schemaStr);
+    Collection<SchemaEntry> valueSchemas = getValueSchemas(storeName);
+    for (SchemaEntry entry : valueSchemas) {
+      // If the new schema is not compatible with existing schema, here still throw an exception
+      if (!entry.isCompatible(newValueSchemaEntry)) {
+        throw new SchemaIncompatibilityException(entry, newValueSchemaEntry);
+      }
+    }
+    String newValueSchemaPath = HelixReadOnlySchemaRepository.getValueSchemaPath(clusterName,
+        storeName, Integer.toString(schemaId));
+    boolean ret = dataAccessor.set(newValueSchemaPath, newValueSchemaEntry, AccessOption.PERSISTENT);
+    if (!ret) {
+      throw new VeniceException("Failed to set value schema: " + schemaStr + " for store: " + storeName);
+    }
+    logger.info("Setup value schema: " + newValueSchemaEntry.toString() + " with schema id: "
+        + schemaId + " for store: " + storeName);
+
+    return newValueSchemaEntry;
   }
 
   /**

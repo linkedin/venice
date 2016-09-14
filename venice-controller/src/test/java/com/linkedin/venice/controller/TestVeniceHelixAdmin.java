@@ -54,6 +54,8 @@ public class TestVeniceHelixAdmin {
   private VeniceHelixAdmin veniceAdmin;
   private String clusterName = "test-cluster";
   private VeniceControllerConfig config;
+  private String keySchema = "\"string\"";
+  private String valueSchema = "\"string\"";
 
   private String zkAddress;
   private String kafkaZkAddress;
@@ -156,7 +158,7 @@ public class TestVeniceHelixAdmin {
       throws Exception {
     try {
       String storeName = TestUtils.getUniqueString("test-store");
-      veniceAdmin.addStore(clusterName, storeName, "dev");
+      veniceAdmin.addStore(clusterName, storeName, "dev", keySchema, valueSchema);
       veniceAdmin.incrementVersion(clusterName, storeName, 1, 1);
       Assert.assertEquals(veniceAdmin.getOffLineJobStatus(clusterName, new Version(storeName, 1).kafkaTopicName()), ExecutionStatus.STARTED,
           "Can not get offline job status correctly.");
@@ -170,7 +172,7 @@ public class TestVeniceHelixAdmin {
     String storeName = TestUtils.getUniqueString("store");
     String owner = "owner";
     try {
-      veniceAdmin.addStore(clusterName, storeName, owner);
+      veniceAdmin.addStore(clusterName, storeName, owner, keySchema, valueSchema);
       veniceAdmin.incrementVersion(clusterName, storeName, 1, 1);
 
       int maxVersionBeforeAction = veniceAdmin
@@ -202,7 +204,7 @@ public class TestVeniceHelixAdmin {
       throws Exception {
     String storeName = TestUtils.getUniqueString("test");
     Version version = new Version(storeName, 1);
-    veniceAdmin.addStore(clusterName, storeName, "dev");
+    veniceAdmin.addStore(clusterName, storeName, "dev", keySchema, valueSchema);
     veniceAdmin.incrementVersion(clusterName, storeName, 1, 1);
 
     StatusMessageChannel channel = new HelixStatusMessageChannel(participants.get(nodeId), Integer.MAX_VALUE);
@@ -223,7 +225,7 @@ public class TestVeniceHelixAdmin {
     allAdmins.add(newMasterAdmin);
     waitForAMaster(allAdmins, clusterName, MASTER_CHANGE_TIMEOUT);
     try {
-      newMasterAdmin.addStore(clusterName, "failedStore", "dev");
+      newMasterAdmin.addStore(clusterName, "failedStore", "dev", keySchema, valueSchema);
       Assert.fail("Can not add store through a standby controller");
     } catch (VeniceException e) {
       //expected
@@ -262,10 +264,10 @@ public class TestVeniceHelixAdmin {
     waitForAMaster(allAdmins, clusterName, MASTER_CHANGE_TIMEOUT);
     // find the leader controller and test it could continue to add store as normal.
     if(veniceAdmin.isMasterController(clusterName)) {
-      veniceAdmin.addStore(clusterName, "failedStore", "dev");
+      veniceAdmin.addStore(clusterName, "failedStore", "dev", keySchema, valueSchema);
       newMasterAdmin.stop(clusterName);
     }else if(newMasterAdmin.isMasterController(clusterName)){
-      newMasterAdmin.addStore(clusterName, "failedStore", "dev");
+      newMasterAdmin.addStore(clusterName, "failedStore", "dev", keySchema, valueSchema);
       newMasterAdmin.stop(clusterName);
     }else {
       newMasterAdmin.stop(clusterName);
@@ -330,7 +332,7 @@ public class TestVeniceHelixAdmin {
     long partitionSize = config.getPartitionSize();
     int maxPartitionNumber = config.getMaxNumberOfPartition();
     int minPartitionNumber = config.getNumberOfPartition();
-    veniceAdmin.addStore(clusterName, "test", "dev");
+    veniceAdmin.addStore(clusterName, "test", "dev", keySchema, valueSchema);
 
     long storeSize = partitionSize*(minPartitionNumber+1);
     int numberOfPartition = veniceAdmin.calculateNumberOfPartitions(clusterName, "test", storeSize);
@@ -360,7 +362,7 @@ public class TestVeniceHelixAdmin {
     long partitionSize = config.getPartitionSize();
     int maxPartitionNumber = config.getMaxNumberOfPartition();
     int minPartitionNumber = config.getNumberOfPartition();
-    veniceAdmin.addStore(clusterName, "test", "dev");
+    veniceAdmin.addStore(clusterName, "test", "dev", keySchema, valueSchema);
     long storeSize = partitionSize * (minPartitionNumber) + 1;
     int numberOfParition = veniceAdmin.calculateNumberOfPartitions(clusterName, "test", storeSize);
     Version v = veniceAdmin.incrementVersion(clusterName, "test", numberOfParition, 1);
@@ -411,7 +413,7 @@ public class TestVeniceHelixAdmin {
   public void testDeleteOldVersions()
       throws InterruptedException {
     String storeName = "test";
-    veniceAdmin.addStore(clusterName,storeName,"owner");
+    veniceAdmin.addStore(clusterName,storeName,"owner", keySchema, valueSchema);
     Version version = null;
     for(int i=0;i<3;i++) {
       version = veniceAdmin.incrementVersion(clusterName, storeName, 1, 1);
@@ -438,7 +440,7 @@ public class TestVeniceHelixAdmin {
   @Test
   public void testCurrentVersion(){
     String storeName = "test";
-    veniceAdmin.addStore(clusterName,storeName,"owner");
+    veniceAdmin.addStore(clusterName,storeName,"owner", keySchema, valueSchema);
     Version version = veniceAdmin.incrementVersion(clusterName,storeName,1,1);
     Assert.assertEquals(veniceAdmin.getCurrentVersion(clusterName,storeName),0);
     veniceAdmin.setCurrentVersion(clusterName,storeName,version.getNumber());
@@ -462,7 +464,7 @@ public class TestVeniceHelixAdmin {
       //Expected
     }
 
-    veniceAdmin.addStore(clusterName,storeName,"owner");
+    veniceAdmin.addStore(clusterName,storeName,"owner", keySchema, valueSchema);
     veniceAdmin.addVersion(clusterName,storeName,1,1,1);
     Assert.assertEquals(veniceAdmin.versionsForStore(clusterName,storeName).size(), 1);
     try {
@@ -483,7 +485,7 @@ public class TestVeniceHelixAdmin {
     stopParticipants();
     startParticipant(true, nodeId);
     String storeName = "test";
-    veniceAdmin.addStore(clusterName,storeName,"owner");
+    veniceAdmin.addStore(clusterName,storeName,"owner", keySchema, valueSchema);
     veniceAdmin.addVersion(clusterName,storeName,1,1,1);
     TestUtils.waitForNonDeterministicCompletion(2000, TimeUnit.MILLISECONDS, () -> {
       PartitionAssignment partitionAssignment = veniceAdmin.getVeniceHelixResource(clusterName)
@@ -519,7 +521,7 @@ public class TestVeniceHelixAdmin {
     int replicas = 2;
     String storeName = "testMovable";
 
-    veniceAdmin.addStore(clusterName, storeName, "test");
+    veniceAdmin.addStore(clusterName, storeName, "test", keySchema, valueSchema);
     veniceAdmin.incrementVersion(clusterName, storeName, partitionCount, replicas);
     TestUtils.waitForNonDeterministicCompletion(2000, TimeUnit.MILLISECONDS, () -> {
       PartitionAssignment partitionAssignment = veniceAdmin.getVeniceHelixResource(clusterName)
@@ -600,7 +602,7 @@ public class TestVeniceHelixAdmin {
   @Test
   public void testPauseStore() {
     String storeName = "testPausedStore";
-    veniceAdmin.addStore(clusterName, storeName, "unittestOwner");
+    veniceAdmin.addStore(clusterName, storeName, "unittestOwner", keySchema, valueSchema);
     veniceAdmin.pauseStore(clusterName, storeName);
     Store store = veniceAdmin.getAllStores(clusterName).get(0);
 

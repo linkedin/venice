@@ -46,6 +46,8 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository {
   public static final String VALUE_SCHEMA_PATH = "value-schema";
   // Key schema id, can only be '1' since Venice only maintains one single key schema per store.
   public static final String KEY_SCHEMA_ID = "1";
+  // Value schema starting id
+  public static final int VALUE_SCHEMA_STARTING_ID = 1;
 
   // Local cache between store name and store schema
   private Map<String, SchemaData> schemaMap = new ConcurrentHashMap<>();

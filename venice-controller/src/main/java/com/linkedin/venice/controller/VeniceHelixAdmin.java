@@ -161,21 +161,28 @@ public class VeniceHelixAdmin implements Admin {
     }
 
     @Override
-    public synchronized void addStore(String clusterName, String storeName, String owner) {
-        checkPreConditionForAddStore(clusterName, storeName, owner);
+    public synchronized void addStore(String clusterName, String storeName, String owner, String keySchema, String valueSchema) {
+        checkPreConditionForAddStore(clusterName, storeName, owner, keySchema, valueSchema);
         VeniceControllerClusterConfig config = getVeniceHelixResource(clusterName).getConfig();
         Store store = new Store(storeName, owner, System.currentTimeMillis(), config.getPersistenceType(),
             config.getRoutingStrategy(), config.getReadStrategy(), config.getOfflinePushStrategy());
-        HelixReadWriteStoreRepository repository = getVeniceHelixResource(clusterName).getMetadataRepository();
-        repository.addStore(store);
+        HelixReadWriteStoreRepository storeRepo = getVeniceHelixResource(clusterName).getMetadataRepository();
+        storeRepo.addStore(store);
+        // Add schema
+        HelixReadWriteSchemaRepository schemaRepo = getVeniceHelixResource(clusterName).getSchemaRepository();
+        schemaRepo.initKeySchema(storeName, keySchema);
+        schemaRepo.addValueSchema(storeName, valueSchema, HelixReadOnlySchemaRepository.VALUE_SCHEMA_STARTING_ID);
     }
 
-    protected void checkPreConditionForAddStore(String clusterName, String storeName, String owner) {
+    protected void checkPreConditionForAddStore(String clusterName, String storeName, String owner, String keySchema, String valueSchema) {
         checkControllerMastership(clusterName);
         HelixReadWriteStoreRepository repository = getVeniceHelixResource(clusterName).getMetadataRepository();
         if (repository.getStore(storeName) != null) {
             throwStoreAlreadyExists(clusterName, storeName);
         }
+        // Check whether the schema is valid or not
+        new SchemaEntry(SchemaData.INVALID_VALUE_SCHEMA_ID, keySchema);
+        new SchemaEntry(SchemaData.INVALID_VALUE_SCHEMA_ID, valueSchema);
     }
 
     /**
@@ -409,32 +416,6 @@ public class VeniceHelixAdmin implements Admin {
     }
 
     @Override
-    public SchemaEntry initKeySchema(String clusterName, String storeName, String keySchemaStr) {
-        checkPreConditionForInitKeySchema(clusterName, storeName, keySchemaStr);
-        HelixReadWriteSchemaRepository schemaRepo = getVeniceHelixResource(clusterName).getSchemaRepository();
-        return schemaRepo.initKeySchema(storeName, keySchemaStr);
-    }
-
-    protected void checkPreConditionForInitKeySchema(String clusterName, String storeName, String keySchemaStr) {
-        checkControllerMastership(clusterName);
-        HelixReadWriteStoreRepository repository = getVeniceHelixResource(clusterName).getMetadataRepository();
-        if (!repository.hasStore(storeName)) {
-            throw new VeniceNoStoreException(storeName);
-        }
-        // This will check whether the Avro Schema is valid or not.
-        SchemaEntry newKeySchemaEntry = new SchemaEntry(Integer.parseInt(HelixReadOnlySchemaRepository.KEY_SCHEMA_ID), keySchemaStr);
-        SchemaEntry existingKeySchema = getKeySchema(clusterName, storeName);
-        if (null != existingKeySchema) {
-            // If the key schema str is same as the existing one, just return ok to make it idempotent
-            if (existingKeySchema.equals(newKeySchemaEntry)) {
-                return;
-            } else {
-                throw StoreKeySchemaExistException.newExceptionForStore(storeName);
-            }
-        }
-    }
-
-    @Override
     public Collection<SchemaEntry> getValueSchemas(String clusterName, String storeName) {
         checkControllerMastership(clusterName);
         HelixReadWriteSchemaRepository schemaRepo = getVeniceHelixResource(clusterName).getSchemaRepository();
@@ -462,7 +443,22 @@ public class VeniceHelixAdmin implements Admin {
         return schemaRepo.addValueSchema(storeName, valueSchemaStr);
     }
 
-    protected void checkPreConditionForAddValueSchema(String clusterName, String storeName, String valueSchemaStr) {
+    @Override
+    public SchemaEntry addValueSchema(String clusterName, String storeName, String valueSchemaStr, int schemaId) {
+        checkPreConditionForAddValueSchema(clusterName, storeName, valueSchemaStr);
+        HelixReadWriteSchemaRepository schemaRepo = getVeniceHelixResource(clusterName).getSchemaRepository();
+        return schemaRepo.addValueSchema(storeName, valueSchemaStr, schemaId);
+    }
+
+  /**
+   * This function will check whether the provided schema is good to add to the provided store.
+   * If yes, it will return the value schema id to be used.
+   * @param clusterName
+   * @param storeName
+   * @param valueSchemaStr
+   * @return
+   */
+    protected int checkPreConditionForAddValueSchema(String clusterName, String storeName, String valueSchemaStr) {
         checkControllerMastership(clusterName);
         HelixReadWriteStoreRepository repository = getVeniceHelixResource(clusterName).getMetadataRepository();
         if (!repository.hasStore(storeName)) {
@@ -471,14 +467,23 @@ public class VeniceHelixAdmin implements Admin {
         // Check compatibility
         SchemaEntry newValueSchemaWithInvalidId = new SchemaEntry(SchemaData.INVALID_VALUE_SCHEMA_ID, valueSchemaStr);
         Collection<SchemaEntry> valueSchemas = getValueSchemas(clusterName, storeName);
+        int maxValueSchemaId = SchemaData.INVALID_VALUE_SCHEMA_ID;
         for (SchemaEntry entry : valueSchemas) {
             // Idempotent
             if (entry.equals(newValueSchemaWithInvalidId)) {
-                return;
+                return entry.getId();
             }
             if (!entry.isCompatible(newValueSchemaWithInvalidId)) {
                 throw new SchemaIncompatibilityException(entry, newValueSchemaWithInvalidId);
             }
+            if (entry.getId() > maxValueSchemaId) {
+                maxValueSchemaId = entry.getId();
+            }
+        }
+        if (SchemaData.INVALID_VALUE_SCHEMA_ID == maxValueSchemaId) {
+            return HelixReadOnlySchemaRepository.VALUE_SCHEMA_STARTING_ID;
+        } else {
+            return maxValueSchemaId + 1;
         }
     }
 

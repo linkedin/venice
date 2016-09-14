@@ -12,7 +12,7 @@ public enum ControllerRoute {
   CREATE("/create", Arrays.asList(NAME, STORE_SIZE, OWNER, KEY_SCHEMA, VALUE_SCHEMA)), // Only for tests
 
   STORE("/store", Arrays.asList(NAME)), // get all information about that store
-  NEWSTORE("/new_store", Arrays.asList(NAME, OWNER)),
+  NEWSTORE("/new_store", Arrays.asList(NAME, OWNER, KEY_SCHEMA, VALUE_SCHEMA)),
   SETVERSION("/set_version", Arrays.asList(NAME, VERSION)),
   RESERVE_VERSION("/reserve_version", Arrays.asList(NAME, VERSION)),
   NEXTVERSION("/next_version", Arrays.asList(NAME)),
@@ -27,7 +27,6 @@ public enum ControllerRoute {
   NODE_REPLICAS("/storage_node_replicas", Arrays.asList(STORAGE_NODE_ID)),
   NODE_REMOVABLE("/node_removable", Arrays.asList(STORAGE_NODE_ID)),
 
-  INIT_KEY_SCHEMA("/init_key_schema", Arrays.asList(NAME, KEY_SCHEMA)),
   GET_KEY_SCHEMA("/get_key_schema", Arrays.asList(NAME)),
   ADD_VALUE_SCHEMA("/add_value_schema", Arrays.asList(NAME, VALUE_SCHEMA)),
   GET_ALL_VALUE_SCHEMA("/get_all_value_schema", Arrays.asList(NAME)),

@@ -3,7 +3,6 @@ package com.linkedin.venice.controller;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.controller.kafka.AdminTopicUtils;
 import com.linkedin.venice.controller.kafka.protocol.admin.AdminOperation;
-import com.linkedin.venice.controller.kafka.protocol.admin.KeySchemaCreation;
 import com.linkedin.venice.controller.kafka.protocol.admin.SchemaMeta;
 import com.linkedin.venice.controller.kafka.protocol.admin.StoreCreation;
 import com.linkedin.venice.controller.kafka.protocol.admin.ValueSchemaCreation;
@@ -26,7 +25,6 @@ import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.ApacheKafkaProducer;
 import com.linkedin.venice.writer.VeniceWriter;
-import org.apache.kafka.clients.producer.Producer;
 import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.clients.producer.RecordMetadata;
 import org.apache.log4j.Logger;
@@ -185,10 +183,10 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   @Override
-  public void addStore(String clusterName, String storeName, String owner) {
+  public void addStore(String clusterName, String storeName, String owner, String keySchema, String valueSchema) {
     acquireLock(clusterName);
     try {
-      veniceHelixAdmin.checkPreConditionForAddStore(clusterName, storeName, owner);
+      veniceHelixAdmin.checkPreConditionForAddStore(clusterName, storeName, owner, keySchema, valueSchema);
       logger.info("Adding store: " + storeName + " to cluster: " + clusterName);
 
       // Write store creation message to Kafka
@@ -196,6 +194,12 @@ public class VeniceParentHelixAdmin implements Admin {
       storeCreation.clusterName = clusterName;
       storeCreation.storeName = storeName;
       storeCreation.owner = owner;
+      storeCreation.keySchema = new SchemaMeta();
+      storeCreation.keySchema.schemaType = SchemaType.AVRO_1_4.ordinal();
+      storeCreation.keySchema.definition = keySchema;
+      storeCreation.valueSchema = new SchemaMeta();
+      storeCreation.valueSchema.schemaType = SchemaType.AVRO_1_4.ordinal();
+      storeCreation.valueSchema.definition = valueSchema;
 
       AdminOperation message = new AdminOperation();
       message.operationType = AdminMessageType.STORE_CREATION.ordinal();
@@ -288,34 +292,6 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   @Override
-  public SchemaEntry initKeySchema(String clusterName, String storeName, String keySchemaStr) {
-    acquireLock(clusterName);
-    try {
-      veniceHelixAdmin.checkPreConditionForInitKeySchema(clusterName, storeName, keySchemaStr);
-      logger.info("Adding key schema: " + keySchemaStr + " to store: " + storeName + " in cluster: " + clusterName);
-
-      KeySchemaCreation keySchemaCreation = (KeySchemaCreation) AdminMessageType.KEY_SCHEMA_CREATION.getNewInstance();
-      keySchemaCreation.clusterName = clusterName;
-      keySchemaCreation.storeName = storeName;
-      SchemaMeta schemaMeta = new SchemaMeta();
-      schemaMeta.definition = keySchemaStr;
-      // TODO: might need to control schema type through Nuage
-      schemaMeta.schemaType = SchemaType.AVRO_1_4.ordinal();
-      keySchemaCreation.schema = schemaMeta;
-
-      AdminOperation message = new AdminOperation();
-      message.operationType = AdminMessageType.KEY_SCHEMA_CREATION.ordinal();
-      message.payloadUnion = keySchemaCreation;
-
-      sendAdminMessageAndWaitForConsumed(clusterName, message);
-
-      return getKeySchema(clusterName, storeName);
-    } finally {
-      releaseLock();
-    }
-  }
-
-  @Override
   public Collection<SchemaEntry> getValueSchemas(String clusterName, String storeName) {
     return veniceHelixAdmin.getValueSchemas(clusterName, storeName);
   }
@@ -334,7 +310,7 @@ public class VeniceParentHelixAdmin implements Admin {
   public SchemaEntry addValueSchema(String clusterName, String storeName, String valueSchemaStr) {
     acquireLock(clusterName);
     try {
-      veniceHelixAdmin.checkPreConditionForAddValueSchema(clusterName, storeName, valueSchemaStr);
+      int newValueSchemaId = veniceHelixAdmin.checkPreConditionForAddValueSchema(clusterName, storeName, valueSchemaStr);
       logger.info("Adding value schema: " + valueSchemaStr + " to store: " + storeName + " in cluster: " + clusterName);
 
       ValueSchemaCreation valueSchemaCreation = (ValueSchemaCreation) AdminMessageType.VALUE_SCHEMA_CREATION.getNewInstance();
@@ -344,6 +320,7 @@ public class VeniceParentHelixAdmin implements Admin {
       schemaMeta.definition = valueSchemaStr;
       schemaMeta.schemaType = SchemaType.AVRO_1_4.ordinal();
       valueSchemaCreation.schema = schemaMeta;
+      valueSchemaCreation.schemaId = newValueSchemaId;
 
       AdminOperation message = new AdminOperation();
       message.operationType = AdminMessageType.VALUE_SCHEMA_CREATION.ordinal();
@@ -351,15 +328,20 @@ public class VeniceParentHelixAdmin implements Admin {
 
       sendAdminMessageAndWaitForConsumed(clusterName, message);
 
-      int valueSchemaId = getValueSchemaId(clusterName, storeName, valueSchemaStr);
-      if (valueSchemaId == SchemaData.INVALID_VALUE_SCHEMA_ID) {
-        throw new VeniceException("Something bad happens, could not read the latest schema");
+      int actualValueSchemaId = getValueSchemaId(clusterName, storeName, valueSchemaStr);
+      if (actualValueSchemaId != newValueSchemaId) {
+        throw new VeniceException("Something bad happens, the expected new value schema id is: " + newValueSchemaId + ", but got: " + actualValueSchemaId);
       }
 
-      return new SchemaEntry(valueSchemaId, valueSchemaStr);
+      return new SchemaEntry(actualValueSchemaId, valueSchemaStr);
     } finally {
       releaseLock();
     }
+  }
+
+  @Override
+  public SchemaEntry addValueSchema(String clusterName, String storeName, String valueSchemaStr, int schemaId) {
+    throw new VeniceException("addValueSchema by specifying schema id is not supported!");
   }
 
   @Override
