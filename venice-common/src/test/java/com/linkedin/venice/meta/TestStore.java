@@ -124,10 +124,10 @@ public class TestStore {
     store.addVersion(version2);
     Assert.assertEquals(store.retrieveVersionsToDelete(1).size(), 0, "all unfinished versions returns empty array ");
 
-    version1.setStatus(VersionStatus.ACTIVE);
+    version1.setStatus(VersionStatus.ONLINE);
     Assert.assertEquals(store.retrieveVersionsToDelete(1).size(), 0, "Only one active version there, nothing to delete");
 
-    version2.setStatus(VersionStatus.ACTIVE);
+    version2.setStatus(VersionStatus.ONLINE);
     assertVersionsEquals(store, 1, Arrays.asList(version1), "two version active, one should be deleted");
     Assert.assertEquals(store.retrieveVersionsToDelete(2).size(), 0, "Only two active versions, nothing to delete");
 
@@ -149,7 +149,7 @@ public class TestStore {
 
     Version version5 = new Version(store.getName(), 5);
     store.addVersion(version5);
-    version5.setStatus(VersionStatus.ACTIVE);
+    version5.setStatus(VersionStatus.ONLINE);
 
     assertVersionsEquals(store, 2, Arrays.asList(version1, version3, version4), "delete all but 2 active versions");
 
@@ -188,7 +188,7 @@ public class TestStore {
     }
 
     try{
-      store.updateVersionStatus(1, VersionStatus.ACTIVE);
+      store.updateVersionStatus(1, VersionStatus.ONLINE);
       Assert.fail("Store is paused, can not activated a new version");
     }catch (StorePausedException e){
     }
@@ -203,8 +203,8 @@ public class TestStore {
     Assert.assertEquals(store.peekNextVersion().getNumber(), 4);
     store.setCurrentVersion(1);
     Assert.assertEquals(store.getCurrentVersion(), 1);
-    store.updateVersionStatus(2, VersionStatus.ACTIVE);
-    Assert.assertEquals(store.getVersions().get(1).getStatus(), VersionStatus.ACTIVE);
+    store.updateVersionStatus(2, VersionStatus.ONLINE);
+    Assert.assertEquals(store.getVersions().get(1).getStatus(), VersionStatus.ONLINE);
   }
 
   @Test
@@ -216,5 +216,60 @@ public class TestStore {
     Assert.assertTrue(store.isPaused());
     Store cloned = store.cloneStore();
     Assert.assertTrue(cloned.isPaused(), "clone of paused store must be paused");
+  }
+
+  @Test
+  public void testResumeStore() {
+    String storeName = TestUtils.getUniqueString("store");
+    Store store = TestUtils.createTestStore(storeName, "owner", System.currentTimeMillis());
+    Version pushedVersion = new Version(storeName, 1);
+    //Add a pushed version
+    pushedVersion.setStatus(VersionStatus.PUSHED);
+    store.addVersion(new Version(storeName, 2));
+    store.setPaused(true);
+    // Update status to PUSHED after store is paused.
+    store.updateVersionStatus(2, VersionStatus.PUSHED);
+    //resume store.
+    store.setPaused(false);
+
+    for (Version version : store.getVersions()) {
+      Assert.assertEquals(version.getStatus(), VersionStatus.ONLINE,
+          "After resuming a store, all of PUSHED version should be activated.");
+    }
+  }
+
+  @Test
+  public void testUseTheDeletedVersionNumber() {
+    String storeName = TestUtils.getUniqueString("store");
+    Store store = TestUtils.createTestStore(storeName, "owner", System.currentTimeMillis());
+    store.increaseVersion();
+    store.increaseVersion();
+    //largest version number is 2
+    store.deleteVersion(2);
+    Version version = store.increaseVersion();
+    Assert.assertEquals(version.getNumber(), 3);
+    Assert.assertEquals(store.peekNextVersion().getNumber(), 4);
+    try {
+      store.reserveVersionNumber(3);
+      Assert.fail("The largest used version is 4, can not reserve a smaller version 3");
+    } catch (VeniceException e) {
+      //expected.
+    }
+  }
+
+  @Test
+  public void testAddVersion() {
+    String storeName = TestUtils.getUniqueString("store");
+    Store store = TestUtils.createTestStore(storeName, "owner", System.currentTimeMillis());
+    store.addVersion(new Version(storeName, 5));
+    Assert.assertEquals(store.getVersions().size(), 1);
+    //largest used version is 5
+    Assert.assertEquals(store.peekNextVersion().getNumber(), 6);
+    store.addVersion(new Version(storeName, 2));
+    Assert.assertEquals(store.getVersions().size(), 2);
+    //largest used vesion is still 5
+    Assert.assertEquals(store.peekNextVersion().getNumber(), 6);
+    Version version = store.increaseVersion();
+    Assert.assertEquals(version.getNumber(), 6);
   }
 }

@@ -17,9 +17,7 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.List;
-import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -117,6 +115,9 @@ public class VeniceJobManager implements StatusMessageHandler<StoreStatusMessage
         jobRepository.stopJobWithError(job.getJobId(), job.getKafkaTopic());
       } catch (Exception e1) {
         logger.error("Can not put job:" + job.getJobId() + " for topic:" + job.getKafkaTopic() + " to error status.", e1);
+        // Because we will clean up related resource after a job becoming ERROR, so here we need to clean up them manually once
+        // we can not set the job status to ERROR.
+        cleanUpFailedJob(job);
       }
       throw new VeniceException(errorMsg, e);
     }
@@ -195,8 +196,9 @@ public class VeniceJobManager implements StatusMessageHandler<StoreStatusMessage
   private void updateStoreVersionStatus(Job job, Store store, VersionStatus status) {
     int versionNumber = Version.parseVersionFromKafkaTopicName(job.getKafkaTopic());
     store.updateVersionStatus(versionNumber, status);
+    logger.info("Updated store"+store.getName()+" version:"+versionNumber+" to status:"+status.toString());
 
-    if (status == VersionStatus.ACTIVE) {
+    if (status == VersionStatus.ONLINE) {
       if (versionNumber > store.getCurrentVersion()) {
         store.setCurrentVersion(versionNumber);
       } else {
@@ -208,7 +210,7 @@ public class VeniceJobManager implements StatusMessageHandler<StoreStatusMessage
 
   // TODO : instead of running when the store version completes, it should run from
   // a timer job/service which runs every few hours.
-  private void deleteOldStoreVersions(Store store) {
+  private void cleanUpStore(Store store) {
     if (helixAdmin == null) {
       return;
     }
@@ -217,6 +219,8 @@ public class VeniceJobManager implements StatusMessageHandler<StoreStatusMessage
     List<Version> versionsToDelete = store.retrieveVersionsToDelete(NUM_VERSIONS_TO_PRESERVE);
     for (Version version : versionsToDelete) {
       deleteOneStoreVersion(store, version.getNumber());
+      logger.info("Deleted store:" + store.getName() + " version:" + version.getNumber());
+      helixAdmin.getTopicManager().deleteTopic(version.kafkaTopicName());
     }
   }
 
@@ -226,70 +230,56 @@ public class VeniceJobManager implements StatusMessageHandler<StoreStatusMessage
    * @param versionNumber
    */
   private void deleteOneStoreVersion(Store store, int versionNumber){
-    helixAdmin.deleteOldStoreVersion(clusterName, new Version(store.getName(), versionNumber).kafkaTopicName());
+    helixAdmin.deleteHelixResource(clusterName, new Version(store.getName(), versionNumber).kafkaTopicName());
     store.deleteVersion(versionNumber);
     metadataRepository.updateStore(store);
   }
 
-  /***
-   * Delete all kafka topics for this store that correspond to a version older than
-   * still exists for the store.
-   */
-  private void deleteOldKafkaTopics(Store store){
+  private void cleanUpFailedJob(Job job) {
+    logger.info("Clean up resources related to job:" + job.getJobId() + " topic:" + job.getKafkaTopic());
+    Store store = metadataRepository.getStore(Version.parseStoreFromKafkaTopicName(job.getKafkaTopic()));
+    updateStoreVersionStatus(job, store, VersionStatus.ERROR);
+    metadataRepository.updateStore(store);
     if (helixAdmin == null) {
-      // Some old tests does not set helixAdmin memeber. So add a condition here to avoid fail tests.
       return;
     }
-    Optional<Integer> minAvailableVersion = store.getVersions().stream() /* all available versions */
-        .map(version -> version.getNumber()) /* version numbers */
-        .min(Comparator.<Integer>naturalOrder()); /* min available */
-    if (minAvailableVersion.isPresent()){
-      helixAdmin.getTopicManager()
-          .deleteTopicsForStoreOlderThanVersion(store.getName(), minAvailableVersion.get());
-    }
+    int versionNumber = Version.parseVersionFromKafkaTopicName(job.getKafkaTopic());
+    deleteOneStoreVersion(store, versionNumber);
+    logger.info("Deleted store:" + store.getName() + " version:" + versionNumber);
+    helixAdmin.getTopicManager().deleteTopic(job.getKafkaTopic());
+    logger.info("Delete topic:" + job.getKafkaTopic());
   }
 
   private void handleJobComplete(Job job) {
     routingDataRepository.unSubscribeRoutingDataChange(job.getKafkaTopic(), this);
     jobRepository.unsubscribeJobStatusChange(job.getKafkaTopic(), this);
-    //Do the swap. Change version to active so that router could get the notification and sending the message to this version.
+    //Do the swap. Change version to online so that router could get the notification and sending the message to this version.
     Store store = metadataRepository.getStore(Version.parseStoreFromKafkaTopicName(job.getKafkaTopic()));
     VersionStatus newStatus;
     if (store.isPaused()) {
       newStatus = VersionStatus.PUSHED;
     } else {
-      newStatus = VersionStatus.ACTIVE;
+      newStatus = VersionStatus.ONLINE;
     }
     updateStoreVersionStatus(job, store, newStatus);
-    for (int retry = 2; retry >= 0; retry--) {
-      try {
-        metadataRepository.updateStore(store);
-        logger.info("Update version:" + job.getKafkaTopic() + " for store:" + store.getName() + " to status:"
-            + newStatus);
-        break;
-      } catch (Exception e) {
-        int versionNumber = Version.parseVersionFromKafkaTopicName(job.getKafkaTopic());
-        logger.error("Can not activate version: " + versionNumber + " for store: " + store.getName());
-        // TODO: Reconcile inconsistency between version and job in case of fatal failure
-      }
+    try {
+      // We havealready implemented retry in updateStore.
+      metadataRepository.updateStore(store);
+      logger.info(
+          "Update version:" + job.getKafkaTopic() + " for store:" + store.getName() + " to status:" + newStatus);
+    } catch (Exception e) {
+      int versionNumber = Version.parseVersionFromKafkaTopicName(job.getKafkaTopic());
+      logger.error("Can not set version: " + versionNumber + " to online for store: " + store.getName());
+      // TODO: Reconcile inconsistency between version and job in case of fatal failure
     }
-    deleteOldStoreVersions(store);
-    deleteOldKafkaTopics(store);
+    cleanUpStore(store);
   }
 
   private void handleJobError(Job job) {
     //TODO do the roll back here.
     routingDataRepository.unSubscribeRoutingDataChange(job.getKafkaTopic(), this);
     jobRepository.unsubscribeJobStatusChange(job.getKafkaTopic(), this);
-    Store store = metadataRepository.getStore(Version.parseStoreFromKafkaTopicName(job.getKafkaTopic()));
-    updateStoreVersionStatus(job, store, VersionStatus.ERROR);
-    if (helixAdmin == null) {
-      // TODO need to remove Some old tests does not set helixAdmin memeber. So add a condition here to avoid fail tests.
-      return;
-    }
-    deleteOneStoreVersion(store, Version.parseVersionFromKafkaTopicName(job.getKafkaTopic()));
-    helixAdmin.getTopicManager()
-        .deleteTopic(job.getKafkaTopic());
+    cleanUpFailedJob(job);
   }
 
   /**

@@ -9,6 +9,7 @@ import org.apache.helix.NotificationContext;
 import org.apache.helix.model.Message;
 import org.apache.helix.participant.statemachine.StateModel;
 import org.apache.helix.participant.statemachine.StateModelInfo;
+import org.apache.helix.participant.statemachine.StateTransitionError;
 import org.apache.helix.participant.statemachine.Transition;
 import org.apache.log4j.Logger;
 
@@ -100,6 +101,16 @@ public class VenicePartitionStateModel extends StateModel {
         logEntry(HelixState.OFFLINE, HelixState.DROPPED, message, context);
         removePartitionFromStore();
         logCompletion(HelixState.OFFLINE, HelixState.DROPPED, message, context);
+    }
+
+    /**
+     * Stop the consumption once a replica become ERROR.
+     */
+    @Override
+    public void rollbackOnError(Message message, NotificationContext context, StateTransitionError error) {
+        logger.info(storePartitionDescription
+            + " met an error during state transition. Stop the running consumption. Caused by:", error.getException());
+        kafkaConsumerService.stopConsumption(storeConfig, partition);
     }
 
     /**

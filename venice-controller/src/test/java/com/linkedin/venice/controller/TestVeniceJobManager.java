@@ -1,8 +1,6 @@
 package com.linkedin.venice.controller;
 
 import com.linkedin.venice.helix.HelixStatusMessageChannel;
-import com.linkedin.venice.meta.RoutingDataRepository;
-import com.linkedin.venice.status.StatusMessage;
 import com.linkedin.venice.status.StoreStatusMessage;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixAdapterSerializer;
@@ -19,7 +17,6 @@ import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
-import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import java.io.IOException;
@@ -43,7 +40,6 @@ import org.apache.helix.manager.zk.ZkClient;
 import org.apache.helix.model.HelixConfigScope;
 import org.apache.helix.model.IdealState;
 import org.apache.helix.model.builder.HelixConfigScopeBuilder;
-import org.apache.helix.tools.IntegrationTestUtil;
 import org.testng.Assert;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
@@ -161,7 +157,7 @@ public class TestVeniceJobManager {
     Assert.assertEquals(updatedStore.getCurrentVersion(), version.getNumber(),
         "Push has been done, store's current should be updated.");
 
-    Assert.assertEquals(updatedStore.getVersions().get(0).getStatus(), VersionStatus.ACTIVE,
+    Assert.assertEquals(updatedStore.getVersions().get(0).getStatus(), VersionStatus.ONLINE,
         "Push has been done. Version should be activated.");
     jobManager.archiveJobs(version.kafkaTopicName());
     try {
@@ -191,7 +187,7 @@ public class TestVeniceJobManager {
     Store updatedStore = metadataRepository.getStore(storeName);
     Assert.assertEquals(updatedStore.getCurrentVersion(), 0,
         "Push was failed. No current version is active for this store.");
-    Assert.assertEquals(updatedStore.getVersions().get(0).getStatus(), VersionStatus.STARTED,
+    Assert.assertEquals(updatedStore.getVersions().get(0).getStatus(), VersionStatus.ERROR,
         "Push was failed. Version should not be activated.");
     jobManager.archiveJobs(version.kafkaTopicName());
     try {
@@ -422,11 +418,14 @@ public class TestVeniceJobManager {
   }
 
   @Test(expectedExceptions = VeniceException.class)
-  public void testHandleRoutingDataChangedJobNotStart(){
+  public void testHandleRoutingDataChangedJobNotStart() {
     metadataRepository.addStore(store);
     // Starting a job with 1 partition and 2 replicas, as we only started one participant in setup method, so the job
     // can not be started due to not enough executor.
     jobManager.startOfflineJob(version.kafkaTopicName(), 1, 2);
+
+    Store updatedStore = metadataRepository.getStore(storeName);
+    Assert.assertEquals(updatedStore.getVersions().get(0).getStatus(), VersionStatus.ERROR);
   }
 
   @Test

@@ -42,7 +42,7 @@ public interface Admin {
 
     void startOfflinePush(String clusterName, String kafkaTopic, int numberOfPartition, int replicaFactor);
 
-    void deleteOldStoreVersion(String clusterName, String kafkaTopic);
+    void deleteHelixResource(String clusterName, String kafkaTopic);
 
     SchemaEntry getKeySchema(String clusterName, String storeName);
 

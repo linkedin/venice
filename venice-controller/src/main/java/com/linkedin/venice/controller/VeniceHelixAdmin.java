@@ -402,7 +402,7 @@ public class VeniceHelixAdmin implements Admin {
     }
 
     @Override
-    public void deleteOldStoreVersion(String clusterName, String kafkaTopic) {
+    public void deleteHelixResource(String clusterName, String kafkaTopic) {
         checkControllerMastership(clusterName);
         admin.dropResource(clusterName, kafkaTopic);
         logger.info("Successfully dropped the resource " + kafkaTopic + " for cluster " + clusterName);

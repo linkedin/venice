@@ -29,7 +29,7 @@ public class ActiveVersions {
         List<Version> versionsList = admin.versionsForStore(responseObject.getCluster(), responseObject.getName());
         List<Integer> activeVersions = new ArrayList<>();
         for (Version version : versionsList){
-          if (version.getStatus().equals(VersionStatus.ACTIVE)){
+          if (version.getStatus().equals(VersionStatus.ONLINE)){
             activeVersions.add(version.getNumber());
           }
         }
