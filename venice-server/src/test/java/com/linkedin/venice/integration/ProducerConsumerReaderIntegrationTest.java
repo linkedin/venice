@@ -1,6 +1,7 @@
 package com.linkedin.venice.integration;
 
 import com.linkedin.venice.client.exceptions.VeniceServerException;
+import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
@@ -19,6 +20,7 @@ import com.linkedin.venice.utils.VeniceProperties;
 
 import java.util.HashMap;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import org.apache.log4j.Logger;
 import org.testng.Assert;
@@ -63,7 +65,6 @@ public class ProducerConsumerReaderIntegrationTest {
     storeName = Version.parseStoreFromKafkaTopicName(storeVersionName);
     valueSchemaId = HelixReadOnlySchemaRepository.VALUE_SCHEMA_STARTING_ID;
     String routerUrl = "http://" + veniceCluster.getVeniceRouter().getAddress();
-    veniceCluster.getVeniceController().setActiveVersion(routerUrl, veniceCluster.getClusterName(), storeVersionName);
 
     VeniceProperties clientProps =
             new PropertyBuilder().put(KAFKA_BOOTSTRAP_SERVERS, veniceCluster.getKafka().getAddress())
@@ -144,6 +145,9 @@ public class ProducerConsumerReaderIntegrationTest {
 
   @Test(enabled = true) // Sometimes breaks in Gradle... Arrrgh...
   public void testEndToEndProductionAndReading() throws Exception {
+
+    final int pushVersion = Version.parseVersionFromKafkaTopicName(storeVersionName);
+
     String key = TestUtils.getUniqueString("key");
     String value = TestUtils.getUniqueString("value");
 
@@ -157,29 +161,23 @@ public class ProducerConsumerReaderIntegrationTest {
       }
       // Expected result. Because right now status of node is "BOOTSTRAP" so can not find any online instance to read.
     }
+
     veniceWriter.broadcastStartOfPush(new HashMap<>());
     // Insert test record and wait synchronously for it to succeed
     veniceWriter.put(key, value, valueSchemaId).get();
     // Write end of push message to make node become ONLINE from BOOTSTRAP
     veniceWriter.broadcastEndOfPush(new HashMap<String,String>());
-    // Read from the storage node
-    // This may fail non-deterministically, if the storage node is not done consuming yet, hence the retries.
 
-    Assert.assertTrue(retry((attempt, timeElapsed) -> {
-      Object newValue = storeClient.get(key).get();
-      if (newValue == null) {
-        handleRetry(attempt, timeElapsed, "null value", (message) -> Assert.fail(message));
-        return false;
-      } else {
-        Assert.assertEquals(newValue.toString(), value, "The key '" + key + "' does not contain the expected value!");
-        LOGGER.info("Successfully completed the single record end-to-end test (:");
-        return true;
-      }
-    }), "Not able to retrieve key '" + key + "' which was written into Venice!");
+    // Wait for storage node to finish consuming, and new version to be activated
+    String controllerUrl = veniceCluster.getVeniceController().getControllerUrl();
+    TestUtils.waitForNonDeterministicCompletion(30000, TimeUnit.SECONDS, () -> {
+      int currentVersion = ControllerClient.getStore(controllerUrl, veniceCluster.getClusterName(), storeName).getStore().getCurrentVersion();
+      return currentVersion == pushVersion;
+    });
 
-    // Read from the router
-    Object storeClientValue = storeClient.get(key).get();
-    Assert.assertEquals(storeClientValue.toString(), value);
+    // Read
+    Object newValue = storeClient.get(key).get();
+    Assert.assertEquals(newValue.toString(), value, "The key '" + key + "' does not contain the expected value!");
   }
 
   // TODO: Add tests with more complex scenarios (multiple records, record overwrites, multiple partitions, multiple storage nodes, etc.)

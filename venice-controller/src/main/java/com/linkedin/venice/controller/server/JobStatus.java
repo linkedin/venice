@@ -6,6 +6,7 @@ import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.Utils;
+import java.util.Map;
 import spark.Route;
 
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.CLUSTER;
@@ -13,23 +14,49 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.NAME;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.VERSION;
 import static com.linkedin.venice.controllerapi.ControllerRoute.JOB;
 
-
-/**
- * Created by mwise on 5/18/16.
- */
 public class JobStatus {
-  public static Route getRoute(Admin admin){
+  public static Route getRoute(Admin admin) {
     return (request, response) -> {
       JobStatusQueryResponse responseObject = new JobStatusQueryResponse();
       try {
         AdminSparkServer.validateParams(request, JOB.getParams(), admin);
-        responseObject.setCluster(request.queryParams(CLUSTER));
-        responseObject.setName(request.queryParams(NAME));
-        responseObject.setVersion(Utils.parseIntFromString(request.queryParams(VERSION), VERSION));
-        Version version = new Version(responseObject.getName(), responseObject.getVersion());
-        //TODO Support getting streaming job's status in the future.
-        String jobStatus = admin.getOffLineJobStatus(responseObject.getCluster(), version.kafkaTopicName()).toString();
+        String cluster = request.queryParams(CLUSTER);
+        String store = request.queryParams(NAME);
+        int versionNumber = Utils.parseIntFromString(request.queryParams(VERSION), VERSION);
+        Version version = new Version(store, versionNumber);
+
+        //Job status
+        String jobStatus = admin.getOffLineJobStatus(cluster, version.kafkaTopicName()).toString();
         responseObject.setStatus(jobStatus);
+
+        //Available offsets
+        Map<Integer, Long> offsets = admin.getTopicManager().getLatestOffsets(version.kafkaTopicName());
+        int replicationFactor = admin.getReplicationFactor(cluster, store);
+        long aggregateOffsets = 0;
+        for (Long offset : offsets.values()) {
+          aggregateOffsets += offset * replicationFactor;
+        }
+        responseObject.setMessagesAvailable(aggregateOffsets);
+        responseObject.setPerPartitionCapacity(offsets);
+
+        //Current offsets
+        Map<String, Long> currentProgress = admin.getOfflineJobProgress(cluster, version.kafkaTopicName());
+        responseObject.setPerTaskProgress(currentProgress);
+
+        //Aggregated progress
+        long aggregatedProgress = 0L;
+        for (Long taskOffset : currentProgress.values()){
+          aggregatedProgress += taskOffset;
+        }
+        responseObject.setMessagesConsumed(aggregatedProgress);
+
+        //TODO: available offsets finalized
+        responseObject.setAvailableFinal(false);
+
+        responseObject.setCluster(cluster);
+        responseObject.setName(store);
+        responseObject.setVersion(versionNumber);
+
       } catch (VeniceException e) {
         responseObject.setError(e.getMessage());
         AdminSparkServer.handleError(e, request, response);

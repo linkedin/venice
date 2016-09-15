@@ -196,14 +196,26 @@ public class TestVeniceJobManager {
     jobManager.startOfflineJob(version.kafkaTopicName(), 1, 1);
     Assert.assertEquals(jobManager.getOfflineJobStatus(version.kafkaTopicName()), ExecutionStatus.STARTED,
         "Job should be started.");
+    long totalProgress = VeniceJobManager.aggregateProgress(jobManager.getOfflineJobProgress(version.kafkaTopicName()));
+    Assert.assertEquals(totalProgress, 0L, "new job should have 0 progress");
 
     StoreStatusMessage message = new StoreStatusMessage(version.kafkaTopicName(), 0, nodeId, ExecutionStatus.STARTED);
     jobManager.handleMessage(message);
+
+    message = new StoreStatusMessage(version.kafkaTopicName(), 0, nodeId, ExecutionStatus.PROGRESS);
+    message.setOffset(123);
+    jobManager.handleMessage(message);
+
+    totalProgress = VeniceJobManager.aggregateProgress(jobManager.getOfflineJobProgress(version.kafkaTopicName()));
+    Assert.assertEquals(totalProgress, 123L, "job with progress should have progress");
 
     message = new StoreStatusMessage(version.kafkaTopicName(), 0, nodeId, ExecutionStatus.COMPLETED);
     jobManager.handleMessage(message);
 
     Assert.assertEquals(jobManager.getOfflineJobStatus(version.kafkaTopicName()), ExecutionStatus.COMPLETED);
+    totalProgress = VeniceJobManager.aggregateProgress(jobManager.getOfflineJobProgress(version.kafkaTopicName()));
+    Assert.assertEquals(totalProgress, 123L,
+        "completed job with progress should retain progress");
   }
 
   @Test(timeOut = 15000)

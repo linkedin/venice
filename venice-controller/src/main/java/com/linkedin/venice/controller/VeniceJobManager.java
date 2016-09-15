@@ -1,8 +1,5 @@
 package com.linkedin.venice.controller;
 
-import com.linkedin.venice.meta.PartitionAssignment;
-import com.linkedin.venice.status.StatusMessageHandler;
-import com.linkedin.venice.status.StoreStatusMessage;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.job.ExecutionStatus;
 import com.linkedin.venice.job.Job;
@@ -11,13 +8,18 @@ import com.linkedin.venice.job.JobStatusDecider;
 import com.linkedin.venice.job.OfflineJob;
 import com.linkedin.venice.job.Task;
 import com.linkedin.venice.meta.OfflinePushStrategy;
+import com.linkedin.venice.meta.PartitionAssignment;
 import com.linkedin.venice.meta.ReadWriteStoreRepository;
 import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
+import com.linkedin.venice.status.StatusMessageHandler;
+import com.linkedin.venice.status.StoreStatusMessage;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -142,6 +144,33 @@ public class VeniceJobManager implements StatusMessageHandler<StoreStatusMessage
     return job.getStatus();
   }
 
+  public synchronized Map<String, Long> getOfflineJobProgress(String kafkaTopic) {
+    List<Job> jobs;
+    jobs = jobRepository.getRunningJobOfTopic(kafkaTopic);
+    if (jobs.isEmpty()) {
+      //Can not find job in running jobs. Then find it in terminated jobs.
+      jobs = jobRepository.getTerminatedJobOfTopic(kafkaTopic);
+    }
+    if (jobs.size() > 1) {
+      throw new VeniceException(
+          "There should be only one job for each kafka topic. But now there are:" + jobs.size() + " jobs running.");
+    } else if (jobs.size() <= 0) {
+      logger.warn("Could not find job for topic: " + kafkaTopic + ".  Reporting progress of 0");
+      return new HashMap<>();
+    }
+
+    Job job = jobs.get(0);
+    return job.getProgress();
+  }
+
+  public static long aggregateProgress(Map<String, Long> progressMap) {
+    long totalProgress = 0L;
+    for (long progress : progressMap.values()){
+      totalProgress += progress;
+    }
+    return totalProgress;
+  }
+
   @Override
   public void handleMessage(StoreStatusMessage message) {
     logger.info("Received message from:" + message.getInstanceId() + " for topic:" + message.getKafkaTopic());
@@ -149,7 +178,7 @@ public class VeniceJobManager implements StatusMessageHandler<StoreStatusMessage
     // We should avoid update tasks in same kafka topic in the same time. Different kafka topics could be accessed concurrently.
     synchronized (jobs) {
       // TODO Right now, for offline-push, there is only one job running for each version. Should be change to get job
-      // by job Id when H2V can get job Id and send it through kafka control message.
+      // by job Id when H2V can get job Id and send it through kafka control message.  UPDATE: NOT using job ID anymore.
       if (jobs.size() == 0) {
         // Can not find the running job for the status message, try to find a terminated job.
         // For example, if Venice use wait n-1 strategy, job might be terminated before the last one replica becoming
@@ -168,12 +197,21 @@ public class VeniceJobManager implements StatusMessageHandler<StoreStatusMessage
         //Find only one running job for the given topic.
         Job job = jobs.get(0);
         //Update task status at first.
+        String taskId = job.generateTaskId(message.getPartitionId(), message.getInstanceId());
         Task task =
-            new Task(job.generateTaskId(message.getPartitionId(), message.getInstanceId()), message.getPartitionId(),
-                message.getInstanceId(), message.getStatus());
+            new Task(taskId, message.getPartitionId(), message.getInstanceId(), message.getStatus());
+        Task oldTask = jobRepository.getJob(job.getJobId(), job.getKafkaTopic()).getTask(message.getPartitionId(), taskId);
+        task.setProgress(oldTask.getProgress());
+        if (message.getStatus().equals(ExecutionStatus.PROGRESS) || message.getStatus().equals(ExecutionStatus.COMPLETED)){
+          if (message.getOffset() > 0L) {
+            task.setProgress(message.getOffset());
+          }
+        }
         jobRepository.updateTaskStatus(job.getJobId(), job.getKafkaTopic(), task);
-        logger.info("Update status of Task:" + task.getTaskId() + " to status:" + task.getStatus() + " for topic:"
-            + message.getKafkaTopic());
+        logger.info("Update status of Task:" + task.getTaskId()
+            + " to status:" + task.getStatus()
+            + " with progress: " +task.getProgress()
+            + " for topic:" + message.getKafkaTopic());
         //Check the job status after updating task status to see is the whole job completed or error.
         ExecutionStatus status = getJobStatusDecider(job).checkJobStatus(job);
         if (status.equals(ExecutionStatus.COMPLETED)) {

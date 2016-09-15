@@ -108,8 +108,8 @@ public class VeniceHelixAdmin implements Admin {
         try {
             manager.connect();
         } catch (Exception ex) {
-            String errorMessage = " Error starting Helix controller cluster " +
-                    controllerClusterName + " controller " + controllerName;
+            String errorMessage = " Error starting Helix controller cluster "
+                + controllerClusterName + " controller " + controllerName;
             logger.error(errorMessage, ex);
             throw new VeniceException(errorMessage, ex);
         }
@@ -194,7 +194,7 @@ public class VeniceHelixAdmin implements Admin {
         repository.lock();
         try {
             Store store = repository.getStore(storeName);
-            if(store == null){
+            if(store == null) {
                 throwStoreDoesNotExist(clusterName, storeName);
             }
 
@@ -480,6 +480,13 @@ public class VeniceHelixAdmin implements Admin {
         return jobManager.getOfflineJobStatus(kafkaTopic);
     }
 
+    @Override
+    public Map<String, Long> getOfflineJobProgress(String clusterName, String kafkaTopic){
+        checkControllerMastership(clusterName);
+        VeniceJobManager jobManager = getVeniceHelixResource(clusterName).getJobManager();
+        return jobManager.getOfflineJobProgress(kafkaTopic);
+    }
+
     // Create the cluster for all of parent controllers if required.
     private void createControllerClusterIfRequired(){
         if(admin.getClusters().contains(controllerClusterName)) {
@@ -597,7 +604,7 @@ public class VeniceHelixAdmin implements Admin {
   }
 
     @Override
-    public int getReplicaFactor(String clusterName, String storeName) {
+    public int getReplicationFactor(String clusterName, String storeName) {
         //TODO if there is special config for the given store, use that value.
         return getVeniceHelixResource(clusterName).getConfig().getReplicaFactor();
     }

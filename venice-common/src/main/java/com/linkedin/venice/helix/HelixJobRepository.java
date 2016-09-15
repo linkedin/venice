@@ -128,7 +128,7 @@ public class HelixJobRepository implements JobRepository {
     // Clone job and update status.
     Job clonedJob = job.cloneJob();
     clonedJob.updateTaskStatus(task);
-    // Udate to ZK
+    // Update to ZK
     String path = getJobZKPath(clonedJob) + "/" + task.getPartitionId();
     HelixUtils.update(tasksDataAccessor, path, clonedJob.tasksInPartition(task.getPartitionId()), retryCount);
     // Update local copy at last.

@@ -8,8 +8,8 @@ public class Task {
   private final int partitionId;
   private final String instanceId;
   private ExecutionStatus status;
-  //Describe the progress of task's execution.Initial value is 0 then Complete value = 1
-  private float progress = 0;
+
+  private long progress = 0; /* Number of offsets consumed */
 
   public Task(String taskId, int partitionId, String instanceId) {
     this.taskId = taskId;
@@ -43,11 +43,11 @@ public class Task {
     this.status = status;
   }
 
-  public float getProgress() {
+  public long getProgress() {
     return progress;
   }
 
-  protected void setProgress(float progress) {
+  public void setProgress(long progress) {
     this.progress = progress;
   }
 }
