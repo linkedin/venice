@@ -35,7 +35,7 @@ public class CreateVersion {
         // Store size in Bytes
         long storeSize = Utils.parseLongFromString(request.queryParams(STORE_SIZE), STORE_SIZE);
         int partitionNum = admin.calculateNumberOfPartitions(clusterName, storeName, storeSize);
-        int replicaFactor = admin.getReplicaFactor(clusterName, storeName);
+        int replicaFactor = admin.getReplicationFactor(clusterName, storeName);
         Version version = admin.incrementVersion(clusterName, storeName, partitionNum, replicaFactor);
         // The actual partition number could be different from the one calculated here,
         // since Venice is not using dynamic partition number across different versions.

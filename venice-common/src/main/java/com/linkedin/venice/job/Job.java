@@ -3,9 +3,11 @@ package com.linkedin.venice.job;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Partition;
 import com.linkedin.venice.meta.PartitionAssignment;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import org.codehaus.jackson.annotate.JsonIgnore;
 
 
 /**
@@ -15,13 +17,9 @@ import java.util.Set;
 public abstract class Job {
 
   private final long jobId;
-
   private final String kafkaTopic;
-
   private final int numberOfPartition;
-
   private final int replicationFactor;
-
   private final int minimumReplicas;
 
   private ExecutionStatus status;
@@ -73,6 +71,19 @@ public abstract class Job {
     return status;
   }
 
+  @JsonIgnore
+  public Map<String, Long> getProgress() {
+    Map<String, Long> progress = new HashMap<>();
+    for (int partition = 0; partition < getNumberOfPartition(); partition++) {
+      for (Task task : tasksInPartition(partition)) {
+        if (!task.getStatus().equals(ExecutionStatus.ERROR)) { //Don't count progress of error tasks
+          progress.put(task.getTaskId(), task.getProgress());
+        }
+      }
+    }
+    return progress;
+  }
+
   public void setStatus(ExecutionStatus status) {
     this.status = status;
   }
@@ -91,6 +102,8 @@ public abstract class Job {
   public abstract void updateTaskStatus(Task task);
 
   public abstract ExecutionStatus getTaskStatus(int partitionId, String taskId);
+
+  public abstract long getTaskProgress(int partitionId, String taskId);
 
   public abstract Task getTask(int partitionId, String taskId);
 

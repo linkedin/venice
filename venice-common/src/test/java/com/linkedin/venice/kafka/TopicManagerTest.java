@@ -5,11 +5,12 @@ import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.meta.Version;
 
 import java.io.IOException;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
 import com.linkedin.venice.utils.TestUtils;
-import junit.framework.Assert;
+import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
@@ -59,13 +60,15 @@ public class TopicManagerTest {
     int partitions = 1;
     int replicas = 1;
     manager.createTopic(topicName, partitions, replicas);
-    TestUtils.waitForNonDeterministicCompletion(WAIT_TIME, TimeUnit.SECONDS, () -> manager.listTopics().contains(topicName));
+    TestUtils.waitForNonDeterministicCompletion(WAIT_TIME, TimeUnit.SECONDS,
+        () -> manager.listTopics().contains(topicName));
     Assert.assertTrue(manager.listTopics().contains(topicName));
 
     // Delete that topic
     manager.deleteTopic(topicName);
     // Wait for it to go away (delete is async)
-    TestUtils.waitForNonDeterministicCompletion(WAIT_TIME, TimeUnit.SECONDS, () -> !manager.listTopics().contains(topicName));
+    TestUtils.waitForNonDeterministicCompletion(WAIT_TIME, TimeUnit.SECONDS,
+        () -> !manager.listTopics().contains(topicName));
     // Assert that it is gone
     Assert.assertFalse(manager.listTopics().contains(topicName));
   }
@@ -107,7 +110,7 @@ public class TopicManagerTest {
     // Create 4 version topics, myStore_v1, myStore_v2, ...
     String storeName = TestUtils.getUniqueString("testDeleteOldTopicsByOldestToKeep");
     int maxVersion = 4;
-    for (int i=1;i<=maxVersion;i++){
+    for (int i=1;i<=maxVersion;i++) {
       String topic = new Version(storeName, i).kafkaTopicName();
       manager.createTopic(topic, 1, 1);
       TestUtils.waitForNonDeterministicCompletion(WAIT_TIME, TimeUnit.SECONDS, () -> manager.listTopics().contains(topic));
@@ -132,4 +135,14 @@ public class TopicManagerTest {
     Assert.assertTrue(topicsInCluster.contains(new Version(storeName, 4).kafkaTopicName()));
   }
 
+  @Test
+  public void testGetLastOffsets() {
+    String topic = TestUtils.getUniqueString("topic");
+    manager.createTopic(topic, 1, 1);
+    TestUtils.waitForNonDeterministicCompletion(WAIT_TIME, TimeUnit.SECONDS, () -> manager.listTopics().contains(topic));
+    Map<Integer, Long> lastOffsets = manager.getLatestOffsets(topic);
+    Assert.assertTrue(lastOffsets.containsKey(0), "single partition topic has an offset for partition 0");
+    Assert.assertEquals(lastOffsets.keySet().size(), 1, "single partition topic has only an offset for one partition");
+    Assert.assertEquals(lastOffsets.get(0).longValue(), 0L, "new topic must end at partition 0");
+  }
 }

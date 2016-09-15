@@ -4,6 +4,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.Partition;
 import com.linkedin.venice.meta.PartitionAssignment;
+import com.linkedin.venice.utils.Utils;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -98,6 +99,26 @@ public class TestOfflineJob {
     ExecutionStatus[] invalidStatus =
         new ExecutionStatus[]{ExecutionStatus.ARCHIVED, ExecutionStatus.STARTED, ExecutionStatus.COMPLETED, ExecutionStatus.ERROR, ExecutionStatus.NEW};
     testValidateJobTransition(job, validStatus, invalidStatus);
+  }
+
+  @Test
+  public void testGetProgress(){
+    int replicationFactor = 1;
+    OfflineJob job = new OfflineJob(1, topic, numberOfPartition, replicationFactor);
+    for (int partition = 0; partition < numberOfPartition; partition++){
+      Task task = new Task("task"+partition, partition, nodeId, ExecutionStatus.STARTED);
+      job.addTask(task);
+    }
+    for (int partition = 0; partition < numberOfPartition; partition++){
+      Task task = job.getTask(partition, "task"+partition);
+      task.setStatus(ExecutionStatus.PROGRESS);
+      task.setProgress(10);
+      job.updateTaskStatus(task);
+    }
+    Assert.assertEquals(job.getProgress().size(), numberOfPartition * replicationFactor);
+    for (long progress : job.getProgress().values()) {
+      Assert.assertEquals(progress, 10);
+    }
   }
 
   @Test

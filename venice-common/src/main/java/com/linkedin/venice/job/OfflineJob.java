@@ -46,7 +46,7 @@ public class OfflineJob extends Job {
    */
   public Set<Integer> updateExecutingTasks(PartitionAssignment partitionAssignment) {
     HashSet<Integer> changedPartitions = new HashSet<>();
-    for(Partition partition:partitionAssignment.getAllPartitions()){
+    for(Partition partition:partitionAssignment.getAllPartitions()) {
       int partitionId = partition.getId();
       Map<String, Task> oldTaskMap = partitionToTasksMap.get(partitionId);
       HashSet<String> removeTaskIds = new HashSet<>(oldTaskMap.keySet());
@@ -92,8 +92,7 @@ public class OfflineJob extends Job {
       case STARTED:
         isValid = verifyTransition(newStatus, COMPLETED, ERROR);
         break;
-      case COMPLETED:
-        //Same as ERROR.
+      case COMPLETED: //Same as ERROR.
       case ERROR:
         isValid = verifyTransition(newStatus, ARCHIVED);
         break;
@@ -165,19 +164,16 @@ public class OfflineJob extends Job {
     if (oldTask == null) {
       throw new VeniceException("Can not find task:" + task.getTaskId());
     }
-    boolean isValid = true;
+    boolean isValid;
     switch (oldTask.getStatus()) {
       case NEW:
         isValid = verifyTransition(task.getStatus(), STARTED, ERROR);
         break;
       case STARTED:
+      case PROGRESS:
         isValid = verifyTransition(task.getStatus(), PROGRESS, COMPLETED, ERROR);
         break;
-      case PROGRESS:
-        isValid = verifyTransition(task.getStatus(), COMPLETED, ERROR);
-        break;
       case COMPLETED:
-        // Same as ERROR.
       case ERROR:
         isValid = false;
         break;
@@ -186,7 +182,7 @@ public class OfflineJob extends Job {
     }
     if (!isValid) {
       throw new VeniceException(
-          "Task is " + oldTask.getStatus().toString() + " can not be update to status:" + task.getStatus().toString());
+          "Task is " + oldTask.getStatus().toString() + " can not be updated to status:" + task.getStatus().toString());
     }
   }
 
@@ -198,13 +194,26 @@ public class OfflineJob extends Job {
   public ExecutionStatus getTaskStatus(int partitionId, String taskId) {
     Map<String, Task> taskMap = partitionToTasksMap.get(partitionId);
     if (taskMap == null) {
-      throw new VeniceException("Partition:" + partitionId + " dose not exist.");
+      throw new VeniceException("Partition:" + partitionId + " does not exist.");
     }
     Task task = taskMap.get(taskId);
     if (task == null) {
-      throw new VeniceException("Task:" + taskId + " dose not exist.");
+      throw new VeniceException("Task:" + taskId + " does not exist.");
     }
     return task.getStatus();
+  }
+
+  @Override
+  public long getTaskProgress(int partitionId, String taskId){
+    Map<String, Task> taskMap = partitionToTasksMap.get(partitionId);
+    if (taskMap == null) {
+      throw new VeniceException("Partition:" + partitionId + " does not exist.");
+    }
+    Task task = taskMap.get(taskId);
+    if (task == null) {
+      throw new VeniceException("Task:" + taskId + " does not exist.");
+    }
+    return task.getProgress();
   }
 
   public void addTask(Task task) {

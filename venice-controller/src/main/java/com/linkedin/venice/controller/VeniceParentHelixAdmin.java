@@ -353,6 +353,11 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   @Override
+  public Map<String, Long> getOfflineJobProgress(String clusterName, String kafkaTopic){
+    throw new VeniceException("getOfflineJobProgress is not supported!");
+  }
+
+  @Override
   public String getKafkaBootstrapServers() {
     return veniceHelixAdmin.getKafkaBootstrapServers();
   }
@@ -373,8 +378,8 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   @Override
-  public int getReplicaFactor(String clusterName, String storeName) {
-    return veniceHelixAdmin.getReplicaFactor(clusterName, storeName);
+  public int getReplicationFactor(String clusterName, String storeName) {
+    return veniceHelixAdmin.getReplicationFactor(clusterName, storeName);
   }
 
   @Override

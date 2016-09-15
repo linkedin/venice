@@ -10,6 +10,7 @@ import com.linkedin.venice.schema.SchemaEntry;
 
 import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import org.apache.helix.model.ExternalView;
 
@@ -69,6 +70,8 @@ public interface Admin {
      */
     ExecutionStatus getOffLineJobStatus(String clusterName, String kafkaTopic);
 
+    Map<String, Long> getOfflineJobProgress(String clusterName, String kafkaTopic);
+
     /**
      * TODO : Currently bootstrap servers are common per Venice Controller cluster
      * This needs to be configured at per store level or per version level.
@@ -96,7 +99,7 @@ public interface Admin {
     */
     int calculateNumberOfPartitions(String clusterName, String storeName, long storeSize);
 
-    int getReplicaFactor(String clusterName, String storeName);
+    int getReplicationFactor(String clusterName, String storeName);
 
     List<Replica> getBootstrapReplicas(String clusterName, String kafkaTopic);
     List<Replica> getErrorReplicas(String clusterName, String kafkaTopic);

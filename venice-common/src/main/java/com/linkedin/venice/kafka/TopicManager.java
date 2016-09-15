@@ -1,10 +1,13 @@
 package com.linkedin.venice.kafka;
 
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Version;
 
 import java.io.Closeable;
 import java.io.IOException;
+import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
@@ -14,7 +17,11 @@ import java.util.stream.Collectors;
 
 import com.linkedin.venice.utils.Time;
 import kafka.admin.AdminUtils;
+import kafka.api.PartitionOffsetRequestInfo;
+import kafka.common.TopicAndPartition;
 import kafka.common.TopicExistsException;
+import kafka.javaapi.OffsetResponse;
+import kafka.javaapi.consumer.SimpleConsumer;
 import kafka.utils.ZKStringSerializer$;
 import kafka.utils.ZkUtils;
 import org.I0Itec.zkclient.ZkClient;
@@ -22,6 +29,8 @@ import org.I0Itec.zkclient.ZkConnection;
 import org.apache.commons.io.IOUtils;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
+import org.apache.kafka.common.PartitionInfo;
+import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.serialization.ByteArrayDeserializer;
 import org.apache.log4j.Logger;
 import org.codehaus.jackson.map.ObjectMapper;
@@ -70,14 +79,39 @@ public class TopicManager implements Closeable {
     AdminUtils.deleteTopic(getZkUtils(), topicName);
   }
 
-  public Set<String> listTopics(){
+  public synchronized Set<String> listTopics() {
     logger.debug("Beginning of listTopics");
     Set<String> topics = getConsumer().listTopics().keySet();
     logger.debug("listTopics: " + topics);
     return topics;
   }
 
-  public void deleteOldTopicsForStore(String storename, int numberOfVersionsToRetain) {
+  /**
+   * Generate a map from partition number to the last offset available for that partition
+   * @param topic
+   * @return
+   */
+  public synchronized Map<Integer, Long> getLatestOffsets(String topic) {
+    KafkaConsumer<byte[], byte[]> consumer = getConsumer();
+    List<PartitionInfo> partitions = consumer.partitionsFor(topic);
+    if (null == partitions) {
+      throw new VeniceException("Topic: " + topic + " does not exist");
+    }
+    Map<Integer, Long> offsets = new HashMap<>();
+
+    for (PartitionInfo partitionInfo : partitions) {
+      int partition = partitionInfo.partition();
+      TopicPartition topicPartition = new TopicPartition(topic, partition);
+      consumer.assign(Arrays.asList(topicPartition));
+      consumer.seekToEnd(topicPartition);
+      offsets.put(partition, consumer.position(topicPartition));
+    }
+    consumer.assign(Arrays.asList());
+    return offsets;
+
+  }
+
+  public synchronized void deleteOldTopicsForStore(String storename, int numberOfVersionsToRetain) {
     List<Integer> versionNumbers = listTopics().stream()
         .filter(topic -> topic.startsWith(storename)) /* early cheap filter */
         .filter(topic -> Version.topicIsValidStoreVersion(topic))
@@ -86,8 +120,8 @@ public class TopicManager implements Closeable {
         .collect(Collectors.toList());
     Collections.sort(versionNumbers); /* ascending */
     Collections.reverse(versionNumbers); /* descending */
-    for (int i=0; i<versionNumbers.size(); i++){
-      if (i < numberOfVersionsToRetain){
+    for (int i=0; i<versionNumbers.size(); i++) {
+      if (i < numberOfVersionsToRetain) {
         continue;
       } else {
         String topicToDelete = new Version(storename, versionNumbers.get(i)).kafkaTopicName();
@@ -96,7 +130,7 @@ public class TopicManager implements Closeable {
     }
   }
 
-  public void deleteTopicsForStoreOlderThanVersion(String storename, int oldestVersionToKeep) {
+  public synchronized void deleteTopicsForStoreOlderThanVersion(String storename, int oldestVersionToKeep) {
     listTopics().stream()
         .filter(topic -> topic.startsWith(storename)) /* early cheap filter */
         .filter(topic -> Version.topicIsValidStoreVersion(topic))
@@ -166,11 +200,12 @@ public class TopicManager implements Closeable {
   }
 
   @Override
-  public void close() throws IOException {
+  public synchronized void close() throws IOException {
     IOUtils.closeQuietly(kafkaConsumer);
-    // ZkClient does not implement closeable, so we're doing it the old-school way
+    // does not implement closeable, so we're doing it the old-school way
     if (this.zkClient != null) {
       zkClient.close();
     }
   }
+
 }

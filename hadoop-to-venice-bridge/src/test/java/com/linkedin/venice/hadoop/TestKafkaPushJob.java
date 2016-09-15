@@ -2,11 +2,14 @@ package com.linkedin.venice.hadoop;
 
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.AvroStoreClientFactory;
+import com.linkedin.venice.controllerapi.ControllerClient;
+import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.exceptions.VeniceInconsistentSchemaException;
 import com.linkedin.venice.hadoop.exceptions.VeniceSchemaFieldNotFoundException;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
+import com.linkedin.venice.job.ExecutionStatus;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
@@ -203,12 +206,20 @@ private static final String STRING_SCHEMA = "\"string\"";
 
     // Verify the data in Venice Store
     String routerUrl = "http://" + veniceCluster.getVeniceRouter().getAddress();
-    AvroGenericStoreClient<Object> client = AvroStoreClientFactory.getAvroGenericStoreClient(routerUrl, storeName);
+    try(AvroGenericStoreClient<Object> client = AvroStoreClientFactory.getAvroGenericStoreClient(routerUrl, storeName)) {
+      for (int i = 1; i <= 100; ++i) {
+        String expected = "test_name_" + i;
+        String actual = client.get(Integer.toString(i)).get().toString(); /* client.get().get() returns a Utf8 object */
+        Assert.assertEquals(actual, expected);
+      }
 
-    for (int i = 1; i <= 100; ++i) {
-      String expected = "test_name_" + i;
-      String actual = client.get(Integer.toString(i)).get().toString(); /* client.get().get() returns a Utf8 object */
-      Assert.assertEquals(actual, expected);
+      JobStatusQueryResponse jobStatus = ControllerClient.queryJobStatus(routerUrl, veniceCluster.getClusterName(), job.getKafkaTopic());
+      Assert.assertEquals(jobStatus.getStatus(), ExecutionStatus.COMPLETED.toString(),
+          "After job is complete, status should reflect that");
+      // In this test we are allowing the progress to not reach the full capacity, but we still want to make sure
+      // that most of the progress has completed
+      Assert.assertTrue(jobStatus.getMessagesConsumed()*1.5 > jobStatus.getMessagesAvailable(),
+          "Complete job should have progress");
     }
   }
 
