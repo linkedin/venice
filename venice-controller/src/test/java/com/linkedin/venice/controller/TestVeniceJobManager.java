@@ -119,7 +119,8 @@ public class TestVeniceJobManager {
     jobRepository.refresh();
     metadataRepository = new HelixReadWriteStoreRepository(zkClient, adapterSerializer, cluster);
     metadataRepository.refresh();
-    jobManager = new VeniceJobManager(cluster, 1, jobRepository, metadataRepository, routingDataRepository, 2000);
+    long jobTimeOut = 5000;
+    jobManager = new VeniceJobManager(cluster, 1, jobRepository, metadataRepository, routingDataRepository, jobTimeOut);
   }
 
   @AfterMethod
