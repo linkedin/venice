@@ -1,0 +1,3 @@
+owners: [ mwise, fvillega, sdwu, yayan, goliu ]
+paths: [ '.*' ]
+whitelist: [ ]
