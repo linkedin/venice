@@ -10,7 +10,7 @@ import spark.Route;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.CLUSTER;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.NAME;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.VERSION;
-import static com.linkedin.venice.controllerapi.ControllerRoute.SETVERSION;
+import static com.linkedin.venice.controllerapi.ControllerRoute.SET_VERSION;
 
 
 /**
@@ -21,7 +21,7 @@ public class SetVersion {
     return (request, response) -> {
       VersionResponse responseObj = new VersionResponse();
       try {
-        AdminSparkServer.validateParams(request, SETVERSION.getParams(), admin); //throws venice exception
+        AdminSparkServer.validateParams(request, SET_VERSION.getParams(), admin); //throws venice exception
         String clusterName = request.queryParams(CLUSTER);
         String storeName = request.queryParams(NAME);
         int version = Utils.parseIntFromString(request.queryParams(VERSION), VERSION);

@@ -168,14 +168,13 @@ private static final String STRING_SCHEMA = "\"string\"";
     Properties props = new Properties();
     props.put(KafkaPushJob.VENICE_ROUTER_URL_PROP, "http://" + veniceCluster.getVeniceRouter().getAddress());
     props.put(KafkaPushJob.KAFKA_URL_PROP, veniceCluster.getKafka().getAddress());
-    props.put(KafkaPushJob.KAFKA_ZOOKEEPER_PROP, veniceCluster.getZk().getAddress());
     props.put(KafkaPushJob.VENICE_CLUSTER_NAME_PROP, veniceCluster.getClusterName());
     props.put(KafkaPushJob.VENICE_STORE_NAME_PROP, storeName);
     props.put(KafkaPushJob.VENICE_STORE_OWNERS_PROP, "test@linkedin.com");
     props.put(KafkaPushJob.INPUT_PATH_PROP, inputDirPath);
     props.put(KafkaPushJob.AVRO_KEY_FIELD_PROP, "id");
     props.put(KafkaPushJob.AVRO_VALUE_FIELD_PROP, "name");
-    props.put(KafkaPushJob.AUTO_CREATE_STORE, "true");
+    props.put(KafkaPushJob.AUTO_CREATE_STORE_PROP, "true");
     // No need for a big close timeout in tests. This is just to speed up discovery of certain regressions.
     props.put(VeniceWriter.CLOSE_TIMEOUT_MS, 500);
 
@@ -373,7 +372,7 @@ private static final String STRING_SCHEMA = "\"string\"";
 
     // Run job with different key schema (from 'string' to 'int')
     props.setProperty(KafkaPushJob.AVRO_KEY_FIELD_PROP, "age");
-    props.setProperty(KafkaPushJob.AUTO_CREATE_STORE, "false");
+    props.setProperty(KafkaPushJob.AUTO_CREATE_STORE_PROP, "false");
     job = new KafkaPushJob(jobName, props);
     job.run();
   }
@@ -384,7 +383,7 @@ private static final String STRING_SCHEMA = "\"string\"";
    */
   @Test(timeOut = TEST_TIMEOUT,
       expectedExceptions = VeniceException.class,
-      expectedExceptionsMessageRegExp = ".*Unable to validate schema for store.*")
+      expectedExceptionsMessageRegExp = ".*Fail to validate value schema.*")
   public void testRunJobMultipleTimesWithInCompatibleValueSchemaConfig() throws Exception {
     File inputDir = getTempDataDirectory();
     writeSimpleAvroFileWithUserSchema(inputDir);
@@ -408,7 +407,7 @@ private static final String STRING_SCHEMA = "\"string\"";
 
     // Run job with different value schema (from 'string' to 'int')
     props.setProperty(KafkaPushJob.AVRO_VALUE_FIELD_PROP, "age");
-    props.setProperty(KafkaPushJob.AUTO_CREATE_STORE, "false");
+    props.setProperty(KafkaPushJob.AUTO_CREATE_STORE_PROP, "false");
     job = new KafkaPushJob(jobName, props);
     job.run();
   }
@@ -441,7 +440,7 @@ private static final String STRING_SCHEMA = "\"string\"";
     inputDirPath = "file://" + inputDir.getAbsolutePath();
     props = setupDefaultProps(inputDirPath, storeName);
     props.setProperty(KafkaPushJob.AVRO_VALUE_FIELD_PROP, "value"); /* TODO: This should be a different value field */
-    job = new KafkaPushJob(jobName, props); /* TODO: AUTO_CREATE_STORE to false, but this causes test to fail??? */
+    job = new KafkaPushJob(jobName, props); /* TODO: AUTO_CREATE_STORE_PROP to false, but this causes test to fail??? */
     job.run();
     /* TODO: add assertions */
   }

@@ -6,6 +6,7 @@ import java.io.IOException;
 import java.util.List;
 import org.codehaus.jackson.annotate.JsonCreator;
 import org.codehaus.jackson.annotate.JsonProperty;
+import org.codehaus.jackson.map.DeserializationConfig;
 import org.codehaus.jackson.map.ObjectMapper;
 import org.codehaus.jackson.type.TypeReference;
 
@@ -21,6 +22,8 @@ public class TasksJSONSerializer implements VeniceSerializer<List<Task>> {
 
   public TasksJSONSerializer() {
     mapper.getDeserializationConfig().addMixInAnnotations(Task.class, TasksSerializerMixin.class);
+    // Ignore unknown properties
+    mapper.configure(DeserializationConfig.Feature.FAIL_ON_UNKNOWN_PROPERTIES, false);
     typeReference = new TypeReference<List<Task>>() {
     };
   }

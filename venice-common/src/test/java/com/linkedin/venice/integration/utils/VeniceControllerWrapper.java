@@ -1,9 +1,6 @@
 package com.linkedin.venice.integration.utils;
 
-import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.controller.VeniceController;
-import com.linkedin.venice.controller.VeniceControllerClusterConfig;
-import com.linkedin.venice.controller.VeniceControllerConfig;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -104,18 +101,25 @@ public class VeniceControllerWrapper extends ProcessWrapper {
     long storeSize = 10 * 1024 * 1024;
     String keySchema = "\"string\"";
     String valueSchema = "\"string\"";
-    VersionCreationResponse newStore = ControllerClient.createStoreVersion(
+    // Create new store
+    ControllerClient.createNewStore(
         routerUrl,
         clusterName,
         storeName,
         storeOwner,
-        storeSize,
         keySchema,
-        valueSchema);
-    if (newStore.isError()){
-      throw new VeniceException(newStore.getError());
+        valueSchema
+    );
+    // Create new version
+    VersionCreationResponse newVersion = ControllerClient.createNewStoreVersion(
+        routerUrl,
+        clusterName,
+        storeName,
+        storeSize);
+    if (newVersion.isError()){
+      throw new VeniceException(newVersion.getError());
     }
-    return newStore;
+    return newVersion;
   }
 
   /***

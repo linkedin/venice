@@ -212,14 +212,6 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   @Override
-  public void reserveVersion(String clusterName,
-                                          String storeName,
-                                          int versionNumberToReserve) {
-    throw new VeniceException("reserveVersion is not supported yet!");
-
-  }
-
-  @Override
   public Version addVersion(String clusterName,
                                          String storeName,
                                          int versionNumber,
@@ -233,7 +225,12 @@ public class VeniceParentHelixAdmin implements Admin {
                                                String storeName,
                                                int numberOfPartition,
                                                int replicaFactor) {
-    throw new VeniceException("incrementVersion is not supported yet!");
+    // TODO: consider to move version creation to admin protocol
+    // Right now, TopicMonitor in each prod colo will monitor new Kafka topic and
+    // create new corresponding store versions
+    // TODO: need to move 'pauseStore' logic to parent controller
+    // TODO: clean up kafka topic in parent Kafka cluster
+    return veniceHelixAdmin.incrementVersion(clusterName, storeName, numberOfPartition, replicaFactor);
   }
 
   @Override

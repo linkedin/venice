@@ -22,7 +22,6 @@ public class TestStoreCreationResponse {
       throws IOException {
     VersionCreationResponse obj = new VersionCreationResponse();
     obj.setName(STORENAME);
-    obj.setOwner(OWNER);
     obj.setKafkaBootstrapServers(KAFKA);
     obj.setKafkaTopic(TOPIC);
 
@@ -31,10 +30,8 @@ public class TestStoreCreationResponse {
     VersionCreationResponse deserialized = mapper.readValue(serialized, VersionCreationResponse.class);
 
     Assert.assertEquals(deserialized.getName(), STORENAME);
-    Assert.assertEquals(deserialized.getOwner(), OWNER);
     Assert.assertEquals(deserialized.getKafkaBootstrapServers(), KAFKA);
     Assert.assertEquals(deserialized.getKafkaTopic(), TOPIC);
     Assert.assertFalse(deserialized.isError());
   }
-
 }

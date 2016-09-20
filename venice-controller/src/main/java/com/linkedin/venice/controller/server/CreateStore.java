@@ -11,7 +11,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.KEY_SCHEM
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.NAME;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.OWNER;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.VALUE_SCHEMA;
-import static com.linkedin.venice.controllerapi.ControllerRoute.NEWSTORE;
+import static com.linkedin.venice.controllerapi.ControllerRoute.NEW_STORE;
 
 
 /**
@@ -22,7 +22,7 @@ public class CreateStore {
     return (request, response) -> {
       NewStoreResponse responseObject = new NewStoreResponse();
       try {
-        AdminSparkServer.validateParams(request, NEWSTORE.getParams(), admin);
+        AdminSparkServer.validateParams(request, NEW_STORE.getParams(), admin);
         String clusterName = request.queryParams(CLUSTER);
         String storeName = request.queryParams(NAME);
         String owner = request.queryParams(OWNER);

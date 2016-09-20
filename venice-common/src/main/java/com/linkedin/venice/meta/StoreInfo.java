@@ -12,7 +12,6 @@ public class StoreInfo {
     storeInfo.setName(store.getName());
     storeInfo.setOwner(store.getOwner());
     storeInfo.setCurrentVersion(store.getCurrentVersion());
-    storeInfo.setReservedVersion(store.getReservedVersion());
     storeInfo.setPartitionCount(store.getPartitionCount());
     storeInfo.setPaused(store.isPaused());
     storeInfo.setVersions(store.getVersions());

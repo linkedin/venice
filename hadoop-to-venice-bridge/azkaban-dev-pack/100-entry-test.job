@@ -19,6 +19,4 @@ venice.router.urls=http://ltx1-app1085.stg.linkedin.com:1689,http://ltx1-app1325
 venice.store.name=venice_h2v_test_100_1
 venice.store.owners=<your_linkedin_email>
 cluster.name=test-cluster
-kafka.zk=zk-ltx1-kafka.stg.linkedin.com:12913/kafka-venice
-kafka.url=ltx1-kafka-kafka-venice-vip.stg.linkedin.com:10251
 hadoop-conf.mapreduce.job.queuename=marathon
