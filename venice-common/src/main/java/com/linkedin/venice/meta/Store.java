@@ -33,10 +33,6 @@ public class Store {
    */
   private int currentVersion = 0;
   /**
-   * Version number that has been claimed by an upstream (H2V) system which will create the corresponding kafka topic.
-   */
-  private int reservedVersion = 0;
-  /**
    * Default partition count for all of versions in this store. Once first version become online, the number will be
    * assigned.
    */
@@ -107,15 +103,6 @@ public class Store {
   }
 
   @SuppressWarnings("unused") // Used by Serializer/De-serializer for storing to Zoo Keeper
-  public int getReservedVersion() {
-    return this.reservedVersion;
-  }
-
-  public void setReservedVersion(int reservedVersion) {
-    this.reservedVersion = reservedVersion;
-  }
-
-  @SuppressWarnings("unused") // Used by Serializer/De-serializer for storing to Zoo Keeper
   public PersistenceType getPersistenceType() {
     return persistenceType;
   }
@@ -171,14 +158,6 @@ public class Store {
     if (!this.paused) {
       setPushedVersionsOnline();
     }
-  }
-
-  public void reserveVersionNumber(int version) {
-    checkPausedStore("reserve", version);
-    if (version < peekNextVersion().getNumber()) {
-      throw new VeniceException("Cannot reserve a version number smaller than next available version number");
-    }
-    reservedVersion = version;
   }
 
   /**
@@ -270,9 +249,6 @@ public class Store {
 
   private Version increaseVersion(boolean createNewVersion) {
     int versionNumber = largestUsedVersionNumber + 1;
-    if (reservedVersion >= versionNumber){
-      versionNumber = reservedVersion + 1; /* must skip past any reserved versions */
-    }
     checkPausedStore("increase", versionNumber);
     Version version = new Version(name, versionNumber);
     if (createNewVersion) {
@@ -357,9 +333,6 @@ public class Store {
     if (currentVersion != store.currentVersion) {
       return false;
     }
-    if (reservedVersion != store.reservedVersion) {
-      return  false;
-    }
     if (!name.equals(store.name)) {
       return false;
     }
@@ -400,7 +373,6 @@ public class Store {
     result = 31 * result + owner.hashCode();
     result = 31 * result + (int) (createdTime ^ (createdTime >>> 32));
     result = 31 * result + currentVersion;
-    result = 31 * result + reservedVersion;
     result = 31 * result + partitionCount;
     result = 31 * result + (paused ? 1 : 0);
     result = 31 * result + largestUsedVersionNumber;
@@ -422,7 +394,6 @@ public class Store {
     Store clonedStore =
         new Store(name, owner, createdTime, persistenceType, routingStrategy, readStrategy, offLinePushStrategy);
     clonedStore.setCurrentVersion(currentVersion);
-    clonedStore.setReservedVersion(reservedVersion);
     clonedStore.setPartitionCount(partitionCount);
     clonedStore.setPaused(paused);
     clonedStore.setLargestUsedVersionNumber(largestUsedVersionNumber);

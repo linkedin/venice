@@ -3,16 +3,14 @@ package com.linkedin.venice.hadoop;
 import com.google.common.collect.Maps;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
+import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.job.ExecutionStatus;
-import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.NewStoreResponse;
-import com.linkedin.venice.controllerapi.VersionResponse;
 import com.linkedin.venice.hadoop.exceptions.VeniceInconsistentSchemaException;
 import com.linkedin.venice.hadoop.exceptions.VeniceSchemaFieldNotFoundException;
 import com.linkedin.venice.message.KafkaKey;
-import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.serialization.DefaultSerializer;
 import com.linkedin.venice.serialization.KafkaKeySerializer;
@@ -67,16 +65,17 @@ public class KafkaPushJob {
   public static final String AVRO_KEY_FIELD_PROP = "avro.key.field";
   public static final String AVRO_VALUE_FIELD_PROP = "avro.value.field";
   public static final String VENICE_ROUTER_URL_PROP = "venice.router.urls";
+  // When 'venice.multi.colo' is true, H2V Job needs to specify 'venice.parent.controller.urls'
+  public static final String VENICE_MULTI_COLO_PROP = "venice.multi.colo";
+  public static final String VENICE_PARENT_CONTROLLER_URL_PROP = "venice.parent.controller.urls";
   public static final String VENICE_CLUSTER_NAME_PROP = "cluster.name";
   public static final String VENICE_STORE_NAME_PROP = "venice.store.name";
   public static final String VENICE_STORE_OWNERS_PROP = "venice.store.owners";
-  public static final String VENICE_TOPIC_RETENTION = "venice.topic.retention";
-  public static final String AUTO_CREATE_STORE = "auto.create.store";
+  public static final String AUTO_CREATE_STORE_PROP = "auto.create.store";
 
   public static final String SCHEMA_STRING_PROP = "schema";
   public static final String VALUE_SCHEMA_ID_PROP = "value.schema.id";
   public static final String KAFKA_URL_PROP = "kafka.url";
-  public static final String KAFKA_ZOOKEEPER_PROP = "kafka.zk";
   public static final String TOPIC_PROP = "kafka.topic";
   public static final String INPUT_PATH_PROP = "input.path";
   public static final String BATCH_NUM_BYTES_PROP = "batch.num.bytes";
@@ -102,16 +101,16 @@ public class KafkaPushJob {
   private final String storeName;
   private final String storeOwners;
   private final int batchNumBytes;
-  private final int topicRetention;
   private final Properties props;
-  private final String kafkaUrl;
-  private final String kafkaZk;
-  private final TopicManager topicManager;
+  private final boolean multiColo;
+  private final String parentControllerUrls;
   /** Whether the current job is for venice store push or just Kafka push */
   private final boolean storePush;
   private final boolean autoCreateStoreIfNeeded;
 
   // Mutable state
+  // Kafka url will get from Venice backend for store push
+  private String kafkaUrl;
   private String inputDirectory;
   private FileSystem fs;
   private JobConf job;
@@ -140,11 +139,6 @@ public class KafkaPushJob {
             .withRequiredArg()
             .describedAs("kafka-url")
             .ofType(String.class);
-    OptionSpec<String> kafkaZkOpt =
-        parser.accepts("kafka-zk", "REQUIRED: Zookeeper connection string for Kafka")
-        .withRequiredArg()
-        .describedAs("kafka-zk")
-        .ofType(String.class);
     OptionSpec<String> veniceUrlOpt =
             parser.accepts("venice-router-url", "Optional: comma-delimeted venice URLs.  "
                 +"If pushing to multiple datacenters, use a semi-colon to separate lists of URLs")
@@ -192,24 +186,26 @@ public class KafkaPushJob {
             .describedAs("batch-num-bytes")
             .ofType(String.class)
             .defaultsTo(Integer.toString(1000000));
-    OptionSpec<String> topicRetentionOpt =
-        parser.accepts("topic-retention", "Optional: number of historical kafka topics that should be retained for this store")
-            .withRequiredArg()
-            .describedAs("num-topics-to-retain")
-            .ofType(String.class);
     OptionSpecBuilder autoCreateOpt =
         parser.accepts("create-store", "Flag: auto create store if it does not exist");
+    OptionSpecBuilder multiColoOpt =
+        parser.accepts("multi-colo", "Flag: multi colo push");
+    OptionSpec<String> parentControllerOpt =
+        parser.accepts("parent-controller", "Required for multi-colo push")
+        .withRequiredArg()
+        .describedAs("parent-controller with format: 'http://host1:port1[,http://host2:port2, ...]'")
+        .ofType(String.class);
 
     OptionSet options = parser.parse(args);
 
     OptionSpec[] expectedOptions = {inputPathOpt,  keyFieldOpt, valueFieldOpt};
-    validateExpectedArguments( expectedOptions, options, parser);
+    validateExpectedArguments(expectedOptions, options, parser);
 
     // Only one of the VeniceUrl and Topic must be specified
     boolean isVeniceUrlPresent = options.has(veniceUrlOpt);
     boolean isTopicPresent = options.has(topicOpt);
-    boolean cleanupKafkaTopics = options.has(topicRetentionOpt);
     boolean autoCreateStore = options.has(autoCreateOpt);
+    boolean multiColo = options.has(multiColoOpt);
 
     Properties props = new Properties();
 
@@ -228,21 +224,21 @@ public class KafkaPushJob {
       props.put(KAFKA_URL_PROP, kafkaUrl);
       props.put(TOPIC_PROP, topicName);
 
-    } else if ( isVeniceUrlPresent) {
-      validateExpectedArguments(new OptionSpec[] {clusterNameOpt, veniceUrlOpt, kafkaUrlOpt, kafkaZkOpt, storeNameOpt, storeOwnersOpt},
+    } else if (isVeniceUrlPresent) {
+      validateExpectedArguments(new OptionSpec[] {clusterNameOpt, veniceUrlOpt, storeNameOpt, storeOwnersOpt},
           options, parser);
 
       props.put(VENICE_CLUSTER_NAME_PROP, options.valueOf(clusterNameOpt));
       props.put(VENICE_ROUTER_URL_PROP, options.valueOf(veniceUrlOpt));
-      props.put(KAFKA_URL_PROP, options.valueOf(kafkaUrlOpt));
-      props.put(KAFKA_ZOOKEEPER_PROP, options.valueOf(kafkaZkOpt));
       props.put(VENICE_STORE_NAME_PROP, options.valueOf(storeNameOpt));
       props.put(VENICE_STORE_OWNERS_PROP, options.valueOf(storeOwnersOpt));
-      if (cleanupKafkaTopics){
-        props.put(VENICE_TOPIC_RETENTION, options.valueOf(topicRetentionOpt));
-      }
       if (autoCreateStore){
-        props.put(AUTO_CREATE_STORE, "true");
+        props.put(AUTO_CREATE_STORE_PROP, "true");
+      }
+      if (multiColo) {
+        props.put(VENICE_MULTI_COLO_PROP, "true");
+        validateExpectedArguments(new OptionSpec[] {parentControllerOpt}, options, parser);
+        props.put(VENICE_PARENT_CONTROLLER_URL_PROP, options.valueOf(parentControllerOpt));
       }
     }  else {
       String errorMessage = "At least one of the Options should be present " + topicOpt + " Or " + veniceUrlOpt;
@@ -295,32 +291,32 @@ public class KafkaPushJob {
     this.storeName = props.getProperty(VENICE_STORE_NAME_PROP);
     this.storeOwners = props.getProperty(VENICE_STORE_OWNERS_PROP);
     this.kafkaUrl = props.getProperty(KAFKA_URL_PROP);
-    this.kafkaZk = props.getProperty(KAFKA_ZOOKEEPER_PROP);
 
-    String defaultRetention = Integer.toString(Integer.MAX_VALUE);
-    String retentionValue = props.getProperty(VENICE_TOPIC_RETENTION, defaultRetention);
-    this.topicRetention = Utils.parseIntFromString(retentionValue, VENICE_TOPIC_RETENTION);
-    this.autoCreateStoreIfNeeded = Boolean.valueOf(props.getProperty(AUTO_CREATE_STORE, "false"));
+    this.autoCreateStoreIfNeeded = Boolean.valueOf(props.getProperty(AUTO_CREATE_STORE_PROP, "false"));
+    this.multiColo = Boolean.valueOf(props.getProperty(VENICE_MULTI_COLO_PROP, "false"));
+    if (this.multiColo) {
+      this.parentControllerUrls = props.getProperty(VENICE_PARENT_CONTROLLER_URL_PROP);
+    } else {
+      // For single-colo push, H2V will talk to controller directly
+      this.parentControllerUrls = this.veniceRouterUrl;
+    }
 
     String kafkaTopic = props.getProperty(TOPIC_PROP);
 
     boolean isKafkaTopicMissing = Utils.isNullOrEmpty(kafkaTopic);
 
     if(isKafkaTopicMissing) {
-      if (Utils.isNullOrEmpty(veniceRouterUrl)) {
+      if (Utils.isNullOrEmpty(this.veniceRouterUrl)) {
         throw new VeniceException("At least one of the " + VENICE_ROUTER_URL_PROP + " or " + TOPIC_PROP + " must be specified.");
       }
-      if (Utils.isNullOrEmpty(storeName)) {
+      if (Utils.isNullOrEmpty(this.storeName)) {
         throw new VeniceException(VENICE_STORE_NAME_PROP + " is required for Starting a push");
       }
-      if (Utils.isNullOrEmpty(storeOwners)) {
+      if (Utils.isNullOrEmpty(this.storeOwners)) {
         throw new VeniceException(VENICE_STORE_OWNERS_PROP + " is required for Starting a push");
       }
-      if (Utils.isNullOrEmpty(kafkaUrl)) {
-        throw new VeniceException(KAFKA_URL_PROP + " is required for Starting a push");
-      }
-      if (Utils.isNullOrEmpty(kafkaZk)) {
-        throw new VeniceException(KAFKA_ZOOKEEPER_PROP + " is required for Starting a push");
+      if (this.multiColo && Utils.isNullOrEmpty(this.parentControllerUrls)) {
+        throw new VeniceException(VENICE_PARENT_CONTROLLER_URL_PROP + " is required for multi-colo push");
       }
       this.storePush = true;
     } else {
@@ -338,8 +334,6 @@ public class KafkaPushJob {
     } else {
       this.batchNumBytes = Integer.parseInt(props.getProperty(BATCH_NUM_BYTES_PROP));
     }
-
-    this.topicManager = new TopicManager(kafkaZk);
   }
 
   /**
@@ -375,10 +369,8 @@ public class KafkaPushJob {
         }
         validateKeySchema();
         validateValueSchema();
-        int nextVersion = getNextVersionFromVenice();
-        reserveNextVersion(nextVersion); /* Throws VeniceException if reservation fails */
-        topic = new Version(storeName, nextVersion).kafkaTopicName();
-        createTopic();
+        // Create new store version, topic and fetch Kafka url from backend
+        createNewStoreVersion();
       }
       // Log job properties
       logJobProperties();
@@ -408,63 +400,40 @@ public class KafkaPushJob {
         logger.info("No controller provided, skipping poll of push status, job completed");
       } else {
         pollStatusUntilComplete();
-        topicManager.deleteOldTopicsForStore(storeName, topicRetention);
       }
     } catch (VeniceException ve) {
       throw ve;
     } catch (Exception e) {
       throw new VeniceException("Exception caught during Hadoop to Venice Bridge!", e);
     } finally {
-      IOUtils.closeQuietly(topicManager);
       IOUtils.closeQuietly(veniceWriter);
     }
   }
 
-  // TODO: Add config to selectively disable this.
+  /**
+   * This method will talk to parent controller to create new store if necessary.
+   */
   private void createStoreIfNeeded(){
-    for (String routerUrl : perDatacenterRouterUrls){
-      NewStoreResponse response = ControllerClient.createNewStore(routerUrl, clusterName, storeName, "H2V-user", keySchemaString, valueSchemaString);
-      if (response.isError()){
-        logger.warn("Error creating new store with routers: " + routerUrl + "  " + response.getError());
-      }
+    NewStoreResponse response = ControllerClient.createNewStore(parentControllerUrls, clusterName, storeName,
+        "H2V-user", keySchemaString, valueSchemaString);
+    if (response.isError()){
+      logger.warn("Error creating new store with urls: " + parentControllerUrls + "  " + response.getError());
     }
   }
 
   /**
-   * Get the key schema for this store from the controller and make sure it is the same as the key schema H2V wants to use
-   * Checks all datacenters, requires a successful query from a strict majority.  Any datacenter that provides
-   * an invalid schema fails the validation.
+   * This method will talk to parent controller to validate key schema.
    */
-  private void validateKeySchema(){
-    int valid = 0;
-    int error = 0;
-    for (String routerUrl : perDatacenterRouterUrls) {
-      SchemaResponse keySchemaResponse = ControllerClient.getKeySchema(routerUrl, clusterName, storeName);
-      int attempts = 3;
-      while(keySchemaResponse.isError() && attempts > 0){
-        attempts -= 1;
-        logger.warn(keySchemaResponse.getError());
-        Utils.sleep(2000);
-        keySchemaResponse = ControllerClient.getKeySchema(routerUrl, clusterName, storeName);
-      }
-      if (keySchemaResponse.isError()){
-        error += 1;
-        logger.error(keySchemaResponse.getError());
-      } else {
-        SchemaEntry serverSchema = new SchemaEntry(keySchemaResponse.getId(), keySchemaResponse.getSchemaStr());
-        SchemaEntry clientSchema = new SchemaEntry(1, keySchemaString);
-        if (serverSchema.equals(clientSchema)){
-          valid += 1;
-          logger.info("Provided key schema matches key schema for store " + storeName + " on server: " + routerUrl);
-        } else {
-          throw new VeniceException("Key schema mis-match for store " + storeName + " on server: " + routerUrl);
-        }
-      }
+  private void validateKeySchema() {
+    SchemaResponse keySchemaResponse = ControllerClient.getKeySchema(parentControllerUrls, clusterName, storeName);
+    if (keySchemaResponse.isError()) {
+      throw new VeniceException("Failed to fetch key schema from urls: " + parentControllerUrls);
     }
-    if (valid > 0 && (valid > (valid + error)/2)) {
-      logger.info("Key schema validated for store: " + storeName);
-    } else {
-      throw new VeniceException("Unable to validate schema for store: " + storeName + ". Could not identify current key schema");
+    SchemaEntry serverSchema = new SchemaEntry(keySchemaResponse.getId(), keySchemaResponse.getSchemaStr());
+    SchemaEntry clientSchema = new SchemaEntry(1, keySchemaString);
+    if (! serverSchema.equals(clientSchema)) {
+      throw new VeniceException("Key schema mis-match for store " + storeName + " on server: " + parentControllerUrls
+      + ", expected: " + keySchemaString + ", actual: " + keySchemaResponse.getSchemaStr());
     }
   }
 
@@ -472,128 +441,39 @@ public class KafkaPushJob {
    * TODO: rip out this method when we don't need to auto create stores any more
    */
   private void uploadValueSchema() {
-    for (String routerUrl : perDatacenterRouterUrls) {
-      SchemaResponse valueSchemaResponse = ControllerClient.addValueSchema(routerUrl, clusterName, storeName,
-          valueSchemaString);
-      int attempts = 3;
-      while (valueSchemaResponse.isError() && attempts > 0){
-        attempts -= 1;
-        logger.warn(valueSchemaResponse.getError());
-        Utils.sleep(2000);
-        valueSchemaResponse = ControllerClient.addValueSchema(routerUrl, clusterName, storeName, valueSchemaString);
-      }
-      if (valueSchemaResponse.isError()) {
-
-        logger.error(
-            "Fail to validate/create value schema: " + valueSchemaString + " for store: " + storeName + ", error: "
-                + valueSchemaResponse.getError());
-      }
+    SchemaResponse valueSchemaResponse = ControllerClient.addValueSchema(parentControllerUrls, clusterName, storeName,
+        valueSchemaString);
+    if (valueSchemaResponse.isError()) {
+      throw new VeniceException("Fail to validate/create value schema: " + valueSchemaString + " for store: " + storeName
+          + ", error: " + valueSchemaResponse.getError());
     }
   }
 
   /***
-   * For each datacenter, uploads value schema and asks for ID.
-   *  Server will return existing ID if schema already exists, will return an error if schema doesn't already exist.
-   *  This method requires that strict majority of servers respond, and that all responding servers provide the same ID.
+   * This method will talk to parent controller to validate value schema.
    */
   private void validateValueSchema() {
-    int valid = 0;
-    int error = 0;
-    Map<String, Integer> schemaIdByDatacenter = new HashMap<>();
-    for (String routerUrl : perDatacenterRouterUrls) {
-      SchemaResponse valueSchemaResponse = ControllerClient.getValueSchemaID(routerUrl, clusterName, storeName,
-          valueSchemaString);
-      int attempts = 3;
-      while (valueSchemaResponse.isError() && attempts > 0){
-        attempts -= 1;
-        logger.warn(valueSchemaResponse.getError());
-        Utils.sleep(2000);
-        valueSchemaResponse = ControllerClient.getValueSchemaID(routerUrl, clusterName, storeName, valueSchemaString);
-      }
-      if (valueSchemaResponse.isError()) {
-        error += 1;
-        logger.error("Fail to validate value schema: " + valueSchemaString + " for store: "
-            + storeName + ", error: " + valueSchemaResponse.getError());
-      } else {
-        valid += 1;
-        schemaIdByDatacenter.put(routerUrl, valueSchemaResponse.getId());
-      }
+    SchemaResponse valueSchemaResponse = ControllerClient.getValueSchemaID(parentControllerUrls, clusterName, storeName,
+        valueSchemaString);
+    if (valueSchemaResponse.isError()) {
+      throw new VeniceException("Fail to validate value schema: " + valueSchemaString + " for store: "
+          + storeName + ", error: " + valueSchemaResponse.getError());
     }
-    if (valid > 0 && (valid > (valid + error)/2)) { /* response from strict majority of datacenters */
-      boolean unset = true; /* valueSchemaId has not yet been set */
-      for (Integer id : schemaIdByDatacenter.values()){
-        if (unset){
-          valueSchemaId = id.intValue();
-          unset = false;
-        } else {
-          if (valueSchemaId != id.intValue()){
-            StringBuilder sb = new StringBuilder();
-            sb.append("Found conflicting value schema IDs from different servers: ");
-            for (String server : schemaIdByDatacenter.keySet()){
-              sb.append(server + ":" + schemaIdByDatacenter.get(server).toString() + ", ");
-            }
-            throw new VeniceException(sb.toString());
-          }
-        }
-      }
-      logger.info("Value schema validated for store: " + storeName);
-    } else {
-      throw new VeniceException("Unable to validate schema for store: " + storeName + ". Could only identify value schema from " + valid + " of " + (valid + error) + " datacenters");
-    }
+    valueSchemaId = valueSchemaResponse.getId();
+    logger.info("Get schema id: " + valueSchemaId + " for value schema: " + valueSchemaString + " of store: " + storeName);
   }
 
-  private int getNextVersionFromVenice(){
-    int numberOfDatacenters = perDatacenterRouterUrls.length;
-    int requiredNumberOfDatacenters = (numberOfDatacenters / 2) + 1; /* strict majority */
-    int numberOfDatacentersResponding = 0;
-    int maxNextVersion = -1;
-    for (String routerUrl : perDatacenterRouterUrls){
-      VersionResponse nextVersionResponse = ControllerClient.queryNextVersion(routerUrl, clusterName, storeName);
-      if (nextVersionResponse.isError()){ /* Also triggers on connection failure or timeout */
-        logger.warn("Could not query next version from routers: " + routerUrl + "  " + nextVersionResponse.getError());
-      } else {
-        if (nextVersionResponse.getVersion() > maxNextVersion){
-          maxNextVersion = nextVersionResponse.getVersion();
-        }
-        numberOfDatacentersResponding++;
-      }
+  /**
+   * This method will talk to parent controller to create new store version, which will create new topic for the version as well.
+   */
+  private void createNewStoreVersion() {
+    VersionCreationResponse versionCreationResponse = ControllerClient.createNewStoreVersion(parentControllerUrls, clusterName, storeName, inputFileDataSize);
+    if (versionCreationResponse.isError()) {
+      throw new VeniceException("Failed to create new store version with urls: " + parentControllerUrls
+          + ", error: " + versionCreationResponse.getError());
     }
-    if (numberOfDatacentersResponding < requiredNumberOfDatacenters){
-      throw new VeniceException("Unable to query next version from minimum of "
-          + requiredNumberOfDatacenters + "/" + numberOfDatacenters + " datacenters."
-          + "  Only " + numberOfDatacentersResponding + " respond.");
-    }
-    logger.info("Next version number is " + maxNextVersion);
-    return maxNextVersion;
-  }
-
-  private void reserveNextVersion(int nextVersion) {
-    int numberOfDatacenters = perDatacenterRouterUrls.length;
-    int requiredNumberOfDatacenters = (numberOfDatacenters / 2) + 1; /* strict majority */
-    int numberOfDatacentersResponding = 0;
-    for (String routerUrl : perDatacenterRouterUrls){
-      VersionResponse reserveResponse = ControllerClient.reserveVersion(routerUrl, clusterName, storeName, nextVersion);
-      if (reserveResponse.isError()) {  /* Also triggers on connection failure or timeout */
-        logger.warn("Could not reserve version " + nextVersion + " from routers: " + routerUrl + "  " + reserveResponse.getError());
-      } else {
-        numberOfDatacentersResponding++;
-      }
-    }
-    if (numberOfDatacentersResponding < requiredNumberOfDatacenters){
-      throw new VeniceException("Unable to reserve version from minimum of "
-          + requiredNumberOfDatacenters + "/" + numberOfDatacenters + " datacenters."
-          + "  Only " + numberOfDatacentersResponding + " respond.");
-    }
-    logger.info("Reserved version " + nextVersion);
-
-  }
-
-  private void createTopic(){
-    //TODO generate these according to logic, must support single replication factor for local testing.
-    int partitionCount = 3;
-    int replicationFactor = 1;
-
-    topicManager.createTopic(topic, partitionCount, replicationFactor);
+    topic = versionCreationResponse.getKafkaTopic();
+    kafkaUrl = versionCreationResponse.getKafkaBootstrapServers();
   }
 
   private synchronized VeniceWriter<KafkaKey, byte[]> getVeniceWriter() {
@@ -623,6 +503,8 @@ public class KafkaPushJob {
     logger.info("Venice Store Name: " + storeName);
     logger.info("Venice Cluster Name: " + clusterName);
     logger.info("Venice Router URL: " + veniceRouterUrl);
+    logger.info("Venice Multi-COLO push: " + multiColo);
+    logger.info("Venice Parent Controller URL: " + parentControllerUrls);
     logger.info("File Schema: " + fileSchemaString);
     logger.info("Avro key schema: " + keySchemaString);
     logger.info("Avro value schema: " + valueSchemaString);

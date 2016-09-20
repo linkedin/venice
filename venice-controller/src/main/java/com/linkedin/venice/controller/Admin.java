@@ -36,8 +36,6 @@ public interface Admin {
 
     boolean hasStore(String clusterName, String storeName);
 
-    void reserveVersion(String clusterName, String storeName, int versionNumberToReserve);
-
     void setCurrentVersion(String clusterName, String storeName, int versionNumber);
 
     void startOfflinePush(String clusterName, String kafkaTopic, int numberOfPartition, int replicaFactor);

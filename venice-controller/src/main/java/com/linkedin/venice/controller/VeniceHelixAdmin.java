@@ -185,32 +185,6 @@ public class VeniceHelixAdmin implements Admin {
         new SchemaEntry(SchemaData.INVALID_VALUE_SCHEMA_ID, valueSchema);
     }
 
-    /**
-     * Throws VeniceException if the version is unavailable for reservation
-     *
-     * @param clusterName
-     * @param storeName
-     * @param versionNumberToReserve
-     */
-    @Override
-    public synchronized void reserveVersion(String clusterName, String storeName, int versionNumberToReserve){
-        checkControllerMastership(clusterName);
-        boolean success = false;
-        HelixReadWriteStoreRepository repository = getVeniceHelixResource(clusterName).getMetadataRepository();
-        repository.lock();
-        try {
-            Store store = repository.getStore(storeName);
-            if (store == null) {
-                throwStoreDoesNotExist(clusterName, storeName);
-            }
-            store.reserveVersionNumber(versionNumberToReserve); /* throws VeniceException on failure */
-            repository.updateStore(store);
-            logger.info("Successfully reserved version " + versionNumberToReserve + " for store " + storeName);
-        } finally {
-            repository.unLock();
-        }
-    }
-
     private final static int VERSION_ID_UNSET = -1;
 
     @Override
@@ -390,7 +364,6 @@ public class VeniceHelixAdmin implements Admin {
         } else {
             throwResourceAlreadyExists(kafkaTopic);
         }
-
     }
 
     @Override

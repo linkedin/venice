@@ -1,6 +1,7 @@
 package com.linkedin.venice.integration;
 
 import com.linkedin.venice.client.exceptions.VeniceServerException;
+import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
@@ -60,7 +61,7 @@ public class ProducerConsumerReaderIntegrationTest {
     VersionCreationResponse creationResponse = veniceCluster.getNewStoreVersion();
     storeVersionName = creationResponse.getKafkaTopic();
     storeName = Version.parseStoreFromKafkaTopicName(storeVersionName);
-    valueSchemaId = creationResponse.getValueSchemaId();
+    valueSchemaId = HelixReadOnlySchemaRepository.VALUE_SCHEMA_STARTING_ID;
     String routerUrl = "http://" + veniceCluster.getVeniceRouter().getAddress();
     veniceCluster.getVeniceController().setActiveVersion(routerUrl, veniceCluster.getClusterName(), storeVersionName);
 

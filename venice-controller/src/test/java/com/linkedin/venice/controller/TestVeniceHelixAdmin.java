@@ -160,37 +160,6 @@ public class TestVeniceHelixAdmin {
     }
   }
 
-  @Test(timeOut = TOTAL_TIMEOUT_FOR_SHORT_TEST)
-  public void reserveAndCreateVersion() throws Exception {
-    String storeName = TestUtils.getUniqueString("store");
-    String owner = "owner";
-    try {
-      veniceAdmin.addStore(clusterName, storeName, owner, keySchema, valueSchema);
-      veniceAdmin.incrementVersion(clusterName, storeName, 1, 1);
-
-      int maxVersionBeforeAction = veniceAdmin
-          .versionsForStore(clusterName, storeName)
-          .stream().map(v -> v.getNumber())
-          .max(Comparator.<Integer>naturalOrder()).orElseGet(() -> -1);
-
-      int nextVersion = veniceAdmin.peekNextVersion(clusterName, storeName).getNumber();
-      veniceAdmin.reserveVersion(clusterName, storeName, nextVersion);
-      veniceAdmin.addVersion(clusterName, storeName, nextVersion, 1, 1);
-
-      int maxVersionAfterAction = veniceAdmin
-          .versionsForStore(clusterName, storeName)
-          .stream().map(v -> v.getNumber())
-          .max(Comparator.<Integer>naturalOrder()).orElseGet(() -> -1);
-
-      Assert.assertEquals(maxVersionAfterAction, nextVersion,
-          "Max version after creation must be same as peeked version");
-      Assert.assertNotEquals(maxVersionAfterAction, maxVersionBeforeAction,
-          "Max version after creation must be different than before");
-    } catch (VeniceException e) {
-      Assert.fail("Should be able to create store after starting cluster");
-    }
-  }
-
   //@Test(timeOut = TOTAL_TIMEOUT_FOR_LONG_TEST)
   @Test
   public void testControllerFailOver()
@@ -467,7 +436,6 @@ public class TestVeniceHelixAdmin {
       //Expected
     }
 
-    veniceAdmin.reserveVersion(clusterName,storeName,100);
     veniceAdmin.addVersion(clusterName,storeName,101,1,1);
     Assert.assertEquals(veniceAdmin.versionsForStore(clusterName,storeName).size(),2);
   }
@@ -614,7 +582,7 @@ public class TestVeniceHelixAdmin {
     Assert.assertEquals(veniceAdmin.getAllStores(clusterName).get(0), store);
 
     try {
-      veniceAdmin.reserveVersion(clusterName, storeName, 2);
+      veniceAdmin.addVersion(clusterName, storeName, 1, 1, 1);
       Assert.fail("Store has been paused, can not accept a new version");
     } catch (VeniceException e) {
     }
@@ -624,13 +592,12 @@ public class TestVeniceHelixAdmin {
 
     veniceAdmin.addVersion(clusterName, storeName, 1, 1,1);
     veniceAdmin.incrementVersion(clusterName, storeName, 1, 1);
-    veniceAdmin.reserveVersion(clusterName, storeName, 3);
 
     store = veniceAdmin.getAllStores(clusterName).get(0);
-    // version 1 and version 2 are added to this store. And version 3 is reserved.
+    // version 1 and version 2 are added to this store.
     Assert.assertFalse(store.isPaused());
     Assert.assertEquals(store.getVersions().size(), 2);
-    Assert.assertEquals(store.peekNextVersion().getNumber(), 4);
+    Assert.assertEquals(store.peekNextVersion().getNumber(), 3);
     // two offline jobs are running.
     HelixJobRepository jobRepository = veniceAdmin.getVeniceHelixResource(clusterName).getJobRepository();
     Assert.assertEquals(jobRepository.getRunningJobOfTopic(Version.composeKafkaTopic(storeName, 1)).size(), 1);
@@ -652,6 +619,4 @@ public class TestVeniceHelixAdmin {
     Assert.assertEquals(veniceAdmin.getWhitelist(clusterName).size(), 0,
         "After removing the instance, white list should be empty.");
   }
-
-
 }

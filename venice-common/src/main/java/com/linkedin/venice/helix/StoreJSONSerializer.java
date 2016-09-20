@@ -10,6 +10,7 @@ import com.linkedin.venice.meta.Version;
 import java.io.IOException;
 import org.codehaus.jackson.annotate.JsonCreator;
 import org.codehaus.jackson.annotate.JsonProperty;
+import org.codehaus.jackson.map.DeserializationConfig;
 import org.codehaus.jackson.map.ObjectMapper;
 
 
@@ -22,6 +23,8 @@ public class StoreJSONSerializer implements VeniceSerializer<Store> {
     public StoreJSONSerializer() {
         mapper.getDeserializationConfig().addMixInAnnotations(Store.class, StoreSerializerMixin.class);
         mapper.getDeserializationConfig().addMixInAnnotations(Version.class,VersionSerializerMixin.class);
+        // Ignore unknown properties
+        mapper.configure(DeserializationConfig.Feature.FAIL_ON_UNKNOWN_PROPERTIES, false);
     }
 
     @Override

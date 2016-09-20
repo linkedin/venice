@@ -59,43 +59,18 @@ public class TestStore {
   @Test
   public void testCloneStore(){
     Store s = TestUtils.createTestStore("s1", "owner", System.currentTimeMillis());
-    s.reserveVersionNumber(5);
     Store clonedStore = s.cloneStore();
     Assert.assertTrue(s.equals(clonedStore), "The cloned store is expected to be equal!");
     clonedStore.setCurrentVersion(100);
     Assert.assertEquals(s.getCurrentVersion(), 0, "The cloned store's version is expected to be 0!");
-    Assert.assertEquals(s.peekNextVersion().getNumber(), 6, "clone should peek at reserved version plus 1");
+    Assert.assertEquals(s.peekNextVersion().getNumber(), 1, "clone should peek at biggest used version plus 1");
 
     Store s2 = TestUtils.createTestStore("s2", "owner", System.currentTimeMillis());
     s2.increaseVersion();
     Store s2clone = s2.cloneStore();
     Assert.assertEquals(s2, s2clone);
-    s2clone.reserveVersionNumber(5);
+    s2clone.setPaused(true);
     Assert.assertNotEquals(s2, s2clone);
-  }
-
-  @Test
-  public void testVersionReservation(){
-    Store store = TestUtils.createTestStore("myStore", "owner", System.currentTimeMillis());
-    Assert.assertEquals(store.peekNextVersion().getNumber(), 1);
-    store.reserveVersionNumber(2);
-    reserveVersionFails(store, 2);
-    Assert.assertEquals(store.peekNextVersion().getNumber(), 3, "next version should respect reservation");
-    Version increasedV = store.increaseVersion();
-    Assert.assertEquals(increasedV.getNumber(), 3, "increased version must be greater than reserved versions");
-    Assert.assertEquals(store.peekNextVersion().getNumber(), 4, "peek must be greater than existing versions");
-    store.reserveVersionNumber(8);
-    reserveVersionFails(store, 7);
-    reserveVersionFails(store, 8);
-    Assert.assertEquals(store.peekNextVersion().getNumber(), 9, "peek is bigger than reserved");
-  }
-
-  private static void reserveVersionFails(Store store, int version) {
-    try {
-      store.reserveVersionNumber(version);
-      Assert.fail("Shouldn't be able to reserve version " + version);
-    } catch (VeniceException e) {
-    }
   }
 
   private static void assertVersionsEquals(Store store, int versionToPreserve, List<Version> expectedVersions, String message) {
@@ -174,12 +149,6 @@ public class TestStore {
       Assert.fail("Store is paused, can not add new store to it.");
     }catch (StorePausedException e){
     }
-    // reserve version for paused store.
-    try{
-      store.reserveVersionNumber(2);
-      Assert.fail("Store is paused, can not reserve a new version.");
-    }catch (StorePausedException e){
-    }
 
     try{
       store.setCurrentVersion(1);
@@ -199,8 +168,7 @@ public class TestStore {
     Assert.assertEquals(store.getVersions().get(0).getNumber(), 1);
     store.increaseVersion();
     Assert.assertEquals(store.getVersions().get(1).getNumber(), 2);
-    store.reserveVersionNumber(3);
-    Assert.assertEquals(store.peekNextVersion().getNumber(), 4);
+    Assert.assertEquals(store.peekNextVersion().getNumber(), 3);
     store.setCurrentVersion(1);
     Assert.assertEquals(store.getCurrentVersion(), 1);
     store.updateVersionStatus(2, VersionStatus.ONLINE);
@@ -249,12 +217,6 @@ public class TestStore {
     Version version = store.increaseVersion();
     Assert.assertEquals(version.getNumber(), 3);
     Assert.assertEquals(store.peekNextVersion().getNumber(), 4);
-    try {
-      store.reserveVersionNumber(3);
-      Assert.fail("The largest used version is 4, can not reserve a smaller version 3");
-    } catch (VeniceException e) {
-      //expected.
-    }
   }
 
   @Test

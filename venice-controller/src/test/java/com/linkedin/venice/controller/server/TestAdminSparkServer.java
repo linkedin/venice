@@ -70,43 +70,6 @@ public class TestAdminSparkServer {
   }
 
   @Test
-  public void controllerClientCanQueryNextVersion() throws InterruptedException {
-    String kafkaTopic = venice.getNewStoreVersion().getKafkaTopic();
-    String storeName = Version.parseStoreFromKafkaTopicName(kafkaTopic);
-    int currentVersion = Version.parseVersionFromKafkaTopicName(kafkaTopic);
-
-    VersionResponse nextVersionResponse =
-        ControllerClient.queryNextVersion(routerUrl, venice.getClusterName(), storeName);
-    Assert.assertEquals(nextVersionResponse.getVersion(), currentVersion + 1);
-
-    VersionResponse badVersionResponse =
-        ControllerClient.queryNextVersion(routerUrl, venice.getClusterName(), "does-not-exist-"+storeName);
-    Assert.assertTrue(badVersionResponse.isError());
-  }
-
-  @Test
-  public void controllerClientCanReserveVersions() {
-    String kafkaTopic = venice.getNewStoreVersion().getKafkaTopic();
-    String storeName = Version.parseStoreFromKafkaTopicName(kafkaTopic);
-    int currentVersion = Version.parseVersionFromKafkaTopicName(kafkaTopic);
-
-    VersionResponse badReservation =
-        ControllerClient.reserveVersion(routerUrl, venice.getClusterName(), storeName, currentVersion);
-    Assert.assertTrue(badReservation.isError(), "controller client should not allow reservation of current version");
-    int reserveVersion = currentVersion + 1;
-    VersionResponse goodReservation =
-        ControllerClient.reserveVersion(routerUrl, venice.getClusterName(), storeName, reserveVersion);
-    Assert.assertFalse(goodReservation.isError(), "should be able to reserve next version");
-
-    VersionResponse afterReservationPeek =
-        ControllerClient.queryNextVersion(routerUrl, venice.getClusterName(), storeName);
-    Assert.assertEquals(afterReservationPeek.getVersion(), goodReservation.getVersion() + 1);
-    VersionResponse doubleReservation =
-        ControllerClient.reserveVersion(routerUrl, venice.getClusterName(), storeName, reserveVersion);
-    Assert.assertTrue(doubleReservation.isError(), "controller client should not allow duplicate version reservation");
-  }
-
-  @Test
   public void controllerClientCanCreateNewStore(){
     String storeToCreate = "newTestStore123";
     String keySchema = "\"string\"";
@@ -116,9 +79,6 @@ public class TestAdminSparkServer {
     NewStoreResponse newStoreResponse = ControllerClient.createNewStore(routerUrl, clusterName,
         storeToCreate, "owner", keySchema, valueSchema);
     Assert.assertFalse(newStoreResponse.isError(), "create new store should succeed for a store that doesn't exist");
-    VersionResponse newVersionResponse = ControllerClient.queryNextVersion(routerUrl, clusterName,
-        storeToCreate);
-    Assert.assertFalse(newVersionResponse.isError());
     Assert.assertEquals(ControllerClient.getKeySchema(routerUrl, clusterName, storeToCreate).getSchemaStr(), keySchema);
     Assert.assertEquals(ControllerClient.getValueSchema(routerUrl, clusterName, storeToCreate, 1).getSchemaStr(), valueSchema);
     NewStoreResponse duplicateNewStoreResponse = ControllerClient.createNewStore(routerUrl, venice.getClusterName(),

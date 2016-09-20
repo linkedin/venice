@@ -68,14 +68,14 @@ public class AdminSparkServer extends AbstractVeniceService {
       }
     });
 
-    Spark.get(CREATE.getPath(), (request, response) -> {
+    Spark.get(CREATE_VERSION.getPath(), (request, response) -> {
       response.type(HttpConstants.TEXT_HTML);
-      return writeMenu("Create New Store", CREATE.getPath(), CREATE.getParams());
+      return writeMenu("Create New Store", CREATE_VERSION.getPath(), CREATE_VERSION.getParams ());
     });
 
-    Spark.get(SETVERSION.getPath(), (request, response) -> {
+    Spark.get(SET_VERSION.getPath(), (request, response) -> {
       response.type(HttpConstants.TEXT_HTML);
-      return writeMenu("Set Active Version", SETVERSION.getPath(), SETVERSION.getParams());
+      return writeMenu("Set Active Version", SET_VERSION.getPath(), SET_VERSION.getParams());
     });
 
     Spark.get(LIST_STORES.getPath(), StoresRoutes.getAllStores(admin));
@@ -83,16 +83,14 @@ public class AdminSparkServer extends AbstractVeniceService {
     // With the get STORE endpoint above, the following endpoints can be deprecated.
     Spark.get(CURRENT_VERSION.getPath(), CurrentVersion.getRoute(admin));
     Spark.get(ACTIVE_VERSIONS.getPath(), ActiveVersions.getRoute(admin));
-    Spark.get(NEXTVERSION.getPath(), NextVersion.getRoute(admin));
 
     Spark.get(JOB.getPath(), JobStatus.getRoute(admin));
 
-    Spark.post(CREATE.getPath(), CreateVersion.getRoute(admin)); /* create new store-version for testing */
-    Spark.post(NEWSTORE.getPath(), CreateStore.getRoute(admin));
+    Spark.post(CREATE_VERSION.getPath(), CreateVersion.getRoute(admin));
+    Spark.post(NEW_STORE.getPath(), CreateStore.getRoute(admin));
 
     Spark.post(PAUSE_STORE.getPath(), StoresRoutes.pauseStore(admin));
-    Spark.post(SETVERSION.getPath(), SetVersion.getRoute(admin));
-    Spark.post(RESERVE_VERSION.getPath(), ReserveVersion.getRoute(admin));
+    Spark.post(SET_VERSION.getPath(), SetVersion.getRoute(admin));
 
     Spark.get(LIST_NODES.getPath(), NodesAndReplicas.listAllNodes(admin));
     Spark.get(LIST_REPLICAS.getPath(), NodesAndReplicas.listReplicasForStore(admin));

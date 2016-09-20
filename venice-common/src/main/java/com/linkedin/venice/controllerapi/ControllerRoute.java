@@ -9,13 +9,10 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.*;
 
 public enum ControllerRoute {
 
-  CREATE("/create", Arrays.asList(NAME, STORE_SIZE, OWNER, KEY_SCHEMA, VALUE_SCHEMA)), // Only for tests
-
+  CREATE_VERSION("/create_version", Arrays.asList(NAME, STORE_SIZE)),
   STORE("/store", Arrays.asList(NAME)), // get all information about that store
-  NEWSTORE("/new_store", Arrays.asList(NAME, OWNER, KEY_SCHEMA, VALUE_SCHEMA)),
-  SETVERSION("/set_version", Arrays.asList(NAME, VERSION)),
-  RESERVE_VERSION("/reserve_version", Arrays.asList(NAME, VERSION)),
-  NEXTVERSION("/next_version", Arrays.asList(NAME)),
+  NEW_STORE("/new_store", Arrays.asList(NAME, OWNER, KEY_SCHEMA, VALUE_SCHEMA)),
+  SET_VERSION("/set_version", Arrays.asList(NAME, VERSION)),
   CURRENT_VERSION("/current_version", Arrays.asList(NAME)),
   ACTIVE_VERSIONS("/active_versions", Arrays.asList(NAME)),
   PAUSE_STORE("/pause_store", Arrays.asList(NAME, STATUS)), // status "true" or "false"

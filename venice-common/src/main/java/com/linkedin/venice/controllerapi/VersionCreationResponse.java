@@ -1,20 +1,11 @@
 package com.linkedin.venice.controllerapi;
 
-public class VersionCreationResponse extends VersionResponse { /* Uses Json Reflective Serializer, get without set may break things */
-
-  private String owner = null;
+public class VersionCreationResponse extends VersionResponse {
+  /* Uses Json Reflective Serializer, get without set may break things */
   private int partitions = 0;
   private int replicas = 0;
   private String kafkaTopic = null;
   private String kafkaBootstrapServers = null;
-  // value schema id
-  private int valueSchemaId = -1;
-
-  public VersionCreationResponse(){  }
-
-  public void setOwner(String owner) {
-    this.owner = owner;
-  }
 
   public void setPartitions(int partitions) {
     this.partitions = partitions;
@@ -32,10 +23,6 @@ public class VersionCreationResponse extends VersionResponse { /* Uses Json Refl
     this.kafkaBootstrapServers = kafkaBootstrapServers;
   }
 
-  public String getOwner() {
-    return owner;
-  }
-
   public int getPartitions() {
     return partitions;
   }
@@ -51,13 +38,4 @@ public class VersionCreationResponse extends VersionResponse { /* Uses Json Refl
   public String getKafkaBootstrapServers() {
     return kafkaBootstrapServers;
   }
-
-  public void setValueSchemaId(int valueSchemaId) {
-    this.valueSchemaId = valueSchemaId;
-  }
-
-  public int getValueSchemaId() {
-    return valueSchemaId;
-  }
-
 }

@@ -27,7 +27,7 @@ import org.testng.Assert;
 import org.testng.annotations.Test;
 
 import static com.linkedin.venice.ConfigKeys.*;
-import static com.linkedin.venice.controllerapi.ControllerRoute.CREATE;
+import static com.linkedin.venice.controllerapi.ControllerRoute.CREATE_VERSION;
 import static com.linkedin.venice.controllerapi.ControllerRoute.JOB;
 
 
@@ -71,7 +71,7 @@ public class TestBackupControllerResponse {
     httpClient.start();
     String controllerUrl = controller.getControllerUrl();
 
-    final HttpPost post = new HttpPost(controllerUrl + CREATE.getPath());
+    final HttpPost post = new HttpPost(controllerUrl + CREATE_VERSION.getPath());
     List<NameValuePair> params = new ArrayList<NameValuePair>();
     params.add(new BasicNameValuePair(ControllerApiConstants.CLUSTER, clusterName));
     post.setEntity(new UrlEncodedFormEntity(params));

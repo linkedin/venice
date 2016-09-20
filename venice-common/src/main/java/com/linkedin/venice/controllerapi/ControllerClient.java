@@ -18,7 +18,6 @@ import java.util.concurrent.ExecutionException;
 import org.apache.commons.io.IOUtils;
 import org.apache.http.HttpHeaders;
 import org.apache.http.HttpResponse;
-import org.apache.http.HttpStatus;
 import org.apache.http.NameValuePair;
 import org.apache.http.client.entity.UrlEncodedFormEntity;
 import org.apache.http.client.methods.HttpGet;
@@ -121,26 +120,18 @@ public class ControllerClient implements Closeable {
     }
   }
 
-  @Deprecated
-  private VersionCreationResponse createNewStoreVersion(String clusterName, String storeName, String owner, long storeSize,
-                                                      String keySchema, String valueSchema)
+  private VersionCreationResponse createNewStoreVersion(String clusterName, String storeName, long storeSize)
       throws IOException, ExecutionException, InterruptedException {
     List<NameValuePair> params = newParams(clusterName);
     params.add(new BasicNameValuePair(ControllerApiConstants.NAME, storeName));
-    params.add(new BasicNameValuePair(ControllerApiConstants.OWNER, owner));
     params.add(new BasicNameValuePair(ControllerApiConstants.STORE_SIZE, Long.toString(storeSize)));
-    params.add(new BasicNameValuePair(ControllerApiConstants.KEY_SCHEMA, keySchema));
-    params.add(new BasicNameValuePair(ControllerApiConstants.VALUE_SCHEMA, valueSchema));
-    String responseJson = postRequest(ControllerRoute.CREATE.getPath(), params);
+    String responseJson = postRequest(ControllerRoute.CREATE_VERSION.getPath(), params);
     return mapper.readValue(responseJson, VersionCreationResponse.class);
   }
 
-  /** Only used for tests */
-  @Deprecated
-  public static VersionCreationResponse createStoreVersion(
-      String urlsToFindMasterController, String clusterName, String storeName, String owner, long storeSize, String keySchema, String valueSchema) {
+  public static VersionCreationResponse createNewStoreVersion(String urlsToFindMasterController, String clusterName, String storeName, long storeSize) {
     try (ControllerClient client = new ControllerClient(clusterName, urlsToFindMasterController)){
-      return client.createNewStoreVersion(clusterName, storeName, owner, storeSize, keySchema, valueSchema);
+      return client.createNewStoreVersion(clusterName, storeName, storeSize);
     } catch (Exception e){
       return handleError(
           new VeniceException("Error creating version for store: " + storeName, e), new VersionCreationResponse());
@@ -155,7 +146,7 @@ public class ControllerClient implements Closeable {
     params.add(new BasicNameValuePair(ControllerApiConstants.OWNER, owner));
     params.add(new BasicNameValuePair(ControllerApiConstants.KEY_SCHEMA, keySchema));
     params.add(new BasicNameValuePair(ControllerApiConstants.VALUE_SCHEMA, valueSchema));
-    String responseJson = postRequest(ControllerRoute.NEWSTORE.getPath(), params);
+    String responseJson = postRequest(ControllerRoute.NEW_STORE.getPath(), params);
     return mapper.readValue(responseJson, NewStoreResponse.class);
   }
 
@@ -173,7 +164,7 @@ public class ControllerClient implements Closeable {
     List<NameValuePair> params = newParams(clusterName);
     params.add(new BasicNameValuePair(ControllerApiConstants.NAME, storeName));
     params.add(new BasicNameValuePair(ControllerApiConstants.VERSION, Integer.toString(version)));
-    String responseJson = postRequest(ControllerRoute.SETVERSION.getPath(), params);
+    String responseJson = postRequest(ControllerRoute.SET_VERSION.getPath(), params);
     return mapper.readValue(responseJson, VersionResponse.class);
   }
 
@@ -239,34 +230,6 @@ public class ControllerClient implements Closeable {
   }
 
   @Deprecated // use getStore
-  private VersionResponse queryNextVersion(String clusterName, String storeName)
-      throws ExecutionException, InterruptedException, IOException {
-    List<NameValuePair> queryParams = newParams(clusterName);
-    queryParams.add(new BasicNameValuePair(ControllerApiConstants.NAME, storeName));
-    String responseJson = getRequest(ControllerRoute.NEXTVERSION.getPath(), queryParams);
-    return mapper.readValue(responseJson, VersionResponse.class);
-  }
-
-  /**
-   * Query the controller for the next version number that can be created.  This number and larger numbers are available
-   * Before creating a kafka topic using this version number, be sure to reserve it using the #reserveVersion method
-   *
-   * @param urlsToFindMasterController
-   * @param clusterName
-   * @param storeName
-   * @return A VersionResponse object.  the .getVersion() method returns the next available version.
-   */
-
-  @Deprecated // use getStore
-  public static VersionResponse queryNextVersion(String urlsToFindMasterController, String clusterName, String storeName){
-    try (ControllerClient client = new ControllerClient(clusterName, urlsToFindMasterController)){
-      return client.queryNextVersion(clusterName, storeName);
-    } catch (Exception e){
-      return handleError(new VeniceException("Error querying next version for store: " + storeName, e), new VersionResponse());
-    }
-  }
-
-  @Deprecated // use getStore
   private VersionResponse queryCurrentVersion(String clusterName, String storeName)
       throws ExecutionException, InterruptedException, IOException {
     List<NameValuePair> queryParams = newParams(clusterName);
@@ -299,32 +262,6 @@ public class ControllerClient implements Closeable {
       return client.queryActiveVersions(clusterName, storeName);
     } catch (Exception e){
       return handleError(new VeniceException("Error querying active version for store: " + storeName, e), new MultiVersionResponse());
-    }
-  }
-
-  private VersionResponse reserveVersion(String clusterName, String storeName, int version)
-      throws IOException, ExecutionException, InterruptedException {
-    List<NameValuePair> queryParams = newParams(clusterName);
-    queryParams.add(new BasicNameValuePair(ControllerApiConstants.NAME, storeName));
-    queryParams.add(new BasicNameValuePair(ControllerApiConstants.VERSION, Integer.toString(version)));
-    String responseJson = postRequest(ControllerRoute.RESERVE_VERSION.getPath(), queryParams);
-    return mapper.readValue(responseJson, VersionResponse.class);
-  }
-
-  /**
-   * Reserves a version number so another process does not try and create a store version using that number
-   *
-   * @param urlsToFindMasterController
-   * @param clusterName
-   * @param storeName
-   * @param version
-   * @return VersionResponse object.  If the reservation fails, this object's .isError() method will return true.
-   */
-  public static VersionResponse reserveVersion(String urlsToFindMasterController, String clusterName, String storeName, int version){
-    try (ControllerClient client = new ControllerClient(clusterName, urlsToFindMasterController)){
-      return client.reserveVersion(clusterName, storeName, version);
-    } catch (Exception e){
-      return handleError(new VeniceException("Error reserving version " + version + " for store: " + storeName, e), new VersionResponse());
     }
   }
 
@@ -560,5 +497,4 @@ public class ControllerClient implements Closeable {
       throw new VeniceException(msg);
     }
   }
-
 }
