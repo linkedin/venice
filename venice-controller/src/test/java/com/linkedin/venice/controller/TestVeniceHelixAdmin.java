@@ -126,15 +126,8 @@ public class TestVeniceHelixAdmin {
   private void startParticipant(boolean isDelay, String nodeId)
       throws Exception {
     stateModelFactory.setDelayTransistion(isDelay);
-    HelixManager manager = HelixManagerFactory.getZKHelixManager(clusterName, nodeId, InstanceType.PARTICIPANT, zkAddress);
-    manager.getStateMachineEngine().registerStateModelFactory("PartitionOnlineOfflineModel", stateModelFactory);
-    Instance instance = new Instance(nodeId, Utils.getHostName(), 9985);
-    manager.setLiveInstanceInfoProvider(new LiveInstanceInfoProvider() {
-      @Override
-      public ZNRecord getAdditionalLiveInstanceInfo() {
-        return HelixInstanceConverter.convertInstanceToZNRecord(instance);
-      }
-    });
+    HelixManager manager = TestUtils.getParticipant(clusterName, nodeId, zkAddress, 9985,
+        stateModelFactory, VeniceStateModel.PARTITION_ONLINE_OFFLINE_STATE_MODEL);
     participants.put(nodeId, manager);
     manager.connect();
   }

@@ -14,17 +14,16 @@ public interface StatusMessageChannel {
    * @param retryCount      retry how many times.
    * @param retryDurationMs the duration between two retries.
    *
-   * @throws IOException Met any errors when sending the message through network.
+   * @throws com.linkedin.venice.exceptions.VeniceException Met any errors when sending the message through network.
    */
   public void sendToController(StatusMessage message, int retryCount, long retryDurationMs);
 
   /**
    * Send message to controller.
    *
-   * @throws IOException Met any errors when sending the message through network.
+   * @throws com.linkedin.venice.exceptions.VeniceException Met any errors when sending the message through network.
    */
-  public void sendToController(StatusMessage message)
-      throws IOException;
+  public void sendToController(StatusMessage message);
 
   //TODO we only need send to controller now. Will add send to storage nodes in the further.
   //public void sendToStorageNodes(StatusMessage message, List<Instance> instances);

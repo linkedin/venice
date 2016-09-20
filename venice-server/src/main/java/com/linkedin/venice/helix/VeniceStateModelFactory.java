@@ -130,6 +130,10 @@ public class VeniceStateModelFactory extends StateModelFactory<StateModel> {
     public void started(String resourceName, int partitionId) {
     }
 
+    @Override
+    public void restarted(String storeName, int partitionId, long offset) {
+    }
+
     /**
      * Count down the latch once consumption is completed.
      * @param resourceName

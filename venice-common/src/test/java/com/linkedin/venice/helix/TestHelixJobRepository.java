@@ -81,17 +81,8 @@ public class TestHelixJobRepository {
 
     controller = HelixControllerMain
         .startHelixController(zkAddress, cluster, Utils.getHelixNodeIdentifier(12345), HelixControllerMain.STANDALONE);
-    manager = HelixManagerFactory.getZKHelixManager(cluster, nodeId, InstanceType.PARTICIPANT, zkAddress);
-    manager.getStateMachineEngine()
-        .registerStateModelFactory(TestHelixRoutingDataRepository.UnitTestStateModel.UNIT_TEST_STATE_MODEL,
-            new TestHelixRoutingDataRepository.UnitTestStateModelFactory());
-    Instance instance = new Instance(nodeId, Utils.getHostName(), 9986);
-    manager.setLiveInstanceInfoProvider(new LiveInstanceInfoProvider() {
-      @Override
-      public ZNRecord getAdditionalLiveInstanceInfo() {
-        return HelixInstanceConverter.convertInstanceToZNRecord(instance);
-      }
-    });
+    manager = TestUtils.getParticipant(cluster, nodeId, zkAddress, 9986,
+        TestHelixRoutingDataRepository.UnitTestStateModel.UNIT_TEST_STATE_MODEL);
     manager.connect();
 
     routingDataRepository = new HelixRoutingDataRepository(controller);
@@ -138,18 +129,8 @@ public class TestHelixJobRepository {
     int partitions = 5;
     HelixManager[] managers = new HelixManager[3];
     for (int i = 0; i < 3; i++) {
-      HelixManager manager =
-          HelixManagerFactory.getZKHelixManager(cluster, "localhost_" + i, InstanceType.PARTICIPANT, zkAddress);
-      manager.getStateMachineEngine()
-          .registerStateModelFactory(TestHelixRoutingDataRepository.UnitTestStateModel.UNIT_TEST_STATE_MODEL,
-              new TestHelixRoutingDataRepository.UnitTestStateModelFactory());
-      Instance instance = new Instance("localhost_" + i, Utils.getHostName(), 9986);
-      manager.setLiveInstanceInfoProvider(new LiveInstanceInfoProvider() {
-        @Override
-        public ZNRecord getAdditionalLiveInstanceInfo() {
-          return HelixInstanceConverter.convertInstanceToZNRecord(instance);
-        }
-      });
+      HelixManager manager = TestUtils.getParticipant(cluster, "localhost_" + i, zkAddress, 9986,
+          TestHelixRoutingDataRepository.UnitTestStateModel.UNIT_TEST_STATE_MODEL);
       manager.connect();
       managers[i] = manager;
     }
@@ -301,17 +282,8 @@ public class TestHelixJobRepository {
     thread.start();
     Thread.sleep(1000l);
     //Mock up the scenario that controller refresh at first then participant refresh up.
-    manager = HelixManagerFactory.getZKHelixManager(cluster, nodeId, InstanceType.PARTICIPANT, zkAddress);
-    manager.getStateMachineEngine()
-        .registerStateModelFactory(TestHelixRoutingDataRepository.UnitTestStateModel.UNIT_TEST_STATE_MODEL,
-            new TestHelixRoutingDataRepository.UnitTestStateModelFactory());
-    Instance instance = new Instance(nodeId, Utils.getHostName(), 9986);
-    manager.setLiveInstanceInfoProvider(new LiveInstanceInfoProvider() {
-      @Override
-      public ZNRecord getAdditionalLiveInstanceInfo() {
-        return HelixInstanceConverter.convertInstanceToZNRecord(instance);
-      }
-    });
+    manager = TestUtils.getParticipant(cluster, nodeId, zkAddress, 9986,
+        TestHelixRoutingDataRepository.UnitTestStateModel.UNIT_TEST_STATE_MODEL);
     manager.connect();
 
     newRepository.clear();
