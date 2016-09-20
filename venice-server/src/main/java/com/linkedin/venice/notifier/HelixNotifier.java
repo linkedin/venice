@@ -52,6 +52,12 @@ public class HelixNotifier implements VeniceNotifier {
   }
 
   @Override
+  public void restarted(String storeName, int partitionId, long offset) {
+    //In terms of task status, restart and start are same behavior.
+    started(storeName, partitionId);
+  }
+
+  @Override
   public void completed(String storeName, int partitionId, long offset) {
     StoreStatusMessage veniceMessage = new StoreStatusMessage(storeName, partitionId, instanceId,
             ExecutionStatus.COMPLETED);

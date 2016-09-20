@@ -200,6 +200,16 @@ public class StoreConsumptionTask implements Runnable, Closeable {
     }
   }
 
+  private void reportRestarted(int partition, long offset) {
+    for (VeniceNotifier notifier : notifiers) {
+      try {
+        notifier.restarted(topic, partition, offset);
+      } catch (Exception ex) {
+        logger.error("Error reporting status to notifier " + notifier.getClass(), ex);
+      }
+    }
+  }
+
   private void reportCompleted(int partition) {
     Long lastOffset = partitionToOffsetMap.getOrDefault(partition , -1L);
 
@@ -339,6 +349,12 @@ public class StoreConsumptionTask implements Runnable, Closeable {
           reportCompleted(partition);
           logger.info("Topic: " + topic + ", Partition Id: " + partition + " is already done.");
         } else {
+          // Once storage node restart, send the "START" status to controller to rebuild the task status.
+          // If this storage node has never consumed data from this topic, instead of sending "START" here, we send it
+          // once START_OF_PUSH message has been read.
+          if (record.getOffset() > 0) {
+            reportRestarted(partition, record.getOffset());
+          }
           partitionToOffsetMap.put(partition, record.getOffset());
           consumer.subscribe(topic, partition, record);
           logger.info(consumerTaskId + " subscribed to: Topic " + topic + " Partition Id " + partition + " Offset " + record.getOffset());

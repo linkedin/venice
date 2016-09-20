@@ -111,8 +111,7 @@ public class HelixStatusMessageChannel implements StatusMessageChannel {
   }
 
   @Override
-  public void sendToController(StatusMessage message)
-      throws IOException {
+  public void sendToController(StatusMessage message) {
     this.sendToController(message, 0, 0);
   }
 

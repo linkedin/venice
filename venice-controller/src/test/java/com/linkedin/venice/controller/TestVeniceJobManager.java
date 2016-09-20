@@ -96,17 +96,8 @@ public class TestVeniceJobManager {
 
     controller = HelixControllerMain
         .startHelixController(zkAddress, cluster, Utils.getHelixNodeIdentifier(adminPort), HelixControllerMain.STANDALONE);
-    manager = HelixManagerFactory.getZKHelixManager(cluster, nodeId, InstanceType.PARTICIPANT, zkAddress);
-    manager.getStateMachineEngine()
-        .registerStateModelFactory(TestHelixRoutingDataRepository.UnitTestStateModel.UNIT_TEST_STATE_MODEL,
-            new TestHelixRoutingDataRepository.UnitTestStateModelFactory());
-    Instance instance = new Instance(nodeId, Utils.getHostName(), httpPort);
-    manager.setLiveInstanceInfoProvider(new LiveInstanceInfoProvider() {
-      @Override
-      public ZNRecord getAdditionalLiveInstanceInfo() {
-        return HelixInstanceConverter.convertInstanceToZNRecord(instance);
-      }
-    });
+    manager = TestUtils.getParticipant(cluster, nodeId, zkAddress, httpPort,
+        TestHelixRoutingDataRepository.UnitTestStateModel.UNIT_TEST_STATE_MODEL);
     manager.connect();
     Thread.sleep(1000l);
     routingDataRepository = new HelixRoutingDataRepository(controller);
@@ -332,6 +323,8 @@ public class TestVeniceJobManager {
     Assert.assertEquals(jobRepository.getTerminatedJobOfTopic(version.kafkaTopicName()).size(), 1);
   }
 
+
+
   /**
    * Test receive status message for the job which has not been started. Basic idea is create a new version with 1
    * partition and 2 replicas per partition, but only start one participant at first. Then start a offline push job for
@@ -377,17 +370,8 @@ public class TestVeniceJobManager {
 
     // Create a new participant
     final String newNodeId = Utils.getHelixNodeIdentifier(13467);
-    HelixManager newParticipant = HelixManagerFactory.getZKHelixManager(cluster, newNodeId, InstanceType.PARTICIPANT, zkAddress);
-    newParticipant.getStateMachineEngine()
-        .registerStateModelFactory(TestHelixRoutingDataRepository.UnitTestStateModel.UNIT_TEST_STATE_MODEL,
-            new TestHelixRoutingDataRepository.UnitTestStateModelFactory());
-    newParticipant.setLiveInstanceInfoProvider(new LiveInstanceInfoProvider() {
-      @Override
-      public ZNRecord getAdditionalLiveInstanceInfo() {
-        return HelixInstanceConverter.convertInstanceToZNRecord(new Instance(newNodeId, Utils.getHostName(), httpPort));
-      }
-    });
-
+    HelixManager newParticipant = TestUtils.getParticipant(cluster, newNodeId, zkAddress, httpPort,
+        TestHelixRoutingDataRepository.UnitTestStateModel.UNIT_TEST_STATE_MODEL);
     Thread newParticipantThread = new Thread(new Runnable() {
       @Override
       public void run() {
@@ -416,6 +400,68 @@ public class TestVeniceJobManager {
     } finally {
       newParticipant.disconnect();
     }
+  }
+
+  @Test
+  public void testReceiveMessageWhenStorageRestarting()
+      throws Exception {
+    int partitionCount = 1;
+    int replcaCount = 2;
+    Version newVersion = store.increaseVersion();
+    metadataRepository.addStore(store);
+    //create a helix resource with 1 partition and 2 replica per partition.
+    admin.addResource(cluster, newVersion.kafkaTopicName(), partitionCount,
+        TestHelixRoutingDataRepository.UnitTestStateModel.UNIT_TEST_STATE_MODEL,
+        IdealState.RebalanceMode.FULL_AUTO.toString());
+    admin.rebalance(cluster, newVersion.kafkaTopicName(), replcaCount);
+
+    HelixStatusMessageChannel controllerChannel = new HelixStatusMessageChannel(controller);
+    controllerChannel.registerHandler(StoreStatusMessage.class, jobManager);
+
+    Thread startThread = new Thread(new Runnable() {
+      @Override
+      public void run() {
+        StoreStatusMessage veniceMessage =
+            new StoreStatusMessage(newVersion.kafkaTopicName(), 0, manager.getInstanceName(), ExecutionStatus.STARTED);
+        //Send start at first
+        HelixStatusMessageChannel channel = new HelixStatusMessageChannel(manager);
+        channel.sendToController(veniceMessage, 20, 500);
+      }
+    });
+    startThread.start();
+    HelixManager newParticipant =
+        TestUtils.getParticipant(cluster, Utils.getHelixNodeIdentifier(13467), zkAddress, httpPort,
+            TestHelixRoutingDataRepository.UnitTestStateModel.UNIT_TEST_STATE_MODEL);
+    newParticipant.connect();
+    jobManager.startOfflineJob(newVersion.kafkaTopicName(), 1, 1);
+    startThread.join();
+
+    OfflineJob job = (OfflineJob) jobRepository.getRunningJobOfTopic(newVersion.kafkaTopicName()).get(0);
+    Assert.assertEquals(job.getTaskStatus(0, job.generateTaskId(0, nodeId)), ExecutionStatus.STARTED);
+    manager.disconnect();
+
+    // ensure task has been deleted
+    TestUtils.waitForNonDeterministicCompletion(2, TimeUnit.SECONDS,
+        () -> job.getTask(0, job.generateTaskId(0, nodeId)) == null);
+
+    //Restart participant
+    manager = TestUtils.getParticipant(cluster, nodeId, zkAddress, httpPort,
+        TestHelixRoutingDataRepository.UnitTestStateModel.UNIT_TEST_STATE_MODEL);
+    Thread restartThread = new Thread(new Runnable() {
+      @Override
+      public void run() {
+        HelixStatusMessageChannel channel = new HelixStatusMessageChannel(manager);
+        StoreStatusMessage veniceMessage =
+            new StoreStatusMessage(newVersion.kafkaTopicName(), 0, manager.getInstanceName(), ExecutionStatus.STARTED);
+        channel.sendToController(veniceMessage, 20, 500);
+      }
+    });
+    restartThread.start();
+    manager.connect();
+    restartThread.join();
+    //Ensure the started message send to controller correctly after restarting.
+    Assert.assertEquals(job.getTaskStatus(0, job.generateTaskId(0, nodeId)), ExecutionStatus.STARTED);
+    newParticipant.disconnect();
   }
 
   @Test(expectedExceptions = VeniceException.class)

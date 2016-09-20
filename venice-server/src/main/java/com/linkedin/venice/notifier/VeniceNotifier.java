@@ -15,6 +15,15 @@ public interface VeniceNotifier {
     void started(String storeName, int partitionId);
 
     /**
+     * Consumption is restarted from given offset for a store and partition
+     *
+     * @param storeName
+     * @param partitionId
+     * @param offset
+     */
+    void restarted(String storeName, int partitionId, long offset);
+
+    /**
      * Consumption is completed for a store and partition.
      * @param storeName storeName
      * @param partitionId partitionId

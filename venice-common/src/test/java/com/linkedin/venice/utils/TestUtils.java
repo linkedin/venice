@@ -1,5 +1,8 @@
 package com.linkedin.venice.utils;
 
+import com.linkedin.venice.helix.HelixInstanceConverter;
+import com.linkedin.venice.helix.TestHelixRoutingDataRepository;
+import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.ReadStrategy;
@@ -8,6 +11,11 @@ import com.linkedin.venice.meta.Store;
 import java.util.concurrent.TimeUnit;
 import java.util.function.BooleanSupplier;
 import javax.validation.constraints.NotNull;
+import org.apache.helix.HelixManager;
+import org.apache.helix.HelixManagerFactory;
+import org.apache.helix.InstanceType;
+import org.apache.helix.participant.statemachine.StateModel;
+import org.apache.helix.participant.statemachine.StateModelFactory;
 
 
 /**
@@ -75,5 +83,23 @@ public class TestUtils {
 
   public interface NonDeterministicAssertion {
     void execute() throws AssertionError;
+  }
+
+  public static HelixManager getParticipant(String cluster, String nodeId, String zkAddress, int httpPort, String stateModelDef) {
+    TestHelixRoutingDataRepository.UnitTestStateModelFactory stateModelFactory =
+        new TestHelixRoutingDataRepository.UnitTestStateModelFactory();
+    return getParticipant(cluster, nodeId, zkAddress, httpPort, stateModelFactory, stateModelDef);
+  }
+
+  public static HelixManager getParticipant(String cluster, String nodeId, String zkAddress, int httpPort,
+      StateModelFactory<StateModel> stateModelFactory, String stateModelDef) {
+    HelixManager participant =
+        HelixManagerFactory.getZKHelixManager(cluster, nodeId, InstanceType.PARTICIPANT, zkAddress);
+    participant.getStateMachineEngine()
+        .registerStateModelFactory(stateModelDef,
+            stateModelFactory);
+    participant.setLiveInstanceInfoProvider(
+        () -> HelixInstanceConverter.convertInstanceToZNRecord(new Instance(nodeId, Utils.getHostName(), httpPort)));
+    return participant;
   }
 }

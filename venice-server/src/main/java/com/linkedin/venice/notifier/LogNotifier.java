@@ -15,6 +15,11 @@ public class LogNotifier implements VeniceNotifier {
   }
 
   @Override
+  public void restarted(String storeName, int partitionId, long offset) {
+    logger.info("Push restarted for store " + storeName + " partitionId " + partitionId + " offset " + offset);
+  }
+
+  @Override
   public void completed(String storeName, int partitionId, long offset) {
     logger.info("Push completed for Store " + storeName + " partitionId " + partitionId +
             " Offset " + offset);

@@ -83,7 +83,8 @@ public class TestHelixRoutingDataRepository {
     controller = HelixControllerMain
         .startHelixController(zkAddress, clusterName, Utils.getHelixNodeIdentifier(adminPort), HelixControllerMain.STANDALONE);
 
-    manager = createParticipant(httpPort);
+    manager = TestUtils.getParticipant(clusterName, Utils.getHelixNodeIdentifier(httpPort), zkAddress, httpPort,
+        UnitTestStateModel.UNIT_TEST_STATE_MODEL);
     manager.connect();
     //Waiting essential notification from ZK. TODO: use a listener to find out when ZK is ready
     Thread.sleep(WAIT_TIME);
@@ -104,23 +105,6 @@ public class TestHelixRoutingDataRepository {
     zkServerWrapper.close();
   }
 
-  private HelixManager createParticipant(int port, UnitTestStateModelFactory factory){
-    HelixManager manager = HelixManagerFactory.getZKHelixManager(clusterName, Utils.getHelixNodeIdentifier(port), InstanceType.PARTICIPANT, zkAddress);
-    manager.getStateMachineEngine()
-        .registerStateModelFactory(UnitTestStateModel.UNIT_TEST_STATE_MODEL, factory);
-    Instance instance = new Instance(Utils.getHelixNodeIdentifier(port), Utils.getHostName(), port);
-    manager.setLiveInstanceInfoProvider(new LiveInstanceInfoProvider() {
-      @Override
-      public ZNRecord getAdditionalLiveInstanceInfo() {
-        return HelixInstanceConverter.convertInstanceToZNRecord(instance);
-      }
-    });
-    return manager;
-  }
-  private HelixManager createParticipant(int port){
-    //Create participatn with out transition delay.
-    return createParticipant(port, new UnitTestStateModelFactory());
-  }
 
   @Test
   public void testGetInstances()
@@ -142,7 +126,9 @@ public class TestHelixRoutingDataRepository {
     instances = repository.getReadyToServeInstances(resourceName, 0);
     Assert.assertEquals(0, instances.size());
     int newHttpPort = httpPort+10;
-    HelixManager newManager = createParticipant(newHttpPort);
+    HelixManager newManager =
+        TestUtils.getParticipant(clusterName, Utils.getHelixNodeIdentifier(newHttpPort), zkAddress, newHttpPort,
+            UnitTestStateModel.UNIT_TEST_STATE_MODEL);
     newManager.connect();
     TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
           List<Instance> instancesList = repository.getReadyToServeInstances(resourceName, 0);
@@ -278,10 +264,10 @@ public class TestHelixRoutingDataRepository {
   public void testGetBootstrapInstances()
       throws Exception {
     manager.disconnect();
-    //Create new factory to create delayed state model.
     UnitTestStateModelFactory factory = new UnitTestStateModelFactory();
     factory.isDelay = true;
-    manager = createParticipant(httpPort + 1, factory);
+    manager = TestUtils.getParticipant(clusterName, Utils.getHelixNodeIdentifier(httpPort + 1), zkAddress, httpPort + 1,
+        factory,  UnitTestStateModel.UNIT_TEST_STATE_MODEL);
     manager.connect();
     Thread.sleep(WAIT_TIME);
 

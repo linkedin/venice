@@ -389,6 +389,23 @@ public class StoreConsumptionTaskTest {
   }
 
   @Test
+  public void testReportStartWhenRestarting()
+      throws Exception {
+    try (StoreConsumptionTask mockStoreConsumptionTask = getKafkaPerStoreConsumptionTask(PARTITION_FOO, PARTITION_BAR)) {
+      mockStoreConsumptionTask.subscribePartition(topic, PARTITION_FOO);
+      Mockito.doReturn(new OffsetRecord(1)).when(mockOffSetManager).getLastOffset(topic, PARTITION_FOO);
+      // Prepare mockStoreRepository to send a mock storage engine.
+      Mockito.doReturn(mockAbstractStorageEngine).when(mockStoreRepository).getLocalStorageEngine(topic);
+      // MockKafkaConsumer is prepared. Schedule for polling.
+      Future testSubscribeTaskFuture = taskPollingService.submit(mockStoreConsumptionTask);
+      // Verify STARTED is reported when offset is larger than 0 is invoked.
+      Mockito.verify(mockNotifier, Mockito.timeout(TEST_TIMEOUT).atLeastOnce()).restarted(topic, PARTITION_FOO, 1);
+      // Verify STARTED is NOT reported when offset is 0
+      Mockito.verify(mockNotifier, Mockito.timeout(TEST_TIMEOUT).never()).restarted(topic, PARTITION_BAR, 1);
+    }
+  }
+
+  @Test
   public void testNotifier() throws Exception {
     veniceWriter.broadcastStartOfPush(Maps.newHashMap());
     long fooLastOffset = getOffset(veniceWriter.put(putKeyFoo, putValue, SCHEMA_ID));
