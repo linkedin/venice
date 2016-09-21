@@ -1,6 +1,8 @@
 package com.linkedin.venice.controller.kafka.protocol.enums;
 
 import com.linkedin.venice.controller.kafka.protocol.admin.AdminOperation;
+import com.linkedin.venice.controller.kafka.protocol.admin.PauseStore;
+import com.linkedin.venice.controller.kafka.protocol.admin.ResumeStore;
 import com.linkedin.venice.controller.kafka.protocol.admin.StoreCreation;
 import com.linkedin.venice.controller.kafka.protocol.admin.ValueSchemaCreation;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -11,7 +13,9 @@ import java.util.Map;
 
 public enum AdminMessageType {
   STORE_CREATION(0),
-  VALUE_SCHEMA_CREATION(1);
+  VALUE_SCHEMA_CREATION(1),
+  PAUSE_STORE(2),
+  RESUME_STORE(3);
 
   private final int value;
   private static final Map<Integer, AdminMessageType> MESSAGE_TYPE_MAP = getMessageTypeMap();
@@ -24,6 +28,8 @@ public enum AdminMessageType {
     switch (valueOf(value)) {
       case STORE_CREATION: return new StoreCreation();
       case VALUE_SCHEMA_CREATION: return new ValueSchemaCreation();
+      case PAUSE_STORE: return new PauseStore();
+      case RESUME_STORE: return new ResumeStore();
       default: throw new VeniceException("Unsupported " + getClass().getSimpleName() + " value: " + value);
     }
   }

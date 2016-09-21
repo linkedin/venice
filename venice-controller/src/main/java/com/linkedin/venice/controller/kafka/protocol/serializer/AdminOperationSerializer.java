@@ -55,7 +55,6 @@ public class AdminOperationSerializer {
   private static Map<Integer, Schema> initProtocolMap() {
     try {
       Map<Integer, Schema> protocolSchemaMap = new HashMap<>();
-      // TODO: we need to remove it when combining key schema creation and store creation
       protocolSchemaMap.put(1, Utils.getSchemaFromResource("avro/AdminOperation/v1/AdminOperation.avsc"));
 
       // TODO: If we add more versions to the protocol, they should be initialized here.

@@ -3,6 +3,8 @@ package com.linkedin.venice.controller;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.controller.kafka.AdminTopicUtils;
 import com.linkedin.venice.controller.kafka.protocol.admin.AdminOperation;
+import com.linkedin.venice.controller.kafka.protocol.admin.PauseStore;
+import com.linkedin.venice.controller.kafka.protocol.admin.ResumeStore;
 import com.linkedin.venice.controller.kafka.protocol.admin.SchemaMeta;
 import com.linkedin.venice.controller.kafka.protocol.admin.StoreCreation;
 import com.linkedin.venice.controller.kafka.protocol.admin.ValueSchemaCreation;
@@ -17,7 +19,6 @@ import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.offsets.OffsetManager;
-import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.serialization.DefaultSerializer;
 import com.linkedin.venice.utils.SystemTime;
@@ -307,7 +308,7 @@ public class VeniceParentHelixAdmin implements Admin {
   public SchemaEntry addValueSchema(String clusterName, String storeName, String valueSchemaStr) {
     acquireLock(clusterName);
     try {
-      int newValueSchemaId = veniceHelixAdmin.checkPreConditionForAddValueSchema(clusterName, storeName, valueSchemaStr);
+      int newValueSchemaId = veniceHelixAdmin.checkPreConditionForAddValueSchemaAndGetNewSchemaId(clusterName, storeName, valueSchemaStr);
       logger.info("Adding value schema: " + valueSchemaStr + " to store: " + storeName + " in cluster: " + clusterName);
 
       ValueSchemaCreation valueSchemaCreation = (ValueSchemaCreation) AdminMessageType.VALUE_SCHEMA_CREATION.getNewInstance();
@@ -408,12 +409,42 @@ public class VeniceParentHelixAdmin implements Admin {
 
   @Override
   public void pauseStore(String clusterName, String storeName) {
-    throw new VeniceException("pauseStore is not supported!");
+    acquireLock(clusterName);
+    try {
+      veniceHelixAdmin.checkPreConditionForPauseStoreAndGetStore(clusterName, storeName, true);
+      logger.info("Pausing store: " + storeName + " in cluster: " + clusterName);
+
+      PauseStore pauseStore = (PauseStore) AdminMessageType.PAUSE_STORE.getNewInstance();
+      pauseStore.clusterName = clusterName;
+      pauseStore.storeName = storeName;
+      AdminOperation message = new AdminOperation();
+      message.operationType = AdminMessageType.PAUSE_STORE.ordinal();
+      message.payloadUnion = pauseStore;
+
+      sendAdminMessageAndWaitForConsumed(clusterName, message);
+    } finally {
+      releaseLock();
+    }
   }
 
   @Override
   public void resumeStore(String clusterName, String storeName) {
-    throw new VeniceException("resumeStore is not supported!");
+    acquireLock(clusterName);
+    try {
+      veniceHelixAdmin.checkPreConditionForPauseStoreAndGetStore(clusterName, storeName, false);
+      logger.info("Resuming store: " + storeName + " in cluster: " + clusterName);
+
+      ResumeStore resumeStore = (ResumeStore) AdminMessageType.RESUME_STORE.getNewInstance();
+      resumeStore.clusterName = clusterName;
+      resumeStore.storeName = storeName;
+      AdminOperation message = new AdminOperation();
+      message.operationType = AdminMessageType.RESUME_STORE.ordinal();
+      message.payloadUnion = resumeStore;
+
+      sendAdminMessageAndWaitForConsumed(clusterName, message);
+    } finally {
+      releaseLock();
+    }
   }
 
   @Override
