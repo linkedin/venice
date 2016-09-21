@@ -5,7 +5,7 @@
   "fields": [
     {
       "name": "operationType",
-      "doc": "0 => StoreCreation, 1 => ValueSchemaCreation",
+      "doc": "0 => StoreCreation, 1 => ValueSchemaCreation, 2 => PauseStore, 3 => ResumeStore",
       "type": "int"
     }, {
       "name": "payloadUnion",
@@ -63,6 +63,34 @@
             {
               "name": "schemaId",
               "type": "int"
+            }
+          ]
+        },
+        {
+          "name": "PauseStore",
+          "type": "record",
+          "fields": [
+            {
+              "name": "clusterName",
+              "type": "string"
+            },
+            {
+              "name": "storeName",
+              "type": "string"
+            }
+          ]
+        },
+        {
+          "name": "ResumeStore",
+          "type": "record",
+          "fields": [
+            {
+              "name": "clusterName",
+              "type": "string"
+            },
+            {
+              "name": "storeName",
+              "type": "string"
             }
           ]
         }

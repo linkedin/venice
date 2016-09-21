@@ -3,6 +3,8 @@ package com.linkedin.venice.controller.kafka.consumer;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.kafka.AdminTopicUtils;
 import com.linkedin.venice.controller.kafka.protocol.admin.AdminOperation;
+import com.linkedin.venice.controller.kafka.protocol.admin.PauseStore;
+import com.linkedin.venice.controller.kafka.protocol.admin.ResumeStore;
 import com.linkedin.venice.controller.kafka.protocol.admin.StoreCreation;
 import com.linkedin.venice.controller.kafka.protocol.admin.ValueSchemaCreation;
 import com.linkedin.venice.controller.kafka.protocol.enums.AdminMessageType;
@@ -180,6 +182,12 @@ public class AdminConsumptionTask implements Runnable, Closeable {
           case VALUE_SCHEMA_CREATION:
             handleValueSchemaCreation((ValueSchemaCreation) adminMessage.payloadUnion);
             break;
+          case PAUSE_STORE:
+            handlePauseStore((PauseStore) adminMessage.payloadUnion);
+            break;
+          case RESUME_STORE:
+            handleResumeStore((ResumeStore) adminMessage.payloadUnion);
+            break;
           default:
             throw new VeniceException("Unknown admin operation type: " + adminMessage.operationType);
         }
@@ -251,5 +259,21 @@ public class AdminConsumptionTask implements Runnable, Closeable {
 
     SchemaEntry valueSchemaEntry = admin.addValueSchema(clusterName, storeName, schemaStr, schemaId);
     logger.info("Added value schema: " + schemaStr + " to store: " + storeName + ", schema id: " + valueSchemaEntry.getId());
+  }
+
+  private void handlePauseStore(PauseStore message) {
+    String clusterName = message.clusterName.toString();
+    String storeName = message.storeName.toString();
+    admin.pauseStore(clusterName, storeName);
+
+    logger.info("Paused store: " + storeName + " in cluster: " + clusterName);
+  }
+
+  private void handleResumeStore(ResumeStore message) {
+    String clusterName = message.clusterName.toString();
+    String storeName = message.storeName.toString();
+    admin.resumeStore(clusterName, storeName);
+
+    logger.info("Resumed store: " + storeName + " in cluster: " + clusterName);
   }
 }

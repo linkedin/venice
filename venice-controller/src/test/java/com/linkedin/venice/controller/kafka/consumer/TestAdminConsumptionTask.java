@@ -43,7 +43,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
 public class TestAdminConsumptionTask {
-  private static final int TIMEOUT = 5000;
+  private static final int TIMEOUT = 10000;
 
   private final String clusterName = "test-cluster";
   private final String topicName = AdminTopicUtils.getTopicNameFromClusterName(clusterName);
