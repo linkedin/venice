@@ -44,7 +44,7 @@ public class ControllerClient implements Closeable {
    *
    * @param urlsToFindMasterController comma-delimited urls to find master controller.
    */
-  private ControllerClient(String clusterName, String urlsToFindMasterController){
+  private ControllerClient(String clusterName, String urlsToFindMasterController) throws IOException {
     client = HttpAsyncClients.createDefault();
     client.start();
     if(Utils.isNullOrEmpty(urlsToFindMasterController)) {
@@ -56,7 +56,15 @@ public class ControllerClient implements Closeable {
     if (logger.isDebugEnabled()) {
       logger.debug("Parsed hostname as: " + localHostname);
     }
-    refreshControllerUrl();
+    try {
+      refreshControllerUrl();
+    } catch (Exception e) {
+      // If we don't close http client here, there is no way to release the resources associated with it
+      // since ControllerClient instance won't be constructed successfully.
+      client.close();
+      logger.info("Got exception during refreshControllerUrl", e);
+      throw e;
+    }
   }
 
   private void refreshControllerUrl(){
@@ -72,6 +80,7 @@ public class ControllerClient implements Closeable {
   /**
    * If close is not called, a thread is leaked
    */
+  @Override
   public void close() {
     try {
       client.close();
