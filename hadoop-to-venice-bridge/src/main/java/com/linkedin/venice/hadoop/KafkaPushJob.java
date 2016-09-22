@@ -55,13 +55,13 @@ import java.util.Properties;
 
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
 
-
 /**
- * This class sets up the Hadoop job used to push data to Kafka. The job reads the input data off HDFS and pushes it to
- * venice using Mapper tasks. The job spawns only Mappers, and there are no Reducers.
+ * This class sets up the Hadoop job used to push data to Venice.
+ * The job reads the input data off HDFS and pushes it to venice using Mapper tasks.
+ * The job spawns only Mappers, and there are no Reducers.
  */
 public class KafkaPushJob {
-
+  // Job Properties
   public static final String AVRO_KEY_FIELD_PROP = "avro.key.field";
   public static final String AVRO_VALUE_FIELD_PROP = "avro.value.field";
   public static final String VENICE_ROUTER_URL_PROP = "venice.router.urls";
@@ -72,13 +72,14 @@ public class KafkaPushJob {
   public static final String VENICE_STORE_NAME_PROP = "venice.store.name";
   public static final String VENICE_STORE_OWNERS_PROP = "venice.store.owners";
   public static final String AUTO_CREATE_STORE_PROP = "auto.create.store";
+  public static final String INPUT_PATH_PROP = "input.path";
+  public static final String BATCH_NUM_BYTES_PROP = "batch.num.bytes";
 
   public static final String SCHEMA_STRING_PROP = "schema";
   public static final String VALUE_SCHEMA_ID_PROP = "value.schema.id";
   public static final String KAFKA_URL_PROP = "kafka.url";
   public static final String TOPIC_PROP = "kafka.topic";
-  public static final String INPUT_PATH_PROP = "input.path";
-  public static final String BATCH_NUM_BYTES_PROP = "batch.num.bytes";
+
   public static final String PRODUCT_SPEC_JSON = "product-spec.json";
 
   private static Logger logger = Logger.getLogger(KafkaPushJob.class);
@@ -91,6 +92,7 @@ public class KafkaPushJob {
   public static final int INPUT_DATA_SIZE_FACTOR = 2;
 
   // Immutable state
+  private final Properties props;
   private final String id;
   private final String keyField;
   private final String valueField;
@@ -101,11 +103,8 @@ public class KafkaPushJob {
   private final String storeName;
   private final String storeOwners;
   private final int batchNumBytes;
-  private final Properties props;
   private final boolean multiColo;
   private final String parentControllerUrls;
-  /** Whether the current job is for venice store push or just Kafka push */
-  private final boolean storePush;
   private final boolean autoCreateStoreIfNeeded;
 
   // Mutable state
@@ -121,7 +120,7 @@ public class KafkaPushJob {
   // Value schema id retrieved from backend for valueSchemaString
   private int valueSchemaId;
   private Schema parsedFileSchema;
-  // We will override topic if it is a store push
+  // Kafka topic for new data push
   private String topic;
   // Total input data size, which is used to talk to controller to decide whether we have enough quota or not
   private long inputFileDataSize;
@@ -129,31 +128,19 @@ public class KafkaPushJob {
 
   // This main method is not called by azkaban, this is only for testing purposes.
   public static void main(String[] args) throws Exception {
-
     printExternalDependencies();
 
     OptionParser parser = new OptionParser();
-
-    OptionSpec<String> kafkaUrlOpt =
-        parser.accepts("kafka-url", "REQUIRED: Kafka URL")
-            .withRequiredArg()
-            .describedAs("kafka-url")
-            .ofType(String.class);
     OptionSpec<String> veniceUrlOpt =
-            parser.accepts("venice-router-url", "Optional: comma-delimeted venice URLs.  "
-                +"If pushing to multiple datacenters, use a semi-colon to separate lists of URLs")
-                    .withRequiredArg()
-                    .describedAs("venice-url")
-                    .ofType(String.class);
+        parser.accepts("venice-router-url", "REQUIRED: comma-delimited venice URLs.  "
+            +"If pushing to multiple datacenters, use a semi-colon to separate lists of URLs")
+            .withRequiredArg()
+            .describedAs("venice-router-url")
+            .ofType(String.class);
     OptionSpec<String> inputPathOpt =
         parser.accepts("input-path", "REQUIRED: Input path")
             .withRequiredArg()
-            .describedAs("path")
-            .ofType(String.class);
-    OptionSpec<String> topicOpt =
-        parser.accepts("topic", "Optional: topic") // is this really required?
-            .withRequiredArg()
-            .describedAs("topic")
+            .describedAs("input-path")
             .ofType(String.class);
     OptionSpec<String> clusterNameOpt =
         parser.accepts("cluster-name", "REQUIRED: cluster name")
@@ -161,25 +148,25 @@ public class KafkaPushJob {
             .describedAs("cluster-name")
             .ofType(String.class);
     OptionSpec<String> storeNameOpt =
-            parser.accepts("store-name", "REQUIRED: store name")
-                    .withRequiredArg()
-                    .describedAs("store-name")
-                    .ofType(String.class);
+        parser.accepts("store-name", "REQUIRED: store name")
+            .withRequiredArg()
+            .describedAs("store-name")
+            .ofType(String.class);
     OptionSpec<String> storeOwnersOpt =
-            parser.accepts("store-owners", "REQUIRED: store owners that should be a comma-separated list of email addresses")
-                    .withRequiredArg()
-                    .describedAs("store-owners")
-                    .ofType(String.class);
+        parser.accepts("store-owners", "REQUIRED: store owners that should be a comma-separated list of email addresses")
+            .withRequiredArg()
+            .describedAs("store-owners")
+            .ofType(String.class);
     OptionSpec<String> keyFieldOpt =
-          parser.accepts("key-field", "REQUIRED: key field")
-              .withRequiredArg()
-              .describedAs("key")
-              .ofType(String.class);
+        parser.accepts("key-field", "REQUIRED: key field")
+            .withRequiredArg()
+            .describedAs("key-field")
+            .ofType(String.class);
     OptionSpec<String> valueFieldOpt =
-            parser.accepts("value-field", "REQUIRED: value field")
-                    .withRequiredArg()
-                    .describedAs("value")
-                    .ofType(String.class);
+        parser.accepts("value-field", "REQUIRED: value field")
+            .withRequiredArg()
+            .describedAs("value-field")
+            .ofType(String.class);
     OptionSpec<String> queueBytesOpt =
         parser.accepts("batch-num-bytes", "Optional: max number of bytes that should be batched in a flush to kafka")
             .withRequiredArg()
@@ -192,68 +179,35 @@ public class KafkaPushJob {
         parser.accepts("multi-colo", "Flag: multi colo push");
     OptionSpec<String> parentControllerOpt =
         parser.accepts("parent-controller", "Required for multi-colo push")
-        .withRequiredArg()
-        .describedAs("parent-controller with format: 'http://host1:port1[,http://host2:port2, ...]'")
-        .ofType(String.class);
+            .withRequiredArg()
+            .describedAs("parent-controller with format: 'http://host1:port1[,http://host2:port2, ...]'")
+            .ofType(String.class);
 
     OptionSet options = parser.parse(args);
-
-    OptionSpec[] expectedOptions = {inputPathOpt,  keyFieldOpt, valueFieldOpt};
-    validateExpectedArguments(expectedOptions, options, parser);
-
-    // Only one of the VeniceUrl and Topic must be specified
-    boolean isVeniceUrlPresent = options.has(veniceUrlOpt);
-    boolean isTopicPresent = options.has(topicOpt);
-    boolean autoCreateStore = options.has(autoCreateOpt);
-    boolean multiColo = options.has(multiColoOpt);
+    validateExpectedArguments(new OptionSpec[] {inputPathOpt,  keyFieldOpt, valueFieldOpt, clusterNameOpt,
+        veniceUrlOpt, storeNameOpt, storeOwnersOpt}, options, parser);
 
     Properties props = new Properties();
-
-    String kafkaUrl;
-    String topicName;
-    if(isTopicPresent && isVeniceUrlPresent) {
-      String errorMessage = "Both Topic and Venice Urls present, only one of them should be supplied. Topic " +
-              topicOpt + " Venice " + veniceUrlOpt;
-      logger.error(errorMessage);
-      throw new VeniceException(errorMessage);
-    } else if(isTopicPresent) {
-      validateExpectedArguments( new OptionSpec[] { kafkaUrlOpt, topicOpt}, options, parser);
-      kafkaUrl = options.valueOf(kafkaUrlOpt);
-      topicName = options.valueOf(topicOpt);
-
-      props.put(KAFKA_URL_PROP, kafkaUrl);
-      props.put(TOPIC_PROP, topicName);
-
-    } else if (isVeniceUrlPresent) {
-      validateExpectedArguments(new OptionSpec[] {clusterNameOpt, veniceUrlOpt, storeNameOpt, storeOwnersOpt},
-          options, parser);
-
-      props.put(VENICE_CLUSTER_NAME_PROP, options.valueOf(clusterNameOpt));
-      props.put(VENICE_ROUTER_URL_PROP, options.valueOf(veniceUrlOpt));
-      props.put(VENICE_STORE_NAME_PROP, options.valueOf(storeNameOpt));
-      props.put(VENICE_STORE_OWNERS_PROP, options.valueOf(storeOwnersOpt));
-      if (autoCreateStore){
-        props.put(AUTO_CREATE_STORE_PROP, "true");
-      }
-      if (multiColo) {
-        props.put(VENICE_MULTI_COLO_PROP, "true");
-        validateExpectedArguments(new OptionSpec[] {parentControllerOpt}, options, parser);
-        props.put(VENICE_PARENT_CONTROLLER_URL_PROP, options.valueOf(parentControllerOpt));
-      }
-    }  else {
-      String errorMessage = "At least one of the Options should be present " + topicOpt + " Or " + veniceUrlOpt;
-      logger.error(errorMessage);
-      throw new VeniceException(errorMessage);
-    }
-
-    // Required options
-    validateExpectedArguments(new OptionSpec[] {inputPathOpt, keyFieldOpt, valueFieldOpt}, options, parser);
+    props.put(VENICE_CLUSTER_NAME_PROP, options.valueOf(clusterNameOpt));
+    props.put(VENICE_ROUTER_URL_PROP, options.valueOf(veniceUrlOpt));
+    props.put(VENICE_STORE_NAME_PROP, options.valueOf(storeNameOpt));
+    props.put(VENICE_STORE_OWNERS_PROP, options.valueOf(storeOwnersOpt));
     props.put(INPUT_PATH_PROP, options.valueOf(inputPathOpt));
     props.put(AVRO_KEY_FIELD_PROP, options.valueOf(keyFieldOpt));
     props.put(AVRO_VALUE_FIELD_PROP, options.valueOf(valueFieldOpt));
-
     // Optional ones
     props.put(BATCH_NUM_BYTES_PROP, options.valueOf(queueBytesOpt));
+
+    boolean autoCreateStore = options.has(autoCreateOpt);
+    if (autoCreateStore){
+      props.put(AUTO_CREATE_STORE_PROP, "true");
+    }
+    boolean multiColo = options.has(multiColoOpt);
+    if (multiColo) {
+      props.put(VENICE_MULTI_COLO_PROP, "true");
+      validateExpectedArguments(new OptionSpec[] {parentControllerOpt}, options, parser);
+      props.put(VENICE_PARENT_CONTROLLER_URL_PROP, options.valueOf(parentControllerOpt));
+    }
 
     KafkaPushJob job = new KafkaPushJob("Console", props);
     job.run();
@@ -290,7 +244,9 @@ public class KafkaPushJob {
     this.perDatacenterRouterUrls = this.veniceRouterUrl.split(";");
     this.storeName = props.getProperty(VENICE_STORE_NAME_PROP);
     this.storeOwners = props.getProperty(VENICE_STORE_OWNERS_PROP);
-    this.kafkaUrl = props.getProperty(KAFKA_URL_PROP);
+    this.inputDirectory = props.getProperty(INPUT_PATH_PROP);
+    this.keyField = props.getProperty(AVRO_KEY_FIELD_PROP);
+    this.valueField = props.getProperty(AVRO_VALUE_FIELD_PROP);
 
     this.autoCreateStoreIfNeeded = Boolean.valueOf(props.getProperty(AUTO_CREATE_STORE_PROP, "false"));
     this.multiColo = Boolean.valueOf(props.getProperty(VENICE_MULTI_COLO_PROP, "false"));
@@ -300,34 +256,21 @@ public class KafkaPushJob {
       // For single-colo push, H2V will talk to controller directly
       this.parentControllerUrls = this.veniceRouterUrl;
     }
+    Map<String, String> requiredProps = new HashMap<>();
+    requiredProps.put(VENICE_CLUSTER_NAME_PROP, this.clusterName);
+    requiredProps.put(VENICE_ROUTER_URL_PROP, this.veniceRouterUrl);
+    requiredProps.put(VENICE_STORE_NAME_PROP, this.storeName);
+    requiredProps.put(VENICE_STORE_OWNERS_PROP, this.storeOwners);
+    requiredProps.put(VENICE_PARENT_CONTROLLER_URL_PROP, this.parentControllerUrls);
+    requiredProps.put(INPUT_PATH_PROP, this.inputDirectory);
+    requiredProps.put(AVRO_KEY_FIELD_PROP, this.keyField);
+    requiredProps.put(AVRO_VALUE_FIELD_PROP, this.valueField);
 
-    String kafkaTopic = props.getProperty(TOPIC_PROP);
-
-    boolean isKafkaTopicMissing = Utils.isNullOrEmpty(kafkaTopic);
-
-    if(isKafkaTopicMissing) {
-      if (Utils.isNullOrEmpty(this.veniceRouterUrl)) {
-        throw new VeniceException("At least one of the " + VENICE_ROUTER_URL_PROP + " or " + TOPIC_PROP + " must be specified.");
+    for (Map.Entry<String, String> entry : requiredProps.entrySet()) {
+      if (Utils.isNullOrEmpty(entry.getValue())) {
+        throw new VeniceException(entry.getKey() + " is required for starting a push");
       }
-      if (Utils.isNullOrEmpty(this.storeName)) {
-        throw new VeniceException(VENICE_STORE_NAME_PROP + " is required for Starting a push");
-      }
-      if (Utils.isNullOrEmpty(this.storeOwners)) {
-        throw new VeniceException(VENICE_STORE_OWNERS_PROP + " is required for Starting a push");
-      }
-      if (this.multiColo && Utils.isNullOrEmpty(this.parentControllerUrls)) {
-        throw new VeniceException(VENICE_PARENT_CONTROLLER_URL_PROP + " is required for multi-colo push");
-      }
-      this.storePush = true;
-    } else {
-      this.storePush = false;
-      this.topic = kafkaTopic;
-      logger.warn ("Running the job in debug mode, Controller will not be informed of a new push");
     }
-
-    this.inputDirectory = props.getProperty(INPUT_PATH_PROP);
-    this.keyField = props.getProperty(AVRO_KEY_FIELD_PROP);
-    this.valueField = props.getProperty(AVRO_VALUE_FIELD_PROP);
 
     if (!props.containsKey(BATCH_NUM_BYTES_PROP)) {
       this.batchNumBytes = DEFAULT_BATCH_BYTES_SIZE;
@@ -350,35 +293,24 @@ public class KafkaPushJob {
   public void run() {
     try {
       logger.info("Running KafkaPushJob: " + id);
-
       // Create FileSystem handle, which will be shared in multiple functions
       Configuration conf = new Configuration();
       fs = FileSystem.get(conf);
-
       // This will try to extract the source folder if the input path has 'latest' anchor.
       Path sourcePath = getLatestPathOfInputDirectory();
 
       // Check Avro file schema consistency, data size
       inspectHdfsSource(sourcePath);
-
-      // If the current job is for a store push, we need to pull Kafka Url/Topic from Venice Controller
-      if (storePush) {
-        if (autoCreateStoreIfNeeded) {
-          createStoreIfNeeded();
-          uploadValueSchema();
-        }
-        validateKeySchema();
-        validateValueSchema();
-        // Create new store version, topic and fetch Kafka url from backend
-        createNewStoreVersion();
+      if (autoCreateStoreIfNeeded) {
+        createStoreIfNeeded();
+        uploadValueSchema();
       }
+      validateKeySchema();
+      validateValueSchema();
+      // Create new store version, topic and fetch Kafka url from backend
+      createNewStoreVersion();
       // Log job properties
       logJobProperties();
-
-      // Hadoop2 dev cluster provides a newer version of an avro dependency.
-      // Set mapreduce.job.classloader to true to force the use of the older avro dependency.
-      conf.setBoolean("mapreduce.job.classloader", true);
-      logger.info("**************** mapreduce.job.classloader: " + conf.get("mapreduce.job.classloader"));
 
       // Setup the hadoop job
       this.job = setupHadoopJob(conf);
@@ -396,11 +328,8 @@ public class KafkaPushJob {
       //TODO: send a failure END OF PUSH message if something went wrong
       getVeniceWriter().broadcastEndOfPush(Maps.newHashMap());
 
-      if (!storePush) {
-        logger.info("No controller provided, skipping poll of push status, job completed");
-      } else {
-        pollStatusUntilComplete();
-      }
+      // Waiting for Venice Backend to complete consumption
+      pollStatusUntilComplete();
     } catch (VeniceException ve) {
       throw ve;
     } catch (Exception e) {
@@ -604,6 +533,11 @@ public class KafkaPushJob {
 
   // Set up the job
   private JobConf setupHadoopJob(Configuration conf) throws IOException {
+    // Hadoop2 dev cluster provides a newer version of an avro dependency.
+    // Set mapreduce.job.classloader to true to force the use of the older avro dependency.
+    conf.setBoolean("mapreduce.job.classloader", true);
+    logger.info("**************** mapreduce.job.classloader: " + conf.get("mapreduce.job.classloader"));
+
     // Set maximum number of attempts per map task to 1 - avoid pushing data multiple times to venice in case the job gets into
     // the default queue and times out. Set the default value here so that it can be overridden with a user provided value below.
     conf.setInt("mapred.map.max.attempts", 1);
