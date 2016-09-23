@@ -28,11 +28,11 @@ ext.libraries = [ // Groovy map literal
                   helix: 'org.apache.helix:helix-core:0.6.5',
                   kafka: 'kafka:kafka_2.10:0.9.0.2', // Internal LinkedIn release
                   kafkaClients: 'kafka:kafka-clients:0.9.0.2', // Internal LinkedIn release
-                  netty: 'io.netty:netty-all:4.0.33.Final',
+                  netty: 'io.netty:netty-all:4.1.4.Final',
                   netty3: 'io.netty:netty:3.9.7.Final',
                   zkclient: 'com.101tec:zkclient:0.7', //for Kafka AdminUtils
-                  d2: 'com.linkedin.container:pegasus-d2-server-factory:16.0.23',
-                  d2Client: 'com.linkedin.container:pegasus-d2-client-factory:16.0.23',
+                  d2: 'com.linkedin.container:pegasus-d2-server-factory:25.0.11',
+                  d2Client: 'com.linkedin.container:pegasus-d2-client-factory:25.0.11',
 
                   routerApi: 'com.linkedin.dds-storage-core:dds-storage-router-api:0.0.60',
                   routerImpl: 'com.linkedin.dds-storage-core:dds-storage-router-impl:0.0.60',

@@ -26,16 +26,6 @@ public class D2TestUtils {
   public static final String D2_SERVICE_NAME = "venice-service";
   private static final ObjectMapper mapper = new ObjectMapper();
 
-  public static void assignLocalUriToD2Servers(List<D2Server> d2ServerList, int port){
-    String localUri = "http://localhost:" + port;
-    for (D2Server server : d2ServerList){
-      ZooKeeperAnnouncer[] announcers = server.getZkAnnouncers();
-      for (int i=0; i<announcers.length; i++){
-        announcers[i].setUri(localUri);
-      }
-    }
-  }
-
   public static void setupD2Config(String zkHosts){
 
     int sessionTimeout = 5000;
@@ -70,7 +60,7 @@ public class D2TestUtils {
     }
   }
 
-  public static List<D2Server> getD2Servers(String zkHosts){
+  public static List<D2Server> getD2Servers(String zkHosts, String localUri){
 
     int sessionTimeout = 5000;
     String basePath = "/d2";
@@ -79,7 +69,7 @@ public class D2TestUtils {
     ZKUriStoreFactory storeFactory = new ZKUriStoreFactory();
     ZooKeeperAnnouncer announcer = new ZooKeeperAnnouncer(new ZooKeeperServer());
     announcer.setCluster("VeniceStorageService");
-    announcer.setUri("bogus-uri-that-gets-replaced");
+    announcer.setUri(localUri);
     announcer.setWeight(1);
     ZooKeeperConnectionManager zkManager = new ZooKeeperConnectionManager(
         zkHosts,
@@ -93,6 +83,7 @@ public class D2TestUtils {
     boolean continueIfShutdownFails = true;
     boolean doNotStart = false;
     boolean delayStart = true;
+    boolean initMarkUp = true;
     boolean healthCheckEnabled = false;
     long healthCheckInterval = 1000;
     int healthCheckRetries = 3;
@@ -108,6 +99,7 @@ public class D2TestUtils {
         continueIfShutdownFails,
         doNotStart,
         delayStart,
+        initMarkUp,
         healthCheckEnabled,
         healthCheckInterval,
         healthCheckRetries,

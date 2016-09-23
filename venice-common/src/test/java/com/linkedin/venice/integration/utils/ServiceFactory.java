@@ -73,25 +73,42 @@ public class ServiceFactory {
    */
   static VeniceRouterWrapper getVeniceRouter(String clusterName, KafkaBrokerWrapper kafkaBrokerWrapper){
     return getService(VeniceRouterWrapper.SERVICE_NAME,
-        VeniceRouterWrapper.generateService(clusterName, kafkaBrokerWrapper));
-  }
-
-  public static MockVeniceRouterWrapper getMockVeniceRouter(List<D2Server> d2ServerList){
-    return getService(
-        MockVeniceRouterWrapper.SERVICE_NAME,
-        MockVeniceRouterWrapper.generateService(d2ServerList));
+      VeniceRouterWrapper.generateService(clusterName, kafkaBrokerWrapper));
   }
 
   /**
-   * Initialize MockHttpServerWrapper, this function will setup a simple http server if d2ServerList is null.
-   * If param: d2ServerList is null, it will create a pure http server.
-   *
-   * @param serviceName
-   * @param d2ServerList
+   * Initialize MockVeniceRouterWrapper without D2.
    * @return
    */
-  public static MockHttpServerWrapper getMockHttpServer(String serviceName, List<D2Server> d2ServerList) {
-    return getService(serviceName, MockHttpServerWrapper.generateService(d2ServerList));
+  public static MockVeniceRouterWrapper getMockVeniceRouter() {
+    return getService(MockVeniceRouterWrapper.SERVICE_NAME, null);
+  }
+
+  public static MockVeniceRouterWrapper getMockVeniceRouter(String zkAddress){
+    return getService(
+        MockVeniceRouterWrapper.SERVICE_NAME,
+        MockVeniceRouterWrapper.generateService(zkAddress));
+  }
+
+  /**
+   * Initialize MockHttpServerWrapper without D2.
+   * @param serviceName
+   * @return
+   */
+  public static MockHttpServerWrapper getMockHttpServer(String serviceName) {
+    return ServiceFactory.getMockHttpServer(serviceName, null);
+  }
+
+  /**
+   * Initialize MockHttpServerWrapper, this function will setup a simple http server
+   * If zkAddress is not null, it will create D2Server and register its URI to the D2Server.
+   *
+   * @param serviceName
+   * @param zkAddress
+   * @return
+   */
+  public static MockHttpServerWrapper getMockHttpServer(String serviceName, String zkAddress) {
+    return getService(serviceName, MockHttpServerWrapper.generateService(zkAddress));
   }
 
   public static VeniceClusterWrapper getVeniceCluster() {

@@ -9,12 +9,14 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.router.RouterServer;
 import java.io.File;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.schema.SchemaEntry;
 
+import com.linkedin.venice.utils.Utils;
 import org.mockito.Mockito;
 
 import static org.mockito.Matchers.anyString;
@@ -40,7 +42,7 @@ public class MockVeniceRouterWrapper extends ProcessWrapper {
     this.clusterName = clusterName;
   }
 
-  static StatefulServiceProvider<MockVeniceRouterWrapper> generateService(List<D2Server> d2ServerList) {
+  static StatefulServiceProvider<MockVeniceRouterWrapper> generateService(String zkAddress) {
 
     Store mockStore = Mockito.mock(Store.class);
     doReturn(1).when(mockStore).getCurrentVersion();
@@ -58,7 +60,12 @@ public class MockVeniceRouterWrapper extends ProcessWrapper {
     doReturn(mockControllerInstance).when(mockRepo).getMasterController();
 
     return (serviceName, port, dataDirectory) -> {
-      D2TestUtils.assignLocalUriToD2Servers(d2ServerList, port);
+      List<D2Server> d2ServerList;
+      if (Utils.isNullOrEmpty(zkAddress)) {
+        d2ServerList = new ArrayList<>();
+      } else {
+        d2ServerList = D2TestUtils.getD2Servers(zkAddress, "http://localhost:" + port);
+      }
       String clusterName = TestUtils.getUniqueString("mock-venice-router-cluster");
       RouterServer router = new RouterServer(port, clusterName, mockRepo,
           mockMetadataRepository, mockSchemaRepository, d2ServerList);

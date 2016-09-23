@@ -34,8 +34,7 @@ public class TestRouter {
     ZkServerWrapper zk = ServiceFactory.getZkServer();
     D2TestUtils.setupD2Config(zk.getAddress());
 
-    List<D2Server> d2List = D2TestUtils.getD2Servers(zk.getAddress());
-    MockVeniceRouterWrapper router = ServiceFactory.getMockVeniceRouter(d2List);
+    MockVeniceRouterWrapper router = ServiceFactory.getMockVeniceRouter(zk.getAddress());
     D2Client d2Client = D2TestUtils.getAndStartD2Client(zk.getAddress());
 
     URI requestUri = new URI("d2://" + D2TestUtils.D2_SERVICE_NAME + "/storage/myStore/myKey"); /* D2 client only supports d2:// scheme */
@@ -52,10 +51,10 @@ public class TestRouter {
     }
 
     Assert.assertEquals(response.getStatus(), HttpStatus.SC_SERVICE_UNAVAILABLE,
-        "Router with Mock components should return a 503 Service Unavailable");
+      "Router with Mock components should return a 503 Service Unavailable");
 
     AbstractAvroStoreClient<Object> storeClient = (AbstractAvroStoreClient<Object>) AvroStoreClientFactory.getAvroGenericStoreClient(
-        D2TestUtils.D2_SERVICE_NAME, d2Client, "myStore");
+      D2TestUtils.D2_SERVICE_NAME, d2Client, "myStore");
 
     try {
       byte[] value = storeClient.getRaw("storage/myStore/myKey").get();
