@@ -7,8 +7,15 @@ import com.linkedin.venice.notifier.HelixNotifier;
 import com.linkedin.venice.server.VeniceConfigLoader;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.storage.StorageService;
+import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.Utils;
+import java.util.concurrent.Executor;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.SynchronousQueue;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 import javax.validation.constraints.NotNull;
 import org.apache.helix.HelixManager;
 import org.apache.helix.HelixManagerFactory;
@@ -39,6 +46,12 @@ public class HelixParticipationService extends AbstractVeniceService {
 
   private HelixManager manager;
 
+  private ExecutorService helixStateTransitionExecutorService;
+
+  // TODO put in configuration
+  private final int minStateTransitionThreadNumber = 40;
+  private final int maxStateTransitionThreadNumber= 100;
+
   public HelixParticipationService(@NotNull KafkaConsumerService kafkaConsumerService,
           @NotNull StorageService storageService,
           @NotNull VeniceConfigLoader veniceConfigLoader,
@@ -53,8 +66,11 @@ public class HelixParticipationService extends AbstractVeniceService {
     statusMessageRetryCOunt = veniceConfigLoader.getVeniceClusterConfig().getStatusMessageRetryCount();
     statusMessageRetryDuration = veniceConfigLoader.getVeniceClusterConfig().getStatusMessageRetryDurationMs();
     instance = new Instance(participantName,Utils.getHostName(), port);
-    stateModelFactory
-        = new VeniceStateModelFactory(kafkaConsumerService, storageService, veniceConfigLoader);
+    helixStateTransitionExecutorService =
+        new ThreadPoolExecutor(minStateTransitionThreadNumber, maxStateTransitionThreadNumber, 300L, TimeUnit.SECONDS,
+            new SynchronousQueue<>(), new DaemonThreadFactory("venice-state-transition"));
+    stateModelFactory = new VeniceStateModelFactory(kafkaConsumerService, storageService, veniceConfigLoader,
+        helixStateTransitionExecutorService);
   }
 
   @Override

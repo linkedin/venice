@@ -6,6 +6,8 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.consumer.KafkaConsumerService;
 import com.linkedin.venice.server.VeniceConfigLoader;
 import com.linkedin.venice.storage.StorageService;
+import com.linkedin.venice.utils.DaemonThreadFactory;
+import java.util.concurrent.Executors;
 import org.apache.helix.NotificationContext;
 import org.apache.helix.model.Message;
 import org.mockito.Mockito;
@@ -44,7 +46,8 @@ public class VeniceStateModelFactoryTest {
 
     mockContext = Mockito.mock(NotificationContext.class);
 
-    factory = new VeniceStateModelFactory(mockKafkaConsumerService, mockStorageService, mockConfigLoader);
+    factory = new VeniceStateModelFactory(mockKafkaConsumerService, mockStorageService, mockConfigLoader,
+        Executors.newCachedThreadPool(new DaemonThreadFactory("venice-unittest")));
     stateModel = factory.createNewStateModel(resourceName, resourceName + "_" + testPartition);
   }
 

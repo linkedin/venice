@@ -31,6 +31,13 @@ public interface KafkaConsumerService {
   void resetConsumptionOffset(VeniceStoreConfig veniceStore, int partitionId);
 
   /**
+   * Kill all of running consumptions of given store.
+   *
+   * @param veniceStore Venice Store that consumer task need to be killed belong to.
+   */
+  void killConsumptionTask(VeniceStoreConfig veniceStore);
+
+  /**
    * Adds Notifier to get Notifications for get various status of the consumption
    * tasks like start, completed, progress and error states.
    *

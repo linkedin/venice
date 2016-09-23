@@ -35,7 +35,7 @@ import java.util.Map;
 import java.util.Properties;
 import java.util.Queue;
 import java.util.Set;
-import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.PriorityBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import javax.validation.constraints.NotNull;
@@ -83,7 +83,7 @@ public class StoreConsumptionTask implements Runnable, Closeable {
 
   private final AtomicBoolean isRunning;
 
-  private final Queue<ConsumerAction> consumerActionsQueue;
+  private final PriorityBlockingQueue<ConsumerAction> consumerActionsQueue;
 
   private final OffsetManager offsetManager;
 
@@ -109,6 +109,11 @@ public class StoreConsumptionTask implements Runnable, Closeable {
   private static int MAX_IDLE_COUNTER  = 100;
   private int idleCounter = 0;
 
+  private static int CONSUMER_ACTION_QUEUE_INIT_CAPACITY = 11;
+
+  private static final long KILL_WAIT_TIME_MS = 5000l;
+  public static final int MAX_KILL_CHECKING_ATTEMPS = 10;
+
   public StoreConsumptionTask(@NotNull VeniceConsumerFactory factory,
                               @NotNull Properties kafkaConsumerProperties,
                               @NotNull StoreRepository storeRepository,
@@ -127,7 +132,8 @@ public class StoreConsumptionTask implements Runnable, Closeable {
     this.schemaRepo = schemaRepo;
     this.storeNameWithoutVersionInfo = Version.parseStoreFromKafkaTopicName(topic);
     this.schemaIdSet = new HashSet<>();
-    this.consumerActionsQueue = new ConcurrentLinkedQueue<>();
+    this.consumerActionsQueue = new PriorityBlockingQueue<>(CONSUMER_ACTION_QUEUE_INIT_CAPACITY,
+        new ConsumerAction.ConsumerActionPriorityComparator());
 
     // Should be accessed only from a single thread.
     this.partitionToOffsetMap = new HashMap<>();
@@ -167,6 +173,31 @@ public class StoreConsumptionTask implements Runnable, Closeable {
   public synchronized void resetPartitionConsumptionOffset(String topic, int partition) {
     validateState();
     consumerActionsQueue.add(new ConsumerAction(ConsumerActionType.RESET_OFFSET, topic, partition));
+  }
+
+  public synchronized void kill() {
+    validateState();
+    consumerActionsQueue.add(ConsumerAction.createKillAction(topic));
+    int currentAttemp = 0;
+    try {
+      // Check whether the task is really killed
+      while (isRunning() && currentAttemp < MAX_KILL_CHECKING_ATTEMPS) {
+        TimeUnit.MILLISECONDS.sleep(KILL_WAIT_TIME_MS / MAX_KILL_CHECKING_ATTEMPS);
+        currentAttemp ++;
+      }
+    } catch (InterruptedException e) {
+      logger.warn("Wait killing is interrupted.");
+    }
+    if (isRunning()) {
+      //If task is still running, force close it.
+      reportError(partitionToOffsetMap.keySet(), "Received the signal to kill this consumer. Topic " + topic,
+          new VeniceException("Kill the consumer"));
+      // close can not stop the consumption synchronizely, but the status of helix would be set to ERROR after
+      // reportError. The only way to stop it synchronizely is interrupt the current running thread, but it's an unsafe
+      // operation, for example it could break the ongoing db operation, so we should avoid that.
+      this.close();
+    }
+
   }
 
   private void reportProgress(int partition, long partitionOffset ) {
@@ -275,12 +306,12 @@ public class StoreConsumptionTask implements Runnable, Closeable {
         processMessages();
       }
     } catch (Exception e) {
-      // TODO : The Exception is handled inconsistently here.
-      // An Error is reported to the controller, so the controller will abort the job.
-      // But the Storage Node might eventually recover and the job may complete in success
-      // This will confused the controller.
+      // After reporting error to controller, controller will ignore the message from this replica if job is aborted.
+      // So even this storage node recover eventually, controller will not confused.
+      // If job is not aborted, controller is open to get the subsequent message from this replica(if storage node was
+      // recovered, it will send STARTED message to controller again)
       logger.error(consumerTaskId + " failed with Exception.", e);
-      reportError(partitionToOffsetMap.keySet() , "Exception caught during poll." , e);
+      reportError(partitionToOffsetMap.keySet(), "Exception caught during poll.", e);
     } catch (Throwable t) {
       logger.error(consumerTaskId + " failed with Throwable!!!", t);
       reportError(partitionToOffsetMap.keySet(), "Non-exception Throwable caught in " + getClass().getSimpleName() +
@@ -312,6 +343,7 @@ public class StoreConsumptionTask implements Runnable, Closeable {
       return;
     }
     consumer.close();
+    isRunning.set(false);
   }
 
   /**
@@ -325,6 +357,9 @@ public class StoreConsumptionTask implements Runnable, Closeable {
       try {
         message.incrementAttempt();
         processControlMessage(message);
+      } catch (InterruptedException e){
+        // task is killed
+        throw new VeniceException("Consumption task is killed", e);
       } catch (Exception ex) {
         if (message.getAttemptsCount() < MAX_CONTROL_MESSAGE_RETRIES) {
           logger.info("Error Processing message will retry later" + message , ex);
@@ -337,7 +372,8 @@ public class StoreConsumptionTask implements Runnable, Closeable {
     }
   }
 
-  private void processControlMessage(ConsumerAction message) {
+  private void processControlMessage(ConsumerAction message)
+      throws InterruptedException {
     ConsumerActionType operation = message.getType();
     String topic = message.getTopic();
     int partition = message.getPartition();
@@ -379,6 +415,10 @@ public class StoreConsumptionTask implements Runnable, Closeable {
         consumer.resetOffset(topic, partition);
         logger.info(consumerTaskId + " Reset OffSet : Topic " + topic + " Partition Id " + partition );
         break;
+      case KILL:
+        logger.info("Kill this consumer task for Topic:" + topic);
+        // Throw the exception here to break the consumption loop, and then this task is marked as error status.
+        throw new InterruptedException("Received the signal to kill this consumer. Topic " + topic);
       default:
         throw new UnsupportedOperationException(operation.name() + "not implemented.");
     }
@@ -655,5 +695,9 @@ public class StoreConsumptionTask implements Runnable, Closeable {
    */
   public synchronized boolean isRunning() {
     return isRunning.get();
+  }
+
+  KafkaConsumerWrapper getConsumer() {
+    return this.consumer;
   }
 }

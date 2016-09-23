@@ -9,6 +9,7 @@ import com.linkedin.venice.utils.HelixUtils;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeUnit;
 import org.apache.helix.participant.statemachine.StateModel;
 import org.apache.helix.participant.statemachine.StateModelFactory;
@@ -26,19 +27,32 @@ public class VeniceStateModelFactory extends StateModelFactory<StateModel> {
   private final StorageService storageService;
   private final VeniceConfigLoader configService;
   private final StateModelNotifier stateModelNotifier = new StateModelNotifier();
+  private final ExecutorService executorService;
   // TODO We should use the same value as Helix used for state transition timeout.
   private static final int bootstrapToOnlineTimeoutHours = 24;
 
   public VeniceStateModelFactory(KafkaConsumerService kafkaConsumerService,
           StorageService storageService,
-          VeniceConfigLoader configService) {
+          VeniceConfigLoader configService,
+          ExecutorService executorService ) {
     logger.info("Creating VenicePartitionStateTransitionHandlerFactory ");
     this.kafkaConsumerService = kafkaConsumerService;
     this.storageService = storageService;
     this.configService = configService;
+    this.executorService = executorService;
     // Add a new notifier to let state model knows the end of consumption so that it can complete the bootstrap to
     // online state transition.
     kafkaConsumerService.addNotifier(stateModelNotifier);
+  }
+
+  /**
+   * All state transitions would share this thread pool.
+   * @param resourceName
+   * @return
+   */
+  @Override
+  public ExecutorService getExecutorService(String resourceName) {
+    return executorService;
   }
 
   /**
