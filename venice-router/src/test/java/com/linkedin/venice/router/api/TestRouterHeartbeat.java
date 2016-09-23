@@ -54,7 +54,7 @@ public class TestRouterHeartbeat {
         .setMaxConnTotal(2).build(); // testing shows that > 2 concurrent request increase failure rate, hence using connection pool.
     httpClient.start();
 
-    MockHttpServerWrapper server = ServiceFactory.getMockHttpServer("storage-node", new ArrayList<D2Server>());
+    MockHttpServerWrapper server = ServiceFactory.getMockHttpServer("storage-node");
     FullHttpResponse goodHealthResponse = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK);
     server.addResponseForUri(QueryAction.HEALTH.toString().toLowerCase(), goodHealthResponse);
     Instance dummyInstance = new Instance("nodeId", "localhost", server.getPort());

@@ -15,12 +15,16 @@ dependencies {
   compile (libraries.commonsIo) {
     exclude group: 'org.apapche.zookeeper'
   }
+  compile libraries.jacksonCore
+  compile libraries.jacksonMapper
   compile (libraries.d2Client){
     exclude group: 'com.oracle', module: 'ojdbc14' /* unused transitive dependencies, doesnt exist in repo */
     exclude group: 'org.mockito', module: 'mockito-all'
     exclude group: 'xerces', module: 'xerces'
+    exclude group: 'org.codehaus.jackson'
   }
   compile libraries.xerces /* d2Client brings in an old version of xerces */
+
 
   // Schema related dependencies
   compile project(':venice-schema-common')
@@ -33,7 +37,7 @@ dependencies {
     exclude group: 'com.oracle', module: 'ojdbc14' /* unused transitive dependencies, doesnt exist in repo */
     exclude group: 'org.mockito', module: 'mockito-all'
     exclude group: 'xerces', module: 'xerces'
+    exclude group: 'org.codehaus.jackson'
   }
-  compile libraries.xerces /* d2Client brings in an old version of xerces */
 
 }

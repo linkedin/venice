@@ -51,9 +51,8 @@ public class AvroGenericStoreClientImplTest {
   public void setUp() throws Exception {
     zkWrapper = ServiceFactory.getZkServer();
     D2TestUtils.setupD2Config(zkWrapper.getAddress());
-    List<D2Server> d2ServerList = D2TestUtils.getD2Servers(zkWrapper.getAddress());
 
-    routerServer = ServiceFactory.getMockHttpServer("Mock-router-server", d2ServerList);
+    routerServer = ServiceFactory.getMockHttpServer("Mock-router-server", zkWrapper.getAddress());
     routerHost = routerServer.getHost();
     port = routerServer.getPort();
   }

@@ -2,6 +2,7 @@ package com.linkedin.venice.integration.utils;
 
 import com.google.common.net.HttpHeaders;
 import com.linkedin.d2.server.factory.D2Server;
+import com.linkedin.venice.utils.Utils;
 import io.netty.bootstrap.ServerBootstrap;
 import io.netty.buffer.Unpooled;
 import io.netty.channel.ChannelFuture;
@@ -22,6 +23,7 @@ import io.netty.handler.codec.http.HttpServerCodec;
 import io.netty.handler.codec.http.HttpVersion;
 import org.apache.log4j.Logger;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -38,9 +40,15 @@ public class MockHttpServerWrapper extends ProcessWrapper {
 
   private List<D2Server> d2ServerList;
 
-  static StatefulServiceProvider<MockHttpServerWrapper> generateService(List<D2Server> d2ServerList) {
+  static StatefulServiceProvider<MockHttpServerWrapper> generateService(String zkAddress) {
     return ((serviceName, port, dataDirectory) -> {
-      D2TestUtils.assignLocalUriToD2Servers(d2ServerList, port);
+      List<D2Server> d2ServerList;
+      if (Utils.isNullOrEmpty(zkAddress)) {
+        d2ServerList = new ArrayList<>();
+      } else {
+        d2ServerList = D2TestUtils.getD2Servers(zkAddress, "http://localhost:" + port);
+      }
+
       return new MockHttpServerWrapper(serviceName, port, d2ServerList);
     });
   }
