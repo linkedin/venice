@@ -176,6 +176,7 @@ public class OfflineJob extends Job {
         break;
       case COMPLETED:
       case ERROR:
+        // TODO, error task could become "started" again. Because task could be retried by storage node.
         isValid = false;
         break;
       default:
