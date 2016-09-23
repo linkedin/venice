@@ -56,7 +56,7 @@ public class KafkaConsumerPerStoreService extends AbstractVeniceService implemen
    * A repository mapping each Kafka Topic to it corresponding Consumption task responsible
    * for consuming messages and making changes to the local store accordingly.
    */
-  private final Map<String, StoreConsumptionTask> topicNameToKafkaMessageConsumptionTaskMap;
+  private final Map<String, StoreConsumptionTask> topicNameToConsumptionTaskMap;
   private final EventThrottler throttler;
 
   private ExecutorService consumerExecutorService;
@@ -72,7 +72,7 @@ public class KafkaConsumerPerStoreService extends AbstractVeniceService implemen
     this.offsetManager = offsetManager;
     this.schemaRepo = schemaRepo;
 
-    this.topicNameToKafkaMessageConsumptionTaskMap = Collections.synchronizedMap(new HashMap<>());
+    this.topicNameToConsumptionTaskMap = Collections.synchronizedMap(new HashMap<>());
     isRunning = new AtomicBoolean(false);
 
     this.veniceConfigLoader = veniceConfigLoader;
@@ -93,7 +93,7 @@ public class KafkaConsumerPerStoreService extends AbstractVeniceService implemen
   public boolean startInner() {
     logger.info("Enabling consumerExecutorService and kafka consumer tasks ");
     consumerExecutorService = Executors.newCachedThreadPool(new DaemonThreadFactory("venice-consumer"));
-    topicNameToKafkaMessageConsumptionTaskMap.values().forEach(consumerExecutorService::submit);
+    topicNameToConsumptionTaskMap.values().forEach(consumerExecutorService::submit);
     isRunning.set(true);
 
     // Although the StoreConsumptionTasks are now running in their own threads, there is no async
@@ -116,7 +116,7 @@ public class KafkaConsumerPerStoreService extends AbstractVeniceService implemen
     logger.info("Shutting down Kafka consumer service");
     isRunning.set(false);
 
-    topicNameToKafkaMessageConsumptionTaskMap.values().forEach(StoreConsumptionTask::close);
+    topicNameToConsumptionTaskMap.values().forEach(StoreConsumptionTask::close);
 
     if (consumerExecutorService != null) {
       consumerExecutorService.shutdown();
@@ -143,10 +143,10 @@ public class KafkaConsumerPerStoreService extends AbstractVeniceService implemen
   @Override
   public synchronized void startConsumption(VeniceStoreConfig veniceStore, int partitionId) {
     String topic = veniceStore.getStoreName();
-    StoreConsumptionTask consumerTask = topicNameToKafkaMessageConsumptionTaskMap.get(topic);
+    StoreConsumptionTask consumerTask = topicNameToConsumptionTaskMap.get(topic);
     if(consumerTask == null || !consumerTask.isRunning()) {
       consumerTask = getConsumerTask(veniceStore);
-      topicNameToKafkaMessageConsumptionTaskMap.put(topic, consumerTask);
+      topicNameToConsumptionTaskMap.put(topic, consumerTask);
       if(!isRunning.get()) {
         logger.info("Ignoring Start consumption message as service is stopping. Topic " + topic + " Partition " + partitionId);
         return;
@@ -165,7 +165,7 @@ public class KafkaConsumerPerStoreService extends AbstractVeniceService implemen
   @Override
   public synchronized void stopConsumption(VeniceStoreConfig veniceStore, int partitionId) {
     String topic = veniceStore.getStoreName();
-    StoreConsumptionTask consumerTask = topicNameToKafkaMessageConsumptionTaskMap.get(topic);
+    StoreConsumptionTask consumerTask = topicNameToConsumptionTaskMap.get(topic);
     if(consumerTask != null && consumerTask.isRunning()) {
       consumerTask.unSubscribePartition(topic, partitionId);
     } else {
@@ -181,7 +181,7 @@ public class KafkaConsumerPerStoreService extends AbstractVeniceService implemen
   @Override
   public void resetConsumptionOffset(VeniceStoreConfig veniceStore, int partitionId) {
     String topic = veniceStore.getStoreName();
-    StoreConsumptionTask consumerTask = topicNameToKafkaMessageConsumptionTaskMap.get(topic);
+    StoreConsumptionTask consumerTask = topicNameToConsumptionTaskMap.get(topic);
     if(consumerTask != null && consumerTask.isRunning()) {
       consumerTask.resetPartitionConsumptionOffset(topic, partitionId);
     } else {
@@ -190,6 +190,19 @@ public class KafkaConsumerPerStoreService extends AbstractVeniceService implemen
       offsetManager.clearOffset(topic, partitionId);
     }
     logger.info("Offset reset to beginning - Kafka Partition: " + topic + "-" + partitionId + ".");
+  }
+
+  @Override
+  public synchronized void killConsumptionTask(VeniceStoreConfig veniceStore) {
+    String topic = veniceStore.getStoreName();
+    StoreConsumptionTask consumerTask = topicNameToConsumptionTaskMap.get(topic);
+    if (consumerTask != null && consumerTask.isRunning()) {
+      consumerTask.kill();
+      topicNameToConsumptionTaskMap.remove(topic);
+      logger.info("Killed consumption task for Topic "+topic);
+    } else {
+      logger.warn("Ignoring kill signal for Topic " + topic);
+    }
   }
 
   @Override

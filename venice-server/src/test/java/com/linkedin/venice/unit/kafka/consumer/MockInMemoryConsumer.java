@@ -61,4 +61,9 @@ public class MockInMemoryConsumer implements KafkaConsumerWrapper {
   public OffsetAndMetadata committed(String topic, int partition) {
     return null;
   }
+
+  public Map<TopicPartition, OffsetRecord> getOffsets() {
+    return offsets;
+  }
+
 }
