@@ -1,18 +1,19 @@
 package com.linkedin.venice.helix;
 
+import com.linkedin.venice.config.VeniceStoreConfig;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.job.KillJobMessage;
 import com.linkedin.venice.kafka.consumer.KafkaConsumerService;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.notifier.HelixNotifier;
 import com.linkedin.venice.server.VeniceConfigLoader;
 import com.linkedin.venice.service.AbstractVeniceService;
+import com.linkedin.venice.status.StatusMessageHandler;
 import com.linkedin.venice.storage.StorageService;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.Utils;
-import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.SynchronousQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
@@ -29,7 +30,7 @@ import java.util.concurrent.CompletableFuture;
 /**
  * Venice Participation Service wrapping Helix Participant.
  */
-public class HelixParticipationService extends AbstractVeniceService {
+public class HelixParticipationService extends AbstractVeniceService implements StatusMessageHandler<KillJobMessage> {
 
   private static final Logger logger = Logger.getLogger(HelixParticipationService.class);
 
@@ -41,12 +42,15 @@ public class HelixParticipationService extends AbstractVeniceService {
   private final String zkAddress;
   private final StateModelFactory stateModelFactory;
   private final KafkaConsumerService consumerService;
-  private final int statusMessageRetryCOunt;
+  private final int statusMessageRetryCount;
   private final long statusMessageRetryDuration;
+  private final VeniceConfigLoader veniceConfigLoader;
 
   private HelixManager manager;
 
   private ExecutorService helixStateTransitionExecutorService;
+
+  private HelixStatusMessageChannel messageChannel;
 
   // TODO put in configuration
   private final int minStateTransitionThreadNumber = 40;
@@ -63,7 +67,8 @@ public class HelixParticipationService extends AbstractVeniceService {
     //The format of instance name must be "$host_$port", otherwise Helix can not get these information correctly.
     this.participantName = Utils.getHelixNodeIdentifier(port);
     this.zkAddress = zkAddress;
-    statusMessageRetryCOunt = veniceConfigLoader.getVeniceClusterConfig().getStatusMessageRetryCount();
+    this.veniceConfigLoader = veniceConfigLoader;
+    statusMessageRetryCount = veniceConfigLoader.getVeniceClusterConfig().getStatusMessageRetryCount();
     statusMessageRetryDuration = veniceConfigLoader.getVeniceClusterConfig().getStatusMessageRetryDurationMs();
     instance = new Instance(participantName,Utils.getHostName(), port);
     helixStateTransitionExecutorService =
@@ -89,6 +94,10 @@ public class HelixParticipationService extends AbstractVeniceService {
       return HelixInstanceConverter.convertInstanceToZNRecord(instance);
     };
     manager.setLiveInstanceInfoProvider(liveInstanceInfoProvider);
+
+    // Create a message channel to receive messagte from controller.
+    messageChannel = new HelixStatusMessageChannel(manager);
+    messageChannel.registerHandler(KillJobMessage.class, this);
 
     //TODO Venice Listener should not be started, until the HelixService is started.
     asyncStart();
@@ -121,7 +130,7 @@ public class HelixParticipationService extends AbstractVeniceService {
 
       // Report start, progress , completed  and error notifications to controller
       HelixNotifier notifier =
-          new HelixNotifier(manager, participantName, statusMessageRetryCOunt, statusMessageRetryDuration);
+          new HelixNotifier(manager, participantName, statusMessageRetryCount, statusMessageRetryDuration);
       consumerService.addNotifier(notifier);
 
       serviceState.set(ServiceState.STARTED);
@@ -130,4 +139,16 @@ public class HelixParticipationService extends AbstractVeniceService {
     });
   }
 
+  @Override
+  public void handleMessage(KillJobMessage message) {
+    VeniceStoreConfig storeConfig = veniceConfigLoader.getStoreConfig(message.getKafkaTopic());
+    if (consumerService.containsRunningConsumption(storeConfig)) {
+      //push is failed, stop consumption.
+      logger.info("Receive the message to kill consumption for topic:" + message.getKafkaTopic());
+      consumerService.killConsumptionTask(storeConfig);
+      logger.info("Killed Consumption for topic:" + message.getKafkaTopic());
+    }else{
+      logger.info("Ignore the kill message for topic:" + message.getKafkaTopic());
+    }
+  }
 }

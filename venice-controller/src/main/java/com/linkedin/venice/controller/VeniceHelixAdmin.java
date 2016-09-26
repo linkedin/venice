@@ -5,6 +5,8 @@ import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
 import com.linkedin.venice.helix.HelixReadWriteSchemaRepository;
 import com.linkedin.venice.helix.Replica;
 import com.linkedin.venice.helix.ZkWhitelistAccessor;
+import com.linkedin.venice.job.KillJobMessage;
+import com.linkedin.venice.job.OfflineJob;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
@@ -19,6 +21,7 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.schema.SchemaEntry;
+import com.linkedin.venice.status.StatusMessageChannel;
 import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.PartitionCountUtils;
 import com.linkedin.venice.utils.Utils;
@@ -723,6 +726,23 @@ public class VeniceHelixAdmin implements Admin {
     public Set<String> getWhitelist(String clusterName) {
         checkControllerMastership(clusterName);
         return whitelistAccessor.getWhiteList(clusterName);
+    }
+
+    @Override
+    public void killOfflineJob(String clusterName, String kafkaTopic) {
+        checkControllerMastership(clusterName);
+        StatusMessageChannel messageChannel = getVeniceHelixResource(clusterName).getMessageChannel();
+        int retryCount = 3;
+        // Broadcast kill message to all of storage nodes assigned to given resource. Helix will help us to only send
+        // message to the live instances.
+        // The alternative way here is that get the storage nodes in BOOTSTRAP state of given resource, then send the
+        // kill message node by node. Considering the simplicity, broadcast is a better.
+        // In prospective of performance, each time helix sending a message needs to read the whole LIVE_INSTANCE and
+        // EXTERNAL_VIEW from ZK, so sending message nodes by nodes would generate lots of useless read requests. Of course
+        // broadcast would generate useless write requests to ZK(N-M useless messages, N=number of nodes assigned to resource,
+        // M=number of nodes have completed the ingestion or have not started). But considering the number of nodes in
+        // our cluster is not too big, so it's not a big deal here.
+        messageChannel.sendToStorageNodes(new KillJobMessage(kafkaTopic), kafkaTopic, retryCount);
     }
 
     @Override

@@ -139,6 +139,8 @@ public interface Admin {
 
     Set<String> getWhitelist(String clusterName);
 
+    void killOfflineJob(String clusterName, String kafkaTopic);
+
     void close();
 
     /**

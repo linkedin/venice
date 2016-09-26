@@ -30,7 +30,7 @@ public class StoreStatusMessage extends StatusMessage {
   node.
    */
   private static final String PARTITION_ID = "partitionId";
-  private static final String KAFKA_TOPIC = "kafkaId";
+  private static final String KAFKA_TOPIC = "kafkaTopic";
   private static final String INSTANCE_ID = "instanceId";
   private static final String STATUS = "status";
   private static final String OFFSET = "offset";

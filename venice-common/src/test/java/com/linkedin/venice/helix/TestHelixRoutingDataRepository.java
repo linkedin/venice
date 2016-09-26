@@ -9,6 +9,7 @@ import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -20,9 +21,7 @@ import org.apache.helix.HelixDefinedState;
 import org.apache.helix.HelixManager;
 import org.apache.helix.HelixManagerFactory;
 import org.apache.helix.InstanceType;
-import org.apache.helix.LiveInstanceInfoProvider;
 import org.apache.helix.NotificationContext;
-import org.apache.helix.ZNRecord;
 import org.apache.helix.controller.HelixControllerMain;
 import org.apache.helix.manager.zk.ZKHelixAdmin;
 import org.apache.helix.manager.zk.ZKHelixManager;
@@ -265,7 +264,7 @@ public class TestHelixRoutingDataRepository {
       throws Exception {
     manager.disconnect();
     UnitTestStateModelFactory factory = new UnitTestStateModelFactory();
-    factory.isDelay = true;
+    factory.isBlock = true;
     manager = TestUtils.getParticipant(clusterName, Utils.getHelixNodeIdentifier(httpPort + 1), zkAddress, httpPort + 1,
         factory,  UnitTestStateModel.UNIT_TEST_STATE_MODEL);
     manager.connect();
@@ -312,28 +311,46 @@ public class TestHelixRoutingDataRepository {
   }
 
   public static class UnitTestStateModelFactory extends StateModelFactory<StateModel> {
-    private boolean isDelay = false;
-    private Map<String, CountDownLatch> modelTolatchMap = new HashMap<>();
+    private boolean isBlock = false;
+    private Map<String, List<OnlineOfflineStateModel>> modelToModelListMap = new HashMap<>();
     @Override
     public StateModel createNewStateModel(String resourceName, String partitionName) {
-      OnlineOfflineStateModel stateModel = new OnlineOfflineStateModel(isDelay);
+      OnlineOfflineStateModel stateModel = new OnlineOfflineStateModel(isBlock);
       CountDownLatch latch = new CountDownLatch(1);
-      modelTolatchMap.put(resourceName + "_" + HelixUtils.getPartitionId(partitionName) , latch);
       stateModel.latch = latch;
+      String key = resourceName + "_" + HelixUtils.getPartitionId(partitionName);
+      if(!modelToModelListMap.containsKey(key)){
+        modelToModelListMap.put(key, new ArrayList<>());
+      }
+      modelToModelListMap.get(key).add(stateModel);
       return stateModel;
     }
 
-    public void setDelayTransistion(boolean isDelay){
-      this.isDelay = isDelay;
+    public void setBlockTransition(boolean isDelay){
+      this.isBlock = isDelay;
     }
 
     public void makeTransitionCompleted(String resourceName, int partitionId) {
-      modelTolatchMap.get(resourceName + "_" + partitionId).countDown();
+      for(OnlineOfflineStateModel model : modelToModelListMap.get(resourceName + "_" + partitionId)){
+        model.latch.countDown();
+      }
+    }
+
+    public List<OnlineOfflineStateModel> getModelList(String resourceName, int partitionId) {
+      return modelToModelListMap.get(resourceName + "_" + partitionId);
+    }
+
+    public void makeTransitionError(String resourceName, int partitionId) {
+      for(OnlineOfflineStateModel model : modelToModelListMap.get(resourceName + "_" + partitionId)){
+        model.isError = true;
+        model.latch.countDown();
+      }
     }
 
     @StateModelInfo(states = "{'OFFLINE','ONLINE','BOOTSTRAP'}", initialState = "OFFLINE")
     public static class OnlineOfflineStateModel extends StateModel {
       private boolean isDelay;
+      private boolean isError;
 
       OnlineOfflineStateModel(boolean isDelay){
         this.isDelay = isDelay;
@@ -351,8 +368,16 @@ public class TestHelixRoutingDataRepository {
           // mock the delay during becoming online.
           latch.await();
         }
+        if (isError) {
+          isError = true;
+          throw new VeniceException("ST is failed.");
+        }
       }
 
+      @Transition(from = "OFFLINE", to = "DROPPED")
+      public void onBecomeDroppedFromBootstrap(Message message, NotificationContext context) {
+
+      }
       @Transition(from = "ONLINE", to = "OFFLINE")
       public void onBecomeOfflineFromOnline(Message message, NotificationContext context) {
       }

@@ -210,6 +210,16 @@ public class KafkaConsumerPerStoreService extends AbstractVeniceService implemen
     notifiers.add(notifier);
   }
 
+  @Override
+  public synchronized boolean containsRunningConsumption(VeniceStoreConfig veniceStore) {
+    String topic = veniceStore.getStoreName();
+    StoreConsumptionTask consumerTask = topicNameToConsumptionTaskMap.get(topic);
+    if (consumerTask != null && consumerTask.isRunning()) {
+      return true;
+    }
+    return false;
+  }
+
   /**
    * @return Group Id for kafka consumer.
    */

@@ -470,6 +470,12 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   @Override
+  public void killOfflineJob(String clusterName, String kafkaTopic) {
+    // TODO implement it later to support multi-colo.
+    throw new VeniceException("killOfflineJob is not supported!");
+  }
+
+  @Override
   public void setLastException(String clusterName, Exception e) {
 
   }

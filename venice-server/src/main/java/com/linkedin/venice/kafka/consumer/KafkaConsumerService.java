@@ -47,4 +47,9 @@ public interface KafkaConsumerService {
    * @param notifier
    */
   void addNotifier(VeniceNotifier notifier);
+
+  /**
+   * Judge whether there is a running consumption task for given store.
+   */
+  boolean containsRunningConsumption(VeniceStoreConfig veniceStore);
 }

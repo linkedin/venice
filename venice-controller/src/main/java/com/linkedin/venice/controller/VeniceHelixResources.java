@@ -43,7 +43,7 @@ public class VeniceHelixResources implements VeniceResource {
         this.metadataRepository,
         this.routingDataRepository,
         config.getOffLinejobWaitTimeInMilliseconds());
-    this.messageChannel = new HelixStatusMessageChannel(helixManager);
+    this.messageChannel = new HelixStatusMessageChannel(helixManager, HelixStatusMessageChannel.DEFAULT_BROAD_CAST_MESSAGES_TIME_OUT);
   }
 
   @Override
