@@ -5,19 +5,19 @@ import com.linkedin.venice.helix.HelixJobRepository;
 import com.linkedin.venice.helix.HelixState;
 import com.linkedin.venice.helix.HelixStatusMessageChannel;
 import com.linkedin.venice.helix.Replica;
+import com.linkedin.venice.job.KillJobMessage;
 import com.linkedin.venice.meta.PartitionAssignment;
-import com.linkedin.venice.meta.StoreInfo;
+import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.status.StatusMessageChannel;
+import com.linkedin.venice.status.StatusMessageHandler;
 import com.linkedin.venice.status.StoreStatusMessage;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.helix.HelixInstanceConverter;
 import com.linkedin.venice.helix.HelixRoutingDataRepository;
 import com.linkedin.venice.helix.TestHelixRoutingDataRepository;
 import com.linkedin.venice.integration.utils.KafkaBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.job.ExecutionStatus;
-import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.*;
@@ -27,16 +27,14 @@ import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
-import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.TimeUnit;
 import org.apache.helix.HelixManager;
-import org.apache.helix.HelixManagerFactory;
-import org.apache.helix.InstanceType;
-import org.apache.helix.LiveInstanceInfoProvider;
-import org.apache.helix.ZNRecord;
+import org.apache.helix.PropertyKey;
+import org.apache.helix.model.IdealState;
 import org.testng.Assert;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
@@ -125,7 +123,7 @@ public class TestVeniceHelixAdmin {
 
   private void startParticipant(boolean isDelay, String nodeId)
       throws Exception {
-    stateModelFactory.setDelayTransistion(isDelay);
+    stateModelFactory.setBlockTransition(isDelay);
     HelixManager manager = TestUtils.getParticipant(clusterName, nodeId, zkAddress, 9985,
         stateModelFactory, VeniceStateModel.PARTITION_ONLINE_OFFLINE_STATE_MODEL);
     participants.put(nodeId, manager);
@@ -376,27 +374,83 @@ public class TestVeniceHelixAdmin {
       throws InterruptedException {
     String storeName = "test";
     veniceAdmin.addStore(clusterName,storeName,"owner", keySchema, valueSchema);
+    // Register the handle for kill message. Otherwise, when job manager collect the old version, it would meet error
+    // after sending kill job message. Because, participant can not handle message correctly.
+    HelixStatusMessageChannel channel = new HelixStatusMessageChannel(participants.get(nodeId));
+    channel.registerHandler(KillJobMessage.class, new StatusMessageHandler<KillJobMessage>() {
+      @Override
+      public void handleMessage(KillJobMessage message) {
+        //ignore.
+      }
+    });
     Version version = null;
     for(int i=0;i<3;i++) {
       version = veniceAdmin.incrementVersion(clusterName, storeName, 1, 1);
+      int versionNumber = version.getNumber();
       VeniceJobManager jobManager = veniceAdmin.getVeniceHelixResource(clusterName).getJobManager();
       jobManager.handleMessage(new StoreStatusMessage(version.kafkaTopicName(), 0, nodeId, ExecutionStatus.STARTED));
       jobManager.handleMessage(new StoreStatusMessage(version.kafkaTopicName(), 0, nodeId, ExecutionStatus.COMPLETED));
 
-      long startTime = System.currentTimeMillis();
-      Store store = null;
-      do {
-        Thread.sleep(300);
-        if (System.currentTimeMillis() - startTime > 3000) {
-          Assert.fail("Time out while waiting for status update message for topic:"+version.kafkaTopicName());
-        }
-      }while(veniceAdmin.getCurrentVersion(clusterName,storeName)!=version.getNumber());
+      TestUtils.waitForNonDeterministicCompletion(3000, TimeUnit.MILLISECONDS,
+          () -> veniceAdmin.getCurrentVersion(clusterName, storeName) == versionNumber);
     }
 
-    Assert.assertEquals(veniceAdmin.versionsForStore(clusterName,storeName).size(),2, "Only keep 2 version for each store");
+    TestUtils.waitForNonDeterministicCompletion(3000, TimeUnit.MILLISECONDS,
+        () -> veniceAdmin.versionsForStore(clusterName, storeName).size() == 2);
     Assert.assertEquals(veniceAdmin.getCurrentVersion(clusterName,storeName), version.getNumber());
     Assert.assertEquals(veniceAdmin.versionsForStore(clusterName,storeName).get(0).getNumber(), version.getNumber()-1);
     Assert.assertEquals(veniceAdmin.versionsForStore(clusterName,storeName).get(1).getNumber(), version.getNumber());
+  }
+
+  @Test
+  public void testDeleteResourceThenRestartParticipant()
+      throws Exception {
+    stopParticipant(nodeId);
+    startParticipant(true, nodeId);
+    String storeName = "testDeleteResource";
+    veniceAdmin.addStore(clusterName,storeName,"owner", keySchema, valueSchema);
+    Version version = veniceAdmin.incrementVersion(clusterName, storeName,1,1);
+    // Ensure the the replica has became BOOSTRAP
+    TestUtils.waitForNonDeterministicCompletion(3000, TimeUnit.MILLISECONDS, ()->{
+      RoutingDataRepository routingDataRepository =
+          veniceAdmin.getVeniceHelixResource(clusterName).getRoutingDataRepository();
+      return routingDataRepository.containsKafkaTopic(version.kafkaTopicName()) &&
+          routingDataRepository.getPartitionAssignments(version.kafkaTopicName())
+              .getPartition(0)
+              .getBootstrapInstances()
+              .size() == 1;
+    });
+    // disconnect the participant
+    stopParticipant(nodeId);
+    // ensure it has disappeared from external view.
+    TestUtils.waitForNonDeterministicCompletion(3000, TimeUnit.MILLISECONDS, () -> {
+      RoutingDataRepository routingDataRepository =
+          veniceAdmin.getVeniceHelixResource(clusterName).getRoutingDataRepository();
+      return routingDataRepository.getPartitionAssignments(version.kafkaTopicName()).getAssignedNumberOfPartitions()
+          == 0;
+    });
+    // Now venice job manager get the notification that one replica is disappeared, as our replica factor is 1, so we
+    // lose all the replica now and job manager should kill the job and delete resource
+    // Ensure idealstate is null which means resource has been deleted.
+    TestUtils.waitForNonDeterministicCompletion(3000, TimeUnit.MILLISECONDS, () -> {
+      PropertyKey.Builder keyBuilder = new PropertyKey.Builder(clusterName);
+      IdealState idealState = veniceAdmin.getVeniceHelixResource(clusterName)
+          .getController()
+          .getHelixDataAccessor()
+          .getProperty(keyBuilder.idealStates(version.kafkaTopicName()));
+      return idealState == null;
+    });
+    // Start participant again
+    startParticipant(true, nodeId);
+    // Ensure resource has been deleted in external view.
+    TestUtils.waitForNonDeterministicCompletion(3000, TimeUnit.MILLISECONDS, () -> {
+      RoutingDataRepository routingDataRepository =
+          veniceAdmin.getVeniceHelixResource(clusterName).getRoutingDataRepository();
+      return !routingDataRepository.containsKafkaTopic(version.kafkaTopicName());
+    });
+    Assert.assertEquals(stateModelFactory.getModelList(version.kafkaTopicName(),0).size(), 1);
+    // Replica become OFFLINE state
+    Assert.assertEquals(stateModelFactory.getModelList(version.kafkaTopicName(), 0).get(0).getCurrentState(), "OFFLINE");
   }
 
   @Test
@@ -618,5 +672,73 @@ public class TestVeniceHelixAdmin {
     veniceAdmin.removeInstanceFromWhiteList(clusterName, Utils.getHelixNodeIdentifier(testPort));
     Assert.assertEquals(veniceAdmin.getWhitelist(clusterName).size(), 0,
         "After removing the instance, white list should be empty.");
+  }
+
+
+  @Test
+  public void testKillOfflineJob()
+      throws Exception {
+    String newNodeId = Utils.getHelixNodeIdentifier(9786);
+    startParticipant(true, newNodeId);
+     String storeName = "testKillJob";
+    int partitionCount = 2;
+    int replicaFactor = 1;
+    // Start a new version with 2 partition and 1 replica
+    veniceAdmin.addStore(clusterName, storeName, "test", keySchema, valueSchema);
+    Version version = veniceAdmin.incrementVersion(clusterName, storeName, partitionCount, replicaFactor);
+    Map<String, Integer> nodesToPartitionMap = new HashMap<>();
+    TestUtils.waitForNonDeterministicCompletion(2000, TimeUnit.MILLISECONDS, () -> {
+      PartitionAssignment partitionAssignment = veniceAdmin.getVeniceHelixResource(clusterName)
+          .getRoutingDataRepository()
+          .getPartitionAssignments(version.kafkaTopicName());
+      if (partitionAssignment.getPartition(0).getBootstrapInstances().size() == 1
+          && partitionAssignment.getPartition(1).getBootstrapInstances().size() == 1) {
+        nodesToPartitionMap.put(partitionAssignment.getPartition(0).getBootstrapInstances().get(0).getNodeId(), 0);
+        nodesToPartitionMap.put(partitionAssignment.getPartition(1).getBootstrapInstances().get(0).getNodeId(), 1);
+        return true;
+      }
+      return false;
+    });
+    //Now we have two participants blocked on ST from BOOTSTRAP to ONLINE.
+
+    try {
+      veniceAdmin.killOfflineJob(clusterName, version.kafkaTopicName());
+      Assert.fail("Storage node have not registered the handler to process kill message, sending should fail");
+    } catch (VeniceException e) {
+      //expected
+    }
+
+    final CopyOnWriteArrayList<KillJobMessage> processedMessage = new CopyOnWriteArrayList<>();
+    for(HelixManager manager: this.participants.values()){
+      HelixStatusMessageChannel channel = new HelixStatusMessageChannel(manager);
+      channel.registerHandler(KillJobMessage.class, new StatusMessageHandler<KillJobMessage>() {
+        @Override
+        public void handleMessage(KillJobMessage message) {
+          processedMessage.add(message);
+          //make ST error to simulate kill consumption task.
+          stateModelFactory.makeTransitionError(message.getKafkaTopic(), nodesToPartitionMap.get(manager.getInstanceName()) );
+        }
+      });
+    }
+
+    veniceAdmin.deleteHelixResource(clusterName, version.kafkaTopicName());
+    Thread.sleep(2000);
+    //Make sure the resource has not been deleted due to blocking on ST.
+    Assert.assertTrue(veniceAdmin.getVeniceHelixResource(clusterName)
+        .getRoutingDataRepository()
+        .containsKafkaTopic(version.kafkaTopicName()));
+
+    try {
+      veniceAdmin.killOfflineJob(clusterName, version.kafkaTopicName());
+      Assert.assertEquals(processedMessage.size(), 2, "Kill messages should be recevied and  processed correctly");
+    } catch (VeniceException e) {
+      Assert.fail("Sending message should not fail.", e);
+    }
+
+    // Ensure that after killing, resource could continue to be deleted.
+    TestUtils.waitForNonDeterministicCompletion(2000, TimeUnit.MILLISECONDS,
+        () -> !veniceAdmin.getVeniceHelixResource(clusterName)
+            .getRoutingDataRepository()
+            .containsKafkaTopic(version.kafkaTopicName()));
   }
 }

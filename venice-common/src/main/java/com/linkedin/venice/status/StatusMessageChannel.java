@@ -1,14 +1,11 @@
 package com.linkedin.venice.status;
 
-import java.io.IOException;
-
-
 /**
  * Channel used to send and receive control message.
  */
 public interface StatusMessageChannel {
   /**
-   * Send message to controller. If met any error during the seding, retry it after waiting @retryDurationMs ms.
+   * Send message to controller. If met any error during the sending, retry it after retryDurationMs until retry @retryCount times.
    *
    * @param message
    * @param retryCount      retry how many times.
@@ -25,8 +22,11 @@ public interface StatusMessageChannel {
    */
   public void sendToController(StatusMessage message);
 
-  //TODO we only need send to controller now. Will add send to storage nodes in the further.
-  //public void sendToStorageNodes(StatusMessage message, List<Instance> instances);
+  /**
+   * Send message to all storage nodes assigned to the given resource. If met any error during the sending, retry it
+   * after retryDurationMs until retry @retryCount times.
+   */
+  public void sendToStorageNodes(StatusMessage message, String resourceName, int retryCount);
 
   /**
    * Register a handler to handle a specific message type.

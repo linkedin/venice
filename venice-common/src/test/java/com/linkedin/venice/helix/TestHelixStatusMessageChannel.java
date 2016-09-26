@@ -1,18 +1,20 @@
 package com.linkedin.venice.helix;
 
+import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.status.StatusMessageHandler;
 import com.linkedin.venice.status.StoreStatusMessage;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.job.ExecutionStatus;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
+import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.Utils;
 import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
 import org.apache.helix.HelixAdmin;
 import org.apache.helix.HelixManager;
-import org.apache.helix.HelixManagerFactory;
-import org.apache.helix.InstanceType;
 import org.apache.helix.controller.HelixControllerMain;
 import org.apache.helix.manager.zk.ZKHelixAdmin;
 import org.apache.helix.manager.zk.ZKHelixManager;
@@ -33,7 +35,8 @@ public class TestHelixStatusMessageChannel {
   private String cluster = "UnitTestCluster";
   private String kafkaTopic = "test_resource_1";
   private int partitionId = 0;
-  private String instanceId = "localhost_1234";
+  private int port = 4396;
+  private String instanceId;
   private ExecutionStatus status = ExecutionStatus.COMPLETED;
   private ZkServerWrapper zkServerWrapper;
   private String zkAddress;
@@ -41,6 +44,7 @@ public class TestHelixStatusMessageChannel {
   private HelixManager manager;
   private HelixAdmin admin;
   private HelixManager controller;
+  private RoutingDataRepository routingDataRepository;
   private final long WAIT_ZK_TIME = 1000l;
 
   @BeforeMethod
@@ -65,15 +69,14 @@ public class TestHelixStatusMessageChannel {
     controller = HelixControllerMain
         .startHelixController(zkAddress, cluster, "UnitTestController", HelixControllerMain.STANDALONE);
     controller.connect();
-
-    manager = HelixManagerFactory.getZKHelixManager(cluster, instanceId, InstanceType.PARTICIPANT, zkAddress);
-    manager.getStateMachineEngine()
-        .registerStateModelFactory(TestHelixRoutingDataRepository.UnitTestStateModel.UNIT_TEST_STATE_MODEL,
-            new TestHelixRoutingDataRepository.UnitTestStateModelFactory());
-
+    instanceId = Utils.getHelixNodeIdentifier(port);
+    manager = TestUtils.getParticipant(cluster, instanceId, zkAddress, port,
+        TestHelixRoutingDataRepository.UnitTestStateModel.UNIT_TEST_STATE_MODEL);
     manager.connect();
     channel = new HelixStatusMessageChannel(manager);
-  }
+    routingDataRepository = new HelixRoutingDataRepository(controller);
+    routingDataRepository.refresh();
+   }
 
   @AfterMethod
   public void cleanup() {
@@ -223,6 +226,91 @@ public class TestHelixStatusMessageChannel {
     }
   }
 
+  @Test
+  public void testSendMessageToStorageNodes()
+      throws Exception {
+    // Send message to two storage nodes.
+    int timeoutCount = 1;
+    // register handler for the channel of storage node
+    channel.registerHandler(StoreStatusMessage.class, new TimeoutTestStoreStatusMessageHandler(timeoutCount));
+
+    // Start a new participant
+    HelixManager newParticipant =
+        TestUtils.getParticipant(cluster, Utils.getHelixNodeIdentifier(port + 1), zkAddress, port + 1,
+            TestHelixRoutingDataRepository.UnitTestStateModel.UNIT_TEST_STATE_MODEL);
+    newParticipant.connect();
+    HelixStatusMessageChannel newChannel = new HelixStatusMessageChannel(newParticipant);
+    newChannel.registerHandler(StoreStatusMessage.class, new TimeoutTestStoreStatusMessageHandler(timeoutCount));
+    admin.rebalance(cluster, kafkaTopic, 2);
+
+    // Wait until helix has assigned participant to the given resource.
+    TestUtils.waitForNonDeterministicCompletion(WAIT_ZK_TIME, TimeUnit.MILLISECONDS,
+        () -> routingDataRepository.containsKafkaTopic(kafkaTopic)
+            && routingDataRepository.getReadyToServeInstances(kafkaTopic, 0).size() == 2);
+
+    HelixStatusMessageChannel controllerChannel =
+        getControllerChannel(new TimeoutTestStoreStatusMessageHandler(timeoutCount));
+    StoreStatusMessage veniceMessage = new StoreStatusMessage(kafkaTopic, partitionId, instanceId, status);
+    try {
+      controllerChannel.sendToStorageNodes(veniceMessage, kafkaTopic, timeoutCount);
+    } catch (VeniceException e) {
+      Assert.fail("Sending should be successful after retry " + timeoutCount + " times", e);
+    } finally {
+      newParticipant.disconnect();
+    }
+  }
+
+  @Test
+  public void testSendMessageToNodeWithoutRegisteringHandler()
+      throws Exception {
+    int timeoutCount = 1;
+    // Start a new participant
+    HelixManager newParticipant =
+        TestUtils.getParticipant(cluster, Utils.getHelixNodeIdentifier(port + 1), zkAddress, port + 1,
+            TestHelixRoutingDataRepository.UnitTestStateModel.UNIT_TEST_STATE_MODEL);
+    newParticipant.connect();
+    admin.rebalance(cluster, kafkaTopic, 2);
+
+    // Wait until helix has assigned participant to the given resource.
+    TestUtils.waitForNonDeterministicCompletion(WAIT_ZK_TIME, TimeUnit.MILLISECONDS,
+        () -> routingDataRepository.containsKafkaTopic(kafkaTopic)
+            && routingDataRepository.getReadyToServeInstances(kafkaTopic, 0).size() == 2);
+
+    HelixStatusMessageChannel controllerChannel =
+        getControllerChannel(new TimeoutTestStoreStatusMessageHandler(timeoutCount));
+    StoreStatusMessage veniceMessage = new StoreStatusMessage(kafkaTopic, partitionId, instanceId, status);
+    try {
+      controllerChannel.sendToStorageNodes(veniceMessage, kafkaTopic, timeoutCount);
+      Assert.fail("Sending should be failed, because storage node have not processed this message.");
+    } catch (VeniceException e) {
+      //expected.
+    } finally {
+      newParticipant.disconnect();
+    }
+  }
+
+  @Test
+  public void testSendMessageBelongToWrongResourceToStorageNodes() {
+    // Wait until helix has assigned participant to the given resource.
+    TestUtils.waitForNonDeterministicCompletion(WAIT_ZK_TIME, TimeUnit.MILLISECONDS,
+        () -> routingDataRepository.containsKafkaTopic(kafkaTopic)
+            && routingDataRepository.getReadyToServeInstances(kafkaTopic, 0).size() > 0);
+
+    int timeoutCount = 1;
+    // register handler for the channel of storage node
+    TimeoutTestStoreStatusMessageHandler handler = new TimeoutTestStoreStatusMessageHandler(timeoutCount);
+    channel.registerHandler(StoreStatusMessage.class, handler);
+
+    HelixStatusMessageChannel controllerChannel = getControllerChannel(handler);
+    StoreStatusMessage veniceMessage = new StoreStatusMessage("wrong kafak topic", partitionId, instanceId, status);
+    try {
+      controllerChannel.sendToStorageNodes(veniceMessage, "wrong kafka topic", timeoutCount);
+      Assert.fail("Sending should be failed due to wrong resource name");
+    } catch (VeniceException e) {
+      //expected.
+    }
+  }
+
   /**
    * Handler in controller side used to deal with status update message from storage node.
    */
@@ -263,7 +351,7 @@ public class TestHelixStatusMessageChannel {
       } else {
         timeOutReply++;
         try {
-          Thread.sleep(HelixStatusMessageChannel.WAIT_TIME_OUT + 300);
+          Thread.sleep(HelixStatusMessageChannel.DEFAULT_SEND_MESSAGE_TIME_OUT + 300);
         } catch (InterruptedException e) {
         }
       }

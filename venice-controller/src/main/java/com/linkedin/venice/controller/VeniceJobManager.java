@@ -174,6 +174,7 @@ public class VeniceJobManager implements StatusMessageHandler<StoreStatusMessage
   @Override
   public void handleMessage(StoreStatusMessage message) {
     logger.info("Received message from:" + message.getInstanceId() + " for topic:" + message.getKafkaTopic());
+    logger.debug("Message content:" + message.toString());
     List<Job> jobs = jobRepository.getRunningJobOfTopic(message.getKafkaTopic());
     // We should avoid update tasks in same kafka topic in the same time. Different kafka topics could be accessed concurrently.
     synchronized (jobs) {
@@ -263,12 +264,14 @@ public class VeniceJobManager implements StatusMessageHandler<StoreStatusMessage
   }
 
   /***
-   * Delete the version specified from the store, remove the helix resource, and update zookeeper.
+   * Delete the version specified from the store, kill the running ingestion, remove the helix resource, and update zookeeper.
    * @param store
    * @param versionNumber
    */
   private void deleteOneStoreVersion(Store store, int versionNumber){
-    helixAdmin.deleteHelixResource(clusterName, new Version(store.getName(), versionNumber).kafkaTopicName());
+    String resourceName = new Version(store.getName(), versionNumber).kafkaTopicName();
+    helixAdmin.deleteHelixResource(clusterName, resourceName);
+    helixAdmin.killOfflineJob(clusterName, resourceName);
     store.deleteVersion(versionNumber);
     metadataRepository.updateStore(store);
   }
@@ -467,10 +470,16 @@ public class VeniceJobManager implements StatusMessageHandler<StoreStatusMessage
     Job job = waitingJobMap.get(kafkaTopic);
 
     if (job != null) {
-      logger.info("Topic:" + kafkaTopic + " is deleted. Cancel the job related to this topic.");
+      logger.info("Topic:" + kafkaTopic + " is deleted. Cancel the waiting job related to this topic.");
       jobRepository.stopJobWithError(job.getJobId(), job.getKafkaTopic());
     } else {
-      logger.warn("Topic:" + kafkaTopic + " is deleted. But can not find the job related to this topic.");
+      List<Job> jobs = jobRepository.getRunningJobOfTopic(kafkaTopic);
+      if (jobs.size() == 1) {
+        logger.info("Topic:" + kafkaTopic + " is deleted. Cancel the running job related to this topic.");
+        jobRepository.stopJobWithError(jobs.get(0).getJobId(), kafkaTopic);
+      } else {
+        logger.warn("Topic:" + kafkaTopic + " is deleted. But can not find the job related to this topic.");
+      }
     }
   }
 }
