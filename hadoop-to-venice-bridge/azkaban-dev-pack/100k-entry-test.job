@@ -2,8 +2,8 @@ type=hadoopJava
 job.class=com.linkedin.venice.hadoop.KafkaPushJob
 classpath=libs/*
 azkaban.should.proxy=true
-user.to.proxy=goliu
-input.path=/user/goliu/h2v_test/100k
+user.to.proxy=voldtest
+input.path=/user/voldtest/h2v_test/100k
 avro.key.field=key
 avro.value.field=value
 
@@ -17,6 +17,5 @@ avro.value.field=value
 
 venice.router.urls=http://ltx1-app1085.stg.linkedin.com:1689,http://ltx1-app1325.stg.linkedin.com:1689
 venice.store.name=venice_h2v_test_100k_1
-venice.store.owners=<your_linkedin_email>
+venice.store.owners=venice-eng@linkedin.com
 cluster.name=test-cluster
-hadoop-conf.mapreduce.job.queuename=marathon
