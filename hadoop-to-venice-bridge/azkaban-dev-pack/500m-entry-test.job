@@ -3,7 +3,7 @@ job.class=com.linkedin.venice.hadoop.KafkaPushJob
 classpath=libs/*
 azkaban.should.proxy=true
 user.to.proxy=voldtest
-input.path=/user/voldtest/h2v_test/100
+input.path=/user/voldtest/h2v_test/500m
 avro.key.field=key
 avro.value.field=value
 
@@ -16,6 +16,6 @@ avro.value.field=value
 # UNDERSTOOD BY OLDER KAFKA CLUSTERS AND IT CRASHES THEM.
 
 venice.router.urls=http://ltx1-app1085.stg.linkedin.com:1689,http://ltx1-app1325.stg.linkedin.com:1689
-venice.store.name=venice_h2v_test_100_1
+venice.store.name=venice_h2v_test_500m_1
 venice.store.owners=venice-eng@linkedin.com
 cluster.name=test-cluster
