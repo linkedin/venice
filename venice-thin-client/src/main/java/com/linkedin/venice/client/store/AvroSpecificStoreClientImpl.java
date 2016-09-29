@@ -19,14 +19,14 @@ public class AvroSpecificStoreClientImpl<V extends SpecificRecord> extends Abstr
   public AvroSpecificStoreClientImpl(TransportClient<V> transportClient,
                                      String storeName,
                                      Class<V> c
-                                     ) throws VeniceClientException {
+                                     ) {
     this(transportClient, storeName, c, true, AbstractAvroStoreClient.getDeafultClientMetricsRepository(storeName));
   }
 
   public AvroSpecificStoreClientImpl(TransportClient<V> transportClient,
                                      String storeName,
                                      Class<V> c,
-                                     MetricsRepository metricsRepository) throws VeniceClientException {
+                                     MetricsRepository metricsRepository) {
     this(transportClient, storeName, c, true, metricsRepository);
   }
 
@@ -34,7 +34,7 @@ public class AvroSpecificStoreClientImpl<V extends SpecificRecord> extends Abstr
                                       String storeName,
                                       Class<V> c,
                                       boolean needSchemaReader,
-                                      MetricsRepository metricsRepository) throws VeniceClientException {
+                                      MetricsRepository metricsRepository) {
     super(transportClient, storeName, needSchemaReader, metricsRepository);
     this.valueClass = c;
   }
@@ -55,7 +55,7 @@ public class AvroSpecificStoreClientImpl<V extends SpecificRecord> extends Abstr
    * @throws VeniceClientException
    */
   @Override
-  protected AbstractAvroStoreClient<V> getStoreClientForSchemaReader() throws VeniceClientException {
+  protected AbstractAvroStoreClient<V> getStoreClientForSchemaReader() {
     return new AvroSpecificStoreClientImpl<V>(getTransportClient()
         .getCopyIfNotUsableInCallback(), getStoreName(), valueClass, false, getMetricsRepository());
   }

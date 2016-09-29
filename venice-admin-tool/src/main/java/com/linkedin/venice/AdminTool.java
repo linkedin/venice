@@ -174,7 +174,7 @@ public class AdminTool {
     Schema keySchema = null;
     SchemaReader schemaReader = null;
     try {
-      AvroGenericStoreClient<Object> schemaClient = AvroStoreClientFactory.getAvroGenericStoreClient(routerHosts, store);
+      AvroGenericStoreClient<Object> schemaClient = AvroStoreClientFactory.getAndStartAvroGenericStoreClient(routerHosts, store);
       AbstractAvroStoreClient<Object> castClient = (AvroGenericStoreClientImpl<Object>) schemaClient;
       schemaReader = new SchemaReader(castClient);
       keySchema = schemaReader.getKeySchema();
@@ -212,7 +212,7 @@ public class AdminTool {
     outputMap.put("key", keyString);
 
     Object value;
-    try(AvroGenericStoreClient<Object> client = AvroStoreClientFactory.getAvroGenericStoreClient(routerHosts, store)) {
+    try(AvroGenericStoreClient<Object> client = AvroStoreClientFactory.getAndStartAvroGenericStoreClient(routerHosts, store)) {
       value = client.get(key).get();
     }
     outputMap.put("value-class", value.getClass().getCanonicalName());

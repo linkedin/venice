@@ -1,7 +1,6 @@
 package com.linkedin.venice.client.store;
 
 import com.linkedin.d2.balancer.D2Client;
-import com.linkedin.d2.server.factory.D2Server;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.schema.SchemaReader;
 import com.linkedin.venice.client.store.transport.D2TransportClient;
@@ -27,7 +26,6 @@ import org.testng.annotations.Test;
 
 import java.io.IOException;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ExecutionException;
 
@@ -72,12 +70,12 @@ public class AvroGenericStoreClientImplTest {
 
     // http based client
     String routerUrl = "http://" + routerHost + ":" + port + "/";
-    AvroGenericStoreClient<Object> httpStoreClient = AvroStoreClientFactory.getAvroGenericStoreClient(routerUrl, storeName);
+    AvroGenericStoreClient<Object> httpStoreClient = AvroStoreClientFactory.getAndStartAvroGenericStoreClient(routerUrl, storeName);
     storeClients.put(HttpTransportClient.class.getSimpleName(), httpStoreClient);
     // d2 based client
     d2Client = D2TestUtils.getAndStartD2Client(zkWrapper.getAddress());
-    AvroGenericStoreClient<Object> d2StoreClient = AvroStoreClientFactory.getAvroGenericStoreClient(
-        D2TestUtils.D2_SERVICE_NAME, d2Client, storeName);
+    AvroGenericStoreClient<Object> d2StoreClient = AvroStoreClientFactory.getAndStartAvroGenericStoreClient(
+      D2TestUtils.D2_SERVICE_NAME, d2Client, storeName);
     storeClients.put(D2TransportClient.class.getSimpleName(), d2StoreClient);
     someStoreClient = (AbstractAvroStoreClient<Object>)httpStoreClient;
   }

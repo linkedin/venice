@@ -4,13 +4,13 @@ import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.schema.SchemaReader;
 import com.linkedin.venice.client.serializer.AvroSerializerDeserializerFactory;
 import com.linkedin.venice.client.serializer.RecordSerializer;
+import com.linkedin.venice.client.store.transport.D2TransportClient;
 import com.linkedin.venice.client.store.transport.HttpTransportClient;
 import com.linkedin.venice.client.stats.ClientStats;
 import com.linkedin.venice.client.store.transport.TransportClient;
 import com.linkedin.venice.stats.TehutiUtils;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.utils.Time;
-import org.apache.avro.Schema;
 import org.apache.commons.io.IOUtils;
 
 import javax.validation.constraints.NotNull;
@@ -28,18 +28,21 @@ public abstract class AbstractAvroStoreClient<V> implements AvroGenericStoreClie
 
   /** Encoder to encode store key object */
   private final Base64.Encoder encoder = Base64.getUrlEncoder();
+
+  private final Boolean needSchemaReader;
   /** Used to communicate with Venice backend to retrieve necessary store schemas */
-  private final SchemaReader schemaReader;
+  private SchemaReader schemaReader;
   // Key serializer
   protected RecordSerializer<Object> keySerializer;
 
   private TransportClient<V> transportClient;
   private String storeName;
 
+  //TODO: build a MetricsRepositoryFactory so that we don't have to pass metricsRepository into it as a param.
   public AbstractAvroStoreClient(TransportClient<V> transportClient,
                                  String storeName,
                                  boolean needSchemaReader,
-                                 MetricsRepository metricsRepository) throws VeniceClientException {
+                                 MetricsRepository metricsRepository) {
     this.metricsRepository = metricsRepository;
 
     ClientStats.init(this.metricsRepository);
@@ -47,19 +50,8 @@ public abstract class AbstractAvroStoreClient<V> implements AvroGenericStoreClie
 
     this.transportClient = transportClient;
     this.storeName = storeName;
-    if (needSchemaReader) {
-      // To avoid cycle dependency, the store client used by SchemaReader
-      // won't need to init a new SchemaReader.
-      this.schemaReader = new SchemaReader(this.getStoreClientForSchemaReader());
-      // init key serializer
-      Schema keySchema = this.schemaReader.getKeySchema();
-      if (null == keySchema) {
-        throw new VeniceClientException("Failed to get key schema for store: " + getStoreName());
-      }
-      this.keySerializer = AvroSerializerDeserializerFactory.getAvroGenericSerializer(keySchema);
-    } else {
-      this.schemaReader = null;
-    }
+    this.needSchemaReader = needSchemaReader;
+
     // Set deserializer fetcher for transport client
     transportClient.setDeserializerFetcher(this);
   }
@@ -121,6 +113,24 @@ public abstract class AbstractAvroStoreClient<V> implements AvroGenericStoreClie
   }
 
   @Override
+  public void start() throws VeniceClientException {
+    if (needSchemaReader) {
+      //TODO: remove the 'instanceof' statement once HttpCient got refactored.
+      if (transportClient instanceof D2TransportClient) {
+        this.schemaReader = new SchemaReader(this);
+      } else {
+        this.schemaReader = new SchemaReader(this.getStoreClientForSchemaReader());
+      }
+
+      // init key serializer
+      this.keySerializer =
+        AvroSerializerDeserializerFactory.getAvroGenericSerializer(schemaReader.getKeySchema());
+    } else {
+      this.schemaReader = null;
+    }
+  }
+
+  @Override
   public void close() {
     boolean isHttp = transportClient instanceof HttpTransportClient;
     IOUtils.closeQuietly(transportClient);
@@ -129,7 +139,7 @@ public abstract class AbstractAvroStoreClient<V> implements AvroGenericStoreClie
     }
   }
 
-  protected abstract AbstractAvroStoreClient<V> getStoreClientForSchemaReader() throws VeniceClientException;
+  protected abstract AbstractAvroStoreClient<V> getStoreClientForSchemaReader();
 
   static protected MetricsRepository getDeafultClientMetricsRepository(String storeName) {
     return TehutiUtils.getMetricsRepository(VENICE_CLIENT_NAME + "_" + storeName);

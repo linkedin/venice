@@ -13,16 +13,20 @@ public class AvroStoreClientFactory {
 
   // TODO: Add ClientConfig to configure transport client, such as timeout, thread number, ...
   // TODO: Construct StoreClient by D2 url along with a couple of D2 related config.
-  public static <V> AvroGenericStoreClient<V> getAvroGenericStoreClient(String url, String storeName)
+  public static <V> AvroGenericStoreClient<V> getAndStartAvroGenericStoreClient(String url, String storeName)
       throws VeniceClientException {
     TransportClient<V> transportClient = getTransportClient(url);
-    return new AvroGenericStoreClientImpl<V>(transportClient, storeName);
+    AvroGenericStoreClientImpl<V> client = new AvroGenericStoreClientImpl(transportClient, storeName);
+    client.start();
+    return client;
   }
 
-  public static <V extends SpecificRecord> AvroSpecificStoreClient<V> getAvroSpecificStoreClient(
-      String url, String storeName, Class<V> valueClass) throws VeniceClientException {
+  public static <V extends SpecificRecord> AvroSpecificStoreClient<V> getAndStartAvroSpecificStoreClient(
+    String url, String storeName, Class<V> valueClass) throws VeniceClientException {
     TransportClient<V> transportClient = getTransportClient(url);
-    return new AvroSpecificStoreClientImpl<V>(transportClient, storeName, valueClass);
+    AvroSpecificStoreClientImpl<V> client = new AvroSpecificStoreClientImpl(transportClient, storeName, valueClass);
+    client.start();
+    return client;
   }
 
   private static <V> TransportClient<V> getTransportClient(String url) throws VeniceClientException {
@@ -36,17 +40,21 @@ public class AvroStoreClientFactory {
   }
 
   // Temporary constructors for D2Client
-  public static <V> AvroGenericStoreClient<V> getAvroGenericStoreClient(String d2ServiceName,
-                                                                        D2Client d2Client,
-                                                                        String storeName) throws VeniceClientException {
+  public static <V> AvroGenericStoreClient<V> getAndStartAvroGenericStoreClient(String d2ServiceName,
+                                                                                D2Client d2Client,
+                                                                                String storeName) throws VeniceClientException {
     TransportClient<V> d2TransportClient = new D2TransportClient<V>(d2ServiceName, d2Client);
-    return new AvroGenericStoreClientImpl<>(d2TransportClient, storeName);
+    AvroGenericStoreClientImpl<V> client = new AvroGenericStoreClientImpl(d2TransportClient, storeName);
+    client.start();
+    return client;
   }
 
   // Temporary constructors for D2Client
-  public static <V extends SpecificRecord> AvroSpecificStoreClient<V> getAvroSpecificStoreClient(
-      String d2ServiceName, D2Client d2Client, String storeName, Class<V> valueClass) throws VeniceClientException {
+  public static <V extends SpecificRecord> AvroSpecificStoreClient<V> getAndStartAvroSpecificStoreClient(
+    String d2ServiceName, D2Client d2Client, String storeName, Class<V> valueClass) throws VeniceClientException {
     TransportClient<V> d2TransportClient = new D2TransportClient<V>(d2ServiceName, d2Client);
-    return new AvroSpecificStoreClientImpl<>(d2TransportClient, storeName, valueClass);
+    AvroSpecificStoreClientImpl<V> client = new AvroSpecificStoreClientImpl(d2TransportClient, storeName, valueClass);
+    client.start();
+    return client;
   }
 }
