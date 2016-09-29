@@ -23,16 +23,16 @@ public class OfflineJob extends Job {
    * The map holds the pair of partition id -> tasks map. Task map holds the pair of taskId -> Task.
    */
   private Map<Integer, Map<String, Task>> partitionToTasksMap;
-  private OfflinePushStrategy strategy;
+  private OfflinePushStrategy offlinePushStrategy;
 
   public OfflineJob(long jobId, String kafkaTopic, int numberOfPartition, int replicaFactor) {
     this(jobId, kafkaTopic, numberOfPartition, replicaFactor, OfflinePushStrategy.WAIT_ALL_REPLICAS);
   }
 
   public OfflineJob(long jobId, String kafkaTopic, int numberOfPartition, int replicaFactor,
-      OfflinePushStrategy strategy) {
+      OfflinePushStrategy offlinePushStrategy) {
     super(jobId, kafkaTopic, numberOfPartition, replicaFactor);
-    this.strategy = strategy;
+    this.offlinePushStrategy = offlinePushStrategy;
     partitionToTasksMap = new HashMap<>();
     for (int i = 0; i < this.getNumberOfPartition(); i++) {
       this.partitionToTasksMap.put(i, new HashMap<>());
@@ -110,7 +110,8 @@ public class OfflineJob extends Job {
 
   @Override
   public synchronized Job cloneJob() {
-    OfflineJob clonedJob = new OfflineJob(getJobId(),getKafkaTopic(),getNumberOfPartition(), getReplicationFactor(),strategy);
+    OfflineJob clonedJob = new OfflineJob(getJobId(),getKafkaTopic(),getNumberOfPartition(), getReplicationFactor(),
+        offlinePushStrategy);
     clonedJob.setStatus(getStatus());
     for(Integer partitionId:partitionToTasksMap.keySet()){
       Map<String, Task> taskMap = partitionToTasksMap.get(partitionId);
@@ -234,5 +235,9 @@ public class OfflineJob extends Job {
 
   public String generateTaskId(int partition, String instanceId) {
     return getJobId() + "_" + partition + "_" + instanceId;
+  }
+
+  public OfflinePushStrategy getOfflinePushStrategy() {
+    return offlinePushStrategy;
   }
 }

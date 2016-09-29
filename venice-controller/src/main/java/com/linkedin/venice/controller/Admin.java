@@ -4,6 +4,7 @@ import com.linkedin.venice.helix.Replica;
 import com.linkedin.venice.job.ExecutionStatus;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.meta.Instance;
+import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.schema.SchemaEntry;
@@ -39,7 +40,8 @@ public interface Admin {
 
     void setCurrentVersion(String clusterName, String storeName, int versionNumber);
 
-    void startOfflinePush(String clusterName, String kafkaTopic, int numberOfPartition, int replicaFactor);
+    void startOfflinePush(String clusterName, String kafkaTopic, int numberOfPartition, int replicaFactor,
+        OfflinePushStrategy strategy);
 
     void deleteHelixResource(String clusterName, String kafkaTopic);
 

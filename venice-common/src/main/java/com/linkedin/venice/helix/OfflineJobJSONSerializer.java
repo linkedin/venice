@@ -1,6 +1,7 @@
 package com.linkedin.venice.helix;
 
 import com.linkedin.venice.job.OfflineJob;
+import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.VeniceSerializer;
 import java.io.IOException;
 import org.codehaus.jackson.annotate.JsonCreator;
@@ -38,8 +39,9 @@ public class OfflineJobJSONSerializer implements VeniceSerializer<OfflineJob> {
   public static class OfflineJobSerializerMixin {
     @JsonCreator
     public OfflineJobSerializerMixin(@JsonProperty("jobId") long jobId, @JsonProperty("kafkaTopic") String kafkaTopic,
-        @JsonProperty("numberOfPartition") int numberOfPartition, @JsonProperty("replicationFactor") int replicationFactor) {
-
+        @JsonProperty("numberOfPartition") int numberOfPartition,
+        @JsonProperty("replicationFactor") int replicationFactor,
+        @JsonProperty("offlinePushStrategy") OfflinePushStrategy offlinePushStrategy) {
     }
   }
 }

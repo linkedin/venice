@@ -12,6 +12,7 @@ import com.linkedin.venice.helix.HelixReadWriteStoreRepository;
 import com.linkedin.venice.helix.HelixState;
 import com.linkedin.venice.job.ExecutionStatus;
 import com.linkedin.venice.meta.Instance;
+import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.Partition;
 import com.linkedin.venice.meta.PartitionAssignment;
 import com.linkedin.venice.meta.Store;
@@ -191,6 +192,7 @@ public class VeniceHelixAdmin implements Admin {
         HelixReadWriteStoreRepository repository = getVeniceHelixResource(clusterName).getMetadataRepository();
 
         Version version = null;
+        OfflinePushStrategy strategy = null;
         repository.lock();
         try {
             Store store = repository.getStore(storeName);
@@ -198,6 +200,7 @@ public class VeniceHelixAdmin implements Admin {
                 throwStoreDoesNotExist(clusterName, storeName);
             }
 
+            strategy = store.getOffLinePushStrategy();
             if(versionNumber == VERSION_ID_UNSET) {
                 // No Version supplied, generate new version.
                 version = store.increaseVersion();
@@ -223,7 +226,7 @@ public class VeniceHelixAdmin implements Admin {
         createKafkaTopic(clusterName, version.kafkaTopicName(), numberOfPartition, clusterConfig.getKafkaReplicaFactor());
         createHelixResources(clusterName, version.kafkaTopicName(), numberOfPartition, replicaFactor);
         //Start offline push job for this new version.
-        startOfflinePush(clusterName, version.kafkaTopicName(), numberOfPartition, replicaFactor);
+        startOfflinePush(clusterName, version.kafkaTopicName(), numberOfPartition, replicaFactor, strategy);
         return version;
     }
 
@@ -365,11 +368,11 @@ public class VeniceHelixAdmin implements Admin {
     }
 
     @Override
-    public void startOfflinePush(String clusterName, String kafkaTopic, int numberOfPartition, int replicaFactor) {
+    public void startOfflinePush(String clusterName, String kafkaTopic, int numberOfPartition, int replicaFactor, OfflinePushStrategy strategy) {
         checkControllerMastership(clusterName);
         VeniceJobManager jobManager = controllerStateModelFactory.getModel(clusterName).getResources().getJobManager();
         setJobManagerAdmin(jobManager);
-        jobManager.startOfflineJob(kafkaTopic, numberOfPartition, replicaFactor);
+        jobManager.startOfflineJob(kafkaTopic, numberOfPartition, replicaFactor, strategy);
     }
 
     @Override

@@ -100,8 +100,8 @@ public class VeniceJobManager implements StatusMessageHandler<StoreStatusMessage
     }
   }
 
-  public void startOfflineJob(String kafkaTopic, int numberOfPartition, int replicaFactor) {
-    OfflineJob job = new OfflineJob(this.generateJobId(), kafkaTopic, numberOfPartition, replicaFactor);
+  public void startOfflineJob(String kafkaTopic, int numberOfPartition, int replicaFactor, OfflinePushStrategy strategy) {
+    OfflineJob job = new OfflineJob(this.generateJobId(), kafkaTopic, numberOfPartition, replicaFactor, strategy);
     logger.info("Starting job:" + job.getJobId() + " for topic:" + job.getKafkaTopic());
     try {
       waitUntilJobStart(job);
