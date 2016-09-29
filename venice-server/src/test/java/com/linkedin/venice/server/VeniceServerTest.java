@@ -6,6 +6,12 @@ import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.VeniceServerWrapper;
+import com.linkedin.venice.utils.TestUtils;
+import java.io.File;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -32,7 +38,7 @@ public class VeniceServerTest {
       ServiceFactory.getVeniceServer(clusterName, kafkaBrokerWrapper, true, false);
       Assert.fail("Checking whitelist should fail because server has not been added into white list.");
     } catch (VeniceException e) {
-      //expcted.
+      //expected.
     } finally {
       controllerWrapper.close();
       kafkaBrokerWrapper.close();
@@ -55,5 +61,32 @@ public class VeniceServerTest {
       controllerWrapper.close();
       kafkaBrokerWrapper.close();
     }
+  }
+
+  @Test
+  public void testPathCheck()
+      throws IOException {
+
+    // setup
+    String tmpDirectory = System.getProperty("java.io.tmpdir");
+    String directoryName = TestUtils.getUniqueString("testdir");
+    String fileName = TestUtils.getUniqueString("testfile");
+    Path dirPath = Paths.get(tmpDirectory, directoryName);
+    Path filePath = Paths.get(tmpDirectory, fileName);
+    Files.createDirectory(dirPath);
+    Files.createFile(filePath);
+    File dir = new File(tmpDirectory, directoryName).getAbsoluteFile();
+    Assert.assertFalse(dir.isFile(), "must not be a file");
+    Assert.assertTrue(dir.isDirectory(), "must be a directory");
+
+    //test
+
+    Assert.assertTrue(VeniceServer.directoryExists(dirPath.toString()),
+        "directory: " + dirPath.toString() + " should exist");
+    Assert.assertFalse(VeniceServer.directoryExists(filePath.toString()),
+        "file: " + filePath.toString() + " should not count as a directory that exists");
+
+    String pathDoesNotExist = Paths.get(tmpDirectory, TestUtils.getUniqueString("no-directory")).toString();
+    Assert.assertFalse(VeniceServer.directoryExists(pathDoesNotExist), "Path that doesn't exist should not exist");
   }
 }

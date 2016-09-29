@@ -21,6 +21,7 @@ import com.linkedin.venice.stats.TehutiUtils;
 import com.linkedin.venice.storage.StorageService;
 import com.linkedin.venice.utils.Utils;
 import io.tehuti.metrics.MetricsRepository;
+import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -59,6 +60,11 @@ public class VeniceServer {
                              veniceConfigLoader.getVeniceServerConfig().isServerWhiteLIstEnabled())) {
       throw new VeniceException(
           "Can not create a venice server because this server has not been added into white list.");
+    }
+
+    if (!directoryExists(veniceConfigLoader.getVeniceServerConfig().getDataBasePath())){
+      throw new VeniceException("Data directory: " + veniceConfigLoader.getVeniceServerConfig().getDataBasePath()
+      + " does not exist.  Cannot create server.");
     }
 
     /*
@@ -247,6 +253,11 @@ public class VeniceServer {
       logger.error(errorMsg, e);
       throw new VeniceException(errorMsg, e);
     }
+  }
+
+  protected static boolean directoryExists(String dataDirectory){
+    File dir = new File(dataDirectory).getAbsoluteFile();
+    return dir.isDirectory();
   }
 
   public static void main(String args[])
