@@ -1,6 +1,7 @@
 package com.linkedin.venice.controller;
 
 import com.linkedin.venice.helix.HelixStatusMessageChannel;
+import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.status.StoreStatusMessage;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixAdapterSerializer;
@@ -43,6 +44,7 @@ import org.apache.helix.model.builder.HelixConfigScopeBuilder;
 import org.testng.Assert;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 
@@ -128,12 +130,17 @@ public class TestVeniceJobManager {
     zkServerWrapper.close();
   }
 
-  @Test(timeOut = 15000)
-  public void testHandleMessage()
+  @DataProvider(name = "offlinePushStrategies")
+  public static Object[][] offlinePushStrategies() {
+    return new Object[][]{{OfflinePushStrategy.WAIT_ALL_REPLICAS}, {OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION}};
+  }
+
+  @Test(timeOut = 15000, dataProvider = "offlinePushStrategies")
+  public void testHandleMessage(OfflinePushStrategy offlinePushStrategy)
       throws InterruptedException {
 
     metadataRepository.addStore(store);
-    jobManager.startOfflineJob(version.kafkaTopicName(), 1, 1);
+    jobManager.startOfflineJob(version.kafkaTopicName(), 1, 1, offlinePushStrategy);
 
     StoreStatusMessage message = new StoreStatusMessage(version.kafkaTopicName(), 0, nodeId, ExecutionStatus.STARTED);
     jobManager.handleMessage(message);
@@ -160,11 +167,11 @@ public class TestVeniceJobManager {
     }
   }
 
-  @Test(timeOut = 15000)
-  public void testHandleMessageWhenTaskFailed()
+  @Test(timeOut = 15000, dataProvider = "offlinePushStrategies")
+  public void testHandleMessageWhenTaskFailed(OfflinePushStrategy offlinePushStrategy)
       throws InterruptedException {
     metadataRepository.addStore(store);
-    jobManager.startOfflineJob(version.kafkaTopicName(), 1, 1);
+    jobManager.startOfflineJob(version.kafkaTopicName(), 1, 1, offlinePushStrategy);
 
     StoreStatusMessage message = new StoreStatusMessage(version.kafkaTopicName(), 0, nodeId, ExecutionStatus.STARTED);
     jobManager.handleMessage(message);
@@ -190,10 +197,10 @@ public class TestVeniceJobManager {
     }
   }
 
-  @Test (timeOut = 15000)
-  public void testGetOfflineJobStatus() {
+  @Test (timeOut = 15000, dataProvider = "offlinePushStrategies")
+  public void testGetOfflineJobStatus(OfflinePushStrategy offlinePushStrategy) {
     metadataRepository.addStore(store);
-    jobManager.startOfflineJob(version.kafkaTopicName(), 1, 1);
+    jobManager.startOfflineJob(version.kafkaTopicName(), 1, 1, offlinePushStrategy);
     Assert.assertEquals(jobManager.getOfflineJobStatus(version.kafkaTopicName()), ExecutionStatus.STARTED,
         "Job should be started.");
     long totalProgress = VeniceJobManager.aggregateProgress(jobManager.getOfflineJobProgress(version.kafkaTopicName()));
@@ -218,10 +225,10 @@ public class TestVeniceJobManager {
         "completed job with progress should retain progress");
   }
 
-  @Test(timeOut = 15000)
-  public void testGetOfflineJobStatusWhenTaskFailed() {
+  @Test(timeOut = 15000, dataProvider = "offlinePushStrategies")
+  public void testGetOfflineJobStatusWhenTaskFailed(OfflinePushStrategy offlinePushStrategy) {
     metadataRepository.addStore(store);
-    jobManager.startOfflineJob(version.kafkaTopicName(), 1, 1);
+    jobManager.startOfflineJob(version.kafkaTopicName(), 1, 1, offlinePushStrategy);
     Assert.assertEquals(jobManager.getOfflineJobStatus(version.kafkaTopicName()), ExecutionStatus.STARTED,
         "Job should be started.");
 
@@ -234,11 +241,11 @@ public class TestVeniceJobManager {
     Assert.assertEquals(jobManager.getOfflineJobStatus(version.kafkaTopicName()), ExecutionStatus.ERROR);
   }
 
-  @Test(timeOut = 15000)
-  public void testExecutorFailedDuringPush()
+  @Test(timeOut = 15000, dataProvider = "offlinePushStrategies")
+  public void testExecutorFailedDuringPush(OfflinePushStrategy offlinePushStrategy)
       throws Exception {
     metadataRepository.addStore(store);
-    jobManager.startOfflineJob(version.kafkaTopicName(), 1, 1);
+    jobManager.startOfflineJob(version.kafkaTopicName(), 1, 1, offlinePushStrategy);
     Assert.assertEquals(jobManager.getOfflineJobStatus(version.kafkaTopicName()), ExecutionStatus.STARTED,
         "Job should be started.");
     StoreStatusMessage message = new StoreStatusMessage(version.kafkaTopicName(), 0, nodeId, ExecutionStatus.STARTED);
@@ -252,15 +259,15 @@ public class TestVeniceJobManager {
         "Job should be terminated with ERROR. Because one of node is failed.");
   }
 
-  @Test(timeOut = 15000)
-  public void testHandleOutOfOrderMessages()
+  @Test(timeOut = 15000, dataProvider = "offlinePushStrategies")
+  public void testHandleOutOfOrderMessages(OfflinePushStrategy offlinePushStrategy)
       throws IOException, InterruptedException {
     metadataRepository.addStore(store);
     HelixStatusMessageChannel controllerChannel = new HelixStatusMessageChannel(controller);
     controllerChannel.registerHandler(StoreStatusMessage.class, jobManager);
     HelixStatusMessageChannel nodeChannel = new HelixStatusMessageChannel(manager);
 
-    jobManager.startOfflineJob(version.kafkaTopicName(), 1, 1);
+    jobManager.startOfflineJob(version.kafkaTopicName(), 1, 1, offlinePushStrategy);
     StoreStatusMessage message = new StoreStatusMessage(version.kafkaTopicName(), 0, nodeId, ExecutionStatus.STARTED);
     nodeChannel.sendToController(message);
     message = new StoreStatusMessage(version.kafkaTopicName(), 0, nodeId, ExecutionStatus.COMPLETED);
@@ -286,7 +293,7 @@ public class TestVeniceJobManager {
         IdealState.RebalanceMode.FULL_AUTO.toString());
     admin.rebalance(cluster, newVersion.kafkaTopicName(), 1);
     Assert.assertEquals(metadataRepository.getStore(storeName).getCurrentVersion(), version.getNumber());
-    jobManager.startOfflineJob(newVersion.kafkaTopicName(), 1, 1);
+    jobManager.startOfflineJob(newVersion.kafkaTopicName(), 1, 1, offlinePushStrategy);
     message = new StoreStatusMessage(newVersion.kafkaTopicName(), 0, nodeId, ExecutionStatus.STARTED);
     nodeChannel.sendToController(message);
     Assert.assertEquals(jobManager.getOfflineJobStatus(newVersion.kafkaTopicName()), ExecutionStatus.STARTED);
@@ -305,20 +312,20 @@ public class TestVeniceJobManager {
     Assert.assertEquals(metadataRepository.getStore(storeName).getCurrentVersion(), newVersion.getNumber());
   }
 
-  @Test
-  public void testLoadJobsFromZKWithCompletedTask() {
-    testLoadJobsFromZk(ExecutionStatus.COMPLETED);
+  @Test(dataProvider = "offlinePushStrategies")
+  public void testLoadJobsFromZKWithCompletedTask(OfflinePushStrategy offlinePushStrategy) {
+    testLoadJobsFromZk(ExecutionStatus.COMPLETED, offlinePushStrategy);
   }
 
-  @Test
-  public void testLoadJobsFromZkWithErrorTask(){
-    testLoadJobsFromZk(ExecutionStatus.ERROR);
+  @Test(dataProvider = "offlinePushStrategies")
+  public void testLoadJobsFromZkWithErrorTask(OfflinePushStrategy offlinePushStrategy){
+    testLoadJobsFromZk(ExecutionStatus.ERROR, offlinePushStrategy);
   }
 
-  private void testLoadJobsFromZk(ExecutionStatus taskStatus) {
+  private void testLoadJobsFromZk(ExecutionStatus taskStatus, OfflinePushStrategy offlinePushStrategy) {
     metadataRepository.addStore(store);
 
-    jobManager.startOfflineJob(version.kafkaTopicName(), 1, 1);
+    jobManager.startOfflineJob(version.kafkaTopicName(), 1, 1, offlinePushStrategy);
     OfflineJob job = (OfflineJob) jobRepository.getRunningJobOfTopic(version.kafkaTopicName()).get(0);
     Task task = new Task(job.generateTaskId(0, nodeId), 0, nodeId, ExecutionStatus.STARTED);
     job.updateTaskStatus(task);
@@ -344,8 +351,8 @@ public class TestVeniceJobManager {
    * send the status message to controller. Start up the second participant. If the retry mechanism works well, status
    * message will be processed eventually.
    */
-  @Test
-  public void testReceiveMessageBeforeJobStart()
+  @Test(dataProvider = "offlinePushStrategies")
+  public void testReceiveMessageBeforeJobStart(OfflinePushStrategy offlinePushStrategy)
       throws InterruptedException {
     int partitionCount = 1;
     int replciaCount = 2;
@@ -399,7 +406,7 @@ public class TestVeniceJobManager {
     newParticipantThread.start();
 
     try {
-      jobManager.startOfflineJob(newVersion.kafkaTopicName(), partitionCount, replciaCount);
+      jobManager.startOfflineJob(newVersion.kafkaTopicName(), partitionCount, replciaCount, offlinePushStrategy);
       Set<String> nodeIdSet = new HashSet<>();
       for (Instance instance : routingDataRepository.getPartitionAssignments(newVersion.kafkaTopicName())
           .getPartition(0)
@@ -414,8 +421,8 @@ public class TestVeniceJobManager {
     }
   }
 
-  @Test
-  public void testReceiveMessageWhenStorageRestarting()
+  @Test(dataProvider = "offlinePushStrategies")
+  public void testReceiveMessageWhenStorageRestarting(OfflinePushStrategy offlinePushStrategy)
       throws Exception {
     int partitionCount = 1;
     int replcaCount = 2;
@@ -445,7 +452,7 @@ public class TestVeniceJobManager {
         TestUtils.getParticipant(cluster, Utils.getHelixNodeIdentifier(13467), zkAddress, httpPort,
             TestHelixRoutingDataRepository.UnitTestStateModel.UNIT_TEST_STATE_MODEL);
     newParticipant.connect();
-    jobManager.startOfflineJob(newVersion.kafkaTopicName(), 1, 1);
+    jobManager.startOfflineJob(newVersion.kafkaTopicName(), 1, 1, offlinePushStrategy);
     startThread.join();
 
     OfflineJob job = (OfflineJob) jobRepository.getRunningJobOfTopic(newVersion.kafkaTopicName()).get(0);
@@ -476,19 +483,19 @@ public class TestVeniceJobManager {
     newParticipant.disconnect();
   }
 
-  @Test(expectedExceptions = VeniceException.class)
-  public void testHandleRoutingDataChangedJobNotStart() {
+  @Test(expectedExceptions = VeniceException.class, dataProvider = "offlinePushStrategies")
+  public void testHandleRoutingDataChangedJobNotStart(OfflinePushStrategy offlinePushStrategy) {
     metadataRepository.addStore(store);
     // Starting a job with 1 partition and 2 replicas, as we only started one participant in setup method, so the job
     // can not be started due to not enough executor.
-    jobManager.startOfflineJob(version.kafkaTopicName(), 1, 2);
+    jobManager.startOfflineJob(version.kafkaTopicName(), 1, 2, offlinePushStrategy);
 
     Store updatedStore = metadataRepository.getStore(storeName);
     Assert.assertEquals(updatedStore.getVersions().get(0).getStatus(), VersionStatus.ERROR);
   }
 
-  @Test
-  public void testHandleRoutingDataChangedJobIsRunning()
+  @Test(dataProvider = "offlinePushStrategies")
+  public void testHandleRoutingDataChangedJobIsRunning(OfflinePushStrategy offlinePushStrategy)
       throws Exception {
 
     Version newVersion = store.increaseVersion();
@@ -515,7 +522,7 @@ public class TestVeniceJobManager {
     });
     newParticipant.connect();
 
-    jobManager.startOfflineJob(newVersion.kafkaTopicName(), 1, 2);
+    jobManager.startOfflineJob(newVersion.kafkaTopicName(), 1, 2, offlinePushStrategy);
 
     newParticipant.disconnect();
     TestUtils.waitForNonDeterministicCompletion(2, TimeUnit.SECONDS, () ->
