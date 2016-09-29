@@ -2,12 +2,13 @@ package com.linkedin.venice.client.store.transport;
 
 import com.linkedin.venice.client.store.ClientCallback;
 import com.linkedin.venice.client.store.DeserializerFetcher;
+import com.linkedin.venice.client.store.AvroGenericStoreClient;
 
 import java.io.Closeable;
 import java.util.concurrent.Future;
 
 /**
- * Define interfaces for TransportClient, and the target customer is the sub-classes of {@link com.linkedin.venice.client.store.AvroGenericStoreClient}
+ * Define interfaces for TransportClient, and the target customer is the sub-classes of {@link AvroGenericStoreClient}
  * @param <V>
  */
 public abstract class TransportClient<V> implements Closeable {

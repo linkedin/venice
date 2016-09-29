@@ -25,6 +25,8 @@ public interface AvroGenericStoreClient<V> extends Closeable {
    */
   Future<V> get(Object key) throws VeniceClientException;
 
+  void start() throws VeniceClientException;
+
   /**
    * Release the internal resources.
    */

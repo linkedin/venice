@@ -77,7 +77,7 @@ public class ProducerConsumerReaderIntegrationTest {
     VeniceSerializer valueSerializer = new AvroGenericSerializer(stringSchema);
 
     veniceWriter = new VeniceWriter<>(clientProps, storeVersionName, keySerializer, valueSerializer);
-    storeClient = AvroStoreClientFactory.getAvroGenericStoreClient(routerUrl, storeName);
+    storeClient = AvroStoreClientFactory.getAndStartAvroGenericStoreClient(routerUrl, storeName);
   }
 
   @AfterMethod

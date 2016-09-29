@@ -2,7 +2,6 @@ package com.linkedin.venice.router;
 
 
 import com.linkedin.d2.balancer.D2Client;
-import com.linkedin.d2.server.factory.D2Server;
 import com.linkedin.r2.message.rest.RestException;
 import com.linkedin.r2.message.rest.RestRequest;
 import com.linkedin.r2.message.rest.RestRequestBuilder;
@@ -15,7 +14,6 @@ import com.linkedin.venice.integration.utils.MockVeniceRouterWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import java.net.URI;
-import java.util.List;
 import java.util.concurrent.ExecutionException;
 import org.apache.commons.httpclient.HttpStatus;
 import org.testng.Assert;
@@ -53,7 +51,7 @@ public class TestRouter {
     Assert.assertEquals(response.getStatus(), HttpStatus.SC_SERVICE_UNAVAILABLE,
       "Router with Mock components should return a 503 Service Unavailable");
 
-    AbstractAvroStoreClient<Object> storeClient = (AbstractAvroStoreClient<Object>) AvroStoreClientFactory.getAvroGenericStoreClient(
+    AbstractAvroStoreClient<Object> storeClient = (AbstractAvroStoreClient<Object>) AvroStoreClientFactory.getAndStartAvroGenericStoreClient(
       D2TestUtils.D2_SERVICE_NAME, d2Client, "myStore");
 
     try {

@@ -37,6 +37,11 @@ public class D2TransportClient<V> extends TransportClient<V> {
   private static final long d2ShutdownTimeoutMs = TimeUnit.SECONDS.toMillis(30);
 
   private final D2Client d2Client;
+
+  //indicate whether it is a private d2 created by TransportClient or it is a public
+  //d2 shared by multiply TransportClient. The TransportClient only takes care of
+  //start/shutdown a d2 client if is is private.
+  private final Boolean privateD2Client;
   private final String d2ServiceName;
 
   /**
@@ -48,6 +53,7 @@ public class D2TransportClient<V> extends TransportClient<V> {
   public D2TransportClient(String d2ServiceName, D2Client d2Client){
     this.d2ServiceName = d2ServiceName;
     this.d2Client = d2Client;
+    this.privateD2Client = false;
   }
 
   /**
@@ -77,6 +83,7 @@ public class D2TransportClient<V> extends TransportClient<V> {
         .setLbWaitTimeout(zkTimeout, TimeUnit.MILLISECONDS)
         .setBasePath(zkBasePath);
     d2Client = builder.build();
+    this.privateD2Client = true;
 
     CountDownLatch latch = new CountDownLatch(1);
     AtomicBoolean d2StartupSuccess = new AtomicBoolean(false);
@@ -136,27 +143,31 @@ public class D2TransportClient<V> extends TransportClient<V> {
   }
   @Override
   public synchronized void close() {
-    CountDownLatch stopLatch = new CountDownLatch(1);
-    d2Client.shutdown(new Callback<None>() {
-      @Override
-      public void onError(Throwable e) {
-        logger.error("Error when shutting down d2client", e);
-        stopLatch.countDown();
-      }
+    if (privateD2Client) {
+      CountDownLatch stopLatch = new CountDownLatch(1);
+      d2Client.shutdown(new Callback<None>() {
+        @Override
+        public void onError(Throwable e) {
+          logger.error("Error when shutting down d2client", e);
+          stopLatch.countDown();
+        }
 
-      @Override
-      public void onSuccess(None result) {
-        logger.debug("D2StoreClient shutdown complete");
-        stopLatch.countDown();
+        @Override
+        public void onSuccess(None result) {
+          logger.debug("D2StoreClient shutdown complete");
+          stopLatch.countDown();
+        }
+      });
+      try {
+        boolean waitRes = stopLatch.await(d2ShutdownTimeoutMs, TimeUnit.MILLISECONDS);
+        if (!waitRes) {
+          logger.error("D2Client shutdown timed out after " + d2ShutdownTimeoutMs + "ms");
+        }
+      } catch (InterruptedException e) {
+        logger.warn("d2client shutdown interrupted");
       }
-    });
-    try {
-      boolean waitRes = stopLatch.await(d2ShutdownTimeoutMs, TimeUnit.MILLISECONDS);
-      if (!waitRes){
-        logger.error("D2Client shutdown timed out after " + d2ShutdownTimeoutMs + "ms");
-      }
-    } catch (InterruptedException e) {
-      logger.warn("d2client shutdown interrupted");
+    } else {
+      logger.info("This is a shared D2Client. TransportClient is not responsible to shut it down. Please do it manually.");
     }
   }
 

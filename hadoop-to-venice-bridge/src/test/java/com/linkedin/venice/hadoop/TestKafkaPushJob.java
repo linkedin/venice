@@ -206,7 +206,7 @@ private static final String STRING_SCHEMA = "\"string\"";
 
     // Verify the data in Venice Store
     String routerUrl = "http://" + veniceCluster.getVeniceRouter().getAddress();
-    try(AvroGenericStoreClient<Object> client = AvroStoreClientFactory.getAvroGenericStoreClient(routerUrl, storeName)) {
+    try(AvroGenericStoreClient<Object> client = AvroStoreClientFactory.getAndStartAvroGenericStoreClient(routerUrl, storeName)) {
       for (int i = 1; i <= 100; ++i) {
         String expected = "test_name_" + i;
         String actual = client.get(Integer.toString(i)).get().toString(); /* client.get().get() returns a Utf8 object */
@@ -343,7 +343,7 @@ private static final String STRING_SCHEMA = "\"string\"";
 
     // Verify the data in Venice Store
     String routerUrl = "http://" + veniceCluster.getVeniceRouter().getAddress();
-    AvroGenericStoreClient<Object> client = AvroStoreClientFactory.getAvroGenericStoreClient(routerUrl, storeName);
+    AvroGenericStoreClient<Object> client = AvroStoreClientFactory.getAndStartAvroGenericStoreClient(routerUrl, storeName);
 
     for (int i = 1; i <= 100; ++i) {
       String expected = "test_name_" + i;
@@ -373,7 +373,7 @@ private static final String STRING_SCHEMA = "\"string\"";
 
     // Verify the data in Venice Store
     String routerUrl = "http://" + veniceCluster.getVeniceRouter().getAddress();
-    AvroGenericStoreClient<Object> client = AvroStoreClientFactory.getAvroGenericStoreClient(routerUrl, storeName);
+    AvroGenericStoreClient<Object> client = AvroStoreClientFactory.getAndStartAvroGenericStoreClient(routerUrl, storeName);
 
     for (int i = 1; i <= 10; ++i) {
       String expected = "test_name_" + i;
@@ -408,7 +408,7 @@ private static final String STRING_SCHEMA = "\"string\"";
 
     // Verify the data in Venice Store
     String routerUrl = "http://" + veniceCluster.getVeniceRouter().getAddress();
-    AvroGenericStoreClient<Object> client = AvroStoreClientFactory.getAvroGenericStoreClient(routerUrl, storeName);
+    AvroGenericStoreClient<Object> client = AvroStoreClientFactory.getAndStartAvroGenericStoreClient(routerUrl, storeName);
 
     for (int i = 1; i <= 10; ++i) {
       String expected = "test_name_" + i;
@@ -438,7 +438,7 @@ private static final String STRING_SCHEMA = "\"string\"";
 
     // Verify the data in Venice Store
     String routerUrl = "http://" + veniceCluster.getVeniceRouter().getAddress();
-    AvroGenericStoreClient<Object> client = AvroStoreClientFactory.getAvroGenericStoreClient(routerUrl, storeName);
+    AvroGenericStoreClient<Object> client = AvroStoreClientFactory.getAndStartAvroGenericStoreClient(routerUrl, storeName);
 
     for (int i = 1; i <= 10; ++i) {
       String actual = client.get(Integer.toString(i)).get().toString(); /* client.get().get() returns a Utf8 object */
