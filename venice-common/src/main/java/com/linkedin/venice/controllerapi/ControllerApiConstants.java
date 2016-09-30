@@ -10,6 +10,7 @@ public class ControllerApiConstants {
   public static final String STORE_SIZE = "store_size";
   public static final String VERSION = "version";
   public static final String STATUS = "status";
+  public static final String FROZEN = "frozen";
   public static final String ERROR = "error";
   public static final String STORAGE_NODE_ID = "storage_node_id"; /* host_port */
   public static final String KEY_SCHEMA = "key_schema";
