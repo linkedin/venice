@@ -35,6 +35,8 @@ import java.util.Map;
 import java.util.Properties;
 import java.util.Queue;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.PriorityBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -96,7 +98,7 @@ public class StoreConsumptionTask implements Runnable, Closeable {
    * The source of truth for the currently subscribed partitions. The list maintained by the kafka consumer
    * is not always up to date because of the asynchronous nature of subscriptions of partitions in Kafka Consumer.
    */
-  private final Map<Integer, Long> partitionToOffsetMap;
+  private final ConcurrentMap<Integer, Long> partitionToOffsetMap;
   private final Set<Integer> completedPartition;
 
   private final Set<Integer> partitionsWithErrors;
@@ -135,8 +137,9 @@ public class StoreConsumptionTask implements Runnable, Closeable {
     this.consumerActionsQueue = new PriorityBlockingQueue<>(CONSUMER_ACTION_QUEUE_INIT_CAPACITY,
         new ConsumerAction.ConsumerActionPriorityComparator());
 
+    // partitionToOffsetMap is accessed by multiple threads: consumption thread and the thread handle kill message.
+    this.partitionToOffsetMap = new ConcurrentHashMap<>();
     // Should be accessed only from a single thread.
-    this.partitionToOffsetMap = new HashMap<>();
     this.completedPartition = new HashSet<>();
     this.producerTrackerMap = new HashMap<>();
     this.partitionsWithErrors = new HashSet<>();
@@ -263,9 +266,18 @@ public class StoreConsumptionTask implements Runnable, Closeable {
 
   private void reportError(Collection<Integer> partitions, String message, Exception consumerEx) {
     for(Integer partitionId: partitions) {
+      // Here we have to lock partitionsWithErrors because it could be accessed by two threads: consumption thread and
+      // the thread handle kill message.
+      synchronized (partitionsWithErrors) {
+        if (partitionsWithErrors.contains(partitionId)) {
+          logger.warn("Topic:" + topic + " Partition:" + partitionId + " has been reported as error before.");
+          continue;
+        }
+        partitionsWithErrors.add(partitionId);
+      }
+
       for(VeniceNotifier notifier : notifiers) {
         try {
-          partitionsWithErrors.add(partitionId);
           notifier.error(topic, partitionId, message, consumerEx);
         } catch(Exception notifierEx) {
           logger.error(consumerTaskId + " Error reporting status to notifier " + notifier.getClass() , notifierEx);

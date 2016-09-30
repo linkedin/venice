@@ -511,7 +511,7 @@ public class StoreConsumptionTaskTest {
       Mockito.verify(mockNotifier, Mockito.timeout(TEST_TIMEOUT).atLeastOnce()).started(topic, PARTITION_BAR);
       Mockito.verify(mockNotifier, Mockito.timeout(TEST_TIMEOUT).atLeastOnce())
           .completed(topic, PARTITION_FOO, fooLastOffset);
-      Mockito.verify(mockNotifier, Mockito.timeout(TEST_TIMEOUT).atLeastOnce())
+      Mockito.verify(mockNotifier, Mockito.timeout(TEST_TIMEOUT).times(1))
           .error(eq(topic), eq(PARTITION_BAR), argThat(new NonEmptyStringMatcher()),
               argThat(new ExceptionClassMatcher(MissingDataException.class)));
 
@@ -653,11 +653,11 @@ public class StoreConsumptionTaskTest {
 
       Future testSubscribeTaskFuture = taskPollingService.submit(mockStoreConsumptionTask);
 
-      Mockito.verify(mockNotifier, Mockito.timeout(TEST_TIMEOUT).atLeastOnce())
+      Mockito.verify(mockNotifier, Mockito.timeout(TEST_TIMEOUT).times(1))
           .error(eq(topic), eq(PARTITION_FOO), argThat(new NonEmptyStringMatcher()),
               argThat(new ExceptionClassMatcher(VeniceException.class)));
 
-      Mockito.verify(mockNotifier, Mockito.timeout(TEST_TIMEOUT).atLeastOnce())
+      Mockito.verify(mockNotifier, Mockito.timeout(TEST_TIMEOUT).times(1))
           .error(eq(topic), eq(PARTITION_BAR), argThat(new NonEmptyStringMatcher()),
               argThat(new ExceptionClassMatcher(VeniceException.class)));
 
