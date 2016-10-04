@@ -13,7 +13,6 @@ import com.linkedin.venice.status.StatusMessageHandler;
 import com.linkedin.venice.status.StoreStatusMessage;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixRoutingDataRepository;
-import com.linkedin.venice.helix.TestHelixRoutingDataRepository;
 import com.linkedin.venice.integration.utils.KafkaBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
@@ -64,7 +63,7 @@ public class TestVeniceHelixAdmin {
   private Map<String, HelixManager> participants = new HashMap<>();
 
   private VeniceProperties controllerProps;
-  private TestHelixRoutingDataRepository.UnitTestStateModelFactory stateModelFactory;
+  private MockTestStateModelFactory stateModelFactory;
 
   public static final long MASTER_CHANGE_TIMEOUT = 10 * Time.MS_PER_SECOND;
   public static final long TOTAL_TIMEOUT_FOR_LONG_TEST = 30 * Time.MS_PER_SECOND;
@@ -77,7 +76,7 @@ public class TestVeniceHelixAdmin {
     zkAddress = zkServerWrapper.getAddress();
     kafkaBrokerWrapper = ServiceFactory.getKafkaBroker();
     kafkaZkAddress = kafkaBrokerWrapper.getZkAddress();
-    stateModelFactory = new TestHelixRoutingDataRepository.UnitTestStateModelFactory();
+    stateModelFactory = new MockTestStateModelFactory();
     String currentPath = Paths.get("").toAbsolutePath().toString();
     if (currentPath.endsWith("venice-controller")) {
       currentPath += "/..";

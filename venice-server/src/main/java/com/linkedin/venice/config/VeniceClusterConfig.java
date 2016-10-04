@@ -2,17 +2,13 @@ package com.linkedin.venice.config;
 
 import static com.linkedin.venice.ConfigKeys.*;
 
-import com.google.common.collect.ImmutableMap;
 import com.linkedin.venice.exceptions.ConfigurationException;
 import com.linkedin.venice.exceptions.UndefinedPropertyException;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.offsets.BdbOffsetManager;
-import com.linkedin.venice.store.bdb.BdbStorageEngineFactory;
-import com.linkedin.venice.store.memory.InMemoryStorageEngineFactory;
 import com.linkedin.venice.utils.VeniceProperties;
 
 import java.io.File;
-import java.util.Map;
 
 
 /**

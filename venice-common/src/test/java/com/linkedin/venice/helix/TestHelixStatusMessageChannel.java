@@ -7,6 +7,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.job.ExecutionStatus;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
+import com.linkedin.venice.utils.MockTestStateModel;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import java.io.IOException;
@@ -59,10 +60,10 @@ public class TestHelixStatusMessageChannel {
     Map<String, String> helixClusterProperties = new HashMap<String, String>();
     helixClusterProperties.put(ZKHelixManager.ALLOW_PARTICIPANT_AUTO_JOIN, String.valueOf(true));
     admin.setConfig(configScope, helixClusterProperties);
-    admin.addStateModelDef(cluster, TestHelixRoutingDataRepository.UnitTestStateModel.UNIT_TEST_STATE_MODEL,
-        TestHelixRoutingDataRepository.UnitTestStateModel.getDefinition());
+    admin.addStateModelDef(cluster, MockTestStateModel.UNIT_TEST_STATE_MODEL,
+        MockTestStateModel.getDefinition());
 
-    admin.addResource(cluster, kafkaTopic, 1, TestHelixRoutingDataRepository.UnitTestStateModel.UNIT_TEST_STATE_MODEL,
+    admin.addResource(cluster, kafkaTopic, 1, MockTestStateModel.UNIT_TEST_STATE_MODEL,
         IdealState.RebalanceMode.FULL_AUTO.toString());
     admin.rebalance(cluster, kafkaTopic, 1);
 
@@ -71,7 +72,7 @@ public class TestHelixStatusMessageChannel {
     controller.connect();
     instanceId = Utils.getHelixNodeIdentifier(port);
     manager = TestUtils.getParticipant(cluster, instanceId, zkAddress, port,
-        TestHelixRoutingDataRepository.UnitTestStateModel.UNIT_TEST_STATE_MODEL);
+        MockTestStateModel.UNIT_TEST_STATE_MODEL);
     manager.connect();
     channel = new HelixStatusMessageChannel(manager);
     routingDataRepository = new HelixRoutingDataRepository(controller);
@@ -237,7 +238,7 @@ public class TestHelixStatusMessageChannel {
     // Start a new participant
     HelixManager newParticipant =
         TestUtils.getParticipant(cluster, Utils.getHelixNodeIdentifier(port + 1), zkAddress, port + 1,
-            TestHelixRoutingDataRepository.UnitTestStateModel.UNIT_TEST_STATE_MODEL);
+            MockTestStateModel.UNIT_TEST_STATE_MODEL);
     newParticipant.connect();
     HelixStatusMessageChannel newChannel = new HelixStatusMessageChannel(newParticipant);
     newChannel.registerHandler(StoreStatusMessage.class, new TimeoutTestStoreStatusMessageHandler(timeoutCount));
@@ -267,7 +268,7 @@ public class TestHelixStatusMessageChannel {
     // Start a new participant
     HelixManager newParticipant =
         TestUtils.getParticipant(cluster, Utils.getHelixNodeIdentifier(port + 1), zkAddress, port + 1,
-            TestHelixRoutingDataRepository.UnitTestStateModel.UNIT_TEST_STATE_MODEL);
+            MockTestStateModel.UNIT_TEST_STATE_MODEL);
     newParticipant.connect();
     admin.rebalance(cluster, kafkaTopic, 2);
 

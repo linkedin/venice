@@ -1,16 +1,12 @@
 package com.linkedin.venice.store;
 
-import com.linkedin.venice.config.VeniceStoreConfig;
 import com.linkedin.venice.exceptions.PersistenceFailureException;
 import com.linkedin.venice.exceptions.StorageInitializationException;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.server.PartitionAssignmentRepository;
-import com.linkedin.venice.store.bdb.BdbStoragePartition;
 import com.linkedin.venice.store.iterators.CloseableStoreEntriesIterator;
 import com.linkedin.venice.store.iterators.CloseableStoreKeysIterator;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.Utils;
-import java.util.Collection;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import org.apache.log4j.Logger;

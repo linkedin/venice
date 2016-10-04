@@ -17,11 +17,7 @@ import java.util.stream.Collectors;
 
 import com.linkedin.venice.utils.Time;
 import kafka.admin.AdminUtils;
-import kafka.api.PartitionOffsetRequestInfo;
-import kafka.common.TopicAndPartition;
 import kafka.common.TopicExistsException;
-import kafka.javaapi.OffsetResponse;
-import kafka.javaapi.consumer.SimpleConsumer;
 import kafka.utils.ZKStringSerializer$;
 import kafka.utils.ZkUtils;
 import org.I0Itec.zkclient.ZkClient;

@@ -31,7 +31,6 @@ dependencies {
     compile libraries.xerces
     compile libraries.xalan
 
-    testCompile project(':venice-common').sourceSets.test.output
     testCompile project(':venice-controller')
     testCompile project(':venice-server')
     testCompile project(':venice-router')

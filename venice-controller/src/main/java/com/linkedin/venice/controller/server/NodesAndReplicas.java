@@ -19,7 +19,6 @@ import static com.linkedin.venice.controllerapi.ControllerRoute.LIST_NODES;
 import static com.linkedin.venice.controllerapi.ControllerRoute.LIST_REPLICAS;
 import static com.linkedin.venice.controllerapi.ControllerRoute.NODE_REMOVABLE;
 import static com.linkedin.venice.controllerapi.ControllerRoute.NODE_REPLICAS;
-import static com.linkedin.venice.controllerapi.ControllerRoute.PAUSE_STORE;
 
 
 public class NodesAndReplicas {

@@ -9,6 +9,7 @@ import com.linkedin.venice.job.Task;
 import com.linkedin.venice.job.WaitAllJobStatsDecider;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.Partition;
+import com.linkedin.venice.utils.MockTestStateModel;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.meta.PartitionAssignment;
 import com.linkedin.venice.utils.Time;
@@ -76,13 +77,13 @@ public class TestHelixJobRepository {
     Map<String, String> helixClusterProperties = new HashMap<String, String>();
     helixClusterProperties.put(ZKHelixManager.ALLOW_PARTICIPANT_AUTO_JOIN, String.valueOf(true));
     admin.setConfig(configScope, helixClusterProperties);
-    admin.addStateModelDef(cluster, TestHelixRoutingDataRepository.UnitTestStateModel.UNIT_TEST_STATE_MODEL,
-        TestHelixRoutingDataRepository.UnitTestStateModel.getDefinition());
+    admin.addStateModelDef(cluster, MockTestStateModel.UNIT_TEST_STATE_MODEL,
+        MockTestStateModel.getDefinition());
 
     controller = HelixControllerMain
         .startHelixController(zkAddress, cluster, Utils.getHelixNodeIdentifier(12345), HelixControllerMain.STANDALONE);
     manager = TestUtils.getParticipant(cluster, nodeId, zkAddress, 9986,
-        TestHelixRoutingDataRepository.UnitTestStateModel.UNIT_TEST_STATE_MODEL);
+        MockTestStateModel.UNIT_TEST_STATE_MODEL);
     manager.connect();
 
     routingDataRepository = new HelixRoutingDataRepository(controller);
@@ -94,7 +95,7 @@ public class TestHelixJobRepository {
     repository = new HelixJobRepository(zkClient, adapter, cluster);
     repository.refresh();
 
-    admin.addResource(cluster, kafkaTopic, 1, TestHelixRoutingDataRepository.UnitTestStateModel.UNIT_TEST_STATE_MODEL,
+    admin.addResource(cluster, kafkaTopic, 1, MockTestStateModel.UNIT_TEST_STATE_MODEL,
         IdealState.RebalanceMode.FULL_AUTO.toString());
     admin.rebalance(cluster, kafkaTopic, 1);
   }
@@ -130,12 +131,12 @@ public class TestHelixJobRepository {
     HelixManager[] managers = new HelixManager[3];
     for (int i = 0; i < 3; i++) {
       HelixManager manager = TestUtils.getParticipant(cluster, "localhost_" + i, zkAddress, 9986,
-          TestHelixRoutingDataRepository.UnitTestStateModel.UNIT_TEST_STATE_MODEL);
+          MockTestStateModel.UNIT_TEST_STATE_MODEL);
       manager.connect();
       managers[i] = manager;
     }
     admin.addResource(cluster, resource, partitions,
-        TestHelixRoutingDataRepository.UnitTestStateModel.UNIT_TEST_STATE_MODEL,
+        MockTestStateModel.UNIT_TEST_STATE_MODEL,
         IdealState.RebalanceMode.FULL_AUTO.toString());
     admin.rebalance(cluster, resource, 1);
 
@@ -258,7 +259,7 @@ public class TestHelixJobRepository {
     int replicaFactor = 1;
     String topic = TestUtils.getUniqueString("runningjob");
     admin.addResource(cluster, topic, numberOfPartition,
-        TestHelixRoutingDataRepository.UnitTestStateModel.UNIT_TEST_STATE_MODEL,
+        MockTestStateModel.UNIT_TEST_STATE_MODEL,
         IdealState.RebalanceMode.FULL_AUTO.toString());
     admin.rebalance(cluster, topic, replicaFactor);
 
@@ -283,7 +284,7 @@ public class TestHelixJobRepository {
     Thread.sleep(1000l);
     //Mock up the scenario that controller refresh at first then participant refresh up.
     manager = TestUtils.getParticipant(cluster, nodeId, zkAddress, 9986,
-        TestHelixRoutingDataRepository.UnitTestStateModel.UNIT_TEST_STATE_MODEL);
+        MockTestStateModel.UNIT_TEST_STATE_MODEL);
     manager.connect();
 
     newRepository.clear();
@@ -297,7 +298,7 @@ public class TestHelixJobRepository {
     int replicaFactor = 1;
     for (int i = 0; i < jobCount; i++) {
       admin.addResource(cluster, "topic" + i, numberOfPartition,
-          TestHelixRoutingDataRepository.UnitTestStateModel.UNIT_TEST_STATE_MODEL,
+          MockTestStateModel.UNIT_TEST_STATE_MODEL,
           IdealState.RebalanceMode.FULL_AUTO.toString());
       admin.rebalance(cluster, "topic" + i, 1);
     }

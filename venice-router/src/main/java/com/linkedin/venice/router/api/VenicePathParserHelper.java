@@ -3,7 +3,6 @@ package com.linkedin.venice.router.api;
 import com.linkedin.venice.utils.Utils;
 import java.net.URI;
 import java.net.URISyntaxException;
-import javax.rmi.CORBA.Util;
 import org.apache.log4j.Logger;
 
 

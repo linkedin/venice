@@ -1,8 +1,8 @@
 package com.linkedin.venice.integration.utils;
 
 import com.linkedin.venice.router.RouterServer;
-import com.linkedin.venice.utils.TestUtils;
 
+import com.linkedin.venice.utils.TestUtils;
 import java.io.File;
 import java.util.ArrayList;
 import java.util.concurrent.TimeUnit;

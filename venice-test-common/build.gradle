@@ -1,0 +1,68 @@
+task buildJar(type: Jar) {
+  manifest {
+    attributes 'Implementation-Title': 'Venice Test Common',
+        'Implementation-Version': version
+  }
+  baseName = project.name
+  from { configurations.compile.collect { it.isDirectory() ? it : zipTree(it) } }
+  with jar
+}
+
+jar {
+  manifest {
+    attributes 'Implementation-Title': 'Venice Test Common',
+        'Implementation-Version': version
+  }
+}
+
+sourceSets {
+  integrationtest {
+    java {
+      compileClasspath += main.output + test.output
+      runtimeClasspath += main.output + test.output
+      srcDir file("src/integrationtest/java")
+    }
+    resources.srcDir file("src/integrationtest/resources")
+  }
+}
+
+configurations {
+  integrationtestCompile.extendsFrom testCompile
+  integrationtestRuntime.extendsFrom testRuntime
+
+}
+
+task integrationtest(type: Test) {
+  description = "Run integration tests for " + project.name;
+  useTestNG()
+  testClassesDir = sourceSets.integrationtest.output.classesDir
+  classpath = sourceSets.integrationtest.runtimeClasspath
+  testReportDirName = "integrationtest"
+  testResultsDirName = "integrationtest-result"
+  jacoco {
+    append = false
+    destinationFile = file("$buildDir/jacoco/integrationtest.exec")
+  }
+}
+
+task jacocoIntegrationTestReport(type:JacocoReport){
+  dependsOn integrationtest
+  executionData file("$buildDir/jacoco/integrationtest.exec")
+  reports {
+    xml.enabled false
+    csv.enabled false
+    html.destination "${buildDir}/jacocoIntegrationHtml"
+  }
+  sourceSets sourceSets.main
+}
+
+dependencies {
+  compile project(':venice-schema-common')
+  compile project(':venice-common')
+  compile project(':venice-server')
+  compile project(':venice-controller')
+  compile project(':venice-router')
+
+  compile 'org.mockito:mockito-all:1.9.5'
+
+}
