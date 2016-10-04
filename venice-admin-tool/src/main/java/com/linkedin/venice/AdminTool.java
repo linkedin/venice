@@ -1,6 +1,7 @@
 package com.linkedin.venice;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.ObjectWriter;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
@@ -21,15 +22,16 @@ import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.VersionResponse;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.helix.Replica;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.Utils;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Paths;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.StringJoiner;
 import java.util.concurrent.ExecutionException;
@@ -46,9 +48,10 @@ import org.apache.commons.cli.ParseException;
 
 public class AdminTool {
 
-  /* TODO: change all output to use jsonWriter for json output */
-  /* TODO: allow a config flag to change the jsonWriter to a single-line writer instead of pretty print */
+  // TODO: static state means this can only be used by command line,
+  // if we want to use this class programmatically it should get refactored.
   private static ObjectWriter jsonWriter = new ObjectMapper().writerWithDefaultPrettyPrinter();
+  private static List<String> fieldsToDisplay = new ArrayList<>();
   private static final String STATUS = "status";
   private static final String ERROR = "error";
   private static final String SUCCESS = "success";
@@ -94,10 +97,14 @@ public class AdminTool {
       if (cmd.hasOption(Arg.FLAT_JSON.toString())){
         jsonWriter = new ObjectMapper().writer();
       }
+      if (cmd.hasOption(Arg.FILTER_JSON.toString())){
+        fieldsToDisplay = Arrays.asList(
+            cmd.getOptionValue(Arg.FILTER_JSON.first()).split(","));
+      }
 
       if (cmd.hasOption(Command.LIST_STORES.toString())){
         MultiStoreResponse storeResponse = ControllerClient.queryStoreList(routerHosts, clusterName);
-        printControllerResponse(storeResponse);
+        printObject(storeResponse);
       } else if (cmd.hasOption(Command.DESCRIBE_STORE.toString())){
         String storeName = getRequiredArgument(cmd, Arg.STORE, Command.DESCRIBE_STORE);
         for (String store : storeName.split(",")) {
@@ -114,7 +121,7 @@ public class AdminTool {
         int version = Integer.parseInt(versionString);
         String topicName = new Version(storeName, version).kafkaTopicName();
         JobStatusQueryResponse jobStatus = ControllerClient.queryJobStatus(routerHosts, clusterName, topicName);
-        printControllerResponse(jobStatus);
+        printObject(jobStatus);
       } else if (cmd.hasOption(Command.NEW_STORE.toString())) {
         createNewStore(cmd, routerHosts, clusterName);
       } else if (cmd.hasOption(Command.PAUSE_STORE.toString())) {
@@ -164,11 +171,20 @@ public class AdminTool {
   private static void queryStoreForKey(CommandLine cmd, String routerHosts)
       throws VeniceClientException, ExecutionException, InterruptedException, JsonProcessingException {
     String store = getRequiredArgument(cmd, Arg.STORE);
-    AvroGenericStoreClient<Object> schemaClient = AvroStoreClientFactory.getAvroGenericStoreClient(routerHosts, store);
-    AbstractAvroStoreClient<Object> castClient = (AvroGenericStoreClientImpl<Object>) schemaClient;
-    SchemaReader schemaReader = new SchemaReader(castClient);
-    Schema keySchema = schemaReader.getKeySchema();
-    schemaReader.close(); /* closes internal client that was passed in */
+    Schema keySchema = null;
+    SchemaReader schemaReader = null;
+    try {
+      AvroGenericStoreClient<Object> schemaClient = AvroStoreClientFactory.getAvroGenericStoreClient(routerHosts, store);
+      AbstractAvroStoreClient<Object> castClient = (AvroGenericStoreClientImpl<Object>) schemaClient;
+      schemaReader = new SchemaReader(castClient);
+      keySchema = schemaReader.getKeySchema();
+    } catch (VeniceClientException e) {
+      printErrAndExit(e.getMessage());
+    } finally {
+      if (null != schemaReader) {
+        schemaReader.close(); /* closes internal client that was passed in */
+      }
+    }
     String keyString = getRequiredArgument(cmd, Arg.KEY);
     Object key = null;
     switch (keySchema.getType()){
@@ -201,7 +217,7 @@ public class AdminTool {
     }
     outputMap.put("value-class", value.getClass().getCanonicalName());
     outputMap.put("value", value.toString());
-    System.out.println(jsonWriter.writeValueAsString(outputMap));
+    printObject(outputMap);
   }
 
   private static void createNewStore(CommandLine cmd, String routerHosts, String clusterName)
@@ -215,8 +231,9 @@ public class AdminTool {
     verifyValidSchema(keySchema);
     verifyValidSchema(valueSchema);
     verifyStoreExistence(routerHosts, clusterName, store, false);
-    NewStoreResponse newStore = ControllerClient.createNewStore(routerHosts, clusterName, store, owner, keySchema, valueSchema);
-    printControllerResponse(newStore);
+    NewStoreResponse newStore = ControllerClient.createNewStore(routerHosts, clusterName, store, owner, keySchema,
+        valueSchema);
+    printObject(newStore);
   }
 
   private static void setStorePaused(CommandLine cmd, String routerHosts, String clusterName, boolean newPauseStatus){
@@ -257,40 +274,32 @@ public class AdminTool {
     if (valueResponse.isError()) {
       throw new VeniceException("Error updating store with schema: " + valueResponse.getError());
     }
-    printControllerResponse(valueResponse);
+    printObject(valueResponse);
   }
 
   private static void printStoreDescription(String routerHosts, String clusterName, String storeName)
       throws JsonProcessingException {
     StoreResponse response = ControllerClient.getStore(routerHosts, clusterName, storeName);
-    printControllerResponse(response);
+    printObject(response);
   }
 
   private static void printStorageNodeList(String routerHosts, String clusterName){
     MultiNodeResponse nodeResponse = ControllerClient.listStorageNodes(routerHosts, clusterName);
-    printControllerResponse(nodeResponse);
+    printObject(nodeResponse);
   }
 
   private static void printReplicaListForStoreVersion(CommandLine cmd, String routerHosts, String clusterName){
     String store = getRequiredArgument(cmd, Arg.STORE, Command.REPLICAS_OF_STORE);
-    int version = Utils.parseIntFromString(getRequiredArgument(cmd, Arg.VERSION, Command.REPLICAS_OF_STORE), Arg.VERSION.toString());
+    int version = Utils.parseIntFromString(getRequiredArgument(cmd, Arg.VERSION, Command.REPLICAS_OF_STORE),
+        Arg.VERSION.toString());
     MultiReplicaResponse response = ControllerClient.listReplicas(routerHosts, clusterName, store, version);
-    printControllerResponse(response);
+    printObject(response);
   }
 
   private static void printReplicaListForStorageNode(CommandLine cmd, String routerHosts, String clusterName){
     String storageNodeId = getRequiredArgument(cmd, Arg.STORAGE_NODE);
     MultiReplicaResponse response = ControllerClient.listStorageNodeReplicas(routerHosts, clusterName, storageNodeId);
-    printControllerResponse(response);
-  }
-
-  private static void printControllerResponse(ControllerResponse response){
-    try {
-      System.out.println(jsonWriter.writeValueAsString(response));
-    } catch (JsonProcessingException e) {
-      System.out.println("{\"" + ERROR + "\":\"" + e.getMessage() + "\"}");
-      System.exit(1);
-    }
+    printObject(response);
   }
 
   private static void isNodeRemovable(CommandLine cmd, String routerHosts, String clusterName){
@@ -376,28 +385,9 @@ public class AdminTool {
     printErrAndExit(err, errMap);
   }
 
-  private static void printErrAndExit(String errorMessage, Map<String, String> customMessages) {
-    Map<String, String> errMap = new HashMap<>();
-    for (Map.Entry<String, String> messagePair : customMessages.entrySet()){
-      errMap.put(messagePair.getKey(), messagePair.getValue());
-    }
-    if (errMap.keySet().contains(ERROR)){
-      errMap.put(ERROR, errMap.get(ERROR) + " " + errorMessage);
-    } else {
-      errMap.put(ERROR, errorMessage);
-    }
-    try {
-      System.out.println(jsonWriter.writeValueAsString(errMap));
-    } catch (JsonProcessingException e) {
-      System.out.println("{\"" + ERROR + "\":\"" + e.getMessage() + "\"}");
-    }
-    System.exit(1);
-  }
-
   private static void createOpt(Arg name, boolean hasArg, String help, Options options){
     options.addOption(new Option(name.first(), name.toString(), hasArg, help));
   }
-
 
   private static void createCommandOpt(Command command, OptionGroup group){
     group.addOption(
@@ -414,12 +404,56 @@ public class AdminTool {
     return new String(encoded, StandardCharsets.UTF_8).trim();
   }
 
+  ///// Print Output ////
+
+  private static void printObject(Object response){
+    try {
+      if (fieldsToDisplay.size() == 0){
+        System.out.println(jsonWriter.writeValueAsString(response));
+      } else { // Only display specified keys
+        ObjectMapper mapper = new ObjectMapper();
+        ObjectWriter plainJsonWriter = mapper.writer();
+        String jsonString = plainJsonWriter.writeValueAsString(response);
+        Map<String, Object> printMap = mapper.readValue(jsonString, new TypeReference<Map<String, Object>>() {});
+        Map<String, Object> filteredPrintMap = new HashMap<>();
+        printMap.entrySet().stream().filter(entry -> fieldsToDisplay.contains(entry.getKey())).forEach(entry -> {
+          filteredPrintMap.put(entry.getKey(), entry.getValue());
+            });
+        System.out.println(jsonWriter.writeValueAsString(filteredPrintMap));
+      }
+
+    } catch (JsonProcessingException e) {
+      System.out.println("{\"" + ERROR + "\":\"" + e.getMessage() + "\"}");
+      System.exit(1);
+    } catch (IOException e) {
+      throw new VeniceException(e);
+    }
+  }
+
   static void printSuccess(ControllerResponse response){
     if (response.isError()){
       printErrAndExit(response.getError());
     } else {
       System.out.println("{\"" + STATUS + "\":\"" + SUCCESS + "\"}");
     }
+  }
+
+  private static void printErrAndExit(String errorMessage, Map<String, String> customMessages) {
+    Map<String, String> errMap = new HashMap<>();
+    for (Map.Entry<String, String> messagePair : customMessages.entrySet()){
+      errMap.put(messagePair.getKey(), messagePair.getValue());
+    }
+    if (errMap.keySet().contains(ERROR)){
+      errMap.put(ERROR, errMap.get(ERROR) + " " + errorMessage);
+    } else {
+      errMap.put(ERROR, errorMessage);
+    }
+    try {
+      System.out.println(jsonWriter.writeValueAsString(errMap));
+    } catch (JsonProcessingException e) {
+      System.out.println("{\"" + ERROR + "\":\"" + e.getMessage() + "\"}");
+    }
+    System.exit(1);
   }
 
 }
