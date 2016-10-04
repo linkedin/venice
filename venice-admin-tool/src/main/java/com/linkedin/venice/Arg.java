@@ -1,8 +1,5 @@
 package com.linkedin.venice;
 
-/**
- * Created by mwise on 5/23/16.
- */
 public enum Arg {
 
   ROUTER("router", "r", true, "Venice router url, eg. http://localhost:1689"),
@@ -15,6 +12,7 @@ public enum Arg {
   STORAGE_NODE("storage-node", "n", true, "Helix instance ID for a storage node, eg. lva1-app1234_1690"),
   KEY("key", "k", true, "Plain-text key for identifying a record in a store"),
 
+  FILTER_JSON("filter-json", "f", true, "Comma-delimited list of fields to display from the json output.  Omit to display all fields"),
   FLAT_JSON("flat-json", "fj", false, "Display output as flat json, without pretty-print indentation and line breaks"),
   HELP("help", "h", false, "Show usage");
 
