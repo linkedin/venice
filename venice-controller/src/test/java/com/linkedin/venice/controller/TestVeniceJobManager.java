@@ -9,7 +9,6 @@ import com.linkedin.venice.helix.HelixInstanceConverter;
 import com.linkedin.venice.helix.HelixJobRepository;
 import com.linkedin.venice.helix.HelixReadWriteStoreRepository;
 import com.linkedin.venice.helix.HelixRoutingDataRepository;
-import com.linkedin.venice.helix.TestHelixRoutingDataRepository;
 import com.linkedin.venice.job.Job;
 import com.linkedin.venice.job.ExecutionStatus;
 import com.linkedin.venice.job.OfflineJob;
@@ -18,6 +17,8 @@ import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
+import com.linkedin.venice.utils.MockTestStateModel;
+import com.linkedin.venice.utils.MockTestStateModelFactory;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import java.io.IOException;
@@ -89,17 +90,17 @@ public class TestVeniceJobManager {
     Map<String, String> helixClusterProperties = new HashMap<String, String>();
     helixClusterProperties.put(ZKHelixManager.ALLOW_PARTICIPANT_AUTO_JOIN, String.valueOf(true));
     admin.setConfig(configScope, helixClusterProperties);
-    admin.addStateModelDef(cluster, TestHelixRoutingDataRepository.UnitTestStateModel.UNIT_TEST_STATE_MODEL,
-        TestHelixRoutingDataRepository.UnitTestStateModel.getDefinition());
+    admin.addStateModelDef(cluster, MockTestStateModel.UNIT_TEST_STATE_MODEL,
+        MockTestStateModel.getDefinition());
 
-    admin.addResource(cluster, version.kafkaTopicName(), 1, TestHelixRoutingDataRepository.UnitTestStateModel.UNIT_TEST_STATE_MODEL,
+    admin.addResource(cluster, version.kafkaTopicName(), 1, MockTestStateModel.UNIT_TEST_STATE_MODEL,
         IdealState.RebalanceMode.FULL_AUTO.toString());
     admin.rebalance(cluster, version.kafkaTopicName(), 1);
 
     controller = HelixControllerMain
         .startHelixController(zkAddress, cluster, Utils.getHelixNodeIdentifier(adminPort), HelixControllerMain.STANDALONE);
     manager = TestUtils.getParticipant(cluster, nodeId, zkAddress, httpPort,
-        TestHelixRoutingDataRepository.UnitTestStateModel.UNIT_TEST_STATE_MODEL);
+        MockTestStateModel.UNIT_TEST_STATE_MODEL);
     manager.connect();
     Thread.sleep(1000l);
     routingDataRepository = new HelixRoutingDataRepository(controller);
@@ -289,7 +290,7 @@ public class TestVeniceJobManager {
     Assert.assertEquals(newVersion.getNumber(), version.getNumber() + 1);
     metadataRepository.updateStore(store);
     admin.addResource(cluster, newVersion.kafkaTopicName(), 1,
-        TestHelixRoutingDataRepository.UnitTestStateModel.UNIT_TEST_STATE_MODEL,
+        MockTestStateModel.UNIT_TEST_STATE_MODEL,
         IdealState.RebalanceMode.FULL_AUTO.toString());
     admin.rebalance(cluster, newVersion.kafkaTopicName(), 1);
     Assert.assertEquals(metadataRepository.getStore(storeName).getCurrentVersion(), version.getNumber());
@@ -362,7 +363,7 @@ public class TestVeniceJobManager {
     Version newVersion = store.increaseVersion();
     metadataRepository.addStore(store);
     //create a helix resource with 1 partition and 2 replica per partition.
-    admin.addResource(cluster, newVersion.kafkaTopicName(), partitionCount, TestHelixRoutingDataRepository.UnitTestStateModel.UNIT_TEST_STATE_MODEL,
+    admin.addResource(cluster, newVersion.kafkaTopicName(), partitionCount, MockTestStateModel.UNIT_TEST_STATE_MODEL,
         IdealState.RebalanceMode.FULL_AUTO.toString());
     admin.rebalance(cluster, newVersion.kafkaTopicName(), replciaCount);
 
@@ -390,7 +391,7 @@ public class TestVeniceJobManager {
     // Create a new participant
     final String newNodeId = Utils.getHelixNodeIdentifier(13467);
     HelixManager newParticipant = TestUtils.getParticipant(cluster, newNodeId, zkAddress, httpPort,
-        TestHelixRoutingDataRepository.UnitTestStateModel.UNIT_TEST_STATE_MODEL);
+        MockTestStateModel.UNIT_TEST_STATE_MODEL);
     Thread newParticipantThread = new Thread(new Runnable() {
       @Override
       public void run() {
@@ -430,7 +431,7 @@ public class TestVeniceJobManager {
     metadataRepository.addStore(store);
     //create a helix resource with 1 partition and 2 replica per partition.
     admin.addResource(cluster, newVersion.kafkaTopicName(), partitionCount,
-        TestHelixRoutingDataRepository.UnitTestStateModel.UNIT_TEST_STATE_MODEL,
+        MockTestStateModel.UNIT_TEST_STATE_MODEL,
         IdealState.RebalanceMode.FULL_AUTO.toString());
     admin.rebalance(cluster, newVersion.kafkaTopicName(), replcaCount);
 
@@ -450,7 +451,7 @@ public class TestVeniceJobManager {
     startThread.start();
     HelixManager newParticipant =
         TestUtils.getParticipant(cluster, Utils.getHelixNodeIdentifier(13467), zkAddress, httpPort,
-            TestHelixRoutingDataRepository.UnitTestStateModel.UNIT_TEST_STATE_MODEL);
+            MockTestStateModel.UNIT_TEST_STATE_MODEL);
     newParticipant.connect();
     jobManager.startOfflineJob(newVersion.kafkaTopicName(), 1, 1, offlinePushStrategy);
     startThread.join();
@@ -465,7 +466,7 @@ public class TestVeniceJobManager {
 
     //Restart participant
     manager = TestUtils.getParticipant(cluster, nodeId, zkAddress, httpPort,
-        TestHelixRoutingDataRepository.UnitTestStateModel.UNIT_TEST_STATE_MODEL);
+        MockTestStateModel.UNIT_TEST_STATE_MODEL);
     Thread restartThread = new Thread(new Runnable() {
       @Override
       public void run() {
@@ -501,7 +502,7 @@ public class TestVeniceJobManager {
     Version newVersion = store.increaseVersion();
     metadataRepository.addStore(store);
     //create a helix resource with 1 partition and 2 replica per partition.
-    admin.addResource(cluster, newVersion.kafkaTopicName(), 1 , TestHelixRoutingDataRepository.UnitTestStateModel.UNIT_TEST_STATE_MODEL,
+    admin.addResource(cluster, newVersion.kafkaTopicName(), 1 , MockTestStateModel.UNIT_TEST_STATE_MODEL,
         IdealState.RebalanceMode.FULL_AUTO.toString());
     admin.rebalance(cluster, newVersion.kafkaTopicName(), 2);
 
@@ -511,8 +512,8 @@ public class TestVeniceJobManager {
         HelixManagerFactory.getZKHelixManager(cluster, Utils.getHelixNodeIdentifier(newPort), InstanceType.PARTICIPANT,
             zkAddress);
     newParticipant.getStateMachineEngine()
-        .registerStateModelFactory(TestHelixRoutingDataRepository.UnitTestStateModel.UNIT_TEST_STATE_MODEL,
-            new TestHelixRoutingDataRepository.UnitTestStateModelFactory());
+        .registerStateModelFactory(MockTestStateModel.UNIT_TEST_STATE_MODEL,
+            new MockTestStateModelFactory());
     Instance instance = new Instance(Utils.getHelixNodeIdentifier(newPort), Utils.getHostName(), newPort);
     newParticipant.setLiveInstanceInfoProvider(new LiveInstanceInfoProvider() {
       @Override

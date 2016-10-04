@@ -6,7 +6,6 @@ import com.linkedin.venice.config.VeniceServerConfig;
 import com.linkedin.venice.config.VeniceStoreConfig;
 import com.linkedin.venice.exceptions.StorageInitializationException;
 import com.linkedin.venice.meta.PersistenceType;
-import com.linkedin.venice.server.PartitionAssignmentRepository;
 import com.linkedin.venice.store.AbstractStorageEngine;
 import com.linkedin.venice.store.StorageEngineFactory;
 import com.linkedin.venice.store.StorageEngineInitializationException;

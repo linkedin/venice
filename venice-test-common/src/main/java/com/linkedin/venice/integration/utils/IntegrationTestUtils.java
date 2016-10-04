@@ -1,10 +1,13 @@
 package com.linkedin.venice.integration.utils;
 
 import com.linkedin.venice.meta.PersistenceType;
-import com.linkedin.venice.utils.*;
 
 import static com.linkedin.venice.ConfigKeys.*;
 
+import com.linkedin.venice.utils.PropertyBuilder;
+import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.Time;
+import com.linkedin.venice.utils.VeniceProperties;
 import java.io.File;
 import java.io.IOException;
 import java.net.ServerSocket;

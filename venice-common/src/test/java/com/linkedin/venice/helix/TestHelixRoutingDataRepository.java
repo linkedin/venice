@@ -7,6 +7,8 @@ import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.meta.PartitionAssignment;
 import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.utils.HelixUtils;
+import com.linkedin.venice.utils.MockTestStateModel;
+import com.linkedin.venice.utils.MockTestStateModelFactory;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import java.util.ArrayList;
@@ -71,9 +73,9 @@ public class TestHelixRoutingDataRepository {
     Map<String, String> helixClusterProperties = new HashMap<String, String>();
     helixClusterProperties.put(ZKHelixManager.ALLOW_PARTICIPANT_AUTO_JOIN, String.valueOf(true));
     admin.setConfig(configScope, helixClusterProperties);
-    admin.addStateModelDef(clusterName, UnitTestStateModel.UNIT_TEST_STATE_MODEL, UnitTestStateModel.getDefinition());
+    admin.addStateModelDef(clusterName, MockTestStateModel.UNIT_TEST_STATE_MODEL, MockTestStateModel.getDefinition());
 
-    admin.addResource(clusterName, resourceName, 1, UnitTestStateModel.UNIT_TEST_STATE_MODEL,
+    admin.addResource(clusterName, resourceName, 1, MockTestStateModel.UNIT_TEST_STATE_MODEL,
         IdealState.RebalanceMode.FULL_AUTO.toString());
     admin.rebalance(clusterName, resourceName, 1);
 
@@ -83,7 +85,7 @@ public class TestHelixRoutingDataRepository {
         .startHelixController(zkAddress, clusterName, Utils.getHelixNodeIdentifier(adminPort), HelixControllerMain.STANDALONE);
 
     manager = TestUtils.getParticipant(clusterName, Utils.getHelixNodeIdentifier(httpPort), zkAddress, httpPort,
-        UnitTestStateModel.UNIT_TEST_STATE_MODEL);
+        MockTestStateModel.UNIT_TEST_STATE_MODEL);
     manager.connect();
     //Waiting essential notification from ZK. TODO: use a listener to find out when ZK is ready
     Thread.sleep(WAIT_TIME);
@@ -127,7 +129,7 @@ public class TestHelixRoutingDataRepository {
     int newHttpPort = httpPort+10;
     HelixManager newManager =
         TestUtils.getParticipant(clusterName, Utils.getHelixNodeIdentifier(newHttpPort), zkAddress, newHttpPort,
-            UnitTestStateModel.UNIT_TEST_STATE_MODEL);
+            MockTestStateModel.UNIT_TEST_STATE_MODEL);
     newManager.connect();
     TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
           List<Instance> instancesList = repository.getReadyToServeInstances(resourceName, 0);
@@ -263,10 +265,10 @@ public class TestHelixRoutingDataRepository {
   public void testGetBootstrapInstances()
       throws Exception {
     manager.disconnect();
-    UnitTestStateModelFactory factory = new UnitTestStateModelFactory();
-    factory.isBlock = true;
+    MockTestStateModelFactory factory = new MockTestStateModelFactory();
+    factory.setBlockTransition(true);
     manager = TestUtils.getParticipant(clusterName, Utils.getHelixNodeIdentifier(httpPort + 1), zkAddress, httpPort + 1,
-        factory,  UnitTestStateModel.UNIT_TEST_STATE_MODEL);
+        factory,  MockTestStateModel.UNIT_TEST_STATE_MODEL);
     manager.connect();
     Thread.sleep(WAIT_TIME);
 
@@ -287,100 +289,5 @@ public class TestHelixRoutingDataRepository {
         "One online instance should be found");
   }
 
-  public static class UnitTestStateModel {
 
-    public static final String UNIT_TEST_STATE_MODEL = "UnitTestStateModel";
-
-    public static StateModelDefinition getDefinition() {
-
-      StateModelDefinition.Builder builder = new StateModelDefinition.Builder(UNIT_TEST_STATE_MODEL);
-
-      builder.addState(HelixState.ONLINE.toString(), 1);
-      builder.addState(HelixState.OFFLINE.toString());
-      builder.addState(HelixState.BOOTSTRAP.toString());
-      builder.addState(HelixState.DROPPED.toString());
-      builder.initialState(HelixState.OFFLINE.toString());
-      builder.addTransition(HelixState.OFFLINE.toString(), HelixState.BOOTSTRAP.toString());
-      builder.addTransition(HelixState.BOOTSTRAP.toString(), HelixState.ONLINE.toString());
-      builder.addTransition(HelixState.ONLINE.toString(), HelixState.OFFLINE.toString());
-      builder.addTransition(HelixState.OFFLINE.toString(), HelixDefinedState.DROPPED.toString());
-      builder.dynamicUpperBound(HelixState.ONLINE.toString(), "R");
-
-      return builder.build();
-    }
-  }
-
-  public static class UnitTestStateModelFactory extends StateModelFactory<StateModel> {
-    private boolean isBlock = false;
-    private Map<String, List<OnlineOfflineStateModel>> modelToModelListMap = new HashMap<>();
-    @Override
-    public StateModel createNewStateModel(String resourceName, String partitionName) {
-      OnlineOfflineStateModel stateModel = new OnlineOfflineStateModel(isBlock);
-      CountDownLatch latch = new CountDownLatch(1);
-      stateModel.latch = latch;
-      String key = resourceName + "_" + HelixUtils.getPartitionId(partitionName);
-      if(!modelToModelListMap.containsKey(key)){
-        modelToModelListMap.put(key, new ArrayList<>());
-      }
-      modelToModelListMap.get(key).add(stateModel);
-      return stateModel;
-    }
-
-    public void setBlockTransition(boolean isDelay){
-      this.isBlock = isDelay;
-    }
-
-    public void makeTransitionCompleted(String resourceName, int partitionId) {
-      for(OnlineOfflineStateModel model : modelToModelListMap.get(resourceName + "_" + partitionId)){
-        model.latch.countDown();
-      }
-    }
-
-    public List<OnlineOfflineStateModel> getModelList(String resourceName, int partitionId) {
-      return modelToModelListMap.get(resourceName + "_" + partitionId);
-    }
-
-    public void makeTransitionError(String resourceName, int partitionId) {
-      for(OnlineOfflineStateModel model : modelToModelListMap.get(resourceName + "_" + partitionId)){
-        model.isError = true;
-        model.latch.countDown();
-      }
-    }
-
-    @StateModelInfo(states = "{'OFFLINE','ONLINE','BOOTSTRAP'}", initialState = "OFFLINE")
-    public static class OnlineOfflineStateModel extends StateModel {
-      private boolean isDelay;
-      private boolean isError;
-
-      OnlineOfflineStateModel(boolean isDelay){
-        this.isDelay = isDelay;
-      }
-
-      private CountDownLatch latch;
-      @Transition(from = "OFFLINE", to = "BOOTSTRAP")
-      public void onBecomeBootstrapFromOffline(Message message, NotificationContext context) {
-      }
-
-      @Transition(from = "BOOTSTRAP", to = "ONLINE")
-      public void onBecomeOnlineFromBootstrap(Message message, NotificationContext context)
-          throws InterruptedException {
-        if (isDelay) {
-          // mock the delay during becoming online.
-          latch.await();
-        }
-        if (isError) {
-          isError = true;
-          throw new VeniceException("ST is failed.");
-        }
-      }
-
-      @Transition(from = "OFFLINE", to = "DROPPED")
-      public void onBecomeDroppedFromBootstrap(Message message, NotificationContext context) {
-
-      }
-      @Transition(from = "ONLINE", to = "OFFLINE")
-      public void onBecomeOfflineFromOnline(Message message, NotificationContext context) {
-      }
-    }
-  }
 }

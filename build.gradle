@@ -96,6 +96,8 @@ subprojects {
     testCompile 'org.testng:testng:6.1.1'
 
     testCompile 'org.mockito:mockito-all:1.9.5'
+    // Test utils and framework for all unit tests and integration tests.
+    testCompile project(':venice-test-common')
   }
 
   idea {
@@ -138,46 +140,7 @@ subprojects {
     }
   }
 */
-  sourceSets {
-    integrationtest {
-      java {
-        compileClasspath += main.output + test.output
-        runtimeClasspath += main.output + test.output
-        srcDir file("src/integrationtest/java")
-      }
-      resources.srcDir file("src/integrationtest/resources")
-    }
-  }
 
-  configurations {
-    integrationtestCompile.extendsFrom testCompile
-    integrationtestRuntime.extendsFrom testRuntime
-
-  }
-
-  task integrationtest(type: Test) {
-    description = "Run integration tests for " + project.name;
-    useTestNG()
-    testClassesDir = sourceSets.integrationtest.output.classesDir
-    classpath = sourceSets.integrationtest.runtimeClasspath
-    testReportDirName = "integrationtest"
-    testResultsDirName = "integrationtest-result"
-    jacoco {
-      append = false
-      destinationFile = file("$buildDir/jacoco/integrationtest.exec")
-    }
-  }
-
-  task jacocoIntegrationTestReport(type:JacocoReport){
-    dependsOn integrationtest
-    executionData file("$buildDir/jacoco/integrationtest.exec")
-    reports {
-      xml.enabled false
-      csv.enabled false
-      html.destination "${buildDir}/jacocoIntegrationHtml"
-    }
-    sourceSets sourceSets.main
-  }
 }
 
 task buildAll {
@@ -196,6 +159,11 @@ task buildAll {
   dependsOn 'venice-router:installApp'
   // dependsOn 'hadoop-to-venice-bridge:installApp'
   dependsOn 'venice-admin-tool:build'
+  dependsOn 'venice-test-common:build'
+}
+
+task integrationtest {
+  dependsOn 'venice-test-common:integrationtest'
 }
 
 task wrapper(type: Wrapper) {

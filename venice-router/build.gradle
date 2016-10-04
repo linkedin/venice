@@ -34,7 +34,6 @@ dependencies {
         exclude group: 'org.mockito', module: 'mockito-all'
     }
 
-    testCompile project(':venice-common').sourceSets.test.output
     testCompile project(':venice-router')
     testCompile project(':venice-thin-client')
 }

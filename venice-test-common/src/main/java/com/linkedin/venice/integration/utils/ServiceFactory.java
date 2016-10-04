@@ -1,8 +1,6 @@
 package com.linkedin.venice.integration.utils;
 
-import com.linkedin.d2.server.factory.D2Server;
 import com.linkedin.venice.exceptions.VeniceException;
-import java.util.List;
 
 import com.linkedin.venice.utils.Time;
 import org.apache.log4j.Logger;

@@ -2,8 +2,8 @@ package com.linkedin.venice.integration.utils;
 
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.utils.TestUtils;
 
+import com.linkedin.venice.utils.TestUtils;
 import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
@@ -47,7 +47,6 @@ public class VeniceClusterWrapper extends ProcessWrapper {
      * complexity of O(N^2) on the amount of retries. The calls have their own retries,
      * so we can assume they're reliable enough.
      */
-
     String clusterName = TestUtils.getUniqueString("venice-cluster");
     ZkServerWrapper zkServerWrapper = ServiceFactory.getZkServer();
     KafkaBrokerWrapper kafkaBrokerWrapper = ServiceFactory.getKafkaBroker(zkServerWrapper);

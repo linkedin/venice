@@ -7,19 +7,18 @@ import com.linkedin.venice.helix.HelixRoutingDataRepository;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.router.RouterServer;
+import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.Utils;
 import java.io.File;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 
-import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.schema.SchemaEntry;
 
-import com.linkedin.venice.utils.Utils;
+import org.mockito.Matchers;
 import org.mockito.Mockito;
-
-import static org.mockito.Matchers.anyString;
 import static org.mockito.Mockito.doReturn;
 
 
@@ -53,7 +52,7 @@ public class MockVeniceRouterWrapper extends ProcessWrapper {
     doReturn(new SchemaEntry(1, "\"string\"")).when(mockSchemaRepository).getKeySchema(Mockito.anyString());
 
     HelixRoutingDataRepository mockRepo = Mockito.mock(HelixRoutingDataRepository.class);
-    doReturn(1).when(mockRepo).getNumberOfPartitions(anyString());
+    doReturn(1).when(mockRepo).getNumberOfPartitions(Matchers.anyString());
 
     Instance mockControllerInstance = Mockito.mock(Instance.class);
     doReturn(CONTROLLER).when(mockControllerInstance).getUrl();

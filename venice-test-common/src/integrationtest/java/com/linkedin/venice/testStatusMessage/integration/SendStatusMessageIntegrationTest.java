@@ -1,14 +1,14 @@
-package com.linkedin.venice.integration;
+package com.linkedin.venice.testStatusMessage.integration;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixStatusMessageChannel;
-import com.linkedin.venice.helix.TestHelixRoutingDataRepository;
 import com.linkedin.venice.integration.utils.DelayedZkClientUtils;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.job.ExecutionStatus;
 import com.linkedin.venice.status.StatusMessageHandler;
 import com.linkedin.venice.status.StoreStatusMessage;
+import com.linkedin.venice.utils.MockTestStateModel;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import java.util.ArrayList;
@@ -48,8 +48,8 @@ public class SendStatusMessageIntegrationTest {
     Map<String, String> helixClusterProperties = new HashMap<String, String>();
     helixClusterProperties.put(ZKHelixManager.ALLOW_PARTICIPANT_AUTO_JOIN, String.valueOf(true));
     admin.setConfig(configScope, helixClusterProperties);
-    admin.addStateModelDef(cluster, TestHelixRoutingDataRepository.UnitTestStateModel.UNIT_TEST_STATE_MODEL,
-        TestHelixRoutingDataRepository.UnitTestStateModel.getDefinition());
+    admin.addStateModelDef(cluster, MockTestStateModel.UNIT_TEST_STATE_MODEL,
+        MockTestStateModel.getDefinition());
 
     controller = HelixControllerMain.startHelixController(zkAddress, cluster, "integrationController",
         HelixControllerMain.STANDALONE);
@@ -66,7 +66,7 @@ public class SendStatusMessageIntegrationTest {
       throws Exception {
     DelayedZkClientUtils.startDelayingSocketIoForNewZkClients(lowerDelay, upperDelay);
     HelixManager participant = TestUtils.getParticipant(cluster, Utils.getHelixNodeIdentifier(port), zkAddress, port,
-        TestHelixRoutingDataRepository.UnitTestStateModel.UNIT_TEST_STATE_MODEL);
+        MockTestStateModel.UNIT_TEST_STATE_MODEL);
     participant.connect();
     DelayedZkClientUtils.stopDelayingSocketIoForNewZkClients();
     participants.add(participant);

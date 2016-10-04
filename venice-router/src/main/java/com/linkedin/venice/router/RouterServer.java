@@ -51,8 +51,6 @@ import org.jboss.netty.channel.socket.nio.NioWorkerPool;
 import org.jboss.netty.handler.execution.ExecutionHandler;
 import org.jboss.netty.util.Timer;
 
-import javax.validation.constraints.NotNull;
-
 
 /**
  * Note: Router uses Netty 3

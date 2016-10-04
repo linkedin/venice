@@ -1,7 +1,6 @@
 package com.linkedin.venice.utils;
 
 import com.linkedin.venice.helix.HelixInstanceConverter;
-import com.linkedin.venice.helix.TestHelixRoutingDataRepository;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.PersistenceType;
@@ -86,8 +85,7 @@ public class TestUtils {
   }
 
   public static HelixManager getParticipant(String cluster, String nodeId, String zkAddress, int httpPort, String stateModelDef) {
-    TestHelixRoutingDataRepository.UnitTestStateModelFactory stateModelFactory =
-        new TestHelixRoutingDataRepository.UnitTestStateModelFactory();
+    MockTestStateModelFactory stateModelFactory = new MockTestStateModelFactory();
     return getParticipant(cluster, nodeId, zkAddress, httpPort, stateModelFactory, stateModelDef);
   }
 

@@ -3,16 +3,10 @@ package com.linkedin.venice.storage;
 import com.linkedin.venice.config.VeniceServerConfig;
 import com.linkedin.venice.config.VeniceStoreConfig;
 import com.linkedin.venice.meta.PersistenceType;
-import com.linkedin.venice.server.PartitionAssignmentRepository;
-import com.linkedin.venice.server.VeniceConfigLoader;
-import com.linkedin.venice.store.AbstractStorageEngine;
-import com.linkedin.venice.store.memory.InMemoryStorageEngine;
 import com.linkedin.venice.utils.VeniceProperties;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
-
-import java.io.File;
 
 
 public class InMemoryStorageEngineTest extends AbstractStorageEngineTest {
