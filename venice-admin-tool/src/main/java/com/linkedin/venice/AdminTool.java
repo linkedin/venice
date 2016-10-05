@@ -91,7 +91,7 @@ public class AdminTool {
 
       ensureOnlyOneCommand(cmd);
 
-      String routerHosts = getRequiredArgument(cmd, Arg.ROUTER);
+      String routerHosts = getRequiredArgument(cmd, Arg.URL);
       String clusterName = getRequiredArgument(cmd, Arg.CLUSTER);
 
       if (cmd.hasOption(Arg.FLAT_JSON.toString())){

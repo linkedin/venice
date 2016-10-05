@@ -6,39 +6,39 @@ For directly affecting administrative actions and queries on a Venice cluster
 ```
 usage: java -jar venice-admin-tool-0.1.jar --<command> [parameters]
             Commands:
-    --add-schema                 Requires: --router, --cluster, --store,
+    --add-schema                 Requires: --url, --cluster, --store,
                                  --value-schema-file
-    --describe-store             Requires: --router, --cluster, --store
-    --describe-stores            Requires: --router, --cluster
+    --describe-store             Requires: --url, --cluster, --store
+    --describe-stores            Requires: --url, --cluster
     --job-status                 Query the ingest status of a running push
-                                 job.  Requires: --router, --cluster,
+                                 job.  Requires: --url, --cluster,
                                  --store, --version
-    --list-storage-nodes         Requires: --router, --cluster
-    --list-stores                Requires: --router, --cluster
-    --new-store                  Requires: --router, --cluster, --store,
-                                 --version, --key-schema-file,
+    --list-storage-nodes         Requires: --url, --cluster
+    --list-stores                Requires: --url, --cluster
+    --new-store                  Requires: --url, --cluster, --store,
+                                 --owner, --key-schema-file,
                                  --value-schema-file
     --node-removable             A node is removable if all replicas it is
                                  serving are available on other nodes.
-                                 Requires: --router, --cluster,
+                                 Requires: --url, --cluster,
                                  --storage-node
     --pause-store                Prevent a store from accepting new
-                                 versions.  Requires: --router, --cluster,
+                                 versions.  Requires: --url, --cluster,
                                  --store
     --query                      Query a store that has a simple key
-                                 schema.  Requires: --router, --cluster,
+                                 schema.  Requires: --url, --cluster,
                                  --store, --key
     --replicas-of-store          List the location and status of all
-                                 replicas for a store.  Requires:
-                                 --router, --cluster, --store, --version
+                                 replicas for a store.  Requires: --url,
+                                 --cluster, --store, --version
     --replicas-on-storage-node   List the store and status of all replicas
-                                 on a storage node.  Requires: --router,
+                                 on a storage node.  Requires: --url,
                                  --cluster, --storage-node
     --resume-store               Allow a store to accept new versions
                                  again after being paused.  Requires:
-                                 --router, --cluster, --store
+                                 --url, --cluster, --store
     --set-version                Set the version that will be served.
-                                 Requires: --router, --cluster, --store,
+                                 Requires: --url, --cluster, --store,
                                  --version
 usage: Parameters:
  -c,--cluster <arg>              Name of Venice cluster
@@ -54,26 +54,26 @@ usage: Parameters:
  -n,--storage-node <arg>         Helix instance ID for a storage node, eg.
                                  lva1-app1234_1690
  -o,--owner <arg>                Owner email for new store creation
- -r,--router <arg>               Venice router url, eg.
-                                 http://localhost:1689
  -s,--store <arg>                Name of Venice store
+ -u,--url <arg>                  Venice url, eg. http://localhost:1689
+                                 This can be a router or a controller
  -v,--version <arg>              Venice store version number
  -vs,--value-schema-file <arg>   Path to text file with value schema
 
 Examples:
-java -jar venice-admin-tool-0.1.jar --list-stores --router <router> --cluster <cluster>
-java -jar venice-admin-tool-0.1.jar --describe-store --router <router> --cluster <cluster> --store <store>
-java -jar venice-admin-tool-0.1.jar --describe-stores --router <router> --cluster <cluster>
-java -jar venice-admin-tool-0.1.jar --pause-store --router <router> --cluster <cluster> --store <store>
-java -jar venice-admin-tool-0.1.jar --resume-store --router <router> --cluster <cluster> --store <store>
-java -jar venice-admin-tool-0.1.jar --job-status --router <router> --cluster <cluster> --store <store> --version <version>
-java -jar venice-admin-tool-0.1.jar --new-store --router <router> --cluster <cluster> --store <store> --version <version> --key-schema-file <key-schema-file> --value-schema-file <value-schema-file>
-java -jar venice-admin-tool-0.1.jar --set-version --router <router> --cluster <cluster> --store <store> --version <version>
-java -jar venice-admin-tool-0.1.jar --add-schema --router <router> --cluster <cluster> --store <store> --value-schema-file <value-schema-file>
-java -jar venice-admin-tool-0.1.jar --list-storage-nodes --router <router> --cluster <cluster>
-java -jar venice-admin-tool-0.1.jar --node-removable --router <router> --cluster <cluster> --storage-node <storage-node>
-java -jar venice-admin-tool-0.1.jar --replicas-of-store --router <router> --cluster <cluster> --store <store> --version <version>
-java -jar venice-admin-tool-0.1.jar --replicas-on-storage-node --router <router> --cluster <cluster> --storage-node <storage-node>
-java -jar venice-admin-tool-0.1.jar --query --router <router> --cluster <cluster> --store <store> --key <key>
+java -jar venice-admin-tool-0.1.jar --list-stores --url <url> --cluster <cluster>
+java -jar venice-admin-tool-0.1.jar --describe-store --url <url> --cluster <cluster> --store <store>
+java -jar venice-admin-tool-0.1.jar --describe-stores --url <url> --cluster <cluster>
+java -jar venice-admin-tool-0.1.jar --pause-store --url <url> --cluster <cluster> --store <store>
+java -jar venice-admin-tool-0.1.jar --resume-store --url <url> --cluster <cluster> --store <store>
+java -jar venice-admin-tool-0.1.jar --job-status --url <url> --cluster <cluster> --store <store> --version <version>
+java -jar venice-admin-tool-0.1.jar --new-store --url <url> --cluster <cluster> --store <store> --owner <owner> --key-schema-file <key-schema-file> --value-schema-file <value-schema-file>
+java -jar venice-admin-tool-0.1.jar --set-version --url <url> --cluster <cluster> --store <store> --version <version>
+java -jar venice-admin-tool-0.1.jar --add-schema --url <url> --cluster <cluster> --store <store> --value-schema-file <value-schema-file>
+java -jar venice-admin-tool-0.1.jar --list-storage-nodes --url <url> --cluster <cluster>
+java -jar venice-admin-tool-0.1.jar --node-removable --url <url> --cluster <cluster> --storage-node <storage-node>
+java -jar venice-admin-tool-0.1.jar --replicas-of-store --url <url> --cluster <cluster> --store <store> --version <version>
+java -jar venice-admin-tool-0.1.jar --replicas-on-storage-node --url <url> --cluster <cluster> --storage-node <storage-node>
+java -jar venice-admin-tool-0.1.jar --query --url <url> --cluster <cluster> --store <store> --key <key>
 
 ```
