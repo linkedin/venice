@@ -2,7 +2,7 @@ package com.linkedin.venice;
 
 public enum Arg {
 
-  ROUTER("router", "r", true, "Venice router url, eg. http://localhost:1689"),
+  URL("url", "u", true, "Venice url, eg. http://localhost:1689  This can be a router or a controller"),
   CLUSTER("cluster", "c", true, "Name of Venice cluster"),
   STORE("store", "s", true, "Name of Venice store"),
   VERSION("version", "v", true, "Venice store version number"),
