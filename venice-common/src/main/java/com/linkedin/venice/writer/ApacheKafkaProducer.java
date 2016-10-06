@@ -11,18 +11,21 @@ import com.linkedin.venice.utils.VeniceProperties;
 import java.util.Properties;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+
+import org.apache.kafka.clients.producer.Callback;
 import org.apache.kafka.clients.producer.KafkaProducer;
 import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.clients.producer.ProducerRecord;
 import org.apache.kafka.clients.producer.RecordMetadata;
+import org.apache.log4j.Logger;
 
 
 /**
  * Implementation of the Kafka Producer for sending messages to Kafka.
  */
 public class ApacheKafkaProducer implements KafkaProducerWrapper {
-
   public static final String PROPERTIES_KAFKA_PREFIX = "kafka.";
+  private static final Logger LOGGER = Logger.getLogger(ApacheKafkaProducer.class);
 
   private final KafkaProducer<KafkaKey, KafkaMessageEnvelope> producer;
 
@@ -37,6 +40,15 @@ public class ApacheKafkaProducer implements KafkaProducerWrapper {
 
     // This is to guarantee ordering, even in the face of failures.
     ensureMandatoryProp(properties, ProducerConfig.MAX_IN_FLIGHT_REQUESTS_PER_CONNECTION, "1");
+
+    // This will ensure the durability on Kafka broker side
+    ensureMandatoryProp(properties, ProducerConfig.ACKS_CONFIG, "1");
+    // Hard-coded retry number
+    ensureMandatoryProp(properties, ProducerConfig.RETRIES_CONFIG, "100");
+    // Hard-coded backoff config to be 1 sec
+    ensureMandatoryProp(properties, ProducerConfig.RETRY_BACKOFF_MS_CONFIG, "1000");
+    // Block if buffer is full
+    ensureMandatoryProp(properties, ProducerConfig.MAX_BLOCK_MS_CONFIG, String.valueOf(Long.MAX_VALUE));
 
     if (!properties.containsKey(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG)) {
       throw new ConfigurationException("Props key not found: " + PROPERTIES_KAFKA_PREFIX + ProducerConfig.BOOTSTRAP_SERVERS_CONFIG);
@@ -74,29 +86,32 @@ public class ApacheKafkaProducer implements KafkaProducerWrapper {
     return producer.partitionsFor(topic).size();
   }
 
-
-    /**
-     * Sends a message to the Kafka Producer. If everything is set up correctly, it will show up in Kafka log.
-     * @param topic - The topic to be sent to.
-     * @param key - The key of the message to be sent.
-     * @param value - The {@link KafkaMessageEnvelope}, which acts as the Kafka value.
-     * */
-  public Future<RecordMetadata> sendMessage(String topic, KafkaKey key, KafkaMessageEnvelope value, int partition) {
+  /**
+   * Sends a message to the Kafka Producer. If everything is set up correctly, it will show up in Kafka log.
+   * @param topic - The topic to be sent to.
+   * @param key - The key of the message to be sent.
+   * @param value - The {@link KafkaMessageEnvelope}, which acts as the Kafka value.
+   * @param callback - The callback function, which will be triggered when Kafka client sends out the message.
+   * */
+  @Override
+  public Future<RecordMetadata> sendMessage(String topic, KafkaKey key, KafkaMessageEnvelope value, int partition, Callback callback) {
     try {
       ProducerRecord<KafkaKey, KafkaMessageEnvelope> kafkaRecord = new ProducerRecord<>(topic,
           partition,
           key,
           value);
-      return producer.send(kafkaRecord);
+      return producer.send(kafkaRecord, callback);
     } catch (Exception e) {
       throw new VeniceException("Got an error while trying to produce message into Kafka. Topic: '" + topic +
           "', partition: " + partition, e);
     }
-
   }
 
   public void close(int closeTimeOutMs) {
     if (producer != null) {
+      // Flush out all the messages in the producer buffer
+      producer.flush();
+      LOGGER.info("Flushed all the messages in producer before closing");
       producer.close(closeTimeOutMs, TimeUnit.MILLISECONDS);
     }
   }

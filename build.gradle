@@ -27,7 +27,8 @@ ext.libraries = [ // Groovy map literal
                   guava: 'com.google.guava:guava:18.0',
                   helix: 'org.apache.helix:helix-core:0.6.5.59',
                   kafka: 'kafka:kafka_2.10:0.9.0.2', // Internal LinkedIn release
-                  kafkaClients: 'kafka:kafka-clients:0.9.0.2', // Internal LinkedIn release
+                  // Fixed the kafka client 'memory record is not writable' issue.
+                  kafkaClients: 'kafka:kafka-clients:0.9.0.14', // Internal LinkedIn release
                   netty: 'io.netty:netty-all:4.1.4.Final',
                   netty3: 'io.netty:netty:3.9.7.Final',
                   zkclient: 'com.101tec:zkclient:0.7', //for Kafka AdminUtils

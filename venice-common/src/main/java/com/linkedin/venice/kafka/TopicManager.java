@@ -67,6 +67,10 @@ public class TopicManager implements Closeable {
     logger.info("Creating topic: " + topicName + " partitions: " + numPartitions + " replication: " + replication);
     try {
       // TODO: Stop using Kafka APIs which depend on ZK.
+      /**
+       * TODO: consider to increase {@link kafka.server.KafkaConfig.MinInSyncReplicasProp()} to be greater than 1,
+       * so Kafka broker won't miss any data when some broker is down.
+       */
       AdminUtils.createTopic(getZkUtils(), topicName, numPartitions, replication, new Properties());
     } catch (TopicExistsException e) {
       logger.warn("Met error when creating kakfa topic: " + topicName, e);

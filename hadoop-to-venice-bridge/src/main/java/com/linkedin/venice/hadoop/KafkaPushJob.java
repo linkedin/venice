@@ -77,8 +77,8 @@ public class KafkaPushJob {
 
   public static final String SCHEMA_STRING_PROP = "schema";
   public static final String VALUE_SCHEMA_ID_PROP = "value.schema.id";
-  public static final String KAFKA_URL_PROP = "kafka.url";
-  public static final String TOPIC_PROP = "kafka.topic";
+  public static final String KAFKA_URL_PROP = "venice.kafka.url";
+  public static final String TOPIC_PROP = "venice.kafka.topic";
 
   public static final String PRODUCT_SPEC_JSON = "product-spec.json";
 

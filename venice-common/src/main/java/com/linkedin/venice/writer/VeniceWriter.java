@@ -25,6 +25,7 @@ import java.util.concurrent.Future;
 import java.util.function.Supplier;
 import org.apache.avro.specific.FixedSize;
 import org.apache.http.annotation.NotThreadSafe;
+import org.apache.kafka.clients.producer.Callback;
 import org.apache.kafka.clients.producer.RecordMetadata;
 import org.apache.log4j.Logger;
 
@@ -151,11 +152,13 @@ public class VeniceWriter<K, V> extends AbstractVeniceWriter<K, V> {
    * @param key   - The key to put in storage.
    * @param value - The value to be associated with the given key
    * @param valueSchemaId - value schema id for the given value
+   * @param callback - Callback function invoked by Kafka producer after sending the message
    * @return a java.util.concurrent.Future Future for the RecordMetadata that will be assigned to this
    * record. Invoking java.util.concurrent.Future's get() on this future will block until the associated request
    * completes and then return the metadata for the record or throw any exception that occurred while sending the record.
    */
-  public Future<RecordMetadata> put(K key, V value, int valueSchemaId) {
+  @Override
+  public Future<RecordMetadata> put(K key, V value, int valueSchemaId, Callback callback) {
     KafkaKey kafkaKey = new KafkaKey(MessageType.PUT, keySerializer.serialize(topicName, key));
 
     int partition = getPartition(kafkaKey);
@@ -167,7 +170,7 @@ public class VeniceWriter<K, V> extends AbstractVeniceWriter<K, V> {
     putPayload.schemaId = valueSchemaId;
     kafkaValue.payloadUnion = putPayload;
 
-    return sendMessage(kafkaKey, kafkaValue, partition);
+    return sendMessage(kafkaKey, kafkaValue, partition, callback);
   }
 
   /**
@@ -186,8 +189,14 @@ public class VeniceWriter<K, V> extends AbstractVeniceWriter<K, V> {
   }
 
   private Future<RecordMetadata> sendMessage(KafkaKey key, KafkaMessageEnvelope value, int partition) {
+    return sendMessage(key, value, partition, new KafkaMessageCallback(key, value));
+  }
+
+
+  private Future<RecordMetadata> sendMessage(KafkaKey key, KafkaMessageEnvelope value, int partition, Callback callback) {
     segmentsMap.get(partition).addToCheckSum(key, value);
-    return producer.sendMessage(topicName, key, value, partition);
+    Callback messageCallback = (null != callback ? callback : new KafkaMessageCallback(key, value));
+    return producer.sendMessage(topicName, key, value, partition, messageCallback);
   }
 
   /**
@@ -389,6 +398,21 @@ public class VeniceWriter<K, V> extends AbstractVeniceWriter<K, V> {
           true // TODO: This will not always be true, once we support streaming.
       );
       currentSegment.end();
+    }
+  }
+
+  private static class KafkaMessageCallback implements Callback {
+    private final KafkaKey key;
+    private final KafkaMessageEnvelope value;
+    public KafkaMessageCallback(KafkaKey key, KafkaMessageEnvelope value) {
+      this.key = key;
+      this.value = value;
+    }
+    @Override
+    public void onCompletion(RecordMetadata recordMetadata, Exception e) {
+      if (e != null) {
+        LOGGER.error("Failed to send out message to Kafka producer: [key: " + key + ", value: " + value + "]", e);
+      }
     }
   }
 }

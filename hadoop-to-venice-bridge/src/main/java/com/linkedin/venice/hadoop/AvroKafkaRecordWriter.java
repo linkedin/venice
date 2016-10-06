@@ -6,7 +6,6 @@ import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.exceptions.UndefinedPropertyException;
 import com.linkedin.venice.serialization.avro.AvroGenericSerializer;
 import com.linkedin.venice.serialization.DefaultSerializer;
-import com.linkedin.venice.serialization.StringSerializer;
 import com.linkedin.venice.serialization.VeniceSerializer;
 import com.linkedin.venice.utils.VeniceProperties;
 import org.apache.avro.Schema;
@@ -15,10 +14,15 @@ import org.apache.avro.generic.IndexedRecord;
 import org.apache.hadoop.io.NullWritable;
 import org.apache.hadoop.mapred.RecordWriter;
 import org.apache.hadoop.mapred.Reporter;
+import org.apache.hadoop.util.Progressable;
+import org.apache.kafka.clients.producer.Callback;
+import org.apache.kafka.clients.producer.RecordMetadata;
 import org.apache.log4j.Logger;
 
 import java.io.IOException;
 import java.util.Properties;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * A {@link org.apache.hadoop.mapred.RecordWriter} implementation which writes into
@@ -38,32 +42,44 @@ public class AvroKafkaRecordWriter implements RecordWriter<AvroWrapper<IndexedRe
   private final VeniceSerializer valueSerializer;
   private final int valueSchemaId;
 
-  public AvroKafkaRecordWriter(Properties properties) {
+  private final Progressable progress;
+  private final AtomicReference<Exception> sendException = new AtomicReference<>();
+  /**
+   * This doesn't need to be atomic since {@link #write(AvroWrapper, NullWritable)} will be called sequentially.
+    */
+  private long messageSent = 0;
+  private final AtomicLong messageCompleted = new AtomicLong();
+  private final AtomicLong messageErrored = new AtomicLong();
+
+  private Callback kafkaMessageCallback = new KafkaMessageCallback();
+
+  public AvroKafkaRecordWriter(Properties properties, Progressable progress) {
     this(properties,
         new VeniceWriter<>(
             new VeniceProperties(properties),
             getPropString(properties, KafkaPushJob.TOPIC_PROP),
             new DefaultSerializer(),
             new DefaultSerializer()
-        )
+        ),
+        progress
     );
   }
 
-  public AvroKafkaRecordWriter(Properties properties, AbstractVeniceWriter<byte[], byte[]> veniceWriter) {
+  public AvroKafkaRecordWriter(Properties properties, AbstractVeniceWriter<byte[], byte[]> veniceWriter, Progressable progress) {
     this.veniceWriter = veniceWriter;
 
     // N.B.: These getters will throw an UndefinedPropertyException if anything is missing
-    keyField = getPropString(properties, KafkaPushJob.AVRO_KEY_FIELD_PROP);
-    valueField = getPropString(properties, KafkaPushJob.AVRO_VALUE_FIELD_PROP);
-    // FIXME: Communicate with controller to get topic name
-    topicName = veniceWriter.getTopicName();
+    this.keyField = getPropString(properties, KafkaPushJob.AVRO_KEY_FIELD_PROP);
+    this.valueField = getPropString(properties, KafkaPushJob.AVRO_VALUE_FIELD_PROP);
+    this.topicName = veniceWriter.getTopicName();
 
     String schemaStr = getPropString(properties, KafkaPushJob.SCHEMA_STRING_PROP);
-    keySerializer = getSerializer(schemaStr, keyField);
-    keyFieldPos = getFieldPos(schemaStr, keyField);
-    valueSerializer = getSerializer(schemaStr, valueField);
-    valueFieldPos = getFieldPos(schemaStr, valueField);
-    valueSchemaId = Integer.parseInt(getPropString(properties, KafkaPushJob.VALUE_SCHEMA_ID_PROP));
+    this.keySerializer = getSerializer(schemaStr, keyField);
+    this.keyFieldPos = getFieldPos(schemaStr, keyField);
+    this.valueSerializer = getSerializer(schemaStr, valueField);
+    this.valueFieldPos = getFieldPos(schemaStr, valueField);
+    this.valueSchemaId = Integer.parseInt(getPropString(properties, KafkaPushJob.VALUE_SCHEMA_ID_PROP));
+    this.progress = progress;
   }
 
   private static String getPropString(Properties properties, String field) {
@@ -87,13 +103,24 @@ public class AvroKafkaRecordWriter implements RecordWriter<AvroWrapper<IndexedRe
 
   @Override
   public void close(Reporter arg0) throws IOException {
+    logger.info("Kafka message progress before flushing and closing producer:");
+    logMessageProgress();
+
     veniceWriter.close();
+
+    maybePropagateCallbackException();
+    logger.info("Kafka message progress after flushing and closing producer:");
+    logMessageProgress();
+    if (messageSent != messageCompleted.get()) {
+      throw new VeniceException("Message sent: " + messageSent + " doesn't match message completed: " + messageCompleted.get());
+    }
   }
 
   @Override
   public void write(AvroWrapper<IndexedRecord> record, NullWritable nullArg) throws IOException {
-    IndexedRecord datum = record.datum();
+    maybePropagateCallbackException();
 
+    IndexedRecord datum = record.datum();
     Object keyDatum = datum.get(keyFieldPos);
     if (null == keyDatum) {
       // Invalid data
@@ -108,6 +135,35 @@ public class AvroKafkaRecordWriter implements RecordWriter<AvroWrapper<IndexedRe
       return;
     }
 
-    veniceWriter.put(keySerializer.serialize(topicName, keyDatum), valueSerializer.serialize(topicName, valueDatum), valueSchemaId);
+    veniceWriter.put(keySerializer.serialize(topicName, keyDatum), valueSerializer.serialize(topicName, valueDatum), valueSchemaId, kafkaMessageCallback);
+    ++messageSent;
+  }
+
+  private void maybePropagateCallbackException() {
+    if (null != sendException.get()) {
+      throw new VeniceException("KafkaPushJob failed with exception", sendException.get());
+    }
+  }
+
+  private void logMessageProgress() {
+    logger.info("Message sent: " + messageSent);
+    logger.info("Message completed: " + messageCompleted.get());
+    logger.info("Message errored: " + messageErrored.get());
+  }
+
+  private class KafkaMessageCallback implements Callback {
+
+    @Override
+    public void onCompletion(RecordMetadata recordMetadata, Exception e) {
+      if (null != e) {
+        messageErrored.incrementAndGet();
+        sendException.set(e);
+      } else {
+        messageCompleted.incrementAndGet();
+      }
+      // Report progress so map-reduce framework won't kill current mapper when it finishes
+      // sending all the messages to Kafka broker, but not yet flushed and closed.
+      progress.progress();
+    }
   }
 }

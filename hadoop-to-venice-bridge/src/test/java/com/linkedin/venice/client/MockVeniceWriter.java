@@ -3,6 +3,7 @@ package com.linkedin.venice.client;
 import com.linkedin.venice.hadoop.KafkaPushJob;
 import com.linkedin.venice.writer.AbstractVeniceWriter;
 import com.linkedin.venice.writer.VeniceWriter;
+import org.apache.kafka.clients.producer.Callback;
 import org.apache.kafka.clients.producer.RecordMetadata;
 
 import java.nio.charset.Charset;
@@ -26,7 +27,7 @@ public class MockVeniceWriter extends AbstractVeniceWriter<byte[], byte[]> {
   }
 
   @Override
-  public Future<RecordMetadata> put(byte[] key, byte[] value, int valueSchemaId) {
+  public Future<RecordMetadata> put(byte[] key, byte[] value, int valueSchemaId, Callback callback) {
     messages.put(new String(key, CHARSET), new String(value, CHARSET));
     keyValueSchemaIdMapping.put(new String(key), valueSchemaId);
     return null;

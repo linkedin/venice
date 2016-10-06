@@ -12,6 +12,8 @@ import org.apache.avro.mapred.AvroWrapper;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.io.NullWritable;
 import org.apache.hadoop.mapred.JobConf;
+import org.apache.hadoop.util.Progressable;
+import org.mockito.Mockito;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
@@ -26,6 +28,7 @@ public class TestAvroKafkaRecordWriter {
 
   private KafkaBrokerWrapper kafkaBrokerWrapper;
   private int valueSchemaId = 1;
+  private Progressable progress = Mockito.mock(Progressable.class);
 
   @BeforeClass
   public void setUp() {
@@ -72,7 +75,7 @@ public class TestAvroKafkaRecordWriter {
 
     Properties kafkaProps = getKafkaProperties(schemaString, keyField, valueField);
     MockVeniceWriter veniceWriter = new MockVeniceWriter(kafkaProps);
-    AvroKafkaRecordWriter recordWriter = new AvroKafkaRecordWriter(kafkaProps, veniceWriter);
+    AvroKafkaRecordWriter recordWriter = new AvroKafkaRecordWriter(kafkaProps, veniceWriter, progress);
 
     // Setup simple record
     GenericData.Record simpleRecord = new GenericData.Record(Schema.parse(schemaString));
@@ -110,7 +113,7 @@ public class TestAvroKafkaRecordWriter {
 
     Properties kafkaProps = getKafkaProperties(schemaString, keyField, valueField);
     MockVeniceWriter veniceWriter = new MockVeniceWriter(kafkaProps);
-    AvroKafkaRecordWriter recordWriter = new AvroKafkaRecordWriter(kafkaProps, veniceWriter);
+    AvroKafkaRecordWriter recordWriter = new AvroKafkaRecordWriter(kafkaProps, veniceWriter, progress);
 
     // Setup simple record
     GenericData.Record simpleRecord = new GenericData.Record(Schema.parse(schemaString));
@@ -162,7 +165,7 @@ public class TestAvroKafkaRecordWriter {
 
     Properties kafkaProps = getKafkaProperties(schemaString, keyField, valueField);
     MockVeniceWriter veniceWriter = new MockVeniceWriter(kafkaProps);
-    AvroKafkaRecordWriter recordWriter = new AvroKafkaRecordWriter(kafkaProps, veniceWriter);
+    AvroKafkaRecordWriter recordWriter = new AvroKafkaRecordWriter(kafkaProps, veniceWriter, progress);
 
     // Setup complicate record
     // Key part
@@ -218,7 +221,7 @@ public class TestAvroKafkaRecordWriter {
 
     Properties kafkaProps = getKafkaProperties(schemaString, keyField, valueField);
     MockVeniceWriter veniceWriter = new MockVeniceWriter(kafkaProps);
-    AvroKafkaRecordWriter recordWriter = new AvroKafkaRecordWriter(kafkaProps, veniceWriter);
+    AvroKafkaRecordWriter recordWriter = new AvroKafkaRecordWriter(kafkaProps, veniceWriter, progress);
 
     // Setup complicate record
     // Key part
