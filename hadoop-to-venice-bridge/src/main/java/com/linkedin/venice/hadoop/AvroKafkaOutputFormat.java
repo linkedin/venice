@@ -35,7 +35,7 @@ public class AvroKafkaOutputFormat implements OutputFormat<AvroWrapper<IndexedRe
                                                                                 String arg2,
                                                                                 Progressable progress) throws IOException {
     Properties props = getKafkaProperties(conf);
-    return new AvroKafkaRecordWriter(props);
+    return new AvroKafkaRecordWriter(props, progress);
   }
 
   /**

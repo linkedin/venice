@@ -2,6 +2,8 @@ package com.linkedin.venice.writer;
 
 import java.io.Closeable;
 import java.util.concurrent.Future;
+
+import org.apache.kafka.clients.producer.Callback;
 import org.apache.kafka.clients.producer.RecordMetadata;
 
 /**
@@ -22,5 +24,9 @@ public abstract class AbstractVeniceWriter <K, V> implements Closeable {
     return this.topicName;
   }
 
-  public abstract Future<RecordMetadata> put(K key, V value, int valueSchemaId);
+  public Future<RecordMetadata> put(K key, V value, int valueSchemaId) {
+    return put(key, value, valueSchemaId, null);
+  }
+
+  public abstract Future<RecordMetadata> put(K key, V value, int valueSchemaId, Callback callback);
 }
