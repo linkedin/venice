@@ -1,6 +1,7 @@
 package com.linkedin.venice.server;
 
 import com.google.common.collect.ImmutableList;
+import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.config.VeniceClusterConfig;
 import com.linkedin.venice.config.VeniceServerConfig;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -62,9 +63,11 @@ public class VeniceServer {
           "Can not create a venice server because this server has not been added into white list.");
     }
 
-    if (!directoryExists(veniceConfigLoader.getVeniceServerConfig().getDataBasePath())){
-      throw new VeniceException("Data directory: " + veniceConfigLoader.getVeniceServerConfig().getDataBasePath()
-      + " does not exist.  Cannot create server.");
+    if (!veniceConfigLoader.getVeniceServerConfig().isAutoCreateDataPath()) {
+      if (!directoryExists(veniceConfigLoader.getVeniceServerConfig().getDataBasePath())) {
+        throw new VeniceException("Data directory: " + veniceConfigLoader.getVeniceServerConfig().getDataBasePath()
+            + " does not exist and " + ConfigKeys.AUTOCREATE_DATA_PATH + " is set to false.  Cannot create server.");
+      }
     }
 
     /*
