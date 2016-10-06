@@ -116,8 +116,6 @@ public class VeniceParentHelixAdmin implements Admin {
       // Initialize VeniceWriter (Kafka producer)
       Properties props = new Properties();
       props.put(ConfigKeys.KAFKA_BOOTSTRAP_SERVERS, veniceControllerConfig.getKafkaBootstrapServers());
-      // We would like to ack every message since the throughput is low
-      props.put(KAFKA_ACKS_CONFIG, "all");
       VeniceProperties veniceWriterProperties = new VeniceProperties(props);
       return new VeniceWriter<>(veniceWriterProperties, topicName, new DefaultSerializer(), new DefaultSerializer());
     });
