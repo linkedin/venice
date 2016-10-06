@@ -15,6 +15,7 @@ public class ConfigKeys {
   public static final String CLUSTER_NAME = "cluster.name";
   public static final String STORAGE_NODE_COUNT = "storage.node.count";
   public static final String DATA_BASE_PATH = "data.base.path";
+  public static final String AUTOCREATE_DATA_PATH = "autocreate.data.path";
   public static final String PARTITION_NODE_ASSIGNMENT_SCHEME = "partition.node.assignment.scheme";
   public static final String ENABLE_KAFKA_CONSUMER_OFFSET_MANAGEMENT = "enable.kafka.consumers.offset.management";
   public static final String OFFSET_MANAGER_TYPE = "offset.manager.type";

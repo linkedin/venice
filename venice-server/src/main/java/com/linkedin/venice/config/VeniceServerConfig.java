@@ -4,6 +4,7 @@ import com.linkedin.venice.exceptions.ConfigurationException;
 import com.linkedin.venice.store.bdb.BdbServerConfig;
 import com.linkedin.venice.utils.VeniceProperties;
 
+import static com.linkedin.venice.ConfigKeys.AUTOCREATE_DATA_PATH;
 import static com.linkedin.venice.ConfigKeys.DATA_BASE_PATH;
 import static com.linkedin.venice.ConfigKeys.ENABLE_SERVER_WHITE_LIST;
 import static com.linkedin.venice.ConfigKeys.LISTENER_PORT;
@@ -17,11 +18,13 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final int listenerPort;
   private final  BdbServerConfig bdbServerConfig;
   private final boolean enableServerWhiteList;
+  private final boolean autoCreateDataPath; // default true
 
   public VeniceServerConfig(VeniceProperties serverProperties) throws ConfigurationException {
     super(serverProperties);
     listenerPort = serverProperties.getInt(LISTENER_PORT);
     dataBasePath = serverProperties.getString(DATA_BASE_PATH);
+    autoCreateDataPath = Boolean.valueOf(serverProperties.getString(AUTOCREATE_DATA_PATH, "true"));
     bdbServerConfig = new BdbServerConfig(serverProperties);
     enableServerWhiteList = serverProperties.getBoolean(ENABLE_SERVER_WHITE_LIST, false);
   }
@@ -38,6 +41,10 @@ public class VeniceServerConfig extends VeniceClusterConfig {
    */
   public String getDataBasePath() {
     return this.dataBasePath;
+  }
+
+  public boolean isAutoCreateDataPath(){
+    return autoCreateDataPath;
   }
 
   public BdbServerConfig getBdbServerConfig() {
