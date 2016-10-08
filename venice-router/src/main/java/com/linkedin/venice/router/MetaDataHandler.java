@@ -1,5 +1,6 @@
 package com.linkedin.venice.router;
 
+import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.controllerapi.MasterControllerResponse;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
@@ -12,7 +13,10 @@ import com.linkedin.venice.router.api.VenicePathParserHelper;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.PrintStream;
+import java.net.URL;
+import java.net.URLClassLoader;
 import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
 import java.util.Collection;
 
 import com.linkedin.venice.schema.SchemaEntry;
@@ -69,10 +73,18 @@ public class MetaDataHandler extends SimpleChannelUpstreamHandler {
                                      ChannelHandlerContext ctx, Channel ch) {
     HttpResponse response = new DefaultHttpResponse(HTTP_1_1, status);
     response.setContent(ChannelBuffers.wrappedBuffer(body));
-    if (!isJson) {
-      response.headers().set(CONTENT_TYPE, "text/plain");
-    } else {
-      response.headers().set(CONTENT_TYPE, "application/json");
+    try {
+      if (!isJson) {
+        response.headers().set(CONTENT_TYPE, HttpConstants.TEXT_PLAIN);
+      } else {
+        response.headers().set(CONTENT_TYPE, HttpConstants.JSON);
+      }
+    } catch (NoSuchMethodError e){ // netty version conflict
+      ClassLoader cl = ClassLoader.getSystemClassLoader();
+      URL[] urls = ((URLClassLoader)cl).getURLs();
+      logger.warn("NoSuchMethodError, probably from netty version conflict.  Printing netty on classpath: ", e);
+      Arrays.asList(urls).stream().filter(url -> url.getFile().contains("netty")).forEach(logger::warn);
+      throw e;
     }
     response.headers().set(CONTENT_LENGTH, response.getContent().readableBytes());
     ChannelFuture f = Channels.future(ch);
@@ -186,6 +198,7 @@ public class MetaDataHandler extends SimpleChannelUpstreamHandler {
     logger.error("Got exception while handling meta data request", e.getCause());
     try {
       if (ExceptionUtils.recursiveClassEquals(e.getCause(), IOException.class)) {
+        logger.warn("Caught exception is IOException, not sending response");
         // No need to send back error response since the connection has some issue.
         return;
       }

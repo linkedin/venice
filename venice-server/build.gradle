@@ -37,8 +37,12 @@ dependencies {
   compile project(':venice-common')
   compile project(':venice-controller')
 
-  testCompile project(':venice-thin-client')
-  testCompile project(':venice-router')
+  testCompile (project(':venice-thin-client')){
+    exclude group: 'org.jboss.netty' // venice-common's exclusion of netty 3.2.1 isn't respected
+  }
+  testCompile (project(':venice-router')){
+    exclude group: 'org.jboss.netty' // venice-common's exclusion of netty 3.2.1 isn't respected
+  }
   testCompile 'commons-io:commons-io:2.4'
   testCompile libraries.tehuti
 

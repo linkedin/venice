@@ -38,7 +38,7 @@ public interface V1Route {
   static String rawPath(String pathFormat, String[] pathParams){
     // Add colon prefix to each param name, "store_name" to ":store_name"
     String[] colonParams = Arrays.asList(pathParams).stream().map(p -> ":" + p).toArray(String[]::new);
-    return String.format(pathFormat, colonParams);
+    return String.format(pathFormat, (Object[]) colonParams);
   }
 
   /**
@@ -54,7 +54,7 @@ public interface V1Route {
       throw new VeniceException("Specified parameters: " + Arrays.toString(params)
           + " doesn't match list of required params: " + Arrays.toString(getPathParams()));
     }
-    return String.format(getPathFormat(), params);
+    return String.format(getPathFormat(), (Object[]) params);
   }
 
   /**
