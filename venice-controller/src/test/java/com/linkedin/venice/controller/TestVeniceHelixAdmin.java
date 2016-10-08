@@ -158,7 +158,7 @@ public class TestVeniceHelixAdmin {
   }
 
   //@Test(timeOut = TOTAL_TIMEOUT_FOR_LONG_TEST)
-  @Test
+  @Test(retryAnalyzer = FlakyTestRetryAnalyzer.class)
   public void testControllerFailOver()
       throws Exception {
     String storeName = TestUtils.getUniqueString("test");
@@ -390,11 +390,11 @@ public class TestVeniceHelixAdmin {
       jobManager.handleMessage(new StoreStatusMessage(version.kafkaTopicName(), 0, nodeId, ExecutionStatus.STARTED));
       jobManager.handleMessage(new StoreStatusMessage(version.kafkaTopicName(), 0, nodeId, ExecutionStatus.COMPLETED));
 
-      TestUtils.waitForNonDeterministicCompletion(3000, TimeUnit.MILLISECONDS,
+      TestUtils.waitForNonDeterministicCompletion(30000, TimeUnit.MILLISECONDS,
           () -> veniceAdmin.getCurrentVersion(clusterName, storeName) == versionNumber);
     }
 
-    TestUtils.waitForNonDeterministicCompletion(3000, TimeUnit.MILLISECONDS,
+    TestUtils.waitForNonDeterministicCompletion(30000, TimeUnit.MILLISECONDS,
         () -> veniceAdmin.versionsForStore(clusterName, storeName).size() == 2);
     Assert.assertEquals(veniceAdmin.getCurrentVersion(clusterName,storeName), version.getNumber());
     Assert.assertEquals(veniceAdmin.versionsForStore(clusterName,storeName).get(0).getNumber(), version.getNumber()-1);

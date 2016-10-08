@@ -9,6 +9,7 @@ import com.linkedin.venice.controller.kafka.protocol.admin.ValueSchemaCreation;
 import com.linkedin.venice.controller.kafka.protocol.enums.AdminMessageType;
 import com.linkedin.venice.controller.kafka.protocol.serializer.AdminOperationSerializer;
 import com.linkedin.venice.controllerapi.ControllerClient;
+import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.controllerapi.MultiStoreResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
@@ -19,11 +20,15 @@ import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.integration.utils.KafkaBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
+import com.linkedin.venice.job.ExecutionStatus;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.offsets.OffsetManager;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.writer.VeniceWriter;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import org.apache.kafka.clients.producer.RecordMetadata;
 import org.apache.kafka.common.TopicPartition;
 import org.mockito.ArgumentCaptor;
@@ -37,6 +42,9 @@ import java.util.Arrays;
 import java.util.HashSet;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
+
+import static org.mockito.Matchers.anyString;
+import static org.mockito.Mockito.doReturn;
 
 
 public class TestVeniceParentHelixAdmin {
@@ -406,5 +414,115 @@ public class TestVeniceParentHelixAdmin {
 
     controllerWrapper.close();
     kafkaBrokerWrapper.close();
+  }
+
+
+  @Test
+  public void testGetExecutionStatus(){
+
+    Map<ExecutionStatus, ControllerClient> clientMap = new HashMap<>();
+    for (ExecutionStatus status : ExecutionStatus.values()){
+      JobStatusQueryResponse response = new JobStatusQueryResponse();
+      response.setStatus(status.toString());
+      ControllerClient statusClient = Mockito.mock(ControllerClient.class);
+      doReturn(response).when(statusClient).queryJobStatus(anyString(), anyString());
+      clientMap.put(status, statusClient);
+    }
+
+    JobStatusQueryResponse failResponse = new JobStatusQueryResponse();
+    failResponse.setError("error");
+    ControllerClient failClient = Mockito.mock(ControllerClient.class);
+    doReturn(failResponse).when(failClient).queryJobStatus(anyString(), anyString());
+    clientMap.put(null, failClient);
+
+    // Verify clients work as expected
+    for (ExecutionStatus status : ExecutionStatus.values()) {
+      Assert.assertEquals(clientMap.get(status).queryJobStatus("cluster", "topic").getStatus(), status.toString());
+    }
+    Assert.assertTrue(clientMap.get(null).queryJobStatus("cluster", "topic").isError());
+
+    Map<String, ControllerClient> completeMap = new HashMap<>();
+    completeMap.put("cluster", clientMap.get(ExecutionStatus.COMPLETED));
+    completeMap.put("cluster2", clientMap.get(ExecutionStatus.COMPLETED));
+    completeMap.put("cluster3", clientMap.get(ExecutionStatus.COMPLETED));
+    Assert.assertEquals(VeniceParentHelixAdmin.getOffLineJobStatus("mycluster", "atopic", completeMap),
+        ExecutionStatus.COMPLETED);
+
+    completeMap.put("cluster-slow", clientMap.get(ExecutionStatus.NOT_CREATED));
+    Assert.assertEquals(VeniceParentHelixAdmin.getOffLineJobStatus("mycluster", "atopic", completeMap),
+        ExecutionStatus.PROGRESS);
+
+
+    Map<String, ControllerClient> progressMap = new HashMap<>();
+    progressMap.put("cluster", clientMap.get(ExecutionStatus.NOT_CREATED));
+    progressMap.put("cluster3", clientMap.get(ExecutionStatus.NOT_CREATED));
+    Assert.assertEquals(VeniceParentHelixAdmin.getOffLineJobStatus("mycluster", "atopic", progressMap),
+        ExecutionStatus.NOT_CREATED);
+
+    progressMap.put("cluster5", clientMap.get(ExecutionStatus.NEW));
+    Assert.assertEquals(VeniceParentHelixAdmin.getOffLineJobStatus("mycluster", "atopic", progressMap),
+        ExecutionStatus.NEW);
+
+    progressMap.put("cluster7", clientMap.get(ExecutionStatus.PROGRESS));
+    Assert.assertEquals(VeniceParentHelixAdmin.getOffLineJobStatus("mycluster", "atopic", progressMap),
+        ExecutionStatus.PROGRESS);
+
+    progressMap.put("cluster9", clientMap.get(ExecutionStatus.STARTED));
+    Assert.assertEquals(VeniceParentHelixAdmin.getOffLineJobStatus("mycluster", "atopic", progressMap),
+        ExecutionStatus.PROGRESS);
+
+    progressMap.put("cluster11", clientMap.get(ExecutionStatus.COMPLETED));
+    Assert.assertEquals(VeniceParentHelixAdmin.getOffLineJobStatus("mycluster", "atopic", progressMap),
+        ExecutionStatus.PROGRESS);
+
+    // 1 in 4 failures is OK
+    Map<String, ControllerClient> failCompleteMap = new HashMap<>();
+    failCompleteMap.put("cluster", clientMap.get(ExecutionStatus.COMPLETED));
+    failCompleteMap.put("cluster2", clientMap.get(ExecutionStatus.COMPLETED));
+    failCompleteMap.put("cluster3", clientMap.get(ExecutionStatus.COMPLETED));
+    failCompleteMap.put("failcluster", clientMap.get(null));
+    Assert.assertEquals(VeniceParentHelixAdmin.getOffLineJobStatus("mycluster", "atopic", failCompleteMap),
+        ExecutionStatus.COMPLETED);
+
+    // 3 in 6 failures is NOT OK
+    failCompleteMap.put("failcluster2", clientMap.get(null));
+    failCompleteMap.put("failcluster3", clientMap.get(null));
+    Assert.assertEquals(VeniceParentHelixAdmin.getOffLineJobStatus("mycluster", "atopic", failCompleteMap),
+        ExecutionStatus.ERROR);
+
+  }
+
+  @Test
+  public void testGetProgress() {
+
+    JobStatusQueryResponse tenResponse = new JobStatusQueryResponse();
+    Map<String, Long> tenPerTaskProgress = new HashMap<>();
+    tenPerTaskProgress.put("task1", 10L);
+    tenPerTaskProgress.put("task2", 10L);
+    tenResponse.setPerTaskProgress(tenPerTaskProgress);
+    ControllerClient tenStatusClient = Mockito.mock(ControllerClient.class);
+    doReturn(tenResponse).when(tenStatusClient).queryJobStatus(anyString(), anyString());
+
+    JobStatusQueryResponse failResponse = new JobStatusQueryResponse();
+    failResponse.setError("error2");
+    ControllerClient failClient = Mockito.mock(ControllerClient.class);
+    doReturn(failResponse).when(failClient).queryJobStatus(anyString(), anyString());
+
+    // Clients work as expected
+    JobStatusQueryResponse status = tenStatusClient.queryJobStatus("cluster", "topic");
+    Map<String,Long> perTask = status.getPerTaskProgress();
+    Assert.assertEquals(perTask.get("task1"), new Long(10L));
+    Assert.assertTrue(failClient.queryJobStatus("cluster", "topic").isError());
+
+    // Test logic
+    Map<String, ControllerClient> tenMap = new HashMap<>();
+    tenMap.put("cluster1", tenStatusClient);
+    tenMap.put("cluster2", tenStatusClient);
+    tenMap.put("cluster3", failClient);
+    Map<String, Long> tenProgress = VeniceParentHelixAdmin.getOfflineJobProgress("cluster", "topic", tenMap);
+    Assert.assertEquals(tenProgress.values().size(), 4); // nothing from fail client
+    Assert.assertEquals(tenProgress.get("cluster1_task1"), new Long(10L));
+    Assert.assertEquals(tenProgress.get("cluster2_task2"), new Long(10L));
+
   }
 }

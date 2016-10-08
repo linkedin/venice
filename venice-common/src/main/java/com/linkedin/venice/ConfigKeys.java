@@ -76,12 +76,32 @@ public class ConfigKeys {
   public static final String CONTROLLER_CLUSTER_ZK_ADDRESSS = "controller.cluster.zk.address";
   /** Cluster name for all parent controllers */
   public static final String CONTROLLER_CLUSTER = "controller.cluster.name";
-  /** How many parent controllers are assigned to each venice cluster. */
+
+  /**
+   * Venice uses a helix cluster to assign controllers to each named venice cluster.  This is the number of controllers
+   * assigned to each venice cluster.  Should normally be 3; one master controller and 2 standby controllers.
+   * */
   public static final String CONTROLLER_CLUSTER_REPLICA = "controller.cluster.replica";
+
   /** The interval, in ms, between each polling iteration of the TopicMonitor */
   public static final String TOPIC_MONITOR_POLL_INTERVAL_MS = "topic.monitor.poll.interval.ms";
+
   /** Whether current controller is parent or not */
   public static final String CONTROLLER_PARENT_MODE = "controller.parent.mode";
-  /** Waiting time in ms before returning error in Parent Controller Cluster */
+
+  /**
+   * Only required when controller.parent.mode=true
+   * This entry specifies the location of every child cluster that is being fed by this parent cluster.
+   * The format for the value is JSON: {"cluster1":["url1","url2","url3"],"cluster2":["url4","url5"],"cluster3":["url6","url7","url8"]}
+   * the cluster name should be human readable, ex: ei-ltx1
+   * the url should be of the form http://host:port
+   * */
+  public static final String CHILD_CLUSTER_URL_MAP = "child.cluster.url.map";
+
+  /**
+   * When the parent controller receives an admin write operation, it replicates that message to the admin kafka stream.
+   * After replication the parent controller consumes the message from the stream and processes it there.  This is the
+   * timeout for waiting until that consumption happens.
+   * */
   public static final String PARENT_CONTROLLER_WAITING_TIME_FOR_CONSUMPTION_MS = "parent.controller.waiting.time.for.consumption.ms";
 }

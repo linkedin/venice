@@ -3,6 +3,7 @@ package com.linkedin.venice.integration;
 import com.linkedin.venice.client.exceptions.VeniceServerException;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
+import com.linkedin.venice.utils.FlakyTestRetryAnalyzer;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
@@ -143,7 +144,7 @@ public class ProducerConsumerReaderIntegrationTest {
     return false;
   }
 
-  @Test(enabled = true) // Sometimes breaks in Gradle... Arrrgh...
+  @Test(retryAnalyzer = FlakyTestRetryAnalyzer.class) // Sometimes breaks in Gradle... Arrrgh...
   public void testEndToEndProductionAndReading() throws Exception {
 
     final int pushVersion = Version.parseVersionFromKafkaTopicName(storeVersionName);
@@ -175,7 +176,16 @@ public class ProducerConsumerReaderIntegrationTest {
       return currentVersion == pushVersion;
     });
 
-    // Read
+    // Read (but make sure Router is up-to-date with new version)
+    TestUtils.waitForNonDeterministicCompletion(10, TimeUnit.SECONDS, ()->{
+      try{
+        storeClient.get(key).get();
+      } catch (Exception e){
+        return false;
+      }
+      return true;
+    });
+
     Object newValue = storeClient.get(key).get();
     Assert.assertEquals(newValue.toString(), value, "The key '" + key + "' does not contain the expected value!");
   }

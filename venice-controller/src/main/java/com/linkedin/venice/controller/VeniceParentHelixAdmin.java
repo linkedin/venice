@@ -11,6 +11,8 @@ import com.linkedin.venice.controller.kafka.protocol.admin.ValueSchemaCreation;
 import com.linkedin.venice.controller.kafka.protocol.enums.AdminMessageType;
 import com.linkedin.venice.controller.kafka.protocol.enums.SchemaType;
 import com.linkedin.venice.controller.kafka.protocol.serializer.AdminOperationSerializer;
+import com.linkedin.venice.controllerapi.ControllerClient;
+import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.Replica;
 import com.linkedin.venice.job.ExecutionStatus;
@@ -27,6 +29,9 @@ import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.ApacheKafkaProducer;
 import com.linkedin.venice.writer.VeniceWriter;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashMap;
 import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.clients.producer.RecordMetadata;
 import org.apache.log4j.Logger;
@@ -52,8 +57,8 @@ import java.util.concurrent.locks.ReentrantLock;
 public class VeniceParentHelixAdmin implements Admin {
   public static final String KAFKA_ACKS_CONFIG = ApacheKafkaProducer.PROPERTIES_KAFKA_PREFIX + ProducerConfig.ACKS_CONFIG;
   private static final long SLEEP_INTERVAL_FOR_DATA_CONSUMPTION_IN_MS = 1000;
+  private static final Logger logger = Logger.getLogger(VeniceParentHelixAdmin.class);
 
-  private final Logger logger = Logger.getLogger(VeniceParentHelixAdmin.class);
   private final VeniceHelixAdmin veniceHelixAdmin;
   private final Map<String, VeniceWriter<byte[], byte[]>> veniceWriterMap;
   private final byte[] emptyKeyByteArr = new byte[0];
@@ -347,14 +352,129 @@ public class VeniceParentHelixAdmin implements Admin {
     throw new VeniceException("getStorageNodes is not supported!");
   }
 
-  @Override
-  public ExecutionStatus getOffLineJobStatus(String clusterName, String kafkaTopic) {
-    throw new VeniceException("getOffLineJobStatus is not supported!");
+  private Map<String, ControllerClient> getControllerClientMap(String clusterName){
+    Map<String, List<String>> childColoClusters = veniceControllerConfig.getChildClusterMap();
+    Map<String, ControllerClient> controllerClients = new HashMap<>();
+    for (String colo : childColoClusters.keySet()) {
+      String veniceUrls = String.join(",", childColoClusters.get(colo));
+      ControllerClient client = new ControllerClient(clusterName, veniceUrls);
+      controllerClients.put(colo, client);
+    }
+    return controllerClients;
   }
 
+  /**
+   * Queries child clusters for status.
+   * Of all responses, return highest of (in order) NOT_CREATED, NEW, STARTED, PROGRESS.
+   * If any response is ERROR, returns ERROR
+   * If all responses are COMPLETED, returns COMPLETED.
+   * ARCHIVED is treated as NOT_CREATED
+   *
+   * If error in querying half or more of clusters, returns ERROR.
+   *
+   * @param clusterName
+   * @param kafkaTopic
+   * @return
+   */
+  @Override
+  public ExecutionStatus getOffLineJobStatus(String clusterName, String kafkaTopic) {
+    Map<String, ControllerClient> controllerClients = getControllerClientMap(clusterName);
+    return getOffLineJobStatus(clusterName, kafkaTopic, controllerClients);
+  }
+
+  protected static ExecutionStatus getOffLineJobStatus(String clusterName, String kafkaTopic, Map<String, ControllerClient> controllerClients) {
+    Set<String> childClusters = controllerClients.keySet();
+    ExecutionStatus currentReturnStatus = ExecutionStatus.NOT_CREATED;
+    int failCount = 0;
+    boolean complete = true;
+    for (String cluster : childClusters){
+      JobStatusQueryResponse response = controllerClients.get(cluster).queryJobStatus(clusterName, kafkaTopic);
+      if (response.isError()){
+        failCount += 1;
+        logger.warn("Couldn't query " + cluster + " for job " + kafkaTopic + " status: " + response.getError());
+        continue;
+      }
+      ExecutionStatus thisStatus = ExecutionStatus.valueOf(response.getStatus());
+      switch (thisStatus) {
+        case NOT_CREATED:
+          complete = false;
+          break;
+        case NEW:
+          complete = false;
+          if (currentReturnStatus.equals(ExecutionStatus.NOT_CREATED)){
+            currentReturnStatus = thisStatus;
+          }
+          break;
+        case STARTED:
+          complete = false;
+          if (Arrays.asList(
+              ExecutionStatus.NOT_CREATED,
+              ExecutionStatus.NEW).contains(currentReturnStatus)){
+            currentReturnStatus = thisStatus;
+          }
+          break;
+        case PROGRESS:
+          complete = false;
+          if (Arrays.asList(
+              ExecutionStatus.NOT_CREATED,
+              ExecutionStatus.NEW,
+              ExecutionStatus.STARTED).contains(currentReturnStatus)){
+            currentReturnStatus = thisStatus;
+          }
+          break;
+        case COMPLETED:
+          if (!currentReturnStatus.equals(ExecutionStatus.ERROR)) {
+            currentReturnStatus = ExecutionStatus.PROGRESS; // highest not complete status
+          }
+          break;
+        case ERROR:
+          complete = false;
+          currentReturnStatus = thisStatus;
+          break;
+        case ARCHIVED:
+          complete = false;
+          break; //Treat ARCHIVED as not created.
+      }
+      if (complete && currentReturnStatus.equals(ExecutionStatus.PROGRESS)){ // COMPLETE sets status to highest status of PROGRESS
+        currentReturnStatus = ExecutionStatus.COMPLETED;
+      }
+      int successCount = childClusters.size() - failCount;
+      if (! (successCount >= (childClusters.size()/2)+1)) { // Strict majority must not fail
+        currentReturnStatus = ExecutionStatus.ERROR;
+      }
+    }
+    return currentReturnStatus;
+  }
+
+  /**
+   * Queries child clusters for job progress.  Prepends the cluster name to the task ID and provides an aggregate
+   * Map of progress for all tasks.
+   * @param clusterName
+   * @param kafkaTopic
+   * @return
+   */
   @Override
   public Map<String, Long> getOfflineJobProgress(String clusterName, String kafkaTopic){
-    throw new VeniceException("getOfflineJobProgress is not supported!");
+    Map<String, ControllerClient> controllerClients = getControllerClientMap(clusterName);
+    return getOfflineJobProgress(clusterName, kafkaTopic, controllerClients);
+  }
+
+  protected static Map<String, Long> getOfflineJobProgress(String clusterName, String kafkaTopic, Map<String, ControllerClient> controllerClients){
+    Map<String, Long> aggregateProgress = new HashMap<>();
+    for (Map.Entry<String, ControllerClient> clientEntry : controllerClients.entrySet()){
+      String childCluster = clientEntry.getKey();
+      ControllerClient client = clientEntry.getValue();
+      JobStatusQueryResponse statusResponse = client.queryJobStatus(clusterName, kafkaTopic);
+      if (statusResponse.isError()){
+        logger.warn("Failed to query " + childCluster + " for job progress on topic " + kafkaTopic + ".  " + statusResponse.getError());
+      } else {
+        Map<String, Long> clusterProgress = statusResponse.getPerTaskProgress();
+        for (String task : clusterProgress.keySet()){
+          aggregateProgress.put(childCluster + "_" + task, clusterProgress.get(task));
+        }
+      }
+    }
+    return aggregateProgress;
   }
 
   @Override
