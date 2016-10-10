@@ -13,12 +13,14 @@ import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.controllerapi.MultiStoreResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
+import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.integration.utils.KafkaBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.kafka.TopicManager;
+import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.offsets.OffsetManager;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.writer.VeniceWriter;
@@ -395,6 +397,12 @@ public class TestVeniceParentHelixAdmin {
     ControllerClient.setPauseStatus(controllerUrl, clusterName, storeName, false);
     storeResponse = ControllerClient.getStore(controllerUrl, clusterName, storeName);
     Assert.assertFalse(storeResponse.getStore().isPaused());
+
+    // Add version
+    VersionCreationResponse versionCreationResponse = ControllerClient.createNewStoreVersion(controllerUrl,
+        clusterName, storeName, 10 * 1024 * 1024);
+    Assert.assertFalse(versionCreationResponse.isError());
+
 
     controllerWrapper.close();
     kafkaBrokerWrapper.close();
