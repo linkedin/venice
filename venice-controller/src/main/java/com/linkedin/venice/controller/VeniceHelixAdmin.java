@@ -78,6 +78,7 @@ public class VeniceHelixAdmin implements Admin {
     private TopicManager topicManager;
     private final ZkClient zkClient;
     private ZkWhitelistAccessor whitelistAccessor;
+    private final VeniceControllerConfig config;
     /**
      * Parent controller, it always being connected to Helix. And will create sub-controller for specific cluster when
      * getting notification from Helix.
@@ -87,6 +88,7 @@ public class VeniceHelixAdmin implements Admin {
     private VeniceDistClusterControllerStateModelFactory controllerStateModelFactory;
     //TODO Use different configs for different clusters when creating helix admin.
     public VeniceHelixAdmin(VeniceControllerConfig config) {
+        this.config = config;
         this.controllerName = Utils.getHelixNodeIdentifier(config.getAdminPort());
         this.controllerClusterName = config.getControllerClusterName();
         this.controllerClusterReplica = config.getControllerClusterReplica();
@@ -227,9 +229,11 @@ public class VeniceHelixAdmin implements Admin {
 
         VeniceControllerClusterConfig clusterConfig = controllerStateModelFactory.getModel(clusterName).getResources().getConfig();
         createKafkaTopic(clusterName, version.kafkaTopicName(), numberOfPartition, clusterConfig.getKafkaReplicaFactor());
-        createHelixResources(clusterName, version.kafkaTopicName(), numberOfPartition, replicaFactor);
-        //Start offline push job for this new version.
-        startOfflinePush(clusterName, version.kafkaTopicName(), numberOfPartition, replicaFactor, strategy);
+        if (!config.isParent()) {
+            createHelixResources(clusterName, version.kafkaTopicName(), numberOfPartition, replicaFactor);
+            //Start offline push job for this new version.
+            startOfflinePush(clusterName, version.kafkaTopicName(), numberOfPartition, replicaFactor, strategy);
+        }
         return version;
     }
 

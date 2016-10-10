@@ -97,11 +97,14 @@ public class VeniceDispatcher implements PartitionDispatchHandler<Instance, Veni
     Instance host;
     try {
       int hostCount = part.getHosts().size();
-      host = part.getHosts().get( ((int)System.currentTimeMillis()) % hostCount );  //cheap random host selection
+      if (0 == hostCount) {
+        throw new VeniceException("Could not find ready-to-serve replica for request: " + part);
+      }
+      host = part.getHosts().get( (int)(System.currentTimeMillis() % hostCount) );  //cheap random host selection
       hostSelected.setSuccess(host);
     } catch (Exception e) {
       hostSelected.setFailure(e);
-      throw new VeniceException("Failed to route request to a host");
+      throw new VeniceException("Failed to route request to a host", e);
     }
     logger.debug("Routing request to host: " + host.getHost() + ":" + host.getPort());
 
