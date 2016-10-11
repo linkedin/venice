@@ -64,10 +64,8 @@ public class KafkaPushJob {
   // Job Properties
   public static final String AVRO_KEY_FIELD_PROP = "avro.key.field";
   public static final String AVRO_VALUE_FIELD_PROP = "avro.value.field";
-  public static final String VENICE_ROUTER_URL_PROP = "venice.router.urls";
-  // When 'venice.multi.colo' is true, H2V Job needs to specify 'venice.parent.controller.urls'
-  public static final String VENICE_MULTI_COLO_PROP = "venice.multi.colo";
-  public static final String VENICE_PARENT_CONTROLLER_URL_PROP = "venice.parent.controller.urls";
+  public static final String VENICE_URL_PROP = "venice.urls";
+
   public static final String VENICE_CLUSTER_NAME_PROP = "cluster.name";
   public static final String VENICE_STORE_NAME_PROP = "venice.store.name";
   public static final String VENICE_STORE_OWNERS_PROP = "venice.store.owners";
@@ -96,16 +94,14 @@ public class KafkaPushJob {
   private final String id;
   private final String keyField;
   private final String valueField;
-  private final String veniceRouterUrl;
-  // This value is parsed from veniceRouterUrl
-  private final String[] perDatacenterRouterUrls;
+  private final String veniceUrl;
   private final String clusterName;
   private final String storeName;
   private final String storeOwners;
   private final int batchNumBytes;
-  private final boolean multiColo;
-  private final String parentControllerUrls;
   private final boolean autoCreateStoreIfNeeded;
+
+  private final ControllerClient controllerClient;
 
   // Mutable state
   // Kafka url will get from Venice backend for store push
@@ -132,10 +128,9 @@ public class KafkaPushJob {
 
     OptionParser parser = new OptionParser();
     OptionSpec<String> veniceUrlOpt =
-        parser.accepts("venice-router-url", "REQUIRED: comma-delimited venice URLs.  "
-            +"If pushing to multiple datacenters, use a semi-colon to separate lists of URLs")
+        parser.accepts("venice-url", "REQUIRED: comma-delimited venice URLs")
             .withRequiredArg()
-            .describedAs("venice-router-url")
+            .describedAs("venice-url")
             .ofType(String.class);
     OptionSpec<String> inputPathOpt =
         parser.accepts("input-path", "REQUIRED: Input path")
@@ -175,13 +170,6 @@ public class KafkaPushJob {
             .defaultsTo(Integer.toString(1000000));
     OptionSpecBuilder autoCreateOpt =
         parser.accepts("create-store", "Flag: auto create store if it does not exist");
-    OptionSpecBuilder multiColoOpt =
-        parser.accepts("multi-colo", "Flag: multi colo push");
-    OptionSpec<String> parentControllerOpt =
-        parser.accepts("parent-controller", "Required for multi-colo push")
-            .withRequiredArg()
-            .describedAs("parent-controller with format: 'http://host1:port1[,http://host2:port2, ...]'")
-            .ofType(String.class);
 
     OptionSet options = parser.parse(args);
     validateExpectedArguments(new OptionSpec[] {inputPathOpt,  keyFieldOpt, valueFieldOpt, clusterNameOpt,
@@ -189,7 +177,7 @@ public class KafkaPushJob {
 
     Properties props = new Properties();
     props.put(VENICE_CLUSTER_NAME_PROP, options.valueOf(clusterNameOpt));
-    props.put(VENICE_ROUTER_URL_PROP, options.valueOf(veniceUrlOpt));
+    props.put(VENICE_URL_PROP, options.valueOf(veniceUrlOpt));
     props.put(VENICE_STORE_NAME_PROP, options.valueOf(storeNameOpt));
     props.put(VENICE_STORE_OWNERS_PROP, options.valueOf(storeOwnersOpt));
     props.put(INPUT_PATH_PROP, options.valueOf(inputPathOpt));
@@ -201,12 +189,6 @@ public class KafkaPushJob {
     boolean autoCreateStore = options.has(autoCreateOpt);
     if (autoCreateStore){
       props.put(AUTO_CREATE_STORE_PROP, "true");
-    }
-    boolean multiColo = options.has(multiColoOpt);
-    if (multiColo) {
-      props.put(VENICE_MULTI_COLO_PROP, "true");
-      validateExpectedArguments(new OptionSpec[] {parentControllerOpt}, options, parser);
-      props.put(VENICE_PARENT_CONTROLLER_URL_PROP, options.valueOf(parentControllerOpt));
     }
 
     KafkaPushJob job = new KafkaPushJob("Console", props);
@@ -240,8 +222,7 @@ public class KafkaPushJob {
     this.props = props;
     this.id = jobId;
     this.clusterName = props.getProperty(VENICE_CLUSTER_NAME_PROP);
-    this.veniceRouterUrl = props.getProperty(VENICE_ROUTER_URL_PROP);
-    this.perDatacenterRouterUrls = this.veniceRouterUrl.split(";");
+    this.veniceUrl = props.getProperty(VENICE_URL_PROP);
     this.storeName = props.getProperty(VENICE_STORE_NAME_PROP);
     this.storeOwners = props.getProperty(VENICE_STORE_OWNERS_PROP);
     this.inputDirectory = props.getProperty(INPUT_PATH_PROP);
@@ -249,19 +230,12 @@ public class KafkaPushJob {
     this.valueField = props.getProperty(AVRO_VALUE_FIELD_PROP);
 
     this.autoCreateStoreIfNeeded = Boolean.valueOf(props.getProperty(AUTO_CREATE_STORE_PROP, "false"));
-    this.multiColo = Boolean.valueOf(props.getProperty(VENICE_MULTI_COLO_PROP, "false"));
-    if (this.multiColo) {
-      this.parentControllerUrls = props.getProperty(VENICE_PARENT_CONTROLLER_URL_PROP);
-    } else {
-      // For single-colo push, H2V will talk to controller directly
-      this.parentControllerUrls = this.veniceRouterUrl;
-    }
+
     Map<String, String> requiredProps = new HashMap<>();
     requiredProps.put(VENICE_CLUSTER_NAME_PROP, this.clusterName);
-    requiredProps.put(VENICE_ROUTER_URL_PROP, this.veniceRouterUrl);
+    requiredProps.put(VENICE_URL_PROP, this.veniceUrl);
     requiredProps.put(VENICE_STORE_NAME_PROP, this.storeName);
     requiredProps.put(VENICE_STORE_OWNERS_PROP, this.storeOwners);
-    requiredProps.put(VENICE_PARENT_CONTROLLER_URL_PROP, this.parentControllerUrls);
     requiredProps.put(INPUT_PATH_PROP, this.inputDirectory);
     requiredProps.put(AVRO_KEY_FIELD_PROP, this.keyField);
     requiredProps.put(AVRO_VALUE_FIELD_PROP, this.valueField);
@@ -277,6 +251,7 @@ public class KafkaPushJob {
     } else {
       this.batchNumBytes = Integer.parseInt(props.getProperty(BATCH_NUM_BYTES_PROP));
     }
+    this.controllerClient = new ControllerClient(this.clusterName, this.veniceUrl);
   }
 
   /**
@@ -343,10 +318,10 @@ public class KafkaPushJob {
    * This method will talk to parent controller to create new store if necessary.
    */
   private void createStoreIfNeeded(){
-    NewStoreResponse response = ControllerClient.createNewStore(parentControllerUrls, clusterName, storeName,
+    NewStoreResponse response = controllerClient.createNewStore(clusterName, storeName,
         "H2V-user", keySchemaString, valueSchemaString);
     if (response.isError()){
-      logger.warn("Error creating new store with urls: " + parentControllerUrls + "  " + response.getError());
+      throw new VeniceException("Error creating new store with urls: " + veniceUrl + "  " + response.getError());
     }
   }
 
@@ -354,14 +329,14 @@ public class KafkaPushJob {
    * This method will talk to parent controller to validate key schema.
    */
   private void validateKeySchema() {
-    SchemaResponse keySchemaResponse = ControllerClient.getKeySchema(parentControllerUrls, clusterName, storeName);
+    SchemaResponse keySchemaResponse = controllerClient.getKeySchema(clusterName, storeName);
     if (keySchemaResponse.isError()) {
-      throw new VeniceException("Failed to fetch key schema from urls: " + parentControllerUrls);
+      throw new VeniceException("Failed to fetch key schema from urls: " + veniceUrl);
     }
     SchemaEntry serverSchema = new SchemaEntry(keySchemaResponse.getId(), keySchemaResponse.getSchemaStr());
     SchemaEntry clientSchema = new SchemaEntry(1, keySchemaString);
     if (! serverSchema.equals(clientSchema)) {
-      throw new VeniceException("Key schema mis-match for store " + storeName + " on server: " + parentControllerUrls
+      throw new VeniceException("Key schema mis-match for store " + storeName + " on server: " + veniceUrl
       + ", expected: " + keySchemaString + ", actual: " + keySchemaResponse.getSchemaStr());
     }
   }
@@ -370,23 +345,23 @@ public class KafkaPushJob {
    * TODO: rip out this method when we don't need to auto create stores any more
    */
   private void uploadValueSchema() {
-    SchemaResponse valueSchemaResponse = ControllerClient.addValueSchema(parentControllerUrls, clusterName, storeName,
-        valueSchemaString);
+    SchemaResponse valueSchemaResponse = controllerClient.addValueSchema(clusterName, storeName, valueSchemaString);
     if (valueSchemaResponse.isError()) {
-      throw new VeniceException("Fail to validate/create value schema: " + valueSchemaString + " for store: " + storeName
+      throw new VeniceException("Fail to validate/create value schema: " + valueSchemaString
+          + " for store: " + storeName
           + ", error: " + valueSchemaResponse.getError());
     }
   }
 
   /***
-   * This method will talk to parent controller to validate value schema.
+   * This method will talk to controller to validate value schema.
    */
   private void validateValueSchema() {
-    SchemaResponse valueSchemaResponse = ControllerClient.getValueSchemaID(parentControllerUrls, clusterName, storeName,
-        valueSchemaString);
+    SchemaResponse valueSchemaResponse = controllerClient.getValueSchemaID(clusterName, storeName, valueSchemaString);
     if (valueSchemaResponse.isError()) {
-      throw new VeniceException("Fail to validate value schema: " + valueSchemaString + " for store: "
-          + storeName + ", error: " + valueSchemaResponse.getError());
+      throw new VeniceException("Fail to validate value schema: " + valueSchemaString
+          + " for store: " + storeName
+          + ", error: " + valueSchemaResponse.getError());
     }
     valueSchemaId = valueSchemaResponse.getId();
     logger.info("Get schema id: " + valueSchemaId + " for value schema: " + valueSchemaString + " of store: " + storeName);
@@ -396,9 +371,9 @@ public class KafkaPushJob {
    * This method will talk to parent controller to create new store version, which will create new topic for the version as well.
    */
   private void createNewStoreVersion() {
-    VersionCreationResponse versionCreationResponse = ControllerClient.createNewStoreVersion(parentControllerUrls, clusterName, storeName, inputFileDataSize);
+    VersionCreationResponse versionCreationResponse = controllerClient.createNewStoreVersion(clusterName, storeName, inputFileDataSize);
     if (versionCreationResponse.isError()) {
-      throw new VeniceException("Failed to create new store version with urls: " + parentControllerUrls
+      throw new VeniceException("Failed to create new store version with urls: " + veniceUrl
           + ", error: " + versionCreationResponse.getError());
     }
     topic = versionCreationResponse.getKafkaTopic();
@@ -431,9 +406,7 @@ public class KafkaPushJob {
     logger.info("Input Directory: " + inputDirectory);
     logger.info("Venice Store Name: " + storeName);
     logger.info("Venice Cluster Name: " + clusterName);
-    logger.info("Venice Router URL: " + veniceRouterUrl);
-    logger.info("Venice Multi-COLO push: " + multiColo);
-    logger.info("Venice Parent Controller URL: " + parentControllerUrls);
+    logger.info("Venice URL: " + veniceUrl);
     logger.info("File Schema: " + fileSchemaString);
     logger.info("Avro key schema: " + keySchemaString);
     logger.info("Avro value schema: " + valueSchemaString);
@@ -450,65 +423,61 @@ public class KafkaPushJob {
    * exception and fail the job.
    */
   private void pollStatusUntilComplete(){
-    Map<String, ExecutionStatus> perDatacenterStatus = new HashMap<>();
-    for (String routerUrl : perDatacenterRouterUrls) {
-      perDatacenterStatus.put(routerUrl, ExecutionStatus.NOT_CREATED);
-    }
+    ExecutionStatus currentStatus = ExecutionStatus.NOT_CREATED;
     boolean keepChecking = true;
     while (keepChecking){
       Utils.sleep(5000); /* TODO better polling policy */
       keepChecking = false;
-      for (String routerUrl : perDatacenterStatus.keySet()){
-        switch (perDatacenterStatus.get(routerUrl)) {
-          /* Note that we're storing a status of ERROR if the response object .isError() returns true.
-             If .isError() is false and the response object's status is ERROR we throw an exception since the job has failed
-             Otherwise we store the response object's status.
-             This is a potentially confusing overloaded use of the ERROR status, since it means something different
-               in the response object compared to the stored perDatacenterStatus.
+      switch (currentStatus) {
+        /* Note that we're storing a status of ERROR if the response object .isError() returns true.
+           If .isError() is false and the response object's status is ERROR we throw an exception since the job has failed
+           Otherwise we store the response object's status.
+           This is a potentially confusing overloaded use of the ERROR status, since it means something different
+             in the response object compared to the stored perDatacenterStatus.
+         */
+        case COMPLETED: /* jobs done */
+        case ARCHIVED: /* This shouldn't happen, but presumably wont change on further polls */
+          continue;
+        case ERROR: /* failure to query (treat as connection issue, so we retry */
+        case NOT_CREATED:
+        case NEW:
+        case STARTED:
+        case PROGRESS:
+          /* This could take 90 seconds if connection is down.  30 second timeout with 3 attempts */
+          JobStatusQueryResponse response = ControllerClient.queryJobStatusWithRetry(veniceUrl, clusterName, topic, 3);
+          /*  Note: .isError means the status could not be queried.  This may be due to a communication error, or
+              a caught exception.
            */
-          case COMPLETED: /* jobs done */
-          case ARCHIVED: /* This shouldn't happen, but presumably wont change on further polls */
-            continue;
-          case ERROR: /* failure to query (treat as connection issue, so we retry if we're still polling */
-          case NOT_CREATED:
-          case NEW:
-          case STARTED:
-          case PROGRESS:
-            /* This could take 90 seconds if connection is down.  30 second timeout with 3 attempts */
-            JobStatusQueryResponse response = ControllerClient.queryJobStatusWithRetry(routerUrl, clusterName, topic, 3);
-            /*  Note: .isError means the status could not be queried.  This may be due to a communication error, or
-                a caught exception.
-             */
-            if (response.isError()){
-              logger.error("Error querying job status from: " + routerUrl + ", error message: " + response.getError());
-              perDatacenterStatus.put(routerUrl, ExecutionStatus.ERROR); /* Note: overloading usage of ERROR */
+          if (response.isError()){
+            if (currentStatus.equals(ExecutionStatus.ERROR)){ // give up if we are already errored.  For connection issues means 3 minutes of issues
+              throw new RuntimeException("Failed to connect to: " + veniceUrl + " to query job status.");
             } else {
-              ExecutionStatus status = ExecutionStatus.valueOf(response.getStatus());
-              logger.info("Status: " + status + " from : " + routerUrl);
-              /* Status of ERROR means that the job status was queried, and the job is in an error status */
-              if (status.equals(ExecutionStatus.ERROR)){
-                throw new RuntimeException("Push job triggered error for: " + routerUrl);
-              }
-              perDatacenterStatus.put(routerUrl, status);
-              keepChecking = true;
+              logger.error("Error querying job status from: " + veniceUrl + ", error message: " + response.getError());
+              currentStatus = ExecutionStatus.ERROR; /* Note: overloading usage of ERROR */
             }
-            break;
-          default:
-            throw new VeniceException("Unexpected status returned by job status poll: " + perDatacenterStatus.get(routerUrl));
-        }
+          } else {
+            ExecutionStatus status = ExecutionStatus.valueOf(response.getStatus());
+            long messagesConsumed = response.getMessagesConsumed();
+            long messagesAvailable = response.getMessagesAvailable();
+            logger.info("Consumed " + messagesConsumed + " out of " + messagesAvailable + " records.  Status: " + status);
+            /* Status of ERROR means that the job status was queried, and the job is in an error status */
+            if (status.equals(ExecutionStatus.ERROR)){
+              throw new RuntimeException("Push job triggered error for: " + veniceUrl);
+            }
+            currentStatus = status;
+            keepChecking = true;
+          }
+          break;
+        default:
+          throw new VeniceException("Unexpected status returned by job status poll: " + veniceUrl);
       }
+
     }
-      /* At this point all datacenters either report success, or had connection issues */
-    int numberOfDatacenters = perDatacenterStatus.size();
-    int successCount = (int) perDatacenterStatus.values().stream()
-        .filter(status -> status.equals(ExecutionStatus.COMPLETED)).count();
-    if (successCount < numberOfDatacenters){
-      logger.error("Only verified successful push to " + successCount + " of " + numberOfDatacenters + " datacenters");
+      /* At this point either reported success, or had connection issues */
+    if (currentStatus.equals(ExecutionStatus.COMPLETED)){
+      logger.info("Successfully pushed");
     } else {
-      logger.info("Successfully pushed to all " + numberOfDatacenters + " datacenters");
-    }
-    if (successCount < 1){
-      throw new RuntimeException("Failed to connect to any datacenters to verify push was successful");
+      throw new VeniceException("Push failed with execution status: " + currentStatus.toString());
     }
   }
 
@@ -587,7 +556,7 @@ public class KafkaPushJob {
             if (!status[i].isDir()) {
               Path path = new Path(classPathDir, status[i].getPath().getName());
               logger.info("Adding Jar to Distributed Cache Archive File:" + path);
-              DistributedCache.addFileToClassPath(path, conf);
+              DistributedCache.addFileToClassPath(path, conf); //TODO: resolve deprecated hadoop class
             }
           }
         } else {
