@@ -107,6 +107,14 @@ public class ApacheKafkaProducer implements KafkaProducerWrapper {
     }
   }
 
+  @Override
+  public void flush() {
+    if (producer != null) {
+      producer.flush();
+    }
+  }
+
+  @Override
   public void close(int closeTimeOutMs) {
     if (producer != null) {
       // Flush out all the messages in the producer buffer

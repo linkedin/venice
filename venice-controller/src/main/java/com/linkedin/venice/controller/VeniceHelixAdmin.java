@@ -78,7 +78,6 @@ public class VeniceHelixAdmin implements Admin {
     private TopicManager topicManager;
     private final ZkClient zkClient;
     private ZkWhitelistAccessor whitelistAccessor;
-    private final VeniceControllerConfig config;
     /**
      * Parent controller, it always being connected to Helix. And will create sub-controller for specific cluster when
      * getting notification from Helix.
@@ -88,7 +87,6 @@ public class VeniceHelixAdmin implements Admin {
     private VeniceDistClusterControllerStateModelFactory controllerStateModelFactory;
     //TODO Use different configs for different clusters when creating helix admin.
     public VeniceHelixAdmin(VeniceControllerConfig config) {
-        this.config = config;
         this.controllerName = Utils.getHelixNodeIdentifier(config.getAdminPort());
         this.controllerClusterName = config.getControllerClusterName();
         this.controllerClusterReplica = config.getControllerClusterReplica();
@@ -189,10 +187,14 @@ public class VeniceHelixAdmin implements Admin {
         new SchemaEntry(SchemaData.INVALID_VALUE_SCHEMA_ID, valueSchema);
     }
 
-    private final static int VERSION_ID_UNSET = -1;
+    protected final static int VERSION_ID_UNSET = -1;
 
     @Override
-    public synchronized Version addVersion(String clusterName, String storeName,int versionNumber, int numberOfPartition, int replicaFactor) {
+    public synchronized Version addVersion(String clusterName, String storeName,int versionNumber, int numberOfPartition, int replicationFactor) {
+        return addVersion(clusterName, storeName, versionNumber, numberOfPartition, replicationFactor, true);
+    }
+
+    protected synchronized Version addVersion(String clusterName, String storeName,int versionNumber, int numberOfPartition, int replicationFactor, boolean whetherStartOfflinePush) {
         checkControllerMastership(clusterName);
         HelixReadWriteStoreRepository repository = getVeniceHelixResource(clusterName).getMetadataRepository();
 
@@ -229,18 +231,18 @@ public class VeniceHelixAdmin implements Admin {
 
         VeniceControllerClusterConfig clusterConfig = controllerStateModelFactory.getModel(clusterName).getResources().getConfig();
         createKafkaTopic(clusterName, version.kafkaTopicName(), numberOfPartition, clusterConfig.getKafkaReplicaFactor());
-        if (!config.isParent()) {
-            createHelixResources(clusterName, version.kafkaTopicName(), numberOfPartition, replicaFactor);
+        if (whetherStartOfflinePush) {
+            createHelixResources(clusterName, version.kafkaTopicName(), numberOfPartition, replicationFactor);
             //Start offline push job for this new version.
-            startOfflinePush(clusterName, version.kafkaTopicName(), numberOfPartition, replicaFactor, strategy);
+            startOfflinePush(clusterName, version.kafkaTopicName(), numberOfPartition, replicationFactor, strategy);
         }
         return version;
     }
 
     @Override
     public synchronized Version incrementVersion(String clusterName, String storeName, int numberOfPartition,
-        int replicaFactor) {
-        return addVersion(clusterName , storeName , VERSION_ID_UNSET , numberOfPartition , replicaFactor);
+        int replicationFactor) {
+        return addVersion(clusterName, storeName, VERSION_ID_UNSET, numberOfPartition, replicationFactor);
     }
 
     @Override
@@ -363,11 +365,11 @@ public class VeniceHelixAdmin implements Admin {
         topicManager.createTopic(kafkaTopic, numberOfPartition, kafkaReplicaFactor);
     }
 
-    private void createHelixResources(String clusterName, String kafkaTopic , int numberOfPartition , int replicaFactor) {
+    private void createHelixResources(String clusterName, String kafkaTopic , int numberOfPartition , int replicationFactor) {
         if (!admin.getResourcesInCluster(clusterName).contains(kafkaTopic)) {
             admin.addResource(clusterName, kafkaTopic, numberOfPartition,
                     VeniceStateModel.PARTITION_ONLINE_OFFLINE_STATE_MODEL, IdealState.RebalanceMode.FULL_AUTO.toString());
-            admin.rebalance(clusterName, kafkaTopic, replicaFactor);
+            admin.rebalance(clusterName, kafkaTopic, replicationFactor);
             logger.info("Added " + kafkaTopic + " as a resource to cluster: " + clusterName);
         } else {
             throwResourceAlreadyExists(kafkaTopic);
@@ -375,11 +377,11 @@ public class VeniceHelixAdmin implements Admin {
     }
 
     @Override
-    public void startOfflinePush(String clusterName, String kafkaTopic, int numberOfPartition, int replicaFactor, OfflinePushStrategy strategy) {
+    public void startOfflinePush(String clusterName, String kafkaTopic, int numberOfPartition, int replicationFactor, OfflinePushStrategy strategy) {
         checkControllerMastership(clusterName);
         VeniceJobManager jobManager = controllerStateModelFactory.getModel(clusterName).getResources().getJobManager();
         setJobManagerAdmin(jobManager);
-        jobManager.startOfflineJob(kafkaTopic, numberOfPartition, replicaFactor, strategy);
+        jobManager.startOfflineJob(kafkaTopic, numberOfPartition, replicationFactor, strategy);
     }
 
     @Override

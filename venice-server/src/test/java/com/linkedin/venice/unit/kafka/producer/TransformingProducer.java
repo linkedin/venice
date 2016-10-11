@@ -36,6 +36,11 @@ public class TransformingProducer implements KafkaProducerWrapper {
   }
 
   @Override
+  public void flush() {
+    baseProducer.flush();
+  }
+
+  @Override
   public void close(int closeTimeOutMs) {
     baseProducer.close(closeTimeOutMs);
   }

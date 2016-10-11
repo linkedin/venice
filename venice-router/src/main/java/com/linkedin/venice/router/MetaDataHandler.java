@@ -16,6 +16,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.Collection;
 
 import com.linkedin.venice.schema.SchemaEntry;
+import com.linkedin.venice.utils.ExceptionUtils;
 import org.apache.log4j.Logger;
 import org.codehaus.jackson.map.ObjectMapper;
 import org.jboss.netty.buffer.ChannelBuffers;
@@ -182,13 +183,19 @@ public class MetaDataHandler extends SimpleChannelUpstreamHandler {
 
   @Override
   public void exceptionCaught(ChannelHandlerContext ctx, ExceptionEvent e) throws Exception {
-    ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
-    PrintStream ps = new PrintStream(outputStream);
-    e.getCause().printStackTrace(ps);
-    ps.flush();
-    logger.info("Get exception while handling meta data request: " + outputStream.toString());
-    setupResponseAndFlush(INTERNAL_SERVER_ERROR, outputStream.toByteArray(),
-        false, ctx, e.getChannel());
-    ps.close();
+    logger.error("Got exception while handling meta data request", e.getCause());
+    try {
+      if (ExceptionUtils.recursiveClassEquals(e.getCause(), IOException.class)) {
+        // No need to send back error response since the connection has some issue.
+        return;
+      }
+      String stackTraceStr = ExceptionUtils.stackTraceToString(e.getCause());
+      setupResponseAndFlush(INTERNAL_SERVER_ERROR, stackTraceStr.getBytes(),
+          false, ctx, e.getChannel());
+    } catch (Exception ex) {
+      logger.error("Got exception while trying to send error response", ex);
+    } finally {
+      ctx.getChannel().close();
+    }
   }
 }

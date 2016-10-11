@@ -65,6 +65,11 @@ public class MockInMemoryProducer implements KafkaProducerWrapper {
   }
 
   @Override
+  public void flush() {
+    // no-op
+  }
+
+  @Override
   public void close(int closeTimeOutMs) {
     // no-op
   }

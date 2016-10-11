@@ -11,5 +11,6 @@ import org.apache.kafka.clients.producer.RecordMetadata;
 public interface KafkaProducerWrapper {
   int getNumberOfPartitions(String topic);
   Future<RecordMetadata> sendMessage(String topic, KafkaKey key, KafkaMessageEnvelope value, int partition, Callback callback);
+  void flush();
   void close(int closeTimeOutMs);
 }

@@ -177,6 +177,8 @@ public class VeniceWriter<K, V> extends AbstractVeniceWriter<K, V> {
    */
   public void broadcastStartOfPush(Map<String, String> debugInfo) {
     broadcastControlMessage(getEmptyControlMessage(ControlMessageType.START_OF_PUSH), debugInfo);
+    // Flush start of push message to avoid data message arrives before it.
+    producer.flush();
   }
 
   /**
