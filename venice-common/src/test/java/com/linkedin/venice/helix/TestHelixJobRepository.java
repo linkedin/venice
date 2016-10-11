@@ -347,11 +347,13 @@ public class TestHelixJobRepository {
     Task t2 = new Task(jobs[1].generateTaskId(3, nodeId), 3, nodeId, ExecutionStatus.ERROR);
     repository.updateTaskStatus(1, "topic1", t2);
 
+    int completedProgress = 1000;
     for (int i = 0; i < numberOfPartition; i++) {
       for (int j = 0; j < replicaFactor; j++) {
         Task task = new Task(jobs[2].generateTaskId(i, nodeId), i, nodeId, ExecutionStatus.STARTED);
         repository.updateTaskStatus(2, "topic2", task);
         task = new Task(jobs[2].generateTaskId(i, nodeId), i, nodeId, ExecutionStatus.COMPLETED);
+        task.setProgress(completedProgress);
         repository.updateTaskStatus(2, "topic2", task);
       }
     }
@@ -363,6 +365,8 @@ public class TestHelixJobRepository {
         ExecutionStatus.ERROR, "Task dose not be loaded correctly.");
     Assert.assertEquals(newRepository.getJob(2, "topic2").getTaskStatus(1, jobs[2].generateTaskId(1, nodeId)),
         ExecutionStatus.COMPLETED, "Task dose not be loaded correctly.");
+    Assert.assertEquals(newRepository.getJob(2, "topic2").getTask(1, jobs[2].generateTaskId(1, nodeId)).getProgress(),
+        completedProgress, "Task dose not be loaded correctly.");
 
     Assert.assertEquals(newRepository.getJobStatus(0, "topic0"), ExecutionStatus.STARTED,
         "Job should be started and updated to ZK");
@@ -376,5 +380,43 @@ public class TestHelixJobRepository {
     Assert.assertEquals(newRepository.getRunningJobOfTopic("topic0").size(), 1);
 
     newRepository.clear();
+  }
+
+  @Test
+  public void testUpdateTaskStatusFromMultiInstances(){
+    // Start a job with 1 partition and 2 replicas
+    OfflineJob job = new OfflineJob(1, kafkaTopic, 1, 2);
+    String instanceId1 = "testUpdateTaskStatusInstance1";
+    String instanceId2 = "testUpdateTaskStatusInstance2";
+    String taskId1= job.generateTaskId(0, instanceId1);
+    String taskId2= job.generateTaskId(0, instanceId2);
+    Task task1 = new Task(taskId1, 0, instanceId1, ExecutionStatus.STARTED);
+    Task task2 = new Task(taskId2, 0, instanceId2, ExecutionStatus.STARTED);
+    job.addTask(task1);
+    job.addTask(task2);
+    repository.startJob(job);
+    // Verify the tasks status are both STARTED
+    Assert.assertEquals(repository.getRunningJobOfTopic(kafkaTopic).get(0).getTaskStatus(0, taskId1), ExecutionStatus.STARTED);
+    Assert.assertEquals(repository.getRunningJobOfTopic(kafkaTopic).get(0).getTaskStatus(0, taskId2), ExecutionStatus.STARTED);
+    // Update progress for tasks
+    int task1Progress = 100;
+    int task2Progress = 200;
+    task1 = new Task(taskId1, 0, instanceId1, ExecutionStatus.PROGRESS);
+    task1.setProgress(task1Progress);
+    task2 = new Task(taskId2, 0, instanceId2, ExecutionStatus.PROGRESS);
+    task2.setProgress(task2Progress);
+    repository.updateTaskStatus(job.getJobId(), kafkaTopic, task1);
+    repository.updateTaskStatus(job.getJobId(), kafkaTopic, task2);
+    Assert.assertEquals(repository.getRunningJobOfTopic(kafkaTopic).get(0).getTask(0, taskId1).getProgress(), task1Progress);
+    Assert.assertEquals(repository.getRunningJobOfTopic(kafkaTopic).get(0).getTask(0, taskId2).getProgress(), task2Progress);
+
+    //Reload all of data from ZK
+    repository.refresh();
+    //Verify all of data has been updated to ZK correctly
+    Assert.assertEquals(repository.getRunningJobOfTopic(kafkaTopic).get(0).getStatus(), ExecutionStatus.STARTED);
+    Assert.assertEquals(repository.getRunningJobOfTopic(kafkaTopic).get(0).getTaskStatus(0, taskId1), ExecutionStatus.PROGRESS);
+    Assert.assertEquals(repository.getRunningJobOfTopic(kafkaTopic).get(0).getTaskStatus(0, taskId2), ExecutionStatus.PROGRESS);
+    Assert.assertEquals(repository.getRunningJobOfTopic(kafkaTopic).get(0).getTask(0, taskId1).getProgress(), task1Progress);
+    Assert.assertEquals(repository.getRunningJobOfTopic(kafkaTopic).get(0).getTask(0, taskId2).getProgress(), task2Progress);
   }
 }

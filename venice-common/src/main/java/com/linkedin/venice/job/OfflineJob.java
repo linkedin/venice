@@ -119,6 +119,7 @@ public class OfflineJob extends Job {
       for(Task task:taskMap.values()){
         Task clonedTask = new Task(task.getTaskId(),task.getPartitionId(),task.getInstanceId());
         clonedTask.setStatus(task.getStatus());
+        clonedTask.setProgress(task.getProgress());
         clonedTaskMap.put(clonedTask.getTaskId(),clonedTask);
       }
     }
