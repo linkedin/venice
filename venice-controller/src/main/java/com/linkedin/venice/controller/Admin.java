@@ -23,9 +23,9 @@ public interface Admin {
     void addStore(String clusterName, String storeName, String owner, String keySchema, String valueSchema);
 
     Version addVersion(String clusterName, String storeName, int versionNumber, int numberOfPartition,
-        int replicaFactor);
+        int replicationFactor);
 
-    Version incrementVersion(String clusterName, String storeName, int numberOfPartition, int replicaFactor);
+    Version incrementVersion(String clusterName, String storeName, int numberOfPartition, int replicationFactor);
 
     int getCurrentVersion(String clusterName, String storeName);
 
@@ -40,7 +40,7 @@ public interface Admin {
 
     void setCurrentVersion(String clusterName, String storeName, int versionNumber);
 
-    void startOfflinePush(String clusterName, String kafkaTopic, int numberOfPartition, int replicaFactor,
+    void startOfflinePush(String clusterName, String kafkaTopic, int numberOfPartition, int replicationFactor,
         OfflinePushStrategy strategy);
 
     void deleteHelixResource(String clusterName, String kafkaTopic);

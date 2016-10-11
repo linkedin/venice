@@ -216,7 +216,7 @@ public class VeniceParentHelixAdmin implements Admin {
                                          String storeName,
                                          int versionNumber,
                                          int numberOfPartition,
-                                         int replicaFactor) {
+                                         int replicationFactor) {
     throw new VeniceException("addVersion is not supported yet!");
   }
 
@@ -224,13 +224,13 @@ public class VeniceParentHelixAdmin implements Admin {
   public Version incrementVersion(String clusterName,
                                                String storeName,
                                                int numberOfPartition,
-                                               int replicaFactor) {
+                                               int replicationFactor) {
     // TODO: consider to move version creation to admin protocol
     // Right now, TopicMonitor in each prod colo will monitor new Kafka topic and
     // create new corresponding store versions
-    // TODO: need to move 'pauseStore' logic to parent controller
     // TODO: clean up kafka topic in parent Kafka cluster
-    return veniceHelixAdmin.incrementVersion(clusterName, storeName, numberOfPartition, replicaFactor);
+    // Adding version in Parent Controller won't start offline push job.
+    return veniceHelixAdmin.addVersion(clusterName, storeName, VeniceHelixAdmin.VERSION_ID_UNSET, numberOfPartition, replicationFactor, false);
   }
 
   @Override
