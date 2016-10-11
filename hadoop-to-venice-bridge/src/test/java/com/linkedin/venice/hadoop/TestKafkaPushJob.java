@@ -23,6 +23,7 @@ import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericDatumWriter;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.io.DatumWriter;
+import org.apache.hadoop.fs.Path;
 import org.apache.log4j.Logger;
 import org.testng.Assert;
 import org.testng.annotations.AfterMethod;
@@ -78,7 +79,7 @@ private static final String STRING_SCHEMA = "\"string\"";
     dataFileWriter.close();
   }
 
-  protected static void writeComplicatedAvroFileWithUserSchema(File parentDir, boolean addFieldWithDefaultValue) throws IOException {
+  protected static Schema writeComplicatedAvroFileWithUserSchema(File parentDir, boolean addFieldWithDefaultValue) throws IOException {
     String schemaStr = "{\"namespace\": \"example.avro\",\n" +
         " \"type\": \"record\",\n" +
         " \"name\": \"User\",\n" +
@@ -120,6 +121,7 @@ private static final String STRING_SCHEMA = "\"string\"";
     }
 
     dataFileWriter.close();
+    return schema;
   }
 
 
@@ -169,7 +171,7 @@ private static final String STRING_SCHEMA = "\"string\"";
 
   private Properties setupDefaultProps(String inputDirPath, String storeName) {
     Properties props = new Properties();
-    props.put(KafkaPushJob.VENICE_ROUTER_URL_PROP, "http://" + veniceCluster.getVeniceRouter().getAddress());
+    props.put(KafkaPushJob.VENICE_URL_PROP, "http://" + veniceCluster.getVeniceRouter().getAddress());
     props.put(KafkaPushJob.KAFKA_URL_PROP, veniceCluster.getKafka().getAddress());
     props.put(KafkaPushJob.VENICE_CLUSTER_NAME_PROP, veniceCluster.getClusterName());
     props.put(KafkaPushJob.VENICE_STORE_NAME_PROP, storeName);
@@ -423,7 +425,7 @@ private static final String STRING_SCHEMA = "\"string\"";
     job.run();
   }
 
-  @Test(timeOut = TEST_TIMEOUT)
+  @Test(timeOut = TEST_TIMEOUT) // TODO: this is a 43 second integration test, probably can be replaced with a proper unit test
   public void testRunJobMultipleTimesWithCompatibleValueSchemaConfig() throws Exception {
     File inputDir = getTempDataDirectory();
     writeComplicatedAvroFileWithUserSchema(inputDir, false);
@@ -447,11 +449,18 @@ private static final String STRING_SCHEMA = "\"string\"";
 
     // Run job with different but compatible value schema
     inputDir = getTempDataDirectory();
-    writeComplicatedAvroFileWithUserSchema(inputDir, true);
+    Schema newSchema = writeComplicatedAvroFileWithUserSchema(inputDir, true);
     inputDirPath = "file://" + inputDir.getAbsolutePath();
     props = setupDefaultProps(inputDirPath, storeName);
-    props.setProperty(KafkaPushJob.AVRO_VALUE_FIELD_PROP, "value"); /* TODO: This should be a different value field */
-    job = new KafkaPushJob(jobName, props); /* TODO: AUTO_CREATE_STORE_PROP to false, but this causes test to fail??? */
+    props.setProperty(KafkaPushJob.AVRO_VALUE_FIELD_PROP, "value");
+    props.setProperty(KafkaPushJob.AUTO_CREATE_STORE_PROP, "false");
+
+    // Upload new schema
+    String newValueSchemaString = newSchema.getField("value").schema().toString();
+    ControllerClient controllerClient = new ControllerClient(veniceCluster.getClusterName(), routerUrl);
+    controllerClient.addValueSchema(veniceCluster.getClusterName(), storeName, newValueSchemaString);
+
+    job = new KafkaPushJob(jobName, props);
     job.run();
     /* TODO: add assertions */
   }

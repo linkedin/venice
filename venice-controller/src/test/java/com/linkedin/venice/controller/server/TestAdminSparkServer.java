@@ -15,6 +15,7 @@ import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceServerWrapper;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.utils.TestUtils;
 import java.util.List;
 import org.apache.avro.Schema;
 import org.testng.Assert;
@@ -106,7 +107,7 @@ public class TestAdminSparkServer {
 
   @Test
   public void controllerClientManageValueSchema() {
-    String storeToCreate = "newTestStore126";
+    String storeToCreate = TestUtils.getUniqueString("newTestStore");
     String clusterName = venice.getClusterName();
     String keySchemaStr = "\"string\"";
     String schema1 = "{\n" +

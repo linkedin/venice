@@ -227,11 +227,14 @@ public class ControllerClient implements Closeable {
     return response;
   }
 
-  public MultiStoreResponse queryStoreList(String clusterName)
-      throws IOException, ExecutionException, InterruptedException {
-    List<NameValuePair> queryParams = newParams(clusterName);
-    String responseJson = getRequest(ControllerRoute.LIST_STORES.getPath(), queryParams);
-    return mapper.readValue(responseJson, MultiStoreResponse.class);
+  public MultiStoreResponse queryStoreList(String clusterName) {
+    try {
+      List<NameValuePair> queryParams = newParams(clusterName);
+      String responseJson = getRequest(ControllerRoute.LIST_STORES.getPath(), queryParams);
+      return mapper.readValue(responseJson, MultiStoreResponse.class);
+    } catch (Exception e){
+      return handleError(new VeniceException("Error querying store list for cluster: " + clusterName, e), new MultiStoreResponse());
+    }
   }
 
   @Deprecated
@@ -279,13 +282,19 @@ public class ControllerClient implements Closeable {
     }
   }
 
-  public ControllerResponse setPauseStatus(String clusterName, String storeName, boolean pause)
-      throws ExecutionException, InterruptedException, IOException {
-    List<NameValuePair> queryParams = newParams(clusterName);
-    queryParams.add(new BasicNameValuePair(ControllerApiConstants.NAME, storeName));
-    queryParams.add(new BasicNameValuePair(ControllerApiConstants.STATUS, Boolean.toString(pause)));
-    String responseJson = postRequest(ControllerRoute.PAUSE_STORE.getPath(), queryParams);
-    return mapper.readValue(responseJson, ControllerResponse.class);
+  public ControllerResponse setPauseStatus(String clusterName, String storeName, boolean pause) {
+    try {
+      List<NameValuePair> queryParams = newParams(clusterName);
+      queryParams.add(new BasicNameValuePair(ControllerApiConstants.NAME, storeName));
+      queryParams.add(new BasicNameValuePair(ControllerApiConstants.STATUS, Boolean.toString(pause)));
+      String responseJson = postRequest(ControllerRoute.PAUSE_STORE.getPath(), queryParams);
+      return mapper.readValue(responseJson, ControllerResponse.class);
+    } catch (Exception e){
+      String msg = pause ?
+          "Could not pause store: " + storeName :
+          "Could not resume store: " + storeName;
+      return handleError(new VeniceException(msg, e), new ControllerResponse());
+    }
   }
 
   @Deprecated
@@ -300,12 +309,15 @@ public class ControllerClient implements Closeable {
     }
   }
 
-  public ControllerResponse isNodeRemovable(String clusterName, String instanceId)
-      throws ExecutionException, InterruptedException, IOException {
-    List<NameValuePair> queryParams = newParams(clusterName);
-    queryParams.add(new BasicNameValuePair(ControllerApiConstants.STORAGE_NODE_ID, instanceId));
-    String responseJson = getRequest(ControllerRoute.NODE_REMOVABLE.getPath(), queryParams);
-    return mapper.readValue(responseJson, ControllerResponse.class);
+  public ControllerResponse isNodeRemovable(String clusterName, String instanceId) {
+    try {
+      List<NameValuePair> queryParams = newParams(clusterName);
+      queryParams.add(new BasicNameValuePair(ControllerApiConstants.STORAGE_NODE_ID, instanceId));
+      String responseJson = getRequest(ControllerRoute.NODE_REMOVABLE.getPath(), queryParams);
+      return mapper.readValue(responseJson, ControllerResponse.class);
+    } catch (Exception e) {
+      return handleError(new VeniceException("Could not identify if node: " + instanceId + " is removable", e), new ControllerResponse());
+    }
   }
 
   @Deprecated
@@ -317,11 +329,14 @@ public class ControllerClient implements Closeable {
     }
   }
 
-  public MultiNodeResponse listStorageNodes(String clusterName)
-      throws InterruptedException, IOException, ExecutionException {
-    List<NameValuePair> queryParams = newParams(clusterName);
-    String responseJson = getRequest(ControllerRoute.LIST_NODES.getPath(), queryParams);
-    return mapper.readValue(responseJson, MultiNodeResponse.class);
+  public MultiNodeResponse listStorageNodes(String clusterName) {
+    try {
+      List<NameValuePair> queryParams = newParams(clusterName);
+      String responseJson = getRequest(ControllerRoute.LIST_NODES.getPath(), queryParams);
+      return mapper.readValue(responseJson, MultiNodeResponse.class);
+    } catch (Exception e){
+      return handleError(new VeniceException("Error listing nodes", e), new MultiNodeResponse());
+    }
   }
 
   @Deprecated
@@ -333,13 +348,16 @@ public class ControllerClient implements Closeable {
     }
   }
 
-  public MultiReplicaResponse listReplicas(String clusterName, String storeName, int version)
-      throws ExecutionException, InterruptedException, IOException {
-    List<NameValuePair> params = newParams(clusterName);
-    params.add(new BasicNameValuePair(ControllerApiConstants.NAME, storeName));
-    params.add(new BasicNameValuePair(ControllerApiConstants.VERSION, Integer.toString(version)));
-    String responseJson = getRequest(ControllerRoute.LIST_REPLICAS.getPath(), params);
-    return mapper.readValue(responseJson, MultiReplicaResponse.class);
+  public MultiReplicaResponse listReplicas(String clusterName, String storeName, int version) {
+    try {
+      List<NameValuePair> params = newParams(clusterName);
+      params.add(new BasicNameValuePair(ControllerApiConstants.NAME, storeName));
+      params.add(new BasicNameValuePair(ControllerApiConstants.VERSION, Integer.toString(version)));
+      String responseJson = getRequest(ControllerRoute.LIST_REPLICAS.getPath(), params);
+      return mapper.readValue(responseJson, MultiReplicaResponse.class);
+    } catch (Exception e){
+      return handleError(new VeniceException("Error listing replicas for store: " + storeName + " version: " + version, e), new MultiReplicaResponse());
+    }
   }
 
   @Deprecated
@@ -351,12 +369,15 @@ public class ControllerClient implements Closeable {
     }
   }
 
-  public MultiReplicaResponse listStorageNodeReplicas(String clusterName, String instanceId)
-      throws ExecutionException, InterruptedException, IOException {
-    List<NameValuePair> params = newParams(clusterName);
-    params.add(new BasicNameValuePair(ControllerApiConstants.STORAGE_NODE_ID, instanceId));
-    String responseJson = getRequest(ControllerRoute.NODE_REPLICAS.getPath(), params);
-    return mapper.readValue(responseJson, MultiReplicaResponse.class);
+  public MultiReplicaResponse listStorageNodeReplicas(String clusterName, String instanceId) {
+    try {
+      List<NameValuePair> params = newParams(clusterName);
+      params.add(new BasicNameValuePair(ControllerApiConstants.STORAGE_NODE_ID, instanceId));
+      String responseJson = getRequest(ControllerRoute.NODE_REPLICAS.getPath(), params);
+      return mapper.readValue(responseJson, MultiReplicaResponse.class);
+    } catch (Exception e){
+      return handleError(new VeniceException("Error listing replicas for storage node: " + instanceId, e), new MultiReplicaResponse());
+    }
   }
 
   @Deprecated
@@ -369,11 +390,15 @@ public class ControllerClient implements Closeable {
   }
 
   /* SCHEMA */
-  public SchemaResponse getKeySchema(String clusterName, String storeName) throws ExecutionException, InterruptedException, IOException {
-    List<NameValuePair> queryParams = newParams(clusterName);
-    queryParams.add(new BasicNameValuePair(ControllerApiConstants.NAME, storeName));
-    String responseJson = getRequest(ControllerRoute.GET_KEY_SCHEMA.getPath(), queryParams);
-    return mapper.readValue(responseJson, SchemaResponse.class);
+  public SchemaResponse getKeySchema(String clusterName, String storeName) {
+    try {
+      List<NameValuePair> queryParams = newParams(clusterName);
+      queryParams.add(new BasicNameValuePair(ControllerApiConstants.NAME, storeName));
+      String responseJson = getRequest(ControllerRoute.GET_KEY_SCHEMA.getPath(), queryParams);
+      return mapper.readValue(responseJson, SchemaResponse.class);
+    } catch (Exception e){
+      return handleError(new VeniceException("Error getting key schema for store: " + storeName, e), new SchemaResponse());
+    }
   }
 
   @Deprecated
@@ -385,12 +410,16 @@ public class ControllerClient implements Closeable {
     }
   }
 
-  public SchemaResponse addValueSchema(String clusterName, String storeName, String valueSchemaStr) throws IOException, ExecutionException, InterruptedException {
-    List<NameValuePair> queryParams = newParams(clusterName);
-    queryParams.add(new BasicNameValuePair(ControllerApiConstants.NAME, storeName));
-    queryParams.add(new BasicNameValuePair(ControllerApiConstants.VALUE_SCHEMA, valueSchemaStr));
-    String responseJson = postRequest(ControllerRoute.ADD_VALUE_SCHEMA.getPath(), queryParams);
-    return mapper.readValue(responseJson, SchemaResponse.class);
+  public SchemaResponse addValueSchema(String clusterName, String storeName, String valueSchemaStr) {
+    try {
+      List<NameValuePair> queryParams = newParams(clusterName);
+      queryParams.add(new BasicNameValuePair(ControllerApiConstants.NAME, storeName));
+      queryParams.add(new BasicNameValuePair(ControllerApiConstants.VALUE_SCHEMA, valueSchemaStr));
+      String responseJson = postRequest(ControllerRoute.ADD_VALUE_SCHEMA.getPath(), queryParams);
+      return mapper.readValue(responseJson, SchemaResponse.class);
+    } catch (Exception e){
+      return handleError(new VeniceException("Error adding value schema: " + valueSchemaStr + " for store: " + storeName, e), new SchemaResponse());
+    }
   }
 
   @Deprecated
@@ -402,12 +431,16 @@ public class ControllerClient implements Closeable {
     }
   }
 
-  public SchemaResponse getValueSchema(String clusterName, String storeName, int valueSchemaId) throws IOException, ExecutionException, InterruptedException {
-    List<NameValuePair> queryParams = newParams(clusterName);
-    queryParams.add(new BasicNameValuePair(ControllerApiConstants.NAME, storeName));
-    queryParams.add(new BasicNameValuePair(ControllerApiConstants.SCHEMA_ID, Integer.toString(valueSchemaId)));
-    String responseJson = getRequest(ControllerRoute.GET_VALUE_SCHEMA.getPath(), queryParams);
-    return mapper.readValue(responseJson, SchemaResponse.class);
+  public SchemaResponse getValueSchema(String clusterName, String storeName, int valueSchemaId) {
+    try {
+      List<NameValuePair> queryParams = newParams(clusterName);
+      queryParams.add(new BasicNameValuePair(ControllerApiConstants.NAME, storeName));
+      queryParams.add(new BasicNameValuePair(ControllerApiConstants.SCHEMA_ID, Integer.toString(valueSchemaId)));
+      String responseJson = getRequest(ControllerRoute.GET_VALUE_SCHEMA.getPath(), queryParams);
+      return mapper.readValue(responseJson, SchemaResponse.class);
+    } catch (Exception e){
+      return handleError(new VeniceException("Error getting value schema for schema id: " + valueSchemaId + " for store: " + storeName, e), new SchemaResponse());
+    }
   }
 
   @Deprecated
@@ -419,12 +452,16 @@ public class ControllerClient implements Closeable {
     }
   }
 
-  public SchemaResponse getValueSchemaID(String clusterName, String storeName, String valueSchemaStr) throws IOException, ExecutionException, InterruptedException {
-    List<NameValuePair> queryParams = newParams(clusterName);
-    queryParams.add(new BasicNameValuePair(ControllerApiConstants.NAME, storeName));
-    queryParams.add(new BasicNameValuePair(ControllerApiConstants.VALUE_SCHEMA, valueSchemaStr));
-    String responseJson = postRequest(ControllerRoute.GET_VALUE_SCHEMA_ID.getPath(), queryParams);
-    return mapper.readValue(responseJson, SchemaResponse.class);
+  public SchemaResponse getValueSchemaID(String clusterName, String storeName, String valueSchemaStr) {
+    try {
+      List<NameValuePair> queryParams = newParams(clusterName);
+      queryParams.add(new BasicNameValuePair(ControllerApiConstants.NAME, storeName));
+      queryParams.add(new BasicNameValuePair(ControllerApiConstants.VALUE_SCHEMA, valueSchemaStr));
+      String responseJson = postRequest(ControllerRoute.GET_VALUE_SCHEMA_ID.getPath(), queryParams);
+      return mapper.readValue(responseJson, SchemaResponse.class);
+    } catch (Exception e){
+      return handleError(new VeniceException("Error getting value schema for schema: " + valueSchemaStr + " for store: " + storeName, e), new SchemaResponse());
+    }
   }
 
   @Deprecated
@@ -436,11 +473,15 @@ public class ControllerClient implements Closeable {
     }
   }
 
-  public MultiSchemaResponse getAllValueSchema(String clusterName, String storeName) throws IOException, ExecutionException, InterruptedException {
-    List<NameValuePair> queryParams = newParams(clusterName);
-    queryParams.add(new BasicNameValuePair(ControllerApiConstants.NAME, storeName));
-    String responseJson = getRequest(ControllerRoute.GET_ALL_VALUE_SCHEMA.getPath(), queryParams);
-    return mapper.readValue(responseJson, MultiSchemaResponse.class);
+  public MultiSchemaResponse getAllValueSchema(String clusterName, String storeName) {
+    try {
+      List<NameValuePair> queryParams = newParams(clusterName);
+      queryParams.add(new BasicNameValuePair(ControllerApiConstants.NAME, storeName));
+      String responseJson = getRequest(ControllerRoute.GET_ALL_VALUE_SCHEMA.getPath(), queryParams);
+      return mapper.readValue(responseJson, MultiSchemaResponse.class);
+    } catch (Exception e){
+      return handleError(new VeniceException("Error getting value schema for store: " + storeName, e), new MultiSchemaResponse());
+    }
   }
 
   @Deprecated
