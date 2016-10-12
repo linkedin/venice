@@ -28,6 +28,7 @@ public class VeniceControllerClusterConfig {
   private int maxNumberOfPartition;
   private long partitionSize;
   private long offLinejobWaitTimeInMilliseconds;
+  private boolean enableTopicDeletionWhenJobFailed;
 
   /**
    * kafka Bootstrap Urls . IF there is more than one url, they are separated by commas
@@ -65,6 +66,8 @@ public class VeniceControllerClusterConfig {
     partitionSize = props.getSizeInBytes(DEFAULT_PARTITION_SIZE);
     maxNumberOfPartition = props.getInt(DEFAULT_MAX_NUMBER_OF_PARTITIONS);
     offLinejobWaitTimeInMilliseconds = props.getLong(OFFLINE_JOB_START_TIMEOUT_MS, 15000);
+    // By default, enable topic deletion when job failed.
+    enableTopicDeletionWhenJobFailed = props.getBoolean(ENABLE_TOPIC_DELETION_WHEN_JOB_FAILED, true);
 
     if (props.containsKey(PERSISTENCE_TYPE)) {
       persistenceType = PersistenceType.valueOf(props.getString(PERSISTENCE_TYPE));
@@ -142,6 +145,10 @@ public class VeniceControllerClusterConfig {
 
   public long getOffLinejobWaitTimeInMilliseconds() {
     return offLinejobWaitTimeInMilliseconds;
+  }
+
+  public boolean isEnableTopicDeletionWhenJobFailed() {
+    return enableTopicDeletionWhenJobFailed;
   }
 
   /**

@@ -38,7 +38,7 @@ public class VeniceJobManager implements StatusMessageHandler<StoreStatusMessage
   private final ReadWriteStoreRepository metadataRepository;
   private final AtomicInteger idGenerator = new AtomicInteger(0);
   private final int epoch;
-  private Admin helixAdmin;
+  private VeniceHelixAdmin helixAdmin;
   private final String clusterName;
   private ConcurrentMap<String, Job> waitingJobMap;
 
@@ -56,7 +56,7 @@ public class VeniceJobManager implements StatusMessageHandler<StoreStatusMessage
     waitingJobMap = new ConcurrentHashMap<>();
   }
 
-  public void setAdmin(Admin helixAdmin) {
+  public void setAdmin(VeniceHelixAdmin helixAdmin) {
     this.helixAdmin = helixAdmin;
   }
 
@@ -287,8 +287,13 @@ public class VeniceJobManager implements StatusMessageHandler<StoreStatusMessage
     int versionNumber = Version.parseVersionFromKafkaTopicName(job.getKafkaTopic());
     deleteOneStoreVersion(store, versionNumber);
     logger.info("Deleted store:" + store.getName() + " version:" + versionNumber);
-    helixAdmin.getTopicManager().deleteTopic(job.getKafkaTopic());
-    logger.info("Delete topic:" + job.getKafkaTopic());
+    // Check the feature flag to decide whether manager would delete the topic for failed job or not.
+    if (helixAdmin.getVeniceHelixResource(clusterName).getConfig().isEnableTopicDeletionWhenJobFailed()) {
+      helixAdmin.getTopicManager().deleteTopic(job.getKafkaTopic());
+      logger.info("Deleted topic:" + job.getKafkaTopic());
+    } else {
+      logger.info("Topic deletion is disabled for this controller. Ignore deletion request.");
+    }
   }
 
   private void handleJobComplete(Job job) {
