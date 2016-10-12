@@ -6,6 +6,7 @@ import com.linkedin.venice.stats.AbstractVeniceStats;
 import com.linkedin.venice.stats.TehutiUtils;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
+import io.tehuti.metrics.stats.Max;
 import io.tehuti.metrics.stats.OccurrenceRate;
 import io.tehuti.metrics.stats.SampledCount;
 
@@ -15,6 +16,7 @@ public class ControllerStats extends AbstractVeniceStats {
   final private Sensor failedRequest;
   final private Sensor successfulRequestLatencySensor;
   final private Sensor failedRequestLatency;
+  final private Sensor adminConsumeFailCount;
 
   private static ControllerStats instance;
 
@@ -44,6 +46,7 @@ public class ControllerStats extends AbstractVeniceStats {
       TehutiUtils.getPercentileStat(getName() + "_" + "successful_request_latency"));
     failedRequestLatency = registerSensor("failed_request_latency",
       TehutiUtils.getPercentileStat(getName() + "_" + "failed_request_latency"));
+    adminConsumeFailCount = registerSensor("failed_admin_messages", new Max());
   }
 
   public void recordRequest() {
@@ -63,4 +66,11 @@ public class ControllerStats extends AbstractVeniceStats {
   }
 
   public void recordFailedRequestLatency(double latency) {record(failedRequestLatency, latency);}
+
+  /**
+   * @param retryCount the number of times that a failure has consecutively triggered a retry
+   */
+  public void recordFailedAdminConsumption(double retryCount) {
+    record(adminConsumeFailCount, retryCount);
+  }
 }
