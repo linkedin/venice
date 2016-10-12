@@ -71,6 +71,7 @@ public class ConfigKeys {
   public static final String DEFAULT_MAX_NUMBER_OF_PARTITIONS = "default.partition.max.count";
   public static final String DEFAULT_PARTITION_SIZE = "default.partition.size";
   public static final String OFFLINE_JOB_START_TIMEOUT_MS = "offline.job.start.timeout.ms";
+  public static final String ENABLE_TOPIC_DELETION_WHEN_JOB_FAILED = "enable.topic.deletion,when.job.failed";
 
   // Controller specific configs
   public static final String CONTROLLER_CLUSTER_ZK_ADDRESSS = "controller.cluster.zk.address";
