@@ -158,7 +158,7 @@ public class TestVeniceHelixAdmin {
   }
 
   //@Test(timeOut = TOTAL_TIMEOUT_FOR_LONG_TEST)
-  @Test(retryAnalyzer = FlakyTestRetryAnalyzer.class)
+  @Test
   public void testControllerFailOver()
       throws Exception {
     String storeName = TestUtils.getUniqueString("test");
@@ -187,7 +187,8 @@ public class TestVeniceHelixAdmin {
       newMasterAdmin.addStore(clusterName, "failedStore", "dev", keySchema, valueSchema);
       Assert.fail("Can not add store through a standby controller");
     } catch (VeniceException e) {
-      //expected
+      Assert.assertTrue(e.getMessage().contains("Can not get the resources, current controller is not the leader"),
+          "Wrong error message, got: " + e.getMessage());
     }
 
     //Stop original master.
@@ -225,10 +226,10 @@ public class TestVeniceHelixAdmin {
     if(veniceAdmin.isMasterController(clusterName)) {
       veniceAdmin.addStore(clusterName, "failedStore", "dev", keySchema, valueSchema);
       newMasterAdmin.stop(clusterName);
-    }else if(newMasterAdmin.isMasterController(clusterName)){
+    } else if(newMasterAdmin.isMasterController(clusterName)){
       newMasterAdmin.addStore(clusterName, "failedStore", "dev", keySchema, valueSchema);
       newMasterAdmin.stop(clusterName);
-    }else {
+    } else {
       newMasterAdmin.stop(clusterName);
       Assert.fail("No leader controller is found for cluster"+clusterName);
     }
@@ -368,7 +369,7 @@ public class TestVeniceHelixAdmin {
     Assert.fail("No VeniceHelixAdmin became master for cluster: " + cluster + " after timeout: " + timeout);
   }
 
-  @Test
+  @Test(retryAnalyzer = FlakyTestRetryAnalyzer.class)
   public void testDeleteOldVersions()
       throws InterruptedException {
     String storeName = "test";

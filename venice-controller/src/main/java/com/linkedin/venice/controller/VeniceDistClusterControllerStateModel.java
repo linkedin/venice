@@ -76,7 +76,9 @@ public class VeniceDistClusterControllerStateModel extends StateModel {
     String controllerName = message.getTgtName();
 
     logger.info(controllerName + " becoming standby from leader for " + clusterName);
-    reset();
+    synchronized (resources) { // Sloppy solution to race condition between add store and LEADER -> STANDBY controller state change
+      reset();
+    }
   }
 
   @Transition(to = "OFFLINE", from = HelixState.STANDBY_STATE)

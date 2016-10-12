@@ -9,6 +9,7 @@ import com.linkedin.venice.controller.kafka.protocol.admin.StoreCreation;
 import com.linkedin.venice.controller.kafka.protocol.admin.ValueSchemaCreation;
 import com.linkedin.venice.controller.kafka.protocol.enums.AdminMessageType;
 import com.linkedin.venice.controller.kafka.protocol.serializer.AdminOperationSerializer;
+import com.linkedin.venice.controller.stats.ControllerStats;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.consumer.KafkaConsumerWrapper;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
@@ -45,6 +46,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
   private final Admin admin;
   private final AtomicBoolean isRunning;
   private final AdminOperationSerializer deserializer;
+  private final ControllerStats controllerStats;
 
   private boolean isSubscribed;
   private KafkaConsumerWrapper consumer;
@@ -68,6 +70,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
     this.isSubscribed = false;
     this.lastOffset = -1;
     this.topicExists = false;
+    this.controllerStats = ControllerStats.getInstance();
   }
 
   @Override
@@ -98,6 +101,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
           }
           ConsumerRecords records = consumer.poll(READ_CYCLE_DELAY_MS);
           while (isRunning.get() && admin.isMasterController(clusterName)) {
+            int retryCount = 0;
             // TODO: we might need to consider to reload Offset, so that
             // admin tool is able to let consumer skip the bad message by updating consumed offset.
             /**
@@ -107,11 +111,14 @@ public class AdminConsumptionTask implements Runnable, Closeable {
              */
             try {
               processMessages(records);
+              retryCount = 0; // reset count if we process successfully
               break;
             } catch (Exception e) {
+              retryCount += 1; // increment and report count if we have a failure
+              controllerStats.recordFailedAdminConsumption(retryCount);
               // Something bad happens, we need to keep retrying here,
               // since next 'poll' function call won't retrieve the same message any more
-              logger.error("Receive error message when process admin message, will retry", e);
+              logger.error("Error when processing admin message, will retry", e);
               admin.setLastException(clusterName, e);
               Utils.sleep(READ_CYCLE_DELAY_MS);
             }

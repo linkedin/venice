@@ -1,6 +1,7 @@
 package com.linkedin.venice.controller.kafka.consumer;
 
 import com.linkedin.venice.controller.Admin;
+import com.linkedin.venice.controller.VeniceController;
 import com.linkedin.venice.controller.kafka.AdminTopicUtils;
 import com.linkedin.venice.controller.kafka.protocol.admin.AdminOperation;
 import com.linkedin.venice.controller.kafka.protocol.admin.SchemaMeta;
@@ -8,6 +9,7 @@ import com.linkedin.venice.controller.kafka.protocol.admin.StoreCreation;
 import com.linkedin.venice.controller.kafka.protocol.enums.AdminMessageType;
 import com.linkedin.venice.controller.kafka.protocol.enums.SchemaType;
 import com.linkedin.venice.controller.kafka.protocol.serializer.AdminOperationSerializer;
+import com.linkedin.venice.controller.stats.ControllerStats;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.kafka.consumer.KafkaConsumerWrapper;
@@ -17,8 +19,11 @@ import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.offsets.OffsetManager;
 import com.linkedin.venice.offsets.OffsetRecord;
+import com.linkedin.venice.stats.TehutiUtils;
+import com.linkedin.venice.utils.FlakyTestRetryAnalyzer;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
+import io.tehuti.metrics.MetricsRepository;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.common.TopicPartition;
@@ -26,6 +31,7 @@ import org.apache.kafka.common.record.TimestampType;
 import org.mockito.Mockito;
 import org.mockito.invocation.InvocationOnMock;
 import org.mockito.stubbing.Answer;
+import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
 import java.io.IOException;
@@ -54,6 +60,12 @@ public class TestAdminConsumptionTask {
   private Admin admin;
 
   private ExecutorService executor;
+
+  @BeforeClass
+  public void initControllerStats(){
+    MetricsRepository mockMetrics = TehutiUtils.getMetricsRepository(TestUtils.getUniqueString("controller-stats"));
+    ControllerStats.init(mockMetrics);
+  }
 
   private void initTaskRelatedArgs(ConsumerRecord ... recordList) {
     executor = Executors.newCachedThreadPool();
@@ -165,7 +177,7 @@ public class TestAdminConsumptionTask {
 
   @Test (timeOut = TIMEOUT)
   public void testRunWhenStoreCreationGotExceptionForTheFirstTime() throws InterruptedException, IOException {
-    String storeName = "test_store";
+    String storeName = TestUtils.getUniqueString("test_store");
     String owner = "test_owner";
     String keySchema = "\"string\"";
     String valueSchema = "\"string\"";

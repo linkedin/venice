@@ -164,16 +164,18 @@ public class VeniceHelixAdmin implements Admin {
 
     @Override
     public synchronized void addStore(String clusterName, String storeName, String owner, String keySchema, String valueSchema) {
-        checkPreConditionForAddStore(clusterName, storeName, owner, keySchema, valueSchema);
-        VeniceControllerClusterConfig config = getVeniceHelixResource(clusterName).getConfig();
-        Store store = new Store(storeName, owner, System.currentTimeMillis(), config.getPersistenceType(),
-            config.getRoutingStrategy(), config.getReadStrategy(), config.getOfflinePushStrategy());
-        HelixReadWriteStoreRepository storeRepo = getVeniceHelixResource(clusterName).getMetadataRepository();
-        storeRepo.addStore(store);
-        // Add schema
-        HelixReadWriteSchemaRepository schemaRepo = getVeniceHelixResource(clusterName).getSchemaRepository();
-        schemaRepo.initKeySchema(storeName, keySchema);
-        schemaRepo.addValueSchema(storeName, valueSchema, HelixReadOnlySchemaRepository.VALUE_SCHEMA_STARTING_ID);
+        VeniceHelixResources resources = getVeniceHelixResource(clusterName);
+        synchronized (resources) { // Sloppy solution to race condition between add store and LEADER -> STANDBY controller state change
+            checkPreConditionForAddStore(clusterName, storeName, owner, keySchema, valueSchema);
+            VeniceControllerClusterConfig config = getVeniceHelixResource(clusterName).getConfig();
+            Store store = new Store(storeName, owner, System.currentTimeMillis(), config.getPersistenceType(), config.getRoutingStrategy(), config.getReadStrategy(), config.getOfflinePushStrategy());
+            HelixReadWriteStoreRepository storeRepo = resources.getMetadataRepository();
+            storeRepo.addStore(store);
+            // Add schema
+            HelixReadWriteSchemaRepository schemaRepo = resources.getSchemaRepository();
+            schemaRepo.initKeySchema(storeName, keySchema);
+            schemaRepo.addValueSchema(storeName, valueSchema, HelixReadOnlySchemaRepository.VALUE_SCHEMA_STARTING_ID);
+        }
     }
 
     protected void checkPreConditionForAddStore(String clusterName, String storeName, String owner, String keySchema, String valueSchema) {
