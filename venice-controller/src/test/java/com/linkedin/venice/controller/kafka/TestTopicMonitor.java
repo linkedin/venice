@@ -5,20 +5,15 @@ import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.VeniceHelixAdmin;
 import com.linkedin.venice.integration.utils.KafkaBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
-import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
-import java.util.ArrayList;
-import java.util.List;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.mockito.Mockito;
-import org.testng.Assert;
 import org.testng.annotations.Test;
 
-import static org.mockito.Matchers.anyInt;
-import static org.mockito.Matchers.anyString;
 import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.doReturn;
 
@@ -34,9 +29,12 @@ public class TestTopicMonitor {
 
     KafkaBrokerWrapper kafka = new ServiceFactory().getKafkaBroker();
 
+    Store mockStore = Mockito.mock(Store.class);
+    doReturn(1).when(mockStore).getLargestUsedVersionNumber();
+
     Admin mockAdmin = Mockito.mock(VeniceHelixAdmin.class);
-    List<Version> existingVersions = new ArrayList<>();
-    doReturn(existingVersions).when(mockAdmin).versionsForStore(anyString(), anyString());
+    doReturn(mockStore).when(mockAdmin).getStore(clusterName, storeName);
+
     doReturn(kafka.getAddress()).when(mockAdmin).getKafkaBootstrapServers();
 
     int pollIntervalMs = 1; /* ms */
@@ -44,8 +42,10 @@ public class TestTopicMonitor {
     TopicMonitor mon = new TopicMonitor(mockAdmin, clusterName, replicationFactor, pollIntervalMs);
     mon.start();
 
+    int partitionNumber = 4;
     TopicManager topicManager = new TopicManager(kafka.getZkAddress());
-    topicManager.createTopic(storeName + "_v1", 4, 1); /* topic, partitions, replication */
+    topicManager.createTopic(storeName + "_v1", partitionNumber, 1); /* topic, partitions, replication */
+    topicManager.createTopic(storeName + "_v2", partitionNumber, 1); /* topic, partitions, replication */
 
     Properties kafkaProps = new Properties();
     kafkaProps.put("bootstrap.servers", kafka.getAddress());
@@ -60,43 +60,15 @@ public class TestTopicMonitor {
 
     /* wait for kafka broker to create the topic */
     TestUtils.waitForNonDeterministicCompletion(5, TimeUnit.SECONDS,
-        () -> kafkaClient.listTopics().containsKey(storeName + "_v1"));
+        () -> kafkaClient.listTopics().containsKey(storeName + "_v2"));
     kafkaClient.close();
     Thread.sleep(100);
 
-    Mockito.verify(mockAdmin, atLeastOnce()).addVersion(anyString(), anyString(), anyInt(), anyInt(), anyInt());
+    Mockito.verify(mockAdmin, atLeastOnce()).addVersion(clusterName, storeName, 2, partitionNumber, replicationFactor);
+    Mockito.verify(mockAdmin, Mockito.never()).addVersion(clusterName, storeName, 1, partitionNumber, replicationFactor);
 
     mon.stop();
     kafka.close();
     topicManager.close();
-
-  }
-
-  @Test
-  public void newerVersionsAreIdentified(){
-    List<Version> versionList = new ArrayList<Version>();
-
-    Assert.assertTrue(TopicMonitor.isNewerVersion(1, versionList),
-        "new version on empty version set must be valid");
-    Assert.assertTrue(TopicMonitor.isNewerVersion(2, versionList),
-        "new version on empty version set must be valid");
-    Assert.assertTrue(TopicMonitor.isNewerVersion(20, versionList),
-        "new version on empty version set must be valid");
-
-    versionList.add(new Version("myStore", 5));
-
-    Assert.assertFalse(TopicMonitor.isNewerVersion(1, versionList),
-        "smaller than all existing versions must make invalid new version");
-    Assert.assertFalse(TopicMonitor.isNewerVersion(5, versionList), "existing version must make invalid new version");
-    Assert.assertTrue(TopicMonitor.isNewerVersion(6, versionList), "next version must make valid new version");
-    Assert.assertFalse(TopicMonitor.isNewerVersion(0, versionList), "0 must make invalid new version");
-    Assert.assertFalse(TopicMonitor.isNewerVersion(-1, versionList), "-1 must make invalid new version");
-
-    versionList.add(new Version("myStore", 8));
-    Assert.assertFalse(TopicMonitor.isNewerVersion(1, versionList), "smaller than all existing versions must make invalid new version");
-    Assert.assertFalse(TopicMonitor.isNewerVersion(5, versionList), "existing version must make invalid new version");
-    Assert.assertFalse(TopicMonitor.isNewerVersion(8, versionList), "existing version must make invalid new version");
-    Assert.assertFalse(TopicMonitor.isNewerVersion(7, versionList), "rollback version must make invalid newer version"); /* difference between isValid and isNewer */
-    Assert.assertTrue(TopicMonitor.isNewerVersion(9, versionList), "next version must make valid new version");
   }
 }
