@@ -3,6 +3,7 @@ package com.linkedin.venice.controller.kafka;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.exceptions.StorePausedException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
+import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.utils.Utils;
@@ -103,8 +104,11 @@ public class TopicMonitor extends AbstractVeniceService {
                 String storeName = Version.parseStoreFromKafkaTopicName(topic);
                 int version = Version.parseVersionFromKafkaTopicName(topic);
                 try {
-                  List<Version> currentVersions = admin.versionsForStore(clusterName, storeName); /* throws VeniceNoStore */
-                  if (isNewerVersion(version, currentVersions)) {
+                  Store store = admin.getStore(clusterName, storeName);
+                  if (null == store) {
+                    throw new VeniceNoStoreException(storeName);
+                  }
+                  if (version > store.getLargestUsedVersionNumber()) {
                     int partitions = entry.getValue().size();
                     admin.addVersion(clusterName, storeName, version, partitions, replicationFactor);
                   }
@@ -132,18 +136,6 @@ public class TopicMonitor extends AbstractVeniceService {
     }
   }
 
-  protected static boolean isNewerVersion(int newVersion, List<Version> existingVersions){
-    logger.info("Checking validity of version: " + newVersion + ", existingVersions are: " + logVersionNumbers(existingVersions));
-    if (newVersion < 1){
-      return false; /* Not valid */
-    }
-    for (Version version : existingVersions){
-      if (newVersion <= version.getNumber()){
-        return false;
-      }
-    }
-    return true;
-  }
 
   private static String logVersionNumbers(List<Version> version){
     return version.stream()
