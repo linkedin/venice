@@ -23,12 +23,12 @@ import org.testng.annotations.Test;
 public class TestAdminSparkServerWithMultiServers {
   private VeniceClusterWrapper venice;
   private String routerUrl;
-  private int numberOfServer = 3;
+  private final int numberOfServer = 3;
 
   @BeforeClass
   public void setUp() {
-    venice = ServiceFactory.getVeniceCluster(numberOfServer);
-    routerUrl = "http://" + venice.getVeniceRouter().getAddress();
+    venice = ServiceFactory.getVeniceCluster(1, numberOfServer, 1);
+    routerUrl = venice.getRandomRouterURL();
   }
 
   @AfterClass

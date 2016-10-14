@@ -15,7 +15,7 @@ import java.nio.charset.StandardCharsets;
  * This class is used to maintain the offset for admin topic.
  * The thread-safety depends on the safety of the internal {@link KafkaConsumerWrapper}
  */
-public class AdminOffsetManager implements OffsetManager, Closeable {
+public class AdminOffsetManager implements OffsetManager {
   private static final Logger LOGGER = Logger.getLogger(AdminOffsetManager.class);
   // Kafka Consumer could not be accessed by multiple threads at the same time
   private final KafkaConsumerWrapper consumer;
@@ -47,12 +47,5 @@ public class AdminOffsetManager implements OffsetManager, Closeable {
       return OffsetRecord.NON_EXISTENT_OFFSET;
     }
     return new OffsetRecord(offsetAndMetadata.metadata().getBytes(StandardCharsets.UTF_8));
-  }
-
-  @Override
-  public void close() throws IOException {
-    if (null != consumer) {
-      consumer.close();
-    }
   }
 }

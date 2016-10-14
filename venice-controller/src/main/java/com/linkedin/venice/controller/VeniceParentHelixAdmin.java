@@ -664,6 +664,11 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   @Override
+  public void stopVeniceController() {
+    veniceHelixAdmin.stopVeniceController();
+  }
+
+  @Override
   public synchronized void close() {
     veniceWriterMap.keySet().forEach(this::stop);
     veniceHelixAdmin.close();

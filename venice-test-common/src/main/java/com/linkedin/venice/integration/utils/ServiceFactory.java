@@ -17,6 +17,8 @@ public class ServiceFactory {
   // Test config
   private static final int MAX_ATTEMPT = 10;
   private static final int MAX_ASYNC_WAIT_TIME_MS = 10 * Time.MS_PER_SECOND;
+  private static final int DEFAULT_REPLICA_FACTOR =1;
+  private static final int DEFAULT_PARTITION_SIZE_BYTES = 100;
 
   /**
    * @return an instance of {@link ZkServerWrapper}
@@ -46,9 +48,16 @@ public class ServiceFactory {
    * @return an instance of {@link com.linkedin.venice.controller.VeniceControllerService}
    */
   public static VeniceControllerWrapper getVeniceController(String clusterName, KafkaBrokerWrapper kafkaBrokerWrapper) {
+    return getVeniceController(clusterName, kafkaBrokerWrapper,DEFAULT_REPLICA_FACTOR, DEFAULT_PARTITION_SIZE_BYTES);
+  }
+
+  /**
+   * @return an instance of {@link com.linkedin.venice.controller.VeniceControllerService}
+   */
+  public static VeniceControllerWrapper getVeniceController(String clusterName, KafkaBrokerWrapper kafkaBrokerWrapper, int replicaFactor, int partitionSize) {
     return getStatefulService(
         VeniceControllerWrapper.SERVICE_NAME,
-        VeniceControllerWrapper.generateService(clusterName, kafkaBrokerWrapper, false));
+        VeniceControllerWrapper.generateService(clusterName, kafkaBrokerWrapper, false, replicaFactor, partitionSize));
   }
 
   /**
@@ -57,7 +66,8 @@ public class ServiceFactory {
   public static VeniceControllerWrapper getVeniceParentController(String clusterName, KafkaBrokerWrapper kafkaBrokerWrapper) {
     return getStatefulService(
         VeniceControllerWrapper.SERVICE_NAME,
-        VeniceControllerWrapper.generateService(clusterName, kafkaBrokerWrapper, true));
+        VeniceControllerWrapper.generateService(clusterName, kafkaBrokerWrapper, true, DEFAULT_REPLICA_FACTOR,
+            DEFAULT_PARTITION_SIZE_BYTES));
   }
 
   public static VeniceServerWrapper getVeniceServer(String clusterName, KafkaBrokerWrapper kafkaBrokerWrapper,
@@ -110,15 +120,30 @@ public class ServiceFactory {
   }
 
   public static VeniceClusterWrapper getVeniceCluster() {
-    return getVeniceCluster(1);
+    // Get the cluster with 1 controller, 1 server and 1 router by default.
+    return getVeniceCluster(1, 1, 1, DEFAULT_REPLICA_FACTOR, DEFAULT_PARTITION_SIZE_BYTES);
   }
 
-  public static VeniceClusterWrapper getVeniceCluster(int numberOfServers) {
+  public static VeniceClusterWrapper getVeniceCluster(int numberOfControllers, int numberOfServers, int numberOfRouter) {
+    return getVeniceCluster(numberOfControllers, numberOfServers, numberOfRouter, DEFAULT_REPLICA_FACTOR,
+        DEFAULT_PARTITION_SIZE_BYTES);
+  }
+
+  public static VeniceClusterWrapper getVeniceCluster(int numberOfControllers, int numberOfServers, int numberOfRouter, int replicaFactor, int partitionSize) {
     // As we introduce bootstrap state in to venice and transition from bootstrap to online will be blocked until get
     // "end of push" message. We need more venice server for testing, because there is a limitation in helix about how
     // many uncompleted transitions one server could handle. So if we still use one server and that limitation is
     // reached, venice can not create new resource which will cause failed tests.
-    return getService(VeniceClusterWrapper.SERVICE_NAME, VeniceClusterWrapper.generateService(numberOfServers));
+    // Enable to start multiple controllers and routers too, so that we could fail some of them to do the failover integration test.
+    return getService(VeniceClusterWrapper.SERVICE_NAME,
+        VeniceClusterWrapper.generateService(numberOfControllers, numberOfServers, numberOfRouter, replicaFactor, partitionSize, false, false));
+  }
+
+  public static VeniceClusterWrapper getVeniceCluster(int numberOfControllers, int numberOfServers, int numberOfRouter,
+      int replicaFactor, int partitionSize, boolean enableWhitelist, boolean enableAutoJoinWhitelist) {
+    return getService(VeniceClusterWrapper.SERVICE_NAME,
+        VeniceClusterWrapper.generateService(numberOfControllers, numberOfServers, numberOfRouter, replicaFactor,
+            partitionSize, enableWhitelist, enableAutoJoinWhitelist));
   }
 
   private static <S extends ProcessWrapper> S getStatefulService(String serviceName, StatefulServiceProvider<S> serviceProvider) {

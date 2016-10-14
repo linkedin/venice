@@ -9,7 +9,6 @@ import com.linkedin.venice.controllerapi.NewStoreResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
-import com.linkedin.venice.controllerapi.VersionResponse;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceServerWrapper;
@@ -30,7 +29,7 @@ public class TestAdminSparkServer {
   @BeforeMethod // TODO figure out why tests are stepping on each other and switch this back to @BeforeClass
   public void setUp(){
     venice = ServiceFactory.getVeniceCluster();
-    routerUrl = "http://" + venice.getVeniceRouter().getAddress();
+    routerUrl = venice.getRandomRouterURL();
   }
 
   @AfterMethod

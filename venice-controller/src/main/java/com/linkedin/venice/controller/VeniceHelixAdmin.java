@@ -25,6 +25,7 @@ import com.linkedin.venice.status.StatusMessageChannel;
 import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.PartitionCountUtils;
 import com.linkedin.venice.utils.Utils;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
@@ -488,6 +489,18 @@ public class VeniceHelixAdmin implements Admin {
     }
 
     @Override
+    public void stopVeniceController() {
+        try {
+            manager.disconnect();
+            topicManager.close();
+            zkClient.close();
+            admin.close();
+        } catch (Exception e) {
+            throw new VeniceException("Can not stop controller correctly.", e);
+        }
+    }
+
+    @Override
     public ExecutionStatus getOffLineJobStatus(String clusterName, String kafkaTopic) {
         checkControllerMastership(clusterName);
         VeniceJobManager jobManager = getVeniceHelixResource(clusterName).getJobManager();
@@ -671,6 +684,8 @@ public class VeniceHelixAdmin implements Admin {
         List<Replica> replicas = new ArrayList<>();
         List<String> resources = admin.getResourcesInCluster(cluster);
         for (String resource : resources){
+            // TODO if we only need the replicas in one node, we could read CURRENTSTATE of this node
+            // instead of reading the whole EXTERNALVIEW
             ExternalView ev = admin.getResourceExternalView(cluster, resource);
             Set<String> partitions = ev.getPartitionSet();
             for (String partition : partitions) {

@@ -88,7 +88,7 @@ public class MockHttpServerWrapper extends ProcessWrapper {
   }
 
   @Override
-  protected void start() throws Exception {
+  protected void internalStart() throws Exception {
     serverFuture = bootstrap.bind(port).sync();
     if (null != d2ServerList) {
       for (D2Server d2Server : d2ServerList) {
@@ -98,7 +98,7 @@ public class MockHttpServerWrapper extends ProcessWrapper {
   }
 
   @Override
-  protected void stop() throws Exception {
+  protected void internalStop() throws Exception {
     if (null != d2ServerList) {
       for (D2Server d2Server : d2ServerList) {
         try {
@@ -113,6 +113,12 @@ public class MockHttpServerWrapper extends ProcessWrapper {
     workerGroup.shutdownGracefully();
     bossGroup.shutdownGracefully();
     shutdown.sync();
+  }
+
+  @Override
+  protected void newProcess()
+      throws Exception {
+    throw new UnsupportedOperationException("Mock Http server does not support restart.");
   }
 
   public void addResponseForUri(String uri, FullHttpResponse response) {

@@ -1,5 +1,9 @@
 package com.linkedin.venice.integration.utils;
 
+import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.helix.HelixReadOnlyStoreRepository;
+import com.linkedin.venice.helix.HelixRoutingDataRepository;
+import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.router.RouterServer;
 
 import com.linkedin.venice.utils.TestUtils;
@@ -15,13 +19,17 @@ public class VeniceRouterWrapper extends ProcessWrapper {
 
   public static final String SERVICE_NAME = "VeniceRouter";
 
-  private final RouterServer service;
+  private RouterServer service;
   private final int port;
+  private final String clusterName;
+  private final String zkAddress;
 
-  VeniceRouterWrapper(String serviceName, File dataDirectory, RouterServer service, String clusterName, int port) {
+  VeniceRouterWrapper(String serviceName, File dataDirectory, RouterServer service, String clusterName, int port, String zkAddress) {
     super(serviceName, dataDirectory);
     this.service = service;
     this.port = port;
+    this.clusterName = clusterName;
+    this.zkAddress = zkAddress;
   }
 
   static StatefulServiceProvider<VeniceRouterWrapper> generateService(String clusterName, KafkaBrokerWrapper kafkaBrokerWrapper) {
@@ -30,7 +38,7 @@ public class VeniceRouterWrapper extends ProcessWrapper {
 
     return (serviceName, port, dataDirectory) -> {
       RouterServer router = new RouterServer(port, clusterName, zkAddress, new ArrayList<>());
-      return new VeniceRouterWrapper(serviceName, dataDirectory, router, clusterName, port);
+      return new VeniceRouterWrapper(serviceName, dataDirectory, router, clusterName, port, zkAddress);
     };
   }
 
@@ -45,7 +53,7 @@ public class VeniceRouterWrapper extends ProcessWrapper {
   }
 
   @Override
-  protected void start() throws Exception {
+  protected void internalStart() throws Exception {
     service.start();
 
     TestUtils.waitForNonDeterministicCompletion(
@@ -55,8 +63,22 @@ public class VeniceRouterWrapper extends ProcessWrapper {
   }
 
   @Override
-  protected void stop() throws Exception {
+  protected void internalStop() throws Exception {
     service.stop();
+  }
+
+  @Override
+  protected void newProcess()
+      throws Exception {
+    service = new RouterServer(port, clusterName, zkAddress, new ArrayList<>());
+  }
+
+  public HelixRoutingDataRepository getRoutingDataRepository(){
+    return service.getRoutingDataRepository();
+  }
+
+  public HelixReadOnlyStoreRepository getMetaDataRepository() {
+    return service.getMetadataRepository();
   }
 
 }

@@ -78,8 +78,8 @@ public class ZkServerWrapper extends ProcessWrapper {
 
   // Instance-level state and APIs
   private final ServerConfig configuration;
-  private final ZkThread zkThread;
-  private final ZooKeeperServer zkServer;
+  private ZkThread zkThread;
+  private ZooKeeperServer zkServer;
 
   /**
    * The constructor is private because {@link #generateService()} should be the only
@@ -148,7 +148,7 @@ public class ZkServerWrapper extends ProcessWrapper {
   }
 
   @Override
-  public void start() throws Exception {
+  protected void internalStart() throws Exception {
     long startTime = System.currentTimeMillis();
     zkThread.start();
     while (!zkServer.isRunning() && zkThread.exception == null) {
@@ -170,8 +170,15 @@ public class ZkServerWrapper extends ProcessWrapper {
   }
 
   @Override
-  public void stop() throws Exception {
+  protected void internalStop() throws Exception {
     zkServer.shutdown();
     zkThread.interrupt();
+  }
+
+  @Override
+  protected void newProcess()
+      throws Exception {
+    this.zkServer = new ZooKeeperServer();
+    this.zkThread = new ZkThread();
   }
 }

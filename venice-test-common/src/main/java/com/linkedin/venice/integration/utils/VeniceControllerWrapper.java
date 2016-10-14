@@ -1,7 +1,9 @@
 package com.linkedin.venice.integration.utils;
 
+import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.VeniceController;
 import com.linkedin.venice.controllerapi.ControllerClient;
+import com.linkedin.venice.controllerapi.NewStoreResponse;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Version;
@@ -16,50 +18,48 @@ import static com.linkedin.venice.ConfigKeys.*;
 
 /**
  * A wrapper for the {@link VeniceControllerWrapper}.
- *
+ * <p>
  * Calling close() will clean up the controller's data directory.
  */
 public class VeniceControllerWrapper extends ProcessWrapper {
 
   public static final String SERVICE_NAME = "VeniceController";
-  private final VeniceController service;
+  private final VeniceProperties config;
+  private VeniceController service;
   private final int port;
 
-  VeniceControllerWrapper(
-      String serviceName,
-      File dataDirectory,
-      VeniceController service,
-      int port) {
+  VeniceControllerWrapper(String serviceName, File dataDirectory, VeniceController service, int port, VeniceProperties config) {
     super(serviceName, dataDirectory);
     this.service = service;
     this.port = port;
+    this.config = config;
   }
 
-  static StatefulServiceProvider<VeniceControllerWrapper> generateService(String clusterName, KafkaBrokerWrapper kafkaBrokerWrapper, boolean isParent) {
+  static StatefulServiceProvider<VeniceControllerWrapper> generateService(String clusterName,
+      KafkaBrokerWrapper kafkaBrokerWrapper, boolean isParent, int replicaFactor, int partitionSize) {
     // TODO: Once the ZK address used by Controller and Kafka are decoupled, change this
     String zkAddress = kafkaBrokerWrapper.getZkAddress();
 
     return (serviceName, port, dataDirectory) -> {
-      VeniceProperties
-          clusterProps = IntegrationTestUtils.getClusterProps(clusterName, dataDirectory, kafkaBrokerWrapper);
+      VeniceProperties clusterProps =
+          IntegrationTestUtils.getClusterProps(clusterName, dataDirectory, kafkaBrokerWrapper);
 
       int adminPort = IntegrationTestUtils.getFreePort();
 
       // TODO: Validate that these configs are all still used.
       // TODO: Centralize default config values in a single place
-      PropertyBuilder builder = new PropertyBuilder()
-              .put(clusterProps.toProperties())
-              .put(KAFKA_REPLICA_FACTOR, 1)
-              .put(KAFKA_ZK_ADDRESS, zkAddress)
-              .put(CONTROLLER_NAME, "venice-controller") // Why is this configurable?
-              .put(DEFAULT_REPLICA_FACTOR, 1)
-              .put(DEFAULT_NUMBER_OF_PARTITION, 1)
-              .put(ADMIN_PORT, adminPort)
-              .put(DEFAULT_MAX_NUMBER_OF_PARTITIONS, 10)
-              .put(DEFAULT_PARTITION_SIZE, 100)
-              .put(TOPIC_MONITOR_POLL_INTERVAL_MS, 100)
-              .put(CONTROLLER_PARENT_MODE, isParent);
-      if (isParent){
+      PropertyBuilder builder = new PropertyBuilder().put(clusterProps.toProperties())
+          .put(KAFKA_REPLICA_FACTOR, 1)
+          .put(KAFKA_ZK_ADDRESS, zkAddress)
+          .put(CONTROLLER_NAME, "venice-controller") // Why is this configurable?
+          .put(DEFAULT_REPLICA_FACTOR, replicaFactor)
+          .put(DEFAULT_NUMBER_OF_PARTITION, 1)
+          .put(ADMIN_PORT, adminPort)
+          .put(DEFAULT_MAX_NUMBER_OF_PARTITIONS, 10)
+          .put(DEFAULT_PARTITION_SIZE, partitionSize)
+          .put(TOPIC_MONITOR_POLL_INTERVAL_MS, 100)
+          .put(CONTROLLER_PARENT_MODE, isParent);
+      if (isParent) {
         // Parent controller needs config to route per-cluster requests such as job status
         // This dummy parent controller wont support such requests until we make this config configurable.
         builder.put(CHILD_CLUSTER_URL_PREFIX + ".cluster1", "http://dummyhost:1234");
@@ -68,7 +68,7 @@ public class VeniceControllerWrapper extends ProcessWrapper {
       VeniceProperties props = builder.build();
 
       VeniceController veniceController = new VeniceController(props);
-      return new VeniceControllerWrapper(serviceName, dataDirectory, veniceController, adminPort);
+      return new VeniceControllerWrapper(serviceName, dataDirectory, veniceController, adminPort, props);
     };
   }
 
@@ -87,45 +87,21 @@ public class VeniceControllerWrapper extends ProcessWrapper {
   }
 
   @Override
-  protected void start() throws Exception {
+  protected void internalStart()
+      throws Exception {
     service.start();
   }
 
   @Override
-  protected void stop() throws Exception {
+  protected void internalStop()
+      throws Exception {
     service.stop();
   }
 
-  /**
-   * Creates a new store and initializes version 1 of that store.
-   *
-   * @return VersionCreationResponse
-   */
-  public VersionCreationResponse getNewStoreVersion(String routerUrl, String clusterName) {
-    String storeName = TestUtils.getUniqueString("venice-store");
-    String storeOwner = TestUtils.getUniqueString("store-owner");
-    long storeSize = 10 * 1024 * 1024;
-    String keySchema = "\"string\"";
-    String valueSchema = "\"string\"";
-    // Create new store
-    ControllerClient.createNewStore(
-        routerUrl,
-        clusterName,
-        storeName,
-        storeOwner,
-        keySchema,
-        valueSchema
-    );
-    // Create new version
-    VersionCreationResponse newVersion = ControllerClient.createNewStoreVersion(
-        routerUrl,
-        clusterName,
-        storeName,
-        storeSize);
-    if (newVersion.isError()){
-      throw new VeniceException(newVersion.getError());
-    }
-    return newVersion;
+  @Override
+  protected void newProcess()
+      throws Exception {
+    service = new VeniceController(config);
   }
 
   /***
@@ -134,17 +110,27 @@ public class VeniceControllerWrapper extends ProcessWrapper {
    * @param storeName
    * @param version
    */
-  public void setActiveVersion(String routerUrl, String clusterName, String storeName, int version){
-    ControllerClient.overrideSetActiveVersion(routerUrl, clusterName, storeName, version);
+  public void setActiveVersion(String clusterName, String storeName, int version) {
+    ControllerClient.overrideSetActiveVersion(getControllerUrl(), clusterName, storeName, version);
   }
 
   /***
    * Set a version to be active, parsing store name and version number from a kafka topic name
+   *
    * @param kafkaTopic
    */
-  public void setActiveVersion(String routerUrl, String clusterName, String kafkaTopic){
+  public void setActiveVersion(String clusterName, String kafkaTopic) {
     String storeName = Version.parseStoreFromKafkaTopicName(kafkaTopic);
     int version = Version.parseVersionFromKafkaTopicName(kafkaTopic);
-    setActiveVersion(routerUrl, clusterName, storeName, version);
+    setActiveVersion(clusterName, storeName, version);
+  }
+
+  public boolean isMasterController(String clusterName) {
+    Admin admin = service.getVeniceControllerService().getVeniceHelixAdmin();
+    return admin.isMasterController(clusterName);
+  }
+
+  public Admin getVeniceAdmin() {
+    return service.getVeniceControllerService().getVeniceHelixAdmin();
   }
 }
