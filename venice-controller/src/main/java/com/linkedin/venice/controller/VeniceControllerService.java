@@ -57,13 +57,13 @@ public class VeniceControllerService extends AbstractVeniceService {
 
   @Override
   public void stopInner() {
-    admin.stop(config.getClusterName());
+    admin.stopVeniceController();
     try {
       consumerService.stop();
     } catch (Exception e) {
       logger.error("Got exception when stop AdminConsumerService", e);
     }
-    IOUtils.closeQuietly(adminOffsetManager);
+    consumer.close();
 
     logger.info("Stop cluster:" + config.getClusterName());
   }

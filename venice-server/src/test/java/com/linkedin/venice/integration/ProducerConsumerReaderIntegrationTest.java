@@ -65,7 +65,7 @@ public class ProducerConsumerReaderIntegrationTest {
     storeVersionName = creationResponse.getKafkaTopic();
     storeName = Version.parseStoreFromKafkaTopicName(storeVersionName);
     valueSchemaId = HelixReadOnlySchemaRepository.VALUE_SCHEMA_STARTING_ID;
-    String routerUrl = "http://" + veniceCluster.getVeniceRouter().getAddress();
+    String routerUrl = veniceCluster.getRandomRouterURL();
 
     VeniceProperties clientProps =
             new PropertyBuilder().put(KAFKA_BOOTSTRAP_SERVERS, veniceCluster.getKafka().getAddress())
@@ -170,7 +170,7 @@ public class ProducerConsumerReaderIntegrationTest {
     veniceWriter.broadcastEndOfPush(new HashMap<String,String>());
 
     // Wait for storage node to finish consuming, and new version to be activated
-    String controllerUrl = veniceCluster.getVeniceController().getControllerUrl();
+    String controllerUrl = veniceCluster.getAllControllersURLs();
     TestUtils.waitForNonDeterministicCompletion(30000, TimeUnit.SECONDS, () -> {
       int currentVersion = ControllerClient.getStore(controllerUrl, veniceCluster.getClusterName(), storeName).getStore().getCurrentVersion();
       return currentVersion == pushVersion;

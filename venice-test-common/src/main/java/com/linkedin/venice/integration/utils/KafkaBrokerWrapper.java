@@ -48,14 +48,15 @@ public class KafkaBrokerWrapper extends ProcessWrapper {
       KafkaConfig kafkaConfig = new KafkaConfig(configMap, true);
       // kafka.server.KafkaServerStartable kafkaServerStartable = new KafkaServerStartable(kafkaConfig);
       KafkaServer kafkaServer = new KafkaServer(kafkaConfig, SystemTime$.MODULE$, None$.empty());
-      return new KafkaBrokerWrapper(kafkaServer, dir, zkServerWrapper);
+      return new KafkaBrokerWrapper(kafkaConfig, kafkaServer, dir, zkServerWrapper);
     };
   }
 
   // Instance-level state and APIs
 
-  private final KafkaServer kafkaServer;
-  private final ZkServerWrapper zkServerWrapper;
+  private KafkaServer kafkaServer;
+  private ZkServerWrapper zkServerWrapper;
+  private final KafkaConfig kafkaConfig;
 
   /**
    * The constructor is private because {@link #generateService(ZkServerWrapper)} should be the only
@@ -65,8 +66,9 @@ public class KafkaBrokerWrapper extends ProcessWrapper {
    * @param dataDirectory where Kafka keeps its log
    * @param zkServerWrapper the ZK which Kafka uses for its coordination
    */
-  private KafkaBrokerWrapper(KafkaServer kafkaServer, File dataDirectory, ZkServerWrapper zkServerWrapper) {
+  private KafkaBrokerWrapper(KafkaConfig kafkaConfig, KafkaServer kafkaServer, File dataDirectory, ZkServerWrapper zkServerWrapper) {
     super(SERVICE_NAME, dataDirectory);
+    this.kafkaConfig = kafkaConfig;
     this.kafkaServer = kafkaServer;
     this.zkServerWrapper = zkServerWrapper;
   }
@@ -93,13 +95,20 @@ public class KafkaBrokerWrapper extends ProcessWrapper {
   }
 
   @Override
-  public void start() throws Exception {
+  protected void internalStart() throws Exception {
     kafkaServer.startup();
   }
 
   @Override
-  public void stop() throws Exception {
+  protected void internalStop() throws Exception {
     kafkaServer.shutdown();
     zkServerWrapper.close();
+  }
+
+  @Override
+  protected void newProcess()
+      throws Exception {
+    zkServerWrapper = ServiceFactory.getZkServer();
+    kafkaServer = new KafkaServer(kafkaConfig, SystemTime$.MODULE$, None$.empty());
   }
 }

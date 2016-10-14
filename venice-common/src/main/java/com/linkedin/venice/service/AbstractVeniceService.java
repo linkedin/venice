@@ -36,7 +36,7 @@ public abstract class AbstractVeniceService {
     try {
       if (!serviceState.compareAndSet(ServiceState.STOPPED, ServiceState.STARTING)) {
         throw new IllegalStateException("Service can only be started when in " + ServiceState.STOPPED +
-            " state! Current state: " + serviceState.get());
+            " state! Service:" + serviceName + " Current state: " + serviceState.get());
       }
 
       logger.info("Starting " + getName());

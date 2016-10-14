@@ -80,6 +80,10 @@ public class VeniceController {
     AbstractVeniceService.stopIfNotNull(controllerService);
   }
 
+  public VeniceControllerService getVeniceControllerService() {
+    return controllerService;
+  }
+
   public static void main(String args[]) {
     if(args.length < 2) {
       Utils.croak("USAGE: java " + VeniceController.class.getName()

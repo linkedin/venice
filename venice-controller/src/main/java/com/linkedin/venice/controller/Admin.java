@@ -59,7 +59,16 @@ public interface Admin {
 
     List<String> getStorageNodes(String clusterName);
 
+    /**
+     * Stop the helix controller for a single cluster.
+     * @param clusterName
+     */
     void stop(String clusterName);
+
+    /**
+     * Stop the entire controller but not only the helix controller for a single cluster.
+     */
+    void stopVeniceController();
 
     /**
      * Query the status of the offline job by given kafka topic.

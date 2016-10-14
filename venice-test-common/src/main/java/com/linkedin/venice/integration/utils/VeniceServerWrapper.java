@@ -2,6 +2,7 @@ package com.linkedin.venice.integration.utils;
 
 import static com.linkedin.venice.ConfigKeys.*;
 
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.WhitelistAccessor;
 import com.linkedin.venice.helix.ZkWhitelistAccessor;
 import com.linkedin.venice.server.VeniceConfigLoader;
@@ -22,13 +23,15 @@ import java.util.concurrent.TimeUnit;
 public class VeniceServerWrapper extends ProcessWrapper {
   public static final String SERVICE_NAME = "VeniceServer";
 
-  private final VeniceServer veniceServer;
+  private VeniceServer veniceServer;
   private final VeniceProperties serverProps;
+  private final VeniceConfigLoader config;
 
-  VeniceServerWrapper(String serviceName, File dataDirectory, VeniceServer veniceServer, VeniceProperties serverProps) {
+  VeniceServerWrapper(String serviceName, File dataDirectory, VeniceServer veniceServer, VeniceProperties serverProps, VeniceConfigLoader config) {
     super(serviceName, dataDirectory);
     this.veniceServer = veniceServer;
     this.serverProps = serverProps;
+    this.config = config;
   }
 
   static StatefulServiceProvider<VeniceServerWrapper> generateService(String clusterName, KafkaBrokerWrapper kafkaBrokerWrapper, boolean enableServerWhitelist, boolean isAutoJoin) {
@@ -61,7 +64,7 @@ public class VeniceServerWrapper extends ProcessWrapper {
             listenPort);
       }
       VeniceServer server = new VeniceServer(veniceConfigLoader);
-      return new VeniceServerWrapper(serviceName, dataDirectory, server, serverProps);
+      return new VeniceServerWrapper(serviceName, dataDirectory, server, serverProps, veniceConfigLoader);
     };
   }
 
@@ -93,7 +96,7 @@ public class VeniceServerWrapper extends ProcessWrapper {
   }
 
   @Override
-  public void start() throws Exception {
+  protected void internalStart() throws Exception {
     veniceServer.start();
 
     TestUtils.waitForNonDeterministicCompletion(
@@ -103,8 +106,14 @@ public class VeniceServerWrapper extends ProcessWrapper {
   }
 
   @Override
-  public void stop() throws Exception {
+  protected void internalStop() throws Exception {
     veniceServer.shutdown();
+  }
+
+  @Override
+  protected void newProcess()
+      throws Exception {
+    this.veniceServer = new VeniceServer(config);
   }
 
   public VeniceServer getVeniceServer(){

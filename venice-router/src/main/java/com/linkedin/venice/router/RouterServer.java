@@ -270,6 +270,13 @@ public class RouterServer extends AbstractVeniceService {
     logger.info(this.toString() + " is stopped");
   }
 
+  public HelixRoutingDataRepository getRoutingDataRepository() {
+    return routingDataRepository;
+  }
+
+  public HelixReadOnlyStoreRepository getMetadataRepository() {
+    return metadataRepository;
+  }
 
   /**
    * a few tasks will be done asynchronously during the service startup and are moved into this method.

@@ -206,7 +206,7 @@ public class TestKafkaPushJob {
 
   private Properties setupDefaultProps(String inputDirPath, String storeName) {
     Properties props = new Properties();
-    props.put(KafkaPushJob.VENICE_URL_PROP, "http://" + veniceCluster.getVeniceRouter().getAddress());
+    props.put(KafkaPushJob.VENICE_URL_PROP, veniceCluster.getRandomRouterURL());
     props.put(KafkaPushJob.KAFKA_URL_PROP, veniceCluster.getKafka().getAddress());
     props.put(KafkaPushJob.VENICE_CLUSTER_NAME_PROP, veniceCluster.getClusterName());
     props.put(KafkaPushJob.VENICE_STORE_NAME_PROP, storeName);
@@ -242,7 +242,7 @@ public class TestKafkaPushJob {
     Assert.assertEquals(job.getInputFileDataSize(), 3872);
 
     // Verify the data in Venice Store
-    String routerUrl = "http://" + veniceCluster.getVeniceRouter().getAddress();
+    String routerUrl = veniceCluster.getRandomRouterURL();
     try(AvroGenericStoreClient<Object> client = AvroStoreClientFactory.getAndStartAvroGenericStoreClient(routerUrl, storeName)) {
       for (int i = 1; i <= 100; ++i) {
         String expected = "test_name_" + i;
@@ -386,14 +386,13 @@ public class TestKafkaPushJob {
     Schema recordSchema = writeSimpleAvroFileWithUserSchema(inputDir);
     Schema keySchemaById = recordSchema.getField("id").schema();
     Schema valueSchema = recordSchema.getField("name").schema();
-    ControllerClient controllerClient = new ControllerClient(veniceCluster.getClusterName(),
-        "http://" + veniceCluster.getVeniceRouter().getAddress());
+    ControllerClient controllerClient =
+        new ControllerClient(veniceCluster.getClusterName(), veniceCluster.getRandomRouterURL());
 
     // Create store with key schema using "id" field
     controllerClient.createNewStore(veniceCluster.getClusterName(), storeName, "owner", keySchemaById.toString(), valueSchema.toString());
 
     String inputDirPath = "file://" + inputDir.getAbsolutePath();
-
     Properties props = setupDefaultProps(inputDirPath, storeName);
     String jobName = "Test push job";
 
@@ -420,7 +419,7 @@ public class TestKafkaPushJob {
     String storeName = TestUtils.getUniqueString("store");
     Properties props = setupDefaultProps(inputDirPath, storeName);
     String jobName = "Test push job";
-    String routerUrl = "http://" + veniceCluster.getVeniceRouter().getAddress();
+    String routerUrl = veniceCluster.getRandomRouterURL();
     new ControllerClient(veniceCluster.getClusterName(), routerUrl)
         .createNewStore(veniceCluster.getClusterName(), storeName, "owner", keySchemaById.toString(), valueSchema.toString());
 
@@ -442,7 +441,7 @@ public class TestKafkaPushJob {
     Schema keySchema = recordSchema.getField("id").schema();
     Schema valueSchema = recordSchema.getField("value").schema();
     String storeName = TestUtils.getUniqueString("store");
-    String routerUrl = "http://" + veniceCluster.getVeniceRouter().getAddress();
+    String routerUrl = veniceCluster.getRandomRouterURL();
     ControllerClient controllerClient = new ControllerClient(veniceCluster.getClusterName(), routerUrl);
 
     // Create store with value schema

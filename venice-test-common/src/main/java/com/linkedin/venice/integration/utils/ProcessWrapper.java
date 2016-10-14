@@ -1,5 +1,6 @@
 package com.linkedin.venice.integration.utils;
 
+import com.linkedin.venice.exceptions.VeniceException;
 import org.apache.commons.io.FileUtils;
 import org.apache.log4j.Logger;
 
@@ -18,6 +19,9 @@ public abstract class ProcessWrapper implements Closeable {
 
   private final String serviceName;
   private final File dataDirectory;
+
+  // Add a flag to avoid stopping a service that it's not running.
+  private boolean isRunning;
 
   ProcessWrapper(String serviceName, File dataDirectory) {
     this.serviceName = serviceName;
@@ -57,7 +61,16 @@ public abstract class ProcessWrapper implements Closeable {
    *
    * @throws Exception if there is any problem during the start up
    */
-  protected abstract void start() throws Exception;
+  protected synchronized void start() throws Exception {
+    if(!isRunning) {
+      internalStart();
+      isRunning = true;
+    } else {
+      LOGGER.info(serviceName +" service has already started.");
+    }
+  }
+
+  protected abstract void internalStart() throws Exception;
 
   /**
    * This function should stop the wrapped service. At this time, there is no expectation that the
@@ -67,7 +80,36 @@ public abstract class ProcessWrapper implements Closeable {
    * @throws Exception if there are any problems while trying to stop the service (typically, these
    *                   exceptions will be ignored).
    */
-  protected abstract void stop() throws Exception;
+  protected synchronized void stop() throws Exception {
+    if (isRunning) {
+      internalStop();
+      isRunning = false;
+    } else {
+      LOGGER.info(serviceName + " service has already been stopped.");
+    }
+  }
+
+  protected abstract void internalStop() throws Exception;
+
+  protected synchronized void restart()
+      throws Exception {
+    if (!isRunning) {
+      newProcess();
+      start();
+    } else {
+      throw new VeniceException("Failed to restart " + serviceName + ", it's still running.");
+    }
+  }
+
+  /**
+   * Let each process wrapper to create a new process in it.
+   * @throws Exception
+   */
+  protected abstract void newProcess() throws Exception;
+
+  public synchronized boolean isRunning(){
+    return isRunning;
+  }
 
   public void close() {
     try {

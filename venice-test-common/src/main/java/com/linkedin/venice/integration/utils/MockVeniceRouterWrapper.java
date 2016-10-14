@@ -30,7 +30,7 @@ public class MockVeniceRouterWrapper extends ProcessWrapper {
   static final String SERVICE_NAME = "MockVeniceRouter";
   public static final String CONTROLLER = "http://localhost:1234";
 
-  private final RouterServer service;
+  private RouterServer service;
   private final String clusterName;
   private final int port;
 
@@ -87,7 +87,7 @@ public class MockVeniceRouterWrapper extends ProcessWrapper {
   }
 
   @Override
-  protected void start() throws Exception {
+  protected void internalStart() throws Exception {
     service.start();
 
     TestUtils.waitForNonDeterministicCompletion(
@@ -97,7 +97,13 @@ public class MockVeniceRouterWrapper extends ProcessWrapper {
   }
 
   @Override
-  protected void stop() throws Exception {
+  protected void internalStop() throws Exception {
     service.stop();
+  }
+
+  @Override
+  protected void newProcess()
+      throws Exception {
+    throw new UnsupportedOperationException("Mock venice router does not support restart.");
   }
 }

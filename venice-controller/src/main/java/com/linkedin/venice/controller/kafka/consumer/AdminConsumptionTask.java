@@ -169,7 +169,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
       isSubscribed = false;
       logger.info("Unsubscribe from topic name: " + topic);
     }
-    consumer.close();
+    // We should not close consumer here. Because it's passed by VeniceControllerService.
     logger.info("Closed consumer for admin topic: " + topic);
   }
 

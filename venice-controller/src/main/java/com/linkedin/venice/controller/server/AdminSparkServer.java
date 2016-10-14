@@ -14,7 +14,7 @@ import org.apache.log4j.Logger;
 import org.codehaus.jackson.map.ObjectMapper;
 import spark.Request;
 import spark.Response;
-import spark.Spark;
+import spark.Service;
 
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.*;
 import static com.linkedin.venice.controllerapi.ControllerRoute.*;
@@ -34,18 +34,23 @@ public class AdminSparkServer extends AbstractVeniceService {
   private static String REQUEST_START_TIME =  "startTime";
   private static String REQUEST_SUCCEED = "succeed";
 
+  // In order to build multiple controller in a single JVM, we create a new http service instance for each of AdminSparkServer instance.
+  private final Service httpService;
+
+
   public AdminSparkServer(int port, Admin admin) {
     this.port = port;
     //Note: admin is passed in as a reference.  The expectation is the source of the admin will
     //      close it so we don't close it in stopInner()
     this.admin = admin;
+    httpService = Service.ignite();
   }
 
   @Override
   public boolean startInner() throws Exception {
-    Spark.port(port);
+    httpService.port(port);
 
-    Spark.before((request, response) -> {
+    httpService.before((request, response) -> {
       AuditInfo audit = new AuditInfo(request);
       logger.info(audit.toString());
 
@@ -54,7 +59,7 @@ public class AdminSparkServer extends AbstractVeniceService {
       request.attribute(REQUEST_SUCCEED, true);
     });
 
-    Spark.after((request, response) -> {
+    httpService.after((request, response) -> {
       AuditInfo audit = new AuditInfo(request);
       long latency = System.currentTimeMillis() - (long)request.attribute(REQUEST_START_TIME);
       if ((boolean)request.attribute(REQUEST_SUCCEED)) {
@@ -68,48 +73,48 @@ public class AdminSparkServer extends AbstractVeniceService {
       }
     });
 
-    Spark.get(CREATE_VERSION.getPath(), (request, response) -> {
+    httpService.get(CREATE_VERSION.getPath(), (request, response) -> {
       response.type(HttpConstants.TEXT_HTML);
       return writeMenu("Create New Store", CREATE_VERSION.getPath(), CREATE_VERSION.getParams ());
     });
 
-    Spark.get(SET_VERSION.getPath(), (request, response) -> {
+    httpService.get(SET_VERSION.getPath(), (request, response) -> {
       response.type(HttpConstants.TEXT_HTML);
       return writeMenu("Set Active Version", SET_VERSION.getPath(), SET_VERSION.getParams());
     });
 
-    Spark.get(LIST_STORES.getPath(), StoresRoutes.getAllStores(admin));
-    Spark.get(STORE.getPath(), StoresRoutes.getStore(admin));
+    httpService.get(LIST_STORES.getPath(), StoresRoutes.getAllStores(admin));
+    httpService.get(STORE.getPath(), StoresRoutes.getStore(admin));
     // With the get STORE endpoint above, the following endpoints can be deprecated.
-    Spark.get(CURRENT_VERSION.getPath(), CurrentVersion.getRoute(admin));
-    Spark.get(ACTIVE_VERSIONS.getPath(), ActiveVersions.getRoute(admin));
+    httpService.get(CURRENT_VERSION.getPath(), CurrentVersion.getRoute(admin));
+    httpService.get(ACTIVE_VERSIONS.getPath(), ActiveVersions.getRoute(admin));
 
-    Spark.get(JOB.getPath(), JobRoutes.jobStatus(admin));
-    Spark.post(KILL_OFFLINE_PUSH_JOB.getPath(), JobRoutes.killOfflinePushJob(admin));
+    httpService.get(JOB.getPath(), JobRoutes.jobStatus(admin));
+    httpService.post(KILL_OFFLINE_PUSH_JOB.getPath(), JobRoutes.killOfflinePushJob(admin));
 
-    Spark.post(CREATE_VERSION.getPath(), CreateVersion.getRoute(admin));
-    Spark.post(NEW_STORE.getPath(), CreateStore.getRoute(admin));
+    httpService.post(CREATE_VERSION.getPath(), CreateVersion.getRoute(admin));
+    httpService.post(NEW_STORE.getPath(), CreateStore.getRoute(admin));
 
-    Spark.post(PAUSE_STORE.getPath(), StoresRoutes.pauseStore(admin));
-    Spark.post(SET_VERSION.getPath(), SetVersion.getRoute(admin));
+    httpService.post(PAUSE_STORE.getPath(), StoresRoutes.pauseStore(admin));
+    httpService.post(SET_VERSION.getPath(), SetVersion.getRoute(admin));
 
-    Spark.get(LIST_NODES.getPath(), NodesAndReplicas.listAllNodes(admin));
-    Spark.get(LIST_REPLICAS.getPath(), NodesAndReplicas.listReplicasForStore(admin));
-    Spark.get(NODE_REPLICAS.getPath(), NodesAndReplicas.listReplicasForStorageNode(admin));
-    Spark.get(NODE_REMOVABLE.getPath(), NodesAndReplicas.isNodeRemovable(admin));
+    httpService.get(LIST_NODES.getPath(), NodesAndReplicas.listAllNodes(admin));
+    httpService.get(LIST_REPLICAS.getPath(), NodesAndReplicas.listReplicasForStore(admin));
+    httpService.get(NODE_REPLICAS.getPath(), NodesAndReplicas.listReplicasForStorageNode(admin));
+    httpService.get(NODE_REMOVABLE.getPath(), NodesAndReplicas.isNodeRemovable(admin));
 
     // Operations for key schema/value schema
-    Spark.get(GET_KEY_SCHEMA.getPath(), SchemaRoutes.getKeySchema(admin));
-    Spark.post(ADD_VALUE_SCHEMA.getPath(), SchemaRoutes.addValueSchema(admin));
-    Spark.get(GET_VALUE_SCHEMA.getPath(), SchemaRoutes.getValueSchema(admin));
-    Spark.post(GET_VALUE_SCHEMA_ID.getPath(), SchemaRoutes.getValueSchemaID(admin));
-    Spark.get(GET_ALL_VALUE_SCHEMA.getPath(), SchemaRoutes.getAllValueSchema(admin));
+    httpService.get(GET_KEY_SCHEMA.getPath(), SchemaRoutes.getKeySchema(admin));
+    httpService.post(ADD_VALUE_SCHEMA.getPath(), SchemaRoutes.addValueSchema(admin));
+    httpService.get(GET_VALUE_SCHEMA.getPath(), SchemaRoutes.getValueSchema(admin));
+    httpService.post(GET_VALUE_SCHEMA_ID.getPath(), SchemaRoutes.getValueSchemaID(admin));
+    httpService.get(GET_ALL_VALUE_SCHEMA.getPath(), SchemaRoutes.getAllValueSchema(admin));
 
     // This API should be used by CORP controller only. H2V could talk to any of controllers in CORP to find who is the
     // current master CORP controller. In other colos, router will find the master controller instead of calling this API.
-    Spark.get(MASTER_CONTROLLER.getPath(), MasterController.getRoute(admin));
+    httpService.get(MASTER_CONTROLLER.getPath(), MasterController.getRoute(admin));
 
-    Spark.awaitInitialization(); // Wait for server to be initialized
+    httpService.awaitInitialization(); // Wait for server to be initialized
 
     // There is no async process in this function, so we are completely finished with the start up process.
     return true;
@@ -117,7 +122,7 @@ public class AdminSparkServer extends AbstractVeniceService {
 
   @Override
   public void stopInner() throws Exception {
-    Spark.stop(); // must be qualified so it doesn't call AbstractVeniceService.stop()
+    httpService.stop();
   }
 
   private String writeMenu(String title, String postAction, List<String> parameters) {
