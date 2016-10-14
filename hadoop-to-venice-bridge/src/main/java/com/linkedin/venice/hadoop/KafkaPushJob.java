@@ -272,7 +272,8 @@ public class KafkaPushJob {
       Configuration conf = new Configuration();
       fs = FileSystem.get(conf);
       // This will try to extract the source folder if the input path has 'latest' anchor.
-      Path sourcePath = getLatestPathOfInputDirectory();
+      Path sourcePath = getLatestPathOfInputDirectory(inputDirectory, fs);
+      inputDirectory = sourcePath.toString();
 
       // Check Avro file schema consistency, data size
       inspectHdfsSource(sourcePath);
@@ -685,8 +686,8 @@ public class KafkaPushJob {
     return schema;
   }
 
-  private Path getLatestPathOfInputDirectory() throws IOException{
-    Path sourcePath = null;
+  protected static Path getLatestPathOfInputDirectory(String inputDirectory, FileSystem fs) throws IOException{
+    Path sourcePath;
     boolean computeLatestPath = false;
     if (inputDirectory.endsWith("#LATEST") || inputDirectory.endsWith("#LATEST/")) {
       int poundSign = inputDirectory.lastIndexOf('#');
@@ -698,7 +699,6 @@ public class KafkaPushJob {
 
     if(computeLatestPath) {
       sourcePath = getLatestPath(sourcePath, fs);
-      inputDirectory = sourcePath.toString();
     }
 
     return sourcePath;
