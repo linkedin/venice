@@ -17,6 +17,7 @@ import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
+import com.linkedin.venice.utils.FlakyTestRetryAnalyzer;
 import com.linkedin.venice.utils.MockTestStateModel;
 import com.linkedin.venice.utils.MockTestStateModelFactory;
 import com.linkedin.venice.utils.TestUtils;
@@ -351,8 +352,10 @@ public class TestVeniceJobManager {
    * this new version. In that case, job should be blocked on waiting another participant up. During the waiting time,
    * send the status message to controller. Start up the second participant. If the retry mechanism works well, status
    * message will be processed eventually.
+   *
+   * TODO: Fix this test. It is flaky.
    */
-  @Test(dataProvider = "offlinePushStrategies")
+  @Test(dataProvider = "offlinePushStrategies", retryAnalyzer = FlakyTestRetryAnalyzer.class)
   public void testReceiveMessageBeforeJobStart(OfflinePushStrategy offlinePushStrategy)
       throws InterruptedException {
     int partitionCount = 1;

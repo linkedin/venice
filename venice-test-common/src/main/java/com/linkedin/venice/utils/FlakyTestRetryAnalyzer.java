@@ -1,5 +1,7 @@
 package com.linkedin.venice.utils;
 
+import java.util.Arrays;
+import java.util.Optional;
 import org.testng.IRetryAnalyzer;
 import org.testng.ITestResult;
 
@@ -14,18 +16,31 @@ import org.testng.ITestResult;
  * of pragmatism, it is there to be used with parsimony.
  */
 public class FlakyTestRetryAnalyzer implements IRetryAnalyzer  {
+  private static final int MAX_ATTEMPTS = 3;
+
   private int currentAttempt = 1;
-  private static final int MAX_ATTEMPTS = 3; // set your count to re-run test
+
+  /** retries are granted for each parameters */
+  private Optional<Object[]> parameters = Optional.empty();
 
   /**
    * Currently, this class tries {@value #MAX_ATTEMPTS} times in total.
    *
-   * In the future, we can leverage the {@link ITestResult} parameter in order to
+   * In the future, we can leverage the {@link ITestResult} properties in order to
    * put some safeguards on retries. For example, bounding the total time that a
    * test can run, no matter the amount of retries.
    */
   @Override
   public boolean retry(ITestResult result) {
+    Object[] incomingParameters = result.getParameters();
+    if (parameters.isPresent()) {
+       if (!Arrays.equals(incomingParameters, parameters.get())) {
+         parameters = Optional.of(incomingParameters);
+         currentAttempt = 1;
+      }
+    } else {
+      parameters = Optional.of(incomingParameters);
+    }
     if(currentAttempt < MAX_ATTEMPTS) {
       currentAttempt++;
       return true;
