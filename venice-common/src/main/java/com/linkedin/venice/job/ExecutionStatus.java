@@ -24,6 +24,6 @@ public enum ExecutionStatus {
   ARCHIVED;
 
   public boolean isTerminal() {
-    return this == ERROR || this == COMPLETED;
+    return this == ERROR || this == COMPLETED || this == ARCHIVED;
   }
 }

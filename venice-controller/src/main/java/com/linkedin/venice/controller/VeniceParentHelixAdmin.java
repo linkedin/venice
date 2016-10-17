@@ -1,5 +1,6 @@
 package com.linkedin.venice.controller;
 
+import com.google.common.collect.Ordering;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.controller.kafka.AdminTopicUtils;
 import com.linkedin.venice.controller.kafka.protocol.admin.AdminOperation;
@@ -30,7 +31,10 @@ import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.ApacheKafkaProducer;
 import com.linkedin.venice.writer.VeniceWriter;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashMap;
 import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.clients.producer.RecordMetadata;
@@ -46,6 +50,8 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
+import org.apache.tools.ant.taskdefs.Exec;
+
 
 /**
  * This class is a wrapper of {@link VeniceHelixAdmin}, which will be used in parent controller.
@@ -393,11 +399,12 @@ public class VeniceParentHelixAdmin implements Admin {
   /**
    * Queries child clusters for status.
    * Of all responses, return highest of (in order) NOT_CREATED, NEW, STARTED, PROGRESS.
-   * If any response is ERROR, returns ERROR
    * If all responses are COMPLETED, returns COMPLETED.
+   * If any response is ERROR and all responses are terminal (COMPLETED or ERROR), returns ERROR
+   * If any response is ERROR and any response is not terminal, returns PROGRESS
    * ARCHIVED is treated as NOT_CREATED
    *
-   * If error in querying half or more of clusters, returns ERROR.
+   * If error in querying half or more of clusters, returns PROGRESS. (so that polling will continue)
    *
    * @param clusterName
    * @param kafkaTopic
@@ -410,71 +417,55 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   protected static ExecutionStatus getOffLineJobStatus(String clusterName, String kafkaTopic, Map<String, ControllerClient> controllerClients, TopicManager topicManager) {
+
     Set<String> childClusters = controllerClients.keySet();
     ExecutionStatus currentReturnStatus = ExecutionStatus.NOT_CREATED;
+    List<ExecutionStatus> statuses = new ArrayList<>();
     int failCount = 0;
-    boolean complete = true;
     for (String cluster : childClusters){
       JobStatusQueryResponse response = controllerClients.get(cluster).queryJobStatus(clusterName, kafkaTopic);
       if (response.isError()){
         failCount += 1;
         logger.warn("Couldn't query " + cluster + " for job " + kafkaTopic + " status: " + response.getError());
-        continue;
+      } else {
+        ExecutionStatus thisStatus = ExecutionStatus.valueOf(response.getStatus());
+        statuses.add(thisStatus);
       }
-      ExecutionStatus thisStatus = ExecutionStatus.valueOf(response.getStatus());
-      switch (thisStatus) {
-        case NOT_CREATED:
-          complete = false;
-          break;
-        case NEW:
-          complete = false;
-          if (currentReturnStatus.equals(ExecutionStatus.NOT_CREATED)){
-            currentReturnStatus = thisStatus;
-          }
-          break;
-        case STARTED:
-          complete = false;
-          if (Arrays.asList(
-              ExecutionStatus.NOT_CREATED,
-              ExecutionStatus.NEW).contains(currentReturnStatus)){
-            currentReturnStatus = thisStatus;
-          }
-          break;
-        case PROGRESS:
-          complete = false;
-          if (Arrays.asList(
-              ExecutionStatus.NOT_CREATED,
-              ExecutionStatus.NEW,
-              ExecutionStatus.STARTED).contains(currentReturnStatus)){
-            currentReturnStatus = thisStatus;
-          }
-          break;
-        case COMPLETED:
-          if (!currentReturnStatus.equals(ExecutionStatus.ERROR)) {
-            currentReturnStatus = ExecutionStatus.PROGRESS; // highest not complete status
-          }
-          break;
-        case ERROR:
-          complete = false;
-          currentReturnStatus = thisStatus;
-          break;
-        case ARCHIVED:
-          complete = false;
-          break; //Treat ARCHIVED as not created.
-      }
-      if (complete && currentReturnStatus.equals(ExecutionStatus.PROGRESS)){ // COMPLETE sets status to highest status of PROGRESS
-        currentReturnStatus = ExecutionStatus.COMPLETED;
-      }
-      int successCount = childClusters.size() - failCount;
-      if (! (successCount >= (childClusters.size()/2)+1)) { // Strict majority must not fail
+    }
+
+    // Sort the per-datacenter status in this order, and return the first one in the list
+    // Edge case example: if one cluster is stuck in NOT_CREATED, then
+    //   as another cluster goes from PROGRESS to COMPLETED
+    //   the aggregate status will go from PROGRESS back down to NOT_CREATED.
+    Ordering<ExecutionStatus> priorityOrder = Ordering.explicit(Arrays.asList(
+        ExecutionStatus.PROGRESS,
+        ExecutionStatus.STARTED,
+        ExecutionStatus.NEW,
+        ExecutionStatus.NOT_CREATED,
+        ExecutionStatus.ERROR,
+        ExecutionStatus.COMPLETED,
+        ExecutionStatus.ARCHIVED));
+    Collections.sort(statuses, priorityOrder::compare);
+    if (statuses.size()>0){
+      currentReturnStatus = statuses.get(0);
+    }
+
+    int successCount = childClusters.size() - failCount;
+    if (! (successCount >= (childClusters.size()/2)+1)) { // Strict majority must be reachable, otherwise keep polling
+      currentReturnStatus = ExecutionStatus.PROGRESS;
+    }
+
+    if (currentReturnStatus.isTerminal()) {
+      // If there is a temporary datacenter connection failure, we want H2V to report failure while allowing the push
+      // to succeed in remaining datacenters.  If we want to allow the push to succeed in asyc in the remaining datacenter
+      // then put the topic delete into an else block under `if (failcount > 0)`
+      if (failCount > 0){
         currentReturnStatus = ExecutionStatus.ERROR;
       }
-    }
-    if (currentReturnStatus.isTerminal()) {
-      // Remove current Kafka topic
-      logger.info("Deleting kafka topic: " + kafkaTopic + " and job status: " + currentReturnStatus);
+      logger.info("Deleting kafka topic: " + kafkaTopic + " with job status: " + currentReturnStatus);
       topicManager.deleteTopic(kafkaTopic);
     }
+
     return currentReturnStatus;
   }
 

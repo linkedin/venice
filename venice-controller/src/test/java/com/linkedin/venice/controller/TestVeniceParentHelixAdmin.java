@@ -514,7 +514,7 @@ public class TestVeniceParentHelixAdmin {
 
     completeMap.put("cluster-slow", clientMap.get(ExecutionStatus.NOT_CREATED));
     Assert.assertEquals(VeniceParentHelixAdmin.getOffLineJobStatus("mycluster", "topic2", completeMap, topicManager),
-        ExecutionStatus.PROGRESS);
+        ExecutionStatus.NOT_CREATED);  // Do we want this to be Progress?  limitation of ordering used in aggregation code
     Mockito.verify(topicManager, Mockito.timeout(TIMEOUT_IN_MS).never()).deleteTopic("topic2");
 
 
@@ -545,22 +545,32 @@ public class TestVeniceParentHelixAdmin {
         ExecutionStatus.PROGRESS);
     Mockito.verify(topicManager, Mockito.timeout(TIMEOUT_IN_MS).never()).deleteTopic("topic7");
 
-    // 1 in 4 failures is OK
+    // 1 in 4 failures is ERROR
     Map<String, ControllerClient> failCompleteMap = new HashMap<>();
     failCompleteMap.put("cluster", clientMap.get(ExecutionStatus.COMPLETED));
     failCompleteMap.put("cluster2", clientMap.get(ExecutionStatus.COMPLETED));
     failCompleteMap.put("cluster3", clientMap.get(ExecutionStatus.COMPLETED));
     failCompleteMap.put("failcluster", clientMap.get(null));
     Assert.assertEquals(VeniceParentHelixAdmin.getOffLineJobStatus("mycluster", "topic8", failCompleteMap, topicManager),
-        ExecutionStatus.COMPLETED);
+        ExecutionStatus.ERROR);
     Mockito.verify(topicManager, Mockito.timeout(TIMEOUT_IN_MS).times(1)).deleteTopic("topic8");
 
-    // 3 in 6 failures is NOT OK
+    // 3 in 6 failures is PROGRESS (so it keeps trying)
     failCompleteMap.put("failcluster2", clientMap.get(null));
     failCompleteMap.put("failcluster3", clientMap.get(null));
-    Assert.assertEquals(VeniceParentHelixAdmin.getOffLineJobStatus("mycluster", "topic9", failCompleteMap, topicManager),
+    Assert.assertEquals(VeniceParentHelixAdmin.getOffLineJobStatus("mycluster", "atopic", failCompleteMap, topicManager),
+        ExecutionStatus.PROGRESS);
+
+    Map<String, ControllerClient> errorMap = new HashMap<>();
+    errorMap.put("cluster-err", clientMap.get(ExecutionStatus.ERROR));
+    Assert.assertEquals(VeniceParentHelixAdmin.getOffLineJobStatus("mycluster", "atopic", errorMap, topicManager),
         ExecutionStatus.ERROR);
-    Mockito.verify(topicManager, Mockito.timeout(TIMEOUT_IN_MS).times(1)).deleteTopic("topic9");
+    errorMap.put("cluster-complete", clientMap.get(ExecutionStatus.COMPLETED));
+    Assert.assertEquals(VeniceParentHelixAdmin.getOffLineJobStatus("mycluster", "atopic", errorMap, topicManager),
+        ExecutionStatus.ERROR);
+    errorMap.put("cluster-new", clientMap.get(ExecutionStatus.NEW));
+    Assert.assertEquals(VeniceParentHelixAdmin.getOffLineJobStatus("mycluster", "atopic", errorMap, topicManager),
+        ExecutionStatus.NEW); // Do we want this to be Progress?  limitation of ordering used in aggregation code
   }
 
   @Test
