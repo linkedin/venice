@@ -300,5 +300,4 @@ public class VeniceProperties {
     properties.putAll(this.props);
     return properties;
   }
-
 }
