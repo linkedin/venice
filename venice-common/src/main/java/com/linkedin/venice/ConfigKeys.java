@@ -105,4 +105,10 @@ public class ConfigKeys {
    * timeout for waiting until that consumption happens.
    * */
   public static final String PARENT_CONTROLLER_WAITING_TIME_FOR_CONSUMPTION_MS = "parent.controller.waiting.time.for.consumption.ms";
+
+  /**
+   * If there is a failure in consuming from the admin topic, skip the message after retrying for this many minutes
+   * Default 5 days
+   */
+  public static final String ADMIN_CONSUMPTION_TIMEOUT_MINUTES = "admin.consumption.timeout.minutes";
 }

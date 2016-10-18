@@ -6,6 +6,7 @@ import com.linkedin.venice.kafka.consumer.KafkaConsumerWrapper;
 import com.linkedin.venice.offsets.OffsetManager;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.utils.DaemonThreadFactory;
+import java.util.concurrent.TimeUnit;
 import org.apache.log4j.Logger;
 
 import java.util.concurrent.ThreadFactory;
@@ -50,6 +51,6 @@ public class AdminConsumerService extends AbstractVeniceService {
   }
 
   private AdminConsumptionTask getAdminConsumptionTaskForCluster(String clusterName) {
-    return new AdminConsumptionTask(clusterName, consumer, offsetManager, admin, config.isParent());
+    return new AdminConsumptionTask(clusterName, consumer, offsetManager, admin, TimeUnit.MINUTES.toMillis(config.getAdminConsumptionTimeoutMinutes()), config.isParent());
   }
 }
