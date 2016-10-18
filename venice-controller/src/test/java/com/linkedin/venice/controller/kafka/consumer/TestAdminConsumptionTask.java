@@ -102,7 +102,8 @@ public class TestAdminConsumptionTask {
     // Update admin to be a slave controller
     Mockito.doReturn(false).when(admin).isMasterController(clusterName);
 
-    AdminConsumptionTask task = new AdminConsumptionTask(clusterName, consumer, offsetManager, admin, false);
+
+    AdminConsumptionTask task = new AdminConsumptionTask(clusterName, consumer, offsetManager, admin, TimeUnit.HOURS.toMinutes(1), false);
     executor.submit(task);
     Mockito.verify(admin, Mockito.timeout(TIMEOUT).atLeastOnce())
         .isMasterController(clusterName);
@@ -120,7 +121,7 @@ public class TestAdminConsumptionTask {
     Mockito.doReturn(new HashSet<String>()).when(topicManager).listTopics();
     Mockito.doReturn(topicManager).when(admin).getTopicManager();
 
-    AdminConsumptionTask task = new AdminConsumptionTask(clusterName, consumer, offsetManager, admin, false);
+    AdminConsumptionTask task = new AdminConsumptionTask(clusterName, consumer, offsetManager, admin, TimeUnit.HOURS.toMinutes(1), false);
     executor.submit(task);
     Mockito.verify(admin, Mockito.timeout(TIMEOUT).atLeastOnce())
         .isMasterController(clusterName);
@@ -145,7 +146,7 @@ public class TestAdminConsumptionTask {
     // The store doesn't exist
     Mockito.doReturn(false).when(admin).hasStore(clusterName, storeName);
 
-    AdminConsumptionTask task = new AdminConsumptionTask(clusterName, consumer, offsetManager, admin, false);
+    AdminConsumptionTask task = new AdminConsumptionTask(clusterName, consumer, offsetManager, admin, TimeUnit.HOURS.toMinutes(1), false);
     executor.submit(task);
     Mockito.verify(offsetManager, Mockito.timeout(TIMEOUT).atLeastOnce())
         .recordOffset(Mockito.anyString(), Mockito.anyInt(), Mockito.eq(new OffsetRecord(2)));
@@ -179,7 +180,7 @@ public class TestAdminConsumptionTask {
         .when(admin)
         .addStore(clusterName, storeName, owner, keySchema, valueSchema);
 
-    AdminConsumptionTask task = new AdminConsumptionTask(clusterName, consumer, offsetManager, admin, false);
+    AdminConsumptionTask task = new AdminConsumptionTask(clusterName, consumer, offsetManager, admin, TimeUnit.HOURS.toMinutes(1), false);
     executor.submit(task);
     Mockito.verify(offsetManager, Mockito.timeout(TIMEOUT).atLeastOnce())
         .recordOffset(Mockito.anyString(), Mockito.anyInt(), Mockito.eq(new OffsetRecord(1)));
@@ -198,6 +199,30 @@ public class TestAdminConsumptionTask {
   }
 
   @Test (timeOut = TIMEOUT)
+  public void testSkipMessageAfterTimeout () throws IOException, InterruptedException {
+    String storeName = TestUtils.getUniqueString("test_store");
+    String owner = "test_owner";
+    String keySchema = "\"string\"";
+    String valueSchema = "\"string\"";
+    initTaskRelatedArgs(getStoreCreationMessage(clusterName, storeName, owner, 1, keySchema, valueSchema));
+    // The store doesn't exist
+    Mockito.doReturn(false).when(admin).hasStore(clusterName, storeName);
+    Mockito.doThrow(new VeniceException("Mock store creation exception"))
+        .when(admin)
+        .addStore(clusterName, storeName, owner, keySchema, valueSchema);
+
+    long timeoutMinutes = 0L;
+    AdminConsumptionTask task = new AdminConsumptionTask(clusterName, consumer, offsetManager, admin, timeoutMinutes, false);
+    executor.submit(task);
+    Mockito.verify(offsetManager, Mockito.timeout(TIMEOUT).times(1)).recordOffset(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID, new OffsetRecord(1));
+    task.close();
+    executor.shutdown();
+    executor.awaitTermination(TIMEOUT, TimeUnit.MILLISECONDS);
+    // admin throws errors, so record offset means we skipped the message
+    Mockito.verify(offsetManager, Mockito.timeout(TIMEOUT).times(1)).recordOffset(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID, new OffsetRecord(1));
+  }
+
+  @Test (timeOut = TIMEOUT)
   public void testRunWithDuplicateMessagesWithSameOffset() throws InterruptedException, IOException {
     String storeName = "test_store";
     String owner = "test_owner";
@@ -208,7 +233,7 @@ public class TestAdminConsumptionTask {
     // The store doesn't exist
     Mockito.doReturn(false).when(admin).hasStore(clusterName, storeName);
 
-    AdminConsumptionTask task = new AdminConsumptionTask(clusterName, consumer, offsetManager, admin, false);
+    AdminConsumptionTask task = new AdminConsumptionTask(clusterName, consumer, offsetManager, admin, TimeUnit.HOURS.toMinutes(1), false);
     executor.submit(task);
     Mockito.verify(offsetManager, Mockito.timeout(TIMEOUT).atLeastOnce())
         .recordOffset(Mockito.anyString(), Mockito.anyInt(), Mockito.eq(new OffsetRecord(1)));
@@ -240,7 +265,7 @@ public class TestAdminConsumptionTask {
         .thenReturn(false)
         .thenReturn(true);
 
-    AdminConsumptionTask task = new AdminConsumptionTask(clusterName, consumer, offsetManager, admin, false);
+    AdminConsumptionTask task = new AdminConsumptionTask(clusterName, consumer, offsetManager, admin, TimeUnit.HOURS.toMinutes(1), false);
     executor.submit(task);
     Mockito.verify(offsetManager, Mockito.timeout(TIMEOUT).atLeastOnce())
         .recordOffset(Mockito.anyString(), Mockito.anyInt(), Mockito.eq(new OffsetRecord(2)));
@@ -276,7 +301,7 @@ public class TestAdminConsumptionTask {
 
     Mockito.doReturn(new OffsetRecord(1)).when(offsetManager).getLastOffset(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID);
 
-    AdminConsumptionTask task = new AdminConsumptionTask(clusterName, consumer, offsetManager, admin, false);
+    AdminConsumptionTask task = new AdminConsumptionTask(clusterName, consumer, offsetManager, admin, TimeUnit.HOURS.toMinutes(1), false);
     executor.submit(task);
 
     Utils.sleep(AdminConsumptionTask.READ_CYCLE_DELAY_MS);
@@ -306,7 +331,7 @@ public class TestAdminConsumptionTask {
         getKillOfflinePushJobMessage(clusterName, kafkaTopic, 2)
     );
 
-    AdminConsumptionTask task = new AdminConsumptionTask(clusterName, consumer, offsetManager, admin, true);
+    AdminConsumptionTask task = new AdminConsumptionTask(clusterName, consumer, offsetManager, admin, TimeUnit.HOURS.toMinutes(1), true);
     executor.submit(task);
     Mockito.verify(offsetManager, Mockito.timeout(TIMEOUT).atLeastOnce())
         .recordOffset(Mockito.anyString(), Mockito.anyInt(), Mockito.eq(new OffsetRecord(2)));

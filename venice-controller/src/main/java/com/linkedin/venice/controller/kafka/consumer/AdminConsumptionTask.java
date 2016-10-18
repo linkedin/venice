@@ -13,6 +13,7 @@ import com.linkedin.venice.controller.kafka.protocol.serializer.AdminOperationSe
 import com.linkedin.venice.controller.stats.ControllerStats;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.consumer.KafkaConsumerWrapper;
+import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
@@ -21,6 +22,7 @@ import com.linkedin.venice.offsets.OffsetManager;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.utils.Utils;
+import java.util.concurrent.TimeUnit;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.log4j.Logger;
@@ -49,16 +51,18 @@ public class AdminConsumptionTask implements Runnable, Closeable {
   private final AtomicBoolean isRunning;
   private final AdminOperationSerializer deserializer;
   private final ControllerStats controllerStats;
+  private final long failureRetryTimeoutMs;
 
   private boolean isSubscribed;
   private KafkaConsumerWrapper consumer;
   private long lastOffset;
   private boolean topicExists;
 
-  public AdminConsumptionTask(@NotNull String clusterName,
-                              @NotNull KafkaConsumerWrapper consumer,
-                              @NotNull OffsetManager offsetManager,
-                              @NotNull Admin admin,
+  public AdminConsumptionTask(String clusterName,
+                              KafkaConsumerWrapper consumer,
+                              OffsetManager offsetManager,
+                              Admin admin,
+                              long failureRetryTimeoutMs,
                               boolean isParentController) {
     this.clusterName = clusterName;
     this.topic = AdminTopicUtils.getTopicNameFromClusterName(clusterName);
@@ -67,6 +71,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
     this.offsetManager = offsetManager;
     this.admin = admin;
     this.isParentController = isParentController;
+    this.failureRetryTimeoutMs = failureRetryTimeoutMs;
 
     this.deserializer = new AdminOperationSerializer();
 
@@ -83,9 +88,8 @@ public class AdminConsumptionTask implements Runnable, Closeable {
   }
 
   @Override
-  public void run() {
+  public void run() { //TODO: clean up this method.  We've got nested loops checking the same conditions
     logger.info("Running consumer: " + consumerTaskId);
-
     while (isRunning.get()) {
       try {
         // check whether current controller is the master controller for the given cluster
@@ -110,11 +114,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
           }
           logger.debug("Received record num: " + records.count());
           Iterator<ConsumerRecord<KafkaKey, KafkaMessageEnvelope>> recordsIterator = records.iterator();
-
           while (isRunning.get() && admin.isMasterController(clusterName) && recordsIterator.hasNext()) {
-            int retryCount = 0;
-            ConsumerRecord<KafkaKey, KafkaMessageEnvelope> record = recordsIterator.next();
-            boolean retry = true;
             // TODO: we might need to consider to reload Offset, so that
             // admin tool is able to let consumer skip the bad message by updating consumed offset.
             /**
@@ -122,20 +122,25 @@ public class AdminConsumptionTask implements Runnable, Closeable {
              * 1. Update the admin topic offset to skip those messages;
              * 2. Restart master controller;
              */
+            ConsumerRecord<KafkaKey, KafkaMessageEnvelope> record = recordsIterator.next();
+            boolean retry = true;
+            int retryCount = 0;
+            long retryStartTime = System.currentTimeMillis();
             while (isRunning.get() && admin.isMasterController(clusterName) && retry) {
               try {
                 processMessage(record);
-                retry = false;
-                retryCount = 0; // reset count if we process successfully
                 break;
               } catch (Exception e) {
                 // Retry should happen in message level, not in batch
                 retryCount += 1; // increment and report count if we have a failure
                 controllerStats.recordFailedAdminConsumption(retryCount);
-                // Something bad happens, we need to keep retrying here,
-                // since next 'poll' function call won't retrieve the same message any more
                 logger.error("Error when processing admin message, will retry", e);
                 admin.setLastException(clusterName, e);
+                if (System.currentTimeMillis() - retryStartTime >= failureRetryTimeoutMs) {
+                  logger.error("Failure processing admin message for more than " + TimeUnit.MILLISECONDS.toMinutes(failureRetryTimeoutMs) + " minutes", e);
+                  skipMessage(record);
+                  break;
+                }
                 Utils.sleep(READ_CYCLE_DELAY_MS);
               }
             }
@@ -179,37 +184,53 @@ public class AdminConsumptionTask implements Runnable, Closeable {
     return topicExists;
   }
 
+
   private void processMessage(ConsumerRecord<KafkaKey, KafkaMessageEnvelope> record) {
     // TODO: Add data validation logic here
-    if (shouldProcessRecord(record)) {
+    if (MessageType.CONTROL_MESSAGE == MessageType.valueOf(record.value())) {
+      persistRecordOffset(record); // We don't process the data validation control messages.
+      return;
+    }
+    verifyShouldProcessRecord(record);
+    Put put = (Put) record.value().payloadUnion;
+    AdminOperation adminMessage = deserializer.deserialize(put.putValue.array(), put.schemaId);
+    if (logger.isDebugEnabled()) {
+      logger.debug("Received message: " + adminMessage);
+    }
+    switch (AdminMessageType.valueOf(adminMessage)) {
+      case STORE_CREATION:
+        handleStoreCreation((StoreCreation) adminMessage.payloadUnion);
+        break;
+      case VALUE_SCHEMA_CREATION:
+        handleValueSchemaCreation((ValueSchemaCreation) adminMessage.payloadUnion);
+        break;
+      case PAUSE_STORE:
+        handlePauseStore((PauseStore) adminMessage.payloadUnion);
+        break;
+      case RESUME_STORE:
+        handleResumeStore((ResumeStore) adminMessage.payloadUnion);
+        break;
+      case KILL_OFFLINE_PUSH_JOB:
+        handleKillOfflinePushJob((KillOfflinePushJob) adminMessage.payloadUnion);
+        break;
+      default:
+        throw new VeniceException("Unknown admin operation type: " + adminMessage.operationType);
+    }
+    persistRecordOffset(record);
+  }
+
+  private void skipMessage(ConsumerRecord<KafkaKey, KafkaMessageEnvelope> record) {
+    try {
       Put put = (Put) record.value().payloadUnion;
       AdminOperation adminMessage = deserializer.deserialize(put.putValue.array(), put.schemaId);
-      if (logger.isDebugEnabled()) {
-        logger.debug("Received message: " + adminMessage);
-      }
-      switch (AdminMessageType.valueOf(adminMessage)) {
-        case STORE_CREATION:
-          handleStoreCreation((StoreCreation) adminMessage.payloadUnion);
-          break;
-        case VALUE_SCHEMA_CREATION:
-          handleValueSchemaCreation((ValueSchemaCreation) adminMessage.payloadUnion);
-          break;
-        case PAUSE_STORE:
-          handlePauseStore((PauseStore) adminMessage.payloadUnion);
-          break;
-        case RESUME_STORE:
-          handleResumeStore((ResumeStore) adminMessage.payloadUnion);
-          break;
-        case KILL_OFFLINE_PUSH_JOB:
-          handleKillOfflinePushJob((KillOfflinePushJob) adminMessage.payloadUnion);
-          break;
-        default:
-          throw new VeniceException("Unknown admin operation type: " + adminMessage.operationType);
-      }
+      logger.warn("Skipping consumption of message: " + adminMessage);
+    } catch (Exception e){
+      logger.warn("Skipping consumption of message: " + record.toString());
     }
-    // Persist offset
-    // This could happen if some exception gets thrown during handling those messages,
-    // and the upstream will keep retrying with the same messages.
+    persistRecordOffset(record);
+  }
+
+  private void persistRecordOffset(ConsumerRecord record){
     long recordOffset = record.offset();
     if (recordOffset > lastOffset) {
       lastOffset = recordOffset;
@@ -217,35 +238,29 @@ public class AdminConsumptionTask implements Runnable, Closeable {
     }
   }
 
-  private boolean shouldProcessRecord(ConsumerRecord<KafkaKey, KafkaMessageEnvelope> record) {
+  private void verifyShouldProcessRecord(ConsumerRecord<KafkaKey, KafkaMessageEnvelope> record) {
     // check topic
     String recordTopic = record.topic();
     if (!topic.equals(recordTopic)) {
-      logger.error(consumerTaskId + " received message from different topic: " + recordTopic + ", expected: " + topic);
-      return false;
+      throw new VeniceException(consumerTaskId + " received message from different topic: " + recordTopic + ", expected: " + topic);
     }
     // check partition
     int recordPartition = record.partition();
     if (AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID != recordPartition) {
-      logger.error(consumerTaskId + " received message from different partition: " + recordPartition + ", expected: " + AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID);
-      return false;
+      throw new VeniceException(consumerTaskId + " received message from different partition: " + recordPartition + ", expected: " + AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID);
     }
     // check offset
     long recordOffset = record.offset();
     if (lastOffset >= recordOffset) {
-      logger.info(consumerTaskId + ", current record has been processed, last known offset: " + lastOffset + ", current offset: " + recordOffset);
-      return false;
+      throw new VeniceException(consumerTaskId + ", current record has been processed, last known offset: " + lastOffset + ", current offset: " + recordOffset);
     }
     // check message type
     KafkaMessageEnvelope kafkaValue = record.value();
     MessageType messageType = MessageType.valueOf(kafkaValue);
     // TODO: Add data validation logic here, and there should be more MessageType here to handle, such as Control Message.
     if (MessageType.PUT != messageType) {
-      logger.error("Received unknown message type: " + messageType);
-      return false;
+      throw new VeniceException("Received unknown message type: " + messageType);
     }
-
-    return true;
   }
 
   private void handleStoreCreation(StoreCreation message) {

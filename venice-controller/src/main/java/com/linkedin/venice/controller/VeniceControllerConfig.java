@@ -4,7 +4,12 @@ import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.VeniceProperties;
-import java.util.*;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Map;
+import java.util.Properties;
+import java.util.Set;
+import java.util.concurrent.TimeUnit;
 
 import static com.linkedin.venice.ConfigKeys.*;
 
@@ -22,6 +27,7 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
   private final boolean parent;
   private Map<String, Set<String>> childClusterMap = null;
   private final int parentControllerWaitingTimeForConsumptionMs;
+  private final long adminConsumptionTimeoutMinutes;
 
   public VeniceControllerConfig(VeniceProperties props) {
     super(props);
@@ -35,6 +41,7 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
       this.childClusterMap = parseClusterMap(props.clipAndFilterNamespace(ConfigKeys.CHILD_CLUSTER_URL_PREFIX));
     }
     this.parentControllerWaitingTimeForConsumptionMs = props.getInt(ConfigKeys.PARENT_CONTROLLER_WAITING_TIME_FOR_CONSUMPTION_MS, 30 * Time.MS_PER_SECOND);
+    this.adminConsumptionTimeoutMinutes = props.getLong(ADMIN_CONSUMPTION_TIMEOUT_MINUTES, TimeUnit.DAYS.toMinutes(5));
   }
 
   public int getAdminPort() {
@@ -75,6 +82,9 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
     return parentControllerWaitingTimeForConsumptionMs;
   }
 
+  public long getAdminConsumptionTimeoutMinutes(){
+    return adminConsumptionTimeoutMinutes;
+  }
   /**
    * @param childClusterUris list of child controller uris
    * @return
