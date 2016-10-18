@@ -92,12 +92,12 @@ public class ConfigKeys {
 
   /**
    * Only required when controller.parent.mode=true
-   * This entry specifies the location of every child cluster that is being fed by this parent cluster.
-   * The format for the value is JSON: {"cluster1":["url1","url2","url3"],"cluster2":["url4","url5"],"cluster3":["url6","url7","url8"]}
+   * This prefix specifies the location of every child cluster that is being fed by this parent cluster.
+   * The format for key/value would be like "key=child.cluster.url.ei-ltx1, value=url1;url2;url3"
    * the cluster name should be human readable, ex: ei-ltx1
    * the url should be of the form http://host:port
    * */
-  public static final String CHILD_CLUSTER_URL_MAP = "child.cluster.url.map";
+  public static final String CHILD_CLUSTER_URL_PREFIX = "child.cluster.url";
 
   /**
    * When the parent controller receives an admin write operation, it replicates that message to the admin kafka stream.

@@ -3,19 +3,8 @@ package com.linkedin.venice.controller;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.utils.Time;
-import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
-import java.io.IOException;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import org.apache.commons.math.stat.inference.TestUtils;
-import org.codehaus.jackson.JsonParseException;
-import org.codehaus.jackson.map.JsonMappingException;
-import org.codehaus.jackson.map.ObjectMapper;
-import org.codehaus.jackson.type.TypeReference;
+import java.util.*;
 
 import static com.linkedin.venice.ConfigKeys.*;
 
@@ -31,7 +20,7 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
   private final String controllerClusterZkAddresss;
   private final int topicMonitorPollIntervalMs;
   private final boolean parent;
-  private Map<String, List<String>> childClusterMap = null;
+  private Map<String, Set<String>> childClusterMap = null;
   private final int parentControllerWaitingTimeForConsumptionMs;
 
   public VeniceControllerConfig(VeniceProperties props) {
@@ -43,7 +32,7 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
     this.topicMonitorPollIntervalMs = props.getInt(TOPIC_MONITOR_POLL_INTERVAL_MS, 10 * Time.MS_PER_SECOND);
     this.parent = props.getBoolean(ConfigKeys.CONTROLLER_PARENT_MODE, false);
     if (this.parent) {
-      this.childClusterMap = parseClusterMap(props.getString(ConfigKeys.CHILD_CLUSTER_URL_MAP));
+      this.childClusterMap = parseClusterMap(props.clipAndFilterNamespace(ConfigKeys.CHILD_CLUSTER_URL_PREFIX));
     }
     this.parentControllerWaitingTimeForConsumptionMs = props.getInt(ConfigKeys.PARENT_CONTROLLER_WAITING_TIME_FOR_CONSUMPTION_MS, 30 * Time.MS_PER_SECOND);
   }
@@ -78,7 +67,7 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
    *
    * @return
    */
-  public Map<String, List<String>> getChildClusterMap(){
+  public Map<String, Set<String>> getChildClusterMap(){
     return childClusterMap;
   }
 
@@ -87,30 +76,42 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
   }
 
   /**
-   * The format for the property is json: {cluster1:[url1,url2,url3],cluster2:[url4,url5],cluster3:[url6,url7,url8]}
-   * the cluster name should be human readable, ex: ei-ltx1
-   * the url should be of the form http://host:port, urls are separated by semicolons.
-   *
-   * @param clusterMapProperty
+   * @param childClusterUris list of child controller uris
    * @return
    */
-  public static Map<String, List<String>> parseClusterMap(String clusterMapProperty){
-
-    try {
-      Map<String, List<String>> outputMap = new ObjectMapper().readValue(clusterMapProperty, new TypeReference<HashMap<String,List<String>>>() {});
-      for (Map.Entry<String, List<String>> urlEntry : outputMap.entrySet()){
-        if (urlEntry.getValue().size() < 1){
-          throw new VeniceException("Invalid configuration " + CHILD_CLUSTER_URL_MAP + ": found no urls for: " + urlEntry.getKey());
-        }
-        for (String url : urlEntry.getValue()){
-          if (!url.startsWith("http://")){
-            throw new VeniceException("Invalid configuration " + CHILD_CLUSTER_URL_MAP + ": all urls must begin with http://, found: " + url);
-          }
-        }
-      }
-      return outputMap;
-    } catch (Exception e) {
-      throw new VeniceException("Cannot parse childClusterConfig: " + clusterMapProperty, e);
+  public static Map<String, Set<String>> parseClusterMap(VeniceProperties childClusterUris) {
+    Properties childClusterUriProps = childClusterUris.toProperties();
+    if (childClusterUriProps.isEmpty()) {
+      throw new VeniceException("child controller list can not be empty");
     }
+
+    Map<String, Set<String>> outputMap = new HashMap<>();
+
+    for (Map.Entry<Object, Object> uriEntry: childClusterUriProps.entrySet() ) {
+      String datacenter = (String) uriEntry.getKey();
+
+      String[] uris = ((String) uriEntry.getValue()).split(",\\s*");
+
+      if (datacenter.isEmpty()) {
+        throw new VeniceException("Invalid configuration" + CHILD_CLUSTER_URL_PREFIX + ".[missing]" + ": cluster name can't be empty. " + uriEntry.getValue());
+      }
+
+      outputMap.computeIfAbsent(datacenter, k -> new HashSet<>());
+
+      for (String uri : uris) {
+        if (uri.isEmpty()) {
+          throw new VeniceException("Invalid configuration " + CHILD_CLUSTER_URL_PREFIX + "." + datacenter + ": found no urls for: " + uriEntry.getKey());
+        }
+
+        if (!uri.startsWith("http://")) {
+          throw new VeniceException(
+            "Invalid configuration " + CHILD_CLUSTER_URL_PREFIX + "." + datacenter + ": all urls must begin with http://, found: " + uriEntry.getValue());
+        }
+
+        outputMap.get(datacenter).add(uri);
+      }
+    }
+
+    return outputMap;
   }
 }

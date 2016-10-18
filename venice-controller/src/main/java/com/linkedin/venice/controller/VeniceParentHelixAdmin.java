@@ -29,7 +29,6 @@ import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.ApacheKafkaProducer;
 import com.linkedin.venice.writer.VeniceWriter;
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import org.apache.kafka.clients.producer.ProducerConfig;
@@ -353,7 +352,7 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   private Map<String, ControllerClient> getControllerClientMap(String clusterName){
-    Map<String, List<String>> childColoClusters = veniceControllerConfig.getChildClusterMap();
+    Map<String, Set<String>> childColoClusters = veniceControllerConfig.getChildClusterMap();
     Map<String, ControllerClient> controllerClients = new HashMap<>();
     for (String colo : childColoClusters.keySet()) {
       String veniceUrls = String.join(",", childColoClusters.get(colo));
