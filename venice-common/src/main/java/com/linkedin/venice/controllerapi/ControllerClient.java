@@ -184,6 +184,17 @@ public class ControllerClient implements Closeable {
     }
   }
 
+  public ControllerResponse killOfflinePushJob(String clusterName, String kafkaTopic) {
+    try {
+      List<NameValuePair> queryParams = newParams(clusterName);
+      queryParams.add(new BasicNameValuePair(ControllerApiConstants.TOPIC, kafkaTopic));
+      String responseJson = postRequest(ControllerRoute.KILL_OFFLINE_PUSH_JOB.getPath(), queryParams);
+      return mapper.readValue(responseJson, ControllerResponse.class);
+    } catch (Exception e) {
+      return handleError(new VeniceException("Error killing job for topic: " + kafkaTopic + " in cluster: " + clusterName, e), new ControllerResponse());
+    }
+  }
+
   public JobStatusQueryResponse queryJobStatus(String clusterName, String kafkaTopic) {
     try {
       String storeName = Version.parseStoreFromKafkaTopicName(kafkaTopic);

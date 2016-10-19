@@ -16,6 +16,7 @@ public class ControllerApiConstants {
   public static final String KEY_SCHEMA = "key_schema";
   public static final String VALUE_SCHEMA = "value_schema";
   public static final String SCHEMA_ID = "schema_id";
+  public static final String TOPIC = "topic";
 
   private ControllerApiConstants(){}
 }

@@ -90,6 +90,10 @@ public class TopicMonitor extends AbstractVeniceService {
         while (!stop) {
           try {
             Thread.sleep(pollIntervalMs);
+            // No need to do anything if it is not master controller
+            if (!admin.isMasterController(clusterName)) {
+              continue;
+            }
             if (logger.isDebugEnabled()) {
               logger.debug("Polling kafka: " + admin.getKafkaBootstrapServers() + " for new topics");
             }

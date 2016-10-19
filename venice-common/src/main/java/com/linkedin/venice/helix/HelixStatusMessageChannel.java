@@ -135,7 +135,9 @@ public class HelixStatusMessageChannel implements StatusMessageChannel {
     if (numMsgSent == 0) {
       String errorMsg = "No storage node is found to send message to. Message:" + message.toString();
       logger.error(errorMsg);
-      throw new VeniceException(errorMsg);
+      // Not throwing exception for now,
+      // this scenario could be introduced by two cases: wrong resource or no storage node.
+      // TODO: need to think a better way to handle those two different scenarios.
     } else {
       logger.info("Sending " + numMsgSent + " messages to storage nodes. Message:" + message.toString());
     }

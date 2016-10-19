@@ -736,9 +736,13 @@ public class VeniceHelixAdmin implements Admin {
         return whitelistAccessor.getWhiteList(clusterName);
     }
 
+    protected void checkPreConditionForKillOfflineJob(String clusterName, String kafkaTopic) {
+        checkControllerMastership(clusterName);
+    }
+
     @Override
     public void killOfflineJob(String clusterName, String kafkaTopic) {
-        checkControllerMastership(clusterName);
+        checkPreConditionForKillOfflineJob(clusterName, kafkaTopic);
         StatusMessageChannel messageChannel = getVeniceHelixResource(clusterName).getMessageChannel();
         int retryCount = 3;
         // Broadcast kill message to all of storage nodes assigned to given resource. Helix will help us to only send

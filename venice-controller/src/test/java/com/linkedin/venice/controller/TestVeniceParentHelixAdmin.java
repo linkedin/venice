@@ -2,6 +2,7 @@ package com.linkedin.venice.controller;
 
 import com.linkedin.venice.controller.kafka.AdminTopicUtils;
 import com.linkedin.venice.controller.kafka.protocol.admin.AdminOperation;
+import com.linkedin.venice.controller.kafka.protocol.admin.KillOfflinePushJob;
 import com.linkedin.venice.controller.kafka.protocol.admin.PauseStore;
 import com.linkedin.venice.controller.kafka.protocol.admin.ResumeStore;
 import com.linkedin.venice.controller.kafka.protocol.admin.StoreCreation;
@@ -22,12 +23,11 @@ import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.job.ExecutionStatus;
 import com.linkedin.venice.kafka.TopicManager;
-import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.offsets.OffsetManager;
 import com.linkedin.venice.offsets.OffsetRecord;
+import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.writer.VeniceWriter;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 import org.apache.kafka.clients.producer.RecordMetadata;
 import org.apache.kafka.common.TopicPartition;
@@ -40,6 +40,7 @@ import org.testng.annotations.Test;
 import java.io.IOException;
 import java.util.Arrays;
 import java.util.HashSet;
+import java.util.Set;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 
@@ -48,6 +49,7 @@ import static org.mockito.Mockito.doReturn;
 
 
 public class TestVeniceParentHelixAdmin {
+  private static int TIMEOUT_IN_MS = 10 * Time.MS_PER_SECOND;
   private static int KAFKA_REPLICA_FACTOR = 3;
   private final String clusterName = "test-cluster";
   private final String topicName = AdminTopicUtils.getTopicNameFromClusterName(clusterName);
@@ -364,6 +366,52 @@ public class TestVeniceParentHelixAdmin {
     Assert.assertEquals(resumeStore.storeName.toString(), storeName);
   }
 
+  @Test
+  public void testKillOfflinePushJob() throws ExecutionException, InterruptedException {
+    String kafkaTopic = "test_store_v1";
+    parentAdmin.start(clusterName);
+
+    Future future = Mockito.mock(Future.class);
+    Mockito.doReturn(new RecordMetadata(topicPartition, 0, 1, -1))
+        .when(future).get();
+    Mockito.doReturn(future)
+        .when(veniceWriter)
+        .put(Mockito.any(), Mockito.any(), Mockito.anyInt());
+
+    Mockito.when(offsetManager.getLastOffset(topicName, partitionId))
+        .thenReturn(new OffsetRecord(-1))
+        .thenReturn(new OffsetRecord(1));
+
+    Mockito.doReturn(new HashSet<String>(Arrays.asList(kafkaTopic)))
+        .when(topicManager).listTopics();
+
+    parentAdmin.killOfflineJob(clusterName, kafkaTopic);
+
+    Mockito.verify(internalAdmin, Mockito.times(1))
+        .checkPreConditionForKillOfflineJob(clusterName, kafkaTopic);
+    Mockito.verify(topicManager, Mockito.times(1))
+        .deleteTopic(kafkaTopic);
+    Mockito.verify(veniceWriter, Mockito.times(1))
+        .put(Mockito.any(), Mockito.any(), Mockito.anyInt());
+    Mockito.verify(offsetManager, Mockito.times(2))
+        .getLastOffset(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID);
+    ArgumentCaptor<byte[]> keyCaptor = ArgumentCaptor.forClass(byte[].class);
+    ArgumentCaptor<byte[]> valueCaptor = ArgumentCaptor.forClass(byte[].class);
+    ArgumentCaptor<Integer> schemaCaptor = ArgumentCaptor.forClass(Integer.class);
+    Mockito.verify(veniceWriter).put(keyCaptor.capture(), valueCaptor.capture(), schemaCaptor.capture());
+    byte[] keyBytes = keyCaptor.getValue();
+    byte[] valueBytes = valueCaptor.getValue();
+    int schemaId = schemaCaptor.getValue();
+    Assert.assertEquals(schemaId, AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
+    Assert.assertEquals(keyBytes.length, 0);
+    AdminOperation adminMessage = adminOperationSerializer.deserialize(valueBytes, schemaId);
+    Assert.assertEquals(adminMessage.operationType, AdminMessageType.KILL_OFFLINE_PUSH_JOB.ordinal());
+    KillOfflinePushJob killJob = (KillOfflinePushJob) adminMessage.payloadUnion;
+    Assert.assertEquals(killJob.clusterName.toString(), clusterName);
+    Assert.assertEquals(killJob.kafkaTopic.toString(), kafkaTopic);
+  }
+
+
   /**
    * End-to-end test
    */
@@ -419,7 +467,6 @@ public class TestVeniceParentHelixAdmin {
 
   @Test
   public void testGetExecutionStatus(){
-
     Map<ExecutionStatus, ControllerClient> clientMap = new HashMap<>();
     for (ExecutionStatus status : ExecutionStatus.values()){
       JobStatusQueryResponse response = new JobStatusQueryResponse();
@@ -428,6 +475,7 @@ public class TestVeniceParentHelixAdmin {
       doReturn(response).when(statusClient).queryJobStatus(anyString(), anyString());
       clientMap.put(status, statusClient);
     }
+    TopicManager topicManager = Mockito.mock(TopicManager.class);
 
     JobStatusQueryResponse failResponse = new JobStatusQueryResponse();
     failResponse.setError("error");
@@ -445,35 +493,57 @@ public class TestVeniceParentHelixAdmin {
     completeMap.put("cluster", clientMap.get(ExecutionStatus.COMPLETED));
     completeMap.put("cluster2", clientMap.get(ExecutionStatus.COMPLETED));
     completeMap.put("cluster3", clientMap.get(ExecutionStatus.COMPLETED));
-    Assert.assertEquals(VeniceParentHelixAdmin.getOffLineJobStatus("mycluster", "atopic", completeMap),
+    Set<String> topicList = new HashSet<>(
+        Arrays.asList(
+            "topic1",
+            "topic2",
+            "topic3",
+            "topic4",
+            "topic5",
+            "topic6",
+            "topic7",
+            "topic8",
+            "topic9"
+        )
+    );
+    doReturn(topicList).when(topicManager).listTopics();
+
+    Assert.assertEquals(VeniceParentHelixAdmin.getOffLineJobStatus("mycluster", "topic1", completeMap, topicManager),
         ExecutionStatus.COMPLETED);
+    Mockito.verify(topicManager, Mockito.timeout(TIMEOUT_IN_MS).times(1)).deleteTopic("topic1");
 
     completeMap.put("cluster-slow", clientMap.get(ExecutionStatus.NOT_CREATED));
-    Assert.assertEquals(VeniceParentHelixAdmin.getOffLineJobStatus("mycluster", "atopic", completeMap),
+    Assert.assertEquals(VeniceParentHelixAdmin.getOffLineJobStatus("mycluster", "topic2", completeMap, topicManager),
         ExecutionStatus.PROGRESS);
+    Mockito.verify(topicManager, Mockito.timeout(TIMEOUT_IN_MS).never()).deleteTopic("topic2");
 
 
     Map<String, ControllerClient> progressMap = new HashMap<>();
     progressMap.put("cluster", clientMap.get(ExecutionStatus.NOT_CREATED));
     progressMap.put("cluster3", clientMap.get(ExecutionStatus.NOT_CREATED));
-    Assert.assertEquals(VeniceParentHelixAdmin.getOffLineJobStatus("mycluster", "atopic", progressMap),
+    Assert.assertEquals(VeniceParentHelixAdmin.getOffLineJobStatus("mycluster", "topic3", progressMap, topicManager),
         ExecutionStatus.NOT_CREATED);
+    Mockito.verify(topicManager,Mockito.timeout(TIMEOUT_IN_MS).never()).deleteTopic("topic3");
 
     progressMap.put("cluster5", clientMap.get(ExecutionStatus.NEW));
-    Assert.assertEquals(VeniceParentHelixAdmin.getOffLineJobStatus("mycluster", "atopic", progressMap),
+    Assert.assertEquals(VeniceParentHelixAdmin.getOffLineJobStatus("mycluster", "topic4", progressMap, topicManager),
         ExecutionStatus.NEW);
+    Mockito.verify(topicManager, Mockito.timeout(TIMEOUT_IN_MS).never()).deleteTopic("topic4");
 
     progressMap.put("cluster7", clientMap.get(ExecutionStatus.PROGRESS));
-    Assert.assertEquals(VeniceParentHelixAdmin.getOffLineJobStatus("mycluster", "atopic", progressMap),
+    Assert.assertEquals(VeniceParentHelixAdmin.getOffLineJobStatus("mycluster", "topic5", progressMap, topicManager),
         ExecutionStatus.PROGRESS);
+    Mockito.verify(topicManager, Mockito.timeout(TIMEOUT_IN_MS).never()).deleteTopic("topic5");;
 
     progressMap.put("cluster9", clientMap.get(ExecutionStatus.STARTED));
-    Assert.assertEquals(VeniceParentHelixAdmin.getOffLineJobStatus("mycluster", "atopic", progressMap),
+    Assert.assertEquals(VeniceParentHelixAdmin.getOffLineJobStatus("mycluster", "topic6", progressMap, topicManager),
         ExecutionStatus.PROGRESS);
+    Mockito.verify(topicManager, Mockito.timeout(TIMEOUT_IN_MS).never()).deleteTopic("topic6");
 
     progressMap.put("cluster11", clientMap.get(ExecutionStatus.COMPLETED));
-    Assert.assertEquals(VeniceParentHelixAdmin.getOffLineJobStatus("mycluster", "atopic", progressMap),
+    Assert.assertEquals(VeniceParentHelixAdmin.getOffLineJobStatus("mycluster", "topic7", progressMap, topicManager),
         ExecutionStatus.PROGRESS);
+    Mockito.verify(topicManager, Mockito.timeout(TIMEOUT_IN_MS).never()).deleteTopic("topic7");
 
     // 1 in 4 failures is OK
     Map<String, ControllerClient> failCompleteMap = new HashMap<>();
@@ -481,15 +551,16 @@ public class TestVeniceParentHelixAdmin {
     failCompleteMap.put("cluster2", clientMap.get(ExecutionStatus.COMPLETED));
     failCompleteMap.put("cluster3", clientMap.get(ExecutionStatus.COMPLETED));
     failCompleteMap.put("failcluster", clientMap.get(null));
-    Assert.assertEquals(VeniceParentHelixAdmin.getOffLineJobStatus("mycluster", "atopic", failCompleteMap),
+    Assert.assertEquals(VeniceParentHelixAdmin.getOffLineJobStatus("mycluster", "topic8", failCompleteMap, topicManager),
         ExecutionStatus.COMPLETED);
+    Mockito.verify(topicManager, Mockito.timeout(TIMEOUT_IN_MS).times(1)).deleteTopic("topic8");
 
     // 3 in 6 failures is NOT OK
     failCompleteMap.put("failcluster2", clientMap.get(null));
     failCompleteMap.put("failcluster3", clientMap.get(null));
-    Assert.assertEquals(VeniceParentHelixAdmin.getOffLineJobStatus("mycluster", "atopic", failCompleteMap),
+    Assert.assertEquals(VeniceParentHelixAdmin.getOffLineJobStatus("mycluster", "topic9", failCompleteMap, topicManager),
         ExecutionStatus.ERROR);
-
+    Mockito.verify(topicManager, Mockito.timeout(TIMEOUT_IN_MS).times(1)).deleteTopic("topic9");
   }
 
   @Test

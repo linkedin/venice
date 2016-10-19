@@ -5,7 +5,7 @@
   "fields": [
     {
       "name": "operationType",
-      "doc": "0 => StoreCreation, 1 => ValueSchemaCreation, 2 => PauseStore, 3 => ResumeStore",
+      "doc": "0 => StoreCreation, 1 => ValueSchemaCreation, 2 => PauseStore, 3 => ResumeStore, 4 => KillOfflinePushJob",
       "type": "int"
     }, {
       "name": "payloadUnion",
@@ -90,6 +90,20 @@
             },
             {
               "name": "storeName",
+              "type": "string"
+            }
+          ]
+        },
+        {
+          "name": "KillOfflinePushJob",
+          "type": "record",
+          "fields": [
+            {
+              "name": "clusterName",
+              "type": "string"
+            },
+            {
+              "name": "kafkaTopic",
               "type": "string"
             }
           ]

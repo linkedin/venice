@@ -18,6 +18,7 @@ public enum ControllerRoute {
   PAUSE_STORE("/pause_store", Arrays.asList(NAME, STATUS)), // status "true" or "false"
 
   JOB("/job", Arrays.asList(NAME, VERSION)),
+  KILL_OFFLINE_PUSH_JOB("/kill_offline_push_job", Arrays.asList(TOPIC)),
   LIST_STORES("/list_stores", Arrays.asList()),
   LIST_NODES("/list_instances", Arrays.asList()),
   LIST_REPLICAS("/list_replicas", Arrays.asList(NAME, VERSION)),

@@ -50,6 +50,6 @@ public class AdminConsumerService extends AbstractVeniceService {
   }
 
   private AdminConsumptionTask getAdminConsumptionTaskForCluster(String clusterName) {
-    return new AdminConsumptionTask(clusterName, consumer, offsetManager, admin);
+    return new AdminConsumptionTask(clusterName, consumer, offsetManager, admin, config.isParent());
   }
 }

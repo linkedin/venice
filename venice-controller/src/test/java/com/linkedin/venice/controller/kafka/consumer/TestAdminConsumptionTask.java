@@ -4,6 +4,7 @@ import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.VeniceController;
 import com.linkedin.venice.controller.kafka.AdminTopicUtils;
 import com.linkedin.venice.controller.kafka.protocol.admin.AdminOperation;
+import com.linkedin.venice.controller.kafka.protocol.admin.KillOfflinePushJob;
 import com.linkedin.venice.controller.kafka.protocol.admin.SchemaMeta;
 import com.linkedin.venice.controller.kafka.protocol.admin.StoreCreation;
 import com.linkedin.venice.controller.kafka.protocol.enums.AdminMessageType;
@@ -95,29 +96,13 @@ public class TestAdminConsumptionTask {
     Mockito.doReturn(topicManager).when(admin).getTopicManager();
   }
 
-  private void setupCounterForIsMasterControllerInvocation(boolean result, AtomicInteger counter) {
-    Mockito.doAnswer(new Answer<Boolean>() {
-      @Override
-      public Boolean answer(InvocationOnMock invocation) throws Throwable {
-        counter.getAndIncrement();
-        return result;
-      }
-    }).when(admin).isMasterController(clusterName);
-  }
-
-  private void waitingForDataToBeConsumed(AtomicInteger counter, int threshold) {
-    TestUtils.waitForNonDeterministicCompletion(3, TimeUnit.SECONDS, () -> {
-      return counter.get() >= threshold;
-    });
-  }
-
   @Test (timeOut = TIMEOUT)
   public void testRunWhenNotMasterController() throws IOException, InterruptedException {
     initTaskRelatedArgs();
     // Update admin to be a slave controller
     Mockito.doReturn(false).when(admin).isMasterController(clusterName);
 
-    AdminConsumptionTask task = new AdminConsumptionTask(clusterName, consumer, offsetManager, admin);
+    AdminConsumptionTask task = new AdminConsumptionTask(clusterName, consumer, offsetManager, admin, false);
     executor.submit(task);
     Mockito.verify(admin, Mockito.timeout(TIMEOUT).atLeastOnce())
         .isMasterController(clusterName);
@@ -135,7 +120,7 @@ public class TestAdminConsumptionTask {
     Mockito.doReturn(new HashSet<String>()).when(topicManager).listTopics();
     Mockito.doReturn(topicManager).when(admin).getTopicManager();
 
-    AdminConsumptionTask task = new AdminConsumptionTask(clusterName, consumer, offsetManager, admin);
+    AdminConsumptionTask task = new AdminConsumptionTask(clusterName, consumer, offsetManager, admin, false);
     executor.submit(task);
     Mockito.verify(admin, Mockito.timeout(TIMEOUT).atLeastOnce())
         .isMasterController(clusterName);
@@ -149,18 +134,21 @@ public class TestAdminConsumptionTask {
   @Test (timeOut = TIMEOUT)
   public void testRun() throws InterruptedException, IOException {
     String storeName = "test_store";
+    String kafkaTopic = storeName + "_v1";
     String owner = "test_owner";
     String keySchema = "\"string\"";
     String valueSchema = "\"string\"";
-    initTaskRelatedArgs(getStoreCreationMessage(clusterName, storeName, owner, 1, keySchema, valueSchema));
+    initTaskRelatedArgs(
+        getStoreCreationMessage(clusterName, storeName, owner, 1, keySchema, valueSchema),
+        getKillOfflinePushJobMessage(clusterName, kafkaTopic, 2)
+    );
     // The store doesn't exist
     Mockito.doReturn(false).when(admin).hasStore(clusterName, storeName);
-    AtomicInteger counter = new AtomicInteger(0);
-    setupCounterForIsMasterControllerInvocation(true, counter);
 
-    AdminConsumptionTask task = new AdminConsumptionTask(clusterName, consumer, offsetManager, admin);
+    AdminConsumptionTask task = new AdminConsumptionTask(clusterName, consumer, offsetManager, admin, false);
     executor.submit(task);
-    waitingForDataToBeConsumed(counter, 2);
+    Mockito.verify(offsetManager, Mockito.timeout(TIMEOUT).atLeastOnce())
+        .recordOffset(Mockito.anyString(), Mockito.anyInt(), Mockito.eq(new OffsetRecord(2)));
     task.close();
     executor.shutdown();
     executor.awaitTermination(TIMEOUT, TimeUnit.MILLISECONDS);
@@ -172,7 +160,9 @@ public class TestAdminConsumptionTask {
     Mockito.verify(consumer, Mockito.timeout(TIMEOUT).times(1))
         .unSubscribe(Mockito.any(), Mockito.anyInt());
     Mockito.verify(admin, Mockito.timeout(TIMEOUT).times(1)).addStore(clusterName, storeName, owner, keySchema, valueSchema);
+    Mockito.verify(admin, Mockito.timeout(TIMEOUT).times(1)).killOfflineJob(clusterName, kafkaTopic);
     Mockito.verify(offsetManager, Mockito.timeout(TIMEOUT).times(1)).recordOffset(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID, new OffsetRecord(1));
+    Mockito.verify(offsetManager, Mockito.timeout(TIMEOUT).times(1)).recordOffset(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID, new OffsetRecord(2));
   }
 
   @Test (timeOut = TIMEOUT)
@@ -182,8 +172,6 @@ public class TestAdminConsumptionTask {
     String keySchema = "\"string\"";
     String valueSchema = "\"string\"";
     initTaskRelatedArgs(getStoreCreationMessage(clusterName, storeName, owner, 1, keySchema, valueSchema));
-    AtomicInteger counter = new AtomicInteger(0);
-    setupCounterForIsMasterControllerInvocation(true, counter);
     // The store doesn't exist
     Mockito.doReturn(false).when(admin).hasStore(clusterName, storeName);
     Mockito.doThrow(new VeniceException("Mock store creation exception"))
@@ -191,9 +179,10 @@ public class TestAdminConsumptionTask {
         .when(admin)
         .addStore(clusterName, storeName, owner, keySchema, valueSchema);
 
-    AdminConsumptionTask task = new AdminConsumptionTask(clusterName, consumer, offsetManager, admin);
+    AdminConsumptionTask task = new AdminConsumptionTask(clusterName, consumer, offsetManager, admin, false);
     executor.submit(task);
-    waitingForDataToBeConsumed(counter, 3);
+    Mockito.verify(offsetManager, Mockito.timeout(TIMEOUT).atLeastOnce())
+        .recordOffset(Mockito.anyString(), Mockito.anyInt(), Mockito.eq(new OffsetRecord(1)));
     task.close();
     executor.shutdown();
     executor.awaitTermination(TIMEOUT, TimeUnit.MILLISECONDS);
@@ -216,14 +205,13 @@ public class TestAdminConsumptionTask {
     String valueSchema = "\"string\"";
     ConsumerRecord storeCreationRecord = getStoreCreationMessage(clusterName, storeName, owner, 1, keySchema, valueSchema);
     initTaskRelatedArgs(storeCreationRecord, storeCreationRecord);
-    AtomicInteger counter = new AtomicInteger(0);
-    setupCounterForIsMasterControllerInvocation(true, counter);
     // The store doesn't exist
     Mockito.doReturn(false).when(admin).hasStore(clusterName, storeName);
 
-    AdminConsumptionTask task = new AdminConsumptionTask(clusterName, consumer, offsetManager, admin);
+    AdminConsumptionTask task = new AdminConsumptionTask(clusterName, consumer, offsetManager, admin, false);
     executor.submit(task);
-    waitingForDataToBeConsumed(counter, 2);
+    Mockito.verify(offsetManager, Mockito.timeout(TIMEOUT).atLeastOnce())
+        .recordOffset(Mockito.anyString(), Mockito.anyInt(), Mockito.eq(new OffsetRecord(1)));
     task.close();
     executor.shutdown();
     executor.awaitTermination(TIMEOUT, TimeUnit.MILLISECONDS);
@@ -247,16 +235,15 @@ public class TestAdminConsumptionTask {
     ConsumerRecord storeCreationRecord1 = getStoreCreationMessage(clusterName, storeName, owner, 1, keySchema, valueSchema);
     ConsumerRecord storeCreationRecord2 = getStoreCreationMessage(clusterName, storeName, owner, 2, keySchema, valueSchema);
     initTaskRelatedArgs(storeCreationRecord1, storeCreationRecord2);
-    AtomicInteger counter = new AtomicInteger(0);
-    setupCounterForIsMasterControllerInvocation(true, counter);
     // The store doesn't exist for the first time, and exist for the second time
     Mockito.when(admin.hasStore(clusterName, storeName))
         .thenReturn(false)
         .thenReturn(true);
 
-    AdminConsumptionTask task = new AdminConsumptionTask(clusterName, consumer, offsetManager, admin);
+    AdminConsumptionTask task = new AdminConsumptionTask(clusterName, consumer, offsetManager, admin, false);
     executor.submit(task);
-    waitingForDataToBeConsumed(counter, 2);
+    Mockito.verify(offsetManager, Mockito.timeout(TIMEOUT).atLeastOnce())
+        .recordOffset(Mockito.anyString(), Mockito.anyInt(), Mockito.eq(new OffsetRecord(2)));
     task.close();
     executor.shutdown();
     executor.awaitTermination(TIMEOUT, TimeUnit.MILLISECONDS);
@@ -274,21 +261,27 @@ public class TestAdminConsumptionTask {
 
   @Test (timeOut = TIMEOUT)
   public void testRunWithBiggerStartingOffset() throws InterruptedException, IOException {
-    String storeName = "test_store";
+    String storeName1 = "test_store1";
+    String storeName2 = "test_stoer2";
     String owner = "test_owner";
     String keySchema = "\"string\"";
     String valueSchema = "\"string\"";
-    initTaskRelatedArgs(getStoreCreationMessage(clusterName, storeName, owner, 1, keySchema, valueSchema));
-    AtomicInteger counter = new AtomicInteger(0);
-    setupCounterForIsMasterControllerInvocation(true, counter);
+    initTaskRelatedArgs(
+        getStoreCreationMessage(clusterName, storeName1, owner, 1, keySchema, valueSchema),
+        getStoreCreationMessage(clusterName, storeName2, owner, 2, keySchema, valueSchema)
+    );
     // The store doesn't exist
-    Mockito.doReturn(false).when(admin).hasStore(clusterName, storeName);
+    Mockito.doReturn(false).when(admin).hasStore(clusterName, storeName1);
+    Mockito.doReturn(false).when(admin).hasStore(clusterName, storeName2);
 
-    Mockito.doReturn(new OffsetRecord(2)).when(offsetManager).getLastOffset(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID);
+    Mockito.doReturn(new OffsetRecord(1)).when(offsetManager).getLastOffset(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID);
 
-    AdminConsumptionTask task = new AdminConsumptionTask(clusterName, consumer, offsetManager, admin);
+    AdminConsumptionTask task = new AdminConsumptionTask(clusterName, consumer, offsetManager, admin, false);
     executor.submit(task);
-    waitingForDataToBeConsumed(counter, 2);
+
+    Utils.sleep(AdminConsumptionTask.READ_CYCLE_DELAY_MS);
+    Mockito.verify(offsetManager, Mockito.timeout(TIMEOUT).atLeastOnce())
+        .recordOffset(Mockito.anyString(), Mockito.anyInt(), Mockito.eq(new OffsetRecord(2)));
     task.close();
     executor.shutdown();
     executor.awaitTermination(TIMEOUT, TimeUnit.MILLISECONDS);
@@ -299,13 +292,41 @@ public class TestAdminConsumptionTask {
         .subscribe(Mockito.any(), Mockito.anyInt(), Mockito.any());
     Mockito.verify(consumer, Mockito.timeout(TIMEOUT).times(1))
         .unSubscribe(Mockito.any(), Mockito.anyInt());
-    Mockito.verify(admin, Mockito.timeout(TIMEOUT).never()).addStore(clusterName, storeName, owner, keySchema, valueSchema);
+    Mockito.verify(admin, Mockito.timeout(TIMEOUT).never()).addStore(clusterName, storeName1, owner, keySchema, valueSchema);
+    Mockito.verify(admin, Mockito.timeout(TIMEOUT).atLeastOnce()).addStore(clusterName, storeName2, owner, keySchema, valueSchema);
     Mockito.verify(offsetManager, Mockito.timeout(TIMEOUT).never()).recordOffset(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID, new OffsetRecord(1));
+    Mockito.verify(offsetManager, Mockito.timeout(TIMEOUT).atLeastOnce()).recordOffset(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID, new OffsetRecord(2));
+  }
+
+  @Test (timeOut = TIMEOUT)
+  public void testParentControllerSkipKillOfflinePushJobMessage() throws InterruptedException, IOException {
+    String storeName = "test_store";
+    String kafkaTopic = storeName + "_v1";
+    initTaskRelatedArgs(
+        getKillOfflinePushJobMessage(clusterName, kafkaTopic, 2)
+    );
+
+    AdminConsumptionTask task = new AdminConsumptionTask(clusterName, consumer, offsetManager, admin, true);
+    executor.submit(task);
+    Mockito.verify(offsetManager, Mockito.timeout(TIMEOUT).atLeastOnce())
+        .recordOffset(Mockito.anyString(), Mockito.anyInt(), Mockito.eq(new OffsetRecord(2)));
+    task.close();
+    executor.shutdown();
+    executor.awaitTermination(TIMEOUT, TimeUnit.MILLISECONDS);
+
+    Mockito.verify(admin, Mockito.timeout(TIMEOUT).atLeastOnce())
+        .isMasterController(clusterName);
+    Mockito.verify(consumer, Mockito.timeout(TIMEOUT).times(1))
+        .subscribe(Mockito.any(), Mockito.anyInt(), Mockito.any());
+    Mockito.verify(consumer, Mockito.timeout(TIMEOUT).times(1))
+        .unSubscribe(Mockito.any(), Mockito.anyInt());
+    Mockito.verify(admin, Mockito.timeout(TIMEOUT).never()).killOfflineJob(clusterName, kafkaTopic);
+    Mockito.verify(offsetManager, Mockito.timeout(TIMEOUT).times(1)).recordOffset(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID, new OffsetRecord(2));
   }
 
   private ConsumerRecord getStoreCreationMessage(String clusterName, String storeName, String owner, long offset, String keySchema, String valueSchema) {
     AdminOperationSerializer serializer = new AdminOperationSerializer();
-    StoreCreation storeCreation = new StoreCreation();
+    StoreCreation storeCreation = (StoreCreation) AdminMessageType.STORE_CREATION.getNewInstance();
     storeCreation.clusterName = clusterName;
     storeCreation.storeName = storeName;
     storeCreation.owner = owner;
@@ -318,6 +339,25 @@ public class TestAdminConsumptionTask {
     AdminOperation adminMessage = new AdminOperation();
     adminMessage.operationType = AdminMessageType.STORE_CREATION.ordinal();
     adminMessage.payloadUnion = storeCreation;
+    byte[] payload = serializer.serialize(adminMessage);
+    Put put = new Put();
+    put.putValue = ByteBuffer.wrap(payload);
+    put.schemaId = AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION;
+    KafkaMessageEnvelope message = new KafkaMessageEnvelope();
+    message.messageType = MessageType.PUT.ordinal();
+    message.payloadUnion = put;
+
+    return new ConsumerRecord(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID, offset, -1, TimestampType.NO_TIMESTAMP_TYPE, emptyKey, message);
+  }
+
+  private ConsumerRecord getKillOfflinePushJobMessage(String clusterName, String kafkaTopic, long offset) {
+    AdminOperationSerializer serializer = new AdminOperationSerializer();
+    KillOfflinePushJob killJob = (KillOfflinePushJob) AdminMessageType.KILL_OFFLINE_PUSH_JOB.getNewInstance();
+    killJob.clusterName = clusterName;
+    killJob.kafkaTopic = kafkaTopic;
+    AdminOperation adminMessage = new AdminOperation();
+    adminMessage.operationType = AdminMessageType.KILL_OFFLINE_PUSH_JOB.ordinal();
+    adminMessage.payloadUnion = killJob;
     byte[] payload = serializer.serialize(adminMessage);
     Put put = new Put();
     put.putValue = ByteBuffer.wrap(payload);

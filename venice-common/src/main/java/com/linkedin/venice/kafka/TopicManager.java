@@ -74,9 +74,13 @@ public class TopicManager implements Closeable {
   }
 
   public void deleteTopic(String topicName) {
-    logger.info("Deleting topic: " + topicName);
-    // TODO: Stop using Kafka APIs which depend on ZK.
-    AdminUtils.deleteTopic(getZkUtils(), topicName);
+    if (listTopics().contains(topicName)) {
+      // TODO: Stop using Kafka APIs which depend on ZK.
+      logger.info("Deleting topic: " + topicName);
+      AdminUtils.deleteTopic(getZkUtils(), topicName);
+    } else {
+      logger.info("Topic: " +  topicName + " to be deleted doesn't exist");
+    }
   }
 
   public synchronized Set<String> listTopics() {
