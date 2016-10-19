@@ -3,6 +3,7 @@ package com.linkedin.venice.controller;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.controller.kafka.AdminTopicUtils;
 import com.linkedin.venice.controller.kafka.protocol.admin.AdminOperation;
+import com.linkedin.venice.controller.kafka.protocol.admin.KillOfflinePushJob;
 import com.linkedin.venice.controller.kafka.protocol.admin.PauseStore;
 import com.linkedin.venice.controller.kafka.protocol.admin.ResumeStore;
 import com.linkedin.venice.controller.kafka.protocol.admin.SchemaMeta;
@@ -234,6 +235,33 @@ public class VeniceParentHelixAdmin implements Admin {
     // create new corresponding store versions
     // TODO: clean up kafka topic in parent Kafka cluster
     // Adding version in Parent Controller won't start offline push job.
+
+    /**
+     * Check whether any topic for this store exists or not.
+     * The existing topic could be introduced by two cases:
+     * 1. The previous job push is still running;
+     * 2. The previous job push fails to delete this topic;
+     *
+     * For the 1st case, it is expected to refuse the new data push,
+     * and for the 2nd case, customer should reach out Venice team to fix this issue for now.
+     **/
+    TopicManager topicManager = getTopicManager();
+    Set<String> topics = topicManager.listTopics();
+    for (String topic: topics) {
+      if (AdminTopicUtils.isAdminTopic(topic)) {
+        continue;
+      }
+      try {
+        String storeNameForCurrentTopic = Version.parseStoreFromKafkaTopicName(topic);
+        if (storeNameForCurrentTopic.equals(storeName)) {
+          throw new VeniceException("Topic: " + topic + " exists for store: " + storeName +
+              ", please wait for previous job to be finished, and reach out Venice team if it is" +
+              " not this case");
+        }
+      } catch (Exception e) {
+        logger.warn("Failed to parse StoreName from topic: " + topic);
+      }
+    }
     return veniceHelixAdmin.addVersion(clusterName, storeName, VeniceHelixAdmin.VERSION_ID_UNSET, numberOfPartition, replicationFactor, false);
   }
 
@@ -378,10 +406,10 @@ public class VeniceParentHelixAdmin implements Admin {
   @Override
   public ExecutionStatus getOffLineJobStatus(String clusterName, String kafkaTopic) {
     Map<String, ControllerClient> controllerClients = getControllerClientMap(clusterName);
-    return getOffLineJobStatus(clusterName, kafkaTopic, controllerClients);
+    return getOffLineJobStatus(clusterName, kafkaTopic, controllerClients, getTopicManager());
   }
 
-  protected static ExecutionStatus getOffLineJobStatus(String clusterName, String kafkaTopic, Map<String, ControllerClient> controllerClients) {
+  protected static ExecutionStatus getOffLineJobStatus(String clusterName, String kafkaTopic, Map<String, ControllerClient> controllerClients, TopicManager topicManager) {
     Set<String> childClusters = controllerClients.keySet();
     ExecutionStatus currentReturnStatus = ExecutionStatus.NOT_CREATED;
     int failCount = 0;
@@ -441,6 +469,11 @@ public class VeniceParentHelixAdmin implements Admin {
       if (! (successCount >= (childClusters.size()/2)+1)) { // Strict majority must not fail
         currentReturnStatus = ExecutionStatus.ERROR;
       }
+    }
+    if (currentReturnStatus.isTerminal()) {
+      // Remove current Kafka topic
+      logger.info("Deleting kafka topic: " + kafkaTopic + " and job status: " + currentReturnStatus);
+      topicManager.deleteTopic(kafkaTopic);
     }
     return currentReturnStatus;
   }
@@ -588,8 +621,26 @@ public class VeniceParentHelixAdmin implements Admin {
 
   @Override
   public void killOfflineJob(String clusterName, String kafkaTopic) {
-    // TODO implement it later to support multi-colo.
-    throw new VeniceException("killOfflineJob is not supported!");
+    acquireLock(clusterName);
+    try {
+      veniceHelixAdmin.checkPreConditionForKillOfflineJob(clusterName, kafkaTopic);
+      logger.info("Killing offline push job for topic: " + kafkaTopic + " in cluster: " + clusterName);
+      // Remove Kafka topic
+      TopicManager topicManager = getTopicManager();
+      logger.info("Deleting topic when kill offline push job, topic: " + kafkaTopic);
+      topicManager.deleteTopic(kafkaTopic);
+
+      KillOfflinePushJob killJob = (KillOfflinePushJob) AdminMessageType.KILL_OFFLINE_PUSH_JOB.getNewInstance();
+      killJob.clusterName = clusterName;
+      killJob.kafkaTopic = kafkaTopic;
+      AdminOperation message = new AdminOperation();
+      message.operationType = AdminMessageType.KILL_OFFLINE_PUSH_JOB.ordinal();
+      message.payloadUnion = killJob;
+
+      sendAdminMessageAndWaitForConsumed(clusterName, message);
+    } finally {
+      releaseLock();
+    }
   }
 
   @Override

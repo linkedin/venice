@@ -84,7 +84,8 @@ public class AdminSparkServer extends AbstractVeniceService {
     Spark.get(CURRENT_VERSION.getPath(), CurrentVersion.getRoute(admin));
     Spark.get(ACTIVE_VERSIONS.getPath(), ActiveVersions.getRoute(admin));
 
-    Spark.get(JOB.getPath(), JobStatus.getRoute(admin));
+    Spark.get(JOB.getPath(), JobRoutes.jobStatus(admin));
+    Spark.post(KILL_OFFLINE_PUSH_JOB.getPath(), JobRoutes.killOfflinePushJob(admin));
 
     Spark.post(CREATE_VERSION.getPath(), CreateVersion.getRoute(admin));
     Spark.post(NEW_STORE.getPath(), CreateStore.getRoute(admin));

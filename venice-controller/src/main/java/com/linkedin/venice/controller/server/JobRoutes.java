@@ -2,6 +2,7 @@ package com.linkedin.venice.controller.server;
 
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.controller.Admin;
+import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Version;
@@ -11,11 +12,13 @@ import spark.Route;
 
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.CLUSTER;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.NAME;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.TOPIC;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.VERSION;
 import static com.linkedin.venice.controllerapi.ControllerRoute.JOB;
+import static com.linkedin.venice.controllerapi.ControllerRoute.KILL_OFFLINE_PUSH_JOB;
 
-public class JobStatus {
-  public static Route getRoute(Admin admin) {
+public class JobRoutes {
+  public static Route jobStatus(Admin admin) {
     return (request, response) -> {
       JobStatusQueryResponse responseObject = new JobStatusQueryResponse();
       try {
@@ -57,6 +60,26 @@ public class JobStatus {
         responseObject.setName(store);
         responseObject.setVersion(versionNumber);
 
+      } catch (VeniceException e) {
+        responseObject.setError(e.getMessage());
+        AdminSparkServer.handleError(e, request, response);
+      }
+      response.type(HttpConstants.JSON);
+      return AdminSparkServer.mapper.writeValueAsString(responseObject);
+    };
+  }
+
+  public static Route killOfflinePushJob(Admin admin) {
+    return (request, response) -> {
+      ControllerResponse responseObject = new ControllerResponse();
+      try {
+        AdminSparkServer.validateParams(request, KILL_OFFLINE_PUSH_JOB.getParams(), admin);
+        String cluster = request.queryParams(CLUSTER);
+        String topic = request.queryParams(TOPIC);
+        responseObject.setCluster(cluster);
+        responseObject.setName(Version.parseStoreFromKafkaTopicName(topic));
+
+        admin.killOfflineJob(cluster, topic);
       } catch (VeniceException e) {
         responseObject.setError(e.getMessage());
         AdminSparkServer.handleError(e, request, response);

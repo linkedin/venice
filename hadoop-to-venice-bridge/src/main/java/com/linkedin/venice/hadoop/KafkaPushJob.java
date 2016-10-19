@@ -31,7 +31,6 @@ import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericDatumReader;
 import org.apache.avro.mapred.AvroInputFormat;
 import org.apache.avro.mapred.AvroJob;
-import org.apache.commons.io.IOUtils;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.filecache.DistributedCache;
 import org.apache.hadoop.fs.FileStatus;
@@ -306,12 +305,16 @@ public class KafkaPushJob {
 
       // Waiting for Venice Backend to complete consumption
       pollStatusUntilComplete();
-    } catch (VeniceException ve) {
-      throw ve;
     } catch (Exception e) {
-      throw new VeniceException("Exception caught during Hadoop to Venice Bridge!", e);
-    } finally {
-      IOUtils.closeQuietly(veniceWriter);
+      try {
+        cancel();
+      } catch (Exception ex) {
+        logger.info("Failed to cancel job", ex);
+      }
+      if (! (e instanceof VeniceException)) {
+        e = new VeniceException("Exception caught during Hadoop to Venice Bridge!", e);
+      }
+      throw (VeniceException) e;
     }
   }
 
@@ -602,10 +605,13 @@ public class KafkaPushJob {
    */
   public void cancel() throws Exception {
     // Attempting to kill job. There's a race condition, but meh. Better kill when you know it's running
-    if (runningJob != null) {
+    if (runningJob != null && !runningJob.isComplete()) {
       runningJob.killJob();
     }
-    //TODO : Inform Venice Controller that the job is cancelled and it should be aborted.
+    if (! Utils.isNullOrEmpty(topic)) {
+      controllerClient.killOfflinePushJob(clusterName, topic);
+      logger.info("Offline push job has been killed, topic: " + topic);
+    }
   }
 
   /**
