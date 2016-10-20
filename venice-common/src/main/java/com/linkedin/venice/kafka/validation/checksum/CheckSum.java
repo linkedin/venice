@@ -16,9 +16,12 @@
 
 package com.linkedin.venice.kafka.validation.checksum;
 
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.utils.ByteUtils;
+import org.apache.log4j.Logger;
 
-import java.security.NoSuchAlgorithmException;
+import java.util.Optional;
+
 
 /**
  * Parent class for various running checksum implementations.
@@ -26,6 +29,8 @@ import java.security.NoSuchAlgorithmException;
  * N.B.: Class taken from Voldemort.
  */
 public abstract class CheckSum {
+
+  private static final Logger LOGGER = Logger.getLogger(CheckSum.class);
 
   /**
    * Update the checksum buffer to include input with startIndex and length.
@@ -49,6 +54,10 @@ public abstract class CheckSum {
   public abstract void reset();
 
   public abstract CheckSumType getType();
+
+  public byte[] getEncodedState() {
+    throw new VeniceException(getType() + " does not support accessing the partially encoded state!");
+  }
 
   /**
    * Update the underlying buffer using the integer
@@ -81,18 +90,28 @@ public abstract class CheckSum {
     update(input, 0, input.length);
   }
 
-  public static CheckSum getInstance(CheckSumType type) {
+  public static Optional<CheckSum> getInstance(CheckSumType type) {
     switch (type) {
-      case ADLER32: return new Adler32CheckSum();
-      case CRC32: return new CRC32CheckSum();
-      case MD5:
-        try {
-          return new MD5CheckSum();
-        } catch(NoSuchAlgorithmException e) {
-          return null;
-        }
-      case NONE: return null;
-      default: return null;
+      case NONE: return Optional.empty();
+      case ADLER32: return Optional.of(new Adler32CheckSum());
+      case CRC32: return Optional.of(new CRC32CheckSum());
+      case MD5: return Optional.of(new MD5CheckSum());
+      default: return Optional.empty();
+    }
+  }
+
+  public static Optional<CheckSum> getInstance(CheckSumType type, byte[] encodedState) {
+    if (type.isCheckpointingSupported()) {
+      switch (type) {
+        case NONE: return Optional.empty();
+        case MD5: return Optional.of(new MD5CheckSum(encodedState));
+        default: return Optional.empty();
+      }
+    } else {
+      // TODO: Consider throwing exception here, instead.
+      LOGGER.warn("CheckSum.getInstance(type, encodedState) called for a type which does not support checkpointing: " + type);
+      // Not a very big deal since the default checksumming strategy is MD5 anyway.
+      return Optional.empty();
     }
   }
 

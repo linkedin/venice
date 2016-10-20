@@ -3,19 +3,19 @@
 DEFAULT_AVRO_TOOLS_JAR=`find ~/.gradle/caches/ | grep 'avro-tools-1.4.0.jar' | head -n 1`
 
 AVRO_SCHEMAS_PATH=(
-  "venice-common/src/main/resources/avro/KafkaValueEnvelope/v1/*"
+  "venice-common/src/main/resources/avro/KafkaMessageEnvelope/v1/*"
+  "venice-common/src/main/resources/avro/PartitionState/v1/*"
   "venice-controller/src/main/resources/avro/AdminOperation/v1/*"
-  "venice-server/src/main/resources/avro/PartitionState/v1/*"
 )
 CODE_GEN_PATH=(
   "venice-common/src/main/java"
+  "venice-common/src/main/java"
   "venice-controller/src/main/java"
-  "venice-server/src/main/java"
 )
 FULL_CODE_GEN_PATH=(
   "${CODE_GEN_PATH[0]}/com/linkedin/venice/kafka/protocol/*.java"
-  "${CODE_GEN_PATH[1]}/com/linkedin/venice/controller/kafka/protocol/admin/*.java"
-  "${CODE_GEN_PATH[2]}/com/linkedin/venice/kafka/protocol/state/*.java"
+  "${CODE_GEN_PATH[1]}/com/linkedin/venice/kafka/protocol/state/*.java"
+  "${CODE_GEN_PATH[2]}/com/linkedin/venice/controller/kafka/protocol/admin/*.java"
 )
 
 if [[ $# < 1 ]]; then

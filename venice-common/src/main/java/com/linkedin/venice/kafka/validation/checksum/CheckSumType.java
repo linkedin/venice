@@ -9,21 +9,27 @@ import java.util.Map;
  * Types of checksum algorithms supported by Venice's Data Ingest Validation.
  */
 public enum CheckSumType {
-  NONE(0),
-  MD5(1),
-  ADLER32(2),
-  CRC32(3);
+  NONE(0, true),
+  MD5(1, true),
+  @Deprecated ADLER32(2, false),
+  @Deprecated CRC32(3, false);
 
   /** The value is the byte used on the wire format */
   private final int value;
+  private final boolean checkpointingSupported;
   private static final Map<Integer, CheckSumType> TYPE_MAP = getTypeMap();
 
-  CheckSumType(int value) {
+  CheckSumType(int value, boolean checkpointingSupported) {
     this.value = value;
+    this.checkpointingSupported = checkpointingSupported;
   }
 
   public int getValue() {
     return value;
+  }
+
+  public boolean isCheckpointingSupported() {
+    return checkpointingSupported;
   }
 
   private static Map<Integer, CheckSumType> getTypeMap() {

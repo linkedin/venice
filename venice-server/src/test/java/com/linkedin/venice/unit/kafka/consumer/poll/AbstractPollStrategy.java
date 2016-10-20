@@ -8,8 +8,12 @@ import com.linkedin.venice.unit.kafka.InMemoryKafkaBroker;
 import com.linkedin.venice.unit.kafka.InMemoryKafkaMessage;
 import com.linkedin.venice.utils.Pair;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
+
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.common.TopicPartition;
@@ -22,6 +26,7 @@ public abstract class AbstractPollStrategy implements PollStrategy {
 
   private static final int MAX_MESSAGES_PER_POLL = 3; // We can make this configurable later on if need be...
   protected final boolean keepPollingWhenEmpty;
+  protected final Set<TopicPartition> drainedPartitions = new HashSet<>();
 
   public AbstractPollStrategy(boolean keepPollingWhenEmpty) {
     this.keepPollingWhenEmpty = keepPollingWhenEmpty;
@@ -29,13 +34,20 @@ public abstract class AbstractPollStrategy implements PollStrategy {
 
   protected abstract Pair<TopicPartition, OffsetRecord> getNextPoll(Map<TopicPartition, OffsetRecord> offsets);
 
-  public synchronized ConsumerRecords poll(InMemoryKafkaBroker broker, Map<TopicPartition, OffsetRecord> offsets, long timeout) {
+  public synchronized ConsumerRecords poll(InMemoryKafkaBroker broker, Map<TopicPartition, OffsetRecord> offsetsRef, long timeout) {
+    Map<TopicPartition, OffsetRecord> offsets = Maps.newHashMap(offsetsRef);
+    drainedPartitions.stream().forEach(topicPartition -> offsets.remove(topicPartition));
+
     Map<TopicPartition, List<ConsumerRecord<KafkaKey, KafkaMessageEnvelope>>> records = Maps.newHashMap();
 
     long startTime = System.currentTimeMillis();
     int numberOfRecords = 0;
 
     while (numberOfRecords < MAX_MESSAGES_PER_POLL && System.currentTimeMillis() < startTime + timeout) {
+      if (offsets.isEmpty()) {
+        break;
+      }
+
       Pair<TopicPartition, OffsetRecord> nextPoll = getNextPoll(offsets);
       if (null == nextPoll) {
         if (keepPollingWhenEmpty) {
@@ -48,31 +60,31 @@ public abstract class AbstractPollStrategy implements PollStrategy {
       TopicPartition topicPartition = nextPoll.getFirst();
       OffsetRecord offsetRecord = nextPoll.getSecond();
 
-      try {
-        String topic = topicPartition.topic();
-        int partition = topicPartition.partition();
-        long nextOffset = offsetRecord.getOffset() + 1;
-        InMemoryKafkaMessage message = broker.consume(topic, partition, nextOffset);
+      String topic = topicPartition.topic();
+      int partition = topicPartition.partition();
+      long nextOffset = offsetRecord.getOffset() + 1;
+      Optional<InMemoryKafkaMessage> message = broker.consume(topic, partition, nextOffset);
+      if (message.isPresent()) {
         ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord = new ConsumerRecord<>(
             topic,
             partition,
             nextOffset,
             offsetRecord.getEventTimeEpochMs(),
             TimestampType.NO_TIMESTAMP_TYPE,
-            message.key,
-            message.value);
+            message.get().key,
+            message.get().value);
         if (!records.containsKey(topicPartition)) {
           records.put(topicPartition, new ArrayList<>());
         }
         records.get(topicPartition).add(consumerRecord);
         incrementOffset(offsets, topicPartition, offsetRecord);
         numberOfRecords++;
-      } catch (IllegalArgumentException e) {
-        if (keepPollingWhenEmpty) {
-          continue;
-        } else {
-          break;
-        }
+      } else if (keepPollingWhenEmpty) {
+        continue;
+      } else {
+        drainedPartitions.add(topicPartition);
+        offsets.remove(topicPartition);
+        continue;
       }
     }
 
@@ -80,6 +92,9 @@ public abstract class AbstractPollStrategy implements PollStrategy {
   }
 
   protected void incrementOffset(Map<TopicPartition, OffsetRecord> offsets, TopicPartition topicPartition, OffsetRecord offsetRecord) {
-    offsets.put(topicPartition, new OffsetRecord(offsetRecord.getOffset() + 1));
+    // Doing a deep copy, otherwise Mockito keeps a handle on the reference only, which can mutate and lead to confusing verify() semantics
+    OffsetRecord newOffsetRecord = new OffsetRecord(offsetRecord.toBytes());
+    newOffsetRecord.setOffset(offsetRecord.getOffset() + 1);
+    offsets.put(topicPartition, newOffsetRecord);
   }
 }

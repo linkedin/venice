@@ -6,7 +6,7 @@ import com.linkedin.venice.controller.kafka.offsets.AdminOffsetManager;
 import com.linkedin.venice.kafka.consumer.KafkaConsumerWrapper;
 import com.linkedin.venice.kafka.consumer.VeniceConsumerFactory;
 import com.linkedin.venice.serialization.KafkaKeySerializer;
-import com.linkedin.venice.serialization.KafkaValueSerializer;
+import com.linkedin.venice.serialization.avro.KafkaValueSerializer;
 import com.linkedin.venice.service.AbstractVeniceService;
 import org.apache.commons.io.IOUtils;
 import org.apache.kafka.clients.CommonClientConfigs;

@@ -420,7 +420,9 @@ public class KafkaPushJob extends AbstractJob {
     logger.info("Total input data file size: " + ((double) inputFileDataSize / 1024 / 1024) + " MB");
   }
 
-  /***
+  /**
+   * TODO: This function needs to be refactored. Its flow is way too convoluted ): - FGV
+   *
    * High level, we want to poll the consumption job status until it errors or is complete.  This is more complicated
    * because we might be dealing with multiple destination clusters and we might not be able to reach all of them. We
    * are using a semantic of "poll until all accessible datacenters report success".

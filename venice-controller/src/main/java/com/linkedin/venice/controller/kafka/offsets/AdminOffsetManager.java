@@ -4,6 +4,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.consumer.KafkaConsumerWrapper;
 import com.linkedin.venice.offsets.OffsetManager;
 import com.linkedin.venice.offsets.OffsetRecord;
+import com.linkedin.venice.utils.ByteUtils;
 import org.apache.kafka.clients.consumer.OffsetAndMetadata;
 import org.apache.log4j.Logger;
 
@@ -29,7 +30,7 @@ public class AdminOffsetManager implements OffsetManager {
 
   @Override
   public void recordOffset(String topicName, int partitionId, OffsetRecord record) throws VeniceException {
-    OffsetAndMetadata offsetAndMetadata = new OffsetAndMetadata(record.getOffset(), new String(record.toBytes(), StandardCharsets.UTF_8));
+    OffsetAndMetadata offsetAndMetadata = new OffsetAndMetadata(record.getOffset(), ByteUtils.toHexString(record.toBytes()));
     consumer.commitSync(topicName, partitionId, offsetAndMetadata);
     LOGGER.debug("Set offset: " + record + " for topic: " + topicName);
   }
@@ -46,8 +47,8 @@ public class AdminOffsetManager implements OffsetManager {
   public OffsetRecord getLastOffset(String topicName, int partitionId) throws VeniceException {
     OffsetAndMetadata offsetAndMetadata = consumer.committed(topicName, partitionId);
     if (null == offsetAndMetadata) {
-      return OffsetRecord.NON_EXISTENT_OFFSET;
+      return new OffsetRecord();
     }
-    return new OffsetRecord(offsetAndMetadata.metadata().getBytes(StandardCharsets.UTF_8));
+    return new OffsetRecord(ByteUtils.fromHexString(offsetAndMetadata.metadata()));
   }
 }

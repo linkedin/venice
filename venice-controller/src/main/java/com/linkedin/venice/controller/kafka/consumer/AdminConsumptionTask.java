@@ -13,7 +13,6 @@ import com.linkedin.venice.controller.kafka.protocol.serializer.AdminOperationSe
 import com.linkedin.venice.controller.stats.ControllerStats;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.consumer.KafkaConsumerWrapper;
-import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
@@ -27,7 +26,6 @@ import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.log4j.Logger;
 
-import javax.validation.constraints.NotNull;
 import java.io.Closeable;
 import java.io.IOException;
 import java.util.Iterator;
@@ -55,7 +53,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
 
   private boolean isSubscribed;
   private KafkaConsumerWrapper consumer;
-  private long lastOffset;
+  private OffsetRecord lastOffset;
   private boolean topicExists;
 
   public AdminConsumptionTask(String clusterName,
@@ -77,7 +75,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
 
     this.isRunning = new AtomicBoolean(true);
     this.isSubscribed = false;
-    this.lastOffset = -1;
+    this.lastOffset = new OffsetRecord();
     this.topicExists = false;
     this.controllerStats = ControllerStats.getInstance();
   }
@@ -110,10 +108,10 @@ public class AdminConsumptionTask implements Runnable, Closeable {
               continue;
             }
             // Subscribe the admin topic
-            lastOffset = offsetManager.getLastOffset(topic, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID).getOffset();
-            consumer.subscribe(topic, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID, new OffsetRecord(lastOffset));
+            lastOffset = offsetManager.getLastOffset(topic, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID);
+            consumer.subscribe(topic, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID, lastOffset);
             isSubscribed = true;
-            logger.info("Subscribe to topic name: " + topic + ", offset: " + lastOffset);
+            logger.info("Subscribe to topic name: " + topic + ", offset: " + lastOffset.getOffset());
           }
           ConsumerRecords records = consumer.poll(READ_CYCLE_DELAY_MS);
           if (null == records) {
@@ -237,9 +235,9 @@ public class AdminConsumptionTask implements Runnable, Closeable {
 
   private void persistRecordOffset(ConsumerRecord record){
     long recordOffset = record.offset();
-    if (recordOffset > lastOffset) {
-      lastOffset = recordOffset;
-      offsetManager.recordOffset(topic, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID, new OffsetRecord(lastOffset));
+    if (recordOffset > lastOffset.getOffset()) {
+      lastOffset.setOffset(recordOffset);
+      offsetManager.recordOffset(topic, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID, lastOffset);
     }
   }
 
@@ -256,8 +254,9 @@ public class AdminConsumptionTask implements Runnable, Closeable {
     }
     // check offset
     long recordOffset = record.offset();
-    if (lastOffset >= recordOffset) {
-      logger.error(consumerTaskId + ", current record has been processed, last known offset: " + lastOffset + ", current offset: " + recordOffset);
+    if (lastOffset.getOffset() >= recordOffset) {
+      logger.error(consumerTaskId + ", current record has been processed, " +
+          "last known offset: " + lastOffset.getOffset() + ", current offset: " + recordOffset);
       return false;
     }
     // check message type
