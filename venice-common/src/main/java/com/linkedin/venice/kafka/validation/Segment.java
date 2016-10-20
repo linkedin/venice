@@ -6,10 +6,14 @@ import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
+import com.linkedin.venice.kafka.protocol.state.ProducerPartitionState;
 import com.linkedin.venice.kafka.validation.checksum.CheckSum;
 import com.linkedin.venice.kafka.validation.checksum.CheckSumType;
 import com.linkedin.venice.message.KafkaKey;
 
+import static com.linkedin.venice.kafka.validation.SegmentStatus.*;
+
+import java.util.Optional;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
@@ -32,52 +36,84 @@ public class Segment {
   // Immutable state
   private final int partition;
   private final int segmentNumber;
-  private final CheckSum checkSum;
+  private final Optional<CheckSum> checkSum;
   private final AtomicInteger sequenceNumber;
 
   // Mutable state
   private boolean started;
   private boolean ended;
+  private boolean finalSegment;
 
   public Segment(int partition, int segmentNumber, CheckSumType checkSumType) {
+    this(partition, segmentNumber, CheckSum.getInstance(checkSumType));
+  }
+
+  public Segment(int partition, int segmentNumber, Optional<CheckSum> checkSum) {
     this.partition = partition;
     this.segmentNumber = segmentNumber;
-    this.checkSum = CheckSum.getInstance(checkSumType);
+    this.checkSum = checkSum;
     this.sequenceNumber = new AtomicInteger(0);
     this.started = false;
     this.ended = false;
+    this.finalSegment = false;
+  }
+
+  public Segment(int partition, ProducerPartitionState state) {
+    this.partition = partition;
+    this.segmentNumber = state.segmentNumber;
+    this.checkSum = CheckSum.getInstance(CheckSumType.valueOf(state.checksumType), state.checksumState.array());
+    this.sequenceNumber = new AtomicInteger(state.messageSequenceNumber);
+
+    /** TODO: Decide if we should only hang on to this SegmentStatus here, rather the more granular states. */
+    SegmentStatus segmentStatus = SegmentStatus.valueOf(state.segmentStatus);
+    this.started = segmentStatus != NOT_STARTED;
+    this.ended = segmentStatus.isTerminal();
+    this.finalSegment = segmentStatus == END_OF_FINAL_SEGMENT;
   }
 
   public int getSegmentNumber() {
-    return segmentNumber;
+    return this.segmentNumber;
   }
 
   public int getPartition() {
-    return partition;
+    return this.partition;
   }
 
   public int getAndIncrementSequenceNumber() {
-    return sequenceNumber.getAndIncrement();
+    return this.sequenceNumber.getAndIncrement();
   }
 
   public int getSequenceNumber() {
-    return sequenceNumber.get();
+    return this.sequenceNumber.get();
+  }
+
+  public byte[] getCheckSumState() {
+    if (this.checkSum.isPresent()) {
+      return this.checkSum.get().getEncodedState();
+    } else {
+      return new byte[]{};
+    }
+  }
+
+  public CheckSumType getCheckSumType() {
+    return this.checkSum.map(CheckSum::getType).orElse(CheckSumType.NONE);
   }
 
   public boolean isStarted() {
-    return started;
+    return this.started;
   }
 
   public boolean isEnded() {
-    return ended;
+    return this.ended;
   }
 
   public void start() {
-    started = true;
+    this.started = true;
   }
 
-  public void end() {
-    ended = true;
+  public void end(boolean finalSegment) {
+    this.ended = true;
+    this.finalSegment = finalSegment;
   }
 
   /**
@@ -144,8 +180,8 @@ public class Segment {
    * @param content to add into the running checksum
    */
   private void updateCheckSum(byte[] content) {
-    if (null != this.checkSum) {
-      checkSum.update(content);
+    if (checkSum.isPresent()) {
+      checkSum.get().update(content);
     }
   }
 
@@ -156,16 +192,16 @@ public class Segment {
    * @param content to add into the running checksum
    */
   private void updateCheckSum(int content) {
-    if (null != this.checkSum) {
-      checkSum.update(content);
+    if (checkSum.isPresent()) {
+      checkSum.get().update(content);
     }
   }
 
-  public byte[] getCurrentCheckSum() {
-    if (null == this.checkSum) {
-      return new byte[]{};
+  public byte[] getFinalCheckSum() {
+    if (this.checkSum.isPresent()) {
+      return checkSum.get().getCheckSum();
     } else {
-      return checkSum.getCheckSum();
+      return new byte[]{};
     }
   }
 
@@ -195,5 +231,19 @@ public class Segment {
         + ", started: " + started
         + ", ended: " + ended
         + ", checksum: " + checkSum + ")";
+  }
+
+  public SegmentStatus getStatus() {
+    if (!started) {
+      return SegmentStatus.NOT_STARTED;
+    } else if (ended) {
+      if (finalSegment) {
+        return SegmentStatus.END_OF_FINAL_SEGMENT;
+      } else {
+        return SegmentStatus.END_OF_INTERMEDIATE_SEGMENT;
+      }
+    } else {
+      return SegmentStatus.IN_PROGRESS;
+    }
   }
 }

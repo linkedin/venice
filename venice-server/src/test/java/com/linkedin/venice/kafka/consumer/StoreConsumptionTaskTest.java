@@ -15,6 +15,7 @@ import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.notifier.LogNotifier;
 import com.linkedin.venice.notifier.VeniceNotifier;
+import com.linkedin.venice.offsets.DeepCopyOffsetManager;
 import com.linkedin.venice.offsets.OffsetManager;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.serialization.DefaultSerializer;
@@ -26,6 +27,7 @@ import com.linkedin.venice.unit.kafka.consumer.MockInMemoryConsumer;
 import com.linkedin.venice.unit.kafka.SimplePartitioner;
 import com.linkedin.venice.unit.kafka.consumer.poll.AbstractPollStrategy;
 import com.linkedin.venice.unit.kafka.consumer.poll.ArbitraryOrderingPollStrategy;
+import com.linkedin.venice.unit.kafka.consumer.poll.BlockingObserverPollStrategy;
 import com.linkedin.venice.unit.kafka.consumer.poll.CompositePollStrategy;
 import com.linkedin.venice.unit.kafka.consumer.poll.DuplicatingPollStrategy;
 import com.linkedin.venice.unit.kafka.consumer.poll.FilteringPollStrategy;
@@ -37,6 +39,7 @@ import com.linkedin.venice.unit.matchers.ExceptionClassAndCauseClassMatcher;
 import com.linkedin.venice.unit.matchers.ExceptionClassMatcher;
 import com.linkedin.venice.unit.matchers.LongGreaterThanMatcher;
 import com.linkedin.venice.unit.matchers.NonEmptyStringMatcher;
+import com.linkedin.venice.utils.ByteArray;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.TestUtils;
@@ -46,40 +49,38 @@ import com.linkedin.venice.writer.KafkaProducerWrapper;
 import com.linkedin.venice.writer.VeniceWriter;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
-import java.util.HashMap;
-import java.util.LinkedList;
-import java.util.Properties;
-import java.util.Queue;
+import java.util.*;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Supplier;
+
+import org.apache.kafka.clients.consumer.ConsumerRecords;
+import org.apache.kafka.clients.consumer.OffsetAndMetadata;
 import org.apache.kafka.clients.producer.RecordMetadata;
 import org.apache.kafka.common.TopicPartition;
-import org.apache.log4j.ConsoleAppender;
+//import org.apache.log4j.ConsoleAppender;
 import org.apache.log4j.Logger;
-import org.apache.log4j.PatternLayout;
-import org.mockito.Mockito;
+//import org.apache.log4j.PatternLayout;
+import org.mockito.Mockito; // TODO Remove this import after refactoring all code to rely on static import, below
 import org.testng.Assert;
 import org.testng.annotations.AfterSuite;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.BeforeSuite;
 import org.testng.annotations.Test;
 
-import static org.mockito.Matchers.any;
-import static org.mockito.Matchers.anyLong;
-import static org.mockito.Matchers.argThat;
-import static org.mockito.Matchers.eq;
-import static org.mockito.Matchers.longThat;
-
+import static org.mockito.Mockito.*;
 
 /**
  * Unit tests for the KafkaPerStoreConsumptionTask.
  */
 public class StoreConsumptionTaskTest {
+
+  private static final Logger LOGGER = Logger.getLogger(StoreConsumptionTaskTest.class);
 
   private static final int TEST_TIMEOUT;
 
@@ -92,9 +93,9 @@ public class StoreConsumptionTaskTest {
     // at multiple places ( test root directory, test resources)
     // log4j does not produce any log with no appender error message
     // So configuring it in the code as a hack now.
-    Logger rootLogger = Logger.getRootLogger();
-    rootLogger.setLevel(org.apache.log4j.Level.INFO);
-    rootLogger.addAppender(new ConsoleAppender(new PatternLayout("%-6r [%p] %c - %m%n")));
+//    Logger rootLogger = Logger.getRootLogger();
+//    rootLogger.setLevel(org.apache.log4j.Level.INFO);
+//    rootLogger.addAppender(new ConsoleAppender(new PatternLayout("%-6r [%p] %c - %m%n")));
   }
 
   private InMemoryKafkaBroker inMemoryKafkaBroker;
@@ -105,6 +106,10 @@ public class StoreConsumptionTaskTest {
   private AbstractStorageEngine mockAbstractStorageEngine;
   private EventThrottler mockThrottler;
   private ReadOnlySchemaRepository mockSchemaRepo;
+  /** N.B.: This mock can be used to verify() calls, but not to return arbitrary things. */
+  private KafkaConsumerWrapper mockKafkaConsumer;
+
+  private StoreConsumptionTask storeConsumptionTaskUnderTest;
 
   private ExecutorService taskPollingService;
 
@@ -112,6 +117,8 @@ public class StoreConsumptionTaskTest {
   private static final String topic = Version.composeKafkaTopic(storeNameWithoutVersionInfo, 1);
 
   private static final int PARTITION_COUNT = 10;
+  private static final Set<Integer> ALL_PARTITIONS = Sets.newHashSet();
+  static { for (int partition = 0; partition < PARTITION_COUNT; partition++) { ALL_PARTITIONS.add(partition); } }
   private static final int PARTITION_FOO = 1;
   private static final int PARTITION_BAR = 2;
   private static final int SCHEMA_ID = -1;
@@ -144,7 +151,7 @@ public class StoreConsumptionTaskTest {
   @BeforeMethod
   public void methodSetUp() throws Exception {
     inMemoryKafkaBroker = new InMemoryKafkaBroker();
-    inMemoryKafkaBroker.createTopic(topic, 10);
+    inMemoryKafkaBroker.createTopic(topic, PARTITION_COUNT);
     veniceWriter = getVeniceWriter(() -> new MockInMemoryProducer(inMemoryKafkaBroker));
     mockStoreRepository = Mockito.mock(StoreRepository.class);
     mockNotifier = Mockito.mock(LogNotifier.class);
@@ -152,6 +159,7 @@ public class StoreConsumptionTaskTest {
     mockOffSetManager = Mockito.mock(OffsetManager.class);
     mockThrottler = Mockito.mock(EventThrottler.class);
     mockSchemaRepo = Mockito.mock(ReadOnlySchemaRepository.class);
+    mockKafkaConsumer = mock(KafkaConsumerWrapper.class);
   }
 
   private VeniceWriter getVeniceWriter(Supplier<KafkaProducerWrapper> producerSupplier) {
@@ -164,31 +172,81 @@ public class StoreConsumptionTaskTest {
     return recordMetadataFuture.get().offset();
   }
 
-  private StoreConsumptionTask getKafkaPerStoreConsumptionTask(int... partitions)
+  /**
+   * Use {@link #runTest(Set, Procedure)} instead
+   */
+  @Deprecated
+  private StoreConsumptionTask getKafkaPerStoreConsumptionTask(Integer... partitions)
       throws Exception {
     return getKafkaPerStoreConsumptionTask(new RandomPollStrategy(), partitions);
   }
 
-  private StoreConsumptionTask getKafkaPerStoreConsumptionTask(PollStrategy pollStrategy, int... partitions) {
-    MockInMemoryConsumer mockKafkaConsumer = new MockInMemoryConsumer(inMemoryKafkaBroker, pollStrategy);
+  /**
+   * Use {@link #runTest(PollStrategy, Set, Procedure, Procedure)} instead
+   */
+  @Deprecated
+  private StoreConsumptionTask getKafkaPerStoreConsumptionTask(PollStrategy pollStrategy, Integer... partitions) {
+    MockInMemoryConsumer inMemoryKafkaConsumer = new MockInMemoryConsumer(inMemoryKafkaBroker, pollStrategy, mockKafkaConsumer);
     Properties kafkaProps = new Properties();
     VeniceConsumerFactory mockFactory = Mockito.mock(VeniceConsumerFactory.class);
-    Mockito.doReturn(mockKafkaConsumer).when(mockFactory).getConsumer(kafkaProps);
+    Mockito.doReturn(inMemoryKafkaConsumer).when(mockFactory).getConsumer(kafkaProps);
     for (int partition : partitions) {
-      Mockito.doReturn(OffsetRecord.NON_EXISTENT_OFFSET).when(mockOffSetManager).getLastOffset(topic, partition);
+      Mockito.doReturn(new OffsetRecord()).when(mockOffSetManager).getLastOffset(topic, partition);
     }
 
     Queue<VeniceNotifier> notifiers = new ConcurrentLinkedQueue<>();
     notifiers.add(mockNotifier);
     notifiers.add(new LogNotifier());
 
-    return new StoreConsumptionTask(mockFactory, kafkaProps, mockStoreRepository, mockOffSetManager, notifiers,
+    OffsetManager offsetManager = new DeepCopyOffsetManager(mockOffSetManager);
+
+    return new StoreConsumptionTask(mockFactory, kafkaProps, mockStoreRepository, offsetManager, notifiers,
         mockThrottler, topic, mockSchemaRepo);
   }
 
+  interface Procedure {
+    void invoke();
+  }
+
+  private void runTest(Procedure assertions) throws Exception {
+    runTest(ALL_PARTITIONS, assertions);
+  }
+
+  private void runTest(Set<Integer> partitions, Procedure assertions) throws Exception {
+    runTest(partitions, () -> {}, assertions);
+  }
+
+  private void runTest(Set<Integer> partitions, Procedure beforeSubscription, Procedure assertions) throws Exception {
+    runTest(new RandomPollStrategy(), partitions, beforeSubscription, assertions);
+  }
+
+  private void runTest(PollStrategy pollStrategy, Set<Integer> partitions, Procedure beforeSubscription, Procedure assertions) throws Exception {
+    Integer[] partitionsArray = partitions.toArray(new Integer[partitions.size()]);
+    storeConsumptionTaskUnderTest = getKafkaPerStoreConsumptionTask(pollStrategy, partitionsArray);
+    Future testSubscribeTaskFuture = null;
+    try {
+      Mockito.doReturn(mockAbstractStorageEngine).when(mockStoreRepository).getLocalStorageEngine(topic);
+      beforeSubscription.invoke();
+
+      for (int partition: partitions) {
+        storeConsumptionTaskUnderTest.subscribePartition(topic, partition);
+      }
+      // MockKafkaConsumer is prepared. Schedule for polling.
+      testSubscribeTaskFuture = taskPollingService.submit(storeConsumptionTaskUnderTest);
+
+      assertions.invoke();
+
+    } finally {
+      storeConsumptionTaskUnderTest.close();
+      if (testSubscribeTaskFuture != null) {
+        testSubscribeTaskFuture.get(10, TimeUnit.SECONDS);
+      }
+    }
+  }
+
   private Pair<TopicPartition, OffsetRecord> getTopicPartitionOffsetPair(RecordMetadata recordMetadata) {
-    return new Pair<>(new TopicPartition(recordMetadata.topic(), recordMetadata.partition()),
-        new OffsetRecord(recordMetadata.offset()));
+    OffsetRecord offsetRecord = TestUtils.getOffsetRecord(recordMetadata.offset());
+    return new Pair<>(new TopicPartition(recordMetadata.topic(), recordMetadata.partition()), offsetRecord);
   }
 
   /**
@@ -240,9 +298,10 @@ public class StoreConsumptionTaskTest {
           .delete(PARTITION_FOO, deleteKeyFoo);
 
       // Verify it commits the offset to Offset Manager
-      OffsetRecord expected = new OffsetRecord(deleteMetadata.offset());
-      Mockito.verify(mockOffSetManager, Mockito.timeout(TEST_TIMEOUT).times(1))
-          .recordOffset(topic, PARTITION_FOO, expected);
+      OffsetRecord expectedOffsetRecordForDeleteMessage = TestUtils.getOffsetRecord(deleteMetadata.offset());
+
+      Mockito.verify(mockOffSetManager, Mockito.timeout(TEST_TIMEOUT))
+          .recordOffset(topic, PARTITION_FOO, expectedOffsetRecordForDeleteMessage);
 
       mockStoreConsumptionTask.close();
       testSubscribeTaskFuture.get(10, TimeUnit.SECONDS);
@@ -279,7 +338,8 @@ public class StoreConsumptionTaskTest {
           .hasValueSchema(storeNameWithoutVersionInfo, EXISTING_SCHEMA_ID);
 
       // Verify it commits the offset to Offset Manager
-      OffsetRecord expected = new OffsetRecord(fooLastOffset);
+      OffsetRecord expected = TestUtils.getOffsetRecord(fooLastOffset);
+
       Mockito.verify(mockOffSetManager, Mockito.timeout(TEST_TIMEOUT).times(1))
           .recordOffset(topic, PARTITION_FOO, expected);
 
@@ -335,7 +395,7 @@ public class StoreConsumptionTaskTest {
           Mockito.timeout(2 * StoreConsumptionTask.POLLING_SCHEMA_DELAY_MS).times(1))
           .put(PARTITION_FOO, putKeyFoo, ValueRecord.create(EXISTING_SCHEMA_ID, putValue).serialize());
 
-      OffsetRecord expected = new OffsetRecord(existingSchemaOffset);
+      OffsetRecord expected = TestUtils.getOffsetRecord(existingSchemaOffset);
       Mockito.verify(mockOffSetManager, Mockito.timeout(TEST_TIMEOUT).times(1))
           .recordOffset(topic, PARTITION_FOO, expected);
 
@@ -393,7 +453,8 @@ public class StoreConsumptionTaskTest {
       throws Exception {
     try (StoreConsumptionTask mockStoreConsumptionTask = getKafkaPerStoreConsumptionTask(PARTITION_FOO, PARTITION_BAR)) {
       mockStoreConsumptionTask.subscribePartition(topic, PARTITION_FOO);
-      Mockito.doReturn(new OffsetRecord(1)).when(mockOffSetManager).getLastOffset(topic, PARTITION_FOO);
+      OffsetRecord offsetRecord = TestUtils.getOffsetRecord(1);
+      Mockito.doReturn(offsetRecord).when(mockOffSetManager).getLastOffset(topic, PARTITION_FOO);
       // Prepare mockStoreRepository to send a mock storage engine.
       Mockito.doReturn(mockAbstractStorageEngine).when(mockStoreRepository).getLocalStorageEngine(topic);
       // MockKafkaConsumer is prepared. Schedule for polling.
@@ -436,11 +497,11 @@ public class StoreConsumptionTaskTest {
       // Verify offset recorded for completed partition
       // Considering venice writer will send out end_of_push and end_of_segment,
       // we need to add 2 to last data message offset
-      OffsetRecord fooCompletedOffsetRecord = new OffsetRecord(fooLastOffset + 2);
+      OffsetRecord fooCompletedOffsetRecord = TestUtils.getOffsetRecord(fooLastOffset + 2);
       fooCompletedOffsetRecord.complete();
       Mockito.verify(mockOffSetManager, Mockito.timeout(TEST_TIMEOUT).atLeastOnce())
           .recordOffset(eq(topic), eq(PARTITION_FOO), eq(fooCompletedOffsetRecord));
-      OffsetRecord barCompletedOffsetRecord = new OffsetRecord(barLastOffset + 2);
+      OffsetRecord barCompletedOffsetRecord = TestUtils.getOffsetRecord(barLastOffset + 2);
       barCompletedOffsetRecord.complete();
       Mockito.verify(mockOffSetManager, Mockito.timeout(TEST_TIMEOUT).atLeastOnce())
           .recordOffset(eq(topic), eq(PARTITION_BAR), eq(barCompletedOffsetRecord));
@@ -492,8 +553,9 @@ public class StoreConsumptionTaskTest {
     veniceWriter.put(putKeyBar, putValue, SCHEMA_ID);
     veniceWriter.broadcastEndOfPush(Maps.newHashMap());
 
+    OffsetRecord offsetRecord = TestUtils.getOffsetRecord(barOffsetToSkip);
     PollStrategy pollStrategy = new FilteringPollStrategy(new RandomPollStrategy(),
-        Sets.newHashSet(new Pair(new TopicPartition(topic, PARTITION_BAR), new OffsetRecord(barOffsetToSkip))));
+        Sets.newHashSet(new Pair(new TopicPartition(topic, PARTITION_BAR), offsetRecord)));
 
     // Get the KafkaPerStoreConsumptionTask with fresh mocks.
     try (StoreConsumptionTask mockStoreConsumptionTask = getKafkaPerStoreConsumptionTask(pollStrategy, PARTITION_FOO,
@@ -534,8 +596,9 @@ public class StoreConsumptionTaskTest {
     long barOffsetToDupe = getOffset(veniceWriter.put(putKeyBar, putValue, SCHEMA_ID));
     veniceWriter.broadcastEndOfPush(Maps.newHashMap());
 
+    OffsetRecord offsetRecord = TestUtils.getOffsetRecord(barOffsetToDupe);
     PollStrategy pollStrategy = new DuplicatingPollStrategy(new RandomPollStrategy(),
-        Sets.newHashSet(new Pair(new TopicPartition(topic, PARTITION_BAR), new OffsetRecord(barOffsetToDupe))));
+        Sets.newHashSet(new Pair(new TopicPartition(topic, PARTITION_BAR), offsetRecord)));
 
     // Get the KafkaPerStoreConsumptionTask with fresh mocks.
     try (StoreConsumptionTask mockStoreConsumptionTask = getKafkaPerStoreConsumptionTask(pollStrategy, PARTITION_FOO,
@@ -671,9 +734,10 @@ public class StoreConsumptionTaskTest {
    * receive a corrupt message. We expect the Notifier to report as such.
    * <p>
    * N.B.: There was an edge case where this test was flaky. The edge case is now fixed, but the invocationCount of 100
-   * should ensure that if this test is ever made flaky again, it will be detected right away.
+   * should ensure that if this test is ever made flaky again, it will be detected right away. The skipFailedInvocations
+   * annotation parameter makes the test skip any invocation after the first failure.
    */
-  @Test(invocationCount = 100)
+  @Test(invocationCount = 100, skipFailedInvocations = true)
   public void testCorruptMessagesFailFast()
       throws Exception {
     VeniceWriter veniceWriterForData = getVeniceWriter(
@@ -736,7 +800,7 @@ public class StoreConsumptionTaskTest {
     final int PARTITION_FOO = 1;
 
     try (StoreConsumptionTask mockStoreConsumptionTask = getKafkaPerStoreConsumptionTask(PARTITION_FOO)) {
-      OffsetRecord completedOffsetRecord = new OffsetRecord(100);
+      OffsetRecord completedOffsetRecord = TestUtils.getOffsetRecord(100);
       completedOffsetRecord.complete();
       Mockito.doReturn(completedOffsetRecord).when(mockOffSetManager).getLastOffset(topic, PARTITION_FOO);
       mockStoreConsumptionTask.subscribePartition(topic, PARTITION_FOO);
@@ -744,7 +808,7 @@ public class StoreConsumptionTaskTest {
       // MockKafkaConsumer is prepared. Schedule for polling.
       Future testSubscribeTaskFuture = taskPollingService.submit(mockStoreConsumptionTask);
 
-      Mockito.verify(mockNotifier, Mockito.timeout(TEST_TIMEOUT).times(1)).completed(topic, PARTITION_FOO, -1);
+      Mockito.verify(mockNotifier, Mockito.timeout(TEST_TIMEOUT).times(1)).completed(topic, PARTITION_FOO, 100);
       mockStoreConsumptionTask.close();
       testSubscribeTaskFuture.get(10, TimeUnit.SECONDS);
     }
@@ -754,7 +818,7 @@ public class StoreConsumptionTaskTest {
   public void testUnsubscribeConsumption()
       throws Exception {
     try (StoreConsumptionTask mockStoreConsumptionTask = getKafkaPerStoreConsumptionTask(PARTITION_FOO)) {
-      Mockito.doReturn(OffsetRecord.NON_EXISTENT_OFFSET).when(mockOffSetManager).getLastOffset(topic, PARTITION_FOO);
+      Mockito.doReturn(new OffsetRecord()).when(mockOffSetManager).getLastOffset(topic, PARTITION_FOO);
       // Prepare mockStoreRepository to send a mock storage engine.
       Mockito.doReturn(mockAbstractStorageEngine).when(mockStoreRepository).getLocalStorageEngine(topic);
       mockStoreConsumptionTask.subscribePartition(topic, PARTITION_FOO);
@@ -776,8 +840,8 @@ public class StoreConsumptionTaskTest {
   public void testKillConsumption() throws Exception {
     Thread writingThread = null;
     try (StoreConsumptionTask mockStoreConsumptionTask = getKafkaPerStoreConsumptionTask(PARTITION_FOO, PARTITION_BAR)) {
-      Mockito.doReturn(OffsetRecord.NON_EXISTENT_OFFSET).when(mockOffSetManager).getLastOffset(topic, PARTITION_FOO);
-      Mockito.doReturn(OffsetRecord.NON_EXISTENT_OFFSET).when(mockOffSetManager).getLastOffset(topic, PARTITION_BAR);
+      Mockito.doReturn(new OffsetRecord()).when(mockOffSetManager).getLastOffset(topic, PARTITION_FOO);
+      Mockito.doReturn(new OffsetRecord()).when(mockOffSetManager).getLastOffset(topic, PARTITION_BAR);
       // Prepare mockStoreRepository to send a mock storage engine.
       Mockito.doReturn(mockAbstractStorageEngine).when(mockStoreRepository).getLocalStorageEngine(topic);
       mockStoreConsumptionTask.subscribePartition(topic, PARTITION_FOO);
@@ -827,7 +891,7 @@ public class StoreConsumptionTaskTest {
   public void testKillActionPriority()
       throws Exception {
     try (StoreConsumptionTask mockStoreConsumptionTask = getKafkaPerStoreConsumptionTask(PARTITION_FOO)) {
-      Mockito.doReturn(OffsetRecord.NON_EXISTENT_OFFSET).when(mockOffSetManager).getLastOffset(topic, PARTITION_FOO);
+      Mockito.doReturn(new OffsetRecord()).when(mockOffSetManager).getLastOffset(topic, PARTITION_FOO);
       // Prepare mockStoreRepository to send a mock storage engine.
       Mockito.doReturn(mockAbstractStorageEngine).when(mockStoreRepository).getLocalStorageEngine(topic);
       // Add a subscribe consumer action
@@ -857,5 +921,81 @@ public class StoreConsumptionTaskTest {
       mockStoreConsumptionTask.close();
       testKillFuture.get(10, TimeUnit.SECONDS);
     }
+  }
+
+  @Test
+  public void testDataValidationCheckPointing() throws Exception {
+    final Map<Integer, Long> maxOffsetPerPartition = new HashMap<>();
+    final Map<Pair<Integer, ByteArray>, ByteArray> pushedRecords = new HashMap<>();
+    final int totalNumberOfMessages = 1000;
+    final int totalNumberOfConsumptionRestarts = 10;
+
+    veniceWriter.broadcastStartOfPush(Maps.newHashMap());
+    for (int i = 0; i < totalNumberOfMessages; i++) {
+      byte[] key = ByteBuffer.allocate(putKeyFoo.length + Integer.BYTES).put(putKeyFoo).putInt(i).array();
+      byte[] value = ByteBuffer.allocate(putValue.length + Integer.BYTES).put(putValue).putInt(i).array();
+
+      RecordMetadata recordMetadata = (RecordMetadata) veniceWriter.put(key, value, SCHEMA_ID).get();
+
+      maxOffsetPerPartition.put(recordMetadata.partition(), recordMetadata.offset());
+      pushedRecords.put(new Pair(recordMetadata.partition(), new ByteArray(key)), new ByteArray(value));
+    }
+    veniceWriter.broadcastEndOfPush(Maps.newHashMap());
+
+    // Basic sanity checks
+    Assert.assertEquals(pushedRecords.size(), totalNumberOfMessages, "We did not produce as many unique records as we expected!");
+    Assert.assertFalse(maxOffsetPerPartition.isEmpty(), "There should be at least one partition getting anything published into it!");
+
+    Set<Integer> relevantPartitions = Sets.newHashSet(PARTITION_FOO);
+
+    // This doesn't really need to be atomic, but it does need to be final, and int/Integer cannot be mutated.
+    final AtomicInteger messagesConsumedSoFar = new AtomicInteger(0);
+
+    PollStrategy pollStrategy = new BlockingObserverPollStrategy(
+        new RandomPollStrategy(false),
+        topicPartitionOffsetRecordPair -> {
+          if (null == topicPartitionOffsetRecordPair.getSecond()) {
+            LOGGER.info("Received null OffsetRecord!");
+          } else if (messagesConsumedSoFar.incrementAndGet() % (totalNumberOfMessages / totalNumberOfConsumptionRestarts) == 0) {
+            LOGGER.info("Restarting consumer after consuming " + messagesConsumedSoFar.get() + " messages so far.");
+            relevantPartitions.stream().forEach(partition ->
+                storeConsumptionTaskUnderTest.unSubscribePartition(topic, partition));
+            relevantPartitions.stream().forEach(partition ->
+                storeConsumptionTaskUnderTest.subscribePartition(topic, partition));
+          } else {
+            LOGGER.info("TopicPartition: " + topicPartitionOffsetRecordPair.getFirst() +
+                ", OffsetRecord: " + topicPartitionOffsetRecordPair.getSecond());
+          }
+        }
+    );
+
+    runTest(pollStrategy, relevantPartitions, () -> {}, () -> {
+      // Verify that all partitions reported success.
+      maxOffsetPerPartition.entrySet().stream().filter(entry -> relevantPartitions.contains(entry.getKey())).forEach(entry ->
+          verify(mockNotifier, timeout(TEST_TIMEOUT).atLeastOnce()).completed(eq(topic), eq(entry.getKey()), eq(entry.getValue())));
+
+      // After this, all asynchronous processing should be finished, so there's no need for time outs anymore.
+
+      // Verify that no partitions reported errors.
+      relevantPartitions.stream().forEach(partition ->
+          verify(mockNotifier, never()).error(eq(topic), eq(partition), anyString(), any()));
+
+      // Verify that we really unsubscribed and re-subscribed.
+      relevantPartitions.stream().forEach(partition -> {
+        verify(mockKafkaConsumer, atLeast(totalNumberOfConsumptionRestarts)).subscribe(eq(topic), eq(partition), any());
+        verify(mockKafkaConsumer, atLeast(totalNumberOfConsumptionRestarts)).unSubscribe(topic, partition);
+      });
+
+      // Verify that the storage engine got hit with every record.
+      verify(mockAbstractStorageEngine, atLeast(pushedRecords.size())).put(any(), any(), any());
+
+      // Verify that every record hit the storage engine
+      pushedRecords.entrySet().stream().forEach(entry -> {
+        int partition = entry.getKey().getFirst();
+        byte[] key = entry.getKey().getSecond().get();
+        byte[] value = ValueRecord.create(SCHEMA_ID, entry.getValue().get()).serialize();
+        verify(mockAbstractStorageEngine, atLeastOnce()).put(partition, key, value);
+      });
+    });
   }
 }

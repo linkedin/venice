@@ -25,7 +25,9 @@ import com.linkedin.venice.job.ExecutionStatus;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.offsets.OffsetManager;
 import com.linkedin.venice.offsets.OffsetRecord;
+import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
+import com.linkedin.venice.utils.FlakyTestRetryAnalyzer;
 import com.linkedin.venice.writer.VeniceWriter;
 import java.util.HashMap;
 import java.util.Map;
@@ -129,9 +131,11 @@ public class TestVeniceParentHelixAdmin {
         .when(veniceWriter)
         .put(Mockito.any(), Mockito.any(), Mockito.anyInt());
 
+    OffsetRecord offsetRecordForOffset1 = TestUtils.getOffsetRecord(1);
+
     Mockito.when(offsetManager.getLastOffset(topicName, partitionId))
-        .thenReturn(new OffsetRecord(-1))
-        .thenReturn(new OffsetRecord(1));
+        .thenReturn(new OffsetRecord())
+        .thenReturn(offsetRecordForOffset1);
 
     String storeName = "test-store";
     String owner = "test-owner";
@@ -169,7 +173,7 @@ public class TestVeniceParentHelixAdmin {
     parentAdmin.start(clusterName);
 
     Mockito.when(offsetManager.getLastOffset(topicName, partitionId))
-        .thenReturn(new OffsetRecord(-1));
+        .thenReturn(new OffsetRecord());
 
     String storeName = "test-store";
     String owner = "test-owner";
@@ -196,10 +200,14 @@ public class TestVeniceParentHelixAdmin {
         .when(veniceWriter)
         .put(Mockito.any(), Mockito.any(), Mockito.anyInt());
 
+    OffsetRecord offsetRecordForOffset1 = TestUtils.getOffsetRecord(1);
+
+    OffsetRecord offsetRecordForOffset0 = TestUtils.getOffsetRecord(0);
+
     Mockito.when(offsetManager.getLastOffset(topicName, partitionId))
-        .thenReturn(new OffsetRecord(-1))
-        .thenReturn(new OffsetRecord(1))
-        .thenReturn(new OffsetRecord(0));
+        .thenReturn(new OffsetRecord())
+        .thenReturn(offsetRecordForOffset1)
+        .thenReturn(offsetRecordForOffset0);
 
     String storeName = "test-store";
     String owner = "test-owner";
@@ -230,9 +238,11 @@ public class TestVeniceParentHelixAdmin {
         .when(veniceWriter)
         .put(Mockito.any(), Mockito.any(), Mockito.anyInt());
 
+    OffsetRecord offsetRecordForOffset1 = TestUtils.getOffsetRecord(1);
+
     Mockito.when(offsetManager.getLastOffset(topicName, partitionId))
-        .thenReturn(new OffsetRecord(-1))
-        .thenReturn(new OffsetRecord(1));
+        .thenReturn(new OffsetRecord())
+        .thenReturn(offsetRecordForOffset1);
 
     parentAdmin.addValueSchema(clusterName, storeName, valueSchemaStr);
 
@@ -274,9 +284,11 @@ public class TestVeniceParentHelixAdmin {
         .when(veniceWriter)
         .put(Mockito.any(), Mockito.any(), Mockito.anyInt());
 
+    OffsetRecord offsetRecordForOffset1 = TestUtils.getOffsetRecord(1);
+
     Mockito.when(offsetManager.getLastOffset(topicName, partitionId))
-        .thenReturn(new OffsetRecord(-1))
-        .thenReturn(new OffsetRecord(1));
+        .thenReturn(new OffsetRecord())
+        .thenReturn(offsetRecordForOffset1);
 
     parentAdmin.pauseStore(clusterName, storeName);
 
@@ -316,9 +328,11 @@ public class TestVeniceParentHelixAdmin {
         .when(veniceWriter)
         .put(Mockito.any(), Mockito.any(), Mockito.anyInt());
 
+    OffsetRecord offsetRecordForOffset1 = TestUtils.getOffsetRecord(1);
+    
     Mockito.when(offsetManager.getLastOffset(topicName, partitionId))
-        .thenReturn(new OffsetRecord(-1))
-        .thenReturn(new OffsetRecord(1));
+        .thenReturn(new OffsetRecord())
+        .thenReturn(offsetRecordForOffset1);
     Mockito.when(internalAdmin.checkPreConditionForPauseStoreAndGetStore(clusterName, storeName, true))
         .thenThrow(new VeniceNoStoreException(storeName));
 
@@ -338,9 +352,11 @@ public class TestVeniceParentHelixAdmin {
         .when(veniceWriter)
         .put(Mockito.any(), Mockito.any(), Mockito.anyInt());
 
+    OffsetRecord offsetRecordForOffset1 = TestUtils.getOffsetRecord(1);
+
     Mockito.when(offsetManager.getLastOffset(topicName, partitionId))
-        .thenReturn(new OffsetRecord(-1))
-        .thenReturn(new OffsetRecord(1));
+        .thenReturn(new OffsetRecord())
+        .thenReturn(offsetRecordForOffset1);
 
     parentAdmin.resumeStore(clusterName, storeName);
 
@@ -378,9 +394,11 @@ public class TestVeniceParentHelixAdmin {
         .when(veniceWriter)
         .put(Mockito.any(), Mockito.any(), Mockito.anyInt());
 
+    OffsetRecord offsetRecord1 = TestUtils.getOffsetRecord(1);
+    
     Mockito.when(offsetManager.getLastOffset(topicName, partitionId))
-        .thenReturn(new OffsetRecord(-1))
-        .thenReturn(new OffsetRecord(1));
+        .thenReturn(new OffsetRecord())
+        .thenReturn(offsetRecord1);
 
     Mockito.doReturn(new HashSet<String>(Arrays.asList(kafkaTopic)))
         .when(topicManager).listTopics();
@@ -414,8 +432,10 @@ public class TestVeniceParentHelixAdmin {
 
   /**
    * End-to-end test
+   *
+   * TODO: Fix this test, it's flaky.
    */
-  @Test
+  @Test(retryAnalyzer = FlakyTestRetryAnalyzer.class)
   public void testEnd2End() throws IOException {
     KafkaBrokerWrapper kafkaBrokerWrapper = ServiceFactory.getKafkaBroker();
     VeniceControllerWrapper controllerWrapper = ServiceFactory.getVeniceParentController(clusterName, kafkaBrokerWrapper);

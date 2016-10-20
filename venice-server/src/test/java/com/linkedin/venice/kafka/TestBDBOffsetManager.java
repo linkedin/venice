@@ -6,6 +6,7 @@ import com.linkedin.venice.offsets.BdbOffsetManager;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.storage.AbstractStorageEngineTest;
 import com.linkedin.venice.utils.RandomGenUtils;
+import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.VeniceProperties;
 import org.testng.Assert;
 import org.testng.annotations.BeforeClass;
@@ -48,9 +49,8 @@ public class TestBDBOffsetManager {
       //Write 10 times randomly to the offset Store and verify the read.
       for(int j = 0; j < 10; j ++) {
         long lastOffset = RandomGenUtils.getRandomIntWithIn(Integer.MAX_VALUE);
-        long lastOffsetTimeStamp = System.currentTimeMillis();
 
-        expectedRecord = new OffsetRecord(lastOffset, lastOffsetTimeStamp);
+        expectedRecord = TestUtils.getOffsetRecord(lastOffset);
         offsetManager.recordOffset(topicName, partitionId, expectedRecord);
         actualRecord = offsetManager.getLastOffset(topicName, partitionId);
         Assert.assertEquals(expectedRecord, actualRecord, "Offset Manager returned different record");
@@ -76,11 +76,11 @@ public class TestBDBOffsetManager {
   public void testCRUD() {
     final String NON_EXISTENT_OFFSET_TOPIC =  "NonExistentOffsetTopic";
     OffsetRecord actualRecord = offsetManager.getLastOffset(NON_EXISTENT_OFFSET_TOPIC, partitionId);
-    Assert.assertEquals(OffsetRecord.NON_EXISTENT_OFFSET ,actualRecord , "NonExistentTopic should return non existent offset" );
+    Assert.assertEquals(new OffsetRecord() ,actualRecord , "NonExistentTopic should return non existent offset" );
 
     // Create
     long offset = RandomGenUtils.getRandomIntWithIn(Integer.MAX_VALUE);
-    OffsetRecord expectedRecord = new OffsetRecord(offset, System.currentTimeMillis());
+    OffsetRecord expectedRecord = TestUtils.getOffsetRecord(offset);
     offsetManager.recordOffset(NON_EXISTENT_OFFSET_TOPIC, partitionId, expectedRecord);
 
     //Read
@@ -89,7 +89,7 @@ public class TestBDBOffsetManager {
 
     // Update
     offset = RandomGenUtils.getRandomIntWithIn(Integer.MAX_VALUE);
-    expectedRecord = new OffsetRecord(offset, System.currentTimeMillis());
+    expectedRecord = TestUtils.getOffsetRecord(offset);
     offsetManager.recordOffset(NON_EXISTENT_OFFSET_TOPIC, partitionId, expectedRecord);
 
     actualRecord = offsetManager.getLastOffset(NON_EXISTENT_OFFSET_TOPIC, partitionId);
@@ -98,6 +98,6 @@ public class TestBDBOffsetManager {
     //Delete
     offsetManager.clearOffset(NON_EXISTENT_OFFSET_TOPIC , partitionId);
     actualRecord = offsetManager.getLastOffset(NON_EXISTENT_OFFSET_TOPIC, partitionId);
-    Assert.assertEquals(OffsetRecord.NON_EXISTENT_OFFSET ,actualRecord , "cleared offset should return non existent offset" );
+    Assert.assertEquals(new OffsetRecord() ,actualRecord , "cleared offset should return non existent offset" );
   }
 }

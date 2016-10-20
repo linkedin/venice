@@ -1,6 +1,7 @@
 package com.linkedin.venice.unit.kafka;
 
 import java.util.ArrayList;
+import java.util.Optional;
 
 /**
  * Maintains queues for each partition of an in-memory topic.
@@ -38,10 +39,10 @@ class InMemoryKafkaTopic {
   /**
    * @param partition from which to consume
    * @param offset of the message to consume within the partition
-   * @return a {@link InMemoryKafkaMessage} instance
-   * @throws IllegalArgumentException if the partition or offset does not exist or if the offset is larger than {@link Integer#MAX_VALUE}
+   * @return Some {@link InMemoryKafkaMessage} instance, or the {@link Optional#empty()} instance if that partition is drained.
+   * @throws IllegalArgumentException if the partition or offset does not exist
    */
-  InMemoryKafkaMessage consume(int partition, long offset) throws IllegalArgumentException {
+  Optional<InMemoryKafkaMessage> consume(int partition, long offset) throws IllegalArgumentException {
     checkPartitionCount(partition);
     ArrayList<InMemoryKafkaMessage> partitionQueue = partitions[partition];
 
@@ -51,9 +52,9 @@ class InMemoryKafkaTopic {
     }
 
     try {
-      return partitionQueue.get((int) offset);
+      return Optional.of(partitionQueue.get((int) offset));
     } catch (IndexOutOfBoundsException e) {
-      throw new IllegalArgumentException("Partition " + partition + " in this topic does not contain offset " + offset, e);
+      return Optional.empty();
     }
   }
 

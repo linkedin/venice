@@ -8,10 +8,17 @@ import com.linkedin.venice.exceptions.validation.MissingDataException;
 import com.linkedin.venice.kafka.protocol.*;
 import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
+import com.linkedin.venice.kafka.protocol.state.ProducerPartitionState;
 import com.linkedin.venice.kafka.validation.checksum.CheckSumType;
 import com.linkedin.venice.message.KafkaKey;
+import com.linkedin.venice.offsets.OffsetRecord;
+import java.nio.ByteBuffer;
 import java.util.Arrays;
+import java.util.HashMap;
+
+import com.linkedin.venice.utils.ByteUtils;
 import org.apache.http.annotation.NotThreadSafe;
+import org.apache.log4j.Logger;
 
 import java.util.Map;
 
@@ -25,7 +32,18 @@ import java.util.Map;
  */
 @NotThreadSafe
 public class ProducerTracker {
+  private static final Logger LOGGER = Logger.getLogger(ProducerTracker.class);
+
+  private final GUID producerGUID;
   private final Map<Integer, Segment> segments = Maps.newHashMap();
+
+  public ProducerTracker(GUID producerGUID) {
+    this.producerGUID = producerGUID;
+  }
+
+  public String toString() {
+    return ProducerTracker.class.getSimpleName() + "(GUID: " + ByteUtils.toHexString(producerGUID.bytes()) + ")";
+  }
 
   /**
    * In some cases, such as when resetting offsets or unsubscribing from a partition,
@@ -36,6 +54,19 @@ public class ProducerTracker {
    */
   public void clearPartition(int partition) {
     segments.remove(partition);
+  }
+
+  public void setPartitionState(int partition, ProducerPartitionState state) {
+    Segment segment = new Segment(partition, state);
+    if (segments.containsKey(partition)) {
+      LOGGER.info(this.toString() + " will overwrite previous state for partition: " + partition +
+          "\nPrevious state: " + segments.get(partition) +
+          "\nNew state: " + segment);
+    } else {
+      LOGGER.info(this.toString() + " will set state for partition: " + partition +
+          "\nNew state: " + segment);
+    }
+    segments.put(partition, segment);
   }
 
   /**
@@ -49,9 +80,12 @@ public class ProducerTracker {
    * @param partition from which the message was consumed
    * @param key of the consumed message
    * @param messageEnvelope which was consumed
+   * @return A closure which will apply the appropriate state change to a {@link OffsetRecord}. This allows
+   *         the caller to decide whether to apply the state change or not. Furthermore, it minimizes the
+   *         chances that a state change may be partially applied, which could cause weird bugs if it happened.
    * @throws DataValidationException
    */
-  public void addMessage(int partition, KafkaKey key, KafkaMessageEnvelope messageEnvelope)
+  public OffsetRecordTransformer addMessage(int partition, KafkaKey key, KafkaMessageEnvelope messageEnvelope)
       throws DataValidationException {
 
     Segment segment = trackSegment(partition, messageEnvelope);
@@ -59,6 +93,32 @@ public class ProducerTracker {
 
     // This is the last step, because we want failures in the previous steps to short-circuit execution.
     trackCheckSum(segment, key, messageEnvelope);
+
+    // We return a closure, so that it is the caller's responsibility to decide whether to execute the state change or not.
+    return offsetRecord -> {
+      ProducerPartitionState state = offsetRecord.getProducerPartitionState(producerGUID);
+      if (null == state) {
+        state = new ProducerPartitionState();
+
+        // TOOD: Set these maps properly from the beginning of segment record.
+        state.aggregates = new HashMap<>();
+        state.debugInfo = new HashMap<>();
+        state.checksumType = segment.getCheckSumType().getValue();
+      }
+      state.checksumState = ByteBuffer.wrap(segment.getCheckSumState()); // TODO: Tune GC later
+      state.segmentNumber = segment.getSegmentNumber();
+      state.messageSequenceNumber = segment.getSequenceNumber();
+      state.messageTimestamp = messageEnvelope.producerMetadata.messageTimestamp;
+      state.segmentStatus = segment.getStatus().getValue();
+
+      offsetRecord.setProducerPartitionState(producerGUID, state);
+
+      if (LOGGER.isTraceEnabled()) {
+        LOGGER.trace("ProducerPartitionState updated.");
+      }
+
+      return offsetRecord;
+    };
   }
 
   /**
@@ -195,10 +255,10 @@ public class ProducerTracker {
       /** We have consumed an {@link ControlMessageType#END_OF_SEGMENT}. Time to verify the checksum. */
       ControlMessage controlMessage = (ControlMessage) messageEnvelope.payloadUnion;
       EndOfSegment incomingEndOfSegment = (EndOfSegment) controlMessage.controlMessageUnion;
-      if (Arrays.equals(segment.getCurrentCheckSum(), incomingEndOfSegment.checksumValue.array())) {
+      if (Arrays.equals(segment.getFinalCheckSum(), incomingEndOfSegment.checksumValue.array())) {
         // We're good, the expected checksum matches the one we computed on the receiving end (:
         // TODO: Record metrics for successfully ended segments.
-        segment.end();
+        segment.end(incomingEndOfSegment.finalSegment);
       } else {
         // Uh oh. Checksums don't match.
         // TODO: Record metrics for bad checksums.

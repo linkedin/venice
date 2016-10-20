@@ -15,7 +15,11 @@ import org.apache.kafka.common.TopicPartition;
  */
 public class RandomPollStrategy extends AbstractPollStrategy {
   public RandomPollStrategy() {
-    super(true);
+    super(true); // TODO: Change default to false once tests are ensured to be deterministic...
+  }
+
+  public RandomPollStrategy(boolean keepPollingWhenEmpty) {
+    super(keepPollingWhenEmpty);
   }
 
   @Override

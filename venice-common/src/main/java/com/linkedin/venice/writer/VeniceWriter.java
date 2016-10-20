@@ -40,10 +40,13 @@ public class VeniceWriter<K, V> extends AbstractVeniceWriter<K, V> {
   // log4j logger
   private static final Logger LOGGER = Logger.getLogger(VeniceWriter.class);
 
+  // Config names
   private static final String VENICE_WRITER_CONFIG_PREFIX = "venice.writer.";
   public static final String CLOSE_TIMEOUT_MS = VENICE_WRITER_CONFIG_PREFIX + "close.timeout.ms";
-  public static final int DEFAULT_CLOSE_TIMEOUT_MS = 30 * Time.MS_PER_SECOND;
   public static final String CHECK_SUM_TYPE = VENICE_WRITER_CONFIG_PREFIX + "checksum.type";
+
+  // Config value defaults
+  public static final int DEFAULT_CLOSE_TIMEOUT_MS = 30 * Time.MS_PER_SECOND;
   public static final String DEFAULT_CHECK_SUM_TYPE = CheckSumType.MD5.name();
 
   // Immutable state
@@ -110,7 +113,11 @@ public class VeniceWriter<K, V> extends AbstractVeniceWriter<K, V> {
   }
 
   public void close() {
-    endAllSegments();
+    /**
+     * If {@link #broadcastEndOfPush(Map)} was already called, the {@link #endAllSegments(boolean)}
+     * will not do anything (it's idempotent).
+     */
+    endAllSegments(true);
     producer.close(closeTimeOut);
   }
 
@@ -186,7 +193,7 @@ public class VeniceWriter<K, V> extends AbstractVeniceWriter<K, V> {
    */
   public void broadcastEndOfPush(Map<String, String> debugInfo) {
     broadcastControlMessage(getEmptyControlMessage(ControlMessageType.END_OF_PUSH), debugInfo);
-    endAllSegments();
+    endAllSegments(true);
   }
 
   private Future<RecordMetadata> sendMessage(KafkaKey key, KafkaMessageEnvelope value, int partition) {
@@ -228,7 +235,7 @@ public class VeniceWriter<K, V> extends AbstractVeniceWriter<K, V> {
     ControlMessage controlMessage = new ControlMessage();
     controlMessage.controlMessageType = ControlMessageType.END_OF_SEGMENT.getValue();
     EndOfSegment endOfSegment = new EndOfSegment();
-    endOfSegment.checksumValue = ByteBuffer.wrap(segmentsMap.get(partition).getCurrentCheckSum());
+    endOfSegment.checksumValue = ByteBuffer.wrap(segmentsMap.get(partition).getFinalCheckSum());
     endOfSegment.computedAggregates = Lists.newArrayList(); // TODO Add extra aggregates
     endOfSegment.finalSegment = finalSegment;
     controlMessage.controlMessageUnion = endOfSegment;
@@ -376,14 +383,14 @@ public class VeniceWriter<K, V> extends AbstractVeniceWriter<K, V> {
     return currentSegment;
   }
 
-  private void endAllSegments() {
-    segmentsMap.keySet().stream().forEach(partition -> endSegment(partition));
+  private void endAllSegments(boolean finalSegment) {
+    segmentsMap.keySet().stream().forEach(partition -> endSegment(partition, finalSegment));
   }
 
   /**
    * @param partition in which to end the current segment
    */
-  private synchronized void endSegment(int partition) {
+  private synchronized void endSegment(int partition, boolean finalSegment) {
     Segment currentSegment = segmentsMap.get(partition);
     if (null == currentSegment) {
       LOGGER.warn("endSegment(partition " + partition + ") called but currentSegment == null. Ignoring.");
@@ -396,9 +403,9 @@ public class VeniceWriter<K, V> extends AbstractVeniceWriter<K, V> {
       sendEndOfSegment(
           partition,
           Maps.newHashMap(), // TODO: Add extra debugging info
-          true // TODO: This will not always be true, once we support streaming.
+          finalSegment // TODO: This will not always be true, once we support streaming, or more than one segment per mapper in batch
       );
-      currentSegment.end();
+      currentSegment.end(finalSegment);
     }
   }
 

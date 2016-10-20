@@ -135,15 +135,22 @@ public class BdbOffsetManager extends AbstractVeniceService implements OffsetMan
 
   @Override
   public void clearOffset(String topicName, int partitionId) {
-    DatabaseEntry keyEntry = getBDBKey(topicName , partitionId);
+    DatabaseEntry keyEntry = getBDBKey(topicName, partitionId);
 
     try {
       OperationStatus status = offsetsBdbDatabase.delete(null, keyEntry);
 
-      if (status != OperationStatus.SUCCESS) {
-        String errorStr = "Delete failed with  " + status + " for Topic " + topicName + " PartitionId: " + partitionId;
-        logger.error(errorStr);
-        throw new VeniceException(errorStr);
+      switch (status) {
+        case SUCCESS:
+          logger.info("Successfully deleted offset data for topic '" + topicName + "', partition " + partitionId);
+          break;
+        case NOTFOUND:
+          logger.warn("Attempted to delete offset data but it was already missing for topic '" + topicName +
+              "', partition " + partitionId);
+          break;
+        default:
+          throw new VeniceException("Failed to delete offset data with status '" + status + "' for topic '" +
+              topicName + "', partitionId " + partitionId);
       }
     } catch (DatabaseException e) {
       String errorMessage = "Error in clearOffset for BDB database " + OFFSETS_STORE_NAME +
@@ -151,7 +158,6 @@ public class BdbOffsetManager extends AbstractVeniceService implements OffsetMan
       logger.error(errorMessage , e);
       throw new VeniceException(errorMessage, e);
     }
-
   }
 
   @Override
@@ -169,7 +175,7 @@ public class BdbOffsetManager extends AbstractVeniceService implements OffsetMan
         return new OffsetRecord(valueEntry.getData());
       } else {
         // case when the key (topic,partition)  does not exist
-        return OffsetRecord.NON_EXISTENT_OFFSET;
+        return new OffsetRecord();
       }
     } catch (DatabaseException e) {
       String errorMessage = "Error retrieving offset for Topic " + topicName + " and partition" + partitionId;

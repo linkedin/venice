@@ -68,8 +68,8 @@ public class TestVeniceJobManager {
   private HelixManager manager;
   private String storeName = "ts1";
   private String nodeId;
-  private int httpPort = 9985;
-  private int adminPort = 12345;
+  private int httpPort = 9985; // TODO: Remove hard-coded ports
+  private int adminPort = 12345; // TODO: Remove hard-coded ports
 
   private Store store;
   private Version version;
@@ -261,7 +261,7 @@ public class TestVeniceJobManager {
         "Job should be terminated with ERROR. Because one of node is failed.");
   }
 
-  @Test(timeOut = 15000, dataProvider = "offlinePushStrategies")
+  @Test(timeOut = 15000, dataProvider = "offlinePushStrategies", retryAnalyzer = FlakyTestRetryAnalyzer.class)
   public void testHandleOutOfOrderMessages(OfflinePushStrategy offlinePushStrategy)
       throws IOException, InterruptedException {
     metadataRepository.addStore(store);

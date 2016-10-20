@@ -9,7 +9,6 @@ import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.AvroStoreClientFactory;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
-import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.meta.Version;
@@ -22,8 +21,6 @@ import com.linkedin.venice.utils.VeniceProperties;
 import java.util.HashMap;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
-import java.util.function.Consumer;
-import org.apache.log4j.Logger;
 import org.testng.Assert;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
@@ -38,14 +35,6 @@ import static com.linkedin.venice.ConfigKeys.ZOOKEEPER_ADDRESS;
  * messages produced into Kafka can be read back out of the storage node.
  */
 public class ProducerConsumerReaderIntegrationTest {
-  private static final Logger LOGGER = Logger.getLogger(ProducerConsumerReaderIntegrationTest.class);
-
-  // Retry config TODO: Refactor the retry code into a re-usable (and less hacky) class
-  // Total Thread.sleep() time: 5 seconds
-  private static final int MAX_ATTEMPTS = 50;
-  private static final int WAIT_TIME_MS = 100;
-  // Total wall-clock time: 10 sec
-  private static final int MAX_WAIT_TIME = 10000;
 
   private VeniceClusterWrapper veniceCluster;
   private String storeVersionName;
@@ -89,62 +78,7 @@ public class ProducerConsumerReaderIntegrationTest {
     }
   }
 
-  private String logRetryMessage(int attempt, long timeElapsed, String problem, boolean willTryAgain) {
-    return "Got " + problem + " from reader. " +
-        "Attempt #" + attempt + "/" + MAX_ATTEMPTS +
-        ". Elapsed time: " + timeElapsed + "/" + MAX_WAIT_TIME +  "ms. " +
-        (willTryAgain ? "Will try again in " + WAIT_TIME_MS + "ms." : "Aborting");
-  }
-
-  private void handleRetry(int attempt, long timeElapsed, String problem, Consumer<String> failureLambda) throws InterruptedException {
-    if (attempt == MAX_ATTEMPTS || timeElapsed > MAX_WAIT_TIME) {
-      failureLambda.accept(logRetryMessage(attempt, timeElapsed, problem, false));
-    } else {
-      LOGGER.info(logRetryMessage(attempt, timeElapsed, problem, true));
-      Thread.sleep(WAIT_TIME_MS);
-    }
-  }
-
-  interface TestLambda {
-    /**
-     * @param attempt number of attempts so far
-     * @param timeElapsed wall-clock time elapsed since before the first attempt
-     * @return true if execution should terminate successfully, false if we should retry
-     * @throws Exception if the test should error out immediately
-     */
-    boolean execute(int attempt, long timeElapsed) throws Exception;
-  }
-
-  /**
-   * Provides a generic way of testing code in a loop.
-   *
-   * The runtime is capped by {@value #MAX_ATTEMPTS} executions and
-   * {@value #MAX_WAIT_TIME} wall-clock time.
-   *
-   * @param testLambda the code to execute inside the loop
-   * @return true the first time testLambda returns true, or
-   *         false if it never returns true within the allotted retry amount/time
-   * @throws Exception thrown by testLambda, if any
-   */
-  private boolean retry(TestLambda testLambda) throws Exception {
-    long startTime = System.currentTimeMillis();
-    long timeElapsed = 0;
-    for (int attempt = 1;
-         attempt <= MAX_ATTEMPTS && timeElapsed < MAX_WAIT_TIME;
-         attempt++, timeElapsed = System.currentTimeMillis() - startTime) {
-      try {
-        if (testLambda.execute(attempt, timeElapsed)) {
-          return true;
-        }
-      } catch (VeniceException | ExecutionException e) {
-        // TODO: Change to proper exception types once the VeniceReader and other components are changed accordingly.
-        handleRetry(attempt, timeElapsed, e.getClass().getSimpleName(), (message) -> {throw new VeniceException(message, e);} );
-      }
-    }
-    return false;
-  }
-
-  @Test(retryAnalyzer = FlakyTestRetryAnalyzer.class) // Sometimes breaks in Gradle... Arrrgh...
+  @Test(retryAnalyzer = FlakyTestRetryAnalyzer.class)
   public void testEndToEndProductionAndReading() throws Exception {
 
     final int pushVersion = Version.parseVersionFromKafkaTopicName(storeVersionName);
@@ -152,7 +86,6 @@ public class ProducerConsumerReaderIntegrationTest {
     String key = TestUtils.getUniqueString("key");
     String value = TestUtils.getUniqueString("value");
 
-    // TODO: Refactor the retry code into a re-usable (and less hacky) class
     try {
       storeClient.get(key).get();
       Assert.fail("Not online instances exist in cluster, should throw exception for this read operation.");
@@ -171,7 +104,7 @@ public class ProducerConsumerReaderIntegrationTest {
 
     // Wait for storage node to finish consuming, and new version to be activated
     String controllerUrl = veniceCluster.getAllControllersURLs();
-    TestUtils.waitForNonDeterministicCompletion(30000, TimeUnit.SECONDS, () -> {
+    TestUtils.waitForNonDeterministicCompletion(30, TimeUnit.SECONDS, () -> {
       int currentVersion = ControllerClient.getStore(controllerUrl, veniceCluster.getClusterName(), storeName).getStore().getCurrentVersion();
       return currentVersion == pushVersion;
     });

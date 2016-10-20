@@ -1,5 +1,6 @@
 package com.linkedin.venice.utils;
 
+import com.linkedin.venice.exceptions.VeniceException;
 import org.apache.commons.codec.DecoderException;
 import org.apache.commons.codec.binary.Hex;
 
@@ -56,9 +57,12 @@ public class ByteUtils {
    * @return The bytes
    * @throws DecoderException
    */
-  public static byte[] fromHexString(String hexString)
-      throws DecoderException {
-    return Hex.decodeHex(hexString.toCharArray());
+  public static byte[] fromHexString(String hexString) {
+    try {
+      return Hex.decodeHex(hexString.toCharArray());
+    } catch (DecoderException e) {
+      throw new VeniceException("Failed to convert from Hex to byte[]", e);
+    }
   }
 
   /**

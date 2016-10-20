@@ -43,6 +43,7 @@ public class StorageWorkerThread implements Runnable {
     stats.recordBdbQueryLatency(storeName,
       System.nanoTime() - queryStartTime);
     if( value != null) {
+      // TODO: We have a more up to date (and less expensive to call) copy of this data in memory. We should use it.
       long offset = offsetManager.getLastOffset(topic, partition).getOffset();
       StorageResponseObject resp = new StorageResponseObject(value, offset);
       ctx.writeAndFlush(resp);

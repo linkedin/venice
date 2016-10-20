@@ -6,6 +6,8 @@ task buildJar(type: Jar) {
   }
   baseName = project.name
   from { configurations.compile.collect { it.isDirectory() ? it : zipTree(it) } }
+  exclude 'META-INF/*.RSA', 'META-INF/*.SF','META-INF/*.DSA' // Necessary, otherwise Bouncy Castle introduces DSA files that mess with our build
+
   with jar
 }
 
@@ -25,6 +27,7 @@ dependencies {
     exclude group: 'org.mortbay.jetty' // jetty 6 conflicts with spark-java used in controller api
     exclude group: 'org.slf4j'        // Avro pulls in slf4j 1.5 which is API incompatible with 1.6
   }
+  compile libraries.bouncyCastle
   compile libraries.commonsIo // IntelliJ gets confused when running tests unless we explicitly depend on a recent version of commons-io
   compile libraries.commonsCodec
   compile libraries.guava

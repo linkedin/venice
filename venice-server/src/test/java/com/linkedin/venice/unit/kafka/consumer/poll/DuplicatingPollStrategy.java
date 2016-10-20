@@ -38,11 +38,9 @@ public class DuplicatingPollStrategy extends AbstractPollStrategy {
 
     TopicPartition topicPartition = nextPoll.getFirst();
     OffsetRecord offsetRecord = nextPoll.getSecond();
+    offsetRecord.setOffset(offsetRecord.getOffset() + getAmountOfDupes(topicPartition));
 
-    Pair<TopicPartition, OffsetRecord> nextPollWithAdjustedOffset = new Pair<>(
-        topicPartition,
-        new OffsetRecord(offsetRecord.getOffset() + getAmountOfDupes(topicPartition))
-    );
+    Pair<TopicPartition, OffsetRecord> nextPollWithAdjustedOffset = new Pair<>(topicPartition, offsetRecord);
 
     if (topicPartitionOffsetsToDuplicate.contains(nextPoll)) {
       if (!amountOfIntroducedDupes.containsKey(topicPartition)) {

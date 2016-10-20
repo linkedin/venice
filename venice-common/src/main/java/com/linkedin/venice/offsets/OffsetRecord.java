@@ -1,79 +1,114 @@
 package com.linkedin.venice.offsets;
 
-import com.linkedin.venice.utils.ByteUtils;
+import com.google.common.collect.Maps;
+import com.linkedin.venice.guid.GuidUtils;
+import com.linkedin.venice.kafka.protocol.GUID;
+import com.linkedin.venice.kafka.protocol.state.PartitionState;
+import com.linkedin.venice.kafka.protocol.state.ProducerPartitionState;
+import com.linkedin.venice.serialization.avro.PartitionStateSerializer;
+import org.apache.avro.util.Utf8;
+
+import java.util.Map;
 
 
 public class OffsetRecord {
-  private final long offset;
-  private final long eventTimeEpochMs;
-  private final long processingTimeEpochMs;
-  // Flag to indicate whether the topic has been fully consumed or not
-  private boolean completed;
 
   // Offset 0 is still a valid offset, Using that will cause a message to be skipped.
   public static final long LOWEST_OFFSET = -1;
-  public static final OffsetRecord NON_EXISTENT_OFFSET = new OffsetRecord(LOWEST_OFFSET, 0);
 
-  private void validateOffSet(long offset) {
-    if(offset < LOWEST_OFFSET) {
-      throw new IllegalArgumentException("Invalid OffSet " + offset);
-    }
+  private static final PartitionStateSerializer serializer = new PartitionStateSerializer();
+  private static final String PARTITION_STATE_STRING = "PartitionState";
+
+  private final PartitionState partitionState;
+
+  public OffsetRecord(PartitionState partitionState) {
+    this.partitionState = partitionState;
   }
 
-  public OffsetRecord(long offset) {
-    this(offset, System.currentTimeMillis());
-  }
-
-  public OffsetRecord(long offset, long recordedTime) {
-    validateOffSet(offset);
-    this.offset = offset;
-    this.eventTimeEpochMs = recordedTime;
-    this.processingTimeEpochMs = System.currentTimeMillis();
-    this.completed = false;
+  public OffsetRecord() {
+    this(getEmptyPartitionState());
   }
 
   /**
    * @param bytes to deserialize from
-   *
-   * TODO Get rid of second parameter offset if we knw 0 is always the starting index of the bytes to be de serialized.
    */
   public OffsetRecord(byte[] bytes) {
-    if (bytes == null || bytes.length < getSerializedByteArraySize()) {
-      throw new IllegalArgumentException("Invalid byte array for serialization - no bytes to read");
-    }
-    this.offset = ByteUtils.readLong(bytes, 0);
-    this.eventTimeEpochMs = ByteUtils.readLong(bytes, ByteUtils.SIZE_OF_LONG);
-    this.processingTimeEpochMs = ByteUtils.readLong(bytes, 2 * ByteUtils.SIZE_OF_LONG);
-    this.completed = ByteUtils.readBoolean(bytes, 3 * ByteUtils.SIZE_OF_LONG);
+    this(deserializePartitionState(bytes));
+  }
 
-    validateOffSet(offset);
+  private static PartitionState getEmptyPartitionState() {
+    PartitionState emptyPartitionState = new PartitionState();
+    emptyPartitionState.offset = LOWEST_OFFSET;
+    emptyPartitionState.producerStates = Maps.newHashMap();
+    emptyPartitionState.endOfPush = false;
+    emptyPartitionState.lastUpdate = System.currentTimeMillis();
+    return emptyPartitionState;
+  }
+
+  private static PartitionState deserializePartitionState(byte[] bytes) {
+    return serializer.deserialize(PARTITION_STATE_STRING, bytes);
   }
 
   public long getOffset() {
-    return this.offset;
+    return this.partitionState.offset;
   }
 
+  public void setOffset(long offset) {
+    this.partitionState.offset = offset;
+  }
+
+  /**
+   * @return the last messageTimeStamp across all producers tracked by this OffsetRecord
+   */
   public long getEventTimeEpochMs() {
-    return this.eventTimeEpochMs;
+    return this.partitionState.producerStates.values().stream()
+        .map(producerPartitionState -> producerPartitionState.messageTimestamp)
+        .sorted((o1, o2) -> o1.compareTo(o2) * -1)
+        .findFirst()
+        .orElse(-1L);
   }
 
-  public long getProcessingTimeEpochMs() { return this.processingTimeEpochMs; }
+  public long getProcessingTimeEpochMs() {
+    return this.partitionState.lastUpdate;
+  }
 
   public void complete() {
-    this.completed = true;
+    this.partitionState.endOfPush = true;
   }
 
   public boolean isCompleted() {
-    return this.completed;
+    return this.partitionState.endOfPush;
+  }
+
+  public void setProducerPartitionState(GUID producerGuid, ProducerPartitionState state) {
+    this.partitionState.producerStates.put(guidToUtf8(producerGuid), state);
+  }
+
+  public Map<CharSequence, ProducerPartitionState> getProducerPartitionStates() {
+    return this.partitionState.producerStates;
+  }
+
+  public ProducerPartitionState getProducerPartitionState(GUID producerGuid) {
+    return getProducerPartitionStates().get(guidToUtf8(producerGuid));
+  }
+
+  /**
+   * It may be useful to cache this mapping. TODO: Explore GC tuning later.
+   *
+   * @param guid to be converted
+   * @return a {@link Utf8} instance corresponding to the {@link GUID} that was passed in
+   */
+  private CharSequence guidToUtf8(GUID guid) {
+    return GuidUtils.getCharSequenceFromGuid(guid);
   }
 
   @Override
   public String toString() {
     return "OffsetRecord{" +
-        "offset=" + offset +
-        ", eventTimeEpochMs=" + eventTimeEpochMs +
-        ", processingTimeEpochMs=" + processingTimeEpochMs +
-        ", completed=" + completed +
+        "offset=" + getOffset() +
+        ", eventTimeEpochMs=" + getEventTimeEpochMs() +
+        ", processingTimeEpochMs=" + getProcessingTimeEpochMs() +
+        ", completed=" + isCompleted() +
         '}';
   }
 
@@ -88,18 +123,20 @@ public class OffsetRecord {
 
     OffsetRecord that = (OffsetRecord) o;
 
-    return offset == that.offset && completed == that.completed;
+    /** N.B.: {@link #partitionState.lastUpdate} intentionally omitted from comparison */
+    return this.partitionState.offset == that.partitionState.offset &&
+        this.partitionState.endOfPush == that.partitionState.endOfPush; // &&
+    // N.B.: We cannot do a more thorough equality check at this time because it breaks tests.
+    // If we actually need the more comprehensive equals, then we'll need to rethink the way we test.
+    //    this.partitionState.producerStates.entrySet().equals(that.partitionState.producerStates.entrySet());
   }
 
   @Override
   public int hashCode() {
-    int result = (int) (offset ^ (offset >>> 32));
-    result = 31 * result + (completed ? 1 : 0);
-    return result;
-  }
-
-  private int getSerializedByteArraySize() {
-    return ByteUtils.SIZE_OF_LONG * 3 + ByteUtils.SIZE_OF_BOOLEAN;
+    int hash = 17;
+    hash = hash * 31 + Long.hashCode(this.partitionState.offset);
+    hash = hash * 31 + Boolean.hashCode(this.partitionState.endOfPush);
+    return hash;
   }
 
   /**
@@ -108,11 +145,6 @@ public class OffsetRecord {
    * @return byte[]
    */
   public byte[] toBytes() {
-    byte[] res = new byte[getSerializedByteArraySize()];
-    ByteUtils.writeLong(res, this.offset, 0);
-    ByteUtils.writeLong(res, this.eventTimeEpochMs,  ByteUtils.SIZE_OF_LONG);
-    ByteUtils.writeLong(res, this.processingTimeEpochMs, 2 * ByteUtils.SIZE_OF_LONG);
-    ByteUtils.writeBoolean(res, this.completed, 3 * ByteUtils.SIZE_OF_LONG);
-    return res;
+    return serializer.serialize(PARTITION_STATE_STRING, partitionState);
   }
 }

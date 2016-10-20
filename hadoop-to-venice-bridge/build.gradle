@@ -23,7 +23,6 @@ dependencies {
       exclude group: 'org.apache.avro'
       exclude group: 'javax.servlet'
     }
-    compile libraries.metricsCore
     compile libraries.joptSimple
     compile libraries.jdom
     compile libraries.jacksonCore

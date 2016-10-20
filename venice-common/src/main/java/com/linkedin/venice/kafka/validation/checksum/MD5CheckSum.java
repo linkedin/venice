@@ -16,35 +16,39 @@
 
 package com.linkedin.venice.kafka.validation.checksum;
 
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
+import org.bouncycastle.crypto.digests.MD5Digest;
+
 
 /**
- * Running checksum implementations based on MD5.
- *
- * N.B.: Class taken from Voldemort.
+ * Running checksum implementation based on BouncyCastle's implementation of MD5.
  */
 public class MD5CheckSum extends CheckSum {
 
-  private MessageDigest checkSumGenerator = null;
+  private MD5Digest checksum = null;
 
-  public MD5CheckSum() throws NoSuchAlgorithmException {
-    checkSumGenerator = MessageDigest.getInstance("md5");
+  public MD5CheckSum() {
+    checksum = new MD5Digest();
+  }
+
+  public MD5CheckSum(byte[] encodedState) {
+    checksum = new MD5Digest(encodedState);
   }
 
   @Override
   public byte[] getCheckSum() {
-    return checkSumGenerator.digest();
+    byte[] finalChecksum = new byte[checksum.getDigestSize()];
+    checksum.doFinal(finalChecksum, 0);
+    return finalChecksum;
   }
 
   @Override
   public void update(byte[] input, int startIndex, int length) {
-    checkSumGenerator.update(input, startIndex, length);
+    checksum.update(input, startIndex, length);
   }
 
   @Override
   public void reset() {
-    checkSumGenerator.reset();
+    checksum.reset();
   }
 
   @Override
@@ -52,4 +56,8 @@ public class MD5CheckSum extends CheckSum {
     return CheckSumType.MD5;
   }
 
+  @Override
+  public byte[] getEncodedState() {
+    return checksum.getEncodedState();
+  }
 }

@@ -10,6 +10,8 @@ import com.linkedin.venice.meta.Store;
 import java.util.concurrent.TimeUnit;
 import java.util.function.BooleanSupplier;
 import javax.validation.constraints.NotNull;
+
+import com.linkedin.venice.offsets.OffsetRecord;
 import org.apache.helix.HelixManager;
 import org.apache.helix.HelixManagerFactory;
 import org.apache.helix.InstanceType;
@@ -100,4 +102,11 @@ public class TestUtils {
         () -> HelixInstanceConverter.convertInstanceToZNRecord(new Instance(nodeId, Utils.getHostName(), httpPort)));
     return participant;
   }
+
+  public static OffsetRecord getOffsetRecord(long offset) {
+    OffsetRecord offsetRecord = new OffsetRecord();
+    offsetRecord.setOffset(offset);
+    return offsetRecord;
+  }
+
 }

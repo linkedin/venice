@@ -2,6 +2,7 @@ package com.linkedin.venice.unit.kafka;
 
 import com.google.common.collect.Maps;
 import java.util.Map;
+import java.util.Optional;
 
 /**
  * Used in unit tests in order to avoid spinning a full Kafka broker with network stack
@@ -39,10 +40,10 @@ public class InMemoryKafkaBroker {
   /**
    * @param topicName The name of the topic from which to consume.
    * @param partition The partition from which to produce a message.
-   * @return a {@link InMemoryKafkaMessage} instance
-   * @throws IllegalArgumentException if the topic, partition or offset does not exist.
+   * @return Some {@link InMemoryKafkaMessage} instance, or the {@link Optional#empty()} instance if that partition is drained.
+   * @throws IllegalArgumentException if the topic or partition does not exist.
    */
-  public InMemoryKafkaMessage consume(String topicName, int partition, long offset) {
+  public Optional<InMemoryKafkaMessage> consume(String topicName, int partition, long offset) throws IllegalArgumentException {
     InMemoryKafkaTopic topic = getTopic(topicName);
     return topic.consume(partition, offset);
   }

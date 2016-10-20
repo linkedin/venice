@@ -15,6 +15,8 @@ import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import java.net.URI;
 import java.util.concurrent.ExecutionException;
+
+import com.linkedin.venice.utils.FlakyTestRetryAnalyzer;
 import org.apache.commons.httpclient.HttpStatus;
 import org.testng.Assert;
 import org.testng.annotations.Test;
@@ -27,7 +29,7 @@ public class TestRouter {
   /**
    * TODO: Make this test more resilient. It is flaky on slower hardware.
    */
-  @Test
+  @Test(retryAnalyzer = FlakyTestRetryAnalyzer.class)
   public void testRouterWithD2() throws Exception {
     ZkServerWrapper zk = ServiceFactory.getZkServer();
     D2TestUtils.setupD2Config(zk.getAddress());

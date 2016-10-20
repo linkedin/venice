@@ -19,7 +19,7 @@ import org.testng.annotations.Test;
 public class CachedResourceZKStateListenerTest {
   private ZkServerWrapper zkServer;
   private ZkClient zkClient;
-  private static final int WAIT_TIME = 1000;
+  private static final int WAIT_TIME = 10000;
 
   @BeforeMethod
   public void setup() {

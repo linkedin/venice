@@ -21,44 +21,63 @@ public class MockInMemoryConsumer implements KafkaConsumerWrapper {
   private final InMemoryKafkaBroker broker;
   private final Map<TopicPartition, OffsetRecord> offsets = new HashMap<>();
   private final PollStrategy pollStrategy;
+  private final KafkaConsumerWrapper delegate;
 
-  public MockInMemoryConsumer(InMemoryKafkaBroker broker, PollStrategy pollStrategy) {
+  /**
+   * @param delegate Can be used to pass a mock, in order to verify calls. Note: functions that return
+   *                 do not return the result of the mock, but rather the results of the in-memory
+   *                 consumer components.
+   */
+  public MockInMemoryConsumer(InMemoryKafkaBroker broker, PollStrategy pollStrategy, KafkaConsumerWrapper delegate) {
     this.broker = broker;
     this.pollStrategy = pollStrategy;
+    this.delegate = delegate;
   }
 
   @Override
   public void subscribe(String topic, int partition, OffsetRecord offset) {
+    delegate.subscribe(topic, partition, offset);
     offsets.put(new TopicPartition(topic, partition), offset);
   }
 
   @Override
   public void unSubscribe(String topic, int partition) {
+    delegate.unSubscribe(topic, partition);
     offsets.remove(new TopicPartition(topic, partition));
   }
 
   @Override
   public void resetOffset(String topic, int partition) {
-    offsets.put(new TopicPartition(topic, partition), new OffsetRecord(OffsetRecord.LOWEST_OFFSET));
+    delegate.resetOffset(topic, partition);
+    offsets.put(new TopicPartition(topic, partition), new OffsetRecord());
   }
 
   @Override
   public void close() {
+    delegate.close();
     // No-op
   }
 
   @Override
   public ConsumerRecords poll(long timeout) {
+    if (null != delegate.poll(timeout)) {
+      throw new IllegalArgumentException(
+          "The MockInMemoryConsumer's delegate can only be used to verify calls, not to return arbitrary instances.");
+    }
     return pollStrategy.poll(broker, offsets, timeout);
   }
 
   @Override
   public void commitSync(String topic, int partition, OffsetAndMetadata offsetAndMeta) {
-
+    delegate.commitSync(topic, partition, offsetAndMeta);
   }
 
   @Override
   public OffsetAndMetadata committed(String topic, int partition) {
+    if (null != delegate.committed(topic, partition)) {
+      throw new IllegalArgumentException(
+          "The MockInMemoryConsumer's delegate can only be used to verify calls, not to return arbitrary instances.");
+    }
     return null;
   }
 
