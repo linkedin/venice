@@ -15,7 +15,7 @@ avro.value.field=value
 # PRODUCER WE USE PRODUCE MESSAGES THAT CAN'T BE
 # UNDERSTOOD BY OLDER KAFKA CLUSTERS AND IT CRASHES THEM.
 
-venice.urls=http://ltx1-app1085.stg.linkedin.com:1689,http://ltx1-app1325.stg.linkedin.com:1689
-venice.store.name=venice_h2v_test_100_1
+venice.urls=http://ltx1-app1005.stg.linkedin.com:1576,http://ltx1-app1365.stg.linkedin.com:1576,http://ltx1-app1405.stg.linkedin.com:1576
+venice.store.name=venice_h2v_test_100_2
 venice.store.owners=venice-eng@linkedin.com
 cluster.name=test-cluster
