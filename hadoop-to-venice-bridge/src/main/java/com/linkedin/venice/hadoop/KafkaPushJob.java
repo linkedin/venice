@@ -1,5 +1,6 @@
 package com.linkedin.venice.hadoop;
 
+import azkaban.jobExecutor.AbstractJob;
 import com.google.common.collect.Maps;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
@@ -59,7 +60,7 @@ import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
  * The job reads the input data off HDFS and pushes it to venice using Mapper tasks.
  * The job spawns only Mappers, and there are no Reducers.
  */
-public class KafkaPushJob {
+public class KafkaPushJob extends AbstractJob {
   // Job Properties
   public static final String AVRO_KEY_FIELD_PROP = "avro.key.field";
   public static final String AVRO_VALUE_FIELD_PROP = "avro.value.field";
@@ -218,6 +219,7 @@ public class KafkaPushJob {
    * @throws Exception
    */
   public KafkaPushJob(String jobId, Properties props) throws Exception {
+    super(jobId, logger);
     this.props = props;
     this.id = jobId;
     this.clusterName = props.getProperty(VENICE_CLUSTER_NAME_PROP);
@@ -264,6 +266,7 @@ public class KafkaPushJob {
    *
    * @throws VeniceException
    */
+  @Override
   public void run() {
     try {
       logger.info("Running KafkaPushJob: " + id);
@@ -603,6 +606,7 @@ public class KafkaPushJob {
    *
    * @throws Exception
    */
+  @Override
   public void cancel() throws Exception {
     // Attempting to kill job. There's a race condition, but meh. Better kill when you know it's running
     if (runningJob != null && !runningJob.isComplete()) {

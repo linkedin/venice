@@ -21,6 +21,7 @@ apply plugin: 'eclipse'
 
 ext.libraries = [ // Groovy map literal
                   avro: 'org.apache.avro:avro:1.4.1',
+                  azkaban: 'com.linkedin.azkaban:azkaban:2.5.0',
                   bdbJe: 'com.sleepycat:je:5.0.104',
                   commonsCodec: 'commons-codec:commons-codec:1.4',
                   commonsIo: 'commons-io:commons-io:2.4',
