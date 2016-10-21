@@ -187,11 +187,10 @@ public class AdminConsumptionTask implements Runnable, Closeable {
 
   private void processMessage(ConsumerRecord<KafkaKey, KafkaMessageEnvelope> record) {
     // TODO: Add data validation logic here
-    if (MessageType.CONTROL_MESSAGE == MessageType.valueOf(record.value())) {
-      persistRecordOffset(record); // We don't process the data validation control messages.
+    if (!shouldProcessRecord(record)){
+      persistRecordOffset(record); // We don't process the data validation control messages for example
       return;
     }
-    verifyShouldProcessRecord(record);
     Put put = (Put) record.value().payloadUnion;
     AdminOperation adminMessage = deserializer.deserialize(put.putValue.array(), put.schemaId);
     if (logger.isDebugEnabled()) {
@@ -238,7 +237,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
     }
   }
 
-  private void verifyShouldProcessRecord(ConsumerRecord<KafkaKey, KafkaMessageEnvelope> record) {
+  private boolean shouldProcessRecord(ConsumerRecord<KafkaKey, KafkaMessageEnvelope> record) {
     // check topic
     String recordTopic = record.topic();
     if (!topic.equals(recordTopic)) {
@@ -252,15 +251,18 @@ public class AdminConsumptionTask implements Runnable, Closeable {
     // check offset
     long recordOffset = record.offset();
     if (lastOffset >= recordOffset) {
-      throw new VeniceException(consumerTaskId + ", current record has been processed, last known offset: " + lastOffset + ", current offset: " + recordOffset);
+      logger.error(consumerTaskId + ", current record has been processed, last known offset: " + lastOffset + ", current offset: " + recordOffset);
+      return false;
     }
     // check message type
     KafkaMessageEnvelope kafkaValue = record.value();
     MessageType messageType = MessageType.valueOf(kafkaValue);
     // TODO: Add data validation logic here, and there should be more MessageType here to handle, such as Control Message.
     if (MessageType.PUT != messageType) {
-      throw new VeniceException("Received unknown message type: " + messageType);
+      logger.error("Received unknown message type: " + messageType);
+      return false;
     }
+    return true;
   }
 
   private void handleStoreCreation(StoreCreation message) {
