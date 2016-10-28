@@ -59,7 +59,7 @@ public class JobStatusQueryResponse extends ControllerResponse{ /* Uses Json Ref
 
   /**
    * If the push to Kafka is complete, then the highest offset for each partition is not expected to change.
-   * This boolean indicates that completion.  The job is complete when this is true and getMessagesConsumed() == getMessagesAvailable()
+   * This boolean indicates that completion.
    * @return
    */
   public boolean isAvailableFinal() {
