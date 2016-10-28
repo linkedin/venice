@@ -7,6 +7,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.Partition;
 import com.linkedin.venice.meta.RoutingDataRepository;
+import com.linkedin.venice.utils.HelixUtils;
 import java.util.Collection;
 import java.util.List;
 import org.jboss.netty.handler.codec.http.HttpResponseStatus;
@@ -34,7 +35,7 @@ public class VeniceHostFinder implements HostFinder<Instance, VeniceRole> {
   @Override
   public List<Instance> findHosts(String requestMethod, String resourceName, String partitionName,
       HostHealthMonitor<Instance> hostHealthMonitor, VeniceRole roles) {
-    return dataRepository.getReadyToServeInstances(resourceName, Partition.getPartitionIdFromName(partitionName));
+    return dataRepository.getReadyToServeInstances(resourceName, HelixUtils.getPartitionId(partitionName));
   }
 
   @Override

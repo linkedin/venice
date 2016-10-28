@@ -6,7 +6,6 @@ import com.linkedin.venice.helix.HelixReadWriteSchemaRepository;
 import com.linkedin.venice.helix.Replica;
 import com.linkedin.venice.helix.ZkWhitelistAccessor;
 import com.linkedin.venice.job.KillJobMessage;
-import com.linkedin.venice.job.OfflineJob;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
@@ -25,7 +24,6 @@ import com.linkedin.venice.status.StatusMessageChannel;
 import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.PartitionCountUtils;
 import com.linkedin.venice.utils.Utils;
-import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
@@ -44,7 +42,6 @@ import org.apache.helix.PropertyKey;
 import org.apache.helix.manager.zk.ZKHelixAdmin;
 import org.apache.helix.manager.zk.ZKHelixManager;
 import org.apache.helix.manager.zk.ZkClient;
-import org.apache.helix.model.ExternalView;
 import org.apache.helix.model.HelixConfigScope;
 import org.apache.helix.model.IdealState;
 import org.apache.helix.model.LeaderStandbySMD;
@@ -680,34 +677,24 @@ public class VeniceHelixAdmin implements Admin {
     }
 
     @Override
-    public List<Replica> getReplicasOfStorageNode(String cluster, String instanceId){
-        List<Replica> replicas = new ArrayList<>();
-        List<String> resources = admin.getResourcesInCluster(cluster);
-        for (String resource : resources){
-            // TODO if we only need the replicas in one node, we could read CURRENTSTATE of this node
-            // instead of reading the whole EXTERNALVIEW
-            ExternalView ev = admin.getResourceExternalView(cluster, resource);
-            Set<String> partitions = ev.getPartitionSet();
-            for (String partition : partitions) {
-                Map<String, String> InstanceAndStatusMap = ev.getStateMap(partition);
-                for (Map.Entry<String, String> pair : InstanceAndStatusMap.entrySet()){
-                    if (pair.getKey().equals(instanceId)){
-                        String status = pair.getValue();
-                        Instance instance = Instance.fromNodeId(instanceId);
-                        Replica replica = new Replica(instance, HelixUtils.getPartitionId(partition), resource);
-                        replica.setStatus(status);
-                        replicas.add(replica);
-                    }
-                }
-            }
-        }
-        return replicas;
+    public List<Replica> getReplicasOfStorageNode(String cluster, String instanceId) {
+        checkControllerMastership(cluster);
+        return InstanceStatusDecider.getReplicasForInstance(getVeniceHelixResource(cluster), instanceId);
     }
 
     @Override
     public boolean isInstanceRemovable(String clusterName, String helixNodeId) {
         checkControllerMastership(clusterName);
-        return InstanceStatusDecider.isRemovable(getVeniceHelixResource(clusterName), clusterName, helixNodeId);
+        int minRequiredOnlineReplicaToStopServer =
+            getVeniceHelixResource(clusterName).getConfig().getMinRequiredOnlineReplicaToStopServer();
+        return isInstanceRemovable(clusterName, helixNodeId, minRequiredOnlineReplicaToStopServer);
+    }
+
+    @Override
+    public boolean isInstanceRemovable(String clusterName, String helixNodeId, int minRequiredOnlineReplicaToStopServer) {
+        checkControllerMastership(clusterName);
+        return InstanceStatusDecider.isRemovable(getVeniceHelixResource(clusterName), clusterName, helixNodeId,
+            minRequiredOnlineReplicaToStopServer);
     }
 
     @Override
@@ -770,6 +757,28 @@ public class VeniceHelixAdmin implements Admin {
         // M=number of nodes have completed the ingestion or have not started). But considering the number of nodes in
         // our cluster is not too big, so it's not a big deal here.
         messageChannel.sendToStorageNodes(new KillJobMessage(kafkaTopic), kafkaTopic, retryCount);
+    }
+
+    @Override
+    public StorageNodeStatus getStorageNodeStatus(String clusterName, String instanceId) {
+        checkControllerMastership(clusterName);
+        List<Replica> replicas = getReplicasOfStorageNode(clusterName, instanceId);
+        StorageNodeStatus status = new StorageNodeStatus();
+        for (Replica replica : replicas) {
+            status.addStatusForReplica(HelixUtils.getPartitionName(replica.getResource(), replica.getPartitionId()),
+                replica.getStatus());
+        }
+        return status;
+    }
+
+    // TODO we don't use this function to check the storage node status. The isRemovable looks enough to ensure the
+    // TODO upgrading would not affect the push and online reading request. Leave this function here to see do we need it in the future.
+    @Override
+    public boolean isStorageNodeNewerOrEqualTo(String clusterName, String instanceId,
+        StorageNodeStatus oldStatus) {
+        checkControllerMastership(clusterName);
+        StorageNodeStatus currentStatus = getStorageNodeStatus(clusterName, instanceId);
+        return currentStatus.isNewerOrEqual(oldStatus);
     }
 
     @Override

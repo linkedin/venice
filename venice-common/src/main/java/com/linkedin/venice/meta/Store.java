@@ -247,6 +247,15 @@ public class Store {
     return increaseVersion(false);
   }
 
+  public boolean isVersionInStatue(int versionNumber, VersionStatus status) {
+    for (int i = 0; i < versions.size(); i++) {
+      if (versions.get(i).getNumber() == versionNumber && versions.get(i).getStatus().equals(status)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   private Version increaseVersion(boolean createNewVersion) {
     int versionNumber = largestUsedVersionNumber + 1;
     checkPausedStore("increase", versionNumber);

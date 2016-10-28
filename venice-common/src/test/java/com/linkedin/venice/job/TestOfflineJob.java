@@ -1,6 +1,7 @@
 package com.linkedin.venice.job;
 
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.helix.HelixState;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.Partition;
 import com.linkedin.venice.meta.PartitionAssignment;
@@ -35,7 +36,10 @@ public class TestOfflineJob {
         Instance instance = new Instance(nodeId + j, "localhost", 1235);
         instances.add(instance);
       }
-      Partition partition = new Partition(i, instances, instances, Collections.emptyList());
+      Map<String, List<Instance>> stateToInstancesMap = new HashMap<>();
+      stateToInstancesMap.put(HelixState.ONLINE_STATE, instances);
+      stateToInstancesMap.put(HelixState.BOOTSTRAP_STATE, instances);
+      Partition partition = new Partition(i, stateToInstancesMap);
       partitionAssignment.addPartition(partition);
     }
   }

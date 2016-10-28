@@ -5,6 +5,7 @@ import com.linkedin.venice.meta.Partition;
 import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.partitioner.VenicePartitioner;
+import com.linkedin.venice.utils.HelixUtils;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -27,7 +28,7 @@ public class VenicePartitionFinder implements PartitionFinder<RouterKey> {
   @Override
   public String findPartitionName(String resourceName, RouterKey partitionKey) {
     int partitionId = findPartitionNumber(resourceName, partitionKey);
-    return Partition.getPartitionName(resourceName, partitionId);
+    return HelixUtils.getPartitionName(resourceName, partitionId);
   }
 
   public int findPartitionNumber(String resourceName, RouterKey partitionKey){
@@ -38,7 +39,7 @@ public class VenicePartitionFinder implements PartitionFinder<RouterKey> {
   public List<String> getAllPartitionNames(String resourceName) {
     return dataRepository.getPartitionAssignments(resourceName).getAllPartitions()
         .stream()
-        .map(p -> Partition.getPartitionName(resourceName, p.getId()))
+        .map(p -> HelixUtils.getPartitionName(resourceName, p.getId()))
         .collect(Collectors.toList());
   }
 

@@ -1,9 +1,11 @@
 package com.linkedin.venice.meta;
 
+import com.linkedin.venice.helix.HelixState;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
-import javax.validation.constraints.NotNull;
+import java.util.Map;
 
 
 /**
@@ -13,64 +15,86 @@ import javax.validation.constraints.NotNull;
  * a set of partition so that data in this resource will be distributed averagely in ideal. Each partition contains 1 or
  * multiple replica which hold the same data in ideal.
  * <p>
- * In Helix Full-auto model, Helix manage how to assign partitions to nodes. So here partition is read-only. In the
- * further, if Venice need more flexibility to manage cluster, some update/delete methods could be added here.
+ * In Helix Full-auto model, Helix manager is responsible to assign partitions to nodes. So here partition is read-only.
+ * In the future, if Venice need more flexibility to manage cluster, some update/delete methods could be added here.
  */
 public class Partition {
-    private static final String SEPARATOR = "_";
-    /**
-     * Id of partition. One of the number between [0 ~ total number of partition)
-     */
-    private final int id;
-    /**
-     * Instances who hold the replicas of this partition and still live. Live stands for it's ready to serve or doing
-     * the bootstrap.
-     */
-    private final List<Instance> bootstrapInstances;
+  /**
+   * Id of partition. One of the number between [0 ~ total number of partition)
+   */
+  private final int id;
 
-    private final List<Instance> readyToServeInstance;
+  private final Map<String, List<Instance>> stateToInstancesMap;
 
-    private final List<Instance> errorInstances;
+  public Partition(int id, Map<String, List<Instance>> stateToInstancesMap) {
+    this.id = id;
+    this.stateToInstancesMap = stateToInstancesMap;
+  }
 
-    public Partition(int id, @NotNull List<Instance> bootstrapInstances,
-        @NotNull List<Instance> readyToServeInstance, List<Instance> errorInstances) {
-        this.id = id;
-        this.bootstrapInstances = Collections.unmodifiableList(bootstrapInstances);
-        this.readyToServeInstance = Collections.unmodifiableList(readyToServeInstance);
-        this.errorInstances = Collections.unmodifiableList(errorInstances);
-    }
+  public List<Instance> getInstancesInState(String state) {
+    List<Instance> instances = stateToInstancesMap.get(state);
+    return instances == null ? Collections.emptyList() : Collections.unmodifiableList(instances);
+  }
 
-    public List<Instance> getReadyToServeInstances() {
-        return readyToServeInstance;
-    }
+  public List<Instance> getReadyToServeInstances() {
+    return getInstancesInState(HelixState.ONLINE_STATE);
+  }
 
-    public List<Instance> getBootstrapAndReadyToServeInstances() {
-        List<Instance> instances = new ArrayList<>(readyToServeInstance);
-        instances.addAll(bootstrapInstances);
-        return instances;
-    }
+  public List<Instance> getBootstrapAndReadyToServeInstances() {
+    List<Instance> instances = new ArrayList<>();
+    instances.addAll(getInstancesInState(HelixState.ONLINE_STATE));
+    instances.addAll(getInstancesInState(HelixState.BOOTSTRAP_STATE));
+    return Collections.unmodifiableList(instances);
+  }
 
-    public List<Instance> getErrorInstances() {
-        return errorInstances;
-    }
+  public List<Instance> getErrorInstances() {
+    return getInstancesInState(HelixState.ERROR_STATE);
+  }
 
-    public List<Instance> getBootstrapInstances() {
-        return bootstrapInstances;
-    }
+  public List<Instance> getBootstrapInstances() {
+    return getInstancesInState(HelixState.BOOTSTRAP_STATE);
+  }
 
-    public static String getPartitionName(String resourceName, int partitionId) {
-        return resourceName + SEPARATOR + partitionId;
-    }
+  public List<Instance> getOfflineInstances(){
+    return getInstancesInState(HelixState.OFFLINE_STATE);
+  }
+  public Map<String, List<Instance>> getAllInstances() {
+    return Collections.unmodifiableMap(stateToInstancesMap);
+  }
 
-    public static int getPartitionIdFromName(String partitionName) {
-        try {
-            return Integer.parseInt(partitionName.substring(partitionName.lastIndexOf(SEPARATOR) + 1));
-        } catch (Throwable e) {
-            throw new IllegalArgumentException("Partition name is invalid:" + partitionName);
+  /**
+   * Find the status of given instance in this partition.
+   */
+  public String getInstanceStatusById(String instanceId){
+    for(String status:stateToInstancesMap.keySet()){
+      List<Instance> instances = stateToInstancesMap.get(status);
+      for(Instance instance : instances){
+        if(instance.getNodeId().equals(instanceId)){
+          return status;
         }
+      }
     }
+    return null;
+  }
 
-    public int getId() {
-        return id;
+  /**
+   * Remove the given instance from this partition. As partition is an immutable object, so we return a new partition after removing.
+   */
+  public Partition withRemovedInstance(String instanceId) {
+    HashMap<String, List<Instance>> newStateToInstancesMap = new HashMap<>();
+    for (Map.Entry<String, List<Instance>> entry : stateToInstancesMap.entrySet()) {
+
+      List<Instance> newInstances = new ArrayList<>(entry.getValue());
+      newInstances.removeIf((Instance instance) -> instance.getNodeId().equals(instanceId));
+      if (!newInstances.isEmpty()) {
+        newStateToInstancesMap.put(entry.getKey(), newInstances);
+      }
     }
+    Partition newPartition = new Partition(id, newStateToInstancesMap);
+    return newPartition;
+  }
+
+  public int getId() {
+    return id;
+  }
 }

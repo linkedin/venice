@@ -34,7 +34,6 @@ import com.linkedin.venice.writer.VeniceWriter;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
-import java.util.Comparator;
 import java.util.HashMap;
 import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.clients.producer.RecordMetadata;
@@ -50,7 +49,6 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
-import org.apache.tools.ant.taskdefs.Exec;
 
 
 /**
@@ -557,6 +555,11 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   @Override
+  public boolean isInstanceRemovable(String clusterName, String helixNodeId, int minRequiredOnlineReplicaToStopServer) {
+    throw new VeniceException("isInstanceRemovable is not supported!");
+  }
+
+  @Override
   public Instance getMasterController(String clusterName) {
     return veniceHelixAdmin.getMasterController(clusterName);
   }
@@ -638,6 +641,17 @@ public class VeniceParentHelixAdmin implements Admin {
     } finally {
       releaseLock();
     }
+  }
+
+  @Override
+  public StorageNodeStatus getStorageNodeStatus(String clusterName, String instanceId) {
+    throw new VeniceException("getStorageNodeStatus is not supported!");
+  }
+
+  @Override
+  public boolean isStorageNodeNewerOrEqualTo(String clusterName, String instanceId,
+      StorageNodeStatus oldServerStatus) {
+    throw new VeniceException("isStorageNodeNewerOrEqualTo is not supported!");
   }
 
   @Override

@@ -35,6 +35,10 @@ public class HelixUtils {
     return Integer.valueOf(helixPartitionName.substring(lastUnderscoreIdx+1));
   }
 
+  public static String getPartitionName(String resourceName, int partitionId) {
+    return resourceName + SEPARATOR + partitionId;
+  }
+
   public static String getResourceName(String helixPartitionName){
     int lastUnderscoreIdx = helixPartitionName.lastIndexOf(SEPARATOR);
     if(lastUnderscoreIdx == -1) {

@@ -4,7 +4,12 @@ package com.linkedin.venice.meta;
  * Enums of status of verion.
  */
 public enum VersionStatus {
-    STARTED, PUSHED, ONLINE, ERROR;
+    STARTED,
+    //Version has been pushed to venice, but is not ready to serve read request.
+    PUSHED,
+    //Version hash been pushed to venice and is ready to serve read request.
+    ONLINE,
+    ERROR;
 
     /**
      * check if a status can be deleted immediately.
