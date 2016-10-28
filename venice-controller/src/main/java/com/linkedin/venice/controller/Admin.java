@@ -13,7 +13,7 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import org.apache.helix.model.ExternalView;
+
 
 public interface Admin {
     void start(String clusterName);
@@ -122,14 +122,17 @@ public interface Admin {
     List<Replica> getReplicas(String clusterName, String kafkaTopic);
 
     List<Replica> getReplicasOfStorageNode(String clusterName, String instanceId);
+
     /**
-     * Is the given instance able to remove out from given cluster. For example, if there is only one replica alive in this
+     * Is the given instance able to remove out from given cluster. For example, if there is only X replica alive in this
      * cluster which is hosted on given instance. This instance should not be removed out of cluster, otherwise Venice will
-     * lose data.
+     * lose data. X is read from controller's cluster configuration "min.required.online.replica.to.stop.server".
      *
      * @param helixNodeId nodeId of helix participant. HOST_PORT.
      */
     boolean isInstanceRemovable(String clusterName, String helixNodeId);
+
+    boolean isInstanceRemovable(String clusterName, String helixNodeId, int minRequiredOnlineReplicaToStopServer);
 
     /**
      * Get instance of master controller. If there is no master controller for the given cluster, throw a
@@ -154,6 +157,22 @@ public interface Admin {
     Set<String> getWhitelist(String clusterName);
 
     void killOfflineJob(String clusterName, String kafkaTopic);
+
+    /**
+     * Query and return the current status of the given storage node. The "storage node status" is composed by "status" of all
+     * replicas in that storage node. "status" is an integer value of Helix state: <ul> <li>DROPPED=1</li> <li>ERROR=2</li>
+     * <li>OFFLINE=3</li> <li>BOOTSTRAP=4</li> <li>ONLINE=5</li> </ul> So this method will return a map, the key is the
+     * replica name which is composed by resource name and partitionId, and the value is the "status" of this replica.
+     */
+    StorageNodeStatus getStorageNodeStatus(String clusterName, String instanceId);
+
+    /**
+     * Compare the current storage node status and the given storage node status to check is the current one is "Newer"
+     * or "Equal" to the given one. Compare will go through each of replica in this storage node, if all their
+     * statuses values were larger or equal than the statuses value in the given storage node status, We say current
+     * storage node status is "Newer" or "Equal " to the given one.
+     */
+    boolean isStorageNodeNewerOrEqualTo(String clusterName, String instanceId, StorageNodeStatus oldServerStatus);
 
     void close();
 

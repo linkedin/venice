@@ -29,6 +29,7 @@ public class VeniceControllerClusterConfig {
   private long partitionSize;
   private long offLinejobWaitTimeInMilliseconds;
   private boolean enableTopicDeletionWhenJobFailed;
+  private int minRequiredOnlineReplicaToStopServer;
 
   /**
    * kafka Bootstrap Urls . IF there is more than one url, they are separated by commas
@@ -68,6 +69,7 @@ public class VeniceControllerClusterConfig {
     offLinejobWaitTimeInMilliseconds = props.getLong(OFFLINE_JOB_START_TIMEOUT_MS, 15000);
     // By default, enable topic deletion when job failed.
     enableTopicDeletionWhenJobFailed = props.getBoolean(ENABLE_TOPIC_DELETION_WHEN_JOB_FAILED, true);
+    minRequiredOnlineReplicaToStopServer = props.getInt(MIN_REQUIRED_ONLINE_REPLICA_TO_STOP_SERVER, 1);
 
     if (props.containsKey(PERSISTENCE_TYPE)) {
       persistenceType = PersistenceType.valueOf(props.getString(PERSISTENCE_TYPE));
@@ -149,6 +151,10 @@ public class VeniceControllerClusterConfig {
 
   public boolean isEnableTopicDeletionWhenJobFailed() {
     return enableTopicDeletionWhenJobFailed;
+  }
+
+  public int getMinRequiredOnlineReplicaToStopServer() {
+    return minRequiredOnlineReplicaToStopServer;
   }
 
   /**

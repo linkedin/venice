@@ -1,5 +1,6 @@
 package com.linkedin.venice.job;
 
+import com.linkedin.venice.helix.HelixState;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.Partition;
 import com.linkedin.venice.meta.PartitionAssignment;
@@ -21,8 +22,10 @@ public class TestJobStatusDecider {
   protected void createPartitions(int numberOfPartition, int replicationFactor) {
     for (int i = 0; i < numberOfPartition; i++) {
       List<Instance> instances = createInstances(replicationFactor);
-      Partition partition =
-          new Partition(i, instances, instances, Collections.emptyList());
+      Map<String, List<Instance>> stateToInstancesMap = new HashMap<>();
+      stateToInstancesMap.put(HelixState.ONLINE_STATE, instances);
+      stateToInstancesMap.put(HelixState.BOOTSTRAP_STATE, instances);
+      Partition partition = new Partition(i, stateToInstancesMap);
       partitionAssignment.addPartition(partition);
     }
   }

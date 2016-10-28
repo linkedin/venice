@@ -359,6 +359,23 @@ public class VeniceJobManager implements StatusMessageHandler<StoreStatusMessage
   }
 
   /**
+   * Whether job will fail after applying the given partition assignment.
+   */
+  public boolean willJobFail(String kafkaTopic, PartitionAssignment PartitionAssignment) {
+    List<Job> jobs = jobRepository.getRunningJobOfTopic(kafkaTopic);
+    if (jobs.isEmpty()) {
+      //the job has been termianted.
+      return false;
+    }
+    if (jobs.size() > 1) {
+      throw new VeniceException(
+          "There should be only one job for each kafka topic. But now there are:" + jobs.size() + " jobs running.");
+    }
+    Job job = jobs.get(0);
+    return !getJobStatusDecider(job).hasMinimumTaskExecutorsToKeepRunning(job, PartitionAssignment);
+  }
+
+  /**
    * When we creating a new job for new helix resource. We need to know how many tasks we need to create and which
    * instance is assigned to execute this task. Unfortunately controller need some time to wait all of participants
    * assigned to this resource become ONLINE, then get these information from external view, otherwise the external view

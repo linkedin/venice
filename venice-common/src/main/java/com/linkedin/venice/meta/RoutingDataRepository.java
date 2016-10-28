@@ -1,6 +1,7 @@
 package com.linkedin.venice.meta;
 
 import com.linkedin.venice.VeniceResource;
+import com.linkedin.venice.helix.ResourceAssignment;
 import java.util.List;
 import java.util.Map;
 
@@ -47,6 +48,9 @@ public interface RoutingDataRepository extends VeniceResource {
    * Remove the listener for given kafka topic.
    */
   public void unSubscribeRoutingDataChange(String kafkaTopic, RoutingDataChangedListener listener);
+
+
+  public ResourceAssignment getResourceAssignment();
 
   interface RoutingDataChangedListener {
     /**

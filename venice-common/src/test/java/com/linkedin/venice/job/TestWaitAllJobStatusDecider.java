@@ -1,11 +1,14 @@
 package com.linkedin.venice.job;
 
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.helix.HelixState;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.Partition;
 import com.linkedin.venice.meta.PartitionAssignment;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import org.testng.Assert;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
@@ -91,7 +94,9 @@ public class TestWaitAllJobStatusDecider extends TestJobStatusDecider {
 
     partitionAssignment.removePartition(1);
     List<Instance> instances = createInstances(replicationFactor - 1);
-    partitionAssignment.addPartition(new Partition(1, instances, Collections.emptyList(), Collections.emptyList()));
+    Map<String, List<Instance>> stateToInstanceMap = new HashMap<>();
+    stateToInstanceMap.put(HelixState.ONLINE_STATE, instances);
+    partitionAssignment.addPartition(new Partition(1, stateToInstanceMap));
 
     Assert.assertFalse(waitAllDecider.hasEnoughTaskExecutorsToStart(job, partitionAssignment),
         "Partition-1 miss one replica, decider should return false to indicate no enough task executors.");
@@ -100,8 +105,11 @@ public class TestWaitAllJobStatusDecider extends TestJobStatusDecider {
     instances = createInstances(replicationFactor);
 
     try {
+      Map<String, List<Instance>> newStateToInstanceMap = new HashMap<>();
+      newStateToInstanceMap.put(HelixState.ONLINE_STATE, instances);
+      newStateToInstanceMap.put(HelixState.BOOTSTRAP_STATE, instances);
       partitionAssignment.addPartition(
-          new Partition(numberOfPartition + 1, instances, instances, Collections.emptyList()));
+          new Partition(numberOfPartition + 1, stateToInstanceMap));
       waitAllDecider.hasEnoughTaskExecutorsToStart(job, partitionAssignment);
       Assert.fail("Invalid partition id, decider should throw an exception.");
     } catch (VeniceException e) {

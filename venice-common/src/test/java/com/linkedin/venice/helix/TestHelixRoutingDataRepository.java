@@ -289,5 +289,27 @@ public class TestHelixRoutingDataRepository {
         "One online instance should be found");
   }
 
+  @Test
+  public void testPartitionMove()
+      throws Exception {
+    String resourceName = "testPartitionMove";
+    admin.addResource(clusterName, resourceName, 6, MockTestStateModel.UNIT_TEST_STATE_MODEL,
+        IdealState.RebalanceMode.FULL_AUTO.toString());
+    admin.rebalance(clusterName, resourceName, 1);
 
+    HelixManager newManager = TestUtils.getParticipant(clusterName, Utils.getHelixNodeIdentifier(httpPort+1000), zkAddress, httpPort+1000,
+        MockTestStateModel.UNIT_TEST_STATE_MODEL);
+    newManager.connect();
+
+    Thread.sleep(3000);
+    System.out.println(httpPort);
+    for(int i=0;i<6;i++) {
+      System.out.println(repository.getReadyToServeInstances(resourceName,i).get(0).getNodeId());
+    }
+
+    admin.dropResource(clusterName, resourceName);
+
+    Thread.sleep(3000);
+    newManager.disconnect();
+  }
 }

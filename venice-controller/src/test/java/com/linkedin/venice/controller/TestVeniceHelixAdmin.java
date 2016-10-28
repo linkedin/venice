@@ -7,7 +7,9 @@ import com.linkedin.venice.helix.HelixStatusMessageChannel;
 import com.linkedin.venice.helix.Replica;
 import com.linkedin.venice.job.KillJobMessage;
 import com.linkedin.venice.meta.PartitionAssignment;
+import com.linkedin.venice.meta.ReadWriteStoreRepository;
 import com.linkedin.venice.meta.RoutingDataRepository;
+import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.status.StatusMessageChannel;
 import com.linkedin.venice.status.StatusMessageHandler;
 import com.linkedin.venice.status.StoreStatusMessage;
@@ -522,6 +524,50 @@ public class TestVeniceHelixAdmin {
   }
 
   @Test
+  public void testIsInstanceRemovableForRunningPush() throws Exception{
+    // Create another participant so we will get two running instances.
+    String newNodeId = "localhost_9900";
+    startParticipant(true, newNodeId);
+    int partitionCount = 2;
+    int replicas = 2;
+    String storeName = "testIsInstanceRemovableForRuningPush";
+
+    veniceAdmin.addStore(clusterName, storeName, "test", keySchema, valueSchema);
+    Version version = veniceAdmin.incrementVersion(clusterName, storeName, partitionCount, replicas);
+    TestUtils.waitForNonDeterministicCompletion(2000, TimeUnit.MILLISECONDS, () -> {
+      PartitionAssignment partitionAssignment = veniceAdmin.getVeniceHelixResource(clusterName)
+          .getRoutingDataRepository()
+          .getPartitionAssignments(version.kafkaTopicName());
+      if (partitionAssignment.getAssignedNumberOfPartitions() != partitionCount) {
+        return false;
+      }
+      for (int i = 0; i < partitionCount; i++) {
+        if (partitionAssignment.getPartition(i).getBootstrapAndReadyToServeInstances().size() != replicas) {
+          return false;
+        }
+      }
+      return true;
+    });
+
+    //Now we have 2 replicas in bootstrap in each partition.
+    Assert.assertTrue(veniceAdmin.isInstanceRemovable(clusterName, nodeId, 1));
+    Assert.assertTrue(veniceAdmin.isInstanceRemovable(clusterName, newNodeId, 1));
+
+    //Shutdown one instance
+    stopParticipant(nodeId);
+    TestUtils.waitForNonDeterministicCompletion(2000, TimeUnit.MILLISECONDS, () -> {
+      PartitionAssignment partitionAssignment = veniceAdmin.getVeniceHelixResource(clusterName)
+          .getRoutingDataRepository()
+          .getPartitionAssignments(version.kafkaTopicName());
+      return partitionAssignment.getPartition(0).getBootstrapAndReadyToServeInstances().size() == 1;
+    });
+
+    Assert.assertFalse(veniceAdmin.isInstanceRemovable(clusterName, newNodeId,1 ),
+        "Only one instance is alive, can not be moved out.");
+    Assert.assertTrue(veniceAdmin.isInstanceRemovable(clusterName, nodeId, 1), "Instance is shutdown.");
+
+  }
+  @Test
   public void testIsInstanceRemovable()
       throws Exception {
     // Create another participant so we will get two running instances.
@@ -532,11 +578,11 @@ public class TestVeniceHelixAdmin {
     String storeName = "testMovable";
 
     veniceAdmin.addStore(clusterName, storeName, "test", keySchema, valueSchema);
-    veniceAdmin.incrementVersion(clusterName, storeName, partitionCount, replicas);
+    Version version = veniceAdmin.incrementVersion(clusterName, storeName, partitionCount, replicas);
     TestUtils.waitForNonDeterministicCompletion(2000, TimeUnit.MILLISECONDS, () -> {
       PartitionAssignment partitionAssignment = veniceAdmin.getVeniceHelixResource(clusterName)
           .getRoutingDataRepository()
-          .getPartitionAssignments(Version.composeKafkaTopic(storeName, 1));
+          .getPartitionAssignments(version.kafkaTopicName());
       if (partitionAssignment.getAssignedNumberOfPartitions() != partitionCount) {
         return false;
       }
@@ -547,24 +593,91 @@ public class TestVeniceHelixAdmin {
       }
       return true;
     });
+    //Make version ONLINE
+    ReadWriteStoreRepository storeRepository = veniceAdmin.getVeniceHelixResource(clusterName).getMetadataRepository();
+    Store store = storeRepository.getStore(storeName);
+    store.updateVersionStatus(version.getNumber(), VersionStatus.ONLINE);
+    storeRepository.updateStore(store);
 
 
     //Enough number of replicas, any of instance is able to moved out.
-    Assert.assertTrue(veniceAdmin.isInstanceRemovable(clusterName, nodeId));
-    Assert.assertTrue(veniceAdmin.isInstanceRemovable(clusterName, newNodeId));
+    Assert.assertTrue(veniceAdmin.isInstanceRemovable(clusterName, nodeId, 1));
+    Assert.assertTrue(veniceAdmin.isInstanceRemovable(clusterName, newNodeId, 1));
+    // If min required replica number is 2, we can not remove any of server.
+    Assert.assertFalse(veniceAdmin.isInstanceRemovable(clusterName, nodeId, 2));
+    Assert.assertFalse(veniceAdmin.isInstanceRemovable(clusterName, newNodeId, 2));
+
 
     //Shutdown one instance
     stopParticipant(nodeId);
     TestUtils.waitForNonDeterministicCompletion(2000, TimeUnit.MILLISECONDS, () -> {
       PartitionAssignment partitionAssignment = veniceAdmin.getVeniceHelixResource(clusterName)
           .getRoutingDataRepository()
-          .getPartitionAssignments(Version.composeKafkaTopic(storeName, 1));
+          .getPartitionAssignments(version.kafkaTopicName());
       return partitionAssignment.getPartition(0).getReadyToServeInstances().size() == 1;
     });
 
-    Assert.assertFalse(veniceAdmin.isInstanceRemovable(clusterName, newNodeId),
+    Assert.assertFalse(veniceAdmin.isInstanceRemovable(clusterName, newNodeId, 1),
         "Only one instance is alive, can not be moved out.");
-    Assert.assertTrue(veniceAdmin.isInstanceRemovable(clusterName, nodeId), "Instance is shutdown.");
+    Assert.assertTrue(veniceAdmin.isInstanceRemovable(clusterName, nodeId, 1), "Instance is shutdown.");
+  }
+
+  @Test
+  public void testGetAndCompareStorageNodeStatusForStorageNode()
+      throws Exception {
+    String storeName = "testGetStorageNodeStatusForStorageNode";
+    int partitionCount = 2;
+    int replicaCount = 2;
+    //Start a new participant which would hang on bootstrap state.
+    String newNodeId = "localhost_9900";
+    startParticipant(true, newNodeId);
+    veniceAdmin.addStore(clusterName, storeName, "unittestOwner", keySchema, valueSchema);
+    Version version = veniceAdmin.incrementVersion(clusterName, storeName, partitionCount, replicaCount);
+
+    TestUtils.waitForNonDeterministicCompletion(2000, TimeUnit.MILLISECONDS, () -> {
+      PartitionAssignment partitionAssignment =
+          veniceAdmin.getVeniceHelixResource(clusterName).getRoutingDataRepository()
+              .getPartitionAssignments(version.kafkaTopicName());
+      if (partitionAssignment.getAssignedNumberOfPartitions() != partitionCount) {
+        return false;
+      }
+      for (int i = 0; i < partitionCount; i++) {
+        if (partitionAssignment.getPartition(i).getBootstrapInstances().size() != partitionCount) {
+          return false;
+        }
+      }
+      return true;
+    });
+    //Now all of replica in bootstrap state
+    StorageNodeStatus status1 = veniceAdmin.getStorageNodeStatus(clusterName, nodeId);
+    StorageNodeStatus status2 = veniceAdmin.getStorageNodeStatus(clusterName, newNodeId);
+    for (int i = 0; i < partitionCount; i++) {
+      Assert.assertEquals(status1.getStatusValueForReplica(HelixUtils.getPartitionName(version.kafkaTopicName(), i)),
+          HelixState.BOOTSTRAP.getStateValue(), "Replica in server1 should hang on BOOTSTRAP");
+    }
+    for (int i = 0; i < partitionCount; i++) {
+      Assert.assertEquals(status2.getStatusValueForReplica(HelixUtils.getPartitionName(version.kafkaTopicName(), i)),
+          HelixState.BOOTSTRAP.getStateValue(), "Replica in server2 should hang on BOOTSTRAP");
+    }
+
+    //Set replicas to ONLINE.
+    for (int i = 0; i < partitionCount; i++) {
+      stateModelFactory.makeTransitionCompleted(version.kafkaTopicName(), i);
+    }
+
+    TestUtils.waitForNonDeterministicCompletion(2000, TimeUnit.MILLISECONDS, () -> {
+      PartitionAssignment partitionAssignment =
+          veniceAdmin.getVeniceHelixResource(clusterName).getRoutingDataRepository()
+              .getPartitionAssignments(version.kafkaTopicName());
+      for (int i = 0; i < partitionCount; i++) {
+        if (partitionAssignment.getPartition(i).getReadyToServeInstances().size() != partitionCount) {
+          return false;
+        }
+      }
+      return true;
+    });
+    StorageNodeStatus newStatus2 = veniceAdmin.getStorageNodeStatus(clusterName, newNodeId);
+    Assert.assertTrue(newStatus2.isNewerOrEqual(status2), "ONLINE replicas should be newer than BOOTSTRAP replicas");
   }
 
   @Test

@@ -27,7 +27,7 @@ public class TestHostFinder {
 
     VeniceHostFinder finder = new VeniceHostFinder(mockRepo);
 
-    List<Instance> hosts = finder.findHosts(null, "store_v0", "3", null, null);
+    List<Instance> hosts = finder.findHosts(null, "store_v0", "store_v0_3", null, null);
 
     Assert.assertEquals(hosts.get(0).getHost(), "localhost");
 

@@ -6,6 +6,7 @@ import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.Partition;
 import com.linkedin.venice.meta.PartitionAssignment;
 import com.linkedin.venice.meta.RoutingDataRepository;
+import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.Utils;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -184,31 +185,30 @@ public class HelixRoutingDataRepository extends RoutingTableProvider implements 
             for (String partitionName : externalView.getPartitionSet()) {
                 //Get instance to state map for this partition from local memory.
                 Map<String, String> instanceStateMap = externalView.getStateMap(partitionName);
-                List<Instance> bootstrapInstances = new ArrayList<>();
-                List<Instance> onlineInstances = new ArrayList<>();
-                List<Instance> errorInstances = new ArrayList<>();
+                Map<String, List<Instance>> stateToInstanceMap = new HashMap<>();
                 for (String instanceName : instanceStateMap.keySet()) {
                     if (liveInstanceMap.containsKey(instanceName)) {
                         Instance instance = HelixInstanceConverter.convertZNRecordToInstance(
                             liveInstanceMap.get(instanceName).getRecord());
-                        if (instanceStateMap.get(instanceName).equals(HelixState.ONLINE.toString())) {
-                            onlineInstances.add(instance);
-                        } else if (instanceStateMap.get(instanceName).equals(HelixState.BOOTSTRAP.toString())) {
-                            bootstrapInstances.add(instance);
-                        } else if (instanceStateMap.get(instanceName).equals(HelixState.ERROR.toString())) {
-                            errorInstances.add(instance);
-                        } else {
-                            logger.info(
-                                "Instance:" + instanceName + " unrecognized state:" + instanceStateMap.get(
-                                    instanceName));
+                        HelixState state;
+                        try {
+                            state = HelixState.valueOf(instanceStateMap.get(instanceName));
+                        } catch (Exception e) {
+                            logger.warn("Instance:" + instanceName + " unrecognized state:" + instanceStateMap.get(
+                                instanceName));
+                            continue;
                         }
+                        if (!stateToInstanceMap.containsKey(state.toString())) {
+                            stateToInstanceMap.put(state.toString(), new ArrayList<>());
+                        }
+                        stateToInstanceMap.get(state.toString()).add(instance);
                     } else {
                         logger.warn("Cannot find instance '" + instanceName + "' in /LIVEINSTANCES");
                     }
                 }
-                int partitionId = Partition.getPartitionIdFromName(partitionName);
+                int partitionId = HelixUtils.getPartitionId(partitionName);
                 partitionAssignment.addPartition(
-                    new Partition(partitionId, bootstrapInstances, onlineInstances, errorInstances));
+                    new Partition(partitionId, stateToInstanceMap));
             }
             newResourceAssignment.setPartitionAssignment(resourceName, partitionAssignment);
         }
@@ -285,5 +285,9 @@ public class HelixRoutingDataRepository extends RoutingTableProvider implements 
                 Utils.parsePortFromHelixNodeIdentifier(leader.getId()));
             logger.info("Controller is:" + masterController.getHost() + ":" + masterController.getPort());
         }
+    }
+
+    public ResourceAssignment getResourceAssignment() {
+        return resourceAssignment;
     }
 }

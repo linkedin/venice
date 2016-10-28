@@ -25,7 +25,7 @@ public class ResourceAssignment {
     return resourceToAssignmentsMap.get(resource);
   }
 
-  protected void setPartitionAssignment(String resource, PartitionAssignment partitionAssignment) {
+  public void setPartitionAssignment(String resource, PartitionAssignment partitionAssignment) {
     resourceToAssignmentsMap.put(resource, partitionAssignment);
   }
 

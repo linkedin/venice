@@ -1,11 +1,14 @@
 package com.linkedin.venice.job;
 
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.helix.HelixState;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.Partition;
 import com.linkedin.venice.meta.PartitionAssignment;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import org.testng.Assert;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
@@ -62,15 +65,21 @@ public class TestWaitNMinsOneJobStatusDecider extends TestJobStatusDecider {
 
     partitionAssignment.removePartition(1);
     List<Instance> instances = createInstances(replicationFactor - 1);
-    partitionAssignment.addPartition(new Partition(1, instances, instances, Collections.emptyList()));
+    Map<String, List<Instance>> stateToInstancesMap = new HashMap<>();
+    stateToInstancesMap.put(HelixState.ONLINE_STATE, instances);
+    stateToInstancesMap.put(HelixState.BOOTSTRAP_STATE, instances);
+    partitionAssignment.addPartition(new Partition(1, stateToInstancesMap));
 
     Assert.assertTrue(waitNMinsOneDecider.hasEnoughTaskExecutorsToStart(job, partitionAssignment),
         "Partition-1 miss one replica, In N-1 strategy, decider should return true.");
 
     partitionAssignment.removePartition(1);
     instances = createInstances(replicationFactor);
+    stateToInstancesMap = new HashMap<>();
+    stateToInstancesMap.put(HelixState.ONLINE_STATE, instances);
+    stateToInstancesMap.put(HelixState.BOOTSTRAP_STATE, instances);
     try {
-      partitionAssignment.addPartition(new Partition(numberOfPartition + 1, instances, instances, Collections.emptyList()));
+      partitionAssignment.addPartition(new Partition(numberOfPartition + 1, stateToInstancesMap));
       waitNMinsOneDecider.hasEnoughTaskExecutorsToStart(job, partitionAssignment);
       Assert.fail("Invalid partition id, decider should throw an exception.");
     } catch (VeniceException e) {
@@ -91,19 +100,26 @@ public class TestWaitNMinsOneJobStatusDecider extends TestJobStatusDecider {
     partitionAssignment.removePartition(1);
     List<Instance> errorInstances = createInstances(1);
     List<Instance> readyInstances = createInstances(replicationFactor - 2);
-    partitionAssignment.addPartition(new Partition(1,Collections.emptyList(),readyInstances,errorInstances));
+    Map<String, List<Instance>> stateToInstancesMap = new HashMap<>();
+    stateToInstancesMap.put(HelixState.ONLINE_STATE, readyInstances);
+    stateToInstancesMap.put(HelixState.ERROR_STATE, errorInstances);
+    partitionAssignment.addPartition(new Partition(1, stateToInstancesMap));
 
     Assert.assertTrue(waitNMinsOneDecider.hasMinimumTaskExecutorsToKeepRunning(job, partitionAssignment));
 
     partitionAssignment.removePartition(1);
     errorInstances = createInstances(2);
     readyInstances = createInstances(replicationFactor - 2);
-    partitionAssignment.addPartition(new Partition(1,Collections.emptyList(),readyInstances,errorInstances));
+    stateToInstancesMap = new HashMap<>();
+    stateToInstancesMap.put(HelixState.ONLINE_STATE, readyInstances);
+    stateToInstancesMap.put(HelixState.ERROR_STATE, errorInstances);
+    partitionAssignment.addPartition(new Partition(1, stateToInstancesMap));
 
     Assert.assertFalse(waitNMinsOneDecider.hasMinimumTaskExecutorsToKeepRunning(job, partitionAssignment));
 
     partitionAssignment.removePartition(1);
-    partitionAssignment.addPartition(new Partition(1,Collections.emptyList(),Collections.emptyList(),Collections.emptyList()));
+    stateToInstancesMap = new HashMap<>();
+    partitionAssignment.addPartition(new Partition(1, stateToInstancesMap));
 
     Assert.assertFalse(waitNMinsOneDecider.hasMinimumTaskExecutorsToKeepRunning(job, partitionAssignment));
   }
