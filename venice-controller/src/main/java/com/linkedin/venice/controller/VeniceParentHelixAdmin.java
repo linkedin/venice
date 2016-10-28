@@ -526,6 +526,11 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   @Override
+  public int getDatacenterCount(String clusterName){
+    return veniceControllerConfig.getChildClusterMap().size();
+  }
+
+  @Override
   public List<Replica> getBootstrapReplicas(String clusterName, String kafkaTopic) {
     throw new VeniceException("getBootstrapReplicas is not supported!");
   }

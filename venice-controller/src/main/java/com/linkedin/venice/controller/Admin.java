@@ -112,6 +112,11 @@ public interface Admin {
 
     int getReplicationFactor(String clusterName, String storeName);
 
+    /** number of datacenters, 1 if in single cluster mode.  Could be more if this is a parent controller */
+    default int getDatacenterCount(String clusterName){
+       return 1;
+    }
+
     List<Replica> getBootstrapReplicas(String clusterName, String kafkaTopic);
     List<Replica> getErrorReplicas(String clusterName, String kafkaTopic);
     List<Replica> getReplicas(String clusterName, String kafkaTopic);
