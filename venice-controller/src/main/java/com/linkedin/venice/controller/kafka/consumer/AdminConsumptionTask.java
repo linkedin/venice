@@ -92,12 +92,20 @@ public class AdminConsumptionTask implements Runnable, Closeable {
     logger.info("Running consumer: " + consumerTaskId);
     while (isRunning.get()) {
       try {
+        /**
+         * Always sleep for some time, then AdminConsumptionTask won't poll all the time,
+         * so that {@link com.linkedin.venice.controller.VeniceParentHelixAdmin} can reuse
+         * the same consumer to check offset.
+         *
+         * Later on, if {@link AdminConsumptionTask} and {@link com.linkedin.venice.controller.VeniceParentHelixAdmin} won't share
+         * the same consumer any more, the above comment should be removed together with the refactoring.
+         */
+        Utils.sleep(READ_CYCLE_DELAY_MS);
         // check whether current controller is the master controller for the given cluster
         if (admin.isMasterController(clusterName)) {
           if (!isSubscribed) {
             // check whether the admin topic exists or not
             if (!whetherTopicExists(topic)) {
-              Utils.sleep(READ_CYCLE_DELAY_MS);
               logger.info("Admin topic: " + topic + " hasn't been created yet");
               continue;
             }
@@ -152,11 +160,9 @@ public class AdminConsumptionTask implements Runnable, Closeable {
             isSubscribed = false;
             logger.info("Unsubscribe from topic name: " + topic);
           }
-          Utils.sleep(READ_CYCLE_DELAY_MS);
         }
       } catch (Exception e) {
         logger.error("Got exception while running admin consumption task", e);
-        Utils.sleep(READ_CYCLE_DELAY_MS);
       }
     }
     // Release resources

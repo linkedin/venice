@@ -14,6 +14,8 @@ import java.nio.charset.StandardCharsets;
 /**
  * This class is used to maintain the offset for admin topic.
  * The thread-safety depends on the safety of the internal {@link KafkaConsumerWrapper}
+ *
+ * TODO: refactor AdminOffsetManager not to share KafkaConsumer among different threads
  */
 public class AdminOffsetManager implements OffsetManager {
   private static final Logger LOGGER = Logger.getLogger(AdminOffsetManager.class);
