@@ -42,8 +42,6 @@ import com.linkedin.venice.unit.matchers.NonEmptyStringMatcher;
 import com.linkedin.venice.utils.ByteArray;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.SystemTime;
-import com.linkedin.venice.utils.TestUtils;
-import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.KafkaProducerWrapper;
 import com.linkedin.venice.writer.VeniceWriter;
@@ -59,20 +57,18 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Supplier;
 
-import org.apache.kafka.clients.consumer.ConsumerRecords;
-import org.apache.kafka.clients.consumer.OffsetAndMetadata;
 import org.apache.kafka.clients.producer.RecordMetadata;
 import org.apache.kafka.common.TopicPartition;
 //import org.apache.log4j.ConsoleAppender;
 import org.apache.log4j.Logger;
 //import org.apache.log4j.PatternLayout;
-import org.mockito.Mockito; // TODO Remove this import after refactoring all code to rely on static import, below
-import org.testng.Assert;
 import org.testng.annotations.AfterSuite;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.BeforeSuite;
 import org.testng.annotations.Test;
 
+import static com.linkedin.venice.utils.TestUtils.*;
+import static org.testng.Assert.*;
 import static org.mockito.Mockito.*;
 
 /**
@@ -131,7 +127,7 @@ public class StoreConsumptionTaskTest {
   private static final byte[] deleteKeyFoo = getRandomKey(PARTITION_FOO);
 
   private static byte[] getRandomKey(Integer partition) {
-    String randomString = TestUtils.getUniqueString("KeyForPartition" + partition);
+    String randomString = getUniqueString("KeyForPartition" + partition);
     return ByteBuffer.allocate(randomString.length() + 1)
         .put(partition.byteValue())
         .put(randomString.getBytes())
@@ -153,12 +149,12 @@ public class StoreConsumptionTaskTest {
     inMemoryKafkaBroker = new InMemoryKafkaBroker();
     inMemoryKafkaBroker.createTopic(topic, PARTITION_COUNT);
     veniceWriter = getVeniceWriter(() -> new MockInMemoryProducer(inMemoryKafkaBroker));
-    mockStoreRepository = Mockito.mock(StoreRepository.class);
-    mockNotifier = Mockito.mock(LogNotifier.class);
-    mockAbstractStorageEngine = Mockito.mock(AbstractStorageEngine.class);
-    mockOffSetManager = Mockito.mock(OffsetManager.class);
-    mockThrottler = Mockito.mock(EventThrottler.class);
-    mockSchemaRepo = Mockito.mock(ReadOnlySchemaRepository.class);
+    mockStoreRepository = mock(StoreRepository.class);
+    mockNotifier = mock(LogNotifier.class);
+    mockAbstractStorageEngine = mock(AbstractStorageEngine.class);
+    mockOffSetManager = mock(OffsetManager.class);
+    mockThrottler = mock(EventThrottler.class);
+    mockSchemaRepo = mock(ReadOnlySchemaRepository.class);
     mockKafkaConsumer = mock(KafkaConsumerWrapper.class);
   }
 
@@ -172,69 +168,45 @@ public class StoreConsumptionTaskTest {
     return recordMetadataFuture.get().offset();
   }
 
-  /**
-   * Use {@link #runTest(Set, Procedure)} instead
-   */
-  @Deprecated
-  private StoreConsumptionTask getKafkaPerStoreConsumptionTask(Integer... partitions)
-      throws Exception {
-    return getKafkaPerStoreConsumptionTask(new RandomPollStrategy(), partitions);
-  }
-
-  /**
-   * Use {@link #runTest(PollStrategy, Set, Procedure, Procedure)} instead
-   */
-  @Deprecated
-  private StoreConsumptionTask getKafkaPerStoreConsumptionTask(PollStrategy pollStrategy, Integer... partitions) {
-    MockInMemoryConsumer inMemoryKafkaConsumer = new MockInMemoryConsumer(inMemoryKafkaBroker, pollStrategy, mockKafkaConsumer);
-    Properties kafkaProps = new Properties();
-    VeniceConsumerFactory mockFactory = Mockito.mock(VeniceConsumerFactory.class);
-    Mockito.doReturn(inMemoryKafkaConsumer).when(mockFactory).getConsumer(kafkaProps);
-    for (int partition : partitions) {
-      Mockito.doReturn(new OffsetRecord()).when(mockOffSetManager).getLastOffset(topic, partition);
-    }
-
-    Queue<VeniceNotifier> notifiers = new ConcurrentLinkedQueue<>();
-    notifiers.add(mockNotifier);
-    notifiers.add(new LogNotifier());
-
-    OffsetManager offsetManager = new DeepCopyOffsetManager(mockOffSetManager);
-
-    return new StoreConsumptionTask(mockFactory, kafkaProps, mockStoreRepository, offsetManager, notifiers,
-        mockThrottler, topic, mockSchemaRepo);
-  }
-
-  interface Procedure {
-    void invoke();
-  }
-
-  private void runTest(Procedure assertions) throws Exception {
-    runTest(ALL_PARTITIONS, assertions);
-  }
-
-  private void runTest(Set<Integer> partitions, Procedure assertions) throws Exception {
+  private void runTest(Set<Integer> partitions, Runnable assertions) throws Exception {
     runTest(partitions, () -> {}, assertions);
   }
 
-  private void runTest(Set<Integer> partitions, Procedure beforeSubscription, Procedure assertions) throws Exception {
-    runTest(new RandomPollStrategy(), partitions, beforeSubscription, assertions);
+  private void runTest(Set<Integer> partitions,
+                       Runnable beforeStartingConsumption,
+                       Runnable assertions) throws Exception {
+    runTest(new RandomPollStrategy(), partitions, beforeStartingConsumption, assertions);
   }
 
-  private void runTest(PollStrategy pollStrategy, Set<Integer> partitions, Procedure beforeSubscription, Procedure assertions) throws Exception {
-    Integer[] partitionsArray = partitions.toArray(new Integer[partitions.size()]);
-    storeConsumptionTaskUnderTest = getKafkaPerStoreConsumptionTask(pollStrategy, partitionsArray);
+  private void runTest(PollStrategy pollStrategy,
+                       Set<Integer> partitions,
+                       Runnable beforeStartingConsumption,
+                       Runnable assertions) throws Exception {
+    MockInMemoryConsumer inMemoryKafkaConsumer = new MockInMemoryConsumer(inMemoryKafkaBroker, pollStrategy, mockKafkaConsumer);
+    Properties kafkaProps = new Properties();
+    VeniceConsumerFactory mockFactory = mock(VeniceConsumerFactory.class);
+    doReturn(inMemoryKafkaConsumer).when(mockFactory).getConsumer(kafkaProps);
+    for (int partition : partitions) {
+      doReturn(new OffsetRecord()).when(mockOffSetManager).getLastOffset(topic, partition);
+    }
+    Queue<VeniceNotifier> notifiers = new ConcurrentLinkedQueue<>(Arrays.asList(mockNotifier, new LogNotifier()));
+    OffsetManager offsetManager = new DeepCopyOffsetManager(mockOffSetManager);
+    storeConsumptionTaskUnderTest = new StoreConsumptionTask(
+        mockFactory, kafkaProps, mockStoreRepository, offsetManager, notifiers, mockThrottler, topic, mockSchemaRepo);
+    doReturn(mockAbstractStorageEngine).when(mockStoreRepository).getLocalStorageEngine(topic);
+
     Future testSubscribeTaskFuture = null;
     try {
-      Mockito.doReturn(mockAbstractStorageEngine).when(mockStoreRepository).getLocalStorageEngine(topic);
-      beforeSubscription.invoke();
-
       for (int partition: partitions) {
         storeConsumptionTaskUnderTest.subscribePartition(topic, partition);
       }
+
+      beforeStartingConsumption.run();
+
       // MockKafkaConsumer is prepared. Schedule for polling.
       testSubscribeTaskFuture = taskPollingService.submit(storeConsumptionTaskUnderTest);
 
-      assertions.invoke();
+      assertions.run();
 
     } finally {
       storeConsumptionTaskUnderTest.close();
@@ -245,7 +217,7 @@ public class StoreConsumptionTaskTest {
   }
 
   private Pair<TopicPartition, OffsetRecord> getTopicPartitionOffsetPair(RecordMetadata recordMetadata) {
-    OffsetRecord offsetRecord = TestUtils.getOffsetRecord(recordMetadata.offset());
+    OffsetRecord offsetRecord = getOffsetRecord(recordMetadata.offset());
     return new Pair<>(new TopicPartition(recordMetadata.topic(), recordMetadata.partition()), offsetRecord);
   }
 
@@ -256,8 +228,7 @@ public class StoreConsumptionTaskTest {
    * 3. A VeniceMessage with a Kafka offset that was already processed is ignored.
    */
   @Test
-  public void testVeniceMessagesProcessing()
-      throws Exception {
+  public void testVeniceMessagesProcessing() throws Exception {
     veniceWriter.broadcastStartOfPush(Maps.newHashMap());
     RecordMetadata putMetadata = (RecordMetadata) veniceWriter.put(putKeyFoo, putValue, SCHEMA_ID).get();
     RecordMetadata deleteMetadata = (RecordMetadata) veniceWriter.delete(deleteKeyFoo).get();
@@ -272,382 +243,245 @@ public class StoreConsumptionTaskTest {
 
     PollStrategy pollStrategy = new CompositePollStrategy(pollStrategies);
 
-    // Get the KafkaPerStoreConsumptionTask with fresh mocks.
-    try (StoreConsumptionTask mockStoreConsumptionTask = getKafkaPerStoreConsumptionTask(pollStrategy, PARTITION_FOO)) {
-      mockStoreConsumptionTask.subscribePartition(topic, PARTITION_FOO);
-
-      // Prepare mockStoreRepository to send a mock storage engine.
-      Mockito.doReturn(mockAbstractStorageEngine).when(mockStoreRepository).getLocalStorageEngine(topic);
-
-      // MockKafkaConsumer is prepared. Schedule for polling.
-      Future testSubscribeTaskFuture = taskPollingService.submit(mockStoreConsumptionTask);
-
+    runTest(pollStrategy, Sets.newHashSet(PARTITION_FOO), () -> {}, () -> {
       // Verify it retrieves the offset from the OffSet Manager
-      Mockito.verify(mockOffSetManager, Mockito.timeout(TEST_TIMEOUT).times(1)).getLastOffset(topic, PARTITION_FOO);
+      verify(mockOffSetManager, timeout(TEST_TIMEOUT)).getLastOffset(topic, PARTITION_FOO);
 
       // Verify StorageEngine#put is invoked only once and with appropriate key & value.
-      Mockito.verify(mockAbstractStorageEngine, Mockito.timeout(TEST_TIMEOUT).times(1))
-          .put(eq(PARTITION_FOO), any(), any());
-      Mockito.verify(mockAbstractStorageEngine, Mockito.timeout(TEST_TIMEOUT).times(1))
+      verify(mockAbstractStorageEngine, timeout(TEST_TIMEOUT)).put(eq(PARTITION_FOO), any(), any());
+      verify(mockAbstractStorageEngine, timeout(TEST_TIMEOUT))
           .put(PARTITION_FOO, putKeyFoo, ValueRecord.create(SCHEMA_ID, putValue).serialize());
 
       // Verify StorageEngine#Delete is invoked only once and with appropriate key.
-      Mockito.verify(mockAbstractStorageEngine, Mockito.timeout(TEST_TIMEOUT).times(1))
-          .delete(eq(PARTITION_FOO), any());
-      Mockito.verify(mockAbstractStorageEngine, Mockito.timeout(TEST_TIMEOUT).times(1))
-          .delete(PARTITION_FOO, deleteKeyFoo);
+      verify(mockAbstractStorageEngine, timeout(TEST_TIMEOUT)).delete(eq(PARTITION_FOO), any());
+      verify(mockAbstractStorageEngine, timeout(TEST_TIMEOUT)).delete(PARTITION_FOO, deleteKeyFoo);
 
       // Verify it commits the offset to Offset Manager
-      OffsetRecord expectedOffsetRecordForDeleteMessage = TestUtils.getOffsetRecord(deleteMetadata.offset());
+      OffsetRecord expectedOffsetRecordForDeleteMessage = getOffsetRecord(deleteMetadata.offset());
 
-      Mockito.verify(mockOffSetManager, Mockito.timeout(TEST_TIMEOUT))
+      verify(mockOffSetManager, timeout(TEST_TIMEOUT))
           .recordOffset(topic, PARTITION_FOO, expectedOffsetRecordForDeleteMessage);
-
-      mockStoreConsumptionTask.close();
-      testSubscribeTaskFuture.get(10, TimeUnit.SECONDS);
-    }
+    });
   }
 
   @Test
-  public void testVeniceMessagesProcessingWithExistingSchemaId()
-      throws Exception {
+  public void testVeniceMessagesProcessingWithExistingSchemaId() throws Exception {
     veniceWriter.broadcastStartOfPush(Maps.newHashMap());
     long fooLastOffset = getOffset(veniceWriter.put(putKeyFoo, putValue, EXISTING_SCHEMA_ID));
 
-    // Get the KafkaPerStoreConsumptionTask with fresh mocks.
-    try (StoreConsumptionTask mockStoreConsumptionTask = getKafkaPerStoreConsumptionTask(PARTITION_FOO)) {
-      mockStoreConsumptionTask.subscribePartition(topic, PARTITION_FOO);
+    doReturn(true).when(mockSchemaRepo).hasValueSchema(storeNameWithoutVersionInfo, EXISTING_SCHEMA_ID);
 
-      Mockito.doReturn(true).when(mockSchemaRepo).hasValueSchema(storeNameWithoutVersionInfo, EXISTING_SCHEMA_ID);
-
-      // Prepare mockStoreRepository to send a mock storage engine.
-      Mockito.doReturn(mockAbstractStorageEngine).when(mockStoreRepository).getLocalStorageEngine(topic);
-
-      // MockKafkaConsumer is prepared. Schedule for polling.
-      Future testSubscribeTaskFuture = taskPollingService.submit(mockStoreConsumptionTask);
-
+    runTest(Sets.newHashSet(PARTITION_FOO), () -> {
       // Verify it retrieves the offset from the OffSet Manager
-      Mockito.verify(mockOffSetManager, Mockito.timeout(TEST_TIMEOUT).times(1)).getLastOffset(topic, PARTITION_FOO);
+      verify(mockOffSetManager, timeout(TEST_TIMEOUT)).getLastOffset(topic, PARTITION_FOO);
 
       // Verify StorageEngine#put is invoked only once and with appropriate key & value.
-      Mockito.verify(mockAbstractStorageEngine, Mockito.timeout(TEST_TIMEOUT).times(1))
-          .put(eq(PARTITION_FOO), any(), any());
-      Mockito.verify(mockAbstractStorageEngine, Mockito.timeout(TEST_TIMEOUT).times(1))
+      verify(mockAbstractStorageEngine, timeout(TEST_TIMEOUT)).put(eq(PARTITION_FOO), any(), any());
+      verify(mockAbstractStorageEngine, timeout(TEST_TIMEOUT))
           .put(PARTITION_FOO, putKeyFoo, ValueRecord.create(EXISTING_SCHEMA_ID, putValue).serialize());
-      Mockito.verify(mockSchemaRepo, Mockito.timeout(TEST_TIMEOUT).times(1))
-          .hasValueSchema(storeNameWithoutVersionInfo, EXISTING_SCHEMA_ID);
+      verify(mockSchemaRepo, timeout(TEST_TIMEOUT)).hasValueSchema(storeNameWithoutVersionInfo, EXISTING_SCHEMA_ID);
 
       // Verify it commits the offset to Offset Manager
-      OffsetRecord expected = TestUtils.getOffsetRecord(fooLastOffset);
+      OffsetRecord expected = getOffsetRecord(fooLastOffset);
 
-      Mockito.verify(mockOffSetManager, Mockito.timeout(TEST_TIMEOUT).times(1))
-          .recordOffset(topic, PARTITION_FOO, expected);
-
-      mockStoreConsumptionTask.close();
-      testSubscribeTaskFuture.get(10, TimeUnit.SECONDS);
-    }
+      verify(mockOffSetManager, timeout(TEST_TIMEOUT)).recordOffset(topic, PARTITION_FOO, expected);
+    });
   }
 
+  /**
+   * TODO: Fix this test. It fails when running individually, but succeeds when the whole suite runs...
+   */
   @Test
-  public void testVeniceMessagesProcessingWithTemporarilyNotAvailableSchemaId()
-      throws Exception {
+  public void testVeniceMessagesProcessingWithTemporarilyNotAvailableSchemaId() throws Exception {
     veniceWriter.broadcastStartOfPush(Maps.newHashMap());
     veniceWriter.put(putKeyFoo, putValue, NON_EXISTING_SCHEMA_ID);
     long existingSchemaOffset = getOffset(veniceWriter.put(putKeyFoo, putValue, EXISTING_SCHEMA_ID));
 
-    // Get the KafkaPerStoreConsumptionTask with fresh mocks.
-    try (StoreConsumptionTask mockStoreConsumptionTask = getKafkaPerStoreConsumptionTask(PARTITION_FOO)) {
-      mockStoreConsumptionTask.subscribePartition(topic, PARTITION_FOO);
+    when(mockSchemaRepo.hasValueSchema(storeNameWithoutVersionInfo, NON_EXISTING_SCHEMA_ID))
+        .thenReturn(false, false, true);
+    doReturn(true).when(mockSchemaRepo).hasValueSchema(storeNameWithoutVersionInfo, EXISTING_SCHEMA_ID);
 
-      Mockito.when(mockSchemaRepo.hasValueSchema(storeNameWithoutVersionInfo, NON_EXISTING_SCHEMA_ID))
-          .thenReturn(false, false, true);
-
-      Mockito.doReturn(true).when(mockSchemaRepo).hasValueSchema(storeNameWithoutVersionInfo, EXISTING_SCHEMA_ID);
-
-      // Prepare mockStoreRepository to send a mock storage engine.
-      Mockito.doReturn(mockAbstractStorageEngine).when(mockStoreRepository).getLocalStorageEngine(topic);
-
-      // MockKafkaConsumer is prepared. Schedule for polling.
-      Future testSubscribeTaskFuture = taskPollingService.submit(mockStoreConsumptionTask);
-
+    runTest(Sets.newHashSet(PARTITION_FOO), () -> {}, () -> {
       // Verify it retrieves the offset from the OffSet Manager
-      Mockito.verify(mockOffSetManager, Mockito.timeout(TEST_TIMEOUT).times(1)).getLastOffset(topic, PARTITION_FOO);
+      verify(mockOffSetManager, timeout(TEST_TIMEOUT)).getLastOffset(topic, PARTITION_FOO);
 
       // Verify StorageEngine#put is invoked only once and with appropriate key & value.
-      Mockito.verify(mockAbstractStorageEngine, Mockito.timeout(TEST_TIMEOUT).never())
-          .put(eq(PARTITION_FOO), any(), any());
-      Mockito.verify(mockAbstractStorageEngine, Mockito.timeout(TEST_TIMEOUT).never())
-          .put(eq(PARTITION_FOO), eq(putKeyFoo), any());
-      Mockito.verify(mockSchemaRepo, Mockito.timeout(TEST_TIMEOUT).times(1))
-          .hasValueSchema(storeNameWithoutVersionInfo, NON_EXISTING_SCHEMA_ID);
-      Mockito.verify(mockSchemaRepo, Mockito.timeout(TEST_TIMEOUT).never())
+      verify(mockAbstractStorageEngine, timeout(TEST_TIMEOUT).never()).put(eq(PARTITION_FOO), any(), any());
+      verify(mockAbstractStorageEngine, timeout(TEST_TIMEOUT).never()).put(eq(PARTITION_FOO), eq(putKeyFoo), any());
+      verify(mockSchemaRepo, timeout(TEST_TIMEOUT)).hasValueSchema(storeNameWithoutVersionInfo, NON_EXISTING_SCHEMA_ID);
+      verify(mockSchemaRepo, timeout(TEST_TIMEOUT).never())
           .hasValueSchema(storeNameWithoutVersionInfo, EXISTING_SCHEMA_ID);
 
       // Verify no offset commit to Offset Manager
-      Mockito.verify(mockOffSetManager, Mockito.timeout(TEST_TIMEOUT).never())
+      verify(mockOffSetManager, timeout(TEST_TIMEOUT).never())
           .recordOffset(eq(topic), eq(PARTITION_FOO), any(OffsetRecord.class));
 
-      Mockito.verify(mockAbstractStorageEngine,
-          Mockito.timeout(2 * StoreConsumptionTask.POLLING_SCHEMA_DELAY_MS).times(1))
+      verify(mockAbstractStorageEngine, timeout(2 * StoreConsumptionTask.POLLING_SCHEMA_DELAY_MS))
           .put(PARTITION_FOO, putKeyFoo, ValueRecord.create(NON_EXISTING_SCHEMA_ID, putValue).serialize());
 
-      Mockito.verify(mockAbstractStorageEngine,
-          Mockito.timeout(2 * StoreConsumptionTask.POLLING_SCHEMA_DELAY_MS).times(1))
+      verify(mockAbstractStorageEngine, timeout(2 * StoreConsumptionTask.POLLING_SCHEMA_DELAY_MS))
           .put(PARTITION_FOO, putKeyFoo, ValueRecord.create(EXISTING_SCHEMA_ID, putValue).serialize());
 
-      OffsetRecord expected = TestUtils.getOffsetRecord(existingSchemaOffset);
-      Mockito.verify(mockOffSetManager, Mockito.timeout(TEST_TIMEOUT).times(1))
-          .recordOffset(topic, PARTITION_FOO, expected);
-
-      mockStoreConsumptionTask.close();
-      testSubscribeTaskFuture.get(10, TimeUnit.SECONDS);
-    }
+      OffsetRecord expected = getOffsetRecord(existingSchemaOffset);
+      verify(mockOffSetManager, timeout(TEST_TIMEOUT)).recordOffset(topic, PARTITION_FOO, expected);
+    });
   }
 
+  /**
+   * TODO: Fix this test. It fails when running individually, but succeeds when the whole suite runs...
+   */
   @Test
-  public void testVeniceMessagesProcessingWithNonExistingSchemaId()
-      throws Exception {
+  public void testVeniceMessagesProcessingWithNonExistingSchemaId() throws Exception {
     veniceWriter.broadcastStartOfPush(Maps.newHashMap());
     veniceWriter.put(putKeyFoo, putValue, NON_EXISTING_SCHEMA_ID);
     veniceWriter.put(putKeyFoo, putValue, EXISTING_SCHEMA_ID);
 
-    // Get the KafkaPerStoreConsumptionTask with fresh mocks.
-    try (StoreConsumptionTask mockStoreConsumptionTask = getKafkaPerStoreConsumptionTask(PARTITION_FOO)) {
-      mockStoreConsumptionTask.subscribePartition(topic, PARTITION_FOO);
+    doReturn(false).when(mockSchemaRepo).hasValueSchema(storeNameWithoutVersionInfo, NON_EXISTING_SCHEMA_ID);
+    doReturn(true).when(mockSchemaRepo).hasValueSchema(storeNameWithoutVersionInfo, EXISTING_SCHEMA_ID);
 
-      Mockito.doReturn(false).when(mockSchemaRepo).hasValueSchema(storeNameWithoutVersionInfo, NON_EXISTING_SCHEMA_ID);
-      Mockito.doReturn(true).when(mockSchemaRepo).hasValueSchema(storeNameWithoutVersionInfo, EXISTING_SCHEMA_ID);
-
-      // Prepare mockStoreRepository to send a mock storage engine.
-      Mockito.doReturn(mockAbstractStorageEngine).when(mockStoreRepository).getLocalStorageEngine(topic);
-
-      // MockKafkaConsumer is prepared. Schedule for polling.
-      Future testSubscribeTaskFuture = taskPollingService.submit(mockStoreConsumptionTask);
-
-      Utils.sleep(StoreConsumptionTask.POLLING_SCHEMA_DELAY_MS);
-
+    runTest(Sets.newHashSet(PARTITION_FOO), () -> {
       // Verify it retrieves the offset from the OffSet Manager
-      Mockito.verify(mockOffSetManager, Mockito.timeout(TEST_TIMEOUT).times(1)).getLastOffset(topic, PARTITION_FOO);
+      verify(mockOffSetManager, timeout(TEST_TIMEOUT)).getLastOffset(topic, PARTITION_FOO);
 
       // Verify StorageEngine#put is invoked only once and with appropriate key & value.
-      Mockito.verify(mockAbstractStorageEngine, Mockito.timeout(TEST_TIMEOUT).never())
-          .put(eq(PARTITION_FOO), any(), any());
-      Mockito.verify(mockAbstractStorageEngine, Mockito.timeout(TEST_TIMEOUT).never())
-          .put(PARTITION_FOO, putKeyFoo, putValue);
-      Mockito.verify(mockSchemaRepo, Mockito.timeout(TEST_TIMEOUT).atLeastOnce())
+      verify(mockAbstractStorageEngine, timeout(TEST_TIMEOUT).never()).put(eq(PARTITION_FOO), any(), any());
+      verify(mockAbstractStorageEngine, timeout(TEST_TIMEOUT).never()).put(PARTITION_FOO, putKeyFoo, putValue);
+      verify(mockSchemaRepo, timeout(TEST_TIMEOUT).atLeastOnce())
           .hasValueSchema(storeNameWithoutVersionInfo, NON_EXISTING_SCHEMA_ID);
-      Mockito.verify(mockSchemaRepo, Mockito.timeout(TEST_TIMEOUT).never())
+      verify(mockSchemaRepo, timeout(TEST_TIMEOUT).never())
           .hasValueSchema(storeNameWithoutVersionInfo, EXISTING_SCHEMA_ID);
 
       // Verify no offset commit to Offset Manager
-      Mockito.verify(mockOffSetManager, Mockito.timeout(TEST_TIMEOUT).never())
+      verify(mockOffSetManager, timeout(TEST_TIMEOUT).never())
           .recordOffset(eq(topic), eq(PARTITION_FOO), any(OffsetRecord.class));
-
-      mockStoreConsumptionTask.close();
-      testSubscribeTaskFuture.get(10, TimeUnit.SECONDS);
-    }
+    });
   }
 
   @Test
-  public void testReportStartWhenRestarting()
-      throws Exception {
-    try (StoreConsumptionTask mockStoreConsumptionTask = getKafkaPerStoreConsumptionTask(PARTITION_FOO, PARTITION_BAR)) {
-      mockStoreConsumptionTask.subscribePartition(topic, PARTITION_FOO);
-      OffsetRecord offsetRecord = TestUtils.getOffsetRecord(1);
-      Mockito.doReturn(offsetRecord).when(mockOffSetManager).getLastOffset(topic, PARTITION_FOO);
-      // Prepare mockStoreRepository to send a mock storage engine.
-      Mockito.doReturn(mockAbstractStorageEngine).when(mockStoreRepository).getLocalStorageEngine(topic);
-      // MockKafkaConsumer is prepared. Schedule for polling.
-      Future testSubscribeTaskFuture = taskPollingService.submit(mockStoreConsumptionTask);
+  public void testReportStartWhenRestarting() throws Exception {
+    runTest(Sets.newHashSet(PARTITION_FOO, PARTITION_BAR), () -> {
+      doReturn(getOffsetRecord(1)).when(mockOffSetManager).getLastOffset(topic, PARTITION_FOO);
+    }, () -> {
       // Verify STARTED is reported when offset is larger than 0 is invoked.
-      Mockito.verify(mockNotifier, Mockito.timeout(TEST_TIMEOUT).atLeastOnce()).restarted(topic, PARTITION_FOO, 1);
+      verify(mockNotifier, timeout(TEST_TIMEOUT).atLeastOnce()).restarted(topic, PARTITION_FOO, 1);
       // Verify STARTED is NOT reported when offset is 0
-      Mockito.verify(mockNotifier, Mockito.timeout(TEST_TIMEOUT).never()).restarted(topic, PARTITION_BAR, 1);
-    }
+      verify(mockNotifier, timeout(TEST_TIMEOUT).never()).restarted(topic, PARTITION_BAR, 1);
+    });
   }
 
   @Test
-  public void testNotifier()
-      throws Exception {
+  public void testNotifier() throws Exception {
     veniceWriter.broadcastStartOfPush(Maps.newHashMap());
     long fooLastOffset = getOffset(veniceWriter.put(putKeyFoo, putValue, SCHEMA_ID));
     long barLastOffset = getOffset(veniceWriter.put(putKeyBar, putValue, SCHEMA_ID));
     veniceWriter.broadcastEndOfPush(Maps.newHashMap());
 
-    // Get the KafkaPerStoreConsumptionTask with fresh mocks.
-    try (
-        StoreConsumptionTask mockStoreConsumptionTask = getKafkaPerStoreConsumptionTask(PARTITION_FOO, PARTITION_BAR)) {
-      mockStoreConsumptionTask.subscribePartition(topic, PARTITION_FOO);
-      mockStoreConsumptionTask.subscribePartition(topic, PARTITION_BAR);
+    runTest(Sets.newHashSet(PARTITION_FOO, PARTITION_BAR), () -> {
+      /**
+       * Considering that the {@link VeniceWriter} will send an {@link ControlMessageType#END_OF_PUSH} and
+       * an {@link ControlMessageType#END_OF_SEGMENT}, we need to add 2 to last data message offset.
+       */
+      verify(mockOffSetManager, timeout(TEST_TIMEOUT).atLeastOnce())
+          .recordOffset(eq(topic), eq(PARTITION_FOO), eq(getOffsetRecord(fooLastOffset + 2, true)));
+      verify(mockOffSetManager, timeout(TEST_TIMEOUT).atLeastOnce())
+          .recordOffset(eq(topic), eq(PARTITION_BAR), eq(getOffsetRecord(barLastOffset + 2, true)));
 
-      // Prepare mockStoreRepository to send a mock storage engine.
-      Mockito.doReturn(mockAbstractStorageEngine).when(mockStoreRepository).getLocalStorageEngine(topic);
+      // After we verified that recordOffset() is called, the rest should be guaranteed to be finished, so no need for timeouts
 
-      // MockKafkaConsumer is prepared. Schedule for polling.
-      Future testSubscribeTaskFuture = taskPollingService.submit(mockStoreConsumptionTask);
-
-      // Verify KafkaConsumer#poll is invoked.
-      Mockito.verify(mockNotifier, Mockito.timeout(TEST_TIMEOUT).atLeastOnce()).started(topic, PARTITION_FOO);
-      Mockito.verify(mockNotifier, Mockito.timeout(TEST_TIMEOUT).atLeastOnce()).started(topic, PARTITION_BAR);
-      Mockito.verify(mockNotifier, Mockito.timeout(TEST_TIMEOUT).atLeastOnce())
-          .completed(topic, PARTITION_FOO, fooLastOffset);
-      Mockito.verify(mockNotifier, Mockito.timeout(TEST_TIMEOUT).atLeastOnce())
-          .completed(topic, PARTITION_BAR, barLastOffset);
-
-      // Verify offset recorded for completed partition
-      // Considering venice writer will send out end_of_push and end_of_segment,
-      // we need to add 2 to last data message offset
-      OffsetRecord fooCompletedOffsetRecord = TestUtils.getOffsetRecord(fooLastOffset + 2);
-      fooCompletedOffsetRecord.complete();
-      Mockito.verify(mockOffSetManager, Mockito.timeout(TEST_TIMEOUT).atLeastOnce())
-          .recordOffset(eq(topic), eq(PARTITION_FOO), eq(fooCompletedOffsetRecord));
-      OffsetRecord barCompletedOffsetRecord = TestUtils.getOffsetRecord(barLastOffset + 2);
-      barCompletedOffsetRecord.complete();
-      Mockito.verify(mockOffSetManager, Mockito.timeout(TEST_TIMEOUT).atLeastOnce())
-          .recordOffset(eq(topic), eq(PARTITION_BAR), eq(barCompletedOffsetRecord));
-
-      mockStoreConsumptionTask.close();
-      testSubscribeTaskFuture.get(10, TimeUnit.SECONDS);
-    }
+      verify(mockNotifier, atLeastOnce()).started(topic, PARTITION_FOO);
+      verify(mockNotifier, atLeastOnce()).started(topic, PARTITION_BAR);
+      verify(mockNotifier, atLeastOnce()).completed(topic, PARTITION_FOO, fooLastOffset);
+      verify(mockNotifier, atLeastOnce()).completed(topic, PARTITION_BAR, barLastOffset);
+    });
   }
 
   @Test
-  public void testResetPartition()
-      throws Exception {
+  public void testResetPartition() throws Exception {
     veniceWriter.broadcastStartOfPush(Maps.newHashMap());
     veniceWriter.put(putKeyFoo, putValue, SCHEMA_ID).get();
 
-    // Get the KafkaPerStoreConsumptionTask with fresh mocks.
-    try (StoreConsumptionTask mockStoreConsumptionTask = getKafkaPerStoreConsumptionTask(PARTITION_FOO)) {
-      mockStoreConsumptionTask.subscribePartition(topic, PARTITION_FOO);
-
-      // Prepare mockStoreRepository to send a mock storage engine.
-      Mockito.doReturn(mockAbstractStorageEngine).when(mockStoreRepository).getLocalStorageEngine(topic);
-
-      Future testSubscribeTaskFuture = taskPollingService.submit(mockStoreConsumptionTask);
-
-      Mockito.verify(mockAbstractStorageEngine, Mockito.timeout(TEST_TIMEOUT).times(1))
+    runTest(Sets.newHashSet(PARTITION_FOO), () -> {
+      verify(mockAbstractStorageEngine, timeout(TEST_TIMEOUT))
           .put(PARTITION_FOO, putKeyFoo, ValueRecord.create(SCHEMA_ID, putValue).serialize());
 
-      mockStoreConsumptionTask.resetPartitionConsumptionOffset(topic, PARTITION_FOO);
+      storeConsumptionTaskUnderTest.resetPartitionConsumptionOffset(topic, PARTITION_FOO);
 
-      Mockito.verify(mockAbstractStorageEngine, Mockito.timeout(TEST_TIMEOUT).times(2))
+      verify(mockAbstractStorageEngine, timeout(TEST_TIMEOUT).times(2))
           .put(PARTITION_FOO, putKeyFoo, ValueRecord.create(SCHEMA_ID, putValue).serialize());
-
-      mockStoreConsumptionTask.close();
-      testSubscribeTaskFuture.get(10, TimeUnit.SECONDS);
-    }
+    });
   }
 
   /**
    * In this test, partition FOO will complete successfully, but partition BAR will be missing a record.
-   * <p>
+   *
    * The {@link VeniceNotifier} should see the completion and error reported for the appropriate partitions.
    */
   @Test
-  public void testDetectionOfMissingRecord()
-      throws Exception {
+  public void testDetectionOfMissingRecord() throws Exception {
     veniceWriter.broadcastStartOfPush(Maps.newHashMap());
     long fooLastOffset = getOffset(veniceWriter.put(putKeyFoo, putValue, SCHEMA_ID));
     long barOffsetToSkip = getOffset(veniceWriter.put(putKeyBar, putValue, SCHEMA_ID));
     veniceWriter.put(putKeyBar, putValue, SCHEMA_ID);
     veniceWriter.broadcastEndOfPush(Maps.newHashMap());
 
-    OffsetRecord offsetRecord = TestUtils.getOffsetRecord(barOffsetToSkip);
     PollStrategy pollStrategy = new FilteringPollStrategy(new RandomPollStrategy(),
-        Sets.newHashSet(new Pair(new TopicPartition(topic, PARTITION_BAR), offsetRecord)));
+        Sets.newHashSet(new Pair(new TopicPartition(topic, PARTITION_BAR), getOffsetRecord(barOffsetToSkip))));
 
-    // Get the KafkaPerStoreConsumptionTask with fresh mocks.
-    try (StoreConsumptionTask mockStoreConsumptionTask = getKafkaPerStoreConsumptionTask(pollStrategy, PARTITION_FOO,
-        PARTITION_BAR)) {
-      mockStoreConsumptionTask.subscribePartition(topic, PARTITION_FOO);
-      mockStoreConsumptionTask.subscribePartition(topic, PARTITION_BAR);
+    runTest(pollStrategy, Sets.newHashSet(PARTITION_FOO, PARTITION_BAR), () -> {}, () -> {
+      verify(mockNotifier, timeout(TEST_TIMEOUT).atLeastOnce()).completed(topic, PARTITION_FOO, fooLastOffset);
+      verify(mockNotifier, timeout(TEST_TIMEOUT)).error(
+          eq(topic), eq(PARTITION_BAR), argThat(new NonEmptyStringMatcher()),
+          argThat(new ExceptionClassMatcher(MissingDataException.class)));
 
-      // Prepare mockStoreRepository to send a mock storage engine.
-      Mockito.doReturn(mockAbstractStorageEngine).when(mockStoreRepository).getLocalStorageEngine(topic);
+      // After we verified that completed() and error() are called, the rest should be guaranteed to be finished, so no need for timeouts
 
-      // MockKafkaConsumer is prepared. Schedule for polling.
-      Future testSubscribeTaskFuture = taskPollingService.submit(mockStoreConsumptionTask);
-
-      Mockito.verify(mockNotifier, Mockito.timeout(TEST_TIMEOUT).atLeastOnce()).started(topic, PARTITION_FOO);
-      Mockito.verify(mockNotifier, Mockito.timeout(TEST_TIMEOUT).atLeastOnce()).started(topic, PARTITION_BAR);
-      Mockito.verify(mockNotifier, Mockito.timeout(TEST_TIMEOUT).atLeastOnce())
-          .completed(topic, PARTITION_FOO, fooLastOffset);
-      Mockito.verify(mockNotifier, Mockito.timeout(TEST_TIMEOUT).times(1))
-          .error(eq(topic), eq(PARTITION_BAR), argThat(new NonEmptyStringMatcher()),
-              argThat(new ExceptionClassMatcher(MissingDataException.class)));
-
-      mockStoreConsumptionTask.close();
-      testSubscribeTaskFuture.get(10, TimeUnit.SECONDS);
-    }
+      verify(mockNotifier, atLeastOnce()).started(topic, PARTITION_FOO);
+      verify(mockNotifier, atLeastOnce()).started(topic, PARTITION_BAR);
+    });
   }
 
   /**
-   * In this test, partition FOO will complete normally, but partition BAR will contain a duplicate record. The {@link
-   * VeniceNotifier} should see the completion for both partitions.
-   * <p>
+   * In this test, partition FOO will complete normally, but partition BAR will contain a duplicate record. The
+   * {@link VeniceNotifier} should see the completion for both partitions.
+   *
    * TODO: Add a metric to track duplicate records, and verify that it gets tracked properly.
    */
   @Test
-  public void testSkippingOfDuplicateRecord()
-      throws Exception {
+  public void testSkippingOfDuplicateRecord() throws Exception {
     veniceWriter.broadcastStartOfPush(Maps.newHashMap());
     long fooLastOffset = getOffset(veniceWriter.put(putKeyFoo, putValue, SCHEMA_ID));
     long barOffsetToDupe = getOffset(veniceWriter.put(putKeyBar, putValue, SCHEMA_ID));
     veniceWriter.broadcastEndOfPush(Maps.newHashMap());
 
-    OffsetRecord offsetRecord = TestUtils.getOffsetRecord(barOffsetToDupe);
+    OffsetRecord offsetRecord = getOffsetRecord(barOffsetToDupe);
     PollStrategy pollStrategy = new DuplicatingPollStrategy(new RandomPollStrategy(),
         Sets.newHashSet(new Pair(new TopicPartition(topic, PARTITION_BAR), offsetRecord)));
 
-    // Get the KafkaPerStoreConsumptionTask with fresh mocks.
-    try (StoreConsumptionTask mockStoreConsumptionTask = getKafkaPerStoreConsumptionTask(pollStrategy, PARTITION_FOO,
-        PARTITION_BAR)) {
-      mockStoreConsumptionTask.subscribePartition(topic, PARTITION_FOO);
-      mockStoreConsumptionTask.subscribePartition(topic, PARTITION_BAR);
+    runTest(pollStrategy, Sets.newHashSet(PARTITION_FOO, PARTITION_BAR), () -> {}, () -> {
+      verify(mockNotifier, timeout(TEST_TIMEOUT).atLeastOnce()).completed(topic, PARTITION_FOO, fooLastOffset);
+      verify(mockNotifier, timeout(TEST_TIMEOUT).atLeastOnce()).completed(topic, PARTITION_BAR, barOffsetToDupe);
+      verify(mockNotifier, timeout(TEST_TIMEOUT).never()).completed(topic, PARTITION_BAR, barOffsetToDupe + 1);
 
-      // Prepare mockStoreRepository to send a mock storage engine.
-      Mockito.doReturn(mockAbstractStorageEngine).when(mockStoreRepository).getLocalStorageEngine(topic);
+      // After we verified that completed() is called, the rest should be guaranteed to be finished, so no need for timeouts
 
-      // MockKafkaConsumer is prepared. Schedule for polling.
-      Future testSubscribeTaskFuture = taskPollingService.submit(mockStoreConsumptionTask);
-
-      // Verify KafkaConsumer#poll is invoked.
-      Mockito.verify(mockNotifier, Mockito.timeout(TEST_TIMEOUT).atLeastOnce()).started(topic, PARTITION_FOO);
-      Mockito.verify(mockNotifier, Mockito.timeout(TEST_TIMEOUT).atLeastOnce()).started(topic, PARTITION_BAR);
-      Mockito.verify(mockNotifier, Mockito.timeout(TEST_TIMEOUT).atLeastOnce())
-          .completed(topic, PARTITION_FOO, fooLastOffset);
-      Mockito.verify(mockNotifier, Mockito.timeout(TEST_TIMEOUT).atLeastOnce())
-          .completed(topic, PARTITION_BAR, barOffsetToDupe);
-
-      mockStoreConsumptionTask.close();
-      testSubscribeTaskFuture.get(10, TimeUnit.SECONDS);
-    }
+      verify(mockNotifier, atLeastOnce()).started(topic, PARTITION_FOO);
+      verify(mockNotifier, atLeastOnce()).started(topic, PARTITION_BAR);
+    });
   }
 
+  /**
+   * TODO: Fix this test. It fails when running individually, but succeeds when the whole suite runs...
+   */
   @Test
-  public void testThrottling()
-      throws Exception {
+  public void testThrottling() throws Exception {
     veniceWriter.broadcastStartOfPush(Maps.newHashMap());
     veniceWriter.put(putKeyFoo, putValue, SCHEMA_ID);
     veniceWriter.delete(deleteKeyFoo);
 
-    try (StoreConsumptionTask mockStoreConsumptionTask = getKafkaPerStoreConsumptionTask(PARTITION_FOO)) {
-      mockStoreConsumptionTask.subscribePartition(topic, PARTITION_FOO);
-
-      // Prepare mockStoreRepository to send a mock storage engine.
-      Mockito.doReturn(mockAbstractStorageEngine).when(mockStoreRepository).getLocalStorageEngine(topic);
-
-      // MockKafkaConsumer is prepared. Schedule for polling.
-      Future testSubscribeTaskFuture = taskPollingService.submit(mockStoreConsumptionTask);
-
-      Mockito.verify(mockThrottler, Mockito.timeout(TEST_TIMEOUT).times(1))
-          .maybeThrottle(putKeyFoo.length + putValue.length);
-      Mockito.verify(mockThrottler, Mockito.timeout(TEST_TIMEOUT).times(1)).maybeThrottle(deleteKeyFoo.length);
-
-      mockStoreConsumptionTask.close();
-      testSubscribeTaskFuture.get(10, TimeUnit.SECONDS);
-    }
+    runTest(Sets.newHashSet(PARTITION_FOO), () -> {
+      verify(mockThrottler, timeout(TEST_TIMEOUT)).maybeThrottle(putKeyFoo.length + putValue.length);
+      verify(mockThrottler, timeout(TEST_TIMEOUT)).maybeThrottle(deleteKeyFoo.length);
+    });
   }
 
   /**
@@ -656,8 +490,7 @@ public class StoreConsumptionTaskTest {
    * will receive a bad control message type.
    */
   @Test
-  public void testBadMessageTypesFailFast()
-      throws Exception {
+  public void testBadMessageTypesFailFast() throws Exception {
     int badMessageTypeId = 99; // Venice got 99 problems, but a bad message type ain't one.
 
     // Dear future maintainer,
@@ -670,7 +503,7 @@ public class StoreConsumptionTaskTest {
 
     try {
       MessageType.valueOf(badMessageTypeId);
-      Assert.fail("The message type " + badMessageTypeId + " is valid. "
+      fail("The message type " + badMessageTypeId + " is valid. "
           + "This test needs to be updated in order to send an invalid message type...");
     } catch (VeniceMessageException e) {
       // Good
@@ -678,7 +511,7 @@ public class StoreConsumptionTaskTest {
 
     try {
       ControlMessageType.valueOf(badMessageTypeId);
-      Assert.fail("The control message type " + badMessageTypeId + " is valid. "
+      fail("The control message type " + badMessageTypeId + " is valid. "
           + "This test needs to be updated in order to send an invalid control message type...");
     } catch (VeniceMessageException e) {
       // Good
@@ -709,24 +542,15 @@ public class StoreConsumptionTaskTest {
     veniceWriter.put(putKeyFoo, putValue, SCHEMA_ID);
     veniceWriter.put(putKeyBar, putValue, SCHEMA_ID);
 
-    try (
-        StoreConsumptionTask mockStoreConsumptionTask = getKafkaPerStoreConsumptionTask(PARTITION_FOO, PARTITION_BAR)) {
-      mockStoreConsumptionTask.subscribePartition(topic, PARTITION_FOO);
-      mockStoreConsumptionTask.subscribePartition(topic, PARTITION_BAR);
+    runTest(Sets.newHashSet(PARTITION_FOO, PARTITION_BAR), () -> {
+      verify(mockNotifier, timeout(TEST_TIMEOUT)).error(
+          eq(topic), eq(PARTITION_FOO), argThat(new NonEmptyStringMatcher()),
+          argThat(new ExceptionClassMatcher(VeniceException.class)));
 
-      Future testSubscribeTaskFuture = taskPollingService.submit(mockStoreConsumptionTask);
-
-      Mockito.verify(mockNotifier, Mockito.timeout(TEST_TIMEOUT).times(1))
-          .error(eq(topic), eq(PARTITION_FOO), argThat(new NonEmptyStringMatcher()),
-              argThat(new ExceptionClassMatcher(VeniceException.class)));
-
-      Mockito.verify(mockNotifier, Mockito.timeout(TEST_TIMEOUT).times(1))
-          .error(eq(topic), eq(PARTITION_BAR), argThat(new NonEmptyStringMatcher()),
-              argThat(new ExceptionClassMatcher(VeniceException.class)));
-
-      mockStoreConsumptionTask.close();
-      testSubscribeTaskFuture.get(10, TimeUnit.SECONDS);
-    }
+      verify(mockNotifier, timeout(TEST_TIMEOUT)).error(
+          eq(topic), eq(PARTITION_BAR), argThat(new NonEmptyStringMatcher()),
+          argThat(new ExceptionClassMatcher(VeniceException.class)));
+    });
   }
 
   /**
@@ -738,8 +562,7 @@ public class StoreConsumptionTaskTest {
    * annotation parameter makes the test skip any invocation after the first failure.
    */
   @Test(invocationCount = 100, skipFailedInvocations = true)
-  public void testCorruptMessagesFailFast()
-      throws Exception {
+  public void testCorruptMessagesFailFast() throws Exception {
     VeniceWriter veniceWriterForData = getVeniceWriter(
         () -> new TransformingProducer(new MockInMemoryProducer(inMemoryKafkaBroker),
             (topicName, key, value, partition) -> {
@@ -756,21 +579,12 @@ public class StoreConsumptionTaskTest {
 
     veniceWriter.broadcastStartOfPush(Maps.newHashMap());
     long fooLastOffset = getOffset(veniceWriterForData.put(putKeyFoo, putValue, SCHEMA_ID));
-    long barLastOffset = getOffset(veniceWriterForData.put(putKeyBar, putValue, SCHEMA_ID));
+    getOffset(veniceWriterForData.put(putKeyBar, putValue, SCHEMA_ID));
     veniceWriterForData.close();
     veniceWriter.broadcastEndOfPush(Maps.newHashMap());
 
-    try (
-        StoreConsumptionTask mockStoreConsumptionTask = getKafkaPerStoreConsumptionTask(PARTITION_FOO, PARTITION_BAR)) {
-      mockStoreConsumptionTask.subscribePartition(topic, PARTITION_FOO);
-      mockStoreConsumptionTask.subscribePartition(topic, PARTITION_BAR);
-
-      // Prepare mockStoreRepository to send a mock storage engine.
-      Mockito.doReturn(mockAbstractStorageEngine).when(mockStoreRepository).getLocalStorageEngine(topic);
-
-      Future testSubscribeTaskFuture = taskPollingService.submit(mockStoreConsumptionTask);
-
-      Mockito.verify(mockNotifier, Mockito.timeout(TEST_TIMEOUT).times(1))
+    runTest(Sets.newHashSet(PARTITION_FOO, PARTITION_BAR), () -> {
+      verify(mockNotifier, timeout(TEST_TIMEOUT))
           .completed(eq(topic), eq(PARTITION_FOO), longThat(new LongGreaterThanMatcher(fooLastOffset)));
 
       /**
@@ -782,145 +596,102 @@ public class StoreConsumptionTaskTest {
        * and avoids sending completion notifications for those. The high invocationCount on
        * this test is to detect this edge case.
        */
-      Mockito.verify(mockNotifier, Mockito.timeout(TEST_TIMEOUT).times(0))
-          .completed(eq(topic), eq(PARTITION_BAR), anyLong());
+      verify(mockNotifier, timeout(TEST_TIMEOUT).never()).completed(eq(topic), eq(PARTITION_BAR), anyLong());
 
-      Mockito.verify(mockNotifier, Mockito.timeout(TEST_TIMEOUT).times(1))
-          .error(eq(topic), eq(PARTITION_BAR), argThat(new NonEmptyStringMatcher()),
-              argThat(new ExceptionClassMatcher(CorruptDataException.class)));
-
-      mockStoreConsumptionTask.close();
-      testSubscribeTaskFuture.get(10, TimeUnit.SECONDS);
-    }
+      verify(mockNotifier, timeout(TEST_TIMEOUT)).error(
+          eq(topic), eq(PARTITION_BAR), argThat(new NonEmptyStringMatcher()),
+          argThat(new ExceptionClassMatcher(CorruptDataException.class)));
+    });
   }
 
   @Test
-  public void testSubscribeCompletedPartition()
-      throws Exception {
-    final int PARTITION_FOO = 1;
-
-    try (StoreConsumptionTask mockStoreConsumptionTask = getKafkaPerStoreConsumptionTask(PARTITION_FOO)) {
-      OffsetRecord completedOffsetRecord = TestUtils.getOffsetRecord(100);
-      completedOffsetRecord.complete();
-      Mockito.doReturn(completedOffsetRecord).when(mockOffSetManager).getLastOffset(topic, PARTITION_FOO);
-      mockStoreConsumptionTask.subscribePartition(topic, PARTITION_FOO);
-
-      // MockKafkaConsumer is prepared. Schedule for polling.
-      Future testSubscribeTaskFuture = taskPollingService.submit(mockStoreConsumptionTask);
-
-      Mockito.verify(mockNotifier, Mockito.timeout(TEST_TIMEOUT).times(1)).completed(topic, PARTITION_FOO, 100);
-      mockStoreConsumptionTask.close();
-      testSubscribeTaskFuture.get(10, TimeUnit.SECONDS);
-    }
+  public void testSubscribeCompletedPartition() throws Exception {
+    final int offset = 100;
+    runTest(Sets.newHashSet(PARTITION_FOO),
+        () -> doReturn(getOffsetRecord(offset, true)).when(mockOffSetManager).getLastOffset(topic, PARTITION_FOO),
+        () -> verify(mockNotifier, timeout(TEST_TIMEOUT)).completed(topic, PARTITION_FOO, offset));
   }
 
   @Test
-  public void testUnsubscribeConsumption()
-      throws Exception {
-    try (StoreConsumptionTask mockStoreConsumptionTask = getKafkaPerStoreConsumptionTask(PARTITION_FOO)) {
-      Mockito.doReturn(new OffsetRecord()).when(mockOffSetManager).getLastOffset(topic, PARTITION_FOO);
-      // Prepare mockStoreRepository to send a mock storage engine.
-      Mockito.doReturn(mockAbstractStorageEngine).when(mockStoreRepository).getLocalStorageEngine(topic);
-      mockStoreConsumptionTask.subscribePartition(topic, PARTITION_FOO);
-      veniceWriter.broadcastStartOfPush(new HashMap<>());
-      veniceWriter.put(putKeyFoo, putValue, SCHEMA_ID);
-      // MockKafkaConsumer is prepared. Schedule for polling.
-      Future testUnsbscribeFuture = taskPollingService.submit(mockStoreConsumptionTask);
-      Mockito.verify(mockNotifier, Mockito.timeout(TEST_TIMEOUT).times(1)).started(topic, PARTITION_FOO);
-      //Start of push has alread been consumed. Stop consuption
-      mockStoreConsumptionTask.unSubscribePartition(topic, PARTITION_FOO);
-      TestUtils.waitForNonDeterministicCompletion(TEST_TIMEOUT, TimeUnit.MILLISECONDS,
-          () -> mockStoreConsumptionTask.isRunning() == false);
-      mockStoreConsumptionTask.close();
-      testUnsbscribeFuture.get(10, TimeUnit.SECONDS);
-    }
+  public void testUnsubscribeConsumption() throws Exception {
+    veniceWriter.broadcastStartOfPush(new HashMap<>());
+    veniceWriter.put(putKeyFoo, putValue, SCHEMA_ID);
+
+    runTest(Sets.newHashSet(PARTITION_FOO), () -> {
+      verify(mockNotifier, timeout(TEST_TIMEOUT)).started(topic, PARTITION_FOO);
+      //Start of push has already been consumed. Stop consumption
+      storeConsumptionTaskUnderTest.unSubscribePartition(topic, PARTITION_FOO);
+      waitForNonDeterministicCompletion(TEST_TIMEOUT, TimeUnit.MILLISECONDS,
+          () -> storeConsumptionTaskUnderTest.isRunning() == false);
+    });
   }
 
   @Test
   public void testKillConsumption() throws Exception {
-    Thread writingThread = null;
-    try (StoreConsumptionTask mockStoreConsumptionTask = getKafkaPerStoreConsumptionTask(PARTITION_FOO, PARTITION_BAR)) {
-      Mockito.doReturn(new OffsetRecord()).when(mockOffSetManager).getLastOffset(topic, PARTITION_FOO);
-      Mockito.doReturn(new OffsetRecord()).when(mockOffSetManager).getLastOffset(topic, PARTITION_BAR);
-      // Prepare mockStoreRepository to send a mock storage engine.
-      Mockito.doReturn(mockAbstractStorageEngine).when(mockStoreRepository).getLocalStorageEngine(topic);
-      mockStoreConsumptionTask.subscribePartition(topic, PARTITION_FOO);
-      mockStoreConsumptionTask.subscribePartition(topic, PARTITION_BAR);
-      veniceWriter.broadcastStartOfPush(new HashMap<>());
-      writingThread = new Thread(new Runnable() {
-        @Override
-        public void run() {
-          while (true) {
-            veniceWriter.put(putKeyFoo, putValue, SCHEMA_ID);
-            veniceWriter.put(putKeyBar, putValue, SCHEMA_ID);
-            try {
-              TimeUnit.MILLISECONDS.sleep(StoreConsumptionTask.READ_CYCLE_DELAY_MS);
-            } catch (InterruptedException e) {
-              break;
-            }
-          }
+    final Thread writingThread = new Thread(() -> {
+      while (true) {
+        veniceWriter.put(putKeyFoo, putValue, SCHEMA_ID);
+        veniceWriter.put(putKeyBar, putValue, SCHEMA_ID);
+        try {
+          TimeUnit.MILLISECONDS.sleep(StoreConsumptionTask.READ_CYCLE_DELAY_MS);
+        } catch (InterruptedException e) {
+          break;
         }
+      }
+    });
+
+    try {
+      runTest(Sets.newHashSet(PARTITION_FOO, PARTITION_BAR), () -> {
+        veniceWriter.broadcastStartOfPush(new HashMap<>());
+        writingThread.start();
+      }, () -> {
+        verify(mockNotifier, timeout(TEST_TIMEOUT)).started(topic, PARTITION_FOO);
+        verify(mockNotifier, timeout(TEST_TIMEOUT)).started(topic, PARTITION_BAR);
+
+        //Start of push has alread been consumed. Stop consuption
+        storeConsumptionTaskUnderTest.kill();
+        // task should report an error to notifier that it's killed.
+        verify(mockNotifier, timeout(TEST_TIMEOUT)).error(
+            eq(topic), eq(PARTITION_FOO), argThat(new NonEmptyStringMatcher()),
+            argThat(new ExceptionClassAndCauseClassMatcher(VeniceException.class, InterruptedException.class)));
+        verify(mockNotifier, timeout(TEST_TIMEOUT)).error(
+            eq(topic), eq(PARTITION_BAR), argThat(new NonEmptyStringMatcher()),
+            argThat(new ExceptionClassAndCauseClassMatcher(VeniceException.class, InterruptedException.class)));
+
+        waitForNonDeterministicCompletion(TEST_TIMEOUT, TimeUnit.MILLISECONDS,
+            () -> storeConsumptionTaskUnderTest.isRunning() == false);
       });
-      writingThread.start();
-
-      // MockKafkaConsumer is prepared. Schedule for polling.
-      Future testKillFuture = taskPollingService.submit(mockStoreConsumptionTask);
-      Mockito.verify(mockNotifier, Mockito.timeout(TEST_TIMEOUT).times(1)).started(topic, PARTITION_FOO);
-      Mockito.verify(mockNotifier, Mockito.timeout(TEST_TIMEOUT).times(1)).started(topic, PARTITION_BAR);
-
-      //Start of push has alread been consumed. Stop consuption
-      mockStoreConsumptionTask.kill();
-      // task should report an error to notifier that it's killed.
-      Mockito.verify(mockNotifier, Mockito.timeout(TEST_TIMEOUT).times(1))
-          .error(eq(topic), eq(PARTITION_FOO), argThat(new NonEmptyStringMatcher()),
-              argThat(new ExceptionClassAndCauseClassMatcher(VeniceException.class, InterruptedException.class)));
-      Mockito.verify(mockNotifier, Mockito.timeout(TEST_TIMEOUT).times(1))
-          .error(eq(topic), eq(PARTITION_BAR), argThat(new NonEmptyStringMatcher()),
-              argThat(new ExceptionClassAndCauseClassMatcher(VeniceException.class, InterruptedException.class)));
-
-      TestUtils.waitForNonDeterministicCompletion(TEST_TIMEOUT, TimeUnit.MILLISECONDS,
-          () -> mockStoreConsumptionTask.isRunning() == false);
-      mockStoreConsumptionTask.close();
-      testKillFuture.get(10, TimeUnit.SECONDS);
     } finally {
       writingThread.interrupt();
     }
   }
 
   @Test
-  public void testKillActionPriority()
-      throws Exception {
-    try (StoreConsumptionTask mockStoreConsumptionTask = getKafkaPerStoreConsumptionTask(PARTITION_FOO)) {
-      Mockito.doReturn(new OffsetRecord()).when(mockOffSetManager).getLastOffset(topic, PARTITION_FOO);
-      // Prepare mockStoreRepository to send a mock storage engine.
-      Mockito.doReturn(mockAbstractStorageEngine).when(mockStoreRepository).getLocalStorageEngine(topic);
-      // Add a subscribe consumer action
-      mockStoreConsumptionTask.subscribePartition(topic, PARTITION_FOO);
+  public void testKillActionPriority() throws Exception {
+    runTest(Sets.newHashSet(PARTITION_FOO), () -> {
       veniceWriter.broadcastStartOfPush(new HashMap<>());
       veniceWriter.put(putKeyFoo, putValue, SCHEMA_ID);
       // Add a reset consumer action
-      mockStoreConsumptionTask.resetPartitionConsumptionOffset(topic, PARTITION_FOO);
+      storeConsumptionTaskUnderTest.resetPartitionConsumptionOffset(topic, PARTITION_FOO);
       // Add a kill consumer action in higher priority than subscribe and reset.
-      mockStoreConsumptionTask.kill();
-      Future testKillFuture = taskPollingService.submit(mockStoreConsumptionTask);
+      storeConsumptionTaskUnderTest.kill();
+    }, () -> {
       // verify subscribe has not been processed. Because consumption task should process kill action at frist
-      Mockito.verify(mockOffSetManager, Mockito.timeout(TEST_TIMEOUT).times(0)).getLastOffset(topic, PARTITION_FOO);
-      TestUtils.waitForNonDeterministicCompletion(TEST_TIMEOUT, TimeUnit.MILLISECONDS,
-          () -> mockStoreConsumptionTask.getConsumer() != null);
-      Assert.assertEquals(((MockInMemoryConsumer) mockStoreConsumptionTask.getConsumer()).getOffsets().size(), 0,
+      verify(mockOffSetManager, timeout(TEST_TIMEOUT).never()).getLastOffset(topic, PARTITION_FOO);
+      waitForNonDeterministicCompletion(TEST_TIMEOUT, TimeUnit.MILLISECONDS,
+          () -> storeConsumptionTaskUnderTest.getConsumer() != null);
+      assertEquals(((MockInMemoryConsumer) storeConsumptionTaskUnderTest.getConsumer()).getOffsets().size(), 0,
           "subscribe should not be processed in this consumer.");
 
       // Verify offset has not been processed. Because consumption task should process kill action at first.
       // offSetManager.clearOffset should only be invoked one time during clean up after killing this task.
-      Mockito.verify(mockOffSetManager, Mockito.timeout(TEST_TIMEOUT).times(1)).clearOffset(topic, PARTITION_FOO);
-      Assert.assertEquals(((MockInMemoryConsumer) mockStoreConsumptionTask.getConsumer()).getOffsets().size(), 0,
+      verify(mockOffSetManager, timeout(TEST_TIMEOUT)).clearOffset(topic, PARTITION_FOO);
+      assertEquals(((MockInMemoryConsumer) storeConsumptionTaskUnderTest.getConsumer()).getOffsets().size(), 0,
           "reset should not be processed in this consumer.");
 
-      TestUtils.waitForNonDeterministicCompletion(TEST_TIMEOUT, TimeUnit.MILLISECONDS,
-          () -> mockStoreConsumptionTask.isRunning() == false);
-      mockStoreConsumptionTask.close();
-      testKillFuture.get(10, TimeUnit.SECONDS);
-    }
+      waitForNonDeterministicCompletion(TEST_TIMEOUT, TimeUnit.MILLISECONDS,
+          () -> storeConsumptionTaskUnderTest.isRunning() == false);
+    });
   }
 
   @Test
@@ -943,8 +714,8 @@ public class StoreConsumptionTaskTest {
     veniceWriter.broadcastEndOfPush(Maps.newHashMap());
 
     // Basic sanity checks
-    Assert.assertEquals(pushedRecords.size(), totalNumberOfMessages, "We did not produce as many unique records as we expected!");
-    Assert.assertFalse(maxOffsetPerPartition.isEmpty(), "There should be at least one partition getting anything published into it!");
+    assertEquals(pushedRecords.size(), totalNumberOfMessages, "We did not produce as many unique records as we expected!");
+    assertFalse(maxOffsetPerPartition.isEmpty(), "There should be at least one partition getting anything published into it!");
 
     Set<Integer> relevantPartitions = Sets.newHashSet(PARTITION_FOO);
 
