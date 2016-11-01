@@ -105,8 +105,15 @@ public class TestUtils {
   }
 
   public static OffsetRecord getOffsetRecord(long offset) {
+    return getOffsetRecord(offset, false);
+  }
+
+  public static OffsetRecord getOffsetRecord(long offset, boolean complete) {
     OffsetRecord offsetRecord = new OffsetRecord();
     offsetRecord.setOffset(offset);
+    if (complete) {
+      offsetRecord.complete();
+    }
     return offsetRecord;
   }
 
