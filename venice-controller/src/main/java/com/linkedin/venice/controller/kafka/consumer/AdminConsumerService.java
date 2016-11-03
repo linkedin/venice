@@ -2,6 +2,7 @@ package com.linkedin.venice.controller.kafka.consumer;
 
 import com.linkedin.venice.controller.VeniceControllerConfig;
 import com.linkedin.venice.controller.VeniceHelixAdmin;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.consumer.KafkaConsumerWrapper;
 import com.linkedin.venice.kafka.consumer.VeniceConsumerFactory;
 import com.linkedin.venice.offsets.OffsetManager;
@@ -56,5 +57,14 @@ public class AdminConsumerService extends AbstractVeniceService {
         admin,
         TimeUnit.MINUTES.toMillis(config.getAdminConsumptionTimeoutMinutes()),
         config.isParent());
+  }
+
+  public void setOffsetToSkip(String clusterName, long offset){
+    if (clusterName.equals(config.getClusterName())){
+      consumerTask.skipMessageWithOffset(offset);
+    } else {
+      throw new VeniceException("This AdminConsumptionService is for cluster " + config.getClusterName()
+          + ".  Cannot skip admin message with offset " + offset + " for cluster " + clusterName);
+    }
   }
 }

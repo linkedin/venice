@@ -24,6 +24,7 @@ public enum ControllerRoute {
   LIST_REPLICAS("/list_replicas", Arrays.asList(NAME, VERSION)),
   NODE_REPLICAS("/storage_node_replicas", Arrays.asList(STORAGE_NODE_ID)),
   NODE_REMOVABLE("/node_removable", Arrays.asList(STORAGE_NODE_ID)),
+  SKIP_ADMIN("/skip_admin_message", Arrays.asList(OFFSET)),
 
   GET_KEY_SCHEMA("/get_key_schema", Arrays.asList(NAME)),
   ADD_VALUE_SCHEMA("/add_value_schema", Arrays.asList(NAME, VALUE_SCHEMA)),

@@ -23,17 +23,15 @@ import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.utils.Utils;
-
-import java.util.Properties;
-import java.util.concurrent.TimeUnit;
-import org.apache.kafka.clients.consumer.ConsumerRecord;
-import org.apache.kafka.clients.consumer.ConsumerRecords;
-import org.apache.log4j.Logger;
-
 import java.io.Closeable;
 import java.io.IOException;
 import java.util.Iterator;
+import java.util.Properties;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import org.apache.kafka.clients.consumer.ConsumerRecord;
+import org.apache.kafka.clients.consumer.ConsumerRecords;
+import org.apache.log4j.Logger;
 
 /**
  * This class is used to create a task, which will consume the admin messages from the special admin topics.
@@ -58,6 +56,8 @@ public class AdminConsumptionTask implements Runnable, Closeable {
   private boolean isSubscribed;
   private KafkaConsumerWrapper consumer;
   private OffsetRecord lastOffset;
+  private volatile long offsetToSkip = -1L;
+  private volatile long lastFailedOffset = -1L;
   private boolean topicExists;
 
   public AdminConsumptionTask(String clusterName,
@@ -119,13 +119,6 @@ public class AdminConsumptionTask implements Runnable, Closeable {
           logger.debug("Received record num: " + records.count());
           Iterator<ConsumerRecord<KafkaKey, KafkaMessageEnvelope>> recordsIterator = records.iterator();
           while (isRunning.get() && admin.isMasterController(clusterName) && recordsIterator.hasNext()) {
-            // TODO: we might need to consider to reload Offset, so that
-            // admin tool is able to let consumer skip the bad message by updating consumed offset.
-            /**
-             * If there are some bad messages in the topic, the following steps could be considered to skip them:
-             * 1. Update the admin topic offset to skip those messages;
-             * 2. Restart master controller;
-             */
             ConsumerRecord<KafkaKey, KafkaMessageEnvelope> record = recordsIterator.next();
             boolean retry = true;
             int retryCount = 0;
@@ -138,7 +131,8 @@ public class AdminConsumptionTask implements Runnable, Closeable {
                 // Retry should happen in message level, not in batch
                 retryCount += 1; // increment and report count if we have a failure
                 controllerStats.recordFailedAdminConsumption(retryCount);
-                logger.error("Error when processing admin message, will retry", e);
+                lastFailedOffset=record.offset();
+                logger.error("Error when processing admin message with offset "+record.offset()+", will retry", e);
                 admin.setLastException(clusterName, e);
                 if (System.currentTimeMillis() - retryStartTime >= failureRetryTimeoutMs) {
                   logger.error("Failure processing admin message for more than " + TimeUnit.MILLISECONDS.toMinutes(failureRetryTimeoutMs) + " minutes", e);
@@ -240,6 +234,18 @@ public class AdminConsumptionTask implements Runnable, Closeable {
     }
   }
 
+  public void skipMessageWithOffset(long offset){
+    if (offset == lastFailedOffset) {
+      if (offset > lastOffset.getOffset()) {
+        offsetToSkip = offset;
+      } else {
+        throw new VeniceException("Cannot skip an offset that has already been consumed.  Last consumed offset is: " + lastOffset.getOffset());
+      }
+    } else {
+      throw new VeniceException("Cannot skip an offset that isn't failing.  Last failed offset is: " + lastFailedOffset);
+    }
+  }
+
   private boolean shouldProcessRecord(ConsumerRecord<KafkaKey, KafkaMessageEnvelope> record) {
     // check topic
     String recordTopic = record.topic();
@@ -251,8 +257,13 @@ public class AdminConsumptionTask implements Runnable, Closeable {
     if (AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID != recordPartition) {
       throw new VeniceException(consumerTaskId + " received message from different partition: " + recordPartition + ", expected: " + AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID);
     }
-    // check offset
     long recordOffset = record.offset();
+    // should skip?  Note, at this point we are guaranteed to be on the correct topic and partition
+    if (recordOffset == offsetToSkip){
+      logger.warn("Skipping admin message with offset: " + recordOffset + " per instruction to skip.");
+      return false;
+    }
+    // check offset
     if (lastOffset.getOffset() >= recordOffset) {
       logger.error(consumerTaskId + ", current record has been processed, " +
           "last known offset: " + lastOffset.getOffset() + ", current offset: " + recordOffset);
@@ -275,6 +286,12 @@ public class AdminConsumptionTask implements Runnable, Closeable {
     String owner = message.owner.toString();
     String keySchema = message.keySchema.definition.toString();
     String valueSchema = message.valueSchema.definition.toString();
+
+    /* // failure path for testing.  Enable this code path to run the disabled test in TestAdminConsumptionTask
+    if (storeName.equals("store-that-fails")){
+      throw new VeniceException("Tried to create failure store named store-that-fails");
+    } */
+
     // Check whether the store exists or not, the duplicate message could be
     // introduced by Kafka retry
     if (admin.hasStore(clusterName, storeName)) {

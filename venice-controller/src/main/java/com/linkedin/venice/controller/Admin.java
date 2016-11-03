@@ -1,5 +1,6 @@
 package com.linkedin.venice.controller;
 
+import com.linkedin.venice.controller.kafka.consumer.AdminConsumerService;
 import com.linkedin.venice.helix.Replica;
 import com.linkedin.venice.job.ExecutionStatus;
 import com.linkedin.venice.kafka.TopicManager;
@@ -182,6 +183,7 @@ public interface Admin {
      * @param  delayedTime how long the helix will not rebalance after a server is disconnected. If the given value
      *                     equal or smaller than 0, we disable the delayed rebalance.
      */
+
     void setDelayedRebalanceTime(String clusterName, long delayedTime);
 
     /**
@@ -190,7 +192,18 @@ public interface Admin {
     */
     long getDelayedRebalanceTime(String clusterName);
 
-    void close();
+    void setAdminConsumerService(String clusterName, AdminConsumerService service);
+
+    /**
+     * The admin consumption task tries to deal with failures to process an admin message by retrying.  If there is a
+     * message that cannot be processed for some reason, we will need to forcibly skip that message in order to unblock
+     * the task from consuming subsequent messages.
+     * @param clusterName
+     * @param offset
+     */
+    void skipAdminMessage(String clusterName, long offset);
+
+
 
     /**
      * Function used by {@link com.linkedin.venice.controller.kafka.consumer.AdminConsumptionTask} to share
@@ -198,10 +211,12 @@ public interface Admin {
      */
     void setLastException(String clusterName, Exception e);
 
-  /**
-   * Function used by {@link VeniceParentHelixAdmin} to pick up the latest exception occurred
-   * while consuming admin messages.
-   * @return
-   */
-  Exception getLastException(String clusterName);
+    /**
+    * Function used by {@link VeniceParentHelixAdmin} to pick up the latest exception occurred
+    * while consuming admin messages.
+    * @return
+    */
+    Exception getLastException(String clusterName);
+
+    void close();
 }

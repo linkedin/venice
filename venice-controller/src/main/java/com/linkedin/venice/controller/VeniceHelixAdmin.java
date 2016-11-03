@@ -1,5 +1,6 @@
 package com.linkedin.venice.controller;
 
+import com.linkedin.venice.controller.kafka.consumer.AdminConsumerService;
 import com.linkedin.venice.exceptions.SchemaIncompatibilityException;
 import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
 import com.linkedin.venice.helix.HelixReadWriteSchemaRepository;
@@ -70,7 +71,7 @@ public class VeniceHelixAdmin implements Admin {
     private final int controllerClusterReplica;
     private final String controllerName;
     private final String kafkaBootstrapServers;
-
+    private final Map<String, AdminConsumerService> adminConsumerServices = new HashMap<>();
     // Track last exception when necessary
     private Map<String, Exception> lastExceptionMap = new ConcurrentHashMap<String, Exception>();
 
@@ -80,6 +81,7 @@ public class VeniceHelixAdmin implements Admin {
     private TopicManager topicManager;
     private final ZkClient zkClient;
     private ZkWhitelistAccessor whitelistAccessor;
+
     /**
      * Parent controller, it always being connected to Helix. And will create sub-controller for specific cluster when
      * getting notification from Helix.
@@ -826,6 +828,20 @@ public class VeniceHelixAdmin implements Admin {
         ClusterConfig clusterConfig = manager.getHelixDataAccessor().getProperty(keyBuilder.clusterConfig());
         return clusterConfig.getRecord()
             .getLongField(ClusterConfig.ClusterConfigProperty.DELAY_REBALANCE_TIME.name(), 0l);
+    }
+
+    public void setAdminConsumerService(String clusterName, AdminConsumerService service){
+        adminConsumerServices.put(clusterName, service);
+    }
+
+    @Override
+    public void skipAdminMessage(String clusterName, long offset){
+        if (adminConsumerServices.containsKey(clusterName)){
+            adminConsumerServices.get(clusterName).setOffsetToSkip(clusterName, offset);
+        } else {
+            throw new VeniceException("Cannot skip offset, must first setAdminConsumerService for cluster " + clusterName);
+        }
+
     }
 
     @Override

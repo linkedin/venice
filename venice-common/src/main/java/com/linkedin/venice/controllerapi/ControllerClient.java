@@ -196,6 +196,17 @@ public class ControllerClient implements Closeable {
     }
   }
 
+  public ControllerResponse skipAdminMessage(String clusterName, String offset){
+    try {
+      List<NameValuePair> queryParams = newParams(clusterName);
+      queryParams.add(new BasicNameValuePair(ControllerApiConstants.OFFSET, offset));
+      String responseJson = postRequest(ControllerRoute.SKIP_ADMIN.getPath(), queryParams);
+      return mapper.readValue(responseJson, ControllerResponse.class);
+    } catch (Exception e) {
+      return handleError(new VeniceException("Error skipping admin message in cluster: " + clusterName, e), new ControllerResponse());
+    }
+  }
+
   public JobStatusQueryResponse queryJobStatus(String clusterName, String kafkaTopic) {
     try {
       String storeName = Version.parseStoreFromKafkaTopicName(kafkaTopic);

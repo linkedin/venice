@@ -129,6 +129,10 @@ public class AdminTool {
         String topicName = new Version(storeName, version).kafkaTopicName();
         ControllerResponse response = new ControllerClient(clusterName, routerHosts).killOfflinePushJob(clusterName, topicName);
         printObject(response);
+      } else if (cmd.hasOption(Command.SKIP_ADMIN.toString())){
+        String offset = getRequiredArgument(cmd, Arg.OFFSET, Command.SKIP_ADMIN);
+        ControllerResponse response = new ControllerClient(clusterName, routerHosts).skipAdminMessage(clusterName, offset);
+        printObject(response);
       } else if (cmd.hasOption(Command.NEW_STORE.toString())) {
         createNewStore(cmd, routerHosts, clusterName);
       } else if (cmd.hasOption(Command.PAUSE_STORE.toString())) {

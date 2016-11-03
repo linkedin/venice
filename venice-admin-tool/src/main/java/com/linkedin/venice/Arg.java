@@ -11,6 +11,7 @@ public enum Arg {
   OWNER("owner", "o", true, "Owner email for new store creation"),
   STORAGE_NODE("storage-node", "n", true, "Helix instance ID for a storage node, eg. lva1-app1234_1690"),
   KEY("key", "k", true, "Plain-text key for identifying a record in a store"),
+  OFFSET("offset", "of", true, "Kafka offset number"),
 
   FILTER_JSON("filter-json", "f", true, "Comma-delimited list of fields to display from the json output.  Omit to display all fields"),
   FLAT_JSON("flat-json", "fj", false, "Display output as flat json, without pretty-print indentation and line breaks"),
