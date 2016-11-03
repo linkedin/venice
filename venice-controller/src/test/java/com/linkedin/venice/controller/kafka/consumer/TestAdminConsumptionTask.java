@@ -1,5 +1,6 @@
 package com.linkedin.venice.controller.kafka.consumer;
 
+import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.kafka.AdminTopicUtils;
 import com.linkedin.venice.controller.kafka.protocol.admin.AdminOperation;
@@ -10,7 +11,11 @@ import com.linkedin.venice.controller.kafka.protocol.enums.AdminMessageType;
 import com.linkedin.venice.controller.kafka.protocol.enums.SchemaType;
 import com.linkedin.venice.controller.kafka.protocol.serializer.AdminOperationSerializer;
 import com.linkedin.venice.controller.stats.ControllerStats;
+import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.integration.utils.KafkaBrokerWrapper;
+import com.linkedin.venice.integration.utils.ServiceFactory;
+import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.kafka.consumer.KafkaConsumerWrapper;
 import com.linkedin.venice.kafka.consumer.VeniceConsumerFactory;
@@ -21,11 +26,15 @@ import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.offsets.DeepCopyOffsetManager;
 import com.linkedin.venice.offsets.OffsetManager;
 import com.linkedin.venice.offsets.OffsetRecord;
+import com.linkedin.venice.serialization.DefaultSerializer;
 import com.linkedin.venice.stats.TehutiUtils;
 import com.linkedin.venice.utils.FlakyTestRetryAnalyzer;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
+import com.linkedin.venice.utils.VeniceProperties;
+import com.linkedin.venice.writer.VeniceWriter;
 import io.tehuti.metrics.MetricsRepository;
+import java.util.concurrent.ExecutionException;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.consumer.OffsetAndMetadata;
@@ -243,8 +252,8 @@ public class TestAdminConsumptionTask {
         .when(admin)
         .addStore(clusterName, storeName, owner, keySchema, valueSchema);
 
-    long timeoutMinutes = 0L;
-    AdminConsumptionTask task = getAdminConsumptionTask(timeoutMinutes, false);
+    long timeoutMs = 0L;
+    AdminConsumptionTask task = getAdminConsumptionTask(timeoutMs, false);
     executor.submit(task);
     // admin throws errors, so record offset means we skipped the message
     Mockito.verify(consumer, Mockito.timeout(TIMEOUT).times(1))
@@ -255,6 +264,90 @@ public class TestAdminConsumptionTask {
     task.close();
     executor.shutdown();
     executor.awaitTermination(TIMEOUT, TimeUnit.MILLISECONDS);
+  }
+
+  @Test (timeOut = TIMEOUT)
+  public void testSkipMessageCommand () throws IOException, InterruptedException {
+    String storeName = TestUtils.getUniqueString("test_store");
+    String owner = "test_owner";
+    String keySchema = "\"string\"";
+    String valueSchema = "\"string\"";
+    initTaskRelatedArgs(getStoreCreationMessage(clusterName, storeName, owner, 1, keySchema, valueSchema));
+    // The store doesn't exist
+    Mockito.doReturn(false).when(admin).hasStore(clusterName, storeName);
+    Mockito.doThrow(new VeniceException("Mock store creation exception"))
+        .when(admin)
+        .addStore(clusterName, storeName, owner, keySchema, valueSchema);
+
+    long timeoutMs = TimeUnit.MINUTES.toMillis(10); // dont timeout
+    AdminConsumptionTask task = getAdminConsumptionTask(timeoutMs, false);
+    executor.submit(task);
+    TestUtils.waitForNonDeterministicCompletion(5, TimeUnit.SECONDS, ()->{
+      try {
+        task.skipMessageWithOffset(1L); // won't accept skip command until task has failed on this offset.
+      } catch (VeniceException e) {
+        return false;
+      }
+    return true;
+    });
+
+    // admin throws errors, so record offset means we skipped the message
+    Mockito.verify(consumer, Mockito.timeout(TIMEOUT).times(1))
+        .commitSync(eq(topicName),
+            eq(AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID),
+            offsetAndMetadataEq(new OffsetAndMetadata(1)));
+
+    task.close();
+    executor.shutdown();
+    executor.awaitTermination(TIMEOUT, TimeUnit.MILLISECONDS);
+  }
+
+  @Test(enabled = false) // Semi-manual test for message skipping.  To run it enable the failure mode in AdminConsumptionTask.handleStoreCreation()
+  public void testSkipMessageEndToEnd() throws ExecutionException, InterruptedException {
+    String cluster = TestUtils.getUniqueString("cluster");
+    KafkaBrokerWrapper kafka = ServiceFactory.getKafkaBroker();
+    TopicManager topicManager = new TopicManager(kafka.getZkAddress());
+    String adminTopic = AdminTopicUtils.ADMIN_TOPIC_PREFIX + cluster;
+    topicManager.createTopic(adminTopic, 1, 1);
+    VeniceControllerWrapper controller = ServiceFactory.getVeniceController(cluster, kafka);
+
+    Properties props = new Properties();
+    props.put(ConfigKeys.KAFKA_BOOTSTRAP_SERVERS, kafka.getAddress());
+    VeniceProperties veniceWriterProperties = new VeniceProperties(props);
+    VeniceWriter<byte[], byte[]> writer = new VeniceWriter<>(veniceWriterProperties, adminTopic, new DefaultSerializer(), new DefaultSerializer());
+
+    byte[] message = storeCreationMessage(cluster, "store-that-fails"); // This name is special
+    long badOffset = writer.put(new byte[0], message, AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION).get().offset();
+
+    byte[] goodMessage = storeCreationMessage(cluster, "good-store");
+    writer.put(new byte[0], goodMessage, AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
+
+    Thread.sleep(5000); // Non deterministic, but whatever.  This should never fail.
+    Assert.assertFalse(controller.getVeniceAdmin().hasStore(cluster, "good-store"));
+
+    new ControllerClient(cluster, controller.getControllerUrl()).skipAdminMessage(cluster, Long.toString(badOffset));
+    TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
+      Assert.assertTrue(controller.getVeniceAdmin().hasStore(cluster, "good-store"));
+    });
+
+  }
+
+  private byte[] storeCreationMessage(String clusterName, String storeName) {
+    StoreCreation storeCreation = (StoreCreation) AdminMessageType.STORE_CREATION.getNewInstance();
+    storeCreation.clusterName = clusterName;
+    storeCreation.storeName = storeName;
+    storeCreation.owner = TestUtils.getUniqueString("owner");
+    storeCreation.keySchema = new SchemaMeta();
+    storeCreation.keySchema.schemaType = SchemaType.AVRO_1_4.ordinal();
+    storeCreation.keySchema.definition = "\"string\"";
+    storeCreation.valueSchema = new SchemaMeta();
+    storeCreation.valueSchema.schemaType = SchemaType.AVRO_1_4.ordinal();
+    storeCreation.valueSchema.definition = "\"string\"";;
+    AdminOperation message = new AdminOperation();
+    message.operationType = AdminMessageType.STORE_CREATION.ordinal();
+    message.payloadUnion = storeCreation;
+    byte[] serializedMessage = new AdminOperationSerializer().serialize(message);
+    return serializedMessage;
   }
 
   @Test (timeOut = TIMEOUT)

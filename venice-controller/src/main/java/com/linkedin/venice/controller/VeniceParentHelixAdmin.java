@@ -4,6 +4,8 @@ import com.google.common.collect.Ordering;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.controller.kafka.AdminTopicUtils;
 import com.linkedin.venice.controller.kafka.offsets.AdminOffsetManager;
+import com.linkedin.venice.controller.kafka.consumer.AdminConsumerService;
+
 import com.linkedin.venice.controller.kafka.protocol.admin.AdminOperation;
 import com.linkedin.venice.controller.kafka.protocol.admin.KillOfflinePushJob;
 import com.linkedin.venice.controller.kafka.protocol.admin.PauseStore;
@@ -674,6 +676,15 @@ public class VeniceParentHelixAdmin implements Admin {
   @Override
   public long getDelayedRebalanceTime(String clusterName) {
     throw new VeniceException("getDelayedRebalanceTime is not supported!");
+  }
+  
+  public void setAdminConsumerService(String clusterName, AdminConsumerService service){
+    veniceHelixAdmin.setAdminConsumerService(clusterName, service);
+  }
+
+  @Override
+  public void skipAdminMessage(String clusterName, long offset){
+    veniceHelixAdmin.skipAdminMessage(clusterName, offset);
   }
 
   @Override

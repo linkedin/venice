@@ -38,6 +38,7 @@ public class VeniceControllerService extends AbstractVeniceService {
     }
     // The admin consumer needs to use VeniceHelixAdmin to update Zookeeper directly
     this.consumerService = new AdminConsumerService(internalAdmin, config, consumerFactory);
+    this.admin.setAdminConsumerService(config.getClusterName(), consumerService);
   }
 
   @Override
