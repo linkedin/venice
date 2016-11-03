@@ -221,19 +221,14 @@ public class TestVeniceHelixAdmin {
 
     //Start original controller again, now it should become leader again based on Helix's logic.
     veniceAdmin.start(clusterName);
+    newMasterAdmin.stop(clusterName);
     waitForAMaster(allAdmins, clusterName, MASTER_CHANGE_TIMEOUT);
     // find the leader controller and test it could continue to add store as normal.
     if(veniceAdmin.isMasterController(clusterName)) {
       veniceAdmin.addStore(clusterName, "failedStore", "dev", keySchema, valueSchema);
-      newMasterAdmin.stop(clusterName);
-    } else if(newMasterAdmin.isMasterController(clusterName)){
-      newMasterAdmin.addStore(clusterName, "failedStore", "dev", keySchema, valueSchema);
-      newMasterAdmin.stop(clusterName);
-    } else {
-      newMasterAdmin.stop(clusterName);
+    }  else {
       Assert.fail("No leader controller is found for cluster"+clusterName);
     }
-
   }
 
   @Test(timeOut = TOTAL_TIMEOUT_FOR_LONG_TEST)
