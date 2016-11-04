@@ -10,14 +10,25 @@
             },
             {
                 "action": "schedule",
-                "matches": [ "venice-controller-test", "\\d+k-entry-test", "100-entry-test", "500m-entry-test" ],
+                "matches": [ "venice-controller-test", "\\d+k-entry-test", "100-entry-test" ],
                 "period": "1 hour"
             },
             {
                 "action": "sla",
-                "matches": [ "venice-controller-test", "\\d+k-entry-test", "100-entry-test", "500m-entry-test" ],
+                "matches": [ "venice-controller-test", "\\d+k-entry-test", "100-entry-test" ],
                 "emails": "venice-alerts@linkedin.com",
                 "duration": "45 minutes"
+            },
+            {
+                "action": "schedule",
+                "matches": [ "500m-entry-test" ],
+                "period": "24 hours"
+            },
+            {
+                "action": "sla",
+                "matches": [ "500m-entry-test" ],
+                "emails": "venice-alerts@linkedin.com",
+                "duration": "3 hours"
             }
         ]
 }

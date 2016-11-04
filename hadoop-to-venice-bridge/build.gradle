@@ -80,6 +80,7 @@ jar {
   // from "../product-spec.json"
   // override log4j properties for hadoop job
   from "log4j.properties"
+  exclude 'META-INF/*.RSA', 'META-INF/*.SF','META-INF/*.DSA'
 }
 
 task zipAzkabanDev(type: Zip, dependsOn: jar) {

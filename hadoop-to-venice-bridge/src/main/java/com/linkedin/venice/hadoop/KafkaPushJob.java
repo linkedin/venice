@@ -305,10 +305,14 @@ public class KafkaPushJob extends AbstractJob {
       }
       //TODO: send a failure END OF PUSH message if something went wrong
       getVeniceWriter().broadcastEndOfPush(Maps.newHashMap());
+      // Close VeniceWriter before polling job status since polling job status could
+      // trigger job deletion
+      closeVeniceWriter();
 
       // Waiting for Venice Backend to complete consumption
       pollStatusUntilComplete();
     } catch (Exception e) {
+      closeVeniceWriter();
       try {
         cancel();
       } catch (Exception ex) {
@@ -404,6 +408,13 @@ public class KafkaPushJob extends AbstractJob {
       this.veniceWriter = newVeniceWriter;
     }
     return this.veniceWriter;
+  }
+
+  private synchronized void closeVeniceWriter() {
+    if (null != this.veniceWriter) {
+      this.veniceWriter.close();
+      this.veniceWriter = null;
+    }
   }
 
   private void logJobProperties() {
@@ -618,6 +629,7 @@ public class KafkaPushJob extends AbstractJob {
       controllerClient.killOfflinePushJob(clusterName, topic);
       logger.info("Offline push job has been killed, topic: " + topic);
     }
+    closeVeniceWriter();
   }
 
   /**

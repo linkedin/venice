@@ -84,9 +84,7 @@ public class TopicManager implements Closeable {
   }
 
   public synchronized Set<String> listTopics() {
-    logger.debug("Beginning of listTopics");
     Set<String> topics = getConsumer().listTopics().keySet();
-    logger.debug("listTopics: " + topics);
     return topics;
   }
 
@@ -96,6 +94,11 @@ public class TopicManager implements Closeable {
    * @return
    */
   public synchronized Map<Integer, Long> getLatestOffsets(String topic) {
+    // To be safe, check whether the topic exists or not,
+    // since querying offset against non-existing topic could cause endless retrying.
+    if (! listTopics().contains(topic)) {
+      throw new VeniceException("Topic: " + topic + " doesn't exist");
+    }
     KafkaConsumer<byte[], byte[]> consumer = getConsumer();
     List<PartitionInfo> partitions = consumer.partitionsFor(topic);
     if (null == partitions) {
