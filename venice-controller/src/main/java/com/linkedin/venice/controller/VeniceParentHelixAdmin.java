@@ -239,7 +239,6 @@ public class VeniceParentHelixAdmin implements Admin {
     // TODO: consider to move version creation to admin protocol
     // Right now, TopicMonitor in each prod colo will monitor new Kafka topic and
     // create new corresponding store versions
-    // TODO: clean up kafka topic in parent Kafka cluster
     // Adding version in Parent Controller won't start offline push job.
 
     /**
@@ -253,19 +252,21 @@ public class VeniceParentHelixAdmin implements Admin {
      **/
     TopicManager topicManager = getTopicManager();
     Set<String> topics = topicManager.listTopics();
+    String storeNameForCurrentTopic;
     for (String topic: topics) {
       if (AdminTopicUtils.isAdminTopic(topic)) {
         continue;
       }
       try {
-        String storeNameForCurrentTopic = Version.parseStoreFromKafkaTopicName(topic);
-        if (storeNameForCurrentTopic.equals(storeName)) {
-          throw new VeniceException("Topic: " + topic + " exists for store: " + storeName +
-              ", please wait for previous job to be finished, and reach out Venice team if it is" +
-              " not this case");
-        }
+        storeNameForCurrentTopic = Version.parseStoreFromKafkaTopicName(topic);
       } catch (Exception e) {
-        logger.warn("Failed to parse StoreName from topic: " + topic);
+        logger.warn("Failed to parse StoreName from topic: " + topic, e);
+        continue;
+      }
+      if (storeNameForCurrentTopic.equals(storeName)) {
+        throw new VeniceException("Topic: " + topic + " exists for store: " + storeName +
+            ", please wait for previous job to be finished, and reach out Venice team if it is" +
+            " not this case");
       }
     }
     return veniceHelixAdmin.addVersion(clusterName, storeName, VeniceHelixAdmin.VERSION_ID_UNSET, numberOfPartition, replicationFactor, false);

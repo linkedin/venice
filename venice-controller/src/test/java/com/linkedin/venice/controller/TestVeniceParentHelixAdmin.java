@@ -329,7 +329,7 @@ public class TestVeniceParentHelixAdmin {
         .put(Mockito.any(), Mockito.any(), Mockito.anyInt());
 
     OffsetRecord offsetRecordForOffset1 = TestUtils.getOffsetRecord(1);
-    
+
     Mockito.when(offsetManager.getLastOffset(topicName, partitionId))
         .thenReturn(new OffsetRecord())
         .thenReturn(offsetRecordForOffset1);
@@ -395,7 +395,7 @@ public class TestVeniceParentHelixAdmin {
         .put(Mockito.any(), Mockito.any(), Mockito.anyInt());
 
     OffsetRecord offsetRecord1 = TestUtils.getOffsetRecord(1);
-    
+
     Mockito.when(offsetManager.getLastOffset(topicName, partitionId))
         .thenReturn(new OffsetRecord())
         .thenReturn(offsetRecord1);
@@ -429,6 +429,23 @@ public class TestVeniceParentHelixAdmin {
     Assert.assertEquals(killJob.kafkaTopic.toString(), kafkaTopic);
   }
 
+  @Test
+  public void testIncrementVersionWhenNoPreviousTopics() {
+    String storeName = "test_store";
+    parentAdmin.incrementVersion(clusterName, storeName, 1, 1);
+    Mockito.verify(internalAdmin).addVersion(clusterName, storeName, VeniceHelixAdmin.VERSION_ID_UNSET, 1, 1, false);
+  }
+
+  @Test (expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = ".*exists for store.*")
+  public void testIncrementVersionWhenPreviousTopicsExist() {
+    String storeName = "test_store";
+    String previousKafkaTopic = "test_store_v1";
+    String unknownTopic = "1unknown_topic";
+    Mockito.doReturn(new HashSet<String>(Arrays.asList(unknownTopic, previousKafkaTopic)))
+        .when(topicManager)
+        .listTopics();
+    parentAdmin.incrementVersion(clusterName, storeName, 1, 1);
+  }
 
   /**
    * End-to-end test
