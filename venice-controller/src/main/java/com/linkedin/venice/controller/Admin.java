@@ -174,6 +174,16 @@ public interface Admin {
      */
     boolean isStorageNodeNewerOrEqualTo(String clusterName, String instanceId, StorageNodeStatus oldServerStatus);
 
+    /**
+     * Enable or disable the delayed rebalance for the given cluster. By default, the delayed reblance is enabled/disabled
+     * depends on the cluster's configuration. Through this method, SRE/DEV could enable or disable the delayed reblance
+     * temporarily or set a different delayed rebalance time temporarily.
+     *
+     * @param  delayedTime how long the helix will not rebalance after a server is disconnected. If the given value
+     *                     equal or smaller than 0, we disable the delayed rebalance.
+     */
+    void setDelayedRebalance(String clusterName, long delayedTime);
+
     void close();
 
     /**

@@ -70,7 +70,6 @@ public class TestVeniceHelixAdmin {
   public static final long MASTER_CHANGE_TIMEOUT = 10 * Time.MS_PER_SECOND;
   public static final long TOTAL_TIMEOUT_FOR_LONG_TEST = 30 * Time.MS_PER_SECOND;
   public static final long TOTAL_TIMEOUT_FOR_SHORT_TEST = 10 * Time.MS_PER_SECOND;
-
   @BeforeMethod
   public void setup()
       throws Exception {

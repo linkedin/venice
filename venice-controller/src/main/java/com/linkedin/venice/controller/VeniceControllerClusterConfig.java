@@ -30,6 +30,14 @@ public class VeniceControllerClusterConfig {
   private long offLinejobWaitTimeInMilliseconds;
   private boolean enableTopicDeletionWhenJobFailed;
   private int minRequiredOnlineReplicaToStopServer;
+  /**
+   * After server disconnecting for delayToRebalanceMS, helix would trigger the re-balance immediately.
+   */
+  private long delayToRebalanceMS;
+  /**
+   * If the replica count smaller than minActiveReplica, helix would trigger the re-balance immediately.
+   */
+  private int minActiveReplica;
 
   /**
    * kafka Bootstrap Urls . IF there is more than one url, they are separated by commas
@@ -70,6 +78,11 @@ public class VeniceControllerClusterConfig {
     // By default, enable topic deletion when job failed.
     enableTopicDeletionWhenJobFailed = props.getBoolean(ENABLE_TOPIC_DELETION_WHEN_JOB_FAILED, true);
     minRequiredOnlineReplicaToStopServer = props.getInt(MIN_REQUIRED_ONLINE_REPLICA_TO_STOP_SERVER, 1);
+    // By default, delayed rebalance is disabled.
+    delayToRebalanceMS = props.getLong(DELAY_TO_REBALANCE_MS, 0);
+    // By default, the min active replica is replica factor minus one, which means if more than one server failed,
+    // helix would trigger re-balance immediately.
+    minActiveReplica = props.getInt(MIN_ACTIVE_REPLICA, replicaFactor - 1);
 
     if (props.containsKey(PERSISTENCE_TYPE)) {
       persistenceType = PersistenceType.valueOf(props.getString(PERSISTENCE_TYPE));
@@ -155,6 +168,14 @@ public class VeniceControllerClusterConfig {
 
   public int getMinRequiredOnlineReplicaToStopServer() {
     return minRequiredOnlineReplicaToStopServer;
+  }
+
+  public long getDelayToRebalanceMS() {
+    return delayToRebalanceMS;
+  }
+
+  public int getMinActiveReplica() {
+    return minActiveReplica;
   }
 
   /**

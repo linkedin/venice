@@ -79,6 +79,9 @@ public class HelixStatusMessageChannel implements StatusMessageChannel {
         logger.info("Wait " + retryDurationMs + "ms to retry.");
         Utils.sleep(retryDurationMs);
         logger.info("Attempt #" + attempt + ": Sending message to controller.");
+        // Use a new message Id, otherwise controller will not handle the retry message because it think it had already failed.
+        // It a new issue introduced by new helix version 0.6.6.1
+        helixMessage.setMsgId(StatusMessage.generateMessageId());
       }
       try {
         ControlMessageCallback callBack = new ControlMessageCallback();

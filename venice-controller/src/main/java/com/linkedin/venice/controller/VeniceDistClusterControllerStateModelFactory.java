@@ -37,6 +37,10 @@ public class VeniceDistClusterControllerStateModelFactory extends StateModelFact
     clusterToConfigsMap.put(veniceClusterName, config);
   }
 
+  public VeniceControllerClusterConfig getClusterConfig(String veniceClusterName) {
+    return clusterToConfigsMap.get(veniceClusterName);
+  }
+
   public void deleteClusterConfig(String veniceClusterName) {
     clusterToConfigsMap.remove(veniceClusterName);
   }

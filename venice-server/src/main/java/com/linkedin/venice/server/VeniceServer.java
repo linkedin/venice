@@ -112,7 +112,6 @@ public class VeniceServer {
     //create and add KafkaSimpleConsumerService
     KafkaConsumerPerStoreService kafkaConsumerService =
         new KafkaConsumerPerStoreService(storageService.getStoreRepository(), veniceConfigLoader, offSetService, schemaRepo);
-    services.add(kafkaConsumerService);
 
     // start venice participant service if Helix is enabled.
     if(clusterConfig.isHelixEnabled()) {
@@ -121,6 +120,9 @@ public class VeniceServer {
               clusterConfig.getZookeeperAddress(), clusterConfig.getClusterName(),
               veniceConfigLoader.getVeniceServerConfig().getListenerPort());
       services.add(helixParticipationService);
+      // Add kafka consumer service last so when shutdown the server, it will be stopped first to avoid the case
+      // that helix is disconnected but consumption service try to send message by helix.
+      services.add(kafkaConsumerService);
     } else {
       // Note: Only required when NOT using Helix.
       throw new UnsupportedOperationException("Only Helix mode of operation is supported");

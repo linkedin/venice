@@ -17,8 +17,9 @@ public class ServiceFactory {
   // Test config
   private static final int MAX_ATTEMPT = 10;
   private static final int MAX_ASYNC_WAIT_TIME_MS = 10 * Time.MS_PER_SECOND;
-  private static final int DEFAULT_REPLICA_FACTOR =1;
+  private static final int DEFAULT_REPLICATION_FACTOR =1;
   private static final int DEFAULT_PARTITION_SIZE_BYTES = 100;
+  private static final long DEFAULT_DELAYED_TO_REBALANCE_MS = 0; // By default, disable the delayed rebalance for testing.
 
   /**
    * @return an instance of {@link ZkServerWrapper}
@@ -48,16 +49,18 @@ public class ServiceFactory {
    * @return an instance of {@link com.linkedin.venice.controller.VeniceControllerService}
    */
   public static VeniceControllerWrapper getVeniceController(String clusterName, KafkaBrokerWrapper kafkaBrokerWrapper) {
-    return getVeniceController(clusterName, kafkaBrokerWrapper,DEFAULT_REPLICA_FACTOR, DEFAULT_PARTITION_SIZE_BYTES);
+    return getVeniceController(clusterName, kafkaBrokerWrapper, DEFAULT_REPLICATION_FACTOR, DEFAULT_PARTITION_SIZE_BYTES,
+        DEFAULT_DELAYED_TO_REBALANCE_MS, DEFAULT_REPLICATION_FACTOR);
   }
 
   /**
    * @return an instance of {@link com.linkedin.venice.controller.VeniceControllerService}
    */
-  public static VeniceControllerWrapper getVeniceController(String clusterName, KafkaBrokerWrapper kafkaBrokerWrapper, int replicaFactor, int partitionSize) {
-    return getStatefulService(
-        VeniceControllerWrapper.SERVICE_NAME,
-        VeniceControllerWrapper.generateService(clusterName, kafkaBrokerWrapper, false, replicaFactor, partitionSize));
+  public static VeniceControllerWrapper getVeniceController(String clusterName, KafkaBrokerWrapper kafkaBrokerWrapper,
+      int replicaFactor, int partitionSize, long delayToRebalanceMS, int minActiveReplica) {
+    return getStatefulService(VeniceControllerWrapper.SERVICE_NAME,
+        VeniceControllerWrapper.generateService(clusterName, kafkaBrokerWrapper, false, replicaFactor, partitionSize,
+            delayToRebalanceMS, minActiveReplica));
   }
 
   /**
@@ -66,8 +69,8 @@ public class ServiceFactory {
   public static VeniceControllerWrapper getVeniceParentController(String clusterName, KafkaBrokerWrapper kafkaBrokerWrapper) {
     return getStatefulService(
         VeniceControllerWrapper.SERVICE_NAME,
-        VeniceControllerWrapper.generateService(clusterName, kafkaBrokerWrapper, true, DEFAULT_REPLICA_FACTOR,
-            DEFAULT_PARTITION_SIZE_BYTES));
+        VeniceControllerWrapper.generateService(clusterName, kafkaBrokerWrapper, true, DEFAULT_REPLICATION_FACTOR,
+            DEFAULT_PARTITION_SIZE_BYTES, DEFAULT_DELAYED_TO_REBALANCE_MS, DEFAULT_REPLICATION_FACTOR));
   }
 
   public static VeniceServerWrapper getVeniceServer(String clusterName, KafkaBrokerWrapper kafkaBrokerWrapper,
@@ -121,11 +124,11 @@ public class ServiceFactory {
 
   public static VeniceClusterWrapper getVeniceCluster() {
     // Get the cluster with 1 controller, 1 server and 1 router by default.
-    return getVeniceCluster(1, 1, 1, DEFAULT_REPLICA_FACTOR, DEFAULT_PARTITION_SIZE_BYTES);
+    return getVeniceCluster(1, 1, 1, DEFAULT_REPLICATION_FACTOR, DEFAULT_PARTITION_SIZE_BYTES);
   }
 
   public static VeniceClusterWrapper getVeniceCluster(int numberOfControllers, int numberOfServers, int numberOfRouter) {
-    return getVeniceCluster(numberOfControllers, numberOfServers, numberOfRouter, DEFAULT_REPLICA_FACTOR,
+    return getVeniceCluster(numberOfControllers, numberOfServers, numberOfRouter, DEFAULT_REPLICATION_FACTOR,
         DEFAULT_PARTITION_SIZE_BYTES);
   }
 
@@ -136,14 +139,15 @@ public class ServiceFactory {
     // reached, venice can not create new resource which will cause failed tests.
     // Enable to start multiple controllers and routers too, so that we could fail some of them to do the failover integration test.
     return getService(VeniceClusterWrapper.SERVICE_NAME,
-        VeniceClusterWrapper.generateService(numberOfControllers, numberOfServers, numberOfRouter, replicaFactor, partitionSize, false, false));
+        VeniceClusterWrapper.generateService(numberOfControllers, numberOfServers, numberOfRouter, replicaFactor,
+            partitionSize, false, false, DEFAULT_DELAYED_TO_REBALANCE_MS, replicaFactor));
   }
-
+  // TODO instead of passing more and more parameters here, we could create a class ClusterOptions to include all of options to start a cluster. Then we only need one parameter here.
   public static VeniceClusterWrapper getVeniceCluster(int numberOfControllers, int numberOfServers, int numberOfRouter,
-      int replicaFactor, int partitionSize, boolean enableWhitelist, boolean enableAutoJoinWhitelist) {
+      int replicaFactor, int partitionSize, boolean enableWhitelist, boolean enableAutoJoinWhitelist, long delayToRebalanceMS, int minActiveReplica) {
     return getService(VeniceClusterWrapper.SERVICE_NAME,
         VeniceClusterWrapper.generateService(numberOfControllers, numberOfServers, numberOfRouter, replicaFactor,
-            partitionSize, enableWhitelist, enableAutoJoinWhitelist));
+            partitionSize, enableWhitelist, enableAutoJoinWhitelist, delayToRebalanceMS, minActiveReplica));
   }
 
   private static <S extends ProcessWrapper> S getStatefulService(String serviceName, StatefulServiceProvider<S> serviceProvider) {

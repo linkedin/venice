@@ -3,13 +3,9 @@ package com.linkedin.venice.integration.utils;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.VeniceController;
 import com.linkedin.venice.controllerapi.ControllerClient;
-import com.linkedin.venice.controllerapi.NewStoreResponse;
-import com.linkedin.venice.controllerapi.VersionCreationResponse;
-import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Version;
 
 import com.linkedin.venice.utils.PropertyBuilder;
-import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.io.File;
 
@@ -36,7 +32,8 @@ public class VeniceControllerWrapper extends ProcessWrapper {
   }
 
   static StatefulServiceProvider<VeniceControllerWrapper> generateService(String clusterName,
-      KafkaBrokerWrapper kafkaBrokerWrapper, boolean isParent, int replicaFactor, int partitionSize) {
+      KafkaBrokerWrapper kafkaBrokerWrapper, boolean isParent, int replicaFactor, int partitionSize,
+      long delayToReblanceMS, int minActiveReplica) {
     // TODO: Once the ZK address used by Controller and Kafka are decoupled, change this
     String zkAddress = kafkaBrokerWrapper.getZkAddress();
 
@@ -58,7 +55,9 @@ public class VeniceControllerWrapper extends ProcessWrapper {
           .put(DEFAULT_MAX_NUMBER_OF_PARTITIONS, 10)
           .put(DEFAULT_PARTITION_SIZE, partitionSize)
           .put(TOPIC_MONITOR_POLL_INTERVAL_MS, 100)
-          .put(CONTROLLER_PARENT_MODE, isParent);
+          .put(CONTROLLER_PARENT_MODE, isParent)
+          .put(DELAY_TO_REBALANCE_MS, delayToReblanceMS)
+          .put(MIN_ACTIVE_REPLICA, minActiveReplica);
       if (isParent) {
         // Parent controller needs config to route per-cluster requests such as job status
         // This dummy parent controller wont support such requests until we make this config configurable.
