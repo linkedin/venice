@@ -4,7 +4,6 @@ import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.Utils;
-
 import java.io.Closeable;
 import java.io.IOException;
 import java.io.InputStream;
@@ -15,10 +14,12 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
 import org.apache.commons.io.IOUtils;
 import org.apache.http.HttpHeaders;
 import org.apache.http.HttpResponse;
 import org.apache.http.NameValuePair;
+import org.apache.http.client.config.RequestConfig;
 import org.apache.http.client.entity.UrlEncodedFormEntity;
 import org.apache.http.client.methods.HttpGet;
 import org.apache.http.client.methods.HttpPost;
@@ -560,7 +561,15 @@ public class ControllerClient implements Closeable {
 
   private static String getJsonFromHttp(HttpRequestBase httpRequest) {
     HttpResponse response = null;
-    try(CloseableHttpAsyncClient httpClient = HttpAsyncClients.createDefault()){
+    try(CloseableHttpAsyncClient httpClient =
+        HttpAsyncClients
+        .custom()
+        .setDefaultRequestConfig(
+            RequestConfig
+            .custom()
+            .setSocketTimeout((int) TimeUnit.MINUTES.toMillis(3))
+            .build())
+        .build()){
       httpClient.start();
       response = httpClient.execute(httpRequest, null).get();
     } catch (Exception e) {
