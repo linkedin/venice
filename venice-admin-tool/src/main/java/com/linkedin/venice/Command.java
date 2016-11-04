@@ -16,6 +16,8 @@ public enum Command {
       new Arg[] {Arg.URL, Arg.CLUSTER, Arg.STORE}),
   JOB_STATUS("job-status", "Query the ingest status of a running push job",
       new Arg[] {Arg.URL, Arg.CLUSTER, Arg.STORE, Arg.VERSION}),
+  KILL_JOB("kill-job", "Kill a running push job",
+      new Arg[] {Arg.URL, Arg.CLUSTER, Arg.STORE, Arg.VERSION}),
   NEW_STORE("new-store", "",
       new Arg[] {Arg.URL, Arg.CLUSTER, Arg.STORE, Arg.OWNER, Arg.KEY_SCHEMA, Arg.VALUE_SCHEMA}),
   SET_VERSION("set-version", "Set the version that will be served",

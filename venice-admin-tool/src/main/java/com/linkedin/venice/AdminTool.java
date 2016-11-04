@@ -115,13 +115,20 @@ public class AdminTool {
         for (String store : storeResponse.getStores()) {
           printStoreDescription(routerHosts, clusterName, store);
         }
-      } else if (cmd.hasOption(Command.JOB_STATUS.toString())){
+      } else if (cmd.hasOption(Command.JOB_STATUS.toString())) {
         String storeName = getRequiredArgument(cmd, Arg.STORE, Command.JOB_STATUS);
         String versionString = getRequiredArgument(cmd, Arg.VERSION, Command.JOB_STATUS);
         int version = Integer.parseInt(versionString);
         String topicName = new Version(storeName, version).kafkaTopicName();
         JobStatusQueryResponse jobStatus = ControllerClient.queryJobStatus(routerHosts, clusterName, topicName);
         printObject(jobStatus);
+      } else if (cmd.hasOption(Command.KILL_JOB.toString())){
+        String storeName = getRequiredArgument(cmd, Arg.STORE, Command.KILL_JOB);
+        String versionString = getRequiredArgument(cmd, Arg.VERSION, Command.KILL_JOB);
+        int version = Integer.parseInt(versionString);
+        String topicName = new Version(storeName, version).kafkaTopicName();
+        ControllerResponse response = new ControllerClient(clusterName, routerHosts).killOfflinePushJob(clusterName, topicName);
+        printObject(response);
       } else if (cmd.hasOption(Command.NEW_STORE.toString())) {
         createNewStore(cmd, routerHosts, clusterName);
       } else if (cmd.hasOption(Command.PAUSE_STORE.toString())) {
