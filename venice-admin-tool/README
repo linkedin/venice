@@ -13,6 +13,8 @@ usage: java -jar venice-admin-tool-0.1.jar --<command> [parameters]
     --job-status                 Query the ingest status of a running push
                                  job.  Requires: --url, --cluster,
                                  --store, --version
+    --kill-job                   Kill a running push job.  Requires:
+                                 --url, --cluster, --store, --version
     --list-storage-nodes         Requires: --url, --cluster
     --list-stores                Requires: --url, --cluster
     --new-store                  Requires: --url, --cluster, --store,
@@ -67,6 +69,7 @@ java -jar venice-admin-tool-0.1.jar --describe-stores --url <url> --cluster <clu
 java -jar venice-admin-tool-0.1.jar --pause-store --url <url> --cluster <cluster> --store <store>
 java -jar venice-admin-tool-0.1.jar --resume-store --url <url> --cluster <cluster> --store <store>
 java -jar venice-admin-tool-0.1.jar --job-status --url <url> --cluster <cluster> --store <store> --version <version>
+java -jar venice-admin-tool-0.1.jar --kill-job --url <url> --cluster <cluster> --store <store> --version <version>
 java -jar venice-admin-tool-0.1.jar --new-store --url <url> --cluster <cluster> --store <store> --owner <owner> --key-schema-file <key-schema-file> --value-schema-file <value-schema-file>
 java -jar venice-admin-tool-0.1.jar --set-version --url <url> --cluster <cluster> --store <store> --version <version>
 java -jar venice-admin-tool-0.1.jar --add-schema --url <url> --cluster <cluster> --store <store> --value-schema-file <value-schema-file>
