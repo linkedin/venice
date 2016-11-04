@@ -8,7 +8,6 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.Utils;
 import java.util.Map;
-import spark.Request;
 import spark.Route;
 
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.CLUSTER;
@@ -41,13 +40,10 @@ public class JobRoutes {
     JobStatusQueryResponse responseObject = new JobStatusQueryResponse();
 
     Version version = new Version(store, versionNumber);
-
-    //Job status
-    String jobStatus = admin.getOffLineJobStatus(cluster, version.kafkaTopicName()).toString();
-    responseObject.setStatus(jobStatus);
+    String kafkaTopicName = version.kafkaTopicName();
 
     //Available offsets
-    Map<Integer, Long> offsets = admin.getTopicManager().getLatestOffsets(version.kafkaTopicName());
+    Map<Integer, Long> offsets = admin.getTopicManager().getLatestOffsets(kafkaTopicName);
     int replicationFactor = admin.getReplicationFactor(cluster, store);
     int clusterCount = admin.getDatacenterCount(cluster);
     long aggregateOffsets = 0;
@@ -58,7 +54,7 @@ public class JobRoutes {
     responseObject.setPerPartitionCapacity(offsets);
 
     //Current offsets
-    Map<String, Long> currentProgress = admin.getOfflineJobProgress(cluster, version.kafkaTopicName());
+    Map<String, Long> currentProgress = admin.getOfflineJobProgress(cluster, kafkaTopicName);
     responseObject.setPerTaskProgress(currentProgress);
 
     //Aggregated progress
@@ -67,6 +63,14 @@ public class JobRoutes {
       aggregatedProgress += taskOffset;
     }
     responseObject.setMessagesConsumed(aggregatedProgress);
+
+    /**
+     * Job status
+     * Job status query should happen after 'querying offset' since job status query could
+     * delete current topic
+     */
+    String jobStatus = admin.getOffLineJobStatus(cluster, kafkaTopicName).toString();
+    responseObject.setStatus(jobStatus);
 
     //TODO: available offsets finalized
     responseObject.setAvailableFinal(false);
