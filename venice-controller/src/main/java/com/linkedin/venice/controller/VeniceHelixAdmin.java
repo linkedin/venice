@@ -34,14 +34,18 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 import org.apache.commons.io.IOUtils;
+import org.apache.helix.ConfigAccessor;
 import org.apache.helix.HelixAdmin;
 import org.apache.helix.HelixManager;
 import org.apache.helix.HelixManagerFactory;
 import org.apache.helix.InstanceType;
 import org.apache.helix.PropertyKey;
+import org.apache.helix.controller.rebalancer.DelayedAutoRebalancer;
+import org.apache.helix.controller.rebalancer.strategy.AutoRebalanceStrategy;
 import org.apache.helix.manager.zk.ZKHelixAdmin;
 import org.apache.helix.manager.zk.ZKHelixManager;
 import org.apache.helix.manager.zk.ZkClient;
+import org.apache.helix.model.ClusterConfig;
 import org.apache.helix.model.HelixConfigScope;
 import org.apache.helix.model.IdealState;
 import org.apache.helix.model.LeaderStandbySMD;
@@ -368,7 +372,16 @@ public class VeniceHelixAdmin implements Admin {
     private void createHelixResources(String clusterName, String kafkaTopic , int numberOfPartition , int replicationFactor) {
         if (!admin.getResourcesInCluster(clusterName).contains(kafkaTopic)) {
             admin.addResource(clusterName, kafkaTopic, numberOfPartition,
-                    VeniceStateModel.PARTITION_ONLINE_OFFLINE_STATE_MODEL, IdealState.RebalanceMode.FULL_AUTO.toString());
+                VeniceStateModel.PARTITION_ONLINE_OFFLINE_STATE_MODEL, IdealState.RebalanceMode.FULL_AUTO.toString(),
+                AutoRebalanceStrategy.class.getName());
+            VeniceControllerClusterConfig config = getVeniceHelixResource(clusterName).getConfig();
+            IdealState idealState = admin.getResourceIdealState(clusterName, kafkaTopic);
+            // We don't set the delayed time per resoruce, we will use the cluster level helix config to decide
+            // the delayed reblance time
+            idealState.setRebalancerClassName(DelayedAutoRebalancer.class.getName());
+            idealState.setMinActiveReplicas(config.getMinActiveReplica());
+            admin.setResourceIdealState(clusterName, kafkaTopic, idealState);
+            logger.info("Enabled delayed re-balance for resource:" + kafkaTopic);
             admin.rebalance(clusterName, kafkaTopic, replicationFactor);
             logger.info("Added " + kafkaTopic + " as a resource to cluster: " + clusterName);
         } else {
@@ -543,12 +556,21 @@ public class VeniceHelixAdmin implements Admin {
             return;
         }
 
+        VeniceControllerClusterConfig config = controllerStateModelFactory.getClusterConfig(clusterName);
         HelixConfigScope configScope = new HelixConfigScopeBuilder(HelixConfigScope.ConfigScopeProperty.CLUSTER).
                 forCluster(clusterName).build();
         Map<String, String> helixClusterProperties = new HashMap<String, String>();
         helixClusterProperties.put(ZKHelixManager.ALLOW_PARTICIPANT_AUTO_JOIN, String.valueOf(true));
+        long delayedTime = config.getDelayToRebalanceMS();
+        if (delayedTime > 0) {
+            helixClusterProperties.put(ClusterConfig.ClusterConfigProperty.DELAY_REBALANCE_DISABLED.name(),
+                String.valueOf(false));
+            helixClusterProperties.put(ClusterConfig.ClusterConfigProperty.DELAY_REBALANCE_TIME.name(),
+                String.valueOf(delayedTime));
+        }
         admin.setConfig(configScope, helixClusterProperties);
-        logger.info("Cluster  " + clusterName + "  Completed, auto join to true. ");
+        logger.info(
+            "Cluster  " + clusterName + "  Completed, auto join to true. Delayed rebalance time:" + delayedTime);
 
         admin.addStateModelDef(clusterName, VeniceStateModel.PARTITION_ONLINE_OFFLINE_STATE_MODEL,
             VeniceStateModel.getDefinition());
@@ -779,6 +801,33 @@ public class VeniceHelixAdmin implements Admin {
         checkControllerMastership(clusterName);
         StorageNodeStatus currentStatus = getStorageNodeStatus(clusterName, instanceId);
         return currentStatus.isNewerOrEqual(oldStatus);
+    }
+
+    @Override
+    public void setDelayedRebalance(String clusterName, long delayedTime) {
+        boolean enable = delayedTime > 0;
+        VeniceControllerClusterConfig config = getVeniceHelixResource(clusterName).getConfig();
+        if (enable == true && config.getDelayToRebalanceMS() <= 0) {
+            //Try to enable delayed reblance but the delayed time to rebalance has not been set.
+            String errorMsg =
+                "Can not enable delayed rebalance for cluster:" + clusterName + ", because delayToRebalance <= 0";
+            logger.error(errorMsg);
+            throw new VeniceException(errorMsg);
+        }
+        PropertyKey.Builder keyBuilder = new PropertyKey.Builder(clusterName);
+        ClusterConfig clusterConfig = manager.getHelixDataAccessor().getProperty(keyBuilder.clusterConfig());
+        clusterConfig.getRecord()
+            .setBooleanField(ClusterConfig.ClusterConfigProperty.DELAY_REBALANCE_DISABLED.name(), !enable);
+        clusterConfig.getRecord()
+            .setLongField(ClusterConfig.ClusterConfigProperty.DELAY_REBALANCE_TIME.name(), delayedTime);
+        manager.getHelixDataAccessor().setProperty(keyBuilder.clusterConfig(), clusterConfig);
+        //TODO use the helix new config API below once it's ready. Right now helix has a bug that controller would not get the update from the new config.
+        /* ConfigAccessor configAccessor = new ConfigAccessor(zkClient);
+        HelixConfigScope clusterScope =
+            new HelixConfigScopeBuilder(HelixConfigScope.ConfigScopeProperty.CLUSTER).forCluster(clusterName).build();
+        configAccessor.set(clusterScope, ClusterConfig.ClusterConfigProperty.DELAY_REBALANCE_DISABLED.name(),
+            String.valueOf(disable));*/
+        logger.info(enable ? "Enable" : "Disable" + " delayed rebalance for cluster:" + clusterName);
     }
 
     @Override

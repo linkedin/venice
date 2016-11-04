@@ -16,7 +16,6 @@ import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.VeniceWriter;
 import java.io.File;
-import java.net.URL;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -44,6 +43,8 @@ public class VeniceClusterWrapper extends ProcessWrapper {
   private final KafkaBrokerWrapper kafkaBrokerWrapper;
   private final int defaultReplicaFactor;
   private final int defaultPartitionSize;
+  private final long defaultDelayToRebalanceMS;
+  private final int defaultMinActiveReplica;
   private final Map<Integer, VeniceControllerWrapper> veniceControllerWrappers;
   private final Map<Integer, VeniceServerWrapper> veniceServerWrappers;
   private final Map<Integer, VeniceRouterWrapper> veniceRouterWrappers;
@@ -56,7 +57,9 @@ public class VeniceClusterWrapper extends ProcessWrapper {
                        Map<Integer, VeniceServerWrapper> veniceServerWrappers,
                        Map<Integer, VeniceRouterWrapper> veniceRouterWrappers,
                        int defaultReplicaFactor,
-                       int defaultPartitionSize) {
+                       int defaultPartitionSize,
+                       long defaultDelayToRebalanceMS,
+                       int mintActiveReplica) {
     super(SERVICE_NAME, dataDirectory);
     this.clusterName = clusterName;
     this.zkServerWrapper = zkServerWrapper;
@@ -66,10 +69,13 @@ public class VeniceClusterWrapper extends ProcessWrapper {
     this.veniceRouterWrappers = veniceRouterWrappers;
     this.defaultReplicaFactor = defaultReplicaFactor;
     this.defaultPartitionSize = defaultPartitionSize;
+    this.defaultDelayToRebalanceMS = defaultDelayToRebalanceMS;
+    this.defaultMinActiveReplica = mintActiveReplica;
   }
 
   static ServiceProvider<VeniceClusterWrapper> generateService(int numberOfControllers, int numberOfServers,
-      int numberOfRouters, int replicaFactor, int partitionSize, boolean enableWhitelist, boolean enableAutoJoinWhitelist) {
+      int numberOfRouters, int replicaFactor, int partitionSize, boolean enableWhitelist,
+      boolean enableAutoJoinWhitelist, long delayToReblanceMS, int minActiveReplica) {
     /**
      * We get the various dependencies outside of the lambda, to avoid having a time
      * complexity of O(N^2) on the amount of retries. The calls have their own retries,
@@ -82,7 +88,8 @@ public class VeniceClusterWrapper extends ProcessWrapper {
     Map<Integer, VeniceControllerWrapper> veniceControllerWrappers = new HashMap<>();
     for (int i = 0; i < numberOfControllers; i++) {
       VeniceControllerWrapper veniceControllerWrapper =
-          ServiceFactory.getVeniceController(clusterName, kafkaBrokerWrapper, replicaFactor, partitionSize);
+          ServiceFactory.getVeniceController(clusterName, kafkaBrokerWrapper, replicaFactor, partitionSize,
+              delayToReblanceMS, minActiveReplica);
       veniceControllerWrappers.put(veniceControllerWrapper.getPort(), veniceControllerWrapper);
     }
 
@@ -100,7 +107,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
     }
 
     return (serviceName, port) -> new VeniceClusterWrapper(null, clusterName, zkServerWrapper, kafkaBrokerWrapper,
-        veniceControllerWrappers, veniceServerWrappers, veniceRouterWrappers, replicaFactor, partitionSize);
+        veniceControllerWrappers, veniceServerWrappers, veniceRouterWrappers, replicaFactor, partitionSize, delayToReblanceMS, minActiveReplica);
   }
 
   public String getClusterName() {
@@ -175,7 +182,8 @@ public class VeniceClusterWrapper extends ProcessWrapper {
 
   public VeniceControllerWrapper addVeniceController() {
     VeniceControllerWrapper veniceControllerWrapper =
-        ServiceFactory.getVeniceController(clusterName, kafkaBrokerWrapper, defaultReplicaFactor, defaultPartitionSize);
+        ServiceFactory.getVeniceController(clusterName, kafkaBrokerWrapper, defaultReplicaFactor, defaultPartitionSize,
+            defaultDelayToRebalanceMS, defaultMinActiveReplica);
     veniceControllerWrappers.put(veniceControllerWrapper.getPort(), veniceControllerWrapper);
     return veniceControllerWrapper;
   }

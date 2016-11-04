@@ -1,6 +1,7 @@
 package com.linkedin.venice.status;
 
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.guid.GuidUtils;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
@@ -37,9 +38,7 @@ public abstract class StatusMessage {
    * Default constructor, only used in constructor of sub-class. So visible level is protected but not public.
    */
   protected StatusMessage() {
-    // Confirmed with helix team. The message Id is used as the key for zk node. So it must be a global unique Id.
-    // And Helix also use Java UUID for other helix message. So we just follow this stand here.
-    this.messageId = UUID.randomUUID().toString();
+    messageId = generateMessageId();
   }
 
   /**
@@ -75,6 +74,12 @@ public abstract class StatusMessage {
     } else {
       return null;
     }
+  }
+
+  public static String generateMessageId(){
+    // Confirmed with helix team. The message Id is used as the key for zk node. So it must be a global unique Id.
+    // And Helix also use Java UUID for other helix message. So we just follow this stand here.
+    return GuidUtils.getGUIDString();
   }
 
 }

@@ -3,6 +3,7 @@ package com.linkedin.venice.guid;
 import com.linkedin.venice.kafka.protocol.GUID;
 import com.linkedin.venice.utils.ReflectUtils;
 import com.linkedin.venice.utils.VeniceProperties;
+import java.util.UUID;
 import org.apache.avro.specific.FixedSize;
 import java.nio.charset.Charset;
 
@@ -42,5 +43,9 @@ public class GuidUtils {
 
   public static CharSequence getCharSequenceFromGuid(GUID guid) {
     return new String(guid.bytes(), CHARSET); // TODO: Optimize this. It's probably expensive...
+  }
+
+  public static String getGUIDString(){
+    return UUID.randomUUID().toString();
   }
 }
