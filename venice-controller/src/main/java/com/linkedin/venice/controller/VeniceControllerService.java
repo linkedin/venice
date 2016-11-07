@@ -19,30 +19,25 @@ import java.util.Properties;
  * A service venice controller. Wraps Helix Controller.
  */
 public class VeniceControllerService extends AbstractVeniceService {
-
   private static final Logger logger = Logger.getLogger(VeniceControllerService.class);
 
   private final Admin admin;
-  private final AdminOffsetManager adminOffsetManager;
   private final VeniceControllerClusterConfig config;
   private final AdminConsumerService consumerService;
-  private final KafkaConsumerWrapper consumer;
 
   public VeniceControllerService(VeniceControllerConfig config) {
     this.config = config;
-    VeniceHelixAdmin internalAdmin = new VeniceHelixAdmin(config);
     VeniceConsumerFactory consumerFactory = new VeniceConsumerFactory();
-    this.consumer = consumerFactory.getConsumer(getKafkaConsumerProperties());
-    this.adminOffsetManager = new AdminOffsetManager(consumer);
+    VeniceHelixAdmin internalAdmin = new VeniceHelixAdmin(config);
     if (config.isParent()) {
-      this.admin = new VeniceParentHelixAdmin(internalAdmin, this.adminOffsetManager, config);
+      this.admin = new VeniceParentHelixAdmin(internalAdmin, config, consumerFactory);
       logger.info("Controller works as a parent controller.");
     } else {
       this.admin = internalAdmin;
       logger.info("Controller works as a normal controller.");
     }
     // The admin consumer needs to use VeniceHelixAdmin to update Zookeeper directly
-    this.consumerService = new AdminConsumerService(config, internalAdmin, this.adminOffsetManager, this.consumer);
+    this.consumerService = new AdminConsumerService(internalAdmin, config, consumerFactory);
   }
 
   @Override
@@ -63,7 +58,6 @@ public class VeniceControllerService extends AbstractVeniceService {
     } catch (Exception e) {
       logger.error("Got exception when stop AdminConsumerService", e);
     }
-    consumer.close();
 
     logger.info("Stop cluster:" + config.getClusterName());
   }
@@ -72,15 +66,14 @@ public class VeniceControllerService extends AbstractVeniceService {
     return admin;
   }
 
-
-  private Properties getKafkaConsumerProperties() {
+  public static Properties getKafkaConsumerProperties(String kafkaBootstrapServers, String clusterName) {
     Properties kafkaConsumerProperties = new Properties();
-    kafkaConsumerProperties.setProperty(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, config.getKafkaBootstrapServers());
+    kafkaConsumerProperties.setProperty(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, kafkaBootstrapServers);
     /**
      * We should use the same consumer group for all the consumers for the given cluster since
      * the offset is being persisted in Kafka, which is per consumer group.
      */
-    kafkaConsumerProperties.setProperty(ConsumerConfig.GROUP_ID_CONFIG, config.getClusterName());
+    kafkaConsumerProperties.setProperty(ConsumerConfig.GROUP_ID_CONFIG, clusterName);
     kafkaConsumerProperties.setProperty(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
     /**
      * Two reasons to disable auto_commit

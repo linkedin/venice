@@ -1,7 +1,9 @@
 package com.linkedin.venice.controller.kafka.consumer;
 
 import com.linkedin.venice.controller.Admin;
+import com.linkedin.venice.controller.VeniceControllerService;
 import com.linkedin.venice.controller.kafka.AdminTopicUtils;
+import com.linkedin.venice.controller.kafka.offsets.AdminOffsetManager;
 import com.linkedin.venice.controller.kafka.protocol.admin.AdminOperation;
 import com.linkedin.venice.controller.kafka.protocol.admin.KillOfflinePushJob;
 import com.linkedin.venice.controller.kafka.protocol.admin.PauseStore;
@@ -13,14 +15,16 @@ import com.linkedin.venice.controller.kafka.protocol.serializer.AdminOperationSe
 import com.linkedin.venice.controller.stats.ControllerStats;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.consumer.KafkaConsumerWrapper;
+import com.linkedin.venice.kafka.consumer.VeniceConsumerFactory;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.message.KafkaKey;
-import com.linkedin.venice.offsets.OffsetManager;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.utils.Utils;
+
+import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
@@ -43,7 +47,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
   private final String clusterName;
   private final String topic;
   private final String consumerTaskId;
-  private final OffsetManager offsetManager;
+  private final AdminOffsetManager offsetManager;
   private final Admin admin;
   private final boolean isParentController;
   private final AtomicBoolean isRunning;
@@ -57,16 +61,14 @@ public class AdminConsumptionTask implements Runnable, Closeable {
   private boolean topicExists;
 
   public AdminConsumptionTask(String clusterName,
-                              KafkaConsumerWrapper consumer,
-                              OffsetManager offsetManager,
+                              VeniceConsumerFactory consumerFactory,
+                              String kafkaBootstrapServers,
                               Admin admin,
                               long failureRetryTimeoutMs,
                               boolean isParentController) {
     this.clusterName = clusterName;
     this.topic = AdminTopicUtils.getTopicNameFromClusterName(clusterName);
     this.consumerTaskId = String.format(CONSUMER_TASK_ID_FORMAT, this.topic);
-    this.consumer = consumer;
-    this.offsetManager = offsetManager;
     this.admin = admin;
     this.isParentController = isParentController;
     this.failureRetryTimeoutMs = failureRetryTimeoutMs;
@@ -78,6 +80,10 @@ public class AdminConsumptionTask implements Runnable, Closeable {
     this.lastOffset = new OffsetRecord();
     this.topicExists = false;
     this.controllerStats = ControllerStats.getInstance();
+
+    Properties kafkaConsumerProperties = VeniceControllerService.getKafkaConsumerProperties(kafkaBootstrapServers, clusterName);
+    this.consumer = consumerFactory.getConsumer(kafkaConsumerProperties);
+    this.offsetManager = new AdminOffsetManager(consumerFactory, kafkaConsumerProperties);
   }
 
   @Override
@@ -90,14 +96,6 @@ public class AdminConsumptionTask implements Runnable, Closeable {
     logger.info("Running consumer: " + consumerTaskId);
     while (isRunning.get()) {
       try {
-        /**
-         * Always sleep for some time, then AdminConsumptionTask won't poll all the time,
-         * so that {@link com.linkedin.venice.controller.VeniceParentHelixAdmin} can reuse
-         * the same consumer to check offset.
-         *
-         * Later on, if {@link AdminConsumptionTask} and {@link com.linkedin.venice.controller.VeniceParentHelixAdmin} won't share
-         * the same consumer any more, the above comment should be removed together with the refactoring.
-         */
         Utils.sleep(READ_CYCLE_DELAY_MS);
         // check whether current controller is the master controller for the given cluster
         if (admin.isMasterController(clusterName)) {
@@ -173,8 +171,9 @@ public class AdminConsumptionTask implements Runnable, Closeable {
       isSubscribed = false;
       logger.info("Unsubscribe from topic name: " + topic);
     }
-    // We should not close consumer here. Because it's passed by VeniceControllerService.
     logger.info("Closed consumer for admin topic: " + topic);
+    consumer.close();
+    offsetManager.close();
   }
 
   private boolean whetherTopicExists(String topicName) {

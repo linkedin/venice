@@ -7,6 +7,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
+
+import org.apache.http.annotation.NotThreadSafe;
 import org.apache.kafka.clients.consumer.Consumer;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
@@ -15,11 +17,10 @@ import org.apache.kafka.common.TopicPartition;
 
 
 /**
- * {@link KafkaConsumer} is still not thread-safe, but {@link ApacheKafkaConsumer} is synchronizing
- * every public methods to ensure thread safety.
+ * This class is not thread safe because of the internal {@link KafkaConsumer} being used.
  */
+@NotThreadSafe
 public class ApacheKafkaConsumer implements KafkaConsumerWrapper {
-
   private final Consumer kafkaConsumer;
   public ApacheKafkaConsumer(Properties props) {
     this.kafkaConsumer = new KafkaConsumer(props);
@@ -42,7 +43,7 @@ public class ApacheKafkaConsumer implements KafkaConsumerWrapper {
   }
 
   @Override
-  public synchronized void subscribe(String topic, int partition, OffsetRecord offset) {
+  public void subscribe(String topic, int partition, OffsetRecord offset) {
     TopicPartition topicPartition = new TopicPartition(topic, partition);
 
     Set<TopicPartition> topicPartitionSet = kafkaConsumer.assignment();
@@ -55,7 +56,7 @@ public class ApacheKafkaConsumer implements KafkaConsumerWrapper {
   }
 
   @Override
-  public synchronized void unSubscribe(String topic, int partition) {
+  public void unSubscribe(String topic, int partition) {
     TopicPartition topicPartition = new TopicPartition(topic, partition);
 
     Set<TopicPartition> topicPartitionSet = kafkaConsumer.assignment();
@@ -68,7 +69,7 @@ public class ApacheKafkaConsumer implements KafkaConsumerWrapper {
   }
 
   @Override
-  public synchronized void resetOffset(String topic, int partition) {
+  public void resetOffset(String topic, int partition) {
     // It intentionally throws an error when offset was reset for a topic
     // that is not subscribed to.
     TopicPartition topicPartition = new TopicPartition(topic, partition);
@@ -76,24 +77,24 @@ public class ApacheKafkaConsumer implements KafkaConsumerWrapper {
   }
 
   @Override
-  public synchronized ConsumerRecords poll(long timeout) {
+  public ConsumerRecords poll(long timeout) {
     return kafkaConsumer.poll(timeout);
   }
 
   @Override
-  public synchronized void commitSync(String topic, int partition, OffsetAndMetadata offsetAndMeta) {
+  public void commitSync(String topic, int partition, OffsetAndMetadata offsetAndMeta) {
     Map<TopicPartition, OffsetAndMetadata> offsetMap = new HashMap();
     offsetMap.put(new TopicPartition(topic, partition), offsetAndMeta);
     kafkaConsumer.commitSync(offsetMap);
   }
 
   @Override
-  public synchronized OffsetAndMetadata committed(String topic, int partition) {
+  public OffsetAndMetadata committed(String topic, int partition) {
     return kafkaConsumer.committed(new TopicPartition(topic, partition));
   }
 
   @Override
-  public synchronized void close() {
+  public void close() {
     if (kafkaConsumer != null) {
       kafkaConsumer.close();
     }

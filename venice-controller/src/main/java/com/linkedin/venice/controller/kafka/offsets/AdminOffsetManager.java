@@ -2,6 +2,7 @@ package com.linkedin.venice.controller.kafka.offsets;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.consumer.KafkaConsumerWrapper;
+import com.linkedin.venice.kafka.consumer.VeniceConsumerFactory;
 import com.linkedin.venice.offsets.OffsetManager;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.utils.ByteUtils;
@@ -11,21 +12,19 @@ import org.apache.log4j.Logger;
 import java.io.Closeable;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.util.Properties;
 
 /**
  * This class is used to maintain the offset for admin topic.
  * The thread-safety depends on the safety of the internal {@link KafkaConsumerWrapper}
- *
- * TODO: refactor AdminOffsetManager not to share KafkaConsumer among different threads
  */
-public class AdminOffsetManager implements OffsetManager {
+public class AdminOffsetManager implements OffsetManager, Closeable {
   private static final Logger LOGGER = Logger.getLogger(AdminOffsetManager.class);
   // Kafka Consumer could not be accessed by multiple threads at the same time
   private final KafkaConsumerWrapper consumer;
 
-  // TODO: take consumer as the input
-  public AdminOffsetManager(KafkaConsumerWrapper consumer) {
-    this.consumer = consumer;
+  public AdminOffsetManager(VeniceConsumerFactory consumerFactory, Properties kafkaConsumerProperties) {
+    this.consumer = consumerFactory.getConsumer(kafkaConsumerProperties);
   }
 
   @Override
@@ -50,5 +49,10 @@ public class AdminOffsetManager implements OffsetManager {
       return new OffsetRecord();
     }
     return new OffsetRecord(ByteUtils.fromHexString(offsetAndMetadata.metadata()));
+  }
+
+  @Override
+  public void close() {
+    this.consumer.close();
   }
 }

@@ -13,6 +13,7 @@ import com.linkedin.venice.controller.stats.ControllerStats;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.kafka.consumer.KafkaConsumerWrapper;
+import com.linkedin.venice.kafka.consumer.VeniceConsumerFactory;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
@@ -27,8 +28,10 @@ import com.linkedin.venice.utils.Utils;
 import io.tehuti.metrics.MetricsRepository;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
+import org.apache.kafka.clients.consumer.OffsetAndMetadata;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.record.TimestampType;
+import org.mockito.ArgumentMatcher;
 import org.mockito.Matchers;
 import org.mockito.Mockito;
 import static org.mockito.Mockito.*;
@@ -52,23 +55,14 @@ public class TestAdminConsumptionTask {
   private final String clusterName = "test-cluster";
   private final String topicName = AdminTopicUtils.getTopicNameFromClusterName(clusterName);
   private final KafkaKey emptyKey = new KafkaKey(MessageType.PUT, new byte[0]);
-  private OffsetRecord offsetRecord1;
-  private OffsetRecord offsetRecord2;
-
-  @BeforeMethod
-  public void setUp() {
-    offsetRecord1 = TestUtils.getOffsetRecord(1);
-    offsetRecord2 = TestUtils.getOffsetRecord(2);
-  }
+  private final VeniceConsumerFactory consumerFactory = Mockito.mock(VeniceConsumerFactory.class);
+  private final String kafkaBootstrapServers = "fake_kafka_servers";
 
   private TopicPartition topicPartition = new TopicPartition(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID);
 
   // Objects will be used by each test method
   private KafkaConsumerWrapper consumer;
-  private OffsetManager deepCopyOffsetManager;
-  private OffsetManager mockOffsetManager;
   private Admin admin;
-
   private ExecutorService executor;
 
   @BeforeClass
@@ -80,6 +74,8 @@ public class TestAdminConsumptionTask {
   private void initTaskRelatedArgs(ConsumerRecord ... recordList) {
     executor = Executors.newCachedThreadPool();
     consumer = Mockito.mock(KafkaConsumerWrapper.class);
+    Mockito.doReturn(consumer).when(consumerFactory)
+        .getConsumer(Mockito.any());
     Map<TopicPartition, List<ConsumerRecord<KafkaKey, KafkaMessageEnvelope>>> partitionRecordMap = new HashMap<>();
     partitionRecordMap.put(topicPartition, Arrays.asList(recordList));
     ConsumerRecords<KafkaKey, KafkaMessageEnvelope> consumerRecords = new ConsumerRecords<>(partitionRecordMap);
@@ -92,13 +88,8 @@ public class TestAdminConsumptionTask {
       }
     });
 
-    mockOffsetManager = Mockito.mock(OffsetManager.class);
-
-    deepCopyOffsetManager = new DeepCopyOffsetManager(mockOffsetManager);
-
-    // By default, it will return -1
-    OffsetRecord offsetRecord = new OffsetRecord();
-    Mockito.doReturn(offsetRecord).when(mockOffsetManager).getLastOffset(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID);
+    Mockito.doReturn(TestUtils.getOffsetAndMetadata(OffsetRecord.LOWEST_OFFSET)).when(consumer)
+        .committed(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID);
 
     admin = Mockito.mock(Admin.class);
     // By default, current controller is the master controller
@@ -114,7 +105,22 @@ public class TestAdminConsumptionTask {
   }
 
   private AdminConsumptionTask getAdminConsumptionTask(long failureRetryTimeout, boolean isParent) {
-    return new AdminConsumptionTask(clusterName, consumer, deepCopyOffsetManager, admin, failureRetryTimeout, isParent);
+    return new AdminConsumptionTask(clusterName, consumerFactory, kafkaBootstrapServers, admin, failureRetryTimeout, isParent);
+  }
+
+  static class OffsetAndMetadataMatcher extends ArgumentMatcher<OffsetAndMetadata> {
+    private final OffsetAndMetadata expected;
+    public OffsetAndMetadataMatcher(OffsetAndMetadata expected) {
+      this.expected = expected;
+    }
+    @Override
+    public boolean matches(Object argument) {
+      return ((OffsetAndMetadata)argument).offset() == expected.offset();
+    }
+  }
+
+  static OffsetAndMetadata offsetAndMetadataEq(OffsetAndMetadata expected) {
+    return argThat(new OffsetAndMetadataMatcher(expected));
   }
 
   @Test (timeOut = TIMEOUT)
@@ -168,10 +174,15 @@ public class TestAdminConsumptionTask {
 
     AdminConsumptionTask task = getAdminConsumptionTask(false);
     executor.submit(task);
-    Mockito.verify(mockOffsetManager, Mockito.timeout(TIMEOUT).times(1)).recordOffset(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID, offsetRecord1);
+    Mockito.verify(consumer, Mockito.timeout(TIMEOUT).times(1))
+        .commitSync(eq(topicName),
+            eq(AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID),
+            offsetAndMetadataEq(new OffsetAndMetadata(1)));
 
-    Mockito.verify(mockOffsetManager, Mockito.timeout(TIMEOUT).atLeastOnce())
-        .recordOffset(Mockito.anyString(), Mockito.anyInt(), Mockito.eq(offsetRecord2));
+    Mockito.verify(consumer, Mockito.timeout(TIMEOUT).atLeastOnce())
+        .commitSync(eq(topicName),
+            eq(AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID),
+            offsetAndMetadataEq(new OffsetAndMetadata(2)));
     task.close();
     executor.shutdown();
     executor.awaitTermination(TIMEOUT, TimeUnit.MILLISECONDS);
@@ -184,8 +195,6 @@ public class TestAdminConsumptionTask {
         .unSubscribe(Mockito.any(), Mockito.anyInt());
     Mockito.verify(admin, Mockito.timeout(TIMEOUT).times(1)).addStore(clusterName, storeName, owner, keySchema, valueSchema);
     Mockito.verify(admin, Mockito.timeout(TIMEOUT).times(1)).killOfflineJob(clusterName, kafkaTopic);
-    Mockito.verify(mockOffsetManager, Mockito.timeout(TIMEOUT).times(1)).recordOffset(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID, offsetRecord1);
-    Mockito.verify(mockOffsetManager, Mockito.timeout(TIMEOUT).times(1)).recordOffset(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID, offsetRecord2);
   }
 
   @Test (timeOut = TIMEOUT)
@@ -204,8 +213,10 @@ public class TestAdminConsumptionTask {
 
     AdminConsumptionTask task = getAdminConsumptionTask(false);
     executor.submit(task);
-    Mockito.verify(mockOffsetManager, Mockito.timeout(TIMEOUT).atLeastOnce())
-        .recordOffset(Mockito.anyString(), Mockito.anyInt(), Mockito.eq(offsetRecord1));
+    Mockito.verify(consumer, Mockito.timeout(TIMEOUT).atLeastOnce())
+        .commitSync(eq(topicName),
+            eq(AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID),
+            offsetAndMetadataEq(new OffsetAndMetadata(1)));
     task.close();
     executor.shutdown();
     executor.awaitTermination(TIMEOUT, TimeUnit.MILLISECONDS);
@@ -217,7 +228,6 @@ public class TestAdminConsumptionTask {
     Mockito.verify(consumer, Mockito.timeout(TIMEOUT).times(1))
         .unSubscribe(Mockito.any(), Mockito.anyInt());
     Mockito.verify(admin, Mockito.timeout(TIMEOUT).times(2)).addStore(clusterName, storeName, owner, keySchema, valueSchema);
-    Mockito.verify(mockOffsetManager, Mockito.timeout(TIMEOUT).times(1)).recordOffset(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID, offsetRecord1);
   }
 
   @Test (timeOut = TIMEOUT)
@@ -236,12 +246,15 @@ public class TestAdminConsumptionTask {
     long timeoutMinutes = 0L;
     AdminConsumptionTask task = getAdminConsumptionTask(timeoutMinutes, false);
     executor.submit(task);
-    Mockito.verify(mockOffsetManager, Mockito.timeout(TIMEOUT).times(1)).recordOffset(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID, offsetRecord1);
+    // admin throws errors, so record offset means we skipped the message
+    Mockito.verify(consumer, Mockito.timeout(TIMEOUT).times(1))
+        .commitSync(eq(topicName),
+            eq(AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID),
+            offsetAndMetadataEq(new OffsetAndMetadata(1)));
+
     task.close();
     executor.shutdown();
     executor.awaitTermination(TIMEOUT, TimeUnit.MILLISECONDS);
-    // admin throws errors, so record offset means we skipped the message
-    Mockito.verify(mockOffsetManager, Mockito.timeout(TIMEOUT).times(1)).recordOffset(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID, offsetRecord1);
   }
 
   @Test (timeOut = TIMEOUT)
@@ -257,8 +270,10 @@ public class TestAdminConsumptionTask {
 
     AdminConsumptionTask task = getAdminConsumptionTask(false);
     executor.submit(task);
-    Mockito.verify(mockOffsetManager, Mockito.timeout(TIMEOUT).atLeastOnce())
-        .recordOffset(Mockito.anyString(), Mockito.anyInt(), Mockito.eq(offsetRecord1));
+    Mockito.verify(consumer, Mockito.timeout(TIMEOUT).atLeastOnce())
+        .commitSync(eq(topicName),
+            eq(AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID),
+            offsetAndMetadataEq(new OffsetAndMetadata(1)));
     task.close();
     executor.shutdown();
     executor.awaitTermination(TIMEOUT, TimeUnit.MILLISECONDS);
@@ -270,10 +285,9 @@ public class TestAdminConsumptionTask {
     Mockito.verify(consumer, Mockito.timeout(TIMEOUT).times(1))
         .unSubscribe(Mockito.any(), Mockito.anyInt());
     Mockito.verify(admin, Mockito.timeout(TIMEOUT).times(1)).addStore(clusterName, storeName, owner, keySchema, valueSchema);
-    Mockito.verify(mockOffsetManager, Mockito.timeout(TIMEOUT).times(1)).recordOffset(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID, offsetRecord1);
   }
 
-  @Test (timeOut = TIMEOUT, retryAnalyzer = FlakyTestRetryAnalyzer.class)
+  @Test (timeOut = TIMEOUT)
   public void testRunWithDuplicateMessagesWithDifferentOffset() throws InterruptedException, IOException {
     String storeName = "test_store";
     String owner = "test_owner";
@@ -288,25 +302,15 @@ public class TestAdminConsumptionTask {
         .thenReturn(true);
 
     AdminConsumptionTask task = getAdminConsumptionTask(false);
-    List<OffsetRecord> offsetRecordCopies = new ArrayList<>();
-    doAnswer(invocation -> {
-      Object originalObject = invocation.getArguments()[2];
-      if (originalObject instanceof OffsetRecord) {
-        offsetRecordCopies.add(new OffsetRecord(((OffsetRecord) originalObject).toBytes()));
-      } else {
-        throw new IllegalArgumentException("recordOffset's third argument should be an " + OffsetRecord.class.getSimpleName() + "!");
-      }
-      return null; // Return not important since recordOffset is a void method
-    }).when(mockOffsetManager).recordOffset(
-        eq(topicName),
-        eq(AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID),
-        Matchers.any(OffsetRecord.class)
-    );
-
     executor.submit(task);
-    // This verification fails non-deterministically, saying that it got offset record 1, rather than 2...
-    Mockito.verify(mockOffsetManager, Mockito.timeout(TIMEOUT).atLeastOnce())
-        .recordOffset(Mockito.anyString(), Mockito.anyInt(), Mockito.eq(offsetRecord2));
+    Mockito.verify(consumer, Mockito.timeout(TIMEOUT).atLeastOnce())
+        .commitSync(eq(topicName),
+            eq(AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID),
+            offsetAndMetadataEq(new OffsetAndMetadata(1)));
+    Mockito.verify(consumer, Mockito.timeout(TIMEOUT).atLeastOnce())
+        .commitSync(eq(topicName),
+            eq(AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID),
+            offsetAndMetadataEq(new OffsetAndMetadata(2)));
     task.close();
     executor.shutdown();
     executor.awaitTermination(TIMEOUT, TimeUnit.MILLISECONDS);
@@ -318,10 +322,6 @@ public class TestAdminConsumptionTask {
     Mockito.verify(consumer, Mockito.timeout(TIMEOUT).times(1))
         .unSubscribe(Mockito.any(), Mockito.anyInt());
     Mockito.verify(admin, Mockito.timeout(TIMEOUT).times(1)).addStore(clusterName, storeName, owner, keySchema, valueSchema);
-    for (int i = 1; i < 3; i++) {
-      final int offset = i;
-      Assert.assertTrue(offsetRecordCopies.stream().anyMatch(offsetRecord -> offsetRecord.getOffset() == offset), "Offset " + offset + " should have been recorded.");
-    }
   }
 
   @Test (timeOut = TIMEOUT)
@@ -338,16 +338,15 @@ public class TestAdminConsumptionTask {
     // The store doesn't exist
     Mockito.doReturn(false).when(admin).hasStore(clusterName, storeName1);
     Mockito.doReturn(false).when(admin).hasStore(clusterName, storeName2);
-
-    Mockito.doReturn(new OffsetRecord(offsetRecord1.toBytes())) // deep copy in order to avoid confusing verify()
-        .when(mockOffsetManager).getLastOffset(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID);
+    Mockito.doReturn(TestUtils.getOffsetAndMetadata(1)).when(consumer)
+        .committed(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID);
 
     AdminConsumptionTask task = getAdminConsumptionTask(false);
     executor.submit(task);
-
-    Utils.sleep(AdminConsumptionTask.READ_CYCLE_DELAY_MS); // TODO: Can we remove this? Why do we need this here?
-    Mockito.verify(mockOffsetManager, Mockito.timeout(TIMEOUT).atLeastOnce())
-        .recordOffset(Mockito.anyString(), Mockito.anyInt(), Mockito.eq(offsetRecord2));
+    Mockito.verify(consumer, Mockito.timeout(TIMEOUT).atLeastOnce())
+        .commitSync(eq(topicName),
+            eq(AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID),
+            offsetAndMetadataEq(new OffsetAndMetadata(2)));
     task.close();
     executor.shutdown();
     executor.awaitTermination(TIMEOUT, TimeUnit.MILLISECONDS);
@@ -361,9 +360,12 @@ public class TestAdminConsumptionTask {
 
     Mockito.verify(admin, never()).addStore(clusterName, storeName1, owner, keySchema, valueSchema);
     Mockito.verify(admin, Mockito.timeout(TIMEOUT).atLeastOnce()).addStore(clusterName, storeName2, owner, keySchema, valueSchema);
-    Mockito.verify(mockOffsetManager, never()).recordOffset(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID, offsetRecord1);
-    Mockito.verify(mockOffsetManager, Mockito.timeout(TIMEOUT).atLeastOnce()).recordOffset(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID, offsetRecord2);
+    Mockito.verify(consumer, never()).commitSync(
+        eq(topicName),
+        eq(AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID),
+        offsetAndMetadataEq(new OffsetAndMetadata(1)));
   }
+
 
   @Test (timeOut = TIMEOUT)
   public void testParentControllerSkipKillOfflinePushJobMessage() throws InterruptedException, IOException {
@@ -375,8 +377,10 @@ public class TestAdminConsumptionTask {
 
     AdminConsumptionTask task = getAdminConsumptionTask(true);
     executor.submit(task);
-    Mockito.verify(mockOffsetManager, Mockito.timeout(TIMEOUT).atLeastOnce())
-        .recordOffset(Mockito.anyString(), Mockito.anyInt(), Mockito.eq(offsetRecord2));
+    Mockito.verify(consumer, Mockito.timeout(TIMEOUT).atLeastOnce())
+        .commitSync(eq(topicName),
+            eq(AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID),
+            offsetAndMetadataEq(new OffsetAndMetadata(2)));
     task.close();
     executor.shutdown();
     executor.awaitTermination(TIMEOUT, TimeUnit.MILLISECONDS);
@@ -388,7 +392,6 @@ public class TestAdminConsumptionTask {
     Mockito.verify(consumer, Mockito.timeout(TIMEOUT).times(1))
         .unSubscribe(Mockito.any(), Mockito.anyInt());
     Mockito.verify(admin, Mockito.timeout(TIMEOUT).never()).killOfflineJob(clusterName, kafkaTopic);
-    Mockito.verify(mockOffsetManager, Mockito.timeout(TIMEOUT).times(1)).recordOffset(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID, offsetRecord2);
   }
 
   private ConsumerRecord getStoreCreationMessage(String clusterName, String storeName, String owner, long offset, String keySchema, String valueSchema) {

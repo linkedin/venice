@@ -17,6 +17,7 @@ import org.apache.helix.HelixManagerFactory;
 import org.apache.helix.InstanceType;
 import org.apache.helix.participant.statemachine.StateModel;
 import org.apache.helix.participant.statemachine.StateModelFactory;
+import org.apache.kafka.clients.consumer.OffsetAndMetadata;
 
 
 /**
@@ -107,6 +108,11 @@ public class TestUtils {
     OffsetRecord offsetRecord = new OffsetRecord();
     offsetRecord.setOffset(offset);
     return offsetRecord;
+  }
+
+  public static OffsetAndMetadata getOffsetAndMetadata(long offset) {
+    OffsetRecord offsetRecord = getOffsetRecord(offset);
+    return new OffsetAndMetadata(offsetRecord.getOffset(), ByteUtils.toHexString(offsetRecord.toBytes()));
   }
 
 }
