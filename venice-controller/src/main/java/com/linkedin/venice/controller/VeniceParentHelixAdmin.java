@@ -3,6 +3,7 @@ package com.linkedin.venice.controller;
 import com.google.common.collect.Ordering;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.controller.kafka.AdminTopicUtils;
+import com.linkedin.venice.controller.kafka.offsets.AdminOffsetManager;
 import com.linkedin.venice.controller.kafka.protocol.admin.AdminOperation;
 import com.linkedin.venice.controller.kafka.protocol.admin.KillOfflinePushJob;
 import com.linkedin.venice.controller.kafka.protocol.admin.PauseStore;
@@ -19,23 +20,22 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.Replica;
 import com.linkedin.venice.job.ExecutionStatus;
 import com.linkedin.venice.kafka.TopicManager;
+import com.linkedin.venice.kafka.consumer.VeniceConsumerFactory;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
-import com.linkedin.venice.offsets.OffsetManager;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.serialization.DefaultSerializer;
 import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
-import com.linkedin.venice.writer.ApacheKafkaProducer;
 import com.linkedin.venice.writer.VeniceWriter;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
-import org.apache.kafka.clients.producer.ProducerConfig;
+
 import org.apache.kafka.clients.producer.RecordMetadata;
 import org.apache.log4j.Logger;
 
@@ -59,16 +59,16 @@ import java.util.concurrent.locks.ReentrantLock;
  * then wait for the admin consumer to consume the message.
  */
 public class VeniceParentHelixAdmin implements Admin {
-  public static final String KAFKA_ACKS_CONFIG = ApacheKafkaProducer.PROPERTIES_KAFKA_PREFIX + ProducerConfig.ACKS_CONFIG;
   private static final long SLEEP_INTERVAL_FOR_DATA_CONSUMPTION_IN_MS = 1000;
   private static final Logger logger = Logger.getLogger(VeniceParentHelixAdmin.class);
 
   private final VeniceHelixAdmin veniceHelixAdmin;
   private final Map<String, VeniceWriter<byte[], byte[]>> veniceWriterMap;
+  private final Map<String, AdminOffsetManager> offsetManagerMap;
   private final byte[] emptyKeyByteArr = new byte[0];
   private final AdminOperationSerializer adminOperationSerializer = new AdminOperationSerializer();
-  private final OffsetManager offsetManager;
   private final VeniceControllerConfig veniceControllerConfig;
+  private final VeniceConsumerFactory consumerFactory;
   private final Lock lock = new ReentrantLock();
   /**
    * Variable to store offset of last message.
@@ -86,12 +86,13 @@ public class VeniceParentHelixAdmin implements Admin {
 
   private final int waitingTimeForConsumptionMs;
 
-  public VeniceParentHelixAdmin(VeniceHelixAdmin veniceHelixAdmin, OffsetManager offsetManager, VeniceControllerConfig config) {
+  public VeniceParentHelixAdmin(VeniceHelixAdmin veniceHelixAdmin, VeniceControllerConfig config, VeniceConsumerFactory consumerFactory) {
     this.veniceHelixAdmin = veniceHelixAdmin;
-    this.veniceWriterMap = new ConcurrentHashMap<>();
-    this.offsetManager = offsetManager;
+    this.consumerFactory = consumerFactory;
     this.veniceControllerConfig = config;
     this.waitingTimeForConsumptionMs = config.getParentControllerWaitingTimeForConsumptionMs();
+    this.veniceWriterMap = new ConcurrentHashMap<>();
+    this.offsetManagerMap = new ConcurrentHashMap<>();
   }
 
   public void setVeniceWriterForCluster(String clusterName, VeniceWriter writer) {
@@ -128,6 +129,13 @@ public class VeniceParentHelixAdmin implements Admin {
       VeniceProperties veniceWriterProperties = new VeniceProperties(props);
       return new VeniceWriter<>(veniceWriterProperties, topicName, new DefaultSerializer(), new DefaultSerializer());
     });
+    // Initialize OffsetManager
+    offsetManagerMap.computeIfAbsent(clusterName, (key) -> new AdminOffsetManager(
+        consumerFactory,
+        VeniceControllerService.getKafkaConsumerProperties(
+            veniceControllerConfig.getKafkaBootstrapServers(),
+            clusterName))
+    );
   }
 
   @Override
@@ -154,6 +162,10 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   private void waitingLastOffsetToBeConsumed(String clusterName) {
+    if (!offsetManagerMap.containsKey(clusterName)) {
+      throw new VeniceException("Cluster: " + clusterName + " doesn not have an OffsetManager initialized yet!");
+    }
+    AdminOffsetManager offsetManager = offsetManagerMap.get(clusterName);
     String topicName = AdminTopicUtils.getTopicNameFromClusterName(clusterName);
 
     // Blocking until some consumer consumes the new message or timeout
@@ -677,6 +689,10 @@ public class VeniceParentHelixAdmin implements Admin {
     VeniceWriter<byte[], byte[]> veniceWriter = veniceWriterMap.get(clusterName);
     if (null != veniceWriter) {
       veniceWriter.close();
+    }
+    AdminOffsetManager offsetManager = offsetManagerMap.get(clusterName);
+    if (null != offsetManager) {
+      offsetManager.close();
     }
   }
 

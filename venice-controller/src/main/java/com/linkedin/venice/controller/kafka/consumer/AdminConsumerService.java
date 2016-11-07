@@ -3,6 +3,7 @@ package com.linkedin.venice.controller.kafka.consumer;
 import com.linkedin.venice.controller.VeniceControllerConfig;
 import com.linkedin.venice.controller.VeniceHelixAdmin;
 import com.linkedin.venice.kafka.consumer.KafkaConsumerWrapper;
+import com.linkedin.venice.kafka.consumer.VeniceConsumerFactory;
 import com.linkedin.venice.offsets.OffsetManager;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.utils.DaemonThreadFactory;
@@ -17,18 +18,16 @@ public class AdminConsumerService extends AbstractVeniceService {
 
   private final VeniceControllerConfig config;
   private final VeniceHelixAdmin admin;
-  private final OffsetManager offsetManager;
-  private final KafkaConsumerWrapper consumer;
+  private final VeniceConsumerFactory consumerFactory;
   // Only support single cluster right now
   private AdminConsumptionTask consumerTask;
   private ThreadFactory threadFactory = new DaemonThreadFactory("AdminTopicConsumer");
   private Thread consumerThread;
 
-  public AdminConsumerService(VeniceControllerConfig config, VeniceHelixAdmin admin, OffsetManager offsetManager, KafkaConsumerWrapper consumer) {
+  public AdminConsumerService(VeniceHelixAdmin admin, VeniceControllerConfig config, VeniceConsumerFactory consumerFactory) {
     this.config = config;
     this.admin = admin;
-    this.offsetManager = offsetManager;
-    this.consumer = consumer;
+    this.consumerFactory = consumerFactory;
   }
 
   @Override
@@ -51,6 +50,11 @@ public class AdminConsumerService extends AbstractVeniceService {
   }
 
   private AdminConsumptionTask getAdminConsumptionTaskForCluster(String clusterName) {
-    return new AdminConsumptionTask(clusterName, consumer, offsetManager, admin, TimeUnit.MINUTES.toMillis(config.getAdminConsumptionTimeoutMinutes()), config.isParent());
+    return new AdminConsumptionTask(clusterName,
+        consumerFactory,
+        config.getKafkaBootstrapServers(),
+        admin,
+        TimeUnit.MINUTES.toMillis(config.getAdminConsumptionTimeoutMinutes()),
+        config.isParent());
   }
 }

@@ -23,7 +23,8 @@ import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.job.ExecutionStatus;
 import com.linkedin.venice.kafka.TopicManager;
-import com.linkedin.venice.offsets.OffsetManager;
+import com.linkedin.venice.kafka.consumer.KafkaConsumerWrapper;
+import com.linkedin.venice.kafka.consumer.VeniceConsumerFactory;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
@@ -31,6 +32,7 @@ import com.linkedin.venice.utils.FlakyTestRetryAnalyzer;
 import com.linkedin.venice.writer.VeniceWriter;
 import java.util.HashMap;
 import java.util.Map;
+
 import org.apache.kafka.clients.producer.RecordMetadata;
 import org.apache.kafka.common.TopicPartition;
 import org.mockito.ArgumentCaptor;
@@ -62,7 +64,7 @@ public class TestVeniceParentHelixAdmin {
 
   private TopicManager topicManager;
   private VeniceHelixAdmin internalAdmin;
-  private OffsetManager offsetManager;
+  private KafkaConsumerWrapper consumer;
   private VeniceWriter veniceWriter;
   private VeniceParentHelixAdmin parentAdmin;
 
@@ -82,6 +84,8 @@ public class TestVeniceParentHelixAdmin {
         .getKafkaReplicaFactor();
     Mockito.doReturn(3).when(config)
         .getParentControllerWaitingTimeForConsumptionMs();
+    Mockito.doReturn("fake_kafka_bootstrap_servers").when(config)
+        .getKafkaBootstrapServers();
 
     VeniceHelixResources resources = Mockito.mock(VeniceHelixResources.class);
     Mockito.doReturn(config).when(resources)
@@ -89,10 +93,12 @@ public class TestVeniceParentHelixAdmin {
     Mockito.doReturn(resources).when(internalAdmin)
         .getVeniceHelixResource(clusterName);
 
-    offsetManager = Mockito.mock(OffsetManager.class);
+    consumer = Mockito.mock(KafkaConsumerWrapper.class);
 
+    VeniceConsumerFactory consumerFactory = Mockito.mock(VeniceConsumerFactory.class);
+    doReturn(consumer).when(consumerFactory).getConsumer(Mockito.any());
 
-    parentAdmin = new VeniceParentHelixAdmin(internalAdmin, offsetManager, config);
+    parentAdmin = new VeniceParentHelixAdmin(internalAdmin, config, consumerFactory);
     veniceWriter = Mockito.mock(VeniceWriter.class);
     // Need to bypass VeniceWriter initialization
     parentAdmin.setVeniceWriterForCluster(clusterName, veniceWriter);
@@ -131,11 +137,9 @@ public class TestVeniceParentHelixAdmin {
         .when(veniceWriter)
         .put(Mockito.any(), Mockito.any(), Mockito.anyInt());
 
-    OffsetRecord offsetRecordForOffset1 = TestUtils.getOffsetRecord(1);
-
-    Mockito.when(offsetManager.getLastOffset(topicName, partitionId))
-        .thenReturn(new OffsetRecord())
-        .thenReturn(offsetRecordForOffset1);
+    Mockito.when(consumer.committed(topicName, partitionId))
+        .thenReturn(TestUtils.getOffsetAndMetadata(OffsetRecord.LOWEST_OFFSET))
+        .thenReturn(TestUtils.getOffsetAndMetadata(1));
 
     String storeName = "test-store";
     String owner = "test-owner";
@@ -147,8 +151,8 @@ public class TestVeniceParentHelixAdmin {
     .checkPreConditionForAddStore(clusterName, storeName, owner, keySchemaStr, valueSchemaStr);
     Mockito.verify(veniceWriter, Mockito.times(1))
         .put(Mockito.any(), Mockito.any(), Mockito.anyInt());
-    Mockito.verify(offsetManager, Mockito.times(2))
-        .getLastOffset(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID);
+    Mockito.verify(consumer, Mockito.times(2))
+        .committed(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID);
     ArgumentCaptor<byte[]> keyCaptor = ArgumentCaptor.forClass(byte[].class);
     ArgumentCaptor<byte[]> valueCaptor = ArgumentCaptor.forClass(byte[].class);
     ArgumentCaptor<Integer> schemaCaptor = ArgumentCaptor.forClass(Integer.class);
@@ -172,8 +176,8 @@ public class TestVeniceParentHelixAdmin {
   public void testAddStoreWhenExists() throws ExecutionException, InterruptedException {
     parentAdmin.start(clusterName);
 
-    Mockito.when(offsetManager.getLastOffset(topicName, partitionId))
-        .thenReturn(new OffsetRecord());
+    Mockito.when(consumer.committed(topicName, partitionId))
+        .thenReturn(TestUtils.getOffsetAndMetadata(OffsetRecord.LOWEST_OFFSET));
 
     String storeName = "test-store";
     String owner = "test-owner";
@@ -200,14 +204,10 @@ public class TestVeniceParentHelixAdmin {
         .when(veniceWriter)
         .put(Mockito.any(), Mockito.any(), Mockito.anyInt());
 
-    OffsetRecord offsetRecordForOffset1 = TestUtils.getOffsetRecord(1);
-
-    OffsetRecord offsetRecordForOffset0 = TestUtils.getOffsetRecord(0);
-
-    Mockito.when(offsetManager.getLastOffset(topicName, partitionId))
-        .thenReturn(new OffsetRecord())
-        .thenReturn(offsetRecordForOffset1)
-        .thenReturn(offsetRecordForOffset0);
+    Mockito.when(consumer.committed(topicName, partitionId))
+        .thenReturn(TestUtils.getOffsetAndMetadata(0))
+        .thenReturn(TestUtils.getOffsetAndMetadata(1))
+        .thenReturn(TestUtils.getOffsetAndMetadata(0));
 
     String storeName = "test-store";
     String owner = "test-owner";
@@ -238,11 +238,9 @@ public class TestVeniceParentHelixAdmin {
         .when(veniceWriter)
         .put(Mockito.any(), Mockito.any(), Mockito.anyInt());
 
-    OffsetRecord offsetRecordForOffset1 = TestUtils.getOffsetRecord(1);
-
-    Mockito.when(offsetManager.getLastOffset(topicName, partitionId))
-        .thenReturn(new OffsetRecord())
-        .thenReturn(offsetRecordForOffset1);
+    Mockito.when(consumer.committed(topicName, partitionId))
+        .thenReturn(TestUtils.getOffsetAndMetadata(OffsetRecord.LOWEST_OFFSET))
+        .thenReturn(TestUtils.getOffsetAndMetadata(1));
 
     parentAdmin.addValueSchema(clusterName, storeName, valueSchemaStr);
 
@@ -250,8 +248,8 @@ public class TestVeniceParentHelixAdmin {
         .checkPreConditionForAddValueSchemaAndGetNewSchemaId(clusterName, storeName, valueSchemaStr);
     Mockito.verify(veniceWriter, Mockito.times(1))
         .put(Mockito.any(), Mockito.any(), Mockito.anyInt());
-    Mockito.verify(offsetManager, Mockito.times(2))
-        .getLastOffset(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID);
+    Mockito.verify(consumer, Mockito.times(2))
+        .committed(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID);
     ArgumentCaptor<byte[]> keyCaptor = ArgumentCaptor.forClass(byte[].class);
     ArgumentCaptor<byte[]> valueCaptor = ArgumentCaptor.forClass(byte[].class);
     ArgumentCaptor<Integer> schemaCaptor = ArgumentCaptor.forClass(Integer.class);
@@ -284,11 +282,9 @@ public class TestVeniceParentHelixAdmin {
         .when(veniceWriter)
         .put(Mockito.any(), Mockito.any(), Mockito.anyInt());
 
-    OffsetRecord offsetRecordForOffset1 = TestUtils.getOffsetRecord(1);
-
-    Mockito.when(offsetManager.getLastOffset(topicName, partitionId))
-        .thenReturn(new OffsetRecord())
-        .thenReturn(offsetRecordForOffset1);
+    Mockito.when(consumer.committed(topicName, partitionId))
+        .thenReturn(TestUtils.getOffsetAndMetadata(OffsetRecord.LOWEST_OFFSET))
+        .thenReturn(TestUtils.getOffsetAndMetadata(1));
 
     parentAdmin.pauseStore(clusterName, storeName);
 
@@ -296,8 +292,8 @@ public class TestVeniceParentHelixAdmin {
         .checkPreConditionForPauseStoreAndGetStore(clusterName, storeName, true);
     Mockito.verify(veniceWriter, Mockito.times(1))
         .put(Mockito.any(), Mockito.any(), Mockito.anyInt());
-    Mockito.verify(offsetManager, Mockito.times(2))
-        .getLastOffset(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID);
+    Mockito.verify(consumer, Mockito.times(2))
+        .committed(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID);
     ArgumentCaptor<byte[]> keyCaptor = ArgumentCaptor.forClass(byte[].class);
     ArgumentCaptor<byte[]> valueCaptor = ArgumentCaptor.forClass(byte[].class);
     ArgumentCaptor<Integer> schemaCaptor = ArgumentCaptor.forClass(Integer.class);
@@ -328,11 +324,10 @@ public class TestVeniceParentHelixAdmin {
         .when(veniceWriter)
         .put(Mockito.any(), Mockito.any(), Mockito.anyInt());
 
-    OffsetRecord offsetRecordForOffset1 = TestUtils.getOffsetRecord(1);
+    Mockito.when(consumer.committed(topicName, partitionId))
+        .thenReturn(TestUtils.getOffsetAndMetadata(OffsetRecord.LOWEST_OFFSET))
+        .thenReturn(TestUtils.getOffsetAndMetadata(1));
 
-    Mockito.when(offsetManager.getLastOffset(topicName, partitionId))
-        .thenReturn(new OffsetRecord())
-        .thenReturn(offsetRecordForOffset1);
     Mockito.when(internalAdmin.checkPreConditionForPauseStoreAndGetStore(clusterName, storeName, true))
         .thenThrow(new VeniceNoStoreException(storeName));
 
@@ -352,11 +347,9 @@ public class TestVeniceParentHelixAdmin {
         .when(veniceWriter)
         .put(Mockito.any(), Mockito.any(), Mockito.anyInt());
 
-    OffsetRecord offsetRecordForOffset1 = TestUtils.getOffsetRecord(1);
-
-    Mockito.when(offsetManager.getLastOffset(topicName, partitionId))
-        .thenReturn(new OffsetRecord())
-        .thenReturn(offsetRecordForOffset1);
+    Mockito.when(consumer.committed(topicName, partitionId))
+        .thenReturn(TestUtils.getOffsetAndMetadata(OffsetRecord.LOWEST_OFFSET))
+        .thenReturn(TestUtils.getOffsetAndMetadata(1));
 
     parentAdmin.resumeStore(clusterName, storeName);
 
@@ -364,8 +357,8 @@ public class TestVeniceParentHelixAdmin {
         .checkPreConditionForPauseStoreAndGetStore(clusterName, storeName, false);
     Mockito.verify(veniceWriter, Mockito.times(1))
         .put(Mockito.any(), Mockito.any(), Mockito.anyInt());
-    Mockito.verify(offsetManager, Mockito.times(2))
-        .getLastOffset(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID);
+    Mockito.verify(consumer, Mockito.times(2))
+        .committed(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID);
     ArgumentCaptor<byte[]> keyCaptor = ArgumentCaptor.forClass(byte[].class);
     ArgumentCaptor<byte[]> valueCaptor = ArgumentCaptor.forClass(byte[].class);
     ArgumentCaptor<Integer> schemaCaptor = ArgumentCaptor.forClass(Integer.class);
@@ -394,11 +387,9 @@ public class TestVeniceParentHelixAdmin {
         .when(veniceWriter)
         .put(Mockito.any(), Mockito.any(), Mockito.anyInt());
 
-    OffsetRecord offsetRecord1 = TestUtils.getOffsetRecord(1);
-
-    Mockito.when(offsetManager.getLastOffset(topicName, partitionId))
-        .thenReturn(new OffsetRecord())
-        .thenReturn(offsetRecord1);
+    Mockito.when(consumer.committed(topicName, partitionId))
+        .thenReturn(TestUtils.getOffsetAndMetadata(OffsetRecord.LOWEST_OFFSET))
+        .thenReturn(TestUtils.getOffsetAndMetadata(1));
 
     Mockito.doReturn(new HashSet<String>(Arrays.asList(kafkaTopic)))
         .when(topicManager).listTopics();
@@ -411,8 +402,8 @@ public class TestVeniceParentHelixAdmin {
         .deleteTopic(kafkaTopic);
     Mockito.verify(veniceWriter, Mockito.times(1))
         .put(Mockito.any(), Mockito.any(), Mockito.anyInt());
-    Mockito.verify(offsetManager, Mockito.times(2))
-        .getLastOffset(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID);
+    Mockito.verify(consumer, Mockito.times(2))
+        .committed(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID);
     ArgumentCaptor<byte[]> keyCaptor = ArgumentCaptor.forClass(byte[].class);
     ArgumentCaptor<byte[]> valueCaptor = ArgumentCaptor.forClass(byte[].class);
     ArgumentCaptor<Integer> schemaCaptor = ArgumentCaptor.forClass(Integer.class);
@@ -612,7 +603,6 @@ public class TestVeniceParentHelixAdmin {
 
   @Test
   public void testGetProgress() {
-
     JobStatusQueryResponse tenResponse = new JobStatusQueryResponse();
     Map<String, Long> tenPerTaskProgress = new HashMap<>();
     tenPerTaskProgress.put("task1", 10L);
@@ -641,6 +631,5 @@ public class TestVeniceParentHelixAdmin {
     Assert.assertEquals(tenProgress.values().size(), 4); // nothing from fail client
     Assert.assertEquals(tenProgress.get("cluster1_task1"), new Long(10L));
     Assert.assertEquals(tenProgress.get("cluster2_task2"), new Long(10L));
-
   }
 }
