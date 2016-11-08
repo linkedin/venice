@@ -59,6 +59,12 @@ public class TopicManager implements Closeable {
     this(zkConnection, DEFAULT_SESSION_TIMEOUT_MS, DEFAULT_CONNECTION_TIMEOUT_MS);
   }
 
+  /** for tests */
+  protected TopicManager(String zkConnection, KafkaConsumer<byte[], byte[]> consumer){
+    this(zkConnection, DEFAULT_SESSION_TIMEOUT_MS, DEFAULT_CONNECTION_TIMEOUT_MS);
+    this.kafkaConsumer = consumer;
+  }
+
   public void createTopic(String topicName, int numPartitions, int replication) {
     logger.info("Creating topic: " + topicName + " partitions: " + numPartitions + " replication: " + replication);
     try {
@@ -97,12 +103,14 @@ public class TopicManager implements Closeable {
     // To be safe, check whether the topic exists or not,
     // since querying offset against non-existing topic could cause endless retrying.
     if (! listTopics().contains(topic)) {
-      throw new VeniceException("Topic: " + topic + " doesn't exist");
+      logger.warn("Topic: " + topic + " doesn't exist, returning empty map for latest offsets");
+      return new HashMap<Integer, Long>();
     }
     KafkaConsumer<byte[], byte[]> consumer = getConsumer();
     List<PartitionInfo> partitions = consumer.partitionsFor(topic);
     if (null == partitions) {
-      throw new VeniceException("Topic: " + topic + " does not exist");
+      logger.warn("Topic: " + topic + " has a null partition set, returning empty map for latest offsets");
+      return new HashMap<Integer, Long>();
     }
     Map<Integer, Long> offsets = new HashMap<>();
 

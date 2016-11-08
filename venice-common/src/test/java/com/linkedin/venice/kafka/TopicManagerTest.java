@@ -5,15 +5,21 @@ import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.meta.Version;
 
 import java.io.IOException;
+import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
 import com.linkedin.venice.utils.TestUtils;
+import org.apache.kafka.clients.consumer.KafkaConsumer;
+import org.apache.kafka.common.PartitionInfo;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
+
+import static org.mockito.Mockito.*;
 
 
 /**
@@ -144,5 +150,14 @@ public class TopicManagerTest {
     Assert.assertTrue(lastOffsets.containsKey(0), "single partition topic has an offset for partition 0");
     Assert.assertEquals(lastOffsets.keySet().size(), 1, "single partition topic has only an offset for one partition");
     Assert.assertEquals(lastOffsets.get(0).longValue(), 0L, "new topic must end at partition 0");
+  }
+
+  @Test
+  public void testListOffsetsOnEmptyTopic(){
+    KafkaConsumer<byte[], byte[]> mockConsumer = mock(KafkaConsumer.class);
+    doReturn(new HashMap<String, List<PartitionInfo>>()).when(mockConsumer).listTopics();
+    TopicManager topicManager = new TopicManager("dummyhost:1234", mockConsumer);
+    Map<Integer, Long> offsets = topicManager.getLatestOffsets("myTopic");
+    Assert.assertEquals(offsets.size(), 0);
   }
 }
