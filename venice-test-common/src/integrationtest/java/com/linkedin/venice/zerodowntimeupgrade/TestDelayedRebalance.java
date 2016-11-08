@@ -106,8 +106,13 @@ public class TestDelayedRebalance {
   public void testModifyDelayedRebalanceTime() {
     // Test the case that set the shorter delayed time for a cluster, to check whether helix will do the rebalance earlier.
     String topicName = createVersionAndPushData();
-    // hhoter delayed time
-    cluster.getMasterVeniceController().getVeniceAdmin().setDelayedRebalance(cluster.getClusterName(), testTimeOutMS / 2 );
+    // shorter delayed time
+    cluster.getMasterVeniceController()
+        .getVeniceAdmin()
+        .setDelayedRebalanceTime(cluster.getClusterName(), testTimeOutMS / 2);
+    Assert.assertEquals(
+        cluster.getMasterVeniceController().getVeniceAdmin().getDelayedRebalanceTime(cluster.getClusterName()),
+        testTimeOutMS / 2);
     int failServerPort = stopAServer(topicName);
 
     // Helix do not do the relanace immediately
@@ -131,7 +136,9 @@ public class TestDelayedRebalance {
     // Then enable the delayed rebalance again to test whether helix will do rebalance immediately.
     String topicName = createVersionAndPushData();
     // disable delayed rebalance
-    cluster.getMasterVeniceController().getVeniceAdmin().setDelayedRebalance(cluster.getClusterName(), 0);
+    cluster.getMasterVeniceController().getVeniceAdmin().setDelayedRebalanceTime(cluster.getClusterName(), 0);
+    Assert.assertEquals(
+        cluster.getMasterVeniceController().getVeniceAdmin().getDelayedRebalanceTime(cluster.getClusterName()), 0);
     // wait the config change come into effect
     Thread.sleep(testTimeOutMS);
     int failServerPort = stopAServer(topicName);
@@ -144,7 +151,7 @@ public class TestDelayedRebalance {
     });
 
     //Enable delayed rebalance
-    cluster.getMasterVeniceController().getVeniceAdmin().setDelayedRebalance(cluster.getClusterName(), delayRebalanceMS);
+    cluster.getMasterVeniceController().getVeniceAdmin().setDelayedRebalanceTime(cluster.getClusterName(), delayRebalanceMS);
     // Fail another server and restart the older failed one.
     cluster.restartVeniceServer(failServerPort);
     int anotherFailServerPort = stopAServer(topicName);

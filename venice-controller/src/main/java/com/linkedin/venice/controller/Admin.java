@@ -182,7 +182,13 @@ public interface Admin {
      * @param  delayedTime how long the helix will not rebalance after a server is disconnected. If the given value
      *                     equal or smaller than 0, we disable the delayed rebalance.
      */
-    void setDelayedRebalance(String clusterName, long delayedTime);
+    void setDelayedRebalanceTime(String clusterName, long delayedTime);
+
+    /**
+    * Get the current delayed rebalance time value for the given cluster
+    * @param clusterName
+    */
+    long getDelayedRebalanceTime(String clusterName);
 
     void close();
 

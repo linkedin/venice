@@ -13,6 +13,7 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.utils.HelixUtils;
+import com.linkedin.venice.utils.Pair;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
