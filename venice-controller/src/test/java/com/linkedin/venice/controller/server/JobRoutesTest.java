@@ -3,8 +3,6 @@ package com.linkedin.venice.controller.server;
 import com.google.common.collect.ImmutableMap;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.VeniceParentHelixAdmin;
-import static org.mockito.Mockito.*;
-
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
 import com.linkedin.venice.job.ExecutionStatus;
 import com.linkedin.venice.kafka.TopicManager;
@@ -13,11 +11,10 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import org.apache.commons.collections.map.HashedMap;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
-import static org.testng.Assert.*;
+import static org.mockito.Mockito.*;
 
 
 public class JobRoutesTest {
