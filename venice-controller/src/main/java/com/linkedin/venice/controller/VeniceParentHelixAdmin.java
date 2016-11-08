@@ -667,9 +667,13 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   @Override
-  public void setDelayedRebalance(String clusterName, long delayedTime) {
-    throw new VeniceException("setDelayedRebalance is not supported!");
+  public void setDelayedRebalanceTime(String clusterName, long delayedTime) {
+    throw new VeniceException("setDelayedRebalanceTime is not supported!");
+  }
 
+  @Override
+  public long getDelayedRebalanceTime(String clusterName) {
+    throw new VeniceException("getDelayedRebalanceTime is not supported!");
   }
 
   @Override

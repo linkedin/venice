@@ -66,8 +66,8 @@ public class TestInstanceRemovable {
     int serverPort1 = cluster.getVeniceServers().get(0).getPort();
     int serverPort2 = cluster.getVeniceServers().get(1).getPort();
     ControllerClient client = new ControllerClient(cluserName, urls);
-    Assert.assertFalse(client.isNodeRemovable(cluserName, Utils.getHelixNodeIdentifier(serverPort1)).isError());
-    Assert.assertFalse(client.isNodeRemovable(cluserName, Utils.getHelixNodeIdentifier(serverPort2)).isError());
+    Assert.assertTrue(client.isNodeRemovable(cluserName, Utils.getHelixNodeIdentifier(serverPort1)).isRemovable());
+    Assert.assertTrue(client.isNodeRemovable(cluserName, Utils.getHelixNodeIdentifier(serverPort2)).isRemovable());
     veniceWriter.put("test", "test", 1);
     veniceWriter.broadcastEndOfPush(new HashMap<>());
 
@@ -82,7 +82,7 @@ public class TestInstanceRemovable {
     TestUtils.waitForNonDeterministicCompletion(testTimeOutMS, TimeUnit.MILLISECONDS,
         () -> cluster.getMasterVeniceController().getVeniceAdmin().getReplicas(cluserName, topicName).size() == 2);
 
-    Assert.assertFalse(client.isNodeRemovable(cluserName, Utils.getHelixNodeIdentifier(serverPort1)).isError());
-    Assert.assertTrue(client.isNodeRemovable(cluserName, Utils.getHelixNodeIdentifier(serverPort2)).isError());
+    Assert.assertTrue(client.isNodeRemovable(cluserName, Utils.getHelixNodeIdentifier(serverPort1)).isRemovable());
+    Assert.assertFalse(client.isNodeRemovable(cluserName, Utils.getHelixNodeIdentifier(serverPort2)).isRemovable());
   }
 }

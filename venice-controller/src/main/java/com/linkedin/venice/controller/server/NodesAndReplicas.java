@@ -5,6 +5,7 @@ import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.MultiNodeResponse;
 import com.linkedin.venice.controllerapi.MultiReplicaResponse;
+import com.linkedin.venice.controllerapi.NodeStatusResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.Replica;
 import com.linkedin.venice.utils.Utils;
@@ -91,14 +92,12 @@ public class NodesAndReplicas {
 
   public static Route isNodeRemovable(Admin admin){
     return (request, response) -> {
-      ControllerResponse responseObject = new ControllerResponse();
+      NodeStatusResponse responseObject = new NodeStatusResponse();
       try {
         AdminSparkServer.validateParams(request, NODE_REMOVABLE.getParams(), admin);
         responseObject.setCluster(request.queryParams(CLUSTER));
         String nodeId = request.queryParams(STORAGE_NODE_ID);
-        if (!admin.isInstanceRemovable(responseObject.getCluster(), nodeId)){
-          responseObject.setError("Cannot remove node with ID: " + nodeId);
-        }
+        responseObject.setRemovable(admin.isInstanceRemovable(responseObject.getCluster(), nodeId));
       } catch (VeniceException e) {
         responseObject.setError(e.getMessage());
         AdminSparkServer.handleError(e, request, response);

@@ -321,14 +321,14 @@ public class ControllerClient implements Closeable {
     }
   }
 
-  public ControllerResponse isNodeRemovable(String clusterName, String instanceId) {
+  public NodeStatusResponse isNodeRemovable(String clusterName, String instanceId) {
     try {
       List<NameValuePair> queryParams = newParams(clusterName);
       queryParams.add(new BasicNameValuePair(ControllerApiConstants.STORAGE_NODE_ID, instanceId));
       String responseJson = getRequest(ControllerRoute.NODE_REMOVABLE.getPath(), queryParams);
-      return mapper.readValue(responseJson, ControllerResponse.class);
+      return mapper.readValue(responseJson, NodeStatusResponse.class);
     } catch (Exception e) {
-      return handleError(new VeniceException("Could not identify if node: " + instanceId + " is removable", e), new ControllerResponse());
+      return handleError(new VeniceException("Could not identify if node: " + instanceId + " is removable", e), new NodeStatusResponse());
     }
   }
 

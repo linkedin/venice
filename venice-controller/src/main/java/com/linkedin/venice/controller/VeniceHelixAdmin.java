@@ -563,8 +563,6 @@ public class VeniceHelixAdmin implements Admin {
         helixClusterProperties.put(ZKHelixManager.ALLOW_PARTICIPANT_AUTO_JOIN, String.valueOf(true));
         long delayedTime = config.getDelayToRebalanceMS();
         if (delayedTime > 0) {
-            helixClusterProperties.put(ClusterConfig.ClusterConfigProperty.DELAY_REBALANCE_DISABLED.name(),
-                String.valueOf(false));
             helixClusterProperties.put(ClusterConfig.ClusterConfigProperty.DELAY_REBALANCE_TIME.name(),
                 String.valueOf(delayedTime));
         }
@@ -804,20 +802,10 @@ public class VeniceHelixAdmin implements Admin {
     }
 
     @Override
-    public void setDelayedRebalance(String clusterName, long delayedTime) {
+    public void setDelayedRebalanceTime(String clusterName, long delayedTime) {
         boolean enable = delayedTime > 0;
-        VeniceControllerClusterConfig config = getVeniceHelixResource(clusterName).getConfig();
-        if (enable == true && config.getDelayToRebalanceMS() <= 0) {
-            //Try to enable delayed reblance but the delayed time to rebalance has not been set.
-            String errorMsg =
-                "Can not enable delayed rebalance for cluster:" + clusterName + ", because delayToRebalance <= 0";
-            logger.error(errorMsg);
-            throw new VeniceException(errorMsg);
-        }
         PropertyKey.Builder keyBuilder = new PropertyKey.Builder(clusterName);
         ClusterConfig clusterConfig = manager.getHelixDataAccessor().getProperty(keyBuilder.clusterConfig());
-        clusterConfig.getRecord()
-            .setBooleanField(ClusterConfig.ClusterConfigProperty.DELAY_REBALANCE_DISABLED.name(), !enable);
         clusterConfig.getRecord()
             .setLongField(ClusterConfig.ClusterConfigProperty.DELAY_REBALANCE_TIME.name(), delayedTime);
         manager.getHelixDataAccessor().setProperty(keyBuilder.clusterConfig(), clusterConfig);
@@ -827,7 +815,17 @@ public class VeniceHelixAdmin implements Admin {
             new HelixConfigScopeBuilder(HelixConfigScope.ConfigScopeProperty.CLUSTER).forCluster(clusterName).build();
         configAccessor.set(clusterScope, ClusterConfig.ClusterConfigProperty.DELAY_REBALANCE_DISABLED.name(),
             String.valueOf(disable));*/
-        logger.info(enable ? "Enable" : "Disable" + " delayed rebalance for cluster:" + clusterName);
+        logger.info(enable ? "Enable"
+            : "Disable" + " delayed rebalance for cluster:" + clusterName + (enable ? " with delayed time:"
+                + delayedTime : ""));
+    }
+
+    @Override
+    public long getDelayedRebalanceTime(String clusterName) {
+        PropertyKey.Builder keyBuilder = new PropertyKey.Builder(clusterName);
+        ClusterConfig clusterConfig = manager.getHelixDataAccessor().getProperty(keyBuilder.clusterConfig());
+        return clusterConfig.getRecord()
+            .getLongField(ClusterConfig.ClusterConfigProperty.DELAY_REBALANCE_TIME.name(), 0l);
     }
 
     @Override
