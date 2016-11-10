@@ -24,6 +24,9 @@ public class RandomPollStrategy extends AbstractPollStrategy {
 
   @Override
   protected Pair<TopicPartition, OffsetRecord> getNextPoll(Map<TopicPartition, OffsetRecord> offsets) {
+    if (offsets.isEmpty()) {
+      return null;
+    }
     List<TopicPartition> topicPartitionList = Arrays.asList(offsets.keySet().toArray(new TopicPartition[]{}));
     int numberOfTopicPartitions = offsets.size();
     TopicPartition topicPartition = topicPartitionList.get((int) Math.round(Math.random() * (numberOfTopicPartitions - 1)));
