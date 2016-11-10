@@ -74,11 +74,7 @@ public class MockInMemoryConsumer implements KafkaConsumerWrapper {
 
   @Override
   public OffsetAndMetadata committed(String topic, int partition) {
-    if (null != delegate.committed(topic, partition)) {
-      throw new IllegalArgumentException(
-          "The MockInMemoryConsumer's delegate can only be used to verify calls, not to return arbitrary instances.");
-    }
-    return null;
+    return delegate.committed(topic, partition);
   }
 
   public Map<TopicPartition, OffsetRecord> getOffsets() {

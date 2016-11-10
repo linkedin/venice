@@ -954,7 +954,7 @@ public class StoreConsumptionTaskTest {
     PollStrategy pollStrategy = new BlockingObserverPollStrategy(
         new RandomPollStrategy(false),
         topicPartitionOffsetRecordPair -> {
-          if (null == topicPartitionOffsetRecordPair.getSecond()) {
+          if (null == topicPartitionOffsetRecordPair || null == topicPartitionOffsetRecordPair.getSecond()) {
             LOGGER.info("Received null OffsetRecord!");
           } else if (messagesConsumedSoFar.incrementAndGet() % (totalNumberOfMessages / totalNumberOfConsumptionRestarts) == 0) {
             LOGGER.info("Restarting consumer after consuming " + messagesConsumedSoFar.get() + " messages so far.");

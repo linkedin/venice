@@ -44,10 +44,6 @@ public abstract class AbstractPollStrategy implements PollStrategy {
     int numberOfRecords = 0;
 
     while (numberOfRecords < MAX_MESSAGES_PER_POLL && System.currentTimeMillis() < startTime + timeout) {
-      if (offsets.isEmpty()) {
-        break;
-      }
-
       Pair<TopicPartition, OffsetRecord> nextPoll = getNextPoll(offsets);
       if (null == nextPoll) {
         if (keepPollingWhenEmpty) {

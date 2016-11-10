@@ -23,6 +23,7 @@ import com.linkedin.venice.helix.Replica;
 import com.linkedin.venice.job.ExecutionStatus;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.kafka.consumer.VeniceConsumerFactory;
+import com.linkedin.venice.kafka.validation.checksum.CheckSumType;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.Store;
@@ -128,6 +129,14 @@ public class VeniceParentHelixAdmin implements Admin {
       // Initialize VeniceWriter (Kafka producer)
       Properties props = new Properties();
       props.put(ConfigKeys.KAFKA_BOOTSTRAP_SERVERS, veniceControllerConfig.getKafkaBootstrapServers());
+      /**
+       * No need to do checksum validation since Kafka will do message-level checksum validation by default.
+       * Venice just needs to check seq id in {@link com.linkedin.venice.controller.kafka.consumer.AdminConsumptionTask} to catch the following scenarios:
+       * 1. Data missing;
+       * 2. Data out of order;
+       * 3. Data duplication;
+        */
+      props.put(VeniceWriter.CHECK_SUM_TYPE, CheckSumType.NONE.name());
       VeniceProperties veniceWriterProperties = new VeniceProperties(props);
       return new VeniceWriter<>(veniceWriterProperties, topicName, new DefaultSerializer(), new DefaultSerializer());
     });

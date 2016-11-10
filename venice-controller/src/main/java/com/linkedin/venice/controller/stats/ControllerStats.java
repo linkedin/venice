@@ -6,6 +6,7 @@ import com.linkedin.venice.stats.AbstractVeniceStats;
 import com.linkedin.venice.stats.TehutiUtils;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
+import io.tehuti.metrics.stats.Count;
 import io.tehuti.metrics.stats.Max;
 import io.tehuti.metrics.stats.OccurrenceRate;
 import io.tehuti.metrics.stats.SampledCount;
@@ -17,6 +18,7 @@ public class ControllerStats extends AbstractVeniceStats {
   final private Sensor successfulRequestLatencySensor;
   final private Sensor failedRequestLatency;
   final private Sensor adminConsumeFailCount;
+  final private Sensor adminTopicDIVErrorReportCount;
 
   private static ControllerStats instance;
 
@@ -47,6 +49,7 @@ public class ControllerStats extends AbstractVeniceStats {
     failedRequestLatency = registerSensor("failed_request_latency",
       TehutiUtils.getPercentileStat(getName() + "_" + "failed_request_latency"));
     adminConsumeFailCount = registerSensor("failed_admin_messages", new Max());
+    adminTopicDIVErrorReportCount = registerSensor("admin_message_div_error_report_count", new Count());
   }
 
   public void recordRequest() {
@@ -72,5 +75,9 @@ public class ControllerStats extends AbstractVeniceStats {
    */
   public void recordFailedAdminConsumption(double retryCount) {
     record(adminConsumeFailCount, retryCount);
+  }
+
+  public void recordAdminTopicDIVErrorReportCount() {
+    record(adminTopicDIVErrorReportCount);
   }
 }

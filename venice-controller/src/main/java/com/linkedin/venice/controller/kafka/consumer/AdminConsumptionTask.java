@@ -14,11 +14,16 @@ import com.linkedin.venice.controller.kafka.protocol.enums.AdminMessageType;
 import com.linkedin.venice.controller.kafka.protocol.serializer.AdminOperationSerializer;
 import com.linkedin.venice.controller.stats.ControllerStats;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.exceptions.validation.DataValidationException;
+import com.linkedin.venice.exceptions.validation.DuplicateDataException;
 import com.linkedin.venice.kafka.consumer.KafkaConsumerWrapper;
 import com.linkedin.venice.kafka.consumer.VeniceConsumerFactory;
+import com.linkedin.venice.kafka.protocol.GUID;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
+import com.linkedin.venice.kafka.validation.OffsetRecordTransformer;
+import com.linkedin.venice.kafka.validation.ProducerTracker;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.schema.SchemaEntry;
@@ -26,6 +31,10 @@ import com.linkedin.venice.utils.Utils;
 import java.io.Closeable;
 import java.io.IOException;
 import java.util.Iterator;
+
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -50,7 +59,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
   private final boolean isParentController;
   private final AtomicBoolean isRunning;
   private final AdminOperationSerializer deserializer;
-  private final ControllerStats controllerStats;
+  private ControllerStats controllerStats;
   private final long failureRetryTimeoutMs;
 
   private boolean isSubscribed;
@@ -59,6 +68,13 @@ public class AdminConsumptionTask implements Runnable, Closeable {
   private volatile long offsetToSkip = -1L;
   private volatile long lastFailedOffset = -1L;
   private boolean topicExists;
+  // Used to store state info to offset record
+  private Optional<OffsetRecordTransformer> offsetRecordTransformer = Optional.empty();
+
+  /**
+   * Keeps track of every upstream producer this consumer task has seen so far.
+   */
+  private final Map<GUID, ProducerTracker> producerTrackerMap;
 
   public AdminConsumptionTask(String clusterName,
                               VeniceConsumerFactory consumerFactory,
@@ -84,6 +100,12 @@ public class AdminConsumptionTask implements Runnable, Closeable {
     Properties kafkaConsumerProperties = VeniceControllerService.getKafkaConsumerProperties(kafkaBootstrapServers, clusterName);
     this.consumer = consumerFactory.getConsumer(kafkaConsumerProperties);
     this.offsetManager = new AdminOffsetManager(consumerFactory, kafkaConsumerProperties);
+    this.producerTrackerMap = new HashMap<>();
+  }
+
+  // For testing
+  public void setControllerStats(ControllerStats stats) {
+    this.controllerStats = stats;
   }
 
   @Override
@@ -120,12 +142,12 @@ public class AdminConsumptionTask implements Runnable, Closeable {
           Iterator<ConsumerRecord<KafkaKey, KafkaMessageEnvelope>> recordsIterator = records.iterator();
           while (isRunning.get() && admin.isMasterController(clusterName) && recordsIterator.hasNext()) {
             ConsumerRecord<KafkaKey, KafkaMessageEnvelope> record = recordsIterator.next();
-            boolean retry = true;
             int retryCount = 0;
             long retryStartTime = System.currentTimeMillis();
-            while (isRunning.get() && admin.isMasterController(clusterName) && retry) {
+            while (isRunning.get() && admin.isMasterController(clusterName)) {
               try {
-                processMessage(record);
+                boolean isRetry = retryCount > 0;
+                processMessage(record, isRetry);
                 break;
               } catch (Exception e) {
                 // Retry should happen in message level, not in batch
@@ -181,14 +203,70 @@ public class AdminConsumptionTask implements Runnable, Closeable {
     return topicExists;
   }
 
-
-  private void processMessage(ConsumerRecord<KafkaKey, KafkaMessageEnvelope> record) {
-    // TODO: Add data validation logic here
+  /**
+   * This function is used to check whether current message is valid to process.
+   * If some significant DIV issue happens, this function will throw exception.
+   *
+   * @param record
+   * @param isRetry whether current record is a normal record, or a retry record because of exception during
+   *                handling current record.
+   * @return
+   *  false : we can safely skip current message.
+   *  true : normal admin message, which should be processed.
+   */
+  private boolean checkAndValidateMessage(ConsumerRecord<KafkaKey, KafkaMessageEnvelope> record, boolean isRetry) {
     if (!shouldProcessRecord(record)){
       persistRecordOffset(record); // We don't process the data validation control messages for example
+      return false;
+    }
+
+    KafkaKey kafkaKey = record.key();
+    KafkaMessageEnvelope kafkaValue = record.value();
+    try {
+      final GUID producerGUID = kafkaValue.producerMetadata.producerGUID;
+      ProducerTracker producerTracker = producerTrackerMap.get(producerGUID);
+      if (producerTracker == null) {
+        producerTracker = new ProducerTracker(producerGUID);
+        producerTrackerMap.put(producerGUID, producerTracker);
+      }
+      offsetRecordTransformer = Optional.of(producerTracker.addMessage(AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID, kafkaKey, kafkaValue));
+    } catch (DuplicateDataException e) {
+      if (isRetry) {
+        // When retrying, it is valid to receive DuplicateDataException,
+        // and we should proceed to handle this message instead of skipping it.
+        return true;
+      } else {
+        logger.info("Skipping a duplicate record in topic: " + topic + "', offset: " + record.offset());
+        persistRecordOffset(record);
+        return false;
+      }
+    } catch (DataValidationException dve) {
+      logger.error("Received data validation error", dve);
+      controllerStats.recordAdminTopicDIVErrorReportCount();
+      throw dve;
+    }
+
+    return true;
+  }
+
+  private void processMessage(ConsumerRecord<KafkaKey, KafkaMessageEnvelope> record, boolean isRetry) {
+    if (! checkAndValidateMessage(record, isRetry)) {
       return;
     }
-    Put put = (Put) record.value().payloadUnion;
+    KafkaKey kafkaKey = record.key();
+    KafkaMessageEnvelope kafkaValue = record.value();
+
+    if (kafkaKey.isControlMessage()) {
+      logger.info("Receive control message: " + kafkaValue);
+      persistRecordOffset(record);
+      return;
+    }
+    // check message type
+    MessageType messageType = MessageType.valueOf(kafkaValue);
+    if (MessageType.PUT != messageType) {
+      throw new VeniceException("Received unknown message type: " + messageType);
+    }
+    Put put = (Put) kafkaValue.payloadUnion;
     AdminOperation adminMessage = deserializer.deserialize(put.putValue.array(), put.schemaId);
     if (logger.isDebugEnabled()) {
       logger.debug("Received message: " + adminMessage);
@@ -230,6 +308,9 @@ public class AdminConsumptionTask implements Runnable, Closeable {
     long recordOffset = record.offset();
     if (recordOffset > lastOffset.getOffset()) {
       lastOffset.setOffset(recordOffset);
+      if (offsetRecordTransformer.isPresent()) {
+        lastOffset = offsetRecordTransformer.get().transform(lastOffset);
+      }
       offsetManager.recordOffset(topic, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID, lastOffset);
     }
   }
@@ -269,14 +350,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
           "last known offset: " + lastOffset.getOffset() + ", current offset: " + recordOffset);
       return false;
     }
-    // check message type
-    KafkaMessageEnvelope kafkaValue = record.value();
-    MessageType messageType = MessageType.valueOf(kafkaValue);
-    // TODO: Add data validation logic here, and there should be more MessageType here to handle, such as Control Message.
-    if (MessageType.PUT != messageType) {
-      logger.error("Received unknown message type: " + messageType);
-      return false;
-    }
+
     return true;
   }
 
