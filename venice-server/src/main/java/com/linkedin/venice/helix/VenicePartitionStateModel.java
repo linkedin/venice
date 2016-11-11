@@ -86,7 +86,7 @@ public class VenicePartitionStateModel extends StateModel {
 
     }
 
-    private void removePartitionFromStore( ) {
+    private void removePartitionFromStore() {
         storageService.dropStorePartition(storeConfig, partition);
         kafkaConsumerService.resetConsumptionOffset(storeConfig, partition);
     }
