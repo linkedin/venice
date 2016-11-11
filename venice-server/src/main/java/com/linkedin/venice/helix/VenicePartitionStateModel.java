@@ -124,6 +124,17 @@ public class VenicePartitionStateModel extends StateModel {
     }
 
     /**
+     * Handles BOOTSTRAP->OFFLINE transition.
+     */
+    @Transition(to = HelixState.OFFLINE_STATE, from = HelixState.BOOTSTRAP_STATE)
+    public void onBecomeOfflineFromBootstrap(Message message, NotificationContext context) {
+        logEntry(HelixState.BOOTSTRAP, HelixState.OFFLINE, message, context);
+        // TODO stop is an async operation, we need to ensure that it's really stopped before state transition is completed.
+        kafkaConsumerService.stopConsumption(storeConfig, partition);
+        logCompletion(HelixState.BOOTSTRAP, HelixState.OFFLINE, message, context);
+    }
+
+    /**
      * Handles ERROR->DROPPED transition. Unexpected Transition. Unsubscribes the partition, removes partition's data
      * from local storage and clears the committed offset.
      */

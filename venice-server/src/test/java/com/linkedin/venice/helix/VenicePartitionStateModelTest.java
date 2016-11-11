@@ -117,6 +117,16 @@ public class VenicePartitionStateModelTest {
 
   /**
    * Verifies the following:
+   *  1. Kafka Partition consumption is turned off.
+   */
+  @Test
+  public void testOnBecomeOfflineFromBootstrap() throws Exception {
+    testStateModel.onBecomeOfflineFromBootstrap(mockMessage, mockContext);
+    Mockito.verify(mockKafkaConsumerService, Mockito.atLeastOnce()).stopConsumption(mockStoreConfig, testPartition);
+  }
+
+  /**
+   * Verifies the following:
    *  1. Information in the local engine is cleared for the dropped partition.
    */
   @Test
