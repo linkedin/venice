@@ -1,9 +1,5 @@
 package com.linkedin.venice;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.ObjectWriter;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.schema.SchemaReader;
 import com.linkedin.venice.client.store.AbstractAvroStoreClient;
@@ -35,6 +31,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.StringJoiner;
 import java.util.concurrent.ExecutionException;
+import java.util.function.Consumer;
 import org.apache.avro.Schema;
 import org.apache.commons.cli.BasicParser;
 import org.apache.commons.cli.CommandLine;
@@ -45,12 +42,16 @@ import org.apache.commons.cli.OptionBuilder;
 import org.apache.commons.cli.OptionGroup;
 import org.apache.commons.cli.Options;
 import org.apache.commons.cli.ParseException;
+import org.codehaus.jackson.map.ObjectMapper;
+import org.codehaus.jackson.map.ObjectWriter;
+import org.codehaus.jackson.type.TypeReference;
+
 
 public class AdminTool {
 
   // TODO: static state means this can only be used by command line,
   // if we want to use this class programmatically it should get refactored.
-  private static ObjectWriter jsonWriter = new ObjectMapper().writerWithDefaultPrettyPrinter();
+  private static ObjectWriter jsonWriter = new ObjectMapper().defaultPrettyPrintingWriter();
   private static List<String> fieldsToDisplay = new ArrayList<>();
   private static final String STATUS = "status";
   private static final String ERROR = "error";
@@ -180,7 +181,7 @@ public class AdminTool {
   }
 
   private static void queryStoreForKey(CommandLine cmd, String routerHosts)
-      throws VeniceClientException, ExecutionException, InterruptedException, JsonProcessingException {
+      throws VeniceClientException, ExecutionException, InterruptedException {
     String store = getRequiredArgument(cmd, Arg.STORE);
     Schema keySchema = null;
     SchemaReader schemaReader = null;
@@ -288,8 +289,7 @@ public class AdminTool {
     printObject(valueResponse);
   }
 
-  private static void printStoreDescription(String routerHosts, String clusterName, String storeName)
-      throws JsonProcessingException {
+  private static void printStoreDescription(String routerHosts, String clusterName, String storeName) {
     StoreResponse response = ControllerClient.getStore(routerHosts, clusterName, storeName);
     printObject(response);
   }
@@ -416,11 +416,13 @@ public class AdminTool {
   }
 
   ///// Print Output ////
-
-  private static void printObject(Object response){
+  private static void printObject(Object response) {
+    printObject(response, System.out::print);
+  }
+  protected static void printObject(Object response, Consumer<String> printFunction){
     try {
       if (fieldsToDisplay.size() == 0){
-        System.out.println(jsonWriter.writeValueAsString(response));
+        printFunction.accept(jsonWriter.writeValueAsString(response));
       } else { // Only display specified keys
         ObjectMapper mapper = new ObjectMapper();
         ObjectWriter plainJsonWriter = mapper.writer();
@@ -430,14 +432,12 @@ public class AdminTool {
         printMap.entrySet().stream().filter(entry -> fieldsToDisplay.contains(entry.getKey())).forEach(entry -> {
           filteredPrintMap.put(entry.getKey(), entry.getValue());
             });
-        System.out.println(jsonWriter.writeValueAsString(filteredPrintMap));
+        printFunction.accept(jsonWriter.writeValueAsString(filteredPrintMap));
       }
 
-    } catch (JsonProcessingException e) {
-      System.out.println("{\"" + ERROR + "\":\"" + e.getMessage() + "\"}");
-      System.exit(1);
     } catch (IOException e) {
-      throw new VeniceException(e);
+      printFunction.accept("{\"" + ERROR + "\":\"" + e.getMessage() + "\"}");
+      System.exit(1);
     }
   }
 
@@ -461,7 +461,7 @@ public class AdminTool {
     }
     try {
       System.out.println(jsonWriter.writeValueAsString(errMap));
-    } catch (JsonProcessingException e) {
+    } catch (IOException e) {
       System.out.println("{\"" + ERROR + "\":\"" + e.getMessage() + "\"}");
     }
     System.exit(1);
