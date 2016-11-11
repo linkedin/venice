@@ -116,6 +116,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
   @Override
   public void run() { //TODO: clean up this method.  We've got nested loops checking the same conditions
     logger.info("Running consumer: " + consumerTaskId);
+    int noTopicCounter = 0;
     while (isRunning.get()) {
       try {
         Utils.sleep(READ_CYCLE_DELAY_MS);
@@ -124,7 +125,10 @@ public class AdminConsumptionTask implements Runnable, Closeable {
           if (!isSubscribed) {
             // check whether the admin topic exists or not
             if (!whetherTopicExists(topic)) {
-              logger.info("Admin topic: " + topic + " hasn't been created yet");
+              if (noTopicCounter % 60 == 0) { // To reduce log bloat, only log once per minute
+                logger.info("Admin topic: " + topic + " hasn't been created yet");
+              }
+              noTopicCounter++;
               continue;
             }
             // Subscribe the admin topic
