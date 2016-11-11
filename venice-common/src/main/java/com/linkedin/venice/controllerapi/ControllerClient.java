@@ -188,7 +188,11 @@ public class ControllerClient implements Closeable {
   public ControllerResponse killOfflinePushJob(String clusterName, String kafkaTopic) {
     try {
       List<NameValuePair> queryParams = newParams(clusterName);
-      queryParams.add(new BasicNameValuePair(ControllerApiConstants.TOPIC, kafkaTopic));
+      queryParams.add(new BasicNameValuePair(ControllerApiConstants.TOPIC, kafkaTopic)); // TODO: remove once the controller is deployed to handle store and version instead
+      String store = Version.parseStoreFromKafkaTopicName(kafkaTopic);
+      int versionNumber = Version.parseVersionFromKafkaTopicName(kafkaTopic);
+      queryParams.add(new BasicNameValuePair(ControllerApiConstants.NAME, store));
+      queryParams.add(new BasicNameValuePair(ControllerApiConstants.VERSION, Integer.toString(versionNumber)));
       String responseJson = postRequest(ControllerRoute.KILL_OFFLINE_PUSH_JOB.getPath(), queryParams);
       return mapper.readValue(responseJson, ControllerResponse.class);
     } catch (Exception e) {
