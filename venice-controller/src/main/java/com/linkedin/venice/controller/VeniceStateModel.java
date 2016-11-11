@@ -37,6 +37,7 @@ public class VeniceStateModel {
     builder.addTransition(HelixState.OFFLINE.toString(), HelixState.BOOTSTRAP.toString());
     builder.addTransition(HelixState.BOOTSTRAP.toString(), HelixState.ONLINE.toString());
     builder.addTransition(HelixState.ONLINE.toString(), HelixState.OFFLINE.toString());
+    builder.addTransition(HelixState.BOOTSTRAP.toString(), HelixState.OFFLINE.toString());
     builder.addTransition(HelixState.OFFLINE.toString(), HelixDefinedState.DROPPED.toString());
 
     // States constraints
