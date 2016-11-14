@@ -61,6 +61,7 @@ public class VeniceControllerWrapper extends ProcessWrapper {
       if (isParent) {
         // Parent controller needs config to route per-cluster requests such as job status
         // This dummy parent controller wont support such requests until we make this config configurable.
+        builder.put(CHILD_CLUSTER_WHITELIST, "cluster1");
         builder.put(CHILD_CLUSTER_URL_PREFIX + ".cluster1", "http://dummyhost:1234");
       }
 
