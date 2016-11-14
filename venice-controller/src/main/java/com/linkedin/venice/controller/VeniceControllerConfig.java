@@ -3,9 +3,12 @@ package com.linkedin.venice.controller;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.utils.Time;
+import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
@@ -38,7 +41,8 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
     this.topicMonitorPollIntervalMs = props.getInt(TOPIC_MONITOR_POLL_INTERVAL_MS, 10 * Time.MS_PER_SECOND);
     this.parent = props.getBoolean(ConfigKeys.CONTROLLER_PARENT_MODE, false);
     if (this.parent) {
-      this.childClusterMap = parseClusterMap(props.clipAndFilterNamespace(ConfigKeys.CHILD_CLUSTER_URL_PREFIX));
+      String clusterWhitelist = props.getString(CHILD_CLUSTER_WHITELIST);
+      this.childClusterMap = parseClusterMap(props.clipAndFilterNamespace(ConfigKeys.CHILD_CLUSTER_URL_PREFIX), clusterWhitelist);
     }
     this.parentControllerWaitingTimeForConsumptionMs = props.getInt(ConfigKeys.PARENT_CONTROLLER_WAITING_TIME_FOR_CONSUMPTION_MS, 30 * Time.MS_PER_SECOND);
     this.adminConsumptionTimeoutMinutes = props.getLong(ADMIN_CONSUMPTION_TIMEOUT_MINUTES, TimeUnit.DAYS.toMinutes(5));
@@ -89,13 +93,18 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
    * @param childClusterUris list of child controller uris
    * @return
    */
-  public static Map<String, Set<String>> parseClusterMap(VeniceProperties childClusterUris) {
+  public static Map<String, Set<String>> parseClusterMap(VeniceProperties childClusterUris, String datacenterWhitelist) {
     Properties childClusterUriProps = childClusterUris.toProperties();
     if (childClusterUriProps.isEmpty()) {
       throw new VeniceException("child controller list can not be empty");
     }
 
+    if (Utils.isNullOrEmpty(datacenterWhitelist)){
+      throw new VeniceException("child controller list must have a whitelist");
+    }
+
     Map<String, Set<String>> outputMap = new HashMap<>();
+    List<String> whitelist = Arrays.asList(datacenterWhitelist.split(","));
 
     for (Map.Entry<Object, Object> uriEntry: childClusterUriProps.entrySet() ) {
       String datacenter = (String) uriEntry.getKey();
@@ -106,19 +115,21 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
         throw new VeniceException("Invalid configuration" + CHILD_CLUSTER_URL_PREFIX + ".[missing]" + ": cluster name can't be empty. " + uriEntry.getValue());
       }
 
-      outputMap.computeIfAbsent(datacenter, k -> new HashSet<>());
+      if (whitelist.contains(datacenter)) {
+        outputMap.computeIfAbsent(datacenter, k -> new HashSet<>());
 
-      for (String uri : uris) {
-        if (uri.isEmpty()) {
-          throw new VeniceException("Invalid configuration " + CHILD_CLUSTER_URL_PREFIX + "." + datacenter + ": found no urls for: " + uriEntry.getKey());
+        for (String uri : uris) {
+          if (uri.isEmpty()) {
+            throw new VeniceException(
+                "Invalid configuration " + CHILD_CLUSTER_URL_PREFIX + "." + datacenter + ": found no urls for: " + uriEntry.getKey());
+          }
+
+          if (!uri.startsWith("http://")) {
+            throw new VeniceException("Invalid configuration " + CHILD_CLUSTER_URL_PREFIX + "." + datacenter + ": all urls must begin with http://, found: " + uriEntry.getValue());
+          }
+
+          outputMap.get(datacenter).add(uri);
         }
-
-        if (!uri.startsWith("http://")) {
-          throw new VeniceException(
-            "Invalid configuration " + CHILD_CLUSTER_URL_PREFIX + "." + datacenter + ": all urls must begin with http://, found: " + uriEntry.getValue());
-        }
-
-        outputMap.get(datacenter).add(uri);
       }
     }
 

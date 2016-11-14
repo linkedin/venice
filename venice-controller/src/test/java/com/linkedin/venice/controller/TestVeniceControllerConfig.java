@@ -13,48 +13,66 @@ public class TestVeniceControllerConfig {
   @Test
   public void canParseClusterMap(){
     PropertyBuilder builder = new PropertyBuilder();
-    builder.put("ei-ltx1", "http://host:1234, http://host:5678")
-           .put("ei-lca1", "http://host:1234, http://host:5678");
+    builder.put("dc1", "http://host:1234, http://host:5678")
+           .put("dc2", "http://host:1234, http://host:5678");
 
-    Map<String, Set<String>> map = VeniceControllerConfig.parseClusterMap(builder.build());
+    String whitelist = "dc1,dc2";
+    Map<String, Set<String>> map = VeniceControllerConfig.parseClusterMap(builder.build(), whitelist);
 
     Assert.assertEquals(map.size(), 2);
-    Assert.assertTrue(map.keySet().contains("ei-ltx1"));
-    Assert.assertTrue(map.keySet().contains("ei-lca1"));
+    Assert.assertTrue(map.keySet().contains("dc1"));
+    Assert.assertTrue(map.keySet().contains("dc2"));
 
-    Assert.assertEquals(map.get("ei-ltx1").size(), 2);
-    Assert.assertTrue(map.get("ei-ltx1").contains("http://host:1234"));
-    Assert.assertTrue(map.get("ei-ltx1").contains("http://host:5678"));
+    Assert.assertEquals(map.get("dc1").size(), 2);
+    Assert.assertTrue(map.get("dc1").contains("http://host:1234"));
+    Assert.assertTrue(map.get("dc1").contains("http://host:5678"));
   }
 
   @Test(expectedExceptions = VeniceException.class)
   public void emptyChildControllerList() {
     PropertyBuilder build = new PropertyBuilder();
+    String whitelist = "dc1,dc2";
+    VeniceControllerConfig.parseClusterMap(build.build(), whitelist);
+  }
 
-    VeniceControllerConfig.parseClusterMap(build.build());
+  @Test(expectedExceptions = VeniceException.class)
+  public void emptyWhitelist() {
+    PropertyBuilder build = new PropertyBuilder()
+        .put("dc1", "http://host:1234, http://host:5678")
+        .put("dc2", "http://host:1234, http://host:5678");
+    VeniceControllerConfig.parseClusterMap(build.build(), "");
+  }
+
+  @Test(expectedExceptions = VeniceException.class)
+  public void nullWhitelist() {
+    PropertyBuilder build = new PropertyBuilder()
+        .put("dc1", "http://host:1234, http://host:5678")
+        .put("dc2", "http://host:1234, http://host:5678");
+    VeniceControllerConfig.parseClusterMap(build.build(), null);
   }
 
   @Test(expectedExceptions = VeniceException.class)
   public void errOnMissingClusterName() {
     PropertyBuilder builder = new PropertyBuilder();
     builder.put("", "http://host:1234");
-
-    VeniceControllerConfig.parseClusterMap(builder.build());
+    String whitelist = "dc1,dc2";
+    VeniceControllerConfig.parseClusterMap(builder.build(), whitelist);
   }
 
   @Test(expectedExceptions = VeniceException.class)
   public void errOnMissingScheme(){
     PropertyBuilder builder = new PropertyBuilder();
-    builder.put("ei-ltx1", "host:1234");
+    builder.put("dc1", "host:1234");
 
-    VeniceControllerConfig.parseClusterMap(builder.build());
+    String whitelist = "dc1";
+    VeniceControllerConfig.parseClusterMap(builder.build(), whitelist);
   }
 
   @Test(expectedExceptions = VeniceException.class)
   public void errOnMissingNodes(){
     PropertyBuilder builder = new PropertyBuilder();
-    builder.put("ei-ltx1", "");
-
-    VeniceControllerConfig.parseClusterMap(builder.build());
+    builder.put("dc1", "");
+    String whitelist = "dc1";
+    VeniceControllerConfig.parseClusterMap(builder.build(), whitelist);
   }
 }

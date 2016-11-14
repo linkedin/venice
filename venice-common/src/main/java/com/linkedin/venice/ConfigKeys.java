@@ -98,8 +98,31 @@ public class ConfigKeys {
    * The format for key/value would be like "key=child.cluster.url.ei-ltx1, value=url1;url2;url3"
    * the cluster name should be human readable, ex: ei-ltx1
    * the url should be of the form http://host:port
+   *
+   * Note that every cluster name supplied must also be specified in the child.cluster.whitelist in order to be included
    * */
   public static final String CHILD_CLUSTER_URL_PREFIX = "child.cluster.url";
+
+  /**
+   * Only required when controller.parent.mode=true
+   * This is a comma-separated whitelist of cluster names used in the keys with the child.cluster.url prefix.
+   *
+   * Example, if we have the following child.cluster.url keys:
+   *
+   * child.cluster.url.cluster1=...
+   * child.cluster.url.cluster2=...
+   * child.cluster.url.cluster3=...
+   *
+   * And we want to use all three cluster, then we set
+   *
+   * child.cluster.whitelist=cluster1,cluster2,cluster3
+   *
+   * If we only want to use clusters 1 and 3 we can set
+   *
+   * child.cluster.whitelist=cluster1,cluster3
+   *
+   */
+  public static final String CHILD_CLUSTER_WHITELIST = "child.cluster.whitelist";
 
   /**
    * When the parent controller receives an admin write operation, it replicates that message to the admin kafka stream.
