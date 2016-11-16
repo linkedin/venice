@@ -295,14 +295,8 @@ public class KafkaPushJob extends AbstractJob {
       JobClient jc = new JobClient(job);
 
       getVeniceWriter().broadcastStartOfPush(Maps.newHashMap());
-      // submit the job for execution
-      runningJob = jc.submitJob(job);
-      logger.info("Job Tracking URL: " + runningJob.getTrackingURL());
-      runningJob.waitForCompletion();
-
-      if (!runningJob.isSuccessful()) {
-        throw new RuntimeException("KafkaPushJob failed");
-      }
+      // submit the job for execution and wait for completion
+      runningJob = jc.runJob(job);
       //TODO: send a failure END OF PUSH message if something went wrong
       getVeniceWriter().broadcastEndOfPush(Maps.newHashMap());
       // Close VeniceWriter before polling job status since polling job status could
@@ -623,7 +617,12 @@ public class KafkaPushJob extends AbstractJob {
   public void cancel() throws Exception {
     // Attempting to kill job. There's a race condition, but meh. Better kill when you know it's running
     if (runningJob != null && !runningJob.isComplete()) {
-      runningJob.killJob();
+      try {
+        runningJob.killJob();
+      } catch (Exception ex) {
+        // Will try to kill Venice Offline Push Job no matter whether map-reduce job kill throws exception or not.
+        logger.info("Received exception while killing map-reduce job", ex);
+      }
     }
     if (! Utils.isNullOrEmpty(topic)) {
       controllerClient.killOfflinePushJob(clusterName, topic);
