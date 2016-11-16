@@ -81,6 +81,7 @@ public abstract class AbstractStorageEngine implements Store {
      */
     if (!partitionIdToPartitionMap.containsKey(partitionId)) {
       logger.error("Failed to remove a non existing partition: " + partitionId + " Store " + this.getName() );
+      return;
     }
     /* NOTE: bdb database is not closed here. */
     logger.info("Removing Partition: " + partitionId + " Store " + this.getName() );
