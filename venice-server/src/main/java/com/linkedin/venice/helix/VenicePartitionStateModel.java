@@ -82,7 +82,7 @@ public class VenicePartitionStateModel extends StateModel {
     public void onBecomeOfflineFromOnline(Message message, NotificationContext context) {
         logEntry(HelixState.ONLINE, HelixState.OFFLINE, message, context);
         kafkaConsumerService.stopConsumption(storeConfig, partition);
-        logCompletion(HelixState.OFFLINE, HelixState.ONLINE, message, context);
+        logCompletion(HelixState.ONLINE, HelixState.OFFLINE, message, context);
 
     }
 

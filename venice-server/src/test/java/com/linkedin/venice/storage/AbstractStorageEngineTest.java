@@ -1,5 +1,6 @@
 package com.linkedin.venice.storage;
 
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.RandomGenUtils;
@@ -134,11 +135,8 @@ public abstract class AbstractStorageEngineTest extends AbstractStoreTest {
     try {
       doRemovePartition(partitionId);
     } catch (Exception e) {
-      //TODO this should be the expected behavior. Please add the appropriate exception in catch phrase after exception
-      // handling is designed. Till then this test does not have any value.
-      return;
+      Assert.fail("Removing a non-exist partition should not throw an exception.", e);
     }
-    Assert.fail("Removing the same partition:" + partitionId + " again did not throw any exception as expected.");
   }
 
   public void testOperationsOnNonExistingPartition()
