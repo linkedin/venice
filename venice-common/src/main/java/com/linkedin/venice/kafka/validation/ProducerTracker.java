@@ -1,6 +1,5 @@
 package com.linkedin.venice.kafka.validation;
 
-import com.google.common.collect.Maps;
 import com.linkedin.venice.exceptions.validation.CorruptDataException;
 import com.linkedin.venice.exceptions.validation.DataValidationException;
 import com.linkedin.venice.exceptions.validation.DuplicateDataException;
@@ -35,7 +34,7 @@ public class ProducerTracker {
   private static final Logger LOGGER = Logger.getLogger(ProducerTracker.class);
 
   private final GUID producerGUID;
-  private final Map<Integer, Segment> segments = Maps.newHashMap();
+  private final Map<Integer, Segment> segments = new HashMap<>();
 
   public ProducerTracker(GUID producerGUID) {
     this.producerGUID = producerGUID;

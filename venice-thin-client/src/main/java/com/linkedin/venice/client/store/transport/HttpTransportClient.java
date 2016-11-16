@@ -139,4 +139,7 @@ public class HttpTransportClient<V> extends TransportClient<V> {
     }
   }
 
+  public String toString() {
+    return this.getClass().getSimpleName() + "(routerUrl: " + routerUrl + ")";
+  }
 }

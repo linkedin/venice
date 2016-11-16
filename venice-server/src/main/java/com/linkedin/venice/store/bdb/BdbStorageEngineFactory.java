@@ -1,6 +1,5 @@
 package com.linkedin.venice.store.bdb;
 
-import com.google.common.collect.Maps;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.config.VeniceServerConfig;
 import com.linkedin.venice.config.VeniceStoreConfig;
@@ -17,6 +16,7 @@ import org.apache.log4j.Logger;
 
 import java.io.File;
 import java.io.IOException;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
@@ -48,7 +48,7 @@ public class BdbStorageEngineFactory implements StorageEngineFactory {
 
   private final BdbServerConfig bdbServerConfig;
 
-  private final Map<String, Environment> environments = Maps.newHashMap();
+  private final Map<String, Environment> environments = new HashMap<>();
   private final EnvironmentConfig environmentConfig;
   private final String bdbMasterDir;
   private final boolean useOneEnvPerStore;

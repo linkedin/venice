@@ -1,12 +1,12 @@
 package com.linkedin.venice.integration.utils;
 
-import com.google.common.collect.Maps;
 import kafka.server.KafkaConfig;
 import kafka.server.KafkaServer;
 import kafka.utils.*;
 import scala.None$;
 
 import java.io.File;
+import java.util.HashMap;
 import java.util.Map;
 
 /**
@@ -29,7 +29,7 @@ public class KafkaBrokerWrapper extends ProcessWrapper {
    */
   static StatefulServiceProvider<KafkaBrokerWrapper> generateService(ZkServerWrapper zkServerWrapper) {
     return (String serviceName, int port, File dir) -> {
-      Map<String, Object> configMap = Maps.newHashMap();
+      Map<String, Object> configMap = new HashMap<>();
 
       // Essential configs
       configMap.put(KafkaConfig.ZkConnectProp(), zkServerWrapper.getAddress());

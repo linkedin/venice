@@ -50,4 +50,8 @@ public class AvroGenericStoreClientImpl<V> extends AbstractAvroStoreClient<V> {
     }
     return AvroSerializerDeserializerFactory.getAvroGenericDeserializer(writerSchema, readerSchema);
   }
+
+  public String toString() {
+    return this.getClass().getSimpleName() + "(transportClient: " + getTransportClient().toString() + ")";
+  }
 }

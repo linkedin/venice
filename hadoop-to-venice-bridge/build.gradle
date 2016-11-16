@@ -1,5 +1,6 @@
 dependencies {
     compile project(':venice-common')
+    compile project(':venice-thin-client') // Needed by the Post Bulkload Analysis Job
 
     compile libraries.commonsIo
     compile libraries.kafkaClients
@@ -35,7 +36,6 @@ dependencies {
     testCompile project(':venice-controller')
     testCompile project(':venice-server')
     testCompile project(':venice-router')
-    testCompile project(':venice-thin-client')
     testCompile (libraries.mapreduceClientJobClient) {
         exclude group: 'org.apache.avro'
         exclude group: 'javax.servlet'
@@ -61,26 +61,30 @@ configurations.all {
 
 jar {
   // including all runtime dependency jars (fat jar)
-  from configurations.runtime.collect {
-       // filtering hadoop core jars and configs as it clashes with Azkaban
-       it.isDirectory() ? it : zipTree(it).matching {
-         exclude("**/*-default.xml")
-         exclude("**/org/apache/commons/**")
-         exclude("**/org/apache/hadoop/**")
-         exclude("**/com/linkedin/azkaban**")
-         exclude("**/com/linkedin/hadoop**")
-         exclude("hdfs*.xml")
-         exclude("mapred*.xml")
-         exclude("core*.xml")
-         exclude("**/org.apache.hadoop*")
+  // from configurations.runtime.collect {
+  from configurations.runtime
+  // from configurations.compile
+      .filter {!it.absolutePath.endsWith(".xml")}
+      .collect {
+        // filtering hadoop core jars and configs as it clashes with Azkaban
+        it.isDirectory() ? it : zipTree(it).matching {
+          // exclude("**/*-default.xml")
+          // exclude("**/*.xml")
+          exclude("**/org/apache/commons/**")
+          exclude("**/org/apache/hadoop/**")
+          exclude("**/com/linkedin/azkaban**")
+          exclude("**/com/linkedin/hadoop**")
+          // exclude("*.xml")
+          // exclude("hdfs*.xml")
+          // exclude("mapred*.xml")
+          // exclude("core*.xml")
+          exclude("**/org.apache.hadoop*")
        }
   }
 
-  // also include product-spec for parsing library versions at run time
-  // from "../product-spec.json"
   // override log4j properties for hadoop job
   from "log4j.properties"
-  exclude 'META-INF/*.RSA', 'META-INF/*.SF','META-INF/*.DSA'
+  exclude 'META-INF/*.RSA', 'META-INF/*.SF', 'META-INF/*.DSA'
 }
 
 task zipAzkabanDev(type: Zip, dependsOn: jar) {

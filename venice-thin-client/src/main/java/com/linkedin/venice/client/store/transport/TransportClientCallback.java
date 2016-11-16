@@ -21,19 +21,21 @@ public class TransportClientCallback<T> {
   private final DeserializerFetcher<T> deserializerFetcher;
   private final boolean needRawResult;
 
-  protected ClientCallback callback;
+  protected final ClientCallback callback;
 
-  public TransportClientCallback(CompletableFuture<T> valueFuture, DeserializerFetcher<T> fetcher, ClientCallback callback) {
+  private TransportClientCallback(CompletableFuture<T> valueFuture, DeserializerFetcher<T> fetcher, ClientCallback callback, boolean needRawResult) {
     this.valueFuture = valueFuture;
     this.deserializerFetcher = fetcher;
-    this.needRawResult = false;
     this.callback = callback;
+    this.needRawResult = needRawResult;
+  }
+
+  public TransportClientCallback(CompletableFuture<T> valueFuture, DeserializerFetcher<T> fetcher, ClientCallback callback) {
+    this(valueFuture, fetcher, callback, false);
   }
 
   public TransportClientCallback(CompletableFuture<T> valueFuture) {
-    this.valueFuture = valueFuture;
-    this.needRawResult = true;
-    this.deserializerFetcher = null;
+    this(valueFuture, null, NO_OP_CALLBACK, true);
   }
 
   protected boolean isNeedRawResult() {
@@ -89,4 +91,16 @@ public class TransportClientCallback<T> {
         callback.executeOnError();
     }
   }
+
+  private static final ClientCallback NO_OP_CALLBACK = new ClientCallback() {
+    @Override
+    public void executeOnSuccess() {
+      // no-op
+    }
+
+    @Override
+    public void executeOnError() {
+      // no-op
+    }
+  };
 }

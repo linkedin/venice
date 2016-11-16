@@ -3,7 +3,6 @@ package com.linkedin.venice.hadoop;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.writer.AbstractVeniceWriter;
 import com.linkedin.venice.writer.VeniceWriter;
-import com.linkedin.venice.exceptions.UndefinedPropertyException;
 import com.linkedin.venice.serialization.avro.AvroGenericSerializer;
 import com.linkedin.venice.serialization.DefaultSerializer;
 import com.linkedin.venice.serialization.VeniceSerializer;
@@ -20,7 +19,6 @@ import org.apache.kafka.clients.producer.RecordMetadata;
 import org.apache.log4j.Logger;
 
 import java.io.IOException;
-import java.util.Properties;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -53,11 +51,11 @@ public class AvroKafkaRecordWriter implements RecordWriter<AvroWrapper<IndexedRe
 
   private Callback kafkaMessageCallback = new KafkaMessageCallback();
 
-  public AvroKafkaRecordWriter(Properties properties, Progressable progress) {
-    this(properties,
+  public AvroKafkaRecordWriter(VeniceProperties props, Progressable progress) {
+    this(props,
         new VeniceWriter<>(
-            new VeniceProperties(properties),
-            getPropString(properties, KafkaPushJob.TOPIC_PROP),
+            props,
+            props.getString(KafkaPushJob.TOPIC_PROP),
             new DefaultSerializer(),
             new DefaultSerializer()
         ),
@@ -65,29 +63,21 @@ public class AvroKafkaRecordWriter implements RecordWriter<AvroWrapper<IndexedRe
     );
   }
 
-  public AvroKafkaRecordWriter(Properties properties, AbstractVeniceWriter<byte[], byte[]> veniceWriter, Progressable progress) {
+  public AvroKafkaRecordWriter(VeniceProperties props, AbstractVeniceWriter<byte[], byte[]> veniceWriter, Progressable progress) {
     this.veniceWriter = veniceWriter;
 
     // N.B.: These getters will throw an UndefinedPropertyException if anything is missing
-    this.keyField = getPropString(properties, KafkaPushJob.AVRO_KEY_FIELD_PROP);
-    this.valueField = getPropString(properties, KafkaPushJob.AVRO_VALUE_FIELD_PROP);
+    this.keyField = props.getString(KafkaPushJob.AVRO_KEY_FIELD_PROP);
+    this.valueField = props.getString(KafkaPushJob.AVRO_VALUE_FIELD_PROP);
     this.topicName = veniceWriter.getTopicName();
 
-    String schemaStr = getPropString(properties, KafkaPushJob.SCHEMA_STRING_PROP);
+    String schemaStr = props.getString(KafkaPushJob.SCHEMA_STRING_PROP);
     this.keySerializer = getSerializer(schemaStr, keyField);
     this.keyFieldPos = getFieldPos(schemaStr, keyField);
     this.valueSerializer = getSerializer(schemaStr, valueField);
     this.valueFieldPos = getFieldPos(schemaStr, valueField);
-    this.valueSchemaId = Integer.parseInt(getPropString(properties, KafkaPushJob.VALUE_SCHEMA_ID_PROP));
+    this.valueSchemaId = props.getInt(KafkaPushJob.VALUE_SCHEMA_ID_PROP);
     this.progress = progress;
-  }
-
-  private static String getPropString(Properties properties, String field) {
-    String value = properties.getProperty(field);
-    if (null == value) {
-      throw new UndefinedPropertyException(field);
-    }
-    return value;
   }
 
   private VeniceSerializer getSerializer(String schemaStr, String field) {

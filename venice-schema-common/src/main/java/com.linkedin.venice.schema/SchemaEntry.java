@@ -18,6 +18,10 @@ public final class SchemaEntry {
    * Primary constructor taking a literal id and schema.
    */
   public SchemaEntry(int id, String schemaStr) {
+    if (null == schemaStr) {
+      throw new IllegalArgumentException("The schemaStr parameter cannot be null!");
+    }
+
     this.id = id;
     try {
       this.schema = Schema.parse(schemaStr);
@@ -27,6 +31,10 @@ public final class SchemaEntry {
   }
 
   public SchemaEntry(int id, Schema schema) {
+    if (null == schema) {
+      throw new IllegalArgumentException("The schema parameter cannot be null!");
+    }
+
     this.id = id;
     this.schema = schema;
   }

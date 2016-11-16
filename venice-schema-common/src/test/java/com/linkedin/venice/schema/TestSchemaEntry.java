@@ -23,15 +23,19 @@ public class TestSchemaEntry {
   @Test (expectedExceptions = SchemaParseException.class)
   public void testInvalidSchemaWithInvalidJsonFormat() {
     String schemaStr = "{\"type\":\"record\",\"name\":\"KeyRecord\",\"fields\":[{\"name\":\"name\",\"type\":\"string\",\"doc\":\"name field\"},{\"name\":\"company\",\"type\"::\"string\"}]}";
-    String id = "10";
-    SchemaEntry schemaEntry = new SchemaEntry(10, schemaStr);
+    new SchemaEntry(10, schemaStr);
   }
 
   @Test (expectedExceptions = SchemaParseException.class)
   public void testInvalidSchemaWithMissingField() {
     String schemaStr = "{\"type\":\"record\",\"name\":\"KeyRecord\",\"fields\":[{\"name\":\"name\",\"type\":\"string\",\"doc\":\"name field\"},{\"name\":\"company\"}]}";
-    String id = "10";
-    SchemaEntry schemaEntry = new SchemaEntry(10, schemaStr);
+    new SchemaEntry(10, schemaStr);
+  }
+
+  @Test (expectedExceptions = IllegalArgumentException.class)
+  public void testNullSchema() {
+    String schema = null;
+    new SchemaEntry(10, schema);
   }
 
   @Test
