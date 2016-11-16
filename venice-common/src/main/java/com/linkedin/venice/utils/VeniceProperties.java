@@ -11,6 +11,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
+import java.util.Set;
 
 
 public class VeniceProperties {
@@ -25,6 +26,10 @@ public class VeniceProperties {
           null == e.getValue() ? null : e.getValue().toString()
       );
     }
+  }
+
+  public Set<String> keySet() {
+    return props.keySet();
   }
 
   public boolean containsKey(String k) {
@@ -127,12 +132,25 @@ public class VeniceProperties {
 
   @Override
   public String toString() {
+    return toString(false);
+  }
+
+  public String toString(boolean prettyPrint) {
     StringBuilder builder = new StringBuilder("{");
-    for (Map.Entry<String, String> entry : this.props.entrySet()) {
-      builder.append(entry.getKey());
-      builder.append(": ");
-      builder.append(entry.getValue());
-      builder.append(", ");
+    this.props.entrySet()
+        .stream()
+        .sorted((o1, o2) -> o1.getKey().compareTo(o2.getKey()))
+        .forEach(entry -> {
+          if (prettyPrint) {
+            builder.append("\n\t");
+          }
+          builder.append(entry.getKey());
+          builder.append(": ");
+          builder.append(entry.getValue());
+          builder.append(", ");
+        });
+    if (prettyPrint && !props.isEmpty()) {
+      builder.append("\n");
     }
     builder.append("}");
     return builder.toString();

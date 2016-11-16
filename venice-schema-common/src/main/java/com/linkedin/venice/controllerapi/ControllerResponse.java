@@ -52,4 +52,11 @@ public class ControllerResponse { /* Uses Json Reflective Serializer, get withou
   public void setError(String error) {
     this.error = error;
   }
+
+  @JsonIgnore
+  public String toString() {
+    return ControllerResponse.class.getSimpleName() + "(cluster: " + cluster +
+        ", name: " + name +
+        ", error: " + error + ")";
+  }
 }

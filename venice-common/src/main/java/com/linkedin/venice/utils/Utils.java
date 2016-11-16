@@ -300,7 +300,8 @@ public class Utils {
     }
     String schemaString = IOUtils.toString(inputStream);
     Schema schema = Schema.parse(schemaString);
-    LOGGER.info("Loaded schema from resource path '" + resourcePath + "':\n" + schema.toString(true));
+    LOGGER.info("Loaded schema from resource path '" + resourcePath + "'");
+    LOGGER.debug("Schema literal:\n" + schema.toString(true));
     return schema;
   }
 }

@@ -1,6 +1,5 @@
 package com.linkedin.venice.client.store;
 
-import com.google.common.collect.Maps;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.schema.SchemaReader;
 import com.linkedin.venice.client.serializer.RecordDeserializer;
@@ -22,6 +21,7 @@ import org.testng.annotations.Test;
 
 import java.io.IOException;
 import java.util.Base64;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
@@ -86,7 +86,7 @@ public class TestAvroStoreClient {
 
   @Test(dependsOnMethods = { "testStartClient" })
   public void testFetchRecordDeserializer() throws IOException, ExecutionException, InterruptedException {
-    Map schemas = Maps.newHashMap();
+    Map schemas = new HashMap<>();
     schemas.put(1, TestValueRecord.SCHEMA$.toString());
     schemas.put(2, TestValueRecordWithMoreFields.SCHEMA$.toString());
     byte[] multiSchemasInBytes =

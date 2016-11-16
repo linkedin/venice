@@ -1,26 +1,29 @@
-package com.linkedin.venice.hadoop;
+package com.linkedin.venice.hadoop.pbnj;
 
 import com.linkedin.venice.hadoop.utils.HadoopUtils;
-import com.linkedin.venice.utils.VeniceProperties;
-import org.apache.avro.mapred.AvroWrapper;
 import org.apache.avro.generic.IndexedRecord;
+import org.apache.avro.mapred.AvroWrapper;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.io.NullWritable;
 import org.apache.hadoop.mapred.JobConf;
 import org.apache.hadoop.mapred.OutputFormat;
 import org.apache.hadoop.mapred.RecordWriter;
 import org.apache.hadoop.util.Progressable;
+import org.apache.log4j.Logger;
 
 import java.io.IOException;
 
 /**
- * An {@link org.apache.hadoop.mapred.OutputFormat} implementation which instantiates
- * and configures an {@link com.linkedin.venice.hadoop.AvroKafkaRecordWriter} in order
- * to write a job's output into Kafka.
+ * An {@link OutputFormat} implementation which instantiates and configures an
+ * {@link PostBulkloadAnalysisRecordWriter} in order to query Venice Routers and
+ * confirm that all records have been bulk loaded properly in Venice.
  */
-public class AvroKafkaOutputFormat implements OutputFormat<AvroWrapper<IndexedRecord>, NullWritable> {
-  public AvroKafkaOutputFormat() {
+public class PostBulkloadAnalysisOutputFormat implements OutputFormat<AvroWrapper<IndexedRecord>, NullWritable> {
+  private static final Logger LOGGER = Logger.getLogger(PostBulkloadAnalysisOutputFormat.class);
+
+  public PostBulkloadAnalysisOutputFormat() {
     super();
+    LOGGER.info(this.getClass().getSimpleName() + " constructed.");
   }
 
   @Override
@@ -28,8 +31,8 @@ public class AvroKafkaOutputFormat implements OutputFormat<AvroWrapper<IndexedRe
                                                                                 JobConf conf,
                                                                                 String arg2,
                                                                                 Progressable progress) throws IOException {
-    VeniceProperties props = HadoopUtils.getVeniceProps(conf);
-    return new AvroKafkaRecordWriter(props, progress);
+    LOGGER.info("getRecordWriter called.");
+    return new PostBulkloadAnalysisRecordWriter(HadoopUtils.getVeniceProps(conf), progress);
   }
 
   @Override

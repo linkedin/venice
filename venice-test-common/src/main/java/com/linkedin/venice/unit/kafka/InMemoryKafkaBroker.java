@@ -1,6 +1,6 @@
 package com.linkedin.venice.unit.kafka;
 
-import com.google.common.collect.Maps;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
 
@@ -14,7 +14,7 @@ import java.util.Optional;
  * @see com.linkedin.venice.unit.kafka.producer.MockInMemoryProducer
  */
 public class InMemoryKafkaBroker {
-  private final Map<String, InMemoryKafkaTopic> topics = Maps.newHashMap();
+  private final Map<String, InMemoryKafkaTopic> topics = new HashMap<>();
 
   public synchronized void createTopic(String topicName, int partitionCount) {
     if (topics.containsKey(topicName)) {

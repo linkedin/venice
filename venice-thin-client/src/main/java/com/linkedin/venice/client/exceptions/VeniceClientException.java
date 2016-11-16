@@ -6,6 +6,10 @@ package com.linkedin.venice.client.exceptions;
  */
 public class VeniceClientException extends RuntimeException {
 
+  public VeniceClientException(String msg, Throwable e){
+    super(msg, e);
+  }
+
   public VeniceClientException(Throwable e){
     super(e);
   }

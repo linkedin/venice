@@ -148,4 +148,10 @@ public abstract class AbstractAvroStoreClient<V> implements AvroGenericStoreClie
   protected MetricsRepository getMetricsRepository() {
     return this.metricsRepository;
   }
+
+  public String toString() {
+    return this.getClass().getSimpleName() +
+        "(storeName: " + storeName +
+        ", transportClient: " + transportClient.toString() + ")";
+  }
 }

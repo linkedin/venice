@@ -1,5 +1,7 @@
 package com.linkedin.venice.controllerapi;
 
+import org.codehaus.jackson.annotate.JsonIgnore;
+
 public class VersionResponse extends ControllerResponse { /* Uses Json Reflective Serializer, get without set may break things */
   private int version;
 
@@ -9,5 +11,11 @@ public class VersionResponse extends ControllerResponse { /* Uses Json Reflectiv
 
   public void setVersion(int version) {
     this.version = version;
+  }
+
+  @JsonIgnore
+  public String toString() {
+    return VersionResponse.class.getSimpleName() + "(version: " + version +
+        ", super: " + super.toString() + ")";
   }
 }

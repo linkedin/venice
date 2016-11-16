@@ -1,7 +1,5 @@
 package com.linkedin.venice.writer;
 
-import com.google.common.collect.Lists;
-import com.google.common.collect.Maps;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.guid.GuidUtils;
 import com.linkedin.venice.kafka.protocol.*;
@@ -18,6 +16,8 @@ import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.VeniceProperties;
 
 import java.nio.ByteBuffer;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.Future;
 
@@ -58,7 +58,7 @@ public class VeniceWriter<K, V> extends AbstractVeniceWriter<K, V> {
   private final VenicePartitioner partitioner;
   private final int numberOfPartitions;
   /** Map of partition to {@link Segment}, which keeps track of all segment-related state. */
-  private final Map<Integer, Segment> segmentsMap = Maps.newHashMap();
+  private final Map<Integer, Segment> segmentsMap = new HashMap<>();
   private final int closeTimeOut;
   private final CheckSumType checkSumType;
 
@@ -222,7 +222,7 @@ public class VeniceWriter<K, V> extends AbstractVeniceWriter<K, V> {
     controlMessage.controlMessageType = ControlMessageType.START_OF_SEGMENT.getValue();
     StartOfSegment startOfSegment = new StartOfSegment();
     startOfSegment.checksumType = checkSumType.getValue();
-    startOfSegment.upcomingAggregates = Lists.newArrayList(); // TODO Add extra aggregates
+    startOfSegment.upcomingAggregates = new ArrayList<>(); // TODO Add extra aggregates
     controlMessage.controlMessageUnion = startOfSegment;
     sendControlMessage(controlMessage, partition, debugInfo);
   }
@@ -240,7 +240,7 @@ public class VeniceWriter<K, V> extends AbstractVeniceWriter<K, V> {
     controlMessage.controlMessageType = ControlMessageType.END_OF_SEGMENT.getValue();
     EndOfSegment endOfSegment = new EndOfSegment();
     endOfSegment.checksumValue = ByteBuffer.wrap(segmentsMap.get(partition).getFinalCheckSum());
-    endOfSegment.computedAggregates = Lists.newArrayList(); // TODO Add extra aggregates
+    endOfSegment.computedAggregates = new ArrayList<>(); // TODO Add extra aggregates
     endOfSegment.finalSegment = finalSegment;
     controlMessage.controlMessageUnion = endOfSegment;
     sendControlMessage(controlMessage, partition, debugInfo);
@@ -280,7 +280,7 @@ public class VeniceWriter<K, V> extends AbstractVeniceWriter<K, V> {
   private void sendControlMessage(ControlMessage controlMessage, int partition, Map<String, String> debugInfo) {
     // Work around until we upgrade to a more modern Avro version which supports overriding the
     // String implementation.
-    controlMessage.debugInfo = Maps.newHashMap(debugInfo);
+    controlMessage.debugInfo = new HashMap<>(debugInfo);
 
     // Initialize the SpecificRecord instances used by the Avro-based Kafka protocol
     KafkaMessageEnvelope kafkaValue = getKafkaMessageEnvelope(MessageType.CONTROL_MESSAGE, partition);
@@ -378,7 +378,7 @@ public class VeniceWriter<K, V> extends AbstractVeniceWriter<K, V> {
     if (!currentSegment.isStarted()) {
       sendStartOfSegment(
           partition,
-          Maps.newHashMap() // TODO: Add extra debugging info
+          new HashMap<>() // TODO: Add extra debugging info
       );
 
       currentSegment.start();
@@ -406,7 +406,7 @@ public class VeniceWriter<K, V> extends AbstractVeniceWriter<K, V> {
       LOGGER.info("endSegment(partition " + partition + ") called. Proceeding.");
       sendEndOfSegment(
           partition,
-          Maps.newHashMap(), // TODO: Add extra debugging info
+          new HashMap<>(), // TODO: Add extra debugging info
           finalSegment // TODO: This will not always be true, once we support streaming, or more than one segment per mapper in batch
       );
       currentSegment.end(finalSegment);

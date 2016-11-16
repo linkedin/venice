@@ -1,6 +1,5 @@
 package com.linkedin.venice.offsets;
 
-import com.google.common.collect.Maps;
 import com.linkedin.venice.guid.GuidUtils;
 import com.linkedin.venice.kafka.protocol.GUID;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
@@ -8,6 +7,7 @@ import com.linkedin.venice.kafka.protocol.state.ProducerPartitionState;
 import com.linkedin.venice.serialization.avro.PartitionStateSerializer;
 import org.apache.avro.util.Utf8;
 
+import java.util.HashMap;
 import java.util.Map;
 
 
@@ -39,7 +39,7 @@ public class OffsetRecord {
   private static PartitionState getEmptyPartitionState() {
     PartitionState emptyPartitionState = new PartitionState();
     emptyPartitionState.offset = LOWEST_OFFSET;
-    emptyPartitionState.producerStates = Maps.newHashMap();
+    emptyPartitionState.producerStates = new HashMap<>();
     emptyPartitionState.endOfPush = false;
     emptyPartitionState.lastUpdate = System.currentTimeMillis();
     return emptyPartitionState;

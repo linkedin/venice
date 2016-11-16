@@ -212,4 +212,8 @@ public class D2TransportClient<V> extends TransportClient<V> {
       completeFuture(statusCode, body, schemaId);
     }
   }
+
+  public String toString() {
+    return this.getClass().getSimpleName() + "(d2ServiceName: " + d2ServiceName + ")";
+  }
 }

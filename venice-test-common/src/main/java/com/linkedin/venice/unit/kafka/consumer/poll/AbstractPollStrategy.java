@@ -1,6 +1,5 @@
 package com.linkedin.venice.unit.kafka.consumer.poll;
 
-import com.google.common.collect.Maps;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.offsets.OffsetRecord;
@@ -8,6 +7,7 @@ import com.linkedin.venice.unit.kafka.InMemoryKafkaBroker;
 import com.linkedin.venice.unit.kafka.InMemoryKafkaMessage;
 import com.linkedin.venice.utils.Pair;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -35,10 +35,10 @@ public abstract class AbstractPollStrategy implements PollStrategy {
   protected abstract Pair<TopicPartition, OffsetRecord> getNextPoll(Map<TopicPartition, OffsetRecord> offsets);
 
   public synchronized ConsumerRecords poll(InMemoryKafkaBroker broker, Map<TopicPartition, OffsetRecord> offsetsRef, long timeout) {
-    Map<TopicPartition, OffsetRecord> offsets = Maps.newHashMap(offsetsRef);
+    Map<TopicPartition, OffsetRecord> offsets = new HashMap<>(offsetsRef);
     drainedPartitions.stream().forEach(topicPartition -> offsets.remove(topicPartition));
 
-    Map<TopicPartition, List<ConsumerRecord<KafkaKey, KafkaMessageEnvelope>>> records = Maps.newHashMap();
+    Map<TopicPartition, List<ConsumerRecord<KafkaKey, KafkaMessageEnvelope>>> records = new HashMap<>();
 
     long startTime = System.currentTimeMillis();
     int numberOfRecords = 0;

@@ -1,5 +1,7 @@
 package com.linkedin.venice.controllerapi;
 
+import org.codehaus.jackson.annotate.JsonIgnore;
+
 public class VersionCreationResponse extends VersionResponse {
   /* Uses Json Reflective Serializer, get without set may break things */
   private int partitions = 0;
@@ -37,5 +39,14 @@ public class VersionCreationResponse extends VersionResponse {
 
   public String getKafkaBootstrapServers() {
     return kafkaBootstrapServers;
+  }
+
+  @JsonIgnore
+  public String toString() {
+    return VersionCreationResponse.class.getSimpleName() + "(partitions: " + partitions +
+        ", replicas: " + replicas +
+        ", kafkaTopic: " + kafkaTopic +
+        ", kafkaBootstrapServers: " + kafkaBootstrapServers +
+        ", super: " + super.toString() + ")";
   }
 }

@@ -1,7 +1,5 @@
 package com.linkedin.venice.kafka.consumer;
 
-import com.google.common.collect.Maps;
-import com.google.common.collect.Sets;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceMessageException;
 import com.linkedin.venice.exceptions.validation.CorruptDataException;
@@ -116,7 +114,7 @@ public class StoreConsumptionTaskTest {
   private static final String topic = Version.composeKafkaTopic(storeNameWithoutVersionInfo, 1);
 
   private static final int PARTITION_COUNT = 10;
-  private static final Set<Integer> ALL_PARTITIONS = Sets.newHashSet();
+  private static final Set<Integer> ALL_PARTITIONS = new HashSet<>();
   static { for (int partition = 0; partition < PARTITION_COUNT; partition++) { ALL_PARTITIONS.add(partition); } }
   private static final int PARTITION_FOO = 1;
   private static final int PARTITION_BAR = 2;
@@ -228,6 +226,14 @@ public class StoreConsumptionTaskTest {
     return new Pair<>(new TopicPartition(recordMetadata.topic(), recordMetadata.partition()), offsetRecord);
   }
 
+  private <STUFF> Set<STUFF> getSet(STUFF... stuffs) {
+    Set<STUFF> set = new HashSet<>();
+    for (STUFF stuff: stuffs) {
+      set.add(stuff);
+    }
+    return set;
+  }
+
   /**
    * Verifies that the VeniceMessages from KafkaConsumer are processed appropriately as follows:
    * 1. A VeniceMessage with PUT requests leads to invoking of AbstractStorageEngine#put.
@@ -236,7 +242,7 @@ public class StoreConsumptionTaskTest {
    */
   @Test
   public void testVeniceMessagesProcessing() throws Exception {
-    veniceWriter.broadcastStartOfPush(Maps.newHashMap());
+    veniceWriter.broadcastStartOfPush(new HashMap<>());
     RecordMetadata putMetadata = (RecordMetadata) veniceWriter.put(putKeyFoo, putValue, SCHEMA_ID).get();
     RecordMetadata deleteMetadata = (RecordMetadata) veniceWriter.delete(deleteKeyFoo).get();
 
@@ -250,7 +256,7 @@ public class StoreConsumptionTaskTest {
 
     PollStrategy pollStrategy = new CompositePollStrategy(pollStrategies);
 
-    runTest(pollStrategy, Sets.newHashSet(PARTITION_FOO), () -> {}, () -> {
+    runTest(pollStrategy, getSet(PARTITION_FOO), () -> {}, () -> {
       // Verify it retrieves the offset from the OffSet Manager
       verify(mockOffSetManager, timeout(TEST_TIMEOUT)).getLastOffset(topic, PARTITION_FOO);
 
@@ -273,12 +279,12 @@ public class StoreConsumptionTaskTest {
 
   @Test
   public void testVeniceMessagesProcessingWithExistingSchemaId() throws Exception {
-    veniceWriter.broadcastStartOfPush(Maps.newHashMap());
+    veniceWriter.broadcastStartOfPush(new HashMap<>());
     long fooLastOffset = getOffset(veniceWriter.put(putKeyFoo, putValue, EXISTING_SCHEMA_ID));
 
     doReturn(true).when(mockSchemaRepo).hasValueSchema(storeNameWithoutVersionInfo, EXISTING_SCHEMA_ID);
 
-    runTest(Sets.newHashSet(PARTITION_FOO), () -> {
+    runTest(getSet(PARTITION_FOO), () -> {
       // Verify it retrieves the offset from the OffSet Manager
       verify(mockOffSetManager, timeout(TEST_TIMEOUT)).getLastOffset(topic, PARTITION_FOO);
 
@@ -300,7 +306,7 @@ public class StoreConsumptionTaskTest {
    */
   @Test
   public void testVeniceMessagesProcessingWithTemporarilyNotAvailableSchemaId() throws Exception {
-    veniceWriter.broadcastStartOfPush(Maps.newHashMap());
+    veniceWriter.broadcastStartOfPush(new HashMap<>());
     veniceWriter.put(putKeyFoo, putValue, NON_EXISTING_SCHEMA_ID);
     long existingSchemaOffset = getOffset(veniceWriter.put(putKeyFoo, putValue, EXISTING_SCHEMA_ID));
 
@@ -308,7 +314,7 @@ public class StoreConsumptionTaskTest {
         .thenReturn(false, false, true);
     doReturn(true).when(mockSchemaRepo).hasValueSchema(storeNameWithoutVersionInfo, EXISTING_SCHEMA_ID);
 
-    runTest(Sets.newHashSet(PARTITION_FOO), () -> {}, () -> {
+    runTest(getSet(PARTITION_FOO), () -> {}, () -> {
       // Verify it retrieves the offset from the OffSet Manager
       verify(mockOffSetManager, timeout(TEST_TIMEOUT)).getLastOffset(topic, PARTITION_FOO);
 
@@ -339,14 +345,14 @@ public class StoreConsumptionTaskTest {
    */
   @Test
   public void testVeniceMessagesProcessingWithNonExistingSchemaId() throws Exception {
-    veniceWriter.broadcastStartOfPush(Maps.newHashMap());
+    veniceWriter.broadcastStartOfPush(new HashMap<>());
     veniceWriter.put(putKeyFoo, putValue, NON_EXISTING_SCHEMA_ID);
     veniceWriter.put(putKeyFoo, putValue, EXISTING_SCHEMA_ID);
 
     doReturn(false).when(mockSchemaRepo).hasValueSchema(storeNameWithoutVersionInfo, NON_EXISTING_SCHEMA_ID);
     doReturn(true).when(mockSchemaRepo).hasValueSchema(storeNameWithoutVersionInfo, EXISTING_SCHEMA_ID);
 
-    runTest(Sets.newHashSet(PARTITION_FOO), () -> {
+    runTest(getSet(PARTITION_FOO), () -> {
       // Verify it retrieves the offset from the OffSet Manager
       verify(mockOffSetManager, timeout(TEST_TIMEOUT)).getLastOffset(topic, PARTITION_FOO);
 
@@ -366,7 +372,7 @@ public class StoreConsumptionTaskTest {
 
   @Test
   public void testReportStartWhenRestarting() throws Exception {
-    runTest(Sets.newHashSet(PARTITION_FOO, PARTITION_BAR), () -> {
+    runTest(getSet(PARTITION_FOO, PARTITION_BAR), () -> {
       doReturn(getOffsetRecord(1)).when(mockOffSetManager).getLastOffset(topic, PARTITION_FOO);
     }, () -> {
       // Verify STARTED is reported when offset is larger than 0 is invoked.
@@ -378,12 +384,12 @@ public class StoreConsumptionTaskTest {
 
   @Test
   public void testNotifier() throws Exception {
-    veniceWriter.broadcastStartOfPush(Maps.newHashMap());
+    veniceWriter.broadcastStartOfPush(new HashMap<>());
     long fooLastOffset = getOffset(veniceWriter.put(putKeyFoo, putValue, SCHEMA_ID));
     long barLastOffset = getOffset(veniceWriter.put(putKeyBar, putValue, SCHEMA_ID));
-    veniceWriter.broadcastEndOfPush(Maps.newHashMap());
+    veniceWriter.broadcastEndOfPush(new HashMap<>());
 
-    runTest(Sets.newHashSet(PARTITION_FOO, PARTITION_BAR), () -> {
+    runTest(getSet(PARTITION_FOO, PARTITION_BAR), () -> {
       /**
        * Considering that the {@link VeniceWriter} will send an {@link ControlMessageType#END_OF_PUSH} and
        * an {@link ControlMessageType#END_OF_SEGMENT}, we need to add 2 to last data message offset.
@@ -404,10 +410,10 @@ public class StoreConsumptionTaskTest {
 
   @Test
   public void testResetPartition() throws Exception {
-    veniceWriter.broadcastStartOfPush(Maps.newHashMap());
+    veniceWriter.broadcastStartOfPush(new HashMap<>());
     veniceWriter.put(putKeyFoo, putValue, SCHEMA_ID).get();
 
-    runTest(Sets.newHashSet(PARTITION_FOO), () -> {
+    runTest(getSet(PARTITION_FOO), () -> {
       verify(mockAbstractStorageEngine, timeout(TEST_TIMEOUT))
           .put(PARTITION_FOO, putKeyFoo, ValueRecord.create(SCHEMA_ID, putValue).serialize());
 
@@ -425,16 +431,16 @@ public class StoreConsumptionTaskTest {
    */
   @Test
   public void testDetectionOfMissingRecord() throws Exception {
-    veniceWriter.broadcastStartOfPush(Maps.newHashMap());
+    veniceWriter.broadcastStartOfPush(new HashMap<>());
     long fooLastOffset = getOffset(veniceWriter.put(putKeyFoo, putValue, SCHEMA_ID));
     long barOffsetToSkip = getOffset(veniceWriter.put(putKeyBar, putValue, SCHEMA_ID));
     veniceWriter.put(putKeyBar, putValue, SCHEMA_ID);
-    veniceWriter.broadcastEndOfPush(Maps.newHashMap());
+    veniceWriter.broadcastEndOfPush(new HashMap<>());
 
     PollStrategy pollStrategy = new FilteringPollStrategy(new RandomPollStrategy(),
-        Sets.newHashSet(new Pair(new TopicPartition(topic, PARTITION_BAR), getOffsetRecord(barOffsetToSkip))));
+        getSet(new Pair(new TopicPartition(topic, PARTITION_BAR), getOffsetRecord(barOffsetToSkip))));
 
-    runTest(pollStrategy, Sets.newHashSet(PARTITION_FOO, PARTITION_BAR), () -> {}, () -> {
+    runTest(pollStrategy, getSet(PARTITION_FOO, PARTITION_BAR), () -> {}, () -> {
       verify(mockNotifier, timeout(TEST_TIMEOUT).atLeastOnce()).completed(topic, PARTITION_FOO, fooLastOffset);
       verify(mockNotifier, timeout(TEST_TIMEOUT)).error(
           eq(topic), eq(PARTITION_BAR), argThat(new NonEmptyStringMatcher()),
@@ -455,16 +461,16 @@ public class StoreConsumptionTaskTest {
    */
   @Test
   public void testSkippingOfDuplicateRecord() throws Exception {
-    veniceWriter.broadcastStartOfPush(Maps.newHashMap());
+    veniceWriter.broadcastStartOfPush(new HashMap<>());
     long fooLastOffset = getOffset(veniceWriter.put(putKeyFoo, putValue, SCHEMA_ID));
     long barOffsetToDupe = getOffset(veniceWriter.put(putKeyBar, putValue, SCHEMA_ID));
-    veniceWriter.broadcastEndOfPush(Maps.newHashMap());
+    veniceWriter.broadcastEndOfPush(new HashMap<>());
 
     OffsetRecord offsetRecord = getOffsetRecord(barOffsetToDupe);
     PollStrategy pollStrategy = new DuplicatingPollStrategy(new RandomPollStrategy(),
-        Sets.newHashSet(new Pair(new TopicPartition(topic, PARTITION_BAR), offsetRecord)));
+        getSet(new Pair(new TopicPartition(topic, PARTITION_BAR), offsetRecord)));
 
-    runTest(pollStrategy, Sets.newHashSet(PARTITION_FOO, PARTITION_BAR), () -> {}, () -> {
+    runTest(pollStrategy, getSet(PARTITION_FOO, PARTITION_BAR), () -> {}, () -> {
       verify(mockNotifier, timeout(TEST_TIMEOUT).atLeastOnce()).completed(topic, PARTITION_FOO, fooLastOffset);
       verify(mockNotifier, timeout(TEST_TIMEOUT).atLeastOnce()).completed(topic, PARTITION_BAR, barOffsetToDupe);
       verify(mockNotifier, timeout(TEST_TIMEOUT).never()).completed(topic, PARTITION_BAR, barOffsetToDupe + 1);
@@ -481,11 +487,11 @@ public class StoreConsumptionTaskTest {
    */
   @Test
   public void testThrottling() throws Exception {
-    veniceWriter.broadcastStartOfPush(Maps.newHashMap());
+    veniceWriter.broadcastStartOfPush(new HashMap<>());
     veniceWriter.put(putKeyFoo, putValue, SCHEMA_ID);
     veniceWriter.delete(deleteKeyFoo);
 
-    runTest(Sets.newHashSet(PARTITION_FOO), () -> {
+    runTest(getSet(PARTITION_FOO), () -> {
       verify(mockThrottler, timeout(TEST_TIMEOUT)).maybeThrottle(putKeyFoo.length + putValue.length);
       verify(mockThrottler, timeout(TEST_TIMEOUT)).maybeThrottle(deleteKeyFoo.length);
     });
@@ -500,12 +506,12 @@ public class StoreConsumptionTaskTest {
   public void testOffsetLag() throws Exception{
     //The offset will be 4 and there will be 5 kafka messages generated for PARTITION_FOO and PARTITION_BAR
     //start_of_segment, start_of_push, putKeyFoo/putValue, end_of_push, and end_of_segment
-    veniceWriter.broadcastStartOfPush(Maps.newHashMap());
+    veniceWriter.broadcastStartOfPush(new HashMap<>());
     veniceWriter.put(putKeyFoo, putValue, SCHEMA_ID);
     veniceWriter.put(putKeyBar, putValue, SCHEMA_ID);
-    veniceWriter.broadcastEndOfPush(Maps.newHashMap());
+    veniceWriter.broadcastEndOfPush(new HashMap<>());
 
-    Map<Integer, Long> latestOffsetsMap = Maps.newHashMap();
+    Map<Integer, Long> latestOffsetsMap = new HashMap<>();
     latestOffsetsMap.put(PARTITION_FOO, 5l);
     latestOffsetsMap.put(PARTITION_BAR, 6l);
     //put an arbitrary partition which the consumer doesn't subscribe to
@@ -513,7 +519,7 @@ public class StoreConsumptionTaskTest {
 
     doReturn(latestOffsetsMap).when(mockTopicManager).getLatestOffsets(topic);
 
-    runTest(Sets.newHashSet(PARTITION_FOO, PARTITION_BAR), () -> {
+    runTest(getSet(PARTITION_FOO, PARTITION_BAR), () -> {
       waitForNonDeterministicCompletion(TEST_TIMEOUT, TimeUnit.MILLISECONDS,
           () -> storeConsumptionTaskUnderTest.getOffsetLag() == 3);
       verify(mockTopicManager, timeout(TEST_TIMEOUT).atLeastOnce()).getLatestOffsets(topic);
@@ -574,11 +580,11 @@ public class StoreConsumptionTaskTest {
 
           return new TransformingProducer.SendMessageParameters(topic, key, transformedMessageEnvelope, partition);
         }));
-    veniceWriter.broadcastStartOfPush(Maps.newHashMap());
+    veniceWriter.broadcastStartOfPush(new HashMap<>());
     veniceWriter.put(putKeyFoo, putValue, SCHEMA_ID);
     veniceWriter.put(putKeyBar, putValue, SCHEMA_ID);
 
-    runTest(Sets.newHashSet(PARTITION_FOO, PARTITION_BAR), () -> {
+    runTest(getSet(PARTITION_FOO, PARTITION_BAR), () -> {
       verify(mockNotifier, timeout(TEST_TIMEOUT)).error(
           eq(topic), eq(PARTITION_FOO), argThat(new NonEmptyStringMatcher()),
           argThat(new ExceptionClassMatcher(VeniceException.class)));
@@ -613,13 +619,13 @@ public class StoreConsumptionTaskTest {
               return new TransformingProducer.SendMessageParameters(topic, key, transformedMessageEnvelope, partition);
             }));
 
-    veniceWriter.broadcastStartOfPush(Maps.newHashMap());
+    veniceWriter.broadcastStartOfPush(new HashMap<>());
     long fooLastOffset = getOffset(veniceWriterForData.put(putKeyFoo, putValue, SCHEMA_ID));
     getOffset(veniceWriterForData.put(putKeyBar, putValue, SCHEMA_ID));
     veniceWriterForData.close();
-    veniceWriter.broadcastEndOfPush(Maps.newHashMap());
+    veniceWriter.broadcastEndOfPush(new HashMap<>());
 
-    runTest(Sets.newHashSet(PARTITION_FOO, PARTITION_BAR), () -> {
+    runTest(getSet(PARTITION_FOO, PARTITION_BAR), () -> {
       verify(mockNotifier, timeout(TEST_TIMEOUT))
           .completed(eq(topic), eq(PARTITION_FOO), longThat(new LongGreaterThanMatcher(fooLastOffset)));
 
@@ -643,7 +649,7 @@ public class StoreConsumptionTaskTest {
   @Test
   public void testSubscribeCompletedPartition() throws Exception {
     final int offset = 100;
-    runTest(Sets.newHashSet(PARTITION_FOO),
+    runTest(getSet(PARTITION_FOO),
         () -> doReturn(getOffsetRecord(offset, true)).when(mockOffSetManager).getLastOffset(topic, PARTITION_FOO),
         () -> verify(mockNotifier, timeout(TEST_TIMEOUT)).completed(topic, PARTITION_FOO, offset));
   }
@@ -653,7 +659,7 @@ public class StoreConsumptionTaskTest {
     veniceWriter.broadcastStartOfPush(new HashMap<>());
     veniceWriter.put(putKeyFoo, putValue, SCHEMA_ID);
 
-    runTest(Sets.newHashSet(PARTITION_FOO), () -> {
+    runTest(getSet(PARTITION_FOO), () -> {
       verify(mockNotifier, timeout(TEST_TIMEOUT)).started(topic, PARTITION_FOO);
       //Start of push has already been consumed. Stop consumption
       storeConsumptionTaskUnderTest.unSubscribePartition(topic, PARTITION_FOO);
@@ -677,7 +683,7 @@ public class StoreConsumptionTaskTest {
     });
 
     try {
-      runTest(Sets.newHashSet(PARTITION_FOO, PARTITION_BAR), () -> {
+      runTest(getSet(PARTITION_FOO, PARTITION_BAR), () -> {
         veniceWriter.broadcastStartOfPush(new HashMap<>());
         writingThread.start();
       }, () -> {
@@ -704,7 +710,7 @@ public class StoreConsumptionTaskTest {
 
   @Test
   public void testKillActionPriority() throws Exception {
-    runTest(Sets.newHashSet(PARTITION_FOO), () -> {
+    runTest(getSet(PARTITION_FOO), () -> {
       veniceWriter.broadcastStartOfPush(new HashMap<>());
       veniceWriter.put(putKeyFoo, putValue, SCHEMA_ID);
       // Add a reset consumer action
@@ -737,7 +743,7 @@ public class StoreConsumptionTaskTest {
     final int totalNumberOfMessages = 1000;
     final int totalNumberOfConsumptionRestarts = 10;
 
-    veniceWriter.broadcastStartOfPush(Maps.newHashMap());
+    veniceWriter.broadcastStartOfPush(new HashMap<>());
     for (int i = 0; i < totalNumberOfMessages; i++) {
       byte[] key = ByteBuffer.allocate(putKeyFoo.length + Integer.BYTES).put(putKeyFoo).putInt(i).array();
       byte[] value = ByteBuffer.allocate(putValue.length + Integer.BYTES).put(putValue).putInt(i).array();
@@ -747,13 +753,13 @@ public class StoreConsumptionTaskTest {
       maxOffsetPerPartition.put(recordMetadata.partition(), recordMetadata.offset());
       pushedRecords.put(new Pair(recordMetadata.partition(), new ByteArray(key)), new ByteArray(value));
     }
-    veniceWriter.broadcastEndOfPush(Maps.newHashMap());
+    veniceWriter.broadcastEndOfPush(new HashMap<>());
 
     // Basic sanity checks
     assertEquals(pushedRecords.size(), totalNumberOfMessages, "We did not produce as many unique records as we expected!");
     assertFalse(maxOffsetPerPartition.isEmpty(), "There should be at least one partition getting anything published into it!");
 
-    Set<Integer> relevantPartitions = Sets.newHashSet(PARTITION_FOO);
+    Set<Integer> relevantPartitions = getSet(PARTITION_FOO);
 
     // This doesn't really need to be atomic, but it does need to be final, and int/Integer cannot be mutated.
     final AtomicInteger messagesConsumedSoFar = new AtomicInteger(0);

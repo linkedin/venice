@@ -4,6 +4,7 @@ import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.store.AbstractAvroStoreClient;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.schema.SchemaEntry;
 import java.io.Closeable;
@@ -112,11 +113,11 @@ public class SchemaReader implements Closeable {
           latestValueSchemaEntry.set(new SchemaEntry(latestSchemaId, valueSchemaMap.get(latestSchemaId)));
         }
       } else {
-        throw new VeniceClientException("Got error while fetching schema of store: " + storeName
-            + " for path: " + requestPath + " : " + schemaResponse.getError());
+        throw new VeniceClientException("Received an error while fetching schema. " + getExceptionDetails(requestPath) +
+            ", error message: " + schemaResponse.getError());
       }
     } catch (Exception e) {
-      throw new VeniceClientException(e);
+      throw new VeniceClientException("Got exception while trying to fetch single schema. " + getExceptionDetails(requestPath), e);
     }
   }
 
@@ -133,14 +134,20 @@ public class SchemaReader implements Closeable {
       if (!schemaResponse.isError()) {
         schemaEntry = new SchemaEntry(schemaResponse.getId(), schemaResponse.getSchemaStr());
       } else {
-        throw new VeniceClientException("Got error while fetching schema of store: " + storeName
-            + " for path: " + requestPath + " : " + schemaResponse.getError());
+        throw new VeniceClientException("Received an error while fetching schema. " + getExceptionDetails(requestPath) +
+            ", error message: " + schemaResponse.getError());
       }
+    } catch (VeniceClientException e) {
+      throw e;
     } catch (Exception e) {
-      throw new VeniceClientException(e);
+      throw new VeniceClientException("Got exception while trying to fetch single schema. " + getExceptionDetails(requestPath), e);
     }
 
     return schemaEntry;
+  }
+
+  private String getExceptionDetails(String requestPath) {
+    return "Store: " + storeName + ", path: " + requestPath + " , storeClient: " + storeClient;
   }
 
   private SchemaEntry fetchKeySchema() throws VeniceClientException {
