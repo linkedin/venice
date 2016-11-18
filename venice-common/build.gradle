@@ -36,6 +36,8 @@ dependencies {
     exclude group: 'com.github.sgroschupf'
     // replacing Helix's netty 3.7 with 3.9 (netty3 below) so the router doesn't get 3.7 when it depends on common
     exclude group: 'io.netty'
+    // Helix use zk 3.6.9, which introduce netty 3.10 and will fail our test.
+    exclude module:'zookeeper'
   }
   compile libraries.netty3
   compile libraries.asyncHttpClient
