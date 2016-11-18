@@ -24,10 +24,6 @@ jar {
 }
 
 dependencies {
-  compile(libraries.helix) {
-    // Helix pulls in an ancient version of the zkclient, which lacks some APIs and clashes with Kafka's dependency
-    exclude group: 'com.github.sgroschupf'
-  }
   compile libraries.zkclient // It's necessary to pull in the most recent version of zkclient explicitly, otherwise Helix won't have it...
   compile libraries.bdbJe
   compile libraries.netty
