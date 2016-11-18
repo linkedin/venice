@@ -140,7 +140,7 @@ public class ServiceFactory {
     // Enable to start multiple controllers and routers too, so that we could fail some of them to do the failover integration test.
     return getService(VeniceClusterWrapper.SERVICE_NAME,
         VeniceClusterWrapper.generateService(numberOfControllers, numberOfServers, numberOfRouter, replicaFactor,
-            partitionSize, false, false, DEFAULT_DELAYED_TO_REBALANCE_MS, replicaFactor));
+            partitionSize, false, false, DEFAULT_DELAYED_TO_REBALANCE_MS, replicaFactor - 1));
   }
   // TODO instead of passing more and more parameters here, we could create a class ClusterOptions to include all of options to start a cluster. Then we only need one parameter here.
   public static VeniceClusterWrapper getVeniceCluster(int numberOfControllers, int numberOfServers, int numberOfRouter,
