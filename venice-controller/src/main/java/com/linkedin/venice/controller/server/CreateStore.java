@@ -3,7 +3,6 @@ package com.linkedin.venice.controller.server;
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controllerapi.NewStoreResponse;
-import com.linkedin.venice.exceptions.VeniceException;
 import spark.Route;
 
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.CLUSTER;
@@ -33,7 +32,7 @@ public class CreateStore {
         responseObject.setName(storeName);
         responseObject.setOwner(owner);
         admin.addStore(clusterName, storeName, owner, keySchema, valueSchema);
-      } catch (VeniceException e) {
+      } catch (Throwable e) {
         responseObject.setError(e.getMessage());
         AdminSparkServer.handleError(e, request, response);
       }

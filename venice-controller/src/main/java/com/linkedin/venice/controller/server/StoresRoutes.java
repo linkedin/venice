@@ -5,7 +5,6 @@ import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.MultiStoreResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
-import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreInfo;
 import java.util.List;
@@ -33,7 +32,7 @@ public class StoresRoutes {
           storeNameList[i] = storeList.get(i).getName();
         }
         responseObject.setStores(storeNameList);
-      } catch (VeniceException e) {
+      } catch (Throwable e) {
         responseObject.setError(e.getMessage());
         AdminSparkServer.handleError(e, request, response);
       }
@@ -55,7 +54,7 @@ public class StoresRoutes {
         } else {
           storeResponse.setStore(StoreInfo.fromStore(store));
         }
-      } catch (VeniceException e){
+      } catch (Throwable e){
         storeResponse.setError(e.getMessage());
         AdminSparkServer.handleError(e, request, response);
       }
@@ -77,7 +76,7 @@ public class StoresRoutes {
         } else {
           admin.resumeStore(responseObject.getCluster(), responseObject.getName());
         }
-      } catch (VeniceException e) {
+      } catch (Throwable e) {
         responseObject.setError(e.getMessage());
         AdminSparkServer.handleError(e, request, response);
       }
