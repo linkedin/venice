@@ -26,11 +26,11 @@ public class RouterAggStatsTest {
   @Test
   public void RouterMetricsTest() {
     stats.recordRequest("store5");
-    Assert.assertEquals(reporter.query(".total_request.SampledCount").value(), 1d);
+    Assert.assertEquals(reporter.query(".total_request.Count").value(), 1d);
 
     stats.recordRequest("store1");
-    Assert.assertEquals(reporter.query(".total_request.SampledCount").value(), 2d);
-    Assert.assertEquals(reporter.query(".store1_request.SampledCount").value(), 1d);
+    Assert.assertEquals(reporter.query(".total_request.Count").value(), 2d);
+    Assert.assertEquals(reporter.query(".store1_request.Count").value(), 1d);
 
     for (int i = 1; i <= 100; i += 1) {
         stats.recordLatency("store2", i);

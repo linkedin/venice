@@ -4,8 +4,8 @@ import com.linkedin.venice.stats.AbstractVeniceStats;
 import com.linkedin.venice.stats.TehutiUtils;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
+import io.tehuti.metrics.stats.Count;
 import io.tehuti.metrics.stats.OccurrenceRate;
-import io.tehuti.metrics.stats.SampledCount;
 
 public class RouterStats extends AbstractVeniceStats {
 
@@ -21,9 +21,9 @@ public class RouterStats extends AbstractVeniceStats {
   public RouterStats(MetricsRepository metricsRepository, String name) {
     super(metricsRepository, name);
 
-    requestSensor = registerSensor("request", new SampledCount(), new OccurrenceRate());
-    healthySensor = registerSensor("healthy_request", new SampledCount());
-    unhealthySensor = registerSensor("unhealthy_request", new SampledCount());
+    requestSensor = registerSensor("request", new Count(), new OccurrenceRate());
+    healthySensor = registerSensor("healthy_request", new Count());
+    unhealthySensor = registerSensor("unhealthy_request", new Count());
 
     //we have to explicitly pass the anme again for PercentilesStat here.
     //TODO: remove the redundancy once Tehuti library is updated.

@@ -1,10 +1,12 @@
 package com.linkedin.venice.listener;
 
+import com.linkedin.venice.kafka.consumer.KafkaConsumerPerStoreService;
 import com.linkedin.venice.message.GetRequestObject;
 import com.linkedin.venice.offsets.BdbOffsetManager;
 import com.linkedin.venice.offsets.OffsetManager;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.server.StoreRepository;
+import com.linkedin.venice.stats.ServerAggStats;
 import com.linkedin.venice.store.AbstractStorageEngine;
 import com.linkedin.venice.store.record.ValueRecord;
 import io.netty.buffer.UnpooledByteBufAllocator;
@@ -15,13 +17,24 @@ import java.util.List;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
+
+import io.tehuti.metrics.MetricsRepository;
 import org.mockito.Mockito;
 import org.testng.Assert;
+import org.testng.annotations.BeforeSuite;
 import org.testng.annotations.Test;
 
 import static org.mockito.Mockito.*;
 
 public class StorageExecutionHandlerTest {
+  private KafkaConsumerPerStoreService kafkaConsumerPerStoreService;
+
+  @BeforeSuite
+  public void setUp() {
+    kafkaConsumerPerStoreService = mock(KafkaConsumerPerStoreService.class);
+    ServerAggStats.init(new MetricsRepository(), kafkaConsumerPerStoreService);
+  }
+
   @Test
   public static void storageExecutionHandlerPassesRequestsAndGeneratesResponses()
       throws Exception {

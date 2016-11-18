@@ -2,7 +2,9 @@ package com.linkedin.venice.kafka.consumer;
 
 import com.linkedin.venice.config.VeniceServerConfig;
 import com.linkedin.venice.config.VeniceStoreConfig;
+import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
+import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.notifier.LogNotifier;
 import com.linkedin.venice.notifier.VeniceNotifier;
 import com.linkedin.venice.offsets.OffsetManager;
@@ -13,16 +15,14 @@ import com.linkedin.venice.server.VeniceConfigLoader;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.Utils;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.Properties;
-import java.util.Queue;
+
+import java.util.*;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.stream.Collectors;
 
 import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
@@ -49,6 +49,7 @@ public class KafkaConsumerPerStoreService extends AbstractVeniceService implemen
 
   private final Queue<VeniceNotifier> notifiers = new ConcurrentLinkedQueue<>();
   private final OffsetManager offsetManager;
+  private final TopicManager topicManager;
 
   private final ReadOnlySchemaRepository schemaRepo;
 
@@ -81,6 +82,7 @@ public class KafkaConsumerPerStoreService extends AbstractVeniceService implemen
 
     long maxKafkaFetchBytesPerSecond = serverConfig.getMaxKafkaFetchBytesPerSecond();
     throttler = new EventThrottler(maxKafkaFetchBytesPerSecond);
+    topicManager = new TopicManager(veniceConfigLoader.getVeniceClusterConfig().getKafkaZkAddress());
 
     VeniceNotifier notifier = new LogNotifier();
     notifiers.add(notifier);
@@ -104,7 +106,7 @@ public class KafkaConsumerPerStoreService extends AbstractVeniceService implemen
 
   private StoreConsumptionTask getConsumerTask(VeniceStoreConfig veniceStore) {
     return new StoreConsumptionTask(new VeniceConsumerFactory(), getKafkaConsumerProperties(veniceStore), storeRepository,
-            offsetManager , notifiers, throttler , veniceStore.getStoreName(), schemaRepo);
+            offsetManager , notifiers, throttler , veniceStore.getStoreName(), schemaRepo, topicManager);
   }
 
   /**
@@ -199,10 +201,19 @@ public class KafkaConsumerPerStoreService extends AbstractVeniceService implemen
     if (consumerTask != null && consumerTask.isRunning()) {
       consumerTask.kill();
       topicNameToConsumptionTaskMap.remove(topic);
-      logger.info("Killed consumption task for Topic "+topic);
+      logger.info("Killed consumption task for Topic " + topic);
     } else {
       logger.warn("Ignoring kill signal for Topic " + topic);
     }
+  }
+
+  @Override
+  public List<StoreConsumptionTask> getRunningConsumptionTasksByStore(String storeName) {
+    return topicNameToConsumptionTaskMap.entrySet().stream()
+      .filter(entry -> Version.parseStoreFromKafkaTopicName(entry.getKey()).equals(storeName)
+        && entry.getValue().isRunning())
+      .map(Map.Entry::getValue)
+      .collect(Collectors.toList());
   }
 
   @Override

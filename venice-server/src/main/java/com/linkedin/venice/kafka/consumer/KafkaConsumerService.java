@@ -3,6 +3,8 @@ package com.linkedin.venice.kafka.consumer;
 import com.linkedin.venice.config.VeniceStoreConfig;
 import com.linkedin.venice.notifier.VeniceNotifier;
 
+import java.util.List;
+
 
 /**
  * An interface for Kafka Consumer Services for Venice.
@@ -52,4 +54,13 @@ public interface KafkaConsumerService {
    * Judge whether there is a running consumption task for given store.
    */
   boolean containsRunningConsumption(VeniceStoreConfig veniceStore);
+
+  /**
+   * Get the current running ConsumptionTasks by store name. This method returns a list
+   * in case there are more than one Tasks running for the same store (parallel push)
+   * This method is most likely used for metrics collecting
+   *
+   * TODO: return a list is expensive. Get rid of it if Venice disables parallel push in the future.
+   */
+  List<StoreConsumptionTask> getRunningConsumptionTasksByStore(String storeName);
 }

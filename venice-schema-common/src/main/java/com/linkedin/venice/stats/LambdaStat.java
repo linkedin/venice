@@ -2,11 +2,6 @@ package com.linkedin.venice.stats;
 
 import io.tehuti.metrics.MeasurableStat;
 import io.tehuti.metrics.MetricConfig;
-
-/**
- * Created by sdwu on 8/30/16.
- */
-
 /**
  * LambdaStat is a un-windowed MeasurableStat that has the maximum flexibility.
  * It takes a Lambda expression as parameter and calculates the real-time

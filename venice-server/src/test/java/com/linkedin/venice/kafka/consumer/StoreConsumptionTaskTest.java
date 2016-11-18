@@ -6,6 +6,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceMessageException;
 import com.linkedin.venice.exceptions.validation.CorruptDataException;
 import com.linkedin.venice.exceptions.validation.MissingDataException;
+import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.Put;
@@ -20,6 +21,7 @@ import com.linkedin.venice.offsets.OffsetManager;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.serialization.DefaultSerializer;
 import com.linkedin.venice.server.StoreRepository;
+import com.linkedin.venice.stats.ServerAggStats;
 import com.linkedin.venice.store.AbstractStorageEngine;
 import com.linkedin.venice.store.record.ValueRecord;
 import com.linkedin.venice.unit.kafka.InMemoryKafkaBroker;
@@ -56,12 +58,11 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Supplier;
-
+import io.tehuti.metrics.MetricsRepository;
 import org.apache.kafka.clients.producer.RecordMetadata;
 import org.apache.kafka.common.TopicPartition;
-//import org.apache.log4j.ConsoleAppender;
 import org.apache.log4j.Logger;
-//import org.apache.log4j.PatternLayout;
+
 import org.testng.annotations.AfterSuite;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.BeforeSuite;
@@ -104,6 +105,8 @@ public class StoreConsumptionTaskTest {
   private ReadOnlySchemaRepository mockSchemaRepo;
   /** N.B.: This mock can be used to verify() calls, but not to return arbitrary things. */
   private KafkaConsumerWrapper mockKafkaConsumer;
+  private TopicManager mockTopicManager;
+  private  KafkaConsumerPerStoreService mockKafKaConsumerPerStoreService;
 
   private StoreConsumptionTask storeConsumptionTaskUnderTest;
 
@@ -137,6 +140,9 @@ public class StoreConsumptionTaskTest {
   @BeforeSuite
   public void suiteSetUp() throws Exception {
     taskPollingService = Executors.newFixedThreadPool(1);
+
+    mockKafKaConsumerPerStoreService = mock(KafkaConsumerPerStoreService.class);
+    ServerAggStats.init(new MetricsRepository(), mockKafKaConsumerPerStoreService);
   }
 
   @AfterSuite
@@ -156,6 +162,7 @@ public class StoreConsumptionTaskTest {
     mockThrottler = mock(EventThrottler.class);
     mockSchemaRepo = mock(ReadOnlySchemaRepository.class);
     mockKafkaConsumer = mock(KafkaConsumerWrapper.class);
+    mockTopicManager = mock(TopicManager.class);
   }
 
   private VeniceWriter getVeniceWriter(Supplier<KafkaProducerWrapper> producerSupplier) {
@@ -192,7 +199,7 @@ public class StoreConsumptionTaskTest {
     Queue<VeniceNotifier> notifiers = new ConcurrentLinkedQueue<>(Arrays.asList(mockNotifier, new LogNotifier()));
     OffsetManager offsetManager = new DeepCopyOffsetManager(mockOffSetManager);
     storeConsumptionTaskUnderTest = new StoreConsumptionTask(
-        mockFactory, kafkaProps, mockStoreRepository, offsetManager, notifiers, mockThrottler, topic, mockSchemaRepo);
+        mockFactory, kafkaProps, mockStoreRepository, offsetManager, notifiers, mockThrottler, topic, mockSchemaRepo, mockTopicManager);
     doReturn(mockAbstractStorageEngine).when(mockStoreRepository).getLocalStorageEngine(topic);
 
     Future testSubscribeTaskFuture = null;
@@ -481,6 +488,35 @@ public class StoreConsumptionTaskTest {
     runTest(Sets.newHashSet(PARTITION_FOO), () -> {
       verify(mockThrottler, timeout(TEST_TIMEOUT)).maybeThrottle(putKeyFoo.length + putValue.length);
       verify(mockThrottler, timeout(TEST_TIMEOUT)).maybeThrottle(deleteKeyFoo.length);
+    });
+  }
+
+  /**
+   * In this test, we validate {@link StoreConsumptionTask#getOffsetLag()}. This method is for monitoring the Kafka
+   * offset consumption rate. It pulls the most recent offsets from {@link TopicManager} and then compares it with
+   * local offset cache {@link StoreConsumptionTask#partitionToOffsetMap}
+   */
+  @Test
+  public void testOffsetLag() throws Exception{
+    //The offset will be 4 and there will be 5 kafka messages generated for PARTITION_FOO and PARTITION_BAR
+    //start_of_segment, start_of_push, putKeyFoo/putValue, end_of_push, and end_of_segment
+    veniceWriter.broadcastStartOfPush(Maps.newHashMap());
+    veniceWriter.put(putKeyFoo, putValue, SCHEMA_ID);
+    veniceWriter.put(putKeyBar, putValue, SCHEMA_ID);
+    veniceWriter.broadcastEndOfPush(Maps.newHashMap());
+
+    Map<Integer, Long> latestOffsetsMap = Maps.newHashMap();
+    latestOffsetsMap.put(PARTITION_FOO, 5l);
+    latestOffsetsMap.put(PARTITION_BAR, 6l);
+    //put an arbitrary partition which the consumer doesn't subscribe to
+    latestOffsetsMap.put(3, 3l);
+
+    doReturn(latestOffsetsMap).when(mockTopicManager).getLatestOffsets(topic);
+
+    runTest(Sets.newHashSet(PARTITION_FOO, PARTITION_BAR), () -> {
+      waitForNonDeterministicCompletion(TEST_TIMEOUT, TimeUnit.MILLISECONDS,
+          () -> storeConsumptionTaskUnderTest.getOffsetLag() == 3);
+      verify(mockTopicManager, timeout(TEST_TIMEOUT).atLeastOnce()).getLatestOffsets(topic);
     });
   }
 
