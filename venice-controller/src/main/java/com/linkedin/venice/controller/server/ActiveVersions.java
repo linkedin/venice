@@ -3,7 +3,6 @@ package com.linkedin.venice.controller.server;
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controllerapi.MultiVersionResponse;
-import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
 import java.util.ArrayList;
@@ -38,7 +37,7 @@ public class ActiveVersions {
           versions[i] = activeVersions.get(i);
         }
         responseObject.setVersions(versions);
-      } catch (VeniceException e) {
+      } catch (Throwable e) {
         responseObject.setError(e.getMessage());
         AdminSparkServer.handleError(e, request, response);
       }

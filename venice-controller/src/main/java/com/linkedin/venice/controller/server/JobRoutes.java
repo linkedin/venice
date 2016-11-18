@@ -4,7 +4,6 @@ import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
-import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.Utils;
 import java.util.Map;
@@ -27,7 +26,7 @@ public class JobRoutes {
         String store = request.queryParams(NAME);
         int versionNumber = Utils.parseIntFromString(request.queryParams(VERSION), VERSION);
         responseObject = populateJobStatus(cluster, store, versionNumber, admin);
-      } catch (VeniceException e) {
+      } catch (Throwable e) {
         responseObject.setError(e.getMessage());
         AdminSparkServer.handleError(e, request, response);
       }
@@ -92,7 +91,7 @@ public class JobRoutes {
         responseObject.setName(Version.parseStoreFromKafkaTopicName(topic));
 
         admin.killOfflineJob(cluster, topic);
-      } catch (VeniceException e) {
+      } catch (Throwable e) {
         responseObject.setError(e.getMessage());
         AdminSparkServer.handleError(e, request, response);
       }

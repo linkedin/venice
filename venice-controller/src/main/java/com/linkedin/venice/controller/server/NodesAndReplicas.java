@@ -2,11 +2,9 @@ package com.linkedin.venice.controller.server;
 
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.controller.Admin;
-import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.MultiNodeResponse;
 import com.linkedin.venice.controllerapi.MultiReplicaResponse;
 import com.linkedin.venice.controllerapi.NodeStatusResponse;
-import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.Replica;
 import com.linkedin.venice.utils.Utils;
 import java.util.List;
@@ -36,7 +34,7 @@ public class NodesAndReplicas {
           nodeListArray[i] = nodeList.get(i);
         }
         responseObject.setNodes(nodeListArray);
-      } catch (VeniceException e) {
+      } catch (Throwable e) {
         responseObject.setError(e.getMessage());
         AdminSparkServer.handleError(e, request, response);
       }
@@ -59,7 +57,7 @@ public class NodesAndReplicas {
           replicaArray[i] = replicaList.get(i);
         }
         responseObject.setReplicas(replicaArray);
-      } catch (VeniceException e) {
+      } catch (Throwable e) {
         responseObject.setError(e.getMessage());
         AdminSparkServer.handleError(e, request, response);
       }
@@ -81,7 +79,7 @@ public class NodesAndReplicas {
           replicaArray[i] = replicaList.get(i);
         }
         responseObject.setReplicas(replicaArray);
-      } catch (VeniceException e) {
+      } catch (Throwable e) {
         responseObject.setError(e.getMessage());
         AdminSparkServer.handleError(e, request, response);
       }
@@ -98,7 +96,7 @@ public class NodesAndReplicas {
         responseObject.setCluster(request.queryParams(CLUSTER));
         String nodeId = request.queryParams(STORAGE_NODE_ID);
         responseObject.setRemovable(admin.isInstanceRemovable(responseObject.getCluster(), nodeId));
-      } catch (VeniceException e) {
+      } catch (Throwable e) {
         responseObject.setError(e.getMessage());
         AdminSparkServer.handleError(e, request, response);
       }

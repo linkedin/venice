@@ -3,8 +3,6 @@ package com.linkedin.venice.controller.server;
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controllerapi.ControllerResponse;
-import com.linkedin.venice.controllerapi.VersionResponse;
-import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.utils.Utils;
 import spark.Route;
 
@@ -20,7 +18,7 @@ public class SkipAdminRoute {
         responseObject.setCluster(request.queryParams(CLUSTER));
         long offset = Utils.parseLongFromString(request.queryParams(OFFSET), OFFSET);
         admin.skipAdminMessage(responseObject.getCluster(), offset);
-      } catch (VeniceException e) {
+      } catch (Throwable e) {
         responseObject.setError(e.getMessage());
         AdminSparkServer.handleError(e, request, response);
       }

@@ -22,7 +22,7 @@
             {
                 "action": "schedule",
                 "matches": [ "500m-entry-test" ],
-                "period": "24 hours"
+                "period": "4 hours"
             },
             {
                 "action": "sla",

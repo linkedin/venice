@@ -34,7 +34,7 @@ public class SchemaRoutes {
         }
         responseObject.setId(keySchemaEntry.getId());
         responseObject.setSchemaStr(keySchemaEntry.getSchema().toString());
-      } catch (Exception e) {
+      } catch (Throwable e) {
         responseObject.setError(e.getMessage());
         AdminSparkServer.handleError(new VeniceException(e), request, response);
       }
@@ -56,7 +56,7 @@ public class SchemaRoutes {
             request.queryParams(ControllerApiConstants.VALUE_SCHEMA));
         responseObject.setId(valueSchemaEntry.getId());
         responseObject.setSchemaStr(valueSchemaEntry.getSchema().toString());
-      } catch (Exception e) {
+      } catch (Throwable e) {
         responseObject.setError(e.getMessage());
         AdminSparkServer.handleError(new VeniceException(e), request, response);
       }
@@ -83,7 +83,7 @@ public class SchemaRoutes {
         }
         responseObject.setId(valueSchemaEntry.getId());
         responseObject.setSchemaStr(valueSchemaEntry.getSchema().toString());
-      } catch (Exception e) {
+      } catch (Throwable e) {
         responseObject.setError(e.getMessage());
         AdminSparkServer.handleError(new VeniceException(e), request, response);
       }
@@ -108,7 +108,7 @@ public class SchemaRoutes {
           throw new VeniceException("Value schema for schema str: " + responseObject.getSchemaStr() + " doesn't exist");
         }
         responseObject.setId(valueSchemaId);
-      } catch (Exception e) {
+      } catch (Throwable e) {
         responseObject.setError(e.getMessage());
         AdminSparkServer.handleError(new VeniceException(e), request, response);
       }
@@ -137,7 +137,7 @@ public class SchemaRoutes {
           ++cur;
         }
         responseObject.setSchemas(schemas);
-      } catch (Exception e) {
+      } catch (Throwable e) {
         responseObject.setError(e.getMessage());
         AdminSparkServer.handleError(new VeniceException(e), request, response);
       }

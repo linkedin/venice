@@ -4,7 +4,6 @@ import com.linkedin.venice.controller.AuditInfo;
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.stats.ControllerStats;
-import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceHttpException;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.utils.Utils;
@@ -166,13 +165,16 @@ public class AdminSparkServer extends AbstractVeniceService {
     }
   }
 
-  protected static void handleError(VeniceException e, Request request, Response response){
+  protected static void handleError(Throwable e, Request request, Response response) {
     StringBuilder sb = new StringBuilder("Request params were: ");
     request.queryMap().toMap().forEach((k, v) -> {  /* Map<String, String[]> */
       sb.append(k).append("=").append(String.join(",",v)).append(" ");
     });
     String errMsg = sb.toString();
     logger.error(errMsg, e);
+    if (e instanceof Error) {
+      throw (Error) e;
+    }
     int statusCode = e instanceof VeniceHttpException ?
         ((VeniceHttpException) e).getHttpStatusCode() :
         HttpStatus.SC_INTERNAL_SERVER_ERROR;
