@@ -6,6 +6,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceMessageException;
 import com.linkedin.venice.exceptions.validation.UnsupportedMessageTypeException;
 import com.linkedin.venice.guid.GuidUtils;
+import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.exceptions.validation.DuplicateDataException;
 import com.linkedin.venice.exceptions.validation.FatalDataValidationException;
@@ -92,6 +93,8 @@ public class StoreConsumptionTask implements Runnable, Closeable {
 
   private final OffsetManager offsetManager;
 
+  private final TopicManager topicManager;
+
   private final EventThrottler throttler;
 
   private long lastProgressReportTime = 0;
@@ -117,7 +120,7 @@ public class StoreConsumptionTask implements Runnable, Closeable {
   private static int CONSUMER_ACTION_QUEUE_INIT_CAPACITY = 11;
 
   private static final long KILL_WAIT_TIME_MS = 5000l;
-  public static final int MAX_KILL_CHECKING_ATTEMPS = 10;
+  public static final int MAX_KILL_CHECKING_ATTEMPTS = 10;
 
   public StoreConsumptionTask(@NotNull VeniceConsumerFactory factory,
                               @NotNull Properties kafkaConsumerProperties,
@@ -126,7 +129,8 @@ public class StoreConsumptionTask implements Runnable, Closeable {
                               @NotNull Queue<VeniceNotifier> notifiers,
                               @NotNull EventThrottler throttler,
                               @NotNull String topic,
-                              @NotNull ReadOnlySchemaRepository schemaRepo) {
+                              @NotNull ReadOnlySchemaRepository schemaRepo,
+                              @NotNull TopicManager topicManager) {
     this.factory = factory;
     this.kafkaProps = kafkaConsumerProperties;
     this.storeRepository = storeRepository;
@@ -147,6 +151,7 @@ public class StoreConsumptionTask implements Runnable, Closeable {
     this.producerTrackerMap = new HashMap<>();
     this.partitionsWithErrors = new HashSet<>();
     this.consumerTaskId = String.format(CONSUMER_TASK_ID_FORMAT, topic);
+    this.topicManager = topicManager;
 
     this.isRunning = new AtomicBoolean(true);
   }
@@ -187,8 +192,8 @@ public class StoreConsumptionTask implements Runnable, Closeable {
     int currentAttemp = 0;
     try {
       // Check whether the task is really killed
-      while (isRunning() && currentAttemp < MAX_KILL_CHECKING_ATTEMPS) {
-        TimeUnit.MILLISECONDS.sleep(KILL_WAIT_TIME_MS / MAX_KILL_CHECKING_ATTEMPS);
+      while (isRunning() && currentAttemp < MAX_KILL_CHECKING_ATTEMPTS) {
+        TimeUnit.MILLISECONDS.sleep(KILL_WAIT_TIME_MS / MAX_KILL_CHECKING_ATTEMPTS);
         currentAttemp ++;
       }
     } catch (InterruptedException e) {
@@ -523,6 +528,15 @@ public class StoreConsumptionTask implements Runnable, Closeable {
       offsetManager.recordOffset(this.topic, partition, record);
       reportProgress(partition, record.getOffset());
     }
+  }
+
+  public long getOffsetLag() {
+    Map<Integer, Long> latestOffsets = topicManager.getLatestOffsets(topic);
+    long offsetLag = partitionToOffsetMap.entrySet().stream()
+        .map(entry -> latestOffsets.get(entry.getKey()) - entry.getValue().getOffset())
+        .reduce(0l, (lag1, lag2) -> lag1 + lag2);
+
+    return offsetLag > 0 ? offsetLag : 0;
   }
 
   private void processControlMessage(ControlMessage controlMessage, int partition, long offset) {

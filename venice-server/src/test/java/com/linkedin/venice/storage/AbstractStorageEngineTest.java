@@ -34,6 +34,7 @@ public abstract class AbstractStorageEngineTest extends AbstractStoreTest {
         .put(KAFKA_BROKERS, "localhost")
         .put(KAFKA_BROKER_PORT, "9092")
         .put(KAFKA_BOOTSTRAP_SERVERS, "127.0.0.1:9092")
+        .put(KAFKA_ZK_ADDRESS, "localhost:2181")
         .put(KAFKA_AUTO_COMMIT_INTERVAL_MS, "1000")
         .put(LISTENER_PORT , 7072)
         .put(ADMIN_PORT , 7073)

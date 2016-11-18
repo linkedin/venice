@@ -1,6 +1,7 @@
 package com.linkedin.venice.stats;
 
-import com.linkedin.venice.server.VeniceServer;
+import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.kafka.consumer.KafkaConsumerPerStoreService;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -9,37 +10,46 @@ import java.util.concurrent.ConcurrentHashMap;
 public class ServerAggStats {
   private static ServerAggStats instance;
   private static MetricsRepository metricsRepository;
+  private static KafkaConsumerPerStoreService kafkaConsumerPerStoreService;
 
   //per store metrics
   final Map<String, ServerStats> storeMetrics;
   final ServerStats totalStats;
 
-  public static synchronized void init(MetricsRepository metricsRepository) {
+  public static synchronized void init(MetricsRepository metricsRepository,
+                                       KafkaConsumerPerStoreService kafkaConsumerPerStoreService) {
     if (metricsRepository == null) {
       throw new IllegalArgumentException("metricsRepository is null");
     }
+
+    if (kafkaConsumerPerStoreService == null) {
+      throw new IllegalArgumentException("KafkaConsumerPerStoreService is null");
+    }
+
     if (instance == null) {
       ServerAggStats.metricsRepository = metricsRepository;
-      instance = new ServerAggStats();
+      ServerAggStats.kafkaConsumerPerStoreService = kafkaConsumerPerStoreService;
+      instance = new ServerAggStats(kafkaConsumerPerStoreService);
     }
   }
 
   public static ServerAggStats getInstance() {
     if (instance == null) {
-      init(TehutiUtils.getMetricsRepository(VeniceServer.SERVER_SERVICE_NAME));
+      throw new VeniceException("ServerStats has not been initialized yet.");
     }
     return instance;
   }
 
   private ServerStats getStoreStats(String storeName) {
     ServerStats storeStats =
-      storeMetrics.computeIfAbsent(storeName, k -> new ServerStats(metricsRepository, storeName));
+      storeMetrics.computeIfAbsent(storeName, k -> new ServerStats(metricsRepository, storeName,
+                                                                   kafkaConsumerPerStoreService));
     return storeStats;
   }
 
-  private ServerAggStats() {
+  private ServerAggStats(KafkaConsumerPerStoreService kafkaConsumerPerStoreService) {
     this.storeMetrics = new ConcurrentHashMap<>();
-    this.totalStats = new ServerStats(metricsRepository, "total");
+    this.totalStats = new ServerStats(metricsRepository, "total", kafkaConsumerPerStoreService);
   }
 
   public void recordBytesConsumed(String storeName, long bytes) {

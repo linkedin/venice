@@ -40,6 +40,8 @@ public class VeniceClusterConfig {
 
   private String kafkaBootstrapServers;
 
+  private String kafkaZkAddress;
+
   private int kafkaAutoCommitIntervalMs;
 
   private boolean kafkaEnableAutoOffsetCommit;
@@ -76,6 +78,7 @@ public class VeniceClusterConfig {
     if (kafkaBootstrapServers == null || kafkaBootstrapServers.isEmpty()) {
       throw new ConfigurationException("kafkaBootstrapServers can't be empty");
     }
+    kafkaZkAddress = clusterProps.getString(KAFKA_ZK_ADDRESS);
     kafkaAutoCommitIntervalMs = clusterProps.getInt(KAFKA_AUTO_COMMIT_INTERVAL_MS);
     fetchBufferSize = clusterProps.getInt(KAFKA_CONSUMER_FETCH_BUFFER_SIZE, 64 * 1024);
     socketTimeoutMs = clusterProps.getInt(KAFKA_CONSUMER_SOCKET_TIMEOUT_MS, 1000);
@@ -127,6 +130,10 @@ public class VeniceClusterConfig {
 
   public String getKafkaBootstrapServers() {
     return kafkaBootstrapServers;
+  }
+
+  public String getKafkaZkAddress() {
+    return kafkaZkAddress;
   }
 
   public boolean kafkaEnableAutoOffsetCommit() {
