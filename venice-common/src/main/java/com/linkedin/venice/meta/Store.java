@@ -247,13 +247,13 @@ public class Store {
     return increaseVersion(false);
   }
 
-  public boolean isVersionInStatue(int versionNumber, VersionStatus status) {
+  public VersionStatus getVersionStatus(int versionNumber) {
     for (int i = 0; i < versions.size(); i++) {
-      if (versions.get(i).getNumber() == versionNumber && versions.get(i).getStatus().equals(status)) {
-        return true;
+      if (versions.get(i).getNumber() == versionNumber) {
+        return versions.get(i).getStatus();
       }
     }
-    return false;
+    return VersionStatus.NOT_CREATED;
   }
 
   private Version increaseVersion(boolean createNewVersion) {

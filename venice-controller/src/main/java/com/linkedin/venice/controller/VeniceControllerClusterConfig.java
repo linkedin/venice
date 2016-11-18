@@ -27,9 +27,8 @@ public class VeniceControllerClusterConfig {
   private int numberOfPartition;
   private int maxNumberOfPartition;
   private long partitionSize;
-  private long offLinejobWaitTimeInMilliseconds;
+  private long offLineJobWaitTimeInMilliseconds;
   private boolean enableTopicDeletionWhenJobFailed;
-  private int minRequiredOnlineReplicaToStopServer;
   /**
    * After server disconnecting for delayToRebalanceMS, helix would trigger the re-balance immediately.
    */
@@ -74,16 +73,14 @@ public class VeniceControllerClusterConfig {
     kafkaBootstrapServers = props.getString(KAFKA_BOOTSTRAP_SERVERS);
     partitionSize = props.getSizeInBytes(DEFAULT_PARTITION_SIZE);
     maxNumberOfPartition = props.getInt(DEFAULT_MAX_NUMBER_OF_PARTITIONS);
-    offLinejobWaitTimeInMilliseconds = props.getLong(OFFLINE_JOB_START_TIMEOUT_MS, 15000);
+    offLineJobWaitTimeInMilliseconds = props.getLong(OFFLINE_JOB_START_TIMEOUT_MS, 15000);
     // By default, disable topic deletion when job failed. Because delete a under repication topic might cause a Kafka MM issue.
     enableTopicDeletionWhenJobFailed = props.getBoolean(ENABLE_TOPIC_DELETION_WHEN_JOB_FAILED, false);
-    minRequiredOnlineReplicaToStopServer = props.getInt(MIN_REQUIRED_ONLINE_REPLICA_TO_STOP_SERVER, 1);
     // By default, delayed rebalance is disabled.
     delayToRebalanceMS = props.getLong(DELAY_TO_REBALANCE_MS, 0);
     // By default, the min active replica is replica factor minus one, which means if more than one server failed,
     // helix would trigger re-balance immediately.
     minActiveReplica = props.getInt(MIN_ACTIVE_REPLICA, replicaFactor - 1);
-
     if (props.containsKey(PERSISTENCE_TYPE)) {
       persistenceType = PersistenceType.valueOf(props.getString(PERSISTENCE_TYPE));
     } else {
@@ -158,16 +155,12 @@ public class VeniceControllerClusterConfig {
     return maxNumberOfPartition;
   }
 
-  public long getOffLinejobWaitTimeInMilliseconds() {
-    return offLinejobWaitTimeInMilliseconds;
+  public long getOffLineJobWaitTimeInMilliseconds() {
+    return offLineJobWaitTimeInMilliseconds;
   }
 
   public boolean isEnableTopicDeletionWhenJobFailed() {
     return enableTopicDeletionWhenJobFailed;
-  }
-
-  public int getMinRequiredOnlineReplicaToStopServer() {
-    return minRequiredOnlineReplicaToStopServer;
   }
 
   public long getDelayToRebalanceMS() {

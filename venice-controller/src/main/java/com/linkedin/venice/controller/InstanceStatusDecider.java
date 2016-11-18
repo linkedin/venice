@@ -13,7 +13,6 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.utils.HelixUtils;
-import com.linkedin.venice.utils.Pair;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
@@ -58,21 +57,65 @@ public class InstanceStatusDecider {
    * Decide whether the given instance could be move out from the cluster.
    */
   protected static boolean isRemovable(VeniceHelixResources resources, String clusterName, String instanceId,
-      int minRequiredOnlineReplicaToStopServer) {
-    HelixManager manager = resources.getController();
-    PropertyKey.Builder keyBuilder = new PropertyKey.Builder(clusterName);
-    HelixDataAccessor accessor = manager.getHelixDataAccessor();
+      int minActiveReplicas) {
     try {
-      // Get session id at first then get current states of given instance and give session.
-      LiveInstance instance = accessor.getProperty(keyBuilder.liveInstance(instanceId));
-      if (instance == null) {
-        // If instance is not alive, it's removable.
-        logger.info("Instance:" + instanceId + " is not a live instance, could be removed.");
+      // If instance is not alive, it's removable.
+      if (!HelixUtils.isLiveInstance(clusterName, instanceId, resources.getController())) {
         return true;
       }
+
+      RoutingDataRepository routingDataRepository = resources.getRoutingDataRepository();
+      VeniceJobManager jobManager = resources.getJobManager();
+
+      // Get all of replicas hold by given instance
       List<Replica> replicas = getReplicasForInstance(resources, instanceId);
-      return isRemovableWithoutLosingData(resources, instanceId, replicas, minRequiredOnlineReplicaToStopServer)
-          && isRemovableWithoutFailingPush(resources, instanceId, replicas);
+      // Get and lock the resource assignment to avoid it's changed during the checking.
+      ResourceAssignment resourceAssignment = routingDataRepository.getResourceAssignment();
+      synchronized (resourceAssignment) {
+        // Get resource names from replicas hold by this instance.
+        Set<String> resourceNameSet = replicas.stream().map(Replica::getResource).collect(Collectors.toSet());
+
+        for (String resourceName : resourceNameSet) {
+          // Get partition assignments that if we removed the given instance from cluster.
+          PartitionAssignment partitionAssignmentAfterRemoving =
+              getPartitionAssignmentAfterRemoving(instanceId, resourceAssignment, resourceName);
+
+          VersionStatus versionStatus = getVersionStatus(resources.getMetadataRepository(), resourceName);
+          if (versionStatus.equals(VersionStatus.ONLINE) || versionStatus.equals(VersionStatus.PUSHED)) {
+            // Push has been completed normally. The version of this push is ready to serve read requests. It might or
+            // might NOT be the current version of a store.
+            // Venice can not remove the given instance once:
+            // 1. Venice would lose data. If server hold the last ONLINE replica, we can NOT remove it otherwise data
+            // would be lost.
+            // 2. And a re-balance would be triggered. If there is not enough active replicas(including ONLINE,
+            // BOOTSTRAP and ERROR replicas), helix will do re-balance immediately even we enabled delayed re-balance.
+            // In that case partition would be moved to other instances and might cause the consumption from the begin
+            // of topic.
+            if (willLoseData(partitionAssignmentAfterRemoving)) {
+              logger.info("Instance:" + instanceId + " is not removable because Version:" + resourceName
+                  + " would lose data if this instance was removed from cluster:" + clusterName);
+              return false;
+            }
+            if (willTriggerRebalance(partitionAssignmentAfterRemoving, minActiveReplicas)) {
+              logger.info("Instance:" + instanceId + " is not removable because Version:" + resourceName
+                  + " would be re-balanced if this instance was removed from cluster:" + clusterName);
+              return false;
+            }
+          } else if (versionStatus.equals(VersionStatus.STARTED)) {
+            // Push is still running
+            // Venice can not remove the given instance once job would fail due to removing.
+            if (jobManager.willJobFail(resourceName, partitionAssignmentAfterRemoving)) {
+              logger.info("Instance:" + instanceId + " is not removable because job for topic:" + resourceName
+                  + " would fail if this instance was removed from cluster:" + clusterName);
+              return false;
+            }
+          } else {
+            // Ignore the error version or not created version.
+            continue;
+          }
+        }
+      }
+      return true;
     } catch (Exception e) {
       String errorMsg = "Can not get current states for instance:" + instanceId + " from Zookeeper";
       logger.error(errorMsg, e);
@@ -80,85 +123,48 @@ public class InstanceStatusDecider {
     }
   }
 
-  /**
-   * Decide whether the given instance could be moved out from cluster without losing any data in Venice. The criteria:
-   * does the server hold the last "ReadyToServe" replica for any ONLINE version. ONLINE means the version is ready to
-   * server read request. It might or might NOT be the current version of a store.
-   */
-  protected static boolean isRemovableWithoutLosingData(VeniceHelixResources resources, String instanceId,
-      List<Replica> replicas, int minRequiredOnlineReplicaToStopServer) {
-    RoutingDataRepository routingDataRepository = resources.getRoutingDataRepository();
-    ReadWriteStoreRepository storeRepository = resources.getMetadataRepository();
-    for (Replica replica : replicas) {
-      // Only Online replica is considered. If replica is not ready to serve, it does not matter if
-      // instance is moved out of cluster. Because we would not lose any of data.
-      if (isReadyToServe(replica.getStatus())) {
-        String resourceName = replica.getResource();
-        Store store = storeRepository.getStore(Version.parseStoreFromKafkaTopicName(resourceName));
-        if (store == null) {
-          logger.info("Can not find store for the resource:" + resourceName + " get from current state of server:"
-              + instanceId);
-          continue;
-        }
-        if (!store.isVersionInStatue(Version.parseVersionFromKafkaTopicName(resourceName), VersionStatus.ONLINE)) {
-          logger.debug("Ignore the Version which is not ONLINE. Resource:" + resourceName);
-          continue;
-        }
-
-        Partition partition =
-            routingDataRepository.getPartitionAssignments(resourceName).getPartition(replica.getPartitionId());
-        // Compare the number of ready to serve instance to minimum required number of replicas. Could add more criteria in the future.
-        int currentReplicas = partition.getReadyToServeInstances().size();
-        if (logger.isDebugEnabled()) {
-          logger.debug(HelixUtils.getPartitionName(resourceName, replica.getPartitionId()) + " have " + currentReplicas
-              + " replicas. Minimum required: " + minRequiredOnlineReplicaToStopServer);
-        }
-        if (currentReplicas <= minRequiredOnlineReplicaToStopServer) {
-          logger.info(
-              "Current number of replicas:" + currentReplicas + " are smaller than min required number of replicas:"
-                  + minRequiredOnlineReplicaToStopServer);
-          return false;
-        }
+  private static boolean willLoseData(PartitionAssignment partitionAssignmentAfterRemoving) {
+    for (Partition partitionAfterRemoving : partitionAssignmentAfterRemoving.getAllPartitions()) {
+      int onlineReplicasCount = partitionAfterRemoving.getReadyToServeInstances().size();
+      if (onlineReplicasCount < 1) {
+        // After removing the instance, no online replica exists. Venice will lose data in this case.
+        return true;
       }
     }
-    return true;
+    return false;
   }
 
-  // TODO, right now we only consider ONLINE replicas to be ready to serve. But in the future, we should also consider
-  // TODO BOOTSTRAP replica as well in some cases. More discussion could be found in r/781272
-  private static boolean isReadyToServe(String replicaState){
-    if(replicaState.contentEquals(HelixState.ONLINE_STATE)){
-      return true;
-    }
-    return  false;
-  }
-
-  /**
-   * Decide whether the given instance could be moved from cluster without failing any of running offline push.
-   */
-  protected static boolean isRemovableWithoutFailingPush(VeniceHelixResources resources, String instanceId,
-      List<Replica> replicas) {
-    VeniceJobManager jobManager = resources.getJobManager();
-    RoutingDataRepository routingDataRepository = resources.getRoutingDataRepository();
-    ResourceAssignment resourceAssignment = routingDataRepository.getResourceAssignment();
-    synchronized (resourceAssignment) {
-      Set<String> resourceNameSet = replicas.stream().map(Replica::getResource).collect(Collectors.toSet());
-      for (String resourceName : resourceNameSet) {
-        PartitionAssignment partitionAssignment = resourceAssignment.getPartitionAssignment(resourceName);
-        PartitionAssignment partitionAssignmentAfterRemoving =
-            new PartitionAssignment(resourceName, partitionAssignment.getExpectedNumberOfPartitions());
-
-        for (Partition partition : partitionAssignment.getAllPartitions()) {
-          Partition partitionAfterRemoving = partition.withRemovedInstance(instanceId);
-          partitionAssignmentAfterRemoving.addPartition(partitionAfterRemoving);
-        }
-
-        if (jobManager.willJobFail(resourceName, partitionAssignmentAfterRemoving)) {
-          logger.info("The job for topic:" + resourceName + " would fail if we remove this instance:" + instanceId);
-          return false;
-        }
+  private static boolean willTriggerRebalance(PartitionAssignment partitionAssignmentAfterRemoving,
+      int minActiveReplicas) {
+    for (Partition partitionAfterRemoving : partitionAssignmentAfterRemoving.getAllPartitions()) {
+      int activeReplicaCount = partitionAfterRemoving.getBootstrapAndReadyToServeInstances().size();
+      activeReplicaCount += partitionAfterRemoving.getErrorInstances().size();
+      if (activeReplicaCount < minActiveReplicas) {
+        // After removing the instance, Venice would not have enough active replicas so a rebalance would be triggered..
+        return true;
       }
     }
-    return true;
+    return false;
+  }
+
+  private static PartitionAssignment getPartitionAssignmentAfterRemoving(String instanceId,
+      ResourceAssignment resourceAssignment, String resourceName) {
+    PartitionAssignment partitionAssignment = resourceAssignment.getPartitionAssignment(resourceName);
+    PartitionAssignment partitionAssignmentAfterRemoving =
+        new PartitionAssignment(resourceName, partitionAssignment.getExpectedNumberOfPartitions());
+    for (Partition partition : partitionAssignment.getAllPartitions()) {
+      Partition partitionAfterRemoving = partition.withRemovedInstance(instanceId);
+      partitionAssignmentAfterRemoving.addPartition(partitionAfterRemoving);
+    }
+    return partitionAssignmentAfterRemoving;
+  }
+
+  private static VersionStatus getVersionStatus(ReadWriteStoreRepository storeRepository, String resourceName) {
+    Store store = storeRepository.getStore(Version.parseStoreFromKafkaTopicName(resourceName));
+    if (store == null) {
+      logger.info("Can not find store for the resource:" + resourceName);
+      return VersionStatus.NOT_CREATED;
+    }
+    return store.getVersionStatus(Version.parseVersionFromKafkaTopicName(resourceName));
   }
 }

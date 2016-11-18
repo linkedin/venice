@@ -7,11 +7,14 @@ import java.util.List;
 import java.util.Map;
 import org.apache.helix.AccessOption;
 import org.apache.helix.HelixAdmin;
+import org.apache.helix.HelixDataAccessor;
 import org.apache.helix.HelixManager;
+import org.apache.helix.PropertyKey;
 import org.apache.helix.manager.zk.ZKHelixAdmin;
 import org.apache.helix.manager.zk.ZkBaseDataAccessor;
 import org.apache.helix.model.HelixConfigScope;
 import org.apache.helix.model.InstanceConfig;
+import org.apache.helix.model.LiveInstance;
 import org.apache.helix.model.builder.HelixConfigScopeBuilder;
 import org.apache.log4j.Logger;
 
@@ -156,6 +159,19 @@ public class HelixUtils {
       if (admin != null) {
         admin.close();
       }
+    }
+  }
+
+  public static boolean isLiveInstance(String clusterName, String instanceId, HelixManager manager) {
+    PropertyKey.Builder keyBuilder = new PropertyKey.Builder(clusterName);
+    HelixDataAccessor accessor = manager.getHelixDataAccessor();
+    // Get session id at first then get current states of given instance and give session.
+    LiveInstance instance = accessor.getProperty(keyBuilder.liveInstance(instanceId));
+    if (instance == null) {
+      logger.info("Instance:" + instanceId + " is not a live instance");
+      return false;
+    } else {
+      return true;
     }
   }
 }

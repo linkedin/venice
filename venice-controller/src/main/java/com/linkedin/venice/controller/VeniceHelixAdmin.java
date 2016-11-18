@@ -735,16 +735,15 @@ public class VeniceHelixAdmin implements Admin {
     @Override
     public boolean isInstanceRemovable(String clusterName, String helixNodeId) {
         checkControllerMastership(clusterName);
-        int minRequiredOnlineReplicaToStopServer =
-            getVeniceHelixResource(clusterName).getConfig().getMinRequiredOnlineReplicaToStopServer();
-        return isInstanceRemovable(clusterName, helixNodeId, minRequiredOnlineReplicaToStopServer);
+        int minActiveReplicas = getVeniceHelixResource(clusterName).getConfig().getMinActiveReplica();
+        return isInstanceRemovable(clusterName, helixNodeId, minActiveReplicas);
     }
 
     @Override
-    public boolean isInstanceRemovable(String clusterName, String helixNodeId, int minRequiredOnlineReplicaToStopServer) {
+    public boolean isInstanceRemovable(String clusterName, String helixNodeId, int minActiveReplicas) {
         checkControllerMastership(clusterName);
-        return InstanceStatusDecider.isRemovable(getVeniceHelixResource(clusterName), clusterName, helixNodeId,
-            minRequiredOnlineReplicaToStopServer);
+        return InstanceStatusDecider
+            .isRemovable(getVeniceHelixResource(clusterName), clusterName, helixNodeId, minActiveReplicas);
     }
 
     @Override

@@ -4,6 +4,7 @@ package com.linkedin.venice.meta;
  * Enums of status of verion.
  */
 public enum VersionStatus {
+    NOT_CREATED,
     STARTED,
     //Version has been pushed to venice, but is not ready to serve read request.
     PUSHED,

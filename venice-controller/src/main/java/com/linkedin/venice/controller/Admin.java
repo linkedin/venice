@@ -125,15 +125,15 @@ public interface Admin {
     List<Replica> getReplicasOfStorageNode(String clusterName, String instanceId);
 
     /**
-     * Is the given instance able to remove out from given cluster. For example, if there is only X replica alive in this
-     * cluster which is hosted on given instance. This instance should not be removed out of cluster, otherwise Venice will
-     * lose data. X is read from controller's cluster configuration "min.required.online.replica.to.stop.server".
+     * Is the given instance able to remove out from given cluster. For example, if there is only one online replica
+     * alive in this cluster which is hosted on the given instance. This instance should not be removed out of cluster,
+     * otherwise Venice will lose data. For detail criteria please refer to {@link InstanceStatusDecider}
      *
      * @param helixNodeId nodeId of helix participant. HOST_PORT.
      */
     boolean isInstanceRemovable(String clusterName, String helixNodeId);
 
-    boolean isInstanceRemovable(String clusterName, String helixNodeId, int minRequiredOnlineReplicaToStopServer);
+    boolean isInstanceRemovable(String clusterName, String helixNodeId, int minActiveReplicas);
 
     /**
      * Get instance of master controller. If there is no master controller for the given cluster, throw a
