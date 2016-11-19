@@ -1,9 +1,10 @@
 package com.linkedin.venice.controller;
 
+import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.helix.HelixState;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import org.apache.helix.manager.zk.ZkClient;
-import org.apache.helix.model.LeaderStandbySMD;
 import org.apache.helix.participant.statemachine.StateModelFactory;
 
 
@@ -50,16 +51,19 @@ public class VeniceDistClusterControllerStateModelFactory extends StateModelFact
   }
 
   /**
-   * After start a new venice cluster, wait until state model become STANDBY or LEADER or ERROR.
-   * @param veniceClusterName
-   * @throws InterruptedException
+   * After start a new venice cluster, judge whether the controller has joined the cluster. After state model becoming
+   * STANDBY or LEADER or ERROR, the controller has joined cluster.
    */
-  public void waitUntilClusterStarted(String veniceClusterName)
-      throws InterruptedException {
-    //TODO Add time out or use better implementation like lock condition here.
-    while (clusterToStateModelsMap.get(veniceClusterName) == null || clusterToStateModelsMap.get(veniceClusterName)
-        .getCurrentState().equals(LeaderStandbySMD.States.OFFLINE.toString())) {
-      Thread.sleep(300l);
+  protected boolean hasJoinedCluster(String veniceClusterName) {
+    if (clusterToStateModelsMap.get(veniceClusterName) == null || clusterToStateModelsMap.get(veniceClusterName)
+        .getCurrentState()
+        .equals(HelixState.OFFLINE_STATE)) {
+      return false;
     }
+    if (clusterToStateModelsMap.get(veniceClusterName).getCurrentState().equals(HelixState.ERROR_STATE)) {
+      throw new VeniceException("Controller for " + veniceClusterName
+          + " is not started, because we met error when doing Helix state transition.");
+    }
+    return true;
   }
 }
