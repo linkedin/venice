@@ -35,7 +35,6 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 import org.apache.commons.io.IOUtils;
-import org.apache.helix.ConfigAccessor;
 import org.apache.helix.HelixAdmin;
 import org.apache.helix.HelixManager;
 import org.apache.helix.HelixManagerFactory;
@@ -47,6 +46,7 @@ import org.apache.helix.manager.zk.ZKHelixAdmin;
 import org.apache.helix.manager.zk.ZKHelixManager;
 import org.apache.helix.manager.zk.ZkClient;
 import org.apache.helix.model.ClusterConfig;
+import org.apache.helix.model.ExternalView;
 import org.apache.helix.model.HelixConfigScope;
 import org.apache.helix.model.IdealState;
 import org.apache.helix.model.LeaderStandbySMD;
@@ -57,7 +57,7 @@ import org.apache.log4j.Logger;
 
 
 /**
- * Helix Admin based on 0.6.5 APIs.
+ * Helix Admin based on 0.6.6.4 APIs.
  *
  * <p>
  * After using controller as service mode. There are two levels of cluster and controllers. Each venice controller will
@@ -76,6 +76,8 @@ public class VeniceHelixAdmin implements Admin {
     private Map<String, Exception> lastExceptionMap = new ConcurrentHashMap<String, Exception>();
 
     public static final int CONTROLLER_CLUSTER_NUMBER_OF_PARTITION = 1;
+    public static final long CONTROLLER_JOIN_CLUSTER_TIMEOUT_MS = 1000*300l; // 5min
+    public static final long CONTROLLER_JOIN_CLUSTER_RETRY_DURATION_MS = 500l;
     private static final Logger logger = Logger.getLogger(VeniceHelixAdmin.class);
     private final HelixAdmin admin;
     private TopicManager topicManager;
@@ -145,20 +147,40 @@ public class VeniceHelixAdmin implements Admin {
         List<String> partitionNames = new ArrayList<>();
         partitionNames.add(VeniceDistClusterControllerStateModel.getPartitionNameFromVeniceClusterName(clusterName));
         admin.enablePartition(true, controllerClusterName, controllerName, clusterName, partitionNames);
+        waitUnitControllerJoinsCluster(clusterName);
+    }
+
+    private void waitUnitControllerJoinsCluster(String clusterName) {
+        PropertyKey.Builder keyBuilder = new PropertyKey.Builder(controllerClusterName);
+        long startTime = System.currentTimeMillis();
         try {
-            controllerStateModelFactory.waitUntilClusterStarted(clusterName);
-            if(controllerStateModelFactory.getModel(clusterName).getCurrentState().equals(HelixState.ERROR_STATE)){
-                String errorMsg = "Controller for " + clusterName + " is not started, because we met error when doing Helix state transition.";
-                throw new VeniceException(errorMsg);
+            while (!controllerStateModelFactory.hasJoinedCluster(clusterName)) {
+                // Waiting time out
+                if (System.currentTimeMillis() - startTime >= CONTROLLER_JOIN_CLUSTER_TIMEOUT_MS) {
+                    throw new InterruptedException("Time out when waiting controller join cluster:" + clusterName);
+                }
+                // Check whether enough controller has been assigned.
+                ExternalView externalView =
+                    manager.getHelixDataAccessor().getProperty(keyBuilder.externalView(clusterName));
+                String partitionName = HelixUtils.getPartitionName(clusterName, 0);
+                if (externalView != null && externalView.getStateMap(partitionName) != null) {
+                    int assignedControllerCount = externalView.getStateMap(partitionName).size();
+                    if (assignedControllerCount >= controllerClusterReplica) {
+                        logger.info(
+                            "Do not need to wait, this controller can not join because there is enough controller for cluster:"
+                                + clusterName);
+                        return;
+                    }
+                }
+                // Wait
+                Thread.sleep(CONTROLLER_JOIN_CLUSTER_RETRY_DURATION_MS);
             }
+            logger.info("Controller joined the cluster:" + clusterName);
         } catch (InterruptedException e) {
-            String errorMsg = "Controller for " + clusterName + " is not started";
+            String errorMsg = "Controller can not join the cluster:" + clusterName;
             logger.error(errorMsg, e);
             throw new VeniceException(errorMsg, e);
         }
-
-        logger.info("VeniceHelixAdmin is started. Controller name: '" + controllerName +
-            "', Cluster name: '" + clusterName + "'.");
     }
 
     @Override

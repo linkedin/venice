@@ -165,10 +165,14 @@ public class VeniceClusterWrapper extends ProcessWrapper {
   // latency we introduced.
   public synchronized VeniceControllerWrapper getMasterVeniceController(long timeoutMS) {
     List<VeniceControllerWrapper> masterControllers = new ArrayList<>();
-    TestUtils.waitForNonDeterministicCompletion(timeoutMS, TimeUnit.MILLISECONDS, ()->{
-      masterControllers.addAll(veniceControllerWrappers.values()
-          .stream()
-          .filter(veniceControllerWrapper -> veniceControllerWrapper.isMasterController(clusterName))
+    TestUtils.waitForNonDeterministicCompletion(timeoutMS, TimeUnit.MILLISECONDS, () -> {
+      masterControllers.addAll(veniceControllerWrappers.values().stream().filter(veniceControllerWrapper -> {
+        try {
+          return veniceControllerWrapper.isMasterController(clusterName);
+        } catch (VeniceException e) {
+          return false;
+        }
+      })
           .collect(Collectors.toList()));
       if(masterControllers.size() == 1){
         return true;
