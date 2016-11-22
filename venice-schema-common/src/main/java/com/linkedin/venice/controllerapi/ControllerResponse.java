@@ -1,6 +1,7 @@
 package com.linkedin.venice.controllerapi;
 
 import org.codehaus.jackson.annotate.JsonIgnore;
+import org.codehaus.jackson.annotate.JsonProperty;
 
 
 /**
@@ -12,6 +13,15 @@ public class ControllerResponse { /* Uses Json Reflective Serializer, get withou
   private String name;
   private String error;
 
+  /**
+   * Starting with Jackson 1.9, if this is the only annotation: {@link JsonIgnore}
+   * associated with a property, it will also cause cause the whole
+   * property to be ignored.
+   *
+   * So we need to explicitly specify {@link JsonProperty} with {@link #getError} and {@link #setError(String)}
+   *
+   * @return
+   */
   @JsonIgnore
   public boolean isError(){
     return null!=error;
@@ -33,10 +43,12 @@ public class ControllerResponse { /* Uses Json Reflective Serializer, get withou
     this.name = name;
   }
 
+  @JsonProperty
   public String getError() {
     return error;
   }
 
+  @JsonProperty
   public void setError(String error) {
     this.error = error;
   }
