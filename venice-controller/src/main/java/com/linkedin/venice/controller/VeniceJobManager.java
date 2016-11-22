@@ -258,6 +258,8 @@ public class VeniceJobManager implements StatusMessageHandler<StoreStatusMessage
     List<Version> versionsToDelete = store.retrieveVersionsToDelete(NUM_VERSIONS_TO_PRESERVE);
     for (Version version : versionsToDelete) {
       deleteOneStoreVersion(store, version.getNumber());
+      //Collect the job once the version is deleted.
+      archiveJobs(version.kafkaTopicName());
       logger.info("Deleted store:" + store.getName() + " version:" + version.getNumber());
       helixAdmin.getTopicManager().deleteTopic(version.kafkaTopicName());
     }
