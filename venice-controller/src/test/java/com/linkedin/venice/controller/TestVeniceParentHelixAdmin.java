@@ -74,6 +74,7 @@ public class TestVeniceParentHelixAdmin {
     Mockito.doReturn(new HashSet<String>(Arrays.asList(topicName)))
         .when(topicManager)
         .listTopics();
+    Mockito.doReturn(true).when(topicManager).containsTopic(topicName);
     internalAdmin = Mockito.mock(VeniceHelixAdmin.class);
     Mockito.doReturn(topicManager)
         .when(internalAdmin)
@@ -116,9 +117,9 @@ public class TestVeniceParentHelixAdmin {
 
   @Test
   public void testStartWhenTopicNotExists() {
-    Mockito.doReturn(new HashSet<String>())
+    Mockito.doReturn(false)
         .when(topicManager)
-        .listTopics();
+        .containsTopic(topicName);
     parentAdmin.start(clusterName);
     Mockito.verify(internalAdmin, Mockito.times(1))
         .getTopicManager();

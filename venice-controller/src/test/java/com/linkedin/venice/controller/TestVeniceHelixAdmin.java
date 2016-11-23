@@ -397,8 +397,11 @@ public class TestVeniceHelixAdmin {
     Assert.assertEquals(veniceAdmin.versionsForStore(clusterName,storeName).get(0).getNumber(), version.getNumber()-1);
     Assert.assertEquals(veniceAdmin.versionsForStore(clusterName,storeName).get(1).getNumber(), version.getNumber());
     Version deletedVersion = new Version(storeName, version.getNumber()-2);
-    Assert.assertEquals(veniceAdmin.getOffLineJobStatus(clusterName, deletedVersion.kafkaTopicName()),
-        ExecutionStatus.NOT_CREATED, "Job should be deleted while we collecting the old version.");
+    // Ensure job and topic are deleted
+    TestUtils.waitForNonDeterministicCompletion(30000, TimeUnit.MILLISECONDS,
+        () -> veniceAdmin.getOffLineJobStatus(clusterName, deletedVersion.kafkaTopicName())
+            .equals(ExecutionStatus.NOT_CREATED));
+    Assert.assertTrue(veniceAdmin.getTopicManager().containsTopic(deletedVersion.kafkaTopicName()));
   }
 
   @Test

@@ -66,7 +66,6 @@ import java.util.*;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
-
 public class TestAdminConsumptionTask {
   private static final int TIMEOUT = 10000;
 
@@ -117,6 +116,7 @@ public class TestAdminConsumptionTask {
     // By default, topic has already been created
     Mockito.doReturn(new HashSet<>(Arrays.asList(topicName))).when(topicManager).listTopics();
     Mockito.doReturn(topicManager).when(admin).getTopicManager();
+    Mockito.doReturn(true).when(topicManager).containsTopic(topicName);
   }
 
   private VeniceWriter getVeniceWriter(InMemoryKafkaBroker inMemoryKafkaBroker) {
