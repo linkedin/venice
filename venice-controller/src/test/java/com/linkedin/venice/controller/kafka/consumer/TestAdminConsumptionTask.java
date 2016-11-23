@@ -14,12 +14,16 @@ import com.linkedin.venice.controller.kafka.protocol.serializer.AdminOperationSe
 import com.linkedin.venice.controller.stats.ControllerStats;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.guid.GuidUtils;
 import com.linkedin.venice.integration.utils.KafkaBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.kafka.consumer.KafkaConsumerWrapper;
 import com.linkedin.venice.kafka.consumer.VeniceConsumerFactory;
+import com.linkedin.venice.kafka.protocol.state.PartitionState;
+import com.linkedin.venice.kafka.protocol.state.ProducerPartitionState;
+import com.linkedin.venice.kafka.validation.SegmentStatus;
 import com.linkedin.venice.kafka.validation.checksum.CheckSumType;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.serialization.DefaultSerializer;
@@ -34,6 +38,7 @@ import com.linkedin.venice.unit.kafka.consumer.poll.FilteringPollStrategy;
 import com.linkedin.venice.unit.kafka.consumer.poll.PollStrategy;
 import com.linkedin.venice.unit.kafka.consumer.poll.RandomPollStrategy;
 import com.linkedin.venice.unit.kafka.producer.MockInMemoryProducer;
+import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.TestUtils;
@@ -41,6 +46,8 @@ import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.VeniceWriter;
 import io.tehuti.metrics.MetricsRepository;
+
+import java.nio.ByteBuffer;
 import java.util.concurrent.ExecutionException;
 import org.apache.kafka.clients.consumer.OffsetAndMetadata;
 import org.apache.kafka.clients.producer.RecordMetadata;
@@ -114,7 +121,7 @@ public class TestAdminConsumptionTask {
 
   private VeniceWriter getVeniceWriter(InMemoryKafkaBroker inMemoryKafkaBroker) {
     Properties props = new Properties();
-    //props.put(VeniceWriter.CHECK_SUM_TYPE, CheckSumType.NONE.name());
+    props.put(VeniceWriter.CHECK_SUM_TYPE, CheckSumType.NONE.name());
     return new VeniceWriter(new VeniceProperties(props),
         topicName,
         new DefaultSerializer(),
@@ -381,6 +388,74 @@ public class TestAdminConsumptionTask {
     Mockito.verify(mockKafkaConsumer, Mockito.timeout(TIMEOUT).times(1))
         .unSubscribe(Mockito.any(), Mockito.anyInt());
     Mockito.verify(admin, Mockito.timeout(TIMEOUT).times(1)).addStore(clusterName, storeName, owner, keySchema, valueSchema);
+  }
+
+  private OffsetRecord getOffsetRecordByOffsetAndSeqNum(long offset, int seqNum) {
+    PartitionState partitionState = new PartitionState();
+    partitionState.endOfPush = false;
+    partitionState.offset = offset;
+    partitionState.lastUpdate = System.currentTimeMillis();
+    partitionState.producerStates = new HashMap<>();
+
+    ProducerPartitionState ppState = new ProducerPartitionState();
+    ppState.segmentNumber = 0;
+    ppState.segmentStatus = SegmentStatus.IN_PROGRESS.ordinal();
+    ppState.messageSequenceNumber = seqNum;
+    ppState.messageTimestamp = System.currentTimeMillis();
+    ppState.checksumType = CheckSumType.NONE.ordinal();
+    ppState.checksumState = ByteBuffer.allocate(0);
+    ppState.aggregates = new HashMap<>();
+    ppState.debugInfo = new HashMap<>();
+
+    partitionState.producerStates.put(
+        GuidUtils.getCharSequenceFromGuid(veniceWriter.getProducerGUID()),
+        ppState);
+
+    return new OffsetRecord(partitionState);
+  }
+
+  @Test (timeOut = TIMEOUT)
+  public void testRunWhenRestart() throws Exception {
+    // Mock previous-persisted offset
+    int firstAdminMessageOffset = 1;
+    int firstAdminMessageSeqNum = 1;
+    OffsetRecord offsetRecord = getOffsetRecordByOffsetAndSeqNum(firstAdminMessageOffset, firstAdminMessageSeqNum);
+    OffsetAndMetadata offsetAndMetadata = new OffsetAndMetadata(offsetRecord.getOffset(), ByteUtils.toHexString(offsetRecord.toBytes()));
+    Mockito.doReturn(offsetAndMetadata).when(mockKafkaConsumer)
+        .committed(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID);
+
+    RecordMetadata killJobMetadata = (RecordMetadata) veniceWriter.put(emptyKeyBytes,
+        getKillOfflinePushJobMessage(clusterName, storeTopicName),
+        AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION).get();
+    veniceWriter.put(emptyKeyBytes,
+        getStoreCreationMessage(clusterName, storeName, owner, keySchema, valueSchema),
+        AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION).get();
+
+    Queue<Pair<TopicPartition, OffsetRecord>> pollDeliveryOrder = new LinkedList<>();
+    pollDeliveryOrder.add(getTopicPartitionOffsetPair(killJobMetadata));
+    PollStrategy pollStrategy = new ArbitraryOrderingPollStrategy(pollDeliveryOrder);
+
+    Mockito.doReturn(false).when(admin).hasStore(clusterName, storeName);
+
+    AdminConsumptionTask task = getAdminConsumptionTask(pollStrategy, false);
+    executor.submit(task);
+    Mockito.verify(mockKafkaConsumer, Mockito.timeout(TIMEOUT).atLeastOnce())
+        .commitSync(eq(topicName),
+            eq(AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID),
+            offsetAndMetadataEq(new OffsetAndMetadata(2)));
+    task.close();
+    executor.shutdown();
+    executor.awaitTermination(TIMEOUT, TimeUnit.MILLISECONDS);
+
+    Mockito.verify(admin, Mockito.timeout(TIMEOUT).atLeastOnce())
+        .isMasterController(clusterName);
+    Mockito.verify(mockKafkaConsumer, Mockito.timeout(TIMEOUT).times(1))
+        .subscribe(Mockito.any(), Mockito.anyInt(), Mockito.any());
+    Mockito.verify(mockKafkaConsumer, Mockito.timeout(TIMEOUT).times(1))
+        .unSubscribe(Mockito.any(), Mockito.anyInt());
+    Mockito.verify(admin, Mockito.timeout(TIMEOUT)).addStore(clusterName, storeName, owner, keySchema, valueSchema);
+    // Kill message is before persisted offset
+    Mockito.verify(admin, Mockito.never()).killOfflineJob(clusterName, storeTopicName);
   }
 
   @Test (timeOut = TIMEOUT)

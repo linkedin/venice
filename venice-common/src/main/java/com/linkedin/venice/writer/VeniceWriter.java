@@ -128,6 +128,10 @@ public class VeniceWriter<K, V> extends AbstractVeniceWriter<K, V> {
         + ", numberOfPartitions: " + numberOfPartitions + "}";
   }
 
+  public GUID getProducerGUID() {
+    return producerGUID;
+  }
+
   /**
    * @return the Kafka topic name that this {@link VeniceWriter} instance writes into.
    */

@@ -16,6 +16,7 @@ import com.linkedin.venice.controller.stats.ControllerStats;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.validation.DataValidationException;
 import com.linkedin.venice.exceptions.validation.DuplicateDataException;
+import com.linkedin.venice.guid.GuidUtils;
 import com.linkedin.venice.kafka.consumer.KafkaConsumerWrapper;
 import com.linkedin.venice.kafka.consumer.VeniceConsumerFactory;
 import com.linkedin.venice.kafka.protocol.GUID;
@@ -131,8 +132,26 @@ public class AdminConsumptionTask implements Runnable, Closeable {
               noTopicCounter++;
               continue;
             }
-            // Subscribe the admin topic
+            /**
+             * TODO: clean up non-used Admin Producer GUID
+             * Considering Parent Controller gets restarted or mastership shifts for several times,
+             * Admin Venice Writer will generate a new producer GUID every time, and the old ones
+             * will never be reused, so it is better to clear those entries to avoid bloat
+             * {@link org.apache.kafka.clients.consumer.OffsetAndMetadata} stored in Kafka.
+             */
             lastOffset = offsetManager.getLastOffset(topic, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID);
+            // First let's try to restore the state retrieved from the OffsetManager
+            lastOffset.getProducerPartitionStates().entrySet().stream().forEach(entry -> {
+                  GUID producerGuid = GuidUtils.getGuidFromCharSequence(entry.getKey());
+                  ProducerTracker producerTracker = producerTrackerMap.get(producerGuid);
+                  if (null == producerTracker) {
+                    producerTracker = new ProducerTracker(producerGuid);
+                  }
+                  producerTracker.setPartitionState(AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID, entry.getValue());
+                  producerTrackerMap.put(producerGuid, producerTracker);
+                }
+            );
+            // Subscribe the admin topic
             consumer.subscribe(topic, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID, lastOffset);
             isSubscribed = true;
             logger.info("Subscribe to topic name: " + topic + ", offset: " + lastOffset.getOffset());
