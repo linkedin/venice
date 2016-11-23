@@ -80,7 +80,7 @@ public class TopicManager implements Closeable {
   }
 
   public void deleteTopic(String topicName) {
-    if (listTopics().contains(topicName)) {
+    if (containsTopic(topicName)) {
       // TODO: Stop using Kafka APIs which depend on ZK.
       logger.info("Deleting topic: " + topicName);
       AdminUtils.deleteTopic(getZkUtils(), topicName);
@@ -94,6 +94,10 @@ public class TopicManager implements Closeable {
     return topics;
   }
 
+  public boolean containsTopic(String topic) {
+    return AdminUtils.topicExists(getZkUtils(), topic);
+  }
+
   /**
    * Generate a map from partition number to the last offset available for that partition
    * @param topic
@@ -102,7 +106,7 @@ public class TopicManager implements Closeable {
   public synchronized Map<Integer, Long> getLatestOffsets(String topic) {
     // To be safe, check whether the topic exists or not,
     // since querying offset against non-existing topic could cause endless retrying.
-    if (! listTopics().contains(topic)) {
+    if (! containsTopic(topic)) {
       logger.warn("Topic: " + topic + " doesn't exist, returning empty map for latest offsets");
       return new HashMap<Integer, Long>();
     }
@@ -125,37 +129,6 @@ public class TopicManager implements Closeable {
     return offsets;
 
   }
-
-  public synchronized void deleteOldTopicsForStore(String storename, int numberOfVersionsToRetain) {
-    List<Integer> versionNumbers = listTopics().stream()
-        .filter(topic -> topic.startsWith(storename)) /* early cheap filter */
-        .filter(topic -> Version.topicIsValidStoreVersion(topic))
-        .filter(topic -> Version.parseStoreFromKafkaTopicName(topic).equals(storename))
-        .map(topic -> Version.parseVersionFromKafkaTopicName(topic))
-        .collect(Collectors.toList());
-    Collections.sort(versionNumbers); /* ascending */
-    Collections.reverse(versionNumbers); /* descending */
-    for (int i=0; i<versionNumbers.size(); i++) {
-      if (i < numberOfVersionsToRetain) {
-        continue;
-      } else {
-        String topicToDelete = new Version(storename, versionNumbers.get(i)).kafkaTopicName();
-        deleteTopic(topicToDelete);
-      }
-    }
-  }
-
-  public synchronized void deleteTopicsForStoreOlderThanVersion(String storename, int oldestVersionToKeep) {
-    listTopics().stream()
-        .filter(topic -> topic.startsWith(storename)) /* early cheap filter */
-        .filter(topic -> Version.topicIsValidStoreVersion(topic))
-        .filter(topic -> Version.parseStoreFromKafkaTopicName(topic).equals(storename))
-        .map(topic -> Version.parseVersionFromKafkaTopicName(topic))
-        .filter(version -> version < oldestVersionToKeep)
-        .map(version -> new Version(storename, version).kafkaTopicName())
-        .forEach(topic -> deleteTopic(topic));
-  }
-
 
   /**
    * The first time this is called, it lazily initializes {@link #kafkaConsumer}.

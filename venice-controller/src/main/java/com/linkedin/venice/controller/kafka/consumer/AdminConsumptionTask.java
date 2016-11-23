@@ -220,9 +220,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
       return true;
     }
     // Check it again if it is false
-    topicExists = admin.getTopicManager()
-        .listTopics()
-        .contains(topicName);
+    topicExists = admin.getTopicManager().containsTopic(topicName);
     return topicExists;
   }
 

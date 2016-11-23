@@ -119,6 +119,7 @@ public class HelixJobRepository implements JobRepository {
     //updateJobStatus(job, ExecutionStatus.ARCHIVED);
     HelixUtils.remove(jobDataAccessor, getJobZKPath(job), retryCount);
     deleteJobFromMap(kafkaTopic, jobId, topicToTerminatedJobsMap);
+    logger.info("Job:" + jobId + " for topic:" + kafkaTopic + " is deleted from Zk");
     triggerJobStatusChangeEvent(job.cloneJob());
   }
 

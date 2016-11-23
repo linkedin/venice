@@ -115,8 +115,7 @@ public class VeniceParentHelixAdmin implements Admin {
     // Check whether the admin topic exists or not
     String topicName = AdminTopicUtils.getTopicNameFromClusterName(clusterName);
     TopicManager topicManager = getTopicManager();
-    Set<String> topicSet = topicManager.listTopics();
-    if (topicSet.contains(topicName)) {
+    if (topicManager.containsTopic(topicName)) {
       logger.info("Admin topic: " + topicName + " for cluster: " + clusterName + " already exists.");
     } else {
       // Create Kafka topic
