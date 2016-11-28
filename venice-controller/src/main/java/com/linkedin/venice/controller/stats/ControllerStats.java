@@ -41,9 +41,9 @@ public class ControllerStats extends AbstractVeniceStats {
   public ControllerStats(MetricsRepository metricsRepository, String name) {
     super(metricsRepository, name);
 
-    requestSensor = registerSensor("request", new SampledCount(), new OccurrenceRate());
-    successfulRequest = registerSensor("successful_request", new SampledCount());
-    failedRequest = registerSensor("failed_request", new SampledCount());
+    requestSensor = registerSensor("request", new Count(), new OccurrenceRate());
+    successfulRequest = registerSensor("successful_request", new Count());
+    failedRequest = registerSensor("failed_request", new Count());
     successfulRequestLatencySensor = registerSensor("successful_request_latency",
       TehutiUtils.getPercentileStat(getName() + "_" + "successful_request_latency"));
     failedRequestLatency = registerSensor("failed_request_latency",

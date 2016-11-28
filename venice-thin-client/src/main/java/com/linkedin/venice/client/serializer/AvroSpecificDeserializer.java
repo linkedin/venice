@@ -24,7 +24,7 @@ public class AvroSpecificDeserializer<T extends SpecificRecord> implements Recor
     try {
       // TODO: consider to reuse the object to improve performance (GC tuning)
       return datumReader.read(null, decoder);
-    } catch(IOException e) {
+    } catch(Exception e) {
       throw new VeniceClientException("Could not deserialize bytes back into Avro Abject" + e);
     }
   }
