@@ -28,7 +28,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
-public class MockHttpServerWrapper extends ProcessWrapper {
+//TODO: It is worth taking a look of Netty handler here.
+//TODO: It seems that each request goes through the channel twice. (checkout AvroGenericStoreClientImplTest)
+//TODO: The request has no msg at the second time and trigger ""Unknown message type" exception.
+
+public class  MockHttpServerWrapper extends ProcessWrapper {
   private final Logger logger = Logger.getLogger(MockHttpServerWrapper.class);
 
   private ServerBootstrap bootstrap;

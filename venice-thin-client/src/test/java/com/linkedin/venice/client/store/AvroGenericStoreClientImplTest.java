@@ -64,7 +64,7 @@ public class AvroGenericStoreClientImplTest {
   public void setupStoreClient() throws VeniceClientException, IOException {
     routerServer.clearResponseMapping();
     // Push key schema: string
-    FullHttpResponse schemaResponse = StoreClientTestUtils.constructSchemaResponse(storeName, 1, defaultKeySchemaStr);
+    FullHttpResponse schemaResponse = StoreClientTestUtils.constructHttpSchemaResponse(storeName, 1, defaultKeySchemaStr);
     String keySchemaPath = "/" + SchemaReader.TYPE_KEY_SCHEMA + "/" + storeName;
     routerServer.addResponseForUri(keySchemaPath, schemaResponse);
 
@@ -128,11 +128,11 @@ public class AvroGenericStoreClientImplTest {
     valueSchemaEntries.put(valueSchemaId, valueSchemaStr);
 
     // Push value schema
-    FullHttpResponse valueSchemaResponse = StoreClientTestUtils.constructSchemaResponse(storeName, valueSchemaId, valueSchemaStr);
+    FullHttpResponse valueSchemaResponse = StoreClientTestUtils.constructHttpSchemaResponse(storeName, valueSchemaId, valueSchemaStr);
     String valueSchemaPath = "/" + SchemaReader.TYPE_VALUE_SCHEMA + "/" + storeName + "/" + valueSchemaId;
     routerServer.addResponseForUri(valueSchemaPath, valueSchemaResponse);
 
-    FullHttpResponse multiValueSchemaResponse = StoreClientTestUtils.constructMultiSchemaResponse(storeName, valueSchemaEntries);
+    FullHttpResponse multiValueSchemaResponse = StoreClientTestUtils.constructHttpMultiSchemaResponse(storeName, valueSchemaEntries);
     String multiValueSchemaPath = "/" + SchemaReader.TYPE_VALUE_SCHEMA + "/" + storeName;
     routerServer.addResponseForUri(multiValueSchemaPath, multiValueSchemaResponse);
 
@@ -176,10 +176,10 @@ public class AvroGenericStoreClientImplTest {
     valueSchemaEntries.put(valueSchemaId, valueSchemaStr);
 
     // Push value schema
-    FullHttpResponse valueSchemaResponse = StoreClientTestUtils.constructSchemaResponse(storeName, valueSchemaId, valueSchemaStr);
+    FullHttpResponse valueSchemaResponse = StoreClientTestUtils.constructHttpSchemaResponse(storeName, valueSchemaId, valueSchemaStr);
     String valueSchemaPath = "/" + SchemaReader.TYPE_VALUE_SCHEMA + "/" + storeName + "/" + valueSchemaId;
     routerServer.addResponseForUri(valueSchemaPath, valueSchemaResponse);
-    FullHttpResponse multiValueSchemaResponse = StoreClientTestUtils.constructMultiSchemaResponse(storeName, valueSchemaEntries);
+    FullHttpResponse multiValueSchemaResponse = StoreClientTestUtils.constructHttpMultiSchemaResponse(storeName, valueSchemaEntries);
     String multiValueSchemaPath = "/" + SchemaReader.TYPE_VALUE_SCHEMA + "/" + storeName;
     routerServer.addResponseForUri(multiValueSchemaPath, multiValueSchemaResponse);
 
@@ -281,14 +281,14 @@ public class AvroGenericStoreClientImplTest {
     valueSchemaEntries.put(valueSchemaId2, valueSchemaStr2);
 
     // Push value schema
-    FullHttpResponse valueSchemaResponse1 = StoreClientTestUtils.constructSchemaResponse(storeName, valueSchemaId1, valueSchemaStr1);
+    FullHttpResponse valueSchemaResponse1 = StoreClientTestUtils.constructHttpSchemaResponse(storeName, valueSchemaId1, valueSchemaStr1);
     String valueSchemaPath1 = "/" + SchemaReader.TYPE_VALUE_SCHEMA + "/" + storeName + "/" + valueSchemaId1;
     routerServer.addResponseForUri(valueSchemaPath1, valueSchemaResponse1);
-    FullHttpResponse valueSchemaResponse2 = StoreClientTestUtils.constructSchemaResponse(storeName, valueSchemaId2, valueSchemaStr2);
+    FullHttpResponse valueSchemaResponse2 = StoreClientTestUtils.constructHttpSchemaResponse(storeName, valueSchemaId2, valueSchemaStr2);
     String valueSchemaPath2 = "/" + SchemaReader.TYPE_VALUE_SCHEMA + "/" + storeName + "/" + valueSchemaId2;
     routerServer.addResponseForUri(valueSchemaPath2, valueSchemaResponse2);
 
-    FullHttpResponse multiValueSchemaResponse = StoreClientTestUtils.constructMultiSchemaResponse(storeName, valueSchemaEntries);
+    FullHttpResponse multiValueSchemaResponse = StoreClientTestUtils.constructHttpMultiSchemaResponse(storeName, valueSchemaEntries);
     String multiValueSchemaPath = "/" + SchemaReader.TYPE_VALUE_SCHEMA + "/" + storeName;
     routerServer.addResponseForUri(multiValueSchemaPath, multiValueSchemaResponse);
 

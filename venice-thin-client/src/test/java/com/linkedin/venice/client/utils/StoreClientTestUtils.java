@@ -25,14 +25,9 @@ import java.util.Map;
 public class StoreClientTestUtils {
   private static Logger LOGGER = Logger.getLogger(StoreClientTestUtils.class);
 
-  public static FullHttpResponse constructSchemaResponse(String storeName, int schemaId, String schemaStr) throws IOException {
-    SchemaResponse responseObject = new SchemaResponse();
-    responseObject.setCluster("test_cluster");
-    responseObject.setName(storeName);
-    responseObject.setId(1);
-    responseObject.setSchemaStr(schemaStr);
-    ObjectMapper mapper = new ObjectMapper();
-    ByteBuf body = Unpooled.wrappedBuffer(mapper.writeValueAsBytes(responseObject));
+  public static FullHttpResponse constructHttpSchemaResponse(String storeName, int schemaId, String schemaStr)
+  throws IOException {
+    ByteBuf body = Unpooled.wrappedBuffer(constructSchemaResponseInBytes(storeName, schemaId, schemaStr));
     FullHttpResponse response = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK, body);
     response.headers().set(HttpHeaders.CONTENT_TYPE, "application/json");
     // We must specify content_length header, otherwise netty will keep polling, since it
@@ -42,7 +37,31 @@ public class StoreClientTestUtils {
     return response;
   }
 
-  public static FullHttpResponse constructMultiSchemaResponse(String storeName, Map<Integer, String> valueSchemaEntries) throws IOException {
+  public static byte[] constructSchemaResponseInBytes(String storeName, int schemaId, String  schemaStr)
+      throws IOException {
+    SchemaResponse responseObject = new SchemaResponse();
+    responseObject.setCluster("test_cluster");
+    responseObject.setName(storeName);
+    responseObject.setId(schemaId);
+    responseObject.setSchemaStr(schemaStr);
+    ObjectMapper mapper = new ObjectMapper();
+    return mapper.writeValueAsBytes(responseObject);
+  }
+
+  public static FullHttpResponse constructHttpMultiSchemaResponse(String storeName, Map<Integer, String> valueSchemaEntries)
+      throws IOException {
+    ByteBuf body = Unpooled.wrappedBuffer(constructMultiSchemaResponseInBytes(storeName, valueSchemaEntries));
+    FullHttpResponse response = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK, body);
+    response.headers().set(HttpHeaders.CONTENT_TYPE, "application/json");
+    // We must specify content_length header, otherwise netty will keep polling, since it
+    // doesn't know when to finish writing the response.
+    response.headers().set(HttpHeaders.CONTENT_LENGTH, response.content().readableBytes());
+
+    return response;
+  }
+
+  public static byte[] constructMultiSchemaResponseInBytes(String storeName, Map<Integer, String> valueSchemaEntries)
+      throws IOException{
     MultiSchemaResponse responseObject = new MultiSchemaResponse();
     responseObject.setCluster("test_cluster");
     responseObject.setName(storeName);
@@ -57,14 +76,8 @@ public class StoreClientTestUtils {
     }
     responseObject.setSchemas(schemas);
     ObjectMapper mapper = new ObjectMapper();
-    ByteBuf body = Unpooled.wrappedBuffer(mapper.writeValueAsBytes(responseObject));
-    FullHttpResponse response = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK, body);
-    response.headers().set(HttpHeaders.CONTENT_TYPE, "application/json");
-    // We must specify content_length header, otherwise netty will keep polling, since it
-    // doesn't know when to finish writing the response.
-    response.headers().set(HttpHeaders.CONTENT_LENGTH, response.content().readableBytes());
 
-    return response;
+    return mapper.writeValueAsBytes(responseObject);
   }
 
   public static FullHttpResponse constructStoreResponse(int schemaId, byte[] value) throws IOException {

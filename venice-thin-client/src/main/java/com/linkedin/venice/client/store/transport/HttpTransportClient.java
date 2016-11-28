@@ -31,8 +31,12 @@ public class HttpTransportClient<V> extends TransportClient<V> {
   private final CloseableHttpAsyncClient httpClient;
 
   public HttpTransportClient(String routerUrl) {
+    this(routerUrl, HttpAsyncClients.createDefault());
+  }
+
+  public HttpTransportClient(String routerUrl, CloseableHttpAsyncClient httpClient) {
     this.routerUrl = ensureTrailingSlash(routerUrl);
-    httpClient = HttpAsyncClients.createDefault();
+    this.httpClient = httpClient;
     httpClient.start();
   }
 

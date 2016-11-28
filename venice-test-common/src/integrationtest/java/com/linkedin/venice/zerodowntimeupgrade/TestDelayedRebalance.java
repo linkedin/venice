@@ -43,7 +43,7 @@ public class TestDelayedRebalance {
   }
 
   @Test
-  public void tesFailOneServerWithDelayedRebalance()
+  public void  tesFailOneServerWithDelayedRebalance()
       throws InterruptedException {
     // Test the case that fail one server with enable delayed rebalance. Helix will not move the partition to other server.
     // After restart the failed server, replica would be recoverd correctly.

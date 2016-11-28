@@ -7,7 +7,6 @@ import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.schema.SchemaEntry;
 import java.io.Closeable;
-import java.io.IOException;
 import org.apache.avro.Schema;
 import org.apache.commons.io.IOUtils;
 import org.apache.log4j.Logger;

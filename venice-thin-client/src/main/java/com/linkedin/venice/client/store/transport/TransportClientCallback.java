@@ -58,7 +58,7 @@ public class TransportClientCallback<T> {
             RecordDeserializer<T> deserializer = deserializerFetcher.fetch(Integer.parseInt(schemaId));
             T result = deserializer.deserialize(body);
             valueFuture.complete(result);
-          } catch (VeniceClientException e) {
+          } catch (Exception e) {
             valueFuture.completeExceptionally(e);
           } finally {
             callback.executeOnSuccess();
