@@ -87,7 +87,13 @@ public class VenicePartitionStateModel extends StateModel {
     }
 
     private void removePartitionFromStore() {
-        storageService.dropStorePartition(storeConfig, partition);
+        // Catch exception separately to ensure reset consumption offset would be executed for sure.
+        try {
+            storageService.dropStorePartition(storeConfig, partition);
+        } catch (Exception e) {
+            logger.error(
+                "Met error while dropping the partition:" + partition + " in store:" + storeConfig.getStoreName());
+        }
         kafkaConsumerService.resetConsumptionOffset(storeConfig, partition);
     }
 
@@ -142,8 +148,13 @@ public class VenicePartitionStateModel extends StateModel {
     @Transition(to = HelixState.DROPPED_STATE, from = HelixState.ERROR_STATE)
     public void onBecomeDroppedFromError(Message message, NotificationContext context) {
         logEntry(HelixState.ERROR, HelixState.DROPPED, message, context);
-        kafkaConsumerService.stopConsumption(storeConfig, partition);
-        removePartitionFromStore();
+        try {
+            kafkaConsumerService.stopConsumption(storeConfig, partition);
+            removePartitionFromStore();
+        } catch (Throwable e) {
+            // Catch throwable here to ensure state transition is completed to avoid enter into the infinite loop error->dropped->error->....
+            logger.error("Met error during the  transition.", e);
+        }
         logCompletion(HelixState.ERROR, HelixState.DROPPED, message, context);
     }
 
