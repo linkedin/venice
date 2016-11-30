@@ -84,12 +84,16 @@ public class OffsetRecord {
     this.partitionState.producerStates.put(guidToUtf8(producerGuid), state);
   }
 
-  public Map<CharSequence, ProducerPartitionState> getProducerPartitionStates() {
+  public Map<CharSequence, ProducerPartitionState> getProducerPartitionStateMap() {
     return this.partitionState.producerStates;
   }
 
+  public void setProducerPartitionStateMap(Map<CharSequence, ProducerPartitionState> producerStates) {
+    this.partitionState.producerStates = producerStates;
+  }
+
   public ProducerPartitionState getProducerPartitionState(GUID producerGuid) {
-    return getProducerPartitionStates().get(guidToUtf8(producerGuid));
+    return getProducerPartitionStateMap().get(guidToUtf8(producerGuid));
   }
 
   /**

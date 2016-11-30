@@ -132,16 +132,9 @@ public class AdminConsumptionTask implements Runnable, Closeable {
               noTopicCounter++;
               continue;
             }
-            /**
-             * TODO: clean up non-used Admin Producer GUID
-             * Considering Parent Controller gets restarted or mastership shifts for several times,
-             * Admin Venice Writer will generate a new producer GUID every time, and the old ones
-             * will never be reused, so it is better to clear those entries to avoid bloat
-             * {@link org.apache.kafka.clients.consumer.OffsetAndMetadata} stored in Kafka.
-             */
             lastOffset = offsetManager.getLastOffset(topic, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID);
             // First let's try to restore the state retrieved from the OffsetManager
-            lastOffset.getProducerPartitionStates().entrySet().stream().forEach(entry -> {
+            lastOffset.getProducerPartitionStateMap().entrySet().stream().forEach(entry -> {
                   GUID producerGuid = GuidUtils.getGuidFromCharSequence(entry.getKey());
                   ProducerTracker producerTracker = producerTrackerMap.get(producerGuid);
                   if (null == producerTracker) {
