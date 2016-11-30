@@ -1,7 +1,9 @@
 package com.linkedin.venice.controller;
 
 import com.linkedin.venice.VeniceResource;
+import com.linkedin.venice.helix.HelixOfflinePushMonitorAccessor;
 import com.linkedin.venice.helix.HelixStatusMessageChannel;
+import com.linkedin.venice.pushmonitor.OfflinePushMonitor;
 import com.linkedin.venice.status.StoreStatusMessage;
 import com.linkedin.venice.helix.HelixAdapterSerializer;
 import com.linkedin.venice.helix.HelixJobRepository;
@@ -24,6 +26,7 @@ public class VeniceHelixResources implements VeniceResource {
   private final VeniceJobManager jobManager;
   private final HelixStatusMessageChannel messageChannel;
   private final VeniceControllerClusterConfig config;
+  private final OfflinePushMonitor OfflinePushMonitor;
 
   public VeniceHelixResources(String clusterName,
                               ZkClient zkClient,
@@ -44,6 +47,8 @@ public class VeniceHelixResources implements VeniceResource {
         this.routingDataRepository,
         config.getOffLineJobWaitTimeInMilliseconds());
     this.messageChannel = new HelixStatusMessageChannel(helixManager, HelixStatusMessageChannel.DEFAULT_BROAD_CAST_MESSAGES_TIME_OUT);
+    this.OfflinePushMonitor = new OfflinePushMonitor(clusterName, routingDataRepository,
+        new HelixOfflinePushMonitorAccessor(clusterName, zkClient, adapter));
   }
 
   @Override
@@ -56,6 +61,7 @@ public class VeniceHelixResources implements VeniceResource {
     jobManager.checkAllExistingJobs();
     // After all of resource being refreshed, start accepting message again.
     messageChannel.registerHandler(StoreStatusMessage.class, jobManager);
+    OfflinePushMonitor.loadAllPushes();
   }
 
   @Override
@@ -97,5 +103,9 @@ public class VeniceHelixResources implements VeniceResource {
 
   public VeniceControllerClusterConfig getConfig() {
     return config;
+  }
+
+  public OfflinePushMonitor getOfflinePushMonitor() {
+    return OfflinePushMonitor;
   }
 }

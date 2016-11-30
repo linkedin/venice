@@ -19,6 +19,7 @@ import com.linkedin.venice.meta.Partition;
 import com.linkedin.venice.meta.PartitionAssignment;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.pushmonitor.OfflinePushMonitor;
 import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.status.StatusMessageChannel;
@@ -261,6 +262,9 @@ public class VeniceHelixAdmin implements Admin {
         VeniceControllerClusterConfig clusterConfig = controllerStateModelFactory.getModel(clusterName).getResources().getConfig();
         createKafkaTopic(clusterName, version.kafkaTopicName(), numberOfPartition, clusterConfig.getKafkaReplicaFactor());
         if (whetherStartOfflinePush) {
+            // We need to prepare to monitor before creating helix resource.
+            // TODO collect the offline push ZNodes in case of creating helix resource failure.
+            startMontiorOfflinePush(clusterName, version.kafkaTopicName(), numberOfPartition, replicationFactor, strategy);
             createHelixResources(clusterName, version.kafkaTopicName(), numberOfPartition, replicationFactor);
             //Start offline push job for this new version.
             startOfflinePush(clusterName, version.kafkaTopicName(), numberOfPartition, replicationFactor, strategy);
@@ -392,6 +396,12 @@ public class VeniceHelixAdmin implements Admin {
     private void createKafkaTopic(String clusterName, String kafkaTopic, int numberOfPartition, int kafkaReplicaFactor) {
         checkControllerMastership(clusterName);
         topicManager.createTopic(kafkaTopic, numberOfPartition, kafkaReplicaFactor);
+    }
+
+    private void startMontiorOfflinePush(String clusterName, String kafkaTopic, int numberOfPartition,
+        int replicationFactor, OfflinePushStrategy strategy) {
+        OfflinePushMonitor offlinePushMonitor = getVeniceHelixResource(clusterName).getOfflinePushMonitor();
+        offlinePushMonitor.startMonitorOfflinePush(kafkaTopic, numberOfPartition, replicationFactor, strategy);
     }
 
     private void createHelixResources(String clusterName, String kafkaTopic , int numberOfPartition , int replicationFactor) {
