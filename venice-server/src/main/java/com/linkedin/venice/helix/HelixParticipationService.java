@@ -6,6 +6,7 @@ import com.linkedin.venice.job.KillJobMessage;
 import com.linkedin.venice.kafka.consumer.KafkaConsumerService;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.notifier.HelixNotifier;
+import com.linkedin.venice.notifier.PushMonitorNotifier;
 import com.linkedin.venice.server.VeniceConfigLoader;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.status.StatusMessageHandler;
@@ -22,6 +23,7 @@ import org.apache.helix.HelixManager;
 import org.apache.helix.HelixManagerFactory;
 import org.apache.helix.InstanceType;
 import org.apache.helix.LiveInstanceInfoProvider;
+import org.apache.helix.manager.zk.ZkClient;
 import org.apache.helix.participant.statemachine.StateModelFactory;
 import org.apache.log4j.Logger;
 import java.util.concurrent.CompletableFuture;
@@ -133,7 +135,12 @@ public class HelixParticipationService extends AbstractVeniceService implements 
       // Report start, progress , completed  and error notifications to controller
       HelixNotifier notifier =
           new HelixNotifier(manager, participantName, statusMessageRetryCount, statusMessageRetryDuration);
+      // Record replica status in Zookeeper.
+      PushMonitorNotifier pushMonitorNotifier = new PushMonitorNotifier(
+          new HelixOfflinePushMonitorAccessor(clusterName, new ZkClient(zkAddress), new HelixAdapterSerializer()),
+          instance.getNodeId());
       consumerService.addNotifier(notifier);
+      consumerService.addNotifier(pushMonitorNotifier);
 
       serviceState.set(ServiceState.STARTED);
 

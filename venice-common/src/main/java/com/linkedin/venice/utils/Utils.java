@@ -3,6 +3,7 @@ package com.linkedin.venice.utils;
 import com.linkedin.venice.exceptions.ConfigurationException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceHttpException;
+import com.linkedin.venice.job.ExecutionStatus;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
@@ -10,6 +11,7 @@ import java.io.InputStream;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.Properties;
@@ -303,5 +305,12 @@ public class Utils {
     LOGGER.info("Loaded schema from resource path '" + resourcePath + "'");
     LOGGER.debug("Schema literal:\n" + schema.toString(true));
     return schema;
+  }
+
+  /**
+   * Verify that is the new status allowed to be used.
+   */
+  public static boolean verifyTransition(ExecutionStatus newStatus, ExecutionStatus... allowed) {
+    return Arrays.asList(allowed).contains(newStatus);
   }
 }

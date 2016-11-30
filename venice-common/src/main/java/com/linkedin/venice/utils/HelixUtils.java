@@ -1,10 +1,12 @@
 package com.linkedin.venice.utils;
 
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.exceptions.ZkDataAccessException;
 import java.util.HashMap;
 import java.util.List;
 
 import java.util.Map;
+import org.I0Itec.zkclient.DataUpdater;
 import org.apache.helix.AccessOption;
 import org.apache.helix.HelixAdmin;
 import org.apache.helix.HelixDataAccessor;
@@ -68,6 +70,17 @@ public class HelixUtils {
     return resourceName;
   }
 
+  public static <T> void create(ZkBaseDataAccessor<T> dataAccessor, String path, T data, int retryCount) {
+    int retry = 0;
+    while (retry < retryCount) {
+      if (dataAccessor.create(path, data, AccessOption.PERSISTENT)) {
+        return;
+      }
+      retry++;
+    }
+    throw new ZkDataAccessException(path, "create", retryCount);
+  }
+
   public static <T> void update(ZkBaseDataAccessor<T> dataAccessor, String path, T data, int retryCount) {
     int retry = 0;
     while (retry < retryCount) {
@@ -76,7 +89,7 @@ public class HelixUtils {
       }
       retry++;
     }
-    throw new VeniceException("Can not update data to Helix after " + retryCount + " times retry");
+    throw new ZkDataAccessException(path, "set", retryCount);
   }
 
   //TODO there is not atomic operations to update multiple node to ZK. We should ask Helix library to rollback if it's only partial successful.
@@ -97,7 +110,8 @@ public class HelixUtils {
       }
       retry++;
       if (retry == retryCount) {
-        throw new VeniceException("Can not update data to Helix after " + retryCount + " times retry");
+        throw new ZkDataAccessException(pathes.get(0).substring(0, pathes.get(0).lastIndexOf('/')), "update children",
+            retryCount);
       }
     }
   }
@@ -110,7 +124,19 @@ public class HelixUtils {
       }
       retry++;
     }
-    throw new VeniceException("Can not remove data from Helix after " + retryCount + " times retry");
+    throw new ZkDataAccessException(path, "remove", retryCount);
+ }
+
+  public static <T> void compareAndUpdate(ZkBaseDataAccessor<T> dataAccessor, String path, int retryCount,
+      DataUpdater<T> dataUpdater) {
+    int retry = 0;
+    while (retry < retryCount) {
+      if (dataAccessor.update(path, dataUpdater, AccessOption.PERSISTENT)) {
+        return;
+      }
+      retry++;
+    }
+    throw new ZkDataAccessException(path, "compare and update", retryCount);
   }
 
   /**
