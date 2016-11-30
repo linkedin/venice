@@ -92,5 +92,6 @@ public class TestRestartServer {
       }
       return true;
     });
+    System.out.println("-----");
   }
 }
