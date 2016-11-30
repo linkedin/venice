@@ -403,7 +403,7 @@ public class StoreConsumptionTask implements Runnable, Closeable {
 
         // First let's try to restore the state retrieved from the OffsetManager
         partitionToOffsetMap.put(partition, record);
-        record.getProducerPartitionStates().entrySet().stream().forEach(entry -> {
+        record.getProducerPartitionStateMap().entrySet().stream().forEach(entry -> {
               GUID producerGuid = GuidUtils.getGuidFromCharSequence(entry.getKey());
               ProducerTracker producerTracker = producerTrackerMap.get(producerGuid);
               if (null == producerTracker) {
