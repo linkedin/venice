@@ -128,6 +128,7 @@ public class TestVeniceHelixAdmin {
         stateModelFactory, VeniceStateModel.PARTITION_ONLINE_OFFLINE_STATE_MODEL);
     participants.put(nodeId, manager);
     manager.connect();
+    HelixUtils.setupInstanceConfig(clusterName, nodeId, zkAddress);
   }
 
   private void stopParticipants() {
@@ -843,7 +844,8 @@ public class TestVeniceHelixAdmin {
 
     try {
       veniceAdmin.killOfflineJob(clusterName, version.kafkaTopicName());
-      Assert.assertEquals(processedMessage.size(), 2, "Kill messages should be recevied and  processed correctly");
+      TestUtils.waitForNonDeterministicCompletion(TOTAL_TIMEOUT_FOR_SHORT_TEST, TimeUnit.MILLISECONDS,
+          () -> processedMessage.size() == 2);
     } catch (VeniceException e) {
       Assert.fail("Sending message should not fail.", e);
     }

@@ -42,6 +42,7 @@ import org.apache.helix.InstanceType;
 import org.apache.helix.PropertyKey;
 import org.apache.helix.controller.rebalancer.DelayedAutoRebalancer;
 import org.apache.helix.controller.rebalancer.strategy.AutoRebalanceStrategy;
+import org.apache.helix.controller.rebalancer.strategy.CrushRebalanceStrategy;
 import org.apache.helix.manager.zk.ZKHelixAdmin;
 import org.apache.helix.manager.zk.ZKHelixManager;
 import org.apache.helix.manager.zk.ZkClient;
@@ -404,6 +405,8 @@ public class VeniceHelixAdmin implements Admin {
             // the delayed reblance time
             idealState.setRebalancerClassName(DelayedAutoRebalancer.class.getName());
             idealState.setMinActiveReplicas(config.getMinActiveReplica());
+            // Use crush alg to allocate resources
+            idealState.setRebalanceStrategy(CrushRebalanceStrategy.class.getName());
             admin.setResourceIdealState(clusterName, kafkaTopic, idealState);
             logger.info("Enabled delayed re-balance for resource:" + kafkaTopic);
             admin.rebalance(clusterName, kafkaTopic, replicationFactor);
@@ -590,6 +593,9 @@ public class VeniceHelixAdmin implements Admin {
             helixClusterProperties.put(ClusterConfig.ClusterConfigProperty.DELAY_REBALANCE_TIME.name(),
                 String.valueOf(delayedTime));
         }
+        // Topology and fault zone type fields are used by CRUSH alg. Helix would apply the constrains on CRUSH alg to choose proper instance to hold the replica.
+        helixClusterProperties.put(ClusterConfig.ClusterConfigProperty.TOPOLOGY.name(), "/" + HelixUtils.TOPOLOGY_CONSTRAINT);
+        helixClusterProperties.put(ClusterConfig.ClusterConfigProperty.FAULT_ZONE_TYPE.name(), HelixUtils.TOPOLOGY_CONSTRAINT);
         admin.setConfig(configScope, helixClusterProperties);
         logger.info(
             "Cluster  " + clusterName + "  Completed, auto join to true. Delayed rebalance time:" + delayedTime);
