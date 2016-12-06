@@ -3,12 +3,12 @@ package com.linkedin.venice.stats;
 
 import com.linkedin.venice.kafka.consumer.StoreConsumptionTask;
 import com.linkedin.venice.kafka.consumer.KafkaConsumerPerStoreService;
-import org.apache.log4j.Logger;
+import com.linkedin.venice.meta.Version;
 
+import java.util.Comparator;
 import java.util.List;
 
 public class OffsetLagStat extends LambdaStat {
-  private final static Logger logger = Logger.getLogger(OffsetLagStat.class);
 
   public OffsetLagStat(KafkaConsumerPerStoreService kafkaConsumerPerStoreService, String storeName) {
     super(() -> {
@@ -18,14 +18,10 @@ public class OffsetLagStat extends LambdaStat {
         return 0d;
       }
 
-      if (tasks.size() > 1) {
-        logger.warn("More than one tasks are running for store: " + storeName
-          + ". You are doing parallel push. Pick up the max offsetLag among tasks");
-      }
-
-      return (double) tasks.stream()
-        .map(StoreConsumptionTask::getOffsetLag)
-        .reduce(0l, (lag1, lag2) -> Long.max(lag1, lag2));
+      return tasks.stream()
+        .max(Comparator.comparing(task -> Version.parseVersionFromKafkaTopicName(task.getTopic())))
+        .map(task -> (double) task.getOffsetLag())
+        .get();
     });
   }
 }
