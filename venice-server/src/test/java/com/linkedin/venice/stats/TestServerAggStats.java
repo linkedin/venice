@@ -52,7 +52,7 @@ public class TestServerAggStats {
     for (int i = 0; i < STORE_CONSUMPTION_TASK_NUM; i ++) {
       StoreConsumptionTask task = Mockito.mock(StoreConsumptionTask.class);
       Mockito.doReturn(Long.valueOf(i)).when(task).getOffsetLag();
-
+      Mockito.doReturn(STORE_FOO + "_v" + String.valueOf(i)).when(task).getTopic();
       mockStoreConsumptionTasks.add(task);
     }
 

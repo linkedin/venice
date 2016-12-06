@@ -751,6 +751,10 @@ public class StoreConsumptionTask implements Runnable, Closeable {
     return isRunning.get();
   }
 
+  public String getTopic() {
+    return topic;
+  }
+
   KafkaConsumerWrapper getConsumer() {
     return this.consumer;
   }
