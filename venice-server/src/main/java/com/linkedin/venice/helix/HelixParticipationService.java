@@ -120,6 +120,8 @@ public class HelixParticipationService extends AbstractVeniceService implements 
     CompletableFuture.runAsync(() -> {
       try {
         HelixUtils.connectHelixManager(manager, 30, 1);
+        //setup instance config for participant used by CRUSH alg
+        HelixUtils.setupInstanceConfig(clusterName, instance.getNodeId(), zkAddress);
       } catch (VeniceException ve) {
         logger.error(ve.getMessage(), ve);
         logger.error("Venice server is about to close");

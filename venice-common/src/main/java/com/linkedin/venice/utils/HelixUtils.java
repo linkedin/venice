@@ -1,11 +1,18 @@
 package com.linkedin.venice.utils;
 
 import com.linkedin.venice.exceptions.VeniceException;
+import java.util.HashMap;
 import java.util.List;
 
+import java.util.Map;
 import org.apache.helix.AccessOption;
+import org.apache.helix.HelixAdmin;
 import org.apache.helix.HelixManager;
+import org.apache.helix.manager.zk.ZKHelixAdmin;
 import org.apache.helix.manager.zk.ZkBaseDataAccessor;
+import org.apache.helix.model.HelixConfigScope;
+import org.apache.helix.model.InstanceConfig;
+import org.apache.helix.model.builder.HelixConfigScopeBuilder;
 import org.apache.log4j.Logger;
 
 
@@ -15,6 +22,13 @@ import org.apache.log4j.Logger;
 public class HelixUtils {
 
   private static final Logger logger = Logger.getLogger(HelixUtils.class);
+
+  /**
+   * The constraint that helix would apply on CRUSH alg. Based on this constraint, Helix would NOT allocate replicas in
+   * same partition to same instance. If we need rack aware ability in the future, we could add rack constraint as
+   * well.
+   */
+  public static final String TOPOLOGY_CONSTRAINT = "instance";
 
   public static String getHelixClusterZkPath(String clusterName){
     return "/"+clusterName;
@@ -122,6 +136,25 @@ public class HelixUtils {
           throw new VeniceException("Error connecting to Helix Manager for Cluster '" +
               manager.getClusterName() + "' after " + maxRetries + " attempts.", e);
         }
+      }
+    }
+  }
+
+  public static void setupInstanceConfig(String clusterName, String instanceId, String zkAddress) {
+    HelixConfigScope instanceScope =
+        new HelixConfigScopeBuilder(HelixConfigScope.ConfigScopeProperty.PARTICIPANT).forCluster(clusterName)
+            .forParticipant(instanceId)
+            .build();
+    HelixAdmin admin = null;
+    try {
+      admin = new ZKHelixAdmin(zkAddress);
+      Map<String, String> instanceProperties = new HashMap<>();
+      instanceProperties.put(InstanceConfig.InstanceConfigProperty.DOMAIN.name(),
+          TOPOLOGY_CONSTRAINT + "=" + instanceId);
+      admin.setConfig(instanceScope, instanceProperties);
+    } finally {
+      if (admin != null) {
+        admin.close();
       }
     }
   }
