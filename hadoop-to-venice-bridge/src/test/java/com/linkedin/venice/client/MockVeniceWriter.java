@@ -1,6 +1,7 @@
 package com.linkedin.venice.client;
 
 import com.linkedin.venice.hadoop.KafkaPushJob;
+import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.AbstractVeniceWriter;
 import com.linkedin.venice.writer.VeniceWriter;
 import org.apache.kafka.clients.producer.Callback;
@@ -10,7 +11,6 @@ import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.Properties;
 import java.util.concurrent.Future;
 
 /**
@@ -22,8 +22,8 @@ public class MockVeniceWriter extends AbstractVeniceWriter<byte[], byte[]> {
   private Map<String, String> messages = new HashMap<>();
   private Map<String, Integer> keyValueSchemaIdMapping = new HashMap<>();
 
-  public MockVeniceWriter(Properties properties) {
-    super(properties.getProperty(KafkaPushJob.TOPIC_PROP));
+  public MockVeniceWriter(VeniceProperties properties) {
+    super(properties.getString(KafkaPushJob.TOPIC_PROP));
   }
 
   @Override
