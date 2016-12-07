@@ -294,17 +294,18 @@ public class KafkaPushJob extends AbstractJob {
 
       // Check Avro file schema consistency, data size
       inspectHdfsSource(sourcePath);
+
+      if (enablePush && autoCreateStoreIfNeeded) {
+        createStoreIfNeeded();
+        uploadValueSchema();
+      }
+
       validateKeySchema();
       validateValueSchema();
 
       JobClient jc;
 
       if (enablePush) {
-        if (autoCreateStoreIfNeeded) {
-          createStoreIfNeeded();
-          uploadValueSchema();
-        }
-
         // Create new store version, topic and fetch Kafka url from backend
         createNewStoreVersion();
 

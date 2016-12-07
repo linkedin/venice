@@ -1,10 +1,13 @@
 package com.linkedin.venice.hadoop;
 
 import com.linkedin.venice.client.MockVeniceWriter;
+import com.linkedin.venice.hadoop.utils.HadoopUtils;
 import com.linkedin.venice.integration.utils.KafkaBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.serialization.avro.AvroGenericSerializer;
 import java.nio.charset.StandardCharsets;
+
+import com.linkedin.venice.utils.VeniceProperties;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.IndexedRecord;
@@ -42,7 +45,7 @@ public class TestAvroKafkaRecordWriter {
     }
   }
 
-  private Properties getKafkaProperties(String schemaString, String keyField, String valueField) {
+  private VeniceProperties getKafkaProperties(String schemaString, String keyField, String valueField) {
     Configuration conf = new Configuration();
     conf.set(KafkaPushJob.KAFKA_URL_PROP, kafkaBrokerWrapper.getAddress());
     conf.set(KafkaPushJob.TOPIC_PROP, "test_topic");
@@ -52,7 +55,7 @@ public class TestAvroKafkaRecordWriter {
     conf.set(KafkaPushJob.BATCH_NUM_BYTES_PROP, Integer.toString(KafkaPushJob.DEFAULT_BATCH_BYTES_SIZE));
     conf.set(KafkaPushJob.VALUE_SCHEMA_ID_PROP, Integer.toString(valueSchemaId));
 
-    return AvroKafkaOutputFormat.getKafkaProperties(new JobConf(conf));
+    return HadoopUtils.getVeniceProps(new JobConf(conf));
   }
 
   @Test
@@ -73,7 +76,7 @@ public class TestAvroKafkaRecordWriter {
     Schema keySchema = schema.getField(keyField).schema();
     Schema valueSchema = schema.getField(valueField).schema();
 
-    Properties kafkaProps = getKafkaProperties(schemaString, keyField, valueField);
+    VeniceProperties kafkaProps = getKafkaProperties(schemaString, keyField, valueField);
     MockVeniceWriter veniceWriter = new MockVeniceWriter(kafkaProps);
     AvroKafkaRecordWriter recordWriter = new AvroKafkaRecordWriter(kafkaProps, veniceWriter, progress);
 
@@ -111,7 +114,7 @@ public class TestAvroKafkaRecordWriter {
     Schema keySchema = schema.getField(keyField).schema();
     Schema valueSchema = schema.getField(valueField).schema();
 
-    Properties kafkaProps = getKafkaProperties(schemaString, keyField, valueField);
+    VeniceProperties kafkaProps = getKafkaProperties(schemaString, keyField, valueField);
     MockVeniceWriter veniceWriter = new MockVeniceWriter(kafkaProps);
     AvroKafkaRecordWriter recordWriter = new AvroKafkaRecordWriter(kafkaProps, veniceWriter, progress);
 
@@ -163,7 +166,7 @@ public class TestAvroKafkaRecordWriter {
     Schema keySchema = schema.getField(keyField).schema();
     Schema valueSchema = schema.getField(valueField).schema();
 
-    Properties kafkaProps = getKafkaProperties(schemaString, keyField, valueField);
+    VeniceProperties kafkaProps = getKafkaProperties(schemaString, keyField, valueField);
     MockVeniceWriter veniceWriter = new MockVeniceWriter(kafkaProps);
     AvroKafkaRecordWriter recordWriter = new AvroKafkaRecordWriter(kafkaProps, veniceWriter, progress);
 
@@ -219,7 +222,7 @@ public class TestAvroKafkaRecordWriter {
     Schema keySchema = schema.getField(keyField).schema();
     Schema valueSchema = schema.getField(valueField).schema();
 
-    Properties kafkaProps = getKafkaProperties(schemaString, keyField, valueField);
+    VeniceProperties kafkaProps = getKafkaProperties(schemaString, keyField, valueField);
     MockVeniceWriter veniceWriter = new MockVeniceWriter(kafkaProps);
     AvroKafkaRecordWriter recordWriter = new AvroKafkaRecordWriter(kafkaProps, veniceWriter, progress);
 
