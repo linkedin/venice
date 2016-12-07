@@ -122,6 +122,8 @@ public class StoreConsumptionTask implements Runnable, Closeable {
   private static final long KILL_WAIT_TIME_MS = 5000l;
   public static final int MAX_KILL_CHECKING_ATTEMPTS = 10;
 
+  private final ServerAggStats serverAggStats = ServerAggStats.getInstance();
+
   public StoreConsumptionTask(@NotNull VeniceConsumerFactory factory,
                               @NotNull Properties kafkaConsumerProperties,
                               @NotNull StoreRepository storeRepository,
@@ -298,8 +300,16 @@ public class StoreConsumptionTask implements Runnable, Closeable {
   private void processMessages() {
     if (partitionToOffsetMap.size() > 0) {
       idleCounter = 0;
+      long beforePollTimestamp = System.currentTimeMillis();
       ConsumerRecords records = consumer.poll(READ_CYCLE_DELAY_MS);
+      long afterPollTimestamp = System.currentTimeMillis();
+      serverAggStats.recordPollRequest(storeNameWithoutVersionInfo);
+      serverAggStats.recordPollRequestLatency(storeNameWithoutVersionInfo, afterPollTimestamp - beforePollTimestamp);
+      serverAggStats.recordPollResultNum(storeNameWithoutVersionInfo, records.count());
       processTopicConsumerRecords(records);
+      long afterProcessingTimestamp = System.currentTimeMillis();
+      serverAggStats.recordProcessPollResultLatency(storeNameWithoutVersionInfo, afterProcessingTimestamp - afterPollTimestamp);
+
     } else {
       idleCounter ++;
       if(idleCounter > MAX_IDLE_COUNTER) {
@@ -513,8 +523,8 @@ public class StoreConsumptionTask implements Runnable, Closeable {
     }
 
     throttler.maybeThrottle(totalSize);
-    ServerAggStats.getInstance().recordBytesConsumed(storeNameWithoutVersionInfo , totalSize);
-    ServerAggStats.getInstance().recordRecordsConsumed(storeNameWithoutVersionInfo, totalRecords);
+    serverAggStats.recordBytesConsumed(storeNameWithoutVersionInfo , totalSize);
+    serverAggStats.recordRecordsConsumed(storeNameWithoutVersionInfo, totalRecords);
 
     for(Integer partition: processedPartitions) {
       if(!partitionToOffsetMap.containsKey(partition)) {

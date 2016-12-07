@@ -5,9 +5,11 @@ import com.linkedin.venice.kafka.consumer.StoreConsumptionTask;
 import io.tehuti.metrics.MeasurableStat;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
+import io.tehuti.metrics.stats.Avg;
 import io.tehuti.metrics.stats.Count;
 import io.tehuti.metrics.stats.OccurrenceRate;
 import io.tehuti.metrics.stats.Rate;
+import io.tehuti.metrics.stats.Total;
 import org.apache.log4j.Logger;
 
 import javax.validation.constraints.NotNull;
@@ -29,8 +31,12 @@ public class ServerStats extends AbstractVeniceStats {
   private final Sensor errorRequestLatencySensor;
   private final Sensor successRequestRatioSensor;
   private final Sensor kafkaOffsetLagSensor;
-
   private final Sensor bdbQueryLatencySensor;
+  private final Sensor pollRequestLatencySensor;
+  private final Sensor processPollResultLatencySensor;
+  private final Sensor pollRequestSensor;
+  private final Sensor pollResultNumSensor;
+
 
   public ServerStats(@NotNull MetricsRepository metricsRepository,
                      @NotNull String name,
@@ -61,6 +67,14 @@ public class ServerStats extends AbstractVeniceStats {
     //If a storage node has multiple partitions for a store, they will be aggregated.
     kafkaOffsetLagSensor = registerSensor("kafka_offset_lag",
       new OffsetLagStat(kafkaConsumerPerStoreService, getName().substring(1)));
+
+    // Measure latency of Kafka consumer poll request and processing returned consumer records
+    pollRequestSensor = registerSensor("kafka_poll_request", new Count());
+    pollRequestLatencySensor = registerSensor("kafka_poll_request_latency", new Avg());
+    processPollResultLatencySensor = registerSensor("process_poll_result_latency", new Avg());
+    // TODO: need to convert 'Total' to be 'Count' internally so that we can measure
+    // consumer record number per second returned by Kafka consumer poll.
+    pollResultNumSensor = registerSensor("kafka_poll_result_num", new Avg(), new Total());
   }
 
   public void recordBytesConsumed(long bytes) {
@@ -89,5 +103,21 @@ public class ServerStats extends AbstractVeniceStats {
 
   public void recordBdbQueryLatency(double latency) {
     record(bdbQueryLatencySensor, latency);
+  }
+
+  public void recordPollRequest() {
+    record(pollRequestSensor);
+  }
+
+  public void recordPollRequestLatency(double latency) {
+    pollRequestLatencySensor.record(latency);
+  }
+
+  public void recordProcessPollResultLatency(double latency) {
+    processPollResultLatencySensor.record(latency);
+  }
+
+  public void recordPollResultNum(int count) {
+    pollResultNumSensor.record(count);
   }
 }
