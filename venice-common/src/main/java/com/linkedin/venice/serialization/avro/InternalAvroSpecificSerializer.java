@@ -57,16 +57,15 @@ abstract public class InternalAvroSpecificSerializer<SPECIFIC_RECORD extends Spe
   private static final DecoderFactory DECODER_FACTORY = new DecoderFactory();
 
   /** Used to serialize objects into binary-encoded Avro according to the latest protocol version. */
-  private final SpecificDatumWriter specificDatumWriter;
+  private SpecificDatumWriter writer;
 
-  /** Holds the mapping of protocol version to {@link Schema} instance. */
-  private final Map<Byte, Schema> protocols;
+  /** Maintains the mapping between protocol version and the corresponding {@link SpecificDatumReader<SPECIFIC_RECORD>} */
+  private final Map<Byte, SpecificDatumReader<SPECIFIC_RECORD>> readerMap = new HashMap<>();
 
   protected InternalAvroSpecificSerializer(AvroProtocolDefinition protocolDef) {
     this.magicByte = protocolDef.magicByte;
     this.currentProtocolVersion = protocolDef.currentProtocolVersion;
-    this.protocols = initializeProtocolSchemaMap(protocolDef.specificRecordClass.getSimpleName());
-    this.specificDatumWriter = new SpecificDatumWriter(protocols.get(currentProtocolVersion));
+    initializeAvroSpecificDatumReaderAndWriter(protocolDef);
   }
 
   /**
@@ -109,7 +108,7 @@ abstract public class InternalAvroSpecificSerializer<SPECIFIC_RECORD extends Spe
       // We write according to the latest protocol version.
       byteArrayOutputStream.write(magicByte);
       byteArrayOutputStream.write(currentProtocolVersion);
-      specificDatumWriter.write(object, encoder);
+      writer.write(object, encoder);
 
       return byteArrayOutputStream.toByteArray();
     } catch (IOException e) {
@@ -140,21 +139,29 @@ abstract public class InternalAvroSpecificSerializer<SPECIFIC_RECORD extends Spe
       }
 
       // Sanity check to make sure the writer's protocol (i.e.: Avro schema) version is known to us
-      if (!protocols.containsKey(bytes[PROTOCOL_VERSION_OFFSET])) {
+      if (!readerMap.containsKey(bytes[PROTOCOL_VERSION_OFFSET])) {
         throw new VeniceMessageException("Received Protocol Version '" +
             new String(bytes, PROTOCOL_VERSION_OFFSET, PROTOCOL_VERSION_LENGTH) +
             "' which is not supported by " + this.getClass().getSimpleName() +
             ". The only supported Protocol Versions are [" +
-            protocols.keySet().stream().sorted().map(b -> b.toString()).collect(Collectors.joining(", ")) + "].");
+            readerMap.keySet().stream().sorted().map(b -> b.toString()).collect(Collectors.joining(", ")) + "].");
       }
 
       // If the data looks valid, then we deploy the Avro machinery to decode the payload
 
-      // If single-threaded, DatumReader can be re-used. TODO: explore GC tuning later.
-      SpecificDatumReader<SPECIFIC_RECORD> specificDatumReader = new SpecificDatumReader<>();
+      /**
+       * Reuse SpecificDatumReader since it is thread-safe, and generating a brand new SpecificDatumReader is very slow
+       * sometimes.
+       *
+       * When generating a new {@link SpecificDatumReader}, both reader schema and writer schema need to be setup, and
+       * internally {@link SpecificDatumReader} needs to calculate {@link org.apache.avro.io.ResolvingDecoder}, but
+       * the slowest part is to persist those info to thread-local variables, which could take tens of seconds sometimes.
+       *
+       * TODO: investigate why {@link ThreadLocal} operations (internally {@link java.lang.ThreadLocal.ThreadLocalMap})
+       * are so slow sometimes.
+        */
 
-      specificDatumReader.setSchema(protocols.get(bytes[PROTOCOL_VERSION_OFFSET])); // Writer's schema
-      specificDatumReader.setExpected(protocols.get(currentProtocolVersion));       // Reader's schema
+      SpecificDatumReader<SPECIFIC_RECORD> specificDatumReader = readerMap.get(bytes[PROTOCOL_VERSION_OFFSET]);
 
       Decoder decoder = DECODER_FACTORY.createBinaryDecoder(
           bytes,                         // The bytes array we wish to decode
@@ -175,10 +182,13 @@ abstract public class InternalAvroSpecificSerializer<SPECIFIC_RECORD extends Spe
   }
 
   /**
-   * We initialize the protocols map once per process, the first time we construct an instance of this class.
+   * Initialize both {@link #readerMap} and {@link #writer}.
+   *
+   * @param protocolDef
    */
-  private static Map<Byte, Schema> initializeProtocolSchemaMap(String className) {
-    Map protocolSchemaMap = new HashMap<>();
+  private void initializeAvroSpecificDatumReaderAndWriter(AvroProtocolDefinition protocolDef) {
+    String className = protocolDef.specificRecordClass.getSimpleName();
+    Map<Byte, Schema> protocolSchemaMap = new HashMap<>();
     final int initialVersion = 1; // TODO: Consider making configurable if we ever need to fully deprecate some old versions
     final String sep = "/"; // TODO: Make sure that jar resources are always forward-slash delimited, even on Windows
     int version = initialVersion;
@@ -197,7 +207,23 @@ abstract public class InternalAvroSpecificSerializer<SPECIFIC_RECORD extends Spe
         }
       }
     }
+    /** Initialize {@link #readerMap} based on known protocol versions */
+    Schema currentProtocol = protocolSchemaMap.get(this.currentProtocolVersion);
+    if (null == currentProtocol) {
+      throw new VeniceException("Failed to get schema for current version: " + this.currentProtocolVersion
+          + " class: " + className);
+    }
+    for (Map.Entry<Byte, Schema> entry : protocolSchemaMap.entrySet()) {
+      SpecificDatumReader<SPECIFIC_RECORD> specificDatumReader = new SpecificDatumReader<>();
+      specificDatumReader.setSchema(entry.getValue()); // Writer's schema
+      try {
+        specificDatumReader.setExpected(currentProtocol); // Reader's schema
+      } catch (IOException e) {
+        throw new VeniceException("Failed to setup reader schema", e);
+      }
+      this.readerMap.put(entry.getKey(), specificDatumReader);
+    }
 
-    return protocolSchemaMap;
+    this.writer = new SpecificDatumWriter(currentProtocol);
   }
 }

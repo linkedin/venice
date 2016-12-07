@@ -37,9 +37,6 @@ import org.apache.log4j.Logger;
  * Uses the "new" Kafka Consumer.
  */
 public class KafkaConsumerPerStoreService extends AbstractVeniceService implements KafkaConsumerService {
-
-  // FIXME: Get rid of hard-coded topic name
-  private static final String ACK_PARTITION_CONSUMPTION_KAFKA_TOPIC = "venice-partition-consumption-acknowledgement-1";
   private static final String GROUP_ID_FORMAT = "%s_%s";
 
   private static final Logger logger = Logger.getLogger(KafkaConsumerPerStoreService.class);
@@ -249,8 +246,14 @@ public class KafkaConsumerPerStoreService extends AbstractVeniceService implemen
         String.valueOf(storeConfig.kafkaEnableAutoOffsetCommit()));
     kafkaConsumerProperties.setProperty(ConsumerConfig.AUTO_COMMIT_INTERVAL_MS_CONFIG,
         String.valueOf(storeConfig.getKafkaAutoCommitIntervalMs()));
-    kafkaConsumerProperties.setProperty(ConsumerConfig.GROUP_ID_CONFIG,
-        getGroupId(storeConfig.getStoreName()));
+    String groupId = getGroupId(storeConfig.getStoreName());
+    kafkaConsumerProperties.setProperty(ConsumerConfig.GROUP_ID_CONFIG, groupId);
+    /**
+     * Temporarily we are going to use group_id as client_id as well since it is unique in cluster level.
+     * With unique client_id, it will be easier for us to check Kafka consumer related metrics through JMX.
+     * TODO: Kafka is throttling based on client_id, need to investigate whether we should use Kafka throttling or not.
+     */
+    kafkaConsumerProperties.setProperty(ConsumerConfig.CLIENT_ID_CONFIG, groupId);
     kafkaConsumerProperties.setProperty(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG,
         KafkaKeySerializer.class.getName());
     kafkaConsumerProperties.setProperty(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG,
