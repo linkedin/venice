@@ -75,8 +75,8 @@ public class VeniceControllerClusterConfig {
     partitionSize = props.getSizeInBytes(DEFAULT_PARTITION_SIZE);
     maxNumberOfPartition = props.getInt(DEFAULT_MAX_NUMBER_OF_PARTITIONS);
     offLinejobWaitTimeInMilliseconds = props.getLong(OFFLINE_JOB_START_TIMEOUT_MS, 15000);
-    // By default, enable topic deletion when job failed.
-    enableTopicDeletionWhenJobFailed = props.getBoolean(ENABLE_TOPIC_DELETION_WHEN_JOB_FAILED, true);
+    // By default, disable topic deletion when job failed. Because delete a under repication topic might cause a Kafka MM issue.
+    enableTopicDeletionWhenJobFailed = props.getBoolean(ENABLE_TOPIC_DELETION_WHEN_JOB_FAILED, false);
     minRequiredOnlineReplicaToStopServer = props.getInt(MIN_REQUIRED_ONLINE_REPLICA_TO_STOP_SERVER, 1);
     // By default, delayed rebalance is disabled.
     delayToRebalanceMS = props.getLong(DELAY_TO_REBALANCE_MS, 0);
