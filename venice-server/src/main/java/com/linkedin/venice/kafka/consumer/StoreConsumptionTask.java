@@ -603,6 +603,8 @@ public class StoreConsumptionTask implements Runnable, Closeable {
     } catch (PersistenceFailureException ex) {
       if (partitionToOffsetMap.containsKey(consumerRecord.partition())) {
         // If we actually intend to be consuming this partition, then we need to bubble up the failure to persist.
+        logger.error("Met PersistenceFailureException while processing record with offset: " + consumerRecord.offset() +
+        ", topic: " + topic + ", meta data of the record: " + consumerRecord.value().producerMetadata);
         throw ex;
       } else {
         /*
