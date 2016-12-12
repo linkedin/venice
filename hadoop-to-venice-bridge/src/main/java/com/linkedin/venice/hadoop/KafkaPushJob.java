@@ -1,7 +1,6 @@
 package com.linkedin.venice.hadoop;
 
 import azkaban.jobExecutor.AbstractJob;
-import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
@@ -308,6 +307,8 @@ public class KafkaPushJob extends AbstractJob {
       if (enablePush) {
         // Create new store version, topic and fetch Kafka url from backend
         createNewStoreVersion();
+        // Log Venice data push job related info
+        logPushJobProperties();
 
         // Setup the hadoop job
         JobConf pushJobConf = setupPushJob(conf);
@@ -638,6 +639,19 @@ public class KafkaPushJob extends AbstractJob {
     return job;
   }
 
+  private void logPushJobProperties() {
+    logger.info("Kafka URL: " + kafkaUrl);
+    logger.info("Kafka Topic: " + topic);
+    logger.info("Kafka Queue Bytes: " + batchNumBytes);
+    logger.info("Input Directory: " + inputDirectory);
+    logger.info("Venice Store Name: " + storeName);
+    logger.info("Venice Cluster Name: " + clusterName);
+    logger.info("Venice URL: " + veniceControllerUrl);
+    logger.info("File Schema: " + fileSchemaString);
+    logger.info("Avro key schema: " + keySchemaString);
+    logger.info("Avro value schema: " + valueSchemaString);
+    logger.info("Total input data file size: " + ((double) inputFileDataSize / 1024 / 1024) + " MB");
+  }
   /**
    * Do not change this method argument type.
    * Used by Azkaban

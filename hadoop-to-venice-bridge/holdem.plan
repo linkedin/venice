@@ -11,13 +11,13 @@
             {
                 "action": "schedule",
                 "matches": [ "venice-controller-test", "\\d+k-entry-test", "100-entry-test" ],
-                "period": "1 hour"
+                "period": "2 hours"
             },
             {
                 "action": "sla",
                 "matches": [ "venice-controller-test", "\\d+k-entry-test", "100-entry-test" ],
                 "emails": "venice-alerts@linkedin.com",
-                "duration": "45 minutes"
+                "duration": "2 hours"
             },
             {
                 "action": "schedule",
