@@ -2,16 +2,15 @@ package com.linkedin.venice.controller.kafka.offsets;
 
 import com.linkedin.venice.controller.kafka.AdminTopicUtils;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.kafka.consumer.KafkaConsumerWrapper;
-import com.linkedin.venice.kafka.consumer.VeniceConsumerFactory;
+import com.linkedin.venice.helix.HelixAdapterSerializer;
 import com.linkedin.venice.kafka.protocol.state.ProducerPartitionState;
 import com.linkedin.venice.kafka.validation.SegmentStatus;
 import com.linkedin.venice.kafka.validation.checksum.CheckSumType;
 import com.linkedin.venice.offsets.OffsetRecord;
-import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.TestUtils;
-import org.apache.kafka.clients.consumer.OffsetAndMetadata;
-import org.mockito.ArgumentCaptor;
+import org.apache.helix.manager.zk.ZkClient;
+import org.apache.zookeeper.data.Stat;
+import org.mockito.ArgumentMatcher;
 import org.mockito.Mockito;
 import org.testng.Assert;
 import org.testng.annotations.BeforeMethod;
@@ -20,31 +19,49 @@ import org.testng.annotations.Test;
 import java.nio.ByteBuffer;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.Properties;
+
+import static org.mockito.Matchers.argThat;
+import static org.mockito.Mockito.*;
 
 public class TestAdminOffsetManager {
   private final String clusterName = "test_cluster";
+  private final String zkOffsetNodePath = AdminOffsetManager.getAdminTopicOffsetNodePathForCluster(clusterName);
   private String topicName = AdminTopicUtils.getTopicNameFromClusterName(clusterName);
   private final int partitionId = AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID;
-  private VeniceConsumerFactory consumerFactory = Mockito.mock(VeniceConsumerFactory.class);
-  private KafkaConsumerWrapper consumer;
+  private ZkClient zkClient;
+  private HelixAdapterSerializer adapterSerializer;
 
   @BeforeMethod
   private void setUp() {
-    topicName = AdminTopicUtils.getTopicNameFromClusterName(clusterName);
-    consumer = Mockito.mock(KafkaConsumerWrapper.class);
-    Mockito.doReturn(consumer).when(consumerFactory).getConsumer(Mockito.any());
+    zkClient = Mockito.mock(ZkClient.class);
+    adapterSerializer = Mockito.mock(HelixAdapterSerializer.class);
+  }
+
+  static class OffsetRecordSerializerMatcher extends ArgumentMatcher<OffsetRecordSerializer> {
+    public OffsetRecordSerializerMatcher() {
+    }
+    @Override
+    public boolean matches(Object argument) {
+      return argument instanceof OffsetRecordSerializer;
+    }
+  }
+
+  static OffsetRecordSerializer offsetRecordSerializerTypeCheck() {
+    return argThat(new OffsetRecordSerializerMatcher());
   }
 
   @Test
   public void testGetLastOffset() {
     int offset = 10;
     OffsetRecord offsetRecord = TestUtils.getOffsetRecord(offset);
-    OffsetAndMetadata offsetAndMetadata = new OffsetAndMetadata(offset, ByteUtils.toHexString(offsetRecord.toBytes()));
-    Mockito.doReturn(offsetAndMetadata)
-        .when(consumer)
-        .committed(topicName, partitionId);
-    AdminOffsetManager offsetManager = new AdminOffsetManager(consumerFactory, new Properties());
+    doReturn(offsetRecord)
+        .when(zkClient)
+        .readData(zkOffsetNodePath, null);
+
+    AdminOffsetManager offsetManager = new AdminOffsetManager(zkClient, adapterSerializer);
+    verify(adapterSerializer).registerSerializer(
+        eq(AdminOffsetManager.getAdminTopicOffsetNodePathPattern()),
+        offsetRecordSerializerTypeCheck());
     OffsetRecord actualOffsetRecord = offsetManager.getLastOffset(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID);
 
     Assert.assertEquals(actualOffsetRecord.getOffset(), offset);
@@ -52,36 +69,36 @@ public class TestAdminOffsetManager {
 
   @Test
   public void testGetLastOffsetWhenNonExist() {
-    Mockito.doReturn(null)
-        .when(consumer)
-        .committed(topicName, partitionId);
+    doReturn(null)
+        .when(zkClient)
+        .readData(zkOffsetNodePath, null);
 
-    AdminOffsetManager offsetManager = new AdminOffsetManager(consumerFactory, new Properties());
+    AdminOffsetManager offsetManager = new AdminOffsetManager(zkClient, adapterSerializer);
     OffsetRecord actualOffsetRecord = offsetManager.getLastOffset(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID);
 
     Assert.assertEquals(actualOffsetRecord.getOffset(), -1);
   }
 
   @Test
-  public void testRecordOffset() {
+  public void testRecordOffset() throws InterruptedException {
     long offset = 10;
     OffsetRecord offsetRecord = TestUtils.getOffsetRecord(offset);
 
-    AdminOffsetManager offsetManager = new AdminOffsetManager(consumerFactory, new Properties());
-    ArgumentCaptor<String> topicNameCaptor = ArgumentCaptor.forClass(String.class);
-    ArgumentCaptor<Integer> partitionIdCaptor = ArgumentCaptor.forClass(Integer.class);
-    ArgumentCaptor<OffsetAndMetadata> offsetAndMetadataCaptor = ArgumentCaptor.forClass(OffsetAndMetadata.class);
+    doReturn(new Stat()).when(zkClient)
+        .writeDataGetStat(any(), any(), anyInt());
+
+    AdminOffsetManager offsetManager = new AdminOffsetManager(zkClient, adapterSerializer);
     offsetManager.recordOffset(topicName, partitionId, offsetRecord);
-    Mockito.verify(consumer).commitSync(topicNameCaptor.capture(), partitionIdCaptor.capture(), offsetAndMetadataCaptor.capture());
-    Assert.assertEquals(topicNameCaptor.getValue(), topicName);
-    Assert.assertEquals(partitionIdCaptor.getValue().intValue(), partitionId);
-    Assert.assertEquals(offsetAndMetadataCaptor.getValue().offset(), offset);
+
+    verify(zkClient).writeDataGetStat(
+        eq(zkOffsetNodePath),
+        eq(offsetRecord),
+        anyInt());
   }
 
   @Test (expectedExceptions = VeniceException.class)
   public void testClearOffset() {
-    KafkaConsumerWrapper consumer = Mockito.mock(KafkaConsumerWrapper.class);
-    AdminOffsetManager offsetManager = new AdminOffsetManager(consumerFactory, new Properties());
+    AdminOffsetManager offsetManager = new AdminOffsetManager(zkClient, adapterSerializer);
     offsetManager.clearOffset(topicName, partitionId);
   }
 

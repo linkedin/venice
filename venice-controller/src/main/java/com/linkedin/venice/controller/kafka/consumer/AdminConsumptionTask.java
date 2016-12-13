@@ -3,7 +3,6 @@ package com.linkedin.venice.controller.kafka.consumer;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.VeniceControllerService;
 import com.linkedin.venice.controller.kafka.AdminTopicUtils;
-import com.linkedin.venice.controller.kafka.offsets.AdminOffsetManager;
 import com.linkedin.venice.controller.kafka.protocol.admin.AdminOperation;
 import com.linkedin.venice.controller.kafka.protocol.admin.KillOfflinePushJob;
 import com.linkedin.venice.controller.kafka.protocol.admin.PauseStore;
@@ -26,6 +25,7 @@ import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.kafka.validation.OffsetRecordTransformer;
 import com.linkedin.venice.kafka.validation.ProducerTracker;
 import com.linkedin.venice.message.KafkaKey;
+import com.linkedin.venice.offsets.OffsetManager;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.utils.Utils;
@@ -55,7 +55,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
   private final String clusterName;
   private final String topic;
   private final String consumerTaskId;
-  private final AdminOffsetManager offsetManager;
+  private final OffsetManager offsetManager;
   private final Admin admin;
   private final boolean isParentController;
   private final AtomicBoolean isRunning;
@@ -81,6 +81,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
                               VeniceConsumerFactory consumerFactory,
                               String kafkaBootstrapServers,
                               Admin admin,
+                              OffsetManager offsetManager,
                               long failureRetryTimeoutMs,
                               boolean isParentController) {
     this.clusterName = clusterName;
@@ -100,7 +101,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
 
     Properties kafkaConsumerProperties = VeniceControllerService.getKafkaConsumerProperties(kafkaBootstrapServers, clusterName);
     this.consumer = consumerFactory.getConsumer(kafkaConsumerProperties);
-    this.offsetManager = new AdminOffsetManager(consumerFactory, kafkaConsumerProperties);
+    this.offsetManager = offsetManager;
     this.producerTrackerMap = new HashMap<>();
   }
 
@@ -205,7 +206,6 @@ public class AdminConsumptionTask implements Runnable, Closeable {
     }
     logger.info("Closed consumer for admin topic: " + topic);
     consumer.close();
-    offsetManager.close();
   }
 
   private boolean whetherTopicExists(String topicName) {

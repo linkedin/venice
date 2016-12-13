@@ -30,16 +30,16 @@ public class VeniceHelixResources implements VeniceResource {
 
   public VeniceHelixResources(String clusterName,
                               ZkClient zkClient,
+                              HelixAdapterSerializer adapterSerializer,
                               HelixManager helixManager,
                               VeniceControllerClusterConfig config) {
     this.config = config;
     this.controller = helixManager;
-    HelixAdapterSerializer adapter = new HelixAdapterSerializer();
-    this.metadataRepository = new HelixReadWriteStoreRepository(zkClient, adapter, clusterName);
+    this.metadataRepository = new HelixReadWriteStoreRepository(zkClient, adapterSerializer, clusterName);
     this.schemaRepository = new HelixReadWriteSchemaRepository(this.metadataRepository,
-        zkClient, adapter, clusterName);
+        zkClient, adapterSerializer, clusterName);
     this.routingDataRepository = new HelixRoutingDataRepository(helixManager);
-    this.jobRepository = new HelixJobRepository(zkClient, adapter, clusterName);
+    this.jobRepository = new HelixJobRepository(zkClient, adapterSerializer, clusterName);
     this.jobManager = new VeniceJobManager(clusterName,
         helixManager.getSessionId().hashCode(),
         this.jobRepository,
@@ -48,7 +48,7 @@ public class VeniceHelixResources implements VeniceResource {
         config.getOffLineJobWaitTimeInMilliseconds());
     this.messageChannel = new HelixStatusMessageChannel(helixManager, HelixStatusMessageChannel.DEFAULT_BROAD_CAST_MESSAGES_TIME_OUT);
     this.OfflinePushMonitor = new OfflinePushMonitor(clusterName, routingDataRepository,
-        new HelixOfflinePushMonitorAccessor(clusterName, zkClient, adapter));
+        new HelixOfflinePushMonitorAccessor(clusterName, zkClient, adapterSerializer));
   }
 
   @Override

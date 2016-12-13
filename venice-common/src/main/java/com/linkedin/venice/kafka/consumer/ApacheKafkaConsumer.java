@@ -82,18 +82,6 @@ public class ApacheKafkaConsumer implements KafkaConsumerWrapper {
   }
 
   @Override
-  public void commitSync(String topic, int partition, OffsetAndMetadata offsetAndMeta) {
-    Map<TopicPartition, OffsetAndMetadata> offsetMap = new HashMap();
-    offsetMap.put(new TopicPartition(topic, partition), offsetAndMeta);
-    kafkaConsumer.commitSync(offsetMap);
-  }
-
-  @Override
-  public OffsetAndMetadata committed(String topic, int partition) {
-    return kafkaConsumer.committed(new TopicPartition(topic, partition));
-  }
-
-  @Override
   public void close() {
     if (kafkaConsumer != null) {
       kafkaConsumer.close();

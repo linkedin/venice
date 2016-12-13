@@ -2,13 +2,9 @@ package com.linkedin.venice.controller;
 
 import com.linkedin.venice.controller.kafka.consumer.AdminConsumerService;
 import com.linkedin.venice.controller.kafka.consumer.AdminConsumptionTask;
-import com.linkedin.venice.controller.kafka.offsets.AdminOffsetManager;
-import com.linkedin.venice.kafka.consumer.KafkaConsumerWrapper;
-import com.linkedin.venice.kafka.consumer.VeniceConsumerFactory;
 import com.linkedin.venice.serialization.KafkaKeySerializer;
 import com.linkedin.venice.serialization.avro.KafkaValueSerializer;
 import com.linkedin.venice.service.AbstractVeniceService;
-import org.apache.commons.io.IOUtils;
 import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.log4j.Logger;
@@ -27,17 +23,16 @@ public class VeniceControllerService extends AbstractVeniceService {
 
   public VeniceControllerService(VeniceControllerConfig config) {
     this.config = config;
-    VeniceConsumerFactory consumerFactory = new VeniceConsumerFactory();
     VeniceHelixAdmin internalAdmin = new VeniceHelixAdmin(config);
     if (config.isParent()) {
-      this.admin = new VeniceParentHelixAdmin(internalAdmin, config, consumerFactory);
+      this.admin = new VeniceParentHelixAdmin(internalAdmin, config);
       logger.info("Controller works as a parent controller.");
     } else {
       this.admin = internalAdmin;
       logger.info("Controller works as a normal controller.");
     }
     // The admin consumer needs to use VeniceHelixAdmin to update Zookeeper directly
-    this.consumerService = new AdminConsumerService(internalAdmin, config, consumerFactory);
+    this.consumerService = new AdminConsumerService(internalAdmin, config);
     this.admin.setAdminConsumerService(config.getClusterName(), consumerService);
   }
 

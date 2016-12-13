@@ -116,10 +116,4 @@ public class TestUtils {
     }
     return offsetRecord;
   }
-
-  public static OffsetAndMetadata getOffsetAndMetadata(long offset) {
-    OffsetRecord offsetRecord = getOffsetRecord(offset);
-    return new OffsetAndMetadata(offsetRecord.getOffset(), ByteUtils.toHexString(offsetRecord.toBytes()));
-  }
-
 }

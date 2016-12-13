@@ -22,12 +22,12 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.Replica;
 import com.linkedin.venice.job.ExecutionStatus;
 import com.linkedin.venice.kafka.TopicManager;
-import com.linkedin.venice.kafka.consumer.VeniceConsumerFactory;
 import com.linkedin.venice.kafka.validation.checksum.CheckSumType;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.offsets.OffsetManager;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.serialization.DefaultSerializer;
 import com.linkedin.venice.utils.SystemTime;
@@ -67,11 +67,10 @@ public class VeniceParentHelixAdmin implements Admin {
 
   private final VeniceHelixAdmin veniceHelixAdmin;
   private final Map<String, VeniceWriter<byte[], byte[]>> veniceWriterMap;
-  private final Map<String, AdminOffsetManager> offsetManagerMap;
+  private final OffsetManager offsetManager;
   private final byte[] emptyKeyByteArr = new byte[0];
   private final AdminOperationSerializer adminOperationSerializer = new AdminOperationSerializer();
   private final VeniceControllerConfig veniceControllerConfig;
-  private final VeniceConsumerFactory consumerFactory;
   private final Lock lock = new ReentrantLock();
   /**
    * Variable to store offset of last message.
@@ -89,13 +88,12 @@ public class VeniceParentHelixAdmin implements Admin {
 
   private final int waitingTimeForConsumptionMs;
 
-  public VeniceParentHelixAdmin(VeniceHelixAdmin veniceHelixAdmin, VeniceControllerConfig config, VeniceConsumerFactory consumerFactory) {
+  public VeniceParentHelixAdmin(VeniceHelixAdmin veniceHelixAdmin, VeniceControllerConfig config) {
     this.veniceHelixAdmin = veniceHelixAdmin;
-    this.consumerFactory = consumerFactory;
     this.veniceControllerConfig = config;
     this.waitingTimeForConsumptionMs = config.getParentControllerWaitingTimeForConsumptionMs();
     this.veniceWriterMap = new ConcurrentHashMap<>();
-    this.offsetManagerMap = new ConcurrentHashMap<>();
+    this.offsetManager = new AdminOffsetManager(this.veniceHelixAdmin.getZkClient(), this.veniceHelixAdmin.getAdapterSerializer());
   }
 
   public void setVeniceWriterForCluster(String clusterName, VeniceWriter writer) {
@@ -139,13 +137,6 @@ public class VeniceParentHelixAdmin implements Admin {
       VeniceProperties veniceWriterProperties = new VeniceProperties(props);
       return new VeniceWriter<>(veniceWriterProperties, topicName, new DefaultSerializer(), new DefaultSerializer());
     });
-    // Initialize OffsetManager
-    offsetManagerMap.computeIfAbsent(clusterName, (key) -> new AdminOffsetManager(
-        consumerFactory,
-        VeniceControllerService.getKafkaConsumerProperties(
-            veniceControllerConfig.getKafkaBootstrapServers(),
-            clusterName))
-    );
   }
 
   @Override
@@ -172,10 +163,6 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   private void waitingLastOffsetToBeConsumed(String clusterName) {
-    if (!offsetManagerMap.containsKey(clusterName)) {
-      throw new VeniceException("Cluster: " + clusterName + " doesn not have an OffsetManager initialized yet!");
-    }
-    AdminOffsetManager offsetManager = offsetManagerMap.get(clusterName);
     String topicName = AdminTopicUtils.getTopicNameFromClusterName(clusterName);
 
     // Blocking until some consumer consumes the new message or timeout
@@ -685,7 +672,7 @@ public class VeniceParentHelixAdmin implements Admin {
   public long getDelayedRebalanceTime(String clusterName) {
     throw new VeniceException("getDelayedRebalanceTime is not supported!");
   }
-  
+
   public void setAdminConsumerService(String clusterName, AdminConsumerService service){
     veniceHelixAdmin.setAdminConsumerService(clusterName, service);
   }
@@ -712,10 +699,6 @@ public class VeniceParentHelixAdmin implements Admin {
     VeniceWriter<byte[], byte[]> veniceWriter = veniceWriterMap.get(clusterName);
     if (null != veniceWriter) {
       veniceWriter.close();
-    }
-    AdminOffsetManager offsetManager = offsetManagerMap.get(clusterName);
-    if (null != offsetManager) {
-      offsetManager.close();
     }
   }
 

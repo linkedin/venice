@@ -1,6 +1,7 @@
 package com.linkedin.venice.controller;
 
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.helix.HelixAdapterSerializer;
 import com.linkedin.venice.helix.HelixState;
 import java.util.concurrent.ConcurrentMap;
 import org.apache.helix.HelixManager;
@@ -32,15 +33,17 @@ public class VeniceDistClusterControllerStateModel extends StateModel {
   private HelixManager controller;
   private VeniceHelixResources resources;
   private final ZkClient zkClient;
+  private final HelixAdapterSerializer adapterSerializer;
   private String clusterName;
 
   private final ConcurrentMap<String, VeniceControllerClusterConfig> clusterToConfigsMap;
 
-  public VeniceDistClusterControllerStateModel(ZkClient zkClient,
+  public VeniceDistClusterControllerStateModel(ZkClient zkClient, HelixAdapterSerializer adapterSerializer,
       ConcurrentMap<String, VeniceControllerClusterConfig> clusterToConfigsMap) {
     StateModelParser parser = new StateModelParser();
     _currentState = parser.getInitialState(VeniceDistClusterControllerStateModel.class);
     this.zkClient = zkClient;
+    this.adapterSerializer = adapterSerializer;
     this.clusterToConfigsMap = clusterToConfigsMap;
   }
 
@@ -61,7 +64,7 @@ public class VeniceDistClusterControllerStateModel extends StateModel {
       controller.connect();
       controller.startTimerTasks();
 
-      resources = new VeniceHelixResources(clusterName, zkClient, controller, clusterToConfigsMap.get(clusterName));
+      resources = new VeniceHelixResources(clusterName, zkClient, adapterSerializer, controller, clusterToConfigsMap.get(clusterName));
       resources.refresh();
 
       logger.info(controllerName + " is the leader of " + clusterName);
