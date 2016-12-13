@@ -2,6 +2,7 @@ package com.linkedin.venice.controller;
 
 import com.linkedin.venice.controller.kafka.consumer.AdminConsumerService;
 import com.linkedin.venice.exceptions.SchemaIncompatibilityException;
+import com.linkedin.venice.helix.HelixAdapterSerializer;
 import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
 import com.linkedin.venice.helix.HelixReadWriteSchemaRepository;
 import com.linkedin.venice.helix.Replica;
@@ -84,6 +85,7 @@ public class VeniceHelixAdmin implements Admin {
     private final HelixAdmin admin;
     private TopicManager topicManager;
     private final ZkClient zkClient;
+    private final HelixAdapterSerializer adapterSerializer;
     private ZkWhitelistAccessor whitelistAccessor;
 
     /**
@@ -104,13 +106,14 @@ public class VeniceHelixAdmin implements Admin {
         this.admin = new ZKHelixAdmin(config.getZkAddress());
         //There is no way to get the internal zkClient from HelixManager or HelixAdmin. So create a new one here.
         this.zkClient = new ZkClient(config.getZkAddress(), ZkClient.DEFAULT_SESSION_TIMEOUT, ZkClient.DEFAULT_CONNECTION_TIMEOUT);
+        this.adapterSerializer = new HelixAdapterSerializer();
         this.topicManager = new TopicManager(config.getKafkaZkAddress());
         this.whitelistAccessor = new ZkWhitelistAccessor(zkClient);
 
         // Create the parent controller and related cluster if required.
         createControllerClusterIfRequired();
         controllerStateModelFactory =
-            new VeniceDistClusterControllerStateModelFactory(zkClient);
+            new VeniceDistClusterControllerStateModelFactory(zkClient, adapterSerializer);
         controllerStateModelFactory.addClusterConfig(config.getClusterName(), config);
         // TODO should the Manager initialization be part of start method instead of the constructor.
         manager = HelixManagerFactory
@@ -135,6 +138,14 @@ public class VeniceHelixAdmin implements Admin {
         // to maintain and understand the code.
 
         jobManager.setAdmin(this);
+    }
+
+    public ZkClient getZkClient() {
+        return zkClient;
+    }
+
+    public HelixAdapterSerializer getAdapterSerializer() {
+        return adapterSerializer;
     }
 
     @Override

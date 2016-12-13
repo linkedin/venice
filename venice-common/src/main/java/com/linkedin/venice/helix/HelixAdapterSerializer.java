@@ -1,5 +1,6 @@
 package com.linkedin.venice.helix;
 
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.VeniceSerializer;
 import java.io.IOException;
 
@@ -27,7 +28,7 @@ public class HelixAdapterSerializer implements PathBasedZkSerializer {
     pathResourceRegistry.register(path, serializer);
   }
 
-  public void unregisterSeralizer(String path) {
+  public void unregisterSerializer(String path) {
     pathResourceRegistry.unregister(path);
   }
 
@@ -35,9 +36,13 @@ public class HelixAdapterSerializer implements PathBasedZkSerializer {
   public byte[] serialize(Object data, String path)
       throws ZkMarshallingError {
     try {
-      return getSerializer(path).serialize(data, path);
+      VeniceSerializer serializer = getSerializer(path);
+      if (null == serializer) {
+        throw new VeniceException("Failed to get serializer for path: " + path);
+      }
+      return serializer.serialize(data, path);
     } catch (IOException e) {
-      throw new ZkMarshallingError("Met error when serialize store.", e);
+      throw new ZkMarshallingError("Met error when serialize object for path: " + path, e);
     }
   }
 
@@ -45,9 +50,13 @@ public class HelixAdapterSerializer implements PathBasedZkSerializer {
   public Object deserialize(byte[] bytes, String path)
       throws ZkMarshallingError {
     try {
-      return getSerializer(path).deserialize(bytes, path);
+      VeniceSerializer serializer = getSerializer(path);
+      if (null == serializer) {
+        throw new VeniceException("Failed to get serializer for path: " + path);
+      }
+      return serializer.deserialize(bytes, path);
     } catch (IOException e) {
-      throw new ZkMarshallingError("Met error when deserialize store.", e);
+      throw new ZkMarshallingError("Met error when deserialize object for path: " + path, e);
     }
   }
 

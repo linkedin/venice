@@ -1,6 +1,7 @@
 package com.linkedin.venice.controller;
 
 import com.linkedin.venice.controller.kafka.AdminTopicUtils;
+import com.linkedin.venice.controller.kafka.offsets.AdminOffsetManager;
 import com.linkedin.venice.controller.kafka.protocol.admin.AdminOperation;
 import com.linkedin.venice.controller.kafka.protocol.admin.KillOfflinePushJob;
 import com.linkedin.venice.controller.kafka.protocol.admin.PauseStore;
@@ -18,13 +19,12 @@ import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
+import com.linkedin.venice.helix.HelixAdapterSerializer;
 import com.linkedin.venice.integration.utils.KafkaBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.job.ExecutionStatus;
 import com.linkedin.venice.kafka.TopicManager;
-import com.linkedin.venice.kafka.consumer.KafkaConsumerWrapper;
-import com.linkedin.venice.kafka.consumer.VeniceConsumerFactory;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
@@ -33,10 +33,11 @@ import com.linkedin.venice.writer.VeniceWriter;
 import java.util.HashMap;
 import java.util.Map;
 
+import org.apache.helix.manager.zk.ZkClient;
 import org.apache.kafka.clients.producer.RecordMetadata;
 import org.apache.kafka.common.TopicPartition;
 import org.mockito.ArgumentCaptor;
-import org.mockito.Mockito;
+import static org.mockito.Mockito.*;
 import org.testng.Assert;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
@@ -49,7 +50,6 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 
 import static org.mockito.Matchers.anyString;
-import static org.mockito.Mockito.doReturn;
 
 
 public class TestVeniceParentHelixAdmin {
@@ -57,6 +57,7 @@ public class TestVeniceParentHelixAdmin {
   private static int KAFKA_REPLICA_FACTOR = 3;
   private final String clusterName = "test-cluster";
   private final String topicName = AdminTopicUtils.getTopicNameFromClusterName(clusterName);
+  private final String zkOffsetNodePath = AdminOffsetManager.getAdminTopicOffsetNodePathForCluster(clusterName);
   private final int partitionId = AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID;
   private final TopicPartition topicPartition = new TopicPartition(topicName, partitionId);
 
@@ -64,43 +65,47 @@ public class TestVeniceParentHelixAdmin {
 
   private TopicManager topicManager;
   private VeniceHelixAdmin internalAdmin;
-  private KafkaConsumerWrapper consumer;
+  private ZkClient zkClient;
   private VeniceWriter veniceWriter;
   private VeniceParentHelixAdmin parentAdmin;
 
   @BeforeMethod
   public void init() {
-    topicManager = Mockito.mock(TopicManager.class);
-    Mockito.doReturn(new HashSet<String>(Arrays.asList(topicName)))
+    topicManager = mock(TopicManager.class);
+    doReturn(new HashSet<String>(Arrays.asList(topicName)))
         .when(topicManager)
         .listTopics();
-    Mockito.doReturn(true).when(topicManager).containsTopic(topicName);
-    internalAdmin = Mockito.mock(VeniceHelixAdmin.class);
-    Mockito.doReturn(topicManager)
+    doReturn(true).when(topicManager).containsTopic(topicName);
+    internalAdmin = mock(VeniceHelixAdmin.class);
+    doReturn(topicManager)
         .when(internalAdmin)
         .getTopicManager();
+    zkClient = mock(ZkClient.class);
 
-    VeniceControllerConfig config = Mockito.mock(VeniceControllerConfig.class);
-    Mockito.doReturn(KAFKA_REPLICA_FACTOR).when(config)
+    doReturn(zkClient)
+        .when(internalAdmin)
+        .getZkClient();
+    doReturn(new HelixAdapterSerializer())
+        .when(internalAdmin)
+        .getAdapterSerializer();
+
+    VeniceControllerConfig config = mock(VeniceControllerConfig.class);
+    doReturn(KAFKA_REPLICA_FACTOR).when(config)
         .getKafkaReplicaFactor();
-    Mockito.doReturn(3).when(config)
+    doReturn(3).when(config)
         .getParentControllerWaitingTimeForConsumptionMs();
-    Mockito.doReturn("fake_kafka_bootstrap_servers").when(config)
+    doReturn("fake_kafka_bootstrap_servers").when(config)
         .getKafkaBootstrapServers();
 
-    VeniceHelixResources resources = Mockito.mock(VeniceHelixResources.class);
-    Mockito.doReturn(config).when(resources)
+    VeniceHelixResources resources = mock(VeniceHelixResources.class);
+    doReturn(config).when(resources)
         .getConfig();
-    Mockito.doReturn(resources).when(internalAdmin)
+    doReturn(resources).when(internalAdmin)
         .getVeniceHelixResource(clusterName);
 
-    consumer = Mockito.mock(KafkaConsumerWrapper.class);
 
-    VeniceConsumerFactory consumerFactory = Mockito.mock(VeniceConsumerFactory.class);
-    doReturn(consumer).when(consumerFactory).getConsumer(Mockito.any());
-
-    parentAdmin = new VeniceParentHelixAdmin(internalAdmin, config, consumerFactory);
-    veniceWriter = Mockito.mock(VeniceWriter.class);
+    parentAdmin = new VeniceParentHelixAdmin(internalAdmin, config);
+    veniceWriter = mock(VeniceWriter.class);
     // Need to bypass VeniceWriter initialization
     parentAdmin.setVeniceWriterForCluster(clusterName, veniceWriter);
   }
@@ -109,21 +114,21 @@ public class TestVeniceParentHelixAdmin {
   public void testStartWithTopicExists() {
     parentAdmin.start(clusterName);
 
-    Mockito.verify(internalAdmin, Mockito.times(1))
+    verify(internalAdmin)
         .getTopicManager();
-    Mockito.verify(topicManager, Mockito.never())
+    verify(topicManager, never())
         .createTopic(topicName, AdminTopicUtils.PARTITION_NUM_FOR_ADMIN_TOPIC, KAFKA_REPLICA_FACTOR);
   }
 
   @Test
   public void testStartWhenTopicNotExists() {
-    Mockito.doReturn(false)
+    doReturn(false)
         .when(topicManager)
         .containsTopic(topicName);
     parentAdmin.start(clusterName);
-    Mockito.verify(internalAdmin, Mockito.times(1))
+    verify(internalAdmin)
         .getTopicManager();
-    Mockito.verify(topicManager, Mockito.times(1))
+    verify(topicManager)
         .createTopic(topicName, AdminTopicUtils.PARTITION_NUM_FOR_ADMIN_TOPIC, KAFKA_REPLICA_FACTOR);
   }
 
@@ -131,16 +136,15 @@ public class TestVeniceParentHelixAdmin {
   public void testAddStore() throws ExecutionException, InterruptedException {
     parentAdmin.start(clusterName);
 
-    Future future = Mockito.mock(Future.class);
-    Mockito.doReturn(new RecordMetadata(topicPartition, 0, 1, -1))
+    Future future = mock(Future.class);
+    doReturn(new RecordMetadata(topicPartition, 0, 1, -1))
         .when(future).get();
-    Mockito.doReturn(future)
+    doReturn(future)
         .when(veniceWriter)
-        .put(Mockito.any(), Mockito.any(), Mockito.anyInt());
-
-    Mockito.when(consumer.committed(topicName, partitionId))
-        .thenReturn(TestUtils.getOffsetAndMetadata(OffsetRecord.LOWEST_OFFSET))
-        .thenReturn(TestUtils.getOffsetAndMetadata(1));
+        .put(any(), any(), anyInt());
+    when(zkClient.readData(zkOffsetNodePath, null))
+        .thenReturn(null)
+        .thenReturn(TestUtils.getOffsetRecord(1));
 
     String storeName = "test-store";
     String owner = "test-owner";
@@ -148,16 +152,16 @@ public class TestVeniceParentHelixAdmin {
     String valueSchemaStr = "\"string\"";
     parentAdmin.addStore(clusterName, storeName, owner, keySchemaStr, valueSchemaStr);
 
-    Mockito.verify(internalAdmin, Mockito.times(1))
+    verify(internalAdmin)
     .checkPreConditionForAddStore(clusterName, storeName, owner, keySchemaStr, valueSchemaStr);
-    Mockito.verify(veniceWriter, Mockito.times(1))
-        .put(Mockito.any(), Mockito.any(), Mockito.anyInt());
-    Mockito.verify(consumer, Mockito.times(2))
-        .committed(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID);
+    verify(veniceWriter)
+        .put(any(), any(), anyInt());
+    verify(zkClient, times(2))
+        .readData(zkOffsetNodePath, null);
     ArgumentCaptor<byte[]> keyCaptor = ArgumentCaptor.forClass(byte[].class);
     ArgumentCaptor<byte[]> valueCaptor = ArgumentCaptor.forClass(byte[].class);
     ArgumentCaptor<Integer> schemaCaptor = ArgumentCaptor.forClass(Integer.class);
-    Mockito.verify(veniceWriter).put(keyCaptor.capture(), valueCaptor.capture(), schemaCaptor.capture());
+    verify(veniceWriter).put(keyCaptor.capture(), valueCaptor.capture(), schemaCaptor.capture());
     byte[] keyBytes = keyCaptor.getValue();
     byte[] valueBytes = valueCaptor.getValue();
     int schemaId = schemaCaptor.getValue();
@@ -177,14 +181,14 @@ public class TestVeniceParentHelixAdmin {
   public void testAddStoreWhenExists() throws ExecutionException, InterruptedException {
     parentAdmin.start(clusterName);
 
-    Mockito.when(consumer.committed(topicName, partitionId))
-        .thenReturn(TestUtils.getOffsetAndMetadata(OffsetRecord.LOWEST_OFFSET));
+    when(zkClient.readData(zkOffsetNodePath, null))
+        .thenReturn(null);
 
     String storeName = "test-store";
     String owner = "test-owner";
     String keySchemaStr = "\"string\"";
     String valueSchemaStr = "\"string\"";
-    Mockito.doThrow(new VeniceException("Store: " + storeName + " already exists. ..."))
+    doThrow(new VeniceException("Store: " + storeName + " already exists. ..."))
         .when(internalAdmin)
         .checkPreConditionForAddStore(clusterName, storeName, owner, keySchemaStr, valueSchemaStr);
 
@@ -195,20 +199,20 @@ public class TestVeniceParentHelixAdmin {
   public void testAddStoreWhenLastOffsetHasntBeenConsumed() throws ExecutionException, InterruptedException {
     parentAdmin.start(clusterName);
 
-    Future future = Mockito.mock(Future.class);
-    Mockito.doReturn(new VeniceException("mock exception"))
+    Future future = mock(Future.class);
+    doReturn(new VeniceException("mock exception"))
         .when(internalAdmin)
         .getLastException(clusterName);
-    Mockito.doReturn(new RecordMetadata(topicPartition, 0, 1, -1))
+    doReturn(new RecordMetadata(topicPartition, 0, 1, -1))
         .when(future).get();
-    Mockito.doReturn(future)
+    doReturn(future)
         .when(veniceWriter)
-        .put(Mockito.any(), Mockito.any(), Mockito.anyInt());
+        .put(any(), any(), anyInt());
 
-    Mockito.when(consumer.committed(topicName, partitionId))
-        .thenReturn(TestUtils.getOffsetAndMetadata(0))
-        .thenReturn(TestUtils.getOffsetAndMetadata(1))
-        .thenReturn(TestUtils.getOffsetAndMetadata(0));
+    when(zkClient.readData(zkOffsetNodePath, null))
+        .thenReturn(TestUtils.getOffsetRecord(0))
+        .thenReturn(TestUtils.getOffsetRecord(1))
+        .thenReturn(TestUtils.getOffsetRecord(0));
 
     String storeName = "test-store";
     String owner = "test-owner";
@@ -227,34 +231,35 @@ public class TestVeniceParentHelixAdmin {
     String storeName = "test-store";
     String valueSchemaStr = "\"string\"";
     int valueSchemaId = 10;
-    Mockito.doReturn(valueSchemaId).when(internalAdmin)
+    doReturn(valueSchemaId).when(internalAdmin)
         .checkPreConditionForAddValueSchemaAndGetNewSchemaId(clusterName, storeName, valueSchemaStr);
-    Mockito.doReturn(valueSchemaId).when(internalAdmin)
+    doReturn(valueSchemaId).when(internalAdmin)
         .getValueSchemaId(clusterName, storeName, valueSchemaStr);
 
-    Future future = Mockito.mock(Future.class);
-    Mockito.doReturn(new RecordMetadata(topicPartition, 0, 1, -1))
+    Future future = mock(Future.class);
+    doReturn(new RecordMetadata(topicPartition, 0, 1, -1))
         .when(future).get();
-    Mockito.doReturn(future)
+    doReturn(future)
         .when(veniceWriter)
-        .put(Mockito.any(), Mockito.any(), Mockito.anyInt());
+        .put(any(), any(), anyInt());
 
-    Mockito.when(consumer.committed(topicName, partitionId))
-        .thenReturn(TestUtils.getOffsetAndMetadata(OffsetRecord.LOWEST_OFFSET))
-        .thenReturn(TestUtils.getOffsetAndMetadata(1));
+    when(zkClient.readData(zkOffsetNodePath, null))
+        .thenReturn(new OffsetRecord())
+        .thenReturn(TestUtils.getOffsetRecord(1));
+
 
     parentAdmin.addValueSchema(clusterName, storeName, valueSchemaStr);
 
-    Mockito.verify(internalAdmin, Mockito.times(1))
+    verify(internalAdmin)
         .checkPreConditionForAddValueSchemaAndGetNewSchemaId(clusterName, storeName, valueSchemaStr);
-    Mockito.verify(veniceWriter, Mockito.times(1))
-        .put(Mockito.any(), Mockito.any(), Mockito.anyInt());
-    Mockito.verify(consumer, Mockito.times(2))
-        .committed(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID);
+    verify(veniceWriter)
+        .put(any(), any(), anyInt());
+    verify(zkClient, times(2))
+        .readData(zkOffsetNodePath, null);
     ArgumentCaptor<byte[]> keyCaptor = ArgumentCaptor.forClass(byte[].class);
     ArgumentCaptor<byte[]> valueCaptor = ArgumentCaptor.forClass(byte[].class);
     ArgumentCaptor<Integer> schemaCaptor = ArgumentCaptor.forClass(Integer.class);
-    Mockito.verify(veniceWriter).put(keyCaptor.capture(), valueCaptor.capture(), schemaCaptor.capture());
+    verify(veniceWriter).put(keyCaptor.capture(), valueCaptor.capture(), schemaCaptor.capture());
     byte[] keyBytes = keyCaptor.getValue();
     byte[] valueBytes = valueCaptor.getValue();
     int schemaId = schemaCaptor.getValue();
@@ -276,29 +281,29 @@ public class TestVeniceParentHelixAdmin {
 
     String storeName = "test-store";
 
-    Future future = Mockito.mock(Future.class);
-    Mockito.doReturn(new RecordMetadata(topicPartition, 0, 1, -1))
+    Future future = mock(Future.class);
+    doReturn(new RecordMetadata(topicPartition, 0, 1, -1))
         .when(future).get();
-    Mockito.doReturn(future)
+    doReturn(future)
         .when(veniceWriter)
-        .put(Mockito.any(), Mockito.any(), Mockito.anyInt());
+        .put(any(), any(), anyInt());
 
-    Mockito.when(consumer.committed(topicName, partitionId))
-        .thenReturn(TestUtils.getOffsetAndMetadata(OffsetRecord.LOWEST_OFFSET))
-        .thenReturn(TestUtils.getOffsetAndMetadata(1));
+    when(zkClient.readData(zkOffsetNodePath, null))
+        .thenReturn(new OffsetRecord())
+        .thenReturn(TestUtils.getOffsetRecord(1));
 
     parentAdmin.pauseStore(clusterName, storeName);
 
-    Mockito.verify(internalAdmin, Mockito.times(1))
+    verify(internalAdmin)
         .checkPreConditionForPauseStoreAndGetStore(clusterName, storeName, true);
-    Mockito.verify(veniceWriter, Mockito.times(1))
-        .put(Mockito.any(), Mockito.any(), Mockito.anyInt());
-    Mockito.verify(consumer, Mockito.times(2))
-        .committed(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID);
+    verify(veniceWriter)
+        .put(any(), any(), anyInt());
+    verify(zkClient, times(2))
+        .readData(zkOffsetNodePath, null);
     ArgumentCaptor<byte[]> keyCaptor = ArgumentCaptor.forClass(byte[].class);
     ArgumentCaptor<byte[]> valueCaptor = ArgumentCaptor.forClass(byte[].class);
     ArgumentCaptor<Integer> schemaCaptor = ArgumentCaptor.forClass(Integer.class);
-    Mockito.verify(veniceWriter).put(keyCaptor.capture(), valueCaptor.capture(), schemaCaptor.capture());
+    verify(veniceWriter).put(keyCaptor.capture(), valueCaptor.capture(), schemaCaptor.capture());
     byte[] keyBytes = keyCaptor.getValue();
     byte[] valueBytes = valueCaptor.getValue();
     int schemaId = schemaCaptor.getValue();
@@ -318,18 +323,18 @@ public class TestVeniceParentHelixAdmin {
 
     String storeName = "test-store";
 
-    Future future = Mockito.mock(Future.class);
-    Mockito.doReturn(new RecordMetadata(topicPartition, 0, 1, -1))
+    Future future = mock(Future.class);
+    doReturn(new RecordMetadata(topicPartition, 0, 1, -1))
         .when(future).get();
-    Mockito.doReturn(future)
+    doReturn(future)
         .when(veniceWriter)
-        .put(Mockito.any(), Mockito.any(), Mockito.anyInt());
+        .put(any(), any(), anyInt());
 
-    Mockito.when(consumer.committed(topicName, partitionId))
-        .thenReturn(TestUtils.getOffsetAndMetadata(OffsetRecord.LOWEST_OFFSET))
-        .thenReturn(TestUtils.getOffsetAndMetadata(1));
+    when(zkClient.readData(zkOffsetNodePath, null))
+        .thenReturn(new OffsetRecord())
+        .thenReturn(TestUtils.getOffsetRecord(1));
 
-    Mockito.when(internalAdmin.checkPreConditionForPauseStoreAndGetStore(clusterName, storeName, true))
+    when(internalAdmin.checkPreConditionForPauseStoreAndGetStore(clusterName, storeName, true))
         .thenThrow(new VeniceNoStoreException(storeName));
 
     parentAdmin.pauseStore(clusterName, storeName);
@@ -341,29 +346,29 @@ public class TestVeniceParentHelixAdmin {
 
     String storeName = "test-store";
 
-    Future future = Mockito.mock(Future.class);
-    Mockito.doReturn(new RecordMetadata(topicPartition, 0, 1, -1))
+    Future future = mock(Future.class);
+    doReturn(new RecordMetadata(topicPartition, 0, 1, -1))
         .when(future).get();
-    Mockito.doReturn(future)
+    doReturn(future)
         .when(veniceWriter)
-        .put(Mockito.any(), Mockito.any(), Mockito.anyInt());
+        .put(any(), any(), anyInt());
 
-    Mockito.when(consumer.committed(topicName, partitionId))
-        .thenReturn(TestUtils.getOffsetAndMetadata(OffsetRecord.LOWEST_OFFSET))
-        .thenReturn(TestUtils.getOffsetAndMetadata(1));
+    when(zkClient.readData(zkOffsetNodePath, null))
+        .thenReturn(new OffsetRecord())
+        .thenReturn(TestUtils.getOffsetRecord(1));
 
     parentAdmin.resumeStore(clusterName, storeName);
 
-    Mockito.verify(internalAdmin, Mockito.times(1))
+    verify(internalAdmin)
         .checkPreConditionForPauseStoreAndGetStore(clusterName, storeName, false);
-    Mockito.verify(veniceWriter, Mockito.times(1))
-        .put(Mockito.any(), Mockito.any(), Mockito.anyInt());
-    Mockito.verify(consumer, Mockito.times(2))
-        .committed(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID);
+    verify(veniceWriter)
+        .put(any(), any(), anyInt());
+    verify(zkClient, times(2))
+        .readData(zkOffsetNodePath, null);
     ArgumentCaptor<byte[]> keyCaptor = ArgumentCaptor.forClass(byte[].class);
     ArgumentCaptor<byte[]> valueCaptor = ArgumentCaptor.forClass(byte[].class);
     ArgumentCaptor<Integer> schemaCaptor = ArgumentCaptor.forClass(Integer.class);
-    Mockito.verify(veniceWriter).put(keyCaptor.capture(), valueCaptor.capture(), schemaCaptor.capture());
+    verify(veniceWriter).put(keyCaptor.capture(), valueCaptor.capture(), schemaCaptor.capture());
     byte[] keyBytes = keyCaptor.getValue();
     byte[] valueBytes = valueCaptor.getValue();
     int schemaId = schemaCaptor.getValue();
@@ -381,34 +386,34 @@ public class TestVeniceParentHelixAdmin {
     String kafkaTopic = "test_store_v1";
     parentAdmin.start(clusterName);
 
-    Future future = Mockito.mock(Future.class);
-    Mockito.doReturn(new RecordMetadata(topicPartition, 0, 1, -1))
+    Future future = mock(Future.class);
+    doReturn(new RecordMetadata(topicPartition, 0, 1, -1))
         .when(future).get();
-    Mockito.doReturn(future)
+    doReturn(future)
         .when(veniceWriter)
-        .put(Mockito.any(), Mockito.any(), Mockito.anyInt());
+        .put(any(), any(), anyInt());
 
-    Mockito.when(consumer.committed(topicName, partitionId))
-        .thenReturn(TestUtils.getOffsetAndMetadata(OffsetRecord.LOWEST_OFFSET))
-        .thenReturn(TestUtils.getOffsetAndMetadata(1));
+    when(zkClient.readData(zkOffsetNodePath, null))
+        .thenReturn(new OffsetRecord())
+        .thenReturn(TestUtils.getOffsetRecord(1));
 
-    Mockito.doReturn(new HashSet<String>(Arrays.asList(kafkaTopic)))
+    doReturn(new HashSet<String>(Arrays.asList(kafkaTopic)))
         .when(topicManager).listTopics();
 
     parentAdmin.killOfflineJob(clusterName, kafkaTopic);
 
-    Mockito.verify(internalAdmin, Mockito.times(1))
+    verify(internalAdmin)
         .checkPreConditionForKillOfflineJob(clusterName, kafkaTopic);
-    Mockito.verify(topicManager, Mockito.times(1))
+    verify(topicManager)
         .deleteTopic(kafkaTopic);
-    Mockito.verify(veniceWriter, Mockito.times(1))
-        .put(Mockito.any(), Mockito.any(), Mockito.anyInt());
-    Mockito.verify(consumer, Mockito.times(2))
-        .committed(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID);
+    verify(veniceWriter)
+        .put(any(), any(), anyInt());
+    verify(zkClient, times(2))
+        .readData(zkOffsetNodePath, null);
     ArgumentCaptor<byte[]> keyCaptor = ArgumentCaptor.forClass(byte[].class);
     ArgumentCaptor<byte[]> valueCaptor = ArgumentCaptor.forClass(byte[].class);
     ArgumentCaptor<Integer> schemaCaptor = ArgumentCaptor.forClass(Integer.class);
-    Mockito.verify(veniceWriter).put(keyCaptor.capture(), valueCaptor.capture(), schemaCaptor.capture());
+    verify(veniceWriter).put(keyCaptor.capture(), valueCaptor.capture(), schemaCaptor.capture());
     byte[] keyBytes = keyCaptor.getValue();
     byte[] valueBytes = valueCaptor.getValue();
     int schemaId = schemaCaptor.getValue();
@@ -425,7 +430,7 @@ public class TestVeniceParentHelixAdmin {
   public void testIncrementVersionWhenNoPreviousTopics() {
     String storeName = "test_store";
     parentAdmin.incrementVersion(clusterName, storeName, 1, 1);
-    Mockito.verify(internalAdmin).addVersion(clusterName, storeName, VeniceHelixAdmin.VERSION_ID_UNSET, 1, 1, false);
+    verify(internalAdmin).addVersion(clusterName, storeName, VeniceHelixAdmin.VERSION_ID_UNSET, 1, 1, false);
   }
 
   @Test (expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = ".*exists for store.*")
@@ -433,7 +438,7 @@ public class TestVeniceParentHelixAdmin {
     String storeName = "test_store";
     String previousKafkaTopic = "test_store_v1";
     String unknownTopic = "1unknown_topic";
-    Mockito.doReturn(new HashSet<String>(Arrays.asList(unknownTopic, previousKafkaTopic)))
+    doReturn(new HashSet<String>(Arrays.asList(unknownTopic, previousKafkaTopic)))
         .when(topicManager)
         .listTopics();
     parentAdmin.incrementVersion(clusterName, storeName, 1, 1);
@@ -488,7 +493,6 @@ public class TestVeniceParentHelixAdmin {
         clusterName, storeName, 10 * 1024 * 1024);
     Assert.assertFalse(versionCreationResponse.isError());
 
-
     controllerWrapper.close();
     kafkaBrokerWrapper.close();
   }
@@ -500,15 +504,15 @@ public class TestVeniceParentHelixAdmin {
     for (ExecutionStatus status : ExecutionStatus.values()){
       JobStatusQueryResponse response = new JobStatusQueryResponse();
       response.setStatus(status.toString());
-      ControllerClient statusClient = Mockito.mock(ControllerClient.class);
+      ControllerClient statusClient = mock(ControllerClient.class);
       doReturn(response).when(statusClient).queryJobStatus(anyString(), anyString());
       clientMap.put(status, statusClient);
     }
-    TopicManager topicManager = Mockito.mock(TopicManager.class);
+    TopicManager topicManager = mock(TopicManager.class);
 
     JobStatusQueryResponse failResponse = new JobStatusQueryResponse();
     failResponse.setError("error");
-    ControllerClient failClient = Mockito.mock(ControllerClient.class);
+    ControllerClient failClient = mock(ControllerClient.class);
     doReturn(failResponse).when(failClient).queryJobStatus(anyString(), anyString());
     clientMap.put(null, failClient);
 
@@ -539,12 +543,12 @@ public class TestVeniceParentHelixAdmin {
 
     Assert.assertEquals(VeniceParentHelixAdmin.getOffLineJobStatus("mycluster", "topic1", completeMap, topicManager),
         ExecutionStatus.COMPLETED);
-    Mockito.verify(topicManager, Mockito.timeout(TIMEOUT_IN_MS).times(1)).deleteTopic("topic1");
+    verify(topicManager, timeout(TIMEOUT_IN_MS)).deleteTopic("topic1");
 
     completeMap.put("cluster-slow", clientMap.get(ExecutionStatus.NOT_CREATED));
     Assert.assertEquals(VeniceParentHelixAdmin.getOffLineJobStatus("mycluster", "topic2", completeMap, topicManager),
         ExecutionStatus.NOT_CREATED);  // Do we want this to be Progress?  limitation of ordering used in aggregation code
-    Mockito.verify(topicManager, Mockito.timeout(TIMEOUT_IN_MS).never()).deleteTopic("topic2");
+    verify(topicManager, timeout(TIMEOUT_IN_MS).never()).deleteTopic("topic2");
 
 
     Map<String, ControllerClient> progressMap = new HashMap<>();
@@ -552,27 +556,27 @@ public class TestVeniceParentHelixAdmin {
     progressMap.put("cluster3", clientMap.get(ExecutionStatus.NOT_CREATED));
     Assert.assertEquals(VeniceParentHelixAdmin.getOffLineJobStatus("mycluster", "topic3", progressMap, topicManager),
         ExecutionStatus.NOT_CREATED);
-    Mockito.verify(topicManager,Mockito.timeout(TIMEOUT_IN_MS).never()).deleteTopic("topic3");
+    verify(topicManager,timeout(TIMEOUT_IN_MS).never()).deleteTopic("topic3");
 
     progressMap.put("cluster5", clientMap.get(ExecutionStatus.NEW));
     Assert.assertEquals(VeniceParentHelixAdmin.getOffLineJobStatus("mycluster", "topic4", progressMap, topicManager),
         ExecutionStatus.NEW);
-    Mockito.verify(topicManager, Mockito.timeout(TIMEOUT_IN_MS).never()).deleteTopic("topic4");
+    verify(topicManager, timeout(TIMEOUT_IN_MS).never()).deleteTopic("topic4");
 
     progressMap.put("cluster7", clientMap.get(ExecutionStatus.PROGRESS));
     Assert.assertEquals(VeniceParentHelixAdmin.getOffLineJobStatus("mycluster", "topic5", progressMap, topicManager),
         ExecutionStatus.PROGRESS);
-    Mockito.verify(topicManager, Mockito.timeout(TIMEOUT_IN_MS).never()).deleteTopic("topic5");;
+    verify(topicManager, timeout(TIMEOUT_IN_MS).never()).deleteTopic("topic5");;
 
     progressMap.put("cluster9", clientMap.get(ExecutionStatus.STARTED));
     Assert.assertEquals(VeniceParentHelixAdmin.getOffLineJobStatus("mycluster", "topic6", progressMap, topicManager),
         ExecutionStatus.PROGRESS);
-    Mockito.verify(topicManager, Mockito.timeout(TIMEOUT_IN_MS).never()).deleteTopic("topic6");
+    verify(topicManager, timeout(TIMEOUT_IN_MS).never()).deleteTopic("topic6");
 
     progressMap.put("cluster11", clientMap.get(ExecutionStatus.COMPLETED));
     Assert.assertEquals(VeniceParentHelixAdmin.getOffLineJobStatus("mycluster", "topic7", progressMap, topicManager),
         ExecutionStatus.PROGRESS);
-    Mockito.verify(topicManager, Mockito.timeout(TIMEOUT_IN_MS).never()).deleteTopic("topic7");
+    verify(topicManager, timeout(TIMEOUT_IN_MS).never()).deleteTopic("topic7");
 
     // 1 in 4 failures is ERROR
     Map<String, ControllerClient> failCompleteMap = new HashMap<>();
@@ -582,7 +586,7 @@ public class TestVeniceParentHelixAdmin {
     failCompleteMap.put("failcluster", clientMap.get(null));
     Assert.assertEquals(VeniceParentHelixAdmin.getOffLineJobStatus("mycluster", "topic8", failCompleteMap, topicManager),
         ExecutionStatus.ERROR);
-    Mockito.verify(topicManager, Mockito.timeout(TIMEOUT_IN_MS).times(1)).deleteTopic("topic8");
+    verify(topicManager, timeout(TIMEOUT_IN_MS)).deleteTopic("topic8");
 
     // 3 in 6 failures is PROGRESS (so it keeps trying)
     failCompleteMap.put("failcluster2", clientMap.get(null));
@@ -609,12 +613,12 @@ public class TestVeniceParentHelixAdmin {
     tenPerTaskProgress.put("task1", 10L);
     tenPerTaskProgress.put("task2", 10L);
     tenResponse.setPerTaskProgress(tenPerTaskProgress);
-    ControllerClient tenStatusClient = Mockito.mock(ControllerClient.class);
+    ControllerClient tenStatusClient = mock(ControllerClient.class);
     doReturn(tenResponse).when(tenStatusClient).queryJobStatus(anyString(), anyString());
 
     JobStatusQueryResponse failResponse = new JobStatusQueryResponse();
     failResponse.setError("error2");
-    ControllerClient failClient = Mockito.mock(ControllerClient.class);
+    ControllerClient failClient = mock(ControllerClient.class);
     doReturn(failResponse).when(failClient).queryJobStatus(anyString(), anyString());
 
     // Clients work as expected

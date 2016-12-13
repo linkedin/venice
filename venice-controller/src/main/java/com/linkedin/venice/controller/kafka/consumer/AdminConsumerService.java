@@ -2,6 +2,7 @@ package com.linkedin.venice.controller.kafka.consumer;
 
 import com.linkedin.venice.controller.VeniceControllerConfig;
 import com.linkedin.venice.controller.VeniceHelixAdmin;
+import com.linkedin.venice.controller.kafka.offsets.AdminOffsetManager;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.consumer.KafkaConsumerWrapper;
 import com.linkedin.venice.kafka.consumer.VeniceConsumerFactory;
@@ -19,16 +20,18 @@ public class AdminConsumerService extends AbstractVeniceService {
 
   private final VeniceControllerConfig config;
   private final VeniceHelixAdmin admin;
+  private final AdminOffsetManager offsetManager;
   private final VeniceConsumerFactory consumerFactory;
   // Only support single cluster right now
   private AdminConsumptionTask consumerTask;
   private ThreadFactory threadFactory = new DaemonThreadFactory("AdminTopicConsumer");
   private Thread consumerThread;
 
-  public AdminConsumerService(VeniceHelixAdmin admin, VeniceControllerConfig config, VeniceConsumerFactory consumerFactory) {
+  public AdminConsumerService(VeniceHelixAdmin admin, VeniceControllerConfig config) {
     this.config = config;
     this.admin = admin;
-    this.consumerFactory = consumerFactory;
+    this.offsetManager = new AdminOffsetManager(admin.getZkClient(), admin.getAdapterSerializer());
+    this.consumerFactory = new VeniceConsumerFactory();
   }
 
   @Override
@@ -55,6 +58,7 @@ public class AdminConsumerService extends AbstractVeniceService {
         consumerFactory,
         config.getKafkaBootstrapServers(),
         admin,
+        offsetManager,
         TimeUnit.MINUTES.toMillis(config.getAdminConsumptionTimeoutMinutes()),
         config.isParent());
   }

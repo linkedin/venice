@@ -1,6 +1,7 @@
 package com.linkedin.venice.controller;
 
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.helix.HelixAdapterSerializer;
 import com.linkedin.venice.helix.HelixState;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
@@ -14,12 +15,14 @@ import org.apache.helix.participant.statemachine.StateModelFactory;
  */
 public class VeniceDistClusterControllerStateModelFactory extends StateModelFactory<VeniceDistClusterControllerStateModel> {
   private final ZkClient zkClient;
+  private final HelixAdapterSerializer adapterSerializer;
   private final ConcurrentMap<String, VeniceControllerClusterConfig> clusterToConfigsMap;
   private final ConcurrentMap<String, VeniceDistClusterControllerStateModel> clusterToStateModelsMap =
       new ConcurrentHashMap<>();
 
-  public VeniceDistClusterControllerStateModelFactory(ZkClient zkClient) {
+  public VeniceDistClusterControllerStateModelFactory(ZkClient zkClient, HelixAdapterSerializer adapterSerializer) {
     this.zkClient = zkClient;
+    this.adapterSerializer = adapterSerializer;
     this.clusterToConfigsMap = new ConcurrentHashMap<>();
   }
 
@@ -29,7 +32,7 @@ public class VeniceDistClusterControllerStateModelFactory extends StateModelFact
         VeniceDistClusterControllerStateModel.getVeniceClusterNameFromPartitionName(partitionName);
 
     VeniceDistClusterControllerStateModel model =
-        new VeniceDistClusterControllerStateModel(zkClient, clusterToConfigsMap);
+        new VeniceDistClusterControllerStateModel(zkClient, adapterSerializer, clusterToConfigsMap);
     clusterToStateModelsMap.put(veniceClusterName, model);
     return model;
   }

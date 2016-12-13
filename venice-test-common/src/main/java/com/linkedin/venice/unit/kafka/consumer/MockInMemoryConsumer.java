@@ -67,16 +67,6 @@ public class MockInMemoryConsumer implements KafkaConsumerWrapper {
     return pollStrategy.poll(broker, offsets, timeout);
   }
 
-  @Override
-  public void commitSync(String topic, int partition, OffsetAndMetadata offsetAndMeta) {
-    delegate.commitSync(topic, partition, offsetAndMeta);
-  }
-
-  @Override
-  public OffsetAndMetadata committed(String topic, int partition) {
-    return delegate.committed(topic, partition);
-  }
-
   public Map<TopicPartition, OffsetRecord> getOffsets() {
     return offsets;
   }

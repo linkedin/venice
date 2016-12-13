@@ -373,8 +373,8 @@ public class HelixJobRepository implements JobRepository {
   public synchronized void clear() {
     this.topicToRunningJobsMap.clear();
     this.topicToTerminatedJobsMap.clear();
-    this.adapter.unregisterSeralizer(offlineJobPathPattern);
-    this.adapter.unregisterSeralizer(offlineTaskPathPattern);
+    this.adapter.unregisterSerializer(offlineJobPathPattern);
+    this.adapter.unregisterSerializer(offlineTaskPathPattern);
     //We don't need to close ZK client here. It's could be reused by other repository.
   }
 

@@ -25,6 +25,8 @@ import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.kafka.protocol.state.ProducerPartitionState;
 import com.linkedin.venice.kafka.validation.SegmentStatus;
 import com.linkedin.venice.kafka.validation.checksum.CheckSumType;
+import com.linkedin.venice.offsets.DeepCopyOffsetManager;
+import com.linkedin.venice.offsets.OffsetManager;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.serialization.DefaultSerializer;
 import com.linkedin.venice.stats.TehutiUtils;
@@ -38,7 +40,6 @@ import com.linkedin.venice.unit.kafka.consumer.poll.FilteringPollStrategy;
 import com.linkedin.venice.unit.kafka.consumer.poll.PollStrategy;
 import com.linkedin.venice.unit.kafka.consumer.poll.RandomPollStrategy;
 import com.linkedin.venice.unit.kafka.producer.MockInMemoryProducer;
-import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.TestUtils;
@@ -53,7 +54,6 @@ import org.apache.kafka.clients.consumer.OffsetAndMetadata;
 import org.apache.kafka.clients.producer.RecordMetadata;
 import org.apache.kafka.common.TopicPartition;
 import org.mockito.ArgumentMatcher;
-import org.mockito.Mockito;
 import static org.mockito.Mockito.*;
 
 import org.testng.Assert;
@@ -66,13 +66,14 @@ import java.util.*;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+
 public class TestAdminConsumptionTask {
   private static final int TIMEOUT = 10000;
 
   private String clusterName;
   private String topicName;
   private final byte[] emptyKeyBytes = new byte[]{'a'};
-  private final VeniceConsumerFactory consumerFactory = Mockito.mock(VeniceConsumerFactory.class);
+  private final VeniceConsumerFactory consumerFactory = mock(VeniceConsumerFactory.class);
   private final String kafkaBootstrapServers = "fake_kafka_servers";
   private final AdminOperationSerializer adminOperationSerializer = new AdminOperationSerializer();
 
@@ -85,6 +86,7 @@ public class TestAdminConsumptionTask {
   // Objects will be used by each test method
   private KafkaConsumerWrapper mockKafkaConsumer;
   private Admin admin;
+  private OffsetManager offsetManager;
   private ExecutorService executor;
   private InMemoryKafkaBroker inMemoryKafkaBroker;
   private VeniceWriter veniceWriter;
@@ -106,17 +108,19 @@ public class TestAdminConsumptionTask {
 
     mockKafkaConsumer = mock(KafkaConsumerWrapper.class);
 
-    Mockito.doReturn(TestUtils.getOffsetAndMetadata(OffsetRecord.LOWEST_OFFSET)).when(mockKafkaConsumer)
-        .committed(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID);
-
-    admin = Mockito.mock(Admin.class);
+    admin = mock(Admin.class);
     // By default, current controller is the master controller
-    Mockito.doReturn(true).when(admin).isMasterController(clusterName);
-    TopicManager topicManager = Mockito.mock(TopicManager.class);
+    doReturn(true).when(admin).isMasterController(clusterName);
+
+    offsetManager = mock(OffsetManager.class);
+    doReturn(new OffsetRecord()).when(offsetManager)
+        .getLastOffset(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID);
+
+    TopicManager topicManager = mock(TopicManager.class);
     // By default, topic has already been created
-    Mockito.doReturn(new HashSet<>(Arrays.asList(topicName))).when(topicManager).listTopics();
-    Mockito.doReturn(topicManager).when(admin).getTopicManager();
-    Mockito.doReturn(true).when(topicManager).containsTopic(topicName);
+    doReturn(new HashSet<>(Arrays.asList(topicName))).when(topicManager).listTopics();
+    doReturn(topicManager).when(admin).getTopicManager();
+    doReturn(true).when(topicManager).containsTopic(topicName);
   }
 
   private VeniceWriter getVeniceWriter(InMemoryKafkaBroker inMemoryKafkaBroker) {
@@ -137,26 +141,13 @@ public class TestAdminConsumptionTask {
 
   private AdminConsumptionTask getAdminConsumptionTask(PollStrategy pollStrategy, long failureRetryTimeout, boolean isParent) {
     MockInMemoryConsumer inMemoryKafkaConsumer = new MockInMemoryConsumer(inMemoryKafkaBroker, pollStrategy, mockKafkaConsumer);
-    Mockito.doReturn(inMemoryKafkaConsumer)
+    doReturn(inMemoryKafkaConsumer)
         .when(consumerFactory)
-        .getConsumer(Mockito.any());
+        .getConsumer(any());
+    DeepCopyOffsetManager deepCopyOffsetManager = new DeepCopyOffsetManager(offsetManager);
 
-    return new AdminConsumptionTask(clusterName, consumerFactory, kafkaBootstrapServers, admin, failureRetryTimeout, isParent);
-  }
-
-  static class OffsetAndMetadataMatcher extends ArgumentMatcher<OffsetAndMetadata> {
-    private final OffsetAndMetadata expected;
-    public OffsetAndMetadataMatcher(OffsetAndMetadata expected) {
-      this.expected = expected;
-    }
-    @Override
-    public boolean matches(Object argument) {
-      return ((OffsetAndMetadata)argument).offset() == expected.offset();
-    }
-  }
-
-  static OffsetAndMetadata offsetAndMetadataEq(OffsetAndMetadata expected) {
-    return argThat(new OffsetAndMetadataMatcher(expected));
+    return new AdminConsumptionTask(clusterName, consumerFactory, kafkaBootstrapServers, admin,
+        deepCopyOffsetManager, failureRetryTimeout, isParent);
   }
 
   private Pair<TopicPartition, OffsetRecord> getTopicPartitionOffsetPair(RecordMetadata recordMetadata) {
@@ -167,14 +158,14 @@ public class TestAdminConsumptionTask {
   @Test (timeOut = TIMEOUT)
   public void testRunWhenNotMasterController() throws IOException, InterruptedException {
     // Update admin to be a slave controller
-    Mockito.doReturn(false).when(admin).isMasterController(clusterName);
+    doReturn(false).when(admin).isMasterController(clusterName);
 
     AdminConsumptionTask task = getAdminConsumptionTask(new RandomPollStrategy(), false);
     executor.submit(task);
-    Mockito.verify(admin, Mockito.timeout(TIMEOUT).atLeastOnce())
+    verify(admin, timeout(TIMEOUT).atLeastOnce())
         .isMasterController(clusterName);
-    Mockito.verify(mockKafkaConsumer, Mockito.timeout(TIMEOUT).never())
-        .subscribe(Mockito.any(), Mockito.anyInt(), Mockito.any());
+    verify(mockKafkaConsumer, timeout(TIMEOUT).never())
+        .subscribe(any(), anyInt(), any());
     task.close();
     executor.shutdown();
     executor.awaitTermination(TIMEOUT, TimeUnit.MILLISECONDS);
@@ -182,16 +173,16 @@ public class TestAdminConsumptionTask {
 
   @Test (timeOut = TIMEOUT)
   public void testRunWhenTopicNotExist() throws InterruptedException, IOException {
-    TopicManager topicManager = Mockito.mock(TopicManager.class);
-    Mockito.doReturn(new HashSet<String>()).when(topicManager).listTopics();
-    Mockito.doReturn(topicManager).when(admin).getTopicManager();
+    TopicManager topicManager = mock(TopicManager.class);
+    doReturn(new HashSet<String>()).when(topicManager).listTopics();
+    doReturn(topicManager).when(admin).getTopicManager();
 
     AdminConsumptionTask task = getAdminConsumptionTask(new RandomPollStrategy(), false);
     executor.submit(task);
-    Mockito.verify(admin, Mockito.timeout(TIMEOUT).atLeastOnce())
+    verify(admin, timeout(TIMEOUT).atLeastOnce())
         .isMasterController(clusterName);
-    Mockito.verify(mockKafkaConsumer, Mockito.timeout(TIMEOUT).never())
-        .subscribe(Mockito.any(), Mockito.anyInt(), Mockito.any());
+    verify(mockKafkaConsumer, timeout(TIMEOUT).never())
+        .subscribe(any(), anyInt(), any());
     task.close();
     executor.shutdown();
     executor.awaitTermination(TIMEOUT, TimeUnit.MILLISECONDS);
@@ -200,7 +191,7 @@ public class TestAdminConsumptionTask {
   @Test (timeOut = TIMEOUT)
   public void testRun() throws InterruptedException, IOException {
     // The store doesn't exist
-    Mockito.doReturn(false).when(admin).hasStore(clusterName, storeName);
+    doReturn(false).when(admin).hasStore(clusterName, storeName);
 
     veniceWriter.put(emptyKeyBytes,
         getStoreCreationMessage(clusterName, storeName, owner, keySchema, valueSchema),
@@ -211,27 +202,23 @@ public class TestAdminConsumptionTask {
 
     AdminConsumptionTask task = getAdminConsumptionTask(new RandomPollStrategy(), false);
     executor.submit(task);
-    Mockito.verify(mockKafkaConsumer, Mockito.timeout(TIMEOUT).times(1))
-        .commitSync(eq(topicName),
-            eq(AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID),
-            offsetAndMetadataEq(new OffsetAndMetadata(1)));
+    verify(offsetManager, timeout(TIMEOUT))
+        .recordOffset(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID, TestUtils.getOffsetRecord(1));
+    verify(offsetManager, timeout(TIMEOUT))
+        .recordOffset(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID, TestUtils.getOffsetRecord(2));
 
-    Mockito.verify(mockKafkaConsumer, Mockito.timeout(TIMEOUT).atLeastOnce())
-        .commitSync(eq(topicName),
-            eq(AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID),
-            offsetAndMetadataEq(new OffsetAndMetadata(2)));
     task.close();
     executor.shutdown();
     executor.awaitTermination(TIMEOUT, TimeUnit.MILLISECONDS);
 
-    Mockito.verify(admin, Mockito.timeout(TIMEOUT).atLeastOnce())
+    verify(admin, timeout(TIMEOUT).atLeastOnce())
         .isMasterController(clusterName);
-    Mockito.verify(mockKafkaConsumer, Mockito.timeout(TIMEOUT).times(1))
-        .subscribe(Mockito.any(), Mockito.anyInt(), Mockito.any());
-    Mockito.verify(mockKafkaConsumer, Mockito.timeout(TIMEOUT).times(1))
-        .unSubscribe(Mockito.any(), Mockito.anyInt());
-    Mockito.verify(admin, Mockito.timeout(TIMEOUT).times(1)).addStore(clusterName, storeName, owner, keySchema, valueSchema);
-    Mockito.verify(admin, Mockito.timeout(TIMEOUT).times(1)).killOfflineJob(clusterName, storeTopicName);
+    verify(mockKafkaConsumer, timeout(TIMEOUT))
+        .subscribe(any(), anyInt(), any());
+    verify(mockKafkaConsumer, timeout(TIMEOUT))
+        .unSubscribe(any(), anyInt());
+    verify(admin, timeout(TIMEOUT)).addStore(clusterName, storeName, owner, keySchema, valueSchema);
+    verify(admin, timeout(TIMEOUT)).killOfflineJob(clusterName, storeTopicName);
   }
 
   @Test (timeOut = TIMEOUT)
@@ -240,29 +227,27 @@ public class TestAdminConsumptionTask {
         getStoreCreationMessage(clusterName, storeName, owner, keySchema, valueSchema),
         AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
     // The store doesn't exist
-    Mockito.doReturn(false).when(admin).hasStore(clusterName, storeName);
-    Mockito.doThrow(new VeniceException("Mock store creation exception"))
+    doReturn(false).when(admin).hasStore(clusterName, storeName);
+    doThrow(new VeniceException("Mock store creation exception"))
         .doNothing()
         .when(admin)
         .addStore(clusterName, storeName, owner, keySchema, valueSchema);
 
     AdminConsumptionTask task = getAdminConsumptionTask(new RandomPollStrategy(), false);
     executor.submit(task);
-    Mockito.verify(mockKafkaConsumer, Mockito.timeout(TIMEOUT).atLeastOnce())
-        .commitSync(eq(topicName),
-            eq(AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID),
-            offsetAndMetadataEq(new OffsetAndMetadata(1)));
+    verify(offsetManager, timeout(TIMEOUT))
+        .recordOffset(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID, TestUtils.getOffsetRecord(1));
     task.close();
     executor.shutdown();
     executor.awaitTermination(TIMEOUT, TimeUnit.MILLISECONDS);
 
-    Mockito.verify(admin, Mockito.timeout(TIMEOUT).atLeastOnce())
+    verify(admin, timeout(TIMEOUT).atLeastOnce())
         .isMasterController(clusterName);
-    Mockito.verify(mockKafkaConsumer, Mockito.timeout(TIMEOUT).times(1))
-        .subscribe(Mockito.any(), Mockito.anyInt(), Mockito.any());
-    Mockito.verify(mockKafkaConsumer, Mockito.timeout(TIMEOUT).times(1))
-        .unSubscribe(Mockito.any(), Mockito.anyInt());
-    Mockito.verify(admin, Mockito.timeout(TIMEOUT).times(2)).addStore(clusterName, storeName, owner, keySchema, valueSchema);
+    verify(mockKafkaConsumer, timeout(TIMEOUT))
+        .subscribe(any(), anyInt(), any());
+    verify(mockKafkaConsumer, timeout(TIMEOUT))
+        .unSubscribe(any(), anyInt());
+    verify(admin, timeout(TIMEOUT).times(2)).addStore(clusterName, storeName, owner, keySchema, valueSchema);
   }
 
   @Test (timeOut = TIMEOUT)
@@ -271,18 +256,16 @@ public class TestAdminConsumptionTask {
         getStoreCreationMessage(clusterName, storeName, owner, keySchema, valueSchema),
         AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
     // The store doesn't exist
-    Mockito.doReturn(false).when(admin).hasStore(clusterName, storeName);
-    Mockito.doThrow(new VeniceException("Mock store creation exception"))
+    doReturn(false).when(admin).hasStore(clusterName, storeName);
+    doThrow(new VeniceException("Mock store creation exception"))
         .when(admin)
         .addStore(clusterName, storeName, owner, keySchema, valueSchema);
     long timeoutMinutes = 0L;
     AdminConsumptionTask task = getAdminConsumptionTask(new RandomPollStrategy(),  timeoutMinutes, false);
     executor.submit(task);
     // admin throws errors, so record offset means we skipped the message
-    Mockito.verify(mockKafkaConsumer, Mockito.timeout(TIMEOUT).times(1))
-        .commitSync(eq(topicName),
-            eq(AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID),
-            offsetAndMetadataEq(new OffsetAndMetadata(1)));
+    verify(offsetManager, timeout(TIMEOUT))
+        .recordOffset(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID, TestUtils.getOffsetRecord(1));
 
     task.close();
     executor.shutdown();
@@ -290,13 +273,13 @@ public class TestAdminConsumptionTask {
   }
 
   @Test (timeOut = TIMEOUT)
-  public void testSkipMessageCommand () throws IOException, InterruptedException {
+  public void testSkipMessageCommand() throws IOException, InterruptedException {
     veniceWriter.put(emptyKeyBytes,
         getStoreCreationMessage(clusterName, storeName, owner, keySchema, valueSchema),
         AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
     // The store doesn't exist
-    Mockito.doReturn(false).when(admin).hasStore(clusterName, storeName);
-    Mockito.doThrow(new VeniceException("Mock store creation exception"))
+    doReturn(false).when(admin).hasStore(clusterName, storeName);
+    doThrow(new VeniceException("Mock store creation exception"))
         .when(admin)
         .addStore(clusterName, storeName, owner, keySchema, valueSchema);
 
@@ -313,10 +296,8 @@ public class TestAdminConsumptionTask {
     });
 
     // admin throws errors, so record offset means we skipped the message
-    Mockito.verify(mockKafkaConsumer, Mockito.timeout(TIMEOUT).times(1))
-        .commitSync(eq(topicName),
-            eq(AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID),
-            offsetAndMetadataEq(new OffsetAndMetadata(1)));
+    verify(offsetManager, timeout(TIMEOUT))
+        .recordOffset(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID, TestUtils.getOffsetRecord(1));
 
     task.close();
     executor.shutdown();
@@ -368,26 +349,24 @@ public class TestAdminConsumptionTask {
     pollStrategies.add(new ArbitraryOrderingPollStrategy(pollDeliveryOrder));
     PollStrategy pollStrategy = new CompositePollStrategy(pollStrategies);
 
-    Mockito.doReturn(false).when(admin).hasStore(clusterName, storeName);
+    doReturn(false).when(admin).hasStore(clusterName, storeName);
 
     AdminConsumptionTask task = getAdminConsumptionTask(pollStrategy, false);
     executor.submit(task);
-    Mockito.verify(mockKafkaConsumer, Mockito.timeout(TIMEOUT).atLeastOnce())
-        .commitSync(eq(topicName),
-            eq(AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID),
-            offsetAndMetadataEq(new OffsetAndMetadata(2)));
+    verify(offsetManager, timeout(TIMEOUT).atLeastOnce())
+        .recordOffset(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID, TestUtils.getOffsetRecord(2));
     Utils.sleep(1000); // TODO: find a better to wait for AdminConsumptionTask consume the last message.
     task.close();
     executor.shutdown();
     executor.awaitTermination(TIMEOUT, TimeUnit.MILLISECONDS);
 
-    Mockito.verify(admin, Mockito.timeout(TIMEOUT).atLeastOnce())
+    verify(admin, timeout(TIMEOUT).atLeastOnce())
         .isMasterController(clusterName);
-    Mockito.verify(mockKafkaConsumer, Mockito.timeout(TIMEOUT).times(1))
-        .subscribe(Mockito.any(), Mockito.anyInt(), Mockito.any());
-    Mockito.verify(mockKafkaConsumer, Mockito.timeout(TIMEOUT).times(1))
-        .unSubscribe(Mockito.any(), Mockito.anyInt());
-    Mockito.verify(admin, Mockito.timeout(TIMEOUT).times(1)).addStore(clusterName, storeName, owner, keySchema, valueSchema);
+    verify(mockKafkaConsumer, timeout(TIMEOUT))
+        .subscribe(any(), anyInt(), any());
+    verify(mockKafkaConsumer, timeout(TIMEOUT))
+        .unSubscribe(any(), anyInt());
+    verify(admin, timeout(TIMEOUT)).addStore(clusterName, storeName, owner, keySchema, valueSchema);
   }
 
   private OffsetRecord getOffsetRecordByOffsetAndSeqNum(long offset, int seqNum) {
@@ -420,9 +399,8 @@ public class TestAdminConsumptionTask {
     int firstAdminMessageOffset = 1;
     int firstAdminMessageSeqNum = 1;
     OffsetRecord offsetRecord = getOffsetRecordByOffsetAndSeqNum(firstAdminMessageOffset, firstAdminMessageSeqNum);
-    OffsetAndMetadata offsetAndMetadata = new OffsetAndMetadata(offsetRecord.getOffset(), ByteUtils.toHexString(offsetRecord.toBytes()));
-    Mockito.doReturn(offsetAndMetadata).when(mockKafkaConsumer)
-        .committed(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID);
+    doReturn(offsetRecord).when(offsetManager)
+        .getLastOffset(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID);
 
     RecordMetadata killJobMetadata = (RecordMetadata) veniceWriter.put(emptyKeyBytes,
         getKillOfflinePushJobMessage(clusterName, storeTopicName),
@@ -435,27 +413,25 @@ public class TestAdminConsumptionTask {
     pollDeliveryOrder.add(getTopicPartitionOffsetPair(killJobMetadata));
     PollStrategy pollStrategy = new ArbitraryOrderingPollStrategy(pollDeliveryOrder);
 
-    Mockito.doReturn(false).when(admin).hasStore(clusterName, storeName);
+    doReturn(false).when(admin).hasStore(clusterName, storeName);
 
     AdminConsumptionTask task = getAdminConsumptionTask(pollStrategy, false);
     executor.submit(task);
-    Mockito.verify(mockKafkaConsumer, Mockito.timeout(TIMEOUT).atLeastOnce())
-        .commitSync(eq(topicName),
-            eq(AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID),
-            offsetAndMetadataEq(new OffsetAndMetadata(2)));
+    verify(offsetManager, timeout(TIMEOUT).atLeastOnce())
+        .recordOffset(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID, TestUtils.getOffsetRecord(2));
     task.close();
     executor.shutdown();
     executor.awaitTermination(TIMEOUT, TimeUnit.MILLISECONDS);
 
-    Mockito.verify(admin, Mockito.timeout(TIMEOUT).atLeastOnce())
+    verify(admin, timeout(TIMEOUT).atLeastOnce())
         .isMasterController(clusterName);
-    Mockito.verify(mockKafkaConsumer, Mockito.timeout(TIMEOUT).times(1))
-        .subscribe(Mockito.any(), Mockito.anyInt(), Mockito.any());
-    Mockito.verify(mockKafkaConsumer, Mockito.timeout(TIMEOUT).times(1))
-        .unSubscribe(Mockito.any(), Mockito.anyInt());
-    Mockito.verify(admin, Mockito.timeout(TIMEOUT)).addStore(clusterName, storeName, owner, keySchema, valueSchema);
+    verify(mockKafkaConsumer, timeout(TIMEOUT))
+        .subscribe(any(), anyInt(), any());
+    verify(mockKafkaConsumer, timeout(TIMEOUT))
+        .unSubscribe(any(), anyInt());
+    verify(admin, timeout(TIMEOUT)).addStore(clusterName, storeName, owner, keySchema, valueSchema);
     // Kill message is before persisted offset
-    Mockito.verify(admin, Mockito.never()).killOfflineJob(clusterName, storeTopicName);
+    verify(admin, never()).killOfflineJob(clusterName, storeTopicName);
   }
 
   @Test (timeOut = TIMEOUT)
@@ -485,31 +461,31 @@ public class TestAdminConsumptionTask {
     );
 
     // The stores don't exist
-    Mockito.doReturn(false).when(admin).hasStore(clusterName, storeName1);
-    Mockito.doReturn(false).when(admin).hasStore(clusterName, storeName2);
-    Mockito.doReturn(false).when(admin).hasStore(clusterName, storeName3);
+    doReturn(false).when(admin).hasStore(clusterName, storeName1);
+    doReturn(false).when(admin).hasStore(clusterName, storeName2);
+    doReturn(false).when(admin).hasStore(clusterName, storeName3);
 
     // Mock stats object
-    ControllerStats stats = Mockito.mock(ControllerStats.class);
+    ControllerStats stats = mock(ControllerStats.class);
 
     AdminConsumptionTask task = getAdminConsumptionTask(pollStrategy, false);
     task.setControllerStats(stats);
     executor.submit(task);
-    Mockito.verify(stats, Mockito.timeout(TIMEOUT).atLeastOnce())
+    verify(stats, timeout(TIMEOUT).atLeastOnce())
         .recordAdminTopicDIVErrorReportCount();
     task.close();
     executor.shutdownNow();
     executor.awaitTermination(TIMEOUT, TimeUnit.MILLISECONDS);
 
-    Mockito.verify(admin, Mockito.timeout(TIMEOUT).atLeastOnce())
+    verify(admin, timeout(TIMEOUT).atLeastOnce())
         .isMasterController(clusterName);
-    Mockito.verify(mockKafkaConsumer, Mockito.timeout(TIMEOUT).times(1))
-        .subscribe(Mockito.any(), Mockito.anyInt(), Mockito.any());
-    Mockito.verify(mockKafkaConsumer, Mockito.timeout(TIMEOUT).times(1))
-        .unSubscribe(Mockito.any(), Mockito.anyInt());
-    Mockito.verify(admin, Mockito.timeout(TIMEOUT).times(1)).addStore(clusterName, storeName1, owner, keySchema, valueSchema);
-    Mockito.verify(admin, Mockito.timeout(TIMEOUT).never()).addStore(clusterName, storeName2, owner, keySchema, valueSchema);
-    Mockito.verify(admin, Mockito.timeout(TIMEOUT).never()).addStore(clusterName, storeName3, owner, keySchema, valueSchema);
+    verify(mockKafkaConsumer, timeout(TIMEOUT))
+        .subscribe(any(), anyInt(), any());
+    verify(mockKafkaConsumer, timeout(TIMEOUT))
+        .unSubscribe(any(), anyInt());
+    verify(admin, timeout(TIMEOUT)).addStore(clusterName, storeName1, owner, keySchema, valueSchema);
+    verify(admin, timeout(TIMEOUT).never()).addStore(clusterName, storeName2, owner, keySchema, valueSchema);
+    verify(admin, timeout(TIMEOUT).never()).addStore(clusterName, storeName3, owner, keySchema, valueSchema);
   }
 
   @Test (timeOut = TIMEOUT)
@@ -527,25 +503,21 @@ public class TestAdminConsumptionTask {
 
     AdminConsumptionTask task = getAdminConsumptionTask(new RandomPollStrategy(), false);
     executor.submit(task);
-    Mockito.verify(mockKafkaConsumer, Mockito.timeout(TIMEOUT).atLeastOnce())
-        .commitSync(eq(topicName),
-            eq(AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID),
-            offsetAndMetadataEq(new OffsetAndMetadata(1)));
-    Mockito.verify(mockKafkaConsumer, Mockito.timeout(TIMEOUT).atLeastOnce())
-        .commitSync(eq(topicName),
-            eq(AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID),
-            offsetAndMetadataEq(new OffsetAndMetadata(2)));
+    verify(offsetManager, timeout(TIMEOUT).atLeastOnce())
+        .recordOffset(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID, TestUtils.getOffsetRecord(1));
+    verify(offsetManager, timeout(TIMEOUT).atLeastOnce())
+        .recordOffset(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID, TestUtils.getOffsetRecord(2));
     task.close();
     executor.shutdown();
     executor.awaitTermination(TIMEOUT, TimeUnit.MILLISECONDS);
 
-    Mockito.verify(admin, Mockito.timeout(TIMEOUT).atLeastOnce())
+    verify(admin, timeout(TIMEOUT).atLeastOnce())
         .isMasterController(clusterName);
-    Mockito.verify(mockKafkaConsumer, Mockito.timeout(TIMEOUT).times(1))
-        .subscribe(Mockito.any(), Mockito.anyInt(), Mockito.any());
-    Mockito.verify(mockKafkaConsumer, Mockito.timeout(TIMEOUT).times(1))
-        .unSubscribe(Mockito.any(), Mockito.anyInt());
-    Mockito.verify(admin, Mockito.timeout(TIMEOUT).times(1)).addStore(clusterName, storeName, owner, keySchema, valueSchema);
+    verify(mockKafkaConsumer, timeout(TIMEOUT))
+        .subscribe(any(), anyInt(), any());
+    verify(mockKafkaConsumer, timeout(TIMEOUT))
+        .unSubscribe(any(), anyInt());
+    verify(admin, timeout(TIMEOUT)).addStore(clusterName, storeName, owner, keySchema, valueSchema);
   }
 
   @Test (timeOut = TIMEOUT)
@@ -561,34 +533,30 @@ public class TestAdminConsumptionTask {
         getStoreCreationMessage(clusterName, storeName2, owner, keySchema, valueSchema),
         AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
     // The store doesn't exist
-    Mockito.doReturn(false).when(admin).hasStore(clusterName, storeName1);
-    Mockito.doReturn(false).when(admin).hasStore(clusterName, storeName2);
-    Mockito.doReturn(TestUtils.getOffsetAndMetadata(1)).when(mockKafkaConsumer)
-        .committed(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID);
+    doReturn(false).when(admin).hasStore(clusterName, storeName1);
+    doReturn(false).when(admin).hasStore(clusterName, storeName2);
+    doReturn(TestUtils.getOffsetRecord(1)).when(offsetManager)
+        .getLastOffset(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID);
 
     AdminConsumptionTask task = getAdminConsumptionTask(new RandomPollStrategy(), false);
     executor.submit(task);
-    Mockito.verify(mockKafkaConsumer, Mockito.timeout(TIMEOUT).atLeastOnce())
-        .commitSync(eq(topicName),
-            eq(AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID),
-            offsetAndMetadataEq(new OffsetAndMetadata(2)));
+    verify(offsetManager, timeout(TIMEOUT).atLeastOnce())
+        .recordOffset(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID, TestUtils.getOffsetRecord(2));
     task.close();
     executor.shutdown();
     executor.awaitTermination(TIMEOUT, TimeUnit.MILLISECONDS);
 
-    Mockito.verify(admin, Mockito.timeout(TIMEOUT).atLeastOnce())
+    verify(admin, timeout(TIMEOUT).atLeastOnce())
         .isMasterController(clusterName);
-    Mockito.verify(mockKafkaConsumer, Mockito.timeout(TIMEOUT).times(1))
-        .subscribe(Mockito.any(), Mockito.anyInt(), Mockito.any());
-    Mockito.verify(mockKafkaConsumer, Mockito.timeout(TIMEOUT).times(1))
-        .unSubscribe(Mockito.any(), Mockito.anyInt());
+    verify(mockKafkaConsumer, timeout(TIMEOUT))
+        .subscribe(any(), anyInt(), any());
+    verify(mockKafkaConsumer, timeout(TIMEOUT))
+        .unSubscribe(any(), anyInt());
 
-    Mockito.verify(admin, never()).addStore(clusterName, storeName1, owner, keySchema, valueSchema);
-    Mockito.verify(admin, Mockito.timeout(TIMEOUT).atLeastOnce()).addStore(clusterName, storeName2, owner, keySchema, valueSchema);
-    Mockito.verify(mockKafkaConsumer, never()).commitSync(
-        eq(topicName),
-        eq(AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID),
-        offsetAndMetadataEq(new OffsetAndMetadata(1)));
+    verify(admin, never()).addStore(clusterName, storeName1, owner, keySchema, valueSchema);
+    verify(admin, timeout(TIMEOUT).atLeastOnce()).addStore(clusterName, storeName2, owner, keySchema, valueSchema);
+    verify(offsetManager, timeout(TIMEOUT).never())
+        .recordOffset(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID, TestUtils.getOffsetRecord(1));
   }
 
   @Test (timeOut = TIMEOUT)
@@ -599,21 +567,19 @@ public class TestAdminConsumptionTask {
 
     AdminConsumptionTask task = getAdminConsumptionTask(new RandomPollStrategy(), true);
     executor.submit(task);
-    Mockito.verify(mockKafkaConsumer, Mockito.timeout(TIMEOUT).atLeastOnce())
-        .commitSync(eq(topicName),
-            eq(AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID),
-            offsetAndMetadataEq(new OffsetAndMetadata(1)));
+    verify(offsetManager, timeout(TIMEOUT).atLeastOnce())
+        .recordOffset(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID, TestUtils.getOffsetRecord(1));
     task.close();
     executor.shutdown();
     executor.awaitTermination(TIMEOUT, TimeUnit.MILLISECONDS);
 
-    Mockito.verify(admin, Mockito.timeout(TIMEOUT).atLeastOnce())
+    verify(admin, timeout(TIMEOUT).atLeastOnce())
         .isMasterController(clusterName);
-    Mockito.verify(mockKafkaConsumer, Mockito.timeout(TIMEOUT).times(1))
-        .subscribe(Mockito.any(), Mockito.anyInt(), Mockito.any());
-    Mockito.verify(mockKafkaConsumer, Mockito.timeout(TIMEOUT).times(1))
-        .unSubscribe(Mockito.any(), Mockito.anyInt());
-    Mockito.verify(admin, Mockito.timeout(TIMEOUT).never()).killOfflineJob(clusterName, storeTopicName);
+    verify(mockKafkaConsumer, timeout(TIMEOUT))
+        .subscribe(any(), anyInt(), any());
+    verify(mockKafkaConsumer, timeout(TIMEOUT))
+        .unSubscribe(any(), anyInt());
+    verify(admin, timeout(TIMEOUT).never()).killOfflineJob(clusterName, storeTopicName);
   }
 
   private byte[] getStoreCreationMessage(String clusterName, String storeName, String owner, String keySchema, String valueSchema) {

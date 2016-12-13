@@ -16,8 +16,4 @@ public interface KafkaConsumerWrapper {
   void close();
 
   ConsumerRecords<KafkaKey, KafkaMessageEnvelope> poll(long timeout);
-
-  void commitSync(String topic, int partition, OffsetAndMetadata offsetAndMeta);
-
-  OffsetAndMetadata committed(String topic, int partition);
 }
