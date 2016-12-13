@@ -106,8 +106,9 @@ public class VeniceDispatcher implements PartitionDispatchHandler<Instance, Veni
       hostSelected.setFailure(e);
       throw new VeniceException("Failed to route request to a host", e);
     }
-    logger.debug("Routing request to host: " + host.getHost() + ":" + host.getPort());
-
+    if (logger.isDebugEnabled()) {
+      logger.debug("Routing request to host: " + host.getHost() + ":" + host.getPort());
+    }
     CloseableHttpAsyncClient httpClient = clientPool.computeIfAbsent(host, new Function<Instance, CloseableHttpAsyncClient>() {
       @Override
       public CloseableHttpAsyncClient apply(Instance instance) {
@@ -137,6 +138,7 @@ public class VeniceDispatcher implements PartitionDispatchHandler<Instance, Veni
 
       @Override
       public void completed(org.apache.http.HttpResponse result) {
+        int statusCode = result.getStatusLine().getStatusCode();
         Iterator<String> partitionNames = part.getPartitionsNames().iterator();
         String partitionName = partitionNames.next();
         if (partitionNames.hasNext()){
@@ -144,7 +146,8 @@ public class VeniceDispatcher implements PartitionDispatchHandler<Instance, Veni
         }
         long offset = Long.parseLong(result.getFirstHeader(HttpConstants.VENICE_OFFSET).getValue());
         String offsetKey = path.getResourceName() + "_" + partitionName;
-        if (offsets.containsKey(offsetKey)
+        if (statusCode == 200
+            && offsets.containsKey(offsetKey)
             && offset + acceptableOffsetLag < offsets.get(offsetKey)
             && part.getHosts().size() > 1) {
           healthMontior.setPartitionAsSlow(host, partitionName);
