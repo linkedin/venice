@@ -1,5 +1,6 @@
 package com.linkedin.venice.kafka.consumer;
 
+import com.linkedin.venice.annotation.NotThreadsafe;
 import com.linkedin.venice.offsets.OffsetRecord;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -8,7 +9,6 @@ import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
 
-import org.apache.http.annotation.NotThreadSafe;
 import org.apache.kafka.clients.consumer.Consumer;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
@@ -19,7 +19,7 @@ import org.apache.kafka.common.TopicPartition;
 /**
  * This class is not thread safe because of the internal {@link KafkaConsumer} being used.
  */
-@NotThreadSafe
+@NotThreadsafe
 public class ApacheKafkaConsumer implements KafkaConsumerWrapper {
   private final Consumer kafkaConsumer;
   public ApacheKafkaConsumer(Properties props) {

@@ -1,5 +1,6 @@
 package com.linkedin.venice.writer;
 
+import com.linkedin.venice.annotation.NotThreadsafe;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.guid.GuidUtils;
 import com.linkedin.venice.kafka.protocol.*;
@@ -23,7 +24,6 @@ import java.util.concurrent.Future;
 
 import java.util.function.Supplier;
 import org.apache.avro.specific.FixedSize;
-import org.apache.http.annotation.NotThreadSafe;
 import org.apache.kafka.clients.producer.Callback;
 import org.apache.kafka.clients.producer.RecordMetadata;
 import org.apache.log4j.Logger;
@@ -34,7 +34,7 @@ import org.apache.log4j.Logger;
  *
  * N.B.: Not intended for multi-threaded usage. If that becomes a use case, we need to revisit.
  */
-@NotThreadSafe
+@NotThreadsafe
 public class VeniceWriter<K, V> extends AbstractVeniceWriter<K, V> {
 
   // log4j logger
