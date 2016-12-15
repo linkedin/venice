@@ -1,5 +1,6 @@
 package com.linkedin.venice.kafka.validation;
 
+import com.linkedin.venice.annotation.NotThreadsafe;
 import com.linkedin.venice.exceptions.validation.CorruptDataException;
 import com.linkedin.venice.exceptions.validation.DataValidationException;
 import com.linkedin.venice.exceptions.validation.DuplicateDataException;
@@ -11,15 +12,14 @@ import com.linkedin.venice.kafka.protocol.state.ProducerPartitionState;
 import com.linkedin.venice.kafka.validation.checksum.CheckSumType;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.offsets.OffsetRecord;
+import com.linkedin.venice.utils.ByteUtils;
+
 import java.nio.ByteBuffer;
 import java.util.Arrays;
 import java.util.HashMap;
-
-import com.linkedin.venice.utils.ByteUtils;
-import org.apache.http.annotation.NotThreadSafe;
-import org.apache.log4j.Logger;
-
 import java.util.Map;
+
+import org.apache.log4j.Logger;
 
 /**
  * This class maintains state about what an upstream producer has written into Kafka.
@@ -29,7 +29,7 @@ import java.util.Map;
  * This class is not thread safe, or at least, not for concurrent calls to the same
  * partition. It is intended to be used in a single-threaded tight loop.
  */
-@NotThreadSafe
+@NotThreadsafe
 public class ProducerTracker {
   private static final Logger LOGGER = Logger.getLogger(ProducerTracker.class);
 
