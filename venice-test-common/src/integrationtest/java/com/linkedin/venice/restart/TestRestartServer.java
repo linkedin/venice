@@ -1,6 +1,5 @@
 package com.linkedin.venice.restart;
 
-import com.linkedin.venice.controllerapi.NewStoreResponse;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
@@ -92,6 +91,5 @@ public class TestRestartServer {
       }
       return true;
     });
-    System.out.println("-----");
   }
 }

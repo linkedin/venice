@@ -37,7 +37,8 @@ public class OfflinePushStatusTest {
     PartitionStatus partitionStatus = new PartitionStatus(1);
     partitionStatus.updateReplicaStatus("testInstance", PROGRESS);
     offlinePushStatus.setPartitionStatus(partitionStatus);
-    Assert.assertEquals(offlinePushStatus.getPartitionStatuses().get(1), partitionStatus);
+    Assert.assertEquals(offlinePushStatus.getPartitionStatuses().get(1),
+        ReadonlyPartitionStatus.fromPartitionStatus(partitionStatus));
 
     try {
       offlinePushStatus.setPartitionStatus(new PartitionStatus(1000));

@@ -8,7 +8,7 @@ import java.util.List;
  * Accessor to execute the CURD operations for offline push and its replicas statuses. Based on different
  * implementation, statuses could be recorded on Zookeeper or other persistent storage.
  */
-public interface OfflinePushMonitorAccessor {
+public interface OfflinePushAccessor {
   /**
    * Load entire database of offline pushes including offline pushes statues and their partitions statuses from
    * persistent storage.
@@ -30,6 +30,11 @@ public interface OfflinePushMonitorAccessor {
    */
   void createOfflinePushStatusAndItsPartitionStatuses(OfflinePushStatus pushStatus);
 
+  /**
+   * Delete offline push and its partition statuses from persistent storage.
+   * @param pushStatus
+   */
+  void deleteOfflinePushStatusAndItsPartitionStatuses(OfflinePushStatus pushStatus);
   /**
    * Update one particular replica status and progress by given topic, partition and instanceId to the persistent storage.
    */
@@ -56,6 +61,6 @@ public interface OfflinePushMonitorAccessor {
    * Listener used to listen the data change of partition status.
    */
   interface PartitionStatusListener {
-    void onPartitionStatusChange(String topic, PartitionStatus partitionStatus);
+    void onPartitionStatusChange(String topic, ReadonlyPartitionStatus partitionStatus);
   }
 }

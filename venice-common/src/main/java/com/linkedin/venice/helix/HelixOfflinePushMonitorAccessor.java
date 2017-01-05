@@ -4,8 +4,9 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.job.ExecutionStatus;
 import com.linkedin.venice.listener.ListenerManager;
 import com.linkedin.venice.pushmonitor.OfflinePushStatus;
-import com.linkedin.venice.pushmonitor.OfflinePushMonitorAccessor;
+import com.linkedin.venice.pushmonitor.OfflinePushAccessor;
 import com.linkedin.venice.pushmonitor.PartitionStatus;
+import com.linkedin.venice.pushmonitor.ReadonlyPartitionStatus;
 import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.PathResourceRegistry;
 import java.util.ArrayList;
@@ -19,7 +20,7 @@ import org.apache.log4j.Logger;
 
 
 /**
- * Helix implementation of {@link OfflinePushMonitorAccessor}. All the statuses would be stored on Zookeeper and this
+ * Helix implementation of {@link OfflinePushAccessor}. All the statuses would be stored on Zookeeper and this
  * class provides the ways to read/write/create/remove status from ZK.
  * <p>
  * As this class is only an accessor but not a repository so it will not cache anything in local memory. In other words
@@ -32,7 +33,7 @@ import org.apache.log4j.Logger;
  * $partitionId.</li>
  * </ul>
  */
-public class HelixOfflinePushMonitorAccessor implements OfflinePushMonitorAccessor {
+public class HelixOfflinePushMonitorAccessor implements OfflinePushAccessor {
   public static final String OFFLINE_PUSH_SUB_PATH = "OfflinePushes";
   private static final Logger logger = Logger.getLogger(HelixOfflinePushMonitorAccessor.class);
   private final String clusterName;
@@ -138,6 +139,14 @@ public class HelixOfflinePushMonitorAccessor implements OfflinePushMonitorAccess
   }
 
   @Override
+  public void deleteOfflinePushStatusAndItsPartitionStatuses(OfflinePushStatus pushStatus) {
+    logger.info(
+        "Start deleting offline push status for topic: " + pushStatus.getKafkaTopic() + " in cluster: " + clusterName);
+    HelixUtils.remove(offlinePushStatusAccessor, getOfflinePushStatusPath(pushStatus.getKafkaTopic()), retryCount);
+    logger.info("Deleted offline push status for topic: " + pushStatus.getKafkaTopic() + " in cluster: " + clusterName);
+  }
+
+  @Override
   public void updateReplicaStatus(String topic, int partitionId, String instanceId, ExecutionStatus status,
       long progress) {
     compareAndUpdateReplicaStatus(topic, partitionId, instanceId, status, progress);
@@ -194,7 +203,7 @@ public class HelixOfflinePushMonitorAccessor implements OfflinePushMonitorAccess
   }
 
   /**
-   * Get one partition status ZNode from ZK by given topic and partititon.
+   * Get one partition status ZNode from ZK by given topic and partition.
    */
   protected PartitionStatus getPartitionStatus(String topic, int partitionId) {
     PartitionStatus partitionStatus =
@@ -246,7 +255,7 @@ public class HelixOfflinePushMonitorAccessor implements OfflinePushMonitorAccess
         throw new VeniceException("Invalid notification, changed data is not:" + PartitionStatus.class.getName());
       }
       String topic = parseTopicFromPartitionStatusPath(dataPath);
-      PartitionStatus partitionStatus = (PartitionStatus) data;
+      ReadonlyPartitionStatus partitionStatus = ReadonlyPartitionStatus.fromPartitionStatus((PartitionStatus) data);
       listenerManager.trigger(topic, listener -> {
         listener.onPartitionStatusChange(topic, partitionStatus);
         return null;

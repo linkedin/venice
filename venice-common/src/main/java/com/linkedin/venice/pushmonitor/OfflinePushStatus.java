@@ -36,7 +36,8 @@ public class OfflinePushStatus {
     //initialize partition status for each partition.
     partitionStatuses = new ArrayList<>(numberOfPartition);
     for (int i = 0; i < numberOfPartition; i++) {
-      partitionStatuses.add(new PartitionStatus(i));
+      ReadonlyPartitionStatus partitionStatus = new ReadonlyPartitionStatus(i, Collections.emptyList());
+      partitionStatuses.add(partitionStatus);
     }
  }
 
@@ -85,7 +86,11 @@ public class OfflinePushStatus {
     }
     for (int partitionId = 0; partitionId < numberOfPartition; partitionId++) {
       if (partitionId == partitionStatus.getPartitionId()) {
-        partitionStatuses.set(partitionId, partitionStatus);
+        if(partitionStatus instanceof ReadonlyPartitionStatus) {
+          partitionStatuses.set(partitionId, partitionStatus);
+        }else{
+          partitionStatuses.set(partitionId, ReadonlyPartitionStatus.fromPartitionStatus(partitionStatus));
+        }
         break;
       }
     }
@@ -125,7 +130,14 @@ public class OfflinePushStatus {
 
   // Only used by accessor while loading data from Zookeeper.
   public void setPartitionStatuses(List<PartitionStatus> partitionStatuses) {
-    this.partitionStatuses = partitionStatuses;
+    this.partitionStatuses.clear();
+    for (PartitionStatus partitionStatus : partitionStatuses) {
+      if (partitionStatus instanceof ReadonlyPartitionStatus) {
+        this.partitionStatuses.add(partitionStatus);
+      } else {
+        this.partitionStatuses.add(ReadonlyPartitionStatus.fromPartitionStatus(partitionStatus));
+      }
+    }
   }
 
   public OfflinePushStatus clonePushStatus() {
@@ -143,6 +155,10 @@ public class OfflinePushStatus {
 
   protected List<PartitionStatus> getPartitionStatuses() {
     return Collections.unmodifiableList(partitionStatuses);
+  }
+
+  protected PartitionStatus getPartitionStatus(int partitionId) {
+    return partitionStatuses.get(partitionId);
   }
 
   private void addHistoricStatus(ExecutionStatus status) {
