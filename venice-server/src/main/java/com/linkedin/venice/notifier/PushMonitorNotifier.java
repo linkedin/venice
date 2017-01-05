@@ -1,7 +1,7 @@
 package com.linkedin.venice.notifier;
 
 import com.linkedin.venice.job.ExecutionStatus;
-import com.linkedin.venice.pushmonitor.OfflinePushMonitorAccessor;
+import com.linkedin.venice.pushmonitor.OfflinePushAccessor;
 
 
 /**
@@ -9,10 +9,10 @@ import com.linkedin.venice.pushmonitor.OfflinePushMonitorAccessor;
  */
 public class PushMonitorNotifier implements VeniceNotifier {
 
-  private OfflinePushMonitorAccessor accessor;
+  private OfflinePushAccessor accessor;
   private String instanceId;
 
-  public PushMonitorNotifier(OfflinePushMonitorAccessor accessor, String instanceId) {
+  public PushMonitorNotifier(OfflinePushAccessor accessor, String instanceId) {
     this.accessor = accessor;
     this.instanceId = instanceId;
   }

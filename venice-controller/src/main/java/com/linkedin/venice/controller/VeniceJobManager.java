@@ -264,6 +264,8 @@ public class VeniceJobManager implements StatusMessageHandler<StoreStatusMessage
       }
       //Collect the job once the version is deleted.
       archiveJobs(version.kafkaTopicName());
+      // Delete the monitor related data from ZK.
+      helixAdmin.stopMonitorOfflinePush(clusterName, version.kafkaTopicName());
       logger.info("Deleted store:" + store.getName() + " version:" + version.getNumber());
     }
   }

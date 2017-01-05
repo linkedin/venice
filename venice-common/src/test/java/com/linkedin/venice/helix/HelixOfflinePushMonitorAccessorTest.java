@@ -1,10 +1,12 @@
 package com.linkedin.venice.helix;
 
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.job.ExecutionStatus;
 import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.pushmonitor.OfflinePushStatus;
+import com.linkedin.venice.pushmonitor.ReadonlyPartitionStatus;
 import com.linkedin.venice.utils.TestUtils;
 import java.util.HashMap;
 import java.util.List;
@@ -16,8 +18,8 @@ import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
 
-public class HelixOfflinePushMonitorTest {
-  private String clusterName = TestUtils.getUniqueString("HelixOfflinePushMonitorTest");
+public class HelixOfflinePushMonitorAccessorTest {
+  private String clusterName = TestUtils.getUniqueString("HelixOfflinePushMonitorAccessorTest");
   private ZkServerWrapper zk;
   private HelixOfflinePushMonitorAccessor accessor;
   private String topic = "testTopic";
@@ -38,9 +40,21 @@ public class HelixOfflinePushMonitorTest {
   }
 
   @Test
-  public void testCreatOfflinePushStatus() {
+  public void testCreateOfflinePushStatus() {
     accessor.createOfflinePushStatusAndItsPartitionStatuses(offlinePushStatus);
     Assert.assertEquals(accessor.getOfflinePushStatusAndItsPartitionStatuses(topic), offlinePushStatus);
+  }
+
+  @Test
+  public void testDeleteOfflinePushStatus() {
+    accessor.createOfflinePushStatusAndItsPartitionStatuses(offlinePushStatus);
+    accessor.deleteOfflinePushStatusAndItsPartitionStatuses(offlinePushStatus);
+    try {
+      accessor.getOfflinePushStatusAndItsPartitionStatuses(topic);
+      Assert.fail("Push status should be deleted.");
+    } catch (VeniceException e) {
+
+    }
   }
 
   @Test
@@ -57,8 +71,10 @@ public class HelixOfflinePushMonitorTest {
     int partitionId = 1;
     accessor.updateReplicaStatus(topic, partitionId, "i1", ExecutionStatus.COMPLETED, 0);
     accessor.updateReplicaStatus(topic, partitionId, "i2", ExecutionStatus.PROGRESS, 1000);
-    offlinePushStatus.setPartitionStatus(accessor.getPartitionStatus(topic, partitionId));
-    Assert.assertEquals(accessor.getOfflinePushStatusAndItsPartitionStatuses(topic), offlinePushStatus);
+    offlinePushStatus.setPartitionStatus(
+        ReadonlyPartitionStatus.fromPartitionStatus(accessor.getPartitionStatus(topic, partitionId)));
+    OfflinePushStatus remoteOfflinePushStatus = accessor.getOfflinePushStatusAndItsPartitionStatuses(topic);
+    Assert.assertEquals(remoteOfflinePushStatus, offlinePushStatus);
   }
 
   @Test
@@ -77,7 +93,7 @@ public class HelixOfflinePushMonitorTest {
           accessor
               .updateReplicaStatus(topic + i, j, "i" + k, ExecutionStatus.COMPLETED, (long) (Math.random() * 10000));
         }
-        push.setPartitionStatus(accessor.getPartitionStatus(topic + i, j));
+        push.setPartitionStatus(ReadonlyPartitionStatus.fromPartitionStatus(accessor.getPartitionStatus(topic + i, j)));
       }
     }
 

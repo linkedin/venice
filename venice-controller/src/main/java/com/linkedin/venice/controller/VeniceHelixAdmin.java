@@ -918,6 +918,11 @@ public class VeniceHelixAdmin implements Admin {
         }
     }
 
+    protected void stopMonitorOfflinePush(String clusterName, String topic) {
+        OfflinePushMonitor offlinePushMonitor = getVeniceHelixResource(clusterName).getOfflinePushMonitor();
+        offlinePushMonitor.stopMonitorOfflinePush(topic);
+    }
+
     protected Store checkPreConditionForPauseStoreAndGetStore(String clusterName, String storeName, boolean paused) {
         checkControllerMastership(clusterName);
         HelixReadWriteStoreRepository repository = getVeniceHelixResource(clusterName).getMetadataRepository();
