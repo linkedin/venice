@@ -32,6 +32,11 @@ import org.apache.http.concurrent.FutureCallback;
 import org.apache.http.impl.DefaultConnectionReuseStrategy;
 import org.apache.http.impl.nio.client.CloseableHttpAsyncClient;
 import org.apache.http.impl.nio.client.HttpAsyncClients;
+import org.apache.http.impl.nio.conn.PoolingNHttpClientConnectionManager;
+import org.apache.http.impl.nio.reactor.DefaultConnectingIOReactor;
+import org.apache.http.impl.nio.reactor.IOReactorConfig;
+import org.apache.http.nio.reactor.ConnectingIOReactor;
+import org.apache.http.nio.reactor.IOReactorException;
 import org.apache.log4j.Logger;
 import org.jboss.netty.buffer.ChannelBuffers;
 import org.jboss.netty.handler.codec.http.DefaultHttpResponse;
@@ -40,10 +45,6 @@ import org.jboss.netty.handler.codec.http.HttpResponse;
 import org.jboss.netty.handler.codec.http.HttpResponseStatus;
 import org.jboss.netty.handler.codec.http.HttpVersion;
 
-
-/**
- * Created by mwise on 3/9/16.
- */
 public class VeniceDispatcher implements PartitionDispatchHandler<Instance, VeniceStoragePath, RouterKey>, Closeable{
 
   private static final String REQUIRED_API_VERSION = "1";
@@ -52,7 +53,7 @@ public class VeniceDispatcher implements PartitionDispatchHandler<Instance, Veni
   private static final Logger logger = Logger.getLogger(VeniceDispatcher.class);
 
   // see: https://hc.apache.org/httpcomponents-asyncclient-dev/quickstart.html
-  private final Map<Instance, CloseableHttpAsyncClient> clientPool;
+  private final ConcurrentMap<Instance, CloseableHttpAsyncClient> clientPool;
 
   // key is (resource + "_" + partition)
   private final ConcurrentMap<String, Long> offsets = new ConcurrentHashMap<>();
@@ -109,22 +110,19 @@ public class VeniceDispatcher implements PartitionDispatchHandler<Instance, Veni
     if (logger.isDebugEnabled()) {
       logger.debug("Routing request to host: " + host.getHost() + ":" + host.getPort());
     }
-    CloseableHttpAsyncClient httpClient = clientPool.computeIfAbsent(host, new Function<Instance, CloseableHttpAsyncClient>() {
-      @Override
-      public CloseableHttpAsyncClient apply(Instance instance) {
-        CloseableHttpAsyncClient httpClient = HttpAsyncClients.custom().setConnectionReuseStrategy(new DefaultConnectionReuseStrategy())  //Supports connection re-use if able
-            .setMaxConnPerRoute(2) // concurrent execute commands beyond this limit get queued internally by the client
-            .setMaxConnTotal(2) // testing shows that > 2 concurrent request increase failure rate, hence using connection pool.
-            .setDefaultRequestConfig(
-                RequestConfig.custom()
-                    .setSocketTimeout(clientTimeoutMillis)
-                    .setConnectTimeout(clientTimeoutMillis)
-                    .setConnectionRequestTimeout(clientTimeoutMillis).build() // 10 second sanity timeout.
-            )
-            .build();
-        httpClient.start();
-        return httpClient;
-      }
+    CloseableHttpAsyncClient httpClient = clientPool.computeIfAbsent(host, instance -> {
+      CloseableHttpAsyncClient httpClient1 = HttpAsyncClients.custom()
+          .setConnectionReuseStrategy(new DefaultConnectionReuseStrategy())  //Supports connection re-use if able
+          .setConnectionManager(createConnectionManager())
+          .setDefaultRequestConfig(
+              RequestConfig.custom()
+                  .setSocketTimeout(clientTimeoutMillis)
+                  .setConnectTimeout(clientTimeoutMillis)
+                  .setConnectionRequestTimeout(clientTimeoutMillis).build() // 10 second sanity timeout.
+          )
+          .build();
+      httpClient1.start();
+      return httpClient1;
     });
 
     String requestPath = path.getLocation();
@@ -220,7 +218,11 @@ public class VeniceDispatcher implements PartitionDispatchHandler<Instance, Veni
 
       private void completeWithError(HttpResponseStatus status, Throwable e) {
         HttpResponse response = new DefaultHttpResponse(HttpVersion.HTTP_1_1, status);
-        response.setContent(ChannelBuffers.wrappedBuffer(e.getMessage().getBytes(StandardCharsets.UTF_8)));
+        String errMsg = e.getMessage();
+        if (null == errMsg) {
+          errMsg = "Unknown error, caught: " + e.getClass().getCanonicalName();
+        }
+        response.setContent(ChannelBuffers.wrappedBuffer(errMsg.getBytes(StandardCharsets.UTF_8)));
         HttpHeaders.setContentLength(response, response.getContent().readableBytes());
         HttpHeaders.setHeader(response, HttpHeaders.Names.CONTENT_TYPE, HttpConstants.TEXT_PLAIN);
         contextExecutor.execute(() -> {
@@ -247,5 +249,23 @@ public class VeniceDispatcher implements PartitionDispatchHandler<Instance, Veni
 
   public Map<Instance, CloseableHttpAsyncClient> getClientPool(){
     return clientPool;
+  }
+
+  /**
+   * Creates and returns a new connection manager on every invocation.
+   * @return
+   */
+  private static PoolingNHttpClientConnectionManager createConnectionManager() {
+    IOReactorConfig ioReactorConfig = IOReactorConfig.custom().build();
+    ConnectingIOReactor ioReactor = null;
+    try {
+      ioReactor = new DefaultConnectingIOReactor(ioReactorConfig);
+    } catch (IOReactorException e) {
+      throw new VeniceException("Router failed to create an IO Reactor", e);
+    }
+    PoolingNHttpClientConnectionManager connMgr = new PoolingNHttpClientConnectionManager(ioReactor);
+    connMgr.setMaxTotal(200);
+    connMgr.setDefaultMaxPerRoute(200);
+    return connMgr;
   }
 }

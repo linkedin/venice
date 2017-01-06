@@ -361,12 +361,9 @@ public class HelixJobRepository implements JobRepository {
   }
 
   private void triggerJobStatusChangeEvent(Job job) {
-    listenerManager.trigger(job.getKafkaTopic(), new Function<JobStatusChangedListener, Void>() {
-      @Override
-      public Void apply(JobStatusChangedListener listener) {
-        listener.onJobStatusChange(job);
-        return null;
-      }
+    listenerManager.trigger(job.getKafkaTopic(), listener -> {
+      listener.onJobStatusChange(job);
+      return null;
     });
   }
 
