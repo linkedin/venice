@@ -121,5 +121,6 @@ public class ServerAggStats {
     }
 
     totalStats.close();
+    instance = null;
   }
 }

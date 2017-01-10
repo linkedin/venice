@@ -11,17 +11,16 @@ import com.linkedin.venice.store.AbstractStorageEngine;
 import com.linkedin.venice.store.record.ValueRecord;
 import io.netty.buffer.UnpooledByteBufAllocator;
 import io.netty.channel.ChannelHandlerContext;
-
+import io.tehuti.metrics.MetricsRepository;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
-
-import io.tehuti.metrics.MetricsRepository;
 import org.mockito.Mockito;
 import org.testng.Assert;
-import org.testng.annotations.BeforeSuite;
+import org.testng.annotations.AfterClass;
+import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
 import static org.mockito.Mockito.*;
@@ -29,10 +28,15 @@ import static org.mockito.Mockito.*;
 public class StorageExecutionHandlerTest {
   private KafkaConsumerPerStoreService kafkaConsumerPerStoreService;
 
-  @BeforeSuite
+  @BeforeClass
   public void setUp() {
     kafkaConsumerPerStoreService = mock(KafkaConsumerPerStoreService.class);
     ServerAggStats.init(new MetricsRepository(), kafkaConsumerPerStoreService);
+  }
+
+  @AfterClass
+  public void tearDown() {
+    ServerAggStats.getInstance().close();
   }
 
   @Test
@@ -95,4 +99,5 @@ public class StorageExecutionHandlerTest {
     Assert.assertEquals(offset, expectedOffset);
     Assert.assertEquals(obj.getValueRecord().getSchemaId(), schemaId);
   }
+
 }
