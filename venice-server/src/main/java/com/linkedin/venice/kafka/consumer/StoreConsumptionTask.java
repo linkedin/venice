@@ -424,19 +424,25 @@ public class StoreConsumptionTask implements Runnable, Closeable {
             }
         );
 
+        // Once storage node restart, send the "START" status to controller to rebuild the task status.
+        // If this storage node has ever consumed data from this topic, instead of sending "START" here, we send it
+        // once START_OF_PUSH message has been read.
+        if (record.getOffset() > 0) {
+          reportRestarted(partition, record.getOffset());
+        }
         // Second, take care of informing the controller about our status, and starting consumption
         if (record.isCompleted()) {
-          // Already completed, report it directly
+          /**
+           * There could be two cases in this scenario:
+           * 1. The job is completed, so Controller will ignore any status message related to the completed/archived job.
+           * 2. The job is still running: some partitions are in 'ONLINE' state, but other partitions are still in
+           * 'BOOTSTRAP' state.
+           * In either case, StoreConsumptionTask should report 'started' => ['progress'] => 'completed' to accomplish
+           * task state transition in Controller.
+           */
           reportCompleted(partition);
           logger.info("Topic: " + topic + ", Partition Id: " + partition + " is already done.");
         } else {
-          // Once storage node restart, send the "START" status to controller to rebuild the task status.
-          // If this storage node has never consumed data from this topic, instead of sending "START" here, we send it
-          // once START_OF_PUSH message has been read.
-          if (record.getOffset() > 0) {
-            reportRestarted(partition, record.getOffset());
-          }
-
           // TODO: When we support hybrid batch/streaming mode, the subscription logic should be moved out after the if
           consumer.subscribe(topic, partition, record);
           logger.info(consumerTaskId + " subscribed to: Topic " + topic + " Partition Id " + partition + " Offset " + record.getOffset());
