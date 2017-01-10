@@ -23,8 +23,8 @@ import com.linkedin.venice.stats.ServerAggStats;
 import com.linkedin.venice.store.AbstractStorageEngine;
 import com.linkedin.venice.store.record.ValueRecord;
 import com.linkedin.venice.unit.kafka.InMemoryKafkaBroker;
-import com.linkedin.venice.unit.kafka.consumer.MockInMemoryConsumer;
 import com.linkedin.venice.unit.kafka.SimplePartitioner;
+import com.linkedin.venice.unit.kafka.consumer.MockInMemoryConsumer;
 import com.linkedin.venice.unit.kafka.consumer.poll.AbstractPollStrategy;
 import com.linkedin.venice.unit.kafka.consumer.poll.ArbitraryOrderingPollStrategy;
 import com.linkedin.venice.unit.kafka.consumer.poll.BlockingObserverPollStrategy;
@@ -45,9 +45,17 @@ import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.KafkaProducerWrapper;
 import com.linkedin.venice.writer.VeniceWriter;
+import io.tehuti.metrics.MetricsRepository;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
-import java.util.*;
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedList;
+import java.util.Map;
+import java.util.Properties;
+import java.util.Queue;
+import java.util.Set;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
@@ -56,19 +64,17 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Supplier;
-import io.tehuti.metrics.MetricsRepository;
 import org.apache.kafka.clients.producer.RecordMetadata;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.log4j.Logger;
-
-import org.testng.annotations.AfterSuite;
+import org.testng.annotations.AfterClass;
+import org.testng.annotations.BeforeClass;
 import org.testng.annotations.BeforeMethod;
-import org.testng.annotations.BeforeSuite;
 import org.testng.annotations.Test;
 
 import static com.linkedin.venice.utils.TestUtils.*;
-import static org.testng.Assert.*;
 import static org.mockito.Mockito.*;
+import static org.testng.Assert.*;
 
 /**
  * Unit tests for the KafkaPerStoreConsumptionTask.
@@ -135,7 +141,7 @@ public class StoreConsumptionTaskTest {
         .array();
   }
 
-  @BeforeSuite
+  @BeforeClass
   public void suiteSetUp() throws Exception {
     taskPollingService = Executors.newFixedThreadPool(1);
 
@@ -143,9 +149,10 @@ public class StoreConsumptionTaskTest {
     ServerAggStats.init(new MetricsRepository(), mockKafKaConsumerPerStoreService);
   }
 
-  @AfterSuite
+  @AfterClass
   public void tearDown() throws Exception {
     taskPollingService.shutdown();
+    ServerAggStats.getInstance().close();
   }
 
   @BeforeMethod

@@ -5,14 +5,12 @@ import com.linkedin.venice.kafka.consumer.KafkaConsumerPerStoreService;
 import com.linkedin.venice.kafka.consumer.StoreConsumptionTask;
 import com.linkedin.venice.tehuti.MockTehutiReporter;
 import io.tehuti.metrics.MetricsRepository;
-
+import java.util.List;
 import org.mockito.Mockito;
 import org.testng.Assert;
-import org.testng.annotations.AfterSuite;
-import org.testng.annotations.BeforeSuite;
+import org.testng.annotations.AfterClass;
+import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
-
-import java.util.List;
 
 public class TestServerAggStats {
   private static final int STORE_CONSUMPTION_TASK_NUM = 3;
@@ -23,7 +21,7 @@ public class TestServerAggStats {
   private ServerAggStats stats;
   private KafkaConsumerPerStoreService mockKafkaConsumerPerStoreService;
 
-  @BeforeSuite
+  @BeforeClass
   public void setup() {
     MetricsRepository metrics = new MetricsRepository();
     reporter = new MockTehutiReporter();
@@ -63,7 +61,7 @@ public class TestServerAggStats {
     Assert.assertEquals(reporter.query("." + STORE_FOO + "_kafka_offset_lag.OffsetLagStat").value(), 2d);
   }
 
-  @AfterSuite
+  @AfterClass
   public void cleanup() {
     stats.close();
   }
