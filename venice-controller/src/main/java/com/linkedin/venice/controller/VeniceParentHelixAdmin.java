@@ -471,7 +471,7 @@ public class VeniceParentHelixAdmin implements Admin {
         currentReturnStatus = ExecutionStatus.ERROR;
       }
       logger.info("Deleting kafka topic: " + kafkaTopic + " with job status: " + currentReturnStatus);
-      topicManager.deleteTopic(kafkaTopic);
+      topicManager.syncDeleteTopic(kafkaTopic);
     }
 
     return currentReturnStatus;
@@ -637,7 +637,7 @@ public class VeniceParentHelixAdmin implements Admin {
       // Remove Kafka topic
       TopicManager topicManager = getTopicManager();
       logger.info("Deleting topic when kill offline push job, topic: " + kafkaTopic);
-      topicManager.deleteTopic(kafkaTopic);
+      topicManager.syncDeleteTopic(kafkaTopic);
 
       KillOfflinePushJob killJob = (KillOfflinePushJob) AdminMessageType.KILL_OFFLINE_PUSH_JOB.getNewInstance();
       killJob.clusterName = clusterName;

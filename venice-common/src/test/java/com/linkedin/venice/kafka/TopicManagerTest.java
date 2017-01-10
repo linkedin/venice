@@ -59,7 +59,6 @@ public class TopicManagerTest {
 
   @Test
   public void testDeleteTopic() throws InterruptedException {
-
     // Create a topic
     String topicName = TestUtils.getUniqueString("testDeleteTopic");
     int partitions = 1;
@@ -75,6 +74,22 @@ public class TopicManagerTest {
     TestUtils.waitForNonDeterministicCompletion(WAIT_TIME, TimeUnit.SECONDS,
         () -> !manager.containsTopic(topicName));
     // Assert that it is gone
+    Assert.assertFalse(manager.containsTopic(topicName));
+  }
+
+  @Test
+  public void testSyncDeleteTopic() throws InterruptedException {
+    // Create a topic
+    String topicName = TestUtils.getUniqueString("testSyncDeleteTopic");
+    int partitions = 1;
+    int replicas = 1;
+    manager.createTopic(topicName, partitions, replicas);
+    TestUtils.waitForNonDeterministicCompletion(WAIT_TIME, TimeUnit.SECONDS,
+        () -> manager.containsTopic(topicName));
+    Assert.assertTrue(manager.containsTopic(topicName));
+
+    // Delete that topic
+    manager.syncDeleteTopic(topicName);
     Assert.assertFalse(manager.containsTopic(topicName));
   }
 
