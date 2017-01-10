@@ -16,6 +16,7 @@ import java.util.StringJoiner;
 import java.util.stream.Collectors;
 
 import com.linkedin.venice.utils.Time;
+import com.linkedin.venice.utils.Utils;
 import kafka.admin.AdminUtils;
 import kafka.common.TopicExistsException;
 import kafka.utils.ZKStringSerializer$;
@@ -84,6 +85,39 @@ public class TopicManager implements Closeable {
       // TODO: Stop using Kafka APIs which depend on ZK.
       logger.info("Deleting topic: " + topicName);
       AdminUtils.deleteTopic(getZkUtils(), topicName);
+    } else {
+      logger.info("Topic: " +  topicName + " to be deleted doesn't exist");
+    }
+  }
+
+  /**
+   * This function is used to address the following problem:
+   * 1. Topic deletion is a async operation in Kafka;
+   * 2. Topic deletion triggered by Venice could happen in the middle of other Kafka operation;
+   * 3. Kafka operations against non-existing topic will hang;
+   * By using this function, the topic deletion is a sync op, which bypasses the hanging issue of
+   * non-existing topic operations.
+   * Once Kafka addresses the hanging issue of non-existing topic operations, we can safely revert back
+   * to use the async version: {@link #deleteTopic(String)}
+   * @param topicName
+   */
+  public synchronized void syncDeleteTopic(String topicName) {
+    if (containsTopic(topicName)) {
+      // TODO: Stop using Kafka APIs which depend on ZK.
+      logger.info("Sync deleting topic: " + topicName);
+      AdminUtils.deleteTopic(getZkUtils(), topicName);
+      // Since topic deletion is async, we would like to poll until topic doesn't exist any more
+      final int SLEEP_MS = 100;
+      final int MAX_TIMES = 300; // At most, we will wait 30s (300 * 100ms)
+      int current = 0;
+      while (++current <= MAX_TIMES) {
+        if (!containsTopic(topicName)) {
+          logger.info("Topic: " + topicName + " has been deleted");
+          return;
+        }
+        Utils.sleep(SLEEP_MS);
+      }
+      throw new VeniceException("Failed to delete kafka topic: " + topicName + " after 30 seconds");
     } else {
       logger.info("Topic: " +  topicName + " to be deleted doesn't exist");
     }

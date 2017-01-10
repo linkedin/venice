@@ -405,7 +405,7 @@ public class TestVeniceParentHelixAdmin {
     verify(internalAdmin)
         .checkPreConditionForKillOfflineJob(clusterName, kafkaTopic);
     verify(topicManager)
-        .deleteTopic(kafkaTopic);
+        .syncDeleteTopic(kafkaTopic);
     verify(veniceWriter)
         .put(any(), any(), anyInt());
     verify(zkClient, times(2))
@@ -543,12 +543,12 @@ public class TestVeniceParentHelixAdmin {
 
     Assert.assertEquals(VeniceParentHelixAdmin.getOffLineJobStatus("mycluster", "topic1", completeMap, topicManager),
         ExecutionStatus.COMPLETED);
-    verify(topicManager, timeout(TIMEOUT_IN_MS)).deleteTopic("topic1");
+    verify(topicManager, timeout(TIMEOUT_IN_MS)).syncDeleteTopic("topic1");
 
     completeMap.put("cluster-slow", clientMap.get(ExecutionStatus.NOT_CREATED));
     Assert.assertEquals(VeniceParentHelixAdmin.getOffLineJobStatus("mycluster", "topic2", completeMap, topicManager),
         ExecutionStatus.NOT_CREATED);  // Do we want this to be Progress?  limitation of ordering used in aggregation code
-    verify(topicManager, timeout(TIMEOUT_IN_MS).never()).deleteTopic("topic2");
+    verify(topicManager, timeout(TIMEOUT_IN_MS).never()).syncDeleteTopic("topic2");
 
 
     Map<String, ControllerClient> progressMap = new HashMap<>();
@@ -556,27 +556,27 @@ public class TestVeniceParentHelixAdmin {
     progressMap.put("cluster3", clientMap.get(ExecutionStatus.NOT_CREATED));
     Assert.assertEquals(VeniceParentHelixAdmin.getOffLineJobStatus("mycluster", "topic3", progressMap, topicManager),
         ExecutionStatus.NOT_CREATED);
-    verify(topicManager,timeout(TIMEOUT_IN_MS).never()).deleteTopic("topic3");
+    verify(topicManager,timeout(TIMEOUT_IN_MS).never()).syncDeleteTopic("topic3");
 
     progressMap.put("cluster5", clientMap.get(ExecutionStatus.NEW));
     Assert.assertEquals(VeniceParentHelixAdmin.getOffLineJobStatus("mycluster", "topic4", progressMap, topicManager),
         ExecutionStatus.NEW);
-    verify(topicManager, timeout(TIMEOUT_IN_MS).never()).deleteTopic("topic4");
+    verify(topicManager, timeout(TIMEOUT_IN_MS).never()).syncDeleteTopic("topic4");
 
     progressMap.put("cluster7", clientMap.get(ExecutionStatus.PROGRESS));
     Assert.assertEquals(VeniceParentHelixAdmin.getOffLineJobStatus("mycluster", "topic5", progressMap, topicManager),
         ExecutionStatus.PROGRESS);
-    verify(topicManager, timeout(TIMEOUT_IN_MS).never()).deleteTopic("topic5");;
+    verify(topicManager, timeout(TIMEOUT_IN_MS).never()).syncDeleteTopic("topic5");;
 
     progressMap.put("cluster9", clientMap.get(ExecutionStatus.STARTED));
     Assert.assertEquals(VeniceParentHelixAdmin.getOffLineJobStatus("mycluster", "topic6", progressMap, topicManager),
         ExecutionStatus.PROGRESS);
-    verify(topicManager, timeout(TIMEOUT_IN_MS).never()).deleteTopic("topic6");
+    verify(topicManager, timeout(TIMEOUT_IN_MS).never()).syncDeleteTopic("topic6");
 
     progressMap.put("cluster11", clientMap.get(ExecutionStatus.COMPLETED));
     Assert.assertEquals(VeniceParentHelixAdmin.getOffLineJobStatus("mycluster", "topic7", progressMap, topicManager),
         ExecutionStatus.PROGRESS);
-    verify(topicManager, timeout(TIMEOUT_IN_MS).never()).deleteTopic("topic7");
+    verify(topicManager, timeout(TIMEOUT_IN_MS).never()).syncDeleteTopic("topic7");
 
     // 1 in 4 failures is ERROR
     Map<String, ControllerClient> failCompleteMap = new HashMap<>();
@@ -586,7 +586,7 @@ public class TestVeniceParentHelixAdmin {
     failCompleteMap.put("failcluster", clientMap.get(null));
     Assert.assertEquals(VeniceParentHelixAdmin.getOffLineJobStatus("mycluster", "topic8", failCompleteMap, topicManager),
         ExecutionStatus.ERROR);
-    verify(topicManager, timeout(TIMEOUT_IN_MS)).deleteTopic("topic8");
+    verify(topicManager, timeout(TIMEOUT_IN_MS)).syncDeleteTopic("topic8");
 
     // 3 in 6 failures is PROGRESS (so it keeps trying)
     failCompleteMap.put("failcluster2", clientMap.get(null));

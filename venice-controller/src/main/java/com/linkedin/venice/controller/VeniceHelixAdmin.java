@@ -273,6 +273,9 @@ public class VeniceHelixAdmin implements Admin {
         VeniceControllerClusterConfig clusterConfig = controllerStateModelFactory.getModel(clusterName).getResources().getConfig();
         createKafkaTopic(clusterName, version.kafkaTopicName(), numberOfPartition, clusterConfig.getKafkaReplicaFactor());
         if (whetherStartOfflinePush) {
+            // TODO: there could be some problem here since topic creation is an async op, which means the new topic
+            // may not exist, When storage node is trying to consume the new created topic.
+
             // We need to prepare to monitor before creating helix resource.
             // TODO collect the offline push ZNodes in case of creating helix resource failure.
             startMontiorOfflinePush(clusterName, version.kafkaTopicName(), numberOfPartition, replicationFactor, strategy);
