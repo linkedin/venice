@@ -658,7 +658,11 @@ public class StoreConsumptionTaskTest {
     final int offset = 100;
     runTest(getSet(PARTITION_FOO),
         () -> doReturn(getOffsetRecord(offset, true)).when(mockOffSetManager).getLastOffset(topic, PARTITION_FOO),
-        () -> verify(mockNotifier, timeout(TEST_TIMEOUT)).completed(topic, PARTITION_FOO, offset));
+        () -> {
+          verify(mockNotifier, timeout(TEST_TIMEOUT)).restarted(topic, PARTITION_FOO, offset);
+          verify(mockNotifier, timeout(TEST_TIMEOUT)).completed(topic, PARTITION_FOO, offset);
+        }
+    );
   }
 
   @Test
