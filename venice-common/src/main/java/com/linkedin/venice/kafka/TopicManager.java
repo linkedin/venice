@@ -102,24 +102,20 @@ public class TopicManager implements Closeable {
    * @param topicName
    */
   public synchronized void syncDeleteTopic(String topicName) {
+    deleteTopic(topicName);
     if (containsTopic(topicName)) {
-      // TODO: Stop using Kafka APIs which depend on ZK.
-      logger.info("Sync deleting topic: " + topicName);
-      AdminUtils.deleteTopic(getZkUtils(), topicName);
       // Since topic deletion is async, we would like to poll until topic doesn't exist any more
       final int SLEEP_MS = 100;
       final int MAX_TIMES = 300; // At most, we will wait 30s (300 * 100ms)
       int current = 0;
       while (++current <= MAX_TIMES) {
+        Utils.sleep(SLEEP_MS);
         if (!containsTopic(topicName)) {
-          logger.info("Topic: " + topicName + " has been deleted");
+          logger.info("Topic: " + topicName + " has been deleted after polling " + current + " times");
           return;
         }
-        Utils.sleep(SLEEP_MS);
       }
       throw new VeniceException("Failed to delete kafka topic: " + topicName + " after 30 seconds");
-    } else {
-      logger.info("Topic: " +  topicName + " to be deleted doesn't exist");
     }
   }
 
