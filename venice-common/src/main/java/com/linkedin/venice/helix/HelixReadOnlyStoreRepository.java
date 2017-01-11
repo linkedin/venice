@@ -208,6 +208,7 @@ public class HelixReadOnlyStoreRepository implements ReadOnlyStoreRepository {
     @Override
     public void handleChildChange(String parentPath, List<String> storeNameList)
         throws Exception {
+      logger.info("Received a store children change notification from ZK.");
       if (!parentPath.equals(rootPath)) {
         throw new VeniceException("The path of event is mismatched. Expected:" + rootPath + " Actual:" + parentPath);
       }
@@ -233,7 +234,7 @@ public class HelixReadOnlyStoreRepository implements ReadOnlyStoreRepository {
             storeMap.put(store.getName(), store);
             dataAccessor.subscribeDataChanges(composeStorePath(store.getName()), storeUpdateListener);
             triggerStoreCreationListener(store);
-            logger.info("Store:" + store.getName() + " is added.");
+            logger.info("Store:" + store.getName() + " is added. Current version:" + store.getCurrentVersion());
           }
         }
 
@@ -256,6 +257,7 @@ public class HelixReadOnlyStoreRepository implements ReadOnlyStoreRepository {
     @Override
     public void handleDataChange(String dataPath, Object data)
         throws Exception {
+      logger.info("Received a store data change notification from ZK.");
       if (!(data instanceof Store)) {
         throw new VeniceException("Invalid notification, changed data is not a store.");
       }
@@ -267,6 +269,7 @@ public class HelixReadOnlyStoreRepository implements ReadOnlyStoreRepository {
       metadataLock.writeLock().lock();
       try {
         storeMap.put(store.getName(), store);
+        logger.info("Store:" + store.getName() + " is updated. Current version:" + store.getCurrentVersion());
       } finally {
         metadataLock.writeLock().unlock();
       }
@@ -275,6 +278,7 @@ public class HelixReadOnlyStoreRepository implements ReadOnlyStoreRepository {
     @Override
     public void handleDataDeleted(String dataPath)
         throws Exception {
+      logger.info("Received a store deleted notification from ZK.");
       String storeName = parseStoreNameFromPath(dataPath);
       metadataLock.writeLock().lock();
       try {
