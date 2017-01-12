@@ -49,10 +49,8 @@ public class ConfigKeys {
   public static final String KAFKA_CONSUMER_NUM_METADATA_REFRESH_RETRIES =
       "kafka.consumer.num.metadata.refresh.retries";
   public static final String KAFKA_CONSUMER_METADATA_REFRESH_BACKOFF_MS = "kafka.consumer.metadata.refresh.backoff.ms";
-  public static final String KAFKA_CONSUMER_ENABLE_AUTO_OFFSET_COMMIT = "kafka.enable.auto.commit";
 
   public static final String KAFKA_BOOTSTRAP_SERVERS = "kafka.bootstrap.servers";
-  public static final String KAFKA_AUTO_COMMIT_INTERVAL_MS = "kafka.auto.commit.interval.ms";
   public static final String MAX_KAFKA_FETCH_BYTES_PER_SECOND = "max.kafka.fetch.bytes.per.second";
 
   public static final String ENABLE_SERVER_WHITE_LIST = "enable.server.whitelist";

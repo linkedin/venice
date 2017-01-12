@@ -67,15 +67,13 @@ public class VeniceControllerService extends AbstractVeniceService {
     Properties kafkaConsumerProperties = new Properties();
     kafkaConsumerProperties.setProperty(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, kafkaBootstrapServers);
     /**
-     * We should use the same consumer group for all the consumers for the given cluster since
-     * the offset is being persisted in Kafka, which is per consumer group.
+     * {@link ConsumerConfig.CLIENT_ID_CONFIG} can be used to identify different consumers while checking Kafka related metrics.
      */
-    kafkaConsumerProperties.setProperty(ConsumerConfig.GROUP_ID_CONFIG, clusterName);
+    kafkaConsumerProperties.setProperty(ConsumerConfig.CLIENT_ID_CONFIG, clusterName);
     kafkaConsumerProperties.setProperty(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
     /**
-     * Two reasons to disable auto_commit
-     * 1. {@link AdminConsumptionTask} is persisting customized {@link org.apache.kafka.clients.consumer.OffsetAndMetadata} to Kafka;
-     * 2. We would like to commit offset only after successfully consuming the message.
+     * Reason to disable auto_commit
+     * 1. {@link AdminConsumptionTask} is persisting {@link com.linkedin.venice.offsets.OffsetRecord} in Zookeeper.
      */
     kafkaConsumerProperties.setProperty(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, "false");
     kafkaConsumerProperties.setProperty(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG,

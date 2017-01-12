@@ -242,10 +242,8 @@ public class KafkaConsumerPerStoreService extends AbstractVeniceService implemen
     Properties kafkaConsumerProperties = new Properties();
     kafkaConsumerProperties.setProperty(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, storeConfig.getKafkaBootstrapServers());
     kafkaConsumerProperties.setProperty(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
-    kafkaConsumerProperties.setProperty(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG,
-        String.valueOf(storeConfig.kafkaEnableAutoOffsetCommit()));
-    kafkaConsumerProperties.setProperty(ConsumerConfig.AUTO_COMMIT_INTERVAL_MS_CONFIG,
-        String.valueOf(storeConfig.getKafkaAutoCommitIntervalMs()));
+    // Venice is persisting offset in local offset db.
+    kafkaConsumerProperties.setProperty(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, "false");
     String groupId = getGroupId(storeConfig.getStoreName());
     kafkaConsumerProperties.setProperty(ConsumerConfig.GROUP_ID_CONFIG, groupId);
     /**
