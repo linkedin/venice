@@ -31,6 +31,7 @@ import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.Utils;
 import java.io.Closeable;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
@@ -148,8 +149,9 @@ public class StoreConsumptionTask implements Runnable, Closeable {
 
     // partitionToOffsetMap is accessed by multiple threads: consumption thread and the thread handle kill message.
     this.partitionToOffsetMap = new ConcurrentHashMap<>();
+    // We need thread safe set here because it could be visited by two threads, kill thread and consumption thread.
+    this.completedPartition = Collections.newSetFromMap(new ConcurrentHashMap<>());
     // Should be accessed only from a single thread.
-    this.completedPartition = new HashSet<>();
     this.producerTrackerMap = new HashMap<>();
     this.partitionsWithErrors = new HashSet<>();
     this.consumerTaskId = String.format(CONSUMER_TASK_ID_FORMAT, topic);
@@ -276,6 +278,11 @@ public class StoreConsumptionTask implements Runnable, Closeable {
 
   private void reportError(Collection<Integer> partitions, String message, Exception consumerEx) {
     for(Integer partitionId: partitions) {
+      if (completedPartition.contains(partitionId)) {
+        logger.warn("Topic:" + topic + " Partition:" + partitionId
+            + " has been reported as completed, do not be allowed to become error..");
+        continue;
+      }
       // Here we have to lock partitionsWithErrors because it could be accessed by two threads: consumption thread and
       // the thread handle kill message.
       synchronized (partitionsWithErrors) {

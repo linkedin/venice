@@ -33,7 +33,7 @@ public class ReplicaStatus {
       currentStatus = newStatus;
       addHistoricStatus(newStatus);
     } else {
-      throw new VeniceException("Can not transit from " + currentProgress + " to " + newStatus);
+      throw new VeniceException("Can not transit from " + currentStatus + " to " + newStatus);
     }
   }
 
