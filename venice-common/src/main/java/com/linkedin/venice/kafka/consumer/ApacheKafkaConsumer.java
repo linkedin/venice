@@ -39,6 +39,9 @@ public class ApacheKafkaConsumer implements KafkaConsumerWrapper {
     if (lastReadOffset != OffsetRecord.LOWEST_OFFSET) {
       long nextReadOffset = lastReadOffset + 1;
       kafkaConsumer.seek(topicPartition, nextReadOffset);
+    } else {
+      // Considering the offset of the same consumer group could be persisted by some other consumer in Kafka.
+      kafkaConsumer.seekToBeginning(topicPartition);
     }
   }
 

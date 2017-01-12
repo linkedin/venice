@@ -42,10 +42,6 @@ public class VeniceClusterConfig {
 
   private String kafkaZkAddress;
 
-  private int kafkaAutoCommitIntervalMs;
-
-  private boolean kafkaEnableAutoOffsetCommit;
-
   private long maxKafkaFetchBytesPerSecond = 0;
 
   private int statusMessageRetryCount;
@@ -79,12 +75,10 @@ public class VeniceClusterConfig {
       throw new ConfigurationException("kafkaBootstrapServers can't be empty");
     }
     kafkaZkAddress = clusterProps.getString(KAFKA_ZK_ADDRESS);
-    kafkaAutoCommitIntervalMs = clusterProps.getInt(KAFKA_AUTO_COMMIT_INTERVAL_MS);
     fetchBufferSize = clusterProps.getInt(KAFKA_CONSUMER_FETCH_BUFFER_SIZE, 64 * 1024);
     socketTimeoutMs = clusterProps.getInt(KAFKA_CONSUMER_SOCKET_TIMEOUT_MS, 1000);
     numMetadataRefreshRetries = clusterProps.getInt(KAFKA_CONSUMER_NUM_METADATA_REFRESH_RETRIES, 3);
     metadataRefreshBackoffMs = clusterProps.getInt(KAFKA_CONSUMER_METADATA_REFRESH_BACKOFF_MS, 1000);
-    kafkaEnableAutoOffsetCommit = clusterProps.getBoolean(KAFKA_CONSUMER_ENABLE_AUTO_OFFSET_COMMIT, false);
     maxKafkaFetchBytesPerSecond = clusterProps.getSizeInBytes(MAX_KAFKA_FETCH_BYTES_PER_SECOND, 0);
     statusMessageRetryCount = clusterProps.getInt(STATUS_MESSAGE_RETRY_COUNT, 5);
     statusMessageRetryDurationMs = clusterProps.getLong(STATUS_MESSAGE_RETRY_DURATION_MS, 1000l);
@@ -134,13 +128,5 @@ public class VeniceClusterConfig {
 
   public String getKafkaZkAddress() {
     return kafkaZkAddress;
-  }
-
-  public boolean kafkaEnableAutoOffsetCommit() {
-    return kafkaEnableAutoOffsetCommit;
-  }
-
-  public int getKafkaAutoCommitIntervalMs() {
-    return kafkaAutoCommitIntervalMs;
   }
 }
