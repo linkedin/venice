@@ -822,4 +822,19 @@ public class StoreConsumptionTaskTest {
       });
     });
   }
+
+  @Test
+  public void testKillAfterPartitionIsCompleted()
+      throws Exception {
+    veniceWriter.broadcastStartOfPush(new HashMap<>());
+    long fooLastOffset = getOffset(veniceWriter.put(putKeyFoo, putValue, SCHEMA_ID));
+    veniceWriter.broadcastEndOfPush(new HashMap<>());
+
+    runTest(getSet(PARTITION_FOO), () -> {
+      verify(mockNotifier, timeout(TEST_TIMEOUT).atLeastOnce()).started(topic, PARTITION_FOO);
+      verify(mockNotifier, timeout(TEST_TIMEOUT).atLeastOnce()).completed(topic, PARTITION_FOO, fooLastOffset);
+      storeConsumptionTaskUnderTest.kill();
+      verify(mockNotifier, timeout(TEST_TIMEOUT).never()).error(eq(topic), eq(PARTITION_FOO), anyString(), any());
+    });
+  }
 }
