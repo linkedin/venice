@@ -18,6 +18,10 @@ public class RandomPollStrategy extends AbstractPollStrategy {
     super(true); // TODO: Change default to false once tests are ensured to be deterministic...
   }
 
+  public RandomPollStrategy(int maxMessagePerPoll) {
+    super(true, maxMessagePerPoll);
+  }
+
   public RandomPollStrategy(boolean keepPollingWhenEmpty) {
     super(keepPollingWhenEmpty);
   }

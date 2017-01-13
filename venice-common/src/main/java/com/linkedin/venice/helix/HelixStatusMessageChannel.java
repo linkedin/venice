@@ -292,7 +292,8 @@ public class HelixStatusMessageChannel implements StatusMessageChannel {
       try {
         getHandler(msg.getClass()).handleMessage(msg);
       } catch (Exception e) {
-        logger.error("Handle message " + _message.getId() + " failed", e);
+        // Log the message content in case of handing failure
+        logger.error("Handle message " + _message.getId() + " failed. Venice message content:" + msg.toString(), e);
         // re-throw exception to helix.
         throw e;
       }

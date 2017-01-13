@@ -106,9 +106,11 @@ public class StoreConsumptionTask implements Runnable, Closeable {
    * is not always up to date because of the asynchronous nature of subscriptions of partitions in Kafka Consumer.
    */
   private final ConcurrentMap<Integer, OffsetRecord> partitionToOffsetMap;
-  private final Set<Integer> completedPartition;
+  private final Set<Integer> completedPartitions;
 
-  private final Set<Integer> partitionsWithErrors;
+  private final Set<Integer> errorPartitions;
+
+  private final Set<Integer> startedPartitions;
 
   /**
    * Keeps track of every upstream producer this consumer task has seen so far.
@@ -150,10 +152,11 @@ public class StoreConsumptionTask implements Runnable, Closeable {
     // partitionToOffsetMap is accessed by multiple threads: consumption thread and the thread handle kill message.
     this.partitionToOffsetMap = new ConcurrentHashMap<>();
     // We need thread safe set here because it could be visited by two threads, kill thread and consumption thread.
-    this.completedPartition = Collections.newSetFromMap(new ConcurrentHashMap<>());
+    this.completedPartitions = Collections.newSetFromMap(new ConcurrentHashMap<>());
+    this.errorPartitions = Collections.newSetFromMap(new ConcurrentHashMap<>());
+    this.startedPartitions = Collections.newSetFromMap(new ConcurrentHashMap<>());
     // Should be accessed only from a single thread.
     this.producerTrackerMap = new HashMap<>();
-    this.partitionsWithErrors = new HashSet<>();
     this.consumerTaskId = String.format(CONSUMER_TASK_ID_FORMAT, topic);
     this.topicManager = topicManager;
 
@@ -216,6 +219,12 @@ public class StoreConsumptionTask implements Runnable, Closeable {
   }
 
   private void reportProgress(int partition, long partitionOffset ) {
+    if (!startedPartitions.contains(partition)) {
+      logger.warn(
+          "Can not report progress for Topic:" + topic + " Partition:" + partition + " offset:" + partitionOffset
+              + ", because it has not been started or already been terminated.");
+      return;
+    }
     // Progress reporting happens too frequently for each Kafka Pull,
     // Report progress only if configured intervals have elapsed.
     // This has a drawback if there are messages but the interval has not elapsed
@@ -237,6 +246,7 @@ public class StoreConsumptionTask implements Runnable, Closeable {
   }
 
   private void reportStarted(int partition) {
+    startedPartitions.add(partition);
     for(VeniceNotifier notifier : notifiers) {
       try {
         notifier.started(topic, partition);
@@ -247,6 +257,7 @@ public class StoreConsumptionTask implements Runnable, Closeable {
   }
 
   private void reportRestarted(int partition, long offset) {
+    startedPartitions.add(partition);
     for (VeniceNotifier notifier : notifiers) {
       try {
         notifier.restarted(topic, partition, offset);
@@ -260,7 +271,7 @@ public class StoreConsumptionTask implements Runnable, Closeable {
     OffsetRecord lastOffsetRecord = partitionToOffsetMap.getOrDefault(partition , new OffsetRecord());
 
 
-    if (partitionsWithErrors.contains(partition)) {
+    if (errorPartitions.contains(partition)) {
       // Notifiers will not be sent a completion notification, they should only receive the previously-sent
       // error notification.
       logger.error("Processing completed WITH ERRORS for topic " + topic + " Partition " + partition + " Last Offset " + lastOffsetRecord.getOffset());
@@ -274,24 +285,23 @@ public class StoreConsumptionTask implements Runnable, Closeable {
         }
       }
     }
+    startedPartitions.remove(partition);
+    completedPartitions.add(partition);
   }
 
   private void reportError(Collection<Integer> partitions, String message, Exception consumerEx) {
     for(Integer partitionId: partitions) {
-      if (completedPartition.contains(partitionId)) {
+      if (completedPartitions.contains(partitionId)) {
         logger.warn("Topic:" + topic + " Partition:" + partitionId
             + " has been reported as completed, do not be allowed to become error..");
         continue;
       }
-      // Here we have to lock partitionsWithErrors because it could be accessed by two threads: consumption thread and
-      // the thread handle kill message.
-      synchronized (partitionsWithErrors) {
-        if (partitionsWithErrors.contains(partitionId)) {
-          logger.warn("Topic:" + topic + " Partition:" + partitionId + " has been reported as error before.");
-          continue;
-        }
-        partitionsWithErrors.add(partitionId);
+      if (errorPartitions.contains(partitionId)) {
+        logger.warn("Topic:" + topic + " Partition:" + partitionId + " has been reported as error before.");
+        continue;
       }
+      startedPartitions.remove(partitionId);
+      errorPartitions.add(partitionId);
 
       for(VeniceNotifier notifier : notifiers) {
         try {
@@ -458,7 +468,7 @@ public class StoreConsumptionTask implements Runnable, Closeable {
       case UNSUBSCRIBE:
         logger.info(consumerTaskId + " UnSubscribed to: Topic " + topic + " Partition Id " + partition);
         partitionToOffsetMap.remove(partition);
-        completedPartition.remove(partition);
+        completedPartitions.remove(partition);
         producerTrackerMap.values().stream().forEach(
             producerTracker -> producerTracker.clearPartition(partition)
         );
@@ -466,7 +476,7 @@ public class StoreConsumptionTask implements Runnable, Closeable {
         break;
       case RESET_OFFSET:
         partitionToOffsetMap.put(partition, new OffsetRecord());
-        completedPartition.remove(partition);
+        completedPartitions.remove(partition);
         producerTrackerMap.values().stream().forEach(
             producerTracker -> producerTracker.clearPartition(partition)
         );
@@ -545,7 +555,7 @@ public class StoreConsumptionTask implements Runnable, Closeable {
         continue;
       }
       OffsetRecord record = partitionToOffsetMap.get(partition);
-      if (completedPartition.contains(partition)) {
+      if (completedPartitions.contains(partition)) {
         record.complete();
       }
       offsetManager.recordOffset(this.topic, partition, record);
@@ -572,7 +582,6 @@ public class StoreConsumptionTask implements Runnable, Closeable {
        case END_OF_PUSH:
          logger.info(consumerTaskId + " : Receive End of Pushes message. Partition: " + partition + ", Offset: " + offset);
          reportCompleted(partition);
-         completedPartition.add(partition);
          break;
        case START_OF_SEGMENT:
        case END_OF_SEGMENT:

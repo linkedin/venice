@@ -24,12 +24,18 @@ import org.apache.kafka.common.record.TimestampType;
  */
 public abstract class AbstractPollStrategy implements PollStrategy {
 
-  private static final int MAX_MESSAGES_PER_POLL = 3; // We can make this configurable later on if need be...
+  private static final int DEFAULT_MAX_MESSAGES_PER_POLL = 3; // We can make this configurable later on if need be...
+  private final int maxMessagePerPoll;
   protected final boolean keepPollingWhenEmpty;
   protected final Set<TopicPartition> drainedPartitions = new HashSet<>();
 
   public AbstractPollStrategy(boolean keepPollingWhenEmpty) {
+    this(keepPollingWhenEmpty, DEFAULT_MAX_MESSAGES_PER_POLL);
+  }
+
+  public AbstractPollStrategy(boolean keepPollingWhenEmpty, int maxMessagePerPoll){
     this.keepPollingWhenEmpty = keepPollingWhenEmpty;
+    this.maxMessagePerPoll = maxMessagePerPoll;
   }
 
   protected abstract Pair<TopicPartition, OffsetRecord> getNextPoll(Map<TopicPartition, OffsetRecord> offsets);
@@ -43,7 +49,7 @@ public abstract class AbstractPollStrategy implements PollStrategy {
     long startTime = System.currentTimeMillis();
     int numberOfRecords = 0;
 
-    while (numberOfRecords < MAX_MESSAGES_PER_POLL && System.currentTimeMillis() < startTime + timeout) {
+    while (numberOfRecords < maxMessagePerPoll && System.currentTimeMillis() < startTime + timeout) {
       Pair<TopicPartition, OffsetRecord> nextPoll = getNextPoll(offsets);
       if (null == nextPoll) {
         if (keepPollingWhenEmpty) {
