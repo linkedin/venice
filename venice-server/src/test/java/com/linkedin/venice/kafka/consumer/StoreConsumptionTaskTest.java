@@ -837,4 +837,20 @@ public class StoreConsumptionTaskTest {
       verify(mockNotifier, timeout(TEST_TIMEOUT).never()).error(eq(topic), eq(PARTITION_FOO), anyString(), any());
     });
   }
+
+  @Test
+  public void testReportProgressBeforeStart()
+      throws Exception {
+    // Read one message for each poll.
+    runTest(new RandomPollStrategy(1), getSet(PARTITION_FOO), () -> {
+    }, () -> {
+      veniceWriter.broadcastStartOfPush(new HashMap<>());
+      verify(mockNotifier, timeout(TEST_TIMEOUT).atLeastOnce()).started(topic, PARTITION_FOO);
+      // Because we have to report progress before receiving start of push, so the progress here should be 1 instead of 0.
+      verify(mockNotifier, timeout(TEST_TIMEOUT).never()).progress(topic, PARTITION_FOO, 0);
+      verify(mockNotifier, timeout(TEST_TIMEOUT).atLeastOnce()).progress(topic, PARTITION_FOO, 1);
+    });
+  }
+
+
 }
