@@ -8,6 +8,9 @@ import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.schema.SchemaEntry;
+import java.io.IOException;
+import java.util.Arrays;
+import java.util.Collections;
 import org.codehaus.jackson.map.ObjectMapper;
 import org.jboss.netty.channel.Channel;
 import org.jboss.netty.channel.ChannelHandlerContext;
@@ -15,15 +18,12 @@ import org.jboss.netty.channel.DownstreamMessageEvent;
 import org.jboss.netty.channel.MessageEvent;
 import org.jboss.netty.handler.codec.http.DefaultHttpResponse;
 import org.jboss.netty.handler.codec.http.HttpRequest;
-import static org.jboss.netty.handler.codec.http.HttpHeaders.Names.CONTENT_TYPE;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mockito;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
-import java.io.IOException;
-import java.util.Arrays;
-import java.util.Collections;
+import static org.jboss.netty.handler.codec.http.HttpHeaders.Names.*;
 
 public class TestMetaDataHandler {
   private static ObjectMapper mapper = new ObjectMapper();

@@ -215,7 +215,7 @@ public class RouterServer extends AbstractVeniceService {
     VenicePartitionFinder partitionFinder = new VenicePartitionFinder(routingDataRepository);
     VeniceHostHealth healthMonitor = new VeniceHostHealth();
     dispatcher = new VeniceDispatcher(healthMonitor, clientTimeout);
-    heartbeat = new RouterHeartbeat(dispatcher.getClientPool(), healthMonitor, 10, TimeUnit.SECONDS, heartbeatTimeout);
+    heartbeat = new RouterHeartbeat(manager, healthMonitor, 10, TimeUnit.SECONDS, heartbeatTimeout);
     heartbeat.startInner();
     VeniceRouterImpl router
         = routerRegistry.register(new VeniceRouterImpl(
