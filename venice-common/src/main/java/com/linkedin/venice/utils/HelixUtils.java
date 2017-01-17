@@ -2,6 +2,7 @@ package com.linkedin.venice.utils;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.ZkDataAccessException;
+import com.linkedin.venice.meta.Instance;
 import java.util.HashMap;
 import java.util.List;
 
@@ -49,7 +50,7 @@ public class HelixUtils {
   public static int getPartitionId(String helixPartitionName) {
     int lastUnderscoreIdx = helixPartitionName.lastIndexOf(SEPARATOR);
     if(lastUnderscoreIdx == -1) {
-      throw new IllegalArgumentException(" Incorrect Helix Partition Name " + helixPartitionName);
+      throw new IllegalArgumentException("Incorrect Helix Partition Name " + helixPartitionName);
     }
     return Integer.valueOf(helixPartitionName.substring(lastUnderscoreIdx+1));
   }
@@ -61,13 +62,24 @@ public class HelixUtils {
   public static String getResourceName(String helixPartitionName){
     int lastUnderscoreIdx = helixPartitionName.lastIndexOf(SEPARATOR);
     if(lastUnderscoreIdx == -1) {
-      throw new IllegalArgumentException(" Incorrect Helix Partition Name " + helixPartitionName);
+      throw new IllegalArgumentException("Incorrect Helix Partition Name " + helixPartitionName);
     }
     String resourceName = helixPartitionName.substring(0, lastUnderscoreIdx);
     if(resourceName == null || resourceName.length() == 0) {
-      throw new IllegalArgumentException(" Could not determine resource name from Helix Partition Id " + helixPartitionName);
+      throw new IllegalArgumentException("Could not determine resource name from Helix Partition Id " + helixPartitionName);
     }
     return resourceName;
+  }
+
+  /**
+   *
+   * @param helixInstanceName of form host_port.
+   * @return Instance object with correct host and port.
+   */
+  public static Instance getInstanceFromHelixInstanceName(String helixInstanceName){
+    String hostname = Utils.parseHostFromHelixNodeIdentifier(helixInstanceName);
+    int port = Utils.parsePortFromHelixNodeIdentifier(helixInstanceName);
+    return new Instance(helixInstanceName, hostname, port);
   }
 
   public static <T> void create(ZkBaseDataAccessor<T> dataAccessor, String path, T data, int retryCount) {

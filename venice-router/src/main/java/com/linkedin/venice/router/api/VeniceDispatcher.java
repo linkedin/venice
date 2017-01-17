@@ -53,7 +53,7 @@ public class VeniceDispatcher implements PartitionDispatchHandler<Instance, Veni
   private static final Logger logger = Logger.getLogger(VeniceDispatcher.class);
 
   // see: https://hc.apache.org/httpcomponents-asyncclient-dev/quickstart.html
-  private final ConcurrentMap<Instance, CloseableHttpAsyncClient> clientPool;
+  private final CloseableHttpAsyncClient httpClient;
 
   // key is (resource + "_" + partition)
   private final ConcurrentMap<String, Long> offsets = new ConcurrentHashMap<>();
@@ -62,11 +62,21 @@ public class VeniceDispatcher implements PartitionDispatchHandler<Instance, Veni
   private final RouterAggStats stats = RouterAggStats.getInstance();
 
   // How many offsets behind can a storage node be for a partition and still be considered 'caught up'
-  private long acceptableOffsetLag = 0; /* TODO: make this configurable for streaming use-case */
+  private long acceptableOffsetLag = 10000; /* TODO: make this configurable for streaming use-case */
   private int clientTimeoutMillis;
 
   public VeniceDispatcher(VeniceHostHealth healthMonitor, int clientTimeoutMillis){
-    clientPool = new ConcurrentHashMap<>();
+    httpClient = HttpAsyncClients.custom()
+        .setConnectionReuseStrategy(new DefaultConnectionReuseStrategy())  //Supports connection re-use if able
+        .setConnectionManager(createConnectionManager(200, 200))
+        .setDefaultRequestConfig(
+            RequestConfig.custom()
+                .setSocketTimeout(clientTimeoutMillis)
+                .setConnectTimeout(clientTimeoutMillis)
+                .setConnectionRequestTimeout(clientTimeoutMillis).build() // 10 second sanity timeout.
+        )
+        .build();
+    httpClient.start();
     this.healthMontior = healthMonitor;
     this.clientTimeoutMillis = clientTimeoutMillis;
   }
@@ -110,20 +120,6 @@ public class VeniceDispatcher implements PartitionDispatchHandler<Instance, Veni
     if (logger.isDebugEnabled()) {
       logger.debug("Routing request to host: " + host.getHost() + ":" + host.getPort());
     }
-    CloseableHttpAsyncClient httpClient = clientPool.computeIfAbsent(host, instance -> {
-      CloseableHttpAsyncClient httpClient1 = HttpAsyncClients.custom()
-          .setConnectionReuseStrategy(new DefaultConnectionReuseStrategy())  //Supports connection re-use if able
-          .setConnectionManager(createConnectionManager())
-          .setDefaultRequestConfig(
-              RequestConfig.custom()
-                  .setSocketTimeout(clientTimeoutMillis)
-                  .setConnectTimeout(clientTimeoutMillis)
-                  .setConnectionRequestTimeout(clientTimeoutMillis).build() // 10 second sanity timeout.
-          )
-          .build();
-      httpClient1.start();
-      return httpClient1;
-    });
 
     String requestPath = path.getLocation();
     logger.debug("Using request path: " + requestPath);
@@ -233,29 +229,18 @@ public class VeniceDispatcher implements PartitionDispatchHandler<Instance, Veni
   }
 
   public void close(){
-    for (CloseableHttpAsyncClient client : clientPool.values()){
-      try {
-        client.close();
-      } catch (IOException e) {
-        logger.error("Error closing an async http client", e);
-      }
-    }
-    clientPool.clear();
+    IOUtils.closeQuietly(httpClient);
   }
 
   protected static String numberFromPartitionName(String partitionName){
     return partitionName.substring(partitionName.lastIndexOf("_")+1);
   }
 
-  public Map<Instance, CloseableHttpAsyncClient> getClientPool(){
-    return clientPool;
-  }
-
   /**
    * Creates and returns a new connection manager on every invocation.
    * @return
    */
-  private static PoolingNHttpClientConnectionManager createConnectionManager() {
+  public static PoolingNHttpClientConnectionManager createConnectionManager(int perRoute, int total) {
     IOReactorConfig ioReactorConfig = IOReactorConfig.custom().build();
     ConnectingIOReactor ioReactor = null;
     try {
@@ -264,8 +249,8 @@ public class VeniceDispatcher implements PartitionDispatchHandler<Instance, Veni
       throw new VeniceException("Router failed to create an IO Reactor", e);
     }
     PoolingNHttpClientConnectionManager connMgr = new PoolingNHttpClientConnectionManager(ioReactor);
-    connMgr.setMaxTotal(200);
-    connMgr.setDefaultMaxPerRoute(200);
+    connMgr.setMaxTotal(total);
+    connMgr.setDefaultMaxPerRoute(perRoute);
     return connMgr;
   }
 }
