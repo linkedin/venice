@@ -229,9 +229,26 @@ public class TestStore {
     Assert.assertEquals(store.peekNextVersion().getNumber(), 6);
     store.addVersion(new Version(storeName, 2));
     Assert.assertEquals(store.getVersions().size(), 2);
-    //largest used vesion is still 5
+    //largest used version is still 5
     Assert.assertEquals(store.peekNextVersion().getNumber(), 6);
     Version version = store.increaseVersion();
     Assert.assertEquals(version.getNumber(), 6);
+  }
+
+  @Test
+  public void testValidStoreNames(){
+    List<String> valid = Arrays.asList("foo", "Bar", "foo_bar", "foo-bar", "f00Bar");
+    List<String> invalid = Arrays.asList("foo bar", "foo.bar", " foo", ".bar", "!", "@", "#", "$", "%");
+    for (String name : valid){
+      Assert.assertTrue(Store.isValidStoreName(name));
+    }
+    for (String name : invalid){
+      Assert.assertFalse(Store.isValidStoreName(name));
+    }
+  }
+
+  @Test (expectedExceptions = VeniceException.class)
+  public void invalidStoreNameThrows(){
+    Store store = new Store("My Store Name", "owner", System.currentTimeMillis(), PersistenceType.IN_MEMORY, RoutingStrategy.CONSISTENT_HASH, ReadStrategy.ANY_OF_ONLINE, OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);
   }
 }

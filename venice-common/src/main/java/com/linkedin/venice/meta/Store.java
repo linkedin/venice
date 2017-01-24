@@ -5,6 +5,8 @@ import com.linkedin.venice.exceptions.VeniceException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import javax.validation.constraints.NotNull;
 
 
@@ -70,6 +72,9 @@ public class Store {
   public Store(@NotNull String name, @NotNull String owner, long createdTime, @NotNull PersistenceType persistenceType,
       @NotNull RoutingStrategy routingStrategy, @NotNull ReadStrategy readStrategy,
       @NotNull OfflinePushStrategy offlinePushStrategy) {
+    if (!isValidStoreName(name)){
+      throw new VeniceException("Invalid store name: " + name);
+    }
     this.name = name;
     this.owner = owner;
     this.createdTime = createdTime;
@@ -78,6 +83,12 @@ public class Store {
     this.readStrategy = readStrategy;
     this.offLinePushStrategy = offlinePushStrategy;
     versions = new ArrayList<>();
+  }
+
+  private static Pattern storeNamePattern = Pattern.compile("^[a-zA-Z0-9_-]+$"); // Only allow letters, numbers, underscore or dash
+  public static boolean isValidStoreName(String name){
+    Matcher matcher = storeNamePattern.matcher(name);
+    return matcher.matches();
   }
 
   public String getName() {
