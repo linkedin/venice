@@ -1,16 +1,12 @@
 package com.linkedin.venice.router;
 
 import com.linkedin.d2.server.factory.D2Server;
+import com.linkedin.ddsstorage.base.concurrency.AsyncFuture;
 import com.linkedin.ddsstorage.base.concurrency.TimeoutProcessor;
 import com.linkedin.ddsstorage.base.registry.ResourceRegistry;
 import com.linkedin.ddsstorage.base.registry.ShutdownableExecutors;
-import com.linkedin.ddsstorage.base.registry.SyncResourceRegistry;
-import com.linkedin.ddsstorage.netty3.handlers.ConnectionLimitUpstreamHandler;
-import com.linkedin.ddsstorage.netty3.handlers.DefaultExecutionHandler;
-import com.linkedin.ddsstorage.netty3.misc.NettyResourceRegistry;
-import com.linkedin.ddsstorage.netty3.misc.ShutdownableHashedWheelTimer;
-import com.linkedin.ddsstorage.netty3.misc.ShutdownableOrderedMemoryAwareExecutor;
 import com.linkedin.ddsstorage.router.api.ScatterGatherHelper;
+import com.linkedin.ddsstorage.router.impl.Router;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixAdapterSerializer;
@@ -32,29 +28,23 @@ import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
+import io.netty.channel.ChannelPipeline;
+import io.tehuti.metrics.MetricsRepository;
 import java.net.InetSocketAddress;
+import java.net.SocketAddress;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeUnit;
-import io.tehuti.metrics.MetricsRepository;
 import org.apache.helix.HelixManager;
 import org.apache.helix.InstanceType;
 import org.apache.helix.manager.zk.ZKHelixManager;
 import org.apache.helix.manager.zk.ZkClient;
 import org.apache.log4j.Logger;
-import org.jboss.netty.channel.ChannelFuture;
-import org.jboss.netty.channel.socket.nio.NioServerBossPool;
-import org.jboss.netty.channel.socket.nio.NioWorkerPool;
-import org.jboss.netty.handler.execution.ExecutionHandler;
-import org.jboss.netty.util.Timer;
 
-
-/**
- * Note: Router uses Netty 3
- */
 public class RouterServer extends AbstractVeniceService {
   private static final Logger logger = Logger.getLogger(RouterServer.class);
 
@@ -75,12 +65,14 @@ public class RouterServer extends AbstractVeniceService {
   private HelixReadOnlySchemaRepository schemaRepository;
 
   // These are initialized in startInner()... TODO: Consider refactoring this to be immutable as well.
-  private ChannelFuture serverFuture = null;
-  private NettyResourceRegistry registry = null;
+  private AsyncFuture<SocketAddress> serverFuture = null;
+  private ResourceRegistry registry = null;
   private VeniceDispatcher dispatcher;
   private RouterHeartbeat heartbeat;
 
   private final static String ROUTER_SERVICE_NAME = "venice-router";
+  private final static int ROUTER_THREAD_POOL_SIZE = 20; // TODO, configurable, aim for ~ 2xCores, min 2 even for dev.
+  private final static int CONNECTION_LIMIT = 10000; // TODO, configurable
 
   public static void main(String args[]) throws Exception {
 
@@ -191,35 +183,26 @@ public class RouterServer extends AbstractVeniceService {
     RouterAggStats.init(this.metricsRepository); //TODO: re-evaluate doing a global init for the RouterAggStats class.
   }
 
-
-
   @Override
   public boolean startInner() throws Exception {
     metadataRepository.refresh();
     // No need to call schemaRepository.refresh() since it will do nothing.
 
-    registry = new NettyResourceRegistry();
+    registry = new ResourceRegistry();
     ExecutorService executor = registry
         .factory(ShutdownableExecutors.class)
-        .newFixedThreadPool(10, new DaemonThreadFactory("RouterThread")); //TODO: configurable number of threads
-    NioServerBossPool serverBossPool = registry.register(new NioServerBossPool(executor, 1));
-    //TODO: configurable workerPool size (and probably other things in this section)
-    NioWorkerPool ioWorkerPool = registry.register(new NioWorkerPool(executor, 8));
-    ExecutionHandler workerExecutor = new DefaultExecutionHandler(
-        registry.register(new ShutdownableOrderedMemoryAwareExecutor(8, 0, 0, 60, TimeUnit.SECONDS)));
-    ConnectionLimitUpstreamHandler connectionLimit = new ConnectionLimitUpstreamHandler(10000);
+        .newFixedThreadPool(ROUTER_THREAD_POOL_SIZE, new DaemonThreadFactory("RouterThread")); //TODO: configurable number of threads
+
+    Executor workerExecutor = registry.factory(ShutdownableExecutors.class).newCachedThreadPool();
     TimeoutProcessor timeoutProcessor = new TimeoutProcessor(registry);
-    Timer idleTimer = registry.register(new ShutdownableHashedWheelTimer(1, TimeUnit.MILLISECONDS));
     Map<String, Object> serverSocketOptions = null;
-    ResourceRegistry routerRegistry = registry.register(new SyncResourceRegistry());
     VenicePartitionFinder partitionFinder = new VenicePartitionFinder(routingDataRepository);
     VeniceHostHealth healthMonitor = new VeniceHostHealth();
     dispatcher = new VeniceDispatcher(healthMonitor, clientTimeout);
     heartbeat = new RouterHeartbeat(manager, healthMonitor, 10, TimeUnit.SECONDS, heartbeatTimeout);
     heartbeat.startInner();
-    VeniceRouterImpl router
-        = routerRegistry.register(new VeniceRouterImpl(
-        "test", serverBossPool, ioWorkerPool, workerExecutor, connectionLimit, timeoutProcessor, idleTimer, serverSocketOptions,
+
+    Router router = Router.builder(
         ScatterGatherHelper.builder()
             .roleFinder(new VeniceRoleFinder())
             .pathParser(new VenicePathParser(new VeniceVersionFinder(metadataRepository), partitionFinder))
@@ -227,10 +210,22 @@ public class RouterServer extends AbstractVeniceService {
             .hostFinder(new VeniceHostFinder(routingDataRepository))
             .hostHealthMonitor(healthMonitor)
             .dispatchHandler(dispatcher)
-            .build(),
-        new MetaDataHandler(routingDataRepository, schemaRepository, clusterName)));
+            .build())
+        .name("VeniceRouter")
+        .resourceRegistry(registry)
+        .executor(executor) // Executor provides the
+        .bossPoolSize(1) // One boss thread to monitor the socket for new connections.  Netty only uses one thread from this pool
+        .ioWorkerPoolSize(ROUTER_THREAD_POOL_SIZE - 1) // Worker threads handle connections once they've been established.
+        .workerExecutor(workerExecutor)
+        .connectionLimit(CONNECTION_LIMIT)
+        .timeoutProcessor(timeoutProcessor)
+        .serverSocketOptions(serverSocketOptions)
+        .beforeHttpRequestHandler(ChannelPipeline.class, (pipeline) -> {
+          pipeline.addLast("", new MetaDataHandler(routingDataRepository, schemaRepository, clusterName));
+        })
+        .build();
 
-    serverFuture = router.start(new InetSocketAddress(port), factory -> factory);
+    serverFuture = router.start(new InetSocketAddress(port));
     serverFuture.await();
 
     asyncStart();
@@ -250,15 +245,13 @@ public class RouterServer extends AbstractVeniceService {
         logger.error("D2 announcer " + d2Server + " failed to shutdown properly", e);
       }
     }
-    if (!serverFuture.cancel()){
-      if (serverFuture.awaitUninterruptibly().isSuccess()){
-        serverFuture.getChannel().close().awaitUninterruptibly();
-      }
+    if (!serverFuture.cancel(false)){
+      serverFuture.awaitUninterruptibly();
     }
     registry.shutdown();
     registry.waitForShutdown();
     dispatcher.close();
-    //routingDataRepository.clear(); //TODO: when the clear or stop method is added to the routingDataRepository
+    routingDataRepository.clear();
     metadataRepository.clear();
     if (manager != null) {
       manager.disconnect();
@@ -311,7 +304,12 @@ public class RouterServer extends AbstractVeniceService {
 
       serviceState.set(ServiceState.STARTED);
 
-      logger.info(this.toString() + " is started on port:" + serverFuture.getChannel().getLocalAddress());
+      try {
+        logger.info(this.toString() + " started on port: " + ((InetSocketAddress) serverFuture.get()).getPort());
+      } catch (Exception e) {
+        logger.error("Exception while waiting for " + this.toString() + " to start", e);
+        throw new VeniceException(e);
+      }
     });
   }
 }

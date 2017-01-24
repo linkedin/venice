@@ -32,13 +32,13 @@ ext.libraries = [ // Groovy map literal
                   // Fixed the kafka client 'memory record is not writable' issue.
                   kafkaClients: 'kafka:kafka-clients:0.9.0.14', // Internal LinkedIn release
                   netty: 'io.netty:netty-all:4.1.4.Final',
-                  netty3: 'io.netty:netty:3.9.7.Final',
                   zkclient: 'com.101tec:zkclient:0.7', //for Kafka AdminUtils
                   d2: 'com.linkedin.container:pegasus-d2-server-factory:25.0.11',
                   d2Client: 'com.linkedin.container:pegasus-d2-client-factory:25.0.11',
 
-                  routerApi: 'com.linkedin.dds-storage-core:dds-storage-router-api:0.0.60',
-                  routerImpl: 'com.linkedin.dds-storage-core:dds-storage-router-impl:0.0.60',
+                  routerApi: 'com.linkedin.dds-storage-core:dds-storage-router-api:0.4.3',
+                  routerImpl: 'com.linkedin.dds-storage-core:dds-storage-router-impl:0.4.3',
+                  routerNetty4: 'com.linkedin.dds-storage-core:dds-storage-netty4-base:0.4.3',
                   asyncHttpClient: 'org.apache.httpcomponents:httpasyncclient:4.1.2',
                   zookeeper: 'org.apache.zookeeper:zookeeper:3.4.6',
 

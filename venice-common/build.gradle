@@ -34,12 +34,10 @@ dependencies {
   compile (libraries.helix) { // TODO: Get rid of Helix dependency in venice-common
     // Helix pulls in an ancient version of the zkclient, which lacks some APIs and clashes with Kafka's dependency
     exclude group: 'com.github.sgroschupf'
-    // replacing Helix's netty 3.7 with 3.9 (netty3 below) so the router doesn't get 3.7 when it depends on common
-    exclude group: 'io.netty'
     // Helix use zk 3.6.9, which introduce netty 3.10 and will fail our test.
     exclude module:'zookeeper'
   }
-  compile libraries.netty3
+
   compile libraries.asyncHttpClient
   compile libraries.kafkaClients // TODO: Get rid of Kafka dependency in venice-common
   compile libraries.zkclient // It's necessary to pull in the most recent version of zkclient explicitly, otherwise Helix won't have it...

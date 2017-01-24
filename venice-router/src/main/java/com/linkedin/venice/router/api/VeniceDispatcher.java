@@ -2,13 +2,22 @@ package com.linkedin.venice.router.api;
 
 import com.linkedin.ddsstorage.base.concurrency.AsyncFuture;
 import com.linkedin.ddsstorage.base.concurrency.AsyncPromise;
-import com.linkedin.ddsstorage.netty3.misc.BasicHttpRequest;
-import com.linkedin.ddsstorage.router.api.PartitionDispatchHandler;
+import com.linkedin.ddsstorage.netty4.misc.BasicHttpRequest;
+import com.linkedin.ddsstorage.router.api.PartitionDispatchHandler4;
 import com.linkedin.ddsstorage.router.api.Scatter;
 import com.linkedin.ddsstorage.router.api.ScatterGatherRequest;
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Instance;
+import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.router.stats.RouterAggStats;
+import io.netty.buffer.ByteBuf;
+import io.netty.buffer.Unpooled;
+import io.netty.handler.codec.http.DefaultFullHttpResponse;
+import io.netty.handler.codec.http.FullHttpResponse;
+import io.netty.handler.codec.http.HttpHeaderNames;
+import io.netty.handler.codec.http.HttpResponseStatus;
+import io.netty.handler.codec.http.HttpVersion;
 import java.io.Closeable;
 import java.io.IOException;
 import java.io.InputStream;
@@ -16,14 +25,10 @@ import java.nio.charset.StandardCharsets;
 import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
-import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.Executor;
-import java.util.function.Function;
-
-import com.linkedin.venice.meta.Version;
-import com.linkedin.venice.router.stats.RouterAggStats;
+import javax.annotation.Nonnull;
 import org.apache.commons.io.IOUtils;
 import org.apache.http.HttpStatus;
 import org.apache.http.client.config.RequestConfig;
@@ -38,14 +43,8 @@ import org.apache.http.impl.nio.reactor.IOReactorConfig;
 import org.apache.http.nio.reactor.ConnectingIOReactor;
 import org.apache.http.nio.reactor.IOReactorException;
 import org.apache.log4j.Logger;
-import org.jboss.netty.buffer.ChannelBuffers;
-import org.jboss.netty.handler.codec.http.DefaultHttpResponse;
-import org.jboss.netty.handler.codec.http.HttpHeaders;
-import org.jboss.netty.handler.codec.http.HttpResponse;
-import org.jboss.netty.handler.codec.http.HttpResponseStatus;
-import org.jboss.netty.handler.codec.http.HttpVersion;
 
-public class VeniceDispatcher implements PartitionDispatchHandler<Instance, VeniceStoragePath, RouterKey>, Closeable{
+public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, VeniceStoragePath, RouterKey>, Closeable{
 
   private static final String REQUIRED_API_VERSION = "1";
   private static final String HTTP = "http://";
@@ -88,15 +87,15 @@ public class VeniceDispatcher implements PartitionDispatchHandler<Instance, Veni
 
   @Override
   public void dispatch(
-      Scatter<Instance, VeniceStoragePath, RouterKey> scatter,
-      ScatterGatherRequest<Instance, RouterKey> part,
-      VeniceStoragePath path,
-      BasicHttpRequest request,
-      AsyncPromise<Instance> hostSelected,
-      AsyncPromise<List<HttpResponse>> responseFuture,
-      AsyncPromise<HttpResponseStatus> retryFuture,
-      AsyncFuture<Void> timeoutFuture,
-      Executor contextExecutor) {
+      @Nonnull Scatter<Instance, VeniceStoragePath, RouterKey> scatter,
+      @Nonnull ScatterGatherRequest<Instance, RouterKey> part,
+      @Nonnull VeniceStoragePath path,
+      @Nonnull BasicHttpRequest request,
+      @Nonnull AsyncPromise<Instance> hostSelected,
+      @Nonnull AsyncPromise<List<FullHttpResponse>> responseFuture,
+      @Nonnull AsyncPromise<HttpResponseStatus> retryFuture,
+      @Nonnull AsyncFuture<Void> timeoutFuture,
+      @Nonnull Executor contextExecutor) {
 
     long startTime = System.currentTimeMillis();
 
@@ -153,20 +152,32 @@ public class VeniceDispatcher implements PartitionDispatchHandler<Instance, Veni
         }
         offsets.put(offsetKey, offset);
         int responseStatus = result.getStatusLine().getStatusCode();
-        HttpResponse response;
+        FullHttpResponse response;
+        byte[] contentToByte;
+
+        try (InputStream contentStream = result.getEntity().getContent()) {
+          contentToByte = IOUtils.toByteArray(contentStream);
+          stats.recordValueSize(storeName, contentToByte.length);
+        } catch (IOException e) {
+          completeWithError(HttpResponseStatus.INTERNAL_SERVER_ERROR, e);
+          stats.recordUnhealthyRequest(storeName);
+          return;
+        }
+
+        ByteBuf content = Unpooled.wrappedBuffer(contentToByte);
 
         //TODO: timeout should be configurable and be defined by the HttpAysncClient
         boolean timeout = System.currentTimeMillis() - startTime > 50 * 1000;
         switch (responseStatus){
           case HttpStatus.SC_OK:
-            response = new DefaultHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK);
+            response = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK, content);
             if (timeout)
               stats.recordUnhealthyRequest(storeName);
             else
               stats.recordHealthyRequest(storeName);
             break;
           case HttpStatus.SC_NOT_FOUND:
-            response = new DefaultHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.NOT_FOUND);
+            response = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.NOT_FOUND, content);
             if (timeout)
               stats.recordUnhealthyRequest(storeName);
             else
@@ -174,26 +185,18 @@ public class VeniceDispatcher implements PartitionDispatchHandler<Instance, Veni
             break;
           case HttpStatus.SC_INTERNAL_SERVER_ERROR:
           default: //Path Parser will throw BAD_REQUEST responses.
-            response = new DefaultHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.BAD_GATEWAY);
+            response = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.BAD_GATEWAY, content);
             stats.recordUnhealthyRequest(storeName);
         }
 
-        try (InputStream contentStream = result.getEntity().getContent()) {
-          byte[] contentToByte = IOUtils.toByteArray(contentStream);
-          response.setContent(ChannelBuffers.wrappedBuffer(contentToByte));
-            stats.recordValueSize(storeName, contentToByte.length);
-
-        } catch (IOException e) {
-          completeWithError(HttpResponseStatus.INTERNAL_SERVER_ERROR, e);
-          stats.recordUnhealthyRequest(storeName);
-          return;
-        }
-        HttpHeaders.setContentLength(response, response.getContent().readableBytes());
-        HttpHeaders.setHeader(response, HttpHeaders.Names.CONTENT_TYPE, HttpConstants.APPLICATION_OCTET);
-        HttpHeaders.setHeader(response, HttpConstants.VENICE_STORE_VERSION, path.getVersionNumber());
-        HttpHeaders.setHeader(response, HttpConstants.VENICE_PARTITION, numberFromPartitionName(partitionName));
         int valueSchemaId = Integer.parseInt(result.getFirstHeader(HttpConstants.VENICE_SCHEMA_ID).getValue());
-        HttpHeaders.setHeader(response, HttpConstants.VENICE_SCHEMA_ID, valueSchemaId);
+        response.headers()
+            .set(HttpHeaderNames.CONTENT_LENGTH, content.readableBytes())
+            .set(HttpHeaderNames.CONTENT_TYPE, HttpConstants.APPLICATION_OCTET)
+            .set(HttpConstants.VENICE_STORE_VERSION, path.getVersionNumber())
+            .set(HttpConstants.VENICE_PARTITION, numberFromPartitionName(partitionName))
+            .set(HttpConstants.VENICE_SCHEMA_ID, valueSchemaId);
+
         contextExecutor.execute(() -> {
           responseFuture.setSuccess(Collections.singletonList(response));
         });
@@ -213,14 +216,18 @@ public class VeniceDispatcher implements PartitionDispatchHandler<Instance, Veni
       }
 
       private void completeWithError(HttpResponseStatus status, Throwable e) {
-        HttpResponse response = new DefaultHttpResponse(HttpVersion.HTTP_1_1, status);
+
         String errMsg = e.getMessage();
         if (null == errMsg) {
           errMsg = "Unknown error, caught: " + e.getClass().getCanonicalName();
         }
-        response.setContent(ChannelBuffers.wrappedBuffer(errMsg.getBytes(StandardCharsets.UTF_8)));
-        HttpHeaders.setContentLength(response, response.getContent().readableBytes());
-        HttpHeaders.setHeader(response, HttpHeaders.Names.CONTENT_TYPE, HttpConstants.TEXT_PLAIN);
+        ByteBuf content =  Unpooled.wrappedBuffer(errMsg.getBytes(StandardCharsets.UTF_8));
+
+        FullHttpResponse response = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, status,content);
+        response.headers()
+            .set(HttpHeaderNames.CONTENT_TYPE, HttpConstants.TEXT_PLAIN)
+            .set(HttpHeaderNames.CONTENT_LENGTH, content.readableBytes());
+
         contextExecutor.execute(() -> {
           responseFuture.setSuccess(Collections.singletonList(response));
         });

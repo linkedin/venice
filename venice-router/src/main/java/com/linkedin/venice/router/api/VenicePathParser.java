@@ -58,7 +58,7 @@ public class VenicePathParser implements ResourcePathParser<VeniceStoragePath, R
   public VeniceStoragePath parseResourceUri(String uri) throws RouterException {
     VenicePathParserHelper pathHelper = new VenicePathParserHelper(uri);
     if (pathHelper.isInvalidStorageRequest()){
-      throw new RouterException(HttpResponseStatus.BAD_REQUEST,
+      throw new RouterException(HttpResponseStatus.class, HttpResponseStatus.BAD_REQUEST, HttpResponseStatus.BAD_REQUEST.getCode(),
           "Request URI must have a resource type, storename, and key.  Uri is: " + uri, true);
     }
     String resourceType = pathHelper.getResourceType();
@@ -77,7 +77,7 @@ public class VenicePathParser implements ResourcePathParser<VeniceStoragePath, R
       return new VeniceStoragePath(resourceName, Collections.singleton(routerKey), partition);
 
     } else {
-      throw new RouterException(HttpResponseStatus.BAD_REQUEST,
+      throw new RouterException(HttpResponseStatus.class, HttpResponseStatus.BAD_REQUEST, HttpResponseStatus.BAD_REQUEST.getCode(),
           "Requested resource type: " + resourceType + " is not a valid type", true);
     }
   }

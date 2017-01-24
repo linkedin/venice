@@ -8,16 +8,13 @@ import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.schema.SchemaEntry;
+import io.netty.channel.ChannelHandlerContext;
+import io.netty.handler.codec.http.FullHttpResponse;
+import io.netty.handler.codec.http.HttpRequest;
 import java.io.IOException;
 import java.util.Arrays;
 import java.util.Collections;
 import org.codehaus.jackson.map.ObjectMapper;
-import org.jboss.netty.channel.Channel;
-import org.jboss.netty.channel.ChannelHandlerContext;
-import org.jboss.netty.channel.DownstreamMessageEvent;
-import org.jboss.netty.channel.MessageEvent;
-import org.jboss.netty.handler.codec.http.DefaultHttpResponse;
-import org.jboss.netty.handler.codec.http.HttpRequest;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mockito;
 import org.testng.Assert;
@@ -28,6 +25,32 @@ import static org.jboss.netty.handler.codec.http.HttpHeaders.Names.*;
 public class TestMetaDataHandler {
   private static ObjectMapper mapper = new ObjectMapper();
 
+  public FullHttpResponse passRequestToMetadataHandler(String requestUri, RoutingDataRepository routing, ReadOnlySchemaRepository schemaRepo)
+      throws IOException {
+    ChannelHandlerContext ctx = Mockito.mock(ChannelHandlerContext.class);
+
+    HttpRequest httpRequest = Mockito.mock(HttpRequest.class);
+    Mockito.doReturn(requestUri).when(httpRequest).uri();
+
+    ReadOnlySchemaRepository schemaRepoToUse = null;
+    if (schemaRepo == null){
+      schemaRepoToUse = Mockito.mock(ReadOnlySchemaRepository.class);
+      Mockito.doReturn(null).when(schemaRepoToUse).getKeySchema(Mockito.anyString());
+      Mockito.doReturn(null).when(schemaRepoToUse).getValueSchema(Mockito.anyString(), Mockito.anyInt());
+      Mockito.doReturn(Collections.EMPTY_LIST).when(schemaRepoToUse).getValueSchemas(Mockito.anyString());
+    } else {
+      schemaRepoToUse = schemaRepo;
+    }
+
+    MetaDataHandler handler = new MetaDataHandler(routing, schemaRepoToUse, "test-cluster");
+    handler.channelRead0(ctx, httpRequest);
+    ArgumentCaptor<Object> captor = ArgumentCaptor.forClass(Object.class);
+    Mockito.verify(ctx).writeAndFlush(captor.capture());
+
+    FullHttpResponse response = (FullHttpResponse) captor.getValue();
+    return response;
+  }
+
   @Test
   public void testControllerLookup() throws IOException {
     // Mock RoutingDataRepository
@@ -37,26 +60,11 @@ public class TestMetaDataHandler {
     Instance masterControllerInstance = new Instance("1", masterControllerHost, masterControllerPort);
     Mockito.doReturn(masterControllerInstance).when(routingRepo).getMasterController();
 
-    // Mock MessageEvent
-    MessageEvent event = Mockito.mock(MessageEvent.class);
-    HttpRequest httpRequest = Mockito.mock(HttpRequest.class);
-    Mockito.doReturn("http://myRouterHost:4567/master_controller").when(httpRequest).getUri();
-    Mockito.doReturn(httpRequest).when(event).getMessage();
+    FullHttpResponse response = passRequestToMetadataHandler("http://myRouterHost:4567/master_controller", routingRepo, null);
 
-    // Mock ChannelHandlerContext
-    ChannelHandlerContext ctx = Mockito.mock(ChannelHandlerContext.class);
-    Channel ch = Mockito.mock(Channel.class);
-    Mockito.doReturn(ch).when(ctx).getChannel();
-
-    MetaDataHandler handler = new MetaDataHandler(routingRepo, null, "test-cluster");
-    handler.messageReceived(ctx, event);
-    ArgumentCaptor<DownstreamMessageEvent> captor = ArgumentCaptor.forClass(DownstreamMessageEvent.class);
-    Mockito.verify(ctx).sendDownstream(captor.capture());
-    DownstreamMessageEvent messageEvent = captor.getValue();
-    DefaultHttpResponse response = (DefaultHttpResponse)messageEvent.getMessage();
-    Assert.assertEquals(response.getStatus().getCode(), 200);
+    Assert.assertEquals(response.status().code(), 200);
     Assert.assertEquals(response.headers().get(CONTENT_TYPE), "application/json");
-    MasterControllerResponse controllerResponse = mapper.readValue(response.getContent().array(),
+    MasterControllerResponse controllerResponse = mapper.readValue(response.content().array(),
         MasterControllerResponse.class);
     Assert.assertEquals(controllerResponse.getUrl(), "http://" + masterControllerHost + ":" + masterControllerPort);
   }
@@ -72,26 +80,11 @@ public class TestMetaDataHandler {
     SchemaEntry keySchemaEntry = new SchemaEntry(keySchemaId, keySchemaStr);
     Mockito.doReturn(keySchemaEntry).when(schemaRepo).getKeySchema(storeName);
 
-    // Mock MessageEvent
-    MessageEvent event = Mockito.mock(MessageEvent.class);
-    HttpRequest httpRequest = Mockito.mock(HttpRequest.class);
-    Mockito.doReturn("http://myRouterHost:4567/key_schema/" + storeName).when(httpRequest).getUri();
-    Mockito.doReturn(httpRequest).when(event).getMessage();
+    FullHttpResponse response = passRequestToMetadataHandler("http://myRouterHost:4567/key_schema/" + storeName, null, schemaRepo);
 
-    // Mock ChannelHandlerContext
-    ChannelHandlerContext ctx = Mockito.mock(ChannelHandlerContext.class);
-    Channel ch = Mockito.mock(Channel.class);
-    Mockito.doReturn(ch).when(ctx).getChannel();
-
-    MetaDataHandler handler = new MetaDataHandler(null, schemaRepo, clusterName);
-    handler.messageReceived(ctx, event);
-    ArgumentCaptor<DownstreamMessageEvent> captor = ArgumentCaptor.forClass(DownstreamMessageEvent.class);
-    Mockito.verify(ctx).sendDownstream(captor.capture());
-    DownstreamMessageEvent messageEvent = captor.getValue();
-    DefaultHttpResponse response = (DefaultHttpResponse)messageEvent.getMessage();
-    Assert.assertEquals(response.getStatus().getCode(), 200);
+    Assert.assertEquals(response.status().code(), 200);
     Assert.assertEquals(response.headers().get(CONTENT_TYPE), "application/json");
-    SchemaResponse schemaResponse = mapper.readValue(response.getContent().array(), SchemaResponse.class);
+    SchemaResponse schemaResponse = mapper.readValue(response.content().array(), SchemaResponse.class);
     Assert.assertEquals(schemaResponse.getId(), keySchemaId);
     Assert.assertEquals(schemaResponse.getSchemaStr(), keySchemaStr);
     Assert.assertEquals(schemaResponse.getName(), storeName);
@@ -102,53 +95,16 @@ public class TestMetaDataHandler {
   @Test
   public void testKeySchemaLookupWithKeySchemaDoesntExist() throws IOException {
     String storeName = "test_store";
-    String clusterName = "test-cluster";
-    // Mock ReadOnlySchemaRepository
-    ReadOnlySchemaRepository schemaRepo = Mockito.mock(ReadOnlySchemaRepository.class);
-    Mockito.doReturn(null).when(schemaRepo).getKeySchema(storeName);
 
-    // Mock MessageEvent
-    MessageEvent event = Mockito.mock(MessageEvent.class);
-    HttpRequest httpRequest = Mockito.mock(HttpRequest.class);
-    Mockito.doReturn("http://myRouterHost:4567/key_schema/" + storeName).when(httpRequest).getUri();
-    Mockito.doReturn(httpRequest).when(event).getMessage();
+    FullHttpResponse response = passRequestToMetadataHandler("http://myRouterHost:4567/key_schema/" + storeName, null, null);
 
-    // Mock ChannelHandlerContext
-    ChannelHandlerContext ctx = Mockito.mock(ChannelHandlerContext.class);
-    Channel ch = Mockito.mock(Channel.class);
-    Mockito.doReturn(ch).when(ctx).getChannel();
-
-    MetaDataHandler handler = new MetaDataHandler(null, schemaRepo, clusterName);
-    handler.messageReceived(ctx, event);
-    ArgumentCaptor<DownstreamMessageEvent> captor = ArgumentCaptor.forClass(DownstreamMessageEvent.class);
-    Mockito.verify(ctx).sendDownstream(captor.capture());
-    DownstreamMessageEvent messageEvent = captor.getValue();
-    DefaultHttpResponse response = (DefaultHttpResponse)messageEvent.getMessage();
-    Assert.assertEquals(response.getStatus().getCode(), 404);
+    Assert.assertEquals(response.status().code(), 404);
     Assert.assertEquals(response.headers().get(CONTENT_TYPE), "text/plain");
   }
 
   @Test(expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = ".*storeName required.*")
   public void testInvalidKeySchemaPath() throws IOException {
-    String storeName = "test_store";
-    String clusterName = "test-cluster";
-    // Mock ReadOnlySchemaRepository
-    ReadOnlySchemaRepository schemaRepo = Mockito.mock(ReadOnlySchemaRepository.class);
-    Mockito.doReturn(null).when(schemaRepo).getKeySchema(storeName);
-
-    // Mock MessageEvent
-    MessageEvent event = Mockito.mock(MessageEvent.class);
-    HttpRequest httpRequest = Mockito.mock(HttpRequest.class);
-    Mockito.doReturn("http://myRouterHost:4567/key_schema/").when(httpRequest).getUri();
-    Mockito.doReturn(httpRequest).when(event).getMessage();
-
-    // Mock ChannelHandlerContext
-    ChannelHandlerContext ctx = Mockito.mock(ChannelHandlerContext.class);
-    Channel ch = Mockito.mock(Channel.class);
-    Mockito.doReturn(ch).when(ctx).getChannel();
-
-    MetaDataHandler handler = new MetaDataHandler(null, schemaRepo, clusterName);
-    handler.messageReceived(ctx, event);
+    passRequestToMetadataHandler("http://myRouterHost:4567/key_schema/", null, null);
   }
 
   @Test
@@ -162,26 +118,11 @@ public class TestMetaDataHandler {
     SchemaEntry valueSchemaEntry = new SchemaEntry(valueSchemaId, valueSchemaStr);
     Mockito.doReturn(valueSchemaEntry).when(schemaRepo).getValueSchema(storeName, valueSchemaId);
 
-    // Mock MessageEvent
-    MessageEvent event = Mockito.mock(MessageEvent.class);
-    HttpRequest httpRequest = Mockito.mock(HttpRequest.class);
-    Mockito.doReturn("http://myRouterHost:4567/value_schema/" + storeName + "/" + valueSchemaId).when(httpRequest).getUri();
-    Mockito.doReturn(httpRequest).when(event).getMessage();
+    FullHttpResponse response = passRequestToMetadataHandler("http://myRouterHost:4567/value_schema/" + storeName + "/" + valueSchemaId, null, schemaRepo);
 
-    // Mock ChannelHandlerContext
-    ChannelHandlerContext ctx = Mockito.mock(ChannelHandlerContext.class);
-    Channel ch = Mockito.mock(Channel.class);
-    Mockito.doReturn(ch).when(ctx).getChannel();
-
-    MetaDataHandler handler = new MetaDataHandler(null, schemaRepo, clusterName);
-    handler.messageReceived(ctx, event);
-    ArgumentCaptor<DownstreamMessageEvent> captor = ArgumentCaptor.forClass(DownstreamMessageEvent.class);
-    Mockito.verify(ctx).sendDownstream(captor.capture());
-    DownstreamMessageEvent messageEvent = captor.getValue();
-    DefaultHttpResponse response = (DefaultHttpResponse)messageEvent.getMessage();
-    Assert.assertEquals(response.getStatus().getCode(), 200);
+    Assert.assertEquals(response.status().code(), 200);
     Assert.assertEquals(response.headers().get(CONTENT_TYPE), "application/json");
-    SchemaResponse schemaResponse = mapper.readValue(response.getContent().array(), SchemaResponse.class);
+    SchemaResponse schemaResponse = mapper.readValue(response.content().array(), SchemaResponse.class);
     Assert.assertEquals(schemaResponse.getId(), 1);
     Assert.assertEquals(schemaResponse.getSchemaStr(), valueSchemaStr);
     Assert.assertEquals(schemaResponse.getName(), storeName);
@@ -192,30 +133,11 @@ public class TestMetaDataHandler {
   @Test
   public void testSingleValueSchemaLookupWithValueSchemaDoesntExist() throws IOException {
     String storeName = "test_store";
-    String clusterName = "test-cluster";
     int valueSchemaId = 1;
-    // Mock ReadOnlySchemaRepository
-    ReadOnlySchemaRepository schemaRepo = Mockito.mock(ReadOnlySchemaRepository.class);
-    Mockito.doReturn(null).when(schemaRepo).getValueSchema(storeName, valueSchemaId);
 
-    // Mock MessageEvent
-    MessageEvent event = Mockito.mock(MessageEvent.class);
-    HttpRequest httpRequest = Mockito.mock(HttpRequest.class);
-    Mockito.doReturn("http://myRouterHost:4567/value_schema/" + storeName + "/" + valueSchemaId).when(httpRequest).getUri();
-    Mockito.doReturn(httpRequest).when(event).getMessage();
+    FullHttpResponse response = passRequestToMetadataHandler("http://myRouterHost:4567/value_schema/" + storeName + "/" + valueSchemaId, null, null);
 
-    // Mock ChannelHandlerContext
-    ChannelHandlerContext ctx = Mockito.mock(ChannelHandlerContext.class);
-    Channel ch = Mockito.mock(Channel.class);
-    Mockito.doReturn(ch).when(ctx).getChannel();
-
-    MetaDataHandler handler = new MetaDataHandler(null, schemaRepo, clusterName);
-    handler.messageReceived(ctx, event);
-    ArgumentCaptor<DownstreamMessageEvent> captor = ArgumentCaptor.forClass(DownstreamMessageEvent.class);
-    Mockito.verify(ctx).sendDownstream(captor.capture());
-    DownstreamMessageEvent messageEvent = captor.getValue();
-    DefaultHttpResponse response = (DefaultHttpResponse)messageEvent.getMessage();
-    Assert.assertEquals(response.getStatus().getCode(), 404);
+    Assert.assertEquals(response.status().code(), 404);
     Assert.assertEquals(response.headers().get(CONTENT_TYPE), "text/plain");
   }
 
@@ -233,26 +155,11 @@ public class TestMetaDataHandler {
     SchemaEntry valueSchemaEntry2 = new SchemaEntry(valueSchemaId2, valueSchemaStr2);
     Mockito.doReturn(Arrays.asList(valueSchemaEntry1, valueSchemaEntry2)).when(schemaRepo).getValueSchemas(storeName);
 
-    // Mock MessageEvent
-    MessageEvent event = Mockito.mock(MessageEvent.class);
-    HttpRequest httpRequest = Mockito.mock(HttpRequest.class);
-    Mockito.doReturn("http://myRouterHost:4567/value_schema/" + storeName).when(httpRequest).getUri();
-    Mockito.doReturn(httpRequest).when(event).getMessage();
+    FullHttpResponse response = passRequestToMetadataHandler("http://myRouterHost:4567/value_schema/" + storeName, null, schemaRepo);
 
-    // Mock ChannelHandlerContext
-    ChannelHandlerContext ctx = Mockito.mock(ChannelHandlerContext.class);
-    Channel ch = Mockito.mock(Channel.class);
-    Mockito.doReturn(ch).when(ctx).getChannel();
-
-    MetaDataHandler handler = new MetaDataHandler(null, schemaRepo, clusterName);
-    handler.messageReceived(ctx, event);
-    ArgumentCaptor<DownstreamMessageEvent> captor = ArgumentCaptor.forClass(DownstreamMessageEvent.class);
-    Mockito.verify(ctx).sendDownstream(captor.capture());
-    DownstreamMessageEvent messageEvent = captor.getValue();
-    DefaultHttpResponse response = (DefaultHttpResponse)messageEvent.getMessage();
-    Assert.assertEquals(response.getStatus().getCode(), 200);
+    Assert.assertEquals(response.status().code(), 200);
     Assert.assertEquals(response.headers().get(CONTENT_TYPE), "application/json");
-    MultiSchemaResponse multiSchemaResponse = mapper.readValue(response.getContent().array(), MultiSchemaResponse.class);
+    MultiSchemaResponse multiSchemaResponse = mapper.readValue(response.content().array(), MultiSchemaResponse.class);
 
     Assert.assertEquals(multiSchemaResponse.getName(), storeName);
     Assert.assertEquals(multiSchemaResponse.getCluster(), clusterName);
@@ -269,30 +176,12 @@ public class TestMetaDataHandler {
   public void testAllValueSchemaLookupWithNoValueSchema() throws IOException {
     String storeName = "test_store";
     String clusterName = "test-cluster";
-    // Mock ReadOnlySchemaRepository
-    ReadOnlySchemaRepository schemaRepo = Mockito.mock(ReadOnlySchemaRepository.class);
-    Mockito.doReturn(Collections.EMPTY_LIST).when(schemaRepo).getValueSchemas(storeName);
 
-    // Mock MessageEvent
-    MessageEvent event = Mockito.mock(MessageEvent.class);
-    HttpRequest httpRequest = Mockito.mock(HttpRequest.class);
-    Mockito.doReturn("http://myRouterHost:4567/value_schema/" + storeName).when(httpRequest).getUri();
-    Mockito.doReturn(httpRequest).when(event).getMessage();
+    FullHttpResponse response = passRequestToMetadataHandler("http://myRouterHost:4567/value_schema/" + storeName, null, null);
 
-    // Mock ChannelHandlerContext
-    ChannelHandlerContext ctx = Mockito.mock(ChannelHandlerContext.class);
-    Channel ch = Mockito.mock(Channel.class);
-    Mockito.doReturn(ch).when(ctx).getChannel();
-
-    MetaDataHandler handler = new MetaDataHandler(null, schemaRepo, clusterName);
-    handler.messageReceived(ctx, event);
-    ArgumentCaptor<DownstreamMessageEvent> captor = ArgumentCaptor.forClass(DownstreamMessageEvent.class);
-    Mockito.verify(ctx).sendDownstream(captor.capture());
-    DownstreamMessageEvent messageEvent = captor.getValue();
-    DefaultHttpResponse response = (DefaultHttpResponse)messageEvent.getMessage();
-    Assert.assertEquals(response.getStatus().getCode(), 200);
+    Assert.assertEquals(response.status().code(), 200);
     Assert.assertEquals(response.headers().get(CONTENT_TYPE), "application/json");
-    MultiSchemaResponse multiSchemaResponse = mapper.readValue(response.getContent().array(), MultiSchemaResponse.class);
+    MultiSchemaResponse multiSchemaResponse = mapper.readValue(response.content().array(), MultiSchemaResponse.class);
 
     Assert.assertEquals(multiSchemaResponse.getName(), storeName);
     Assert.assertEquals(multiSchemaResponse.getCluster(), clusterName);
@@ -303,25 +192,8 @@ public class TestMetaDataHandler {
 
   @Test(expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = ".*storeName required.*")
   public void testInvalidValueSchemaPath() throws IOException {
-    String storeName = "test_store";
-    String clusterName = "test-cluster";
-    // Mock ReadOnlySchemaRepository
-    ReadOnlySchemaRepository schemaRepo = Mockito.mock(ReadOnlySchemaRepository.class);
-    Mockito.doReturn(null).when(schemaRepo).getKeySchema(storeName);
 
-    // Mock MessageEvent
-    MessageEvent event = Mockito.mock(MessageEvent.class);
-    HttpRequest httpRequest = Mockito.mock(HttpRequest.class);
-    Mockito.doReturn("http://myRouterHost:4567/value_schema/").when(httpRequest).getUri();
-    Mockito.doReturn(httpRequest).when(event).getMessage();
-
-    // Mock ChannelHandlerContext
-    ChannelHandlerContext ctx = Mockito.mock(ChannelHandlerContext.class);
-    Channel ch = Mockito.mock(Channel.class);
-    Mockito.doReturn(ch).when(ctx).getChannel();
-
-    MetaDataHandler handler = new MetaDataHandler(null, schemaRepo, clusterName);
-    handler.messageReceived(ctx, event);
+    passRequestToMetadataHandler("http://myRouterHost:4567/value_schema/", null, null);
   }
 
   @Test
@@ -329,20 +201,16 @@ public class TestMetaDataHandler {
     String storeName = "test_store";
     String clusterName = "test-cluster";
 
-    // Mock MessageEvent
-    MessageEvent event = Mockito.mock(MessageEvent.class);
+    // Mock Request
     HttpRequest httpRequest = Mockito.mock(HttpRequest.class);
-    Mockito.doReturn("http://myRouterHost:4567/storage/" + storeName + "/abc").when(httpRequest).getUri();
-    Mockito.doReturn(httpRequest).when(event).getMessage();
+    Mockito.doReturn("http://myRouterHost:4567/storage/" + storeName + "/abc").when(httpRequest).uri();
 
     // Mock ChannelHandlerContext
     ChannelHandlerContext ctx = Mockito.mock(ChannelHandlerContext.class);
-    Channel ch = Mockito.mock(Channel.class);
-    Mockito.doReturn(ch).when(ctx).getChannel();
 
     MetaDataHandler handler = new MetaDataHandler(null, null, clusterName);
-    handler.messageReceived(ctx, event);
+    handler.channelRead0(ctx, httpRequest);
     // '/storage' request should be handled by upstream, instead of current MetaDataHandler
-    Mockito.verify(ctx, Mockito.times(1)).sendUpstream(Mockito.any());
+    Mockito.verify(ctx, Mockito.times(1)).fireChannelRead(Mockito.any());
   }
 }

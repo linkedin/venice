@@ -26,6 +26,7 @@ jar {
 dependencies {
     compile libraries.routerApi
     compile libraries.routerImpl
+    compile libraries.routerNetty4
     compile libraries.asyncHttpClient
     compile project(':venice-common')
     compile (libraries.d2){
