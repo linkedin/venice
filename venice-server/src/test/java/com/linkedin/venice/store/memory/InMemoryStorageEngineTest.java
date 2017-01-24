@@ -1,12 +1,16 @@
-package com.linkedin.venice.storage;
+package com.linkedin.venice.store.memory;
 
-import com.linkedin.venice.config.VeniceServerConfig;
 import com.linkedin.venice.config.VeniceStoreConfig;
 import com.linkedin.venice.meta.PersistenceType;
+import com.linkedin.venice.server.VeniceConfigLoader;
+import com.linkedin.venice.store.AbstractStorageEngineTest;
+import com.linkedin.venice.storage.StorageService;
 import com.linkedin.venice.utils.VeniceProperties;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
+
+import java.util.Properties;
 
 
 public class InMemoryStorageEngineTest extends AbstractStorageEngineTest {
@@ -34,9 +38,9 @@ public class InMemoryStorageEngineTest extends AbstractStorageEngineTest {
   @Override
   public void createStorageEngineForTest() {
     VeniceProperties serverProperties = AbstractStorageEngineTest.getServerProperties(PersistenceType.IN_MEMORY);
-    VeniceServerConfig serverConfig = new VeniceServerConfig(serverProperties);
+    VeniceConfigLoader configLoader = AbstractStorageEngineTest.getVeniceConfigLoader(serverProperties);
 
-    service = new StorageService(serverConfig);
+    service = new StorageService(configLoader);
     storeConfig = new VeniceStoreConfig(STORE_NAME, serverProperties);
 
     testStoreEngine = service.openStoreForNewPartition(storeConfig , PARTITION_ID);

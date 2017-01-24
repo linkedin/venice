@@ -1,15 +1,18 @@
 package com.linkedin.venice.storage;
 
-import com.linkedin.venice.config.VeniceServerConfig;
 import com.linkedin.venice.config.VeniceStoreConfig;
 import com.linkedin.venice.meta.PersistenceType;
+import com.linkedin.venice.server.VeniceConfigLoader;
 import com.linkedin.venice.store.AbstractStorageEngine;
+import com.linkedin.venice.store.AbstractStorageEngineTest;
 import com.linkedin.venice.store.bdb.BdbStorageEngineFactory;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.io.File;
 import java.util.AbstractMap;
+import java.util.HashMap;
 import java.util.Map;
+import java.util.Properties;
 import java.util.Queue;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import org.apache.commons.io.FileUtils;
@@ -29,9 +32,10 @@ public class StorageServiceTest {
 
     String storeName = "bdb-add-and-delete";
     VeniceProperties serverProps = AbstractStorageEngineTest.getServerProperties(PersistenceType.BDB);
-    VeniceStoreConfig storeConfig = new VeniceStoreConfig(storeName, serverProps);
+    VeniceConfigLoader configLoader = AbstractStorageEngineTest.getVeniceConfigLoader(serverProps);
+    VeniceStoreConfig storeConfig = configLoader.getStoreConfig(storeName);
 
-    StorageService service = new StorageService(new VeniceServerConfig(serverProps));
+    StorageService service = new StorageService(configLoader);
 
     BdbStorageEngineFactory factory = (BdbStorageEngineFactory) service.getInternalStorageEngineFactory(storeConfig);
     File directoryPath = factory.getStorePath(storeName);
@@ -130,4 +134,42 @@ public class StorageServiceTest {
     }
   }
 
+  @Test
+  public void testRestoreAllStores() throws Exception {
+    Map<String, Integer> storePartitionMap = new HashMap<>();
+    storePartitionMap.put("store1", 2);
+    storePartitionMap.put("store2", 3);
+    storePartitionMap.put("store3", 4);
+    // Create several stores first
+    VeniceProperties serverProperties = AbstractStorageEngineTest.getServerProperties(PersistenceType.BDB, 1000);
+    VeniceConfigLoader configLoader = AbstractStorageEngineTest.getVeniceConfigLoader(serverProperties);
+    StorageService storageService = new StorageService(configLoader);
+
+    for (Map.Entry<String, Integer> entry : storePartitionMap.entrySet()) {
+      String storeName = entry.getKey();
+      VeniceStoreConfig storeConfig = configLoader.getStoreConfig(storeName);
+      int partitionNum = entry.getValue();
+      for (int i = 0; i < partitionNum; ++i) {
+        storageService.openStoreForNewPartition(storeConfig, i);
+      }
+    }
+    // Shutdown storage service
+    storageService.stop();
+
+    int bigPartitionId = 100;
+    int existingPartitionId = 0;
+    storageService = new StorageService(configLoader);
+    for (Map.Entry<String, Integer> entry : storePartitionMap.entrySet()) {
+      String storeName = entry.getKey();
+      int partitionNum = entry.getValue();
+      VeniceStoreConfig storeConfig = configLoader.getStoreConfig(storeName);
+      // This operation won't add any new partition
+      storageService.openStoreForNewPartition(storeConfig, existingPartitionId);
+      // this operation will add a new partition
+      AbstractStorageEngine storageEngine = storageService.openStoreForNewPartition(storeConfig, bigPartitionId);
+      Assert.assertEquals(storageEngine.getPartitionIds().size(), partitionNum + 1);
+    }
+    // Shutdown storage service
+    storageService.stop();
+  }
 }

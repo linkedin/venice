@@ -18,9 +18,11 @@ import java.io.File;
 import java.io.IOException;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 
 
 /**
@@ -172,6 +174,31 @@ public class BdbStorageEngineFactory implements StorageEngineFactory {
   @Override
   public String getType() {
     return TYPE_NAME;
+  }
+
+  @Override
+  public Set<String> getPersistedStoreNames() {
+    Set<String> storeNames = new HashSet<>();
+    synchronized (lock) {
+      if (useOneEnvPerStore) {
+        // Scan bdb folder to get all the store names
+        File bdbDir = new File(bdbMasterDir);
+        if (bdbDir.exists() && bdbDir.isDirectory()) {
+          String[] storeDirs = bdbDir.list();
+          for (String storeName : storeDirs) {
+            storeNames.add(storeName);
+          }
+        } else {
+          logger.info("BDB master dir: " + bdbMasterDir + " doesn't exist, so nothing to restore");
+        }
+      } else {
+        // Retrieve all the store names from shared environment
+        Environment sharedEnv = getSharedEnvironment();
+        List<String> dbPartitions = sharedEnv.getDatabaseNames();
+        storeNames.addAll(dbPartitions.stream().map(BdbStoragePartition::getStoreNameFromPartitionName).collect(Collectors.toList()));
+      }
+    }
+    return storeNames;
   }
 
   /**
@@ -351,7 +378,7 @@ public class BdbStorageEngineFactory implements StorageEngineFactory {
         }
 
         Environment environment = new Environment(bdbDir, environmentConfig);
-        logger.info("Creating environment for " + storeName + ": ");
+        logger.info("Creating/Opening environment for " + storeName + ": ");
         logEnvironmentConfig(environment.getConfig());
         environments.put(storeName, environment);
 
@@ -361,17 +388,25 @@ public class BdbStorageEngineFactory implements StorageEngineFactory {
 
         return environment;
       } else {
-        if (!environments.isEmpty())
-          return environments.get(SHARED_ENV_KEY);
-
-        File bdbDir = createBdbDirIfNecessary(storeName);
-
-        Environment environment = new Environment(bdbDir, environmentConfig);
-        logger.info("Creating shared BDB environment: ");
-        logEnvironmentConfig(environment.getConfig());
-        environments.put(SHARED_ENV_KEY, environment);
-        return environment;
+        return getSharedEnvironment();
       }
+    }
+  }
+
+  private Environment getSharedEnvironment() {
+    synchronized (lock) {
+      if (!environments.isEmpty())
+        return environments.get(SHARED_ENV_KEY);
+
+      // storeName is not necessary when retrieving shared Environment
+      final String storeName = "DUMMY_STORE";
+      File bdbDir = createBdbDirIfNecessary(storeName);
+
+      Environment environment = new Environment(bdbDir, environmentConfig);
+      logger.info("Creating shared BDB environment: ");
+      logEnvironmentConfig(environment.getConfig());
+      environments.put(SHARED_ENV_KEY, environment);
+      return environment;
     }
   }
 

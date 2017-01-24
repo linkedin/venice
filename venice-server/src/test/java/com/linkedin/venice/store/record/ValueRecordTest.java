@@ -1,4 +1,4 @@
-package com.linkedin.venice.storage.record;
+package com.linkedin.venice.store.record;
 
 import com.linkedin.venice.store.record.ValueRecord;
 import com.linkedin.venice.utils.ByteUtils;

@@ -1,4 +1,4 @@
-package com.linkedin.venice.storage;
+package com.linkedin.venice.store;
 
 import com.linkedin.venice.utils.RandomGenUtils;
 import com.linkedin.venice.exceptions.PersistenceFailureException;

@@ -7,6 +7,9 @@ import com.linkedin.venice.server.PartitionAssignmentRepository;
 import com.linkedin.venice.store.AbstractStorageEngine;
 import com.linkedin.venice.store.StorageEngineFactory;
 
+import java.util.HashSet;
+import java.util.Set;
+
 
 public class InMemoryStorageEngineFactory implements StorageEngineFactory {
   private static final String TYPE_NAME = "memory";
@@ -32,6 +35,12 @@ public class InMemoryStorageEngineFactory implements StorageEngineFactory {
   @Override
   public String getType() {
     return TYPE_NAME;
+  }
+
+  @Override
+  public Set<String> getPersistedStoreNames() {
+    // Nothing to restore here
+    return new HashSet<>();
   }
 
   @Override
