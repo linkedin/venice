@@ -1,8 +1,8 @@
 package com.linkedin.venice.store.bdb;
 
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.exceptions.PersistenceFailureException;
 import com.linkedin.venice.store.AbstractStoragePartition;
+import com.linkedin.venice.store.exception.InvalidDatabaseNameException;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.partition.iterators.AbstractCloseablePartitionEntriesIterator;
@@ -13,6 +13,8 @@ import org.apache.log4j.Logger;
 import java.io.IOException;
 import java.util.AbstractMap;
 import java.util.concurrent.atomic.AtomicBoolean;
+
+import static com.linkedin.venice.meta.PersistenceType.*;
 
 /**
  * A BDB storage partition, essentially a BDB database
@@ -29,6 +31,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public class BdbStoragePartition extends AbstractStoragePartition {
 
   private static final Logger logger = Logger.getLogger(BdbStoragePartition.class);
+  private static final String DATABASE_NAME_SEPARATOR = "-";
 
   private final String storeName;
   private final Environment environment;
@@ -54,6 +57,8 @@ public class BdbStoragePartition extends AbstractStoragePartition {
     this.databaseConfig.setTransactional(true);
 
     this.database = this.environment.openDatabase(null, getBdbDatabaseName(), databaseConfig);
+    // Sync here to make sure the new database will be persisted.
+    this.environment.sync();
 
     BdbRuntimeConfig bdbRuntimeConfig = new BdbRuntimeConfig(bdbServerConfig);
     this.readLockMode = bdbRuntimeConfig.getLockMode();
@@ -311,7 +316,31 @@ public class BdbStoragePartition extends AbstractStoragePartition {
   }
 
   private String getBdbDatabaseName() {
-    return storeName + "-" + partitionId;
+    return storeName + DATABASE_NAME_SEPARATOR + partitionId;
+  }
+
+
+  private static int getSeparatorIndex(String partitionName) {
+    int index = partitionName.lastIndexOf(DATABASE_NAME_SEPARATOR);
+    if (-1 == index) {
+      throw new InvalidDatabaseNameException(BDB, partitionName);
+    }
+    if (0 == index || partitionName.length() - 1 == index) {
+      throw new InvalidDatabaseNameException(BDB, partitionName);
+    }
+    return index;
+  }
+
+  public static String getStoreNameFromPartitionName(String partitionName) {
+    int index = getSeparatorIndex(partitionName);
+    return partitionName.substring(0, index);
+  }
+
+  public static int getPartitionIdFromPartitionName(String partitionName) {
+    int index = getSeparatorIndex(partitionName);
+    String partitionId = partitionName.substring(index + 1);
+
+    return Integer.parseInt(partitionId);
   }
 
   /**

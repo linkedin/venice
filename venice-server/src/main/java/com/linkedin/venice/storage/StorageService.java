@@ -6,18 +6,20 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.server.PartitionAssignmentRepository;
 import com.linkedin.venice.server.StoreRepository;
+import com.linkedin.venice.server.VeniceConfigLoader;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.store.AbstractStorageEngine;
 import com.linkedin.venice.store.StorageEngineFactory;
 import com.linkedin.venice.store.bdb.BdbStorageEngineFactory;
 import com.linkedin.venice.store.memory.InMemoryStorageEngineFactory;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.Set;
 import org.apache.log4j.Logger;
 
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
+
+import static com.linkedin.venice.meta.PersistenceType.*;
 
 
 /**
@@ -27,21 +29,58 @@ import java.util.concurrent.ConcurrentMap;
  * Use StoreRepository, if read only access is desired for the Storage Engines.
  */
 public class StorageService extends AbstractVeniceService {
-
   private static final Logger logger = Logger.getLogger(StorageService.class);
 
   private final StoreRepository storeRepository;
   private final VeniceServerConfig serverConfig;
 
-
-  private final ConcurrentMap<PersistenceType, StorageEngineFactory> persistenceTypeToStorageEngineFactoryMap;
+  private final Map<PersistenceType, StorageEngineFactory> persistenceTypeToStorageEngineFactoryMap;
   private final PartitionAssignmentRepository partitionAssignmentRepository;
 
-  public StorageService(VeniceServerConfig config) {
-    this.serverConfig = config;
+  public StorageService(VeniceConfigLoader configLoader) {
+    this.serverConfig = configLoader.getVeniceServerConfig();
     this.storeRepository = new StoreRepository();
-    this.persistenceTypeToStorageEngineFactoryMap = new ConcurrentHashMap<>();
+    this.persistenceTypeToStorageEngineFactoryMap = new HashMap<>();
     this.partitionAssignmentRepository = new PartitionAssignmentRepository();
+    initInternalStorageEngineFactories();
+    // Restore all the stores persisted previously
+    restoreAllStores(configLoader);
+  }
+
+  /**
+   * Initialize all the internal storage engine factories.
+   * Please add it here if you want to add more.
+   */
+  private void initInternalStorageEngineFactories() {
+    persistenceTypeToStorageEngineFactoryMap.put(BDB, new BdbStorageEngineFactory(serverConfig));
+    persistenceTypeToStorageEngineFactoryMap.put(IN_MEMORY, new InMemoryStorageEngineFactory(serverConfig));
+  }
+
+  private void restoreAllStores(VeniceConfigLoader configLoader) {
+    logger.info("Start restoring all the stores persisted previously");
+    for (Map.Entry<PersistenceType, StorageEngineFactory> entry : persistenceTypeToStorageEngineFactoryMap.entrySet()) {
+      PersistenceType pType = entry.getKey();
+      StorageEngineFactory factory = entry.getValue();
+      logger.info("Start restoring all the stores with type: " + pType);
+      Set<String> storeNames = factory.getPersistedStoreNames();
+      for (String storeName : storeNames) {
+        logger.info("Start restoring store: " + storeName + " with type: " + pType);
+        /**
+         * The logic is a little weird, since right now Venice doesn't have store-level persistence config.
+         * TODO: In case we want to specify different persistence type per store, this part might need to be changed.
+          */
+        VeniceStoreConfig storeConfig = configLoader.getStoreConfig(storeName);
+        AbstractStorageEngine storageEngine = openStore(storeConfig);
+        Set<Integer> partitionIds = storageEngine.getPartitionIds();
+        for (Integer partitionId : partitionIds) {
+          partitionAssignmentRepository.addPartition(storeName, partitionId);
+        }
+        logger.info("Loaded the following partitions: " + Arrays.toString(partitionIds.toArray()) + ", for store: " + storeName);
+        logger.info("Done restoring store: " + storeName + " with type: " + pType);
+      }
+      logger.info("Done restoring all the stores with type: " + pType);
+    }
+    logger.info("Done restoring all the stores persisted previously");
   }
 
   // TODO Later change to Guice instead of Java reflections
@@ -51,7 +90,7 @@ public class StorageService extends AbstractVeniceService {
     partitionAssignmentRepository.addPartition(storeConfig.getStoreName(), partitionId);
 
     AbstractStorageEngine engine = openStore(storeConfig);
-    if(!engine.containsPartition(partitionId)) {
+    if (!engine.containsPartition(partitionId)) {
       engine.addStoragePartition(partitionId);
     }
     return engine;
@@ -63,28 +102,16 @@ public class StorageService extends AbstractVeniceService {
    * @param storeConfig StoreConfig of the store.
    * @return Factory corresponding to the store.
    */
-  public synchronized StorageEngineFactory getInternalStorageEngineFactory(VeniceStoreConfig storeConfig) {
-
+  public StorageEngineFactory getInternalStorageEngineFactory(VeniceStoreConfig storeConfig) {
     PersistenceType persistenceType = storeConfig.getPersistenceType();
     // Instantiate the factory for this persistence type if not already present
     if (persistenceTypeToStorageEngineFactoryMap.containsKey(persistenceType)) {
       return persistenceTypeToStorageEngineFactoryMap.get(persistenceType);
     }
 
-    StorageEngineFactory factory;
-    switch(persistenceType) {
-      case BDB:
-        factory = new BdbStorageEngineFactory(serverConfig);
-        break;
-      case IN_MEMORY:
-        factory = new InMemoryStorageEngineFactory(serverConfig);
-        break;
-      default:
-        throw new VeniceException("Unrecognized persistence type " + persistenceType);
-    }
-    persistenceTypeToStorageEngineFactoryMap.put(persistenceType, factory);
-    return factory;
+    throw new VeniceException("Unrecognized persistence type " + persistenceType);
   }
+
 
   /**
    * Creates a StorageEngineFactory for the persistence type if not already present.
@@ -96,11 +123,11 @@ public class StorageService extends AbstractVeniceService {
   private synchronized AbstractStorageEngine openStore(VeniceStoreConfig storeConfig) {
     String storeName = storeConfig.getStoreName();
     AbstractStorageEngine engine = storeRepository.getLocalStorageEngine(storeName);
-    if(engine != null) {
+    if (engine != null) {
       return engine;
     }
 
-    logger.info("Creating new Storage Engine " + storeName);
+    logger.info("Creating/Opening Storage Engine " + storeName);
     StorageEngineFactory factory = getInternalStorageEngineFactory(storeConfig);
     engine = factory.getStore(storeConfig);
     storeRepository.addLocalStorageEngine(engine);
@@ -115,7 +142,7 @@ public class StorageService extends AbstractVeniceService {
 
     partitionAssignmentRepository.dropPartition(storeName , partitionId);
     AbstractStorageEngine storageEngine = storeRepository.getLocalStorageEngine(storeName);
-    if(storageEngine == null) {
+    if (storageEngine == null) {
       logger.info(storeName + " Store could not be located, ignoring the remove partition message.");
       return;
     }
@@ -124,7 +151,7 @@ public class StorageService extends AbstractVeniceService {
     Set<Integer> assignedPartitions = storageEngine.getPartitionIds();
 
     logger.info("Dropped Partition " + partitionId + " Store " + storeName + " Remaining " + Arrays.toString(assignedPartitions.toArray()));
-    if(assignedPartitions.isEmpty()) {
+    if (assignedPartitions.isEmpty()) {
       logger.info("All partitions for Store " + storeName + " are removed... cleaning up state");
 
       // Drop the directory completely.
@@ -155,7 +182,7 @@ public class StorageService extends AbstractVeniceService {
     VeniceException lastException = null;
     try {
       this.storeRepository.close();
-    } catch( VeniceException e) {
+    } catch (VeniceException e) {
       lastException = e;
     }
 
@@ -166,7 +193,7 @@ public class StorageService extends AbstractVeniceService {
       try {
         storageEngineFactory.getValue().close();
       } catch (VeniceException e) {
-        logger.error("Error closing " + factoryType , e);
+        logger.error("Error closing " + factoryType, e);
         lastException = e;
       }
     }

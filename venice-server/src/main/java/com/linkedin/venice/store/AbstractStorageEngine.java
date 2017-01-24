@@ -39,12 +39,25 @@ public abstract class AbstractStorageEngine implements Store {
   protected ConcurrentMap<Integer, AbstractStoragePartition> partitionIdToPartitionMap;
 
   public AbstractStorageEngine(String storeName) {
-
     this.storeName = storeName;
     this.isOpen = new AtomicBoolean(true);
     this.partitionIdToPartitionMap = new ConcurrentHashMap<>();
   }
 
+  /**
+   * Load the existing storage partitions.
+   * The implementation should decide when to call this function properly to restore partitions.
+   */
+  protected synchronized void restoreStoragePartitions() {
+    Set<Integer> partitionIds = getPersistedPartitionIds();
+    partitionIds.forEach(this::addStoragePartition);
+  }
+
+  /**
+   * List the existing partition ids for current storage engine persisted previously
+   * @return
+   */
+  protected abstract Set<Integer> getPersistedPartitionIds();
 
   public abstract AbstractStoragePartition createStoragePartition(int partitionId);
 

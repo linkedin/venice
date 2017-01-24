@@ -3,6 +3,8 @@ package com.linkedin.venice.store;
 import com.linkedin.venice.config.VeniceStoreConfig;
 import com.linkedin.venice.exceptions.StorageInitializationException;
 
+import java.util.Set;
+
 
 /**
  * An abstraction that represents the shared resources of a persistence engine.
@@ -18,32 +20,39 @@ public interface StorageEngineFactory {
    * @param storeDef  store definition
    * @return The storage engine
    */
-  public AbstractStorageEngine getStore(VeniceStoreConfig storeDef)
+  AbstractStorageEngine getStore(VeniceStoreConfig storeDef)
       throws StorageInitializationException;
 
   /**
    *
    * @return the type of stores returned by this configuration
    */
-  public String getType();
+  String getType();
+
+  /**
+   * Retrieve all the stores persisted previously
+   *
+   * @return All the store names
+   */
+  Set<String> getPersistedStoreNames();
 
   /**
    * Update the storage configuration at runtime
    *
    * @param storeDef new store definition
    */
-  public void update(VeniceStoreConfig storeDef);
+  void update(VeniceStoreConfig storeDef);
 
   /**
    * Close the storage configuration
    */
-  public void close();
+  void close();
 
   /**
    * Remove the storage engine from the underlying storage configuration
    *
    * @param engine Specifies the storage engine to be removed
    */
-  public void removeStorageEngine(AbstractStorageEngine engine);
+  void removeStorageEngine(AbstractStorageEngine engine);
 }
 

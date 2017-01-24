@@ -97,10 +97,9 @@ public class VeniceServer {
     List<AbstractVeniceService> services = new ArrayList<AbstractVeniceService>();
 
     VeniceClusterConfig clusterConfig = veniceConfigLoader.getVeniceClusterConfig();
-    VeniceServerConfig serverConfig = veniceConfigLoader.getVeniceServerConfig();
 
     // create and add StorageService. storeRepository will be populated by StorageService,
-    storageService = new StorageService(serverConfig);
+    storageService = new StorageService(veniceConfigLoader);
     services.add(storageService);
 
     // Create and add Offset Service.

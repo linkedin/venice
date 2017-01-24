@@ -2,9 +2,6 @@ package com.linkedin.venice.store.bdb;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.config.VeniceStoreConfig;
-import com.linkedin.venice.exceptions.PersistenceFailureException;
-import com.linkedin.venice.exceptions.StorageInitializationException;
-import com.linkedin.venice.server.PartitionAssignmentRepository;
 import com.linkedin.venice.store.AbstractStorageEngine;
 import com.linkedin.venice.store.AbstractStoragePartition;
 import com.linkedin.venice.store.iterators.CloseableStoreEntriesIterator;
@@ -13,8 +10,9 @@ import com.sleepycat.je.Environment;
 import com.sleepycat.je.EnvironmentConfig;
 import com.sleepycat.je.EnvironmentMutableConfig;
 
-import java.util.Collection;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 
@@ -32,7 +30,7 @@ public class BdbStorageEngine extends AbstractStorageEngine {
   private volatile int numOutstandingBatchWriteJobs = 0;
 
   public BdbStorageEngine(VeniceStoreConfig storeDef,
-                          Environment environment ) throws VeniceException {
+                          Environment environment) throws VeniceException {
     super(storeDef.getStoreName());
 
     this.environment = environment;
@@ -40,6 +38,21 @@ public class BdbStorageEngine extends AbstractStorageEngine {
     this.bdbServerConfig = storeDef.getBdbServerConfig();
     this.bdbRuntimeConfig = new BdbRuntimeConfig(bdbServerConfig);
     this.checkpointerOffForBatchWrites = bdbRuntimeConfig.isCheckpointerOffForBatchWrites();
+    // Load the existing partitions
+    restoreStoragePartitions();
+  }
+
+  @Override
+  protected Set<Integer> getPersistedPartitionIds() {
+    List<String> partitionNames = environment.getDatabaseNames();
+    Set<Integer> partitionIds = new HashSet<>();
+    for (String partitionName : partitionNames) {
+      // Make sure to extract partition id from the partitions belonging to current store
+      if (BdbStoragePartition.getStoreNameFromPartitionName(partitionName).equals(getName())) {
+        partitionIds.add(BdbStoragePartition.getPartitionIdFromPartitionName(partitionName));
+      }
+    }
+    return partitionIds;
   }
 
   @Override

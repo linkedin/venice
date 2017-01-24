@@ -4,7 +4,7 @@ import com.linkedin.venice.config.VeniceClusterConfig;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.offsets.BdbOffsetManager;
 import com.linkedin.venice.offsets.OffsetRecord;
-import com.linkedin.venice.storage.AbstractStorageEngineTest;
+import com.linkedin.venice.store.AbstractStorageEngineTest;
 import com.linkedin.venice.utils.RandomGenUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.VeniceProperties;

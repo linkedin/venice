@@ -1,14 +1,16 @@
-package com.linkedin.venice.storage;
+package com.linkedin.venice.store;
 
-import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.PersistenceType;
+import com.linkedin.venice.server.VeniceConfigLoader;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.RandomGenUtils;
 import com.linkedin.venice.exceptions.PersistenceFailureException;
 import com.linkedin.venice.exceptions.StorageInitializationException;
-import com.linkedin.venice.store.AbstractStorageEngine;
+import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.VeniceProperties;
 import org.testng.Assert;
+
+import java.util.Properties;
 
 import static com.linkedin.venice.ConfigKeys.*;
 
@@ -37,8 +39,13 @@ public abstract class AbstractStorageEngineTest extends AbstractStoreTest {
         .put(KAFKA_ZK_ADDRESS, "localhost:2181")
         .put(LISTENER_PORT , 7072)
         .put(ADMIN_PORT , 7073)
-        .put(DATA_BASE_PATH, "/tmp/data")
+        .put(DATA_BASE_PATH, "/tmp/data/" + TestUtils.getUniqueString("unittest"))
         .build();
+  }
+
+  public static VeniceConfigLoader getVeniceConfigLoader(VeniceProperties serverProperties) {
+    VeniceProperties emptyProperties = new VeniceProperties(new Properties());
+    return new VeniceConfigLoader(emptyProperties, serverProperties, emptyProperties);
   }
 
   // creates instance for testStoreEngine

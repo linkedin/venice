@@ -11,6 +11,8 @@ import com.linkedin.venice.store.iterators.CloseableStoreEntriesIterator;
 import com.linkedin.venice.store.iterators.CloseableStoreKeysIterator;
 
 import java.util.Collection;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 
@@ -22,6 +24,12 @@ public class InMemoryStorageEngine extends AbstractStorageEngine {
   public InMemoryStorageEngine(VeniceStoreConfig storeDef)
     throws Exception {
     super(storeDef.getStoreName());
+  }
+
+  @Override
+  protected Set<Integer> getPersistedPartitionIds() {
+    // Nothing to return for InMemoryStorageEngine
+    return new HashSet<>();
   }
 
   @Override

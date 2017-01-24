@@ -1,16 +1,14 @@
-package com.linkedin.venice.storage;
+package com.linkedin.venice.store.memory;
 
 import com.linkedin.venice.config.VeniceStoreConfig;
-import com.linkedin.venice.server.PartitionAssignmentRepository;
 import com.linkedin.venice.server.VeniceConfigLoader;
-import com.linkedin.venice.store.Store;
-import com.linkedin.venice.store.memory.InMemoryStorageEngine;
+import com.linkedin.venice.store.AbstractStoreTest;
 import org.testng.annotations.Test;
 
 import java.io.File;
 
 
-public class InMemoryStoreTest extends AbstractStoreTest{
+public class InMemoryStoreTest extends AbstractStoreTest {
 
   VeniceConfigLoader veniceConfigLoader;
 

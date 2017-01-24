@@ -1,17 +1,16 @@
-package com.linkedin.venice.storage;
+package com.linkedin.venice.store.bdb;
 
 import com.linkedin.venice.config.VeniceServerConfig;
 import com.linkedin.venice.config.VeniceStoreConfig;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.server.PartitionAssignmentRepository;
+import com.linkedin.venice.store.AbstractStorageEngineTest;
+import com.linkedin.venice.store.AbstractStoreTest;
 import com.linkedin.venice.store.AbstractStorageEngine;
-import com.linkedin.venice.store.bdb.BdbStorageEngineFactory;
 import com.linkedin.venice.utils.VeniceProperties;
 import org.testng.annotations.Test;
 
-
 public class BdbStoreTest extends AbstractStoreTest {
-
   public BdbStoreTest()
     throws Exception {
     createStoreForTest();
@@ -35,7 +34,6 @@ public class BdbStoreTest extends AbstractStoreTest {
     engine.addStoragePartition(partitionId);
 
     testStore = engine;
-
   }
 
   @Test
@@ -62,6 +60,4 @@ public class BdbStoreTest extends AbstractStoreTest {
   public void testPutNullKey() {
     super.testPutNullKey();
   }
-
-
 }
