@@ -510,7 +510,7 @@ public class TestVeniceHelixAdmin {
     String storeName = "test";
     veniceAdmin.addStore(clusterName,storeName,"owner", keySchema, valueSchema);
     veniceAdmin.addVersion(clusterName,storeName,1,1,1);
-    TestUtils.waitForNonDeterministicCompletion(2000, TimeUnit.MILLISECONDS, () -> {
+    TestUtils.waitForNonDeterministicCompletion(5000, TimeUnit.MILLISECONDS, () -> {
       PartitionAssignment partitionAssignment = veniceAdmin.getVeniceHelixResource(clusterName)
           .getRoutingDataRepository()
           .getPartitionAssignments(Version.composeKafkaTopic(storeName, 1));
@@ -524,7 +524,7 @@ public class TestVeniceHelixAdmin {
 
     // Make participant complete BOOTSTRAP->ONLINE
     stateModelFactory.makeTransitionCompleted(Version.composeKafkaTopic(storeName,1),0);
-    TestUtils.waitForNonDeterministicCompletion(2000, TimeUnit.MILLISECONDS, () -> {
+    TestUtils.waitForNonDeterministicCompletion(5000, TimeUnit.MILLISECONDS, () -> {
       PartitionAssignment partitionAssignment = veniceAdmin.getVeniceHelixResource(clusterName)
           .getRoutingDataRepository()
           .getPartitionAssignments(Version.composeKafkaTopic(storeName, 1));
@@ -545,7 +545,7 @@ public class TestVeniceHelixAdmin {
 
     veniceAdmin.addStore(clusterName, storeName, "test", keySchema, valueSchema);
     Version version = veniceAdmin.incrementVersion(clusterName, storeName, partitionCount, replicas);
-    TestUtils.waitForNonDeterministicCompletion(2000, TimeUnit.MILLISECONDS, () -> {
+    TestUtils.waitForNonDeterministicCompletion(5, TimeUnit.SECONDS, () -> {
       PartitionAssignment partitionAssignment = veniceAdmin.getVeniceHelixResource(clusterName)
           .getRoutingDataRepository()
           .getPartitionAssignments(version.kafkaTopicName());
@@ -566,7 +566,7 @@ public class TestVeniceHelixAdmin {
 
     //Shutdown one instance
     stopParticipant(nodeId);
-    TestUtils.waitForNonDeterministicCompletion(2000, TimeUnit.MILLISECONDS, () -> {
+    TestUtils.waitForNonDeterministicCompletion(5000, TimeUnit.MILLISECONDS, () -> {
       PartitionAssignment partitionAssignment = veniceAdmin.getVeniceHelixResource(clusterName)
           .getRoutingDataRepository()
           .getPartitionAssignments(version.kafkaTopicName());
@@ -590,7 +590,7 @@ public class TestVeniceHelixAdmin {
 
     veniceAdmin.addStore(clusterName, storeName, "test", keySchema, valueSchema);
     Version version = veniceAdmin.incrementVersion(clusterName, storeName, partitionCount, replicas);
-    TestUtils.waitForNonDeterministicCompletion(2000, TimeUnit.MILLISECONDS, () -> {
+    TestUtils.waitForNonDeterministicCompletion(5000, TimeUnit.MILLISECONDS, () -> {
       PartitionAssignment partitionAssignment = veniceAdmin.getVeniceHelixResource(clusterName)
           .getRoutingDataRepository()
           .getPartitionAssignments(version.kafkaTopicName());
@@ -621,7 +621,7 @@ public class TestVeniceHelixAdmin {
 
     //Shutdown one instance
     stopParticipant(nodeId);
-    TestUtils.waitForNonDeterministicCompletion(2000, TimeUnit.MILLISECONDS, () -> {
+    TestUtils.waitForNonDeterministicCompletion(5000, TimeUnit.MILLISECONDS, () -> {
       PartitionAssignment partitionAssignment = veniceAdmin.getVeniceHelixResource(clusterName)
           .getRoutingDataRepository()
           .getPartitionAssignments(version.kafkaTopicName());
@@ -645,7 +645,7 @@ public class TestVeniceHelixAdmin {
     veniceAdmin.addStore(clusterName, storeName, "unittestOwner", keySchema, valueSchema);
     Version version = veniceAdmin.incrementVersion(clusterName, storeName, partitionCount, replicaCount);
 
-    TestUtils.waitForNonDeterministicCompletion(2000, TimeUnit.MILLISECONDS, () -> {
+    TestUtils.waitForNonDeterministicCompletion(5000, TimeUnit.MILLISECONDS, () -> {
       PartitionAssignment partitionAssignment =
           veniceAdmin.getVeniceHelixResource(clusterName).getRoutingDataRepository()
               .getPartitionAssignments(version.kafkaTopicName());
@@ -676,7 +676,7 @@ public class TestVeniceHelixAdmin {
       stateModelFactory.makeTransitionCompleted(version.kafkaTopicName(), i);
     }
 
-    TestUtils.waitForNonDeterministicCompletion(2000, TimeUnit.MILLISECONDS, () -> {
+    TestUtils.waitForNonDeterministicCompletion(5000, TimeUnit.MILLISECONDS, () -> {
       PartitionAssignment partitionAssignment =
           veniceAdmin.getVeniceHelixResource(clusterName).getRoutingDataRepository()
               .getPartitionAssignments(version.kafkaTopicName());
@@ -806,7 +806,7 @@ public class TestVeniceHelixAdmin {
     veniceAdmin.addStore(clusterName, storeName, "test", keySchema, valueSchema);
     Version version = veniceAdmin.incrementVersion(clusterName, storeName, partitionCount, replicaFactor);
     Map<String, Integer> nodesToPartitionMap = new HashMap<>();
-    TestUtils.waitForNonDeterministicCompletion(2000, TimeUnit.MILLISECONDS, () -> {
+    TestUtils.waitForNonDeterministicCompletion(5000, TimeUnit.MILLISECONDS, () -> {
       PartitionAssignment partitionAssignment = veniceAdmin.getVeniceHelixResource(clusterName)
           .getRoutingDataRepository()
           .getPartitionAssignments(version.kafkaTopicName());
@@ -856,7 +856,7 @@ public class TestVeniceHelixAdmin {
     }
 
     // Ensure that after killing, resource could continue to be deleted.
-    TestUtils.waitForNonDeterministicCompletion(2000, TimeUnit.MILLISECONDS,
+    TestUtils.waitForNonDeterministicCompletion(5000, TimeUnit.MILLISECONDS,
         () -> !veniceAdmin.getVeniceHelixResource(clusterName)
             .getRoutingDataRepository()
             .containsKafkaTopic(version.kafkaTopicName()));

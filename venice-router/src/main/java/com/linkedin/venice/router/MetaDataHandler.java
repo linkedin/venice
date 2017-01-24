@@ -11,6 +11,14 @@ import com.linkedin.venice.router.api.VenicePathParser;
 import com.linkedin.venice.router.api.VenicePathParserHelper;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.utils.ExceptionUtils;
+import io.netty.buffer.Unpooled;
+import io.netty.channel.ChannelHandler;
+import io.netty.channel.ChannelHandlerContext;
+import io.netty.channel.SimpleChannelInboundHandler;
+import io.netty.handler.codec.http.DefaultFullHttpResponse;
+import io.netty.handler.codec.http.FullHttpResponse;
+import io.netty.handler.codec.http.HttpRequest;
+import io.netty.handler.codec.http.HttpResponseStatus;
 import java.io.IOException;
 import java.net.URL;
 import java.net.URLClassLoader;
@@ -18,22 +26,11 @@ import java.util.Arrays;
 import java.util.Collection;
 import org.apache.log4j.Logger;
 import org.codehaus.jackson.map.ObjectMapper;
-import org.jboss.netty.buffer.ChannelBuffers;
-import org.jboss.netty.channel.Channel;
-import org.jboss.netty.channel.ChannelFuture;
-import org.jboss.netty.channel.ChannelHandlerContext;
-import org.jboss.netty.channel.Channels;
-import org.jboss.netty.channel.ExceptionEvent;
-import org.jboss.netty.channel.MessageEvent;
-import org.jboss.netty.channel.SimpleChannelUpstreamHandler;
-import org.jboss.netty.handler.codec.http.DefaultHttpResponse;
-import org.jboss.netty.handler.codec.http.HttpRequest;
-import org.jboss.netty.handler.codec.http.HttpResponse;
-import org.jboss.netty.handler.codec.http.HttpResponseStatus;
 
-import static org.jboss.netty.handler.codec.http.HttpHeaders.Names.*;
-import static org.jboss.netty.handler.codec.http.HttpResponseStatus.*;
-import static org.jboss.netty.handler.codec.http.HttpVersion.*;
+import static io.netty.handler.codec.http.HttpHeaderNames.*;
+import static io.netty.handler.codec.http.HttpResponseStatus.*;
+import static io.netty.handler.codec.http.HttpVersion.*;
+
 
 /**
  * This MetaDataHandle is used to handle the following meta data requests:
@@ -47,7 +44,8 @@ import static org.jboss.netty.handler.codec.http.HttpVersion.*;
  *    of the specified store in json format. The client can use
  *    {@link com.linkedin.venice.controllerapi.MultiSchemaResponse} to parse it.
  */
-public class MetaDataHandler extends SimpleChannelUpstreamHandler {
+@ChannelHandler.Sharable
+public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
   private static final Logger logger = Logger.getLogger(MetaDataHandler.class);
   private static final ObjectMapper mapper = new ObjectMapper();
   private final RoutingDataRepository routing;
@@ -62,9 +60,8 @@ public class MetaDataHandler extends SimpleChannelUpstreamHandler {
   }
 
   private void setupResponseAndFlush(HttpResponseStatus status, byte[] body, boolean isJson,
-                                     ChannelHandlerContext ctx, Channel ch) {
-    HttpResponse response = new DefaultHttpResponse(HTTP_1_1, status);
-    response.setContent(ChannelBuffers.wrappedBuffer(body));
+                                     ChannelHandlerContext ctx) {
+    FullHttpResponse response = new DefaultFullHttpResponse(HTTP_1_1, status, Unpooled.wrappedBuffer(body));
     try {
       if (!isJson) {
         response.headers().set(CONTENT_TYPE, HttpConstants.TEXT_PLAIN);
@@ -78,50 +75,40 @@ public class MetaDataHandler extends SimpleChannelUpstreamHandler {
       Arrays.asList(urls).stream().filter(url -> url.getFile().contains("netty")).forEach(logger::warn);
       throw e;
     }
-    response.headers().set(CONTENT_LENGTH, response.getContent().readableBytes());
-    ChannelFuture f = Channels.future(ch);
-    /**
-     * There is a {@link com.linkedin.ddsstorage.netty3.handlers.StaleConnectionHandler}, which
-     * handles closing idle connections, so we don't need to explicitly close the connection here.
-     */
-    Channels.write(ctx, f, response);
+    response.headers().set(CONTENT_LENGTH, response.content().readableBytes());
+    ctx.writeAndFlush(response);
   }
 
   @Override
-  public void messageReceived(ChannelHandlerContext ctx, MessageEvent event) throws IOException {
-    Object msg = event.getMessage();
-    Channel ch = event.getChannel();
-    if (msg instanceof HttpRequest) {
-      HttpRequest req = (HttpRequest) msg;
-      VenicePathParserHelper helper = new VenicePathParserHelper(req.getUri());
-      String resourceType = helper.getResourceType(); //may be null
-      if (VenicePathParser.TYPE_MASTER_CONTROLLER.equals(resourceType)){
-        // URI: /master_controller
-        handleControllerLookup(ctx, ch);
-      } else if (VenicePathParser.TYPE_KEY_SCHEMA.equals(resourceType)) {
-        // URI: /key_schema/${storeName}
-        // For key schema lookup, we only consider storeName
-        handleKeySchemaLookup(ctx, ch, helper);
-      } else if (VenicePathParser.TYPE_VALUE_SCHEMA.equals(resourceType)) {
-        // The request could fetch one value schema by id or all the value schema for the given store
-        // URI: /value_schema/{$storeName} - Get all the value schema
-        // URI: /value_schema/{$storeName}/{$valueSchemaId} - Get single value schema
-        handleValueSchemaLookup(ctx, ch, helper);
-      } else {
-        ctx.sendUpstream(event);
-        return;
-      }
+  public void channelRead0(ChannelHandlerContext ctx, HttpRequest req) throws IOException {
+    VenicePathParserHelper helper = new VenicePathParserHelper(req.uri());
+    String resourceType = helper.getResourceType(); //may be null
+    if (VenicePathParser.TYPE_MASTER_CONTROLLER.equals(resourceType)){
+      // URI: /master_controller
+      handleControllerLookup(ctx);
+    } else if (VenicePathParser.TYPE_KEY_SCHEMA.equals(resourceType)) {
+      // URI: /key_schema/${storeName}
+      // For key schema lookup, we only consider storeName
+      handleKeySchemaLookup(ctx, helper);
+    } else if (VenicePathParser.TYPE_VALUE_SCHEMA.equals(resourceType)) {
+      // The request could fetch one value schema by id or all the value schema for the given store
+      // URI: /value_schema/{$storeName} - Get all the value schema
+      // URI: /value_schema/{$storeName}/{$valueSchemaId} - Get single value schema
+      handleValueSchemaLookup(ctx, helper);
+    } else {
+      ctx.fireChannelRead(req);
+      return;
     }
   }
 
-  private void handleControllerLookup(ChannelHandlerContext ctx, Channel ch) throws IOException {
+  private void handleControllerLookup(ChannelHandlerContext ctx) throws IOException {
     MasterControllerResponse responseObject = new MasterControllerResponse();
     responseObject.setCluster(clusterName);
     responseObject.setUrl(routing.getMasterController().getUrl());
-    setupResponseAndFlush(OK, mapper.writeValueAsBytes(responseObject), true, ctx, ch);
+    setupResponseAndFlush(OK, mapper.writeValueAsBytes(responseObject), true, ctx);
   }
 
-  private void handleKeySchemaLookup(ChannelHandlerContext ctx, Channel ch, VenicePathParserHelper helper) throws IOException {
+  private void handleKeySchemaLookup(ChannelHandlerContext ctx, VenicePathParserHelper helper) throws IOException {
     String storeName = helper.getResourceName();
     if (null == storeName || storeName.isEmpty()) {
       throw new VeniceException("storeName required, valid path should be : /"
@@ -130,7 +117,7 @@ public class MetaDataHandler extends SimpleChannelUpstreamHandler {
     SchemaEntry keySchema = schemaRepo.getKeySchema(storeName);
     if (null == keySchema) {
       byte[] errBody = new String("Key schema for store: " + storeName + " doesn't exist").getBytes();
-      setupResponseAndFlush(NOT_FOUND, errBody, false, ctx, ch);
+      setupResponseAndFlush(NOT_FOUND, errBody, false, ctx);
       return;
     }
     SchemaResponse responseObject = new SchemaResponse();
@@ -138,10 +125,10 @@ public class MetaDataHandler extends SimpleChannelUpstreamHandler {
     responseObject.setName(storeName);
     responseObject.setId(keySchema.getId());
     responseObject.setSchemaStr(keySchema.getSchema().toString());
-    setupResponseAndFlush(OK, mapper.writeValueAsBytes(responseObject), true, ctx, ch);
+    setupResponseAndFlush(OK, mapper.writeValueAsBytes(responseObject), true, ctx);
   }
 
-  private void handleValueSchemaLookup(ChannelHandlerContext ctx, Channel ch, VenicePathParserHelper helper) throws IOException {
+  private void handleValueSchemaLookup(ChannelHandlerContext ctx, VenicePathParserHelper helper) throws IOException {
     String storeName = helper.getResourceName();
     if (null == storeName || storeName.isEmpty()) {
       throw new VeniceException("storeName required, valid path should be : /" + VenicePathParser.TYPE_VALUE_SCHEMA
@@ -165,7 +152,7 @@ public class MetaDataHandler extends SimpleChannelUpstreamHandler {
         ++cur;
       }
       responseObject.setSchemas(schemas);
-      setupResponseAndFlush(OK, mapper.writeValueAsBytes(responseObject), true, ctx, ch);
+      setupResponseAndFlush(OK, mapper.writeValueAsBytes(responseObject), true, ctx);
     } else {
       // URI: /value_schema/{$storeName}/{$valueSchemaId}
       // Get single value schema
@@ -176,17 +163,17 @@ public class MetaDataHandler extends SimpleChannelUpstreamHandler {
       if (null == valueSchema) {
         byte[] errBody = new String("Value schema doesn't exist for schema id: " + id
             + " of store: " + storeName).getBytes();
-        setupResponseAndFlush(NOT_FOUND, errBody, false, ctx, ch);
+        setupResponseAndFlush(NOT_FOUND, errBody, false, ctx);
         return;
       }
       responseObject.setId(valueSchema.getId());
       responseObject.setSchemaStr(valueSchema.getSchema().toString());
-      setupResponseAndFlush(OK, mapper.writeValueAsBytes(responseObject), true, ctx, ch);
+      setupResponseAndFlush(OK, mapper.writeValueAsBytes(responseObject), true, ctx);
     }
   }
 
   @Override
-  public void exceptionCaught(ChannelHandlerContext ctx, ExceptionEvent e) throws Exception {
+  public void exceptionCaught(ChannelHandlerContext ctx, Throwable e) throws Exception {
     logger.error("Got exception while handling meta data request", e.getCause());
     try {
       if (ExceptionUtils.recursiveClassEquals(e.getCause(), IOException.class)) {
@@ -196,11 +183,11 @@ public class MetaDataHandler extends SimpleChannelUpstreamHandler {
       }
       String stackTraceStr = ExceptionUtils.stackTraceToString(e.getCause());
       setupResponseAndFlush(INTERNAL_SERVER_ERROR, stackTraceStr.getBytes(),
-          false, ctx, e.getChannel());
+          false, ctx);
     } catch (Exception ex) {
       logger.error("Got exception while trying to send error response", ex);
     } finally {
-      ctx.getChannel().close();
+      ctx.channel().close();
     }
   }
 }

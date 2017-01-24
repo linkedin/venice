@@ -40,8 +40,7 @@ public class VeniceHostFinder implements HostFinder<Instance, VeniceRole> {
 
   @Override
   public Collection<Instance> findAllHosts(VeniceRole roles) throws RouterException {
-    throw new RouterException(HttpResponseStatus.BAD_REQUEST,
-        new VeniceException("Find All Hosts is not a supported operation"),
-        true);
+    throw new RouterException(HttpResponseStatus.class, HttpResponseStatus.BAD_REQUEST, HttpResponseStatus.BAD_REQUEST.getCode(),
+        "Find All Hosts is not a supported operation", true);
   }
 }
