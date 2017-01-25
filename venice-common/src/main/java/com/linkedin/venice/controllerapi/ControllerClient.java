@@ -29,6 +29,7 @@ import org.apache.http.impl.nio.client.CloseableHttpAsyncClient;
 import org.apache.http.impl.nio.client.HttpAsyncClients;
 import org.apache.http.message.BasicNameValuePair;
 import org.apache.log4j.Logger;
+import org.codehaus.jackson.map.DeserializationConfig;
 import org.codehaus.jackson.map.ObjectMapper;
 
 public class ControllerClient implements Closeable {
@@ -37,8 +38,16 @@ public class ControllerClient implements Closeable {
   private String urlsToFindMasterController;
   private String localHostname;
 
-  private final static ObjectMapper mapper = new ObjectMapper();
+  private final static ObjectMapper mapper = getObjectMapper();
   private final static Logger logger = Logger.getLogger(ControllerClient.class);
+
+  protected static ObjectMapper getObjectMapper() {
+    ObjectMapper objectMapper = new ObjectMapper();
+    // Ignore unknown properties when deserializing json-encoded string
+    objectMapper.configure(DeserializationConfig.Feature.FAIL_ON_UNKNOWN_PROPERTIES, false);
+
+    return objectMapper;
+  }
 
   /**
    * @param urlsToFindMasterController comma-delimited urls to find master controller.
