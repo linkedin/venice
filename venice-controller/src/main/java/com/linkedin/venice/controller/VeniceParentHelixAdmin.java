@@ -481,25 +481,28 @@ public class VeniceParentHelixAdmin implements Admin {
    * @return
    */
   @Override
-  public ExecutionStatus getOffLineJobStatus(String clusterName, String kafkaTopic) {
+  public OfflineJobStatus getOffLineJobStatus(String clusterName, String kafkaTopic) {
     Map<String, ControllerClient> controllerClients = getControllerClientMap(clusterName);
     return getOffLineJobStatus(clusterName, kafkaTopic, controllerClients, getTopicManager());
   }
 
-  protected static ExecutionStatus getOffLineJobStatus(String clusterName, String kafkaTopic, Map<String, ControllerClient> controllerClients, TopicManager topicManager) {
-
+  protected static OfflineJobStatus getOffLineJobStatus(String clusterName, String kafkaTopic,
+      Map<String, ControllerClient> controllerClients, TopicManager topicManager) {
     Set<String> childClusters = controllerClients.keySet();
     ExecutionStatus currentReturnStatus = ExecutionStatus.NOT_CREATED;
     List<ExecutionStatus> statuses = new ArrayList<>();
+    Map<String, String> extraInfo = new HashMap<>();
     int failCount = 0;
     for (String cluster : childClusters){
       JobStatusQueryResponse response = controllerClients.get(cluster).queryJobStatus(clusterName, kafkaTopic);
       if (response.isError()){
         failCount += 1;
         logger.warn("Couldn't query " + cluster + " for job " + kafkaTopic + " status: " + response.getError());
+        extraInfo.put(cluster, ExecutionStatus.UNKNOWN.toString());
       } else {
         ExecutionStatus thisStatus = ExecutionStatus.valueOf(response.getStatus());
         statuses.add(thisStatus);
+        extraInfo.put(cluster, thisStatus.toString());
       }
     }
 
@@ -536,7 +539,7 @@ public class VeniceParentHelixAdmin implements Admin {
       topicManager.syncDeleteTopic(kafkaTopic);
     }
 
-    return currentReturnStatus;
+    return new OfflineJobStatus(currentReturnStatus, extraInfo);
   }
 
   /**

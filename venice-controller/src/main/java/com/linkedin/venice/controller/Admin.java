@@ -11,12 +11,32 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.schema.SchemaEntry;
 
 import java.util.Collection;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
 
 public interface Admin {
+    // Wrapper to include both overall job status and other extra useful info
+    class OfflineJobStatus{
+        private ExecutionStatus executionStatus;
+        private Map<String, String> extraInfo;
+
+        public OfflineJobStatus(ExecutionStatus executionStatus) {
+            this(executionStatus, new HashMap<>());
+        }
+        public OfflineJobStatus(ExecutionStatus executionStatus, Map<String, String> extraInfo) {
+            this.executionStatus = executionStatus;
+            this.extraInfo = extraInfo;
+        }
+        public ExecutionStatus getExecutionStatus() {
+            return executionStatus;
+        }
+        public Map<String, String> getExtraInfo() {
+            return extraInfo;
+        }
+    }
     void start(String clusterName);
 
     boolean isClusterValid(String clusterName);
@@ -85,9 +105,9 @@ public interface Admin {
      * TODO assigned multiple jobs like data migration job etc.
      * @param clusterName
      * @param kafkaTopic
-     * @return the map of job Id to job status.
+     * @return the job status of current offline push job for the passed kafka topic
      */
-    ExecutionStatus getOffLineJobStatus(String clusterName, String kafkaTopic);
+    OfflineJobStatus getOffLineJobStatus(String clusterName, String kafkaTopic);
 
     Map<String, Long> getOfflineJobProgress(String clusterName, String kafkaTopic);
 

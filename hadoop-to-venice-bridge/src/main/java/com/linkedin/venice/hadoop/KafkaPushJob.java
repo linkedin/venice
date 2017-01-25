@@ -45,6 +45,7 @@ import org.apache.log4j.Logger;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.HashMap;
+import java.util.Map;
 import java.util.Properties;
 
 import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
@@ -530,6 +531,10 @@ public class KafkaPushJob extends AbstractJob {
             long messagesConsumed = response.getMessagesConsumed();
             long messagesAvailable = response.getMessagesAvailable();
             logger.info("Consumed " + messagesConsumed + " out of " + messagesAvailable + " records.  Status: " + status);
+            Map<String, String> extraInfo = response.getExtraInfo();
+            if (null != extraInfo && !extraInfo.isEmpty()) {
+              logger.info("Extra info: " + extraInfo);
+            }
             /* Status of ERROR means that the job status was queried, and the job is in an error status */
             if (status.equals(ExecutionStatus.ERROR)){
               throw new RuntimeException("Push job triggered error for: " + veniceControllerUrl);

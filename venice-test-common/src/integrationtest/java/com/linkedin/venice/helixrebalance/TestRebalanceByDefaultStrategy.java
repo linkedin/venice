@@ -59,6 +59,7 @@ public class TestRebalanceByDefaultStrategy {
         () -> cluster.getMasterVeniceController()
             .getVeniceAdmin()
             .getOffLineJobStatus(cluster.getClusterName(), topicName)
+            .getExecutionStatus()
             .equals(ExecutionStatus.COMPLETED));
   }
 

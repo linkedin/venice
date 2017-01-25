@@ -59,6 +59,7 @@ public class TestInstanceRemovable {
         () -> cluster.getMasterVeniceController()
             .getVeniceAdmin()
             .getOffLineJobStatus(cluster.getClusterName(), topicName)
+            .getExecutionStatus()
             .equals(ExecutionStatus.STARTED));
 
     //All of replica in BOOTSTRAP
@@ -111,6 +112,7 @@ public class TestInstanceRemovable {
         () -> cluster.getMasterVeniceController()
             .getVeniceAdmin()
             .getOffLineJobStatus(cluster.getClusterName(), topicName)
+            .getExecutionStatus()
             .equals(ExecutionStatus.COMPLETED));
 
     String cluserName = cluster.getClusterName();

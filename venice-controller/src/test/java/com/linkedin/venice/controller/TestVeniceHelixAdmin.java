@@ -152,8 +152,8 @@ public class TestVeniceHelixAdmin {
       String storeName = TestUtils.getUniqueString("test-store");
       veniceAdmin.addStore(clusterName, storeName, "dev", keySchema, valueSchema);
       veniceAdmin.incrementVersion(clusterName, storeName, 1, 1);
-      Assert.assertEquals(veniceAdmin.getOffLineJobStatus(clusterName, new Version(storeName, 1).kafkaTopicName()),
-          ExecutionStatus.STARTED, "Can not get offline job status correctly.");
+      Assert.assertEquals(veniceAdmin.getOffLineJobStatus(clusterName, new Version(storeName, 1).kafkaTopicName())
+          .getExecutionStatus(), ExecutionStatus.STARTED, "Can not get offline job status correctly.");
     } catch (VeniceException e) {
       Assert.fail("Should be able to create store after starting cluster");
     }
@@ -196,10 +196,10 @@ public class TestVeniceHelixAdmin {
     //wait master change event
     waitUntilIsMaster(newMasterAdmin, clusterName, MASTER_CHANGE_TIMEOUT);
     //Now get status from new master controller.
-    Assert.assertEquals(newMasterAdmin.getOffLineJobStatus(clusterName, version.kafkaTopicName()), ExecutionStatus.STARTED,
+    Assert.assertEquals(newMasterAdmin.getOffLineJobStatus(clusterName, version.kafkaTopicName()).getExecutionStatus(), ExecutionStatus.STARTED,
         "Can not get offline job status correctly.");
     channel.sendToController(new StoreStatusMessage(version.kafkaTopicName(), 0, nodeId, ExecutionStatus.COMPLETED));
-    Assert.assertEquals(newMasterAdmin.getOffLineJobStatus(clusterName, version.kafkaTopicName()), ExecutionStatus.COMPLETED,
+    Assert.assertEquals(newMasterAdmin.getOffLineJobStatus(clusterName, version.kafkaTopicName()).getExecutionStatus(), ExecutionStatus.COMPLETED,
         "Job should be completed after getting update from message channel");
 
     // Stop and start participant to use new master to trigger state transition.
@@ -216,9 +216,8 @@ public class TestVeniceHelixAdmin {
     //New master controller create resource and trigger state transition on participant.
     newMasterAdmin.incrementVersion(clusterName, storeName, 1, 1);
     Version newVersion = new Version(storeName, 2);
-    Assert.assertEquals(newMasterAdmin.getOffLineJobStatus(clusterName, newVersion.kafkaTopicName()), ExecutionStatus.STARTED,
-        "Can not trigger state transition from new master");
-
+    Assert.assertEquals(newMasterAdmin.getOffLineJobStatus(clusterName, newVersion.kafkaTopicName()).getExecutionStatus(),
+        ExecutionStatus.STARTED, "Can not trigger state transition from new master");
     //Start original controller again, now it should become leader again based on Helix's logic.
     veniceAdmin.start(clusterName);
     newMasterAdmin.stop(clusterName);
@@ -398,7 +397,7 @@ public class TestVeniceHelixAdmin {
     Version deletedVersion = new Version(storeName, version.getNumber() - 2);
     // Ensure job and topic are deleted
     TestUtils.waitForNonDeterministicCompletion(30000, TimeUnit.MILLISECONDS,
-        () -> veniceAdmin.getOffLineJobStatus(clusterName, deletedVersion.kafkaTopicName())
+        () -> veniceAdmin.getOffLineJobStatus(clusterName, deletedVersion.kafkaTopicName()).getExecutionStatus()
             .equals(ExecutionStatus.NOT_CREATED));
     TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
       Assert.assertFalse(veniceAdmin.getTopicManager().containsTopic(deletedVersion.kafkaTopicName()));

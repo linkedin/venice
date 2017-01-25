@@ -6,6 +6,8 @@ import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.Utils;
+
+import java.util.HashMap;
 import java.util.Map;
 import spark.Route;
 
@@ -68,8 +70,10 @@ public class JobRoutes {
      * Job status query should happen after 'querying offset' since job status query could
      * delete current topic
      */
-    String jobStatus = admin.getOffLineJobStatus(cluster, kafkaTopicName).toString();
+    Admin.OfflineJobStatus offlineJobStatus = admin.getOffLineJobStatus(cluster, kafkaTopicName);
+    String jobStatus = offlineJobStatus.getExecutionStatus().toString();
     responseObject.setStatus(jobStatus);
+    responseObject.setExtraInfo(offlineJobStatus.getExtraInfo());
 
     //TODO: available offsets finalized
     responseObject.setAvailableFinal(false);

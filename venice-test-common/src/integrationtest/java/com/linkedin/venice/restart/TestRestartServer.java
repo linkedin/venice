@@ -59,6 +59,7 @@ public class TestRestartServer {
         () -> cluster.getMasterVeniceController()
             .getVeniceAdmin()
             .getOffLineJobStatus(cluster.getClusterName(), topicName)
+            .getExecutionStatus()
             .equals(ExecutionStatus.COMPLETED));
 
     //restart servers
