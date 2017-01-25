@@ -656,10 +656,10 @@ public class VeniceHelixAdmin implements Admin {
     }
 
     @Override
-    public ExecutionStatus getOffLineJobStatus(String clusterName, String kafkaTopic) {
+    public OfflineJobStatus getOffLineJobStatus(String clusterName, String kafkaTopic) {
         checkControllerMastership(clusterName);
         VeniceJobManager jobManager = getVeniceHelixResource(clusterName).getJobManager();
-        return jobManager.getOfflineJobStatus(kafkaTopic);
+        return new OfflineJobStatus(jobManager.getOfflineJobStatus(kafkaTopic));
     }
 
     @Override

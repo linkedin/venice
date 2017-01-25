@@ -23,7 +23,7 @@ public class JobRoutesTest {
   public void testPopulateJobStatus() throws Exception {
     Admin mockAdmin = mock(VeniceParentHelixAdmin.class);
     doReturn(true).when(mockAdmin).isMasterController(anyString());
-    doReturn(ExecutionStatus.COMPLETED).when(mockAdmin).getOffLineJobStatus(anyString(), anyString());
+    doReturn(new Admin.OfflineJobStatus(ExecutionStatus.COMPLETED)).when(mockAdmin).getOffLineJobStatus(anyString(), anyString());
 
     TopicManager mockTopicManager = mock(TopicManager.class);
     // 3 partitions, with latest offsets 100, 110, and 120
@@ -52,6 +52,7 @@ public class JobRoutesTest {
     Long available = response.getMessagesAvailable();
     Long consumed = response.getMessagesConsumed();
 
+    Assert.assertNotNull(response.getExtraInfo());
     Assert.assertTrue(consumed <= available, "Messages consumed: " + consumed + " must be less than or equal to available messages: " + available);
 
   }

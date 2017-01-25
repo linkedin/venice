@@ -21,7 +21,9 @@ public enum ExecutionStatus {
   //Met error when processing the data.
   ERROR,
   //Job is terminated and be removed from repository. Should be archived to historic data storage. Only be used for Job
-  ARCHIVED;
+  ARCHIVED,
+  //Job status is unknown when checking, and it could be caused by network issue
+  UNKNOWN;
 
   public boolean isTerminal() {
     return this == ERROR || this == COMPLETED || this == ARCHIVED;

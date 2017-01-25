@@ -15,6 +15,7 @@ public class JobStatusQueryResponse extends ControllerResponse{ /* Uses Json Ref
   private Map<String, Long> perTaskProgress;
   private Map<Integer, Long> perPartitionCapacity;
   private boolean availableFinal;
+  private Map<String, String> extraInfo;
 
   public int getVersion() {
     return version;
@@ -84,6 +85,14 @@ public class JobStatusQueryResponse extends ControllerResponse{ /* Uses Json Ref
 
   public void setPerPartitionCapacity(Map<Integer, Long> perPartitionCapacity) {
     this.perPartitionCapacity = perPartitionCapacity;
+  }
+
+  public Map<String, String> getExtraInfo() {
+    return extraInfo;
+  }
+
+  public void setExtraInfo(Map<String, String> extraInfo) {
+    this.extraInfo = extraInfo;
   }
 
   public static JobStatusQueryResponse createErrorResponse(String errorMessage) {
