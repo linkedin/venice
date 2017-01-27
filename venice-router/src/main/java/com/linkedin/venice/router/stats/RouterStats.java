@@ -27,9 +27,9 @@ public class RouterStats extends AbstractVeniceStats {
 
     //we have to explicitly pass the anme again for PercentilesStat here.
     //TODO: remove the redundancy once Tehuti library is updated.
-    latencySensor = registerSensor("latency", TehutiUtils.getPercentileStat(getName() + "_" + "latency"));
-    keySizeSensor = registerSensor("key_size", TehutiUtils.getPercentileStat(getName() + "_" + "key_size"));
-    valueSizeSensor = registerSensor("value_size", TehutiUtils.getPercentileStat(getName() + "_" + "value_size"));
+    latencySensor = registerSensor("latency", TehutiUtils.getPercentileStat(getName() + "." + "latency"));
+    keySizeSensor = registerSensor("key_size", TehutiUtils.getPercentileStat(getName() + "." + "key_size"));
+    valueSizeSensor = registerSensor("value_size", TehutiUtils.getPercentileStat(getName() + "." + "value_size"));
   }
 
   public void recordRequest() {

@@ -35,7 +35,7 @@ public class AbstractVeniceStats {
   }
 
   protected Sensor registerSensor(String sensorName, MetricConfig config, MeasurableStat... stats) {
-    String sensorFullName = getName() + "_" + sensorName;
+    String sensorFullName = getName() + "." + sensorName;
     return sensors.computeIfAbsent(sensorName, key -> {
       Sensor sensor = metricsRepository.sensor(sensorFullName);
       for (MeasurableStat stat : stats) {

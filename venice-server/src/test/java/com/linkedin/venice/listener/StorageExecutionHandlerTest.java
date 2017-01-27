@@ -1,17 +1,15 @@
 package com.linkedin.venice.listener;
 
-import com.linkedin.venice.kafka.consumer.KafkaConsumerPerStoreService;
 import com.linkedin.venice.message.GetRequestObject;
 import com.linkedin.venice.offsets.BdbOffsetManager;
 import com.linkedin.venice.offsets.OffsetManager;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.server.StoreRepository;
-import com.linkedin.venice.stats.ServerAggStats;
+import com.linkedin.venice.stats.AggServerHttpRequestStats;
 import com.linkedin.venice.store.AbstractStorageEngine;
 import com.linkedin.venice.store.record.ValueRecord;
 import io.netty.buffer.UnpooledByteBufAllocator;
 import io.netty.channel.ChannelHandlerContext;
-import io.tehuti.metrics.MetricsRepository;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.LinkedBlockingQueue;
@@ -19,26 +17,11 @@ import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import org.mockito.Mockito;
 import org.testng.Assert;
-import org.testng.annotations.AfterClass;
-import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
 import static org.mockito.Mockito.*;
 
 public class StorageExecutionHandlerTest {
-  private KafkaConsumerPerStoreService kafkaConsumerPerStoreService;
-
-  @BeforeClass
-  public void setUp() {
-    kafkaConsumerPerStoreService = mock(KafkaConsumerPerStoreService.class);
-    ServerAggStats.init(new MetricsRepository(), kafkaConsumerPerStoreService);
-  }
-
-  @AfterClass
-  public void tearDown() {
-    ServerAggStats.getInstance().close();
-  }
-
   @Test
   public static void storageExecutionHandlerPassesRequestsAndGeneratesResponses()
       throws Exception {
@@ -74,8 +57,10 @@ public class StorageExecutionHandlerTest {
     ThreadPoolExecutor threadPoolExecutor = new ThreadPoolExecutor(1, 1, 0L, TimeUnit.MILLISECONDS,
         new LinkedBlockingQueue<>(2));
 
+    AggServerHttpRequestStats mockStats = mock(AggServerHttpRequestStats.class);
+
     //Actual test
-    StorageExecutionHandler testHandler = new StorageExecutionHandler(threadPoolExecutor, testRepository, mockOffsetManager);
+    StorageExecutionHandler testHandler = new StorageExecutionHandler(threadPoolExecutor, testRepository, mockOffsetManager, mockStats);
     testHandler.channelRead(mockCtx, testRequest);
 
     //Wait for async stuff to finish

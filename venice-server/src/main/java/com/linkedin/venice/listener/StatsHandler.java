@@ -1,7 +1,7 @@
 package com.linkedin.venice.listener;
 
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.stats.ServerAggStats;
+import com.linkedin.venice.stats.AggServerHttpRequestStats;
 import io.netty.channel.ChannelDuplexHandler;
 import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelHandlerContext;
@@ -11,16 +11,13 @@ import io.netty.handler.codec.http.HttpResponseStatus;
 import static io.netty.handler.codec.http.HttpResponseStatus.NOT_FOUND;
 import static io.netty.handler.codec.http.HttpResponseStatus.OK;
 
-/**
- * Created by sdwu on 9/2/16.
- */
 public class StatsHandler extends ChannelDuplexHandler {
 
   private long startTime;
   private HttpResponseStatus responseStatus;
   private String storeName;
   private boolean isHealthCheck;
-  private ServerAggStats stats = ServerAggStats.getInstance();
+  private final AggServerHttpRequestStats stats;
 
   //a flag that indicates if this is a new HttpRequest. Netty is TCP-based, so a HttpRequest is chunked into packages.
   //Set the startTime in ChannelRead if it is the first package within a HttpRequest.
@@ -36,6 +33,10 @@ public class StatsHandler extends ChannelDuplexHandler {
 
   public void setHealthCheck(boolean healthCheck) {
     this.isHealthCheck = healthCheck;
+  }
+
+  public StatsHandler(AggServerHttpRequestStats stats) {
+    this.stats = stats;
   }
 
   @Override
