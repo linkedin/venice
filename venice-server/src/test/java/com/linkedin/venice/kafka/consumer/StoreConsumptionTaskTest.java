@@ -19,7 +19,7 @@ import com.linkedin.venice.offsets.OffsetManager;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.serialization.DefaultSerializer;
 import com.linkedin.venice.server.StoreRepository;
-import com.linkedin.venice.stats.ServerAggStats;
+import com.linkedin.venice.stats.AggStoreConsumptionStats;
 import com.linkedin.venice.store.AbstractStorageEngine;
 import com.linkedin.venice.store.record.ValueRecord;
 import com.linkedin.venice.unit.kafka.InMemoryKafkaBroker;
@@ -45,7 +45,6 @@ import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.KafkaProducerWrapper;
 import com.linkedin.venice.writer.VeniceWriter;
-import io.tehuti.metrics.MetricsRepository;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
@@ -110,7 +109,7 @@ public class StoreConsumptionTaskTest {
   /** N.B.: This mock can be used to verify() calls, but not to return arbitrary things. */
   private KafkaConsumerWrapper mockKafkaConsumer;
   private TopicManager mockTopicManager;
-  private  KafkaConsumerPerStoreService mockKafKaConsumerPerStoreService;
+  private AggStoreConsumptionStats mockStats;
 
   private StoreConsumptionTask storeConsumptionTaskUnderTest;
 
@@ -144,15 +143,11 @@ public class StoreConsumptionTaskTest {
   @BeforeClass
   public void suiteSetUp() throws Exception {
     taskPollingService = Executors.newFixedThreadPool(1);
-
-    mockKafKaConsumerPerStoreService = mock(KafkaConsumerPerStoreService.class);
-    ServerAggStats.init(new MetricsRepository(), mockKafKaConsumerPerStoreService);
   }
 
   @AfterClass
   public void tearDown() throws Exception {
     taskPollingService.shutdown();
-    ServerAggStats.getInstance().close();
   }
 
   @BeforeMethod
@@ -168,6 +163,7 @@ public class StoreConsumptionTaskTest {
     mockSchemaRepo = mock(ReadOnlySchemaRepository.class);
     mockKafkaConsumer = mock(KafkaConsumerWrapper.class);
     mockTopicManager = mock(TopicManager.class);
+    mockStats = mock(AggStoreConsumptionStats.class);
   }
 
   private VeniceWriter getVeniceWriter(Supplier<KafkaProducerWrapper> producerSupplier) {
@@ -204,7 +200,7 @@ public class StoreConsumptionTaskTest {
     Queue<VeniceNotifier> notifiers = new ConcurrentLinkedQueue<>(Arrays.asList(mockNotifier, new LogNotifier()));
     OffsetManager offsetManager = new DeepCopyOffsetManager(mockOffSetManager);
     storeConsumptionTaskUnderTest = new StoreConsumptionTask(
-        mockFactory, kafkaProps, mockStoreRepository, offsetManager, notifiers, mockThrottler, topic, mockSchemaRepo, mockTopicManager);
+        mockFactory, kafkaProps, mockStoreRepository, offsetManager, notifiers, mockThrottler, topic, mockSchemaRepo, mockTopicManager, mockStats);
     doReturn(mockAbstractStorageEngine).when(mockStoreRepository).getLocalStorageEngine(topic);
 
     Future testSubscribeTaskFuture = null;

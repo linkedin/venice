@@ -17,7 +17,6 @@ import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.offsets.BdbOffsetManager;
 import com.linkedin.venice.service.AbstractVeniceService;
-import com.linkedin.venice.stats.ServerAggStats;
 import com.linkedin.venice.stats.TehutiUtils;
 import com.linkedin.venice.storage.StorageService;
 import com.linkedin.venice.utils.Utils;
@@ -42,6 +41,8 @@ public class VeniceServer {
   private BdbOffsetManager offSetService;
   private KafkaConsumerPerStoreService kafkaConsumerPerStoreService;
 
+  private MetricsRepository metricsRepository;
+
   private ReadOnlySchemaRepository schemaRepo;
 
   private final List<AbstractVeniceService> services;
@@ -56,6 +57,7 @@ public class VeniceServer {
   public VeniceServer(VeniceConfigLoader veniceConfigLoader, MetricsRepository  metricsRepository) {
     this.isStarted = new AtomicBoolean(false);
     this.veniceConfigLoader = veniceConfigLoader;
+    this.metricsRepository = metricsRepository;
     if (!isServerInWhiteList(veniceConfigLoader.getVeniceClusterConfig().getZookeeperAddress(),
                              veniceConfigLoader.getVeniceClusterConfig().getClusterName(),
                              veniceConfigLoader.getVeniceServerConfig().getListenerPort(),
@@ -78,8 +80,6 @@ public class VeniceServer {
 
     //create all services
     this.services = createServices();
-
-    ServerAggStats.init(metricsRepository, kafkaConsumerPerStoreService);
   }
 
   /**
@@ -111,7 +111,7 @@ public class VeniceServer {
 
     //create and add KafkaSimpleConsumerService
     this.kafkaConsumerPerStoreService =
-        new KafkaConsumerPerStoreService(storageService.getStoreRepository(), veniceConfigLoader, offSetService, schemaRepo);
+        new KafkaConsumerPerStoreService(storageService.getStoreRepository(), veniceConfigLoader, offSetService, schemaRepo, metricsRepository);
 
     // start venice participant service if Helix is enabled.
     if(clusterConfig.isHelixEnabled()) {
@@ -130,7 +130,7 @@ public class VeniceServer {
 
     //create and add ListenerServer for handling GET requests
     ListenerService listenerService =
-        new ListenerService(storageService.getStoreRepository(), offSetService, veniceConfigLoader);
+        new ListenerService(storageService.getStoreRepository(), offSetService, veniceConfigLoader, metricsRepository);
     services.add(listenerService);
 
 
@@ -231,6 +231,8 @@ public class VeniceServer {
         throw new VeniceException(exceptions.get(0));
       }
       isStarted.set(false);
+
+      metricsRepository.close();
 
       // TODO - Efficient way to unlock java heap
     }

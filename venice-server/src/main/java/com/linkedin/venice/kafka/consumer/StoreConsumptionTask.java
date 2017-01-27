@@ -24,7 +24,7 @@ import com.linkedin.venice.notifier.VeniceNotifier;
 import com.linkedin.venice.offsets.OffsetManager;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.server.StoreRepository;
-import com.linkedin.venice.stats.ServerAggStats;
+import com.linkedin.venice.stats.AggStoreConsumptionStats;
 import com.linkedin.venice.store.AbstractStorageEngine;
 import com.linkedin.venice.store.record.ValueRecord;
 import com.linkedin.venice.utils.ByteUtils;
@@ -125,7 +125,7 @@ public class StoreConsumptionTask implements Runnable, Closeable {
   private static final long KILL_WAIT_TIME_MS = 5000l;
   public static final int MAX_KILL_CHECKING_ATTEMPTS = 10;
 
-  private final ServerAggStats serverAggStats = ServerAggStats.getInstance();
+  private final AggStoreConsumptionStats stats;
 
   public StoreConsumptionTask(@NotNull VeniceConsumerFactory factory,
                               @NotNull Properties kafkaConsumerProperties,
@@ -135,7 +135,8 @@ public class StoreConsumptionTask implements Runnable, Closeable {
                               @NotNull EventThrottler throttler,
                               @NotNull String topic,
                               @NotNull ReadOnlySchemaRepository schemaRepo,
-                              @NotNull TopicManager topicManager) {
+                              @NotNull TopicManager topicManager,
+                              @NotNull AggStoreConsumptionStats stats) {
     this.factory = factory;
     this.kafkaProps = kafkaConsumerProperties;
     this.storeRepository = storeRepository;
@@ -159,6 +160,9 @@ public class StoreConsumptionTask implements Runnable, Closeable {
     this.producerTrackerMap = new HashMap<>();
     this.consumerTaskId = String.format(CONSUMER_TASK_ID_FORMAT, topic);
     this.topicManager = topicManager;
+
+    this.stats = stats;
+    stats.updateStoreConsumptionTask(storeNameWithoutVersionInfo, this);
 
     this.isRunning = new AtomicBoolean(true);
   }
@@ -320,12 +324,12 @@ public class StoreConsumptionTask implements Runnable, Closeable {
       long beforePollTimestamp = System.currentTimeMillis();
       ConsumerRecords records = consumer.poll(READ_CYCLE_DELAY_MS);
       long afterPollTimestamp = System.currentTimeMillis();
-      serverAggStats.recordPollRequest(storeNameWithoutVersionInfo);
-      serverAggStats.recordPollRequestLatency(storeNameWithoutVersionInfo, afterPollTimestamp - beforePollTimestamp);
-      serverAggStats.recordPollResultNum(storeNameWithoutVersionInfo, records.count());
+      stats.recordPollRequest(storeNameWithoutVersionInfo);
+      stats.recordPollRequestLatency(storeNameWithoutVersionInfo, afterPollTimestamp - beforePollTimestamp);
+      stats.recordPollResultNum(storeNameWithoutVersionInfo, records.count());
       processTopicConsumerRecords(records);
       long afterProcessingTimestamp = System.currentTimeMillis();
-      serverAggStats.recordProcessPollResultLatency(storeNameWithoutVersionInfo, afterProcessingTimestamp - afterPollTimestamp);
+      stats.recordProcessPollResultLatency(storeNameWithoutVersionInfo, afterProcessingTimestamp - afterPollTimestamp);
 
     } else {
       idleCounter ++;
@@ -546,8 +550,8 @@ public class StoreConsumptionTask implements Runnable, Closeable {
     }
 
     throttler.maybeThrottle(totalSize);
-    serverAggStats.recordBytesConsumed(storeNameWithoutVersionInfo , totalSize);
-    serverAggStats.recordRecordsConsumed(storeNameWithoutVersionInfo, totalRecords);
+    stats.recordBytesConsumed(storeNameWithoutVersionInfo, totalSize);
+    stats.recordRecordsConsumed(storeNameWithoutVersionInfo, totalRecords);
 
     for(Integer partition: processedPartitions) {
       if(!partitionToOffsetMap.containsKey(partition)) {

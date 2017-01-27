@@ -4,7 +4,6 @@ import com.linkedin.venice.config.VeniceServerConfig;
 import com.linkedin.venice.config.VeniceStoreConfig;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
-import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.notifier.LogNotifier;
 import com.linkedin.venice.notifier.VeniceNotifier;
 import com.linkedin.venice.offsets.OffsetManager;
@@ -13,6 +12,7 @@ import com.linkedin.venice.serialization.avro.KafkaValueSerializer;
 import com.linkedin.venice.server.StoreRepository;
 import com.linkedin.venice.server.VeniceConfigLoader;
 import com.linkedin.venice.service.AbstractVeniceService;
+import com.linkedin.venice.stats.AggStoreConsumptionStats;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.Utils;
 
@@ -22,8 +22,8 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.stream.Collectors;
 
+import io.tehuti.metrics.MetricsRepository;
 import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.log4j.Logger;
@@ -50,6 +50,8 @@ public class KafkaConsumerPerStoreService extends AbstractVeniceService implemen
 
   private final ReadOnlySchemaRepository schemaRepo;
 
+  private final AggStoreConsumptionStats stats;
+
   /**
    * A repository mapping each Kafka Topic to it corresponding Consumption task responsible
    * for consuming messages and making changes to the local store accordingly.
@@ -65,7 +67,8 @@ public class KafkaConsumerPerStoreService extends AbstractVeniceService implemen
   public KafkaConsumerPerStoreService(StoreRepository storeRepository,
                                       VeniceConfigLoader veniceConfigLoader,
                                       OffsetManager offsetManager,
-                                      ReadOnlySchemaRepository schemaRepo) {
+                                      ReadOnlySchemaRepository schemaRepo,
+                                      MetricsRepository metricsRepository) {
     this.storeRepository = storeRepository;
     this.offsetManager = offsetManager;
     this.schemaRepo = schemaRepo;
@@ -83,6 +86,8 @@ public class KafkaConsumerPerStoreService extends AbstractVeniceService implemen
 
     VeniceNotifier notifier = new LogNotifier();
     notifiers.add(notifier);
+
+    stats = new AggStoreConsumptionStats(metricsRepository);
   }
 
   /**
@@ -103,7 +108,7 @@ public class KafkaConsumerPerStoreService extends AbstractVeniceService implemen
 
   private StoreConsumptionTask getConsumerTask(VeniceStoreConfig veniceStore) {
     return new StoreConsumptionTask(new VeniceConsumerFactory(), getKafkaConsumerProperties(veniceStore), storeRepository,
-            offsetManager , notifiers, throttler , veniceStore.getStoreName(), schemaRepo, topicManager);
+        offsetManager , notifiers, throttler , veniceStore.getStoreName(), schemaRepo, topicManager, stats);
   }
 
   /**
@@ -202,15 +207,6 @@ public class KafkaConsumerPerStoreService extends AbstractVeniceService implemen
     } else {
       logger.warn("Ignoring kill signal for Topic " + topic);
     }
-  }
-
-  @Override
-  public List<StoreConsumptionTask> getRunningConsumptionTasksByStore(String storeName) {
-    return topicNameToConsumptionTaskMap.entrySet().stream()
-      .filter(entry -> Version.parseStoreFromKafkaTopicName(entry.getKey()).equals(storeName)
-        && entry.getValue().isRunning())
-      .map(Map.Entry::getValue)
-      .collect(Collectors.toList());
   }
 
   @Override

@@ -10,6 +10,7 @@ import io.netty.channel.ChannelOption;
 import io.netty.channel.EventLoopGroup;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.nio.NioServerSocketChannel;
+import io.tehuti.metrics.MetricsRepository;
 import org.apache.log4j.Logger;
 
 /**
@@ -27,7 +28,10 @@ public class ListenerService extends AbstractVeniceService{
   //TODO: move netty config to a config file
   private static int nettyBacklogSize = 1000;
 
-  public ListenerService(StoreRepository storeRepository, OffsetManager offsetManager, VeniceConfigLoader veniceConfigLoader) {
+  public ListenerService(StoreRepository storeRepository,
+                         OffsetManager offsetManager,
+                         VeniceConfigLoader veniceConfigLoader,
+                         MetricsRepository metricsRepository) {
     this.port = veniceConfigLoader.getVeniceServerConfig().getListenerPort();
 
     //TODO: configurable worker group
@@ -36,7 +40,7 @@ public class ListenerService extends AbstractVeniceService{
 
     bootstrap = new ServerBootstrap();
     bootstrap.group(bossGroup, workerGroup).channel(NioServerSocketChannel.class)
-        .childHandler(new HttpChannelInitializer(storeRepository, offsetManager))    // For HTTP reads (GET storage/store/partition/key)
+        .childHandler(new HttpChannelInitializer(storeRepository, offsetManager, metricsRepository))    // For HTTP reads (GET storage/store/partition/key)
         .option(ChannelOption.SO_BACKLOG, nettyBacklogSize)
         .childOption(ChannelOption.SO_KEEPALIVE, true)
         .option(ChannelOption.SO_REUSEADDR, true)
@@ -60,5 +64,4 @@ public class ListenerService extends AbstractVeniceService{
     bossGroup.shutdownGracefully();
     shutdown.sync();
   }
-
 }

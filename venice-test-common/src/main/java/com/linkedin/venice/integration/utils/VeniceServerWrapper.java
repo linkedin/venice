@@ -2,7 +2,6 @@ package com.linkedin.venice.integration.utils;
 
 import static com.linkedin.venice.ConfigKeys.*;
 
-import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.WhitelistAccessor;
 import com.linkedin.venice.helix.ZkWhitelistAccessor;
 import com.linkedin.venice.server.VeniceConfigLoader;
@@ -12,6 +11,8 @@ import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.io.IOException;
+
+import io.tehuti.metrics.MetricsRepository;
 import org.apache.commons.io.FileUtils;
 
 import java.io.File;
@@ -63,7 +64,7 @@ public class VeniceServerWrapper extends ProcessWrapper {
         joinClusterWhitelist(veniceConfigLoader.getVeniceClusterConfig().getZookeeperAddress(), clusterName,
             listenPort);
       }
-      VeniceServer server = new VeniceServer(veniceConfigLoader);
+      VeniceServer server = new VeniceServer(veniceConfigLoader, new MetricsRepository());
       return new VeniceServerWrapper(serviceName, dataDirectory, server, serverProps, veniceConfigLoader);
     };
   }

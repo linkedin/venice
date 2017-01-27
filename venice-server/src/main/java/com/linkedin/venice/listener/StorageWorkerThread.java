@@ -4,7 +4,7 @@ import com.linkedin.venice.message.GetRequestObject;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.offsets.OffsetManager;
 import com.linkedin.venice.server.StoreRepository;
-import com.linkedin.venice.stats.ServerAggStats;
+import com.linkedin.venice.stats.AggServerHttpRequestStats;
 import com.linkedin.venice.store.AbstractStorageEngine;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.handler.codec.http.HttpResponseStatus;
@@ -16,15 +16,20 @@ public class StorageWorkerThread implements Runnable {
   private StoreRepository storeRepository;
   private OffsetManager offsetManager;
   private ChannelHandlerContext ctx;
-  private ServerAggStats stats = ServerAggStats.getInstance();
+  private AggServerHttpRequestStats stats;
 
   private final Logger logger = Logger.getLogger(StorageWorkerThread.class);
 
-  public StorageWorkerThread(ChannelHandlerContext ctx, GetRequestObject request, StoreRepository storeRepository, OffsetManager offsetManager) {
+  public StorageWorkerThread(ChannelHandlerContext ctx,
+                             GetRequestObject request,
+                             StoreRepository storeRepository,
+                             OffsetManager offsetManager,
+                             AggServerHttpRequestStats stats) {
     this.ctx = ctx;
     this.request = request;
     this.storeRepository = storeRepository;
     this.offsetManager = offsetManager;
+    this.stats = stats;
   }
 
   @Override
