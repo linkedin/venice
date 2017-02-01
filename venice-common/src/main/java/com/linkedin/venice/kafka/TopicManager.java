@@ -1,23 +1,21 @@
 package com.linkedin.venice.kafka;
 
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.meta.Version;
 
 import java.io.Closeable;
 import java.io.IOException;
 import java.util.Arrays;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
 import java.util.StringJoiner;
-import java.util.stream.Collectors;
 
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import kafka.admin.AdminUtils;
+import kafka.admin.RackAwareMode;
 import kafka.common.TopicExistsException;
 import kafka.utils.ZKStringSerializer$;
 import kafka.utils.ZkUtils;
@@ -73,8 +71,11 @@ public class TopicManager implements Closeable {
       /**
        * TODO: consider to increase {@link kafka.server.KafkaConfig.MinInSyncReplicasProp()} to be greater than 1,
        * so Kafka broker won't miss any data when some broker is down.
+       *
+       *
+       * RackAwareMode.Safe: Use rack information if every broker has a rack. Otherwise, fallback to Disabled mode.
        */
-      AdminUtils.createTopic(getZkUtils(), topicName, numPartitions, replication, new Properties());
+      AdminUtils.createTopic(getZkUtils(), topicName, numPartitions, replication, new Properties(), RackAwareMode.Safe$.MODULE$);
     } catch (TopicExistsException e) {
       logger.warn("Met error when creating kakfa topic: " + topicName, e);
     }
@@ -152,7 +153,7 @@ public class TopicManager implements Closeable {
       int partition = partitionInfo.partition();
       TopicPartition topicPartition = new TopicPartition(topic, partition);
       consumer.assign(Arrays.asList(topicPartition));
-      consumer.seekToEnd(topicPartition);
+      consumer.seekToEnd(Arrays.asList(topicPartition));
       offsets.put(partition, consumer.position(topicPartition));
     }
     consumer.assign(Arrays.asList());

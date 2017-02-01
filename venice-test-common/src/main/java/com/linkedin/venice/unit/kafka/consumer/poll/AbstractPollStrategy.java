@@ -73,6 +73,9 @@ public abstract class AbstractPollStrategy implements PollStrategy {
             nextOffset,
             offsetRecord.getEventTimeEpochMs(),
             TimestampType.NO_TIMESTAMP_TYPE,
+            -1, // checksum
+            -1, // serializedKeySize
+            -1, // serializedValueSize
             message.get().key,
             message.get().value);
         if (!records.containsKey(topicPartition)) {

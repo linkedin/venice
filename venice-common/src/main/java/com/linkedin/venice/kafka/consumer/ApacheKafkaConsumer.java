@@ -3,6 +3,7 @@ package com.linkedin.venice.kafka.consumer;
 import com.linkedin.venice.annotation.NotThreadsafe;
 import com.linkedin.venice.offsets.OffsetRecord;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -41,7 +42,7 @@ public class ApacheKafkaConsumer implements KafkaConsumerWrapper {
       kafkaConsumer.seek(topicPartition, nextReadOffset);
     } else {
       // Considering the offset of the same consumer group could be persisted by some other consumer in Kafka.
-      kafkaConsumer.seekToBeginning(topicPartition);
+      kafkaConsumer.seekToBeginning(Arrays.asList(topicPartition));
     }
   }
 
@@ -76,7 +77,7 @@ public class ApacheKafkaConsumer implements KafkaConsumerWrapper {
     // It intentionally throws an error when offset was reset for a topic
     // that is not subscribed to.
     TopicPartition topicPartition = new TopicPartition(topic, partition);
-    kafkaConsumer.seekToBeginning(topicPartition);
+    kafkaConsumer.seekToBeginning(Arrays.asList(topicPartition));
   }
 
   @Override

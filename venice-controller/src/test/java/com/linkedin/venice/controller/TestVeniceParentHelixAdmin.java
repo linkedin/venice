@@ -137,7 +137,7 @@ public class TestVeniceParentHelixAdmin {
     parentAdmin.start(clusterName);
 
     Future future = mock(Future.class);
-    doReturn(new RecordMetadata(topicPartition, 0, 1, -1))
+    doReturn(new RecordMetadata(topicPartition, 0, 1, -1, -1, -1, -1))
         .when(future).get();
     doReturn(future)
         .when(veniceWriter)
@@ -203,7 +203,7 @@ public class TestVeniceParentHelixAdmin {
     doReturn(new VeniceException("mock exception"))
         .when(internalAdmin)
         .getLastException(clusterName);
-    doReturn(new RecordMetadata(topicPartition, 0, 1, -1))
+    doReturn(new RecordMetadata(topicPartition, 0, 1, -1, -1, -1, -1))
         .when(future).get();
     doReturn(future)
         .when(veniceWriter)
@@ -237,7 +237,7 @@ public class TestVeniceParentHelixAdmin {
         .getValueSchemaId(clusterName, storeName, valueSchemaStr);
 
     Future future = mock(Future.class);
-    doReturn(new RecordMetadata(topicPartition, 0, 1, -1))
+    doReturn(new RecordMetadata(topicPartition, 0, 1, -1, -1, -1, -1))
         .when(future).get();
     doReturn(future)
         .when(veniceWriter)
@@ -282,7 +282,7 @@ public class TestVeniceParentHelixAdmin {
     String storeName = "test-store";
 
     Future future = mock(Future.class);
-    doReturn(new RecordMetadata(topicPartition, 0, 1, -1))
+    doReturn(new RecordMetadata(topicPartition, 0, 1, -1, -1, -1, -1))
         .when(future).get();
     doReturn(future)
         .when(veniceWriter)
@@ -324,7 +324,7 @@ public class TestVeniceParentHelixAdmin {
     String storeName = "test-store";
 
     Future future = mock(Future.class);
-    doReturn(new RecordMetadata(topicPartition, 0, 1, -1))
+    doReturn(new RecordMetadata(topicPartition, 0, 1, -1, -1, -1, -1))
         .when(future).get();
     doReturn(future)
         .when(veniceWriter)
@@ -347,7 +347,7 @@ public class TestVeniceParentHelixAdmin {
     String storeName = "test-store";
 
     Future future = mock(Future.class);
-    doReturn(new RecordMetadata(topicPartition, 0, 1, -1))
+    doReturn(new RecordMetadata(topicPartition, 0, 1, -1, -1, -1, -1))
         .when(future).get();
     doReturn(future)
         .when(veniceWriter)
@@ -387,7 +387,7 @@ public class TestVeniceParentHelixAdmin {
     parentAdmin.start(clusterName);
 
     Future future = mock(Future.class);
-    doReturn(new RecordMetadata(topicPartition, 0, 1, -1))
+    doReturn(new RecordMetadata(topicPartition, 0, 1, -1, -1, -1, -1))
         .when(future).get();
     doReturn(future)
         .when(veniceWriter)
