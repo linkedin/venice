@@ -28,9 +28,10 @@ ext.libraries = [ // Groovy map literal
                   commonsIo: 'commons-io:commons-io:2.4',
                   guava: 'com.google.guava:guava:18.0',
                   helix: 'org.apache.helix:helix-core:0.6.6.4',
-                  kafka: 'kafka:kafka_2.10:0.9.0.2', // Internal LinkedIn release
+                  // To be consistent with Container
+                  kafka: 'kafka:kafka_2.10:0.10.0.23', // Internal LinkedIn release
                   // Fixed the kafka client 'memory record is not writable' issue.
-                  kafkaClients: 'kafka:kafka-clients:0.9.0.14', // Internal LinkedIn release
+                  kafkaClients: 'kafka:kafka-clients:0.10.0.23', // Internal LinkedIn release
                   netty: 'io.netty:netty-all:4.1.4.Final',
                   zkclient: 'com.101tec:zkclient:0.7', //for Kafka AdminUtils
                   d2: 'com.linkedin.container:pegasus-d2-server-factory:25.0.11',
