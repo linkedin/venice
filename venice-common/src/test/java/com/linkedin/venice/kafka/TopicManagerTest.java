@@ -99,9 +99,11 @@ public class TopicManagerTest {
     manager.createTopic(topic, 1, 1);
     TestUtils.waitForNonDeterministicCompletion(WAIT_TIME, TimeUnit.SECONDS, () -> manager.containsTopic(topic));
     Map<Integer, Long> lastOffsets = manager.getLatestOffsets(topic);
-    Assert.assertTrue(lastOffsets.containsKey(0), "single partition topic has an offset for partition 0");
-    Assert.assertEquals(lastOffsets.keySet().size(), 1, "single partition topic has only an offset for one partition");
-    Assert.assertEquals(lastOffsets.get(0).longValue(), 0L, "new topic must end at partition 0");
+    TestUtils.waitForNonDeterministicAssertion(2, TimeUnit.SECONDS, () -> {
+      Assert.assertTrue(lastOffsets.containsKey(0), "single partition topic has an offset for partition 0");
+      Assert.assertEquals(lastOffsets.keySet().size(), 1, "single partition topic has only an offset for one partition");
+      Assert.assertEquals(lastOffsets.get(0).longValue(), 0L, "new topic must end at partition 0");
+    });
   }
 
   @Test

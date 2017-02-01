@@ -30,6 +30,7 @@ public class ConfigKeys {
   public static final String HEARTBEAT_TIMEOUT = "heartbeat.timeout";
 
   public static final String ROUTER_PORT = "router.port";
+  public static final String ROUTER_SSL_PORT = "router.sslport";
   public static final String LISTENER_PORT = "listener.port";
   public static final String ADMIN_PORT="admin.port";
 
@@ -134,4 +135,9 @@ public class ConfigKeys {
    * Default 5 days
    */
   public static final String ADMIN_CONSUMPTION_TIMEOUT_MINUTES = "admin.consumption.timeout.minutes";
+
+  /**
+   * Env variable for setting keystore when running Venice with quickstart.
+   */
+  public static final String KEYSTORE_ENV = "VENICE_KEYSTORE";
 }

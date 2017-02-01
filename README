@@ -53,6 +53,7 @@ To start the server:
 
 To start the router:
 
+> source quickstart/generate-keys.sh
 > ./quickstart/start-venice-router.sh
 
 ----------------------

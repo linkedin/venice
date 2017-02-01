@@ -676,7 +676,7 @@ public class TestVeniceHelixAdmin {
       stateModelFactory.makeTransitionCompleted(version.kafkaTopicName(), i);
     }
 
-    TestUtils.waitForNonDeterministicCompletion(5000, TimeUnit.MILLISECONDS, () -> {
+    TestUtils.waitForNonDeterministicCompletion(10000, TimeUnit.MILLISECONDS, () -> {
       PartitionAssignment partitionAssignment =
           veniceAdmin.getVeniceHelixResource(clusterName).getRoutingDataRepository()
               .getPartitionAssignments(version.kafkaTopicName());
