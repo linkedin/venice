@@ -26,6 +26,7 @@ public final class SchemaEntry {
     try {
       this.schema = Schema.parse(schemaStr);
     } catch (Exception e) {
+      logger.error("Failed to parse schema: " + schemaStr);
       throw new SchemaParseException(e);
     }
   }

@@ -7,6 +7,9 @@ import com.linkedin.ddsstorage.base.registry.ResourceRegistry;
 import com.linkedin.ddsstorage.base.registry.ShutdownableExecutors;
 import com.linkedin.ddsstorage.router.api.ScatterGatherHelper;
 import com.linkedin.ddsstorage.router.impl.Router;
+import com.linkedin.ddsstorage.router.lnkd.netty4.SSLInitializer;
+import com.linkedin.security.ssl.access.control.SSLEngineComponentFactory;
+import com.linkedin.security.ssl.access.control.SSLEngineComponentFactoryImpl;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixAdapterSerializer;
@@ -45,11 +48,15 @@ import org.apache.helix.manager.zk.ZKHelixManager;
 import org.apache.helix.manager.zk.ZkClient;
 import org.apache.log4j.Logger;
 
+import static com.linkedin.venice.ConfigKeys.*;
+
+
 public class RouterServer extends AbstractVeniceService {
   private static final Logger logger = Logger.getLogger(RouterServer.class);
 
   // Immutable state
   private final int port;
+  private final int sslPort;
   private final HelixRoutingDataRepository routingDataRepository;
   private final HelixReadOnlyStoreRepository metadataRepository;
   private final String clusterName;
@@ -57,6 +64,7 @@ public class RouterServer extends AbstractVeniceService {
   private final MetricsRepository metricsRepository;
   private final int clientTimeout;
   private final int heartbeatTimeout;
+  private final SSLEngineComponentFactory sslFactory;
 
   // Mutable state
   // TODO: Make these final once the test constructors are cleaned up.
@@ -66,12 +74,17 @@ public class RouterServer extends AbstractVeniceService {
 
   // These are initialized in startInner()... TODO: Consider refactoring this to be immutable as well.
   private AsyncFuture<SocketAddress> serverFuture = null;
+  private AsyncFuture<SocketAddress> secureServerFuture = null;
   private ResourceRegistry registry = null;
   private VeniceDispatcher dispatcher;
   private RouterHeartbeat heartbeat;
 
   private final static String ROUTER_SERVICE_NAME = "venice-router";
-  private final static int ROUTER_THREAD_POOL_SIZE = 20; // TODO, configurable, aim for ~ 2xCores, min 2 even for dev.
+  private final static int ROUTER_THREAD_POOL_SIZE;
+  static {
+    int cores = Runtime.getRuntime().availableProcessors();
+    ROUTER_THREAD_POOL_SIZE = cores > 2 ? cores : 2;
+  }
   private final static int CONNECTION_LIMIT = 10000; // TODO, configurable
 
   public static void main(String args[]) throws Exception {
@@ -87,14 +100,18 @@ public class RouterServer extends AbstractVeniceService {
     String zkConnection = props.getString(ConfigKeys.ZOOKEEPER_ADDRESS);
     String clusterName = props.getString(ConfigKeys.CLUSTER_NAME);
     int port = props.getInt(ConfigKeys.ROUTER_PORT);
+    int sslPort = props.getInt(ConfigKeys.ROUTER_SSL_PORT);
     int clientTimeout = props.getInt(ConfigKeys.CLIENT_TIMEOUT);
     int heartbeatTimeout = props.getInt(ConfigKeys.HEARTBEAT_TIMEOUT);
 
     logger.info("Zookeeper: " + zkConnection);
     logger.info("Cluster: " + clusterName);
     logger.info("Port: " + port);
+    logger.info("SSL Port: " + sslPort);
+    logger.info("Thread count: " + ROUTER_THREAD_POOL_SIZE);
 
-    RouterServer server = new RouterServer(port, clusterName, zkConnection, new ArrayList<>(), clientTimeout, heartbeatTimeout);
+    SSLEngineComponentFactory sslFactory = getSslFactory();
+    RouterServer server = new RouterServer(port, sslPort, clusterName, zkConnection, new ArrayList<>(), clientTimeout, heartbeatTimeout, sslFactory);
     server.start();
 
     Runtime.getRuntime().addShutdownHook(new Thread() {
@@ -119,19 +136,21 @@ public class RouterServer extends AbstractVeniceService {
     return TehutiUtils.getMetricsRepository(ROUTER_SERVICE_NAME);
   }
 
-  public RouterServer(int port, String clusterName, String zkConnection, List<D2Server> d2Servers){
-    this(port, clusterName, zkConnection, d2Servers, 10000, 1000);
+  public RouterServer(int port, int sslPort, String clusterName, String zkConnection, List<D2Server> d2Servers, SSLEngineComponentFactory sslFactory){
+    this(port, sslPort, clusterName, zkConnection, d2Servers, 10000, 1000, sslFactory);
   }
 
   // TODO: Do we need both of these constructors?  If we're always going to use the jmxReporterMetricsRepo() method, then drop the explicit constructor
-  public RouterServer(int port, String clusterName, String zkConnection, List<D2Server> d2ServerList, int clientTimeout, int heartbeatTimeout){
-    this(port, clusterName, zkConnection, d2ServerList, clientTimeout, heartbeatTimeout, createMetricsRepository());
+  public RouterServer(int port, int sslPort, String clusterName, String zkConnection, List<D2Server> d2ServerList, int clientTimeout, int heartbeatTimeout, SSLEngineComponentFactory sslFactory){
+    this(port, sslPort, clusterName, zkConnection, d2ServerList, clientTimeout, heartbeatTimeout, createMetricsRepository(), sslFactory);
 
   }
 
-  public RouterServer(int port, String clusterName, String zkConnection, List<D2Server> d2ServerList,
-                      int clientTimeout, int heartbeatTimeout, MetricsRepository metricsRepository) {
+  public RouterServer(int port, int sslPort, String clusterName, String zkConnection, List<D2Server> d2ServerList,
+                      int clientTimeout, int heartbeatTimeout, MetricsRepository metricsRepository,
+                      SSLEngineComponentFactory sslEngineComponentFactory) {
     this.port = port;
+    this.sslPort = sslPort;
     this.clientTimeout = clientTimeout;
     this.heartbeatTimeout = heartbeatTimeout;
     this.clusterName = clusterName;
@@ -146,6 +165,7 @@ public class RouterServer extends AbstractVeniceService {
             this.zkClient, adapter, this.clusterName);
     this.routingDataRepository = new HelixRoutingDataRepository(manager);
     this.d2ServerList = d2ServerList;
+    this.sslFactory = sslEngineComponentFactory;
 
     RouterAggStats.init(this.metricsRepository);
   }
@@ -166,12 +186,15 @@ public class RouterServer extends AbstractVeniceService {
    * @param d2ServerList
    */
   public RouterServer(int port,
+                      int sslPort,
                       String clusterName,
                       HelixRoutingDataRepository routingDataRepository,
                       HelixReadOnlyStoreRepository metadataRepository,
                       HelixReadOnlySchemaRepository schemaRepository,
-                      List<D2Server> d2ServerList){
+                      List<D2Server> d2ServerList,
+                      SSLEngineComponentFactory sslFactory){
     this.port = port;
+    this.sslPort = sslPort;
     this.clusterName = clusterName;
     this.metadataRepository = metadataRepository;
     this.schemaRepository = schemaRepository;
@@ -180,6 +203,7 @@ public class RouterServer extends AbstractVeniceService {
     this.metricsRepository = new MetricsRepository();
     this.clientTimeout = 10000;
     this.heartbeatTimeout = 1000;
+    this.sslFactory = sslFactory;
     RouterAggStats.init(this.metricsRepository); //TODO: re-evaluate doing a global init for the RouterAggStats class.
   }
 
@@ -187,7 +211,6 @@ public class RouterServer extends AbstractVeniceService {
   public boolean startInner() throws Exception {
     metadataRepository.refresh();
     // No need to call schemaRepository.refresh() since it will do nothing.
-
     registry = new ResourceRegistry();
     ExecutorService executor = registry
         .factory(ShutdownableExecutors.class)
@@ -201,32 +224,57 @@ public class RouterServer extends AbstractVeniceService {
     dispatcher = new VeniceDispatcher(healthMonitor, clientTimeout);
     heartbeat = new RouterHeartbeat(manager, healthMonitor, 10, TimeUnit.SECONDS, heartbeatTimeout);
     heartbeat.startInner();
+    MetaDataHandler metaDataHandler = new MetaDataHandler(routingDataRepository, schemaRepository, clusterName);
 
-    Router router = Router.builder(
-        ScatterGatherHelper.builder()
-            .roleFinder(new VeniceRoleFinder())
-            .pathParser(new VenicePathParser(new VeniceVersionFinder(metadataRepository), partitionFinder))
-            .partitionFinder(partitionFinder)
-            .hostFinder(new VeniceHostFinder(routingDataRepository))
-            .hostHealthMonitor(healthMonitor)
-            .dispatchHandler(dispatcher)
-            .build())
-        .name("VeniceRouter")
+    ScatterGatherHelper scatterGather = ScatterGatherHelper.builder()
+        .roleFinder(new VeniceRoleFinder())
+        .pathParser(new VenicePathParser(new VeniceVersionFinder(metadataRepository), partitionFinder))
+        .partitionFinder(partitionFinder)
+        .hostFinder(new VeniceHostFinder(routingDataRepository))
+        .hostHealthMonitor(healthMonitor)
+        .dispatchHandler(dispatcher)
+        .build();
+
+    Router router = Router.builder(scatterGather)
+        .name("VeniceRouterHttp")
         .resourceRegistry(registry)
         .executor(executor) // Executor provides the
         .bossPoolSize(1) // One boss thread to monitor the socket for new connections.  Netty only uses one thread from this pool
-        .ioWorkerPoolSize(ROUTER_THREAD_POOL_SIZE - 1) // Worker threads handle connections once they've been established.
+        .ioWorkerPoolSize(ROUTER_THREAD_POOL_SIZE / 2) // While they're shared between http router and https router
         .workerExecutor(workerExecutor)
         .connectionLimit(CONNECTION_LIMIT)
         .timeoutProcessor(timeoutProcessor)
         .serverSocketOptions(serverSocketOptions)
         .beforeHttpRequestHandler(ChannelPipeline.class, (pipeline) -> {
-          pipeline.addLast("", new MetaDataHandler(routingDataRepository, schemaRepository, clusterName));
+          pipeline.addLast("MetadataHandler", metaDataHandler);
+        })
+        .build();
+
+    Router secureRouter = Router.builder(scatterGather)
+        .name("SecureVeniceRouterHttps")
+        .resourceRegistry(registry)
+        .executor(executor) // Executor provides the
+        .bossPoolSize(1) // One boss thread to monitor the socket for new connections.  Netty only uses one thread from this pool
+        .ioWorkerPoolSize(ROUTER_THREAD_POOL_SIZE / 2) // While they're shared between http router and https router
+        .workerExecutor(workerExecutor)
+        .connectionLimit(CONNECTION_LIMIT)
+        .timeoutProcessor(timeoutProcessor)
+        .serverSocketOptions(serverSocketOptions)
+        .beforeHttpServerCodec(ChannelPipeline.class, (pipeline) -> {
+          if (null != sslFactory) {
+            pipeline.addFirst("SSL Initializer", new SSLInitializer(sslFactory));
+          }
+        })
+        .beforeHttpRequestHandler(ChannelPipeline.class, (pipeline) -> {
+          pipeline.addLast("SSL Verifier", new VerifySslHandler());
+          pipeline.addLast("MetadataHandler", metaDataHandler);
         })
         .build();
 
     serverFuture = router.start(new InetSocketAddress(port));
+    secureServerFuture = secureRouter.start(new InetSocketAddress(sslPort));
     serverFuture.await();
+    secureServerFuture.await();
 
     asyncStart();
 
@@ -247,6 +295,9 @@ public class RouterServer extends AbstractVeniceService {
     }
     if (!serverFuture.cancel(false)){
       serverFuture.awaitUninterruptibly();
+    }
+    if (!secureServerFuture.cancel(false)){
+      secureServerFuture.awaitUninterruptibly();
     }
     registry.shutdown();
     registry.waitForShutdown();
@@ -305,11 +356,39 @@ public class RouterServer extends AbstractVeniceService {
       serviceState.set(ServiceState.STARTED);
 
       try {
-        logger.info(this.toString() + " started on port: " + ((InetSocketAddress) serverFuture.get()).getPort());
+        logger.info(this.toString() + " started on port: " + ((InetSocketAddress) serverFuture.get()).getPort()
+            + " and ssl port: " + ((InetSocketAddress) secureServerFuture.get()).getPort());
       } catch (Exception e) {
         logger.error("Exception while waiting for " + this.toString() + " to start", e);
         throw new VeniceException(e);
       }
     });
+  }
+
+  /**
+   * NOTE: This is LinkedIn only code, only used for local testing, never used in a deployment environment
+   * Gets a factory using the keystore specified in the environment variable.  Expected to be a .p12 file generated
+   * with the LinkedIn id-tool command `id-tool grestin sign`
+   *
+   * @return
+   */
+  private static SSLEngineComponentFactory getSslFactory(){
+    String keyPath = System.getenv(KEYSTORE_ENV);
+    if (null == keyPath){
+      logger.warn("No keystore specified with the env variable: " + KEYSTORE_ENV + ".  SSL support disabled");
+      return null;
+    }
+    try {
+      SSLEngineComponentFactoryImpl.Config sslConfig = new SSLEngineComponentFactoryImpl.Config();
+      sslConfig.setKeyStoreFilePath(keyPath);
+      sslConfig.setKeyStorePassword("work_around_jdk-6879539");
+      sslConfig.setKeyStoreType("PKCS12");
+      sslConfig.setTrustStoreFilePath("/etc/riddler/cacerts");
+      sslConfig.setTrustStoreFilePassword("changeit");
+      sslConfig.setSslEnabled(true);
+      return new SSLEngineComponentFactoryImpl(sslConfig);
+    } catch (Exception e) {
+      throw new VeniceException("Failed to get SSLEngineComponentFactory", e);
+    }
   }
 }

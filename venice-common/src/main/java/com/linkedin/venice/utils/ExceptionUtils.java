@@ -20,6 +20,9 @@ public class ExceptionUtils {
    * @return true if a the throwableToInspect corresponds to or is caused by any of the throwableClassesToLookFor
    */
   public static boolean recursiveClassEquals(Throwable throwableToInspect, Class... throwableClassesToLookFor) {
+    if (null == throwableToInspect){
+      return false;
+    }
     for (Class clazz: throwableClassesToLookFor) {
       Class classToInspect = throwableToInspect.getClass();
       while (classToInspect != null) {

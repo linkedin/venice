@@ -66,8 +66,8 @@ public class MockVeniceRouterWrapper extends ProcessWrapper {
         d2ServerList = D2TestUtils.getD2Servers(zkAddress, "http://localhost:" + port);
       }
       String clusterName = TestUtils.getUniqueString("mock-venice-router-cluster");
-      RouterServer router = new RouterServer(port, clusterName, mockRepo,
-          mockMetadataRepository, mockSchemaRepository, d2ServerList);
+      RouterServer router = new RouterServer(port, sslPortFromPort(port), clusterName, mockRepo,
+          mockMetadataRepository, mockSchemaRepository, d2ServerList, TestUtils.getRouterSslFactory());
       return new MockVeniceRouterWrapper(serviceName, dataDirectory, router, clusterName, port);
     };
   }
@@ -80,6 +80,10 @@ public class MockVeniceRouterWrapper extends ProcessWrapper {
   @Override
   public int getPort() {
     return port;
+  }
+
+  public int getSslPort() {
+    return sslPortFromPort(port);
   }
 
   public String getClusterName() {
@@ -105,5 +109,9 @@ public class MockVeniceRouterWrapper extends ProcessWrapper {
   protected void newProcess()
       throws Exception {
     throw new UnsupportedOperationException("Mock venice router does not support restart.");
+  }
+
+  private static int sslPortFromPort(int port) {
+    return port + 1;
   }
 }

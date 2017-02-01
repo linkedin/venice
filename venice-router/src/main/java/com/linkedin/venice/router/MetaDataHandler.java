@@ -19,6 +19,7 @@ import io.netty.handler.codec.http.DefaultFullHttpResponse;
 import io.netty.handler.codec.http.FullHttpResponse;
 import io.netty.handler.codec.http.HttpRequest;
 import io.netty.handler.codec.http.HttpResponseStatus;
+import io.netty.util.ReferenceCountUtil;
 import java.io.IOException;
 import java.net.URL;
 import java.net.URLClassLoader;
@@ -59,7 +60,7 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
     this.clusterName = clusterName;
   }
 
-  private void setupResponseAndFlush(HttpResponseStatus status, byte[] body, boolean isJson,
+  public static void setupResponseAndFlush(HttpResponseStatus status, byte[] body, boolean isJson,
                                      ChannelHandlerContext ctx) {
     FullHttpResponse response = new DefaultFullHttpResponse(HTTP_1_1, status, Unpooled.wrappedBuffer(body));
     try {
@@ -96,6 +97,9 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
       // URI: /value_schema/{$storeName}/{$valueSchemaId} - Get single value schema
       handleValueSchemaLookup(ctx, helper);
     } else {
+      // SimpleChannelInboundHandler automatically releases the request after channelRead0 is done.
+      // since we're passing it on to the next handler, we need to retain an extra reference.
+      ReferenceCountUtil.retain(req);
       ctx.fireChannelRead(req);
       return;
     }
@@ -174,14 +178,14 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
 
   @Override
   public void exceptionCaught(ChannelHandlerContext ctx, Throwable e) throws Exception {
-    logger.error("Got exception while handling meta data request", e.getCause());
+    logger.error("Got exception while handling meta data request: " + e.getMessage(), e);
     try {
-      if (ExceptionUtils.recursiveClassEquals(e.getCause(), IOException.class)) {
+      if (null != e.getCause() && ExceptionUtils.recursiveClassEquals(e.getCause(), IOException.class)) {
         logger.warn("Caught exception is IOException, not sending response");
         // No need to send back error response since the connection has some issue.
         return;
       }
-      String stackTraceStr = ExceptionUtils.stackTraceToString(e.getCause());
+      String stackTraceStr = ExceptionUtils.stackTraceToString(e);
       setupResponseAndFlush(INTERNAL_SERVER_ERROR, stackTraceStr.getBytes(),
           false, ctx);
     } catch (Exception ex) {
@@ -190,4 +194,5 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
       ctx.channel().close();
     }
   }
+
 }

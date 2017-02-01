@@ -1,11 +1,8 @@
 package com.linkedin.venice.integration.utils;
 
-import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixReadOnlyStoreRepository;
 import com.linkedin.venice.helix.HelixRoutingDataRepository;
-import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.router.RouterServer;
-
 import com.linkedin.venice.utils.TestUtils;
 import java.io.File;
 import java.util.ArrayList;
@@ -37,7 +34,7 @@ public class VeniceRouterWrapper extends ProcessWrapper {
     String zkAddress = kafkaBrokerWrapper.getZkAddress();
 
     return (serviceName, port, dataDirectory) -> {
-      RouterServer router = new RouterServer(port, clusterName, zkAddress, new ArrayList<>());
+      RouterServer router = new RouterServer(port, sslPortFromPort(port), clusterName, zkAddress, new ArrayList<>(), TestUtils.getRouterSslFactory());
       return new VeniceRouterWrapper(serviceName, dataDirectory, router, clusterName, port, zkAddress);
     };
   }
@@ -50,6 +47,10 @@ public class VeniceRouterWrapper extends ProcessWrapper {
   @Override
   public int getPort() {
     return port;
+  }
+
+  public int getSslPort() {
+    return sslPortFromPort(port);
   }
 
   @Override
@@ -70,7 +71,7 @@ public class VeniceRouterWrapper extends ProcessWrapper {
   @Override
   protected void newProcess()
       throws Exception {
-    service = new RouterServer(port, clusterName, zkAddress, new ArrayList<>());
+    service = new RouterServer(port, sslPortFromPort(port), clusterName, zkAddress, new ArrayList<>(), TestUtils.getRouterSslFactory());
   }
 
   public HelixRoutingDataRepository getRoutingDataRepository(){
@@ -81,4 +82,7 @@ public class VeniceRouterWrapper extends ProcessWrapper {
     return service.getMetadataRepository();
   }
 
+  private static int sslPortFromPort(int port) {
+    return port + 1;
+  }
 }

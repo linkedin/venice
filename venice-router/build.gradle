@@ -27,10 +27,16 @@ dependencies {
     compile libraries.routerApi
     compile libraries.routerImpl
     compile libraries.routerNetty4
+    compile (libraries.routerLnkd){ // for SSL Initializer
+        exclude group: 'com.oracle', module: 'ojdbc14' // unused transitive dependency, doesnt exist in repo
+
+        exclude group: 'xerces', module: 'xerces' // resolve conflicting transitive dependency
+        exclude group: 'com.fasterxml.jackson.core', module: 'jackson-core'// resolve conflicting transitive dependency
+    }
     compile libraries.asyncHttpClient
     compile project(':venice-common')
     compile (libraries.d2){
-        exclude group: 'com.oracle', module: 'ojdbc14' /* unused transitive dependencies, doesnt exist in repo */
+        exclude group: 'com.oracle', module: 'ojdbc14' // unused transitive dependencies, doesnt exist in repo
         // this will introduce another different mockito-all version
         exclude group: 'org.mockito', module: 'mockito-all'
     }
