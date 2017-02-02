@@ -1,7 +1,7 @@
 package com.linkedin.venice.controller.kafka.consumer;
 
-import com.linkedin.venice.ConfigKeys;
 import com.google.common.collect.Sets;
+import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.kafka.AdminTopicUtils;
 import com.linkedin.venice.controller.kafka.protocol.admin.AdminOperation;
@@ -26,6 +26,7 @@ import com.linkedin.venice.kafka.protocol.state.ProducerPartitionState;
 import com.linkedin.venice.kafka.validation.SegmentStatus;
 import com.linkedin.venice.kafka.validation.checksum.CheckSumType;
 import com.linkedin.venice.offsets.DeepCopyOffsetManager;
+import com.linkedin.venice.offsets.InMemoryOffsetManager;
 import com.linkedin.venice.offsets.OffsetManager;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.serialization.DefaultSerializer;
@@ -47,25 +48,26 @@ import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.VeniceWriter;
 import io.tehuti.metrics.MetricsRepository;
-
+import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.LinkedList;
+import java.util.Properties;
+import java.util.Queue;
 import java.util.concurrent.ExecutionException;
-import org.apache.kafka.clients.consumer.OffsetAndMetadata;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import org.apache.kafka.clients.producer.RecordMetadata;
 import org.apache.kafka.common.TopicPartition;
-import org.mockito.ArgumentMatcher;
-import static org.mockito.Mockito.*;
-
 import org.testng.Assert;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
-import java.io.IOException;
-import java.util.*;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
+import static org.mockito.Mockito.*;
 
 public class TestAdminConsumptionTask {
   private static final int TIMEOUT = 10000;
@@ -112,9 +114,7 @@ public class TestAdminConsumptionTask {
     // By default, current controller is the master controller
     doReturn(true).when(admin).isMasterController(clusterName);
 
-    offsetManager = mock(OffsetManager.class);
-    doReturn(new OffsetRecord()).when(offsetManager)
-        .getLastOffset(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID);
+    offsetManager = new InMemoryOffsetManager();
 
     TopicManager topicManager = mock(TopicManager.class);
     // By default, topic has already been created
@@ -202,10 +202,10 @@ public class TestAdminConsumptionTask {
 
     AdminConsumptionTask task = getAdminConsumptionTask(new RandomPollStrategy(), false);
     executor.submit(task);
-    verify(offsetManager, timeout(TIMEOUT))
-        .recordOffset(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID, TestUtils.getOffsetRecord(1));
-    verify(offsetManager, timeout(TIMEOUT))
-        .recordOffset(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID, TestUtils.getOffsetRecord(2));
+
+    TestUtils.waitForNonDeterministicAssertion(TIMEOUT, TimeUnit.MILLISECONDS, () -> {
+      Assert.assertEquals(offsetManager.getLastOffset(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID), TestUtils.getOffsetRecord(2));
+    });
 
     task.close();
     executor.shutdown();
@@ -235,8 +235,11 @@ public class TestAdminConsumptionTask {
 
     AdminConsumptionTask task = getAdminConsumptionTask(new RandomPollStrategy(), false);
     executor.submit(task);
-    verify(offsetManager, timeout(TIMEOUT))
-        .recordOffset(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID, TestUtils.getOffsetRecord(1));
+
+    TestUtils.waitForNonDeterministicAssertion(TIMEOUT, TimeUnit.MILLISECONDS, () -> {
+      Assert.assertEquals(offsetManager.getLastOffset(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID), TestUtils.getOffsetRecord(1));
+    });
+
     task.close();
     executor.shutdown();
     executor.awaitTermination(TIMEOUT, TimeUnit.MILLISECONDS);
@@ -264,8 +267,9 @@ public class TestAdminConsumptionTask {
     AdminConsumptionTask task = getAdminConsumptionTask(new RandomPollStrategy(),  timeoutMinutes, false);
     executor.submit(task);
     // admin throws errors, so record offset means we skipped the message
-    verify(offsetManager, timeout(TIMEOUT))
-        .recordOffset(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID, TestUtils.getOffsetRecord(1));
+    TestUtils.waitForNonDeterministicAssertion(TIMEOUT, TimeUnit.MILLISECONDS, () -> {
+      Assert.assertEquals(offsetManager.getLastOffset(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID), TestUtils.getOffsetRecord(1));
+    });
 
     task.close();
     executor.shutdown();
@@ -296,8 +300,9 @@ public class TestAdminConsumptionTask {
     });
 
     // admin throws errors, so record offset means we skipped the message
-    verify(offsetManager, timeout(TIMEOUT))
-        .recordOffset(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID, TestUtils.getOffsetRecord(1));
+    TestUtils.waitForNonDeterministicAssertion(TIMEOUT, TimeUnit.MILLISECONDS, () -> {
+      Assert.assertEquals(offsetManager.getLastOffset(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID), TestUtils.getOffsetRecord(1));
+    });
 
     task.close();
     executor.shutdown();
@@ -353,8 +358,11 @@ public class TestAdminConsumptionTask {
 
     AdminConsumptionTask task = getAdminConsumptionTask(pollStrategy, false);
     executor.submit(task);
-    verify(offsetManager, timeout(TIMEOUT).atLeastOnce())
-        .recordOffset(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID, TestUtils.getOffsetRecord(2));
+
+    TestUtils.waitForNonDeterministicAssertion(TIMEOUT, TimeUnit.MILLISECONDS, () -> {
+      Assert.assertEquals(offsetManager.getLastOffset(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID), TestUtils.getOffsetRecord(2));
+    });
+
     Utils.sleep(1000); // TODO: find a better to wait for AdminConsumptionTask consume the last message.
     task.close();
     executor.shutdown();
@@ -399,8 +407,7 @@ public class TestAdminConsumptionTask {
     int firstAdminMessageOffset = 1;
     int firstAdminMessageSeqNum = 1;
     OffsetRecord offsetRecord = getOffsetRecordByOffsetAndSeqNum(firstAdminMessageOffset, firstAdminMessageSeqNum);
-    doReturn(offsetRecord).when(offsetManager)
-        .getLastOffset(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID);
+    offsetManager.recordOffset(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID, offsetRecord);
 
     RecordMetadata killJobMetadata = (RecordMetadata) veniceWriter.put(emptyKeyBytes,
         getKillOfflinePushJobMessage(clusterName, storeTopicName),
@@ -417,8 +424,11 @@ public class TestAdminConsumptionTask {
 
     AdminConsumptionTask task = getAdminConsumptionTask(pollStrategy, false);
     executor.submit(task);
-    verify(offsetManager, timeout(TIMEOUT).atLeastOnce())
-        .recordOffset(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID, TestUtils.getOffsetRecord(2));
+
+    TestUtils.waitForNonDeterministicAssertion(TIMEOUT, TimeUnit.MILLISECONDS, () -> {
+      Assert.assertEquals(offsetManager.getLastOffset(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID), TestUtils.getOffsetRecord(2));
+    });
+
     task.close();
     executor.shutdown();
     executor.awaitTermination(TIMEOUT, TimeUnit.MILLISECONDS);
@@ -503,10 +513,11 @@ public class TestAdminConsumptionTask {
 
     AdminConsumptionTask task = getAdminConsumptionTask(new RandomPollStrategy(), false);
     executor.submit(task);
-    verify(offsetManager, timeout(TIMEOUT).atLeastOnce())
-        .recordOffset(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID, TestUtils.getOffsetRecord(1));
-    verify(offsetManager, timeout(TIMEOUT).atLeastOnce())
-        .recordOffset(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID, TestUtils.getOffsetRecord(2));
+
+    TestUtils.waitForNonDeterministicAssertion(TIMEOUT, TimeUnit.MILLISECONDS, () -> {
+      Assert.assertEquals(offsetManager.getLastOffset(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID), TestUtils.getOffsetRecord(2));
+    });
+
     task.close();
     executor.shutdown();
     executor.awaitTermination(TIMEOUT, TimeUnit.MILLISECONDS);
@@ -520,7 +531,7 @@ public class TestAdminConsumptionTask {
     verify(admin, timeout(TIMEOUT)).addStore(clusterName, storeName, owner, keySchema, valueSchema);
   }
 
-  @Test (timeOut = TIMEOUT)
+  @Test (timeOut = 2 * TIMEOUT)
   public void testRunWithBiggerStartingOffset() throws InterruptedException, IOException {
     String storeName1 = "test_store1";
     String storeName2 = "test_store2";
@@ -535,13 +546,13 @@ public class TestAdminConsumptionTask {
     // The store doesn't exist
     doReturn(false).when(admin).hasStore(clusterName, storeName1);
     doReturn(false).when(admin).hasStore(clusterName, storeName2);
-    doReturn(TestUtils.getOffsetRecord(1)).when(offsetManager)
-        .getLastOffset(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID);
+    offsetManager.recordOffset(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID, TestUtils.getOffsetRecord(1));
 
     AdminConsumptionTask task = getAdminConsumptionTask(new RandomPollStrategy(), false);
     executor.submit(task);
-    verify(offsetManager, timeout(TIMEOUT).atLeastOnce())
-        .recordOffset(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID, TestUtils.getOffsetRecord(2));
+    TestUtils.waitForNonDeterministicAssertion(TIMEOUT, TimeUnit.MILLISECONDS, () -> {
+      Assert.assertEquals(offsetManager.getLastOffset(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID), TestUtils.getOffsetRecord(3));
+    });
     task.close();
     executor.shutdown();
     executor.awaitTermination(TIMEOUT, TimeUnit.MILLISECONDS);
@@ -554,9 +565,7 @@ public class TestAdminConsumptionTask {
         .unSubscribe(any(), anyInt());
 
     verify(admin, never()).addStore(clusterName, storeName1, owner, keySchema, valueSchema);
-    verify(admin, timeout(TIMEOUT).atLeastOnce()).addStore(clusterName, storeName2, owner, keySchema, valueSchema);
-    verify(offsetManager, timeout(TIMEOUT).never())
-        .recordOffset(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID, TestUtils.getOffsetRecord(1));
+    verify(admin, atLeastOnce()).addStore(clusterName, storeName2, owner, keySchema, valueSchema);
   }
 
   @Test (timeOut = TIMEOUT)
@@ -567,8 +576,11 @@ public class TestAdminConsumptionTask {
 
     AdminConsumptionTask task = getAdminConsumptionTask(new RandomPollStrategy(), true);
     executor.submit(task);
-    verify(offsetManager, timeout(TIMEOUT).atLeastOnce())
-        .recordOffset(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID, TestUtils.getOffsetRecord(1));
+
+    TestUtils.waitForNonDeterministicAssertion(TIMEOUT, TimeUnit.MILLISECONDS, () -> {
+      Assert.assertEquals(offsetManager.getLastOffset(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID), TestUtils.getOffsetRecord(1));
+    });
+
     task.close();
     executor.shutdown();
     executor.awaitTermination(TIMEOUT, TimeUnit.MILLISECONDS);
