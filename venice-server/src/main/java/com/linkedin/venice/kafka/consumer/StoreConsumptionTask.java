@@ -2,6 +2,7 @@ package com.linkedin.venice.kafka.consumer;
 
 import com.google.common.collect.Lists;
 import com.linkedin.venice.exceptions.PersistenceFailureException;
+import com.linkedin.venice.exceptions.UnsubscribedTopicPartitionException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceMessageException;
 import com.linkedin.venice.exceptions.validation.UnsupportedMessageTypeException;
@@ -479,14 +480,19 @@ public class StoreConsumptionTask implements Runnable, Closeable {
         consumer.unSubscribe(topic, partition);
         break;
       case RESET_OFFSET:
+        try {
+          consumer.resetOffset(topic, partition);
+          logger.info(consumerTaskId + " Reset OffSet : Topic " + topic + " Partition Id " + partition);
+        } catch (UnsubscribedTopicPartitionException e) {
+          logger.info(consumerTaskId + " No need to reset offset by Kafka consumer, since the consumer is not " +
+              "subscribing Topic: " + topic + " Partition Id: " + partition);
+        }
         partitionToOffsetMap.put(partition, new OffsetRecord());
         completedPartitions.remove(partition);
         producerTrackerMap.values().stream().forEach(
             producerTracker -> producerTracker.clearPartition(partition)
         );
         offsetManager.clearOffset(topic, partition);
-        consumer.resetOffset(topic, partition);
-        logger.info(consumerTaskId + " Reset OffSet : Topic " + topic + " Partition Id " + partition );
         break;
       case KILL:
         logger.info("Kill this consumer task for Topic:" + topic);

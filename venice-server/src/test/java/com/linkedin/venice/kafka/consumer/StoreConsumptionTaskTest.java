@@ -1,5 +1,6 @@
 package com.linkedin.venice.kafka.consumer;
 
+import com.linkedin.venice.exceptions.UnsubscribedTopicPartitionException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceMessageException;
 import com.linkedin.venice.exceptions.validation.CorruptDataException;
@@ -424,6 +425,26 @@ public class StoreConsumptionTaskTest {
 
       verify(mockAbstractStorageEngine, timeout(TEST_TIMEOUT).times(2))
           .put(PARTITION_FOO, putKeyFoo, ValueRecord.create(SCHEMA_ID, putValue).serialize());
+    });
+  }
+
+  @Test
+  public void testResetPartitionAfterUnsubscription() throws Exception {
+    veniceWriter.broadcastStartOfPush(new HashMap<>());
+    veniceWriter.put(putKeyFoo, putValue, SCHEMA_ID).get();
+
+    runTest(getSet(PARTITION_FOO), () -> {
+      verify(mockAbstractStorageEngine, timeout(TEST_TIMEOUT))
+          .put(PARTITION_FOO, putKeyFoo, ValueRecord.create(SCHEMA_ID, putValue).serialize());
+
+      storeConsumptionTaskUnderTest.unSubscribePartition(topic, PARTITION_FOO);
+      doThrow(new UnsubscribedTopicPartitionException(topic, PARTITION_FOO))
+          .when(mockKafkaConsumer).resetOffset(topic, PARTITION_FOO);
+      // Reset should be able to handle the scenario, when the topic partition has been unsubscribed.
+      storeConsumptionTaskUnderTest.resetPartitionConsumptionOffset(topic, PARTITION_FOO);
+      verify(mockKafkaConsumer, timeout(TEST_TIMEOUT)).unSubscribe(topic, PARTITION_FOO);
+      verify(mockKafkaConsumer, timeout(TEST_TIMEOUT)).resetOffset(topic, PARTITION_FOO);
+      verify(mockOffSetManager, timeout(TEST_TIMEOUT)).clearOffset(topic, PARTITION_FOO);
     });
   }
 
