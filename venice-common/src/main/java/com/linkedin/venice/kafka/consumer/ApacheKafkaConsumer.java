@@ -1,6 +1,7 @@
 package com.linkedin.venice.kafka.consumer;
 
 import com.linkedin.venice.annotation.NotThreadsafe;
+import com.linkedin.venice.exceptions.UnsubscribedTopicPartitionException;
 import com.linkedin.venice.offsets.OffsetRecord;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -74,9 +75,12 @@ public class ApacheKafkaConsumer implements KafkaConsumerWrapper {
 
   @Override
   public void resetOffset(String topic, int partition) {
-    // It intentionally throws an error when offset was reset for a topic
-    // that is not subscribed to.
     TopicPartition topicPartition = new TopicPartition(topic, partition);
+    Set<TopicPartition> topicPartitionSet = kafkaConsumer.assignment();
+
+    if (! topicPartitionSet.contains(topicPartition)) {
+      throw new UnsubscribedTopicPartitionException(topic, partition);
+    }
     kafkaConsumer.seekToBeginning(Arrays.asList(topicPartition));
   }
 
