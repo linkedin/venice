@@ -20,11 +20,18 @@ import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.helix.HelixAdapterSerializer;
+import com.linkedin.venice.helix.HelixReadWriteStoreRepository;
 import com.linkedin.venice.integration.utils.KafkaBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.job.ExecutionStatus;
 import com.linkedin.venice.kafka.TopicManager;
+import com.linkedin.venice.meta.OfflinePushStrategy;
+import com.linkedin.venice.meta.PersistenceType;
+import com.linkedin.venice.meta.ReadStrategy;
+import com.linkedin.venice.meta.RoutingStrategy;
+import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
@@ -68,6 +75,7 @@ public class TestVeniceParentHelixAdmin {
   private ZkClient zkClient;
   private VeniceWriter veniceWriter;
   private VeniceParentHelixAdmin parentAdmin;
+  private VeniceHelixResources resources;
 
   @BeforeMethod
   public void init() {
@@ -97,7 +105,7 @@ public class TestVeniceParentHelixAdmin {
     doReturn("fake_kafka_bootstrap_servers").when(config)
         .getKafkaBootstrapServers();
 
-    VeniceHelixResources resources = mock(VeniceHelixResources.class);
+    resources = mock(VeniceHelixResources.class);
     doReturn(config).when(resources)
         .getConfig();
     doReturn(resources).when(internalAdmin)
@@ -442,6 +450,48 @@ public class TestVeniceParentHelixAdmin {
         .when(topicManager)
         .listTopics();
     parentAdmin.incrementVersion(clusterName, storeName, 1, 1);
+  }
+
+  @Test
+  public void testStoreVersionCleanUpWithFewerVersions() {
+    String storeName = "test_store";
+    Store testStore = new Store(storeName, "test_owner", -1, PersistenceType.BDB,
+            RoutingStrategy.CONSISTENT_HASH, ReadStrategy.ANY_OF_ONLINE, OfflinePushStrategy.WAIT_ALL_REPLICAS);
+    testStore.addVersion(new Version(storeName, 1));
+    testStore.addVersion(new Version(storeName, 2));
+    HelixReadWriteStoreRepository storeRepo = mock(HelixReadWriteStoreRepository.class);
+    doReturn(testStore).when(storeRepo).getStore(storeName);
+    doReturn(storeRepo).when(resources)
+            .getMetadataRepository();
+    parentAdmin.cleanupHistoricalVersions(clusterName, storeName);
+    verify(storeRepo).getStore(storeName);
+    verify(storeRepo, never()).updateStore(any());
+  }
+
+  @Test
+  public void testStoreVersionCleanUpWithMoreVersions() {
+    String storeName = "test_store";
+    Store testStore = new Store(storeName, "test_owner", -1, PersistenceType.BDB,
+            RoutingStrategy.CONSISTENT_HASH, ReadStrategy.ANY_OF_ONLINE, OfflinePushStrategy.WAIT_ALL_REPLICAS);
+    for (int i = 1; i <= 10; ++i) {
+      testStore.addVersion(new Version(storeName, i));
+    }
+    HelixReadWriteStoreRepository storeRepo = mock(HelixReadWriteStoreRepository.class);
+    doReturn(testStore).when(storeRepo).getStore(storeName);
+    doReturn(storeRepo).when(resources)
+            .getMetadataRepository();
+    parentAdmin.cleanupHistoricalVersions(clusterName, storeName);
+    verify(storeRepo).getStore(storeName);
+    ArgumentCaptor<Store> storeCaptor = ArgumentCaptor.forClass(Store.class);
+    verify(storeRepo).updateStore(storeCaptor.capture());
+    Store capturedStore = storeCaptor.getValue();
+    Assert.assertEquals(capturedStore.getVersions().size(), VeniceParentHelixAdmin.STORE_VERSION_RETENTION_COUNT);
+    for (int i = 1; i <= 5; ++i) {
+      Assert.assertFalse(capturedStore.containsVersion(i));
+    }
+    for (int i = 6; i <= 10; ++i) {
+      Assert.assertTrue(capturedStore.containsVersion(i));
+    }
   }
 
   /**

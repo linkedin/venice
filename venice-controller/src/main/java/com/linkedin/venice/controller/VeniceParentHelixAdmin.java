@@ -19,6 +19,7 @@ import com.linkedin.venice.controller.kafka.protocol.serializer.AdminOperationSe
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.helix.HelixReadWriteStoreRepository;
 import com.linkedin.venice.helix.Replica;
 import com.linkedin.venice.job.ExecutionStatus;
 import com.linkedin.venice.kafka.TopicManager;
@@ -64,6 +65,8 @@ import java.util.concurrent.locks.ReentrantLock;
 public class VeniceParentHelixAdmin implements Admin {
   private static final long SLEEP_INTERVAL_FOR_DATA_CONSUMPTION_IN_MS = 1000;
   private static final Logger logger = Logger.getLogger(VeniceParentHelixAdmin.class);
+  //Store version number to retain in Parent Controller to limit 'Store' ZNode size.
+  protected static final int STORE_VERSION_RETENTION_COUNT = 5;
 
   private final VeniceHelixAdmin veniceHelixAdmin;
   private final Map<String, VeniceWriter<byte[], byte[]>> veniceWriterMap;
@@ -238,6 +241,40 @@ public class VeniceParentHelixAdmin implements Admin {
     throw new VeniceException("addVersion is not supported yet!");
   }
 
+  /**
+   * Since there is no {@link com.linkedin.venice.job.OfflineJob} running in Parent Controller,
+   * the old store versions won't be cleaned up by job completion action, so Parent Controller chooses
+   * to clean it up when the new store version gets created.
+   * It is OK to clean up the old store versions in Parent Controller without notifying Child Controller since
+   * store version in Parent Controller doesn't maintain actual version status, and only for tracking
+   * the store version creation history.
+   */
+  protected void cleanupHistoricalVersions(String clusterName, String storeName) {
+    HelixReadWriteStoreRepository storeRepo = veniceHelixAdmin.getVeniceHelixResource(clusterName)
+            .getMetadataRepository();
+    storeRepo.lock();
+    try {
+      Store store = storeRepo.getStore(storeName);
+      if (null == store) {
+        logger.info("The store to clean up: " + storeName + " doesn't exist");
+        return;
+      }
+      List<Version> versions = store.getVersions();
+      final int versionCount = versions.size();
+      if (versionCount <= STORE_VERSION_RETENTION_COUNT) {
+        return;
+      }
+      List<Version> clonedVersions = new ArrayList<>(versions);
+      clonedVersions.stream()
+              .sorted()
+              .limit(versionCount - STORE_VERSION_RETENTION_COUNT)
+              .forEach(v -> store.deleteVersion(v.getNumber()));
+      storeRepo.updateStore(store);
+    } finally {
+      storeRepo.unLock();
+    }
+  }
+
   @Override
   public Version incrementVersion(String clusterName,
                                                String storeName,
@@ -276,7 +313,10 @@ public class VeniceParentHelixAdmin implements Admin {
             " not this case");
       }
     }
-    return veniceHelixAdmin.addVersion(clusterName, storeName, VeniceHelixAdmin.VERSION_ID_UNSET, numberOfPartition, replicationFactor, false);
+    Version newVersion = veniceHelixAdmin.addVersion(clusterName, storeName, VeniceHelixAdmin.VERSION_ID_UNSET,
+            numberOfPartition, replicationFactor, false);
+    cleanupHistoricalVersions(clusterName, storeName);
+    return newVersion;
   }
 
   @Override
