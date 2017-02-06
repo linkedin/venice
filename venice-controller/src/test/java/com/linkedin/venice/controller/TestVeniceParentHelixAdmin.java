@@ -111,6 +111,12 @@ public class TestVeniceParentHelixAdmin {
     doReturn(resources).when(internalAdmin)
         .getVeniceHelixResource(clusterName);
 
+    Store mockStore = mock(Store.class);
+    HelixReadWriteStoreRepository storeRepo = mock(HelixReadWriteStoreRepository.class);
+    doReturn(mockStore).when(storeRepo).getStore(any());
+    // Please override this default mock implementation if you need special store repo logic for your test
+    doReturn(storeRepo).when(resources)
+        .getMetadataRepository();
 
     parentAdmin = new VeniceParentHelixAdmin(internalAdmin, config);
     veniceWriter = mock(VeniceWriter.class);
