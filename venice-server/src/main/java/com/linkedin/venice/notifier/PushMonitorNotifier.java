@@ -24,7 +24,7 @@ public class PushMonitorNotifier implements VeniceNotifier {
 
   @Override
   public void restarted(String topic, int partitionId, long offset) {
-    // Because we didn't remove status for this replica, so we don't need to update it while restarting.
+    accessor.updateReplicaStatus(topic, partitionId, instanceId, ExecutionStatus.STARTED, offset);
   }
 
   @Override
