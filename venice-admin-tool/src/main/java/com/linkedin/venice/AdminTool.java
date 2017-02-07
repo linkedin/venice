@@ -57,6 +57,8 @@ public class AdminTool {
   private static final String ERROR = "error";
   private static final String SUCCESS = "success";
 
+  private static ControllerClient controllerClient;
+
   public static void main(String args[])
       throws ParseException, IOException, InterruptedException, ExecutionException, VeniceClientException {
 
@@ -94,6 +96,8 @@ public class AdminTool {
 
       String routerHosts = getRequiredArgument(cmd, Arg.URL);
       String clusterName = getRequiredArgument(cmd, Arg.CLUSTER);
+
+      controllerClient = new ControllerClient(clusterName, routerHosts);
 
       if (cmd.hasOption(Arg.FLAT_JSON.toString())){
         jsonWriter = new ObjectMapper().writer();
@@ -136,11 +140,19 @@ public class AdminTool {
         printObject(response);
       } else if (cmd.hasOption(Command.NEW_STORE.toString())) {
         createNewStore(cmd, routerHosts, clusterName);
-      } else if (cmd.hasOption(Command.PAUSE_STORE.toString())) {
-        setStorePaused(cmd, routerHosts, clusterName, true);
-      } else if (cmd.hasOption(Command.RESUME_STORE.toString())){
-        setStorePaused(cmd, routerHosts, clusterName, false);
-      } else if (cmd.hasOption(Command.SET_VERSION.toString())){
+      } else if (cmd.hasOption(Command.DISABLE_STORE_WRITE.toString())) {
+        setEnableStoreWrites(cmd, routerHosts, clusterName, false);
+      } else if (cmd.hasOption(Command.ENABLE_STORE_WRITE.toString())){
+        setEnableStoreWrites(cmd, routerHosts, clusterName, true);
+      } else if (cmd.hasOption(Command.DISABLE_STORE_READ.toString())) {
+        setEnableStoreReads(cmd, routerHosts, clusterName, false);
+      } else if (cmd.hasOption(Command.ENABLE_STORE_READ.toString())) {
+        setEnableStoreReads(cmd, routerHosts, clusterName, true);
+      } else if (cmd.hasOption(Command.DISABLE_STORE.toString())) {
+        setEnableStoreReadWrites(cmd, routerHosts, clusterName, false);
+      } else if (cmd.hasOption(Command.ENABLE_STORE.toString())) {
+        setEnableStoreReadWrites(cmd, routerHosts, clusterName, true);
+      } else if (cmd.hasOption(Command.SET_VERSION.toString())) {
         applyVersionToStore(cmd, routerHosts, clusterName);
       } else if (cmd.hasOption(Command.ADD_SCHEMA.toString())){
         applyValueSchemaToStore(cmd, routerHosts, clusterName);
@@ -248,9 +260,23 @@ public class AdminTool {
     printObject(newStore);
   }
 
-  private static void setStorePaused(CommandLine cmd, String routerHosts, String clusterName, boolean newPauseStatus){
+  private static void setEnableStoreWrites(CommandLine cmd, String routerHosts, String clusterName, boolean enableWrites){
     String store = getRequiredArgument(cmd, Arg.STORE, Command.SET_VERSION);
-    ControllerResponse response = ControllerClient.setPauseStatus(routerHosts, clusterName, store, newPauseStatus);
+    ControllerResponse response = ControllerClient.enableStoreWrites(routerHosts, clusterName, store, enableWrites);
+    printSuccess(response);
+  }
+
+  private static void setEnableStoreReads(CommandLine cmd, String routerHosts, String clusterName,
+      boolean enableReads) {
+    String store = getRequiredArgument(cmd, Arg.STORE, Command.SET_VERSION);
+    ControllerResponse response = controllerClient.enableStoreReads(clusterName, store, enableReads);
+    printSuccess(response);
+  }
+
+  private static void setEnableStoreReadWrites(CommandLine cmd, String routerHosts, String clusterName,
+      boolean enableReadWrites) {
+    String store = getRequiredArgument(cmd, Arg.STORE, Command.SET_VERSION);
+    ControllerResponse response = controllerClient.enableStoreReadWrites(clusterName, store, enableReadWrites);
     printSuccess(response);
   }
 

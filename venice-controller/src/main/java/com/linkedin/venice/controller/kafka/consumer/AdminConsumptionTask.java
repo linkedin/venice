@@ -4,6 +4,8 @@ import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.VeniceControllerService;
 import com.linkedin.venice.controller.kafka.AdminTopicUtils;
 import com.linkedin.venice.controller.kafka.protocol.admin.AdminOperation;
+import com.linkedin.venice.controller.kafka.protocol.admin.DisableStoreRead;
+import com.linkedin.venice.controller.kafka.protocol.admin.EnableStoreRead;
 import com.linkedin.venice.controller.kafka.protocol.admin.KillOfflinePushJob;
 import com.linkedin.venice.controller.kafka.protocol.admin.PauseStore;
 import com.linkedin.venice.controller.kafka.protocol.admin.ResumeStore;
@@ -292,14 +294,20 @@ public class AdminConsumptionTask implements Runnable, Closeable {
       case VALUE_SCHEMA_CREATION:
         handleValueSchemaCreation((ValueSchemaCreation) adminMessage.payloadUnion);
         break;
-      case PAUSE_STORE:
-        handlePauseStore((PauseStore) adminMessage.payloadUnion);
+      case DISABLE_STORE_WRITE:
+        handleDisableStoreWrite((PauseStore) adminMessage.payloadUnion);
         break;
-      case RESUME_STORE:
-        handleResumeStore((ResumeStore) adminMessage.payloadUnion);
+      case ENABLE_STORE_WRITE:
+        handleEnableStoreWrite((ResumeStore) adminMessage.payloadUnion);
         break;
       case KILL_OFFLINE_PUSH_JOB:
         handleKillOfflinePushJob((KillOfflinePushJob) adminMessage.payloadUnion);
+        break;
+      case DIABLE_STORE_READ:
+        handleDisableStoreRead((DisableStoreRead) adminMessage.payloadUnion);
+        break;
+      case ENABLE_STORE_READ:
+        handleEnableStoreRead((EnableStoreRead) adminMessage.payloadUnion);
         break;
       default:
         throw new VeniceException("Unknown admin operation type: " + adminMessage.operationType);
@@ -401,20 +409,36 @@ public class AdminConsumptionTask implements Runnable, Closeable {
     logger.info("Added value schema: " + schemaStr + " to store: " + storeName + ", schema id: " + valueSchemaEntry.getId());
   }
 
-  private void handlePauseStore(PauseStore message) {
+  private void handleDisableStoreWrite(PauseStore message) {
     String clusterName = message.clusterName.toString();
     String storeName = message.storeName.toString();
-    admin.pauseStore(clusterName, storeName);
+    admin.disableStoreWrite(clusterName, storeName);
 
-    logger.info("Paused store: " + storeName + " in cluster: " + clusterName);
+    logger.info("Disabled store to write: " + storeName + " in cluster: " + clusterName);
   }
 
-  private void handleResumeStore(ResumeStore message) {
+  private void handleEnableStoreWrite(ResumeStore message) {
     String clusterName = message.clusterName.toString();
     String storeName = message.storeName.toString();
-    admin.resumeStore(clusterName, storeName);
+    admin.enableStoreWrite(clusterName, storeName);
 
-    logger.info("Resumed store: " + storeName + " in cluster: " + clusterName);
+    logger.info("Enabled store to write: " + storeName + " in cluster: " + clusterName);
+  }
+
+  private void handleDisableStoreRead(DisableStoreRead message) {
+    String clusterName = message.clusterName.toString();
+    String storeName = message.storeName.toString();
+    admin.disableStoreRead(clusterName, storeName);
+
+    logger.info("Disabled store to read: " + storeName + " in cluster: " + clusterName);
+  }
+
+  private void handleEnableStoreRead(EnableStoreRead message) {
+    String clusterName = message.clusterName.toString();
+    String storeName = message.storeName.toString();
+    admin.enableStoreRead(clusterName, storeName);
+
+    logger.info("Enabled store to read: " + storeName + " in cluster: " + clusterName);
   }
 
   private void handleKillOfflinePushJob(KillOfflinePushJob message) {

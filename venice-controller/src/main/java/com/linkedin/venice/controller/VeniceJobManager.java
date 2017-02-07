@@ -324,11 +324,9 @@ public class VeniceJobManager implements StatusMessageHandler<StoreStatusMessage
     jobRepository.unsubscribeJobStatusChange(job.getKafkaTopic(), this);
     //Do the swap. Change version to online so that router could get the notification and sending the message to this version.
     Store store = metadataRepository.getStore(Version.parseStoreFromKafkaTopicName(job.getKafkaTopic()));
-    VersionStatus newStatus;
-    if (store.isPaused()) {
+    VersionStatus newStatus = VersionStatus.ONLINE;
+    if (!store.isEnableWrites()) {
       newStatus = VersionStatus.PUSHED;
-    } else {
-      newStatus = VersionStatus.ONLINE;
     }
     updateStoreVersionStatus(job, store, newStatus);
     try {

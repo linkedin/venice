@@ -25,6 +25,10 @@ public class VeniceVersionFinder {
       throw new RouterException(HttpResponseStatus.class, HttpResponseStatus.BAD_REQUEST, HttpResponseStatus.BAD_REQUEST.getCode(),
           "Store: " + store + " does not exist on this cluster", false);
     }
-    return metadataRepository.getStore(store).getCurrentVersion();
+    if (veniceStore.isEnableReads()) {
+      return metadataRepository.getStore(store).getCurrentVersion();
+    } else {
+      return Store.NON_EXISTING_VERSION;
+    }
   }
 }

@@ -1,6 +1,8 @@
 package com.linkedin.venice.controller.kafka.protocol.enums;
 
 import com.linkedin.venice.controller.kafka.protocol.admin.AdminOperation;
+import com.linkedin.venice.controller.kafka.protocol.admin.DisableStoreRead;
+import com.linkedin.venice.controller.kafka.protocol.admin.EnableStoreRead;
 import com.linkedin.venice.controller.kafka.protocol.admin.KillOfflinePushJob;
 import com.linkedin.venice.controller.kafka.protocol.admin.PauseStore;
 import com.linkedin.venice.controller.kafka.protocol.admin.ResumeStore;
@@ -15,9 +17,11 @@ import java.util.Map;
 public enum AdminMessageType {
   STORE_CREATION(0),
   VALUE_SCHEMA_CREATION(1),
-  PAUSE_STORE(2),
-  RESUME_STORE(3),
-  KILL_OFFLINE_PUSH_JOB(4);
+  DISABLE_STORE_WRITE(2),
+  ENABLE_STORE_WRITE(3),
+  KILL_OFFLINE_PUSH_JOB(4),
+  DIABLE_STORE_READ(5),
+  ENABLE_STORE_READ(6);
 
   private final int value;
   private static final Map<Integer, AdminMessageType> MESSAGE_TYPE_MAP = getMessageTypeMap();
@@ -30,9 +34,11 @@ public enum AdminMessageType {
     switch (valueOf(value)) {
       case STORE_CREATION: return new StoreCreation();
       case VALUE_SCHEMA_CREATION: return new ValueSchemaCreation();
-      case PAUSE_STORE: return new PauseStore();
-      case RESUME_STORE: return new ResumeStore();
+      case DISABLE_STORE_WRITE: return new PauseStore();
+      case ENABLE_STORE_WRITE: return new ResumeStore();
       case KILL_OFFLINE_PUSH_JOB: return new KillOfflinePushJob();
+      case DIABLE_STORE_READ: return new DisableStoreRead();
+      case ENABLE_STORE_READ: return new EnableStoreRead();
       default: throw new VeniceException("Unsupported " + getClass().getSimpleName() + " value: " + value);
     }
   }

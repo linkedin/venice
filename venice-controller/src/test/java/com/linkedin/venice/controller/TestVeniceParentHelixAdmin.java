@@ -3,6 +3,8 @@ package com.linkedin.venice.controller;
 import com.linkedin.venice.controller.kafka.AdminTopicUtils;
 import com.linkedin.venice.controller.kafka.offsets.AdminOffsetManager;
 import com.linkedin.venice.controller.kafka.protocol.admin.AdminOperation;
+import com.linkedin.venice.controller.kafka.protocol.admin.DisableStoreRead;
+import com.linkedin.venice.controller.kafka.protocol.admin.EnableStoreRead;
 import com.linkedin.venice.controller.kafka.protocol.admin.KillOfflinePushJob;
 import com.linkedin.venice.controller.kafka.protocol.admin.PauseStore;
 import com.linkedin.venice.controller.kafka.protocol.admin.ResumeStore;
@@ -290,7 +292,8 @@ public class TestVeniceParentHelixAdmin {
   }
 
   @Test
-  public void testPauseStore() throws ExecutionException, InterruptedException {
+  public void testDisableStoreRead()
+      throws ExecutionException, InterruptedException {
     parentAdmin.start(clusterName);
 
     String storeName = "test-store";
@@ -306,10 +309,10 @@ public class TestVeniceParentHelixAdmin {
         .thenReturn(new OffsetRecord())
         .thenReturn(TestUtils.getOffsetRecord(1));
 
-    parentAdmin.pauseStore(clusterName, storeName);
+    parentAdmin.disableStoreRead(clusterName, storeName);
 
     verify(internalAdmin)
-        .checkPreConditionForPauseStoreAndGetStore(clusterName, storeName, true);
+        .checkPreConditionForDisableStoreAndGetStore(clusterName, storeName);
     verify(veniceWriter)
         .put(any(), any(), anyInt());
     verify(zkClient, times(2))
@@ -324,7 +327,48 @@ public class TestVeniceParentHelixAdmin {
     Assert.assertEquals(schemaId, AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
     Assert.assertEquals(keyBytes.length, 0);
     AdminOperation adminMessage = adminOperationSerializer.deserialize(valueBytes, schemaId);
-    Assert.assertEquals(adminMessage.operationType, AdminMessageType.PAUSE_STORE.ordinal());
+    Assert.assertEquals(adminMessage.operationType, AdminMessageType.DIABLE_STORE_READ.ordinal());
+    DisableStoreRead disableStoreRead = (DisableStoreRead) adminMessage.payloadUnion;
+
+    Assert.assertEquals(disableStoreRead.clusterName.toString(), clusterName);
+    Assert.assertEquals(disableStoreRead.storeName.toString(), storeName);
+  }
+  @Test
+  public void testDisableStoreWrite() throws ExecutionException, InterruptedException {
+    parentAdmin.start(clusterName);
+
+    String storeName = "test-store";
+
+    Future future = mock(Future.class);
+    doReturn(new RecordMetadata(topicPartition, 0, 1, -1, -1, -1, -1))
+        .when(future).get();
+    doReturn(future)
+        .when(veniceWriter)
+        .put(any(), any(), anyInt());
+
+    when(zkClient.readData(zkOffsetNodePath, null))
+        .thenReturn(new OffsetRecord())
+        .thenReturn(TestUtils.getOffsetRecord(1));
+
+    parentAdmin.disableStoreWrite(clusterName, storeName);
+
+    verify(internalAdmin)
+        .checkPreConditionForDisableStoreAndGetStore(clusterName, storeName);
+    verify(veniceWriter)
+        .put(any(), any(), anyInt());
+    verify(zkClient, times(2))
+        .readData(zkOffsetNodePath, null);
+    ArgumentCaptor<byte[]> keyCaptor = ArgumentCaptor.forClass(byte[].class);
+    ArgumentCaptor<byte[]> valueCaptor = ArgumentCaptor.forClass(byte[].class);
+    ArgumentCaptor<Integer> schemaCaptor = ArgumentCaptor.forClass(Integer.class);
+    verify(veniceWriter).put(keyCaptor.capture(), valueCaptor.capture(), schemaCaptor.capture());
+    byte[] keyBytes = keyCaptor.getValue();
+    byte[] valueBytes = valueCaptor.getValue();
+    int schemaId = schemaCaptor.getValue();
+    Assert.assertEquals(schemaId, AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
+    Assert.assertEquals(keyBytes.length, 0);
+    AdminOperation adminMessage = adminOperationSerializer.deserialize(valueBytes, schemaId);
+    Assert.assertEquals(adminMessage.operationType, AdminMessageType.DISABLE_STORE_WRITE.ordinal());
     PauseStore pauseStore = (PauseStore) adminMessage.payloadUnion;
 
     Assert.assertEquals(pauseStore.clusterName.toString(), clusterName);
@@ -332,7 +376,7 @@ public class TestVeniceParentHelixAdmin {
   }
 
   @Test (expectedExceptions = VeniceNoStoreException.class)
-  public void testPauseStoreWhenStoreDoesntExist() throws ExecutionException, InterruptedException {
+  public void testDisableStoreWriteWhenStoreDoesntExist() throws ExecutionException, InterruptedException {
     parentAdmin.start(clusterName);
 
     String storeName = "test-store";
@@ -348,14 +392,14 @@ public class TestVeniceParentHelixAdmin {
         .thenReturn(new OffsetRecord())
         .thenReturn(TestUtils.getOffsetRecord(1));
 
-    when(internalAdmin.checkPreConditionForPauseStoreAndGetStore(clusterName, storeName, true))
+    when(internalAdmin.checkPreConditionForDisableStoreAndGetStore(clusterName, storeName))
         .thenThrow(new VeniceNoStoreException(storeName));
 
-    parentAdmin.pauseStore(clusterName, storeName);
+    parentAdmin.disableStoreWrite(clusterName, storeName);
   }
 
   @Test
-  public void testResumeStore() throws ExecutionException, InterruptedException {
+  public void testEnableStoreRead() throws ExecutionException, InterruptedException {
     parentAdmin.start(clusterName);
 
     String storeName = "test-store";
@@ -371,10 +415,10 @@ public class TestVeniceParentHelixAdmin {
         .thenReturn(new OffsetRecord())
         .thenReturn(TestUtils.getOffsetRecord(1));
 
-    parentAdmin.resumeStore(clusterName, storeName);
+    parentAdmin.enableStoreRead(clusterName, storeName);
 
     verify(internalAdmin)
-        .checkPreConditionForPauseStoreAndGetStore(clusterName, storeName, false);
+        .checkPreConditionForDisableStoreAndGetStore(clusterName, storeName);
     verify(veniceWriter)
         .put(any(), any(), anyInt());
     verify(zkClient, times(2))
@@ -389,7 +433,48 @@ public class TestVeniceParentHelixAdmin {
     Assert.assertEquals(schemaId, AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
     Assert.assertEquals(keyBytes.length, 0);
     AdminOperation adminMessage = adminOperationSerializer.deserialize(valueBytes, schemaId);
-    Assert.assertEquals(adminMessage.operationType, AdminMessageType.RESUME_STORE.ordinal());
+    Assert.assertEquals(adminMessage.operationType, AdminMessageType.ENABLE_STORE_READ.ordinal());
+    EnableStoreRead enableStoreRead = (EnableStoreRead) adminMessage.payloadUnion;
+    Assert.assertEquals(enableStoreRead.clusterName.toString(), clusterName);
+    Assert.assertEquals(enableStoreRead.storeName.toString(), storeName);
+  }
+
+  @Test
+  public void testEnableStoreWrite() throws ExecutionException, InterruptedException {
+    parentAdmin.start(clusterName);
+
+    String storeName = "test-store";
+
+    Future future = mock(Future.class);
+    doReturn(new RecordMetadata(topicPartition, 0, 1, -1, -1, -1, -1))
+        .when(future).get();
+    doReturn(future)
+        .when(veniceWriter)
+        .put(any(), any(), anyInt());
+
+    when(zkClient.readData(zkOffsetNodePath, null))
+        .thenReturn(new OffsetRecord())
+        .thenReturn(TestUtils.getOffsetRecord(1));
+
+    parentAdmin.enableStoreWrite(clusterName, storeName);
+
+    verify(internalAdmin)
+        .checkPreConditionForDisableStoreAndGetStore(clusterName, storeName);
+    verify(veniceWriter)
+        .put(any(), any(), anyInt());
+    verify(zkClient, times(2))
+        .readData(zkOffsetNodePath, null);
+    ArgumentCaptor<byte[]> keyCaptor = ArgumentCaptor.forClass(byte[].class);
+    ArgumentCaptor<byte[]> valueCaptor = ArgumentCaptor.forClass(byte[].class);
+    ArgumentCaptor<Integer> schemaCaptor = ArgumentCaptor.forClass(Integer.class);
+    verify(veniceWriter).put(keyCaptor.capture(), valueCaptor.capture(), schemaCaptor.capture());
+    byte[] keyBytes = keyCaptor.getValue();
+    byte[] valueBytes = valueCaptor.getValue();
+    int schemaId = schemaCaptor.getValue();
+    Assert.assertEquals(schemaId, AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
+    Assert.assertEquals(keyBytes.length, 0);
+    AdminOperation adminMessage = adminOperationSerializer.deserialize(valueBytes, schemaId);
+    Assert.assertEquals(adminMessage.operationType, AdminMessageType.ENABLE_STORE_WRITE.ordinal());
     ResumeStore resumeStore = (ResumeStore) adminMessage.payloadUnion;
     Assert.assertEquals(resumeStore.clusterName.toString(), clusterName);
     Assert.assertEquals(resumeStore.storeName.toString(), storeName);
@@ -534,15 +619,15 @@ public class TestVeniceParentHelixAdmin {
     Assert.assertEquals(schemas[0].getId(), 1);
     Assert.assertEquals(schemas[0].getSchemaStr(), valueSchemaStr);
 
-    // Pause store
-    ControllerClient.setPauseStatus(controllerUrl, clusterName, storeName, true);
+    // Disable store write
+    ControllerClient.enableStoreWrites(controllerUrl, clusterName, storeName, false);
     StoreResponse storeResponse = ControllerClient.getStore(controllerUrl, clusterName, storeName);
-    Assert.assertTrue(storeResponse.getStore().isPaused());
+    Assert.assertFalse(storeResponse.getStore().isEnableStoreWrites());
 
-    // Resume store
-    ControllerClient.setPauseStatus(controllerUrl, clusterName, storeName, false);
+    // Enable store write
+    ControllerClient.enableStoreWrites(controllerUrl, clusterName, storeName, true);
     storeResponse = ControllerClient.getStore(controllerUrl, clusterName, storeName);
-    Assert.assertFalse(storeResponse.getStore().isPaused());
+    Assert.assertTrue(storeResponse.getStore().isEnableStoreWrites());
 
     // Add version
     VersionCreationResponse versionCreationResponse = ControllerClient.createNewStoreVersion(controllerUrl,

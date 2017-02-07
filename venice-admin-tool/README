@@ -10,6 +10,24 @@ usage: java -jar venice-admin-tool-0.1.jar --<command> [parameters]
                                  --value-schema-file
     --describe-store             Requires: --url, --cluster, --store
     --describe-stores            Requires: --url, --cluster
+    --disable-store              Disable store in both read and write
+                                 path..  Requires: --url, --cluster,
+                                 --store
+    --disable-store-read         Prevent a store from serving read
+                                 requests.  Requires: --url, --cluster,
+                                 --store
+    --disable-store-write        Prevent a store from accepting new
+                                 versions.  Requires: --url, --cluster,
+                                 --store
+    --enable-store               Enable a store in both read and write
+                                 path.  Requires: --url, --cluster,
+                                 --store
+    --enable-store-read          Allow a store to serve read requests
+                                 again after being disable.  Requires:
+                                 --url, --cluster, --store
+    --enable-store-write         Allow a store to accept new versions
+                                 again after being disable.  Requires:
+                                 --url, --cluster, --store
     --job-status                 Query the ingest status of a running push
                                  job.  Requires: --url, --cluster,
                                  --store, --version
@@ -24,9 +42,6 @@ usage: java -jar venice-admin-tool-0.1.jar --<command> [parameters]
                                  serving are available on other nodes.
                                  Requires: --url, --cluster,
                                  --storage-node
-    --pause-store                Prevent a store from accepting new
-                                 versions.  Requires: --url, --cluster,
-                                 --store
     --query                      Query a store that has a simple key
                                  schema.  Requires: --url, --cluster,
                                  --store, --key
@@ -36,12 +51,11 @@ usage: java -jar venice-admin-tool-0.1.jar --<command> [parameters]
     --replicas-on-storage-node   List the store and status of all replicas
                                  on a storage node.  Requires: --url,
                                  --cluster, --storage-node
-    --resume-store               Allow a store to accept new versions
-                                 again after being paused.  Requires:
-                                 --url, --cluster, --store
     --set-version                Set the version that will be served.
                                  Requires: --url, --cluster, --store,
                                  --version
+    --skip-admin                 Skip an admin message.  Requires: --url,
+                                 --cluster, --offset
 usage: Parameters:
  -c,--cluster <arg>              Name of Venice cluster
  -f,--filter-json <arg>          Comma-delimited list of fields to display
@@ -56,6 +70,7 @@ usage: Parameters:
  -n,--storage-node <arg>         Helix instance ID for a storage node, eg.
                                  lva1-app1234_1690
  -o,--owner <arg>                Owner email for new store creation
+ -of,--offset <arg>              Kafka offset number
  -s,--store <arg>                Name of Venice store
  -u,--url <arg>                  Venice url, eg. http://localhost:1689
                                  This can be a router or a controller
@@ -66,8 +81,8 @@ Examples:
 java -jar venice-admin-tool-0.1.jar --list-stores --url <url> --cluster <cluster>
 java -jar venice-admin-tool-0.1.jar --describe-store --url <url> --cluster <cluster> --store <store>
 java -jar venice-admin-tool-0.1.jar --describe-stores --url <url> --cluster <cluster>
-java -jar venice-admin-tool-0.1.jar --pause-store --url <url> --cluster <cluster> --store <store>
-java -jar venice-admin-tool-0.1.jar --resume-store --url <url> --cluster <cluster> --store <store>
+java -jar venice-admin-tool-0.1.jar --disable-store-write --url <url> --cluster <cluster> --store <store>
+java -jar venice-admin-tool-0.1.jar --enable-store-write --url <url> --cluster <cluster> --store <store>
 java -jar venice-admin-tool-0.1.jar --job-status --url <url> --cluster <cluster> --store <store> --version <version>
 java -jar venice-admin-tool-0.1.jar --kill-job --url <url> --cluster <cluster> --store <store> --version <version>
 java -jar venice-admin-tool-0.1.jar --new-store --url <url> --cluster <cluster> --store <store> --owner <owner> --key-schema-file <key-schema-file> --value-schema-file <value-schema-file>

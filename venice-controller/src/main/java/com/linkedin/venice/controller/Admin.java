@@ -142,14 +142,24 @@ public interface Admin {
     Instance getMasterController(String clusterName);
 
     /**
-    * Pause a store will stop push from going to this store.
+    * Disable a store from writing will stop push from going to this store.
     */
-    void pauseStore(String clusterName, String storeName);
+    void disableStoreWrite(String clusterName, String storeName);
 
     /**
-    * Resume a store will allow push to go to this store.
+    * Enable a store on writing will allow push to go to this store.
     */
-    void resumeStore(String clusterName, String storeName);
+    void enableStoreWrite(String clusterName, String storeName);
+
+    /**
+    * Disable a store on reading will stop read requests from hitting this store/
+    */
+    void disableStoreRead(String clusterName, String storeName);
+
+    /**
+     * Enable a store on reading will allow read requests hit this store.
+     */
+    void enableStoreRead(String clusterName, String storeName);
 
     void addInstanceToWhitelist(String clusterName, String helixNodeId);
 

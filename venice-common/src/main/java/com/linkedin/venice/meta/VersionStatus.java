@@ -8,7 +8,7 @@ public enum VersionStatus {
     STARTED,
     //Version has been pushed to venice, but is not ready to serve read request.
     PUSHED,
-    //Version hash been pushed to venice and is ready to serve read request.
+    //Version has been pushed to venice and is ready to serve read request.
     ONLINE,
     ERROR;
 

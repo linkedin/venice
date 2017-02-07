@@ -734,47 +734,64 @@ public class TestVeniceHelixAdmin {
   }
 
   @Test
-  public void testPauseStore() {
-    String storeName = "testPausedStore";
+  public void testDisableStoreWriter() {
+    String storeName = "testDisableStoreWriter";
     veniceAdmin.addStore(clusterName, storeName, "unittestOwner", keySchema, valueSchema);
-    veniceAdmin.pauseStore(clusterName, storeName);
-    Store store = veniceAdmin.getAllStores(clusterName).get(0);
+    veniceAdmin.disableStoreWrite(clusterName, storeName);
+    Store store = veniceAdmin.getStore(clusterName, storeName);
 
     try {
       veniceAdmin.addVersion(clusterName, storeName, 1, 1, 1);
-      Assert.fail("Store has been paused, can not accept a new version");
+      Assert.fail("Store has been disabled, can not accept a new version");
     } catch (VeniceException e) {
     }
     Assert.assertEquals(veniceAdmin.getAllStores(clusterName).get(0), store);
 
     try {
       veniceAdmin.incrementVersion(clusterName, storeName, 1, 1);
-      Assert.fail("Store has been paused, can not accept a new version");
+      Assert.fail("Store has been disabled, can not accept a new version");
     } catch (VeniceException e) {
     }
     Assert.assertEquals(veniceAdmin.getAllStores(clusterName).get(0), store);
 
     try {
       veniceAdmin.addVersion(clusterName, storeName, 1, 1, 1);
-      Assert.fail("Store has been paused, can not accept a new version");
+      Assert.fail("Store has been disabled, can not accept a new version");
     } catch (VeniceException e) {
     }
     Assert.assertEquals(veniceAdmin.getAllStores(clusterName).get(0), store);
 
-    veniceAdmin.resumeStore(clusterName ,storeName);
+    veniceAdmin.enableStoreWrite(clusterName ,storeName);
 
     veniceAdmin.addVersion(clusterName, storeName, 1, 1,1);
     veniceAdmin.incrementVersion(clusterName, storeName, 1, 1);
 
     store = veniceAdmin.getAllStores(clusterName).get(0);
     // version 1 and version 2 are added to this store.
-    Assert.assertFalse(store.isPaused());
+    Assert.assertTrue(store.isEnableWrites());
     Assert.assertEquals(store.getVersions().size(), 2);
     Assert.assertEquals(store.peekNextVersion().getNumber(), 3);
     // two offline jobs are running.
     HelixJobRepository jobRepository = veniceAdmin.getVeniceHelixResource(clusterName).getJobRepository();
     Assert.assertEquals(jobRepository.getRunningJobOfTopic(Version.composeKafkaTopic(storeName, 1)).size(), 1);
     Assert.assertEquals(jobRepository.getRunningJobOfTopic(Version.composeKafkaTopic(storeName, 2)).size(), 1);
+  }
+
+  @Test
+  public void testDisableStoreRead() {
+    String storeName = "testDisableStoreRead";
+    veniceAdmin.addStore(clusterName, storeName, "unittestOwner", keySchema, valueSchema);
+    Version version = veniceAdmin.incrementVersion(clusterName, storeName, 1, 1);
+    veniceAdmin.setCurrentVersion(clusterName, storeName, version.getNumber());
+
+    veniceAdmin.disableStoreRead(clusterName, storeName);
+    Store store = veniceAdmin.getStore(clusterName, storeName);
+    Assert.assertEquals(veniceAdmin.getCurrentVersion(clusterName, storeName), Store.NON_EXISTING_VERSION,
+        "After disabling, store has no version available to serve.");
+
+    veniceAdmin.enableStoreRead(clusterName, storeName);
+    Assert.assertEquals(veniceAdmin.getCurrentVersion(clusterName, storeName), version.getNumber(),
+        "After enabling, version:" + version.getNumber() + " is ready to serve.");
   }
 
   @Test

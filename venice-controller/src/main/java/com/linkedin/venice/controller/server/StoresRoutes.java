@@ -5,16 +5,15 @@ import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.MultiStoreResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreInfo;
 import java.util.List;
 import spark.Route;
 
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.CLUSTER;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.NAME;
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.STATUS;
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.*;
+import static com.linkedin.venice.controllerapi.ControllerRoute.ENABLE_STORE;
 import static com.linkedin.venice.controllerapi.ControllerRoute.LIST_STORES;
-import static com.linkedin.venice.controllerapi.ControllerRoute.PAUSE_STORE;
 import static com.linkedin.venice.controllerapi.ControllerRoute.STORE;
 
 
@@ -64,18 +63,34 @@ public class StoresRoutes {
   }
 
 
-  public static Route pauseStore(Admin admin){
+  public static Route enableStore(Admin admin){
     return (request, response) -> {
       ControllerResponse responseObject = new ControllerResponse();
       try {
-        AdminSparkServer.validateParams(request, PAUSE_STORE.getParams(), admin);
+        AdminSparkServer.validateParams(request, ENABLE_STORE.getParams(), admin);
         responseObject.setCluster(request.queryParams(CLUSTER));
         responseObject.setName(request.queryParams(NAME));
-        if (Boolean.parseBoolean(request.queryParams(STATUS))) { // "true" means pause store
-          admin.pauseStore(responseObject.getCluster(), responseObject.getName());
+        String operation = request.queryParams(OPERATION);
+        if(operation.equals(READ_OPERATION) || operation.equals(WRITE_OPERATION) || operation.equals(READ_WRITE_OPERATION)){
+          if (Boolean.parseBoolean(request.queryParams(STATUS))) { // "true" means enable store
+            if(operation.contains(READ_OPERATION)) {
+              admin.enableStoreRead(responseObject.getCluster(), responseObject.getName());
+            }
+            if(operation.contains(WRITE_OPERATION)){
+              admin.enableStoreWrite(responseObject.getCluster(), responseObject.getName());
+            }
+          } else {
+            if (operation.contains(READ_OPERATION)) {
+              admin.disableStoreRead(responseObject.getCluster(), responseObject.getName());
+            }
+            if (operation.contains(WRITE_OPERATION)) {
+              admin.disableStoreWrite(responseObject.getCluster(), responseObject.getName());
+            }
+          }
         } else {
-          admin.resumeStore(responseObject.getCluster(), responseObject.getName());
+          throw new VeniceException(OPERATION +" parameter:"+operation+" is invalid.");
         }
+
       } catch (Throwable e) {
         responseObject.setError(e.getMessage());
         AdminSparkServer.handleError(e, request, response);

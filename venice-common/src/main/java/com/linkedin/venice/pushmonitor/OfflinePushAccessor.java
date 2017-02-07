@@ -61,6 +61,6 @@ public interface OfflinePushAccessor {
    * Listener used to listen the data change of partition status.
    */
   interface PartitionStatusListener {
-    void onPartitionStatusChange(String topic, ReadonlyPartitionStatus partitionStatus);
+    void onPartitionStatusChange(String topic, ReadOnlyPartitionStatus partitionStatus);
   }
 }
