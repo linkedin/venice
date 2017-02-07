@@ -5,7 +5,7 @@
   "fields": [
     {
       "name": "operationType",
-      "doc": "0 => StoreCreation, 1 => ValueSchemaCreation, 2 => PauseStore, 3 => ResumeStore, 4 => KillOfflinePushJob",
+      "doc": "0 => StoreCreation, 1 => ValueSchemaCreation, 2 => PauseStore, 3 => ResumeStore, 4 => KillOfflinePushJob, 5 => DisableStoreRead, 6 => EnableStoreRead",
       "type": "int"
     }, {
       "name": "payloadUnion",
@@ -104,6 +104,34 @@
             },
             {
               "name": "kafkaTopic",
+              "type": "string"
+            }
+          ]
+        },
+        {
+           "name": "DisableStoreRead",
+           "type": "record",
+           "fields": [
+             {
+               "name": "clusterName",
+               "type": "string"
+             },
+             {
+               "name": "storeName",
+               "type": "string"
+             }
+          ]
+        },
+        {
+          "name": "EnableStoreRead",
+          "type": "record",
+          "fields": [
+            {
+              "name": "clusterName",
+              "type": "string"
+            },
+            {
+              "name": "storeName",
               "type": "string"
             }
           ]

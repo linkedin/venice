@@ -15,7 +15,7 @@ public enum ControllerRoute {
   SET_VERSION("/set_version", Arrays.asList(NAME, VERSION)),
   CURRENT_VERSION("/current_version", Arrays.asList(NAME)),
   ACTIVE_VERSIONS("/active_versions", Arrays.asList(NAME)),
-  PAUSE_STORE("/pause_store", Arrays.asList(NAME, STATUS)), // status "true" or "false"
+  ENABLE_STORE("/enable_store", Arrays.asList(NAME, OPERATION, STATUS)), // status "true" or "false", operation "read" or "write" or "readwrite".
 
   JOB("/job", Arrays.asList(NAME, VERSION)),
   KILL_OFFLINE_PUSH_JOB("/kill_offline_push_job", Arrays.asList(TOPIC)),

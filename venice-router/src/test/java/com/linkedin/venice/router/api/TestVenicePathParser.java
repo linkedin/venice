@@ -21,6 +21,7 @@ public class TestVenicePathParser {
     //Mock objects
     Store mockStore = Mockito.mock(Store.class);
     doReturn(1).when(mockStore).getCurrentVersion();
+    doReturn(true).when(mockStore).isEnableReads();
     ReadOnlyStoreRepository mockMetadataRepository = Mockito.mock(ReadOnlyStoreRepository.class);
     doReturn(mockStore).when(mockMetadataRepository).getStore(Mockito.anyString());
 

@@ -7,6 +7,8 @@ import com.linkedin.venice.controller.kafka.offsets.AdminOffsetManager;
 import com.linkedin.venice.controller.kafka.consumer.AdminConsumerService;
 
 import com.linkedin.venice.controller.kafka.protocol.admin.AdminOperation;
+import com.linkedin.venice.controller.kafka.protocol.admin.DisableStoreRead;
+import com.linkedin.venice.controller.kafka.protocol.admin.EnableStoreRead;
 import com.linkedin.venice.controller.kafka.protocol.admin.KillOfflinePushJob;
 import com.linkedin.venice.controller.kafka.protocol.admin.PauseStore;
 import com.linkedin.venice.controller.kafka.protocol.admin.ResumeStore;
@@ -614,17 +616,18 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   @Override
-  public void pauseStore(String clusterName, String storeName) {
+  public void disableStoreWrite(String clusterName, String storeName) {
     acquireLock(clusterName);
     try {
-      veniceHelixAdmin.checkPreConditionForPauseStoreAndGetStore(clusterName, storeName, true);
-      logger.info("Pausing store: " + storeName + " in cluster: " + clusterName);
+      veniceHelixAdmin.checkPreConditionForDisableStoreAndGetStore(clusterName, storeName);
+      logger.info("Disabling store to write: " + storeName + " in cluster: " + clusterName);
 
-      PauseStore pauseStore = (PauseStore) AdminMessageType.PAUSE_STORE.getNewInstance();
+      // Did not change PauseStore message name to keep message protocol compatible.
+      PauseStore pauseStore = (PauseStore) AdminMessageType.DISABLE_STORE_WRITE.getNewInstance();
       pauseStore.clusterName = clusterName;
       pauseStore.storeName = storeName;
       AdminOperation message = new AdminOperation();
-      message.operationType = AdminMessageType.PAUSE_STORE.ordinal();
+      message.operationType = AdminMessageType.DISABLE_STORE_WRITE.ordinal();
       message.payloadUnion = pauseStore;
 
       sendAdminMessageAndWaitForConsumed(clusterName, message);
@@ -634,18 +637,59 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   @Override
-  public void resumeStore(String clusterName, String storeName) {
+  public void enableStoreWrite(String clusterName, String storeName) {
     acquireLock(clusterName);
     try {
-      veniceHelixAdmin.checkPreConditionForPauseStoreAndGetStore(clusterName, storeName, false);
-      logger.info("Resuming store: " + storeName + " in cluster: " + clusterName);
+      veniceHelixAdmin.checkPreConditionForDisableStoreAndGetStore(clusterName, storeName);
+      logger.info("Enabling store to write: " + storeName + " in cluster: " + clusterName);
 
-      ResumeStore resumeStore = (ResumeStore) AdminMessageType.RESUME_STORE.getNewInstance();
+      // Did not change resumeStore message name to keep message protocol compatible.
+      ResumeStore resumeStore = (ResumeStore) AdminMessageType.ENABLE_STORE_WRITE.getNewInstance();
       resumeStore.clusterName = clusterName;
       resumeStore.storeName = storeName;
       AdminOperation message = new AdminOperation();
-      message.operationType = AdminMessageType.RESUME_STORE.ordinal();
+      message.operationType = AdminMessageType.ENABLE_STORE_WRITE.ordinal();
       message.payloadUnion = resumeStore;
+
+      sendAdminMessageAndWaitForConsumed(clusterName, message);
+    } finally {
+      releaseLock();
+    }
+  }
+
+  @Override
+  public void disableStoreRead(String clusterName, String storeName) {
+    acquireLock(clusterName);
+    try {
+      veniceHelixAdmin.checkPreConditionForDisableStoreAndGetStore(clusterName, storeName);
+      logger.info("Disabling store to read: " + storeName + " in cluster: " + clusterName);
+
+      DisableStoreRead disableStoreRead = (DisableStoreRead) AdminMessageType.DIABLE_STORE_READ.getNewInstance();
+      disableStoreRead.clusterName = clusterName;
+      disableStoreRead.storeName = storeName;
+      AdminOperation message = new AdminOperation();
+      message.operationType = AdminMessageType.DIABLE_STORE_READ.ordinal();
+      message.payloadUnion = disableStoreRead;
+
+      sendAdminMessageAndWaitForConsumed(clusterName, message);
+    } finally {
+      releaseLock();
+    }
+  }
+
+  @Override
+  public void enableStoreRead(String clusterName, String storeName) {
+    acquireLock(clusterName);
+    try {
+      veniceHelixAdmin.checkPreConditionForDisableStoreAndGetStore(clusterName, storeName);
+      logger.info("Enabling store to read: " + storeName + " in cluster: " + clusterName);
+
+      EnableStoreRead enableStoreRead = (EnableStoreRead) AdminMessageType.ENABLE_STORE_READ.getNewInstance();
+      enableStoreRead.clusterName = clusterName;
+      enableStoreRead.storeName = storeName;
+      AdminOperation message = new AdminOperation();
+      message.operationType = AdminMessageType.ENABLE_STORE_READ.ordinal();
+      message.payloadUnion = enableStoreRead;
 
       sendAdminMessageAndWaitForConsumed(clusterName, message);
     } finally {

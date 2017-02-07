@@ -293,10 +293,13 @@ public class VeniceHelixAdmin implements Admin {
     }
 
     @Override
-    public int getCurrentVersion(String clusterName, String storeName){
+    public int getCurrentVersion(String clusterName, String storeName) {
         Store store = getStoreForReadOnly(clusterName, storeName);
-        int version = store.getCurrentVersion(); /* Does not modify the store */
-        return version;
+        if (store.isEnableReads()) {
+            return store.getCurrentVersion();
+        } else {
+            return Store.NON_EXISTING_VERSION;
+        }
     }
 
     @Override
@@ -784,13 +787,23 @@ public class VeniceHelixAdmin implements Admin {
     }
 
     @Override
-    public void pauseStore(String clusterName, String storeName) {
-        setPausedForStore(clusterName, storeName, true);
+    public void disableStoreWrite(String clusterName, String storeName) {
+        setDisableWriteForStore(clusterName, storeName, false);
     }
 
     @Override
-    public void resumeStore(String clusterName, String storeName) {
-        setPausedForStore(clusterName, storeName, false);
+    public void enableStoreWrite(String clusterName, String storeName) {
+        setDisableWriteForStore(clusterName, storeName, true);
+    }
+
+    @Override
+    public void disableStoreRead(String clusterName, String storeName) {
+        setDisableReadForStore(clusterName, storeName, false);
+    }
+
+    @Override
+    public void enableStoreRead(String clusterName, String storeName) {
+        setDisableReadForStore(clusterName, storeName, true);
     }
 
     @Override
@@ -905,13 +918,26 @@ public class VeniceHelixAdmin implements Admin {
         return lastExceptionMap.get(clusterName);
     }
 
-    private void setPausedForStore(String clusterName, String storeName, boolean paused) {
+    private void setDisableWriteForStore(String clusterName, String storeName, boolean enableWrites) {
         checkControllerMastership(clusterName);
         HelixReadWriteStoreRepository repository = getVeniceHelixResource(clusterName).getMetadataRepository();
         repository.lock();
         try {
-            Store store = checkPreConditionForPauseStoreAndGetStore(clusterName, storeName, paused);
-            store.setPaused(paused);
+            Store store = checkPreConditionForDisableStoreAndGetStore(clusterName, storeName);
+            store.setEnableWrites(enableWrites);
+            repository.updateStore(store);
+        } finally {
+            repository.unLock();
+        }
+    }
+
+    private void setDisableReadForStore(String clusterName, String storeName, boolean enableReads) {
+        checkControllerMastership(clusterName);
+        HelixReadWriteStoreRepository repository = getVeniceHelixResource(clusterName).getMetadataRepository();
+        repository.lock();
+        try {
+            Store store = checkPreConditionForDisableStoreAndGetStore(clusterName, storeName);
+            store.setEnableReads(enableReads);
             repository.updateStore(store);
         } finally {
             repository.unLock();
@@ -923,7 +949,7 @@ public class VeniceHelixAdmin implements Admin {
         offlinePushMonitor.stopMonitorOfflinePush(topic);
     }
 
-    protected Store checkPreConditionForPauseStoreAndGetStore(String clusterName, String storeName, boolean paused) {
+    protected Store checkPreConditionForDisableStoreAndGetStore(String clusterName, String storeName) {
         checkControllerMastership(clusterName);
         HelixReadWriteStoreRepository repository = getVeniceHelixResource(clusterName).getMetadataRepository();
         Store store = repository.getStore(storeName);

@@ -36,7 +36,7 @@ public class OfflinePushStatus {
     //initialize partition status for each partition.
     partitionStatuses = new ArrayList<>(numberOfPartition);
     for (int i = 0; i < numberOfPartition; i++) {
-      ReadonlyPartitionStatus partitionStatus = new ReadonlyPartitionStatus(i, Collections.emptyList());
+      ReadOnlyPartitionStatus partitionStatus = new ReadOnlyPartitionStatus(i, Collections.emptyList());
       partitionStatuses.add(partitionStatus);
     }
  }
@@ -86,10 +86,10 @@ public class OfflinePushStatus {
     }
     for (int partitionId = 0; partitionId < numberOfPartition; partitionId++) {
       if (partitionId == partitionStatus.getPartitionId()) {
-        if(partitionStatus instanceof ReadonlyPartitionStatus) {
+        if(partitionStatus instanceof ReadOnlyPartitionStatus) {
           partitionStatuses.set(partitionId, partitionStatus);
         }else{
-          partitionStatuses.set(partitionId, ReadonlyPartitionStatus.fromPartitionStatus(partitionStatus));
+          partitionStatuses.set(partitionId, ReadOnlyPartitionStatus.fromPartitionStatus(partitionStatus));
         }
         break;
       }
@@ -132,10 +132,10 @@ public class OfflinePushStatus {
   public void setPartitionStatuses(List<PartitionStatus> partitionStatuses) {
     this.partitionStatuses.clear();
     for (PartitionStatus partitionStatus : partitionStatuses) {
-      if (partitionStatus instanceof ReadonlyPartitionStatus) {
+      if (partitionStatus instanceof ReadOnlyPartitionStatus) {
         this.partitionStatuses.add(partitionStatus);
       } else {
-        this.partitionStatuses.add(ReadonlyPartitionStatus.fromPartitionStatus(partitionStatus));
+        this.partitionStatuses.add(ReadOnlyPartitionStatus.fromPartitionStatus(partitionStatus));
       }
     }
   }

@@ -5,8 +5,8 @@ import com.linkedin.venice.job.ExecutionStatus;
 import java.util.Collection;
 
 
-public class ReadonlyPartitionStatus extends PartitionStatus {
-  public ReadonlyPartitionStatus(int partitionId, Collection<ReplicaStatus> replicaStatuses) {
+public class ReadOnlyPartitionStatus extends PartitionStatus {
+  public ReadOnlyPartitionStatus(int partitionId, Collection<ReplicaStatus> replicaStatuses) {
     super(partitionId);
     this.setReplicaStatuses(replicaStatuses);
   }
@@ -21,7 +21,7 @@ public class ReadonlyPartitionStatus extends PartitionStatus {
     throw new VeniceException("Unsupported operation in ReadonlyPartition status: updateProgress.");
   }
 
-  public static ReadonlyPartitionStatus fromPartitionStatus(PartitionStatus partitionStatus) {
-    return new ReadonlyPartitionStatus(partitionStatus.getPartitionId(), partitionStatus.getReplicaStatuses());
+  public static ReadOnlyPartitionStatus fromPartitionStatus(PartitionStatus partitionStatus) {
+    return new ReadOnlyPartitionStatus(partitionStatus.getPartitionId(), partitionStatus.getReplicaStatuses());
   }
 }

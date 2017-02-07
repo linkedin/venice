@@ -95,7 +95,8 @@ public class AdminSparkServer extends AbstractVeniceService {
     httpService.post(CREATE_VERSION.getPath(), CreateVersion.getRoute(admin));
     httpService.post(NEW_STORE.getPath(), CreateStore.getRoute(admin));
 
-    httpService.post(PAUSE_STORE.getPath(), StoresRoutes.pauseStore(admin));
+    httpService.post(ENABLE_STORE.getPath(), StoresRoutes.enableStore(admin));
+
     httpService.post(SET_VERSION.getPath(), SetVersion.getRoute(admin));
 
     httpService.get(LIST_NODES.getPath(), NodesAndReplicas.listAllNodes(admin));

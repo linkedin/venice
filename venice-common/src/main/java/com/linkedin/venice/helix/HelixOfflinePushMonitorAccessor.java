@@ -6,7 +6,7 @@ import com.linkedin.venice.listener.ListenerManager;
 import com.linkedin.venice.pushmonitor.OfflinePushStatus;
 import com.linkedin.venice.pushmonitor.OfflinePushAccessor;
 import com.linkedin.venice.pushmonitor.PartitionStatus;
-import com.linkedin.venice.pushmonitor.ReadonlyPartitionStatus;
+import com.linkedin.venice.pushmonitor.ReadOnlyPartitionStatus;
 import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.PathResourceRegistry;
 import java.util.ArrayList;
@@ -255,7 +255,7 @@ public class HelixOfflinePushMonitorAccessor implements OfflinePushAccessor {
         throw new VeniceException("Invalid notification, changed data is not:" + PartitionStatus.class.getName());
       }
       String topic = parseTopicFromPartitionStatusPath(dataPath);
-      ReadonlyPartitionStatus partitionStatus = ReadonlyPartitionStatus.fromPartitionStatus((PartitionStatus) data);
+      ReadOnlyPartitionStatus partitionStatus = ReadOnlyPartitionStatus.fromPartitionStatus((PartitionStatus) data);
       listenerManager.trigger(topic, listener -> {
         listener.onPartitionStatusChange(topic, partitionStatus);
         return null;

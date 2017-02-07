@@ -226,26 +226,65 @@ public class TestAdminSparkServer {
 
     StoreInfo store = storeResponse.getStore();
     Assert.assertEquals(store.getName(), storeName, "Store Info should have same store name as request");
-    Assert.assertFalse(store.isPaused(), "New store should not be paused");
+    Assert.assertTrue(store.isEnableStoreWrites(), "New store should not be disabled");
+    Assert.assertTrue(store.isEnableStoreReads(), "New store should not be disabled");
     List<Version> versions = store.getVersions();
     Assert.assertEquals(versions.size(), 1, "Store from new store-version should only have one version");
   }
 
   @Test
-  public void controllerClientCanPauseStores()
+  public void controllerClientCanDisableStoresWrite()
       throws InterruptedException {
     String topic = venice.getNewStoreVersion().getKafkaTopic();
 
     String storeName = Version.parseStoreFromKafkaTopicName(topic);
 
     StoreInfo store = ControllerClient.getStore(routerUrl, venice.getClusterName(), storeName).getStore();
-    Assert.assertFalse(store.isPaused(), "Store should NOT be paused after creating new store-version");
+    Assert.assertTrue(store.isEnableStoreWrites(), "Store should NOT be disabled after creating new store-version");
 
-    ControllerResponse response = ControllerClient.setPauseStatus(routerUrl, venice.getClusterName(), storeName, true);
+    ControllerResponse response = ControllerClient.enableStoreWrites(routerUrl, venice.getClusterName(), storeName, false);
     Assert.assertFalse(response.isError(), response.getError());
 
     store = ControllerClient.getStore(routerUrl, venice.getClusterName(), storeName).getStore();
-    Assert.assertTrue(store.isPaused(), "Store should be paused after setting pause status to true");
+    Assert.assertFalse(store.isEnableStoreWrites(), "Store should be disabled after setting disabled status to true");
+  }
+
+  @Test
+  public void controllerClientCanDisableStoresRead()
+      throws InterruptedException {
+    ControllerClient controllerClient = new ControllerClient(venice.getClusterName(), routerUrl);
+    String topic = venice.getNewStoreVersion().getKafkaTopic();
+
+    String storeName = Version.parseStoreFromKafkaTopicName(topic);
+
+    StoreInfo store = controllerClient.getStore(venice.getClusterName(), storeName).getStore();
+    Assert.assertTrue(store.isEnableStoreReads(), "Store should NOT be disabled after creating new store-version");
+
+    ControllerResponse response = controllerClient.enableStoreReads(venice.getClusterName(), storeName, false);
+    Assert.assertFalse(response.isError(), response.getError());
+
+    store = controllerClient.getStore( venice.getClusterName(), storeName).getStore();
+    Assert.assertFalse(store.isEnableStoreReads(), "Store should be disabled after setting disabled status to true");
+  }
+
+  @Test
+  public void controllerClientCanDisableStoresReadWrite()
+      throws InterruptedException {
+    ControllerClient controllerClient = new ControllerClient(venice.getClusterName(), routerUrl);
+    String topic = venice.getNewStoreVersion().getKafkaTopic();
+
+    String storeName = Version.parseStoreFromKafkaTopicName(topic);
+
+    StoreInfo store = controllerClient.getStore(venice.getClusterName(), storeName).getStore();
+    Assert.assertTrue(store.isEnableStoreReads(), "Store should NOT be disabled after creating new store-version");
+    Assert.assertTrue(store.isEnableStoreWrites(), "Store should NOT be disabled after creating new store-version");
+
+    ControllerResponse response = controllerClient.enableStoreReadWrites(venice.getClusterName(), storeName, false);
+    Assert.assertFalse(response.isError(), response.getError());
+
+    store = controllerClient.getStore( venice.getClusterName(), storeName).getStore();
+    Assert.assertFalse(store.isEnableStoreReads(), "Store should be disabled after setting disabled status to true");
+    Assert.assertFalse(store.isEnableStoreWrites(), "Store should be disabled after setting disabled status to true");
   }
 
   @Test

@@ -1,7 +1,7 @@
 package com.linkedin.venice.controller.kafka;
 
 import com.linkedin.venice.controller.Admin;
-import com.linkedin.venice.exceptions.StorePausedException;
+import com.linkedin.venice.exceptions.StoreDisabledException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
@@ -119,7 +119,7 @@ public class TopicMonitor extends AbstractVeniceService {
                 } catch (VeniceNoStoreException e) {
                   logger.warn("There is a topic " + topic + " for store " + storeName + " but that store is not initialized in Venice");
                   continue; /* skip to the next topic */
-                } catch (StorePausedException se) {
+                } catch (StoreDisabledException se) {
                   logger.info("There is a topic " + topic + " for store " + storeName + ". But store has been paused.", se);
                   continue;
                 }

@@ -111,7 +111,7 @@ public class OfflinePushMonitor implements OfflinePushAccessor.PartitionStatusLi
   }
 
   @Override
-  public synchronized void onPartitionStatusChange(String topic, ReadonlyPartitionStatus partitionStatus) {
+  public synchronized void onPartitionStatusChange(String topic, ReadOnlyPartitionStatus partitionStatus) {
     // TODO more fine-grained concurrency control here, might lock on push level instead of lock the whole map.
     OfflinePushStatus offlinePushStatus = topicToPushMap.get(topic);
     if (offlinePushStatus == null) {
@@ -141,7 +141,7 @@ public class OfflinePushMonitor implements OfflinePushAccessor.PartitionStatusLi
   public synchronized void onRoutingDataDeleted(String kafkaTopic) {
     OfflinePushStatus pushStatus = topicToPushMap.get(kafkaTopic);
     if (pushStatus != null && pushStatus.getCurrentStatus().equals(ExecutionStatus.STARTED)) {
-      logger.info("Topic:" + kafkaTopic + " is deleted, stopping the running push.");
+      logger.info("Resource for Topic:" + kafkaTopic + " is deleted, stopping the running push.");
       handleErrorPush(pushStatus);
     }
   }

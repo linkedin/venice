@@ -1,6 +1,6 @@
 package com.linkedin.venice.meta;
 
-import com.linkedin.venice.exceptions.StorePausedException;
+import com.linkedin.venice.exceptions.StoreDisabledException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.utils.TestUtils;
 
@@ -69,7 +69,7 @@ public class TestStore {
     s2.increaseVersion();
     Store s2clone = s2.cloneStore();
     Assert.assertEquals(s2, s2clone);
-    s2clone.setPaused(true);
+    s2clone.setEnableWrites(false);
     Assert.assertNotEquals(s2, s2clone);
   }
 
@@ -133,37 +133,37 @@ public class TestStore {
 
 
   @Test
-  public void testOperatingPausedStore(){
-    String storeName = "testPausedStore";
+  public void testDisableStoreWrite(){
+    String storeName = "testDisableStoreWrite";
     Store store = TestUtils.createTestStore(storeName, "owner", System.currentTimeMillis());
-    store.setPaused(true);
-    // add a new version to paused store.
+    store.setEnableWrites(false);
+    // add a new version to disabled store.
     try{
       store.addVersion(new Version(storeName, 1));
-      Assert.fail("Store is paused, can not add new store to it.");
-    }catch (StorePausedException e){
+      Assert.fail("Store is disabled to write, can not add new store to it.");
+    }catch (StoreDisabledException e){
     }
-    // increase version number for paused store.
+    // increase version number for disabled store.
     try{
       store.increaseVersion();
-      Assert.fail("Store is paused, can not add new store to it.");
-    }catch (StorePausedException e){
+      Assert.fail("Store is disabled to write, can not add new store to it.");
+    }catch (StoreDisabledException e){
     }
 
     try{
       store.setCurrentVersion(1);
-      Assert.fail("Store is paused, can not set current version.");
-    }catch (StorePausedException e){
+      Assert.fail("Store is disabled to write, can not set current version.");
+    }catch (StoreDisabledException e){
     }
 
     try{
       store.updateVersionStatus(1, VersionStatus.ONLINE);
-      Assert.fail("Store is paused, can not activated a new version");
-    }catch (StorePausedException e){
+      Assert.fail("Store is disabled to write, can not activated a new version");
+    }catch (StoreDisabledException e){
     }
 
-    store.setPaused(false);
-    // After store is resume, add/increase/reserve version for this store as normal
+    store.setEnableWrites(true);
+    // After store is enabled to write, add/increase/reserve version for this store as normal
     store.addVersion(new Version(storeName, 1));
     Assert.assertEquals(store.getVersions().get(0).getNumber(), 1);
     store.increaseVersion();
@@ -176,34 +176,57 @@ public class TestStore {
   }
 
   @Test
-  public void canClonePausedStore(){
+  public void canCloneDisabledStore(){
     String storeName = TestUtils.getUniqueString("store");
     Store store = TestUtils.createTestStore(storeName, "owner", System.currentTimeMillis());
     store.addVersion(new Version(storeName, 1));
-    store.setPaused(true);
-    Assert.assertTrue(store.isPaused());
+    store.setEnableWrites(false);
+    store.setEnableReads(false);
+    Assert.assertFalse(store.isEnableWrites());
     Store cloned = store.cloneStore();
-    Assert.assertTrue(cloned.isPaused(), "clone of paused store must be paused");
+    Assert.assertFalse(cloned.isEnableWrites(), "clone of disabled store must be disabled");
+    Assert.assertFalse(cloned.isEnableReads(), "clone of disabled store must be disabled");
   }
 
   @Test
-  public void testResumeStore() {
+  public void testEnableStoreWrite() {
     String storeName = TestUtils.getUniqueString("store");
     Store store = TestUtils.createTestStore(storeName, "owner", System.currentTimeMillis());
     Version pushedVersion = new Version(storeName, 1);
     //Add a pushed version
     pushedVersion.setStatus(VersionStatus.PUSHED);
     store.addVersion(new Version(storeName, 2));
-    store.setPaused(true);
-    // Update status to PUSHED after store is paused.
+    store.setEnableWrites(false);
+    // Update status to PUSHED after store is disabled to write.
     store.updateVersionStatus(2, VersionStatus.PUSHED);
-    //resume store.
-    store.setPaused(false);
+    // Enable store to write.
+    store.setEnableWrites(true);
 
     for (Version version : store.getVersions()) {
       Assert.assertEquals(version.getStatus(), VersionStatus.ONLINE,
-          "After resuming a store, all of PUSHED version should be activated.");
+          "After enabling a store to write, all of PUSHED version should be activated.");
     }
+  }
+
+  @Test
+  public void testDisableAndEnableStoreRead() {
+    String storeName = "testDisableStoreRead";
+    Store store = TestUtils.createTestStore(storeName, "owner", System.currentTimeMillis());
+    Version version = store.increaseVersion();
+    store.updateVersionStatus(version.getNumber(), VersionStatus.ONLINE);
+    store.setCurrentVersion(version.getNumber());
+    Assert.assertEquals(store.getCurrentVersion(), version.getNumber(),
+        "Version:" + version.getNumber() + " should be ready to serve");
+    // Disable store to read.
+    store.setEnableReads(false);
+    Assert.assertFalse(store.isEnableReads(), "Store has been disabled to read");
+    // Only disable read, store could continue to increase version and update version status.
+    version = store.increaseVersion();
+    store.updateVersionStatus(version.getNumber(), VersionStatus.ONLINE);
+    store.setCurrentVersion(version.getNumber());
+    store.setEnableReads(true);
+    Assert.assertEquals(store.getCurrentVersion(), version.getNumber(),
+        "After enabling store to read, a current version should be ready to serve.");
   }
 
   @Test

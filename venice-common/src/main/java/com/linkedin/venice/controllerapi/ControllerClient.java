@@ -318,29 +318,42 @@ public class ControllerClient implements Closeable {
     }
   }
 
-  public ControllerResponse setPauseStatus(String clusterName, String storeName, boolean pause) {
+  public ControllerResponse enableStoreWrites(String clusterName, String storeName, boolean enable) {
+    return enableStore(clusterName, storeName, enable, ControllerApiConstants.WRITE_OPERATION);
+  }
+
+  public ControllerResponse enableStoreReads(String clusterName, String storeName, boolean enable) {
+    return enableStore(clusterName, storeName, enable, ControllerApiConstants.READ_OPERATION);
+  }
+
+  public ControllerResponse enableStoreReadWrites(String clusterName, String storeName, boolean enable) {
+    return enableStore(clusterName, storeName, enable, ControllerApiConstants.READ_WRITE_OPERATION);
+  }
+
+  private ControllerResponse enableStore(String clusterName, String storeName, boolean enable, String operation){
     try {
       List<NameValuePair> queryParams = newParams(clusterName);
       queryParams.add(new BasicNameValuePair(ControllerApiConstants.NAME, storeName));
-      queryParams.add(new BasicNameValuePair(ControllerApiConstants.STATUS, Boolean.toString(pause)));
-      String responseJson = postRequest(ControllerRoute.PAUSE_STORE.getPath(), queryParams);
+      queryParams.add(new BasicNameValuePair(ControllerApiConstants.STATUS, Boolean.toString(enable)));
+      queryParams.add(new BasicNameValuePair(ControllerApiConstants.OPERATION, operation));
+      String responseJson = postRequest(ControllerRoute.ENABLE_STORE.getPath(), queryParams);
       return mapper.readValue(responseJson, ControllerResponse.class);
     } catch (Exception e){
-      String msg = pause ?
-          "Could not pause store: " + storeName :
-          "Could not resume store: " + storeName;
+      String msg = enable ?
+          "Could not enable store for " + operation + " :" + storeName :
+          "Could not disable store for" + operation + " :" + storeName;
       return handleError(new VeniceException(msg, e), new ControllerResponse());
     }
   }
 
   @Deprecated
-  public static ControllerResponse setPauseStatus(String urlsToFindMasterController, String clusterName, String storeName, boolean pause){
+  public static ControllerResponse enableStoreWrites(String urlsToFindMasterController, String clusterName, String storeName, boolean enable){
     try (ControllerClient client = new ControllerClient(clusterName, urlsToFindMasterController)){
-      return client.setPauseStatus(clusterName, storeName, pause);
+      return client.enableStoreWrites(clusterName, storeName, enable);
     } catch (Exception e){
-      String msg = pause ?
-          "Could not pause store: " + storeName :
-          "Could not resume store: " + storeName;
+      String msg = enable ?
+          "Could not enable store: " + storeName :
+          "Could not disable store: " + storeName;
       return handleError(new VeniceException(msg, e), new ControllerResponse());
     }
   }

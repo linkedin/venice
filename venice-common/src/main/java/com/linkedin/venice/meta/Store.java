@@ -1,6 +1,6 @@
 package com.linkedin.venice.meta;
 
-import com.linkedin.venice.exceptions.StorePausedException;
+import com.linkedin.venice.exceptions.StoreDisabledException;
 import com.linkedin.venice.exceptions.VeniceException;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -8,6 +8,7 @@ import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import javax.validation.constraints.NotNull;
+import org.codehaus.jackson.annotate.JsonIgnore;
 
 
 /**
@@ -18,6 +19,10 @@ import javax.validation.constraints.NotNull;
  * and make sure json serialization still works
  */
 public class Store {
+  /**
+   * Special version number indicates none of version is available to read.
+   */
+  public static final int NON_EXISTING_VERSION = 0;
   /**
    * Store name.
    */
@@ -33,16 +38,20 @@ public class Store {
   /**
    * The number of version which is used currently.
    */
-  private int currentVersion = 0;
+  private int currentVersion = NON_EXISTING_VERSION;
   /**
    * Default partition count for all of versions in this store. Once first version become online, the number will be
    * assigned.
    */
   private int partitionCount = 0;
   /**
-   * If a store is paused, new version can not be created for it.
+   * If a store is disabled from writing, new version can not be created for it.
    */
-  private boolean paused = false;
+  private boolean enableWrites = true;
+  /**
+   * If a store is disabled from readingd, none of versions under this store could serve read requests.
+   */
+  private boolean enableReads = true;
   /**
    * Type of persistence storage engine.
    */
@@ -108,8 +117,12 @@ public class Store {
     return currentVersion;
   }
 
+  /**
+   * Set current serving version number of this store. If store is disabled to write, thrown {@link
+   * StoreDisabledException}.
+   */
   public void setCurrentVersion(int currentVersion) {
-    checkPausedStore("setCurrentVersion", currentVersion);
+    checkDisableStoreWrite("setCurrentVersion", currentVersion);
     this.currentVersion = currentVersion;
   }
 
@@ -160,15 +173,23 @@ public class Store {
     return partitionCount;
   }
 
-  public boolean isPaused() {
-    return paused;
+  public boolean isEnableWrites() {
+    return enableWrites;
   }
 
-  public void setPaused(boolean paused) {
-    this.paused = paused;
-    if (!this.paused) {
+  public void setEnableWrites(boolean enableWrites) {
+    this.enableWrites = enableWrites;
+    if (this.enableWrites) {
       setPushedVersionsOnline();
     }
+  }
+
+  public boolean isEnableReads() {
+    return enableReads;
+  }
+
+  public void setEnableReads(boolean enableReads) {
+    this.enableReads = enableReads;
   }
 
   /**
@@ -186,12 +207,12 @@ public class Store {
   /**
    * Add a version into store
    * @param version
-   * @param checkPaused if checkPaused is true, and the store is paused, then this will throw a StorePausedException.
-   *                    Setting to false will ignore the paused status of the store (for example for cloning a store).
+   * @param checkDisableWrite if checkDisableWrite is true, and the store is disabled to write, then this will throw a StoreDisabledException.
+   *                    Setting to false will ignore the enableWrites status of the store (for example for cloning a store).
    */
-  private void addVersion(Version version, boolean checkPaused) {
-    if (checkPaused) {
-      checkPausedStore("add", version.getNumber());
+  private void addVersion(Version version, boolean checkDisableWrite) {
+    if (checkDisableWrite) {
+      checkDisableStoreWrite("add", version.getNumber());
     }
     if (!name.equals(version.getStoreName())) {
       throw new VeniceException("Version does not belong to this store.");
@@ -236,7 +257,7 @@ public class Store {
 
   public void updateVersionStatus(int versionNumber, VersionStatus status) {
     if (status.equals(VersionStatus.ONLINE)) {
-      checkPausedStore("become ONLINE", versionNumber);
+      checkDisableStoreWrite("become ONLINE", versionNumber);
     }
     for (int i = versions.size() - 1; i >= 0; i--) {
       if (versions.get(i).getNumber() == versionNumber) {
@@ -269,7 +290,7 @@ public class Store {
 
   private Version increaseVersion(boolean createNewVersion) {
     int versionNumber = largestUsedVersionNumber + 1;
-    checkPausedStore("increase", versionNumber);
+    checkDisableStoreWrite("increase", versionNumber);
     Version version = new Version(name, versionNumber);
     if (createNewVersion) {
       addVersion(version);
@@ -327,10 +348,10 @@ public class Store {
   }
 
   /**
-   * Set all of PUSHED version to ONLINE once store is resumed.
+   * Set all of PUSHED version to ONLINE once store is enabled to write.
    */
   private void setPushedVersionsOnline() {
-    // TODO, if the PUSHED version is the latest vesion, after store is resumed, shall we put this version as the current version?
+    // TODO, if the PUSHED version is the latest vesion, after store is enabled to write, shall we put this version as the current version?
     versions.stream().filter(version -> version.getStatus().equals(VersionStatus.PUSHED)).forEach(version -> {
       updateVersionStatus(version.getNumber(), VersionStatus.ONLINE);
     });
@@ -374,7 +395,10 @@ public class Store {
     if (!offLinePushStrategy.equals(store.offLinePushStrategy)) {
       return false;
     }
-    if (paused != store.paused) {
+    if (enableWrites != store.enableWrites) {
+      return false;
+    }
+    if (enableReads != store.enableReads) {
       return false;
     }
     if (largestUsedVersionNumber != store.largestUsedVersionNumber){
@@ -394,7 +418,8 @@ public class Store {
     result = 31 * result + (int) (createdTime ^ (createdTime >>> 32));
     result = 31 * result + currentVersion;
     result = 31 * result + partitionCount;
-    result = 31 * result + (paused ? 1 : 0);
+    result = 31 * result + (enableWrites ? 1 : 0);
+    result = 31 * result + (enableReads ? 1: 0);
     result = 31 * result + largestUsedVersionNumber;
 
     result = 31 * result + persistenceType.hashCode();
@@ -415,7 +440,8 @@ public class Store {
         new Store(name, owner, createdTime, persistenceType, routingStrategy, readStrategy, offLinePushStrategy);
     clonedStore.setCurrentVersion(currentVersion);
     clonedStore.setPartitionCount(partitionCount);
-    clonedStore.setPaused(paused);
+    clonedStore.setEnableWrites(enableWrites);
+    clonedStore.setEnableReads(enableReads);
     clonedStore.setLargestUsedVersionNumber(largestUsedVersionNumber);
 
     for (Version v : this.versions) {
@@ -424,9 +450,9 @@ public class Store {
     return clonedStore;
   }
 
-  private void checkPausedStore(String action, int version) {
-    if (paused) {
-      throw new StorePausedException(name, action, version);
+  private void checkDisableStoreWrite(String action, int version) {
+    if (!enableWrites) {
+      throw new StoreDisabledException(name, action, version);
     }
   }
 }

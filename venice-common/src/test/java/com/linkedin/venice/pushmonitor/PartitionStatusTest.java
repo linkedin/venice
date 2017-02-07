@@ -25,7 +25,7 @@ public class PartitionStatusTest {
     String instanceId = "testInstance";
     PartitionStatus partitionStatus = new PartitionStatus(partitionId);
     partitionStatus.updateReplicaStatus(instanceId, ExecutionStatus.PROGRESS);
-    PartitionStatus readonlyPartitionStatus = ReadonlyPartitionStatus.fromPartitionStatus(partitionStatus);
+    PartitionStatus readonlyPartitionStatus = ReadOnlyPartitionStatus.fromPartitionStatus(partitionStatus);
     try {
       readonlyPartitionStatus.updateProgress(instanceId, 1);
       Assert.fail("Can no update a readonly partition status.");

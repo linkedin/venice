@@ -13,7 +13,8 @@ public class StoreInfo {
     storeInfo.setOwner(store.getOwner());
     storeInfo.setCurrentVersion(store.getCurrentVersion());
     storeInfo.setPartitionCount(store.getPartitionCount());
-    storeInfo.setPaused(store.isPaused());
+    storeInfo.setEnableStoreWrites(store.isEnableWrites());
+    storeInfo.setEnableStoreReads(store.isEnableReads());
     storeInfo.setVersions(store.getVersions());
     return storeInfo;
   }
@@ -39,9 +40,13 @@ public class StoreInfo {
    */
   private int partitionCount = 0;
   /**
-   * If a store is paused, new version can not be created for it.
+   * If a store is enableStoreWrites, new version can not be created for it.
    */
-  private boolean paused = false;
+  private boolean enableStoreWrites = true;
+  /**
+   * If a store is enableStoreReads, store has not version available to serve read requests.
+   */
+  private boolean enableStoreReads = true;
   /**
    * List of non-retired versions.
    */
@@ -112,15 +117,23 @@ public class StoreInfo {
   }
 
   /**
-   * Whether the store is paused, a paused store cannot have new versions pushed
+   * Whether the store is enableStoreWrites, a enableStoreWrites store cannot have new versions pushed
    * @return
    */
-  public boolean isPaused() {
-    return paused;
+  public boolean isEnableStoreWrites() {
+    return enableStoreWrites;
   }
 
-  public void setPaused(boolean paused) {
-    this.paused = paused;
+  public void setEnableStoreWrites(boolean enableStoreWrites) {
+    this.enableStoreWrites = enableStoreWrites;
+  }
+
+  public boolean isEnableStoreReads() {
+    return enableStoreReads;
+  }
+
+  public void setEnableStoreReads(boolean enableStoreReads) {
+    this.enableStoreReads = enableStoreReads;
   }
 
   /**
