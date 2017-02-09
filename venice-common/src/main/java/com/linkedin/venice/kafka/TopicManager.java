@@ -172,6 +172,8 @@ public class TopicManager implements Closeable {
       props.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, brokerListFromZk());
       props.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, ByteArrayDeserializer.class.getName());
       props.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, ByteArrayDeserializer.class.getName());
+      // Increase receive buffer to 1MB to check whether it can solve the metadata timing out issue
+      props.put(ConsumerConfig.RECEIVE_BUFFER_CONFIG, 1024 * 1024);
       this.kafkaConsumer = new KafkaConsumer<>(props);
     }
     return this.kafkaConsumer;
