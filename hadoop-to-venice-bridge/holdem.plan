@@ -21,12 +21,12 @@
             },
             {
                 "action": "schedule",
-                "matches": [ "500m-entry-test" ],
+                "matches": [ "500m-entry-test", "500m-entry-test-2" ],
                 "period": "4 hours"
             },
             {
                 "action": "sla",
-                "matches": [ "500m-entry-test" ],
+                "matches": [ "500m-entry-test", "500m-entry-test-2" ],
                 "emails": "venice-alerts@linkedin.com",
                 "duration": "3 hours"
             }
