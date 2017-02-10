@@ -11,9 +11,11 @@ import java.util.concurrent.ConcurrentHashMap;
 
 public class AbstractVeniceStats {
 
-  final private MetricsRepository metricsRepository;
-  final private String name;
-  final private Map<String, Sensor> sensors;
+  public static final String DELIMITER = "--";
+
+  private final MetricsRepository metricsRepository;
+  private final String name;
+  private final Map<String, Sensor> sensors;
 
   public AbstractVeniceStats(MetricsRepository metricsRepository, String name) {
     this.metricsRepository = metricsRepository;
@@ -35,7 +37,7 @@ public class AbstractVeniceStats {
   }
 
   protected Sensor registerSensor(String sensorName, MetricConfig config, MeasurableStat... stats) {
-    String sensorFullName = getName() + "." + sensorName;
+    String sensorFullName = getName() + AbstractVeniceStats.DELIMITER + sensorName;
     return sensors.computeIfAbsent(sensorName, key -> {
       Sensor sensor = metricsRepository.sensor(sensorFullName);
       for (MeasurableStat stat : stats) {

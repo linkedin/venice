@@ -45,9 +45,9 @@ public class ControllerStats extends AbstractVeniceStats {
     successfulRequest = registerSensor("successful_request", new Count());
     failedRequest = registerSensor("failed_request", new Count());
     successfulRequestLatencySensor = registerSensor("successful_request_latency",
-      TehutiUtils.getPercentileStat(getName() + "_" + "successful_request_latency"));
+      TehutiUtils.getPercentileStat(getName(), "successful_request_latency"));
     failedRequestLatency = registerSensor("failed_request_latency",
-      TehutiUtils.getPercentileStat(getName() + "_" + "failed_request_latency"));
+      TehutiUtils.getPercentileStat(getName(), "failed_request_latency"));
     adminConsumeFailCount = registerSensor("failed_admin_messages", new Max());
     adminTopicDIVErrorReportCount = registerSensor("admin_message_div_error_report_count", new Count());
   }
