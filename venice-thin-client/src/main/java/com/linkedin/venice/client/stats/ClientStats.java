@@ -1,5 +1,6 @@
 package com.linkedin.venice.client.stats;
 
+import com.linkedin.venice.client.store.AbstractAvroStoreClient;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.stats.AbstractVeniceStats;
 import com.linkedin.venice.stats.TehutiUtils;
@@ -9,11 +10,11 @@ import io.tehuti.metrics.stats.OccurrenceRate;
 import io.tehuti.metrics.stats.SampledCount;
 
 public class ClientStats extends AbstractVeniceStats {
-  final private Sensor requestSensor;
-  final private Sensor healthySensor;
-  final private Sensor unhealthySensor;
-  final private Sensor healthyRequestLatencySensor;
-  final private Sensor unhealthyRequestLatencySensor;
+  private final Sensor requestSensor;
+  private final Sensor healthySensor;
+  private final Sensor unhealthySensor;
+  private final Sensor healthyRequestLatencySensor;
+  private final Sensor unhealthyRequestLatencySensor;
 
   private static ClientStats instance;
 
@@ -22,7 +23,7 @@ public class ClientStats extends AbstractVeniceStats {
       throw new IllegalArgumentException("metricsRepository is null");
 
     if (instance == null)
-      instance = new ClientStats(metricsRepository, "total");
+      instance = new ClientStats(metricsRepository, AbstractAvroStoreClient.VENICE_CLIENT_NAME);
   }
 
   public static ClientStats getInstance() {
@@ -39,9 +40,9 @@ public class ClientStats extends AbstractVeniceStats {
     healthySensor = registerSensor("healthy_request", new SampledCount());
     unhealthySensor = registerSensor("unhealthy_request", new SampledCount());
     healthyRequestLatencySensor =
-        registerSensor("healthy_request_latency", TehutiUtils.getPercentileStat(getName() + "_" + "healthy_request_latency"));
+        registerSensor("healthy_request_latency", TehutiUtils.getPercentileStat(getName(), "healthy_request_latency"));
     unhealthyRequestLatencySensor =
-        registerSensor("unhealthy_request_latency", TehutiUtils.getPercentileStat(getName() + "_" + "unhealthy_request_latency"));
+        registerSensor("unhealthy_request_latency", TehutiUtils.getPercentileStat(getName(), "unhealthy_request_latency"));
   }
 
   public void recordRequest() {

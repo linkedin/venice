@@ -10,6 +10,11 @@ import javax.validation.constraints.NotNull;
  * Utils for venice metrics
  */
 public class TehutiUtils {
+  public static Percentiles getPercentileStat(String sensorName, String storeName) {
+    return getPercentileStat(sensorName + AbstractVeniceStats.DELIMITER + storeName);
+
+  }
+
   public static Percentiles getPercentileStat(@NotNull String name) {
     return getPercentileStat(name, 40000, 10000);
   }

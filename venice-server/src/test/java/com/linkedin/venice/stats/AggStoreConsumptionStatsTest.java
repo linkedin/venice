@@ -42,9 +42,9 @@ public class AggStoreConsumptionStatsTest {
 
   @Test
   public void testMetrics() {
-    Assert.assertEquals(reporter.query("." + STORE_FOO + ".kafka_poll_result_num.Total").value(), 1d);
-    Assert.assertEquals(reporter.query("." + STORE_BAR + ".kafka_poll_result_num.Total").value(), 2d);
-    Assert.assertEquals(reporter.query(".total.kafka_poll_result_num.Avg").value(), 1.5d);
-    Assert.assertEquals(reporter.query("." + STORE_FOO + ".kafka_offset_lag.OffsetLagStat").value(), 1d);
+    Assert.assertEquals(reporter.query("." + STORE_FOO + "--kafka_poll_result_num.Total").value(), 1d);
+    Assert.assertEquals(reporter.query("." + STORE_BAR + "--kafka_poll_result_num.Total").value(), 2d);
+    Assert.assertEquals(reporter.query(".total--kafka_poll_result_num.Avg").value(), 1.5d);
+    Assert.assertEquals(reporter.query("." + STORE_FOO + "--kafka_offset_lag.OffsetLagStat").value(), 1d);
   }
 }
