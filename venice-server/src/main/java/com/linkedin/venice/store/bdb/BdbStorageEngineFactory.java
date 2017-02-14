@@ -87,6 +87,22 @@ public class BdbStorageEngineFactory implements StorageEngineFactory {
       Integer.toString(bdbServerConfig.getBdbCleanerThreads()));
     environmentConfig.setConfigParam(EnvironmentConfig.CLEANER_LOOK_AHEAD_CACHE_SIZE,
       Integer.toString(bdbServerConfig.getBdbCleanerLookAheadCacheSize()));
+    /**
+     * Disable cleaner thread for now, since there is nothing to clean for Venice bulk-load store.
+     * TODO: For streaming/hybrid user case, it will be necessary to enable it since both
+     * 'replace' and 'delete' could happen.
+     * To optimize the performance, it will be good to have store-specific config for cleaner thread:
+     * 1. Disable it for bulk-load only stores;
+     * 2. Enable it for streaming/hybrid stores;
+     *
+     * If some store needs to enable 'cleaner thread', be sure to call 'environment.cleanLog()' before
+     * closing the environment and deleting the log files, since the cleaner thread could haven't finished
+     * its work before shutting down the environment.
+     *
+     * Related info: https://blogs.oracle.com/charlesLamb/entry/berkeley_db_java_edition_clean
+     */
+    environmentConfig.setConfigParam(EnvironmentConfig.ENV_RUN_CLEANER,
+        Boolean.toString(false));
     environmentConfig.setConfigParam(EnvironmentConfig.LOCK_N_LOCK_TABLES,
       Integer.toString(bdbServerConfig.getBdbLockNLockTables()));
     environmentConfig.setConfigParam(EnvironmentConfig.ENV_FAIR_LATCHES,
