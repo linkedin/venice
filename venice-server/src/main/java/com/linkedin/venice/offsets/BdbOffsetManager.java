@@ -94,6 +94,8 @@ public class BdbOffsetManager extends AbstractVeniceService implements OffsetMan
       if (this.isOpen.compareAndSet(true, false)) {
         this.offsetsBdbEnvironment.sync();
         this.offsetsBdbDatabase.close();
+        // This will make sure the 'cleaner thread' will be shutdown properly.
+        this.offsetsBdbEnvironment.cleanLog();
         this.offsetsBdbEnvironment.close();
       }
     } catch (DatabaseException e) {
