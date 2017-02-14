@@ -4,6 +4,7 @@ import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.VeniceControllerService;
 import com.linkedin.venice.controller.kafka.AdminTopicUtils;
 import com.linkedin.venice.controller.kafka.protocol.admin.AdminOperation;
+import com.linkedin.venice.controller.kafka.protocol.admin.DeleteAllVersions;
 import com.linkedin.venice.controller.kafka.protocol.admin.DisableStoreRead;
 import com.linkedin.venice.controller.kafka.protocol.admin.EnableStoreRead;
 import com.linkedin.venice.controller.kafka.protocol.admin.KillOfflinePushJob;
@@ -309,6 +310,9 @@ public class AdminConsumptionTask implements Runnable, Closeable {
       case ENABLE_STORE_READ:
         handleEnableStoreRead((EnableStoreRead) adminMessage.payloadUnion);
         break;
+      case DELETE_ALL_VERSIONS:
+        handleDeleteAllVersions((DeleteAllVersions) adminMessage.payloadUnion);
+        break;
       default:
         throw new VeniceException("Unknown admin operation type: " + adminMessage.operationType);
     }
@@ -451,5 +455,12 @@ public class AdminConsumptionTask implements Runnable, Closeable {
     admin.killOfflineJob(clusterName, kafkaTopic);
 
     logger.info("Killed job with topic: " + kafkaTopic + " in cluster: " + clusterName);
+  }
+
+  public void handleDeleteAllVersions(DeleteAllVersions message) {
+    String clusterName = message.clusterName.toString();
+    String storeName = message.storeName.toString();
+    admin.deleteAllVersionsInStore(clusterName, storeName);
+    logger.info("Deleted all of version in store:" + storeName + " in cluster:" + clusterName);
   }
 }

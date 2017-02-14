@@ -4,14 +4,17 @@ import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.MultiStoreResponse;
+import com.linkedin.venice.controllerapi.MultiVersionResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreInfo;
+import com.linkedin.venice.meta.Version;
 import java.util.List;
 import spark.Route;
 
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.*;
+import static com.linkedin.venice.controllerapi.ControllerRoute.DELETE_ALL_VERSIONS;
 import static com.linkedin.venice.controllerapi.ControllerRoute.ENABLE_STORE;
 import static com.linkedin.venice.controllerapi.ControllerRoute.LIST_STORES;
 import static com.linkedin.venice.controllerapi.ControllerRoute.STORE;
@@ -91,6 +94,29 @@ public class StoresRoutes {
           throw new VeniceException(OPERATION +" parameter:"+operation+" is invalid.");
         }
 
+      } catch (Throwable e) {
+        responseObject.setError(e.getMessage());
+        AdminSparkServer.handleError(e, request, response);
+      }
+      response.type(HttpConstants.JSON);
+      return AdminSparkServer.mapper.writeValueAsString(responseObject);
+    };
+  }
+
+  public static Route deleteAllVersions(Admin admin) {
+    return (request, response) -> {
+      MultiVersionResponse responseObject = new MultiVersionResponse();
+      try {
+        AdminSparkServer.validateParams(request, DELETE_ALL_VERSIONS.getParams(), admin);
+        responseObject.setCluster(request.queryParams(CLUSTER));
+        responseObject.setName(request.queryParams(NAME));
+        List<Version> deletedVersions =
+            admin.deleteAllVersionsInStore(responseObject.getCluster(), responseObject.getName());
+        int[] deletedVersionNumbers = new int[deletedVersions.size()];
+        for (int i = 0; i < deletedVersions.size(); i++) {
+          deletedVersionNumbers[i] = deletedVersions.get(i).getNumber();
+        }
+        responseObject.setVersions(deletedVersionNumbers);
       } catch (Throwable e) {
         responseObject.setError(e.getMessage());
         AdminSparkServer.handleError(e, request, response);

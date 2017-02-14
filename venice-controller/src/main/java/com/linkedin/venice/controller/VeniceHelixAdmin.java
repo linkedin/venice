@@ -18,8 +18,10 @@ import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.Partition;
 import com.linkedin.venice.meta.PartitionAssignment;
+import com.linkedin.venice.meta.ReadWriteStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.pushmonitor.OfflinePushMonitor;
 import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.schema.SchemaEntry;
@@ -217,6 +219,12 @@ public class VeniceHelixAdmin implements Admin {
         }
     }
 
+    protected synchronized void updateStore(String clusterName, Store store) {
+        checkControllerMastership(clusterName);
+        VeniceHelixResources resources = getVeniceHelixResource(clusterName);
+        resources.getMetadataRepository().updateStore(store);
+    }
+
     protected void checkPreConditionForAddStore(String clusterName, String storeName, String owner, String keySchema, String valueSchema) {
         checkControllerMastership(clusterName);
         HelixReadWriteStoreRepository repository = getVeniceHelixResource(clusterName).getMetadataRepository();
@@ -308,6 +316,90 @@ public class VeniceHelixAdmin implements Admin {
         Version version = store.peekNextVersion(); /* Does not modify the store */
         logger.info("Next version would be: " + version.getNumber() + " for store: " + storeName);
         return version;
+    }
+
+    @Override
+    public List<Version> deleteAllVersionsInStore(String clusterName, String storeName) {
+        checkControllerMastership(clusterName);
+        HelixReadWriteStoreRepository repository = getVeniceHelixResource(clusterName).getMetadataRepository();
+        List<Version> deletingVersionSnapshot = new ArrayList<>();
+        repository.lock();
+        try {
+            Store store = repository.getStore(storeName);
+            if (store == null) {
+                logger.error("Unable to delete all of version in store:" + storeName + ". Store can not be found.");
+                throw new VeniceNoStoreException(storeName);
+            }
+            if (store.isEnableReads() || store.isEnableWrites()) {
+                String errorMsg = "Unable to delete all versions in store:" + storeName
+                    + ". Store has not been disabled. Both read and write need to be disabled before deleting.";
+                logger.error(errorMsg);
+                throw new VeniceException(errorMsg);
+            }
+            logger.info("Deleting all versions in store: "+store+" in cluster: "+clusterName);
+            // Set current version to NON_VERSION_AVAILABLE. Otherwise after this store is enabled again, as all of
+            // version were deleted, router will get a current version which does not exist actually.
+            store.setEnableWrites(true);
+            store.setCurrentVersion(Store.NON_EXISTING_VERSION);
+            store.setEnableWrites(false);
+            repository.updateStore(store);
+            deletingVersionSnapshot = new ArrayList<>(store.getVersions());
+        } finally {
+            repository.unLock();
+        }
+        // Do not lock the entire deleting block, because during the deleting, controller would acquire repository lock
+        // to query store when received the status update from storage node.
+        for (Version version : deletingVersionSnapshot) {
+            deleteOneStoreVersion(clusterName, storeName, version.getNumber(), repository);
+            deleteKafkaTopicForVersion(clusterName, version);
+        }
+        logger.info("Deleted all versions in store: " + storeName + " in cluster: " + clusterName);
+        return deletingVersionSnapshot;
+    }
+
+    /***
+     * Delete the version specified from the store, kill the running ingestion, remove the helix resource, and update
+     * zookeeper.
+     */
+    protected void deleteOneStoreVersion(String clusterName, String storeName, int versionNumber,
+        ReadWriteStoreRepository storeRepository) {
+        String resourceName = new Version(storeName, versionNumber).kafkaTopicName();
+        logger.info("Deleting helix resource:" + resourceName + " in cluster:" + clusterName);
+        deleteHelixResource(clusterName, resourceName);
+        logger.info("Killing job for:" + resourceName + " in cluster:" + clusterName);
+        killOfflineJob(clusterName, resourceName);
+        logger.info("Deleting version " + versionNumber + " in Store:" + storeName + " in cluster:" + clusterName);
+        storeRepository.lock();
+        try {
+            Store store = storeRepository.getStore(storeName);
+            store.deleteVersion(versionNumber);
+            storeRepository.updateStore(store);
+        } finally {
+            storeRepository.unLock();
+        }
+        logger.info("Deleted version " + versionNumber + " in Store: " + storeName + " in cluster: " + clusterName);
+    }
+
+    protected void deleteKafkaTopicForVersion(String clusterName, Version version) {
+        String kafkaTopicName = version.kafkaTopicName();
+        boolean isCompleted = false;
+        if (VersionStatus.isBootstrapTerminated(version.getStatus())) {
+            // Only delete kafka topic after consumption is completed. In that case, there is no more data will
+            // be produced from Kafka MM. Otherwise, deleting would cause Kafka MM crashed.
+            isCompleted = true;
+        }
+
+        if (isCompleted || getVeniceHelixResource(clusterName).getConfig()
+            .isEnableTopicDeletionForUncompletedJob()) {
+            logger.info("Deleting topic: " + kafkaTopicName);
+            getTopicManager().deleteTopic(kafkaTopicName);
+            logger.info("Deleted topic: " + kafkaTopicName);
+        } else {
+            // TODO an async task is needed to collect topics later to prevent resource leaking.
+            logger.warn("Could not delete Kafka topic: " + kafkaTopicName
+                + "Because the offline push for this version has not been completed, and topic deleteion for uncompleted job is disabled. Version status:"
+                + version.getStatus());
+        }
     }
 
     /***
@@ -443,19 +535,18 @@ public class VeniceHelixAdmin implements Admin {
         }
     }
 
+    protected void deleteHelixResource(String clusterName, String kafkaTopic) {
+        checkControllerMastership(clusterName);
+        admin.dropResource(clusterName, kafkaTopic);
+        logger.info("Successfully dropped the resource " + kafkaTopic + " for cluster " + clusterName);
+    }
+
     @Override
     public void startOfflinePush(String clusterName, String kafkaTopic, int numberOfPartition, int replicationFactor, OfflinePushStrategy strategy) {
         checkControllerMastership(clusterName);
         VeniceJobManager jobManager = controllerStateModelFactory.getModel(clusterName).getResources().getJobManager();
         setJobManagerAdmin(jobManager);
         jobManager.startOfflineJob(kafkaTopic, numberOfPartition, replicationFactor, strategy);
-    }
-
-    @Override
-    public void deleteHelixResource(String clusterName, String kafkaTopic) {
-        checkControllerMastership(clusterName);
-        admin.dropResource(clusterName, kafkaTopic);
-        logger.info("Successfully dropped the resource " + kafkaTopic + " for cluster " + clusterName);
     }
 
     @Override

@@ -18,7 +18,7 @@ import java.util.Map;
 
 public class AdminOperationSerializer {
   // Latest schema id, and it needs to be updated whenever we add a new version
-  public static int LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION = 1;
+  public static int LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION = 2;
 
   private static SpecificDatumWriter<AdminOperation> SPECIFIC_DATUM_WRITER = new SpecificDatumWriter<>(AdminOperation.SCHEMA$);
   /** Used to generate decoders. */
@@ -55,7 +55,9 @@ public class AdminOperationSerializer {
   private static Map<Integer, Schema> initProtocolMap() {
     try {
       Map<Integer, Schema> protocolSchemaMap = new HashMap<>();
+      // TODO reuse some codes from InternalAvroSpecificSerializer to initialize all versions of schema.
       protocolSchemaMap.put(1, Utils.getSchemaFromResource("avro/AdminOperation/v1/AdminOperation.avsc"));
+      protocolSchemaMap.put(2, Utils.getSchemaFromResource("avro/AdminOperation/v2/AdminOperation.avsc"));
 
       // TODO: If we add more versions to the protocol, they should be initialized here.
 

@@ -1,6 +1,7 @@
 package com.linkedin.venice.controller;
 
 import com.linkedin.venice.ConfigKeys;
+import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.helix.HelixJobRepository;
 import com.linkedin.venice.helix.HelixState;
 import com.linkedin.venice.helix.HelixStatusMessageChannel;
@@ -70,6 +71,7 @@ public class TestVeniceHelixAdmin {
   public static final long MASTER_CHANGE_TIMEOUT = 10 * Time.MS_PER_SECOND;
   public static final long TOTAL_TIMEOUT_FOR_LONG_TEST = 30 * Time.MS_PER_SECOND;
   public static final long TOTAL_TIMEOUT_FOR_SHORT_TEST = 10 * Time.MS_PER_SECOND;
+
   @BeforeMethod
   public void setup()
       throws Exception {
@@ -83,17 +85,15 @@ public class TestVeniceHelixAdmin {
       currentPath += "/..";
     }
     VeniceProperties clusterProps = Utils.parseProperties(currentPath + "/venice-server/config/cluster.properties");
-    VeniceProperties baseControllerProps = Utils.parseProperties(
-        currentPath + "/venice-controller/config/controller.properties");
+    VeniceProperties baseControllerProps = Utils.parseProperties(currentPath + "/venice-controller/config/controller.properties");
 
     clusterProps.getString(ConfigKeys.CLUSTER_NAME);
-    PropertyBuilder builder = new PropertyBuilder()
-            .put(clusterProps.toProperties())
-            .put(baseControllerProps.toProperties())
-            .put("kafka.zk.address", kafkaZkAddress)
-            .put("zookeeper.address", zkAddress)
-            .put(DEFAULT_MAX_NUMBER_OF_PARTITIONS,10)
-            .put(DEFAULT_PARTITION_SIZE, 100);
+    PropertyBuilder builder = new PropertyBuilder().put(clusterProps.toProperties())
+        .put(baseControllerProps.toProperties())
+        .put("kafka.zk.address", kafkaZkAddress)
+        .put("zookeeper.address", zkAddress)
+        .put(DEFAULT_MAX_NUMBER_OF_PARTITIONS, 10)
+        .put(DEFAULT_PARTITION_SIZE, 100);
 
     controllerProps = builder.build();
 
@@ -124,22 +124,22 @@ public class TestVeniceHelixAdmin {
   private void startParticipant(boolean isDelay, String nodeId)
       throws Exception {
     stateModelFactory.setBlockTransition(isDelay);
-    HelixManager manager = TestUtils.getParticipant(clusterName, nodeId, zkAddress, 9985,
-        stateModelFactory, VeniceStateModel.PARTITION_ONLINE_OFFLINE_STATE_MODEL);
+    HelixManager manager = TestUtils.getParticipant(clusterName, nodeId, zkAddress, 9985, stateModelFactory,
+        VeniceStateModel.PARTITION_ONLINE_OFFLINE_STATE_MODEL);
     participants.put(nodeId, manager);
     manager.connect();
     HelixUtils.setupInstanceConfig(clusterName, nodeId, zkAddress);
   }
 
   private void stopParticipants() {
-    for(String nodeId:participants.keySet()){
+    for (String nodeId : participants.keySet()) {
       participants.get(nodeId).disconnect();
     }
     participants.clear();
   }
 
   private void stopParticipant(String nodeId) {
-    if(participants.containsKey(nodeId)){
+    if (participants.containsKey(nodeId)) {
       participants.get(nodeId).disconnect();
       participants.remove(nodeId);
     }
@@ -152,8 +152,8 @@ public class TestVeniceHelixAdmin {
       String storeName = TestUtils.getUniqueString("test-store");
       veniceAdmin.addStore(clusterName, storeName, "dev", keySchema, valueSchema);
       veniceAdmin.incrementVersion(clusterName, storeName, 1, 1);
-      Assert.assertEquals(veniceAdmin.getOffLineJobStatus(clusterName, new Version(storeName, 1).kafkaTopicName()), ExecutionStatus.STARTED,
-          "Can not get offline job status correctly.");
+      Assert.assertEquals(veniceAdmin.getOffLineJobStatus(clusterName, new Version(storeName, 1).kafkaTopicName()),
+          ExecutionStatus.STARTED, "Can not get offline job status correctly.");
     } catch (VeniceException e) {
       Assert.fail("Should be able to create store after starting cluster");
     }
@@ -171,10 +171,8 @@ public class TestVeniceHelixAdmin {
     StatusMessageChannel channel = new HelixStatusMessageChannel(participants.get(nodeId), Integer.MAX_VALUE);
     channel.sendToController(new StoreStatusMessage(version.kafkaTopicName(), 0, nodeId, ExecutionStatus.STARTED));
 
-    int newAdminPort = config.getAdminPort()+1; /* Note: this is a dummy port */
-    PropertyBuilder builder = new PropertyBuilder()
-        .put(controllerProps.toProperties())
-        .put("admin.port", newAdminPort);
+    int newAdminPort = config.getAdminPort() + 1; /* Note: this is a dummy port */
+    PropertyBuilder builder = new PropertyBuilder().put(controllerProps.toProperties()).put("admin.port", newAdminPort);
 
     VeniceProperties newControllerProps = builder.build();
     VeniceControllerConfig newConfig = new VeniceControllerConfig(newControllerProps);
@@ -217,19 +215,19 @@ public class TestVeniceHelixAdmin {
     Thread.sleep(1000l);
     //New master controller create resource and trigger state transition on participant.
     newMasterAdmin.incrementVersion(clusterName, storeName, 1, 1);
-    Version newVersion = new Version(storeName,2);
+    Version newVersion = new Version(storeName, 2);
     Assert.assertEquals(newMasterAdmin.getOffLineJobStatus(clusterName, newVersion.kafkaTopicName()), ExecutionStatus.STARTED,
-            "Can not trigger state transition from new master");
+        "Can not trigger state transition from new master");
 
     //Start original controller again, now it should become leader again based on Helix's logic.
     veniceAdmin.start(clusterName);
     newMasterAdmin.stop(clusterName);
     waitForAMaster(allAdmins, clusterName, MASTER_CHANGE_TIMEOUT);
     // find the leader controller and test it could continue to add store as normal.
-    if(veniceAdmin.isMasterController(clusterName)) {
+    if (veniceAdmin.isMasterController(clusterName)) {
       veniceAdmin.addStore(clusterName, "failedStore", "dev", keySchema, valueSchema);
-    }  else {
-      Assert.fail("No leader controller is found for cluster"+clusterName);
+    } else {
+      Assert.fail("No leader controller is found for cluster" + clusterName);
     }
   }
 
@@ -239,10 +237,8 @@ public class TestVeniceHelixAdmin {
     Assert.assertTrue(veniceAdmin.isMasterController(clusterName),
         "The default controller should be the master controller.");
 
-    int newAdminPort = config.getAdminPort()+1; /* Note: dummy port */
-    PropertyBuilder builder = new PropertyBuilder()
-        .put(controllerProps.toProperties())
-        .put("admin.port", newAdminPort);
+    int newAdminPort = config.getAdminPort() + 1; /* Note: dummy port */
+    PropertyBuilder builder = new PropertyBuilder().put(controllerProps.toProperties()).put("admin.port", newAdminPort);
 
     VeniceProperties newControllerProps = builder.build();
     VeniceControllerConfig newConfig = new VeniceControllerConfig(newControllerProps);
@@ -267,11 +263,10 @@ public class TestVeniceHelixAdmin {
   }
 
   @Test(timeOut = TOTAL_TIMEOUT_FOR_SHORT_TEST)
-  public void testMultiCluster(){
+  public void testMultiCluster() {
     String newClusterName = "new_test_cluster";
-    PropertyBuilder builder = new PropertyBuilder()
-        .put(controllerProps.toProperties())
-        .put("cluster.name", newClusterName);
+    PropertyBuilder builder =
+        new PropertyBuilder().put(controllerProps.toProperties()).put("cluster.name", newClusterName);
 
     VeniceProperties newClusterProps = builder.build();
     VeniceControllerConfig newClusterConfig = new VeniceControllerConfig(newClusterProps);
@@ -285,31 +280,33 @@ public class TestVeniceHelixAdmin {
   }
 
   @Test(timeOut = TOTAL_TIMEOUT_FOR_SHORT_TEST)
-  public void testGetNumberOfPartition(){
+  public void testGetNumberOfPartition() {
     long partitionSize = config.getPartitionSize();
     int maxPartitionNumber = config.getMaxNumberOfPartition();
     int minPartitionNumber = config.getNumberOfPartition();
     veniceAdmin.addStore(clusterName, "test", "dev", keySchema, valueSchema);
 
-    long storeSize = partitionSize*(minPartitionNumber+1);
+    long storeSize = partitionSize * (minPartitionNumber + 1);
     int numberOfPartition = veniceAdmin.calculateNumberOfPartitions(clusterName, "test", storeSize);
     Assert.assertEquals(numberOfPartition, storeSize / partitionSize,
         "Number partition is smaller than max and bigger than min. So use the calculated result.");
     storeSize = 1;
     numberOfPartition = veniceAdmin.calculateNumberOfPartitions(clusterName, "test", storeSize);
-    Assert.assertEquals(numberOfPartition,minPartitionNumber, "Store size is too small so should use min number of partitions.");
-    storeSize = partitionSize*(maxPartitionNumber+1);
+    Assert.assertEquals(numberOfPartition, minPartitionNumber,
+        "Store size is too small so should use min number of partitions.");
+    storeSize = partitionSize * (maxPartitionNumber + 1);
     numberOfPartition = veniceAdmin.calculateNumberOfPartitions(clusterName, "test", storeSize);
-    Assert.assertEquals(numberOfPartition,maxPartitionNumber, "Store size is too big, should use max number of paritions.");
+    Assert.assertEquals(numberOfPartition, maxPartitionNumber,
+        "Store size is too big, should use max number of paritions.");
 
     storeSize = Long.MAX_VALUE;
     numberOfPartition = veniceAdmin.calculateNumberOfPartitions(clusterName, "test", storeSize);
     Assert.assertEquals(numberOfPartition, maxPartitionNumber, "Partition is overflow from Integer, use max one.");
     storeSize = -1;
-    try{
+    try {
       numberOfPartition = veniceAdmin.calculateNumberOfPartitions(clusterName, "test", storeSize);
       Assert.fail("Invalid store.");
-    }catch (VeniceException e){
+    } catch (VeniceException e) {
       //expected.
     }
   }
@@ -336,24 +333,24 @@ public class TestVeniceHelixAdmin {
         "Should use the number of partition from previous version");
   }
 
-  void waitUntilIsMaster(VeniceHelixAdmin admin, String cluster, long timeout){
+  void waitUntilIsMaster(VeniceHelixAdmin admin, String cluster, long timeout) {
     List<VeniceHelixAdmin> admins = Collections.singletonList(admin);
     waitForAMaster(admins, cluster, timeout);
   }
 
-  void waitForAMaster(List<VeniceHelixAdmin> admins, String cluster, long timeout){
+  void waitForAMaster(List<VeniceHelixAdmin> admins, String cluster, long timeout) {
     int sleepDuration = 100;
-    for (long i=0; i<timeout; i+= sleepDuration){
+    for (long i = 0; i < timeout; i += sleepDuration) {
 
       boolean aMaster = false;
-      for (VeniceHelixAdmin admin : admins){
-        if (admin.isMasterController(cluster)){
+      for (VeniceHelixAdmin admin : admins) {
+        if (admin.isMasterController(cluster)) {
           aMaster = true;
           break;
         }
       }
 
-      if (aMaster){
+      if (aMaster) {
         return;
       } else {
         try {
@@ -370,7 +367,7 @@ public class TestVeniceHelixAdmin {
   public void testDeleteOldVersions()
       throws InterruptedException {
     String storeName = "test";
-    veniceAdmin.addStore(clusterName,storeName,"owner", keySchema, valueSchema);
+    veniceAdmin.addStore(clusterName, storeName, "owner", keySchema, valueSchema);
     // Register the handle for kill message. Otherwise, when job manager collect the old version, it would meet error
     // after sending kill job message. Because, participant can not handle message correctly.
     HelixStatusMessageChannel channel = new HelixStatusMessageChannel(participants.get(nodeId));
@@ -381,7 +378,7 @@ public class TestVeniceHelixAdmin {
       }
     });
     Version version = null;
-    for(int i=0;i<3;i++) {
+    for (int i = 0; i < 3; i++) {
       version = veniceAdmin.incrementVersion(clusterName, storeName, 1, 1);
       int versionNumber = version.getNumber();
       VeniceJobManager jobManager = veniceAdmin.getVeniceHelixResource(clusterName).getJobManager();
@@ -394,20 +391,18 @@ public class TestVeniceHelixAdmin {
 
     TestUtils.waitForNonDeterministicCompletion(30000, TimeUnit.MILLISECONDS,
         () -> veniceAdmin.versionsForStore(clusterName, storeName).size() == 2);
-    Assert.assertEquals(veniceAdmin.getCurrentVersion(clusterName,storeName), version.getNumber());
-    Assert.assertEquals(veniceAdmin.versionsForStore(clusterName,storeName).get(0).getNumber(), version.getNumber()-1);
-    Assert.assertEquals(veniceAdmin.versionsForStore(clusterName,storeName).get(1).getNumber(), version.getNumber());
+    Assert.assertEquals(veniceAdmin.getCurrentVersion(clusterName, storeName), version.getNumber());
+    Assert.assertEquals(veniceAdmin.versionsForStore(clusterName, storeName).get(0).getNumber(), version.getNumber() - 1);
+    Assert.assertEquals(veniceAdmin.versionsForStore(clusterName, storeName).get(1).getNumber(), version.getNumber());
 
-    Version deletedVersion = new Version(storeName, version.getNumber()-2);
+    Version deletedVersion = new Version(storeName, version.getNumber() - 2);
     // Ensure job and topic are deleted
     TestUtils.waitForNonDeterministicCompletion(30000, TimeUnit.MILLISECONDS,
         () -> veniceAdmin.getOffLineJobStatus(clusterName, deletedVersion.kafkaTopicName())
             .equals(ExecutionStatus.NOT_CREATED));
-    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS,
-        () -> {
-          Assert.assertFalse(veniceAdmin.getTopicManager().containsTopic(deletedVersion.kafkaTopicName()));
-        });
-
+    TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
+      Assert.assertFalse(veniceAdmin.getTopicManager().containsTopic(deletedVersion.kafkaTopicName()));
+    });
   }
 
   @Test
@@ -416,10 +411,10 @@ public class TestVeniceHelixAdmin {
     stopParticipant(nodeId);
     startParticipant(true, nodeId);
     String storeName = "testDeleteResource";
-    veniceAdmin.addStore(clusterName,storeName,"owner", keySchema, valueSchema);
-    Version version = veniceAdmin.incrementVersion(clusterName, storeName,1,1);
+    veniceAdmin.addStore(clusterName, storeName, "owner", keySchema, valueSchema);
+    Version version = veniceAdmin.incrementVersion(clusterName, storeName, 1, 1);
     // Ensure the the replica has became BOOSTRAP
-    TestUtils.waitForNonDeterministicCompletion(3000, TimeUnit.MILLISECONDS, ()->{
+    TestUtils.waitForNonDeterministicCompletion(3000, TimeUnit.MILLISECONDS, () -> {
       RoutingDataRepository routingDataRepository =
           veniceAdmin.getVeniceHelixResource(clusterName).getRoutingDataRepository();
       return routingDataRepository.containsKafkaTopic(version.kafkaTopicName()) &&
@@ -456,50 +451,50 @@ public class TestVeniceHelixAdmin {
           veniceAdmin.getVeniceHelixResource(clusterName).getRoutingDataRepository();
       return !routingDataRepository.containsKafkaTopic(version.kafkaTopicName());
     });
-    Assert.assertEquals(stateModelFactory.getModelList(version.kafkaTopicName(),0).size(), 1);
+    Assert.assertEquals(stateModelFactory.getModelList(version.kafkaTopicName(), 0).size(), 1);
     // Replica become OFFLINE state
     Assert.assertEquals(stateModelFactory.getModelList(version.kafkaTopicName(), 0).get(0).getCurrentState(), "OFFLINE");
   }
 
   @Test
-  public void testCurrentVersion(){
+  public void testCurrentVersion() {
     String storeName = "test";
-    veniceAdmin.addStore(clusterName,storeName,"owner", keySchema, valueSchema);
-    Version version = veniceAdmin.incrementVersion(clusterName,storeName,1,1);
-    Assert.assertEquals(veniceAdmin.getCurrentVersion(clusterName,storeName),0);
-    veniceAdmin.setCurrentVersion(clusterName,storeName,version.getNumber());
-    Assert.assertEquals(veniceAdmin.getCurrentVersion(clusterName,storeName),version.getNumber());
+    veniceAdmin.addStore(clusterName, storeName, "owner", keySchema, valueSchema);
+    Version version = veniceAdmin.incrementVersion(clusterName, storeName, 1, 1);
+    Assert.assertEquals(veniceAdmin.getCurrentVersion(clusterName, storeName), 0);
+    veniceAdmin.setCurrentVersion(clusterName, storeName, version.getNumber());
+    Assert.assertEquals(veniceAdmin.getCurrentVersion(clusterName, storeName), version.getNumber());
 
-    try{
-      veniceAdmin.setCurrentVersion(clusterName,storeName,100);
+    try {
+      veniceAdmin.setCurrentVersion(clusterName, storeName, 100);
       Assert.fail("Version 100 does not exist. Should be failed.");
-    }catch (VeniceException e){
+    } catch (VeniceException e) {
       //expected
     }
   }
 
   @Test
-  public void testAddVersion(){
+  public void testAddVersion() {
     String storeName = "test";
     try {
       veniceAdmin.incrementVersion(clusterName, storeName, 1, 1);
-      Assert.fail(storeName+" does not exist.");
-    }catch(VeniceException e){
+      Assert.fail(storeName + " does not exist.");
+    } catch (VeniceException e) {
       //Expected
     }
 
-    veniceAdmin.addStore(clusterName,storeName,"owner", keySchema, valueSchema);
-    veniceAdmin.addVersion(clusterName,storeName,1,1,1);
-    Assert.assertEquals(veniceAdmin.versionsForStore(clusterName,storeName).size(), 1);
+    veniceAdmin.addStore(clusterName, storeName, "owner", keySchema, valueSchema);
+    veniceAdmin.addVersion(clusterName, storeName, 1, 1, 1);
+    Assert.assertEquals(veniceAdmin.versionsForStore(clusterName, storeName).size(), 1);
     try {
       veniceAdmin.addVersion(clusterName, storeName, 1, 1, 1);
       Assert.fail("Version 1 has already existed");
-    }catch(Exception e){
+    } catch (Exception e) {
       //Expected
     }
 
-    veniceAdmin.addVersion(clusterName,storeName,101,1,1);
-    Assert.assertEquals(veniceAdmin.versionsForStore(clusterName,storeName).size(),2);
+    veniceAdmin.addVersion(clusterName, storeName, 101, 1, 1);
+    Assert.assertEquals(veniceAdmin.versionsForStore(clusterName, storeName).size(), 2);
   }
 
   @Test
@@ -508,8 +503,8 @@ public class TestVeniceHelixAdmin {
     stopParticipants();
     startParticipant(true, nodeId);
     String storeName = "test";
-    veniceAdmin.addStore(clusterName,storeName,"owner", keySchema, valueSchema);
-    veniceAdmin.addVersion(clusterName,storeName,1,1,1);
+    veniceAdmin.addStore(clusterName, storeName, "owner", keySchema, valueSchema);
+    veniceAdmin.addVersion(clusterName, storeName, 1, 1, 1);
     TestUtils.waitForNonDeterministicCompletion(5000, TimeUnit.MILLISECONDS, () -> {
       PartitionAssignment partitionAssignment = veniceAdmin.getVeniceHelixResource(clusterName)
           .getRoutingDataRepository()
@@ -517,25 +512,26 @@ public class TestVeniceHelixAdmin {
       return partitionAssignment.getAssignedNumberOfPartitions() == 1;
     });
 
-    List<Replica> replicas = veniceAdmin.getBootstrapReplicas(clusterName,Version.composeKafkaTopic(storeName,1));
-    Assert.assertEquals(replicas.size() , 1);
+    List<Replica> replicas = veniceAdmin.getBootstrapReplicas(clusterName, Version.composeKafkaTopic(storeName, 1));
+    Assert.assertEquals(replicas.size(), 1);
     Assert.assertEquals(replicas.get(0).getStatus(), HelixState.BOOTSTRAP_STATE);
     Assert.assertEquals(replicas.get(0).getPartitionId(), 0);
 
     // Make participant complete BOOTSTRAP->ONLINE
-    stateModelFactory.makeTransitionCompleted(Version.composeKafkaTopic(storeName,1),0);
+    stateModelFactory.makeTransitionCompleted(Version.composeKafkaTopic(storeName, 1), 0);
     TestUtils.waitForNonDeterministicCompletion(5000, TimeUnit.MILLISECONDS, () -> {
       PartitionAssignment partitionAssignment = veniceAdmin.getVeniceHelixResource(clusterName)
           .getRoutingDataRepository()
           .getPartitionAssignments(Version.composeKafkaTopic(storeName, 1));
       return partitionAssignment.getPartition(0).getReadyToServeInstances().size() == 1;
     });
-    replicas = veniceAdmin.getBootstrapReplicas(clusterName,Version.composeKafkaTopic(storeName,1));
-    Assert.assertEquals(replicas.size() , 0);
+    replicas = veniceAdmin.getBootstrapReplicas(clusterName, Version.composeKafkaTopic(storeName, 1));
+    Assert.assertEquals(replicas.size(), 0);
   }
 
   @Test
-  public void testIsInstanceRemovableForRunningPush() throws Exception{
+  public void testIsInstanceRemovableForRunningPush()
+      throws Exception {
     // Create another participant so we will get two running instances.
     String newNodeId = "localhost_9900";
     startParticipant(true, newNodeId);
@@ -573,11 +569,11 @@ public class TestVeniceHelixAdmin {
       return partitionAssignment.getPartition(0).getBootstrapAndReadyToServeInstances().size() == 1;
     });
 
-    Assert.assertFalse(veniceAdmin.isInstanceRemovable(clusterName, newNodeId,1 ),
+    Assert.assertFalse(veniceAdmin.isInstanceRemovable(clusterName, newNodeId, 1),
         "Only one instance is alive, can not be moved out.");
     Assert.assertTrue(veniceAdmin.isInstanceRemovable(clusterName, nodeId, 1), "Instance is shutdown.");
-
   }
+
   @Test
   public void testIsInstanceRemovable()
       throws Exception {
@@ -610,14 +606,12 @@ public class TestVeniceHelixAdmin {
     store.updateVersionStatus(version.getNumber(), VersionStatus.ONLINE);
     storeRepository.updateStore(store);
 
-
     //Enough number of replicas, any of instance is able to moved out.
     Assert.assertTrue(veniceAdmin.isInstanceRemovable(clusterName, nodeId, 1));
     Assert.assertTrue(veniceAdmin.isInstanceRemovable(clusterName, newNodeId, 1));
     // If min required replica number is 2, we can not remove any of server.
     Assert.assertFalse(veniceAdmin.isInstanceRemovable(clusterName, nodeId, 2));
     Assert.assertFalse(veniceAdmin.isInstanceRemovable(clusterName, newNodeId, 2));
-
 
     //Shutdown one instance
     stopParticipant(nodeId);
@@ -647,8 +641,7 @@ public class TestVeniceHelixAdmin {
 
     TestUtils.waitForNonDeterministicCompletion(5000, TimeUnit.MILLISECONDS, () -> {
       PartitionAssignment partitionAssignment =
-          veniceAdmin.getVeniceHelixResource(clusterName).getRoutingDataRepository()
-              .getPartitionAssignments(version.kafkaTopicName());
+          veniceAdmin.getVeniceHelixResource(clusterName).getRoutingDataRepository().getPartitionAssignments(version.kafkaTopicName());
       if (partitionAssignment.getAssignedNumberOfPartitions() != partitionCount) {
         return false;
       }
@@ -678,8 +671,7 @@ public class TestVeniceHelixAdmin {
 
     TestUtils.waitForNonDeterministicCompletion(10000, TimeUnit.MILLISECONDS, () -> {
       PartitionAssignment partitionAssignment =
-          veniceAdmin.getVeniceHelixResource(clusterName).getRoutingDataRepository()
-              .getPartitionAssignments(version.kafkaTopicName());
+          veniceAdmin.getVeniceHelixResource(clusterName).getRoutingDataRepository().getPartitionAssignments(version.kafkaTopicName());
       for (int i = 0; i < partitionCount; i++) {
         if (partitionAssignment.getPartition(i).getReadyToServeInstances().size() != partitionCount) {
           return false;
@@ -761,9 +753,9 @@ public class TestVeniceHelixAdmin {
     }
     Assert.assertEquals(veniceAdmin.getAllStores(clusterName).get(0), store);
 
-    veniceAdmin.enableStoreWrite(clusterName ,storeName);
+    veniceAdmin.enableStoreWrite(clusterName, storeName);
 
-    veniceAdmin.addVersion(clusterName, storeName, 1, 1,1);
+    veniceAdmin.addVersion(clusterName, storeName, 1, 1, 1);
     veniceAdmin.incrementVersion(clusterName, storeName, 1, 1);
 
     store = veniceAdmin.getAllStores(clusterName).get(0);
@@ -810,13 +802,12 @@ public class TestVeniceHelixAdmin {
         "After removing the instance, white list should be empty.");
   }
 
-
   @Test
   public void testKillOfflineJob()
       throws Exception {
     String newNodeId = Utils.getHelixNodeIdentifier(9786);
     startParticipant(true, newNodeId);
-     String storeName = "testKillJob";
+    String storeName = "testKillJob";
     int partitionCount = 2;
     int replicaFactor = 1;
     // Start a new version with 2 partition and 1 replica
@@ -845,14 +836,14 @@ public class TestVeniceHelixAdmin {
     }
 
     final CopyOnWriteArrayList<KillJobMessage> processedMessage = new CopyOnWriteArrayList<>();
-    for(HelixManager manager: this.participants.values()){
+    for (HelixManager manager : this.participants.values()) {
       HelixStatusMessageChannel channel = new HelixStatusMessageChannel(manager);
       channel.registerHandler(KillJobMessage.class, new StatusMessageHandler<KillJobMessage>() {
         @Override
         public void handleMessage(KillJobMessage message) {
           processedMessage.add(message);
           //make ST error to simulate kill consumption task.
-          stateModelFactory.makeTransitionError(message.getKafkaTopic(), nodesToPartitionMap.get(manager.getInstanceName()) );
+          stateModelFactory.makeTransitionError(message.getKafkaTopic(), nodesToPartitionMap.get(manager.getInstanceName()));
         }
       });
     }
@@ -877,5 +868,95 @@ public class TestVeniceHelixAdmin {
         () -> !veniceAdmin.getVeniceHelixResource(clusterName)
             .getRoutingDataRepository()
             .containsKafkaTopic(version.kafkaTopicName()));
+  }
+
+  @Test
+  public void testDeleteAllVersions() {
+    String storeName = "testDeleteAllVersions";
+    // register kill message handler for participants.
+    for (HelixManager manager : this.participants.values()) {
+      HelixStatusMessageChannel channel = new HelixStatusMessageChannel(manager);
+      channel.registerHandler(KillJobMessage.class, new StatusMessageHandler<KillJobMessage>() {
+        @Override
+
+        public void handleMessage(KillJobMessage message) {
+          //make state transition failed to simulate kill consumption task.
+          stateModelFactory.makeTransitionError(message.getKafkaTopic(), 0);
+        }
+      });
+    }
+    // Store has not been created.
+    try {
+      veniceAdmin.deleteAllVersionsInStore(clusterName, storeName);
+      Assert.fail("Store has not been created.");
+    } catch (VeniceNoStoreException e) {
+    }
+    // Prepare 3 version. The first two are completed and the last one is still ongoing.
+    int versionCount = 3;
+    veniceAdmin.addStore(clusterName, storeName, "test", keySchema, valueSchema);
+    Version lastVersion = null;
+    for (int i = 0; i < versionCount; i++) {
+      if (lastVersion != null) {
+        Store store = veniceAdmin.getStore(clusterName, storeName);
+        store.updateVersionStatus(lastVersion.getNumber(), VersionStatus.ONLINE);
+        store.setCurrentVersion(lastVersion.getNumber());
+        veniceAdmin.updateStore(clusterName, store);
+      }
+      lastVersion = veniceAdmin.incrementVersion(clusterName, storeName, 1, 1);
+    }
+    Assert.assertEquals(veniceAdmin.getStore(clusterName, storeName).getVersions().size(), 3);
+    // Store has not been disabled.
+    try {
+      veniceAdmin.deleteAllVersionsInStore(clusterName, storeName);
+      Assert.fail("Store has not been disabled.");
+    } catch (VeniceException e) {
+
+    }
+    veniceAdmin.disableStoreRead(clusterName, storeName);
+    try {
+      veniceAdmin.deleteAllVersionsInStore(clusterName, storeName);
+      Assert.fail("Store has not been disabled to write.");
+    } catch (VeniceException e) {
+
+    }
+    veniceAdmin.enableStoreRead(clusterName, storeName);
+    veniceAdmin.disableStoreWrite(clusterName, storeName);
+    try {
+      veniceAdmin.deleteAllVersionsInStore(clusterName, storeName);
+      Assert.fail("Store has not been disabled to read.");
+    } catch (VeniceException e) {
+
+    }
+    // Store has been disabled.
+    veniceAdmin.disableStoreRead(clusterName, storeName);
+    veniceAdmin.deleteAllVersionsInStore(clusterName, storeName);
+    Assert.assertEquals(veniceAdmin.getStore(clusterName, storeName).getVersions().size(), 0,
+        " Versions should be deleted.");
+    Assert.assertEquals(veniceAdmin.getStore(clusterName, storeName).getCurrentVersion(), Store.NON_EXISTING_VERSION);
+    // After enabling store, the serving version is -1 because there is not version available in this store.
+    veniceAdmin.enableStoreRead(clusterName, storeName);
+    Assert.assertEquals(veniceAdmin.getStore(clusterName, storeName).getCurrentVersion(), Store.NON_EXISTING_VERSION,
+        "No version should be available to read");
+    Assert.assertTrue(veniceAdmin.getTopicManager().containsTopic(lastVersion.kafkaTopicName()),
+        "Kafka topic should be kept for the uncompleted version.");
+    Assert.assertFalse(
+        veniceAdmin.getTopicManager().containsTopic(Version.composeKafkaTopic(storeName, lastVersion.getNumber() - 1)),
+        "Kafka topic should be deleted for the completed version.");
+  }
+
+  @Test
+  public void testDeleteVersionInWithoutJobAndResource() {
+    String storeName = "testDeleteVersionInWithoutJobAndResource";
+    Store store = TestUtils.createTestStore(storeName, "unittest", System.currentTimeMillis());
+    Version version = store.increaseVersion();
+    store.updateVersionStatus(version.getNumber(), VersionStatus.ONLINE);
+    store.setCurrentVersion(version.getNumber());
+    veniceAdmin.getVeniceHelixResource(clusterName).getMetadataRepository().addStore(store);
+    stopParticipants();
+    veniceAdmin.disableStoreRead(clusterName, storeName);
+    veniceAdmin.disableStoreWrite(clusterName, storeName);
+
+    veniceAdmin.deleteAllVersionsInStore(clusterName, storeName);
+    Assert.assertEquals(veniceAdmin.getStore(clusterName, storeName).getVersions().size(), 0);
   }
 }

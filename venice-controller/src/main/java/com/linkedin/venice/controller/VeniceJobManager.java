@@ -258,9 +258,9 @@ public class VeniceJobManager implements StatusMessageHandler<StoreStatusMessage
     List<Version> versionsToDelete = store.retrieveVersionsToDelete(NUM_VERSIONS_TO_PRESERVE);
     for (Version version : versionsToDelete) {
       if (version.getStatus().equals(VersionStatus.ERROR)) {
-        deleteErrorStoreVersion(store, version.getNumber());
+        deleteErrorStoreVersion(version);
       } else {
-        deleteCompletedStoreVersion(store, version.getNumber());
+        deleteCompletedStoreVersion(version);
       }
       //Collect the job once the version is deleted.
       archiveJobs(version.kafkaTopicName());
@@ -270,41 +270,15 @@ public class VeniceJobManager implements StatusMessageHandler<StoreStatusMessage
     }
   }
 
-  /***
-   * Delete the version specified from the store, kill the running ingestion, remove the helix resource, and update zookeeper.
-   * @param store
-   * @param versionNumber
-   */
-  private void deleteOneStoreVersion(Store store, int versionNumber) {
-    String resourceName = new Version(store.getName(), versionNumber).kafkaTopicName();
-    helixAdmin.deleteHelixResource(clusterName, resourceName);
-    logger.info("Killing job for:" + resourceName + " in cluster:" + clusterName);
-    helixAdmin.killOfflineJob(clusterName, resourceName);
-    logger.info("Deleting version " + versionNumber + " in Store:" + store.getName() + " in cluster:" + clusterName);
-    store.deleteVersion(versionNumber);
-    metadataRepository.updateStore(store);
-    logger.info("Deleted version " + versionNumber + " in Store:" + store.getName() + " in cluster:" + clusterName);
+  private void deleteCompletedStoreVersion(Version version) {
+    helixAdmin.deleteOneStoreVersion(clusterName, version.getStoreName(), version.getNumber(), metadataRepository);
+    helixAdmin.deleteKafkaTopicForVersion(clusterName, version);
   }
 
-  private void deleteKafkaTopic(String kafkaTopicName) {
-    helixAdmin.getTopicManager().deleteTopic(kafkaTopicName);
-    logger.info("Deleted topic:" + kafkaTopicName);
-  }
-
-  private void deleteCompletedStoreVersion(Store store, int versionNumber) {
-    deleteOneStoreVersion(store, versionNumber);
-    deleteKafkaTopic(Version.composeKafkaTopic(store.getName(), versionNumber));
-  }
-
-  private void deleteErrorStoreVersion(Store store, int versionNumber) {
-    deleteOneStoreVersion(store, versionNumber);
+  private void deleteErrorStoreVersion(Version version) {
+    helixAdmin.deleteOneStoreVersion(clusterName, version.getStoreName(), version.getNumber(), metadataRepository);
     // Check the feature flag to decide whether manager would delete the topic for failed job or not.
-    String kafkaTopic = Version.composeKafkaTopic(store.getName(), versionNumber);
-    if (helixAdmin.getVeniceHelixResource(clusterName).getConfig().isEnableTopicDeletionWhenJobFailed()) {
-      helixAdmin.getTopicManager().deleteTopic(kafkaTopic);
-    } else {
-      logger.info("Topic deletion is disabled for this controller. Ignore deletion request.");
-    }
+    helixAdmin.deleteKafkaTopicForVersion(clusterName, version);
   }
 
   private void cleanUpFailedJob(Job job) {
@@ -315,8 +289,12 @@ public class VeniceJobManager implements StatusMessageHandler<StoreStatusMessage
     if (helixAdmin == null) {
       return;
     }
-    int versionNumber = Version.parseVersionFromKafkaTopicName(job.getKafkaTopic());
-    deleteErrorStoreVersion(store, versionNumber);
+    for (Version version : store.getVersions()) {
+      if (version.kafkaTopicName().equals(job.getKafkaTopic())) {
+        deleteErrorStoreVersion(version);
+        break;
+      }
+    }
   }
 
   private void handleJobComplete(Job job) {

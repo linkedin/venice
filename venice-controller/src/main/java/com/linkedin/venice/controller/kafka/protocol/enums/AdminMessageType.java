@@ -1,6 +1,7 @@
 package com.linkedin.venice.controller.kafka.protocol.enums;
 
 import com.linkedin.venice.controller.kafka.protocol.admin.AdminOperation;
+import com.linkedin.venice.controller.kafka.protocol.admin.DeleteAllVersions;
 import com.linkedin.venice.controller.kafka.protocol.admin.DisableStoreRead;
 import com.linkedin.venice.controller.kafka.protocol.admin.EnableStoreRead;
 import com.linkedin.venice.controller.kafka.protocol.admin.KillOfflinePushJob;
@@ -21,7 +22,8 @@ public enum AdminMessageType {
   ENABLE_STORE_WRITE(3),
   KILL_OFFLINE_PUSH_JOB(4),
   DIABLE_STORE_READ(5),
-  ENABLE_STORE_READ(6);
+  ENABLE_STORE_READ(6),
+  DELETE_ALL_VERSIONS(7);
 
   private final int value;
   private static final Map<Integer, AdminMessageType> MESSAGE_TYPE_MAP = getMessageTypeMap();
@@ -39,6 +41,7 @@ public enum AdminMessageType {
       case KILL_OFFLINE_PUSH_JOB: return new KillOfflinePushJob();
       case DIABLE_STORE_READ: return new DisableStoreRead();
       case ENABLE_STORE_READ: return new EnableStoreRead();
+      case DELETE_ALL_VERSIONS: return new DeleteAllVersions();
       default: throw new VeniceException("Unsupported " + getClass().getSimpleName() + " value: " + value);
     }
   }

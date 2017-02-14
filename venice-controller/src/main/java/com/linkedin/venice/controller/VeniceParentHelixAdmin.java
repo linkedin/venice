@@ -7,6 +7,7 @@ import com.linkedin.venice.controller.kafka.offsets.AdminOffsetManager;
 import com.linkedin.venice.controller.kafka.consumer.AdminConsumerService;
 
 import com.linkedin.venice.controller.kafka.protocol.admin.AdminOperation;
+import com.linkedin.venice.controller.kafka.protocol.admin.DeleteAllVersions;
 import com.linkedin.venice.controller.kafka.protocol.admin.DisableStoreRead;
 import com.linkedin.venice.controller.kafka.protocol.admin.EnableStoreRead;
 import com.linkedin.venice.controller.kafka.protocol.admin.KillOfflinePushJob;
@@ -21,6 +22,7 @@ import com.linkedin.venice.controller.kafka.protocol.serializer.AdminOperationSe
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.helix.HelixReadWriteStoreRepository;
 import com.linkedin.venice.helix.Replica;
 import com.linkedin.venice.job.ExecutionStatus;
@@ -332,6 +334,28 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   @Override
+  public List<Version> deleteAllVersionsInStore(String clusterName, String storeName) {
+    acquireLock(clusterName);
+    try {
+      Store store = veniceHelixAdmin.getStore(clusterName, storeName);
+      if (store == null) {
+        throw new VeniceNoStoreException(storeName);
+      }
+      DeleteAllVersions deleteAllVersions = (DeleteAllVersions) AdminMessageType.DELETE_ALL_VERSIONS.getNewInstance();
+      deleteAllVersions.clusterName = clusterName;
+      deleteAllVersions.storeName = storeName;
+      AdminOperation message = new AdminOperation();
+      message.operationType = AdminMessageType.DELETE_ALL_VERSIONS.ordinal();
+      message.payloadUnion = deleteAllVersions;
+
+      sendAdminMessageAndWaitForConsumed(clusterName, message);
+      return Collections.emptyList();
+    } finally {
+      releaseLock();
+    }
+  }
+
+  @Override
   public List<Version> versionsForStore(String clusterName, String storeName) {
     return veniceHelixAdmin.versionsForStore(clusterName, storeName);
   }
@@ -365,11 +389,6 @@ public class VeniceParentHelixAdmin implements Admin {
                                int replicaFactor,
                                OfflinePushStrategy strategy) {
     throw new VeniceException("startOfflinePush is not supported!");
-  }
-
-  @Override
-  public void deleteHelixResource(String clusterName, String kafkaTopic) {
-    throw new VeniceException("deleteHelixResource is not supported yet!");
   }
 
   @Override

@@ -152,6 +152,8 @@ public class AdminTool {
         setEnableStoreReadWrites(cmd, routerHosts, clusterName, false);
       } else if (cmd.hasOption(Command.ENABLE_STORE.toString())) {
         setEnableStoreReadWrites(cmd, routerHosts, clusterName, true);
+      } else if (cmd.hasOption(Command.DELETE_ALL_VERSIONS.toString())) {
+        deleteAllVersions(cmd, clusterName);
       } else if (cmd.hasOption(Command.SET_VERSION.toString())) {
         applyVersionToStore(cmd, routerHosts, clusterName);
       } else if (cmd.hasOption(Command.ADD_SCHEMA.toString())){
@@ -416,6 +418,13 @@ public class AdminTool {
       printErrAndExit("Invalid Schema: " + e.getMessage(), errMap);
     }
   }
+
+  private static void deleteAllVersions(CommandLine cmd, String clusterName) {
+    String store = getRequiredArgument(cmd, Arg.STORE, Command.DELETE_ALL_VERSIONS);
+    MultiVersionResponse response = controllerClient.deleteAllVersions(clusterName, store);
+    printObject(response);
+  }
+
 
   private static void printErrAndExit(String err) {
     Map<String, String> errMap = new HashMap<>();

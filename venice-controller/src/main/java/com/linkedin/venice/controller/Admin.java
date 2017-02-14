@@ -32,6 +32,15 @@ public interface Admin {
 
     Version peekNextVersion(String clusterName, String storeName);
 
+    /**
+     * Delete all of venice versions in given store(including venice resource, kafka topic, offline jobs and all related
+     * resources).
+     *
+     * @throws com.linkedin.venice.exceptions.VeniceException If the given store was not disabled, an exception would be
+     *                                                        thrown to reject deletion request.
+     */
+    List<Version> deleteAllVersionsInStore(String clusterName, String storeName);
+
     List<Version> versionsForStore(String clusterName, String storeName);
 
     List<Store> getAllStores(String clusterName);
@@ -43,8 +52,6 @@ public interface Admin {
 
     void startOfflinePush(String clusterName, String kafkaTopic, int numberOfPartition, int replicationFactor,
         OfflinePushStrategy strategy);
-
-    void deleteHelixResource(String clusterName, String kafkaTopic);
 
     SchemaEntry getKeySchema(String clusterName, String storeName);
 

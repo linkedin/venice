@@ -8,6 +8,9 @@ usage: java -jar venice-admin-tool-0.1.jar --<command> [parameters]
             Commands:
     --add-schema                 Requires: --url, --cluster, --store,
                                  --value-schema-file
+    --delete-all-versions        Delete all versions in given store and
+                                 collected all related resources..
+                                 Requires: --url, --cluster, --store
     --describe-store             Requires: --url, --cluster, --store
     --describe-stores            Requires: --url, --cluster
     --disable-store              Disable store in both read and write
@@ -23,11 +26,12 @@ usage: java -jar venice-admin-tool-0.1.jar --<command> [parameters]
                                  path.  Requires: --url, --cluster,
                                  --store
     --enable-store-read          Allow a store to serve read requests
-                                 again after being disable.  Requires:
-                                 --url, --cluster, --store
+                                 again after reads have been disabled.
+                                 Requires: --url, --cluster, --store
     --enable-store-write         Allow a store to accept new versions
-                                 again after being disable.  Requires:
-                                 --url, --cluster, --store
+                                 again after writes have been
+                                 disabled.  Requires: --url, --cluster,
+                                 --store
     --job-status                 Query the ingest status of a running push
                                  job.  Requires: --url, --cluster,
                                  --store, --version
@@ -93,5 +97,6 @@ java -jar venice-admin-tool-0.1.jar --node-removable --url <url> --cluster <clus
 java -jar venice-admin-tool-0.1.jar --replicas-of-store --url <url> --cluster <cluster> --store <store> --version <version>
 java -jar venice-admin-tool-0.1.jar --replicas-on-storage-node --url <url> --cluster <cluster> --storage-node <storage-node>
 java -jar venice-admin-tool-0.1.jar --query --url <url> --cluster <cluster> --store <store> --key <key>
+java -jar venice-admin-tool-0.1.jar --delete-all-versions --url <url> --cluster <cluster> --store <store>
 
 ```
