@@ -43,7 +43,9 @@ public enum Command {
   REPLICAS_ON_STORAGE_NODE("replicas-on-storage-node", "List the store and status of all replicas on a storage node",
       new Arg[] {Arg.URL, Arg.CLUSTER, Arg.STORAGE_NODE}),
   QUERY("query", "Query a store that has a simple key schema",
-      new Arg[] {Arg.URL, Arg.CLUSTER, Arg.STORE, Arg.KEY});
+      new Arg[] {Arg.URL, Arg.CLUSTER, Arg.STORE, Arg.KEY}),
+  DELETE_ALL_VERSIONS("delete-all-versions", "Delete all versions in given store.",
+      new Arg[]{Arg.URL, Arg.CLUSTER, Arg.STORE});
 
   private final String commandName;
   private final String description;

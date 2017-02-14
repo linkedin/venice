@@ -69,7 +69,7 @@ public class ConfigKeys {
   public static final String DEFAULT_MAX_NUMBER_OF_PARTITIONS = "default.partition.max.count";
   public static final String DEFAULT_PARTITION_SIZE = "default.partition.size";
   public static final String OFFLINE_JOB_START_TIMEOUT_MS = "offline.job.start.timeout.ms";
-  public static final String ENABLE_TOPIC_DELETION_WHEN_JOB_FAILED = "enable.topic.deletion.when.job.failed";
+  public static final String ENABLE_TOPIC_DELETION_FOR_UNCOMPLETED_JOB = "enable.topic.deletion.for.uncompleted.job";
   public static final String MIN_REQUIRED_ONLINE_REPLICA_TO_STOP_SERVER = "min.required.online.replica.to.stop.server";
   public static final String DELAY_TO_REBALANCE_MS = "delay.to.rebalance.ms";
   public static final String MIN_ACTIVE_REPLICA = "min.active.replica";

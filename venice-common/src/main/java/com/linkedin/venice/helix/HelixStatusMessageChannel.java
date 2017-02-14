@@ -134,7 +134,7 @@ public class HelixStatusMessageChannel implements StatusMessageChannel {
 
     ControlMessageCallback callBack = new ControlMessageCallback();
     //Send and wait until getting response or time out.
-    int numMsgSent = messageService.sendAndWait(criteria, helixMessage, callBack, retryCount, sendMessageTimeOut);
+    int numMsgSent = messageService.sendAndWait(criteria, helixMessage, callBack, sendMessageTimeOut, retryCount);
     if (numMsgSent == 0) {
       String errorMsg = "No storage node is found to send message to. Message:" + message.toString();
       logger.error(errorMsg);

@@ -25,4 +25,8 @@ public interface ReadWriteStoreRepository extends ReadOnlyStoreRepository {
    * @param store store need to be added.
    */
   public void addStore(Store store);
+
+  public void lock();
+
+  public void unLock();
 }

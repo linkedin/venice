@@ -358,6 +358,19 @@ public class ControllerClient implements Closeable {
     }
   }
 
+  public MultiVersionResponse deleteAllVersions(String clusterName, String storeName) {
+    try {
+      List<NameValuePair> queryParams = newParams(clusterName);
+      queryParams.add(new BasicNameValuePair(ControllerApiConstants.NAME, storeName));
+      String responseJson = postRequest(ControllerRoute.DELETE_ALL_VERSIONS.getPath(), queryParams);
+      return mapper.readValue(responseJson, MultiVersionResponse.class);
+    } catch (Exception e) {
+      return handleError(new VeniceException("Error deleting all version for store : " + storeName, e),
+          new MultiVersionResponse());
+    }
+  }
+
+
   public NodeStatusResponse isNodeRemovable(String clusterName, String instanceId) {
     try {
       List<NameValuePair> queryParams = newParams(clusterName);

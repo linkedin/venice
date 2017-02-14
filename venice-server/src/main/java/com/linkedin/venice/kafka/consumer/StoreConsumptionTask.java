@@ -209,7 +209,7 @@ public class StoreConsumptionTask implements Runnable, Closeable {
         currentAttemp ++;
       }
     } catch (InterruptedException e) {
-      logger.warn("Wait killing is interrupted.");
+      logger.warn("Wait killing is interrupted.", e);
     }
     if (isRunning()) {
       //If task is still running, force close it.

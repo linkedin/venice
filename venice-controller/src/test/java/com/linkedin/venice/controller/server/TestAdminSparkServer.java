@@ -296,4 +296,19 @@ public class TestAdminSparkServer {
     ControllerResponse response = ControllerClient.isNodeRemovable(routerUrl, venice.getClusterName(), nodeId);
     Assert.assertFalse(response.isError(), response.getError());
   }
+
+  @Test
+  public void controllerClientCanDeleteAllVersion() {
+    String storeName = "controllerClientCanDeleteAllVersion";
+    venice.getNewStore(storeName, 100);
+    venice.getNewVersion(storeName, 100);
+    ControllerClient controllerClient = new ControllerClient(venice.getClusterName(), routerUrl);
+
+    controllerClient.enableStoreReads(venice.getClusterName(), storeName, false);
+    controllerClient.enableStoreWrites(venice.getClusterName(), storeName, false);
+    controllerClient.deleteAllVersions(venice.getClusterName(), storeName);
+
+    StoreInfo store = controllerClient.getStore(venice.getClusterName(), storeName).getStore();
+    Assert.assertEquals(store.getVersions().size(), 0);
+  }
 }

@@ -28,7 +28,7 @@ public class VeniceControllerClusterConfig {
   private int maxNumberOfPartition;
   private long partitionSize;
   private long offLineJobWaitTimeInMilliseconds;
-  private boolean enableTopicDeletionWhenJobFailed;
+  private boolean enableTopicDeletionForUncompletedJob;
   /**
    * After server disconnecting for delayToRebalanceMS, helix would trigger the re-balance immediately.
    */
@@ -75,7 +75,7 @@ public class VeniceControllerClusterConfig {
     maxNumberOfPartition = props.getInt(DEFAULT_MAX_NUMBER_OF_PARTITIONS);
     offLineJobWaitTimeInMilliseconds = props.getLong(OFFLINE_JOB_START_TIMEOUT_MS, 15000);
     // By default, disable topic deletion when job failed. Because delete a under repication topic might cause a Kafka MM issue.
-    enableTopicDeletionWhenJobFailed = props.getBoolean(ENABLE_TOPIC_DELETION_WHEN_JOB_FAILED, false);
+    enableTopicDeletionForUncompletedJob = props.getBoolean(ENABLE_TOPIC_DELETION_FOR_UNCOMPLETED_JOB, false);
     // By default, delayed rebalance is disabled.
     delayToRebalanceMS = props.getLong(DELAY_TO_REBALANCE_MS, 0);
     // By default, the min active replica is replica factor minus one, which means if more than one server failed,
@@ -159,8 +159,8 @@ public class VeniceControllerClusterConfig {
     return offLineJobWaitTimeInMilliseconds;
   }
 
-  public boolean isEnableTopicDeletionWhenJobFailed() {
-    return enableTopicDeletionWhenJobFailed;
+  public boolean isEnableTopicDeletionForUncompletedJob() {
+    return enableTopicDeletionForUncompletedJob;
   }
 
   public long getDelayToRebalanceMS() {

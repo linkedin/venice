@@ -6,9 +6,10 @@ package com.linkedin.venice.meta;
 public enum VersionStatus {
     NOT_CREATED,
     STARTED,
-    //Version has been pushed to venice, but is not ready to serve read request.
+    // Version has been pushed to venice(offline job related to this version has been completed), but is not ready to
+    // serve read request because the writes to this store is disabled.
     PUSHED,
-    //Version has been pushed to venice and is ready to serve read request.
+    // Version has been pushed to venice and is ready to serve read request.
     ONLINE,
     ERROR;
 
@@ -34,5 +35,14 @@ public enum VersionStatus {
      */
     public static boolean preserveLastFew(VersionStatus status) {
         return ONLINE == status;
+    }
+
+    /**
+     * Check if the Version has completed the bootstrap. We need to make sure that Kafka topic for uncompleted offline
+     * job should NOT be deleted. Otherwise Kafka MM would crash. Attention: For streaming case, even version is ONLINE
+     * or PUSHED, it might be not safe to delete kafka topic.
+     */
+    public static boolean isBootstrapTerminated(VersionStatus status) {
+        return status.equals(ONLINE) || status.equals(PUSHED);
     }
 }
