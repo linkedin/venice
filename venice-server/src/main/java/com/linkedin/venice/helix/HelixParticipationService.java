@@ -15,7 +15,7 @@ import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.Utils;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.SynchronousQueue;
+import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import javax.validation.constraints.NotNull;
@@ -75,7 +75,7 @@ public class HelixParticipationService extends AbstractVeniceService implements 
     instance = new Instance(participantName,Utils.getHostName(), port);
     helixStateTransitionExecutorService =
         new ThreadPoolExecutor(minStateTransitionThreadNumber, maxStateTransitionThreadNumber, 300L, TimeUnit.SECONDS,
-            new SynchronousQueue<>(), new DaemonThreadFactory("venice-state-transition"));
+            new LinkedBlockingQueue<>(), new DaemonThreadFactory("venice-state-transition"));
     stateModelFactory = new VeniceStateModelFactory(kafkaConsumerService, storageService, veniceConfigLoader,
         helixStateTransitionExecutorService);
   }
