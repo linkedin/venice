@@ -7,7 +7,19 @@ import com.linkedin.venice.kafka.consumer.KafkaConsumerService;
 import com.linkedin.venice.server.VeniceConfigLoader;
 import com.linkedin.venice.storage.StorageService;
 import com.linkedin.venice.utils.DaemonThreadFactory;
+import com.linkedin.venice.utils.TestUtils;
+import com.sun.org.apache.xpath.internal.operations.Bool;
+import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.locks.Condition;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
 import org.apache.helix.NotificationContext;
 import org.apache.helix.model.Message;
 import org.mockito.Mockito;
@@ -107,6 +119,61 @@ public class VeniceStateModelFactoryTest {
       Assert.fail("Latch was deleted, should throw exception before becoming online.");
     } catch (VeniceException e) {
       //expected
+    }
+  }
+
+  @Test
+  public void testNumberOfStateTransitionsExceedThreadPoolSize()
+      throws ExecutionException, InterruptedException {
+    int threadPoolSize = 1;
+    LinkedBlockingQueue<Runnable> queue = new LinkedBlockingQueue<>();
+    ExecutorService executor = new ThreadPoolExecutor(threadPoolSize, threadPoolSize, 300L, TimeUnit.SECONDS, queue,
+        new DaemonThreadFactory("venice-state-transition"));
+    factory = new VeniceStateModelFactory(mockKafkaConsumerService, mockStorageService, mockConfigLoader, executor);
+    ExecutorService testExecutor = factory.getExecutorService("");
+    Assert.assertEquals(testExecutor, executor);
+
+    BlockTask blockedTask = new BlockTask();
+    testExecutor.submit(blockedTask);
+    int taskCount = 10;
+    for (int i = 0; i < taskCount; i++) {
+      testExecutor.submit(() -> {
+      });
+    }
+    Assert.assertEquals(queue.size(), taskCount);
+    blockedTask.resume();
+
+    // After resume the blocking task, it's executed and return true.
+    TestUtils.waitForNonDeterministicCompletion(1000, TimeUnit.MILLISECONDS, () -> blockedTask.result);
+    // eventually, the queue would be empty because all of task had been executed.
+    TestUtils.waitForNonDeterministicCompletion(1000, TimeUnit.MILLISECONDS, () -> queue.isEmpty());
+  }
+
+  private class BlockTask implements Runnable {
+    private Lock lock = new ReentrantLock();
+    private Condition condition = lock.newCondition();
+    private volatile boolean result = false;
+
+    public void resume() {
+      lock.lock();
+      try {
+        condition.signal();
+      } finally {
+        lock.unlock();
+      }
+    }
+
+    @Override
+    public void run() {
+      lock.lock();
+      try {
+        condition.await();
+        result = true;
+      } catch (InterruptedException e) {
+        result = false;
+      } finally {
+        lock.unlock();
+      }
     }
   }
 }
