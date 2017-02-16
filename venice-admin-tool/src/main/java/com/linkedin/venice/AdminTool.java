@@ -17,6 +17,7 @@ import com.linkedin.venice.controllerapi.NewStoreResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.VersionResponse;
+import com.linkedin.venice.controllerapi.routes.AdminCommandExecutionResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.Utils;
@@ -168,6 +169,8 @@ public class AdminTool {
         printReplicaListForStorageNode(cmd, routerHosts, clusterName);
       } else if (cmd.hasOption(Command.QUERY.toString())){
         queryStoreForKey(cmd, routerHosts);
+      } else if(cmd.hasOption(Command.GET_EXECUTION.toString())){
+        getExecution(cmd, clusterName);
       } else {
         StringJoiner availableCommands = new StringJoiner(", ");
         for (Command c : Command.values()){
@@ -422,6 +425,12 @@ public class AdminTool {
   private static void deleteAllVersions(CommandLine cmd, String clusterName) {
     String store = getRequiredArgument(cmd, Arg.STORE, Command.DELETE_ALL_VERSIONS);
     MultiVersionResponse response = controllerClient.deleteAllVersions(clusterName, store);
+    printObject(response);
+  }
+
+  private static void getExecution(CommandLine cmd, String clusterName) {
+    long executionId = Long.valueOf(getRequiredArgument(cmd, Arg.EXECUTION, Command.GET_EXECUTION));
+    AdminCommandExecutionResponse response = controllerClient.getAdminCommandExecution(clusterName, executionId);
     printObject(response);
   }
 

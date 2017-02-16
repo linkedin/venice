@@ -59,18 +59,18 @@ public class ServiceFactory {
   public static VeniceControllerWrapper getVeniceController(String clusterName, KafkaBrokerWrapper kafkaBrokerWrapper,
       int replicaFactor, int partitionSize, long delayToRebalanceMS, int minActiveReplica) {
     return getStatefulService(VeniceControllerWrapper.SERVICE_NAME,
-        VeniceControllerWrapper.generateService(clusterName, kafkaBrokerWrapper, false, replicaFactor, partitionSize,
-            delayToRebalanceMS, minActiveReplica));
+        VeniceControllerWrapper.generateService(clusterName, kafkaBrokerWrapper.getZkAddress(), kafkaBrokerWrapper, false, replicaFactor, partitionSize,
+            delayToRebalanceMS, minActiveReplica, null));
   }
 
   /**
    * @return an instance of {@link com.linkedin.venice.controller.VeniceControllerService}, which will be working in parent mode.
    */
-  public static VeniceControllerWrapper getVeniceParentController(String clusterName, KafkaBrokerWrapper kafkaBrokerWrapper) {
+  public static VeniceControllerWrapper getVeniceParentController(String clusterName, String zkAddress, KafkaBrokerWrapper kafkaBrokerWrapper, VeniceControllerWrapper childController) {
     return getStatefulService(
         VeniceControllerWrapper.SERVICE_NAME,
-        VeniceControllerWrapper.generateService(clusterName, kafkaBrokerWrapper, true, DEFAULT_REPLICATION_FACTOR,
-            DEFAULT_PARTITION_SIZE_BYTES, DEFAULT_DELAYED_TO_REBALANCE_MS, DEFAULT_REPLICATION_FACTOR));
+        VeniceControllerWrapper.generateService(clusterName, zkAddress, kafkaBrokerWrapper, true, DEFAULT_REPLICATION_FACTOR,
+            DEFAULT_PARTITION_SIZE_BYTES, DEFAULT_DELAYED_TO_REBALANCE_MS, DEFAULT_REPLICATION_FACTOR, childController));
   }
 
   public static VeniceServerWrapper getVeniceServer(String clusterName, KafkaBrokerWrapper kafkaBrokerWrapper,

@@ -117,6 +117,9 @@ public class AdminSparkServer extends AbstractVeniceService {
     // current master CORP controller. In other colos, router will find the master controller instead of calling this API.
     httpService.get(MASTER_CONTROLLER.getPath(), MasterController.getRoute(admin));
 
+    httpService.get(EXECUTION.getPath(), AdminCommandExecutionRoutes.getExecution(admin));
+    httpService.get(LAST_SUCCEED_EXECUTION_ID.getPath(), AdminCommandExecutionRoutes.getLastSucceedExecutionId(admin));
+
     httpService.awaitInitialization(); // Wait for server to be initialized
 
     // There is no async process in this function, so we are completely finished with the start up process.

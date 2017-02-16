@@ -32,6 +32,10 @@ usage: java -jar venice-admin-tool-0.1.jar --<command> [parameters]
                                  again after writes have been
                                  disabled.  Requires: --url, --cluster,
                                  --store
+    --get-execution              Get the execution status for an async
+                                 admin command..  Requires: --url,
+                                 --cluster, --execution
+
     --job-status                 Query the ingest status of a running push
                                  job.  Requires: --url, --cluster,
                                  --store, --version
@@ -62,6 +66,7 @@ usage: java -jar venice-admin-tool-0.1.jar --<command> [parameters]
                                  --cluster, --offset
 usage: Parameters:
  -c,--cluster <arg>              Name of Venice cluster
+ -e,--execution <arg>            Execution ID of async admin command
  -f,--filter-json <arg>          Comma-delimited list of fields to display
                                  from the json output.  Omit to display
                                  all fields
@@ -98,5 +103,6 @@ java -jar venice-admin-tool-0.1.jar --replicas-of-store --url <url> --cluster <c
 java -jar venice-admin-tool-0.1.jar --replicas-on-storage-node --url <url> --cluster <cluster> --storage-node <storage-node>
 java -jar venice-admin-tool-0.1.jar --query --url <url> --cluster <cluster> --store <store> --key <key>
 java -jar venice-admin-tool-0.1.jar --delete-all-versions --url <url> --cluster <cluster> --store <store>
+java -jar venice-admin-tool-0.1.jar --get-execution --url <url> --cluster <cluster> --execution <execution>
 
 ```

@@ -22,6 +22,7 @@ public class ControllerApiConstants {
   public static final String READ_OPERATION = "read";
   public static final String WRITE_OPERATION = "write";
   public static final String READ_WRITE_OPERATION = READ_OPERATION + WRITE_OPERATION;
+  public static final String EXECUTION_ID = "execution_id";
 
   private ControllerApiConstants(){}
 }

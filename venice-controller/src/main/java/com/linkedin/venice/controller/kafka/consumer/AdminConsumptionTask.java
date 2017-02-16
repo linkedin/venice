@@ -1,6 +1,7 @@
 package com.linkedin.venice.controller.kafka.consumer;
 
 import com.linkedin.venice.controller.Admin;
+import com.linkedin.venice.controller.ExecutionIdAccessor;
 import com.linkedin.venice.controller.VeniceControllerService;
 import com.linkedin.venice.controller.kafka.AdminTopicUtils;
 import com.linkedin.venice.controller.kafka.protocol.admin.AdminOperation;
@@ -72,6 +73,13 @@ public class AdminConsumptionTask implements Runnable, Closeable {
   private volatile long offsetToSkip = -1L;
   private volatile long lastFailedOffset = -1L;
   private boolean topicExists;
+
+  private final ExecutionIdAccessor executionIdAccessor;
+  /**
+   * Once an admin command is processed, the id would be updated accordingly. It represents a kind of comparable
+   * progress of admin topic consumption among all controllers.
+   */
+  private volatile long lastSucceedExecutionId = -1L;
   // Used to store state info to offset record
   private Optional<OffsetRecordTransformer> offsetRecordTransformer = Optional.empty();
 
@@ -85,6 +93,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
                               String kafkaBootstrapServers,
                               Admin admin,
                               OffsetManager offsetManager,
+                              ExecutionIdAccessor executionIdAccessor,
                               long failureRetryTimeoutMs,
                               boolean isParentController) {
     this.clusterName = clusterName;
@@ -105,6 +114,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
     Properties kafkaConsumerProperties = VeniceControllerService.getKafkaConsumerProperties(kafkaBootstrapServers, clusterName);
     this.consumer = consumerFactory.getConsumer(kafkaConsumerProperties);
     this.offsetManager = offsetManager;
+    this.executionIdAccessor = executionIdAccessor;
     this.producerTrackerMap = new HashMap<>();
   }
 
@@ -288,6 +298,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
     if (logger.isDebugEnabled()) {
       logger.debug("Received message: " + adminMessage);
     }
+    long executionId = adminMessage.executionId;
     switch (AdminMessageType.valueOf(adminMessage)) {
       case STORE_CREATION:
         handleStoreCreation((StoreCreation) adminMessage.payloadUnion);
@@ -316,6 +327,8 @@ public class AdminConsumptionTask implements Runnable, Closeable {
       default:
         throw new VeniceException("Unknown admin operation type: " + adminMessage.operationType);
     }
+    lastSucceedExecutionId = executionId;
+    executionIdAccessor.updateLastSucceedExecutionId(clusterName, lastSucceedExecutionId);
     persistRecordOffset(record);
   }
 
@@ -351,6 +364,10 @@ public class AdminConsumptionTask implements Runnable, Closeable {
     } else {
       throw new VeniceException("Cannot skip an offset that isn't failing.  Last failed offset is: " + lastFailedOffset);
     }
+  }
+
+  public long getLastSucceedExecutionId() {
+    return lastSucceedExecutionId;
   }
 
   private boolean shouldProcessRecord(ConsumerRecord<KafkaKey, KafkaMessageEnvelope> record) {

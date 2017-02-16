@@ -31,15 +31,14 @@ public class VeniceControllerWrapper extends ProcessWrapper {
     this.config = config;
   }
 
-  static StatefulServiceProvider<VeniceControllerWrapper> generateService(String clusterName,
+  static StatefulServiceProvider<VeniceControllerWrapper> generateService(String clusterName, String zkAddress,
       KafkaBrokerWrapper kafkaBrokerWrapper, boolean isParent, int replicaFactor, int partitionSize,
-      long delayToReblanceMS, int minActiveReplica) {
+      long delayToReblanceMS, int minActiveReplica, VeniceControllerWrapper childController) {
     // TODO: Once the ZK address used by Controller and Kafka are decoupled, change this
-    String zkAddress = kafkaBrokerWrapper.getZkAddress();
 
     return (serviceName, port, dataDirectory) -> {
       VeniceProperties clusterProps =
-          IntegrationTestUtils.getClusterProps(clusterName, dataDirectory, kafkaBrokerWrapper);
+          IntegrationTestUtils.getClusterProps(clusterName, dataDirectory, zkAddress, kafkaBrokerWrapper);
 
       int adminPort = IntegrationTestUtils.getFreePort();
 
@@ -47,7 +46,7 @@ public class VeniceControllerWrapper extends ProcessWrapper {
       // TODO: Centralize default config values in a single place
       PropertyBuilder builder = new PropertyBuilder().put(clusterProps.toProperties())
           .put(KAFKA_REPLICA_FACTOR, 1)
-          .put(KAFKA_ZK_ADDRESS, zkAddress)
+          .put(KAFKA_ZK_ADDRESS, kafkaBrokerWrapper.getZkAddress())
           .put(CONTROLLER_NAME, "venice-controller") // Why is this configurable?
           .put(DEFAULT_REPLICA_FACTOR, replicaFactor)
           .put(DEFAULT_NUMBER_OF_PARTITION, 1)
@@ -62,7 +61,7 @@ public class VeniceControllerWrapper extends ProcessWrapper {
         // Parent controller needs config to route per-cluster requests such as job status
         // This dummy parent controller wont support such requests until we make this config configurable.
         builder.put(CHILD_CLUSTER_WHITELIST, "cluster1");
-        builder.put(CHILD_CLUSTER_URL_PREFIX + ".cluster1", "http://dummyhost:1234");
+        builder.put(CHILD_CLUSTER_URL_PREFIX + ".cluster1", childController.getControllerUrl());
       }
 
       VeniceProperties props = builder.build();

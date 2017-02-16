@@ -12,6 +12,7 @@ public class ControllerResponse { /* Uses Json Reflective Serializer, get withou
   private String cluster;
   private String name;
   private String error;
+  private long executionId;
 
   /**
    * Starting with Jackson 1.9, if this is the only annotation: {@link JsonIgnore}
@@ -43,6 +44,14 @@ public class ControllerResponse { /* Uses Json Reflective Serializer, get withou
     this.name = name;
   }
 
+  public long getExecutionId() {
+    return executionId;
+  }
+
+  public void setExecutionId(long executionId) {
+    this.executionId = executionId;
+  }
+
   @JsonProperty
   public String getError() {
     return error;
@@ -57,6 +66,6 @@ public class ControllerResponse { /* Uses Json Reflective Serializer, get withou
   public String toString() {
     return ControllerResponse.class.getSimpleName() + "(cluster: " + cluster +
         ", name: " + name +
-        ", error: " + error + ")";
+        ", error: " + error + ", executionId: " + executionId + ")";
   }
 }

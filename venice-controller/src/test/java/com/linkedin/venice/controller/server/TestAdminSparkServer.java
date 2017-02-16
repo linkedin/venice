@@ -1,17 +1,22 @@
 package com.linkedin.venice.controller.server;
 
+import com.linkedin.venice.controllerapi.AdminCommandExecution;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.MultiNodeResponse;
 import com.linkedin.venice.controllerapi.MultiReplicaResponse;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
+import com.linkedin.venice.controllerapi.MultiVersionResponse;
 import com.linkedin.venice.controllerapi.NewStoreResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
+import com.linkedin.venice.controllerapi.routes.AdminCommandExecutionResponse;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
+import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.VeniceServerWrapper;
+import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.TestUtils;
@@ -310,5 +315,36 @@ public class TestAdminSparkServer {
 
     StoreInfo store = controllerClient.getStore(venice.getClusterName(), storeName).getStore();
     Assert.assertEquals(store.getVersions().size(), 0);
+  }
+
+  @Test
+  public void controllerClientCanGetExecutionOfDeleteAllVersions()
+      throws InterruptedException {
+    String cluster = venice.getClusterName();
+    ZkServerWrapper parentZk = ServiceFactory.getZkServer();
+    VeniceControllerWrapper parentController =
+        ServiceFactory.getVeniceParentController(cluster, parentZk.getAddress(), ServiceFactory.getKafkaBroker(),
+            venice.getMasterVeniceController());
+    String storeName = "controllerClientCanDeleteAllVersion";
+    parentController.getVeniceAdmin().addStore(cluster, storeName, "test", "\"string\"", "\"string\"");
+    parentController.getVeniceAdmin().incrementVersion(cluster, storeName, 1, 1);
+
+    ControllerClient controllerClient = new ControllerClient(cluster, parentController.getControllerUrl());
+    controllerClient.enableStoreReads(cluster, storeName, false);
+    controllerClient.enableStoreWrites(cluster, storeName, false);
+    MultiVersionResponse multiVersionResponse = controllerClient.deleteAllVersions(cluster, storeName);
+    long executionId = multiVersionResponse.getExecutionId();
+    AdminCommandExecutionResponse response =
+        controllerClient.getAdminCommandExecution(cluster, executionId);
+    AdminCommandExecution execution = response.getExecution();
+    // Command would not be executed in child controller because we don't have Kafka MM in the local box.
+    Assert.assertFalse(execution.isSucceedInAllFabric());
+  }
+
+  @Test
+  public void controllerClientCanGetLastSucceedExecutionId() {
+    ControllerClient controllerClient = new ControllerClient(venice.getClusterName(), routerUrl);
+    Assert.assertEquals(controllerClient.getLastSucceedExecutionId(venice.getClusterName()).getLastSucceedExecutionId(),
+        -1);
   }
 }

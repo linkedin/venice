@@ -14,6 +14,7 @@ import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 
 
@@ -240,6 +241,10 @@ public interface Admin {
      */
     void skipAdminMessage(String clusterName, long offset);
 
+    /**
+     * Get the id of the last succeed execution in this controller.
+     */
+    long getLastSucceedExecutionId(String clusterName);
 
 
     /**
@@ -254,6 +259,11 @@ public interface Admin {
     * @return
     */
     Exception getLastException(String clusterName);
+
+    /**
+    * Get the tracker used to track the execution of the admin command.
+    */
+    Optional<AdminCommandExecutionTracker> getAdminCommandExecutionTracker();
 
     void close();
 }

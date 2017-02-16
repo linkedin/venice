@@ -1,7 +1,9 @@
 package com.linkedin.venice.helix;
 
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.meta.SimpleStringSerializer;
 import com.linkedin.venice.utils.HelixUtils;
+import com.linkedin.venice.utils.PathResourceRegistry;
 import com.linkedin.venice.utils.Utils;
 import java.util.Collections;
 import java.util.HashSet;
@@ -20,8 +22,12 @@ public class ZkWhitelistAccessor implements WhitelistAccessor{
 
   private final ZkClient zkClient;
 
-  public ZkWhitelistAccessor(ZkClient zkClient) {
+  public ZkWhitelistAccessor(ZkClient zkClient, HelixAdapterSerializer adapterSerializer) {
     this.zkClient = zkClient;
+    adapterSerializer.registerSerializer(
+        getWhiteListPath(PathResourceRegistry.WILDCARD_MATCH_ANY) + "/" + PathResourceRegistry.WILDCARD_MATCH_ANY,
+        new SimpleStringSerializer());
+    this.zkClient.setZkSerializer(adapterSerializer);
   }
 
   public ZkWhitelistAccessor(String zkAddress){
