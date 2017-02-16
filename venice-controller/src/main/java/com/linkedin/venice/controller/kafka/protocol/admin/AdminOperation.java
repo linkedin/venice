@@ -7,9 +7,11 @@ package com.linkedin.venice.controller.kafka.protocol.admin;
 
 @SuppressWarnings("all")
 public class AdminOperation extends org.apache.avro.specific.SpecificRecordBase implements org.apache.avro.specific.SpecificRecord {
-  public static final org.apache.avro.Schema SCHEMA$ = org.apache.avro.Schema.parse("{\"type\":\"record\",\"name\":\"AdminOperation\",\"namespace\":\"com.linkedin.venice.controller.kafka.protocol.admin\",\"fields\":[{\"name\":\"operationType\",\"type\":\"int\",\"doc\":\"0 => StoreCreation, 1 => ValueSchemaCreation, 2 => PauseStore, 3 => ResumeStore, 4 => KillOfflinePushJob, 5 => DisableStoreRead, 6 => EnableStoreRead, 7=> DeleteAllVersions\"},{\"name\":\"payloadUnion\",\"type\":[{\"type\":\"record\",\"name\":\"StoreCreation\",\"fields\":[{\"name\":\"clusterName\",\"type\":\"string\"},{\"name\":\"storeName\",\"type\":\"string\"},{\"name\":\"owner\",\"type\":\"string\"},{\"name\":\"keySchema\",\"type\":{\"type\":\"record\",\"name\":\"SchemaMeta\",\"fields\":[{\"name\":\"schemaType\",\"type\":\"int\",\"doc\":\"0 => Avro-1.4, and we can add more if necessary\"},{\"name\":\"definition\",\"type\":\"string\"}]}},{\"name\":\"valueSchema\",\"type\":\"SchemaMeta\"}]},{\"type\":\"record\",\"name\":\"ValueSchemaCreation\",\"fields\":[{\"name\":\"clusterName\",\"type\":\"string\"},{\"name\":\"storeName\",\"type\":\"string\"},{\"name\":\"schema\",\"type\":\"SchemaMeta\"},{\"name\":\"schemaId\",\"type\":\"int\"}]},{\"type\":\"record\",\"name\":\"PauseStore\",\"fields\":[{\"name\":\"clusterName\",\"type\":\"string\"},{\"name\":\"storeName\",\"type\":\"string\"}]},{\"type\":\"record\",\"name\":\"ResumeStore\",\"fields\":[{\"name\":\"clusterName\",\"type\":\"string\"},{\"name\":\"storeName\",\"type\":\"string\"}]},{\"type\":\"record\",\"name\":\"KillOfflinePushJob\",\"fields\":[{\"name\":\"clusterName\",\"type\":\"string\"},{\"name\":\"kafkaTopic\",\"type\":\"string\"}]},{\"type\":\"record\",\"name\":\"DisableStoreRead\",\"fields\":[{\"name\":\"clusterName\",\"type\":\"string\"},{\"name\":\"storeName\",\"type\":\"string\"}]},{\"type\":\"record\",\"name\":\"EnableStoreRead\",\"fields\":[{\"name\":\"clusterName\",\"type\":\"string\"},{\"name\":\"storeName\",\"type\":\"string\"}]},{\"type\":\"record\",\"name\":\"DeleteAllVersions\",\"fields\":[{\"name\":\"clusterName\",\"type\":\"string\"},{\"name\":\"storeName\",\"type\":\"string\"}]}],\"doc\":\"This contains the main payload of the admin operation\"}]}");
+  public static final org.apache.avro.Schema SCHEMA$ = org.apache.avro.Schema.parse("{\"type\":\"record\",\"name\":\"AdminOperation\",\"namespace\":\"com.linkedin.venice.controller.kafka.protocol.admin\",\"fields\":[{\"name\":\"operationType\",\"type\":\"int\",\"doc\":\"0 => StoreCreation, 1 => ValueSchemaCreation, 2 => PauseStore, 3 => ResumeStore, 4 => KillOfflinePushJob, 5 => DisableStoreRead, 6 => EnableStoreRead, 7=> DeleteAllVersions\"},{\"name\":\"executionId\",\"type\":\"long\",\"doc\":\"ID of a command execution which is used to query the status of this command.\",\"default\":0},{\"name\":\"payloadUnion\",\"type\":[{\"type\":\"record\",\"name\":\"StoreCreation\",\"fields\":[{\"name\":\"clusterName\",\"type\":\"string\"},{\"name\":\"storeName\",\"type\":\"string\"},{\"name\":\"owner\",\"type\":\"string\"},{\"name\":\"keySchema\",\"type\":{\"type\":\"record\",\"name\":\"SchemaMeta\",\"fields\":[{\"name\":\"schemaType\",\"type\":\"int\",\"doc\":\"0 => Avro-1.4, and we can add more if necessary\"},{\"name\":\"definition\",\"type\":\"string\"}]}},{\"name\":\"valueSchema\",\"type\":\"SchemaMeta\"}]},{\"type\":\"record\",\"name\":\"ValueSchemaCreation\",\"fields\":[{\"name\":\"clusterName\",\"type\":\"string\"},{\"name\":\"storeName\",\"type\":\"string\"},{\"name\":\"schema\",\"type\":\"SchemaMeta\"},{\"name\":\"schemaId\",\"type\":\"int\"}]},{\"type\":\"record\",\"name\":\"PauseStore\",\"fields\":[{\"name\":\"clusterName\",\"type\":\"string\"},{\"name\":\"storeName\",\"type\":\"string\"}]},{\"type\":\"record\",\"name\":\"ResumeStore\",\"fields\":[{\"name\":\"clusterName\",\"type\":\"string\"},{\"name\":\"storeName\",\"type\":\"string\"}]},{\"type\":\"record\",\"name\":\"KillOfflinePushJob\",\"fields\":[{\"name\":\"clusterName\",\"type\":\"string\"},{\"name\":\"kafkaTopic\",\"type\":\"string\"}]},{\"type\":\"record\",\"name\":\"DisableStoreRead\",\"fields\":[{\"name\":\"clusterName\",\"type\":\"string\"},{\"name\":\"storeName\",\"type\":\"string\"}]},{\"type\":\"record\",\"name\":\"EnableStoreRead\",\"fields\":[{\"name\":\"clusterName\",\"type\":\"string\"},{\"name\":\"storeName\",\"type\":\"string\"}]},{\"type\":\"record\",\"name\":\"DeleteAllVersions\",\"fields\":[{\"name\":\"clusterName\",\"type\":\"string\"},{\"name\":\"storeName\",\"type\":\"string\"}]}],\"doc\":\"This contains the main payload of the admin operation\"}]}");
   /** 0 => StoreCreation, 1 => ValueSchemaCreation, 2 => PauseStore, 3 => ResumeStore, 4 => KillOfflinePushJob, 5 => DisableStoreRead, 6 => EnableStoreRead, 7=> DeleteAllVersions */
   public int operationType;
+  /** ID of a command execution which is used to query the status of this command. */
+  public long executionId;
   /** This contains the main payload of the admin operation */
   public java.lang.Object payloadUnion;
   public org.apache.avro.Schema getSchema() { return SCHEMA$; }
@@ -17,7 +19,8 @@ public class AdminOperation extends org.apache.avro.specific.SpecificRecordBase 
   public java.lang.Object get(int field$) {
     switch (field$) {
     case 0: return operationType;
-    case 1: return payloadUnion;
+    case 1: return executionId;
+    case 2: return payloadUnion;
     default: throw new org.apache.avro.AvroRuntimeException("Bad index");
     }
   }
@@ -26,7 +29,8 @@ public class AdminOperation extends org.apache.avro.specific.SpecificRecordBase 
   public void put(int field$, java.lang.Object value$) {
     switch (field$) {
     case 0: operationType = (java.lang.Integer)value$; break;
-    case 1: payloadUnion = (java.lang.Object)value$; break;
+    case 1: executionId = (java.lang.Long)value$; break;
+    case 2: payloadUnion = (java.lang.Object)value$; break;
     default: throw new org.apache.avro.AvroRuntimeException("Bad index");
     }
   }

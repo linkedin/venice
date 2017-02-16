@@ -3,6 +3,7 @@ package com.linkedin.venice.controller.kafka.consumer;
 import com.google.common.collect.Sets;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.controller.Admin;
+import com.linkedin.venice.controller.ExecutionIdAccessor;
 import com.linkedin.venice.controller.kafka.AdminTopicUtils;
 import com.linkedin.venice.controller.kafka.protocol.admin.AdminOperation;
 import com.linkedin.venice.controller.kafka.protocol.admin.KillOfflinePushJob;
@@ -62,6 +63,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import org.apache.kafka.clients.producer.RecordMetadata;
 import org.apache.kafka.common.TopicPartition;
+import org.mockito.Mockito;
 import org.testng.Assert;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.BeforeMethod;
@@ -92,6 +94,7 @@ public class TestAdminConsumptionTask {
   private ExecutorService executor;
   private InMemoryKafkaBroker inMemoryKafkaBroker;
   private VeniceWriter veniceWriter;
+  private ExecutionIdAccessor executionIdAccessor;
 
   @BeforeClass
   public void initControllerStats(){
@@ -107,6 +110,7 @@ public class TestAdminConsumptionTask {
     inMemoryKafkaBroker = new InMemoryKafkaBroker();
     inMemoryKafkaBroker.createTopic(topicName, AdminTopicUtils.PARTITION_NUM_FOR_ADMIN_TOPIC);
     veniceWriter = getVeniceWriter(inMemoryKafkaBroker);
+    executionIdAccessor = Mockito.mock(ExecutionIdAccessor.class);
 
     mockKafkaConsumer = mock(KafkaConsumerWrapper.class);
 
@@ -146,8 +150,8 @@ public class TestAdminConsumptionTask {
         .getConsumer(any());
     DeepCopyOffsetManager deepCopyOffsetManager = new DeepCopyOffsetManager(offsetManager);
 
-    return new AdminConsumptionTask(clusterName, consumerFactory, kafkaBootstrapServers, admin,
-        deepCopyOffsetManager, failureRetryTimeout, isParent);
+    return new AdminConsumptionTask(clusterName, consumerFactory, kafkaBootstrapServers, admin, deepCopyOffsetManager,
+        executionIdAccessor, failureRetryTimeout, isParent);
   }
 
   private Pair<TopicPartition, OffsetRecord> getTopicPartitionOffsetPair(RecordMetadata recordMetadata) {
@@ -197,7 +201,7 @@ public class TestAdminConsumptionTask {
         getStoreCreationMessage(clusterName, storeName, owner, keySchema, valueSchema),
         AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
     veniceWriter.put(emptyKeyBytes,
-        getKillOfflinePushJobMessage(clusterName, storeTopicName),
+        getKillOfflinePushJobMessage(clusterName, storeTopicName, 0),
         AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
 
     AdminConsumptionTask task = getAdminConsumptionTask(new RandomPollStrategy(), false);
@@ -341,7 +345,7 @@ public class TestAdminConsumptionTask {
   @Test (timeOut = TIMEOUT)
   public void testRunWithDuplicateMessagesWithSameOffset() throws Exception {
     RecordMetadata killJobMetadata = (RecordMetadata) veniceWriter.put(emptyKeyBytes,
-        getKillOfflinePushJobMessage(clusterName, storeTopicName),
+        getKillOfflinePushJobMessage(clusterName, storeTopicName, 0),
         AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION).get();
     veniceWriter.put(emptyKeyBytes,
         getStoreCreationMessage(clusterName, storeName, owner, keySchema, valueSchema),
@@ -410,7 +414,7 @@ public class TestAdminConsumptionTask {
     offsetManager.recordOffset(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID, offsetRecord);
 
     RecordMetadata killJobMetadata = (RecordMetadata) veniceWriter.put(emptyKeyBytes,
-        getKillOfflinePushJobMessage(clusterName, storeTopicName),
+        getKillOfflinePushJobMessage(clusterName, storeTopicName, 0),
         AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION).get();
     veniceWriter.put(emptyKeyBytes,
         getStoreCreationMessage(clusterName, storeName, owner, keySchema, valueSchema),
@@ -571,7 +575,7 @@ public class TestAdminConsumptionTask {
   @Test (timeOut = TIMEOUT)
   public void testParentControllerSkipKillOfflinePushJobMessage() throws InterruptedException, IOException {
     veniceWriter.put(emptyKeyBytes,
-        getKillOfflinePushJobMessage(clusterName, storeTopicName),
+        getKillOfflinePushJobMessage(clusterName, storeTopicName, 0),
         AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
 
     AdminConsumptionTask task = getAdminConsumptionTask(new RandomPollStrategy(), true);
@@ -594,6 +598,28 @@ public class TestAdminConsumptionTask {
     verify(admin, never()).killOfflineJob(clusterName, storeTopicName);
   }
 
+  @Test
+  public void testGetLastSucceedExecutionId()
+      throws Exception {
+    AdminConsumptionTask task = getAdminConsumptionTask(new RandomPollStrategy(), true);
+    executor.submit(task);
+    for (long executionId = 1; executionId <= 3; executionId++) {
+      veniceWriter.put(emptyKeyBytes, getKillOfflinePushJobMessage(clusterName, storeTopicName, executionId),
+          AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
+      final long offset = executionId;
+      TestUtils.waitForNonDeterministicCompletion(TIMEOUT, TimeUnit.MILLISECONDS,
+          () -> offsetManager.getLastOffset(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID)
+              .equals(TestUtils.getOffsetRecord(offset)));
+
+      Assert.assertEquals(task.getLastSucceedExecutionId(), executionId,
+          "After consumption succeed, the last succeed execution id should be updated.");
+    }
+
+    task.close();
+    executor.shutdown();
+    executor.awaitTermination(TIMEOUT, TimeUnit.MILLISECONDS);
+  }
+
   private byte[] getStoreCreationMessage(String clusterName, String storeName, String owner, String keySchema, String valueSchema) {
     StoreCreation storeCreation = (StoreCreation) AdminMessageType.STORE_CREATION.getNewInstance();
     storeCreation.clusterName = clusterName;
@@ -611,13 +637,14 @@ public class TestAdminConsumptionTask {
     return adminOperationSerializer.serialize(adminMessage);
   }
 
-  private byte[] getKillOfflinePushJobMessage(String clusterName, String kafkaTopic) {
+  private byte[] getKillOfflinePushJobMessage(String clusterName, String kafkaTopic, long executionId) {
     KillOfflinePushJob killJob = (KillOfflinePushJob) AdminMessageType.KILL_OFFLINE_PUSH_JOB.getNewInstance();
     killJob.clusterName = clusterName;
     killJob.kafkaTopic = kafkaTopic;
     AdminOperation adminMessage = new AdminOperation();
     adminMessage.operationType = AdminMessageType.KILL_OFFLINE_PUSH_JOB.ordinal();
     adminMessage.payloadUnion = killJob;
+    adminMessage.executionId = executionId;
     return adminOperationSerializer.serialize(adminMessage);
   }
 }

@@ -42,7 +42,7 @@ public class VeniceServerWrapper extends ProcessWrapper {
       FileUtils.forceMkdir(configDirectory);
 
       // Generate cluster.properties in config directory
-      VeniceProperties clusterProps = IntegrationTestUtils.getClusterProps(clusterName, dataDirectory, kafkaBrokerWrapper);
+      VeniceProperties clusterProps = IntegrationTestUtils.getClusterProps(clusterName, dataDirectory, kafkaBrokerWrapper.getZkAddress(), kafkaBrokerWrapper);
       File clusterConfigFile = new File(configDirectory, VeniceConfigLoader.CLUSTER_PROPERTIES_FILE);
       clusterProps.storeFlattened(clusterConfigFile);
 

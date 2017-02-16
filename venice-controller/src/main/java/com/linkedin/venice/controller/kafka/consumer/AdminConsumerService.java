@@ -59,6 +59,7 @@ public class AdminConsumerService extends AbstractVeniceService {
         config.getKafkaBootstrapServers(),
         admin,
         offsetManager,
+        admin.getExecutionIdAccessor(),
         TimeUnit.MINUTES.toMillis(config.getAdminConsumptionTimeoutMinutes()),
         config.isParent());
   }
@@ -69,6 +70,15 @@ public class AdminConsumerService extends AbstractVeniceService {
     } else {
       throw new VeniceException("This AdminConsumptionService is for cluster " + config.getClusterName()
           + ".  Cannot skip admin message with offset " + offset + " for cluster " + clusterName);
+    }
+  }
+
+  public long getLastSucceedExecutionId(String clusterName) {
+    if (clusterName.equals(config.getClusterName())) {
+      return consumerTask.getLastSucceedExecutionId();
+    } else {
+      throw new VeniceException("This AdminConsumptionService is for cluster " + config.getClusterName()
+          + ".  Cannot get the last succeed execution Id for cluster " + clusterName);
     }
   }
 }

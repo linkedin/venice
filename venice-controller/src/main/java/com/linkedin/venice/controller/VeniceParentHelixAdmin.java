@@ -19,6 +19,7 @@ import com.linkedin.venice.controller.kafka.protocol.admin.ValueSchemaCreation;
 import com.linkedin.venice.controller.kafka.protocol.enums.AdminMessageType;
 import com.linkedin.venice.controller.kafka.protocol.enums.SchemaType;
 import com.linkedin.venice.controller.kafka.protocol.serializer.AdminOperationSerializer;
+import com.linkedin.venice.controllerapi.AdminCommandExecution;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.D2ControllerClient;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
@@ -45,6 +46,7 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 
+import java.util.Optional;
 import org.apache.kafka.clients.producer.RecordMetadata;
 import org.apache.log4j.Logger;
 
@@ -80,6 +82,7 @@ public class VeniceParentHelixAdmin implements Admin {
   private final AdminOperationSerializer adminOperationSerializer = new AdminOperationSerializer();
   private final VeniceControllerConfig veniceControllerConfig;
   private final Lock lock = new ReentrantLock();
+  private final AdminCommandExecutionTracker adminCommandExecutionTracker;
   /**
    * Variable to store offset of last message.
    * Before executing any request, this class will check whether last offset has been consumed or not:
@@ -102,6 +105,9 @@ public class VeniceParentHelixAdmin implements Admin {
     this.waitingTimeForConsumptionMs = config.getParentControllerWaitingTimeForConsumptionMs();
     this.veniceWriterMap = new ConcurrentHashMap<>();
     this.offsetManager = new AdminOffsetManager(this.veniceHelixAdmin.getZkClient(), this.veniceHelixAdmin.getAdapterSerializer());
+    this.adminCommandExecutionTracker =
+        new AdminCommandExecutionTracker(config.getClusterName(), veniceHelixAdmin.getExecutionIdAccessor(),
+            getControllerClientMap(config.getClusterName()));
   }
 
   public void setVeniceWriterForCluster(String clusterName, VeniceWriter writer) {
@@ -156,6 +162,9 @@ public class VeniceParentHelixAdmin implements Admin {
     if (!veniceWriterMap.containsKey(clusterName)) {
       throw new VeniceException("Cluster: " + clusterName + " is not started yet!");
     }
+    AdminCommandExecution execution =
+        adminCommandExecutionTracker.createExecution(AdminMessageType.valueOf(message).name());
+    message.executionId = execution.getExecutionId();
     VeniceWriter<byte[], byte[]> veniceWriter = veniceWriterMap.get(clusterName);
     byte[] serializedValue = adminOperationSerializer.serialize(message);
     try {
@@ -165,6 +174,7 @@ public class VeniceParentHelixAdmin implements Admin {
       lastOffset = meta.offset();
       logger.info("Sent message: " + message + " to kafka, offset: " + lastOffset);
       waitingLastOffsetToBeConsumed(clusterName);
+      adminCommandExecutionTracker.startTrackingExecution(execution);
     } catch (Exception e) {
       throw new VeniceException("Got exception during sending message to Kafka", e);
     }
@@ -802,6 +812,11 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   @Override
+  public long getLastSucceedExecutionId(String clustername) {
+    return veniceHelixAdmin.getLastSucceedExecutionId(clustername);
+  }
+
+  @Override
   public void setLastException(String clusterName, Exception e) {
 
   }
@@ -809,6 +824,11 @@ public class VeniceParentHelixAdmin implements Admin {
   @Override
   public Exception getLastException(String clusterName) {
     return null;
+  }
+
+  @Override
+  public Optional<AdminCommandExecutionTracker> getAdminCommandExecutionTracker() {
+    return Optional.of(adminCommandExecutionTracker);
   }
 
   @Override

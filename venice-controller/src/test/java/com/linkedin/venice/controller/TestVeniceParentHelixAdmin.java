@@ -26,6 +26,7 @@ import com.linkedin.venice.helix.HelixReadWriteStoreRepository;
 import com.linkedin.venice.integration.utils.KafkaBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
+import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.job.ExecutionStatus;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.meta.OfflinePushStrategy;
@@ -47,6 +48,8 @@ import org.apache.kafka.clients.producer.RecordMetadata;
 import org.apache.kafka.common.TopicPartition;
 import org.mockito.ArgumentCaptor;
 import static org.mockito.Mockito.*;
+
+import org.mockito.Mockito;
 import org.testng.Assert;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
@@ -100,6 +103,14 @@ public class TestVeniceParentHelixAdmin {
         .when(internalAdmin)
         .getAdapterSerializer();
 
+    ExecutionIdAccessor executionIdAccessor = Mockito.mock(ExecutionIdAccessor.class);
+    doReturn(executionIdAccessor)
+        .when(internalAdmin)
+        .getExecutionIdAccessor();
+    doReturn(0L)
+        .when(executionIdAccessor)
+        .getLastSucceedExecutionId(any());
+
     config = mock(VeniceControllerConfig.class);
     doReturn(KAFKA_REPLICA_FACTOR).when(config)
         .getKafkaReplicaFactor();
@@ -122,6 +133,10 @@ public class TestVeniceParentHelixAdmin {
         .getMetadataRepository();
 
     parentAdmin = new VeniceParentHelixAdmin(internalAdmin, config);
+    parentAdmin.getAdminCommandExecutionTracker()
+        .get()
+        .getFabricToControllerClientsMap()
+        .put("test-fabric", Mockito.mock(ControllerClient.class));
     veniceWriter = mock(VeniceWriter.class);
     // Need to bypass VeniceWriter initialization
     parentAdmin.setVeniceWriterForCluster(clusterName, veniceWriter);
@@ -631,7 +646,12 @@ public class TestVeniceParentHelixAdmin {
   @Test(retryAnalyzer = FlakyTestRetryAnalyzer.class)
   public void testEnd2End() throws IOException {
     KafkaBrokerWrapper kafkaBrokerWrapper = ServiceFactory.getKafkaBroker();
-    VeniceControllerWrapper controllerWrapper = ServiceFactory.getVeniceParentController(clusterName, kafkaBrokerWrapper);
+    VeniceControllerWrapper childControllerWrapper =
+        ServiceFactory.getVeniceController(clusterName, kafkaBrokerWrapper);
+    ZkServerWrapper parentZk = ServiceFactory.getZkServer();
+    VeniceControllerWrapper controllerWrapper =
+        ServiceFactory.getVeniceParentController(clusterName, parentZk.getAddress(), kafkaBrokerWrapper,
+            childControllerWrapper);
 
     String controllerUrl = controllerWrapper.getControllerUrl();
     // Adding store

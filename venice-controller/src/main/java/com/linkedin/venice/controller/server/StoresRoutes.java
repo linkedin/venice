@@ -2,6 +2,7 @@ package com.linkedin.venice.controller.server;
 
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.controller.Admin;
+import com.linkedin.venice.controller.AdminCommandExecutionTracker;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.MultiStoreResponse;
 import com.linkedin.venice.controllerapi.MultiVersionResponse;
@@ -10,7 +11,9 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
+import java.util.Collections;
 import java.util.List;
+import java.util.Optional;
 import spark.Route;
 
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.*;
@@ -108,10 +111,23 @@ public class StoresRoutes {
       MultiVersionResponse responseObject = new MultiVersionResponse();
       try {
         AdminSparkServer.validateParams(request, DELETE_ALL_VERSIONS.getParams(), admin);
-        responseObject.setCluster(request.queryParams(CLUSTER));
-        responseObject.setName(request.queryParams(NAME));
-        List<Version> deletedVersions =
-            admin.deleteAllVersionsInStore(responseObject.getCluster(), responseObject.getName());
+        String clusterName = request.queryParams(CLUSTER);
+        String storeName = request.queryParams(NAME);
+        responseObject.setCluster(clusterName);
+        responseObject.setName(storeName);
+        List<Version> deletedVersions = Collections.emptyList();
+        Optional<AdminCommandExecutionTracker> adminCommandExecutionTracker = admin.getAdminCommandExecutionTracker();
+        if (adminCommandExecutionTracker.isPresent()) {
+          // Lock the tracker to get the execution id for the last admin command.
+          // If will not make our perfomrance worse, because we lock the whole cluster while handling the admin operation in parent admin.
+          synchronized (adminCommandExecutionTracker) {
+            deletedVersions = admin.deleteAllVersionsInStore(clusterName, storeName);
+            responseObject.setExecutionId(adminCommandExecutionTracker.get().getLastExecutionId());
+          }
+        } else {
+          deletedVersions = admin.deleteAllVersionsInStore(clusterName, storeName);
+        }
+
         int[] deletedVersionNumbers = new int[deletedVersions.size()];
         for (int i = 0; i < deletedVersions.size(); i++) {
           deletedVersionNumbers[i] = deletedVersions.get(i).getNumber();

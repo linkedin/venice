@@ -50,7 +50,7 @@ class IntegrationTestUtils {
   /**
    * N.B.: Visibility is package-private on purpose.
    */
-  static VeniceProperties getClusterProps(String clusterName, File dataDirectory, KafkaBrokerWrapper kafkaBrokerWrapper) {
+  static VeniceProperties getClusterProps(String clusterName, File dataDirectory, String zkAddress, KafkaBrokerWrapper kafkaBrokerWrapper) {
     // TODO: Validate that these configs are all still used.
     // TODO: Centralize default config values in a single place
 
@@ -58,7 +58,7 @@ class IntegrationTestUtils {
 
         // Helix-related config
     .put(HELIX_ENABLED, true)
-    .put(ZOOKEEPER_ADDRESS, kafkaBrokerWrapper.getZkAddress())
+    .put(ZOOKEEPER_ADDRESS, zkAddress)
 
     // Kafka-related config
     .put(KAFKA_CONSUMER_FETCH_BUFFER_SIZE, 65536)

@@ -1,0 +1,43 @@
+package com.linkedin.venice.controller;
+
+import com.linkedin.venice.helix.HelixAdapterSerializer;
+import com.linkedin.venice.integration.utils.ServiceFactory;
+import com.linkedin.venice.integration.utils.ZkServerWrapper;
+import com.linkedin.venice.utils.HelixUtils;
+import org.apache.helix.manager.zk.ZkClient;
+import org.testng.Assert;
+import org.testng.annotations.BeforeMethod;
+import org.testng.annotations.Test;
+
+
+public class TestZkExecutionIdAccessor {
+  private ZkClient zkClient;
+  private ZkExecutionIdAccessor executionIdAccessor;
+  private String clusterName = "TestZkExecutionIdAccessor";
+
+  @BeforeMethod
+  public void setup() {
+    ZkServerWrapper zkServerWrapper = ServiceFactory.getZkServer();
+    zkClient = new ZkClient(zkServerWrapper.getAddress());
+    zkClient.createPersistent(HelixUtils.getHelixClusterZkPath(clusterName));
+    executionIdAccessor = new ZkExecutionIdAccessor(zkClient, new HelixAdapterSerializer());
+  }
+
+  @Test
+  public void getLastSucceedExecutionId() {
+    long id = 100L;
+    executionIdAccessor.updateLastSucceedExecutionId(clusterName, id);
+    Assert.assertEquals(executionIdAccessor.getLastSucceedExecutionId("non-existing-cluster"), Long.valueOf(-1),
+        "Cluster has not been created.");
+    Assert.assertEquals(executionIdAccessor.getLastSucceedExecutionId(clusterName), Long.valueOf(id));
+  }
+
+  @Test
+  public void getLastGeneratedExecutionId() {
+    long id = 100L;
+    executionIdAccessor.updateLastGeneratedExecutionId(clusterName, id);
+    Assert.assertEquals(executionIdAccessor.getLastGeneratedExecutionId("non-existing-cluster"), Long.valueOf(-1),
+        "Cluster has not been created.");
+    Assert.assertEquals(executionIdAccessor.getLastGeneratedExecutionId(clusterName), Long.valueOf(id));
+  }
+}

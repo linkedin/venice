@@ -1,6 +1,8 @@
 package com.linkedin.venice.controllerapi;
 
 import com.linkedin.venice.HttpConstants;
+import com.linkedin.venice.LastSucceedExecutionIdResponse;
+import com.linkedin.venice.controllerapi.routes.AdminCommandExecutionResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.Utils;
@@ -548,6 +550,29 @@ public class ControllerClient implements Closeable {
       return client.getAllValueSchema(clusterName, storeName);
     } catch (Exception e){
       return handleError(new VeniceException("Error getting value schema for store: " + storeName, e), new MultiSchemaResponse());
+    }
+  }
+
+  public AdminCommandExecutionResponse getAdminCommandExecution(String clusterName, long executionId) {
+    try {
+      List<NameValuePair> queryParams = newParams(clusterName);
+      queryParams.add(new BasicNameValuePair(ControllerApiConstants.EXECUTION_ID, String.valueOf(executionId)));
+      String responseJson = getRequest(ControllerRoute.EXECUTION.getPath(), queryParams);
+      return mapper.readValue(responseJson, AdminCommandExecutionResponse.class);
+    } catch (Exception e) {
+      return handleError(new VeniceException("Error getting execution: " + executionId, e),
+          new AdminCommandExecutionResponse());
+    }
+  }
+
+  public LastSucceedExecutionIdResponse getLastSucceedExecutionId(String clusterName) {
+    try {
+      List<NameValuePair> queryParams = newParams(clusterName);
+      String responseJson = getRequest(ControllerRoute.LAST_SUCCEED_EXECUTION_ID.getPath(), queryParams);
+      return mapper.readValue(responseJson, LastSucceedExecutionIdResponse.class);
+    } catch (Exception e) {
+      return handleError(new VeniceException("Error getting the last succeed execution Id", e),
+          new LastSucceedExecutionIdResponse());
     }
   }
 

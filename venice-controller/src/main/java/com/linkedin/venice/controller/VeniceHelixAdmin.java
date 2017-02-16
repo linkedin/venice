@@ -35,6 +35,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -88,7 +89,8 @@ public class VeniceHelixAdmin implements Admin {
     private TopicManager topicManager;
     private final ZkClient zkClient;
     private final HelixAdapterSerializer adapterSerializer;
-    private ZkWhitelistAccessor whitelistAccessor;
+    private final ZkWhitelistAccessor whitelistAccessor;
+    private final ExecutionIdAccessor executionIdAccessor;
 
     /**
      * Parent controller, it always being connected to Helix. And will create sub-controller for specific cluster when
@@ -110,7 +112,8 @@ public class VeniceHelixAdmin implements Admin {
         this.zkClient = new ZkClient(config.getZkAddress(), ZkClient.DEFAULT_SESSION_TIMEOUT, ZkClient.DEFAULT_CONNECTION_TIMEOUT);
         this.adapterSerializer = new HelixAdapterSerializer();
         this.topicManager = new TopicManager(config.getKafkaZkAddress());
-        this.whitelistAccessor = new ZkWhitelistAccessor(zkClient);
+        this.whitelistAccessor = new ZkWhitelistAccessor(zkClient, adapterSerializer);
+        this.executionIdAccessor = new ZkExecutionIdAccessor(zkClient, adapterSerializer);
 
         // Create the parent controller and related cluster if required.
         createControllerClusterIfRequired();
@@ -144,6 +147,10 @@ public class VeniceHelixAdmin implements Admin {
 
     public ZkClient getZkClient() {
         return zkClient;
+    }
+
+    public ExecutionIdAccessor getExecutionIdAccessor() {
+        return executionIdAccessor;
     }
 
     public HelixAdapterSerializer getAdapterSerializer() {
@@ -1000,6 +1007,17 @@ public class VeniceHelixAdmin implements Admin {
     }
 
     @Override
+    public long getLastSucceedExecutionId(String clusterName) {
+        if (adminConsumerServices.containsKey(clusterName)) {
+            return adminConsumerServices.get(clusterName).getLastSucceedExecutionId(clusterName);
+        } else {
+            throw new VeniceException(
+                "Cannot get the last succeed execution Id, must first setAdminConsumerService for cluster "
+                    + clusterName);
+        }
+    }
+
+    @Override
     public synchronized void setLastException(String clusterName, Exception e) {
         lastExceptionMap.put(clusterName, e);
     }
@@ -1007,6 +1025,11 @@ public class VeniceHelixAdmin implements Admin {
     @Override
     public synchronized Exception getLastException(String clusterName) {
         return lastExceptionMap.get(clusterName);
+    }
+
+    @Override
+    public Optional<AdminCommandExecutionTracker> getAdminCommandExecutionTracker() {
+        return Optional.empty();
     }
 
     private void setDisableWriteForStore(String clusterName, String storeName, boolean enableWrites) {
