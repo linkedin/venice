@@ -60,8 +60,7 @@ public class D2TestUtils {
     }
   }
 
-  public static List<D2Server> getD2Servers(String zkHosts, String localUri){
-
+  private static D2Server getD2Server(String zkHosts, String localUri){
     int sessionTimeout = 5000;
     String basePath = "/d2";
 
@@ -108,8 +107,21 @@ public class D2TestUtils {
         d2HealthCheckerTimeoutMs);
 
     D2Server d2 = new D2Server(d2Manager);
+    return d2;
+  }
+
+  /**
+   *
+   * @param zkHosts
+   * @param localUris varags if we want to announce on multiple uris (for example on an http port and https port)
+   * @return
+   */
+  public static List<D2Server> getD2Servers(String zkHosts, String... localUris){
     List<D2Server> d2List = new ArrayList<>();
-    d2List.add(d2);
+    for (String localUri : localUris) {
+      D2Server d2 = getD2Server(zkHosts, localUri);
+      d2List.add(d2);
+    }
     return d2List;
   }
 
