@@ -16,6 +16,7 @@ import com.linkedin.venice.integration.utils.MockVeniceRouterWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.utils.FlakyTestRetryAnalyzer;
+import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.TestUtils;
 import java.io.IOException;
 import java.net.URI;
@@ -87,10 +88,8 @@ public class TestRouter {
   public void testRouterWithSsl() throws ExecutionException, InterruptedException, IOException {
     ZkServerWrapper zk = ServiceFactory.getZkServer();
     MockVeniceRouterWrapper router = ServiceFactory.getMockVeniceRouter(zk.getAddress());
-    SSLContext sslContext = TestUtils.getClientSslFactory().getSSLContext();
-    SSLIOSessionStrategy sslSessionStrategy = new SSLIOSessionStrategy(sslContext, (s, sslSession) -> {
-      return true; //hostname verifier; because the fake router cert doesn't match the hostname 'localhost'
-    });
+    SSLContext sslContext = SslUtils.getLocalSslFactory().getSSLContext();
+    SSLIOSessionStrategy sslSessionStrategy = new SSLIOSessionStrategy(sslContext);
     CloseableHttpAsyncClient httpclient = HttpAsyncClients.custom()
         .setSSLStrategy(sslSessionStrategy)
         .build();

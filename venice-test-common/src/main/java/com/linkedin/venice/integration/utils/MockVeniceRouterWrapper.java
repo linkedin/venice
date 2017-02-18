@@ -7,6 +7,7 @@ import com.linkedin.venice.helix.HelixRoutingDataRepository;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.router.RouterServer;
+import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import java.io.File;
@@ -67,7 +68,7 @@ public class MockVeniceRouterWrapper extends ProcessWrapper {
       }
       String clusterName = TestUtils.getUniqueString("mock-venice-router-cluster");
       RouterServer router = new RouterServer(port, sslPortFromPort(port), clusterName, mockRepo,
-          mockMetadataRepository, mockSchemaRepository, d2ServerList, TestUtils.getRouterSslFactory());
+          mockMetadataRepository, mockSchemaRepository, d2ServerList, SslUtils.getLocalSslFactory());
       return new MockVeniceRouterWrapper(serviceName, dataDirectory, router, clusterName, port);
     };
   }
