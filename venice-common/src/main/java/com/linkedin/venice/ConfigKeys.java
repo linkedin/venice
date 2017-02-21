@@ -13,8 +13,6 @@ public class ConfigKeys {
 
   // cluster specific properties
   public static final String CLUSTER_NAME = "cluster.name";
-  public static final String DATA_BASE_PATH = "data.base.path";
-  public static final String AUTOCREATE_DATA_PATH = "autocreate.data.path";
   public static final String PARTITION_NODE_ASSIGNMENT_SCHEME = "partition.node.assignment.scheme";
   public static final String ENABLE_KAFKA_CONSUMER_OFFSET_MANAGEMENT = "enable.kafka.consumers.offset.management";
   public static final String OFFSET_MANAGER_TYPE = "offset.manager.type";
@@ -31,7 +29,6 @@ public class ConfigKeys {
 
   public static final String ROUTER_PORT = "router.port";
   public static final String ROUTER_SSL_PORT = "router.sslport";
-  public static final String LISTENER_PORT = "listener.port";
   public static final String ADMIN_PORT="admin.port";
 
   public static final String STATUS_MESSAGE_RETRY_COUNT = "status.message.retry.count";
@@ -53,8 +50,6 @@ public class ConfigKeys {
 
   public static final String KAFKA_BOOTSTRAP_SERVERS = "kafka.bootstrap.servers";
   public static final String MAX_KAFKA_FETCH_BYTES_PER_SECOND = "max.kafka.fetch.bytes.per.second";
-
-  public static final String ENABLE_SERVER_WHITE_LIST = "enable.server.whitelist";
 
   // Cluster specific configs for controller
   public static final String CONTROLLER_NAME = "controller.name";
@@ -78,6 +73,14 @@ public class ConfigKeys {
   public static final String CONTROLLER_CLUSTER_ZK_ADDRESSS = "controller.cluster.zk.address";
   /** Cluster name for all parent controllers */
   public static final String CONTROLLER_CLUSTER = "controller.cluster.name";
+
+  // Server specific configs
+  public static final String LISTENER_PORT = "listener.port";
+  public static final String DATA_BASE_PATH = "data.base.path";
+  public static final String AUTOCREATE_DATA_PATH = "autocreate.data.path";
+  public static final String ENABLE_SERVER_WHITE_LIST = "enable.server.whitelist";
+  public static final String CONSUMER_RECORDS_QUEUE_CAPACITY = "consumer.records.queue.capacity";
+
 
   /**
    * Venice uses a helix cluster to assign controllers to each named venice cluster.  This is the number of controllers

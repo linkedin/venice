@@ -108,7 +108,8 @@ public class KafkaConsumerPerStoreService extends AbstractVeniceService implemen
 
   private StoreConsumptionTask getConsumerTask(VeniceStoreConfig veniceStore) {
     return new StoreConsumptionTask(new VeniceConsumerFactory(), getKafkaConsumerProperties(veniceStore), storeRepository,
-        offsetManager , notifiers, throttler , veniceStore.getStoreName(), schemaRepo, topicManager, stats);
+        offsetManager, notifiers, throttler, veniceStore.getStoreName(), schemaRepo, topicManager, stats,
+        veniceStore.getConsumerRecordsQueueCapacity());
   }
 
   /**

@@ -29,11 +29,6 @@ public class AggStoreConsumptionStats {
     getStoreStats(storeName).recordRecordsConsumed(count);
   }
 
-  public void recordPollRequest(String storeName) {
-    totalStats.recordPollRequest();
-    getStoreStats(storeName).recordPollRequest();
-  }
-
   public void recordPollRequestLatency(String storeName, double latency) {
     totalStats.recordPollRequestLatency(latency);
     getStoreStats(storeName).recordPollRequestLatency(latency);
@@ -47,6 +42,16 @@ public class AggStoreConsumptionStats {
   public void recordPollResultNum(String storeName, int count) {
     totalStats.recordPollResultNum(count);
     getStoreStats(storeName).recordPollResultNum(count);
+  }
+
+  public void recordConsumerRecordsQueuePutLatency(String storeName, double latency) {
+    totalStats.recordConsumerRecordsQueuePutLatency(latency);
+    getStoreStats(storeName).recordConsumerRecordsQueuePutLatency(latency);
+  }
+
+  public void recordConsumerRecordsQueuePollLatency(String storeName, double latency) {
+    totalStats.recordConsumerRecordsQueuePollLatency(latency);
+    getStoreStats(storeName).recordConsumerRecordsQueuePollLatency(latency);
   }
 
   public void updateStoreConsumptionTask(String storeName, StoreConsumptionTask task) {

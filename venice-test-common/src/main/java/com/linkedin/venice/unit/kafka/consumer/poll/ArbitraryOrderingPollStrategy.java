@@ -20,6 +20,10 @@ public class ArbitraryOrderingPollStrategy extends AbstractPollStrategy {
 
   @Override
   protected Pair<TopicPartition, OffsetRecord> getNextPoll(Map<TopicPartition, OffsetRecord> offsets) {
+    if (offsets.isEmpty()) {
+      // Not subscribed yet
+      return null;
+    }
     return pollDeliveryOrder.poll();
   }
 }
