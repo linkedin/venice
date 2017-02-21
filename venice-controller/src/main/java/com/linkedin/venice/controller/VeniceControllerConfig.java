@@ -7,11 +7,9 @@ import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.util.Arrays;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
-import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
 import static com.linkedin.venice.ConfigKeys.*;
@@ -28,7 +26,10 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
   private final String controllerClusterZkAddresss;
   private final int topicMonitorPollIntervalMs;
   private final boolean parent;
-  private Map<String, Set<String>> childClusterMap = null;
+
+  private Map<String, String> childClusterMap = null;
+  private Map<String, String> childClusterD2Map = null;
+
   private final int parentControllerWaitingTimeForConsumptionMs;
   private final long adminConsumptionTimeoutMinutes;
 
@@ -42,7 +43,12 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
     this.parent = props.getBoolean(ConfigKeys.CONTROLLER_PARENT_MODE, false);
     if (this.parent) {
       String clusterWhitelist = props.getString(CHILD_CLUSTER_WHITELIST);
-      this.childClusterMap = parseClusterMap(props.clipAndFilterNamespace(ConfigKeys.CHILD_CLUSTER_URL_PREFIX), clusterWhitelist);
+      this.childClusterMap = parseClusterMap(props, clusterWhitelist);
+      this.childClusterD2Map = parseClusterMap(props, clusterWhitelist, true);
+
+      if (childClusterMap.isEmpty() && childClusterD2Map.isEmpty()) {
+        throw new VeniceException("child controller list can not be empty");
+      }
     }
     this.parentControllerWaitingTimeForConsumptionMs = props.getInt(ConfigKeys.PARENT_CONTROLLER_WAITING_TIME_FOR_CONSUMPTION_MS, 30 * Time.MS_PER_SECOND);
     this.adminConsumptionTimeoutMinutes = props.getLong(ADMIN_CONSUMPTION_TIMEOUT_MINUTES, TimeUnit.DAYS.toMinutes(5));
@@ -78,8 +84,12 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
    *
    * @return
    */
-  public Map<String, Set<String>> getChildClusterMap(){
+  public Map<String, String> getChildClusterMap(){
     return childClusterMap;
+  }
+
+  public Map<String, String> getChildClusterD2Map() {
+    return childClusterD2Map;
   }
 
   public int getParentControllerWaitingTimeForConsumptionMs() {
@@ -89,47 +99,63 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
   public long getAdminConsumptionTimeoutMinutes(){
     return adminConsumptionTimeoutMinutes;
   }
+
+  public static Map<String, String> parseClusterMap(VeniceProperties clusterPros, String datacenterWhitelist) {
+    return parseClusterMap(clusterPros, datacenterWhitelist, false);
+  }
+
   /**
-   * @param childClusterUris list of child controller uris
+   * @param clusterPros list of child controller uris
+   * @param datacenterWhitelist data centers that are taken into account
+   * @param D2Routing whether uses D2 to route or not
    * @return
    */
-  public static Map<String, Set<String>> parseClusterMap(VeniceProperties childClusterUris, String datacenterWhitelist) {
-    Properties childClusterUriProps = childClusterUris.toProperties();
-    if (childClusterUriProps.isEmpty()) {
-      throw new VeniceException("child controller list can not be empty");
-    }
+  public static Map<String, String> parseClusterMap(VeniceProperties clusterPros, String datacenterWhitelist, Boolean D2Routing) {
+    Properties childClusterUriProps;
+    String propsPrefix =  D2Routing ? CHILD_CLUSTER_D2_PREFIX : CHILD_CLUSTER_URL_PREFIX;
 
-    if (Utils.isNullOrEmpty(datacenterWhitelist)){
+    childClusterUriProps = clusterPros.clipAndFilterNamespace(propsPrefix).toProperties();
+
+    if (Utils.isNullOrEmpty(datacenterWhitelist)) {
       throw new VeniceException("child controller list must have a whitelist");
     }
 
-    Map<String, Set<String>> outputMap = new HashMap<>();
-    List<String> whitelist = Arrays.asList(datacenterWhitelist.split(","));
+    Map<String, String> outputMap = new HashMap<>();
+    List<String> whitelist = Arrays.asList(datacenterWhitelist.split(",\\s*"));
 
-    for (Map.Entry<Object, Object> uriEntry: childClusterUriProps.entrySet() ) {
+    for (Map.Entry<Object, Object> uriEntry : childClusterUriProps.entrySet()) {
       String datacenter = (String) uriEntry.getKey();
+      String uris = (String) uriEntry.getValue();
 
-      String[] uris = ((String) uriEntry.getValue()).split(",\\s*");
-
+      String errmsg = "Invalid configuration " + propsPrefix + "." + datacenter;
       if (datacenter.isEmpty()) {
-        throw new VeniceException("Invalid configuration" + CHILD_CLUSTER_URL_PREFIX + ".[missing]" + ": cluster name can't be empty. " + uriEntry.getValue());
+        throw new VeniceException(errmsg + ": cluster name can't be empty. " + uris);
+      }
+
+      if (uris.isEmpty()) {
+        throw new VeniceException(errmsg + ": found no urls for: " + datacenter);
       }
 
       if (whitelist.contains(datacenter)) {
-        outputMap.computeIfAbsent(datacenter, k -> new HashSet<>());
+        outputMap.computeIfAbsent(datacenter, k -> {
+          String[] uriList = uris.split(",\\s*");
 
-        for (String uri : uris) {
-          if (uri.isEmpty()) {
-            throw new VeniceException(
-                "Invalid configuration " + CHILD_CLUSTER_URL_PREFIX + "." + datacenter + ": found no urls for: " + uriEntry.getKey());
+          if (D2Routing && uriList.length != 1) {
+            throw new VeniceException(errmsg + ": can only have 1 zookeeper url");
           }
 
-          if (!uri.startsWith("http://")) {
-            throw new VeniceException("Invalid configuration " + CHILD_CLUSTER_URL_PREFIX + "." + datacenter + ": all urls must begin with http://, found: " + uriEntry.getValue());
+          if (!D2Routing) {
+            if (uriList.length == 0) {
+              throw new VeniceException(errmsg + ": urls can not be empty");
+            }
+
+            if (Arrays.stream(uriList).anyMatch(uri -> !uri.startsWith("http://"))) {
+              throw new VeniceException(errmsg + ": urls must begin with http://");
+            }
           }
 
-          outputMap.get(datacenter).add(uri);
-        }
+          return uris;
+        });
       }
     }
 

@@ -38,7 +38,7 @@ public class ControllerClient implements Closeable {
   private String urlsToFindMasterController;
   private String localHostname;
 
-  private final static ObjectMapper mapper = getObjectMapper();
+  protected final static ObjectMapper mapper = getObjectMapper();
   private final static Logger logger = Logger.getLogger(ControllerClient.class);
 
   protected static ObjectMapper getObjectMapper() {
@@ -56,21 +56,16 @@ public class ControllerClient implements Closeable {
     if(Utils.isNullOrEmpty(urlsToFindMasterController)) {
       throw new VeniceException("urlsToFindMasterController: "+ urlsToFindMasterController +" is not valid");
     }
+
     this.clusterName = clusterName;
     this.urlsToFindMasterController = urlsToFindMasterController;
     this.localHostname = Utils.getHostName();
     if (logger.isDebugEnabled()) {
       logger.debug("Parsed hostname as: " + localHostname);
     }
-    try {
-      refreshControllerUrl();
-    } catch (Exception e) {
-      logger.info("Got exception during refreshControllerUrl", e);
-      throw e;
-    }
   }
 
-  private void refreshControllerUrl(){
+  protected void refreshControllerUrl(){
     String controllerUrl = getMasterControllerUrl(urlsToFindMasterController);
     if (controllerUrl.endsWith("/")){
       this.masterControllerUrl = controllerUrl.substring(0, controllerUrl.length()-1);
@@ -84,7 +79,7 @@ public class ControllerClient implements Closeable {
   public void close() {
   }
 
-  private String getMasterControllerUrl(String urlsToFindMasterController){
+  protected String getMasterControllerUrl(String urlsToFindMasterController){
     List<String> urlList = Arrays.asList(urlsToFindMasterController.split(","));
     Collections.shuffle(urlList);
     Throwable lastException = null;
@@ -106,6 +101,7 @@ public class ControllerClient implements Closeable {
     throw new VeniceException("Could not get controller url from urls: " + urlsToFindMasterController, lastException);
   }
 
+  //TODO: clusterName seems to be redundant here. Since controller client is intended to have one-one mapping to clusterName.
   public StoreResponse getStore(String clusterName, String storeName) {
     try {
       List<NameValuePair> params = newParams(clusterName);
@@ -571,7 +567,7 @@ public class ControllerClient implements Closeable {
    * @param clusterName
    * @return
    */
-  private List<NameValuePair> newParams(String clusterName){
+  protected List<NameValuePair> newParams(String clusterName){
     List<NameValuePair> params = newParams();
     params.add(new BasicNameValuePair(ControllerApiConstants.CLUSTER, clusterName));
     return params;
@@ -641,5 +637,9 @@ public class ControllerClient implements Closeable {
       logger.error(msg);
       throw new VeniceException(msg);
     }
+  }
+
+  protected String getClusterName() {
+    return this.clusterName;
   }
 }

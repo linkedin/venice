@@ -57,6 +57,8 @@ task jacocoIntegrationTestReport(type:JacocoReport){
 }
 
 dependencies {
+  compile libraries.testng
+
   compile project(':venice-schema-common')
   compile project(':venice-common')
   compile project(':venice-server')

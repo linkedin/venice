@@ -8,6 +8,7 @@ import com.linkedin.r2.message.rest.RestException;
 import com.linkedin.r2.message.rest.RestRequest;
 import com.linkedin.r2.message.rest.RestRequestBuilder;
 import com.linkedin.r2.message.rest.RestResponse;
+import com.linkedin.venice.D2.D2ClientUtils;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.exceptions.VeniceServerException;
 import com.linkedin.venice.client.store.ClientCallback;
@@ -85,33 +86,7 @@ public class D2TransportClient<V> extends TransportClient<V> {
     d2Client = builder.build();
     this.privateD2Client = true;
 
-    CountDownLatch latch = new CountDownLatch(1);
-    AtomicBoolean d2StartupSuccess = new AtomicBoolean(false);
-    d2Client.start(new com.linkedin.common.callback.Callback<None>() {
-      @Override
-      public void onError(Throwable e) {
-        latch.countDown();
-        logger.error("d2client throws error on startup", e);
-      }
-
-      @Override
-      public void onSuccess(None result) {
-        d2StartupSuccess.set(true);
-        latch.countDown();
-      }
-    });
-
-    try {
-      latch.await(d2StartupTimeoutMs, TimeUnit.MILLISECONDS);
-    } catch (InterruptedException e) {
-      logger.warn("latch wait was interrupted, d2client may not have had enough time to startup", e);
-    } if (latch.getCount() > 0){
-      throw new RuntimeException("Timed out after " + d2StartupTimeoutMs + "ms waiting for D2Client to startup");
-    }
-    if (!d2StartupSuccess.get()){
-      throw new RuntimeException("d2client failed to startup");
-    }
-    logger.info("Successfully created D2StoreClient");
+    D2ClientUtils.startClient(d2Client);
   }
 
   @Override
@@ -132,40 +107,13 @@ public class D2TransportClient<V> extends TransportClient<V> {
 
   private RestRequest getRestRequest(String requestPath) {
     String requestUrl = "d2://" + d2ServiceName + "/" + requestPath;
-    URI requestUri;
-    try {
-      requestUri = new URI(requestUrl);
-    } catch (URISyntaxException e) {
-      throw new RuntimeException("Failed to create URI for d2 client", e);
-    }
-
-    return new RestRequestBuilder(requestUri).setMethod("get").build();
+    return D2ClientUtils.createD2GetReqeust(requestUrl);
   }
+
   @Override
   public synchronized void close() {
     if (privateD2Client) {
-      CountDownLatch stopLatch = new CountDownLatch(1);
-      d2Client.shutdown(new Callback<None>() {
-        @Override
-        public void onError(Throwable e) {
-          logger.error("Error when shutting down d2client", e);
-          stopLatch.countDown();
-        }
-
-        @Override
-        public void onSuccess(None result) {
-          logger.debug("D2StoreClient shutdown complete");
-          stopLatch.countDown();
-        }
-      });
-      try {
-        boolean waitRes = stopLatch.await(d2ShutdownTimeoutMs, TimeUnit.MILLISECONDS);
-        if (!waitRes) {
-          logger.error("D2Client shutdown timed out after " + d2ShutdownTimeoutMs + "ms");
-        }
-      } catch (InterruptedException e) {
-        logger.warn("d2client shutdown interrupted");
-      }
+      D2ClientUtils.shutdownClient(d2Client);
     } else {
       logger.info("This is a shared D2Client. TransportClient is not responsible to shut it down. Please do it manually.");
     }

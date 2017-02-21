@@ -9,70 +9,64 @@ import org.testng.annotations.Test;
 
 
 public class TestVeniceControllerConfig {
+  private final static String DELIMITER = ",\\s*";
+  private final static String WHITE_LIST = "dc1,dc2";
 
   @Test
-  public void canParseClusterMap(){
+  public void canParseClusterMap() {
     PropertyBuilder builder = new PropertyBuilder();
-    builder.put("dc1", "http://host:1234, http://host:5678")
-           .put("dc2", "http://host:1234, http://host:5678");
+    builder.put("child.cluster.url.dc1", "http://host:1234, http://host:5678")
+        .put("child.cluster.url.dc2", "http://host:1234, http://host:5678");
 
-    String whitelist = "dc1,dc2";
-    Map<String, Set<String>> map = VeniceControllerConfig.parseClusterMap(builder.build(), whitelist);
+    Map<String, String> map = VeniceControllerConfig.parseClusterMap(builder.build(), WHITE_LIST);
 
     Assert.assertEquals(map.size(), 2);
     Assert.assertTrue(map.keySet().contains("dc1"));
     Assert.assertTrue(map.keySet().contains("dc2"));
 
-    Assert.assertEquals(map.get("dc1").size(), 2);
-    Assert.assertTrue(map.get("dc1").contains("http://host:1234"));
-    Assert.assertTrue(map.get("dc1").contains("http://host:5678"));
+    String[] uris = map.get("dc1").split(DELIMITER);
+    Assert.assertTrue(uris[0].equals("http://host:1234"));
+    Assert.assertTrue(uris[1].equals("http://host:5678"));
   }
 
-  @Test(expectedExceptions = VeniceException.class)
-  public void emptyChildControllerList() {
-    PropertyBuilder build = new PropertyBuilder();
-    String whitelist = "dc1,dc2";
-    VeniceControllerConfig.parseClusterMap(build.build(), whitelist);
+  @Test
+  public void canParseD2ClusterMap() {
+    PropertyBuilder builder = new PropertyBuilder();
+    builder.put("child.cluster.d2.dc1", "zkAddress1")
+        .put("child.cluster.d2.dc2", "zkAddress2");
+
+    Map<String, String> map = VeniceControllerConfig.parseClusterMap(builder.build(), WHITE_LIST, true);
+    Assert.assertEquals(map.get("dc1").split(DELIMITER).length, 1);
+    Assert.assertTrue(map.get("dc2").split(DELIMITER)[0].equals("zkAddress2"));
   }
 
   @Test(expectedExceptions = VeniceException.class)
   public void emptyWhitelist() {
     PropertyBuilder build = new PropertyBuilder()
-        .put("dc1", "http://host:1234, http://host:5678")
-        .put("dc2", "http://host:1234, http://host:5678");
+        .put("child.cluster.url.dc1", "http://host:1234, http://host:5678")
+        .put("child.cluster.url.dc2", "http://host:1234, http://host:5678");
     VeniceControllerConfig.parseClusterMap(build.build(), "");
   }
 
   @Test(expectedExceptions = VeniceException.class)
   public void nullWhitelist() {
     PropertyBuilder build = new PropertyBuilder()
-        .put("dc1", "http://host:1234, http://host:5678")
-        .put("dc2", "http://host:1234, http://host:5678");
-    VeniceControllerConfig.parseClusterMap(build.build(), null);
-  }
-
-  @Test(expectedExceptions = VeniceException.class)
-  public void errOnMissingClusterName() {
-    PropertyBuilder builder = new PropertyBuilder();
-    builder.put("", "http://host:1234");
-    String whitelist = "dc1,dc2";
-    VeniceControllerConfig.parseClusterMap(builder.build(), whitelist);
+        .put("child.cluster.url.dc1", "http://host:1234, http://host:5678")
+        .put("child.cluster.url.dc2", "http://host:1234, http://host:5678");
+    VeniceControllerConfig.parseClusterMap(build.build(), "");
   }
 
   @Test(expectedExceptions = VeniceException.class)
   public void errOnMissingScheme(){
     PropertyBuilder builder = new PropertyBuilder();
-    builder.put("dc1", "host:1234");
-
-    String whitelist = "dc1";
-    VeniceControllerConfig.parseClusterMap(builder.build(), whitelist);
+    builder.put("child.cluster.url.dc1", "host:1234");
+    VeniceControllerConfig.parseClusterMap(builder.build(), WHITE_LIST);
   }
 
   @Test(expectedExceptions = VeniceException.class)
   public void errOnMissingNodes(){
     PropertyBuilder builder = new PropertyBuilder();
-    builder.put("dc1", "");
-    String whitelist = "dc1";
-    VeniceControllerConfig.parseClusterMap(builder.build(), whitelist);
+    builder.put("child.cluster.url.dc1", "");
+    VeniceControllerConfig.parseClusterMap(builder.build(), WHITE_LIST);
   }
 }

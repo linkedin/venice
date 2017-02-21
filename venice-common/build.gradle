@@ -5,7 +5,10 @@ task buildJar(type: Jar) {
         'Implementation-Version': version
   }
   baseName = project.name
-  from { configurations.compile.collect { it.isDirectory() ? it : zipTree(it) } }
+  from { configurations.compile
+          .filter {!it.absolutePath.endsWith(".xml")}
+          .collect { it.isDirectory() ? it : zipTree(it) }
+  }
   exclude 'META-INF/*.RSA', 'META-INF/*.SF','META-INF/*.DSA' // Necessary, otherwise Bouncy Castle introduces DSA files that mess with our build
 
   with jar

@@ -4,7 +4,10 @@ task buildJar(type: Jar) {
                 'Implementation-Version': version
     }
     baseName = project.name
-    from { configurations.compile.collect { it.isDirectory() ? it : zipTree(it) } }
+    from { configurations.compile
+            .filter {!it.absolutePath.endsWith(".xml")}
+            .collect { it.isDirectory() ? it : zipTree(it) }
+    }
     with jar
 }
 
@@ -23,6 +26,18 @@ dependencies {
         exclude group: 'org.slf4j'        // Avro pulls in slf4j 1.5 which is API incompatible with 1.6
     }
 
+    compile (libraries.d2Client) {
+        exclude group: 'com.oracle', module: 'ojdbc14' /* unused transitive dependencies, doesn't exist in repo */
+        exclude group: 'org.mockito', module: 'mockito-all'
+        exclude group: 'xerces', module: 'xerces'
+        exclude group: 'org.codehaus.jackson'
+        exclude module: 'httpcore'
+        exclude module: 'httpclient'
+    }
+
     compile libraries.jacksonMapper
+    compile libraries.httpClient //d2Client brings in an old version of httpClient
+    compile libraries.httpCore  //d2Client brings in an old version of httpCore
     compile libraries.tehuti
+    compile libraries.xerces // d2Client brings in an old version of xerces
 }
