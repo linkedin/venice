@@ -40,8 +40,7 @@ public abstract class AbstractPollStrategy implements PollStrategy {
 
   protected abstract Pair<TopicPartition, OffsetRecord> getNextPoll(Map<TopicPartition, OffsetRecord> offsets);
 
-  public synchronized ConsumerRecords poll(InMemoryKafkaBroker broker, Map<TopicPartition, OffsetRecord> offsetsRef, long timeout) {
-    Map<TopicPartition, OffsetRecord> offsets = new HashMap<>(offsetsRef);
+  public synchronized ConsumerRecords poll(InMemoryKafkaBroker broker, Map<TopicPartition, OffsetRecord> offsets, long timeout) {
     drainedPartitions.stream().forEach(topicPartition -> offsets.remove(topicPartition));
 
     Map<TopicPartition, List<ConsumerRecord<KafkaKey, KafkaMessageEnvelope>>> records = new HashMap<>();

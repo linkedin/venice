@@ -201,7 +201,8 @@ public class StoreConsumptionTaskTest {
     Queue<VeniceNotifier> notifiers = new ConcurrentLinkedQueue<>(Arrays.asList(mockNotifier, new LogNotifier()));
     OffsetManager offsetManager = new DeepCopyOffsetManager(mockOffSetManager);
     storeConsumptionTaskUnderTest = new StoreConsumptionTask(
-        mockFactory, kafkaProps, mockStoreRepository, offsetManager, notifiers, mockThrottler, topic, mockSchemaRepo, mockTopicManager, mockStats);
+        mockFactory, kafkaProps, mockStoreRepository, offsetManager, notifiers, mockThrottler, topic, mockSchemaRepo,
+        mockTopicManager, mockStats, 10);
     doReturn(mockAbstractStorageEngine).when(mockStoreRepository).getLocalStorageEngine(topic);
 
     Future testSubscribeTaskFuture = null;
@@ -718,7 +719,7 @@ public class StoreConsumptionTaskTest {
         verify(mockNotifier, timeout(TEST_TIMEOUT)).started(topic, PARTITION_FOO);
         verify(mockNotifier, timeout(TEST_TIMEOUT)).started(topic, PARTITION_BAR);
 
-        //Start of push has alread been consumed. Stop consuption
+        //Start of push has already been consumed. Stop consumption
         storeConsumptionTaskUnderTest.kill();
         // task should report an error to notifier that it's killed.
         verify(mockNotifier, timeout(TEST_TIMEOUT)).error(
@@ -750,13 +751,15 @@ public class StoreConsumptionTaskTest {
       verify(mockOffSetManager, timeout(TEST_TIMEOUT).never()).getLastOffset(topic, PARTITION_FOO);
       waitForNonDeterministicCompletion(TEST_TIMEOUT, TimeUnit.MILLISECONDS,
           () -> storeConsumptionTaskUnderTest.getConsumer() != null);
-      assertEquals(((MockInMemoryConsumer) storeConsumptionTaskUnderTest.getConsumer()).getOffsets().size(), 0,
+      MockInMemoryConsumer mockConsumer = (MockInMemoryConsumer)((SynchronizedKafkaConsumerWrapper) storeConsumptionTaskUnderTest.getConsumer())
+          .getDelegate();
+      assertEquals(mockConsumer.getOffsets().size(), 0,
           "subscribe should not be processed in this consumer.");
 
       // Verify offset has not been processed. Because consumption task should process kill action at first.
       // offSetManager.clearOffset should only be invoked one time during clean up after killing this task.
       verify(mockOffSetManager, timeout(TEST_TIMEOUT)).clearOffset(topic, PARTITION_FOO);
-      assertEquals(((MockInMemoryConsumer) storeConsumptionTaskUnderTest.getConsumer()).getOffsets().size(), 0,
+      assertEquals(mockConsumer.getOffsets().size(), 0,
           "reset should not be processed in this consumer.");
 
       waitForNonDeterministicCompletion(TEST_TIMEOUT, TimeUnit.MILLISECONDS,

@@ -41,8 +41,10 @@ import java.util.Optional;
 import java.util.Properties;
 import java.util.Queue;
 import java.util.Set;
+import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.PriorityBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -57,6 +59,42 @@ import org.apache.log4j.Logger;
  * A runnable Kafka Consumer consuming messages from all the partition assigned to current node for a Kafka Topic.
  */
 public class StoreConsumptionTask implements Runnable, Closeable {
+
+  /**
+   * This class is used to keep polling messages from Kafka broker and buffer them in the local {@link #consumerRecordsQueue}.
+   */
+  private class ConsumerTask implements Runnable {
+    @Override
+    public void run() {
+      ConsumerRecords<KafkaKey, KafkaMessageEnvelope> consumerRecords = null;
+      while (isRunning.get()) {
+        long beforePollingTimestamp = System.currentTimeMillis();
+        consumerRecords = consumer.poll(READ_CYCLE_DELAY_MS);
+        long afterPollingTimestamp = System.currentTimeMillis();
+        stats.recordPollRequestLatency(storeNameWithoutVersionInfo, afterPollingTimestamp - beforePollingTimestamp);
+        int consumerRecordsCnt = 0;
+        if (null != consumerRecords) {
+          consumerRecordsCnt = consumerRecords.count();
+        }
+        stats.recordPollResultNum(storeNameWithoutVersionInfo, consumerRecordsCnt);
+        if (0 == consumerRecordsCnt) {
+          // No need to add to the blocking queue
+          continue;
+        }
+
+        try {
+          long beforeQueuePutTimestamp = System.currentTimeMillis();
+          consumerRecordsQueue.put(consumerRecords);
+          long afterQueuePutTimestamp = System.currentTimeMillis();
+          stats.recordConsumerRecordsQueuePutLatency(storeNameWithoutVersionInfo,
+              afterQueuePutTimestamp - beforeQueuePutTimestamp);
+        } catch (InterruptedException ie) {
+          logger.info("Received InterruptedException while running consumer thread", ie);
+          break;
+        }
+      }
+    }
+  }
 
   // TOOD: Make this logger prefix everything with the CONSUMER_TASK_ID_FORMAT
   private static final Logger logger = Logger.getLogger(StoreConsumptionTask.class);
@@ -128,6 +166,27 @@ public class StoreConsumptionTask implements Runnable, Closeable {
 
   private final AggStoreConsumptionStats stats;
 
+  /**
+   * Blocking queue for consumer records.
+   * The consumer thread will keep polling and put the retrieved result to this queue;
+   * The worker thread will poll consumer records from this queue and persist them in BDB;
+   *
+   * Right now, this queue is to store {@link ConsumerRecords} instead of {@link ConsumerRecord},
+   * and the reasons behind this:
+   * 1. It is not easy to get actual memory usage for each {@link ConsumerRecord}, but there are existing 'serializedSize'
+   * for each record, check {@link ConsumerRecord#serializedKeySize} and {@link ConsumerRecord#serializedValueSize};
+   * 2. Each {@link ConsumerRecords} should have limited data size considering the fixed poll request timeout: 1 second;
+   *
+   * If current solution doesn't work well, we can update this blocking queue to hold {@link ConsumerRecord} instead of
+   * {@link ConsumerRecords}.
+   **/
+  private final BlockingQueue<ConsumerRecords<KafkaKey, KafkaMessageEnvelope>> consumerRecordsQueue;
+  /**
+   * Consumer thread to keep polling Kafka brokers;
+   * TODO: consider to use thread pool to limit/reuse consumer threads across multiple stores
+   */
+  private Thread consumerThread;
+
   public StoreConsumptionTask(@NotNull VeniceConsumerFactory factory,
                               @NotNull Properties kafkaConsumerProperties,
                               @NotNull StoreRepository storeRepository,
@@ -137,7 +196,8 @@ public class StoreConsumptionTask implements Runnable, Closeable {
                               @NotNull String topic,
                               @NotNull ReadOnlySchemaRepository schemaRepo,
                               @NotNull TopicManager topicManager,
-                              @NotNull AggStoreConsumptionStats stats) {
+                              @NotNull AggStoreConsumptionStats stats,
+                              int consumerRecordsQueueCapacity) {
     this.factory = factory;
     this.kafkaProps = kafkaConsumerProperties;
     this.storeRepository = storeRepository;
@@ -164,6 +224,8 @@ public class StoreConsumptionTask implements Runnable, Closeable {
 
     this.stats = stats;
     stats.updateStoreConsumptionTask(storeNameWithoutVersionInfo, this);
+
+    this.consumerRecordsQueue = new LinkedBlockingQueue<>(consumerRecordsQueueCapacity);
 
     this.isRunning = new AtomicBoolean(true);
   }
@@ -201,12 +263,12 @@ public class StoreConsumptionTask implements Runnable, Closeable {
   public synchronized void kill() {
     validateState();
     consumerActionsQueue.add(ConsumerAction.createKillAction(topic));
-    int currentAttemp = 0;
+    int currentAttempts = 0;
     try {
       // Check whether the task is really killed
-      while (isRunning() && currentAttemp < MAX_KILL_CHECKING_ATTEMPTS) {
+      while (isRunning() && currentAttempts < MAX_KILL_CHECKING_ATTEMPTS) {
         TimeUnit.MILLISECONDS.sleep(KILL_WAIT_TIME_MS / MAX_KILL_CHECKING_ATTEMPTS);
-        currentAttemp ++;
+        currentAttempts ++;
       }
     } catch (InterruptedException e) {
       logger.warn("Wait killing is interrupted.", e);
@@ -220,7 +282,6 @@ public class StoreConsumptionTask implements Runnable, Closeable {
       // operation, for example it could break the ongoing db operation, so we should avoid that.
       this.close();
     }
-
   }
 
   private void reportProgress(int partition, long partitionOffset ) {
@@ -275,7 +336,6 @@ public class StoreConsumptionTask implements Runnable, Closeable {
   private void reportCompleted(int partition) {
     OffsetRecord lastOffsetRecord = partitionToOffsetMap.getOrDefault(partition , new OffsetRecord());
 
-
     if (errorPartitions.contains(partition)) {
       // Notifiers will not be sent a completion notification, they should only receive the previously-sent
       // error notification.
@@ -319,19 +379,25 @@ public class StoreConsumptionTask implements Runnable, Closeable {
   }
 
 
-  private void processMessages() {
+  private void processMessages() throws InterruptedException {
     if (partitionToOffsetMap.size() > 0) {
       idleCounter = 0;
-      long beforePollTimestamp = System.currentTimeMillis();
-      ConsumerRecords records = consumer.poll(READ_CYCLE_DELAY_MS);
-      long afterPollTimestamp = System.currentTimeMillis();
-      stats.recordPollRequest(storeNameWithoutVersionInfo);
-      stats.recordPollRequestLatency(storeNameWithoutVersionInfo, afterPollTimestamp - beforePollTimestamp);
-      stats.recordPollResultNum(storeNameWithoutVersionInfo, records.count());
+      /**
+       * Retrieve consumer records from the blocking queue.
+       * The reason to use timed poll is that the worker thread still needs to process consumer action by this func:
+       * {@link #processConsumerActions()} even without any message in the {@link #consumerRecordsQueue}.
+       **/
+      long beforePollingTimestamp = System.currentTimeMillis();
+      ConsumerRecords<KafkaKey, KafkaMessageEnvelope> records =
+          consumerRecordsQueue.poll(READ_CYCLE_DELAY_MS, TimeUnit.MILLISECONDS);
+      long afterPollingTimestamp = System.currentTimeMillis();
+      stats.recordConsumerRecordsQueuePollLatency(storeNameWithoutVersionInfo, afterPollingTimestamp - beforePollingTimestamp);
+      if (null == records) {
+        return;
+      }
       processTopicConsumerRecords(records);
       long afterProcessingTimestamp = System.currentTimeMillis();
-      stats.recordProcessPollResultLatency(storeNameWithoutVersionInfo, afterProcessingTimestamp - afterPollTimestamp);
-
+      stats.recordProcessPollResultLatency(storeNameWithoutVersionInfo, afterProcessingTimestamp - afterPollingTimestamp);
     } else {
       idleCounter ++;
       if(idleCounter > MAX_IDLE_COUNTER) {
@@ -345,14 +411,22 @@ public class StoreConsumptionTask implements Runnable, Closeable {
   }
 
 
-  @Override
   /**
-   * Polls the producer for new messages in an infinite loop and processes the new messages.
+   * Polls the producer for new messages in an infinite loop by a dedicated consumer thread
+   * and processes the new messages by current thread.
    */
+  @Override
   public void run() {
     logger.info("Running " + consumerTaskId);
     try {
-      this.consumer = factory.getConsumer(kafkaProps);
+      this.consumer = new SynchronizedKafkaConsumerWrapper(factory.getConsumer(kafkaProps));
+      this.consumerThread = new Thread(new ConsumerTask(), "Consumer_thread_for_" + topic);
+      this.consumerThread.start();
+
+      /**
+       * Here we could not use isRunning() since it is a synchronized function, whose lock could be
+       * acquired by some other synchronized function, such as {@link #kill()}.
+        */
       while (isRunning.get()) {
         processConsumerActions();
         processMessages();
@@ -374,7 +448,6 @@ public class StoreConsumptionTask implements Runnable, Closeable {
   }
 
   private void internalClose() {
-
     // Only reset Offset Messages are important, subscribe/unSubscribe will be handled
     // on the restart by Helix Controller notifications on the new StoreConsumptionTask.
     for(ConsumerAction message : consumerActionsQueue) {
@@ -395,6 +468,16 @@ public class StoreConsumptionTask implements Runnable, Closeable {
       return;
     }
     consumer.close();
+    // Interrupt consumer thread
+    if (null != this.consumerThread) {
+      this.consumerThread.interrupt();
+      try {
+        this.consumerThread.join(10000); //10s
+        logger.info("Closed consumer thread for topic: " + topic);
+      } catch (InterruptedException ie) {
+        logger.error("Received exception while joining consumer thread", ie);
+      }
+    }
     isRunning.set(false);
   }
 
@@ -510,12 +593,12 @@ public class StoreConsumptionTask implements Runnable, Closeable {
     }
 
     int partitionId = record.partition();
-    Long lastOffset = partitionToOffsetMap.get(partitionId).getOffset();
-    if(lastOffset == null) {
+    OffsetRecord offsetRecord = partitionToOffsetMap.get(partitionId);
+    if(null == offsetRecord) {
       logger.info("Skipping message as partition is no longer actively subscribed. Topic: " + topic + " Partition Id: " + partitionId );
       return false;
     }
-
+    long lastOffset = offsetRecord.getOffset();
     if(lastOffset >= record.offset()) {
       logger.info(consumerTaskId + "The record was already processed Partition" + partitionId + " LastKnown " + lastOffset + " Current " + record.offset());
       return false;

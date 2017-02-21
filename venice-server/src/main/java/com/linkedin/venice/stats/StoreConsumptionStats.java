@@ -5,6 +5,7 @@ import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
 import io.tehuti.metrics.stats.Avg;
 import io.tehuti.metrics.stats.Count;
+import io.tehuti.metrics.stats.Max;
 import io.tehuti.metrics.stats.Rate;
 import io.tehuti.metrics.stats.Total;
 
@@ -20,6 +21,8 @@ public class StoreConsumptionStats extends AbstractVeniceStats{
   private final Sensor pollRequestLatencySensor;
   private final Sensor processPollResultLatencySensor;
   private final Sensor pollResultNumSensor;
+  private final Sensor consumerRecordsQueuePutLatencySensor;
+  private final Sensor consumerRecordsQueuePollLatencySensor;
 
 
   public StoreConsumptionStats(MetricsRepository metricsRepository,
@@ -42,6 +45,9 @@ public class StoreConsumptionStats extends AbstractVeniceStats{
     // TODO: need to convert 'Total' to be 'Count' internally so that we can measure
     // consumer record number per second returned by Kafka consumer poll.
     pollResultNumSensor = registerSensor("kafka_poll_result_num", new Avg(), new Total());
+    // To measure 'put' latency of consumer records blocking queue
+    consumerRecordsQueuePutLatencySensor = registerSensor("consumer_records_queue_put_latency", new Avg(), new Max());
+    consumerRecordsQueuePollLatencySensor = registerSensor("consumer_records_queue_poll_latency", new Avg(), new Max());
   }
 
   public void updateStoreConsumptionTask(StoreConsumptionTask task) {
@@ -60,11 +66,8 @@ public class StoreConsumptionStats extends AbstractVeniceStats{
     recordsConsumedSensor.record(count);
   }
 
-  public void recordPollRequest() {
-    pollRequestSensor.record();
-  }
-
   public void recordPollRequestLatency(double latency) {
+    pollRequestSensor.record();
     pollRequestLatencySensor.record(latency);
   }
 
@@ -74,6 +77,14 @@ public class StoreConsumptionStats extends AbstractVeniceStats{
 
   public void recordPollResultNum(int count) {
     pollResultNumSensor.record(count);
+  }
+
+  public void recordConsumerRecordsQueuePutLatency(double latency) {
+    consumerRecordsQueuePutLatencySensor.record(latency);
+  }
+
+  public void recordConsumerRecordsQueuePollLatency(double latency) {
+    consumerRecordsQueuePollLatencySensor.record(latency);
   }
 
   private static class OffsetLagStat extends LambdaStat {
