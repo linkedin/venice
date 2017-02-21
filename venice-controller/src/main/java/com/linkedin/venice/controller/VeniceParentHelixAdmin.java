@@ -20,6 +20,7 @@ import com.linkedin.venice.controller.kafka.protocol.enums.AdminMessageType;
 import com.linkedin.venice.controller.kafka.protocol.enums.SchemaType;
 import com.linkedin.venice.controller.kafka.protocol.serializer.AdminOperationSerializer;
 import com.linkedin.venice.controllerapi.ControllerClient;
+import com.linkedin.venice.controllerapi.D2ControllerClient;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
@@ -90,7 +91,7 @@ public class VeniceParentHelixAdmin implements Admin {
    * message even the admin consumption task is still blocking by the bad message.
    *
    * TODO: Maybe we can initialize lastOffset to be the correct value when startup.
-    */
+   */
   private long lastOffset = -1;
 
   private final int waitingTimeForConsumptionMs;
@@ -139,7 +140,7 @@ public class VeniceParentHelixAdmin implements Admin {
        * 1. Data missing;
        * 2. Data out of order;
        * 3. Data duplication;
-        */
+       */
       props.put(VeniceWriter.CHECK_SUM_TYPE, CheckSumType.NONE.name());
       VeniceProperties veniceWriterProperties = new VeniceProperties(props);
       return new VeniceWriter<>(veniceWriterProperties, topicName, new DefaultSerializer(), new DefaultSerializer());
@@ -238,10 +239,10 @@ public class VeniceParentHelixAdmin implements Admin {
 
   @Override
   public Version addVersion(String clusterName,
-                                         String storeName,
-                                         int versionNumber,
-                                         int numberOfPartition,
-                                         int replicationFactor) {
+                            String storeName,
+                            int versionNumber,
+                            int numberOfPartition,
+                            int replicationFactor) {
     throw new VeniceException("addVersion is not supported yet!");
   }
 
@@ -255,7 +256,7 @@ public class VeniceParentHelixAdmin implements Admin {
    */
   protected void cleanupHistoricalVersions(String clusterName, String storeName) {
     HelixReadWriteStoreRepository storeRepo = veniceHelixAdmin.getVeniceHelixResource(clusterName)
-            .getMetadataRepository();
+        .getMetadataRepository();
     storeRepo.lock();
     try {
       Store store = storeRepo.getStore(storeName);
@@ -270,9 +271,9 @@ public class VeniceParentHelixAdmin implements Admin {
       }
       List<Version> clonedVersions = new ArrayList<>(versions);
       clonedVersions.stream()
-              .sorted()
-              .limit(versionCount - STORE_VERSION_RETENTION_COUNT)
-              .forEach(v -> store.deleteVersion(v.getNumber()));
+          .sorted()
+          .limit(versionCount - STORE_VERSION_RETENTION_COUNT)
+          .forEach(v -> store.deleteVersion(v.getNumber()));
       storeRepo.updateStore(store);
     } finally {
       storeRepo.unLock();
@@ -281,9 +282,9 @@ public class VeniceParentHelixAdmin implements Admin {
 
   @Override
   public Version incrementVersion(String clusterName,
-                                               String storeName,
-                                               int numberOfPartition,
-                                               int replicationFactor) {
+                                  String storeName,
+                                  int numberOfPartition,
+                                  int replicationFactor) {
     // TODO: consider to move version creation to admin protocol
     // Right now, TopicMonitor in each prod colo will monitor new Kafka topic and
     // create new corresponding store versions
@@ -318,7 +319,7 @@ public class VeniceParentHelixAdmin implements Admin {
       }
     }
     Version newVersion = veniceHelixAdmin.addVersion(clusterName, storeName, VeniceHelixAdmin.VERSION_ID_UNSET,
-            numberOfPartition, replicationFactor, false);
+        numberOfPartition, replicationFactor, false);
     cleanupHistoricalVersions(clusterName, storeName);
     return newVersion;
   }
@@ -377,8 +378,8 @@ public class VeniceParentHelixAdmin implements Admin {
 
   @Override
   public void setCurrentVersion(String clusterName,
-                                             String storeName,
-                                             int versionNumber) {
+                                String storeName,
+                                int versionNumber) {
     throw new VeniceException("setCurrentVersion is not supported yet!");
   }
 
@@ -455,13 +456,13 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   private Map<String, ControllerClient> getControllerClientMap(String clusterName){
-    Map<String, Set<String>> childColoClusters = veniceControllerConfig.getChildClusterMap();
     Map<String, ControllerClient> controllerClients = new HashMap<>();
-    for (String colo : childColoClusters.keySet()) {
-      String veniceUrls = String.join(",", childColoClusters.get(colo));
-      ControllerClient client = new ControllerClient(clusterName, veniceUrls);
-      controllerClients.put(colo, client);
-    }
+
+    veniceControllerConfig.getChildClusterMap().entrySet().
+      forEach(entry -> controllerClients.put(entry.getKey(), new ControllerClient(clusterName, entry.getValue())));
+    veniceControllerConfig.getChildClusterD2Map().entrySet().
+      forEach(entry -> controllerClients.put(entry.getKey(), new D2ControllerClient(clusterName, entry.getValue())));
+
     return controllerClients;
   }
 
@@ -762,7 +763,7 @@ public class VeniceParentHelixAdmin implements Admin {
 
   @Override
   public boolean isStorageNodeNewerOrEqualTo(String clusterName, String instanceId,
-      StorageNodeStatus oldServerStatus) {
+                                             StorageNodeStatus oldServerStatus) {
     throw new VeniceException("isStorageNodeNewerOrEqualTo is not supported!");
   }
 

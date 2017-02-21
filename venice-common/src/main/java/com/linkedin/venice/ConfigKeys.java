@@ -4,10 +4,6 @@ import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Set;
 
-
-/**
- * Created by mwise on 1/19/16.
- */
 public class ConfigKeys {
   private ConfigKeys(){}
 
@@ -104,6 +100,11 @@ public class ConfigKeys {
    * Note that every cluster name supplied must also be specified in the child.cluster.whitelist in order to be included
    * */
   public static final String CHILD_CLUSTER_URL_PREFIX = "child.cluster.url";
+
+  /**
+   * Similar to {@link ConfigKeys#CHILD_CLUSTER_URL_PREFIX} but with D2 url.
+   */
+  public static final String CHILD_CLUSTER_D2_PREFIX = "child.cluster.d2";
 
   /**
    * Only required when controller.parent.mode=true

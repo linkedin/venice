@@ -62,7 +62,7 @@ import static org.mockito.Matchers.anyString;
 
 
 public class TestVeniceParentHelixAdmin {
-  private static int TIMEOUT_IN_MS = 10 * Time.MS_PER_SECOND;
+  private static int TIMEOUT_IN_MS = 40 * Time.MS_PER_SECOND;
   private static int KAFKA_REPLICA_FACTOR = 3;
   private final String clusterName = "test-cluster";
   private final String topicName = AdminTopicUtils.getTopicNameFromClusterName(clusterName);
@@ -588,7 +588,7 @@ public class TestVeniceParentHelixAdmin {
   /**
    * End-to-end test
    *
-   * TODO: Fix this test, it's flaky.
+   * TODO: Fix this test. It's flaky.
    */
   @Test(retryAnalyzer = FlakyTestRetryAnalyzer.class)
   public void testEnd2End() throws IOException {
@@ -601,6 +601,7 @@ public class TestVeniceParentHelixAdmin {
     String owner = "test_owner";
     String keySchemaStr = "\"long\"";
     String valueSchemaStr = "\"string\"";
+
     ControllerClient.createNewStore(controllerUrl, clusterName, storeName, owner, keySchemaStr, valueSchemaStr);
     MultiStoreResponse response = ControllerClient.queryStoreList(controllerUrl, clusterName);
     String[] stores = response.getStores();
