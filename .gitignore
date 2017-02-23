@@ -12,4 +12,3 @@ build/
 *.swp
 out/
 */target/
-identity.*

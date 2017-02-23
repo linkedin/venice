@@ -3,6 +3,7 @@ package com.linkedin.venice.utils;
 import com.linkedin.security.ssl.access.control.SSLEngineComponentFactory;
 import com.linkedin.security.ssl.access.control.SSLEngineComponentFactoryImpl;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.guid.GuidUtils;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
@@ -18,6 +19,9 @@ public class SslUtils {
   private static final String LOCAL_CERT = "localhost.cert";
   private static final String LOCAL_KEY = "localhost.key";
 
+  /**
+   * @return factory that corresponds to self-signed development certificate
+   */
   public static SSLEngineComponentFactory getLocalSslFactory() {
     String keyStorePath = getPathForResource(LOCAL_KEYSTORE_JKS);
 
@@ -37,7 +41,7 @@ public class SslUtils {
 
   protected static String getPathForResource(String resource) {
     String systemTempDir = System.getProperty("java.io.tmpdir");
-    String subDir = TestUtils.getUniqueString("venice-keys");
+    String subDir = "venice-keys-" + GuidUtils.getGUIDString();
     File tempDir = new File(systemTempDir, subDir);
     tempDir.mkdir();
     tempDir.deleteOnExit();

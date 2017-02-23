@@ -9,7 +9,7 @@ Dependencies
 ---------------------
 
 To use Venice, the following programs must be installed and running on your local machine:
-- Apache Kafka Version 0.9.0
+- Apache Kafka Version 0.10.0
 - Apache Zookeeper 3.4.6
 - Apache Helix 0.6.5
 
@@ -53,14 +53,13 @@ To start the server:
 
 To start the router:
 
-> source quickstart/generate-keys.sh
 > ./quickstart/start-venice-router.sh
 
 ----------------------
 Interact with Venice
 ----------------------
 
-There are two ways to read data out of Venice. 
+There are two ways to read data out of Venice.
 
 1) Venice is usable through its Java Client API.
 2) Venice can be queried from the router using curl
@@ -69,6 +68,17 @@ To add test stores (not necessary if you're going to run H2V):
 
 > curl --data "storename=default_store&store_size=10000&owner=venice-dev" 127.0.0.1:7075/create
 > curl --data "storename=test_shell_store&store_size=1000&owner=venice-dev" 127.0.0.1:7075/create
+
+To query over https use the curl-ssh.sh wrapper script to specify key and certificate
+
+> ./curl-ssh.sh https://localhost:54334/master_controller
+
+or supply the certificate and key in venice-common/src/main/resources directly
+
+> curl -i --cacert venice-common/src/main/resources/localhost.cert \
+          --cert venice-common/src/main/resources/localhost.cert \
+          --key venice-common/src/main/resources/localhost.key \
+          https://localhost:54334/master_controller
 
 To query a job status:
 

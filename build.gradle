@@ -79,10 +79,6 @@ subprojects {
      version = '0.1'
   }
   repositories {
-    mavenCentral()
-    maven {
-      url "http://download.oracle.com/maven/"
-    }
     ivy {  //TODO: remove this before opensourcing
       url 'http://artifactory.corp.linkedin.com:8081/artifactory/release/'
       layout "pattern", {
@@ -90,6 +86,10 @@ subprojects {
         artifact '[organisation]/[module]/[revision]/[artifact]-[revision](-[classifier]).[ext]'
         m2compatible = true
       }
+    }
+    mavenCentral()
+    maven {
+      url "http://download.oracle.com/maven/"
     }
   }
 

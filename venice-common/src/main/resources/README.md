@@ -1,17 +1,17 @@
 # Venice Development Keys
 
-The keys and certificates in this folder were generated in 2017 with a 10 year expiration.  That means any automated tests that rely on these certificates will start failing sometime in 2027. These keys are intended to be used as development keys and for automated unit tests in place of requesting keys from grestin with `id-tool grestin sign`
+The keys and certificates in this folder were generated in 2017 with a 10 year expiration.  That means any automated tests that rely on these certificates will start failing sometime in 2027. These keys are intended to be used as development keys and for automated unit tests.
 
 The password is `dev_pass`
 
 localhost.cert should also be used as the trust store since it is a self-signed cert
 
-localhost.p12 - PKCS12 keystore
-localhost.jks - JKS keystore
-localhost.cert - self-signed certificate
-localhost.key - private key
+ * localhost.p12 - PKCS12 keystore
+ * localhost.jks - JKS keystore
+ * localhost.cert - self-signed certificate
+ * localhost.key - private key
 
-This is the process used to generate these files:
+This is the process used to generate these files.  Note, run these commands one at a time because some of them trigger interactive prompts.
 
 ```bash
 # generate 10 year self-signed cert and key
