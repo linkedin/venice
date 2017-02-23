@@ -51,6 +51,12 @@ dependencies {
 
   compile project(':venice-schema-common')
 
+  compile (libraries.routerLnkd){ // for SSL Initializer
+    exclude group: 'com.oracle', module: 'ojdbc14' // unused transitive dependency, doesnt exist in repo
+    exclude group: 'xerces', module: 'xerces' // resolve conflicting transitive dependency
+    exclude group: 'com.fasterxml.jackson.core', module: 'jackson-core'// resolve conflicting transitive dependency
+  }
+
   // Test dependencies are allowed to be bulkier.
   // testCompile libraries.kafka //restore this if we remove it from the compile dependencies
   testCompile libraries.zookeeper

@@ -9,7 +9,6 @@ import com.linkedin.ddsstorage.router.api.ScatterGatherHelper;
 import com.linkedin.ddsstorage.router.impl.Router;
 import com.linkedin.ddsstorage.router.lnkd.netty4.SSLInitializer;
 import com.linkedin.security.ssl.access.control.SSLEngineComponentFactory;
-import com.linkedin.security.ssl.access.control.SSLEngineComponentFactoryImpl;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixAdapterSerializer;
@@ -29,6 +28,7 @@ import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.stats.TehutiUtils;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.HelixUtils;
+import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import io.netty.channel.ChannelPipeline;
@@ -47,8 +47,6 @@ import org.apache.helix.InstanceType;
 import org.apache.helix.manager.zk.ZKHelixManager;
 import org.apache.helix.manager.zk.ZkClient;
 import org.apache.log4j.Logger;
-
-import static com.linkedin.venice.ConfigKeys.*;
 
 
 public class RouterServer extends AbstractVeniceService {
@@ -110,7 +108,7 @@ public class RouterServer extends AbstractVeniceService {
     logger.info("SSL Port: " + sslPort);
     logger.info("Thread count: " + ROUTER_THREAD_POOL_SIZE);
 
-    SSLEngineComponentFactory sslFactory = getSslFactory();
+    SSLEngineComponentFactory sslFactory = SslUtils.getLocalSslFactory();
     RouterServer server = new RouterServer(port, sslPort, clusterName, zkConnection, new ArrayList<>(), clientTimeout, heartbeatTimeout, sslFactory);
     server.start();
 
@@ -363,32 +361,5 @@ public class RouterServer extends AbstractVeniceService {
         throw new VeniceException(e);
       }
     });
-  }
-
-  /**
-   * NOTE: This is LinkedIn only code, only used for local testing, never used in a deployment environment
-   * Gets a factory using the keystore specified in the environment variable.  Expected to be a .p12 file generated
-   * with the LinkedIn id-tool command `id-tool grestin sign`
-   *
-   * @return
-   */
-  private static SSLEngineComponentFactory getSslFactory(){
-    String keyPath = System.getenv(KEYSTORE_ENV);
-    if (null == keyPath){
-      logger.warn("No keystore specified with the env variable: " + KEYSTORE_ENV + ".  SSL support disabled");
-      return null;
-    }
-    try {
-      SSLEngineComponentFactoryImpl.Config sslConfig = new SSLEngineComponentFactoryImpl.Config();
-      sslConfig.setKeyStoreFilePath(keyPath);
-      sslConfig.setKeyStorePassword("work_around_jdk-6879539");
-      sslConfig.setKeyStoreType("PKCS12");
-      sslConfig.setTrustStoreFilePath("/etc/riddler/cacerts");
-      sslConfig.setTrustStoreFilePassword("changeit");
-      sslConfig.setSslEnabled(true);
-      return new SSLEngineComponentFactoryImpl(sslConfig);
-    } catch (Exception e) {
-      throw new VeniceException("Failed to get SSLEngineComponentFactory", e);
-    }
   }
 }
