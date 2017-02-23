@@ -75,7 +75,7 @@ public final class SchemaEntry {
     if (getClass() != obj.getClass())
       return false;
     SchemaEntry other = (SchemaEntry) obj;
-    return schema.toString().equals(other.getSchema().toString());
+    return schema.equals(other.getSchema());
   }
 
   public SchemaEntry clone() {

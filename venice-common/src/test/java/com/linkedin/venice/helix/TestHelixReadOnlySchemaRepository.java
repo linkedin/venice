@@ -129,7 +129,8 @@ public class TestHelixReadOnlySchemaRepository {
         "\t\"type\": \"record\",\n" +
         "\t\"name\": \"key\",\n" +
         "\t\"fields\": [\n" +
-        "\t\t{\"type\": \"string\", \"name\": \"id\", \"doc\": \"id field\"}\n" +
+        "\t\t{\"type\": \"string\", \"name\": \"id\"},\n" +
+        "\t\t{\"type\": [\"string\",\"null\"], \"name\": \"stuff\", \"default\": \"null\", \"doc\": \"new field\"}\n" +
         "\t]\n" +
         "}";
 
