@@ -87,7 +87,7 @@ public class TestSchemaEntry {
     String schemaStr2 = "{\"type\":\"record\",\"name\":\"KeyRecord\",\"fields\":[{\"name\":\"name\",\"type\":\"string\",\"doc\":\"name field\"},{\"name\":\"company\",\"type\":\"string\", \"doc\": \"company name here\"}]}";
     SchemaEntry entry1 = new SchemaEntry(1, schemaStr1);
     SchemaEntry entry2 = new SchemaEntry(2, schemaStr2);
-    Assert.assertNotEquals(entry1, entry2);
+    Assert.assertEquals(entry1, entry2, "Two different schemas with only trivial differences should be equal.");
   }
 
   @Test

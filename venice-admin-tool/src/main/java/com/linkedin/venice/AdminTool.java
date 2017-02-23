@@ -241,8 +241,8 @@ public class AdminTool {
     try(AvroGenericStoreClient<Object> client = AvroStoreClientFactory.getAndStartAvroGenericStoreClient(routerHosts, store)) {
       value = client.get(key).get();
     }
-    outputMap.put("value-class", value.getClass().getCanonicalName());
-    outputMap.put("value", value.toString());
+    outputMap.put("value-class", value == null ? "null" : value.getClass().getCanonicalName());
+    outputMap.put("value", value == null ? "null" : value.toString());
     printObject(outputMap);
   }
 
