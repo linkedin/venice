@@ -665,13 +665,13 @@ public class KafkaPushJob extends AbstractJob {
   @Override
   public void cancel() throws Exception {
     // Attempting to kill job. There's a race condition, but meh. Better kill when you know it's running
-    if (runningJob != null && !runningJob.isComplete()) {
-      try {
+    try {
+      if (null != runningJob && !runningJob.isComplete()) {
         runningJob.killJob();
-      } catch (Exception ex) {
-        // Will try to kill Venice Offline Push Job no matter whether map-reduce job kill throws exception or not.
-        logger.info("Received exception while killing map-reduce job", ex);
       }
+    } catch (Exception ex) {
+      // Will try to kill Venice Offline Push Job no matter whether map-reduce job kill throws exception or not.
+      logger.info("Received exception while killing map-reduce job", ex);
     }
     if (! Utils.isNullOrEmpty(topic)) {
       controllerClient.killOfflinePushJob(clusterName, topic);
