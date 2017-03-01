@@ -1,6 +1,5 @@
 package com.linkedin.venice.router;
 
-
 import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.r2.message.rest.RestException;
 import com.linkedin.r2.message.rest.RestRequest;
@@ -15,9 +14,7 @@ import com.linkedin.venice.integration.utils.D2TestUtils;
 import com.linkedin.venice.integration.utils.MockVeniceRouterWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
-import com.linkedin.venice.utils.FlakyTestRetryAnalyzer;
 import com.linkedin.venice.utils.SslUtils;
-import com.linkedin.venice.utils.TestUtils;
 import java.io.IOException;
 import java.net.URI;
 import java.util.concurrent.ExecutionException;
@@ -33,21 +30,32 @@ import org.codehaus.jackson.map.ObjectMapper;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
-/**
- * Created by mwise on 3/9/16.
- */
 public class TestRouter {
 
-  /**
-   * TODO: Make this test more resilient. It is flaky on slower hardware.
-   */
-  @Test(retryAnalyzer = FlakyTestRetryAnalyzer.class)
-  public void testRouterWithD2() throws Exception {
-    ZkServerWrapper zk = ServiceFactory.getZkServer();
-    D2TestUtils.setupD2Config(zk.getAddress());
+  @Test
+  public void testRouterWithHttpD2() throws Exception {
+    testRouterWithD2(false);
+  }
 
+  @Test
+  public void testRouterWithHttpsD2() throws Exception {
+    testRouterWithD2(true);
+  }
+
+  public void testRouterWithD2(boolean https) throws Exception {
+    ZkServerWrapper zk = ServiceFactory.getZkServer();
+    if (https) {
+      D2TestUtils.setupHttpsD2Config(zk.getAddress());
+    } else {
+      D2TestUtils.setupD2Config(zk.getAddress());
+    }
     MockVeniceRouterWrapper router = ServiceFactory.getMockVeniceRouter(zk.getAddress());
-    D2Client d2Client = D2TestUtils.getAndStartD2Client(zk.getAddress());
+    D2Client d2Client = null;
+    if (https) {
+      d2Client = D2TestUtils.getAndStartHttpsD2Client(zk.getAddress());
+    } else {
+      d2Client = D2TestUtils.getAndStartD2Client(zk.getAddress());
+    }
 
     URI requestUri = new URI("d2://" + D2TestUtils.D2_SERVICE_NAME + "/storage/myStore/myKey"); /* D2 client only supports d2:// scheme */
     RestRequest request = new RestRequestBuilder(requestUri).setMethod("get").build();
@@ -72,15 +80,15 @@ public class TestRouter {
       byte[] value = storeClient.getRaw("storage/myStore/myKey").get();
       Assert.fail("Router with Mock components should trigger VeniceServerException");
     } catch (ExecutionException e){
-      if (e.getCause() instanceof VeniceServerException){
+      if (e.getCause() instanceof VeniceServerException) {
         // expected.
       } else {
         throw e;
       }
     } finally {
       storeClient.close();
-      router.close();
-      zk.close();
+      IOUtils.closeQuietly(router);
+      IOUtils.closeQuietly(zk);
     }
   }
 

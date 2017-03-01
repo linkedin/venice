@@ -64,7 +64,7 @@ public class MockVeniceRouterWrapper extends ProcessWrapper {
       if (Utils.isNullOrEmpty(zkAddress)) {
         d2ServerList = new ArrayList<>();
       } else {
-        d2ServerList = D2TestUtils.getD2Servers(zkAddress, "http://localhost:" + port);
+        d2ServerList = D2TestUtils.getD2Servers(zkAddress, "http://localhost:" + port, "https://localhost:" + sslPortFromPort(port));
       }
       String clusterName = TestUtils.getUniqueString("mock-venice-router-cluster");
       RouterServer router = new RouterServer(port, sslPortFromPort(port), clusterName, mockRepo,

@@ -223,7 +223,7 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
         }
         ByteBuf content =  Unpooled.wrappedBuffer(errMsg.getBytes(StandardCharsets.UTF_8));
 
-        FullHttpResponse response = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, status,content);
+        FullHttpResponse response = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, status, content);
         response.headers()
             .set(HttpHeaderNames.CONTENT_TYPE, HttpConstants.TEXT_PLAIN)
             .set(HttpHeaderNames.CONTENT_LENGTH, content.readableBytes());
