@@ -12,21 +12,40 @@ import com.linkedin.d2.balancer.servers.ZooKeeperServer;
 import com.linkedin.d2.discovery.util.D2Config;
 import com.linkedin.d2.server.factory.D2Server;
 import com.linkedin.d2.spring.D2ServerManager;
+import com.linkedin.r2.transport.common.TransportClientFactory;
+import com.linkedin.r2.transport.http.client.HttpClientFactory;
+import com.linkedin.security.ssl.access.control.SSLEngineComponentFactory;
 import com.linkedin.venice.exceptions.VeniceException;
 
+import com.linkedin.venice.utils.SslUtils;
+import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import javax.net.ssl.SSLParameters;
+import org.apache.commons.collections.map.HashedMap;
+import org.testng.Assert;
+
 
 public class D2TestUtils {
   public static final String D2_SERVICE_NAME = "venice-service";
+  public static final String D2_CLUSTER_NAME = "VeniceStorageService";
   private static final ObjectMapper mapper = new ObjectMapper();
 
+
   public static void setupD2Config(String zkHosts){
+    setupD2Config(zkHosts, false);
+  }
+  public static void setupHttpsD2Config(String zkHosts){
+    setupD2Config(zkHosts, true);
+  }
+  public static void setupD2Config(String zkHosts, boolean https){
 
     int sessionTimeout = 5000;
     String basePath = "/d2";
@@ -35,18 +54,8 @@ public class D2TestUtils {
     D2Config d2Config;
     try {
       Map<String, Object> clusterDefaults = Collections.EMPTY_MAP;
-      // see: https://github.com/linkedin/rest.li/blob/master/examples/d2-quickstart/config/src/main/d2Config/d2Config.json
-      String serviceDefaultsJson =
-          "{\"loadBalancerStrategyList\":[\"degraderV3\",\"degraderV2\"],\"prioritizedSchemes\":[\"http\"],\"loadBalancerStrategyProperties\":{\"http.loadBalancer.updateIntervalMs\":\"5000\",\"http.loadBalancer.pointsPerWeight\":\"100\"},\"transportClientProperties\":{\"http.requestTimeout\":\"10000\"},\"degraderProperties\":{\"degrader.minCallCount\":\"10\",\"degrader.lowErrorRate\":\"0.01\",\"degrader.highErrorRate\":\"0.1\"}}";
-      Map<String, Object> serviceDefaults = mapper.readValue(serviceDefaultsJson, Map.class);
-      /*
-       * The serviceConfig sets up a d2 cluster called "VeniceStorageService"
-       * It has one service called "venice-service"
-       * The "path" field of "/" maps requests of the form d2://venice-service/bar to http://host:port/bar
-       *   if the "path" field was "/foo" then it would map d2://venice-server/bar to http://host:port/foo/bar
-       */
-      String serviceConfigJson = "{\"VeniceStorageService\":{\"services\":{\"" + D2_SERVICE_NAME + "\":{\"path\":\"/\"}}}}";
-      Map<String, Object> clusterServiceConfigurations = mapper.readValue(serviceConfigJson, Map.class);
+      Map<String, Object> serviceDefaults = getD2ServiceDefaults();
+      Map<String, Object> clusterServiceConfigurations = getD2ServiceConfig(D2_CLUSTER_NAME, D2_SERVICE_NAME, https);
       Map<String, Object> extraClusterServiceConfigurations = Collections.EMPTY_MAP;
       Map<String, Object> serviceVariants = Collections.EMPTY_MAP;
 
@@ -111,7 +120,6 @@ public class D2TestUtils {
   }
 
   /**
-   *
    * @param zkHosts
    * @param localUris varags if we want to announce on multiple uris (for example on an http port and https port)
    * @return
@@ -126,14 +134,37 @@ public class D2TestUtils {
   }
 
   public static D2Client getAndStartD2Client(String zkHosts) {
+    return getAndStartD2Client(zkHosts, false);
+  }
+
+  public static D2Client getAndStartHttpsD2Client(String zkHosts) {
+    return getAndStartD2Client(zkHosts, true);
+  }
+
+  public static D2Client getAndStartD2Client(String zkHosts, boolean https) {
     int sessionTimeout = 5000;
     String basePath = "/d2";
-    D2Client d2Client =
-        new D2ClientBuilder().setZkHosts(zkHosts).setZkSessionTimeout(sessionTimeout, TimeUnit.MILLISECONDS)
-            .setZkStartupTimeout(sessionTimeout, TimeUnit.MILLISECONDS)
-            .setLbWaitTimeout(sessionTimeout, TimeUnit.MILLISECONDS)
-            .setBasePath(basePath)
-            .build();
+    SSLEngineComponentFactory sslFactory = SslUtils.getLocalSslFactory();
+    Map<String, TransportClientFactory> transportClients = new HashMap<>();
+    TransportClientFactory httpTransport = new HttpClientFactory();
+    transportClients.put("http", httpTransport);
+    transportClients.put("https", httpTransport);
+
+    D2ClientBuilder builder = new D2ClientBuilder()
+        .setZkHosts(zkHosts)
+        .setZkSessionTimeout(sessionTimeout, TimeUnit.MILLISECONDS)
+        .setZkStartupTimeout(sessionTimeout, TimeUnit.MILLISECONDS)
+        .setLbWaitTimeout(sessionTimeout, TimeUnit.MILLISECONDS)
+        .setBasePath(basePath)
+        .setClientFactories(transportClients);
+
+    if (https) {
+      builder.setSSLContext(sslFactory.getSSLContext())
+          .setSSLParameters(sslFactory.getSSLParameters())
+          .setIsSSLEnabled(true);
+    }
+
+    D2Client d2Client = builder.build();
 
     CountDownLatch latch = new CountDownLatch(1);
     d2Client.start(new Callback<None>() {
@@ -154,4 +185,83 @@ public class D2TestUtils {
     }
     return d2Client;
   }
+
+  /**
+   * @see <a href="https://github.com/linkedin/rest.li/blob/master/examples/d2-quickstart/config/src/main/d2Config/d2Config.json">D2 Quickstart</a>
+   */
+  public static Map<String, Object> getD2ServiceDefaults() {
+
+    List<String> loadBalancerStrategyList = new ArrayList<>();
+    loadBalancerStrategyList.add("degraderV3");
+    loadBalancerStrategyList.add("degraderV2");
+
+    List<String> prioritizedSchemes = new ArrayList<>();
+    prioritizedSchemes.add("http");
+    prioritizedSchemes.add("https");
+
+    Map<String, String> loadBalancerStrategyProperties = new HashMap<>();
+    loadBalancerStrategyProperties.put("http.loadBalancer.updateIntervalMs", "5000");
+    loadBalancerStrategyProperties.put("http.loadBalancer.pointsPerWeight", "100");
+
+    Map<String, String> transportClientProperties = new HashMap<>();
+    transportClientProperties.put("http.requestTimeout", "10000");
+
+    Map<String, String> degraderProperties = new HashMap<>();
+    degraderProperties.put("degrader.minCallCount", "10");
+    degraderProperties.put("degrader.lowErrorRate", "0.01");
+    degraderProperties.put("degrader.highErrorRate", "0.1");
+
+    Map<String, Object> serviceDefaults = new HashMap<>();
+    serviceDefaults.put("loadBalancerStrategyList", loadBalancerStrategyList);
+    serviceDefaults.put("prioritizedSchemes", prioritizedSchemes);
+    serviceDefaults.put("loadBalancerStrategyProperties", loadBalancerStrategyProperties);
+    serviceDefaults.put("transportClientProperties", transportClientProperties);
+    serviceDefaults.put("degraderProperties", degraderProperties);
+
+    return serviceDefaults;
+  }
+
+  /**
+   * Generates a nested map like the following (if cluster=="VeniceStorageService", service=="venice-service", https==true)
+   *
+   * {
+   *   "VeniceStorageService" : {
+   *     "services" : {
+   *       "venice-service" : {
+   *         "path" : "/",
+   *         "prioritizedSchemes" : "https"
+   *       }
+   *     }
+   *   }
+   * }
+   *
+   * @param cluster D2 name for the cluster of servers that provide a common set of services (this function only supports one service)
+   * @param service Name of the service provided by this cluster
+   * @param https true if this service should only be queried with https
+   * @return
+   *
+   * @see <a href="https://github.com/linkedin/rest.li/blob/master/examples/d2-quickstart/config/src/main/d2Config/d2Config.json">D2 Quickstart</a>
+   */
+  public static Map<String, Object> getD2ServiceConfig(String cluster, String service, boolean https) {
+    Map<String, Object> serviceMap = new HashMap<>();
+    serviceMap.put("path", "/");
+    if (https) {
+      System.err.println("DEBUG using https ssl");
+      serviceMap.put("prioritizedSchemes", Arrays.asList("https"));
+    } else {
+      serviceMap.put("prioritizedSchemes", Arrays.asList("http"));
+    }
+
+    Map<String, Object> servicesMap = new HashMap<>();
+    servicesMap.put(service, serviceMap);
+
+    Map<String, Object> clusterMap = new HashMap<>();
+    clusterMap.put("services", servicesMap);
+
+    Map<String, Object> serviceConfig = new HashMap<>();
+    serviceConfig.put(cluster, clusterMap);
+
+    return serviceConfig;
+  }
+
 }
