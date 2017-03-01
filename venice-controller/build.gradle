@@ -31,7 +31,7 @@ dependencies {
 
   compile 'commons-io:commons-io:2.4'
   compile 'com.sleepycat:je:5.0.104'
-  compile 'com.sparkjava:spark-core:2.5'
+  compile 'com.sparkjava:spark-core:2.5.5'
 
   testCompile project(':venice-server')
   testCompile project(':venice-router')
