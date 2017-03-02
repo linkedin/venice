@@ -19,6 +19,17 @@ public class VeniceServerConfig extends VeniceClusterConfig {
    * Queue capacity for consumer thread allocated by every {@link com.linkedin.venice.kafka.consumer.StoreConsumptionTask}
    */
   private final int consumerRecordsQueueCapacity;
+  /**
+   * Minimum number of thread that the thread pool would keep to run the Helix state transition. If a thread is idle,
+   * the thread pool would destroy it as long as the number of thread is larger than this number.
+   */
+  private final int minStateTransitionThreadNumber;
+  /**
+   * Maximum number of thread that the thread pool would keep to run the Helix state transition. The thread pool would
+   * create a thread for a state transition until the number of thread equals to this number.
+   */
+  private final int maxStateTransitionThreadNumber;
+
 
   public VeniceServerConfig(VeniceProperties serverProperties) throws ConfigurationException {
     super(serverProperties);
@@ -33,6 +44,8 @@ public class VeniceServerConfig extends VeniceClusterConfig {
      * If the default value is not appropriate, we can adjust it by this config.
      */
     consumerRecordsQueueCapacity = serverProperties.getInt(CONSUMER_RECORDS_QUEUE_CAPACITY, 10);
+    minStateTransitionThreadNumber = serverProperties.getInt(MIN_STATE_TRANSITION_THREAD_NUMBER, 40);
+    maxStateTransitionThreadNumber = serverProperties.getInt(MAX_STATE_TRANSITION_THREAD_NUMBER, 100);
   }
 
   public int getListenerPort() {
@@ -63,5 +76,13 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public int getConsumerRecordsQueueCapacity() {
     return consumerRecordsQueueCapacity;
+  }
+
+  public int getMinStateTransitionThreadNumber() {
+    return minStateTransitionThreadNumber;
+  }
+
+  public int getMaxStateTransitionThreadNumber() {
+    return maxStateTransitionThreadNumber;
   }
 }

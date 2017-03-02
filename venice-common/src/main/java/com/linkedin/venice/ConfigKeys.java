@@ -76,6 +76,8 @@ public class ConfigKeys {
   public static final String AUTOCREATE_DATA_PATH = "autocreate.data.path";
   public static final String ENABLE_SERVER_WHITE_LIST = "enable.server.whitelist";
   public static final String CONSUMER_RECORDS_QUEUE_CAPACITY = "consumer.records.queue.capacity";
+  public static final String MIN_STATE_TRANSITION_THREAD_NUMBER = "min.state.transition.thread.number";
+  public static final String MAX_STATE_TRANSITION_THREAD_NUMBER = "max.state.transition.thread.number";
 
 
   /**
