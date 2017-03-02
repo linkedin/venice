@@ -54,10 +54,6 @@ public class HelixParticipationService extends AbstractVeniceService implements 
 
   private HelixStatusMessageChannel messageChannel;
 
-  // TODO put in configuration
-  private final int minStateTransitionThreadNumber = 40;
-  private final int maxStateTransitionThreadNumber= 100;
-
   public HelixParticipationService(@NotNull KafkaConsumerService kafkaConsumerService,
           @NotNull StorageService storageService,
           @NotNull VeniceConfigLoader veniceConfigLoader,
@@ -74,7 +70,8 @@ public class HelixParticipationService extends AbstractVeniceService implements 
     statusMessageRetryDuration = veniceConfigLoader.getVeniceClusterConfig().getStatusMessageRetryDurationMs();
     instance = new Instance(participantName,Utils.getHostName(), port);
     helixStateTransitionExecutorService =
-        new ThreadPoolExecutor(minStateTransitionThreadNumber, maxStateTransitionThreadNumber, 300L, TimeUnit.SECONDS,
+        new ThreadPoolExecutor(veniceConfigLoader.getVeniceServerConfig().getMinStateTransitionThreadNumber(),
+            veniceConfigLoader.getVeniceServerConfig().getMaxStateTransitionThreadNumber(), 300L, TimeUnit.SECONDS,
             new LinkedBlockingQueue<>(), new DaemonThreadFactory("venice-state-transition"));
     stateModelFactory = new VeniceStateModelFactory(kafkaConsumerService, storageService, veniceConfigLoader,
         helixStateTransitionExecutorService);
