@@ -74,6 +74,7 @@ public class TestVeniceParentHelixAdmin {
 
   private TopicManager topicManager;
   private VeniceHelixAdmin internalAdmin;
+  private VeniceControllerConfig config;
   private ZkClient zkClient;
   private VeniceWriter veniceWriter;
   private VeniceParentHelixAdmin parentAdmin;
@@ -99,7 +100,7 @@ public class TestVeniceParentHelixAdmin {
         .when(internalAdmin)
         .getAdapterSerializer();
 
-    VeniceControllerConfig config = mock(VeniceControllerConfig.class);
+    config = mock(VeniceControllerConfig.class);
     doReturn(KAFKA_REPLICA_FACTOR).when(config)
         .getKafkaReplicaFactor();
     doReturn(3).when(config)
@@ -532,15 +533,52 @@ public class TestVeniceParentHelixAdmin {
     verify(internalAdmin).addVersion(clusterName, storeName, VeniceHelixAdmin.VERSION_ID_UNSET, 1, 1, false);
   }
 
+  /**
+   * This class is used to assist unit test for {@link VeniceParentHelixAdmin#incrementVersion(String, String, int, int)}
+   * to mock various offline job status.
+   */
+  private static class PartialMockVeniceParentHelixAdmin extends VeniceParentHelixAdmin {
+    private ExecutionStatus offlineJobStatus = ExecutionStatus.NOT_CREATED;
+
+    public PartialMockVeniceParentHelixAdmin(VeniceHelixAdmin veniceHelixAdmin, VeniceControllerConfig config) {
+      super(veniceHelixAdmin, config);
+    }
+
+    public void setOfflineJobStatus(ExecutionStatus executionStatus) {
+      this.offlineJobStatus = executionStatus;
+    }
+
+    @Override
+    public OfflineJobStatus getOffLineJobStatus(String clusterName, String kafkaTopic) {
+      return new OfflineJobStatus(offlineJobStatus);
+    }
+  }
+
   @Test (expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = ".*exists for store.*")
-  public void testIncrementVersionWhenPreviousTopicsExist() {
-    String storeName = "test_store";
-    String previousKafkaTopic = "test_store_v1";
+  public void testIncrementVersionWhenPreviousTopicsExistAndOfflineJobIsStillRunning() {
+    String storeName = TestUtils.getUniqueString("test_store");
+    String previousKafkaTopic = storeName + "_v1";
     String unknownTopic = "1unknown_topic";
     doReturn(new HashSet<String>(Arrays.asList(unknownTopic, previousKafkaTopic)))
         .when(topicManager)
         .listTopics();
-    parentAdmin.incrementVersion(clusterName, storeName, 1, 1);
+    PartialMockVeniceParentHelixAdmin partialMockParentAdmin = new PartialMockVeniceParentHelixAdmin(internalAdmin, config);
+    partialMockParentAdmin.setOfflineJobStatus(ExecutionStatus.PROGRESS);
+    partialMockParentAdmin.incrementVersion(clusterName, storeName, 1, 1);
+  }
+
+  @Test
+  public void testIncrementVersionWhenPreviousTopicsExistAndOfflineJobIsAlreadyDone() {
+    String storeName = TestUtils.getUniqueString("test_store");
+    String previousKafkaTopic = storeName + "_v1";
+    String unknownTopic = "1unknown_topic";
+    doReturn(new HashSet<String>(Arrays.asList(unknownTopic, previousKafkaTopic)))
+        .when(topicManager)
+        .listTopics();
+    PartialMockVeniceParentHelixAdmin partialMockParentAdmin = new PartialMockVeniceParentHelixAdmin(internalAdmin, config);
+    partialMockParentAdmin.setOfflineJobStatus(ExecutionStatus.COMPLETED);
+    partialMockParentAdmin.incrementVersion(clusterName, storeName, 1, 1);
+    verify(internalAdmin).addVersion(clusterName, storeName, VeniceHelixAdmin.VERSION_ID_UNSET, 1, 1, false);
   }
 
   @Test
