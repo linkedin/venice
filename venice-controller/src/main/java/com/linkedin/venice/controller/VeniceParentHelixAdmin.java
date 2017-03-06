@@ -313,6 +313,18 @@ public class VeniceParentHelixAdmin implements Admin {
         continue;
       }
       if (storeNameForCurrentTopic.equals(storeName)) {
+        /**
+         * Check the offline job status for this topic, and if it has already been terminated, we will skip it.
+         * Otherwise, an exception will be thrown to stop concurrent data pushes.
+         *
+         * {@link #getOffLineJobStatus(String, String)} will remove the topic if the offline job has been terminated,
+         * so we don't need to explicitly remove it here.
+          */
+        Admin.OfflineJobStatus offlineJobStatus = getOffLineJobStatus(clusterName, topic);
+        if (offlineJobStatus.getExecutionStatus().isTerminal()) {
+          logger.info("Offline job for the existing topic: " + topic + " is already done, just skip it");
+          continue;
+        }
         throw new VeniceException("Topic: " + topic + " exists for store: " + storeName +
             ", please wait for previous job to be finished, and reach out Venice team if it is" +
             " not this case");
