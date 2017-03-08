@@ -164,7 +164,7 @@ public class TestAdminConsumptionTask {
     executor.submit(task);
     verify(admin, timeout(TIMEOUT).atLeastOnce())
         .isMasterController(clusterName);
-    verify(mockKafkaConsumer, timeout(TIMEOUT).never())
+    verify(mockKafkaConsumer, never())
         .subscribe(any(), anyInt(), any());
     task.close();
     executor.shutdown();
@@ -181,7 +181,7 @@ public class TestAdminConsumptionTask {
     executor.submit(task);
     verify(admin, timeout(TIMEOUT).atLeastOnce())
         .isMasterController(clusterName);
-    verify(mockKafkaConsumer, timeout(TIMEOUT).never())
+    verify(mockKafkaConsumer, never())
         .subscribe(any(), anyInt(), any());
     task.close();
     executor.shutdown();
@@ -494,8 +494,8 @@ public class TestAdminConsumptionTask {
     verify(mockKafkaConsumer, timeout(TIMEOUT))
         .unSubscribe(any(), anyInt());
     verify(admin, timeout(TIMEOUT)).addStore(clusterName, storeName1, owner, keySchema, valueSchema);
-    verify(admin, timeout(TIMEOUT).never()).addStore(clusterName, storeName2, owner, keySchema, valueSchema);
-    verify(admin, timeout(TIMEOUT).never()).addStore(clusterName, storeName3, owner, keySchema, valueSchema);
+    verify(admin, never()).addStore(clusterName, storeName2, owner, keySchema, valueSchema);
+    verify(admin, never()).addStore(clusterName, storeName3, owner, keySchema, valueSchema);
   }
 
   @Test (timeOut = TIMEOUT)
@@ -591,7 +591,7 @@ public class TestAdminConsumptionTask {
         .subscribe(any(), anyInt(), any());
     verify(mockKafkaConsumer, timeout(TIMEOUT))
         .unSubscribe(any(), anyInt());
-    verify(admin, timeout(TIMEOUT).never()).killOfflineJob(clusterName, storeTopicName);
+    verify(admin, never()).killOfflineJob(clusterName, storeTopicName);
   }
 
   private byte[] getStoreCreationMessage(String clusterName, String storeName, String owner, String keySchema, String valueSchema) {
