@@ -37,6 +37,7 @@ import java.net.SocketAddress;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
@@ -61,7 +62,7 @@ public class RouterServer extends AbstractVeniceService {
   private final MetricsRepository metricsRepository;
   private final int clientTimeout;
   private final int heartbeatTimeout;
-  private final SSLEngineComponentFactory sslFactory;
+  private final Optional<SSLEngineComponentFactory> sslFactory;
 
   // Mutable state
   // TODO: Make these final once the test constructors are cleaned up.
@@ -107,7 +108,7 @@ public class RouterServer extends AbstractVeniceService {
     logger.info("SSL Port: " + sslPort);
     logger.info("Thread count: " + ROUTER_THREAD_POOL_SIZE);
 
-    SSLEngineComponentFactory sslFactory = SslUtils.getLocalSslFactory();
+    Optional<SSLEngineComponentFactory> sslFactory = Optional.of(SslUtils.getLocalSslFactory());
     RouterServer server = new RouterServer(port, sslPort, clusterName, zkConnection, new ArrayList<>(), clientTimeout, heartbeatTimeout, sslFactory);
     server.start();
 
@@ -133,11 +134,11 @@ public class RouterServer extends AbstractVeniceService {
     return TehutiUtils.getMetricsRepository(ROUTER_SERVICE_NAME);
   }
 
-  public RouterServer(int port, int sslPort, String clusterName, String zkConnection, List<D2Server> d2Servers, SSLEngineComponentFactory sslFactory){
+  public RouterServer(int port, int sslPort, String clusterName, String zkConnection, List<D2Server> d2Servers, Optional<SSLEngineComponentFactory> sslFactory){
     this(port, sslPort, clusterName, zkConnection, d2Servers, 10000, 1000, sslFactory);
   }
 
-  public RouterServer(int port, int sslPort, String clusterName, String zkConnection, List<D2Server> d2ServerList, int clientTimeout, int heartbeatTimeout, SSLEngineComponentFactory sslFactory){
+  public RouterServer(int port, int sslPort, String clusterName, String zkConnection, List<D2Server> d2ServerList, int clientTimeout, int heartbeatTimeout, Optional<SSLEngineComponentFactory> sslFactory){
     this(port,
         sslPort,
         clusterName,
@@ -147,12 +148,11 @@ public class RouterServer extends AbstractVeniceService {
         heartbeatTimeout,
         TehutiUtils.getMetricsRepository(ROUTER_SERVICE_NAME),
         sslFactory);
-
   }
 
   public RouterServer(int port, int sslPort, String clusterName, String zkConnection, List<D2Server> d2ServerList,
                       int clientTimeout, int heartbeatTimeout, MetricsRepository metricsRepository,
-                      SSLEngineComponentFactory sslEngineComponentFactory) {
+                      Optional<SSLEngineComponentFactory> sslEngineComponentFactory) {
     this.port = port;
     this.sslPort = sslPort;
     this.clientTimeout = clientTimeout;
@@ -194,7 +194,7 @@ public class RouterServer extends AbstractVeniceService {
                       HelixReadOnlyStoreRepository metadataRepository,
                       HelixReadOnlySchemaRepository schemaRepository,
                       List<D2Server> d2ServerList,
-                      SSLEngineComponentFactory sslFactory) {
+                      Optional<SSLEngineComponentFactory> sslFactory){
     this.port = port;
     this.sslPort = sslPort;
     this.clusterName = clusterName;
@@ -251,6 +251,7 @@ public class RouterServer extends AbstractVeniceService {
         })
         .build();
 
+    VerifySslHandler verifySsl = new VerifySslHandler();
     Router secureRouter = Router.builder(scatterGather)
         .name("SecureVeniceRouterHttps")
         .resourceRegistry(registry)
@@ -262,12 +263,12 @@ public class RouterServer extends AbstractVeniceService {
         .timeoutProcessor(timeoutProcessor)
         .serverSocketOptions(serverSocketOptions)
         .beforeHttpServerCodec(ChannelPipeline.class, (pipeline) -> {
-          if (null != sslFactory) {
-            pipeline.addFirst("SSL Initializer", new SSLInitializer(sslFactory));
+          if (sslFactory.isPresent()) {
+            pipeline.addFirst("SSL Initializer", new SSLInitializer(sslFactory.get()));
           }
         })
         .beforeHttpRequestHandler(ChannelPipeline.class, (pipeline) -> {
-          pipeline.addLast("SSL Verifier", new VerifySslHandler());
+          pipeline.addLast("SSL Verifier", verifySsl);
           pipeline.addLast("MetadataHandler", metaDataHandler);
         })
         .build();

@@ -183,18 +183,27 @@ public class VeniceParentHelixAdmin implements Admin {
   private void waitingLastOffsetToBeConsumed(String clusterName) {
     String topicName = AdminTopicUtils.getTopicNameFromClusterName(clusterName);
 
-    // Blocking until some consumer consumes the new message or timeout
+    // Blocking until consumer consumes the new message or timeout
     long startTime = SystemTime.INSTANCE.getMilliseconds();
     while (true) {
-      // Check whether timeout
-      long currentTime = SystemTime.INSTANCE.getMilliseconds();
-      if (currentTime - startTime > waitingTimeForConsumptionMs) {
-        throw new VeniceException("Some operation is going on, and the server could not finish current request", veniceHelixAdmin.getLastException(clusterName));
-      }
       long consumedOffset = offsetManager.getLastOffset(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID).getOffset();
       if (consumedOffset >= lastOffset) {
         break;
       }
+      // Check whether timeout
+      long currentTime = SystemTime.INSTANCE.getMilliseconds();
+      if (currentTime - startTime > waitingTimeForConsumptionMs) {
+        Exception lastException = veniceHelixAdmin.getLastException(clusterName);
+        String exceptionMsg = null == lastException ? "null" : lastException.getMessage();
+        String errMsg = "Timeout " + waitingTimeForConsumptionMs + "ms waiting for admin consumption to catch up.";
+        errMsg += "  consumedOffset=" + consumedOffset + " lastOffset=" + lastOffset;
+        errMsg += "  Last exception: " + exceptionMsg;
+        if (getAdminCommandExecutionTracker().isPresent()){
+          errMsg += "  RunningExecutions: " + getAdminCommandExecutionTracker().get().executionsAsString();
+        }
+        throw new VeniceException(errMsg, lastException);
+      }
+
       logger.info("Waiting util consumed " + lastOffset + ", currently at " + consumedOffset);
       Utils.sleep(SLEEP_INTERVAL_FOR_DATA_CONSUMPTION_IN_MS);
     }

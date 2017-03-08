@@ -7,6 +7,7 @@ import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.TestUtils;
 import java.io.File;
 import java.util.ArrayList;
+import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 
 
@@ -35,7 +36,7 @@ public class VeniceRouterWrapper extends ProcessWrapper {
     String zkAddress = kafkaBrokerWrapper.getZkAddress();
 
     return (serviceName, port, dataDirectory) -> {
-      RouterServer router = new RouterServer(port, sslPortFromPort(port), clusterName, zkAddress, new ArrayList<>(), SslUtils.getLocalSslFactory());
+      RouterServer router = new RouterServer(port, sslPortFromPort(port), clusterName, zkAddress, new ArrayList<>(), Optional.of(SslUtils.getLocalSslFactory()));
       return new VeniceRouterWrapper(serviceName, dataDirectory, router, clusterName, port, zkAddress);
     };
   }
@@ -72,7 +73,7 @@ public class VeniceRouterWrapper extends ProcessWrapper {
   @Override
   protected void newProcess()
       throws Exception {
-    service = new RouterServer(port, sslPortFromPort(port), clusterName, zkAddress, new ArrayList<>(), SslUtils.getLocalSslFactory());
+    service = new RouterServer(port, sslPortFromPort(port), clusterName, zkAddress, new ArrayList<>(), Optional.of(SslUtils.getLocalSslFactory()));
   }
 
   public HelixRoutingDataRepository getRoutingDataRepository(){

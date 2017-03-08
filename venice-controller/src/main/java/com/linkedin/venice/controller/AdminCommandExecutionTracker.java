@@ -117,4 +117,8 @@ public class AdminCommandExecutionTracker {
   protected Map<String, ControllerClient> getFabricToControllerClientsMap() {
     return fabricToControllerClientsMap;
   }
+
+  public String executionsAsString(){
+    return idToExecutionMap.toString();
+  }
 }

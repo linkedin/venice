@@ -1,5 +1,6 @@
 package com.linkedin.venice.listener;
 
+import com.linkedin.security.ssl.access.control.SSLEngineComponentFactory;
 import com.linkedin.venice.offsets.OffsetManager;
 import com.linkedin.venice.server.StoreRepository;
 import com.linkedin.venice.server.VeniceConfigLoader;
@@ -11,6 +12,7 @@ import io.netty.channel.EventLoopGroup;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.nio.NioServerSocketChannel;
 import io.tehuti.metrics.MetricsRepository;
+import java.util.Optional;
 import org.apache.log4j.Logger;
 
 /**
@@ -31,7 +33,8 @@ public class ListenerService extends AbstractVeniceService{
   public ListenerService(StoreRepository storeRepository,
                          OffsetManager offsetManager,
                          VeniceConfigLoader veniceConfigLoader,
-                         MetricsRepository metricsRepository) {
+                         MetricsRepository metricsRepository,
+                         Optional<SSLEngineComponentFactory> sslFactory) {
     this.port = veniceConfigLoader.getVeniceServerConfig().getListenerPort();
 
     //TODO: configurable worker group
@@ -40,7 +43,7 @@ public class ListenerService extends AbstractVeniceService{
 
     bootstrap = new ServerBootstrap();
     bootstrap.group(bossGroup, workerGroup).channel(NioServerSocketChannel.class)
-        .childHandler(new HttpChannelInitializer(storeRepository, offsetManager, metricsRepository))    // For HTTP reads (GET storage/store/partition/key)
+        .childHandler(new HttpChannelInitializer(storeRepository, offsetManager, metricsRepository, sslFactory))    // For HTTP reads (GET storage/store/partition/key)
         .option(ChannelOption.SO_BACKLOG, nettyBacklogSize)
         .childOption(ChannelOption.SO_KEEPALIVE, true)
         .option(ChannelOption.SO_REUSEADDR, true)

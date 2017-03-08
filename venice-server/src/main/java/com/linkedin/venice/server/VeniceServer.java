@@ -1,6 +1,7 @@
 package com.linkedin.venice.server;
 
 import com.google.common.collect.ImmutableList;
+import com.linkedin.security.ssl.access.control.SSLEngineComponentFactory;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.config.VeniceClusterConfig;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -23,6 +24,7 @@ import io.tehuti.metrics.MetricsRepository;
 import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.apache.helix.manager.zk.ZkClient;
@@ -34,6 +36,7 @@ public class VeniceServer {
 
   private static final Logger logger = Logger.getLogger(VeniceServer.class);
   private final VeniceConfigLoader veniceConfigLoader;
+  private final Optional<SSLEngineComponentFactory> sslFactory;
   private final AtomicBoolean isStarted;
 
   private StorageService storageService;
@@ -55,9 +58,14 @@ public class VeniceServer {
   }
 
   public VeniceServer(VeniceConfigLoader veniceConfigLoader, MetricsRepository  metricsRepository) {
+    this(veniceConfigLoader, metricsRepository, null);
+  }
+
+  public VeniceServer(VeniceConfigLoader veniceConfigLoader, MetricsRepository  metricsRepository, Optional<SSLEngineComponentFactory> sslFactory) {
     this.isStarted = new AtomicBoolean(false);
     this.veniceConfigLoader = veniceConfigLoader;
     this.metricsRepository = metricsRepository;
+    this.sslFactory = sslFactory;
     if (!isServerInWhiteList(veniceConfigLoader.getVeniceClusterConfig().getZookeeperAddress(),
                              veniceConfigLoader.getVeniceClusterConfig().getClusterName(),
                              veniceConfigLoader.getVeniceServerConfig().getListenerPort(),
@@ -130,7 +138,7 @@ public class VeniceServer {
 
     //create and add ListenerServer for handling GET requests
     ListenerService listenerService =
-        new ListenerService(storageService.getStoreRepository(), offSetService, veniceConfigLoader, metricsRepository);
+        new ListenerService(storageService.getStoreRepository(), offSetService, veniceConfigLoader, metricsRepository, sslFactory);
     services.add(listenerService);
 
 
