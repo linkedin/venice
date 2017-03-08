@@ -733,7 +733,7 @@ public class TestVeniceParentHelixAdmin {
     offlineJobStatus = VeniceParentHelixAdmin.getOffLineJobStatus("mycluster", "topic2", completeMap, topicManager);
     extraInfo = offlineJobStatus.getExtraInfo();
     Assert.assertEquals(offlineJobStatus.getExecutionStatus(), ExecutionStatus.NOT_CREATED);  // Do we want this to be Progress?  limitation of ordering used in aggregation code
-    verify(topicManager, timeout(TIMEOUT_IN_MS).never()).syncDeleteTopic("topic2");
+    verify(topicManager, never()).syncDeleteTopic("topic2");
     Assert.assertEquals(extraInfo.get("cluster"), ExecutionStatus.COMPLETED.toString());
     Assert.assertEquals(extraInfo.get("cluster2"), ExecutionStatus.COMPLETED.toString());
     Assert.assertEquals(extraInfo.get("cluster3"), ExecutionStatus.COMPLETED.toString());
@@ -745,7 +745,7 @@ public class TestVeniceParentHelixAdmin {
     offlineJobStatus = VeniceParentHelixAdmin.getOffLineJobStatus("mycluster", "topic3", progressMap, topicManager);
     extraInfo = offlineJobStatus.getExtraInfo();
     Assert.assertEquals(offlineJobStatus.getExecutionStatus(), ExecutionStatus.NOT_CREATED);
-    verify(topicManager,timeout(TIMEOUT_IN_MS).never()).syncDeleteTopic("topic3");
+    verify(topicManager, never()).syncDeleteTopic("topic3");
     Assert.assertEquals(extraInfo.get("cluster"), ExecutionStatus.NOT_CREATED.toString());
     Assert.assertEquals(extraInfo.get("cluster3"), ExecutionStatus.NOT_CREATED.toString());
 
@@ -753,7 +753,7 @@ public class TestVeniceParentHelixAdmin {
     offlineJobStatus = VeniceParentHelixAdmin.getOffLineJobStatus("mycluster", "topic4", progressMap, topicManager);
     extraInfo = offlineJobStatus.getExtraInfo();
     Assert.assertEquals(offlineJobStatus.getExecutionStatus(), ExecutionStatus.NEW);
-    verify(topicManager, timeout(TIMEOUT_IN_MS).never()).syncDeleteTopic("topic4");
+    verify(topicManager, never()).syncDeleteTopic("topic4");
     Assert.assertEquals(extraInfo.get("cluster"), ExecutionStatus.NOT_CREATED.toString());
     Assert.assertEquals(extraInfo.get("cluster3"), ExecutionStatus.NOT_CREATED.toString());
     Assert.assertEquals(extraInfo.get("cluster5"), ExecutionStatus.NEW.toString());
@@ -762,21 +762,21 @@ public class TestVeniceParentHelixAdmin {
     offlineJobStatus = VeniceParentHelixAdmin.getOffLineJobStatus("mycluster", "topic5", progressMap, topicManager);
     extraInfo = offlineJobStatus.getExtraInfo();
     Assert.assertEquals(offlineJobStatus.getExecutionStatus(), ExecutionStatus.PROGRESS);
-    verify(topicManager, timeout(TIMEOUT_IN_MS).never()).syncDeleteTopic("topic5");;
+    verify(topicManager, never()).syncDeleteTopic("topic5");;
     Assert.assertEquals(extraInfo.get("cluster7"), ExecutionStatus.PROGRESS.toString());
 
     progressMap.put("cluster9", clientMap.get(ExecutionStatus.STARTED));
     offlineJobStatus = VeniceParentHelixAdmin.getOffLineJobStatus("mycluster", "topic6", progressMap, topicManager);
     extraInfo = offlineJobStatus.getExtraInfo();
     Assert.assertEquals(offlineJobStatus.getExecutionStatus(), ExecutionStatus.PROGRESS);
-    verify(topicManager, timeout(TIMEOUT_IN_MS).never()).syncDeleteTopic("topic6");
+    verify(topicManager, never()).syncDeleteTopic("topic6");
     Assert.assertEquals(extraInfo.get("cluster9"), ExecutionStatus.STARTED.toString());
 
     progressMap.put("cluster11", clientMap.get(ExecutionStatus.COMPLETED));
     offlineJobStatus = VeniceParentHelixAdmin.getOffLineJobStatus("mycluster", "topic7", progressMap, topicManager);
     extraInfo = offlineJobStatus.getExtraInfo();
     Assert.assertEquals(offlineJobStatus.getExecutionStatus(), ExecutionStatus.PROGRESS);
-    verify(topicManager, timeout(TIMEOUT_IN_MS).never()).syncDeleteTopic("topic7");
+    verify(topicManager, never()).syncDeleteTopic("topic7");
     Assert.assertEquals(extraInfo.get("cluster11"), ExecutionStatus.COMPLETED.toString());
 
     // 1 in 4 failures is ERROR

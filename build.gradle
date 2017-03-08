@@ -98,7 +98,7 @@ subprojects {
     compile 'javax.validation:validation-api:1.0.0.GA'
 
     testCompile libraries.testng
-    testCompile 'org.mockito:mockito-all:1.9.5'
+    testCompile 'org.mockito:mockito-all:1.10.19'
     // Test utils and framework for all unit tests and integration tests.
     testCompile project(':venice-test-common')
   }

@@ -100,7 +100,7 @@ public class TestTopicMonitor {
         () -> kafkaClient.listTopics().containsKey(storeName + "_v2"));
     kafkaClient.close();
     // No version creation if not master controller
-    Mockito.verify(mockAdmin, Mockito.timeout(1000).never()).addVersion(clusterName, storeName, 2, partitionNumber, replicationFactor);
+    Mockito.verify(mockAdmin, Mockito.after(1000).never()).addVersion(clusterName, storeName, 2, partitionNumber, replicationFactor);
 
     // Version creation after master controller fails over
     doReturn(true).when(mockAdmin).isMasterController(clusterName);

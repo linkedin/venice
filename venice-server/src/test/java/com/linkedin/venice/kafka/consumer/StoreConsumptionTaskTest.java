@@ -78,10 +78,13 @@ import static org.testng.Assert.*;
 
 /**
  * Unit tests for the KafkaPerStoreConsumptionTask.
+ *
+ * Be ware that most of the test cases in this suite depend on {@link StoreConsumptionTaskTest#TEST_TIMEOUT}
+ * Adjust it based on environment if timeout failure occurs.
  */
 public class StoreConsumptionTaskTest {
 
-  private static final Logger LOGGER = Logger.getLogger(StoreConsumptionTaskTest.class);
+  private static final Logger logger = Logger.getLogger(StoreConsumptionTaskTest.class);
 
   private static final int TEST_TIMEOUT;
 
@@ -266,17 +269,14 @@ public class StoreConsumptionTaskTest {
       verify(mockOffSetManager, timeout(TEST_TIMEOUT)).getLastOffset(topic, PARTITION_FOO);
 
       // Verify StorageEngine#put is invoked only once and with appropriate key & value.
-      verify(mockAbstractStorageEngine, timeout(TEST_TIMEOUT)).put(eq(PARTITION_FOO), any(), any());
       verify(mockAbstractStorageEngine, timeout(TEST_TIMEOUT))
           .put(PARTITION_FOO, putKeyFoo, ValueRecord.create(SCHEMA_ID, putValue).serialize());
 
       // Verify StorageEngine#Delete is invoked only once and with appropriate key.
-      verify(mockAbstractStorageEngine, timeout(TEST_TIMEOUT)).delete(eq(PARTITION_FOO), any());
       verify(mockAbstractStorageEngine, timeout(TEST_TIMEOUT)).delete(PARTITION_FOO, deleteKeyFoo);
 
       // Verify it commits the offset to Offset Manager
       OffsetRecord expectedOffsetRecordForDeleteMessage = getOffsetRecord(deleteMetadata.offset());
-
       verify(mockOffSetManager, timeout(TEST_TIMEOUT))
           .recordOffset(topic, PARTITION_FOO, expectedOffsetRecordForDeleteMessage);
     });
@@ -294,20 +294,19 @@ public class StoreConsumptionTaskTest {
       verify(mockOffSetManager, timeout(TEST_TIMEOUT)).getLastOffset(topic, PARTITION_FOO);
 
       // Verify StorageEngine#put is invoked only once and with appropriate key & value.
-      verify(mockAbstractStorageEngine, timeout(TEST_TIMEOUT)).put(eq(PARTITION_FOO), any(), any());
       verify(mockAbstractStorageEngine, timeout(TEST_TIMEOUT))
           .put(PARTITION_FOO, putKeyFoo, ValueRecord.create(EXISTING_SCHEMA_ID, putValue).serialize());
       verify(mockSchemaRepo, timeout(TEST_TIMEOUT)).hasValueSchema(storeNameWithoutVersionInfo, EXISTING_SCHEMA_ID);
 
       // Verify it commits the offset to Offset Manager
       OffsetRecord expected = getOffsetRecord(fooLastOffset);
-
       verify(mockOffSetManager, timeout(TEST_TIMEOUT)).recordOffset(topic, PARTITION_FOO, expected);
     });
   }
 
   /**
-   * TODO: Fix this test. It fails when running individually, but succeeds when the whole suite runs...
+   * Test the situation where records arrive faster than the schemas.
+   * In this case, Venice would keep polling schemaRepo until schemas arrive.
    */
   @Test
   public void testVeniceMessagesProcessingWithTemporarilyNotAvailableSchemaId() throws Exception {
@@ -323,22 +322,15 @@ public class StoreConsumptionTaskTest {
       // Verify it retrieves the offset from the OffSet Manager
       verify(mockOffSetManager, timeout(TEST_TIMEOUT)).getLastOffset(topic, PARTITION_FOO);
 
-      // Verify StorageEngine#put is invoked only once and with appropriate key & value.
-      verify(mockAbstractStorageEngine, timeout(TEST_TIMEOUT).never()).put(eq(PARTITION_FOO), any(), any());
-      verify(mockAbstractStorageEngine, timeout(TEST_TIMEOUT).never()).put(eq(PARTITION_FOO), eq(putKeyFoo), any());
-      verify(mockSchemaRepo, timeout(TEST_TIMEOUT)).hasValueSchema(storeNameWithoutVersionInfo, NON_EXISTING_SCHEMA_ID);
-      verify(mockSchemaRepo, timeout(TEST_TIMEOUT).never())
-          .hasValueSchema(storeNameWithoutVersionInfo, EXISTING_SCHEMA_ID);
+      // Verify that after retrying 3 times, record with 'NON_EXISTING_SCHEMA_ID' was put into BDB.
+      verify(mockSchemaRepo, timeout(TEST_TIMEOUT).atLeast(3)).hasValueSchema(storeNameWithoutVersionInfo, NON_EXISTING_SCHEMA_ID);
+      verify(mockAbstractStorageEngine, timeout(TEST_TIMEOUT)).
+        put(PARTITION_FOO, putKeyFoo, ValueRecord.create(NON_EXISTING_SCHEMA_ID, putValue).serialize());
 
-      // Verify no offset commit to Offset Manager
-      verify(mockOffSetManager, timeout(TEST_TIMEOUT).never())
-          .recordOffset(eq(topic), eq(PARTITION_FOO), any(OffsetRecord.class));
-
-      verify(mockAbstractStorageEngine, timeout(2 * StoreConsumptionTask.POLLING_SCHEMA_DELAY_MS))
-          .put(PARTITION_FOO, putKeyFoo, ValueRecord.create(NON_EXISTING_SCHEMA_ID, putValue).serialize());
-
-      verify(mockAbstractStorageEngine, timeout(2 * StoreConsumptionTask.POLLING_SCHEMA_DELAY_MS))
-          .put(PARTITION_FOO, putKeyFoo, ValueRecord.create(EXISTING_SCHEMA_ID, putValue).serialize());
+      //Verify that the following record is consumed well.
+      verify(mockSchemaRepo, timeout(TEST_TIMEOUT)).hasValueSchema(storeNameWithoutVersionInfo, EXISTING_SCHEMA_ID);
+      verify(mockAbstractStorageEngine, timeout(TEST_TIMEOUT))
+        .put(PARTITION_FOO, putKeyFoo, ValueRecord.create(EXISTING_SCHEMA_ID, putValue).serialize());
 
       OffsetRecord expected = getOffsetRecord(existingSchemaOffset);
       verify(mockOffSetManager, timeout(TEST_TIMEOUT)).recordOffset(topic, PARTITION_FOO, expected);
@@ -346,7 +338,7 @@ public class StoreConsumptionTaskTest {
   }
 
   /**
-   * TODO: Fix this test. It fails when running individually, but succeeds when the whole suite runs...
+   * Test the situation where records' schemas never arrive. In the case, the StoreConsumptionTask will keep being blocked.
    */
   @Test
   public void testVeniceMessagesProcessingWithNonExistingSchemaId() throws Exception {
@@ -361,17 +353,14 @@ public class StoreConsumptionTaskTest {
       // Verify it retrieves the offset from the OffSet Manager
       verify(mockOffSetManager, timeout(TEST_TIMEOUT)).getLastOffset(topic, PARTITION_FOO);
 
-      // Verify StorageEngine#put is invoked only once and with appropriate key & value.
-      verify(mockAbstractStorageEngine, timeout(TEST_TIMEOUT).never()).put(eq(PARTITION_FOO), any(), any());
-      verify(mockAbstractStorageEngine, timeout(TEST_TIMEOUT).never()).put(PARTITION_FOO, putKeyFoo, putValue);
-      verify(mockSchemaRepo, timeout(TEST_TIMEOUT).atLeastOnce())
-          .hasValueSchema(storeNameWithoutVersionInfo, NON_EXISTING_SCHEMA_ID);
-      verify(mockSchemaRepo, timeout(TEST_TIMEOUT).never())
-          .hasValueSchema(storeNameWithoutVersionInfo, EXISTING_SCHEMA_ID);
+      //StoreConsumptionTask#checkValueSchemaAvail will keep polling for 'NON_EXISTING_SCHEMA_ID'. It blocks the thread
+      //so that the next record would never be put into BDB.
+      verify(mockSchemaRepo, after(TEST_TIMEOUT).never()).hasValueSchema(storeNameWithoutVersionInfo, EXISTING_SCHEMA_ID);
+      verify(mockSchemaRepo, atLeastOnce()).hasValueSchema(storeNameWithoutVersionInfo, NON_EXISTING_SCHEMA_ID);
+      verify(mockAbstractStorageEngine, never()).put(eq(PARTITION_FOO), any(), any());
 
-      // Verify no offset commit to Offset Manager
-      verify(mockOffSetManager, timeout(TEST_TIMEOUT).never())
-          .recordOffset(eq(topic), eq(PARTITION_FOO), any(OffsetRecord.class));
+      // Only two records(start_of_segment, start_of_push) offset were able to be recorded before thread being blocked
+      verify(mockOffSetManager, atMost(2)).recordOffset(eq(topic), eq(PARTITION_FOO), any(OffsetRecord.class));
     });
   }
 
@@ -380,10 +369,10 @@ public class StoreConsumptionTaskTest {
     runTest(getSet(PARTITION_FOO, PARTITION_BAR), () -> {
       doReturn(getOffsetRecord(1)).when(mockOffSetManager).getLastOffset(topic, PARTITION_FOO);
     }, () -> {
-      // Verify STARTED is reported when offset is larger than 0 is invoked.
+      // Verify RESTARTED is reported when offset is larger than 0 is invoked.
       verify(mockNotifier, timeout(TEST_TIMEOUT).atLeastOnce()).restarted(topic, PARTITION_FOO, 1);
       // Verify STARTED is NOT reported when offset is 0
-      verify(mockNotifier, timeout(TEST_TIMEOUT).never()).restarted(topic, PARTITION_BAR, 1);
+      verify(mockNotifier, never()).started(topic, PARTITION_BAR);
     });
   }
 
@@ -498,7 +487,7 @@ public class StoreConsumptionTaskTest {
     runTest(pollStrategy, getSet(PARTITION_FOO, PARTITION_BAR), () -> {}, () -> {
       verify(mockNotifier, timeout(TEST_TIMEOUT).atLeastOnce()).completed(topic, PARTITION_FOO, fooLastOffset);
       verify(mockNotifier, timeout(TEST_TIMEOUT).atLeastOnce()).completed(topic, PARTITION_BAR, barOffsetToDupe);
-      verify(mockNotifier, timeout(TEST_TIMEOUT).never()).completed(topic, PARTITION_BAR, barOffsetToDupe + 1);
+      verify(mockNotifier, after(TEST_TIMEOUT).never()).completed(topic, PARTITION_BAR, barOffsetToDupe + 1);
 
       // After we verified that completed() is called, the rest should be guaranteed to be finished, so no need for timeouts
 
@@ -507,18 +496,15 @@ public class StoreConsumptionTaskTest {
     });
   }
 
-  /**
-   * TODO: Fix this test. It fails when running individually, but succeeds when the whole suite runs...
-   */
   @Test
   public void testThrottling() throws Exception {
     veniceWriter.broadcastStartOfPush(new HashMap<>());
     veniceWriter.put(putKeyFoo, putValue, SCHEMA_ID);
     veniceWriter.delete(deleteKeyFoo);
 
-    runTest(getSet(PARTITION_FOO), () -> {
-      verify(mockThrottler, timeout(TEST_TIMEOUT)).maybeThrottle(putKeyFoo.length + putValue.length);
-      verify(mockThrottler, timeout(TEST_TIMEOUT)).maybeThrottle(deleteKeyFoo.length);
+    runTest(new RandomPollStrategy(1), getSet(PARTITION_FOO), () -> {}, () -> {
+      verify(mockThrottler, timeout(TEST_TIMEOUT).atLeastOnce()).maybeThrottle(putKeyFoo.length + putValue.length);
+      verify(mockThrottler, timeout(TEST_TIMEOUT).atLeastOnce()).maybeThrottle(deleteKeyFoo.length);
     });
   }
 
@@ -624,11 +610,11 @@ public class StoreConsumptionTaskTest {
    * In this test, the {@link #PARTITION_FOO} will receive a well-formed message, while the {@link #PARTITION_BAR} will
    * receive a corrupt message. We expect the Notifier to report as such.
    * <p>
-   * N.B.: There was an edge case where this test was flaky. The edge case is now fixed, but the invocationCount of 100
+   * N.B.: There was an edge case where this test was flaky. The edge case is now fixed, but the invocationCount of 3
    * should ensure that if this test is ever made flaky again, it will be detected right away. The skipFailedInvocations
    * annotation parameter makes the test skip any invocation after the first failure.
    */
-  @Test(invocationCount = 100, skipFailedInvocations = true)
+  @Test(invocationCount = 3, skipFailedInvocations = true)
   public void testCorruptMessagesFailFast() throws Exception {
     VeniceWriter veniceWriterForData = getVeniceWriter(
         () -> new TransformingProducer(new MockInMemoryProducer(inMemoryKafkaBroker),
@@ -663,7 +649,7 @@ public class StoreConsumptionTaskTest {
        * and avoids sending completion notifications for those. The high invocationCount on
        * this test is to detect this edge case.
        */
-      verify(mockNotifier, timeout(TEST_TIMEOUT).never()).completed(eq(topic), eq(PARTITION_BAR), anyLong());
+      verify(mockNotifier, after(TEST_TIMEOUT).never()).completed(eq(topic), eq(PARTITION_BAR), anyLong());
 
       verify(mockNotifier, timeout(TEST_TIMEOUT)).error(
           eq(topic), eq(PARTITION_BAR), argThat(new NonEmptyStringMatcher()),
@@ -747,8 +733,8 @@ public class StoreConsumptionTaskTest {
       // Add a kill consumer action in higher priority than subscribe and reset.
       storeConsumptionTaskUnderTest.kill();
     }, () -> {
-      // verify subscribe has not been processed. Because consumption task should process kill action at frist
-      verify(mockOffSetManager, timeout(TEST_TIMEOUT).never()).getLastOffset(topic, PARTITION_FOO);
+      // verify subscribe has not been processed. Because consumption task should process kill action at first
+      verify(mockOffSetManager, after(TEST_TIMEOUT).never()).getLastOffset(topic, PARTITION_FOO);
       waitForNonDeterministicCompletion(TEST_TIMEOUT, TimeUnit.MILLISECONDS,
           () -> storeConsumptionTaskUnderTest.getConsumer() != null);
       MockInMemoryConsumer mockConsumer = (MockInMemoryConsumer)((SynchronizedKafkaConsumerWrapper) storeConsumptionTaskUnderTest.getConsumer())
@@ -766,6 +752,8 @@ public class StoreConsumptionTaskTest {
           () -> storeConsumptionTaskUnderTest.isRunning() == false);
     });
   }
+
+  //TODO:This case has regression. It's non-deterministic. We need investigation!
 
   @Test
   public void testDataValidationCheckPointing() throws Exception {
@@ -799,22 +787,23 @@ public class StoreConsumptionTaskTest {
         new RandomPollStrategy(false),
         topicPartitionOffsetRecordPair -> {
           if (null == topicPartitionOffsetRecordPair || null == topicPartitionOffsetRecordPair.getSecond()) {
-            LOGGER.info("Received null OffsetRecord!");
+            logger.info("Received null OffsetRecord!");
           } else if (messagesConsumedSoFar.incrementAndGet() % (totalNumberOfMessages / totalNumberOfConsumptionRestarts) == 0) {
-            LOGGER.info("Restarting consumer after consuming " + messagesConsumedSoFar.get() + " messages so far.");
+            logger.info("Restarting consumer after consuming " + messagesConsumedSoFar.get() + " messages so far.");
             relevantPartitions.stream().forEach(partition ->
                 storeConsumptionTaskUnderTest.unSubscribePartition(topic, partition));
             relevantPartitions.stream().forEach(partition ->
                 storeConsumptionTaskUnderTest.subscribePartition(topic, partition));
           } else {
-            LOGGER.info("TopicPartition: " + topicPartitionOffsetRecordPair.getFirst() +
-                ", OffsetRecord: " + topicPartitionOffsetRecordPair.getSecond());
+            logger.info("TopicPartition: " + topicPartitionOffsetRecordPair.getFirst() +
+              ", OffsetRecord: " + topicPartitionOffsetRecordPair.getSecond());
           }
         }
     );
 
     runTest(pollStrategy, relevantPartitions, () -> {}, () -> {
       // Verify that all partitions reported success.
+      System.out.println("maxOffsetPerPartition Size: " + maxOffsetPerPartition.size());
       maxOffsetPerPartition.entrySet().stream().filter(entry -> relevantPartitions.contains(entry.getKey())).forEach(entry ->
           verify(mockNotifier, timeout(TEST_TIMEOUT).atLeastOnce()).completed(eq(topic), eq(entry.getKey()), eq(entry.getValue())));
 
@@ -851,23 +840,23 @@ public class StoreConsumptionTaskTest {
     veniceWriter.broadcastEndOfPush(new HashMap<>());
 
     runTest(getSet(PARTITION_FOO), () -> {
+      verify(mockNotifier, after(TEST_TIMEOUT).never()).error(eq(topic), eq(PARTITION_FOO), anyString(), any());
       verify(mockNotifier, timeout(TEST_TIMEOUT).atLeastOnce()).started(topic, PARTITION_FOO);
-      verify(mockNotifier, timeout(TEST_TIMEOUT).atLeastOnce()).completed(topic, PARTITION_FOO, fooLastOffset);
+
       storeConsumptionTaskUnderTest.kill();
-      verify(mockNotifier, timeout(TEST_TIMEOUT).never()).error(eq(topic), eq(PARTITION_FOO), anyString(), any());
+      verify(mockNotifier, timeout(TEST_TIMEOUT).atLeastOnce()).completed(topic, PARTITION_FOO, fooLastOffset);
     });
   }
 
   @Test
   public void testReportProgressBeforeStart()
       throws Exception {
+    veniceWriter.broadcastStartOfPush(new HashMap<>());
     // Read one message for each poll.
-    runTest(new RandomPollStrategy(1), getSet(PARTITION_FOO), () -> {
-    }, () -> {
-      veniceWriter.broadcastStartOfPush(new HashMap<>());
+    runTest(new RandomPollStrategy(1), getSet(PARTITION_FOO), () -> {}, () -> {
+      verify(mockNotifier, after(TEST_TIMEOUT).never()).progress(topic, PARTITION_FOO, 0);
       verify(mockNotifier, timeout(TEST_TIMEOUT).atLeastOnce()).started(topic, PARTITION_FOO);
       // Because we have to report progress before receiving start of push, so the progress here should be 1 instead of 0.
-      verify(mockNotifier, timeout(TEST_TIMEOUT).never()).progress(topic, PARTITION_FOO, 0);
       verify(mockNotifier, timeout(TEST_TIMEOUT).atLeastOnce()).progress(topic, PARTITION_FOO, 1);
     });
   }
