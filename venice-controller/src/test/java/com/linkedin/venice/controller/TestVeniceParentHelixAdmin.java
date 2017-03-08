@@ -114,7 +114,7 @@ public class TestVeniceParentHelixAdmin {
     config = mock(VeniceControllerConfig.class);
     doReturn(KAFKA_REPLICA_FACTOR).when(config)
         .getKafkaReplicaFactor();
-    doReturn(3).when(config)
+    doReturn(10000).when(config)
         .getParentControllerWaitingTimeForConsumptionMs();
     doReturn("fake_kafka_bootstrap_servers").when(config)
         .getKafkaBootstrapServers();
@@ -227,7 +227,8 @@ public class TestVeniceParentHelixAdmin {
     parentAdmin.addStore(clusterName, storeName, owner, keySchemaStr, valueSchemaStr);
   }
 
-  @Test (expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = ".*Some operation is going on.*")
+  // This test forces a timeout in the admin consumption task
+  @Test (expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = ".*waiting for admin consumption to catch up.*")
   public void testAddStoreWhenLastOffsetHasntBeenConsumed() throws ExecutionException, InterruptedException {
     parentAdmin.start(clusterName);
 

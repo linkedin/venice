@@ -73,10 +73,25 @@ public class ServiceFactory {
             DEFAULT_PARTITION_SIZE_BYTES, DEFAULT_DELAYED_TO_REBALANCE_MS, DEFAULT_REPLICATION_FACTOR, childController));
   }
 
+  /**
+   * Deprecated, use the replacement method that accepts a boolean for whether to use ssl or not
+   * @param clusterName
+   * @param kafkaBrokerWrapper
+   * @param enableServerWhitelist
+   * @param autoJoinWhitelist
+   * @return
+   */
+  @Deprecated
   public static VeniceServerWrapper getVeniceServer(String clusterName, KafkaBrokerWrapper kafkaBrokerWrapper,
       boolean enableServerWhitelist, boolean autoJoinWhitelist) {
     return getStatefulService(VeniceServerWrapper.SERVICE_NAME,
-        VeniceServerWrapper.generateService(clusterName, kafkaBrokerWrapper, enableServerWhitelist, autoJoinWhitelist));
+        VeniceServerWrapper.generateService(clusterName, kafkaBrokerWrapper, enableServerWhitelist, autoJoinWhitelist, false));
+  }
+
+  public static VeniceServerWrapper getVeniceServer(String clusterName, KafkaBrokerWrapper kafkaBrokerWrapper,
+      boolean enableServerWhitelist, boolean autoJoinWhitelist, boolean ssl) {
+    return getStatefulService(VeniceServerWrapper.SERVICE_NAME,
+        VeniceServerWrapper.generateService(clusterName, kafkaBrokerWrapper, enableServerWhitelist, autoJoinWhitelist, ssl));
   }
 
   /**

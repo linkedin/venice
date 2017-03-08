@@ -14,6 +14,7 @@ import java.io.File;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 
 import com.linkedin.venice.schema.SchemaEntry;
@@ -68,7 +69,7 @@ public class MockVeniceRouterWrapper extends ProcessWrapper {
       }
       String clusterName = TestUtils.getUniqueString("mock-venice-router-cluster");
       RouterServer router = new RouterServer(port, sslPortFromPort(port), clusterName, mockRepo,
-          mockMetadataRepository, mockSchemaRepository, d2ServerList, SslUtils.getLocalSslFactory());
+          mockMetadataRepository, mockSchemaRepository, d2ServerList, Optional.of(SslUtils.getLocalSslFactory()));
       return new MockVeniceRouterWrapper(serviceName, dataDirectory, router, clusterName, port);
     };
   }

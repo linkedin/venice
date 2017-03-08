@@ -8,6 +8,12 @@ import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
+import javax.net.ssl.HostnameVerifier;
+import javax.net.ssl.SSLContext;
+import javax.net.ssl.SSLSession;
+import org.apache.http.impl.nio.client.CloseableHttpAsyncClient;
+import org.apache.http.impl.nio.client.HttpAsyncClients;
+import org.apache.http.nio.conn.ssl.SSLIOSessionStrategy;
 
 
 public class SslUtils {
@@ -58,4 +64,28 @@ public class SslUtils {
     return file.getAbsolutePath();
   }
 
+  public static SSLIOSessionStrategy getSslStrategy(SSLEngineComponentFactory sslFactory) {
+    SSLContext sslContext = SslUtils.getLocalSslFactory().getSSLContext();
+    SSLIOSessionStrategy sslSessionStrategy = new SSLIOSessionStrategy(sslContext);
+    return sslSessionStrategy;
+  }
+
+  /**
+   * Use this as an SSL-enabled client for use in unit tests.  Uses the unit-test provided localhost certificate.
+   * Most of venice will pick up the local hosts defined hostname, so this provides a return-true hostname verifier
+   * This client needs to be started before use, and closed after use.
+   * @return
+   */
+  public static CloseableHttpAsyncClient getSslClient(){
+    CloseableHttpAsyncClient httpclient = HttpAsyncClients.custom()
+        .setSSLStrategy(getSslStrategy(getLocalSslFactory()))
+        .setSSLHostnameVerifier(new HostnameVerifier() {
+          @Override
+          public boolean verify(String s, SSLSession sslSession) {
+            return true;
+          }
+        })
+        .build();
+    return httpclient;
+  }
 }

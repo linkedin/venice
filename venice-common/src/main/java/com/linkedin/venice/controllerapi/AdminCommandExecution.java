@@ -119,4 +119,11 @@ public class AdminCommandExecution {
       ConcurrentMap<String, AdminCommandExecutionStatus> fabricToExecutionStatusMap) {
     this.fabricToExecutionStatusMap = fabricToExecutionStatusMap;
   }
+
+  @Override
+  public String toString() {
+    return "AdminCommandExecution{" + "executionId=" + executionId + ", operation='" + operation + '\''
+        + ", clusterName='" + clusterName + '\'' + ", startTime='" + startTime + '\'' + ", fabricToExecutionStatusMap="
+        + fabricToExecutionStatusMap + '}';
+  }
 }
