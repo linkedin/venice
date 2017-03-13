@@ -3,10 +3,11 @@ package com.linkedin.venice.controller.server;
 import com.linkedin.venice.controller.AuditInfo;
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.controller.Admin;
-import com.linkedin.venice.controller.stats.ControllerStats;
+import com.linkedin.venice.controller.stats.SparkServerStats;
 import com.linkedin.venice.exceptions.VeniceHttpException;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.utils.Utils;
+import io.tehuti.metrics.MetricsRepository;
 import java.util.List;
 import org.apache.http.HttpStatus;
 import org.apache.log4j.Logger;
@@ -28,7 +29,7 @@ public class AdminSparkServer extends AbstractVeniceService {
   private final int port;
   private final Admin admin;
   protected static final ObjectMapper mapper = new ObjectMapper();
-  private final ControllerStats stats = ControllerStats.getInstance();
+  final private SparkServerStats stats;
 
   private static String REQUEST_START_TIME =  "startTime";
   private static String REQUEST_SUCCEED = "succeed";
@@ -37,11 +38,12 @@ public class AdminSparkServer extends AbstractVeniceService {
   private final Service httpService;
 
 
-  public AdminSparkServer(int port, Admin admin) {
+  public AdminSparkServer(int port, Admin admin, MetricsRepository metricsRepository) {
     this.port = port;
     //Note: admin is passed in as a reference.  The expectation is the source of the admin will
     //      close it so we don't close it in stopInner()
     this.admin = admin;
+    stats = new SparkServerStats(metricsRepository, "controller_spark_server");
     httpService = Service.ignite();
   }
 

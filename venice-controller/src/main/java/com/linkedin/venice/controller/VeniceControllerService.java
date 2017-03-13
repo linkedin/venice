@@ -5,6 +5,7 @@ import com.linkedin.venice.controller.kafka.consumer.AdminConsumptionTask;
 import com.linkedin.venice.serialization.KafkaKeySerializer;
 import com.linkedin.venice.serialization.avro.KafkaValueSerializer;
 import com.linkedin.venice.service.AbstractVeniceService;
+import io.tehuti.metrics.MetricsRepository;
 import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.log4j.Logger;
@@ -20,9 +21,11 @@ public class VeniceControllerService extends AbstractVeniceService {
   private final Admin admin;
   private final VeniceControllerClusterConfig config;
   private final AdminConsumerService consumerService;
+  private final MetricsRepository metricsRepository;
 
-  public VeniceControllerService(VeniceControllerConfig config) {
+  public VeniceControllerService(VeniceControllerConfig config, MetricsRepository metricsRepository) {
     this.config = config;
+    this.metricsRepository = metricsRepository;
     VeniceHelixAdmin internalAdmin = new VeniceHelixAdmin(config);
     if (config.isParent()) {
       this.admin = new VeniceParentHelixAdmin(internalAdmin, config);
@@ -32,7 +35,7 @@ public class VeniceControllerService extends AbstractVeniceService {
       logger.info("Controller works as a normal controller.");
     }
     // The admin consumer needs to use VeniceHelixAdmin to update Zookeeper directly
-    this.consumerService = new AdminConsumerService(internalAdmin, config);
+    this.consumerService = new AdminConsumerService(internalAdmin, config, metricsRepository);
     this.admin.setAdminConsumerService(config.getClusterName(), consumerService);
   }
 

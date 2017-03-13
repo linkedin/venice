@@ -7,7 +7,7 @@ import io.tehuti.metrics.Sensor;
 import io.tehuti.metrics.stats.Count;
 import io.tehuti.metrics.stats.OccurrenceRate;
 
-public class RouterStats extends AbstractVeniceStats {
+public class RouterHttpRequestStats extends AbstractVeniceStats {
 
   final private Sensor requestSensor;
   final private Sensor healthySensor;
@@ -17,15 +17,14 @@ public class RouterStats extends AbstractVeniceStats {
   final private Sensor valueSizeSensor;
 
   //QPS metrics
-  //TODO: implement a simple Tehuti class that just return the current value to calculate unhealthy ratio
-  public RouterStats(MetricsRepository metricsRepository, String name) {
-    super(metricsRepository, name);
+  public RouterHttpRequestStats(MetricsRepository metricsRepository, String storeName) {
+    super(metricsRepository, storeName);
 
     requestSensor = registerSensor("request", new Count(), new OccurrenceRate());
     healthySensor = registerSensor("healthy_request", new Count());
     unhealthySensor = registerSensor("unhealthy_request", new Count());
 
-    //we have to explicitly pass the anme again for PercentilesStat here.
+    //we have to explicitly pass the name again for PercentilesStat here.
     //TODO: remove the redundancy once Tehuti library is updated.
     latencySensor = registerSensor("latency", TehutiUtils.getPercentileStat(getName(), "latency"));
     keySizeSensor = registerSensor("key_size", TehutiUtils.getPercentileStat(getName(), "key_size"));
@@ -33,26 +32,26 @@ public class RouterStats extends AbstractVeniceStats {
   }
 
   public void recordRequest() {
-    record(requestSensor);
+    requestSensor.record();
   }
 
   public void recordHealthyRequest() {
-    record(healthySensor);
+    healthySensor.record();
   }
 
   public void recordUnhealthyRequest() {
-    record(unhealthySensor);
+    unhealthySensor.record();
   }
 
   public void recordLatency(double latency) {
-    record(latencySensor, latency);
+    latencySensor.record(latency);
   }
 
   public void recordKeySize(double keySize) {
-    record(keySizeSensor, keySize);
+    keySizeSensor.record(keySize);
   }
 
   public void recordValueSize(double valueSize) {
-    record(valueSizeSensor, valueSize);
+    valueSizeSensor.record(valueSize);
   };
 }

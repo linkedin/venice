@@ -10,7 +10,7 @@ import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.Version;
-import com.linkedin.venice.router.stats.RouterAggStats;
+import com.linkedin.venice.router.stats.AggRouterHttpRequestStats;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 import io.netty.handler.codec.http.DefaultFullHttpResponse;
@@ -18,6 +18,7 @@ import io.netty.handler.codec.http.FullHttpResponse;
 import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.handler.codec.http.HttpVersion;
+import io.tehuti.metrics.MetricsRepository;
 import java.io.Closeable;
 import java.io.IOException;
 import java.io.InputStream;
@@ -58,13 +59,13 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
   private final ConcurrentMap<String, Long> offsets = new ConcurrentHashMap<>();
   private final VeniceHostHealth healthMontior;
 
-  private final RouterAggStats stats = RouterAggStats.getInstance();
+  private final AggRouterHttpRequestStats stats;
 
   // How many offsets behind can a storage node be for a partition and still be considered 'caught up'
   private long acceptableOffsetLag = 10000; /* TODO: make this configurable for streaming use-case */
-  private int clientTimeoutMillis;
+  private int   clientTimeoutMillis;
 
-  public VeniceDispatcher(VeniceHostHealth healthMonitor, int clientTimeoutMillis){
+  public VeniceDispatcher(VeniceHostHealth healthMonitor, int clientTimeoutMillis, MetricsRepository metricsRepository){
     httpClient = HttpAsyncClients.custom()
         .setConnectionReuseStrategy(new DefaultConnectionReuseStrategy())  //Supports connection re-use if able
         .setConnectionManager(createConnectionManager(200, 200))
@@ -78,12 +79,13 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
     httpClient.start();
     this.healthMontior = healthMonitor;
     this.clientTimeoutMillis = clientTimeoutMillis;
+    stats = new AggRouterHttpRequestStats(metricsRepository);
   }
 
-  @Deprecated
+  /*@Deprecated
   public VeniceDispatcher(VeniceHostHealth healthMonitor){
     this(healthMonitor, 10000);
-  }
+  }*/
 
   @Override
   public void dispatch(

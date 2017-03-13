@@ -8,6 +8,8 @@ import io.tehuti.metrics.stats.Percentiles;
 
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicBoolean;
+
 
 public class AbstractVeniceStats {
 
@@ -48,14 +50,6 @@ public class AbstractVeniceStats {
       }
       return sensor;
     });
-  }
-
-  protected void record(Sensor sensor) {
-    sensor.record();
-  }
-
-  protected  void record(Sensor sensor, double value) {
-    sensor.record(value);
   }
 
   public void close() {

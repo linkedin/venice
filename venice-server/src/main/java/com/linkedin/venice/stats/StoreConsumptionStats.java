@@ -42,7 +42,6 @@ public class StoreConsumptionStats extends AbstractVeniceStats{
     pollRequestSensor = registerSensor("kafka_poll_request", new Count());
     pollRequestLatencySensor = registerSensor("kafka_poll_request_latency", new Avg());
     processPollResultLatencySensor = registerSensor("process_poll_result_latency", new Avg());
-    // TODO: need to convert 'Total' to be 'Count' internally so that we can measure
     // consumer record number per second returned by Kafka consumer poll.
     pollResultNumSensor = registerSensor("kafka_poll_result_num", new Avg(), new Total());
     // To measure 'put' latency of consumer records blocking queue

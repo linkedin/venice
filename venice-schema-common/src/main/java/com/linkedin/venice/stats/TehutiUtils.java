@@ -27,7 +27,7 @@ public class TehutiUtils {
    * @return 3 sub stats that emit p50, P95, and P99 values.
    */
   public static Percentiles getPercentileStat(@NotNull String name, int sizeInBytes, double max) {
-    return new Percentiles(sizeInBytes, max, Percentiles.BucketSizing.CONSTANT,
+    return new Percentiles(sizeInBytes, max, Percentiles.BucketSizing.LINEAR,
         new Percentile(name + ".50thPercentile", 50),
         new Percentile(name + ".95thPercentile", 95),
         new Percentile(name + ".99thPercentile", 99));

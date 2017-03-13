@@ -12,7 +12,7 @@ import com.linkedin.venice.controller.kafka.protocol.admin.StoreCreation;
 import com.linkedin.venice.controller.kafka.protocol.enums.AdminMessageType;
 import com.linkedin.venice.controller.kafka.protocol.enums.SchemaType;
 import com.linkedin.venice.controller.kafka.protocol.serializer.AdminOperationSerializer;
-import com.linkedin.venice.controller.stats.ControllerStats;
+import com.linkedin.venice.controller.stats.AdminConsumptionStats;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.guid.GuidUtils;
@@ -31,7 +31,6 @@ import com.linkedin.venice.offsets.InMemoryOffsetManager;
 import com.linkedin.venice.offsets.OffsetManager;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.serialization.DefaultSerializer;
-import com.linkedin.venice.stats.TehutiUtils;
 import com.linkedin.venice.unit.kafka.InMemoryKafkaBroker;
 import com.linkedin.venice.unit.kafka.SimplePartitioner;
 import com.linkedin.venice.unit.kafka.consumer.MockInMemoryConsumer;
@@ -48,7 +47,6 @@ import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.VeniceWriter;
-import io.tehuti.metrics.MetricsRepository;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
@@ -65,7 +63,6 @@ import org.apache.kafka.clients.producer.RecordMetadata;
 import org.apache.kafka.common.TopicPartition;
 import org.mockito.Mockito;
 import org.testng.Assert;
-import org.testng.annotations.BeforeClass;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
@@ -95,12 +92,6 @@ public class TestAdminConsumptionTask {
   private InMemoryKafkaBroker inMemoryKafkaBroker;
   private VeniceWriter veniceWriter;
   private ExecutionIdAccessor executionIdAccessor;
-
-  @BeforeClass
-  public void initControllerStats(){
-    MetricsRepository mockMetrics = TehutiUtils.getMetricsRepository(TestUtils.getUniqueString("controller-stats"));
-    ControllerStats.init(mockMetrics);
-  }
 
   @BeforeMethod
   public void methodSetup() {
@@ -144,6 +135,15 @@ public class TestAdminConsumptionTask {
   }
 
   private AdminConsumptionTask getAdminConsumptionTask(PollStrategy pollStrategy, long failureRetryTimeout, boolean isParent) {
+    AdminConsumptionStats stats = mock(AdminConsumptionStats.class);
+
+    return getAdminConsumptionTask(pollStrategy, failureRetryTimeout, isParent, stats);
+  }
+
+  private AdminConsumptionTask getAdminConsumptionTask(PollStrategy pollStrategy,
+                                                       long failureRetryTimeout,
+                                                       boolean isParent,
+                                                       AdminConsumptionStats stats) {
     MockInMemoryConsumer inMemoryKafkaConsumer = new MockInMemoryConsumer(inMemoryKafkaBroker, pollStrategy, mockKafkaConsumer);
     doReturn(inMemoryKafkaConsumer)
         .when(consumerFactory)
@@ -151,7 +151,7 @@ public class TestAdminConsumptionTask {
     DeepCopyOffsetManager deepCopyOffsetManager = new DeepCopyOffsetManager(offsetManager);
 
     return new AdminConsumptionTask(clusterName, consumerFactory, kafkaBootstrapServers, admin, deepCopyOffsetManager,
-        executionIdAccessor, failureRetryTimeout, isParent);
+        executionIdAccessor, failureRetryTimeout, isParent, stats);
   }
 
   private Pair<TopicPartition, OffsetRecord> getTopicPartitionOffsetPair(RecordMetadata recordMetadata) {
@@ -479,11 +479,9 @@ public class TestAdminConsumptionTask {
     doReturn(false).when(admin).hasStore(clusterName, storeName2);
     doReturn(false).when(admin).hasStore(clusterName, storeName3);
 
-    // Mock stats object
-    ControllerStats stats = mock(ControllerStats.class);
+    AdminConsumptionStats stats = mock(AdminConsumptionStats.class);
 
-    AdminConsumptionTask task = getAdminConsumptionTask(pollStrategy, false);
-    task.setControllerStats(stats);
+    AdminConsumptionTask task = getAdminConsumptionTask(pollStrategy, 1, false, stats);
     executor.submit(task);
     verify(stats, timeout(TIMEOUT).atLeastOnce())
         .recordAdminTopicDIVErrorReportCount();

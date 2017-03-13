@@ -1,6 +1,6 @@
 package com.linkedin.venice.router;
 
-import com.linkedin.venice.router.stats.RouterAggStats;
+import com.linkedin.venice.router.stats.AggRouterHttpRequestStats;
 import com.linkedin.venice.tehuti.MockTehutiReporter;
 import io.tehuti.metrics.MetricsRepository;
 import org.testng.Assert;
@@ -8,10 +8,10 @@ import org.testng.annotations.AfterSuite;
 import org.testng.annotations.BeforeSuite;
 import org.testng.annotations.Test;
 
-public class RouterAggStatsTest {
+public class AggRouterHttpRequestStatsTest {
 
   private MockTehutiReporter reporter;
-  private RouterAggStats stats;
+  private AggRouterHttpRequestStats stats;
 
   @BeforeSuite
   public void setup() {
@@ -19,8 +19,7 @@ public class RouterAggStatsTest {
     reporter = new MockTehutiReporter();
     metrics.addReporter(reporter);
 
-    RouterAggStats.init(metrics);
-    stats = RouterAggStats.getInstance();
+    stats = new AggRouterHttpRequestStats(metrics);
   }
 
   @Test
@@ -41,10 +40,5 @@ public class RouterAggStatsTest {
     Assert.assertEquals((int)reporter.query(".total--latency.99thPercentile").value(), 99);
 
     Assert.assertEquals((int)reporter.query(".store2--latency.50thPercentile").value(), 50);
-  }
-
-  @AfterSuite
-  public void cleanup() {
-      stats.close();
   }
 }

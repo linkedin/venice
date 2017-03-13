@@ -3,12 +3,14 @@ package com.linkedin.venice.controller.kafka.consumer;
 import com.linkedin.venice.controller.VeniceControllerConfig;
 import com.linkedin.venice.controller.VeniceHelixAdmin;
 import com.linkedin.venice.controller.kafka.offsets.AdminOffsetManager;
+import com.linkedin.venice.controller.stats.AdminConsumptionStats;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.consumer.KafkaConsumerWrapper;
 import com.linkedin.venice.kafka.consumer.VeniceConsumerFactory;
 import com.linkedin.venice.offsets.OffsetManager;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.utils.DaemonThreadFactory;
+import io.tehuti.metrics.MetricsRepository;
 import java.util.concurrent.TimeUnit;
 import org.apache.log4j.Logger;
 
@@ -22,16 +24,19 @@ public class AdminConsumerService extends AbstractVeniceService {
   private final VeniceHelixAdmin admin;
   private final AdminOffsetManager offsetManager;
   private final VeniceConsumerFactory consumerFactory;
+  private final MetricsRepository metricsRepository;
   // Only support single cluster right now
   private AdminConsumptionTask consumerTask;
   private ThreadFactory threadFactory = new DaemonThreadFactory("AdminTopicConsumer");
   private Thread consumerThread;
 
-  public AdminConsumerService(VeniceHelixAdmin admin, VeniceControllerConfig config) {
+
+  public AdminConsumerService(VeniceHelixAdmin admin, VeniceControllerConfig config, MetricsRepository metricsRepository) {
     this.config = config;
     this.admin = admin;
     this.offsetManager = new AdminOffsetManager(admin.getZkClient(), admin.getAdapterSerializer());
     this.consumerFactory = new VeniceConsumerFactory();
+    this.metricsRepository = metricsRepository;
   }
 
   @Override
@@ -61,7 +66,8 @@ public class AdminConsumerService extends AbstractVeniceService {
         offsetManager,
         admin.getExecutionIdAccessor(),
         TimeUnit.MINUTES.toMillis(config.getAdminConsumptionTimeoutMinutes()),
-        config.isParent());
+        config.isParent(),
+        new AdminConsumptionStats(metricsRepository, "admin_consumption_task"));
   }
 
   public void setOffsetToSkip(String clusterName, long offset){

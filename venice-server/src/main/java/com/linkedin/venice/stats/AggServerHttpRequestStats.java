@@ -6,17 +6,10 @@ import java.io.Closeable;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
-public class AggServerHttpRequestStats {
-  private final ServerHttpRequestStats totalStats;
-  private final Map<String, ServerHttpRequestStats> storeStats;
-
-  private final MetricsRepository metricsRepository;
-
+public class AggServerHttpRequestStats extends AbstractVeniceAggStats<ServerHttpRequestStats> {
   public AggServerHttpRequestStats(MetricsRepository metricsRepository) {
-    this.metricsRepository = metricsRepository;
-
-    totalStats = new ServerHttpRequestStats(metricsRepository, "total");
-    storeStats = new ConcurrentHashMap<>();
+    super(metricsRepository,
+          (metricsRepo, storeName) -> new ServerHttpRequestStats(metricsRepo, storeName));
   }
 
   public void recordSuccessRequest(String storeName) {
@@ -50,10 +43,5 @@ public class AggServerHttpRequestStats {
   public void recordBdbQueryLatency(String storeName, double latency) {
     totalStats.recordBdbQueryLatency(latency);
     getStoreStats(storeName).recordBdbQueryLatency(latency);
-  }
-
-  private ServerHttpRequestStats getStoreStats(String storeName) {
-    return storeStats.computeIfAbsent(storeName,
-        k -> new ServerHttpRequestStats(metricsRepository, storeName));
   }
 }
