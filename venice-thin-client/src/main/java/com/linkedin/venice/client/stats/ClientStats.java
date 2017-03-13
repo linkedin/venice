@@ -16,25 +16,8 @@ public class ClientStats extends AbstractVeniceStats {
   private final Sensor healthyRequestLatencySensor;
   private final Sensor unhealthyRequestLatencySensor;
 
-  private static ClientStats instance;
-
-  public static synchronized void init(MetricsRepository metricsRepository) {
-    if (metricsRepository == null)
-      throw new IllegalArgumentException("metricsRepository is null");
-
-    if (instance == null)
-      instance = new ClientStats(metricsRepository, AbstractAvroStoreClient.VENICE_CLIENT_NAME);
-  }
-
-  public static ClientStats getInstance() {
-    if (instance == null)
-      throw new VeniceException("ClientStats has not been initialized yet");
-
-    return instance;
-  }
-
-  public ClientStats(MetricsRepository metricsRepository, String name) {
-    super(metricsRepository, name);
+  public ClientStats(MetricsRepository metricsRepository, String storeName) {
+    super(metricsRepository, storeName);
 
     requestSensor = registerSensor("request", new SampledCount(), new OccurrenceRate());
     healthySensor = registerSensor("healthy_request", new SampledCount());
@@ -46,22 +29,22 @@ public class ClientStats extends AbstractVeniceStats {
   }
 
   public void recordRequest() {
-    record(requestSensor);
+    requestSensor.record();
   }
 
   public void recordHealthyRequest() {
-    record(healthySensor);
+    healthySensor.record();
   }
 
   public void recordUnhealthyRequest() {
-    record(unhealthySensor);
+    unhealthySensor.record();
   }
 
   public void recordHealthyLatency(double latency) {
-    record(healthyRequestLatencySensor, latency);
+    healthyRequestLatencySensor.record(latency);
   }
 
   public void recordUnhealthyLatency(double latency) {
-    record(unhealthyRequestLatencySensor, latency);
+    unhealthyRequestLatencySensor.record(latency);
   }
 }

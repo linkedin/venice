@@ -2,8 +2,12 @@ package com.linkedin.venice.kafka.consumer;
 
 import com.linkedin.venice.config.VeniceServerConfig;
 import com.linkedin.venice.config.VeniceStoreConfig;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
+import com.linkedin.venice.meta.ReadOnlyStoreRepository;
+import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.notifier.LogNotifier;
 import com.linkedin.venice.notifier.VeniceNotifier;
 import com.linkedin.venice.offsets.OffsetManager;
@@ -48,6 +52,7 @@ public class KafkaConsumerPerStoreService extends AbstractVeniceService implemen
   private final OffsetManager offsetManager;
   private final TopicManager topicManager;
 
+  private final ReadOnlyStoreRepository metadataRepo;
   private final ReadOnlySchemaRepository schemaRepo;
 
   private final AggStoreConsumptionStats stats;
@@ -67,10 +72,12 @@ public class KafkaConsumerPerStoreService extends AbstractVeniceService implemen
   public KafkaConsumerPerStoreService(StoreRepository storeRepository,
                                       VeniceConfigLoader veniceConfigLoader,
                                       OffsetManager offsetManager,
+                                      ReadOnlyStoreRepository metadataRepo,
                                       ReadOnlySchemaRepository schemaRepo,
                                       MetricsRepository metricsRepository) {
     this.storeRepository = storeRepository;
     this.offsetManager = offsetManager;
+    this.metadataRepo = metadataRepo;
     this.schemaRepo = schemaRepo;
 
     this.topicNameToConsumptionTaskMap = Collections.synchronizedMap(new HashMap<>());
@@ -152,6 +159,21 @@ public class KafkaConsumerPerStoreService extends AbstractVeniceService implemen
     if(consumerTask == null || !consumerTask.isRunning()) {
       consumerTask = getConsumerTask(veniceStore);
       topicNameToConsumptionTaskMap.put(topic, consumerTask);
+
+      //Since Venice metric is store-level and it would have multiply topics tasks exist in the same time.
+      //Only the task with largest version would emit it stats.
+      String storeName = Version.parseStoreFromKafkaTopicName(topic);
+      int maxVersionNumber = getStoreMaximumVersionNumber(storeName);
+      topicNameToConsumptionTaskMap.forEach((topicName, task) -> {
+        if (topicName.contains(storeName)) {
+          if (Version.parseVersionFromKafkaTopicName(topicName) < maxVersionNumber) {
+            task.enableMetricsEmission();
+          } else {
+            task.disableMetricsEmission();
+          }
+        }
+      });
+
       if(!isRunning.get()) {
         logger.info("Ignoring Start consumption message as service is stopping. Topic " + topic + " Partition " + partitionId);
         return;
@@ -160,6 +182,20 @@ public class KafkaConsumerPerStoreService extends AbstractVeniceService implemen
     }
     consumerTask.subscribePartition(topic, partitionId);
     logger.info("Started Consuming - Kafka Partition: " + topic + "-" + partitionId + ".");
+  }
+
+  private int getStoreMaximumVersionNumber(String storeName) {
+    Store store = metadataRepo.getStore(storeName);
+    if (store == null) {
+      throw new VeniceException("Could not find store " + store + " info in ZK");
+    }
+
+    int maxVersionNumber = store.getLargestUsedVersionNumber();
+    if (maxVersionNumber == 0) {
+      throw new VeniceException("No version has been created yet for store " + storeName);
+    }
+
+    return maxVersionNumber;
   }
 
   /**

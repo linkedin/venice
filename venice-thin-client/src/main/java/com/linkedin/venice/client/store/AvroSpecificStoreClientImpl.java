@@ -20,7 +20,7 @@ public class AvroSpecificStoreClientImpl<V extends SpecificRecord> extends Abstr
                                      String storeName,
                                      Class<V> c
                                      ) {
-    this(transportClient, storeName, c, true, AbstractAvroStoreClient.getDeafultClientMetricsRepository(storeName));
+    this(transportClient, storeName, c, true, TehutiUtils.getMetricsRepository(AbstractAvroStoreClient.VENICE_CLIENT_NAME));
   }
 
   public AvroSpecificStoreClientImpl(TransportClient<V> transportClient,

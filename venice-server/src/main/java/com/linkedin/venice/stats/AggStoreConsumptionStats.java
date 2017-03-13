@@ -6,17 +6,10 @@ import io.tehuti.metrics.MetricsRepository;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
-public class AggStoreConsumptionStats {
-  private final StoreConsumptionStats totalStats;
-  private final Map<String, StoreConsumptionStats> storeStats;
-
-  private final MetricsRepository metricsRepository;
-
+public class AggStoreConsumptionStats extends AbstractVeniceAggStats<StoreConsumptionStats> {
   public AggStoreConsumptionStats(MetricsRepository  metricsRepository) {
-    this.metricsRepository = metricsRepository;
-
-    totalStats = new StoreConsumptionStats(metricsRepository, "total");
-    storeStats = new ConcurrentHashMap<>();
+    super(metricsRepository,
+          (metricsRepo, storeName) -> new StoreConsumptionStats(metricsRepo, storeName));
   }
 
   public void recordBytesConsumed(String storeName, long bytes) {
@@ -55,11 +48,6 @@ public class AggStoreConsumptionStats {
   }
 
   public void updateStoreConsumptionTask(String storeName, StoreConsumptionTask task) {
-    getStoreStats(storeName).updateStoreConsumptionTask(task );
-  }
-
-  private StoreConsumptionStats getStoreStats(String storeName) {
-    return storeStats.computeIfAbsent(storeName,
-        k -> new StoreConsumptionStats(metricsRepository, storeName));
+    getStoreStats(storeName).updateStoreConsumptionTask(task);
   }
 }

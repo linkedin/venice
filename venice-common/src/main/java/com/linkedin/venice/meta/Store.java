@@ -94,10 +94,16 @@ public class Store {
     versions = new ArrayList<>();
   }
 
-  private static Pattern storeNamePattern = Pattern.compile("^[a-zA-Z0-9_-]+$"); // Only allow letters, numbers, underscore or dash
+  /**
+   * Store name rules:
+   *  1.  Only letters, numbers, underscore or dash
+   *  2. No double dashes
+   */
+
+  private static Pattern storeNamePattern = Pattern.compile("^[a-zA-Z0-9_-]+$");
   public static boolean isValidStoreName(String name){
     Matcher matcher = storeNamePattern.matcher(name);
-    return matcher.matches();
+    return matcher.matches() && !name.contains("--");
   }
 
   public String getName() {

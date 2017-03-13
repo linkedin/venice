@@ -2,7 +2,6 @@ package com.linkedin.venice.controller;
 
 import com.linkedin.venice.controller.kafka.TopicMonitor;
 import com.linkedin.venice.controller.server.AdminSparkServer;
-import com.linkedin.venice.controller.stats.ControllerStats;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.stats.TehutiUtils;
 import com.linkedin.venice.utils.PropertyBuilder;
@@ -39,16 +38,15 @@ public class VeniceController {
 
     this.metricsRepository = metricsRepository;
 
-    ControllerStats.init(this.metricsRepository);
-
     createServices();
   }
 
   public void createServices(){
-    controllerService = new VeniceControllerService(config);
+    controllerService = new VeniceControllerService(config, metricsRepository);
     adminServer = new AdminSparkServer(
         config.getAdminPort(),
-        controllerService.getVeniceHelixAdmin());
+        controllerService.getVeniceHelixAdmin(),
+        metricsRepository);
     // TODO: disable TopicMonitor in Corp cluster for now.
     // If we decide to continue to use TopicMonitor for version creation, we need to update the existing VeniceParentHelixAdmin to support it
     if (!config.isParent())

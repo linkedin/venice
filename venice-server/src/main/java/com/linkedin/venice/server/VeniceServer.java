@@ -3,7 +3,6 @@ package com.linkedin.venice.server;
 import com.google.common.collect.ImmutableList;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.config.VeniceClusterConfig;
-import com.linkedin.venice.config.VeniceServerConfig;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixAdapterSerializer;
 import com.linkedin.venice.helix.HelixParticipationService;
@@ -43,6 +42,7 @@ public class VeniceServer {
 
   private MetricsRepository metricsRepository;
 
+  private ReadOnlyStoreRepository metadataRepo;
   private ReadOnlySchemaRepository schemaRepo;
 
   private final List<AbstractVeniceService> services;
@@ -106,12 +106,12 @@ public class VeniceServer {
     offSetService = new BdbOffsetManager(veniceConfigLoader.getVeniceClusterConfig());
     services.add(offSetService);
 
-    // Create ReadOnlySchemaRepository
-    schemaRepo = createSchemaRepository(clusterConfig);
+    // Create ReadOnlyStore/SchemaRepository
+    createHelixStoreAndSchemaRepository(clusterConfig);
 
     //create and add KafkaSimpleConsumerService
     this.kafkaConsumerPerStoreService =
-        new KafkaConsumerPerStoreService(storageService.getStoreRepository(), veniceConfigLoader, offSetService, schemaRepo, metricsRepository);
+        new KafkaConsumerPerStoreService(storageService.getStoreRepository(), veniceConfigLoader, offSetService, metadataRepo,schemaRepo, metricsRepository);
 
     // start venice participant service if Helix is enabled.
     if(clusterConfig.isHelixEnabled()) {
@@ -148,17 +148,15 @@ public class VeniceServer {
     return ImmutableList.copyOf(services);
   }
 
-  private ReadOnlySchemaRepository createSchemaRepository(VeniceClusterConfig clusterConfig) {
+  private void createHelixStoreAndSchemaRepository(VeniceClusterConfig clusterConfig) {
     ZkClient zkClient = new ZkClient(clusterConfig.getZookeeperAddress(), ZkClient.DEFAULT_SESSION_TIMEOUT, ZkClient.DEFAULT_CONNECTION_TIMEOUT);
     HelixAdapterSerializer adapter = new HelixAdapterSerializer();
     String clusterName = clusterConfig.getClusterName();
-    ReadOnlyStoreRepository storeRepo = new HelixReadOnlyStoreRepository(zkClient, adapter, clusterName);
+    this.metadataRepo = new HelixReadOnlyStoreRepository(zkClient, adapter, clusterName);
     // Load existing store config and setup watches
-    storeRepo.refresh();
-    ReadOnlySchemaRepository schemaRepo = new HelixReadOnlySchemaRepository(storeRepo, zkClient, adapter, clusterName);
+    metadataRepo.refresh();
+    this.schemaRepo = new HelixReadOnlySchemaRepository(metadataRepo, zkClient, adapter, clusterName);
     schemaRepo.refresh();
-
-    return schemaRepo;
   }
 
   public StorageService getStorageService(){

@@ -38,19 +38,22 @@ public abstract class AbstractAvroStoreClient<V> implements AvroGenericStoreClie
   private TransportClient<V> transportClient;
   private String storeName;
 
-  //TODO: build a MetricsRepositoryFactory so that we don't have to pass metricsRepository into it as a param.
   public AbstractAvroStoreClient(TransportClient<V> transportClient,
                                  String storeName,
                                  boolean needSchemaReader,
                                  MetricsRepository metricsRepository) {
     this.metricsRepository = metricsRepository;
 
-    ClientStats.init(this.metricsRepository);
-    stats = ClientStats.getInstance();
-
     this.transportClient = transportClient;
     this.storeName = storeName;
     this.needSchemaReader = needSchemaReader;
+
+    if (needSchemaReader) {
+      stats = new ClientStats(metricsRepository, AbstractAvroStoreClient.VENICE_CLIENT_NAME);
+    } else {
+      stats = new ClientStats(TehutiUtils.getMetricsRepository(AbstractAvroStoreClient.VENICE_CLIENT_NAME),
+                              "schema_reader");
+    }
 
     // Set deserializer fetcher for transport client
     transportClient.setDeserializerFetcher(this);
@@ -140,10 +143,6 @@ public abstract class AbstractAvroStoreClient<V> implements AvroGenericStoreClie
   }
 
   protected abstract AbstractAvroStoreClient<V> getStoreClientForSchemaReader();
-
-  static protected MetricsRepository getDeafultClientMetricsRepository(String storeName) {
-    return TehutiUtils.getMetricsRepository(VENICE_CLIENT_NAME + "_" + storeName);
-  }
 
   protected MetricsRepository getMetricsRepository() {
     return this.metricsRepository;

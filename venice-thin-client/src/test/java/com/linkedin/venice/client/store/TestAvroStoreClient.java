@@ -17,6 +17,7 @@ import org.apache.avro.generic.GenericData;
 import org.testng.Assert;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeClass;
+import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
 import java.io.IOException;
@@ -31,7 +32,6 @@ public class TestAvroStoreClient {
   private static final String KEY_SCHEMA_STR = TestKeyRecord.SCHEMA$.toString();
 
   private TransportClient mockTransportClient;
-  private MetricsRepository mockMetricsRepository;
 
   private AvroGenericStoreClientImpl genericStoreClient;
 
@@ -41,17 +41,18 @@ public class TestAvroStoreClient {
     mockTransportClient = mock(TransportClient.class);
     doReturn(mockTransportClient).when(mockTransportClient).getCopyIfNotUsableInCallback();
 
-    mockMetricsRepository = new MetricsRepository();
-    MockTehutiReporter mockTehutiReporter = new MockTehutiReporter();
-    mockMetricsRepository.addReporter(mockTehutiReporter);
-
     byte[] schemaResponseInBytes =
         StoreClientTestUtils.constructSchemaResponseInBytes(STORE_NAME, 1, KEY_SCHEMA_STR);
     Future<byte[]> mockFuture = mock(Future.class);
     doReturn(schemaResponseInBytes).when(mockFuture).get();
     doReturn(mockFuture).when(mockTransportClient).getRaw(SchemaReader.TYPE_KEY_SCHEMA + "/" + STORE_NAME);
 
-    genericStoreClient = new AvroGenericStoreClientImpl(mockTransportClient, STORE_NAME, mockMetricsRepository);
+    genericStoreClient = new AvroGenericStoreClientImpl(mockTransportClient, STORE_NAME, new MetricsRepository());
+  }
+
+  @BeforeMethod
+  public void setUpMetricsRepo() {
+
   }
 
   @AfterMethod
@@ -105,7 +106,7 @@ public class TestAvroStoreClient {
     doReturn(mockFuture).when(mockTransportClient)
         .getRaw(SchemaReader.TYPE_VALUE_SCHEMA + "/" + STORE_NAME + "/" + "1");
     AvroSpecificStoreClientImpl specificStoreClient =
-        new AvroSpecificStoreClientImpl(mockTransportClient, STORE_NAME, TestValueRecord.class, mockMetricsRepository);
+        new AvroSpecificStoreClientImpl(mockTransportClient, STORE_NAME, TestValueRecord.class, new MetricsRepository());
 
     specificStoreClient.start();
     RecordDeserializer specificRecordDeserializer = specificStoreClient.fetch(1);

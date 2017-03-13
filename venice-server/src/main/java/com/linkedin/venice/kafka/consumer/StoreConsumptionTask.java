@@ -71,12 +71,17 @@ public class StoreConsumptionTask implements Runnable, Closeable {
         long beforePollingTimestamp = System.currentTimeMillis();
         consumerRecords = consumer.poll(READ_CYCLE_DELAY_MS);
         long afterPollingTimestamp = System.currentTimeMillis();
-        stats.recordPollRequestLatency(storeNameWithoutVersionInfo, afterPollingTimestamp - beforePollingTimestamp);
+
         int consumerRecordsCnt = 0;
         if (null != consumerRecords) {
           consumerRecordsCnt = consumerRecords.count();
         }
-        stats.recordPollResultNum(storeNameWithoutVersionInfo, consumerRecordsCnt);
+
+        if (emitMetrics.get()) {
+          stats.recordPollRequestLatency(storeNameWithoutVersionInfo, afterPollingTimestamp - beforePollingTimestamp);
+          stats.recordPollResultNum(storeNameWithoutVersionInfo, consumerRecordsCnt);
+        }
+
         if (0 == consumerRecordsCnt) {
           // No need to add to the blocking queue
           continue;
@@ -86,8 +91,9 @@ public class StoreConsumptionTask implements Runnable, Closeable {
           long beforeQueuePutTimestamp = System.currentTimeMillis();
           consumerRecordsQueue.put(consumerRecords);
           long afterQueuePutTimestamp = System.currentTimeMillis();
-          stats.recordConsumerRecordsQueuePutLatency(storeNameWithoutVersionInfo,
-              afterQueuePutTimestamp - beforeQueuePutTimestamp);
+          if (emitMetrics.get()) {
+            stats.recordConsumerRecordsQueuePutLatency(storeNameWithoutVersionInfo, afterQueuePutTimestamp - beforeQueuePutTimestamp);
+          }
         } catch (InterruptedException ie) {
           logger.info("Received InterruptedException while running consumer thread", ie);
           break;
@@ -128,6 +134,7 @@ public class StoreConsumptionTask implements Runnable, Closeable {
   private KafkaConsumerWrapper consumer;
 
   private final AtomicBoolean isRunning;
+  private final AtomicBoolean emitMetrics;
 
   private final PriorityBlockingQueue<ConsumerAction> consumerActionsQueue;
 
@@ -228,6 +235,7 @@ public class StoreConsumptionTask implements Runnable, Closeable {
     this.consumerRecordsQueue = new LinkedBlockingQueue<>(consumerRecordsQueueCapacity);
 
     this.isRunning = new AtomicBoolean(true);
+    this.emitMetrics = new AtomicBoolean(true);
   }
 
   private void validateState() {
@@ -391,13 +399,20 @@ public class StoreConsumptionTask implements Runnable, Closeable {
       ConsumerRecords<KafkaKey, KafkaMessageEnvelope> records =
           consumerRecordsQueue.poll(READ_CYCLE_DELAY_MS, TimeUnit.MILLISECONDS);
       long afterPollingTimestamp = System.currentTimeMillis();
-      stats.recordConsumerRecordsQueuePollLatency(storeNameWithoutVersionInfo, afterPollingTimestamp - beforePollingTimestamp);
+
+      if (emitMetrics.get()) {
+        stats.recordConsumerRecordsQueuePollLatency(storeNameWithoutVersionInfo, afterPollingTimestamp - beforePollingTimestamp);
+      }
+
       if (null == records) {
         return;
       }
       processTopicConsumerRecords(records);
       long afterProcessingTimestamp = System.currentTimeMillis();
-      stats.recordProcessPollResultLatency(storeNameWithoutVersionInfo, afterProcessingTimestamp - afterPollingTimestamp);
+
+      if (emitMetrics.get()) {
+        stats.recordProcessPollResultLatency(storeNameWithoutVersionInfo, afterProcessingTimestamp - afterPollingTimestamp);
+      }
     } else {
       idleCounter ++;
       if(idleCounter > MAX_IDLE_COUNTER) {
@@ -639,8 +654,11 @@ public class StoreConsumptionTask implements Runnable, Closeable {
     }
 
     throttler.maybeThrottle(totalSize);
-    stats.recordBytesConsumed(storeNameWithoutVersionInfo, totalSize);
-    stats.recordRecordsConsumed(storeNameWithoutVersionInfo, totalRecords);
+
+    if (emitMetrics.get()) {
+      stats.recordBytesConsumed(storeNameWithoutVersionInfo, totalSize);
+      stats.recordRecordsConsumed(storeNameWithoutVersionInfo, totalRecords);
+    }
 
     for(Integer partition: processedPartitions) {
       if(!partitionToOffsetMap.containsKey(partition)) {
@@ -657,6 +675,10 @@ public class StoreConsumptionTask implements Runnable, Closeable {
   }
 
   public long getOffsetLag() {
+    if (!emitMetrics.get()) {
+      return 0;
+    }
+    
     Map<Integer, Long> latestOffsets = topicManager.getLatestOffsets(topic);
     long offsetLag = partitionToOffsetMap.entrySet().stream()
         .map(entry -> latestOffsets.get(entry.getKey()) - entry.getValue().getOffset())
@@ -884,5 +906,13 @@ public class StoreConsumptionTask implements Runnable, Closeable {
 
   KafkaConsumerWrapper getConsumer() {
     return this.consumer;
+  }
+
+  public void enableMetricsEmission() {
+    this.emitMetrics.set(true);
+  }
+
+  public void disableMetricsEmission() {
+    this.emitMetrics.set(false);
   }
 }

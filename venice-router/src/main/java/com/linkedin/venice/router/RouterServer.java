@@ -23,7 +23,6 @@ import com.linkedin.venice.router.api.VenicePartitionFinder;
 import com.linkedin.venice.router.api.VenicePathParser;
 import com.linkedin.venice.router.api.VeniceRoleFinder;
 import com.linkedin.venice.router.api.VeniceVersionFinder;
-import com.linkedin.venice.router.stats.RouterAggStats;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.stats.TehutiUtils;
 import com.linkedin.venice.utils.DaemonThreadFactory;
@@ -138,9 +137,16 @@ public class RouterServer extends AbstractVeniceService {
     this(port, sslPort, clusterName, zkConnection, d2Servers, 10000, 1000, sslFactory);
   }
 
-  // TODO: Do we need both of these constructors?  If we're always going to use the jmxReporterMetricsRepo() method, then drop the explicit constructor
   public RouterServer(int port, int sslPort, String clusterName, String zkConnection, List<D2Server> d2ServerList, int clientTimeout, int heartbeatTimeout, SSLEngineComponentFactory sslFactory){
-    this(port, sslPort, clusterName, zkConnection, d2ServerList, clientTimeout, heartbeatTimeout, createMetricsRepository(), sslFactory);
+    this(port,
+        sslPort,
+        clusterName,
+        zkConnection,
+        d2ServerList,
+        clientTimeout,
+        heartbeatTimeout,
+        TehutiUtils.getMetricsRepository(ROUTER_SERVICE_NAME),
+        sslFactory);
 
   }
 
@@ -164,8 +170,6 @@ public class RouterServer extends AbstractVeniceService {
     this.routingDataRepository = new HelixRoutingDataRepository(manager);
     this.d2ServerList = d2ServerList;
     this.sslFactory = sslEngineComponentFactory;
-
-    RouterAggStats.init(this.metricsRepository);
   }
 
   /**
@@ -190,7 +194,7 @@ public class RouterServer extends AbstractVeniceService {
                       HelixReadOnlyStoreRepository metadataRepository,
                       HelixReadOnlySchemaRepository schemaRepository,
                       List<D2Server> d2ServerList,
-                      SSLEngineComponentFactory sslFactory){
+                      SSLEngineComponentFactory sslFactory) {
     this.port = port;
     this.sslPort = sslPort;
     this.clusterName = clusterName;
@@ -202,7 +206,6 @@ public class RouterServer extends AbstractVeniceService {
     this.clientTimeout = 10000;
     this.heartbeatTimeout = 1000;
     this.sslFactory = sslFactory;
-    RouterAggStats.init(this.metricsRepository); //TODO: re-evaluate doing a global init for the RouterAggStats class.
   }
 
   @Override
@@ -219,7 +222,7 @@ public class RouterServer extends AbstractVeniceService {
     Map<String, Object> serverSocketOptions = null;
     VenicePartitionFinder partitionFinder = new VenicePartitionFinder(routingDataRepository);
     VeniceHostHealth healthMonitor = new VeniceHostHealth();
-    dispatcher = new VeniceDispatcher(healthMonitor, clientTimeout);
+    dispatcher = new VeniceDispatcher(healthMonitor, clientTimeout, metricsRepository);
     heartbeat = new RouterHeartbeat(manager, healthMonitor, 10, TimeUnit.SECONDS, heartbeatTimeout);
     heartbeat.startInner();
     MetaDataHandler metaDataHandler = new MetaDataHandler(routingDataRepository, schemaRepository, clusterName);

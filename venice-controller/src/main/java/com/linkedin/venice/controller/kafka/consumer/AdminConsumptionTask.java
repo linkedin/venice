@@ -15,7 +15,7 @@ import com.linkedin.venice.controller.kafka.protocol.admin.StoreCreation;
 import com.linkedin.venice.controller.kafka.protocol.admin.ValueSchemaCreation;
 import com.linkedin.venice.controller.kafka.protocol.enums.AdminMessageType;
 import com.linkedin.venice.controller.kafka.protocol.serializer.AdminOperationSerializer;
-import com.linkedin.venice.controller.stats.ControllerStats;
+import com.linkedin.venice.controller.stats.AdminConsumptionStats;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.validation.DataValidationException;
 import com.linkedin.venice.exceptions.validation.DuplicateDataException;
@@ -33,6 +33,7 @@ import com.linkedin.venice.offsets.OffsetManager;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.utils.Utils;
+import io.tehuti.metrics.MetricsRepository;
 import java.io.Closeable;
 import java.io.IOException;
 import java.util.Iterator;
@@ -64,7 +65,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
   private final boolean isParentController;
   private final AtomicBoolean isRunning;
   private final AdminOperationSerializer deserializer;
-  private ControllerStats controllerStats;
+  private final AdminConsumptionStats stats;
   private final long failureRetryTimeoutMs;
 
   private boolean isSubscribed;
@@ -95,7 +96,8 @@ public class AdminConsumptionTask implements Runnable, Closeable {
                               OffsetManager offsetManager,
                               ExecutionIdAccessor executionIdAccessor,
                               long failureRetryTimeoutMs,
-                              boolean isParentController) {
+                              boolean isParentController,
+                              AdminConsumptionStats stats) {
     this.clusterName = clusterName;
     this.topic = AdminTopicUtils.getTopicNameFromClusterName(clusterName);
     this.consumerTaskId = String.format(CONSUMER_TASK_ID_FORMAT, this.topic);
@@ -109,18 +111,13 @@ public class AdminConsumptionTask implements Runnable, Closeable {
     this.isSubscribed = false;
     this.lastOffset = new OffsetRecord();
     this.topicExists = false;
-    this.controllerStats = ControllerStats.getInstance();
+    this.stats = stats;
 
     Properties kafkaConsumerProperties = VeniceControllerService.getKafkaConsumerProperties(kafkaBootstrapServers, clusterName);
     this.consumer = consumerFactory.getConsumer(kafkaConsumerProperties);
     this.offsetManager = offsetManager;
     this.executionIdAccessor = executionIdAccessor;
     this.producerTrackerMap = new HashMap<>();
-  }
-
-  // For testing
-  public void setControllerStats(ControllerStats stats) {
-    this.controllerStats = stats;
   }
 
   @Override
@@ -182,7 +179,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
               } catch (Exception e) {
                 // Retry should happen in message level, not in batch
                 retryCount += 1; // increment and report count if we have a failure
-                controllerStats.recordFailedAdminConsumption(retryCount);
+                stats.recordFailedAdminConsumption(retryCount);
                 lastFailedOffset=record.offset();
                 logger.error("Error when processing admin message with offset "+record.offset()+", will retry", e);
                 admin.setLastException(clusterName, e);
@@ -269,7 +266,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
       }
     } catch (DataValidationException dve) {
       logger.error("Received data validation error", dve);
-      controllerStats.recordAdminTopicDIVErrorReportCount();
+      stats.recordAdminTopicDIVErrorReportCount();
       throw dve;
     }
 

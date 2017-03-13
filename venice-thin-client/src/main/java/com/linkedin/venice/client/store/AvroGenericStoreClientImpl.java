@@ -5,6 +5,7 @@ import com.linkedin.venice.client.schema.SchemaReader;
 import com.linkedin.venice.client.serializer.AvroSerializerDeserializerFactory;
 import com.linkedin.venice.client.serializer.RecordDeserializer;
 import com.linkedin.venice.client.store.transport.TransportClient;
+import com.linkedin.venice.stats.TehutiUtils;
 import io.tehuti.metrics.MetricsRepository;
 import org.apache.avro.Schema;
 
@@ -14,7 +15,7 @@ import org.apache.avro.Schema;
  */
 public class AvroGenericStoreClientImpl<V> extends AbstractAvroStoreClient<V> {
   public AvroGenericStoreClientImpl(TransportClient<V> transportClient, String storeName) {
-    this(transportClient, storeName, AbstractAvroStoreClient.getDeafultClientMetricsRepository(storeName));
+    this(transportClient, storeName, TehutiUtils.getMetricsRepository(AbstractAvroStoreClient.VENICE_CLIENT_NAME));
   }
 
   public AvroGenericStoreClientImpl(TransportClient<V> transportClient, String storeName,
