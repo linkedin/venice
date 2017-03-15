@@ -239,17 +239,17 @@ public class Store {
   }
 
   /**
-   * Delete a version into store.
+   * Delete a version from a store.
    *
    * @param versionNumber
    */
-  public void deleteVersion(int versionNumber) {
+  public Version deleteVersion(int versionNumber) {
     for (int i = 0; i < versions.size(); i++) {
       if (versions.get(i).getNumber() == versionNumber) {
-        versions.remove(i);
-        break;
+        return versions.remove(i);
       }
     }
+    return null;
   }
 
   public boolean containsVersion(int versionNumber) {

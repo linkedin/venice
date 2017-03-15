@@ -2,24 +2,22 @@ package com.linkedin.venice.controller;
 
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
-import com.linkedin.venice.helix.HelixJobRepository;
 import com.linkedin.venice.helix.HelixState;
 import com.linkedin.venice.helix.HelixStatusMessageChannel;
 import com.linkedin.venice.helix.Replica;
-import com.linkedin.venice.job.KillJobMessage;
+import com.linkedin.venice.pushmonitor.KillOfflinePushMessage;
 import com.linkedin.venice.meta.PartitionAssignment;
 import com.linkedin.venice.meta.ReadWriteStoreRepository;
 import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.meta.VersionStatus;
-import com.linkedin.venice.status.StatusMessageChannel;
+import com.linkedin.venice.pushmonitor.OfflinePushMonitor;
 import com.linkedin.venice.status.StatusMessageHandler;
-import com.linkedin.venice.status.StoreStatusMessage;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixRoutingDataRepository;
 import com.linkedin.venice.integration.utils.KafkaBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
-import com.linkedin.venice.job.ExecutionStatus;
+import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.*;
@@ -152,7 +150,7 @@ public class TestVeniceHelixAdmin {
       String storeName = TestUtils.getUniqueString("test-store");
       veniceAdmin.addStore(clusterName, storeName, "dev", keySchema, valueSchema);
       veniceAdmin.incrementVersion(clusterName, storeName, 1, 1);
-      Assert.assertEquals(veniceAdmin.getOffLineJobStatus(clusterName, new Version(storeName, 1).kafkaTopicName())
+      Assert.assertEquals(veniceAdmin.getOffLinePushStatus(clusterName, new Version(storeName, 1).kafkaTopicName())
           .getExecutionStatus(), ExecutionStatus.STARTED, "Can not get offline job status correctly.");
     } catch (VeniceException e) {
       Assert.fail("Should be able to create store after starting cluster");
@@ -164,12 +162,8 @@ public class TestVeniceHelixAdmin {
   public void testControllerFailOver()
       throws Exception {
     String storeName = TestUtils.getUniqueString("test");
-    Version version = new Version(storeName, 1);
     veniceAdmin.addStore(clusterName, storeName, "dev", keySchema, valueSchema);
-    veniceAdmin.incrementVersion(clusterName, storeName, 1, 1);
-
-    StatusMessageChannel channel = new HelixStatusMessageChannel(participants.get(nodeId), Integer.MAX_VALUE);
-    channel.sendToController(new StoreStatusMessage(version.kafkaTopicName(), 0, nodeId, ExecutionStatus.STARTED));
+    Version version = veniceAdmin.incrementVersion(clusterName, storeName, 1, 1);
 
     int newAdminPort = config.getAdminPort() + 1; /* Note: this is a dummy port */
     PropertyBuilder builder = new PropertyBuilder().put(controllerProps.toProperties()).put("admin.port", newAdminPort);
@@ -190,17 +184,18 @@ public class TestVeniceHelixAdmin {
       Assert.assertTrue(e.getMessage().contains("Can not get the resources, current controller is not the leader"),
           "Wrong error message, got: " + e.getMessage());
     }
+    TestUtils.waitForNonDeterministicCompletion(TOTAL_TIMEOUT_FOR_SHORT_TEST, TimeUnit.MILLISECONDS,
+        () -> veniceAdmin.getOffLinePushStatus(clusterName, version.kafkaTopicName())
+            .getExecutionStatus()
+            .equals(ExecutionStatus.COMPLETED));
 
     //Stop original master.
     veniceAdmin.stop(clusterName);
     //wait master change event
     waitUntilIsMaster(newMasterAdmin, clusterName, MASTER_CHANGE_TIMEOUT);
     //Now get status from new master controller.
-    Assert.assertEquals(newMasterAdmin.getOffLineJobStatus(clusterName, version.kafkaTopicName()).getExecutionStatus(), ExecutionStatus.STARTED,
-        "Can not get offline job status correctly.");
-    channel.sendToController(new StoreStatusMessage(version.kafkaTopicName(), 0, nodeId, ExecutionStatus.COMPLETED));
-    Assert.assertEquals(newMasterAdmin.getOffLineJobStatus(clusterName, version.kafkaTopicName()).getExecutionStatus(), ExecutionStatus.COMPLETED,
-        "Job should be completed after getting update from message channel");
+    Assert.assertEquals(newMasterAdmin.getOffLinePushStatus(clusterName, version.kafkaTopicName()).getExecutionStatus(), ExecutionStatus.COMPLETED,
+        "Offline push should be completed");
 
     // Stop and start participant to use new master to trigger state transition.
     stopParticipants();
@@ -216,7 +211,7 @@ public class TestVeniceHelixAdmin {
     //New master controller create resource and trigger state transition on participant.
     newMasterAdmin.incrementVersion(clusterName, storeName, 1, 1);
     Version newVersion = new Version(storeName, 2);
-    Assert.assertEquals(newMasterAdmin.getOffLineJobStatus(clusterName, newVersion.kafkaTopicName()).getExecutionStatus(),
+    Assert.assertEquals(newMasterAdmin.getOffLinePushStatus(clusterName, newVersion.kafkaTopicName()).getExecutionStatus(),
         ExecutionStatus.STARTED, "Can not trigger state transition from new master");
     //Start original controller again, now it should become leader again based on Helix's logic.
     veniceAdmin.start(clusterName);
@@ -370,9 +365,9 @@ public class TestVeniceHelixAdmin {
     // Register the handle for kill message. Otherwise, when job manager collect the old version, it would meet error
     // after sending kill job message. Because, participant can not handle message correctly.
     HelixStatusMessageChannel channel = new HelixStatusMessageChannel(participants.get(nodeId));
-    channel.registerHandler(KillJobMessage.class, new StatusMessageHandler<KillJobMessage>() {
+    channel.registerHandler(KillOfflinePushMessage.class, new StatusMessageHandler<KillOfflinePushMessage>() {
       @Override
-      public void handleMessage(KillJobMessage message) {
+      public void handleMessage(KillOfflinePushMessage message) {
         //ignore.
       }
     });
@@ -380,9 +375,6 @@ public class TestVeniceHelixAdmin {
     for (int i = 0; i < 3; i++) {
       version = veniceAdmin.incrementVersion(clusterName, storeName, 1, 1);
       int versionNumber = version.getNumber();
-      VeniceJobManager jobManager = veniceAdmin.getVeniceHelixResource(clusterName).getJobManager();
-      jobManager.handleMessage(new StoreStatusMessage(version.kafkaTopicName(), 0, nodeId, ExecutionStatus.STARTED));
-      jobManager.handleMessage(new StoreStatusMessage(version.kafkaTopicName(), 0, nodeId, ExecutionStatus.COMPLETED));
 
       TestUtils.waitForNonDeterministicCompletion(30000, TimeUnit.MILLISECONDS,
           () -> veniceAdmin.getCurrentVersion(clusterName, storeName) == versionNumber);
@@ -397,7 +389,7 @@ public class TestVeniceHelixAdmin {
     Version deletedVersion = new Version(storeName, version.getNumber() - 2);
     // Ensure job and topic are deleted
     TestUtils.waitForNonDeterministicCompletion(30000, TimeUnit.MILLISECONDS,
-        () -> veniceAdmin.getOffLineJobStatus(clusterName, deletedVersion.kafkaTopicName()).getExecutionStatus()
+        () -> veniceAdmin.getOffLinePushStatus(clusterName, deletedVersion.kafkaTopicName()).getExecutionStatus()
             .equals(ExecutionStatus.NOT_CREATED));
     TestUtils.waitForNonDeterministicAssertion(30, TimeUnit.SECONDS, () -> {
       Assert.assertFalse(veniceAdmin.getTopicManager().containsTopic(deletedVersion.kafkaTopicName()));
@@ -431,8 +423,7 @@ public class TestVeniceHelixAdmin {
       return routingDataRepository.getPartitionAssignments(version.kafkaTopicName()).getAssignedNumberOfPartitions()
           == 0;
     });
-    // Now venice job manager get the notification that one replica is disappeared, as our replica factor is 1, so we
-    // lose all the replica now and job manager should kill the job and delete resource
+    veniceAdmin.deleteHelixResource(clusterName, version.kafkaTopicName());
     // Ensure idealstate is null which means resource has been deleted.
     TestUtils.waitForNonDeterministicCompletion(3000, TimeUnit.MILLISECONDS, () -> {
       PropertyKey.Builder keyBuilder = new PropertyKey.Builder(clusterName);
@@ -505,10 +496,14 @@ public class TestVeniceHelixAdmin {
     veniceAdmin.addStore(clusterName, storeName, "owner", keySchema, valueSchema);
     veniceAdmin.addVersion(clusterName, storeName, 1, 1, 1);
     TestUtils.waitForNonDeterministicCompletion(5000, TimeUnit.MILLISECONDS, () -> {
-      PartitionAssignment partitionAssignment = veniceAdmin.getVeniceHelixResource(clusterName)
-          .getRoutingDataRepository()
-          .getPartitionAssignments(Version.composeKafkaTopic(storeName, 1));
-      return partitionAssignment.getAssignedNumberOfPartitions() == 1;
+      try {
+        PartitionAssignment partitionAssignment = veniceAdmin.getVeniceHelixResource(clusterName)
+            .getRoutingDataRepository()
+            .getPartitionAssignments(Version.composeKafkaTopic(storeName, 1));
+        return partitionAssignment.getAssignedNumberOfPartitions() == 1;
+      }catch (VeniceException e){
+        return false;
+      }
     });
 
     List<Replica> replicas = veniceAdmin.getBootstrapReplicas(clusterName, Version.composeKafkaTopic(storeName, 1));
@@ -531,6 +526,8 @@ public class TestVeniceHelixAdmin {
   @Test
   public void testIsInstanceRemovableForRunningPush()
       throws Exception {
+    stopParticipants();
+    startParticipant(true, nodeId);
     // Create another participant so we will get two running instances.
     String newNodeId = "localhost_9900";
     startParticipant(true, newNodeId);
@@ -568,8 +565,8 @@ public class TestVeniceHelixAdmin {
       return partitionAssignment.getPartition(0).getBootstrapAndReadyToServeInstances().size() == 1;
     });
 
-    Assert.assertFalse(veniceAdmin.isInstanceRemovable(clusterName, newNodeId, 1),
-        "Only one instance is alive, can not be moved out.");
+    Assert.assertTrue(veniceAdmin.isInstanceRemovable(clusterName, newNodeId, 1),
+        "Even there is only one live instance, it could be removed and our push would not failed.");
     Assert.assertTrue(veniceAdmin.isInstanceRemovable(clusterName, nodeId, 1), "Instance is shutdown.");
   }
 
@@ -763,9 +760,11 @@ public class TestVeniceHelixAdmin {
     Assert.assertEquals(store.getVersions().size(), 2);
     Assert.assertEquals(store.peekNextVersion().getNumber(), 3);
     // two offline jobs are running.
-    HelixJobRepository jobRepository = veniceAdmin.getVeniceHelixResource(clusterName).getJobRepository();
-    Assert.assertEquals(jobRepository.getRunningJobOfTopic(Version.composeKafkaTopic(storeName, 1)).size(), 1);
-    Assert.assertEquals(jobRepository.getRunningJobOfTopic(Version.composeKafkaTopic(storeName, 2)).size(), 1);
+    OfflinePushMonitor monitor = veniceAdmin.getVeniceHelixResource(clusterName).getOfflinePushMonitor();
+    TestUtils.waitForNonDeterministicCompletion(TOTAL_TIMEOUT_FOR_SHORT_TEST, TimeUnit.MILLISECONDS,
+        () -> monitor.getOfflinePushStatus(Version.composeKafkaTopic(storeName, 1)).equals(ExecutionStatus.COMPLETED)
+            && monitor.getOfflinePushStatus(Version.composeKafkaTopic(storeName, 2)).equals(ExecutionStatus.COMPLETED)
+    );
   }
 
   @Test
@@ -802,11 +801,11 @@ public class TestVeniceHelixAdmin {
   }
 
   @Test
-  public void testKillOfflineJob()
+  public void testKillOfflinePush()
       throws Exception {
     String newNodeId = Utils.getHelixNodeIdentifier(9786);
     startParticipant(true, newNodeId);
-    String storeName = "testKillJob";
+    String storeName = "testKillPush";
     int partitionCount = 2;
     int replicaFactor = 1;
     // Start a new version with 2 partition and 1 replica
@@ -814,32 +813,39 @@ public class TestVeniceHelixAdmin {
     Version version = veniceAdmin.incrementVersion(clusterName, storeName, partitionCount, replicaFactor);
     Map<String, Integer> nodesToPartitionMap = new HashMap<>();
     TestUtils.waitForNonDeterministicCompletion(5000, TimeUnit.MILLISECONDS, () -> {
-      PartitionAssignment partitionAssignment = veniceAdmin.getVeniceHelixResource(clusterName)
-          .getRoutingDataRepository()
-          .getPartitionAssignments(version.kafkaTopicName());
-      if (partitionAssignment.getPartition(0).getBootstrapInstances().size() == 1
-          && partitionAssignment.getPartition(1).getBootstrapInstances().size() == 1) {
-        nodesToPartitionMap.put(partitionAssignment.getPartition(0).getBootstrapInstances().get(0).getNodeId(), 0);
-        nodesToPartitionMap.put(partitionAssignment.getPartition(1).getBootstrapInstances().get(0).getNodeId(), 1);
-        return true;
+      try {
+        PartitionAssignment partitionAssignment = veniceAdmin.getVeniceHelixResource(clusterName)
+            .getRoutingDataRepository()
+            .getPartitionAssignments(version.kafkaTopicName());
+        if(partitionAssignment.getAllPartitions().size() < partitionCount){
+          return false;
+        }
+        if (partitionAssignment.getPartition(0).getBootstrapInstances().size() == 1
+            && partitionAssignment.getPartition(1).getBootstrapInstances().size() == 1) {
+          nodesToPartitionMap.put(partitionAssignment.getPartition(0).getBootstrapInstances().get(0).getNodeId(), 0);
+          nodesToPartitionMap.put(partitionAssignment.getPartition(1).getBootstrapInstances().get(0).getNodeId(), 1);
+          return true;
+        }
+        return false;
+      }catch(VeniceException e){
+        return false;
       }
-      return false;
     });
     //Now we have two participants blocked on ST from BOOTSTRAP to ONLINE.
 
     try {
-      veniceAdmin.killOfflineJob(clusterName, version.kafkaTopicName());
+      veniceAdmin.killOfflinePush(clusterName, version.kafkaTopicName());
       Assert.fail("Storage node have not registered the handler to process kill message, sending should fail");
     } catch (VeniceException e) {
       //expected
     }
 
-    final CopyOnWriteArrayList<KillJobMessage> processedMessage = new CopyOnWriteArrayList<>();
+    final CopyOnWriteArrayList<KillOfflinePushMessage> processedMessage = new CopyOnWriteArrayList<>();
     for (HelixManager manager : this.participants.values()) {
       HelixStatusMessageChannel channel = new HelixStatusMessageChannel(manager);
-      channel.registerHandler(KillJobMessage.class, new StatusMessageHandler<KillJobMessage>() {
+      channel.registerHandler(KillOfflinePushMessage.class, new StatusMessageHandler<KillOfflinePushMessage>() {
         @Override
-        public void handleMessage(KillJobMessage message) {
+        public void handleMessage(KillOfflinePushMessage message) {
           processedMessage.add(message);
           //make ST error to simulate kill consumption task.
           stateModelFactory.makeTransitionError(message.getKafkaTopic(), nodesToPartitionMap.get(manager.getInstanceName()));
@@ -855,7 +861,7 @@ public class TestVeniceHelixAdmin {
         .containsKafkaTopic(version.kafkaTopicName()));
 
     try {
-      veniceAdmin.killOfflineJob(clusterName, version.kafkaTopicName());
+      veniceAdmin.killOfflinePush(clusterName, version.kafkaTopicName());
       TestUtils.waitForNonDeterministicCompletion(TOTAL_TIMEOUT_FOR_SHORT_TEST, TimeUnit.MILLISECONDS,
           () -> processedMessage.size() == 2);
     } catch (VeniceException e) {
@@ -875,10 +881,10 @@ public class TestVeniceHelixAdmin {
     // register kill message handler for participants.
     for (HelixManager manager : this.participants.values()) {
       HelixStatusMessageChannel channel = new HelixStatusMessageChannel(manager);
-      channel.registerHandler(KillJobMessage.class, new StatusMessageHandler<KillJobMessage>() {
+      channel.registerHandler(KillOfflinePushMessage.class, new StatusMessageHandler<KillOfflinePushMessage>() {
         @Override
 
-        public void handleMessage(KillJobMessage message) {
+        public void handleMessage(KillOfflinePushMessage message) {
           //make state transition failed to simulate kill consumption task.
           stateModelFactory.makeTransitionError(message.getKafkaTopic(), 0);
         }

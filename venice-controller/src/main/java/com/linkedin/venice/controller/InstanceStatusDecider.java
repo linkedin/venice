@@ -1,7 +1,6 @@
 package com.linkedin.venice.controller;
 
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.helix.HelixState;
 import com.linkedin.venice.helix.Replica;
 import com.linkedin.venice.helix.ResourceAssignment;
 import com.linkedin.venice.meta.Instance;
@@ -12,15 +11,12 @@ import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
+import com.linkedin.venice.pushmonitor.OfflinePushMonitor;
 import com.linkedin.venice.utils.HelixUtils;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
-import org.apache.helix.HelixDataAccessor;
-import org.apache.helix.HelixManager;
-import org.apache.helix.PropertyKey;
-import org.apache.helix.model.LiveInstance;
 import org.apache.log4j.Logger;
 
 
@@ -65,7 +61,7 @@ public class InstanceStatusDecider {
       }
 
       RoutingDataRepository routingDataRepository = resources.getRoutingDataRepository();
-      VeniceJobManager jobManager = resources.getJobManager();
+      OfflinePushMonitor monitor = resources.getOfflinePushMonitor();
 
       // Get all of replicas hold by given instance
       List<Replica> replicas = getReplicasForInstance(resources, instanceId);
@@ -104,13 +100,19 @@ public class InstanceStatusDecider {
           } else if (versionStatus.equals(VersionStatus.STARTED)) {
             // Push is still running
             // Venice can not remove the given instance once job would fail due to removing.
-            if (jobManager.willJobFail(resourceName, partitionAssignmentAfterRemoving)) {
-              logger.info("Instance:" + instanceId + " is not removable because job for topic:" + resourceName
-                  + " would fail if this instance was removed from cluster:" + clusterName);
+            if (monitor.wouldJobFail(resourceName, partitionAssignmentAfterRemoving)) {
+              logger.info(
+                  "Instance:" + instanceId + " is not removable because the offline push for topic:" + resourceName
+                      + " would fail if this instance was removed from cluster:" + clusterName);
               return false;
             }
           } else {
-            // Ignore the error version or not created version.
+            if (logger.isDebugEnabled()) {
+              // Ignore the error version or not created version.
+              logger.debug(
+                  "Version status: " + versionStatus.toString() + ", ignore it while judging whether instance: "
+                      + instanceId + " is removable.");
+            }
             continue;
           }
         }

@@ -6,7 +6,7 @@ import com.linkedin.venice.helix.HelixState;
 import com.linkedin.venice.helix.Replica;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
-import com.linkedin.venice.job.ExecutionStatus;
+import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.writer.VeniceWriter;
@@ -58,7 +58,7 @@ public class TestRebalanceByDefaultStrategy {
     TestUtils.waitForNonDeterministicCompletion(TIMEOUT_MS, TimeUnit.MILLISECONDS,
         () -> cluster.getMasterVeniceController()
             .getVeniceAdmin()
-            .getOffLineJobStatus(cluster.getClusterName(), topicName)
+            .getOffLinePushStatus(cluster.getClusterName(), topicName)
             .getExecutionStatus()
             .equals(ExecutionStatus.COMPLETED));
   }

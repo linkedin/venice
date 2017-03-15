@@ -1,12 +1,11 @@
 package com.linkedin.venice.pushmonitor;
 
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.job.ExecutionStatus;
 import java.util.List;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
-import static com.linkedin.venice.job.ExecutionStatus.*;
+import static com.linkedin.venice.pushmonitor.ExecutionStatus.*;
 
 
 public class ReplicaStatusTest {

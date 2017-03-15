@@ -222,7 +222,7 @@ public class TestAdminConsumptionTask {
     verify(mockKafkaConsumer, timeout(TIMEOUT))
         .unSubscribe(any(), anyInt());
     verify(admin, timeout(TIMEOUT)).addStore(clusterName, storeName, owner, keySchema, valueSchema);
-    verify(admin, timeout(TIMEOUT)).killOfflineJob(clusterName, storeTopicName);
+    verify(admin, timeout(TIMEOUT)).killOfflinePush(clusterName, storeTopicName);
   }
 
   @Test (timeOut = TIMEOUT)
@@ -445,7 +445,7 @@ public class TestAdminConsumptionTask {
         .unSubscribe(any(), anyInt());
     verify(admin, timeout(TIMEOUT)).addStore(clusterName, storeName, owner, keySchema, valueSchema);
     // Kill message is before persisted offset
-    verify(admin, never()).killOfflineJob(clusterName, storeTopicName);
+    verify(admin, never()).killOfflinePush(clusterName, storeTopicName);
   }
 
   @Test (timeOut = TIMEOUT)
@@ -593,7 +593,7 @@ public class TestAdminConsumptionTask {
         .subscribe(any(), anyInt(), any());
     verify(mockKafkaConsumer, timeout(TIMEOUT))
         .unSubscribe(any(), anyInt());
-    verify(admin, never()).killOfflineJob(clusterName, storeTopicName);
+    verify(admin, never()).killOfflinePush(clusterName, storeTopicName);
   }
 
   @Test

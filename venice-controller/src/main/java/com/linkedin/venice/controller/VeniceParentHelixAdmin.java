@@ -27,11 +27,10 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.helix.HelixReadWriteStoreRepository;
 import com.linkedin.venice.helix.Replica;
-import com.linkedin.venice.job.ExecutionStatus;
+import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.kafka.validation.checksum.CheckSumType;
 import com.linkedin.venice.meta.Instance;
-import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.offsets.OffsetManager;
@@ -336,10 +335,10 @@ public class VeniceParentHelixAdmin implements Admin {
          * Check the offline job status for this topic, and if it has already been terminated, we will skip it.
          * Otherwise, an exception will be thrown to stop concurrent data pushes.
          *
-         * {@link #getOffLineJobStatus(String, String)} will remove the topic if the offline job has been terminated,
+         * {@link #getOffLinePushStatus(String, String)} will remove the topic if the offline job has been terminated,
          * so we don't need to explicitly remove it here.
           */
-        Admin.OfflineJobStatus offlineJobStatus = getOffLineJobStatus(clusterName, topic);
+        OfflinePushStatusInfo offlineJobStatus = getOffLinePushStatus(clusterName, topic);
         if (offlineJobStatus.getExecutionStatus().isTerminal()) {
           logger.info("Offline job for the existing topic: " + topic + " is already done, just skip it");
           continue;
@@ -412,15 +411,6 @@ public class VeniceParentHelixAdmin implements Admin {
                                 String storeName,
                                 int versionNumber) {
     throw new VeniceException("setCurrentVersion is not supported yet!");
-  }
-
-  @Override
-  public void startOfflinePush(String clusterName,
-                               String kafkaTopic,
-                               int numberOfPartition,
-                               int replicaFactor,
-                               OfflinePushStrategy strategy) {
-    throw new VeniceException("startOfflinePush is not supported!");
   }
 
   @Override
@@ -512,12 +502,12 @@ public class VeniceParentHelixAdmin implements Admin {
    * @return
    */
   @Override
-  public OfflineJobStatus getOffLineJobStatus(String clusterName, String kafkaTopic) {
+  public OfflinePushStatusInfo getOffLinePushStatus(String clusterName, String kafkaTopic) {
     Map<String, ControllerClient> controllerClients = getControllerClientMap(clusterName);
     return getOffLineJobStatus(clusterName, kafkaTopic, controllerClients, getTopicManager());
   }
 
-  protected static OfflineJobStatus getOffLineJobStatus(String clusterName, String kafkaTopic,
+  protected static OfflinePushStatusInfo getOffLineJobStatus(String clusterName, String kafkaTopic,
       Map<String, ControllerClient> controllerClients, TopicManager topicManager) {
     Set<String> childClusters = controllerClients.keySet();
     ExecutionStatus currentReturnStatus = ExecutionStatus.NOT_CREATED;
@@ -570,7 +560,7 @@ public class VeniceParentHelixAdmin implements Admin {
       topicManager.syncDeleteTopic(kafkaTopic);
     }
 
-    return new OfflineJobStatus(currentReturnStatus, extraInfo);
+    return new OfflinePushStatusInfo(currentReturnStatus, extraInfo);
   }
 
   /**
@@ -581,7 +571,7 @@ public class VeniceParentHelixAdmin implements Admin {
    * @return
    */
   @Override
-  public Map<String, Long> getOfflineJobProgress(String clusterName, String kafkaTopic){
+  public Map<String, Long> getOfflinePushProgress(String clusterName, String kafkaTopic){
     Map<String, ControllerClient> controllerClients = getControllerClientMap(clusterName);
     return getOfflineJobProgress(clusterName, kafkaTopic, controllerClients);
   }
@@ -767,10 +757,10 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   @Override
-  public void killOfflineJob(String clusterName, String kafkaTopic) {
+  public void killOfflinePush(String clusterName, String kafkaTopic) {
     acquireLock(clusterName);
     try {
-      veniceHelixAdmin.checkPreConditionForKillOfflineJob(clusterName, kafkaTopic);
+      veniceHelixAdmin.checkPreConditionForKillOfflinePush(clusterName, kafkaTopic);
       logger.info("Killing offline push job for topic: " + kafkaTopic + " in cluster: " + clusterName);
       // Remove Kafka topic
       TopicManager topicManager = getTopicManager();

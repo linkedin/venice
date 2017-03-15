@@ -1,19 +1,19 @@
-package com.linkedin.venice.job;
+package com.linkedin.venice.pushmonitor;
 
 import com.linkedin.venice.status.StatusMessage;
 import java.util.Map;
 
 
-public class KillJobMessage extends StatusMessage {
+public class KillOfflinePushMessage extends StatusMessage {
   private static final String KAFKA_TOPIC = "kafkaTopic";
 
   private final String kafkaTopic;
 
-  public KillJobMessage(String kafkaTopic) {
+  public KillOfflinePushMessage(String kafkaTopic) {
     this.kafkaTopic = kafkaTopic;
   }
 
-  public KillJobMessage(Map<String, String> fields) {
+  public KillOfflinePushMessage(Map<String, String> fields) {
     super(fields);
     this.kafkaTopic = fields.get(KAFKA_TOPIC);
   }
@@ -38,7 +38,7 @@ public class KillJobMessage extends StatusMessage {
       return false;
     }
 
-    KillJobMessage that = (KillJobMessage) o;
+    KillOfflinePushMessage that = (KillOfflinePushMessage) o;
 
     return kafkaTopic.equals(that.kafkaTopic);
   }
@@ -50,7 +50,7 @@ public class KillJobMessage extends StatusMessage {
 
   @Override
   public String toString() {
-    return "KillJobMessage{" +
+    return "KillOfflinePushMessage{" +
         "kafkaTopic='" + kafkaTopic + '\'' +
         '}';
   }

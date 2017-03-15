@@ -73,8 +73,9 @@ public class VeniceControllerClusterConfig {
     kafkaBootstrapServers = props.getString(KAFKA_BOOTSTRAP_SERVERS);
     partitionSize = props.getSizeInBytes(DEFAULT_PARTITION_SIZE);
     maxNumberOfPartition = props.getInt(DEFAULT_MAX_NUMBER_OF_PARTITIONS);
-    offLineJobWaitTimeInMilliseconds = props.getLong(OFFLINE_JOB_START_TIMEOUT_MS, 15000);
-    // By default, disable topic deletion when job failed. Because delete a under repication topic might cause a Kafka MM issue.
+    // If the timeout is longer than 3min, we need to update controller client's timeout as well, otherwise creating version would fail.
+    offLineJobWaitTimeInMilliseconds = props.getLong(OFFLINE_JOB_START_TIMEOUT_MS, 120000);
+    // By default, disable topic deletion when job failed. Because delete an under replicated topic might cause a Kafka MM issue.
     enableTopicDeletionForUncompletedJob = props.getBoolean(ENABLE_TOPIC_DELETION_FOR_UNCOMPLETED_JOB, false);
     // By default, delayed rebalance is disabled.
     delayToRebalanceMS = props.getLong(DELAY_TO_REBALANCE_MS, 0);

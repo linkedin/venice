@@ -1,6 +1,6 @@
 package com.linkedin.venice.helix;
 
-import com.linkedin.venice.job.ExecutionStatus;
+import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.pushmonitor.PartitionStatus;
 import java.io.IOException;
 import org.testng.Assert;

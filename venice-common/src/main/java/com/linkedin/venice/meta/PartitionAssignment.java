@@ -60,6 +60,10 @@ public class PartitionAssignment {
     return idToPartitionMap.size();
   }
 
+  public boolean hasEnoughAssignedPartitions() {
+    return getAssignedNumberOfPartitions() >= expectedNumberOfPartitions;
+  }
+
   public String getTopic() {
     return topic;
   }

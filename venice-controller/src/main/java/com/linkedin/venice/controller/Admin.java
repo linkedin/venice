@@ -2,10 +2,9 @@ package com.linkedin.venice.controller;
 
 import com.linkedin.venice.controller.kafka.consumer.AdminConsumerService;
 import com.linkedin.venice.helix.Replica;
-import com.linkedin.venice.job.ExecutionStatus;
+import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.meta.Instance;
-import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.schema.SchemaEntry;
@@ -19,15 +18,15 @@ import java.util.Set;
 
 
 public interface Admin {
-    // Wrapper to include both overall job status and other extra useful info
-    class OfflineJobStatus{
+    // Wrapper to include both overall offline push status and other extra useful info
+    class OfflinePushStatusInfo {
         private ExecutionStatus executionStatus;
         private Map<String, String> extraInfo;
 
-        public OfflineJobStatus(ExecutionStatus executionStatus) {
+        public OfflinePushStatusInfo(ExecutionStatus executionStatus) {
             this(executionStatus, new HashMap<>());
         }
-        public OfflineJobStatus(ExecutionStatus executionStatus, Map<String, String> extraInfo) {
+        public OfflinePushStatusInfo(ExecutionStatus executionStatus, Map<String, String> extraInfo) {
             this.executionStatus = executionStatus;
             this.extraInfo = extraInfo;
         }
@@ -54,7 +53,7 @@ public interface Admin {
     Version peekNextVersion(String clusterName, String storeName);
 
     /**
-     * Delete all of venice versions in given store(including venice resource, kafka topic, offline jobs and all related
+     * Delete all of venice versions in given store(including venice resource, kafka topic, offline pushs and all related
      * resources).
      *
      * @throws com.linkedin.venice.exceptions.VeniceException If the given store was not disabled, an exception would be
@@ -70,9 +69,6 @@ public interface Admin {
     boolean hasStore(String clusterName, String storeName);
 
     void setCurrentVersion(String clusterName, String storeName, int versionNumber);
-
-    void startOfflinePush(String clusterName, String kafkaTopic, int numberOfPartition, int replicationFactor,
-        OfflinePushStrategy strategy);
 
     SchemaEntry getKeySchema(String clusterName, String storeName);
 
@@ -100,17 +96,15 @@ public interface Admin {
     void stopVeniceController();
 
     /**
-     * Query the status of the offline job by given kafka topic.
+     * Query the status of the offline push by given kafka topic.
      * TODO We use kafka topic to tracking the status now but in the further we should use jobId instead of kafka
      * TODO topic. Right now each kafka topic only have one offline job. But in the further one kafka topic could be
      * TODO assigned multiple jobs like data migration job etc.
-     * @param clusterName
-     * @param kafkaTopic
-     * @return the job status of current offline push job for the passed kafka topic
+     * @return the status of current offline push for the passed kafka topic
      */
-    OfflineJobStatus getOffLineJobStatus(String clusterName, String kafkaTopic);
+    OfflinePushStatusInfo getOffLinePushStatus(String clusterName, String kafkaTopic);
 
-    Map<String, Long> getOfflineJobProgress(String clusterName, String kafkaTopic);
+    Map<String, Long> getOfflinePushProgress(String clusterName, String kafkaTopic);
 
     /**
      * TODO : Currently bootstrap servers are common per Venice Controller cluster
@@ -195,7 +189,7 @@ public interface Admin {
 
     Set<String> getWhitelist(String clusterName);
 
-    void killOfflineJob(String clusterName, String kafkaTopic);
+    void killOfflinePush(String clusterName, String kafkaTopic);
 
     /**
      * Query and return the current status of the given storage node. The "storage node status" is composed by "status" of all

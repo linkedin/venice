@@ -1,4 +1,4 @@
-package com.linkedin.venice.job;
+package com.linkedin.venice.pushmonitor;
 
 /**
  * Status of executing off-line push. The status will be used by both Job and Task.

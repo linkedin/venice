@@ -7,7 +7,6 @@ import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.Utils;
 
-import java.util.HashMap;
 import java.util.Map;
 import spark.Route;
 
@@ -55,7 +54,7 @@ public class JobRoutes {
     responseObject.setPerPartitionCapacity(offsets);
 
     //Current offsets
-    Map<String, Long> currentProgress = admin.getOfflineJobProgress(cluster, kafkaTopicName);
+    Map<String, Long> currentProgress = admin.getOfflinePushProgress(cluster, kafkaTopicName);
     responseObject.setPerTaskProgress(currentProgress);
 
     //Aggregated progress
@@ -70,7 +69,7 @@ public class JobRoutes {
      * Job status query should happen after 'querying offset' since job status query could
      * delete current topic
      */
-    Admin.OfflineJobStatus offlineJobStatus = admin.getOffLineJobStatus(cluster, kafkaTopicName);
+    Admin.OfflinePushStatusInfo offlineJobStatus = admin.getOffLinePushStatus(cluster, kafkaTopicName);
     String jobStatus = offlineJobStatus.getExecutionStatus().toString();
     responseObject.setStatus(jobStatus);
     responseObject.setExtraInfo(offlineJobStatus.getExtraInfo());
@@ -94,7 +93,7 @@ public class JobRoutes {
         responseObject.setCluster(cluster);
         responseObject.setName(Version.parseStoreFromKafkaTopicName(topic));
 
-        admin.killOfflineJob(cluster, topic);
+        admin.killOfflinePush(cluster, topic);
       } catch (Throwable e) {
         responseObject.setError(e.getMessage());
         AdminSparkServer.handleError(e, request, response);

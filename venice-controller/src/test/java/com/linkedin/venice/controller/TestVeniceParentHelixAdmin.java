@@ -27,7 +27,7 @@ import com.linkedin.venice.integration.utils.KafkaBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
-import com.linkedin.venice.job.ExecutionStatus;
+import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.PersistenceType;
@@ -516,10 +516,10 @@ public class TestVeniceParentHelixAdmin {
     doReturn(new HashSet<String>(Arrays.asList(kafkaTopic)))
         .when(topicManager).listTopics();
 
-    parentAdmin.killOfflineJob(clusterName, kafkaTopic);
+    parentAdmin.killOfflinePush(clusterName, kafkaTopic);
 
     verify(internalAdmin)
-        .checkPreConditionForKillOfflineJob(clusterName, kafkaTopic);
+        .checkPreConditionForKillOfflinePush(clusterName, kafkaTopic);
     verify(topicManager)
         .syncDeleteTopic(kafkaTopic);
     verify(veniceWriter)
@@ -565,8 +565,8 @@ public class TestVeniceParentHelixAdmin {
     }
 
     @Override
-    public OfflineJobStatus getOffLineJobStatus(String clusterName, String kafkaTopic) {
-      return new OfflineJobStatus(offlineJobStatus);
+    public OfflinePushStatusInfo getOffLinePushStatus(String clusterName, String kafkaTopic) {
+      return new OfflinePushStatusInfo(offlineJobStatus);
     }
   }
 
@@ -742,7 +742,8 @@ public class TestVeniceParentHelixAdmin {
     );
     doReturn(topicList).when(topicManager).listTopics();
 
-    Admin.OfflineJobStatus offlineJobStatus = VeniceParentHelixAdmin.getOffLineJobStatus("mycluster", "topic1", completeMap, topicManager);
+    Admin.OfflinePushStatusInfo
+        offlineJobStatus = VeniceParentHelixAdmin.getOffLineJobStatus("mycluster", "topic1", completeMap, topicManager);
     Map<String, String> extraInfo = offlineJobStatus.getExtraInfo();
     Assert.assertEquals(offlineJobStatus.getExecutionStatus(), ExecutionStatus.COMPLETED);
     verify(topicManager, timeout(TIMEOUT_IN_MS)).syncDeleteTopic("topic1");

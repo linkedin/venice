@@ -1,10 +1,15 @@
 package com.linkedin.venice.pushmonitor;
 
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.job.ExecutionStatus;
 import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.PartitionAssignment;
+import com.linkedin.venice.meta.ReadWriteStoreRepository;
 import com.linkedin.venice.meta.RoutingDataRepository;
+import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.StoreCleaner;
+import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.meta.VersionStatus;
+import com.linkedin.venice.utils.TestUtils;
 import java.util.ArrayList;
 import java.util.List;
 import org.mockito.Mockito;
@@ -18,6 +23,8 @@ public class OfflinePushMonitorTest {
   private RoutingDataRepository mockRoutingDataRepo;
   private OfflinePushAccessor mockAccessor;
   private OfflinePushMonitor monitor;
+  private ReadWriteStoreRepository mockStoreRepo;
+  private StoreCleaner mockStoreCleaner;
   private int numberOfPartition = 1;
   private int replicationFator = 3;
 
@@ -25,7 +32,10 @@ public class OfflinePushMonitorTest {
   public void setup() {
     mockRoutingDataRepo = Mockito.mock(RoutingDataRepository.class);
     mockAccessor = Mockito.mock(OfflinePushAccessor.class);
-    monitor = new OfflinePushMonitor("OfflinePushMonitorTest", mockRoutingDataRepo, mockAccessor);
+    mockStoreCleaner = Mockito.mock(StoreCleaner.class);
+    mockStoreRepo = Mockito.mock(ReadWriteStoreRepository.class);
+    monitor = new OfflinePushMonitor("OfflinePushMonitorTest", mockRoutingDataRepo, mockAccessor, mockStoreCleaner,
+        mockStoreRepo);
   }
 
   @Test
@@ -87,7 +97,8 @@ public class OfflinePushMonitorTest {
 
   @Test
   public void testLoadRunningPushWhichIsNotUpdateToDate() {
-    String topic = "testLoadRunningPushWhichIsNotUpdateToDate";
+    String topic = "testLoadRunningPushWhichIsNotUpdateToDate_v1";
+    Store store = prepareMockStore(topic);
     List<OfflinePushStatus> statusList = new ArrayList<>();
     OfflinePushStatus pushStatus = new OfflinePushStatus(topic, numberOfPartition, replicationFator,
         OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);
@@ -100,7 +111,11 @@ public class OfflinePushMonitorTest {
     PushStatusDecider.updateDecider(OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION, decider);
 
     monitor.loadAllPushes();
+    Mockito.verify(mockStoreRepo, Mockito.atLeastOnce()).updateStore(store);
+    Mockito.verify(mockStoreCleaner, Mockito.atLeastOnce()).retireOldStoreVersions(Mockito.anyString(), Mockito.anyString());
     Assert.assertEquals(monitor.getOfflinePush(topic).getCurrentStatus(), ExecutionStatus.COMPLETED);
+    // After offline push completed, bump up the current version of this store.
+    Assert.assertEquals(store.getCurrentVersion(), 1);
   }
 
   @DataProvider(name = "pushStatues")
@@ -110,7 +125,8 @@ public class OfflinePushMonitorTest {
 
   @Test(dataProvider = "pushStatues")
   public void testOnRoutingDataChanged(ExecutionStatus expectedStatus) {
-    String topic = "testOnRoutingDataChanged";
+    String topic = "testOnRoutingDataChanged_v1";
+    prepareMockStore(topic);
 
     monitor.startMonitorOfflinePush(topic, numberOfPartition, numberOfPartition,
         OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);
@@ -121,5 +137,17 @@ public class OfflinePushMonitorTest {
     PushStatusDecider.updateDecider(OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION, decider);
     monitor.onRoutingDataChanged(partitionAssignment);
     Assert.assertEquals(monitor.getOfflinePush(topic).getCurrentStatus(), expectedStatus);
+  }
+
+
+  private Store prepareMockStore(String topic){
+    String storeName = Version.parseStoreFromKafkaTopicName(topic);
+    int versionNumber = Version.parseVersionFromKafkaTopicName(topic);
+    Store store = TestUtils.createTestStore(storeName, "test",System.currentTimeMillis());
+    Version version = new Version(storeName, versionNumber);
+    version.setStatus(VersionStatus.STARTED);
+    store.addVersion(version);
+    Mockito.doReturn(store).when(mockStoreRepo).getStore(storeName);
+    return store;
   }
 }

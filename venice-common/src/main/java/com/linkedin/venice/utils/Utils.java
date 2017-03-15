@@ -3,7 +3,7 @@ package com.linkedin.venice.utils;
 import com.linkedin.venice.exceptions.ConfigurationException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceHttpException;
-import com.linkedin.venice.job.ExecutionStatus;
+import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;

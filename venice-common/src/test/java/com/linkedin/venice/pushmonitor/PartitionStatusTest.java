@@ -1,7 +1,6 @@
 package com.linkedin.venice.pushmonitor;
 
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.job.ExecutionStatus;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 

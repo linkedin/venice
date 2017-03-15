@@ -1,7 +1,7 @@
 package com.linkedin.venice.helix;
 
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.job.ExecutionStatus;
+import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.listener.ListenerManager;
 import com.linkedin.venice.pushmonitor.OfflinePushStatus;
 import com.linkedin.venice.pushmonitor.OfflinePushAccessor;
@@ -87,6 +87,7 @@ public class HelixOfflinePushMonitorAccessor implements OfflinePushAccessor {
         case STARTED:
           List<PartitionStatus> partitionStatuses = getPartitionStatuses(pushStatus.getKafkaTopic());
           pushStatus.setPartitionStatuses(partitionStatuses);
+          break;
         default:
           logger.info(
               "Found invalid push statues:" + pushStatus.getCurrentStatus() + " for topic:" + pushStatus.getKafkaTopic()

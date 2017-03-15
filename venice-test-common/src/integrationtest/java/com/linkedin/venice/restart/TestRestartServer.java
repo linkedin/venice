@@ -4,7 +4,7 @@ import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceServerWrapper;
-import com.linkedin.venice.job.ExecutionStatus;
+import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.meta.PartitionAssignment;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.writer.VeniceWriter;
@@ -58,7 +58,7 @@ public class TestRestartServer {
     TestUtils.waitForNonDeterministicCompletion(testTimeOutMS, TimeUnit.MILLISECONDS,
         () -> cluster.getMasterVeniceController()
             .getVeniceAdmin()
-            .getOffLineJobStatus(cluster.getClusterName(), topicName)
+            .getOffLinePushStatus(cluster.getClusterName(), topicName)
             .getExecutionStatus()
             .equals(ExecutionStatus.COMPLETED));
 

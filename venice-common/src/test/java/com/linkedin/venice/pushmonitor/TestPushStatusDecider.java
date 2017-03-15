@@ -1,19 +1,17 @@
-package com.linkedin.venice.job;
+package com.linkedin.venice.pushmonitor;
 
 import com.linkedin.venice.helix.HelixState;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.Partition;
 import com.linkedin.venice.meta.PartitionAssignment;
 import java.util.ArrayList;
-import java.util.Collection;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 
 
-public class TestJobStatusDecider {
+public class TestPushStatusDecider {
   protected String topic = "testTopic";
   protected int numberOfPartition = 4;
   protected int replicationFactor = 3;
@@ -39,19 +37,6 @@ public class TestJobStatusDecider {
     return instances;
   }
 
-  protected void createTasksAndUpdateJob(OfflineJob job, int numberOfPartition, int replicationFactor,
-      ExecutionStatus status, int exceptPartition, int exceptReplica) {
-    for (int i = 0; i < numberOfPartition; i++) {
-      for (int j = 0; j < replicationFactor; j++) {
-        Task t = new Task(job.generateTaskId(i, nodeId + j), i, String.valueOf(j), status);
-        if (i == exceptPartition && j == exceptReplica) {
-          continue;
-        }
-        job.updateTaskStatus(t);
-      }
-    }
-  }
-
   protected Partition changeReplicaState(Partition partition, String instanceId, HelixState newState) {
     Map<String, List<Instance>> newStateToInstancesMap = new HashMap<>();
     Instance targetInstance = null;
@@ -66,7 +51,7 @@ public class TestJobStatusDecider {
           iterator.remove();
         }
       }
-      if(!newInstances.isEmpty()) {
+      if (!newInstances.isEmpty()) {
         newStateToInstancesMap.put(state, newInstances);
       }
     }
@@ -82,3 +67,4 @@ public class TestJobStatusDecider {
     return new Partition(partition.getId(), newStateToInstancesMap);
   }
 }
+

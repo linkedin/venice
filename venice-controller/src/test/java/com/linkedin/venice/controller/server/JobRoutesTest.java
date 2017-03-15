@@ -4,7 +4,7 @@ import com.google.common.collect.ImmutableMap;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.VeniceParentHelixAdmin;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
-import com.linkedin.venice.job.ExecutionStatus;
+import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.utils.TestUtils;
 import java.util.Arrays;
@@ -23,7 +23,7 @@ public class JobRoutesTest {
   public void testPopulateJobStatus() throws Exception {
     Admin mockAdmin = mock(VeniceParentHelixAdmin.class);
     doReturn(true).when(mockAdmin).isMasterController(anyString());
-    doReturn(new Admin.OfflineJobStatus(ExecutionStatus.COMPLETED)).when(mockAdmin).getOffLineJobStatus(anyString(), anyString());
+    doReturn(new Admin.OfflinePushStatusInfo(ExecutionStatus.COMPLETED)).when(mockAdmin).getOffLinePushStatus(anyString(), anyString());
 
     TopicManager mockTopicManager = mock(TopicManager.class);
     // 3 partitions, with latest offsets 100, 110, and 120
@@ -41,7 +41,7 @@ public class JobRoutesTest {
         }
       }
     }
-    doReturn(jobProgress).when(mockAdmin).getOfflineJobProgress(anyString(), anyString());
+    doReturn(jobProgress).when(mockAdmin).getOfflinePushProgress(anyString(), anyString());
     doReturn(clusters.size()).when(mockAdmin).getDatacenterCount(anyString());
 
     String cluster = TestUtils.getUniqueString("cluster");

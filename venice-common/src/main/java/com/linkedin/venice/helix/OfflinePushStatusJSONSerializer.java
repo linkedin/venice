@@ -1,6 +1,6 @@
 package com.linkedin.venice.helix;
 
-import com.linkedin.venice.job.ExecutionStatus;
+import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.VeniceSerializer;
 import com.linkedin.venice.pushmonitor.OfflinePushStatus;
