@@ -466,7 +466,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
     }
     String clusterName = message.clusterName.toString();
     String kafkaTopic = message.kafkaTopic.toString();
-    admin.killOfflineJob(clusterName, kafkaTopic);
+    admin.killOfflinePush(clusterName, kafkaTopic);
 
     logger.info("Killed job with topic: " + kafkaTopic + " in cluster: " + clusterName);
   }

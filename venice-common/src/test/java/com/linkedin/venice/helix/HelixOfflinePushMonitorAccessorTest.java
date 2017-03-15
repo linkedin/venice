@@ -3,7 +3,7 @@ package com.linkedin.venice.helix;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
-import com.linkedin.venice.job.ExecutionStatus;
+import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.pushmonitor.OfflinePushStatus;
 import com.linkedin.venice.pushmonitor.ReadOnlyPartitionStatus;
@@ -98,6 +98,7 @@ public class HelixOfflinePushMonitorAccessorTest {
     }
 
     List<OfflinePushStatus> loadedPushes = accessor.loadOfflinePushStatusesAndPartitionStatuses();
+    Assert.assertEquals(loadedPushes.size(), offlinePushCount);
     for (OfflinePushStatus loadedPush : loadedPushes) {
       Assert.assertEquals(loadedPush, pushesMap.get(loadedPush.getKafkaTopic()));
     }

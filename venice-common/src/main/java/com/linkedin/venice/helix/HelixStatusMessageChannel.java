@@ -1,6 +1,6 @@
 package com.linkedin.venice.helix;
 
-import com.linkedin.venice.job.KillJobMessage;
+import com.linkedin.venice.pushmonitor.KillOfflinePushMessage;
 import com.linkedin.venice.status.StatusMessage;
 import com.linkedin.venice.status.StatusMessageChannel;
 import com.linkedin.venice.status.StatusMessageHandler;
@@ -205,8 +205,8 @@ public class HelixStatusMessageChannel implements StatusMessageChannel {
 
       if(StoreStatusMessage.class.getName().equals(className)) {
         return new StoreStatusMessage(fields);
-      } else if (KillJobMessage.class.getName().equals(className)) {
-        return new KillJobMessage(fields);
+      } else if (KillOfflinePushMessage.class.getName().equals(className)) {
+        return new KillOfflinePushMessage(fields);
       } else {
         throw new VeniceException("Message handler not implemented yet for class." + className);
       }

@@ -1,13 +1,22 @@
 package com.linkedin.venice.pushmonitor;
 
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.job.ExecutionStatus;
+import com.linkedin.venice.exceptions.VeniceNoStoreException;
+import com.linkedin.venice.helix.ResourceAssignment;
 import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.PartitionAssignment;
+import com.linkedin.venice.meta.ReadWriteStoreRepository;
 import com.linkedin.venice.meta.RoutingDataRepository;
+import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.StoreCleaner;
+import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.meta.VersionStatus;
+import java.util.Collections;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import org.apache.log4j.Logger;
 
 
@@ -24,15 +33,19 @@ public class OfflinePushMonitor implements OfflinePushAccessor.PartitionStatusLi
   private final OfflinePushAccessor accessor;
   private final String clusterName;
   private final RoutingDataRepository routingDataRepository;
+  private final ReadWriteStoreRepository metadataRepository;
+  private final StoreCleaner storeCleaner;
 
   private Map<String, OfflinePushStatus> topicToPushMap;
 
   public OfflinePushMonitor(String clusterName, RoutingDataRepository routingDataRepository,
-      OfflinePushAccessor accessor) {
+      OfflinePushAccessor accessor, StoreCleaner storeCleaner, ReadWriteStoreRepository metadataRepository) {
     this.clusterName = clusterName;
     this.routingDataRepository = routingDataRepository;
     this.accessor = accessor;
     this.topicToPushMap = new HashMap<>();
+    this.storeCleaner = storeCleaner;
+    this.metadataRepository = metadataRepository;
   }
 
   /**
@@ -52,7 +65,10 @@ public class OfflinePushMonitor implements OfflinePushAccessor.PartitionStatusLi
         .stream()
         .filter(offlinePush -> offlinePush.getCurrentStatus().equals(ExecutionStatus.STARTED))
         .forEach(offlinePush -> {
-          updatePushStatus(offlinePush, routingDataRepository.getPartitionAssignments(offlinePush.getKafkaTopic()));
+          routingDataRepository.subscribeRoutingDataChange(offlinePush.getKafkaTopic(), this);
+          ExecutionStatus status = checkPushStatus(offlinePush,
+              routingDataRepository.getPartitionAssignments(offlinePush.getKafkaTopic()));
+          terminateOfflinePush(offlinePush, status);
         });
   }
 
@@ -80,13 +96,13 @@ public class OfflinePushMonitor implements OfflinePushAccessor.PartitionStatusLi
    */
   public synchronized void stopMonitorOfflinePush(String kafkaTopic) {
     if (!topicToPushMap.containsKey(kafkaTopic)) {
-      logger.error("Push status does not exist for topic:" + kafkaTopic + " in cluster:" + clusterName);
+      logger.warn("Push status does not exist for topic:" + kafkaTopic + " in cluster:" + clusterName);
       return;
     }
     OfflinePushStatus pushStatus = topicToPushMap.get(kafkaTopic);
+    routingDataRepository.unSubscribeRoutingDataChange(kafkaTopic, this);
     accessor.unsubscribePartitionsStatusChange(pushStatus, this);
     accessor.deleteOfflinePushStatusAndItsPartitionStatuses(pushStatus);
-    routingDataRepository.unSubscribeRoutingDataChange(kafkaTopic, this);
     topicToPushMap.remove(kafkaTopic);
     logger.info("Stop monitoring push on topic:" + kafkaTopic);
   }
@@ -102,11 +118,85 @@ public class OfflinePushMonitor implements OfflinePushAccessor.PartitionStatusLi
     }
   }
 
+  /**
+   * Get the status for the given offline push E.g. STARTED, COMPLETED.
+   */
   public synchronized ExecutionStatus getOfflinePushStatus(String topic) {
     if (topicToPushMap.containsKey(topic)) {
       return topicToPushMap.get(topic).getCurrentStatus();
     } else {
       return ExecutionStatus.NOT_CREATED;
+    }
+  }
+
+  /**
+   * Get the progress of the given offline push.
+   * @return a map which's key is replica id and value is the kafka offset that replica already consumed.
+   */
+  public synchronized Map<String, Long> getOfflinePushProgress(String topic) {
+    if (!topicToPushMap.containsKey(topic)) {
+      return Collections.emptyMap();
+    } else {
+      // As the monitor does NOT delete the replica of disconnected storage node, once a storage node failed, its
+      // replicas statuses still be counted in the unfiltered progress map.
+      Map<String, Long> progressMap = topicToPushMap.get(topic).getProgress();
+      Set<String> liveInstances = routingDataRepository.getLiveInstancesMap().keySet();
+      Iterator<String> iterator = progressMap.keySet().iterator();
+      // Filter the progress map to remove replicas of disconnected storage node.
+      while (iterator.hasNext()) {
+        String replicaId = iterator.next();
+        String instanceId = ReplicaStatus.getInstanceIdFromReplicaId(replicaId);
+        if (!liveInstances.contains(instanceId)) {
+          iterator.remove();
+        }
+      }
+      return progressMap;
+    }
+  }
+
+  /**
+   * Predict offline push status based on the given partition assignment.
+   *
+   * @return true the offline push would fail because the given partition assignment could not keep running. false
+   * offline push would not fail.
+   */
+  public synchronized boolean wouldJobFail(String topic, PartitionAssignment partitionAssignment) {
+    if (!topicToPushMap.containsKey(topic)) {
+      //the offline push has been terminated and archived.
+      return false;
+    } else {
+      OfflinePushStatus offlinePush = topicToPushMap.get(topic);
+      ExecutionStatus status = checkPushStatus(offlinePush, partitionAssignment);
+      return status.equals(ExecutionStatus.ERROR);
+    }
+  }
+
+  /**
+   * Wait helix assigning enough nodes to the given resource. It's not mandatory in our new push monitor, but in order
+   * to keep the logic as similar as before, we start from waiting here and could remove this logic later.
+   */
+  public void waitUntilNodesAreAssignedForResource(String topic, long offlinePushWaitTimeInMilliseconds)
+      throws InterruptedException {
+    OfflinePushStatus pushStatus = getOfflinePush(topic);
+    synchronized (pushStatus) {
+      long startTime = System.currentTimeMillis();
+      long nextWaitTime = offlinePushWaitTimeInMilliseconds;
+      PushStatusDecider decider = PushStatusDecider.getDecider(pushStatus.getStrategy());
+      ResourceAssignment resourceAssignment = routingDataRepository.getResourceAssignment();
+      while(!decider.hasEnoughNodesToStartPush(pushStatus, resourceAssignment)){
+        if(System.currentTimeMillis() - startTime >= offlinePushWaitTimeInMilliseconds){
+          // Time out, after waiting offlinePushWaitTimeInMilliseconds, there are not enough nodes assigned.
+          throw new VeniceException(
+              "After waiting: " + offlinePushWaitTimeInMilliseconds + ", resource still could not get enough nodes.");
+        }
+        // How long we spent on waiting and calculating totally.
+        long spentTime = System.currentTimeMillis() - startTime;
+        // The rest of time we could spent on waiting.
+        nextWaitTime = offlinePushWaitTimeInMilliseconds - spentTime;
+        logger.info("Resource does not have enough nodes, start waiting: "+nextWaitTime+"ms");
+        pushStatus.wait(nextWaitTime);
+        resourceAssignment = routingDataRepository.getResourceAssignment();
+      }
     }
   }
 
@@ -130,7 +220,16 @@ public class OfflinePushMonitor implements OfflinePushAccessor.PartitionStatusLi
     String kafkaTopic = partitionAssignment.getTopic();
     OfflinePushStatus pushStatus = topicToPushMap.get(kafkaTopic);
     if (pushStatus != null && pushStatus.getCurrentStatus().equals(ExecutionStatus.STARTED)) {
-      updatePushStatus(pushStatus, partitionAssignment);
+      ExecutionStatus status = checkPushStatus(pushStatus, partitionAssignment);
+      if (!status.equals(pushStatus.getCurrentStatus())) {
+        logger.info("Offline push status will be changed to " + status.toString() + " for topic: " + kafkaTopic
+            + " from status: " + pushStatus.getCurrentStatus());
+          terminateOfflinePush(pushStatus, status);
+      }
+      synchronized (pushStatus) {
+        // Notify the thread waiting on the waitUntilNodesAreAssignedForResource method.
+        pushStatus.notifyAll();
+      }
     } else {
       logger.info("Can not find a running offline push for topic:" + partitionAssignment.getTopic()
           + ", ignore the routing data changed notification.");
@@ -146,9 +245,12 @@ public class OfflinePushMonitor implements OfflinePushAccessor.PartitionStatusLi
     }
   }
 
-  private void updatePushStatus(OfflinePushStatus pushStatus, PartitionAssignment partitionAssignment) {
+  private ExecutionStatus checkPushStatus(OfflinePushStatus pushStatus, PartitionAssignment partitionAssignment) {
     PushStatusDecider statusDecider = PushStatusDecider.getDecider(pushStatus.getStrategy());
-    ExecutionStatus status = statusDecider.checkPushStatus(pushStatus, partitionAssignment);
+    return statusDecider.checkPushStatus(pushStatus, partitionAssignment);
+  }
+
+  private void terminateOfflinePush(OfflinePushStatus pushStatus, ExecutionStatus status) {
     if (status.equals(ExecutionStatus.COMPLETED)) {
       handleCompletedPush(pushStatus);
     } else if (status.equals(ExecutionStatus.ERROR)) {
@@ -157,24 +259,70 @@ public class OfflinePushMonitor implements OfflinePushAccessor.PartitionStatusLi
   }
 
   private void handleCompletedPush(OfflinePushStatus pushStatus) {
+    logger.info("Updating offline push status, push for: " + pushStatus.getKafkaTopic() + " is now "
+        + pushStatus.getCurrentStatus() + ", new status: " + ExecutionStatus.COMPLETED);
+    routingDataRepository.unSubscribeRoutingDataChange(pushStatus.getKafkaTopic(), this);
     OfflinePushStatus clonedPushStatus = pushStatus.clonePushStatus();
     clonedPushStatus.updateStatus(ExecutionStatus.COMPLETED);
     // Update remote storage
     accessor.updateOfflinePushStatus(clonedPushStatus);
     // Update local copy
     topicToPushMap.put(pushStatus.getKafkaTopic(), clonedPushStatus);
-    //TODO cleanup retired version
-    logger.info("Offline push for topic:" + pushStatus.getKafkaTopic() + " is completed.");
+    String storeName = Version.parseStoreFromKafkaTopicName(pushStatus.getKafkaTopic());
+    int versionNumber = Version.parseVersionFromKafkaTopicName(pushStatus.getKafkaTopic());
+    updateStoreVersionStatus(storeName, versionNumber, VersionStatus.ONLINE);
+    storeCleaner.retireOldStoreVersions(clusterName, storeName);
+    logger.info("Offline push for topic: " + pushStatus.getKafkaTopic() + " is completed.");
   }
 
   private void handleErrorPush(OfflinePushStatus pushStatus) {
+    logger.info("Updating offline push status, push for: " + pushStatus.getKafkaTopic() + " is now "
+        + pushStatus.getCurrentStatus() + ", new status: " + ExecutionStatus.ERROR);
+    routingDataRepository.unSubscribeRoutingDataChange(pushStatus.getKafkaTopic(), this);
     OfflinePushStatus clonedPushStatus = pushStatus.clonePushStatus();
     clonedPushStatus.updateStatus(ExecutionStatus.ERROR);
     // Update remote storage
     accessor.updateOfflinePushStatus(clonedPushStatus);
     // Update local copy
     topicToPushMap.put(pushStatus.getKafkaTopic(), clonedPushStatus);
-    // TODO cleanup failed version
-    logger.info("Offline push for topic:" + pushStatus.getKafkaTopic() + " fails.");
+    String storeName = Version.parseStoreFromKafkaTopicName(pushStatus.getKafkaTopic());
+    int versionNumber = Version.parseVersionFromKafkaTopicName(pushStatus.getKafkaTopic());
+    updateStoreVersionStatus(storeName, versionNumber, VersionStatus.ERROR);
+    storeCleaner.deleteOneStoreVersion(clusterName, storeName, versionNumber);
+    logger.info("Offline push for topic: " + pushStatus.getKafkaTopic() + " fails.");
+  }
+
+  private void updateStoreVersionStatus(String storeName, int versionNumber, VersionStatus status) {
+    VersionStatus newStatus = status;
+    try {
+      metadataRepository.lock();
+      Store store = metadataRepository.getStore(storeName);
+      if (store == null) {
+        throw new VeniceNoStoreException(storeName);
+      }
+
+      if (!store.isEnableWrites() && status.equals(VersionStatus.ONLINE)) {
+        newStatus = VersionStatus.PUSHED;
+      }
+
+      store.updateVersionStatus(versionNumber, newStatus);
+      logger.info(
+          "Updated store: " + store.getName() + " version: " + versionNumber + " to status: " + newStatus.toString());
+      if (newStatus.equals(VersionStatus.ONLINE)) {
+        if (versionNumber > store.getCurrentVersion()) {
+          store.setCurrentVersion(versionNumber);
+        } else {
+          logger.info("Current version for store " + store.getName() + ": " + store.getCurrentVersion()
+              + " is newer than the given version: " + versionNumber + ".  The current version will not be changed.");
+        }
+      }
+      metadataRepository.updateStore(store);
+    } finally {
+      metadataRepository.unLock();
+    }
+  }
+
+  public OfflinePushAccessor getAccessor() {
+    return accessor;
   }
 }

@@ -1,6 +1,5 @@
 package com.linkedin.venice.pushmonitor;
 
-import com.linkedin.venice.job.ExecutionStatus;
 import java.util.List;
 
 

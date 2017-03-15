@@ -1,13 +1,12 @@
 package com.linkedin.venice.pushmonitor;
 
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.job.ExecutionStatus;
 import com.linkedin.venice.utils.Utils;
 import java.time.LocalDateTime;
 import java.util.LinkedList;
 import java.util.List;
 
-import static com.linkedin.venice.job.ExecutionStatus.*;
+import static com.linkedin.venice.pushmonitor.ExecutionStatus.*;
 
 
 /**
@@ -150,5 +149,14 @@ public class ReplicaStatus {
     result = 31 * result + (int) (currentProgress ^ (currentProgress >>> 32));
     result = 31 * result + statusHistory.hashCode();
     return result;
+  }
+
+  public static String getReplicaId(String kafkaTopic, int partition, String instanceId) {
+    return String.format("%s:%d:%s", kafkaTopic, partition, instanceId);
+  }
+
+  public static String getInstanceIdFromReplicaId(String replicaId) {
+    String[] parts = replicaId.split(":");
+    return parts[parts.length - 1];
   }
 }

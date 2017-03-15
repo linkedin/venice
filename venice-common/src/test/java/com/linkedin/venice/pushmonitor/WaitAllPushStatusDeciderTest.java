@@ -1,8 +1,6 @@
 package com.linkedin.venice.pushmonitor;
 
 import com.linkedin.venice.helix.HelixState;
-import com.linkedin.venice.job.ExecutionStatus;
-import com.linkedin.venice.job.TestJobStatusDecider;
 import com.linkedin.venice.meta.Partition;
 import com.linkedin.venice.meta.PartitionAssignment;
 import org.testng.Assert;
@@ -10,7 +8,7 @@ import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
 
-public class WaitAllPushStatusDeciderTest extends TestJobStatusDecider {
+public class WaitAllPushStatusDeciderTest extends TestPushStatusDecider{
   private WaitAllPushStatusDecider statusDecider = new WaitAllPushStatusDecider();
   private OfflinePushStatus pushStatus;
 

@@ -1,15 +1,17 @@
 package com.linkedin.venice.pushmonitor;
 
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.job.ExecutionStatus;
 import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.utils.Utils;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import org.codehaus.jackson.annotate.JsonIgnore;
 
-import static com.linkedin.venice.job.ExecutionStatus.*;
+import static com.linkedin.venice.pushmonitor.ExecutionStatus.*;
 
 
 /**
@@ -151,6 +153,27 @@ public class OfflinePushStatus {
     // copy list is enough here.
     clonePushStatus.setPartitionStatuses(new ArrayList<>(partitionStatuses));
     return clonePushStatus;
+  }
+
+  /**
+   * @return a map which's id is replica id and value is the offset that replica already consumed.
+   */
+  @JsonIgnore
+  public Map<String, Long> getProgress() {
+    Map<String, Long> progress = new HashMap<>();
+    for (PartitionStatus partitionStatus : getPartitionStatuses()) {
+      //Don't count progress of error tasks
+      partitionStatus.getReplicaStatuses()
+          .stream()
+          //Don't count progress of error tasks
+          .filter(replicaStatus -> !replicaStatus.getCurrentStatus().equals(ExecutionStatus.ERROR))
+          .forEach(replicaStatus -> {
+            String replicaId =
+                ReplicaStatus.getReplicaId(kafkaTopic, partitionStatus.getPartitionId(), replicaStatus.getInstanceId());
+            progress.put(replicaId, replicaStatus.getCurrentProgress());
+          });
+    }
+    return progress;
   }
 
   protected List<PartitionStatus> getPartitionStatuses() {

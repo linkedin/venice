@@ -1,8 +1,5 @@
 package com.linkedin.venice.pushmonitor;
 
-import com.linkedin.venice.job.ExecutionStatus;
-
-
 /**
  * The snap shot of status change.
  */

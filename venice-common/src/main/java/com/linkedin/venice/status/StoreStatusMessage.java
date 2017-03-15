@@ -1,6 +1,6 @@
 package com.linkedin.venice.status;
 
-import com.linkedin.venice.job.ExecutionStatus;
+import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import java.util.Map;
 
 

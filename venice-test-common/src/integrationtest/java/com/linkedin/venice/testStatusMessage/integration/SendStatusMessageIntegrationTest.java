@@ -5,7 +5,7 @@ import com.linkedin.venice.helix.HelixStatusMessageChannel;
 import com.linkedin.venice.integration.utils.DelayedZkClientUtils;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
-import com.linkedin.venice.job.ExecutionStatus;
+import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.status.StatusMessageHandler;
 import com.linkedin.venice.status.StoreStatusMessage;
 import com.linkedin.venice.utils.MockTestStateModel;

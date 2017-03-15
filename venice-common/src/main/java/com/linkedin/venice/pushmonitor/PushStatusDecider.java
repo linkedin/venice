@@ -1,17 +1,12 @@
 package com.linkedin.venice.pushmonitor;
 
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.job.ExecutionStatus;
-import com.linkedin.venice.meta.Instance;
+import com.linkedin.venice.helix.ResourceAssignment;
 import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.Partition;
 import com.linkedin.venice.meta.PartitionAssignment;
-import java.util.Collection;
-import java.util.Collections;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import org.apache.log4j.Logger;
 
 
@@ -33,12 +28,17 @@ public abstract class PushStatusDecider {
    */
   public ExecutionStatus checkPushStatus(OfflinePushStatus pushStatus, PartitionAssignment partitionAssignment) {
     boolean isAllPartitionCompleted = true;
+    // If there are not enough partitions assigned, push could not be completed.
+    // Continue to decide whether push is failed or not.
+    if (!partitionAssignment.hasEnoughAssignedPartitions()) {
+      logger.warn("There no not enough partitions assigned to resource: " + pushStatus.getKafkaTopic());
+      isAllPartitionCompleted = false;
+    }
     for (Partition partition : partitionAssignment.getAllPartitions()) {
       int replicationFactor = pushStatus.getReplicationFactor();
       int errorReplicasCount = partition.getErrorInstances().size();
       int completedReplicasCount = partition.getReadyToServeInstances().size();
       int assignedReplicasCount = partition.getAllInstances().size();
-
       if (logger.isDebugEnabled()) {
         logger.debug("Checking Push status for offline push for topic:" + pushStatus.getKafkaTopic() + "Partition:"
             + partition.getId() + " has " + assignedReplicasCount + " assigned replicas including " + errorReplicasCount
@@ -66,6 +66,30 @@ public abstract class PushStatusDecider {
       }
     }
     return isAllPartitionCompleted ? ExecutionStatus.COMPLETED : ExecutionStatus.STARTED;
+  }
+
+  public boolean hasEnoughNodesToStartPush(OfflinePushStatus offlinePushStatus, ResourceAssignment resourceAssignment) {
+    if (!resourceAssignment.containsResource(offlinePushStatus.getKafkaTopic())) {
+      logger.info(
+          "Routing data repository has not create assignment for resource:" + offlinePushStatus.getKafkaTopic());
+      return false;
+    }
+    PartitionAssignment partitionAssignment =
+        resourceAssignment.getPartitionAssignment(offlinePushStatus.getKafkaTopic());
+    if (!partitionAssignment.hasEnoughAssignedPartitions()) {
+      logger.info("There are not enough partitions assigned to resource:" + offlinePushStatus.getKafkaTopic());
+      return false;
+    }
+    boolean hasEnoughNodes = true;
+    for (Partition partition : partitionAssignment.getAllPartitions()) {
+      if (!this.hasEnoughReplicasForOnePartition(partition.getBootstrapAndReadyToServeInstances().size(),
+          offlinePushStatus.getReplicationFactor())) {
+        logger.info("Partition: " + partition.getId() + " does not have enough replica.");
+        hasEnoughNodes = false;
+        break;
+      }
+    }
+    return hasEnoughNodes;
   }
 
   public abstract OfflinePushStrategy getStrategy();

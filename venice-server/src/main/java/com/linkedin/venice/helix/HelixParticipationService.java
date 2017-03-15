@@ -2,10 +2,9 @@ package com.linkedin.venice.helix;
 
 import com.linkedin.venice.config.VeniceStoreConfig;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.job.KillJobMessage;
+import com.linkedin.venice.pushmonitor.KillOfflinePushMessage;
 import com.linkedin.venice.kafka.consumer.KafkaConsumerService;
 import com.linkedin.venice.meta.Instance;
-import com.linkedin.venice.notifier.HelixNotifier;
 import com.linkedin.venice.notifier.PushMonitorNotifier;
 import com.linkedin.venice.server.VeniceConfigLoader;
 import com.linkedin.venice.service.AbstractVeniceService;
@@ -32,7 +31,7 @@ import java.util.concurrent.CompletableFuture;
 /**
  * Venice Participation Service wrapping Helix Participant.
  */
-public class HelixParticipationService extends AbstractVeniceService implements StatusMessageHandler<KillJobMessage> {
+public class HelixParticipationService extends AbstractVeniceService implements StatusMessageHandler<KillOfflinePushMessage> {
 
   private static final Logger logger = Logger.getLogger(HelixParticipationService.class);
 
@@ -96,7 +95,7 @@ public class HelixParticipationService extends AbstractVeniceService implements 
 
     // Create a message channel to receive messagte from controller.
     messageChannel = new HelixStatusMessageChannel(manager);
-    messageChannel.registerHandler(KillJobMessage.class, this);
+    messageChannel.registerHandler(KillOfflinePushMessage.class, this);
 
     //TODO Venice Listener should not be started, until the HelixService is started.
     asyncStart();
@@ -129,14 +128,10 @@ public class HelixParticipationService extends AbstractVeniceService implements 
         System.exit(1);
       }
 
-      // Report start, progress , completed  and error notifications to controller
-      HelixNotifier notifier =
-          new HelixNotifier(manager, participantName, statusMessageRetryCount, statusMessageRetryDuration);
       // Record replica status in Zookeeper.
       PushMonitorNotifier pushMonitorNotifier = new PushMonitorNotifier(
           new HelixOfflinePushMonitorAccessor(clusterName, new ZkClient(zkAddress), new HelixAdapterSerializer()),
           instance.getNodeId());
-      consumerService.addNotifier(notifier);
       consumerService.addNotifier(pushMonitorNotifier);
 
       serviceState.set(ServiceState.STARTED);
@@ -146,7 +141,7 @@ public class HelixParticipationService extends AbstractVeniceService implements 
   }
 
   @Override
-  public void handleMessage(KillJobMessage message) {
+  public void handleMessage(KillOfflinePushMessage message) {
     VeniceStoreConfig storeConfig = veniceConfigLoader.getStoreConfig(message.getKafkaTopic());
     if (consumerService.containsRunningConsumption(storeConfig)) {
       //push is failed, stop consumption.

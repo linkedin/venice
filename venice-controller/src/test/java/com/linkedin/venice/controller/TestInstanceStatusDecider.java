@@ -10,6 +10,7 @@ import com.linkedin.venice.meta.PartitionAssignment;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
+import com.linkedin.venice.pushmonitor.OfflinePushMonitor;
 import com.linkedin.venice.utils.TestUtils;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -31,10 +32,10 @@ public class TestInstanceStatusDecider {
   private HelixDataAccessor accessor;
   private HelixRoutingDataRepository routingDataRepository;
   private HelixReadWriteStoreRepository readWriteStoreRepository;
-  private VeniceJobManager jobManager;
   private String storeName = "TestInstanceStatusDecider";
   private int version = 1;
   private String resourceName = Version.composeKafkaTopic(storeName, version);
+  private OfflinePushMonitor mockMontior;
 
   @BeforeMethod
   public void setup() {
@@ -42,12 +43,12 @@ public class TestInstanceStatusDecider {
     resources = Mockito.mock(VeniceHelixResources.class);
     routingDataRepository = Mockito.mock(HelixRoutingDataRepository.class);
     readWriteStoreRepository = Mockito.mock(HelixReadWriteStoreRepository.class);
-    jobManager = Mockito.mock(VeniceJobManager.class);
+    mockMontior = Mockito.mock(OfflinePushMonitor.class);
     HelixManager manager = Mockito.mock(HelixManager.class);
     accessor = Mockito.mock(HelixDataAccessor.class);
     Mockito.doReturn(routingDataRepository).when(resources).getRoutingDataRepository();
     Mockito.doReturn(readWriteStoreRepository).when(resources).getMetadataRepository();
-    Mockito.doReturn(jobManager).when(resources).getJobManager();
+    Mockito.doReturn(mockMontior).when(resources).getOfflinePushMonitor();
     Mockito.doReturn(manager).when(resources).getController();
     Mockito.doReturn(accessor).when(manager).getHelixDataAccessor();
     Mockito.doReturn(new LiveInstance("test")).when(accessor).getProperty(Mockito.any(PropertyKey.class));
@@ -105,11 +106,11 @@ public class TestInstanceStatusDecider {
     // Test for the running push
     prepareStoreAndVersion(storeName, version, VersionStatus.STARTED);
 
-    Mockito.doReturn(true).when(jobManager).willJobFail(Mockito.eq(resourceName), Mockito.any());
+    Mockito.doReturn(true).when(mockMontior).wouldJobFail(Mockito.eq(resourceName), Mockito.any());
     Assert.assertFalse(InstanceStatusDecider.isRemovable(resources, clusterName, instanceId, 1),
         "Can not remove instance because job would fail.");
 
-    Mockito.doReturn(false).when(jobManager).willJobFail(Mockito.eq(resourceName), Mockito.any());
+    Mockito.doReturn(false).when(mockMontior).wouldJobFail(Mockito.eq(resourceName), Mockito.any());
     Assert.assertTrue(InstanceStatusDecider.isRemovable(resources, clusterName, instanceId, 1),
         "Instance could be removed because it will not fail the job.");
   }

@@ -3,10 +3,9 @@ package com.linkedin.venice.controller;
 import com.linkedin.venice.VeniceResource;
 import com.linkedin.venice.helix.HelixOfflinePushMonitorAccessor;
 import com.linkedin.venice.helix.HelixStatusMessageChannel;
+import com.linkedin.venice.meta.StoreCleaner;
 import com.linkedin.venice.pushmonitor.OfflinePushMonitor;
-import com.linkedin.venice.status.StoreStatusMessage;
 import com.linkedin.venice.helix.HelixAdapterSerializer;
-import com.linkedin.venice.helix.HelixJobRepository;
 import com.linkedin.venice.helix.HelixReadWriteSchemaRepository;
 import com.linkedin.venice.helix.HelixReadWriteStoreRepository;
 import com.linkedin.venice.helix.HelixRoutingDataRepository;
@@ -21,9 +20,7 @@ public class VeniceHelixResources implements VeniceResource {
   private final HelixManager controller;
   private final HelixReadWriteStoreRepository metadataRepository;
   private final HelixRoutingDataRepository routingDataRepository;
-  private final HelixJobRepository jobRepository;
   private final HelixReadWriteSchemaRepository schemaRepository;
-  private final VeniceJobManager jobManager;
   private final HelixStatusMessageChannel messageChannel;
   private final VeniceControllerClusterConfig config;
   private final OfflinePushMonitor OfflinePushMonitor;
@@ -32,23 +29,17 @@ public class VeniceHelixResources implements VeniceResource {
                               ZkClient zkClient,
                               HelixAdapterSerializer adapterSerializer,
                               HelixManager helixManager,
-                              VeniceControllerClusterConfig config) {
+                              VeniceControllerClusterConfig config,
+                              StoreCleaner storeCleaner) {
     this.config = config;
     this.controller = helixManager;
     this.metadataRepository = new HelixReadWriteStoreRepository(zkClient, adapterSerializer, clusterName);
     this.schemaRepository = new HelixReadWriteSchemaRepository(this.metadataRepository,
         zkClient, adapterSerializer, clusterName);
     this.routingDataRepository = new HelixRoutingDataRepository(helixManager);
-    this.jobRepository = new HelixJobRepository(zkClient, adapterSerializer, clusterName);
-    this.jobManager = new VeniceJobManager(clusterName,
-        helixManager.getSessionId().hashCode(),
-        this.jobRepository,
-        this.metadataRepository,
-        this.routingDataRepository,
-        config.getOffLineJobWaitTimeInMilliseconds());
     this.messageChannel = new HelixStatusMessageChannel(helixManager, HelixStatusMessageChannel.DEFAULT_BROAD_CAST_MESSAGES_TIME_OUT);
     this.OfflinePushMonitor = new OfflinePushMonitor(clusterName, routingDataRepository,
-        new HelixOfflinePushMonitorAccessor(clusterName, zkClient, adapterSerializer));
+        new HelixOfflinePushMonitorAccessor(clusterName, zkClient, adapterSerializer), storeCleaner, metadataRepository);
   }
 
   @Override
@@ -57,17 +48,11 @@ public class VeniceHelixResources implements VeniceResource {
     metadataRepository.refresh();
     schemaRepository.refresh();
     routingDataRepository.refresh();
-    jobRepository.refresh();
-    jobManager.checkAllExistingJobs();
-    // After all of resource being refreshed, start accepting message again.
-    messageChannel.registerHandler(StoreStatusMessage.class, jobManager);
     OfflinePushMonitor.loadAllPushes();
   }
 
   @Override
   public void clear() {
-    messageChannel.unRegisterHandler(StoreStatusMessage.class, jobManager);
-    jobRepository.clear();
     metadataRepository.clear();
     schemaRepository.clear();
     routingDataRepository.clear();
@@ -83,14 +68,6 @@ public class VeniceHelixResources implements VeniceResource {
 
   public HelixRoutingDataRepository getRoutingDataRepository() {
     return routingDataRepository;
-  }
-
-  public HelixJobRepository getJobRepository() {
-    return jobRepository;
-  }
-
-  public VeniceJobManager getJobManager() {
-    return jobManager;
   }
 
   public HelixStatusMessageChannel getMessageChannel() {
