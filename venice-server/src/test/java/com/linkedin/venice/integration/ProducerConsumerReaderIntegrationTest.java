@@ -4,6 +4,8 @@ import com.linkedin.venice.client.exceptions.VeniceServerException;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
 import com.linkedin.venice.utils.FlakyTestRetryAnalyzer;
+import com.linkedin.venice.utils.SslUtils;
+import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
@@ -33,6 +35,7 @@ import static com.linkedin.venice.ConfigKeys.ZOOKEEPER_ADDRESS;
 /**
  * This class spins up ZK and Kafka, and a complete Venice cluster, and tests that
  * messages produced into Kafka can be read back out of the storage node.
+ * All over SSL from the thin client through the router to the storage node.
  */
 public class ProducerConsumerReaderIntegrationTest {
 
@@ -47,14 +50,16 @@ public class ProducerConsumerReaderIntegrationTest {
 
   @BeforeMethod
   public void setUp() throws InterruptedException, ExecutionException, VeniceClientException {
-    veniceCluster = ServiceFactory.getVeniceCluster();
+    boolean sslTrue = true;
+    Utils.thisIsLocalhost();
+    veniceCluster = ServiceFactory.getVeniceCluster(sslTrue);
 
     // Create test store
     VersionCreationResponse creationResponse = veniceCluster.getNewStoreVersion();
     storeVersionName = creationResponse.getKafkaTopic();
     storeName = Version.parseStoreFromKafkaTopicName(storeVersionName);
     valueSchemaId = HelixReadOnlySchemaRepository.VALUE_SCHEMA_STARTING_ID;
-    String routerUrl = veniceCluster.getRandomRouterURL();
+    String routerUrl = veniceCluster.getRandomRouterSslURL();
 
     VeniceProperties clientProps =
             new PropertyBuilder().put(KAFKA_BOOTSTRAP_SERVERS, veniceCluster.getKafka().getAddress())
@@ -67,7 +72,8 @@ public class ProducerConsumerReaderIntegrationTest {
     VeniceSerializer valueSerializer = new AvroGenericSerializer(stringSchema);
 
     veniceWriter = new VeniceWriter<>(clientProps, storeVersionName, keySerializer, valueSerializer);
-    storeClient = AvroStoreClientFactory.getAndStartAvroGenericStoreClient(routerUrl, storeName);
+    storeClient = AvroStoreClientFactory.getAndStartAvroGenericSslStoreClient(routerUrl, storeName,
+        SslUtils.getLocalSslFactory());
   }
 
   @AfterMethod
@@ -78,7 +84,7 @@ public class ProducerConsumerReaderIntegrationTest {
     }
   }
 
-  @Test(retryAnalyzer = FlakyTestRetryAnalyzer.class)
+  @Test//(retryAnalyzer = FlakyTestRetryAnalyzer.class)
   public void testEndToEndProductionAndReading() throws Exception {
 
     final int pushVersion = Version.parseVersionFromKafkaTopicName(storeVersionName);
@@ -111,7 +117,7 @@ public class ProducerConsumerReaderIntegrationTest {
 
     // Read (but make sure Router is up-to-date with new version)
     TestUtils.waitForNonDeterministicCompletion(10, TimeUnit.SECONDS, ()->{
-      try{
+      try {
         storeClient.get(key).get();
       } catch (Exception e){
         return false;

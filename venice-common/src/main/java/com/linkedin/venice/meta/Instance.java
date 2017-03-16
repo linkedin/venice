@@ -1,5 +1,6 @@
 package com.linkedin.venice.meta;
 
+import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.utils.Utils;
 import javax.validation.constraints.NotNull;
@@ -65,14 +66,21 @@ public class Instance {
   /***
    * Convenience method for getting a host and port based url.
    * Wraps IPv6 host strings in square brackets
-   * @return http:// + host + : + port
+   * @param https sets the scheme: false for http, true for https
+   * @return http(s):// + host + : + port
    */
   @JsonIgnore
-  public String getUrl(){
-    String scheme = "http";
+  public String getUrl(boolean https){
+    String scheme = https ? HttpConstants.HTTPS : HttpConstants.HTTP;
     return host.contains(":") ? /* for IPv6 support per https://www.ietf.org/rfc/rfc2732.txt */
       scheme + "://[" + host + "]:" + port :
       scheme + "://" + host + ":" + port;
+  }
+
+  @JsonIgnore
+  @Deprecated
+  public String getUrl(){
+    return getUrl(false);
   }
 
   private void validatePort(String name, int port) {

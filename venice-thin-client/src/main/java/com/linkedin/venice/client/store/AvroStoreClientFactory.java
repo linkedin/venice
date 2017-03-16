@@ -1,21 +1,33 @@
 package com.linkedin.venice.client.store;
 
 import com.linkedin.d2.balancer.D2Client;
+import com.linkedin.security.ssl.access.control.SSLEngineComponentFactory;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.store.transport.D2TransportClient;
 import com.linkedin.venice.client.store.transport.HttpTransportClient;
+import com.linkedin.venice.client.store.transport.HttpsTransportClient;
 import com.linkedin.venice.client.store.transport.TransportClient;
+import com.linkedin.venice.exceptions.VeniceException;
+import java.util.Optional;
 import org.apache.avro.specific.SpecificRecord;
 
 public class AvroStoreClientFactory {
   public static final String HTTP_PREFIX = "http://";
+  public static final String HTTPS_PREFIX = "https://";
   public static final String D2_PREFIX = "d2://";
 
   // TODO: Add ClientConfig to configure transport client, such as timeout, thread number, ...
   // TODO: Construct StoreClient by D2 url along with a couple of D2 related config.
   public static <V> AvroGenericStoreClient<V> getAndStartAvroGenericStoreClient(String url, String storeName)
       throws VeniceClientException {
-    TransportClient<V> transportClient = getTransportClient(url);
+    TransportClient<V> transportClient = getTransportClient(url, Optional.empty());
+    AvroGenericStoreClientImpl<V> client = new AvroGenericStoreClientImpl(transportClient, storeName);
+    client.start();
+    return client;
+  }
+
+  public static <V> AvroGenericStoreClient<V> getAndStartAvroGenericSslStoreClient(String url, String storeName, SSLEngineComponentFactory sslFactory) {
+    TransportClient<V> transportClient = getTransportClient(url, Optional.of(sslFactory));
     AvroGenericStoreClientImpl<V> client = new AvroGenericStoreClientImpl(transportClient, storeName);
     client.start();
     return client;
@@ -23,17 +35,30 @@ public class AvroStoreClientFactory {
 
   public static <V extends SpecificRecord> AvroSpecificStoreClient<V> getAndStartAvroSpecificStoreClient(
     String url, String storeName, Class<V> valueClass) throws VeniceClientException {
-    TransportClient<V> transportClient = getTransportClient(url);
+    TransportClient<V> transportClient = getTransportClient(url, Optional.empty());
     AvroSpecificStoreClientImpl<V> client = new AvroSpecificStoreClientImpl(transportClient, storeName, valueClass);
     client.start();
     return client;
   }
 
-  private static <V> TransportClient<V> getTransportClient(String url) throws VeniceClientException {
+  public static <V extends SpecificRecord> AvroSpecificStoreClient<V> getAndStartAvroSpecificSslStoreClient(
+      String url, String storeName, Class<V> valueClass, SSLEngineComponentFactory sslFactory) throws VeniceClientException {
+    TransportClient<V> transportClient = getTransportClient(url, Optional.of(sslFactory));
+    AvroSpecificStoreClientImpl<V> client = new AvroSpecificStoreClientImpl(transportClient, storeName, valueClass);
+    client.start();
+    return client;
+  }
+
+  private static <V> TransportClient<V> getTransportClient(String url, Optional<SSLEngineComponentFactory> sslFactory) throws VeniceClientException {
     if (url.startsWith(HTTP_PREFIX)) {
       return new HttpTransportClient<>(url);
-    }
-    if (url.startsWith(D2_PREFIX)) {
+    } else if (url.startsWith(HTTPS_PREFIX)){
+      if (sslFactory.isPresent()){
+        return new HttpsTransportClient<V>(url, sslFactory.get());
+      } else {
+        throw new VeniceClientException("Must use SSL factory method for client to communicate with https url: " + url);
+      }
+    } else if (url.startsWith(D2_PREFIX)) {
       throw new VeniceClientException("Initializing D2 StoreClient by url is not supported yet");
     }
     throw new VeniceClientException("Unknown url: " + url);

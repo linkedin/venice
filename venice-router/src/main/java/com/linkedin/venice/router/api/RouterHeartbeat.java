@@ -1,12 +1,15 @@
 package com.linkedin.venice.router.api;
 
+import com.linkedin.security.ssl.access.control.SSLEngineComponentFactory;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.QueryAction;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.utils.HelixUtils;
+import com.linkedin.venice.utils.SslUtils;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
@@ -17,6 +20,7 @@ import org.apache.http.client.config.RequestConfig;
 import org.apache.http.client.methods.HttpGet;
 import org.apache.http.impl.DefaultConnectionReuseStrategy;
 import org.apache.http.impl.nio.client.CloseableHttpAsyncClient;
+import org.apache.http.impl.nio.client.HttpAsyncClientBuilder;
 import org.apache.http.impl.nio.client.HttpAsyncClients;
 import org.apache.log4j.Logger;
 
@@ -32,22 +36,33 @@ public class RouterHeartbeat extends AbstractVeniceService {
   private static final Logger logger = Logger.getLogger(RouterHeartbeat.class);
   private boolean initialized = false;
 
-
-  public RouterHeartbeat(HelixManager manager, VeniceHostHealth health, long cycleTime, TimeUnit cycleTimeUnits, int heartbeatTimeoutMillis){
+  /**
+   *
+   * @param manager HelixMaanger used to identify which storage nodes need to be queried
+   * @param health VeniceHostHealth used to mark unreachable nodes as unhealthy
+   * @param cycleTime How frequently to issue a heartbeat
+   * @param cycleTimeUnits
+   * @param heartbeatTimeoutMillis How long of a timeout we allow for a node to respond to a heartbeat request
+   * @param sslFactory if provided, the heartbeat will attempt to use ssl when checking the status of the storage nodes
+   */
+  public RouterHeartbeat(HelixManager manager, VeniceHostHealth health, long cycleTime, TimeUnit cycleTimeUnits, int heartbeatTimeoutMillis, Optional<SSLEngineComponentFactory> sslFactory){
     this.manager = manager;
 
     int maxConnectionsPerRoute = 2;
     int maxConnections = 100;
-    httpClient = HttpAsyncClients.custom()
+    HttpAsyncClientBuilder clientBuilder = HttpAsyncClients.custom()
           .setConnectionReuseStrategy(new DefaultConnectionReuseStrategy())  //Supports connection re-use if able
-          .setConnectionManager(VeniceDispatcher.createConnectionManager(maxConnectionsPerRoute, maxConnections))
+          .setConnectionManager(VeniceDispatcher.createConnectionManager(maxConnectionsPerRoute, maxConnections, sslFactory))
           .setDefaultRequestConfig(
               RequestConfig.custom()
                   .setSocketTimeout(heartbeatTimeoutMillis)
                   .setConnectTimeout(heartbeatTimeoutMillis)
                   .setConnectionRequestTimeout(heartbeatTimeoutMillis).build() // 10 second sanity timeout.
-          )
-          .build();
+          );
+    if (sslFactory.isPresent()){
+      clientBuilder = clientBuilder.setSSLStrategy(SslUtils.getSslStrategy(sslFactory.get()));
+    }
+    httpClient = clientBuilder.build();
     Runnable runnable = () -> {
       boolean running = true;
 
@@ -74,21 +89,22 @@ public class RouterHeartbeat extends AbstractVeniceService {
           for (LiveInstance liveInstance : liveInstances) {
             Instance instance = HelixUtils.getInstanceFromHelixInstanceName(liveInstance.getInstanceName());
 
-            final HttpGet get = new HttpGet(instance.getUrl() + "/" + QueryAction.HEALTH.toString().toLowerCase());
+            String instanceUrl = instance.getUrl(sslFactory.isPresent());
+            final HttpGet get = new HttpGet(instanceUrl + "/" + QueryAction.HEALTH.toString().toLowerCase());
             try {
               // heartbeatTimeout is being used as the socket connection timeout.  By specifying a longer timeout here (* 1.1)
               // we insist that the socket timeout should trigger before this timeout triggers.
               HttpResponse response = httpClient.execute(get, null).get((long) (heartbeatTimeoutMillis * 1.1), TimeUnit.MILLISECONDS);
               int code = response.getStatusLine().getStatusCode();
               if (code != SC_OK) {
-                logger.warn("Heartbeat returns " + code + " for " + instance.getUrl());
+                logger.warn("Heartbeat returns " + code + " for " + instanceUrl);
                 health.setHostAsUnhealthy(instance);
               }
             } catch (ExecutionException e) {
-              logger.warn("Failed to execute heartbeat on " + instance.getUrl(), e.getCause());
+              logger.warn("Failed to execute heartbeat on " + instanceUrl, e.getCause());
               health.setHostAsUnhealthy(instance);
             } catch (TimeoutException e) {
-              logger.warn("Heartbeat timeout for " + instance.getUrl());
+              logger.warn("Heartbeat timeout for " + instanceUrl);
               health.setHostAsUnhealthy(instance);
             }
           }

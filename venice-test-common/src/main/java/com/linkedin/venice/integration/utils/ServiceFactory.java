@@ -20,6 +20,7 @@ public class ServiceFactory {
   private static final int DEFAULT_REPLICATION_FACTOR =1;
   private static final int DEFAULT_PARTITION_SIZE_BYTES = 100;
   private static final long DEFAULT_DELAYED_TO_REBALANCE_MS = 0; // By default, disable the delayed rebalance for testing.
+  private static final boolean DEFAULT_SSL = false;
 
   /**
    * @return an instance of {@link ZkServerWrapper}
@@ -85,7 +86,7 @@ public class ServiceFactory {
   public static VeniceServerWrapper getVeniceServer(String clusterName, KafkaBrokerWrapper kafkaBrokerWrapper,
       boolean enableServerWhitelist, boolean autoJoinWhitelist) {
     return getStatefulService(VeniceServerWrapper.SERVICE_NAME,
-        VeniceServerWrapper.generateService(clusterName, kafkaBrokerWrapper, enableServerWhitelist, autoJoinWhitelist, false));
+        VeniceServerWrapper.generateService(clusterName, kafkaBrokerWrapper, enableServerWhitelist, autoJoinWhitelist, DEFAULT_SSL));
   }
 
   public static VeniceServerWrapper getVeniceServer(String clusterName, KafkaBrokerWrapper kafkaBrokerWrapper,
@@ -97,9 +98,9 @@ public class ServiceFactory {
   /**
    * Note: Assumes that helix and kafka are using the same zookeeper, uses the zookeeper from the kafkaBrokerWrapper
    */
-  static VeniceRouterWrapper getVeniceRouter(String clusterName, KafkaBrokerWrapper kafkaBrokerWrapper){
+  static VeniceRouterWrapper getVeniceRouter(String clusterName, KafkaBrokerWrapper kafkaBrokerWrapper, boolean sslToStorageNodes){
     return getService(VeniceRouterWrapper.SERVICE_NAME,
-      VeniceRouterWrapper.generateService(clusterName, kafkaBrokerWrapper));
+      VeniceRouterWrapper.generateService(clusterName, kafkaBrokerWrapper, sslToStorageNodes));
   }
 
   /**
@@ -107,13 +108,14 @@ public class ServiceFactory {
    * @return
    */
   public static MockVeniceRouterWrapper getMockVeniceRouter() {
-    return getService(MockVeniceRouterWrapper.SERVICE_NAME, null);
+    return getService(MockVeniceRouterWrapper.SERVICE_NAME,
+        MockVeniceRouterWrapper.generateService(null, false));
   }
 
-  public static MockVeniceRouterWrapper getMockVeniceRouter(String zkAddress){
+  public static MockVeniceRouterWrapper getMockVeniceRouter(String zkAddress, boolean sslToStorageNodes){
     return getService(
         MockVeniceRouterWrapper.SERVICE_NAME,
-        MockVeniceRouterWrapper.generateService(zkAddress));
+        MockVeniceRouterWrapper.generateService(zkAddress, sslToStorageNodes));
   }
 
   /**
@@ -138,31 +140,49 @@ public class ServiceFactory {
   }
 
   public static VeniceClusterWrapper getVeniceCluster() {
-    // Get the cluster with 1 controller, 1 server and 1 router by default.
-    return getVeniceCluster(1, 1, 1, DEFAULT_REPLICATION_FACTOR, DEFAULT_PARTITION_SIZE_BYTES);
+    return getVeniceCluster(DEFAULT_SSL);
+  }
+
+  public static VeniceClusterWrapper getVeniceCluster(boolean ssl) {
+    return getVeniceCluster(1, 1, 1, DEFAULT_REPLICATION_FACTOR, DEFAULT_PARTITION_SIZE_BYTES, ssl);
   }
 
   public static VeniceClusterWrapper getVeniceCluster(int numberOfControllers, int numberOfServers, int numberOfRouter) {
     return getVeniceCluster(numberOfControllers, numberOfServers, numberOfRouter, DEFAULT_REPLICATION_FACTOR,
-        DEFAULT_PARTITION_SIZE_BYTES);
+        DEFAULT_PARTITION_SIZE_BYTES, DEFAULT_SSL);
   }
 
-  public static VeniceClusterWrapper getVeniceCluster(int numberOfControllers, int numberOfServers, int numberOfRouter, int replicaFactor, int partitionSize) {
+  @Deprecated
+  public static VeniceClusterWrapper getVeniceCluster(int numberOfControllers, int numberOfServers, int numberOfRouter, int replicationFactor, int partitionSize){
+    return getVeniceCluster(numberOfControllers, numberOfServers, numberOfRouter, replicationFactor, partitionSize, DEFAULT_SSL);
+  }
+
+  public static VeniceClusterWrapper getVeniceCluster(int numberOfControllers, int numberOfServers, int numberOfRouter, int replicationFactor, int partitionSize, boolean sslToStorageNodes) {
     // As we introduce bootstrap state in to venice and transition from bootstrap to online will be blocked until get
     // "end of push" message. We need more venice server for testing, because there is a limitation in helix about how
     // many uncompleted transitions one server could handle. So if we still use one server and that limitation is
     // reached, venice can not create new resource which will cause failed tests.
     // Enable to start multiple controllers and routers too, so that we could fail some of them to do the failover integration test.
     return getService(VeniceClusterWrapper.SERVICE_NAME,
-        VeniceClusterWrapper.generateService(numberOfControllers, numberOfServers, numberOfRouter, replicaFactor,
-            partitionSize, false, false, DEFAULT_DELAYED_TO_REBALANCE_MS, replicaFactor - 1));
+        VeniceClusterWrapper.generateService(numberOfControllers, numberOfServers, numberOfRouter, replicationFactor,
+            partitionSize, false, false, DEFAULT_DELAYED_TO_REBALANCE_MS, replicationFactor - 1, sslToStorageNodes));
+  }
+
+  @Deprecated
+  public static VeniceClusterWrapper getVeniceCluster(int numberOfControllers, int numberOfServers, int numberOfRouter,
+      int replicationFactor, int partitionSize, boolean enableWhitelist, boolean enableAutoJoinWhitelist,
+      long delayToRebalanceMS, int minActiveReplica) {
+    return getVeniceCluster(numberOfControllers, numberOfServers, numberOfRouter, replicationFactor, partitionSize,
+        enableWhitelist, enableAutoJoinWhitelist, delayToRebalanceMS, minActiveReplica, DEFAULT_SSL);
   }
   // TODO instead of passing more and more parameters here, we could create a class ClusterOptions to include all of options to start a cluster. Then we only need one parameter here.
+  // Or a builder pattern
   public static VeniceClusterWrapper getVeniceCluster(int numberOfControllers, int numberOfServers, int numberOfRouter,
-      int replicaFactor, int partitionSize, boolean enableWhitelist, boolean enableAutoJoinWhitelist, long delayToRebalanceMS, int minActiveReplica) {
+      int replicaFactor, int partitionSize, boolean enableWhitelist, boolean enableAutoJoinWhitelist,
+      long delayToRebalanceMS, int minActiveReplica, boolean sslToStorageNodes) {
     return getService(VeniceClusterWrapper.SERVICE_NAME,
         VeniceClusterWrapper.generateService(numberOfControllers, numberOfServers, numberOfRouter, replicaFactor,
-            partitionSize, enableWhitelist, enableAutoJoinWhitelist, delayToRebalanceMS, minActiveReplica));
+            partitionSize, enableWhitelist, enableAutoJoinWhitelist, delayToRebalanceMS, minActiveReplica, sslToStorageNodes));
   }
 
   private static <S extends ProcessWrapper> S getStatefulService(String serviceName, StatefulServiceProvider<S> serviceProvider) {

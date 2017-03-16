@@ -45,15 +45,15 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
 
   @Override
   public void initChannel(SocketChannel ch) throws Exception {
-    StatsHandler statsHandler = new StatsHandler(stats);
-    ch.pipeline().addLast(statsHandler);
 
     if (sslFactory.isPresent()){
       ch.pipeline()
           .addLast(new SSLInitializer(sslFactory.get()));
     }
 
-    ch.pipeline().addLast(new HttpServerCodec())
+    StatsHandler statsHandler = new StatsHandler(stats);
+    ch.pipeline().addLast(statsHandler)
+        .addLast(new HttpServerCodec())
         .addLast(new OutboundHttpWrapperHandler(statsHandler))
         .addLast(new IdleStateHandler(0, 0, NETTY_IDLE_TIME_IN_SECONDS));
 

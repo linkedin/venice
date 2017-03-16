@@ -35,15 +35,17 @@ public class MockVeniceRouterWrapper extends ProcessWrapper {
   private RouterServer service;
   private final String clusterName;
   private final int port;
+  private final boolean sslToStorageNodes;
 
-  MockVeniceRouterWrapper(String serviceName, File dataDirectory, RouterServer service, String clusterName, int port) {
+  MockVeniceRouterWrapper(String serviceName, File dataDirectory, RouterServer service, String clusterName, int port, boolean sslToStorageNodes) {
     super(serviceName, dataDirectory);
     this.service = service;
     this.port = port;
     this.clusterName = clusterName;
+    this.sslToStorageNodes = sslToStorageNodes;
   }
 
-  static StatefulServiceProvider<MockVeniceRouterWrapper> generateService(String zkAddress) {
+  static StatefulServiceProvider<MockVeniceRouterWrapper> generateService(String zkAddress, boolean sslToStorageNodes) {
 
     Store mockStore = Mockito.mock(Store.class);
     doReturn(1).when(mockStore).getCurrentVersion();
@@ -69,8 +71,8 @@ public class MockVeniceRouterWrapper extends ProcessWrapper {
       }
       String clusterName = TestUtils.getUniqueString("mock-venice-router-cluster");
       RouterServer router = new RouterServer(port, sslPortFromPort(port), clusterName, mockRepo,
-          mockMetadataRepository, mockSchemaRepository, d2ServerList, Optional.of(SslUtils.getLocalSslFactory()));
-      return new MockVeniceRouterWrapper(serviceName, dataDirectory, router, clusterName, port);
+          mockMetadataRepository, mockSchemaRepository, d2ServerList, Optional.of(SslUtils.getLocalSslFactory()), sslToStorageNodes);
+      return new MockVeniceRouterWrapper(serviceName, dataDirectory, router, clusterName, port, sslToStorageNodes);
     };
   }
 

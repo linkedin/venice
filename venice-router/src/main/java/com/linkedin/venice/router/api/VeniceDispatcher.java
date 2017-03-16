@@ -6,11 +6,13 @@ import com.linkedin.ddsstorage.netty4.misc.BasicHttpRequest;
 import com.linkedin.ddsstorage.router.api.PartitionDispatchHandler4;
 import com.linkedin.ddsstorage.router.api.Scatter;
 import com.linkedin.ddsstorage.router.api.ScatterGatherRequest;
+import com.linkedin.security.ssl.access.control.SSLEngineComponentFactory;
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.router.stats.AggRouterHttpRequestStats;
+import com.linkedin.venice.utils.SslUtils;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 import io.netty.handler.codec.http.DefaultFullHttpResponse;
@@ -26,6 +28,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.Executor;
@@ -35,20 +38,28 @@ import org.apache.http.HttpStatus;
 import org.apache.http.client.config.RequestConfig;
 import org.apache.http.client.methods.HttpGet;
 import org.apache.http.concurrent.FutureCallback;
+import org.apache.http.config.RegistryBuilder;
 import org.apache.http.impl.DefaultConnectionReuseStrategy;
 import org.apache.http.impl.nio.client.CloseableHttpAsyncClient;
+import org.apache.http.impl.nio.client.HttpAsyncClientBuilder;
 import org.apache.http.impl.nio.client.HttpAsyncClients;
 import org.apache.http.impl.nio.conn.PoolingNHttpClientConnectionManager;
 import org.apache.http.impl.nio.reactor.DefaultConnectingIOReactor;
 import org.apache.http.impl.nio.reactor.IOReactorConfig;
+import org.apache.http.nio.conn.NoopIOSessionStrategy;
+import org.apache.http.nio.conn.SchemeIOSessionStrategy;
+import org.apache.http.nio.conn.ssl.SSLIOSessionStrategy;
 import org.apache.http.nio.reactor.ConnectingIOReactor;
 import org.apache.http.nio.reactor.IOReactorException;
 import org.apache.log4j.Logger;
 
+import static com.linkedin.venice.HttpConstants.*;
+
+
 public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, VeniceStoragePath, RouterKey>, Closeable{
 
   private static final String REQUIRED_API_VERSION = "1";
-  private static final String HTTP = "http://";
+  private final String scheme;
 
   private static final Logger logger = Logger.getLogger(VeniceDispatcher.class);
 
@@ -63,29 +74,33 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
 
   // How many offsets behind can a storage node be for a partition and still be considered 'caught up'
   private long acceptableOffsetLag = 10000; /* TODO: make this configurable for streaming use-case */
-  private int   clientTimeoutMillis;
 
-  public VeniceDispatcher(VeniceHostHealth healthMonitor, int clientTimeoutMillis, MetricsRepository metricsRepository){
-    httpClient = HttpAsyncClients.custom()
+  /**
+   *
+   * @param healthMonitor
+   * @param clientTimeoutMillis
+   * @param metricsRepository
+   * @param sslFactory if this is present, it will be used to make SSL requests to storage nodes.
+   */
+  public VeniceDispatcher(VeniceHostHealth healthMonitor, int clientTimeoutMillis, MetricsRepository metricsRepository, Optional<SSLEngineComponentFactory> sslFactory){
+    HttpAsyncClientBuilder clientBuilder = HttpAsyncClients.custom()
         .setConnectionReuseStrategy(new DefaultConnectionReuseStrategy())  //Supports connection re-use if able
-        .setConnectionManager(createConnectionManager(200, 200))
+        .setConnectionManager(createConnectionManager(200, 200, sslFactory))
         .setDefaultRequestConfig(
             RequestConfig.custom()
                 .setSocketTimeout(clientTimeoutMillis)
                 .setConnectTimeout(clientTimeoutMillis)
                 .setConnectionRequestTimeout(clientTimeoutMillis).build() // 10 second sanity timeout.
-        )
-        .build();
+        );
+    if (sslFactory.isPresent()){
+      clientBuilder = clientBuilder.setSSLStrategy(SslUtils.getSslStrategy(sslFactory.get()));
+    }
+    httpClient = clientBuilder.build();
     httpClient.start();
     this.healthMontior = healthMonitor;
-    this.clientTimeoutMillis = clientTimeoutMillis;
     stats = new AggRouterHttpRequestStats(metricsRepository);
+    scheme = sslFactory.isPresent() ? HTTPS_PREFIX : HTTP_PREFIX;
   }
-
-  /*@Deprecated
-  public VeniceDispatcher(VeniceHostHealth healthMonitor){
-    this(healthMonitor, 10000);
-  }*/
 
   @Override
   public void dispatch(
@@ -125,8 +140,8 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
     String requestPath = path.getLocation();
     logger.debug("Using request path: " + requestPath);
 
-    //  http://host:port/path
-    String address = HTTP + host.getHost() + ":" + host.getPort() + "/" + requestPath;
+    //  http(s)://host:port/path
+    String address = scheme + host.getHost() + ":" + host.getPort() + "/" + requestPath;
     final HttpGet requestToNode = new HttpGet(address);
     requestToNode.addHeader(HttpConstants.VENICE_API_VERSION, REQUIRED_API_VERSION);
     httpClient.execute(requestToNode, new FutureCallback<org.apache.http.HttpResponse>() {
@@ -247,9 +262,12 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
 
   /**
    * Creates and returns a new connection manager on every invocation.
+   *
+   * Client level SSL Strategies get blown away when you specify a connection manager, so we need to specify
+   * scheme-specific strategies in the connection manager in order to make HTTPS requests.
    * @return
    */
-  public static PoolingNHttpClientConnectionManager createConnectionManager(int perRoute, int total) {
+  public static PoolingNHttpClientConnectionManager createConnectionManager(int perRoute, int total, Optional<SSLEngineComponentFactory> sslFactory) {
     IOReactorConfig ioReactorConfig = IOReactorConfig.custom().build();
     ConnectingIOReactor ioReactor = null;
     try {
@@ -257,7 +275,16 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
     } catch (IOReactorException e) {
       throw new VeniceException("Router failed to create an IO Reactor", e);
     }
-    PoolingNHttpClientConnectionManager connMgr = new PoolingNHttpClientConnectionManager(ioReactor);
+    PoolingNHttpClientConnectionManager connMgr;
+    if(sslFactory.isPresent()) {
+      SSLIOSessionStrategy sslStrategy = SslUtils.getSslStrategy(sslFactory.get());
+      RegistryBuilder<SchemeIOSessionStrategy> registryBuilder = RegistryBuilder.create();
+      // This connection manager will ONLY support https urls without the HTTP strategy, we could consider commenting it out.
+      registryBuilder.register(HTTPS, sslStrategy).register(HTTP, NoopIOSessionStrategy.INSTANCE);
+      connMgr = new PoolingNHttpClientConnectionManager(ioReactor, registryBuilder.build());
+    } else {
+      connMgr = new PoolingNHttpClientConnectionManager(ioReactor);
+    }
     connMgr.setMaxTotal(total);
     connMgr.setDefaultMaxPerRoute(perRoute);
     return connMgr;

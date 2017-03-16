@@ -18,10 +18,9 @@ public class StorageNodeServiceTest {
 
   @Test
   public void storageServerRespondsToRequests() throws ExecutionException, InterruptedException, IOException {
-    VeniceClusterWrapper venice = ServiceFactory.getVeniceCluster();
-
-    //Note: Router in the cluster wont be able to talk to this server because it only talks ssl
-    VeniceServerWrapper sslServer = ServiceFactory.getVeniceServer(venice.getClusterName(), venice.getKafka(), false, false, true);
+    boolean sslTrue = true;
+    VeniceClusterWrapper venice = ServiceFactory.getVeniceCluster(sslTrue);
+    VeniceServerWrapper sslServer = venice.getVeniceServers().get(0);
     CloseableHttpAsyncClient client = SslUtils.getSslClient();
     client.start();
 
@@ -38,7 +37,6 @@ public class StorageNodeServiceTest {
     Assert.assertEquals(IOUtils.toString(httpResponse.getEntity().getContent()), "SSL Required");
 
     client.close();
-    sslServer.close();
     venice.close();
   }
 }

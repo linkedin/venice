@@ -13,6 +13,7 @@ import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
+import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.writer.VeniceWriter;
 import java.io.File;
 import java.io.IOException;
@@ -187,7 +188,8 @@ public class TestKafkaPushJob {
 
   @BeforeClass
   public void setUp() {
-    veniceCluster = ServiceFactory.getVeniceCluster();
+    Utils.thisIsLocalhost();
+    veniceCluster = ServiceFactory.getVeniceCluster(true); //Now with SSL!
   }
 
   @AfterClass

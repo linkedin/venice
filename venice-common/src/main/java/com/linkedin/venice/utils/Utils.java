@@ -22,11 +22,14 @@ import org.apache.commons.lang.StringUtils;
 import org.apache.http.HttpStatus;
 import org.apache.log4j.Logger;
 
+import static com.linkedin.venice.HttpConstants.*;
+
 
 /**
  * Helper functions
  */
 public class Utils {
+
   private static Logger LOGGER = Logger.getLogger(Utils.class);
   /**
    * Print an error and exit with error code 1
@@ -220,11 +223,29 @@ public class Utils {
     }
   }
 
+  private static boolean localhost=false;
+  /**
+   * The ssl certificate we have for unit tests has the hostname "localhost".  Any tests that rely on this certificate
+   * require that the hostname of the machine match the hostname of the certificate.  This method lets us globally assert
+   * that the hostname for the machine should resolve to "localhost".  We can call this method at the start of any
+   * tests that require hostnames to resolve to "localhost"
+   *
+   * It's not ideal to put this as state in a Utils class, we can revisit if we come up with a better way to do it
+   */
+  public static void thisIsLocalhost(){
+    localhost = true;
+  }
+
   /**
    * Get the node's host name.
    * @return current node's host name.
    */
   public static String getHostName() {
+
+    if (localhost){
+      return LOCALHOST;
+    }
+
     String hostName;
 
     try {

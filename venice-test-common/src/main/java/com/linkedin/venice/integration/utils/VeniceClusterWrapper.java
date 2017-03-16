@@ -49,6 +49,8 @@ public class VeniceClusterWrapper extends ProcessWrapper {
   private final Map<Integer, VeniceServerWrapper> veniceServerWrappers;
   private final Map<Integer, VeniceRouterWrapper> veniceRouterWrappers;
 
+  private final boolean sslToStorageNodes;
+
   VeniceClusterWrapper(File dataDirectory,
                        String clusterName,
                        ZkServerWrapper zkServerWrapper,
@@ -59,7 +61,8 @@ public class VeniceClusterWrapper extends ProcessWrapper {
                        int defaultReplicaFactor,
                        int defaultPartitionSize,
                        long defaultDelayToRebalanceMS,
-                       int mintActiveReplica) {
+                       int mintActiveReplica,
+                       boolean sslToStorageNodes) {
     super(SERVICE_NAME, dataDirectory);
     this.clusterName = clusterName;
     this.zkServerWrapper = zkServerWrapper;
@@ -71,11 +74,12 @@ public class VeniceClusterWrapper extends ProcessWrapper {
     this.defaultPartitionSize = defaultPartitionSize;
     this.defaultDelayToRebalanceMS = defaultDelayToRebalanceMS;
     this.defaultMinActiveReplica = mintActiveReplica;
+    this.sslToStorageNodes = sslToStorageNodes;
   }
 
   static ServiceProvider<VeniceClusterWrapper> generateService(int numberOfControllers, int numberOfServers,
       int numberOfRouters, int replicaFactor, int partitionSize, boolean enableWhitelist,
-      boolean enableAutoJoinWhitelist, long delayToReblanceMS, int minActiveReplica) {
+      boolean enableAutoJoinWhitelist, long delayToReblanceMS, int minActiveReplica, boolean sslToStorageNodes) {
     /**
      * We get the various dependencies outside of the lambda, to avoid having a time
      * complexity of O(N^2) on the amount of retries. The calls have their own retries,
@@ -96,18 +100,18 @@ public class VeniceClusterWrapper extends ProcessWrapper {
     Map<Integer, VeniceServerWrapper> veniceServerWrappers = new HashMap<>();
     for (int i = 0; i < numberOfServers; i++) {
       VeniceServerWrapper veniceServerWrapper =
-          ServiceFactory.getVeniceServer(clusterName, kafkaBrokerWrapper, enableWhitelist, enableAutoJoinWhitelist);
+          ServiceFactory.getVeniceServer(clusterName, kafkaBrokerWrapper, enableWhitelist, enableAutoJoinWhitelist, sslToStorageNodes);
       veniceServerWrappers.put(veniceServerWrapper.getPort(), veniceServerWrapper);
     }
 
     Map<Integer, VeniceRouterWrapper> veniceRouterWrappers = new HashMap<>();
     for (int i = 0; i < numberOfRouters; i++) {
-      VeniceRouterWrapper veniceRouterWrapper = ServiceFactory.getVeniceRouter(clusterName, kafkaBrokerWrapper);
+      VeniceRouterWrapper veniceRouterWrapper = ServiceFactory.getVeniceRouter(clusterName, kafkaBrokerWrapper, sslToStorageNodes);
       veniceRouterWrappers.put(veniceRouterWrapper.getPort(), veniceRouterWrapper);
     }
 
     return (serviceName, port) -> new VeniceClusterWrapper(null, clusterName, zkServerWrapper, kafkaBrokerWrapper,
-        veniceControllerWrappers, veniceServerWrappers, veniceRouterWrappers, replicaFactor, partitionSize, delayToReblanceMS, minActiveReplica);
+        veniceControllerWrappers, veniceServerWrappers, veniceRouterWrappers, replicaFactor, partitionSize, delayToReblanceMS, minActiveReplica, sslToStorageNodes);
   }
 
   public String getClusterName() {
@@ -193,7 +197,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
   }
 
   public VeniceRouterWrapper addVeniceRouter() {
-    VeniceRouterWrapper veniceRouterWrapper = ServiceFactory.getVeniceRouter(clusterName, kafkaBrokerWrapper);
+    VeniceRouterWrapper veniceRouterWrapper = ServiceFactory.getVeniceRouter(clusterName, kafkaBrokerWrapper, sslToStorageNodes);
     veniceRouterWrappers.put(veniceRouterWrapper.getPort(), veniceRouterWrapper);
     return veniceRouterWrapper;
   }
@@ -414,5 +418,10 @@ public class VeniceClusterWrapper extends ProcessWrapper {
 
   public String getRandomRouterURL() {
     return "http://" + getRandomVeniceRouter().getAddress();
+  }
+
+  public String getRandomRouterSslURL() {
+    VeniceRouterWrapper router = getRandomVeniceRouter();
+    return "https://" + router.getHost() + ":" + router.getSslPort();
   }
 }
