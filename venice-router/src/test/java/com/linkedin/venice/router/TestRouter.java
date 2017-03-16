@@ -31,6 +31,7 @@ import org.testng.Assert;
 import org.testng.annotations.Test;
 
 public class TestRouter {
+  private static final boolean SSL_TO_STORAGE_NODES = false;
 
   @Test
   public void testRouterWithHttpD2() throws Exception {
@@ -49,7 +50,7 @@ public class TestRouter {
     } else {
       D2TestUtils.setupD2Config(zk.getAddress());
     }
-    MockVeniceRouterWrapper router = ServiceFactory.getMockVeniceRouter(zk.getAddress());
+    MockVeniceRouterWrapper router = ServiceFactory.getMockVeniceRouter(zk.getAddress(), SSL_TO_STORAGE_NODES);
     D2Client d2Client = null;
     if (https) {
       d2Client = D2TestUtils.getAndStartHttpsD2Client(zk.getAddress());
@@ -95,7 +96,7 @@ public class TestRouter {
   @Test
   public void testRouterWithSsl() throws ExecutionException, InterruptedException, IOException {
     ZkServerWrapper zk = ServiceFactory.getZkServer();
-    MockVeniceRouterWrapper router = ServiceFactory.getMockVeniceRouter(zk.getAddress());
+    MockVeniceRouterWrapper router = ServiceFactory.getMockVeniceRouter(zk.getAddress(), SSL_TO_STORAGE_NODES);
     SSLContext sslContext = SslUtils.getLocalSslFactory().getSSLContext();
     SSLIOSessionStrategy sslSessionStrategy = new SSLIOSessionStrategy(sslContext);
     CloseableHttpAsyncClient httpclient = HttpAsyncClients.custom()
@@ -120,7 +121,7 @@ public class TestRouter {
   @Test
   public void routerWithSslRefusesNonSecureCommunication() throws ExecutionException, InterruptedException, IOException {
     ZkServerWrapper zk = ServiceFactory.getZkServer();
-    MockVeniceRouterWrapper router = ServiceFactory.getMockVeniceRouter(zk.getAddress());
+    MockVeniceRouterWrapper router = ServiceFactory.getMockVeniceRouter(zk.getAddress(), SSL_TO_STORAGE_NODES);
     CloseableHttpAsyncClient httpclient = HttpAsyncClients.custom().build();
     try {
       httpclient.start();

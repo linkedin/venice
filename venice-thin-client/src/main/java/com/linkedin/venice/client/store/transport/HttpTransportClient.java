@@ -27,7 +27,7 @@ public class HttpTransportClient<V> extends TransportClient<V> {
   private Logger logger = Logger.getLogger(HttpTransportClient.class);
 
   // Example: 'http://router-host:80/'
-  private final String routerUrl;
+  protected final String routerUrl;
   private final CloseableHttpAsyncClient httpClient;
 
   public HttpTransportClient(String routerUrl) {

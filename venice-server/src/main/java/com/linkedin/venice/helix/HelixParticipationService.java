@@ -27,7 +27,6 @@ import org.apache.helix.participant.statemachine.StateModelFactory;
 import org.apache.log4j.Logger;
 import java.util.concurrent.CompletableFuture;
 
-
 /**
  * Venice Participation Service wrapping Helix Participant.
  */
@@ -67,7 +66,7 @@ public class HelixParticipationService extends AbstractVeniceService implements 
     this.veniceConfigLoader = veniceConfigLoader;
     statusMessageRetryCount = veniceConfigLoader.getVeniceClusterConfig().getStatusMessageRetryCount();
     statusMessageRetryDuration = veniceConfigLoader.getVeniceClusterConfig().getStatusMessageRetryDurationMs();
-    instance = new Instance(participantName,Utils.getHostName(), port);
+    instance = new Instance(participantName, Utils.getHostName(), port);
     helixStateTransitionExecutorService =
         new ThreadPoolExecutor(veniceConfigLoader.getVeniceServerConfig().getMinStateTransitionThreadNumber(),
             veniceConfigLoader.getVeniceServerConfig().getMaxStateTransitionThreadNumber(), 300L, TimeUnit.SECONDS,

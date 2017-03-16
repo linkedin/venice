@@ -13,6 +13,7 @@ import java.util.concurrent.Future;
  */
 public abstract class TransportClient<V> implements Closeable {
   private DeserializerFetcher<V> deserializerFetcher;
+  protected static final String HTTPS = "https";
 
   public abstract Future<V> get(String requestPath, ClientCallback callback);
 

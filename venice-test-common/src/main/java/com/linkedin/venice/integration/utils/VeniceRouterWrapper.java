@@ -22,22 +22,24 @@ public class VeniceRouterWrapper extends ProcessWrapper {
   private final int port;
   private final String clusterName;
   private final String zkAddress;
+  private final boolean sslToStorageNode;
 
-  VeniceRouterWrapper(String serviceName, File dataDirectory, RouterServer service, String clusterName, int port, String zkAddress) {
+  VeniceRouterWrapper(String serviceName, File dataDirectory, RouterServer service, String clusterName, int port, String zkAddress, boolean sslToStorageNode) {
     super(serviceName, dataDirectory);
     this.service = service;
     this.port = port;
     this.clusterName = clusterName;
     this.zkAddress = zkAddress;
+    this.sslToStorageNode = sslToStorageNode;
   }
 
-  static StatefulServiceProvider<VeniceRouterWrapper> generateService(String clusterName, KafkaBrokerWrapper kafkaBrokerWrapper) {
+  static StatefulServiceProvider<VeniceRouterWrapper> generateService(String clusterName, KafkaBrokerWrapper kafkaBrokerWrapper, boolean sslToStorageNodes) {
     // TODO: Once the ZK address used by Controller and Kafka are decoupled, change this
     String zkAddress = kafkaBrokerWrapper.getZkAddress();
 
     return (serviceName, port, dataDirectory) -> {
-      RouterServer router = new RouterServer(port, sslPortFromPort(port), clusterName, zkAddress, new ArrayList<>(), Optional.of(SslUtils.getLocalSslFactory()));
-      return new VeniceRouterWrapper(serviceName, dataDirectory, router, clusterName, port, zkAddress);
+      RouterServer router = new RouterServer(port, sslPortFromPort(port), clusterName, zkAddress, new ArrayList<>(), Optional.of(SslUtils.getLocalSslFactory()), sslToStorageNodes);
+      return new VeniceRouterWrapper(serviceName, dataDirectory, router, clusterName, port, zkAddress, sslToStorageNodes);
     };
   }
 
@@ -73,7 +75,7 @@ public class VeniceRouterWrapper extends ProcessWrapper {
   @Override
   protected void newProcess()
       throws Exception {
-    service = new RouterServer(port, sslPortFromPort(port), clusterName, zkAddress, new ArrayList<>(), Optional.of(SslUtils.getLocalSslFactory()));
+    service = new RouterServer(port, sslPortFromPort(port), clusterName, zkAddress, new ArrayList<>(), Optional.of(SslUtils.getLocalSslFactory()), sslToStorageNode);
   }
 
   public HelixRoutingDataRepository getRoutingDataRepository(){

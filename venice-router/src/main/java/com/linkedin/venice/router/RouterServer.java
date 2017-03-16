@@ -63,6 +63,7 @@ public class RouterServer extends AbstractVeniceService {
   private final int clientTimeout;
   private final int heartbeatTimeout;
   private final Optional<SSLEngineComponentFactory> sslFactory;
+  private final boolean sslToStorageNodes;
 
   // Mutable state
   // TODO: Make these final once the test constructors are cleaned up.
@@ -109,7 +110,8 @@ public class RouterServer extends AbstractVeniceService {
     logger.info("Thread count: " + ROUTER_THREAD_POOL_SIZE);
 
     Optional<SSLEngineComponentFactory> sslFactory = Optional.of(SslUtils.getLocalSslFactory());
-    RouterServer server = new RouterServer(port, sslPort, clusterName, zkConnection, new ArrayList<>(), clientTimeout, heartbeatTimeout, sslFactory);
+    boolean sslToStorageNodes = false;
+    RouterServer server = new RouterServer(port, sslPort, clusterName, zkConnection, new ArrayList<>(), clientTimeout, heartbeatTimeout, sslFactory, sslToStorageNodes);
     server.start();
 
     Runtime.getRuntime().addShutdownHook(new Thread() {
@@ -134,11 +136,11 @@ public class RouterServer extends AbstractVeniceService {
     return TehutiUtils.getMetricsRepository(ROUTER_SERVICE_NAME);
   }
 
-  public RouterServer(int port, int sslPort, String clusterName, String zkConnection, List<D2Server> d2Servers, Optional<SSLEngineComponentFactory> sslFactory){
-    this(port, sslPort, clusterName, zkConnection, d2Servers, 10000, 1000, sslFactory);
+  public RouterServer(int port, int sslPort, String clusterName, String zkConnection, List<D2Server> d2Servers, Optional<SSLEngineComponentFactory> sslFactory, boolean sslToStorageNodes){
+    this(port, sslPort, clusterName, zkConnection, d2Servers, 10000, 1000, sslFactory, sslToStorageNodes);
   }
 
-  public RouterServer(int port, int sslPort, String clusterName, String zkConnection, List<D2Server> d2ServerList, int clientTimeout, int heartbeatTimeout, Optional<SSLEngineComponentFactory> sslFactory){
+  public RouterServer(int port, int sslPort, String clusterName, String zkConnection, List<D2Server> d2ServerList, int clientTimeout, int heartbeatTimeout, Optional<SSLEngineComponentFactory> sslFactory, boolean sslToStorageNodes){
     this(port,
         sslPort,
         clusterName,
@@ -147,12 +149,13 @@ public class RouterServer extends AbstractVeniceService {
         clientTimeout,
         heartbeatTimeout,
         TehutiUtils.getMetricsRepository(ROUTER_SERVICE_NAME),
-        sslFactory);
+        sslFactory,
+        sslToStorageNodes);
   }
 
   public RouterServer(int port, int sslPort, String clusterName, String zkConnection, List<D2Server> d2ServerList,
                       int clientTimeout, int heartbeatTimeout, MetricsRepository metricsRepository,
-                      Optional<SSLEngineComponentFactory> sslEngineComponentFactory) {
+                      Optional<SSLEngineComponentFactory> sslEngineComponentFactory, boolean sslToStorageNodes) {
     this.port = port;
     this.sslPort = sslPort;
     this.clientTimeout = clientTimeout;
@@ -170,6 +173,8 @@ public class RouterServer extends AbstractVeniceService {
     this.routingDataRepository = new HelixRoutingDataRepository(manager);
     this.d2ServerList = d2ServerList;
     this.sslFactory = sslEngineComponentFactory;
+    this.sslToStorageNodes = sslToStorageNodes;
+    verifySslOk();
   }
 
   /**
@@ -194,7 +199,8 @@ public class RouterServer extends AbstractVeniceService {
                       HelixReadOnlyStoreRepository metadataRepository,
                       HelixReadOnlySchemaRepository schemaRepository,
                       List<D2Server> d2ServerList,
-                      Optional<SSLEngineComponentFactory> sslFactory){
+                      Optional<SSLEngineComponentFactory> sslFactory,
+                      boolean sslToStorageNodes){
     this.port = port;
     this.sslPort = sslPort;
     this.clusterName = clusterName;
@@ -206,6 +212,8 @@ public class RouterServer extends AbstractVeniceService {
     this.clientTimeout = 10000;
     this.heartbeatTimeout = 1000;
     this.sslFactory = sslFactory;
+    this.sslToStorageNodes = sslToStorageNodes;
+    verifySslOk();
   }
 
   @Override
@@ -216,14 +224,15 @@ public class RouterServer extends AbstractVeniceService {
     ExecutorService executor = registry
         .factory(ShutdownableExecutors.class)
         .newFixedThreadPool(ROUTER_THREAD_POOL_SIZE, new DaemonThreadFactory("RouterThread")); //TODO: configurable number of threads
-
     Executor workerExecutor = registry.factory(ShutdownableExecutors.class).newCachedThreadPool();
     TimeoutProcessor timeoutProcessor = new TimeoutProcessor(registry);
     Map<String, Object> serverSocketOptions = null;
+
+    Optional<SSLEngineComponentFactory> sslFactoryForRequests = sslToStorageNodes ? sslFactory : Optional.empty();
     VenicePartitionFinder partitionFinder = new VenicePartitionFinder(routingDataRepository);
     VeniceHostHealth healthMonitor = new VeniceHostHealth();
-    dispatcher = new VeniceDispatcher(healthMonitor, clientTimeout, metricsRepository);
-    heartbeat = new RouterHeartbeat(manager, healthMonitor, 10, TimeUnit.SECONDS, heartbeatTimeout);
+    dispatcher = new VeniceDispatcher(healthMonitor, clientTimeout, metricsRepository, sslFactoryForRequests);
+    heartbeat = new RouterHeartbeat(manager, healthMonitor, 10, TimeUnit.SECONDS, heartbeatTimeout, sslFactoryForRequests);
     heartbeat.startInner();
     MetaDataHandler metaDataHandler = new MetaDataHandler(routingDataRepository, schemaRepository, clusterName);
 
@@ -365,5 +374,11 @@ public class RouterServer extends AbstractVeniceService {
         throw new VeniceException(e);
       }
     });
+  }
+
+  private void verifySslOk(){
+    if (this.sslToStorageNodes && !sslFactory.isPresent()){
+      throw new VeniceException("Must specify an SSLEngineComponentFactory in order to use SSL in requests to storage nodes");
+    }
   }
 }

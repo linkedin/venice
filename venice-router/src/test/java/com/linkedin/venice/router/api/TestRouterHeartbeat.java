@@ -12,6 +12,7 @@ import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.handler.codec.http.HttpVersion;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 import org.apache.helix.LiveInstanceChangeListener;
 import org.apache.helix.NotificationContext;
@@ -43,7 +44,7 @@ public class TestRouterHeartbeat {
     // Create the mock manager and verify our dummy instance is healthy before starting the heartbeat
     ZKHelixManager mockManager = Mockito.mock(ZKHelixManager.class);
     Assert.assertTrue(healthMon.isHostHealthy(dummy, "partition"));
-    RouterHeartbeat heartbeat = new RouterHeartbeat(mockManager, healthMon, 1, TimeUnit.SECONDS, 500);
+    RouterHeartbeat heartbeat = new RouterHeartbeat(mockManager, healthMon, 1, TimeUnit.SECONDS, 500, Optional.empty());
     heartbeat.start();
     Thread.sleep(200); // Let heartbeat initialize.  TODO: More deterministic solution
 
@@ -79,7 +80,7 @@ public class TestRouterHeartbeat {
 
     // Create our manager and start the heartbeat process.
     ZKHelixManager mockManager = Mockito.mock(ZKHelixManager.class);
-    RouterHeartbeat heartbeat = new RouterHeartbeat(mockManager, healthMon, 100, TimeUnit.MILLISECONDS, 500);
+    RouterHeartbeat heartbeat = new RouterHeartbeat(mockManager, healthMon, 100, TimeUnit.MILLISECONDS, 500, Optional.empty());
     heartbeat.start();
     Thread.sleep(200); // Let heartbeat initialize.  TODO: More deterministic solution
 

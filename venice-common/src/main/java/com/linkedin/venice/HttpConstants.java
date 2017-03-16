@@ -9,6 +9,14 @@ public class HttpConstants {
   public static final String APPLICATION_OCTET = "application/octet-stream";
   public static final String JSON = "application/json";
 
+
+  private static final String COLON_SLASH_SLASH = "://";
+  public static final String HTTP = "http";
+  public static final String HTTPS = "https";
+  public static final String HTTP_PREFIX = HTTP + COLON_SLASH_SLASH;
+  public static final String HTTPS_PREFIX = HTTPS + COLON_SLASH_SLASH;
+  public static final String LOCALHOST = "localhost";
+
   public static final String VENICE_OFFSET = "X-VENICE-OFFSET";
   public static final String VENICE_STORE_VERSION = "X-VENICE-STORE-VERSION";
   public static final String VENICE_PARTITION = "X-VENICE-PARTITION";
