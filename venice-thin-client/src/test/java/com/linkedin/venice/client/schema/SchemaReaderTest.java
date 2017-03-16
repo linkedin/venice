@@ -235,4 +235,39 @@ public class SchemaReaderTest {
     Mockito.doReturn(mockFuture).when(mockClient).getRaw("value_schema/" + storeName);
     schemaReader.getLatestValueSchema();
   }
+
+  @Test
+  public void testGetSchemaWithAnExtraFieldInReponse()
+      throws Exception {
+    String storeName = "test_store";
+    String keySchemaStr = "\"string\"";
+    // Create a repsonse with an extra field.
+    SchemaResponseWithExtraField schemaResponse = new SchemaResponseWithExtraField();
+    schemaResponse.setId(1);
+    schemaResponse.setSchemaStr(keySchemaStr);
+    schemaResponse.setExtraField(100);
+
+    AbstractAvroStoreClient mockClient = Mockito.mock(AbstractAvroStoreClient.class);
+    Mockito.doReturn(storeName).when(mockClient).getStoreName();
+    Future<byte[]> mockFuture = Mockito.mock(Future.class);
+    Mockito.doReturn(mapper.writeValueAsBytes(schemaResponse)).when(mockFuture).get();
+    Mockito.doReturn(mockFuture).when(mockClient).getRaw(Mockito.anyString());
+    try{
+      SchemaReader schemaReader = new SchemaReader(mockClient);
+    }catch (VeniceClientException e){
+      Assert.fail("The unrecognized field should be ignored.");
+    }
+  }
+
+  private class SchemaResponseWithExtraField extends SchemaResponse{
+    private int extraField;
+
+    public int getExtraField() {
+      return extraField;
+    }
+
+    public void setExtraField(int extraField) {
+      this.extraField = extraField;
+    }
+  }
 }

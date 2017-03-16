@@ -11,6 +11,7 @@ import java.io.Closeable;
 import org.apache.avro.Schema;
 import org.apache.commons.io.IOUtils;
 import org.apache.log4j.Logger;
+import org.codehaus.jackson.map.DeserializationConfig;
 import org.codehaus.jackson.map.ObjectMapper;
 
 import java.util.Map;
@@ -25,6 +26,10 @@ public class SchemaReader implements Closeable {
   public static final String TYPE_KEY_SCHEMA = "key_schema";
   public static final String TYPE_VALUE_SCHEMA = "value_schema";
   private static final ObjectMapper mapper = new ObjectMapper();
+  // Ignore the unknown field while parsing the json response.
+  static {
+    mapper.configure(DeserializationConfig.Feature.FAIL_ON_UNKNOWN_PROPERTIES, false);
+  }
 
   private final Logger logger = Logger.getLogger(SchemaReader.class);
   private Schema keySchema;
