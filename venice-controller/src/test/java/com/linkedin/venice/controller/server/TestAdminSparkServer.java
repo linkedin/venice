@@ -311,7 +311,9 @@ public class TestAdminSparkServer {
 
     controllerClient.enableStoreReads(venice.getClusterName(), storeName, false);
     controllerClient.enableStoreWrites(venice.getClusterName(), storeName, false);
-    controllerClient.deleteAllVersions(venice.getClusterName(), storeName);
+    MultiVersionResponse response = controllerClient.deleteAllVersions(venice.getClusterName(), storeName);
+    Assert.assertEquals(response.getExecutionId(), 0,
+        "The command executed in non-parent controller should have an execution id 0");
 
     StoreInfo store = controllerClient.getStore(venice.getClusterName(), storeName).getStore();
     Assert.assertEquals(store.getVersions().size(), 0);
