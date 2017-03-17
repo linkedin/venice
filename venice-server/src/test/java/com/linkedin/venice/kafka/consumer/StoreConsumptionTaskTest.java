@@ -803,7 +803,6 @@ public class StoreConsumptionTaskTest {
 
     runTest(pollStrategy, relevantPartitions, () -> {}, () -> {
       // Verify that all partitions reported success.
-      System.out.println("maxOffsetPerPartition Size: " + maxOffsetPerPartition.size());
       maxOffsetPerPartition.entrySet().stream().filter(entry -> relevantPartitions.contains(entry.getKey())).forEach(entry ->
           verify(mockNotifier, timeout(TEST_TIMEOUT).atLeastOnce()).completed(eq(topic), eq(entry.getKey()), eq(entry.getValue())));
 
@@ -860,6 +859,4 @@ public class StoreConsumptionTaskTest {
       verify(mockNotifier, timeout(TEST_TIMEOUT).atLeastOnce()).progress(topic, PARTITION_FOO, 1);
     });
   }
-
-
 }
