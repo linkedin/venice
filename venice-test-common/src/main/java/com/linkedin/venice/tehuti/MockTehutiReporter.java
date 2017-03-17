@@ -22,6 +22,16 @@ public class MockTehutiReporter implements MetricsReporter{
     }
 
     @Override
+    public void addMetric(TehutiMetric tehutiMetric) {
+        metrics.put(tehutiMetric.name(), tehutiMetric);
+    }
+
+    @Override
+    public void removeMetric(TehutiMetric tehutiMetric) {
+        metrics.remove(tehutiMetric.name());
+    }
+
+    @Override
     public void close() {}
 
     @Override

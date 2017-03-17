@@ -11,7 +11,7 @@ import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
 import com.linkedin.venice.helix.HelixReadOnlyStoreRepository;
 import com.linkedin.venice.helix.WhitelistAccessor;
 import com.linkedin.venice.helix.ZkWhitelistAccessor;
-import com.linkedin.venice.kafka.consumer.KafkaConsumerPerStoreService;
+import com.linkedin.venice.kafka.consumer.KafkaStoreIngestionService;
 import com.linkedin.venice.listener.ListenerService;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
@@ -41,7 +41,7 @@ public class VeniceServer {
 
   private StorageService storageService;
   private BdbOffsetManager offSetService;
-  private KafkaConsumerPerStoreService kafkaConsumerPerStoreService;
+  private KafkaStoreIngestionService kafkaStoreIngestionService;
 
   private MetricsRepository metricsRepository;
 
@@ -118,19 +118,19 @@ public class VeniceServer {
     createHelixStoreAndSchemaRepository(clusterConfig);
 
     //create and add KafkaSimpleConsumerService
-    this.kafkaConsumerPerStoreService =
-        new KafkaConsumerPerStoreService(storageService.getStoreRepository(), veniceConfigLoader, offSetService, metadataRepo,schemaRepo, metricsRepository);
+    this.kafkaStoreIngestionService =
+        new KafkaStoreIngestionService(storageService.getStoreRepository(), veniceConfigLoader, offSetService, metadataRepo,schemaRepo, metricsRepository);
 
     // start venice participant service if Helix is enabled.
     if(clusterConfig.isHelixEnabled()) {
       HelixParticipationService helixParticipationService =
-          new HelixParticipationService(kafkaConsumerPerStoreService, storageService, veniceConfigLoader,
+          new HelixParticipationService(kafkaStoreIngestionService, storageService, veniceConfigLoader,
               clusterConfig.getZookeeperAddress(), clusterConfig.getClusterName(),
               veniceConfigLoader.getVeniceServerConfig().getListenerPort());
       services.add(helixParticipationService);
       // Add kafka consumer service last so when shutdown the server, it will be stopped first to avoid the case
       // that helix is disconnected but consumption service try to send message by helix.
-      services.add(kafkaConsumerPerStoreService);
+      services.add(kafkaStoreIngestionService);
     } else {
       // Note: Only required when NOT using Helix.
       throw new UnsupportedOperationException("Only Helix mode of operation is supported");

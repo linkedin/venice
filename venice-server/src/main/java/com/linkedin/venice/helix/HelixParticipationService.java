@@ -3,7 +3,7 @@ package com.linkedin.venice.helix;
 import com.linkedin.venice.config.VeniceStoreConfig;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.pushmonitor.KillOfflinePushMessage;
-import com.linkedin.venice.kafka.consumer.KafkaConsumerService;
+import com.linkedin.venice.kafka.consumer.StoreIngestionService;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.notifier.PushMonitorNotifier;
 import com.linkedin.venice.server.VeniceConfigLoader;
@@ -41,7 +41,7 @@ public class HelixParticipationService extends AbstractVeniceService implements 
   private final String participantName;
   private final String zkAddress;
   private final StateModelFactory stateModelFactory;
-  private final KafkaConsumerService consumerService;
+  private final StoreIngestionService ingestionService;
   private final int statusMessageRetryCount;
   private final long statusMessageRetryDuration;
   private final VeniceConfigLoader veniceConfigLoader;
@@ -52,13 +52,13 @@ public class HelixParticipationService extends AbstractVeniceService implements 
 
   private HelixStatusMessageChannel messageChannel;
 
-  public HelixParticipationService(@NotNull KafkaConsumerService kafkaConsumerService,
+  public HelixParticipationService(@NotNull StoreIngestionService storeIngestionService,
           @NotNull StorageService storageService,
           @NotNull VeniceConfigLoader veniceConfigLoader,
           @NotNull String zkAddress,
           @NotNull String clusterName,
           int port) {
-    this.consumerService = kafkaConsumerService;
+    this.ingestionService = storeIngestionService;
     this.clusterName = clusterName;
     //The format of instance name must be "$host_$port", otherwise Helix can not get these information correctly.
     this.participantName = Utils.getHelixNodeIdentifier(port);
@@ -71,7 +71,7 @@ public class HelixParticipationService extends AbstractVeniceService implements 
         new ThreadPoolExecutor(veniceConfigLoader.getVeniceServerConfig().getMinStateTransitionThreadNumber(),
             veniceConfigLoader.getVeniceServerConfig().getMaxStateTransitionThreadNumber(), 300L, TimeUnit.SECONDS,
             new LinkedBlockingQueue<>(), new DaemonThreadFactory("venice-state-transition"));
-    stateModelFactory = new VeniceStateModelFactory(kafkaConsumerService, storageService, veniceConfigLoader,
+    stateModelFactory = new VeniceStateModelFactory(storeIngestionService, storageService, veniceConfigLoader,
         helixStateTransitionExecutorService);
   }
 
@@ -131,7 +131,7 @@ public class HelixParticipationService extends AbstractVeniceService implements 
       PushMonitorNotifier pushMonitorNotifier = new PushMonitorNotifier(
           new HelixOfflinePushMonitorAccessor(clusterName, new ZkClient(zkAddress), new HelixAdapterSerializer()),
           instance.getNodeId());
-      consumerService.addNotifier(pushMonitorNotifier);
+      ingestionService.addNotifier(pushMonitorNotifier);
 
       serviceState.set(ServiceState.STARTED);
 
@@ -142,10 +142,10 @@ public class HelixParticipationService extends AbstractVeniceService implements 
   @Override
   public void handleMessage(KillOfflinePushMessage message) {
     VeniceStoreConfig storeConfig = veniceConfigLoader.getStoreConfig(message.getKafkaTopic());
-    if (consumerService.containsRunningConsumption(storeConfig)) {
+    if (ingestionService.containsRunningConsumption(storeConfig)) {
       //push is failed, stop consumption.
       logger.info("Receive the message to kill consumption for topic:" + message.getKafkaTopic());
-      consumerService.killConsumptionTask(storeConfig);
+      ingestionService.killConsumptionTask(storeConfig);
       logger.info("Killed Consumption for topic:" + message.getKafkaTopic());
     }else{
       logger.info("Ignore the kill message for topic:" + message.getKafkaTopic());

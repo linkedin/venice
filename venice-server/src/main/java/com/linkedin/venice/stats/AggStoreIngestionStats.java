@@ -1,15 +1,12 @@
 package com.linkedin.venice.stats;
 
-import com.linkedin.venice.kafka.consumer.StoreConsumptionTask;
+import com.linkedin.venice.kafka.consumer.StoreIngestionTask;
 import io.tehuti.metrics.MetricsRepository;
 
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
-
-public class AggStoreConsumptionStats extends AbstractVeniceAggStats<StoreConsumptionStats> {
-  public AggStoreConsumptionStats(MetricsRepository  metricsRepository) {
+public class AggStoreIngestionStats extends AbstractVeniceAggStats<StoreIngestionStats> {
+  public AggStoreIngestionStats(MetricsRepository  metricsRepository) {
     super(metricsRepository,
-          (metricsRepo, storeName) -> new StoreConsumptionStats(metricsRepo, storeName));
+          (metricsRepo, storeName) -> new StoreIngestionStats(metricsRepo, storeName));
   }
 
   public void recordBytesConsumed(String storeName, long bytes) {
@@ -27,11 +24,6 @@ public class AggStoreConsumptionStats extends AbstractVeniceAggStats<StoreConsum
     getStoreStats(storeName).recordPollRequestLatency(latency);
   }
 
-  public void recordProcessPollResultLatency(String storeName, double latency) {
-    totalStats.recordProcessPollResultLatency(latency);
-    getStoreStats(storeName).recordProcessPollResultLatency(latency);
-  }
-
   public void recordPollResultNum(String storeName, int count) {
     totalStats.recordPollResultNum(count);
     getStoreStats(storeName).recordPollResultNum(count);
@@ -42,12 +34,8 @@ public class AggStoreConsumptionStats extends AbstractVeniceAggStats<StoreConsum
     getStoreStats(storeName).recordConsumerRecordsQueuePutLatency(latency);
   }
 
-  public void recordConsumerRecordsQueuePollLatency(String storeName, double latency) {
-    totalStats.recordConsumerRecordsQueuePollLatency(latency);
-    getStoreStats(storeName).recordConsumerRecordsQueuePollLatency(latency);
-  }
 
-  public void updateStoreConsumptionTask(String storeName, StoreConsumptionTask task) {
+  public void updateStoreConsumptionTask(String storeName, StoreIngestionTask task) {
     getStoreStats(storeName).updateStoreConsumptionTask(task);
   }
 }

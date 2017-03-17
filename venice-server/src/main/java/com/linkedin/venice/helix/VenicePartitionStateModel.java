@@ -2,7 +2,7 @@ package com.linkedin.venice.helix;
 
 import com.linkedin.venice.config.VeniceStoreConfig;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.kafka.consumer.KafkaConsumerService;
+import com.linkedin.venice.kafka.consumer.StoreIngestionService;
 import com.linkedin.venice.storage.StorageService;
 import javax.validation.constraints.NotNull;
 import org.apache.helix.NotificationContext;
@@ -32,17 +32,17 @@ public class VenicePartitionStateModel extends StateModel {
 
     private final VeniceStoreConfig storeConfig;
     private final int partition;
-    private final KafkaConsumerService kafkaConsumerService;
+    private final StoreIngestionService storeIngestionService;
     private final StorageService storageService;
     private final String storePartitionDescription;
     private final VeniceStateModelFactory.StateModelNotifier notifier;
 
-    public VenicePartitionStateModel(@NotNull KafkaConsumerService kafkaConsumerService,
+    public VenicePartitionStateModel(@NotNull StoreIngestionService storeIngestionService,
             @NotNull StorageService storageService, @NotNull VeniceStoreConfig storeConfig, int partition, VeniceStateModelFactory.StateModelNotifier notifer) {
         this.storeConfig = storeConfig;
         this.partition = partition;
         this.storageService = storageService;
-        this.kafkaConsumerService = kafkaConsumerService;
+        this.storeIngestionService = storeIngestionService;
         this.storePartitionDescription = String
             .format(STORE_PARTITION_DESCRIPTION_FORMAT, storeConfig.getStoreName(), partition);
         this.notifier = notifer;
@@ -70,7 +70,7 @@ public class VenicePartitionStateModel extends StateModel {
         // If given store and partition have already exist in this node, openStoreForNewPartition is idempotent so it
         // will not create them again.
         storageService.openStoreForNewPartition(storeConfig , partition);
-        kafkaConsumerService.startConsumption(storeConfig, partition);
+        storeIngestionService.startConsumption(storeConfig, partition);
         notifier.startConsumption(message.getResourceName(), partition);
         logCompletion(HelixState.OFFLINE, HelixState.BOOTSTRAP, message, context);
        }
@@ -81,7 +81,7 @@ public class VenicePartitionStateModel extends StateModel {
     @Transition(to = HelixState.OFFLINE_STATE, from = HelixState.ONLINE_STATE)
     public void onBecomeOfflineFromOnline(Message message, NotificationContext context) {
         logEntry(HelixState.ONLINE, HelixState.OFFLINE, message, context);
-        kafkaConsumerService.stopConsumption(storeConfig, partition);
+        storeIngestionService.stopConsumption(storeConfig, partition);
         logCompletion(HelixState.ONLINE, HelixState.OFFLINE, message, context);
 
     }
@@ -94,7 +94,7 @@ public class VenicePartitionStateModel extends StateModel {
             logger.error(
                 "Met error while dropping the partition:" + partition + " in store:" + storeConfig.getStoreName());
         }
-        kafkaConsumerService.resetConsumptionOffset(storeConfig, partition);
+        storeIngestionService.resetConsumptionOffset(storeConfig, partition);
     }
 
     /**
@@ -116,7 +116,7 @@ public class VenicePartitionStateModel extends StateModel {
     public void rollbackOnError(Message message, NotificationContext context, StateTransitionError error) {
         logger.info(storePartitionDescription
             + " met an error during state transition. Stop the running consumption. Caused by:", error.getException());
-        kafkaConsumerService.stopConsumption(storeConfig, partition);
+        storeIngestionService.stopConsumption(storeConfig, partition);
     }
 
     /**
@@ -125,7 +125,7 @@ public class VenicePartitionStateModel extends StateModel {
     @Transition(to = HelixState.OFFLINE_STATE, from = HelixState.ERROR_STATE)
     public void onBecomeOfflineFromError(Message message, NotificationContext context) {
         logEntry(HelixState.ERROR, HelixState.OFFLINE, message, context);
-        kafkaConsumerService.stopConsumption(storeConfig, partition);
+        storeIngestionService.stopConsumption(storeConfig, partition);
         logCompletion(HelixState.ERROR, HelixState.OFFLINE, message, context);
     }
 
@@ -136,7 +136,7 @@ public class VenicePartitionStateModel extends StateModel {
     public void onBecomeOfflineFromBootstrap(Message message, NotificationContext context) {
         logEntry(HelixState.BOOTSTRAP, HelixState.OFFLINE, message, context);
         // TODO stop is an async operation, we need to ensure that it's really stopped before state transition is completed.
-        kafkaConsumerService.stopConsumption(storeConfig, partition);
+        storeIngestionService.stopConsumption(storeConfig, partition);
         logCompletion(HelixState.BOOTSTRAP, HelixState.OFFLINE, message, context);
     }
 
@@ -149,7 +149,7 @@ public class VenicePartitionStateModel extends StateModel {
     public void onBecomeDroppedFromError(Message message, NotificationContext context) {
         logEntry(HelixState.ERROR, HelixState.DROPPED, message, context);
         try {
-            kafkaConsumerService.stopConsumption(storeConfig, partition);
+            storeIngestionService.stopConsumption(storeConfig, partition);
             removePartitionFromStore();
         } catch (Throwable e) {
             // Catch throwable here to ensure state transition is completed to avoid enter into the infinite loop error->dropped->error->....

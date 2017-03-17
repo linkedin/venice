@@ -16,10 +16,6 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final boolean enableServerWhiteList;
   private final boolean autoCreateDataPath; // default true
   /**
-   * Queue capacity for consumer thread allocated by every {@link com.linkedin.venice.kafka.consumer.StoreConsumptionTask}
-   */
-  private final int consumerRecordsQueueCapacity;
-  /**
    * Minimum number of thread that the thread pool would keep to run the Helix state transition. If a thread is idle,
    * the thread pool would destroy it as long as the number of thread is larger than this number.
    */
@@ -30,6 +26,40 @@ public class VeniceServerConfig extends VeniceClusterConfig {
    */
   private final int maxStateTransitionThreadNumber;
 
+  /**
+   * Thread number of store writers, which will process all the incoming records from all the topics.
+   */
+  private final int storeWriterNumber;
+
+  /**
+   * Buffer capacity being used by each writer.
+   * We need to be careful when tuning this param.
+   * If the queue capacity is too small, the throughput will be impacted greatly,
+   * and if it is too big, the memory usage used by buffered queue could be potentially high.
+   * The overall memory usage is: {@link #storeWriterNumber} * {@link #storeWriterBufferMemoryCapacity}
+   */
+  private final long storeWriterBufferMemoryCapacity;
+
+  /**
+   * Considering the consumer thread could put various sizes of messages into the shared queue, the internal
+   * {@link com.linkedin.venice.kafka.consumer.MemoryBoundBlockingQueue} won't notify the waiting thread (consumer thread)
+   * right away when some message gets processed until the freed memory hit the follow config: {@link #storeWriterBufferNotifyDelta}.
+   * The reason behind this design:
+   * When the buffered queue is full, and the processing thread keeps processing small message, the bigger message won't
+   * have chance to get queued into the buffer since the memory freed by the processed small message is not enough to
+   * fit the bigger message.
+   *
+   * With this delta config, {@link com.linkedin.venice.kafka.consumer.MemoryBoundBlockingQueue} will guarantee some fairness
+   * among various sizes of messages when buffered queue is full.
+   *
+   * When tuning this config, we need to consider the following tradeoffs:
+   * 1. {@link #storeWriterBufferNotifyDelta} must be smaller than {@link #storeWriterBufferMemoryCapacity};
+   * 2. If the delta is too big, it will waste some buffer space since it won't notify the waiting threads even there
+   * are some memory available (less than the delta);
+   * 3. If the delta is too small, the big message may not be able to get chance to be buffered when the queue is full;
+   *
+   */
+  private final long storeWriterBufferNotifyDelta;
 
   public VeniceServerConfig(VeniceProperties serverProperties) throws ConfigurationException {
     super(serverProperties);
@@ -38,14 +68,11 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     autoCreateDataPath = Boolean.valueOf(serverProperties.getString(AUTOCREATE_DATA_PATH, "true"));
     bdbServerConfig = new BdbServerConfig(serverProperties);
     enableServerWhiteList = serverProperties.getBoolean(ENABLE_SERVER_WHITE_LIST, false);
-    /**
-     * Here, we choose the default queue capacity is 10 since the only worker could process the queued
-     * message very fast, and even bigger queue size won't give better performance, but bigger memory footprint.
-     * If the default value is not appropriate, we can adjust it by this config.
-     */
-    consumerRecordsQueueCapacity = serverProperties.getInt(CONSUMER_RECORDS_QUEUE_CAPACITY, 10);
     minStateTransitionThreadNumber = serverProperties.getInt(MIN_STATE_TRANSITION_THREAD_NUMBER, 40);
     maxStateTransitionThreadNumber = serverProperties.getInt(MAX_STATE_TRANSITION_THREAD_NUMBER, 100);
+    storeWriterNumber = serverProperties.getInt(STORE_WRITER_NUMBER, 8);
+    storeWriterBufferMemoryCapacity = serverProperties.getSizeInBytes(STORE_WRITER_BUFFER_MEMORY_CAPACITY, 125 * 1024 * 1024); // 125MB
+    storeWriterBufferNotifyDelta = serverProperties.getSizeInBytes(STORE_WRITER_BUFFER_NOTIFY_DELTA, 10 * 1024 * 1024); // 10MB
   }
 
   public int getListenerPort() {
@@ -74,15 +101,23 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     return enableServerWhiteList;
   }
 
-  public int getConsumerRecordsQueueCapacity() {
-    return consumerRecordsQueueCapacity;
-  }
-
   public int getMinStateTransitionThreadNumber() {
     return minStateTransitionThreadNumber;
   }
 
   public int getMaxStateTransitionThreadNumber() {
     return maxStateTransitionThreadNumber;
+  }
+
+  public int getStoreWriterNumber() {
+    return this.storeWriterNumber;
+  }
+
+  public long getStoreWriterBufferMemoryCapacity() {
+    return this.storeWriterBufferMemoryCapacity;
+  }
+
+  public long getStoreWriterBufferNotifyDelta() {
+    return this.storeWriterBufferNotifyDelta;
   }
 }

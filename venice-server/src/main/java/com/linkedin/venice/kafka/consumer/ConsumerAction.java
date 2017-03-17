@@ -4,7 +4,7 @@ import java.util.Comparator;
 
 
 /**
- * The class is used to asynchronously trigger behavior changes in the {@link StoreConsumptionTask}.
+ * The class is used to asynchronously trigger behavior changes in the {@link StoreIngestionTask}.
  *
  * The kinds of changes that can be triggered by a {@link ConsumerAction} are defined in the
  * {@link ConsumerActionType} enum.

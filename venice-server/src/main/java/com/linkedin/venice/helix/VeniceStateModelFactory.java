@@ -1,7 +1,7 @@
 package com.linkedin.venice.helix;
 
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.kafka.consumer.KafkaConsumerService;
+import com.linkedin.venice.kafka.consumer.StoreIngestionService;
 import com.linkedin.venice.notifier.VeniceNotifier;
 import com.linkedin.venice.server.VeniceConfigLoader;
 import com.linkedin.venice.storage.StorageService;
@@ -23,7 +23,7 @@ public class VeniceStateModelFactory extends StateModelFactory<StateModel> {
 
   private static final Logger logger = Logger.getLogger(VeniceStateModelFactory.class);
 
-  private final KafkaConsumerService kafkaConsumerService;
+  private final StoreIngestionService storeIngestionService;
   private final StorageService storageService;
   private final VeniceConfigLoader configService;
   private final StateModelNotifier stateModelNotifier = new StateModelNotifier();
@@ -31,18 +31,18 @@ public class VeniceStateModelFactory extends StateModelFactory<StateModel> {
   // TODO We should use the same value as Helix used for state transition timeout.
   private static final int bootstrapToOnlineTimeoutHours = 24;
 
-  public VeniceStateModelFactory(KafkaConsumerService kafkaConsumerService,
+  public VeniceStateModelFactory(StoreIngestionService storeIngestionService,
           StorageService storageService,
           VeniceConfigLoader configService,
           ExecutorService executorService ) {
     logger.info("Creating VenicePartitionStateTransitionHandlerFactory ");
-    this.kafkaConsumerService = kafkaConsumerService;
+    this.storeIngestionService = storeIngestionService;
     this.storageService = storageService;
     this.configService = configService;
     this.executorService = executorService;
     // Add a new notifier to let state model knows the end of consumption so that it can complete the bootstrap to
     // online state transition.
-    kafkaConsumerService.addNotifier(stateModelNotifier);
+    storeIngestionService.addNotifier(stateModelNotifier);
   }
 
   /**
@@ -64,7 +64,7 @@ public class VeniceStateModelFactory extends StateModelFactory<StateModel> {
   @Override
   public VenicePartitionStateModel createNewStateModel(String resourceName, String partitionName) {
     logger.info("Creating VenicePartitionStateTransitionHandler for partition: " + partitionName + " for Store " + resourceName);
-    return new VenicePartitionStateModel(kafkaConsumerService, storageService
+    return new VenicePartitionStateModel(storeIngestionService, storageService
         , configService.getStoreConfig(HelixUtils.getResourceName(partitionName))
         , HelixUtils.getPartitionId(partitionName), stateModelNotifier);
   }
