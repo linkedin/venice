@@ -159,29 +159,33 @@ public class KafkaConsumerPerStoreService extends AbstractVeniceService implemen
     if(consumerTask == null || !consumerTask.isRunning()) {
       consumerTask = getConsumerTask(veniceStore);
       topicNameToConsumptionTaskMap.put(topic, consumerTask);
-
-      //Since Venice metric is store-level and it would have multiply topics tasks exist in the same time.
-      //Only the task with largest version would emit it stats.
-      String storeName = Version.parseStoreFromKafkaTopicName(topic);
-      int maxVersionNumber = getStoreMaximumVersionNumber(storeName);
-      topicNameToConsumptionTaskMap.forEach((topicName, task) -> {
-        if (topicName.contains(storeName)) {
-          if (Version.parseVersionFromKafkaTopicName(topicName) < maxVersionNumber) {
-            task.enableMetricsEmission();
-          } else {
-            task.disableMetricsEmission();
-          }
-        }
-      });
-
       if(!isRunning.get()) {
         logger.info("Ignoring Start consumption message as service is stopping. Topic " + topic + " Partition " + partitionId);
         return;
       }
       consumerExecutorService.submit(consumerTask);
     }
+
+    //Since Venice metric is store-level and it would have multiply topics tasks exist in the same time.
+    //Only the task with largest version would emit it stats.
+    String storeName = Version.parseStoreFromKafkaTopicName(topic);
+    int maxVersionNumber = getStoreMaximumVersionNumber(storeName);
+    disableOldTopicMetricsEmission(topicNameToConsumptionTaskMap, storeName, maxVersionNumber);
+
     consumerTask.subscribePartition(topic, partitionId);
     logger.info("Started Consuming - Kafka Partition: " + topic + "-" + partitionId + ".");
+  }
+
+  public void disableOldTopicMetricsEmission(Map<String, StoreConsumptionTask> taskMap, String storeName, int maximumVersion) {
+    taskMap.forEach((topicName, task) -> {
+      if (Version.parseStoreFromKafkaTopicName(topicName).equals(storeName)) {
+        if (Version.parseVersionFromKafkaTopicName(topicName) < maximumVersion) {
+          task.disableMetricsEmission();
+        } else {
+          task.enableMetricsEmission();
+        }
+      }
+    });
   }
 
   private int getStoreMaximumVersionNumber(String storeName) {
