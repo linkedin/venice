@@ -75,10 +75,11 @@ public class ConfigKeys {
   public static final String DATA_BASE_PATH = "data.base.path";
   public static final String AUTOCREATE_DATA_PATH = "autocreate.data.path";
   public static final String ENABLE_SERVER_WHITE_LIST = "enable.server.whitelist";
-  public static final String CONSUMER_RECORDS_QUEUE_CAPACITY = "consumer.records.queue.capacity";
   public static final String MIN_STATE_TRANSITION_THREAD_NUMBER = "min.state.transition.thread.number";
   public static final String MAX_STATE_TRANSITION_THREAD_NUMBER = "max.state.transition.thread.number";
-
+  public static final String STORE_WRITER_NUMBER = "store.writer.number";
+  public static final String STORE_WRITER_BUFFER_MEMORY_CAPACITY = "store.writer.buffer.memory.capacity";
+  public static final String STORE_WRITER_BUFFER_NOTIFY_DELTA = "store.writer.buffer.notify.delta";
 
   /**
    * Venice uses a helix cluster to assign controllers to each named venice cluster.  This is the number of controllers

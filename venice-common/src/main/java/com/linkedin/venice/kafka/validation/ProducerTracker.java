@@ -18,6 +18,8 @@ import java.nio.ByteBuffer;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 
 import org.apache.log4j.Logger;
 
@@ -34,7 +36,8 @@ public class ProducerTracker {
   private static final Logger LOGGER = Logger.getLogger(ProducerTracker.class);
 
   private final GUID producerGUID;
-  private final Map<Integer, Segment> segments = new HashMap<>();
+  // This will allow to create segments for different partitions in parallel.
+  private final ConcurrentMap<Integer, Segment> segments = new ConcurrentHashMap<>();
 
   public ProducerTracker(GUID producerGUID) {
     this.producerGUID = producerGUID;

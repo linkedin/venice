@@ -1,7 +1,7 @@
 package com.linkedin.venice.stats;
 
 
-import com.linkedin.venice.kafka.consumer.StoreConsumptionTask;
+import com.linkedin.venice.kafka.consumer.StoreIngestionTask;
 import com.linkedin.venice.tehuti.MockTehutiReporter;
 import io.tehuti.metrics.MetricsRepository;
 import org.mockito.Mockito;
@@ -10,8 +10,8 @@ import org.testng.annotations.AfterTest;
 import org.testng.annotations.BeforeTest;
 import org.testng.annotations.Test;
 
-public class AggStoreConsumptionStatsTest {
-  private AggStoreConsumptionStats stats;
+public class AggStoreIngestionStatsTest {
+  private AggStoreIngestionStats stats;
   private MetricsRepository metricsRepository;
   private MockTehutiReporter reporter;
 
@@ -24,9 +24,9 @@ public class AggStoreConsumptionStatsTest {
     this.reporter = new MockTehutiReporter();
     metricsRepository.addReporter(reporter);
 
-    stats = new AggStoreConsumptionStats(metricsRepository);
+    stats = new AggStoreIngestionStats(metricsRepository);
 
-    StoreConsumptionTask task = Mockito.mock(StoreConsumptionTask.class);
+    StoreIngestionTask task = Mockito.mock(StoreIngestionTask.class);
     Mockito.doReturn(1l).when(task).getOffsetLag();
     Mockito.doReturn(true).when(task).isRunning();
 

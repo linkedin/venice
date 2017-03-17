@@ -1,11 +1,9 @@
 package com.linkedin.venice.helix;
 
 import com.linkedin.venice.config.VeniceStoreConfig;
-import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.kafka.consumer.KafkaConsumerService;
-import com.linkedin.venice.server.StoreRepository;
+import com.linkedin.venice.kafka.consumer.StoreIngestionService;
 import com.linkedin.venice.storage.StorageService;
-import com.linkedin.venice.store.AbstractStorageEngine;
+
 import java.util.concurrent.CountDownLatch;
 import org.apache.helix.NotificationContext;
 import org.apache.helix.model.Message;
@@ -13,7 +11,6 @@ import org.apache.helix.participant.statemachine.StateTransitionError;
 import org.mockito.Mockito;
 import org.testng.Assert;
 import org.testng.annotations.BeforeMethod;
-import org.testng.annotations.BeforeSuite;
 import org.testng.annotations.Test;
 
 /**
@@ -21,7 +18,7 @@ import org.testng.annotations.Test;
  */
 public class VenicePartitionStateModelTest {
 
-  private KafkaConsumerService mockKafkaConsumerService;
+  private StoreIngestionService mockStoreIngestionService;
   private StorageService mockStorageService;
   private VeniceStoreConfig mockStoreConfig;
   private int testPartition = 0;
@@ -35,7 +32,7 @@ public class VenicePartitionStateModelTest {
 
   @BeforeMethod
   public void setUp() throws Exception {
-    mockKafkaConsumerService = Mockito.mock(KafkaConsumerService.class);
+    mockStoreIngestionService = Mockito.mock(StoreIngestionService.class);
     mockStorageService = Mockito.mock(StorageService.class);
     mockStoreConfig = Mockito.mock(VeniceStoreConfig.class);
 
@@ -44,7 +41,7 @@ public class VenicePartitionStateModelTest {
 
     mockNotifier = Mockito.mock(VeniceStateModelFactory.StateModelNotifier.class);
 
-    testStateModel = new VenicePartitionStateModel(mockKafkaConsumerService, mockStorageService, mockStoreConfig,
+    testStateModel = new VenicePartitionStateModel(mockStoreIngestionService, mockStorageService, mockStoreConfig,
         testPartition, mockNotifier);
   }
 
@@ -58,7 +55,7 @@ public class VenicePartitionStateModelTest {
   @Test
   public void testOnBecomeBootstrapFromOffline() throws Exception {
     testStateModel.onBecomeBootstrapFromOffline(mockMessage, mockContext);
-    Mockito.verify(mockKafkaConsumerService, Mockito.times(1)).startConsumption(mockStoreConfig, testPartition);
+    Mockito.verify(mockStoreIngestionService, Mockito.times(1)).startConsumption(mockStoreConfig, testPartition);
     Mockito.verify(mockStorageService, Mockito.times(1)).openStoreForNewPartition(mockStoreConfig, testPartition);
     Mockito.verify(mockNotifier, Mockito.times(1)).startConsumption(mockMessage.getResourceName(), testPartition);
   }
@@ -82,7 +79,7 @@ public class VenicePartitionStateModelTest {
   public void testOfflineToBootstrapToOnline() {
     VeniceStateModelFactory.StateModelNotifier notifier = new VeniceStateModelFactory.StateModelNotifier();
     testStateModel =
-        new VenicePartitionStateModel(mockKafkaConsumerService, mockStorageService, mockStoreConfig, testPartition,
+        new VenicePartitionStateModel(mockStoreIngestionService, mockStorageService, mockStoreConfig, testPartition,
             notifier);
     testStateModel.onBecomeBootstrapFromOffline(mockMessage, mockContext);
     CountDownLatch latch = notifier.getLatch(mockMessage.getResourceName(), testPartition);
@@ -112,7 +109,7 @@ public class VenicePartitionStateModelTest {
   @Test
   public void testOnBecomeOfflineFromOnline() throws Exception {
     testStateModel.onBecomeOfflineFromOnline(mockMessage, mockContext);
-    Mockito.verify(mockKafkaConsumerService, Mockito.atLeastOnce()).stopConsumption(mockStoreConfig, testPartition);
+    Mockito.verify(mockStoreIngestionService, Mockito.atLeastOnce()).stopConsumption(mockStoreConfig, testPartition);
   }
 
   /**
@@ -122,7 +119,7 @@ public class VenicePartitionStateModelTest {
   @Test
   public void testOnBecomeOfflineFromBootstrap() throws Exception {
     testStateModel.onBecomeOfflineFromBootstrap(mockMessage, mockContext);
-    Mockito.verify(mockKafkaConsumerService, Mockito.atLeastOnce()).stopConsumption(mockStoreConfig, testPartition);
+    Mockito.verify(mockStoreIngestionService, Mockito.atLeastOnce()).stopConsumption(mockStoreConfig, testPartition);
   }
 
   /**
@@ -133,7 +130,7 @@ public class VenicePartitionStateModelTest {
   public void testOnBecomeDroppedFromOffline() throws Exception {
     testStateModel.onBecomeDroppedFromOffline(mockMessage, mockContext);
     Mockito.verify(mockStorageService, Mockito.atLeastOnce()).dropStorePartition(mockStoreConfig , testPartition);
-    Mockito.verify(mockKafkaConsumerService, Mockito.atLeastOnce()).resetConsumptionOffset(mockStoreConfig, testPartition);
+    Mockito.verify(mockStoreIngestionService, Mockito.atLeastOnce()).resetConsumptionOffset(mockStoreConfig, testPartition);
   }
 
   /**
@@ -143,7 +140,7 @@ public class VenicePartitionStateModelTest {
   @Test
   public void testOnBecomeOfflineFromError() throws Exception {
     testStateModel.onBecomeOfflineFromError(mockMessage, mockContext);
-    Mockito.verify(mockKafkaConsumerService, Mockito.atLeastOnce()).stopConsumption(mockStoreConfig, testPartition);
+    Mockito.verify(mockStoreIngestionService, Mockito.atLeastOnce()).stopConsumption(mockStoreConfig, testPartition);
   }
 
   /**
@@ -154,9 +151,9 @@ public class VenicePartitionStateModelTest {
   @Test
   public void testOnBecomeDroppedFromError() throws Exception {
     testStateModel.onBecomeDroppedFromError(mockMessage, mockContext);
-    Mockito.verify(mockKafkaConsumerService, Mockito.atLeastOnce()).stopConsumption(mockStoreConfig, testPartition);
+    Mockito.verify(mockStoreIngestionService, Mockito.atLeastOnce()).stopConsumption(mockStoreConfig, testPartition);
     Mockito.verify(mockStorageService, Mockito.atLeastOnce()).dropStorePartition(mockStoreConfig, testPartition);
-    Mockito.verify(mockKafkaConsumerService, Mockito.atLeastOnce()).resetConsumptionOffset(mockStoreConfig, testPartition);
+    Mockito.verify(mockStoreIngestionService, Mockito.atLeastOnce()).resetConsumptionOffset(mockStoreConfig, testPartition);
   }
 
   @Test
@@ -164,6 +161,6 @@ public class VenicePartitionStateModelTest {
       throws Exception {
     StateTransitionError mockError = Mockito.mock(StateTransitionError.class);
     testStateModel.rollbackOnError(mockMessage, mockContext, mockError);
-    Mockito.verify(mockKafkaConsumerService, Mockito.atLeastOnce()).stopConsumption(mockStoreConfig, testPartition);
+    Mockito.verify(mockStoreIngestionService, Mockito.atLeastOnce()).stopConsumption(mockStoreConfig, testPartition);
   }
 }

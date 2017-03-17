@@ -1,6 +1,6 @@
 package com.linkedin.venice.stats;
 
-import com.linkedin.venice.kafka.consumer.StoreConsumptionTask;
+import com.linkedin.venice.kafka.consumer.StoreIngestionTask;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
 import io.tehuti.metrics.stats.Avg;
@@ -9,8 +9,8 @@ import io.tehuti.metrics.stats.Max;
 import io.tehuti.metrics.stats.Rate;
 import io.tehuti.metrics.stats.Total;
 
-public class StoreConsumptionStats extends AbstractVeniceStats{
-  private StoreConsumptionTask storeConsumptionTask;
+public class StoreIngestionStats extends AbstractVeniceStats{
+  private StoreIngestionTask storeIngestionTask;
 
   private final Sensor bytesConsumedSensor;
   private final Sensor recordsConsumedSensor;
@@ -19,16 +19,14 @@ public class StoreConsumptionStats extends AbstractVeniceStats{
 
   private final Sensor pollRequestSensor;
   private final Sensor pollRequestLatencySensor;
-  private final Sensor processPollResultLatencySensor;
   private final Sensor pollResultNumSensor;
   private final Sensor consumerRecordsQueuePutLatencySensor;
-  private final Sensor consumerRecordsQueuePollLatencySensor;
 
 
-  public StoreConsumptionStats(MetricsRepository metricsRepository,
-                               String storeName) {
+  public StoreIngestionStats(MetricsRepository metricsRepository,
+                             String storeName) {
     super(metricsRepository, storeName);
-    this.storeConsumptionTask = null;
+    this.storeIngestionTask = null;
 
     bytesConsumedSensor = registerSensor("bytes_consumed", new Rate());
     recordsConsumedSensor = registerSensor("records_consumed", new Rate());
@@ -41,20 +39,18 @@ public class StoreConsumptionStats extends AbstractVeniceStats{
     // Measure latency of Kafka consumer poll request and processing returned consumer records
     pollRequestSensor = registerSensor("kafka_poll_request", new Count());
     pollRequestLatencySensor = registerSensor("kafka_poll_request_latency", new Avg());
-    processPollResultLatencySensor = registerSensor("process_poll_result_latency", new Avg());
     // consumer record number per second returned by Kafka consumer poll.
     pollResultNumSensor = registerSensor("kafka_poll_result_num", new Avg(), new Total());
     // To measure 'put' latency of consumer records blocking queue
     consumerRecordsQueuePutLatencySensor = registerSensor("consumer_records_queue_put_latency", new Avg(), new Max());
-    consumerRecordsQueuePollLatencySensor = registerSensor("consumer_records_queue_poll_latency", new Avg(), new Max());
   }
 
-  public void updateStoreConsumptionTask(StoreConsumptionTask task) {
-    storeConsumptionTask = task;
+  public void updateStoreConsumptionTask(StoreIngestionTask task) {
+    storeIngestionTask = task;
   }
 
-  public StoreConsumptionTask getStoreConsumptionTask() {
-    return storeConsumptionTask;
+  public StoreIngestionTask getStoreIngestionTask() {
+    return storeIngestionTask;
   }
 
   public void recordBytesConsumed(long bytes) {
@@ -70,10 +66,6 @@ public class StoreConsumptionStats extends AbstractVeniceStats{
     pollRequestLatencySensor.record(latency);
   }
 
-  public void recordProcessPollResultLatency(double latency) {
-    processPollResultLatencySensor.record(latency);
-  }
-
   public void recordPollResultNum(int count) {
     pollResultNumSensor.record(count);
   }
@@ -82,14 +74,10 @@ public class StoreConsumptionStats extends AbstractVeniceStats{
     consumerRecordsQueuePutLatencySensor.record(latency);
   }
 
-  public void recordConsumerRecordsQueuePollLatency(double latency) {
-    consumerRecordsQueuePollLatencySensor.record(latency);
-  }
-
   private static class OffsetLagStat extends LambdaStat {
-    public OffsetLagStat(StoreConsumptionStats stats) {
+    public OffsetLagStat(StoreIngestionStats stats) {
       super(() -> {
-        StoreConsumptionTask task = stats.getStoreConsumptionTask();
+        StoreIngestionTask task = stats.getStoreIngestionTask();
         if (task != null && task.isRunning()) {
           double a = task.getOffsetLag();
           return a;

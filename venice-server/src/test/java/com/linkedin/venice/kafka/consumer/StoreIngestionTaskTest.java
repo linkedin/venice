@@ -20,7 +20,7 @@ import com.linkedin.venice.offsets.OffsetManager;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.serialization.DefaultSerializer;
 import com.linkedin.venice.server.StoreRepository;
-import com.linkedin.venice.stats.AggStoreConsumptionStats;
+import com.linkedin.venice.stats.AggStoreIngestionStats;
 import com.linkedin.venice.store.AbstractStorageEngine;
 import com.linkedin.venice.store.record.ValueRecord;
 import com.linkedin.venice.unit.kafka.InMemoryKafkaBroker;
@@ -79,19 +79,21 @@ import static org.testng.Assert.*;
 /**
  * Unit tests for the KafkaPerStoreConsumptionTask.
  *
- * Be ware that most of the test cases in this suite depend on {@link StoreConsumptionTaskTest#TEST_TIMEOUT}
+ * Be ware that most of the test cases in this suite depend on {@link StoreIngestionTaskTest#TEST_TIMEOUT}
  * Adjust it based on environment if timeout failure occurs.
  */
-public class StoreConsumptionTaskTest {
+public class StoreIngestionTaskTest {
 
-  private static final Logger logger = Logger.getLogger(StoreConsumptionTaskTest.class);
+  private static final Logger logger = Logger.getLogger(StoreIngestionTaskTest.class);
 
   private static final int TEST_TIMEOUT;
 
   static {
-    StoreConsumptionTask.READ_CYCLE_DELAY_MS = 5;
-    StoreConsumptionTask.POLLING_SCHEMA_DELAY_MS = 100;
-    TEST_TIMEOUT = 500 * StoreConsumptionTask.READ_CYCLE_DELAY_MS;
+    StoreIngestionTask.READ_CYCLE_DELAY_MS = 5;
+    StoreIngestionTask.POLLING_SCHEMA_DELAY_MS = 100;
+    // Report progress/throttling for every message
+    StoreIngestionTask.OFFSET_UPDATE_INTERVAL_PER_PARTITION = 1;
+    TEST_TIMEOUT = 500 * StoreIngestionTask.READ_CYCLE_DELAY_MS;
 
     // TODO Hack, after trying to configure the log4j with log4j.properties
     // at multiple places ( test root directory, test resources)
@@ -113,11 +115,13 @@ public class StoreConsumptionTaskTest {
   /** N.B.: This mock can be used to verify() calls, but not to return arbitrary things. */
   private KafkaConsumerWrapper mockKafkaConsumer;
   private TopicManager mockTopicManager;
-  private AggStoreConsumptionStats mockStats;
+  private AggStoreIngestionStats mockStats;
 
-  private StoreConsumptionTask storeConsumptionTaskUnderTest;
+  private StoreIngestionTask storeIngestionTaskUnderTest;
 
   private ExecutorService taskPollingService;
+
+  private StoreBufferService storeBufferService;
 
   private static final String storeNameWithoutVersionInfo = "TestTopic";
   private static final String topic = Version.composeKafkaTopic(storeNameWithoutVersionInfo, 1);
@@ -147,11 +151,14 @@ public class StoreConsumptionTaskTest {
   @BeforeClass
   public void suiteSetUp() throws Exception {
     taskPollingService = Executors.newFixedThreadPool(1);
+    storeBufferService = new StoreBufferService(3, 10000, 1000);
+    storeBufferService.start();
   }
 
   @AfterClass
   public void tearDown() throws Exception {
     taskPollingService.shutdown();
+    storeBufferService.stop();
   }
 
   @BeforeMethod
@@ -167,7 +174,7 @@ public class StoreConsumptionTaskTest {
     mockSchemaRepo = mock(ReadOnlySchemaRepository.class);
     mockKafkaConsumer = mock(KafkaConsumerWrapper.class);
     mockTopicManager = mock(TopicManager.class);
-    mockStats = mock(AggStoreConsumptionStats.class);
+    mockStats = mock(AggStoreIngestionStats.class);
   }
 
   private VeniceWriter getVeniceWriter(Supplier<KafkaProducerWrapper> producerSupplier) {
@@ -203,26 +210,26 @@ public class StoreConsumptionTaskTest {
     }
     Queue<VeniceNotifier> notifiers = new ConcurrentLinkedQueue<>(Arrays.asList(mockNotifier, new LogNotifier()));
     OffsetManager offsetManager = new DeepCopyOffsetManager(mockOffSetManager);
-    storeConsumptionTaskUnderTest = new StoreConsumptionTask(
+    storeIngestionTaskUnderTest = new StoreIngestionTask(
         mockFactory, kafkaProps, mockStoreRepository, offsetManager, notifiers, mockThrottler, topic, mockSchemaRepo,
-        mockTopicManager, mockStats, 10);
+        mockTopicManager, mockStats, storeBufferService);
     doReturn(mockAbstractStorageEngine).when(mockStoreRepository).getLocalStorageEngine(topic);
 
     Future testSubscribeTaskFuture = null;
     try {
       for (int partition: partitions) {
-        storeConsumptionTaskUnderTest.subscribePartition(topic, partition);
+        storeIngestionTaskUnderTest.subscribePartition(topic, partition);
       }
 
       beforeStartingConsumption.run();
 
       // MockKafkaConsumer is prepared. Schedule for polling.
-      testSubscribeTaskFuture = taskPollingService.submit(storeConsumptionTaskUnderTest);
+      testSubscribeTaskFuture = taskPollingService.submit(storeIngestionTaskUnderTest);
 
       assertions.run();
 
     } finally {
-      storeConsumptionTaskUnderTest.close();
+      storeIngestionTaskUnderTest.close();
       if (testSubscribeTaskFuture != null) {
         testSubscribeTaskFuture.get(10, TimeUnit.SECONDS);
       }
@@ -338,7 +345,7 @@ public class StoreConsumptionTaskTest {
   }
 
   /**
-   * Test the situation where records' schemas never arrive. In the case, the StoreConsumptionTask will keep being blocked.
+   * Test the situation where records' schemas never arrive. In the case, the StoreIngestionTask will keep being blocked.
    */
   @Test
   public void testVeniceMessagesProcessingWithNonExistingSchemaId() throws Exception {
@@ -353,7 +360,7 @@ public class StoreConsumptionTaskTest {
       // Verify it retrieves the offset from the OffSet Manager
       verify(mockOffSetManager, timeout(TEST_TIMEOUT)).getLastOffset(topic, PARTITION_FOO);
 
-      //StoreConsumptionTask#checkValueSchemaAvail will keep polling for 'NON_EXISTING_SCHEMA_ID'. It blocks the thread
+      //StoreIngestionTask#checkValueSchemaAvail will keep polling for 'NON_EXISTING_SCHEMA_ID'. It blocks the thread
       //so that the next record would never be put into BDB.
       verify(mockSchemaRepo, after(TEST_TIMEOUT).never()).hasValueSchema(storeNameWithoutVersionInfo, EXISTING_SCHEMA_ID);
       verify(mockSchemaRepo, atLeastOnce()).hasValueSchema(storeNameWithoutVersionInfo, NON_EXISTING_SCHEMA_ID);
@@ -411,7 +418,7 @@ public class StoreConsumptionTaskTest {
       verify(mockAbstractStorageEngine, timeout(TEST_TIMEOUT))
           .put(PARTITION_FOO, putKeyFoo, ValueRecord.create(SCHEMA_ID, putValue).serialize());
 
-      storeConsumptionTaskUnderTest.resetPartitionConsumptionOffset(topic, PARTITION_FOO);
+      storeIngestionTaskUnderTest.resetPartitionConsumptionOffset(topic, PARTITION_FOO);
 
       verify(mockAbstractStorageEngine, timeout(TEST_TIMEOUT).times(2))
           .put(PARTITION_FOO, putKeyFoo, ValueRecord.create(SCHEMA_ID, putValue).serialize());
@@ -427,11 +434,11 @@ public class StoreConsumptionTaskTest {
       verify(mockAbstractStorageEngine, timeout(TEST_TIMEOUT))
           .put(PARTITION_FOO, putKeyFoo, ValueRecord.create(SCHEMA_ID, putValue).serialize());
 
-      storeConsumptionTaskUnderTest.unSubscribePartition(topic, PARTITION_FOO);
+      storeIngestionTaskUnderTest.unSubscribePartition(topic, PARTITION_FOO);
       doThrow(new UnsubscribedTopicPartitionException(topic, PARTITION_FOO))
           .when(mockKafkaConsumer).resetOffset(topic, PARTITION_FOO);
       // Reset should be able to handle the scenario, when the topic partition has been unsubscribed.
-      storeConsumptionTaskUnderTest.resetPartitionConsumptionOffset(topic, PARTITION_FOO);
+      storeIngestionTaskUnderTest.resetPartitionConsumptionOffset(topic, PARTITION_FOO);
       verify(mockKafkaConsumer, timeout(TEST_TIMEOUT)).unSubscribe(topic, PARTITION_FOO);
       verify(mockKafkaConsumer, timeout(TEST_TIMEOUT)).resetOffset(topic, PARTITION_FOO);
       verify(mockOffSetManager, timeout(TEST_TIMEOUT)).clearOffset(topic, PARTITION_FOO);
@@ -509,9 +516,9 @@ public class StoreConsumptionTaskTest {
   }
 
   /**
-   * In this test, we validate {@link StoreConsumptionTask#getOffsetLag()}. This method is for monitoring the Kafka
+   * In this test, we validate {@link StoreIngestionTask#getOffsetLag()}. This method is for monitoring the Kafka
    * offset consumption rate. It pulls the most recent offsets from {@link TopicManager} and then compares it with
-   * local offset cache {@link StoreConsumptionTask#partitionToOffsetMap}
+   * local offset cache {@link StoreIngestionTask#partitionConsumptionStateMap}
    */
   @Test
   public void testOffsetLag() throws Exception{
@@ -532,13 +539,13 @@ public class StoreConsumptionTaskTest {
 
     runTest(getSet(PARTITION_FOO, PARTITION_BAR), () -> {
       waitForNonDeterministicCompletion(TEST_TIMEOUT, TimeUnit.MILLISECONDS,
-          () -> storeConsumptionTaskUnderTest.getOffsetLag() == 3);
+          () -> storeIngestionTaskUnderTest.getOffsetLag() == 3);
       verify(mockTopicManager, timeout(TEST_TIMEOUT).atLeastOnce()).getLatestOffsets(topic);
     });
   }
 
   /**
-   * This test crafts a couple of invalid message types, and expects the {@link StoreConsumptionTask} to fail fast. The
+   * This test crafts a couple of invalid message types, and expects the {@link StoreIngestionTask} to fail fast. The
    * message in {@link #PARTITION_FOO} will receive a bad message type, whereas the message in {@link #PARTITION_BAR}
    * will receive a bad control message type.
    */
@@ -643,9 +650,9 @@ public class StoreConsumptionTaskTest {
       /**
        * Let's make sure that {@link PARTITION_BAR} never sends a completion notification.
        *
-       * This used to be flaky, because the {@link StoreConsumptionTask} occasionally sent
+       * This used to be flaky, because the {@link StoreIngestionTask} occasionally sent
        * a completion notification for partitions where it had already detected an error.
-       * Now, the {@link StoreConsumptionTask} keeps track of the partitions that had error
+       * Now, the {@link StoreIngestionTask} keeps track of the partitions that had error
        * and avoids sending completion notifications for those. The high invocationCount on
        * this test is to detect this edge case.
        */
@@ -677,9 +684,9 @@ public class StoreConsumptionTaskTest {
     runTest(getSet(PARTITION_FOO), () -> {
       verify(mockNotifier, timeout(TEST_TIMEOUT)).started(topic, PARTITION_FOO);
       //Start of push has already been consumed. Stop consumption
-      storeConsumptionTaskUnderTest.unSubscribePartition(topic, PARTITION_FOO);
+      storeIngestionTaskUnderTest.unSubscribePartition(topic, PARTITION_FOO);
       waitForNonDeterministicCompletion(TEST_TIMEOUT, TimeUnit.MILLISECONDS,
-          () -> storeConsumptionTaskUnderTest.isRunning() == false);
+          () -> storeIngestionTaskUnderTest.isRunning() == false);
     });
   }
 
@@ -690,7 +697,7 @@ public class StoreConsumptionTaskTest {
         veniceWriter.put(putKeyFoo, putValue, SCHEMA_ID);
         veniceWriter.put(putKeyBar, putValue, SCHEMA_ID);
         try {
-          TimeUnit.MILLISECONDS.sleep(StoreConsumptionTask.READ_CYCLE_DELAY_MS);
+          TimeUnit.MILLISECONDS.sleep(StoreIngestionTask.READ_CYCLE_DELAY_MS);
         } catch (InterruptedException e) {
           break;
         }
@@ -706,7 +713,7 @@ public class StoreConsumptionTaskTest {
         verify(mockNotifier, timeout(TEST_TIMEOUT)).started(topic, PARTITION_BAR);
 
         //Start of push has already been consumed. Stop consumption
-        storeConsumptionTaskUnderTest.kill();
+        storeIngestionTaskUnderTest.kill();
         // task should report an error to notifier that it's killed.
         verify(mockNotifier, timeout(TEST_TIMEOUT)).error(
             eq(topic), eq(PARTITION_FOO), argThat(new NonEmptyStringMatcher()),
@@ -716,7 +723,7 @@ public class StoreConsumptionTaskTest {
             argThat(new ExceptionClassAndCauseClassMatcher(VeniceException.class, InterruptedException.class)));
 
         waitForNonDeterministicCompletion(TEST_TIMEOUT, TimeUnit.MILLISECONDS,
-            () -> storeConsumptionTaskUnderTest.isRunning() == false);
+            () -> storeIngestionTaskUnderTest.isRunning() == false);
       });
     } finally {
       writingThread.interrupt();
@@ -729,16 +736,15 @@ public class StoreConsumptionTaskTest {
       veniceWriter.broadcastStartOfPush(new HashMap<>());
       veniceWriter.put(putKeyFoo, putValue, SCHEMA_ID);
       // Add a reset consumer action
-      storeConsumptionTaskUnderTest.resetPartitionConsumptionOffset(topic, PARTITION_FOO);
+      storeIngestionTaskUnderTest.resetPartitionConsumptionOffset(topic, PARTITION_FOO);
       // Add a kill consumer action in higher priority than subscribe and reset.
-      storeConsumptionTaskUnderTest.kill();
+      storeIngestionTaskUnderTest.kill();
     }, () -> {
       // verify subscribe has not been processed. Because consumption task should process kill action at first
       verify(mockOffSetManager, after(TEST_TIMEOUT).never()).getLastOffset(topic, PARTITION_FOO);
       waitForNonDeterministicCompletion(TEST_TIMEOUT, TimeUnit.MILLISECONDS,
-          () -> storeConsumptionTaskUnderTest.getConsumer() != null);
-      MockInMemoryConsumer mockConsumer = (MockInMemoryConsumer)((SynchronizedKafkaConsumerWrapper) storeConsumptionTaskUnderTest.getConsumer())
-          .getDelegate();
+          () -> storeIngestionTaskUnderTest.getConsumer() != null);
+      MockInMemoryConsumer mockConsumer = (MockInMemoryConsumer)(storeIngestionTaskUnderTest.getConsumer());
       assertEquals(mockConsumer.getOffsets().size(), 0,
           "subscribe should not be processed in this consumer.");
 
@@ -749,13 +755,11 @@ public class StoreConsumptionTaskTest {
           "reset should not be processed in this consumer.");
 
       waitForNonDeterministicCompletion(TEST_TIMEOUT, TimeUnit.MILLISECONDS,
-          () -> storeConsumptionTaskUnderTest.isRunning() == false);
+          () -> storeIngestionTaskUnderTest.isRunning() == false);
     });
   }
 
-  //TODO:This case has regression. It's non-deterministic. We need investigation!
-
-  @Test
+  @Test (invocationCount = 3)
   public void testDataValidationCheckPointing() throws Exception {
     final Map<Integer, Long> maxOffsetPerPartition = new HashMap<>();
     final Map<Pair<Integer, ByteArray>, ByteArray> pushedRecords = new HashMap<>();
@@ -791,9 +795,9 @@ public class StoreConsumptionTaskTest {
           } else if (messagesConsumedSoFar.incrementAndGet() % (totalNumberOfMessages / totalNumberOfConsumptionRestarts) == 0) {
             logger.info("Restarting consumer after consuming " + messagesConsumedSoFar.get() + " messages so far.");
             relevantPartitions.stream().forEach(partition ->
-                storeConsumptionTaskUnderTest.unSubscribePartition(topic, partition));
+                storeIngestionTaskUnderTest.unSubscribePartition(topic, partition));
             relevantPartitions.stream().forEach(partition ->
-                storeConsumptionTaskUnderTest.subscribePartition(topic, partition));
+                storeIngestionTaskUnderTest.subscribePartition(topic, partition));
           } else {
             logger.info("TopicPartition: " + topicPartitionOffsetRecordPair.getFirst() +
               ", OffsetRecord: " + topicPartitionOffsetRecordPair.getSecond());
@@ -842,7 +846,7 @@ public class StoreConsumptionTaskTest {
       verify(mockNotifier, after(TEST_TIMEOUT).never()).error(eq(topic), eq(PARTITION_FOO), anyString(), any());
       verify(mockNotifier, timeout(TEST_TIMEOUT).atLeastOnce()).started(topic, PARTITION_FOO);
 
-      storeConsumptionTaskUnderTest.kill();
+      storeIngestionTaskUnderTest.kill();
       verify(mockNotifier, timeout(TEST_TIMEOUT).atLeastOnce()).completed(topic, PARTITION_FOO, fooLastOffset);
     });
   }

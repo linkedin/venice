@@ -3,7 +3,7 @@ package com.linkedin.venice.helix;
 import com.linkedin.venice.config.VeniceServerConfig;
 import com.linkedin.venice.config.VeniceStoreConfig;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.kafka.consumer.KafkaConsumerService;
+import com.linkedin.venice.kafka.consumer.StoreIngestionService;
 import com.linkedin.venice.server.VeniceConfigLoader;
 import com.linkedin.venice.storage.StorageService;
 import com.linkedin.venice.utils.DaemonThreadFactory;
@@ -26,7 +26,7 @@ import org.testng.annotations.Test;
 
 
 public class VeniceStateModelFactoryTest {
-  private KafkaConsumerService mockKafkaConsumerService;
+  private StoreIngestionService mockStoreIngestionService;
   private StorageService mockStorageService;
   private VeniceConfigLoader mockConfigLoader;
   private VeniceServerConfig mockServerConfig;
@@ -42,7 +42,7 @@ public class VeniceStateModelFactoryTest {
 
   @BeforeMethod
   public void setup() {
-    mockKafkaConsumerService = Mockito.mock(KafkaConsumerService.class);
+    mockStoreIngestionService = Mockito.mock(StoreIngestionService.class);
     mockStorageService = Mockito.mock(StorageService.class);
     mockConfigLoader = Mockito.mock(VeniceConfigLoader.class);
     mockServerConfig = Mockito.mock(VeniceServerConfig.class);
@@ -55,7 +55,7 @@ public class VeniceStateModelFactoryTest {
 
     mockContext = Mockito.mock(NotificationContext.class);
 
-    factory = new VeniceStateModelFactory(mockKafkaConsumerService, mockStorageService, mockConfigLoader,
+    factory = new VeniceStateModelFactory(mockStoreIngestionService, mockStorageService, mockConfigLoader,
         Executors.newCachedThreadPool(new DaemonThreadFactory("venice-unittest")));
     stateModel = factory.createNewStateModel(resourceName, resourceName + "_" + testPartition);
   }
@@ -126,7 +126,7 @@ public class VeniceStateModelFactoryTest {
     LinkedBlockingQueue<Runnable> queue = new LinkedBlockingQueue<>();
     ExecutorService executor = new ThreadPoolExecutor(threadPoolSize, threadPoolSize, 300L, TimeUnit.SECONDS, queue,
         new DaemonThreadFactory("venice-state-transition"));
-    factory = new VeniceStateModelFactory(mockKafkaConsumerService, mockStorageService, mockConfigLoader, executor);
+    factory = new VeniceStateModelFactory(mockStoreIngestionService, mockStorageService, mockConfigLoader, executor);
     ExecutorService testExecutor = factory.getExecutorService("");
     Assert.assertEquals(testExecutor, executor);
 

@@ -25,15 +25,13 @@ import com.linkedin.venice.notifier.VeniceNotifier;
 import com.linkedin.venice.offsets.OffsetManager;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.server.StoreRepository;
-import com.linkedin.venice.stats.AggStoreConsumptionStats;
+import com.linkedin.venice.stats.AggStoreIngestionStats;
 import com.linkedin.venice.store.AbstractStorageEngine;
 import com.linkedin.venice.store.record.ValueRecord;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.Utils;
 import java.io.Closeable;
 import java.util.Collection;
-import java.util.Collections;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.Map;
@@ -41,10 +39,8 @@ import java.util.Optional;
 import java.util.Properties;
 import java.util.Queue;
 import java.util.Set;
-import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
-import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.PriorityBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -58,54 +54,85 @@ import org.apache.log4j.Logger;
  * Assumes: One to One mapping between a Venice Store and Kafka Topic.
  * A runnable Kafka Consumer consuming messages from all the partition assigned to current node for a Kafka Topic.
  */
-public class StoreConsumptionTask implements Runnable, Closeable {
+public class StoreIngestionTask implements Runnable, Closeable {
 
   /**
-   * This class is used to keep polling messages from Kafka broker and buffer them in the local {@link #consumerRecordsQueue}.
+   * This class is used to maintain internal state for consumption of each partition.
    */
-  private class ConsumerTask implements Runnable {
-    @Override
-    public void run() {
-      ConsumerRecords<KafkaKey, KafkaMessageEnvelope> consumerRecords = null;
-      while (isRunning.get()) {
-        long beforePollingTimestamp = System.currentTimeMillis();
-        consumerRecords = consumer.poll(READ_CYCLE_DELAY_MS);
-        long afterPollingTimestamp = System.currentTimeMillis();
+  private static class PartitionConsumptionState {
+    private final int partition;
+    private OffsetRecord offsetRecord;
+    private boolean completed;
+    private boolean errored;
+    private boolean started;
+    /**
+     * The following priorities are used to store the progress of processed records since it is not efficient to
+     * update offset db for every record.
+      */
+    private int processedRecordNum;
+    private int processedRecordSize;
 
-        int consumerRecordsCnt = 0;
-        if (null != consumerRecords) {
-          consumerRecordsCnt = consumerRecords.count();
-        }
+    public PartitionConsumptionState(int partition, OffsetRecord offsetRecord) {
+      this.partition = partition;
+      this.offsetRecord = offsetRecord;
+      this.completed = false;
+      this.errored = false;
+      this.started = false;
+      this.processedRecordNum = 0;
+      this.processedRecordSize = 0;
+    }
 
-        if (emitMetrics.get()) {
-          stats.recordPollRequestLatency(storeNameWithoutVersionInfo, afterPollingTimestamp - beforePollingTimestamp);
-          stats.recordPollResultNum(storeNameWithoutVersionInfo, consumerRecordsCnt);
-        }
-
-        if (0 == consumerRecordsCnt) {
-          // No need to add to the blocking queue
-          continue;
-        }
-
-        try {
-          long beforeQueuePutTimestamp = System.currentTimeMillis();
-          consumerRecordsQueue.put(consumerRecords);
-          long afterQueuePutTimestamp = System.currentTimeMillis();
-          if (emitMetrics.get()) {
-            stats.recordConsumerRecordsQueuePutLatency(storeNameWithoutVersionInfo, afterQueuePutTimestamp - beforeQueuePutTimestamp);
-          }
-        } catch (InterruptedException ie) {
-          logger.info("Received InterruptedException while running consumer thread", ie);
-          break;
-        }
-      }
+    public int getPartition() {
+      return this.partition;
+    }
+    public void setOffsetRecord(OffsetRecord offsetRecord) {
+      this.offsetRecord = offsetRecord;
+    }
+    public OffsetRecord getOffsetRecord() {
+      return this.offsetRecord;
+    }
+    public void start() {
+      this.started = true;
+    }
+    public boolean isStarted() {
+      return this.started;
+    }
+    public void complete() {
+      this.completed = true;
+    }
+    public boolean isCompleted() {
+      return this.completed;
+    }
+    public void error() {
+      this.errored = true;
+    }
+    public boolean isErrored() {
+      return this.errored;
+    }
+    public void incrProcessedRecordNum() {
+      ++this.processedRecordNum;
+    }
+    public int getProcessedRecordNum() {
+      return this.processedRecordNum;
+    }
+    public void resetProcessedRecordNum() {
+      this.processedRecordNum = 0;
+    }
+    public void incrProcessedRecordSize(int recordSize) {
+      this.processedRecordSize += recordSize;
+    }
+    public int getProcessedRecordSize() {
+      return this.processedRecordSize;
+    }
+    public void resetProcessedRecordSize() {
+      this.processedRecordSize = 0;
     }
   }
 
   // TOOD: Make this logger prefix everything with the CONSUMER_TASK_ID_FORMAT
-  private static final Logger logger = Logger.getLogger(StoreConsumptionTask.class);
+  private static final Logger logger = Logger.getLogger(StoreIngestionTask.class);
 
-  private static final String CONSUMER_TASK_ID_FORMAT = StoreConsumptionTask.class.getSimpleName() + " for [ Topic: %s ]";
+  private static final String CONSUMER_TASK_ID_FORMAT = StoreIngestionTask.class.getSimpleName() + " for [ Topic: %s ]";
 
   // Making it non final to shorten the time in testing.
   // TODO: consider to make those delay time configurable for operability purpose
@@ -148,20 +175,25 @@ public class StoreConsumptionTask implements Runnable, Closeable {
   private static final long PROGRESS_REPORT_INTERVAL = TimeUnit.MILLISECONDS.convert(10, TimeUnit.MINUTES);
 
   /**
-   * The source of truth for the currently subscribed partitions. The list maintained by the kafka consumer
-   * is not always up to date because of the asynchronous nature of subscriptions of partitions in Kafka Consumer.
+   * Per-partition consumption state map
    */
-  private final ConcurrentMap<Integer, OffsetRecord> partitionToOffsetMap;
-  private final Set<Integer> completedPartitions;
+  private final ConcurrentMap<Integer, PartitionConsumptionState> partitionConsumptionStateMap;
+  /**
+   * Record offset interval before persisting it in offset db.
+   */
+  public static int OFFSET_UPDATE_INTERVAL_PER_PARTITION = 1000;
 
-  private final Set<Integer> errorPartitions;
+  private final StoreBufferService storeBufferService;
 
-  private final Set<Integer> startedPartitions;
+  /**
+   * Persists the exception thrown by {@link StoreBufferService}.
+   */
+  private Exception lastDrainerException = null;
 
   /**
    * Keeps track of every upstream producer this consumer task has seen so far.
    */
-  private final Map<GUID, ProducerTracker> producerTrackerMap;
+  private final ConcurrentMap<GUID, ProducerTracker> producerTrackerMap;
 
   private static int MAX_IDLE_COUNTER  = 100;
   private int idleCounter = 0;
@@ -171,40 +203,19 @@ public class StoreConsumptionTask implements Runnable, Closeable {
   private static final long KILL_WAIT_TIME_MS = 5000l;
   public static final int MAX_KILL_CHECKING_ATTEMPTS = 10;
 
-  private final AggStoreConsumptionStats stats;
+  private final AggStoreIngestionStats stats;
 
-  /**
-   * Blocking queue for consumer records.
-   * The consumer thread will keep polling and put the retrieved result to this queue;
-   * The worker thread will poll consumer records from this queue and persist them in BDB;
-   *
-   * Right now, this queue is to store {@link ConsumerRecords} instead of {@link ConsumerRecord},
-   * and the reasons behind this:
-   * 1. It is not easy to get actual memory usage for each {@link ConsumerRecord}, but there are existing 'serializedSize'
-   * for each record, check {@link ConsumerRecord#serializedKeySize} and {@link ConsumerRecord#serializedValueSize};
-   * 2. Each {@link ConsumerRecords} should have limited data size considering the fixed poll request timeout: 1 second;
-   *
-   * If current solution doesn't work well, we can update this blocking queue to hold {@link ConsumerRecord} instead of
-   * {@link ConsumerRecords}.
-   **/
-  private final BlockingQueue<ConsumerRecords<KafkaKey, KafkaMessageEnvelope>> consumerRecordsQueue;
-  /**
-   * Consumer thread to keep polling Kafka brokers;
-   * TODO: consider to use thread pool to limit/reuse consumer threads across multiple stores
-   */
-  private Thread consumerThread;
-
-  public StoreConsumptionTask(@NotNull VeniceConsumerFactory factory,
-                              @NotNull Properties kafkaConsumerProperties,
-                              @NotNull StoreRepository storeRepository,
-                              @NotNull OffsetManager offsetManager,
-                              @NotNull Queue<VeniceNotifier> notifiers,
-                              @NotNull EventThrottler throttler,
-                              @NotNull String topic,
-                              @NotNull ReadOnlySchemaRepository schemaRepo,
-                              @NotNull TopicManager topicManager,
-                              @NotNull AggStoreConsumptionStats stats,
-                              int consumerRecordsQueueCapacity) {
+  public StoreIngestionTask(@NotNull VeniceConsumerFactory factory,
+                            @NotNull Properties kafkaConsumerProperties,
+                            @NotNull StoreRepository storeRepository,
+                            @NotNull OffsetManager offsetManager,
+                            @NotNull Queue<VeniceNotifier> notifiers,
+                            @NotNull EventThrottler throttler,
+                            @NotNull String topic,
+                            @NotNull ReadOnlySchemaRepository schemaRepo,
+                            @NotNull TopicManager topicManager,
+                            @NotNull AggStoreIngestionStats stats,
+                            @NotNull StoreBufferService storeBufferService) {
     this.factory = factory;
     this.kafkaProps = kafkaConsumerProperties;
     this.storeRepository = storeRepository;
@@ -218,24 +229,21 @@ public class StoreConsumptionTask implements Runnable, Closeable {
     this.consumerActionsQueue = new PriorityBlockingQueue<>(CONSUMER_ACTION_QUEUE_INIT_CAPACITY,
         new ConsumerAction.ConsumerActionPriorityComparator());
 
-    // partitionToOffsetMap is accessed by multiple threads: consumption thread and the thread handle kill message.
-    this.partitionToOffsetMap = new ConcurrentHashMap<>();
-    // We need thread safe set here because it could be visited by two threads, kill thread and consumption thread.
-    this.completedPartitions = Collections.newSetFromMap(new ConcurrentHashMap<>());
-    this.errorPartitions = Collections.newSetFromMap(new ConcurrentHashMap<>());
-    this.startedPartitions = Collections.newSetFromMap(new ConcurrentHashMap<>());
-    // Should be accessed only from a single thread.
-    this.producerTrackerMap = new HashMap<>();
+    // partitionConsumptionStateMap could be accessed by multiple threads: consumption thread and the thread handling kill message
+    this.partitionConsumptionStateMap = new ConcurrentHashMap<>();
+
+    // Could be accessed from multiple threads since there are multiple worker threads.
+    this.producerTrackerMap = new ConcurrentHashMap<>();
     this.consumerTaskId = String.format(CONSUMER_TASK_ID_FORMAT, topic);
     this.topicManager = topicManager;
 
     this.stats = stats;
     stats.updateStoreConsumptionTask(storeNameWithoutVersionInfo, this);
 
-    this.consumerRecordsQueue = new LinkedBlockingQueue<>(consumerRecordsQueueCapacity);
-
     this.isRunning = new AtomicBoolean(true);
     this.emitMetrics = new AtomicBoolean(true);
+
+    this.storeBufferService = storeBufferService;
   }
 
   private void validateState() {
@@ -283,7 +291,7 @@ public class StoreConsumptionTask implements Runnable, Closeable {
     }
     if (isRunning()) {
       //If task is still running, force close it.
-      reportError(partitionToOffsetMap.keySet(), "Received the signal to kill this consumer. Topic " + topic,
+      reportError(partitionConsumptionStateMap.keySet(), "Received the signal to kill this consumer. Topic " + topic,
           new VeniceException("Kill the consumer"));
       // close can not stop the consumption synchronizely, but the status of helix would be set to ERROR after
       // reportError. The only way to stop it synchronizely is interrupt the current running thread, but it's an unsafe
@@ -293,7 +301,14 @@ public class StoreConsumptionTask implements Runnable, Closeable {
   }
 
   private void reportProgress(int partition, long partitionOffset ) {
-    if (!startedPartitions.contains(partition)) {
+    PartitionConsumptionState partitionConsumptionState = partitionConsumptionStateMap.get(partition);
+    if (null == partitionConsumptionState) {
+      logger.info("Topic " + topic + " Partition " + partition + " has been unsubscribed, no need to report progress");
+      return;
+    }
+    if (!partitionConsumptionState.isStarted() ||
+        partitionConsumptionState.isCompleted() ||
+        partitionConsumptionState.isErrored()) {
       logger.warn(
           "Can not report progress for Topic:" + topic + " Partition:" + partition + " offset:" + partitionOffset
               + ", because it has not been started or already been terminated.");
@@ -320,7 +335,12 @@ public class StoreConsumptionTask implements Runnable, Closeable {
   }
 
   private void reportStarted(int partition) {
-    startedPartitions.add(partition);
+    PartitionConsumptionState partitionConsumptionState = partitionConsumptionStateMap.get(partition);
+    if (null == partitionConsumptionState) {
+      logger.info("Topic " + topic + " Partition " + partition + " has been unsubscribed, not need to report started");
+      return;
+    }
+    partitionConsumptionState.start();
     for(VeniceNotifier notifier : notifiers) {
       try {
         notifier.started(topic, partition);
@@ -331,7 +351,12 @@ public class StoreConsumptionTask implements Runnable, Closeable {
   }
 
   private void reportRestarted(int partition, long offset) {
-    startedPartitions.add(partition);
+    PartitionConsumptionState partitionConsumptionState = partitionConsumptionStateMap.get(partition);
+    if (null == partitionConsumptionState) {
+      logger.info("Topic " + topic + " Partition " + partition + " has been unsubscribed, not need to report restarted");
+      return;
+    }
+    partitionConsumptionState.start();
     for (VeniceNotifier notifier : notifiers) {
       try {
         notifier.restarted(topic, partition, offset);
@@ -342,14 +367,21 @@ public class StoreConsumptionTask implements Runnable, Closeable {
   }
 
   private void reportCompleted(int partition) {
-    OffsetRecord lastOffsetRecord = partitionToOffsetMap.getOrDefault(partition , new OffsetRecord());
+    PartitionConsumptionState partitionConsumptionState = partitionConsumptionStateMap.get(partition);
+    if (null == partitionConsumptionState) {
+      logger.info("Topic " + topic + " Partition " + partition + " has been unsubscribed, no need to report completed");
+      return;
+    }
+    OffsetRecord lastOffsetRecord = partitionConsumptionState.getOffsetRecord();
 
-    if (errorPartitions.contains(partition)) {
+    if (partitionConsumptionState.isErrored()) {
       // Notifiers will not be sent a completion notification, they should only receive the previously-sent
       // error notification.
-      logger.error("Processing completed WITH ERRORS for topic " + topic + " Partition " + partition + " Last Offset " + lastOffsetRecord.getOffset());
+      logger.error("Processing completed WITH ERRORS for topic " + topic + " Partition " + partition +
+          " Last Offset " + lastOffsetRecord.getOffset());
     } else {
-      logger.info("Processing completed for topic " + topic + " Partition " + partition + " Last Offset " + lastOffsetRecord.getOffset());
+      logger.info("Processing completed for topic " + topic + " Partition " + partition + " Last Offset "
+          + lastOffsetRecord.getOffset());
       for(VeniceNotifier notifier : notifiers) {
         try {
           notifier.completed(topic, partition, lastOffsetRecord.getOffset());
@@ -358,23 +390,26 @@ public class StoreConsumptionTask implements Runnable, Closeable {
         }
       }
     }
-    startedPartitions.remove(partition);
-    completedPartitions.add(partition);
+    partitionConsumptionState.complete();
   }
 
   private void reportError(Collection<Integer> partitions, String message, Exception consumerEx) {
     for(Integer partitionId: partitions) {
-      if (completedPartitions.contains(partitionId)) {
+      PartitionConsumptionState partitionConsumptionState = partitionConsumptionStateMap.get(partitionId);
+      if (null == partitionConsumptionState) {
+        logger.info("Topic " + topic + " Partition " + partitionId + " has been unsubscribed, no need to report error");
+        continue;
+      }
+      if (partitionConsumptionState.isCompleted()) {
         logger.warn("Topic:" + topic + " Partition:" + partitionId
             + " has been reported as completed, do not be allowed to become error..");
         continue;
       }
-      if (errorPartitions.contains(partitionId)) {
+      if (partitionConsumptionState.isErrored()) {
         logger.warn("Topic:" + topic + " Partition:" + partitionId + " has been reported as error before.");
         continue;
       }
-      startedPartitions.remove(partitionId);
-      errorPartitions.add(partitionId);
+      partitionConsumptionState.error();
 
       for(VeniceNotifier notifier : notifiers) {
         try {
@@ -388,30 +423,35 @@ public class StoreConsumptionTask implements Runnable, Closeable {
 
 
   private void processMessages() throws InterruptedException {
-    if (partitionToOffsetMap.size() > 0) {
+    if (null != lastDrainerException) {
+      // Interrupt the whole ingestion task
+      throw new VeniceException("Exception thrown by store buffer drainer", lastDrainerException);
+    }
+    if (partitionConsumptionStateMap.size() > 0) {
       idleCounter = 0;
-      /**
-       * Retrieve consumer records from the blocking queue.
-       * The reason to use timed poll is that the worker thread still needs to process consumer action by this func:
-       * {@link #processConsumerActions()} even without any message in the {@link #consumerRecordsQueue}.
-       **/
       long beforePollingTimestamp = System.currentTimeMillis();
-      ConsumerRecords<KafkaKey, KafkaMessageEnvelope> records =
-          consumerRecordsQueue.poll(READ_CYCLE_DELAY_MS, TimeUnit.MILLISECONDS);
+      ConsumerRecords<KafkaKey, KafkaMessageEnvelope> records = consumer.poll(READ_CYCLE_DELAY_MS);
       long afterPollingTimestamp = System.currentTimeMillis();
 
+      int pollResultNum = 0;
+      if (null != records) {
+        pollResultNum = records.count();
+      }
       if (emitMetrics.get()) {
-        stats.recordConsumerRecordsQueuePollLatency(storeNameWithoutVersionInfo, afterPollingTimestamp - beforePollingTimestamp);
+        stats.recordPollRequestLatency(storeNameWithoutVersionInfo, afterPollingTimestamp - beforePollingTimestamp);
+        stats.recordPollResultNum(storeNameWithoutVersionInfo, pollResultNum);
       }
 
       if (null == records) {
         return;
       }
-      processTopicConsumerRecords(records);
-      long afterProcessingTimestamp = System.currentTimeMillis();
-
+      for (ConsumerRecord<KafkaKey, KafkaMessageEnvelope> record : records) {
+        // blocking call
+        storeBufferService.putConsumerRecord(record, this);
+      }
+      long afterPutTimestamp = System.currentTimeMillis();
       if (emitMetrics.get()) {
-        stats.recordProcessPollResultLatency(storeNameWithoutVersionInfo, afterProcessingTimestamp - afterPollingTimestamp);
+        stats.recordConsumerRecordsQueuePutLatency(storeNameWithoutVersionInfo, afterPutTimestamp - afterPollingTimestamp);
       }
     } else {
       idleCounter ++;
@@ -434,10 +474,7 @@ public class StoreConsumptionTask implements Runnable, Closeable {
   public void run() {
     logger.info("Running " + consumerTaskId);
     try {
-      this.consumer = new SynchronizedKafkaConsumerWrapper(factory.getConsumer(kafkaProps));
-      this.consumerThread = new Thread(new ConsumerTask(), "Consumer_thread_for_" + topic);
-      this.consumerThread.start();
-
+      this.consumer = factory.getConsumer(kafkaProps);
       /**
        * Here we could not use isRunning() since it is a synchronized function, whose lock could be
        * acquired by some other synchronized function, such as {@link #kill()}.
@@ -452,10 +489,10 @@ public class StoreConsumptionTask implements Runnable, Closeable {
       // If job is not aborted, controller is open to get the subsequent message from this replica(if storage node was
       // recovered, it will send STARTED message to controller again)
       logger.error(consumerTaskId + " failed with Exception.", e);
-      reportError(partitionToOffsetMap.keySet(), "Exception caught during poll.", e);
+      reportError(partitionConsumptionStateMap.keySet(), "Exception caught during poll.", e);
     } catch (Throwable t) {
       logger.error(consumerTaskId + " failed with Throwable!!!", t);
-      reportError(partitionToOffsetMap.keySet(), "Non-exception Throwable caught in " + getClass().getSimpleName() +
+      reportError(partitionConsumptionStateMap.keySet(), "Non-exception Throwable caught in " + getClass().getSimpleName() +
           "'s run() function.", new VeniceException(t));
     } finally {
       internalClose();
@@ -464,7 +501,7 @@ public class StoreConsumptionTask implements Runnable, Closeable {
 
   private void internalClose() {
     // Only reset Offset Messages are important, subscribe/unSubscribe will be handled
-    // on the restart by Helix Controller notifications on the new StoreConsumptionTask.
+    // on the restart by Helix Controller notifications on the new StoreIngestionTask.
     for(ConsumerAction message : consumerActionsQueue) {
       ConsumerActionType opType = message.getType();
       if(opType == ConsumerActionType.RESET_OFFSET) {
@@ -483,16 +520,6 @@ public class StoreConsumptionTask implements Runnable, Closeable {
       return;
     }
     consumer.close();
-    // Interrupt consumer thread
-    if (null != this.consumerThread) {
-      this.consumerThread.interrupt();
-      try {
-        this.consumerThread.join(10000); //10s
-        logger.info("Closed consumer thread for topic: " + topic);
-      } catch (InterruptedException ie) {
-        logger.error("Received exception while joining consumer thread", ie);
-      }
-    }
     isRunning.set(false);
   }
 
@@ -529,10 +556,13 @@ public class StoreConsumptionTask implements Runnable, Closeable {
     int partition = message.getPartition();
     switch (operation) {
       case SUBSCRIBE:
+        // Drain the buffered message by last subscription.
+        storeBufferService.drainBufferedRecordsFromTopicPartition(topic, partition);
+
         OffsetRecord record = offsetManager.getLastOffset(topic, partition);
 
         // First let's try to restore the state retrieved from the OffsetManager
-        partitionToOffsetMap.put(partition, record);
+        partitionConsumptionStateMap.put(partition,  new PartitionConsumptionState(partition, record));
         record.getProducerPartitionStateMap().entrySet().stream().forEach(entry -> {
               GUID producerGuid = GuidUtils.getGuidFromCharSequence(entry.getKey());
               ProducerTracker producerTracker = producerTrackerMap.get(producerGuid);
@@ -557,7 +587,7 @@ public class StoreConsumptionTask implements Runnable, Closeable {
            * 1. The job is completed, so Controller will ignore any status message related to the completed/archived job.
            * 2. The job is still running: some partitions are in 'ONLINE' state, but other partitions are still in
            * 'BOOTSTRAP' state.
-           * In either case, StoreConsumptionTask should report 'started' => ['progress'] => 'completed' to accomplish
+           * In either case, StoreIngestionTask should report 'started' => ['progress'] => 'completed' to accomplish
            * task state transition in Controller.
            */
           reportCompleted(partition);
@@ -570,8 +600,7 @@ public class StoreConsumptionTask implements Runnable, Closeable {
         break;
       case UNSUBSCRIBE:
         logger.info(consumerTaskId + " UnSubscribed to: Topic " + topic + " Partition Id " + partition);
-        partitionToOffsetMap.remove(partition);
-        completedPartitions.remove(partition);
+        partitionConsumptionStateMap.remove(partition);
         producerTrackerMap.values().stream().forEach(
             producerTracker -> producerTracker.clearPartition(partition)
         );
@@ -585,8 +614,7 @@ public class StoreConsumptionTask implements Runnable, Closeable {
           logger.info(consumerTaskId + " No need to reset offset by Kafka consumer, since the consumer is not " +
               "subscribing Topic: " + topic + " Partition Id: " + partition);
         }
-        partitionToOffsetMap.put(partition, new OffsetRecord());
-        completedPartitions.remove(partition);
+        partitionConsumptionStateMap.put(partition, new PartitionConsumptionState(partition, new OffsetRecord()));
         producerTrackerMap.values().stream().forEach(
             producerTracker -> producerTracker.clearPartition(partition)
         );
@@ -608,12 +636,13 @@ public class StoreConsumptionTask implements Runnable, Closeable {
     }
 
     int partitionId = record.partition();
-    OffsetRecord offsetRecord = partitionToOffsetMap.get(partitionId);
-    if(null == offsetRecord) {
+    PartitionConsumptionState partitionConsumptionState = partitionConsumptionStateMap.get(partitionId);
+    if(null == partitionConsumptionState) {
       logger.info("Skipping message as partition is no longer actively subscribed. Topic: " + topic + " Partition Id: " + partitionId );
       return false;
     }
-    long lastOffset = offsetRecord.getOffset();
+    long lastOffset = partitionConsumptionState.getOffsetRecord()
+        .getOffset();
     if(lastOffset >= record.offset()) {
       logger.info(consumerTaskId + "The record was already processed Partition" + partitionId + " LastKnown " + lastOffset + " Current " + record.offset());
       return false;
@@ -622,66 +651,75 @@ public class StoreConsumptionTask implements Runnable, Closeable {
     return true;
   }
 
-  private void processTopicConsumerRecords(ConsumerRecords records) {
-    if (records == null ) {
+  /**
+   * This function will be invoked in {@link StoreBufferService} to process buffered {@link ConsumerRecord}.
+   * @param record
+   */
+  public void processConsumerRecord(ConsumerRecord<KafkaKey, KafkaMessageEnvelope> record) {
+    int partition = record.partition();
+    PartitionConsumptionState partitionConsumptionState = partitionConsumptionStateMap.get(partition);
+    if (null == partitionConsumptionState) {
+      logger.info("Topic " + topic + " Partition " + partition + " has been unsubscribed, skip this record");
+      return;
+    }
+    if (partitionConsumptionState.isErrored()) {
+      logger.info("Topic " + topic + " Partition " + partition + " is already errored, skip this record");
       return;
     }
 
-    Iterator<ConsumerRecord<KafkaKey, KafkaMessageEnvelope>> recordsIterator = records.iterator();
-    if(!recordsIterator.hasNext()) {
+    if(!shouldProcessRecord(record)) {
       return;
     }
-
-    int totalSize = 0;
-    int totalRecords = 0;
-    Set<Integer> processedPartitions = new HashSet<>();
-    while (recordsIterator.hasNext()) {
-      ConsumerRecord<KafkaKey, KafkaMessageEnvelope> record = recordsIterator.next();
-      totalRecords++;
-      if(shouldProcessRecord(record)) {
-        try {
-          totalSize += processConsumerRecord(record);
-          processedPartitions.add(record.partition());
-        } catch (FatalDataValidationException e) {
-          int faultyPartition = record.partition();
-          reportError(Lists.newArrayList(faultyPartition), "Fatal data validation problem with partition " + faultyPartition, e);
-          unSubscribePartition(topic, faultyPartition);
-        } catch (VeniceMessageException | UnsupportedOperationException ex) {
-          throw new VeniceException(consumerTaskId + " : Received an exception for message at partition: "
-              + record.partition() + ", offset: " + record.offset() + ". Bubbling up.", ex);
-        }
-      }
+    int recordSize = 0;
+    try {
+      recordSize = internalProcessConsumerRecord(record);
+    } catch (FatalDataValidationException e) {
+      int faultyPartition = record.partition();
+      reportError(Lists.newArrayList(faultyPartition), "Fatal data validation problem with partition " + faultyPartition, e);
+      unSubscribePartition(topic, faultyPartition);
+    } catch (VeniceMessageException | UnsupportedOperationException ex) {
+      throw new VeniceException(consumerTaskId + " : Received an exception for message at partition: "
+          + record.partition() + ", offset: " + record.offset() + ". Bubbling up.", ex);
     }
 
-    throttler.maybeThrottle(totalSize);
+    partitionConsumptionState.incrProcessedRecordNum();
+    partitionConsumptionState.incrProcessedRecordSize(recordSize);
 
-    if (emitMetrics.get()) {
-      stats.recordBytesConsumed(storeNameWithoutVersionInfo, totalSize);
-      stats.recordRecordsConsumed(storeNameWithoutVersionInfo, totalRecords);
-    }
+    int processedRecordNum = partitionConsumptionState.getProcessedRecordNum();
+    if (processedRecordNum >= OFFSET_UPDATE_INTERVAL_PER_PARTITION ||
+        partitionConsumptionState.isCompleted()) {
+      int processedRecordSize = partitionConsumptionState.getProcessedRecordSize();
+      throttler.maybeThrottle(processedRecordSize);
+      OffsetRecord offsetRecord = partitionConsumptionState.getOffsetRecord();
+      if (partitionConsumptionState.isCompleted()) {
+        offsetRecord.complete();
+      }
+      offsetManager.recordOffset(this.topic, partition, offsetRecord);
+      reportProgress(partition, offsetRecord.getOffset());
 
-    for(Integer partition: processedPartitions) {
-      if(!partitionToOffsetMap.containsKey(partition)) {
-        // Partition is unSubscribed.
-        continue;
+      // Report metrics
+      if (emitMetrics.get()) {
+        stats.recordBytesConsumed(storeNameWithoutVersionInfo, processedRecordSize);
+        stats.recordRecordsConsumed(storeNameWithoutVersionInfo, processedRecordNum);
       }
-      OffsetRecord record = partitionToOffsetMap.get(partition);
-      if (completedPartitions.contains(partition)) {
-        record.complete();
-      }
-      offsetManager.recordOffset(this.topic, partition, record);
-      reportProgress(partition, record.getOffset());
+
+      partitionConsumptionState.resetProcessedRecordNum();
+      partitionConsumptionState.resetProcessedRecordSize();
     }
+  }
+
+  public void setLastDrainerException(Exception e) {
+    lastDrainerException = e;
   }
 
   public long getOffsetLag() {
     if (!emitMetrics.get()) {
       return 0;
     }
-    
+
     Map<Integer, Long> latestOffsets = topicManager.getLatestOffsets(topic);
-    long offsetLag = partitionToOffsetMap.entrySet().stream()
-        .map(entry -> latestOffsets.get(entry.getKey()) - entry.getValue().getOffset())
+    long offsetLag = partitionConsumptionStateMap.entrySet().stream()
+        .map(entry -> latestOffsets.get(entry.getKey()) - entry.getValue().getOffsetRecord().getOffset())
         .reduce(0l, (lag1, lag2) -> lag1 + lag2);
 
     return offsetLag > 0 ? offsetLag : 0;
@@ -716,7 +754,7 @@ public class StoreConsumptionTask implements Runnable, Closeable {
    * @param consumerRecord {@link ConsumerRecord} consumed from Kafka.
    * @return the size of the data written to persistent storage.
    */
-  private int processConsumerRecord(ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord) {
+  private int internalProcessConsumerRecord(ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord) {
     // De-serialize payload into Venice Message format
     KafkaKey kafkaKey = consumerRecord.key();
     KafkaMessageEnvelope kafkaValue = consumerRecord.value();
@@ -738,7 +776,7 @@ public class StoreConsumptionTask implements Runnable, Closeable {
     } catch (DuplicateDataException e) {
       logger.info("Skipping a duplicate record in topic: '" + topic + "', offset: " + consumerRecord.offset());
     } catch (PersistenceFailureException ex) {
-      if (partitionToOffsetMap.containsKey(consumerRecord.partition())) {
+      if (partitionConsumptionStateMap.containsKey(consumerRecord.partition())) {
         // If we actually intend to be consuming this partition, then we need to bubble up the failure to persist.
         logger.error("Met PersistenceFailureException while processing record with offset: " + consumerRecord.offset() +
         ", topic: " + topic + ", meta data of the record: " + consumerRecord.value().producerMetadata);
@@ -756,24 +794,27 @@ public class StoreConsumptionTask implements Runnable, Closeable {
     }
 
     // We want to update offsets in all cases, except when we hit the PersistenceFailureException
-    OffsetRecord offsetRecord = partitionToOffsetMap.get(consumerRecord.partition());
-    if (offsetRecordTransformer.isPresent()) {
-      // This closure will have the side effect of altering the OffsetRecord
-      offsetRecord = offsetRecordTransformer.get().transform(offsetRecord);
-    } /** else, {@link #validateMessage(int, KafkaKey, KafkaMessageEnvelope)} threw a {@link DuplicateDataException} */
+    PartitionConsumptionState partitionConsumptionState = partitionConsumptionStateMap.get(consumerRecord.partition());
+    if (null == partitionConsumptionState) {
+      logger.info("Topic " + topic + " Partition " + consumerRecord.partition() + " has been unsubscribed, will skip offset update");
+    } else {
+      OffsetRecord offsetRecord = partitionConsumptionState.getOffsetRecord();
+      if (offsetRecordTransformer.isPresent()) {
+        // This closure will have the side effect of altering the OffsetRecord
+        offsetRecord = offsetRecordTransformer.get().transform(offsetRecord);
+      } /** else, {@link #validateMessage(int, KafkaKey, KafkaMessageEnvelope)} threw a {@link DuplicateDataException} */
 
-    offsetRecord.setOffset(consumerRecord.offset());
-    partitionToOffsetMap.put(consumerRecord.partition(), offsetRecord); // Is this put necessary? We are mutating the record anyway...
+      offsetRecord.setOffset(consumerRecord.offset());
+      partitionConsumptionState.setOffsetRecord(offsetRecord);
+    }
     return sizeOfPersistedData;
   }
 
   private OffsetRecordTransformer validateMessage(int partition, KafkaKey key, KafkaMessageEnvelope message) {
     final GUID producerGUID = message.producerMetadata.producerGUID;
+    producerTrackerMap.putIfAbsent(producerGUID, new ProducerTracker(producerGUID));
     ProducerTracker producerTracker = producerTrackerMap.get(producerGUID);
-    if (producerTracker == null) {
-      producerTracker = new ProducerTracker(producerGUID);
-      producerTrackerMap.put(producerGUID, producerTracker);
-    }
+
     return producerTracker.addMessage(partition, key, message);
   }
 

@@ -7,9 +7,9 @@ import java.util.List;
 
 
 /**
- * An interface for Kafka Consumer Services for Venice.
+ * An interface for Store Ingestion Service for Venice.
  */
-public interface KafkaConsumerService {
+public interface StoreIngestionService {
 
   /**
    * Starts consuming messages from Kafka Partition corresponding to Venice Partition.
