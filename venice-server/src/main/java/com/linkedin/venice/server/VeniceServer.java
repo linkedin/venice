@@ -58,7 +58,7 @@ public class VeniceServer {
   }
 
   public VeniceServer(VeniceConfigLoader veniceConfigLoader, MetricsRepository  metricsRepository) {
-    this(veniceConfigLoader, metricsRepository, null);
+    this(veniceConfigLoader, metricsRepository, Optional.empty());
   }
 
   public VeniceServer(VeniceConfigLoader veniceConfigLoader, MetricsRepository  metricsRepository, Optional<SSLEngineComponentFactory> sslFactory) {
