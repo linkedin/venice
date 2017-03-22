@@ -30,6 +30,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.TimeUnit;
 import org.apache.helix.HelixManager;
@@ -50,7 +51,7 @@ import static com.linkedin.venice.ConfigKeys.*;
  */
 public class TestVeniceHelixAdmin {
   private VeniceHelixAdmin veniceAdmin;
-  private String clusterName = "test-cluster";
+  private String clusterName;
   private VeniceControllerConfig config;
   private String keySchema = "\"string\"";
   private String valueSchema = "\"string\"";
@@ -84,12 +85,14 @@ public class TestVeniceHelixAdmin {
     }
     VeniceProperties clusterProps = Utils.parseProperties(currentPath + "/venice-server/config/cluster.properties");
     VeniceProperties baseControllerProps = Utils.parseProperties(currentPath + "/venice-controller/config/controller.properties");
-
+    clusterName = TestUtils.getUniqueString("test-cluster");
     clusterProps.getString(ConfigKeys.CLUSTER_NAME);
     PropertyBuilder builder = new PropertyBuilder().put(clusterProps.toProperties())
         .put(baseControllerProps.toProperties())
         .put("kafka.zk.address", kafkaZkAddress)
         .put("zookeeper.address", zkAddress)
+        .put(ConfigKeys.CLUSTER_NAME, clusterName)
+        .put(ConfigKeys.KAFKA_BOOTSTRAP_SERVERS, kafkaBrokerWrapper.getAddress())
         .put(DEFAULT_MAX_NUMBER_OF_PARTITIONS, 10)
         .put(DEFAULT_PARTITION_SIZE, 100);
 
@@ -206,7 +209,7 @@ public class TestVeniceHelixAdmin {
     Thread.sleep(1000l);
     Assert.assertTrue(routing.getReadyToServeInstances(version.kafkaTopicName(), 0).isEmpty(),
         "Participant became offline. No instance should be living in test_v1");
-    startParticipant();
+    startParticipant(true, nodeId);
     Thread.sleep(1000l);
     //New master controller create resource and trigger state transition on participant.
     newMasterAdmin.incrementVersion(clusterName, storeName, 1, 1);
@@ -876,8 +879,12 @@ public class TestVeniceHelixAdmin {
   }
 
   @Test
-  public void testDeleteAllVersions() {
-    String storeName = "testDeleteAllVersions";
+  public void testDeleteAllVersions()
+      throws Exception {
+    stopParticipants();
+    startParticipant(true, nodeId);
+
+    String storeName = TestUtils.getUniqueString("testDeleteAllVersions");
     // register kill message handler for participants.
     for (HelixManager manager : this.participants.values()) {
       HelixStatusMessageChannel channel = new HelixStatusMessageChannel(manager);
@@ -898,16 +905,14 @@ public class TestVeniceHelixAdmin {
     }
     // Prepare 3 version. The first two are completed and the last one is still ongoing.
     int versionCount = 3;
-    veniceAdmin.addStore(clusterName, storeName, "test", keySchema, valueSchema);
+    veniceAdmin.addStore(clusterName, storeName, "testOwner", keySchema, valueSchema);
     Version lastVersion = null;
     for (int i = 0; i < versionCount; i++) {
-      if (lastVersion != null) {
-        Store store = veniceAdmin.getStore(clusterName, storeName);
-        store.updateVersionStatus(lastVersion.getNumber(), VersionStatus.ONLINE);
-        store.setCurrentVersion(lastVersion.getNumber());
-        veniceAdmin.updateStore(clusterName, store);
-      }
       lastVersion = veniceAdmin.incrementVersion(clusterName, storeName, 1, 1);
+      if (i < versionCount - 1) {
+        // Hang the state transition of the last version only. Otherwise, retiring would be triggered.
+        stateModelFactory.makeTransitionCompleted(lastVersion.kafkaTopicName(), 0);
+      }
     }
     Assert.assertEquals(veniceAdmin.getStore(clusterName, storeName).getVersions().size(), 3);
     // Store has not been disabled.
