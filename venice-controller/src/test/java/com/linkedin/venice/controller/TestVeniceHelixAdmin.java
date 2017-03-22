@@ -450,10 +450,14 @@ public class TestVeniceHelixAdmin {
   }
 
   @Test
-  public void testCurrentVersion() {
-    String storeName = "test";
+  public void testCurrentVersion() throws Exception {
+    String storeName = TestUtils.getUniqueString("test");
+    // The existing participant uses a non-blocking state model which will switch to COMPLETE immediately.  We add
+    // an additional participant here that uses a blocking state model so it doesn't switch to complete.  This way
+    // the replicas will not all be COMPLETE, and the new version will not immediately be activated.
+    startParticipant(true, "localhost_6868");
     veniceAdmin.addStore(clusterName, storeName, "owner", keySchema, valueSchema);
-    Version version = veniceAdmin.incrementVersion(clusterName, storeName, 1, 1);
+    Version version = veniceAdmin.incrementVersion(clusterName, storeName, 1, 2); // 2 replicas puts a replica on the blocking participant
     Assert.assertEquals(veniceAdmin.getCurrentVersion(clusterName, storeName), 0);
     veniceAdmin.setCurrentVersion(clusterName, storeName, version.getNumber());
     Assert.assertEquals(veniceAdmin.getCurrentVersion(clusterName, storeName), version.getNumber());
