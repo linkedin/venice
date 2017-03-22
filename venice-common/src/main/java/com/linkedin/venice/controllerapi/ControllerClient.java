@@ -491,6 +491,30 @@ public class ControllerClient implements Closeable {
     }
   }
 
+  public PartitionResponse setStorePartitionCount(String clusterName, String storeName, String partitionNum) {
+    try {
+      List<NameValuePair> queryParams = newParams(clusterName);
+      queryParams.add(new BasicNameValuePair(ControllerApiConstants.NAME, storeName));
+      queryParams.add(new BasicNameValuePair(ControllerApiConstants.PARTITION_COUNT, partitionNum));
+      String responseJson = postRequest(ControllerRoute.SET_PARTITION_COUNT.getPath(), queryParams);
+      return mapper.readValue(responseJson, PartitionResponse.class);
+    } catch (Exception e) {
+      return handleError(new VeniceException("Error updating partition number: " + partitionNum + " for store: " + storeName, e), new PartitionResponse());
+    }
+  }
+
+  public OwnerResponse setStoreOwner(String clusterName, String storeName, String owner) {
+    try {
+      List<NameValuePair> queryParams = newParams(clusterName);
+      queryParams.add(new BasicNameValuePair(ControllerApiConstants.NAME, storeName));
+      queryParams.add(new BasicNameValuePair(ControllerApiConstants.OWNER, owner));
+      String responseJson = postRequest(ControllerRoute.SET_OWNER.getPath(), queryParams);
+      return mapper.readValue(responseJson, OwnerResponse.class);
+    } catch (Exception e) {
+      return handleError(new VeniceException("Error updating owner info: " + owner + " for store: " + storeName, e), new OwnerResponse());
+    }
+  }
+
   public SchemaResponse getValueSchema(String clusterName, String storeName, int valueSchemaId) {
     try {
       List<NameValuePair> queryParams = newParams(clusterName);

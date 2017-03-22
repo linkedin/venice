@@ -45,12 +45,11 @@ public class TestInstanceRemovable {
     int partitionCount = 2;
     int dataSize = partitionCount * partitionSize;
 
-    cluster.getNewStore(storeName, dataSize);
+    cluster.getNewStore(storeName);
 
     VersionCreationResponse response = cluster.getNewVersion(storeName, dataSize);
     Assert.assertFalse(response.isError());
     String topicName = response.getKafkaTopic();
-    int versionNum = response.getVersion();
 
     VeniceWriter<String, String> veniceWriter = cluster.getVeniceWriter(topicName);
     veniceWriter.broadcastStartOfPush(new HashMap<>());
@@ -95,12 +94,11 @@ public class TestInstanceRemovable {
     int partitionCount = 2;
     int dataSize = partitionCount * partitionSize;
 
-    cluster.getNewStore(storeName, dataSize);
+    cluster.getNewStore(storeName);
 
     VersionCreationResponse response = cluster.getNewVersion(storeName, dataSize);
     Assert.assertFalse(response.isError());
     String topicName = response.getKafkaTopic();
-    int versionNum = response.getVersion();
 
     VeniceWriter<String, String> veniceWriter = cluster.getVeniceWriter(topicName);
     veniceWriter.broadcastStartOfPush(new HashMap<>());

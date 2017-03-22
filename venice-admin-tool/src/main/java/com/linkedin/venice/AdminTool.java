@@ -14,6 +14,8 @@ import com.linkedin.venice.controllerapi.MultiReplicaResponse;
 import com.linkedin.venice.controllerapi.MultiStoreResponse;
 import com.linkedin.venice.controllerapi.MultiVersionResponse;
 import com.linkedin.venice.controllerapi.NewStoreResponse;
+import com.linkedin.venice.controllerapi.OwnerResponse;
+import com.linkedin.venice.controllerapi.PartitionResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.VersionResponse;
@@ -157,6 +159,10 @@ public class AdminTool {
         deleteAllVersions(cmd, clusterName);
       } else if (cmd.hasOption(Command.SET_VERSION.toString())) {
         applyVersionToStore(cmd, routerHosts, clusterName);
+      } else if (cmd.hasOption(Command.SET_OWNER.toString())) {
+        setStoreOwner(cmd, clusterName);
+      } else if (cmd.hasOption(Command.SET_PARTITION_COUNT.toString())) {
+        setStorePartition(cmd, clusterName);
       } else if (cmd.hasOption(Command.ADD_SCHEMA.toString())){
         applyValueSchemaToStore(cmd, routerHosts, clusterName);
       } else if (cmd.hasOption(Command.LIST_STORAGE_NODES.toString())) {
@@ -304,6 +310,20 @@ public class AdminTool {
       throw new VeniceException("Version " + version + " does not exist for store " + store + ".  Store only has versions: " + Arrays.toString(allVersions.getVersions()));
     }
     VersionResponse response = ControllerClient.overrideSetActiveVersion(routerHosts, clusterName, store, intVersion);
+    printSuccess(response);
+  }
+
+  private static void setStoreOwner(CommandLine cmd, String clusterName) {
+    String storeName = getRequiredArgument(cmd, Arg.STORE, Command.SET_OWNER);
+    String owner = getRequiredArgument(cmd, Arg.OWNER, Command.SET_OWNER);
+    OwnerResponse response = controllerClient.setStoreOwner(clusterName, storeName, owner);
+    printSuccess(response);
+  }
+
+  private static void setStorePartition(CommandLine cmd, String clusterName) {
+    String storeName = getRequiredArgument(cmd, Arg.STORE, Command.SET_PARTITION_COUNT);
+    String partitionNum = getRequiredArgument(cmd, Arg.PARTITION_COUNT, Command.SET_PARTITION_COUNT);
+    PartitionResponse response = controllerClient.setStorePartitionCount(clusterName, storeName, partitionNum);
     printSuccess(response);
   }
 

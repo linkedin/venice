@@ -42,7 +42,7 @@ public class TestRestartServer {
     String storeName = TestUtils.getUniqueString("testRestartServerAfterPushCompleted");
     int dataSize = 2000;
     int partitionCount = dataSize / partitionSize;
-    cluster.getNewStore(storeName, dataSize);
+    cluster.getNewStore(storeName);
     VersionCreationResponse response = cluster.getNewVersion(storeName, dataSize);
 
     String topicName = response.getKafkaTopic();

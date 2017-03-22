@@ -30,7 +30,7 @@ public class Store {
   /**
    * Owner of this store.
    */
-  private final String owner;
+  private String owner;
   /**
    * time when this store was created.
    */
@@ -112,6 +112,10 @@ public class Store {
 
   public String getOwner() {
     return owner;
+  }
+
+  public void setOwner(String owner) {
+    this.owner = owner;
   }
 
   @SuppressWarnings("unused") // Used by Serializer/De-serializer for storing to Zoo Keeper

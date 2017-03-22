@@ -192,7 +192,7 @@ public class TestDelayedRebalance {
     int partitionCount = 1;
     int dataSize = partitionCount * partitionSize;
 
-    cluster.getNewStore(storeName, dataSize);
+    cluster.getNewStore(storeName);
     VersionCreationResponse response = cluster.getNewVersion(storeName, dataSize);
     Assert.assertFalse(response.isError());
     String topicName = response.getKafkaTopic();

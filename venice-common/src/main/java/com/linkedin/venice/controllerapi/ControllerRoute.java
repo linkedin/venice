@@ -29,6 +29,8 @@ public enum ControllerRoute {
 
   GET_KEY_SCHEMA("/get_key_schema", Arrays.asList(NAME)),
   ADD_VALUE_SCHEMA("/add_value_schema", Arrays.asList(NAME, VALUE_SCHEMA)),
+  SET_OWNER("/set_owner", Arrays.asList(NAME, OWNER)),
+  SET_PARTITION_COUNT("/set_partition_count", Arrays.asList(NAME, PARTITION_COUNT)),
   GET_ALL_VALUE_SCHEMA("/get_all_value_schema", Arrays.asList(NAME)),
   GET_VALUE_SCHEMA("/get_value_schema", Arrays.asList(NAME, SCHEMA_ID)),
   GET_VALUE_SCHEMA_ID("/get_value_schema_id", Arrays.asList(NAME, VALUE_SCHEMA)),

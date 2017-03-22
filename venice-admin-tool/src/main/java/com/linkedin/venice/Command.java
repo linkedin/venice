@@ -47,7 +47,11 @@ public enum Command {
   DELETE_ALL_VERSIONS("delete-all-versions", "Delete all versions in given store.",
       new Arg[]{Arg.URL, Arg.CLUSTER, Arg.STORE}),
   GET_EXECUTION("get-execution", "Get the execution status for an async admin command.",
-      new Arg[]{Arg.URL, Arg.CLUSTER, Arg.EXECUTION});
+      new Arg[]{Arg.URL, Arg.CLUSTER, Arg.EXECUTION}),
+  SET_OWNER("set-owner", "Update owner info of an existing store",
+      new Arg[] {Arg.URL, Arg.CLUSTER, Arg.STORE, Arg.OWNER}),
+  SET_PARTITION_COUNT("set-partition-count", "Update the number of partitions of an existing store",
+      new Arg[] {Arg.URL, Arg.CLUSTER, Arg.STORE, Arg.PARTITION_COUNT});
 
   private final String commandName;
   private final String description;

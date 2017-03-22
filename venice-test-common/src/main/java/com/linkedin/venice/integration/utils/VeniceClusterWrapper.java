@@ -387,20 +387,19 @@ public class VeniceClusterWrapper extends ProcessWrapper {
     return new VeniceWriter<>(clientProps, storeVersionName, keySerializer, valueSerializer);
   }
 
-  public NewStoreResponse getNewStore(String storeName, int dataSize) {
-    return getNewStore(getAllControllersURLs(), storeName, dataSize);
+  public NewStoreResponse getNewStore(String storeName) {
+    return getNewStore(storeName, "store-owner");
   }
 
   public VersionCreationResponse getNewVersion(String storeName, int dataSize) {
     return getNewVersion(getAllControllersURLs(), storeName, dataSize);
   }
 
-  public NewStoreResponse getNewStore(String url, String storeName, int dataSize) {
-    String storeOwner = TestUtils.getUniqueString("store-owner");
+  public NewStoreResponse getNewStore(String storeName, String owner) {
     String keySchema = "\"string\"";
     String valueSchema = "\"string\"";
     NewStoreResponse response =
-        ControllerClient.createNewStore(url, clusterName, storeName, storeOwner, keySchema, valueSchema);
+        ControllerClient.createNewStore(getAllControllersURLs(), clusterName, storeName, owner, keySchema, valueSchema);
     if (response.isError()) {
       throw new VeniceException(response.getError());
     }

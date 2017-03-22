@@ -14,6 +14,9 @@ import com.linkedin.venice.controller.kafka.protocol.admin.KillOfflinePushJob;
 import com.linkedin.venice.controller.kafka.protocol.admin.PauseStore;
 import com.linkedin.venice.controller.kafka.protocol.admin.ResumeStore;
 import com.linkedin.venice.controller.kafka.protocol.admin.SchemaMeta;
+import com.linkedin.venice.controller.kafka.protocol.admin.SetStoreCurrentVersion;
+import com.linkedin.venice.controller.kafka.protocol.admin.SetStoreOwner;
+import com.linkedin.venice.controller.kafka.protocol.admin.SetStorePartitionCount;
 import com.linkedin.venice.controller.kafka.protocol.admin.StoreCreation;
 import com.linkedin.venice.controller.kafka.protocol.admin.ValueSchemaCreation;
 import com.linkedin.venice.controller.kafka.protocol.enums.AdminMessageType;
@@ -410,7 +413,68 @@ public class VeniceParentHelixAdmin implements Admin {
   public void setCurrentVersion(String clusterName,
                                 String storeName,
                                 int versionNumber) {
-    throw new VeniceException("setCurrentVersion is not supported yet!");
+    acquireLock(clusterName);
+    try {
+      Store store = veniceHelixAdmin.getStore(clusterName, storeName);
+      if (store == null) {
+        throw new VeniceNoStoreException(storeName);
+      }
+      SetStoreCurrentVersion setStoreCurrentVersion = (SetStoreCurrentVersion) AdminMessageType.SET_STORE_CURRENT_VERSION.getNewInstance();
+      setStoreCurrentVersion.clusterName = clusterName;
+      setStoreCurrentVersion.storeName = storeName;
+      setStoreCurrentVersion.currentVersion = versionNumber;
+      AdminOperation message = new AdminOperation();
+      message.operationType = AdminMessageType.SET_STORE_CURRENT_VERSION.ordinal();
+      message.payloadUnion = setStoreCurrentVersion;
+
+      sendAdminMessageAndWaitForConsumed(clusterName, message);
+    } finally {
+      releaseLock();
+    }
+  }
+
+  @Override
+  public void setStoreOwner(String clusterName, String storeName, String owner) {
+    acquireLock(clusterName);
+    try {
+      Store store = veniceHelixAdmin.getStore(clusterName, storeName);
+      if (store == null) {
+        throw new VeniceNoStoreException(storeName);
+      }
+      SetStoreOwner setStoreOwner = (SetStoreOwner) AdminMessageType.SET_STORE_OWNER.getNewInstance();
+      setStoreOwner.clusterName = clusterName;
+      setStoreOwner.storeName = storeName;
+      setStoreOwner.owner = owner;
+      AdminOperation message = new AdminOperation();
+      message.operationType = AdminMessageType.SET_STORE_OWNER.ordinal();
+      message.payloadUnion = setStoreOwner;
+
+      sendAdminMessageAndWaitForConsumed(clusterName, message);
+    } finally {
+      releaseLock();
+    }
+  }
+
+  @Override
+  public void setStorePartitionCount(String clusterName, String storeName, int partitionCount) {
+    acquireLock(clusterName);
+    try {
+      Store store = veniceHelixAdmin.getStore(clusterName, storeName);
+      if (store == null) {
+        throw new VeniceNoStoreException(storeName);
+      }
+      SetStorePartitionCount setStorePartition = (SetStorePartitionCount) AdminMessageType.SET_STORE_PARTITION.getNewInstance();
+      setStorePartition.clusterName = clusterName;
+      setStorePartition.storeName = storeName;
+      setStorePartition.partitionNum = partitionCount;
+      AdminOperation message = new AdminOperation();
+      message.operationType = AdminMessageType.SET_STORE_OWNER.ordinal();
+      message.payloadUnion = setStorePartition;
+
+      sendAdminMessageAndWaitForConsumed(clusterName, message);
+    } finally {
+      releaseLock();
+    }
   }
 
   @Override

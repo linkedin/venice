@@ -68,8 +68,6 @@ public interface Admin {
 
     boolean hasStore(String clusterName, String storeName);
 
-    void setCurrentVersion(String clusterName, String storeName, int versionNumber);
-
     SchemaEntry getKeySchema(String clusterName, String storeName);
 
     Collection<SchemaEntry> getValueSchemas(String clusterName, String storeName);
@@ -78,9 +76,17 @@ public interface Admin {
 
     SchemaEntry getValueSchema(String clusterName, String storeName, int id);
 
+    //Operations for updating store metadata
+    //TODO: we might want combine those operations into one method.
     SchemaEntry addValueSchema(String clusterName, String storeName, String valueSchemaStr);
 
     SchemaEntry addValueSchema(String clusterName, String storeName, String valueSchemaStr, int schemaId);
+
+    void setCurrentVersion(String clusterName, String storeName, int versionNumber);
+
+    void setStoreOwner(String clusterName, String storeName, String owner);
+
+    void setStorePartitionCount(String clusterName, String storeName, int partitionCount);
 
     List<String> getStorageNodes(String clusterName);
 

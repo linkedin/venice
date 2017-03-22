@@ -11,6 +11,9 @@ import com.linkedin.venice.controller.kafka.protocol.admin.EnableStoreRead;
 import com.linkedin.venice.controller.kafka.protocol.admin.KillOfflinePushJob;
 import com.linkedin.venice.controller.kafka.protocol.admin.PauseStore;
 import com.linkedin.venice.controller.kafka.protocol.admin.ResumeStore;
+import com.linkedin.venice.controller.kafka.protocol.admin.SetStoreCurrentVersion;
+import com.linkedin.venice.controller.kafka.protocol.admin.SetStoreOwner;
+import com.linkedin.venice.controller.kafka.protocol.admin.SetStorePartitionCount;
 import com.linkedin.venice.controller.kafka.protocol.admin.StoreCreation;
 import com.linkedin.venice.controller.kafka.protocol.admin.ValueSchemaCreation;
 import com.linkedin.venice.controller.kafka.protocol.enums.AdminMessageType;
@@ -33,7 +36,6 @@ import com.linkedin.venice.offsets.OffsetManager;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.utils.Utils;
-import io.tehuti.metrics.MetricsRepository;
 import java.io.Closeable;
 import java.io.IOException;
 import java.util.Iterator;
@@ -321,6 +323,15 @@ public class AdminConsumptionTask implements Runnable, Closeable {
       case DELETE_ALL_VERSIONS:
         handleDeleteAllVersions((DeleteAllVersions) adminMessage.payloadUnion);
         break;
+      case SET_STORE_CURRENT_VERSION:
+        handleSetStoreCurrentVersion((SetStoreCurrentVersion) adminMessage.payloadUnion);
+        break;
+      case SET_STORE_OWNER:
+        handleSetStoreOwner((SetStoreOwner) adminMessage.payloadUnion);
+        break;
+      case SET_STORE_PARTITION:
+        handleSetStorePartitionCount((SetStorePartitionCount) adminMessage.payloadUnion);
+        break;
       default:
         throw new VeniceException("Unknown admin operation type: " + adminMessage.operationType);
     }
@@ -471,10 +482,37 @@ public class AdminConsumptionTask implements Runnable, Closeable {
     logger.info("Killed job with topic: " + kafkaTopic + " in cluster: " + clusterName);
   }
 
-  public void handleDeleteAllVersions(DeleteAllVersions message) {
+  private void handleDeleteAllVersions(DeleteAllVersions message) {
     String clusterName = message.clusterName.toString();
     String storeName = message.storeName.toString();
     admin.deleteAllVersionsInStore(clusterName, storeName);
-    logger.info("Deleted all of version in store:" + storeName + " in cluster:" + clusterName);
+    logger.info("Deleted all of version in store:" + storeName + " in cluster: " + clusterName);
+  }
+
+  private void handleSetStoreCurrentVersion(SetStoreCurrentVersion message) {
+    String clusterName = message.clusterName.toString();
+    String storeName = message.storeName.toString();
+    int version = message.currentVersion;
+    admin.setCurrentVersion(clusterName, storeName, version);
+
+    logger.info("Set store: " + storeName + " version to"  + version + " in cluster: " + clusterName);
+  }
+
+  private void handleSetStoreOwner(SetStoreOwner message) {
+    String clusterName = message.clusterName.toString();
+    String storeName = message.storeName.toString();
+    String owner = message.owner.toString();
+    admin.setStoreOwner(clusterName, storeName, owner);
+
+    logger.info("Set store: " + storeName + " owner to " + owner + " in cluster: " + clusterName);
+  }
+
+  private void handleSetStorePartitionCount(SetStorePartitionCount message) {
+    String clusterName = message.clusterName.toString();
+    String storeName = message.storeName.toString();
+    int partitionNum = message.partitionNum;
+    admin.setStorePartitionCount(clusterName, storeName, partitionNum);
+
+    logger.info("Set store: " + storeName + " partition number to " + partitionNum + " in cluster: " + clusterName);
   }
 }

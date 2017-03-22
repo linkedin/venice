@@ -59,7 +59,7 @@ public class JobRoutes {
 
     //Aggregated progress
     long aggregatedProgress = 0L;
-    for (Long taskOffset : currentProgress.values()){
+    for (Long taskOffset : currentProgress.values()) {
       aggregatedProgress += taskOffset;
     }
     responseObject.setMessagesConsumed(aggregatedProgress);

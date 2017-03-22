@@ -6,21 +6,21 @@ import com.linkedin.venice.controller.AdminCommandExecutionTracker;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.MultiStoreResponse;
 import com.linkedin.venice.controllerapi.MultiVersionResponse;
+import com.linkedin.venice.controllerapi.OwnerResponse;
+import com.linkedin.venice.controllerapi.PartitionResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.utils.Utils;
 import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 import spark.Route;
 
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.*;
-import static com.linkedin.venice.controllerapi.ControllerRoute.DELETE_ALL_VERSIONS;
-import static com.linkedin.venice.controllerapi.ControllerRoute.ENABLE_STORE;
-import static com.linkedin.venice.controllerapi.ControllerRoute.LIST_STORES;
-import static com.linkedin.venice.controllerapi.ControllerRoute.STORE;
+import static com.linkedin.venice.controllerapi.ControllerRoute.*;
 
 
 public class StoresRoutes {
@@ -65,6 +65,52 @@ public class StoresRoutes {
       }
       response.type(HttpConstants.JSON);
       return AdminSparkServer.mapper.writeValueAsString(storeResponse);
+    };
+  }
+
+  public static Route setOwner(Admin admin) {
+    return (request, response) -> {
+      OwnerResponse ownerResponse = new OwnerResponse();
+      try {
+        AdminSparkServer.validateParams(request, SET_OWNER.getParams(), admin);
+        String clusterName = request.queryParams(CLUSTER);
+        String storeName = request.queryParams(NAME);
+        String owner = request.queryParams(OWNER);
+        admin.setStoreOwner(clusterName, storeName, owner);
+
+        ownerResponse.setCluster(clusterName);
+        ownerResponse.setName(storeName);
+        ownerResponse.setOwner(owner);
+      } catch (Throwable e) {
+        ownerResponse.setError(e.getMessage());
+        AdminSparkServer.handleError(e, request, response);
+      }
+
+      response.type(HttpConstants.JSON);
+      return AdminSparkServer.mapper.writeValueAsString(ownerResponse);
+    };
+  }
+
+  public static Route setPartitionCount(Admin admin) {
+    return (request, response) -> {
+      PartitionResponse partitionResponse = new PartitionResponse();
+      try {
+        AdminSparkServer.validateParams(request, SET_PARTITION_COUNT.getParams(), admin);
+        String clusterName = request.queryParams(CLUSTER);
+        String storeName = request.queryParams(NAME);
+        int partitionNum = Utils.parseIntFromString(request.queryParams(PARTITION_COUNT), "partition-count");
+        admin.setStorePartitionCount(clusterName, storeName, partitionNum);
+
+        partitionResponse.setCluster(clusterName);
+        partitionResponse.setName(storeName);
+        partitionResponse.setPartitionCount(partitionNum);
+      } catch (Throwable e) {
+        partitionResponse.setError(e.getMessage());
+        AdminSparkServer.handleError(e, request, response);
+      }
+
+      response.type(HttpConstants.JSON);
+      return AdminSparkServer.mapper.writeValueAsString(partitionResponse);
     };
   }
 
