@@ -115,6 +115,9 @@ public class AdminSparkServer extends AbstractVeniceService {
     httpService.post(GET_VALUE_SCHEMA_ID.getPath(), SchemaRoutes.getValueSchemaID(admin));
     httpService.get(GET_ALL_VALUE_SCHEMA.getPath(), SchemaRoutes.getAllValueSchema(admin));
 
+    httpService.post(SET_OWNER.getPath(), StoresRoutes.setOwner(admin));
+    httpService.post(SET_PARTITION_COUNT.getPath(), StoresRoutes.setPartitionCount(admin));
+
     // This API should be used by CORP controller only. H2V could talk to any of controllers in CORP to find who is the
     // current master CORP controller. In other colos, router will find the master controller instead of calling this API.
     httpService.get(MASTER_CONTROLLER.getPath(), MasterController.getRoute(admin));

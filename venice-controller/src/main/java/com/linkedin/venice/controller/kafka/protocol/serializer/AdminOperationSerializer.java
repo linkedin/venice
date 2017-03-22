@@ -59,6 +59,7 @@ public class AdminOperationSerializer {
       protocolSchemaMap.put(1, Utils.getSchemaFromResource("avro/AdminOperation/v1/AdminOperation.avsc"));
       protocolSchemaMap.put(2, Utils.getSchemaFromResource("avro/AdminOperation/v2/AdminOperation.avsc"));
       protocolSchemaMap.put(3, Utils.getSchemaFromResource("avro/AdminOperation/v3/AdminOperation.avsc"));
+      protocolSchemaMap.put(4, Utils.getSchemaFromResource("avro/AdminOperation/v4/AdminOperation.avsc"));
 
       // TODO: If we add more versions to the protocol, they should be initialized here.
 

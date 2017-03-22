@@ -7,6 +7,7 @@ public class ControllerApiConstants {
 
   public static final String NAME = "store_name";
   public static final String OWNER = "owner";
+  public static final String PARTITION_COUNT = "partition_count";
   public static final String STORE_SIZE = "store_size";
   public static final String VERSION = "version";
   public static final String STATUS = "status";

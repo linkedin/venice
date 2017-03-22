@@ -30,7 +30,6 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.TimeUnit;
 import org.apache.helix.HelixManager;
@@ -55,6 +54,7 @@ public class TestVeniceHelixAdmin {
   private VeniceControllerConfig config;
   private String keySchema = "\"string\"";
   private String valueSchema = "\"string\"";
+  private int maxNumberOfPartition = 10;
 
   private String zkAddress;
   private String kafkaZkAddress;
@@ -93,7 +93,7 @@ public class TestVeniceHelixAdmin {
         .put("zookeeper.address", zkAddress)
         .put(ConfigKeys.CLUSTER_NAME, clusterName)
         .put(ConfigKeys.KAFKA_BOOTSTRAP_SERVERS, kafkaBrokerWrapper.getAddress())
-        .put(DEFAULT_MAX_NUMBER_OF_PARTITIONS, 10)
+        .put(DEFAULT_MAX_NUMBER_OF_PARTITIONS, maxNumberOfPartition)
         .put(DEFAULT_PARTITION_SIZE, 100);
 
     controllerProps = builder.build();
@@ -450,14 +450,19 @@ public class TestVeniceHelixAdmin {
   }
 
   @Test
-  public void testCurrentVersion() throws Exception {
+  public void testUpdateStoreMetadata() throws Exception {
     String storeName = TestUtils.getUniqueString("test");
+    String owner = TestUtils.getUniqueString("owner");
+    int partitionCount = 1;
+
+    //test setting new version
+
     // The existing participant uses a non-blocking state model which will switch to COMPLETE immediately.  We add
     // an additional participant here that uses a blocking state model so it doesn't switch to complete.  This way
     // the replicas will not all be COMPLETE, and the new version will not immediately be activated.
     startParticipant(true, "localhost_6868");
-    veniceAdmin.addStore(clusterName, storeName, "owner", keySchema, valueSchema);
-    Version version = veniceAdmin.incrementVersion(clusterName, storeName, 1, 2); // 2 replicas puts a replica on the blocking participant
+    veniceAdmin.addStore(clusterName, storeName, owner, keySchema, valueSchema);
+    Version version = veniceAdmin.incrementVersion(clusterName, storeName, partitionCount, 2); // 2 replicas puts a replica on the blocking participant
     Assert.assertEquals(veniceAdmin.getCurrentVersion(clusterName, storeName), 0);
     veniceAdmin.setCurrentVersion(clusterName, storeName, version.getNumber());
     Assert.assertEquals(veniceAdmin.getCurrentVersion(clusterName, storeName), version.getNumber());
@@ -468,6 +473,34 @@ public class TestVeniceHelixAdmin {
     } catch (VeniceException e) {
       //expected
     }
+
+    //test setting owner
+    Assert.assertEquals(veniceAdmin.getStore(clusterName, storeName).getOwner(), owner);
+    String newOwner = TestUtils.getUniqueString("owner");
+
+    try {
+      veniceAdmin.setStoreOwner(clusterName, storeName, "");
+      Assert.fail("Store owner cannot be empty String");
+    } catch (VeniceException e) {
+
+    }
+
+    veniceAdmin.setStoreOwner(clusterName, storeName, newOwner);
+    Assert.assertEquals(veniceAdmin.getStore(clusterName, storeName).getOwner(), newOwner);
+
+    //test setting partition count
+    int newPartitionCount = 2;
+    Assert.assertEquals(veniceAdmin.getStore(clusterName, storeName).getPartitionCount(), partitionCount);
+
+    try {
+      veniceAdmin.setStorePartitionCount(clusterName, storeName, maxNumberOfPartition + 1);
+      Assert.fail("Partition should not exceed maxNumberOfPartition");
+    } catch (VeniceException e) {
+
+    }
+
+    veniceAdmin.setStorePartitionCount(clusterName, storeName, newPartitionCount);
+    Assert.assertEquals(veniceAdmin.getStore(clusterName, storeName).getPartitionCount(), newPartitionCount);
   }
 
   @Test

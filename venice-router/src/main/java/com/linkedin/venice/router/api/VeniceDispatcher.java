@@ -64,7 +64,7 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
 
   private final AggRouterHttpRequestStats stats;
 
-  // How many offsets behind can a storage node be for a partition and still be considered 'caught up'
+   // How many offsets behind can a storage node be for a partition and still be considered 'caught up'
   private long acceptableOffsetLag = 10000; /* TODO: make this configurable for streaming use-case */
 
   /**

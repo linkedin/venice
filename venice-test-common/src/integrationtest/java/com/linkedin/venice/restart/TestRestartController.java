@@ -44,7 +44,7 @@ public class TestRestartController {
     String storeName = TestUtils.getUniqueString("testMasterControllerFailover");
     int dataSize = 1000;
 
-    cluster.getNewStore(storeName, dataSize);
+    cluster.getNewStore(storeName);
 
     VersionCreationResponse response = cluster.getNewVersion(storeName, dataSize);
     Assert.assertFalse(response.isError());

@@ -6,9 +6,7 @@ import com.linkedin.venice.helix.HelixAdapterSerializer;
 import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
 import com.linkedin.venice.helix.HelixReadWriteSchemaRepository;
 import com.linkedin.venice.helix.Replica;
-import com.linkedin.venice.helix.ResourceAssignment;
 import com.linkedin.venice.helix.ZkWhitelistAccessor;
-import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.pushmonitor.KillOfflinePushMessage;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -24,8 +22,6 @@ import com.linkedin.venice.meta.StoreCleaner;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.pushmonitor.OfflinePushMonitor;
-import com.linkedin.venice.pushmonitor.OfflinePushStatus;
-import com.linkedin.venice.pushmonitor.PushStatusDecider;
 import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.status.StatusMessageChannel;
@@ -522,6 +518,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         repository.lock();
         try {
             Store store = repository.getStore(storeName);
+            if (store == null) {
+                throw new VeniceNoStoreException(storeName);
+            }
             if(store.containsVersion(versionNumber)) {
                 store.setCurrentVersion(versionNumber);
             } else {
@@ -531,6 +530,56 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             }
             repository.updateStore(store);
             logger.info("Set version:" + versionNumber +" for store:" + storeName);
+        } finally {
+            repository.unLock();
+        }
+    }
+
+    @Override
+    public synchronized void setStoreOwner(String clusterName, String storeName, String owner) {
+        checkControllerMastership(clusterName);
+        HelixReadWriteStoreRepository repository = getVeniceHelixResource(clusterName).getMetadataRepository();
+        repository.lock();
+        try {
+            Store store = repository.getStore(storeName);
+            if (store == null) {
+                throw new VeniceNoStoreException(storeName);
+            }
+            if (!Utils.isNullOrEmpty(owner)) {
+                store.setOwner(owner);
+            } else {
+                throw new VeniceException("store owner can't be null or empty");
+            }
+            repository.updateStore(store);
+            logger.info("Set owner:" + owner + " for store" + storeName);
+        } finally {
+            repository.unLock();
+        }
+    }
+
+    /**
+     * Since partition check/calculation only happens when adding new store version, {@link #setStorePartitionCount(String, String, int)}
+     * would only change the number of partition for the following pushes. Current version would not be changed.
+     */
+    @Override
+    public synchronized void setStorePartitionCount(String clusterName, String storeName, int partitionCount) {
+        checkControllerMastership(clusterName);
+        HelixReadWriteStoreRepository repository = getVeniceHelixResource(clusterName).getMetadataRepository();
+        repository.lock();
+        try {
+            Store store = repository.getStore(storeName);
+            if (store == null) {
+                throw new VeniceNoStoreException(storeName);
+            }
+            VeniceControllerClusterConfig config = getVeniceHelixResource(clusterName).getConfig();
+            if (partitionCount >= config.getNumberOfPartition() && partitionCount <= config.getMaxNumberOfPartition()) {
+                store.setPartitionCount(partitionCount);
+            } else {
+                throw new VeniceException("store partition number must be greater than or equal to " + config.getNumberOfPartition()
+                    + " and less than or equal to " + config.getMaxNumberOfPartition());
+            }
+            repository.updateStore(store);
+            logger.info("Set partition number: " + partitionCount + " for store" + storeName);
         } finally {
             repository.unLock();
         }

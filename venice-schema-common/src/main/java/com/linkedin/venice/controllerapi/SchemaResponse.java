@@ -5,7 +5,6 @@ import org.codehaus.jackson.annotate.JsonIgnore;
 public class SchemaResponse extends ControllerResponse { /* Uses Json Reflective Serializer, get without set may break things */
   int id;
   String schemaStr;
-
   public int getId() {
     return id;
   }

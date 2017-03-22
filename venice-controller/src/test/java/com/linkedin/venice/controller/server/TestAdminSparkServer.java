@@ -8,6 +8,8 @@ import com.linkedin.venice.controllerapi.MultiReplicaResponse;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.controllerapi.MultiVersionResponse;
 import com.linkedin.venice.controllerapi.NewStoreResponse;
+import com.linkedin.venice.controllerapi.OwnerResponse;
+import com.linkedin.venice.controllerapi.PartitionResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
@@ -50,8 +52,8 @@ public class TestAdminSparkServer {
   }
 
   @Test
-  public void controllerClientCanQueryReplicasOnAStrageNode(){
-    String topic = venice.getNewStoreVersion().getKafkaTopic();
+  public void controllerClientCanQueryReplicasOnAStorageNode(){
+    venice.getNewStoreVersion();
     MultiNodeResponse nodeResponse = ControllerClient.listStorageNodes(routerUrl, venice.getClusterName());
     String nodeId = nodeResponse.getNodes()[0];
     MultiReplicaResponse replicas = ControllerClient.listStorageNodeReplicas(routerUrl, venice.getClusterName(), nodeId);
@@ -305,7 +307,7 @@ public class TestAdminSparkServer {
   @Test
   public void controllerClientCanDeleteAllVersion() {
     String storeName = "controllerClientCanDeleteAllVersion";
-    venice.getNewStore(storeName, 100);
+    venice.getNewStore(storeName);
     venice.getNewVersion(storeName, 100);
     ControllerClient controllerClient = new ControllerClient(venice.getClusterName(), routerUrl);
 
@@ -348,5 +350,23 @@ public class TestAdminSparkServer {
     ControllerClient controllerClient = new ControllerClient(venice.getClusterName(), routerUrl);
     Assert.assertEquals(controllerClient.getLastSucceedExecutionId(venice.getClusterName()).getLastSucceedExecutionId(),
         -1);
+  }
+
+  @Test
+  public void controllerClientCanSetStoreMetadata() {
+    String storeName = TestUtils.getUniqueString("store");
+    String owner = TestUtils.getUniqueString("owner");
+    int partitionCount = 2;
+
+    venice.getNewStore(storeName);
+    ControllerClient controllerClient = new ControllerClient(venice.getClusterName(), routerUrl);
+
+    OwnerResponse ownerRes = controllerClient.setStoreOwner(venice.getClusterName(), storeName, owner);
+    Assert.assertFalse(ownerRes.isError(), ownerRes.getError());
+    Assert.assertEquals(ownerRes.getOwner(), owner);
+
+    PartitionResponse partitionRes = controllerClient.setStorePartitionCount(venice.getClusterName(), storeName, String.valueOf(partitionCount));
+    Assert.assertFalse(partitionRes.isError(), partitionRes.getError());
+    Assert.assertEquals(partitionRes.getPartitionCount(), partitionCount);
   }
 }
