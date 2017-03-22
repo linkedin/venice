@@ -368,10 +368,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         deleteHelixResource(clusterName, resourceName);
         logger.info("Killing offline push for:" + resourceName + " in cluster:" + clusterName);
         killOfflinePush(clusterName, resourceName);
-        logger.info("Deleting version " + versionNumber + " in Store:" + storeName + " in cluster:" + clusterName);
-        Version deletedVersion = deleteVersion(clusterName, storeName, versionNumber);
-        logger.info("Deleting Kafka topic: " + deletedVersion.kafkaTopicName() + " in cluster:" + clusterName);
-        deleteKafkaTopicForVersion(clusterName, deletedVersion);
+        Optional<Version> deletedVersion = deleteVersion(clusterName, storeName, versionNumber);
+        if (deletedVersion.isPresent()) {
+            deleteKafkaTopicForVersion(clusterName, deletedVersion.get());
+        }
     }
 
     @Override
@@ -391,7 +391,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     /***
      * Delete the version specified from the store and return the deleted version.
      */
-    protected Version deleteVersion(String clusterName, String storeName, int versionNumber) {
+    protected Optional<Version> deleteVersion(String clusterName, String storeName, int versionNumber) {
         HelixReadWriteStoreRepository storeRepository = getVeniceHelixResource(clusterName).getMetadataRepository();
         logger.info("Deleting version " + versionNumber + " in Store:" + storeName + " in cluster:" + clusterName);
         Version deletedVersion = null;
@@ -403,14 +403,18 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             }
             deletedVersion = store.deleteVersion(versionNumber);
             if (deletedVersion == null) {
-                throw new VeniceException("Can not find version: " + versionNumber + " in store: " + storeName);
+                logger.warn("Can not find version: " + versionNumber + " in store: " + storeName + ".  It has probably already been deleted");
             }
             storeRepository.updateStore(store);
         } finally {
             storeRepository.unLock();
         }
         logger.info("Deleted version " + versionNumber + " in Store: " + storeName + " in cluster: " + clusterName);
-        return deletedVersion;
+        if (null == deletedVersion) {
+            return Optional.empty();
+        } else {
+            return Optional.of(deletedVersion);
+        }
     }
 
     protected void deleteKafkaTopicForVersion(String clusterName, Version version) {
