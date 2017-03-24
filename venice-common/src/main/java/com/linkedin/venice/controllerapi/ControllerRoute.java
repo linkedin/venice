@@ -22,6 +22,8 @@ public enum ControllerRoute {
   KILL_OFFLINE_PUSH_JOB("/kill_offline_push_job", Arrays.asList(TOPIC)),
   LIST_STORES("/list_stores", Arrays.asList()),
   LIST_NODES("/list_instances", Arrays.asList()),
+  CLUSTER_HELATH_STORES("/cluster_health_stores", Arrays.asList()),
+  ClUSTER_HEALTH_INSTANCES("/cluster_health_instances", Arrays.asList()),
   LIST_REPLICAS("/list_replicas", Arrays.asList(NAME, VERSION)),
   NODE_REPLICAS("/storage_node_replicas", Arrays.asList(STORAGE_NODE_ID)),
   NODE_REMOVABLE("/node_removable", Arrays.asList(STORAGE_NODE_ID)),

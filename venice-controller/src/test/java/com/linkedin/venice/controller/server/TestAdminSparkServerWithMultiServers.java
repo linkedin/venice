@@ -7,6 +7,7 @@ import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.meta.Version;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.List;
 
 import com.linkedin.venice.utils.FlakyTestRetryAnalyzer;
@@ -46,7 +47,7 @@ public class TestAdminSparkServerWithMultiServers {
       storeNames.add(Version.parseStoreFromKafkaTopicName(venice.getNewStoreVersion().getKafkaTopic()));
     }
 
-    MultiStoreResponse storeResponse = ControllerClient.queryStoreList(routerUrl, venice.getClusterName());
+    MultiStoreResponse storeResponse = ControllerClient.listStores(routerUrl, venice.getClusterName());
     Assert.assertFalse(storeResponse.isError());
     List<String> returnedStoreNames = Arrays.asList(storeResponse.getStores());
     for (String expectedStore : storeNames) {

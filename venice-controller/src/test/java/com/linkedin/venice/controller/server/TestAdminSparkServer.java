@@ -3,9 +3,11 @@ package com.linkedin.venice.controller.server;
 import com.linkedin.venice.controllerapi.AdminCommandExecution;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
+import com.linkedin.venice.controllerapi.MultiNodesStatusResponse;
 import com.linkedin.venice.controllerapi.MultiNodeResponse;
 import com.linkedin.venice.controllerapi.MultiReplicaResponse;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
+import com.linkedin.venice.controllerapi.MultiStoreStatusResponse;
 import com.linkedin.venice.controllerapi.MultiVersionResponse;
 import com.linkedin.venice.controllerapi.NewStoreResponse;
 import com.linkedin.venice.controllerapi.OwnerResponse;
@@ -19,9 +21,12 @@ import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.VeniceServerWrapper;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
+import com.linkedin.venice.meta.InstanceStatus;
 import com.linkedin.venice.meta.StoreInfo;
+import com.linkedin.venice.meta.StoreStatus;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.TestUtils;
+import java.util.ArrayList;
 import java.util.List;
 import org.apache.avro.Schema;
 import org.testng.Assert;
@@ -52,8 +57,18 @@ public class TestAdminSparkServer {
   }
 
   @Test
-  public void controllerClientCanQueryReplicasOnAStorageNode(){
-    venice.getNewStoreVersion();
+  public void controllerClientCanQueryInstanceStatusInCluster() {
+    MultiNodesStatusResponse nodeResponse =
+        ControllerClient.listInstancesStatuses(routerUrl, venice.getClusterName());
+    Assert.assertFalse(nodeResponse.isError(), nodeResponse.getError());
+    Assert.assertEquals(nodeResponse.getInstancesStatusMap().size(), 1, "Node count does not match");
+    Assert.assertEquals(nodeResponse.getInstancesStatusMap().values().iterator().next(),
+        InstanceStatus.CONNECTED.toString(), "Node status does not match.");
+  }
+
+  @Test
+  public void controllerClientCanQueryReplicasOnAStrageNode(){
+    String topic = venice.getNewStoreVersion().getKafkaTopic();
     MultiNodeResponse nodeResponse = ControllerClient.listStorageNodes(routerUrl, venice.getClusterName());
     String nodeId = nodeResponse.getNodes()[0];
     MultiReplicaResponse replicas = ControllerClient.listStorageNodeReplicas(routerUrl, venice.getClusterName(), nodeId);
@@ -368,5 +383,29 @@ public class TestAdminSparkServer {
     PartitionResponse partitionRes = controllerClient.setStorePartitionCount(venice.getClusterName(), storeName, String.valueOf(partitionCount));
     Assert.assertFalse(partitionRes.isError(), partitionRes.getError());
     Assert.assertEquals(partitionRes.getPartitionCount(), partitionCount);
+  }
+
+  @Test
+  public void controllerClientCanListStoresStatuses() {
+    List<String> storeNames = new ArrayList<>();
+    int storeCount = 2;
+    for (int i = 0; i < storeCount; i++) {
+      storeNames.add(venice.getNewStore("testStore" + i, "test").getName());
+    }
+    ControllerClient controllerClient = new ControllerClient(venice.getClusterName(), routerUrl);
+
+    MultiStoreStatusResponse storeResponse =
+        controllerClient.listStoresStatuses(venice.getClusterName());
+    Assert.assertFalse(storeResponse.isError());
+    Assert.assertEquals(storeResponse.getStoreStatusMap().size(), storeCount,
+        "Result of listing store status should contain all stores we created.");
+    for (String status : storeResponse.getStoreStatusMap().values()) {
+      Assert.assertEquals(status, StoreStatus.UNAVAILABLE.toString(),
+          "Store should be unavailable because we have not created a version for this store.");
+    }
+    for (String expectedStore : storeNames) {
+      Assert.assertTrue(storeResponse.getStoreStatusMap().containsKey(expectedStore),
+          "Result of list store status should contain the store we created: " + expectedStore);
+    }
   }
 }

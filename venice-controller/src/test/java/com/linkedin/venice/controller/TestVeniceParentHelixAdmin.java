@@ -662,7 +662,7 @@ public class TestVeniceParentHelixAdmin {
     String valueSchemaStr = "\"string\"";
 
     ControllerClient.createNewStore(controllerUrl, clusterName, storeName, owner, keySchemaStr, valueSchemaStr);
-    MultiStoreResponse response = ControllerClient.queryStoreList(controllerUrl, clusterName);
+    MultiStoreResponse response = ControllerClient.listStores(controllerUrl, clusterName);
     String[] stores = response.getStores();
     Assert.assertEquals(stores.length, 1);
     Assert.assertEquals(stores[0], storeName);

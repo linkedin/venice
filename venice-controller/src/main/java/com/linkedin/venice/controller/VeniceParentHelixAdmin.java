@@ -400,6 +400,11 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   @Override
+  public Map<String, String> getAllStoreStatuses(String clusterName) {
+    throw new VeniceException("getAllStoreStatuses is not supported yet!");
+  }
+
+  @Override
   public Store getStore(String clusterName, String storeName) {
     return veniceHelixAdmin.getStore(clusterName, storeName);
   }
@@ -538,6 +543,11 @@ public class VeniceParentHelixAdmin implements Admin {
   @Override
   public List<String> getStorageNodes(String clusterName) {
     throw new VeniceException("getStorageNodes is not supported!");
+  }
+
+  @Override
+  public Map<String, String> getStorageNodesStatus(String clusterName) {
+    throw new VeniceException("getStorageNodesStatus is not supported!");
   }
 
   private Map<String, ControllerClient> getControllerClientMap(String clusterName){
@@ -845,8 +855,8 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   @Override
-  public StorageNodeStatus getStorageNodeStatus(String clusterName, String instanceId) {
-    throw new VeniceException("getStorageNodeStatus is not supported!");
+  public StorageNodeStatus getStorageNodesStatus(String clusterName, String instanceId) {
+    throw new VeniceException("getStorageNodesStatus is not supported!");
   }
 
   @Override
