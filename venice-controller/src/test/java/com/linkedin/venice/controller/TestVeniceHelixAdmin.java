@@ -689,8 +689,8 @@ public class TestVeniceHelixAdmin {
       return true;
     });
     //Now all of replica in bootstrap state
-    StorageNodeStatus status1 = veniceAdmin.getStorageNodeStatus(clusterName, nodeId);
-    StorageNodeStatus status2 = veniceAdmin.getStorageNodeStatus(clusterName, newNodeId);
+    StorageNodeStatus status1 = veniceAdmin.getStorageNodesStatus(clusterName, nodeId);
+    StorageNodeStatus status2 = veniceAdmin.getStorageNodesStatus(clusterName, newNodeId);
     for (int i = 0; i < partitionCount; i++) {
       Assert.assertEquals(status1.getStatusValueForReplica(HelixUtils.getPartitionName(version.kafkaTopicName(), i)),
           HelixState.BOOTSTRAP.getStateValue(), "Replica in server1 should hang on BOOTSTRAP");
@@ -715,7 +715,7 @@ public class TestVeniceHelixAdmin {
       }
       return true;
     });
-    StorageNodeStatus newStatus2 = veniceAdmin.getStorageNodeStatus(clusterName, newNodeId);
+    StorageNodeStatus newStatus2 = veniceAdmin.getStorageNodesStatus(clusterName, newNodeId);
     Assert.assertTrue(newStatus2.isNewerOrEqual(status2), "ONLINE replicas should be newer than BOOTSTRAP replicas");
   }
 

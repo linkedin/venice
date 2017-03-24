@@ -261,22 +261,33 @@ public class ControllerClient implements Closeable {
     return response;
   }
 
-  public MultiStoreResponse queryStoreList(String clusterName) {
+  public MultiStoreResponse listStores(String clusterName) {
     try {
       List<NameValuePair> queryParams = newParams(clusterName);
       String responseJson = getRequest(ControllerRoute.LIST_STORES.getPath(), queryParams);
       return mapper.readValue(responseJson, MultiStoreResponse.class);
     } catch (Exception e){
-      return handleError(new VeniceException("Error querying store list for cluster: " + clusterName, e), new MultiStoreResponse());
+      return handleError(new VeniceException("Error listing store for cluster: " + clusterName, e), new MultiStoreResponse());
     }
   }
 
   @Deprecated
-  public static MultiStoreResponse queryStoreList(String urlsToFindMasterController, String clusterName){
+  public static MultiStoreResponse listStores(String urlsToFindMasterController, String clusterName){
     try (ControllerClient client = new ControllerClient(clusterName, urlsToFindMasterController)){
-      return client.queryStoreList(clusterName);
+      return client.listStores(clusterName);
     } catch (Exception e){
-      return handleError(new VeniceException("Error querying store list for cluster: " + clusterName, e), new MultiStoreResponse());
+      return handleError(new VeniceException("Error listing store for cluster: " + clusterName, e), new MultiStoreResponse());
+    }
+  }
+
+  public MultiStoreStatusResponse listStoresStatuses(String clusterName) {
+    try {
+      List<NameValuePair> queryParams = newParams(clusterName);
+      String responseJson = getRequest(ControllerRoute.CLUSTER_HELATH_STORES.getPath(), queryParams);
+      return mapper.readValue(responseJson, MultiStoreStatusResponse.class);
+    } catch (Exception e) {
+      return handleError(new VeniceException("Error listing store status for cluster: " + clusterName, e),
+          new MultiStoreStatusResponse());
     }
   }
 
@@ -405,6 +416,26 @@ public class ControllerClient implements Closeable {
       return client.listStorageNodes(clusterName);
     } catch (Exception e){
       return handleError(new VeniceException("Error listing nodes", e), new MultiNodeResponse());
+    }
+  }
+
+  public MultiNodesStatusResponse listInstancesStatuses(String clusterName) {
+    try {
+      List<NameValuePair> queryParams = newParams(clusterName);
+      String responseJson = getRequest(ControllerRoute.ClUSTER_HEALTH_INSTANCES.getPath(), queryParams);
+      return mapper.readValue(responseJson, MultiNodesStatusResponse.class);
+    } catch (Exception e) {
+      return handleError(new VeniceException("Error listing nodes", e), new MultiNodesStatusResponse());
+    }
+  }
+
+  @Deprecated
+  public static MultiNodesStatusResponse listInstancesStatuses(String urlsToFindMasterController,
+      String clusterName) {
+    try (ControllerClient client = new ControllerClient(clusterName, urlsToFindMasterController)) {
+      return client.listInstancesStatuses(clusterName);
+    } catch (Exception e) {
+      return handleError(new VeniceException("Error listing nodes", e), new MultiNodesStatusResponse());
     }
   }
 

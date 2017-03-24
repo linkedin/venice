@@ -5,6 +5,7 @@ import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.AdminCommandExecutionTracker;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.MultiStoreResponse;
+import com.linkedin.venice.controllerapi.MultiStoreStatusResponse;
 import com.linkedin.venice.controllerapi.MultiVersionResponse;
 import com.linkedin.venice.controllerapi.OwnerResponse;
 import com.linkedin.venice.controllerapi.PartitionResponse;
@@ -12,10 +13,14 @@ import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreInfo;
+import com.linkedin.venice.meta.StoreStatus;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.Utils;
 import java.util.Collections;
+import java.util.HashMap;
+import java.util.Iterator;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import spark.Route;
 
@@ -38,6 +43,24 @@ public class StoresRoutes {
         }
         responseObject.setStores(storeNameList);
       } catch (Throwable e) {
+        responseObject.setError(e.getMessage());
+        AdminSparkServer.handleError(e, request, response);
+      }
+      response.type(HttpConstants.JSON);
+      return AdminSparkServer.mapper.writeValueAsString(responseObject);
+    };
+  }
+
+  public static Route getAllStoresStatuses(Admin admin){
+    return (request, response) -> {
+      MultiStoreStatusResponse responseObject = new MultiStoreStatusResponse();
+      try {
+        AdminSparkServer.validateParams(request, CLUSTER_HELATH_STORES.getParams(), admin);
+        String clusterName = request.queryParams(CLUSTER);
+        responseObject.setCluster(clusterName);
+        Map<String, String> storeStatusMap = admin.getAllStoreStatuses(clusterName);
+        responseObject.setStoreStatusMap(storeStatusMap);
+      }catch (Throwable e) {
         responseObject.setError(e.getMessage());
         AdminSparkServer.handleError(e, request, response);
       }

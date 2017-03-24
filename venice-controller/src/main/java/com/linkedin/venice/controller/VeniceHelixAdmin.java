@@ -1,12 +1,16 @@
 package com.linkedin.venice.controller;
 
+import com.linkedin.venice.controller.kafka.StoreStatusDecider;
 import com.linkedin.venice.controller.kafka.consumer.AdminConsumerService;
 import com.linkedin.venice.exceptions.SchemaIncompatibilityException;
 import com.linkedin.venice.helix.HelixAdapterSerializer;
 import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
 import com.linkedin.venice.helix.HelixReadWriteSchemaRepository;
 import com.linkedin.venice.helix.Replica;
+import com.linkedin.venice.helix.ResourceAssignment;
 import com.linkedin.venice.helix.ZkWhitelistAccessor;
+import com.linkedin.venice.meta.InstanceStatus;
+import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.pushmonitor.KillOfflinePushMessage;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -488,6 +492,23 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
 
     @Override
+    public Map<String, String> getAllStoreStatuses(String clusterName) {
+        checkControllerMastership(clusterName);
+        HelixReadWriteStoreRepository repository = getVeniceHelixResource(clusterName).getMetadataRepository();
+        repository.lock();
+        try {
+            List<Store> storeList = repository.listStores();
+            RoutingDataRepository routingDataRepository =
+                getVeniceHelixResource(clusterName).getRoutingDataRepository();
+            ResourceAssignment resourceAssignment = routingDataRepository.getResourceAssignment();
+            return StoreStatusDecider.getStoreStatues(storeList, resourceAssignment,
+                getVeniceHelixResource(clusterName).getConfig());
+        } finally {
+            repository.unLock();
+        }
+    }
+
+    @Override
     public boolean hasStore(String clusterName, String storeName) {
         checkControllerMastership(clusterName);
         HelixReadWriteStoreRepository repository = getVeniceHelixResource(clusterName).getMetadataRepository();
@@ -711,6 +732,23 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     public List<String> getStorageNodes(String clusterName){
         checkControllerMastership(clusterName);
         return admin.getInstancesInCluster(clusterName);
+    }
+
+    @Override
+    public Map<String, String> getStorageNodesStatus(String clusterName) {
+        checkControllerMastership(clusterName);
+        List<String> instances = admin.getInstancesInCluster(clusterName);
+        RoutingDataRepository routingDataRepository = getVeniceHelixResource(clusterName).getRoutingDataRepository();
+        Set<String> liveInstances = routingDataRepository.getLiveInstancesMap().keySet();
+        Map<String, String> instancesStatusesMap = new HashMap<>();
+        for (String instance : instances) {
+            if (liveInstances.contains(instance)) {
+                instancesStatusesMap.put(instance, InstanceStatus.CONNECTED.toString());
+            } else {
+                instancesStatusesMap.put(instance, InstanceStatus.DISCONNECTED.toString());
+            }
+        }
+        return instancesStatusesMap;
     }
 
     @Override
@@ -1016,7 +1054,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
 
     @Override
-    public StorageNodeStatus getStorageNodeStatus(String clusterName, String instanceId) {
+    public StorageNodeStatus getStorageNodesStatus(String clusterName, String instanceId) {
         checkControllerMastership(clusterName);
         List<Replica> replicas = getReplicasOfStorageNode(clusterName, instanceId);
         StorageNodeStatus status = new StorageNodeStatus();
@@ -1033,7 +1071,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     public boolean isStorageNodeNewerOrEqualTo(String clusterName, String instanceId,
         StorageNodeStatus oldStatus) {
         checkControllerMastership(clusterName);
-        StorageNodeStatus currentStatus = getStorageNodeStatus(clusterName, instanceId);
+        StorageNodeStatus currentStatus = getStorageNodesStatus(clusterName, instanceId);
         return currentStatus.isNewerOrEqual(oldStatus);
     }
 

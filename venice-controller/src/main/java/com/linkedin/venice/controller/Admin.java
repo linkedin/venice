@@ -64,6 +64,16 @@ public interface Admin {
     List<Version> versionsForStore(String clusterName, String storeName);
 
     List<Store> getAllStores(String clusterName);
+
+    /**
+     * Get the statuses of all stores. The store status is decided by the current version. For example, if one partition
+     * only have 2 ONLINE replicas in the current version, we say this store is under replicated. Refer to {@link
+     * com.linkedin.venice.meta.StoreStatus} for the definition of each status.
+     *
+     * @return a map which's key is store name and value is store's status.
+     */
+    Map<String,String> getAllStoreStatuses(String clusterName);
+
     Store getStore(String clusterName, String storeName);
 
     boolean hasStore(String clusterName, String storeName);
@@ -89,6 +99,8 @@ public interface Admin {
     void setStorePartitionCount(String clusterName, String storeName, int partitionCount);
 
     List<String> getStorageNodes(String clusterName);
+
+    Map<String, String> getStorageNodesStatus(String clusterName);
 
     /**
      * Stop the helix controller for a single cluster.
@@ -203,7 +215,7 @@ public interface Admin {
      * <li>OFFLINE=3</li> <li>BOOTSTRAP=4</li> <li>ONLINE=5</li> </ul> So this method will return a map, the key is the
      * replica name which is composed by resource name and partitionId, and the value is the "status" of this replica.
      */
-    StorageNodeStatus getStorageNodeStatus(String clusterName, String instanceId);
+    StorageNodeStatus getStorageNodesStatus(String clusterName, String instanceId);
 
     /**
      * Compare the current storage node status and the given storage node status to check is the current one is "Newer"

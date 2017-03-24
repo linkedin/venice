@@ -9,9 +9,11 @@ import com.linkedin.venice.client.store.AvroStoreClientFactory;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
+import com.linkedin.venice.controllerapi.MultiNodesStatusResponse;
 import com.linkedin.venice.controllerapi.MultiNodeResponse;
 import com.linkedin.venice.controllerapi.MultiReplicaResponse;
 import com.linkedin.venice.controllerapi.MultiStoreResponse;
+import com.linkedin.venice.controllerapi.MultiStoreStatusResponse;
 import com.linkedin.venice.controllerapi.MultiVersionResponse;
 import com.linkedin.venice.controllerapi.NewStoreResponse;
 import com.linkedin.venice.controllerapi.OwnerResponse;
@@ -111,7 +113,7 @@ public class AdminTool {
       }
 
       if (cmd.hasOption(Command.LIST_STORES.toString())){
-        MultiStoreResponse storeResponse = ControllerClient.queryStoreList(routerHosts, clusterName);
+        MultiStoreResponse storeResponse = ControllerClient.listStores(routerHosts, clusterName);
         printObject(storeResponse);
       } else if (cmd.hasOption(Command.DESCRIBE_STORE.toString())){
         String storeName = getRequiredArgument(cmd, Arg.STORE, Command.DESCRIBE_STORE);
@@ -119,7 +121,7 @@ public class AdminTool {
           printStoreDescription(routerHosts, clusterName, store);
         }
       } else if (cmd.hasOption(Command.DESCRIBE_STORES.toString())){
-        MultiStoreResponse storeResponse = ControllerClient.queryStoreList(routerHosts, clusterName);
+        MultiStoreResponse storeResponse = ControllerClient.listStores(routerHosts, clusterName);
         for (String store : storeResponse.getStores()) {
           printStoreDescription(routerHosts, clusterName, store);
         }
@@ -167,6 +169,10 @@ public class AdminTool {
         applyValueSchemaToStore(cmd, routerHosts, clusterName);
       } else if (cmd.hasOption(Command.LIST_STORAGE_NODES.toString())) {
         printStorageNodeList(routerHosts, clusterName);
+      } else if (cmd.hasOption(Command.CLUSTER_HEALTH_INSTANCES.toString())) {
+        printInstancesStatuses(clusterName);
+      }  else if (cmd.hasOption(Command.CLUSTER_HEALTH_STORES.toString())) {
+        printStoresStatuses(clusterName);
       } else if (cmd.hasOption(Command.NODE_REMOVABLE.toString())){
         isNodeRemovable(cmd, routerHosts, clusterName);
       } else if (cmd.hasOption(Command.REPLICAS_OF_STORE.toString())) {
@@ -350,6 +356,17 @@ public class AdminTool {
     printObject(nodeResponse);
   }
 
+  private static void printInstancesStatuses(String clusterName){
+    MultiNodesStatusResponse nodeResponse = controllerClient.listInstancesStatuses(clusterName);
+    printObject(nodeResponse);
+  }
+
+  private static void printStoresStatuses(String clusterName) {
+    MultiStoreStatusResponse storeResponse = controllerClient.listStoresStatuses(clusterName);
+    printObject(storeResponse);
+  }
+
+
   private static void printReplicaListForStoreVersion(CommandLine cmd, String routerHosts, String clusterName){
     String store = getRequiredArgument(cmd, Arg.STORE, Command.REPLICAS_OF_STORE);
     int version = Utils.parseIntFromString(getRequiredArgument(cmd, Arg.VERSION, Command.REPLICAS_OF_STORE),
@@ -395,6 +412,7 @@ public class AdminTool {
         exampleArgs.add("--" + a.toString());
         exampleArgs.add("<" + a.toString() + ">");
       }
+
       System.err.println(command + " --" + c.toString() + " " + exampleArgs.toString());
     }
     System.exit(1);
@@ -414,13 +432,21 @@ public class AdminTool {
     return cmd.getOptionValue(arg.first());
   }
 
+  private static String getOptionalArgument(CommandLine cmd, Arg arg, String defaultArgValue) {
+    if (!cmd.hasOption(arg.first())) {
+      return defaultArgValue;
+    } else {
+      return cmd.getOptionValue(arg.first());
+    }
+  }
+
   private static void verifyStoreExistence(String routerHosts, String cluster, String storename, boolean desiredExistence){
-    MultiStoreResponse storeResponse = ControllerClient.queryStoreList(routerHosts, cluster);
+    MultiStoreResponse storeResponse = ControllerClient.listStores(routerHosts, cluster);
     if (storeResponse.isError()){
       throw new VeniceException("Error verifying store exists: " + storeResponse.getError());
     }
     boolean storeExists = false;
-    for (String s : storeResponse.getStores()){
+    for (String s : storeResponse.getStores()) {
       if (s.equals(storename)){
         storeExists = true;
         break;

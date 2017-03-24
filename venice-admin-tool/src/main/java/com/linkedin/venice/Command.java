@@ -36,6 +36,9 @@ public enum Command {
       new Arg[] {Arg.URL, Arg.CLUSTER, Arg.STORE, Arg.VALUE_SCHEMA}),
   LIST_STORAGE_NODES("list-storage-nodes", "",
       new Arg[] {Arg.URL, Arg.CLUSTER}),
+  CLUSTER_HEALTH_INSTANCES("cluster-health-instances", "List the status for every instance",
+      new Arg[]{Arg.URL, Arg.CLUSTER}),
+  CLUSTER_HEALTH_STORES("cluster-health-stores", "List the status for every store", new Arg[]{Arg.URL, Arg.CLUSTER}),
   NODE_REMOVABLE("node-removable", "A node is removable if all replicas it is serving are available on other nodes",
       new Arg[] {Arg.URL, Arg.CLUSTER, Arg.STORAGE_NODE}),
   REPLICAS_OF_STORE("replicas-of-store", "List the location and status of all replicas for a store",
@@ -84,6 +87,7 @@ public enum Command {
     }
 
     sj.add("Requires: " + arguments.toString());
+
     return sj.toString();
   }
 }
