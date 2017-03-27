@@ -8,12 +8,22 @@ import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
-import javax.net.ssl.HostnameVerifier;
+import java.util.Optional;
+import java.util.concurrent.TimeUnit;
 import javax.net.ssl.SSLContext;
-import javax.net.ssl.SSLSession;
+import org.apache.http.config.RegistryBuilder;
 import org.apache.http.impl.nio.client.CloseableHttpAsyncClient;
 import org.apache.http.impl.nio.client.HttpAsyncClients;
+import org.apache.http.impl.nio.conn.PoolingNHttpClientConnectionManager;
+import org.apache.http.impl.nio.reactor.DefaultConnectingIOReactor;
+import org.apache.http.impl.nio.reactor.IOReactorConfig;
+import org.apache.http.nio.conn.NoopIOSessionStrategy;
+import org.apache.http.nio.conn.SchemeIOSessionStrategy;
 import org.apache.http.nio.conn.ssl.SSLIOSessionStrategy;
+import org.apache.http.nio.reactor.ConnectingIOReactor;
+import org.apache.http.nio.reactor.IOReactorException;
+
+import static com.linkedin.venice.HttpConstants.*;
 
 
 public class SslUtils {
@@ -65,27 +75,76 @@ public class SslUtils {
   }
 
   public static SSLIOSessionStrategy getSslStrategy(SSLEngineComponentFactory sslFactory) {
-    SSLContext sslContext = SslUtils.getLocalSslFactory().getSSLContext();
+    SSLContext sslContext = sslFactory.getSSLContext();
     SSLIOSessionStrategy sslSessionStrategy = new SSLIOSessionStrategy(sslContext);
     return sslSessionStrategy;
   }
 
+  public static CloseableHttpAsyncClient getMinimalHttpClient(int maxConnPerRoute, int maxConnTotal, Optional<SSLEngineComponentFactory> sslFactory) {
+    PoolingNHttpClientConnectionManager connectionManager = createConnectionManager(maxConnPerRoute, maxConnTotal, sslFactory);
+    reapIdleConnections(connectionManager, 10, TimeUnit.MINUTES, 2, TimeUnit.HOURS);
+    return HttpAsyncClients.createMinimal(connectionManager);
+  }
+
   /**
-   * Use this as an SSL-enabled client for use in unit tests.  Uses the unit-test provided localhost certificate.
-   * Most of venice will pick up the local hosts defined hostname, so this provides a return-true hostname verifier
-   * This client needs to be started before use, and closed after use.
+   * Creates and returns a new connection manager on every invocation.
+   *
+   * Client level SSL Strategies get blown away when you specify a connection manager, so we need to specify
+   * scheme-specific strategies in the connection manager in order to make HTTPS requests.
    * @return
    */
-  public static CloseableHttpAsyncClient getSslClient(){
-    CloseableHttpAsyncClient httpclient = HttpAsyncClients.custom()
-        .setSSLStrategy(getSslStrategy(getLocalSslFactory()))
-        .setSSLHostnameVerifier(new HostnameVerifier() {
-          @Override
-          public boolean verify(String s, SSLSession sslSession) {
-            return true;
-          }
-        })
+  public static PoolingNHttpClientConnectionManager createConnectionManager(int perRoute, int total, Optional<SSLEngineComponentFactory> sslFactory) {
+    IOReactorConfig ioReactorConfig = IOReactorConfig.custom()
+        .setSoKeepAlive(true)
         .build();
-    return httpclient;
+    ConnectingIOReactor ioReactor = null;
+    try {
+      ioReactor = new DefaultConnectingIOReactor(ioReactorConfig);
+    } catch (IOReactorException e) {
+      throw new VeniceException("Router failed to create an IO Reactor", e);
+    }
+    PoolingNHttpClientConnectionManager connMgr;
+    if(sslFactory.isPresent()) {
+      SSLIOSessionStrategy sslStrategy = getSslStrategy(sslFactory.get());
+      RegistryBuilder<SchemeIOSessionStrategy> registryBuilder = RegistryBuilder.create();
+      registryBuilder.register(HTTPS, sslStrategy).register(HTTP, NoopIOSessionStrategy.INSTANCE);
+      connMgr = new PoolingNHttpClientConnectionManager(ioReactor, registryBuilder.build());
+    } else {
+      connMgr = new PoolingNHttpClientConnectionManager(ioReactor);
+    }
+    connMgr.setMaxTotal(total);
+    connMgr.setDefaultMaxPerRoute(perRoute);
+
+    //TODO: Configurable
+    reapIdleConnections(connMgr, 10, TimeUnit.MINUTES, 2, TimeUnit.HOURS);
+
+    return connMgr;
+  }
+
+  /**
+   * Creates a new thread that automatically cleans up idle connections on the specified connection manager.
+   * @param connectionManager  Connection manager with idle connections that should be reaped
+   * @param sleepTime how frequently to wake up and reap idle connections
+   * @param sleepTimeUnits
+   * @param maxIdleTime how long a connection must be idle in order to be eligible for reaping
+   * @param maxIdleTimeUnits
+   * @return started daemon thread that is doing the reaping.  Interrupt this thread to halt reaping or ignore the return value.
+   */
+  private static Thread reapIdleConnections(PoolingNHttpClientConnectionManager connectionManager,
+    long sleepTime, TimeUnit sleepTimeUnits,
+    long maxIdleTime, TimeUnit maxIdleTimeUnits) {
+    Thread idleConnectionReaper = new Thread(()->{
+      while (true){
+        try {
+          Thread.sleep(sleepTimeUnits.toMillis(sleepTime));
+          connectionManager.closeIdleConnections(maxIdleTime, maxIdleTimeUnits);
+        } catch (InterruptedException e){
+          break;
+        }
+      }
+    }, "ConnectionManagerIdleReaper");
+    idleConnectionReaper.setDaemon(true);
+    idleConnectionReaper.start();
+    return idleConnectionReaper;
   }
 }

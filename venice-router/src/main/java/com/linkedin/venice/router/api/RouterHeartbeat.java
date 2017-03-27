@@ -50,19 +50,7 @@ public class RouterHeartbeat extends AbstractVeniceService {
 
     int maxConnectionsPerRoute = 2;
     int maxConnections = 100;
-    HttpAsyncClientBuilder clientBuilder = HttpAsyncClients.custom()
-          .setConnectionReuseStrategy(new DefaultConnectionReuseStrategy())  //Supports connection re-use if able
-          .setConnectionManager(VeniceDispatcher.createConnectionManager(maxConnectionsPerRoute, maxConnections, sslFactory))
-          .setDefaultRequestConfig(
-              RequestConfig.custom()
-                  .setSocketTimeout(heartbeatTimeoutMillis)
-                  .setConnectTimeout(heartbeatTimeoutMillis)
-                  .setConnectionRequestTimeout(heartbeatTimeoutMillis).build() // 10 second sanity timeout.
-          );
-    if (sslFactory.isPresent()){
-      clientBuilder = clientBuilder.setSSLStrategy(SslUtils.getSslStrategy(sslFactory.get()));
-    }
-    httpClient = clientBuilder.build();
+    httpClient = SslUtils.getMinimalHttpClient(maxConnectionsPerRoute, maxConnections, sslFactory);
     Runnable runnable = () -> {
       boolean running = true;
 
@@ -92,9 +80,7 @@ public class RouterHeartbeat extends AbstractVeniceService {
             String instanceUrl = instance.getUrl(sslFactory.isPresent());
             final HttpGet get = new HttpGet(instanceUrl + "/" + QueryAction.HEALTH.toString().toLowerCase());
             try {
-              // heartbeatTimeout is being used as the socket connection timeout.  By specifying a longer timeout here (* 1.1)
-              // we insist that the socket timeout should trigger before this timeout triggers.
-              HttpResponse response = httpClient.execute(get, null).get((long) (heartbeatTimeoutMillis * 1.1), TimeUnit.MILLISECONDS);
+              HttpResponse response = httpClient.execute(get, null).get((long) (heartbeatTimeoutMillis), TimeUnit.MILLISECONDS);
               int code = response.getStatusLine().getStatusCode();
               if (code != SC_OK) {
                 logger.warn("Heartbeat returns " + code + " for " + instanceUrl);

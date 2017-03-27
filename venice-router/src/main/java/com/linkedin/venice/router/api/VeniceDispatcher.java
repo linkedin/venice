@@ -32,25 +32,17 @@ import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.Executor;
+import java.util.concurrent.TimeUnit;
 import javax.annotation.Nonnull;
 import org.apache.commons.io.IOUtils;
 import org.apache.http.HttpStatus;
 import org.apache.http.client.config.RequestConfig;
 import org.apache.http.client.methods.HttpGet;
 import org.apache.http.concurrent.FutureCallback;
-import org.apache.http.config.RegistryBuilder;
 import org.apache.http.impl.DefaultConnectionReuseStrategy;
 import org.apache.http.impl.nio.client.CloseableHttpAsyncClient;
 import org.apache.http.impl.nio.client.HttpAsyncClientBuilder;
 import org.apache.http.impl.nio.client.HttpAsyncClients;
-import org.apache.http.impl.nio.conn.PoolingNHttpClientConnectionManager;
-import org.apache.http.impl.nio.reactor.DefaultConnectingIOReactor;
-import org.apache.http.impl.nio.reactor.IOReactorConfig;
-import org.apache.http.nio.conn.NoopIOSessionStrategy;
-import org.apache.http.nio.conn.SchemeIOSessionStrategy;
-import org.apache.http.nio.conn.ssl.SSLIOSessionStrategy;
-import org.apache.http.nio.reactor.ConnectingIOReactor;
-import org.apache.http.nio.reactor.IOReactorException;
 import org.apache.log4j.Logger;
 
 import static com.linkedin.venice.HttpConstants.*;
@@ -83,19 +75,7 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
    * @param sslFactory if this is present, it will be used to make SSL requests to storage nodes.
    */
   public VeniceDispatcher(VeniceHostHealth healthMonitor, int clientTimeoutMillis, MetricsRepository metricsRepository, Optional<SSLEngineComponentFactory> sslFactory){
-    HttpAsyncClientBuilder clientBuilder = HttpAsyncClients.custom()
-        .setConnectionReuseStrategy(new DefaultConnectionReuseStrategy())  //Supports connection re-use if able
-        .setConnectionManager(createConnectionManager(200, 200, sslFactory))
-        .setDefaultRequestConfig(
-            RequestConfig.custom()
-                .setSocketTimeout(clientTimeoutMillis)
-                .setConnectTimeout(clientTimeoutMillis)
-                .setConnectionRequestTimeout(clientTimeoutMillis).build() // 10 second sanity timeout.
-        );
-    if (sslFactory.isPresent()){
-      clientBuilder = clientBuilder.setSSLStrategy(SslUtils.getSslStrategy(sslFactory.get()));
-    }
-    httpClient = clientBuilder.build();
+    httpClient = SslUtils.getMinimalHttpClient(50, 1000, sslFactory);
     httpClient.start();
     this.healthMontior = healthMonitor;
     stats = new AggRouterHttpRequestStats(metricsRepository);
@@ -258,35 +238,5 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
 
   protected static String numberFromPartitionName(String partitionName){
     return partitionName.substring(partitionName.lastIndexOf("_")+1);
-  }
-
-  /**
-   * Creates and returns a new connection manager on every invocation.
-   *
-   * Client level SSL Strategies get blown away when you specify a connection manager, so we need to specify
-   * scheme-specific strategies in the connection manager in order to make HTTPS requests.
-   * @return
-   */
-  public static PoolingNHttpClientConnectionManager createConnectionManager(int perRoute, int total, Optional<SSLEngineComponentFactory> sslFactory) {
-    IOReactorConfig ioReactorConfig = IOReactorConfig.custom().build();
-    ConnectingIOReactor ioReactor = null;
-    try {
-      ioReactor = new DefaultConnectingIOReactor(ioReactorConfig);
-    } catch (IOReactorException e) {
-      throw new VeniceException("Router failed to create an IO Reactor", e);
-    }
-    PoolingNHttpClientConnectionManager connMgr;
-    if(sslFactory.isPresent()) {
-      SSLIOSessionStrategy sslStrategy = SslUtils.getSslStrategy(sslFactory.get());
-      RegistryBuilder<SchemeIOSessionStrategy> registryBuilder = RegistryBuilder.create();
-      // This connection manager will ONLY support https urls without the HTTP strategy, we could consider commenting it out.
-      registryBuilder.register(HTTPS, sslStrategy).register(HTTP, NoopIOSessionStrategy.INSTANCE);
-      connMgr = new PoolingNHttpClientConnectionManager(ioReactor, registryBuilder.build());
-    } else {
-      connMgr = new PoolingNHttpClientConnectionManager(ioReactor);
-    }
-    connMgr.setMaxTotal(total);
-    connMgr.setDefaultMaxPerRoute(perRoute);
-    return connMgr;
   }
 }
