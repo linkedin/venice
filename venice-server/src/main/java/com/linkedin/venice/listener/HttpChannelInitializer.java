@@ -15,6 +15,8 @@ import io.tehuti.metrics.MetricsRepository;
 import java.util.Optional;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+
 
 public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
 
@@ -26,7 +28,7 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
 
   //TODO make this configurable
   private static final int numRestServiceStorageThreads = 8;
-  private static int NETTY_IDLE_TIME_IN_SECONDS = 300; // 5 mins
+  private static int NETTY_IDLE_TIME_IN_SECONDS = (int) TimeUnit.HOURS.toSeconds(3);
 
   public HttpChannelInitializer(StoreRepository storeRepository, OffsetManager offsetManager, MetricsRepository metricsRepository, Optional<SSLEngineComponentFactory> sslFactory) {
     this.executor = Executors.newFixedThreadPool(

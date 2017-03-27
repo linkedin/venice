@@ -16,6 +16,7 @@ import io.netty.handler.codec.http.QueryStringDecoder;
 import io.netty.handler.timeout.IdleState;
 import io.netty.handler.timeout.IdleStateEvent;
 
+import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 
@@ -96,7 +97,14 @@ public class GetRequestHttpHandler extends ChannelInboundHandlerAdapter {
   }
 
   static GetRequestObject parseReadFromUri(String uri){
-    String[] requestParts = uri.split("/");
+    // Sometimes req.uri() gives a full uri (eg https://host:port/path) and sometimes it only gives a path
+    // Generating a URI lets us always take just the path but we need to add on the query string
+    URI fullUri = URI.create(uri);
+    String path = fullUri.getRawPath();
+    if (fullUri.getRawQuery() != null){
+      path += "?" + fullUri.getRawQuery();
+    }
+    String[] requestParts = path.split("/");
     if (requestParts.length == 5) {//   [0]""/[1]"action"/[2]"store"/[3]"partition"/[4]"key"
       GetRequestObject request = new GetRequestObject();
       request.setStore(requestParts[2]);
@@ -109,17 +117,19 @@ public class GetRequestHttpHandler extends ChannelInboundHandlerAdapter {
   }
 
   static QueryAction getQueryActionFromRequest(HttpRequest req){
-    String[] requestParts = req.getUri().split("/");
-    if (req.getMethod().equals(HttpMethod.GET) &&
+    // Sometimes req.uri() gives a full uri (eg https://host:port/path) and sometimes it only gives a path
+    // Generating a URI lets us always take just the path.
+    String[] requestParts = URI.create(req.uri()).getPath().split("/");
+    if (req.method().equals(HttpMethod.GET) &&
         requestParts.length >=2 &&
         requestParts[1].equalsIgnoreCase(QueryAction.STORAGE.toString())) {
       return QueryAction.STORAGE;
-    } else if (req.getMethod().equals(HttpMethod.GET) &&
+    } else if (req.method().equals(HttpMethod.GET) &&
         requestParts.length >=2 &&
         requestParts[1].equalsIgnoreCase(QueryAction.HEALTH.toString())) {
       return QueryAction.HEALTH;
     } else {
-      throw new VeniceException("Only able to parse GET requests for actions: storage, health");
+      throw new VeniceException("Only able to parse GET requests for actions: storage, health.  Cannot parse request for: " + req.uri());
     }
   }
 
