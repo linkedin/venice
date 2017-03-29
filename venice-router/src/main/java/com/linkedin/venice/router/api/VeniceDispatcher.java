@@ -75,7 +75,7 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
    * @param sslFactory if this is present, it will be used to make SSL requests to storage nodes.
    */
   public VeniceDispatcher(VeniceHostHealth healthMonitor, int clientTimeoutMillis, MetricsRepository metricsRepository, Optional<SSLEngineComponentFactory> sslFactory){
-    httpClient = SslUtils.getMinimalHttpClient(50, 1000, sslFactory);
+    httpClient = SslUtils.getHttpClient(50, 1000, sslFactory);
     httpClient.start();
     this.healthMontior = healthMonitor;
     stats = new AggRouterHttpRequestStats(metricsRepository);
