@@ -50,7 +50,7 @@ public class RouterHeartbeat extends AbstractVeniceService {
 
     int maxConnectionsPerRoute = 2;
     int maxConnections = 100;
-    httpClient = SslUtils.getMinimalHttpClient(maxConnectionsPerRoute, maxConnections, sslFactory);
+    httpClient = SslUtils.getHttpClient(maxConnectionsPerRoute, maxConnections, sslFactory);
     Runnable runnable = () -> {
       boolean running = true;
 

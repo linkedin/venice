@@ -11,8 +11,11 @@ import java.nio.file.Files;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 import javax.net.ssl.SSLContext;
+import org.apache.http.client.config.RequestConfig;
 import org.apache.http.config.RegistryBuilder;
+import org.apache.http.impl.DefaultConnectionReuseStrategy;
 import org.apache.http.impl.nio.client.CloseableHttpAsyncClient;
+import org.apache.http.impl.nio.client.HttpAsyncClientBuilder;
 import org.apache.http.impl.nio.client.HttpAsyncClients;
 import org.apache.http.impl.nio.conn.PoolingNHttpClientConnectionManager;
 import org.apache.http.impl.nio.reactor.DefaultConnectingIOReactor;
@@ -84,6 +87,20 @@ public class SslUtils {
     PoolingNHttpClientConnectionManager connectionManager = createConnectionManager(maxConnPerRoute, maxConnTotal, sslFactory);
     reapIdleConnections(connectionManager, 10, TimeUnit.MINUTES, 2, TimeUnit.HOURS);
     return HttpAsyncClients.createMinimal(connectionManager);
+  }
+
+  public static CloseableHttpAsyncClient getHttpClient(int maxConnPerRoute, int maxConnTotal, Optional<SSLEngineComponentFactory> sslFactory) {
+    HttpAsyncClientBuilder clientBuilder = HttpAsyncClients.custom()
+        .setConnectionReuseStrategy(new DefaultConnectionReuseStrategy())  //Supports connection re-use if able
+        .setConnectionManager(createConnectionManager(maxConnPerRoute, maxConnTotal, sslFactory))
+        .setDefaultRequestConfig(
+            RequestConfig.custom()
+                .setConnectTimeout((int) TimeUnit.SECONDS.toMillis(10)).build() // 10 second sanity timeout.
+        );
+    if (sslFactory.isPresent()){
+      clientBuilder = clientBuilder.setSSLStrategy(SslUtils.getSslStrategy(sslFactory.get()));
+    }
+    return clientBuilder.build();
   }
 
   /**
