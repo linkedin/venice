@@ -79,10 +79,19 @@ public class RouterServer extends AbstractVeniceService {
   private RouterHeartbeat heartbeat;
 
   private final static String ROUTER_SERVICE_NAME = "venice-router";
+  /**
+   * How many threads should be used by router for directly handling requests
+   */
+  private final static int ROUTER_THREADS;
+  /**
+   * How big should the thread pool used by the router be.  This is the number of threads used for handling
+   * requests plus the threads used by the boss thread pool per bound socket (ie 1 for SSL and 1 for non-SSL)
+   */
   private final static int ROUTER_THREAD_POOL_SIZE;
   static {
     int cores = Runtime.getRuntime().availableProcessors();
-    ROUTER_THREAD_POOL_SIZE = cores > 2 ? cores : 2;
+    ROUTER_THREADS = cores > 2 ? cores : 2;
+    ROUTER_THREAD_POOL_SIZE = ROUTER_THREADS + 2;
   }
   private final static int CONNECTION_LIMIT = 10000; // TODO, configurable
 
@@ -250,7 +259,7 @@ public class RouterServer extends AbstractVeniceService {
         .resourceRegistry(registry)
         .executor(executor) // Executor provides the
         .bossPoolSize(1) // One boss thread to monitor the socket for new connections.  Netty only uses one thread from this pool
-        .ioWorkerPoolSize(ROUTER_THREAD_POOL_SIZE / 2) // While they're shared between http router and https router
+        .ioWorkerPoolSize(ROUTER_THREADS / 2) // While they're shared between http router and https router
         .workerExecutor(workerExecutor)
         .connectionLimit(CONNECTION_LIMIT)
         .timeoutProcessor(timeoutProcessor)
@@ -266,7 +275,7 @@ public class RouterServer extends AbstractVeniceService {
         .resourceRegistry(registry)
         .executor(executor) // Executor provides the
         .bossPoolSize(1) // One boss thread to monitor the socket for new connections.  Netty only uses one thread from this pool
-        .ioWorkerPoolSize(ROUTER_THREAD_POOL_SIZE / 2) // While they're shared between http router and https router
+        .ioWorkerPoolSize(ROUTER_THREADS / 2) // While they're shared between http router and https router
         .workerExecutor(workerExecutor)
         .connectionLimit(CONNECTION_LIMIT)
         .timeoutProcessor(timeoutProcessor)
