@@ -336,7 +336,7 @@ public class TestAdminConsumptionTask {
     Thread.sleep(5000); // Non deterministic, but whatever.  This should never fail.
     Assert.assertFalse(controller.getVeniceAdmin().hasStore(clusterName, "good-store"));
 
-    new ControllerClient(clusterName, controller.getControllerUrl()).skipAdminMessage(clusterName, Long.toString(badOffset));
+    new ControllerClient(clusterName, controller.getControllerUrl()).skipAdminMessage(Long.toString(badOffset));
     TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
       Assert.assertTrue(controller.getVeniceAdmin().hasStore(clusterName, "good-store"));
     });

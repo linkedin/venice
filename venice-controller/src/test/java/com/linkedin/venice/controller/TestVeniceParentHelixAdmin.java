@@ -706,7 +706,7 @@ public class TestVeniceParentHelixAdmin {
       JobStatusQueryResponse response = new JobStatusQueryResponse();
       response.setStatus(status.toString());
       ControllerClient statusClient = mock(ControllerClient.class);
-      doReturn(response).when(statusClient).queryJobStatus(anyString(), anyString());
+      doReturn(response).when(statusClient).queryJobStatus(anyString());
       clientMap.put(status, statusClient);
     }
     TopicManager topicManager = mock(TopicManager.class);
@@ -714,14 +714,14 @@ public class TestVeniceParentHelixAdmin {
     JobStatusQueryResponse failResponse = new JobStatusQueryResponse();
     failResponse.setError("error");
     ControllerClient failClient = mock(ControllerClient.class);
-    doReturn(failResponse).when(failClient).queryJobStatus(anyString(), anyString());
+    doReturn(failResponse).when(failClient).queryJobStatus(anyString());
     clientMap.put(null, failClient);
 
     // Verify clients work as expected
     for (ExecutionStatus status : ExecutionStatus.values()) {
-      Assert.assertEquals(clientMap.get(status).queryJobStatus("cluster", "topic").getStatus(), status.toString());
+      Assert.assertEquals(clientMap.get(status).queryJobStatus("topic").getStatus(), status.toString());
     }
-    Assert.assertTrue(clientMap.get(null).queryJobStatus("cluster", "topic").isError());
+    Assert.assertTrue(clientMap.get(null).queryJobStatus("topic").isError());
 
     Map<String, ControllerClient> completeMap = new HashMap<>();
     completeMap.put("cluster", clientMap.get(ExecutionStatus.COMPLETED));
@@ -853,18 +853,18 @@ public class TestVeniceParentHelixAdmin {
     tenPerTaskProgress.put("task2", 10L);
     tenResponse.setPerTaskProgress(tenPerTaskProgress);
     ControllerClient tenStatusClient = mock(ControllerClient.class);
-    doReturn(tenResponse).when(tenStatusClient).queryJobStatus(anyString(), anyString());
+    doReturn(tenResponse).when(tenStatusClient).queryJobStatus(anyString());
 
     JobStatusQueryResponse failResponse = new JobStatusQueryResponse();
     failResponse.setError("error2");
     ControllerClient failClient = mock(ControllerClient.class);
-    doReturn(failResponse).when(failClient).queryJobStatus(anyString(), anyString());
+    doReturn(failResponse).when(failClient).queryJobStatus(anyString());
 
     // Clients work as expected
-    JobStatusQueryResponse status = tenStatusClient.queryJobStatus("cluster", "topic");
+    JobStatusQueryResponse status = tenStatusClient.queryJobStatus("topic");
     Map<String,Long> perTask = status.getPerTaskProgress();
     Assert.assertEquals(perTask.get("task1"), new Long(10L));
-    Assert.assertTrue(failClient.queryJobStatus("cluster", "topic").isError());
+    Assert.assertTrue(failClient.queryJobStatus("topic").isError());
 
     // Test logic
     Map<String, ControllerClient> tenMap = new HashMap<>();

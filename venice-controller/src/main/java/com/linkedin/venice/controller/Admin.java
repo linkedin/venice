@@ -86,17 +86,38 @@ public interface Admin {
 
     SchemaEntry getValueSchema(String clusterName, String storeName, int id);
 
+
     //Operations for updating store metadata
-    //TODO: we might want combine those operations into one method.
     SchemaEntry addValueSchema(String clusterName, String storeName, String valueSchemaStr);
 
     SchemaEntry addValueSchema(String clusterName, String storeName, String valueSchemaStr, int schemaId);
 
-    void setCurrentVersion(String clusterName, String storeName, int versionNumber);
+    void setStoreCurrentVersion(String clusterName, String storeName, int versionNumber);
 
     void setStoreOwner(String clusterName, String storeName, String owner);
 
     void setStorePartitionCount(String clusterName, String storeName, int partitionCount);
+
+    /**
+     * Disable a store from writing will stop push from going to this store.
+     */
+    void disableStoreWrite(String clusterName, String storeName);
+
+    /**
+     * Enable a store on writing will allow push to go to this store.
+     */
+    void enableStoreWrite(String clusterName, String storeName);
+
+    /**
+     * Disable a store on reading will stop read requests from hitting this store/
+     */
+    void disableStoreRead(String clusterName, String storeName);
+
+    /**
+     * Enable a store on reading will allow read requests hit this store.
+     */
+    void enableStoreRead(String clusterName, String storeName);
+
 
     List<String> getStorageNodes(String clusterName);
 
@@ -180,26 +201,6 @@ public interface Admin {
      * VeniceException.
      */
     Instance getMasterController(String clusterName);
-
-    /**
-    * Disable a store from writing will stop push from going to this store.
-    */
-    void disableStoreWrite(String clusterName, String storeName);
-
-    /**
-    * Enable a store on writing will allow push to go to this store.
-    */
-    void enableStoreWrite(String clusterName, String storeName);
-
-    /**
-    * Disable a store on reading will stop read requests from hitting this store/
-    */
-    void disableStoreRead(String clusterName, String storeName);
-
-    /**
-     * Enable a store on reading will allow read requests hit this store.
-     */
-    void enableStoreRead(String clusterName, String storeName);
 
     void addInstanceToWhitelist(String clusterName, String helixNodeId);
 

@@ -33,7 +33,7 @@ public class TestAdminCommandExecutionTracker {
     fabricToControllerMap = new HashMap<>();
     mockControllerClient = Mockito.mock(ControllerClient.class);
     mockResponse = new LastSucceedExecutionIdResponse();
-    Mockito.doReturn(mockResponse).when(mockControllerClient).getLastSucceedExecutionId(Mockito.anyString());
+    Mockito.doReturn(mockResponse).when(mockControllerClient).getLastSucceedExecutionId();
     fabricToControllerMap.put(fabric1, mockControllerClient);
     fabricToControllerMap.put(fabric2, mockControllerClient);
     accessor = Mockito.mock(ExecutionIdAccessor.class);

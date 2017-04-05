@@ -10,6 +10,7 @@ import com.linkedin.venice.controllerapi.MultiVersionResponse;
 import com.linkedin.venice.controllerapi.OwnerResponse;
 import com.linkedin.venice.controllerapi.PartitionResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
+import com.linkedin.venice.controllerapi.VersionResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreInfo;
@@ -137,29 +138,57 @@ public class StoresRoutes {
     };
   }
 
+  public static Route setCurrentVersion(Admin admin) {
+    return (request, response) -> {
+      VersionResponse versionResponse = new VersionResponse();
+      try {
+        AdminSparkServer.validateParams(request, SET_VERSION.getParams(), admin); //throws venice exception
+        String clusterName = request.queryParams(CLUSTER);
+        String storeName = request.queryParams(NAME);
+        int version = Utils.parseIntFromString(request.queryParams(VERSION), VERSION);
+        admin.setStoreCurrentVersion(clusterName, storeName, version);
+
+        versionResponse.setCluster(clusterName);
+        versionResponse.setName(storeName);
+        versionResponse.setVersion(version);
+      } catch (Throwable e) {
+        versionResponse.setError(e.getMessage());
+        AdminSparkServer.handleError(e, request, response);
+      }
+
+      response.type(HttpConstants.JSON);
+      return AdminSparkServer.mapper.writeValueAsString(versionResponse);
+    };
+  }
+
 
   public static Route enableStore(Admin admin){
     return (request, response) -> {
       ControllerResponse responseObject = new ControllerResponse();
       try {
         AdminSparkServer.validateParams(request, ENABLE_STORE.getParams(), admin);
-        responseObject.setCluster(request.queryParams(CLUSTER));
-        responseObject.setName(request.queryParams(NAME));
+        String cluster = request.queryParams(CLUSTER);
+        String storeName = request.queryParams(NAME);
         String operation = request.queryParams(OPERATION);
+
+        responseObject.setCluster(cluster);
+        responseObject.setName(storeName);
+
         if(operation.equals(READ_OPERATION) || operation.equals(WRITE_OPERATION) || operation.equals(READ_WRITE_OPERATION)){
           if (Boolean.parseBoolean(request.queryParams(STATUS))) { // "true" means enable store
             if(operation.contains(READ_OPERATION)) {
-              admin.enableStoreRead(responseObject.getCluster(), responseObject.getName());
+              admin.enableStoreRead(cluster, storeName);
             }
             if(operation.contains(WRITE_OPERATION)){
-              admin.enableStoreWrite(responseObject.getCluster(), responseObject.getName());
+              admin.enableStoreWrite(cluster, storeName);
+
             }
           } else {
             if (operation.contains(READ_OPERATION)) {
-              admin.disableStoreRead(responseObject.getCluster(), responseObject.getName());
+              admin.disableStoreRead(cluster, storeName);
             }
             if (operation.contains(WRITE_OPERATION)) {
-              admin.disableStoreWrite(responseObject.getCluster(), responseObject.getName());
+              admin.disableStoreWrite(cluster, storeName);
             }
           }
         } else {

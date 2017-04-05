@@ -103,8 +103,7 @@ public class ControllerClient implements Closeable {
     throw new VeniceException("Could not get controller url from urls: " + urlsToFindMasterController, lastException);
   }
 
-  //TODO: clusterName seems to be redundant here. Since controller client is intended to have one-one mapping to clusterName.
-  public StoreResponse getStore(String clusterName, String storeName) {
+  public StoreResponse getStore(String storeName) {
     try {
       List<NameValuePair> params = newParams(clusterName);
       params.add(new BasicNameValuePair(ControllerApiConstants.NAME, storeName));
@@ -118,13 +117,13 @@ public class ControllerClient implements Closeable {
   @Deprecated
   public static StoreResponse getStore(String urlsToFindMasterController, String clusterName, String storeName){
     try (ControllerClient client = new ControllerClient(clusterName,urlsToFindMasterController)){
-      return client.getStore(clusterName, storeName);
+      return client.getStore(storeName);
     } catch (Exception e){
       return handleError(new VeniceException("Error getting store: " + storeName, e), new StoreResponse());
     }
   }
 
-  public VersionCreationResponse createNewStoreVersion(String clusterName, String storeName, long storeSize) {
+  public VersionCreationResponse createNewStoreVersion(String storeName, long storeSize) {
     try {
       List<NameValuePair> params = newParams(clusterName);
       params.add(new BasicNameValuePair(ControllerApiConstants.NAME, storeName));
@@ -140,14 +139,14 @@ public class ControllerClient implements Closeable {
   @Deprecated
   public static VersionCreationResponse createNewStoreVersion(String urlsToFindMasterController, String clusterName, String storeName, long storeSize) {
     try (ControllerClient client = new ControllerClient(clusterName, urlsToFindMasterController)){
-      return client.createNewStoreVersion(clusterName, storeName, storeSize);
+      return client.createNewStoreVersion(storeName, storeSize);
     } catch (Exception e){
       return handleError(
           new VeniceException("Error creating version for store: " + storeName, e), new VersionCreationResponse());
     }
   }
 
-  public NewStoreResponse createNewStore(String clusterName, String storeName, String owner, String keySchema, String valueSchema) {
+  public NewStoreResponse createNewStore(String storeName, String owner, String keySchema, String valueSchema) {
     try {
       List<NameValuePair> params = newParams(clusterName);
       params.add(new BasicNameValuePair(ControllerApiConstants.NAME, storeName));
@@ -165,13 +164,13 @@ public class ControllerClient implements Closeable {
   public static NewStoreResponse createNewStore(String urlsToFindMasterController, String clusterName,
       String storeName, String owner, String keySchema, String valueSchema){
     try (ControllerClient client = new ControllerClient(clusterName, urlsToFindMasterController)){
-      return client.createNewStore(clusterName, storeName, owner, keySchema, valueSchema);
+      return client.createNewStore(storeName, owner, keySchema, valueSchema);
     } catch (Exception e){
       return handleError(new VeniceException("Error creating store: " + storeName, e), new NewStoreResponse());
     }
   }
 
-  public VersionResponse overrideSetActiveVersion(String clusterName, String storeName, int version) {
+  public VersionResponse overrideSetActiveVersion(String storeName, int version) {
     try {
       List<NameValuePair> params = newParams(clusterName);
       params.add(new BasicNameValuePair(ControllerApiConstants.NAME, storeName));
@@ -186,13 +185,13 @@ public class ControllerClient implements Closeable {
   @Deprecated
   public static VersionResponse overrideSetActiveVersion(String urlsToFindMasterController, String clusterName, String storeName, int version){
     try (ControllerClient client = new ControllerClient(clusterName, urlsToFindMasterController)){
-      return client.overrideSetActiveVersion(clusterName, storeName, version);
+      return client.overrideSetActiveVersion(storeName, version);
     } catch(Exception e){
       return handleError(new VeniceException("Error setting version.  Storename: " + storeName + " Version: " + version), new VersionResponse());
     }
   }
 
-  public ControllerResponse killOfflinePushJob(String clusterName, String kafkaTopic) {
+  public ControllerResponse killOfflinePushJob(String kafkaTopic) {
     try {
       List<NameValuePair> queryParams = newParams(clusterName);
       queryParams.add(new BasicNameValuePair(ControllerApiConstants.TOPIC, kafkaTopic)); // TODO: remove once the controller is deployed to handle store and version instead
@@ -207,7 +206,7 @@ public class ControllerClient implements Closeable {
     }
   }
 
-  public ControllerResponse skipAdminMessage(String clusterName, String offset){
+  public ControllerResponse skipAdminMessage(String offset){
     try {
       List<NameValuePair> queryParams = newParams(clusterName);
       queryParams.add(new BasicNameValuePair(ControllerApiConstants.OFFSET, offset));
@@ -218,7 +217,7 @@ public class ControllerClient implements Closeable {
     }
   }
 
-  public JobStatusQueryResponse queryJobStatus(String clusterName, String kafkaTopic) {
+  public JobStatusQueryResponse queryJobStatus(String kafkaTopic) {
     try {
       String storeName = Version.parseStoreFromKafkaTopicName(kafkaTopic);
       int version = Version.parseVersionFromKafkaTopicName(kafkaTopic);
@@ -235,7 +234,7 @@ public class ControllerClient implements Closeable {
   @Deprecated
   public static JobStatusQueryResponse queryJobStatus(String urlsToFindMasterController, String clusterName, String kafkaTopic){
     try (ControllerClient client = new ControllerClient(clusterName, urlsToFindMasterController)){
-      return client.queryJobStatus(clusterName, kafkaTopic);
+      return client.queryJobStatus(kafkaTopic);
     } catch (Exception e){
       return handleError(new VeniceException("Error querying job status for topic: " + kafkaTopic, e), new JobStatusQueryResponse());
     }
@@ -261,7 +260,7 @@ public class ControllerClient implements Closeable {
     return response;
   }
 
-  public MultiStoreResponse listStores(String clusterName) {
+  public MultiStoreResponse queryStoreList() {
     try {
       List<NameValuePair> queryParams = newParams(clusterName);
       String responseJson = getRequest(ControllerRoute.LIST_STORES.getPath(), queryParams);
@@ -274,7 +273,7 @@ public class ControllerClient implements Closeable {
   @Deprecated
   public static MultiStoreResponse listStores(String urlsToFindMasterController, String clusterName){
     try (ControllerClient client = new ControllerClient(clusterName, urlsToFindMasterController)){
-      return client.listStores(clusterName);
+      return client.queryStoreList();
     } catch (Exception e){
       return handleError(new VeniceException("Error listing store for cluster: " + clusterName, e), new MultiStoreResponse());
     }
@@ -327,19 +326,19 @@ public class ControllerClient implements Closeable {
     }
   }
 
-  public ControllerResponse enableStoreWrites(String clusterName, String storeName, boolean enable) {
-    return enableStore(clusterName, storeName, enable, ControllerApiConstants.WRITE_OPERATION);
+  public ControllerResponse enableStoreWrites(String storeName, boolean enable) {
+    return enableStore(storeName, enable, ControllerApiConstants.WRITE_OPERATION);
   }
 
-  public ControllerResponse enableStoreReads(String clusterName, String storeName, boolean enable) {
-    return enableStore(clusterName, storeName, enable, ControllerApiConstants.READ_OPERATION);
+  public ControllerResponse enableStoreReads(String storeName, boolean enable) {
+    return enableStore(storeName, enable, ControllerApiConstants.READ_OPERATION);
   }
 
-  public ControllerResponse enableStoreReadWrites(String clusterName, String storeName, boolean enable) {
-    return enableStore(clusterName, storeName, enable, ControllerApiConstants.READ_WRITE_OPERATION);
+  public ControllerResponse enableStoreReadWrites(String storeName, boolean enable) {
+    return enableStore(storeName, enable, ControllerApiConstants.READ_WRITE_OPERATION);
   }
 
-  private ControllerResponse enableStore(String clusterName, String storeName, boolean enable, String operation){
+  private ControllerResponse enableStore(String storeName, boolean enable, String operation){
     try {
       List<NameValuePair> queryParams = newParams(clusterName);
       queryParams.add(new BasicNameValuePair(ControllerApiConstants.NAME, storeName));
@@ -358,7 +357,7 @@ public class ControllerClient implements Closeable {
   @Deprecated
   public static ControllerResponse enableStoreWrites(String urlsToFindMasterController, String clusterName, String storeName, boolean enable){
     try (ControllerClient client = new ControllerClient(clusterName, urlsToFindMasterController)){
-      return client.enableStoreWrites(clusterName, storeName, enable);
+      return client.enableStoreWrites(storeName, enable);
     } catch (Exception e){
       String msg = enable ?
           "Could not enable store: " + storeName :
@@ -367,7 +366,7 @@ public class ControllerClient implements Closeable {
     }
   }
 
-  public MultiVersionResponse deleteAllVersions(String clusterName, String storeName) {
+  public MultiVersionResponse deleteAllVersions(String storeName) {
     try {
       List<NameValuePair> queryParams = newParams(clusterName);
       queryParams.add(new BasicNameValuePair(ControllerApiConstants.NAME, storeName));
@@ -380,7 +379,7 @@ public class ControllerClient implements Closeable {
   }
 
 
-  public NodeStatusResponse isNodeRemovable(String clusterName, String instanceId) {
+  public NodeStatusResponse isNodeRemovable(String instanceId) {
     try {
       List<NameValuePair> queryParams = newParams(clusterName);
       queryParams.add(new BasicNameValuePair(ControllerApiConstants.STORAGE_NODE_ID, instanceId));
@@ -394,13 +393,13 @@ public class ControllerClient implements Closeable {
   @Deprecated
   public static ControllerResponse isNodeRemovable(String urlsToFindMasterController, String clusterName, String instanceId){
     try (ControllerClient client = new ControllerClient(clusterName, urlsToFindMasterController)){
-      return client.isNodeRemovable(clusterName, instanceId);
+      return client.isNodeRemovable(instanceId);
     } catch (Exception e){
       return handleError(new VeniceException("Could not identify if node: " + instanceId + " is removable", e), new ControllerResponse());
     }
   }
 
-  public MultiNodeResponse listStorageNodes(String clusterName) {
+  public MultiNodeResponse listStorageNodes() {
     try {
       List<NameValuePair> queryParams = newParams(clusterName);
       String responseJson = getRequest(ControllerRoute.LIST_NODES.getPath(), queryParams);
@@ -413,13 +412,13 @@ public class ControllerClient implements Closeable {
   @Deprecated
   public static MultiNodeResponse listStorageNodes(String urlsToFindMasterController, String clusterName){
     try (ControllerClient client = new ControllerClient(clusterName, urlsToFindMasterController)){
-      return client.listStorageNodes(clusterName);
+      return client.listStorageNodes();
     } catch (Exception e){
       return handleError(new VeniceException("Error listing nodes", e), new MultiNodeResponse());
     }
   }
 
-  public MultiNodesStatusResponse listInstancesStatuses(String clusterName) {
+  public MultiNodesStatusResponse listInstancesStatuses() {
     try {
       List<NameValuePair> queryParams = newParams(clusterName);
       String responseJson = getRequest(ControllerRoute.ClUSTER_HEALTH_INSTANCES.getPath(), queryParams);
@@ -433,13 +432,13 @@ public class ControllerClient implements Closeable {
   public static MultiNodesStatusResponse listInstancesStatuses(String urlsToFindMasterController,
       String clusterName) {
     try (ControllerClient client = new ControllerClient(clusterName, urlsToFindMasterController)) {
-      return client.listInstancesStatuses(clusterName);
+      return client.listInstancesStatuses();
     } catch (Exception e) {
       return handleError(new VeniceException("Error listing nodes", e), new MultiNodesStatusResponse());
     }
   }
 
-  public MultiReplicaResponse listReplicas(String clusterName, String storeName, int version) {
+  public MultiReplicaResponse listReplicas(String storeName, int version) {
     try {
       List<NameValuePair> params = newParams(clusterName);
       params.add(new BasicNameValuePair(ControllerApiConstants.NAME, storeName));
@@ -454,13 +453,13 @@ public class ControllerClient implements Closeable {
   @Deprecated
   public static MultiReplicaResponse listReplicas(String urlsToFindMasterController, String clusterName, String storeName, int version){
     try (ControllerClient client = new ControllerClient(clusterName, urlsToFindMasterController)){
-      return client.listReplicas(clusterName, storeName, version);
+      return client.listReplicas(storeName, version);
     } catch (Exception e){
       return handleError(new VeniceException("Error listing replicas for store: " + storeName + " version: " + version, e), new MultiReplicaResponse());
     }
   }
 
-  public MultiReplicaResponse listStorageNodeReplicas(String clusterName, String instanceId) {
+  public MultiReplicaResponse listStorageNodeReplicas(String instanceId) {
     try {
       List<NameValuePair> params = newParams(clusterName);
       params.add(new BasicNameValuePair(ControllerApiConstants.STORAGE_NODE_ID, instanceId));
@@ -474,14 +473,14 @@ public class ControllerClient implements Closeable {
   @Deprecated
   public static MultiReplicaResponse listStorageNodeReplicas(String urlsToFindMasterController, String clusterName, String instanceId){
     try (ControllerClient client = new ControllerClient(clusterName, urlsToFindMasterController)){
-      return client.listStorageNodeReplicas(clusterName, instanceId);
+      return client.listStorageNodeReplicas(instanceId);
     } catch (Exception e){
       return handleError(new VeniceException("Error listing replicas for storage node: " + instanceId, e), new MultiReplicaResponse());
     }
   }
 
   /* SCHEMA */
-  public SchemaResponse getKeySchema(String clusterName, String storeName) {
+  public SchemaResponse getKeySchema(String storeName) {
     try {
       List<NameValuePair> queryParams = newParams(clusterName);
       queryParams.add(new BasicNameValuePair(ControllerApiConstants.NAME, storeName));
@@ -495,13 +494,13 @@ public class ControllerClient implements Closeable {
   @Deprecated
   public static SchemaResponse getKeySchema(String urlsToFindMasterController, String clusterName, String storeName) {
     try (ControllerClient client = new ControllerClient(clusterName, urlsToFindMasterController)){
-      return client.getKeySchema(clusterName, storeName);
+      return client.getKeySchema(storeName);
     } catch (Exception e){
       return handleError(new VeniceException("Error getting key schema for store: " + storeName, e), new SchemaResponse());
     }
   }
 
-  public SchemaResponse addValueSchema(String clusterName, String storeName, String valueSchemaStr) {
+  public SchemaResponse addValueSchema(String storeName, String valueSchemaStr) {
     try {
       List<NameValuePair> queryParams = newParams(clusterName);
       queryParams.add(new BasicNameValuePair(ControllerApiConstants.NAME, storeName));
@@ -516,13 +515,13 @@ public class ControllerClient implements Closeable {
   @Deprecated
   public static SchemaResponse addValueSchema(String urlsToFindMasterController, String clusterName, String storeName, String valueSchemaStr) {
     try (ControllerClient client = new ControllerClient(clusterName, urlsToFindMasterController)){
-      return client.addValueSchema(clusterName, storeName, valueSchemaStr);
+      return client.addValueSchema(storeName, valueSchemaStr);
     } catch (Exception e){
       return handleError(new VeniceException("Error adding value schema: " + valueSchemaStr + " for store: " + storeName, e), new SchemaResponse());
     }
   }
 
-  public PartitionResponse setStorePartitionCount(String clusterName, String storeName, String partitionNum) {
+  public PartitionResponse setStorePartitionCount(String storeName, String partitionNum) {
     try {
       List<NameValuePair> queryParams = newParams(clusterName);
       queryParams.add(new BasicNameValuePair(ControllerApiConstants.NAME, storeName));
@@ -534,7 +533,7 @@ public class ControllerClient implements Closeable {
     }
   }
 
-  public OwnerResponse setStoreOwner(String clusterName, String storeName, String owner) {
+  public OwnerResponse setStoreOwner(String storeName, String owner) {
     try {
       List<NameValuePair> queryParams = newParams(clusterName);
       queryParams.add(new BasicNameValuePair(ControllerApiConstants.NAME, storeName));
@@ -546,7 +545,7 @@ public class ControllerClient implements Closeable {
     }
   }
 
-  public SchemaResponse getValueSchema(String clusterName, String storeName, int valueSchemaId) {
+  public SchemaResponse getValueSchema(String storeName, int valueSchemaId) {
     try {
       List<NameValuePair> queryParams = newParams(clusterName);
       queryParams.add(new BasicNameValuePair(ControllerApiConstants.NAME, storeName));
@@ -561,13 +560,13 @@ public class ControllerClient implements Closeable {
   @Deprecated
   public static SchemaResponse getValueSchema(String urlsToFindMasterController, String clusterName, String storeName, int valueSchemaId) {
     try (ControllerClient client = new ControllerClient(clusterName, urlsToFindMasterController)){
-      return client.getValueSchema(clusterName, storeName, valueSchemaId);
+      return client.getValueSchema(storeName, valueSchemaId);
     } catch (Exception e){
       return handleError(new VeniceException("Error getting value schema for schema id: " + valueSchemaId + " for store: " + storeName, e), new SchemaResponse());
     }
   }
 
-  public SchemaResponse getValueSchemaID(String clusterName, String storeName, String valueSchemaStr) {
+  public SchemaResponse getValueSchemaID(String storeName, String valueSchemaStr) {
     try {
       List<NameValuePair> queryParams = newParams(clusterName);
       queryParams.add(new BasicNameValuePair(ControllerApiConstants.NAME, storeName));
@@ -582,13 +581,13 @@ public class ControllerClient implements Closeable {
   @Deprecated
   public static SchemaResponse getValueSchemaID(String urlsToFindMasterController, String clusterName, String storeName, String valueSchemaStr) {
     try (ControllerClient client = new ControllerClient(clusterName, urlsToFindMasterController)){
-      return client.getValueSchemaID(clusterName, storeName, valueSchemaStr);
+      return client.getValueSchemaID(storeName, valueSchemaStr);
     } catch (Exception e){
       return handleError(new VeniceException("Error getting value schema for schema: " + valueSchemaStr + " for store: " + storeName, e), new SchemaResponse());
     }
   }
 
-  public MultiSchemaResponse getAllValueSchema(String clusterName, String storeName) {
+  public MultiSchemaResponse getAllValueSchema(String storeName) {
     try {
       List<NameValuePair> queryParams = newParams(clusterName);
       queryParams.add(new BasicNameValuePair(ControllerApiConstants.NAME, storeName));
@@ -602,13 +601,13 @@ public class ControllerClient implements Closeable {
   @Deprecated
   public static MultiSchemaResponse getAllValueSchema(String urlsToFindMasterController, String clusterName, String storeName) {
     try (ControllerClient client = new ControllerClient(clusterName, urlsToFindMasterController)){
-      return client.getAllValueSchema(clusterName, storeName);
+      return client.getAllValueSchema(storeName);
     } catch (Exception e){
       return handleError(new VeniceException("Error getting value schema for store: " + storeName, e), new MultiSchemaResponse());
     }
   }
 
-  public AdminCommandExecutionResponse getAdminCommandExecution(String clusterName, long executionId) {
+  public AdminCommandExecutionResponse getAdminCommandExecution(long executionId) {
     try {
       List<NameValuePair> queryParams = newParams(clusterName);
       queryParams.add(new BasicNameValuePair(ControllerApiConstants.EXECUTION_ID, String.valueOf(executionId)));
@@ -620,7 +619,7 @@ public class ControllerClient implements Closeable {
     }
   }
 
-  public LastSucceedExecutionIdResponse getLastSucceedExecutionId(String clusterName) {
+  public LastSucceedExecutionIdResponse getLastSucceedExecutionId() {
     try {
       List<NameValuePair> queryParams = newParams(clusterName);
       String responseJson = getRequest(ControllerRoute.LAST_SUCCEED_EXECUTION_ID.getPath(), queryParams);

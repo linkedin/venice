@@ -137,11 +137,11 @@ public class AdminTool {
         String versionString = getRequiredArgument(cmd, Arg.VERSION, Command.KILL_JOB);
         int version = Integer.parseInt(versionString);
         String topicName = new Version(storeName, version).kafkaTopicName();
-        ControllerResponse response = new ControllerClient(clusterName, routerHosts).killOfflinePushJob(clusterName, topicName);
+        ControllerResponse response = new ControllerClient(clusterName, routerHosts).killOfflinePushJob(topicName);
         printObject(response);
       } else if (cmd.hasOption(Command.SKIP_ADMIN.toString())){
         String offset = getRequiredArgument(cmd, Arg.OFFSET, Command.SKIP_ADMIN);
-        ControllerResponse response = new ControllerClient(clusterName, routerHosts).skipAdminMessage(clusterName, offset);
+        ControllerResponse response = new ControllerClient(clusterName, routerHosts).skipAdminMessage(offset);
         printObject(response);
       } else if (cmd.hasOption(Command.NEW_STORE.toString())) {
         createNewStore(cmd, routerHosts, clusterName);
@@ -170,7 +170,7 @@ public class AdminTool {
       } else if (cmd.hasOption(Command.LIST_STORAGE_NODES.toString())) {
         printStorageNodeList(routerHosts, clusterName);
       } else if (cmd.hasOption(Command.CLUSTER_HEALTH_INSTANCES.toString())) {
-        printInstancesStatuses(clusterName);
+        printInstancesStatuses();
       }  else if (cmd.hasOption(Command.CLUSTER_HEALTH_STORES.toString())) {
         printStoresStatuses(clusterName);
       } else if (cmd.hasOption(Command.NODE_REMOVABLE.toString())){
@@ -286,14 +286,14 @@ public class AdminTool {
   private static void setEnableStoreReads(CommandLine cmd, String routerHosts, String clusterName,
       boolean enableReads) {
     String store = getRequiredArgument(cmd, Arg.STORE, Command.SET_VERSION);
-    ControllerResponse response = controllerClient.enableStoreReads(clusterName, store, enableReads);
+    ControllerResponse response = controllerClient.enableStoreReads(store, enableReads);
     printSuccess(response);
   }
 
   private static void setEnableStoreReadWrites(CommandLine cmd, String routerHosts, String clusterName,
       boolean enableReadWrites) {
     String store = getRequiredArgument(cmd, Arg.STORE, Command.SET_VERSION);
-    ControllerResponse response = controllerClient.enableStoreReadWrites(clusterName, store, enableReadWrites);
+    ControllerResponse response = controllerClient.enableStoreReadWrites(store, enableReadWrites);
     printSuccess(response);
   }
 
@@ -322,14 +322,14 @@ public class AdminTool {
   private static void setStoreOwner(CommandLine cmd, String clusterName) {
     String storeName = getRequiredArgument(cmd, Arg.STORE, Command.SET_OWNER);
     String owner = getRequiredArgument(cmd, Arg.OWNER, Command.SET_OWNER);
-    OwnerResponse response = controllerClient.setStoreOwner(clusterName, storeName, owner);
+    OwnerResponse response = controllerClient.setStoreOwner(storeName, owner);
     printSuccess(response);
   }
 
   private static void setStorePartition(CommandLine cmd, String clusterName) {
     String storeName = getRequiredArgument(cmd, Arg.STORE, Command.SET_PARTITION_COUNT);
     String partitionNum = getRequiredArgument(cmd, Arg.PARTITION_COUNT, Command.SET_PARTITION_COUNT);
-    PartitionResponse response = controllerClient.setStorePartitionCount(clusterName, storeName, partitionNum);
+    PartitionResponse response = controllerClient.setStorePartitionCount(storeName, partitionNum);
     printSuccess(response);
   }
 
@@ -356,8 +356,8 @@ public class AdminTool {
     printObject(nodeResponse);
   }
 
-  private static void printInstancesStatuses(String clusterName){
-    MultiNodesStatusResponse nodeResponse = controllerClient.listInstancesStatuses(clusterName);
+  private static void printInstancesStatuses(){
+    MultiNodesStatusResponse nodeResponse = controllerClient.listInstancesStatuses();
     printObject(nodeResponse);
   }
 
@@ -470,13 +470,13 @@ public class AdminTool {
 
   private static void deleteAllVersions(CommandLine cmd, String clusterName) {
     String store = getRequiredArgument(cmd, Arg.STORE, Command.DELETE_ALL_VERSIONS);
-    MultiVersionResponse response = controllerClient.deleteAllVersions(clusterName, store);
+    MultiVersionResponse response = controllerClient.deleteAllVersions(store);
     printObject(response);
   }
 
   private static void getExecution(CommandLine cmd, String clusterName) {
     long executionId = Long.valueOf(getRequiredArgument(cmd, Arg.EXECUTION, Command.GET_EXECUTION));
-    AdminCommandExecutionResponse response = controllerClient.getAdminCommandExecution(clusterName, executionId);
+    AdminCommandExecutionResponse response = controllerClient.getAdminCommandExecution(executionId);
     printObject(response);
   }
 

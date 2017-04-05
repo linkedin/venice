@@ -534,49 +534,29 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
 
     @Override
-    public synchronized void setCurrentVersion(String clusterName, String storeName, int versionNumber){
-        checkControllerMastership(clusterName);
-        HelixReadWriteStoreRepository repository = getVeniceHelixResource(clusterName).getMetadataRepository();
-        repository.lock();
-        try {
-            Store store = repository.getStore(storeName);
-            if (store == null) {
-                throw new VeniceNoStoreException(storeName);
-            }
-            if(store.containsVersion(versionNumber)) {
+    public synchronized void setStoreCurrentVersion(String clusterName, String storeName, int versionNumber){
+        storeMetadataUpdate(clusterName, storeName, store -> {
+            if (store.containsVersion(versionNumber)) {
                 store.setCurrentVersion(versionNumber);
             } else {
-                String errorMsg = "Version:" + versionNumber + " does not exist for store:" + storeName;
-                logger.error(errorMsg);
-                throw new VeniceException(errorMsg);
+                throw new VeniceException("Version:" + versionNumber + " does not exist for store:" + storeName);
             }
-            repository.updateStore(store);
-            logger.info("Set version:" + versionNumber +" for store:" + storeName);
-        } finally {
-            repository.unLock();
-        }
+
+            return store;
+        });
     }
 
     @Override
     public synchronized void setStoreOwner(String clusterName, String storeName, String owner) {
-        checkControllerMastership(clusterName);
-        HelixReadWriteStoreRepository repository = getVeniceHelixResource(clusterName).getMetadataRepository();
-        repository.lock();
-        try {
-            Store store = repository.getStore(storeName);
-            if (store == null) {
-                throw new VeniceNoStoreException(storeName);
-            }
+        storeMetadataUpdate(clusterName, storeName, store -> {
             if (!Utils.isNullOrEmpty(owner)) {
                 store.setOwner(owner);
             } else {
                 throw new VeniceException("store owner can't be null or empty");
             }
-            repository.updateStore(store);
-            logger.info("Set owner:" + owner + " for store" + storeName);
-        } finally {
-            repository.unLock();
-        }
+
+            return store;
+        });
     }
 
     /**
@@ -585,23 +565,45 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
      */
     @Override
     public synchronized void setStorePartitionCount(String clusterName, String storeName, int partitionCount) {
+        VeniceControllerClusterConfig clusterConfig = getVeniceHelixResource(clusterName).getConfig();
+        storeMetadataUpdate(clusterName, storeName, store -> {
+            if (partitionCount >= clusterConfig.getNumberOfPartition() && partitionCount <= clusterConfig.getMaxNumberOfPartition()) {
+                store.setPartitionCount(partitionCount);
+            } else {
+                throw new VeniceException("store partition number must be greater than or equal to " + clusterConfig.getNumberOfPartition()
+                    + " and less than or equal to " + clusterConfig.getMaxNumberOfPartition());
+            }
+
+            return store;
+        });
+    }
+
+    private synchronized void setStoreWriteable(String clusterName, String storeName, boolean isWriteable) {
+        storeMetadataUpdate(clusterName, storeName, store -> {
+            store.setEnableWrites(isWriteable);
+
+            return store;
+        });
+    }
+
+    private synchronized void setStoreReadable(String clusterName, String storeName, boolean isReadable) {
+        storeMetadataUpdate(clusterName, storeName, store -> {
+            store.setEnableReads(isReadable);
+
+            return store;
+        });
+    }
+
+    protected void storeMetadataUpdate(String clusterName, String storeName, StoreMetadataOperation operation) {
         checkControllerMastership(clusterName);
         HelixReadWriteStoreRepository repository = getVeniceHelixResource(clusterName).getMetadataRepository();
         repository.lock();
         try {
             Store store = repository.getStore(storeName);
             if (store == null) {
-                throw new VeniceNoStoreException(storeName);
-            }
-            VeniceControllerClusterConfig config = getVeniceHelixResource(clusterName).getConfig();
-            if (partitionCount >= config.getNumberOfPartition() && partitionCount <= config.getMaxNumberOfPartition()) {
-                store.setPartitionCount(partitionCount);
-            } else {
-                throw new VeniceException("store partition number must be greater than or equal to " + config.getNumberOfPartition()
-                    + " and less than or equal to " + config.getMaxNumberOfPartition());
-            }
-            repository.updateStore(store);
-            logger.info("Set partition number: " + partitionCount + " for store" + storeName);
+            throw new VeniceNoStoreException(storeName);
+        }
+        repository.updateStore(operation.update(store));
         } finally {
             repository.unLock();
         }
@@ -997,22 +999,23 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
     @Override
     public void disableStoreWrite(String clusterName, String storeName) {
-        setDisableWriteForStore(clusterName, storeName, false);
+        //setDisableWriteForStore(clusterName, storeName, false);
+        setStoreWriteable(clusterName, storeName, false);
     }
 
     @Override
     public void enableStoreWrite(String clusterName, String storeName) {
-        setDisableWriteForStore(clusterName, storeName, true);
+        setStoreWriteable(clusterName, storeName, true);
     }
 
     @Override
     public void disableStoreRead(String clusterName, String storeName) {
-        setDisableReadForStore(clusterName, storeName, false);
+        setStoreReadable(clusterName, storeName, false);
     }
 
     @Override
     public void enableStoreRead(String clusterName, String storeName) {
-        setDisableReadForStore(clusterName, storeName, true);
+        setStoreReadable(clusterName, storeName, true);
     }
 
     @Override
@@ -1143,32 +1146,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         return Optional.empty();
     }
 
-    private void setDisableWriteForStore(String clusterName, String storeName, boolean enableWrites) {
-        checkControllerMastership(clusterName);
-        HelixReadWriteStoreRepository repository = getVeniceHelixResource(clusterName).getMetadataRepository();
-        repository.lock();
-        try {
-            Store store = checkPreConditionForDisableStoreAndGetStore(clusterName, storeName);
-            store.setEnableWrites(enableWrites);
-            repository.updateStore(store);
-        } finally {
-            repository.unLock();
-        }
-    }
-
-    private void setDisableReadForStore(String clusterName, String storeName, boolean enableReads) {
-        checkControllerMastership(clusterName);
-        HelixReadWriteStoreRepository repository = getVeniceHelixResource(clusterName).getMetadataRepository();
-        repository.lock();
-        try {
-            Store store = checkPreConditionForDisableStoreAndGetStore(clusterName, storeName);
-            store.setEnableReads(enableReads);
-            repository.updateStore(store);
-        } finally {
-            repository.unLock();
-        }
-    }
-
     protected void startMonitorOfflinePush(String clusterName, String kafkaTopic, int numberOfPartition,
         int replicationFactor, OfflinePushStrategy strategy) {
         OfflinePushMonitor offlinePushMonitor = getVeniceHelixResource(clusterName).getOfflinePushMonitor();
@@ -1228,5 +1205,19 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
     public String getControllerName(){
         return controllerName;
+    }
+
+    /**
+     * Since Admin is dealing with various kinds of store metadata updates, there are code duplicate among those methods.
+     * This private interface helps to reuse those codes and makes the admin clean.
+     * Also see {@link #storeMetadataUpdate(String, String, StoreMetadataOperation)} for more details.
+     */
+
+    interface StoreMetadataOperation {
+        /**
+         * define the operation that update a store. Return the store after metadata being updated so that it could
+         * be updated by metadataRepository
+         */
+        Store update(Store store);
     }
 }

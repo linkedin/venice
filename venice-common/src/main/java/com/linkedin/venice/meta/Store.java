@@ -132,7 +132,7 @@ public class Store {
    * StoreDisabledException}.
    */
   public void setCurrentVersion(int currentVersion) {
-    checkDisableStoreWrite("setCurrentVersion", currentVersion);
+    checkDisableStoreWrite("setStoreCurrentVersion", currentVersion);
     this.currentVersion = currentVersion;
   }
 

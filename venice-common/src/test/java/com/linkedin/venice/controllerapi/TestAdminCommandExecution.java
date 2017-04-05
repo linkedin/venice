@@ -23,7 +23,7 @@ public class TestAdminCommandExecution {
     fabrics.add(fabric2);
     mockControllerClient= Mockito.mock(ControllerClient.class);
     mockResponse = new LastSucceedExecutionIdResponse();
-    Mockito.doReturn(mockResponse).when(mockControllerClient).getLastSucceedExecutionId(Mockito.anyString());
+    Mockito.doReturn(mockResponse).when(mockControllerClient).getLastSucceedExecutionId();
     execution = new AdminCommandExecution(id, "test", "test", fabrics);
   }
 

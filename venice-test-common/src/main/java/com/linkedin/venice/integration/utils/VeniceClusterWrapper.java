@@ -21,6 +21,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 
 import static com.linkedin.venice.ConfigKeys.CLUSTER_NAME;
@@ -48,6 +49,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
   private final Map<Integer, VeniceControllerWrapper> veniceControllerWrappers;
   private final Map<Integer, VeniceServerWrapper> veniceServerWrappers;
   private final Map<Integer, VeniceRouterWrapper> veniceRouterWrappers;
+  private final AtomicInteger storeCount;
 
   private final boolean sslToStorageNodes;
 
@@ -74,6 +76,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
     this.defaultPartitionSize = defaultPartitionSize;
     this.defaultDelayToRebalanceMS = defaultDelayToRebalanceMS;
     this.defaultMinActiveReplica = mintActiveReplica;
+    this.storeCount = new AtomicInteger(0);
     this.sslToStorageNodes = sslToStorageNodes;
   }
 
@@ -367,6 +370,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
     if (newVersion.isError()) {
       throw new VeniceException(newVersion.getError());
     }
+    storeCount.getAndIncrement();
     return newVersion;
   }
 
@@ -403,6 +407,8 @@ public class VeniceClusterWrapper extends ProcessWrapper {
     if (response.isError()) {
       throw new VeniceException(response.getError());
     }
+
+    storeCount.getAndIncrement();
     return response;
   }
 
@@ -422,5 +428,13 @@ public class VeniceClusterWrapper extends ProcessWrapper {
   public String getRandomRouterSslURL() {
     VeniceRouterWrapper router = getRandomVeniceRouter();
     return "https://" + router.getHost() + ":" + router.getSslPort();
+  }
+
+  public int getStoreCount() {
+    return storeCount.get();
+  }
+
+  public void increaseStoreCount() {
+    storeCount.getAndIncrement();
   }
 }
