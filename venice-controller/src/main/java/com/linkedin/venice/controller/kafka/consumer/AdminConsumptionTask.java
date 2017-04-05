@@ -337,7 +337,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
     }
     lastSucceedExecutionId = executionId;
     executionIdAccessor.updateLastSucceedExecutionId(clusterName, lastSucceedExecutionId);
-    persistRecordOffset(record);
+      persistRecordOffset(record);
   }
 
   private void skipMessage(ConsumerRecord<KafkaKey, KafkaMessageEnvelope> record) {
@@ -493,7 +493,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
     String clusterName = message.clusterName.toString();
     String storeName = message.storeName.toString();
     int version = message.currentVersion;
-    admin.setCurrentVersion(clusterName, storeName, version);
+    admin.setStoreCurrentVersion(clusterName, storeName, version);
 
     logger.info("Set store: " + storeName + " version to"  + version + " in cluster: " + clusterName);
   }

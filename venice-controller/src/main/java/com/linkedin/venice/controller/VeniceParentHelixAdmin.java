@@ -206,7 +206,7 @@ public class VeniceParentHelixAdmin implements Admin {
         throw new VeniceException(errMsg, lastException);
       }
 
-      logger.info("Waiting util consumed " + lastOffset + ", currently at " + consumedOffset);
+      logger.info("Waiting until consumed " + lastOffset + ", currently at " + consumedOffset);
       Utils.sleep(SLEEP_INTERVAL_FOR_DATA_CONSUMPTION_IN_MS);
     }
     logger.info("The latest message has been consumed, offset: " + lastOffset);
@@ -415,7 +415,7 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   @Override
-  public void setCurrentVersion(String clusterName,
+  public void setStoreCurrentVersion(String clusterName,
                                 String storeName,
                                 int versionNumber) {
     acquireLock(clusterName);
@@ -589,7 +589,7 @@ public class VeniceParentHelixAdmin implements Admin {
     Map<String, String> extraInfo = new HashMap<>();
     int failCount = 0;
     for (String cluster : childClusters){
-      JobStatusQueryResponse response = controllerClients.get(cluster).queryJobStatus(clusterName, kafkaTopic);
+      JobStatusQueryResponse response = controllerClients.get(cluster).queryJobStatus(kafkaTopic);
       if (response.isError()){
         failCount += 1;
         logger.warn("Couldn't query " + cluster + " for job " + kafkaTopic + " status: " + response.getError());
@@ -655,7 +655,7 @@ public class VeniceParentHelixAdmin implements Admin {
     for (Map.Entry<String, ControllerClient> clientEntry : controllerClients.entrySet()){
       String childCluster = clientEntry.getKey();
       ControllerClient client = clientEntry.getValue();
-      JobStatusQueryResponse statusResponse = client.queryJobStatus(clusterName, kafkaTopic);
+      JobStatusQueryResponse statusResponse = client.queryJobStatus(kafkaTopic);
       if (statusResponse.isError()){
         logger.warn("Failed to query " + childCluster + " for job progress on topic " + kafkaTopic + ".  " + statusResponse.getError());
       } else {

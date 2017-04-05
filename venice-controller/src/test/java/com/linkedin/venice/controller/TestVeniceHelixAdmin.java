@@ -317,13 +317,13 @@ public class TestVeniceHelixAdmin {
     long storeSize = partitionSize * (minPartitionNumber) + 1;
     int numberOfParition = veniceAdmin.calculateNumberOfPartitions(clusterName, "test", storeSize);
     Version v = veniceAdmin.incrementVersion(clusterName, "test", numberOfParition, 1);
-    veniceAdmin.setCurrentVersion(clusterName, "test", v.getNumber());
+    veniceAdmin.setStoreCurrentVersion(clusterName, "test", v.getNumber());
     Store store = veniceAdmin.getVeniceHelixResource(clusterName).getMetadataRepository().getStore("test");
     store.setPartitionCount(numberOfParition);
     veniceAdmin.getVeniceHelixResource(clusterName).getMetadataRepository().updateStore(store);
 
     v = veniceAdmin.incrementVersion(clusterName, "test", maxPartitionNumber, 1);
-    veniceAdmin.setCurrentVersion(clusterName, "test", v.getNumber());
+    veniceAdmin.setStoreCurrentVersion(clusterName, "test", v.getNumber());
     storeSize = partitionSize * (maxPartitionNumber - 2);
     numberOfParition = veniceAdmin.calculateNumberOfPartitions(clusterName, "test", storeSize);
     Assert.assertEquals(numberOfParition, minPartitionNumber,
@@ -464,11 +464,11 @@ public class TestVeniceHelixAdmin {
     veniceAdmin.addStore(clusterName, storeName, owner, keySchema, valueSchema);
     Version version = veniceAdmin.incrementVersion(clusterName, storeName, partitionCount, 2); // 2 replicas puts a replica on the blocking participant
     Assert.assertEquals(veniceAdmin.getCurrentVersion(clusterName, storeName), 0);
-    veniceAdmin.setCurrentVersion(clusterName, storeName, version.getNumber());
+    veniceAdmin.setStoreCurrentVersion(clusterName, storeName, version.getNumber());
     Assert.assertEquals(veniceAdmin.getCurrentVersion(clusterName, storeName), version.getNumber());
 
     try {
-      veniceAdmin.setCurrentVersion(clusterName, storeName, 100);
+      veniceAdmin.setStoreCurrentVersion(clusterName, storeName, 100);
       Assert.fail("Version 100 does not exist. Should be failed.");
     } catch (VeniceException e) {
       //expected
@@ -762,7 +762,7 @@ public class TestVeniceHelixAdmin {
   }
 
   @Test
-  public void testDisableStoreWriter() {
+  public void testDisableStoreWrite() {
     String storeName = "testDisableStoreWriter";
     veniceAdmin.addStore(clusterName, storeName, "unittestOwner", keySchema, valueSchema);
     veniceAdmin.disableStoreWrite(clusterName, storeName);
@@ -790,6 +790,7 @@ public class TestVeniceHelixAdmin {
     Assert.assertEquals(veniceAdmin.getAllStores(clusterName).get(0), store);
 
     veniceAdmin.enableStoreWrite(clusterName, storeName);
+    veniceAdmin.enableStoreWrite(clusterName, storeName);
 
     veniceAdmin.addVersion(clusterName, storeName, 1, 1, 1);
     veniceAdmin.incrementVersion(clusterName, storeName, 1, 1);
@@ -812,7 +813,7 @@ public class TestVeniceHelixAdmin {
     String storeName = "testDisableStoreRead";
     veniceAdmin.addStore(clusterName, storeName, "unittestOwner", keySchema, valueSchema);
     Version version = veniceAdmin.incrementVersion(clusterName, storeName, 1, 1);
-    veniceAdmin.setCurrentVersion(clusterName, storeName, version.getNumber());
+    veniceAdmin.setStoreCurrentVersion(clusterName, storeName, version.getNumber());
 
     veniceAdmin.disableStoreRead(clusterName, storeName);
     Store store = veniceAdmin.getStore(clusterName, storeName);

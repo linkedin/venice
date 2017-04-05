@@ -382,7 +382,7 @@ public class KafkaPushJob extends AbstractJob {
    * This method will talk to parent controller to create new store if necessary.
    */
   private void createStoreIfNeeded(){
-    NewStoreResponse response = controllerClient.createNewStore(clusterName, storeName,
+    NewStoreResponse response = controllerClient.createNewStore(storeName,
         "H2V-user", keySchemaString, valueSchemaString);
     if (response.isError()){
       throw new VeniceException("Error creating new store with urls: " + veniceControllerUrl + "  " + response.getError());
@@ -393,7 +393,7 @@ public class KafkaPushJob extends AbstractJob {
    * This method will talk to parent controller to validate key schema.
    */
   private void validateKeySchema() {
-    SchemaResponse keySchemaResponse = controllerClient.getKeySchema(clusterName, storeName);
+    SchemaResponse keySchemaResponse = controllerClient.getKeySchema(storeName);
     if (keySchemaResponse.isError()) {
       throw new VeniceException("Got an error in keySchemaResponse: " + keySchemaResponse.toString());
     } else if (null == keySchemaResponse.getSchemaStr()) {
@@ -416,7 +416,7 @@ public class KafkaPushJob extends AbstractJob {
    * TODO: rip out this method when we don't need to auto create stores any more
    */
   private void uploadValueSchema() {
-    SchemaResponse valueSchemaResponse = controllerClient.addValueSchema(clusterName, storeName, valueSchemaString);
+    SchemaResponse valueSchemaResponse = controllerClient.addValueSchema(storeName, valueSchemaString);
     if (valueSchemaResponse.isError()) {
       throw new VeniceException("Fail to validate/create value schema: " + valueSchemaString
           + " for store: " + storeName
@@ -428,7 +428,7 @@ public class KafkaPushJob extends AbstractJob {
    * This method will talk to controller to validate value schema.
    */
   private void validateValueSchema() {
-    SchemaResponse valueSchemaResponse = controllerClient.getValueSchemaID(clusterName, storeName, valueSchemaString);
+    SchemaResponse valueSchemaResponse = controllerClient.getValueSchemaID(storeName, valueSchemaString);
     if (valueSchemaResponse.isError()) {
       throw new VeniceException("Fail to validate value schema: " + valueSchemaString
           + " for store: " + storeName
@@ -442,7 +442,7 @@ public class KafkaPushJob extends AbstractJob {
    * This method will talk to parent controller to create new store version, which will create new topic for the version as well.
    */
   private void createNewStoreVersion() {
-    VersionCreationResponse versionCreationResponse = controllerClient.createNewStoreVersion(clusterName, storeName, inputFileDataSize);
+    VersionCreationResponse versionCreationResponse = controllerClient.createNewStoreVersion(storeName, inputFileDataSize);
     if (versionCreationResponse.isError()) {
       throw new VeniceException("Failed to create new store version with urls: " + veniceControllerUrl
           + ", error: " + versionCreationResponse.getError());
@@ -679,7 +679,7 @@ public class KafkaPushJob extends AbstractJob {
       logger.info("Received exception while killing map-reduce job", ex);
     }
     if (! Utils.isNullOrEmpty(topic)) {
-      controllerClient.killOfflinePushJob(clusterName, topic);
+      controllerClient.killOfflinePushJob(topic);
       logger.info("Offline push job has been killed, topic: " + topic);
     }
     closeVeniceWriter();

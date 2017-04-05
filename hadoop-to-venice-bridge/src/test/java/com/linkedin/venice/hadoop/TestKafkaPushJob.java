@@ -392,7 +392,7 @@ public class TestKafkaPushJob {
         new ControllerClient(veniceCluster.getClusterName(), veniceCluster.getRandomRouterURL());
 
     // Create store with key schema using "id" field
-    controllerClient.createNewStore(veniceCluster.getClusterName(), storeName, "owner", keySchemaById.toString(), valueSchema.toString());
+    controllerClient.createNewStore(storeName, "owner", keySchemaById.toString(), valueSchema.toString());
 
     String inputDirPath = "file://" + inputDir.getAbsolutePath();
     Properties props = setupDefaultProps(inputDirPath, storeName);
@@ -423,7 +423,7 @@ public class TestKafkaPushJob {
     String jobName = "Test push job";
     String routerUrl = veniceCluster.getRandomRouterURL();
     new ControllerClient(veniceCluster.getClusterName(), routerUrl)
-        .createNewStore(veniceCluster.getClusterName(), storeName, "owner", keySchemaById.toString(), valueSchema.toString());
+        .createNewStore(storeName, "owner", keySchemaById.toString(), valueSchema.toString());
 
     // Run job with different value schema (from 'string' to 'int')
     props.setProperty(KafkaPushJob.AVRO_VALUE_FIELD_PROP, "age");
@@ -447,12 +447,12 @@ public class TestKafkaPushJob {
     ControllerClient controllerClient = new ControllerClient(veniceCluster.getClusterName(), routerUrl);
 
     // Create store with value schema
-    controllerClient.createNewStore(veniceCluster.getClusterName(), storeName, "owner", keySchema.toString(), valueSchema.toString());
+    controllerClient.createNewStore(storeName, "owner", keySchema.toString(), valueSchema.toString());
 
     // Upload new value
     inputDir = getTempDataDirectory();
     Schema newSchema = writeComplicatedAvroFileWithUserSchema(inputDir, true);
     String newValueSchemaString = newSchema.getField("value").schema().toString();
-    controllerClient.addValueSchema(veniceCluster.getClusterName(), storeName, newValueSchemaString);
+    controllerClient.addValueSchema(storeName, newValueSchemaString);
   }
 }

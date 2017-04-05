@@ -59,7 +59,7 @@ public class AdminCommandExecution {
       if (fabricToExecutionStatusMap.get(fabric).equals(AdminCommandExecutionStatus.COMPLETED)) {
         return;
       }
-      LastSucceedExecutionIdResponse response = controllerClient.getLastSucceedExecutionId(clusterName);
+      LastSucceedExecutionIdResponse response = controllerClient.getLastSucceedExecutionId();
       if (response.isError()) {
         throw new VeniceException(
             "Query the last succeed execution id from fabric: " + fabric + " failed. Caused by: " + response.getError());
