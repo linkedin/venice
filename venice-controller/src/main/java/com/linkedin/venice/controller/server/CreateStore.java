@@ -3,6 +3,9 @@ package com.linkedin.venice.controller.server;
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controllerapi.NewStoreResponse;
+import com.linkedin.venice.exceptions.VeniceHttpException;
+import com.linkedin.venice.exceptions.VeniceStoreAlreadyExistsException;
+import org.apache.http.HttpStatus;
 import spark.Route;
 
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.CLUSTER;
@@ -34,7 +37,11 @@ public class CreateStore {
         admin.addStore(clusterName, storeName, owner, keySchema, valueSchema);
       } catch (Throwable e) {
         responseObject.setError(e.getMessage());
-        AdminSparkServer.handleError(e, request, response);
+        if (e instanceof VeniceStoreAlreadyExistsException) {
+          AdminSparkServer.handleError(new VeniceHttpException(HttpStatus.SC_CONFLICT, e), request, response);
+        } else {
+          AdminSparkServer.handleError(e, request, response);
+        }
       }
       response.type(HttpConstants.JSON);
       return AdminSparkServer.mapper.writeValueAsString(responseObject);

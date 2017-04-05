@@ -2,6 +2,7 @@ package com.linkedin.venice.helix;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
+import com.linkedin.venice.exceptions.VeniceStoreAlreadyExistsException;
 import com.linkedin.venice.meta.ReadWriteStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.VeniceSerializer;
@@ -73,7 +74,7 @@ public class HelixReadWriteStoreRepository extends HelixReadOnlyStoreRepository 
     lock();
     try {
       if (storeMap.containsKey(store.getName())) {
-        throw new VeniceException("Store:" + store.getName() + " already exists.");
+        throw new VeniceStoreAlreadyExistsException(store.getName());
       }
       HelixUtils.update(dataAccessor,composeStorePath(store.getName()),store,retryCount);
       storeMap.put(store.getName(), store);

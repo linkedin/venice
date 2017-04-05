@@ -3,6 +3,7 @@ package com.linkedin.venice.controller;
 import com.linkedin.venice.controller.kafka.StoreStatusDecider;
 import com.linkedin.venice.controller.kafka.consumer.AdminConsumerService;
 import com.linkedin.venice.exceptions.SchemaIncompatibilityException;
+import com.linkedin.venice.exceptions.VeniceStoreAlreadyExistsException;
 import com.linkedin.venice.helix.HelixAdapterSerializer;
 import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
 import com.linkedin.venice.helix.HelixReadWriteSchemaRepository;
@@ -847,7 +848,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     private void throwStoreAlreadyExists(String clusterName, String storeName) {
         String errorMessage = "Store:" + storeName + " already exists. Can not add it to cluster:" + clusterName;
         logger.info(errorMessage);
-        throw new VeniceException(errorMessage);
+        throw new VeniceStoreAlreadyExistsException(storeName);
     }
 
     private void throwStoreDoesNotExist(String clusterName, String storeName) {

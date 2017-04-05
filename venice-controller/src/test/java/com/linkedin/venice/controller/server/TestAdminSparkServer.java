@@ -1,8 +1,10 @@
 package com.linkedin.venice.controller.server;
 
 import com.linkedin.venice.controllerapi.AdminCommandExecution;
+import com.linkedin.venice.controllerapi.ControllerApiConstants;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
+import com.linkedin.venice.controllerapi.ControllerRoute;
 import com.linkedin.venice.controllerapi.MultiNodesStatusResponse;
 import com.linkedin.venice.controllerapi.MultiNodeResponse;
 import com.linkedin.venice.controllerapi.MultiReplicaResponse;
@@ -25,10 +27,23 @@ import com.linkedin.venice.meta.InstanceStatus;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.StoreStatus;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.Utils;
+import java.io.IOException;
+import java.io.UnsupportedEncodingException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
+import java.util.concurrent.ExecutionException;
 import org.apache.avro.Schema;
+import org.apache.commons.io.IOUtils;
+import org.apache.http.HttpResponse;
+import org.apache.http.NameValuePair;
+import org.apache.http.client.entity.UrlEncodedFormEntity;
+import org.apache.http.client.methods.HttpPost;
+import org.apache.http.impl.nio.client.CloseableHttpAsyncClient;
+import org.apache.http.message.BasicNameValuePair;
 import org.testng.Assert;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
@@ -92,20 +107,37 @@ public class TestAdminSparkServer {
   }
 
   @Test
-  public void controllerClientCanCreateNewStore(){
+  public void controllerClientCanCreateNewStore() throws IOException, ExecutionException, InterruptedException {
     String storeToCreate = "newTestStore123";
     String keySchema = "\"string\"";
     String valueSchema = "\"long\"";
     String clusterName = venice.getClusterName();
+    ControllerClient controllerClient = new ControllerClient(clusterName, routerUrl);
     // create Store
-    NewStoreResponse newStoreResponse = ControllerClient.createNewStore(routerUrl, clusterName,
+    NewStoreResponse newStoreResponse = controllerClient.createNewStore(clusterName,
         storeToCreate, "owner", keySchema, valueSchema);
     Assert.assertFalse(newStoreResponse.isError(), "create new store should succeed for a store that doesn't exist");
-    Assert.assertEquals(ControllerClient.getKeySchema(routerUrl, clusterName, storeToCreate).getSchemaStr(), keySchema);
-    Assert.assertEquals(ControllerClient.getValueSchema(routerUrl, clusterName, storeToCreate, 1).getSchemaStr(), valueSchema);
-    NewStoreResponse duplicateNewStoreResponse = ControllerClient.createNewStore(routerUrl, venice.getClusterName(),
+    Assert.assertEquals(controllerClient.getKeySchema(clusterName, storeToCreate).getSchemaStr(), keySchema);
+    Assert.assertEquals(controllerClient.getValueSchema(clusterName, storeToCreate, 1).getSchemaStr(), valueSchema);
+    NewStoreResponse duplicateNewStoreResponse = controllerClient.createNewStore(venice.getClusterName(),
         storeToCreate, "owner", keySchema, valueSchema);
     Assert.assertTrue(duplicateNewStoreResponse.isError(), "create new store should fail for duplicate store creation");
+
+    // ensure creating a duplicate store throws a http 409, status code isn't exposed in controllerClient
+    CloseableHttpAsyncClient httpClient = SslUtils.getMinimalHttpClient(1,1, Optional.empty());
+    httpClient.start();
+    List<NameValuePair> params = new ArrayList<>();
+    params.add(new BasicNameValuePair(ControllerApiConstants.HOSTNAME, Utils.getHostName()));
+    params.add(new BasicNameValuePair(ControllerApiConstants.CLUSTER, clusterName));
+    params.add(new BasicNameValuePair(ControllerApiConstants.NAME, storeToCreate));
+    params.add(new BasicNameValuePair(ControllerApiConstants.OWNER, "owner"));
+    params.add(new BasicNameValuePair(ControllerApiConstants.KEY_SCHEMA, keySchema));
+    params.add(new BasicNameValuePair(ControllerApiConstants.VALUE_SCHEMA, valueSchema));
+    final HttpPost post = new HttpPost(venice.getAllControllersURLs() + ControllerRoute.NEW_STORE.getPath());
+    post.setEntity(new UrlEncodedFormEntity(params));
+    HttpResponse duplicateStoreCreationHttpResponse = httpClient.execute(post, null).get();
+    Assert.assertEquals(duplicateStoreCreationHttpResponse.getStatusLine().getStatusCode(), 409, IOUtils.toString(duplicateStoreCreationHttpResponse.getEntity().getContent()));
+    httpClient.close();
   }
 
   @Test
