@@ -43,8 +43,10 @@ class IntegrationTestUtils {
    */
   static File getDataDirectory(String serviceName) {
     String tmpDirectory = System.getProperty("java.io.tmpdir");
-    String directoryName = TestUtils.getUniqueString(serviceName + "-Data");
-    return new File(tmpDirectory, directoryName).getAbsoluteFile();
+    String directoryName = TestUtils.getUniqueString("VeniceTemp-" + serviceName + "-Data");
+    File dataDir = new File(tmpDirectory, directoryName).getAbsoluteFile();
+    dataDir.deleteOnExit(); //Doesn't always work
+    return dataDir;
   }
 
   /**
