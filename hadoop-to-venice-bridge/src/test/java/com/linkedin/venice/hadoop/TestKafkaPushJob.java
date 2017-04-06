@@ -28,6 +28,7 @@ import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericDatumWriter;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.io.DatumWriter;
+import org.apache.commons.io.FileUtils;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
@@ -199,7 +200,9 @@ public class TestKafkaPushJob {
     }
     for (File dir: tempDirectories){
       try {
-        Files.deleteIfExists(dir.toPath());
+        if (dir != null){
+          FileUtils.deleteDirectory(dir);
+        }
       } catch (IOException e) {
         e.printStackTrace();
       }

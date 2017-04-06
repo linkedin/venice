@@ -841,6 +841,7 @@ public class TestVeniceHelixAdmin {
         "After removing the instance, white list should be empty.");
   }
 
+  //TODO slow test, ~15 seconds.  Can we improve it?
   @Test
   public void testKillOfflinePush()
       throws Exception {

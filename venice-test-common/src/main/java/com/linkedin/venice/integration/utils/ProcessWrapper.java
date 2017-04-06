@@ -118,7 +118,7 @@ public abstract class ProcessWrapper implements Closeable {
       LOGGER.error("Failed to shutdown " + serviceName + " service running at " + getAddressForLogging(), e);
     }
     try {
-      if (dataDirectory != null) {
+      if (dataDirectory != null && dataDirectory.exists()) {
         FileUtils.deleteDirectory(dataDirectory);
       }
     } catch (IOException e) {
