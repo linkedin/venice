@@ -1,5 +1,8 @@
 package com.linkedin.venice.exceptions;
 
+import org.apache.http.HttpStatus;
+
+
 /**
  * Thrown when an operation should create a store, but the store already exists
  */
@@ -18,5 +21,10 @@ public class VeniceStoreAlreadyExistsException extends VeniceException {
 
   public String getStoreName(){
     return storeName;
+  }
+
+  @Override
+  public int getHttpStatusCode(){
+    return HttpStatus.SC_CONFLICT;
   }
 }
