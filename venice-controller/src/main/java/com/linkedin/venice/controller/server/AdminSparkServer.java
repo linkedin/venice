@@ -4,6 +4,7 @@ import com.linkedin.venice.controller.AuditInfo;
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.stats.SparkServerStats;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceHttpException;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.utils.Utils;
@@ -188,8 +189,8 @@ public class AdminSparkServer extends AbstractVeniceService {
     if (e instanceof Error) {
       throw (Error) e;
     }
-    int statusCode = e instanceof VeniceHttpException ?
-        ((VeniceHttpException) e).getHttpStatusCode() :
+    int statusCode = e instanceof VeniceException ?
+        ((VeniceException) e).getHttpStatusCode() :
         HttpStatus.SC_INTERNAL_SERVER_ERROR;
     response.status(statusCode);
 

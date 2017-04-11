@@ -37,11 +37,7 @@ public class CreateStore {
         admin.addStore(clusterName, storeName, owner, keySchema, valueSchema);
       } catch (Throwable e) {
         responseObject.setError(e.getMessage());
-        if (e instanceof VeniceStoreAlreadyExistsException) {
-          AdminSparkServer.handleError(new VeniceHttpException(HttpStatus.SC_CONFLICT, e), request, response);
-        } else {
-          AdminSparkServer.handleError(e, request, response);
-        }
+        AdminSparkServer.handleError(e, request, response);
       }
       response.type(HttpConstants.JSON);
       return AdminSparkServer.mapper.writeValueAsString(responseObject);

@@ -22,6 +22,7 @@ public class VeniceHttpException extends VeniceException {
     this.code = code;
   }
 
+  @Override
   public int getHttpStatusCode(){
     return code;
   }
