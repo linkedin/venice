@@ -59,6 +59,7 @@ import org.apache.helix.model.ClusterConfig;
 import org.apache.helix.model.ExternalView;
 import org.apache.helix.model.HelixConfigScope;
 import org.apache.helix.model.IdealState;
+import org.apache.helix.model.InstanceConfig;
 import org.apache.helix.model.LeaderStandbySMD;
 import org.apache.helix.model.LiveInstance;
 import org.apache.helix.model.builder.HelixConfigScopeBuilder;
@@ -752,6 +753,24 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             }
         }
         return instancesStatusesMap;
+    }
+
+    @Override
+    public void removeStorageNode(String clusterName, String instanceId) {
+        checkControllerMastership(clusterName);
+        logger.info("Removing storage node: " + instanceId + " from cluster: " + clusterName);
+        RoutingDataRepository routingDataRepository = getVeniceHelixResource(clusterName).getRoutingDataRepository();
+        if (routingDataRepository.getLiveInstancesMap().containsKey(instanceId)) {
+            // The given storage node is still connected to cluster.
+            throw new VeniceException("Storage node: " + instanceId + " is still connected to cluster: " + clusterName
+                + ", could not be removed from that cluster.");
+        }
+
+        // Remove storage node from both whitelist and helix instances list.
+        removeInstanceFromWhiteList(clusterName, instanceId);
+        InstanceConfig instanceConfig = admin.getInstanceConfig(clusterName, instanceId);
+        admin.dropInstance(clusterName, instanceConfig);
+        logger.info("Removed storage node: " + instanceId + " from cluster: " + clusterName);
     }
 
     @Override

@@ -1,5 +1,6 @@
 package com.linkedin.venice.controller.server;
 
+import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controllerapi.AdminCommandExecution;
 import com.linkedin.venice.controllerapi.ControllerApiConstants;
 import com.linkedin.venice.controllerapi.ControllerClient;
@@ -364,7 +365,7 @@ public class TestAdminSparkServer {
   @Test
   public void controllerClientCanQueryRemovability(){
     VeniceServerWrapper server = venice.getVeniceServers().get(0);
-    String nodeId = server.getHost() + "_" + server.getPort();
+    String nodeId = Utils.getHelixNodeIdentifier(server.getPort());
 
     ControllerResponse response = controllerClient.isNodeRemovable(nodeId);
     Assert.assertFalse(response.isError(), response.getError());
@@ -423,7 +424,6 @@ public class TestAdminSparkServer {
     for (int i = 0; i < storeCount; i++) {
       storeNames.add(venice.getNewStore("testStore" + i, "test").getName());
     }
-    ControllerClient controllerClient = new ControllerClient(venice.getClusterName(), routerUrl);
 
     MultiStoreStatusResponse storeResponse =
         controllerClient.listStoresStatuses(venice.getClusterName());
@@ -439,5 +439,37 @@ public class TestAdminSparkServer {
       Assert.assertTrue(storeResponse.getStoreStatusMap().containsKey(expectedStore),
           "Result of list store status should contain the store we created: " + expectedStore);
     }
+  }
+
+  @Test
+  public void controllerClientCanRemoveNodeFromCluster() {
+    Admin admin = venice.getMasterVeniceController().getVeniceAdmin();
+    VeniceServerWrapper server = venice.getVeniceServers().get(0);
+    String nodeId = Utils.getHelixNodeIdentifier(server.getPort());
+    // Trying to remove a live node.
+    ControllerResponse response = controllerClient.removeNodeFromCluster(nodeId);
+    Assert.assertTrue(response.isError(), "Node is still connected to cluster, could not be removed.");
+
+    // Remove a disconnected node.
+    venice.stopVeniceServer(server.getPort());
+    response = controllerClient.removeNodeFromCluster(nodeId);
+    Assert.assertFalse(response.isError(), "Node is already disconnected, could be removed.");
+    Assert.assertFalse(admin.getStorageNodes(venice.getClusterName()).contains(nodeId),
+        "Node should be removed from the cluster.");
+  }
+
+  @Test
+  public void controllerClientCanUpdateWhiteList() {
+    Admin admin = venice.getMasterVeniceController().getVeniceAdmin();
+
+    String nodeId = Utils.getHelixNodeIdentifier(34567);
+    Assert.assertFalse(admin.getWhitelist(venice.getClusterName()).contains(nodeId),
+        nodeId + " has not been added into white list.");
+    controllerClient.addNodeIntoWhiteList(nodeId);
+    Assert.assertTrue(admin.getWhitelist(venice.getClusterName()).contains(nodeId),
+        nodeId + " has been added into white list.");
+    controllerClient.removeNodeFromWhiteList(nodeId);
+    Assert.assertFalse(admin.getWhitelist(venice.getClusterName()).contains(nodeId),
+        nodeId + " has been removed from white list.");
   }
 }

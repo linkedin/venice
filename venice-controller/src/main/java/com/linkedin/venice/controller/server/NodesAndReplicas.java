@@ -2,6 +2,7 @@ package com.linkedin.venice.controller.server;
 
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.controller.Admin;
+import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.MultiNodesStatusResponse;
 import com.linkedin.venice.controllerapi.MultiNodeResponse;
 import com.linkedin.venice.controllerapi.MultiReplicaResponse;
@@ -16,11 +17,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.CLUSTER;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.NAME;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.STORAGE_NODE_ID;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.VERSION;
-import static com.linkedin.venice.controllerapi.ControllerRoute.ClUSTER_HEALTH_INSTANCES;
-import static com.linkedin.venice.controllerapi.ControllerRoute.LIST_NODES;
-import static com.linkedin.venice.controllerapi.ControllerRoute.LIST_REPLICAS;
-import static com.linkedin.venice.controllerapi.ControllerRoute.NODE_REMOVABLE;
-import static com.linkedin.venice.controllerapi.ControllerRoute.NODE_REPLICAS;
+import static com.linkedin.venice.controllerapi.ControllerRoute.*;
 
 
 public class NodesAndReplicas {
@@ -116,6 +113,60 @@ public class NodesAndReplicas {
         responseObject.setCluster(request.queryParams(CLUSTER));
         String nodeId = request.queryParams(STORAGE_NODE_ID);
         responseObject.setRemovable(admin.isInstanceRemovable(responseObject.getCluster(), nodeId));
+      } catch (Throwable e) {
+        responseObject.setError(e.getMessage());
+        AdminSparkServer.handleError(e, request, response);
+      }
+      response.type(HttpConstants.JSON);
+      return AdminSparkServer.mapper.writeValueAsString(responseObject);
+    };
+  }
+
+  public static Route removeNodeFromCluster(Admin admin) {
+    return (request, response) -> {
+      ControllerResponse responseObject = new ControllerResponse();
+      try {
+        AdminSparkServer.validateParams(request, REMOVE_NODE.getParams(), admin);
+        String cluster = request.queryParams(CLUSTER);
+        responseObject.setCluster(cluster);
+        String nodeId = request.queryParams(STORAGE_NODE_ID);
+        admin.removeStorageNode(cluster, nodeId);
+      } catch (Throwable e) {
+        responseObject.setError(e.getMessage());
+        AdminSparkServer.handleError(e, request, response);
+      }
+      response.type(HttpConstants.JSON);
+      return AdminSparkServer.mapper.writeValueAsString(responseObject);
+    };
+  }
+
+  public static Route addNodeIntoWhiteList(Admin admin) {
+    return (request, response) -> {
+      ControllerResponse responseObject = new ControllerResponse();
+      try {
+        AdminSparkServer.validateParams(request, WHITE_LIST_ADD_NODE.getParams(), admin);
+        String cluster = request.queryParams(CLUSTER);
+        responseObject.setCluster(cluster);
+        String nodeId = request.queryParams(STORAGE_NODE_ID);
+        admin.addInstanceToWhitelist(cluster, nodeId);
+      } catch (Throwable e) {
+        responseObject.setError(e.getMessage());
+        AdminSparkServer.handleError(e, request, response);
+      }
+      response.type(HttpConstants.JSON);
+      return AdminSparkServer.mapper.writeValueAsString(responseObject);
+    };
+  }
+
+  public static Route removeNodeFromWhiteList(Admin admin){
+    return (request, response) -> {
+      ControllerResponse responseObject = new ControllerResponse();
+      try {
+        AdminSparkServer.validateParams(request, WHITE_LIST_REMOVE_NODE.getParams(), admin);
+        String cluster = request.queryParams(CLUSTER);
+        responseObject.setCluster(cluster);
+        String nodeId = request.queryParams(STORAGE_NODE_ID);
+        admin.removeInstanceFromWhiteList(cluster, nodeId);
       } catch (Throwable e) {
         responseObject.setError(e.getMessage());
         AdminSparkServer.handleError(e, request, response);

@@ -273,6 +273,10 @@ public class VeniceServer {
     return dir.isDirectory();
   }
 
+  protected VeniceConfigLoader getConfigLoader(){
+    return veniceConfigLoader;
+  }
+
   public static void main(String args[])
       throws Exception {
     VeniceConfigLoader veniceConfigService = null;

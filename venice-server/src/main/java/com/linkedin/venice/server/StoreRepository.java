@@ -59,7 +59,7 @@ public class StoreRepository {
   }
 
   public List<AbstractStorageEngine> getAllLocalStorageEngines() {
-    return new ArrayList<AbstractStorageEngine>();
+    return new ArrayList<>(localStorageEngines.values());
   }
 
   public void close() {
