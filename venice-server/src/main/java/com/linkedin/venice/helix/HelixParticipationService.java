@@ -13,16 +13,21 @@ import com.linkedin.venice.storage.StorageService;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.Utils;
+import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import javax.validation.constraints.NotNull;
+import org.apache.helix.HelixAdmin;
+import org.apache.helix.HelixException;
 import org.apache.helix.HelixManager;
 import org.apache.helix.HelixManagerFactory;
 import org.apache.helix.InstanceType;
 import org.apache.helix.LiveInstanceInfoProvider;
+import org.apache.helix.manager.zk.ZKHelixAdmin;
 import org.apache.helix.manager.zk.ZkClient;
+import org.apache.helix.model.InstanceConfig;
 import org.apache.helix.participant.statemachine.StateModelFactory;
 import org.apache.log4j.Logger;
 import java.util.concurrent.CompletableFuture;
@@ -42,8 +47,7 @@ public class HelixParticipationService extends AbstractVeniceService implements 
   private final String zkAddress;
   private final StateModelFactory stateModelFactory;
   private final StoreIngestionService ingestionService;
-  private final int statusMessageRetryCount;
-  private final long statusMessageRetryDuration;
+  private final StorageService storageService;
   private final VeniceConfigLoader veniceConfigLoader;
 
   private HelixManager manager;
@@ -59,13 +63,12 @@ public class HelixParticipationService extends AbstractVeniceService implements 
           @NotNull String clusterName,
           int port) {
     this.ingestionService = storeIngestionService;
+    this.storageService = storageService;
     this.clusterName = clusterName;
     //The format of instance name must be "$host_$port", otherwise Helix can not get these information correctly.
     this.participantName = Utils.getHelixNodeIdentifier(port);
     this.zkAddress = zkAddress;
     this.veniceConfigLoader = veniceConfigLoader;
-    statusMessageRetryCount = veniceConfigLoader.getVeniceClusterConfig().getStatusMessageRetryCount();
-    statusMessageRetryDuration = veniceConfigLoader.getVeniceClusterConfig().getStatusMessageRetryDurationMs();
     instance = new Instance(participantName, Utils.getHostName(), port);
     helixStateTransitionExecutorService =
         new ThreadPoolExecutor(veniceConfigLoader.getVeniceServerConfig().getMinStateTransitionThreadNumber(),
@@ -78,6 +81,11 @@ public class HelixParticipationService extends AbstractVeniceService implements 
   @Override
   public boolean startInner() {
     logger.info("Attempting to start HelixParticipation service");
+    // Check node status before joining the cluster.
+    // TODO Helix team will provide a way to let us do some checking after connecting to Helix.
+    // TODO In that case, it's guaranteed that the node would not be assigned with any resource before we completed our
+    // TODO checking, so we could use HelixManager to get some metadata instead of creating a new zk connection.
+    checkBeforeJoinInCluster();
     manager = HelixManagerFactory
             .getZKHelixManager(clusterName, this.participantName, InstanceType.PARTICIPANT,
                 zkAddress);
@@ -109,6 +117,26 @@ public class HelixParticipationService extends AbstractVeniceService implements 
       manager.disconnect();
     }
   }
+
+  private void checkBeforeJoinInCluster() {
+    HelixAdmin admin = new ZKHelixAdmin(zkAddress);
+    try {
+      List<String> instances = admin.getInstancesInCluster(clusterName);
+      if (instances.contains(instance.getNodeId())) {
+        logger.info(instance.getNodeId() + " is not a new node to cluster: " + clusterName + ", skip the cleaning up.");
+        return;
+      }
+      // Could not get instance from helix cluster. So it's a new machine or the machine which had been removed from
+      // this cluster. In order to prevent resource leaking, we need to clean up all legacy stores.
+      logger.info(instance.getNodeId() + " is a new node or had been removed from cluster: " + clusterName
+          + " start cleaning up local storage.");
+      storageService.cleanupAllStores(veniceConfigLoader);
+      logger.info("Cleaning up complete, " + instance.getNodeId() + " can now join cluster:" + clusterName);
+    } finally {
+      admin.close();
+    }
+  }
+
 
   /**
    * check RouterServer#asyncStart() for details about asyncStart

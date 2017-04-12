@@ -55,6 +55,9 @@ usage: java -jar venice-admin-tool-0.1.jar --<command> [parameters]
     --query                      Query a store that has a simple key
                                  schema.  Requires: --url, --cluster,
                                  --store, --key
+    --remove-node                Remove a storage node from the cluster.
+                                 Requires: --url, --cluster,
+                                 --storage-node
     --replicas-of-store          List the location and status of all
                                  replicas for a store.  Requires: --url,
                                  --cluster, --store, --version
@@ -72,7 +75,12 @@ usage: java -jar venice-admin-tool-0.1.jar --<command> [parameters]
                                  --version
     --skip-admin                 Skip an admin message.  Requires: --url,
                                  --cluster, --offset
-
+    --white-list-add-node        Add a storage node into the white list..
+                                 Requires: --url, --cluster,
+                                 --storage-node
+    --white-list-remove-node     Remove a storage node from the white
+                                 list..  Requires: --url, --cluster,
+                                 --storage-node
 usage: Parameters:
  -c,--cluster <arg>              Name of Venice cluster
  -e,--execution <arg>            Execution ID of async admin command
@@ -116,6 +124,9 @@ java -jar venice-admin-tool-0.1.jar --list-storage-nodes --url <url> --cluster <
 java -jar venice-admin-tool-0.1.jar --cluster-health-instances --url <url> --cluster <cluster>
 java -jar venice-admin-tool-0.1.jar --cluster-health-stores --url <url> --cluster <cluster>
 java -jar venice-admin-tool-0.1.jar --node-removable --url <url> --cluster <cluster> --storage-node <storage-node>
+java -jar venice-admin-tool-0.1.jar --white-list-add-node --url <url> --cluster <cluster> --storage-node <storage-node>
+java -jar venice-admin-tool-0.1.jar --white-list-remove-node --url <url> --cluster <cluster> --storage-node <storage-node>
+java -jar venice-admin-tool-0.1.jar --remove-node --url <url> --cluster <cluster> --storage-node <storage-node>
 java -jar venice-admin-tool-0.1.jar --replicas-of-store --url <url> --cluster <cluster> --store <store> --version <version>
 java -jar venice-admin-tool-0.1.jar --replicas-on-storage-node --url <url> --cluster <cluster> --storage-node <storage-node>
 java -jar venice-admin-tool-0.1.jar --query --url <url> --cluster <cluster> --store <store> --key <key>

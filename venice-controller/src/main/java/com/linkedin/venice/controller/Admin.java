@@ -123,6 +123,8 @@ public interface Admin {
 
     Map<String, String> getStorageNodesStatus(String clusterName);
 
+    void removeStorageNode(String clusterName, String instanceId);
+
     /**
      * Stop the helix controller for a single cluster.
      * @param clusterName

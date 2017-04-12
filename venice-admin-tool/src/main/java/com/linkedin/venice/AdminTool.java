@@ -175,6 +175,12 @@ public class AdminTool {
         printStoresStatuses(clusterName);
       } else if (cmd.hasOption(Command.NODE_REMOVABLE.toString())){
         isNodeRemovable(cmd, routerHosts, clusterName);
+      } else if (cmd.hasOption(Command.REMOVE_NODE.toString())) {
+        removeNodeFromCluster(cmd);
+      } else if (cmd.hasOption(Command.WHITE_LIST_ADD_NODE.toString())) {
+        addNodeIntoWhiteList(cmd);
+      } else if (cmd.hasOption(Command.WHITE_LIST_REMOVE_NODE.toString())) {
+        removeNodeFromWhiteList(cmd);
       } else if (cmd.hasOption(Command.REPLICAS_OF_STORE.toString())) {
         printReplicaListForStoreVersion(cmd, routerHosts, clusterName);
       } else if (cmd.hasOption(Command.REPLICAS_ON_STORAGE_NODE.toString())) {
@@ -384,6 +390,24 @@ public class AdminTool {
   private static void isNodeRemovable(CommandLine cmd, String routerHosts, String clusterName){
     String storageNodeId = getRequiredArgument(cmd, Arg.STORAGE_NODE);
     ControllerResponse response = ControllerClient.isNodeRemovable(routerHosts, clusterName, storageNodeId);
+    printSuccess(response);
+  }
+
+  private static void addNodeIntoWhiteList(CommandLine cmd){
+    String storageNodeId = getRequiredArgument(cmd, Arg.STORAGE_NODE);
+    ControllerResponse response = controllerClient.addNodeIntoWhiteList(storageNodeId);
+    printSuccess(response);
+  }
+
+  private static void removeNodeFromWhiteList(CommandLine cmd){
+    String storageNodeId = getRequiredArgument(cmd, Arg.STORAGE_NODE);
+    ControllerResponse response = controllerClient.removeNodeFromWhiteList(storageNodeId);
+    printSuccess(response);
+  }
+
+  private static void removeNodeFromCluster(CommandLine cmd){
+    String storageNodeId = getRequiredArgument(cmd, Arg.STORAGE_NODE);
+    ControllerResponse response = controllerClient.removeNodeFromCluster(storageNodeId);
     printSuccess(response);
   }
 

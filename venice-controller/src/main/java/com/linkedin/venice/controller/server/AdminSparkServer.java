@@ -110,6 +110,9 @@ public class AdminSparkServer extends AbstractVeniceService {
     httpService.get(LIST_REPLICAS.getPath(), NodesAndReplicas.listReplicasForStore(admin));
     httpService.get(NODE_REPLICAS.getPath(), NodesAndReplicas.listReplicasForStorageNode(admin));
     httpService.get(NODE_REMOVABLE.getPath(), NodesAndReplicas.isNodeRemovable(admin));
+    httpService.post(WHITE_LIST_ADD_NODE.getPath(), NodesAndReplicas.addNodeIntoWhiteList(admin));
+    httpService.post(WHITE_LIST_REMOVE_NODE.getPath(), NodesAndReplicas.removeNodeFromWhiteList(admin));
+    httpService.post(REMOVE_NODE.getPath(), NodesAndReplicas.removeNodeFromCluster(admin));
 
     // Operations for key schema/value schema
     httpService.get(GET_KEY_SCHEMA.getPath(), SchemaRoutes.getKeySchema(admin));

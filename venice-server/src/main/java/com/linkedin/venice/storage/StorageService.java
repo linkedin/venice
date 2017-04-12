@@ -163,6 +163,23 @@ public class StorageService extends AbstractVeniceService {
     }
   }
 
+  public void cleanupAllStores(VeniceConfigLoader configLoader) {
+    // Load local storage and delete them safely.
+    // TODO Just clean the data dir in case loading and deleting is too slow.
+    restoreAllStores(configLoader);
+    logger.info("Start cleaning up all the stores persisted previously");
+    storeRepository.getAllLocalStorageEngines().stream().forEach(storageEngine -> {
+      String storeName = storageEngine.getName();
+      logger.info("Start deleting store: " + storeName);
+      Set<Integer> partitionIds = storageEngine.getPartitionIds();
+      for (Integer partitionId : partitionIds) {
+        dropStorePartition(configLoader.getStoreConfig(storeName), partitionId);
+      }
+      logger.info("Deleted store: " + storeName);
+    });
+    logger.info("Done cleaning up all the stores persisted previously");
+  }
+
   public StoreRepository getStoreRepository() {
     return storeRepository;
   }

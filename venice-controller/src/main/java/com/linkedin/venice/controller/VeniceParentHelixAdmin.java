@@ -28,6 +28,7 @@ import com.linkedin.venice.controllerapi.D2ControllerClient;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
+import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
 import com.linkedin.venice.helix.HelixReadWriteStoreRepository;
 import com.linkedin.venice.helix.Replica;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
@@ -264,11 +265,11 @@ public class VeniceParentHelixAdmin implements Admin {
                             int versionNumber,
                             int numberOfPartition,
                             int replicationFactor) {
-    throw new VeniceException("addVersion is not supported yet!");
+    throw new VeniceUnsupportedOperationException("addVersion");
   }
 
   /**
-   * Since there is no {@link com.linkedin.venice.job.OfflineJob} running in Parent Controller,
+   * Since there is no offline push running in Parent Controller,
    * the old store versions won't be cleaned up by job completion action, so Parent Controller chooses
    * to clean it up when the new store version gets created.
    * It is OK to clean up the old store versions in Parent Controller without notifying Child Controller since
@@ -359,12 +360,12 @@ public class VeniceParentHelixAdmin implements Admin {
 
   @Override
   public int getCurrentVersion(String clusterName, String storeName) {
-    throw new VeniceException("getCurrentVersion is not supported!");
+    throw new VeniceUnsupportedOperationException("getCurrentVersion");
   }
 
   @Override
   public Version peekNextVersion(String clusterName, String storeName) {
-    throw new VeniceException("peekNextVersion is not supported!");
+    throw new VeniceUnsupportedOperationException("peekNextVersion");
   }
 
   @Override
@@ -401,7 +402,7 @@ public class VeniceParentHelixAdmin implements Admin {
 
   @Override
   public Map<String, String> getAllStoreStatuses(String clusterName) {
-    throw new VeniceException("getAllStoreStatuses is not supported yet!");
+    throw new VeniceUnsupportedOperationException("getAllStoreStatuses");
   }
 
   @Override
@@ -537,17 +538,22 @@ public class VeniceParentHelixAdmin implements Admin {
 
   @Override
   public SchemaEntry addValueSchema(String clusterName, String storeName, String valueSchemaStr, int schemaId) {
-    throw new VeniceException("addValueSchema by specifying schema id is not supported!");
+    throw new VeniceUnsupportedOperationException("addValueSchema");
   }
 
   @Override
   public List<String> getStorageNodes(String clusterName) {
-    throw new VeniceException("getStorageNodes is not supported!");
+    throw new VeniceUnsupportedOperationException("getStorageNodes");
   }
 
   @Override
   public Map<String, String> getStorageNodesStatus(String clusterName) {
-    throw new VeniceException("getStorageNodesStatus is not supported!");
+    throw new VeniceUnsupportedOperationException("getStorageNodesStatus");
+  }
+
+  @Override
+  public void removeStorageNode(String clusterName, String instanceId) {
+    throw new VeniceUnsupportedOperationException("removeStorageNode");
   }
 
   private Map<String, ControllerClient> getControllerClientMap(String clusterName){
@@ -856,23 +862,23 @@ public class VeniceParentHelixAdmin implements Admin {
 
   @Override
   public StorageNodeStatus getStorageNodesStatus(String clusterName, String instanceId) {
-    throw new VeniceException("getStorageNodesStatus is not supported!");
+    throw new VeniceUnsupportedOperationException("getStorageNodesStatus");
   }
 
   @Override
   public boolean isStorageNodeNewerOrEqualTo(String clusterName, String instanceId,
                                              StorageNodeStatus oldServerStatus) {
-    throw new VeniceException("isStorageNodeNewerOrEqualTo is not supported!");
+    throw new VeniceUnsupportedOperationException("isStorageNodeNewerOrEqualTo");
   }
 
   @Override
   public void setDelayedRebalanceTime(String clusterName, long delayedTime) {
-    throw new VeniceException("setDelayedRebalanceTime is not supported!");
+    throw new VeniceUnsupportedOperationException("setDelayedRebalanceTime");
   }
 
   @Override
   public long getDelayedRebalanceTime(String clusterName) {
-    throw new VeniceException("getDelayedRebalanceTime is not supported!");
+    throw new VeniceUnsupportedOperationException("getDelayedRebalanceTime");
   }
 
   public void setAdminConsumerService(String clusterName, AdminConsumerService service){

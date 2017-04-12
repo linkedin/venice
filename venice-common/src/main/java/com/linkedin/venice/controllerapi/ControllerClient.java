@@ -4,6 +4,7 @@ import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.LastSucceedExecutionIdResponse;
 import com.linkedin.venice.controllerapi.routes.AdminCommandExecutionResponse;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.Utils;
 import java.io.Closeable;
@@ -378,16 +379,8 @@ public class ControllerClient implements Closeable {
     }
   }
 
-
   public NodeStatusResponse isNodeRemovable(String instanceId) {
-    try {
-      List<NameValuePair> queryParams = newParams(clusterName);
-      queryParams.add(new BasicNameValuePair(ControllerApiConstants.STORAGE_NODE_ID, instanceId));
-      String responseJson = getRequest(ControllerRoute.NODE_REMOVABLE.getPath(), queryParams);
-      return mapper.readValue(responseJson, NodeStatusResponse.class);
-    } catch (Exception e) {
-      return handleError(new VeniceException("Could not identify if node: " + instanceId + " is removable", e), new NodeStatusResponse());
-    }
+    return singleNodeOperation(instanceId, ControllerRoute.NODE_REMOVABLE.getPath(), HttpGet.METHOD_NAME, NodeStatusResponse.class);
   }
 
   @Deprecated
@@ -396,6 +389,47 @@ public class ControllerClient implements Closeable {
       return client.isNodeRemovable(instanceId);
     } catch (Exception e){
       return handleError(new VeniceException("Could not identify if node: " + instanceId + " is removable", e), new ControllerResponse());
+    }
+  }
+
+  public ControllerResponse addNodeIntoWhiteList(String instanceId) {
+    return singleNodeOperation(instanceId, ControllerRoute.WHITE_LIST_ADD_NODE.getPath(), HttpPost.METHOD_NAME, ControllerResponse.class);
+  }
+
+  public ControllerResponse removeNodeFromWhiteList(String instanceId) {
+    return singleNodeOperation(instanceId, ControllerRoute.WHITE_LIST_REMOVE_NODE.getPath(), HttpPost.METHOD_NAME, ControllerResponse.class);
+  }
+
+  public ControllerResponse removeNodeFromCluster(String instanceId) {
+    return singleNodeOperation(instanceId, ControllerRoute.REMOVE_NODE.getPath(), HttpPost.METHOD_NAME, ControllerResponse.class);
+  }
+
+  /**
+   * Generic method to process all operations against the single node.
+   */
+  private <T extends ControllerResponse> T singleNodeOperation(String instanceId, String path, String method,
+      Class<T> responseType) {
+    try {
+      List<NameValuePair> queryParams = newParams(clusterName);
+      queryParams.add(new BasicNameValuePair(ControllerApiConstants.STORAGE_NODE_ID, instanceId));
+      String responseJson = null;
+      if (method.equals(HttpGet.METHOD_NAME)) {
+        responseJson = getRequest(path, queryParams);
+      } else if (method.equals(HttpPost.METHOD_NAME)) {
+        responseJson = postRequest(path, queryParams);
+      } else {
+        throw new VeniceUnsupportedOperationException(method);
+      }
+      return mapper.readValue(responseJson, responseType);
+    } catch (Exception e) {
+      try {
+        return handleError(new VeniceException("Could not complete the operation on the node: " + instanceId, e),
+            responseType.newInstance());
+      } catch (IllegalAccessException | InstantiationException reflectException) {
+        String errorMsg = "Could not create response of type:" + responseType.getName();
+        logger.error(errorMsg, reflectException);
+        throw new VeniceException(errorMsg, reflectException);
+      }
     }
   }
 
