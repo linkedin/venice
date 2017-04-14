@@ -1,6 +1,7 @@
 package com.linkedin.venice.controller;
 
 import com.linkedin.venice.VeniceResource;
+import com.linkedin.venice.controller.stats.PartitionHealthStats;
 import com.linkedin.venice.helix.HelixOfflinePushMonitorAccessor;
 import com.linkedin.venice.helix.HelixStatusMessageChannel;
 import com.linkedin.venice.meta.StoreCleaner;
@@ -9,6 +10,7 @@ import com.linkedin.venice.helix.HelixAdapterSerializer;
 import com.linkedin.venice.helix.HelixReadWriteSchemaRepository;
 import com.linkedin.venice.helix.HelixReadWriteStoreRepository;
 import com.linkedin.venice.helix.HelixRoutingDataRepository;
+import io.tehuti.metrics.MetricsRepository;
 import org.apache.helix.HelixManager;
 import org.apache.helix.manager.zk.ZkClient;
 
@@ -30,7 +32,7 @@ public class VeniceHelixResources implements VeniceResource {
                               HelixAdapterSerializer adapterSerializer,
                               HelixManager helixManager,
                               VeniceControllerClusterConfig config,
-                              StoreCleaner storeCleaner) {
+                              StoreCleaner storeCleaner, MetricsRepository metricsRepository) {
     this.config = config;
     this.controller = helixManager;
     this.metadataRepository = new HelixReadWriteStoreRepository(zkClient, adapterSerializer, clusterName);
@@ -40,6 +42,9 @@ public class VeniceHelixResources implements VeniceResource {
     this.messageChannel = new HelixStatusMessageChannel(helixManager, HelixStatusMessageChannel.DEFAULT_BROAD_CAST_MESSAGES_TIME_OUT);
     this.OfflinePushMonitor = new OfflinePushMonitor(clusterName, routingDataRepository,
         new HelixOfflinePushMonitorAccessor(clusterName, zkClient, adapterSerializer), storeCleaner, metadataRepository);
+    PartitionHealthStats partitionHealthStats =
+        new PartitionHealthStats(metricsRepository, PartitionHealthStats.DEFAULT_PARTITION_HEALTH_METRIC_NAME,
+            routingDataRepository, config.getReplicaFactor());
   }
 
   @Override

@@ -4,6 +4,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixAdapterSerializer;
 import com.linkedin.venice.helix.HelixState;
 import com.linkedin.venice.meta.StoreCleaner;
+import io.tehuti.metrics.MetricsRepository;
 import java.util.concurrent.ConcurrentMap;
 import org.apache.helix.HelixManager;
 import org.apache.helix.HelixManagerFactory;
@@ -37,17 +38,19 @@ public class VeniceDistClusterControllerStateModel extends StateModel {
   private final HelixAdapterSerializer adapterSerializer;
   private final StoreCleaner storeCleaner;
   private String clusterName;
+  private MetricsRepository metricsRepository;
 
   private final ConcurrentMap<String, VeniceControllerClusterConfig> clusterToConfigsMap;
 
   public VeniceDistClusterControllerStateModel(ZkClient zkClient, HelixAdapterSerializer adapterSerializer,
-      ConcurrentMap<String, VeniceControllerClusterConfig> clusterToConfigsMap, StoreCleaner storeCleaner) {
+      ConcurrentMap<String, VeniceControllerClusterConfig> clusterToConfigsMap, StoreCleaner storeCleaner, MetricsRepository metricsRepository) {
     StateModelParser parser = new StateModelParser();
     _currentState = parser.getInitialState(VeniceDistClusterControllerStateModel.class);
     this.zkClient = zkClient;
     this.adapterSerializer = adapterSerializer;
     this.clusterToConfigsMap = clusterToConfigsMap;
     this.storeCleaner = storeCleaner;
+    this.metricsRepository = metricsRepository;
   }
 
   @Transition(to = HelixState.LEADER_STATE, from = "STANDBY")
@@ -68,7 +71,7 @@ public class VeniceDistClusterControllerStateModel extends StateModel {
       controller.startTimerTasks();
 
       resources = new VeniceHelixResources(clusterName, zkClient, adapterSerializer, controller,
-          clusterToConfigsMap.get(clusterName), storeCleaner);
+          clusterToConfigsMap.get(clusterName), storeCleaner, metricsRepository);
       resources.refresh();
 
       logger.info(controllerName + " is the leader of " + clusterName);

@@ -1,6 +1,7 @@
 package com.linkedin.venice.listener;
 
 import com.linkedin.venice.utils.DaemonThreadFactory;
+import com.linkedin.venice.utils.Utils;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -64,15 +65,18 @@ public class ListenerManager<T> {
    *                of this listener.
    */
   public synchronized void trigger(String key, Function<T, Void> handler) {
-    if (listenerMap.containsKey(key)) {
-      for (T listener : listenerMap.get(key)) {
-        threadPool.execute(new Runnable() {
-          @Override
-          public void run() {
-            handler.apply(listener);
-          }
-        });
-      }
+    // Trigger listeners which registered with given key and wild char.
+    trigger(listenerMap.get(key), handler);
+    trigger(listenerMap.get(Utils.WILD_CHAR), handler);
+  }
+
+  private void trigger(Set<T> listeners, Function<T, Void> handler) {
+    if (listeners != null) {
+      listeners.stream().forEach(listener -> threadPool.execute(() -> handler.apply(listener)));
     }
+  }
+
+  ConcurrentMap<String, Set<T>> getListenerMap() {
+    return listenerMap;
   }
 }

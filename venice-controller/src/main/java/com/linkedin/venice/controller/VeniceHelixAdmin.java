@@ -33,6 +33,7 @@ import com.linkedin.venice.status.StatusMessageChannel;
 import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.PartitionCountUtils;
 import com.linkedin.venice.utils.Utils;
+import io.tehuti.metrics.MetricsRepository;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
@@ -106,7 +107,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
     private VeniceDistClusterControllerStateModelFactory controllerStateModelFactory;
     //TODO Use different configs for different clusters when creating helix admin.
-    public VeniceHelixAdmin(VeniceControllerConfig config) {
+    public VeniceHelixAdmin(VeniceControllerConfig config, MetricsRepository metricsRepository) {
         this.controllerName = Utils.getHelixNodeIdentifier(config.getAdminPort());
         this.controllerClusterName = config.getControllerClusterName();
         this.controllerClusterReplica = config.getControllerClusterReplica();
@@ -124,7 +125,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         // Create the parent controller and related cluster if required.
         createControllerClusterIfRequired();
         controllerStateModelFactory =
-            new VeniceDistClusterControllerStateModelFactory(zkClient, adapterSerializer, this);
+            new VeniceDistClusterControllerStateModelFactory(zkClient, adapterSerializer, this, metricsRepository);
         controllerStateModelFactory.addClusterConfig(config.getClusterName(), config);
         // TODO should the Manager initialization be part of start method instead of the constructor.
         manager = HelixManagerFactory

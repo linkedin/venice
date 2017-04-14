@@ -31,6 +31,9 @@ import static com.linkedin.venice.HttpConstants.*;
 public class Utils {
 
   private static Logger LOGGER = Logger.getLogger(Utils.class);
+
+  public static final String WILD_CHAR = "*";
+
   /**
    * Print an error and exit with error code 1
    *

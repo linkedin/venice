@@ -26,7 +26,7 @@ public class VeniceControllerService extends AbstractVeniceService {
   public VeniceControllerService(VeniceControllerConfig config, MetricsRepository metricsRepository) {
     this.config = config;
     this.metricsRepository = metricsRepository;
-    VeniceHelixAdmin internalAdmin = new VeniceHelixAdmin(config);
+    VeniceHelixAdmin internalAdmin = new VeniceHelixAdmin(config, metricsRepository);
     if (config.isParent()) {
       this.admin = new VeniceParentHelixAdmin(internalAdmin, config);
       logger.info("Controller works as a parent controller.");

@@ -11,6 +11,7 @@ import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
+import io.tehuti.metrics.MetricsRepository;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
@@ -23,6 +24,7 @@ import org.apache.http.client.utils.URLEncodedUtils;
 import org.apache.http.impl.nio.client.CloseableHttpAsyncClient;
 import org.apache.http.impl.nio.client.HttpAsyncClients;
 import org.apache.http.message.BasicNameValuePair;
+import org.mockito.Mockito;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -61,7 +63,7 @@ public class TestBackupControllerResponse {
         .put(ConfigKeys.ADMIN_PORT, bogusPort)
         .build();
     VeniceControllerConfig config = new VeniceControllerConfig(controllerOneProps);
-    veniceAdmin = new VeniceHelixAdmin(config);
+    veniceAdmin = new VeniceHelixAdmin(config, Mockito.mock(MetricsRepository.class));
     veniceAdmin.start(clusterName);
 
     /* ControllerWrapper is second controller, comes up as inactive standby controller */
