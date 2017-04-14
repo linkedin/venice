@@ -22,6 +22,7 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.*;
 
+import io.tehuti.metrics.MetricsRepository;
 import java.io.IOException;
 import java.nio.file.Paths;
 import java.util.ArrayList;
@@ -35,6 +36,7 @@ import java.util.concurrent.TimeUnit;
 import org.apache.helix.HelixManager;
 import org.apache.helix.PropertyKey;
 import org.apache.helix.model.IdealState;
+import org.mockito.Mockito;
 import org.testng.Assert;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
@@ -66,6 +68,7 @@ public class TestVeniceHelixAdmin {
 
   private VeniceProperties controllerProps;
   private MockTestStateModelFactory stateModelFactory;
+  private MetricsRepository mockMetricRepo = Mockito.mock(MetricsRepository.class);
 
   public static final long MASTER_CHANGE_TIMEOUT = 10 * Time.MS_PER_SECOND;
   public static final long TOTAL_TIMEOUT_FOR_LONG_TEST = 30 * Time.MS_PER_SECOND;
@@ -99,7 +102,7 @@ public class TestVeniceHelixAdmin {
     controllerProps = builder.build();
 
     config = new VeniceControllerConfig(controllerProps);
-    veniceAdmin = new VeniceHelixAdmin(config);
+    veniceAdmin = new VeniceHelixAdmin(config, mockMetricRepo);
     veniceAdmin.start(clusterName);
     startParticipant();
     waitUntilIsMaster(veniceAdmin, clusterName, MASTER_CHANGE_TIMEOUT);
@@ -173,7 +176,7 @@ public class TestVeniceHelixAdmin {
 
     VeniceProperties newControllerProps = builder.build();
     VeniceControllerConfig newConfig = new VeniceControllerConfig(newControllerProps);
-    VeniceHelixAdmin newMasterAdmin = new VeniceHelixAdmin(newConfig);
+    VeniceHelixAdmin newMasterAdmin = new VeniceHelixAdmin(newConfig, mockMetricRepo);
     //Start stand by controller
     newMasterAdmin.start(clusterName);
     List<VeniceHelixAdmin> allAdmins = new ArrayList<>();
@@ -239,7 +242,7 @@ public class TestVeniceHelixAdmin {
 
     VeniceProperties newControllerProps = builder.build();
     VeniceControllerConfig newConfig = new VeniceControllerConfig(newControllerProps);
-    VeniceHelixAdmin newMasterAdmin = new VeniceHelixAdmin(newConfig);
+    VeniceHelixAdmin newMasterAdmin = new VeniceHelixAdmin(newConfig, mockMetricRepo);
     //Start stand by controller
     newMasterAdmin.start(clusterName);
     Assert.assertFalse(newMasterAdmin.isMasterController(clusterName),
@@ -730,7 +733,7 @@ public class TestVeniceHelixAdmin {
 
     VeniceProperties newControllerProps = builder.build();
     VeniceControllerConfig newConfig = new VeniceControllerConfig(newControllerProps);
-    VeniceHelixAdmin newMasterAdmin = new VeniceHelixAdmin(newConfig);
+    VeniceHelixAdmin newMasterAdmin = new VeniceHelixAdmin(newConfig, mockMetricRepo);
     List<VeniceHelixAdmin> admins = new ArrayList<>();
     admins.add(veniceAdmin);
     admins.add(newMasterAdmin);

@@ -214,8 +214,8 @@ public class HelixRoutingDataRepository extends RoutingTableProvider implements 
                     }
                 }
                 int partitionId = HelixUtils.getPartitionId(partitionName);
-                partitionAssignment.addPartition(
-                    new Partition(partitionId, stateToInstanceMap));
+                Partition partition = new Partition(partitionId, stateToInstanceMap);
+                partitionAssignment.addPartition(partition);
             }
             newResourceAssignment.setPartitionAssignment(resourceName, partitionAssignment);
         }
@@ -225,8 +225,8 @@ public class HelixRoutingDataRepository extends RoutingTableProvider implements 
             resourceAssignment.refreshAssignment(newResourceAssignment);
         }
         logger.info("External view is changed.");
-        // Start sending notification to listeners. As we can not get the changed data only from Helix, so we just notfiy all the listener.
-        // And listener will compare and decide how to handle this event.
+        // Start sending notification to listeners. As we can not get the changed data only from Helix, so we just notify all listeners.
+        // And assume that the listener would compare and decide how to handle this event.
         for (String kafkaTopic : resourceAssignment.getAssignedResources()) {
             PartitionAssignment partitionAssignment = resourceAssignment.getPartitionAssignment(kafkaTopic);
             listenerManager.trigger(kafkaTopic, new Function<RoutingDataChangedListener, Void>() {

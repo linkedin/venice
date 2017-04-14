@@ -5,6 +5,7 @@ import com.linkedin.venice.helix.HelixAdapterSerializer;
 import com.linkedin.venice.helix.HelixState;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreCleaner;
+import io.tehuti.metrics.MetricsRepository;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import org.apache.helix.manager.zk.ZkClient;
@@ -22,13 +23,15 @@ public class VeniceDistClusterControllerStateModelFactory extends StateModelFact
   private final ConcurrentMap<String, VeniceDistClusterControllerStateModel> clusterToStateModelsMap =
       new ConcurrentHashMap<>();
   private final StoreCleaner storeCleaner;
+  private final MetricsRepository metricsRepository;
 
   public VeniceDistClusterControllerStateModelFactory(ZkClient zkClient, HelixAdapterSerializer adapterSerializer,
-      StoreCleaner storeCleaner) {
+      StoreCleaner storeCleaner, MetricsRepository metricsRepository) {
     this.zkClient = zkClient;
     this.adapterSerializer = adapterSerializer;
     this.clusterToConfigsMap = new ConcurrentHashMap<>();
     this.storeCleaner = storeCleaner;
+    this.metricsRepository = metricsRepository;
   }
 
   @Override
@@ -37,7 +40,8 @@ public class VeniceDistClusterControllerStateModelFactory extends StateModelFact
         VeniceDistClusterControllerStateModel.getVeniceClusterNameFromPartitionName(partitionName);
 
     VeniceDistClusterControllerStateModel model =
-        new VeniceDistClusterControllerStateModel(zkClient, adapterSerializer, clusterToConfigsMap, storeCleaner);
+        new VeniceDistClusterControllerStateModel(zkClient, adapterSerializer, clusterToConfigsMap, storeCleaner,
+            metricsRepository);
     clusterToStateModelsMap.put(veniceClusterName, model);
     return model;
   }
