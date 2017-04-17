@@ -214,8 +214,7 @@ public class HelixRoutingDataRepository extends RoutingTableProvider implements 
                     }
                 }
                 int partitionId = HelixUtils.getPartitionId(partitionName);
-                Partition partition = new Partition(partitionId, stateToInstanceMap);
-                partitionAssignment.addPartition(partition);
+                partitionAssignment.addPartition(new Partition(partitionId, stateToInstanceMap));
             }
             newResourceAssignment.setPartitionAssignment(resourceName, partitionAssignment);
         }

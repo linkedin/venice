@@ -1,70 +1,39 @@
 package com.linkedin.venice.controller.stats;
 
-import com.linkedin.venice.meta.Partition;
-import com.linkedin.venice.meta.PartitionAssignment;
-import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.stats.AbstractVeniceStats;
-import com.linkedin.venice.utils.Utils;
 import io.tehuti.metrics.MetricsRepository;
-import io.tehuti.metrics.stats.Count;
-import io.tehuti.metrics.stats.OccurrenceRate;
-import org.apache.log4j.Logger;
 import io.tehuti.metrics.Sensor;
+import io.tehuti.metrics.stats.Gauge;
 
 
 /**
- * Monitor the change of Helix's external view and warn in case that any partition is unhealthy. E.g. if the number of
- * replicas in a partition is smaller than the required replication factor, we would log a warn message and record to
- * our metrics.
+ * Resource level partition health stats.
  */
-public class PartitionHealthStats extends AbstractVeniceStats implements RoutingDataRepository.RoutingDataChangedListener {
-  private static final Logger logger = Logger.getLogger(PartitionHealthStats.class);
-
-  public static final String DEFAULT_PARTITION_HEALTH_METRIC_NAME = "controller_partition_health";
+public class PartitionHealthStats extends AbstractVeniceStats {
   public static final String UNDER_REPLICATED_PARTITION_SENSOR = "underReplicatedPartition";
 
-  private int requiredReplicaFactor;
   private Sensor underReplicatedPartitionSensor;
 
   /**
    * Only for test usage.
    */
-  protected PartitionHealthStats(int requiredReplicaFactor) {
-    super(null, null);
-    this.requiredReplicaFactor = requiredReplicaFactor;
+  public PartitionHealthStats(String resourceName){
+    super(null, resourceName);
   }
 
-  public PartitionHealthStats(MetricsRepository metricsRepository, String name,
-      RoutingDataRepository routingDataRepository, int requriedReplicaFactor) {
+  public PartitionHealthStats(MetricsRepository metricsRepository, String name) {
     super(metricsRepository, name);
-    this.requiredReplicaFactor = requriedReplicaFactor;
-    // Monitor changes for all topics.
-    routingDataRepository.subscribeRoutingDataChange(Utils.WILD_CHAR, this);
-    underReplicatedPartitionSensor =
-        registerSensor(UNDER_REPLICATED_PARTITION_SENSOR, new Count(), new OccurrenceRate());
+    // TODO need a new stat type to combine with max and gauge, otherwise metric here could not represent the real
+    // situation accurately.
+    // InGraph would query this metric every min, so if the number changed dramatically during 1min period, we couldn't
+    // know based on this metric.
+    // If we use max stat here, as it has a time window internally, if last time we recorded a number prior to the start\
+    // of current time window (No external view change happened in this time window), it will return 0.
+    // So what we want it's max(max, gauge) here.
+    underReplicatedPartitionSensor = registerSensor(UNDER_REPLICATED_PARTITION_SENSOR, new Gauge());
   }
 
-  @Override
-  public void onRoutingDataChanged(PartitionAssignment partitionAssignment) {
-    int underReplicaPartitions = 0;
-    for (Partition partition : partitionAssignment.getAllPartitions()) {
-      if (partition.getReadyToServeInstances().size() < requiredReplicaFactor) {
-        underReplicaPartitions++;
-      }
-    }
-    reportUnderReplicatedPartition(partitionAssignment.getTopic(), underReplicaPartitions);
-  }
-
-  @Override
-  public void onRoutingDataDeleted(String kafkaTopic) {
-    // Ignore this event.
-  }
-
-  protected void reportUnderReplicatedPartition(String version, int underReplicatedPartitions) {
-    if (underReplicatedPartitions > 0) {
-      logger.warn(
-          "Version: " + version + " has " + underReplicatedPartitions + " partitions which are under replicated.");
-      underReplicatedPartitionSensor.record(underReplicatedPartitions);
-    }
+  public void recordUnderReplicatePartition(int num) {
+    underReplicatedPartitionSensor.record(num);
   }
 }

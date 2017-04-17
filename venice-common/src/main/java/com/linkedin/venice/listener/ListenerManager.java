@@ -67,7 +67,7 @@ public class ListenerManager<T> {
   public synchronized void trigger(String key, Function<T, Void> handler) {
     // Trigger listeners which registered with given key and wild char.
     trigger(listenerMap.get(key), handler);
-    trigger(listenerMap.get(Utils.WILD_CHAR), handler);
+    trigger(listenerMap.get(Utils.WILDCARD_MATCH_ANY), handler);
   }
 
   private void trigger(Set<T> listeners, Function<T, Void> handler) {
