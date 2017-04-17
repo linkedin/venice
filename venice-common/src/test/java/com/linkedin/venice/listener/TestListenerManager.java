@@ -43,7 +43,7 @@ public class TestListenerManager {
     String key = "testSubscribeAndUnsubscribeWithWildChar";
     TestListener listener1 = new TestListener();
     TestListener listener2 = new TestListener();
-    manager.subscribe(Utils.WILD_CHAR, listener1);
+    manager.subscribe(Utils.WILDCARD_MATCH_ANY, listener1);
     manager.subscribe(key, listener2);
     manager.trigger(key, new Function<RoutingDataRepository.RoutingDataChangedListener, Void>() {
       @Override
@@ -57,7 +57,7 @@ public class TestListenerManager {
     TestUtils.waitForNonDeterministicCompletion(TEST_TIME_OUT, TimeUnit.MILLISECONDS, () -> listener2.isExecuted);
     listener1.isExecuted = false;
     listener2.isExecuted = false;
-    manager.unsubscribe(Utils.WILD_CHAR, listener1);
+    manager.unsubscribe(Utils.WILDCARD_MATCH_ANY, listener1);
 
     manager.trigger(key, new Function<RoutingDataRepository.RoutingDataChangedListener, Void>() {
       @Override

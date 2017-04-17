@@ -44,9 +44,9 @@ public class PartitionHealthStatsTest {
 
   /**
    * Because {@link Sensor} is a final class so it can not be mocked by {@link Mockito}, so we create a sub-class of
-   * {@link PartitionHealthStats} to get the internal state from it to verify out tests.
+   * {@link AggPartitionHealthStats} to get the internal state from it to verify out tests.
    */
-  private class MockPartitionHealthStats extends PartitionHealthStats {
+  private class MockPartitionHealthStats extends AggPartitionHealthStats {
     int underReplicatedPartitionNumber = 0;
 
     public MockPartitionHealthStats(int requriedReplicaFactor) {

@@ -32,7 +32,7 @@ public class Utils {
 
   private static Logger LOGGER = Logger.getLogger(Utils.class);
 
-  public static final String WILD_CHAR = "*";
+  public static final String WILDCARD_MATCH_ANY = "*";
 
   /**
    * Print an error and exit with error code 1

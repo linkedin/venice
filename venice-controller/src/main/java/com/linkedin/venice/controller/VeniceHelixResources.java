@@ -1,7 +1,7 @@
 package com.linkedin.venice.controller;
 
 import com.linkedin.venice.VeniceResource;
-import com.linkedin.venice.controller.stats.PartitionHealthStats;
+import com.linkedin.venice.controller.stats.AggPartitionHealthStats;
 import com.linkedin.venice.helix.HelixOfflinePushMonitorAccessor;
 import com.linkedin.venice.helix.HelixStatusMessageChannel;
 import com.linkedin.venice.meta.StoreCleaner;
@@ -42,8 +42,8 @@ public class VeniceHelixResources implements VeniceResource {
     this.messageChannel = new HelixStatusMessageChannel(helixManager, HelixStatusMessageChannel.DEFAULT_BROAD_CAST_MESSAGES_TIME_OUT);
     this.OfflinePushMonitor = new OfflinePushMonitor(clusterName, routingDataRepository,
         new HelixOfflinePushMonitorAccessor(clusterName, zkClient, adapterSerializer), storeCleaner, metadataRepository);
-    PartitionHealthStats partitionHealthStats =
-        new PartitionHealthStats(metricsRepository, PartitionHealthStats.DEFAULT_PARTITION_HEALTH_METRIC_NAME,
+    AggPartitionHealthStats aggPartitionHealthStats =
+        new AggPartitionHealthStats(metricsRepository, AggPartitionHealthStats.DEFAULT_PARTITION_HEALTH_METRIC_NAME,
             routingDataRepository, config.getReplicaFactor());
   }
 
