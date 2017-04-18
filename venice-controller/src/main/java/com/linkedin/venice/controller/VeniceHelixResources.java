@@ -43,8 +43,8 @@ public class VeniceHelixResources implements VeniceResource {
     this.OfflinePushMonitor = new OfflinePushMonitor(clusterName, routingDataRepository,
         new HelixOfflinePushMonitorAccessor(clusterName, zkClient, adapterSerializer), storeCleaner, metadataRepository);
     AggPartitionHealthStats aggPartitionHealthStats =
-        new AggPartitionHealthStats(metricsRepository, AggPartitionHealthStats.DEFAULT_PARTITION_HEALTH_METRIC_NAME,
-            routingDataRepository, config.getReplicaFactor());
+        new AggPartitionHealthStats(metricsRepository, routingDataRepository, metadataRepository,
+            config.getReplicaFactor());
   }
 
   @Override

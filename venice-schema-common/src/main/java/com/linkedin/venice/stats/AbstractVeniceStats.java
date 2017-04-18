@@ -39,7 +39,7 @@ public class AbstractVeniceStats {
   }
 
   protected Sensor registerSensor(String sensorName, MetricConfig config, MeasurableStat... stats) {
-    String sensorFullName = getName() + AbstractVeniceStats.DELIMITER + sensorName;
+    String sensorFullName = getSensorFullName(sensorName);
     return sensors.computeIfAbsent(sensorName, key -> {
       Sensor sensor = metricsRepository.sensor(sensorFullName);
       for (MeasurableStat stat : stats) {
@@ -50,6 +50,10 @@ public class AbstractVeniceStats {
       }
       return sensor;
     });
+  }
+
+  protected String getSensorFullName(String sensorName) {
+    return getName() + AbstractVeniceStats.DELIMITER + sensorName;
   }
 
   public void close() {
