@@ -30,7 +30,9 @@ public class PartitionHealthStats extends AbstractVeniceStats {
     // If we use max stat here, as it has a time window internally, if last time we recorded a number prior to the start\
     // of current time window (No external view change happened in this time window), it will return 0.
     // So what we want it's max(max, gauge) here.
-    underReplicatedPartitionSensor = registerSensor(UNDER_REPLICATED_PARTITION_SENSOR, new Gauge());
+    if (metricsRepository.getSensor(getSensorFullName(UNDER_REPLICATED_PARTITION_SENSOR)) == null) {
+      underReplicatedPartitionSensor = registerSensor(UNDER_REPLICATED_PARTITION_SENSOR, new Gauge());
+    }
   }
 
   public void recordUnderReplicatePartition(int num) {

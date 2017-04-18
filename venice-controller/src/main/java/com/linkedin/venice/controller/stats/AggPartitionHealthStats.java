@@ -1,8 +1,14 @@
 package com.linkedin.venice.controller.stats;
 
+import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.meta.Partition;
 import com.linkedin.venice.meta.PartitionAssignment;
+import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.RoutingDataRepository;
+import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.stats.AbstractVeniceAggStats;
 import com.linkedin.venice.utils.Utils;
 import io.tehuti.metrics.MetricsRepository;
@@ -19,20 +25,24 @@ public class AggPartitionHealthStats extends AbstractVeniceAggStats<PartitionHea
 
   private static final Logger logger = Logger.getLogger(AggPartitionHealthStats.class);
 
-  private int requiredReplicaFactor;
+  private final int requiredReplicaFactor;
+
+  private final ReadOnlyStoreRepository storeRepository;
 
   /**
    * Only for test usage.
    */
-  protected AggPartitionHealthStats(int requiredReplicationFactor) {
+  protected AggPartitionHealthStats(ReadOnlyStoreRepository storeRepository, int requiredReplicationFactor) {
     super(null, (metricRepo, resourceName) -> new PartitionHealthStats(resourceName));
     this.requiredReplicaFactor = requiredReplicationFactor;
+    this.storeRepository = storeRepository;
   }
 
-  public AggPartitionHealthStats(MetricsRepository metricsRepository, String name,
-      RoutingDataRepository routingDataRepository, int requiredReplicationFactor) {
+  public AggPartitionHealthStats(MetricsRepository metricsRepository, RoutingDataRepository routingDataRepository,
+      ReadOnlyStoreRepository storeRepository, int requiredReplicationFactor) {
     super(metricsRepository, (metricsRepo, resourceName) -> new PartitionHealthStats(metricsRepo, resourceName));
     this.requiredReplicaFactor = requiredReplicationFactor;
+    this.storeRepository = storeRepository;
     // Monitor changes for all topics.
     routingDataRepository.subscribeRoutingDataChange(Utils.WILDCARD_MATCH_ANY, this);
   }
@@ -40,6 +50,17 @@ public class AggPartitionHealthStats extends AbstractVeniceAggStats<PartitionHea
   @Override
   public void onRoutingDataChanged(PartitionAssignment partitionAssignment) {
     int underReplicaPartitions = 0;
+    String storeName = Version.parseStoreFromKafkaTopicName(partitionAssignment.getTopic());
+    int versionNumber = Version.parseVersionFromKafkaTopicName(partitionAssignment.getTopic());
+    Store store = storeRepository.getStore(storeName);
+    if (store == null) {
+      throw new VeniceNoStoreException(storeName);
+    }
+    // We focus on versions which already completed bootstrap. On-going push has under replicated partition for sure,
+    // but it would not affect our operations.
+    if (!VersionStatus.isBootstrapTerminated(store.getVersionStatus(versionNumber))) {
+      return;
+    }
     for (Partition partition : partitionAssignment.getAllPartitions()) {
       if (partition.getReadyToServeInstances().size() < requiredReplicaFactor) {
         underReplicaPartitions++;
