@@ -4,7 +4,7 @@ import azkaban.jobExecutor.AbstractJob;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
-import com.linkedin.venice.hadoop.pbnj.PostBulkloadAnalysisOutputFormat;
+import com.linkedin.venice.hadoop.pbnj.PostBulkLoadAnalysisMapper;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.controllerapi.ControllerClient;
@@ -35,11 +35,16 @@ import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.fs.PathFilter;
+import org.apache.hadoop.io.BytesWritable;
+import org.apache.hadoop.io.NullWritable;
 import org.apache.hadoop.mapred.FileInputFormat;
 import org.apache.hadoop.mapred.JobClient;
 import org.apache.hadoop.mapred.JobConf;
-import org.apache.hadoop.mapred.OutputFormat;
+import org.apache.hadoop.mapred.Mapper;
+import org.apache.hadoop.mapred.Partitioner;
+import org.apache.hadoop.mapred.Reducer;
 import org.apache.hadoop.mapred.RunningJob;
+import org.apache.hadoop.mapred.lib.NullOutputFormat;
 import org.apache.log4j.Logger;
 
 import java.io.IOException;
@@ -77,6 +82,9 @@ public class KafkaPushJob extends AbstractJob {
   public static final String INPUT_PATH_PROP = "input.path";
   public static final String BATCH_NUM_BYTES_PROP = "batch.num.bytes";
 
+  // Map-only job or a Map-Reduce job for data push, by default it is a map-reduce job.
+  public static final String VENICE_MAP_ONLY = "venice.map.only";
+
   public static final String SCHEMA_STRING_PROP = "schema";
   public static final String VALUE_SCHEMA_ID_PROP = "value.schema.id";
   public static final String KAFKA_URL_PROP = "venice.kafka.url";
@@ -99,6 +107,9 @@ public class KafkaPushJob extends AbstractJob {
    * key/value schema and backend storage overhead, we are applying this factor to provide a more
    * reasonable estimation.
    */
+  /**
+   * TODO: for map-reduce job, we could come up with more accurate estimation.
+   */
   public static final int INPUT_DATA_SIZE_FACTOR = 2;
 
   // Immutable state
@@ -114,6 +125,7 @@ public class KafkaPushJob extends AbstractJob {
   private final String storeOwners;
   private final int batchNumBytes;
   private final boolean autoCreateStoreIfNeeded;
+  private final boolean mapOnly;
   private final boolean enablePBNJ;
   private final boolean pbnjFailFast;
   private final boolean pbnjAsync;
@@ -134,6 +146,8 @@ public class KafkaPushJob extends AbstractJob {
   private Schema parsedFileSchema;
   // Kafka topic for new data push
   private String topic;
+  // Kafka topic partition count
+  private int partitionCount;
   // Total input data size, which is used to talk to controller to decide whether we have enough quota or not
   private long inputFileDataSize;
   private VeniceWriter<KafkaKey, byte[]> veniceWriter; // Lazily initialized
@@ -242,6 +256,7 @@ public class KafkaPushJob extends AbstractJob {
     this.enablePush = props.getBoolean(ENABLE_PUSH, true);
     this.autoCreateStoreIfNeeded = props.getBoolean(AUTO_CREATE_STORE_PROP, false);
     this.batchNumBytes = props.getInt(BATCH_NUM_BYTES_PROP, DEFAULT_BATCH_BYTES_SIZE);
+    this.mapOnly = props.getBoolean(VENICE_MAP_ONLY, false);
     this.enablePBNJ = props.getBoolean(PBNJ_ENABLE, false);
     this.pbnjFailFast = props.getBoolean(PBNJ_FAIL_FAST, false);
     this.pbnjAsync = props.getBoolean(PBNJ_ASYNC, false);
@@ -312,7 +327,14 @@ public class KafkaPushJob extends AbstractJob {
         logPushJobProperties();
 
         // Setup the hadoop job
-        JobConf pushJobConf = setupPushJob(conf);
+        JobConf pushJobConf = null;
+        if (mapOnly) {
+          pushJobConf = setupPushMapOnlyJob(conf);
+          logger.info("Venice push job for topic: " + topic + " will be a map-only job");
+        } else {
+          pushJobConf = setupPushMRJob(conf);
+          logger.info("Venice push job for topic: " + topic + " will be a map-reduce job");
+        }
         jc = new JobClient(pushJobConf);
 
         getVeniceWriter().broadcastStartOfPush(new HashMap<>());
@@ -454,6 +476,7 @@ public class KafkaPushJob extends AbstractJob {
     }
     topic = versionCreationResponse.getKafkaTopic();
     kafkaUrl = versionCreationResponse.getKafkaBootstrapServers();
+    partitionCount = versionCreationResponse.getPartitions();
   }
 
   private synchronized VeniceWriter<KafkaKey, byte[]> getVeniceWriter() {
@@ -557,27 +580,40 @@ public class KafkaPushJob extends AbstractJob {
   }
 
   /**
-   * Calls {@link #setupHadoopJob(Configuration, Class, String)} and adds some extra properties required
-   * by the {@link VeniceWriter} used by the push job.
+   * Calls {@link #setupHadoopJob(Configuration, String, Class, Class, Class)} and adds some extra properties required
+   * by the {@link VeniceWriter} used by the push MR job.
    */
-  private JobConf setupPushJob(Configuration conf) throws IOException {
-    conf.setBoolean("mapred.map.tasks.speculative.execution", false);
+  private JobConf setupPushMRJob(Configuration conf) {
     conf.set(BATCH_NUM_BYTES_PROP, Integer.toString(batchNumBytes));
     conf.set(TOPIC_PROP, topic);
     conf.set(KAFKA_BOOTSTRAP_SERVERS, kafkaUrl);
-    return setupHadoopJob(conf, AvroKafkaOutputFormat.class, "VenicePushJob");
+
+    return setupHadoopJob(conf, "VenicePushMRJob", VeniceMapper.class, VeniceMRPartitioner.class, VeniceReducer.class);
   }
 
   /**
-   * Calls {@link #setupHadoopJob(Configuration, Class, String)} and adds some extra properties required
-   * by the {@link com.linkedin.venice.hadoop.pbnj.PostBulkloadAnalysisRecordWriter}.
+   * Calls {@link #setupHadoopJob(Configuration, String, Class, Class, Class)} and adds some extra properties required
+   * by the {@link VeniceWriter} used by the push job.
+   */
+  private JobConf setupPushMapOnlyJob(Configuration conf) throws IOException {
+    conf.set(BATCH_NUM_BYTES_PROP, Integer.toString(batchNumBytes));
+    conf.set(TOPIC_PROP, topic);
+    conf.set(KAFKA_BOOTSTRAP_SERVERS, kafkaUrl);
+
+    return setupHadoopJob(conf, "VenicePushMapOnlyJob", KafkaOutputMapper.class, null, null);
+  }
+
+  /**
+   * Calls {@link #setupHadoopJob(Configuration, String, Class, Class, Class)} and adds some extra properties required
+   * by the {@link com.linkedin.venice.hadoop.pbnj.PostBulkLoadAnalysisMapper}.
    */
   private JobConf setupPBNJ(Configuration conf) throws IOException {
     conf.set(VENICE_STORE_NAME_PROP, storeName);
     conf.set(PBNJ_ROUTER_URL_PROP, veniceRouterUrl);
     conf.set(PBNJ_FAIL_FAST, Boolean.toString(pbnjFailFast));
     conf.set(PBNJ_ASYNC, Boolean.toString(pbnjAsync));
-    return setupHadoopJob(conf, PostBulkloadAnalysisOutputFormat.class, "VenicePBNJ");
+
+    return setupHadoopJob(conf, "VenicePBNJ", PostBulkLoadAnalysisMapper.class, null, null);
   }
 
   /**
@@ -585,12 +621,14 @@ public class KafkaPushJob extends AbstractJob {
    *
    * Should not be called directly. Instead, use:
    *
-   * @see #setupPushJob(Configuration)
+   * @see #setupPushMapOnlyJob(Configuration)
    * @see #setupPBNJ(Configuration)
    */
   private JobConf setupHadoopJob(Configuration conf,
-                                 Class<? extends OutputFormat> outputFormatClass,
-                                 String jobName) throws IOException {
+                                 String jobName,
+                                 Class<? extends Mapper> mapperClass,
+                                 Class<? extends Partitioner> partitionerClass,
+                                 Class<? extends Reducer> reducerClass) {
     // Hadoop2 dev cluster provides a newer version of an avro dependency.
     // Set mapreduce.job.classloader to true to force the use of the older avro dependency.
     conf.setBoolean(MAPREDUCE_JOB_CLASSLOADER, true);
@@ -609,7 +647,7 @@ public class KafkaPushJob extends AbstractJob {
     conf.set(SCHEMA_STRING_PROP, fileSchemaString);
     conf.set(AVRO_KEY_FIELD_PROP, keyField);
     conf.set(AVRO_VALUE_FIELD_PROP, valueField);
-    conf.set(VALUE_SCHEMA_ID_PROP, Integer.toString(valueSchemaId));
+    conf.setInt(VALUE_SCHEMA_ID_PROP, valueSchemaId);
 
     // Set data serialization model. Default is ReflectData.class.
     // The default causes reading records as SpecificRecords. This fails in reading records of type fixes, eg. Guid.
@@ -628,25 +666,42 @@ public class KafkaPushJob extends AbstractJob {
 
     // Setting up the Input format for the mapper
     job.setInputFormat(AvroInputFormat.class);
-    AvroJob.setMapperClass(job, KafkaOutputMapper.class);
+
     // TODO:The job is using path-filter to check the consistency of avro file schema ,
     // but doesn't specify the path filter for the input directory of map-reduce job.
     // We need to revisit it if any failure because of this happens.
     FileInputFormat.setInputPaths(job, new Path(inputDirectory));
-    AvroJob.setInputSchema(job, parsedFileSchema);
+    job.set(AvroJob.INPUT_SCHEMA, fileSchemaString);
 
-    // TODO: Consider turning speculative execution on later.
-    job.setMapSpeculativeExecution(false);
+    job.setMapperClass(mapperClass);
+    if (null != partitionerClass) {
+      job.setPartitionerClass(partitionerClass);
+    }
+    if (null != reducerClass) {
+      job.setMapOutputKeyClass(BytesWritable.class);
+      job.setMapOutputValueClass(BytesWritable.class);
+      job.setReducerClass(reducerClass);
+      // TODO: Consider turning speculative execution on later.
+      job.setReduceSpeculativeExecution(false);
+      job.setNumReduceTasks(partitionCount);
+    } else {
+      job.setMapSpeculativeExecution(false);
+      job.setNumReduceTasks(0);
+    }
 
-    // Setting up the Output format for the mapper
-    job.setOutputFormat(outputFormatClass);
-    job.setNumReduceTasks(0);
+    job.setOutputKeyClass(NullWritable.class);
+    job.setOutputValueClass(NullWritable.class);
+
+    // Setting up the Output format
+    job.setOutputFormat(NullOutputFormat.class);
+
     return job;
   }
 
   private void logPushJobProperties() {
     logger.info("Kafka URL: " + kafkaUrl);
     logger.info("Kafka Topic: " + topic);
+    logger.info("Kafka topic partition count: " + partitionCount);
     logger.info("Kafka Queue Bytes: " + batchNumBytes);
     logger.info("Input Directory: " + inputDirectory);
     logger.info("Venice Store Name: " + storeName);

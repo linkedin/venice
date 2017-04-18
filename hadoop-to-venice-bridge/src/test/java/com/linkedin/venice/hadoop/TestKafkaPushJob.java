@@ -227,12 +227,26 @@ public class TestKafkaPushJob {
   }
 
   @Test(timeOut = TEST_TIMEOUT)
-  public void testRunJob() throws Exception {
+  public void testRunMRJobAndPBNJ() throws Exception {
+    testRunPushJobAndPBNJ(false);
+  }
+
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testRunMapOnlyJobAndPBNJ() throws Exception {
+    testRunPushJobAndPBNJ(true);
+  }
+
+  private void testRunPushJobAndPBNJ(boolean mapOnly) throws Exception {
     File inputDir = getTempDataDirectory();
     writeSimpleAvroFileWithUserSchema(inputDir);
     String inputDirPath = "file:" + inputDir.getAbsolutePath();
     String storeName = TestUtils.getUniqueString("store");
     Properties props = setupDefaultProps(inputDirPath, storeName);
+    if (mapOnly) {
+      props.setProperty(KafkaPushJob.VENICE_MAP_ONLY, "true");
+    }
+    props.setProperty(KafkaPushJob.PBNJ_ENABLE, "true");
+    props.setProperty(KafkaPushJob.PBNJ_ROUTER_URL_PROP, veniceCluster.getRandomRouterURL());
 
     KafkaPushJob job = new KafkaPushJob("Test push job", props);
     job.run();
