@@ -4,12 +4,15 @@ import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.AvroStoreClientFactory;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.KafkaPushJob;
+import com.linkedin.venice.hadoop.utils.HadoopUtils;
 import com.linkedin.venice.utils.VeniceProperties;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.IndexedRecord;
 import org.apache.avro.mapred.AvroWrapper;
 import org.apache.hadoop.io.NullWritable;
-import org.apache.hadoop.mapred.RecordWriter;
+import org.apache.hadoop.mapred.JobConf;
+import org.apache.hadoop.mapred.Mapper;
+import org.apache.hadoop.mapred.OutputCollector;
 import org.apache.hadoop.mapred.Reporter;
 import org.apache.hadoop.util.Progressable;
 import org.apache.log4j.Logger;
@@ -21,17 +24,16 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
- * A {@link RecordWriter} implementation which queries Venice using a thin client.
+ * A {@link Mapper} implementation which queries Venice using a thin client.
  *
  * N.B.: Even though there are commonalities between this code and the
- * {@link com.linkedin.venice.hadoop.AvroKafkaRecordWriter}, it is intentional to
+ * {@link com.linkedin.venice.hadoop.KafkaOutputMapper}, it is intentional to
  * NOT leverage any common code between the two. Since one is a watch dog for the
  * other, it is important to minimize the risk that a change which causes a bug in
  * one does not simultaneously cause a bug in the other.
  */
-public class PostBulkloadAnalysisRecordWriter implements RecordWriter<AvroWrapper<IndexedRecord>, NullWritable> {
-
-  private static Logger logger = Logger.getLogger(PostBulkloadAnalysisRecordWriter.class);
+public class PostBulkLoadAnalysisMapper implements Mapper<AvroWrapper<IndexedRecord>, NullWritable, NullWritable, NullWritable> {
+  private static Logger logger = Logger.getLogger(PostBulkLoadAnalysisMapper.class);
 
   private static final int NUM_THREADS = 200;
   private static final int REQUEST_TIME_OUT_MS = 10000;
@@ -39,18 +41,18 @@ public class PostBulkloadAnalysisRecordWriter implements RecordWriter<AvroWrappe
   private static final int SAMPLE_LOGGING_INTERVAL = 1000;
 
   // Facilities
-  private final Progressable progress;
-  private final Executor executor;
-  private final CompletionService<Data> completionService;
-  private final AvroGenericStoreClient<Object> veniceClient;
+  private Progressable progress;
+  private Executor executor;
+  private CompletionService<Data> completionService;
+  private AvroGenericStoreClient<Object> veniceClient;
 
   // Immutable state
-  private final String keyField;
-  private final String valueField;
-  private final int keyFieldPos;
-  private final int valueFieldPos;
-  private final boolean failFast;
-  private final boolean async;
+  private String keyField;
+  private String valueField;
+  private int keyFieldPos;
+  private int valueFieldPos;
+  private boolean failFast;
+  private boolean async;
 
   // Mutable state
   private final AtomicBoolean closeCalled = new AtomicBoolean(false);
@@ -59,7 +61,10 @@ public class PostBulkloadAnalysisRecordWriter implements RecordWriter<AvroWrappe
   private final AtomicLong totalRecords = new AtomicLong();
   private final AtomicLong badRecords = new AtomicLong();
 
-  public PostBulkloadAnalysisRecordWriter(VeniceProperties props, Progressable progress) {
+
+  @Override
+  public void configure(JobConf job) {
+    VeniceProperties props = HadoopUtils.getVeniceProps(job);
     logger.info(this.getClass().getSimpleName() + " to be constructed with props: " + props.toString(true));
 
     // Set up config
@@ -79,9 +84,6 @@ public class PostBulkloadAnalysisRecordWriter implements RecordWriter<AvroWrappe
       // TODO: Remove this check once the async mode is fixed.
       throw new VeniceException("Async mode not currently supported in PBNJ.");
     }
-
-    // Set up facilities
-    this.progress = progress;
 
     this.veniceClient = AvroStoreClientFactory.getAndStartAvroGenericStoreClient(
         props.getString(KafkaPushJob.PBNJ_ROUTER_URL_PROP),
@@ -117,7 +119,7 @@ public class PostBulkloadAnalysisRecordWriter implements RecordWriter<AvroWrappe
   }
 
   @Override
-  public void close(Reporter arg0) throws IOException {
+  public void close() throws IOException {
     logger.info("Records progress before closing client:");
     logMessageProgress();
 
@@ -142,11 +144,15 @@ public class PostBulkloadAnalysisRecordWriter implements RecordWriter<AvroWrappe
   }
 
   @Override
-  public void write(AvroWrapper<IndexedRecord> record, NullWritable nullArg) throws IOException {
+  public void map(AvroWrapper<IndexedRecord> record, NullWritable value, OutputCollector<NullWritable, NullWritable> output, Reporter reporter) throws IOException {
     if (failFast) {
       maybePropagateCallbackException();
     }
 
+    // Initialize once
+    if (null == this.progress) {
+      this.progress = reporter;
+    }
     IndexedRecord datum = record.datum();
     Object keyDatum = datum.get(keyFieldPos);
     if (null == keyDatum) {
@@ -179,6 +185,7 @@ public class PostBulkloadAnalysisRecordWriter implements RecordWriter<AvroWrappe
     totalRecords.incrementAndGet();
   }
 
+
   private void maybePropagateCallbackException() {
     if (null != sendException.get()) {
       throw new VeniceException("Post-Bulkload Analysis Job failed with exception", sendException.get());
@@ -192,8 +199,8 @@ public class PostBulkloadAnalysisRecordWriter implements RecordWriter<AvroWrappe
   }
 
   private static class CompletionTask implements Runnable {
-    private final PostBulkloadAnalysisRecordWriter pbnj;
-    CompletionTask(PostBulkloadAnalysisRecordWriter pbnj) {
+    private final PostBulkLoadAnalysisMapper pbnj;
+    CompletionTask(PostBulkLoadAnalysisMapper pbnj) {
       this.pbnj = pbnj;
     }
     @Override
@@ -226,7 +233,7 @@ public class PostBulkloadAnalysisRecordWriter implements RecordWriter<AvroWrappe
     }
   }
 
-  private static void verify(Data data, PostBulkloadAnalysisRecordWriter pbnj) {
+  private static void verify(Data data, PostBulkLoadAnalysisMapper pbnj) {
     if ((null == data.valueDatumFromHdfs && null == data.valueFromVenice) ||
         (null != data.valueDatumFromHdfs && data.valueDatumFromHdfs.equals(data.valueFromVenice))) {
       // Both null, or both equal

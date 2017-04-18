@@ -1,40 +1,50 @@
 package com.linkedin.venice.hadoop;
 
+import com.linkedin.venice.exceptions.VeniceException;
+import javafx.util.Pair;
 import org.apache.avro.generic.IndexedRecord;
-import org.apache.avro.mapred.AvroCollector;
-import org.apache.avro.mapred.AvroMapper;
+import org.apache.avro.mapred.AvroWrapper;
+import org.apache.hadoop.io.NullWritable;
+import org.apache.hadoop.mapred.JobConf;
+import org.apache.hadoop.mapred.Mapper;
+import org.apache.hadoop.mapred.OutputCollector;
 import org.apache.hadoop.mapred.Reporter;
-import org.apache.log4j.Logger;
 
 import java.io.IOException;
 
-/**
- * A Hadoop Mapper implementation which collects simple stats and debugging info
- * about the records going through it.
- */
-public class KafkaOutputMapper extends AvroMapper<IndexedRecord, IndexedRecord> {
-  private static final int COUNTER_STATEMENT_COUNT = 100000;
-  private long counter;
-  private long lastTimeChecked = System.currentTimeMillis();
-  private static Logger logger = Logger.getLogger(KafkaPushJob.class);
+public class KafkaOutputMapper implements Mapper<AvroWrapper<IndexedRecord>, NullWritable, NullWritable, NullWritable> {
+  private VeniceMapper veniceMapper = null;
+  private VeniceReducer veniceReducer = null;
 
-  public void map(IndexedRecord record, AvroCollector<IndexedRecord> output, Reporter reporter) throws IOException {
-
-    // Calls AvroKafkaRecordWriter.write().
-    if (counter == 0L) {
-      logger.info("Printing first record's schema:");
-      logger.info(record.getSchema().toString(true));
+  @Override
+  public void map(AvroWrapper<IndexedRecord> record, NullWritable value, OutputCollector<NullWritable, NullWritable> output, Reporter reporter) throws IOException {
+    if (null == veniceMapper || null == veniceReducer) {
+      throw new VeniceException("KafkaOutputMapper is not initialized yet");
     }
-
-    output.collect(record);
-    counter++;
-    if (counter % COUNTER_STATEMENT_COUNT == 0) {
-      double transferRate = COUNTER_STATEMENT_COUNT * 1000 / (System.currentTimeMillis() - lastTimeChecked);
-      logger.info("Record count: " + counter + " rec/s:" + transferRate);
-      lastTimeChecked = System.currentTimeMillis();
+    Pair<byte[], byte[]> keyValuePair = veniceMapper.parseAvroRecord(record);
+    /**
+     * Skip record with null value, check {@link VeniceMapper#parseAvroRecord(AvroWrapper)}.
+     */
+    if (null != keyValuePair) {
+      veniceReducer.sendMessageToKafka(keyValuePair.getKey(), keyValuePair.getValue(), reporter);
     }
+  }
 
-    reporter.incrCounter("Kafka", "Output Records", 1);
+  @Override
+  public void close() throws IOException {
+    if (null != veniceMapper) {
+      veniceMapper.close();
+    }
+    if (null != veniceReducer) {
+      veniceReducer.close();
+    }
+  }
+
+  @Override
+  public void configure(JobConf job) {
+    veniceMapper = new VeniceMapper();
+    veniceMapper.configure(job);
+    veniceReducer = new VeniceReducer();
+    veniceReducer.configure(job);
   }
 }
-
