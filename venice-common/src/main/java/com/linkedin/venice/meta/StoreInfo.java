@@ -16,6 +16,7 @@ public class StoreInfo {
     storeInfo.setEnableStoreWrites(store.isEnableWrites());
     storeInfo.setEnableStoreReads(store.isEnableReads());
     storeInfo.setVersions(store.getVersions());
+    storeInfo.setPrinciples(String.join(",", store.getPrinciples()));
     return storeInfo;
   }
   /**
@@ -47,6 +48,10 @@ public class StoreInfo {
    * If a store is enableStoreReads, store has not version available to serve read requests.
    */
   private boolean enableStoreReads = true;
+  /**
+   * A SSL Identification used to certificate the access to this store.
+   */
+  private String principles;
   /**
    * List of non-retired versions.
    */
@@ -146,5 +151,13 @@ public class StoreInfo {
 
   public void setVersions(List<Version> versions) {
     this.versions = versions;
+  }
+
+  public String getPrinciples() {
+    return principles;
+  }
+
+  public void setPrinciples(String principles) {
+    this.principles = principles;
   }
 }

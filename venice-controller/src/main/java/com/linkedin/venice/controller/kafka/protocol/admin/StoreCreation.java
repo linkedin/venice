@@ -7,12 +7,13 @@ package com.linkedin.venice.controller.kafka.protocol.admin;
 
 @SuppressWarnings("all")
 public class StoreCreation extends org.apache.avro.specific.SpecificRecordBase implements org.apache.avro.specific.SpecificRecord {
-  public static final org.apache.avro.Schema SCHEMA$ = org.apache.avro.Schema.parse("{\"type\":\"record\",\"name\":\"StoreCreation\",\"namespace\":\"com.linkedin.venice.controller.kafka.protocol.admin\",\"fields\":[{\"name\":\"clusterName\",\"type\":\"string\"},{\"name\":\"storeName\",\"type\":\"string\"},{\"name\":\"owner\",\"type\":\"string\"},{\"name\":\"keySchema\",\"type\":{\"type\":\"record\",\"name\":\"SchemaMeta\",\"fields\":[{\"name\":\"schemaType\",\"type\":\"int\",\"doc\":\"0 => Avro-1.4, and we can add more if necessary\"},{\"name\":\"definition\",\"type\":\"string\"}]}},{\"name\":\"valueSchema\",\"type\":\"SchemaMeta\"}]}");
+  public static final org.apache.avro.Schema SCHEMA$ = org.apache.avro.Schema.parse("{\"type\":\"record\",\"name\":\"StoreCreation\",\"namespace\":\"com.linkedin.venice.controller.kafka.protocol.admin\",\"fields\":[{\"name\":\"clusterName\",\"type\":\"string\"},{\"name\":\"storeName\",\"type\":\"string\"},{\"name\":\"owner\",\"type\":\"string\"},{\"name\":\"keySchema\",\"type\":{\"type\":\"record\",\"name\":\"SchemaMeta\",\"fields\":[{\"name\":\"schemaType\",\"type\":\"int\",\"doc\":\"0 => Avro-1.4, and we can add more if necessary\"},{\"name\":\"definition\",\"type\":\"string\"}]}},{\"name\":\"valueSchema\",\"type\":\"SchemaMeta\"},{\"name\":\"principles\",\"type\":\"string\",\"default\":\"\"}]}");
   public java.lang.CharSequence clusterName;
   public java.lang.CharSequence storeName;
   public java.lang.CharSequence owner;
   public com.linkedin.venice.controller.kafka.protocol.admin.SchemaMeta keySchema;
   public com.linkedin.venice.controller.kafka.protocol.admin.SchemaMeta valueSchema;
+  public java.lang.CharSequence principles;
   public org.apache.avro.Schema getSchema() { return SCHEMA$; }
   // Used by DatumWriter.  Applications should not call. 
   public java.lang.Object get(int field$) {
@@ -22,6 +23,7 @@ public class StoreCreation extends org.apache.avro.specific.SpecificRecordBase i
     case 2: return owner;
     case 3: return keySchema;
     case 4: return valueSchema;
+    case 5: return principles;
     default: throw new org.apache.avro.AvroRuntimeException("Bad index");
     }
   }
@@ -34,6 +36,7 @@ public class StoreCreation extends org.apache.avro.specific.SpecificRecordBase i
     case 2: owner = (java.lang.CharSequence)value$; break;
     case 3: keySchema = (com.linkedin.venice.controller.kafka.protocol.admin.SchemaMeta)value$; break;
     case 4: valueSchema = (com.linkedin.venice.controller.kafka.protocol.admin.SchemaMeta)value$; break;
+    case 5: principles = (java.lang.CharSequence)value$; break;
     default: throw new org.apache.avro.AvroRuntimeException("Bad index");
     }
   }

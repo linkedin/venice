@@ -349,4 +349,12 @@ public class Utils {
   public static boolean verifyTransition(ExecutionStatus newStatus, ExecutionStatus... allowed) {
     return Arrays.asList(allowed).contains(newStatus);
   }
+
+  public static List<String> parseCommaSeparatedStringToList(String rawString){
+    String[] strArray = rawString.split(",");
+    if(strArray.length < 1){
+      throw new VeniceException("Invalid input: "+rawString);
+    }
+    return Arrays.asList(strArray);
+  }
 }

@@ -98,6 +98,7 @@ public class AdminSparkServer extends AbstractVeniceService {
 
     httpService.post(CREATE_VERSION.getPath(), CreateVersion.getRoute(admin));
     httpService.post(NEW_STORE.getPath(), CreateStore.getRoute(admin));
+    httpService.post(UPDATE_STORE.getPath(), StoresRoutes.updateStore(admin));
 
     httpService.post(ENABLE_STORE.getPath(), StoresRoutes.enableStore(admin));
 
@@ -180,6 +181,14 @@ public class AdminSparkServer extends AbstractVeniceService {
         throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, param + " is a required parameter");
       }
     }
+  }
+
+  protected static String getOptionalParameterValue(Request request, String parameter, String defaultValue) {
+    String value = request.queryParams(parameter);
+    if (value == null) {
+      value = defaultValue;
+    }
+    return value;
   }
 
   protected static void handleError(Throwable e, Request request, Response response) {

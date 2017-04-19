@@ -219,11 +219,19 @@ public class TestKafkaPushJob {
     props.put(KafkaPushJob.INPUT_PATH_PROP, inputDirPath);
     props.put(KafkaPushJob.AVRO_KEY_FIELD_PROP, "id");
     props.put(KafkaPushJob.AVRO_VALUE_FIELD_PROP, "name");
-    props.put(KafkaPushJob.AUTO_CREATE_STORE_PROP, "true");
     // No need for a big close timeout in tests. This is just to speed up discovery of certain regressions.
     props.put(VeniceWriter.CLOSE_TIMEOUT_MS, 500);
 
     return props;
+  }
+
+  private void createStoreForJob(Schema recordSchema, Properties props) {
+    ControllerClient controllerClient =
+        new ControllerClient(veniceCluster.getClusterName(), props.getProperty(KafkaPushJob.VENICE_URL_PROP));
+    Schema keySchema = recordSchema.getField(props.getProperty(KafkaPushJob.AVRO_KEY_FIELD_PROP)).schema();
+    Schema valueSchema = recordSchema.getField(props.getProperty(KafkaPushJob.AVRO_VALUE_FIELD_PROP)).schema();
+    controllerClient.createNewStore(props.getProperty(KafkaPushJob.VENICE_STORE_NAME_PROP),
+        props.getProperty(KafkaPushJob.VENICE_STORE_OWNERS_PROP), "test", keySchema.toString(), valueSchema.toString());
   }
 
   @Test(timeOut = TEST_TIMEOUT)
@@ -238,7 +246,7 @@ public class TestKafkaPushJob {
 
   private void testRunPushJobAndPBNJ(boolean mapOnly) throws Exception {
     File inputDir = getTempDataDirectory();
-    writeSimpleAvroFileWithUserSchema(inputDir);
+    Schema recordSchema = writeSimpleAvroFileWithUserSchema(inputDir);
     String inputDirPath = "file:" + inputDir.getAbsolutePath();
     String storeName = TestUtils.getUniqueString("store");
     Properties props = setupDefaultProps(inputDirPath, storeName);
@@ -247,6 +255,7 @@ public class TestKafkaPushJob {
     }
     props.setProperty(KafkaPushJob.PBNJ_ENABLE, "true");
     props.setProperty(KafkaPushJob.PBNJ_ROUTER_URL_PROP, veniceCluster.getRandomRouterURL());
+    createStoreForJob(recordSchema, props);
 
     KafkaPushJob job = new KafkaPushJob("Test push job", props);
     job.run();
@@ -403,21 +412,14 @@ public class TestKafkaPushJob {
     File inputDir = getTempDataDirectory();
     String storeName = TestUtils.getUniqueString("store");
     Schema recordSchema = writeSimpleAvroFileWithUserSchema(inputDir);
-    Schema keySchemaById = recordSchema.getField("id").schema();
-    Schema valueSchema = recordSchema.getField("name").schema();
-    ControllerClient controllerClient =
-        new ControllerClient(veniceCluster.getClusterName(), veniceCluster.getRandomRouterURL());
-
-    // Create store with key schema using "id" field
-    controllerClient.createNewStore(storeName, "owner", keySchemaById.toString(), valueSchema.toString());
 
     String inputDirPath = "file://" + inputDir.getAbsolutePath();
     Properties props = setupDefaultProps(inputDirPath, storeName);
+    createStoreForJob(recordSchema, props);
     String jobName = "Test push job";
 
     // Run job with different key schema (from 'string' to 'int')
     props.setProperty(KafkaPushJob.AVRO_KEY_FIELD_PROP, "age");
-    props.setProperty(KafkaPushJob.AUTO_CREATE_STORE_PROP, "false");
     KafkaPushJob job = new KafkaPushJob(jobName, props);
     job.run();
   }
@@ -432,19 +434,13 @@ public class TestKafkaPushJob {
   public void testRunJobMultipleTimesWithInCompatibleValueSchemaConfig() throws Exception {
     File inputDir = getTempDataDirectory();
     Schema recordSchema = writeSimpleAvroFileWithUserSchema(inputDir);
-    Schema keySchemaById = recordSchema.getField("id").schema();
-    Schema valueSchema = recordSchema.getField("name").schema();
     String inputDirPath = "file://" + inputDir.getAbsolutePath();
     String storeName = TestUtils.getUniqueString("store");
     Properties props = setupDefaultProps(inputDirPath, storeName);
+    createStoreForJob(recordSchema, props);
     String jobName = "Test push job";
-    String routerUrl = veniceCluster.getRandomRouterURL();
-    new ControllerClient(veniceCluster.getClusterName(), routerUrl)
-        .createNewStore(storeName, "owner", keySchemaById.toString(), valueSchema.toString());
-
     // Run job with different value schema (from 'string' to 'int')
     props.setProperty(KafkaPushJob.AVRO_VALUE_FIELD_PROP, "age");
-    props.setProperty(KafkaPushJob.AUTO_CREATE_STORE_PROP, "false");
     KafkaPushJob job = new KafkaPushJob(jobName, props);
     job.run();
   }
@@ -464,7 +460,7 @@ public class TestKafkaPushJob {
     ControllerClient controllerClient = new ControllerClient(veniceCluster.getClusterName(), routerUrl);
 
     // Create store with value schema
-    controllerClient.createNewStore(storeName, "owner", keySchema.toString(), valueSchema.toString());
+    controllerClient.createNewStore(storeName, "owner", "test", keySchema.toString(), valueSchema.toString());
 
     // Upload new value
     inputDir = getTempDataDirectory();

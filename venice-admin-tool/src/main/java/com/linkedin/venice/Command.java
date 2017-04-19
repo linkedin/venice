@@ -29,7 +29,7 @@ public enum Command {
   SKIP_ADMIN("skip-admin", "Skip an admin message",
       new Arg[] {Arg.URL, Arg.CLUSTER, Arg.OFFSET}),
   NEW_STORE("new-store", "",
-      new Arg[] {Arg.URL, Arg.CLUSTER, Arg.STORE, Arg.OWNER, Arg.KEY_SCHEMA, Arg.VALUE_SCHEMA}),
+      new Arg[]{Arg.URL, Arg.CLUSTER, Arg.STORE, Arg.OWNER, Arg.PRINCIPLES, Arg.KEY_SCHEMA, Arg.VALUE_SCHEMA}),
   SET_VERSION("set-version", "Set the version that will be served",
       new Arg[] {Arg.URL, Arg.CLUSTER, Arg.STORE, Arg.VERSION}),
   ADD_SCHEMA("add-schema", "",

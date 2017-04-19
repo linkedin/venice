@@ -9,6 +9,7 @@ import com.linkedin.venice.controller.kafka.protocol.admin.AdminOperation;
 import com.linkedin.venice.controller.kafka.protocol.admin.KillOfflinePushJob;
 import com.linkedin.venice.controller.kafka.protocol.admin.SchemaMeta;
 import com.linkedin.venice.controller.kafka.protocol.admin.StoreCreation;
+import com.linkedin.venice.controller.kafka.protocol.admin.UpdateStore;
 import com.linkedin.venice.controller.kafka.protocol.enums.AdminMessageType;
 import com.linkedin.venice.controller.kafka.protocol.enums.SchemaType;
 import com.linkedin.venice.controller.kafka.protocol.serializer.AdminOperationSerializer;
@@ -221,7 +222,7 @@ public class TestAdminConsumptionTask {
         .subscribe(any(), anyInt(), any());
     verify(mockKafkaConsumer, timeout(TIMEOUT))
         .unSubscribe(any(), anyInt());
-    verify(admin, timeout(TIMEOUT)).addStore(clusterName, storeName, owner, keySchema, valueSchema);
+    verify(admin, timeout(TIMEOUT)).addStore(clusterName, storeName, owner, "test",  keySchema, valueSchema);
     verify(admin, timeout(TIMEOUT)).killOfflinePush(clusterName, storeTopicName);
   }
 
@@ -235,7 +236,7 @@ public class TestAdminConsumptionTask {
     doThrow(new VeniceException("Mock store creation exception"))
         .doNothing()
         .when(admin)
-        .addStore(clusterName, storeName, owner, keySchema, valueSchema);
+        .addStore(clusterName, storeName, owner, "test",  keySchema, valueSchema);
 
     AdminConsumptionTask task = getAdminConsumptionTask(new RandomPollStrategy(), false);
     executor.submit(task);
@@ -254,7 +255,7 @@ public class TestAdminConsumptionTask {
         .subscribe(any(), anyInt(), any());
     verify(mockKafkaConsumer, timeout(TIMEOUT))
         .unSubscribe(any(), anyInt());
-    verify(admin, timeout(TIMEOUT).times(2)).addStore(clusterName, storeName, owner, keySchema, valueSchema);
+    verify(admin, timeout(TIMEOUT).times(2)).addStore(clusterName, storeName, owner, "test", keySchema, valueSchema);
   }
 
   @Test (timeOut = TIMEOUT)
@@ -266,7 +267,7 @@ public class TestAdminConsumptionTask {
     doReturn(false).when(admin).hasStore(clusterName, storeName);
     doThrow(new VeniceException("Mock store creation exception"))
         .when(admin)
-        .addStore(clusterName, storeName, owner, keySchema, valueSchema);
+        .addStore(clusterName, storeName, owner, "test", keySchema, valueSchema);
     long timeoutMinutes = 0L;
     AdminConsumptionTask task = getAdminConsumptionTask(new RandomPollStrategy(),  timeoutMinutes, false);
     executor.submit(task);
@@ -289,7 +290,7 @@ public class TestAdminConsumptionTask {
     doReturn(false).when(admin).hasStore(clusterName, storeName);
     doThrow(new VeniceException("Mock store creation exception"))
         .when(admin)
-        .addStore(clusterName, storeName, owner, keySchema, valueSchema);
+        .addStore(clusterName, storeName, owner, "test", keySchema, valueSchema);
 
     long timeoutMs = TimeUnit.MINUTES.toMillis(10); // dont timeout
     AdminConsumptionTask task = getAdminConsumptionTask(new RandomPollStrategy(), timeoutMs, false);
@@ -378,7 +379,7 @@ public class TestAdminConsumptionTask {
         .subscribe(any(), anyInt(), any());
     verify(mockKafkaConsumer, timeout(TIMEOUT))
         .unSubscribe(any(), anyInt());
-    verify(admin, timeout(TIMEOUT)).addStore(clusterName, storeName, owner, keySchema, valueSchema);
+    verify(admin, timeout(TIMEOUT)).addStore(clusterName, storeName, owner, "test", keySchema, valueSchema);
   }
 
   private OffsetRecord getOffsetRecordByOffsetAndSeqNum(long offset, int seqNum) {
@@ -390,10 +391,10 @@ public class TestAdminConsumptionTask {
 
     ProducerPartitionState ppState = new ProducerPartitionState();
     ppState.segmentNumber = 0;
-    ppState.segmentStatus = SegmentStatus.IN_PROGRESS.ordinal();
+    ppState.segmentStatus = SegmentStatus.IN_PROGRESS.getValue();
     ppState.messageSequenceNumber = seqNum;
     ppState.messageTimestamp = System.currentTimeMillis();
-    ppState.checksumType = CheckSumType.NONE.ordinal();
+    ppState.checksumType = CheckSumType.NONE.getValue();
     ppState.checksumState = ByteBuffer.allocate(0);
     ppState.aggregates = new HashMap<>();
     ppState.debugInfo = new HashMap<>();
@@ -443,7 +444,7 @@ public class TestAdminConsumptionTask {
         .subscribe(any(), anyInt(), any());
     verify(mockKafkaConsumer, timeout(TIMEOUT))
         .unSubscribe(any(), anyInt());
-    verify(admin, timeout(TIMEOUT)).addStore(clusterName, storeName, owner, keySchema, valueSchema);
+    verify(admin, timeout(TIMEOUT)).addStore(clusterName, storeName, owner, "test", keySchema, valueSchema);
     // Kill message is before persisted offset
     verify(admin, never()).killOfflinePush(clusterName, storeTopicName);
   }
@@ -495,9 +496,9 @@ public class TestAdminConsumptionTask {
         .subscribe(any(), anyInt(), any());
     verify(mockKafkaConsumer, timeout(TIMEOUT))
         .unSubscribe(any(), anyInt());
-    verify(admin, timeout(TIMEOUT)).addStore(clusterName, storeName1, owner, keySchema, valueSchema);
-    verify(admin, never()).addStore(clusterName, storeName2, owner, keySchema, valueSchema);
-    verify(admin, never()).addStore(clusterName, storeName3, owner, keySchema, valueSchema);
+    verify(admin, timeout(TIMEOUT)).addStore(clusterName, storeName1, owner, "test", keySchema, valueSchema);
+    verify(admin, never()).addStore(clusterName, storeName2, owner, "test", keySchema, valueSchema);
+    verify(admin, never()).addStore(clusterName, storeName3, owner, "test", keySchema, valueSchema);
   }
 
   @Test (timeOut = TIMEOUT)
@@ -530,7 +531,7 @@ public class TestAdminConsumptionTask {
         .subscribe(any(), anyInt(), any());
     verify(mockKafkaConsumer, timeout(TIMEOUT))
         .unSubscribe(any(), anyInt());
-    verify(admin, timeout(TIMEOUT)).addStore(clusterName, storeName, owner, keySchema, valueSchema);
+    verify(admin, timeout(TIMEOUT)).addStore(clusterName, storeName, owner, "test", keySchema, valueSchema);
   }
 
   @Test (timeOut = 2 * TIMEOUT)
@@ -566,8 +567,8 @@ public class TestAdminConsumptionTask {
     verify(mockKafkaConsumer, timeout(TIMEOUT))
         .unSubscribe(any(), anyInt());
 
-    verify(admin, never()).addStore(clusterName, storeName1, owner, keySchema, valueSchema);
-    verify(admin, atLeastOnce()).addStore(clusterName, storeName2, owner, keySchema, valueSchema);
+    verify(admin, never()).addStore(clusterName, storeName1, owner, "test", keySchema, valueSchema);
+    verify(admin, atLeastOnce()).addStore(clusterName, storeName2, owner, "test", keySchema, valueSchema);
   }
 
   @Test (timeOut = TIMEOUT)
@@ -618,6 +619,49 @@ public class TestAdminConsumptionTask {
     executor.awaitTermination(TIMEOUT, TimeUnit.MILLISECONDS);
   }
 
+  @Test
+  public void testSetStore() throws Exception{
+    AdminConsumptionTask task = getAdminConsumptionTask(new RandomPollStrategy(), true);
+    executor.submit(task);
+    veniceWriter.put(emptyKeyBytes,
+        getStoreCreationMessage(clusterName, storeName, owner, keySchema, valueSchema),
+        AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
+
+    String principles = "test";
+    String newOwner = owner+"updated";
+    int partitionNumber = 100;
+    int currentVersion = 100;
+    boolean enableReads = false;
+    boolean enableWrites = true;
+    UpdateStore setStore = (UpdateStore) AdminMessageType.UPDATE_STORE.getNewInstance();
+    setStore.clusterName = clusterName;
+    setStore.storeName = storeName;
+    setStore.owner = newOwner;
+    setStore.principles = principles;
+    setStore.partitionNum = partitionNumber;
+    setStore.currentVersion = currentVersion;
+    setStore.enableReads = enableReads;
+    setStore.enableWrites = enableWrites;
+    AdminOperation adminMessage = new AdminOperation();
+    adminMessage.operationType = AdminMessageType.UPDATE_STORE.getValue();
+    adminMessage.payloadUnion = setStore;
+    byte[] message = adminOperationSerializer.serialize(adminMessage);
+
+
+    veniceWriter.put(emptyKeyBytes, message, AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
+
+    TestUtils.waitForNonDeterministicAssertion(TIMEOUT, TimeUnit.MILLISECONDS, () -> {
+      Assert.assertEquals(offsetManager.getLastOffset(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID), TestUtils.getOffsetRecord(2));
+    });
+
+    task.close();
+    executor.shutdown();
+    executor.awaitTermination(TIMEOUT, TimeUnit.MILLISECONDS);
+
+    verify(admin, timeout(TIMEOUT).atLeastOnce())
+        .storeMetadataUpdate(eq(clusterName), eq(storeName), any());
+  }
+
   private byte[] getStoreCreationMessage(String clusterName, String storeName, String owner, String keySchema, String valueSchema) {
     StoreCreation storeCreation = (StoreCreation) AdminMessageType.STORE_CREATION.getNewInstance();
     storeCreation.clusterName = clusterName;
@@ -629,8 +673,9 @@ public class TestAdminConsumptionTask {
     storeCreation.valueSchema = new SchemaMeta();
     storeCreation.valueSchema.definition = valueSchema;
     storeCreation.valueSchema.schemaType = SchemaType.AVRO_1_4.ordinal();
+    storeCreation.principles = "test";
     AdminOperation adminMessage = new AdminOperation();
-    adminMessage.operationType = AdminMessageType.STORE_CREATION.ordinal();
+    adminMessage.operationType = AdminMessageType.STORE_CREATION.getValue();
     adminMessage.payloadUnion = storeCreation;
     return adminOperationSerializer.serialize(adminMessage);
   }
@@ -640,7 +685,7 @@ public class TestAdminConsumptionTask {
     killJob.clusterName = clusterName;
     killJob.kafkaTopic = kafkaTopic;
     AdminOperation adminMessage = new AdminOperation();
-    adminMessage.operationType = AdminMessageType.KILL_OFFLINE_PUSH_JOB.ordinal();
+    adminMessage.operationType = AdminMessageType.KILL_OFFLINE_PUSH_JOB.getValue();
     adminMessage.payloadUnion = killJob;
     adminMessage.executionId = executionId;
     return adminOperationSerializer.serialize(adminMessage);

@@ -3,6 +3,8 @@ package com.linkedin.venice.helix;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.utils.TestUtils;
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -15,6 +17,9 @@ public class TestStoreJsonSerializer {
     public void testSerializeAndDeserializeStore()
         throws IOException {
         Store store = TestUtils.createTestStore("s1", "owner", 1l);
+        List<String> principles = new ArrayList<>();
+        principles.add("test");
+        store.setPrinciples(principles);
         store.increaseVersion();
         StoreJSONSerializer serializer = new StoreJSONSerializer();
         byte[] data = serializer.serialize(store, "");
@@ -31,5 +36,19 @@ public class TestStoreJsonSerializer {
         Assert.assertEquals(store.getName(), "s1");
         Assert.assertEquals(store.getOwner(), null);
         Assert.assertEquals(store.getCreatedTime(), 0);
+    }
+
+    @Test
+    public void testDeserializeStoreWithUnknownField()
+        throws IOException {
+        Store store = TestUtils.createTestStore("s1", "owner", 1l);
+        store.increaseVersion();
+        StoreJSONSerializer serializer = new StoreJSONSerializer();
+        byte[] data = serializer.serialize(store, "");
+        String jsonStr = new String(data);
+        // Verify the backward compatibility, add a new feild in to Json string.
+        jsonStr = jsonStr.substring(0, jsonStr.length()-1)+",\"unknown\":\"test\"}";
+        Store newStore = serializer.deserialize(jsonStr.getBytes(), "");
+        Assert.assertEquals(store,newStore);
     }
 }

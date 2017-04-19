@@ -11,6 +11,7 @@ import com.linkedin.venice.controller.kafka.protocol.admin.SetStoreCurrentVersio
 import com.linkedin.venice.controller.kafka.protocol.admin.SetStoreOwner;
 import com.linkedin.venice.controller.kafka.protocol.admin.SetStorePartitionCount;
 import com.linkedin.venice.controller.kafka.protocol.admin.StoreCreation;
+import com.linkedin.venice.controller.kafka.protocol.admin.UpdateStore;
 import com.linkedin.venice.controller.kafka.protocol.admin.ValueSchemaCreation;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceMessageException;
@@ -29,7 +30,8 @@ public enum AdminMessageType {
   DELETE_ALL_VERSIONS(7),
   SET_STORE_OWNER(8),
   SET_STORE_PARTITION(9),
-  SET_STORE_CURRENT_VERSION(10);
+  SET_STORE_CURRENT_VERSION(10),
+  UPDATE_STORE(11);
 
   private final int value;
   private static final Map<Integer, AdminMessageType> MESSAGE_TYPE_MAP = getMessageTypeMap();
@@ -51,6 +53,7 @@ public enum AdminMessageType {
       case SET_STORE_OWNER: return new SetStoreOwner();
       case SET_STORE_PARTITION: return new SetStorePartitionCount();
       case SET_STORE_CURRENT_VERSION: return new SetStoreCurrentVersion();
+      case UPDATE_STORE: return new UpdateStore();
       default: throw new VeniceException("Unsupported " + getClass().getSimpleName() + " value: " + value);
     }
   }
@@ -73,5 +76,9 @@ public enum AdminMessageType {
 
   public static AdminMessageType valueOf(AdminOperation adminMessage) {
     return valueOf(adminMessage.operationType);
+  }
+
+  public int getValue() {
+    return value;
   }
 }

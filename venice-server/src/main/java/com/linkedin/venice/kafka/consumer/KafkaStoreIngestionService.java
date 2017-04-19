@@ -215,7 +215,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
   private int getStoreMaximumVersionNumber(String storeName) {
     Store store = metadataRepo.getStore(storeName);
     if (store == null) {
-      throw new VeniceException("Could not find store " + store + " info in ZK");
+      throw new VeniceException("Could not find store " + storeName + " info in ZK");
     }
 
     int maxVersionNumber = store.getLargestUsedVersionNumber();
