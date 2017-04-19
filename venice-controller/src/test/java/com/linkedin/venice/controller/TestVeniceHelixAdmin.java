@@ -509,7 +509,7 @@ public class TestVeniceHelixAdmin {
     String storeName = "test";
     try {
       veniceAdmin.incrementVersion(clusterName, storeName, 1, 1);
-      Assert.fail(storeName + " does not exist.");
+      Assert.fail("store " + storeName + " does not exist, admin should throw a VeniceException if we try to incrementVersion for it");
     } catch (VeniceException e) {
       //Expected
     }
@@ -526,6 +526,12 @@ public class TestVeniceHelixAdmin {
 
     veniceAdmin.addVersion(clusterName, storeName, 101, 1, 1);
     Assert.assertEquals(veniceAdmin.versionsForStore(clusterName, storeName).size(), 2);
+
+    String pushJobId = TestUtils.getUniqueString("pushJobId");
+    Version idempotentOne = veniceAdmin.incrementVersionIdempotent(clusterName, storeName, pushJobId, 1, 1);
+    Version idempotentTwo = veniceAdmin.incrementVersionIdempotent(clusterName, storeName, pushJobId, 1, 1);
+    Assert.assertEquals(idempotentOne.getNumber(), idempotentTwo.getNumber(), "Idempotent version increment with same pushId must return same version number");
+    Assert.assertEquals(idempotentOne.kafkaTopicName(), idempotentTwo.kafkaTopicName(), "Idempotent version increment with same pushId must return same kafka topic");
   }
 
   @Test

@@ -10,6 +10,7 @@ import static com.linkedin.venice.controllerapi.ControllerApiConstants.*;
 public enum ControllerRoute {
 
   CREATE_VERSION("/create_version", Arrays.asList(NAME, STORE_SIZE)),
+  REQUEST_TOPIC("/request_topic", Arrays.asList(NAME, STORE_SIZE, PUSH_TYPE, PUSH_JOB_ID)), // topic that writer should produce to
   STORE("/store", Arrays.asList(NAME)), // get all information about that store
   NEW_STORE("/new_store", Arrays.asList(NAME, OWNER, KEY_SCHEMA, VALUE_SCHEMA), PRINCIPLES),
   // Beside store name, others are all optional parameters for flexibility and compatibility.

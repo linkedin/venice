@@ -332,25 +332,26 @@ public class VeniceParentHelixAdmin implements Admin {
     }
   }
 
+  //TODO deprecate this method in the Admin interface in favor of the one that accepts a push ID
   @Override
   public Version incrementVersion(String clusterName,
-                                  String storeName,
-                                  int numberOfPartition,
-                                  int replicationFactor) {
-    // TODO: consider to move version creation to admin protocol
-    // Right now, TopicMonitor in each prod colo will monitor new Kafka topic and
-    // create new corresponding store versions
-    // Adding version in Parent Controller won't start offline push job.
+      String storeName,
+      int numberOfPartition,
+      int replicationFactor) {
+    return incrementVersion(clusterName, storeName, Version.guidBasedDummyPushId(), numberOfPartition, replicationFactor);
+  }
 
-    /**
-     * Check whether any topic for this store exists or not.
-     * The existing topic could be introduced by two cases:
-     * 1. The previous job push is still running;
-     * 2. The previous job push fails to delete this topic;
-     *
-     * For the 1st case, it is expected to refuse the new data push,
-     * and for the 2nd case, customer should reach out Venice team to fix this issue for now.
-     **/
+  /**
+ * Check whether any topic for this store exists or not.
+ * The existing topic could be introduced by two cases:
+ * 1. The previous job push is still running;
+ * 2. The previous job push fails to delete this topic;
+ *
+ * For the 1st case, it is expected to refuse the new data push,
+ * and for the 2nd case, customer should reach out Venice team to fix this issue for now.
+ **/
+  private List<String> existingTopicsForStore(String storeName) {
+    List<String> outputList = new ArrayList<>();
     TopicManager topicManager = getTopicManager();
     Set<String> topics = topicManager.listTopics();
     String storeNameForCurrentTopic;
@@ -365,25 +366,71 @@ public class VeniceParentHelixAdmin implements Admin {
         continue;
       }
       if (storeNameForCurrentTopic.equals(storeName)) {
-        /**
-         * Check the offline job status for this topic, and if it has already been terminated, we will skip it.
-         * Otherwise, an exception will be thrown to stop concurrent data pushes.
-         *
-         * {@link #getOffLinePushStatus(String, String)} will remove the topic if the offline job has been terminated,
-         * so we don't need to explicitly remove it here.
-          */
-        OfflinePushStatusInfo offlineJobStatus = getOffLinePushStatus(clusterName, topic);
-        if (offlineJobStatus.getExecutionStatus().isTerminal()) {
-          logger.info("Offline job for the existing topic: " + topic + " is already done, just skip it");
-          continue;
-        }
-        throw new VeniceException("Topic: " + topic + " exists for store: " + storeName +
-            ", please wait for previous job to be finished, and reach out Venice team if it is" +
-            " not this case");
+        outputList.add(topic);
       }
     }
-    Version newVersion = veniceHelixAdmin.addVersion(clusterName, storeName, VeniceHelixAdmin.VERSION_ID_UNSET,
+    return outputList;
+  }
+
+  public Version incrementVersion(String clusterName,
+                                  String storeName,
+                                  String pushJobId,
+                                  int numberOfPartition,
+                                  int replicationFactor) {
+    // TODO: consider to move version creation to admin protocol
+    // Right now, TopicMonitor in each prod colo will monitor new Kafka topic and
+    // create new corresponding store versions
+    // Adding version in Parent Controller won't start offline push job.
+
+    /*
+     * Check the offline job status for this topic, and if it has already been terminated, we will skip it.
+     * Otherwise, an exception will be thrown to stop concurrent data pushes.
+     *
+     * {@link #getOffLinePushStatus(String, String)} will remove the topic if the offline job has been terminated,
+     * so we don't need to explicitly remove it here.
+     */
+    for (String topic : existingTopicsForStore(storeName)){
+      OfflinePushStatusInfo offlineJobStatus = getOffLinePushStatus(clusterName, topic);
+      if (offlineJobStatus.getExecutionStatus().isTerminal()) {
+        logger.info("Offline job for the existing topic: " + topic + " is already done, just skip it");
+        continue;
+      }
+      throw new VeniceException("Topic: " + topic + " exists for store: " + storeName +
+          ", please wait for previous job to be finished, and reach out Venice team if it is" +
+          " not this case");
+    }
+    Version newVersion = veniceHelixAdmin.addVersion(clusterName, storeName, pushJobId, VeniceHelixAdmin.VERSION_ID_UNSET,
         numberOfPartition, replicationFactor, false);
+    cleanupHistoricalVersions(clusterName, storeName);
+    return newVersion;
+  }
+
+  @Override
+  public Version incrementVersionIdempotent(String clusterName, String storeName, String pushJobId,
+      int numberOfPartitions, int replicationFactor) {
+    List<String> existingTopicsForStore = existingTopicsForStore(storeName);
+    List<Version> storeVersions = veniceHelixAdmin.getStore(clusterName, storeName).getVersions();
+    for (String topic : existingTopicsForStore){
+      OfflinePushStatusInfo offlineJobStatus = getOffLinePushStatus(clusterName, topic);
+      if (offlineJobStatus.getExecutionStatus().isTerminal()) {
+        logger.info("Offline job for the existing topic: " + topic + " is already done, just skip it");
+        continue;
+      }
+      int topicVersion = Version.parseVersionFromKafkaTopicName(topic);
+      boolean matchingPushId = false;
+      for (Version version : storeVersions){
+        if (version.getNumber() == topicVersion && version.getPushJobId().equals(pushJobId)){
+          matchingPushId = true;
+          break;
+        }
+      }
+      if (!matchingPushId){
+        throw new VeniceException("Topic " + topic + " already exists for store " + storeName + " and does not match " +
+        "pushJobId " + pushJobId + ".  This topic represents a different ongoing push which must complete before " +
+        "starting another push");
+      }
+    }
+    Version newVersion = veniceHelixAdmin.incrementVersionIdempotent(clusterName, storeName, pushJobId, numberOfPartitions, replicationFactor);
     cleanupHistoricalVersions(clusterName, storeName);
     return newVersion;
   }

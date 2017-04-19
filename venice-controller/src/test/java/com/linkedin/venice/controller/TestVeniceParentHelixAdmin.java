@@ -227,7 +227,7 @@ public class TestVeniceParentHelixAdmin {
     parentAdmin.addStore(clusterName, storeName, owner, "test", keySchemaStr, valueSchemaStr);
   }
 
-  // This test forces a timeout in the admin consumption task
+  // This test forces a timeout in the admin consumption task which takes 10 seconds.
   @Test (expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = ".*waiting for admin consumption to catch up.*")
   public void testAddStoreWhenLastOffsetHasntBeenConsumed() throws ExecutionException, InterruptedException {
     parentAdmin.start(clusterName);
@@ -544,9 +544,10 @@ public class TestVeniceParentHelixAdmin {
 
   @Test
   public void testIncrementVersionWhenNoPreviousTopics() {
-    String storeName = "test_store";
-    parentAdmin.incrementVersion(clusterName, storeName, 1, 1);
-    verify(internalAdmin).addVersion(clusterName, storeName, VeniceHelixAdmin.VERSION_ID_UNSET, 1, 1, false);
+    String storeName = TestUtils.getUniqueString("test_store");
+    String pushJobId = TestUtils.getUniqueString("push_job_id");
+    parentAdmin.incrementVersion(clusterName, storeName, pushJobId, 1, 1);
+    verify(internalAdmin).addVersion(clusterName, storeName, pushJobId, VeniceHelixAdmin.VERSION_ID_UNSET, 1, 1, false);
   }
 
   /**
@@ -586,6 +587,7 @@ public class TestVeniceParentHelixAdmin {
   @Test
   public void testIncrementVersionWhenPreviousTopicsExistAndOfflineJobIsAlreadyDone() {
     String storeName = TestUtils.getUniqueString("test_store");
+    String pushJobId = TestUtils.getUniqueString("push_job_id");
     String previousKafkaTopic = storeName + "_v1";
     String unknownTopic = "1unknown_topic";
     doReturn(new HashSet<String>(Arrays.asList(unknownTopic, previousKafkaTopic)))
@@ -593,8 +595,53 @@ public class TestVeniceParentHelixAdmin {
         .listTopics();
     PartialMockVeniceParentHelixAdmin partialMockParentAdmin = new PartialMockVeniceParentHelixAdmin(internalAdmin, config);
     partialMockParentAdmin.setOfflineJobStatus(ExecutionStatus.COMPLETED);
-    partialMockParentAdmin.incrementVersion(clusterName, storeName, 1, 1);
-    verify(internalAdmin).addVersion(clusterName, storeName, VeniceHelixAdmin.VERSION_ID_UNSET, 1, 1, false);
+    partialMockParentAdmin.incrementVersion(clusterName, storeName, pushJobId, 1, 1);
+    verify(internalAdmin).addVersion(clusterName, storeName, pushJobId, VeniceHelixAdmin.VERSION_ID_UNSET, 1, 1, false);
+  }
+
+  /**
+   * Idempotent increment version should work because existing topic uses the same push ID as the request
+   */
+  @Test
+  public void testIdempotentIncrementVersionWhenPreviousTopicsExistAndOfflineJobIsNotDoneForSamePushId() {
+    String storeName = TestUtils.getUniqueString("test_store");
+    String pushJobId = TestUtils.getUniqueString("push_job_id");
+    String previousKafkaTopic = storeName + "_v1";
+    doReturn(new HashSet<String>(Arrays.asList(previousKafkaTopic)))
+        .when(topicManager)
+        .listTopics();
+    Store store = new Store(storeName, "owner", System.currentTimeMillis(), PersistenceType.IN_MEMORY, RoutingStrategy.CONSISTENT_HASH, ReadStrategy.ANY_OF_ONLINE, OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);
+    Version version = new Version(storeName, 1, pushJobId);
+    store.addVersion(version);
+    doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
+    PartialMockVeniceParentHelixAdmin partialMockParentAdmin = new PartialMockVeniceParentHelixAdmin(internalAdmin, config);
+    partialMockParentAdmin.setOfflineJobStatus(ExecutionStatus.NEW);
+    partialMockParentAdmin.incrementVersionIdempotent(clusterName, storeName, pushJobId, 1, 1);
+    verify(internalAdmin).incrementVersionIdempotent(clusterName, storeName, pushJobId, 1, 1);
+  }
+
+  /**
+   * Idempotent increment version should NOT work because existing topic uses different push ID than the request
+   */
+  @Test
+  public void testIdempotentIncrementVersionWhenPreviousTopicsExistAndOfflineJobIsNotDoneForDifferentPushId() {
+    String storeName = TestUtils.getUniqueString("test_store");
+    String pushJobId = TestUtils.getUniqueString("push_job_id");
+    String previousKafkaTopic = storeName + "_v1";
+    doReturn(new HashSet<String>(Arrays.asList(previousKafkaTopic)))
+        .when(topicManager)
+        .listTopics();
+    Store store = new Store(storeName, "owner", System.currentTimeMillis(), PersistenceType.IN_MEMORY, RoutingStrategy.CONSISTENT_HASH, ReadStrategy.ANY_OF_ONLINE, OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);
+    Version version = new Version(storeName, 1, Version.guidBasedDummyPushId());
+    store.addVersion(version);
+    doReturn(store).when(internalAdmin).getStore(clusterName, storeName);
+    PartialMockVeniceParentHelixAdmin partialMockParentAdmin = new PartialMockVeniceParentHelixAdmin(internalAdmin, config);
+    partialMockParentAdmin.setOfflineJobStatus(ExecutionStatus.NEW);
+    try {
+      partialMockParentAdmin.incrementVersionIdempotent(clusterName, storeName, pushJobId, 1, 1);
+    } catch (VeniceException e){
+      Assert.assertTrue(e.getMessage().contains(pushJobId), "Exception for topic exists when increment version should contain requested pushId");
+    }
   }
 
   @Test

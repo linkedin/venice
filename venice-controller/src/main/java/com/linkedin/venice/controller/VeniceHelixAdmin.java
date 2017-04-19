@@ -239,11 +239,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     protected final static int VERSION_ID_UNSET = -1;
 
     @Override
-    public synchronized Version addVersion(String clusterName, String storeName,int versionNumber, int numberOfPartition, int replicationFactor) {
-        return addVersion(clusterName, storeName, versionNumber, numberOfPartition, replicationFactor, true);
+    public synchronized Version addVersion(String clusterName, String storeName, int versionNumber, int numberOfPartition, int replicationFactor) {
+        return addVersion(clusterName, storeName, Version.guidBasedDummyPushId(), versionNumber, numberOfPartition, replicationFactor, true);
     }
 
-    protected synchronized Version addVersion(String clusterName, String storeName,int versionNumber, int numberOfPartition, int replicationFactor, boolean whetherStartOfflinePush) {
+    protected synchronized Version addVersion(String clusterName, String storeName, String pushJobId, int versionNumber, int numberOfPartition, int replicationFactor, boolean whetherStartOfflinePush) {
         checkControllerMastership(clusterName);
         HelixReadWriteStoreRepository repository = getVeniceHelixResource(clusterName).getMetadataRepository();
 
@@ -259,18 +259,17 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             strategy = store.getOffLinePushStrategy();
             if(versionNumber == VERSION_ID_UNSET) {
                 // No Version supplied, generate new version.
-                version = store.increaseVersion();
+                version = store.increaseVersion(pushJobId);
             } else {
                 if (store.containsVersion(versionNumber)) {
                     throwVersionAlreadyExists(storeName, versionNumber);
                 }
-                //TODO add constraints that added version should be smaller than reserved one.
-                version = new Version(storeName, versionNumber);
+                version = new Version(storeName, versionNumber, pushJobId);
                 store.addVersion(version);
             }
             // Update default partition count if it have not been assigned.
             if(store.getPartitionCount() == 0){
-                store.setPartitionCount(numberOfPartition);
+                store.setPartitionCount(numberOfPartition); //TODO, persist numberOfPartitions at the version level
             }
             repository.updateStore(store);
             logger.info("Add version:"+version.getNumber()+" for store:" + storeName);
@@ -301,6 +300,32 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     public synchronized Version incrementVersion(String clusterName, String storeName, int numberOfPartition,
         int replicationFactor) {
         return addVersion(clusterName, storeName, VERSION_ID_UNSET, numberOfPartition, replicationFactor);
+    }
+
+    @Override
+    public synchronized Version incrementVersionIdempotent(String clusterName, String storeName, String pushJobId, int numberOfPartitions, int replicationFactor){
+        checkControllerMastership(clusterName);
+        HelixReadWriteStoreRepository repository = getVeniceHelixResource(clusterName).getMetadataRepository();
+        repository.lock();
+        int storeNumberOfPartitions;
+        try {
+            Store store = repository.getStore(storeName);
+            storeNumberOfPartitions = store.getPartitionCount();
+            if(store == null) {
+                throwStoreDoesNotExist(clusterName, storeName);
+            }
+            for (Version version : store.getVersions()){
+                if (version.getPushJobId().equals(pushJobId)){
+                    //TODO: decide what to do with partition count parameters or remove them
+                    logger.info("Version request for pushId " + pushJobId + " and store " + storeName +
+                        ".  pushId already exists, so returning existing version " + version.getNumber());
+                    return version;
+                }
+            }
+        } finally {
+            repository.unLock();
+        }
+        return addVersion(clusterName, storeName, pushJobId, VERSION_ID_UNSET, storeNumberOfPartitions, replicationFactor, true);
     }
 
     @Override

@@ -241,6 +241,13 @@ public class Store {
     if (!name.equals(version.getStoreName())) {
       throw new VeniceException("Version does not belong to this store.");
     }
+    for (Version versionIterator : versions){
+      if (versionIterator.getPushJobId().equals(version.getPushJobId())) {
+        throw new VeniceException("New version " + version.getNumber() + " for store " + version.getStoreName()
+            + " contains pushJobId " + version.getPushJobId()
+            + " that already exist in the store on version " + versionIterator.getNumber());
+      }
+    }
     int index = 0;
     for (; index < versions.size(); index++) {
       if (versions.get(index).getNumber() == version.getNumber()) {
@@ -293,14 +300,19 @@ public class Store {
   }
 
   /**
-   * Increase a new version to this store.
+   * Use the form of this method that accepts a pushJobId
    */
+  @Deprecated
   public Version increaseVersion() {
-    return increaseVersion(true);
+    return increaseVersion(Version.guidBasedDummyPushId(), true);
+  }
+
+  public Version increaseVersion(String pushJobId) {
+    return increaseVersion(pushJobId, true);
   }
 
   public Version peekNextVersion() {
-    return increaseVersion(false);
+    return increaseVersion(Version.guidBasedDummyPushId(), false);
   }
 
   public VersionStatus getVersionStatus(int versionNumber) {
@@ -312,10 +324,10 @@ public class Store {
     return VersionStatus.NOT_CREATED;
   }
 
-  private Version increaseVersion(boolean createNewVersion) {
+  private Version increaseVersion(String pushJobId, boolean createNewVersion) {
     int versionNumber = largestUsedVersionNumber + 1;
     checkDisableStoreWrite("increase", versionNumber);
-    Version version = new Version(name, versionNumber);
+    Version version = new Version(name, versionNumber, pushJobId);
     if (createNewVersion) {
       addVersion(version);
       return version.cloneVersion();
