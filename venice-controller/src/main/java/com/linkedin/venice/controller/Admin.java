@@ -41,7 +41,9 @@ public interface Admin {
 
     boolean isClusterValid(String clusterName);
 
-    void addStore(String clusterName, String storeName, String owner, String keySchema, String valueSchema);
+    void addStore(String clusterName, String storeName, String owner, String principles, String keySchema, String valueSchema);
+
+    public void storeMetadataUpdate(String clusterName, String storeName, VeniceHelixAdmin.StoreMetadataOperation operation);
 
     Version addVersion(String clusterName, String storeName, int versionNumber, int numberOfPartition,
         int replicationFactor);
@@ -281,4 +283,12 @@ public interface Admin {
     Optional<AdminCommandExecutionTracker> getAdminCommandExecutionTracker();
 
     void close();
+
+    public interface StoreMetadataOperation {
+        /**
+         * define the operation that update a store. Return the store after metadata being updated so that it could
+         * be updated by metadataRepository
+         */
+        Store update(Store store);
+    }
 }

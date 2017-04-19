@@ -208,12 +208,14 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
 
     @Override
-    public synchronized void addStore(String clusterName, String storeName, String owner, String keySchema, String valueSchema) {
+    public synchronized void addStore(String clusterName, String storeName, String owner, String principles, String keySchema, String valueSchema) {
         VeniceHelixResources resources = getVeniceHelixResource(clusterName);
         synchronized (resources) { // Sloppy solution to race condition between add store and LEADER -> STANDBY controller state change
             checkPreConditionForAddStore(clusterName, storeName, owner, keySchema, valueSchema);
             VeniceControllerClusterConfig config = getVeniceHelixResource(clusterName).getConfig();
             Store store = new Store(storeName, owner, System.currentTimeMillis(), config.getPersistenceType(), config.getRoutingStrategy(), config.getReadStrategy(), config.getOfflinePushStrategy());
+            // We could not add principle into CTOR of class Store, because it will fail the deserialization of all existing stores.
+            store.setPrinciples(Utils.parseCommaSeparatedStringToList(principles));
             HelixReadWriteStoreRepository storeRepo = resources.getMetadataRepository();
             storeRepo.addStore(store);
             // Add schema
@@ -221,12 +223,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             schemaRepo.initKeySchema(storeName, keySchema);
             schemaRepo.addValueSchema(storeName, valueSchema, HelixReadOnlySchemaRepository.VALUE_SCHEMA_STARTING_ID);
         }
-    }
-
-    protected synchronized void updateStore(String clusterName, Store store) {
-        checkControllerMastership(clusterName);
-        VeniceHelixResources resources = getVeniceHelixResource(clusterName);
-        resources.getMetadataRepository().updateStore(store);
     }
 
     protected void checkPreConditionForAddStore(String clusterName, String storeName, String owner, String keySchema, String valueSchema) {
@@ -596,18 +592,23 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         });
     }
 
-    protected void storeMetadataUpdate(String clusterName, String storeName, StoreMetadataOperation operation) {
-        checkControllerMastership(clusterName);
+    public void storeMetadataUpdate(String clusterName, String storeName, StoreMetadataOperation operation) {
+        checkPreConditionForUpdateStore(clusterName,storeName);
         HelixReadWriteStoreRepository repository = getVeniceHelixResource(clusterName).getMetadataRepository();
         repository.lock();
         try {
             Store store = repository.getStore(storeName);
-            if (store == null) {
-            throw new VeniceNoStoreException(storeName);
-        }
-        repository.updateStore(operation.update(store));
+            repository.updateStore(operation.update(store));
         } finally {
             repository.unLock();
+        }
+    }
+
+    protected void checkPreConditionForUpdateStore(String clusterName, String storeName){
+        checkControllerMastership(clusterName);
+        HelixReadWriteStoreRepository repository = getVeniceHelixResource(clusterName).getMetadataRepository();
+        if (repository.getStore(storeName) == null) {
+            throwStoreDoesNotExist(clusterName, storeName);
         }
     }
 
@@ -1232,12 +1233,4 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
      * This private interface helps to reuse those codes and makes the admin clean.
      * Also see {@link #storeMetadataUpdate(String, String, StoreMetadataOperation)} for more details.
      */
-
-    interface StoreMetadataOperation {
-        /**
-         * define the operation that update a store. Return the store after metadata being updated so that it could
-         * be updated by metadataRepository
-         */
-        Store update(Store store);
-    }
 }

@@ -16,6 +16,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import org.apache.commons.io.IOUtils;
@@ -147,13 +148,19 @@ public class ControllerClient implements Closeable {
     }
   }
 
-  public NewStoreResponse createNewStore(String storeName, String owner, String keySchema, String valueSchema) {
+  public NewStoreResponse createNewStore(String storeName, String owner, String principles, String keySchema,
+      String valueSchema) {
+    return createNewStore(storeName, owner, Utils.parseCommaSeparatedStringToList(principles), keySchema, valueSchema);
+  }
+
+  protected NewStoreResponse createNewStore(String storeName, String owner, List<String> principles, String keySchema, String valueSchema) {
     try {
       List<NameValuePair> params = newParams(clusterName);
       params.add(new BasicNameValuePair(ControllerApiConstants.NAME, storeName));
       params.add(new BasicNameValuePair(ControllerApiConstants.OWNER, owner));
       params.add(new BasicNameValuePair(ControllerApiConstants.KEY_SCHEMA, keySchema));
       params.add(new BasicNameValuePair(ControllerApiConstants.VALUE_SCHEMA, valueSchema));
+      params.add(new BasicNameValuePair(ControllerApiConstants.PRINCIPLES, String.join(",", principles)));
       String responseJson = postRequest(ControllerRoute.NEW_STORE.getPath(), params);
       return mapper.readValue(responseJson, NewStoreResponse.class);
     } catch (Exception e){
@@ -161,15 +168,6 @@ public class ControllerClient implements Closeable {
     }
   }
 
-  @Deprecated
-  public static NewStoreResponse createNewStore(String urlsToFindMasterController, String clusterName,
-      String storeName, String owner, String keySchema, String valueSchema){
-    try (ControllerClient client = new ControllerClient(clusterName, urlsToFindMasterController)){
-      return client.createNewStore(storeName, owner, keySchema, valueSchema);
-    } catch (Exception e){
-      return handleError(new VeniceException("Error creating store: " + storeName, e), new NewStoreResponse());
-    }
-  }
 
   public VersionResponse overrideSetActiveVersion(String storeName, int version) {
     try {
@@ -576,6 +574,37 @@ public class ControllerClient implements Closeable {
       return mapper.readValue(responseJson, OwnerResponse.class);
     } catch (Exception e) {
       return handleError(new VeniceException("Error updating owner info: " + owner + " for store: " + storeName, e), new OwnerResponse());
+    }
+  }
+
+  public ControllerResponse updateStore(String storeName, Optional<String> owner, Optional<String> principles,
+      Optional<Integer> partitionNum, Optional<Integer> currentVersion, Optional<Boolean> enableReads,
+      Optional<Boolean> enableWrites) {
+    try {
+      List<NameValuePair> queryParams = newParams(clusterName);
+      queryParams.add(new BasicNameValuePair(ControllerApiConstants.NAME, storeName));
+      if (owner.isPresent()) {
+        queryParams.add(new BasicNameValuePair(ControllerApiConstants.OWNER, owner.get()));
+      }
+      if (principles.isPresent()) {
+        queryParams.add(new BasicNameValuePair(ControllerApiConstants.PRINCIPLES, principles.get()));
+      }
+      if (partitionNum.isPresent()) {
+        queryParams.add(new BasicNameValuePair(ControllerApiConstants.PARTITION_COUNT, partitionNum.get().toString()));
+      }
+      if (currentVersion.isPresent()) {
+        queryParams.add(new BasicNameValuePair(ControllerApiConstants.VERSION, currentVersion.get().toString()));
+      }
+      if (enableReads.isPresent()) {
+        queryParams.add(new BasicNameValuePair(ControllerApiConstants.ENABLE_READS, enableReads.get().toString()));
+      }
+      if (enableWrites.isPresent()) {
+        queryParams.add(new BasicNameValuePair(ControllerApiConstants.ENABLE_WRITES, enableWrites.get().toString()));
+      }
+      String responseJson = postRequest(ControllerRoute.UPDATE_STORE.getPath(), queryParams);
+      return mapper.readValue(responseJson, ControllerResponse.class);
+    } catch (Exception e) {
+      return handleError(new VeniceException("Error updating tore: " + storeName, e), new ControllerResponse());
     }
   }
 

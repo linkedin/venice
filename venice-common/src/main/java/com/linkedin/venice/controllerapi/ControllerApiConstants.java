@@ -24,6 +24,9 @@ public class ControllerApiConstants {
   public static final String WRITE_OPERATION = "write";
   public static final String READ_WRITE_OPERATION = READ_OPERATION + WRITE_OPERATION;
   public static final String EXECUTION_ID = "execution_id";
+  public static final String PRINCIPLES = "principles";
+  public static final String ENABLE_READS = "enable_reads";
+  public static final String ENABLE_WRITES = "enable_writes";
 
   private ControllerApiConstants(){}
 }

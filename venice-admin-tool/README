@@ -46,7 +46,7 @@ usage: java -jar venice-admin-tool-0.1.jar --<command> [parameters]
     --list-storage-nodes         Requires: --url, --cluster
     --list-stores                Requires: --url, --cluster
     --new-store                  Requires: --url, --cluster, --store,
-                                 --owner, --key-schema-file,
+                                 --owner, --principles, --key-schema-file,
                                  --value-schema-file
     --node-removable             A node is removable if all replicas it is
                                  serving are available on other nodes.
@@ -98,6 +98,8 @@ usage: Parameters:
  -o,--owner <arg>                Owner email for new store creation
  -of,--offset <arg>              Kafka offset number
  -pn,--partition-count <arg>     number of partitions a store has
+ -pr,--principles <arg>          A value used to certificate the access to
+                                 a store.
  -s,--store <arg>                Name of Venice store
  -u,--url <arg>                  Venice url, eg. http://localhost:1689
                                  This can be a router or a controller
@@ -117,7 +119,7 @@ java -jar venice-admin-tool-0.1.jar --enable-store --url <url> --cluster <cluste
 java -jar venice-admin-tool-0.1.jar --job-status --url <url> --cluster <cluster> --store <store> --version <version>
 java -jar venice-admin-tool-0.1.jar --kill-job --url <url> --cluster <cluster> --store <store> --version <version>
 java -jar venice-admin-tool-0.1.jar --skip-admin --url <url> --cluster <cluster> --offset <offset>
-java -jar venice-admin-tool-0.1.jar --new-store --url <url> --cluster <cluster> --store <store> --owner <owner> --key-schema-file <key-schema-file> --value-schema-file <value-schema-file>
+java -jar venice-admin-tool-0.1.jar --new-store --url <url> --cluster <cluster> --store <store> --owner <owner> --principles <principles> --key-schema-file <key-schema-file> --value-schema-file <value-schema-file>
 java -jar venice-admin-tool-0.1.jar --set-version --url <url> --cluster <cluster> --store <store> --version <version>
 java -jar venice-admin-tool-0.1.jar --add-schema --url <url> --cluster <cluster> --store <store> --value-schema-file <value-schema-file>
 java -jar venice-admin-tool-0.1.jar --list-storage-nodes --url <url> --cluster <cluster>

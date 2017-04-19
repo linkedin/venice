@@ -25,6 +25,7 @@ import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.VeniceServerWrapper;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.meta.InstanceStatus;
+import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.StoreStatus;
 import com.linkedin.venice.meta.Version;
@@ -37,6 +38,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.ExecutionException;
 import org.apache.avro.Schema;
+import org.apache.commons.cli.Option;
 import org.apache.commons.io.IOUtils;
 import org.apache.http.HttpResponse;
 import org.apache.http.NameValuePair;
@@ -46,6 +48,7 @@ import org.apache.http.impl.nio.client.CloseableHttpAsyncClient;
 import org.apache.http.message.BasicNameValuePair;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
+import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
@@ -122,13 +125,13 @@ public class TestAdminSparkServer {
 
     // create Store
     NewStoreResponse newStoreResponse =
-        controllerClient.createNewStore(storeToCreate, "owner", keySchema, valueSchema);
+        controllerClient.createNewStore(storeToCreate, "owner", "test", keySchema, valueSchema);
     Assert.assertFalse(newStoreResponse.isError(), "create new store should succeed for a store that doesn't exist");
     //if the store is not created by VeniceClusterWrapper, it has to be reported so other test cases will not be broken.
     venice.increaseStoreCount();
 
     NewStoreResponse duplicateNewStoreResponse =
-        controllerClient.createNewStore(storeToCreate, "owner", keySchema, valueSchema);
+        controllerClient.createNewStore(storeToCreate, "owner", "test", keySchema, valueSchema);
     Assert.assertTrue(duplicateNewStoreResponse.isError(), "create new store should fail for duplicate store creation");
 
     // ensure creating a duplicate store throws a http 409, status code isn't exposed in controllerClient
@@ -158,7 +161,7 @@ public class TestAdminSparkServer {
     Assert.assertTrue(sr0.isError());
     // Create Store
     NewStoreResponse newStoreResponse =
-        controllerClient.createNewStore(storeToCreate, "owner", keySchemaStr, valueSchemaStr);
+        controllerClient.createNewStore(storeToCreate, "owner", "test", keySchemaStr, valueSchemaStr);
 
     Assert.assertFalse(newStoreResponse.isError(), "create new store should succeed for a store that doesn't exist");
     SchemaResponse sr1 = controllerClient.getKeySchema(storeToCreate);
@@ -207,7 +210,7 @@ public class TestAdminSparkServer {
     SchemaResponse sr0 = controllerClient.addValueSchema(storeToCreate, schema1);
     Assert.assertTrue(sr0.isError());
     // Add value schema to an existing store
-    NewStoreResponse newStoreResponse = controllerClient.createNewStore(storeToCreate, "owner", keySchemaStr, schema1);
+    NewStoreResponse newStoreResponse = controllerClient.createNewStore(storeToCreate, "owner", "test", keySchemaStr, schema1);
     Assert.assertFalse(newStoreResponse.isError(), "create new store should succeed for a store that doesn't exist");
     SchemaResponse sr1 = controllerClient.addValueSchema(storeToCreate, schema1);
     Assert.assertFalse(sr1.isError());
@@ -402,7 +405,7 @@ public class TestAdminSparkServer {
         ServiceFactory.getVeniceParentController(cluster, parentZk.getAddress(), ServiceFactory.getKafkaBroker(),
             venice.getMasterVeniceController());
     String storeName = "controllerClientCanDeleteAllVersion";
-    parentController.getVeniceAdmin().addStore(cluster, storeName, "test", "\"string\"", "\"string\"");
+    parentController.getVeniceAdmin().addStore(cluster, storeName, "test", "test", "\"string\"", "\"string\"");
     parentController.getVeniceAdmin().incrementVersion(cluster, storeName, 1, 1);
 
     ControllerClient controllerClient = new ControllerClient(cluster, parentController.getControllerUrl());
@@ -471,5 +474,56 @@ public class TestAdminSparkServer {
     controllerClient.removeNodeFromWhiteList(nodeId);
     Assert.assertFalse(admin.getWhitelist(venice.getClusterName()).contains(nodeId),
         nodeId + " has been removed from white list.");
+  }
+
+  @Test
+  public void controllerClientCanSetStore() {
+    String storeName = TestUtils.getUniqueString("store");
+    String owner = TestUtils.getUniqueString("owner");
+    String principles = TestUtils.getUniqueString("principles");
+    int partitionCount = 2;
+    int current = 100;
+    boolean enableReads = false;
+    boolean enableWrite = true;
+
+    venice.getNewStore(storeName);
+    ControllerClient controllerClient = new ControllerClient(venice.getClusterName(), routerUrl);
+
+    ControllerResponse response =
+        controllerClient.updateStore(storeName, Optional.of(owner), Optional.of(principles), Optional.of(partitionCount),
+            Optional.of(current), Optional.of(enableReads), Optional.of(enableWrite));
+
+    Assert.assertFalse(response.isError(), response.getError());
+    Store store = venice.getMasterVeniceController().getVeniceAdmin().getStore(venice.getClusterName(), storeName);
+    Assert.assertEquals(store.getOwner(), owner);
+    Assert.assertEquals(String.join(",", store.getPrinciples()), principles);
+    Assert.assertEquals(store.getPartitionCount(), partitionCount);
+    Assert.assertEquals(store.getCurrentVersion(), current);
+    Assert.assertEquals(store.isEnableReads(), enableReads);
+    Assert.assertEquals(store.isEnableWrites(), enableWrite);
+
+  }
+
+  @Test
+  public void controllerClientCanSetStoreMissingSomeFields() {
+    String storeName = TestUtils.getUniqueString("store");
+    String principles = TestUtils.getUniqueString("principles");
+    int partitionCount = 2;
+    int current = 100;
+    boolean enableReads = false;
+
+    venice.getNewStore(storeName);
+    ControllerClient controllerClient = new ControllerClient(venice.getClusterName(), routerUrl);
+
+    ControllerResponse response =
+        controllerClient.updateStore(storeName, Optional.empty(), Optional.of(principles), Optional.of(partitionCount),
+            Optional.of(current), Optional.of(enableReads), Optional.empty());
+
+    Assert.assertFalse(response.isError(), response.getError());
+    Store store = venice.getMasterVeniceController().getVeniceAdmin().getStore(venice.getClusterName(), storeName);
+    Assert.assertEquals(String.join(",", store.getPrinciples()), principles);
+    Assert.assertEquals(store.getPartitionCount(), partitionCount);
+    Assert.assertEquals(store.getCurrentVersion(), current);
+    Assert.assertEquals(store.isEnableReads(), enableReads);
   }
 }

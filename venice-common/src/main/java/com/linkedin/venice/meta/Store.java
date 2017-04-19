@@ -8,7 +8,6 @@ import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import javax.validation.constraints.NotNull;
-import org.codehaus.jackson.annotate.JsonIgnore;
 
 
 /**
@@ -53,6 +52,10 @@ public class Store {
    */
   private boolean enableReads = true;
   /**
+   * A SSL Identification used to certificate the access to this store.
+   */
+  private List<String> principles;
+  /**
    * Type of persistence storage engine.
    */
   private final PersistenceType persistenceType;
@@ -92,6 +95,7 @@ public class Store {
     this.readStrategy = readStrategy;
     this.offLinePushStrategy = offlinePushStrategy;
     versions = new ArrayList<>();
+    principles = new ArrayList<>();
   }
 
   /**
@@ -177,6 +181,16 @@ public class Store {
   @SuppressWarnings("unused") // Used by Serializer/De-serializer for storing to Zoo Keeper
   public void setLargestUsedVersionNumber(int largestUsedVersionNumber) {
     this.largestUsedVersionNumber = largestUsedVersionNumber;
+  }
+
+  @SuppressWarnings("unused") // Used by Serializer/De-serializer for storing to Zoo Keeper
+  public List<String> getPrinciples() {
+    return principles;
+  }
+
+  @SuppressWarnings("unused") // Used by Serializer/De-serializer for storing to Zoo Keeper
+  public void setPrinciples(List<String> principles) {
+    this.principles = principles;
   }
 
   public int getPartitionCount() {
@@ -414,6 +428,9 @@ public class Store {
     if (largestUsedVersionNumber != store.largestUsedVersionNumber){
       return false;
     }
+    if (!principles.equals(store.principles)) {
+      return false;
+    }
     return versions.equals(store.versions);
   }
 
@@ -431,6 +448,7 @@ public class Store {
     result = 31 * result + (enableWrites ? 1 : 0);
     result = 31 * result + (enableReads ? 1: 0);
     result = 31 * result + largestUsedVersionNumber;
+    result = 31 * result + principles.hashCode();
 
     result = 31 * result + persistenceType.hashCode();
     result = 31 * result + routingStrategy.hashCode();
@@ -453,6 +471,7 @@ public class Store {
     clonedStore.setEnableWrites(enableWrites);
     clonedStore.setEnableReads(enableReads);
     clonedStore.setLargestUsedVersionNumber(largestUsedVersionNumber);
+    clonedStore.setPrinciples(principles);
 
     for (Version v : this.versions) {
       clonedStore.forceAddVersion(v.cloneVersion());

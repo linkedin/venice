@@ -11,7 +11,9 @@ public enum ControllerRoute {
 
   CREATE_VERSION("/create_version", Arrays.asList(NAME, STORE_SIZE)),
   STORE("/store", Arrays.asList(NAME)), // get all information about that store
-  NEW_STORE("/new_store", Arrays.asList(NAME, OWNER, KEY_SCHEMA, VALUE_SCHEMA)),
+  NEW_STORE("/new_store", Arrays.asList(NAME, OWNER, KEY_SCHEMA, VALUE_SCHEMA), PRINCIPLES),
+  // Beside store name, others are all optional parameters for flexibility and compatibility.
+  UPDATE_STORE("/update_store", Arrays.asList(NAME),OWNER, VERSION, PRINCIPLES, PARTITION_COUNT, ENABLE_READS, ENABLE_WRITES),
   SET_VERSION("/set_version", Arrays.asList(NAME, VERSION)),
   CURRENT_VERSION("/current_version", Arrays.asList(NAME)),
   ACTIVE_VERSIONS("/active_versions", Arrays.asList(NAME)),
@@ -46,10 +48,12 @@ public enum ControllerRoute {
 
   private final String path;
   private final List<String> params;
+  private final List<String> optionalParams;
 
-  ControllerRoute(String path, List<String> params){
+  ControllerRoute(String path, List<String> params, String... optionalParams){
     this.path = path;
     this.params = ListUtils.union(params, getCommonParams());
+    this.optionalParams = Arrays.asList(optionalParams);
   }
 
   private static List<String> getCommonParams(){
@@ -62,6 +66,10 @@ public enum ControllerRoute {
 
   public List<String> getParams(){
     return params;
+  }
+
+  public List<String> getOptionalParams() {
+    return optionalParams;
   }
 
 }

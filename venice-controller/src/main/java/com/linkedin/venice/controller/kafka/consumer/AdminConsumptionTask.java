@@ -15,6 +15,7 @@ import com.linkedin.venice.controller.kafka.protocol.admin.SetStoreCurrentVersio
 import com.linkedin.venice.controller.kafka.protocol.admin.SetStoreOwner;
 import com.linkedin.venice.controller.kafka.protocol.admin.SetStorePartitionCount;
 import com.linkedin.venice.controller.kafka.protocol.admin.StoreCreation;
+import com.linkedin.venice.controller.kafka.protocol.admin.UpdateStore;
 import com.linkedin.venice.controller.kafka.protocol.admin.ValueSchemaCreation;
 import com.linkedin.venice.controller.kafka.protocol.enums.AdminMessageType;
 import com.linkedin.venice.controller.kafka.protocol.serializer.AdminOperationSerializer;
@@ -332,6 +333,9 @@ public class AdminConsumptionTask implements Runnable, Closeable {
       case SET_STORE_PARTITION:
         handleSetStorePartitionCount((SetStorePartitionCount) adminMessage.payloadUnion);
         break;
+      case UPDATE_STORE:
+        handleSetStore((UpdateStore) adminMessage.payloadUnion);
+        break;
       default:
         throw new VeniceException("Unknown admin operation type: " + adminMessage.operationType);
     }
@@ -411,7 +415,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
     String owner = message.owner.toString();
     String keySchema = message.keySchema.definition.toString();
     String valueSchema = message.valueSchema.definition.toString();
-
+    String principles = message.principles.toString();
     /* // failure path for testing.  Enable this code path to run the disabled test in TestAdminConsumptionTask
     if (storeName.equals("store-that-fails")){
       throw new VeniceException("Tried to create failure store named store-that-fails");
@@ -423,7 +427,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
       logger.info("Adding store: " + storeName + ", which already exists, so just skip this message: " + message);
     } else {
       // Adding store
-      admin.addStore(clusterName, storeName, owner, keySchema, valueSchema);
+      admin.addStore(clusterName, storeName, owner, principles, keySchema, valueSchema);
       logger.info("Added store: " + storeName + " to cluster: " + clusterName);
     }
   }
@@ -514,5 +518,21 @@ public class AdminConsumptionTask implements Runnable, Closeable {
     admin.setStorePartitionCount(clusterName, storeName, partitionNum);
 
     logger.info("Set store: " + storeName + " partition number to " + partitionNum + " in cluster: " + clusterName);
+  }
+
+  private void handleSetStore(UpdateStore message) {
+    String clusterName = message.clusterName.toString();
+    String storeName = message.storeName.toString();
+    admin.storeMetadataUpdate(clusterName, storeName, store -> {
+      store.setOwner(message.owner.toString());
+      store.setPrinciples(Utils.parseCommaSeparatedStringToList(message.principles.toString()));
+      store.setPartitionCount(message.partitionNum);
+      store.setCurrentVersion(message.currentVersion);
+      store.setEnableWrites(message.enableWrites);
+      store.setEnableReads(message.enableReads);
+      return store;
+    });
+
+    logger.info("Set store: " + storeName + " in cluster: " + clusterName);
   }
 }

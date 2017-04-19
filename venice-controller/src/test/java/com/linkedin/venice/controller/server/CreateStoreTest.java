@@ -31,7 +31,7 @@ public class CreateStoreTest {
         .isMasterController(clusterName);
     // Throws NPE here
     doThrow(new NullPointerException(fakeMessage)).when(admin)
-        .addStore(any(), any(), any(), any(), any());
+        .addStore(any(), any(), any(), any(), any(), any());
 
     QueryParamsMap paramsMap = mock(QueryParamsMap.class);
     doReturn(new HashMap<>()).when(paramsMap)
@@ -71,7 +71,7 @@ public class CreateStoreTest {
         .isMasterController(clusterName);
     // Throws NPE here
     doThrow(new Error(fakeMessage)).when(admin)
-        .addStore(any(), any(), any(), any(), any());
+        .addStore(any(), any(), any(), any(), any(), any());
 
     QueryParamsMap paramsMap = mock(QueryParamsMap.class);
     doReturn(new HashMap<>()).when(paramsMap)
@@ -93,6 +93,8 @@ public class CreateStoreTest {
         .queryParams(KEY_SCHEMA);
     doReturn("\"string\"").when(request)
         .queryParams(VALUE_SCHEMA);
+    doReturn(null).when(request)
+        .queryParams(PRINCIPLES);
 
     Route createStoreRouter = CreateStore.getRoute(admin);
     createStoreRouter.handle(request, response);

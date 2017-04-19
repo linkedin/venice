@@ -18,6 +18,7 @@ import com.linkedin.venice.controller.kafka.protocol.admin.SetStoreCurrentVersio
 import com.linkedin.venice.controller.kafka.protocol.admin.SetStoreOwner;
 import com.linkedin.venice.controller.kafka.protocol.admin.SetStorePartitionCount;
 import com.linkedin.venice.controller.kafka.protocol.admin.StoreCreation;
+import com.linkedin.venice.controller.kafka.protocol.admin.UpdateStore;
 import com.linkedin.venice.controller.kafka.protocol.admin.ValueSchemaCreation;
 import com.linkedin.venice.controller.kafka.protocol.enums.AdminMessageType;
 import com.linkedin.venice.controller.kafka.protocol.enums.SchemaType;
@@ -231,7 +232,7 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   @Override
-  public void addStore(String clusterName, String storeName, String owner, String keySchema, String valueSchema) {
+  public void addStore(String clusterName, String storeName, String owner, String principles, String keySchema, String valueSchema) {
     acquireLock(clusterName);
     try {
       veniceHelixAdmin.checkPreConditionForAddStore(clusterName, storeName, owner, keySchema, valueSchema);
@@ -246,12 +247,41 @@ public class VeniceParentHelixAdmin implements Admin {
       storeCreation.keySchema.schemaType = SchemaType.AVRO_1_4.ordinal();
       storeCreation.keySchema.definition = keySchema;
       storeCreation.valueSchema = new SchemaMeta();
+      storeCreation.principles = principles;
       storeCreation.valueSchema.schemaType = SchemaType.AVRO_1_4.ordinal();
       storeCreation.valueSchema.definition = valueSchema;
 
       AdminOperation message = new AdminOperation();
       message.operationType = AdminMessageType.STORE_CREATION.ordinal();
       message.payloadUnion = storeCreation;
+
+      sendAdminMessageAndWaitForConsumed(clusterName, message);
+    } finally {
+      releaseLock();
+    }
+  }
+
+  @Override
+  public void storeMetadataUpdate(String clusterName, String storeName, StoreMetadataOperation operation) {
+    acquireLock(clusterName);
+
+    try {
+      veniceHelixAdmin.checkPreConditionForUpdateStore(clusterName, storeName);
+      Store store = veniceHelixAdmin.getStore(clusterName, storeName);
+      store = operation.update(store);
+      UpdateStore setStore = (UpdateStore) AdminMessageType.UPDATE_STORE.getNewInstance();
+      setStore.clusterName = clusterName;
+      setStore.storeName = storeName;
+      setStore.owner = store.getOwner();
+      setStore.principles = String.join(",", store.getPrinciples());
+      setStore.partitionNum = store.getPartitionCount();
+      setStore.currentVersion = store.getCurrentVersion();
+      setStore.enableReads = store.isEnableReads();
+      setStore.enableWrites = store.isEnableWrites();
+
+      AdminOperation message = new AdminOperation();
+      message.operationType = AdminMessageType.UPDATE_STORE.ordinal();
+      message.payloadUnion = setStore;
 
       sendAdminMessageAndWaitForConsumed(clusterName, message);
     } finally {

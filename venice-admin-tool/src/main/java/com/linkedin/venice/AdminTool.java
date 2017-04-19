@@ -34,6 +34,7 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.StringJoiner;
 import java.util.concurrent.ExecutionException;
 import java.util.function.Consumer;
@@ -144,7 +145,7 @@ public class AdminTool {
         ControllerResponse response = new ControllerClient(clusterName, routerHosts).skipAdminMessage(offset);
         printObject(response);
       } else if (cmd.hasOption(Command.NEW_STORE.toString())) {
-        createNewStore(cmd, routerHosts, clusterName);
+        createNewStore(cmd);
       } else if (cmd.hasOption(Command.DISABLE_STORE_WRITE.toString())) {
         setEnableStoreWrites(cmd, routerHosts, clusterName, false);
       } else if (cmd.hasOption(Command.ENABLE_STORE_WRITE.toString())){
@@ -267,7 +268,7 @@ public class AdminTool {
     printObject(outputMap);
   }
 
-  private static void createNewStore(CommandLine cmd, String routerHosts, String clusterName)
+  private static void createNewStore(CommandLine cmd)
       throws IOException {
     String store = getRequiredArgument(cmd, Arg.STORE, Command.NEW_STORE);
     String keySchemaFile = getRequiredArgument(cmd, Arg.KEY_SCHEMA, Command.NEW_STORE);
@@ -275,12 +276,12 @@ public class AdminTool {
     String valueSchemaFile = getRequiredArgument(cmd, Arg.VALUE_SCHEMA, Command.NEW_STORE);
     String valueSchema = readFile(valueSchemaFile);
     String owner = getRequiredArgument(cmd, Arg.OWNER, Command.NEW_STORE);
+    String principles = getRequiredArgument(cmd, Arg.PRINCIPLES, Command.NEW_STORE);
     verifyValidSchema(keySchema);
     verifyValidSchema(valueSchema);
-    verifyStoreExistence(routerHosts, clusterName, store, false);
-    NewStoreResponse newStore = ControllerClient.createNewStore(routerHosts, clusterName, store, owner, keySchema,
-        valueSchema);
-    printObject(newStore);
+    verifyStoreExistence(store, false);
+    NewStoreResponse response = controllerClient.createNewStore(store, owner, principles, keySchema, valueSchema);
+    printObject(response);
   }
 
   private static void setEnableStoreWrites(CommandLine cmd, String routerHosts, String clusterName, boolean enableWrites){
@@ -464,8 +465,8 @@ public class AdminTool {
     }
   }
 
-  private static void verifyStoreExistence(String routerHosts, String cluster, String storename, boolean desiredExistence){
-    MultiStoreResponse storeResponse = ControllerClient.listStores(routerHosts, cluster);
+  private static void verifyStoreExistence(String storename, boolean desiredExistence){
+    MultiStoreResponse storeResponse = controllerClient.queryStoreList();
     if (storeResponse.isError()){
       throw new VeniceException("Error verifying store exists: " + storeResponse.getError());
     }

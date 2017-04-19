@@ -78,7 +78,6 @@ public class KafkaPushJob extends AbstractJob {
   public static final String VENICE_CLUSTER_NAME_PROP = "cluster.name";
   public static final String VENICE_STORE_NAME_PROP = "venice.store.name";
   public static final String VENICE_STORE_OWNERS_PROP = "venice.store.owners";
-  public static final String AUTO_CREATE_STORE_PROP = "auto.create.store";
   public static final String INPUT_PATH_PROP = "input.path";
   public static final String BATCH_NUM_BYTES_PROP = "batch.num.bytes";
 
@@ -124,7 +123,6 @@ public class KafkaPushJob extends AbstractJob {
   private final String storeName;
   private final String storeOwners;
   private final int batchNumBytes;
-  private final boolean autoCreateStoreIfNeeded;
   private final boolean mapOnly;
   private final boolean enablePBNJ;
   private final boolean pbnjFailFast;
@@ -196,8 +194,6 @@ public class KafkaPushJob extends AbstractJob {
             .describedAs("batch-num-bytes")
             .ofType(String.class)
             .defaultsTo(Integer.toString(1000000));
-    OptionSpecBuilder autoCreateOpt =
-        parser.accepts("create-store", "Flag: auto create store if it does not exist");
 
     OptionSet options = parser.parse(args);
     validateExpectedArguments(new OptionSpec[] {inputPathOpt,  keyFieldOpt, valueFieldOpt, clusterNameOpt,
@@ -213,11 +209,6 @@ public class KafkaPushJob extends AbstractJob {
     props.put(AVRO_VALUE_FIELD_PROP, options.valueOf(valueFieldOpt));
     // Optional ones
     props.put(BATCH_NUM_BYTES_PROP, options.valueOf(queueBytesOpt));
-
-    boolean autoCreateStore = options.has(autoCreateOpt);
-    if (autoCreateStore){
-      props.put(AUTO_CREATE_STORE_PROP, "true");
-    }
 
     KafkaPushJob job = new KafkaPushJob("Console", props);
     job.run();
@@ -254,7 +245,6 @@ public class KafkaPushJob extends AbstractJob {
 
     // Optional configs:
     this.enablePush = props.getBoolean(ENABLE_PUSH, true);
-    this.autoCreateStoreIfNeeded = props.getBoolean(AUTO_CREATE_STORE_PROP, false);
     this.batchNumBytes = props.getInt(BATCH_NUM_BYTES_PROP, DEFAULT_BATCH_BYTES_SIZE);
     this.mapOnly = props.getBoolean(VENICE_MAP_ONLY, false);
     this.enablePBNJ = props.getBoolean(PBNJ_ENABLE, false);
@@ -309,11 +299,6 @@ public class KafkaPushJob extends AbstractJob {
 
       // Check Avro file schema consistency, data size
       inspectHdfsSource(sourcePath);
-
-      if (enablePush && autoCreateStoreIfNeeded) {
-        createStoreIfNeeded();
-        uploadValueSchema();
-      }
 
       validateKeySchema();
       validateValueSchema();
@@ -401,17 +386,6 @@ public class KafkaPushJob extends AbstractJob {
   }
 
   /**
-   * This method will talk to parent controller to create new store if necessary.
-   */
-  private void createStoreIfNeeded(){
-    NewStoreResponse response = controllerClient.createNewStore(storeName,
-        "H2V-user", keySchemaString, valueSchemaString);
-    if (response.isError()){
-      throw new VeniceException("Error creating new store with urls: " + veniceControllerUrl + "  " + response.getError());
-    }
-  }
-
-  /**
    * This method will talk to parent controller to validate key schema.
    */
   private void validateKeySchema() {
@@ -431,18 +405,6 @@ public class KafkaPushJob extends AbstractJob {
           "\n\t\texpected: \t" + keySchemaString +
           "\n\t\tactual: \t" + keySchemaResponse.getSchemaStr());
       throw new VeniceException(briefErrorMessage);
-    }
-  }
-
-  /***
-   * TODO: rip out this method when we don't need to auto create stores any more
-   */
-  private void uploadValueSchema() {
-    SchemaResponse valueSchemaResponse = controllerClient.addValueSchema(storeName, valueSchemaString);
-    if (valueSchemaResponse.isError()) {
-      throw new VeniceException("Fail to validate/create value schema: " + valueSchemaString
-          + " for store: " + storeName
-          + ", error: " + valueSchemaResponse.getError());
     }
   }
 

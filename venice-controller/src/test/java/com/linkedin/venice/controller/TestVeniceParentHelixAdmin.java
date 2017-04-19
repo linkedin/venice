@@ -182,7 +182,7 @@ public class TestVeniceParentHelixAdmin {
     String owner = "test-owner";
     String keySchemaStr = "\"string\"";
     String valueSchemaStr = "\"string\"";
-    parentAdmin.addStore(clusterName, storeName, owner, keySchemaStr, valueSchemaStr);
+    parentAdmin.addStore(clusterName, storeName, owner, "test", keySchemaStr, valueSchemaStr);
 
     verify(internalAdmin)
     .checkPreConditionForAddStore(clusterName, storeName, owner, keySchemaStr, valueSchemaStr);
@@ -224,7 +224,7 @@ public class TestVeniceParentHelixAdmin {
         .when(internalAdmin)
         .checkPreConditionForAddStore(clusterName, storeName, owner, keySchemaStr, valueSchemaStr);
 
-    parentAdmin.addStore(clusterName, storeName, owner, keySchemaStr, valueSchemaStr);
+    parentAdmin.addStore(clusterName, storeName, owner, "test", keySchemaStr, valueSchemaStr);
   }
 
   // This test forces a timeout in the admin consumption task
@@ -251,10 +251,10 @@ public class TestVeniceParentHelixAdmin {
     String owner = "test-owner";
     String keySchemaStr = "\"string\"";
     String valueSchemaStr = "\"string\"";
-    parentAdmin.addStore(clusterName, storeName, owner, keySchemaStr, valueSchemaStr);
+    parentAdmin.addStore(clusterName, storeName, owner, "test",  keySchemaStr, valueSchemaStr);
 
     // Add store again with smaller consumed offset
-    parentAdmin.addStore(clusterName, storeName, owner, keySchemaStr, valueSchemaStr);
+    parentAdmin.addStore(clusterName, storeName, owner, "test", keySchemaStr, valueSchemaStr);
   }
 
   @Test
@@ -661,7 +661,8 @@ public class TestVeniceParentHelixAdmin {
     String keySchemaStr = "\"long\"";
     String valueSchemaStr = "\"string\"";
 
-    ControllerClient.createNewStore(controllerUrl, clusterName, storeName, owner, keySchemaStr, valueSchemaStr);
+    ControllerClient controllerClient = new ControllerClient(clusterName, controllerUrl);
+    controllerClient.createNewStore(storeName, owner, "test", keySchemaStr, valueSchemaStr);
     MultiStoreResponse response = ControllerClient.listStores(controllerUrl, clusterName);
     String[] stores = response.getStores();
     Assert.assertEquals(stores.length, 1);
