@@ -2,12 +2,14 @@ package com.linkedin.venice.meta;
 
 import javax.validation.constraints.NotNull;
 import org.codehaus.jackson.annotate.JsonIgnore;
+import org.codehaus.jackson.annotate.JsonIgnoreProperties;
 import org.codehaus.jackson.annotate.JsonProperty;
 
 
 /**
  * Class defines the version of Venice store.
  */
+@JsonIgnoreProperties(ignoreUnknown = true)
 public class Version implements Comparable<Version> {
   private static final String SEPARATOR = "_v";
   /**
