@@ -28,5 +28,17 @@ public class ControllerApiConstants {
   public static final String ENABLE_READS = "enable_reads";
   public static final String ENABLE_WRITES = "enable_writes";
 
+  public static final String PUSH_TYPE = "push_type";
+  public static final String PUSH_JOB_ID = "push_job_id";
+
+
   private ControllerApiConstants(){}
+
+  /**
+   * Producer type for pushing data
+   */
+  public enum PushType {
+    BATCH, //This is a batch push that will create a new version
+    STREAM //This is a stream job that writes into a buffer topic (or possibly the current version topic depending on store-level configs)
+  }
 }

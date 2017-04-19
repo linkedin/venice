@@ -16,10 +16,10 @@ public class TestStore {
   @Test
   public void testVersionsAreAddedInOrdered(){
     Store s = TestUtils.createTestStore("s1", "owner", System.currentTimeMillis());
-    s.addVersion(new Version(s.getName(), 4, System.currentTimeMillis()));
-    s.addVersion(new Version(s.getName(), 2, System.currentTimeMillis()));
-    s.addVersion(new Version(s.getName(), 3, System.currentTimeMillis()));
-    s.addVersion(new Version(s.getName(), 1, System.currentTimeMillis()));
+    s.addVersion(new Version(s.getName(), 4));
+    s.addVersion(new Version(s.getName(), 2));
+    s.addVersion(new Version(s.getName(), 3));
+    s.addVersion(new Version(s.getName(), 1));
 
     List<Version> versions = s.getVersions();
     Assert.assertEquals(versions.size(), 4, "The Store version list is expected to contain 4 items!");
@@ -273,5 +273,21 @@ public class TestStore {
   @Test (expectedExceptions = VeniceException.class)
   public void invalidStoreNameThrows(){
     Store store = new Store("My Store Name", "owner", System.currentTimeMillis(), PersistenceType.IN_MEMORY, RoutingStrategy.CONSISTENT_HASH, ReadStrategy.ANY_OF_ONLINE, OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);
+  }
+
+  @Test
+  public void cannotAddDifferentVersionsWithSamePushId(){
+    String storeName = "storeName";
+    Store store = new Store(storeName, "owner", System.currentTimeMillis(), PersistenceType.IN_MEMORY, RoutingStrategy.CONSISTENT_HASH, ReadStrategy.ANY_OF_ONLINE, OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);
+    String duplicatePushJobId = "pushId";
+    Version versionOne = new Version(storeName, 1, duplicatePushJobId);
+    store.addVersion(versionOne);
+    Version versionTwo = new Version(storeName, 2, duplicatePushJobId);
+    try {
+      store.addVersion(versionTwo);
+      Assert.fail("Store must not allow adding a new version with same pushId");
+    } catch (Exception e){
+      //expected
+    }
   }
 }

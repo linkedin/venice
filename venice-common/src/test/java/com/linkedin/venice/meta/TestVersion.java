@@ -53,6 +53,7 @@ public class TestVersion {
 
     Version legacyParsedVersion = mapper.readValue(missingFieldSerialized, Version.class);
     Assert.assertEquals(legacyParsedVersion.getStoreName(), "store-missing");
+    Assert.assertNotNull(legacyParsedVersion.getPushJobId()); // missing final field can still deserialize, just gets arbitrary value from constructor
 
   }
 

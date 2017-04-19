@@ -50,6 +50,15 @@ public interface Admin {
 
     Version incrementVersion(String clusterName, String storeName, int numberOfPartition, int replicationFactor);
 
+    /**
+     * The implementation of this method must take no action and return the same Version object if the same parameters
+     * are provided on a subsequent invocation.  The expected use is multiple distributed components of a single push
+     * (with a single jobPushId) that each need to query Venice for the Version (and Kafka topic) to write into.  The
+     * first task triggers a new Version, all subsequent tasks identify with the same jobPushId, and should be provided
+     * with the same Version object.
+     */
+    Version incrementVersionIdempotent(String clusterName, String storeName, String pushJobId, int numberOfPartions, int replicationFactor);
+
     int getCurrentVersion(String clusterName, String storeName);
 
     Version peekNextVersion(String clusterName, String storeName);

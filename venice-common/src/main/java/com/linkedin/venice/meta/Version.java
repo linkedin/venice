@@ -1,5 +1,6 @@
 package com.linkedin.venice.meta;
 
+import com.linkedin.venice.guid.GuidUtils;
 import javax.validation.constraints.NotNull;
 import org.codehaus.jackson.annotate.JsonIgnore;
 import org.codehaus.jackson.annotate.JsonIgnoreProperties;
@@ -29,15 +30,25 @@ public class Version implements Comparable<Version> {
    */
   private VersionStatus status = VersionStatus.STARTED;
 
+  private final String pushJobId;
+
+  /**
+   * Use the constructor that specifies a pushJobId instead
+   */
+  @Deprecated
   public Version(String storeName, int number) {
-    this(storeName , number, System.currentTimeMillis());
+    this(storeName , number, System.currentTimeMillis(), numberBasedDummyPushId(number));
   }
 
+  public Version(String storeName, int number, String pushJobId){
+    this(storeName, number, System.currentTimeMillis(), pushJobId);
+  }
 
-  public Version(@JsonProperty("storeName") @NotNull String storeName, @JsonProperty("number") int number,@JsonProperty("createdTime")  long createdTime) {
+  public Version(@JsonProperty("storeName") @NotNull String storeName, @JsonProperty("number") int number, @JsonProperty("createdTime")  long createdTime, @JsonProperty("pushJobId") String pushJobId) {
     this.storeName = storeName;
     this.number = number;
     this.createdTime = createdTime;
+    this.pushJobId = pushJobId == null ? numberBasedDummyPushId(number) : pushJobId; // for deserializing old Versions that didn't get an pushJobId
   }
 
   public int getNumber() {
@@ -60,6 +71,10 @@ public class Version implements Comparable<Version> {
     return storeName;
   }
 
+  public String getPushJobId() {
+    return pushJobId;
+  }
+
   @Override
   public String toString() {
     return "Version{" +
@@ -67,6 +82,7 @@ public class Version implements Comparable<Version> {
         ", number=" + number +
         ", createdTime=" + createdTime +
         ", status=" + status +
+        ", pushJobId='" + pushJobId + '\'' +
         '}';
   }
 
@@ -100,7 +116,10 @@ public class Version implements Comparable<Version> {
     if (!storeName.equals(version.storeName)) {
       return false;
     }
-    return status.equals(version.status);
+    if (status != version.status) {
+      return false;
+    }
+    return pushJobId.equals(version.pushJobId);
   }
 
   @Override
@@ -109,8 +128,11 @@ public class Version implements Comparable<Version> {
     result = 31 * result + number;
     result = 31 * result + (int) (createdTime ^ (createdTime >>> 32));
     result = 31 * result + status.hashCode();
+    result = 31 * result + pushJobId.hashCode();
     return result;
   }
+
+
 
   /**
    * Clone a new version based on current data in this version.
@@ -119,7 +141,7 @@ public class Version implements Comparable<Version> {
    */
   @JsonIgnore
   public Version cloneVersion() {
-    Version clonedVersion = new Version(storeName, number, createdTime);
+    Version clonedVersion = new Version(storeName, number, createdTime, pushJobId);
     clonedVersion.setStatus(status);
     return clonedVersion;
   }
@@ -158,4 +180,11 @@ public class Version implements Comparable<Version> {
     return true;
   }
 
+  public static String guidBasedDummyPushId(){
+    return "guid_id_" + GuidUtils.getGUIDString();
+  }
+
+  static String numberBasedDummyPushId(int number){
+    return "push_for_version_" + number;
+  }
 }
