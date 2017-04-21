@@ -27,7 +27,7 @@ ext.libraries = [ // Groovy map literal
                   commonsCodec: 'commons-codec:commons-codec:1.4',
                   commonsIo: 'commons-io:commons-io:2.4',
                   guava: 'com.google.guava:guava:18.0',
-                  helix: 'org.apache.helix:helix-core:0.6.6.4',
+                  helix: 'org.apache.helix:helix-core:0.6.7.3',
                   // To be consistent with Container
                   kafka: 'kafka:kafka_2.10:0.10.0.23', // Internal LinkedIn release
                   // Fixed the kafka client 'memory record is not writable' issue.

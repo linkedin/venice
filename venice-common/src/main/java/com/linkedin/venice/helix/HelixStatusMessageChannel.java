@@ -7,6 +7,8 @@ import com.linkedin.venice.status.StatusMessageHandler;
 import com.linkedin.venice.status.StoreStatusMessage;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.utils.Utils;
+import java.util.Arrays;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import org.apache.helix.ClusterMessagingService;
@@ -38,6 +40,8 @@ public class HelixStatusMessageChannel implements StatusMessageChannel {
   public static final int DEFAULT_BROAD_CAST_MESSAGES_TIME_OUT = 3000;
 
   public static final String HELIX_MESSAGE_TYPE = "control_message";
+
+  public static final List<String> HELIX_MESSAGE_TYPES = Arrays.asList(new String[]{HELIX_MESSAGE_TYPE});
 
   public static final String VENICE_MESSAGE_CLASS = "veniceMessageClass";
 
@@ -261,6 +265,11 @@ public class HelixStatusMessageChannel implements StatusMessageChannel {
     @Override
     public String getMessageType() {
       return HELIX_MESSAGE_TYPE;
+    }
+
+    @Override
+    public List<String> getMessageTypes() {
+      return HELIX_MESSAGE_TYPES;
     }
 
     @Override
