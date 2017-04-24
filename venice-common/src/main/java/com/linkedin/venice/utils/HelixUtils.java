@@ -181,6 +181,31 @@ public class HelixUtils {
     }
   }
 
+  /**
+   * Before this participant/spectator joining the Helix cluster, we need to make sure the cluster has been setup by
+   * controller.
+   * Otherwise, the following operations issued by participant/spectator would fail.
+   */
+  public static void checkClusterSetup(HelixAdmin admin, String cluster, int maxRetry, int retryIntervalSec) {
+    int attempt = 1;
+    while (true) {
+      if (admin.getClusters().contains(cluster)) {
+        // Cluster is ready.
+        break;
+      } else {
+        if (attempt <= maxRetry) {
+          logger.warn("Cluster has not been initialized by controller. attempt: " + attempt + ". Will retry in "
+              + retryIntervalSec + " seconds.");
+          attempt++;
+          Utils.sleep(retryIntervalSec * Time.MS_PER_SECOND);
+        } else {
+          throw new VeniceException("Cluster has not been initialized by controller after attempted: " + attempt);
+        }
+      }
+    }
+  }
+
+
   public static void setupInstanceConfig(String clusterName, String instanceId, String zkAddress) {
     HelixConfigScope instanceScope =
         new HelixConfigScopeBuilder(HelixConfigScope.ConfigScopeProperty.PARTICIPANT).forCluster(clusterName)

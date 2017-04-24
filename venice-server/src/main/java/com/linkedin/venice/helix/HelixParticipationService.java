@@ -12,6 +12,7 @@ import com.linkedin.venice.status.StatusMessageHandler;
 import com.linkedin.venice.storage.StorageService;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.HelixUtils;
+import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
@@ -19,6 +20,8 @@ import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import javax.validation.constraints.NotNull;
+import org.I0Itec.zkclient.exception.ZkNoNodeException;
+import org.I0Itec.zkclient.exception.ZkNodeExistsException;
 import org.apache.helix.HelixAdmin;
 import org.apache.helix.HelixException;
 import org.apache.helix.HelixManager;
@@ -31,6 +34,8 @@ import org.apache.helix.model.InstanceConfig;
 import org.apache.helix.participant.statemachine.StateModelFactory;
 import org.apache.log4j.Logger;
 import java.util.concurrent.CompletableFuture;
+import org.apache.zookeeper.KeeperException;
+
 
 /**
  * Venice Participation Service wrapping Helix Participant.
@@ -40,6 +45,9 @@ public class HelixParticipationService extends AbstractVeniceService implements 
   private static final Logger logger = Logger.getLogger(HelixParticipationService.class);
 
   private static final String STATE_MODEL_REFERENCE_NAME = "PartitionOnlineOfflineModel";
+
+  private static final int MAX_RETRY = 30;
+  private static final int RETRY_INTERVAL_SEC = 1;
 
   private final Instance instance;
   private final String clusterName;
@@ -81,11 +89,6 @@ public class HelixParticipationService extends AbstractVeniceService implements 
   @Override
   public boolean startInner() {
     logger.info("Attempting to start HelixParticipation service");
-    // Check node status before joining the cluster.
-    // TODO Helix team will provide a way to let us do some checking after connecting to Helix.
-    // TODO In that case, it's guaranteed that the node would not be assigned with any resource before we completed our
-    // TODO checking, so we could use HelixManager to get some metadata instead of creating a new zk connection.
-    checkBeforeJoinInCluster();
     manager = HelixManagerFactory
             .getZKHelixManager(clusterName, this.participantName, InstanceType.PARTICIPANT,
                 zkAddress);
@@ -121,6 +124,8 @@ public class HelixParticipationService extends AbstractVeniceService implements 
   private void checkBeforeJoinInCluster() {
     HelixAdmin admin = new ZKHelixAdmin(zkAddress);
     try {
+      // Check whether the cluster is ready or not at first to prevent zk no node exception.
+      HelixUtils.checkClusterSetup(admin, clusterName, MAX_RETRY, RETRY_INTERVAL_SEC);
       List<String> instances = admin.getInstancesInCluster(clusterName);
       if (instances.contains(instance.getNodeId())) {
         logger.info(instance.getNodeId() + " is not a new node to cluster: " + clusterName + ", skip the cleaning up.");
@@ -128,11 +133,10 @@ public class HelixParticipationService extends AbstractVeniceService implements 
       }
       // Could not get instance from helix cluster. So it's a new machine or the machine which had been removed from
       // this cluster. In order to prevent resource leaking, we need to clean up all legacy stores.
-      logger.info(instance.getNodeId() + " is a new node or had been removed from cluster: " + clusterName
-          + " start cleaning up local storage.");
+      logger.info(instance.getNodeId() + " is a new node or had been removed from cluster: " + clusterName + " start cleaning up local storage.");
       storageService.cleanupAllStores(veniceConfigLoader);
       logger.info("Cleaning up complete, " + instance.getNodeId() + " can now join cluster:" + clusterName);
-    } finally {
+    }finally {
       admin.close();
     }
   }
@@ -144,11 +148,16 @@ public class HelixParticipationService extends AbstractVeniceService implements 
   private void asyncStart() {
     CompletableFuture.runAsync(() -> {
       try {
-        HelixUtils.connectHelixManager(manager, 30, 1);
+        // Check node status before joining the cluster.
+        // TODO Helix team will provide a way to let us do some checking after connecting to Helix.
+        // TODO In that case, it's guaranteed that the node would not be assigned with any resource before we completed our
+        // TODO checking, so we could use HelixManager to get some metadata instead of creating a new zk connection.
+        checkBeforeJoinInCluster();
+        manager.connect();
         //setup instance config for participant used by CRUSH alg
         HelixUtils.setupInstanceConfig(clusterName, instance.getNodeId(), zkAddress);
-      } catch (VeniceException ve) {
-        logger.error(ve.getMessage(), ve);
+      } catch (Exception e) {
+        logger.error(e.getMessage(), e);
         logger.error("Venice server is about to close");
 
         //Since helix manager is necessary. We force to exit the program if it is not able to connected.

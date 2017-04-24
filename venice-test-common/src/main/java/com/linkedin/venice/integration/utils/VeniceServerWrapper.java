@@ -63,7 +63,7 @@ public class VeniceServerWrapper extends ProcessWrapper {
       VeniceConfigLoader veniceConfigLoader = VeniceConfigLoader.loadFromConfigDirectory(
               configDirectory.getAbsolutePath());
 
-      if (isAutoJoin) {
+      if (enableServerWhitelist && isAutoJoin) {
         joinClusterWhitelist(veniceConfigLoader.getVeniceClusterConfig().getZookeeperAddress(), clusterName,
             listenPort);
       }
