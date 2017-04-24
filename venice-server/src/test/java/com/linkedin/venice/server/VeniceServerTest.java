@@ -6,6 +6,7 @@ import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.VeniceServerWrapper;
+import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import java.io.File;
@@ -13,6 +14,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.concurrent.TimeUnit;
 import org.apache.commons.io.FileUtils;
 import org.testng.Assert;
 import org.testng.annotations.Test;
@@ -96,35 +98,57 @@ public class VeniceServerTest {
   public void testCheckBeforeJoinCluster()
       throws IOException {
     VeniceClusterWrapper clusterWrapper = ServiceFactory.getVeniceCluster();
-    VeniceServerWrapper server = clusterWrapper.getVeniceServers().get(0);
-    StoreRepository repository = server.getVeniceServer().getStorageService().getStoreRepository();
-    Assert.assertEquals(repository.getAllLocalStorageEngines().size(), 0,
-        "New node should not have any storage engine.");
-    // Create a storage engine.
-    String testStore = TestUtils.getUniqueString("testCheckBeforeJoinCluster");
-    server.getVeniceServer()
-        .getStorageService()
-        .openStoreForNewPartition(server.getVeniceServer().getConfigLoader().getStoreConfig(testStore), 1);
-    Assert.assertEquals(repository.getAllLocalStorageEngines().size(), 1,
-        "We have created one storage engine for store: " + testStore);
+    try {
+      VeniceServerWrapper server = clusterWrapper.getVeniceServers().get(0);
+      StoreRepository repository = server.getVeniceServer().getStorageService().getStoreRepository();
+      Assert.assertEquals(repository.getAllLocalStorageEngines().size(), 0,
+          "New node should not have any storage engine.");
+      // Create a storage engine.
+      String testStore = TestUtils.getUniqueString("testCheckBeforeJoinCluster");
+      server.getVeniceServer()
+          .getStorageService()
+          .openStoreForNewPartition(server.getVeniceServer().getConfigLoader().getStoreConfig(testStore), 1);
+      Assert.assertEquals(repository.getAllLocalStorageEngines().size(), 1,
+          "We have created one storage engine for store: " + testStore);
 
-    // Restart server, as server's info leave in Helix cluster, so we expect that all local storage would NOT be deleted
-    // once the server join again.
-    clusterWrapper.stopVeniceServer(server.getPort());
-    clusterWrapper.restartVeniceServer(server.getPort());
-    repository = server.getVeniceServer().getStorageService().getStoreRepository();
-    Assert.assertEquals(repository.getAllLocalStorageEngines().size(), 1, "We should not cleanup the local storage");
+      // Restart server, as server's info leave in Helix cluster, so we expect that all local storage would NOT be deleted
+      // once the server join again.
+      clusterWrapper.stopVeniceServer(server.getPort());
+      clusterWrapper.restartVeniceServer(server.getPort());
+      repository = server.getVeniceServer().getStorageService().getStoreRepository();
+      Assert.assertEquals(repository.getAllLocalStorageEngines().size(), 1, "We should not cleanup the local storage");
 
-    // Stop server, remove it from the cluster then restart. We expect that all local storage would be deleted. Once
-    // the server join again.
-    clusterWrapper.stopVeniceServer(server.getPort());
-    clusterWrapper.getMasterVeniceController()
-        .getVeniceAdmin()
-        .removeStorageNode(clusterWrapper.getClusterName(), Utils.getHelixNodeIdentifier(server.getPort()));
-    clusterWrapper.restartVeniceServer(server.getPort());
+      // Stop server, remove it from the cluster then restart. We expect that all local storage would be deleted. Once
+      // the server join again.
+      clusterWrapper.stopVeniceServer(server.getPort());
+      clusterWrapper.getMasterVeniceController()
+          .getVeniceAdmin()
+          .removeStorageNode(clusterWrapper.getClusterName(), Utils.getHelixNodeIdentifier(server.getPort()));
+      clusterWrapper.restartVeniceServer(server.getPort());
 
-    repository = server.getVeniceServer().getStorageService().getStoreRepository();
-    Assert.assertEquals(repository.getAllLocalStorageEngines().size(), 0,
-        "After removing the node from cluster, local storage should be cleaned up once the server join the cluster again.");
+      repository = server.getVeniceServer().getStorageService().getStoreRepository();
+      Assert.assertEquals(repository.getAllLocalStorageEngines().size(), 0,
+          "After removing the node from cluster, local storage should be cleaned up once the server join the cluster again.");
+    }finally {
+      clusterWrapper.close();
+    }
+  }
+
+  @Test
+  public void testCheckBeforeJointClusterBeforeHelixInitializingCluster() {
+    String clusterName = TestUtils.getUniqueString("testCheckBeforeJointClusterBeforeHelixInitializingCluster");
+    KafkaBrokerWrapper kafka = ServiceFactory.getKafkaBroker();
+    final VeniceServerWrapper[] servers = new VeniceServerWrapper[1];
+    new Thread(new Runnable() {
+      @Override
+      public void run() {
+        servers[0] = ServiceFactory.getVeniceServer(clusterName, kafka, false, true, false);
+      }
+    }).start();
+    Utils.sleep(1000);
+    // Controller is started after server.
+    ServiceFactory.getVeniceController(clusterName, kafka);
+    TestUtils.waitForNonDeterministicCompletion(3000, TimeUnit.MILLISECONDS, () -> servers[0] != null);
+    Assert.assertTrue(servers[0].isRunning(), "Server could start before controller correctly.");
   }
 }
