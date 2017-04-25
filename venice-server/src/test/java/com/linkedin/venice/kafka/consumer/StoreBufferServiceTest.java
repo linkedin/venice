@@ -79,4 +79,25 @@ public class StoreBufferServiceTest {
     bufferService.internalDrainBufferedRecordsFromTopicPartition(topic, partition, 3, 50);
     Assert.fail("Exception should be thrown here");
   }
+
+  @Test
+  public void testGetDrainerIndexForConsumerRecord() {
+    String topic = TestUtils.getUniqueString("test_topic");
+    int partitionCount = 64;
+    int drainerNum = 8;
+    int[] drainerPartitionCount = new int[drainerNum];
+    for (int i = 0; i < drainerNum; ++i) {
+      drainerPartitionCount[i] = 0;
+    }
+    StoreBufferService bufferService = new StoreBufferService(8, 10000, 1000);
+    for (int partition = 0; partition < partitionCount; ++partition) {
+      ConsumerRecord<KafkaKey, KafkaMessageEnvelope> cr = new ConsumerRecord<>(topic, partition, 100, null, null);
+      int drainerIndex = bufferService.getDrainerIndexForConsumerRecord(cr);
+      ++drainerPartitionCount[drainerIndex];
+    }
+    int avgPartitionCountPerDrainer = partitionCount / drainerNum;
+    for (int i = 0; i < drainerNum; ++i) {
+      Assert.assertEquals(drainerPartitionCount[i], avgPartitionCountPerDrainer);
+    }
+  }
 }

@@ -41,19 +41,19 @@ public class StoreBufferService extends AbstractVeniceService {
      */
     private static final int QUEUE_NODE_OVERHEAD_IN_BYTE = 256;
     private ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord;
-    private StoreIngestionTask consumptionTask;
+    private StoreIngestionTask ingestionTask;
 
-    public QueueNode(ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord, StoreIngestionTask consumptionTask) {
+    public QueueNode(ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord, StoreIngestionTask ingestionTask) {
       this.consumerRecord = consumerRecord;
-      this.consumptionTask = consumptionTask;
+      this.ingestionTask = ingestionTask;
     }
 
     public ConsumerRecord<KafkaKey, KafkaMessageEnvelope> getConsumerRecord() {
       return this.consumerRecord;
     }
 
-    public StoreIngestionTask getConsumptionTask() {
-      return this.consumptionTask;
+    public StoreIngestionTask getIngestionTask() {
+      return this.ingestionTask;
     }
 
     /**
@@ -114,16 +114,16 @@ public class StoreBufferService extends AbstractVeniceService {
           break;
         }
         ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord = node.getConsumerRecord();
-        StoreIngestionTask consumptionTask = node.getConsumptionTask();
+        StoreIngestionTask ingestionTask = node.getIngestionTask();
 
         try {
-          consumptionTask.processConsumerRecord(consumerRecord);
+          ingestionTask.processConsumerRecord(consumerRecord);
         } catch (Exception e) {
           LOGGER.error("Got exception during processing consumer record: " + consumerRecord, e);
           /**
            * Catch all the thrown exception and store it in {@link StoreIngestionTask#lastWorkerException}.
            */
-          consumptionTask.setLastDrainerException(e);
+          ingestionTask.setLastDrainerException(e);
         }
       }
     }
@@ -143,20 +143,22 @@ public class StoreBufferService extends AbstractVeniceService {
     }
   }
 
-  private String getTopicPartitionStr(String topic, int partition) {
-    return topic + "-" + partition;
-  }
-
-  private int getDrainerIndexForConsumerRecord(ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord) {
-    String topicPartition = getTopicPartitionStr(consumerRecord.topic(), consumerRecord.partition());
-    return Math.abs(topicPartition.hashCode() % this.drainerNum);
+  protected int getDrainerIndexForConsumerRecord(ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord) {
+    String topic = consumerRecord.topic();
+    /**
+     * This will guarantee that 'topicHash' will be a positive integer, whose maximum value is
+     * {@link Integer.MAX_VALUE} / 2 + 1, which could make sure 'topicHash + consumerRecord.partition()' should be
+     * positive for most of time to guarantee even partition assignment.
+      */
+    int topicHash = Math.abs(topic.hashCode() / 2);
+    return Math.abs((topicHash + consumerRecord.partition()) % this.drainerNum);
   }
 
   public void putConsumerRecord(ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord,
-                                StoreIngestionTask consumptionTask) throws InterruptedException {
+                                StoreIngestionTask ingestionTask) throws InterruptedException {
     int drainerIndex = getDrainerIndexForConsumerRecord(consumerRecord);
     blockingQueueArr.get(drainerIndex)
-        .put(new QueueNode(consumerRecord, consumptionTask));
+        .put(new QueueNode(consumerRecord, ingestionTask));
   }
 
   /**
