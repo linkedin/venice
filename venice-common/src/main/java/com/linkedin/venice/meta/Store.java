@@ -85,7 +85,14 @@ public class Store {
   public Store(@NotNull String name, @NotNull String owner, long createdTime, @NotNull PersistenceType persistenceType,
       @NotNull RoutingStrategy routingStrategy, @NotNull ReadStrategy readStrategy,
       @NotNull OfflinePushStrategy offlinePushStrategy) {
-    if (!isValidStoreName(name)){
+    this(name, owner, createdTime, persistenceType, routingStrategy, readStrategy, offlinePushStrategy, true, true,
+        NON_EXISTING_VERSION);
+  }
+
+  public Store(@NotNull String name, @NotNull String owner, long createdTime, @NotNull PersistenceType persistenceType,
+      @NotNull RoutingStrategy routingStrategy, @NotNull ReadStrategy readStrategy,
+      @NotNull OfflinePushStrategy offlinePushStrategy, boolean enableWrites, boolean enableReads, int currentVersion) {
+    if (!isValidStoreName(name)) {
       throw new VeniceException("Invalid store name: " + name);
     }
     this.name = name;
@@ -95,8 +102,11 @@ public class Store {
     this.routingStrategy = routingStrategy;
     this.readStrategy = readStrategy;
     this.offLinePushStrategy = offlinePushStrategy;
-    versions = new ArrayList<>();
-    principles = new ArrayList<>();
+    this.versions = new ArrayList<>();
+    this.principles = new ArrayList<>();
+    this.enableWrites = enableWrites;
+    this.enableReads = enableReads;
+    this.currentVersion = currentVersion;
   }
 
   /**
