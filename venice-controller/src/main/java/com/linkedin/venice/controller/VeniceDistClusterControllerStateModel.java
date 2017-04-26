@@ -69,12 +69,8 @@ public class VeniceDistClusterControllerStateModel extends StateModel {
           .getZKHelixManager(clusterName, controllerName, InstanceType.CONTROLLER, zkClient.getServers());
       controller.connect();
       controller.startTimerTasks();
-      try {
-        resources = new VeniceHelixResources(clusterName, zkClient, adapterSerializer, controller, clusterToConfigsMap.get(clusterName), storeCleaner, metricsRepository);
-        resources.refresh();
-      }catch (Throwable e){
-        e.printStackTrace();
-      }
+      resources = new VeniceHelixResources(clusterName, zkClient, adapterSerializer, controller, clusterToConfigsMap.get(clusterName), storeCleaner, metricsRepository);
+      resources.refresh();
       logger.info(controllerName + " is the leader of " + clusterName);
     } else {
       logger.error("controller already exists:" + controller.getInstanceName() + " for " + clusterName);

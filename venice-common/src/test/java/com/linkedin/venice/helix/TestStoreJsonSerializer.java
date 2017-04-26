@@ -51,4 +51,18 @@ public class TestStoreJsonSerializer {
         Store newStore = serializer.deserialize(jsonStr.getBytes(), "");
         Assert.assertEquals(store,newStore);
     }
+
+    @Test
+    public void testDeserializeDisabledStore()
+        throws IOException {
+        Store store = TestUtils.createTestStore("s1", "owner", 1l);
+        store.increaseVersion();
+        store.setEnableReads(false);
+        store.setEnableReads(false);
+        StoreJSONSerializer serializer = new StoreJSONSerializer();
+        byte[] data = serializer.serialize(store, "");
+        String jsonStr = new String(data);
+        Store newStore = serializer.deserialize(jsonStr.getBytes(), "");
+        Assert.assertEquals(store, newStore);
+    }
 }

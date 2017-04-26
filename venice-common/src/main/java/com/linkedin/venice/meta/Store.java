@@ -8,6 +8,7 @@ import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import javax.validation.constraints.NotNull;
+import org.codehaus.jackson.annotate.JsonProperty;
 
 
 /**
@@ -137,7 +138,13 @@ public class Store {
    */
   public void setCurrentVersion(int currentVersion) {
     checkDisableStoreWrite("setStoreCurrentVersion", currentVersion);
-    this.currentVersion = currentVersion;
+    setCurrentVersionWithoutCheck(currentVersion);
+  }
+
+  @SuppressWarnings("unused") // Used by Serializer/De-serializer for storing to Zoo Keeper
+  @JsonProperty("currentVersion")
+  public void setCurrentVersionWithoutCheck(int currentVersion){
+    this.currentVersion =  currentVersion;
   }
 
   @SuppressWarnings("unused") // Used by Serializer/De-serializer for storing to Zoo Keeper
