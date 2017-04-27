@@ -43,6 +43,10 @@ public class BdbStorageEngine extends AbstractStorageEngine {
     restoreStoragePartitions();
   }
 
+  public Environment getBdbEnvironment() {
+    return this.environment;
+  }
+
   @Override
   protected Set<Integer> getPersistedPartitionIds() {
     List<String> partitionNames = environment.getDatabaseNames();

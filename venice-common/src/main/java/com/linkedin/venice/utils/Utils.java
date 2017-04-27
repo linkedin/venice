@@ -16,6 +16,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Properties;
 
+import java.util.concurrent.Callable;
 import org.apache.avro.Schema;
 import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang.StringUtils;
@@ -356,5 +357,12 @@ public class Utils {
       throw new VeniceException("Invalid input: "+rawString);
     }
     return Arrays.asList(strArray);
+  }
+
+  /**
+   * Computes the percentage, taking care of division by 0
+   */
+  public static double getRatio(long rawNum, long total) {
+    return total == 0 ? 0.0d : rawNum / (double) total;
   }
 }
