@@ -37,10 +37,10 @@ ext.libraries = [ // Groovy map literal
                   d2: 'com.linkedin.container:pegasus-d2-server-factory:25.1.75',
                   d2Client: 'com.linkedin.container:pegasus-d2-client-factory:25.1.75',
 
-                  routerApi: 'com.linkedin.dds-storage-core:dds-storage-router-api:0.4.5',
-                  routerImpl: 'com.linkedin.dds-storage-core:dds-storage-router-impl:0.4.5',
-                  routerNetty4: 'com.linkedin.dds-storage-core:dds-storage-netty4-base:0.4.5',
-                  routerLnkd: 'com.linkedin.dds-storage-core:dds-storage-router-lnkd:0.4.5',
+                  routerApi: 'com.linkedin.dds-storage-core:dds-storage-router-api:0.5.28',
+                  routerImpl: 'com.linkedin.dds-storage-core:dds-storage-router-impl:0.5.28',
+                  routerNetty4: 'com.linkedin.dds-storage-core:dds-storage-netty4-base:0.5.28',
+                  routerLnkd: 'com.linkedin.dds-storage-core:dds-storage-router-lnkd:0.5.28',
                   asyncHttpClient: 'org.apache.httpcomponents:httpasyncclient:4.1.2',
                   zookeeper: 'org.apache.zookeeper:zookeeper:3.4.6',
 

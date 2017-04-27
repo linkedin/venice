@@ -267,6 +267,7 @@ public class RouterServer extends AbstractVeniceService {
         .beforeHttpRequestHandler(ChannelPipeline.class, (pipeline) -> {
           pipeline.addLast("MetadataHandler", metaDataHandler);
         })
+        .idleTimeout(3, TimeUnit.HOURS)
         .build();
 
     VerifySslHandler verifySsl = new VerifySslHandler();
@@ -289,6 +290,7 @@ public class RouterServer extends AbstractVeniceService {
           pipeline.addLast("SSL Verifier", verifySsl);
           pipeline.addLast("MetadataHandler", metaDataHandler);
         })
+        .idleTimeout(3, TimeUnit.HOURS)
         .build();
 
     serverFuture = router.start(new InetSocketAddress(port));
