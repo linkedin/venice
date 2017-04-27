@@ -1,6 +1,7 @@
 package com.linkedin.venice.guid;
 
 import com.linkedin.venice.kafka.protocol.GUID;
+import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.ReflectUtils;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.util.UUID;
@@ -43,6 +44,16 @@ public class GuidUtils {
 
   public static CharSequence getCharSequenceFromGuid(GUID guid) {
     return new String(guid.bytes(), CHARSET); // TODO: Optimize this. It's probably expensive...
+  }
+
+  public static GUID getGuidFromHex(String hexGuid) {
+    GUID guid = new GUID();
+    guid.bytes(ByteUtils.fromHexString(hexGuid));
+    return guid;
+  }
+
+  public static String getHexFromGuid(GUID guid) {
+    return ByteUtils.toHexString(guid.bytes());
   }
 
   public static String getGUIDString(){

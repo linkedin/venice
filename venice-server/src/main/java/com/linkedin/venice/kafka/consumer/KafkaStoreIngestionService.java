@@ -27,6 +27,8 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.BooleanSupplier;
+import java.util.function.Supplier;
 
 import io.tehuti.metrics.MetricsRepository;
 import org.apache.kafka.clients.CommonClientConfigs;
@@ -134,9 +136,14 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
   }
 
   private StoreIngestionTask getConsumerTask(VeniceStoreConfig veniceStore) {
+    String storeName = Version.parseStoreFromKafkaTopicName(veniceStore.getStoreName());
+    int storeVersion = Version.parseVersionFromKafkaTopicName(veniceStore.getStoreName());
+    BooleanSupplier isStoreVersionCurrent = () ->
+        metadataRepo.getStore(storeName).getCurrentVersion() == storeVersion;
+
     return new StoreIngestionTask(new VeniceConsumerFactory(), getKafkaConsumerProperties(veniceStore), storeRepository,
         offsetManager, notifiers, throttler, veniceStore.getStoreName(), schemaRepo, topicManager, stats,
-        storeBufferService);
+        storeBufferService, isStoreVersionCurrent);
   }
 
   /**

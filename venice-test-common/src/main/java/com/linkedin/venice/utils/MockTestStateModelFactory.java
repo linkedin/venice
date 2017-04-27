@@ -20,11 +20,11 @@ public class MockTestStateModelFactory extends StateModelFactory<StateModel> {
   @Override
   public StateModel createNewStateModel(String resourceName, String partitionName) {
     OnlineOfflineStateModel stateModel = new OnlineOfflineStateModel(isBlock);
-    CountDownLatch latch = new CountDownLatch(1);
-    stateModel.latch = latch;
     String key = resourceName + "_" + HelixUtils.getPartitionId(partitionName);
-    if(!modelToModelListMap.containsKey(key)){
-      modelToModelListMap.put(key, new ArrayList<>());
+    synchronized (modelToModelListMap) {
+      if(!modelToModelListMap.containsKey(key)){
+        modelToModelListMap.put(key, new ArrayList<>());
+      }
     }
     modelToModelListMap.get(key).add(stateModel);
     return stateModel;
@@ -55,12 +55,12 @@ public class MockTestStateModelFactory extends StateModelFactory<StateModel> {
   public static class OnlineOfflineStateModel extends StateModel {
     private boolean isDelay;
     private boolean isError;
+    private CountDownLatch latch = new CountDownLatch(1);
 
-    OnlineOfflineStateModel(boolean isDelay){
+    OnlineOfflineStateModel(boolean isDelay) {
       this.isDelay = isDelay;
     }
 
-    private CountDownLatch latch;
     @Transition(from = "OFFLINE", to = "BOOTSTRAP")
     public void onBecomeBootstrapFromOffline(Message message, NotificationContext context) {
     }

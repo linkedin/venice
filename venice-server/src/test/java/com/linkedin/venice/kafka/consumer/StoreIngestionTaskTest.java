@@ -63,6 +63,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.BooleanSupplier;
 import java.util.function.Supplier;
 import org.apache.kafka.clients.producer.RecordMetadata;
 import org.apache.kafka.common.TopicPartition;
@@ -89,19 +90,13 @@ public class StoreIngestionTaskTest {
   private static final int TEST_TIMEOUT;
 
   static {
+    // TODO: Clean this up... mutating static state is not cool. We should make the StoreIngestionTask configurable...
     StoreIngestionTask.READ_CYCLE_DELAY_MS = 5;
     StoreIngestionTask.POLLING_SCHEMA_DELAY_MS = 100;
-    // Report progress/throttling for every message
-    StoreIngestionTask.OFFSET_UPDATE_INTERVAL_PER_PARTITION = 1;
-    TEST_TIMEOUT = 500 * StoreIngestionTask.READ_CYCLE_DELAY_MS;
+    StoreIngestionTask.OFFSET_UPDATE_INTERVAL_PER_PARTITION = 1; // Report progress/throttling for every message
+    StoreIngestionTask.PROGRESS_REPORT_INTERVAL = -1; // Report all the time.
 
-    // TODO Hack, after trying to configure the log4j with log4j.properties
-    // at multiple places ( test root directory, test resources)
-    // log4j does not produce any log with no appender error message
-    // So configuring it in the code as a hack now.
-//    Logger rootLogger = Logger.getRootLogger();
-//    rootLogger.setLevel(org.apache.log4j.Level.INFO);
-//    rootLogger.addAppender(new ConsoleAppender(new PatternLayout("%-6r [%p] %c - %m%n")));
+    TEST_TIMEOUT = 500 * StoreIngestionTask.READ_CYCLE_DELAY_MS;
   }
 
   private InMemoryKafkaBroker inMemoryKafkaBroker;
@@ -116,12 +111,10 @@ public class StoreIngestionTaskTest {
   private KafkaConsumerWrapper mockKafkaConsumer;
   private TopicManager mockTopicManager;
   private AggStoreIngestionStats mockStats;
-
   private StoreIngestionTask storeIngestionTaskUnderTest;
-
   private ExecutorService taskPollingService;
-
   private StoreBufferService storeBufferService;
+  private BooleanSupplier isCurrentVersion;
 
   private static final String storeNameWithoutVersionInfo = "TestTopic";
   private static final String topic = Version.composeKafkaTopic(storeNameWithoutVersionInfo, 1);
@@ -138,6 +131,7 @@ public class StoreIngestionTaskTest {
   private static final byte[] putKeyFoo = getRandomKey(PARTITION_FOO);
   private static final byte[] putKeyBar = getRandomKey(PARTITION_BAR);
   private static final byte[] putValue = "TestValuePut".getBytes(StandardCharsets.UTF_8);
+  private static final byte[] putValueToCorrupt = "Please corrupt me!".getBytes(StandardCharsets.UTF_8);
   private static final byte[] deleteKeyFoo = getRandomKey(PARTITION_FOO);
 
   private static byte[] getRandomKey(Integer partition) {
@@ -175,11 +169,34 @@ public class StoreIngestionTaskTest {
     mockKafkaConsumer = mock(KafkaConsumerWrapper.class);
     mockTopicManager = mock(TopicManager.class);
     mockStats = mock(AggStoreIngestionStats.class);
+    isCurrentVersion = () -> false;
   }
 
   private VeniceWriter getVeniceWriter(Supplier<KafkaProducerWrapper> producerSupplier) {
     return new VeniceWriter(new VeniceProperties(new Properties()), topic, new DefaultSerializer(),
         new DefaultSerializer(), new SimplePartitioner(), SystemTime.INSTANCE, producerSupplier);
+  }
+
+  private VeniceWriter getCorruptedVeniceWriter(byte[] valueToCorrupt) {
+    return getVeniceWriter(() -> new CorruptedKafkaProducer(new MockInMemoryProducer(inMemoryKafkaBroker), valueToCorrupt));
+  }
+
+  class CorruptedKafkaProducer extends TransformingProducer {
+    public CorruptedKafkaProducer(KafkaProducerWrapper baseProducer, byte[] valueToCorrupt) {
+      super(baseProducer, (topicName, key, value, partition) -> {
+        KafkaMessageEnvelope transformedMessageEnvelope = value;
+
+        if (MessageType.valueOf(transformedMessageEnvelope) == MessageType.PUT) {
+          Put put = (Put) transformedMessageEnvelope.payloadUnion;
+          if (put.putValue.array() == valueToCorrupt) {
+            put.putValue = ByteBuffer.wrap("CORRUPT_VALUE".getBytes());
+            transformedMessageEnvelope.payloadUnion = put;
+          }
+        }
+
+        return new TransformingProducer.SendMessageParameters(topic, key, transformedMessageEnvelope, partition);
+      });
+    }
   }
 
   private long getOffset(Future<RecordMetadata> recordMetadataFuture)
@@ -212,7 +229,7 @@ public class StoreIngestionTaskTest {
     OffsetManager offsetManager = new DeepCopyOffsetManager(mockOffSetManager);
     storeIngestionTaskUnderTest = new StoreIngestionTask(
         mockFactory, kafkaProps, mockStoreRepository, offsetManager, notifiers, mockThrottler, topic, mockSchemaRepo,
-        mockTopicManager, mockStats, storeBufferService);
+        mockTopicManager, mockStats, storeBufferService, isCurrentVersion);
     doReturn(mockAbstractStorageEngine).when(mockStoreRepository).getLocalStorageEngine(topic);
 
     Future testSubscribeTaskFuture = null;
@@ -614,38 +631,64 @@ public class StoreIngestionTaskTest {
   }
 
   /**
+   * In this test, {@link #PARTITION_BAR} will finish a regular push, and then get some more messages afterwards,
+   * including a corrupt message followed by a good one. We expect the Notifier to report as such.
+   */
+  @Test()
+  public void testCorruptMessagesDoNotFailFastOnCurrentVersion() throws Exception {
+    VeniceWriter veniceWriterForDataDuringPush = getVeniceWriter(() -> new MockInMemoryProducer(inMemoryKafkaBroker));
+    VeniceWriter veniceWriterForDataAfterPush = getCorruptedVeniceWriter(putValueToCorrupt);
+
+    veniceWriter.broadcastStartOfPush(new HashMap<>());
+    //long fooLastOffset = getOffset(veniceWriterForDataDuringPush.put(putKeyFoo, putValue, SCHEMA_ID));
+    getOffset(veniceWriterForDataDuringPush.put(putKeyBar, putValue, SCHEMA_ID));
+    veniceWriterForDataDuringPush.close();
+    veniceWriter.broadcastEndOfPush(new HashMap<>());
+
+    // We simulate the version swap...
+    isCurrentVersion = () -> true;
+
+    // After the end of push, we simulate a nearline writer, which somehow pushes corrupt data.
+    getOffset(veniceWriterForDataAfterPush.put(putKeyBar, putValueToCorrupt, SCHEMA_ID));
+    long barLastOffset = getOffset(veniceWriterForDataAfterPush.put(putKeyBar, putValue, SCHEMA_ID));
+    veniceWriterForDataAfterPush.close();
+
+    logger.info("barLastOffset: " + barLastOffset);
+
+    runTest(getSet(PARTITION_BAR), () -> {
+      verify(mockNotifier, timeout(TEST_TIMEOUT).atLeastOnce())
+          .progress(eq(topic), eq(PARTITION_BAR), longThat(new LongGreaterThanMatcher(barLastOffset - 1)));
+
+      verify(mockNotifier, timeout(TEST_TIMEOUT)).error(eq(topic), eq(PARTITION_BAR), argThat(new NonEmptyStringMatcher()),
+          argThat(new ExceptionClassMatcher(CorruptDataException.class)));
+    });
+  }
+
+  /**
    * In this test, the {@link #PARTITION_FOO} will receive a well-formed message, while the {@link #PARTITION_BAR} will
    * receive a corrupt message. We expect the Notifier to report as such.
    * <p>
-   * N.B.: There was an edge case where this test was flaky. The edge case is now fixed, but the invocationCount of 3
+   * N.B.: There was an edge case where this test was flaky. The edge case is now fixed, but the invocationCount of 100
    * should ensure that if this test is ever made flaky again, it will be detected right away. The skipFailedInvocations
    * annotation parameter makes the test skip any invocation after the first failure.
    */
-  @Test(invocationCount = 3, skipFailedInvocations = true)
+  @Test(invocationCount = 100, skipFailedInvocations = true)
   public void testCorruptMessagesFailFast() throws Exception {
-    VeniceWriter veniceWriterForData = getVeniceWriter(
-        () -> new TransformingProducer(new MockInMemoryProducer(inMemoryKafkaBroker),
-            (topicName, key, value, partition) -> {
-              KafkaMessageEnvelope transformedMessageEnvelope = value;
-
-              if (partition == PARTITION_BAR && MessageType.valueOf(transformedMessageEnvelope) == MessageType.PUT) {
-                Put put = (Put) transformedMessageEnvelope.payloadUnion;
-                put.putValue = ByteBuffer.wrap("CORRUPT_VALUE".getBytes());
-                transformedMessageEnvelope.payloadUnion = put;
-              }
-
-              return new TransformingProducer.SendMessageParameters(topic, key, transformedMessageEnvelope, partition);
-            }));
+    VeniceWriter veniceWriterForData = getCorruptedVeniceWriter(putValueToCorrupt);
 
     veniceWriter.broadcastStartOfPush(new HashMap<>());
     long fooLastOffset = getOffset(veniceWriterForData.put(putKeyFoo, putValue, SCHEMA_ID));
-    getOffset(veniceWriterForData.put(putKeyBar, putValue, SCHEMA_ID));
+    getOffset(veniceWriterForData.put(putKeyBar, putValueToCorrupt, SCHEMA_ID));
     veniceWriterForData.close();
     veniceWriter.broadcastEndOfPush(new HashMap<>());
 
     runTest(getSet(PARTITION_FOO, PARTITION_BAR), () -> {
       verify(mockNotifier, timeout(TEST_TIMEOUT))
           .completed(eq(topic), eq(PARTITION_FOO), longThat(new LongGreaterThanMatcher(fooLastOffset)));
+
+      verify(mockNotifier, timeout(TEST_TIMEOUT)).error(
+          eq(topic), eq(PARTITION_BAR), argThat(new NonEmptyStringMatcher()),
+          argThat(new ExceptionClassMatcher(CorruptDataException.class)));
 
       /**
        * Let's make sure that {@link PARTITION_BAR} never sends a completion notification.
@@ -656,11 +699,7 @@ public class StoreIngestionTaskTest {
        * and avoids sending completion notifications for those. The high invocationCount on
        * this test is to detect this edge case.
        */
-      verify(mockNotifier, after(TEST_TIMEOUT).never()).completed(eq(topic), eq(PARTITION_BAR), anyLong());
-
-      verify(mockNotifier, timeout(TEST_TIMEOUT)).error(
-          eq(topic), eq(PARTITION_BAR), argThat(new NonEmptyStringMatcher()),
-          argThat(new ExceptionClassMatcher(CorruptDataException.class)));
+      verify(mockNotifier, never()).completed(eq(topic), eq(PARTITION_BAR), anyLong());
     });
   }
 

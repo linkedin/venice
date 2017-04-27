@@ -38,7 +38,7 @@ import org.apache.log4j.Logger;
 public class VeniceWriter<K, V> extends AbstractVeniceWriter<K, V> {
 
   // log4j logger
-  private static final Logger LOGGER = Logger.getLogger(VeniceWriter.class);
+  private final Logger logger;
 
   // Config names
   private static final String VENICE_WRITER_CONFIG_PREFIX = "venice.writer.";
@@ -83,6 +83,7 @@ public class VeniceWriter<K, V> extends AbstractVeniceWriter<K, V> {
       // We cache the number of partitions, as it is expected to be immutable, and the call to Kafka is expensive.
       this.numberOfPartitions = producer.getNumberOfPartitions(topicName);
       this.producerGUID = GuidUtils.getGUID(props);
+      this.logger = Logger.getLogger(VeniceWriter.class.getSimpleName() + " [" + GuidUtils.getHexFromGuid(producerGUID) + "]");
     } catch (Exception e) {
       throw new VeniceException("Error while constructing VeniceWriter for store name: " + topicName, e);
     }
@@ -201,13 +202,13 @@ public class VeniceWriter<K, V> extends AbstractVeniceWriter<K, V> {
   }
 
   private Future<RecordMetadata> sendMessage(KafkaKey key, KafkaMessageEnvelope value, int partition) {
-    return sendMessage(key, value, partition, new KafkaMessageCallback(key, value));
+    return sendMessage(key, value, partition, new KafkaMessageCallback(key, value, logger));
   }
 
 
   private Future<RecordMetadata> sendMessage(KafkaKey key, KafkaMessageEnvelope value, int partition, Callback callback) {
     segmentsMap.get(partition).addToCheckSum(key, value);
-    Callback messageCallback = (null != callback ? callback : new KafkaMessageCallback(key, value));
+    Callback messageCallback = (null != callback ? callback : new KafkaMessageCallback(key, value, logger));
     return producer.sendMessage(topicName, key, value, partition, messageCallback);
   }
 
@@ -268,7 +269,7 @@ public class VeniceWriter<K, V> extends AbstractVeniceWriter<K, V> {
     for(int partition = 0; partition < numberOfPartitions ; partition ++) {
       sendControlMessage(controlMessage, partition, debugInfo);
     }
-    LOGGER.info("Successfully broadcasted " + ControlMessageType.valueOf(controlMessage)
+    logger.info("Successfully broadcasted " + ControlMessageType.valueOf(controlMessage)
         + " Control Message for topic '" + topicName + "'.");
   }
 
@@ -397,13 +398,13 @@ public class VeniceWriter<K, V> extends AbstractVeniceWriter<K, V> {
   private synchronized void endSegment(int partition, boolean finalSegment) {
     Segment currentSegment = segmentsMap.get(partition);
     if (null == currentSegment) {
-      LOGGER.warn("endSegment(partition " + partition + ") called but currentSegment == null. Ignoring.");
+      logger.warn("endSegment(partition " + partition + ") called but currentSegment == null. Ignoring.");
     } else if (!currentSegment.isStarted()) {
-      LOGGER.warn("endSegment(partition " + partition + ") called but currentSegment.begun == false. Ignoring.");
+      logger.warn("endSegment(partition " + partition + ") called but currentSegment.begun == false. Ignoring.");
     } else if (currentSegment.isEnded()) {
-      LOGGER.warn("endSegment(partition " + partition + ") called but currentSegment.ended == true. Ignoring.");
+      logger.warn("endSegment(partition " + partition + ") called but currentSegment.ended == true. Ignoring.");
     } else {
-      LOGGER.info("endSegment(partition " + partition + ") called. Proceeding.");
+      logger.info("endSegment(partition " + partition + ") called. Proceeding.");
       sendEndOfSegment(
           partition,
           new HashMap<>(), // TODO: Add extra debugging info
@@ -416,14 +417,16 @@ public class VeniceWriter<K, V> extends AbstractVeniceWriter<K, V> {
   private static class KafkaMessageCallback implements Callback {
     private final KafkaKey key;
     private final KafkaMessageEnvelope value;
-    public KafkaMessageCallback(KafkaKey key, KafkaMessageEnvelope value) {
+    private final Logger logger;
+    public KafkaMessageCallback(KafkaKey key, KafkaMessageEnvelope value, Logger logger) {
       this.key = key;
       this.value = value;
+      this.logger = logger;
     }
     @Override
     public void onCompletion(RecordMetadata recordMetadata, Exception e) {
       if (e != null) {
-        LOGGER.error("Failed to send out message to Kafka producer: [key: " + key + ", value: " + value + "]", e);
+        logger.error("Failed to send out message to Kafka producer: [key: " + key + ", value: " + value + "]", e);
       }
     }
   }
