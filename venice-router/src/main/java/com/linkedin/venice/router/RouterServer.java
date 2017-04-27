@@ -375,15 +375,16 @@ public class RouterServer extends AbstractVeniceService {
         d2Server.forceStart();
       }
 
-      serviceState.set(ServiceState.STARTED);
-
       try {
         logger.info(this.toString() + " started on port: " + ((InetSocketAddress) serverFuture.get()).getPort()
             + " and ssl port: " + ((InetSocketAddress) secureServerFuture.get()).getPort());
       } catch (Exception e) {
         logger.error("Exception while waiting for " + this.toString() + " to start", e);
+        serviceState.set(ServiceState.STOPPED);
         throw new VeniceException(e);
       }
+
+      serviceState.set(ServiceState.STARTED);
     });
   }
 

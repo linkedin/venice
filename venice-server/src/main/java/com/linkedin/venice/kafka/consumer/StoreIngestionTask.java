@@ -44,6 +44,7 @@ import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.PriorityBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.BooleanSupplier;
 import javax.validation.constraints.NotNull;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
@@ -127,6 +128,19 @@ public class StoreIngestionTask implements Runnable, Closeable {
     public void resetProcessedRecordSize() {
       this.processedRecordSize = 0;
     }
+
+    @Override
+    public String toString() {
+      return "PartitionConsumptionState{" +
+          "partition=" + partition +
+          ", offsetRecord=" + offsetRecord +
+          ", completed=" + completed +
+          ", errored=" + errored +
+          ", started=" + started +
+          ", processedRecordNum=" + processedRecordNum +
+          ", processedRecordSize=" + processedRecordSize +
+          '}';
+    }
   }
 
   // TOOD: Make this logger prefix everything with the CONSUMER_TASK_ID_FORMAT
@@ -138,6 +152,7 @@ public class StoreIngestionTask implements Runnable, Closeable {
   // TODO: consider to make those delay time configurable for operability purpose
   public static int READ_CYCLE_DELAY_MS = 1000;
   public static int POLLING_SCHEMA_DELAY_MS = 5 * READ_CYCLE_DELAY_MS;
+  public static long PROGRESS_REPORT_INTERVAL = TimeUnit.MILLISECONDS.convert(10, TimeUnit.MINUTES);
 
   private static final int MAX_CONTROL_MESSAGE_RETRIES = 3;
 
@@ -172,7 +187,6 @@ public class StoreIngestionTask implements Runnable, Closeable {
   private final EventThrottler throttler;
 
   private long lastProgressReportTime = 0;
-  private static final long PROGRESS_REPORT_INTERVAL = TimeUnit.MILLISECONDS.convert(10, TimeUnit.MINUTES);
 
   /**
    * Per-partition consumption state map
@@ -205,6 +219,8 @@ public class StoreIngestionTask implements Runnable, Closeable {
 
   private final AggStoreIngestionStats stats;
 
+  private final BooleanSupplier isCurrentVersion;
+
   public StoreIngestionTask(@NotNull VeniceConsumerFactory factory,
                             @NotNull Properties kafkaConsumerProperties,
                             @NotNull StoreRepository storeRepository,
@@ -215,7 +231,8 @@ public class StoreIngestionTask implements Runnable, Closeable {
                             @NotNull ReadOnlySchemaRepository schemaRepo,
                             @NotNull TopicManager topicManager,
                             @NotNull AggStoreIngestionStats stats,
-                            @NotNull StoreBufferService storeBufferService) {
+                            @NotNull StoreBufferService storeBufferService,
+                            @NotNull BooleanSupplier isCurrentVersion) {
     this.factory = factory;
     this.kafkaProps = kafkaConsumerProperties;
     this.storeRepository = storeRepository;
@@ -244,6 +261,7 @@ public class StoreIngestionTask implements Runnable, Closeable {
     this.emitMetrics = new AtomicBoolean(true);
 
     this.storeBufferService = storeBufferService;
+    this.isCurrentVersion = isCurrentVersion;
   }
 
   private void validateState() {
@@ -306,12 +324,14 @@ public class StoreIngestionTask implements Runnable, Closeable {
       logger.info("Topic " + topic + " Partition " + partition + " has been unsubscribed, no need to report progress");
       return;
     }
-    if (!partitionConsumptionState.isStarted() ||
-        partitionConsumptionState.isCompleted() ||
-        partitionConsumptionState.isErrored()) {
+    if (!isCurrentVersion.getAsBoolean() && // The currently-active version should always report progress.
+        (!partitionConsumptionState.isStarted() ||
+            partitionConsumptionState.isCompleted() ||
+            partitionConsumptionState.isErrored())) {
       logger.warn(
           "Can not report progress for Topic:" + topic + " Partition:" + partition + " offset:" + partitionOffset
-              + ", because it has not been started or already been terminated.");
+              + ", because it has not been started or already been terminated. "
+              + "partitionConsumptionState: " + partitionConsumptionState.toString());
       return;
     }
     // Progress reporting happens too frequently for each Kafka Pull,
@@ -397,9 +417,10 @@ public class StoreIngestionTask implements Runnable, Closeable {
         logger.info("Topic " + topic + " Partition " + partitionId + " has been unsubscribed, no need to report error");
         continue;
       }
-      if (partitionConsumptionState.isCompleted()) {
+      // TODO: Decide if the if below can be fully eliminated?
+      if (!isCurrentVersion.getAsBoolean() && partitionConsumptionState.isCompleted()) {
         logger.warn("Topic:" + topic + " Partition:" + partitionId
-            + " has been reported as completed, do not be allowed to become error..");
+            + " has been marked as completed, so an error will not be reported..");
         continue;
       }
       if (partitionConsumptionState.isErrored()) {
@@ -676,8 +697,17 @@ public class StoreIngestionTask implements Runnable, Closeable {
       recordSize = internalProcessConsumerRecord(record, partitionConsumptionState);
     } catch (FatalDataValidationException e) {
       int faultyPartition = record.partition();
-      reportError(Lists.newArrayList(faultyPartition), "Fatal data validation problem with partition " + faultyPartition, e);
-      unSubscribePartition(topic, faultyPartition);
+      String errorMessage = "Fatal data validation problem with partition " + faultyPartition;
+      boolean needToUnsub = !(isCurrentVersion.getAsBoolean() || partitionConsumptionState.completed);
+      if (needToUnsub) {
+        errorMessage += ". Consumption will be halted.";
+      } else {
+        errorMessage += ". Because " + topic + " is the current version, consumption will continue.";
+      }
+      reportError(Lists.newArrayList(faultyPartition), errorMessage, e);
+      if (needToUnsub) {
+        unSubscribePartition(topic, faultyPartition);
+      }
     } catch (VeniceMessageException | UnsupportedOperationException ex) {
       throw new VeniceException(consumerTaskId + " : Received an exception for message at partition: "
           + record.partition() + ", offset: " + record.offset() + ". Bubbling up.", ex);
