@@ -1,6 +1,5 @@
 package com.linkedin.venice.store;
 
-import com.linkedin.venice.exceptions.PersistenceFailureException;
 import com.linkedin.venice.utils.partition.iterators.AbstractCloseablePartitionEntriesIterator;
 import com.linkedin.venice.utils.partition.iterators.CloseablePartitionKeysIterator;
 import org.apache.log4j.Logger;
@@ -72,6 +71,11 @@ public abstract class AbstractStoragePartition {
   public abstract void truncate();
 
   /**
+   * Sync current database.
+   */
+  public abstract void sync();
+
+  /**
    * Drop when it is not required anymore.
    */
   public abstract void drop();
@@ -80,4 +84,11 @@ public abstract class AbstractStoragePartition {
    * Close the specific partition
    */
   public abstract void close();
+
+  /**
+   * Check whether current storage partition verifyConfig the given partition config
+   * @param storagePartitionConfig
+   * @return
+   */
+  public abstract boolean verifyConfig(StoragePartitionConfig storagePartitionConfig);
 }

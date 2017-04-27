@@ -22,6 +22,7 @@ import com.linkedin.venice.serialization.DefaultSerializer;
 import com.linkedin.venice.server.StoreRepository;
 import com.linkedin.venice.stats.AggStoreIngestionStats;
 import com.linkedin.venice.store.AbstractStorageEngine;
+import com.linkedin.venice.store.StoragePartitionConfig;
 import com.linkedin.venice.store.record.ValueRecord;
 import com.linkedin.venice.unit.kafka.InMemoryKafkaBroker;
 import com.linkedin.venice.unit.kafka.SimplePartitioner;
@@ -93,9 +94,11 @@ public class StoreIngestionTaskTest {
     // TODO: Clean this up... mutating static state is not cool. We should make the StoreIngestionTask configurable...
     StoreIngestionTask.READ_CYCLE_DELAY_MS = 5;
     StoreIngestionTask.POLLING_SCHEMA_DELAY_MS = 100;
-    StoreIngestionTask.OFFSET_UPDATE_INTERVAL_PER_PARTITION = 1; // Report progress/throttling for every message
     StoreIngestionTask.PROGRESS_REPORT_INTERVAL = -1; // Report all the time.
-
+    // Report progress/throttling for every message
+    StoreIngestionTask.OFFSET_THROTTLE_INTERVAL = 1;
+    StoreIngestionTask.OFFSET_UPDATE_INTERVAL_PER_PARTITION_FOR_TRANSACTION_MODE = 1;
+    StoreIngestionTask.OFFSET_UPDATE_INTERNAL_PER_PARTITION_FOR_DEFERRED_WRITE = 2;
     TEST_TIMEOUT = 500 * StoreIngestionTask.READ_CYCLE_DELAY_MS;
   }
 
@@ -798,14 +801,13 @@ public class StoreIngestionTaskTest {
     });
   }
 
-  @Test (invocationCount = 3)
-  public void testDataValidationCheckPointing() throws Exception {
+  private void testDataValidationCheckPointing(boolean sortedInput) throws Exception {
     final Map<Integer, Long> maxOffsetPerPartition = new HashMap<>();
     final Map<Pair<Integer, ByteArray>, ByteArray> pushedRecords = new HashMap<>();
     final int totalNumberOfMessages = 1000;
     final int totalNumberOfConsumptionRestarts = 10;
 
-    veniceWriter.broadcastStartOfPush(new HashMap<>());
+    veniceWriter.broadcastStartOfPush(sortedInput, new HashMap<>());
     for (int i = 0; i < totalNumberOfMessages; i++) {
       byte[] key = ByteBuffer.allocate(putKeyFoo.length + Integer.BYTES).put(putKeyFoo).putInt(i).array();
       byte[] value = ByteBuffer.allocate(putValue.length + Integer.BYTES).put(putValue).putInt(i).array();
@@ -839,7 +841,7 @@ public class StoreIngestionTaskTest {
                 storeIngestionTaskUnderTest.subscribePartition(topic, partition));
           } else {
             logger.info("TopicPartition: " + topicPartitionOffsetRecordPair.getFirst() +
-              ", OffsetRecord: " + topicPartitionOffsetRecordPair.getSecond());
+                ", OffsetRecord: " + topicPartitionOffsetRecordPair.getSecond());
           }
         }
     );
@@ -857,8 +859,21 @@ public class StoreIngestionTaskTest {
 
       // Verify that we really unsubscribed and re-subscribed.
       relevantPartitions.stream().forEach(partition -> {
-        verify(mockKafkaConsumer, atLeast(totalNumberOfConsumptionRestarts)).subscribe(eq(topic), eq(partition), any());
+        verify(mockKafkaConsumer, atLeast(totalNumberOfConsumptionRestarts + 1)).subscribe(eq(topic), eq(partition), any());
         verify(mockKafkaConsumer, atLeast(totalNumberOfConsumptionRestarts)).unSubscribe(topic, partition);
+
+        if (sortedInput) {
+          // Check database mode switches from deferred-write to transactional after EOP control message
+          StoragePartitionConfig deferredWritePartitionConfig = new StoragePartitionConfig(topic, partition);
+          deferredWritePartitionConfig.setDeferredWrite(true);
+          // SOP control message and restart
+          verify(mockAbstractStorageEngine, atLeast(totalNumberOfConsumptionRestarts + 1))
+              .adjustStoragePartition(deferredWritePartitionConfig);
+          StoragePartitionConfig transactionalPartitionConfig = new StoragePartitionConfig(topic, partition);
+          // only happen after EOP control message
+          verify(mockAbstractStorageEngine, times(1))
+              .adjustStoragePartition(transactionalPartitionConfig);
+        }
       });
 
       // Verify that the storage engine got hit with every record.
@@ -872,6 +887,17 @@ public class StoreIngestionTaskTest {
         verify(mockAbstractStorageEngine, atLeastOnce()).put(partition, key, value);
       });
     });
+  }
+
+  @Test (invocationCount = 3)
+  public void testDataValidationCheckPointingWithUnsortedInput() throws Exception {
+    testDataValidationCheckPointing(false);
+  }
+
+  // Test DIV checkpointing and deferred-write ingestion
+  @Test (invocationCount = 3)
+  public void testDataValidationCheckPointingWithSortedInput() throws Exception {
+    testDataValidationCheckPointing(true);
   }
 
   @Test
@@ -902,4 +928,45 @@ public class StoreIngestionTaskTest {
       verify(mockNotifier, timeout(TEST_TIMEOUT).atLeastOnce()).progress(topic, PARTITION_FOO, 1);
     });
   }
+
+  @Test
+  public void testVeniceMessagesProcessingWithSortedInput() throws Exception {
+    veniceWriter.broadcastStartOfPush(true, new HashMap<>());
+    RecordMetadata putMetadata = (RecordMetadata) veniceWriter.put(putKeyFoo, putValue, SCHEMA_ID).get();
+    RecordMetadata deleteMetadata = (RecordMetadata) veniceWriter.delete(deleteKeyFoo).get();
+    veniceWriter.broadcastEndOfPush(new HashMap<>());
+
+    PollStrategy pollStrategy = new RandomPollStrategy();
+
+    runTest(getSet(PARTITION_FOO), () -> {
+      // Verify it retrieves the offset from the OffSet Manager
+      verify(mockOffSetManager, timeout(TEST_TIMEOUT)).getLastOffset(topic, PARTITION_FOO);
+
+      // Verify StorageEngine#put is invoked only once and with appropriate key & value.
+      verify(mockAbstractStorageEngine, timeout(TEST_TIMEOUT))
+          .put(PARTITION_FOO, putKeyFoo, ValueRecord.create(SCHEMA_ID, putValue).serialize());
+
+      // Verify StorageEngine#Delete is invoked only once and with appropriate key.
+      verify(mockAbstractStorageEngine, timeout(TEST_TIMEOUT)).delete(PARTITION_FOO, deleteKeyFoo);
+
+      // Verify it commits the offset to Offset Manager after receiving EOP control message
+      OffsetRecord expectedOffsetRecordForDeleteMessage = getOffsetRecord(deleteMetadata.offset() + 1, true);
+      verify(mockOffSetManager, timeout(TEST_TIMEOUT))
+          .recordOffset(topic, PARTITION_FOO, expectedOffsetRecordForDeleteMessage);
+      // Deferred write is not going to commit offset for every message
+      verify(mockOffSetManager, never())
+          .recordOffset(topic, PARTITION_FOO, getOffsetRecord(putMetadata.offset() - 1));
+      // Check database mode switches from deferred-write to transactional after EOP control message
+      StoragePartitionConfig deferredWritePartitionConfig = new StoragePartitionConfig(topic, PARTITION_FOO);
+      deferredWritePartitionConfig.setDeferredWrite(true);
+      verify(mockAbstractStorageEngine, times(1))
+          .adjustStoragePartition(deferredWritePartitionConfig);
+      StoragePartitionConfig transactionalPartitionConfig = new StoragePartitionConfig(topic, PARTITION_FOO);
+      verify(mockAbstractStorageEngine, times(1))
+          .adjustStoragePartition(transactionalPartitionConfig);
+    });
+  }
+
+
+
 }

@@ -4,6 +4,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.config.VeniceStoreConfig;
 import com.linkedin.venice.store.AbstractStorageEngine;
 import com.linkedin.venice.store.AbstractStoragePartition;
+import com.linkedin.venice.store.StoragePartitionConfig;
 import com.linkedin.venice.store.iterators.CloseableStoreEntriesIterator;
 import com.linkedin.venice.store.iterators.CloseableStoreKeysIterator;
 import com.sleepycat.je.Environment;
@@ -56,8 +57,8 @@ public class BdbStorageEngine extends AbstractStorageEngine {
   }
 
   @Override
-  public AbstractStoragePartition createStoragePartition(int partitionId) {
-    return new BdbStoragePartition(this.getName(), partitionId, environment, bdbServerConfig);
+  public AbstractStoragePartition createStoragePartition(StoragePartitionConfig storagePartitionConfig) {
+    return new BdbStoragePartition(storagePartitionConfig, environment, bdbServerConfig);
   }
 
   public CloseableStoreEntriesIterator storeEntries() {

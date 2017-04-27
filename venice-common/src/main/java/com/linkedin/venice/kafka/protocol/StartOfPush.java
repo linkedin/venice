@@ -8,11 +8,14 @@ package com.linkedin.venice.kafka.protocol;
 @SuppressWarnings("all")
 /** This ControlMessage is sent once per partition, at the beginning of a bulk load, before any of the data producers come online. This does not contain any data beyond the one which is common to all ControlMessageType. */
 public class StartOfPush extends org.apache.avro.specific.SpecificRecordBase implements org.apache.avro.specific.SpecificRecord {
-  public static final org.apache.avro.Schema SCHEMA$ = org.apache.avro.Schema.parse("{\"type\":\"record\",\"name\":\"StartOfPush\",\"namespace\":\"com.linkedin.venice.kafka.protocol\",\"fields\":[]}");
+  public static final org.apache.avro.Schema SCHEMA$ = org.apache.avro.Schema.parse("{\"type\":\"record\",\"name\":\"StartOfPush\",\"namespace\":\"com.linkedin.venice.kafka.protocol\",\"fields\":[{\"name\":\"sorted\",\"type\":\"boolean\",\"doc\":\"Whether the messages inside current topic partition between 'StartOfPush' control message and 'EndOfPush' control message is lexicographically sorted by key bytes\",\"default\":false}]}");
+  /** Whether the messages inside current topic partition between 'StartOfPush' control message and 'EndOfPush' control message is lexicographically sorted by key bytes */
+  public boolean sorted;
   public org.apache.avro.Schema getSchema() { return SCHEMA$; }
   // Used by DatumWriter.  Applications should not call. 
   public java.lang.Object get(int field$) {
     switch (field$) {
+    case 0: return sorted;
     default: throw new org.apache.avro.AvroRuntimeException("Bad index");
     }
   }
@@ -20,6 +23,7 @@ public class StartOfPush extends org.apache.avro.specific.SpecificRecordBase imp
   @SuppressWarnings(value="unchecked")
   public void put(int field$, java.lang.Object value$) {
     switch (field$) {
+    case 0: sorted = (java.lang.Boolean)value$; break;
     default: throw new org.apache.avro.AvroRuntimeException("Bad index");
     }
   }

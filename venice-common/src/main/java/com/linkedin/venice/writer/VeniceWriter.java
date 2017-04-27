@@ -188,7 +188,20 @@ public class VeniceWriter<K, V> extends AbstractVeniceWriter<K, V> {
    * @param debugInfo arbitrary key/value pairs of information that will be propagated alongside the control message.
    */
   public void broadcastStartOfPush(Map<String, String> debugInfo) {
-    broadcastControlMessage(getEmptyControlMessage(ControlMessageType.START_OF_PUSH), debugInfo);
+    broadcastStartOfPush(false, debugInfo);
+  }
+
+  /**
+   * @param sorted whether the messages between 'StartOfPush' control messages and 'EndOfPush' control
+   *               message in current topic partition is lexicographically sorted by key bytes
+   * @param debugInfo arbitrary key/value pairs of information that will be propagated alongside the control message.
+   */
+  public void broadcastStartOfPush(boolean sorted, Map<String, String> debugInfo) {
+    ControlMessage controlMessage = getEmptyControlMessage(ControlMessageType.START_OF_PUSH);
+    StartOfPush startOfPush = new StartOfPush();
+    startOfPush.sorted = sorted;
+    controlMessage.controlMessageUnion = startOfPush;
+    broadcastControlMessage(controlMessage, debugInfo);
     // Flush start of push message to avoid data message arrives before it.
     producer.flush();
   }

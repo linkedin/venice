@@ -1,5 +1,6 @@
 package com.linkedin.venice.store;
 
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.server.VeniceConfigLoader;
 import com.linkedin.venice.utils.PropertyBuilder;
@@ -9,6 +10,7 @@ import com.linkedin.venice.exceptions.StorageInitializationException;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.VeniceProperties;
 import org.testng.Assert;
+import org.testng.annotations.Test;
 
 import java.util.Properties;
 
@@ -179,5 +181,21 @@ public abstract class AbstractStorageEngineTest extends AbstractStoreTest {
     }
     // If we reach here it means delete succeeded unfortunately.
     Assert.fail("DELETE on key: " + key.toString() + " in an invalid partition: " + partitionId + " succeeded");
+  }
+
+  @Test (expectedExceptions = VeniceException.class)
+  public void testAdjustStoragePartitionWithDifferentStoreName() {
+    String storeName = TestUtils.getUniqueString("dummy_store_name");
+    int partitionId = 1;
+    StoragePartitionConfig partitionConfig = new StoragePartitionConfig(storeName, partitionId);
+    testStoreEngine.adjustStoragePartition(partitionConfig);
+  }
+
+  @Test (expectedExceptions = VeniceException.class)
+  public void testAdjustStoragePartitionWithUnknownPartitionId() {
+    String storeName = testStoreEngine.getName();
+    int unknownPartitionId = partitionId -10000;
+    StoragePartitionConfig partitionConfig = new StoragePartitionConfig(storeName, unknownPartitionId);
+    testStoreEngine.adjustStoragePartition(partitionConfig);
   }
 }

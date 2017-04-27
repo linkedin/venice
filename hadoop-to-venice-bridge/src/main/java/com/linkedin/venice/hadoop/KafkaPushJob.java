@@ -313,6 +313,10 @@ public class KafkaPushJob extends AbstractJob {
 
         // Setup the hadoop job
         JobConf pushJobConf = null;
+        // Whether the messages in one single topic partition is lexicographically sorted by key bytes.
+        // If reducer phase is enabled, each reducer will sort all the messages inside one single
+        // topic partition.
+        boolean sortedMessageInTopicPartition = !mapOnly;
         if (mapOnly) {
           pushJobConf = setupPushMapOnlyJob(conf);
           logger.info("Venice push job for topic: " + topic + " will be a map-only job");
@@ -321,8 +325,7 @@ public class KafkaPushJob extends AbstractJob {
           logger.info("Venice push job for topic: " + topic + " will be a map-reduce job");
         }
         jc = new JobClient(pushJobConf);
-
-        getVeniceWriter().broadcastStartOfPush(new HashMap<>());
+        getVeniceWriter().broadcastStartOfPush(sortedMessageInTopicPartition, new HashMap<>());
         // submit the job for execution and wait for completion
         runningJob = jc.runJob(pushJobConf);
         //TODO: send a failure END OF PUSH message if something went wrong

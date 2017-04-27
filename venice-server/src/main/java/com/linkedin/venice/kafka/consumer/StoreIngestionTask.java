@@ -11,6 +11,7 @@ import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.kafka.protocol.ControlMessage;
 import com.linkedin.venice.exceptions.validation.DuplicateDataException;
 import com.linkedin.venice.exceptions.validation.FatalDataValidationException;
+import com.linkedin.venice.kafka.protocol.StartOfPush;
 import com.linkedin.venice.kafka.validation.OffsetRecordTransformer;
 import com.linkedin.venice.kafka.validation.ProducerTracker;
 import com.linkedin.venice.kafka.protocol.GUID;
@@ -27,6 +28,7 @@ import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.server.StoreRepository;
 import com.linkedin.venice.stats.AggStoreIngestionStats;
 import com.linkedin.venice.store.AbstractStorageEngine;
+import com.linkedin.venice.store.StoragePartitionConfig;
 import com.linkedin.venice.store.record.ValueRecord;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.Utils;
@@ -63,6 +65,8 @@ public class StoreIngestionTask implements Runnable, Closeable {
   private static class PartitionConsumptionState {
     private final int partition;
     private OffsetRecord offsetRecord;
+    // whether the ingestion of current partition is deferred-write.
+    private boolean deferredWrite;
     private boolean completed;
     private boolean errored;
     private boolean started;
@@ -73,14 +77,18 @@ public class StoreIngestionTask implements Runnable, Closeable {
     private int processedRecordNum;
     private int processedRecordSize;
 
+    private int processedRecordNumSinceLastSync;
+
     public PartitionConsumptionState(int partition, OffsetRecord offsetRecord) {
       this.partition = partition;
       this.offsetRecord = offsetRecord;
+      this.deferredWrite = false;
       this.completed = false;
       this.errored = false;
       this.started = false;
       this.processedRecordNum = 0;
       this.processedRecordSize = 0;
+      this.processedRecordNumSinceLastSync = 0;
     }
 
     public int getPartition() {
@@ -91,6 +99,12 @@ public class StoreIngestionTask implements Runnable, Closeable {
     }
     public OffsetRecord getOffsetRecord() {
       return this.offsetRecord;
+    }
+    public void setDeferredWrite(boolean deferredWrite) {
+      this.deferredWrite = deferredWrite;
+    }
+    public boolean isDeferredWrite() {
+      return this.deferredWrite;
     }
     public void start() {
       this.started = true;
@@ -140,6 +154,15 @@ public class StoreIngestionTask implements Runnable, Closeable {
           ", processedRecordNum=" + processedRecordNum +
           ", processedRecordSize=" + processedRecordSize +
           '}';
+    }
+    public int getProcessedRecordNumSinceLastSync() {
+      return this.processedRecordNumSinceLastSync;
+    }
+    public void incrProcessedRecordNumSinceLastSync() {
+      ++this.processedRecordNumSinceLastSync;
+    }
+    public void resetProcessedRecordNumSinceLastSync() {
+      this.processedRecordNumSinceLastSync = 0;
     }
   }
 
@@ -192,10 +215,20 @@ public class StoreIngestionTask implements Runnable, Closeable {
    * Per-partition consumption state map
    */
   private final ConcurrentMap<Integer, PartitionConsumptionState> partitionConsumptionStateMap;
+
   /**
-   * Record offset interval before persisting it in offset db.
+   * After processing the following number of messages, Venice SN will invoke throttling.
    */
-  public static int OFFSET_UPDATE_INTERVAL_PER_PARTITION = 1000;
+  public static int OFFSET_THROTTLE_INTERVAL = 1000;
+  /**
+   * Record offset interval before persisting it in offset db for transaction mode database.
+   */
+  public static int OFFSET_UPDATE_INTERVAL_PER_PARTITION_FOR_TRANSACTION_MODE = 1000;
+
+  /**
+   * Record offset interval before persisting it in offset db for deferred write database.
+   */
+  public static int OFFSET_UPDATE_INTERNAL_PER_PARTITION_FOR_DEFERRED_WRITE = 100000;
 
   private final StoreBufferService storeBufferService;
 
@@ -351,6 +384,22 @@ public class StoreIngestionTask implements Runnable, Closeable {
       } catch(Exception ex) {
         logger.error("Error reporting status to notifier " + notifier.getClass() , ex);
       }
+    }
+  }
+
+  private void adjustStorageEngine(int partitionId, boolean sorted, PartitionConsumptionState partitionConsumptionState) {
+    AbstractStorageEngine storageEngine = storeRepository.getLocalStorageEngine(topic);
+    StoragePartitionConfig storagePartitionConfig = new StoragePartitionConfig(topic, partitionId);
+    storagePartitionConfig.setDeferredWrite(sorted);
+    storageEngine.adjustStoragePartition(storagePartitionConfig);
+    partitionConsumptionState.setDeferredWrite(storagePartitionConfig.isDeferredWrite());
+
+    if (sorted) {
+      logger.info("The messages in current topic: " + topic + ", partition: " + partitionId
+          + " is sorted, switched to deferred-write database");
+    } else {
+      logger.info("The messages in current topic: " + topic + ", partition: " + partitionId
+          + " is not sorted, switched to regular transactional database");
     }
   }
 
@@ -597,6 +646,7 @@ public class StoreIngestionTask implements Runnable, Closeable {
         // If this storage node has ever consumed data from this topic, instead of sending "START" here, we send it
         // once START_OF_PUSH message has been read.
         if (record.getOffset() > 0) {
+          adjustStorageEngine(partition, record.sorted(), newPartitionConsumptionState);
           reportRestarted(partition, record.getOffset(), newPartitionConsumptionState);
         }
         // Second, take care of informing the controller about our status, and starting consumption
@@ -619,11 +669,18 @@ public class StoreIngestionTask implements Runnable, Closeable {
         break;
       case UNSUBSCRIBE:
         logger.info(consumerTaskId + " UnSubscribed to: Topic " + topic + " Partition Id " + partition);
+        consumer.unSubscribe(topic, partition);
+        // Drain the buffered message by last subscription.
+        storeBufferService.drainBufferedRecordsFromTopicPartition(topic, partition);
+        /**
+         * Since the processing of the buffered messages are using {@link #partitionConsumptionStateMap} and
+         * {@link #producerTrackerMap}, we would like to drain all the buffered messages before cleaning up those
+         * two variables to avoid the race condition.
+          */
         partitionConsumptionStateMap.remove(partition);
         producerTrackerMap.values().stream().forEach(
             producerTracker -> producerTracker.clearPartition(partition)
         );
-        consumer.unSubscribe(topic, partition);
         break;
       case RESET_OFFSET:
         try {
@@ -717,17 +774,10 @@ public class StoreIngestionTask implements Runnable, Closeable {
     partitionConsumptionState.incrProcessedRecordSize(recordSize);
 
     int processedRecordNum = partitionConsumptionState.getProcessedRecordNum();
-    if (processedRecordNum >= OFFSET_UPDATE_INTERVAL_PER_PARTITION ||
+    if (processedRecordNum >= OFFSET_THROTTLE_INTERVAL ||
         partitionConsumptionState.isCompleted()) {
       int processedRecordSize = partitionConsumptionState.getProcessedRecordSize();
       throttler.maybeThrottle(processedRecordSize);
-      OffsetRecord offsetRecord = partitionConsumptionState.getOffsetRecord();
-      if (partitionConsumptionState.isCompleted()) {
-        offsetRecord.complete();
-      }
-      offsetManager.recordOffset(this.topic, partition, offsetRecord);
-      reportProgress(partition, offsetRecord.getOffset());
-
       // Report metrics
       if (emitMetrics.get()) {
         stats.recordBytesConsumed(storeNameWithoutVersionInfo, processedRecordSize);
@@ -736,6 +786,24 @@ public class StoreIngestionTask implements Runnable, Closeable {
 
       partitionConsumptionState.resetProcessedRecordNum();
       partitionConsumptionState.resetProcessedRecordSize();
+    }
+
+    partitionConsumptionState.incrProcessedRecordNumSinceLastSync();
+    int offsetPersistInterval = partitionConsumptionState.isDeferredWrite() ?
+        OFFSET_UPDATE_INTERNAL_PER_PARTITION_FOR_DEFERRED_WRITE : OFFSET_UPDATE_INTERVAL_PER_PARTITION_FOR_TRANSACTION_MODE;
+    if (partitionConsumptionState.getProcessedRecordNumSinceLastSync() >= offsetPersistInterval ||
+        partitionConsumptionState.isCompleted()) {
+      AbstractStorageEngine storageEngine = storeRepository.getLocalStorageEngine(topic);
+      storageEngine.sync(partition);
+      OffsetRecord offsetRecord = partitionConsumptionState.getOffsetRecord();
+      if (partitionConsumptionState.isCompleted()) {
+        offsetRecord.complete();
+      }
+      // Always persist whether the messages are sorted together with offset.
+      offsetRecord.setSorted(partitionConsumptionState.isDeferredWrite());
+      offsetManager.recordOffset(this.topic, partition, offsetRecord);
+      reportProgress(partition, offsetRecord.getOffset());
+      partitionConsumptionState.resetProcessedRecordNumSinceLastSync();
     }
   }
 
@@ -759,12 +827,19 @@ public class StoreIngestionTask implements Runnable, Closeable {
   private void processControlMessage(ControlMessage controlMessage, int partition, long offset, PartitionConsumptionState partitionConsumptionState) {
      switch(ControlMessageType.valueOf(controlMessage)) {
        case START_OF_PUSH:
+         logger.info(consumerTaskId + " : Received Begin of push message Setting resetting count. Partition: "
+             + partition + ", Offset: " + offset);
+         StartOfPush startOfPush = (StartOfPush)controlMessage.controlMessageUnion;
+         adjustStorageEngine(partition, startOfPush.sorted, partitionConsumptionState);
          reportStarted(partition, partitionConsumptionState);
-         logger.info(consumerTaskId + " : Received Begin of push message Setting resetting count. Partition: " +
-             partition + ", Offset: " + offset);
          break;
        case END_OF_PUSH:
-         logger.info(consumerTaskId + " : Receive End of Pushes message. Partition: " + partition + ", Offset: " + offset);
+         logger.info(consumerTaskId + " : Receive End of Push message. Partition: " + partition + ", Offset: " + offset);
+         /**
+          * Right now, we assume there are no sorted message after EndOfPush control message.
+          * TODO: if this behavior changes in the future, the logic needs to be adjusted as well.
+          */
+         adjustStorageEngine(partition, false, partitionConsumptionState);
          reportCompleted(partition, partitionConsumptionState);
          break;
        case START_OF_SEGMENT:

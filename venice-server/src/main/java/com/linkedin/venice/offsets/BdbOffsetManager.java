@@ -54,8 +54,8 @@ public class BdbOffsetManager extends AbstractVeniceService implements OffsetMan
     DatabaseConfig dbConfig = new DatabaseConfig();
     dbConfig.setAllowCreate(true);
     dbConfig.setSortedDuplicates(false);
-    dbConfig.setDeferredWrite(true);
-    dbConfig.setTransactional(false);
+    // This is required since by default DatabaseConfig is not transactional.
+    dbConfig.setTransactional(true);
 
     logger.info("Creating BDB environment for storing offsets: ");
     this.offsetsBdbDatabase = offsetsBdbEnvironment.openDatabase(null, OFFSETS_STORE_NAME, dbConfig);
@@ -75,8 +75,9 @@ public class BdbOffsetManager extends AbstractVeniceService implements OffsetMan
 
     EnvironmentConfig envConfig = new EnvironmentConfig();
     envConfig.setAllowCreate(true);
-    envConfig.setTransactional(false);
     envConfig.setReadOnly(false);
+    // This is required since by default EnvironmentConfig is not transactional.
+    envConfig.setTransactional(true);
     envConfig.setConfigParam(EnvironmentConfig.CHECKPOINTER_BYTES_INTERVAL, Long.toString(CHECKPOINTER_BYTES_INTERVAL));
     envConfig.setConfigParam(EnvironmentConfig.CHECKPOINTER_WAKEUP_INTERVAL,
             Long.toString(veniceClusterConfig.getOffsetManagerFlushIntervalMs() * Time.US_PER_MS));
