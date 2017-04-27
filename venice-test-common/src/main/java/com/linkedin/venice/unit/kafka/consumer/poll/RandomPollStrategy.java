@@ -2,6 +2,7 @@ package com.linkedin.venice.unit.kafka.consumer.poll;
 
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.utils.Pair;
+import com.linkedin.venice.utils.Utils;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
@@ -29,6 +30,7 @@ public class RandomPollStrategy extends AbstractPollStrategy {
   @Override
   protected Pair<TopicPartition, OffsetRecord> getNextPoll(Map<TopicPartition, OffsetRecord> offsets) {
     if (offsets.isEmpty()) {
+      Utils.sleep(50); //So that keepPollingWhenEmpty doesn't lead to 10 null polls per ms
       return null;
     }
     List<TopicPartition> topicPartitionList = Arrays.asList(offsets.keySet().toArray(new TopicPartition[]{}));

@@ -334,10 +334,9 @@ public class StoreIngestionTask implements Runnable, Closeable {
     }
   }
 
-  private void reportStarted(int partition) {
-    PartitionConsumptionState partitionConsumptionState = partitionConsumptionStateMap.get(partition);
+  private void reportStarted(int partition, PartitionConsumptionState partitionConsumptionState) {
     if (null == partitionConsumptionState) {
-      logger.info("Topic " + topic + " Partition " + partition + " has been unsubscribed, not need to report started");
+      logger.info("Topic " + topic + " Partition " + partition + " has been unsubscribed, no need to report started");
       return;
     }
     partitionConsumptionState.start();
@@ -350,10 +349,9 @@ public class StoreIngestionTask implements Runnable, Closeable {
     }
   }
 
-  private void reportRestarted(int partition, long offset) {
-    PartitionConsumptionState partitionConsumptionState = partitionConsumptionStateMap.get(partition);
+  private void reportRestarted(int partition, long offset, PartitionConsumptionState partitionConsumptionState) {
     if (null == partitionConsumptionState) {
-      logger.info("Topic " + topic + " Partition " + partition + " has been unsubscribed, not need to report restarted");
+      logger.info("Topic " + topic + " Partition " + partition + " has been unsubscribed, no need to report restarted");
       return;
     }
     partitionConsumptionState.start();
@@ -366,8 +364,7 @@ public class StoreIngestionTask implements Runnable, Closeable {
     }
   }
 
-  private void reportCompleted(int partition) {
-    PartitionConsumptionState partitionConsumptionState = partitionConsumptionStateMap.get(partition);
+  private void reportCompleted(int partition, PartitionConsumptionState partitionConsumptionState) {
     if (null == partitionConsumptionState) {
       logger.info("Topic " + topic + " Partition " + partition + " has been unsubscribed, no need to report completed");
       return;
@@ -562,7 +559,8 @@ public class StoreIngestionTask implements Runnable, Closeable {
         OffsetRecord record = offsetManager.getLastOffset(topic, partition);
 
         // First let's try to restore the state retrieved from the OffsetManager
-        partitionConsumptionStateMap.put(partition,  new PartitionConsumptionState(partition, record));
+        PartitionConsumptionState newPartitionConsumptionState = new PartitionConsumptionState(partition, record);
+        partitionConsumptionStateMap.put(partition,  newPartitionConsumptionState);
         record.getProducerPartitionStateMap().entrySet().stream().forEach(entry -> {
               GUID producerGuid = GuidUtils.getGuidFromCharSequence(entry.getKey());
               ProducerTracker producerTracker = producerTrackerMap.get(producerGuid);
@@ -578,7 +576,7 @@ public class StoreIngestionTask implements Runnable, Closeable {
         // If this storage node has ever consumed data from this topic, instead of sending "START" here, we send it
         // once START_OF_PUSH message has been read.
         if (record.getOffset() > 0) {
-          reportRestarted(partition, record.getOffset());
+          reportRestarted(partition, record.getOffset(), newPartitionConsumptionState);
         }
         // Second, take care of informing the controller about our status, and starting consumption
         if (record.isCompleted()) {
@@ -590,7 +588,7 @@ public class StoreIngestionTask implements Runnable, Closeable {
            * In either case, StoreIngestionTask should report 'started' => ['progress'] => 'completed' to accomplish
            * task state transition in Controller.
            */
-          reportCompleted(partition);
+          reportCompleted(partition, newPartitionConsumptionState);
           logger.info("Topic: " + topic + ", Partition Id: " + partition + " is already done.");
         } else {
           // TODO: When we support hybrid batch/streaming mode, the subscription logic should be moved out after the if
@@ -657,13 +655,16 @@ public class StoreIngestionTask implements Runnable, Closeable {
    */
   public void processConsumerRecord(ConsumerRecord<KafkaKey, KafkaMessageEnvelope> record) {
     int partition = record.partition();
+    //The partitionConsumptionStateMap can be modified by other threads during consumption (for example when unsubscribing)
+    //in order to maintain thread safety, we hold onto the reference to the partitionConsumptionState and pass that
+    //reference to all downstream methods so that all offset persistence operations use the same partitionConsumptionState
     PartitionConsumptionState partitionConsumptionState = partitionConsumptionStateMap.get(partition);
     if (null == partitionConsumptionState) {
-      logger.info("Topic " + topic + " Partition " + partition + " has been unsubscribed, skip this record");
+      logger.info("Topic " + topic + " Partition " + partition + " has been unsubscribed, skip this record that has offset " + record.offset());
       return;
     }
     if (partitionConsumptionState.isErrored()) {
-      logger.info("Topic " + topic + " Partition " + partition + " is already errored, skip this record");
+      logger.info("Topic " + topic + " Partition " + partition + " is already errored, skip this record that has offset " + record.offset());
       return;
     }
 
@@ -672,7 +673,7 @@ public class StoreIngestionTask implements Runnable, Closeable {
     }
     int recordSize = 0;
     try {
-      recordSize = internalProcessConsumerRecord(record);
+      recordSize = internalProcessConsumerRecord(record, partitionConsumptionState);
     } catch (FatalDataValidationException e) {
       int faultyPartition = record.partition();
       reportError(Lists.newArrayList(faultyPartition), "Fatal data validation problem with partition " + faultyPartition, e);
@@ -725,16 +726,16 @@ public class StoreIngestionTask implements Runnable, Closeable {
     return offsetLag > 0 ? offsetLag : 0;
   }
 
-  private void processControlMessage(ControlMessage controlMessage, int partition, long offset) {
+  private void processControlMessage(ControlMessage controlMessage, int partition, long offset, PartitionConsumptionState partitionConsumptionState) {
      switch(ControlMessageType.valueOf(controlMessage)) {
        case START_OF_PUSH:
-         reportStarted(partition);
+         reportStarted(partition, partitionConsumptionState);
          logger.info(consumerTaskId + " : Received Begin of push message Setting resetting count. Partition: " +
              partition + ", Offset: " + offset);
          break;
        case END_OF_PUSH:
          logger.info(consumerTaskId + " : Receive End of Pushes message. Partition: " + partition + ", Offset: " + offset);
-         reportCompleted(partition);
+         reportCompleted(partition, partitionConsumptionState);
          break;
        case START_OF_SEGMENT:
        case END_OF_SEGMENT:
@@ -754,7 +755,7 @@ public class StoreIngestionTask implements Runnable, Closeable {
    * @param consumerRecord {@link ConsumerRecord} consumed from Kafka.
    * @return the size of the data written to persistent storage.
    */
-  private int internalProcessConsumerRecord(ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord) {
+  private int internalProcessConsumerRecord(ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord, PartitionConsumptionState partitionConsumptionState) {
     // De-serialize payload into Venice Message format
     KafkaKey kafkaKey = consumerRecord.key();
     KafkaMessageEnvelope kafkaValue = consumerRecord.value();
@@ -766,7 +767,7 @@ public class StoreIngestionTask implements Runnable, Closeable {
 
       if (kafkaKey.isControlMessage()) {
         ControlMessage controlMessage = (ControlMessage) kafkaValue.payloadUnion;
-        processControlMessage(controlMessage, consumerRecord.partition(), consumerRecord.offset());
+        processControlMessage(controlMessage, consumerRecord.partition(), consumerRecord.offset(), partitionConsumptionState);
       } else if (null == kafkaValue) {
         throw new VeniceMessageException(consumerTaskId + " : Given null Venice Message. Partition " +
               consumerRecord.partition() + " Offset " + consumerRecord.offset());
@@ -794,7 +795,6 @@ public class StoreIngestionTask implements Runnable, Closeable {
     }
 
     // We want to update offsets in all cases, except when we hit the PersistenceFailureException
-    PartitionConsumptionState partitionConsumptionState = partitionConsumptionStateMap.get(consumerRecord.partition());
     if (null == partitionConsumptionState) {
       logger.info("Topic " + topic + " Partition " + consumerRecord.partition() + " has been unsubscribed, will skip offset update");
     } else {

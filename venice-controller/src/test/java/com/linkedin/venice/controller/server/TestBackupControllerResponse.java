@@ -32,10 +32,6 @@ import static com.linkedin.venice.ConfigKeys.*;
 import static com.linkedin.venice.controllerapi.ControllerRoute.CREATE_VERSION;
 import static com.linkedin.venice.controllerapi.ControllerRoute.JOB;
 
-
-/**
- * Created by mwise on 5/23/16.
- */
 public class TestBackupControllerResponse {
   @Test
   public void backupControllerThrows421()
@@ -63,7 +59,7 @@ public class TestBackupControllerResponse {
         .put(ConfigKeys.ADMIN_PORT, bogusPort)
         .build();
     VeniceControllerConfig config = new VeniceControllerConfig(controllerOneProps);
-    veniceAdmin = new VeniceHelixAdmin(config, Mockito.mock(MetricsRepository.class));
+    veniceAdmin = new VeniceHelixAdmin(config, new MetricsRepository());
     veniceAdmin.start(clusterName);
 
     /* ControllerWrapper is second controller, comes up as inactive standby controller */
