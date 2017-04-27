@@ -2,18 +2,14 @@ package com.linkedin.venice.store.memory;
 
 import com.linkedin.venice.config.VeniceStoreConfig;
 import com.linkedin.venice.exceptions.PersistenceFailureException;
-import com.linkedin.venice.exceptions.StorageInitializationException;
-import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.server.PartitionAssignmentRepository;
 import com.linkedin.venice.store.AbstractStorageEngine;
 import com.linkedin.venice.store.AbstractStoragePartition;
+import com.linkedin.venice.store.StoragePartitionConfig;
 import com.linkedin.venice.store.iterators.CloseableStoreEntriesIterator;
 import com.linkedin.venice.store.iterators.CloseableStoreKeysIterator;
 
-import java.util.Collection;
 import java.util.HashSet;
 import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
 
 
 /**
@@ -33,8 +29,8 @@ public class InMemoryStorageEngine extends AbstractStorageEngine {
   }
 
   @Override
-  public AbstractStoragePartition createStoragePartition(int partitionId) {
-    return  new InMemoryStoragePartition(partitionId);
+  public AbstractStoragePartition createStoragePartition(StoragePartitionConfig storagePartitionConfig) {
+    return  new InMemoryStoragePartition(storagePartitionConfig.getPartitionId());
   }
 
   public CloseableStoreEntriesIterator storeEntries() throws PersistenceFailureException {

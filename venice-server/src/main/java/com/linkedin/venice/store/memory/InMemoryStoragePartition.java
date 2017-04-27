@@ -2,8 +2,8 @@ package com.linkedin.venice.store.memory;
 
 import com.linkedin.venice.exceptions.PersistenceFailureException;
 import com.linkedin.venice.store.AbstractStoragePartition;
+import com.linkedin.venice.store.StoragePartitionConfig;
 import com.linkedin.venice.utils.ByteArray;
-import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.partition.iterators.AbstractCloseablePartitionEntriesIterator;
 import com.linkedin.venice.utils.partition.iterators.CloseablePartitionKeysIterator;
 import java.io.IOException;
@@ -71,6 +71,11 @@ public class InMemoryStoragePartition extends AbstractStoragePartition {
   }
 
   @Override
+  public void sync() {
+    // no-op
+  }
+
+  @Override
   public void drop() {
     truncate();
   }
@@ -78,6 +83,12 @@ public class InMemoryStoragePartition extends AbstractStoragePartition {
   @Override
   public void close() {
     // Nothing to do here, since it is in memory implementation
+  }
+
+  @Override
+  public boolean verifyConfig(StoragePartitionConfig storagePartitionConfig) {
+    // no need to do any special check
+    return true;
   }
 
   private class InMemoryPartitionIterator extends AbstractCloseablePartitionEntriesIterator {

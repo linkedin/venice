@@ -2,6 +2,7 @@ package com.linkedin.venice.store.bdb;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.store.AbstractStoragePartition;
+import com.linkedin.venice.store.StoragePartitionConfig;
 import com.linkedin.venice.store.exception.InvalidDatabaseNameException;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.Utils;
@@ -29,7 +30,6 @@ import static com.linkedin.venice.meta.PersistenceType.*;
  * ConcurrentModificationException thrown from the iterators
  */
 public class BdbStoragePartition extends AbstractStoragePartition {
-
   private static final Logger logger = Logger.getLogger(BdbStoragePartition.class);
   private static final String DATABASE_NAME_SEPARATOR = "-";
 
@@ -44,17 +44,24 @@ public class BdbStoragePartition extends AbstractStoragePartition {
   private final AtomicBoolean isOpen;
   private final AtomicBoolean isTruncating = new AtomicBoolean(false);
 
-  public BdbStoragePartition(String storeName, Integer partitionId, Environment environment, BdbServerConfig bdbServerConfig) {
-    super(partitionId);
+  public BdbStoragePartition(StoragePartitionConfig storagePartitionConfig, Environment environment, BdbServerConfig bdbServerConfig) {
+    super(storagePartitionConfig.getPartitionId());
 
-    this.storeName = Utils.notNull(storeName);
+    this.storeName = Utils.notNull(storagePartitionConfig.getStoreName());
     this.environment = Utils.notNull(environment);
 
     this.databaseConfig = new DatabaseConfig();
     this.databaseConfig.setAllowCreate(true);
     this.databaseConfig.setSortedDuplicates(false);
     this.databaseConfig.setNodeMaxEntries(bdbServerConfig.getBdbBtreeFanout());
-    this.databaseConfig.setTransactional(true);
+    if (storagePartitionConfig.isDeferredWrite()) {
+      // Non-transactional
+      this.databaseConfig.setDeferredWrite(true);
+      logger.info("Opened database for store: " + getBdbDatabaseName() + " in deferred-write mode");
+    } else {
+      this.databaseConfig.setTransactional(true);
+      logger.info("Opened database for store: " + getBdbDatabaseName() + " in transactional mode");
+    }
 
     this.database = this.environment.openDatabase(null, getBdbDatabaseName(), databaseConfig);
     // Sync here to make sure the new database will be persisted.
@@ -68,7 +75,6 @@ public class BdbStoragePartition extends AbstractStoragePartition {
   }
 
   public void put(byte[] key, byte[] value) throws VeniceException {
-
     boolean succeeded = false;
     long startTimeNs = -1;
 
@@ -78,28 +84,27 @@ public class BdbStoragePartition extends AbstractStoragePartition {
     DatabaseEntry keyEntry = new DatabaseEntry(key);
     DatabaseEntry valueEntry = new DatabaseEntry(value);
 
-    Transaction transaction = null;
-
     try {
-      transaction = environment.beginTransaction(null, null);
-
       /* TODO: decide where to add code for conflict resolution
          if it is in propagation layer, then remove this comment;
          otherwise read entry here and modify it */
-      OperationStatus status = getBdbDatabase().put(transaction, keyEntry, valueEntry);
+
+      /**
+       * By default, 'auto-commit' will be used if it is a  transactional database.
+       * https://docs.oracle.com/cd/E17277_02/html/TransactionGettingStarted/autocommit.html
+       */
+      OperationStatus status = getBdbDatabase().put(null, keyEntry, valueEntry);
 
       if (status != OperationStatus.SUCCESS) {
         throw new VeniceException("Put operation failed with status: " + status + " Store " + getBdbDatabaseName() );
       }
 
       succeeded = true;
-
     } catch (DatabaseException e) {
       //this.bdbEnvironmentStats.reportException(e);
       logger.error("Error in put for BDB database " + getBdbDatabaseName(), e);
       throw new VeniceException(e);
     } finally {
-      commitOrAbort(succeeded, transaction);
       if (logger.isTraceEnabled()) {
         logger.trace(succeeded ? "Successfully completed" : "Failed to complete"
           + " PUT (" + getBdbDatabaseName() + ") to key " + key + " (keyRef: "
@@ -112,13 +117,11 @@ public class BdbStoragePartition extends AbstractStoragePartition {
 
 
   public byte[] get(byte[] key) throws VeniceException {
-
     boolean succeeded = true;
     long startTimeNs = -1;
 
     DatabaseEntry keyEntry = new DatabaseEntry(key);
     DatabaseEntry valueEntry = new DatabaseEntry();
-
 
     if (logger.isTraceEnabled()) {
       startTimeNs = System.nanoTime();
@@ -150,7 +153,6 @@ public class BdbStoragePartition extends AbstractStoragePartition {
   }
 
   public void delete(byte[] key) {
-
     boolean succeeded = false;
     long startTimeNs = -1;
 
@@ -158,19 +160,20 @@ public class BdbStoragePartition extends AbstractStoragePartition {
       startTimeNs = System.nanoTime();
     }
 
-    Transaction transaction = null;
     try {
-      transaction = this.environment.beginTransaction(null, null);
       DatabaseEntry keyEntry = new DatabaseEntry(key);
 
-      OperationStatus status = getBdbDatabase().delete(transaction, keyEntry);
+      /**
+       * By default, 'auto-commit' will be used if it is a  transactional database.
+       * https://docs.oracle.com/cd/E17277_02/html/TransactionGettingStarted/autocommit.html
+       */
+      getBdbDatabase().delete(null, keyEntry);
       succeeded = true;
     } catch (DatabaseException e) {
       //this.bdbEnvironmentStats.reportException(e);
       logger.error(e);
       throw new VeniceException(e);
     } finally {
-      attemptCommit(transaction);
       if (logger.isTraceEnabled()) {
         logger.trace(succeeded ? "Successfully completed" : "Failed to complete"
           + " DELETE (" + getBdbDatabaseName() + ") of key "
@@ -206,28 +209,22 @@ public class BdbStoragePartition extends AbstractStoragePartition {
 
 
   interface BDBOperation {
-    void perform(Transaction x);
+    void perform();
   }
 
   private synchronized  void performOperation(String operationType, BDBOperation operation) {
-    Transaction transaction = null;
-    boolean succeeded = false;
-
     try {
-      transaction = this.environment.beginTransaction(null, null);
-
       // close current bdbDatabase first
       database.close();
-      // truncate the database
-      operation.perform(transaction);
-      succeeded = true;
+      /**
+       * By default, 'auto-commit' will be used if it is a  transactional database.
+       * https://docs.oracle.com/cd/E17277_02/html/TransactionGettingStarted/autocommit.html
+       */
+      operation.perform();
     } catch (DatabaseException e) {
       String errorMessage = "Failed to " + operationType + " BDB database " + getBdbDatabaseName();
       logger.error(errorMessage, e);
       throw new VeniceException(errorMessage , e);
-
-    } finally {
-      commitOrAbort(succeeded, transaction);
     }
 
   }
@@ -237,7 +234,7 @@ public class BdbStoragePartition extends AbstractStoragePartition {
    */
   @Override
   public synchronized void drop() {
-    BDBOperation dropDB =(tx) -> environment.removeDatabase(tx, getBdbDatabaseName());
+    BDBOperation dropDB =() -> environment.removeDatabase(null, getBdbDatabaseName());
     performOperation("DROP" , dropDB );
   }
 
@@ -246,11 +243,20 @@ public class BdbStoragePartition extends AbstractStoragePartition {
    */
   @Override
   public synchronized void truncate() {
-    BDBOperation truncateDB = (tx) -> environment.truncateDatabase(tx, getBdbDatabaseName(), false);
+    BDBOperation truncateDB = () -> environment.truncateDatabase(null, getBdbDatabaseName(), false);
     performOperation("TRUNCATE" , truncateDB );
 
     //After truncation re-open the BDB database for Read.
     reopenBdbDatabase();
+  }
+
+  @Override
+  public void sync() {
+    if (databaseConfig.getDeferredWrite()) {
+      // Only applicable for deferred-write database.
+      database.sync();
+    }
+
   }
 
   @Override
@@ -263,6 +269,13 @@ public class BdbStoragePartition extends AbstractStoragePartition {
       logger.error(e);
       throw new VeniceException("Shutdown failed for BDB database " + getBdbDatabaseName(), e);
     }
+  }
+
+  @Override
+  public boolean verifyConfig(StoragePartitionConfig storagePartitionConfig) {
+    boolean databaseDeferredWrite = databaseConfig.getDeferredWrite();
+    boolean partitionConfigDeferredWrite = storagePartitionConfig.isDeferredWrite();
+    return (databaseDeferredWrite == partitionConfigDeferredWrite);
   }
 
   private class ClosableBdbPartitionEntriesIterator extends AbstractCloseablePartitionEntriesIterator {
@@ -369,40 +382,6 @@ public class BdbStoragePartition extends AbstractStoragePartition {
     } catch (DatabaseException e) {
       // this.bdbEnvironmentStats.reportException(e);
       throw new VeniceException("Failed to reinitialize BDB database " + getBdbDatabaseName() + " after truncation.", e);
-    }
-  }
-
-  private void attemptAbort(Transaction transaction) {
-    try {
-      if (transaction != null)
-        transaction.abort();
-    } catch (DatabaseException e) {
-      //this.bdbEnvironmentStats.reportException(e);
-      logger.error("Abort failed!", e);
-    }
-  }
-
-  private void attemptCommit(Transaction transaction) {
-    try {
-      if (transaction != null)
-        transaction.commit();
-    } catch (DatabaseException e) {
-      //this.bdbEnvironmentStats.reportException(e);
-      logger.error("Transaction commit failed!", e);
-      attemptAbort(transaction);
-      throw new VeniceException(e);
-    }
-  }
-
-  private void commitOrAbort(boolean succeeded, Transaction transaction) {
-    try {
-      if (succeeded) {
-        attemptCommit(transaction);
-      } else {
-        attemptAbort(transaction);
-      }
-    } catch (Exception e) {
-      logger.error(e);
     }
   }
 }

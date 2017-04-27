@@ -39,6 +39,7 @@ public class OffsetRecord {
   private static PartitionState getEmptyPartitionState() {
     PartitionState emptyPartitionState = new PartitionState();
     emptyPartitionState.offset = LOWEST_OFFSET;
+    emptyPartitionState.sorted = false;
     emptyPartitionState.producerStates = new HashMap<>();
     emptyPartitionState.endOfPush = false;
     emptyPartitionState.lastUpdate = System.currentTimeMillis();
@@ -55,6 +56,14 @@ public class OffsetRecord {
 
   public void setOffset(long offset) {
     this.partitionState.offset = offset;
+  }
+
+  public void setSorted(boolean sorted) {
+    this.partitionState.sorted = sorted;
+  }
+
+  public boolean sorted() {
+    return this.partitionState.sorted;
   }
 
   /**
@@ -110,6 +119,7 @@ public class OffsetRecord {
   public String toString() {
     return "OffsetRecord{" +
         "offset=" + getOffset() +
+        ", sorted=" + sorted() +
         ", eventTimeEpochMs=" + getEventTimeEpochMs() +
         ", processingTimeEpochMs=" + getProcessingTimeEpochMs() +
         ", completed=" + isCompleted() +
@@ -129,7 +139,8 @@ public class OffsetRecord {
 
     /** N.B.: {@link #partitionState.lastUpdate} intentionally omitted from comparison */
     return this.partitionState.offset == that.partitionState.offset &&
-        this.partitionState.endOfPush == that.partitionState.endOfPush; // &&
+        this.partitionState.endOfPush == that.partitionState.endOfPush &&
+        this.partitionState.sorted == that.partitionState.sorted;   // &&
     // N.B.: We cannot do a more thorough equality check at this time because it breaks tests.
     // If we actually need the more comprehensive equals, then we'll need to rethink the way we test.
     //    this.partitionState.producerStates.entrySet().equals(that.partitionState.producerStates.entrySet());
