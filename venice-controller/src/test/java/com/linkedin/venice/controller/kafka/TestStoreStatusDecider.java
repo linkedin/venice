@@ -55,7 +55,7 @@ public class TestStoreStatusDecider {
 
     prepare(partitionCount, new int[]{replicationFactor, replicationFactor});
     for (String status : StoreStatusDecider.getStoreStatues(storeList, resourceAssignment, config).values()) {
-      Assert.assertEquals(status, StoreStatus.DEGRADE.toString(),
+      Assert.assertEquals(status, StoreStatus.DEGRADED.toString(),
           "Store should be degraded because missing one partition.");
     }
   }
@@ -66,7 +66,7 @@ public class TestStoreStatusDecider {
 
     prepare(partitionCount, new int[]{replicationFactor, 0});
     for (String status : StoreStatusDecider.getStoreStatues(storeList, resourceAssignment, config).values()) {
-      Assert.assertEquals(status, StoreStatus.DEGRADE.toString(),
+      Assert.assertEquals(status, StoreStatus.DEGRADED.toString(),
           "Store should be degraded because one partition does not have any online replica.");
     }
   }

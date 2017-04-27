@@ -16,8 +16,11 @@ import com.linkedin.venice.serialization.avro.KafkaValueSerializer;
 import com.linkedin.venice.server.StoreRepository;
 import com.linkedin.venice.server.VeniceConfigLoader;
 import com.linkedin.venice.service.AbstractVeniceService;
+import com.linkedin.venice.stats.AggBdbStorageEngineStats;
 import com.linkedin.venice.stats.AggStoreIngestionStats;
 import com.linkedin.venice.stats.StoreBufferServiceStats;
+import com.linkedin.venice.store.AbstractStorageEngine;
+import com.linkedin.venice.store.bdb.BdbStorageEngine;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.Utils;
 
@@ -28,7 +31,6 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BooleanSupplier;
-import java.util.function.Supplier;
 
 import io.tehuti.metrics.MetricsRepository;
 import org.apache.kafka.clients.CommonClientConfigs;
@@ -58,7 +60,8 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
   private final ReadOnlyStoreRepository metadataRepo;
   private final ReadOnlySchemaRepository schemaRepo;
 
-  private final AggStoreIngestionStats stats;
+  private final AggStoreIngestionStats ingestionStats;
+  private final AggBdbStorageEngineStats storageEngineStats;
 
   /**
    * Store buffer service to persist data into local bdb for all the stores.
@@ -102,7 +105,8 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     VeniceNotifier notifier = new LogNotifier();
     notifiers.add(notifier);
 
-    stats = new AggStoreIngestionStats(metricsRepository);
+    ingestionStats = new AggStoreIngestionStats(metricsRepository);
+    storageEngineStats = new AggBdbStorageEngineStats(metricsRepository);
 
     this.storeBufferService = new StoreBufferService(
         serverConfig.getStoreWriterNumber(),
@@ -142,7 +146,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         metadataRepo.getStore(storeName).getCurrentVersion() == storeVersion;
 
     return new StoreIngestionTask(new VeniceConsumerFactory(), getKafkaConsumerProperties(veniceStore), storeRepository,
-        offsetManager, notifiers, throttler, veniceStore.getStoreName(), schemaRepo, topicManager, stats,
+        offsetManager, notifiers, throttler, veniceStore.getStoreName(), schemaRepo, topicManager, ingestionStats,
         storeBufferService, isStoreVersionCurrent);
   }
 
@@ -214,6 +218,10 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
           task.disableMetricsEmission();
         } else {
           task.enableMetricsEmission();
+          AbstractStorageEngine engine = storeRepository.getLocalStorageEngine(topicName);
+          if (engine instanceof BdbStorageEngine) {
+            storageEngineStats.setBdbEnvironment(storeName, ((BdbStorageEngine) engine).getBdbEnvironment());
+          }
         }
       }
     });

@@ -6,6 +6,7 @@ import io.tehuti.metrics.Sensor;
 import io.tehuti.metrics.stats.Avg;
 import io.tehuti.metrics.stats.Count;
 import io.tehuti.metrics.stats.Max;
+import io.tehuti.metrics.stats.Min;
 import io.tehuti.metrics.stats.Rate;
 import io.tehuti.metrics.stats.Total;
 
@@ -21,6 +22,8 @@ public class StoreIngestionStats extends AbstractVeniceStats{
   private final Sensor pollRequestLatencySensor;
   private final Sensor pollResultNumSensor;
   private final Sensor consumerRecordsQueuePutLatencySensor;
+  private final Sensor keySizeSensor;
+  private final Sensor valueSizeSensor;
 
 
   public StoreIngestionStats(MetricsRepository metricsRepository,
@@ -43,6 +46,14 @@ public class StoreIngestionStats extends AbstractVeniceStats{
     pollResultNumSensor = registerSensor("kafka_poll_result_num", new Avg(), new Total());
     // To measure 'put' latency of consumer records blocking queue
     consumerRecordsQueuePutLatencySensor = registerSensor("consumer_records_queue_put_latency", new Avg(), new Max());
+
+    String keySizeSensorName = "record_key_size_in_bytes";
+    keySizeSensor = registerSensor(keySizeSensorName, new Avg(), new Min(), new Max(),
+        TehutiUtils.getPercentileStat(getName() + AbstractVeniceStats.DELIMITER + keySizeSensorName, 40000, 1000000));
+
+    String valueSizeSensorName = "record_value_size_in_bytes";
+    valueSizeSensor = registerSensor(valueSizeSensorName, new Avg(), new Min(), new Max(),
+        TehutiUtils.getPercentileStat(getName() + AbstractVeniceStats.DELIMITER + valueSizeSensorName, 40000, 1000000));
   }
 
   public void updateStoreConsumptionTask(StoreIngestionTask task) {
@@ -72,6 +83,14 @@ public class StoreIngestionStats extends AbstractVeniceStats{
 
   public void recordConsumerRecordsQueuePutLatency(double latency) {
     consumerRecordsQueuePutLatencySensor.record(latency);
+  }
+
+  public void recordKeySize(long bytes) {
+    keySizeSensor.record(bytes);
+  }
+
+  public void recordValueSize(long bytes) {
+    valueSizeSensor.record(bytes);
   }
 
   private static class OffsetLagStat extends LambdaStat {

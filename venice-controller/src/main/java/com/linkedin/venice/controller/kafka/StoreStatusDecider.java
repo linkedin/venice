@@ -38,7 +38,7 @@ public class StoreStatusDecider {
           < currentVersionAssignment.getExpectedNumberOfPartitions()) {
         // One or more partition is unavailable.
         logger.warn("Store: " + store.getName() + " is unavailable because missing one or more partitions.");
-        storeStatusMap.put(store.getName(), StoreStatus.DEGRADE.toString());
+        storeStatusMap.put(store.getName(), StoreStatus.DEGRADED.toString());
         continue;
       }
 
@@ -47,7 +47,7 @@ public class StoreStatusDecider {
         int onlineReplicasCount = partition.getReadyToServeInstances().size();
         if (onlineReplicasCount == 0) {
           // Once one partition is unavailable we say this store is unavailable, do not need to continue.
-          status = StoreStatus.DEGRADE;
+          status = StoreStatus.DEGRADED;
           logger.warn("Store: " + store.getName() + " is unavailable because partition: " + partition.getId()
               + " has 0 ONLINE replicas.");
           break;

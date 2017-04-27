@@ -326,24 +326,6 @@ public class BdbStorageEngineFactory implements StorageEngineFactory {
           }
         }
 
-        // TODO: add bdb environment stats here
-        // Remove the reference to BdbEnvironmentStats, which holds a
-        // reference to the Environment
-        //BdbEnvironmentStats bdbEnvStats = bdbEngine.getBdbEnvironmentStats();
-        //this.aggBdbStats.unTrackEnvironment(bdbEnvStats);
-
-        // Unregister the JMX bean for Environment
-        // TODO: add jmx service here
-        /*
-        if (veniceConfig.isJmxEnabled()) {
-          ObjectName name = JmxUtils.createObjectName(JmxUtils.getPackageName(bdbEnvStats.getClass()),
-            storeName);
-          // Un-register the environment stats mbean
-          JmxUtils.unregisterMbean(name);
-        }
-        */
-
-        // Cleanup the environment
         environment.close();
         this.environments.remove(storeName);
         logger.info("Successfully closed the environment for store name : " + storeName);

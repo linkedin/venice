@@ -877,7 +877,13 @@ public class StoreIngestionTask implements Runnable, Closeable {
         throw new VeniceMessageException(consumerTaskId + " : Given null Venice Message. Partition " +
               consumerRecord.partition() + " Offset " + consumerRecord.offset());
       } else {
-        sizeOfPersistedData = kafkaKey.getKeyLength() + processVeniceMessage(kafkaKey, kafkaValue, consumerRecord.partition());
+        int keySize = kafkaKey.getKeyLength();
+        int valueSize = processVeniceMessage(kafkaKey, kafkaValue, consumerRecord.partition());
+        if (emitMetrics.get()) {
+          stats.recordKeySize(storeNameWithoutVersionInfo, keySize);
+          stats.recordValueSize(storeNameWithoutVersionInfo, valueSize);
+        }
+        sizeOfPersistedData = keySize + valueSize;
       }
     } catch (DuplicateDataException e) {
       logger.info("Skipping a duplicate record in topic: '" + topic + "', offset: " + consumerRecord.offset());
