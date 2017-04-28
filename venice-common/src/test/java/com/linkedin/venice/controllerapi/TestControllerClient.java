@@ -1,5 +1,6 @@
 package com.linkedin.venice.controllerapi;
 
+import com.linkedin.venice.utils.TestUtils;
 import org.codehaus.jackson.map.ObjectMapper;
 import org.testng.Assert;
 import org.testng.annotations.Test;
@@ -14,7 +15,8 @@ public class TestControllerClient {
 
   @Test
   public static void clientReturnsErrorObjectOnConnectionFailure(){
-    VersionResponse r3 = ControllerClient.queryCurrentVersion("http://localhost:17079", "myycluster", "mystore");
+    ControllerClient client = new ControllerClient(TestUtils.getUniqueString("cluster"), "http://localhost:17079");
+    StoreResponse r3 = client.getStore("mystore");
     Assert.assertTrue(r3.isError());
   }
 

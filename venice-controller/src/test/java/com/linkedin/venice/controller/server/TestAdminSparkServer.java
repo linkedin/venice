@@ -19,6 +19,7 @@ import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.controllerapi.routes.AdminCommandExecutionResponse;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
@@ -35,6 +36,7 @@ import com.linkedin.venice.utils.Utils;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ExecutionException;
 import org.apache.avro.Schema;
@@ -67,7 +69,7 @@ public class TestAdminSparkServer {
      * A typical exception for the short of SN looks like "Failed to create helix resource."
      */
 
-    venice = ServiceFactory.getVeniceCluster(1, 2, 1);
+    venice = ServiceFactory.getVeniceCluster(1, 2, 1); //Controllers, Servers, Routers
     routerUrl = venice.getRandomRouterURL();
     controllerClient = new ControllerClient(venice.getClusterName(), routerUrl);
   }
@@ -526,4 +528,5 @@ public class TestAdminSparkServer {
     Assert.assertEquals(store.getCurrentVersion(), current);
     Assert.assertEquals(store.isEnableReads(), enableReads);
   }
+
 }

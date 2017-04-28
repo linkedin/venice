@@ -48,6 +48,10 @@ public interface Admin {
     Version addVersion(String clusterName, String storeName, int versionNumber, int numberOfPartition,
         int replicationFactor);
 
+    /**
+     * Use {@link #incrementVersionIdempotent(String, String, String, int, int)} instead
+     */
+    @Deprecated
     Version incrementVersion(String clusterName, String storeName, int numberOfPartition, int replicationFactor);
 
     /**

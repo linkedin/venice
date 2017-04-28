@@ -250,12 +250,12 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         Version version = null;
         OfflinePushStrategy strategy = null;
         repository.lock();
+        int newTopicPartitionCount = 0;
         try {
             Store store = repository.getStore(storeName);
             if(store == null) {
                 throwStoreDoesNotExist(clusterName, storeName);
             }
-
             strategy = store.getOffLinePushStrategy();
             if(versionNumber == VERSION_ID_UNSET) {
                 // No Version supplied, generate new version.
@@ -271,6 +271,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             if(store.getPartitionCount() == 0){
                 store.setPartitionCount(numberOfPartition); //TODO, persist numberOfPartitions at the version level
             }
+            newTopicPartitionCount = store.getPartitionCount();
             repository.updateStore(store);
             logger.info("Add version:"+version.getNumber()+" for store:" + storeName);
         } finally {
@@ -278,7 +279,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         }
 
         VeniceControllerClusterConfig clusterConfig = controllerStateModelFactory.getModel(clusterName).getResources().getConfig();
-        createKafkaTopic(clusterName, version.kafkaTopicName(), numberOfPartition, clusterConfig.getKafkaReplicaFactor());
+        createKafkaTopic(clusterName, version.kafkaTopicName(), newTopicPartitionCount, clusterConfig.getKafkaReplicaFactor());
         if (whetherStartOfflinePush) {
             // TODO: there could be some problem here since topic creation is an async op, which means the new topic
             // may not exist, When storage node is trying to consume the new created topic.
@@ -307,25 +308,22 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         checkControllerMastership(clusterName);
         HelixReadWriteStoreRepository repository = getVeniceHelixResource(clusterName).getMetadataRepository();
         repository.lock();
-        int storeNumberOfPartitions;
         try {
             Store store = repository.getStore(storeName);
-            storeNumberOfPartitions = store.getPartitionCount();
             if(store == null) {
                 throwStoreDoesNotExist(clusterName, storeName);
             }
             for (Version version : store.getVersions()){
                 if (version.getPushJobId().equals(pushJobId)){
-                    //TODO: decide what to do with partition count parameters or remove them
                     logger.info("Version request for pushId " + pushJobId + " and store " + storeName +
                         ".  pushId already exists, so returning existing version " + version.getNumber());
-                    return version;
+                    return version; // Early exit
                 }
             }
         } finally {
             repository.unLock();
         }
-        return addVersion(clusterName, storeName, pushJobId, VERSION_ID_UNSET, storeNumberOfPartitions, replicationFactor, true);
+        return addVersion(clusterName, storeName, pushJobId, VERSION_ID_UNSET, numberOfPartitions, replicationFactor, true);
     }
 
     @Override

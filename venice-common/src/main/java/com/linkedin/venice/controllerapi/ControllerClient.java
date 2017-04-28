@@ -125,6 +125,13 @@ public class ControllerClient implements Closeable {
     }
   }
 
+  /**
+   * Use {@link #requestTopicForWrites(String, long, com.linkedin.venice.controllerapi.ControllerApiConstants.PushType, String) requestTopicForWrites} instead
+   * @param storeName
+   * @param storeSize
+   * @return
+   */
+  @Deprecated
   public VersionCreationResponse createNewStoreVersion(String storeName, long storeSize) {
     try {
       List<NameValuePair> params = newParams(clusterName);
@@ -135,6 +142,30 @@ public class ControllerClient implements Closeable {
     } catch (Exception e){
       return handleError(
           new VeniceException("Error creating version for store: " + storeName, e), new VersionCreationResponse());
+    }
+  }
+
+  /**
+   * Request a topic for the VeniceWriter to write into.  A new H2V push, or a Samza bulk processing job should both use
+   * this method.  The push job ID needs to be unique for this push.  Multiple requests with the same pushJobId are
+   * idempotent and will return the same topic.
+   * @param storeName Name of the store being written to.
+   * @param storeSize Estimated size of push in bytes, used to determine partitioning
+   * @param pushJobId Unique Id for this job
+   * @return VersionCreationResponse includes topic and partitioning
+   */
+  public VersionCreationResponse requestTopicForWrites(String storeName, long storeSize, ControllerApiConstants.PushType pushType, String pushJobId) {
+    try {
+      List<NameValuePair> params = newParams(clusterName);
+      params.add(new BasicNameValuePair(ControllerApiConstants.NAME, storeName));
+      params.add(new BasicNameValuePair(ControllerApiConstants.STORE_SIZE, Long.toString(storeSize)));
+      params.add(new BasicNameValuePair(ControllerApiConstants.PUSH_JOB_ID, pushJobId));
+      params.add(new BasicNameValuePair(ControllerApiConstants.PUSH_TYPE, pushType.toString()));
+      String responseJson = postRequest(ControllerRoute.REQUEST_TOPIC.getPath(), params);
+      return mapper.readValue(responseJson, VersionCreationResponse.class);
+    } catch (Exception e){
+      return handleError(
+          new VeniceException("Error requesting topic for store: " + storeName, e), new VersionCreationResponse());
     }
   }
 
