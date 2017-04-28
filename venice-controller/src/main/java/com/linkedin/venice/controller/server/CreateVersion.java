@@ -84,9 +84,8 @@ public class CreateVersion {
         }
 
         //looked up params
-        Store store = admin.getStore(clusterName, storeName);
         int replicationFactor = admin.getReplicationFactor(clusterName, storeName);
-        int partitionCount = store.getPartitionCount();
+        int partitionCount = admin.calculateNumberOfPartitions(clusterName, storeName, storeSize);
 
         responseObject.setCluster(clusterName);
         responseObject.setName(storeName);
