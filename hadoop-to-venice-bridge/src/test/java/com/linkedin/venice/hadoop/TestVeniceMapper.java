@@ -10,11 +10,10 @@ import org.apache.hadoop.io.BytesWritable;
 import org.apache.hadoop.io.NullWritable;
 import org.apache.hadoop.mapred.JobConf;
 import org.apache.hadoop.mapred.OutputCollector;
-import org.junit.Assert;
 import org.mockito.ArgumentCaptor;
+import org.testng.Assert;
 import org.testng.annotations.Test;
 
-import javax.xml.bind.DatatypeConverter;
 import java.io.IOException;
 
 import static org.mockito.Matchers.*;

@@ -79,6 +79,8 @@ jar {
           // exclude("mapred*.xml")
           // exclude("core*.xml")
           exclude("**/org.apache.hadoop*")
+          // filtering all the container related classes since they could conflict with customers' job dependencies
+          exclude("**/com/linkedin/container/**")
        }
   }
 
