@@ -144,6 +144,10 @@ public class AdminSparkServer extends AbstractVeniceService {
     httpService.stop();
   }
 
+  public int getPort(){
+    return port;
+  }
+
   private String writeMenu(String title, String postAction, List<String> parameters) {
     StringBuilder sb = new StringBuilder();
     sb.append("<html>");

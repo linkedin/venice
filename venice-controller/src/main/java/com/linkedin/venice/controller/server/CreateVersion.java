@@ -5,7 +5,6 @@ import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceHttpException;
-import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.Utils;
 import org.apache.http.HttpStatus;
@@ -100,13 +99,8 @@ public class CreateVersion {
             responseObject.setKafkaTopic(Version.composeKafkaTopic(storeName, version.getNumber()));
             break;
           case STREAM:
-            //Verify that the real-time buffer topic exists
-            //create the buffer topic if it doesn't exist
-            //return the topic name for the real time buffer topic
-            if (1==1) {
-              throw new VeniceHttpException(HttpStatus.SC_NOT_IMPLEMENTED,
-                  "Venice does not yet support streaming records into a hybrid store");
-            }
+            String realTimeTopic = admin.getRealTimeTopic(clusterName, storeName);
+            responseObject.setKafkaTopic(realTimeTopic);
             break;
           default:
             throw new VeniceException(pushTypeString + " is an unrecognized " + PUSH_TYPE);

@@ -436,6 +436,11 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   @Override
+  public synchronized String getRealTimeTopic(String clusterName, String storeName){
+    return veniceHelixAdmin.getRealTimeTopic(clusterName, storeName);
+  }
+
+  @Override
   public int getCurrentVersion(String clusterName, String storeName) {
     throw new VeniceUnsupportedOperationException("getCurrentVersion");
   }

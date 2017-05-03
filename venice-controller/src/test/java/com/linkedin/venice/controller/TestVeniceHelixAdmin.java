@@ -1,27 +1,33 @@
 package com.linkedin.venice.controller;
 
 import com.linkedin.venice.ConfigKeys;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
+import com.linkedin.venice.helix.HelixRoutingDataRepository;
 import com.linkedin.venice.helix.HelixState;
 import com.linkedin.venice.helix.HelixStatusMessageChannel;
 import com.linkedin.venice.helix.Replica;
-import com.linkedin.venice.pushmonitor.KillOfflinePushMessage;
-import com.linkedin.venice.meta.PartitionAssignment;
-import com.linkedin.venice.meta.ReadWriteStoreRepository;
-import com.linkedin.venice.meta.RoutingDataRepository;
-import com.linkedin.venice.meta.VersionStatus;
-import com.linkedin.venice.pushmonitor.OfflinePushMonitor;
-import com.linkedin.venice.status.StatusMessageHandler;
-import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.helix.HelixRoutingDataRepository;
 import com.linkedin.venice.integration.utils.KafkaBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
-import com.linkedin.venice.pushmonitor.ExecutionStatus;
+import com.linkedin.venice.meta.PartitionAssignment;
+import com.linkedin.venice.meta.ReadWriteStoreRepository;
+import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
-import com.linkedin.venice.utils.*;
-
+import com.linkedin.venice.meta.VersionStatus;
+import com.linkedin.venice.pushmonitor.ExecutionStatus;
+import com.linkedin.venice.pushmonitor.KillOfflinePushMessage;
+import com.linkedin.venice.pushmonitor.OfflinePushMonitor;
+import com.linkedin.venice.status.StatusMessageHandler;
+import com.linkedin.venice.utils.FlakyTestRetryAnalyzer;
+import com.linkedin.venice.utils.HelixUtils;
+import com.linkedin.venice.utils.MockTestStateModelFactory;
+import com.linkedin.venice.utils.PropertyBuilder;
+import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.Time;
+import com.linkedin.venice.utils.Utils;
+import com.linkedin.venice.utils.VeniceProperties;
 import io.tehuti.metrics.MetricsRepository;
 import java.io.IOException;
 import java.nio.file.Paths;
@@ -532,6 +538,33 @@ public class TestVeniceHelixAdmin {
     Version idempotentTwo = veniceAdmin.incrementVersionIdempotent(clusterName, storeName, pushJobId, 1, 1);
     Assert.assertEquals(idempotentOne.getNumber(), idempotentTwo.getNumber(), "Idempotent version increment with same pushId must return same version number");
     Assert.assertEquals(idempotentOne.kafkaTopicName(), idempotentTwo.kafkaTopicName(), "Idempotent version increment with same pushId must return same kafka topic");
+  }
+
+  @Test
+  public void testGetRealTimeTopic(){
+    String storeName = TestUtils.getUniqueString("store");
+    try {
+      String rtTopic = veniceAdmin.getRealTimeTopic(clusterName, storeName);
+      Assert.fail("Must not be able to get a real time topic until the store is created");
+    } catch (VeniceNoStoreException e){
+      //expected
+    }
+
+    veniceAdmin.addStore(clusterName, storeName, "owner", "test", keySchema, valueSchema);
+
+    try {
+      veniceAdmin.getRealTimeTopic(clusterName, storeName);
+      Assert.fail("Must not be able to get a real time topic until the store is initialized with a version");
+    } catch (VeniceException e){
+      Assert.assertTrue(e.getMessage().contains("is not initialized with a version"));
+    }
+
+    int partitions = 2; //TODO verify partition count for RT topic.
+    veniceAdmin.addVersion(clusterName, storeName, 1, partitions, 1);
+
+    String rtTopic = veniceAdmin.getRealTimeTopic(clusterName, storeName);
+    Assert.assertEquals(rtTopic, storeName + "_rt");
+
   }
 
   @Test
