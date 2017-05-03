@@ -47,6 +47,15 @@ dependencies {
     runtime libraries.httpClient
 }
 
+configurations {
+    jarRuntime {
+        description = 'this configuration will include all the dependencies to generate the fat jar'
+        extendsFrom runtime
+    }
+    // filtering all the container related classes since they could conflict with customers' job dependencies
+    jarRuntime.exclude group: 'com.linkedin.container'
+}
+
 configurations.all {
   resolutionStrategy {
     // Kafka expects 1.6.2 dependency, but via avro it ends up with 1.5 version which has an API that kafka uses removed.
@@ -60,9 +69,9 @@ configurations.all {
 
 
 jar {
-  // including all runtime dependency jars (fat jar)
-  // from configurations.runtime.collect {
-  from configurations.runtime
+  // including all jar runtime dependency jars (fat jar)
+  // from configurations.jarRuntime.collect {
+  from configurations.jarRuntime
   // from configurations.compile
       .filter {!it.absolutePath.endsWith(".xml")}
       .collect {
@@ -79,8 +88,6 @@ jar {
           // exclude("mapred*.xml")
           // exclude("core*.xml")
           exclude("**/org.apache.hadoop*")
-          // filtering all the container related classes since they could conflict with customers' job dependencies
-          exclude("**/com/linkedin/container/**")
        }
   }
 
