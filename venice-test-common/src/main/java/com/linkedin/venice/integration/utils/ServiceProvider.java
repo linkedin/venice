@@ -6,6 +6,5 @@ package com.linkedin.venice.integration.utils;
  *
  * @param <S> The type of {@link ProcessWrapper} returned.
  */
-interface ServiceProvider<S extends ProcessWrapper> {
-  S get(String serviceName, int port) throws Exception;
+interface ServiceProvider<S extends ProcessWrapper> extends ArbitraryServiceProvider<S> {
 }

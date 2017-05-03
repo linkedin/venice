@@ -63,6 +63,8 @@ public interface Admin {
      */
     Version incrementVersionIdempotent(String clusterName, String storeName, String pushJobId, int numberOfPartions, int replicationFactor);
 
+    String getRealTimeTopic(String clusterName, String storeName);
+
     int getCurrentVersion(String clusterName, String storeName);
 
     Version peekNextVersion(String clusterName, String storeName);

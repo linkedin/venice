@@ -12,7 +12,8 @@ import org.codehaus.jackson.annotate.JsonProperty;
  */
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class Version implements Comparable<Version> {
-  private static final String SEPARATOR = "_v";
+  private static final String VERSION_SEPARATOR = "_v";
+  private static final String REAL_TIME_TOPIC_SUFFIX = "_rt";
   /**
    * Name of the store which this version belong to.
    */
@@ -160,15 +161,19 @@ public class Version implements Comparable<Version> {
   }
 
   public static String parseStoreFromKafkaTopicName(@NotNull String kafkaTopic) {
-    return kafkaTopic.substring(0, kafkaTopic.lastIndexOf(SEPARATOR));
+    return kafkaTopic.substring(0, kafkaTopic.lastIndexOf(VERSION_SEPARATOR));
   }
 
   public static int parseVersionFromKafkaTopicName(@NotNull String kafkaTopic) {
-    return Integer.valueOf(kafkaTopic.substring(kafkaTopic.lastIndexOf(SEPARATOR) + SEPARATOR.length()));
+    return Integer.valueOf(kafkaTopic.substring(kafkaTopic.lastIndexOf(VERSION_SEPARATOR) + VERSION_SEPARATOR.length()));
   }
 
   public static String composeKafkaTopic(String storeName,int versionNumber){
-    return storeName + SEPARATOR + versionNumber;
+    return storeName + VERSION_SEPARATOR + versionNumber;
+  }
+
+  public static String composeRealTimeTopic(String storeName){
+    return storeName + REAL_TIME_TOPIC_SUFFIX;
   }
 
   public static boolean topicIsValidStoreVersion(String kafkaTopic){

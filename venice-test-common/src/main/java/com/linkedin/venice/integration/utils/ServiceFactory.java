@@ -1,8 +1,12 @@
 package com.linkedin.venice.integration.utils;
 
+import com.linkedin.venice.controller.Admin;
+import com.linkedin.venice.controller.server.AdminSparkServer;
 import com.linkedin.venice.exceptions.VeniceException;
 
 import com.linkedin.venice.utils.Time;
+import io.tehuti.metrics.MetricsRepository;
+import java.io.File;
 import org.apache.log4j.Logger;
 
 /**
@@ -75,6 +79,19 @@ public class ServiceFactory {
   }
 
   /**
+   * Get a running admin spark server with a passed-in {@link Admin}, good for tests that want to provide a mock admin
+   * @param admin
+   * @return
+   */
+  public static AdminSparkServer getMockAdminSparkServer(Admin admin) {
+    return getService("MockAdminSparkServer", (serviceName, port) -> {
+      AdminSparkServer server = new AdminSparkServer(port, admin, new MetricsRepository());
+      server.start();
+      return server;
+    });
+  }
+
+        /**
    * Deprecated, use the replacement method that accepts a boolean for whether to use ssl or not
    * @param clusterName
    * @param kafkaBrokerWrapper
@@ -189,7 +206,7 @@ public class ServiceFactory {
     return getService(serviceName, serviceProvider);
   }
 
-  private static <S extends ProcessWrapper> S getService(String serviceName, ServiceProvider<S> serviceProvider) {
+  private static <S> S getService(String serviceName, ArbitraryServiceProvider<S> serviceProvider) {
     // Just some initial state. If the fabric of space-time holds up, you should never see these strings.
     Exception lastException = new VeniceException("There is no spoon.");
     String errorMessage = "If you see this message, something went horribly wrong.";
@@ -198,8 +215,10 @@ public class ServiceFactory {
       try {
         S wrapper = serviceProvider.get(serviceName, IntegrationTestUtils.getFreePort());
 
-        // N.B.: The contract for start() is that it should block until the wrapped service is fully started.
-        wrapper.start();
+        if (wrapper instanceof ProcessWrapper) {
+          // N.B.: The contract for start() is that it should block until the wrapped service is fully started.
+          ((ProcessWrapper) wrapper).start();
+        }
         return wrapper;
       } catch (Exception e) {
         lastException = e;
@@ -211,4 +230,5 @@ public class ServiceFactory {
 
     throw new VeniceException(errorMessage + " Aborting.", lastException);
   }
+
 }

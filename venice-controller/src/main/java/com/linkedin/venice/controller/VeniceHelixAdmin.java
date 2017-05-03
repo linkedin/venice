@@ -279,7 +279,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         }
 
         VeniceControllerClusterConfig clusterConfig = controllerStateModelFactory.getModel(clusterName).getResources().getConfig();
-        createKafkaTopic(clusterName, version.kafkaTopicName(), newTopicPartitionCount, clusterConfig.getKafkaReplicaFactor());
+        createKafkaTopic(clusterName, version.kafkaTopicName(), newTopicPartitionCount, clusterConfig.getKafkaReplicaFactor(), true);
         if (whetherStartOfflinePush) {
             // TODO: there could be some problem here since topic creation is an async op, which means the new topic
             // may not exist, When storage node is trying to consume the new created topic.
@@ -324,6 +324,37 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             repository.unLock();
         }
         return addVersion(clusterName, storeName, pushJobId, VERSION_ID_UNSET, numberOfPartitions, replicationFactor, true);
+    }
+
+    @Override
+    public synchronized String getRealTimeTopic(String clusterName, String storeName){
+        checkControllerMastership(clusterName);
+        Set<String> currentTopics = topicManager.listTopics();
+        String realTimeTopic = Version.composeRealTimeTopic(storeName);
+        if (currentTopics.contains(realTimeTopic)){
+            return realTimeTopic;
+        } else {
+            HelixReadWriteStoreRepository repository = getVeniceHelixResource(clusterName).getMetadataRepository();
+            repository.lock();
+            try {
+                Store store = repository.getStore(storeName);
+                if (store == null) {
+                    throwStoreDoesNotExist(clusterName, storeName);
+                }
+                int partitionCount = store.getPartitionCount();
+                if (partitionCount == 0){
+                    //TODO:  partitioning is currently decided on first version push, and we need to match that versioning
+                    // we should evaluate alternatives such as allowing the RT topic request to initialize the number of
+                    // partitions, or setting the number of partitions at store creation time instead of at first version
+                    throw new VeniceException("Store: " + storeName + " is not initialized with a version yet");
+                }
+                VeniceControllerClusterConfig clusterConfig = controllerStateModelFactory.getModel(clusterName).getResources().getConfig();
+                createKafkaTopic(clusterName, realTimeTopic, partitionCount, clusterConfig.getKafkaReplicaFactor(), false);
+            } finally {
+                repository.unLock();
+            }
+            return realTimeTopic;
+        }
     }
 
     @Override
@@ -638,9 +669,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     // TODO: Though controller can control, multiple Venice-clusters, kafka topic name needs to be unique
     // among them. If there the same store name is present in two different venice clusters, the code
     // will fail and might exhibit other issues.
-    private void createKafkaTopic(String clusterName, String kafkaTopic, int numberOfPartition, int kafkaReplicaFactor) {
+    private void createKafkaTopic(String clusterName, String kafkaTopic, int numberOfPartition, int kafkaReplicaFactor, boolean eternal) {
         checkControllerMastership(clusterName);
-        topicManager.createTopic(kafkaTopic, numberOfPartition, kafkaReplicaFactor);
+        topicManager.createTopic(kafkaTopic, numberOfPartition, kafkaReplicaFactor, eternal);
     }
 
     private void createHelixResources(String clusterName, String kafkaTopic , int numberOfPartition , int replicationFactor)
@@ -900,7 +931,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     private void throwStoreDoesNotExist(String clusterName, String storeName) {
         String errorMessage = "Store:" + storeName + " does not exist in cluster:" + clusterName;
         logger.info(errorMessage);
-        throw new VeniceException(errorMessage);
+        throw new VeniceNoStoreException(storeName);
     }
 
     private void throwResourceAlreadyExists(String resourceName) {

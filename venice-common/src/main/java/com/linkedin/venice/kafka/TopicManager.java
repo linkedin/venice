@@ -17,6 +17,7 @@ import com.linkedin.venice.utils.Utils;
 import kafka.admin.AdminUtils;
 import kafka.admin.RackAwareMode;
 import kafka.common.TopicExistsException;
+import kafka.server.TopicConfigHandler;
 import kafka.utils.ZKStringSerializer$;
 import kafka.utils.ZkUtils;
 import org.I0Itec.zkclient.ZkClient;
@@ -64,7 +65,19 @@ public class TopicManager implements Closeable {
     this.kafkaConsumer = consumer;
   }
 
+  @Deprecated
   public void createTopic(String topicName, int numPartitions, int replication) {
+    createTopic(topicName, numPartitions, replication, true);
+  }
+
+  /**
+   * Create a topic
+   * @param topicName Name for the new topic
+   * @param numPartitions number of partitions
+   * @param replication replication factor
+   * @param eternal whether the topic should have infinite (~250 mil years) retention
+   */
+  public void createTopic(String topicName, int numPartitions, int replication, boolean eternal) {
     logger.info("Creating topic: " + topicName + " partitions: " + numPartitions + " replication: " + replication);
     try {
       // TODO: Stop using Kafka APIs which depend on ZK.
@@ -75,7 +88,11 @@ public class TopicManager implements Closeable {
        *
        * RackAwareMode.Safe: Use rack information if every broker has a rack. Otherwise, fallback to Disabled mode.
        */
-      AdminUtils.createTopic(getZkUtils(), topicName, numPartitions, replication, new Properties(), RackAwareMode.Safe$.MODULE$);
+      Properties topicProperties = new Properties();
+      if (eternal) {
+        topicProperties.put("retention.ms", Long.toString(Long.MAX_VALUE));
+      } // TODO: else apply buffer topic configured retention.
+      AdminUtils.createTopic(getZkUtils(), topicName, numPartitions, replication, topicProperties, RackAwareMode.Safe$.MODULE$);
     } catch (TopicExistsException e) {
       logger.warn("Met error when creating kakfa topic: " + topicName, e);
     }
