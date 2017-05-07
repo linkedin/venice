@@ -171,6 +171,12 @@ public class HelixOfflinePushMonitorAccessor implements OfflinePushAccessor {
    */
   private void compareAndUpdateReplicaStatus(String topic, int partitionId, String instanceId, ExecutionStatus status,
       long progress) {
+    // If a version was created prior to the deployment of this new push monitor, an exception would be thrown while upgrading venice server.
+    // Because the server would try to update replica status but there is no ZNode for that replica. So we add a check here to ignore the update
+    // in case of ZNode missing.
+    if (!pushStatusExists(topic)) {
+      return;
+    }
     logger.info(
         "Start update replica status for topic:" + topic + " partition:" + partitionId + " in cluster:" + clusterName);
     HelixUtils.compareAndUpdate(partitionStatusAccessor, getPartitionStatusPath(topic, partitionId), retryCount,
@@ -242,6 +248,14 @@ public class HelixOfflinePushMonitorAccessor implements OfflinePushAccessor {
     int lastSlash = path.lastIndexOf('/');
     int secondLastSlash = path.lastIndexOf('/', lastSlash - 1);
     return path.substring(secondLastSlash + 1, lastSlash);
+  }
+
+  private boolean pushStatusExists(String topic) {
+    if (!partitionStatusAccessor.exists(getOfflinePushStatusPath(topic), AccessOption.PERSISTENT)) {
+      logger.warn("Push status does not exist, ignore the subsequent operation. Topic: " + topic);
+      return false;
+    }
+    return true;
   }
 
   /**

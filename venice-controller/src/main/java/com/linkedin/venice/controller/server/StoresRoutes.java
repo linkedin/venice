@@ -87,6 +87,7 @@ public class StoresRoutes {
         admin.storeMetadataUpdate(veniceRepsonse.getCluster(), veniceRepsonse.getName(), store->{
           String owner = AdminSparkServer.getOptionalParameterValue(request, OWNER, store.getOwner());
           String principles = AdminSparkServer.getOptionalParameterValue(request, PRINCIPLES, String.join(",", store.getPrinciples()));
+          int oldCurrentVersion = store.getCurrentVersion();
           int partitionCount = Utils.parseIntFromString(
               AdminSparkServer.getOptionalParameterValue(request, PARTITION_COUNT,
                   String.valueOf(store.getPartitionCount())), "partitionCount");
@@ -103,8 +104,19 @@ public class StoresRoutes {
           store.setOwner(owner);
           store.setPrinciples(Utils.parseCommaSeparatedStringToList(principles));
           store.setPartitionCount(partitionCount);
-          store.setCurrentVersion(currentVersion);
+          // Enable writes at first, otherwise setCurrentVersion could fail the whole operation prior to enable writes.
+          // For example, store's enableWrites is false, now a request coming to enable write, but an exception would be
+          // thrown because we can not change the current version when the enable writes is false. So enable writes
+          // would always fail.
           store.setEnableWrites(enableWrites);
+          // We add this pre-check to prevent throwing exception while set enable writes to false.
+          // Otherwise, the request would fail because you could not change the current version once the store was already
+          // disabled.
+          // If a user send a request to disable store writes and change the current version together. We should fail
+          // that request.
+          if(currentVersion != oldCurrentVersion) {
+            store.setCurrentVersion(currentVersion);
+          }
           store.setEnableReads(enableReads);
           return store;
         });

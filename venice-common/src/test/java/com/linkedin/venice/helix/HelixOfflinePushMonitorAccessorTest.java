@@ -1,6 +1,7 @@
 package com.linkedin.venice.helix;
 
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.exceptions.ZkDataAccessException;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
@@ -75,6 +76,17 @@ public class HelixOfflinePushMonitorAccessorTest {
         ReadOnlyPartitionStatus.fromPartitionStatus(accessor.getPartitionStatus(topic, partitionId)));
     OfflinePushStatus remoteOfflinePushStatus = accessor.getOfflinePushStatusAndItsPartitionStatuses(topic);
     Assert.assertEquals(remoteOfflinePushStatus, offlinePushStatus);
+  }
+
+  @Test
+  public void testUpdateReplicaStatusThatDoesNotExist(){
+    int partitionId = 1;
+    try {
+      accessor.updateReplicaStatus(topic, partitionId, "i1", ExecutionStatus.COMPLETED, 0);
+      Assert.assertNull(accessor.getPartitionStatus(topic, partitionId));
+    }catch (ZkDataAccessException e){
+      Assert.fail("Should skip the update instead of throw a exception here.");
+    }
   }
 
   @Test
