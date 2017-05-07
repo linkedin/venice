@@ -490,6 +490,9 @@ public class TestAdminSparkServer {
 
     venice.getNewStore(storeName);
     ControllerClient controllerClient = new ControllerClient(venice.getClusterName(), routerUrl);
+    // Disable writes at first and test could we enable writes again through the update store metohd.
+    Assert.assertFalse(controllerClient.enableStoreReadWrites(storeName, false).isError(),
+        "Disable writes should not fail.");
 
     ControllerResponse response =
         controllerClient.updateStore(storeName, Optional.of(owner), Optional.of(principles), Optional.of(partitionCount),
@@ -503,6 +506,13 @@ public class TestAdminSparkServer {
     Assert.assertEquals(store.getCurrentVersion(), current);
     Assert.assertEquals(store.isEnableReads(), enableReads);
     Assert.assertEquals(store.isEnableWrites(), enableWrite);
+
+    enableWrite = false;
+    Assert.assertFalse(controllerClient
+            .updateStore(storeName, Optional.of(owner), Optional.of(principles), Optional.of(partitionCount),
+                Optional.of(current), Optional.of(enableReads), Optional.of(enableWrite)).isError(),
+        "We should be able to disable store writes again.");
+
 
   }
 
