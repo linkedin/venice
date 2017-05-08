@@ -120,6 +120,10 @@ public class RouterHeartbeat extends AbstractVeniceService {
 
   private boolean initialize(){
     try {
+      // Check the connection at first to avoid throwing an exception later.
+      if (!this.manager.isConnected()) {
+        return false;
+      }
       this.manager.addLiveInstanceChangeListener((list, context) -> {
         logger.info("new live instance list passed to change listener: " + list.toString()); //DEBUG, REMOVE
         liveInstances = Collections.unmodifiableList(list);
@@ -129,6 +133,11 @@ public class RouterHeartbeat extends AbstractVeniceService {
       logger.warn("Failed to register LiveInstanceChangeListener in RouterHeartbeat", e);
       return false;
     }
+  }
+
+  // Only used by test to verify whether the thread has been initialized or not.
+  protected boolean isInitialized() {
+    return initialized;
   }
 
 }
