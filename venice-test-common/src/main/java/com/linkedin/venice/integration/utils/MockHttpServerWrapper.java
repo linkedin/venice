@@ -41,6 +41,7 @@ public class  MockHttpServerWrapper extends ProcessWrapper {
   private ChannelFuture serverFuture;
   private int port;
   private Map<String, FullHttpResponse> uriToResponseMap = new ConcurrentHashMap<>();
+  private Map<String, FullHttpResponse> uriPatternToResponseMap = new ConcurrentHashMap<>();
 
   private List<D2Server> d2ServerList;
 
@@ -71,7 +72,7 @@ public class  MockHttpServerWrapper extends ProcessWrapper {
           protected void initChannel(SocketChannel ch) throws Exception {
             ch.pipeline()
                 .addLast(new HttpServerCodec())
-                .addLast(new MockServerHandler(uriToResponseMap));
+                .addLast(new MockServerHandler(uriToResponseMap, uriPatternToResponseMap));
           }
         })
         .option(ChannelOption.SO_BACKLOG, 128)
@@ -99,6 +100,7 @@ public class  MockHttpServerWrapper extends ProcessWrapper {
         d2Server.forceStart();
       }
     }
+    logger.info("Mock Http Server has been started.");
   }
 
   @Override
@@ -117,6 +119,7 @@ public class  MockHttpServerWrapper extends ProcessWrapper {
     workerGroup.shutdownGracefully();
     bossGroup.shutdownGracefully();
     shutdown.sync();
+    logger.info("Mock Http Server has been stopped.");
   }
 
   @Override
@@ -129,6 +132,10 @@ public class  MockHttpServerWrapper extends ProcessWrapper {
     uriToResponseMap.put(uri, response);
   }
 
+  public void addResponseForUriPattern(String uriPattern, FullHttpResponse response) {
+    uriPatternToResponseMap.put(uriPattern, response);
+  }
+
   public void clearResponseMapping() {
     uriToResponseMap.clear();
   }
@@ -137,11 +144,13 @@ public class  MockHttpServerWrapper extends ProcessWrapper {
   private static class MockServerHandler extends ChannelInboundHandlerAdapter {
     private final Logger logger = Logger.getLogger(MockServerHandler.class);
     private final Map<String, FullHttpResponse> responseMap;
+    private final Map<String, FullHttpResponse> uriPatternToResponseMap;
     private final FullHttpResponse notFoundResponse;
     private final FullHttpResponse internalErrorResponse;
 
-    public MockServerHandler(Map<String, FullHttpResponse> responseMap) {
+    public MockServerHandler(Map<String, FullHttpResponse> responseMap, Map<String, FullHttpResponse> uriPatternToResponseMap) {
       this.responseMap = responseMap;
+      this.uriPatternToResponseMap = uriPatternToResponseMap;
 
       this.notFoundResponse = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.NOT_FOUND, Unpooled.buffer(1));
       this.notFoundResponse.headers().add(HttpHeaders.CONTENT_TYPE, "text/plain");
@@ -166,6 +175,14 @@ public class  MockHttpServerWrapper extends ProcessWrapper {
           logger.info("Found matched response");
           ctx.writeAndFlush(responseMap.get(uri).copy()).addListener(ChannelFutureListener.CLOSE);
         } else {
+          for (Map.Entry<String, FullHttpResponse> entry : uriPatternToResponseMap.entrySet()) {
+            String uriPattern = entry.getKey();
+            if (uri.matches(uriPattern)) {
+              logger.info("Found matched response by uri pattern: " + uriPattern);
+              ctx.writeAndFlush(entry.getValue().copy()).addListener(ChannelFutureListener.CLOSE);
+              return;
+            }
+          }
           logger.info("No matched response");
           ctx.writeAndFlush(notFoundResponse.copy()).addListener(ChannelFutureListener.CLOSE);
         }

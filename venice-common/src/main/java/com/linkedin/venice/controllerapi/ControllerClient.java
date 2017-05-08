@@ -755,6 +755,7 @@ public class ControllerClient implements Closeable {
 
   private String getRequest(String url, String path, List<NameValuePair> params)
       throws ExecutionException, InterruptedException {
+    url = url.trim();
     String queryString = URLEncodedUtils.format(params, StandardCharsets.UTF_8);
     final HttpGet get = new HttpGet(url + path + "?" + queryString);
     return getJsonFromHttp(get);
