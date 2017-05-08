@@ -43,6 +43,7 @@ public class TestRouterHeartbeat {
 
     // Create the mock manager and verify our dummy instance is healthy before starting the heartbeat
     ZKHelixManager mockManager = Mockito.mock(ZKHelixManager.class);
+    Mockito.doReturn(true).when(mockManager).isConnected();
     Assert.assertTrue(healthMon.isHostHealthy(dummy, "partition"));
     RouterHeartbeat heartbeat = new RouterHeartbeat(mockManager, healthMon, 1, TimeUnit.SECONDS, 500, Optional.empty());
     heartbeat.start();
@@ -80,10 +81,15 @@ public class TestRouterHeartbeat {
 
     // Create our manager and start the heartbeat process.
     ZKHelixManager mockManager = Mockito.mock(ZKHelixManager.class);
+    // test initialize heartbeat before manager connecting.
+    Mockito.doReturn(false).when(mockManager).isConnected();
     RouterHeartbeat heartbeat = new RouterHeartbeat(mockManager, healthMon, 100, TimeUnit.MILLISECONDS, 500, Optional.empty());
     heartbeat.start();
+    Assert.assertFalse(heartbeat.isInitialized(), "Heartbeat thread should not be initialized before manager connecting.");
     Thread.sleep(200); // Let heartbeat initialize.  TODO: More deterministic solution
-
+    // Connect manager.
+    Mockito.doReturn(true).when(mockManager).isConnected();
+    Thread.sleep(200);
     // The heartbeat calls the manager to get live instances to query, and passes in a listener.  We capture the listener
     // and supply it with our list of LiveInstances (which has our dummy Instance)
     ArgumentCaptor<LiveInstanceChangeListener> listenerArgument = ArgumentCaptor.forClass(LiveInstanceChangeListener.class);
