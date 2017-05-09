@@ -35,4 +35,13 @@ public class TestAdminTopicUtils {
     String invalidAdminTopicName = "invalid_topic_name";
     Assert.assertFalse(AdminTopicUtils.isAdminTopic(invalidAdminTopicName));
   }
+
+  @Test
+  public void testIsKafkaInternalTopic() {
+    String kafkaInternalTopic = "__consumer_offsets";
+    Assert.assertTrue(AdminTopicUtils.isKafkaInternalTopic(kafkaInternalTopic));
+
+    String veniceTopic = "test_store_v1";
+    Assert.assertFalse(AdminTopicUtils.isKafkaInternalTopic(veniceTopic));
+  }
 }

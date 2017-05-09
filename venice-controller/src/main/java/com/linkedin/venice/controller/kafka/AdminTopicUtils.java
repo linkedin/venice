@@ -8,6 +8,7 @@ public class AdminTopicUtils {
   // TODO: Maybe we should make this prefix configurable so that different environments can share
   // the same Kafka cluster
   public static String ADMIN_TOPIC_PREFIX = "venice_admin_";
+  private static String KAFKA_INTERNAL_TOPIC_PREFIX = "__";
 
   public static String getTopicNameFromClusterName(String clusterName) {
     return ADMIN_TOPIC_PREFIX + clusterName;
@@ -22,5 +23,9 @@ public class AdminTopicUtils {
 
   public static boolean isAdminTopic(String topicName) {
     return topicName.startsWith(ADMIN_TOPIC_PREFIX);
+  }
+
+  public static boolean isKafkaInternalTopic(String topicName) {
+    return topicName.startsWith(KAFKA_INTERNAL_TOPIC_PREFIX);
   }
 }

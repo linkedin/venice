@@ -104,6 +104,10 @@ public class TopicMonitor extends AbstractVeniceService {
                 logger.debug("Skip admin topic: " + topic + " in Topic Monitor thread.");
                 continue;
               }
+              if (AdminTopicUtils.isKafkaInternalTopic(topic)) {
+                logger.debug("Skip kafka internal topic: " + topic + " in Topic Monitor thread");
+                continue;
+              }
               if (Version.topicIsValidStoreVersion(topic)) {
                 String storeName = Version.parseStoreFromKafkaTopicName(topic);
                 int version = Version.parseVersionFromKafkaTopicName(topic);
