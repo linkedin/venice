@@ -160,7 +160,7 @@ public class TestVeniceHelixAdmin {
       String storeName = TestUtils.getUniqueString("test-store");
       veniceAdmin.addStore(clusterName, storeName, "dev", "test", keySchema, valueSchema);
       veniceAdmin.incrementVersion(clusterName, storeName, 1, 1);
-      Assert.assertEquals(veniceAdmin.getOffLinePushStatus(clusterName, new Version(storeName, 1).kafkaTopicName())
+      Assert.assertEquals(veniceAdmin.getOffLinePushStatus(clusterName, Version.composeKafkaTopic(storeName, 1))
           .getExecutionStatus(), ExecutionStatus.STARTED, "Can not get offline job status correctly.");
     } catch (VeniceException e) {
       Assert.fail("Should be able to create store after starting cluster");

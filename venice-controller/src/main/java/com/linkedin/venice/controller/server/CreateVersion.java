@@ -2,15 +2,25 @@ package com.linkedin.venice.controller.server;
 
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.controller.Admin;
+import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceHttpException;
+import com.linkedin.venice.message.KafkaKey;
+import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.serialization.DefaultSerializer;
+import com.linkedin.venice.serialization.KafkaKeySerializer;
 import com.linkedin.venice.utils.Utils;
+import com.linkedin.venice.utils.VeniceProperties;
+import com.linkedin.venice.writer.VeniceWriter;
+import java.util.HashMap;
+import java.util.Properties;
 import org.apache.http.HttpStatus;
 import org.apache.log4j.Logger;
 import spark.Route;
 
+import static com.linkedin.venice.ConfigKeys.*;
 import static com.linkedin.venice.controllerapi.ControllerApiConstants.*;
 import static com.linkedin.venice.controllerapi.ControllerRoute.*;
 
@@ -112,5 +122,61 @@ public class CreateVersion {
       response.type(HttpConstants.JSON);
       return AdminSparkServer.mapper.writeValueAsString(responseObject);
     };
+  }
+
+  public static Route writeEndOfPush(Admin admin) {
+    return (request, response) -> {
+      ControllerResponse responseObject = new ControllerResponse();
+      try {
+        AdminSparkServer.validateParams(request, END_OF_PUSH.getParams(), admin);
+
+        //Query params
+        String clusterName = request.queryParams(CLUSTER);
+        String storeName = request.queryParams(NAME);
+        String versionString = request.queryParams(VERSION);
+        int versionNumber = Integer.parseInt(versionString);
+
+        responseObject.setCluster(clusterName);
+        responseObject.setName(storeName);
+
+        writeEndOfPush(admin, clusterName, storeName, versionNumber);
+
+      } catch (Throwable e) {
+        responseObject.setError(e.getMessage());
+        AdminSparkServer.handleError(e, request, response);
+      }
+      response.type(HttpConstants.JSON);
+      return AdminSparkServer.mapper.writeValueAsString(responseObject);
+    };
+  }
+
+  protected static void writeEndOfPush(Admin admin, String clusterName, String storeName, int versionNumber) {
+    //validate store and version exist
+    Store store = admin.getStore(clusterName, storeName);
+
+    if (store.getCurrentVersion() == versionNumber){
+      throw new VeniceHttpException(HttpStatus.SC_CONFLICT, "Cannot end push for version " + versionNumber + " that is currently being served");
+    }
+
+    if (!store.containsVersion(versionNumber)){
+      throw new VeniceHttpException(HttpStatus.SC_NOT_FOUND, "Version " + versionNumber + " was not found for Store " + storeName
+          + ".  Cannot end push for version that does not exist");
+    }
+
+    //write EOP message
+    try (VeniceWriter writer = getVeniceWriterForEndOfPush(admin.getKafkaBootstrapServers(), Version.composeKafkaTopic(storeName, versionNumber))) {
+      writer.broadcastEndOfPush(new HashMap<>());
+    }
+  }
+
+  private static VeniceWriter<KafkaKey, byte[]> getVeniceWriterForEndOfPush(String kafkaServers, String topic) {
+    Properties veniceWriterProperties = new Properties();
+    veniceWriterProperties.put(KAFKA_BOOTSTRAP_SERVERS, kafkaServers);
+    VeniceWriter<KafkaKey, byte[]> newVeniceWriter = new VeniceWriter<>(
+      new VeniceProperties(veniceWriterProperties),
+      topic,
+      new KafkaKeySerializer(),
+      new DefaultSerializer());
+    return newVeniceWriter;
   }
 }
