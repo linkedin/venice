@@ -3,6 +3,7 @@ package com.linkedin.venice.controller.server;
 import com.linkedin.venice.controllerapi.ControllerApiConstants;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.MultiStoreResponse;
+import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
@@ -12,6 +13,7 @@ import com.linkedin.venice.utils.TestUtils;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
@@ -25,7 +27,7 @@ import org.testng.annotations.Test;
 public class TestAdminSparkServerWithMultiServers {
   private VeniceClusterWrapper venice;
   private String routerUrl;
-  private final int numberOfServer = 4;
+  private final int numberOfServer = 6;
 
   @BeforeClass
   public void setUp() {
@@ -114,5 +116,24 @@ public class TestAdminSparkServerWithMultiServers {
       output.add(vcr);
       client.close();
     });
+  }
+
+  @Test
+  public void endOfPushEndpointTriggersVersionSwap(){
+    String storeName = TestUtils.getUniqueString("store");
+    String pushId = TestUtils.getUniqueString("pushId");
+    ControllerClient client = new ControllerClient(venice.getClusterName(), routerUrl);
+    venice.getNewStore(storeName);
+    StoreResponse freshStore = client.getStore(storeName);
+    int oldVersion = freshStore.getStore().getCurrentVersion();
+    VersionCreationResponse versionResponse = client.requestTopicForWrites(storeName, 1, ControllerApiConstants.PushType.BATCH, pushId);
+    int newVersion = versionResponse.getVersion();
+    Assert.assertNotEquals(newVersion, oldVersion, "Requesting a new version must not return the current version number");
+    client.writeEndOfPush(storeName, newVersion);
+    TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
+      StoreResponse storeResponse = client.getStore(storeName);
+      Assert.assertEquals(storeResponse.getStore().getCurrentVersion(), newVersion, "Writing end of push must flip the version to current");
+    });
+    client.close();
   }
 }

@@ -169,6 +169,19 @@ public class ControllerClient implements Closeable {
     }
   }
 
+  public ControllerResponse writeEndOfPush(String storeName, int version){
+    try {
+      List<NameValuePair> params = newParams(clusterName);
+      params.add(new BasicNameValuePair(ControllerApiConstants.NAME, storeName));
+      params.add(new BasicNameValuePair(ControllerApiConstants.VERSION, Integer.toString(version)));
+      String responseJson = postRequest(ControllerRoute.END_OF_PUSH.getPath(), params);
+      return mapper.readValue(responseJson, ControllerResponse.class);
+    } catch (Exception e){
+      return handleError(
+          new VeniceException("Error generating End Of Push for store: " + storeName, e), new ControllerResponse());
+    }
+  }
+
   @Deprecated
   public static VersionCreationResponse createNewStoreVersion(String urlsToFindMasterController, String clusterName, String storeName, long storeSize) {
     try (ControllerClient client = new ControllerClient(clusterName, urlsToFindMasterController)){
