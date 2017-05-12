@@ -26,7 +26,7 @@ public class OfflinePushMonitorTest {
   private ReadWriteStoreRepository mockStoreRepo;
   private StoreCleaner mockStoreCleaner;
   private int numberOfPartition = 1;
-  private int replicationFator = 3;
+  private int replicationFactor = 3;
 
   @BeforeMethod
   public void setup() {
@@ -41,18 +41,18 @@ public class OfflinePushMonitorTest {
   @Test
   public void testStartMonitorOfflinePush() {
     String topic = "testStartMonitorOfflinePush";
-    monitor.startMonitorOfflinePush(topic, numberOfPartition, replicationFator,
+    monitor.startMonitorOfflinePush(topic, numberOfPartition, replicationFactor,
         OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);
     OfflinePushStatus pushStatus = monitor.getOfflinePush(topic);
     Assert.assertEquals(pushStatus.getCurrentStatus(), ExecutionStatus.STARTED);
     Assert.assertEquals(pushStatus.getKafkaTopic(), topic);
     Assert.assertEquals(pushStatus.getNumberOfPartition(), numberOfPartition);
-    Assert.assertEquals(pushStatus.getReplicationFactor(), replicationFator);
+    Assert.assertEquals(pushStatus.getReplicationFactor(), replicationFactor);
     Mockito.verify(mockAccessor, Mockito.atLeastOnce()).createOfflinePushStatusAndItsPartitionStatuses(pushStatus);
     Mockito.verify(mockAccessor, Mockito.atLeastOnce()).subscribePartitionStatusChange(pushStatus, monitor);
     Mockito.verify(mockRoutingDataRepo, Mockito.atLeastOnce()).subscribeRoutingDataChange(topic, monitor);
     try {
-      monitor.startMonitorOfflinePush(topic, numberOfPartition, replicationFator,
+      monitor.startMonitorOfflinePush(topic, numberOfPartition, replicationFactor,
           OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);
       Assert.fail("Duplicated monitoring is not allowed. ");
     } catch (VeniceException e) {
@@ -62,7 +62,7 @@ public class OfflinePushMonitorTest {
   @Test
   public void testStopMonitorOfflinePush() {
     String topic = "testStopMonitorOfflinePush";
-    monitor.startMonitorOfflinePush(topic, numberOfPartition, replicationFator,
+    monitor.startMonitorOfflinePush(topic, numberOfPartition, replicationFactor,
         OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);
     OfflinePushStatus pushStatus = monitor.getOfflinePush(topic);
     monitor.stopMonitorOfflinePush(topic);
@@ -78,11 +78,43 @@ public class OfflinePushMonitorTest {
   }
 
   @Test
+  public void testStopMonitorErrorOfflinePush() {
+    String store = "testStopMonitorErrorOfflinePush";
+    for (int i = 0; i < OfflinePushMonitor.MAX_ERROR_PUSH_TO_KEEP; i++) {
+      String topic = Version.composeKafkaTopic(store, i);
+      monitor.startMonitorOfflinePush(topic, numberOfPartition, replicationFactor,
+          OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);
+      OfflinePushStatus pushStatus = monitor.getOfflinePush(topic);
+      pushStatus.updateStatus(ExecutionStatus.ERROR);
+      monitor.stopMonitorOfflinePush(topic);
+    }
+    // We should keeep MAX_ERROR_PUSH_TO_KEEP error push for debug.
+    for (int i = 0; i < OfflinePushMonitor.MAX_ERROR_PUSH_TO_KEEP; i++) {
+      Assert.assertNotNull(monitor.getOfflinePush(Version.composeKafkaTopic(store, i)));
+    }
+    // Add a new error push, the oldest one should be collected.
+    String topic = Version.composeKafkaTopic(store, OfflinePushMonitor.MAX_ERROR_PUSH_TO_KEEP + 1);
+    monitor.startMonitorOfflinePush(topic, numberOfPartition, replicationFactor,
+        OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);
+    OfflinePushStatus pushStatus = monitor.getOfflinePush(topic);
+    pushStatus.updateStatus(ExecutionStatus.ERROR);
+    monitor.stopMonitorOfflinePush(topic);
+    try {
+      monitor.getOfflinePush(Version.composeKafkaTopic(store, 0));
+      Assert.fail("Oldest error push should be collected.");
+    } catch (VeniceException e) {
+      //expected
+    }
+    Assert.assertNotNull(monitor.getOfflinePush(topic));
+  }
+
+  @Test
   public void testLoadAllPushes() {
     int statusCount = 3;
     List<OfflinePushStatus> statusList = new ArrayList<>(statusCount);
     for (int i = 0; i < statusCount; i++) {
-      OfflinePushStatus pushStatus = new OfflinePushStatus("testLoadAllPushes" + i, numberOfPartition, replicationFator,
+      OfflinePushStatus pushStatus = new OfflinePushStatus("testLoadAllPushes" + i, numberOfPartition,
+          replicationFactor,
           OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);
       pushStatus.setCurrentStatus(ExecutionStatus.COMPLETED);
       statusList.add(pushStatus);
@@ -100,7 +132,7 @@ public class OfflinePushMonitorTest {
     String topic = "testLoadRunningPushWhichIsNotUpdateToDate_v1";
     Store store = prepareMockStore(topic);
     List<OfflinePushStatus> statusList = new ArrayList<>();
-    OfflinePushStatus pushStatus = new OfflinePushStatus(topic, numberOfPartition, replicationFator,
+    OfflinePushStatus pushStatus = new OfflinePushStatus(topic, numberOfPartition, replicationFactor,
         OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);
     statusList.add(pushStatus);
     Mockito.doReturn(statusList).when(mockAccessor).loadOfflinePushStatusesAndPartitionStatuses();

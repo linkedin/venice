@@ -249,52 +249,57 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
         Version version = null;
         OfflinePushStrategy strategy = null;
-        repository.lock();
-        int newTopicPartitionCount = 0;
         try {
-            Store store = repository.getStore(storeName);
-            if(store == null) {
-                throwStoreDoesNotExist(clusterName, storeName);
-            }
-            strategy = store.getOffLinePushStrategy();
-            if(versionNumber == VERSION_ID_UNSET) {
-                // No Version supplied, generate new version.
-                version = store.increaseVersion(pushJobId);
-            } else {
-                if (store.containsVersion(versionNumber)) {
-                    throwVersionAlreadyExists(storeName, versionNumber);
-                }
-                version = new Version(storeName, versionNumber, pushJobId);
-                store.addVersion(version);
-            }
-            // Update default partition count if it have not been assigned.
-            if(store.getPartitionCount() == 0){
-                store.setPartitionCount(numberOfPartition); //TODO, persist numberOfPartitions at the version level
-            }
-            newTopicPartitionCount = store.getPartitionCount();
-            repository.updateStore(store);
-            logger.info("Add version:"+version.getNumber()+" for store:" + storeName);
-        } finally {
-            repository.unLock();
-        }
-
-        VeniceControllerClusterConfig clusterConfig = controllerStateModelFactory.getModel(clusterName).getResources().getConfig();
-        createKafkaTopic(clusterName, version.kafkaTopicName(), newTopicPartitionCount, clusterConfig.getKafkaReplicaFactor(), true);
-        if (whetherStartOfflinePush) {
-            // TODO: there could be some problem here since topic creation is an async op, which means the new topic
-            // may not exist, When storage node is trying to consume the new created topic.
-
-            // We need to prepare to monitor before creating helix resource.
-            startMonitorOfflinePush(clusterName, version.kafkaTopicName(), numberOfPartition, replicationFactor, strategy);
+            repository.lock();
+            int newTopicPartitionCount = 0;
             try {
-                createHelixResources(clusterName, version.kafkaTopicName(), numberOfPartition, replicationFactor);
-            } catch (Throwable e) {
-                stopMonitorOfflinePush(clusterName, version.kafkaTopicName());
-                throw new VeniceException(
-                    "Failed to create helix resource. Stop monitor the push: " + version.kafkaTopicName(), e);
+                Store store = repository.getStore(storeName);
+                if (store == null) {
+                    throwStoreDoesNotExist(clusterName, storeName);
+                }
+                strategy = store.getOffLinePushStrategy();
+                if (versionNumber == VERSION_ID_UNSET) {
+                    // No Version supplied, generate new version.
+                    version = store.increaseVersion(pushJobId);
+                } else {
+                    if (store.containsVersion(versionNumber)) {
+                        throwVersionAlreadyExists(storeName, versionNumber);
+                    }
+                    version = new Version(storeName, versionNumber, pushJobId);
+                    store.addVersion(version);
+                }
+                // Update default partition count if it have not been assigned.
+                if (store.getPartitionCount() == 0) {
+                    store.setPartitionCount(numberOfPartition); //TODO, persist numberOfPartitions at the version level
+                }
+                newTopicPartitionCount = store.getPartitionCount();
+                repository.updateStore(store);
+                logger.info("Add version:" + version.getNumber() + " for store:" + storeName);
+            } finally {
+                repository.unLock();
             }
+
+            VeniceControllerClusterConfig clusterConfig =
+                controllerStateModelFactory.getModel(clusterName).getResources().getConfig();
+            createKafkaTopic(clusterName, version.kafkaTopicName(), newTopicPartitionCount, clusterConfig.getKafkaReplicaFactor(), true);
+            if (whetherStartOfflinePush) {
+                // TODO: there could be some problem here since topic creation is an async op, which means the new topic
+                // may not exist, When storage node is trying to consume the new created topic.
+
+                // We need to prepare to monitor before creating helix resource.
+                startMonitorOfflinePush(clusterName, version.kafkaTopicName(), numberOfPartition, replicationFactor,
+                    strategy);
+                createHelixResources(clusterName, version.kafkaTopicName(), numberOfPartition, replicationFactor);
+            }
+            return version;
+        } catch (Throwable e) {
+            // Clean up resources because add version failed.
+            if (version != null) {
+                deleteOneStoreVersion(clusterName, storeName, versionNumber);
+            }
+            throw new VeniceException(
+                "Failed to create helix resource:" + Version.composeKafkaTopic(storeName, versionNumber), e);
         }
-        return version;
     }
 
     @Override
@@ -408,7 +413,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         // to query store when received the status update from storage node.
         for (Version version : deletingVersionSnapshot) {
             deleteOneStoreVersion(clusterName, version.getStoreName(), version.getNumber());
-            stopMonitorOfflinePush(clusterName, version.kafkaTopicName());
         }
         logger.info("Deleted all versions in store: " + storeName + " in cluster: " + clusterName);
         return deletingVersionSnapshot;
@@ -425,6 +429,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         if (deletedVersion.isPresent()) {
             deleteKafkaTopicForVersion(clusterName, deletedVersion.get());
         }
+        stopMonitorOfflinePush(clusterName, resourceName);
     }
 
     @Override
@@ -435,7 +440,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         List<Version> versionsToDelete = store.retrieveVersionsToDelete(NUM_VERSIONS_TO_PRESERVE);
         for (Version version : versionsToDelete) {
             deleteOneStoreVersion(clusterName, storeName, version.getNumber());
-            stopMonitorOfflinePush(clusterName, version.kafkaTopicName());
             logger.info("Retired store:" + store.getName() + " version:" + version.getNumber());
         }
         logger.info("Retired " + versionsToDelete.size() + " versions for store: " + storeName);
