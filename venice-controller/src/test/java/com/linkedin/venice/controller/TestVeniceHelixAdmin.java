@@ -53,7 +53,7 @@ import static com.linkedin.venice.ConfigKeys.*;
 /**
  * Test cases for VeniceHelixAdmin
  *
- * TODO: separate out tests that can share enviornment to save time when running tests
+ * TODO: separate out tests that can share environment to save time when running tests
  */
 public class TestVeniceHelixAdmin {
   private VeniceHelixAdmin veniceAdmin;

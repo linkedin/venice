@@ -11,12 +11,14 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreCleaner;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
 import org.apache.log4j.Logger;
 
 
@@ -29,6 +31,7 @@ import org.apache.log4j.Logger;
  * the related version if the answer is yes. Or in case of node failure, monitor would fail the push job in some cases.
  */
 public class OfflinePushMonitor implements OfflinePushAccessor.PartitionStatusListener, RoutingDataRepository.RoutingDataChangedListener {
+  public static final int MAX_ERROR_PUSH_TO_KEEP = 5;
   private static final Logger logger = Logger.getLogger(OfflinePushMonitor.class);
   private final OfflinePushAccessor accessor;
   private final String clusterName;
@@ -111,9 +114,31 @@ public class OfflinePushMonitor implements OfflinePushAccessor.PartitionStatusLi
       OfflinePushStatus pushStatus = topicToPushMap.get(kafkaTopic);
       routingDataRepository.unSubscribeRoutingDataChange(kafkaTopic, this);
       accessor.unsubscribePartitionsStatusChange(pushStatus, this);
-      accessor.deleteOfflinePushStatusAndItsPartitionStatuses(pushStatus);
-      topicToPushMap.remove(kafkaTopic);
+      if (pushStatus.getCurrentStatus().equals(ExecutionStatus.ERROR)) {
+        cleanOlderErrorPushes(pushStatus);
+      } else {
+        accessor.deleteOfflinePushStatusAndItsPartitionStatuses(pushStatus);
+        topicToPushMap.remove(kafkaTopic);
+      }
       logger.info("Stop monitoring push on topic:" + kafkaTopic);
+    }
+  }
+
+  /**
+   * Once offline push failed, we want to keep some latest offline push in ZK for debug.
+   */
+  private void cleanOlderErrorPushes(OfflinePushStatus pushStatus) {
+    String storeName = Version.parseStoreFromKafkaTopicName(pushStatus.getKafkaTopic());
+    List<Integer> versionNumbers = topicToPushMap.keySet()
+        .stream()
+        .filter(topic -> Version.parseStoreFromKafkaTopicName(topic).equals(storeName))
+        .map(Version::parseVersionFromKafkaTopicName)
+        .collect(Collectors.toList());
+    // Only keep MAX_ERROR_PUSH_TO_KEEP pushes for debug.
+    while (versionNumbers.size() > MAX_ERROR_PUSH_TO_KEEP) {
+      int oldestVersionNumber = Collections.min(versionNumbers);
+      topicToPushMap.remove(Version.composeKafkaTopic(storeName, oldestVersionNumber));
+      versionNumbers.remove(Integer.valueOf(oldestVersionNumber));
     }
   }
 
@@ -215,6 +240,9 @@ public class OfflinePushMonitor implements OfflinePushAccessor.PartitionStatusLi
         lock.wait(nextWaitTime);
         resourceAssignment = routingDataRepository.getResourceAssignment();
       }
+      // TODO add a metric to track waiting time.
+      logger.info(
+          "After waiting: " + (System.currentTimeMillis() - startTime) + "ms, resource allocation is completed.");
     }
   }
 
