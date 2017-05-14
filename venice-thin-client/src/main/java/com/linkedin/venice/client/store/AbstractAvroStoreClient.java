@@ -16,12 +16,16 @@ import org.apache.commons.io.IOUtils;
 import javax.validation.constraints.NotNull;
 import java.util.Base64;
 import java.util.concurrent.Future;
+import org.apache.http.HttpStatus;
+
 
 public abstract class AbstractAvroStoreClient<V> implements AvroGenericStoreClient<V>, DeserializerFetcher<V> {
   public static final String STORAGE_TYPE = "storage";
   public static final String B64_FORMAT = "?f=b64";
   public static final String VENICE_CLIENT_NAME = "venice_client";
-  public static final int TIMEOUT_IN_SECOND = 50;
+
+  //TODO: do we want it to be configurable?
+  public static final int TIMEOUT_IN_SECOND = 5;
 
   private final MetricsRepository metricsRepository;
   private final ClientStats stats;
@@ -88,7 +92,6 @@ public abstract class AbstractAvroStoreClient<V> implements AvroGenericStoreClie
   @Override
   public Future<V> get(Object key) throws VeniceClientException {
     long startTime = System.currentTimeMillis();
-    stats.recordRequest();
     byte[] serializedKey = keySerializer.serialize(key);
     String requestPath = getRequestPathByStoreKey(serializedKey);
 
@@ -105,6 +108,13 @@ public abstract class AbstractAvroStoreClient<V> implements AvroGenericStoreClie
 
       @Override
       public void executeOnError() {
+        stats.recordUnhealthyRequest();
+        stats.recordUnhealthyLatency(System.currentTimeMillis() - startTime);
+      }
+
+      @Override
+      public void executeOnError(int httpStatus) {
+        stats.recordHttpRequest(httpStatus);
         stats.recordUnhealthyRequest();
         stats.recordUnhealthyLatency(System.currentTimeMillis() - startTime);
       }
