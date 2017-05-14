@@ -51,44 +51,42 @@ public class TransportClientCallback<T> {
                              String schemaId) {
     String msg = new String(body, StandardCharsets.UTF_8);
 
-    switch (statusCode) {
-      case HttpStatus.SC_OK:
-        if (needRawResult) {
-          valueFuture.complete((T) body);
-        } else {
-          try {
-            RecordDeserializer<T> deserializer = deserializerFetcher.fetch(Integer.parseInt(schemaId));
-            T result = deserializer.deserialize(body);
-            valueFuture.complete(result);
-          } catch (Exception e) {
-            valueFuture.completeExceptionally(e);
-          } finally {
-            callback.executeOnSuccess();
+    if (statusCode == HttpStatus.SC_OK) {
+      if (needRawResult) {
+        valueFuture.complete((T) body);
+      } else {
+        try {
+          RecordDeserializer<T> deserializer = deserializerFetcher.fetch(Integer.parseInt(schemaId));
+          T result = deserializer.deserialize(body);
+          valueFuture.complete(result);
+        } catch (Exception e) {
+          valueFuture.completeExceptionally(e);
+        } finally {
+          callback.executeOnSuccess();
+        }
+      }
+    } else {
+      callback.executeOnError(statusCode);
+      switch (statusCode) {
+        case HttpStatus.SC_NOT_FOUND:
+          valueFuture.complete(null);
+          break;
+        case HttpStatus.SC_INTERNAL_SERVER_ERROR:
+        case HttpStatus.SC_SERVICE_UNAVAILABLE:
+          if (msg != null) {
+            valueFuture.completeExceptionally(new VeniceServerException(msg));
+          } else {
+            valueFuture.completeExceptionally(new VeniceServerException());
           }
-        }
-        break;
-      case HttpStatus.SC_NOT_FOUND:
-        valueFuture.complete(null);
-        callback.executeOnSuccess();
-        break;
-      case HttpStatus.SC_INTERNAL_SERVER_ERROR:
-      case HttpStatus.SC_SERVICE_UNAVAILABLE:
-        if (msg != null) {
-          valueFuture.completeExceptionally(new VeniceServerException(msg));
-        } else {
-          valueFuture.completeExceptionally(new VeniceServerException());
-        }
-        callback.executeOnError();
-        break;
-      case HttpStatus.SC_BAD_REQUEST:
-      default:
-        if (msg != null) {
-          valueFuture.completeExceptionally(new VeniceClientException(msg));
-        } else {
-          valueFuture
-              .completeExceptionally(new VeniceClientException("Router responds with status code: " + statusCode));
-        }
-        callback.executeOnError();
+          break;
+        case HttpStatus.SC_BAD_REQUEST:
+        default:
+          if (msg != null) {
+            valueFuture.completeExceptionally(new VeniceClientException(msg));
+          } else {
+            valueFuture.completeExceptionally(new VeniceClientException("Router responds with status code: " + statusCode));
+          }
+      }
     }
   }
 
