@@ -1,0 +1,17 @@
+task buildJar(type: Jar) {
+  manifest {
+    attributes 'Implementation-Title': 'Venice Samza',
+            'Implementation-Version': version
+  }
+  baseName = project.name
+  from { configurations.compile.collect { it.isDirectory() ? it : zipTree(it) } }
+  with jar
+}
+
+dependencies {
+  compile libraries.samzaApi
+
+  // Schema related dependencies
+  compile project(':venice-schema-common')
+  compile project(':venice-common') //TODO, pull venice writer out of venice common so this is a smaller dependency
+}

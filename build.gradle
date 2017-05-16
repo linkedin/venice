@@ -64,7 +64,10 @@ ext.libraries = [ // Groovy map literal
                   xerces: 'xerces:xercesImpl:2.9.1',
 
                   // Hadoop to Venice Bridge test dependencies
-                  mapreduceClientJobClient: 'org.apache.hadoop:hadoop-mapreduce-client-jobclient:2.3.0'
+                  mapreduceClientJobClient: 'org.apache.hadoop:hadoop-mapreduce-client-jobclient:2.3.0',
+
+                  // Samza dependencies
+                  samzaApi: 'com.linkedin.samza-li:samza-api:205.13.0.33' //equivalent to org.apache.samza 0.13
 ]
 
 subprojects {
