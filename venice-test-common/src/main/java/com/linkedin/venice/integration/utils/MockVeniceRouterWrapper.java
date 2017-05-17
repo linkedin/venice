@@ -48,6 +48,7 @@ public class MockVeniceRouterWrapper extends ProcessWrapper {
   static StatefulServiceProvider<MockVeniceRouterWrapper> generateService(String zkAddress, boolean sslToStorageNodes) {
 
     Store mockStore = Mockito.mock(Store.class);
+    doReturn(true).when(mockStore).isEnableReads();
     doReturn(1).when(mockStore).getCurrentVersion();
     HelixReadOnlyStoreRepository mockMetadataRepository = Mockito.mock(HelixReadOnlyStoreRepository.class);
     doReturn(mockStore).when(mockMetadataRepository).getStore(Mockito.anyString());

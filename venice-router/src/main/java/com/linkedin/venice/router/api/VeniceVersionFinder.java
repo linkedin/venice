@@ -28,7 +28,9 @@ public class VeniceVersionFinder {
     if (veniceStore.isEnableReads()) {
       return metadataRepository.getStore(store).getCurrentVersion();
     } else {
-      return Store.NON_EXISTING_VERSION;
+      throw new RouterException(HttpResponseStatus.class, HttpResponseStatus.FORBIDDEN,
+          HttpResponseStatus.FORBIDDEN.getCode(),
+          "Could not read from store: " + store + ", because it's disabled from reading.", false);
     }
   }
 }
