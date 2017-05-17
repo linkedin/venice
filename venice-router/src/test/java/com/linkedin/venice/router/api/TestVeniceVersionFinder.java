@@ -1,9 +1,11 @@
 package com.linkedin.venice.router.api;
 
 import com.linkedin.ddsstorage.router.api.RouterException;
+import com.linkedin.ddsstorage.router.impl.Router;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.utils.TestUtils;
+import org.jboss.netty.handler.codec.http.HttpResponseStatus;
 import org.mockito.Mockito;
 import static org.mockito.Mockito.*;
 
@@ -40,10 +42,14 @@ public class TestVeniceVersionFinder {
     store.setEnableReads(false);
     doReturn(store).when(mockRepo).getStore(storeName);
     VeniceVersionFinder versionFinder = new VeniceVersionFinder(mockRepo);
-    Assert.assertEquals(versionFinder.getVersion(storeName), Store.NON_EXISTING_VERSION);
+    try {
+      versionFinder.getVersion(storeName);
+      Assert.fail("Store should be disabled and forbidden to read.");
+    } catch (RouterException e) {
+      Assert.assertEquals(e.status(), HttpResponseStatus.FORBIDDEN, "Store should be disabled and forbidden to read.");
+    }
     // enable store, should return the correct current version.
     store.setEnableReads(true);
     Assert.assertEquals(versionFinder.getVersion(storeName), currentVersion);
-
   }
 }
