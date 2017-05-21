@@ -581,22 +581,20 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     public Store getStore(String clusterName, String storeName){
         checkControllerMastership(clusterName);
         HelixReadWriteStoreRepository repository = getVeniceHelixResource(clusterName).getMetadataRepository();
-        repository.lock();
-        try {
-            return repository.getStore(storeName);
-        } finally {
-            repository.unLock();
-        }
+        return repository.getStore(storeName);
     }
 
     @Override
     public synchronized void setStoreCurrentVersion(String clusterName, String storeName, int versionNumber){
         storeMetadataUpdate(clusterName, storeName, store -> {
-            if (store.containsVersion(versionNumber)) {
-                store.setCurrentVersion(versionNumber);
-            } else {
+            if (!store.containsVersion(versionNumber)) {
                 throw new VeniceException("Version:" + versionNumber + " does not exist for store:" + storeName);
             }
+
+            if (!store.isEnableWrites()) {
+                throw new VeniceException("Unable to update store:" + storeName + " current version since store writeability is false");
+            }
+            store.setCurrentVersion(versionNumber);
 
             return store;
         });
@@ -623,31 +621,83 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     public synchronized void setStorePartitionCount(String clusterName, String storeName, int partitionCount) {
         VeniceControllerClusterConfig clusterConfig = getVeniceHelixResource(clusterName).getConfig();
         storeMetadataUpdate(clusterName, storeName, store -> {
-            if (partitionCount >= clusterConfig.getNumberOfPartition() && partitionCount <= clusterConfig.getMaxNumberOfPartition()) {
-                store.setPartitionCount(partitionCount);
-            } else {
-                throw new VeniceException("store partition number must be greater than or equal to " + clusterConfig.getNumberOfPartition()
-                    + " and less than or equal to " + clusterConfig.getMaxNumberOfPartition());
+            int desiredPartitionCount = partitionCount;
+
+            if (desiredPartitionCount > clusterConfig.getMaxNumberOfPartition()) {
+                desiredPartitionCount = clusterConfig.getMaxNumberOfPartition();
+            } else if (desiredPartitionCount < clusterConfig.getNumberOfPartition()) {
+                desiredPartitionCount = clusterConfig.getNumberOfPartition();
             }
 
-            return store;
-        });
-    }
-
-    private synchronized void setStoreWriteable(String clusterName, String storeName, boolean isWriteable) {
-        storeMetadataUpdate(clusterName, storeName, store -> {
-            store.setEnableWrites(isWriteable);
+            store.setPartitionCount(desiredPartitionCount);
 
             return store;
         });
     }
 
-    private synchronized void setStoreReadable(String clusterName, String storeName, boolean isReadable) {
+    @Override
+    public synchronized void setStoreWriteability(String clusterName, String storeName, boolean desiredWriteability) {
         storeMetadataUpdate(clusterName, storeName, store -> {
-            store.setEnableReads(isReadable);
+            store.setEnableWrites(desiredWriteability);
 
             return store;
         });
+    }
+
+    @Override
+    public synchronized void setStoreReadability(String clusterName, String storeName, boolean desiredReadability) {
+        storeMetadataUpdate(clusterName, storeName, store -> {
+            store.setEnableReads(desiredReadability);
+
+            return store;
+        });
+    }
+
+    @Override
+    public synchronized void setStoreReadWriteability(String clusterName, String storeName, boolean isAccessible) {
+        storeMetadataUpdate(clusterName, storeName, store -> {
+            store.setEnableReads(isAccessible);
+            store.setEnableWrites(isAccessible);
+
+            return store;
+        });
+    }
+
+    @Override
+    public synchronized void updateStore(String clusterName,
+                                         String storeName,
+                                         Optional<String> owner,
+                                         Optional<Boolean> readability,
+                                         Optional<Boolean> writeability,
+                                         Optional<Integer> partitionCount,
+                                         Optional<Integer> currentVersion) {
+        Store originalStore = getStore(clusterName, storeName).cloneStore();
+
+        try {
+            if (owner.isPresent()) {
+                setStoreOwner(clusterName, storeName, owner.get());
+            }
+
+            if (readability.isPresent()) {
+                setStoreReadability(clusterName, storeName, readability.get());
+            }
+
+            if (writeability.isPresent()) {
+                setStoreWriteability(clusterName, storeName, writeability.get());
+            }
+
+            if (partitionCount.isPresent()) {
+                setStorePartitionCount(clusterName, storeName, partitionCount.get());
+            }
+
+            if (currentVersion.isPresent()) {
+                setStoreCurrentVersion(clusterName, storeName, currentVersion.get());
+            }
+        } catch (VeniceException e) {
+            //rollback to original store
+            storeMetadataUpdate(clusterName, storeName, store -> originalStore);
+            throw e;
+        }
     }
 
     public void storeMetadataUpdate(String clusterName, String storeName, StoreMetadataOperation operation) {
@@ -1077,27 +1127,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
 
     @Override
-    public void disableStoreWrite(String clusterName, String storeName) {
-        //setDisableWriteForStore(clusterName, storeName, false);
-        setStoreWriteable(clusterName, storeName, false);
-    }
-
-    @Override
-    public void enableStoreWrite(String clusterName, String storeName) {
-        setStoreWriteable(clusterName, storeName, true);
-    }
-
-    @Override
-    public void disableStoreRead(String clusterName, String storeName) {
-        setStoreReadable(clusterName, storeName, false);
-    }
-
-    @Override
-    public void enableStoreRead(String clusterName, String storeName) {
-        setStoreReadable(clusterName, storeName, true);
-    }
-
-    @Override
     public void addInstanceToWhitelist(String clusterName, String helixNodeId) {
         checkControllerMastership(clusterName);
         whitelistAccessor.addInstanceToWhiteList(clusterName, helixNodeId);
@@ -1236,7 +1265,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         offlinePushMonitor.stopMonitorOfflinePush(topic);
     }
 
-    protected Store checkPreConditionForDisableStoreAndGetStore(String clusterName, String storeName) {
+    protected Store checkPreConditionForUpdateStoreMetadata(String clusterName, String storeName) {
         checkControllerMastership(clusterName);
         HelixReadWriteStoreRepository repository = getVeniceHelixResource(clusterName).getMetadataRepository();
         Store store = repository.getStore(storeName);
@@ -1285,10 +1314,4 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     public String getControllerName(){
         return controllerName;
     }
-
-    /**
-     * Since Admin is dealing with various kinds of store metadata updates, there are code duplicate among those methods.
-     * This private interface helps to reuse those codes and makes the admin clean.
-     * Also see {@link #storeMetadataUpdate(String, String, StoreMetadataOperation)} for more details.
-     */
 }

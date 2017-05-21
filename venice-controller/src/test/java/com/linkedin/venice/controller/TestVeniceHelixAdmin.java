@@ -805,7 +805,7 @@ public class TestVeniceHelixAdmin {
   public void testDisableStoreWrite() {
     String storeName = "testDisableStoreWriter";
     veniceAdmin.addStore(clusterName, storeName, "unittestOwner", "test", keySchema, valueSchema);
-    veniceAdmin.disableStoreWrite(clusterName, storeName);
+    veniceAdmin.setStoreWriteability(clusterName, storeName, false);
     Store store = veniceAdmin.getStore(clusterName, storeName);
 
     try {
@@ -829,8 +829,7 @@ public class TestVeniceHelixAdmin {
     }
     Assert.assertEquals(veniceAdmin.getAllStores(clusterName).get(0), store);
 
-    veniceAdmin.enableStoreWrite(clusterName, storeName);
-    veniceAdmin.enableStoreWrite(clusterName, storeName);
+    veniceAdmin.setStoreWriteability(clusterName, storeName, true);
 
     veniceAdmin.addVersion(clusterName, storeName, 1, 1, 1);
     veniceAdmin.incrementVersion(clusterName, storeName, 1, 1);
@@ -855,12 +854,12 @@ public class TestVeniceHelixAdmin {
     Version version = veniceAdmin.incrementVersion(clusterName, storeName, 1, 1);
     veniceAdmin.setStoreCurrentVersion(clusterName, storeName, version.getNumber());
 
-    veniceAdmin.disableStoreRead(clusterName, storeName);
+    veniceAdmin.setStoreReadability(clusterName, storeName, false);
     Store store = veniceAdmin.getStore(clusterName, storeName);
     Assert.assertEquals(veniceAdmin.getCurrentVersion(clusterName, storeName), Store.NON_EXISTING_VERSION,
         "After disabling, store has no version available to serve.");
 
-    veniceAdmin.enableStoreRead(clusterName, storeName);
+    veniceAdmin.setStoreReadability(clusterName, storeName, true);
     Assert.assertEquals(veniceAdmin.getCurrentVersion(clusterName, storeName), version.getNumber(),
         "After enabling, version:" + version.getNumber() + " is ready to serve.");
   }
@@ -1001,15 +1000,15 @@ public class TestVeniceHelixAdmin {
     } catch (VeniceException e) {
 
     }
-    veniceAdmin.disableStoreRead(clusterName, storeName);
+    veniceAdmin.setStoreReadability(clusterName, storeName, false);
     try {
       veniceAdmin.deleteAllVersionsInStore(clusterName, storeName);
       Assert.fail("Store has not been disabled to write.");
     } catch (VeniceException e) {
 
     }
-    veniceAdmin.enableStoreRead(clusterName, storeName);
-    veniceAdmin.disableStoreWrite(clusterName, storeName);
+    veniceAdmin.setStoreReadability(clusterName, storeName, true);
+    veniceAdmin.setStoreWriteability(clusterName, storeName, false);
     try {
       veniceAdmin.deleteAllVersionsInStore(clusterName, storeName);
       Assert.fail("Store has not been disabled to read.");
@@ -1017,13 +1016,13 @@ public class TestVeniceHelixAdmin {
 
     }
     // Store has been disabled.
-    veniceAdmin.disableStoreRead(clusterName, storeName);
+    veniceAdmin.setStoreReadability(clusterName, storeName, false);
     veniceAdmin.deleteAllVersionsInStore(clusterName, storeName);
     Assert.assertEquals(veniceAdmin.getStore(clusterName, storeName).getVersions().size(), 0,
         " Versions should be deleted.");
     Assert.assertEquals(veniceAdmin.getStore(clusterName, storeName).getCurrentVersion(), Store.NON_EXISTING_VERSION);
     // After enabling store, the serving version is -1 because there is not version available in this store.
-    veniceAdmin.enableStoreRead(clusterName, storeName);
+    veniceAdmin.setStoreReadability(clusterName, storeName, true);
     Assert.assertEquals(veniceAdmin.getStore(clusterName, storeName).getCurrentVersion(), Store.NON_EXISTING_VERSION,
         "No version should be available to read");
     Assert.assertTrue(veniceAdmin.getTopicManager().containsTopic(lastVersion.kafkaTopicName()),
@@ -1042,8 +1041,8 @@ public class TestVeniceHelixAdmin {
     store.setCurrentVersion(version.getNumber());
     veniceAdmin.getVeniceHelixResource(clusterName).getMetadataRepository().addStore(store);
     stopParticipants();
-    veniceAdmin.disableStoreRead(clusterName, storeName);
-    veniceAdmin.disableStoreWrite(clusterName, storeName);
+    veniceAdmin.setStoreReadability(clusterName, storeName, false);
+    veniceAdmin.setStoreWriteability(clusterName, storeName, false);
 
     veniceAdmin.deleteAllVersionsInStore(clusterName, storeName);
     Assert.assertEquals(veniceAdmin.getStore(clusterName, storeName).getVersions().size(), 0);

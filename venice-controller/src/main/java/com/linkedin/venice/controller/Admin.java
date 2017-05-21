@@ -115,25 +115,24 @@ public interface Admin {
 
     void setStorePartitionCount(String clusterName, String storeName, int partitionCount);
 
-    /**
-     * Disable a store from writing will stop push from going to this store.
-     */
-    void disableStoreWrite(String clusterName, String storeName);
+    void setStoreReadability(String clusterName, String storeName, boolean desiredReadability);
+
+    void setStoreWriteability(String clusterName, String storeName, boolean desiredWriteability);
 
     /**
-     * Enable a store on writing will allow push to go to this store.
+     * TODO: might want to remove this method.
+     * Multiple fields update is supported by {@link #updateStore(String, String, Optional, Optional, Optional, Optional, Optional)}
      */
-    void enableStoreWrite(String clusterName, String storeName);
+    void setStoreReadWriteability(String clusterName, String storeName, boolean isAccessible);
 
-    /**
-     * Disable a store on reading will stop read requests from hitting this store/
-     */
-    void disableStoreRead(String clusterName, String storeName);
-
-    /**
-     * Enable a store on reading will allow read requests hit this store.
-     */
-    void enableStoreRead(String clusterName, String storeName);
+    //TODO: using Optional here is a bit of cumbersome, might want to change it if we find better way to pass those params.
+    void updateStore(String clusterName,
+                     String storeName,
+                     Optional<String> owner,
+                     Optional<Boolean> readability,
+                     Optional<Boolean> writeability,
+                     Optional<Integer> partitionCount,
+                     Optional<Integer> currentVersion);
 
 
     List<String> getStorageNodes(String clusterName);

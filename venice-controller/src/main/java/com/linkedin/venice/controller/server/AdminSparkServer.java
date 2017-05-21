@@ -189,6 +189,10 @@ public class AdminSparkServer extends AbstractVeniceService {
     }
   }
 
+  protected static String getOptionalParameterValue(Request request, String parameter) {
+    return getOptionalParameterValue(request, parameter, null);
+  }
+
   protected static String getOptionalParameterValue(Request request, String parameter, String defaultValue) {
     String value = request.queryParams(parameter);
     if (value == null) {

@@ -69,7 +69,7 @@ public class TestAdminSparkServer {
      * A typical exception for the short of SN looks like "Failed to create helix resource."
      */
 
-    venice = ServiceFactory.getVeniceCluster(1, 2, 1); //Controllers, Servers, Routers
+    venice = ServiceFactory.getVeniceCluster(1, 4, 1); //Controllers, Servers, Routers
     routerUrl = venice.getRandomRouterURL();
     controllerClient = new ControllerClient(venice.getClusterName(), routerUrl);
   }
@@ -83,14 +83,14 @@ public class TestAdminSparkServer {
   public void controllerClientCanQueryNodesInCluster(){
     MultiNodeResponse nodeResponse = controllerClient.listStorageNodes();
     Assert.assertFalse(nodeResponse.isError(), nodeResponse.getError());
-    Assert.assertEquals(nodeResponse.getNodes().length, 2, "Node count does not match");
+    Assert.assertEquals(nodeResponse.getNodes().length, 4, "Node count does not match");
   }
 
   @Test
   public void controllerClientCanQueryInstanceStatusInCluster() {
     MultiNodesStatusResponse nodeResponse = controllerClient.listInstancesStatuses();
     Assert.assertFalse(nodeResponse.isError(), nodeResponse.getError());
-    Assert.assertEquals(nodeResponse.getInstancesStatusMap().size(), 2, "Node count does not match");
+    Assert.assertEquals(nodeResponse.getInstancesStatusMap().size(), 4, "Node count does not match");
     Assert.assertEquals(nodeResponse.getInstancesStatusMap().values().iterator().next(),
         InstanceStatus.CONNECTED.toString(), "Node status does not match.");
   }
@@ -480,17 +480,17 @@ public class TestAdminSparkServer {
 
   @Test
   public void controllerClientCanSetStore() {
-    String storeName = TestUtils.getUniqueString("store");
+    //mutable store metadata
     String owner = TestUtils.getUniqueString("owner");
     String principles = TestUtils.getUniqueString("principles");
     int partitionCount = 2;
-    int current = 100;
+    int current = 1;
     boolean enableReads = false;
     boolean enableWrite = true;
 
-    venice.getNewStore(storeName);
+    String storeName = venice.getNewStoreVersion().getName();
     ControllerClient controllerClient = new ControllerClient(venice.getClusterName(), routerUrl);
-    // Disable writes at first and test could we enable writes again through the update store metohd.
+    // Disable writes at first and test could we enable writes again through the update store method.
     Assert.assertFalse(controllerClient.enableStoreReadWrites(storeName, false).isError(),
         "Disable writes should not fail.");
 
@@ -501,7 +501,6 @@ public class TestAdminSparkServer {
     Assert.assertFalse(response.isError(), response.getError());
     Store store = venice.getMasterVeniceController().getVeniceAdmin().getStore(venice.getClusterName(), storeName);
     Assert.assertEquals(store.getOwner(), owner);
-    Assert.assertEquals(String.join(",", store.getPrinciples()), principles);
     Assert.assertEquals(store.getPartitionCount(), partitionCount);
     Assert.assertEquals(store.getCurrentVersion(), current);
     Assert.assertEquals(store.isEnableReads(), enableReads);
@@ -510,30 +509,26 @@ public class TestAdminSparkServer {
     enableWrite = false;
     Assert.assertFalse(controllerClient
             .updateStore(storeName, Optional.of(owner), Optional.of(principles), Optional.of(partitionCount),
-                Optional.of(current), Optional.of(enableReads), Optional.of(enableWrite)).isError(),
+                Optional.empty(), Optional.of(enableReads), Optional.of(enableWrite)).isError(),
         "We should be able to disable store writes again.");
-
-
   }
 
   @Test
   public void controllerClientCanSetStoreMissingSomeFields() {
-    String storeName = TestUtils.getUniqueString("store");
-    String principles = TestUtils.getUniqueString("principles");
+    //partial metadata
     int partitionCount = 2;
-    int current = 100;
+    int current = 1;
     boolean enableReads = false;
 
-    venice.getNewStore(storeName);
+    String storeName = venice.getNewStoreVersion().getName();
     ControllerClient controllerClient = new ControllerClient(venice.getClusterName(), routerUrl);
 
     ControllerResponse response =
-        controllerClient.updateStore(storeName, Optional.empty(), Optional.of(principles), Optional.of(partitionCount),
+        controllerClient.updateStore(storeName, Optional.empty(), Optional.empty(), Optional.of(partitionCount),
             Optional.of(current), Optional.of(enableReads), Optional.empty());
 
     Assert.assertFalse(response.isError(), response.getError());
     Store store = venice.getMasterVeniceController().getVeniceAdmin().getStore(venice.getClusterName(), storeName);
-    Assert.assertEquals(String.join(",", store.getPrinciples()), principles);
     Assert.assertEquals(store.getPartitionCount(), partitionCount);
     Assert.assertEquals(store.getCurrentVersion(), current);
     Assert.assertEquals(store.isEnableReads(), enableReads);

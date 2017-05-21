@@ -31,16 +31,16 @@ public class StoresRoutes {
   public static Route getAllStores(Admin admin) {
     return new VeniceRouteHandler<MultiStoreResponse>(MultiStoreResponse.class) {
       @Override
-      public void internalHandle(Request request, MultiStoreResponse veniceRepsonse) {
+      public void internalHandle(Request request, MultiStoreResponse veniceResponse) {
         AdminSparkServer.validateParams(request, LIST_STORES.getParams(), admin);
-        veniceRepsonse.setCluster(request.queryParams(CLUSTER));
-        veniceRepsonse.setName(request.queryParams(NAME));
-        List<Store> storeList = admin.getAllStores(veniceRepsonse.getCluster());
+        veniceResponse.setCluster(request.queryParams(CLUSTER));
+        veniceResponse.setName(request.queryParams(NAME));
+        List<Store> storeList = admin.getAllStores(veniceResponse.getCluster());
         String[] storeNameList = new String[storeList.size()];
         for (int i = 0; i < storeList.size(); i++) {
           storeNameList[i] = storeList.get(i).getName();
         }
-        veniceRepsonse.setStores(storeNameList);
+        veniceResponse.setStores(storeNameList);
       }
     };
   }
@@ -48,12 +48,12 @@ public class StoresRoutes {
   public static Route getAllStoresStatuses(Admin admin) {
     return new VeniceRouteHandler<MultiStoreStatusResponse>(MultiStoreStatusResponse.class) {
       @Override
-      public void internalHandle(Request request, MultiStoreStatusResponse veniceRepsonse) {
+      public void internalHandle(Request request, MultiStoreStatusResponse veniceResponse) {
         AdminSparkServer.validateParams(request, CLUSTER_HELATH_STORES.getParams(), admin);
         String clusterName = request.queryParams(CLUSTER);
-        veniceRepsonse.setCluster(clusterName);
+        veniceResponse.setCluster(clusterName);
         Map<String, String> storeStatusMap = admin.getAllStoreStatuses(clusterName);
-        veniceRepsonse.setStoreStatusMap(storeStatusMap);
+        veniceResponse.setStoreStatusMap(storeStatusMap);
       }
     };
   }
@@ -62,15 +62,15 @@ public class StoresRoutes {
     return new VeniceRouteHandler<StoreResponse>(StoreResponse.class) {
 
       @Override
-      public void internalHandle(Request request, StoreResponse veniceRepsonse) {
+      public void internalHandle(Request request, StoreResponse veniceResponse) {
         AdminSparkServer.validateParams(request, STORE.getParams(), admin);
-        veniceRepsonse.setCluster(request.queryParams(CLUSTER));
-        veniceRepsonse.setName(request.queryParams(NAME));
-        Store store = admin.getStore(veniceRepsonse.getCluster(), veniceRepsonse.getName());
+        veniceResponse.setCluster(request.queryParams(CLUSTER));
+        veniceResponse.setName(request.queryParams(NAME));
+        Store store = admin.getStore(veniceResponse.getCluster(), veniceResponse.getName());
         if (null == store) {
-          throw new VeniceNoStoreException(veniceRepsonse.getName());
+          throw new VeniceNoStoreException(veniceResponse.getName());
         }
-        veniceRepsonse.setStore(StoreInfo.fromStore(store));
+        veniceResponse.setStore(StoreInfo.fromStore(store));
       }
     };
   }
@@ -79,65 +79,56 @@ public class StoresRoutes {
     return new VeniceRouteHandler<ControllerResponse>(ControllerResponse.class) {
 
       @Override
-      public void internalHandle(Request request, ControllerResponse veniceRepsonse) {
+      public void internalHandle(Request request, ControllerResponse veniceResponse) {
         AdminSparkServer.validateParams(request, UPDATE_STORE.getParams(), admin);
-        veniceRepsonse.setCluster(request.queryParams(CLUSTER));
-        veniceRepsonse.setName(request.queryParams(NAME));
+        veniceResponse.setCluster(request.queryParams(CLUSTER));
+        veniceResponse.setName(request.queryParams(NAME));
 
-        admin.storeMetadataUpdate(veniceRepsonse.getCluster(), veniceRepsonse.getName(), store->{
-          String owner = AdminSparkServer.getOptionalParameterValue(request, OWNER, store.getOwner());
-          String principles = AdminSparkServer.getOptionalParameterValue(request, PRINCIPLES, String.join(",", store.getPrinciples()));
-          int oldCurrentVersion = store.getCurrentVersion();
-          int partitionCount = Utils.parseIntFromString(
-              AdminSparkServer.getOptionalParameterValue(request, PARTITION_COUNT,
-                  String.valueOf(store.getPartitionCount())), "partitionCount");
-          int currentVersion = Utils.parseIntFromString(
-              AdminSparkServer.getOptionalParameterValue(request, VERSION, String.valueOf(store.getCurrentVersion())),
-              "currentVersion");
-          boolean enableWrites = Utils.parseBooleanFromString(
-              AdminSparkServer.getOptionalParameterValue(request, ENABLE_WRITES, String.valueOf(store.isEnableReads())),
-              "enableReads");
-          boolean enableReads = Utils.parseBooleanFromString(
-              AdminSparkServer.getOptionalParameterValue(request, ENABLE_READS, String.valueOf(store.isEnableReads())),
-              "enableWrites");
+        Optional<String> owner = Optional.ofNullable(AdminSparkServer.getOptionalParameterValue(request, OWNER));
 
-          store.setOwner(owner);
-          store.setPrinciples(Utils.parseCommaSeparatedStringToList(principles));
-          store.setPartitionCount(partitionCount);
-          // Enable writes at first, otherwise setCurrentVersion could fail the whole operation prior to enable writes.
-          // For example, store's enableWrites is false, now a request coming to enable write, but an exception would be
-          // thrown because we can not change the current version when the enable writes is false. So enable writes
-          // would always fail.
-          store.setEnableWrites(enableWrites);
-          // We add this pre-check to prevent throwing exception while set enable writes to false.
-          // Otherwise, the request would fail because you could not change the current version once the store was already
-          // disabled.
-          // If a user send a request to disable store writes and change the current version together. We should fail
-          // that request.
-          if(currentVersion != oldCurrentVersion) {
-            store.setCurrentVersion(currentVersion);
-          }
-          store.setEnableReads(enableReads);
-          return store;
-        });
+        String currentVersionStr = AdminSparkServer.getOptionalParameterValue(request, VERSION);
+        Optional<Integer> currentVersion = currentVersionStr == null ? Optional.empty() :
+            Optional.of(Utils.parseIntFromString(currentVersionStr, "currentVersion"));
+
+        String partitionCountStr = AdminSparkServer.getOptionalParameterValue(request, PARTITION_COUNT);
+        Optional<Integer> partitionCount = partitionCountStr == null ? Optional.empty() :
+            Optional.of(Utils.parseIntFromString(partitionCountStr, "partitionCount"));
+
+        String readabilityStr = AdminSparkServer.getOptionalParameterValue(request, ENABLE_READS);
+        Optional<Boolean> readability = readabilityStr == null ? Optional.empty() :
+            Optional.of(Utils.parseBooleanFromString(readabilityStr, "enableReads"));
+
+        String writeabilityStr = AdminSparkServer.getOptionalParameterValue(request, ENABLE_WRITES);
+        Optional<Boolean> writeability = writeabilityStr == null ? Optional.empty() :
+            Optional.of(Utils.parseBooleanFromString(writeabilityStr, "enableWrites"));
+
+        admin.updateStore(veniceResponse.getCluster(),
+                          veniceResponse.getName(),
+                          owner,
+                          readability,
+                          writeability,
+                          partitionCount,
+                          currentVersion);
       }
     };
   }
+
+
 
   public static Route setOwner(Admin admin) {
     return new VeniceRouteHandler<OwnerResponse>(OwnerResponse.class) {
 
       @Override
-      public void internalHandle(Request request, OwnerResponse veniceRepsonse) {
+      public void internalHandle(Request request, OwnerResponse veniceResponse) {
         AdminSparkServer.validateParams(request, SET_OWNER.getParams(), admin);
         String clusterName = request.queryParams(CLUSTER);
         String storeName = request.queryParams(NAME);
         String owner = request.queryParams(OWNER);
         admin.setStoreOwner(clusterName, storeName, owner);
 
-        veniceRepsonse.setCluster(clusterName);
-        veniceRepsonse.setName(storeName);
-        veniceRepsonse.setOwner(owner);
+        veniceResponse.setCluster(clusterName);
+        veniceResponse.setName(storeName);
+        veniceResponse.setOwner(owner);
       }
     };
   }
@@ -146,16 +137,16 @@ public class StoresRoutes {
     return new VeniceRouteHandler<PartitionResponse>(PartitionResponse.class) {
 
       @Override
-      public void internalHandle(Request request, PartitionResponse veniceRepsonse) {
+      public void internalHandle(Request request, PartitionResponse veniceResponse) {
         AdminSparkServer.validateParams(request, SET_PARTITION_COUNT.getParams(), admin);
         String clusterName = request.queryParams(CLUSTER);
         String storeName = request.queryParams(NAME);
         int partitionNum = Utils.parseIntFromString(request.queryParams(PARTITION_COUNT), "partition-count");
         admin.setStorePartitionCount(clusterName, storeName, partitionNum);
 
-        veniceRepsonse.setCluster(clusterName);
-        veniceRepsonse.setName(storeName);
-        veniceRepsonse.setPartitionCount(partitionNum);
+        veniceResponse.setCluster(clusterName);
+        veniceResponse.setName(storeName);
+        veniceResponse.setPartitionCount(partitionNum);
       }
     };
   }
@@ -164,50 +155,43 @@ public class StoresRoutes {
     return new VeniceRouteHandler<VersionResponse>(VersionResponse.class) {
 
       @Override
-      public void internalHandle(Request request, VersionResponse veniceRepsonse) {
+      public void internalHandle(Request request, VersionResponse veniceResponse) {
         AdminSparkServer.validateParams(request, SET_VERSION.getParams(), admin); //throws venice exception
         String clusterName = request.queryParams(CLUSTER);
         String storeName = request.queryParams(NAME);
         int version = Utils.parseIntFromString(request.queryParams(VERSION), VERSION);
         admin.setStoreCurrentVersion(clusterName, storeName, version);
 
-        veniceRepsonse.setCluster(clusterName);
-        veniceRepsonse.setName(storeName);
-        veniceRepsonse.setVersion(version);
+        veniceResponse.setCluster(clusterName);
+        veniceResponse.setName(storeName);
+        veniceResponse.setVersion(version);
       }
     };
   }
 
+  /**
+   * enable/disable store read/write ability
+   */
   public static Route enableStore(Admin admin) {
     return new VeniceRouteHandler<ControllerResponse>(ControllerResponse.class) {
 
       @Override
-      public void internalHandle(Request request, ControllerResponse veniceRepsonse) {
+      public void internalHandle(Request request, ControllerResponse veniceResponse) {
         AdminSparkServer.validateParams(request, ENABLE_STORE.getParams(), admin);
         String cluster = request.queryParams(CLUSTER);
         String storeName = request.queryParams(NAME);
         String operation = request.queryParams(OPERATION);
+        boolean status = Utils.parseBooleanFromString(request.queryParams(STATUS), "storeAccessStatus");
 
-        veniceRepsonse.setCluster(cluster);
-        veniceRepsonse.setName(storeName);
+        veniceResponse.setCluster(cluster);
+        veniceResponse.setName(storeName);
 
-        if (operation.equals(READ_OPERATION) || operation.equals(WRITE_OPERATION) || operation.equals(
-            READ_WRITE_OPERATION)) {
-          if (Boolean.parseBoolean(request.queryParams(STATUS))) { // "true" means enable store
-            if (operation.contains(READ_OPERATION)) {
-              admin.enableStoreRead(cluster, storeName);
-            }
-            if (operation.contains(WRITE_OPERATION)) {
-              admin.enableStoreWrite(cluster, storeName);
-            }
-          } else {
-            if (operation.contains(READ_OPERATION)) {
-              admin.disableStoreRead(cluster, storeName);
-            }
-            if (operation.contains(WRITE_OPERATION)) {
-              admin.disableStoreWrite(cluster, storeName);
-            }
-          }
+        if (operation.equals(READ_OPERATION)) {
+          admin.setStoreReadability(cluster, storeName, status);
+        } else if ((operation.equals(WRITE_OPERATION))) {
+          admin.setStoreWriteability(cluster, storeName, status);
+        } else if (operation.equals(READ_WRITE_OPERATION)) {
+          admin.setStoreReadWriteability(cluster, storeName, status);
         } else {
           throw new VeniceException(OPERATION + " parameter:" + operation + " is invalid.");
         }
@@ -218,20 +202,20 @@ public class StoresRoutes {
   public static Route deleteAllVersions(Admin admin) {
     return new VeniceRouteHandler<MultiVersionResponse>(MultiVersionResponse.class) {
       @Override
-      public void internalHandle(Request request, MultiVersionResponse veniceRepsonse) {
+      public void internalHandle(Request request, MultiVersionResponse veniceResponse) {
         AdminSparkServer.validateParams(request, DELETE_ALL_VERSIONS.getParams(), admin);
         String clusterName = request.queryParams(CLUSTER);
         String storeName = request.queryParams(NAME);
-        veniceRepsonse.setCluster(clusterName);
-        veniceRepsonse.setName(storeName);
+        veniceResponse.setCluster(clusterName);
+        veniceResponse.setName(storeName);
         List<Version> deletedVersions = Collections.emptyList();
         Optional<AdminCommandExecutionTracker> adminCommandExecutionTracker = admin.getAdminCommandExecutionTracker();
         if (adminCommandExecutionTracker.isPresent()) {
           // Lock the tracker to get the execution id for the last admin command.
-          // If will not make our perfomrance worse, because we lock the whole cluster while handling the admin operation in parent admin.
+          // If will not make our performance worse, because we lock the whole cluster while handling the admin operation in parent admin.
           synchronized (adminCommandExecutionTracker) {
             deletedVersions = admin.deleteAllVersionsInStore(clusterName, storeName);
-            veniceRepsonse.setExecutionId(adminCommandExecutionTracker.get().getLastExecutionId());
+            veniceResponse.setExecutionId(adminCommandExecutionTracker.get().getLastExecutionId());
           }
         } else {
           deletedVersions = admin.deleteAllVersionsInStore(clusterName, storeName);
@@ -241,7 +225,7 @@ public class StoresRoutes {
         for (int i = 0; i < deletedVersions.size(); i++) {
           deletedVersionNumbers[i] = deletedVersions.get(i).getNumber();
         }
-        veniceRepsonse.setVersions(deletedVersionNumbers);
+        veniceResponse.setVersions(deletedVersionNumbers);
       }
     };
   }

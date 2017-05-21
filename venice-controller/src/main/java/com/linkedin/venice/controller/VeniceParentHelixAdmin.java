@@ -28,7 +28,6 @@ import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.D2ControllerClient;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
 import com.linkedin.venice.helix.HelixReadWriteStoreRepository;
 import com.linkedin.venice.helix.Replica;
@@ -454,10 +453,8 @@ public class VeniceParentHelixAdmin implements Admin {
   public List<Version> deleteAllVersionsInStore(String clusterName, String storeName) {
     acquireLock(clusterName);
     try {
-      Store store = veniceHelixAdmin.getStore(clusterName, storeName);
-      if (store == null) {
-        throw new VeniceNoStoreException(storeName);
-      }
+      veniceHelixAdmin.checkPreConditionForUpdateStoreMetadata(clusterName, storeName);
+
       DeleteAllVersions deleteAllVersions = (DeleteAllVersions) AdminMessageType.DELETE_ALL_VERSIONS.getNewInstance();
       deleteAllVersions.clusterName = clusterName;
       deleteAllVersions.storeName = storeName;
@@ -503,10 +500,8 @@ public class VeniceParentHelixAdmin implements Admin {
                                 int versionNumber) {
     acquireLock(clusterName);
     try {
-      Store store = veniceHelixAdmin.getStore(clusterName, storeName);
-      if (store == null) {
-        throw new VeniceNoStoreException(storeName);
-      }
+      veniceHelixAdmin.checkPreConditionForUpdateStoreMetadata(clusterName, storeName);
+
       SetStoreCurrentVersion setStoreCurrentVersion = (SetStoreCurrentVersion) AdminMessageType.SET_STORE_CURRENT_VERSION.getNewInstance();
       setStoreCurrentVersion.clusterName = clusterName;
       setStoreCurrentVersion.storeName = storeName;
@@ -525,10 +520,8 @@ public class VeniceParentHelixAdmin implements Admin {
   public void setStoreOwner(String clusterName, String storeName, String owner) {
     acquireLock(clusterName);
     try {
-      Store store = veniceHelixAdmin.getStore(clusterName, storeName);
-      if (store == null) {
-        throw new VeniceNoStoreException(storeName);
-      }
+      veniceHelixAdmin.checkPreConditionForUpdateStoreMetadata(clusterName, storeName);
+
       SetStoreOwner setStoreOwner = (SetStoreOwner) AdminMessageType.SET_STORE_OWNER.getNewInstance();
       setStoreOwner.clusterName = clusterName;
       setStoreOwner.storeName = storeName;
@@ -547,10 +540,8 @@ public class VeniceParentHelixAdmin implements Admin {
   public void setStorePartitionCount(String clusterName, String storeName, int partitionCount) {
     acquireLock(clusterName);
     try {
-      Store store = veniceHelixAdmin.getStore(clusterName, storeName);
-      if (store == null) {
-        throw new VeniceNoStoreException(storeName);
-      }
+      veniceHelixAdmin.checkPreConditionForUpdateStoreMetadata(clusterName, storeName);
+
       SetStorePartitionCount setStorePartition = (SetStorePartitionCount) AdminMessageType.SET_STORE_PARTITION.getNewInstance();
       setStorePartition.clusterName = clusterName;
       setStorePartition.storeName = storeName;
@@ -563,6 +554,108 @@ public class VeniceParentHelixAdmin implements Admin {
     } finally {
       releaseLock();
     }
+  }
+
+  @Override
+  public void setStoreReadability(String clusterName, String storeName, boolean desiredReadability) {
+    acquireLock(clusterName);
+    try {
+      veniceHelixAdmin.checkPreConditionForUpdateStoreMetadata(clusterName, storeName);
+
+      AdminOperation message = new AdminOperation();
+
+      if (desiredReadability) {
+        message.operationType = AdminMessageType.ENABLE_STORE_READ.ordinal();
+        EnableStoreRead enableStoreRead = (EnableStoreRead) AdminMessageType.ENABLE_STORE_READ.getNewInstance();
+        enableStoreRead.clusterName = clusterName;
+        enableStoreRead.storeName = storeName;
+        message.payloadUnion = enableStoreRead;
+      } else {
+        message.operationType = AdminMessageType.DIABLE_STORE_READ.ordinal();
+        DisableStoreRead disableStoreRead = (DisableStoreRead) AdminMessageType.DIABLE_STORE_READ.getNewInstance();
+        disableStoreRead.clusterName = clusterName;
+        disableStoreRead.storeName = storeName;
+        message.payloadUnion = disableStoreRead;
+      }
+
+      sendAdminMessageAndWaitForConsumed(clusterName, message);
+    } finally {
+      releaseLock();
+    }
+  }
+
+  @Override
+  public void setStoreWriteability(String clusterName, String storeName, boolean desiredWriteability) {
+    acquireLock(clusterName);
+    try {
+      veniceHelixAdmin.checkPreConditionForUpdateStoreMetadata(clusterName, storeName);
+
+      AdminOperation message = new AdminOperation();
+
+      if (desiredWriteability) {
+        message.operationType = AdminMessageType.ENABLE_STORE_WRITE.ordinal();
+        ResumeStore resumeStore = (ResumeStore) AdminMessageType.ENABLE_STORE_WRITE.getNewInstance();
+        resumeStore.clusterName = clusterName;
+        resumeStore.storeName = storeName;
+        message.payloadUnion = resumeStore;
+      } else {
+        message.operationType = AdminMessageType.DISABLE_STORE_WRITE.ordinal();
+        PauseStore pauseStore = (PauseStore) AdminMessageType.DISABLE_STORE_WRITE.getNewInstance();
+        pauseStore.clusterName = clusterName;
+        pauseStore.storeName = storeName;
+        message.payloadUnion = pauseStore;
+      }
+
+      sendAdminMessageAndWaitForConsumed(clusterName, message);
+    } finally {
+      releaseLock();
+    }
+  }
+
+  @Override
+  public void setStoreReadWriteability(String clusterName, String storeName, boolean isAccessible) {
+    throw new VeniceUnsupportedOperationException("setStoreReadWriteability");
+  }
+
+  @Override
+  public void updateStore(String clusterName,
+                          String storeName,
+                          Optional<String> owner,
+                          Optional<Boolean> readability,
+                          Optional<Boolean> writeability,
+                          Optional<Integer> partitionCount,
+                          Optional<Integer> currentVersion) {
+    acquireLock(clusterName);
+
+    try {
+      veniceHelixAdmin.updateStore(clusterName,
+                                   storeName,
+                                   owner,
+                                   readability,
+                                   writeability,
+                                   partitionCount,
+                                   currentVersion);
+      Store store = veniceHelixAdmin.getStore(clusterName, storeName);
+
+      UpdateStore setStore = (UpdateStore) AdminMessageType.UPDATE_STORE.getNewInstance();
+      setStore.clusterName = clusterName;
+      setStore.storeName = storeName;
+      setStore.owner = store.getOwner();
+      setStore.principles = String.join(",", store.getPrinciples());
+      setStore.partitionNum = store.getPartitionCount();
+      setStore.currentVersion = store.getCurrentVersion();
+      setStore.enableReads = store.isEnableReads();
+      setStore.enableWrites = store.isEnableWrites();
+
+      AdminOperation message = new AdminOperation();
+      message.operationType = AdminMessageType.UPDATE_STORE.ordinal();
+      message.payloadUnion = setStore;
+
+      sendAdminMessageAndWaitForConsumed(clusterName, message);
+    } finally {
+      releaseLock();
+    }
+
   }
 
   @Override
@@ -819,88 +912,6 @@ public class VeniceParentHelixAdmin implements Admin {
   @Override
   public Instance getMasterController(String clusterName) {
     return veniceHelixAdmin.getMasterController(clusterName);
-  }
-
-  @Override
-  public void disableStoreWrite(String clusterName, String storeName) {
-    acquireLock(clusterName);
-    try {
-      veniceHelixAdmin.checkPreConditionForDisableStoreAndGetStore(clusterName, storeName);
-      logger.info("Disabling store to write: " + storeName + " in cluster: " + clusterName);
-
-      // Did not change PauseStore message name to keep message protocol compatible.
-      PauseStore pauseStore = (PauseStore) AdminMessageType.DISABLE_STORE_WRITE.getNewInstance();
-      pauseStore.clusterName = clusterName;
-      pauseStore.storeName = storeName;
-      AdminOperation message = new AdminOperation();
-      message.operationType = AdminMessageType.DISABLE_STORE_WRITE.ordinal();
-      message.payloadUnion = pauseStore;
-
-      sendAdminMessageAndWaitForConsumed(clusterName, message);
-    } finally {
-      releaseLock();
-    }
-  }
-
-  @Override
-  public void enableStoreWrite(String clusterName, String storeName) {
-    acquireLock(clusterName);
-    try {
-      veniceHelixAdmin.checkPreConditionForDisableStoreAndGetStore(clusterName, storeName);
-      logger.info("Enabling store to write: " + storeName + " in cluster: " + clusterName);
-
-      // Did not change resumeStore message name to keep message protocol compatible.
-      ResumeStore resumeStore = (ResumeStore) AdminMessageType.ENABLE_STORE_WRITE.getNewInstance();
-      resumeStore.clusterName = clusterName;
-      resumeStore.storeName = storeName;
-      AdminOperation message = new AdminOperation();
-      message.operationType = AdminMessageType.ENABLE_STORE_WRITE.ordinal();
-      message.payloadUnion = resumeStore;
-
-      sendAdminMessageAndWaitForConsumed(clusterName, message);
-    } finally {
-      releaseLock();
-    }
-  }
-
-  @Override
-  public void disableStoreRead(String clusterName, String storeName) {
-    acquireLock(clusterName);
-    try {
-      veniceHelixAdmin.checkPreConditionForDisableStoreAndGetStore(clusterName, storeName);
-      logger.info("Disabling store to read: " + storeName + " in cluster: " + clusterName);
-
-      DisableStoreRead disableStoreRead = (DisableStoreRead) AdminMessageType.DIABLE_STORE_READ.getNewInstance();
-      disableStoreRead.clusterName = clusterName;
-      disableStoreRead.storeName = storeName;
-      AdminOperation message = new AdminOperation();
-      message.operationType = AdminMessageType.DIABLE_STORE_READ.ordinal();
-      message.payloadUnion = disableStoreRead;
-
-      sendAdminMessageAndWaitForConsumed(clusterName, message);
-    } finally {
-      releaseLock();
-    }
-  }
-
-  @Override
-  public void enableStoreRead(String clusterName, String storeName) {
-    acquireLock(clusterName);
-    try {
-      veniceHelixAdmin.checkPreConditionForDisableStoreAndGetStore(clusterName, storeName);
-      logger.info("Enabling store to read: " + storeName + " in cluster: " + clusterName);
-
-      EnableStoreRead enableStoreRead = (EnableStoreRead) AdminMessageType.ENABLE_STORE_READ.getNewInstance();
-      enableStoreRead.clusterName = clusterName;
-      enableStoreRead.storeName = storeName;
-      AdminOperation message = new AdminOperation();
-      message.operationType = AdminMessageType.ENABLE_STORE_READ.ordinal();
-      message.payloadUnion = enableStoreRead;
-
-      sendAdminMessageAndWaitForConsumed(clusterName, message);
-    } finally {
-      releaseLock();
-    }
   }
 
   @Override
