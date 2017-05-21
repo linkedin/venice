@@ -445,7 +445,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
   private void handleDisableStoreWrite(PauseStore message) {
     String clusterName = message.clusterName.toString();
     String storeName = message.storeName.toString();
-    admin.disableStoreWrite(clusterName, storeName);
+    admin.setStoreWriteability(clusterName, storeName, false);
 
     logger.info("Disabled store to write: " + storeName + " in cluster: " + clusterName);
   }
@@ -453,7 +453,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
   private void handleEnableStoreWrite(ResumeStore message) {
     String clusterName = message.clusterName.toString();
     String storeName = message.storeName.toString();
-    admin.enableStoreWrite(clusterName, storeName);
+    admin.setStoreWriteability(clusterName, storeName, true);
 
     logger.info("Enabled store to write: " + storeName + " in cluster: " + clusterName);
   }
@@ -461,7 +461,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
   private void handleDisableStoreRead(DisableStoreRead message) {
     String clusterName = message.clusterName.toString();
     String storeName = message.storeName.toString();
-    admin.disableStoreRead(clusterName, storeName);
+    admin.setStoreReadability(clusterName, storeName, false);
 
     logger.info("Disabled store to read: " + storeName + " in cluster: " + clusterName);
   }
@@ -469,8 +469,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
   private void handleEnableStoreRead(EnableStoreRead message) {
     String clusterName = message.clusterName.toString();
     String storeName = message.storeName.toString();
-    admin.enableStoreRead(clusterName, storeName);
-
+    admin.setStoreReadability(clusterName, storeName, true);
     logger.info("Enabled store to read: " + storeName + " in cluster: " + clusterName);
   }
 

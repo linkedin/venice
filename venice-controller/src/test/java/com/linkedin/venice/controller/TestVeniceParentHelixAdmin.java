@@ -326,10 +326,9 @@ public class TestVeniceParentHelixAdmin {
         .thenReturn(new OffsetRecord())
         .thenReturn(TestUtils.getOffsetRecord(1));
 
-    parentAdmin.disableStoreRead(clusterName, storeName);
-
+    parentAdmin.setStoreReadability(clusterName, storeName, false);
     verify(internalAdmin)
-        .checkPreConditionForDisableStoreAndGetStore(clusterName, storeName);
+        .checkPreConditionForUpdateStoreMetadata(clusterName, storeName);
     verify(veniceWriter)
         .put(any(), any(), anyInt());
     verify(zkClient, times(2))
@@ -367,10 +366,10 @@ public class TestVeniceParentHelixAdmin {
         .thenReturn(new OffsetRecord())
         .thenReturn(TestUtils.getOffsetRecord(1));
 
-    parentAdmin.disableStoreWrite(clusterName, storeName);
+    parentAdmin.setStoreWriteability(clusterName, storeName, false);
 
     verify(internalAdmin)
-        .checkPreConditionForDisableStoreAndGetStore(clusterName, storeName);
+        .checkPreConditionForUpdateStoreMetadata(clusterName, storeName);
     verify(veniceWriter)
         .put(any(), any(), anyInt());
     verify(zkClient, times(2))
@@ -409,10 +408,10 @@ public class TestVeniceParentHelixAdmin {
         .thenReturn(new OffsetRecord())
         .thenReturn(TestUtils.getOffsetRecord(1));
 
-    when(internalAdmin.checkPreConditionForDisableStoreAndGetStore(clusterName, storeName))
+    when(internalAdmin.checkPreConditionForUpdateStoreMetadata(clusterName, storeName))
         .thenThrow(new VeniceNoStoreException(storeName));
 
-    parentAdmin.disableStoreWrite(clusterName, storeName);
+    parentAdmin.setStoreWriteability(clusterName, storeName, false);
   }
 
   @Test
@@ -432,10 +431,9 @@ public class TestVeniceParentHelixAdmin {
         .thenReturn(new OffsetRecord())
         .thenReturn(TestUtils.getOffsetRecord(1));
 
-    parentAdmin.enableStoreRead(clusterName, storeName);
-
+    parentAdmin.setStoreReadability(clusterName, storeName, true);
     verify(internalAdmin)
-        .checkPreConditionForDisableStoreAndGetStore(clusterName, storeName);
+        .checkPreConditionForUpdateStoreMetadata(clusterName, storeName);
     verify(veniceWriter)
         .put(any(), any(), anyInt());
     verify(zkClient, times(2))
@@ -473,10 +471,10 @@ public class TestVeniceParentHelixAdmin {
         .thenReturn(new OffsetRecord())
         .thenReturn(TestUtils.getOffsetRecord(1));
 
-    parentAdmin.enableStoreWrite(clusterName, storeName);
+    parentAdmin.setStoreWriteability(clusterName, storeName, true);
 
     verify(internalAdmin)
-        .checkPreConditionForDisableStoreAndGetStore(clusterName, storeName);
+        .checkPreConditionForUpdateStoreMetadata(clusterName, storeName);
     verify(veniceWriter)
         .put(any(), any(), anyInt());
     verify(zkClient, times(2))
