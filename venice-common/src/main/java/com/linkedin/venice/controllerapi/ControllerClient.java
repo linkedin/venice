@@ -131,7 +131,7 @@ public class ControllerClient implements Closeable {
    * @param storeSize
    * @return
    */
-  @Deprecated
+  @Deprecated //Marked deprecated, but we should keep using this for H2V until we can do push ID based idempotent topic requests
   public VersionCreationResponse createNewStoreVersion(String storeName, long storeSize) {
     try {
       List<NameValuePair> params = newParams(clusterName);

@@ -10,10 +10,14 @@ import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.FlakyTestRetryAnalyzer;
 import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.Utils;
+import io.tehuti.metrics.stats.Count;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
@@ -73,48 +77,77 @@ public class TestAdminSparkServerWithMultiServers {
     if (responseOneA.isError()){
       Assert.fail(responseOneA.getError());
     }
-    VersionCreationResponse responseOneB = client.requestTopicForWrites(storeName, 1, ControllerApiConstants.PushType.BATCH, pushOne);
-    if (responseOneB.isError()){
-      Assert.fail(responseOneA.getError());
-    }
     VersionCreationResponse responseTwo = client.requestTopicForWrites(storeName, 1, ControllerApiConstants.PushType.BATCH, pushTwo);
     if (responseTwo.isError()){
       Assert.fail(responseOneA.getError());
     }
 
-    Assert.assertEquals(responseOneA.getKafkaTopic(), responseOneB.getKafkaTopic(), "Multiple requests for topics with the same pushId must return the same kafka topic");
-    Assert.assertNotEquals(responseOneA.getKafkaTopic(), responseTwo.getKafkaTopic(), "Multiple requests for topics with different pushIds must return different topics");
+    Assert.assertEquals(responseOneA.getKafkaTopic(), responseTwo.getKafkaTopic(), "Multiple requests for topics with the same pushId must return the same kafka topic");
   }
 
+  /**
+   * Multiple requests for a topic to write to for the same store.  Each request must provide the same version number
+   * After the attempt, the version is made current so the next attempt generates a new version.
+   * @throws InterruptedException
+   */
   @Test
   public void requestTopicIsIdempotentWithConcurrency() throws InterruptedException {
     String storeName = TestUtils.getUniqueString("store");
     venice.getNewStore(storeName);
-    for (int i=0;i<10;i++){
-      String pushId = TestUtils.getUniqueString("pushId");
-      List<VersionCreationResponse> responses = new ArrayList<>();
-      Thread t1 = requestTopicThread(pushId, storeName, responses);
-      Thread t2 = requestTopicThread(pushId, storeName, responses);
-      t1.start();
-      t2.start();
-      t1.join();
-      t2.join();
-      for (int j=0;j<responses.size();j++) {
-        if (responses.get(j).isError()) {
-          Assert.fail(responses.get(j).getError());
+    AtomicReference<String> errString = new AtomicReference<>();
+    try {
+      for (int i = 0; i < 5; i++) { // number of attempts
+        String pushId = TestUtils.getUniqueString("pushId");
+        final List<VersionCreationResponse> responses = new ArrayList<>();
+        List<Thread> threads = new ArrayList<>();
+        int threadCount = 3; // number of concurrent requests
+        CountDownLatch latch = new CountDownLatch(threadCount);
+        for (int j = 0; j < threadCount; j++) {
+          Thread t = requestTopicThread(pushId, storeName, responses, latch, errString);
+          threads.add(t);
+          t.setUncaughtExceptionHandler((t1, e) -> e.printStackTrace());
+        }
+        for (Thread t : threads) {
+          t.start();
+        }
+        latch.await(10, TimeUnit.SECONDS);
+        for (int j = 0; j < threadCount; j++) {
+          if (responses.get(j).isError()) {
+            Assert.fail(responses.get(j).getError());
+          }
+        }
+        for (int j = 1; j < threadCount; j++) {
+          Assert.assertEquals(responses.get(0).getKafkaTopic(), responses.get(j).getKafkaTopic(),
+              "Idempotent topic requests failed under concurrency on attempt " + i + ".  If this test ever fails, investigate! Don't just run it again and hope it passes");
+        }
+        //close the new version so the next iteration gets a new version.
+        try (ControllerClient client = new ControllerClient(venice.getClusterName(), routerUrl)) {
+          client.writeEndOfPush(storeName, responses.get(0).getVersion());
+          while (client.getStore(storeName).getStore().getCurrentVersion() < responses.get(0).getVersion()) {
+            Utils.sleep(200);
+          }
         }
       }
-      Assert.assertEquals(responses.get(0).getKafkaTopic(), responses.get(1).getKafkaTopic(),
-          "Idempotent topic requests failed under concurrency.  If this test ever fails, investigate! Don't just run it again and hope it passes");
+    } catch (Exception e){
+      e.printStackTrace();
+      System.err.println("Captured message: " + errString.get());
     }
   }
 
-  private Thread requestTopicThread(String pushId, String storeName, List<VersionCreationResponse> output) {
+  private Thread requestTopicThread(String pushId, String storeName, List<VersionCreationResponse> output, CountDownLatch latch, AtomicReference<String> errString) {
     return new Thread(() -> {
-      ControllerClient client = new ControllerClient(venice.getClusterName(), routerUrl);
-      VersionCreationResponse vcr = client.requestTopicForWrites(storeName, 1, ControllerApiConstants.PushType.BATCH, pushId);
-      output.add(vcr);
-      client.close();
+      final VersionCreationResponse vcr = new VersionCreationResponse();
+      try (ControllerClient client = new ControllerClient(venice.getClusterName(), routerUrl)) {
+        VersionCreationResponse thisVcr = client.requestTopicForWrites(storeName, 1, ControllerApiConstants.PushType.BATCH, pushId);
+        vcr.setKafkaTopic(thisVcr.getKafkaTopic());
+        vcr.setVersion(thisVcr.getVersion());
+      } catch (Throwable t) {
+        errString.set(t.getMessage());
+        vcr.setError(t.getMessage());
+      } finally {
+        output.add(vcr);
+        latch.countDown();
+      }
     });
   }
 

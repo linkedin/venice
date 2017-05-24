@@ -1,6 +1,8 @@
 package com.linkedin.venice.controller;
 
 import com.linkedin.venice.ConfigKeys;
+import com.linkedin.venice.controller.server.CreateVersion;
+import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.helix.HelixRoutingDataRepository;
@@ -39,6 +41,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.TimeUnit;
+import javax.servlet.http.HttpServletRequest;
 import org.apache.helix.HelixManager;
 import org.apache.helix.PropertyKey;
 import org.apache.helix.model.IdealState;
@@ -46,6 +49,7 @@ import org.testng.Assert;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
+import spark.Request;
 
 import static com.linkedin.venice.ConfigKeys.*;
 
@@ -509,9 +513,11 @@ public class TestVeniceHelixAdmin {
     Assert.assertEquals(veniceAdmin.getStore(clusterName, storeName).getPartitionCount(), newPartitionCount);
   }
 
-  @Test
-  public void testAddVersion() {
-    String storeName = "test";
+  public void testAddVersion() throws Exception {
+    stopParticipants();
+    startParticipant(true, nodeId); //because we need the new version NOT to transition directly to "online" for the
+                                    //idempotent test to work
+    String storeName = TestUtils.getUniqueString("test");
     try {
       veniceAdmin.incrementVersion(clusterName, storeName, 1, 1);
       Assert.fail("store " + storeName + " does not exist, admin should throw a VeniceException if we try to incrementVersion for it");
@@ -531,6 +537,8 @@ public class TestVeniceHelixAdmin {
 
     veniceAdmin.addVersion(clusterName, storeName, 101, 1, 1);
     Assert.assertEquals(veniceAdmin.versionsForStore(clusterName, storeName).size(), 2);
+
+    veniceAdmin.setStoreCurrentVersion(clusterName, storeName, 101); // set version 101 to be current;
 
     String pushJobId = TestUtils.getUniqueString("pushJobId");
     Version idempotentOne = veniceAdmin.incrementVersionIdempotent(clusterName, storeName, pushJobId, 1, 1);

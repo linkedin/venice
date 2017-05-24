@@ -44,6 +44,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
+import java.util.stream.Collectors;
 import org.apache.commons.io.IOUtils;
 import org.apache.helix.HelixAdmin;
 import org.apache.helix.HelixManager;
@@ -308,6 +309,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         return addVersion(clusterName, storeName, VERSION_ID_UNSET, numberOfPartition, replicationFactor);
     }
 
+    /**
+     * Note: this doesn't currently use the pushID to guarantee idempotence, unexpected behavior may result if multiple
+     * batch jobs push to the same store at the same time.
+     */
     @Override
     public synchronized Version incrementVersionIdempotent(String clusterName, String storeName, String pushJobId, int numberOfPartitions, int replicationFactor){
         checkControllerMastership(clusterName);
@@ -318,17 +323,75 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             if(store == null) {
                 throwStoreDoesNotExist(clusterName, storeName);
             }
-            for (Version version : store.getVersions()){
-                if (version.getPushJobId().equals(pushJobId)){
-                    logger.info("Version request for pushId " + pushJobId + " and store " + storeName +
-                        ".  pushId already exists, so returning existing version " + version.getNumber());
-                    return version; // Early exit
-                }
+            // This uses the pushId to make sure any requests with the same push ID get the same version.  As of May 2017
+            // Samza cannot provide a unique ID, so we're using different logic.  We should keep pushing Samza to provide
+            // that ID and then restore this behavior.
+            //Optional<Version> existingVersionToUse = getVersionWithPushId(store, pushJobId);
+            Optional<Version> existingVersionToUse = getStartedVersion(store);
+            if (existingVersionToUse.isPresent()){
+                return existingVersionToUse.get();
             }
         } finally {
             repository.unLock();
         }
         return addVersion(clusterName, storeName, pushJobId, VERSION_ID_UNSET, numberOfPartitions, replicationFactor, true);
+    }
+
+    /**
+     * The intended semantic is to use this method to find the version that something is currently pushing to.  It looks
+     * at all versions greater than the current version and identifies the version with a status of STARTED.  If there
+     * is no STARTED version, it creates a new one for the push to use.  This means we cannot use this method to support
+     * multiple concurrent pushes.
+     *
+     * @param store
+     * @return the started version if there is only one, throws an exception if there is an error version with
+     * a greater number than the current version.  Otherwise returns Optional.empty()
+     */
+    protected static Optional<Version> getStartedVersion(Store store){
+        List<Version> startedVersions = new ArrayList<>();
+        for (Version version : store.getVersions()) {
+            if (version.getNumber() <= store.getCurrentVersion()) {
+                continue;
+            }
+            switch (version.getStatus()) {
+                case ONLINE:
+                case PUSHED:
+                    break; // These we can ignore
+                case STARTED:
+                    startedVersions.add(version);
+                    break;
+                case ERROR:
+                case NOT_CREATED:
+                default:
+                    throw new VeniceException("Version " + version.getNumber() + " for store " + store.getName()
+                        + " has status " + version.getStatus().toString() + ".  Cannot create a new version until this store is cleaned up.");
+            }
+        }
+        if (startedVersions.size() == 1){
+            return Optional.of(startedVersions.get(0));
+        } else if (startedVersions.size() > 1) {
+            String startedVersionsString = startedVersions.stream().map(Version::getNumber).map(n -> Integer.toString(n)).collect(Collectors.joining(","));
+            throw new VeniceException("Store " + store.getName() + " has versions " + startedVersionsString + " that are all STARTED.  "
+                + "Cannot create a new version while there are multiple STARTED versions");
+        }
+        return Optional.empty();
+    }
+
+    /**
+     *
+     * @param store
+     * @param pushId
+     * @return
+     */
+    protected static Optional<Version> getVersionWithPushId(Store store, String pushId){
+        for (Version version : store.getVersions()) {
+            if (version.getPushJobId().equals(pushId)) {
+                logger.info("Version request for pushId " + pushId + " and store " + store.getName()
+                    + ".  pushId already exists, so returning existing version " + version.getNumber());
+                return Optional.of(version); // Early exit
+            }
+        }
+        return Optional.empty();
     }
 
     @Override
