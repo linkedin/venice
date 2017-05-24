@@ -3,6 +3,7 @@ package com.linkedin.venice.integration.utils;
 import com.linkedin.venice.helix.HelixReadOnlyStoreRepository;
 import com.linkedin.venice.helix.HelixRoutingDataRepository;
 import com.linkedin.venice.router.RouterServer;
+import com.linkedin.venice.router.ZkRoutersClusterManager;
 import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.TestUtils;
 import java.io.File;
@@ -84,6 +85,10 @@ public class VeniceRouterWrapper extends ProcessWrapper {
 
   public HelixReadOnlyStoreRepository getMetaDataRepository() {
     return service.getMetadataRepository();
+  }
+
+  public ZkRoutersClusterManager getRoutersClusterManager() {
+    return service.getRoutersClusterManager();
   }
 
   private static int sslPortFromPort(int port) {

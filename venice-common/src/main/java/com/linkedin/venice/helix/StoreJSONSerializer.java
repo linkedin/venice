@@ -58,7 +58,8 @@ public class StoreJSONSerializer implements VeniceSerializer<Store> {
             @JsonProperty("offLinePushStrategy") OfflinePushStrategy offlinePushStrategy,
             @JsonProperty("enableWrites") boolean enableWrites,
             @JsonProperty("enableReads") boolean enableReads,
-            @JsonProperty("currentVersion") int currentVersion) {
+            @JsonProperty("currentVersion") int currentVersion,
+            @JsonProperty("readQuotaInCU") long readQuotaInCU) {
 
         }
     }

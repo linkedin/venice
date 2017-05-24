@@ -21,6 +21,7 @@ import com.linkedin.venice.stats.AggStoreIngestionStats;
 import com.linkedin.venice.stats.StoreBufferServiceStats;
 import com.linkedin.venice.store.AbstractStorageEngine;
 import com.linkedin.venice.store.bdb.BdbStorageEngine;
+import com.linkedin.venice.throttle.EventThrottler;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.Utils;
 

@@ -82,16 +82,28 @@ public class Store {
    */
   private int largestUsedVersionNumber = 0;
 
+  /**
+   * Quota for read request hit this store. Measurement is capacity unit.
+   */
+  private long readQuotaInCU = 0;
+
   public Store(@NotNull String name, @NotNull String owner, long createdTime, @NotNull PersistenceType persistenceType,
       @NotNull RoutingStrategy routingStrategy, @NotNull ReadStrategy readStrategy,
       @NotNull OfflinePushStrategy offlinePushStrategy) {
     this(name, owner, createdTime, persistenceType, routingStrategy, readStrategy, offlinePushStrategy, true, true,
-        NON_EXISTING_VERSION);
+        NON_EXISTING_VERSION, 0);
   }
 
   public Store(@NotNull String name, @NotNull String owner, long createdTime, @NotNull PersistenceType persistenceType,
       @NotNull RoutingStrategy routingStrategy, @NotNull ReadStrategy readStrategy,
-      @NotNull OfflinePushStrategy offlinePushStrategy, boolean enableWrites, boolean enableReads, int currentVersion) {
+      @NotNull OfflinePushStrategy offlinePushStrategy, long readQuotaInCU) {
+    this(name, owner, createdTime, persistenceType, routingStrategy, readStrategy, offlinePushStrategy, true, true,
+        NON_EXISTING_VERSION, readQuotaInCU);
+  }
+
+  public Store(@NotNull String name, @NotNull String owner, long createdTime, @NotNull PersistenceType persistenceType,
+      @NotNull RoutingStrategy routingStrategy, @NotNull ReadStrategy readStrategy,
+      @NotNull OfflinePushStrategy offlinePushStrategy, boolean enableWrites, boolean enableReads, int currentVersion, long readQuotaInCU) {
     if (!isValidStoreName(name)) {
       throw new VeniceException("Invalid store name: " + name);
     }
@@ -107,6 +119,7 @@ public class Store {
     this.enableWrites = enableWrites;
     this.enableReads = enableReads;
     this.currentVersion = currentVersion;
+    this.readQuotaInCU = readQuotaInCU;
   }
 
   /**
@@ -231,6 +244,14 @@ public class Store {
 
   public void setEnableReads(boolean enableReads) {
     this.enableReads = enableReads;
+  }
+
+  public long getReadQuotaInCU() {
+    return readQuotaInCU;
+  }
+
+  public void setReadQuotaInCU(long readQuotaInCU) {
+    this.readQuotaInCU = readQuotaInCU;
   }
 
   /**
@@ -460,6 +481,9 @@ public class Store {
     if (!principles.equals(store.principles)) {
       return false;
     }
+    if (readQuotaInCU != store.readQuotaInCU) {
+      return false;
+    }
     return versions.equals(store.versions);
   }
 
@@ -483,6 +507,7 @@ public class Store {
     result = 31 * result + routingStrategy.hashCode();
     result = 31 * result + readStrategy.hashCode();
     result = 31 * result + offLinePushStrategy.hashCode();
+    result = 31 * result + (int) (readQuotaInCU ^ (readQuotaInCU >>> 32));
     result = 31 * result + versions.hashCode();
     return result;
   }
@@ -501,6 +526,7 @@ public class Store {
     clonedStore.setEnableReads(enableReads);
     clonedStore.setLargestUsedVersionNumber(largestUsedVersionNumber);
     clonedStore.setPrinciples(principles);
+    clonedStore.setReadQuotaInCU(readQuotaInCU);
 
     for (Version v : this.versions) {
       clonedStore.forceAddVersion(v.cloneVersion());
