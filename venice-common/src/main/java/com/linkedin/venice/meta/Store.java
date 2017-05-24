@@ -279,13 +279,6 @@ public class Store {
     if (!name.equals(version.getStoreName())) {
       throw new VeniceException("Version does not belong to this store.");
     }
-    for (Version versionIterator : versions){
-      if (versionIterator.getPushJobId().equals(version.getPushJobId())) {
-        throw new VeniceException("New version " + version.getNumber() + " for store " + version.getStoreName()
-            + " contains pushJobId " + version.getPushJobId()
-            + " that already exist in the store on version " + versionIterator.getNumber());
-      }
-    }
     int index = 0;
     for (; index < versions.size(); index++) {
       if (versions.get(index).getNumber() == version.getNumber()) {
