@@ -18,7 +18,7 @@ import org.testng.annotations.Test;
 public class TestSslTransportClient {
   @Test
   public void SslTransportClientCanTalkToRouter() throws ExecutionException, InterruptedException, IOException {
-    MockVeniceRouterWrapper router = ServiceFactory.getMockVeniceRouter();
+    MockVeniceRouterWrapper router = ServiceFactory.getMockVeniceRouter(ServiceFactory.getZkServer().getAddress(), true);
     String routerSslUrl = "https://" + router.getHost() + ":" + router.getSslPort();
     HttpsTransportClient client = new HttpsTransportClient(routerSslUrl, SslUtils.getLocalSslFactory());
 

@@ -502,6 +502,9 @@ public class TestVeniceHelixAdmin {
     int newPartitionCount = 2;
     Assert.assertEquals(veniceAdmin.getStore(clusterName, storeName).getPartitionCount(), partitionCount);
 
+    veniceAdmin.setStorePartitionCount(clusterName, storeName, maxNumberOfPartition + 1);
+    Assert.assertEquals(veniceAdmin.getStore(clusterName, storeName).getPartitionCount(), maxNumberOfPartition,
+        "Should not exceed the max partition.");
     veniceAdmin.setStorePartitionCount(clusterName, storeName, newPartitionCount);
     Assert.assertEquals(veniceAdmin.getStore(clusterName, storeName).getPartitionCount(), newPartitionCount);
   }

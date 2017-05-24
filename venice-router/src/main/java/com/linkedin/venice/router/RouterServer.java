@@ -23,6 +23,7 @@ import com.linkedin.venice.router.api.VenicePartitionFinder;
 import com.linkedin.venice.router.api.VenicePathParser;
 import com.linkedin.venice.router.api.VeniceRoleFinder;
 import com.linkedin.venice.router.api.VeniceVersionFinder;
+import com.linkedin.venice.router.throttle.ReadRequestThrottler;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.stats.TehutiUtils;
 import com.linkedin.venice.utils.DaemonThreadFactory;
@@ -77,6 +78,7 @@ public class RouterServer extends AbstractVeniceService {
   private ResourceRegistry registry = null;
   private VeniceDispatcher dispatcher;
   private RouterHeartbeat heartbeat;
+  private ZkRoutersClusterManager routersClusterManager;
 
   private final static String ROUTER_SERVICE_NAME = "venice-router";
   /**
@@ -204,6 +206,7 @@ public class RouterServer extends AbstractVeniceService {
   public RouterServer(int port,
                       int sslPort,
                       String clusterName,
+                      ZkClient zkClient,
                       HelixRoutingDataRepository routingDataRepository,
                       HelixReadOnlyStoreRepository metadataRepository,
                       HelixReadOnlySchemaRepository schemaRepository,
@@ -222,6 +225,7 @@ public class RouterServer extends AbstractVeniceService {
     this.heartbeatTimeout = 1000;
     this.sslFactory = sslFactory;
     this.sslToStorageNodes = sslToStorageNodes;
+    this.zkClient = zkClient;
     verifySslOk();
   }
 
@@ -323,6 +327,7 @@ public class RouterServer extends AbstractVeniceService {
     }
     registry.shutdown();
     registry.waitForShutdown();
+    routersClusterManager.unregisterCurrentRouter();
     dispatcher.close();
     routingDataRepository.clear();
     metadataRepository.clear();
@@ -368,6 +373,13 @@ public class RouterServer extends AbstractVeniceService {
         System.exit(1);
       }
 
+      // Register current router into ZK.
+      routersClusterManager = new ZkRoutersClusterManager(zkClient, clusterName, Utils.getHelixNodeIdentifier(port));
+      routersClusterManager.registerCurrentRouter();
+      // Setup read requests throttler.
+      ReadRequestThrottler throttler = new ReadRequestThrottler(routersClusterManager, metadataRepository);
+      dispatcher.setReadRequestThrottler(throttler);
+
       routingDataRepository.refresh();
 
       for (D2Server d2Server : d2ServerList) {
@@ -392,5 +404,9 @@ public class RouterServer extends AbstractVeniceService {
     if (this.sslToStorageNodes && !sslFactory.isPresent()){
       throw new VeniceException("Must specify an SSLEngineComponentFactory in order to use SSL in requests to storage nodes");
     }
+  }
+
+  public ZkRoutersClusterManager getRoutersClusterManager() {
+    return routersClusterManager;
   }
 }

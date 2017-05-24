@@ -1,6 +1,6 @@
-package com.linkedin.venice.kafka.consumer;
+package com.linkedin.venice.throttle;
 
-import com.linkedin.venice.utils.Time;
+import com.linkedin.venice.exceptions.QuotaExceededException;
 import com.linkedin.venice.utils.Utils;
 import io.tehuti.metrics.MetricConfig;
 import io.tehuti.metrics.MetricsRepository;
@@ -9,6 +9,7 @@ import io.tehuti.metrics.QuotaViolationException;
 import io.tehuti.metrics.Sensor;
 import io.tehuti.metrics.stats.Rate;
 
+import io.tehuti.utils.Time;
 import java.util.concurrent.TimeUnit;
 
 import org.apache.log4j.Logger;
@@ -21,7 +22,8 @@ import org.apache.log4j.Logger;
  * full window, and one in-flight window. Each window is bounded to the provided
  * interval in ms, therefore, the total interval measured over is up to twice
  * the provided interval parameter. If the current event rate exceeds the maximum,
- * the call to {@link #maybeThrottle(int)} will block long enough to equalize it.
+ * the call to {@link #maybeThrottle(int)} will handle this case based on the given
+ * throttling strategy.
  *
  * This is a generalized IoThrottler as it existed before, which can be used to
  * throttle Bytes read or written, number of entries scanned, etc.
@@ -31,6 +33,10 @@ public class EventThrottler {
   private static final Logger logger = Logger.getLogger(EventThrottler.class);
   private static final long DEFAULT_CHECK_INTERVAL_MS = 1000;
   private static final String THROTTLER_NAME = "event-throttler";
+  private static final String UNIT_POSTFIX = " event/sec";
+
+  public static final EventThrottlingStrategy BLOCK_STRATEGY = new BlockEventThrottlingStrategy();
+  public static final EventThrottlingStrategy REJECT_STRATEGY = new RejectEventThrottlingStrategy();
 
   private final long maxRatePerSecond;
 
@@ -40,12 +46,22 @@ public class EventThrottler {
   private final Rate rate;
   private final Sensor rateSensor;
   private final MetricConfig rateConfig;
+  private final EventThrottlingStrategy throttlingStrategy;
 
   /**
    * @param maxRatePerSecond Maximum rate that this throttler should allow (0 is unlimited)
    */
   public EventThrottler(long maxRatePerSecond) {
-    this(maxRatePerSecond, DEFAULT_CHECK_INTERVAL_MS, null);
+    this(maxRatePerSecond, DEFAULT_CHECK_INTERVAL_MS, null, false, BLOCK_STRATEGY);
+  }
+
+  /**
+   * @param maxRatePerSecond Maximum rate that this throttler should allow (0 is unlimited)
+   * @param throttlingStrategy the strategy how throttler handle the quota exceeding case.
+   * @param checkQuotaBeforeRecording if true throttler will check the quota before recording usage, otherwise throttler will record usage then check the quota.
+   */
+  public EventThrottler(long maxRatePerSecond, boolean checkQuotaBeforeRecording, EventThrottlingStrategy throttlingStrategy) {
+    this(maxRatePerSecond, DEFAULT_CHECK_INTERVAL_MS, null, checkQuotaBeforeRecording, throttlingStrategy);
   }
 
   /**
@@ -53,9 +69,11 @@ public class EventThrottler {
    * @param intervalMs Minimum interval over which the rate is measured (maximum is twice that)
    * @param throttlerName if specified, the throttler will share its limit with others named the same
    *                      if null, the throttler will be independent of the others
+   * @param checkQuotaBeforeRecording if true throttler will check the quota before recording usage, otherwise throttler will record usage then check the quota.
+   * @param throttlingStrategy the strategy how throttler handle the quota exceeding case.
    */
-  public EventThrottler(long maxRatePerSecond, long intervalMs, String throttlerName) {
-    this(new io.tehuti.utils.SystemTime(), maxRatePerSecond, intervalMs, throttlerName);
+  public EventThrottler(long maxRatePerSecond, long intervalMs, String throttlerName, boolean checkQuotaBeforeRecording, EventThrottlingStrategy throttlingStrategy) {
+    this(new io.tehuti.utils.SystemTime(), maxRatePerSecond, intervalMs, throttlerName, checkQuotaBeforeRecording, throttlingStrategy);
   }
 
   /**
@@ -64,12 +82,17 @@ public class EventThrottler {
    * @param intervalMs Minimum interval over which the rate is measured (maximum is twice that)
    * @param throttlerName if specified, the throttler will share its limit with others named the same
    *                      if null, the throttler will be independent of the others
+   * @param checkQuotaBeforeRecording if true throttler will check the quota before recording usage, otherwise throttler will record usage then check the quota.
+   * @param throttlingStrategy the strategy how throttler handle the quota exceeding case.
    */
   public EventThrottler(io.tehuti.utils.Time time,
       long maxRatePerSecond,
       long intervalMs,
-      String throttlerName) {
+      String throttlerName,
+      boolean checkQuotaBeforeRecording,
+      EventThrottlingStrategy throttlingStrategy) {
     this.maxRatePerSecond = maxRatePerSecond;
+    this.throttlingStrategy = Utils.notNull(throttlingStrategy);
     if (maxRatePerSecond > 0) {
       this.time = Utils.notNull(time);
       if (intervalMs <= 0) {
@@ -77,6 +100,7 @@ public class EventThrottler {
       }
       this.rateConfig = new MetricConfig()
           .timeWindow(intervalMs, TimeUnit.MILLISECONDS)
+          // TODO create quota that check it before recording the usage.
           .quota(Quota.lessThan(maxRatePerSecond));
       this.rate = new Rate(TimeUnit.SECONDS);
       if (throttlerName == null) {
@@ -122,31 +146,43 @@ public class EventThrottler {
       try {
         rateSensor.record(eventsSeen, now);
       } catch (QuotaViolationException e) {
-        // If we're over quota, we calculate how long to sleep to compensate.
-        double currentRate = e.getValue();
-        if (currentRate > this.maxRatePerSecond) {
-          double excessRate = currentRate - this.maxRatePerSecond;
-          long sleepTimeMs = Math.round(excessRate / this.maxRatePerSecond * Time.MS_PER_SECOND);
-          if(logger.isDebugEnabled()) {
-            logger.debug("Throttler quota exceeded:\n" +
-                "eventsSeen \t= " + eventsSeen + " in this call of maybeThrottle(),\n" +
-                "currentRate \t= " + currentRate + " events/sec,\n" +
-                "maxRatePerSecond \t= " + this.maxRatePerSecond + " events/sec,\n" +
-                "excessRate \t= " + excessRate + " events/sec,\n" +
-                "sleeping for \t" + sleepTimeMs + " ms to compensate.\n" +
-                "rateConfig.timeWindowMs() = " + rateConfig.timeWindowMs());
-          }
-          if (sleepTimeMs > rateConfig.timeWindowMs()) {
-            logger.warn("Throttler sleep time (" + sleepTimeMs + " ms) exceeds " +
-                "window size (" + rateConfig.timeWindowMs() + " ms). This will likely " +
-                "result in not being able to honor the rate limit accurately.");
-          }
-          time.sleep(sleepTimeMs);
-        } else if (logger.isDebugEnabled()) {
-          logger.debug("Weird. Got QuotaValidationException but measured rate not over rateLimit: " +
-              "currentRate = " + currentRate + " , rateLimit = " + this.maxRatePerSecond);
-        }
+        throttlingStrategy.onExceedQuota(time, rateSensor.name(), (long) e.getValue(), maxRatePerSecond,
+            rateConfig.timeWindowMs());
       }
+    }
+  }
+
+  private static class BlockEventThrottlingStrategy implements EventThrottlingStrategy{
+    @Override
+    public void onExceedQuota(Time time, String throttlerName, long currentRate, long quota, long timeWindowMS) {
+      // If we're over quota, we calculate how long to sleep to compensate.
+      double excessRate = currentRate - quota;
+      long sleepTimeMs = Math.round(excessRate / quota * Time.MS_PER_SECOND);
+      if (logger.isDebugEnabled()) {
+        logger.debug("Throttler: " + throttlerName + " quota exceeded:\n" +
+            "currentRate \t= " + currentRate + UNIT_POSTFIX + "\n" +
+            "maxRatePerSecond \t= " + quota + UNIT_POSTFIX + "\n" +
+            "excessRate \t= " + excessRate + UNIT_POSTFIX + "\n" +
+            "sleeping for \t" + sleepTimeMs + " ms to compensate.\n" +
+            "rateConfig.timeWindowMs() = " + timeWindowMS);
+      }
+      if (sleepTimeMs > timeWindowMS) {
+        logger.warn("Throttler: " + throttlerName + " sleep time(" + sleepTimeMs + "ms) exceeds " +
+            "window size (" + timeWindowMS + " ms). This will likely " +
+            "result in not being able to honor the rate limit accurately.");
+      }
+      time.sleep(sleepTimeMs);
+    }
+  }
+
+  /**
+   * The strategy used by event throttler which will thrown an exception to reject the event request.
+   */
+  private static class RejectEventThrottlingStrategy implements EventThrottlingStrategy {
+
+    @Override
+    public void onExceedQuota(Time time, String throttlerName, long currentRate, long quota, long timeWindowMS) {
+      throw new QuotaExceededException(throttlerName, currentRate + UNIT_POSTFIX, quota + UNIT_POSTFIX);
     }
   }
 }

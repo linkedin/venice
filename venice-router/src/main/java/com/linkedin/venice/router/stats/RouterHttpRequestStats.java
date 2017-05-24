@@ -12,6 +12,7 @@ public class RouterHttpRequestStats extends AbstractVeniceStats {
   final private Sensor requestSensor;
   final private Sensor healthySensor;
   final private Sensor unhealthySensor;
+  final private Sensor throttleSensor;
   final private Sensor latencySensor;
   final private Sensor keySizeSensor;
   final private Sensor valueSizeSensor;
@@ -23,6 +24,7 @@ public class RouterHttpRequestStats extends AbstractVeniceStats {
     requestSensor = registerSensor("request", new Count(), new OccurrenceRate());
     healthySensor = registerSensor("healthy_request", new Count());
     unhealthySensor = registerSensor("unhealthy_request", new Count());
+    throttleSensor = registerSensor("throttled_request", new Count());
 
     //we have to explicitly pass the name again for PercentilesStat here.
     //TODO: remove the redundancy once Tehuti library is updated.
@@ -41,6 +43,10 @@ public class RouterHttpRequestStats extends AbstractVeniceStats {
 
   public void recordUnhealthyRequest() {
     unhealthySensor.record();
+  }
+
+  public void recordThrottledRequest() {
+    throttleSensor.record();
   }
 
   public void recordLatency(double latency) {

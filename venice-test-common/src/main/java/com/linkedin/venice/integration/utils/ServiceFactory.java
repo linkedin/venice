@@ -120,15 +120,6 @@ public class ServiceFactory {
       VeniceRouterWrapper.generateService(clusterName, kafkaBrokerWrapper, sslToStorageNodes));
   }
 
-  /**
-   * Initialize MockVeniceRouterWrapper without D2.
-   * @return
-   */
-  public static MockVeniceRouterWrapper getMockVeniceRouter() {
-    return getService(MockVeniceRouterWrapper.SERVICE_NAME,
-        MockVeniceRouterWrapper.generateService(null, false));
-  }
-
   public static MockVeniceRouterWrapper getMockVeniceRouter(String zkAddress, boolean sslToStorageNodes){
     return getService(
         MockVeniceRouterWrapper.SERVICE_NAME,

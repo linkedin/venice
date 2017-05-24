@@ -19,6 +19,7 @@ import java.util.concurrent.TimeUnit;
 
 import com.linkedin.venice.schema.SchemaEntry;
 
+import org.apache.helix.manager.zk.ZkClient;
 import org.mockito.Matchers;
 import org.mockito.Mockito;
 import static org.mockito.Mockito.doReturn;
@@ -71,8 +72,10 @@ public class MockVeniceRouterWrapper extends ProcessWrapper {
         d2ServerList = D2TestUtils.getD2Servers(zkAddress, "http://localhost:" + port, "https://localhost:" + sslPortFromPort(port));
       }
       String clusterName = TestUtils.getUniqueString("mock-venice-router-cluster");
-      RouterServer router = new RouterServer(port, sslPortFromPort(port), clusterName, mockRepo,
-          mockMetadataRepository, mockSchemaRepository, d2ServerList, Optional.of(SslUtils.getLocalSslFactory()), sslToStorageNodes);
+      RouterServer router =
+          new RouterServer(port, sslPortFromPort(port), clusterName, new ZkClient(zkAddress), mockRepo,
+              mockMetadataRepository, mockSchemaRepository, d2ServerList, Optional.of(SslUtils.getLocalSslFactory()),
+              sslToStorageNodes);
       return new MockVeniceRouterWrapper(serviceName, dataDirectory, router, clusterName, port, sslToStorageNodes);
     };
   }

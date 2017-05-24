@@ -8,10 +8,12 @@ import com.linkedin.ddsstorage.router.api.Scatter;
 import com.linkedin.ddsstorage.router.api.ScatterGatherRequest;
 import com.linkedin.security.ssl.access.control.SSLEngineComponentFactory;
 import com.linkedin.venice.HttpConstants;
+import com.linkedin.venice.exceptions.QuotaExceededException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.router.stats.AggRouterHttpRequestStats;
+import com.linkedin.venice.router.throttle.ReadRequestThrottler;
 import com.linkedin.venice.utils.SslUtils;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
@@ -32,17 +34,12 @@ import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.Executor;
-import java.util.concurrent.TimeUnit;
 import javax.annotation.Nonnull;
 import org.apache.commons.io.IOUtils;
 import org.apache.http.HttpStatus;
-import org.apache.http.client.config.RequestConfig;
 import org.apache.http.client.methods.HttpGet;
 import org.apache.http.concurrent.FutureCallback;
-import org.apache.http.impl.DefaultConnectionReuseStrategy;
 import org.apache.http.impl.nio.client.CloseableHttpAsyncClient;
-import org.apache.http.impl.nio.client.HttpAsyncClientBuilder;
-import org.apache.http.impl.nio.client.HttpAsyncClients;
 import org.apache.log4j.Logger;
 
 import static com.linkedin.venice.HttpConstants.*;
@@ -63,6 +60,8 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
   private final VeniceHostHealth healthMontior;
 
   private final AggRouterHttpRequestStats stats;
+
+  private ReadRequestThrottler readRequestThrottler;
 
    // How many offsets behind can a storage node be for a partition and still be considered 'caught up'
   private long acceptableOffsetLag = 10000; /* TODO: make this configurable for streaming use-case */
@@ -112,6 +111,12 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
     } catch (Exception e) {
       hostSelected.setFailure(e);
       throw new VeniceException("Failed to route request to a host", e);
+    }
+    try {
+      readRequestThrottler.mayThrottleRead(storeName, readRequestThrottler.getReadCapacity());
+    } catch (QuotaExceededException e) {
+      stats.recordThrottledRequest(storeName);
+      throw e;
     }
     if (logger.isDebugEnabled()) {
       logger.debug("Routing request to host: " + host.getHost() + ":" + host.getPort());
@@ -234,6 +239,14 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
 
   public void close(){
     IOUtils.closeQuietly(httpClient);
+  }
+
+  public ReadRequestThrottler getReadRequestThrottler() {
+    return readRequestThrottler;
+  }
+
+  public void setReadRequestThrottler(ReadRequestThrottler readRequestThrottler) {
+    this.readRequestThrottler = readRequestThrottler;
   }
 
   protected static String numberFromPartitionName(String partitionName){

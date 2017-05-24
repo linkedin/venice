@@ -64,6 +64,7 @@ dependencies {
   compile project(':venice-server')
   compile project(':venice-controller')
   compile project(':venice-router')
+  compile project(':venice-thin-client')
 
   compile 'org.mockito:mockito-all:1.9.5'
 

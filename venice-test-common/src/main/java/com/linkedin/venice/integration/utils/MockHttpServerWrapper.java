@@ -191,7 +191,7 @@ public class  MockHttpServerWrapper extends ProcessWrapper {
           ctx.writeAndFlush(notFoundResponse.copy()).addListener(ChannelFutureListener.CLOSE);
         }
       } else {
-        throw new RuntimeException("Unknown message type");
+        throw new RuntimeException("Unknown message type:" + msg.getClass());
       }
     }
 
