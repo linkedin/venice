@@ -40,6 +40,9 @@ public class TestAdminTopicUtils {
   public void testIsKafkaInternalTopic() {
     String kafkaInternalTopic = "__consumer_offsets";
     Assert.assertTrue(AdminTopicUtils.isKafkaInternalTopic(kafkaInternalTopic));
+    
+    String monitorTopic = "kafka-monitor-topic";
+    Assert.assertTrue(AdminTopicUtils.isKafkaInternalTopic(monitorTopic));
 
     String veniceTopic = "test_store_v1";
     Assert.assertFalse(AdminTopicUtils.isKafkaInternalTopic(veniceTopic));
