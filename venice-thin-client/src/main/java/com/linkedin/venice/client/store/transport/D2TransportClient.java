@@ -1,28 +1,23 @@
 package com.linkedin.venice.client.store.transport;
 
 import com.linkedin.common.callback.Callback;
-import com.linkedin.common.util.None;
 import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.d2.balancer.D2ClientBuilder;
 import com.linkedin.r2.message.rest.RestException;
 import com.linkedin.r2.message.rest.RestRequest;
-import com.linkedin.r2.message.rest.RestRequestBuilder;
 import com.linkedin.r2.message.rest.RestResponse;
 import com.linkedin.venice.D2.D2ClientUtils;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.exceptions.VeniceServerException;
-import com.linkedin.venice.client.store.ClientCallback;
+import com.linkedin.venice.client.store.ClientHttpCallback;
 import com.linkedin.venice.client.store.DeserializerFetcher;
 import org.apache.commons.httpclient.HttpStatus;
 import org.apache.log4j.Logger;
 
-import java.net.URI;
-import java.net.URISyntaxException;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicBoolean;
+
 
 /**
  * {@link D2Client} based TransportClient implementation.
@@ -90,7 +85,7 @@ public class D2TransportClient<V> extends TransportClient<V> {
   }
 
   @Override
-  public Future<V> get(String requestPath, ClientCallback callback) {
+  public Future<V> get(String requestPath, ClientHttpCallback callback) {
     RestRequest request = getRestRequest(requestPath);
     CompletableFuture<V> valueFuture = new CompletableFuture<>();
     d2Client.restRequest(request, new D2TransportClientCallback<>(valueFuture, getDeserializerFetcher(), callback));
@@ -122,7 +117,7 @@ public class D2TransportClient<V> extends TransportClient<V> {
   private static class D2TransportClientCallback<T> extends TransportClientCallback<T> implements Callback<RestResponse> {
     private Logger logger = Logger.getLogger(D2TransportClient.class);
 
-    public D2TransportClientCallback(CompletableFuture<T> valueFuture, DeserializerFetcher<T> fetcher, ClientCallback callback) {
+    public D2TransportClientCallback(CompletableFuture<T> valueFuture, DeserializerFetcher<T> fetcher, ClientHttpCallback callback) {
       super(valueFuture, fetcher, callback);
     }
 

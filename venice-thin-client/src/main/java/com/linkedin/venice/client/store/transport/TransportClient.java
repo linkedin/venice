@@ -1,6 +1,6 @@
 package com.linkedin.venice.client.store.transport;
 
-import com.linkedin.venice.client.store.ClientCallback;
+import com.linkedin.venice.client.store.ClientHttpCallback;
 import com.linkedin.venice.client.store.DeserializerFetcher;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 
@@ -15,7 +15,7 @@ public abstract class TransportClient<V> implements Closeable {
   private DeserializerFetcher<V> deserializerFetcher;
   protected static final String HTTPS = "https";
 
-  public abstract Future<V> get(String requestPath, ClientCallback callback);
+  public abstract Future<V> get(String requestPath, ClientHttpCallback callback);
 
   public abstract Future<byte[]> getRaw(String requestPath);
 

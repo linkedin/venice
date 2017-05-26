@@ -15,13 +15,13 @@ import org.testng.Assert;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
-public class TestTransportClientCallback {
+public class TestTransportClientHttpCallback {
   private static String SCHEMA_ID = "1";
   private static String RESPONSE_BODY_STR = "serialized-body";
   private static String DESERIALIZED_BODY_STR = "body";
 
   private byte[] mockResponseBody;
-  private ClientCallback mockClientCallback;
+  private ClientHttpCallback _mockClientHttpCallback;
   private CompletableFuture mockFuture;
   private DeserializerFetcher mockDeserializerFetcher;
   private RecordDeserializer mockRecordDeserializer;
@@ -31,7 +31,7 @@ public class TestTransportClientCallback {
   @BeforeClass
   public void setUp() {
     mockResponseBody = RESPONSE_BODY_STR.getBytes();
-    mockClientCallback = mock(ClientCallback.class);
+    _mockClientHttpCallback = mock(ClientHttpCallback.class);
     mockFuture = mock(CompletableFuture.class);
 
     mockDeserializerFetcher = mock(DeserializerFetcher.class);
@@ -40,7 +40,7 @@ public class TestTransportClientCallback {
     doReturn(DESERIALIZED_BODY_STR).when(mockRecordDeserializer).deserialize(mockResponseBody);
 
     transportClientCallback =
-        new TransportClientCallback(mockFuture, mockDeserializerFetcher, mockClientCallback);
+        new TransportClientCallback(mockFuture, mockDeserializerFetcher, _mockClientHttpCallback);
   }
 
   @Test
