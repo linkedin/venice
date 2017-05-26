@@ -8,4 +8,6 @@ public interface StoreDataChangedListener {
   void handleStoreCreated(Store store);
 
   void handleStoreDeleted(String storeName);
+
+  void handleStoreChanged(Store store);
 }

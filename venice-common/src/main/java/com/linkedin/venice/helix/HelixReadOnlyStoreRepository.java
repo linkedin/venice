@@ -11,16 +11,17 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
+import java.util.stream.Collectors;
 import javax.validation.constraints.NotNull;
 
 import com.linkedin.venice.utils.PathResourceRegistry;
 import org.apache.log4j.Logger;
 import org.I0Itec.zkclient.IZkChildListener;
 import org.I0Itec.zkclient.IZkDataListener;
-import org.apache.commons.collections.map.HashedMap;
 import org.apache.helix.AccessOption;
 import org.apache.helix.manager.zk.ZkBaseDataAccessor;
 import org.apache.helix.manager.zk.ZkClient;
@@ -71,6 +72,8 @@ public class HelixReadOnlyStoreRepository implements ReadOnlyStoreRepository {
    */
   protected final String rootPath;
 
+  private volatile long totalStoreReadQuota = 0;
+
   public HelixReadOnlyStoreRepository(@NotNull ZkClient zkClient, @NotNull HelixAdapterSerializer adapter,
                                       @NotNull String clusterName) {
     this(zkClient, adapter, clusterName, new StoreJSONSerializer());
@@ -115,19 +118,41 @@ public class HelixReadOnlyStoreRepository implements ReadOnlyStoreRepository {
   }
 
   @Override
+  public long getTotalStoreReadQuota() {
+    return totalStoreReadQuota;
+  }
+
+  @Override
+  public List<Store> getAllStores() {
+    metadataLock.readLock().lock();
+    try {
+      List<Store> stores = new ArrayList<>(storeMap.size());
+      stores.addAll(storeMap.values().stream().map(Store::cloneStore).collect(Collectors.toList()));
+      return stores;
+    } finally {
+      metadataLock.readLock().unlock();
+    }
+  }
+
+  @Override
   public void refresh() {
     metadataLock.writeLock().lock();
     try {
-      Map<String, Store> newStoreMap = new HashedMap();
+      Map<String, Store> oldStoreMap = new HashMap<>(storeMap);
+      Map<String, Store> newStoreMap = new HashMap();
       List<Store> stores = dataAccessor.getChildren(rootPath, null, AccessOption.PERSISTENT);
       logger.info("Load " + stores.size() + " stores from Helix");
       // Add stores to local copy.
+      long newTotalStoreReadQuota = 0;
       for (Store s : stores) {
         newStoreMap.put(s.getName(), s);
+        newTotalStoreReadQuota += s.getReadQuotaInCU();
       }
       clear(); // clear local copy only if loading from ZK successfully.
       // replace the original map
       storeMap = newStoreMap;
+      totalStoreReadQuota = newTotalStoreReadQuota;
+      triggerAllListeners(oldStoreMap, newStoreMap);
       // add listeners.
       dataAccessor.subscribeChildChanges(rootPath, storeCreateDeleteListener);
       for (Store s : storeMap.values()) {
@@ -141,6 +166,26 @@ public class HelixReadOnlyStoreRepository implements ReadOnlyStoreRepository {
     zkClient.subscribeStateChanges(zkStateListener);
   }
 
+  private void triggerAllListeners(Map<String, Store> oldStores, Map<String, Store> newStores) {
+    // Store change
+    newStores.entrySet().parallelStream()
+        .filter(entry -> oldStores.containsKey(entry.getKey()))
+        .filter(entry -> !entry.getValue().equals(oldStores.get(entry.getKey())))
+        .forEach(entry -> triggerStoreChangeListener(entry.getValue()));
+
+    // Store creation
+    newStores.entrySet().parallelStream()
+        .filter(entry -> !oldStores.containsKey(entry.getKey()))
+        .forEach(entry -> triggerStoreCreationListener(entry.getValue()));
+
+    // Store deletion
+    oldStores.keySet().parallelStream()
+        .filter(storeName -> !newStores.containsKey(storeName))
+        .forEach(this::triggerStoreDeletionListener);
+  }
+
+
+
   @Override
   public void clear() {
     // un-subscribe is the thread safe method
@@ -152,6 +197,7 @@ public class HelixReadOnlyStoreRepository implements ReadOnlyStoreRepository {
         dataAccessor.unsubscribeDataChanges(composeStorePath(storeName), storeUpdateListener);
       }
       storeMap.clear();
+      totalStoreReadQuota = 0;
       logger.info("Clear stores from local copy.");
     } finally {
       metadataLock.writeLock().unlock();
@@ -193,13 +239,34 @@ public class HelixReadOnlyStoreRepository implements ReadOnlyStoreRepository {
 
   protected void triggerStoreCreationListener(Store store) {
     for (StoreDataChangedListener listener : dataChangedListenerSet) {
-      listener.handleStoreCreated(store);
+      try {
+        listener.handleStoreCreated(store);
+      } catch (Exception e) {
+        // Catch exception here to avoid interrupting the execution of subsequent listeners
+        logger.error("Could not handle store creation event for store: " + store.getName(), e);
+      }
     }
   }
 
   protected void triggerStoreDeletionListener(String storeName) {
     for (StoreDataChangedListener listener : dataChangedListenerSet) {
-      listener.handleStoreDeleted(storeName);
+      try {
+        listener.handleStoreDeleted(storeName);
+      } catch (Exception e) {
+        // Catch exception here to avoid interrupting the execution of subsequent listeners
+        logger.error("Could not handle store deletion event for store: " + storeName, e);
+      }
+    }
+  }
+
+  protected void triggerStoreChangeListener(Store store) {
+    for (StoreDataChangedListener listener : dataChangedListenerSet) {
+      try {
+        listener.handleStoreChanged(store);
+      } catch (Exception e) {
+        // Catch exception here to avoid interrupting the execution of subsequent listeners
+        logger.error("Could not handle store updating event for store: " + store.getName(), e);
+      }
     }
   }
 
@@ -225,15 +292,18 @@ public class HelixReadOnlyStoreRepository implements ReadOnlyStoreRepository {
             deletedChildren.remove(storeName);
           }
         }
-
+        Map<String, Store> newStoreMap = new HashMap<>(storeMap);
         // Add new stores to local copy and add listeners.
         if (!addedChildren.isEmpty()) {
           // Get new stores from ZK.
           List<Store> addedStores = dataAccessor.get(addedChildren, null, AccessOption.PERSISTENT);
           for (Store store : addedStores) {
-            storeMap.put(store.getName(), store);
+            if (store == null) {
+              // The store has been deleted before we got the zk notification.
+              continue;
+            }
+            newStoreMap.put(store.getName(), store);
             dataAccessor.subscribeDataChanges(composeStorePath(store.getName()), storeUpdateListener);
-            triggerStoreCreationListener(store);
             logger.info("Store:" + store.getName() + " is added. Current version:" + store.getCurrentVersion());
           }
         }
@@ -241,14 +311,29 @@ public class HelixReadOnlyStoreRepository implements ReadOnlyStoreRepository {
         // Delete useless stores from local copy
         for (String storeName : deletedChildren) {
           dataAccessor.unsubscribeDataChanges(composeStorePath(storeName), storeUpdateListener);
-          storeMap.remove(storeName);
-          triggerStoreDeletionListener(storeName);
+          newStoreMap.remove(storeName);
           logger.info("Store:" + storeName + " is deleted.");
         }
+
+        // Replace the local copy
+        long newTotalStoreReadQuota = 0;
+        for (Store s : newStoreMap.values()) {
+          newTotalStoreReadQuota += s.getReadQuotaInCU();
+        }
+        storeMap = newStoreMap;
+        totalStoreReadQuota = newTotalStoreReadQuota;
+        logger.info("Local store copy has been updated.");
+
+        for (String storeName : addedChildren) {
+          triggerStoreCreationListener(storeMap.get(storeName));
+        }
+        for (String storeName : deletedChildren) {
+          triggerStoreDeletionListener(storeName);
+        }
+
       } finally {
         metadataLock.writeLock().unlock();
       }
-      //TODO invoke all of venice listeners here to notify the changes of stores.
     }
   }
 
@@ -267,9 +352,27 @@ public class HelixReadOnlyStoreRepository implements ReadOnlyStoreRepository {
             "The path of event is mismatched. Expected:" + composeStorePath(store.getName()) + "Actual:" + dataPath);
       }
       metadataLock.writeLock().lock();
+      Optional<Store> oldStore = Optional.ofNullable(storeMap.get(store.getName()));
       try {
+        long newTotalStoreReadQuota =
+            oldStore.isPresent() ? totalStoreReadQuota - oldStore.get().getReadQuotaInCU() : totalStoreReadQuota;
         storeMap.put(store.getName(), store);
+        totalStoreReadQuota = newTotalStoreReadQuota + store.getReadQuotaInCU();
+
         logger.info("Store:" + store.getName() + " is updated. Current version:" + store.getCurrentVersion());
+
+        if (!oldStore.isPresent()) {
+          logger.warn("Receiving a zk notification for a store change, but could not find the store in local copy: "
+              + store.getName() + "We might miss some zk notifications before.");
+          dataAccessor.subscribeDataChanges(composeStorePath(store.getName()), storeUpdateListener);
+          triggerStoreCreationListener(store);
+        } else if (oldStore.equals(store)) {
+          logger.warn("Received a ZK notification for a store change, but the old and new stores are equal!" +
+              "\nOld store: " + oldStore.toString() +
+              "\nNew store: " + store.toString());
+        } else { // not equal
+          triggerStoreChangeListener(store);
+        }
       } finally {
         metadataLock.writeLock().unlock();
       }
@@ -278,17 +381,7 @@ public class HelixReadOnlyStoreRepository implements ReadOnlyStoreRepository {
     @Override
     public void handleDataDeleted(String dataPath)
         throws Exception {
-      logger.info("Received a store deleted notification from ZK.");
-      String storeName = parseStoreNameFromPath(dataPath);
-      metadataLock.writeLock().lock();
-      try {
-        dataAccessor.unsubscribeDataChanges(composeStorePath(storeName), storeUpdateListener);
-        storeMap.remove(storeName);
-        triggerStoreDeletionListener(storeName);
-        logger.info("Store:" + storeName + " is deleted.");
-      } finally {
-        metadataLock.writeLock().unlock();
-      }
+      // Ignore this event, because node deletion should be process in children change listener.
     }
   }
 

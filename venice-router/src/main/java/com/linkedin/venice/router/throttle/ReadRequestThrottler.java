@@ -1,38 +1,62 @@
 package com.linkedin.venice.router.throttle;
 
 import com.linkedin.venice.exceptions.QuotaExceededException;
-import com.linkedin.venice.exceptions.VeniceNoStoreException;
+import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.meta.PartitionAssignment;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
+import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.StoreDataChangedListener;
+import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.router.RoutersClusterManager;
 import com.linkedin.venice.router.ZkRoutersClusterManager;
 import com.linkedin.venice.throttle.EventThrottler;
+import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.atomic.AtomicReference;
 import org.apache.log4j.Logger;
 
 
 /**
- * This class define the throttler on reads request. Basically it will calculate the local quota based on the total
- * quota and number of
- * routers. And for each read request throttler will check both store level quota and storage level quota then accept
- * or reject it.
- * // TODO Because right now we could not delete a store from the cluster, we should handle the store deletion here to
- * remove the related reads quota.
+ * This class define the throttler on reads request. Basically it will calculate the store quota per router based on
+ * the total store quota and the number of living routers. Then a StoreReadThrottler will be created to maintain the
+ * throttler for this store and all storage nodes which get the ONLINE replica for the current version of this store.
+ * For each read request throttler will ask the related StoreReadThrottler to check both store level quota and storage
+ * level quota then accept or reject it.
  */
-public class ReadRequestThrottler implements RoutersClusterManager.RouterCountChangedListener {
-  public static final long DEFAULT_STORE_READ_QUOTA = 1000;
+public class ReadRequestThrottler implements RoutersClusterManager.RouterCountChangedListener, RoutingDataRepository.RoutingDataChangedListener, StoreDataChangedListener {
   private static final Logger logger = Logger.getLogger(ReadRequestThrottler.class);
   private final ZkRoutersClusterManager zkRoutersManager;
   private final ReadOnlyStoreRepository storeRepository;
+  private final RoutingDataRepository routingDataRepository;
+  private final long maxRouterReadCapacity;
 
-  private final ConcurrentMap<String, EventThrottler> storesThrottlersMap;
+  /**
+   * Sum of all store's quota for the current router.
+   */
+  private long idealTotalQuotaPerRouter;
 
-  public ReadRequestThrottler(ZkRoutersClusterManager zkRoutersManager, ReadOnlyStoreRepository storeRepository) {
+  /**
+   * The atomic reference of all store throttlers. While updating any throttler, lock this reference to prevent race
+   * condition. We could not use volatile variable here because we will replace the whole inside map once router count
+   * is changed(ReadRequestThrottler#handleRouterCountChanged), in that case lock will fail because the object that
+   * this
+   * reference points to has been changed.
+   */
+  private final AtomicReference<ConcurrentMap<String, StoreReadThrottler>> storesThrottlers;
+
+  public ReadRequestThrottler(ZkRoutersClusterManager zkRoutersManager, ReadOnlyStoreRepository storeRepository,
+      RoutingDataRepository routingDataRepository, long maxRouterReadCapacity) {
     this.zkRoutersManager = zkRoutersManager;
     this.storeRepository = storeRepository;
-    this.storesThrottlersMap = new ConcurrentHashMap<>();
-    zkRoutersManager.subscribeRouterCountChangedEvent(this);
+    this.routingDataRepository = routingDataRepository;
+    this.zkRoutersManager.subscribeRouterCountChangedEvent(this);
+    this.storeRepository.registerStoreDataChangedListener(this);
+    this.idealTotalQuotaPerRouter = calculateIdealTotalQuotaPerRouter();
+    this.maxRouterReadCapacity = maxRouterReadCapacity;
+    this.storesThrottlers = new AtomicReference<>(buildAllStoreReadThrottlers());
   }
 
   /**
@@ -40,50 +64,18 @@ public class ReadRequestThrottler implements RoutersClusterManager.RouterCountCh
    *
    * @param storeName        name of the store that request is trying to visit.
    * @param readCapacityUnit usage of this read request.
+   * @param storageNodeId id of the node where the request will send to.
    *
    * @throws QuotaExceededException if the usage exceeded the quota throw this exception to reject the request.
    */
-  public void mayThrottleRead(String storeName, int readCapacityUnit)
+  public void mayThrottleRead(String storeName, int readCapacityUnit, String storageNodeId)
       throws QuotaExceededException {
-    mayThrottleReadOnStore(storeName, readCapacityUnit);
-    // TODO Per storage node quota checking.
-  }
-
-  protected void mayThrottleReadOnStore(String storeName, int readCapacityUnit) {
-    EventThrottler throttler = storesThrottlersMap.get(storeName);
-    // Create throttler if it does not exist.
+    StoreReadThrottler throttler = storesThrottlers.get().get(storeName);
     if (throttler == null) {
-      long quota = getQuotaForStore(storeName);
-      storesThrottlersMap.computeIfAbsent(storeName,
-          store -> new EventThrottler(quota, true, EventThrottler.REJECT_STRATEGY));
-      logger.info("Updated throttler for store:" + storeName + ", quota: " + quota);
-      throttler = storesThrottlersMap.get(storeName);
+      throw new VeniceException("Could not found the throttler for store: " + storeName);
+    } else {
+      throttler.mayThrottleRead(readCapacityUnit, storageNodeId);
     }
-    throttler.maybeThrottle(readCapacityUnit);
-  }
-
-  protected long getQuotaForStore(String storeName) {
-    Store store = storeRepository.getStore(storeName);
-    if (store == null) {
-      throw new VeniceNoStoreException(storeName);
-    }
-    long totalQuota = store.getReadQuotaInCU();
-    if (totalQuota <= 0) {
-      // Have not set quota for this store. Give a default value.
-      // If the store was created before we releasing quota feature, JSON framework wil give 0 as the default value
-      // while deserializing the store from ZK.
-      totalQuota = DEFAULT_STORE_READ_QUOTA;
-    }
-    int liveRouterCount = zkRoutersManager.getRoutersCount();
-    // At least the current router is live. The number might have some delay due to zk Notification.
-    if (liveRouterCount <= 0) {
-      liveRouterCount = 1;
-    }
-
-    long quotaPerRouter = totalQuota / liveRouterCount;
-    // TODO handle the case that there are too many routers failures, the quota per router exceed the capacity of
-    // TODO single router.
-    return quotaPerRouter;
   }
 
   // TODO will update once we complete some experiments to finalize the correlation between size and read capacity unit.
@@ -92,9 +84,180 @@ public class ReadRequestThrottler implements RoutersClusterManager.RouterCountCh
     return 1;
   }
 
+  protected long calculateStoreQuotaPerRouter(long storeQuota) {
+    long idealStoreQuotaPerRouter = storeQuota / zkRoutersManager.getRoutersCount();
+    if (idealTotalQuotaPerRouter <= maxRouterReadCapacity) {
+      // Current router's capacity is big enough to be allocated to each store's quota.
+      return idealStoreQuotaPerRouter;
+    } else {
+      // If we allocate ideal quota value to each store, the total quota would exceed the router's capacity.
+      // The reason is the cluster does not have enough number of routers.(Might be caused by to manny router failures)
+      // So each store's quota must be adjusted accordingly to make sure total quota would not exceed router's capacity.
+      // Compare to the solution that use a single throttler per router to protect usage exceeding router's capacity,
+      // this logic could reduce the quota for each store in proportion which could prevent the usage of a few stores
+      // eat all quota.
+      logger.warn(
+          "The ideal total quota per router: " + idealStoreQuotaPerRouter + " has exceeded the router's max capcity: "
+              + maxRouterReadCapacity + ", will reduce quotas for all store in proportion.");
+      return idealStoreQuotaPerRouter * maxRouterReadCapacity / idealTotalQuotaPerRouter;
+    }
+  }
+
+  protected long calculateIdealTotalQuotaPerRouter() {
+    return storeRepository.getTotalStoreReadQuota() / zkRoutersManager.getRoutersCount();
+  }
+
+  protected StoreReadThrottler getStoreReadThrottler(String storeName) {
+    return storesThrottlers.get().get(storeName);
+  }
+
+  private StoreReadThrottler buildStoreReadThrottler(String storeName, int currentVersion, long storeQuotaPerRouter) {
+    String topicName = Version.composeKafkaTopic(storeName, currentVersion);
+    Optional<PartitionAssignment> partitionAssignment;
+    if (routingDataRepository.containsKafkaTopic(topicName)) {
+      partitionAssignment = Optional.of(routingDataRepository.getPartitionAssignments(topicName));
+    } else {
+      partitionAssignment = Optional.empty();
+      logger.warn("Could not found routing data for topic: " + topicName
+          + ", it might be caused by the delay of the routing data. Only create per store level throttler.");
+    }
+    return new StoreReadThrottler(storeName, storeQuotaPerRouter, EventThrottler.REJECT_STRATEGY, partitionAssignment);
+  }
+
+  private ConcurrentMap<String, StoreReadThrottler> buildAllStoreReadThrottlers() {
+    // Total quota for this router is changed, we have to update all store throttlers.
+    List<Store> allStores = storeRepository.getAllStores();
+    ConcurrentMap<String, StoreReadThrottler> newStoreThrottlers = new ConcurrentHashMap<>();
+    for (Store store : allStores) {
+      newStoreThrottlers.put(store.getName(), buildStoreReadThrottler(store.getName(), store.getCurrentVersion(),
+          calculateStoreQuotaPerRouter(store.getReadQuotaInCU())));
+    }
+    return newStoreThrottlers;
+  }
+
   @Override
   public void handleRouterCountChanged(int newRouterCount) {
     //Clean all existing throttlers. We will create them again with the latest router count once getting new requests.
-    storesThrottlersMap.clear();
+    logger.info("Number of router has been changed. Delete all of store throttlers.");
+    synchronized (storesThrottlers) {
+      long newIdealTotalQuotaPerRouter = calculateIdealTotalQuotaPerRouter();
+      if (idealTotalQuotaPerRouter != newIdealTotalQuotaPerRouter) {
+        idealTotalQuotaPerRouter = newIdealTotalQuotaPerRouter;
+        // Total quota for this router is changed, we have to update all store throttlers.
+        storesThrottlers.set(buildAllStoreReadThrottlers());
+      }
+    }
+  }
+
+  @Override
+  public void onRoutingDataChanged(PartitionAssignment partitionAssignment) {
+    String storeName = Version.parseStoreFromKafkaTopicName(partitionAssignment.getTopic());
+    synchronized (storesThrottlers) {
+      StoreReadThrottler storeReadThrottler = storesThrottlers.get().get(storeName);
+      if (storeReadThrottler == null) {
+        logger.error("Could not found throttler for store: " + storeName);
+        return;
+      }
+      storeReadThrottler.updateStorageNodesThrottlers(partitionAssignment);
+    }
+  }
+
+  @Override
+  public void onRoutingDataDeleted(String kafkaTopic) {
+    // Ignore the event. If the deleted resource is not the current version, we don't need to update throttler.
+    // If the deleted resource is the current version, we will handle it once we got the store data changed event with
+    // the new current version.
+  }
+
+  @Override
+  public void handleStoreCreated(Store store) {
+    updateStoreThrottler(() -> {
+      long storeQuotaPerRouter = calculateStoreQuotaPerRouter(store.getReadQuotaInCU());
+      logger.info("Store: " + store.getName() + " is created. Add a throttler with quota:" + storeQuotaPerRouter
+          + " for this store.");
+      storesThrottlers.get()
+          .put(store.getName(),
+              buildStoreReadThrottler(store.getName(), store.getCurrentVersion(), storeQuotaPerRouter));
+    });
+  }
+
+  private void updateStoreThrottler(Runnable updater) {
+    synchronized (storesThrottlers) {
+      // Total store quota should be changed because of add/update/delete store.
+      long oldIdealTotalQuotaPerRouter = idealTotalQuotaPerRouter;
+      idealTotalQuotaPerRouter = calculateIdealTotalQuotaPerRouter();
+      updater.run();
+      if (oldIdealTotalQuotaPerRouter > maxRouterReadCapacity || idealTotalQuotaPerRouter > maxRouterReadCapacity) {
+        // Old router's quota and/or new router's quota exceed the router's max capacity, update all store throttlers
+        // 1. If the new router's quota exceeded the router's max capacity, we have to reduce the quota for each store
+        // to make sure each of them get the proper proportion of the max capacity as quota.
+        // 2. If the old router's quota exceed the max capacity, but new router's quota is smaller than the max capacity
+        // We also need to update all store's quota, because they will all get more quotas
+        // 3. If the old router's quota and new router's quota both exceeded the max capacity, we still need to update
+        // all store's quota because the proportion of each store has been changed.
+        if (oldIdealTotalQuotaPerRouter != idealTotalQuotaPerRouter) {
+          logger.info(
+              "Old router's quota and/or new router's quota exceed the router 's max capacity, update throttlers for all stores.");
+          storesThrottlers.set(buildAllStoreReadThrottlers());
+        }
+      }
+    }
+  }
+
+  @Override
+  public void handleStoreDeleted(String storeName) {
+    updateStoreThrottler(() -> {
+      logger.info("Store: " + storeName + " has been deleted. Remove the throttler for this store.");
+      StoreReadThrottler throttler = storesThrottlers.get().remove(storeName);
+      routingDataRepository.unSubscribeRoutingDataChange(
+          Version.composeKafkaTopic(storeName, throttler.getCurrentVersion()), this);
+    });
+  }
+
+  @Override
+  public void handleStoreChanged(Store store) {
+    updateStoreThrottler(() -> {
+      StoreReadThrottler storeReadThrottler = storesThrottlers.get().get(store.getName());
+      if (storeReadThrottler == null) {
+        logger.warn(
+            "Throttler have not been created for store:" + store.getName() + ". Router might miss the creation event.");
+        handleStoreCreated(store);
+        return;
+      }
+
+      long storeQuotaPerRouter = calculateStoreQuotaPerRouter(store.getReadQuotaInCU());
+      if (storeQuotaPerRouter != storesThrottlers.get().get(store.getName()).getQuota()) {
+        // Handle store's quota was updated.
+        logger.info("Read quota has been changed for store: " + store.getName() + ". Old Quota: "
+            + storeReadThrottler.getQuota() + ", New Quota: " + storeQuotaPerRouter
+            + ", Update the entire store reads throttler.");
+        storesThrottlers.get()
+            .put(store.getName(),
+                buildStoreReadThrottler(store.getName(), store.getCurrentVersion(), storeQuotaPerRouter));
+      }
+      if (store.getCurrentVersion() != storeReadThrottler.getCurrentVersion()) {
+        // Handle current version has been changed.
+        //TODO
+        logger.info("Current version has been changed for store: " + store.getName() + " Qld Current Version: "
+            + storeReadThrottler.getCurrentVersion() + ", New Current Version: " + store.getCurrentVersion()
+            + ", Update the storage nodes throttlers only.");
+        // Unsubscribe the routing data changed event for the old current version.
+        routingDataRepository.unSubscribeRoutingDataChange(
+            Version.composeKafkaTopic(store.getName(), storeReadThrottler.getCurrentVersion()), this);
+        storeReadThrottler.clearStorageNodesThrottlers();
+        String topicName = Version.composeKafkaTopic(store.getName(), store.getCurrentVersion());
+        if (routingDataRepository.containsKafkaTopic(topicName)) {
+          storeReadThrottler.updateStorageNodesThrottlers(routingDataRepository.getPartitionAssignments(
+              Version.composeKafkaTopic(store.getName(), store.getCurrentVersion())));
+          // Subscribe the routing data changed event for the new current version.
+          routingDataRepository.subscribeRoutingDataChange(
+              Version.composeKafkaTopic(store.getName(), store.getCurrentVersion()), this);
+        } else {
+          // We already clear the throttlers for all storage nodes, so just print warn message here.
+          logger.warn("Not found partition assignment for store: " + store.getName() + " version: "
+              + store.getCurrentVersion());
+        }
+      }
+    });
   }
 }

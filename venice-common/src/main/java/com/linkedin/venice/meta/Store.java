@@ -255,7 +255,10 @@ public class Store {
   }
 
   public long getReadQuotaInCU() {
-    return readQuotaInCU;
+    // In case the store haven't been assigned a quota, use this value as the default quota instead of using 0.
+    // If the store was created before we releasing quota feature, JSON framework wil give 0 as the default value
+    // while deserializing the store from ZK.
+    return readQuotaInCU <= 0 ? DEFAULT_READ_QUOTA : readQuotaInCU;
   }
 
   public void setReadQuotaInCU(long readQuotaInCU) {

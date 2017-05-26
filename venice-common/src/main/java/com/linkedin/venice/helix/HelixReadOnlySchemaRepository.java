@@ -424,6 +424,11 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository {
     removeStoreSchemaFromLocal(storeName);
   }
 
+  @Override
+  public void handleStoreChanged(Store store) {
+
+  }
+
   private class KeySchemaChildListener implements IZkChildListener {
     /**
      * Children change listener, which is mostly for key schema setup.

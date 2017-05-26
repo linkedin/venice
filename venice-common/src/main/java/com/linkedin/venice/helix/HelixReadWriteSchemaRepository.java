@@ -289,6 +289,10 @@ public class HelixReadWriteSchemaRepository implements ReadWriteSchemaRepository
   }
 
   @Override
+  public void handleStoreChanged(Store store) {
+  }
+
+  @Override
   public void refresh() {
 
   }

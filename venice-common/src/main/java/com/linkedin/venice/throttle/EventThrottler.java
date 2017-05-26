@@ -100,8 +100,7 @@ public class EventThrottler {
       }
       this.rateConfig = new MetricConfig()
           .timeWindow(intervalMs, TimeUnit.MILLISECONDS)
-          // TODO create quota that check it before recording the usage.
-          .quota(Quota.lessThan(maxRatePerSecond));
+          .quota(Quota.lessThan(maxRatePerSecond, checkQuotaBeforeRecording));
       this.rate = new Rate(TimeUnit.SECONDS);
       if (throttlerName == null) {
         // Then we want this EventThrottler to be independent.
@@ -184,5 +183,9 @@ public class EventThrottler {
     public void onExceedQuota(Time time, String throttlerName, long currentRate, long quota, long timeWindowMS) {
       throw new QuotaExceededException(throttlerName, currentRate + UNIT_POSTFIX, quota + UNIT_POSTFIX);
     }
+  }
+
+  public long getMaxRatePerSecond() {
+    return maxRatePerSecond;
   }
 }

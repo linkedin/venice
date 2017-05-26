@@ -52,6 +52,7 @@ import org.apache.log4j.Logger;
 
 public class RouterServer extends AbstractVeniceService {
   private static final Logger logger = Logger.getLogger(RouterServer.class);
+  private static final long DEFAULT_MAX_ROUTER_READ_CAPCITY = 100000;
 
   // Immutable state
   private final int port;
@@ -65,6 +66,7 @@ public class RouterServer extends AbstractVeniceService {
   private final int heartbeatTimeout;
   private final Optional<SSLEngineComponentFactory> sslFactory;
   private final boolean sslToStorageNodes;
+  private final long maxRouterReadCapacity;
 
   // Mutable state
   // TODO: Make these final once the test constructors are cleaned up.
@@ -161,12 +163,14 @@ public class RouterServer extends AbstractVeniceService {
         heartbeatTimeout,
         TehutiUtils.getMetricsRepository(ROUTER_SERVICE_NAME),
         sslFactory,
-        sslToStorageNodes);
+        sslToStorageNodes,
+        DEFAULT_MAX_ROUTER_READ_CAPCITY);
   }
 
   public RouterServer(int port, int sslPort, String clusterName, String zkConnection, List<D2Server> d2ServerList,
                       int clientTimeout, int heartbeatTimeout, MetricsRepository metricsRepository,
-                      Optional<SSLEngineComponentFactory> sslEngineComponentFactory, boolean sslToStorageNodes) {
+                      Optional<SSLEngineComponentFactory> sslEngineComponentFactory, boolean sslToStorageNodes,
+                      long maxRouterReadCapacity) {
     this.port = port;
     this.sslPort = sslPort;
     this.clientTimeout = clientTimeout;
@@ -185,6 +189,7 @@ public class RouterServer extends AbstractVeniceService {
     this.d2ServerList = d2ServerList;
     this.sslFactory = sslEngineComponentFactory;
     this.sslToStorageNodes = sslToStorageNodes;
+    this.maxRouterReadCapacity = maxRouterReadCapacity;
     verifySslOk();
   }
 
@@ -226,6 +231,7 @@ public class RouterServer extends AbstractVeniceService {
     this.sslFactory = sslFactory;
     this.sslToStorageNodes = sslToStorageNodes;
     this.zkClient = zkClient;
+    this.maxRouterReadCapacity = DEFAULT_MAX_ROUTER_READ_CAPCITY;
     verifySslOk();
   }
 
@@ -376,11 +382,12 @@ public class RouterServer extends AbstractVeniceService {
       // Register current router into ZK.
       routersClusterManager = new ZkRoutersClusterManager(zkClient, clusterName, Utils.getHelixNodeIdentifier(port));
       routersClusterManager.registerCurrentRouter();
-      // Setup read requests throttler.
-      ReadRequestThrottler throttler = new ReadRequestThrottler(routersClusterManager, metadataRepository);
-      dispatcher.setReadRequestThrottler(throttler);
-
       routingDataRepository.refresh();
+
+      // Setup read requests throttler.
+      ReadRequestThrottler throttler =
+          new ReadRequestThrottler(routersClusterManager, metadataRepository, routingDataRepository, maxRouterReadCapacity);
+      dispatcher.setReadRequestThrottler(throttler);
 
       for (D2Server d2Server : d2ServerList) {
         logger.info("Starting d2 announcer: " + d2Server);
