@@ -2,7 +2,7 @@ package com.linkedin.venice.client.store.transport;
 
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.exceptions.VeniceServerException;
-import com.linkedin.venice.client.store.ClientCallback;
+import com.linkedin.venice.client.store.ClientHttpCallback;
 import com.linkedin.venice.client.store.DeserializerFetcher;
 import org.apache.commons.httpclient.HttpStatus;
 import org.apache.commons.io.IOUtils;
@@ -41,7 +41,7 @@ public class HttpTransportClient<V> extends TransportClient<V> {
   }
 
   @Override
-  public Future<V> get(String requestPath, ClientCallback callback) {
+  public Future<V> get(String requestPath, ClientHttpCallback callback) {
     HttpGet request = getHttpRequest(requestPath);
     CompletableFuture<V> valueFuture = new CompletableFuture<>();
     httpClient.execute(request, new HttpTransportClientCallback<>(valueFuture, getDeserializerFetcher(), callback));
@@ -81,7 +81,7 @@ public class HttpTransportClient<V> extends TransportClient<V> {
   }
 
   private static class HttpTransportClientCallback<T> extends TransportClientCallback<T> implements FutureCallback<HttpResponse> {
-    public HttpTransportClientCallback(CompletableFuture<T> valueFuture, DeserializerFetcher<T> fetcher, ClientCallback callback) {
+    public HttpTransportClientCallback(CompletableFuture<T> valueFuture, DeserializerFetcher<T> fetcher, ClientHttpCallback callback) {
       super(valueFuture, fetcher, callback);
     }
 

@@ -16,7 +16,6 @@ import org.apache.commons.io.IOUtils;
 import javax.validation.constraints.NotNull;
 import java.util.Base64;
 import java.util.concurrent.Future;
-import org.apache.http.HttpStatus;
 
 
 public abstract class AbstractAvroStoreClient<V> implements AvroGenericStoreClient<V>, DeserializerFetcher<V> {
@@ -95,7 +94,7 @@ public abstract class AbstractAvroStoreClient<V> implements AvroGenericStoreClie
     byte[] serializedKey = keySerializer.serialize(key);
     String requestPath = getRequestPathByStoreKey(serializedKey);
 
-    return transportClient.get(requestPath, new ClientCallback() {
+    return transportClient.get(requestPath, new ClientHttpCallback() {
       @Override
       public void executeOnSuccess() {
         if (System.currentTimeMillis() - startTime > TIMEOUT_IN_SECOND * Time.MS_PER_SECOND) {

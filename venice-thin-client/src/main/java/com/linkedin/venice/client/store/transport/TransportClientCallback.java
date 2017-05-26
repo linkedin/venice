@@ -3,7 +3,7 @@ package com.linkedin.venice.client.store.transport;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.exceptions.VeniceServerException;
 import com.linkedin.venice.client.serializer.RecordDeserializer;
-import com.linkedin.venice.client.store.ClientCallback;
+import com.linkedin.venice.client.store.ClientHttpCallback;
 import com.linkedin.venice.client.store.DeserializerFetcher;
 import org.apache.http.HttpStatus;
 
@@ -21,16 +21,16 @@ public class TransportClientCallback<T> {
   private final DeserializerFetcher<T> deserializerFetcher;
   private final boolean needRawResult;
 
-  protected final ClientCallback callback;
+  protected final ClientHttpCallback callback;
 
-  private TransportClientCallback(CompletableFuture<T> valueFuture, DeserializerFetcher<T> fetcher, ClientCallback callback, boolean needRawResult) {
+  private TransportClientCallback(CompletableFuture<T> valueFuture, DeserializerFetcher<T> fetcher, ClientHttpCallback callback, boolean needRawResult) {
     this.valueFuture = valueFuture;
     this.deserializerFetcher = fetcher;
     this.callback = callback;
     this.needRawResult = needRawResult;
   }
 
-  public TransportClientCallback(CompletableFuture<T> valueFuture, DeserializerFetcher<T> fetcher, ClientCallback callback) {
+  public TransportClientCallback(CompletableFuture<T> valueFuture, DeserializerFetcher<T> fetcher, ClientHttpCallback callback) {
     this(valueFuture, fetcher, callback, false);
   }
 
@@ -90,9 +90,14 @@ public class TransportClientCallback<T> {
     }
   }
 
-  private static final ClientCallback NO_OP_CALLBACK = new ClientCallback() {
+  private static final ClientHttpCallback NO_OP_CALLBACK = new ClientHttpCallback() {
     @Override
     public void executeOnSuccess() {
+      // no-op
+    }
+
+    @Override
+    public void executeOnError(int httpStatus) {
       // no-op
     }
 

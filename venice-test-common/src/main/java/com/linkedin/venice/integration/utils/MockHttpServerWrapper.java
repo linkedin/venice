@@ -8,10 +8,10 @@ import io.netty.buffer.Unpooled;
 import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelFutureListener;
 import io.netty.channel.ChannelHandlerContext;
-import io.netty.channel.ChannelInboundHandlerAdapter;
 import io.netty.channel.ChannelInitializer;
 import io.netty.channel.ChannelOption;
 import io.netty.channel.EventLoopGroup;
+import io.netty.channel.SimpleChannelInboundHandler;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.SocketChannel;
 import io.netty.channel.socket.nio.NioServerSocketChannel;
@@ -21,6 +21,7 @@ import io.netty.handler.codec.http.HttpRequest;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.handler.codec.http.HttpServerCodec;
 import io.netty.handler.codec.http.HttpVersion;
+import java.net.URI;
 import org.apache.log4j.Logger;
 
 import java.util.ArrayList;
@@ -141,7 +142,7 @@ public class  MockHttpServerWrapper extends ProcessWrapper {
   }
 
 
-  private static class MockServerHandler extends ChannelInboundHandlerAdapter {
+  private static class MockServerHandler extends SimpleChannelInboundHandler {
     private final Logger logger = Logger.getLogger(MockServerHandler.class);
     private final Map<String, FullHttpResponse> responseMap;
     private final Map<String, FullHttpResponse> uriPatternToResponseMap;
@@ -166,18 +167,21 @@ public class  MockHttpServerWrapper extends ProcessWrapper {
     }
 
     @Override
-    public void channelRead(ChannelHandlerContext ctx, Object msg) {
+    public void channelRead0(ChannelHandlerContext ctx, Object msg) {
       if (msg instanceof HttpRequest) {
-        HttpRequest req = (HttpRequest)msg;
-        String uri = req.getUri();
-        logger.info("Receive request uri: " + uri);
-        if (responseMap.containsKey(uri)) {
+        URI uri = URI.create(((HttpRequest) msg).uri());
+        //stripe URI scheme, host and port
+        String uriStr = uri.getPath();
+        uriStr = uri.getQuery() == null ? uriStr : uriStr + "?" + uri.getQuery();
+        logger.info("Receive request uri: " + uriStr);
+
+        if (responseMap.containsKey(uriStr)) {
           logger.info("Found matched response");
-          ctx.writeAndFlush(responseMap.get(uri).copy()).addListener(ChannelFutureListener.CLOSE);
+          ctx.writeAndFlush(responseMap.get(uriStr).copy()).addListener(ChannelFutureListener.CLOSE);
         } else {
           for (Map.Entry<String, FullHttpResponse> entry : uriPatternToResponseMap.entrySet()) {
             String uriPattern = entry.getKey();
-            if (uri.matches(uriPattern)) {
+            if (uriStr.matches(uriPattern)) {
               logger.info("Found matched response by uri pattern: " + uriPattern);
               ctx.writeAndFlush(entry.getValue().copy()).addListener(ChannelFutureListener.CLOSE);
               return;
