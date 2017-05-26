@@ -1,6 +1,7 @@
 package com.linkedin.venice.meta;
 
 import com.linkedin.venice.VeniceResource;
+import java.util.List;
 
 
 /**
@@ -23,6 +24,17 @@ public interface ReadOnlyStoreRepository extends VeniceResource {
    * @return
    */
   boolean hasStore(String name);
+
+  /**
+   * Get total read quota of all stores.
+   */
+  long getTotalStoreReadQuota();
+
+  /**
+   * Get all stores in the current repository
+   * @return
+   */
+  List<Store> getAllStores();
 
   /**
    * Register store data change listener.

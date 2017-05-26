@@ -66,7 +66,7 @@ ext.libraries = [ // Groovy map literal
                   log4j: 'log4j:log4j:1.2.17',
                   snappy: 'org.xerial.snappy:snappy-java:1.0.4.1',
                   testng: 'org.testng:testng:6.8.8',
-                  tehuti: 'com.linkedin.tehuti:tehuti:0.7.0.10',
+                  tehuti: 'com.linkedin.tehuti:tehuti:0.7.1.1',
                   // Resolves java.lang.UnsupportedOperationException:  setXIncludeAware is not supported on this JAXP implementation or earlier: class org.apache.xerces.jaxp.DocumentBuilderFactoryImpl
                   xalan: 'xalan:xalan:2.7.1',
                   xerces: 'xerces:xercesImpl:2.9.1',

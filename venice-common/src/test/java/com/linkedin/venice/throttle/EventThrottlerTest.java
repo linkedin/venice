@@ -4,6 +4,7 @@ import com.linkedin.venice.exceptions.QuotaExceededException;
 import io.tehuti.utils.Time;
 import java.util.concurrent.TimeUnit;
 import org.testng.Assert;
+import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
 
@@ -51,6 +52,37 @@ public class EventThrottlerTest {
       Assert.fail("Usage exceeds the quota, throttler should reject them.");
     } catch (QuotaExceededException e) {
       // expected
+    }
+    try {
+      throttler.maybeThrottle(1);
+    } catch (QuotaExceededException e) {
+      Assert.fail("The previous usage should not be recorded, so we have enough quota to accept this request.");
+    }
+  }
+
+  @Test
+  public void testThrottlerWithCheckingQuotaBeforeRecording() {
+    long quota = 10;
+    long timeWindowMS = 1000l;
+    EventThrottler throttler =
+        new EventThrottler(testTime, quota, timeWindowMS, "testThrottlerWithCheckingQuotaBeforeRecording", true,
+            EventThrottler.REJECT_STRATEGY);
+    sendRequests((int) quota, throttler);
+    // Keep sending request even it's rejected. The usage should not record because we enable checkQuotaBeforeRecording.
+    for (int i = 0; i < 100; i++) {
+      try {
+        sendRequests(1, throttler);
+      } catch (QuotaExceededException e) {
+        //ignore.
+      }
+    }
+    // Time goes 1.5 second, we have extra half quota right now.
+    testTime.sleep((long) (1500));
+    try {
+      sendRequests((int) quota / 2 - 1, throttler);
+    } catch (QuotaExceededException e) {
+      Assert.fail(
+          "Request should be accepted, throttler check the quota before recording, so we have enough quota now.", e);
     }
   }
 

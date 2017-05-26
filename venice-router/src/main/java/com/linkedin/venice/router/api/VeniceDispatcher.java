@@ -113,7 +113,7 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
       throw new VeniceException("Failed to route request to a host", e);
     }
     try {
-      readRequestThrottler.mayThrottleRead(storeName, readRequestThrottler.getReadCapacity());
+      readRequestThrottler.mayThrottleRead(storeName, readRequestThrottler.getReadCapacity(), host.getNodeId());
     } catch (QuotaExceededException e) {
       stats.recordThrottledRequest(storeName);
       throw e;

@@ -20,6 +20,7 @@ public class TestStoreJsonSerializer {
         store.increaseVersion();
         HybridStoreConfig hybridStoreConfig = new HybridStoreConfig(1000, 1000);
         store.setHybridStoreConfig(hybridStoreConfig);
+        store.setReadQuotaInCU(100);
         StoreJSONSerializer serializer = new StoreJSONSerializer();
         byte[] data = serializer.serialize(store, "");
         Store newStore = serializer.deserialize(data, "");
@@ -55,6 +56,7 @@ public class TestStoreJsonSerializer {
         throws IOException {
         Store store = TestUtils.createTestStore("s1", "owner", 1l);
         store.increaseVersion();
+        store.setReadQuotaInCU(100);
         StoreJSONSerializer serializer = new StoreJSONSerializer();
         byte[] data = serializer.serialize(store, "");
         String jsonStr = new String(data);
@@ -71,6 +73,7 @@ public class TestStoreJsonSerializer {
         store.increaseVersion();
         store.setEnableReads(false);
         store.setEnableReads(false);
+        store.setReadQuotaInCU(100);
         StoreJSONSerializer serializer = new StoreJSONSerializer();
         byte[] data = serializer.serialize(store, "");
         String jsonStr = new String(data);

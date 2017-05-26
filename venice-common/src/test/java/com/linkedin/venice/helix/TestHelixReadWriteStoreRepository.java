@@ -83,9 +83,11 @@ public class TestHelixReadWriteStoreRepository {
         repo.refresh();
         Store s1 = TestUtils.createTestStore("s1", "owner", System.currentTimeMillis());
         s1.increaseVersion();
+        s1.setReadQuotaInCU(100);
         repo.addStore(s1);
         Store s2 = TestUtils.createTestStore("s2", "owner", System.currentTimeMillis());
         s2.addVersion(new Version(s2.getName(), 3));
+        s2.setReadQuotaInCU(200);
         repo.addStore(s2);
 
         HelixReadWriteStoreRepository newRepo = new HelixReadWriteStoreRepository(zkClient, adapter, cluster);

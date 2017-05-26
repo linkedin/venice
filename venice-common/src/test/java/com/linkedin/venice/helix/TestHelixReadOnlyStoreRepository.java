@@ -1,10 +1,19 @@
 package com.linkedin.venice.helix;
 
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
+import com.linkedin.venice.meta.OfflinePushStrategy;
+import com.linkedin.venice.meta.PersistenceType;
+import com.linkedin.venice.meta.ReadStrategy;
+import com.linkedin.venice.meta.RoutingStrategy;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.StoreDataChangedListener;
 import com.linkedin.venice.utils.TestUtils;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.apache.helix.manager.zk.ZkClient;
+import org.apache.log4j.Logger;
 import org.apache.zookeeper.CreateMode;
 import org.testng.Assert;
 import org.testng.annotations.AfterMethod;
@@ -13,6 +22,8 @@ import org.testng.annotations.Test;
 
 
 public class TestHelixReadOnlyStoreRepository {
+  private static Logger logger = Logger.getLogger(TestHelixReadOnlyStoreRepository.class);
+
   private String zkAddress;
   private ZkClient zkClient;
   private String cluster = "test-metadata-cluster";
@@ -53,6 +64,7 @@ public class TestHelixReadOnlyStoreRepository {
     // Add and get notificaiton
     Store s1 = TestUtils.createTestStore("s1", "owner", System.currentTimeMillis());
     s1.increaseVersion();
+    s1.setReadQuotaInCU(100);
     writeRepo.addStore(s1);
     Thread.sleep(1000L);
     Assert.assertEquals(repo.getStore(s1.getName()), s1, "Can not get store from ZK notification successfully");
@@ -78,6 +90,7 @@ public class TestHelixReadOnlyStoreRepository {
     for (int i = 0; i < count; i++) {
       Store s = TestUtils.createTestStore("s" + i, "owner", System.currentTimeMillis());
       s.increaseVersion();
+      s.setReadQuotaInCU(i + 1);
       writeRepo.addStore(s);
       stores[i] = s;
     }
@@ -90,5 +103,134 @@ public class TestHelixReadOnlyStoreRepository {
     for(Store store:stores){
       Assert.assertEquals(repo.getStore(store.getName()),store, "Can not get store from ZK after refreshing successfully");
     }
+  }
+
+  static class TestListener implements StoreDataChangedListener {
+    AtomicInteger creationCount = new AtomicInteger(0);
+    AtomicInteger changeCount = new AtomicInteger(0);
+    AtomicInteger deletionCount = new AtomicInteger(0);
+
+    @Override
+    public void handleStoreCreated(Store store) {
+      creationCount.incrementAndGet();
+    }
+
+    @Override
+    public void handleStoreDeleted(String storeName) {
+      deletionCount.incrementAndGet();
+    }
+
+    @Override
+    public void handleStoreChanged(Store store) {
+      logger.info("Received handleStoreChanged: " + store.toString());
+      changeCount.incrementAndGet();
+    }
+
+    public int getCreationCount() {
+      return creationCount.get();
+    }
+
+    public int getChangeCount() {
+      return changeCount.get();
+    }
+
+    public int getDeletionCount() {
+      return deletionCount.get();
+    }
+  }
+
+  @Test
+  public void testNotifiers() throws InterruptedException {
+    AtomicInteger creationCount = new AtomicInteger(0);
+    AtomicInteger changeCount = new AtomicInteger(0);
+    AtomicInteger deletionCount = new AtomicInteger(0);
+    TestListener testListener = new TestListener();
+    repo.registerStoreDataChangedListener(testListener);
+
+    // Verify initial state
+    assertListenerCounts(testListener, creationCount.get(), changeCount.get(), deletionCount.get(), "initialization");
+
+    // Verify creation notifications
+    writeRepo.addStore(getRandomStore());
+    writeRepo.addStore(getRandomStore());
+    writeRepo.addStore(getRandomStore());
+    assertListenerCounts(testListener, creationCount.addAndGet(3), changeCount.get(), deletionCount.get(), "store creations");
+
+    // Hang on to a store reference so we can tweak it
+    Store store = getRandomStore();
+
+    // Verify creation idempotency
+
+    writeRepo.addStore(store);
+    try {
+      writeRepo.addStore(store);
+    } catch (VeniceException e) {
+      // Excepted
+    }
+    assertListenerCounts(testListener, creationCount.addAndGet(1), changeCount.get(), deletionCount.get(), "creation of a duplicate store");
+
+    // Verify change notifications
+
+    store.setCurrentVersion(10);
+    writeRepo.updateStore(store);
+    assertListenerCounts(testListener, creationCount.get(), changeCount.addAndGet(1), deletionCount.get(), "change of a store-version");
+
+    store.setOwner(TestUtils.getUniqueString("NewRandomOwner"));
+    writeRepo.updateStore(store);
+    assertListenerCounts(testListener, creationCount.get(), changeCount.addAndGet(1), deletionCount.get(), "change of owner");
+
+    store.setPartitionCount(10);
+    writeRepo.updateStore(store);
+    assertListenerCounts(testListener, creationCount.get(), changeCount.addAndGet(1), deletionCount.get(), "change of partition count");
+
+    store.setLargestUsedVersionNumber(100);
+    writeRepo.updateStore(store);
+    assertListenerCounts(testListener, creationCount.get(), changeCount.addAndGet(1), deletionCount.get(), "change of largest used version number");
+
+    store.setEnableWrites(false);
+    writeRepo.updateStore(store);
+    assertListenerCounts(testListener, creationCount.get(), changeCount.addAndGet(1), deletionCount.get(), "disabling writes");
+
+    store.setEnableReads(false);
+    writeRepo.updateStore(store);
+    assertListenerCounts(testListener, creationCount.get(), changeCount.addAndGet(1), deletionCount.get(), "disabling reads");
+
+    // Verify deletion notification
+    writeRepo.deleteStore(store.getName());
+    assertListenerCounts(testListener, creationCount.get(), changeCount.get(), deletionCount.addAndGet(1), "store deletion");
+
+    // Verify that refresh() does not double count notifications...
+    repo.refresh();
+    assertListenerCounts(testListener, creationCount.get(), changeCount.get(), deletionCount.get(), "ReadOnly Repo refresh()");
+
+    // TODO: Find a good way to test that refresh() works in isolation when there are actually changes to report.
+    // Currently, the other listeners are always called first, so refresh() doesn't have any work left...
+  }
+
+  private void assertListenerCounts(TestListener testListener,
+      int expectedCreationCount,
+      int expectedChangeCount,
+      int expectedDeletionCount,
+      String details) {
+    TestUtils.waitForNonDeterministicAssertion(3000, TimeUnit.MILLISECONDS, () -> {
+      Assert.assertEquals(testListener.getCreationCount(), expectedCreationCount,
+          "Listener's creation count should be " + expectedCreationCount + " following: " + details);
+      Assert.assertEquals(testListener.getChangeCount(), expectedChangeCount,
+          "Listener's change count should be " + expectedChangeCount + " following: " + details);
+      Assert.assertEquals(testListener.getDeletionCount(), expectedDeletionCount,
+          "Listener's deletion count should be " + expectedDeletionCount + " following: " + details);
+
+      logger.info("Successfully asserted that notifications work after " + details);
+    });
+  }
+
+  private Store getRandomStore() {
+    return new Store(TestUtils.getUniqueString("RandomStore"),
+        TestUtils.getUniqueString("RandomOwner"),
+        System.currentTimeMillis(),
+        PersistenceType.BDB,
+        RoutingStrategy.CONSISTENT_HASH,
+        ReadStrategy.ANY_OF_ONLINE,
+        OfflinePushStrategy.WAIT_ALL_REPLICAS);
   }
 }
