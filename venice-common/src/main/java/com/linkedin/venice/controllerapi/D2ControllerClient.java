@@ -5,20 +5,22 @@ import com.linkedin.d2.balancer.D2ClientBuilder;
 import com.linkedin.r2.message.rest.RestResponse;
 import com.linkedin.venice.D2.D2ClientUtils;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.utils.Utils;
 import org.apache.http.client.utils.URLEncodedUtils;
 
 import java.nio.charset.StandardCharsets;
 
 public class D2ControllerClient extends ControllerClient{
-  private final static String D2_PREFIX = "d2://";
-  private final static String D2_SERVICE_NAME = "VeniceRouter";
+  private final static String D2_SCHEME = "d2://";
 
+  private String d2ServiceName;
   private D2Client d2Client;
 
-  public D2ControllerClient(String clusterName, String urlsToFindMasterController) {
-    super(clusterName, urlsToFindMasterController);
-    d2Client = new D2ClientBuilder().setZkHosts(urlsToFindMasterController).build();
+  public D2ControllerClient(String d2ServiceName, String clusterName, String d2ZKHost) {
+    super(clusterName, d2ZKHost);
+    this.d2ServiceName = d2ServiceName;
+    d2Client = new D2ClientBuilder()
+                   .setZkHosts(d2ZKHost)
+                   .build();
     D2ClientUtils.startClient(d2Client);
   }
 
@@ -26,7 +28,7 @@ public class D2ControllerClient extends ControllerClient{
   protected String getMasterControllerUrl(String urlsToFindMasterController) {
     String path = ControllerRoute.MASTER_CONTROLLER.getPath();
     String params = URLEncodedUtils.format(newParams(getClusterName()), StandardCharsets.UTF_8);
-    String requestPath = D2_PREFIX + D2_SERVICE_NAME + path + "?" + params;
+    String requestPath = D2_SCHEME + d2ServiceName + path + "?" + params;
 
     try {
       RestResponse response = D2ClientUtils.sendD2GetRequest(requestPath, d2Client);

@@ -58,7 +58,7 @@ public class TestRouter {
       d2Client = D2TestUtils.getAndStartD2Client(zk.getAddress());
     }
 
-    URI requestUri = new URI("d2://" + D2TestUtils.D2_SERVICE_NAME + "/storage/myStore/myKey"); /* D2 client only supports d2:// scheme */
+    URI requestUri = new URI("d2://" + D2TestUtils.DEFAULT_TEST_SERVICE_NAME + "/storage/myStore/myKey"); /* D2 client only supports d2:// scheme */
     RestRequest request = new RestRequestBuilder(requestUri).setMethod("get").build();
     RestResponse response;
     try {
@@ -75,7 +75,7 @@ public class TestRouter {
       "Router with Mock components should return a 503 Service Unavailable");
 
     AbstractAvroStoreClient<Object> storeClient = (AbstractAvroStoreClient<Object>) AvroStoreClientFactory.getAndStartAvroGenericStoreClient(
-      D2TestUtils.D2_SERVICE_NAME, d2Client, "myStore");
+      D2TestUtils.DEFAULT_TEST_SERVICE_NAME, d2Client, "myStore");
 
     try {
       byte[] value = storeClient.getRaw("storage/myStore/myKey").get();

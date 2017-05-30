@@ -28,6 +28,7 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
   private final boolean parent;
 
   private Map<String, String> childClusterMap = null;
+  private String d2ServiceName;
   private Map<String, String> childClusterD2Map = null;
 
   private final int parentControllerWaitingTimeForConsumptionMs;
@@ -45,6 +46,9 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
       String clusterWhitelist = props.getString(CHILD_CLUSTER_WHITELIST);
       this.childClusterMap = parseClusterMap(props, clusterWhitelist);
       this.childClusterD2Map = parseClusterMap(props, clusterWhitelist, true);
+      if (!childClusterD2Map.isEmpty()) {
+        this.d2ServiceName = props.getString(CHILD_CLUSTER_D2_SERVICE_NAME);
+      }
 
       if (childClusterMap.isEmpty() && childClusterD2Map.isEmpty()) {
         throw new VeniceException("child controller list can not be empty");
@@ -86,6 +90,10 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
    */
   public Map<String, String> getChildClusterMap(){
     return childClusterMap;
+  }
+
+  public String getD2ServiceName() {
+    return d2ServiceName;
   }
 
   public Map<String, String> getChildClusterD2Map() {

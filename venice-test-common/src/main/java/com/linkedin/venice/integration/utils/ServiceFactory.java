@@ -6,7 +6,6 @@ import com.linkedin.venice.exceptions.VeniceException;
 
 import com.linkedin.venice.utils.Time;
 import io.tehuti.metrics.MetricsRepository;
-import java.io.File;
 import org.apache.log4j.Logger;
 
 /**
@@ -126,25 +125,19 @@ public class ServiceFactory {
         MockVeniceRouterWrapper.generateService(zkAddress, sslToStorageNodes));
   }
 
-  /**
-   * Initialize MockHttpServerWrapper without D2.
-   * @param serviceName
-   * @return
-   */
-  public static MockHttpServerWrapper getMockHttpServer(String serviceName) {
-    return ServiceFactory.getMockHttpServer(serviceName, null);
+  public static MockD2ServerWrapper getMockD2Server(String serviceName) {
+    return getMockD2Server(serviceName, D2TestUtils.DEFAULT_TEST_CLUSTER_NAME, D2TestUtils.DEFAULT_TEST_SERVICE_NAME);
+  }
+
+  public static MockD2ServerWrapper getMockD2Server(String serviceName, String d2ClusterName, String d2ServiceName) {
+    return getService(serviceName, MockD2ServerWrapper.generateService(d2ClusterName, d2ServiceName));
   }
 
   /**
    * Initialize MockHttpServerWrapper, this function will setup a simple http server
-   * If zkAddress is not null, it will create D2Server and register its URI to the D2Server.
-   *
-   * @param serviceName
-   * @param zkAddress
-   * @return
    */
-  public static MockHttpServerWrapper getMockHttpServer(String serviceName, String zkAddress) {
-    return getService(serviceName, MockHttpServerWrapper.generateService(zkAddress));
+  public static MockHttpServerWrapper getMockHttpServer(String serviceName) {
+    return getService(serviceName, MockHttpServerWrapper.generateService());
   }
 
   public static VeniceClusterWrapper getVeniceCluster() {

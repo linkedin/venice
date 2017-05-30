@@ -102,7 +102,7 @@ public class D2TransportClient<V> extends TransportClient<V> {
 
   private RestRequest getRestRequest(String requestPath) {
     String requestUrl = "d2://" + d2ServiceName + "/" + requestPath;
-    return D2ClientUtils.createD2GetReqeust(requestUrl);
+    return D2ClientUtils.createD2GetRequest(requestUrl);
   }
 
   @Override
