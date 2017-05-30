@@ -10,9 +10,8 @@ import com.linkedin.venice.client.store.transport.D2TransportClient;
 import com.linkedin.venice.client.store.transport.HttpTransportClient;
 import com.linkedin.venice.client.utils.StoreClientTestUtils;
 import com.linkedin.venice.integration.utils.D2TestUtils;
-import com.linkedin.venice.integration.utils.MockHttpServerWrapper;
+import com.linkedin.venice.integration.utils.MockD2ServerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
-import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import io.netty.handler.codec.http.FullHttpResponse;
 import org.apache.log4j.Logger;
 import org.testng.Assert;
@@ -29,24 +28,20 @@ import java.util.concurrent.ExecutionException;
 
 public class AvroSpecificStoreClientImplTest {
   private Logger logger = Logger.getLogger(AvroSpecificStoreClientImplTest.class);
-  private MockHttpServerWrapper routerServer;
+  private MockD2ServerWrapper routerServer;
   private String routerHost;
   private int port;
 
   private String storeName = "test_store";
   private String defaultKeySchemaStr = TestKeyRecord.SCHEMA$.toString();
   private D2Client d2Client;
-  private ZkServerWrapper zkWrapper;
 
   private Map<String, AvroSpecificStoreClient<TestValueRecord>> storeClients = new HashMap<>();
   private AbstractAvroStoreClient<TestValueRecord> someStoreClient;
 
   @BeforeTest
   public void setUp() throws Exception {
-    zkWrapper = ServiceFactory.getZkServer();
-    D2TestUtils.setupD2Config(zkWrapper.getAddress());
-
-    routerServer = ServiceFactory.getMockHttpServer("Mock-router-server", zkWrapper.getAddress());
+    routerServer = ServiceFactory.getMockD2Server("Mock-router-server");
     routerHost = routerServer.getHost();
     port = routerServer.getPort();
   }
@@ -70,9 +65,9 @@ public class AvroSpecificStoreClientImplTest {
       routerUrl, storeName, TestValueRecord.class);
     storeClients.put(HttpTransportClient.class.getSimpleName(),httpStoreClient);
     // d2 based client
-    d2Client = D2TestUtils.getAndStartD2Client(zkWrapper.getAddress());
+    d2Client = D2TestUtils.getAndStartD2Client(routerServer.getZkAddress());
     AvroSpecificStoreClient<TestValueRecord> d2StoreClient = AvroStoreClientFactory.getAndStartAvroSpecificStoreClient(
-      D2TestUtils.D2_SERVICE_NAME, d2Client, storeName, TestValueRecord.class);
+      D2TestUtils.DEFAULT_TEST_SERVICE_NAME, d2Client, storeName, TestValueRecord.class);
     storeClients.put(D2TransportClient.class.getSimpleName(),d2StoreClient);
     someStoreClient = (AbstractAvroStoreClient<TestValueRecord>)httpStoreClient;
   }

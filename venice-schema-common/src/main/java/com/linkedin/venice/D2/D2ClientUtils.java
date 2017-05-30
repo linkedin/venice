@@ -83,7 +83,7 @@ public class D2ClientUtils {
     }
   }
 
-  static public RestRequest createD2GetReqeust(String requestPath) {
+  static public RestRequest createD2GetRequest(String requestPath) {
     URI  requestUri;
     try {
       requestUri = new URI(requestPath);
@@ -97,7 +97,7 @@ public class D2ClientUtils {
    static public RestResponse sendD2GetRequest(String requestPath, D2Client client) {
      RestResponse response;
      try {
-       response = client.restRequest(createD2GetReqeust(requestPath)).get();
+       response = client.restRequest(createD2GetRequest(requestPath)).get();
      } catch (Exception e) {
        throw new VeniceException("D2 client failed to sent request, " + requestPath, e);
      }

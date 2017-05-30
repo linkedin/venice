@@ -737,7 +737,8 @@ public class VeniceParentHelixAdmin implements Admin {
     veniceControllerConfig.getChildClusterMap().entrySet().
       forEach(entry -> controllerClients.put(entry.getKey(), new ControllerClient(clusterName, entry.getValue())));
     veniceControllerConfig.getChildClusterD2Map().entrySet().
-      forEach(entry -> controllerClients.put(entry.getKey(), new D2ControllerClient(clusterName, entry.getValue())));
+      forEach(entry -> controllerClients.put(entry.getKey(),
+          new D2ControllerClient(veniceControllerConfig.getD2ServiceName(), clusterName, entry.getValue())));
 
     return controllerClients;
   }

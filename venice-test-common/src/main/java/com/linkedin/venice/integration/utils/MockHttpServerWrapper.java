@@ -1,8 +1,6 @@
 package com.linkedin.venice.integration.utils;
 
 import com.google.common.net.HttpHeaders;
-import com.linkedin.d2.server.factory.D2Server;
-import com.linkedin.venice.utils.Utils;
 import io.netty.bootstrap.ServerBootstrap;
 import io.netty.buffer.Unpooled;
 import io.netty.channel.ChannelFuture;
@@ -24,8 +22,6 @@ import io.netty.handler.codec.http.HttpVersion;
 import java.net.URI;
 import org.apache.log4j.Logger;
 
-import java.util.ArrayList;
-import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -44,22 +40,11 @@ public class  MockHttpServerWrapper extends ProcessWrapper {
   private Map<String, FullHttpResponse> uriToResponseMap = new ConcurrentHashMap<>();
   private Map<String, FullHttpResponse> uriPatternToResponseMap = new ConcurrentHashMap<>();
 
-  private List<D2Server> d2ServerList;
-
-  static StatefulServiceProvider<MockHttpServerWrapper> generateService(String zkAddress) {
-    return ((serviceName, port, dataDirectory) -> {
-      List<D2Server> d2ServerList;
-      if (Utils.isNullOrEmpty(zkAddress)) {
-        d2ServerList = new ArrayList<>();
-      } else {
-        d2ServerList = D2TestUtils.getD2Servers(zkAddress, "http://localhost:" + port);
-      }
-
-      return new MockHttpServerWrapper(serviceName, port, d2ServerList);
-    });
+  static StatefulServiceProvider<MockHttpServerWrapper> generateService() {
+    return ((serviceName, port, dataDirectory) -> new MockHttpServerWrapper(serviceName, port));
   }
 
-  public MockHttpServerWrapper(String serviceName, int port, List<D2Server> d2ServerList) {
+  public MockHttpServerWrapper(String serviceName, int port) {
     super(serviceName, null);
     this.port = port;
 
@@ -80,7 +65,6 @@ public class  MockHttpServerWrapper extends ProcessWrapper {
         .childOption(ChannelOption.SO_KEEPALIVE, true)
         .option(ChannelOption.SO_REUSEADDR, true)
         .childOption(ChannelOption.TCP_NODELAY, true);
-    this.d2ServerList = d2ServerList;
   }
 
   @Override
@@ -96,26 +80,11 @@ public class  MockHttpServerWrapper extends ProcessWrapper {
   @Override
   protected void internalStart() throws Exception {
     serverFuture = bootstrap.bind(port).sync();
-    if (null != d2ServerList) {
-      for (D2Server d2Server : d2ServerList) {
-        d2Server.forceStart();
-      }
-    }
     logger.info("Mock Http Server has been started.");
   }
 
   @Override
   protected void internalStop() throws Exception {
-    if (null != d2ServerList) {
-      for (D2Server d2Server : d2ServerList) {
-        try {
-          d2Server.notifyShutdown();
-        } catch (RuntimeException e) {
-          logger.error("D2 announcer " + d2Server + " failed to shutdown properly", e);
-        }
-      }
-    }
-
     ChannelFuture shutdown = serverFuture.channel().closeFuture();
     workerGroup.shutdownGracefully();
     bossGroup.shutdownGracefully();

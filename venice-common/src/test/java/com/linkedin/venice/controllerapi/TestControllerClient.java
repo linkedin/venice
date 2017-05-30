@@ -2,6 +2,7 @@ package com.linkedin.venice.controllerapi;
 
 import com.google.common.net.HttpHeaders;
 
+import com.linkedin.venice.integration.utils.MockD2ServerWrapper;
 import com.linkedin.venice.integration.utils.MockHttpServerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.utils.TestUtils;
@@ -18,7 +19,6 @@ import org.testng.annotations.Test;
 import java.io.IOException;
 
 public class TestControllerClient {
-
   @Test
   public static void clientReturnsErrorObjectOnConnectionFailure(){
     ControllerClient client = new ControllerClient(TestUtils.getUniqueString("cluster"), "http://localhost:17079");
@@ -75,5 +75,35 @@ public class TestControllerClient {
       String masterControllerUrl = controllerClient.getMasterControllerUrl(controllerUrlWithSpaceAtBeginning);
       Assert.assertEquals(masterControllerUrl, fakeMasterControllerUrl);
     }
+  }
+
+  @Test
+  public void testD2ControllerClient() throws Exception{
+    String d2ClusterName = "VeniceRouter";
+    String d2ServiceName = "VeniceRouter";
+    String veniceClusterName = TestUtils.getUniqueString("test-cluster");
+    String fakeMasterControllerUri = TestUtils.getUniqueString("http://fake_uri");
+
+    MockD2ServerWrapper mockController =
+        ServiceFactory.getMockD2Server("test-controller", d2ClusterName, d2ServiceName);
+    String uriPattern = ControllerRoute.MASTER_CONTROLLER.getPath() + ".*cluster_name=" + veniceClusterName + ".*";
+    mockController.addResponseForUriPattern(uriPattern,
+        constructMasterControllerResponse(veniceClusterName, fakeMasterControllerUri));
+    try(D2ControllerClient d2ControllerClient = new D2ControllerClient(veniceClusterName, mockController.getZkAddress())) {
+      String masterControllerUrl = d2ControllerClient.getMasterControllerUrl(mockController.getZkAddress());
+      Assert.assertEquals(fakeMasterControllerUri, masterControllerUrl);
+    }
+  }
+
+  private FullHttpResponse constructMasterControllerResponse(String clusterName, String url) throws Exception{
+    MasterControllerResponse response = new MasterControllerResponse();
+    response.setCluster(clusterName);
+    response.setUrl(url);
+
+    ByteBuf body = Unpooled.wrappedBuffer(new ObjectMapper().writeValueAsBytes(response));
+    FullHttpResponse httpResponse = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK, body);
+    httpResponse.headers().set(HttpHeaders.CONTENT_LENGTH, httpResponse.content().readableBytes());
+
+    return httpResponse;
   }
 }

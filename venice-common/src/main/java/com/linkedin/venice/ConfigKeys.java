@@ -109,6 +109,8 @@ public class ConfigKeys {
    */
   public static final String CHILD_CLUSTER_D2_PREFIX = "child.cluster.d2";
 
+  public static final String CHILD_CLUSTER_D2_SERVICE_NAME = "child.cluster.d2.service.name";
+
   /**
    * Only required when controller.parent.mode=true
    * This is a comma-separated whitelist of cluster names used in the keys with the child.cluster.url prefix.

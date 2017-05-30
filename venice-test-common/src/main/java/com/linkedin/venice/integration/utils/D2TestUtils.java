@@ -18,7 +18,6 @@ import com.linkedin.security.ssl.access.control.SSLEngineComponentFactory;
 import com.linkedin.venice.exceptions.VeniceException;
 
 import com.linkedin.venice.utils.SslUtils;
-import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -28,14 +27,11 @@ import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
-import javax.net.ssl.SSLParameters;
-import org.apache.commons.collections.map.HashedMap;
-import org.testng.Assert;
 
 
 public class D2TestUtils {
-  public static final String D2_SERVICE_NAME = "venice-service";
-  public static final String D2_CLUSTER_NAME = "VeniceStorageService";
+  public static final String DEFAULT_TEST_CLUSTER_NAME = "VeniceStorageService";
+  public static final String DEFAULT_TEST_SERVICE_NAME = "venice-service";
   private static final ObjectMapper mapper = new ObjectMapper();
 
 
@@ -46,7 +42,10 @@ public class D2TestUtils {
     setupD2Config(zkHosts, true);
   }
   public static void setupD2Config(String zkHosts, boolean https){
+    setupD2Config(zkHosts, https, DEFAULT_TEST_CLUSTER_NAME, DEFAULT_TEST_SERVICE_NAME);
+  }
 
+  public static void setupD2Config(String zkHosts, boolean https, String clusterName, String serviceName) {
     int sessionTimeout = 5000;
     String basePath = "/d2";
     int retryLimit = 10;
@@ -55,7 +54,7 @@ public class D2TestUtils {
     try {
       Map<String, Object> clusterDefaults = Collections.EMPTY_MAP;
       Map<String, Object> serviceDefaults = getD2ServiceDefaults();
-      Map<String, Object> clusterServiceConfigurations = getD2ServiceConfig(D2_CLUSTER_NAME, D2_SERVICE_NAME, https);
+      Map<String, Object> clusterServiceConfigurations = getD2ServiceConfig(clusterName, serviceName, https);
       Map<String, Object> extraClusterServiceConfigurations = Collections.EMPTY_MAP;
       Map<String, Object> serviceVariants = Collections.EMPTY_MAP;
 
@@ -69,14 +68,18 @@ public class D2TestUtils {
     }
   }
 
-  private static D2Server getD2Server(String zkHosts, String localUri){
+  private static D2Server getD2Server(String zkHosts, String localUri) {
+    return getD2Server(zkHosts, localUri, DEFAULT_TEST_CLUSTER_NAME);
+  }
+
+  public static D2Server getD2Server(String zkHosts, String localUri, String clusterName){
     int sessionTimeout = 5000;
     String basePath = "/d2";
 
     // Set up D2 server/announcer
     ZKUriStoreFactory storeFactory = new ZKUriStoreFactory();
     ZooKeeperAnnouncer announcer = new ZooKeeperAnnouncer(new ZooKeeperServer());
-    announcer.setCluster("VeniceStorageService");
+    announcer.setCluster(clusterName);
     announcer.setUri(localUri);
     announcer.setWeight(1);
     ZooKeeperConnectionManager zkManager = new ZooKeeperConnectionManager(
