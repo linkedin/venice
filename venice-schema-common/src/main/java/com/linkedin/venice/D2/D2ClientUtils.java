@@ -104,4 +104,15 @@ public class D2ClientUtils {
 
      return response;
    }
+
+  public static RestRequest createD2PostRequest(String requestPath, byte[] body) {
+    URI requestUri;
+    try {
+      requestUri = new URI(requestPath);
+    } catch (URISyntaxException e) {
+      throw new VeniceException("Failed to create URI for path " + requestPath, e);
+    }
+
+    return new RestRequestBuilder(requestUri).setMethod("post").setEntity(body).build();
+  }
 }

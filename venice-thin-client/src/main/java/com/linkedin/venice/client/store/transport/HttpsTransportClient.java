@@ -7,7 +7,7 @@ import org.apache.http.impl.nio.client.HttpAsyncClients;
 import org.apache.http.nio.conn.ssl.SSLIOSessionStrategy;
 
 
-public class HttpsTransportClient<V> extends HttpTransportClient<V> {
+public class HttpsTransportClient extends HttpTransportClient {
 
   private SSLEngineComponentFactory sslFactory;
 
@@ -30,7 +30,7 @@ public class HttpsTransportClient<V> extends HttpTransportClient<V> {
    * @return
    */
   @Override
-  public TransportClient<V> getCopyIfNotUsableInCallback() {
-    return new HttpsTransportClient<>(routerUrl, sslFactory);
+  public TransportClient getCopyIfNotUsableInCallback() {
+    return new HttpsTransportClient(routerUrl, sslFactory);
   }
 }

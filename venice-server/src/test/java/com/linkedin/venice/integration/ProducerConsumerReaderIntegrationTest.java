@@ -1,9 +1,8 @@
 package com.linkedin.venice.integration;
 
-import com.linkedin.venice.client.exceptions.VeniceServerException;
+import com.linkedin.venice.client.exceptions.VeniceClientHttpException;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
-import com.linkedin.venice.utils.FlakyTestRetryAnalyzer;
 import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.writer.VeniceWriter;
@@ -15,7 +14,7 @@ import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.serialization.VeniceSerializer;
-import com.linkedin.venice.serialization.avro.AvroGenericSerializer;
+import com.linkedin.venice.serialization.avro.VeniceAvroGenericSerializer;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -46,7 +45,7 @@ public class ProducerConsumerReaderIntegrationTest {
 
   // TODO: Make serializers parameterized so we test them all.
   private VeniceWriter<Object, Object> veniceWriter;
-  private AvroGenericStoreClient<Object> storeClient;
+  private AvroGenericStoreClient<String, Object> storeClient;
 
   @BeforeMethod
   public void setUp() throws InterruptedException, ExecutionException, VeniceClientException {
@@ -68,8 +67,8 @@ public class ProducerConsumerReaderIntegrationTest {
 
     // TODO: Make serializers parameterized so we test them all.
     String stringSchema = "\"string\"";
-    VeniceSerializer keySerializer = new AvroGenericSerializer(stringSchema);
-    VeniceSerializer valueSerializer = new AvroGenericSerializer(stringSchema);
+    VeniceSerializer keySerializer = new VeniceAvroGenericSerializer(stringSchema);
+    VeniceSerializer valueSerializer = new VeniceAvroGenericSerializer(stringSchema);
 
     veniceWriter = new VeniceWriter<>(clientProps, storeVersionName, keySerializer, valueSerializer);
     storeClient = AvroStoreClientFactory.getAndStartAvroGenericSslStoreClient(routerUrl, storeName,
@@ -96,7 +95,7 @@ public class ProducerConsumerReaderIntegrationTest {
       storeClient.get(key).get();
       Assert.fail("Not online instances exist in cluster, should throw exception for this read operation.");
     } catch (ExecutionException e) {
-      if (!(e.getCause() instanceof VeniceServerException)){
+      if (!(e.getCause() instanceof VeniceClientHttpException)){
         throw e;
       }
       // Expected result. Because right now status of node is "BOOTSTRAP" so can not find any online instance to read.

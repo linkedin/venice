@@ -11,6 +11,9 @@ import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.integration.utils.D2TestUtils;
 import com.linkedin.venice.integration.utils.MockD2ServerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
+import com.linkedin.venice.read.protocol.response.MultiGetResponseRecord;
+import com.linkedin.venice.serializer.AvroSerializerDeserializerFactory;
+import com.linkedin.venice.serializer.RecordSerializer;
 import io.netty.handler.codec.http.FullHttpResponse;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
@@ -24,8 +27,13 @@ import org.testng.annotations.BeforeTest;
 import org.testng.annotations.Test;
 
 import java.io.IOException;
+import java.nio.ByteBuffer;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.TreeSet;
 import java.util.concurrent.ExecutionException;
 
 public class AvroGenericStoreClientImplTest {
@@ -40,8 +48,8 @@ public class AvroGenericStoreClientImplTest {
 
   private D2Client d2Client;
 
-  private Map<String, AvroGenericStoreClient<Object>> storeClients = new HashMap<>();
-  private AbstractAvroStoreClient<Object> someStoreClient;
+  private Map<String, AvroGenericStoreClient<String, Object>> storeClients = new HashMap<>();
+  private AbstractAvroStoreClient<String, Object> someStoreClient;
 
   @BeforeTest
   public void setUp() throws Exception {
@@ -65,19 +73,20 @@ public class AvroGenericStoreClientImplTest {
 
     // http based client
     String routerUrl = "http://" + routerHost + ":" + port + "/";
-    AvroGenericStoreClient<Object> httpStoreClient = AvroStoreClientFactory.getAndStartAvroGenericStoreClient(routerUrl, storeName);
+    AvroGenericStoreClient<String, Object> httpStoreClient = AvroStoreClientFactory.getAndStartAvroGenericStoreClient(routerUrl, storeName);
     storeClients.put(HttpTransportClient.class.getSimpleName(), httpStoreClient);
     // d2 based client
     d2Client = D2TestUtils.getAndStartD2Client(routerServer.getZkAddress());
-    AvroGenericStoreClient<Object> d2StoreClient = AvroStoreClientFactory.getAndStartAvroGenericStoreClient(
+    AvroGenericStoreClient<String, Object> d2StoreClient = AvroStoreClientFactory.getAndStartAvroGenericStoreClient(
       D2TestUtils.DEFAULT_TEST_SERVICE_NAME, d2Client, storeName);
     storeClients.put(D2TransportClient.class.getSimpleName(), d2StoreClient);
-    someStoreClient = (AbstractAvroStoreClient<Object>)httpStoreClient;
+    DelegatingStoreClient<String, Object> delegatingStoreClient = (DelegatingStoreClient<String, Object>)httpStoreClient;
+    someStoreClient = (AbstractAvroStoreClient<String, Object>)delegatingStoreClient.getInnerStoreClient();
   }
 
   @AfterMethod
   public void closeStoreClient() {
-    for (AvroGenericStoreClient<Object> storeClient : storeClients.values()) {
+    for (AvroGenericStoreClient<String, Object> storeClient : storeClients.values()) {
       if (null != storeClient) {
         storeClient.close();
       }
@@ -88,9 +97,9 @@ public class AvroGenericStoreClientImplTest {
   @Test
   public void getByRequestPathTest() throws VeniceClientException, ExecutionException, InterruptedException, IOException {
     String keySchemaPath = SchemaReader.TYPE_KEY_SCHEMA + "/" + storeName;
-    for (Map.Entry<String, AvroGenericStoreClient<Object>> entry : storeClients.entrySet()) {
+    for (Map.Entry<String, AvroGenericStoreClient<String, Object>> entry : storeClients.entrySet()) {
       logger.info("Execute test for transport client: " + entry.getKey());
-      byte[] byteResponse = ((AbstractAvroStoreClient<Object>)entry.getValue()).getRaw(keySchemaPath).get();
+      byte[] byteResponse = ((InternalAvroStoreClient<String, Object>)entry.getValue()).getRaw(keySchemaPath).get();
       SchemaResponse ret = mapper.readValue(byteResponse, SchemaResponse.class);
       Assert.assertEquals(ret.getName(), storeName);
       Assert.assertEquals(ret.getId(), 1);
@@ -101,12 +110,13 @@ public class AvroGenericStoreClientImplTest {
   @Test
   public void getByRequestPathTestWithNonExistingPath() throws VeniceClientException, ExecutionException, InterruptedException, IOException {
     String nonExistingPath = "sdfwirwoer";
-    for (Map.Entry<String, AvroGenericStoreClient<Object>> entry : storeClients.entrySet()) {
+    for (Map.Entry<String, AvroGenericStoreClient<String, Object>> entry : storeClients.entrySet()) {
       logger.info("Execute test for transport client: " + entry.getKey());
-      byte[] byteResponse = ((AbstractAvroStoreClient<Object>)entry.getValue()).getRaw(nonExistingPath).get();
+      byte[] byteResponse = ((InternalAvroStoreClient<String, Object>)entry.getValue()).getRaw(nonExistingPath).get();
       Assert.assertNull(byteResponse);
     }
   }
+
 
   @Test
   public void getByStoreKeyTest() throws IOException, VeniceClientException, ExecutionException, InterruptedException {
@@ -141,7 +151,7 @@ public class AvroGenericStoreClientImplTest {
     String storeRequestPath = "/" + someStoreClient.getRequestPathByKey(key);
     routerServer.addResponseForUri(storeRequestPath, valueResponse);
 
-    for (Map.Entry<String, AvroGenericStoreClient<Object>> entry : storeClients.entrySet()) {
+    for (Map.Entry<String, AvroGenericStoreClient<String, Object>> entry : storeClients.entrySet()) {
       logger.info("Execute test for transport client: " + entry.getKey());
       Object value = entry.getValue().get(key).get();
       Assert.assertTrue(value instanceof GenericData.Record);
@@ -154,7 +164,7 @@ public class AvroGenericStoreClientImplTest {
   @Test
   public void getByStoreKeyTestWithNonExistingKey() throws Throwable {
     String key = "test_key";
-    for (Map.Entry<String, AvroGenericStoreClient<Object>> entry : storeClients.entrySet()) {
+    for (Map.Entry<String, AvroGenericStoreClient<String, Object>> entry : storeClients.entrySet()) {
       logger.info("Execute test for transport client: " + entry.getKey());
       Object value = entry.getValue().get(key).get();
       Assert.assertNull(value);
@@ -182,7 +192,7 @@ public class AvroGenericStoreClientImplTest {
     FullHttpResponse valueResponse = StoreClientTestUtils.constructStoreResponse(nonExistingSchemaId, valueStr.getBytes());
     String storeRequestPath = "/" + someStoreClient.getRequestPathByKey(keyStr);
     routerServer.addResponseForUri(storeRequestPath, valueResponse);
-    for (Map.Entry<String, AvroGenericStoreClient<Object>> entry : storeClients.entrySet()) {
+    for (Map.Entry<String, AvroGenericStoreClient<String, Object>> entry : storeClients.entrySet()) {
       logger.info("Execute test for transport client: " + entry.getKey());
       try {
         entry.getValue().get(keyStr).get();
@@ -209,7 +219,7 @@ public class AvroGenericStoreClientImplTest {
     FullHttpResponse valueResponse = StoreClientTestUtils.constructStoreResponse(nonExistingSchemaId, valueStr.getBytes());
     String storeRequestPath = "/" + someStoreClient.getRequestPathByKey(keyStr);
     routerServer.addResponseForUri(storeRequestPath, valueResponse);
-    for (Map.Entry<String, AvroGenericStoreClient<Object>> entry : storeClients.entrySet()) {
+    for (Map.Entry<String, AvroGenericStoreClient<String, Object>> entry : storeClients.entrySet()) {
       logger.info("Execute test for transport client: " + entry.getKey());
       try {
         entry.getValue().get(keyStr).get();
@@ -236,13 +246,13 @@ public class AvroGenericStoreClientImplTest {
     valueResponse.headers().remove(TransportClientCallback.HEADER_VENICE_SCHEMA_ID);
     String storeRequestPath = "/" + someStoreClient.getRequestPathByKey(keyStr);
     routerServer.addResponseForUri(storeRequestPath, valueResponse);
-    for (Map.Entry<String, AvroGenericStoreClient<Object>> entry : storeClients.entrySet()) {
+    for (Map.Entry<String, AvroGenericStoreClient<String, Object>> entry : storeClients.entrySet()) {
       logger.info("Execute test for transport client: " + entry.getKey());
       try {
         entry.getValue().get(keyStr).get();
       } catch (ExecutionException e) {
         Assert.assertTrue(e.getCause() instanceof VeniceClientException);
-        Assert.assertTrue(e.getCause().getMessage().contains("Header: X-VENICE-SCHEMA-ID doesn't exist"));
+        Assert.assertTrue(e.getCause().getMessage().contains("No valid schema id received"));
         continue;
       } catch (Throwable t) {
       }
@@ -297,7 +307,7 @@ public class AvroGenericStoreClientImplTest {
     String storeRequestPath = "/" + someStoreClient.getRequestPathByKey(key);
     routerServer.addResponseForUri(storeRequestPath, valueResponse);
 
-    for (Map.Entry<String, AvroGenericStoreClient<Object>> entry : storeClients.entrySet()) {
+    for (Map.Entry<String, AvroGenericStoreClient<String, Object>> entry : storeClients.entrySet()) {
       logger.info("Execute test for transport client: " + entry.getKey());
       Object value = entry.getValue().get(key).get();
       Assert.assertTrue(value instanceof GenericData.Record);
@@ -305,6 +315,101 @@ public class AvroGenericStoreClientImplTest {
       Assert.assertEquals(recordValue.get("a"), 100l);
       Assert.assertEquals(recordValue.get("b").toString(), "test_b_value");
       Assert.assertEquals(recordValue.get("c").toString(), "c_default_value");
+    }
+  }
+
+  private Set setupSchemaAndRequest(int valueSchemaId, String valueSchemaStr) throws IOException {
+    Map<Integer, String> valueSchemaEntries = new HashMap<>();
+    valueSchemaEntries.put(valueSchemaId, valueSchemaStr);
+
+    // Push value schema
+    FullHttpResponse valueSchemaResponse = StoreClientTestUtils.constructHttpSchemaResponse(storeName, valueSchemaId, valueSchemaStr);
+    String valueSchemaPath = "/" + SchemaReader.TYPE_VALUE_SCHEMA + "/" + storeName + "/" + valueSchemaId;
+    routerServer.addResponseForUri(valueSchemaPath, valueSchemaResponse);
+    FullHttpResponse multiValueSchemaResponse = StoreClientTestUtils.constructHttpMultiSchemaResponse(storeName, valueSchemaEntries);
+    String multiValueSchemaPath = "/" + SchemaReader.TYPE_VALUE_SCHEMA + "/" + storeName;
+    routerServer.addResponseForUri(multiValueSchemaPath, multiValueSchemaResponse);
+
+    Set<String> keys = new TreeSet<>();
+    keys.add("key1");
+    keys.add("key0");
+    keys.add("key2");
+    keys.add("key4");
+    keys.add("key3");
+
+    return keys;
+  }
+
+  @Test
+  public void testMultiGet() throws IOException, ExecutionException, InterruptedException {
+    int valueSchemaId = 1;
+    String valueSchemaStr = "\"string\"";
+    Set<String> keys = setupSchemaAndRequest(valueSchemaId, valueSchemaStr);
+    // Construct MultiGetResponse
+    RecordSerializer<Object> keySerializer = AvroSerializerDeserializerFactory.getAvroGenericSerializer(Schema.parse(valueSchemaStr));
+    List<Object> records = new ArrayList<>();
+    MultiGetResponseRecord dataRecord1 = new MultiGetResponseRecord();
+    dataRecord1.keyIndex = 1;
+    dataRecord1.schemaId = valueSchemaId;
+    dataRecord1.value = ByteBuffer.wrap(keySerializer.serialize("value1"));
+    records.add(dataRecord1);
+
+    MultiGetResponseRecord dataRecord3 = new MultiGetResponseRecord();
+    dataRecord3.keyIndex = 3;
+    dataRecord3.schemaId = valueSchemaId;
+    dataRecord3.value = ByteBuffer.wrap(keySerializer.serialize("value3"));
+    records.add(dataRecord3);
+    // Serialize MultiGetResponse
+    RecordSerializer<Object> responseSerializer = AvroSerializerDeserializerFactory.getAvroGenericSerializer(MultiGetResponseRecord.SCHEMA$);
+    byte[] responseBytes = responseSerializer.serializeObjects(records);
+    int responseSchemaId = 1;
+
+    FullHttpResponse httpResponse = StoreClientTestUtils.constructStoreResponse(responseSchemaId, responseBytes);
+    routerServer.addResponseForUri("/" + AbstractAvroStoreClient.TYPE_STORAGE + "/" + storeName, httpResponse);
+
+    for (Map.Entry<String, AvroGenericStoreClient<String, Object>> entry : storeClients.entrySet()) {
+      logger.info("Execute test for transport client: " + entry.getKey());
+      Map<String, Object> result = entry.getValue().multiGet(keys).get();
+      Assert.assertFalse(result.containsKey("key0"));
+      Assert.assertFalse(result.containsKey("key2"));
+      Assert.assertFalse(result.containsKey("key4"));
+      Assert.assertEquals(result.get("key1").toString(), "value1");
+      Assert.assertEquals(result.get("key3").toString(), "value3");
+    }
+  }
+
+  @Test
+  public void testMultiGetWithNonExistingDataSchemaId() throws IOException, InterruptedException {
+    int valueSchemaId = 1;
+    String valueSchemaStr = "\"string\"";
+    Set<String> keys = setupSchemaAndRequest(valueSchemaId, valueSchemaStr);
+
+    int nonExistingDataSchemaId = 100;
+    // Construct MultiGetResponse
+    RecordSerializer<Object> keySerializer = AvroSerializerDeserializerFactory.getAvroGenericSerializer(Schema.parse(valueSchemaStr));
+    List<Object> records = new ArrayList<>();
+    MultiGetResponseRecord dataRecord1 = new MultiGetResponseRecord();
+    dataRecord1.keyIndex = 1;
+    dataRecord1.schemaId = nonExistingDataSchemaId;
+    dataRecord1.value = ByteBuffer.wrap(keySerializer.serialize("value1"));
+    records.add(dataRecord1);
+
+    // Serialize MultiGetResponse
+    RecordSerializer<Object> responseSerializer = AvroSerializerDeserializerFactory.getAvroGenericSerializer(MultiGetResponseRecord.SCHEMA$);
+    byte[] responseBytes = responseSerializer.serializeObjects(records);
+    int responseSchemaId = 1;
+
+    FullHttpResponse httpResponse = StoreClientTestUtils.constructStoreResponse(responseSchemaId, responseBytes);
+    routerServer.addResponseForUri("/" + AbstractAvroStoreClient.TYPE_STORAGE + "/" + storeName, httpResponse);
+
+    for (Map.Entry<String, AvroGenericStoreClient<String, Object>> entry : storeClients.entrySet()) {
+      logger.info("Execute test for transport client: " + entry.getKey());
+      try {
+        Map<String, Object> result = entry.getValue().multiGet(keys).get();
+        Assert.fail("Should receive exception here because of non-existing data schema id");
+      } catch (ExecutionException e) {
+        // expected
+      }
     }
   }
 }

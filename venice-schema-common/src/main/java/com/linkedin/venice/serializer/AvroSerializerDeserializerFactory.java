@@ -1,4 +1,4 @@
-package com.linkedin.venice.client.serializer;
+package com.linkedin.venice.serializer;
 
 import org.apache.avro.Schema;
 import org.apache.avro.specific.SpecificData;
@@ -55,7 +55,7 @@ public class AvroSerializerDeserializerFactory {
   private static Map<SchemaPairAndClassContainer, AvroSpecificDeserializer<? extends SpecificRecord>>
       specificDeserializerMap = new ConcurrentHashMap<>();
 
-  public static RecordSerializer<Object> getAvroGenericSerializer(Schema schema) {
+  public static <K> RecordSerializer<K> getAvroGenericSerializer(Schema schema) {
     genericSerializerMap.computeIfAbsent(schema,
         key -> {
           return new AvroGenericSerializer(key);

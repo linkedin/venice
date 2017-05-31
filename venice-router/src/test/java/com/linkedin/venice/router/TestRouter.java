@@ -5,9 +5,9 @@ import com.linkedin.r2.message.rest.RestException;
 import com.linkedin.r2.message.rest.RestRequest;
 import com.linkedin.r2.message.rest.RestRequestBuilder;
 import com.linkedin.r2.message.rest.RestResponse;
-import com.linkedin.venice.client.exceptions.VeniceServerException;
-import com.linkedin.venice.client.store.AbstractAvroStoreClient;
+import com.linkedin.venice.client.exceptions.VeniceClientHttpException;
 import com.linkedin.venice.client.store.AvroStoreClientFactory;
+import com.linkedin.venice.client.store.InternalAvroStoreClient;
 import com.linkedin.venice.controllerapi.ControllerRoute;
 import com.linkedin.venice.controllerapi.MasterControllerResponse;
 import com.linkedin.venice.integration.utils.D2TestUtils;
@@ -74,14 +74,14 @@ public class TestRouter {
     Assert.assertEquals(response.getStatus(), HttpStatus.SC_SERVICE_UNAVAILABLE,
       "Router with Mock components should return a 503 Service Unavailable");
 
-    AbstractAvroStoreClient<Object> storeClient = (AbstractAvroStoreClient<Object>) AvroStoreClientFactory.getAndStartAvroGenericStoreClient(
+    InternalAvroStoreClient<Object, Object> storeClient = (InternalAvroStoreClient<Object, Object>) AvroStoreClientFactory.getAndStartAvroGenericStoreClient(
       D2TestUtils.DEFAULT_TEST_SERVICE_NAME, d2Client, "myStore");
 
     try {
       byte[] value = storeClient.getRaw("storage/myStore/myKey").get();
-      Assert.fail("Router with Mock components should trigger VeniceServerException");
+      Assert.fail("Router with Mock components should trigger VeniceClientHttpException");
     } catch (ExecutionException e){
-      if (e.getCause() instanceof VeniceServerException) {
+      if (e.getCause() instanceof VeniceClientHttpException) {
         // expected.
       } else {
         throw e;

@@ -40,4 +40,6 @@ dependencies {
     compile libraries.httpCore  //d2Client brings in an old version of httpCore
     compile libraries.tehuti
     compile libraries.xerces // d2Client brings in an old version of xerces
+
+    testCompile project(':venice-test-common')
 }

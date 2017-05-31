@@ -6,5 +6,5 @@ import org.apache.avro.specific.SpecificRecord;
  * AvroSpecificStoreClient for type safety purpose.
  * @param <V>
  */
-public interface AvroSpecificStoreClient<V extends SpecificRecord> extends AvroGenericStoreClient<V> {
+public interface AvroSpecificStoreClient<K, V extends SpecificRecord> extends AvroGenericStoreClient<K, V> {
 }

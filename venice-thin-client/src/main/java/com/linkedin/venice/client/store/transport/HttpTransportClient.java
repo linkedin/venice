@@ -1,29 +1,28 @@
 package com.linkedin.venice.client.store.transport;
 
 import com.linkedin.venice.client.exceptions.VeniceClientException;
-import com.linkedin.venice.client.exceptions.VeniceServerException;
-import com.linkedin.venice.client.store.ClientHttpCallback;
-import com.linkedin.venice.client.store.DeserializerFetcher;
+import com.linkedin.venice.schema.SchemaData;
 import org.apache.commons.httpclient.HttpStatus;
 import org.apache.commons.io.IOUtils;
 import org.apache.http.Header;
 import org.apache.http.HttpResponse;
 import org.apache.http.client.methods.HttpGet;
+import org.apache.http.client.methods.HttpPost;
 import org.apache.http.concurrent.FutureCallback;
+import org.apache.http.entity.BasicHttpEntity;
 import org.apache.http.impl.nio.client.CloseableHttpAsyncClient;
 import org.apache.http.impl.nio.client.HttpAsyncClients;
 import org.apache.log4j.Logger;
 
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.Future;
 
 /**
  * {@link CloseableHttpAsyncClient} based TransportClient implementation.
- * @param <V>
  */
-public class HttpTransportClient<V> extends TransportClient<V> {
+public class HttpTransportClient extends TransportClient {
   private Logger logger = Logger.getLogger(HttpTransportClient.class);
 
   // Example: 'http://router-host:80/'
@@ -41,24 +40,36 @@ public class HttpTransportClient<V> extends TransportClient<V> {
   }
 
   @Override
-  public Future<V> get(String requestPath, ClientHttpCallback callback) {
-    HttpGet request = getHttpRequest(requestPath);
-    CompletableFuture<V> valueFuture = new CompletableFuture<>();
-    httpClient.execute(request, new HttpTransportClientCallback<>(valueFuture, getDeserializerFetcher(), callback));
+  public CompletableFuture<TransportClientResponse> get(String requestPath) {
+    HttpGet request = getHttpGetRequest(requestPath);
+    CompletableFuture<TransportClientResponse> valueFuture = new CompletableFuture<>();
+    httpClient.execute(request, new HttpTransportClientCallback(valueFuture));
     return valueFuture;
   }
 
   @Override
-  public Future<byte[]> getRaw(String requestPath) {
-    HttpGet request = getHttpRequest(requestPath);
-    CompletableFuture<byte[]> valueFuture = new CompletableFuture<>();
-    httpClient.execute(request, new HttpTransportClientCallback<>(valueFuture));
+  public CompletableFuture<TransportClientResponse> post(String requestPath, byte[] requestBody) {
+    HttpPost request = getHttpPostRequest(requestPath, requestBody);
+    CompletableFuture<TransportClientResponse> valueFuture = new CompletableFuture<>();
+    httpClient.execute(request, new HttpTransportClientCallback(valueFuture));
     return valueFuture;
   }
 
-  private HttpGet getHttpRequest(String requestPath) {
-    String requestUrl = routerUrl + requestPath;
-    return new HttpGet(requestUrl);
+  private String getHttpRequestUrl(String requestPath) {
+    return routerUrl + requestPath;
+  }
+
+  private HttpGet getHttpGetRequest(String requestPath) {
+    return new HttpGet(getHttpRequestUrl(requestPath));
+  }
+
+  private HttpPost getHttpPostRequest(String requestPath, byte[] body) {
+    HttpPost httpPost = new HttpPost(getHttpRequestUrl(requestPath));
+    BasicHttpEntity entity = new BasicHttpEntity();
+    entity.setContent(new ByteArrayInputStream(body));
+    httpPost.setEntity(entity);
+
+    return httpPost;
   }
 
   @Override
@@ -76,54 +87,41 @@ public class HttpTransportClient<V> extends TransportClient<V> {
    * @return
    */
   @Override
-  public TransportClient<V> getCopyIfNotUsableInCallback() {
-    return new HttpTransportClient<>(routerUrl);
+  public TransportClient getCopyIfNotUsableInCallback() {
+    return new HttpTransportClient(routerUrl);
   }
 
-  private static class HttpTransportClientCallback<T> extends TransportClientCallback<T> implements FutureCallback<HttpResponse> {
-    public HttpTransportClientCallback(CompletableFuture<T> valueFuture, DeserializerFetcher<T> fetcher, ClientHttpCallback callback) {
-      super(valueFuture, fetcher, callback);
-    }
-
-    public HttpTransportClientCallback(CompletableFuture<T> valueFuture) {
+  private static class HttpTransportClientCallback extends TransportClientCallback implements FutureCallback<HttpResponse> {
+    public HttpTransportClientCallback(CompletableFuture<TransportClientResponse> valueFuture) {
       super(valueFuture);
     }
 
     @Override
     public void failed(Exception ex) {
-      callback.executeOnError();
       getValueFuture().completeExceptionally(new VeniceClientException(ex));
     }
 
     @Override
     public void cancelled() {
-      callback.executeOnError();
       getValueFuture().completeExceptionally(new VeniceClientException("Request cancelled"));
     }
 
     @Override
     public void completed(HttpResponse result) {
       int statusCode = result.getStatusLine().getStatusCode();
-
-      String schemaId = null;
+      int schemaId = SchemaData.INVALID_VALUE_SCHEMA_ID;
       // If we try to retrieve the header value directly, and the 'getValue' will hang if the header doesn't exist.
-      if (!isNeedRawResult()) {
         Header schemaIdHeader = result.getFirstHeader(HEADER_VENICE_SCHEMA_ID);
         if (HttpStatus.SC_OK == statusCode) {
-          if (null == schemaIdHeader) {
-            getValueFuture().completeExceptionally(new VeniceServerException("Header: " + HEADER_VENICE_SCHEMA_ID + " doesn't exist"));
-            callback.executeOnError();
-            return;
+          if (null != schemaIdHeader) {
+            schemaId = Integer.parseInt(schemaIdHeader.getValue());
           }
-          schemaId = schemaIdHeader.getValue();
-        }
       }
       byte[] body = null;
       try (InputStream bodyStream = result.getEntity().getContent()) {
         body = IOUtils.toByteArray(bodyStream);
       } catch (IOException e) {
         getValueFuture().completeExceptionally(new VeniceClientException(e));
-        callback.executeOnError();
         return;
       }
 

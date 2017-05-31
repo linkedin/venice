@@ -1,0 +1,23 @@
+{
+  "name": "MultiGetResponseRecord",
+  "namespace": "com.linkedin.venice.read.protocol.response",
+  "doc": "This field will store all the related info for one record",
+  "type": "record",
+  "fields": [
+    {
+      "name": "keyIndex",
+      "doc": "The corresponding key index for each record. Venice Client/Router is maintaining a mapping between a unique index and the corresponding key, so that Venice backend doesn't need to return the full key bytes to reduce network overhead",
+      "type": "int"
+    },
+    {
+      "name": "value",
+      "doc": "Avro serialized value",
+      "type": "bytes"
+    },
+    {
+      "name": "schemaId",
+      "doc": "Schema id of current store being used when serializing this record",
+      "type": "int"
+    }
+  ]
+}

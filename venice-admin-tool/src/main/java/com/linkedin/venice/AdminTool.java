@@ -222,8 +222,8 @@ public class AdminTool {
     Schema keySchema = null;
     SchemaReader schemaReader = null;
     try {
-      AvroGenericStoreClient<Object> schemaClient = AvroStoreClientFactory.getAndStartAvroGenericStoreClient(routerHosts, store);
-      AbstractAvroStoreClient<Object> castClient = (AvroGenericStoreClientImpl<Object>) schemaClient;
+      AvroGenericStoreClient<Object, Object> schemaClient = AvroStoreClientFactory.getAndStartAvroGenericStoreClient(routerHosts, store);
+      AbstractAvroStoreClient<Object, Object> castClient = (AvroGenericStoreClientImpl<Object, Object>) schemaClient;
       schemaReader = new SchemaReader(castClient);
       keySchema = schemaReader.getKeySchema();
     } catch (VeniceClientException e) {
@@ -260,7 +260,7 @@ public class AdminTool {
     outputMap.put("key", keyString);
 
     Object value;
-    try(AvroGenericStoreClient<Object> client = AvroStoreClientFactory.getAndStartAvroGenericStoreClient(routerHosts, store)) {
+    try(AvroGenericStoreClient<Object, Object> client = AvroStoreClientFactory.getAndStartAvroGenericStoreClient(routerHosts, store)) {
       value = client.get(key).get();
     }
     outputMap.put("value-class", value == null ? "null" : value.getClass().getCanonicalName());

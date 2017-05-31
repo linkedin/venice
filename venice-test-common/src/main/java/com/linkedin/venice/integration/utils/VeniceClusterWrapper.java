@@ -9,7 +9,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixState;
 import com.linkedin.venice.helix.Replica;
 import com.linkedin.venice.serialization.VeniceSerializer;
-import com.linkedin.venice.serialization.avro.AvroGenericSerializer;
+import com.linkedin.venice.serialization.avro.VeniceAvroGenericSerializer;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
@@ -386,8 +386,8 @@ public class VeniceClusterWrapper extends ProcessWrapper {
         .build();
 
     String stringSchema = "\"string\"";
-    VeniceSerializer keySerializer = new AvroGenericSerializer(stringSchema);
-    VeniceSerializer valueSerializer = new AvroGenericSerializer(stringSchema);
+    VeniceSerializer keySerializer = new VeniceAvroGenericSerializer(stringSchema);
+    VeniceSerializer valueSerializer = new VeniceAvroGenericSerializer(stringSchema);
 
     return new VeniceWriter<>(clientProps, storeVersionName, keySerializer, valueSerializer);
   }

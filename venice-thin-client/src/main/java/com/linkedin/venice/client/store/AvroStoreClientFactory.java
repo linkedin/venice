@@ -7,7 +7,6 @@ import com.linkedin.venice.client.store.transport.D2TransportClient;
 import com.linkedin.venice.client.store.transport.HttpTransportClient;
 import com.linkedin.venice.client.store.transport.HttpsTransportClient;
 import com.linkedin.venice.client.store.transport.TransportClient;
-import com.linkedin.venice.exceptions.VeniceException;
 import java.util.Optional;
 import org.apache.avro.specific.SpecificRecord;
 
@@ -16,45 +15,51 @@ public class AvroStoreClientFactory {
   public static final String HTTPS_PREFIX = "https://";
   public static final String D2_PREFIX = "d2://";
 
+  // TODO: come up with some new interfaces, which could be used by Offspring MP
+
   // TODO: Add ClientConfig to configure transport client, such as timeout, thread number, ...
   // TODO: Construct StoreClient by D2 url along with a couple of D2 related config.
-  public static <V> AvroGenericStoreClient<V> getAndStartAvroGenericStoreClient(String url, String storeName)
+  public static <K, V> AvroGenericStoreClient<K, V> getAndStartAvroGenericStoreClient(String url, String storeName)
       throws VeniceClientException {
-    TransportClient<V> transportClient = getTransportClient(url, Optional.empty());
-    AvroGenericStoreClientImpl<V> client = new AvroGenericStoreClientImpl(transportClient, storeName);
-    client.start();
-    return client;
+    TransportClient transportClient = getTransportClient(url, Optional.empty());
+    AvroGenericStoreClientImpl<K, V> avroStoreClient = new AvroGenericStoreClientImpl(transportClient, storeName);
+    DelegatingStoreClient<K, V> statTrackingStoreClient = new StatTrackingStoreClient<K, V>(avroStoreClient);
+    statTrackingStoreClient.start();
+    return statTrackingStoreClient;
   }
 
-  public static <V> AvroGenericStoreClient<V> getAndStartAvroGenericSslStoreClient(String url, String storeName, SSLEngineComponentFactory sslFactory) {
-    TransportClient<V> transportClient = getTransportClient(url, Optional.of(sslFactory));
-    AvroGenericStoreClientImpl<V> client = new AvroGenericStoreClientImpl(transportClient, storeName);
-    client.start();
-    return client;
+  public static <K, V> AvroGenericStoreClient<K, V> getAndStartAvroGenericSslStoreClient(String url, String storeName, SSLEngineComponentFactory sslFactory) {
+    TransportClient transportClient = getTransportClient(url, Optional.of(sslFactory));
+    AvroGenericStoreClientImpl<K, V> avroStoreClient = new AvroGenericStoreClientImpl(transportClient, storeName);
+    DelegatingStoreClient<K, V> statTrackingStoreClient = new StatTrackingStoreClient<K, V>(avroStoreClient);
+    statTrackingStoreClient.start();
+    return statTrackingStoreClient;
   }
 
-  public static <V extends SpecificRecord> AvroSpecificStoreClient<V> getAndStartAvroSpecificStoreClient(
+  public static <K, V extends SpecificRecord> AvroSpecificStoreClient<K, V> getAndStartAvroSpecificStoreClient(
     String url, String storeName, Class<V> valueClass) throws VeniceClientException {
-    TransportClient<V> transportClient = getTransportClient(url, Optional.empty());
-    AvroSpecificStoreClientImpl<V> client = new AvroSpecificStoreClientImpl(transportClient, storeName, valueClass);
-    client.start();
-    return client;
+    TransportClient transportClient = getTransportClient(url, Optional.empty());
+    AvroSpecificStoreClientImpl<K, V> avroStoreClient = new AvroSpecificStoreClientImpl(transportClient, storeName, valueClass);
+    SpecificStatTrackingStoreClient<K, V> statTrackingStoreClient = new SpecificStatTrackingStoreClient<>(avroStoreClient);
+    statTrackingStoreClient.start();
+    return statTrackingStoreClient;
   }
 
-  public static <V extends SpecificRecord> AvroSpecificStoreClient<V> getAndStartAvroSpecificSslStoreClient(
+  public static <K, V extends SpecificRecord> AvroSpecificStoreClient<K, V> getAndStartAvroSpecificSslStoreClient(
       String url, String storeName, Class<V> valueClass, SSLEngineComponentFactory sslFactory) throws VeniceClientException {
-    TransportClient<V> transportClient = getTransportClient(url, Optional.of(sslFactory));
-    AvroSpecificStoreClientImpl<V> client = new AvroSpecificStoreClientImpl(transportClient, storeName, valueClass);
-    client.start();
-    return client;
+    TransportClient transportClient = getTransportClient(url, Optional.of(sslFactory));
+    AvroSpecificStoreClientImpl<K, V> avroStoreClient = new AvroSpecificStoreClientImpl(transportClient, storeName, valueClass);
+    SpecificStatTrackingStoreClient<K, V> statTrackingStoreClient = new SpecificStatTrackingStoreClient<>(avroStoreClient);
+    statTrackingStoreClient.start();
+    return statTrackingStoreClient;
   }
 
-  private static <V> TransportClient<V> getTransportClient(String url, Optional<SSLEngineComponentFactory> sslFactory) throws VeniceClientException {
+  private static TransportClient getTransportClient(String url, Optional<SSLEngineComponentFactory> sslFactory) throws VeniceClientException {
     if (url.startsWith(HTTP_PREFIX)) {
-      return new HttpTransportClient<>(url);
+      return new HttpTransportClient(url);
     } else if (url.startsWith(HTTPS_PREFIX)){
       if (sslFactory.isPresent()){
-        return new HttpsTransportClient<V>(url, sslFactory.get());
+        return new HttpsTransportClient(url, sslFactory.get());
       } else {
         throw new VeniceClientException("Must use SSL factory method for client to communicate with https url: " + url);
       }
@@ -65,21 +70,23 @@ public class AvroStoreClientFactory {
   }
 
   // Temporary constructors for D2Client
-  public static <V> AvroGenericStoreClient<V> getAndStartAvroGenericStoreClient(String d2ServiceName,
+  public static <K, V> AvroGenericStoreClient<K, V> getAndStartAvroGenericStoreClient(String d2ServiceName,
                                                                                 D2Client d2Client,
                                                                                 String storeName) throws VeniceClientException {
-    TransportClient<V> d2TransportClient = new D2TransportClient<V>(d2ServiceName, d2Client);
-    AvroGenericStoreClientImpl<V> client = new AvroGenericStoreClientImpl(d2TransportClient, storeName);
-    client.start();
-    return client;
+    TransportClient d2TransportClient = new D2TransportClient(d2ServiceName, d2Client);
+    AvroGenericStoreClientImpl<K, V> avroStoreClient = new AvroGenericStoreClientImpl(d2TransportClient, storeName);
+    DelegatingStoreClient<K, V> statTrackingStoreClient = new StatTrackingStoreClient<>(avroStoreClient);
+    statTrackingStoreClient.start();
+    return statTrackingStoreClient;
   }
 
   // Temporary constructors for D2Client
-  public static <V extends SpecificRecord> AvroSpecificStoreClient<V> getAndStartAvroSpecificStoreClient(
+  public static <K, V extends SpecificRecord> AvroSpecificStoreClient<K, V> getAndStartAvroSpecificStoreClient(
     String d2ServiceName, D2Client d2Client, String storeName, Class<V> valueClass) throws VeniceClientException {
-    TransportClient<V> d2TransportClient = new D2TransportClient<V>(d2ServiceName, d2Client);
-    AvroSpecificStoreClientImpl<V> client = new AvroSpecificStoreClientImpl(d2TransportClient, storeName, valueClass);
-    client.start();
-    return client;
+    TransportClient d2TransportClient = new D2TransportClient(d2ServiceName, d2Client);
+    AvroSpecificStoreClientImpl<K, V> avroStoreClient = new AvroSpecificStoreClientImpl(d2TransportClient, storeName, valueClass);
+    SpecificStatTrackingStoreClient<K, V> statTrackingStoreClient = new SpecificStatTrackingStoreClient<>(avroStoreClient);
+    statTrackingStoreClient.start();
+    return statTrackingStoreClient;
   }
 }

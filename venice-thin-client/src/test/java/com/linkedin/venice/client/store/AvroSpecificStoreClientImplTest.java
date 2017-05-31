@@ -36,8 +36,8 @@ public class AvroSpecificStoreClientImplTest {
   private String defaultKeySchemaStr = TestKeyRecord.SCHEMA$.toString();
   private D2Client d2Client;
 
-  private Map<String, AvroSpecificStoreClient<TestValueRecord>> storeClients = new HashMap<>();
-  private AbstractAvroStoreClient<TestValueRecord> someStoreClient;
+  private Map<String, AvroSpecificStoreClient<TestKeyRecord, TestValueRecord>> storeClients = new HashMap<>();
+  private AbstractAvroStoreClient<TestKeyRecord, TestValueRecord> someStoreClient;
 
   @BeforeTest
   public void setUp() throws Exception {
@@ -61,20 +61,23 @@ public class AvroSpecificStoreClientImplTest {
 
     // http based client
     String routerUrl = "http://" + routerHost + ":" + port + "/";
-    AvroSpecificStoreClient<TestValueRecord> httpStoreClient = AvroStoreClientFactory.getAndStartAvroSpecificStoreClient(
+    AvroSpecificStoreClient<TestKeyRecord, TestValueRecord> httpStoreClient = AvroStoreClientFactory.getAndStartAvroSpecificStoreClient(
       routerUrl, storeName, TestValueRecord.class);
     storeClients.put(HttpTransportClient.class.getSimpleName(),httpStoreClient);
     // d2 based client
     d2Client = D2TestUtils.getAndStartD2Client(routerServer.getZkAddress());
-    AvroSpecificStoreClient<TestValueRecord> d2StoreClient = AvroStoreClientFactory.getAndStartAvroSpecificStoreClient(
+    AvroSpecificStoreClient<TestKeyRecord, TestValueRecord> d2StoreClient = AvroStoreClientFactory.getAndStartAvroSpecificStoreClient(
       D2TestUtils.DEFAULT_TEST_SERVICE_NAME, d2Client, storeName, TestValueRecord.class);
     storeClients.put(D2TransportClient.class.getSimpleName(),d2StoreClient);
-    someStoreClient = (AbstractAvroStoreClient<TestValueRecord>)httpStoreClient;
+
+    DelegatingStoreClient<TestKeyRecord, TestValueRecord> delegatingStoreClient =
+        (DelegatingStoreClient<TestKeyRecord, TestValueRecord>)httpStoreClient;
+    someStoreClient = (AbstractAvroStoreClient<TestKeyRecord, TestValueRecord>)delegatingStoreClient.getInnerStoreClient();
   }
 
   @AfterMethod
   public void closeStoreClient() {
-    for (AvroSpecificStoreClient<TestValueRecord> storeClient : storeClients.values()) {
+    for (AvroSpecificStoreClient<TestKeyRecord, TestValueRecord> storeClient : storeClients.values()) {
       if (null != storeClient) {
         storeClient.close();
       }
@@ -111,7 +114,7 @@ public class AvroSpecificStoreClientImplTest {
     FullHttpResponse valueResponse = StoreClientTestUtils.constructStoreResponse(valueSchemaId, valueByteArray);
     routerServer.addResponseForUri(storeRequestPath, valueResponse);
 
-    for (Map.Entry<String, AvroSpecificStoreClient<TestValueRecord>> entry : storeClients.entrySet()) {
+    for (Map.Entry<String, AvroSpecificStoreClient<TestKeyRecord, TestValueRecord>> entry : storeClients.entrySet()) {
       logger.info("Execute test for transport client: " + entry.getKey());
       TestValueRecord actual = entry.getValue().get(testKey).get();
       Assert.assertEquals(actual.long_field, testValue.long_field);
@@ -154,7 +157,7 @@ public class AvroSpecificStoreClientImplTest {
     FullHttpResponse valueResponse = StoreClientTestUtils.constructStoreResponse(valueSchemaId2, valueByteArray);
     routerServer.addResponseForUri(storeRequestPath, valueResponse);
 
-    for (Map.Entry<String, AvroSpecificStoreClient<TestValueRecord>> entry : storeClients.entrySet()) {
+    for (Map.Entry<String, AvroSpecificStoreClient<TestKeyRecord, TestValueRecord>> entry : storeClients.entrySet()) {
       logger.info("Execute test for transport client: " + entry.getKey());
       TestValueRecord actual = entry.getValue().get(testKey).get();
       Assert.assertEquals(actual.long_field, testValue.long_field);

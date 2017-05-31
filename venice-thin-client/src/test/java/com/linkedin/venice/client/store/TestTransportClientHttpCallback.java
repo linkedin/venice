@@ -1,8 +1,8 @@
 package com.linkedin.venice.client.store;
 
 import com.linkedin.venice.client.exceptions.VeniceClientException;
-import com.linkedin.venice.client.exceptions.VeniceServerException;
-import com.linkedin.venice.client.serializer.RecordDeserializer;
+import com.linkedin.venice.client.exceptions.VeniceClientHttpException;
+import com.linkedin.venice.client.store.transport.TransportClientResponse;
 import com.linkedin.venice.client.store.transport.TransportClientCallback;
 
 import java.util.concurrent.CompletableFuture;
@@ -12,35 +12,24 @@ import static org.mockito.Mockito.*;
 import org.apache.http.HttpStatus;
 import org.mockito.ArgumentCaptor;
 import org.testng.Assert;
-import org.testng.annotations.BeforeClass;
+import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
 public class TestTransportClientHttpCallback {
-  private static String SCHEMA_ID = "1";
+  private static int SCHEMA_ID = 1;
   private static String RESPONSE_BODY_STR = "serialized-body";
-  private static String DESERIALIZED_BODY_STR = "body";
-
   private byte[] mockResponseBody;
-  private ClientHttpCallback _mockClientHttpCallback;
-  private CompletableFuture mockFuture;
-  private DeserializerFetcher mockDeserializerFetcher;
-  private RecordDeserializer mockRecordDeserializer;
+
+  private CompletableFuture<TransportClientResponse> mockFuture;
   private TransportClientCallback transportClientCallback;
 
 
-  @BeforeClass
+  @BeforeMethod
   public void setUp() {
     mockResponseBody = RESPONSE_BODY_STR.getBytes();
-    _mockClientHttpCallback = mock(ClientHttpCallback.class);
     mockFuture = mock(CompletableFuture.class);
 
-    mockDeserializerFetcher = mock(DeserializerFetcher.class);
-    mockRecordDeserializer = mock(RecordDeserializer.class);
-    doReturn(mockRecordDeserializer).when(mockDeserializerFetcher).fetch(Integer.parseInt(SCHEMA_ID));
-    doReturn(DESERIALIZED_BODY_STR).when(mockRecordDeserializer).deserialize(mockResponseBody);
-
-    transportClientCallback =
-        new TransportClientCallback(mockFuture, mockDeserializerFetcher, _mockClientHttpCallback);
+    transportClientCallback = new TransportClientCallback(mockFuture);
   }
 
   @Test
@@ -48,34 +37,23 @@ public class TestTransportClientHttpCallback {
     TransportClientCallback rawResponseCallback = new TransportClientCallback(mockFuture);
     rawResponseCallback.completeFuture(HttpStatus.SC_OK, mockResponseBody, SCHEMA_ID);
 
-    verify(mockFuture).complete(mockResponseBody);
+    verify(mockFuture).complete(new TransportClientResponse(SCHEMA_ID, mockResponseBody));
   }
 
   @Test
   void TestNormalResponse() {
     transportClientCallback.completeFuture(HttpStatus.SC_OK, mockResponseBody, SCHEMA_ID);
-    verify(mockFuture).complete(DESERIALIZED_BODY_STR);
+    verify(mockFuture).complete(new TransportClientResponse(SCHEMA_ID, mockResponseBody));
 
     transportClientCallback.completeFuture(HttpStatus.SC_NOT_FOUND, mockResponseBody, SCHEMA_ID);
     verify(mockFuture).complete(null);
   }
 
   @Test
-  void testNormalResponseWithException() {
-    ClassCastException e = new ClassCastException("callbackException");
-
-    doThrow(e).when(mockRecordDeserializer).deserialize(mockResponseBody);
-    transportClientCallback.completeFuture(HttpStatus.SC_OK, mockResponseBody, SCHEMA_ID);
-    verify(mockFuture).completeExceptionally(e);
-
-    doReturn(DESERIALIZED_BODY_STR).when(mockRecordDeserializer).deserialize(mockResponseBody);
-  }
-
-  @Test
   void testErrorResponse() {
     byte[] emptyByteArray = new byte[0];
-    ArgumentCaptor<VeniceServerException> serverExceptionArgumentCaptor
-        = ArgumentCaptor.forClass(VeniceServerException.class);
+    ArgumentCaptor<VeniceClientHttpException> serverExceptionArgumentCaptor
+        = ArgumentCaptor.forClass(VeniceClientHttpException.class);
     ArgumentCaptor<VeniceClientException> clientExceptionArgumentCaptor
         = ArgumentCaptor.forClass(VeniceClientException.class);
 
