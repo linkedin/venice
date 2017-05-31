@@ -8,7 +8,7 @@ import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.serialization.VeniceSerializer;
-import com.linkedin.venice.serialization.avro.AvroGenericSerializer;
+import com.linkedin.venice.serialization.avro.VeniceAvroGenericSerializer;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -54,8 +54,8 @@ public class TestThrottleReadRequestPerStore {
         .build();
 
     String stringSchema = "\"string\"";
-    VeniceSerializer keySerializer = new AvroGenericSerializer(stringSchema);
-    VeniceSerializer valueSerializer = new AvroGenericSerializer(stringSchema);
+    VeniceSerializer keySerializer = new VeniceAvroGenericSerializer(stringSchema);
+    VeniceSerializer valueSerializer = new VeniceAvroGenericSerializer(stringSchema);
 
     int valueSchemaId = HelixReadOnlySchemaRepository.VALUE_SCHEMA_STARTING_ID;
     veniceWriter = new VeniceWriter<>(clientProps, response.getKafkaTopic(), keySerializer, valueSerializer);
@@ -93,7 +93,7 @@ public class TestThrottleReadRequestPerStore {
 
     // Get one of the router
     String routerURL = cluster.getRandomRouterURL();
-    AvroGenericStoreClient<Object> storeClient =
+    AvroGenericStoreClient<String, Object> storeClient =
         AvroStoreClientFactory.getAndStartAvroGenericStoreClient(routerURL, storeName);
     try {
       for (int i = 0; i < totalQuota / numberOfRouter; i++) {

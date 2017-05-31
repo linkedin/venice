@@ -15,6 +15,7 @@ import io.netty.channel.socket.SocketChannel;
 import io.netty.channel.socket.nio.NioServerSocketChannel;
 import io.netty.handler.codec.http.DefaultFullHttpResponse;
 import io.netty.handler.codec.http.FullHttpResponse;
+import io.netty.handler.codec.http.HttpObjectAggregator;
 import io.netty.handler.codec.http.HttpRequest;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.handler.codec.http.HttpServerCodec;
@@ -58,6 +59,11 @@ public class  MockHttpServerWrapper extends ProcessWrapper {
           protected void initChannel(SocketChannel ch) throws Exception {
             ch.pipeline()
                 .addLast(new HttpServerCodec())
+            /**
+             * To consolidate multiple parts of one request, so the downstream handler will receive
+             * {@link FullHttpRequest}.
+              */
+                .addLast(new HttpObjectAggregator(1024 * 1024)) // Maximum request is 1MB, will return 413 if exceeds.
                 .addLast(new MockServerHandler(uriToResponseMap, uriPatternToResponseMap));
           }
         })

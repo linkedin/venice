@@ -3,7 +3,7 @@ package com.linkedin.venice.hadoop;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.utils.HadoopUtils;
 import com.linkedin.venice.serialization.VeniceSerializer;
-import com.linkedin.venice.serialization.avro.AvroGenericSerializer;
+import com.linkedin.venice.serialization.avro.VeniceAvroGenericSerializer;
 import com.linkedin.venice.utils.VeniceProperties;
 import javafx.util.Pair;
 import org.apache.avro.Schema;
@@ -89,7 +89,7 @@ public class VeniceMapper implements Mapper<AvroWrapper<IndexedRecord>, NullWrit
     // The upstream has already checked that the key/value fields must exist in the given schema,
     // so we won't check it again here
     Schema schema = Schema.parse(schemaStr).getField(field).schema();
-    return new AvroGenericSerializer(schema.toString());
+    return new VeniceAvroGenericSerializer(schema.toString());
   }
 
   private int getFieldPos(String schemaStr, String field) {

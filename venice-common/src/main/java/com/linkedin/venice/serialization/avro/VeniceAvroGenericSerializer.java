@@ -15,15 +15,15 @@ import org.apache.log4j.Logger;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 
-public class AvroGenericSerializer implements VeniceSerializer<Object> {
+public class VeniceAvroGenericSerializer implements VeniceSerializer<Object> {
     private final Schema typeDef;
     private GenericDatumWriter<Object> datumWriter;
     private GenericDatumReader<Object> reader;
 
-    private static final Logger logger = Logger.getLogger(AvroGenericSerializer.class);
+    private static final Logger logger = Logger.getLogger(VeniceAvroGenericSerializer.class);
 
     // general constructor
-    public AvroGenericSerializer(String schema) {
+    public VeniceAvroGenericSerializer(String schema) {
         typeDef = Schema.parse(schema);
         datumWriter = new GenericDatumWriter<>(typeDef);
         reader = new GenericDatumReader<>(typeDef);

@@ -1,23 +1,20 @@
 package com.linkedin.venice.client.store.transport;
 
-import com.linkedin.venice.client.store.ClientHttpCallback;
-import com.linkedin.venice.client.store.DeserializerFetcher;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 
 import java.io.Closeable;
-import java.util.concurrent.Future;
+import java.util.concurrent.CompletableFuture;
 
 /**
  * Define interfaces for TransportClient, and the target customer is the sub-classes of {@link AvroGenericStoreClient}
- * @param <V>
  */
-public abstract class TransportClient<V> implements Closeable {
-  private DeserializerFetcher<V> deserializerFetcher;
+public abstract class TransportClient implements Closeable {
+
   protected static final String HTTPS = "https";
 
-  public abstract Future<V> get(String requestPath, ClientHttpCallback callback);
+  public abstract CompletableFuture<TransportClientResponse> get(String requestPath);
 
-  public abstract Future<byte[]> getRaw(String requestPath);
+  public abstract CompletableFuture<TransportClientResponse> post(String requestPath, byte[] requestBody);
 
   /**
    * If the internal client could not be used by its callback function,
@@ -25,16 +22,8 @@ public abstract class TransportClient<V> implements Closeable {
    * The default implementation is to return itself.
    * @return
    */
-  public TransportClient<V> getCopyIfNotUsableInCallback() {
+  public TransportClient getCopyIfNotUsableInCallback() {
     return this;
-  }
-
-  public void setDeserializerFetcher(DeserializerFetcher<V> fetcher) {
-    this.deserializerFetcher = fetcher;
-  }
-
-  protected DeserializerFetcher<V> getDeserializerFetcher() {
-    return deserializerFetcher;
   }
 
   public static String ensureTrailingSlash(String input){

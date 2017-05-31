@@ -44,7 +44,7 @@ public class PostBulkLoadAnalysisMapper implements Mapper<AvroWrapper<IndexedRec
   private Progressable progress;
   private Executor executor;
   private CompletionService<Data> completionService;
-  private AvroGenericStoreClient<Object> veniceClient;
+  private AvroGenericStoreClient<Object, Object> veniceClient;
 
   // Immutable state
   private String keyField;

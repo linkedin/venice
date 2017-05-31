@@ -8,29 +8,21 @@ import com.linkedin.r2.message.rest.RestRequest;
 import com.linkedin.r2.message.rest.RestResponse;
 import com.linkedin.venice.D2.D2ClientUtils;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
-import com.linkedin.venice.client.exceptions.VeniceServerException;
-import com.linkedin.venice.client.store.ClientHttpCallback;
-import com.linkedin.venice.client.store.DeserializerFetcher;
+import com.linkedin.venice.schema.SchemaData;
 import org.apache.commons.httpclient.HttpStatus;
 import org.apache.log4j.Logger;
 
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
-
 
 /**
  * {@link D2Client} based TransportClient implementation.
- * @param <V>
  */
-public class D2TransportClient<V> extends TransportClient<V> {
+public class D2TransportClient extends TransportClient {
   public static final String DEFAULT_D2_ZK_BASE_PATH = "/d2";
   public static final int DEFAULT_ZK_TIMEOUT_IN_MS = 5000;
 
   private Logger logger = Logger.getLogger(D2TransportClient.class);
-
-  private static final long d2StartupTimeoutMs = TimeUnit.SECONDS.toMillis(10);
-  private static final long d2ShutdownTimeoutMs = TimeUnit.SECONDS.toMillis(30);
 
   private final D2Client d2Client;
 
@@ -85,24 +77,34 @@ public class D2TransportClient<V> extends TransportClient<V> {
   }
 
   @Override
-  public Future<V> get(String requestPath, ClientHttpCallback callback) {
-    RestRequest request = getRestRequest(requestPath);
-    CompletableFuture<V> valueFuture = new CompletableFuture<>();
-    d2Client.restRequest(request, new D2TransportClientCallback<>(valueFuture, getDeserializerFetcher(), callback));
+  public CompletableFuture<TransportClientResponse> get(String requestPath) {
+    RestRequest request = getRestGetRequest(requestPath);
+    CompletableFuture<TransportClientResponse> valueFuture = new CompletableFuture<>();
+    d2Client.restRequest(request, new D2TransportClientCallback(valueFuture));
     return valueFuture;
   }
 
   @Override
-  public Future<byte[]> getRaw(String requestPath) {
-    RestRequest request = getRestRequest(requestPath);
-    CompletableFuture<byte[]> valueFuture = new CompletableFuture<>();
-    d2Client.restRequest(request, new D2TransportClientCallback<>(valueFuture));
+  public CompletableFuture<TransportClientResponse> post(String requestPath, byte[] requestBody) {
+    RestRequest request = getRestPostRequest(requestPath, requestBody);
+    CompletableFuture<TransportClientResponse> valueFuture = new CompletableFuture<>();
+    d2Client.restRequest(request, new D2TransportClientCallback(valueFuture));
+
     return valueFuture;
   }
 
-  private RestRequest getRestRequest(String requestPath) {
-    String requestUrl = "d2://" + d2ServiceName + "/" + requestPath;
+  private String getD2RequestUrl(String requestPath) {
+    return "d2://" + d2ServiceName + "/" + requestPath;
+  }
+
+  private RestRequest getRestGetRequest(String requestPath) {
+    String requestUrl = getD2RequestUrl(requestPath);
     return D2ClientUtils.createD2GetRequest(requestUrl);
+  }
+
+  private RestRequest getRestPostRequest(String requestPath, byte[] body) {
+    String requestUrl = getD2RequestUrl(requestPath);
+    return D2ClientUtils.createD2PostRequest(requestUrl, body);
   }
 
   @Override
@@ -114,14 +116,10 @@ public class D2TransportClient<V> extends TransportClient<V> {
     }
   }
 
-  private static class D2TransportClientCallback<T> extends TransportClientCallback<T> implements Callback<RestResponse> {
+  private static class D2TransportClientCallback extends TransportClientCallback implements Callback<RestResponse> {
     private Logger logger = Logger.getLogger(D2TransportClient.class);
 
-    public D2TransportClientCallback(CompletableFuture<T> valueFuture, DeserializerFetcher<T> fetcher, ClientHttpCallback callback) {
-      super(valueFuture, fetcher, callback);
-    }
-
-    public D2TransportClientCallback(CompletableFuture<T> valueFuture) {
+    public D2TransportClientCallback(CompletableFuture<TransportClientResponse> valueFuture) {
       super(valueFuture);
     }
 
@@ -133,7 +131,6 @@ public class D2TransportClient<V> extends TransportClient<V> {
         onSuccess(result);
       } else {
         logger.error(e);
-        callback.executeOnError();
         getValueFuture().completeExceptionally(new VeniceClientException(e));
       }
     }
@@ -141,14 +138,13 @@ public class D2TransportClient<V> extends TransportClient<V> {
     @Override
     public void onSuccess(RestResponse result) {
       int statusCode = result.getStatus();
-      String schemaId = null;
-      if (!isNeedRawResult() && HttpStatus.SC_OK == statusCode) {
-        schemaId = result.getHeader(HEADER_VENICE_SCHEMA_ID);
-        if (null == schemaId) {
-          getValueFuture().completeExceptionally(new VeniceServerException("Header: "
-              + HEADER_VENICE_SCHEMA_ID + " doesn't exist"));
-          callback.executeOnError();
-          return;
+      int schemaId = SchemaData.INVALID_VALUE_SCHEMA_ID;
+
+      String schemaIdHeader = null;
+      if (HttpStatus.SC_OK == statusCode) {
+        schemaIdHeader = result.getHeader(HEADER_VENICE_SCHEMA_ID);
+        if (null != schemaIdHeader) {
+          schemaId = Integer.parseInt(schemaIdHeader);
         }
       }
       byte[] body = result.getEntity().copyBytes();

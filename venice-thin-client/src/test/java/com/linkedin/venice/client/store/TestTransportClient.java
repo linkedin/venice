@@ -26,9 +26,6 @@ public class TestTransportClient {
   private static String D2_PREFIX = "d2://";
   private static String HTTP_PREFIX = "http://";
 
-  private ClientHttpCallback _mockClientHttpCallback;
-  private DeserializerFetcher mockDeserializerFetcher;
-
   private D2TransportClient d2TransportClient;
   private D2Client mockD2Client;
 
@@ -37,16 +34,11 @@ public class TestTransportClient {
 
   @BeforeClass
   public void setUpTransportClient() {
-    _mockClientHttpCallback = mock(ClientHttpCallback.class);
-    mockDeserializerFetcher = mock(DeserializerFetcher.class);
-
     mockD2Client = mock(D2Client.class);
     d2TransportClient = new D2TransportClient(SERVICE_NAME, mockD2Client);
-    d2TransportClient.setDeserializerFetcher(mockDeserializerFetcher);
 
     mockHttpClient = mock(CloseableHttpAsyncClient.class);
     httpTransportClient = new HttpTransportClient(HTTP_PREFIX + SERVICE_NAME, mockHttpClient);
-    d2TransportClient.setDeserializerFetcher(mockDeserializerFetcher);
   }
 
   @AfterClass
@@ -58,7 +50,7 @@ public class TestTransportClient {
   @Test
   public void testGetByPath() {
     //test D2TransportClient
-    d2TransportClient.get(TEST_REQUEST, _mockClientHttpCallback);
+    d2TransportClient.get(TEST_REQUEST);
     ArgumentCaptor<RestRequest> d2RequestCaptor = ArgumentCaptor.forClass(RestRequest.class);
 
     verify(mockD2Client).restRequest(d2RequestCaptor.capture(), (Callback<RestResponse>) any());
@@ -66,7 +58,7 @@ public class TestTransportClient {
         d2RequestCaptor.getValue().getURI().toString());
 
     //test HttpTransportClient
-    httpTransportClient.get(TEST_REQUEST, _mockClientHttpCallback);
+    httpTransportClient.get(TEST_REQUEST);
     ArgumentCaptor<HttpGet> httpRequestCaptor = ArgumentCaptor.forClass(HttpGet.class);
 
     verify(mockHttpClient).execute(httpRequestCaptor.capture(), any());

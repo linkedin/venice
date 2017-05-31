@@ -23,4 +23,5 @@ dependencies {
 
   testCompile project(':venice-common')
   testCompile libraries.netty
+  testCompile project(':venice-test-common')
 }

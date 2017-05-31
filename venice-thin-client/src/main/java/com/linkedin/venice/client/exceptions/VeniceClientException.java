@@ -2,10 +2,9 @@ package com.linkedin.venice.client.exceptions;
 
 /***
  * Thrown by the venice thin client if something goes wrong with the request
- * Parent class to VeniceServerException
+ * Parent class to VeniceClientHttpException
  */
 public class VeniceClientException extends RuntimeException {
-
   public VeniceClientException(String msg, Throwable e){
     super(msg, e);
   }
@@ -21,5 +20,4 @@ public class VeniceClientException extends RuntimeException {
   public VeniceClientException(){
     super();
   }
-
 }

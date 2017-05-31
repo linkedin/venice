@@ -1,7 +1,7 @@
 package com.linkedin.venice.client.schema;
 
 import com.linkedin.venice.client.exceptions.VeniceClientException;
-import com.linkedin.venice.client.exceptions.VeniceServerException;
+import com.linkedin.venice.client.exceptions.VeniceClientHttpException;
 import com.linkedin.venice.client.store.AbstractAvroStoreClient;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
@@ -12,8 +12,8 @@ import org.testng.Assert;
 import org.testng.annotations.Test;
 
 import java.io.IOException;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
-import java.util.concurrent.Future;
 
 public class SchemaReaderTest {
   private ObjectMapper mapper = new ObjectMapper();
@@ -28,7 +28,7 @@ public class SchemaReaderTest {
     SchemaResponse schemaResponse = new SchemaResponse();
     schemaResponse.setId(1);
     schemaResponse.setSchemaStr(keySchemaStr);
-    Future<byte[]> mockFuture = Mockito.mock(Future.class);
+    CompletableFuture<byte[]> mockFuture = Mockito.mock(CompletableFuture.class);
     Mockito.doReturn(mapper.writeValueAsBytes(schemaResponse)).when(mockFuture).get();
     Mockito.doReturn(mockFuture).when(mockClient).getRaw("key_schema/" + storeName);
 
@@ -47,7 +47,7 @@ public class SchemaReaderTest {
     String storeName = "test_store";
     AbstractAvroStoreClient mockClient = Mockito.mock(AbstractAvroStoreClient.class);
     Mockito.doReturn(storeName).when(mockClient).getStoreName();
-    Future<byte[]> mockFuture = Mockito.mock(Future.class);
+    CompletableFuture<byte[]> mockFuture = Mockito.mock(CompletableFuture.class);
     Mockito.doReturn(null).when(mockFuture).get();
     Mockito.doReturn(mockFuture).when(mockClient).getRaw("key_schema/" + storeName);
     new SchemaReader(mockClient);
@@ -58,8 +58,8 @@ public class SchemaReaderTest {
     String storeName = "test_store";
     AbstractAvroStoreClient mockClient = Mockito.mock(AbstractAvroStoreClient.class);
     Mockito.doReturn(storeName).when(mockClient).getStoreName();
-    Future<byte[]> mockFuture = Mockito.mock(Future.class);
-    Mockito.doThrow(new ExecutionException(new VeniceServerException("Server error"))).when(mockFuture).get();
+    CompletableFuture<byte[]> mockFuture = Mockito.mock(CompletableFuture.class);
+    Mockito.doThrow(new ExecutionException(new VeniceClientException("Server error"))).when(mockFuture).get();
     Mockito.doReturn(mockFuture).when(mockClient).getRaw("key_schema/" + storeName);
     new SchemaReader(mockClient);
   }
@@ -76,7 +76,7 @@ public class SchemaReaderTest {
     SchemaResponse schemaResponse = new SchemaResponse();
     schemaResponse.setId(1);
     schemaResponse.setSchemaStr(keySchemaStr);
-    Future<byte[]> mockFuture = Mockito.mock(Future.class);
+    CompletableFuture<byte[]> mockFuture = Mockito.mock(CompletableFuture.class);
     Mockito.doReturn(mapper.writeValueAsBytes(schemaResponse)).when(mockFuture).get();
     Mockito.doReturn(mockFuture).when(mockClient).getRaw("key_schema/" + storeName);
     schemaResponse = new SchemaResponse();
@@ -108,7 +108,7 @@ public class SchemaReaderTest {
     SchemaResponse schemaResponse = new SchemaResponse();
     schemaResponse.setId(1);
     schemaResponse.setSchemaStr(keySchemaStr);
-    Future<byte[]> mockFuture = Mockito.mock(Future.class);
+    CompletableFuture<byte[]> mockFuture = Mockito.mock(CompletableFuture.class);
     Mockito.doReturn(mapper.writeValueAsBytes(schemaResponse)).when(mockFuture).get();
     Mockito.doReturn(mockFuture).when(mockClient).getRaw("key_schema/" + storeName);
 
@@ -142,11 +142,11 @@ public class SchemaReaderTest {
     SchemaResponse schemaResponse = new SchemaResponse();
     schemaResponse.setId(1);
     schemaResponse.setSchemaStr(keySchemaStr);
-    Future<byte[]> mockFuture = Mockito.mock(Future.class);
+    CompletableFuture<byte[]> mockFuture = Mockito.mock(CompletableFuture.class);
     Mockito.doReturn(mapper.writeValueAsBytes(schemaResponse)).when(mockFuture).get();
     Mockito.doReturn(mockFuture).when(mockClient).getRaw("key_schema/" + storeName);
     SchemaReader schemaReader = new SchemaReader(mockClient);
-    Mockito.doThrow(new ExecutionException(new VeniceServerException("Server error"))).when(mockFuture).get();
+    Mockito.doThrow(new ExecutionException(new VeniceClientException("Server error"))).when(mockFuture).get();
     Mockito.doReturn(mockFuture).when(mockClient).getRaw("value_schema/" + storeName + "/" + valueSchemaId);
     schemaReader.getValueSchema(valueSchemaId);
 
@@ -177,7 +177,7 @@ public class SchemaReaderTest {
     schemaResponse.setSchemaStr(keySchemaStr);
     AbstractAvroStoreClient mockClient = Mockito.mock(AbstractAvroStoreClient.class);
     Mockito.doReturn(storeName).when(mockClient).getStoreName();
-    Future<byte[]> mockFuture = Mockito.mock(Future.class);
+    CompletableFuture<byte[]> mockFuture = Mockito.mock(CompletableFuture.class);
     Mockito.doReturn(mapper.writeValueAsBytes(schemaResponse)).when(mockFuture).get();
     Mockito.doReturn(mockFuture).when(mockClient).getRaw("key_schema/" + storeName);
     SchemaReader schemaReader = new SchemaReader(mockClient);
@@ -204,7 +204,7 @@ public class SchemaReaderTest {
     schemaResponse.setSchemaStr(keySchemaStr);
     AbstractAvroStoreClient mockClient = Mockito.mock(AbstractAvroStoreClient.class);
     Mockito.doReturn(storeName).when(mockClient).getStoreName();
-    Future<byte[]> mockFuture = Mockito.mock(Future.class);
+    CompletableFuture<byte[]> mockFuture = Mockito.mock(CompletableFuture.class);
     Mockito.doReturn(mapper.writeValueAsBytes(schemaResponse)).when(mockFuture).get();
     Mockito.doReturn(mockFuture).when(mockClient).getRaw("key_schema/" + storeName);
     SchemaReader schemaReader = new SchemaReader(mockClient);
@@ -226,12 +226,12 @@ public class SchemaReaderTest {
     schemaResponse.setSchemaStr(keySchemaStr);
     AbstractAvroStoreClient mockClient = Mockito.mock(AbstractAvroStoreClient.class);
     Mockito.doReturn(storeName).when(mockClient).getStoreName();
-    Future<byte[]> mockFuture = Mockito.mock(Future.class);
+    CompletableFuture<byte[]> mockFuture = Mockito.mock(CompletableFuture.class);
     Mockito.doReturn(mapper.writeValueAsBytes(schemaResponse)).when(mockFuture).get();
     Mockito.doReturn(mockFuture).when(mockClient).getRaw("key_schema/" + storeName);
     SchemaReader schemaReader = new SchemaReader(mockClient);
 
-    Mockito.doThrow(new ExecutionException(new VeniceServerException("Server error"))).when(mockFuture).get();
+    Mockito.doThrow(new ExecutionException(new VeniceClientException("Server error"))).when(mockFuture).get();
     Mockito.doReturn(mockFuture).when(mockClient).getRaw("value_schema/" + storeName);
     schemaReader.getLatestValueSchema();
   }
@@ -249,7 +249,7 @@ public class SchemaReaderTest {
 
     AbstractAvroStoreClient mockClient = Mockito.mock(AbstractAvroStoreClient.class);
     Mockito.doReturn(storeName).when(mockClient).getStoreName();
-    Future<byte[]> mockFuture = Mockito.mock(Future.class);
+    CompletableFuture<byte[]> mockFuture = Mockito.mock(CompletableFuture.class);
     Mockito.doReturn(mapper.writeValueAsBytes(schemaResponse)).when(mockFuture).get();
     Mockito.doReturn(mockFuture).when(mockClient).getRaw(Mockito.anyString());
     try{

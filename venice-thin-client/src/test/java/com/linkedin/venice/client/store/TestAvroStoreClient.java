@@ -2,7 +2,7 @@ package com.linkedin.venice.client.store;
 
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.schema.SchemaReader;
-import com.linkedin.venice.client.serializer.RecordDeserializer;
+import com.linkedin.venice.client.store.transport.TransportClientResponse;
 import com.linkedin.venice.client.store.transport.TransportClient;
 import com.linkedin.venice.client.utils.StoreClientTestUtils;
 import com.linkedin.venice.client.store.schemas.TestKeyRecord;
@@ -11,8 +11,8 @@ import com.linkedin.venice.client.store.schemas.TestValueRecordWithMoreFields;
 
 import static org.mockito.Mockito.*;
 
-import com.linkedin.venice.tehuti.MockTehutiReporter;
-import io.tehuti.metrics.MetricsRepository;
+import com.linkedin.venice.schema.SchemaData;
+import com.linkedin.venice.serializer.RecordDeserializer;
 import org.apache.avro.generic.GenericData;
 import org.testng.Assert;
 import org.testng.annotations.AfterMethod;
@@ -24,8 +24,8 @@ import java.io.IOException;
 import java.util.Base64;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
-import java.util.concurrent.Future;
 
 public class TestAvroStoreClient {
   private static final String STORE_NAME = "test-store";
@@ -43,11 +43,16 @@ public class TestAvroStoreClient {
 
     byte[] schemaResponseInBytes =
         StoreClientTestUtils.constructSchemaResponseInBytes(STORE_NAME, 1, KEY_SCHEMA_STR);
-    Future<byte[]> mockFuture = mock(Future.class);
-    doReturn(schemaResponseInBytes).when(mockFuture).get();
-    doReturn(mockFuture).when(mockTransportClient).getRaw(SchemaReader.TYPE_KEY_SCHEMA + "/" + STORE_NAME);
+    CompletableFuture<TransportClientResponse> mockFuture = mock(CompletableFuture.class);
+    doReturn(new TransportClientResponse(SchemaData.INVALID_VALUE_SCHEMA_ID, schemaResponseInBytes)).when(mockFuture).get();
+    doReturn(mockFuture).when(mockTransportClient).get(SchemaReader.TYPE_KEY_SCHEMA + "/" + STORE_NAME);
 
-    genericStoreClient = new AvroGenericStoreClientImpl(mockTransportClient, STORE_NAME, new MetricsRepository());
+    CompletableFuture<byte[]> mockValueFuture = mock(CompletableFuture.class);
+    doReturn(schemaResponseInBytes).when(mockValueFuture).get();
+
+    doReturn(mockValueFuture).when(mockFuture).handle(any());
+
+    genericStoreClient = new AvroGenericStoreClientImpl(mockTransportClient, STORE_NAME); //, new MetricsRepository());
   }
 
   @BeforeMethod
@@ -63,11 +68,11 @@ public class TestAvroStoreClient {
   @Test
   public void testStartClient() throws VeniceClientException {
     genericStoreClient.start();
-    verify(mockTransportClient).getRaw(SchemaReader.TYPE_KEY_SCHEMA + "/" + STORE_NAME);
+    verify(mockTransportClient).get(SchemaReader.TYPE_KEY_SCHEMA + "/" + STORE_NAME);
   }
 
   @Test(dependsOnMethods = { "testStartClient" })
-  public void TestGet() {
+  public void testGet() throws ExecutionException, InterruptedException {
     genericStoreClient.start();
 
     TestKeyRecord testKey;
@@ -77,12 +82,15 @@ public class TestAvroStoreClient {
 
     String b64key = Base64.getUrlEncoder()
         .encodeToString(StoreClientTestUtils.serializeRecord(testKey, TestKeyRecord.SCHEMA$));
-    doReturn(null).when(mockTransportClient)
-        .get(eq(AbstractAvroStoreClient.STORAGE_TYPE + "/" + STORE_NAME + "/" +
-            b64key + AbstractAvroStoreClient.B64_FORMAT), any());
+    CompletableFuture<TransportClientResponse> mockFuture = mock(CompletableFuture.class);
+    doReturn(new TransportClientResponse(-1, null)).when(mockFuture).get();
+    doReturn(mockFuture).when(mockTransportClient)
+        .get(eq(AbstractAvroStoreClient.TYPE_STORAGE + "/" + STORE_NAME + "/" +
+            b64key + AbstractAvroStoreClient.B64_FORMAT));
 
     genericStoreClient.get(testKey);
-    verify(mockTransportClient).get(any(), any());
+    // schema queries + key lookup
+    verify(mockTransportClient, atLeast(3)).get(any());
   }
 
   @Test(dependsOnMethods = { "testStartClient" })
@@ -92,24 +100,32 @@ public class TestAvroStoreClient {
     schemas.put(2, TestValueRecordWithMoreFields.SCHEMA$.toString());
     byte[] multiSchemasInBytes =
         StoreClientTestUtils.constructMultiSchemaResponseInBytes(STORE_NAME, schemas);
-    Future<byte[]> mockFuture = mock(Future.class);
-    doReturn(multiSchemasInBytes).when(mockFuture).get();
-    doReturn(mockFuture).when(mockTransportClient).getRaw(SchemaReader.TYPE_VALUE_SCHEMA + "/" + STORE_NAME);
+    CompletableFuture<TransportClientResponse> mockTransportFuture = mock(CompletableFuture.class);
+    doReturn(new TransportClientResponse(-1, multiSchemasInBytes)).when(mockTransportFuture).get();
+    CompletableFuture<byte[]> mockValueFuture = mock(CompletableFuture.class);
+    doReturn(multiSchemasInBytes).when(mockValueFuture).get();
+    doReturn(mockValueFuture).when(mockTransportFuture).handle(any());
+
+    doReturn(mockTransportFuture).when(mockTransportClient).get(SchemaReader.TYPE_VALUE_SCHEMA + "/" + STORE_NAME);
 
     genericStoreClient.start();
-    RecordDeserializer genericRecordDeserializer =  genericStoreClient.fetch(1);
+    RecordDeserializer genericRecordDeserializer =  genericStoreClient.getDataRecordDeserializer(1);
 
     byte[] schemaResponseInBytes =
         StoreClientTestUtils.constructSchemaResponseInBytes(STORE_NAME, 1, TestValueRecord.SCHEMA$.toString());
-    mockFuture = mock(Future.class);
-    doReturn(schemaResponseInBytes).when(mockFuture).get();
-    doReturn(mockFuture).when(mockTransportClient)
-        .getRaw(SchemaReader.TYPE_VALUE_SCHEMA + "/" + STORE_NAME + "/" + "1");
+    mockTransportFuture = mock(CompletableFuture.class);
+    doReturn(new TransportClientResponse(-1, schemaResponseInBytes)).when(mockTransportFuture).get();
+    doReturn(mockTransportFuture).when(mockTransportClient)
+        .get(SchemaReader.TYPE_VALUE_SCHEMA + "/" + STORE_NAME + "/" + "1");
+    mockValueFuture = mock(CompletableFuture.class);
+    doReturn(schemaResponseInBytes).when(mockValueFuture).get();
+    doReturn(mockValueFuture).when(mockTransportFuture).handle(any());
+
     AvroSpecificStoreClientImpl specificStoreClient =
-        new AvroSpecificStoreClientImpl(mockTransportClient, STORE_NAME, TestValueRecord.class, new MetricsRepository());
+        new AvroSpecificStoreClientImpl(mockTransportClient, STORE_NAME, TestValueRecord.class); //, new MetricsRepository());
 
     specificStoreClient.start();
-    RecordDeserializer specificRecordDeserializer = specificStoreClient.fetch(1);
+    RecordDeserializer specificRecordDeserializer = specificStoreClient.getDataRecordDeserializer(1);
 
     TestValueRecord testValue;
     testValue = new TestValueRecord();

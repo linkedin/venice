@@ -1,4 +1,4 @@
-package com.linkedin.venice.client.serializer;
+package com.linkedin.venice.serializer;
 
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.store.schemas.TestValueRecord;
