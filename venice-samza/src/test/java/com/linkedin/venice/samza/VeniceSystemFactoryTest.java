@@ -45,7 +45,7 @@ private static final String KEY_SCHEMA = "\"string\"";
     VeniceClusterWrapper venice = ServiceFactory.getVeniceCluster();
     String storeName = TestUtils.getUniqueString("store");
     ControllerClient client = new ControllerClient(venice.getClusterName(), venice.getRandomRouterURL());
-    client.createNewStore(storeName, "owner", "principles", KEY_SCHEMA, VALUE_SCHEMA);
+    client.createNewStore(storeName, "owner", KEY_SCHEMA, VALUE_SCHEMA);
 
     //Configure and create a SystemProducer for Venice
     Map<String, String> samzaConfig = new HashMap<>();

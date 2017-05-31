@@ -18,7 +18,7 @@ import java.util.Map;
 
 public class AdminOperationSerializer {
   // Latest schema id, and it needs to be updated whenever we add a new version
-  public static int LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION = 5;
+  public static int LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION = 6;
 
   private static SpecificDatumWriter<AdminOperation> SPECIFIC_DATUM_WRITER = new SpecificDatumWriter<>(AdminOperation.SCHEMA$);
   /** Used to generate decoders. */
@@ -61,6 +61,7 @@ public class AdminOperationSerializer {
       protocolSchemaMap.put(3, Utils.getSchemaFromResource("avro/AdminOperation/v3/AdminOperation.avsc"));
       protocolSchemaMap.put(4, Utils.getSchemaFromResource("avro/AdminOperation/v4/AdminOperation.avsc"));
       protocolSchemaMap.put(5, Utils.getSchemaFromResource("avro/AdminOperation/v5/AdminOperation.avsc"));
+      protocolSchemaMap.put(6, Utils.getSchemaFromResource("avro/AdminOperation/v6/AdminOperation.avsc"));
       // TODO: If we add more versions to the protocol, they should be initialized here.
 
       return protocolSchemaMap;

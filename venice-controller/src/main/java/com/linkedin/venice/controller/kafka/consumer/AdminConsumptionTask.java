@@ -415,7 +415,6 @@ public class AdminConsumptionTask implements Runnable, Closeable {
     String owner = message.owner.toString();
     String keySchema = message.keySchema.definition.toString();
     String valueSchema = message.valueSchema.definition.toString();
-    String principles = message.principles.toString();
     /* // failure path for testing.  Enable this code path to run the disabled test in TestAdminConsumptionTask
     if (storeName.equals("store-that-fails")){
       throw new VeniceException("Tried to create failure store named store-that-fails");
@@ -427,7 +426,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
       logger.info("Adding store: " + storeName + ", which already exists, so just skip this message: " + message);
     } else {
       // Adding store
-      admin.addStore(clusterName, storeName, owner, principles, keySchema, valueSchema);
+      admin.addStore(clusterName, storeName, owner, keySchema, valueSchema);
       logger.info("Added store: " + storeName + " to cluster: " + clusterName);
     }
   }
@@ -522,15 +521,14 @@ public class AdminConsumptionTask implements Runnable, Closeable {
   private void handleSetStore(UpdateStore message) {
     String clusterName = message.clusterName.toString();
     String storeName = message.storeName.toString();
-    admin.storeMetadataUpdate(clusterName, storeName, store -> {
-      store.setOwner(message.owner.toString());
-      store.setPrinciples(Utils.parseCommaSeparatedStringToList(message.principles.toString()));
-      store.setPartitionCount(message.partitionNum);
-      store.setCurrentVersion(message.currentVersion);
-      store.setEnableWrites(message.enableWrites);
-      store.setEnableReads(message.enableReads);
-      return store;
-    });
+    admin.updateStore(clusterName, storeName,
+                      Optional.of(message.owner.toString()),
+                      Optional.of(message.enableReads),
+                      Optional.of(message.enableWrites),
+                      Optional.of(message.partitionNum),
+                      Optional.of(message.storageQuotaInByte),
+                      Optional.of(message.readQuotaInCU),
+                      Optional.of(message.currentVersion));
 
     logger.info("Set store: " + storeName + " in cluster: " + clusterName);
   }

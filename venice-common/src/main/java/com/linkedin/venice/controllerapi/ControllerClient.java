@@ -193,19 +193,13 @@ public class ControllerClient implements Closeable {
     }
   }
 
-  public NewStoreResponse createNewStore(String storeName, String owner, String principles, String keySchema,
-      String valueSchema) {
-    return createNewStore(storeName, owner, Utils.parseCommaSeparatedStringToList(principles), keySchema, valueSchema);
-  }
-
-  protected NewStoreResponse createNewStore(String storeName, String owner, List<String> principles, String keySchema, String valueSchema) {
+  public NewStoreResponse createNewStore(String storeName, String owner, String keySchema, String valueSchema) {
     try {
       List<NameValuePair> params = newParams(clusterName);
       params.add(new BasicNameValuePair(ControllerApiConstants.NAME, storeName));
       params.add(new BasicNameValuePair(ControllerApiConstants.OWNER, owner));
       params.add(new BasicNameValuePair(ControllerApiConstants.KEY_SCHEMA, keySchema));
       params.add(new BasicNameValuePair(ControllerApiConstants.VALUE_SCHEMA, valueSchema));
-      params.add(new BasicNameValuePair(ControllerApiConstants.PRINCIPLES, String.join(",", principles)));
       String responseJson = postRequest(ControllerRoute.NEW_STORE.getPath(), params);
       return mapper.readValue(responseJson, NewStoreResponse.class);
     } catch (Exception e){
@@ -622,20 +616,22 @@ public class ControllerClient implements Closeable {
     }
   }
 
-  public ControllerResponse updateStore(String storeName, Optional<String> owner, Optional<String> principles,
-      Optional<Integer> partitionNum, Optional<Integer> currentVersion, Optional<Boolean> enableReads,
-      Optional<Boolean> enableWrites) {
+  public ControllerResponse updateStore(String storeName,
+                                        Optional<String> owner,
+                                        Optional<Integer> partitionCount,
+                                        Optional<Integer> currentVersion,
+                                        Optional<Boolean> enableReads,
+                                        Optional<Boolean> enableWrites,
+                                        Optional<Long> storageQuotaInByte,
+                                        Optional<Long> readQuotaInCU) {
     try {
       List<NameValuePair> queryParams = newParams(clusterName);
       queryParams.add(new BasicNameValuePair(ControllerApiConstants.NAME, storeName));
       if (owner.isPresent()) {
         queryParams.add(new BasicNameValuePair(ControllerApiConstants.OWNER, owner.get()));
       }
-      if (principles.isPresent()) {
-        queryParams.add(new BasicNameValuePair(ControllerApiConstants.PRINCIPLES, principles.get()));
-      }
-      if (partitionNum.isPresent()) {
-        queryParams.add(new BasicNameValuePair(ControllerApiConstants.PARTITION_COUNT, partitionNum.get().toString()));
+      if (partitionCount.isPresent()) {
+        queryParams.add(new BasicNameValuePair(ControllerApiConstants.PARTITION_COUNT, partitionCount.get().toString()));
       }
       if (currentVersion.isPresent()) {
         queryParams.add(new BasicNameValuePair(ControllerApiConstants.VERSION, currentVersion.get().toString()));
@@ -646,6 +642,13 @@ public class ControllerClient implements Closeable {
       if (enableWrites.isPresent()) {
         queryParams.add(new BasicNameValuePair(ControllerApiConstants.ENABLE_WRITES, enableWrites.get().toString()));
       }
+      if (storageQuotaInByte.isPresent()) {
+        queryParams.add(new BasicNameValuePair(ControllerApiConstants.STORAGE_QUOTA_IN_BYTE, storageQuotaInByte.get().toString()));
+      }
+      if (readQuotaInCU.isPresent()) {
+        queryParams.add(new BasicNameValuePair(ControllerApiConstants.READ_QUOTA_IN_CU, readQuotaInCU.get().toString()));
+      }
+
       String responseJson = postRequest(ControllerRoute.UPDATE_STORE.getPath(), queryParams);
       return mapper.readValue(responseJson, ControllerResponse.class);
     } catch (Exception e) {

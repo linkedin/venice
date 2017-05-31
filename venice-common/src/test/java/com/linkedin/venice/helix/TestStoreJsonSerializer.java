@@ -3,11 +3,8 @@ package com.linkedin.venice.helix;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.utils.TestUtils;
 import java.io.IOException;
-import java.util.ArrayList;
-import java.util.List;
 import org.testng.Assert;
 import org.testng.annotations.Test;
-
 
 /**
  * Test cases for StoreJsonSerializer.
@@ -17,9 +14,6 @@ public class TestStoreJsonSerializer {
     public void testSerializeAndDeserializeStore()
         throws IOException {
         Store store = TestUtils.createTestStore("s1", "owner", 1l);
-        List<String> principles = new ArrayList<>();
-        principles.add("test");
-        store.setPrinciples(principles);
         store.increaseVersion();
         StoreJSONSerializer serializer = new StoreJSONSerializer();
         byte[] data = serializer.serialize(store, "");

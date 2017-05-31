@@ -222,7 +222,7 @@ public class TestAdminConsumptionTask {
         .subscribe(any(), anyInt(), any());
     verify(mockKafkaConsumer, timeout(TIMEOUT))
         .unSubscribe(any(), anyInt());
-    verify(admin, timeout(TIMEOUT)).addStore(clusterName, storeName, owner, "test",  keySchema, valueSchema);
+    verify(admin, timeout(TIMEOUT)).addStore(clusterName, storeName, owner, keySchema, valueSchema);
     verify(admin, timeout(TIMEOUT)).killOfflinePush(clusterName, storeTopicName);
   }
 
@@ -236,7 +236,7 @@ public class TestAdminConsumptionTask {
     doThrow(new VeniceException("Mock store creation exception"))
         .doNothing()
         .when(admin)
-        .addStore(clusterName, storeName, owner, "test",  keySchema, valueSchema);
+        .addStore(clusterName, storeName, owner, keySchema, valueSchema);
 
     AdminConsumptionTask task = getAdminConsumptionTask(new RandomPollStrategy(), false);
     executor.submit(task);
@@ -255,7 +255,7 @@ public class TestAdminConsumptionTask {
         .subscribe(any(), anyInt(), any());
     verify(mockKafkaConsumer, timeout(TIMEOUT))
         .unSubscribe(any(), anyInt());
-    verify(admin, timeout(TIMEOUT).times(2)).addStore(clusterName, storeName, owner, "test", keySchema, valueSchema);
+    verify(admin, timeout(TIMEOUT).times(2)).addStore(clusterName, storeName, owner, keySchema, valueSchema);
   }
 
   @Test (timeOut = TIMEOUT)
@@ -267,7 +267,7 @@ public class TestAdminConsumptionTask {
     doReturn(false).when(admin).hasStore(clusterName, storeName);
     doThrow(new VeniceException("Mock store creation exception"))
         .when(admin)
-        .addStore(clusterName, storeName, owner, "test", keySchema, valueSchema);
+        .addStore(clusterName, storeName, owner, keySchema, valueSchema);
     long timeoutMinutes = 0L;
     AdminConsumptionTask task = getAdminConsumptionTask(new RandomPollStrategy(),  timeoutMinutes, false);
     executor.submit(task);
@@ -290,7 +290,7 @@ public class TestAdminConsumptionTask {
     doReturn(false).when(admin).hasStore(clusterName, storeName);
     doThrow(new VeniceException("Mock store creation exception"))
         .when(admin)
-        .addStore(clusterName, storeName, owner, "test", keySchema, valueSchema);
+        .addStore(clusterName, storeName, owner, keySchema, valueSchema);
 
     long timeoutMs = TimeUnit.MINUTES.toMillis(10); // dont timeout
     AdminConsumptionTask task = getAdminConsumptionTask(new RandomPollStrategy(), timeoutMs, false);
@@ -379,7 +379,7 @@ public class TestAdminConsumptionTask {
         .subscribe(any(), anyInt(), any());
     verify(mockKafkaConsumer, timeout(TIMEOUT))
         .unSubscribe(any(), anyInt());
-    verify(admin, timeout(TIMEOUT)).addStore(clusterName, storeName, owner, "test", keySchema, valueSchema);
+    verify(admin, timeout(TIMEOUT)).addStore(clusterName, storeName, owner, keySchema, valueSchema);
   }
 
   private OffsetRecord getOffsetRecordByOffsetAndSeqNum(long offset, int seqNum) {
@@ -444,7 +444,7 @@ public class TestAdminConsumptionTask {
         .subscribe(any(), anyInt(), any());
     verify(mockKafkaConsumer, timeout(TIMEOUT))
         .unSubscribe(any(), anyInt());
-    verify(admin, timeout(TIMEOUT)).addStore(clusterName, storeName, owner, "test", keySchema, valueSchema);
+    verify(admin, timeout(TIMEOUT)).addStore(clusterName, storeName, owner, keySchema, valueSchema);
     // Kill message is before persisted offset
     verify(admin, never()).killOfflinePush(clusterName, storeTopicName);
   }
@@ -496,9 +496,9 @@ public class TestAdminConsumptionTask {
         .subscribe(any(), anyInt(), any());
     verify(mockKafkaConsumer, timeout(TIMEOUT))
         .unSubscribe(any(), anyInt());
-    verify(admin, timeout(TIMEOUT)).addStore(clusterName, storeName1, owner, "test", keySchema, valueSchema);
-    verify(admin, never()).addStore(clusterName, storeName2, owner, "test", keySchema, valueSchema);
-    verify(admin, never()).addStore(clusterName, storeName3, owner, "test", keySchema, valueSchema);
+    verify(admin, timeout(TIMEOUT)).addStore(clusterName, storeName1, owner, keySchema, valueSchema);
+    verify(admin, never()).addStore(clusterName, storeName2, owner, keySchema, valueSchema);
+    verify(admin, never()).addStore(clusterName, storeName3, owner, keySchema, valueSchema);
   }
 
   @Test (timeOut = TIMEOUT)
@@ -531,7 +531,7 @@ public class TestAdminConsumptionTask {
         .subscribe(any(), anyInt(), any());
     verify(mockKafkaConsumer, timeout(TIMEOUT))
         .unSubscribe(any(), anyInt());
-    verify(admin, timeout(TIMEOUT)).addStore(clusterName, storeName, owner, "test", keySchema, valueSchema);
+    verify(admin, timeout(TIMEOUT)).addStore(clusterName, storeName, owner, keySchema, valueSchema);
   }
 
   @Test (timeOut = 2 * TIMEOUT)
@@ -567,8 +567,8 @@ public class TestAdminConsumptionTask {
     verify(mockKafkaConsumer, timeout(TIMEOUT))
         .unSubscribe(any(), anyInt());
 
-    verify(admin, never()).addStore(clusterName, storeName1, owner, "test", keySchema, valueSchema);
-    verify(admin, atLeastOnce()).addStore(clusterName, storeName2, owner, "test", keySchema, valueSchema);
+    verify(admin, never()).addStore(clusterName, storeName1, owner, keySchema, valueSchema);
+    verify(admin, atLeastOnce()).addStore(clusterName, storeName2, owner, keySchema, valueSchema);
   }
 
   @Test (timeOut = TIMEOUT)
@@ -627,7 +627,6 @@ public class TestAdminConsumptionTask {
         getStoreCreationMessage(clusterName, storeName, owner, keySchema, valueSchema),
         AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
 
-    String principles = "test";
     String newOwner = owner+"updated";
     int partitionNumber = 100;
     int currentVersion = 100;
@@ -637,7 +636,6 @@ public class TestAdminConsumptionTask {
     setStore.clusterName = clusterName;
     setStore.storeName = storeName;
     setStore.owner = newOwner;
-    setStore.principles = principles;
     setStore.partitionNum = partitionNumber;
     setStore.currentVersion = currentVersion;
     setStore.enableReads = enableReads;
@@ -659,7 +657,7 @@ public class TestAdminConsumptionTask {
     executor.awaitTermination(TIMEOUT, TimeUnit.MILLISECONDS);
 
     verify(admin, timeout(TIMEOUT).atLeastOnce())
-        .storeMetadataUpdate(eq(clusterName), eq(storeName), any());
+        .updateStore(eq(clusterName), eq(storeName), any(), any(), any(), any(), any(), any(), any());
   }
 
   private byte[] getStoreCreationMessage(String clusterName, String storeName, String owner, String keySchema, String valueSchema) {
@@ -673,7 +671,6 @@ public class TestAdminConsumptionTask {
     storeCreation.valueSchema = new SchemaMeta();
     storeCreation.valueSchema.definition = valueSchema;
     storeCreation.valueSchema.schemaType = SchemaType.AVRO_1_4.ordinal();
-    storeCreation.principles = "test";
     AdminOperation adminMessage = new AdminOperation();
     adminMessage.operationType = AdminMessageType.STORE_CREATION.getValue();
     adminMessage.payloadUnion = storeCreation;

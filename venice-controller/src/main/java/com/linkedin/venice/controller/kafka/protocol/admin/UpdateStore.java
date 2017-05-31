@@ -7,15 +7,16 @@ package com.linkedin.venice.controller.kafka.protocol.admin;
 
 @SuppressWarnings("all")
 public class UpdateStore extends org.apache.avro.specific.SpecificRecordBase implements org.apache.avro.specific.SpecificRecord {
-  public static final org.apache.avro.Schema SCHEMA$ = org.apache.avro.Schema.parse("{\"type\":\"record\",\"name\":\"UpdateStore\",\"namespace\":\"com.linkedin.venice.controller.kafka.protocol.admin\",\"fields\":[{\"name\":\"clusterName\",\"type\":\"string\"},{\"name\":\"storeName\",\"type\":\"string\"},{\"name\":\"owner\",\"type\":\"string\"},{\"name\":\"principles\",\"type\":\"string\"},{\"name\":\"partitionNum\",\"type\":\"int\"},{\"name\":\"currentVersion\",\"type\":\"int\"},{\"name\":\"enableReads\",\"type\":\"boolean\"},{\"name\":\"enableWrites\",\"type\":\"boolean\"}]}");
+  public static final org.apache.avro.Schema SCHEMA$ = org.apache.avro.Schema.parse("{\"type\":\"record\",\"name\":\"UpdateStore\",\"namespace\":\"com.linkedin.venice.controller.kafka.protocol.admin\",\"fields\":[{\"name\":\"clusterName\",\"type\":\"string\"},{\"name\":\"storeName\",\"type\":\"string\"},{\"name\":\"owner\",\"type\":\"string\"},{\"name\":\"partitionNum\",\"type\":\"int\"},{\"name\":\"currentVersion\",\"type\":\"int\"},{\"name\":\"enableReads\",\"type\":\"boolean\"},{\"name\":\"enableWrites\",\"type\":\"boolean\"},{\"name\":\"storageQuotaInByte\",\"type\":\"long\"},{\"name\":\"readQuotaInCU\",\"type\":\"long\"}]}");
   public java.lang.CharSequence clusterName;
   public java.lang.CharSequence storeName;
   public java.lang.CharSequence owner;
-  public java.lang.CharSequence principles;
   public int partitionNum;
   public int currentVersion;
   public boolean enableReads;
   public boolean enableWrites;
+  public long storageQuotaInByte;
+  public long readQuotaInCU;
   public org.apache.avro.Schema getSchema() { return SCHEMA$; }
   // Used by DatumWriter.  Applications should not call. 
   public java.lang.Object get(int field$) {
@@ -23,11 +24,12 @@ public class UpdateStore extends org.apache.avro.specific.SpecificRecordBase imp
     case 0: return clusterName;
     case 1: return storeName;
     case 2: return owner;
-    case 3: return principles;
-    case 4: return partitionNum;
-    case 5: return currentVersion;
-    case 6: return enableReads;
-    case 7: return enableWrites;
+    case 3: return partitionNum;
+    case 4: return currentVersion;
+    case 5: return enableReads;
+    case 6: return enableWrites;
+    case 7: return storageQuotaInByte;
+    case 8: return readQuotaInCU;
     default: throw new org.apache.avro.AvroRuntimeException("Bad index");
     }
   }
@@ -38,11 +40,12 @@ public class UpdateStore extends org.apache.avro.specific.SpecificRecordBase imp
     case 0: clusterName = (java.lang.CharSequence)value$; break;
     case 1: storeName = (java.lang.CharSequence)value$; break;
     case 2: owner = (java.lang.CharSequence)value$; break;
-    case 3: principles = (java.lang.CharSequence)value$; break;
-    case 4: partitionNum = (java.lang.Integer)value$; break;
-    case 5: currentVersion = (java.lang.Integer)value$; break;
-    case 6: enableReads = (java.lang.Boolean)value$; break;
-    case 7: enableWrites = (java.lang.Boolean)value$; break;
+    case 3: partitionNum = (java.lang.Integer)value$; break;
+    case 4: currentVersion = (java.lang.Integer)value$; break;
+    case 5: enableReads = (java.lang.Boolean)value$; break;
+    case 6: enableWrites = (java.lang.Boolean)value$; break;
+    case 7: storageQuotaInByte = (java.lang.Long)value$; break;
+    case 8: readQuotaInCU = (java.lang.Long)value$; break;
     default: throw new org.apache.avro.AvroRuntimeException("Bad index");
     }
   }

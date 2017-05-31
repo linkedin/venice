@@ -14,7 +14,10 @@ public enum Arg {
   OFFSET("offset", "of", true, "Kafka offset number"),
   EXECUTION("execution", "e", true, "Execution ID of async admin command"),
   PARTITION_COUNT("partition-count", "pn", true, "number of partitions a store has"),
-  PRINCIPLES("principles", "pr", true, "A value used to certificate the access to a store."),
+  READABILITY("readability", "rb", true, "store's readability"),
+  WRITEABILITY("writeability", "wb", true, "store's writeability"),
+  STORAGE_QUOTA("storage-quota", "sq", true, "maximum capacity a store version could have"),
+  READ_QUOTA("read-quota", "rq", true, "quota for read request hit this store. Measurement is capacity unit"),
 
   FILTER_JSON("filter-json", "f", true, "Comma-delimited list of fields to display from the json output.  Omit to display all fields"),
   FLAT_JSON("flat-json", "fj", false, "Display output as flat json, without pretty-print indentation and line breaks"),

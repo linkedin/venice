@@ -235,10 +235,10 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   @Override
-  public void addStore(String clusterName, String storeName, String owner, String principles, String keySchema, String valueSchema) {
+  public void addStore(String clusterName, String storeName, String owner, String keySchema, String valueSchema) {
     acquireLock(clusterName);
     try {
-      veniceHelixAdmin.checkPreConditionForAddStore(clusterName, storeName, owner, keySchema, valueSchema);
+      veniceHelixAdmin.checkPreConditionForAddStore(clusterName, storeName, keySchema, valueSchema);
       logger.info("Adding store: " + storeName + " to cluster: " + clusterName);
 
       // Write store creation message to Kafka
@@ -250,41 +250,12 @@ public class VeniceParentHelixAdmin implements Admin {
       storeCreation.keySchema.schemaType = SchemaType.AVRO_1_4.ordinal();
       storeCreation.keySchema.definition = keySchema;
       storeCreation.valueSchema = new SchemaMeta();
-      storeCreation.principles = principles;
       storeCreation.valueSchema.schemaType = SchemaType.AVRO_1_4.ordinal();
       storeCreation.valueSchema.definition = valueSchema;
 
       AdminOperation message = new AdminOperation();
       message.operationType = AdminMessageType.STORE_CREATION.ordinal();
       message.payloadUnion = storeCreation;
-
-      sendAdminMessageAndWaitForConsumed(clusterName, message);
-    } finally {
-      releaseLock();
-    }
-  }
-
-  @Override
-  public void storeMetadataUpdate(String clusterName, String storeName, StoreMetadataOperation operation) {
-    acquireLock(clusterName);
-
-    try {
-      veniceHelixAdmin.checkPreConditionForUpdateStore(clusterName, storeName);
-      Store store = veniceHelixAdmin.getStore(clusterName, storeName);
-      store = operation.update(store);
-      UpdateStore setStore = (UpdateStore) AdminMessageType.UPDATE_STORE.getNewInstance();
-      setStore.clusterName = clusterName;
-      setStore.storeName = storeName;
-      setStore.owner = store.getOwner();
-      setStore.principles = String.join(",", store.getPrinciples());
-      setStore.partitionNum = store.getPartitionCount();
-      setStore.currentVersion = store.getCurrentVersion();
-      setStore.enableReads = store.isEnableReads();
-      setStore.enableWrites = store.isEnableWrites();
-
-      AdminOperation message = new AdminOperation();
-      message.operationType = AdminMessageType.UPDATE_STORE.ordinal();
-      message.payloadUnion = setStore;
 
       sendAdminMessageAndWaitForConsumed(clusterName, message);
     } finally {
@@ -653,6 +624,8 @@ public class VeniceParentHelixAdmin implements Admin {
                           Optional<Boolean> readability,
                           Optional<Boolean> writeability,
                           Optional<Integer> partitionCount,
+                          Optional<Long> storageQuotaInByte,
+                          Optional<Long> readQuotaInCU,
                           Optional<Integer> currentVersion) {
     acquireLock(clusterName);
 
@@ -663,6 +636,8 @@ public class VeniceParentHelixAdmin implements Admin {
                                    readability,
                                    writeability,
                                    partitionCount,
+                                   storageQuotaInByte,
+                                   readQuotaInCU,
                                    currentVersion);
       Store store = veniceHelixAdmin.getStore(clusterName, storeName);
 
@@ -670,11 +645,19 @@ public class VeniceParentHelixAdmin implements Admin {
       setStore.clusterName = clusterName;
       setStore.storeName = storeName;
       setStore.owner = store.getOwner();
-      setStore.principles = String.join(",", store.getPrinciples());
       setStore.partitionNum = store.getPartitionCount();
       setStore.currentVersion = store.getCurrentVersion();
       setStore.enableReads = store.isEnableReads();
       setStore.enableWrites = store.isEnableWrites();
+      setStore.storageQuotaInByte = store.getStorageQuotaInByte();
+      setStore.readQuotaInCU = store.getReadQuotaInCU();
+
+      //We need to to be careful when handling currentVersion.
+      //Since it is not synced between parent and local controller,
+      //It is very likely to override local values unintentionally.
+      if (currentVersion.isPresent()) {
+        setStore.currentVersion = store.getCurrentVersion();
+      }
 
       AdminOperation message = new AdminOperation();
       message.operationType = AdminMessageType.UPDATE_STORE.ordinal();
@@ -684,7 +667,6 @@ public class VeniceParentHelixAdmin implements Admin {
     } finally {
       releaseLock();
     }
-
   }
 
   @Override

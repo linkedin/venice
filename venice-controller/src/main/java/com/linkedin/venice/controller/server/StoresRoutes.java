@@ -81,6 +81,7 @@ public class StoresRoutes {
       @Override
       public void internalHandle(Request request, ControllerResponse veniceResponse) {
         AdminSparkServer.validateParams(request, UPDATE_STORE.getParams(), admin);
+        //TODO: we may want to have a specific response for store updating
         veniceResponse.setCluster(request.queryParams(CLUSTER));
         veniceResponse.setName(request.queryParams(NAME));
 
@@ -102,12 +103,22 @@ public class StoresRoutes {
         Optional<Boolean> writeability = writeabilityStr == null ? Optional.empty() :
             Optional.of(Utils.parseBooleanFromString(writeabilityStr, "enableWrites"));
 
+        String storageQuotaStr = AdminSparkServer.getOptionalParameterValue(request, STORAGE_QUOTA_IN_BYTE);
+        Optional<Long> storageQuotaInByte = storageQuotaStr == null ? Optional.empty() :
+            Optional.of(Utils.parseLongFromString(storageQuotaStr, "storageQuotaInByte"));
+
+        String readQuotaStr = AdminSparkServer.getOptionalParameterValue(request, READ_QUOTA_IN_CU);
+        Optional<Long> readQuotaInCU = readQuotaStr == null ? Optional.empty() :
+            Optional.of(Utils.parseLongFromString(readQuotaStr, "readQuotaInCU"));
+
         admin.updateStore(veniceResponse.getCluster(),
                           veniceResponse.getName(),
                           owner,
                           readability,
                           writeability,
                           partitionCount,
+                          storageQuotaInByte,
+                          readQuotaInCU,
                           currentVersion);
       }
     };

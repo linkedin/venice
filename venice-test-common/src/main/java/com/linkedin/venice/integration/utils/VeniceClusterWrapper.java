@@ -365,7 +365,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
     // Create new store
     ControllerClient controllerClient = new ControllerClient(clusterName, getAllControllersURLs());
 
-    NewStoreResponse response = controllerClient.createNewStore(storeName, storeOwner, "test", keySchema, valueSchema);
+    NewStoreResponse response = controllerClient.createNewStore(storeName, storeOwner, keySchema, valueSchema);
     // Create new version
     VersionCreationResponse newVersion = controllerClient.createNewStoreVersion(storeName, storeSize);
     if (newVersion.isError()) {
@@ -405,7 +405,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
     String valueSchema = "\"string\"";
     ControllerClient controllerClient = new ControllerClient(clusterName, getAllControllersURLs());
 
-    NewStoreResponse response = controllerClient.createNewStore(storeName, owner, "test", keySchema, valueSchema);
+    NewStoreResponse response = controllerClient.createNewStore(storeName, owner, keySchema, valueSchema);
     if (response.isError()) {
       throw new VeniceException(response.getError());
     }

@@ -29,7 +29,8 @@ public enum Command {
   SKIP_ADMIN("skip-admin", "Skip an admin message",
       new Arg[] {Arg.URL, Arg.CLUSTER, Arg.OFFSET}),
   NEW_STORE("new-store", "",
-      new Arg[]{Arg.URL, Arg.CLUSTER, Arg.STORE, Arg.OWNER, Arg.PRINCIPLES, Arg.KEY_SCHEMA, Arg.VALUE_SCHEMA}),
+      new Arg[]{Arg.URL, Arg.CLUSTER, Arg.STORE, Arg.KEY_SCHEMA, Arg.VALUE_SCHEMA},
+      new Arg[]{Arg.OWNER}),
   SET_VERSION("set-version", "Set the version that will be served",
       new Arg[] {Arg.URL, Arg.CLUSTER, Arg.STORE, Arg.VERSION}),
   ADD_SCHEMA("add-schema", "",
@@ -60,16 +61,26 @@ public enum Command {
   SET_OWNER("set-owner", "Update owner info of an existing store",
       new Arg[] {Arg.URL, Arg.CLUSTER, Arg.STORE, Arg.OWNER}),
   SET_PARTITION_COUNT("set-partition-count", "Update the number of partitions of an existing store",
-      new Arg[] {Arg.URL, Arg.CLUSTER, Arg.STORE, Arg.PARTITION_COUNT});
+      new Arg[] {Arg.URL, Arg.CLUSTER, Arg.STORE, Arg.PARTITION_COUNT}),
+  UPDATE_STORE("update-store","update store metadata",
+      new Arg[] {Arg.URL, Arg.CLUSTER, Arg.STORE},
+      new Arg[] {Arg.OWNER, Arg.PARTITION_COUNT, Arg.VERSION, Arg.READABILITY,
+                 Arg.WRITEABILITY,Arg.STORAGE_QUOTA, Arg.READ_QUOTA});
 
   private final String commandName;
   private final String description;
   private final Arg[] requiredArgs;
+  private final Arg[] optionalArgs;
 
   Command(String argName, String description, Arg[] requiredArgs){
+    this(argName, description, requiredArgs, new Arg[] {});
+  }
+
+  Command(String argName, String description, Arg[] requiredArgs, Arg[] optionalArgs) {
     this.commandName = argName;
     this.description = description;
     this.requiredArgs = requiredArgs;
+    this.optionalArgs = optionalArgs;
   }
 
   @Override
@@ -81,6 +92,10 @@ public enum Command {
     return requiredArgs;
   }
 
+  public Arg[] getOptionalArgs() {
+    return optionalArgs;
+  }
+
   public String getDesc(){
     StringJoiner sj = new StringJoiner(".  ");
     if (!description.isEmpty()){
@@ -89,6 +104,10 @@ public enum Command {
 
     StringJoiner arguments = new StringJoiner(", ");
     for (Arg arg : getRequiredArgs()){
+      arguments.add("--" + arg.toString());
+    }
+
+    for (Arg arg : getOptionalArgs()) {
       arguments.add("--" + arg.toString());
     }
 

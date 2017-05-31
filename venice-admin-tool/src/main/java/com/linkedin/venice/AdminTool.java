@@ -52,6 +52,8 @@ import org.codehaus.jackson.map.ObjectMapper;
 import org.codehaus.jackson.map.ObjectWriter;
 import org.codehaus.jackson.type.TypeReference;
 
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.*;
+
 
 public class AdminTool {
 
@@ -166,6 +168,8 @@ public class AdminTool {
         setStoreOwner(cmd, clusterName);
       } else if (cmd.hasOption(Command.SET_PARTITION_COUNT.toString())) {
         setStorePartition(cmd, clusterName);
+      } else if (cmd.hasOption(Command.UPDATE_STORE.toString())) {
+        updateStore(cmd);
       } else if (cmd.hasOption(Command.ADD_SCHEMA.toString())){
         applyValueSchemaToStore(cmd, routerHosts, clusterName);
       } else if (cmd.hasOption(Command.LIST_STORAGE_NODES.toString())) {
@@ -275,12 +279,11 @@ public class AdminTool {
     String keySchema = readFile(keySchemaFile);
     String valueSchemaFile = getRequiredArgument(cmd, Arg.VALUE_SCHEMA, Command.NEW_STORE);
     String valueSchema = readFile(valueSchemaFile);
-    String owner = getRequiredArgument(cmd, Arg.OWNER, Command.NEW_STORE);
-    String principles = getRequiredArgument(cmd, Arg.PRINCIPLES, Command.NEW_STORE);
+    String owner = getOptionalArgument(cmd, Arg.OWNER, "");
     verifyValidSchema(keySchema);
     verifyValidSchema(valueSchema);
     verifyStoreExistence(store, false);
-    NewStoreResponse response = controllerClient.createNewStore(store, owner, principles, keySchema, valueSchema);
+    NewStoreResponse response = controllerClient.createNewStore(store, owner, keySchema, valueSchema);
     printObject(response);
   }
 
@@ -337,6 +340,45 @@ public class AdminTool {
     String storeName = getRequiredArgument(cmd, Arg.STORE, Command.SET_PARTITION_COUNT);
     String partitionNum = getRequiredArgument(cmd, Arg.PARTITION_COUNT, Command.SET_PARTITION_COUNT);
     PartitionResponse response = controllerClient.setStorePartitionCount(storeName, partitionNum);
+    printSuccess(response);
+  }
+
+  private static void updateStore(CommandLine cmd) {
+    String storeName = getRequiredArgument(cmd, Arg.STORE, Command.UPDATE_STORE);
+    Optional<String> owner = Optional.ofNullable(getOptionalArgument(cmd, Arg.OWNER));
+
+    String currentVersionStr = getOptionalArgument(cmd, Arg.VERSION);
+    Optional<Integer> currentVersion = currentVersionStr == null ? Optional.empty() :
+        Optional.of(Utils.parseIntFromString(currentVersionStr, "currentVersion"));
+
+    String partitionCountStr = getOptionalArgument(cmd, Arg.PARTITION_COUNT);
+    Optional<Integer> partitionCount = partitionCountStr == null ? Optional.empty() :
+        Optional.of(Utils.parseIntFromString(partitionCountStr, "partitionCount"));
+
+    String readabilityStr = getOptionalArgument(cmd, Arg.READABILITY);
+    Optional<Boolean> readability = readabilityStr == null ? Optional.empty() :
+        Optional.of(Utils.parseBooleanFromString(readabilityStr, "enableReads"));
+
+    String writeabilityStr = getOptionalArgument(cmd, Arg.WRITEABILITY);
+    Optional<Boolean> writeability = writeabilityStr == null ? Optional.empty() :
+        Optional.of(Utils.parseBooleanFromString(writeabilityStr, "enableWrites"));
+
+    String storageQuotaStr = getOptionalArgument(cmd, Arg.STORAGE_QUOTA);
+    Optional<Long> storageQuotaInByte = storageQuotaStr == null ? Optional.empty() :
+        Optional.of(Utils.parseLongFromString(storageQuotaStr, "storageQuotaInByte"));
+
+    String readQuotaStr = getOptionalArgument(cmd, Arg.READ_QUOTA);
+    Optional<Long> readQuotaInCU = readQuotaStr == null ? Optional.empty() :
+        Optional.of(Utils.parseLongFromString(readQuotaStr, "readQuotaInCU"));
+
+    ControllerResponse response = controllerClient.updateStore(storeName,
+                                                               owner,
+                                                               partitionCount,
+                                                               currentVersion,
+                                                               readability,
+                                                               writeability,
+                                                               storageQuotaInByte,
+                                                               readQuotaInCU);
     printSuccess(response);
   }
 
@@ -455,6 +497,10 @@ public class AdminTool {
       printErrAndExit(arg.toString() + " is a required argument " + errorClause);
     }
     return cmd.getOptionValue(arg.first());
+  }
+
+  private static String getOptionalArgument(CommandLine cmd, Arg arg) {
+    return getOptionalArgument(cmd, arg, null);
   }
 
   private static String getOptionalArgument(CommandLine cmd, Arg arg, String defaultArgValue) {

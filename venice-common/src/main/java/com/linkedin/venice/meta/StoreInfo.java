@@ -15,8 +15,9 @@ public class StoreInfo {
     storeInfo.setPartitionCount(store.getPartitionCount());
     storeInfo.setEnableStoreWrites(store.isEnableWrites());
     storeInfo.setEnableStoreReads(store.isEnableReads());
+    storeInfo.setStorageQuotaInByte(store.getStorageQuotaInByte());
+    storeInfo.setReadQuotaInCU(store.getReadQuotaInCU());
     storeInfo.setVersions(store.getVersions());
-    storeInfo.setPrinciples(String.join(",", store.getPrinciples()));
     return storeInfo;
   }
   /**
@@ -49,13 +50,18 @@ public class StoreInfo {
    */
   private boolean enableStoreReads = true;
   /**
-   * A SSL Identification used to certificate the access to this store.
-   */
-  private String principles;
-  /**
    * List of non-retired versions.
    */
   private List<Version> versions;
+
+  /**
+   * Maximum capacity a store version is able to have
+   */
+  private long storageQuotaInByte;
+  /**
+   * Quota for read request hit this store. Measurement is capacity unit.
+   */
+  private long readQuotaInCU;
 
   public StoreInfo() {
   }
@@ -153,11 +159,19 @@ public class StoreInfo {
     this.versions = versions;
   }
 
-  public String getPrinciples() {
-    return principles;
+  public long getStorageQuotaInByte() {
+    return storageQuotaInByte;
   }
 
-  public void setPrinciples(String principles) {
-    this.principles = principles;
+  public void setStorageQuotaInByte(long storageQuotaInByte) {
+    this.storageQuotaInByte = storageQuotaInByte;
+  }
+
+  public long getReadQuotaInCU() {
+    return readQuotaInCU;
+  }
+
+  public void setReadQuotaInCU(long readQuotaInCU) {
+    this.readQuotaInCU = readQuotaInCU;
   }
 }
