@@ -183,10 +183,10 @@ public class TestVeniceParentHelixAdmin {
     String owner = "test-owner";
     String keySchemaStr = "\"string\"";
     String valueSchemaStr = "\"string\"";
-    parentAdmin.addStore(clusterName, storeName, owner, "test", keySchemaStr, valueSchemaStr);
+    parentAdmin.addStore(clusterName, storeName, owner, keySchemaStr, valueSchemaStr);
 
     verify(internalAdmin)
-    .checkPreConditionForAddStore(clusterName, storeName, owner, keySchemaStr, valueSchemaStr);
+    .checkPreConditionForAddStore(clusterName, storeName, keySchemaStr, valueSchemaStr);
     verify(veniceWriter)
         .put(any(), any(), anyInt());
     verify(zkClient, times(2))
@@ -223,9 +223,9 @@ public class TestVeniceParentHelixAdmin {
     String valueSchemaStr = "\"string\"";
     doThrow(new VeniceException("Store: " + storeName + " already exists. ..."))
         .when(internalAdmin)
-        .checkPreConditionForAddStore(clusterName, storeName, owner, keySchemaStr, valueSchemaStr);
+        .checkPreConditionForAddStore(clusterName, storeName, keySchemaStr, valueSchemaStr);
 
-    parentAdmin.addStore(clusterName, storeName, owner, "test", keySchemaStr, valueSchemaStr);
+    parentAdmin.addStore(clusterName, storeName, owner, keySchemaStr, valueSchemaStr);
   }
 
   // This test forces a timeout in the admin consumption task which takes 10 seconds.
@@ -252,10 +252,10 @@ public class TestVeniceParentHelixAdmin {
     String owner = "test-owner";
     String keySchemaStr = "\"string\"";
     String valueSchemaStr = "\"string\"";
-    parentAdmin.addStore(clusterName, storeName, owner, "test",  keySchemaStr, valueSchemaStr);
+    parentAdmin.addStore(clusterName, storeName, owner, keySchemaStr, valueSchemaStr);
 
     // Add store again with smaller consumed offset
-    parentAdmin.addStore(clusterName, storeName, owner, "test", keySchemaStr, valueSchemaStr);
+    parentAdmin.addStore(clusterName, storeName, owner, keySchemaStr, valueSchemaStr);
   }
 
   @Test
@@ -708,7 +708,7 @@ public class TestVeniceParentHelixAdmin {
     String valueSchemaStr = "\"string\"";
 
     ControllerClient controllerClient = new ControllerClient(clusterName, controllerUrl);
-    controllerClient.createNewStore(storeName, owner, "test", keySchemaStr, valueSchemaStr);
+    controllerClient.createNewStore(storeName, owner, keySchemaStr, valueSchemaStr);
     MultiStoreResponse response = ControllerClient.listStores(controllerUrl, clusterName);
     String[] stores = response.getStores();
     Assert.assertEquals(stores.length, 1);
@@ -962,7 +962,7 @@ public class TestVeniceParentHelixAdmin {
 
     throttledParentAdmin.setVeniceWriterForCluster(clusterName, veniceWriter);
     throttledParentAdmin.start(clusterName);
-    throttledParentAdmin.addStore(clusterName, storeName, "test", "","\"string\"", "\"string\"");
+    throttledParentAdmin.addStore(clusterName, storeName, "test", "\"string\"", "\"string\"");
 
     // Create 3 thread to increment version concurrently, we expected admin will sleep a while to avoid creating topic
     // too frequently.

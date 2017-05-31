@@ -24,6 +24,14 @@ public class Store {
    */
   public static final int NON_EXISTING_VERSION = 0;
   /**
+   * Default storage quota 20GB
+   */
+  public static final long DEFAULT_STORAGE_QUOTA = (long)20 * (1 << 30);
+  /**
+   * Default read quota 1800 QPS per node
+   */
+  public static final long DEFAULT_READ_QUOTA = 1800;
+  /**
    * Store name.
    */
   private final String name;
@@ -49,13 +57,13 @@ public class Store {
    */
   private boolean enableWrites = true;
   /**
-   * If a store is disabled from readingd, none of versions under this store could serve read requests.
+   * If a store is disabled from being read, none of versions under this store could serve read requests.
    */
   private boolean enableReads = true;
   /**
-   * A SSL Identification used to certificate the access to this store.
+   * Maximum capacity a store version is able to have
    */
-  private List<String> principles;
+  private long storageQuotaInByte;
   /**
    * Type of persistence storage engine.
    */
@@ -91,19 +99,16 @@ public class Store {
       @NotNull RoutingStrategy routingStrategy, @NotNull ReadStrategy readStrategy,
       @NotNull OfflinePushStrategy offlinePushStrategy) {
     this(name, owner, createdTime, persistenceType, routingStrategy, readStrategy, offlinePushStrategy, true, true,
-        NON_EXISTING_VERSION, 0);
+        NON_EXISTING_VERSION, DEFAULT_STORAGE_QUOTA, DEFAULT_READ_QUOTA);
+
   }
+
+
 
   public Store(@NotNull String name, @NotNull String owner, long createdTime, @NotNull PersistenceType persistenceType,
       @NotNull RoutingStrategy routingStrategy, @NotNull ReadStrategy readStrategy,
-      @NotNull OfflinePushStrategy offlinePushStrategy, long readQuotaInCU) {
-    this(name, owner, createdTime, persistenceType, routingStrategy, readStrategy, offlinePushStrategy, true, true,
-        NON_EXISTING_VERSION, readQuotaInCU);
-  }
-
-  public Store(@NotNull String name, @NotNull String owner, long createdTime, @NotNull PersistenceType persistenceType,
-      @NotNull RoutingStrategy routingStrategy, @NotNull ReadStrategy readStrategy,
-      @NotNull OfflinePushStrategy offlinePushStrategy, boolean enableWrites, boolean enableReads, int currentVersion, long readQuotaInCU) {
+      @NotNull OfflinePushStrategy offlinePushStrategy, boolean enableWrites, boolean enableReads, int currentVersion,
+      long storageQuotaInByte, long readQuotaInCU) {
     if (!isValidStoreName(name)) {
       throw new VeniceException("Invalid store name: " + name);
     }
@@ -115,9 +120,9 @@ public class Store {
     this.readStrategy = readStrategy;
     this.offLinePushStrategy = offlinePushStrategy;
     this.versions = new ArrayList<>();
-    this.principles = new ArrayList<>();
     this.enableWrites = enableWrites;
     this.enableReads = enableReads;
+    this.storageQuotaInByte = storageQuotaInByte;
     this.currentVersion = currentVersion;
     this.readQuotaInCU = readQuotaInCU;
   }
@@ -214,13 +219,13 @@ public class Store {
   }
 
   @SuppressWarnings("unused") // Used by Serializer/De-serializer for storing to Zoo Keeper
-  public List<String> getPrinciples() {
-    return principles;
+  public long getStorageQuotaInByte() {
+    return storageQuotaInByte;
   }
 
   @SuppressWarnings("unused") // Used by Serializer/De-serializer for storing to Zoo Keeper
-  public void setPrinciples(List<String> principles) {
-    this.principles = principles;
+  public void setStorageQuotaInByte(long storageQuotaInByte) {
+    this.storageQuotaInByte = storageQuotaInByte;
   }
 
   public int getPartitionCount() {
@@ -471,7 +476,7 @@ public class Store {
     if (largestUsedVersionNumber != store.largestUsedVersionNumber){
       return false;
     }
-    if (!principles.equals(store.principles)) {
+    if (storageQuotaInByte != store.storageQuotaInByte) {
       return false;
     }
     if (readQuotaInCU != store.readQuotaInCU) {
@@ -493,9 +498,8 @@ public class Store {
     result = 31 * result + partitionCount;
     result = 31 * result + (enableWrites ? 1 : 0);
     result = 31 * result + (enableReads ? 1: 0);
+    result = 31 * result + (int) (storageQuotaInByte ^ (storageQuotaInByte >>> 32));
     result = 31 * result + largestUsedVersionNumber;
-    result = 31 * result + principles.hashCode();
-
     result = 31 * result + persistenceType.hashCode();
     result = 31 * result + routingStrategy.hashCode();
     result = 31 * result + readStrategy.hashCode();
@@ -512,14 +516,21 @@ public class Store {
    */
   public Store cloneStore() {
     Store clonedStore =
-        new Store(name, owner, createdTime, persistenceType, routingStrategy, readStrategy, offLinePushStrategy);
-    clonedStore.setCurrentVersion(currentVersion);
+        new Store(name,
+                  owner,
+                  createdTime,
+                  persistenceType,
+                  routingStrategy,
+                  readStrategy,
+                  offLinePushStrategy,
+                  enableWrites,
+                  enableReads,
+                  currentVersion,
+                  storageQuotaInByte,
+                  readQuotaInCU);
+
     clonedStore.setPartitionCount(partitionCount);
-    clonedStore.setEnableWrites(enableWrites);
-    clonedStore.setEnableReads(enableReads);
     clonedStore.setLargestUsedVersionNumber(largestUsedVersionNumber);
-    clonedStore.setPrinciples(principles);
-    clonedStore.setReadQuotaInCU(readQuotaInCU);
 
     for (Version v : this.versions) {
       clonedStore.forceAddVersion(v.cloneVersion());

@@ -9,6 +9,7 @@ AVRO_SCHEMAS_PATH=(
   "venice-schema-common/src/main/resources/avro/MultiGetResponseRecord/v1/*"
   "venice-schema-common/src/main/resources/avro/MultiGetClientRequestKey/v1/*"
   "venice-schema-common/src/main/resources/avro/MultiGetRouterRequestKey/v1/*"
+  "venice-controller/src/main/resources/avro/AdminOperation/v6/*"
 )
 CODE_GEN_PATH=(
   "venice-common/src/main/java"

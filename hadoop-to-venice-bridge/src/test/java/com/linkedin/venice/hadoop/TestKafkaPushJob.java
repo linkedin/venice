@@ -17,7 +17,6 @@ import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.writer.VeniceWriter;
 import java.io.File;
 import java.io.IOException;
-import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -231,7 +230,7 @@ public class TestKafkaPushJob {
     Schema keySchema = recordSchema.getField(props.getProperty(KafkaPushJob.AVRO_KEY_FIELD_PROP)).schema();
     Schema valueSchema = recordSchema.getField(props.getProperty(KafkaPushJob.AVRO_VALUE_FIELD_PROP)).schema();
     controllerClient.createNewStore(props.getProperty(KafkaPushJob.VENICE_STORE_NAME_PROP),
-        props.getProperty(KafkaPushJob.VENICE_STORE_OWNERS_PROP), "test", keySchema.toString(), valueSchema.toString());
+        props.getProperty(KafkaPushJob.VENICE_STORE_OWNERS_PROP), keySchema.toString(), valueSchema.toString());
   }
 
   @Test(timeOut = TEST_TIMEOUT)
@@ -460,7 +459,7 @@ public class TestKafkaPushJob {
     ControllerClient controllerClient = new ControllerClient(veniceCluster.getClusterName(), routerUrl);
 
     // Create store with value schema
-    controllerClient.createNewStore(storeName, "owner", "test", keySchema.toString(), valueSchema.toString());
+    controllerClient.createNewStore(storeName, "owner", keySchema.toString(), valueSchema.toString());
 
     // Upload new value
     inputDir = getTempDataDirectory();

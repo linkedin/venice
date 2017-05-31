@@ -13,7 +13,6 @@ import org.codehaus.jackson.annotate.JsonProperty;
 import org.codehaus.jackson.map.DeserializationConfig;
 import org.codehaus.jackson.map.ObjectMapper;
 
-
 /**
  * Serializer used to convert the data between Store and json.
  */
@@ -59,6 +58,7 @@ public class StoreJSONSerializer implements VeniceSerializer<Store> {
             @JsonProperty("enableWrites") boolean enableWrites,
             @JsonProperty("enableReads") boolean enableReads,
             @JsonProperty("currentVersion") int currentVersion,
+            @JsonProperty("storageQuotaInByte") long storageQuotaInByte,
             @JsonProperty("readQuotaInCU") long readQuotaInCU) {
 
         }

@@ -41,9 +41,7 @@ public interface Admin {
 
     boolean isClusterValid(String clusterName);
 
-    void addStore(String clusterName, String storeName, String owner, String principles, String keySchema, String valueSchema);
-
-    public void storeMetadataUpdate(String clusterName, String storeName, VeniceHelixAdmin.StoreMetadataOperation operation);
+    void addStore(String clusterName, String storeName, String owner, String keySchema, String valueSchema);
 
     Version addVersion(String clusterName, String storeName, int versionNumber, int numberOfPartition,
         int replicationFactor);
@@ -119,10 +117,6 @@ public interface Admin {
 
     void setStoreWriteability(String clusterName, String storeName, boolean desiredWriteability);
 
-    /**
-     * TODO: might want to remove this method.
-     * Multiple fields update is supported by {@link #updateStore(String, String, Optional, Optional, Optional, Optional, Optional)}
-     */
     void setStoreReadWriteability(String clusterName, String storeName, boolean isAccessible);
 
     //TODO: using Optional here is a bit of cumbersome, might want to change it if we find better way to pass those params.
@@ -132,6 +126,8 @@ public interface Admin {
                      Optional<Boolean> readability,
                      Optional<Boolean> writeability,
                      Optional<Integer> partitionCount,
+                     Optional<Long> storageQuotaInByte,
+                     Optional<Long> readQuotaInCU,
                      Optional<Integer> currentVersion);
 
 
@@ -297,12 +293,4 @@ public interface Admin {
     Optional<AdminCommandExecutionTracker> getAdminCommandExecutionTracker();
 
     void close();
-
-    public interface StoreMetadataOperation {
-        /**
-         * define the operation that update a store. Return the store after metadata being updated so that it could
-         * be updated by metadataRepository
-         */
-        Store update(Store store);
-    }
 }

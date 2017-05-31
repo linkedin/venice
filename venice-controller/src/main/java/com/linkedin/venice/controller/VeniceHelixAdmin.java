@@ -209,14 +209,12 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
 
     @Override
-    public synchronized void addStore(String clusterName, String storeName, String owner, String principles, String keySchema, String valueSchema) {
+    public synchronized void addStore(String clusterName, String storeName, String owner, String keySchema, String valueSchema) {
         VeniceHelixResources resources = getVeniceHelixResource(clusterName);
         synchronized (resources) { // Sloppy solution to race condition between add store and LEADER -> STANDBY controller state change
-            checkPreConditionForAddStore(clusterName, storeName, owner, keySchema, valueSchema);
+            checkPreConditionForAddStore(clusterName, storeName, keySchema, valueSchema);
             VeniceControllerClusterConfig config = getVeniceHelixResource(clusterName).getConfig();
             Store store = new Store(storeName, owner, System.currentTimeMillis(), config.getPersistenceType(), config.getRoutingStrategy(), config.getReadStrategy(), config.getOfflinePushStrategy());
-            // We could not add principle into CTOR of class Store, because it will fail the deserialization of all existing stores.
-            store.setPrinciples(Utils.parseCommaSeparatedStringToList(principles));
             HelixReadWriteStoreRepository storeRepo = resources.getMetadataRepository();
             storeRepo.addStore(store);
             // Add schema
@@ -226,7 +224,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         }
     }
 
-    protected void checkPreConditionForAddStore(String clusterName, String storeName, String owner, String keySchema, String valueSchema) {
+    protected void checkPreConditionForAddStore(String clusterName, String storeName, String keySchema, String valueSchema) {
         checkControllerMastership(clusterName);
         HelixReadWriteStoreRepository repository = getVeniceHelixResource(clusterName).getMetadataRepository();
         if (repository.getStore(storeName) != null) {
@@ -650,12 +648,14 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     @Override
     public synchronized void setStoreCurrentVersion(String clusterName, String storeName, int versionNumber){
         storeMetadataUpdate(clusterName, storeName, store -> {
-            if (!store.containsVersion(versionNumber)) {
-                throw new VeniceException("Version:" + versionNumber + " does not exist for store:" + storeName);
-            }
+            if (store.getCurrentVersion() != Store.NON_EXISTING_VERSION) {
+                if (!store.containsVersion(versionNumber)) {
+                    throw new VeniceException("Version:" + versionNumber + " does not exist for store:" + storeName);
+                }
 
-            if (!store.isEnableWrites()) {
-                throw new VeniceException("Unable to update store:" + storeName + " current version since store writeability is false");
+                if (!store.isEnableWrites()) {
+                    throw new VeniceException("Unable to update store:" + storeName + " current version since store writeability is false");
+                }
             }
             store.setCurrentVersion(versionNumber);
 
@@ -666,11 +666,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     @Override
     public synchronized void setStoreOwner(String clusterName, String storeName, String owner) {
         storeMetadataUpdate(clusterName, storeName, store -> {
-            if (!Utils.isNullOrEmpty(owner)) {
-                store.setOwner(owner);
-            } else {
-                throw new VeniceException("store owner can't be null or empty");
-            }
+            store.setOwner(owner);
 
             return store;
         });
@@ -726,6 +722,32 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         });
     }
 
+    /**
+     * We will not expose this interface to Spark server. Updating quota can only be done by #updateStore
+     * TODO: remove all store attribute setters.
+     */
+    private synchronized void setStoreStorageQuota(String clusterName, String storeName, long storageQuotaInByte) {
+        storeMetadataUpdate(clusterName, storeName, store -> {
+            if (storageQuotaInByte < 0) {
+                throw new VeniceException("storage quota can not be less than 0");
+            }
+            store.setStorageQuotaInByte(storageQuotaInByte);
+
+            return store;
+        });
+    }
+
+    private synchronized void setStoreReadQuota(String clusterName, String storeName, long readQuotaInCU) {
+        storeMetadataUpdate(clusterName, storeName, store -> {
+            if (readQuotaInCU < 0) {
+                throw new VeniceException("read quota can not be less than 0");
+            }
+            store.setReadQuotaInCU(readQuotaInCU);
+
+            return store;
+        });
+    }
+
     @Override
     public synchronized void updateStore(String clusterName,
                                          String storeName,
@@ -733,6 +755,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                                          Optional<Boolean> readability,
                                          Optional<Boolean> writeability,
                                          Optional<Integer> partitionCount,
+                                         Optional<Long> storageQuotaInByte,
+                                         Optional<Long> readQuotaInCU,
                                          Optional<Integer> currentVersion) {
         Store originalStore = getStore(clusterName, storeName).cloneStore();
 
@@ -751,6 +775,14 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
             if (partitionCount.isPresent()) {
                 setStorePartitionCount(clusterName, storeName, partitionCount.get());
+            }
+
+            if (storageQuotaInByte.isPresent()) {
+                setStoreStorageQuota(clusterName, storeName, storageQuotaInByte.get());
+            }
+
+            if (readQuotaInCU.isPresent()) {
+                setStoreReadQuota(clusterName, storeName, readQuotaInCU.get());
             }
 
             if (currentVersion.isPresent()) {
@@ -1376,5 +1408,13 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
     public String getControllerName(){
         return controllerName;
+    }
+
+    private interface StoreMetadataOperation {
+        /**
+         * define the operation that update a store. Return the store after metadata being updated so that it could
+         * be updated by metadataRepository
+         */
+        Store update(Store store);
     }
 }
