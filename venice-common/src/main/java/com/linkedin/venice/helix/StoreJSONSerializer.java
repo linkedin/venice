@@ -1,5 +1,6 @@
 package com.linkedin.venice.helix;
 
+import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.ReadStrategy;
@@ -20,10 +21,15 @@ public class StoreJSONSerializer implements VeniceSerializer<Store> {
     private final ObjectMapper mapper = new ObjectMapper();
 
     public StoreJSONSerializer() {
-        mapper.getDeserializationConfig().addMixInAnnotations(Store.class, StoreSerializerMixin.class);
-        mapper.getDeserializationConfig().addMixInAnnotations(Version.class,VersionSerializerMixin.class);
+        addMixin(Store.class, StoreSerializerMixin.class);
+        addMixin(Version.class, VersionSerializerMixin.class);
+        addMixin(HybridStoreConfig.class, HybridStoreConfigSerializerMixin.class);
         // Ignore unknown properties
         mapper.configure(DeserializationConfig.Feature.FAIL_ON_UNKNOWN_PROPERTIES, false);
+    }
+
+    private void addMixin(Class veniceClass, Class serializerClass) {
+        mapper.getDeserializationConfig().addMixInAnnotations(veniceClass, serializerClass);
     }
 
     @Override
@@ -59,9 +65,8 @@ public class StoreJSONSerializer implements VeniceSerializer<Store> {
             @JsonProperty("enableReads") boolean enableReads,
             @JsonProperty("currentVersion") int currentVersion,
             @JsonProperty("storageQuotaInByte") long storageQuotaInByte,
-            @JsonProperty("readQuotaInCU") long readQuotaInCU) {
-
-        }
+            @JsonProperty("readQuotaInCU") long readQuotaInCU,
+            @JsonProperty("hybridStoreConfig") HybridStoreConfig hybridStoreConfig) {}
     }
 
     /**
@@ -69,9 +74,19 @@ public class StoreJSONSerializer implements VeniceSerializer<Store> {
      */
     public static class VersionSerializerMixin {
         @JsonCreator
-        public VersionSerializerMixin(@JsonProperty("storeName") String storeName,
-            @JsonProperty("number") int number, @JsonProperty("createdTime") long createdTime) {
+        public VersionSerializerMixin(
+            @JsonProperty("storeName") String storeName,
+            @JsonProperty("number") int number,
+            @JsonProperty("createdTime") long createdTime) {}
+    }
 
-        }
+    /**
+     * Mixin used to add the annotation to figure out the constructor used by Jackson lib when deserialize the version
+     */
+    public static class HybridStoreConfigSerializerMixin {
+        @JsonCreator
+        public HybridStoreConfigSerializerMixin(
+            @JsonProperty("rewindTimeInSeconds") long rewindTimeInSeconds,
+            @JsonProperty("offsetLagThresholdToGoOnline") long offsetLagThresholdToGoOnline) {}
     }
 }
