@@ -95,20 +95,22 @@ public class Store {
    */
   private long readQuotaInCU = 0;
 
+  /**
+   * Properties related to Hybrid Store behavior. If absent (null), then the store is not hybrid.
+   */
+  private HybridStoreConfig hybridStoreConfig;
+
   public Store(@NotNull String name, @NotNull String owner, long createdTime, @NotNull PersistenceType persistenceType,
       @NotNull RoutingStrategy routingStrategy, @NotNull ReadStrategy readStrategy,
       @NotNull OfflinePushStrategy offlinePushStrategy) {
     this(name, owner, createdTime, persistenceType, routingStrategy, readStrategy, offlinePushStrategy, true, true,
-        NON_EXISTING_VERSION, DEFAULT_STORAGE_QUOTA, DEFAULT_READ_QUOTA);
-
+        NON_EXISTING_VERSION, DEFAULT_STORAGE_QUOTA, DEFAULT_READ_QUOTA, null);
   }
-
-
 
   public Store(@NotNull String name, @NotNull String owner, long createdTime, @NotNull PersistenceType persistenceType,
       @NotNull RoutingStrategy routingStrategy, @NotNull ReadStrategy readStrategy,
       @NotNull OfflinePushStrategy offlinePushStrategy, boolean enableWrites, boolean enableReads, int currentVersion,
-      long storageQuotaInByte, long readQuotaInCU) {
+      long storageQuotaInByte, long readQuotaInCU, HybridStoreConfig hybridStoreConfig) {
     if (!isValidStoreName(name)) {
       throw new VeniceException("Invalid store name: " + name);
     }
@@ -125,6 +127,7 @@ public class Store {
     this.storageQuotaInByte = storageQuotaInByte;
     this.currentVersion = currentVersion;
     this.readQuotaInCU = readQuotaInCU;
+    this.hybridStoreConfig = hybridStoreConfig;
   }
 
   /**
@@ -257,6 +260,18 @@ public class Store {
 
   public void setReadQuotaInCU(long readQuotaInCU) {
     this.readQuotaInCU = readQuotaInCU;
+  }
+
+  public HybridStoreConfig getHybridStoreConfig() {
+    return hybridStoreConfig;
+  }
+
+  public void setHybridStoreConfig(HybridStoreConfig hybridStoreConfig) {
+    this.hybridStoreConfig = hybridStoreConfig;
+  }
+
+  public boolean isHybrid() {
+    return null != hybridStoreConfig;
   }
 
   /**
@@ -430,66 +445,6 @@ public class Store {
   }
 
   @Override
-  public boolean equals(Object o) {
-    if (this == o) {
-      return true;
-    }
-    if (o == null || getClass() != o.getClass()) {
-      return false;
-    }
-
-    Store store = (Store) o;
-
-    if (createdTime != store.createdTime) {
-      return false;
-    }
-    if (currentVersion != store.currentVersion) {
-      return false;
-    }
-    if (!name.equals(store.name)) {
-      return false;
-    }
-    if (!owner.equals(store.owner)) {
-      return false;
-    }
-    if (partitionCount != store.partitionCount) {
-      return false;
-    }
-    if (!persistenceType.equals(store.persistenceType)) {
-      return false;
-    }
-    if (!routingStrategy.equals(store.routingStrategy)) {
-      return false;
-    }
-    if (!readStrategy.equals(store.readStrategy)) {
-      return false;
-    }
-    if (!offLinePushStrategy.equals(store.offLinePushStrategy)) {
-      return false;
-    }
-    if (enableWrites != store.enableWrites) {
-      return false;
-    }
-    if (enableReads != store.enableReads) {
-      return false;
-    }
-    if (largestUsedVersionNumber != store.largestUsedVersionNumber){
-      return false;
-    }
-    if (storageQuotaInByte != store.storageQuotaInByte) {
-      return false;
-    }
-    if (readQuotaInCU != store.readQuotaInCU) {
-      return false;
-    }
-    return versions.equals(store.versions);
-  }
-
-  public void setPartitionCount(int partitionCount) {
-    this.partitionCount = partitionCount;
-  }
-
-  @Override
   public int hashCode() {
     int result = name.hashCode();
     result = 31 * result + owner.hashCode();
@@ -497,16 +452,46 @@ public class Store {
     result = 31 * result + currentVersion;
     result = 31 * result + partitionCount;
     result = 31 * result + (enableWrites ? 1 : 0);
-    result = 31 * result + (enableReads ? 1: 0);
+    result = 31 * result + (enableReads ? 1 : 0);
     result = 31 * result + (int) (storageQuotaInByte ^ (storageQuotaInByte >>> 32));
-    result = 31 * result + largestUsedVersionNumber;
     result = 31 * result + persistenceType.hashCode();
     result = 31 * result + routingStrategy.hashCode();
     result = 31 * result + readStrategy.hashCode();
     result = 31 * result + offLinePushStrategy.hashCode();
-    result = 31 * result + (int) (readQuotaInCU ^ (readQuotaInCU >>> 32));
     result = 31 * result + versions.hashCode();
+    result = 31 * result + largestUsedVersionNumber;
+    result = 31 * result + (int) (readQuotaInCU ^ (readQuotaInCU >>> 32));
+    result = 31 * result + (hybridStoreConfig != null ? hybridStoreConfig.hashCode() : 0);
     return result;
+  }
+
+  @Override
+  public boolean equals(Object o) {
+    if (this == o) return true;
+    if (o == null || getClass() != o.getClass()) return false;
+
+    Store store = (Store) o;
+
+    if (createdTime != store.createdTime) return false;
+    if (currentVersion != store.currentVersion) return false;
+    if (partitionCount != store.partitionCount) return false;
+    if (enableWrites != store.enableWrites) return false;
+    if (enableReads != store.enableReads) return false;
+    if (storageQuotaInByte != store.storageQuotaInByte) return false;
+    if (largestUsedVersionNumber != store.largestUsedVersionNumber) return false;
+    if (readQuotaInCU != store.readQuotaInCU) return false;
+    if (!name.equals(store.name)) return false;
+    if (!owner.equals(store.owner)) return false;
+    if (persistenceType != store.persistenceType) return false;
+    if (routingStrategy != store.routingStrategy) return false;
+    if (readStrategy != store.readStrategy) return false;
+    if (offLinePushStrategy != store.offLinePushStrategy) return false;
+    if (!versions.equals(store.versions)) return false;
+    return !(hybridStoreConfig != null ? !hybridStoreConfig.equals(store.hybridStoreConfig) : store.hybridStoreConfig != null);
+  }
+
+  public void setPartitionCount(int partitionCount) {
+    this.partitionCount = partitionCount;
   }
 
   /**
@@ -527,7 +512,8 @@ public class Store {
                   enableReads,
                   currentVersion,
                   storageQuotaInByte,
-                  readQuotaInCU);
+                  readQuotaInCU,
+                  hybridStoreConfig);
 
     clonedStore.setPartitionCount(partitionCount);
     clonedStore.setLargestUsedVersionNumber(largestUsedVersionNumber);
