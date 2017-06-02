@@ -49,6 +49,10 @@ public class ServiceFactory {
     return getStatefulService(KafkaBrokerWrapper.SERVICE_NAME, KafkaBrokerWrapper.generateService(zkServerWrapper));
   }
 
+  public static BrooklinWrapper getBrooklinWrapper(KafkaBrokerWrapper kafka){
+    return getService(BrooklinWrapper.SERVICE_NAME, BrooklinWrapper.generateService(kafka));
+  }
+
   /**
    * @return an instance of {@link com.linkedin.venice.controller.VeniceControllerService}
    */

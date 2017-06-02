@@ -8,4 +8,5 @@ include 'venice-schema-common'
 include 'venice-admin-tool'
 include 'venice-test-common'
 include 'venice-samza'
+include 'venice-brooklin'
 

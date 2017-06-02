@@ -1,18 +1,15 @@
 package com.linkedin.venice.integration.utils;
 
-import kafka.metrics.KafkaMetricsReporter;
-import kafka.server.KafkaConfig;
-import kafka.server.KafkaServer;
-import kafka.utils.SystemTime$;
-import kafka.utils.Time$;
-import org.apache.kafka.common.utils.Time;
-import scala.Option;
-import scala.collection.Seq;
-
 import java.io.File;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Map;
+import kafka.metrics.KafkaMetricsReporter;
+import kafka.server.KafkaConfig;
+import kafka.server.KafkaServer;
+import kafka.utils.SystemTime$;
+import scala.Option;
+
 
 /**
  * This class contains a Kafka Broker, and provides facilities for cleaning up
