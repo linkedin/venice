@@ -52,7 +52,7 @@ public abstract class ProcessWrapper implements Closeable {
     try {
       return getAddress();
     } catch (Exception e){ /* VeniceClusterWrapper throws exceptions on getHost() and getPort() */
-      return "No Address";
+      return "No Address: " + e.getMessage();
     }
   }
 

@@ -1,0 +1,20 @@
+task buildJar(type: Jar) {
+  manifest {
+    attributes 'Implementation-Title': 'Venice Brooklin',
+            'Implementation-Version': version
+  }
+  baseName = project.name
+  from { configurations.compile.collect { it.isDirectory() ? it : zipTree(it) } }
+  with jar
+}
+
+dependencies {
+
+  // Schema related dependencies
+  compile project(':venice-schema-common')
+  compile project(':venice-common') //TODO, pull venice writer out of venice common so this is a smaller dependency
+
+  compile libraries.brooklinKafkaTransport
+  compile libraries.brooklinKafka
+  compile libraries.brooklinCommon
+}

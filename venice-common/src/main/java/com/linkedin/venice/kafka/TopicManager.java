@@ -1,7 +1,8 @@
 package com.linkedin.venice.kafka;
 
 import com.linkedin.venice.exceptions.VeniceException;
-
+import com.linkedin.venice.utils.Time;
+import com.linkedin.venice.utils.Utils;
 import java.io.Closeable;
 import java.io.IOException;
 import java.util.Arrays;
@@ -11,9 +12,6 @@ import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
 import java.util.StringJoiner;
-
-import com.linkedin.venice.utils.Time;
-import com.linkedin.venice.utils.Utils;
 import kafka.admin.AdminUtils;
 import kafka.admin.RackAwareMode;
 import kafka.log.LogConfig;
@@ -27,6 +25,7 @@ import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.common.errors.TopicExistsException;
 import org.apache.kafka.common.PartitionInfo;
 import org.apache.kafka.common.TopicPartition;
+import org.apache.kafka.common.errors.TopicExistsException;
 import org.apache.kafka.common.serialization.ByteArrayDeserializer;
 import org.apache.log4j.Logger;
 import org.codehaus.jackson.map.ObjectMapper;
@@ -175,6 +174,16 @@ public class TopicManager implements Closeable {
     }
     consumer.assign(Arrays.asList());
     return offsets;
+  }
+
+  /**
+   * Get a list of {@link PartitionInfo} objects for the specified topic.
+   * @param topic
+   * @return
+   */
+  public synchronized List<PartitionInfo> getPartitions(String topic){
+    KafkaConsumer<byte[], byte[]> consumer = getConsumer();
+    return consumer.partitionsFor(topic);
   }
 
   /**

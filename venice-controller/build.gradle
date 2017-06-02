@@ -27,6 +27,11 @@ dependencies {
 
   compile libraries.zkclient // It's necessary to pull in the most recent version of zkclient explicitly, otherwise Helix won't have it...
   compile libraries.kafka
+
+  compile libraries.brooklinKafkaTransport
+  compile libraries.brooklinKafka
+  compile libraries.brooklinCommon
+
   compile project(':venice-common')
 
   compile 'commons-io:commons-io:2.4'
@@ -36,5 +41,6 @@ dependencies {
   testCompile project(':venice-server')
   testCompile project(':venice-router')
   testCompile 'commons-io:commons-io:2.4'
+
 }
 

@@ -356,6 +356,11 @@ public class VeniceClusterWrapper extends ProcessWrapper {
     throw new UnsupportedOperationException("Cluster does not support to create new process.");
   }
 
+  /**
+   * Create a new store and a version for that store
+   * uses "string" as both key and value schemas
+   * @return
+   */
   public VersionCreationResponse getNewStoreVersion() {
     String storeName = TestUtils.getUniqueString("venice-store");
     String storeOwner = TestUtils.getUniqueString("store-owner");
