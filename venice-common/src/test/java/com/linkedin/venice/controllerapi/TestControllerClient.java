@@ -89,7 +89,7 @@ public class TestControllerClient {
     String uriPattern = ControllerRoute.MASTER_CONTROLLER.getPath() + ".*cluster_name=" + veniceClusterName + ".*";
     mockController.addResponseForUriPattern(uriPattern,
         constructMasterControllerResponse(veniceClusterName, fakeMasterControllerUri));
-    try(D2ControllerClient d2ControllerClient = new D2ControllerClient(veniceClusterName, mockController.getZkAddress())) {
+    try(D2ControllerClient d2ControllerClient = new D2ControllerClient(d2ServiceName, veniceClusterName, mockController.getZkAddress())) {
       String masterControllerUrl = d2ControllerClient.getMasterControllerUrl(mockController.getZkAddress());
       Assert.assertEquals(fakeMasterControllerUri, masterControllerUrl);
     }
