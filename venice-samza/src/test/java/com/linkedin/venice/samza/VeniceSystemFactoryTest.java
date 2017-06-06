@@ -49,7 +49,7 @@ private static final String KEY_SCHEMA = "\"string\"";
 
     //Configure and create a SystemProducer for Venice
     Map<String, String> samzaConfig = new HashMap<>();
-    String configPrefix = SYSTEMS_PREFIX + DOT + veniceSystemName + DOT;
+    String configPrefix = SYSTEMS_PREFIX + veniceSystemName + DOT;
     samzaConfig.put(configPrefix + VENICE_PUSH_TYPE, ControllerApiConstants.PushType.BATCH.toString());
     samzaConfig.put(configPrefix + VENICE_URL, venice.getRandomRouterURL());
     samzaConfig.put(configPrefix + VENICE_CLUSTER, venice.getClusterName());
@@ -72,7 +72,7 @@ private static final String KEY_SCHEMA = "\"string\"";
     TestUtils.waitForNonDeterministicCompletion(5, TimeUnit.SECONDS, () -> client.getStore(storeName).getStore().getCurrentVersion() == 1);
 
     //read the record out of Venice
-    AvroGenericStoreClient<GenericRecord> storeClient = AvroStoreClientFactory.getAndStartAvroGenericStoreClient(venice.getRandomRouterURL(), storeName);
+    AvroGenericStoreClient<String, GenericRecord> storeClient = AvroStoreClientFactory.getAndStartAvroGenericStoreClient(venice.getRandomRouterURL(), storeName);
     GenericRecord recordFromVenice = storeClient.get("keystring").get(1, TimeUnit.SECONDS);
 
     //verify we got the right record

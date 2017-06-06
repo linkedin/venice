@@ -2,7 +2,6 @@ package com.linkedin.venice.samza;
 
 import com.linkedin.venice.controllerapi.ControllerApiConstants;
 import java.util.Arrays;
-import java.util.Map;
 import java.util.stream.Collectors;
 import org.apache.samza.SamzaException;
 import org.apache.samza.config.Config;
