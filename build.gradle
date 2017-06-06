@@ -152,7 +152,6 @@ subprojects {
 task buildAll {
   dependsOn 'venice-common:build'
   dependsOn 'venice-thin-client:build'
-  dependsOn 'venice-thin-client:test'
   dependsOn 'venice-server:build'
   dependsOn 'venice-controller:build'
   dependsOn 'venice-router:build'
@@ -166,6 +165,7 @@ task buildAll {
   // dependsOn 'hadoop-to-venice-bridge:installApp'
   dependsOn 'venice-admin-tool:build'
   dependsOn 'venice-test-common:build'
+  dependsOn 'venice-samza:build'
 }
 
 task integrationtest {

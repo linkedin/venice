@@ -5,7 +5,7 @@ import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.serialization.DefaultSerializer;
-import com.linkedin.venice.serialization.avro.AvroGenericSerializer;
+import com.linkedin.venice.serialization.avro.VeniceAvroGenericSerializer;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.VeniceWriter;
 import java.io.ByteArrayOutputStream;
@@ -55,7 +55,7 @@ public class VeniceSystemProducer implements SystemProducer {
    * key is schema
    * value is Avro serializer
    */
-  private ConcurrentMap<String, AvroGenericSerializer> serializers = new ConcurrentHashMap<>();
+  private ConcurrentMap<String, VeniceAvroGenericSerializer> serializers = new ConcurrentHashMap<>();
 
   /**
    * key is Venice store name (same as Samza stream name)
@@ -171,8 +171,8 @@ public class VeniceSystemProducer implements SystemProducer {
 
   private byte[] serializeObject(String topic, Object input) {
     if (input instanceof IndexedRecord) {
-      AvroGenericSerializer serializer = serializers.computeIfAbsent(
-          ((IndexedRecord) input).getSchema().toString(), AvroGenericSerializer::new);
+      VeniceAvroGenericSerializer serializer = serializers.computeIfAbsent(
+          ((IndexedRecord) input).getSchema().toString(), VeniceAvroGenericSerializer::new);
       return serializer.serialize(topic, input);
     } else if (input instanceof String) {
       return serializeString((String) input);
