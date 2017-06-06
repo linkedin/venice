@@ -11,6 +11,7 @@ import com.linkedin.venice.utils.TestUtils;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
@@ -124,8 +125,9 @@ public class VeniceStateModelFactoryTest {
       throws ExecutionException, InterruptedException {
     int threadPoolSize = 1;
     LinkedBlockingQueue<Runnable> queue = new LinkedBlockingQueue<>();
-    ExecutorService executor = new ThreadPoolExecutor(threadPoolSize, threadPoolSize, 300L, TimeUnit.SECONDS, queue,
+    ThreadPoolExecutor executor = new ThreadPoolExecutor(threadPoolSize, threadPoolSize, 2L, TimeUnit.SECONDS, queue,
         new DaemonThreadFactory("venice-state-transition"));
+    executor.allowCoreThreadTimeOut(true);
     factory = new VeniceStateModelFactory(mockStoreIngestionService, mockStorageService, mockConfigLoader, executor);
     ExecutorService testExecutor = factory.getExecutorService("");
     Assert.assertEquals(testExecutor, executor);
@@ -138,18 +140,23 @@ public class VeniceStateModelFactoryTest {
       });
     }
     Assert.assertEquals(queue.size(), taskCount);
+    // Test could fail due to the signal() is executed before await()
+    TestUtils.waitForNonDeterministicCompletion(1000, TimeUnit.MILLISECONDS, () -> blockedTask.isWaiting);
     blockedTask.resume();
 
     // After resume the blocking task, it's executed and return true.
     TestUtils.waitForNonDeterministicCompletion(1000, TimeUnit.MILLISECONDS, () -> blockedTask.result);
     // eventually, the queue would be empty because all of task had been executed.
     TestUtils.waitForNonDeterministicCompletion(1000, TimeUnit.MILLISECONDS, () -> queue.isEmpty());
+    // Make sure the idle thread will be collected eventually.
+    TestUtils.waitForNonDeterministicCompletion(3000, TimeUnit.MILLISECONDS, ()->executor.getPoolSize() == 0);
   }
 
   private class BlockTask implements Runnable {
     private Lock lock = new ReentrantLock();
     private Condition condition = lock.newCondition();
     private volatile boolean result = false;
+    private volatile boolean isWaiting = false;
 
     public void resume() {
       lock.lock();
@@ -163,12 +170,14 @@ public class VeniceStateModelFactoryTest {
     @Override
     public void run() {
       lock.lock();
+      isWaiting = true;
       try {
         condition.await();
         result = true;
       } catch (InterruptedException e) {
         result = false;
       } finally {
+        isWaiting = false;
         lock.unlock();
       }
     }

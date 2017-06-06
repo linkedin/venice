@@ -16,11 +16,6 @@ public class VeniceServerConfig extends VeniceClusterConfig {
   private final boolean enableServerWhiteList;
   private final boolean autoCreateDataPath; // default true
   /**
-   * Minimum number of thread that the thread pool would keep to run the Helix state transition. If a thread is idle,
-   * the thread pool would destroy it as long as the number of thread is larger than this number.
-   */
-  private final int minStateTransitionThreadNumber;
-  /**
    * Maximum number of thread that the thread pool would keep to run the Helix state transition. The thread pool would
    * create a thread for a state transition until the number of thread equals to this number.
    */
@@ -68,7 +63,6 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     autoCreateDataPath = Boolean.valueOf(serverProperties.getString(AUTOCREATE_DATA_PATH, "true"));
     bdbServerConfig = new BdbServerConfig(serverProperties);
     enableServerWhiteList = serverProperties.getBoolean(ENABLE_SERVER_WHITE_LIST, false);
-    minStateTransitionThreadNumber = serverProperties.getInt(MIN_STATE_TRANSITION_THREAD_NUMBER, 40);
     maxStateTransitionThreadNumber = serverProperties.getInt(MAX_STATE_TRANSITION_THREAD_NUMBER, 100);
     storeWriterNumber = serverProperties.getInt(STORE_WRITER_NUMBER, 8);
     storeWriterBufferMemoryCapacity = serverProperties.getSizeInBytes(STORE_WRITER_BUFFER_MEMORY_CAPACITY, 125 * 1024 * 1024); // 125MB
@@ -99,10 +93,6 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public boolean isServerWhiteLIstEnabled() {
     return enableServerWhiteList;
-  }
-
-  public int getMinStateTransitionThreadNumber() {
-    return minStateTransitionThreadNumber;
   }
 
   public int getMaxStateTransitionThreadNumber() {
