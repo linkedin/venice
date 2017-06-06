@@ -60,7 +60,7 @@ public class HelixParticipationService extends AbstractVeniceService implements 
 
   private HelixManager manager;
 
-  private ExecutorService helixStateTransitionExecutorService;
+  private ThreadPoolExecutor helixStateTransitionExecutorService;
 
   private HelixStatusMessageChannel messageChannel;
 
@@ -78,10 +78,16 @@ public class HelixParticipationService extends AbstractVeniceService implements 
     this.zkAddress = zkAddress;
     this.veniceConfigLoader = veniceConfigLoader;
     instance = new Instance(participantName, Utils.getHostName(), port);
+    // Create a thread pool used to execute incoming state transitions. Set corePoolSize and maxPoolSize as the same
+    // value, but enable allowCoreThreadTimeOut. So the expected behavior is pool will create a new thread if the number
+    // of running threads is fewer than corePoolSize, otherwise add this task into queue. If a thread is idle for more
+    // than 300 seconds, pool will collect this thread.
     helixStateTransitionExecutorService =
-        new ThreadPoolExecutor(veniceConfigLoader.getVeniceServerConfig().getMinStateTransitionThreadNumber(),
+        new ThreadPoolExecutor(veniceConfigLoader.getVeniceServerConfig().getMaxStateTransitionThreadNumber(),
             veniceConfigLoader.getVeniceServerConfig().getMaxStateTransitionThreadNumber(), 300L, TimeUnit.SECONDS,
             new LinkedBlockingQueue<>(), new DaemonThreadFactory("venice-state-transition"));
+    helixStateTransitionExecutorService.allowCoreThreadTimeOut(true);
+
     stateModelFactory = new VeniceStateModelFactory(storeIngestionService, storageService, veniceConfigLoader,
         helixStateTransitionExecutorService);
   }
