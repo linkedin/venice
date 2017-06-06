@@ -272,7 +272,7 @@ public class ZkServerWrapper extends ProcessWrapper {
     List<String> addedPaths = new ArrayList<>();
     try {
       ZooKeeper zooKeeper = new ZooKeeper(zkConnection, 10000, event -> {});
-      TestUtils.waitForNonDeterministicCompletion(3, TimeUnit.SECONDS, () -> {
+      TestUtils.waitForNonDeterministicCompletion(5, TimeUnit.SECONDS, () -> {
         return zooKeeper.getState().equals(ZooKeeper.States.CONNECTED);
       });
       for (int i=0; i< count; i++) {

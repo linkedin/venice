@@ -314,7 +314,10 @@ public class TestAdminConsumptionTask {
     executor.awaitTermination(TIMEOUT, TimeUnit.MILLISECONDS);
   }
 
-  @Test (timeOut = TIMEOUT  * 2)
+  /**
+   * This test is flaky on slower hardware, with a short timeout ):
+   */
+  @Test (timeOut = TIMEOUT * 6)
   public void testSkipMessageEndToEnd() throws ExecutionException, InterruptedException {
     KafkaBrokerWrapper kafka = ServiceFactory.getKafkaBroker();
     TopicManager topicManager = new TopicManager(kafka.getZkAddress());
@@ -338,7 +341,7 @@ public class TestAdminConsumptionTask {
     Assert.assertFalse(controller.getVeniceAdmin().hasStore(clusterName, "good-store"));
 
     new ControllerClient(clusterName, controller.getControllerUrl()).skipAdminMessage(Long.toString(badOffset));
-    TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
+    TestUtils.waitForNonDeterministicAssertion(TIMEOUT * 3, TimeUnit.MILLISECONDS, () -> {
       Assert.assertTrue(controller.getVeniceAdmin().hasStore(clusterName, "good-store"));
     });
   }
