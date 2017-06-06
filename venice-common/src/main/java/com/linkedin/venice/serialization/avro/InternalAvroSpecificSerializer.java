@@ -4,6 +4,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceMessageException;
 import com.linkedin.venice.serialization.VeniceSerializer;
 import com.linkedin.venice.utils.ByteUtils;
+import com.linkedin.venice.utils.ReflectUtils;
 import com.linkedin.venice.utils.Utils;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -15,6 +16,7 @@ import org.apache.avro.io.BinaryEncoder;
 import org.apache.avro.io.Decoder;
 import org.apache.avro.io.DecoderFactory;
 import org.apache.avro.io.Encoder;
+import org.apache.avro.specific.SpecificData;
 import org.apache.avro.specific.SpecificDatumReader;
 import org.apache.avro.specific.SpecificDatumWriter;
 import org.apache.avro.specific.SpecificRecord;
@@ -57,7 +59,7 @@ abstract public class InternalAvroSpecificSerializer<SPECIFIC_RECORD extends Spe
   private static final DecoderFactory DECODER_FACTORY = new DecoderFactory();
 
   /** Used to serialize objects into binary-encoded Avro according to the latest protocol version. */
-  private SpecificDatumWriter writer;
+  private final SpecificDatumWriter writer;
 
   /** Maintains the mapping between protocol version and the corresponding {@link SpecificDatumReader<SPECIFIC_RECORD>} */
   private final Map<Byte, SpecificDatumReader<SPECIFIC_RECORD>> readerMap = new HashMap<>();
@@ -65,7 +67,7 @@ abstract public class InternalAvroSpecificSerializer<SPECIFIC_RECORD extends Spe
   protected InternalAvroSpecificSerializer(AvroProtocolDefinition protocolDef) {
     this.magicByte = protocolDef.magicByte;
     this.currentProtocolVersion = protocolDef.currentProtocolVersion;
-    initializeAvroSpecificDatumReaderAndWriter(protocolDef);
+    this.writer = initializeAvroSpecificDatumReaderAndWriter(protocolDef);
   }
 
   /**
@@ -186,7 +188,9 @@ abstract public class InternalAvroSpecificSerializer<SPECIFIC_RECORD extends Spe
    *
    * @param protocolDef
    */
-  private void initializeAvroSpecificDatumReaderAndWriter(AvroProtocolDefinition protocolDef) {
+  private SpecificDatumWriter initializeAvroSpecificDatumReaderAndWriter(AvroProtocolDefinition protocolDef) {
+    Schema compiledProtocol = SpecificData.get().getSchema(protocolDef.specificRecordClass); // protocolSchemaMap.get(this.currentProtocolVersion);
+    byte compiledProtocolVersion = -1;
     String className = protocolDef.specificRecordClass.getSimpleName();
     Map<Byte, Schema> protocolSchemaMap = new HashMap<>();
     final int initialVersion = 1; // TODO: Consider making configurable if we ever need to fully deprecate some old versions
@@ -197,6 +201,9 @@ abstract public class InternalAvroSpecificSerializer<SPECIFIC_RECORD extends Spe
       try {
         Schema schema = Utils.getSchemaFromResource(versionPath);
         protocolSchemaMap.put((byte) version, schema);
+        if (schema.equals(compiledProtocol)) {
+          compiledProtocolVersion = (byte) version;
+        }
         version++;
       } catch (IOException e) {
         // Then the schema was not found at the requested path
@@ -207,23 +214,43 @@ abstract public class InternalAvroSpecificSerializer<SPECIFIC_RECORD extends Spe
         }
       }
     }
-    /** Initialize {@link #readerMap} based on known protocol versions */
-    Schema currentProtocol = protocolSchemaMap.get(this.currentProtocolVersion);
-    if (null == currentProtocol) {
+
+    /** Ensure that we are using Avro properly. */
+    if (compiledProtocolVersion == -1) {
+      throw new VeniceException("Failed to identify which version is currently compiled for " + protocolDef.name() +
+          ". This could happen if the avro schemas have been altered without recompiling the auto-generated classes" +
+          ", or if the auto-generated classes were edited directly instead of generating them from the schemas.");
+    }
+
+    /**
+     * Verify that the intended current protocol version defined in the {@link AvroProtocolDefinition} is available
+     * in the jar's resources and that it matches the auto-generated class that is actually compiled.
+     *
+     * N.B.: An alternative design would have been to assume that what is compiled is the intended version, but we
+     * are instead making this a very explicit choice by requiring the change in both places and failing loudly
+     * when there is an inconsistency.
+     */
+    Schema intendedCurrentProtocol = protocolSchemaMap.get(this.currentProtocolVersion);
+    if (null == intendedCurrentProtocol) {
       throw new VeniceException("Failed to get schema for current version: " + this.currentProtocolVersion
           + " class: " + className);
+    } else if (!intendedCurrentProtocol.equals(compiledProtocol)) {
+      throw new VeniceException("The intended protocol version (" + this.currentProtocolVersion +
+          ") does not match the compiled protocol version (" + compiledProtocolVersion + ").");
     }
+
+    /** Initialize {@link #readerMap} based on known protocol versions */
     for (Map.Entry<Byte, Schema> entry : protocolSchemaMap.entrySet()) {
       SpecificDatumReader<SPECIFIC_RECORD> specificDatumReader = new SpecificDatumReader<>();
       specificDatumReader.setSchema(entry.getValue()); // Writer's schema
       try {
-        specificDatumReader.setExpected(currentProtocol); // Reader's schema
+        specificDatumReader.setExpected(compiledProtocol); // Reader's schema
       } catch (IOException e) {
         throw new VeniceException("Failed to setup reader schema", e);
       }
       this.readerMap.put(entry.getKey(), specificDatumReader);
     }
 
-    this.writer = new SpecificDatumWriter(currentProtocol);
+    return new SpecificDatumWriter(protocolDef.specificRecordClass);
   }
 }

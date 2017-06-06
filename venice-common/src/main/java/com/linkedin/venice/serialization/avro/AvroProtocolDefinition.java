@@ -47,4 +47,5 @@ public enum AvroProtocolDefinition {
     this.currentProtocolVersion = (byte) currentProtocolVersion;
     this.specificRecordClass = specificRecordClass;
   }
+
 }
