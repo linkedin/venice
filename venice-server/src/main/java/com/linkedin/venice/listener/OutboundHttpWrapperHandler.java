@@ -1,6 +1,9 @@
 package com.linkedin.venice.listener;
 
 import com.linkedin.venice.HttpConstants;
+import com.linkedin.venice.listener.response.MultiGetResponseWrapper;
+import com.linkedin.venice.listener.response.HttpShortcutResponse;
+import com.linkedin.venice.listener.response.StorageResponseObject;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 import io.netty.channel.ChannelHandlerContext;
@@ -13,8 +16,7 @@ import java.nio.charset.StandardCharsets;
 
 import static io.netty.handler.codec.http.HttpHeaders.Names.CONTENT_LENGTH;
 import static io.netty.handler.codec.http.HttpHeaders.Names.CONTENT_TYPE;
-import static io.netty.handler.codec.http.HttpResponseStatus.INTERNAL_SERVER_ERROR;
-import static io.netty.handler.codec.http.HttpResponseStatus.OK;
+import static io.netty.handler.codec.http.HttpResponseStatus.*;
 import static io.netty.handler.codec.http.HttpVersion.HTTP_1_1;
 
 /***
@@ -32,22 +34,39 @@ public class OutboundHttpWrapperHandler extends ChannelOutboundHandlerAdapter {
   @Override
   public void write(ChannelHandlerContext ctx, Object msg, ChannelPromise promise) throws Exception {
     ByteBuf body;
-    String contentType = HttpConstants.APPLICATION_OCTET;
+    String contentType = HttpConstants.AVRO_BINARY;
     HttpResponseStatus responseStatus = OK;
     long offset = -1;
     int schemaId = -1;
-    if (msg instanceof StorageResponseObject){
+    String partitionOffsets = null;
+    if (msg instanceof StorageResponseObject) {
       StorageResponseObject obj = (StorageResponseObject) msg;
-      body = obj.getValueRecord().getData();
-      schemaId = obj.getValueRecord().getSchemaId();
+      statsHandler.setBdbQueryLatency(obj.getBdbQueryLatency());
       offset = obj.getOffset();
-    } else if (msg instanceof HttpShortcutResponse){
+      if (obj.isFound()) {
+        body = obj.getValueRecord().getData();
+        schemaId = obj.getValueRecord().getSchemaId();
+        statsHandler.setSuccessRequestKeyCount(1);
+      } else {
+        // not found
+        body = Unpooled.EMPTY_BUFFER;
+        responseStatus = NOT_FOUND;
+      }
+    } else if (msg instanceof MultiGetResponseWrapper) {
+      MultiGetResponseWrapper response = (MultiGetResponseWrapper) msg;
+      statsHandler.setBdbQueryLatency(response.getBdbQueryLatency());
+      statsHandler.setSuccessRequestKeyCount(response.getRecordCount());
+      body = Unpooled.wrappedBuffer(response.serializedMultiGetResponse());
+      schemaId = response.getResponseSchemaId();
+      partitionOffsets = response.serializedPartitionOffsetMap();
+    } else if (msg instanceof HttpShortcutResponse) {
       responseStatus = ((HttpShortcutResponse) msg).getStatus();
       body = Unpooled.wrappedBuffer(((HttpShortcutResponse) msg).getMessage().getBytes(StandardCharsets.UTF_8));
       contentType = HttpConstants.TEXT_PLAIN;
     } else {
       responseStatus = INTERNAL_SERVER_ERROR;
       body = Unpooled.wrappedBuffer("Unrecognized object in OutboundHttpWrapperHandler".getBytes(StandardCharsets.UTF_8));
+      contentType = HttpConstants.TEXT_PLAIN;
     }
 
     statsHandler.setResponseStatus(responseStatus);
@@ -56,6 +75,9 @@ public class OutboundHttpWrapperHandler extends ChannelOutboundHandlerAdapter {
     response.headers().set(CONTENT_LENGTH, body.readableBytes());
     response.headers().set(HttpConstants.VENICE_OFFSET, offset);
     response.headers().set(HttpConstants.VENICE_SCHEMA_ID, schemaId);
+    if (null != partitionOffsets) {
+      response.headers().set(HttpConstants.VENICE_PARTITION_OFFSET_MAP, partitionOffsets);
+    }
 
     /** {@link io.netty.handler.timeout.IdleStateHandler} is in charge of detecting the state
      *  of connection, and {@link GetRequestHttpHandler} will close the connection if necessary.

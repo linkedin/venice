@@ -49,9 +49,9 @@ public class ProducerConsumerReaderIntegrationTest {
 
   @BeforeMethod
   public void setUp() throws InterruptedException, ExecutionException, VeniceClientException {
-    boolean sslTrue = true;
+    boolean sslEnabled = true;
     Utils.thisIsLocalhost();
-    veniceCluster = ServiceFactory.getVeniceCluster(sslTrue);
+    veniceCluster = ServiceFactory.getVeniceCluster(sslEnabled);
 
     // Create test store
     VersionCreationResponse creationResponse = veniceCluster.getNewStoreVersion();

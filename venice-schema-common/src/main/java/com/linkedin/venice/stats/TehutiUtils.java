@@ -66,4 +66,27 @@ public class TehutiUtils {
       });
     }
   }
+
+  /**
+   * Generate a ratio stat that is based on two arbitrary {@link MeasurableStat}. It calculates the proportion of
+   * numerator stat over the denominator stat.
+   */
+  public static class SimpleRatioStat extends LambdaStat {
+    public SimpleRatioStat(MeasurableStat numeratorStat, MeasurableStat denominatorStat) {
+      this(numeratorStat, new MetricConfig(), denominatorStat, new MetricConfig());
+    }
+    public SimpleRatioStat(MeasurableStat numeratorStat, MetricConfig numeatorConfig,
+        MeasurableStat denominatorStat, MetricConfig demoniatorConfig) {
+      super(() -> {
+        double numerator = numeratorStat.measure(numeatorConfig, 0);
+        double denominator = denominatorStat.measure(demoniatorConfig, 0);
+
+        if (denominator == 0) {
+          return Double.NaN;
+        }
+
+        return numerator / denominator;
+      });
+    }
+  }
 }

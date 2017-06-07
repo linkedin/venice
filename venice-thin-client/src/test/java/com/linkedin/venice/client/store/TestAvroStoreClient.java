@@ -13,6 +13,7 @@ import static org.mockito.Mockito.*;
 
 import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.serializer.RecordDeserializer;
+import java.util.Collections;
 import org.apache.avro.generic.GenericData;
 import org.testng.Assert;
 import org.testng.annotations.AfterMethod;
@@ -86,11 +87,11 @@ public class TestAvroStoreClient {
     doReturn(new TransportClientResponse(-1, null)).when(mockFuture).get();
     doReturn(mockFuture).when(mockTransportClient)
         .get(eq(AbstractAvroStoreClient.TYPE_STORAGE + "/" + STORE_NAME + "/" +
-            b64key + AbstractAvroStoreClient.B64_FORMAT));
+            b64key + AbstractAvroStoreClient.B64_FORMAT), any());
 
     genericStoreClient.get(testKey);
     // schema queries + key lookup
-    verify(mockTransportClient, atLeast(3)).get(any());
+    verify(mockTransportClient, atLeast(2)).get(any());
   }
 
   @Test(dependsOnMethods = { "testStartClient" })

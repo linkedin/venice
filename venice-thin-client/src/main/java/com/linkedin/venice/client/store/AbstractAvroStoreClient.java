@@ -1,23 +1,22 @@
 package com.linkedin.venice.client.store;
 
+import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.schema.SchemaReader;
 import com.linkedin.venice.client.store.transport.TransportClientResponse;
 import com.linkedin.venice.client.store.transport.D2TransportClient;
 import com.linkedin.venice.client.store.transport.HttpTransportClient;
 import com.linkedin.venice.client.store.transport.TransportClient;
-import com.linkedin.venice.read.protocol.response.MultiGetResponseRecord;
+import com.linkedin.venice.read.protocol.response.MultiGetResponseRecordV1;
 import com.linkedin.venice.schema.avro.ReadAvroProtocolDefinition;
 import com.linkedin.venice.serializer.AvroSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.serializer.RecordSerializer;
-import org.apache.avro.Schema;
-import org.apache.avro.specific.SpecificRecord;
+import com.linkedin.venice.utils.EncodingUtils;
 import org.apache.commons.io.IOUtils;
 
 import javax.validation.constraints.NotNull;
 import java.util.ArrayList;
-import java.util.Base64;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -29,8 +28,18 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
   public static final String TYPE_STORAGE = "storage";
   public static final String B64_FORMAT = "?f=b64";
 
-  /** Encoder to encode store key object */
-  private final Base64.Encoder encoder = Base64.getUrlEncoder();
+  private static final Map<String, String> GET_HEADER_MAP = new HashMap<>();
+  private static final Map<String, String> MULTI_GET_HEADER_MAP = new HashMap<>();
+  static {
+    /**
+     * Hard-code API version of single-get and multi-get to be '1'.
+     * If the header varies request by request, Venice client needs to create a map per request.
+     */
+    GET_HEADER_MAP.put(HttpConstants.VENICE_API_VERSION,
+        Integer.toString(ReadAvroProtocolDefinition.SINGLE_GET_CLIENT_REQUEST_V1.getProtocolVersion()));
+    MULTI_GET_HEADER_MAP.put(HttpConstants.VENICE_API_VERSION,
+        Integer.toString(ReadAvroProtocolDefinition.MULTI_GET_CLIENT_REQUEST_V1.getProtocolVersion()));
+  }
 
   private final Boolean needSchemaReader;
   /** Used to communicate with Venice backend to retrieve necessary store schemas */
@@ -64,7 +73,7 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
   }
 
   private String getStorageRequestPathForSingleKey(byte[] key) {
-    String b64key = encoder.encodeToString(key);
+    String b64key = EncodingUtils.base64EncodeToString(key);
     return getStorageRequestPath() +
         "/" + b64key + B64_FORMAT;
   }
@@ -84,7 +93,7 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
     byte[] serializedKey = keySerializer.serialize(key);
     String requestPath = getStorageRequestPathForSingleKey(serializedKey);
 
-    CompletableFuture<TransportClientResponse> transportFuture = transportClient.get(requestPath);
+    CompletableFuture<TransportClientResponse> transportFuture = transportClient.get(requestPath, GET_HEADER_MAP);
 
     // Deserialization
     CompletableFuture<V> valueFuture = transportFuture.handle(
@@ -132,7 +141,8 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
     byte[] multiGetBody = keySerializer.serializeObjects(keyList);
     String requestPath = getStorageRequestPath();
 
-    CompletableFuture<TransportClientResponse> transportFuture = transportClient.post(requestPath, multiGetBody);
+    CompletableFuture<TransportClientResponse> transportFuture = transportClient.post(requestPath, MULTI_GET_HEADER_MAP,
+        multiGetBody);
     CompletableFuture<Map<K, V>> valueFuture = transportFuture.handle(
         (clientResponse, throwable) -> {
           if (null != throwable) {
@@ -146,10 +156,10 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
             throw new VeniceClientException("No valid schema id received for multi-get request!");
           }
           int responseSchemaId = clientResponse.getSchemaId();
-          RecordDeserializer<MultiGetResponseRecord> deserializer = getMultiGetResponseRecordDeserializer(responseSchemaId);
-          Iterable<MultiGetResponseRecord> records = deserializer.deserializeObjects(clientResponse.getBody());
+          RecordDeserializer<MultiGetResponseRecordV1> deserializer = getMultiGetResponseRecordDeserializer(responseSchemaId);
+          Iterable<MultiGetResponseRecordV1> records = deserializer.deserializeObjects(clientResponse.getBody());
           Map<K, V> resultMap = new HashMap<>();
-          for (MultiGetResponseRecord record : records) {
+          for (MultiGetResponseRecordV1 record : records) {
             int keyIdx = record.keyIndex;
             if (keyIdx >= keyList.size() || keyIdx < 0) {
               throw new VeniceClientException("Key index: " + keyIdx + " doesn't have a corresponding key");
@@ -200,14 +210,13 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
 
   public abstract RecordDeserializer<V> getDataRecordDeserializer(int schemaId) throws VeniceClientException;
 
-  private RecordDeserializer<MultiGetResponseRecord> getMultiGetResponseRecordDeserializer(int schemaId) {
+  private RecordDeserializer<MultiGetResponseRecordV1> getMultiGetResponseRecordDeserializer(int schemaId) {
     // TODO: get multi-get response write schema from Router
-    int currentProtocolVersion = ReadAvroProtocolDefinition.MULTI_GET_RESPONSE.getCurrentProtocolVersion();
-    if (currentProtocolVersion != schemaId) {
-      throw new VeniceClientException("schemaId: " + schemaId + " is not expected, should be " + currentProtocolVersion);
+    int protocolVersion = ReadAvroProtocolDefinition.MULTI_GET_RESPONSE_V1.getProtocolVersion();
+    if (protocolVersion != schemaId) {
+      throw new VeniceClientException("schemaId: " + schemaId + " is not expected, should be " + protocolVersion);
     }
-    Schema writeSchema = MultiGetResponseRecord.SCHEMA$;
-    return AvroSerializerDeserializerFactory.getAvroSpecificDeserializer(writeSchema, MultiGetResponseRecord.class);
+    return AvroSerializerDeserializerFactory.getAvroSpecificDeserializer(MultiGetResponseRecordV1.class);
   }
 
   public String toString() {

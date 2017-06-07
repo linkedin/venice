@@ -7,8 +7,8 @@ package com.linkedin.venice.read.protocol.response;
 
 @SuppressWarnings("all")
 /** This field will store all the related info for one record */
-public class MultiGetResponseRecord extends org.apache.avro.specific.SpecificRecordBase implements org.apache.avro.specific.SpecificRecord {
-  public static final org.apache.avro.Schema SCHEMA$ = org.apache.avro.Schema.parse("{\"type\":\"record\",\"name\":\"MultiGetResponseRecord\",\"namespace\":\"com.linkedin.venice.read.protocol.response\",\"fields\":[{\"name\":\"keyIndex\",\"type\":\"int\",\"doc\":\"The corresponding key index for each record. Venice Client/Router is maintaining a mapping between a unique index and the corresponding key, so that Venice backend doesn't need to return the full key bytes to reduce network overhead\"},{\"name\":\"value\",\"type\":\"bytes\",\"doc\":\"Avro serialized value\"},{\"name\":\"schemaId\",\"type\":\"int\",\"doc\":\"Schema id of current store being used when serializing this record\"}]}");
+public class MultiGetResponseRecordV1 extends org.apache.avro.specific.SpecificRecordBase implements org.apache.avro.specific.SpecificRecord {
+  public static final org.apache.avro.Schema SCHEMA$ = org.apache.avro.Schema.parse("{\"type\":\"record\",\"name\":\"MultiGetResponseRecordV1\",\"namespace\":\"com.linkedin.venice.read.protocol.response\",\"fields\":[{\"name\":\"keyIndex\",\"type\":\"int\",\"doc\":\"The corresponding key index for each record. Venice Client/Router is maintaining a mapping between a unique index and the corresponding key, so that Venice backend doesn't need to return the full key bytes to reduce network overhead\"},{\"name\":\"value\",\"type\":\"bytes\",\"doc\":\"Avro serialized value\"},{\"name\":\"schemaId\",\"type\":\"int\",\"doc\":\"Schema id of current store being used when serializing this record\"}]}");
   /** The corresponding key index for each record. Venice Client/Router is maintaining a mapping between a unique index and the corresponding key, so that Venice backend doesn't need to return the full key bytes to reduce network overhead */
   public int keyIndex;
   /** Avro serialized value */

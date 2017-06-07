@@ -1,5 +1,5 @@
 {
-  "name": "MultiGetClientRequestKey",
+  "name": "MultiGetClientRequestKeyV1",
   "namespace": "com.linkedin.venice.read.protocol.request.client",
   "doc": "Avro serialized key",
   "type": "bytes"

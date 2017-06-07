@@ -1,5 +1,5 @@
 {
-  "name": "MultiGetResponseRecord",
+  "name": "MultiGetResponseRecordV1",
   "namespace": "com.linkedin.venice.read.protocol.response",
   "doc": "This field will store all the related info for one record",
   "type": "record",

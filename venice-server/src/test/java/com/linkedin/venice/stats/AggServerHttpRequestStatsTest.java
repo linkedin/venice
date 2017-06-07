@@ -1,5 +1,6 @@
 package com.linkedin.venice.stats;
 
+import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.tehuti.MockTehutiReporter;
 import io.tehuti.metrics.MetricsRepository;
 import org.testng.Assert;
@@ -21,7 +22,7 @@ public class AggServerHttpRequestStatsTest {
     this.reporter = new MockTehutiReporter();
     metricsRepository.addReporter(reporter);
 
-    stats = new AggServerHttpRequestStats(metricsRepository);
+    stats = new AggServerHttpRequestStats(metricsRepository, RequestType.SINGLE_GET);
 
     stats.recordSuccessRequest(STORE_FOO);
     stats.recordSuccessRequest(STORE_BAR);

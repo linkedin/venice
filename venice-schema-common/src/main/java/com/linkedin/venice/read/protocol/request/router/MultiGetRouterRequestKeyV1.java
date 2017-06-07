@@ -7,8 +7,8 @@ package com.linkedin.venice.read.protocol.request.router;
 
 @SuppressWarnings("all")
 /** This field will store all the related info for one key */
-public class MultiGetRouterRequestKey extends org.apache.avro.specific.SpecificRecordBase implements org.apache.avro.specific.SpecificRecord {
-  public static final org.apache.avro.Schema SCHEMA$ = org.apache.avro.Schema.parse("{\"type\":\"record\",\"name\":\"MultiGetRouterRequestKey\",\"namespace\":\"com.linkedin.venice.read.protocol.request.router\",\"fields\":[{\"name\":\"keyIndex\",\"type\":\"int\",\"doc\":\"Unique index for each key inside current multi-get request\"},{\"name\":\"keyBytes\",\"type\":\"bytes\",\"doc\":\"Avro serialized key\"},{\"name\":\"partitionId\",\"type\":\"int\",\"doc\":\"Partition that current key belongs to\"}]}");
+public class MultiGetRouterRequestKeyV1 extends org.apache.avro.specific.SpecificRecordBase implements org.apache.avro.specific.SpecificRecord {
+  public static final org.apache.avro.Schema SCHEMA$ = org.apache.avro.Schema.parse("{\"type\":\"record\",\"name\":\"MultiGetRouterRequestKeyV1\",\"namespace\":\"com.linkedin.venice.read.protocol.request.router\",\"fields\":[{\"name\":\"keyIndex\",\"type\":\"int\",\"doc\":\"Unique index for each key inside current multi-get request\"},{\"name\":\"keyBytes\",\"type\":\"bytes\",\"doc\":\"Avro serialized key\"},{\"name\":\"partitionId\",\"type\":\"int\",\"doc\":\"Partition that current key belongs to\"}]}");
   /** Unique index for each key inside current multi-get request */
   public int keyIndex;
   /** Avro serialized key */

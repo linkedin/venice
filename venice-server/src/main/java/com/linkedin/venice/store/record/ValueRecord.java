@@ -4,6 +4,8 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.utils.ByteUtils;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
+import java.nio.ByteBuffer;
+
 
 /**
  * This class provides the following functionalities:
@@ -56,6 +58,10 @@ public class ValueRecord {
 
   public ByteBuf getData() {
     return data;
+  }
+
+  public ByteBuffer getDataNIOByteBuf() {
+    return ByteBuffer.wrap(data.array(), data.arrayOffset(), data.readableBytes());
   }
 
   // This function normally should only be used in testing,

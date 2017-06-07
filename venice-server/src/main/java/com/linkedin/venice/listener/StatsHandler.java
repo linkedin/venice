@@ -1,6 +1,7 @@
 package com.linkedin.venice.listener;
 
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.stats.AggServerHttpRequestStats;
 import io.netty.channel.ChannelDuplexHandler;
 import io.netty.channel.ChannelFuture;
@@ -12,12 +13,16 @@ import static io.netty.handler.codec.http.HttpResponseStatus.NOT_FOUND;
 import static io.netty.handler.codec.http.HttpResponseStatus.OK;
 
 public class StatsHandler extends ChannelDuplexHandler {
-
   private long startTime;
   private HttpResponseStatus responseStatus;
   private String storeName;
   private boolean isHealthCheck;
-  private final AggServerHttpRequestStats stats;
+  private long bdbQueryLatency = -1;
+  private int requestKeyCount = -1;
+  private int successRequestKeyCount = -1;
+  private final AggServerHttpRequestStats singleGetStats;
+  private final AggServerHttpRequestStats multiGetStats;
+  private AggServerHttpRequestStats currentStats;
 
   //a flag that indicates if this is a new HttpRequest. Netty is TCP-based, so a HttpRequest is chunked into packages.
   //Set the startTime in ChannelRead if it is the first package within a HttpRequest.
@@ -35,8 +40,31 @@ public class StatsHandler extends ChannelDuplexHandler {
     this.isHealthCheck = healthCheck;
   }
 
-  public StatsHandler(AggServerHttpRequestStats stats) {
-    this.stats = stats;
+  public void setRequestType(RequestType requestType) {
+    if (requestType == RequestType.SINGLE_GET) {
+      currentStats = singleGetStats;
+    } else {
+      currentStats = multiGetStats;
+    }
+  }
+
+  public void setRequestKeyCount(int keyCount) {
+    this.requestKeyCount = keyCount;
+  }
+
+  public void setSuccessRequestKeyCount(int successKeyCount) {
+    this.successRequestKeyCount = successKeyCount;
+  }
+
+  public void setBdbQueryLatency(long latency) {
+    this.bdbQueryLatency = latency;
+  }
+
+  public StatsHandler(AggServerHttpRequestStats singleGetStats, AggServerHttpRequestStats multiGetStats) {
+    this.singleGetStats = singleGetStats;
+    this.multiGetStats = multiGetStats;
+    // default to use single-get
+    this.currentStats = singleGetStats;
   }
 
   @Override
@@ -53,6 +81,8 @@ public class StatsHandler extends ChannelDuplexHandler {
 
   @Override
   public void write(ChannelHandlerContext ctx, Object msg, ChannelPromise promise) throws VeniceException {
+    recordBasicMetrics();
+
     ChannelFuture future = ctx.writeAndFlush(msg);
     future.addListener((result) -> {
       if (responseStatus == null) {
@@ -81,12 +111,26 @@ public class StatsHandler extends ChannelDuplexHandler {
     });
   }
 
+  private void recordBasicMetrics() {
+    if (null != storeName) {
+      if (bdbQueryLatency >= 0) {
+        currentStats.recordBdbQueryLatency(storeName, bdbQueryLatency);
+      }
+      if (requestKeyCount > 0) {
+        currentStats.recordRequestKeyCount(storeName, requestKeyCount);
+      }
+      if (successRequestKeyCount > 0) {
+        currentStats.recordSuccessRequestKeyCount(storeName, successRequestKeyCount);
+      }
+    }
+  }
+
   //This method does not have to be synchronised since operations in Tehuti are already synchronised.
   //Please re-consider the race condition if new logic is added.
   private void successRequest(long elapsedTime) {
     if (storeName != null) {
-      stats.recordSuccessRequest(storeName);
-      stats.recordSuccessRequestLatency(storeName, elapsedTime);
+      currentStats.recordSuccessRequest(storeName);
+      currentStats.recordSuccessRequestLatency(storeName, elapsedTime);
     } else {
       throw new VeniceException("store name could not be null if request succeeded");
     }
@@ -94,11 +138,11 @@ public class StatsHandler extends ChannelDuplexHandler {
 
   private void errorRequest(long elapsedTime) {
     if (storeName == null) {
-      stats.recordErrorRequest();
-      stats.recordErrorRequestLatency(elapsedTime);
+      currentStats.recordErrorRequest();
+      currentStats.recordErrorRequestLatency(elapsedTime);
     } else {
-      stats.recordErrorRequest(storeName);
-      stats.recordErrorRequestLatency(storeName, elapsedTime);
+      currentStats.recordErrorRequest(storeName);
+      currentStats.recordErrorRequestLatency(storeName, elapsedTime);
     }
   }
 }

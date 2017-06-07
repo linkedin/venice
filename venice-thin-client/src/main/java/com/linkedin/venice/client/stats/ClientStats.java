@@ -1,5 +1,6 @@
 package com.linkedin.venice.client.stats;
 
+import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.stats.AbstractVeniceStats;
 import com.linkedin.venice.stats.TehutiUtils;
 import io.tehuti.metrics.MetricsRepository;
@@ -11,21 +12,6 @@ import java.util.concurrent.ConcurrentHashMap;
 
 
 public class ClientStats extends AbstractVeniceStats {
-  public enum RequestType {
-    SINGLE_GET(""),
-    MULTI_GET("multiget_");
-
-    private String metricPrefix;
-
-    RequestType(String metricPrefix) {
-      this.metricPrefix = metricPrefix;
-    }
-
-    public String getMetricPrefix() {
-      return this.metricPrefix;
-    }
-  };
-
   private final Sensor requestSensor;
   private final Sensor healthySensor;
   private final Sensor unhealthySensor;

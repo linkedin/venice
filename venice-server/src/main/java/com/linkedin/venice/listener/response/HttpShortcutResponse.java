@@ -1,4 +1,4 @@
-package com.linkedin.venice.listener;
+package com.linkedin.venice.listener.response;
 
 import io.netty.handler.codec.http.HttpResponseStatus;
 
