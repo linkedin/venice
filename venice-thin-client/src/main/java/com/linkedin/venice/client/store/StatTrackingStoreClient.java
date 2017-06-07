@@ -3,6 +3,7 @@ package com.linkedin.venice.client.store;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.exceptions.VeniceClientHttpException;
 import com.linkedin.venice.client.stats.ClientStats;
+import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.stats.TehutiUtils;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.utils.Time;
@@ -36,9 +37,9 @@ public class StatTrackingStoreClient<K, V> extends DelegatingStoreClient<K, V> {
   public StatTrackingStoreClient(InternalAvroStoreClient<K, V> innerStoreClient, MetricsRepository metricsRepository) {
     super(innerStoreClient);
     this.metricsRepository = metricsRepository;
-    this.singleGetStats = new ClientStats(metricsRepository, STAT_VENICE_CLIENT_NAME, ClientStats.RequestType.SINGLE_GET);
-    this.multiGetStats = new ClientStats(metricsRepository, STAT_VENICE_CLIENT_NAME, ClientStats.RequestType.MULTI_GET);
-    this.schemaReaderStats = new ClientStats(metricsRepository, STAT_SCHEMA_READER, ClientStats.RequestType.SINGLE_GET);
+    this.singleGetStats = new ClientStats(metricsRepository, STAT_VENICE_CLIENT_NAME, RequestType.SINGLE_GET);
+    this.multiGetStats = new ClientStats(metricsRepository, STAT_VENICE_CLIENT_NAME, RequestType.MULTI_GET);
+    this.schemaReaderStats = new ClientStats(metricsRepository, STAT_SCHEMA_READER, RequestType.SINGLE_GET);
   }
 
   @Override
@@ -47,7 +48,7 @@ public class StatTrackingStoreClient<K, V> extends DelegatingStoreClient<K, V> {
     CompletableFuture<V> innerFuture = super.get(key);
     CompletableFuture<V> statFuture = innerFuture.handle(
         (BiFunction<? super V, Throwable, ? extends V>) getStatCallback(
-            singleGetStats, startTime, ClientStats.RequestType.SINGLE_GET
+            singleGetStats, startTime
         )
     );
 
@@ -55,7 +56,7 @@ public class StatTrackingStoreClient<K, V> extends DelegatingStoreClient<K, V> {
   }
 
   private <T> BiFunction<? super T, Throwable, ? extends T> getStatCallback(
-      ClientStats clientStats, long startTime, ClientStats.RequestType requestType) {
+      ClientStats clientStats, long startTime) {
     return (value, throwable) -> {
       long latency = System.currentTimeMillis() - startTime;
       if (null != throwable) {
@@ -84,7 +85,7 @@ public class StatTrackingStoreClient<K, V> extends DelegatingStoreClient<K, V> {
     CompletableFuture<byte[]> innerFuture = super.getRaw(requestPath);
     CompletableFuture<byte[]> statFuture = innerFuture.handle(
         (BiFunction<? super byte[], Throwable, ? extends byte[]>) getStatCallback(
-            schemaReaderStats, startTime, ClientStats.RequestType.SINGLE_GET
+            schemaReaderStats, startTime
         )
     );
 
@@ -98,7 +99,7 @@ public class StatTrackingStoreClient<K, V> extends DelegatingStoreClient<K, V> {
     CompletableFuture<Map<K, V>> innerFuture = super.multiGet(keys);
     CompletableFuture<Map<K, V>> statFuture = innerFuture.handle(
         (BiFunction<? super Map<K, V>, Throwable, ? extends Map<K, V>>) getStatCallback(
-            multiGetStats, startTime, ClientStats.RequestType.MULTI_GET
+            multiGetStats, startTime
         )
     );
     return statFuture;

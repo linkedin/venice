@@ -9,6 +9,7 @@ import com.linkedin.r2.message.rest.RestResponse;
 import com.linkedin.venice.D2.D2ClientUtils;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.schema.SchemaData;
+import java.util.Map;
 import org.apache.commons.httpclient.HttpStatus;
 import org.apache.log4j.Logger;
 
@@ -77,16 +78,17 @@ public class D2TransportClient extends TransportClient {
   }
 
   @Override
-  public CompletableFuture<TransportClientResponse> get(String requestPath) {
-    RestRequest request = getRestGetRequest(requestPath);
+  public CompletableFuture<TransportClientResponse> get(String requestPath, Map<String, String> headers) {
+    RestRequest request = getRestGetRequest(requestPath, headers);
     CompletableFuture<TransportClientResponse> valueFuture = new CompletableFuture<>();
     d2Client.restRequest(request, new D2TransportClientCallback(valueFuture));
     return valueFuture;
   }
 
   @Override
-  public CompletableFuture<TransportClientResponse> post(String requestPath, byte[] requestBody) {
-    RestRequest request = getRestPostRequest(requestPath, requestBody);
+  public CompletableFuture<TransportClientResponse> post(String requestPath, Map<String, String> headers,
+      byte[] requestBody) {
+    RestRequest request = getRestPostRequest(requestPath, headers, requestBody);
     CompletableFuture<TransportClientResponse> valueFuture = new CompletableFuture<>();
     d2Client.restRequest(request, new D2TransportClientCallback(valueFuture));
 
@@ -97,14 +99,14 @@ public class D2TransportClient extends TransportClient {
     return "d2://" + d2ServiceName + "/" + requestPath;
   }
 
-  private RestRequest getRestGetRequest(String requestPath) {
+  private RestRequest getRestGetRequest(String requestPath, Map<String, String> headers) {
     String requestUrl = getD2RequestUrl(requestPath);
-    return D2ClientUtils.createD2GetRequest(requestUrl);
+    return D2ClientUtils.createD2GetRequest(requestUrl, headers);
   }
 
-  private RestRequest getRestPostRequest(String requestPath, byte[] body) {
+  private RestRequest getRestPostRequest(String requestPath, Map<String, String> headers, byte[] body) {
     String requestUrl = getD2RequestUrl(requestPath);
-    return D2ClientUtils.createD2PostRequest(requestUrl, body);
+    return D2ClientUtils.createD2PostRequest(requestUrl, headers, body);
   }
 
   @Override

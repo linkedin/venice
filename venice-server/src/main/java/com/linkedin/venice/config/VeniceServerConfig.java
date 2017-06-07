@@ -3,6 +3,7 @@ package com.linkedin.venice.config;
 import com.linkedin.venice.exceptions.ConfigurationException;
 import com.linkedin.venice.store.bdb.BdbServerConfig;
 import com.linkedin.venice.utils.VeniceProperties;
+import java.util.concurrent.TimeUnit;
 
 import static com.linkedin.venice.ConfigKeys.*;
 
@@ -56,6 +57,21 @@ public class VeniceServerConfig extends VeniceClusterConfig {
    */
   private final long storeWriterBufferNotifyDelta;
 
+  /**
+   * The number of threads being used to serve get requests.
+   */
+  private final int restServiceStorageThreadNum;
+
+  /**
+   * Idle timeout for Storage Node Netty connections.
+   */
+  private final int nettyIdleTimeInSeconds;
+
+  /**
+   * Max request size for request to Storage Node.
+   */
+  private final int maxRequestSize;
+
   public VeniceServerConfig(VeniceProperties serverProperties) throws ConfigurationException {
     super(serverProperties);
     listenerPort = serverProperties.getInt(LISTENER_PORT);
@@ -67,6 +83,9 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     storeWriterNumber = serverProperties.getInt(STORE_WRITER_NUMBER, 8);
     storeWriterBufferMemoryCapacity = serverProperties.getSizeInBytes(STORE_WRITER_BUFFER_MEMORY_CAPACITY, 125 * 1024 * 1024); // 125MB
     storeWriterBufferNotifyDelta = serverProperties.getSizeInBytes(STORE_WRITER_BUFFER_NOTIFY_DELTA, 10 * 1024 * 1024); // 10MB
+    restServiceStorageThreadNum = serverProperties.getInt(SERVER_REST_SERVICE_STORAGE_THREAD_NUM, 8);
+    nettyIdleTimeInSeconds = serverProperties.getInt(SERVER_NETTY_IDLE_TIME_SECONDS, (int) TimeUnit.HOURS.toSeconds(3)); // 3 hours
+    maxRequestSize = (int)serverProperties.getSizeInBytes(SERVER_MAX_REQUEST_SIZE, 256 * 1024); // 256KB
   }
 
   public int getListenerPort() {
@@ -109,5 +128,17 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public long getStoreWriterBufferNotifyDelta() {
     return this.storeWriterBufferNotifyDelta;
+  }
+
+  public int getRestServiceStorageThreadNum() {
+    return restServiceStorageThreadNum;
+  }
+
+  public int getNettyIdleTimeInSeconds() {
+    return nettyIdleTimeInSeconds;
+  }
+
+  public int getMaxRequestSize() {
+    return maxRequestSize;
   }
 }

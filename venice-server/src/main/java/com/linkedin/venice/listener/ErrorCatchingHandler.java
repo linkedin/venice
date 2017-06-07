@@ -1,5 +1,6 @@
 package com.linkedin.venice.listener;
 
+import com.linkedin.venice.listener.response.HttpShortcutResponse;
 import io.netty.channel.ChannelHandler;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;

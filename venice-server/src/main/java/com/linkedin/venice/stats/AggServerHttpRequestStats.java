@@ -1,15 +1,13 @@
 package com.linkedin.venice.stats;
 
+import com.linkedin.venice.read.RequestType;
 import io.tehuti.metrics.MetricsRepository;
 
-import java.io.Closeable;
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 
 public class AggServerHttpRequestStats extends AbstractVeniceAggStats<ServerHttpRequestStats> {
-  public AggServerHttpRequestStats(MetricsRepository metricsRepository) {
+  public AggServerHttpRequestStats(MetricsRepository metricsRepository, RequestType requestType) {
     super(metricsRepository,
-          (metricsRepo, storeName) -> new ServerHttpRequestStats(metricsRepo, storeName));
+          (metricsRepo, storeName) -> new ServerHttpRequestStats(metricsRepo, storeName, requestType));
   }
 
   public void recordSuccessRequest(String storeName) {
@@ -43,5 +41,15 @@ public class AggServerHttpRequestStats extends AbstractVeniceAggStats<ServerHttp
   public void recordBdbQueryLatency(String storeName, double latency) {
     totalStats.recordBdbQueryLatency(latency);
     getStoreStats(storeName).recordBdbQueryLatency(latency);
+  }
+
+  public void recordRequestKeyCount(String storeName, int keyNum) {
+    totalStats.recordRequestKeyCount(keyNum);
+    getStoreStats(storeName).recordRequestKeyCount(keyNum);
+  }
+
+  public void recordSuccessRequestKeyCount(String storeName, int keyNum) {
+    totalStats.recordSuccessRequestKeyCount(keyNum);
+    getStoreStats(storeName).recordSuccessRequestKeyCount(keyNum);
   }
 }

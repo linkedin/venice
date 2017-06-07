@@ -80,6 +80,9 @@ public class ConfigKeys {
   public static final String STORE_WRITER_BUFFER_MEMORY_CAPACITY = "store.writer.buffer.memory.capacity";
   public static final String STORE_WRITER_BUFFER_NOTIFY_DELTA = "store.writer.buffer.notify.delta";
   public static final String OFFSET_DATABASE_CACHE_SIZE = "offset.database.cache.size";
+  public static final String SERVER_REST_SERVICE_STORAGE_THREAD_NUM = "server.rest.service.storage.thread.num";
+  public static final String SERVER_NETTY_IDLE_TIME_SECONDS = "server.netty.idle.time.seconds";
+  public static final String SERVER_MAX_REQUEST_SIZE = "server.max.request.size";
 
   /**
    * Venice uses a helix cluster to assign controllers to each named venice cluster.  This is the number of controllers

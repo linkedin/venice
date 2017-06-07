@@ -1,5 +1,5 @@
 {
-  "name": "MultiGetRouterRequestKey",
+  "name": "MultiGetRouterRequestKeyV1",
   "namespace": "com.linkedin.venice.read.protocol.request.router",
   "doc": "This field will store all the related info for one key",
   "type": "record",

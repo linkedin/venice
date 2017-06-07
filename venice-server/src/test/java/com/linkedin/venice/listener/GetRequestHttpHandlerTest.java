@@ -2,7 +2,8 @@ package com.linkedin.venice.listener;
 
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.message.GetRequestObject;
+import com.linkedin.venice.listener.request.GetRouterRequest;
+import com.linkedin.venice.listener.response.HttpShortcutResponse;
 import com.linkedin.venice.meta.QueryAction;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.handler.codec.http.DefaultFullHttpRequest;
@@ -21,9 +22,6 @@ import org.testng.Assert;
 import org.testng.annotations.Test;
 
 
-/**
- * Created by mwise on 3/10/16.
- */
 public class GetRequestHttpHandlerTest {
 
   @Test
@@ -56,24 +54,24 @@ public class GetRequestHttpHandlerTest {
     // Test handler
     GetRequestHttpHandler testHander = new GetRequestHttpHandler(Mockito.mock(StatsHandler.class));
     ChannelHandlerContext mockContext = Mockito.mock(ChannelHandlerContext.class);
-    ArgumentCaptor<GetRequestObject> argumentCaptor = ArgumentCaptor.forClass(GetRequestObject.class);
+    ArgumentCaptor<GetRouterRequest> argumentCaptor = ArgumentCaptor.forClass(GetRouterRequest.class);
     HttpRequest msg = new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET, path);
     testHander.channelRead(mockContext, msg);
     verify(mockContext).fireChannelRead(argumentCaptor.capture());
-    GetRequestObject requestObject = argumentCaptor.getValue();
-    Assert.assertEquals(requestObject.getStoreString(), expectedStore,
+    GetRouterRequest requestObject = argumentCaptor.getValue();
+    Assert.assertEquals(requestObject.getResourceName(), expectedStore,
         "Store from path: " + path + " should be parsed as: " + expectedStore);
     Assert.assertEquals(requestObject.getPartition(), expectedPartition,
         "Partition from path: " + path + " should be parsed as: " + expectedPartition);
-    Assert.assertEquals(requestObject.getKey(), expectedKey, "Key from path: " + path + " was parsed incorrectly");
+    Assert.assertEquals(requestObject.getKeyBytes(), expectedKey, "Key from path: " + path + " was parsed incorrectly");
 
     //Test parse method
-    GetRequestObject parsedRequestObject = GetRequestHttpHandler.parseReadFromUri(path);
-    Assert.assertEquals(parsedRequestObject.getStoreString(), expectedStore,
+    GetRouterRequest getRouterRequest = GetRouterRequest.parseGetHttpRequest(msg);
+    Assert.assertEquals(getRouterRequest.getResourceName(), expectedStore,
         "Store from path: " + path + " should be parsed as: " + expectedStore);
-    Assert.assertEquals(parsedRequestObject.getPartition(), expectedPartition,
+    Assert.assertEquals(getRouterRequest.getPartition(), expectedPartition,
         "Partition from path: " + path + " should be parsed as: " + expectedPartition);
-    Assert.assertEquals(parsedRequestObject.getKey(), expectedKey, "Key from path: " + path + " was parsed incorrectly");
+    Assert.assertEquals(getRouterRequest.getKeyBytes(), expectedKey, "Key from path: " + path + " was parsed incorrectly");
   }
 
   public void testBadRequest(String path, HttpMethod method)
@@ -102,14 +100,14 @@ public class GetRequestHttpHandlerTest {
   }
 
   public void doKeyTest(String urlString, byte[] expectedKey){
-    byte[] parsedKey = GetRequestHttpHandler.getKeyBytesFromUrlKeyString(urlString);
+    byte[] parsedKey = GetRouterRequest.getKeyBytesFromUrlKeyString(urlString);
     Assert.assertEquals(parsedKey, expectedKey,
         urlString + " not parsed correctly as key.  Parsed: " + new String(parsedKey));
   }
 
   @Test(expectedExceptions = VeniceException.class)
   public void parsesActionBadMethod(){
-    doActionTest("/storage/suffix", HttpMethod.POST, QueryAction.STORAGE);
+    doActionTest("/storage/suffix", HttpMethod.HEAD, QueryAction.STORAGE);
   }
 
   @Test(expectedExceptions = VeniceException.class)
@@ -132,16 +130,16 @@ public class GetRequestHttpHandlerTest {
   public void verifyBadApiVersionIsCaught(){
     HttpHeaders headers = new DefaultHttpHeaders();
     headers.add(HttpConstants.VENICE_API_VERSION, "2");
-    GetRequestHttpHandler.verifyApiVersion(headers, "1");
+    GetRouterRequest.verifyApiVersion(headers, "1");
   }
 
   @Test
   public void verifyGoodApiVersionOk(){
     HttpHeaders headers = new DefaultHttpHeaders();
-    GetRequestHttpHandler.verifyApiVersion(headers, "1"); /* missing header parsed as current version */
+    GetRouterRequest.verifyApiVersion(headers, "1"); /* missing header parsed as current version */
 
     headers.add(HttpConstants.VENICE_API_VERSION, "1");
-    GetRequestHttpHandler.verifyApiVersion(headers, "1");
+    GetRouterRequest.verifyApiVersion(headers, "1");
   }
 
 

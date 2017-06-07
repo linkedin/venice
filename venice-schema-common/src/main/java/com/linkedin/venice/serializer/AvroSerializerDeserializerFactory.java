@@ -71,6 +71,16 @@ public class AvroSerializerDeserializerFactory {
     return (AvroGenericDeserializer<V>)genericDeserializerMap.get(container);
   }
 
+  /**
+   * This function is assuming that both writer and reader are using the same schema.
+   * @param schema
+   * @param <V>
+   * @return
+   */
+  public static <V> RecordDeserializer<V> getAvroGenericDeserializer(Schema schema) {
+    return getAvroGenericDeserializer(schema, schema);
+  }
+
   public static <V extends SpecificRecord> RecordDeserializer<V> getAvroSpecificDeserializer(Schema writer, Class<V> c) {
     Schema reader = SpecificData.get().getSchema(c);
     SchemaPairAndClassContainer container = new SchemaPairAndClassContainer(writer, reader, c);
@@ -79,5 +89,16 @@ public class AvroSerializerDeserializerFactory {
     });
 
     return (AvroSpecificDeserializer<V>)specificDeserializerMap.get(container);
+  }
+
+  /**
+   * This function is assuming that both writer and reader are using the same schema defined in {@param c}.
+   * @param c
+   * @param <V>
+   * @return
+   */
+  public static <V extends SpecificRecord> RecordDeserializer<V> getAvroSpecificDeserializer(Class<V> c) {
+    Schema schema = SpecificData.get().getSchema(c);
+    return getAvroSpecificDeserializer(schema, c);
   }
 }

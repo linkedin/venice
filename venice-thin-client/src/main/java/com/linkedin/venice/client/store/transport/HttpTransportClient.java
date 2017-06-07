@@ -2,6 +2,7 @@ package com.linkedin.venice.client.store.transport;
 
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.schema.SchemaData;
+import java.util.Map;
 import org.apache.commons.httpclient.HttpStatus;
 import org.apache.commons.io.IOUtils;
 import org.apache.http.Header;
@@ -40,16 +41,17 @@ public class HttpTransportClient extends TransportClient {
   }
 
   @Override
-  public CompletableFuture<TransportClientResponse> get(String requestPath) {
-    HttpGet request = getHttpGetRequest(requestPath);
+  public CompletableFuture<TransportClientResponse> get(String requestPath, Map<String, String> headers) {
+    HttpGet request = getHttpGetRequest(requestPath, headers);
     CompletableFuture<TransportClientResponse> valueFuture = new CompletableFuture<>();
     httpClient.execute(request, new HttpTransportClientCallback(valueFuture));
     return valueFuture;
   }
 
   @Override
-  public CompletableFuture<TransportClientResponse> post(String requestPath, byte[] requestBody) {
-    HttpPost request = getHttpPostRequest(requestPath, requestBody);
+  public CompletableFuture<TransportClientResponse> post(String requestPath, Map<String, String> headers,
+      byte[] requestBody) {
+    HttpPost request = getHttpPostRequest(requestPath, headers, requestBody);
     CompletableFuture<TransportClientResponse> valueFuture = new CompletableFuture<>();
     httpClient.execute(request, new HttpTransportClientCallback(valueFuture));
     return valueFuture;
@@ -59,12 +61,19 @@ public class HttpTransportClient extends TransportClient {
     return routerUrl + requestPath;
   }
 
-  private HttpGet getHttpGetRequest(String requestPath) {
-    return new HttpGet(getHttpRequestUrl(requestPath));
+  private HttpGet getHttpGetRequest(String requestPath, Map<String, String> headers) {
+    HttpGet httpGet = new HttpGet(getHttpRequestUrl(requestPath));
+    headers.forEach((K, V) -> {
+      httpGet.addHeader(K, V);
+    });
+    return httpGet;
   }
 
-  private HttpPost getHttpPostRequest(String requestPath, byte[] body) {
+  private HttpPost getHttpPostRequest(String requestPath, Map<String, String> headers, byte[] body) {
     HttpPost httpPost = new HttpPost(getHttpRequestUrl(requestPath));
+    headers.forEach((K, V) -> {
+      httpPost.setHeader(K, V);
+    });
     BasicHttpEntity entity = new BasicHttpEntity();
     entity.setContent(new ByteArrayInputStream(body));
     httpPost.setEntity(entity);

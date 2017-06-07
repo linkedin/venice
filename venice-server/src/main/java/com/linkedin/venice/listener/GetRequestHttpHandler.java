@@ -1,24 +1,21 @@
 package com.linkedin.venice.listener;
 
-import com.linkedin.venice.HttpConstants;
-import com.linkedin.venice.RequestConstants;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.message.GetRequestObject;
+import com.linkedin.venice.listener.request.GetRouterRequest;
+import com.linkedin.venice.listener.request.MultiGetRouterRequestWrapper;
+import com.linkedin.venice.listener.response.HttpShortcutResponse;
 import com.linkedin.venice.meta.QueryAction;
-import com.linkedin.venice.meta.Version;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
-import io.netty.handler.codec.http.HttpHeaders;
+import io.netty.handler.codec.http.FullHttpRequest;
 import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpRequest;
 import io.netty.handler.codec.http.HttpResponseStatus;
-import io.netty.handler.codec.http.QueryStringDecoder;
 import io.netty.handler.timeout.IdleState;
 import io.netty.handler.timeout.IdleStateEvent;
 
 import java.net.URI;
-import java.nio.charset.StandardCharsets;
-import java.util.Base64;
+
 
 /**
  * Monitors the stream, when it gets enough bytes that form a genuine object,
@@ -48,15 +45,28 @@ public class GetRequestHttpHandler extends ChannelInboundHandlerAdapter {
   @Override
   public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
     if (msg instanceof HttpRequest) {
-      HttpRequest req = (HttpRequest) msg;
+      FullHttpRequest req = (FullHttpRequest) msg;
       try {
-        verifyApiVersion(req.headers(), API_VERSION);
         QueryAction action = getQueryActionFromRequest(req);
         switch (action){
           case STORAGE:  // GET /storage/store/partition/key
-            GetRequestObject request = parseReadFromUri(req.getUri());
-            statsHandler.setStoreName(Version.parseStoreFromKafkaTopicName(request.getTopicString()));
-            ctx.fireChannelRead(request);
+            HttpMethod requestMethod = req.method();
+            if (requestMethod.equals(HttpMethod.GET)) {
+              // TODO: evaluate whether we can replace single-get by multi-get
+              GetRouterRequest getRouterRequest = GetRouterRequest.parseGetHttpRequest(req);
+              statsHandler.setStoreName(getRouterRequest.getStoreName());
+              statsHandler.setRequestType(getRouterRequest.getRequestType());
+              ctx.fireChannelRead(getRouterRequest);
+            } else if (requestMethod.equals(HttpMethod.POST)){
+              // Multi-get
+              MultiGetRouterRequestWrapper multiGetRouterReq = MultiGetRouterRequestWrapper.parseMultiGetHttpRequest(req);
+              statsHandler.setStoreName(multiGetRouterReq.getStoreName());
+              statsHandler.setRequestType(multiGetRouterReq.getRequestType());
+              statsHandler.setRequestKeyCount(multiGetRouterReq.getKeyCount());
+              ctx.fireChannelRead(multiGetRouterReq);
+            } else {
+              throw new VeniceException("Unknown request method: " + requestMethod + " for " + QueryAction.STORAGE);
+            }
             break;
           case HEALTH:
             statsHandler.setHealthCheck(true);
@@ -96,31 +106,12 @@ public class GetRequestHttpHandler extends ChannelInboundHandlerAdapter {
     super.userEventTriggered(ctx, evt);
   }
 
-  static GetRequestObject parseReadFromUri(String uri){
-    // Sometimes req.uri() gives a full uri (eg https://host:port/path) and sometimes it only gives a path
-    // Generating a URI lets us always take just the path but we need to add on the query string
-    URI fullUri = URI.create(uri);
-    String path = fullUri.getRawPath();
-    if (fullUri.getRawQuery() != null){
-      path += "?" + fullUri.getRawQuery();
-    }
-    String[] requestParts = path.split("/");
-    if (requestParts.length == 5) {//   [0]""/[1]"action"/[2]"store"/[3]"partition"/[4]"key"
-      GetRequestObject request = new GetRequestObject();
-      request.setStore(requestParts[2]);
-      request.setPartition(requestParts[3]);
-      request.setKey(getKeyBytesFromUrlKeyString(requestParts[4]));
-      return request;
-    } else {
-      throw new VeniceException("Not a valid request for a STORAGE action: " + uri);
-    }
-  }
-
   static QueryAction getQueryActionFromRequest(HttpRequest req){
     // Sometimes req.uri() gives a full uri (eg https://host:port/path) and sometimes it only gives a path
     // Generating a URI lets us always take just the path.
     String[] requestParts = URI.create(req.uri()).getPath().split("/");
-    if (req.method().equals(HttpMethod.GET) &&
+    HttpMethod reqMethod = req.method();
+    if ((reqMethod.equals(HttpMethod.GET) || reqMethod.equals(HttpMethod.POST)) &&
         requestParts.length >=2 &&
         requestParts[1].equalsIgnoreCase(QueryAction.STORAGE.toString())) {
       return QueryAction.STORAGE;
@@ -130,34 +121,6 @@ public class GetRequestHttpHandler extends ChannelInboundHandlerAdapter {
       return QueryAction.HEALTH;
     } else {
       throw new VeniceException("Only able to parse GET requests for actions: storage, health.  Cannot parse request for: " + req.uri());
-    }
-  }
-
-  /***
-   * throws VeniceException if we don't handle the specified api version
-   * @param headers
-   */
-  static void verifyApiVersion(HttpHeaders headers, String expectedVersion){
-    if (headers.contains(HttpConstants.VENICE_API_VERSION)) { /* if not present, assume latest version */
-      String clientApiVersion = headers.get(HttpConstants.VENICE_API_VERSION);
-      if (!clientApiVersion.equals(expectedVersion)) {
-        throw new VeniceException("Storage node is not compatible with requested API version: " + clientApiVersion);
-      }
-    }
-  }
-
-  static Base64.Decoder b64decoder = Base64.getUrlDecoder();
-  static byte[] getKeyBytesFromUrlKeyString(String keyString){
-    QueryStringDecoder queryStringParser = new QueryStringDecoder(keyString, StandardCharsets.UTF_8);
-    String format = RequestConstants.DEFAULT_FORMAT;
-    if (queryStringParser.parameters().containsKey(RequestConstants.FORMAT_KEY)) {
-      format = queryStringParser.parameters().get(RequestConstants.FORMAT_KEY).get(0);
-    }
-    switch (format) {
-      case RequestConstants.B64_FORMAT:
-        return b64decoder.decode(queryStringParser.path());
-      default:
-        return queryStringParser.path().getBytes(StandardCharsets.UTF_8);
     }
   }
 }

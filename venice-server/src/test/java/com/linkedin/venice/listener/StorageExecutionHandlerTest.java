@@ -1,15 +1,21 @@
 package com.linkedin.venice.listener;
 
+import com.linkedin.venice.listener.request.GetRouterRequest;
+import com.linkedin.venice.listener.response.StorageResponseObject;
 import com.linkedin.venice.message.GetRequestObject;
 import com.linkedin.venice.offsets.BdbOffsetManager;
 import com.linkedin.venice.offsets.OffsetManager;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.server.StoreRepository;
-import com.linkedin.venice.stats.AggServerHttpRequestStats;
 import com.linkedin.venice.store.AbstractStorageEngine;
 import com.linkedin.venice.store.record.ValueRecord;
 import io.netty.buffer.UnpooledByteBufAllocator;
 import io.netty.channel.ChannelHandlerContext;
+import io.netty.handler.codec.http.DefaultFullHttpRequest;
+import io.netty.handler.codec.http.FullHttpRequest;
+import io.netty.handler.codec.http.HttpMethod;
+import io.netty.handler.codec.http.HttpRequest;
+import io.netty.handler.codec.http.HttpVersion;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.LinkedBlockingQueue;
@@ -19,6 +25,7 @@ import org.mockito.Mockito;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
+import static com.linkedin.venice.router.api.VenicePathParser.*;
 import static org.mockito.Mockito.*;
 
 public class StorageExecutionHandlerTest {
@@ -33,8 +40,10 @@ public class StorageExecutionHandlerTest {
     long expectedOffset = 12345L;
     List<Object> outputArray = new ArrayList<Object>();
     byte[] valueBytes = ValueRecord.create(schemaId, valueString.getBytes()).serialize();
-
-    GetRequestObject testRequest = new GetRequestObject(topic.toCharArray(), partition, keyString.getBytes());
+    //[0]""/[1]"action"/[2]"store"/[3]"partition"/[4]"key"
+    String uri = "/" + TYPE_STORAGE + "/" + topic + "/" + partition + "/" + keyString;
+    HttpRequest httpRequest = new DefaultFullHttpRequest(HttpVersion.HTTP_1_1, HttpMethod.GET, uri);
+    GetRouterRequest testRequest = GetRouterRequest.parseGetHttpRequest(httpRequest);
 
     AbstractStorageEngine testStore = mock(AbstractStorageEngine.class);
     doReturn(valueBytes).when(testStore).get(partition, keyString.getBytes());
@@ -57,10 +66,8 @@ public class StorageExecutionHandlerTest {
     ThreadPoolExecutor threadPoolExecutor = new ThreadPoolExecutor(1, 1, 0L, TimeUnit.MILLISECONDS,
         new LinkedBlockingQueue<>(2));
 
-    AggServerHttpRequestStats mockStats = mock(AggServerHttpRequestStats.class);
-
     //Actual test
-    StorageExecutionHandler testHandler = new StorageExecutionHandler(threadPoolExecutor, testRepository, mockOffsetManager, mockStats);
+    StorageExecutionHandler testHandler = new StorageExecutionHandler(threadPoolExecutor, testRepository, mockOffsetManager);
     testHandler.channelRead(mockCtx, testRequest);
 
     //Wait for async stuff to finish

@@ -7,6 +7,8 @@ import com.linkedin.r2.message.rest.RestRequest;
 import com.linkedin.r2.message.rest.RestRequestBuilder;
 import com.linkedin.r2.message.rest.RestResponse;
 import com.linkedin.venice.exceptions.VeniceException;
+import java.util.Collections;
+import java.util.Map;
 import org.apache.log4j.Logger;
 
 import java.net.URI;
@@ -83,7 +85,11 @@ public class D2ClientUtils {
     }
   }
 
-  static public RestRequest createD2GetRequest(String requestPath) {
+  public static RestRequest createD2GetRequest(String requestPath) {
+    return createD2GetRequest(requestPath, Collections.EMPTY_MAP);
+  }
+
+  public static RestRequest createD2GetRequest(String requestPath, Map<String, String> headers) {
     URI  requestUri;
     try {
       requestUri = new URI(requestPath);
@@ -91,7 +97,7 @@ public class D2ClientUtils {
       throw new VeniceException("Failed to create URI for path " + requestPath, e);
     }
 
-    return new RestRequestBuilder(requestUri).setMethod("get").build();
+    return new RestRequestBuilder(requestUri).setMethod("get").setHeaders(headers).build();
   }
 
    static public RestResponse sendD2GetRequest(String requestPath, D2Client client) {
@@ -106,6 +112,10 @@ public class D2ClientUtils {
    }
 
   public static RestRequest createD2PostRequest(String requestPath, byte[] body) {
+    return createD2PostRequest(requestPath, Collections.EMPTY_MAP, body);
+  }
+
+  public static RestRequest createD2PostRequest(String requestPath, Map<String, String> headers, byte[] body) {
     URI requestUri;
     try {
       requestUri = new URI(requestPath);
@@ -113,6 +123,6 @@ public class D2ClientUtils {
       throw new VeniceException("Failed to create URI for path " + requestPath, e);
     }
 
-    return new RestRequestBuilder(requestUri).setMethod("post").setEntity(body).build();
+    return new RestRequestBuilder(requestUri).setMethod("post").setHeaders(headers).setEntity(body).build();
   }
 }
