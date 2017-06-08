@@ -113,7 +113,6 @@ public class VeniceConfigLoader {
     combinedProperty = new PropertyBuilder()
                     .put(this.clusterProperties.toProperties())
                     .put(this.serverProperties.toProperties())
-                    .put(this.serverProperties.toProperties())
                     .build();
     this.veniceServerConfig = new VeniceServerConfig(combinedProperty);
   }

@@ -16,10 +16,12 @@ import java.io.File;
  */
 public class VeniceClusterConfig {
   private String clusterName;
+  //TODO: shouldn't the following configs be moved to VeniceServerConfig??
   protected String dataBasePath;
   private String offsetManagerType = null;
   private String offsetDatabasePath = null;
   private long offsetManagerFlushIntervalMs;
+  private long offsetDatabaseCacheSize;
 
 
   private boolean helixEnabled;
@@ -62,6 +64,7 @@ public class VeniceClusterConfig {
     offsetDatabasePath = clusterProps.getString(OFFSET_DATA_BASE_PATH,
         System.getProperty("java.io.tmpdir") + File.separator + BdbOffsetManager.OFFSETS_STORE_NAME);
     offsetManagerFlushIntervalMs = clusterProps.getLong(OFFSET_MANAGER_FLUSH_INTERVAL_MS, 10000); // 10 sec default
+    offsetDatabaseCacheSize = clusterProps.getSizeInBytes(OFFSET_DATABASE_CACHE_SIZE, 50 * 1024 * 1024); // 50 MB
 
     try {
       persistenceType = PersistenceType.valueOf(clusterProps.getString(PERSISTENCE_TYPE,
@@ -108,6 +111,10 @@ public class VeniceClusterConfig {
 
   public long getOffsetManagerFlushIntervalMs() {
     return offsetManagerFlushIntervalMs;
+  }
+
+  public long getOffsetDatabaseCacheSizeInBytes() {
+    return offsetDatabaseCacheSize;
   }
 
   public boolean isHelixEnabled() {
