@@ -41,6 +41,7 @@ import com.linkedin.venice.offsets.OffsetManager;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.serialization.DefaultSerializer;
 import com.linkedin.venice.utils.SystemTime;
+import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.VeniceWriter;
@@ -86,6 +87,9 @@ public class VeniceParentHelixAdmin implements Admin {
   private final VeniceControllerConfig veniceControllerConfig;
   private final Lock lock = new ReentrantLock();
   private final AdminCommandExecutionTracker adminCommandExecutionTracker;
+  private long lastTopicCreationTime = -1;
+  private Time timer = new SystemTime();
+
   /**
    * Variable to store offset of last message.
    * Before executing any request, this class will check whether last offset has been consumed or not:
@@ -398,10 +402,35 @@ public class VeniceParentHelixAdmin implements Admin {
           ", please wait for previous job to be finished, and reach out Venice team if it is" +
           " not this case");
     }
+    mayThrottleTopicCreation(timer);
     Version newVersion = veniceHelixAdmin.addVersion(clusterName, storeName, pushJobId, VeniceHelixAdmin.VERSION_ID_UNSET,
         numberOfPartition, replicationFactor, false);
     cleanupHistoricalVersions(clusterName, storeName);
     return newVersion;
+  }
+
+  /**
+   * This method will throttle the topic creation operation. During each time window, it only allow ONE topic to be created.
+   * Other topic creation request will be blocked until time goes to the next time window.
+   */
+  protected synchronized void mayThrottleTopicCreation(Time timer) {
+    long timeSinceLastTopicCreation = timer.getMilliseconds() - lastTopicCreationTime;
+    if (lastTopicCreationTime < 0) {
+      // First time to create topic on this controller. Considering the failover case that another controller could
+      // just create a topic then failed, this controller take over the cluster and start to create a new topic,
+      // The time interval between those two creation might be less than TopicCreationThrottlingTimeWindowMs.
+      // So we should sleep at least TopicCreationThrottlingTimeWindowMs here to prevent creating topic too frequently.
+      timeSinceLastTopicCreation = 0;
+    }
+    if (timeSinceLastTopicCreation < veniceControllerConfig.getTopicCreationThrottlingTimeWindowMs()) {
+      try {
+        timer.sleep(veniceControllerConfig.getTopicCreationThrottlingTimeWindowMs() - timeSinceLastTopicCreation);
+      } catch (InterruptedException e) {
+        throw new VeniceException(
+            "Topic creation throttler is interrupted while blocking too frequent topic creation operation.", e);
+      }
+    }
+    lastTopicCreationTime = timer.getMilliseconds();
   }
 
   @Override
@@ -992,6 +1021,14 @@ public class VeniceParentHelixAdmin implements Admin {
   @Override
   public void setLastException(String clusterName, Exception e) {
 
+  }
+
+  protected Time getTimer() {
+    return timer;
+  }
+
+  protected void setTimer(Time timer) {
+    this.timer = timer;
   }
 
   @Override

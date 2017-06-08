@@ -89,7 +89,11 @@ public class ConfigKeys {
 
   /** The interval, in ms, between each polling iteration of the TopicMonitor */
   public static final String TOPIC_MONITOR_POLL_INTERVAL_MS = "topic.monitor.poll.interval.ms";
-
+  /**
+   * The time window in ms used to throttle the Kafka topic creation, during the time window, only 1 topic is allowed to
+   * be created.
+   */
+  public static final String TOPIC_CREATION_THROTTLING_TIME_WINDOW_MS = "topic.creation.throttling.time.window.ms";
   /** Whether current controller is parent or not */
   public static final String CONTROLLER_PARENT_MODE = "controller.parent.mode";
 

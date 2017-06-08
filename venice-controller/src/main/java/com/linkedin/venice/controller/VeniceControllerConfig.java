@@ -34,13 +34,16 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
   private final int parentControllerWaitingTimeForConsumptionMs;
   private final long adminConsumptionTimeoutMinutes;
 
+  private final long topicCreationThrottlingTimeWindowMs;
+
   public VeniceControllerConfig(VeniceProperties props) {
     super(props);
     this.adminPort = props.getInt(ADMIN_PORT);
     this.controllerClusterName = props.getString(CONTROLLER_CLUSTER, "venice-controllers");
     this.controllerClusterReplica = props.getInt(CONTROLLER_CLUSTER_REPLICA, 3);
     this.controllerClusterZkAddresss = props.getString(CONTROLLER_CLUSTER_ZK_ADDRESSS, getZkAddress());
-    this.topicMonitorPollIntervalMs = props.getInt(TOPIC_MONITOR_POLL_INTERVAL_MS, 10 * Time.MS_PER_SECOND);
+    this.topicMonitorPollIntervalMs = props.getInt(TOPIC_MONITOR_POLL_INTERVAL_MS, 10 * Time.MS_PER_SECOND); // By default, time window used to throttle topic creation is 10sec.
+    this.topicCreationThrottlingTimeWindowMs = props.getLong(TOPIC_CREATION_THROTTLING_TIME_WINDOW_MS, 10 * Time.MS_PER_SECOND);
     this.parent = props.getBoolean(ConfigKeys.CONTROLLER_PARENT_MODE, false);
     if (this.parent) {
       String clusterWhitelist = props.getString(CHILD_CLUSTER_WHITELIST);
@@ -78,6 +81,10 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
 
   public boolean isParent() {
     return parent;
+  }
+
+  public long getTopicCreationThrottlingTimeWindowMs() {
+    return topicCreationThrottlingTimeWindowMs;
   }
 
   /**
