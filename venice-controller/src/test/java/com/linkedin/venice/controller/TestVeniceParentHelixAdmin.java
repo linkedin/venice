@@ -36,6 +36,7 @@ import com.linkedin.venice.meta.RoutingStrategy;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.offsets.OffsetRecord;
+import com.linkedin.venice.utils.MockTime;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.FlakyTestRetryAnalyzer;
@@ -921,5 +922,63 @@ public class TestVeniceParentHelixAdmin {
     Assert.assertEquals(tenProgress.values().size(), 4); // nothing from fail client
     Assert.assertEquals(tenProgress.get("cluster1_task1"), new Long(10L));
     Assert.assertEquals(tenProgress.get("cluster2_task2"), new Long(10L));
+  }
+
+  @Test
+  public void testMayThrottleTopicCreation() {
+    long timeWindowMs = 1000;
+    doReturn(timeWindowMs).when(config).getTopicCreationThrottlingTimeWindowMs();
+    VeniceParentHelixAdmin throttledParentAdmin = new VeniceParentHelixAdmin(internalAdmin, config);
+    long start = System.currentTimeMillis();
+    MockTime timer = new MockTime(start);
+    throttledParentAdmin.mayThrottleTopicCreation(timer);
+    Assert.assertTrue(timer.getMilliseconds() - start == 1000l, "First time to create topic, must sleep 1s.");
+    throttledParentAdmin.mayThrottleTopicCreation(timer);
+    Assert.assertTrue(timer.getMilliseconds() - start == 2000l, "Create topic too frequently, must sleep another 1s before creating the next topic.");
+  }
+
+  @Test
+  public void testCreateTopicConcurrently()
+      throws InterruptedException, ExecutionException {
+    long timeWindowMs = 1000;
+    String storeName = "testCreateTopicConcurrently";
+    Time timer = new MockTime();
+    doReturn(timeWindowMs).when(config).getTopicCreationThrottlingTimeWindowMs();
+    VeniceParentHelixAdmin throttledParentAdmin = new VeniceParentHelixAdmin(internalAdmin, config);
+    throttledParentAdmin.setTimer(timer);
+    throttledParentAdmin.getAdminCommandExecutionTracker()
+        .get()
+        .getFabricToControllerClientsMap()
+        .put("test-fabric", Mockito.mock(ControllerClient.class));
+    Future future = mock(Future.class);
+    doReturn(new RecordMetadata(topicPartition, 0, 1, -1, -1, -1, -1))
+        .when(future).get();
+    doReturn(future)
+        .when(veniceWriter)
+        .put(any(), any(), anyInt());
+    when(zkClient.readData(zkOffsetNodePath, null))
+        .thenReturn(null)
+        .thenReturn(TestUtils.getOffsetRecord(1));
+
+    throttledParentAdmin.setVeniceWriterForCluster(clusterName, veniceWriter);
+    throttledParentAdmin.start(clusterName);
+    throttledParentAdmin.addStore(clusterName, storeName, "test", "","\"string\"", "\"string\"");
+
+    // Create 3 thread to increment version concurrently, we expected admin will sleep a while to avoid creating topic
+    // too frequently.
+    int threadCount = 3;
+    Thread[] threads = new Thread[threadCount];
+    for(int i =0;i<threadCount;i++){
+      threads[i] = new Thread(() -> {
+        throttledParentAdmin.incrementVersion(clusterName,storeName,1,1);
+      });
+    }
+    long start = timer.getMilliseconds();
+    for(Thread thread:threads){
+      thread.start();
+      thread.join();
+    }
+    Assert.assertTrue(timer.getMilliseconds() - start == 3000l,
+        "We created 3 topic, at least cost 3s to prevent creating topic too frequently.");
   }
 }

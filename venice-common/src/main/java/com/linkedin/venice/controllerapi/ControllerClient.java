@@ -42,6 +42,7 @@ public class ControllerClient implements Closeable {
   private String urlsToFindMasterController;
   private String localHostname;
 
+  private static final int ADMIN_REQUEST_TIMEOUT_MIN = 10;
   protected final static ObjectMapper mapper = getObjectMapper();
   private final static Logger logger = Logger.getLogger(ControllerClient.class);
 
@@ -800,7 +801,7 @@ public class ControllerClient implements Closeable {
         .setDefaultRequestConfig(
             RequestConfig
             .custom()
-            .setSocketTimeout((int) TimeUnit.MINUTES.toMillis(3))
+            .setSocketTimeout((int) TimeUnit.MINUTES.toMillis(ADMIN_REQUEST_TIMEOUT_MIN))
             .build())
         .build()){
       httpClient.start();

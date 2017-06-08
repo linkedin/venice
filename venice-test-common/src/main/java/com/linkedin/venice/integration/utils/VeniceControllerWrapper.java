@@ -56,7 +56,8 @@ public class VeniceControllerWrapper extends ProcessWrapper {
           .put(TOPIC_MONITOR_POLL_INTERVAL_MS, 100)
           .put(CONTROLLER_PARENT_MODE, isParent)
           .put(DELAY_TO_REBALANCE_MS, delayToReblanceMS)
-          .put(MIN_ACTIVE_REPLICA, minActiveReplica);
+          .put(MIN_ACTIVE_REPLICA, minActiveReplica)
+          .put(TOPIC_CREATION_THROTTLING_TIME_WINDOW_MS, 100);
       if (isParent) {
         // Parent controller needs config to route per-cluster requests such as job status
         // This dummy parent controller wont support such requests until we make this config configurable.
