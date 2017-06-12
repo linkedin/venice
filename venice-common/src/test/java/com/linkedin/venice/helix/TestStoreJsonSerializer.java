@@ -1,8 +1,11 @@
 package com.linkedin.venice.helix;
 
+import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.utils.TestUtils;
 import java.io.IOException;
+
+import com.linkedin.venice.utils.Time;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -15,10 +18,23 @@ public class TestStoreJsonSerializer {
         throws IOException {
         Store store = TestUtils.createTestStore("s1", "owner", 1l);
         store.increaseVersion();
+        HybridStoreConfig hybridStoreConfig = new HybridStoreConfig(1000, 1000);
+        store.setHybridStoreConfig(hybridStoreConfig);
         StoreJSONSerializer serializer = new StoreJSONSerializer();
         byte[] data = serializer.serialize(store, "");
         Store newStore = serializer.deserialize(data, "");
         Assert.assertEquals(store,newStore);
+
+        // Equality of the HybridStoreConfig should already be covered by the Store's equals(), but just in case it's not, we'll verify...
+        Assert.assertEquals(store.getHybridStoreConfig(), newStore.getHybridStoreConfig());
+
+        // Verify consistency between the two equals()...
+        newStore.setHybridStoreConfig(new HybridStoreConfig(1000, 1));
+        Assert.assertNotEquals(store, newStore);
+        Assert.assertNotEquals(store.getHybridStoreConfig(), newStore.getHybridStoreConfig());
+        newStore.setHybridStoreConfig(new HybridStoreConfig(1, 1000));
+        Assert.assertNotEquals(store, newStore);
+        Assert.assertNotEquals(store.getHybridStoreConfig(), newStore.getHybridStoreConfig());
     }
 
     @Test
@@ -30,6 +46,8 @@ public class TestStoreJsonSerializer {
         Assert.assertEquals(store.getName(), "s1");
         Assert.assertEquals(store.getOwner(), null);
         Assert.assertEquals(store.getCreatedTime(), 0);
+        Assert.assertEquals(store.isHybrid(), false);
+        Assert.assertEquals(store.getHybridStoreConfig(), null);
     }
 
     @Test
