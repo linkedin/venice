@@ -14,6 +14,7 @@ import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.VeniceWriter;
 import java.util.HashMap;
+import java.util.Optional;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import org.testng.Assert;
@@ -81,10 +82,14 @@ public class TestThrottleReadRequestPerStore {
     long totalQuota = 10;
     cluster.getMasterVeniceController()
         .getVeniceAdmin()
-        .storeMetadataUpdate(cluster.getClusterName(), storeName, store -> {
-          store.setReadQuotaInCU(totalQuota);
-          return store;
-        });
+        .updateStore(cluster.getClusterName(), storeName,
+                     Optional.empty(),
+                     Optional.empty(),
+                     Optional.empty(),
+                     Optional.empty(),
+                     Optional.empty(),
+                     Optional.of(totalQuota),
+                     Optional.empty());
 
     TestUtils.waitForNonDeterministicCompletion(testTimeOutMS, TimeUnit.MILLISECONDS, () -> {
       Store store = cluster.getRandomVeniceRouter().getMetaDataRepository().getStore(storeName);

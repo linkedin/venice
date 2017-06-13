@@ -42,7 +42,7 @@ public class TestRestartRouter {
     String valueSchema = "\"string\"";
     VeniceRouterWrapper routerWrapper = cluster.getRandomVeniceRouter();
     ControllerClient controllerClient = new ControllerClient(cluster.getClusterName(), "http://"+routerWrapper.getAddress());
-    NewStoreResponse storeResponse = controllerClient.createNewStore(storeName, storeOwner, "test", keySchema, valueSchema);
+    NewStoreResponse storeResponse = controllerClient.createNewStore(storeName, storeOwner, keySchema, valueSchema);
     Assert.assertFalse(storeResponse.isError());
 
     // stop the selected router
