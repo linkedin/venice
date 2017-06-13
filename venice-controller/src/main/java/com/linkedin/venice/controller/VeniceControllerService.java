@@ -21,11 +21,9 @@ public class VeniceControllerService extends AbstractVeniceService {
   private final Admin admin;
   private final VeniceControllerClusterConfig config;
   private final AdminConsumerService consumerService;
-  private final MetricsRepository metricsRepository;
 
   public VeniceControllerService(VeniceControllerConfig config, MetricsRepository metricsRepository) {
     this.config = config;
-    this.metricsRepository = metricsRepository;
     VeniceHelixAdmin internalAdmin = new VeniceHelixAdmin(config, metricsRepository);
     if (config.isParent()) {
       this.admin = new VeniceParentHelixAdmin(internalAdmin, config);

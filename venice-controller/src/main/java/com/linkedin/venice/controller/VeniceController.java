@@ -62,7 +62,6 @@ public class VeniceController {
   public void start(){
     logger.info("Starting controller: " + config.getControllerName() + " for cluster: " + config.getClusterName()
         + " with ZKAddress: " + config.getZkAddress());
-    logger.info("sdwu's log. New controller version");
     controllerService.start();
     adminServer.start();
     if (null != topicMonitor) {
