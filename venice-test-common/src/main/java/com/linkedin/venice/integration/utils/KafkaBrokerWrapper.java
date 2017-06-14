@@ -1,11 +1,16 @@
 package com.linkedin.venice.integration.utils;
 
+import kafka.metrics.KafkaMetricsReporter;
 import kafka.server.KafkaConfig;
 import kafka.server.KafkaServer;
-import kafka.utils.*;
-import scala.None$;
+import kafka.utils.SystemTime$;
+import kafka.utils.Time$;
+import org.apache.kafka.common.utils.Time;
+import scala.Option;
+import scala.collection.Seq;
 
 import java.io.File;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -36,20 +41,29 @@ public class KafkaBrokerWrapper extends ProcessWrapper {
       configMap.put(KafkaConfig.PortProp(), port);
       configMap.put(KafkaConfig.HostNameProp(), DEFAULT_HOST_NAME);
       configMap.put(KafkaConfig.LogDirProp(), dir.getAbsolutePath());
+      configMap.put(KafkaConfig.AutoCreateTopicsEnableProp(), false);
+      configMap.put(KafkaConfig.DeleteTopicEnableProp(), true);
 
       // The configs below aim to reduce the overhead of the Kafka process:
       configMap.put(KafkaConfig.OffsetsTopicPartitionsProp(), OFFSET_TOPIC_PARTITIONS);
       configMap.put(KafkaConfig.OffsetsTopicReplicationFactorProp(), OFFSET_TOPIC_REPLICATION_FACTOR);
       configMap.put(KafkaConfig.LogCleanerEnableProp(), LOG_CLEANER_ENABLE);
 
-      configMap.put(KafkaConfig.AutoCreateTopicsEnableProp(), false);
-      configMap.put(KafkaConfig.DeleteTopicEnableProp(), true);
-
       KafkaConfig kafkaConfig = new KafkaConfig(configMap, true);
-      // kafka.server.KafkaServerStartable kafkaServerStartable = new KafkaServerStartable(kafkaConfig);
-      KafkaServer kafkaServer = new KafkaServer(kafkaConfig, SystemTime$.MODULE$, None$.empty());
+      KafkaServer kafkaServer = instantiateNewKafkaServer(kafkaConfig);
       return new KafkaBrokerWrapper(kafkaConfig, kafkaServer, dir, zkServerWrapper);
     };
+  }
+
+  private static KafkaServer instantiateNewKafkaServer(KafkaConfig kafkaConfig) {
+    int port = kafkaConfig.getInt(KafkaConfig.PortProp());
+    Option<String> threadNamePrefix = scala.Some$.MODULE$.<String>apply("kafka-broker-port-" + port);
+    scala.collection.mutable.Seq<KafkaMetricsReporter> metricsReporterSeq = scala.collection.JavaConversions.asScalaBuffer(new ArrayList<>());
+    return new KafkaServer(
+        kafkaConfig,
+        SystemTime$.MODULE$,
+        threadNamePrefix,
+        metricsReporterSeq);
   }
 
   // Instance-level state and APIs
@@ -109,6 +123,6 @@ public class KafkaBrokerWrapper extends ProcessWrapper {
   protected void newProcess()
       throws Exception {
     zkServerWrapper = ServiceFactory.getZkServer();
-    kafkaServer = new KafkaServer(kafkaConfig, SystemTime$.MODULE$, None$.empty());
+    kafkaServer = instantiateNewKafkaServer(kafkaConfig);
   }
 }
