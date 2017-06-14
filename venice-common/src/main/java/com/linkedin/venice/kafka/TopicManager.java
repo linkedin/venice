@@ -16,8 +16,7 @@ import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import kafka.admin.AdminUtils;
 import kafka.admin.RackAwareMode;
-import kafka.common.TopicExistsException;
-import kafka.server.TopicConfigHandler;
+import kafka.log.LogConfig;
 import kafka.utils.ZKStringSerializer$;
 import kafka.utils.ZkUtils;
 import org.I0Itec.zkclient.ZkClient;
@@ -25,6 +24,7 @@ import org.I0Itec.zkclient.ZkConnection;
 import org.apache.commons.io.IOUtils;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
+import org.apache.kafka.common.errors.TopicExistsException;
 import org.apache.kafka.common.PartitionInfo;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.serialization.ByteArrayDeserializer;
@@ -90,7 +90,7 @@ public class TopicManager implements Closeable {
        */
       Properties topicProperties = new Properties();
       if (eternal) {
-        topicProperties.put("retention.ms", Long.toString(Long.MAX_VALUE));
+        topicProperties.put(LogConfig.RetentionMsProp(), Long.toString(Long.MAX_VALUE));
       } // TODO: else apply buffer topic configured retention.
       AdminUtils.createTopic(getZkUtils(), topicName, numPartitions, replication, topicProperties, RackAwareMode.Safe$.MODULE$);
     } catch (TopicExistsException e) {
@@ -175,7 +175,6 @@ public class TopicManager implements Closeable {
     }
     consumer.assign(Arrays.asList());
     return offsets;
-
   }
 
   /**
