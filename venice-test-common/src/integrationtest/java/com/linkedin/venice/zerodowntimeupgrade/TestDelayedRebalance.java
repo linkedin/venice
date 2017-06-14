@@ -4,6 +4,7 @@ import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.helix.HelixState;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
+import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.PartitionAssignment;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
@@ -129,7 +130,7 @@ public class TestDelayedRebalance {
     });
   }
 
-  @Test
+  @Test()
   public void testDisableRebalanceTemporarily()
       throws InterruptedException {
     // Test the cases that fail one server after disabling delayed rebalance of the cluster. Helix will move the partition immediately.
@@ -149,22 +150,33 @@ public class TestDelayedRebalance {
       return assignment.getPartition(0).getReadyToServeInstances().size() == 2
           && assignment.getPartition(0).getInstanceStatusById(Utils.getHelixNodeIdentifier(failServerPort)) == null;
     });
+  }
+
+  @Test
+  public void testEnableDelayedRebalance()
+      throws InterruptedException {
+    String topicName = createVersionAndPushData();
+    // disable delayed rebalance
+    cluster.getMasterVeniceController().getVeniceAdmin().setDelayedRebalanceTime(cluster.getClusterName(), 0);
+    Assert.assertEquals(
+        cluster.getMasterVeniceController().getVeniceAdmin().getDelayedRebalanceTime(cluster.getClusterName()), 0);
 
     //Enable delayed rebalance
     cluster.getMasterVeniceController().getVeniceAdmin().setDelayedRebalanceTime(cluster.getClusterName(), delayRebalanceMS);
-    // Fail another server and restart the older failed one.
-    cluster.restartVeniceServer(failServerPort);
-    int anotherFailServerPort = stopAServer(topicName);
+    // wait the config change come into effect
+    Thread.sleep(testTimeOutMS);
+    // Fail on server
+    int failServerPort = stopAServer(topicName);
 
     //Wait one server disconnected, helix just set replica to OFFLINE but do not do the rebalance
-    TestUtils.waitForNonDeterministicCompletion(testTimeOutMS, TimeUnit.MILLISECONDS, () -> {
+    TestUtils.waitForNonDeterministicAssertion(testTimeOutMS, TimeUnit.MILLISECONDS, () -> {
       PartitionAssignment assignment =
           cluster.getRandomVeniceRouter().getRoutingDataRepository().getPartitionAssignments(topicName);
-      return assignment.getPartition(0).getReadyToServeInstances().size() == 1
-          && assignment.getPartition(0).getBootstrapInstances().size() == 0;
+      Assert.assertTrue(assignment.getPartition(0).getReadyToServeInstances().size() == 1
+          && assignment.getPartition(0).getBootstrapInstances().size() == 0);
     });
     // restart failed server
-    cluster.restartVeniceServer(anotherFailServerPort);
+    cluster.restartVeniceServer(failServerPort);
     //OFFLINE replica become ONLINE again.
     TestUtils.waitForNonDeterministicCompletion(testTimeOutMS, TimeUnit.MILLISECONDS, () -> {
       PartitionAssignment assignment =
@@ -175,7 +187,7 @@ public class TestDelayedRebalance {
     PartitionAssignment partitionAssignment = cluster.getRandomVeniceRouter().getRoutingDataRepository().getPartitionAssignments(topicName);
     // The restart server get the original replica and become ONLINE again.
     Assert.assertEquals(
-        partitionAssignment.getPartition(0).getInstanceStatusById(Utils.getHelixNodeIdentifier(anotherFailServerPort)),
+        partitionAssignment.getPartition(0).getInstanceStatusById(Utils.getHelixNodeIdentifier(failServerPort)),
         HelixState.ONLINE_STATE);
   }
 
