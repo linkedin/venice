@@ -18,5 +18,7 @@ jar {
 dependencies {
     compile project(':venice-common')
     compile project(':venice-thin-client')
-    compile libraries.avro
+    compile (libraries.avro) {
+      exclude group: 'org.mortbay.jetty' // jetty 6 conflicts with spark-java used in controller api
+    }
 }

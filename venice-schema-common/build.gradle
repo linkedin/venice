@@ -33,6 +33,7 @@ dependencies {
         exclude group: 'org.codehaus.jackson'
         exclude module: 'httpcore'
         exclude module: 'httpclient'
+        exclude group: 'kafka'
     }
 
     compile libraries.jacksonMapper

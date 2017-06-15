@@ -1,5 +1,7 @@
 package com.linkedin.venice.utils;
 
+import org.apache.log4j.Logger;
+
 import java.util.Date;
 import java.util.concurrent.TimeUnit;
 
@@ -9,7 +11,12 @@ import java.util.concurrent.TimeUnit;
  *
  * Useful for tests which are timing-dependent.
  */
-public class MockTime implements Time {
+public class MockTime
+    extends kafka.utils.MockTime // For interop with the Kafka Broker's Time abstraction
+    implements kafka.utils.Time, // For interop with the Kafka Broker's Time abstraction
+               Time {
+
+  private static final Logger LOGGER = Logger.getLogger(MockTime.class);
 
   private long timeMs;
 
@@ -55,5 +62,25 @@ public class MockTime implements Time {
 
   public void add(long duration, TimeUnit units) {
     this.timeMs += TimeUnit.MILLISECONDS.convert(duration, units);
+  }
+
+  /**
+   * For interop with the Kafka Broker's Time abstraction
+   */
+  @Override
+  public long milliseconds() {
+    long time = getMilliseconds();
+    LOGGER.info("Kafka asked for milliseconds. Returned: " + time);
+    return time;
+  }
+
+  /**
+   * For interop with the Kafka Broker's Time abstraction
+   */
+  @Override
+  public long nanoseconds() {
+    long time = getNanoseconds();
+    LOGGER.info("Kafka asked for nanoseconds. Returned: " + time);
+    return time;
   }
 }

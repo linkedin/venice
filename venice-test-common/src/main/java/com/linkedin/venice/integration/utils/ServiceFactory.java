@@ -4,9 +4,12 @@ import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.server.AdminSparkServer;
 import com.linkedin.venice.exceptions.VeniceException;
 
+import com.linkedin.venice.utils.MockTime;
 import com.linkedin.venice.utils.Time;
 import io.tehuti.metrics.MetricsRepository;
 import org.apache.log4j.Logger;
+
+import java.util.Optional;
 
 /**
  * A factory for generating Venice services and external service instances
@@ -45,8 +48,16 @@ public class ServiceFactory {
     return getKafkaBroker(ServiceFactory.getZkServer());
   }
 
+  public static KafkaBrokerWrapper getKafkaBroker(MockTime mockTime) {
+    return getKafkaBroker(ServiceFactory.getZkServer(), Optional.of(mockTime));
+  }
+
   static KafkaBrokerWrapper getKafkaBroker(ZkServerWrapper zkServerWrapper) {
-    return getStatefulService(KafkaBrokerWrapper.SERVICE_NAME, KafkaBrokerWrapper.generateService(zkServerWrapper));
+    return getKafkaBroker(zkServerWrapper, Optional.empty());
+  }
+
+  static KafkaBrokerWrapper getKafkaBroker(ZkServerWrapper zkServerWrapper, Optional<MockTime> mockTime) {
+    return getStatefulService(KafkaBrokerWrapper.SERVICE_NAME, KafkaBrokerWrapper.generateService(zkServerWrapper, mockTime));
   }
 
   public static BrooklinWrapper getBrooklinWrapper(KafkaBrokerWrapper kafka){

@@ -9,9 +9,12 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
 import java.util.StringJoiner;
+import java.util.stream.Collectors;
+
 import kafka.admin.AdminUtils;
 import kafka.admin.RackAwareMode;
 import kafka.log.LogConfig;
@@ -25,13 +28,14 @@ import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.common.errors.TopicExistsException;
 import org.apache.kafka.common.PartitionInfo;
 import org.apache.kafka.common.TopicPartition;
-import org.apache.kafka.common.errors.TopicExistsException;
 import org.apache.kafka.common.serialization.ByteArrayDeserializer;
 import org.apache.log4j.Logger;
 import org.codehaus.jackson.map.ObjectMapper;
 
 
 public class TopicManager implements Closeable {
+
+  private static final Logger LOGGER = Logger.getLogger(TopicManager.class);
 
   // Immutable state
   private final String zkConnection;
@@ -91,6 +95,7 @@ public class TopicManager implements Closeable {
       if (eternal) {
         topicProperties.put(LogConfig.RetentionMsProp(), Long.toString(Long.MAX_VALUE));
       } // TODO: else apply buffer topic configured retention.
+      topicProperties.put(LogConfig.MessageTimestampTypeProp(), "LogAppendTime"); // Just in case the Kafka cluster isn't configured as expected.
       AdminUtils.createTopic(getZkUtils(), topicName, numPartitions, replication, topicProperties, RackAwareMode.Safe$.MODULE$);
     } catch (TopicExistsException e) {
       logger.warn("Met error when creating kakfa topic: " + topicName, e);
@@ -174,6 +179,28 @@ public class TopicManager implements Closeable {
     }
     consumer.assign(Arrays.asList());
     return offsets;
+  }
+
+  public Map<Integer, Long> getOffsetsByTime(String topic, long timestamp) {
+    List<PartitionInfo> partitionInfoList = getConsumer().partitionsFor(topic);
+    if (null == partitionInfoList || partitionInfoList.isEmpty()) {
+      // N.B.: During unit test development, getting a null happened occasionally without apparent
+      //       reason. In their current state, the tests have been run with a high invocationCount and
+      //       no failures, so it may be a non-issue. If this happens again, and we find some test case
+      //       that can reproduce it, we may want to try adding a short amount of retries, and reporting
+      //       a bug to Kafka.
+      throw new VeniceException("Cannot get partition info for topic: " + topic + ", partitionInfoList: " + partitionInfoList);
+    }
+
+    Map<TopicPartition, Long> timestampsToSearch = partitionInfoList.stream().collect(Collectors.toMap(
+        partitionInfo -> new TopicPartition(topic, partitionInfo.partition()),
+        ignoredParam -> timestamp));
+
+    LOGGER.info("timestampsToSearch: " + timestampsToSearch);
+
+    return getConsumer().offsetsForTimes(timestampsToSearch).entrySet().stream().collect(Collectors.toMap(
+        partitionToOffset -> Utils.notNull(partitionToOffset.getKey(), "Got a null TopicPartition key out of the offsetsForTime API").partition(),
+        partitionToOffset -> Optional.ofNullable(partitionToOffset.getValue()).map(offset -> offset.offset()).orElse(0L)));
   }
 
   /**

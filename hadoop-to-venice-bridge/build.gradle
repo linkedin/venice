@@ -6,7 +6,8 @@ dependencies {
     compile libraries.kafkaClients
     compile libraries.kafka
     compile (libraries.avro) {
-      exclude group: 'org.slf4j'        // Avro pulls in slf4j 1.5 which is API incompatible with 1.6
+      exclude group: 'org.slf4j'         // Avro pulls in slf4j 1.5 which is API incompatible with 1.6
+      exclude group: 'org.mortbay.jetty' // jetty 6 conflicts with spark-java used in controller api
     }
 
     compile (libraries.mapreduceClientCore) {

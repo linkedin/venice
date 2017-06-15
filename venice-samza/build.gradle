@@ -8,6 +8,8 @@ task buildJar(type: Jar) {
   with jar
 }
 
+configurations.compile.exclude group: 'org.mortbay.jetty' // jetty 6 conflicts with spark-java used in controller api
+
 dependencies {
   compile libraries.samzaApi
 
