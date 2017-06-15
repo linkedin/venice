@@ -1,11 +1,10 @@
 package com.linkedin.venice.samza;
 
+import com.linkedin.cfg.impl.Utils;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
-import com.linkedin.venice.client.store.AvroGenericStoreClientImpl;
 import com.linkedin.venice.client.store.AvroStoreClientFactory;
 import com.linkedin.venice.controllerapi.ControllerApiConstants;
 import com.linkedin.venice.controllerapi.ControllerClient;
-import com.linkedin.venice.controllerapi.NewStoreResponse;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.utils.TestUtils;
@@ -15,13 +14,12 @@ import java.util.concurrent.TimeUnit;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
-import org.apache.samza.config.Config;
 import org.apache.samza.config.MapConfig;
 import org.apache.samza.system.OutgoingMessageEnvelope;
-import org.apache.samza.system.SystemFactory;
 import org.apache.samza.system.SystemProducer;
 import org.apache.samza.system.SystemStream;
-import org.testng.Assert;
+import org.testng.annotations.AfterClass;
+import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
 import static com.linkedin.venice.samza.VeniceSystemFactory.*;
@@ -32,17 +30,30 @@ public class VeniceSystemFactoryTest {
 
   //for a record like: {'string': 'somestring', 'number': 3.14}
   private static final String VALUE_SCHEMA = "{\"fields\":[{\"type\":[\"double\",\"null\"],\"name\":\"number\"},{\"type\":[\"string\",\"null\"],\"name\":\"string\"}],\"type\":\"record\",\"name\":\"testRecord\"}";
-private static final String KEY_SCHEMA = "\"string\"";
+  private static final String KEY_SCHEMA = "\"string\"";
+  private VeniceClusterWrapper venice;
+
+  @BeforeClass
+  private void setUp() {
+    venice = ServiceFactory.getVeniceCluster();
+  }
+
+  @AfterClass
+  private void tearDown() {
+    Utils.close(venice);
+  }
 
   /**
    * Write a record using the Samza SystemProducer for Venice, then verify we can read that record.
+   *
+   * This test fails consistently when run in Gradle, but not in IntelliJ (tested with invocationCount=100 in either)...
+   *
    * @throws Exception
    */
   @Test
   public void testGetProducer() throws Exception {
     String veniceSystemName = "venice"; //This is the Samza system name for use by the Samza API.
 
-    VeniceClusterWrapper venice = ServiceFactory.getVeniceCluster();
     String storeName = TestUtils.getUniqueString("store");
     ControllerClient client = new ControllerClient(venice.getClusterName(), venice.getRandomRouterURL());
     client.createNewStore(storeName, "owner", KEY_SCHEMA, VALUE_SCHEMA);
@@ -76,11 +87,10 @@ private static final String KEY_SCHEMA = "\"string\"";
     GenericRecord recordFromVenice = storeClient.get("keystring").get(1, TimeUnit.SECONDS);
 
     //verify we got the right record
-    Assert.assertEquals(recordFromVenice.get("string").toString(), "somestring");
-    Assert.assertEquals(recordFromVenice.get("number"), 3.14);
+    assertEquals(recordFromVenice.get("string").toString(), "somestring");
+    assertEquals(recordFromVenice.get("number"), 3.14);
 
     client.close();
     veniceProducer.stop();
-    venice.close();
   }
 }
