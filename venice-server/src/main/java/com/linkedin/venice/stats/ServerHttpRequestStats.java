@@ -5,11 +5,14 @@ import io.tehuti.metrics.MeasurableStat;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
 import io.tehuti.metrics.stats.Avg;
-import io.tehuti.metrics.stats.Count;
 import io.tehuti.metrics.stats.Max;
 import io.tehuti.metrics.stats.OccurrenceRate;
+import io.tehuti.metrics.stats.Rate;
+import io.tehuti.metrics.stats.SampledCount;
+import io.tehuti.metrics.stats.SampledTotal;
 
-public class ServerHttpRequestStats extends AbstractVeniceStats{
+
+public class ServerHttpRequestStats extends AbstractVeniceHttpStats{
   private final Sensor successRequestSensor;
   private final Sensor errorRequestSensor;
   private final Sensor successRequestLatencySensor;
@@ -18,43 +21,39 @@ public class ServerHttpRequestStats extends AbstractVeniceStats{
   private final Sensor requestKeyCountSensor;
   private final Sensor successRequestKeyCountSensor;
   private final Sensor successRequestKeyRatioSensor;
-
   private final Sensor successRequestRatioSensor;
-
-  private RequestType requestType;
 
 
   public ServerHttpRequestStats(MetricsRepository metricsRepository,
                                 String storeName, RequestType requestType) {
-    super(metricsRepository, storeName);
-    this.requestType = requestType;
+    super(metricsRepository, storeName, requestType);
 
-    MeasurableStat successRequest = new Count();
-    MeasurableStat errorRequest = new Count();
-    successRequestSensor = registerSensor(getFullMetricName("success_request"), successRequest, new OccurrenceRate());
-    errorRequestSensor = registerSensor(getFullMetricName( "error_request"), errorRequest, new OccurrenceRate());
-    successRequestLatencySensor = registerSensor(getFullMetricName("success_request_latency"),
+    /**
+     * Check java doc of function: {@link TehutiUtils.RatioStat} to understand why choosing {@link Rate} instead of
+     * {@link io.tehuti.metrics.stats.SampledStat}.
+     */
+    Rate successRequest = new OccurrenceRate();
+    Rate errorRequest = new OccurrenceRate();
+    successRequestSensor = registerSensor("success_request", successRequest);
+    errorRequestSensor = registerSensor("error_request", errorRequest);
+    successRequestLatencySensor = registerSensor("success_request_latency",
         TehutiUtils.getPercentileStat(getName(), getFullMetricName("success_request_latency")));
-    errorRequestLatencySensor = registerSensor(getFullMetricName("error_request_latency"),
+    errorRequestLatencySensor = registerSensor("error_request_latency",
         TehutiUtils.getPercentileStat(getName(), getFullMetricName("error_request_latency")));
-    successRequestRatioSensor = registerSensor(getFullMetricName("success_request_ratio"),
+    successRequestRatioSensor = registerSensor("success_request_ratio",
         new TehutiUtils.RatioStat(successRequest, errorRequest));
 
     //bdbQueryLatency is normally less than 1 ms. Record ns instead of ms for better readability.
-    bdbQueryLatencySensor = registerSensor(getFullMetricName("bdb_query_latency_ns"),
+    bdbQueryLatencySensor = registerSensor("bdb_query_latency_ns",
         TehutiUtils.getPercentileStat(getName(), getFullMetricName("bdb_query_latency")));
 
-    MeasurableStat requestKeyCount = new Count();
-    MeasurableStat successRequestKeyCount = new Count();
-    requestKeyCountSensor = registerSensor(getFullMetricName("request_key_count"), requestKeyCount, new Avg(), new Max());
-    successRequestKeyCountSensor = registerSensor(getFullMetricName("success_request_key_count"), successRequestKeyCount,
+    Rate requestKeyCount = new OccurrenceRate();
+    Rate successRequestKeyCount = new OccurrenceRate();
+    requestKeyCountSensor = registerSensor("request_key_count", requestKeyCount, new Avg(), new Max());
+    successRequestKeyCountSensor = registerSensor("success_request_key_count", successRequestKeyCount,
         new Avg(), new Max());
-    successRequestKeyRatioSensor = registerSensor(getFullMetricName("success_request_key_ratio"),
+    successRequestKeyRatioSensor = registerSensor("success_request_key_ratio",
         new TehutiUtils.SimpleRatioStat(successRequestKeyCount, requestKeyCount));
-  }
-
-  private String getFullMetricName(String metricName) {
-    return requestType.getMetricPrefix() + metricName;
   }
 
   public void recordSuccessRequest() {

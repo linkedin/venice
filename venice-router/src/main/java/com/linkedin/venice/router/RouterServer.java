@@ -3,6 +3,7 @@ package com.linkedin.venice.router;
 import com.linkedin.d2.server.factory.D2Server;
 import com.linkedin.ddsstorage.base.concurrency.AsyncFuture;
 import com.linkedin.ddsstorage.base.concurrency.TimeoutProcessor;
+import com.linkedin.ddsstorage.base.concurrency.impl.SuccessAsyncFuture;
 import com.linkedin.ddsstorage.base.registry.ResourceRegistry;
 import com.linkedin.ddsstorage.base.registry.ShutdownableExecutors;
 import com.linkedin.ddsstorage.router.api.ScatterGatherHelper;
@@ -15,14 +16,20 @@ import com.linkedin.venice.helix.HelixAdapterSerializer;
 import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
 import com.linkedin.venice.helix.HelixReadOnlyStoreRepository;
 import com.linkedin.venice.helix.HelixRoutingDataRepository;
+import com.linkedin.venice.read.RequestType;
+import com.linkedin.venice.router.api.RouterExceptionAndTrackingUtils;
 import com.linkedin.venice.router.api.RouterHeartbeat;
 import com.linkedin.venice.router.api.VeniceDispatcher;
 import com.linkedin.venice.router.api.VeniceHostFinder;
 import com.linkedin.venice.router.api.VeniceHostHealth;
+import com.linkedin.venice.router.api.VeniceMetricsProvider;
 import com.linkedin.venice.router.api.VenicePartitionFinder;
 import com.linkedin.venice.router.api.VenicePathParser;
+import com.linkedin.venice.router.api.VeniceResponseAggregator;
 import com.linkedin.venice.router.api.VeniceRoleFinder;
+import com.linkedin.venice.router.api.VeniceDelegateMode;
 import com.linkedin.venice.router.api.VeniceVersionFinder;
+import com.linkedin.venice.router.stats.AggRouterHttpRequestStats;
 import com.linkedin.venice.router.throttle.ReadRequestThrottler;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.stats.TehutiUtils;
@@ -43,6 +50,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.function.LongSupplier;
 import org.apache.helix.HelixManager;
 import org.apache.helix.InstanceType;
 import org.apache.helix.manager.zk.ZKHelixManager;
@@ -57,7 +65,8 @@ public class RouterServer extends AbstractVeniceService {
   private final HelixRoutingDataRepository routingDataRepository;
   private final HelixReadOnlyStoreRepository metadataRepository;
   private final List<D2Server> d2ServerList;
-  private final MetricsRepository metricsRepository;
+  private final AggRouterHttpRequestStats statsForSingleGet;
+  private final AggRouterHttpRequestStats statsForMultiGet;
   private final Optional<SSLEngineComponentFactory> sslFactory;
 
   private final VeniceRouterConfig config;
@@ -74,6 +83,7 @@ public class RouterServer extends AbstractVeniceService {
   private ResourceRegistry registry = null;
   private VeniceDispatcher dispatcher;
   private RouterHeartbeat heartbeat;
+  private VeniceDelegateMode scatterGatherMode;
   private ZkRoutersClusterManager routersClusterManager;
 
   private final static String ROUTER_SERVICE_NAME = "venice-router";
@@ -91,7 +101,6 @@ public class RouterServer extends AbstractVeniceService {
     ROUTER_THREADS = cores > 2 ? cores : 2;
     ROUTER_THREAD_POOL_SIZE = ROUTER_THREADS + 2;
   }
-  private final static int CONNECTION_LIMIT = 10000; // TODO, configurable
 
   public static void main(String args[]) throws Exception {
 
@@ -132,13 +141,9 @@ public class RouterServer extends AbstractVeniceService {
     }
   }
 
-  private static MetricsRepository createMetricsRepository() {
-    return TehutiUtils.getMetricsRepository(ROUTER_SERVICE_NAME);
-  }
-
   public RouterServer(VeniceProperties properties, List<D2Server> d2Servers,
-      Optional<SSLEngineComponentFactory> slEngineComponentFactory) {
-    this(properties, d2Servers, slEngineComponentFactory, TehutiUtils.getMetricsRepository(ROUTER_SERVICE_NAME));
+      Optional<SSLEngineComponentFactory> sslEngineComponentFactory) {
+    this(properties, d2Servers, sslEngineComponentFactory, TehutiUtils.getMetricsRepository(ROUTER_SERVICE_NAME));
   }
 
   public RouterServer(VeniceProperties properties, List<D2Server> d2Servers,
@@ -146,7 +151,8 @@ public class RouterServer extends AbstractVeniceService {
     config = new VeniceRouterConfig(properties);
     zkClient = new ZkClient(config.getZkConnection());
     manager = new ZKHelixManager(config.getClusterName(), null, InstanceType.SPECTATOR, config.getZkConnection());
-    this.metricsRepository = metricsRepository;
+    this.statsForSingleGet = new AggRouterHttpRequestStats(metricsRepository, RequestType.SINGLE_GET);
+    this.statsForMultiGet = new AggRouterHttpRequestStats(metricsRepository, RequestType.MULTI_GET);
     HelixAdapterSerializer adapter = new HelixAdapterSerializer();
     this.metadataRepository = new HelixReadOnlyStoreRepository(zkClient, adapter, config.getClusterName());
     this.schemaRepository =
@@ -183,7 +189,9 @@ public class RouterServer extends AbstractVeniceService {
     this.schemaRepository = schemaRepository;
     this.routingDataRepository = routingDataRepository;
     this.d2ServerList = d2ServerList;
-    this.metricsRepository = new MetricsRepository();
+    MetricsRepository metricsRepository = new MetricsRepository();
+    this.statsForSingleGet = new AggRouterHttpRequestStats(metricsRepository, RequestType.SINGLE_GET);
+    this.statsForMultiGet = new AggRouterHttpRequestStats(metricsRepository, RequestType.MULTI_GET);
     this.sslFactory = sslFactory;
     this.zkClient = new ZkClient(config.getZkConnection());
     verifySslOk();
@@ -206,18 +214,31 @@ public class RouterServer extends AbstractVeniceService {
     Optional<SSLEngineComponentFactory> sslFactoryForRequests = config.isSslToStorageNodes()? sslFactory : Optional.empty();
     VenicePartitionFinder partitionFinder = new VenicePartitionFinder(routingDataRepository);
     VeniceHostHealth healthMonitor = new VeniceHostHealth();
-    dispatcher = new VeniceDispatcher(healthMonitor, config.getClientTimeoutMs(), metricsRepository, sslFactoryForRequests);
+    scatterGatherMode = new VeniceDelegateMode();
+    dispatcher = new VeniceDispatcher(healthMonitor, config.getClientTimeoutMs(), sslFactoryForRequests);
     heartbeat = new RouterHeartbeat(manager, healthMonitor, 10, TimeUnit.SECONDS, config.getHeartbeatTimeoutMs(), sslFactoryForRequests);
     heartbeat.startInner();
     MetaDataHandler metaDataHandler = new MetaDataHandler(routingDataRepository, schemaRepository, config.getClusterName());
+    VenicePathParser pathParser = new VenicePathParser(new VeniceVersionFinder(metadataRepository), partitionFinder,
+        statsForSingleGet, statsForMultiGet, config.getMaxKeyCountInMultiGetReq());
+    // Setup stat tracking for exceptional case
+    RouterExceptionAndTrackingUtils.setStatsForSingleGet(statsForSingleGet);
+    RouterExceptionAndTrackingUtils.setStatsForMultiGet(statsForMultiGet);
+
+    // Fixed retry future
+    AsyncFuture<LongSupplier> retryFuture = new SuccessAsyncFuture<>(() -> config.getLongTailRetryThresholdMs());
 
     ScatterGatherHelper scatterGather = ScatterGatherHelper.builder()
         .roleFinder(new VeniceRoleFinder())
-        .pathParser(new VenicePathParser(new VeniceVersionFinder(metadataRepository), partitionFinder))
+        .pathParserExtended(pathParser)
         .partitionFinder(partitionFinder)
         .hostFinder(new VeniceHostFinder(routingDataRepository))
         .hostHealthMonitor(healthMonitor)
         .dispatchHandler(dispatcher)
+        .scatterMode(scatterGatherMode)
+        .responseAggregatorFactory(new VeniceResponseAggregator(statsForSingleGet, statsForMultiGet))
+        .metricsProvider(new VeniceMetricsProvider())
+        .longTailRetrySupplier((resourceName, methodName) -> retryFuture) // TODO: add metric to track retries
         .build();
 
     Router router = Router.builder(scatterGather)
@@ -227,7 +248,7 @@ public class RouterServer extends AbstractVeniceService {
         .bossPoolSize(1) // One boss thread to monitor the socket for new connections.  Netty only uses one thread from this pool
         .ioWorkerPoolSize(ROUTER_THREADS / 2) // While they're shared between http router and https router
         .workerExecutor(workerExecutor)
-        .connectionLimit(CONNECTION_LIMIT)
+        .connectionLimit(config.getConnectionLimit())
         .timeoutProcessor(timeoutProcessor)
         .serverSocketOptions(serverSocketOptions)
         .beforeHttpRequestHandler(ChannelPipeline.class, (pipeline) -> {
@@ -244,7 +265,7 @@ public class RouterServer extends AbstractVeniceService {
         .bossPoolSize(1) // One boss thread to monitor the socket for new connections.  Netty only uses one thread from this pool
         .ioWorkerPoolSize(ROUTER_THREADS / 2) // While they're shared between http router and https router
         .workerExecutor(workerExecutor)
-        .connectionLimit(CONNECTION_LIMIT)
+        .connectionLimit(config.getConnectionLimit())
         .timeoutProcessor(timeoutProcessor)
         .serverSocketOptions(serverSocketOptions)
         .beforeHttpServerCodec(ChannelPipeline.class, (pipeline) -> {
@@ -343,7 +364,7 @@ public class RouterServer extends AbstractVeniceService {
       // Setup read requests throttler.
       ReadRequestThrottler throttler =
           new ReadRequestThrottler(routersClusterManager, metadataRepository, routingDataRepository, config.getMaxReadCapacityCu());
-      dispatcher.setReadRequestThrottler(throttler);
+      scatterGatherMode.initReadRequestThrottler(throttler);
 
       for (D2Server d2Server : d2ServerList) {
         logger.info("Starting d2 announcer: " + d2Server);

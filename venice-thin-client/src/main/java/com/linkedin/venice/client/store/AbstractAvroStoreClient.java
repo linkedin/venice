@@ -13,6 +13,8 @@ import com.linkedin.venice.serializer.AvroSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.serializer.RecordSerializer;
 import com.linkedin.venice.utils.EncodingUtils;
+import io.netty.buffer.ByteBuf;
+import java.nio.ByteBuffer;
 import org.apache.commons.io.IOUtils;
 
 import javax.validation.constraints.NotNull;
@@ -46,6 +48,8 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
   private SchemaReader schemaReader;
   // Key serializer
   protected RecordSerializer<K> keySerializer;
+  // Multi-get request serializer
+  protected RecordSerializer<ByteBuffer> multiGetRequestSerializer;
 
   private TransportClient transportClient;
   private String storeName;
@@ -138,7 +142,9 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
   public CompletableFuture<Map<K, V>> multiGet(Set<K> keys) throws VeniceClientException
   {
     List<K> keyList = new ArrayList<>(keys);
-    byte[] multiGetBody = keySerializer.serializeObjects(keyList);
+    List<ByteBuffer> serializedKeyList = new ArrayList<>();
+    keyList.stream().forEach( key -> serializedKeyList.add(ByteBuffer.wrap(keySerializer.serialize(key))) );
+    byte[] multiGetBody = multiGetRequestSerializer.serializeObjects(serializedKeyList);
     String requestPath = getStorageRequestPath();
 
     CompletableFuture<TransportClientResponse> transportFuture = transportClient.post(requestPath, MULTI_GET_HEADER_MAP,
@@ -192,6 +198,9 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
       // init key serializer
       this.keySerializer =
         AvroSerializerDeserializerFactory.getAvroGenericSerializer(schemaReader.getKeySchema());
+      // init multi-get request serializer
+      this.multiGetRequestSerializer = AvroSerializerDeserializerFactory.getAvroGenericSerializer(
+          ReadAvroProtocolDefinition.MULTI_GET_CLIENT_REQUEST_V1.getSchema());
     } else {
       this.schemaReader = null;
     }

@@ -1,13 +1,15 @@
-package com.linkedin.venice.listener;
+package com.linkedin.venice.storagenode;
 
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
+import com.linkedin.venice.client.store.AvroGenericStoreClient;
+import com.linkedin.venice.client.store.AvroStoreClientFactory;
+import com.linkedin.venice.common.PartitionOffsetMapUtils;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
-import com.linkedin.venice.listener.response.MultiGetResponseWrapper;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.partitioner.VenicePartitioner;
@@ -62,6 +64,7 @@ public class StorageNodeReadTest {
   private int partitionCount;
 
   private String serverAddr;
+  private String routerAddr;
   private VeniceSerializer keySerializer;
   private VeniceSerializer valueSerializer;
 
@@ -74,6 +77,7 @@ public class StorageNodeReadTest {
     boolean enableSSL = false;
     veniceCluster = ServiceFactory.getVeniceCluster(enableSSL);
     serverAddr = veniceCluster.getVeniceServers().get(0).getAddress();
+    routerAddr = "http://" + veniceCluster.getVeniceRouters().get(0).getAddress();
 
     // Create test store
     VersionCreationResponse creationResponse = veniceCluster.getNewStoreVersion();
@@ -107,7 +111,7 @@ public class StorageNodeReadTest {
     return partitioner.getPartitionId(key, partitionCount);
   }
 
-  @Test
+  @Test (timeOut = 100000)
   public void testRead() throws Exception {
     final int pushVersion = Version.parseVersionFromKafkaTopicName(storeVersionName);
 
@@ -188,12 +192,12 @@ public class StorageNodeReadTest {
       HttpResponse multiGetResponse = multiGetFuture.get();
       Assert.assertEquals(multiGetResponse.getStatusLine().getStatusCode(), HttpStatus.SC_OK);
       /**
-       * Validate header: {@link HttpConstants.VENICE_PARTITION_OFFSET_MAP}
+       * Validate header: {@link HttpConstants.VENICE_OFFSET}
        */
-      Header partitionOffsetHeader = multiGetResponse.getFirstHeader(HttpConstants.VENICE_PARTITION_OFFSET_MAP);
+      Header partitionOffsetHeader = multiGetResponse.getFirstHeader(HttpConstants.VENICE_OFFSET);
       Assert.assertNotNull(partitionOffsetHeader);
       String headerValue = partitionOffsetHeader.getValue();
-      Map<Integer, Long> partitionOffsetMap = MultiGetResponseWrapper.deserializePartitionOffsetMap(headerValue);
+      Map<Integer, Long> partitionOffsetMap = PartitionOffsetMapUtils.deserializePartitionOffsetMap(headerValue);
       partitionIdSet.forEach( partitionId -> {
         Long offset = partitionOffsetMap.get(partitionId);
         Assert.assertNotNull(offset);
@@ -213,6 +217,21 @@ public class StorageNodeReadTest {
           Assert.assertEquals(results.get(i), valuePrefix + i);
         }
       }
+    }
+
+    /**
+     * Test with {@link AvroGenericStoreClient}.
+     */
+    AvroGenericStoreClient<String, CharSequence> storeClient = AvroStoreClientFactory.getAndStartAvroGenericStoreClient(routerAddr, storeName);
+    Set<String> keySet = new HashSet<>();
+    for (int i = 0; i < 10; ++i) {
+      keySet.add(keyPrefix + i);
+    }
+    keySet.add("unknown_key");
+    Map<String, CharSequence> result = storeClient.multiGet(keySet).get();
+    Assert.assertEquals(result.size(), 10);
+    for (int i = 0; i < 10; ++i) {
+      Assert.assertEquals(result.get(keyPrefix + i).toString(), valuePrefix + i);
     }
   }
 }

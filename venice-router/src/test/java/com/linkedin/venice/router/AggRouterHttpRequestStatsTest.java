@@ -1,5 +1,6 @@
 package com.linkedin.venice.router;
 
+import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.router.stats.AggRouterHttpRequestStats;
 import com.linkedin.venice.tehuti.MockTehutiReporter;
 import io.tehuti.metrics.MetricsRepository;
@@ -19,7 +20,7 @@ public class AggRouterHttpRequestStatsTest {
     reporter = new MockTehutiReporter();
     metrics.addReporter(reporter);
 
-    stats = new AggRouterHttpRequestStats(metrics);
+    stats = new AggRouterHttpRequestStats(metrics, RequestType.SINGLE_GET);
   }
 
   @Test

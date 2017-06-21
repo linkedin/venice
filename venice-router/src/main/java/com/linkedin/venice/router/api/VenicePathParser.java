@@ -1,20 +1,24 @@
 package com.linkedin.venice.router.api;
 
-import com.linkedin.ddsstorage.base.misc.QueryStringDecoder;
-import com.linkedin.ddsstorage.router.api.ResourcePathParser;
+import com.linkedin.ddsstorage.netty4.misc.BasicFullHttpRequest;
+import com.linkedin.ddsstorage.netty4.misc.BasicHttpRequest;
+import com.linkedin.ddsstorage.router.api.ExtendedResourcePathParser;
 import com.linkedin.ddsstorage.router.api.RouterException;
-import com.linkedin.venice.RequestConstants;
 import com.linkedin.venice.controllerapi.ControllerRoute;
-import com.linkedin.venice.exceptions.VeniceException;
-import java.net.URI;
-import java.net.URISyntaxException;
-import java.nio.charset.StandardCharsets;
+import com.linkedin.venice.router.api.path.VeniceSingleGetPath;
+import com.linkedin.venice.router.api.path.VeniceMultiGetPath;
+import com.linkedin.venice.router.api.path.VenicePath;
+import com.linkedin.venice.router.stats.AggRouterHttpRequestStats;
+import com.linkedin.venice.utils.Utils;
+import io.netty.handler.codec.http.HttpMethod;
 import java.util.Collection;
-import java.util.Collections;
+import java.util.Optional;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import javax.annotation.Nonnull;
 import org.apache.log4j.Logger;
-import org.jboss.netty.handler.codec.http.HttpResponseStatus;
+
+import static io.netty.handler.codec.rtsp.RtspResponseStatuses.*;
 
 
 /***
@@ -28,9 +32,10 @@ import org.jboss.netty.handler.codec.http.HttpResponseStatus;
  *
  *   The VenicePathParser is responsible for looking up the active version of the store, and constructing the store-version
  */
-public class VenicePathParser implements ResourcePathParser<VeniceStoragePath, RouterKey> {
+public class VenicePathParser<HTTP_REQUEST extends BasicHttpRequest>
+    implements ExtendedResourcePathParser<VenicePath, RouterKey, HTTP_REQUEST> {
 
-  private static final Logger logger = Logger.getLogger(VenicePathParser.class);
+  private static final Logger LOGGER = Logger.getLogger(VenicePathParser.class);
 
   public static final String STORE_VERSION_SEP = "_v";
   public static final Pattern STORE_PATTERN = Pattern.compile("\\A[a-zA-Z][a-zA-Z0-9_-]*\\z"); // \A and \z are start and end of string
@@ -46,54 +51,80 @@ public class VenicePathParser implements ResourcePathParser<VeniceStoragePath, R
   public static final String TYPE_KEY_SCHEMA = "key_schema";
   public static final String TYPE_VALUE_SCHEMA = "value_schema";
 
-  private VeniceVersionFinder versionFinder;
-  private VenicePartitionFinder partitionFinder;
+  private final VeniceVersionFinder versionFinder;
+  private final VenicePartitionFinder partitionFinder;
+  private final AggRouterHttpRequestStats statsForSingleGet;
+  private final AggRouterHttpRequestStats statsForMultiGet;
 
-  public VenicePathParser(VeniceVersionFinder versionFinder, VenicePartitionFinder partitionFinder){
+  private final int maxKeyCountInMultiGetReq;
+
+  public VenicePathParser(VeniceVersionFinder versionFinder, VenicePartitionFinder partitionFinder,
+      AggRouterHttpRequestStats statsForSingleGet, AggRouterHttpRequestStats statsForMultiGet,
+      int maxKeyCountInMultiGetReq){
     this.versionFinder = versionFinder;
     this.partitionFinder = partitionFinder;
+    this.statsForSingleGet = statsForSingleGet;
+    this.statsForMultiGet = statsForMultiGet;
+    this.maxKeyCountInMultiGetReq = maxKeyCountInMultiGetReq;
   };
 
   @Override
-  public VeniceStoragePath parseResourceUri(String uri) throws RouterException {
+  public VenicePath parseResourceUri(String uri, HTTP_REQUEST request) throws RouterException {
+    if (!(request instanceof BasicFullHttpRequest)) {
+      throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(Optional.empty(), Optional.empty(),
+          BAD_GATEWAY, "parseResourceUri should receive a BasicFullHttpRequest");
+    }
+    BasicFullHttpRequest fullHttpRequest = (BasicFullHttpRequest)request;
     VenicePathParserHelper pathHelper = new VenicePathParserHelper(uri);
-    if (pathHelper.isInvalidStorageRequest()){
-      throw new RouterException(HttpResponseStatus.class, HttpResponseStatus.BAD_REQUEST, HttpResponseStatus.BAD_REQUEST.getCode(),
-          "Request URI must have a resource type, storename, and key.  Uri is: " + uri, true);
-    }
     String resourceType = pathHelper.getResourceType();
-    String storename = pathHelper.getResourceName();
-    String key = pathHelper.getKey();
-
-    if (resourceType.equals(TYPE_STORAGE)) {
-      String resourceName = getResourceFromStoreName(storename);
-      RouterKey routerKey;
-      if (isFormatB64(uri)){
-        routerKey = RouterKey.fromBase64(key);
-      } else {
-        routerKey = RouterKey.fromString(key);
-      }
-      String partition = Integer.toString(partitionFinder.findPartitionNumber(resourceName, routerKey));
-      return new VeniceStoragePath(resourceName, Collections.singleton(routerKey), partition);
-
-    } else {
-      throw new RouterException(HttpResponseStatus.class, HttpResponseStatus.BAD_REQUEST, HttpResponseStatus.BAD_REQUEST.getCode(),
-          "Requested resource type: " + resourceType + " is not a valid type", true);
+    if (! resourceType.equals(TYPE_STORAGE)) {
+      throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(Optional.empty(), Optional.empty(),
+          BAD_REQUEST, "Requested resource type: " + resourceType + " is not a valid type");
     }
+    String storeName = pathHelper.getResourceName();
+    if (Utils.isNullOrEmpty(storeName)) {
+      throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(Optional.empty(), Optional.empty(),
+          BAD_REQUEST, "Request URI must have storeName.  Uri is: " + uri);
+    }
+    String resourceName = getResourceFromStoreName(storeName);
+
+    HttpMethod method = fullHttpRequest.method();
+    VenicePath path = null;
+    AggRouterHttpRequestStats stats = null;
+    if (method.equals(HttpMethod.GET)) {
+      // single-get request
+      path = new VeniceSingleGetPath(resourceName, pathHelper.getKey(), uri, partitionFinder);
+      stats = statsForSingleGet;
+    } else if (method.equals(HttpMethod.POST)) {
+      // multi-get request
+      path = new VeniceMultiGetPath(resourceName, fullHttpRequest, partitionFinder, maxKeyCountInMultiGetReq);
+      stats = statsForMultiGet;
+    } else {
+      throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(Optional.empty(), Optional.empty(),
+          BAD_REQUEST, "Method: " + method.name() + " is not allowed");
+    }
+    stats.recordRequest(storeName);
+    stats.recordRequestSize(storeName, path.getRequestSize());
+    return path;
   }
 
+  @Nonnull
   @Override
-  public VeniceStoragePath substitutePartitionKey(VeniceStoragePath path, RouterKey key) {
-    String partition = Integer.toString(partitionFinder.findPartitionNumber(path.getResourceName(), key));
-    return new VeniceStoragePath(path.getResourceName(), Collections.singleton(key), partition);
+  public VenicePath parseResourceUri(@Nonnull String uri) throws RouterException {
+    throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(Optional.empty(), Optional.empty(),
+        BAD_REQUEST, "parseResourceUri without param: request should not be invoked");
   }
 
+  @Nonnull
   @Override
-  public VeniceStoragePath substitutePartitionKey(VeniceStoragePath path, Collection<RouterKey> keys) {
-    // Assumes all keys on same partition
-    String partition = Integer.toString(
-        partitionFinder.findPartitionNumber(path.getResourceName(), keys.iterator().next()));
-    return new VeniceStoragePath(path.getResourceName(), keys, partition);
+  public VenicePath substitutePartitionKey(@Nonnull VenicePath path, RouterKey s) {
+    return path.substitutePartitionKey(s);
+  }
+
+  @Nonnull
+  @Override
+  public VenicePath substitutePartitionKey(@Nonnull VenicePath path, @Nonnull Collection<RouterKey> s) {
+    return path.substitutePartitionKey(s);
   }
 
   /***
@@ -114,15 +145,5 @@ public class VenicePathParser implements ResourcePathParser<VeniceStoragePath, R
     Matcher m = STORE_PATTERN.matcher(storeName);
     return m.matches();
   }
-
-  protected static boolean isFormatB64(String key) {
-    String format = RequestConstants.DEFAULT_FORMAT; //"string"
-    QueryStringDecoder queryStringParser = new QueryStringDecoder(key, StandardCharsets.UTF_8);
-    if (queryStringParser.getParameters().keySet().contains(RequestConstants.FORMAT_KEY)) {
-      format = queryStringParser.getParameters().get(RequestConstants.FORMAT_KEY).get(0);
-    }
-    return format.equals(RequestConstants.B64_FORMAT);
-  }
-
 
 }

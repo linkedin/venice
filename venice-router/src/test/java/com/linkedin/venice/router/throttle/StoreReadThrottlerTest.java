@@ -8,7 +8,7 @@ import com.linkedin.venice.meta.PartitionAssignment;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.throttle.EventThrottler;
 import com.linkedin.venice.utils.Utils;
-import edu.emory.mathcs.backport.java.util.Arrays;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;

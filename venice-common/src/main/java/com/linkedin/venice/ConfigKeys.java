@@ -93,6 +93,20 @@ public class ConfigKeys {
   public static final String HEARTBEAT_TIMEOUT =  "heartbeat.timeout";
   public static final String MAX_READ_CAPCITY = "max.read.capacity";
   public static final String SSL_TO_STORAGE_NODES = "sslToStorageNodes";
+  /**
+   * After this amount of time, DDS Router will retry once for the slow storage node request.
+   * We could explore specifying different thresholds for single-get and multi-get later on.
+   *
+   * Practically, we need to manually select the threshold (e.g. P95) for retrying based on latency metrics.
+   */
+  public static final String ROUTER_LONG_TAIL_RETRY_THRESHOLD_MS = "router.long.tail.retry.threshold.ms";
+  /**
+   * The max key count allowed in one multi-get request.
+   * For now, it is configured in host level, and we could consider to configure it in store level.
+   */
+  public static final String ROUTER_MAX_KEY_COUNT_IN_MULTIGET_REQ = "router.max.key_count.in.multiget.req";
+  public static final String ROUTER_CONNECTION_LIMIT = "router.connection.limit";
+
 
   /**
    * Venice uses a helix cluster to assign controllers to each named venice cluster.  This is the number of controllers

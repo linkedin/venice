@@ -1,5 +1,6 @@
 package com.linkedin.venice.stats;
 
+import com.linkedin.venice.read.RequestType;
 import io.tehuti.metrics.MeasurableStat;
 import io.tehuti.metrics.MetricConfig;
 import io.tehuti.metrics.MetricsRepository;

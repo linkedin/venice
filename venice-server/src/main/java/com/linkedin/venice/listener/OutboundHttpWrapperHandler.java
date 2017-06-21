@@ -36,13 +36,13 @@ public class OutboundHttpWrapperHandler extends ChannelOutboundHandlerAdapter {
     ByteBuf body;
     String contentType = HttpConstants.AVRO_BINARY;
     HttpResponseStatus responseStatus = OK;
-    long offset = -1;
+    String offset = "-1";
     int schemaId = -1;
     String partitionOffsets = null;
     if (msg instanceof StorageResponseObject) {
       StorageResponseObject obj = (StorageResponseObject) msg;
       statsHandler.setBdbQueryLatency(obj.getBdbQueryLatency());
-      offset = obj.getOffset();
+      offset = Long.toString(obj.getOffset());
       if (obj.isFound()) {
         body = obj.getValueRecord().getData();
         schemaId = obj.getValueRecord().getSchemaId();
@@ -58,7 +58,7 @@ public class OutboundHttpWrapperHandler extends ChannelOutboundHandlerAdapter {
       statsHandler.setSuccessRequestKeyCount(response.getRecordCount());
       body = Unpooled.wrappedBuffer(response.serializedMultiGetResponse());
       schemaId = response.getResponseSchemaId();
-      partitionOffsets = response.serializedPartitionOffsetMap();
+      offset = response.serializedPartitionOffsetMap();
     } else if (msg instanceof HttpShortcutResponse) {
       responseStatus = ((HttpShortcutResponse) msg).getStatus();
       body = Unpooled.wrappedBuffer(((HttpShortcutResponse) msg).getMessage().getBytes(StandardCharsets.UTF_8));
@@ -75,9 +75,6 @@ public class OutboundHttpWrapperHandler extends ChannelOutboundHandlerAdapter {
     response.headers().set(CONTENT_LENGTH, body.readableBytes());
     response.headers().set(HttpConstants.VENICE_OFFSET, offset);
     response.headers().set(HttpConstants.VENICE_SCHEMA_ID, schemaId);
-    if (null != partitionOffsets) {
-      response.headers().set(HttpConstants.VENICE_PARTITION_OFFSET_MAP, partitionOffsets);
-    }
 
     /** {@link io.netty.handler.timeout.IdleStateHandler} is in charge of detecting the state
      *  of connection, and {@link GetRequestHttpHandler} will close the connection if necessary.
