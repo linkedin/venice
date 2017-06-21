@@ -2,7 +2,6 @@ package com.linkedin.venice.router;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.utils.VeniceProperties;
-import java.util.List;
 import org.apache.log4j.Logger;
 
 import static com.linkedin.venice.ConfigKeys.*;
@@ -22,6 +21,9 @@ public class VeniceRouterConfig {
   private int heartbeatTimeoutMs;
   private boolean sslToStorageNodes;
   private long maxReadCapacityCu;
+  private int longTailRetryThresholdMs;
+  private int maxKeyCountInMultiGetReq;
+  private int connectionLimit;
 
   public VeniceRouterConfig(VeniceProperties props) {
     try {
@@ -43,6 +45,9 @@ public class VeniceRouterConfig {
     heartbeatTimeoutMs = props.getInt(HEARTBEAT_TIMEOUT, 1000); //1s
     sslToStorageNodes = props.getBoolean(SSL_TO_STORAGE_NODES, false); // disable ssl on path to stroage node by default.
     maxReadCapacityCu = props.getLong(MAX_READ_CAPCITY, 100000); //100000 CU
+    longTailRetryThresholdMs = props.getInt(ROUTER_LONG_TAIL_RETRY_THRESHOLD_MS, 30); //30 ms
+    maxKeyCountInMultiGetReq = props.getInt(ROUTER_MAX_KEY_COUNT_IN_MULTIGET_REQ, 500);
+    connectionLimit = props.getInt(ROUTER_CONNECTION_LIMIT, 10000);
   }
 
   public String getClusterName() {
@@ -75,5 +80,17 @@ public class VeniceRouterConfig {
 
   public long getMaxReadCapacityCu() {
     return maxReadCapacityCu;
+  }
+
+  public int getLongTailRetryThresholdMs() {
+    return longTailRetryThresholdMs;
+  }
+
+  public int getMaxKeyCountInMultiGetReq() {
+    return maxKeyCountInMultiGetReq;
+  }
+
+  public int getConnectionLimit() {
+    return connectionLimit;
   }
 }

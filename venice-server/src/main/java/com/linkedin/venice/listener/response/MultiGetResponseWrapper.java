@@ -1,5 +1,6 @@
 package com.linkedin.venice.listener.response;
 
+import com.linkedin.venice.common.PartitionOffsetMapUtils;
 import com.linkedin.venice.read.protocol.response.MultiGetResponseRecordV1;
 import com.linkedin.venice.schema.avro.ReadAvroProtocolDefinition;
 import com.linkedin.venice.serializer.AvroSerializerDeserializerFactory;
@@ -15,8 +16,6 @@ import org.codehaus.jackson.type.TypeReference;
 
 
 public class MultiGetResponseWrapper extends ReadResponse {
-  private static ObjectMapper OBJECT_MAPPER = new ObjectMapper();
-
   private final Map<Integer, Long> partitionOffsetMap;
   private final List<MultiGetResponseRecordV1> records;
 
@@ -33,16 +32,8 @@ public class MultiGetResponseWrapper extends ReadResponse {
     partitionOffsetMap.put(partition, offset);
   }
 
-  /**
-   * Since we are planning to put this serialized bytes a header, so we need to do base64 encoding.
-   * @return
-   */
   public String serializedPartitionOffsetMap() throws IOException {
-    return OBJECT_MAPPER.writeValueAsString(partitionOffsetMap);
-  }
-
-  public static Map<Integer, Long> deserializePartitionOffsetMap(String content) throws IOException {
-    return OBJECT_MAPPER.readValue(content, new TypeReference<Map<Integer, Long>>(){});
+    return PartitionOffsetMapUtils.serializedPartitionOffsetMap(partitionOffsetMap);
   }
 
   public byte[] serializedMultiGetResponse() {

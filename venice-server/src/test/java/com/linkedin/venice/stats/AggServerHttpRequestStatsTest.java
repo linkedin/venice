@@ -37,8 +37,11 @@ public class AggServerHttpRequestStatsTest {
 
   @Test
   public void testMetrics() {
-    Assert.assertEquals(reporter.query("." + STORE_FOO + "--success_request.Count").value(), 1d);
-    Assert.assertEquals(reporter.query(".total--error_request.Count").value(), 2d);
-    Assert.assertEquals(reporter.query(".total--success_request_ratio.RatioStat").value(), 0.5d);
+    Assert.assertTrue(reporter.query("." + STORE_FOO + "--success_request.OccurrenceRate").value() > 0,
+        "success_request rate should be positive");
+    Assert.assertTrue(reporter.query(".total--error_request.OccurrenceRate").value() > 0,
+        "error_request rate should be positive");
+    Assert.assertTrue(reporter.query(".total--success_request_ratio.RatioStat").value() > 0,
+        "success_request_ratio should be positive");
   }
 }

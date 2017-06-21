@@ -16,6 +16,9 @@ public class RouterKey implements Comparable<RouterKey>{
   public static RouterKey fromBase64(String s){
     return new RouterKey(EncodingUtils.base64DecodeFromString(s));
   }
+  public static RouterKey fromBytes(byte[] bytes) {
+    return new RouterKey(bytes);
+  }
 
   public String base64Encoded(){
     return EncodingUtils.base64EncodeToString(key);
@@ -30,5 +33,10 @@ public class RouterKey implements Comparable<RouterKey>{
     return new CompareToBuilder()
         .append(this.key, other.key)
         .toComparison();
+  }
+
+  @Override
+  public String toString() {
+    return EncodingUtils.base64EncodeToString(key);
   }
 }

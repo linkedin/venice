@@ -25,7 +25,6 @@ public class StatTrackingStoreClient<K, V> extends DelegatingStoreClient<K, V> {
   //TODO: we should use a different timeout for multi-get
   public static final int TIMEOUT_IN_SECOND = 5;
 
-  private final MetricsRepository metricsRepository;
   private final ClientStats singleGetStats;
   private final ClientStats multiGetStats;
   private final ClientStats schemaReaderStats;
@@ -36,7 +35,6 @@ public class StatTrackingStoreClient<K, V> extends DelegatingStoreClient<K, V> {
 
   public StatTrackingStoreClient(InternalAvroStoreClient<K, V> innerStoreClient, MetricsRepository metricsRepository) {
     super(innerStoreClient);
-    this.metricsRepository = metricsRepository;
     this.singleGetStats = new ClientStats(metricsRepository, STAT_VENICE_CLIENT_NAME, RequestType.SINGLE_GET);
     this.multiGetStats = new ClientStats(metricsRepository, STAT_VENICE_CLIENT_NAME, RequestType.MULTI_GET);
     this.schemaReaderStats = new ClientStats(metricsRepository, STAT_SCHEMA_READER, RequestType.SINGLE_GET);
@@ -46,6 +44,7 @@ public class StatTrackingStoreClient<K, V> extends DelegatingStoreClient<K, V> {
   public CompletableFuture<V> get(K key) {
     long startTime = System.currentTimeMillis();
     CompletableFuture<V> innerFuture = super.get(key);
+    singleGetStats.recordRequestKeyCount(1);
     CompletableFuture<V> statFuture = innerFuture.handle(
         (BiFunction<? super V, Throwable, ? extends V>) getStatCallback(
             singleGetStats, startTime
@@ -75,6 +74,14 @@ public class StatTrackingStoreClient<K, V> extends DelegatingStoreClient<K, V> {
         clientStats.recordHealthyRequest();
         clientStats.recordHealthyLatency(latency);
       }
+
+      if (value == null) {
+        clientStats.recordSuccessRequestKeyCount(0);
+      } else if (value instanceof Map) {
+        clientStats.recordSuccessRequestKeyCount(((Map)value).size());
+      } else {
+        clientStats.recordSuccessRequestKeyCount(1);
+      }
       return value;
     };
   }
@@ -83,6 +90,7 @@ public class StatTrackingStoreClient<K, V> extends DelegatingStoreClient<K, V> {
   public CompletableFuture<byte[]> getRaw(String requestPath) {
     long startTime = System.currentTimeMillis();
     CompletableFuture<byte[]> innerFuture = super.getRaw(requestPath);
+    schemaReaderStats.recordRequestKeyCount(1);
     CompletableFuture<byte[]> statFuture = innerFuture.handle(
         (BiFunction<? super byte[], Throwable, ? extends byte[]>) getStatCallback(
             schemaReaderStats, startTime
@@ -97,6 +105,7 @@ public class StatTrackingStoreClient<K, V> extends DelegatingStoreClient<K, V> {
   {
     long startTime = System.currentTimeMillis();
     CompletableFuture<Map<K, V>> innerFuture = super.multiGet(keys);
+    multiGetStats.recordRequestKeyCount(keys.size());
     CompletableFuture<Map<K, V>> statFuture = innerFuture.handle(
         (BiFunction<? super Map<K, V>, Throwable, ? extends Map<K, V>>) getStatCallback(
             multiGetStats, startTime

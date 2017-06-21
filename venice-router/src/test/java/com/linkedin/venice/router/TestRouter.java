@@ -5,6 +5,7 @@ import com.linkedin.r2.message.rest.RestException;
 import com.linkedin.r2.message.rest.RestRequest;
 import com.linkedin.r2.message.rest.RestRequestBuilder;
 import com.linkedin.r2.message.rest.RestResponse;
+import com.linkedin.r2.message.rest.RestMethod;
 import com.linkedin.venice.client.exceptions.VeniceClientHttpException;
 import com.linkedin.venice.client.store.AvroStoreClientFactory;
 import com.linkedin.venice.client.store.InternalAvroStoreClient;
@@ -59,7 +60,7 @@ public class TestRouter {
     }
 
     URI requestUri = new URI("d2://" + D2TestUtils.DEFAULT_TEST_SERVICE_NAME + "/storage/myStore/myKey"); /* D2 client only supports d2:// scheme */
-    RestRequest request = new RestRequestBuilder(requestUri).setMethod("get").build();
+    RestRequest request = new RestRequestBuilder(requestUri).setMethod(RestMethod.GET).build();
     RestResponse response;
     try {
       response = d2Client.restRequest(request).get();

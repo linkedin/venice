@@ -2,7 +2,6 @@ package com.linkedin.venice.kafka.consumer;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import org.apache.log4j.Logger;
-import org.jetbrains.annotations.NotNull;
 
 import java.util.Collection;
 import java.util.Iterator;
@@ -224,19 +223,16 @@ public class MemoryBoundBlockingQueue<T extends Measurable> implements BlockingQ
     return this.queue.contains(o);
   }
 
-  @NotNull
   @Override
   public Iterator<T> iterator() {
     return this.queue.iterator();
   }
 
-  @NotNull
   @Override
   public Object[] toArray() {
     return this.queue.toArray();
   }
 
-  @NotNull
   @Override
   public <T1> T1[] toArray(T1[] a) {
     return this.queue.toArray(a);

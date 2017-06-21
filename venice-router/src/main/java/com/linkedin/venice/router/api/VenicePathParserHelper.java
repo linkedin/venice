@@ -55,7 +55,6 @@ public class VenicePathParserHelper {
   public boolean isInvalidStorageRequest(){
     return Utils.isNullOrEmpty(resourceType)
         || (!resourceType.equals(VenicePathParser.TYPE_STORAGE))
-        || Utils.isNullOrEmpty(resourceName)
-        || Utils.isNullOrEmpty(key);
+        || Utils.isNullOrEmpty(resourceName);
   }
 }
