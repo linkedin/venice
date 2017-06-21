@@ -1,6 +1,7 @@
 package com.linkedin.venice.controller;
 
 import com.linkedin.venice.controller.kafka.AdminTopicUtils;
+import com.linkedin.venice.controller.kafka.consumer.AdminConsumptionTask;
 import com.linkedin.venice.controller.kafka.offsets.AdminOffsetManager;
 import com.linkedin.venice.controller.kafka.protocol.admin.AdminOperation;
 import com.linkedin.venice.controller.kafka.protocol.admin.DisableStoreRead;
@@ -9,6 +10,7 @@ import com.linkedin.venice.controller.kafka.protocol.admin.KillOfflinePushJob;
 import com.linkedin.venice.controller.kafka.protocol.admin.PauseStore;
 import com.linkedin.venice.controller.kafka.protocol.admin.ResumeStore;
 import com.linkedin.venice.controller.kafka.protocol.admin.StoreCreation;
+import com.linkedin.venice.controller.kafka.protocol.admin.UpdateStore;
 import com.linkedin.venice.controller.kafka.protocol.admin.ValueSchemaCreation;
 import com.linkedin.venice.controller.kafka.protocol.enums.AdminMessageType;
 import com.linkedin.venice.controller.kafka.protocol.serializer.AdminOperationSerializer;
@@ -44,9 +46,12 @@ import com.linkedin.venice.writer.VeniceWriter;
 import java.util.HashMap;
 import java.util.Map;
 
+import java.util.Optional;
+import org.apache.commons.cli.Option;
 import org.apache.helix.manager.zk.ZkClient;
 import org.apache.kafka.clients.producer.RecordMetadata;
 import org.apache.kafka.common.TopicPartition;
+import org.apache.tools.ant.taskdefs.Apt;
 import org.mockito.ArgumentCaptor;
 import static org.mockito.Mockito.*;
 
@@ -980,5 +985,60 @@ public class TestVeniceParentHelixAdmin {
     }
     Assert.assertTrue(timer.getMilliseconds() - start == 3000l,
         "We created 3 topic, at least cost 3s to prevent creating topic too frequently.");
+  }
+
+  @Test
+  public void testUpdateStore()
+      throws ExecutionException, InterruptedException {
+    parentAdmin.start(clusterName);
+
+    String storeName = "testUpdateStore";
+
+    Future future = mock(Future.class);
+    doReturn(new RecordMetadata(topicPartition, 0, 1, -1, -1, -1, -1))
+        .when(future).get();
+    doReturn(future)
+        .when(veniceWriter)
+        .put(any(), any(), anyInt());
+
+    when(zkClient.readData(zkOffsetNodePath, null))
+        .thenReturn(new OffsetRecord())
+        .thenReturn(TestUtils.getOffsetRecord(1));
+
+    Store store = TestUtils.createTestStore(storeName, "test", System.currentTimeMillis());
+    doReturn(store).when(internalAdmin).getStore(clusterName,storeName);
+    Optional<Integer> partitionCount = Optional.of(64);
+    Optional<Boolean> readability = Optional.of(true);
+    Optional<Boolean> writebility = Optional.empty();
+    Optional<String> owner = Optional.empty();
+    Optional<Long> readQuota = Optional.of(100l);
+    Optional<Long> storageQuota = Optional.empty();
+    parentAdmin.updateStore(clusterName, storeName, owner, readability, writebility, partitionCount, storageQuota,
+        readQuota, Optional.empty());
+
+    verify(veniceWriter)
+        .put(any(), any(), anyInt());
+    verify(zkClient, times(2))
+        .readData(zkOffsetNodePath, null);
+    ArgumentCaptor<byte[]> keyCaptor = ArgumentCaptor.forClass(byte[].class);
+    ArgumentCaptor<byte[]> valueCaptor = ArgumentCaptor.forClass(byte[].class);
+    ArgumentCaptor<Integer> schemaCaptor = ArgumentCaptor.forClass(Integer.class);
+    verify(veniceWriter).put(keyCaptor.capture(), valueCaptor.capture(), schemaCaptor.capture());
+    byte[] keyBytes = keyCaptor.getValue();
+    byte[] valueBytes = valueCaptor.getValue();
+    int schemaId = schemaCaptor.getValue();
+    Assert.assertEquals(schemaId, AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
+    Assert.assertEquals(keyBytes.length, 0);
+    AdminOperation adminMessage = adminOperationSerializer.deserialize(valueBytes, schemaId);
+    Assert.assertEquals(adminMessage.operationType, AdminMessageType.UPDATE_STORE.ordinal());
+    UpdateStore updateStore = (UpdateStore) adminMessage.payloadUnion;
+    Assert.assertEquals(updateStore.clusterName.toString(), clusterName);
+    Assert.assertEquals(updateStore.storeName.toString(), storeName);
+    Assert.assertEquals(updateStore.readQuotaInCU, readQuota.get().longValue(),
+        "New read quota should be written into kafka message.");
+    Assert.assertEquals(updateStore.enableReads, readability.get().booleanValue(),
+        "New read readability should be written into kafka message.");
+    Assert.assertEquals(updateStore.currentVersion, AdminConsumptionTask.IGNORED_CURRENT_VERSION,
+        "As we don't pass any current version into updateStore, a magic version number should be used to prevent current version being overrided in prod colo.");
   }
 }
