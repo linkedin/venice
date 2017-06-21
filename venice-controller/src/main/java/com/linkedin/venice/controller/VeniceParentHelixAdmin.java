@@ -3,6 +3,7 @@ package com.linkedin.venice.controller;
 import com.google.common.collect.Ordering;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.controller.kafka.AdminTopicUtils;
+import com.linkedin.venice.controller.kafka.consumer.AdminConsumptionTask;
 import com.linkedin.venice.controller.kafka.offsets.AdminOffsetManager;
 import com.linkedin.venice.controller.kafka.consumer.AdminConsumerService;
 
@@ -630,39 +631,26 @@ public class VeniceParentHelixAdmin implements Admin {
     acquireLock(clusterName);
 
     try {
-      veniceHelixAdmin.updateStore(clusterName,
-                                   storeName,
-                                   owner,
-                                   readability,
-                                   writeability,
-                                   partitionCount,
-                                   storageQuotaInByte,
-                                   readQuotaInCU,
-                                   currentVersion);
       Store store = veniceHelixAdmin.getStore(clusterName, storeName);
 
       UpdateStore setStore = (UpdateStore) AdminMessageType.UPDATE_STORE.getNewInstance();
       setStore.clusterName = clusterName;
       setStore.storeName = storeName;
-      setStore.owner = store.getOwner();
-      setStore.partitionNum = store.getPartitionCount();
-      setStore.currentVersion = store.getCurrentVersion();
-      setStore.enableReads = store.isEnableReads();
-      setStore.enableWrites = store.isEnableWrites();
-      setStore.storageQuotaInByte = store.getStorageQuotaInByte();
-      setStore.readQuotaInCU = store.getReadQuotaInCU();
-
+      setStore.owner = owner.isPresent() ? owner.get() : store.getOwner();
+      setStore.partitionNum = partitionCount.isPresent() ? partitionCount.get() : store.getPartitionCount();
+      setStore.enableReads = readability.isPresent() ? readability.get() : store.isEnableReads();
+      setStore.enableWrites = writeability.isPresent() ? writeability.get() : store.isEnableWrites();
+      setStore.storageQuotaInByte =
+          storageQuotaInByte.isPresent() ? storageQuotaInByte.get() : store.getStorageQuotaInByte();
+      setStore.readQuotaInCU = readQuotaInCU.isPresent() ? readQuotaInCU.get() : store.getReadQuotaInCU();
       //We need to to be careful when handling currentVersion.
       //Since it is not synced between parent and local controller,
       //It is very likely to override local values unintentionally.
-      if (currentVersion.isPresent()) {
-        setStore.currentVersion = store.getCurrentVersion();
-      }
+      setStore.currentVersion = currentVersion.isPresent()?currentVersion.get(): AdminConsumptionTask.IGNORED_CURRENT_VERSION;
 
       AdminOperation message = new AdminOperation();
       message.operationType = AdminMessageType.UPDATE_STORE.ordinal();
       message.payloadUnion = setStore;
-
       sendAdminMessageAndWaitForConsumed(clusterName, message);
     } finally {
       releaseLock();

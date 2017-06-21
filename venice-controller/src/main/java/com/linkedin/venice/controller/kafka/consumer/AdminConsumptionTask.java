@@ -47,6 +47,7 @@ import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import org.apache.commons.cli.Option;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.log4j.Logger;
@@ -57,6 +58,7 @@ import org.apache.log4j.Logger;
 public class AdminConsumptionTask implements Runnable, Closeable {
   private static final String CONSUMER_TASK_ID_FORMAT = AdminConsumptionTask.class.getSimpleName() + " for [ Topic: %s ]";
   public static int READ_CYCLE_DELAY_MS = 1000;
+  public static int IGNORED_CURRENT_VERSION = -1;
 
   private final Logger logger = Logger.getLogger(AdminConsumptionTask.class);
 
@@ -528,7 +530,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
                       Optional.of(message.partitionNum),
                       Optional.of(message.storageQuotaInByte),
                       Optional.of(message.readQuotaInCU),
-                      Optional.of(message.currentVersion));
+                      message.currentVersion == IGNORED_CURRENT_VERSION?Optional.empty():Optional.of(message.currentVersion));
 
     logger.info("Set store: " + storeName + " in cluster: " + clusterName);
   }
