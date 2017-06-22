@@ -7,6 +7,7 @@ import com.linkedin.venice.helix.HelixRoutingDataRepository;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.router.RouterServer;
+import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
@@ -22,6 +23,12 @@ import com.linkedin.venice.schema.SchemaEntry;
 import org.apache.helix.manager.zk.ZkClient;
 import org.mockito.Matchers;
 import org.mockito.Mockito;
+
+import static com.linkedin.venice.ConfigKeys.CLUSTER_NAME;
+import static com.linkedin.venice.ConfigKeys.LISTENER_PORT;
+import static com.linkedin.venice.ConfigKeys.LISTENER_SSL_PORT;
+import static com.linkedin.venice.ConfigKeys.SSL_TO_STORAGE_NODES;
+import static com.linkedin.venice.ConfigKeys.ZOOKEEPER_ADDRESS;
 import static org.mockito.Mockito.doReturn;
 
 
@@ -72,10 +79,15 @@ public class MockVeniceRouterWrapper extends ProcessWrapper {
         d2ServerList = D2TestUtils.getD2Servers(zkAddress, "http://localhost:" + port, "https://localhost:" + sslPortFromPort(port));
       }
       String clusterName = TestUtils.getUniqueString("mock-venice-router-cluster");
+      PropertyBuilder builder = new PropertyBuilder()
+          .put(CLUSTER_NAME, clusterName)
+          .put(LISTENER_PORT, port)
+          .put(LISTENER_SSL_PORT, sslPortFromPort(port))
+          .put(ZOOKEEPER_ADDRESS, zkAddress)
+          .put(SSL_TO_STORAGE_NODES, sslToStorageNodes);
       RouterServer router =
-          new RouterServer(port, sslPortFromPort(port), clusterName, new ZkClient(zkAddress), mockRepo,
-              mockMetadataRepository, mockSchemaRepository, d2ServerList, Optional.of(SslUtils.getLocalSslFactory()),
-              sslToStorageNodes);
+          new RouterServer(builder.build(), mockRepo, mockMetadataRepository, mockSchemaRepository, d2ServerList,
+              Optional.of(SslUtils.getLocalSslFactory()));
       return new MockVeniceRouterWrapper(serviceName, dataDirectory, router, clusterName, port, sslToStorageNodes);
     };
   }

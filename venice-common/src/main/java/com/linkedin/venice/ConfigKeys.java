@@ -21,11 +21,7 @@ public class ConfigKeys {
       .asList(CLUSTER_NAME, PARTITION_NODE_ASSIGNMENT_SCHEME,
           ENABLE_KAFKA_CONSUMER_OFFSET_MANAGEMENT, OFFSET_MANAGER_TYPE, OFFSET_DATA_BASE_PATH,
           OFFSET_MANAGER_FLUSH_INTERVAL_MS, HELIX_ENABLED, ZOOKEEPER_ADDRESS));
-  public static final String CLIENT_TIMEOUT = "client.timeout";
-  public static final String HEARTBEAT_TIMEOUT = "heartbeat.timeout";
 
-  public static final String ROUTER_PORT = "router.port";
-  public static final String ROUTER_SSL_PORT = "router.sslport";
   public static final String ADMIN_PORT="admin.port";
 
   public static final String STATUS_MESSAGE_RETRY_COUNT = "status.message.retry.count";
@@ -85,6 +81,16 @@ public class ConfigKeys {
   public static final String SERVER_REST_SERVICE_STORAGE_THREAD_NUM = "server.rest.service.storage.thread.num";
   public static final String SERVER_NETTY_IDLE_TIME_SECONDS = "server.netty.idle.time.seconds";
   public static final String SERVER_MAX_REQUEST_SIZE = "server.max.request.size";
+
+
+  // Router specific configs
+  // TODO the config names are same as the names in application.src, some of them should be changed to keep consistent
+  // TODO with controller and server.
+  public static final String LISTENER_SSL_PORT = "listener.ssl.port";
+  public static final String CLIENT_TIMEOUT = "client.timeout";
+  public static final String HEARTBEAT_TIMEOUT =  "heartbeat.timeout";
+  public static final String MAX_READ_CAPCITY = "max.read.capacity";
+  public static final String SSL_TO_STORAGE_NODES = "sslToStorageNodes";
 
   /**
    * Venice uses a helix cluster to assign controllers to each named venice cluster.  This is the number of controllers

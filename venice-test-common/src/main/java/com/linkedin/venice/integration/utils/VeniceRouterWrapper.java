@@ -4,12 +4,15 @@ import com.linkedin.venice.helix.HelixReadOnlyStoreRepository;
 import com.linkedin.venice.helix.HelixRoutingDataRepository;
 import com.linkedin.venice.router.RouterServer;
 import com.linkedin.venice.router.ZkRoutersClusterManager;
+import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.TestUtils;
 import java.io.File;
 import java.util.ArrayList;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
+
+import static com.linkedin.venice.ConfigKeys.*;
 
 
 /**
@@ -39,7 +42,13 @@ public class VeniceRouterWrapper extends ProcessWrapper {
     String zkAddress = kafkaBrokerWrapper.getZkAddress();
 
     return (serviceName, port, dataDirectory) -> {
-      RouterServer router = new RouterServer(port, sslPortFromPort(port), clusterName, zkAddress, new ArrayList<>(), Optional.of(SslUtils.getLocalSslFactory()), sslToStorageNodes);
+      PropertyBuilder builder = new PropertyBuilder()
+          .put(CLUSTER_NAME, clusterName)
+          .put(LISTENER_PORT, port)
+          .put(LISTENER_SSL_PORT, sslPortFromPort(port))
+          .put(ZOOKEEPER_ADDRESS, kafkaBrokerWrapper.getZkAddress())
+          .put(SSL_TO_STORAGE_NODES, sslToStorageNodes);
+      RouterServer router = new RouterServer(builder.build(), new ArrayList<>(), Optional.of(SslUtils.getLocalSslFactory()));
       return new VeniceRouterWrapper(serviceName, dataDirectory, router, clusterName, port, zkAddress, sslToStorageNodes);
     };
   }
@@ -76,7 +85,13 @@ public class VeniceRouterWrapper extends ProcessWrapper {
   @Override
   protected void newProcess()
       throws Exception {
-    service = new RouterServer(port, sslPortFromPort(port), clusterName, zkAddress, new ArrayList<>(), Optional.of(SslUtils.getLocalSslFactory()), sslToStorageNode);
+    PropertyBuilder builder = new PropertyBuilder()
+        .put(CLUSTER_NAME, clusterName)
+        .put(LISTENER_PORT, port)
+        .put(LISTENER_SSL_PORT, sslPortFromPort(port))
+        .put(ZOOKEEPER_ADDRESS, zkAddress)
+        .put(SSL_TO_STORAGE_NODES, sslToStorageNode);
+    service = new RouterServer(builder.build(), new ArrayList<>(), Optional.of(SslUtils.getLocalSslFactory()));
   }
 
   public HelixRoutingDataRepository getRoutingDataRepository(){
