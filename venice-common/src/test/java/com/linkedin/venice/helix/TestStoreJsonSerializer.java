@@ -52,7 +52,7 @@ public class TestStoreJsonSerializer {
         Assert.assertTrue(store.isEnableReads(),
             "By default, allow store to be read while missing enableReads field in ZK");
         Assert.assertTrue(store.isEnableWrites(),
-            "By default, allow store to be read while missing enableReads field in ZK");
+            "By default, allow store to be written while missing enableWrites field in ZK");
     }
 
     @Test

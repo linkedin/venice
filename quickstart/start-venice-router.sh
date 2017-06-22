@@ -10,7 +10,7 @@ if [ $# -gt 1 ]; then
         echo "USAGE:   $0 [cluster_properties]"
         exit 1
 elif [ $# -eq 0 ]; then
-	CLUSTER_CONFIG=$BASE_DIR/quickstart/config/cluster.properties
+	CLUSTER_CONFIG=$BASE_DIR/quickstart/config/router.properties
 else
 	CLUSTER_CONFIG=$1
 fi

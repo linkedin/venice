@@ -52,21 +52,15 @@ import org.apache.log4j.Logger;
 
 public class RouterServer extends AbstractVeniceService {
   private static final Logger logger = Logger.getLogger(RouterServer.class);
-  private static final long DEFAULT_MAX_ROUTER_READ_CAPCITY = 100000;
 
   // Immutable state
-  private final int port;
-  private final int sslPort;
   private final HelixRoutingDataRepository routingDataRepository;
   private final HelixReadOnlyStoreRepository metadataRepository;
-  private final String clusterName;
   private final List<D2Server> d2ServerList;
   private final MetricsRepository metricsRepository;
-  private final int clientTimeout;
-  private final int heartbeatTimeout;
   private final Optional<SSLEngineComponentFactory> sslFactory;
-  private final boolean sslToStorageNodes;
-  private final long maxRouterReadCapacity;
+
+  private final VeniceRouterConfig config;
 
   // Mutable state
   // TODO: Make these final once the test constructors are cleaned up.
@@ -103,28 +97,21 @@ public class RouterServer extends AbstractVeniceService {
 
     VeniceProperties props;
     try {
-      String clusterConfigFilePath = args[0];
-      props = Utils.parseProperties(clusterConfigFilePath);
+      String routerConfigFilePath = args[0];
+      props = Utils.parseProperties(routerConfigFilePath);
     } catch (Exception e){
       throw new VeniceException("No config file parameter found", e);
     }
 
-    String zkConnection = props.getString(ConfigKeys.ZOOKEEPER_ADDRESS);
-    String clusterName = props.getString(ConfigKeys.CLUSTER_NAME);
-    int port = props.getInt(ConfigKeys.ROUTER_PORT);
-    int sslPort = props.getInt(ConfigKeys.ROUTER_SSL_PORT);
-    int clientTimeout = props.getInt(ConfigKeys.CLIENT_TIMEOUT);
-    int heartbeatTimeout = props.getInt(ConfigKeys.HEARTBEAT_TIMEOUT);
 
-    logger.info("Zookeeper: " + zkConnection);
-    logger.info("Cluster: " + clusterName);
-    logger.info("Port: " + port);
-    logger.info("SSL Port: " + sslPort);
+    logger.info("Zookeeper: " + props.getString(ConfigKeys.ZOOKEEPER_ADDRESS));
+    logger.info("Cluster: " + props.getString(ConfigKeys.CLUSTER_NAME));
+    logger.info("Port: " + props.getInt(ConfigKeys.LISTENER_PORT));
+    logger.info("SSL Port: " + props.getInt(ConfigKeys.LISTENER_SSL_PORT));
     logger.info("Thread count: " + ROUTER_THREAD_POOL_SIZE);
 
     Optional<SSLEngineComponentFactory> sslFactory = Optional.of(SslUtils.getLocalSslFactory());
-    boolean sslToStorageNodes = false;
-    RouterServer server = new RouterServer(port, sslPort, clusterName, zkConnection, new ArrayList<>(), clientTimeout, heartbeatTimeout, sslFactory, sslToStorageNodes);
+    RouterServer server = new RouterServer(props, new ArrayList<>(), sslFactory);
     server.start();
 
     Runtime.getRuntime().addShutdownHook(new Thread() {
@@ -149,47 +136,24 @@ public class RouterServer extends AbstractVeniceService {
     return TehutiUtils.getMetricsRepository(ROUTER_SERVICE_NAME);
   }
 
-  public RouterServer(int port, int sslPort, String clusterName, String zkConnection, List<D2Server> d2Servers, Optional<SSLEngineComponentFactory> sslFactory, boolean sslToStorageNodes){
-    this(port, sslPort, clusterName, zkConnection, d2Servers, 10000, 1000, sslFactory, sslToStorageNodes);
+  public RouterServer(VeniceProperties properties, List<D2Server> d2Servers,
+      Optional<SSLEngineComponentFactory> slEngineComponentFactory) {
+    this(properties, d2Servers, slEngineComponentFactory, TehutiUtils.getMetricsRepository(ROUTER_SERVICE_NAME));
   }
 
-  public RouterServer(int port, int sslPort, String clusterName, String zkConnection, List<D2Server> d2ServerList, int clientTimeout, int heartbeatTimeout, Optional<SSLEngineComponentFactory> sslFactory, boolean sslToStorageNodes){
-    this(port,
-        sslPort,
-        clusterName,
-        zkConnection,
-        d2ServerList,
-        clientTimeout,
-        heartbeatTimeout,
-        TehutiUtils.getMetricsRepository(ROUTER_SERVICE_NAME),
-        sslFactory,
-        sslToStorageNodes,
-        DEFAULT_MAX_ROUTER_READ_CAPCITY);
-  }
-
-  public RouterServer(int port, int sslPort, String clusterName, String zkConnection, List<D2Server> d2ServerList,
-                      int clientTimeout, int heartbeatTimeout, MetricsRepository metricsRepository,
-                      Optional<SSLEngineComponentFactory> sslEngineComponentFactory, boolean sslToStorageNodes,
-                      long maxRouterReadCapacity) {
-    this.port = port;
-    this.sslPort = sslPort;
-    this.clientTimeout = clientTimeout;
-    this.heartbeatTimeout = heartbeatTimeout;
-    this.clusterName = clusterName;
-    zkClient = new ZkClient(zkConnection);
-    manager = new ZKHelixManager(this.clusterName, null, InstanceType.SPECTATOR, zkConnection);
-
+  public RouterServer(VeniceProperties properties, List<D2Server> d2Servers,
+      Optional<SSLEngineComponentFactory> sslEngineComponentFactory, MetricsRepository metricsRepository) {
+    config = new VeniceRouterConfig(properties);
+    zkClient = new ZkClient(config.getZkConnection());
+    manager = new ZKHelixManager(config.getClusterName(), null, InstanceType.SPECTATOR, config.getZkConnection());
     this.metricsRepository = metricsRepository;
-
     HelixAdapterSerializer adapter = new HelixAdapterSerializer();
-    this.metadataRepository = new HelixReadOnlyStoreRepository(zkClient, adapter, this.clusterName);
-    this.schemaRepository = new HelixReadOnlySchemaRepository(this.metadataRepository,
-            this.zkClient, adapter, this.clusterName);
+    this.metadataRepository = new HelixReadOnlyStoreRepository(zkClient, adapter, config.getClusterName());
+    this.schemaRepository =
+        new HelixReadOnlySchemaRepository(this.metadataRepository, this.zkClient, adapter, config.getClusterName());
     this.routingDataRepository = new HelixRoutingDataRepository(manager);
-    this.d2ServerList = d2ServerList;
+    this.d2ServerList = d2Servers;
     this.sslFactory = sslEngineComponentFactory;
-    this.sslToStorageNodes = sslToStorageNodes;
-    this.maxRouterReadCapacity = maxRouterReadCapacity;
     verifySslOk();
   }
 
@@ -201,39 +165,31 @@ public class RouterServer extends AbstractVeniceService {
    * Having separate constructors just for tests is hard to maintain, especially since in this case,
    * the test constructor does not initialize manager...
    *
-   * @param port
-   * @param clusterName
+   * @param properties
    * @param routingDataRepository
    * @param metadataRepository
    * @param schemaRepository
    * @param d2ServerList
    */
-  public RouterServer(int port,
-                      int sslPort,
-                      String clusterName,
-                      ZkClient zkClient,
-                      HelixRoutingDataRepository routingDataRepository,
-                      HelixReadOnlyStoreRepository metadataRepository,
-                      HelixReadOnlySchemaRepository schemaRepository,
-                      List<D2Server> d2ServerList,
-                      Optional<SSLEngineComponentFactory> sslFactory,
-                      boolean sslToStorageNodes){
-    this.port = port;
-    this.sslPort = sslPort;
-    this.clusterName = clusterName;
+  public RouterServer(
+      VeniceProperties properties,
+      HelixRoutingDataRepository routingDataRepository,
+      HelixReadOnlyStoreRepository metadataRepository,
+      HelixReadOnlySchemaRepository schemaRepository,
+      List<D2Server> d2ServerList,
+      Optional<SSLEngineComponentFactory> sslFactory){
+    this.config= new VeniceRouterConfig(properties);
     this.metadataRepository = metadataRepository;
     this.schemaRepository = schemaRepository;
     this.routingDataRepository = routingDataRepository;
     this.d2ServerList = d2ServerList;
     this.metricsRepository = new MetricsRepository();
-    this.clientTimeout = 10000;
-    this.heartbeatTimeout = 1000;
     this.sslFactory = sslFactory;
-    this.sslToStorageNodes = sslToStorageNodes;
-    this.zkClient = zkClient;
-    this.maxRouterReadCapacity = DEFAULT_MAX_ROUTER_READ_CAPCITY;
+    this.zkClient = new ZkClient(config.getZkConnection());
     verifySslOk();
   }
+
+
 
   @Override
   public boolean startInner() throws Exception {
@@ -247,13 +203,13 @@ public class RouterServer extends AbstractVeniceService {
     TimeoutProcessor timeoutProcessor = new TimeoutProcessor(registry);
     Map<String, Object> serverSocketOptions = null;
 
-    Optional<SSLEngineComponentFactory> sslFactoryForRequests = sslToStorageNodes ? sslFactory : Optional.empty();
+    Optional<SSLEngineComponentFactory> sslFactoryForRequests = config.isSslToStorageNodes()? sslFactory : Optional.empty();
     VenicePartitionFinder partitionFinder = new VenicePartitionFinder(routingDataRepository);
     VeniceHostHealth healthMonitor = new VeniceHostHealth();
-    dispatcher = new VeniceDispatcher(healthMonitor, clientTimeout, metricsRepository, sslFactoryForRequests);
-    heartbeat = new RouterHeartbeat(manager, healthMonitor, 10, TimeUnit.SECONDS, heartbeatTimeout, sslFactoryForRequests);
+    dispatcher = new VeniceDispatcher(healthMonitor, config.getClientTimeoutMs(), metricsRepository, sslFactoryForRequests);
+    heartbeat = new RouterHeartbeat(manager, healthMonitor, 10, TimeUnit.SECONDS, config.getHeartbeatTimeoutMs(), sslFactoryForRequests);
     heartbeat.startInner();
-    MetaDataHandler metaDataHandler = new MetaDataHandler(routingDataRepository, schemaRepository, clusterName);
+    MetaDataHandler metaDataHandler = new MetaDataHandler(routingDataRepository, schemaRepository, config.getClusterName());
 
     ScatterGatherHelper scatterGather = ScatterGatherHelper.builder()
         .roleFinder(new VeniceRoleFinder())
@@ -303,8 +259,8 @@ public class RouterServer extends AbstractVeniceService {
         .idleTimeout(3, TimeUnit.HOURS)
         .build();
 
-    serverFuture = router.start(new InetSocketAddress(port));
-    secureServerFuture = secureRouter.start(new InetSocketAddress(sslPort));
+    serverFuture = router.start(new InetSocketAddress(config.getPort()));
+    secureServerFuture = secureRouter.start(new InetSocketAddress(config.getSslPort()));
     serverFuture.await();
     secureServerFuture.await();
 
@@ -380,13 +336,13 @@ public class RouterServer extends AbstractVeniceService {
       }
 
       // Register current router into ZK.
-      routersClusterManager = new ZkRoutersClusterManager(zkClient, clusterName, Utils.getHelixNodeIdentifier(port));
+      routersClusterManager = new ZkRoutersClusterManager(zkClient, config.getClusterName(), Utils.getHelixNodeIdentifier(config.getPort()));
       routersClusterManager.registerCurrentRouter();
       routingDataRepository.refresh();
 
       // Setup read requests throttler.
       ReadRequestThrottler throttler =
-          new ReadRequestThrottler(routersClusterManager, metadataRepository, routingDataRepository, maxRouterReadCapacity);
+          new ReadRequestThrottler(routersClusterManager, metadataRepository, routingDataRepository, config.getMaxReadCapacityCu());
       dispatcher.setReadRequestThrottler(throttler);
 
       for (D2Server d2Server : d2ServerList) {
@@ -408,7 +364,7 @@ public class RouterServer extends AbstractVeniceService {
   }
 
   private void verifySslOk(){
-    if (this.sslToStorageNodes && !sslFactory.isPresent()){
+    if (config.isSslToStorageNodes() && !sslFactory.isPresent()){
       throw new VeniceException("Must specify an SSLEngineComponentFactory in order to use SSL in requests to storage nodes");
     }
   }
