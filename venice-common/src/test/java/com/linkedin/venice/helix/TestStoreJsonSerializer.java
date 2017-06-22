@@ -49,6 +49,10 @@ public class TestStoreJsonSerializer {
         Assert.assertEquals(store.getCreatedTime(), 0);
         Assert.assertEquals(store.isHybrid(), false);
         Assert.assertEquals(store.getHybridStoreConfig(), null);
+        Assert.assertTrue(store.isEnableReads(),
+            "By default, allow store to be read while missing enableReads field in ZK");
+        Assert.assertTrue(store.isEnableWrites(),
+            "By default, allow store to be read while missing enableReads field in ZK");
     }
 
     @Test
@@ -72,7 +76,7 @@ public class TestStoreJsonSerializer {
         Store store = TestUtils.createTestStore("s1", "owner", 1l);
         store.increaseVersion();
         store.setEnableReads(false);
-        store.setEnableReads(false);
+        store.setEnableWrites(false);
         store.setReadQuotaInCU(100);
         StoreJSONSerializer serializer = new StoreJSONSerializer();
         byte[] data = serializer.serialize(store, "");
