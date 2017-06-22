@@ -103,13 +103,13 @@ public class Store {
   public Store(@NotNull String name, @NotNull String owner, long createdTime, @NotNull PersistenceType persistenceType,
       @NotNull RoutingStrategy routingStrategy, @NotNull ReadStrategy readStrategy,
       @NotNull OfflinePushStrategy offlinePushStrategy) {
-    this(name, owner, createdTime, persistenceType, routingStrategy, readStrategy, offlinePushStrategy, true, true,
+    this(name, owner, createdTime, persistenceType, routingStrategy, readStrategy, offlinePushStrategy,
         NON_EXISTING_VERSION, DEFAULT_STORAGE_QUOTA, DEFAULT_READ_QUOTA, null);
   }
 
   public Store(@NotNull String name, @NotNull String owner, long createdTime, @NotNull PersistenceType persistenceType,
       @NotNull RoutingStrategy routingStrategy, @NotNull ReadStrategy readStrategy,
-      @NotNull OfflinePushStrategy offlinePushStrategy, boolean enableWrites, boolean enableReads, int currentVersion,
+      @NotNull OfflinePushStrategy offlinePushStrategy, int currentVersion,
       long storageQuotaInByte, long readQuotaInCU, HybridStoreConfig hybridStoreConfig) {
     if (!isValidStoreName(name)) {
       throw new VeniceException("Invalid store name: " + name);
@@ -122,8 +122,6 @@ public class Store {
     this.readStrategy = readStrategy;
     this.offLinePushStrategy = offlinePushStrategy;
     this.versions = new ArrayList<>();
-    this.enableWrites = enableWrites;
-    this.enableReads = enableReads;
     this.storageQuotaInByte = storageQuotaInByte;
     this.currentVersion = currentVersion;
     this.readQuotaInCU = readQuotaInCU;
@@ -511,13 +509,12 @@ public class Store {
                   routingStrategy,
                   readStrategy,
                   offLinePushStrategy,
-                  enableWrites,
-                  enableReads,
                   currentVersion,
                   storageQuotaInByte,
                   readQuotaInCU,
                   hybridStoreConfig);
-
+    clonedStore.setEnableReads(enableReads);
+    clonedStore.setEnableWrites(enableWrites);
     clonedStore.setPartitionCount(partitionCount);
     clonedStore.setLargestUsedVersionNumber(largestUsedVersionNumber);
 
