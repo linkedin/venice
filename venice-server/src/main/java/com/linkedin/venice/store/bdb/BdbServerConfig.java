@@ -121,7 +121,7 @@ public class BdbServerConfig {
     this.bdbCleanerFetchObsoleteSize = props.getBoolean(BDB_CLEANER_FETCH_OBSOLETE_SIZE, true);
     this.bdbCleanerAdjustUtilization = props.getBoolean(BDB_CLEANER_ADJUST_UTILIZATION, false);
     this.bdbRecoveryForceCheckpoint = props.getBoolean(BDB_RECOVERY_FORCE_CHECKPOINT, false);
-    this.bdbRawPropertyString = props.getString(BDB_RAW_PROPERTY_STRING, null);
+    this.bdbRawPropertyString = props.getString(BDB_RAW_PROPERTY_STRING, () -> null);
   }
 
   public long getBdbCacheSize() {

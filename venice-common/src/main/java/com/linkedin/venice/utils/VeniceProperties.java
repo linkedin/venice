@@ -12,6 +12,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.Supplier;
 
 
 public class VeniceProperties {
@@ -137,17 +139,22 @@ public class VeniceProperties {
 
   public String toString(boolean prettyPrint) {
     StringBuilder builder = new StringBuilder("{");
+    final AtomicBoolean first = new AtomicBoolean(true); // ah... the things we do for closures...
     this.props.entrySet()
         .stream()
         .sorted((o1, o2) -> o1.getKey().compareTo(o2.getKey()))
         .forEach(entry -> {
+          if (first.get()) {
+            first.set(false);
+          } else {
+            builder.append(", ");
+          }
           if (prettyPrint) {
             builder.append("\n\t");
           }
           builder.append(entry.getKey());
           builder.append(": ");
           builder.append(entry.getValue());
-          builder.append(", ");
         });
     if (prettyPrint && !props.isEmpty()) {
       builder.append("\n");
@@ -183,6 +190,14 @@ public class VeniceProperties {
     }
 
     p.store(out, null);
+  }
+
+  public String getString(String key, Supplier<String> defaultValue) {
+    if (containsKey(key)) {
+      return get(key);
+    } else {
+      return defaultValue.get();
+    }
   }
 
   public String getString(String key, String defaultValue) {

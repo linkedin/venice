@@ -45,10 +45,6 @@ public class VeniceSystemFactoryTest {
 
   /**
    * Write a record using the Samza SystemProducer for Venice, then verify we can read that record.
-   *
-   * This test fails consistently when run in Gradle, but not in IntelliJ (tested with invocationCount=100 in either)...
-   *
-   * @throws Exception
    */
   @Test
   public void testGetProducer() throws Exception {

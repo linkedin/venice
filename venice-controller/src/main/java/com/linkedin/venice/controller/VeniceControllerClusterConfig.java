@@ -16,6 +16,7 @@ import static com.linkedin.venice.ConfigKeys.*;
 public class VeniceControllerClusterConfig {
   private static final Logger logger = Logger.getLogger(VeniceControllerClusterConfig.class);
 
+  private final VeniceProperties props;
   private String clusterName;
   private String zkAddress;
   private String controllerName;
@@ -29,6 +30,7 @@ public class VeniceControllerClusterConfig {
   private long partitionSize;
   private long offLineJobWaitTimeInMilliseconds;
   private boolean enableTopicDeletionForUncompletedJob;
+
   /**
    * After server disconnecting for delayToRebalanceMS, helix would trigger the re-balance immediately.
    */
@@ -53,6 +55,7 @@ public class VeniceControllerClusterConfig {
 
   public VeniceControllerClusterConfig(VeniceProperties props) {
     try {
+      this.props = props;
       checkProperties(props);
       logger.info("Loaded configuration");
     } catch (Exception e) {
@@ -102,6 +105,10 @@ public class VeniceControllerClusterConfig {
     } else {
       routingStrategy = RoutingStrategy.CONSISTENT_HASH;
     }
+  }
+
+  public VeniceProperties getProps() {
+    return props;
   }
 
   public String getClusterName() {

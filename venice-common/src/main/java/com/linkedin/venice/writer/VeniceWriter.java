@@ -1,5 +1,6 @@
 package com.linkedin.venice.writer;
 
+import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.annotation.NotThreadsafe;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.guid.GuidUtils;
@@ -11,15 +12,15 @@ import com.linkedin.venice.kafka.validation.checksum.CheckSumType;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.partitioner.VenicePartitioner;
+import com.linkedin.venice.serialization.DefaultSerializer;
 import com.linkedin.venice.serialization.VeniceSerializer;
 import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.Time;
+import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 
 import java.nio.ByteBuffer;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.Map;
+import java.util.*;
 import java.util.concurrent.Future;
 
 import java.util.function.Supplier;
@@ -85,9 +86,10 @@ public class VeniceWriter<K, V> extends AbstractVeniceWriter<K, V> {
       this.producerGUID = GuidUtils.getGUID(props);
       this.logger = Logger.getLogger(VeniceWriter.class.getSimpleName() + " [" + GuidUtils.getHexFromGuid(producerGUID) + "]");
     } catch (Exception e) {
-      throw new VeniceException("Error while constructing VeniceWriter for store name: " + topicName, e);
+      throw new VeniceException("Error while constructing VeniceWriter for store name: " + topicName + ", props: " + props.toString(), e);
     }
   }
+
   public VeniceWriter(
       VeniceProperties props,
       String topicName,
@@ -212,6 +214,21 @@ public class VeniceWriter<K, V> extends AbstractVeniceWriter<K, V> {
   public void broadcastEndOfPush(Map<String, String> debugInfo) {
     broadcastControlMessage(getEmptyControlMessage(ControlMessageType.END_OF_PUSH), debugInfo);
     endAllSegments(true);
+  }
+
+  /**
+   * @param debugInfo arbitrary key/value pairs of information that will be propagated alongside the control message.
+   */
+  public void broadcastStartOfBufferReplay(List<Long> startingOffsets, String sourceKafkaCluster, String sourceTopicName, Map<String, String> debugInfo) {
+    ControlMessage controlMessage = getEmptyControlMessage(ControlMessageType.START_OF_BUFFER_REPLAY);
+    StartOfBufferReplay startOfBufferReplay = new StartOfBufferReplay();
+    startOfBufferReplay.offsets = Utils.notNull(startingOffsets);
+    startOfBufferReplay.sourceKafkaCluster = Utils.notNull(sourceKafkaCluster);
+    startOfBufferReplay.sourceTopicName = Utils.notNull(sourceTopicName);
+    controlMessage.controlMessageUnion = startOfBufferReplay;
+    broadcastControlMessage(controlMessage, debugInfo);
+    // Flush start of push message to avoid data message arrives before it.
+    producer.flush();
   }
 
   private Future<RecordMetadata> sendMessage(KafkaKey key, KafkaMessageEnvelope value, int partition) {

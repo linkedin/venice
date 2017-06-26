@@ -32,6 +32,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
 import com.linkedin.venice.helix.HelixReadWriteStoreRepository;
 import com.linkedin.venice.helix.Replica;
+import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.kafka.validation.checksum.CheckSumType;
@@ -52,6 +53,8 @@ import java.util.Collections;
 import java.util.HashMap;
 
 import java.util.Optional;
+
+import com.linkedin.venice.writer.VeniceWriterFactory;
 import org.apache.kafka.clients.producer.RecordMetadata;
 import org.apache.log4j.Logger;
 
@@ -145,9 +148,6 @@ public class VeniceParentHelixAdmin implements Admin {
 
     // Initialize producer
     veniceWriterMap.computeIfAbsent(clusterName, (key) -> {
-      // Initialize VeniceWriter (Kafka producer)
-      Properties props = new Properties();
-      props.put(ConfigKeys.KAFKA_BOOTSTRAP_SERVERS, veniceControllerConfig.getKafkaBootstrapServers());
       /**
        * No need to do checksum validation since Kafka will do message-level checksum validation by default.
        * Venice just needs to check seq id in {@link com.linkedin.venice.controller.kafka.consumer.AdminConsumptionTask} to catch the following scenarios:
@@ -155,9 +155,7 @@ public class VeniceParentHelixAdmin implements Admin {
        * 2. Data out of order;
        * 3. Data duplication;
        */
-      props.put(VeniceWriter.CHECK_SUM_TYPE, CheckSumType.NONE.name());
-      VeniceProperties veniceWriterProperties = new VeniceProperties(props);
-      return new VeniceWriter<>(veniceWriterProperties, topicName, new DefaultSerializer(), new DefaultSerializer());
+      return VeniceWriterFactory.get().getBasicVeniceWriter(veniceControllerConfig.getKafkaBootstrapServers(), topicName, getTimer());
     });
   }
 
@@ -1009,6 +1007,11 @@ public class VeniceParentHelixAdmin implements Admin {
   @Override
   public Optional<AdminCommandExecutionTracker> getAdminCommandExecutionTracker() {
     return Optional.of(adminCommandExecutionTracker);
+  }
+
+  @Override
+  public void startBufferReplay(String clusterName, String sourceKafkaCluster, String sourceTopicName, String destinationKafkaCluster, Version destinationStoreVersion) {
+    throw new VeniceException("startBufferReplay in the parent controller is not supported yet.");
   }
 
   @Override

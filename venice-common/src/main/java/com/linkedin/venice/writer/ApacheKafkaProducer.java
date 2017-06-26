@@ -53,6 +53,8 @@ public class ApacheKafkaProducer implements KafkaProducerWrapper {
     if (!properties.containsKey(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG)) {
       throw new ConfigurationException("Props key not found: " + PROPERTIES_KAFKA_PREFIX + ProducerConfig.BOOTSTRAP_SERVERS_CONFIG);
     }
+    LOGGER.info("Constructing KafkaProducer with the following properties: " + properties.toString());
+
     producer = new KafkaProducer<>(properties);
     // TODO: Consider making the choice of partitioner implementation configurable
   }

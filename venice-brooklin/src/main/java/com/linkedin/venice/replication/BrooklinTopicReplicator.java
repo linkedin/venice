@@ -8,6 +8,7 @@ import com.linkedin.datastream.common.DatastreamDestination;
 import com.linkedin.datastream.common.DatastreamMetadataConstants;
 import com.linkedin.datastream.common.DatastreamSource;
 import com.linkedin.datastream.connectors.kafka.KafkaConnector;
+import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.TopicManager;
 import java.io.IOException;
@@ -18,14 +19,18 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Collectors;
+
+import com.linkedin.venice.utils.VeniceProperties;
 import org.apache.log4j.Logger;
 import org.codehaus.jackson.map.ObjectMapper;
 
 
 public class BrooklinTopicReplicator extends TopicReplicator {
 
-  private final String brooklinConnectionString;
-  private final String kafkaConnection;
+  public static final String BROOKLIN_CONNECTION_STRING = "topic.replicator.brooklin.connection.string";
+  public static final String BROOKLIN_CONNECTION_APPLICATION_ID = "topic.replicator.brooklin.application.id";
+
+  private final String brooklinConnectionString; // TODO: Clean up, this is never used.
   private final DatastreamRestClient client;
   private final String veniceCluster;
   private final String applicationId;
@@ -36,17 +41,34 @@ public class BrooklinTopicReplicator extends TopicReplicator {
   private static final Logger logger = Logger.getLogger(TopicManager.class);
 
   /**
+   * Main constructor. Used by reflection.
    *
-   * @param brooklinConnectionString For connecting to the brooklin cluster, http://host:port or d2://service
-   * @param kafkaConnection For connecting to kafka brokers, host:port
-   * @param topicManager TopicManager for checking information about the Kafka topics.
-   * @param veniceCluster Name of the venice cluster, used to create unique datastream names
-   * @param applicationId The name of the service using the BrooklinTopicReplicator, this gets used as the "owner" for any created datastreams
+   * @param topicManager
+   * @param veniceProperties
    */
-  public BrooklinTopicReplicator(String brooklinConnectionString, String kafkaConnection, TopicManager topicManager, String veniceCluster, String applicationId){
-    super(topicManager);
+  public BrooklinTopicReplicator(TopicManager topicManager, VeniceProperties veniceProperties) {
+    this(veniceProperties.getString(BROOKLIN_CONNECTION_STRING),
+        veniceProperties.getString(
+            TopicReplicator.TOPIC_REPLICATOR_SOURCE_KAFKA_CLUSTER, // default
+            () -> veniceProperties.getString(ConfigKeys.KAFKA_BOOTSTRAP_SERVERS) // fall-back
+        ),
+        topicManager,
+        veniceProperties.getString(ConfigKeys.CLUSTER_NAME),
+        veniceProperties.getString(BROOKLIN_CONNECTION_APPLICATION_ID));
+  }
+
+    /**
+     * Strongly-typed constructor. Used in unit tests...
+     *
+     * @param brooklinConnectionString For connecting to the brooklin cluster, http://host:port or d2://service
+     * @param destKafkaBootstrapServers For connecting to kafka brokers, host:port
+     * @param topicManager TopicManager for checking information about the Kafka topics.
+     * @param veniceCluster Name of the venice cluster, used to create unique datastream names
+     * @param applicationId The name of the service using the BrooklinTopicReplicator, this gets used as the "owner" for any created datastreams
+     */
+  public BrooklinTopicReplicator(String brooklinConnectionString, String destKafkaBootstrapServers, TopicManager topicManager, String veniceCluster, String applicationId){
+    super(topicManager, destKafkaBootstrapServers);
     this.brooklinConnectionString = brooklinConnectionString;
-    this.kafkaConnection = kafkaConnection;
     this.client = DatastreamRestClientFactory.getClient(brooklinConnectionString);
     this.veniceCluster = veniceCluster;
     this.applicationId = applicationId;
@@ -81,12 +103,12 @@ public class BrooklinTopicReplicator extends TopicReplicator {
     datastream.setMetadata(metadata);
 
     DatastreamSource source  = new DatastreamSource();
-    String sourceConnectionString = "kafka://" + kafkaConnection + "/" + sourceTopic;
+    String sourceConnectionString = "kafka://" + destKafkaBootstrapServers + "/" + sourceTopic; // TODO: Pass source Kafka as a function parameter
     source.setConnectionString(sourceConnectionString);
     source.setPartitions(partitionCount);
     datastream.setSource(source);
 
-    String destinationConnectionString = "kafka://" + kafkaConnection + "/" + destinationTopic;
+    String destinationConnectionString = "kafka://" + destKafkaBootstrapServers + "/" + destinationTopic;
     DatastreamDestination destination = new DatastreamDestination();
     destination.setConnectionString(destinationConnectionString);
     destination.setPartitions(partitionCount);
