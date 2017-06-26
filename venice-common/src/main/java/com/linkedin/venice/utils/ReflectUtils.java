@@ -18,10 +18,10 @@ public class ReflectUtils {
    * @param className The name of the class
    * @return The class object
    */
-  public static Class<?> loadClass(String className) {
+  public static <T> Class<T> loadClass(String className) {
     try {
-      return Class.forName(className);
-    } catch (ClassNotFoundException e) {
+      return (Class<T>) Class.forName(className);
+    } catch (ClassNotFoundException | ClassCastException e) {
       throw new IllegalArgumentException(e);
     }
   }

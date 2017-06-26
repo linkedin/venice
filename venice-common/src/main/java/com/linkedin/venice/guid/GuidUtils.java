@@ -28,8 +28,8 @@ public class GuidUtils {
     if (implName.equals(JavaUtilGuidV4Generator.class.getName())) {
       guidGenerator = new JavaUtilGuidV4Generator();
     } else {
-      Class implClass = ReflectUtils.loadClass(implName);
-      guidGenerator = ReflectUtils.<GuidGenerator>callConstructor(implClass, new Class[0], new Object[0]);
+      Class<? extends GuidGenerator> implClass = ReflectUtils.loadClass(implName);
+      guidGenerator = ReflectUtils.callConstructor(implClass, new Class[0], new Object[0]);
     }
     return guidGenerator;
   }

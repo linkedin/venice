@@ -1,10 +1,12 @@
 package com.linkedin.venice.replication;
 
+import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.integration.utils.BrooklinWrapper;
 import com.linkedin.venice.integration.utils.KafkaBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.kafka.TopicManager;
+import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.TestUtils;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
@@ -14,6 +16,8 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
+
+import com.linkedin.venice.utils.VeniceProperties;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
@@ -23,7 +27,7 @@ import org.apache.kafka.clients.producer.Producer;
 import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.clients.producer.ProducerRecord;
 import org.apache.kafka.common.TopicPartition;
-import org.testng.Assert;
+import static org.testng.Assert.*;
 import org.testng.annotations.Test;
 
 
@@ -97,8 +101,8 @@ public class TestBrooklin {
       }
     }
 
-    Assert.assertEquals(buffer.get(0).key(), key);
-    Assert.assertEquals(buffer.get(0).value(), value);
+    assertEquals(buffer.get(0).key(), key);
+    assertEquals(buffer.get(0).value(), value);
   }
 
   private static Producer<byte[], byte[]> getKafkaProducer(KafkaBrokerWrapper kafka){
@@ -126,5 +130,22 @@ public class TestBrooklin {
     return consumer;
   }
 
+  @Test
+  public void testReflectiveInstantiation() {
 
+    TopicManager topicManager = new TopicManager("some zk connection");
+
+    String brooklinReplicatorClassName = BrooklinTopicReplicator.class.getName();
+    VeniceProperties props = new PropertyBuilder()
+        .put(TopicReplicator.TOPIC_REPLICATOR_CLASS_NAME, brooklinReplicatorClassName)
+        .put(BrooklinTopicReplicator.BROOKLIN_CONNECTION_STRING, "useless...")
+        .put(TopicReplicator.TOPIC_REPLICATOR_SOURCE_KAFKA_CLUSTER, "some Kafka connection")
+        .put(ConfigKeys.CLUSTER_NAME, "Venice cluster name")
+        .put(BrooklinTopicReplicator.BROOKLIN_CONNECTION_APPLICATION_ID, "some app id")
+        .build();
+    TopicReplicator topicReplicator = TopicReplicator.getTopicReplicator(topicManager, props);
+
+    assertNotNull(topicReplicator);
+    assertEquals(topicReplicator.getClass().getName(), brooklinReplicatorClassName);
+  }
 }

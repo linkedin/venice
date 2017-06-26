@@ -27,21 +27,16 @@ import com.linkedin.venice.meta.StoreCleaner;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.pushmonitor.OfflinePushMonitor;
+import com.linkedin.venice.replication.TopicReplicator;
+import com.linkedin.venice.replication.TopicReplicator.TopicException;
 import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.status.StatusMessageChannel;
-import com.linkedin.venice.utils.HelixUtils;
-import com.linkedin.venice.utils.PartitionCountUtils;
-import com.linkedin.venice.utils.Utils;
+import com.linkedin.venice.utils.*;
 import io.tehuti.metrics.MetricsRepository;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
 
-import java.util.Optional;
-import java.util.Set;
+import java.util.*;
+
 import java.util.concurrent.ConcurrentHashMap;
 
 import java.util.stream.Collectors;
@@ -80,6 +75,7 @@ import org.apache.log4j.Logger;
  * of our venice cluster. In the state transition handler, we will create sub-controller for this venice cluster only.
  */
 public class VeniceHelixAdmin implements Admin, StoreCleaner {
+    private final VeniceControllerConfig config;
     private final String controllerClusterName;
     private final int controllerClusterReplica;
     private final String controllerName;
@@ -109,6 +105,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     private VeniceDistClusterControllerStateModelFactory controllerStateModelFactory;
     //TODO Use different configs for different clusters when creating helix admin.
     public VeniceHelixAdmin(VeniceControllerConfig config, MetricsRepository metricsRepository) {
+        this.config = config;
         this.controllerName = Utils.getHelixNodeIdentifier(config.getAdminPort());
         this.controllerClusterName = config.getControllerClusterName();
         this.controllerClusterReplica = config.getControllerClusterReplica();
@@ -1347,6 +1344,15 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     @Override
     public Optional<AdminCommandExecutionTracker> getAdminCommandExecutionTracker() {
         return Optional.empty();
+    }
+
+    @Override
+    public void startBufferReplay(String clusterName, String sourceKafkaCluster, String sourceTopicName, String destinationKafkaCluster, Version destinationStoreVersion) throws TopicException {
+        TopicReplicator topicReplicator = TopicReplicator.getTopicReplicator(topicManager, config.getProps());
+        topicReplicator.startBufferReplay(
+            sourceTopicName,
+            destinationStoreVersion.kafkaTopicName(),
+            getStore(clusterName, destinationStoreVersion.getStoreName()));
     }
 
     protected void startMonitorOfflinePush(String clusterName, String kafkaTopic, int numberOfPartition,

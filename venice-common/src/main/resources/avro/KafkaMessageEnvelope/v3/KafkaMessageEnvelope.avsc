@@ -150,6 +150,14 @@
                         "type": "array",
                         "items": "long"
                       }
+                    }, {
+                      "name": "sourceKafkaCluster",
+                      "doc": "Kafka bootstrap servers URL of the cluster where the source buffer exists.",
+                      "type": "string"
+                    }, {
+                      "name": "sourceTopicName",
+                      "doc": "Name of the source buffer topic.",
+                      "type": "string"
                     }
                   ]
                 }

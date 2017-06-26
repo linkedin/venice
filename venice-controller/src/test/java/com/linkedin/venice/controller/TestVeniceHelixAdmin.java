@@ -96,10 +96,10 @@ public class TestVeniceHelixAdmin {
     clusterProps.getString(ConfigKeys.CLUSTER_NAME);
     PropertyBuilder builder = new PropertyBuilder().put(clusterProps.toProperties())
         .put(baseControllerProps.toProperties())
-        .put("kafka.zk.address", kafkaZkAddress)
-        .put("zookeeper.address", zkAddress)
-        .put(ConfigKeys.CLUSTER_NAME, clusterName)
-        .put(ConfigKeys.KAFKA_BOOTSTRAP_SERVERS, kafkaBrokerWrapper.getAddress())
+        .put(KAFKA_ZK_ADDRESS, kafkaZkAddress)
+        .put(ZOOKEEPER_ADDRESS, zkAddress)
+        .put(CLUSTER_NAME, clusterName)
+        .put(KAFKA_BOOTSTRAP_SERVERS, kafkaBrokerWrapper.getAddress())
         .put(DEFAULT_MAX_NUMBER_OF_PARTITIONS, maxNumberOfPartition)
         .put(DEFAULT_PARTITION_SIZE, 100);
 

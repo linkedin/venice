@@ -18,7 +18,8 @@ public enum ControlMessageType {
   START_OF_PUSH(0),
   END_OF_PUSH(1),
   START_OF_SEGMENT(2),
-  END_OF_SEGMENT(3);
+  END_OF_SEGMENT(3),
+  START_OF_BUFFER_REPLAY(4);
 
   /** The value is the byte used on the wire format */
   private final int value;
@@ -40,6 +41,7 @@ public enum ControlMessageType {
    *         - {@link com.linkedin.venice.kafka.protocol.EndOfPush}
    *         - {@link com.linkedin.venice.kafka.protocol.StartOfSegment}
    *         - {@link com.linkedin.venice.kafka.protocol.EndOfSegment}
+   *         - {@link com.linkedin.venice.kafka.protocol.StartOfBufferReplay}
    */
   public Object getNewInstance() {
     switch (valueOf(value)) {
@@ -47,6 +49,7 @@ public enum ControlMessageType {
       case END_OF_PUSH: return new EndOfPush();
       case START_OF_SEGMENT: return new StartOfSegment();
       case END_OF_SEGMENT: return new EndOfSegment();
+      case START_OF_BUFFER_REPLAY: return new StartOfBufferReplay();
       default: throw new VeniceException("Unsupported " + getClass().getSimpleName() + " value: " + value);
     }
   }
