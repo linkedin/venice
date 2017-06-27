@@ -160,6 +160,14 @@ public class VeniceStateModelFactory extends StateModelFactory<StateModel> {
       countDownTheLatch(resourceName, partitionId);
     }
 
+    /**
+     * @return true because the bootstrap->online state transition should be blocked by excessive replication lag.
+     */
+    @Override
+    public boolean replicationLagShouldBlockCompletion() {
+      return true;
+    }
+
     @Override
     public void progress(String resourceName, int partitionId, long offset) {
     }

@@ -25,10 +25,25 @@ public interface VeniceNotifier {
 
     /**
      * Consumption is completed for a store and partition.
-     * @param storeName storeName
-     * @param partitionId partitionId
+     *
+     * Depending on {@link #replicationLagShouldBlockCompletion()}, the semantic of what
+     * constitutes completion for any given particular {@link VeniceNotifier} implementation
+     * can vary.
+     *
+     * @see {@link #replicationLagShouldBlockCompletion()}
      */
     void completed(String storeName, int partitionId, long offset);
+
+  /**
+   * This flag controls whether completion should be based only on the reception of the EOP
+   * message (false) or also on the replication lag reaching a certain acceptable threshold
+   * (true). The default is false.
+   *
+   * @return true if completion should be blocked by excessive replication lag, false otherwise.
+   */
+    default boolean replicationLagShouldBlockCompletion() {
+      return false;
+    }
 
     /**
      * Periodic progress report of consumption for a store and partition.

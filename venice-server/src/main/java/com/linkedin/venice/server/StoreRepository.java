@@ -18,6 +18,7 @@ import org.apache.log4j.Logger;
  *  A wrapper class that holds all the server's storage engines.
  *
  *  TODO 1. Later need to add stats and monitoring
+ *  TODO 2. Rename to StorageEngineRepository, as the current name is too confusing.
  */
 public class StoreRepository {
 

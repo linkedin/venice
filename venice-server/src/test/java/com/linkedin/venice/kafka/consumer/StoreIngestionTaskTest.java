@@ -11,6 +11,7 @@ import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
+import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.notifier.LogNotifier;
@@ -55,6 +56,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Properties;
 import java.util.Queue;
 import java.util.Set;
@@ -119,6 +121,7 @@ public class StoreIngestionTaskTest {
   private ExecutorService taskPollingService;
   private StoreBufferService storeBufferService;
   private BooleanSupplier isCurrentVersion;
+  private Optional<HybridStoreConfig> hybridStoreConfig;
 
   private static final String storeNameWithoutVersionInfo = "TestTopic";
   private static final String topic = Version.composeKafkaTopic(storeNameWithoutVersionInfo, 1);
@@ -174,6 +177,7 @@ public class StoreIngestionTaskTest {
     mockTopicManager = mock(TopicManager.class);
     mockStats = mock(AggStoreIngestionStats.class);
     isCurrentVersion = () -> false;
+    hybridStoreConfig = Optional.<HybridStoreConfig>empty();
   }
 
   private VeniceWriter getVeniceWriter(Supplier<KafkaProducerWrapper> producerSupplier) {
@@ -233,7 +237,7 @@ public class StoreIngestionTaskTest {
     OffsetManager offsetManager = new DeepCopyOffsetManager(mockOffSetManager);
     storeIngestionTaskUnderTest = new StoreIngestionTask(
         mockFactory, kafkaProps, mockStoreRepository, offsetManager, notifiers, mockThrottler, topic, mockSchemaRepo,
-        mockTopicManager, mockStats, storeBufferService, isCurrentVersion);
+        mockTopicManager, mockStats, storeBufferService, isCurrentVersion, hybridStoreConfig);
     doReturn(mockAbstractStorageEngine).when(mockStoreRepository).getLocalStorageEngine(topic);
 
     Future testSubscribeTaskFuture = null;
@@ -802,6 +806,13 @@ public class StoreIngestionTaskTest {
     });
   }
 
+  private byte[] getNumberedKey(int number) {
+    return ByteBuffer.allocate(putKeyFoo.length + Integer.BYTES).put(putKeyFoo).putInt(number).array();
+  }
+  private byte[] getNumberedValue(int number) {
+    return ByteBuffer.allocate(putValue.length + Integer.BYTES).put(putValue).putInt(number).array();
+  }
+
   private void testDataValidationCheckPointing(boolean sortedInput) throws Exception {
     final Map<Integer, Long> maxOffsetPerPartition = new HashMap<>();
     final Map<Pair<Integer, ByteArray>, ByteArray> pushedRecords = new HashMap<>();
@@ -810,8 +821,8 @@ public class StoreIngestionTaskTest {
 
     veniceWriter.broadcastStartOfPush(sortedInput, new HashMap<>());
     for (int i = 0; i < totalNumberOfMessages; i++) {
-      byte[] key = ByteBuffer.allocate(putKeyFoo.length + Integer.BYTES).put(putKeyFoo).putInt(i).array();
-      byte[] value = ByteBuffer.allocate(putValue.length + Integer.BYTES).put(putValue).putInt(i).array();
+      byte[] key = getNumberedKey(i);
+      byte[] value = getNumberedValue(i);
 
       RecordMetadata recordMetadata = (RecordMetadata) veniceWriter.put(key, value, SCHEMA_ID).get();
 
@@ -968,6 +979,41 @@ public class StoreIngestionTaskTest {
     });
   }
 
+  @Test
+  public void testDelayedTransitionToOnlineInHybridMode() throws Exception {
+    hybridStoreConfig = Optional.of(new HybridStoreConfig(10, 20));
+    when(mockNotifier.replicationLagShouldBlockCompletion()).thenReturn(true);
+    runTest(ALL_PARTITIONS, () -> {
+          veniceWriter.broadcastStartOfPush(new HashMap<>());
+          final int NUMBER_OF_MESSAGES_BEFORE_EOP = 100;
+          final int NUMBER_OF_MESSAGES_AFTER_EOP = 100;
+          for (int i = 0; i < NUMBER_OF_MESSAGES_BEFORE_EOP; i++) {
+            try {
+              veniceWriter.put(getNumberedKey(i), getNumberedValue(i), SCHEMA_ID).get();
+            } catch (InterruptedException | ExecutionException e) {
+              throw new VeniceException(e);
+            }
+          }
+          veniceWriter.broadcastEndOfPush(new HashMap<>());
+          veniceWriter.broadcastStartOfBufferReplay(
+              Arrays.asList(10L, 9L, 8L, 7L, 6L, 5L, 4L, 3L, 2L, 1L),
+              "source K cluster",
+              "source K topic",
+              new HashMap<>());
 
+          for (int i = 0; i < NUMBER_OF_MESSAGES_AFTER_EOP; i++) {
+            try {
+              veniceWriter.put(getNumberedKey(i), getNumberedValue(i), SCHEMA_ID).get();
+            } catch (InterruptedException | ExecutionException e) {
+              throw new VeniceException(e);
+            }
+          }
+
+        }, () -> {
+          ALL_PARTITIONS.forEach(partition -> verify(mockNotifier, timeout(TEST_TIMEOUT).atLeastOnce()).started(topic, partition));
+          verify(mockNotifier, never()).completed(anyString(), anyInt(), anyLong());
+        }
+    );
+  }
 
 }

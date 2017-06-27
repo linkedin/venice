@@ -20,6 +20,7 @@ import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.message.KafkaKey;
+import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.notifier.VeniceNotifier;
@@ -170,90 +171,60 @@ public class StoreIngestionTask implements Runnable, Closeable {
   // TOOD: Make this logger prefix everything with the CONSUMER_TASK_ID_FORMAT
   private static final Logger logger = Logger.getLogger(StoreIngestionTask.class);
 
-  private static final String CONSUMER_TASK_ID_FORMAT = StoreIngestionTask.class.getSimpleName() + " for [ Topic: %s ]";
+  // Constants
 
-  // Making it non final to shorten the time in testing.
-  // TODO: consider to make those delay time configurable for operability purpose
+  private static final String CONSUMER_TASK_ID_FORMAT = StoreIngestionTask.class.getSimpleName() + " for [ Topic: %s ]";
+  // TODO: consider to make those delay time configurable for operability purpose. Some are non-final so tests can alter the values.
   public static int READ_CYCLE_DELAY_MS = 1000;
   public static int POLLING_SCHEMA_DELAY_MS = 5 * READ_CYCLE_DELAY_MS;
   public static long PROGRESS_REPORT_INTERVAL = TimeUnit.MILLISECONDS.convert(10, TimeUnit.MINUTES);
-
+  /** After processing the following number of messages, Venice SN will invoke throttling. */
+  public static int OFFSET_THROTTLE_INTERVAL = 1000;
+  /** Record offset interval before persisting it in offset db for transaction mode database. */
+  public static int OFFSET_UPDATE_INTERVAL_PER_PARTITION_FOR_TRANSACTION_MODE = 1000;
+  /** Record offset interval before persisting it in offset db for deferred write database. */
+  public static int OFFSET_UPDATE_INTERNAL_PER_PARTITION_FOR_DEFERRED_WRITE = 100000;
   private static final int MAX_CONTROL_MESSAGE_RETRIES = 3;
+  private static final int MAX_IDLE_COUNTER  = 100;
+  private static final int CONSUMER_ACTION_QUEUE_INIT_CAPACITY = 11;
+  private static final long KILL_WAIT_TIME_MS = 5000l;
+  private static final int MAX_KILL_CHECKING_ATTEMPTS = 10;
 
-  //Ack producer
+  // Final stuffz
+
+  /** Ack producer */
   private final Queue<VeniceNotifier> notifiers;
-
-  // storage destination for consumption
+  /** storage destination for consumption */
   private final StoreRepository storeRepository;
-
   private final String topic;
-
   private final String storeNameWithoutVersionInfo;
-
   private final ReadOnlySchemaRepository schemaRepo;
-  private Set<Integer> schemaIdSet;
-
   private final String consumerTaskId;
   private final Properties kafkaProps;
   private final VeniceConsumerFactory factory;
-
-  private KafkaConsumerWrapper consumer;
-
   private final AtomicBoolean isRunning;
   private final AtomicBoolean emitMetrics;
-
   private final PriorityBlockingQueue<ConsumerAction> consumerActionsQueue;
-
   private final OffsetManager offsetManager;
-
   private final TopicManager topicManager;
-
   private final EventThrottler throttler;
-
-  private long lastProgressReportTime = 0;
-
-  /**
-   * Per-partition consumption state map
-   */
+  /** Per-partition consumption state map */
   private final ConcurrentMap<Integer, PartitionConsumptionState> partitionConsumptionStateMap;
-
-  /**
-   * After processing the following number of messages, Venice SN will invoke throttling.
-   */
-  public static int OFFSET_THROTTLE_INTERVAL = 1000;
-  /**
-   * Record offset interval before persisting it in offset db for transaction mode database.
-   */
-  public static int OFFSET_UPDATE_INTERVAL_PER_PARTITION_FOR_TRANSACTION_MODE = 1000;
-
-  /**
-   * Record offset interval before persisting it in offset db for deferred write database.
-   */
-  public static int OFFSET_UPDATE_INTERNAL_PER_PARTITION_FOR_DEFERRED_WRITE = 100000;
-
   private final StoreBufferService storeBufferService;
-
-  /**
-   * Persists the exception thrown by {@link StoreBufferService}.
-   */
+  /** Persists the exception thrown by {@link StoreBufferService}. */
   private Exception lastDrainerException = null;
-
-  /**
-   * Keeps track of every upstream producer this consumer task has seen so far.
-   */
+  /** Keeps track of every upstream producer this consumer task has seen so far. */
   private final ConcurrentMap<GUID, ProducerTracker> producerTrackerMap;
+  private final AggStoreIngestionStats stats;
+  private final BooleanSupplier isCurrentVersion;
+  private final Optional<HybridStoreConfig> hybridStoreConfig;
 
-  private static int MAX_IDLE_COUNTER  = 100;
+  // Non-final
+  private KafkaConsumerWrapper consumer;
+  private Set<Integer> schemaIdSet;
+  private long lastProgressReportTime = 0;
   private int idleCounter = 0;
 
-  private static int CONSUMER_ACTION_QUEUE_INIT_CAPACITY = 11;
-
-  private static final long KILL_WAIT_TIME_MS = 5000l;
-  public static final int MAX_KILL_CHECKING_ATTEMPTS = 10;
-
-  private final AggStoreIngestionStats stats;
-
-  private final BooleanSupplier isCurrentVersion;
 
   public StoreIngestionTask(@NotNull VeniceConsumerFactory factory,
                             @NotNull Properties kafkaConsumerProperties,
@@ -266,7 +237,8 @@ public class StoreIngestionTask implements Runnable, Closeable {
                             @NotNull TopicManager topicManager,
                             @NotNull AggStoreIngestionStats stats,
                             @NotNull StoreBufferService storeBufferService,
-                            @NotNull BooleanSupplier isCurrentVersion) {
+                            @NotNull BooleanSupplier isCurrentVersion,
+                            @NotNull Optional<HybridStoreConfig> hybridStoreConfig) {
     this.factory = factory;
     this.kafkaProps = kafkaConsumerProperties;
     this.storeRepository = storeRepository;
@@ -296,6 +268,7 @@ public class StoreIngestionTask implements Runnable, Closeable {
 
     this.storeBufferService = storeBufferService;
     this.isCurrentVersion = isCurrentVersion;
+    this.hybridStoreConfig = hybridStoreConfig;
   }
 
   private void validateState() {
@@ -449,15 +422,36 @@ public class StoreIngestionTask implements Runnable, Closeable {
     } else {
       logger.info("Processing completed for topic " + topic + " Partition " + partition + " Last Offset "
           + lastOffsetRecord.getOffset());
+      boolean isHybrid = hybridStoreConfig.isPresent();
       for(VeniceNotifier notifier : notifiers) {
         try {
-          notifier.completed(topic, partition, lastOffsetRecord.getOffset());
+          logger.debug("reportCompleted called by VeniceNotifier class: " + notifier.getClass().getName() +
+              ", isHybrid: " + isHybrid +
+              ", notifier.replicationLagShouldBlockCompletion(): " + notifier.replicationLagShouldBlockCompletion() +
+              ", isReplicationLagging(): " + isReplicationLagging());
+          if (isHybrid
+              && notifier.replicationLagShouldBlockCompletion()
+              && isReplicationLagging()) {
+            // skip
+          } else {
+            notifier.completed(topic, partition, lastOffsetRecord.getOffset());
+          }
         } catch(Exception ex) {
           logger.error("Error reporting status to notifier " + notifier.getClass() , ex);
         }
       }
     }
     partitionConsumptionState.complete();
+  }
+
+  /**
+   * Lag = (RT Max - SOBR) - (Current - EOP)
+   *
+   * @return true if Lag > threshold
+   */
+  private boolean isReplicationLagging() {
+    // TODO: Implement this!
+    return true;
   }
 
   private void reportError(Collection<Integer> partitions, String message, Exception consumerEx) {
