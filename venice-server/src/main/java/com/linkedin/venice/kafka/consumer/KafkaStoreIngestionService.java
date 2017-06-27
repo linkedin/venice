@@ -4,6 +4,7 @@ import com.linkedin.venice.config.VeniceServerConfig;
 import com.linkedin.venice.config.VeniceStoreConfig;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.TopicManager;
+import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
@@ -143,12 +144,13 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
   private StoreIngestionTask getConsumerTask(VeniceStoreConfig veniceStore) {
     String storeName = Version.parseStoreFromKafkaTopicName(veniceStore.getStoreName());
     int storeVersion = Version.parseVersionFromKafkaTopicName(veniceStore.getStoreName());
-    BooleanSupplier isStoreVersionCurrent = () ->
-        metadataRepo.getStore(storeName).getCurrentVersion() == storeVersion;
+    Store store = metadataRepo.getStore(storeName);
+    BooleanSupplier isStoreVersionCurrent = () -> store.getCurrentVersion() == storeVersion;
+    Optional<HybridStoreConfig> hybridStoreConfig = Optional.ofNullable(store.getHybridStoreConfig());
 
     return new StoreIngestionTask(new VeniceConsumerFactory(), getKafkaConsumerProperties(veniceStore), storeRepository,
         offsetManager, notifiers, throttler, veniceStore.getStoreName(), schemaRepo, topicManager, ingestionStats,
-        storeBufferService, isStoreVersionCurrent);
+        storeBufferService, isStoreVersionCurrent, hybridStoreConfig);
   }
 
   /**

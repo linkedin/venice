@@ -146,6 +146,7 @@ public class Segment {
           case START_OF_SEGMENT:
           case START_OF_PUSH:
           case END_OF_PUSH:
+          case START_OF_BUFFER_REPLAY:
             // All other control messages are handled the same way.
             updateCheckSum(messageEnvelope.messageType);
             updateCheckSum(controlMessage.controlMessageType);
