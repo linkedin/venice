@@ -2,6 +2,7 @@ package com.linkedin.venice.hadoop;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.utils.HadoopUtils;
+import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.serialization.VeniceSerializer;
 import com.linkedin.venice.serialization.avro.VeniceAvroGenericSerializer;
 import com.linkedin.venice.utils.VeniceProperties;
@@ -19,6 +20,9 @@ import org.apache.log4j.Logger;
 
 import java.io.IOException;
 
+import static com.linkedin.venice.hadoop.KafkaPushJob.*;
+import static com.linkedin.venice.hadoop.MapReduceConstants.*;
+
 /**
  * A simple implementation of {@link Mapper}, which will serialize the avro records of the user's input data file.
  */
@@ -32,6 +36,7 @@ public class VeniceMapper implements Mapper<AvroWrapper<IndexedRecord>, NullWrit
   private int valueFieldPos;
   private VeniceSerializer keySerializer;
   private VeniceSerializer valueSerializer;
+  private boolean checkingRecordSize;
 
   @Override
   public void map(AvroWrapper<IndexedRecord> record, NullWritable value, OutputCollector<BytesWritable, BytesWritable> output, Reporter reporter) throws IOException {
@@ -40,7 +45,15 @@ public class VeniceMapper implements Mapper<AvroWrapper<IndexedRecord>, NullWrit
       /**
        * Skip record with null value, check {@link #parseAvroRecord(AvroWrapper)}.
        */
-      output.collect(new BytesWritable(keyValueBytesPair.getKey()), new BytesWritable(keyValueBytesPair.getValue()));
+      byte[] recordKey = keyValueBytesPair.getKey();
+      byte[] recordValue = keyValueBytesPair.getValue();
+
+      if (checkingRecordSize) {
+        reporter.incrCounter(COUNTER_GROUP_QUOTA, COUNTER_TOTAL_KEY_SIZE, recordKey.length);
+        reporter.incrCounter(COUNTER_GROUP_QUOTA, COUNTER_TOTAL_VALUE_SIZE, recordValue.length);
+      }
+
+      output.collect(new BytesWritable(recordKey), new BytesWritable(recordValue));
     }
   }
 
@@ -75,14 +88,17 @@ public class VeniceMapper implements Mapper<AvroWrapper<IndexedRecord>, NullWrit
     VeniceProperties props = HadoopUtils.getVeniceProps(job);
 
     // N.B.: These getters will throw an UndefinedPropertyException if anything is missing
-    this.topicName = props.getString(KafkaPushJob.TOPIC_PROP);
-    this.keyField = props.getString(KafkaPushJob.AVRO_KEY_FIELD_PROP);
-    this.valueField = props.getString(KafkaPushJob.AVRO_VALUE_FIELD_PROP);
-    String schemaStr = props.getString(KafkaPushJob.SCHEMA_STRING_PROP);
+    this.topicName = props.getString(TOPIC_PROP);
+    this.keyField = props.getString(AVRO_KEY_FIELD_PROP);
+    this.valueField = props.getString(AVRO_VALUE_FIELD_PROP);
+    this.checkingRecordSize =
+        props.getLong(STORAGE_QUOTA_PROP) == Store.UNLIMITED_STORAGE_QUOTA ? false : true;
+    String schemaStr = props.getString(SCHEMA_STRING_PROP);
     this.keySerializer = getSerializer(schemaStr, keyField);
     this.keyFieldPos = getFieldPos(schemaStr, keyField);
     this.valueSerializer = getSerializer(schemaStr, valueField);
     this.valueFieldPos = getFieldPos(schemaStr, valueField);
+
   }
 
   private VeniceSerializer getSerializer(String schemaStr, String field) {

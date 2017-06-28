@@ -1,9 +1,13 @@
 package com.linkedin.venice.hadoop;
 
+import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
+import com.linkedin.venice.meta.Store;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.mapred.JobConf;
 
 import javax.xml.bind.DatatypeConverter;
+
+import static com.linkedin.venice.hadoop.KafkaPushJob.*;
 
 public class AbstractTestVeniceMR {
   protected static final String SCHEMA_STR = "{\n" +
@@ -17,15 +21,18 @@ public class AbstractTestVeniceMR {
   protected static final String KEY_FIELD = "key";
   protected static final String VALUE_FIELD = "value";
   protected static final int VALUE_SCHEMA_ID = 1;
-  protected static final String TOPIC_NAME = "test_topic";
+
+  protected static final String TOPIC_NAME = "test_store_v1";
 
   protected JobConf setupJobConf() {
     Configuration config = new Configuration();
-    config.set(KafkaPushJob.TOPIC_PROP, TOPIC_NAME);
-    config.set(KafkaPushJob.AVRO_KEY_FIELD_PROP, KEY_FIELD);
-    config.set(KafkaPushJob.AVRO_VALUE_FIELD_PROP, VALUE_FIELD);
-    config.set(KafkaPushJob.SCHEMA_STRING_PROP, SCHEMA_STR);
-    config.setInt(KafkaPushJob.VALUE_SCHEMA_ID_PROP, VALUE_SCHEMA_ID);
+    config.set(TOPIC_PROP, TOPIC_NAME);
+    config.set(AVRO_KEY_FIELD_PROP, KEY_FIELD);
+    config.set(AVRO_VALUE_FIELD_PROP, VALUE_FIELD);
+    config.set(SCHEMA_STRING_PROP, SCHEMA_STR);
+    config.setInt(VALUE_SCHEMA_ID_PROP, VALUE_SCHEMA_ID);
+    config.setLong(STORAGE_QUOTA_PROP, Store.UNLIMITED_STORAGE_QUOTA);
+    config.setDouble(STORAGE_ENGINE_OVERHEAD_RATIO, VeniceControllerWrapper.DEFAULT_STORAGE_ENGINE_OVERHEAD_RATIO);
     return new JobConf(config);
   }
 

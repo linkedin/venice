@@ -86,6 +86,7 @@ jar {
           exclude("**/org/apache/hadoop/**")
           exclude("**/com/linkedin/azkaban**")
           exclude("**/com/linkedin/hadoop**")
+          exclude("**/org/apache/xerces/**")
           // exclude("*.xml")
           // exclude("hdfs*.xml")
           // exclude("mapred*.xml")

@@ -134,6 +134,8 @@ public class AdminSparkServer extends AbstractVeniceService {
     httpService.get(EXECUTION.getPath(), AdminCommandExecutionRoutes.getExecution(admin));
     httpService.get(LAST_SUCCEED_EXECUTION_ID.getPath(), AdminCommandExecutionRoutes.getLastSucceedExecutionId(admin));
 
+    httpService.get(STORAGE_ENGINE_OVERHEAD_RATIO.getPath(), StoresRoutes.getStorageEngineOverheadRatio(admin));
+
     httpService.awaitInitialization(); // Wait for server to be initialized
 
     // There is no async process in this function, so we are completely finished with the start up process.

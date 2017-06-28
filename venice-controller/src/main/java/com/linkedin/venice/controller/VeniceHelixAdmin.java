@@ -728,7 +728,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
      */
     private synchronized void setStoreStorageQuota(String clusterName, String storeName, long storageQuotaInByte) {
         storeMetadataUpdate(clusterName, storeName, store -> {
-            if (storageQuotaInByte < 0) {
+            if (storageQuotaInByte < 0 && storageQuotaInByte != Store.UNLIMITED_STORAGE_QUOTA) {
                 throw new VeniceException("storage quota can not be less than 0");
             }
             store.setStorageQuotaInByte(storageQuotaInByte);
@@ -866,6 +866,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         if (repository.getStore(storeName) == null) {
             throwStoreDoesNotExist(clusterName, storeName);
         }
+    }
+
+    @Override
+    public double getStorageEngineOverheadRatio() {
+        return config.getStorageEngineOverheadRatio();
     }
 
     // TODO: Though controller can control, multiple Venice-clusters, kafka topic name needs to be unique

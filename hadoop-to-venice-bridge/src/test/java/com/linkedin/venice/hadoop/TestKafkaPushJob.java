@@ -9,8 +9,9 @@ import com.linkedin.venice.hadoop.exceptions.VeniceInconsistentSchemaException;
 import com.linkedin.venice.hadoop.exceptions.VeniceSchemaFieldNotFoundException;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
-import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
+import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
@@ -40,6 +41,7 @@ import org.testng.annotations.Test;
 
 import static com.linkedin.venice.hadoop.KafkaPushJob.*;
 
+//TODO: we shall probably move it to integration test
 public class TestKafkaPushJob {
   private static final Logger LOGGER = Logger.getLogger(TestKafkaPushJob.class);
   private static final int TEST_TIMEOUT = 60 * Time.MS_PER_SECOND;
@@ -48,6 +50,7 @@ public class TestKafkaPushJob {
   private static List<File> tempDirectories = Collections.synchronizedList(new ArrayList<File>());
 
   private VeniceClusterWrapper veniceCluster;
+  private ControllerClient controllerClient;
 
   /* This leaves temp directories lying around, they are cleaned up in the cleanUp() method */
   protected static File getTempDataDirectory() {
@@ -191,13 +194,19 @@ public class TestKafkaPushJob {
   public void setUp() {
     Utils.thisIsLocalhost();
     veniceCluster = ServiceFactory.getVeniceCluster(true); //Now with SSL!
+    controllerClient = new ControllerClient(veniceCluster.getClusterName(), veniceCluster.getRandomRouterURL());
   }
 
   @AfterClass
   public void cleanUp() {
+    if (controllerClient != null) {
+      controllerClient.close();
+    }
+
     if (veniceCluster != null) {
       veniceCluster.close();
     }
+
     for (File dir: tempDirectories){
       try {
         if (dir != null){
@@ -211,14 +220,14 @@ public class TestKafkaPushJob {
 
   private Properties setupDefaultProps(String inputDirPath, String storeName) {
     Properties props = new Properties();
-    props.put(KafkaPushJob.VENICE_URL_PROP, veniceCluster.getRandomRouterURL());
-    props.put(KafkaPushJob.KAFKA_URL_PROP, veniceCluster.getKafka().getAddress());
-    props.put(KafkaPushJob.VENICE_CLUSTER_NAME_PROP, veniceCluster.getClusterName());
-    props.put(KafkaPushJob.VENICE_STORE_NAME_PROP, storeName);
-    props.put(KafkaPushJob.VENICE_STORE_OWNERS_PROP, "test@linkedin.com");
-    props.put(KafkaPushJob.INPUT_PATH_PROP, inputDirPath);
-    props.put(KafkaPushJob.AVRO_KEY_FIELD_PROP, "id");
-    props.put(KafkaPushJob.AVRO_VALUE_FIELD_PROP, "name");
+    props.put(VENICE_URL_PROP, veniceCluster.getRandomRouterURL());
+    props.put(KAFKA_URL_PROP, veniceCluster.getKafka().getAddress());
+    props.put(VENICE_CLUSTER_NAME_PROP, veniceCluster.getClusterName());
+    props.put(VENICE_STORE_NAME_PROP, storeName);
+    props.put(VENICE_STORE_OWNERS_PROP, "test@linkedin.com");
+    props.put(INPUT_PATH_PROP, inputDirPath);
+    props.put(AVRO_KEY_FIELD_PROP, "id");
+    props.put(AVRO_VALUE_FIELD_PROP, "name");
     // No need for a big close timeout in tests. This is just to speed up discovery of certain regressions.
     props.put(VeniceWriter.CLOSE_TIMEOUT_MS, 500);
 
@@ -226,12 +235,17 @@ public class TestKafkaPushJob {
   }
 
   private void createStoreForJob(Schema recordSchema, Properties props) {
-    ControllerClient controllerClient =
-        new ControllerClient(veniceCluster.getClusterName(), props.getProperty(KafkaPushJob.VENICE_URL_PROP));
-    Schema keySchema = recordSchema.getField(props.getProperty(KafkaPushJob.AVRO_KEY_FIELD_PROP)).schema();
-    Schema valueSchema = recordSchema.getField(props.getProperty(KafkaPushJob.AVRO_VALUE_FIELD_PROP)).schema();
-    controllerClient.createNewStore(props.getProperty(KafkaPushJob.VENICE_STORE_NAME_PROP),
-        props.getProperty(KafkaPushJob.VENICE_STORE_OWNERS_PROP), keySchema.toString(), valueSchema.toString());
+    Schema keySchema = recordSchema.getField(props.getProperty(AVRO_KEY_FIELD_PROP)).schema();
+    Schema valueSchema = recordSchema.getField(props.getProperty(AVRO_VALUE_FIELD_PROP)).schema();
+    controllerClient.createNewStore(props.getProperty(VENICE_STORE_NAME_PROP),
+        props.getProperty(VENICE_STORE_OWNERS_PROP), keySchema.toString(), valueSchema.toString());
+
+    updateStoreStorageQuota(props, Store.UNLIMITED_STORAGE_QUOTA);
+  }
+
+  private void updateStoreStorageQuota(Properties props, long quota) {
+    controllerClient.updateStore(props.getProperty(VENICE_STORE_NAME_PROP), Optional.empty(), Optional.empty(),
+        Optional.empty(), Optional.empty(), Optional.empty(), Optional.of(quota), Optional.empty(), Optional.empty(), Optional.empty());
   }
 
   @Test(timeOut = TEST_TIMEOUT)
@@ -251,10 +265,10 @@ public class TestKafkaPushJob {
     String storeName = TestUtils.getUniqueString("store");
     Properties props = setupDefaultProps(inputDirPath, storeName);
     if (mapOnly) {
-      props.setProperty(KafkaPushJob.VENICE_MAP_ONLY, "true");
+      props.setProperty(VENICE_MAP_ONLY, "true");
     }
-    props.setProperty(KafkaPushJob.PBNJ_ENABLE, "true");
-    props.setProperty(KafkaPushJob.PBNJ_ROUTER_URL_PROP, veniceCluster.getRandomRouterURL());
+    props.setProperty(PBNJ_ENABLE, "true");
+    props.setProperty(PBNJ_ROUTER_URL_PROP, veniceCluster.getRandomRouterURL());
     createStoreForJob(recordSchema, props);
 
     KafkaPushJob job = new KafkaPushJob("Test push job", props);
@@ -322,7 +336,7 @@ public class TestKafkaPushJob {
     String inputDirPath = "file://" + inputDir.getAbsolutePath();
     Properties props = setupDefaultProps(inputDirPath, storeName);
     // Override with not-existing key field
-    props.put(KafkaPushJob.AVRO_KEY_FIELD_PROP, "id1");
+    props.put(AVRO_KEY_FIELD_PROP, "id1");
 
     KafkaPushJob job = new KafkaPushJob("Test push job", props);
     job.run();
@@ -346,7 +360,7 @@ public class TestKafkaPushJob {
     String storeName = TestUtils.getUniqueString("store");
     Properties props = setupDefaultProps(inputDirPath, storeName);
     // Override with not-existing value field
-    props.put(KafkaPushJob.AVRO_VALUE_FIELD_PROP, "name1");
+    props.put(AVRO_VALUE_FIELD_PROP, "name1");
 
     KafkaPushJob job = new KafkaPushJob("Test push job", props);
     job.run();
@@ -419,7 +433,7 @@ public class TestKafkaPushJob {
     String jobName = "Test push job";
 
     // Run job with different key schema (from 'string' to 'int')
-    props.setProperty(KafkaPushJob.AVRO_KEY_FIELD_PROP, "age");
+    props.setProperty(AVRO_KEY_FIELD_PROP, "age");
     KafkaPushJob job = new KafkaPushJob(jobName, props);
     job.run();
   }
@@ -440,7 +454,7 @@ public class TestKafkaPushJob {
     createStoreForJob(recordSchema, props);
     String jobName = "Test push job";
     // Run job with different value schema (from 'string' to 'int')
-    props.setProperty(KafkaPushJob.AVRO_VALUE_FIELD_PROP, "age");
+    props.setProperty(AVRO_VALUE_FIELD_PROP, "age");
     KafkaPushJob job = new KafkaPushJob(jobName, props);
     job.run();
   }
@@ -491,11 +505,11 @@ public class TestKafkaPushJob {
     job.run();
 
     //Verify some records
-    AvroGenericStoreClient client = AvroStoreClientFactory.getAndStartAvroGenericStoreClient(veniceCluster.getRandomRouterURL(), storeName);
-    for (int i=1;i<10;i++){
+    AvroGenericStoreClient client =
+        AvroStoreClientFactory.getAndStartAvroGenericStoreClient(veniceCluster.getRandomRouterURL(), storeName);
+    for (int i = 1; i < 10; i++) {
       String key = Integer.toString(i);
       Assert.assertEquals(client.get(key).get().toString(), "test_name_" + key);
     }
-
   }
 }
