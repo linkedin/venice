@@ -17,13 +17,13 @@ public class DeepCopyOffsetManager implements OffsetManager {
   }
 
   @Override
-  public void recordOffset(String topicName, int partitionId, OffsetRecord record) throws VeniceException {
-    LOGGER.info("OffsetManager.recordOffset called with topicName: " + topicName +
+  public void put(String topicName, int partitionId, OffsetRecord record) throws VeniceException {
+    LOGGER.info("OffsetManager.put(OffsetRecord) called with topicName: " + topicName +
         ", partitionId: " + partitionId + ", record: " + record);
 
     // Doing a deep copy, otherwise Mockito keeps a handle on the reference only, which can mutate and lead to confusing verify() semantics
     OffsetRecord deepCopy = new OffsetRecord(record.toBytes());
-    delegate.recordOffset(topicName, partitionId, deepCopy);
+    delegate.put(topicName, partitionId, deepCopy);
   }
 
   @Override

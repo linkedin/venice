@@ -48,7 +48,7 @@ import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
-import org.apache.commons.cli.Option;
+
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.log4j.Logger;
@@ -365,7 +365,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
       if (offsetRecordTransformer.isPresent()) {
         lastOffset = offsetRecordTransformer.get().transform(lastOffset);
       }
-      offsetManager.recordOffset(topic, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID, lastOffset);
+      offsetManager.put(topic, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID, lastOffset);
     }
   }
 

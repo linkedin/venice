@@ -14,6 +14,7 @@ public class ConfigKeys {
   public static final String OFFSET_MANAGER_TYPE = "offset.manager.type";
   public static final String OFFSET_DATA_BASE_PATH = "offsets.data.base.path";
   public static final String OFFSET_MANAGER_FLUSH_INTERVAL_MS = "offset.manager.flush.interval.ms";
+  public static final String OFFSET_MANAGER_LOG_FILE_MAX_BYTES = "offset.manager.log.file.max.bytes";
   public static final String HELIX_ENABLED = "helix.enabled";
   public static final String ZOOKEEPER_ADDRESS = "zookeeper.address";
   public static final Set<String> clusterSpecificProperties = new HashSet<String>(Arrays

@@ -1,6 +1,5 @@
 package com.linkedin.venice.writer;
 
-import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.annotation.NotThreadsafe;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.guid.GuidUtils;
@@ -12,7 +11,6 @@ import com.linkedin.venice.kafka.validation.checksum.CheckSumType;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.partitioner.VenicePartitioner;
-import com.linkedin.venice.serialization.DefaultSerializer;
 import com.linkedin.venice.serialization.VeniceSerializer;
 import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.Time;
@@ -219,10 +217,10 @@ public class VeniceWriter<K, V> extends AbstractVeniceWriter<K, V> {
   /**
    * @param debugInfo arbitrary key/value pairs of information that will be propagated alongside the control message.
    */
-  public void broadcastStartOfBufferReplay(List<Long> startingOffsets, String sourceKafkaCluster, String sourceTopicName, Map<String, String> debugInfo) {
+  public void broadcastStartOfBufferReplay(List<Long> sourceOffsets, String sourceKafkaCluster, String sourceTopicName, Map<String, String> debugInfo) {
     ControlMessage controlMessage = getEmptyControlMessage(ControlMessageType.START_OF_BUFFER_REPLAY);
     StartOfBufferReplay startOfBufferReplay = new StartOfBufferReplay();
-    startOfBufferReplay.offsets = Utils.notNull(startingOffsets);
+    startOfBufferReplay.sourceOffsets = Utils.notNull(sourceOffsets);
     startOfBufferReplay.sourceKafkaCluster = Utils.notNull(sourceKafkaCluster);
     startOfBufferReplay.sourceTopicName = Utils.notNull(sourceTopicName);
     controlMessage.controlMessageUnion = startOfBufferReplay;

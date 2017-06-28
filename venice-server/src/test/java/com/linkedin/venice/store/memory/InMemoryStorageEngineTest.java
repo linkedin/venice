@@ -40,7 +40,7 @@ public class InMemoryStorageEngineTest extends AbstractStorageEngineTest {
     VeniceProperties serverProperties = AbstractStorageEngineTest.getServerProperties(PersistenceType.IN_MEMORY);
     VeniceConfigLoader configLoader = AbstractStorageEngineTest.getVeniceConfigLoader(serverProperties);
 
-    service = new StorageService(configLoader);
+    service = new StorageService(configLoader, s -> s.toString());
     storeConfig = new VeniceStoreConfig(STORE_NAME, serverProperties);
 
     testStoreEngine = service.openStoreForNewPartition(storeConfig , PARTITION_ID);

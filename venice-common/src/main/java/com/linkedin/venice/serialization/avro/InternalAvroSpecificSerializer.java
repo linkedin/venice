@@ -29,11 +29,11 @@ import org.apache.log4j.Logger;
  * The protocol is the following:
  *
  * 1st byte: The magic byte, should always equal '{@link #magicByte}'.
- * 2nd byte: The protocol version, currently, only '1' is supported.
+ * 2nd byte: The protocol version
  * 3rd byte and onward: The payload (a single binary-encoded Avro record) encoded
  *    with a writer schema determined by the protocol version specified in #2.
  */
-abstract public class InternalAvroSpecificSerializer<SPECIFIC_RECORD extends SpecificRecord>
+public class InternalAvroSpecificSerializer<SPECIFIC_RECORD extends SpecificRecord>
     implements VeniceSerializer<SPECIFIC_RECORD> {
 
   private static final Logger logger = Logger.getLogger(InternalAvroSpecificSerializer.class);

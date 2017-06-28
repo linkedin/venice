@@ -18,6 +18,7 @@ import java.util.Set;
 import org.apache.log4j.Logger;
 
 import java.util.Map;
+import java.util.function.Consumer;
 
 import static com.linkedin.venice.meta.PersistenceType.*;
 
@@ -36,12 +37,14 @@ public class StorageService extends AbstractVeniceService {
 
   private final Map<PersistenceType, StorageEngineFactory> persistenceTypeToStorageEngineFactoryMap;
   private final PartitionAssignmentRepository partitionAssignmentRepository;
+  private final Consumer<String> storeVersionStateDeleter;
 
-  public StorageService(VeniceConfigLoader configLoader) {
+  public StorageService(VeniceConfigLoader configLoader, Consumer<String> storeVersionStateDeleter) {
     this.serverConfig = configLoader.getVeniceServerConfig();
     this.storeRepository = new StoreRepository();
     this.persistenceTypeToStorageEngineFactoryMap = new HashMap<>();
     this.partitionAssignmentRepository = new PartitionAssignmentRepository();
+    this.storeVersionStateDeleter = storeVersionStateDeleter;
     initInternalStorageEngineFactories();
     // Restore all the stores persisted previously
     restoreAllStores(configLoader);
@@ -138,7 +141,7 @@ public class StorageService extends AbstractVeniceService {
    * Removes the Store, Partition from the Storage service.
    */
   public synchronized void dropStorePartition(VeniceStoreConfig storeConfig, int partitionId) {
-    String storeName = storeConfig.getStoreName();
+    String storeName = storeConfig.getStoreName(); // This is the Kafka topic name
 
     partitionAssignmentRepository.dropPartition(storeName , partitionId);
     AbstractStorageEngine storageEngine = storeRepository.getLocalStorageEngine(storeName);
@@ -160,6 +163,9 @@ public class StorageService extends AbstractVeniceService {
 
       // Clean up the state
       storeRepository.removeLocalStorageEngine(storeName);
+
+      // Clean up the metadata
+      storeVersionStateDeleter.accept(storeName);
     }
   }
 

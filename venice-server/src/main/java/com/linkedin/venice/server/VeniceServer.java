@@ -15,9 +15,9 @@ import com.linkedin.venice.kafka.consumer.KafkaStoreIngestionService;
 import com.linkedin.venice.listener.ListenerService;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
-import com.linkedin.venice.offsets.BdbOffsetManager;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.stats.TehutiUtils;
+import com.linkedin.venice.storage.BdbStorageMetadataService;
 import com.linkedin.venice.storage.StorageService;
 import com.linkedin.venice.utils.Utils;
 import io.tehuti.metrics.MetricsRepository;
@@ -40,7 +40,7 @@ public class VeniceServer {
   private final AtomicBoolean isStarted;
 
   private StorageService storageService;
-  private BdbOffsetManager offSetService;
+  private BdbStorageMetadataService storageMetadataService;
   private KafkaStoreIngestionService kafkaStoreIngestionService;
 
   private MetricsRepository metricsRepository;
@@ -106,20 +106,20 @@ public class VeniceServer {
 
     VeniceClusterConfig clusterConfig = veniceConfigLoader.getVeniceClusterConfig();
 
-    // create and add StorageService. storeRepository will be populated by StorageService,
-    storageService = new StorageService(veniceConfigLoader);
-    services.add(storageService);
-
     // Create and add Offset Service.
-    offSetService = new BdbOffsetManager(veniceConfigLoader.getVeniceClusterConfig());
-    services.add(offSetService);
+    storageMetadataService = new BdbStorageMetadataService(veniceConfigLoader.getVeniceClusterConfig());
+    services.add(storageMetadataService);
+
+    // create and add StorageService. storeRepository will be populated by StorageService,
+    storageService = new StorageService(veniceConfigLoader, s -> storageMetadataService.clearStoreVersionState(s));
+    services.add(storageService);
 
     // Create ReadOnlyStore/SchemaRepository
     createHelixStoreAndSchemaRepository(clusterConfig);
 
     //create and add KafkaSimpleConsumerService
     this.kafkaStoreIngestionService =
-        new KafkaStoreIngestionService(storageService.getStoreRepository(), veniceConfigLoader, offSetService, metadataRepo,schemaRepo, metricsRepository);
+        new KafkaStoreIngestionService(storageService.getStoreRepository(), veniceConfigLoader, storageMetadataService, metadataRepo,schemaRepo, metricsRepository);
 
     // start venice participant service if Helix is enabled.
     if(clusterConfig.isHelixEnabled()) {
@@ -138,7 +138,7 @@ public class VeniceServer {
 
     //create and add ListenerServer for handling GET requests
     ListenerService listenerService =
-        new ListenerService(storageService.getStoreRepository(), offSetService, veniceConfigLoader, metricsRepository, sslFactory);
+        new ListenerService(storageService.getStoreRepository(), storageMetadataService, veniceConfigLoader, metricsRepository, sslFactory);
     services.add(listenerService);
 
 

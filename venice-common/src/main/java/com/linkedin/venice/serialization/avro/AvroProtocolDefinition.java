@@ -2,6 +2,7 @@ package com.linkedin.venice.serialization.avro;
 
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
+import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import org.apache.avro.specific.SpecificRecord;
 
 /**
@@ -20,7 +21,13 @@ public enum AvroProtocolDefinition {
    * Used to persist the state of a partition in Storage Nodes, including offset,
    * Data Ingest Validation state, etc.
    */
-  PARTITION_STATE(24, 2, PartitionState.class);
+  PARTITION_STATE(24, 3, PartitionState.class),
+
+  /**
+   * Used to persist state related to a store-version, including Start of Buffer Replay
+   * offsets and whether the input is sorted.
+   */
+  STORE_VERSION_STATE(25, 1, StoreVersionState.class);
 
   /**
    * The first byte at the beginning of a serialized byte array.
@@ -48,4 +55,7 @@ public enum AvroProtocolDefinition {
     this.specificRecordClass = specificRecordClass;
   }
 
+  public <T extends SpecificRecord> InternalAvroSpecificSerializer<T> getSerializer() {
+    return new InternalAvroSpecificSerializer<>(this);
+  }
 }

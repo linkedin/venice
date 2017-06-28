@@ -1,0 +1,43 @@
+{
+  "name": "StoreVersionState",
+  "namespace": "com.linkedin.venice.kafka.protocol.state",
+  "doc": "This record maintains store-version level state, such as the StartOfBufferReplay Control Message, in the case of Hybrid Stores.",
+  "type": "record",
+  "fields": [
+    {
+      "name": "sorted",
+      "doc": "Whether the messages inside the current store-version, between the 'StartOfPush' and 'EndOfPush' control messages, are lexicographically sorted by key bytes. N.B.: This field used to be stored in v2 of the PartitionState schema, but it has now been removed from there.",
+      "type": "boolean"
+    }, {
+      "name": "startOfBufferReplay",
+      "doc": "If a StartOfBufferReplay has been consumed, then it is stored in its entirety here, otherwise, this field is null.",
+      "type": [
+        "null",
+        {
+          "name": "StartOfBufferReplay",
+          "namespace": "com.linkedin.venice.kafka.protocol",
+          "doc": "This ControlMessage is sent by the Controller, once per partition, after the EndOfPush ControlMessage, in Hybrid Stores that ingest from both offline and nearline sources. It contains information about the the offsets from which the Buffer Replay Service started replaying data from the real-time buffer topic onto the store-version topic. This can be used as a synchronization marker between the real-time buffer topic and the store-version topic, akin to how a clapperboard is used to synchronize sound and image in filmmaking. This synchronization marker can in turn be used by the consumer to compute an offset lag.",
+          "type": "record",
+          "fields": [
+            {
+              "name": "sourceOffsets",
+              "doc": "Array of offsets from the real-time buffer topic at which the Buffer Replay Service started replaying data. The index position of the array corresponds to the partition number in the real-time buffer.",
+              "type": {
+                "type": "array",
+                "items": "long"
+              }
+            }, {
+              "name": "sourceKafkaCluster",
+              "doc": "Kafka bootstrap servers URL of the cluster where the source buffer exists.",
+              "type": "string"
+            }, {
+              "name": "sourceTopicName",
+              "doc": "Name of the source buffer topic.",
+              "type": "string"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

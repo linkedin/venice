@@ -8,6 +8,8 @@ import com.linkedin.venice.meta.ReadStrategy;
 import com.linkedin.venice.meta.RoutingStrategy;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.offsets.OffsetRecord;
+
+import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 import java.util.function.BooleanSupplier;
 import javax.validation.constraints.NotNull;
@@ -102,15 +104,20 @@ public class TestUtils {
     return participant;
   }
 
-  public static OffsetRecord getOffsetRecord(long offset) {
-    return getOffsetRecord(offset, false);
+  public static OffsetRecord getOffsetRecord(long currentOffset) {
+    return getOffsetRecord(currentOffset, Optional.<Long>empty());
   }
 
-  public static OffsetRecord getOffsetRecord(long offset, boolean complete) {
+  public static OffsetRecord getOffsetRecord(long currentOffset, boolean complete) {
+    return getOffsetRecord(currentOffset, Optional.of(1000L));
+  }
+
+
+  public static OffsetRecord getOffsetRecord(long currentOffset, Optional<Long> endOfPushOffset) {
     OffsetRecord offsetRecord = new OffsetRecord();
-    offsetRecord.setOffset(offset);
-    if (complete) {
-      offsetRecord.complete();
+    offsetRecord.setOffset(currentOffset);
+    if (endOfPushOffset.isPresent()) {
+      offsetRecord.complete(endOfPushOffset.get());
     }
     return offsetRecord;
   }

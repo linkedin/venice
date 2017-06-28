@@ -88,7 +88,7 @@ public class TestAdminOffsetManager {
         .writeDataGetStat(any(), any(), anyInt());
 
     AdminOffsetManager offsetManager = new AdminOffsetManager(zkClient, adapterSerializer);
-    offsetManager.recordOffset(topicName, partitionId, offsetRecord);
+    offsetManager.put(topicName, partitionId, offsetRecord);
 
     verify(zkClient).writeDataGetStat(
         eq(zkOffsetNodePath),

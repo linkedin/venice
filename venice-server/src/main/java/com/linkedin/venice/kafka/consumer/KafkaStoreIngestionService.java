@@ -11,7 +11,6 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.notifier.LogNotifier;
 import com.linkedin.venice.notifier.VeniceNotifier;
-import com.linkedin.venice.offsets.OffsetManager;
 import com.linkedin.venice.serialization.KafkaKeySerializer;
 import com.linkedin.venice.serialization.avro.KafkaValueSerializer;
 import com.linkedin.venice.server.StoreRepository;
@@ -20,6 +19,7 @@ import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.stats.AggBdbStorageEngineStats;
 import com.linkedin.venice.stats.AggStoreIngestionStats;
 import com.linkedin.venice.stats.StoreBufferServiceStats;
+import com.linkedin.venice.storage.StorageMetadataService;
 import com.linkedin.venice.store.AbstractStorageEngine;
 import com.linkedin.venice.store.bdb.BdbStorageEngine;
 import com.linkedin.venice.throttle.EventThrottler;
@@ -56,7 +56,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
   private final VeniceConfigLoader veniceConfigLoader;
 
   private final Queue<VeniceNotifier> notifiers = new ConcurrentLinkedQueue<>();
-  private final OffsetManager offsetManager;
+  private final StorageMetadataService storageMetadataService;
   private final TopicManager topicManager;
 
   private final ReadOnlyStoreRepository metadataRepo;
@@ -84,12 +84,12 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
 
   public KafkaStoreIngestionService(StoreRepository storeRepository,
                                     VeniceConfigLoader veniceConfigLoader,
-                                    OffsetManager offsetManager,
+                                    StorageMetadataService storageMetadataService,
                                     ReadOnlyStoreRepository metadataRepo,
                                     ReadOnlySchemaRepository schemaRepo,
                                     MetricsRepository metricsRepository) {
     this.storeRepository = storeRepository;
-    this.offsetManager = offsetManager;
+    this.storageMetadataService = storageMetadataService;
     this.metadataRepo = metadataRepo;
     this.schemaRepo = schemaRepo;
 
@@ -149,7 +149,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     Optional<HybridStoreConfig> hybridStoreConfig = Optional.ofNullable(store.getHybridStoreConfig());
 
     return new StoreIngestionTask(new VeniceConsumerFactory(), getKafkaConsumerProperties(veniceStore), storeRepository,
-        offsetManager, notifiers, throttler, veniceStore.getStoreName(), schemaRepo, topicManager, ingestionStats,
+        storageMetadataService, notifiers, throttler, veniceStore.getStoreName(), schemaRepo, topicManager, ingestionStats,
         storeBufferService, isStoreVersionCurrent, hybridStoreConfig);
   }
 
@@ -274,7 +274,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     } else {
       logger.info("There is no active task for Topic " + topic + " Partition " + partitionId
           +" Using offset manager directly");
-      offsetManager.clearOffset(topic, partitionId);
+      storageMetadataService.clearOffset(topic, partitionId);
     }
     logger.info("Offset reset to beginning - Kafka Partition: " + topic + "-" + partitionId + ".");
   }

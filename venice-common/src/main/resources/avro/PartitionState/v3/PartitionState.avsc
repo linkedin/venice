@@ -13,24 +13,13 @@
       "doc": "Whether the EndOfPush control message was consumed in this partition.",
       "type": "boolean"
     }, {
-      "name": "sorted",
-      "doc": "Whether the messages inside current topic partition between 'StartOfPush' control message and 'EndOfPush' control message is lexicographically sorted by key bytes",
-      "type": "boolean",
-      "default": false
-    }, {
       "name": "lastUpdate",
       "doc": "The last time this PartitionState was updated. Can be compared against the various messageTimestamp in ProducerPartitionState in order to infer lag time between producers and the consumer maintaining this PartitionState.",
       "type": "long"
     }, {
-      "name": "startOfBufferReplayOffsets",
-      "doc": "This information comes from a ControlMessage sent by the Controller, once per partition, after the EndOfPush ControlMessage, in Hybrid Stores that ingest from both offline and nearline sources. It represents the offsets from the real-time buffer topic at which the Buffer Replay Service started replaying data from the real-time buffer topic onto the store-version topic. The index position of the array corresponds to the partition number in the real-time buffer. This can be used as a synchronization marker between the real-time buffer topic and the store-version topic, akin to how a clapperboard is used to synchronize sound and image in filmmaking. This synchronization marker can in turn be used by the consumer to compute an offset lag. This is an optional field. It will remain null for any non-Hybrid Stores, as well as for any Hybrid Store which has not yet ingested an EndOfPush ControlMessage in all of its partitions.",
-      "type": [
-        "null",
-        {
-          "type": "array",
-          "items": "long"
-        }
-      ],
+      "name": "startOfBufferReplayDestinationOffset",
+      "doc": "This is the offset at which the StartOfBufferReplay control message was consumed in the current partition of the destination topic. This is not the same value as the source offsets contained in the StartOfBufferReplay control message itself. The source and destination offsets act together as a synchronization marker. N.B.: null means that the SOBR control message was not received yet.",
+      "type": ["null", "long"],
       "default": "null"
     }, {
       "name": "producerStates",
