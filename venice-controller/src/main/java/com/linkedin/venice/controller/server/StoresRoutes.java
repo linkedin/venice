@@ -12,6 +12,7 @@ import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.VersionResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
+import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
@@ -111,6 +112,16 @@ public class StoresRoutes {
         Optional<Long> readQuotaInCU = readQuotaStr == null ? Optional.empty() :
             Optional.of(Utils.parseLongFromString(readQuotaStr, "readQuotaInCU"));
 
+        String hybridRewindTimeStr = AdminSparkServer.getOptionalParameterValue(request, REWIND_TIME_IN_SECONDS);
+        Optional<Long> hybridRewind = (null == hybridRewindTimeStr)
+            ? Optional.empty()
+            : Optional.of(Utils.parseLongFromString(hybridRewindTimeStr, REWIND_TIME_IN_SECONDS));
+
+        String hybridOffsetLagStr = AdminSparkServer.getOptionalParameterValue(request, OFFSET_LAG_TO_GO_ONLINE);
+        Optional<Long> hybridOffsetLag = (null == hybridOffsetLagStr)
+            ? Optional.empty()
+            : Optional.of(Utils.parseLongFromString(hybridOffsetLagStr, OFFSET_LAG_TO_GO_ONLINE));
+
         admin.updateStore(veniceResponse.getCluster(),
                           veniceResponse.getName(),
                           owner,
@@ -119,7 +130,9 @@ public class StoresRoutes {
                           partitionCount,
                           storageQuotaInByte,
                           readQuotaInCU,
-                          currentVersion);
+                          currentVersion,
+                          hybridRewind,
+                          hybridOffsetLag);
       }
     };
   }

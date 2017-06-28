@@ -2,6 +2,7 @@ package com.linkedin.venice.controller;
 
 import com.linkedin.venice.controller.kafka.consumer.AdminConsumerService;
 import com.linkedin.venice.helix.Replica;
+import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.meta.Instance;
@@ -122,14 +123,16 @@ public interface Admin {
 
     //TODO: using Optional here is a bit of cumbersome, might want to change it if we find better way to pass those params.
     void updateStore(String clusterName,
-                     String storeName,
-                     Optional<String> owner,
-                     Optional<Boolean> readability,
-                     Optional<Boolean> writeability,
-                     Optional<Integer> partitionCount,
-                     Optional<Long> storageQuotaInByte,
-                     Optional<Long> readQuotaInCU,
-                     Optional<Integer> currentVersion);
+        String storeName,
+        Optional<String> owner,
+        Optional<Boolean> readability,
+        Optional<Boolean> writeability,
+        Optional<Integer> partitionCount,
+        Optional<Long> storageQuotaInByte,
+        Optional<Long> readQuotaInCU,
+        Optional<Integer> currentVersion,
+        Optional<Long> hybridRewindSeconds,
+        Optional<Long> hybridOffsetLagThreshold);
 
 
     List<String> getStorageNodes(String clusterName);

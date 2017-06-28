@@ -10,6 +10,7 @@ import com.linkedin.venice.helix.HelixReadWriteSchemaRepository;
 import com.linkedin.venice.helix.Replica;
 import com.linkedin.venice.helix.ResourceAssignment;
 import com.linkedin.venice.helix.ZkWhitelistAccessor;
+import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.InstanceStatus;
 import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.pushmonitor.KillOfflinePushMessage;
@@ -664,7 +665,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     public synchronized void setStoreOwner(String clusterName, String storeName, String owner) {
         storeMetadataUpdate(clusterName, storeName, store -> {
             store.setOwner(owner);
-
             return store;
         });
     }
@@ -746,15 +746,18 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
 
     @Override
-    public synchronized void updateStore(String clusterName,
-                                         String storeName,
-                                         Optional<String> owner,
-                                         Optional<Boolean> readability,
-                                         Optional<Boolean> writeability,
-                                         Optional<Integer> partitionCount,
-                                         Optional<Long> storageQuotaInByte,
-                                         Optional<Long> readQuotaInCU,
-                                         Optional<Integer> currentVersion) {
+    public synchronized void updateStore(
+        String clusterName,
+        String storeName,
+        Optional<String> owner,
+        Optional<Boolean> readability,
+        Optional<Boolean> writeability,
+        Optional<Integer> partitionCount,
+        Optional<Long> storageQuotaInByte,
+        Optional<Long> readQuotaInCU,
+        Optional<Integer> currentVersion,
+        Optional<Long> hybridRewindSeconds,
+        Optional<Long> hybridOffsetLagThreshold) {
         Store originalStore = getStore(clusterName, storeName).cloneStore();
 
         try {
@@ -785,11 +788,61 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             if (currentVersion.isPresent()) {
                 setStoreCurrentVersion(clusterName, storeName, currentVersion.get());
             }
+
+            if (hybridRewindSeconds.isPresent() || hybridOffsetLagThreshold.isPresent()) {
+                HybridStoreConfig hybridConfig = mergeNewSettingsIntoOldHybridStoreConfig(
+                    originalStore, hybridRewindSeconds, hybridOffsetLagThreshold);
+                if (null != hybridConfig) {
+                    storeMetadataUpdate(clusterName, storeName, store -> {
+                        store.setHybridStoreConfig(hybridConfig);
+                        return store;
+                    });
+                }
+            }
+
         } catch (VeniceException e) {
             //rollback to original store
             storeMetadataUpdate(clusterName, storeName, store -> originalStore);
             throw e;
         }
+    }
+
+    /**
+     * Used by both the {@link VeniceHelixAdmin} and the {@link VeniceParentHelixAdmin}
+     *
+     * @param oldStore Existing Store that is the source for updates. This object will not be modified by this method.
+     * @param hybridRewindSeconds Optional is present if the returned object should include a new rewind time
+     * @param hybridOffsetLagThreshold Optional is present if the returned object should include a new offset lag threshold
+     * @return null if oldStore has no hybrid configs and optionals are not present,
+     *   otherwise a fully specified {@link HybridStoreConfig}
+     */
+    protected static HybridStoreConfig mergeNewSettingsIntoOldHybridStoreConfig(Store oldStore,
+            Optional<Long> hybridRewindSeconds, Optional<Long> hybridOffsetLagThreshold){
+        if (!hybridRewindSeconds.isPresent() && !hybridOffsetLagThreshold.isPresent() && !oldStore.isHybrid()){
+            return null; //For the nullable union in the avro record
+        }
+        HybridStoreConfig hybridConfig;
+        if (oldStore.isHybrid()){ // for an existing hybrid store, just replace any specified values
+            HybridStoreConfig oldHybridConfig = oldStore.getHybridStoreConfig().clone();
+            hybridConfig = new HybridStoreConfig(
+                hybridRewindSeconds.isPresent()
+                    ? hybridRewindSeconds.get()
+                    : oldHybridConfig.getRewindTimeInSeconds(),
+                hybridOffsetLagThreshold.isPresent()
+                    ? hybridOffsetLagThreshold.get()
+                    : oldHybridConfig.getOffsetLagThresholdToGoOnline()
+            );
+        } else { // switching a non-hybrid store to hybrid; must specify every value
+            if (!(hybridRewindSeconds.isPresent() && hybridOffsetLagThreshold.isPresent())) {
+                throw new VeniceException(oldStore.getName() + " was not a hybrid store.  In order to make it a hybrid store both "
+                    + " rewind time in seconds and offset lag threshold must be specified");
+            }
+            hybridConfig = new HybridStoreConfig(
+                hybridRewindSeconds.get(),
+                hybridOffsetLagThreshold.get()
+            );
+        }
+        return hybridConfig;
     }
 
     public void storeMetadataUpdate(String clusterName, String storeName, StoreMetadataOperation operation) {

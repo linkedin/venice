@@ -11,6 +11,7 @@ import com.linkedin.venice.controller.kafka.protocol.admin.AdminOperation;
 import com.linkedin.venice.controller.kafka.protocol.admin.DeleteAllVersions;
 import com.linkedin.venice.controller.kafka.protocol.admin.DisableStoreRead;
 import com.linkedin.venice.controller.kafka.protocol.admin.EnableStoreRead;
+import com.linkedin.venice.controller.kafka.protocol.admin.HybridStoreConfigRecord;
 import com.linkedin.venice.controller.kafka.protocol.admin.KillOfflinePushJob;
 import com.linkedin.venice.controller.kafka.protocol.admin.PauseStore;
 import com.linkedin.venice.controller.kafka.protocol.admin.ResumeStore;
@@ -32,6 +33,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
 import com.linkedin.venice.helix.HelixReadWriteStoreRepository;
 import com.linkedin.venice.helix.Replica;
+import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.kafka.TopicManager;
@@ -617,15 +619,18 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   @Override
-  public void updateStore(String clusterName,
-                          String storeName,
-                          Optional<String> owner,
-                          Optional<Boolean> readability,
-                          Optional<Boolean> writeability,
-                          Optional<Integer> partitionCount,
-                          Optional<Long> storageQuotaInByte,
-                          Optional<Long> readQuotaInCU,
-                          Optional<Integer> currentVersion) {
+  public void updateStore(
+      String clusterName,
+      String storeName,
+      Optional<String> owner,
+      Optional<Boolean> readability,
+      Optional<Boolean> writeability,
+      Optional<Integer> partitionCount,
+      Optional<Long> storageQuotaInByte,
+      Optional<Long> readQuotaInCU,
+      Optional<Integer> currentVersion,
+      Optional<Long> hybridRewindSeconds,
+      Optional<Long> hybridOffsetLagThreshold) {
     acquireLock(clusterName);
 
     try {
@@ -645,6 +650,17 @@ public class VeniceParentHelixAdmin implements Admin {
       //Since it is not synced between parent and local controller,
       //It is very likely to override local values unintentionally.
       setStore.currentVersion = currentVersion.isPresent()?currentVersion.get(): AdminConsumptionTask.IGNORED_CURRENT_VERSION;
+
+      HybridStoreConfig hybridStoreConfig = VeniceHelixAdmin.mergeNewSettingsIntoOldHybridStoreConfig(
+          store, hybridRewindSeconds, hybridOffsetLagThreshold);
+      if (null == hybridStoreConfig) {
+        setStore.hybridStoreConfig = null;
+      } else {
+        HybridStoreConfigRecord hybridStoreConfigRecord = new HybridStoreConfigRecord();
+        hybridStoreConfigRecord.offsetLagThresholdToGoOnline = hybridStoreConfig.getOffsetLagThresholdToGoOnline();
+        hybridStoreConfigRecord.rewindTimeInSeconds = hybridStoreConfig.getRewindTimeInSeconds();
+        setStore.hybridStoreConfig = hybridStoreConfigRecord;
+      }
 
       AdminOperation message = new AdminOperation();
       message.operationType = AdminMessageType.UPDATE_STORE.ordinal();

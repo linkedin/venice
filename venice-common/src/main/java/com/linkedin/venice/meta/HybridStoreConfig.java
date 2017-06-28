@@ -37,4 +37,8 @@ public class HybridStoreConfig {
     result = 31 * result + (int) (offsetLagThresholdToGoOnline ^ (offsetLagThresholdToGoOnline >>> 32));
     return result;
   }
+
+  public HybridStoreConfig clone(){
+    return new HybridStoreConfig(rewindTimeInSeconds, offsetLagThresholdToGoOnline);
+  }
 }

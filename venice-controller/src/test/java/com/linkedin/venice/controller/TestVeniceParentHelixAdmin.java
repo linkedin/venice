@@ -992,7 +992,7 @@ public class TestVeniceParentHelixAdmin {
       throws ExecutionException, InterruptedException {
     parentAdmin.start(clusterName);
 
-    String storeName = "testUpdateStore";
+    String storeName = TestUtils.getUniqueString("testUpdateStore");
 
     Future future = mock(Future.class);
     doReturn(new RecordMetadata(topicPartition, 0, 1, -1, -1, -1, -1))
@@ -1014,7 +1014,7 @@ public class TestVeniceParentHelixAdmin {
     Optional<Long> readQuota = Optional.of(100l);
     Optional<Long> storageQuota = Optional.empty();
     parentAdmin.updateStore(clusterName, storeName, owner, readability, writebility, partitionCount, storageQuota,
-        readQuota, Optional.empty());
+        readQuota, Optional.empty(), Optional.of(135L), Optional.of(2000L));
 
     verify(veniceWriter)
         .put(any(), any(), anyInt());
@@ -1040,5 +1040,8 @@ public class TestVeniceParentHelixAdmin {
         "New read readability should be written into kafka message.");
     Assert.assertEquals(updateStore.currentVersion, AdminConsumptionTask.IGNORED_CURRENT_VERSION,
         "As we don't pass any current version into updateStore, a magic version number should be used to prevent current version being overrided in prod colo.");
+    Assert.assertNotNull(updateStore.hybridStoreConfig, "Hybrid store config should result in something not null in the avro object");
+    Assert.assertEquals(updateStore.hybridStoreConfig.rewindTimeInSeconds, 135L);
+    Assert.assertEquals(updateStore.hybridStoreConfig.offsetLagThresholdToGoOnline, 2000L);
   }
 }
