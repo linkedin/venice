@@ -15,7 +15,7 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.concurrent.Future;
 
-import static com.linkedin.venice.hadoop.VeniceReducer.*;
+import static com.linkedin.venice.hadoop.MapReduceConstants.*;
 import static org.mockito.Mockito.*;
 
 public class TestVeniceReducer extends AbstractTestVeniceMR {

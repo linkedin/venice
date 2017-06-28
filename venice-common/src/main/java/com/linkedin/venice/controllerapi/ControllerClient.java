@@ -126,6 +126,17 @@ public class ControllerClient implements Closeable {
     }
   }
 
+  public StorageEngineOverheadRatioResponse getStorageEngineOverheadRatio(String storeName) {
+    try {
+      List<NameValuePair> params = newParams(clusterName);
+      params.add(new BasicNameValuePair(ControllerApiConstants.NAME, storeName));
+      String responseJson = getRequest(ControllerRoute.STORAGE_ENGINE_OVERHEAD_RATIO.getPath(), params);
+      return mapper.readValue(responseJson, StorageEngineOverheadRatioResponse.class);
+    } catch (Exception e){
+      return handleError(new VeniceException("Error getting store: " + storeName, e), new StorageEngineOverheadRatioResponse());
+    }
+  }
+
   /**
    * Use {@link #requestTopicForWrites(String, long, com.linkedin.venice.controllerapi.ControllerApiConstants.PushType, String) requestTopicForWrites} instead
    * @param storeName

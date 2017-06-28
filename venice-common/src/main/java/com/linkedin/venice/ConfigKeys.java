@@ -61,6 +61,8 @@ public class ConfigKeys {
   public static final String MIN_REQUIRED_ONLINE_REPLICA_TO_STOP_SERVER = "min.required.online.replica.to.stop.server";
   public static final String DELAY_TO_REBALANCE_MS = "delay.to.rebalance.ms";
   public static final String MIN_ACTIVE_REPLICA = "min.active.replica";
+  public static final String DEFAULT_STORAGE_QUOTA = "default.storage.quota";
+  public static final String DEFAULT_READ_QUOTA = "default.read.quota";
 
   // Controller specific configs
   public static final String CONTROLLER_CLUSTER_ZK_ADDRESSS = "controller.cluster.zk.address";
@@ -159,6 +161,13 @@ public class ConfigKeys {
    * Default 5 days
    */
   public static final String ADMIN_CONSUMPTION_TIMEOUT_MINUTES = "admin.consumption.timeout.minutes";
+
+  /**
+   * This factor is used to estimate potential push size. H2V reducer multiplies it
+   * with total record size and compares it with store storage quota
+   * TODO: it will be moved to Store metadata if we allow stores have various storage engine types.
+   */
+  public static final String STORAGE_ENGINE_OVERHEAD_RATIO = "storage.engine.overhead.ratio";
 
   /**
    * Env variable for setting keystore when running Venice with quickstart.

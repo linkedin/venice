@@ -16,6 +16,7 @@ import com.linkedin.venice.controllerapi.NewStoreResponse;
 import com.linkedin.venice.controllerapi.OwnerResponse;
 import com.linkedin.venice.controllerapi.PartitionResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
+import com.linkedin.venice.controllerapi.StorageEngineOverheadRatioResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.controllerapi.routes.AdminCommandExecutionResponse;
@@ -551,4 +552,14 @@ public class TestAdminSparkServer {
     Assert.assertEquals(storeResponse.getStore().getHybridStoreConfig().getOffsetLagThresholdToGoOnline(), 1515L);
   }
 
+  @Test
+  public void controllerClientCanGetStorageEngineOverheadRatio() {
+    String storeName = venice.getNewStoreVersion().getName();
+    StorageEngineOverheadRatioResponse response =
+        controllerClient.getStorageEngineOverheadRatio(storeName);
+
+    Assert.assertFalse(response.isError(), response.getError());
+    Assert.assertEquals(response.getStorageEngineOverheadRatio(),
+                        VeniceControllerWrapper.DEFAULT_STORAGE_ENGINE_OVERHEAD_RATIO);
+  }
 }

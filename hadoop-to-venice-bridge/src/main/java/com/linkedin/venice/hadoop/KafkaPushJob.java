@@ -3,12 +3,14 @@ package com.linkedin.venice.hadoop;
 import azkaban.jobExecutor.AbstractJob;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
+import com.linkedin.venice.controllerapi.StorageEngineOverheadRatioResponse;
+import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.hadoop.pbnj.PostBulkLoadAnalysisMapper;
+import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.controllerapi.ControllerClient;
-import com.linkedin.venice.controllerapi.NewStoreResponse;
 import com.linkedin.venice.hadoop.exceptions.VeniceInconsistentSchemaException;
 import com.linkedin.venice.hadoop.exceptions.VeniceSchemaFieldNotFoundException;
 import com.linkedin.venice.message.KafkaKey;
@@ -23,7 +25,6 @@ import com.linkedin.venice.exceptions.VeniceException;
 import joptsimple.OptionParser;
 import joptsimple.OptionSet;
 import joptsimple.OptionSpec;
-import joptsimple.OptionSpecBuilder;
 import org.apache.avro.Schema;
 import org.apache.avro.file.DataFileStream;
 import org.apache.avro.generic.GenericData;
@@ -97,6 +98,9 @@ public class KafkaPushJob extends AbstractJob {
   public static final String PBNJ_ASYNC = "pbnj.async";
   public static final String PBNJ_ROUTER_URL_PROP = "pbnj.router.urls";
 
+  public static final String STORAGE_QUOTA_PROP = "storage.quota";
+  public static final String STORAGE_ENGINE_OVERHEAD_RATIO = "storage_engine_overhead_ratio";
+
   private static Logger logger = Logger.getLogger(KafkaPushJob.class);
 
   public static int DEFAULT_BATCH_BYTES_SIZE = 1000000;
@@ -148,6 +152,8 @@ public class KafkaPushJob extends AbstractJob {
   private int partitionCount;
   // Total input data size, which is used to talk to controller to decide whether we have enough quota or not
   private long inputFileDataSize;
+  private long storeStorageQuota;
+  private double storageEngineOverheadRatio;
   private VeniceWriter<KafkaKey, byte[]> veniceWriter; // Lazily initialized
 
   // This main method is not called by azkaban, this is only for testing purposes.
@@ -302,6 +308,7 @@ public class KafkaPushJob extends AbstractJob {
 
       validateKeySchema();
       validateValueSchema();
+      checkStoreStorageQuota();
 
       JobClient jc;
 
@@ -423,6 +430,24 @@ public class KafkaPushJob extends AbstractJob {
     }
     valueSchemaId = valueSchemaResponse.getId();
     logger.info("Got schema id: " + valueSchemaId + " for value schema: " + valueSchemaString + " of store: " + storeName);
+  }
+
+  private void checkStoreStorageQuota() {
+    StoreResponse storeResponse = controllerClient.getStore(storeName);
+    if (storeResponse.isError()) {
+      throw new VeniceException("Can't get store info. " + storeResponse.getError());
+    }
+
+    storeStorageQuota = storeResponse.getStore().getStorageQuotaInByte();
+
+    StorageEngineOverheadRatioResponse storageEngineOverheadRatioResponse =
+        controllerClient.getStorageEngineOverheadRatio(storeName);
+    if (storageEngineOverheadRatioResponse.isError()) {
+      throw new VeniceException("Can't get storage engine overhead ratio. " +
+      storageEngineOverheadRatioResponse.getError());
+    }
+
+    storageEngineOverheadRatio = storageEngineOverheadRatioResponse.getStorageEngineOverheadRatio();
   }
 
   /**
@@ -559,8 +584,15 @@ public class KafkaPushJob extends AbstractJob {
   /**
    * Calls {@link #setupHadoopJob(Configuration, String, Class, Class, Class)} and adds some extra properties required
    * by the {@link VeniceWriter} used by the push job.
+   *
+   * As H2V has fully adapt to Map & Reduce mode, this is really a special scenario. H2V strictly ask storeStorageQuota to be unlimited
+   * in order to perform Mapper only mode. Thus, prevents customers run it from mis-configuring job properties.
    */
   private JobConf setupPushMapOnlyJob(Configuration conf) throws IOException {
+    if (storeStorageQuota != Store.UNLIMITED_STORAGE_QUOTA) {
+      throw new VeniceException("Can't run this mapper only job since storage quota is not unlimited. "
+          + "Store: " + storeName);
+    }
     conf.set(BATCH_NUM_BYTES_PROP, Integer.toString(batchNumBytes));
     conf.set(TOPIC_PROP, topic);
     conf.set(KAFKA_BOOTSTRAP_SERVERS, kafkaUrl);
@@ -572,6 +604,7 @@ public class KafkaPushJob extends AbstractJob {
    * Calls {@link #setupHadoopJob(Configuration, String, Class, Class, Class)} and adds some extra properties required
    * by the {@link com.linkedin.venice.hadoop.pbnj.PostBulkLoadAnalysisMapper}.
    */
+  //TODO: PNBJ is for testing purpose. We might want to remove it from this class in case it's used by customers
   private JobConf setupPBNJ(Configuration conf) throws IOException {
     conf.set(VENICE_STORE_NAME_PROP, storeName);
     conf.set(PBNJ_ROUTER_URL_PROP, veniceRouterUrl);
@@ -598,6 +631,15 @@ public class KafkaPushJob extends AbstractJob {
     // Set mapreduce.job.classloader to true to force the use of the older avro dependency.
     conf.setBoolean(MAPREDUCE_JOB_CLASSLOADER, true);
     logger.info("**************** " + MAPREDUCE_JOB_CLASSLOADER + ": " + conf.get(MAPREDUCE_JOB_CLASSLOADER));
+
+    if (enablePBNJ) {
+      //pre-push quota checking is disabled since PBNJ mapper doesn't report record size
+      conf.set(STORAGE_QUOTA_PROP, Long.toString(Store.UNLIMITED_STORAGE_QUOTA));
+    } else {
+      conf.set(STORAGE_QUOTA_PROP, Long.toString(storeStorageQuota));
+    }
+
+    conf.set(STORAGE_ENGINE_OVERHEAD_RATIO, Double.toString(storageEngineOverheadRatio));
 
     /** Allow overriding properties if their names start with {@link HADOOP_PREFIX}. */
     for (String key : props.keySet()) {

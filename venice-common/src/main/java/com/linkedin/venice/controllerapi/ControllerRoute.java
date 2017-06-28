@@ -46,7 +46,9 @@ public enum ControllerRoute {
   MASTER_CONTROLLER("/master_controller", Arrays.asList()),
 
   EXECUTION("/execution", Arrays.asList(EXECUTION_ID)),
-  LAST_SUCCEED_EXECUTION_ID("/last_succeed_execution_id", Arrays.asList());
+  LAST_SUCCEED_EXECUTION_ID("/last_succeed_execution_id", Arrays.asList()),
+
+  STORAGE_ENGINE_OVERHEAD_RATIO("/storage_engine_overhead_ratio", Arrays.asList(NAME));
 
   private final String path;
   private final List<String> params;

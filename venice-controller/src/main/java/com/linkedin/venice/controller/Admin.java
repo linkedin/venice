@@ -132,6 +132,7 @@ public interface Admin {
         Optional<Long> hybridRewindSeconds,
         Optional<Long> hybridOffsetLagThreshold);
 
+    double getStorageEngineOverheadRatio();
 
     List<String> getStorageNodes(String clusterName);
 

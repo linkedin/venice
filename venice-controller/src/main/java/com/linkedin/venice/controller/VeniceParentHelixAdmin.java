@@ -666,6 +666,11 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   @Override
+  public double getStorageEngineOverheadRatio() {
+    return veniceHelixAdmin.getStorageEngineOverheadRatio();
+  }
+
+  @Override
   public SchemaEntry getKeySchema(String clusterName, String storeName) {
     return veniceHelixAdmin.getKeySchema(clusterName, storeName);
   }

@@ -6,6 +6,7 @@ import com.linkedin.venice.exceptions.ConfigurationException;
 import com.linkedin.venice.exceptions.UndefinedPropertyException;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.storage.BdbStorageMetadataService;
+import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.utils.VeniceProperties;
 
 import java.io.File;
@@ -13,7 +14,7 @@ import java.io.File;
 
 /**
  * class that maintains config very specific to a Venice cluster
- */
+ */ 
 public class VeniceClusterConfig {
   private String clusterName;
   //TODO: shouldn't the following configs be moved to VeniceServerConfig??
@@ -64,6 +65,13 @@ public class VeniceClusterConfig {
     maxKafkaFetchBytesPerSecond = clusterProps.getSizeInBytes(MAX_KAFKA_FETCH_BYTES_PER_SECOND, 0);
     statusMessageRetryCount = clusterProps.getInt(STATUS_MESSAGE_RETRY_COUNT, 5);
     statusMessageRetryDurationMs = clusterProps.getLong(STATUS_MESSAGE_RETRY_DURATION_MS, 1000l);
+
+    if (clusterProps.containsKey(DEFAULT_STORAGE_QUOTA)) {
+      Store.setDefaultStorageQuota(clusterProps.getLong(DEFAULT_STORAGE_QUOTA));
+    }
+    if (clusterProps.containsKey(DEFAULT_READ_QUOTA)) {
+      Store.setDefaultReadQuota(clusterProps.getLong(DEFAULT_READ_QUOTA));
+    }
   }
 
   public int getStatusMessageRetryCount() {

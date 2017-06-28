@@ -26,11 +26,13 @@ public class Store {
   /**
    * Default storage quota 20GB
    */
-  public static final long DEFAULT_STORAGE_QUOTA = (long)20 * (1 << 30);
+  public static long DEFAULT_STORAGE_QUOTA = (long)20 * (1 << 30);
+
+  public static final long UNLIMITED_STORAGE_QUOTA = -1;
   /**
    * Default read quota 1800 QPS per node
    */
-  public static final long DEFAULT_READ_QUOTA = 1800;
+  public static long DEFAULT_READ_QUOTA = 1800;
   /**
    * Store name.
    */
@@ -221,7 +223,9 @@ public class Store {
 
   @SuppressWarnings("unused") // Used by Serializer/De-serializer for storing to Zoo Keeper
   public long getStorageQuotaInByte() {
-    return storageQuotaInByte;
+    //This is a safeguard in case that some old stores do not have storage quota field
+    return (storageQuotaInByte <= 0 && storageQuotaInByte != UNLIMITED_STORAGE_QUOTA)
+        ? DEFAULT_STORAGE_QUOTA : storageQuotaInByte;
   }
 
   @SuppressWarnings("unused") // Used by Serializer/De-serializer for storing to Zoo Keeper
@@ -528,5 +532,13 @@ public class Store {
     if (!enableWrites) {
       throw new StoreDisabledException(name, action, version);
     }
+  }
+
+  public static void setDefaultStorageQuota(long storageQuota) {
+    Store.DEFAULT_STORAGE_QUOTA = storageQuota;
+  }
+
+  public static void setDefaultReadQuota(long readQuota) {
+    Store.DEFAULT_READ_QUOTA = readQuota;
   }
 }

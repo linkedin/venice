@@ -8,6 +8,7 @@ import com.linkedin.venice.controllerapi.MultiStoreStatusResponse;
 import com.linkedin.venice.controllerapi.MultiVersionResponse;
 import com.linkedin.venice.controllerapi.OwnerResponse;
 import com.linkedin.venice.controllerapi.PartitionResponse;
+import com.linkedin.venice.controllerapi.StorageEngineOverheadRatioResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.VersionResponse;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -250,6 +251,20 @@ public class StoresRoutes {
           deletedVersionNumbers[i] = deletedVersions.get(i).getNumber();
         }
         veniceResponse.setVersions(deletedVersionNumbers);
+      }
+    };
+  }
+
+  public static Route getStorageEngineOverheadRatio(Admin admin) {
+    return new VeniceRouteHandler<StorageEngineOverheadRatioResponse>(StorageEngineOverheadRatioResponse.class) {
+
+      @Override
+      public void internalHandle(Request request, StorageEngineOverheadRatioResponse veniceResponse) {
+        AdminSparkServer.validateParams(request, STORAGE_ENGINE_OVERHEAD_RATIO.getParams(), admin);
+
+        veniceResponse.setCluster(request.queryParams(CLUSTER));
+        veniceResponse.setName(request.queryParams(NAME));
+        veniceResponse.setStorageEngineOverheadRatio(admin.getStorageEngineOverheadRatio());
       }
     };
   }

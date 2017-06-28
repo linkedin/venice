@@ -18,8 +18,9 @@ import static com.linkedin.venice.ConfigKeys.*;
  * Calling close() will clean up the controller's data directory.
  */
 public class VeniceControllerWrapper extends ProcessWrapper {
-
   public static final String SERVICE_NAME = "VeniceController";
+  public static final double DEFAULT_STORAGE_ENGINE_OVERHEAD_RATIO = 0.85d;
+
   private final VeniceProperties config;
   private VeniceController service;
   private final int port;
@@ -59,10 +60,12 @@ public class VeniceControllerWrapper extends ProcessWrapper {
           .put(CONTROLLER_PARENT_MODE, isParent)
           .put(DELAY_TO_REBALANCE_MS, delayToReblanceMS)
           .put(MIN_ACTIVE_REPLICA, minActiveReplica)
-          .put(TOPIC_CREATION_THROTTLING_TIME_WINDOW_MS, 100);
+          .put(TOPIC_CREATION_THROTTLING_TIME_WINDOW_MS, 100)
+          .put(STORAGE_ENGINE_OVERHEAD_RATIO, DEFAULT_STORAGE_ENGINE_OVERHEAD_RATIO);
       if (!extraProps.containsKey(ENABLE_TOPIC_REPLICATOR)){
           builder.put(ENABLE_TOPIC_REPLICATOR, false);
       }
+
       if (isParent) {
         // Parent controller needs config to route per-cluster requests such as job status
         // This dummy parent controller wont support such requests until we make this config configurable.
