@@ -10,6 +10,7 @@ import com.linkedin.venice.helix.Replica;
 import com.linkedin.venice.integration.utils.KafkaBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
+import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.PartitionAssignment;
 import com.linkedin.venice.meta.ReadWriteStoreRepository;
 import com.linkedin.venice.meta.RoutingDataRepository;
@@ -37,6 +38,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.TimeUnit;
 import org.apache.helix.HelixManager;
@@ -500,6 +502,14 @@ public class TestVeniceHelixAdmin {
         "Should not exceed the max partition.");
     veniceAdmin.setStorePartitionCount(clusterName, storeName, newPartitionCount);
     Assert.assertEquals(veniceAdmin.getStore(clusterName, storeName).getPartitionCount(), newPartitionCount);
+
+    // test hybrid config
+    Assert.assertFalse(veniceAdmin.getStore(clusterName, storeName).isHybrid());
+    HybridStoreConfig hybridConfig = new HybridStoreConfig(TimeUnit.SECONDS.convert(2, TimeUnit.DAYS), 1000);
+    veniceAdmin.updateStore(clusterName, storeName, Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(),
+        Optional.empty(), Optional.empty(), Optional.empty(), Optional.of(hybridConfig.getRewindTimeInSeconds()),
+        Optional.of(hybridConfig.getOffsetLagThresholdToGoOnline()));
+    Assert.assertTrue(veniceAdmin.getStore(clusterName, storeName).isHybrid());
   }
 
   public void testAddVersion() throws Exception {

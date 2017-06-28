@@ -512,7 +512,7 @@ public class Store {
                   currentVersion,
                   storageQuotaInByte,
                   readQuotaInCU,
-                  hybridStoreConfig);
+                  null == hybridStoreConfig ? null : hybridStoreConfig.clone());
     clonedStore.setEnableReads(enableReads);
     clonedStore.setEnableWrites(enableWrites);
     clonedStore.setPartitionCount(partitionCount);

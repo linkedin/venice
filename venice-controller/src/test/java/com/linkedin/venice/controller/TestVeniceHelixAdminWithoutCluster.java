@@ -1,5 +1,6 @@
 package com.linkedin.venice.controller;
 
+import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.ReadStrategy;
@@ -43,5 +44,23 @@ public class TestVeniceHelixAdminWithoutCluster {
     Version startedVersion = store.getVersions().get(1);
     Optional<Version> returnedVersion = VeniceHelixAdmin.getStartedVersion(store);
     Assert.assertEquals(returnedVersion.get(), startedVersion);
+  }
+
+  @Test
+  public void canMergeNewHybridConfigValuesToOldStore() {
+    String storeName = TestUtils.getUniqueString("storeName");
+    Store store = TestUtils.createTestStore(storeName, "owner", System.currentTimeMillis());
+    Assert.assertFalse(store.isHybrid());
+
+    Optional<Long> rewind = Optional.of(123L);
+    Optional<Long> lagOffset = Optional.of(1500L);
+    HybridStoreConfig hybridStoreConfig = VeniceHelixAdmin.mergeNewSettingsIntoOldHybridStoreConfig(store, Optional.empty(), Optional.empty());
+    Assert.assertNull(hybridStoreConfig, "passing empty optionals and a non-hybrid store should generate a null hybrid config");
+
+    hybridStoreConfig = VeniceHelixAdmin.mergeNewSettingsIntoOldHybridStoreConfig(store, rewind, lagOffset);
+    Assert.assertNotNull(hybridStoreConfig, "specifying rewind and lagOffset should generate a valid hybrid config");
+    Assert.assertEquals(hybridStoreConfig.getRewindTimeInSeconds(), 123L);
+    Assert.assertEquals(hybridStoreConfig.getOffsetLagThresholdToGoOnline(), 1500L);
+
   }
 }

@@ -6,6 +6,7 @@ import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.ExecutionIdAccessor;
 import com.linkedin.venice.controller.kafka.AdminTopicUtils;
 import com.linkedin.venice.controller.kafka.protocol.admin.AdminOperation;
+import com.linkedin.venice.controller.kafka.protocol.admin.HybridStoreConfigRecord;
 import com.linkedin.venice.controller.kafka.protocol.admin.KillOfflinePushJob;
 import com.linkedin.venice.controller.kafka.protocol.admin.SchemaMeta;
 import com.linkedin.venice.controller.kafka.protocol.admin.StoreCreation;
@@ -27,6 +28,7 @@ import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.kafka.protocol.state.ProducerPartitionState;
 import com.linkedin.venice.kafka.validation.SegmentStatus;
 import com.linkedin.venice.kafka.validation.checksum.CheckSumType;
+import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.offsets.DeepCopyOffsetManager;
 import com.linkedin.venice.offsets.InMemoryOffsetManager;
 import com.linkedin.venice.offsets.OffsetManager;
@@ -54,6 +56,7 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedList;
+import java.util.Optional;
 import java.util.Properties;
 import java.util.Queue;
 import java.util.concurrent.ExecutionException;
@@ -643,6 +646,12 @@ public class TestAdminConsumptionTask {
     setStore.currentVersion = currentVersion;
     setStore.enableReads = enableReads;
     setStore.enableWrites = enableWrites;
+
+    HybridStoreConfigRecord hybridConfig = new HybridStoreConfigRecord();
+    hybridConfig.rewindTimeInSeconds = 123L;
+    hybridConfig.offsetLagThresholdToGoOnline = 1000L;
+    setStore.hybridStoreConfig = hybridConfig;
+
     AdminOperation adminMessage = new AdminOperation();
     adminMessage.operationType = AdminMessageType.UPDATE_STORE.getValue();
     adminMessage.payloadUnion = setStore;
@@ -660,7 +669,8 @@ public class TestAdminConsumptionTask {
     executor.awaitTermination(TIMEOUT, TimeUnit.MILLISECONDS);
 
     verify(admin, timeout(TIMEOUT).atLeastOnce())
-        .updateStore(eq(clusterName), eq(storeName), any(), any(), any(), any(), any(), any(), any());
+        .updateStore(eq(clusterName), eq(storeName), any(), any(), any(), any(), any(), any(), any(),
+            eq(Optional.of(123L)), eq(Optional.of(1000L)));
   }
 
   private byte[] getStoreCreationMessage(String clusterName, String storeName, String owner, String keySchema, String valueSchema) {

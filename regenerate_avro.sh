@@ -5,7 +5,7 @@ DEFAULT_AVRO_TOOLS_JAR=`find ~/.gradle/caches/ | grep 'avro-tools-1.4.0.jar' | h
 AVRO_SCHEMAS_PATH=(
   "venice-common/src/main/resources/avro/KafkaMessageEnvelope/v3/*"
   "venice-common/src/main/resources/avro/PartitionState/v2/*"
-  "venice-controller/src/main/resources/avro/AdminOperation/v6/*"
+  "venice-controller/src/main/resources/avro/AdminOperation/v7/*"
   "venice-schema-common/src/main/resources/avro/MultiGetResponseRecord/*"
   "venice-schema-common/src/main/resources/avro/MultiGetClientRequestKey/*"
   "venice-schema-common/src/main/resources/avro/MultiGetRouterRequestKey/*"

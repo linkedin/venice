@@ -18,7 +18,7 @@ import java.util.Map;
 
 public class AdminOperationSerializer {
   // Latest schema id, and it needs to be updated whenever we add a new version
-  public static int LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION = 6;
+  public static int LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION = 7;
 
   private static SpecificDatumWriter<AdminOperation> SPECIFIC_DATUM_WRITER = new SpecificDatumWriter<>(AdminOperation.SCHEMA$);
   /** Used to generate decoders. */
@@ -55,15 +55,9 @@ public class AdminOperationSerializer {
   private static Map<Integer, Schema> initProtocolMap() {
     try {
       Map<Integer, Schema> protocolSchemaMap = new HashMap<>();
-      // TODO reuse some codes from InternalAvroSpecificSerializer to initialize all versions of schema.
-      protocolSchemaMap.put(1, Utils.getSchemaFromResource("avro/AdminOperation/v1/AdminOperation.avsc"));
-      protocolSchemaMap.put(2, Utils.getSchemaFromResource("avro/AdminOperation/v2/AdminOperation.avsc"));
-      protocolSchemaMap.put(3, Utils.getSchemaFromResource("avro/AdminOperation/v3/AdminOperation.avsc"));
-      protocolSchemaMap.put(4, Utils.getSchemaFromResource("avro/AdminOperation/v4/AdminOperation.avsc"));
-      protocolSchemaMap.put(5, Utils.getSchemaFromResource("avro/AdminOperation/v5/AdminOperation.avsc"));
-      protocolSchemaMap.put(6, Utils.getSchemaFromResource("avro/AdminOperation/v6/AdminOperation.avsc"));
-      // TODO: If we add more versions to the protocol, they should be initialized here.
-
+      for (int i=1; i<= LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION; i++){
+        protocolSchemaMap.put(i, Utils.getSchemaFromResource("avro/AdminOperation/v"+i+"/AdminOperation.avsc"));
+      }
       return protocolSchemaMap;
     } catch (IOException e) {
       throw new VeniceMessageException("Could not initialize " + AdminOperationSerializer.class.getSimpleName(), e);

@@ -33,6 +33,7 @@ import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.kafka.validation.OffsetRecordTransformer;
 import com.linkedin.venice.kafka.validation.ProducerTracker;
 import com.linkedin.venice.message.KafkaKey;
+import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.offsets.OffsetManager;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.schema.SchemaEntry;
@@ -530,7 +531,15 @@ public class AdminConsumptionTask implements Runnable, Closeable {
                       Optional.of(message.partitionNum),
                       Optional.of(message.storageQuotaInByte),
                       Optional.of(message.readQuotaInCU),
-                      message.currentVersion == IGNORED_CURRENT_VERSION?Optional.empty():Optional.of(message.currentVersion));
+                      message.currentVersion == IGNORED_CURRENT_VERSION
+                          ? Optional.empty()
+                          : Optional.of(message.currentVersion),
+                      message.hybridStoreConfig == null
+                          ? Optional.empty()
+                          : Optional.of(message.hybridStoreConfig.rewindTimeInSeconds),
+                      message.hybridStoreConfig == null
+                          ? Optional.empty()
+                          : Optional.of(message.hybridStoreConfig.offsetLagThresholdToGoOnline));
 
     logger.info("Set store: " + storeName + " in cluster: " + clusterName);
   }
