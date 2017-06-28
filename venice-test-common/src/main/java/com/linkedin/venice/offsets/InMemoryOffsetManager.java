@@ -13,7 +13,7 @@ public class InMemoryOffsetManager implements OffsetManager {
   private ConcurrentMap<String, ConcurrentMap<Integer, OffsetRecord>> topicToPartitionToOffsetMap = new ConcurrentHashMap<>();
 
   @Override
-  public void recordOffset(String topicName, int partitionId, OffsetRecord record) throws VeniceException {
+  public void put(String topicName, int partitionId, OffsetRecord record) throws VeniceException {
     topicToPartitionToOffsetMap.compute(topicName, (topic, map) -> {
       if (null == map) {
         ConcurrentMap<Integer, OffsetRecord> newMap = new ConcurrentHashMap<>();

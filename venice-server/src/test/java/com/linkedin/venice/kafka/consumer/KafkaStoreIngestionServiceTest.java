@@ -7,9 +7,9 @@ import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
-import com.linkedin.venice.offsets.OffsetManager;
 import com.linkedin.venice.server.StoreRepository;
 import com.linkedin.venice.server.VeniceConfigLoader;
+import com.linkedin.venice.storage.StorageMetadataService;
 import edu.emory.mathcs.backport.java.util.Collections;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.HashMap;
@@ -23,7 +23,7 @@ import static org.mockito.Mockito.*;
 public class KafkaStoreIngestionServiceTest {
   private StoreRepository mockStoreRepository;
   private VeniceConfigLoader mockVeniceConfigLoader;
-  private OffsetManager mockOffsetManager;
+  private StorageMetadataService storageMetadataService;
   private ReadOnlyStoreRepository mockmetadataRepo;
   private ReadOnlySchemaRepository mockSchemaRepo;
 
@@ -32,7 +32,7 @@ public class KafkaStoreIngestionServiceTest {
   @BeforeClass
   public void setup() {
     mockStoreRepository = mock(StoreRepository.class);
-    mockOffsetManager = mock(OffsetManager.class);
+    storageMetadataService = mock(StorageMetadataService.class);
     mockmetadataRepo = mock(ReadOnlyStoreRepository.class);
     mockSchemaRepo = mock(ReadOnlySchemaRepository.class);
 
@@ -57,7 +57,7 @@ public class KafkaStoreIngestionServiceTest {
  public void testDisableMetricsEmission() {
    kafkaStoreIngestionService = new KafkaStoreIngestionService(mockStoreRepository,
                                                                    mockVeniceConfigLoader,
-                                                                   mockOffsetManager,
+       storageMetadataService,
                                                                    mockmetadataRepo,
                                                                    mockSchemaRepo,
                                                                    new MetricsRepository());

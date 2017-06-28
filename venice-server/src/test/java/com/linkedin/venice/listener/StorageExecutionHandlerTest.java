@@ -2,17 +2,15 @@ package com.linkedin.venice.listener;
 
 import com.linkedin.venice.listener.request.GetRouterRequest;
 import com.linkedin.venice.listener.response.StorageResponseObject;
-import com.linkedin.venice.message.GetRequestObject;
-import com.linkedin.venice.offsets.BdbOffsetManager;
 import com.linkedin.venice.offsets.OffsetManager;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.server.StoreRepository;
+import com.linkedin.venice.storage.BdbStorageMetadataService;
 import com.linkedin.venice.store.AbstractStorageEngine;
 import com.linkedin.venice.store.record.ValueRecord;
 import io.netty.buffer.UnpooledByteBufAllocator;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.handler.codec.http.DefaultFullHttpRequest;
-import io.netty.handler.codec.http.FullHttpRequest;
 import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpRequest;
 import io.netty.handler.codec.http.HttpVersion;
@@ -53,7 +51,7 @@ public class StorageExecutionHandlerTest {
 
     OffsetRecord mockOffset = mock(OffsetRecord.class);
     doReturn(expectedOffset).when(mockOffset).getOffset();
-    OffsetManager mockOffsetManager = mock(BdbOffsetManager.class);
+    OffsetManager mockOffsetManager = mock(BdbStorageMetadataService.class);
     doReturn(mockOffset).when(mockOffsetManager).getLastOffset(Mockito.anyString(), Mockito.anyInt());
 
     ChannelHandlerContext mockCtx = mock(ChannelHandlerContext.class);

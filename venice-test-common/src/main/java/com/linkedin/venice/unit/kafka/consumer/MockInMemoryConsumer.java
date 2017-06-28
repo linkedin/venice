@@ -8,7 +8,6 @@ import com.linkedin.venice.unit.kafka.consumer.poll.PollStrategy;
 import java.util.HashMap;
 import java.util.Map;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
-import org.apache.kafka.clients.consumer.OffsetAndMetadata;
 import org.apache.kafka.common.TopicPartition;
 
 /**

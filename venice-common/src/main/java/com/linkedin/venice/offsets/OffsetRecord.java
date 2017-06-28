@@ -4,11 +4,13 @@ import com.linkedin.venice.guid.GuidUtils;
 import com.linkedin.venice.kafka.protocol.GUID;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.kafka.protocol.state.ProducerPartitionState;
-import com.linkedin.venice.serialization.avro.PartitionStateSerializer;
+import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
+import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import org.apache.avro.util.Utf8;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Optional;
 
 
 public class OffsetRecord {
@@ -16,7 +18,7 @@ public class OffsetRecord {
   // Offset 0 is still a valid offset, Using that will cause a message to be skipped.
   public static final long LOWEST_OFFSET = -1;
 
-  private static final PartitionStateSerializer serializer = new PartitionStateSerializer();
+  private static final InternalAvroSpecificSerializer<PartitionState> serializer = AvroProtocolDefinition.PARTITION_STATE.getSerializer();
   private static final String PARTITION_STATE_STRING = "PartitionState";
 
   private final PartitionState partitionState;
@@ -39,10 +41,10 @@ public class OffsetRecord {
   private static PartitionState getEmptyPartitionState() {
     PartitionState emptyPartitionState = new PartitionState();
     emptyPartitionState.offset = LOWEST_OFFSET;
-    emptyPartitionState.sorted = false;
     emptyPartitionState.producerStates = new HashMap<>();
     emptyPartitionState.endOfPush = false;
     emptyPartitionState.lastUpdate = System.currentTimeMillis();
+    emptyPartitionState.startOfBufferReplayDestinationOffset = null;
     return emptyPartitionState;
   }
 
@@ -56,14 +58,6 @@ public class OffsetRecord {
 
   public void setOffset(long offset) {
     this.partitionState.offset = offset;
-  }
-
-  public void setSorted(boolean sorted) {
-    this.partitionState.sorted = sorted;
-  }
-
-  public boolean sorted() {
-    return this.partitionState.sorted;
   }
 
   /**
@@ -81,7 +75,11 @@ public class OffsetRecord {
     return this.partitionState.lastUpdate;
   }
 
-  public void complete() {
+  public void complete(long endOfPushOffset) {
+    if (endOfPushOffset < 1) {
+      // Even an empty push should have a SOP and EOP, so offset 1 is the absolute minimum.
+      throw new IllegalArgumentException("endOfPushOffset cannot be < 1.");
+    }
     this.partitionState.endOfPush = true;
   }
 
@@ -105,6 +103,14 @@ public class OffsetRecord {
     return getProducerPartitionStateMap().get(guidToUtf8(producerGuid));
   }
 
+  public void setStartOfBufferReplayDestinationOffset(long startOfBufferReplayDestinationOffset) {
+    this.partitionState.startOfBufferReplayDestinationOffset = startOfBufferReplayDestinationOffset;
+  }
+
+  public Optional<Long> getStartOfBufferReplayDestinationOffset() {
+    return Optional.ofNullable(partitionState.startOfBufferReplayDestinationOffset);
+  }
+
   /**
    * It may be useful to cache this mapping. TODO: Explore GC tuning later.
    *
@@ -119,7 +125,6 @@ public class OffsetRecord {
   public String toString() {
     return "OffsetRecord{" +
         "offset=" + getOffset() +
-        ", sorted=" + sorted() +
         ", eventTimeEpochMs=" + getEventTimeEpochMs() +
         ", processingTimeEpochMs=" + getProcessingTimeEpochMs() +
         ", completed=" + isCompleted() +
@@ -139,8 +144,7 @@ public class OffsetRecord {
 
     /** N.B.: {@link #partitionState.lastUpdate} intentionally omitted from comparison */
     return this.partitionState.offset == that.partitionState.offset &&
-        this.partitionState.endOfPush == that.partitionState.endOfPush &&
-        this.partitionState.sorted == that.partitionState.sorted;   // &&
+        this.partitionState.endOfPush == that.partitionState.endOfPush; // &&
     // N.B.: We cannot do a more thorough equality check at this time because it breaks tests.
     // If we actually need the more comprehensive equals, then we'll need to rethink the way we test.
     //    this.partitionState.producerStates.entrySet().equals(that.partitionState.producerStates.entrySet());

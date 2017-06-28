@@ -4,13 +4,15 @@ DEFAULT_AVRO_TOOLS_JAR=`find ~/.gradle/caches/ | grep 'avro-tools-1.4.0.jar' | h
 
 AVRO_SCHEMAS_PATH=(
   "venice-common/src/main/resources/avro/KafkaMessageEnvelope/v3/*"
-  "venice-common/src/main/resources/avro/PartitionState/v2/*"
+  "venice-common/src/main/resources/avro/PartitionState/v3/*"
+  "venice-common/src/main/resources/avro/StoreVersionState/v1/*"
   "venice-controller/src/main/resources/avro/AdminOperation/v7/*"
   "venice-schema-common/src/main/resources/avro/MultiGetResponseRecord/*"
   "venice-schema-common/src/main/resources/avro/MultiGetClientRequestKey/*"
   "venice-schema-common/src/main/resources/avro/MultiGetRouterRequestKey/*"
 )
 CODE_GEN_PATH=(
+  "venice-common/src/main/java"
   "venice-common/src/main/java"
   "venice-common/src/main/java"
   "venice-controller/src/main/java"
@@ -21,10 +23,11 @@ CODE_GEN_PATH=(
 FULL_CODE_GEN_PATH=(
   "${CODE_GEN_PATH[0]}/com/linkedin/venice/kafka/protocol/*.java"
   "${CODE_GEN_PATH[1]}/com/linkedin/venice/kafka/protocol/state/*.java"
-  "${CODE_GEN_PATH[2]}/com/linkedin/venice/controller/kafka/protocol/admin/*.java"
-  "${CODE_GEN_PATH[3]}/com/linkedin/venice/read/protocol/response/*.java"
-  "${CODE_GEN_PATH[4]}/com/linkedin/venice/read/protocol/request/client/*.java"
-  "${CODE_GEN_PATH[5]}/com/linkedin/venice/read/protocol/request/router/*.java"
+  "${CODE_GEN_PATH[2]}/com/linkedin/venice/kafka/protocol/state/*.java"
+  "${CODE_GEN_PATH[3]}/com/linkedin/venice/controller/kafka/protocol/admin/*.java"
+  "${CODE_GEN_PATH[4]}/com/linkedin/venice/read/protocol/response/*.java"
+  "${CODE_GEN_PATH[5]}/com/linkedin/venice/read/protocol/request/client/*.java"
+  "${CODE_GEN_PATH[6]}/com/linkedin/venice/read/protocol/request/router/*.java"
 )
 
 if [[ $# < 1 ]]; then

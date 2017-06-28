@@ -144,7 +144,7 @@
                   "type": "record",
                   "fields": [
                     {
-                      "name": "offsets",
+                      "name": "sourceOffsets",
                       "doc": "Array of offsets from the real-time buffer topic at which the Buffer Replay Service started replaying data. The index position of the array corresponds to the partition number in the real-time buffer.",
                       "type": {
                         "type": "array",

@@ -418,7 +418,7 @@ public class TestAdminConsumptionTask {
     int firstAdminMessageOffset = 1;
     int firstAdminMessageSeqNum = 1;
     OffsetRecord offsetRecord = getOffsetRecordByOffsetAndSeqNum(firstAdminMessageOffset, firstAdminMessageSeqNum);
-    offsetManager.recordOffset(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID, offsetRecord);
+    offsetManager.put(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID, offsetRecord);
 
     RecordMetadata killJobMetadata = (RecordMetadata) veniceWriter.put(emptyKeyBytes,
         getKillOfflinePushJobMessage(clusterName, storeTopicName, 0),
@@ -555,7 +555,7 @@ public class TestAdminConsumptionTask {
     // The store doesn't exist
     doReturn(false).when(admin).hasStore(clusterName, storeName1);
     doReturn(false).when(admin).hasStore(clusterName, storeName2);
-    offsetManager.recordOffset(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID, TestUtils.getOffsetRecord(1));
+    offsetManager.put(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID, TestUtils.getOffsetRecord(1));
 
     AdminConsumptionTask task = getAdminConsumptionTask(new RandomPollStrategy(), false);
     executor.submit(task);

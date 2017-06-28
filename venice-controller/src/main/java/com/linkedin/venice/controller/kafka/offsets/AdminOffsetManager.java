@@ -108,7 +108,7 @@ public class AdminOffsetManager implements OffsetManager {
   }
 
   @Override
-  public void recordOffset(String topicName, int partitionId, OffsetRecord record) throws VeniceException {
+  public void put(String topicName, int partitionId, OffsetRecord record) throws VeniceException {
     String clusterName = AdminTopicUtils.getClusterNameFromTopicName(topicName);
     String nodePath = getAdminTopicOffsetNodePathForCluster(clusterName);
     filterOldStates(record, STATE_PERSIST_NUM);

@@ -6,7 +6,7 @@ import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.offsets.OffsetRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 
-public interface KafkaConsumerWrapper {
+public interface KafkaConsumerWrapper extends AutoCloseable {
   void subscribe(String topic, int partition, OffsetRecord offset);
 
   void unSubscribe(String topic, int partition);

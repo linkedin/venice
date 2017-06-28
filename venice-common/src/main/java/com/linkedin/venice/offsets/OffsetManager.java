@@ -2,7 +2,6 @@ package com.linkedin.venice.offsets;
 
 import com.linkedin.venice.exceptions.VeniceException;
 
-
 /**
  * This class records the offset for every pair(topic,partition) this node is responsible for. It provides APIs that can
  * query the last consumed offset for a specific (topic,partition) pair.
@@ -25,20 +24,17 @@ public interface OffsetManager {
    * @param partitionId kafka partition id for which the consumer thread is registered to.
    * @param record OffSetRecord containing last read offset for the topic and partition combination.
    */
-  void recordOffset(String topicName, int partitionId, OffsetRecord record)
-      throws VeniceException;
+  void put(String topicName, int partitionId, OffsetRecord record) throws VeniceException;
 
   void clearOffset(String topicName, int partitionId);
 
   /**
    * Gets the Last Known persisted offset of this consumer.
    *
-   *
    * @param topicName  kafka topic to which the consumer thread is registered to.
    * @param partitionId  kafka partition id for which the consumer thread is registered to.
    * @return  OffsetRecord  - contains offset and time when it was recorded before the consumer thread went down.
    * consumer
    */
-  OffsetRecord getLastOffset(String topicName, int partitionId)
-      throws VeniceException;
+  OffsetRecord getLastOffset(String topicName, int partitionId) throws VeniceException;
 }

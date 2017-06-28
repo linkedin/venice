@@ -19,13 +19,13 @@ public class TestInMemoryOffsetManager {
     OffsetRecord newRecord = new OffsetRecord();
     newRecord.setOffset(11234);
 
-    om.recordOffset(topic, 0, record);
+    om.put(topic, 0, record);
     Assert.assertEquals(om.getLastOffset(topic, 0), record);
 
-    om.recordOffset(topic, 0, oldRecord);
+    om.put(topic, 0, oldRecord);
     Assert.assertEquals(om.getLastOffset(topic, 0), record);
 
-    om.recordOffset(topic, 0, newRecord);
+    om.put(topic, 0, newRecord);
     Assert.assertEquals(om.getLastOffset(topic, 0), newRecord);
 
     om.clearOffset(topic, 1);
