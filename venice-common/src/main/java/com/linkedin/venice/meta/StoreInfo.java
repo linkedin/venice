@@ -2,10 +2,11 @@ package com.linkedin.venice.meta;
 
 import java.util.List;
 
-
 /**
  * Json-serializable class for sending store information to the controller client
  */
+@com.fasterxml.jackson.annotation.JsonIgnoreProperties(ignoreUnknown = true)
+@org.codehaus.jackson.annotate.JsonIgnoreProperties(ignoreUnknown = true)
 public class StoreInfo {
   public static StoreInfo fromStore(Store store){
     StoreInfo storeInfo = new StoreInfo();
@@ -18,6 +19,9 @@ public class StoreInfo {
     storeInfo.setStorageQuotaInByte(store.getStorageQuotaInByte());
     storeInfo.setReadQuotaInCU(store.getReadQuotaInCU());
     storeInfo.setVersions(store.getVersions());
+    if (store.isHybrid()) {
+      storeInfo.setHybridStoreConfig(store.getHybridStoreConfig());
+    }
     return storeInfo;
   }
   /**
@@ -62,6 +66,11 @@ public class StoreInfo {
    * Quota for read request hit this store. Measurement is capacity unit.
    */
   private long readQuotaInCU;
+
+  /**
+   * Configurations for hybrid stores.
+   */
+  private HybridStoreConfig hybridStoreConfig;
 
   public StoreInfo() {
   }
@@ -173,5 +182,13 @@ public class StoreInfo {
 
   public void setReadQuotaInCU(long readQuotaInCU) {
     this.readQuotaInCU = readQuotaInCU;
+  }
+
+  public HybridStoreConfig getHybridStoreConfig() {
+    return hybridStoreConfig;
+  }
+
+  public void setHybridStoreConfig(HybridStoreConfig hybridStoreConfig) {
+    this.hybridStoreConfig = hybridStoreConfig;
   }
 }

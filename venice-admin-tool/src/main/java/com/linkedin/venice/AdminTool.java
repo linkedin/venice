@@ -371,14 +371,28 @@ public class AdminTool {
     Optional<Long> readQuotaInCU = readQuotaStr == null ? Optional.empty() :
         Optional.of(Utils.parseLongFromString(readQuotaStr, "readQuotaInCU"));
 
-    ControllerResponse response = controllerClient.updateStore(storeName,
-                                                               owner,
-                                                               partitionCount,
-                                                               currentVersion,
-                                                               readability,
-                                                               writeability,
-                                                               storageQuotaInByte,
-                                                               readQuotaInCU);
+    String hybridRewindSecondsStr = getOptionalArgument(cmd, Arg.HYBRID_REWIND_SECONDS);
+    Optional<Long> hybridRewindSeconds = (null == hybridRewindSecondsStr)
+        ? Optional.empty()
+        : Optional.of(Utils.parseLongFromString(hybridRewindSecondsStr, Arg.HYBRID_REWIND_SECONDS.name()));
+
+    String hybridOffsetLagStr = getOptionalArgument(cmd, Arg.HYBRID_OFFSET_LAG);
+    Optional<Long> hybridOffsetLag = (null == hybridOffsetLagStr)
+        ? Optional.empty()
+        : Optional.of(Utils.parseLongFromString(hybridOffsetLagStr, Arg.HYBRID_OFFSET_LAG.name()));
+
+    ControllerResponse response = controllerClient.updateStore(
+        storeName,
+        owner,
+        partitionCount,
+        currentVersion,
+        readability,
+        writeability,
+        storageQuotaInByte,
+        readQuotaInCU,
+        hybridRewindSeconds,
+        hybridOffsetLag);
+
     printSuccess(response);
   }
 

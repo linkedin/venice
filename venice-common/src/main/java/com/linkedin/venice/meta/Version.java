@@ -10,7 +10,8 @@ import org.codehaus.jackson.annotate.JsonProperty;
 /**
  * Class defines the version of Venice store.
  */
-@JsonIgnoreProperties(ignoreUnknown = true)
+@com.fasterxml.jackson.annotation.JsonIgnoreProperties(ignoreUnknown = true)
+@org.codehaus.jackson.annotate.JsonIgnoreProperties(ignoreUnknown = true)
 public class Version implements Comparable<Version> {
   private static final String VERSION_SEPARATOR = "_v";
   private static final String REAL_TIME_TOPIC_SUFFIX = "_rt";
@@ -45,7 +46,11 @@ public class Version implements Comparable<Version> {
     this(storeName, number, System.currentTimeMillis(), pushJobId);
   }
 
-  public Version(@JsonProperty("storeName") @NotNull String storeName, @JsonProperty("number") int number, @JsonProperty("createdTime")  long createdTime, @JsonProperty("pushJobId") String pushJobId) {
+  public Version(
+      @JsonProperty("storeName") @com.fasterxml.jackson.annotation.JsonProperty("storeName") @NotNull String storeName,
+      @JsonProperty("number") @com.fasterxml.jackson.annotation.JsonProperty("number") int number,
+      @JsonProperty("createdTime")  @com.fasterxml.jackson.annotation.JsonProperty("createdTime") long createdTime,
+      @JsonProperty("pushJobId") @com.fasterxml.jackson.annotation.JsonProperty("pushJobId") String pushJobId) {
     this.storeName = storeName;
     this.number = number;
     this.createdTime = createdTime;

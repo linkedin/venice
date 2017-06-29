@@ -37,6 +37,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.ExecutionException;
+import java.util.stream.Collectors;
 import org.apache.avro.Schema;
 import org.apache.commons.io.IOUtils;
 import org.apache.http.HttpResponse;
@@ -430,8 +431,11 @@ public class TestAdminSparkServer {
         controllerClient.listStoresStatuses(venice.getClusterName());
     Assert.assertFalse(storeResponse.isError());
     //since all test cases share VeniceClusterWrapper, we get the total number of stores from the Wrapper.
-    Assert.assertEquals(storeResponse.getStoreStatusMap().size(), venice.getStoreCount(),
-        "Result of listing store status should contain all stores we created.");
+    List<String> storesInCluster = storeResponse.getStoreStatusMap().entrySet()
+        .stream().map(e -> e.getKey()).collect(Collectors.toList());
+    for (String storeName : storeNames) {
+      Assert.assertTrue(storesInCluster.contains(storeName), "Result of listing store status should contain all stores we created.");
+    }
     for (String status : storeResponse.getStoreStatusMap().values()) {
       Assert.assertEquals(status, StoreStatus.UNAVAILABLE.toString(),
           "Store should be unavailable because we have not created a version for this store.");
@@ -494,7 +498,7 @@ public class TestAdminSparkServer {
     ControllerResponse response =
         controllerClient.updateStore(storeName, Optional.of(owner), Optional.of(partitionCount),
             Optional.of(current), Optional.of(enableReads), Optional.of(enableWrite),
-            Optional.of(storageQuotaInByte), Optional.of(readQuotaInCU));
+            Optional.of(storageQuotaInByte), Optional.of(readQuotaInCU), Optional.empty(), Optional.empty());
 
     Assert.assertFalse(response.isError(), response.getError());
     Store store = venice.getMasterVeniceController().getVeniceAdmin().getStore(venice.getClusterName(), storeName);
@@ -508,7 +512,8 @@ public class TestAdminSparkServer {
     Assert.assertFalse(controllerClient
             .updateStore(storeName, Optional.of(owner), Optional.of(partitionCount),
                 Optional.empty(), Optional.of(enableReads), Optional.of(enableWrite),
-                Optional.of(storageQuotaInByte), Optional.of(readQuotaInCU)).isError(),
+                Optional.of(storageQuotaInByte), Optional.of(readQuotaInCU), Optional.empty(),
+                Optional.empty()).isError(),
         "We should be able to disable store writes again.");
   }
 
@@ -524,13 +529,26 @@ public class TestAdminSparkServer {
 
     ControllerResponse response =
         controllerClient.updateStore(storeName, Optional.empty(), Optional.of(partitionCount),
-            Optional.of(current), Optional.of(enableReads), Optional.empty(), Optional.empty(), Optional.empty());
+            Optional.of(current), Optional.of(enableReads), Optional.empty(), Optional.empty(), Optional.empty(),
+            Optional.empty(), Optional.empty());
 
     Assert.assertFalse(response.isError(), response.getError());
     Store store = venice.getMasterVeniceController().getVeniceAdmin().getStore(venice.getClusterName(), storeName);
     Assert.assertEquals(store.getPartitionCount(), partitionCount);
     Assert.assertEquals(store.getCurrentVersion(), current);
     Assert.assertEquals(store.isEnableReads(), enableReads);
+  }
+
+  @Test
+  public void canCreateAHybridStore() {
+    String storeName = TestUtils.getUniqueString("store");
+    String owner = TestUtils.getUniqueString("owner");
+    NewStoreResponse newStoreResponse = controllerClient.createNewStore(storeName, owner, "\"string\"", "\"string\"");
+    controllerClient.updateStore(storeName, Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(),
+        Optional.empty(), Optional.empty(), Optional.of(123L), Optional.of(1515L));
+    StoreResponse storeResponse = controllerClient.getStore(storeName);
+    Assert.assertEquals(storeResponse.getStore().getHybridStoreConfig().getRewindTimeInSeconds(), 123L);
+    Assert.assertEquals(storeResponse.getStore().getHybridStoreConfig().getOffsetLagThresholdToGoOnline(), 1515L);
   }
 
 }
