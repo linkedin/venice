@@ -616,14 +616,18 @@ public class ControllerClient implements Closeable {
     }
   }
 
-  public ControllerResponse updateStore(String storeName,
-                                        Optional<String> owner,
-                                        Optional<Integer> partitionCount,
-                                        Optional<Integer> currentVersion,
-                                        Optional<Boolean> enableReads,
-                                        Optional<Boolean> enableWrites,
-                                        Optional<Long> storageQuotaInByte,
-                                        Optional<Long> readQuotaInCU) {
+  public ControllerResponse updateStore(
+      String storeName,
+      Optional<String> owner,
+      Optional<Integer> partitionCount,
+      Optional<Integer> currentVersion,
+      Optional<Boolean> enableReads,
+      Optional<Boolean> enableWrites,
+      Optional<Long> storageQuotaInByte,
+      Optional<Long> readQuotaInCU,
+      Optional<Long> hybridRewindSeconds,
+      Optional<Long> hybridOffsetLagThreshold) {
+
     try {
       List<NameValuePair> queryParams = newParams(clusterName);
       queryParams.add(new BasicNameValuePair(ControllerApiConstants.NAME, storeName));
@@ -647,6 +651,12 @@ public class ControllerClient implements Closeable {
       }
       if (readQuotaInCU.isPresent()) {
         queryParams.add(new BasicNameValuePair(ControllerApiConstants.READ_QUOTA_IN_CU, readQuotaInCU.get().toString()));
+      }
+      if (hybridRewindSeconds.isPresent()) {
+        queryParams.add(new BasicNameValuePair(ControllerApiConstants.REWIND_TIME_IN_SECONDS, hybridRewindSeconds.get().toString()));
+      }
+      if (hybridOffsetLagThreshold.isPresent()) {
+        queryParams.add(new BasicNameValuePair(ControllerApiConstants.OFFSET_LAG_TO_GO_ONLINE, hybridOffsetLagThreshold.get().toString()));
       }
 
       String responseJson = postRequest(ControllerRoute.UPDATE_STORE.getPath(), queryParams);

@@ -2,9 +2,6 @@ package com.linkedin.venice.meta;
 
 import com.linkedin.venice.utils.TestUtils;
 import java.io.IOException;
-import java.util.ArrayList;
-import java.util.List;
-import org.codehaus.jackson.map.ObjectMapper;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -13,7 +10,15 @@ import org.testng.annotations.Test;
  * Created by mwise on 5/9/16.
  */
 public class TestVersion {
-  private static ObjectMapper mapper = new ObjectMapper();
+  //TODO, converge on fasterxml or codehouse
+  static com.fasterxml.jackson.databind.ObjectMapper fasterXmlMapper = new com.fasterxml.jackson.databind.ObjectMapper();
+  static org.codehaus.jackson.map.ObjectMapper codehouseMapper = new org.codehaus.jackson.map.ObjectMapper();
+
+  static final String oldSerialized = "{\"storeName\":\"store-1492637190910-78714331\",\"number\":17,\"createdTime\":1492637190912,\"status\":\"STARTED\"}";
+  static final String extraFieldSerialized = "{\"storeName\":\"store-1492637190910-12345678\",\"number\":17,\"createdTime\":1492637190912,\"status\":\"STARTED\",\"extraField\":\"12345\"}";
+  static final String missingFieldSerialized = "{\"storeName\":\"store-missing\",\"number\":17,\"createdTime\":1492637190912}";  //no status
+
+
   @Test
   public void identifiesValidTopicNames(){
     String goodTopic = "my_very_good_store_v4";
@@ -30,7 +35,7 @@ public class TestVersion {
     String storeName = TestUtils.getUniqueString("store");
     int versionNumber = 17;
     Version version = new Version(storeName, versionNumber);
-    String serialized = mapper.writeValueAsString(version);
+    String serialized = codehouseMapper.writeValueAsString(version);
     Assert.assertTrue(serialized.contains(storeName));
   }
 
@@ -40,21 +45,29 @@ public class TestVersion {
    * @throws IOException
    */
   @Test
-  public void deserializeWithWrongFields() throws IOException {
-    String oldSerialized = "{\"storeName\":\"store-1492637190910-78714331\",\"number\":17,\"createdTime\":1492637190912,\"status\":\"STARTED\"}";
-    String extraFieldSerialized = "{\"storeName\":\"store-1492637190910-12345678\",\"number\":17,\"createdTime\":1492637190912,\"status\":\"STARTED\",\"extraField\":\"12345\"}";
-    String missingFieldSerialized = "{\"storeName\":\"store-missing\",\"number\":17,\"createdTime\":1492637190912}";  //no status
-
-    Version oldParsedVersion = mapper.readValue(oldSerialized, Version.class);
+  public void deserializeWithWrongFieldsAndCodehouse() throws IOException {
+    Version oldParsedVersion = codehouseMapper.readValue(oldSerialized, Version.class);
     Assert.assertEquals(oldParsedVersion.getStoreName(), "store-1492637190910-78714331");
 
-    Version newParsedVersion = mapper.readValue(extraFieldSerialized, Version.class);
+    Version newParsedVersion = codehouseMapper.readValue(extraFieldSerialized, Version.class);
     Assert.assertEquals(newParsedVersion.getStoreName(), "store-1492637190910-12345678");
 
-    Version legacyParsedVersion = mapper.readValue(missingFieldSerialized, Version.class);
+    Version legacyParsedVersion = codehouseMapper.readValue(missingFieldSerialized, Version.class);
     Assert.assertEquals(legacyParsedVersion.getStoreName(), "store-missing");
     Assert.assertNotNull(legacyParsedVersion.getPushJobId()); // missing final field can still deserialize, just gets arbitrary value from constructor
+  }
 
+  @Test
+  public void deserializeWithWrongFieldsAndFasterXml() throws IOException {
+    Version oldParsedVersion = fasterXmlMapper.readValue(oldSerialized, Version.class);
+    Assert.assertEquals(oldParsedVersion.getStoreName(), "store-1492637190910-78714331");
+
+    Version newParsedVersion = fasterXmlMapper.readValue(extraFieldSerialized, Version.class);
+    Assert.assertEquals(newParsedVersion.getStoreName(), "store-1492637190910-12345678");
+
+    Version legacyParsedVersion = fasterXmlMapper.readValue(missingFieldSerialized, Version.class);
+    Assert.assertEquals(legacyParsedVersion.getStoreName(), "store-missing");
+    Assert.assertNotNull(legacyParsedVersion.getPushJobId()); // missing final field can still deserialize, just gets arbitrary value from constructor
   }
 
 }
