@@ -37,7 +37,6 @@ import com.linkedin.venice.throttle.EventThrottler;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.Utils;
 import java.io.Closeable;
-import java.util.Collection;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.Map;
@@ -63,104 +62,6 @@ import org.apache.log4j.Logger;
  */
 public class StoreIngestionTask implements Runnable, Closeable {
 
-  /**
-   * This class is used to maintain internal state for consumption of each partition.
-   */
-  private static class PartitionConsumptionState {
-    private final int partition;
-    private OffsetRecord offsetRecord;
-    /** whether the ingestion of current partition is deferred-write. */
-    private boolean deferredWrite;
-    private boolean errored;
-    /**
-     * The following priorities are used to store the progress of processed records since it is not efficient to
-     * update offset db for every record.
-     */
-    private int processedRecordNum;
-    private int processedRecordSize;
-    private int processedRecordNumSinceLastSync;
-
-    public PartitionConsumptionState(int partition, OffsetRecord offsetRecord) {
-      this.partition = partition;
-      this.offsetRecord = offsetRecord;
-      this.errored = false;
-      this.processedRecordNum = 0;
-      this.processedRecordSize = 0;
-      this.processedRecordNumSinceLastSync = 0;
-    }
-
-    public int getPartition() {
-      return this.partition;
-    }
-    public void setOffsetRecord(OffsetRecord offsetRecord) {
-      this.offsetRecord = offsetRecord;
-    }
-    public OffsetRecord getOffsetRecord() {
-      return this.offsetRecord;
-    }
-    public void setDeferredWrite(boolean deferredWrite) {
-      this.deferredWrite = deferredWrite;
-    }
-    public boolean isDeferredWrite() {
-      return this.deferredWrite;
-    }
-    public boolean isStarted() {
-      return this.offsetRecord.getOffset() > 0;
-    }
-    public void complete(long endOfPushOffset) {
-      this.offsetRecord.complete(endOfPushOffset);
-    }
-    public boolean isCompleted() {
-      return this.offsetRecord.isCompleted();// completed;
-    }
-    public void error() {
-      this.errored = true;
-    }
-    public boolean isErrored() {
-      return this.errored;
-    }
-    public void incrProcessedRecordNum() {
-      ++this.processedRecordNum;
-    }
-    public int getProcessedRecordNum() {
-      return this.processedRecordNum;
-    }
-    public void resetProcessedRecordNum() {
-      this.processedRecordNum = 0;
-    }
-    public void incrProcessedRecordSize(int recordSize) {
-      this.processedRecordSize += recordSize;
-    }
-    public int getProcessedRecordSize() {
-      return this.processedRecordSize;
-    }
-    public void resetProcessedRecordSize() {
-      this.processedRecordSize = 0;
-    }
-
-    @Override
-    public String toString() {
-      return "PartitionConsumptionState{" +
-          "partition=" + partition +
-          ", offsetRecord=" + offsetRecord +
-          ", completed=" + isCompleted() +
-          ", errored=" + errored +
-          ", started=" + isStarted() +
-          ", processedRecordNum=" + processedRecordNum +
-          ", processedRecordSize=" + processedRecordSize +
-          '}';
-    }
-    public int getProcessedRecordNumSinceLastSync() {
-      return this.processedRecordNumSinceLastSync;
-    }
-    public void incrProcessedRecordNumSinceLastSync() {
-      ++this.processedRecordNumSinceLastSync;
-    }
-    public void resetProcessedRecordNumSinceLastSync() {
-      this.processedRecordNumSinceLastSync = 0;
-    }
-  }
-
   // TOOD: Make this logger prefix everything with the CONSUMER_TASK_ID_FORMAT
   private static final Logger logger = Logger.getLogger(StoreIngestionTask.class);
 
@@ -170,7 +71,7 @@ public class StoreIngestionTask implements Runnable, Closeable {
   // TODO: consider to make those delay time configurable for operability purpose. Some are non-final so tests can alter the values.
   public static int READ_CYCLE_DELAY_MS = 1000;
   public static int POLLING_SCHEMA_DELAY_MS = 5 * READ_CYCLE_DELAY_MS;
-  public static long PROGRESS_REPORT_INTERVAL = TimeUnit.MILLISECONDS.convert(10, TimeUnit.MINUTES);
+//  public static long PROGRESS_REPORT_INTERVAL = TimeUnit.MILLISECONDS.convert(10, TimeUnit.MINUTES);
   /** After processing the following number of messages, Venice SN will invoke throttling. */
   public static int OFFSET_THROTTLE_INTERVAL = 1000;
   /** Record offset interval before persisting it in offset db for transaction mode database. */
@@ -185,8 +86,6 @@ public class StoreIngestionTask implements Runnable, Closeable {
 
   // Final stuffz
 
-  /** Ack producer */
-  private final Queue<VeniceNotifier> notifiers;
   /** storage destination for consumption */
   private final StoreRepository storeRepository;
   private final String topic;
@@ -211,11 +110,11 @@ public class StoreIngestionTask implements Runnable, Closeable {
   private final AggStoreIngestionStats stats;
   private final BooleanSupplier isCurrentVersion;
   private final Optional<HybridStoreConfig> hybridStoreConfig;
+  private final IngestionNotificationDispatcher notificationDispatcher;
 
   // Non-final
   private KafkaConsumerWrapper consumer;
   private Set<Integer> schemaIdSet;
-  private long lastProgressReportTime = 0;
   private int idleCounter = 0;
 
 
@@ -236,7 +135,6 @@ public class StoreIngestionTask implements Runnable, Closeable {
     this.kafkaProps = kafkaConsumerProperties;
     this.storeRepository = storeRepository;
     this.storageMetadataService = storageMetadataService;
-    this.notifiers = notifiers;
     this.throttler = throttler;
     this.topic = topic;
     this.schemaRepo = schemaRepo;
@@ -262,6 +160,7 @@ public class StoreIngestionTask implements Runnable, Closeable {
     this.storeBufferService = storeBufferService;
     this.isCurrentVersion = isCurrentVersion;
     this.hybridStoreConfig = hybridStoreConfig;
+    this.notificationDispatcher = new IngestionNotificationDispatcher(notifiers, topic, isCurrentVersion);
   }
 
   private void validateState() {
@@ -309,7 +208,7 @@ public class StoreIngestionTask implements Runnable, Closeable {
     }
     if (isRunning()) {
       //If task is still running, force close it.
-      reportError(partitionConsumptionStateMap.keySet(), "Received the signal to kill this consumer. Topic " + topic,
+      notificationDispatcher.reportError(partitionConsumptionStateMap.values(), "Received the signal to kill this consumer. Topic " + topic,
           new VeniceException("Kill the consumer"));
       // close can not stop the consumption synchronizely, but the status of helix would be set to ERROR after
       // reportError. The only way to stop it synchronizely is interrupt the current running thread, but it's an unsafe
@@ -318,47 +217,11 @@ public class StoreIngestionTask implements Runnable, Closeable {
     }
   }
 
-  private void reportProgress(int partition, long partitionOffset ) {
-    PartitionConsumptionState partitionConsumptionState = partitionConsumptionStateMap.get(partition);
-    if (null == partitionConsumptionState) {
-      logger.info("Topic " + topic + " Partition " + partition + " has been unsubscribed, no need to report progress");
-      return;
-    }
-    if (!isCurrentVersion.getAsBoolean() && // The currently-active version should always report progress.
-        (!partitionConsumptionState.isStarted() ||
-            partitionConsumptionState.isCompleted() ||
-            partitionConsumptionState.isErrored())) {
-      logger.warn(
-          "Can not report progress for Topic:" + topic + " Partition:" + partition + " offset:" + partitionOffset
-              + ", because it has not been started or already been terminated. "
-              + "partitionConsumptionState: " + partitionConsumptionState.toString());
-      return;
-    }
-    // Progress reporting happens too frequently for each Kafka Pull,
-    // Report progress only if configured intervals have elapsed.
-    // This has a drawback if there are messages but the interval has not elapsed
-    // they will not be reported. But if there are no messages after that
-    // for a long time, no progress will be reported. That is OK for now.
-    long timeElapsed = System.currentTimeMillis() - lastProgressReportTime;
-    if(timeElapsed < PROGRESS_REPORT_INTERVAL) {
-      return;
-    }
-
-    lastProgressReportTime = System.currentTimeMillis();
-    for(VeniceNotifier notifier : notifiers) {
-      try {
-        notifier.progress(topic, partition, partitionOffset);
-      } catch(Exception ex) {
-        logger.error("Error reporting status to notifier " + notifier.getClass() , ex);
-      }
-    }
-  }
-
   private void adjustStorageEngine(int partitionId, boolean sorted, PartitionConsumptionState partitionConsumptionState) {
     AbstractStorageEngine storageEngine = storeRepository.getLocalStorageEngine(topic);
     StoragePartitionConfig storagePartitionConfig = new StoragePartitionConfig(topic, partitionId);
     boolean deferredWrites;
-    if (partitionConsumptionState.isCompleted()) {
+    if (partitionConsumptionState.isEndOfPushReceived()) {
       // After EOP, we never enable deferred writes.
       // No matter what the sorted config was before the EOP message, it doesn't matter anymore.
       deferredWrites = false;
@@ -372,119 +235,76 @@ public class StoreIngestionTask implements Runnable, Closeable {
 
     logger.info(consumerTaskId + " adjustStorageEngine() for partition: " + partitionId +
         ", sorted: " + sorted +
-        ", push completed: " + partitionConsumptionState.isCompleted() +
+        ", push completed: " + partitionConsumptionState.isEndOfPushReceived() +
         ", therefore -> deferredWrites will be set to: " + deferredWrites);
   }
 
-  private void reportStarted(int partition, PartitionConsumptionState partitionConsumptionState) {
-    if (null == partitionConsumptionState) {
-      logger.info("Topic " + topic + " Partition " + partition + " has been unsubscribed, no need to report started");
-      return;
-    }
-    for(VeniceNotifier notifier : notifiers) {
-      try {
-        notifier.started(topic, partition);
-      } catch(Exception ex) {
-        logger.error("Error reporting status to notifier " + notifier.getClass() , ex);
-      }
-    }
-  }
-
-  private void reportRestarted(int partition, long offset, PartitionConsumptionState partitionConsumptionState) {
-    if (null == partitionConsumptionState) {
-      logger.info("Topic " + topic + " Partition " + partition + " has been unsubscribed, no need to report restarted");
-      return;
-    }
-    for (VeniceNotifier notifier : notifiers) {
-      try {
-        notifier.restarted(topic, partition, offset);
-      } catch (Exception ex) {
-        logger.error("Error reporting status to notifier " + notifier.getClass(), ex);
-      }
-    }
-  }
-
-  private void reportCompleted(int partition, PartitionConsumptionState partitionConsumptionState) {
-    if (null == partitionConsumptionState) {
-      logger.info("Topic " + topic + " Partition " + partition + " has been unsubscribed, no need to report completed");
-      return;
-    }
-    OffsetRecord lastOffsetRecord = partitionConsumptionState.getOffsetRecord();
-
-    if (partitionConsumptionState.isErrored()) {
-      // Notifiers will not be sent a completion notification, they should only receive the previously-sent
-      // error notification.
-      logger.error("Processing completed WITH ERRORS for topic " + topic + " Partition " + partition +
-          " Last Offset " + lastOffsetRecord.getOffset());
-    } else {
-      logger.info("Processing completed for topic " + topic + " Partition " + partition + " Last Offset "
-          + lastOffsetRecord.getOffset());
-      boolean isHybrid = hybridStoreConfig.isPresent();
-      boolean isReplicationLagging = isReplicationLagging(partition);
-      for(VeniceNotifier notifier : notifiers) {
-        try {
-          logger.debug("reportCompleted called by VeniceNotifier class: " + notifier.getClass().getName() +
-              ", isHybrid: " + isHybrid +
-              ", notifier.replicationLagShouldBlockCompletion(): " + notifier.replicationLagShouldBlockCompletion() +
-              ", isReplicationLagging(): " + isReplicationLagging);
-          if (isHybrid
-              && notifier.replicationLagShouldBlockCompletion()
-              && isReplicationLagging) {
-            // skip
-          } else {
-            notifier.completed(topic, partition, lastOffsetRecord.getOffset());
-          }
-        } catch(Exception ex) {
-          logger.error("Error reporting status to notifier " + notifier.getClass() , ex);
-        }
-      }
-    }
-  }
-
   /**
-   * Lag = (RT Max - SOBR Source Offset) - (Current - SOBR Destination Offset)
+   * This function checks various conditions to verify if a store is ready to serve.
    *
-   * @return true if Lag > threshold
+   * Lag = (Source Max Offset - SOBR Source Offset) - (Current Offset - SOBR Destination Offset)
+   *
+   * @return true if EOP was received and (for hybrid stores) if lag <= threshold
    */
-  private boolean isReplicationLagging(int partition) {
-    if (hybridStoreConfig.isPresent()) {
-      // TODO: Implement this!
-      return true;
-    } else {
-      // Short-circuit this function for non-hybrid stores.
+  private boolean isReadyToServe(PartitionConsumptionState partitionConsumptionState) {
+    // Check various short-circuit conditions first.
+
+    if (!partitionConsumptionState.isEndOfPushReceived()) {
+      // If the EOP has not been received yet, then for sure we aren't ready
       return false;
     }
-  }
 
-  private void reportError(Collection<Integer> partitions, String message, Exception consumerEx) {
-    for(Integer partitionId: partitions) {
-      PartitionConsumptionState partitionConsumptionState = partitionConsumptionStateMap.get(partitionId);
-      if (null == partitionConsumptionState) {
-        logger.info("Topic " + topic + " Partition " + partitionId + " has been unsubscribed, no need to report error");
-        continue;
-      }
-      // TODO: Decide if the if below can be fully eliminated?
-      if (!isCurrentVersion.getAsBoolean() && partitionConsumptionState.isCompleted()) {
-        logger.warn("Topic:" + topic + " Partition:" + partitionId
-            + " has been marked as completed, so an error will not be reported..");
-        continue;
-      }
-      if (partitionConsumptionState.isErrored()) {
-        logger.warn("Topic:" + topic + " Partition:" + partitionId + " has been reported as error before.");
-        continue;
-      }
-      partitionConsumptionState.error();
-
-      for(VeniceNotifier notifier : notifiers) {
-        try {
-          notifier.error(topic, partitionId, message, consumerEx);
-        } catch(Exception notifierEx) {
-          logger.error(consumerTaskId + " Error reporting status to notifier " + notifier.getClass() , notifierEx);
-        }
-      }
+    if (!hybridStoreConfig.isPresent()) {
+      // Since we know the EOP has been received, any non-hybrid store is ready to go!
+      return true;
     }
-  }
 
+    if (!partitionConsumptionState.isWaitingForReplicationLag()) {
+      // If we have already crossed the acceptable lag threshold in the past, then we will stick to that,
+      // rather than possibly flip flopping
+      return true;
+    }
+
+    Optional<StoreVersionState> storeVersionStateOptional = storageMetadataService.getStoreVersionState(topic);
+    Optional<Long> sobrDestinationOffsetOptional = partitionConsumptionState.getOffsetRecord().getStartOfBufferReplayDestinationOffset();
+    if (!(storeVersionStateOptional.isPresent() && sobrDestinationOffsetOptional.isPresent())) {
+      // In this case, we have a hybrid store which has received its EOP, but has not yet received its SOBR.
+      // Therefore, we cannot precisely measure its offset, but we know for sure that it is lagging since
+      // the RT buffer replay has not even started yet.
+      logger.warn(consumerTaskId + " Cannot measure replication lag because the SOBR info is not present" +
+          ", storeVersionStateOptional: " + storeVersionStateOptional +
+          ", sobrDestinationOffsetOptional: " + sobrDestinationOffsetOptional);
+      return false;
+    }
+
+    // Looks like none of the short-circuitry fired, so we need to measure lag!
+    int partition = partitionConsumptionState.getPartition();
+    long sourceTopicMaxOffset = topicManager.getLatestOffset(topic, partition);
+    long sobrSourceOffset = storeVersionStateOptional.get().startOfBufferReplay.sourceOffsets.get(partition);
+    long currentOffset = partitionConsumptionState.getOffsetRecord().getOffset();
+    long sobrDestinationOffset = sobrDestinationOffsetOptional.get();
+    long threshold = hybridStoreConfig.get().getOffsetLagThresholdToGoOnline();
+
+    long lag = (sourceTopicMaxOffset - sobrSourceOffset) - (currentOffset - sobrDestinationOffset);
+    boolean lagging = lag > threshold;
+
+    logger.info(consumerTaskId + " Partition " + partition + " is " + (lagging ? "" : "not") + " lagging:\n" +
+        "(Source Max [" + sourceTopicMaxOffset + "] -" +
+        " SOBR Source [" + sobrSourceOffset + "]) - " +
+        "(Dest Current [" + currentOffset + "] -" +
+        " SOBR Dest [" + sobrDestinationOffset + "]) =" +
+        " Lag [" + lag + "] " +
+        (lagging ? ">" : "<") +
+        " Threshold ["+ threshold + "]");
+
+    boolean lagIsAcceptable = !lagging;
+
+    if (lagIsAcceptable) {
+      partitionConsumptionState.lagHasCaughtUp();
+    }
+
+    return lagIsAcceptable;
+  }
 
   private void processMessages() throws InterruptedException {
     if (null != lastDrainerException) {
@@ -529,7 +349,6 @@ public class StoreIngestionTask implements Runnable, Closeable {
     }
   }
 
-
   /**
    * Polls the producer for new messages in an infinite loop by a dedicated consumer thread
    * and processes the new messages by current thread.
@@ -553,10 +372,10 @@ public class StoreIngestionTask implements Runnable, Closeable {
       // If job is not aborted, controller is open to get the subsequent message from this replica(if storage node was
       // recovered, it will send STARTED message to controller again)
       logger.error(consumerTaskId + " failed with Exception.", e);
-      reportError(partitionConsumptionStateMap.keySet(), "Exception caught during poll.", e);
+      notificationDispatcher.reportError(partitionConsumptionStateMap.values(), "Exception caught during poll.", e);
     } catch (Throwable t) {
       logger.error(consumerTaskId + " failed with Throwable!!!", t);
-      reportError(partitionConsumptionStateMap.keySet(), "Non-exception Throwable caught in " + getClass().getSimpleName() +
+      notificationDispatcher.reportError(partitionConsumptionStateMap.values(), "Non-exception Throwable caught in " + getClass().getSimpleName() +
           "'s run() function.", new VeniceException(t));
     } finally {
       internalClose();
@@ -626,7 +445,7 @@ public class StoreIngestionTask implements Runnable, Closeable {
         OffsetRecord record = storageMetadataService.getLastOffset(topic, partition);
 
         // First let's try to restore the state retrieved from the OffsetManager
-        PartitionConsumptionState newPartitionConsumptionState = new PartitionConsumptionState(partition, record);
+        PartitionConsumptionState newPartitionConsumptionState = new PartitionConsumptionState(partition, record, hybridStoreConfig.isPresent());
         partitionConsumptionStateMap.put(partition,  newPartitionConsumptionState);
         record.getProducerPartitionStateMap().entrySet().stream().forEach(entry -> {
               GUID producerGuid = GuidUtils.getGuidFromCharSequence(entry.getKey());
@@ -643,14 +462,14 @@ public class StoreIngestionTask implements Runnable, Closeable {
         // If this storage node has ever consumed data from this topic, instead of sending "START" here, we send it
         // once START_OF_PUSH message has been read.
         if (record.getOffset() > 0) {
-          StoreVersionState storeVersionState = storageMetadataService.getStoreVersionState(topic);
+          Optional<StoreVersionState> storeVersionState = storageMetadataService.getStoreVersionState(topic);
           boolean sorted;
-          if (null != storeVersionState) {
+          if (storeVersionState.isPresent()) {
             /**
              * This is where the field should be for any push that begun after the introduction of
              * {@link StoreVersionState} v1.
              */
-            sorted = storeVersionState.sorted;
+            sorted = storeVersionState.get().sorted;
           } else {
             /**
              * This is the fall-back, if we don't find the field in its intended place.
@@ -665,18 +484,18 @@ public class StoreIngestionTask implements Runnable, Closeable {
              */
             sorted = retrieveSortedFieldFromStartOfPush(partition);
 
-            storeVersionState = new StoreVersionState();
-            storeVersionState.sorted = sorted;
-            storageMetadataService.put(topic, storeVersionState);
+            StoreVersionState newStoreVersionState = new StoreVersionState();
+            newStoreVersionState.sorted = sorted;
+            storageMetadataService.put(topic, newStoreVersionState);
             logger.info(consumerTaskId + " We did not find a StoreVersionState for partition " + partition +
                 " at consumer subscription time. We will generate a new StoreVersionState with sorted=" + sorted +
                 " and store it persistently.");
           }
           adjustStorageEngine(partition, sorted, newPartitionConsumptionState);
-          reportRestarted(partition, record.getOffset(), newPartitionConsumptionState);
+          notificationDispatcher.reportRestarted(newPartitionConsumptionState);
         }
         // Second, take care of informing the controller about our status, and starting consumption
-        if (record.isCompleted() && !hybridStoreConfig.isPresent()) {
+        if (record.isEndOfPushReceived() && !hybridStoreConfig.isPresent()) {
           /**
            * There could be two cases in this scenario:
            * 1. The job is completed, so Controller will ignore any status message related to the completed/archived job.
@@ -685,7 +504,7 @@ public class StoreIngestionTask implements Runnable, Closeable {
            * In either case, StoreIngestionTask should report 'started' => ['progress' => ] 'completed' to accomplish
            * task state transition in Controller.
            */
-          reportCompleted(partition, newPartitionConsumptionState);
+          notificationDispatcher.reportCompleted(newPartitionConsumptionState);
           logger.info(consumerTaskId + " Partition " + partition + " is already consumed and the store is" +
               " batch-only, so consumption will not be started.");
         } else {
@@ -716,7 +535,9 @@ public class StoreIngestionTask implements Runnable, Closeable {
           logger.info(consumerTaskId + " No need to reset offset by Kafka consumer, since the consumer is not " +
               "subscribing Topic: " + topic + " Partition Id: " + partition);
         }
-        partitionConsumptionStateMap.put(partition, new PartitionConsumptionState(partition, new OffsetRecord()));
+        partitionConsumptionStateMap.put(
+            partition,
+            new PartitionConsumptionState(partition, new OffsetRecord(), hybridStoreConfig.isPresent()));
         producerTrackerMap.values().stream().forEach(
             producerTracker -> producerTracker.clearPartition(partition)
         );
@@ -820,7 +641,7 @@ public class StoreIngestionTask implements Runnable, Closeable {
       logger.info("Topic " + topic + " Partition " + partition + " has been unsubscribed, skip this record that has offset " + record.offset());
       return;
     }
-    if (partitionConsumptionState.isErrored()) {
+    if (partitionConsumptionState.isErrorReported()) {
       logger.info("Topic " + topic + " Partition " + partition + " is already errored, skip this record that has offset " + record.offset());
       return;
     }
@@ -834,13 +655,13 @@ public class StoreIngestionTask implements Runnable, Closeable {
     } catch (FatalDataValidationException e) {
       int faultyPartition = record.partition();
       String errorMessage = "Fatal data validation problem with partition " + faultyPartition;
-      boolean needToUnsub = !(isCurrentVersion.getAsBoolean() || partitionConsumptionState.isCompleted());
+      boolean needToUnsub = !(isCurrentVersion.getAsBoolean() || partitionConsumptionState.isEndOfPushReceived());
       if (needToUnsub) {
         errorMessage += ". Consumption will be halted.";
       } else {
         errorMessage += ". Because " + topic + " is the current version, consumption will continue.";
       }
-      reportError(Lists.newArrayList(faultyPartition), errorMessage, e);
+      notificationDispatcher.reportError(Lists.newArrayList(partitionConsumptionState), errorMessage, e);
       if (needToUnsub) {
         unSubscribePartition(topic, faultyPartition);
       }
@@ -854,7 +675,7 @@ public class StoreIngestionTask implements Runnable, Closeable {
 
     int processedRecordNum = partitionConsumptionState.getProcessedRecordNum();
     if (processedRecordNum >= OFFSET_THROTTLE_INTERVAL ||
-        partitionConsumptionState.isCompleted()) {
+        partitionConsumptionState.isEndOfPushReceived()) {
       int processedRecordSize = partitionConsumptionState.getProcessedRecordSize();
       throttler.maybeThrottle(processedRecordSize);
       // Report metrics
@@ -870,13 +691,23 @@ public class StoreIngestionTask implements Runnable, Closeable {
     partitionConsumptionState.incrProcessedRecordNumSinceLastSync();
     int offsetPersistInterval = partitionConsumptionState.isDeferredWrite() ?
         OFFSET_UPDATE_INTERNAL_PER_PARTITION_FOR_DEFERRED_WRITE : OFFSET_UPDATE_INTERVAL_PER_PARTITION_FOR_TRANSACTION_MODE;
-    if (partitionConsumptionState.getProcessedRecordNumSinceLastSync() >= offsetPersistInterval ||
-        partitionConsumptionState.isCompleted()) {
+
+    // If any of these conditions is true, then we want to sync to disk and dispatch notifications:
+    boolean recordsProcessedAboveSyncIntervalThreshold = partitionConsumptionState.getProcessedRecordNumSinceLastSync() >= offsetPersistInterval;
+    boolean endOfPushReceived = partitionConsumptionState.isEndOfPushReceived();
+
+    if (recordsProcessedAboveSyncIntervalThreshold || endOfPushReceived) {
       AbstractStorageEngine storageEngine = storeRepository.getLocalStorageEngine(topic);
       storageEngine.sync(partition);
       OffsetRecord offsetRecord = partitionConsumptionState.getOffsetRecord();
       storageMetadataService.put(this.topic, partition, offsetRecord);
-      reportProgress(partition, offsetRecord.getOffset());
+
+      if (isReadyToServe(partitionConsumptionState)) {
+        notificationDispatcher.reportCompleted(partitionConsumptionState);
+      } else {
+        notificationDispatcher.reportProgress(partitionConsumptionState);
+      }
+
       partitionConsumptionState.resetProcessedRecordNumSinceLastSync();
     }
   }
@@ -899,21 +730,21 @@ public class StoreIngestionTask implements Runnable, Closeable {
   }
 
   private void processControlMessage(ControlMessage controlMessage, int partition, long offset, PartitionConsumptionState partitionConsumptionState) {
-    StoreVersionState storeVersionState;
+    Optional<StoreVersionState> storeVersionState;
     ControlMessageType type = ControlMessageType.valueOf(controlMessage);
     logger.info(consumerTaskId + " : Received " + type.name() + " control message. Partition: " + partition + ", Offset: " + offset);
     switch(type) {
       case START_OF_PUSH:
         StartOfPush startOfPush = (StartOfPush) controlMessage.controlMessageUnion;
         adjustStorageEngine(partition, startOfPush.sorted, partitionConsumptionState);
-        reportStarted(partition, partitionConsumptionState);
+        notificationDispatcher.reportStarted(partitionConsumptionState);
         storeVersionState = storageMetadataService.getStoreVersionState(topic);
-        if (null == storeVersionState) {
+        if (!storeVersionState.isPresent()) {
           // No other partition of the same topic has started yet, let's initialize the StoreVersionState
-          storeVersionState = new StoreVersionState();
-          storeVersionState.sorted = startOfPush.sorted;
-          storageMetadataService.put(topic, storeVersionState);
-        } else if (storeVersionState.sorted != startOfPush.sorted) {
+          StoreVersionState newStoreVersionState = new StoreVersionState();
+          newStoreVersionState.sorted = startOfPush.sorted;
+          storageMetadataService.put(topic, newStoreVersionState);
+        } else if (storeVersionState.get().sorted != startOfPush.sorted) {
           // Something very wrong is going on ): ...
           throw new VeniceException("Unexpected: received multiple " + type.name() +
               " control messages with inconsistent 'sorted' fields within the same topic!");
@@ -927,9 +758,13 @@ public class StoreIngestionTask implements Runnable, Closeable {
         adjustStorageEngine(partition, false, partitionConsumptionState);
 
         // We need to keep track of when the EOP happened, as that is used within Hybrid Stores' lag measurement
-        partitionConsumptionState.offsetRecord.complete(offset);
+        partitionConsumptionState.getOffsetRecord().endOfPushReceived(offset);
 
-        reportCompleted(partition, partitionConsumptionState);
+        if (hybridStoreConfig.isPresent()) {
+          notificationDispatcher.reportEndOfPushReceived(partitionConsumptionState);
+        } else {
+          notificationDispatcher.reportCompleted(partitionConsumptionState);
+        }
         break;
       case START_OF_SEGMENT:
       case END_OF_SEGMENT:
@@ -940,26 +775,28 @@ public class StoreIngestionTask implements Runnable, Closeable {
         break;
       case START_OF_BUFFER_REPLAY:
         storeVersionState = storageMetadataService.getStoreVersionState(topic);
-        if (null == storeVersionState) {
+        if (storeVersionState.isPresent()) {
+          // Update StoreVersionState, if necessary
+          StartOfBufferReplay startOfBufferReplay = (StartOfBufferReplay) controlMessage.controlMessageUnion;
+          if (null == storeVersionState.get().startOfBufferReplay) {
+            // First time we receive a SOBR
+            storeVersionState.get().startOfBufferReplay = startOfBufferReplay;
+            storageMetadataService.put(topic, storeVersionState.get());
+          } else if (!Utils.listEquals(storeVersionState.get().startOfBufferReplay.sourceOffsets, startOfBufferReplay.sourceOffsets)) {
+            // Something very wrong is going on ): ...
+            throw new VeniceException("Unexpected: received multiple " + type.name() +
+                " control messages with inconsistent 'startOfBufferReplay.offsets' fields within the same topic!" +
+                "\nPrevious SOBR: " + storeVersionState.get().startOfBufferReplay.sourceOffsets +
+                "\nIncoming SOBR: " + startOfBufferReplay.sourceOffsets);
+          }
+
+          partitionConsumptionState.getOffsetRecord().setStartOfBufferReplayDestinationOffset(offset);
+          notificationDispatcher.reportStartOfBufferReplayReceived(partitionConsumptionState);
+        } else {
           // TODO: If there are cases where this can legitimately happen, then we need a less stringent reaction here...
           throw new VeniceException("Unexpected: received some " + type.name() +
               " control message in a topic where we have not yet received a " +
               ControlMessageType.START_OF_PUSH.name() + " control message.");
-        } else {
-          // Update StoreVersionState, if necessary
-          StartOfBufferReplay startOfBufferReplay = (StartOfBufferReplay) controlMessage.controlMessageUnion;
-          if (null == storeVersionState.startOfBufferReplay) {
-            // First time we receive a SOBR
-            storeVersionState.startOfBufferReplay = startOfBufferReplay;
-            storageMetadataService.put(topic, storeVersionState);
-          } else if (!storeVersionState.startOfBufferReplay.sourceOffsets.equals(startOfBufferReplay.sourceOffsets)) {
-            // Something very wrong is going on ): ...
-            throw new VeniceException("Unexpected: received multiple " + type.name() +
-                " control messages with inconsistent 'startOfBufferReplay.offsets' fields within the same topic!");
-          }
-
-          // Update PartitionState
-          partitionConsumptionState.offsetRecord.setStartOfBufferReplayDestinationOffset(offset);
         }
        break;
       default:

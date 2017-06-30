@@ -7,6 +7,8 @@ import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.storage.StorageMetadataService;
 import org.apache.log4j.Logger;
 
+import java.util.Optional;
+
 /**
  * This class is used to systematically copy {@link OffsetRecord} instances rather than
  * passing them as is. This is necessary in StoreConsumptionTaskTest.
@@ -32,7 +34,7 @@ public class DeepCopyStorageMetadataService extends DeepCopyOffsetManager implem
    */
   @Override
   public void put(String topicName, StoreVersionState record) throws VeniceException {
-    LOGGER.info("OffsetManager.put(StoreVersionState) called with topicName: " + topicName + ", record: " + record);
+    LOGGER.info("DeepCopyStorageMetadataService.put(StoreVersionState) called with topicName: " + topicName + ", record: " + record);
     StoreVersionState deepCopy = storeVersionStateSerializer.deserialize(topicName, storeVersionStateSerializer.serialize(topicName, record));
     delegateStorageMetadataService.put(topicName, deepCopy);
   }
@@ -44,7 +46,7 @@ public class DeepCopyStorageMetadataService extends DeepCopyOffsetManager implem
    */
   @Override
   public void clearStoreVersionState(String topicName) {
-    LOGGER.info("OffsetManager.clearStoreVersionState called with topicName: " + topicName);
+    LOGGER.info("DeepCopyStorageMetadataService.clearStoreVersionState called with topicName: " + topicName);
     delegateStorageMetadataService.clearStoreVersionState(topicName);
 
   }
@@ -56,9 +58,9 @@ public class DeepCopyStorageMetadataService extends DeepCopyOffsetManager implem
    * @return an instance of {@link StoreVersionState} corresponding to this topic.
    */
   @Override
-  public StoreVersionState getStoreVersionState(String topicName) throws VeniceException {
-    StoreVersionState recordToReturn = delegateStorageMetadataService.getStoreVersionState(topicName);
-    LOGGER.info("OffsetManager.getStoreVersionState called with topicName: " + topicName +
+  public Optional<StoreVersionState> getStoreVersionState(String topicName) throws VeniceException {
+    Optional<StoreVersionState> recordToReturn = delegateStorageMetadataService.getStoreVersionState(topicName);
+    LOGGER.info("DeepCopyStorageMetadataService.getStoreVersionState called with topicName: " + topicName +
         ", recordToReturn: " + recordToReturn);
     return recordToReturn;
   }

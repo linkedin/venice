@@ -24,7 +24,6 @@ import org.apache.http.client.utils.URLEncodedUtils;
 import org.apache.http.impl.nio.client.CloseableHttpAsyncClient;
 import org.apache.http.impl.nio.client.HttpAsyncClients;
 import org.apache.http.message.BasicNameValuePair;
-import org.mockito.Mockito;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -46,6 +45,7 @@ public class TestBackupControllerResponse {
     int bogusPort = 21; /* nothing runs here, doesn't need to bind.since not launching AdminSparkServer */
     String controllerName = Utils.getHelixNodeIdentifier(bogusPort);
     VeniceProperties controllerOneProps = new PropertyBuilder()
+        .put(ENABLE_TOPIC_REPLICATOR, false)
         .put(KAFKA_ZK_ADDRESS, kafka.getZkAddress())
         .put(KAFKA_REPLICA_FACTOR, 1)
         .put(DEFAULT_REPLICA_FACTOR, 1)

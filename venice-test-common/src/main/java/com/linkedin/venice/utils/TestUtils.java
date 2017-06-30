@@ -117,7 +117,7 @@ public class TestUtils {
     OffsetRecord offsetRecord = new OffsetRecord();
     offsetRecord.setOffset(currentOffset);
     if (endOfPushOffset.isPresent()) {
-      offsetRecord.complete(endOfPushOffset.get());
+      offsetRecord.endOfPushReceived(endOfPushOffset.get());
     }
     return offsetRecord;
   }

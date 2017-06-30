@@ -4,6 +4,8 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.offsets.OffsetManager;
 
+import java.util.Optional;
+
 /**
  * This is a superset of the the OffsetManager APIs, which also provide functions
  * for storing store-version level state.
@@ -30,5 +32,5 @@ public interface StorageMetadataService extends OffsetManager {
    * @param topicName  kafka topic to which the consumer thread is registered to.
    * @return an instance of {@link StoreVersionState} corresponding to this topic.
    */
-  StoreVersionState getStoreVersionState(String topicName) throws VeniceException;
+  Optional<StoreVersionState> getStoreVersionState(String topicName) throws VeniceException;
 }

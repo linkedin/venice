@@ -26,15 +26,15 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
   private final String controllerClusterZkAddresss;
   private final int topicMonitorPollIntervalMs;
   private final boolean parent;
+  private final int parentControllerWaitingTimeForConsumptionMs;
+  private final long adminConsumptionTimeoutMinutes;
+  private final long topicCreationThrottlingTimeWindowMs;
+  private final boolean enableTopicReplicator;
 
   private Map<String, String> childClusterMap = null;
   private String d2ServiceName;
   private Map<String, String> childClusterD2Map = null;
 
-  private final int parentControllerWaitingTimeForConsumptionMs;
-  private final long adminConsumptionTimeoutMinutes;
-
-  private final long topicCreationThrottlingTimeWindowMs;
 
   public VeniceControllerConfig(VeniceProperties props) {
     super(props);
@@ -59,6 +59,7 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
     }
     this.parentControllerWaitingTimeForConsumptionMs = props.getInt(ConfigKeys.PARENT_CONTROLLER_WAITING_TIME_FOR_CONSUMPTION_MS, 30 * Time.MS_PER_SECOND);
     this.adminConsumptionTimeoutMinutes = props.getLong(ADMIN_CONSUMPTION_TIMEOUT_MINUTES, TimeUnit.DAYS.toMinutes(5));
+    this.enableTopicReplicator = props.getBoolean(ENABLE_TOPIC_REPLICATOR, true);
   }
 
   public int getAdminPort() {
@@ -113,6 +114,10 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
 
   public long getAdminConsumptionTimeoutMinutes(){
     return adminConsumptionTimeoutMinutes;
+  }
+
+  public boolean isEnableTopicReplicator() {
+    return enableTopicReplicator;
   }
 
   public static Map<String, String> parseClusterMap(VeniceProperties clusterPros, String datacenterWhitelist) {

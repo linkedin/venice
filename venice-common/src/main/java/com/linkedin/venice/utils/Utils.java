@@ -68,6 +68,30 @@ public class Utils {
   }
 
   /**
+   * A manual implementation of list equality.
+   *
+   * This is (unfortunately) useful with Avro lists since they do not work reliably.
+   * There are cases where a {@link List<T>} coming out of an Avro record will be
+   * implemented as a {@link org.apache.avro.generic.GenericData.Array} and other
+   * times it will be a java {@link ArrayList}. When this happens, the equality check
+   * fails...
+   *
+   * @return true if both lists have the same items in the same order
+   */
+  public static <T> boolean listEquals(List<T> list1, List<T> list2) {
+    if (list1.size() != list2.size()) {
+      return false;
+    } else {
+      for (int i = 0; i < list2.size(); i++) {
+        if (list1.get(i) != (list2.get(i))) {
+          return false;
+        }
+      }
+    }
+    return true;
+  }
+
+  /**
    * Throw an IllegalArgumentException if the argument is null, otherwise just
    * return the argument.
    *

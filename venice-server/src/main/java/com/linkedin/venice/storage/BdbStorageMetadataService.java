@@ -20,6 +20,7 @@ import org.apache.log4j.Logger;
 
 import java.io.File;
 import java.nio.charset.StandardCharsets;
+import java.util.Optional;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Supplier;
 
@@ -177,16 +178,16 @@ public class BdbStorageMetadataService extends AbstractVeniceService implements 
    * Gets the currently-persisted {@link StoreVersionState} for this topic.
    *
    * @param topicName kafka topic to which the consumer thread is registered to.
-   * @return an instance of {@link StoreVersionState} corresponding to this topic, or null if not found
+   * @return an instance of {@link StoreVersionState} corresponding to this topic, or {@link Optional#empty()} if not found
    */
   @Override
-  public StoreVersionState getStoreVersionState(String topicName) throws VeniceException {
+  public Optional<StoreVersionState> getStoreVersionState(String topicName) throws VeniceException {
     DatabaseEntry keyEntry = getBDBKey(topicName , PARTITION_FOR_STORE_VERSION_STATE);
     byte[] value = get(keyEntry, getStoreVersionStateDescriptor(topicName));
     if (null == value) {
-      return null;
+      return Optional.empty();
     } else {
-      return storeVersionStateSerializer.deserialize(topicName, value);
+      return Optional.of(storeVersionStateSerializer.deserialize(topicName, value));
     }
   }
 

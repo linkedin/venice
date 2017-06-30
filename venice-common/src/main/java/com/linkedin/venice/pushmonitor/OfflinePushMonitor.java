@@ -17,8 +17,12 @@ import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
+import java.util.function.BooleanSupplier;
 import java.util.stream.Collectors;
+
+import com.linkedin.venice.replication.TopicReplicator;
 import org.apache.log4j.Logger;
 
 
@@ -41,6 +45,7 @@ public class OfflinePushMonitor implements OfflinePushAccessor.PartitionStatusLi
   private final Object lock;
 
   private Map<String, OfflinePushStatus> topicToPushMap;
+  private Optional<TopicReplicator> topicReplicator = Optional.empty();
 
   public OfflinePushMonitor(String clusterName, RoutingDataRepository routingDataRepository,
       OfflinePushAccessor accessor, StoreCleaner storeCleaner, ReadWriteStoreRepository metadataRepository) {
@@ -137,8 +142,10 @@ public class OfflinePushMonitor implements OfflinePushAccessor.PartitionStatusLi
     // Only keep MAX_ERROR_PUSH_TO_KEEP pushes for debug.
     while (versionNumbers.size() > MAX_ERROR_PUSH_TO_KEEP) {
       int oldestVersionNumber = Collections.min(versionNumbers);
-      topicToPushMap.remove(Version.composeKafkaTopic(storeName, oldestVersionNumber));
       versionNumbers.remove(Integer.valueOf(oldestVersionNumber));
+
+      String topicName = Version.composeKafkaTopic(storeName, oldestVersionNumber);
+      topicToPushMap.remove(topicName);
     }
   }
 
@@ -257,6 +264,7 @@ public class OfflinePushMonitor implements OfflinePushAccessor.PartitionStatusLi
       } else {
         // On controller side, partition status is read only. It could only be updated by storage node.
         offlinePushStatus.setPartitionStatus(partitionStatus);
+        checkHybridPushStatus(offlinePushStatus);
       }
     }
   }
@@ -288,6 +296,30 @@ public class OfflinePushMonitor implements OfflinePushAccessor.PartitionStatusLi
       if (pushStatus != null && pushStatus.getCurrentStatus().equals(ExecutionStatus.STARTED)) {
         logger.info("Resource for Topic:" + kafkaTopic + " is deleted, stopping the running push.");
         handleErrorPush(pushStatus);
+      }
+    }
+  }
+
+  private void checkHybridPushStatus(OfflinePushStatus offlinePushStatus) {
+    String storeName = Version.parseStoreFromKafkaTopicName(offlinePushStatus.getKafkaTopic());
+    Store store = metadataRepository.getStore(storeName);
+    if (store.isHybrid()) {
+      if (offlinePushStatus.isReadyToStartBufferReplay()) {
+        Optional<TopicReplicator> topicReplicatorOptional = getTopicReplicator();
+        if (topicReplicatorOptional.isPresent()) {
+          try {
+            topicReplicatorOptional.get().startBufferReplay(
+                Version.composeRealTimeTopic(storeName),
+                offlinePushStatus.getKafkaTopic(),
+                store);
+            logger.info("Successfully kicked off buffer replay for offlinePushStatus: " + offlinePushStatus.toString());
+          } catch (Exception e) {
+            // TODO: Figure out a better error handling...
+            logger.error("Failed to kick off the buffer replay for offlinePushStatus: " + offlinePushStatus.toString(), e);
+          }
+        } else {
+          logger.error("The TopicReplicator was not properly initialized!");
+        }
       }
     }
   }
@@ -371,5 +403,13 @@ public class OfflinePushMonitor implements OfflinePushAccessor.PartitionStatusLi
 
   public OfflinePushAccessor getAccessor() {
     return accessor;
+  }
+
+  public void setTopicReplicator(Optional<TopicReplicator> topicReplicator) {
+    this.topicReplicator = topicReplicator;
+  }
+
+  public Optional<TopicReplicator> getTopicReplicator() {
+    return topicReplicator;
   }
 }

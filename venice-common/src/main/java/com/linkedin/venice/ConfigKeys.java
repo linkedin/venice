@@ -70,6 +70,7 @@ public class ConfigKeys {
   public static final String CONTROLLER_CLUSTER_ZK_ADDRESSS = "controller.cluster.zk.address";
   /** Cluster name for all parent controllers */
   public static final String CONTROLLER_CLUSTER = "controller.cluster.name";
+  public static final String ENABLE_TOPIC_REPLICATOR = "controller.enable.topic.replicator";
 
   // Server specific configs
   public static final String LISTENER_PORT = "listener.port";

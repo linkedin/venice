@@ -38,6 +38,16 @@ public class PushMonitorNotifier implements VeniceNotifier {
   }
 
   @Override
+  public void endOfPushReceived(String topic, int partitionId, long offset) {
+    accessor.updateReplicaStatus(topic, partitionId, instanceId, ExecutionStatus.END_OF_PUSH_RECEIVED, offset);
+  }
+
+  @Override
+  public void startOfBufferReplayReceived(String topic, int partitionId, long offset) {
+    accessor.updateReplicaStatus(topic, partitionId, instanceId, ExecutionStatus.START_OF_BUFFER_REPLAY_RECEIVED, offset);
+  }
+
+  @Override
   public void close() {
     // Do not need to close here. accessor should be closed by the outer class.
   }

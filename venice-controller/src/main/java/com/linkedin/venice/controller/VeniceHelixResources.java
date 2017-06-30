@@ -14,7 +14,6 @@ import io.tehuti.metrics.MetricsRepository;
 import org.apache.helix.HelixManager;
 import org.apache.helix.manager.zk.ZkClient;
 
-
 /**
  * Aggregate all of essentials resources which is required by controller in one place.
  */
@@ -32,7 +31,8 @@ public class VeniceHelixResources implements VeniceResource {
                               HelixAdapterSerializer adapterSerializer,
                               HelixManager helixManager,
                               VeniceControllerClusterConfig config,
-                              StoreCleaner storeCleaner, MetricsRepository metricsRepository) {
+                              StoreCleaner storeCleaner,
+                              MetricsRepository metricsRepository) {
     this.config = config;
     this.controller = helixManager;
     this.metadataRepository = new HelixReadWriteStoreRepository(zkClient, adapterSerializer, clusterName);
@@ -45,6 +45,7 @@ public class VeniceHelixResources implements VeniceResource {
     AggPartitionHealthStats aggPartitionHealthStats =
         new AggPartitionHealthStats(metricsRepository, routingDataRepository, metadataRepository,
             config.getReplicaFactor());
+
   }
 
   @Override
