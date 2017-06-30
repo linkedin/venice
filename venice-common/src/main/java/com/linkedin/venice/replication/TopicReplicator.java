@@ -1,6 +1,9 @@
 package com.linkedin.venice.replication;
 
+import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.kafka.TopicDoesNotExistException;
+import com.linkedin.venice.kafka.TopicException;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.utils.ReflectUtils;
@@ -20,8 +23,9 @@ import java.util.stream.Collectors;
  * within the same kafka cluster.
  */
 public abstract class TopicReplicator implements Closeable {
-  public static final String TOPIC_REPLICATOR_CLASS_NAME = "topic.replicator.class.name";
-  public static final String TOPIC_REPLICATOR_SOURCE_KAFKA_CLUSTER = "topic.replicator.source.kafka.cluster";
+  public static final String TOPIC_REPLICATOR_CONFIG_PREFIX = "topic.replicator.";
+  public static final String TOPIC_REPLICATOR_CLASS_NAME = TOPIC_REPLICATOR_CONFIG_PREFIX + "class.name";
+  public static final String TOPIC_REPLICATOR_SOURCE_KAFKA_CLUSTER = TOPIC_REPLICATOR_CONFIG_PREFIX + "source.kafka.cluster";
 
   private final TopicManager topicManager;
   protected final String destKafkaBootstrapServers;
@@ -106,32 +110,39 @@ public abstract class TopicReplicator implements Closeable {
   abstract void beginReplicationInternal(String sourceTopic, String destinationTopic, int partitionCount, Optional<Map<Integer, Long>> startingOffsets);
   abstract void terminateReplicationInternal(String sourceTopic, String destinationTopic);
 
-  public static TopicReplicator getTopicReplicator(TopicManager topicManager, VeniceProperties veniceProperties) {
-    String className = veniceProperties.getString(TOPIC_REPLICATOR_CLASS_NAME);
-
-    Class<? extends TopicReplicator> topicReplicatorClass = ReflectUtils.loadClass(className);
-    Class<TopicManager> param1Class = ReflectUtils.loadClass(TopicManager.class.getName());
-    Class<VeniceProperties> param2Class = ReflectUtils.loadClass(VeniceProperties.class.getName());
-    TopicReplicator topicReplicator = ReflectUtils.callConstructor(
-        topicReplicatorClass,
-        new Class[]{param1Class, param2Class},
-        new Object[]{topicManager, veniceProperties});
-
-    return topicReplicator;
-  }
-
-  public static abstract class TopicException extends Exception {
-    public TopicException(String message){
-      super(message);
-    }
-  }
-
   /**
-   * The source or destination topic for the replication request does not exit
+   * Reflectively instantiates a {@link TopicManager} based on the passed in {@param veniceProperties}.
+   *
+   * The properties must contain {@value #TOPIC_REPLICATOR_CLASS_NAME}, otherwise, instantiation is not
+   * attempted an instance of {@link Optional#empty()} is returned instead. If the class name is specified
+   * but other properties required by the concrete implementation are missing, the implementation is
+   * allowed to throw exceptions.
+   *
+   * @param topicManager to be used by the {@link TopicReplicator}
+   * @param veniceProperties containing the class name and other implementation-specific configs
+   * @return an instance of {@link Optional<TopicReplicator>}, or empty if {@param veniceProperties} is empty.
    */
-  public static class TopicDoesNotExistException extends TopicException {
-    public TopicDoesNotExistException(String message){
-      super(message);
+  public static Optional<TopicReplicator> getTopicReplicator(TopicManager topicManager,
+                                                             VeniceProperties veniceProperties) {
+    boolean enableTopicReplicator = veniceProperties.getBoolean(ConfigKeys.ENABLE_TOPIC_REPLICATOR);
+    if (!enableTopicReplicator) {
+      return Optional.empty();
+    }
+
+    try {
+      String className = veniceProperties.getString(TOPIC_REPLICATOR_CLASS_NAME); // Will throw if absent
+
+      Class<? extends TopicReplicator> topicReplicatorClass = ReflectUtils.loadClass(className);
+      Class<TopicManager> param1Class = ReflectUtils.loadClass(TopicManager.class.getName());
+      Class<VeniceProperties> param2Class = ReflectUtils.loadClass(VeniceProperties.class.getName());
+      TopicReplicator topicReplicator = ReflectUtils.callConstructor(
+          topicReplicatorClass,
+          new Class[]{param1Class, param2Class},
+          new Object[]{topicManager, veniceProperties});
+
+      return Optional.of(topicReplicator);
+    } catch (Exception e) {
+      throw new VeniceException("Failed to construct a TopicReplicator!", e);
     }
   }
 

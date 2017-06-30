@@ -26,9 +26,9 @@ import org.codehaus.jackson.map.ObjectMapper;
 
 
 public class BrooklinTopicReplicator extends TopicReplicator {
-
-  public static final String BROOKLIN_CONNECTION_STRING = "topic.replicator.brooklin.connection.string";
-  public static final String BROOKLIN_CONNECTION_APPLICATION_ID = "topic.replicator.brooklin.application.id";
+  public static final String BROOKLIN_CONFIG_PREFIX = TOPIC_REPLICATOR_CONFIG_PREFIX + "brooklin.";
+  public static final String BROOKLIN_CONNECTION_STRING = BROOKLIN_CONFIG_PREFIX + "connection.string";
+  public static final String BROOKLIN_CONNECTION_APPLICATION_ID = BROOKLIN_CONFIG_PREFIX + "application.id";
 
   private final String brooklinConnectionString; // TODO: Clean up, this is never used.
   private final DatastreamRestClient client;

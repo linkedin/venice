@@ -2,6 +2,8 @@ package com.linkedin.venice.pushmonitor;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.OfflinePushStrategy;
+import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.Utils;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -188,6 +190,23 @@ public class OfflinePushStatus {
     statusHistory.add(new StatusSnapshot(status, LocalDateTime.now().toString()));
   }
 
+  /**
+   * Checks whether at least one replica of each partition has returned {@link ExecutionStatus#END_OF_PUSH_RECEIVED}
+   *
+   * This is intended for {@link OfflinePushStatus} instances which belong to Hybrid Stores, though there
+   * should be no negative side-effects if called on an instance tied to a non-hybrid store, as the logic
+   * should consistently return false in that case.
+   *
+   * @return true if at least one replica of each partition has consumed an EOP control message, false otherwise
+   */
+  public boolean isReadyToStartBufferReplay() {
+    return getPartitionStatuses().stream()
+        // For all partitions
+        .allMatch(partitionStatus -> partitionStatus.getReplicaStatuses().stream()
+            // There must be at least one replica which has received the EOP
+            .anyMatch(replicaStatus -> replicaStatus.getCurrentStatus() == ExecutionStatus.END_OF_PUSH_RECEIVED));
+  }
+
   @Override
   public boolean equals(Object o) {
     if (this == o) {
@@ -230,5 +249,16 @@ public class OfflinePushStatus {
     result = 31 * result + statusHistory.hashCode();
     result = 31 * result + partitionStatuses.hashCode();
     return result;
+  }
+
+  @Override
+  public String toString() {
+    return "OfflinePushStatus{" +
+        "kafkaTopic='" + kafkaTopic + '\'' +
+        ", numberOfPartition=" + numberOfPartition +
+        ", replicationFactor=" + replicationFactor +
+        ", strategy=" + strategy +
+        ", currentStatus=" + currentStatus +
+        '}';
   }
 }

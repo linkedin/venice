@@ -98,6 +98,7 @@ public class TestVeniceHelixAdmin {
     clusterProps.getString(ConfigKeys.CLUSTER_NAME);
     PropertyBuilder builder = new PropertyBuilder().put(clusterProps.toProperties())
         .put(baseControllerProps.toProperties())
+        .put(ENABLE_TOPIC_REPLICATOR, false)
         .put(KAFKA_ZK_ADDRESS, kafkaZkAddress)
         .put(ZOOKEEPER_ADDRESS, zkAddress)
         .put(CLUSTER_NAME, clusterName)

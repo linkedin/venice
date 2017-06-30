@@ -19,6 +19,7 @@ import com.linkedin.venice.utils.VeniceProperties;
 
 import java.nio.ByteBuffer;
 import java.util.*;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 
 import java.util.function.Supplier;
@@ -314,7 +315,12 @@ public class VeniceWriter<K, V> extends AbstractVeniceWriter<K, V> {
     // Initialize the SpecificRecord instances used by the Avro-based Kafka protocol
     KafkaMessageEnvelope kafkaValue = getKafkaMessageEnvelope(MessageType.CONTROL_MESSAGE, partition);
     kafkaValue.payloadUnion = controlMessage;
-    sendMessage(getControlMessageKey(kafkaValue), kafkaValue, partition);
+    try {
+      sendMessage(getControlMessageKey(kafkaValue), kafkaValue, partition).get();
+    } catch (InterruptedException|ExecutionException e) {
+      throw new VeniceException("Got an exception while trying to send a control message (" +
+          ControlMessageType.valueOf(controlMessage).name() + ")", e);
+    }
   }
 
   /**

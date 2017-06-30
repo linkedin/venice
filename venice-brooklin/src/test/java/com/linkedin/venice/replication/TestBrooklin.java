@@ -5,6 +5,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.integration.utils.BrooklinWrapper;
 import com.linkedin.venice.integration.utils.KafkaBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
+import com.linkedin.venice.kafka.TopicException;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.TestUtils;
@@ -28,10 +29,14 @@ import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.clients.producer.ProducerRecord;
 import org.apache.kafka.common.TopicPartition;
 import static org.testng.Assert.*;
+
+import org.apache.log4j.Logger;
 import org.testng.annotations.Test;
 
 
 public class TestBrooklin {
+
+  private static final Logger logger = Logger.getLogger(TestBrooklin.class);
 
   @Test
   public void canReplicateKafkaWithBrooklinTopicReplicator() throws InterruptedException {
@@ -68,7 +73,7 @@ public class TestBrooklin {
     //create replication stream
     try {
       replicator.beginReplication(sourceTopic, destinationTopic, Optional.of(startingSourceOffsets));
-    } catch (TopicReplicator.TopicException e) {
+    } catch (TopicException e) {
       throw new VeniceException(e);
     }
 
@@ -135,17 +140,52 @@ public class TestBrooklin {
 
     TopicManager topicManager = new TopicManager("some zk connection");
 
+    // Main case: trying to instantiate the BrooklinTopicReplicator
     String brooklinReplicatorClassName = BrooklinTopicReplicator.class.getName();
     VeniceProperties props = new PropertyBuilder()
+        .put(ConfigKeys.ENABLE_TOPIC_REPLICATOR, true)
         .put(TopicReplicator.TOPIC_REPLICATOR_CLASS_NAME, brooklinReplicatorClassName)
         .put(BrooklinTopicReplicator.BROOKLIN_CONNECTION_STRING, "useless...")
         .put(TopicReplicator.TOPIC_REPLICATOR_SOURCE_KAFKA_CLUSTER, "some Kafka connection")
         .put(ConfigKeys.CLUSTER_NAME, "Venice cluster name")
         .put(BrooklinTopicReplicator.BROOKLIN_CONNECTION_APPLICATION_ID, "some app id")
         .build();
-    TopicReplicator topicReplicator = TopicReplicator.getTopicReplicator(topicManager, props);
+    Optional<TopicReplicator> topicReplicator = TopicReplicator.getTopicReplicator(topicManager, props);
 
-    assertNotNull(topicReplicator);
-    assertEquals(topicReplicator.getClass().getName(), brooklinReplicatorClassName);
+    assertTrue(topicReplicator.isPresent());
+    assertEquals(topicReplicator.get().getClass().getName(), brooklinReplicatorClassName);
+
+    // We should fail if no class name is specified
+    VeniceProperties badPropsWithNoClassName = new PropertyBuilder()
+        .put(ConfigKeys.ENABLE_TOPIC_REPLICATOR, true)
+        .build();
+    try {
+      TopicReplicator.getTopicReplicator(topicManager, badPropsWithNoClassName);
+      fail("TopicReplicator.get() should fail fast if no class name is specified.");
+    } catch (Exception e) {
+      logger.info("Got an exception, as expected: ", e);
+      // Good
+    }
+
+    // We should fail if a bad class name is specified
+    VeniceProperties badPropsWithBadClassName = new PropertyBuilder()
+        .put(ConfigKeys.ENABLE_TOPIC_REPLICATOR, true)
+        .put(TopicReplicator.TOPIC_REPLICATOR_CLASS_NAME, "fake.package.name." + brooklinReplicatorClassName)
+        .build();
+    try {
+      TopicReplicator.getTopicReplicator(topicManager, badPropsWithBadClassName);
+      fail("TopicReplicator.get() should fail fast if a bad class name is specified.");
+    } catch (Exception e) {
+      logger.info("Got an exception, as expected: ", e);
+      // Good
+    }
+
+    // When specifying the "kill-switch", we should be able to run without a TopicReplicator
+    VeniceProperties emptyProps = new PropertyBuilder()
+        .put(ConfigKeys.ENABLE_TOPIC_REPLICATOR, false)
+        .build();
+    Optional<TopicReplicator> emptyTopicReplicator = TopicReplicator.getTopicReplicator(topicManager, emptyProps);
+
+    assertFalse(emptyTopicReplicator.isPresent());
   }
 }

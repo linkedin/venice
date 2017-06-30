@@ -29,7 +29,7 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.pushmonitor.OfflinePushMonitor;
 import com.linkedin.venice.replication.TopicReplicator;
-import com.linkedin.venice.replication.TopicReplicator.TopicException;
+import com.linkedin.venice.kafka.TopicException;
 import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.status.StatusMessageChannel;
@@ -96,8 +96,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     private final HelixAdapterSerializer adapterSerializer;
     private final ZkWhitelistAccessor whitelistAccessor;
     private final ExecutionIdAccessor executionIdAccessor;
+    private final Optional<TopicReplicator> topicReplicator;
 
-    /**
+
+  /**
      * Parent controller, it always being connected to Helix. And will create sub-controller for specific cluster when
      * getting notification from Helix.
      */
@@ -120,6 +122,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         this.topicManager = new TopicManager(config.getKafkaZkAddress());
         this.whitelistAccessor = new ZkWhitelistAccessor(zkClient, adapterSerializer);
         this.executionIdAccessor = new ZkExecutionIdAccessor(zkClient, adapterSerializer);
+        this.topicReplicator = TopicReplicator.getTopicReplicator(topicManager, config.getProps());
 
         // Create the parent controller and related cluster if required.
         createControllerClusterIfRequired();
@@ -846,7 +849,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
 
     public void storeMetadataUpdate(String clusterName, String storeName, StoreMetadataOperation operation) {
-        checkPreConditionForUpdateStore(clusterName,storeName);
+        checkPreConditionForUpdateStore(clusterName, storeName);
         HelixReadWriteStoreRepository repository = getVeniceHelixResource(clusterName).getMetadataRepository();
         repository.lock();
         try {
@@ -1399,19 +1402,15 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         return Optional.empty();
     }
 
-    @Override
-    public void startBufferReplay(String clusterName, String sourceKafkaCluster, String sourceTopicName, String destinationKafkaCluster, Version destinationStoreVersion) throws TopicException {
-        TopicReplicator topicReplicator = TopicReplicator.getTopicReplicator(topicManager, config.getProps());
-        topicReplicator.startBufferReplay(
-            sourceTopicName,
-            destinationStoreVersion.kafkaTopicName(),
-            getStore(clusterName, destinationStoreVersion.getStoreName()));
-    }
-
     protected void startMonitorOfflinePush(String clusterName, String kafkaTopic, int numberOfPartition,
         int replicationFactor, OfflinePushStrategy strategy) {
         OfflinePushMonitor offlinePushMonitor = getVeniceHelixResource(clusterName).getOfflinePushMonitor();
-        offlinePushMonitor.startMonitorOfflinePush(kafkaTopic, numberOfPartition, replicationFactor, strategy);
+        offlinePushMonitor.setTopicReplicator(topicReplicator);
+        offlinePushMonitor.startMonitorOfflinePush(
+            kafkaTopic,
+            numberOfPartition,
+            replicationFactor,
+            strategy);
     }
 
     protected void stopMonitorOfflinePush(String clusterName, String topic) {

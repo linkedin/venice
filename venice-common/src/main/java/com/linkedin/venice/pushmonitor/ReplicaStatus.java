@@ -59,10 +59,8 @@ public class ReplicaStatus {
     boolean isValid;
     switch (currentStatus) {
       case STARTED:
-        isValid = Utils.verifyTransition(newStatus, STARTED, PROGRESS, ERROR, COMPLETED);
-        break;
       case PROGRESS:
-        isValid = Utils.verifyTransition(newStatus, STARTED, PROGRESS, ERROR, COMPLETED);
+        isValid = Utils.verifyTransition(newStatus, STARTED, PROGRESS, END_OF_PUSH_RECEIVED, START_OF_BUFFER_REPLAY_RECEIVED, ERROR, COMPLETED);
         break;
       case ERROR:
       case COMPLETED:

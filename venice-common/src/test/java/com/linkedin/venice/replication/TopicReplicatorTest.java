@@ -4,6 +4,7 @@ import static org.mockito.Mockito.*;
 import static org.testng.Assert.*;
 
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.kafka.TopicException;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.Store;
@@ -19,7 +20,7 @@ import java.util.*;
 
 public class TopicReplicatorTest {
   @Test
-  public void testStartBufferReplay() throws TopicReplicator.TopicException {
+  public void testStartBufferReplay() throws TopicException {
     final Map<Integer, Long> startingOffsets = new HashMap<>();
     startingOffsets.put(0, 10L);
     startingOffsets.put(1, 20L);

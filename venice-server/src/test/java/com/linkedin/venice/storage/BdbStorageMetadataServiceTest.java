@@ -12,6 +12,8 @@ import org.testng.Assert;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
+import java.util.Optional;
+
 
 public class BdbStorageMetadataServiceTest {
 
@@ -134,8 +136,8 @@ public class BdbStorageMetadataServiceTest {
   @Test
   public void testCRUDforStoreVersionState() {
     final String TOPIC = TestUtils.getUniqueString("topic");
-    StoreVersionState actualRecord = storageMetadataService.getStoreVersionState(TOPIC);
-    Assert.assertEquals(null, actualRecord, "NonExistentTopic should return a null StoreVersionState");
+    Optional<StoreVersionState> actualRecord = storageMetadataService.getStoreVersionState(TOPIC);
+    Assert.assertEquals(Optional.empty(), actualRecord, "NonExistentTopic should return a empty StoreVersionState");
 
     // Create
     StoreVersionState expectedRecord = new StoreVersionState();
@@ -144,7 +146,7 @@ public class BdbStorageMetadataServiceTest {
 
     //Read
     actualRecord = storageMetadataService.getStoreVersionState(TOPIC);
-    Assert.assertEquals(actualRecord, expectedRecord, "StorageMetadataService returned a different record");
+    Assert.assertEquals(actualRecord.get(), expectedRecord, "StorageMetadataService returned a different record");
 
     // Update
     expectedRecord = new StoreVersionState();
@@ -152,12 +154,12 @@ public class BdbStorageMetadataServiceTest {
     storageMetadataService.put(TOPIC, expectedRecord);
 
     actualRecord = storageMetadataService.getStoreVersionState(TOPIC);
-    Assert.assertEquals(actualRecord, expectedRecord, "StorageMetadataService returned a different record");
+    Assert.assertEquals(actualRecord.get(), expectedRecord, "StorageMetadataService returned a different record");
 
     //Delete
     storageMetadataService.clearStoreVersionState(TOPIC);
     actualRecord = storageMetadataService.getStoreVersionState(TOPIC);
-    Assert.assertEquals(actualRecord, null, "cleared topic should return null");
+    Assert.assertEquals(actualRecord, Optional.empty(), "cleared topic should return null");
   }
 
 }

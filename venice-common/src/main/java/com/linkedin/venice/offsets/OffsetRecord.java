@@ -75,15 +75,16 @@ public class OffsetRecord {
     return this.partitionState.lastUpdate;
   }
 
-  public void complete(long endOfPushOffset) {
+  public void endOfPushReceived(long endOfPushOffset) {
     if (endOfPushOffset < 1) {
       // Even an empty push should have a SOP and EOP, so offset 1 is the absolute minimum.
       throw new IllegalArgumentException("endOfPushOffset cannot be < 1.");
     }
+//    this.setOffset(endOfPushOffset);
     this.partitionState.endOfPush = true;
   }
 
-  public boolean isCompleted() {
+  public boolean isEndOfPushReceived() {
     return this.partitionState.endOfPush;
   }
 
@@ -127,7 +128,7 @@ public class OffsetRecord {
         "offset=" + getOffset() +
         ", eventTimeEpochMs=" + getEventTimeEpochMs() +
         ", processingTimeEpochMs=" + getProcessingTimeEpochMs() +
-        ", completed=" + isCompleted() +
+        ", isEndOfPushReceived=" + isEndOfPushReceived() +
         '}';
   }
 

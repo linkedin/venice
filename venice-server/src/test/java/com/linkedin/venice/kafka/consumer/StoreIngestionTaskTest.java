@@ -17,6 +17,7 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.notifier.LogNotifier;
 import com.linkedin.venice.notifier.VeniceNotifier;
 import com.linkedin.venice.offsets.DeepCopyStorageMetadataService;
+import com.linkedin.venice.offsets.InMemoryStorageMetadataService;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.serialization.DefaultSerializer;
 import com.linkedin.venice.server.StoreRepository;
@@ -41,7 +42,7 @@ import com.linkedin.venice.unit.kafka.producer.MockInMemoryProducer;
 import com.linkedin.venice.unit.kafka.producer.TransformingProducer;
 import com.linkedin.venice.unit.matchers.ExceptionClassAndCauseClassMatcher;
 import com.linkedin.venice.unit.matchers.ExceptionClassMatcher;
-import com.linkedin.venice.unit.matchers.LongGreaterThanMatcher;
+import com.linkedin.venice.unit.matchers.LongEqualOrGreaterThanMatcher;
 import com.linkedin.venice.unit.matchers.NonEmptyStringMatcher;
 import com.linkedin.venice.utils.ByteArray;
 import com.linkedin.venice.utils.Pair;
@@ -51,10 +52,12 @@ import com.linkedin.venice.writer.KafkaProducerWrapper;
 import com.linkedin.venice.writer.VeniceWriter;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedList;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
@@ -75,6 +78,7 @@ import org.apache.log4j.Logger;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.BeforeMethod;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 import static com.linkedin.venice.utils.TestUtils.*;
@@ -98,7 +102,7 @@ public class StoreIngestionTaskTest {
     // TODO: Clean this up... mutating static state is not cool. We should make the StoreIngestionTask configurable...
     StoreIngestionTask.READ_CYCLE_DELAY_MS = 5;
     StoreIngestionTask.POLLING_SCHEMA_DELAY_MS = 100;
-    StoreIngestionTask.PROGRESS_REPORT_INTERVAL = -1; // Report all the time.
+    IngestionNotificationDispatcher.PROGRESS_REPORT_INTERVAL = -1; // Report all the time.
     // Report progress/throttling for every message
     StoreIngestionTask.OFFSET_THROTTLE_INTERVAL = 1;
     StoreIngestionTask.OFFSET_UPDATE_INTERVAL_PER_PARTITION_FOR_TRANSACTION_MODE = 1;
@@ -231,11 +235,16 @@ public class StoreIngestionTaskTest {
     Properties kafkaProps = new Properties();
     VeniceConsumerFactory mockFactory = mock(VeniceConsumerFactory.class);
     doReturn(inMemoryKafkaConsumer).when(mockFactory).getConsumer(kafkaProps);
-    for (int partition : partitions) {
-      doReturn(new OffsetRecord()).when(mockStorageMetadataService).getLastOffset(topic, partition);
+    StorageMetadataService offsetManager;
+    logger.info("mockStorageMetadataService: " + mockStorageMetadataService.getClass().getName());
+    if (mockStorageMetadataService.getClass() != InMemoryStorageMetadataService.class) {
+      for (int partition : partitions) {
+        doReturn(new OffsetRecord()).when(mockStorageMetadataService).getLastOffset(topic, partition);
+        doReturn(Optional.empty()).when(mockStorageMetadataService).getStoreVersionState(topic);
+      }
     }
+    offsetManager = new DeepCopyStorageMetadataService(mockStorageMetadataService);
     Queue<VeniceNotifier> notifiers = new ConcurrentLinkedQueue<>(Arrays.asList(mockNotifier, new LogNotifier()));
-    StorageMetadataService offsetManager = new DeepCopyStorageMetadataService(mockStorageMetadataService);
     storeIngestionTaskUnderTest = new StoreIngestionTask(
         mockFactory, kafkaProps, mockStoreRepository, offsetManager, notifiers, mockThrottler, topic, mockSchemaRepo,
         mockTopicManager, mockStats, storeBufferService, isCurrentVersion, hybridStoreConfig);
@@ -643,16 +652,17 @@ public class StoreIngestionTaskTest {
 
   /**
    * In this test, {@link #PARTITION_BAR} will finish a regular push, and then get some more messages afterwards,
-   * including a corrupt message followed by a good one. We expect the Notifier to report as such.
+   * including a corrupt message followed by a good one. We expect the Notifier to not report any errors after the
+   * EOP.
    */
   @Test()
-  public void testCorruptMessagesDoNotFailFastOnCurrentVersion() throws Exception {
+  public void testCorruptMessagesDoNotFailFastAfterEOP() throws Exception {
     VeniceWriter veniceWriterForDataDuringPush = getVeniceWriter(() -> new MockInMemoryProducer(inMemoryKafkaBroker));
     VeniceWriter veniceWriterForDataAfterPush = getCorruptedVeniceWriter(putValueToCorrupt);
 
     veniceWriter.broadcastStartOfPush(new HashMap<>());
     //long fooLastOffset = getOffset(veniceWriterForDataDuringPush.put(putKeyFoo, putValue, SCHEMA_ID));
-    getOffset(veniceWriterForDataDuringPush.put(putKeyBar, putValue, SCHEMA_ID));
+    long lastOffsetBeforeEOP = getOffset(veniceWriterForDataDuringPush.put(putKeyBar, putValue, SCHEMA_ID));
     veniceWriterForDataDuringPush.close();
     veniceWriter.broadcastEndOfPush(new HashMap<>());
 
@@ -661,16 +671,19 @@ public class StoreIngestionTaskTest {
 
     // After the end of push, we simulate a nearline writer, which somehow pushes corrupt data.
     getOffset(veniceWriterForDataAfterPush.put(putKeyBar, putValueToCorrupt, SCHEMA_ID));
-    long barLastOffset = getOffset(veniceWriterForDataAfterPush.put(putKeyBar, putValue, SCHEMA_ID));
+    long lastOffset = getOffset(veniceWriterForDataAfterPush.put(putKeyBar, putValue, SCHEMA_ID));
     veniceWriterForDataAfterPush.close();
 
-    logger.info("barLastOffset: " + barLastOffset);
+    logger.info("lastOffsetBeforeEOP: " + lastOffsetBeforeEOP + ", lastOffset: " + lastOffset);
 
     runTest(getSet(PARTITION_BAR), () -> {
       verify(mockNotifier, timeout(TEST_TIMEOUT).atLeastOnce())
-          .progress(eq(topic), eq(PARTITION_BAR), longThat(new LongGreaterThanMatcher(barLastOffset - 1)));
+          .progress(eq(topic), eq(PARTITION_BAR), LongEqualOrGreaterThanMatcher.get(lastOffsetBeforeEOP));
 
-      verify(mockNotifier, timeout(TEST_TIMEOUT)).error(eq(topic), eq(PARTITION_BAR), argThat(new NonEmptyStringMatcher()),
+      verify(mockNotifier, timeout(TEST_TIMEOUT).times(1))
+          .completed(eq(topic), eq(PARTITION_BAR), LongEqualOrGreaterThanMatcher.get(lastOffsetBeforeEOP));
+
+      verify(mockNotifier, never()).error(eq(topic), eq(PARTITION_BAR), argThat(new NonEmptyStringMatcher()),
           argThat(new ExceptionClassMatcher(CorruptDataException.class)));
     });
   }
@@ -695,7 +708,7 @@ public class StoreIngestionTaskTest {
 
     runTest(getSet(PARTITION_FOO, PARTITION_BAR), () -> {
       verify(mockNotifier, timeout(TEST_TIMEOUT))
-          .completed(eq(topic), eq(PARTITION_FOO), longThat(new LongGreaterThanMatcher(fooLastOffset)));
+          .completed(eq(topic), eq(PARTITION_FOO), LongEqualOrGreaterThanMatcher.get(fooLastOffset));
 
       verify(mockNotifier, timeout(TEST_TIMEOUT)).error(
           eq(topic), eq(PARTITION_BAR), argThat(new NonEmptyStringMatcher()),
@@ -817,7 +830,17 @@ public class StoreIngestionTaskTest {
     return ByteBuffer.allocate(putValue.length + Integer.BYTES).put(putValue).putInt(number).array();
   }
 
-  private void testDataValidationCheckPointing(boolean sortedInput) throws Exception {
+  @DataProvider(name = "sortedInput")
+  public static Object[][] sortedInput() {
+    List<Boolean[]> returnList = new ArrayList<>();
+    returnList.add(new Boolean[]{true});
+    returnList.add(new Boolean[]{false});
+    Boolean[][] valuesToReturn = new Boolean[returnList.size()][1];
+    return returnList.toArray(valuesToReturn);
+  }
+
+  @Test(dataProvider = "sortedInput", invocationCount = 3, skipFailedInvocations = true)
+  public void testDataValidationCheckPointing(boolean sortedInput) throws Exception {
     final Map<Integer, Long> maxOffsetPerPartition = new HashMap<>();
     final Map<Pair<Integer, ByteArray>, ByteArray> pushedRecords = new HashMap<>();
     final int totalNumberOfMessages = 1000;
@@ -864,8 +887,13 @@ public class StoreIngestionTaskTest {
 
     runTest(pollStrategy, relevantPartitions, () -> {}, () -> {
       // Verify that all partitions reported success.
-      maxOffsetPerPartition.entrySet().stream().filter(entry -> relevantPartitions.contains(entry.getKey())).forEach(entry ->
-          verify(mockNotifier, timeout(TEST_TIMEOUT).atLeastOnce()).completed(eq(topic), eq(entry.getKey()), eq(entry.getValue())));
+      maxOffsetPerPartition.entrySet().stream().filter(entry -> relevantPartitions.contains(entry.getKey())).forEach(entry -> {
+            int partition = entry.getKey();
+            long offset = entry.getValue();
+            logger.info("Verifying completed was called for partition " + partition + " and offset " + offset + " or greater.");
+            verify(mockNotifier, timeout(TEST_TIMEOUT).atLeastOnce()).completed(eq(topic), eq(partition), LongEqualOrGreaterThanMatcher.get(offset));
+          }
+      );
 
       // After this, all asynchronous processing should be finished, so there's no need for time outs anymore.
 
@@ -904,17 +932,17 @@ public class StoreIngestionTaskTest {
       });
     });
   }
-
-  @Test (invocationCount = 3)
-  public void testDataValidationCheckPointingWithUnsortedInput() throws Exception {
-    testDataValidationCheckPointing(false);
-  }
-
-  // Test DIV checkpointing and deferred-write ingestion
-  @Test (invocationCount = 3)
-  public void testDataValidationCheckPointingWithSortedInput() throws Exception {
-    testDataValidationCheckPointing(true);
-  }
+//
+//  @Test (invocationCount = 3, skipFailedInvocations = true)
+//  public void testDataValidationCheckPointingWithUnsortedInput() throws Exception {
+//    testDataValidationCheckPointing(false);
+//  }
+//
+//  // Test DIV checkpointing and deferred-write ingestion
+//  @Test (invocationCount = 3, skipFailedInvocations = true)
+//  public void testDataValidationCheckPointingWithSortedInput() throws Exception {
+//    testDataValidationCheckPointing(true);
+//  }
 
   @Test
   public void testKillAfterPartitionIsCompleted()
@@ -983,13 +1011,18 @@ public class StoreIngestionTaskTest {
 
   @Test
   public void testDelayedTransitionToOnlineInHybridMode() throws Exception {
+    final long MESSAGES_BEFORE_EOP = 100;
+    final long MESSAGES_AFTER_EOP = 100;
+
+    // This does not entirely make sense, but we can do better when we have a real integration test which includes buffer replay
+    final long TOTAL_MESSAGES_PER_PARTITION = (MESSAGES_BEFORE_EOP + MESSAGES_AFTER_EOP) / ALL_PARTITIONS.size();
+    when(mockTopicManager.getLatestOffset(anyString(), anyInt())).thenReturn(TOTAL_MESSAGES_PER_PARTITION);
+
+    mockStorageMetadataService = new InMemoryStorageMetadataService();
     hybridStoreConfig = Optional.of(new HybridStoreConfig(10, 20));
-    when(mockNotifier.replicationLagShouldBlockCompletion()).thenReturn(true);
     runTest(ALL_PARTITIONS, () -> {
           veniceWriter.broadcastStartOfPush(new HashMap<>());
-          final int NUMBER_OF_MESSAGES_BEFORE_EOP = 100;
-          final int NUMBER_OF_MESSAGES_AFTER_EOP = 100;
-          for (int i = 0; i < NUMBER_OF_MESSAGES_BEFORE_EOP; i++) {
+          for (int i = 0; i < MESSAGES_BEFORE_EOP; i++) {
             try {
               veniceWriter.put(getNumberedKey(i), getNumberedValue(i), SCHEMA_ID).get();
             } catch (InterruptedException | ExecutionException e) {
@@ -997,13 +1030,18 @@ public class StoreIngestionTaskTest {
             }
           }
           veniceWriter.broadcastEndOfPush(new HashMap<>());
+
+        }, () -> {
+          verify(mockNotifier, timeout(TEST_TIMEOUT).atLeast(ALL_PARTITIONS.size())).started(eq(topic), anyInt());
+          verify(mockNotifier, never()).completed(anyString(), anyInt(), anyLong());
+
           veniceWriter.broadcastStartOfBufferReplay(
               Arrays.asList(10L, 9L, 8L, 7L, 6L, 5L, 4L, 3L, 2L, 1L),
               "source K cluster",
               "source K topic",
               new HashMap<>());
 
-          for (int i = 0; i < NUMBER_OF_MESSAGES_AFTER_EOP; i++) {
+          for (int i = 0; i < MESSAGES_AFTER_EOP; i++) {
             try {
               veniceWriter.put(getNumberedKey(i), getNumberedValue(i), SCHEMA_ID).get();
             } catch (InterruptedException | ExecutionException e) {
@@ -1011,13 +1049,8 @@ public class StoreIngestionTaskTest {
             }
           }
 
-        }, () -> {
-          // The .started() verifications are flaky... TODO: Investigate if we have a bug!
-//          ALL_PARTITIONS.forEach(partition -> verify(mockNotifier, timeout(TEST_TIMEOUT).atLeastOnce()).started(topic, partition));
-//          verify(mockNotifier, timeout(TEST_TIMEOUT).atLeast(ALL_PARTITIONS.size())).started(eq(topic), anyInt());
-          verify(mockNotifier, never()).completed(anyString(), anyInt(), anyLong());
+          verify(mockNotifier, timeout(TEST_TIMEOUT).atLeast(ALL_PARTITIONS.size())).completed(anyString(), anyInt(), anyLong());
         }
     );
   }
-
 }

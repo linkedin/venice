@@ -18,7 +18,7 @@ public class TestOffsetRecord {
     Assert.assertEquals(offsetRecord2, offsetRecord1);
 
     offsetRecord1 = TestUtils.getOffsetRecord(100);
-    offsetRecord1.complete(100);
+    offsetRecord1.endOfPushReceived(100);
     offsetRecord2 = new OffsetRecord(offsetRecord1.toBytes());
     Assert.assertEquals(offsetRecord2, offsetRecord1);
   }

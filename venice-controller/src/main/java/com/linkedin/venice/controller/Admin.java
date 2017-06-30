@@ -2,13 +2,11 @@ package com.linkedin.venice.controller;
 
 import com.linkedin.venice.controller.kafka.consumer.AdminConsumerService;
 import com.linkedin.venice.helix.Replica;
-import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
-import com.linkedin.venice.replication.TopicReplicator;
 import com.linkedin.venice.schema.SchemaEntry;
 
 import java.util.Collection;
@@ -295,8 +293,6 @@ public interface Admin {
     * Get the tracker used to track the execution of the admin command.
     */
     Optional<AdminCommandExecutionTracker> getAdminCommandExecutionTracker();
-
-    void startBufferReplay(String clusterName, String sourceKafkaCluster, String sourceTopicName, String destinationKafkaCluster, Version destinationStoreVersion) throws TopicReplicator.TopicException;
 
     void close();
 }

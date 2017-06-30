@@ -141,12 +141,10 @@ public class VeniceStateModelFactory extends StateModelFactory<StateModel> {
     }
 
     @Override
-    public void started(String resourceName, int partitionId) {
-    }
+    public void started(String resourceName, int partitionId) {}
 
     @Override
-    public void restarted(String storeName, int partitionId, long offset) {
-    }
+    public void restarted(String storeName, int partitionId, long offset) {}
 
     /**
      * Count down the latch once consumption is completed.
@@ -160,21 +158,17 @@ public class VeniceStateModelFactory extends StateModelFactory<StateModel> {
       countDownTheLatch(resourceName, partitionId);
     }
 
-    /**
-     * @return true because the bootstrap->online state transition should be blocked by excessive replication lag.
-     */
     @Override
-    public boolean replicationLagShouldBlockCompletion() {
-      return true;
-    }
+    public void progress(String resourceName, int partitionId, long offset) {}
 
     @Override
-    public void progress(String resourceName, int partitionId, long offset) {
-    }
+    public void endOfPushReceived(String storeName, int partitionId, long offset) {}
 
     @Override
-    public void close() {
-    }
+    public void startOfBufferReplayReceived(String storeName, int partitionId, long offset) {}
+
+    @Override
+    public void close() {}
 
     @Override
     public void error(String resourceName, int partitionId, String message, Exception ex) {

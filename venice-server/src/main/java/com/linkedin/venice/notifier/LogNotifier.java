@@ -33,6 +33,18 @@ public class LogNotifier implements VeniceNotifier {
   }
 
   @Override
+  public void endOfPushReceived(String storeName, int partitionId, long offset) {
+    logger.info("Received END_OF_PUSH for Store " + storeName + " partitionId " + partitionId +
+        " Offset " + offset);
+  }
+
+  @Override
+  public void startOfBufferReplayReceived(String storeName, int partitionId, long offset) {
+    logger.info("Received START_OF_BUFFER_REPLAY for Store " + storeName + " partitionId " + partitionId +
+        " Offset " + offset);
+  }
+
+  @Override
   public void close() {
 
   }

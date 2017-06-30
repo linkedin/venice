@@ -153,32 +153,46 @@ public class TopicManager implements Closeable {
   /**
    * Generate a map from partition number to the last offset available for that partition
    * @param topic
-   * @return
+   * @return a Map of partition to latest offset, or an empty map if there's any problem
    */
   public synchronized Map<Integer, Long> getLatestOffsets(String topic) {
     // To be safe, check whether the topic exists or not,
     // since querying offset against non-existing topic could cause endless retrying.
-    if (! containsTopic(topic)) {
+    if (!containsTopic(topic)) {
       logger.warn("Topic: " + topic + " doesn't exist, returning empty map for latest offsets");
-      return new HashMap<Integer, Long>();
+      return new HashMap<>();
     }
     KafkaConsumer<byte[], byte[]> consumer = getConsumer();
-    List<PartitionInfo> partitions = consumer.partitionsFor(topic);
-    if (null == partitions) {
-      logger.warn("Topic: " + topic + " has a null partition set, returning empty map for latest offsets");
-      return new HashMap<Integer, Long>();
+    List<PartitionInfo> partitionInfoList = consumer.partitionsFor(topic);
+    if (null == partitionInfoList || partitionInfoList.isEmpty()) {
+      logger.warn("Unexpected! Topic: " + topic + " has a null partition set, returning empty map for latest offsets");
+      return new HashMap<>();
     }
-    Map<Integer, Long> offsets = new HashMap<>();
 
-    for (PartitionInfo partitionInfo : partitions) {
-      int partition = partitionInfo.partition();
-      TopicPartition topicPartition = new TopicPartition(topic, partition);
-      consumer.assign(Arrays.asList(topicPartition));
-      consumer.seekToEnd(Arrays.asList(topicPartition));
-      offsets.put(partition, consumer.position(topicPartition));
+    Map<Integer, Long> latestOffsets = partitionInfoList.stream()
+        .map(pi -> pi.partition())
+        .collect(Collectors.toMap(p -> p, p -> getLatestOffset(consumer, topic, p, false)));
+
+    return latestOffsets;
+  }
+
+  public synchronized long getLatestOffset(String topic, int partition) throws TopicDoesNotExistException {
+    return getLatestOffset(getConsumer(), topic, partition, true);
+  }
+
+  private Long getLatestOffset(KafkaConsumer<byte[], byte[]> consumer, String topic, Integer partition, boolean doTopicCheck) throws TopicDoesNotExistException {
+    if (doTopicCheck && !containsTopic(topic)) {
+      throw new TopicDoesNotExistException("Topic " + topic + " does not exist!");
     }
+    if (partition < 0) {
+      throw new IllegalArgumentException("Cannot retrieve latest offsets for invalid partition " + partition);
+    }
+    TopicPartition topicPartition = new TopicPartition(topic, partition);
+    consumer.assign(Arrays.asList(topicPartition));
+    consumer.seekToEnd(Arrays.asList(topicPartition));
+    long latestOffset = consumer.position(topicPartition);
     consumer.assign(Arrays.asList());
-    return offsets;
+    return latestOffset;
   }
 
   public Map<Integer, Long> getOffsetsByTime(String topic, long timestamp) {

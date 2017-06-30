@@ -1,7 +1,6 @@
 package com.linkedin.venice.controller;
 
 import com.google.common.collect.Ordering;
-import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.controller.kafka.AdminTopicUtils;
 import com.linkedin.venice.controller.kafka.consumer.AdminConsumptionTask;
 import com.linkedin.venice.controller.kafka.offsets.AdminOffsetManager;
@@ -34,20 +33,16 @@ import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
 import com.linkedin.venice.helix.HelixReadWriteStoreRepository;
 import com.linkedin.venice.helix.Replica;
 import com.linkedin.venice.meta.HybridStoreConfig;
-import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.kafka.TopicManager;
-import com.linkedin.venice.kafka.validation.checksum.CheckSumType;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.offsets.OffsetManager;
 import com.linkedin.venice.schema.SchemaEntry;
-import com.linkedin.venice.serialization.DefaultSerializer;
 import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
-import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.VeniceWriter;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -63,7 +58,6 @@ import org.apache.log4j.Logger;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
-import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Future;
@@ -1023,11 +1017,6 @@ public class VeniceParentHelixAdmin implements Admin {
   @Override
   public Optional<AdminCommandExecutionTracker> getAdminCommandExecutionTracker() {
     return Optional.of(adminCommandExecutionTracker);
-  }
-
-  @Override
-  public void startBufferReplay(String clusterName, String sourceKafkaCluster, String sourceTopicName, String destinationKafkaCluster, Version destinationStoreVersion) {
-    throw new VeniceException("startBufferReplay in the parent controller is not supported yet.");
   }
 
   @Override
