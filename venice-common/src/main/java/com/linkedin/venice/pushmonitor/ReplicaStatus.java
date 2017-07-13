@@ -66,6 +66,12 @@ public class ReplicaStatus {
       case COMPLETED:
         isValid = Utils.verifyTransition(newStatus, STARTED);
         break;
+      case END_OF_PUSH_RECEIVED:
+        isValid = Utils.verifyTransition(newStatus, START_OF_BUFFER_REPLAY_RECEIVED, ERROR, COMPLETED);
+        break;
+      case START_OF_BUFFER_REPLAY_RECEIVED:
+        isValid = Utils.verifyTransition(newStatus, ERROR, COMPLETED);
+        break;
       default:
         isValid = false;
     }

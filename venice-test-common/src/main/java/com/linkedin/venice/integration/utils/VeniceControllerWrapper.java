@@ -33,7 +33,7 @@ public class VeniceControllerWrapper extends ProcessWrapper {
 
   static StatefulServiceProvider<VeniceControllerWrapper> generateService(String clusterName, String zkAddress,
       KafkaBrokerWrapper kafkaBrokerWrapper, boolean isParent, int replicaFactor, int partitionSize,
-      long delayToReblanceMS, int minActiveReplica, VeniceControllerWrapper childController) {
+      long delayToReblanceMS, int minActiveReplica, VeniceControllerWrapper childController, VeniceProperties extraProps) {
     // TODO: Once the ZK address used by Controller and Kafka are decoupled, change this
 
     return (serviceName, port, dataDirectory) -> {
@@ -44,8 +44,9 @@ public class VeniceControllerWrapper extends ProcessWrapper {
 
       // TODO: Validate that these configs are all still used.
       // TODO: Centralize default config values in a single place
-      PropertyBuilder builder = new PropertyBuilder().put(clusterProps.toProperties())
-          .put(ENABLE_TOPIC_REPLICATOR, false)
+      PropertyBuilder builder = new PropertyBuilder()
+          .put(clusterProps.toProperties())
+          .put(extraProps.toProperties())
           .put(KAFKA_REPLICA_FACTOR, 1)
           .put(KAFKA_ZK_ADDRESS, kafkaBrokerWrapper.getZkAddress())
           .put(CONTROLLER_NAME, "venice-controller") // Why is this configurable?
@@ -59,6 +60,9 @@ public class VeniceControllerWrapper extends ProcessWrapper {
           .put(DELAY_TO_REBALANCE_MS, delayToReblanceMS)
           .put(MIN_ACTIVE_REPLICA, minActiveReplica)
           .put(TOPIC_CREATION_THROTTLING_TIME_WINDOW_MS, 100);
+      if (!extraProps.containsKey(ENABLE_TOPIC_REPLICATOR)){
+          builder.put(ENABLE_TOPIC_REPLICATOR, false);
+      }
       if (isParent) {
         // Parent controller needs config to route per-cluster requests such as job status
         // This dummy parent controller wont support such requests until we make this config configurable.

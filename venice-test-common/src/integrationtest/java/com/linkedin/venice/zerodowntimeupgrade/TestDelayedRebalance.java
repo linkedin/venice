@@ -35,7 +35,7 @@ public class TestDelayedRebalance {
     int numberOfRouter = 1;
     // Start a cluster with enabling delayed rebalance.
     cluster = ServiceFactory.getVeniceCluster(numberOfController, numberOfServer, numberOfRouter, replicaFactor,
-        partitionSize, false, false, delayRebalanceMS, minActiveReplica);
+        partitionSize, false, false, delayRebalanceMS, minActiveReplica, false);
   }
 
   @AfterMethod

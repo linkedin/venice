@@ -46,6 +46,8 @@ dependencies {
     runtime libraries.commonsLang
     runtime libraries.httpCore
     runtime libraries.httpClient
+
+  testCompile project(':venice-brooklin')
 }
 
 configurations {

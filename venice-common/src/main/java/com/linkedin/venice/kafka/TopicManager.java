@@ -13,6 +13,7 @@ import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
 import java.util.StringJoiner;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 import kafka.admin.AdminUtils;
@@ -74,7 +75,7 @@ public class TopicManager implements Closeable {
   }
 
   /**
-   * Create a topic
+   * Create a topic, and block until the topic is created (with a 25 second timeout after which this function will throw a VeniceException)
    * @param topicName Name for the new topic
    * @param numPartitions number of partitions
    * @param replication replication factor
@@ -97,6 +98,14 @@ public class TopicManager implements Closeable {
       } // TODO: else apply buffer topic configured retention.
       topicProperties.put(LogConfig.MessageTimestampTypeProp(), "LogAppendTime"); // Just in case the Kafka cluster isn't configured as expected.
       AdminUtils.createTopic(getZkUtils(), topicName, numPartitions, replication, topicProperties, RackAwareMode.Safe$.MODULE$);
+      long startTime = System.currentTimeMillis();
+      long timeout = TimeUnit.MILLISECONDS.convert(25, TimeUnit.SECONDS);
+      while (!containsTopic(topicName)){
+        if (System.currentTimeMillis() > startTime + timeout){
+          throw new VeniceException("Timeout while creating topic: " + topicName + ".  Topic still does not exist after " + timeout + "ms.");
+        }
+        Utils.sleep(200);
+      }
     } catch (TopicExistsException e) {
       logger.warn("Met error when creating kakfa topic: " + topicName, e);
     }
@@ -110,6 +119,10 @@ public class TopicManager implements Closeable {
     } else {
       logger.info("Topic: " +  topicName + " to be deleted doesn't exist");
     }
+  }
+
+  public int getReplicationFactor(String topicName){
+    return AdminUtils.fetchTopicMetadataFromZk(topicName, getZkUtils()).partitionMetadata().get(0).replicas().size();
   }
 
   /**
@@ -196,25 +209,31 @@ public class TopicManager implements Closeable {
   }
 
   public Map<Integer, Long> getOffsetsByTime(String topic, long timestamp) {
+    int remainingAttempts = 5;
     List<PartitionInfo> partitionInfoList = getConsumer().partitionsFor(topic);
-    if (null == partitionInfoList || partitionInfoList.isEmpty()) {
-      // N.B.: During unit test development, getting a null happened occasionally without apparent
-      //       reason. In their current state, the tests have been run with a high invocationCount and
-      //       no failures, so it may be a non-issue. If this happens again, and we find some test case
-      //       that can reproduce it, we may want to try adding a short amount of retries, and reporting
-      //       a bug to Kafka.
-      throw new VeniceException("Cannot get partition info for topic: " + topic + ", partitionInfoList: " + partitionInfoList);
+    // N.B.: During unit test development, getting a null happened occasionally without apparent
+    //       reason. In their current state, the tests have been run with a high invocationCount and
+    //       no failures, so it may be a non-issue. If this happens again, and we find some test case
+    //       that can reproduce it, we may want to try adding a short amount of retries, and reporting
+    //       a bug to Kafka.
+    while (remainingAttempts > 0 && (null == partitionInfoList || partitionInfoList.isEmpty())) {
+      Utils.sleep(500);
+      partitionInfoList = getConsumer().partitionsFor(topic);
+      remainingAttempts -= 1;
     }
+    if (null == partitionInfoList || partitionInfoList.isEmpty()) {
+      throw new VeniceException("Cannot get partition info for topic: " + topic + ", partitionInfoList: " + partitionInfoList);
+    } else {
+      Map<TopicPartition, Long> timestampsToSearch = partitionInfoList.stream()
+          .collect(Collectors.toMap(partitionInfo -> new TopicPartition(topic, partitionInfo.partition()), ignoredParam -> timestamp));
 
-    Map<TopicPartition, Long> timestampsToSearch = partitionInfoList.stream().collect(Collectors.toMap(
-        partitionInfo -> new TopicPartition(topic, partitionInfo.partition()),
-        ignoredParam -> timestamp));
-
-    LOGGER.info("timestampsToSearch: " + timestampsToSearch);
-
-    return getConsumer().offsetsForTimes(timestampsToSearch).entrySet().stream().collect(Collectors.toMap(
-        partitionToOffset -> Utils.notNull(partitionToOffset.getKey(), "Got a null TopicPartition key out of the offsetsForTime API").partition(),
-        partitionToOffset -> Optional.ofNullable(partitionToOffset.getValue()).map(offset -> offset.offset()).orElse(0L)));
+      return getConsumer().offsetsForTimes(timestampsToSearch)
+          .entrySet()
+          .stream()
+          .collect(Collectors.toMap(partitionToOffset -> Utils.notNull(partitionToOffset.getKey(),
+              "Got a null TopicPartition key out of the offsetsForTime API").partition(),
+              partitionToOffset -> Optional.ofNullable(partitionToOffset.getValue()).map(offset -> offset.offset()).orElse(0L)));
+    }
   }
 
   /**

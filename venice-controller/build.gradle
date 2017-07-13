@@ -40,6 +40,7 @@ dependencies {
 
   testCompile project(':venice-server')
   testCompile project(':venice-router')
+  testCompile project(':venice-brooklin')
   testCompile 'commons-io:commons-io:2.4'
 
 }

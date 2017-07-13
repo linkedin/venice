@@ -31,7 +31,7 @@ public class TestInstanceRemovable {
     int numberOfRouter = 1;
 
     cluster = ServiceFactory.getVeniceCluster(numberOfController, numberOfServer, numberOfRouter, replicaFactor,
-        partitionSize);
+        partitionSize, false);
   }
 
   @AfterMethod

@@ -16,4 +16,5 @@ dependencies {
   // Schema related dependencies
   compile project(':venice-schema-common')
   compile project(':venice-common') //TODO, pull venice writer out of venice common so this is a smaller dependency
+  testCompile project(':venice-brooklin')
 }

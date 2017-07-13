@@ -1,12 +1,18 @@
 package com.linkedin.venice.integration.utils;
 
+import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.server.AdminSparkServer;
 import com.linkedin.venice.exceptions.VeniceException;
 
+import com.linkedin.venice.replication.TopicReplicator;
 import com.linkedin.venice.utils.MockTime;
+import com.linkedin.venice.utils.PropertyBuilder;
+import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
+import com.linkedin.venice.utils.VeniceProperties;
 import io.tehuti.metrics.MetricsRepository;
+import java.util.Properties;
 import org.apache.log4j.Logger;
 
 import java.util.Optional;
@@ -19,6 +25,7 @@ public class ServiceFactory {
   // CLASS-LEVEL STATE AND APIs
 
   private static final Logger LOGGER = Logger.getLogger(ZkServerWrapper.class);
+  private static final VeniceProperties EMPTY_VENICE_PROPS = new VeniceProperties(new Properties());
 
   // Test config
   private static final int MAX_ATTEMPT = 10;
@@ -69,17 +76,29 @@ public class ServiceFactory {
    */
   public static VeniceControllerWrapper getVeniceController(String clusterName, KafkaBrokerWrapper kafkaBrokerWrapper) {
     return getVeniceController(clusterName, kafkaBrokerWrapper, DEFAULT_REPLICATION_FACTOR, DEFAULT_PARTITION_SIZE_BYTES,
-        DEFAULT_DELAYED_TO_REBALANCE_MS, DEFAULT_REPLICATION_FACTOR);
+        DEFAULT_DELAYED_TO_REBALANCE_MS, DEFAULT_REPLICATION_FACTOR, null);
   }
 
   /**
    * @return an instance of {@link com.linkedin.venice.controller.VeniceControllerService}
    */
   public static VeniceControllerWrapper getVeniceController(String clusterName, KafkaBrokerWrapper kafkaBrokerWrapper,
-      int replicaFactor, int partitionSize, long delayToRebalanceMS, int minActiveReplica) {
+      int replicaFactor, int partitionSize, long delayToRebalanceMS, int minActiveReplica, BrooklinWrapper brooklinWrapper) {
+    VeniceProperties extraProperties;
+    if (null == brooklinWrapper) {
+      extraProperties = EMPTY_VENICE_PROPS;
+    } else {
+      extraProperties = new PropertyBuilder()
+          .put(ConfigKeys.ENABLE_TOPIC_REPLICATOR, "true")
+          .put(TopicReplicator.TOPIC_REPLICATOR_CLASS_NAME, "com.linkedin.venice.replication.BrooklinTopicReplicator")
+          .put(TopicReplicator.TOPIC_REPLICATOR_SOURCE_KAFKA_CLUSTER, kafkaBrokerWrapper.getAddress())
+          .put(TopicReplicator.TOPIC_REPLICATOR_CONFIG_PREFIX + "brooklin.connection.string", brooklinWrapper.getBrooklinDmsUri())
+          .put(TopicReplicator.TOPIC_REPLICATOR_CONFIG_PREFIX + "brooklin.application.id", TestUtils.getUniqueString("venice"))
+          .build();
+    }
     return getStatefulService(VeniceControllerWrapper.SERVICE_NAME,
         VeniceControllerWrapper.generateService(clusterName, kafkaBrokerWrapper.getZkAddress(), kafkaBrokerWrapper, false, replicaFactor, partitionSize,
-            delayToRebalanceMS, minActiveReplica, null));
+            delayToRebalanceMS, minActiveReplica, null, extraProperties));
   }
 
   /**
@@ -89,7 +108,7 @@ public class ServiceFactory {
     return getStatefulService(
         VeniceControllerWrapper.SERVICE_NAME,
         VeniceControllerWrapper.generateService(clusterName, zkAddress, kafkaBrokerWrapper, true, DEFAULT_REPLICATION_FACTOR,
-            DEFAULT_PARTITION_SIZE_BYTES, DEFAULT_DELAYED_TO_REBALANCE_MS, DEFAULT_REPLICATION_FACTOR, childController));
+            DEFAULT_PARTITION_SIZE_BYTES, DEFAULT_DELAYED_TO_REBALANCE_MS, DEFAULT_REPLICATION_FACTOR, childController, EMPTY_VENICE_PROPS));
   }
 
   /**
@@ -168,29 +187,17 @@ public class ServiceFactory {
         DEFAULT_PARTITION_SIZE_BYTES, DEFAULT_SSL);
   }
 
-  @Deprecated
-  public static VeniceClusterWrapper getVeniceCluster(int numberOfControllers, int numberOfServers, int numberOfRouter, int replicationFactor, int partitionSize){
-    return getVeniceCluster(numberOfControllers, numberOfServers, numberOfRouter, replicationFactor, partitionSize, DEFAULT_SSL);
-  }
-
-  public static VeniceClusterWrapper getVeniceCluster(int numberOfControllers, int numberOfServers, int numberOfRouter, int replicationFactor, int partitionSize, boolean sslToStorageNodes) {
+  public static VeniceClusterWrapper getVeniceCluster(int numberOfControllers, int numberOfServers, int numberOfRouter,
+      int replicationFactor, int partitionSize, boolean sslToStorageNodes) {
     // As we introduce bootstrap state in to venice and transition from bootstrap to online will be blocked until get
     // "end of push" message. We need more venice server for testing, because there is a limitation in helix about how
     // many uncompleted transitions one server could handle. So if we still use one server and that limitation is
     // reached, venice can not create new resource which will cause failed tests.
     // Enable to start multiple controllers and routers too, so that we could fail some of them to do the failover integration test.
-    return getService(VeniceClusterWrapper.SERVICE_NAME,
-        VeniceClusterWrapper.generateService(numberOfControllers, numberOfServers, numberOfRouter, replicationFactor,
-            partitionSize, false, false, DEFAULT_DELAYED_TO_REBALANCE_MS, replicationFactor - 1, sslToStorageNodes));
-  }
-
-  @Deprecated
-  public static VeniceClusterWrapper getVeniceCluster(int numberOfControllers, int numberOfServers, int numberOfRouter,
-      int replicationFactor, int partitionSize, boolean enableWhitelist, boolean enableAutoJoinWhitelist,
-      long delayToRebalanceMS, int minActiveReplica) {
     return getVeniceCluster(numberOfControllers, numberOfServers, numberOfRouter, replicationFactor, partitionSize,
-        enableWhitelist, enableAutoJoinWhitelist, delayToRebalanceMS, minActiveReplica, DEFAULT_SSL);
-  }
+        false, false, DEFAULT_DELAYED_TO_REBALANCE_MS, replicationFactor - 1, sslToStorageNodes);
+    }
+
   // TODO instead of passing more and more parameters here, we could create a class ClusterOptions to include all of options to start a cluster. Then we only need one parameter here.
   // Or a builder pattern
   public static VeniceClusterWrapper getVeniceCluster(int numberOfControllers, int numberOfServers, int numberOfRouter,

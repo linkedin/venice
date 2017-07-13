@@ -9,8 +9,8 @@ import com.linkedin.venice.hadoop.exceptions.VeniceInconsistentSchemaException;
 import com.linkedin.venice.hadoop.exceptions.VeniceSchemaFieldNotFoundException;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
-import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
@@ -20,6 +20,7 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Optional;
 import java.util.Properties;
 import org.apache.avro.Schema;
 import org.apache.avro.file.DataFileWriter;
@@ -466,5 +467,35 @@ public class TestKafkaPushJob {
     Schema newSchema = writeComplicatedAvroFileWithUserSchema(inputDir, true);
     String newValueSchemaString = newSchema.getField("value").schema().toString();
     controllerClient.addValueSchema(storeName, newValueSchemaString);
+  }
+
+  // This test currently only validates we can do a batch push on a hybrid store. Further hybrid tests to come!
+  @Test
+  public void testHybridEndToEnd() throws Exception {
+
+    String storeName = TestUtils.getUniqueString("hybrid-store");
+    File inputDir = getTempDataDirectory();
+    String inputDirPath = "file://" + inputDir.getAbsolutePath();
+    Schema recordSchema = writeSimpleAvroFileWithUserSchema(inputDir);
+    Properties h2vProperties = setupDefaultProps(inputDirPath, storeName);
+
+    //Create store and make it a hybrid store
+    createStoreForJob(recordSchema, h2vProperties);
+    ControllerClient controllerClient = new ControllerClient(veniceCluster.getClusterName(), veniceCluster.getRandomRouterURL());
+    controllerClient.updateStore(storeName, Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(),
+        Optional.empty(), Optional.empty(), Optional.empty(), Optional.of(100L), Optional.of(100L)); // 100s rewind, 100 message lag
+
+    //Do an H2V push
+    String jobName = TestUtils.getUniqueString("hybrid-job");
+    KafkaPushJob job = new KafkaPushJob(jobName, h2vProperties);
+    job.run();
+
+    //Verify some records
+    AvroGenericStoreClient client = AvroStoreClientFactory.getAndStartAvroGenericStoreClient(veniceCluster.getRandomRouterURL(), storeName);
+    for (int i=1;i<10;i++){
+      String key = Integer.toString(i);
+      Assert.assertEquals(client.get(key).get().toString(), "test_name_" + key);
+    }
+
   }
 }
