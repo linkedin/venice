@@ -43,6 +43,7 @@ dependencies {
 
     testCompile project(':venice-router')
     testCompile project(':venice-thin-client')
+    testCompile project(':venice-brooklin')
 }
 
 configurations.all {

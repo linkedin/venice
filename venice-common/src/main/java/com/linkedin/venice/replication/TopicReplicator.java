@@ -89,13 +89,15 @@ public abstract class TopicReplicator implements Closeable {
                                               Store store) throws TopicException {
     String srcKafkaBootstrapServers = destKafkaBootstrapServers; // TODO: Add this as a function parameter
     // Carrying on assuming that there needs to be only one and only TopicManager
-
-    long bufferReplayStartTime;
-    if (store.isHybrid()) {
-      bufferReplayStartTime = getTimer().getMilliseconds() - store.getHybridStoreConfig().getRewindTimeInSeconds();
-    } else {
+    if (!store.isHybrid()) {
       throw new VeniceException("Buffer replay is only supported for Hybrid Stores.");
     }
+    if (!getTopicManager().containsTopic(srcTopicName)) {
+      int partitionCount = getTopicManager().getPartitions(destTopicName).size();
+      int replicationFactor = getTopicManager().getReplicationFactor(destTopicName);
+      getTopicManager().createTopic(srcTopicName, partitionCount, replicationFactor, false);
+    }
+    long bufferReplayStartTime = getTimer().getMilliseconds() - store.getHybridStoreConfig().getRewindTimeInSeconds();
     Map<Integer, Long> startingOffsetsMap = getTopicManager().getOffsetsByTime(srcTopicName, bufferReplayStartTime);
     List<Long> startingOffsets = startingOffsetsMap.entrySet().stream()
         .sorted((o1, o2) -> o1.getKey().compareTo(o2.getKey()))

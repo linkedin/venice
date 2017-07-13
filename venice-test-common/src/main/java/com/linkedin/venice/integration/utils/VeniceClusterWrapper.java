@@ -42,6 +42,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
   private final String clusterName;
   private final ZkServerWrapper zkServerWrapper;
   private final KafkaBrokerWrapper kafkaBrokerWrapper;
+  private final BrooklinWrapper brooklinWrapper;
   private final int defaultReplicaFactor;
   private final int defaultPartitionSize;
   private final long defaultDelayToRebalanceMS;
@@ -57,6 +58,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
                        String clusterName,
                        ZkServerWrapper zkServerWrapper,
                        KafkaBrokerWrapper kafkaBrokerWrapper,
+                       BrooklinWrapper brooklinWrapper,
                        Map<Integer, VeniceControllerWrapper> veniceControllerWrappers,
                        Map<Integer, VeniceServerWrapper> veniceServerWrappers,
                        Map<Integer, VeniceRouterWrapper> veniceRouterWrappers,
@@ -69,6 +71,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
     this.clusterName = clusterName;
     this.zkServerWrapper = zkServerWrapper;
     this.kafkaBrokerWrapper = kafkaBrokerWrapper;
+    this.brooklinWrapper = brooklinWrapper;
     this.veniceControllerWrappers = veniceControllerWrappers;
     this.veniceServerWrappers = veniceServerWrappers;
     this.veniceRouterWrappers = veniceRouterWrappers;
@@ -91,12 +94,13 @@ public class VeniceClusterWrapper extends ProcessWrapper {
     String clusterName = TestUtils.getUniqueString("venice-cluster");
     ZkServerWrapper zkServerWrapper = ServiceFactory.getZkServer();
     KafkaBrokerWrapper kafkaBrokerWrapper = ServiceFactory.getKafkaBroker(zkServerWrapper);
+    BrooklinWrapper brooklinWrapper = ServiceFactory.getBrooklinWrapper(kafkaBrokerWrapper);
 
     Map<Integer, VeniceControllerWrapper> veniceControllerWrappers = new HashMap<>();
     for (int i = 0; i < numberOfControllers; i++) {
       VeniceControllerWrapper veniceControllerWrapper =
           ServiceFactory.getVeniceController(clusterName, kafkaBrokerWrapper, replicaFactor, partitionSize,
-              delayToReblanceMS, minActiveReplica);
+              delayToReblanceMS, minActiveReplica, brooklinWrapper);
       veniceControllerWrappers.put(veniceControllerWrapper.getPort(), veniceControllerWrapper);
     }
 
@@ -113,7 +117,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
       veniceRouterWrappers.put(veniceRouterWrapper.getPort(), veniceRouterWrapper);
     }
 
-    return (serviceName, port) -> new VeniceClusterWrapper(null, clusterName, zkServerWrapper, kafkaBrokerWrapper,
+    return (serviceName, port) -> new VeniceClusterWrapper(null, clusterName, zkServerWrapper, kafkaBrokerWrapper, brooklinWrapper,
         veniceControllerWrappers, veniceServerWrappers, veniceRouterWrappers, replicaFactor, partitionSize, delayToReblanceMS, minActiveReplica, sslToStorageNodes);
   }
 
@@ -127,6 +131,10 @@ public class VeniceClusterWrapper extends ProcessWrapper {
 
   public KafkaBrokerWrapper getKafka() {
     return kafkaBrokerWrapper;
+  }
+
+  public String getTopicReplicationConnectionString() {
+    return brooklinWrapper.getBrooklinDmsUri();
   }
 
   public synchronized List<VeniceControllerWrapper> getVeniceControllers() {
@@ -194,7 +202,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
   public VeniceControllerWrapper addVeniceController() {
     VeniceControllerWrapper veniceControllerWrapper =
         ServiceFactory.getVeniceController(clusterName, kafkaBrokerWrapper, defaultReplicaFactor, defaultPartitionSize,
-            defaultDelayToRebalanceMS, defaultMinActiveReplica);
+            defaultDelayToRebalanceMS, defaultMinActiveReplica, null);
     veniceControllerWrappers.put(veniceControllerWrapper.getPort(), veniceControllerWrapper);
     return veniceControllerWrapper;
   }
@@ -346,6 +354,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
     for (VeniceControllerWrapper veniceControllerWrapper : veniceControllerWrappers.values()) {
       veniceControllerWrapper.stop();
     }
+    brooklinWrapper.close();
     kafkaBrokerWrapper.stop();
     zkServerWrapper.stop();
   }
