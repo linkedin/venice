@@ -83,7 +83,7 @@ public class Utils {
       return false;
     } else {
       for (int i = 0; i < list2.size(); i++) {
-        if (list1.get(i) != (list2.get(i))) {
+        if (!list1.get(i).equals(list2.get(i))) {
           return false;
         }
       }
