@@ -66,4 +66,12 @@ public class AggRouterHttpRequestStats extends AbstractVeniceAggStats<RouterHttp
     totalStats.recordResponseSize(valueSize);
     getStoreStats(storeName).recordResponseSize(valueSize);
   }
+
+  public void recordQuota(String storeName, double quota) {
+    getStoreStats(storeName).recordQuota(quota);
+  }
+
+  public void recordTotalQuota(double totalQuota) {
+    totalStats.recordQuota(totalQuota);
+  }
 }

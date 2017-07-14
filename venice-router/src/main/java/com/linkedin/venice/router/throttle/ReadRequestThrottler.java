@@ -11,6 +11,7 @@ import com.linkedin.venice.meta.StoreDataChangedListener;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.RoutersClusterManager;
 import com.linkedin.venice.helix.ZkRoutersClusterManager;
+import com.linkedin.venice.router.stats.AggRouterHttpRequestStats;
 import com.linkedin.venice.throttle.EventThrottler;
 import java.util.List;
 import java.util.Optional;
@@ -48,13 +49,16 @@ public class ReadRequestThrottler implements RoutersClusterManager.RouterCountCh
    */
   private final AtomicReference<ConcurrentMap<String, StoreReadThrottler>> storesThrottlers;
 
+  private final AggRouterHttpRequestStats stats;
+
   public ReadRequestThrottler(ZkRoutersClusterManager zkRoutersManager, ReadOnlyStoreRepository storeRepository,
-      RoutingDataRepository routingDataRepository, long maxRouterReadCapacity) {
+      RoutingDataRepository routingDataRepository, long maxRouterReadCapacity, AggRouterHttpRequestStats stats) {
     this.zkRoutersManager = zkRoutersManager;
     this.storeRepository = storeRepository;
     this.routingDataRepository = routingDataRepository;
     this.zkRoutersManager.subscribeRouterCountChangedEvent(this);
     this.storeRepository.registerStoreDataChangedListener(this);
+    this.stats = stats;
     this.idealTotalQuotaPerRouter = calculateIdealTotalQuotaPerRouter();
     this.maxRouterReadCapacity = maxRouterReadCapacity;
     this.storesThrottlers = new AtomicReference<>(buildAllStoreReadThrottlers());
@@ -111,13 +115,18 @@ public class ReadRequestThrottler implements RoutersClusterManager.RouterCountCh
   }
 
   protected long calculateIdealTotalQuotaPerRouter() {
+    long totalQuota  = 0;
     int routerCount = (zkRoutersManager.isQuotaRebalanceEnabled() ? zkRoutersManager.getLiveRoutersCount()
         : zkRoutersManager.getExpectedRoutersCount());
-    if (0 == routerCount) {
-      return 0;
-    } else {
-      return storeRepository.getTotalStoreReadQuota() / routerCount;
+    if (0 != routerCount) {
+      totalQuota = storeRepository.getTotalStoreReadQuota() / routerCount;
     }
+    if(zkRoutersManager.isMaxCapacityProtectionEnabled()) {
+      stats.recordTotalQuota(Math.min(totalQuota, maxRouterReadCapacity));
+    }else{
+      stats.recordTotalQuota(totalQuota);
+    }
+    return totalQuota;
   }
 
   protected StoreReadThrottler getStoreReadThrottler(String storeName) {
@@ -134,6 +143,7 @@ public class ReadRequestThrottler implements RoutersClusterManager.RouterCountCh
       logger.warn("Could not found routing data for topic: " + topicName
           + ", it might be caused by the delay of the routing data. Only create per store level throttler.");
     }
+    stats.recordQuota(storeName, storeQuotaPerRouter);
     return new StoreReadThrottler(storeName, storeQuotaPerRouter, EventThrottler.REJECT_STRATEGY, partitionAssignment);
   }
 
@@ -219,6 +229,7 @@ public class ReadRequestThrottler implements RoutersClusterManager.RouterCountCh
     updateStoreThrottler(() -> {
       logger.info("Store: " + storeName + " has been deleted. Remove the throttler for this store.");
       StoreReadThrottler throttler = storesThrottlers.get().remove(storeName);
+      stats.recordQuota(storeName, 0);
       routingDataRepository.unSubscribeRoutingDataChange(
           Version.composeKafkaTopic(storeName, throttler.getCurrentVersion()), this);
     });
