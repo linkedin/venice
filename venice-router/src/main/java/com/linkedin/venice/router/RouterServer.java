@@ -363,7 +363,7 @@ public class RouterServer extends AbstractVeniceService {
       // Setup read requests throttler.
       ReadRequestThrottler throttler =
           new ReadRequestThrottler(routersClusterManager, metadataRepository, routingDataRepository,
-              config.getMaxReadCapacityCu());
+              config.getMaxReadCapacityCu(), statsForSingleGet);
       scatterGatherMode.initReadRequestThrottler(throttler);
       for (D2Server d2Server : d2ServerList) {
         logger.info("Starting d2 announcer: " + d2Server);

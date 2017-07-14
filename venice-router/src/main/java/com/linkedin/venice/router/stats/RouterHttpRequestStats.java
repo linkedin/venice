@@ -8,6 +8,7 @@ import io.tehuti.metrics.Sensor;
 import io.tehuti.metrics.stats.Avg;
 import io.tehuti.metrics.stats.Count;
 import io.tehuti.metrics.stats.Max;
+import io.tehuti.metrics.stats.Gauge;
 import io.tehuti.metrics.stats.OccurrenceRate;
 
 public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
@@ -21,6 +22,7 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
   final private Sensor badRequestSensor;
   final private Sensor routerResponseWaitingTimeSensor;
   final private Sensor fanoutRequestCountSensor;
+  final private Sensor quotaSensor;
 
   //QPS metrics
   public RouterHttpRequestStats(MetricsRepository metricsRepository, String storeName, RequestType requestType) {
@@ -40,6 +42,7 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
         TehutiUtils.getPercentileStat(getName(), getFullMetricName("response_waiting_time")));
     requestSizeSensor = registerSensor("request_size", TehutiUtils.getPercentileStat(getName(), getFullMetricName("request_size")));
     responseSizeSensor = registerSensor("response_size", TehutiUtils.getPercentileStat(getName(), getFullMetricName("response_size")));
+    quotaSensor = registerSensor("read_quota_per_router", new Gauge());
   }
 
   public void recordRequest() {
@@ -83,4 +86,8 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
   public void recordResponseSize(double responseSize) {
     responseSizeSensor.record(responseSize);
   };
+
+  public void recordQuota(double quota){
+    quotaSensor.record(quota);
+  }
 }
