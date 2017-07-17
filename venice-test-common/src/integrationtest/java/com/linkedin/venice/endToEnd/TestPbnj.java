@@ -1,7 +1,8 @@
 package com.linkedin.venice.endToEnd;
 
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
-import com.linkedin.venice.client.store.AvroStoreClientFactory;
+import com.linkedin.venice.client.store.ClientConfig;
+import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
 import com.linkedin.venice.hadoop.KafkaPushJob;
@@ -65,7 +66,8 @@ public class TestPbnj {
 
     // Verify the data in Venice Store
     String routerUrl = veniceCluster.getRandomRouterURL();
-    try(AvroGenericStoreClient<String, Object> client = AvroStoreClientFactory.getAndStartAvroGenericStoreClient(routerUrl, storeName)) {
+    try(AvroGenericStoreClient<String, Object> client =
+        ClientFactory.genericAvroClient(ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(routerUrl))) {
       for (int i = 1; i <= 100; ++i) {
         String expected = "test_name_" + i;
         String actual = client.get(Integer.toString(i)).get().toString(); /* client.get().get() returns a Utf8 object */

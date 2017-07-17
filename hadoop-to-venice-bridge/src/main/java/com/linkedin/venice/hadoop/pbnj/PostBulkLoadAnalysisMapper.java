@@ -1,7 +1,8 @@
 package com.linkedin.venice.hadoop.pbnj;
 
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
-import com.linkedin.venice.client.store.AvroStoreClientFactory;
+import com.linkedin.venice.client.store.ClientConfig;
+import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.KafkaPushJob;
 import com.linkedin.venice.hadoop.utils.HadoopUtils;
@@ -85,9 +86,9 @@ public class PostBulkLoadAnalysisMapper implements Mapper<AvroWrapper<IndexedRec
       throw new VeniceException("Async mode not currently supported in PBNJ.");
     }
 
-    this.veniceClient = AvroStoreClientFactory.getAndStartAvroGenericStoreClient(
-        props.getString(KafkaPushJob.PBNJ_ROUTER_URL_PROP),
-        props.getString(KafkaPushJob.VENICE_STORE_NAME_PROP));
+    this.veniceClient = ClientFactory.genericAvroClient(ClientConfig.defaultGenericClientConfig(
+        props.getString(KafkaPushJob.VENICE_STORE_NAME_PROP))
+        .setVeniceURL(props.getString(KafkaPushJob.PBNJ_ROUTER_URL_PROP)));
 
     logger.info("veniceClient started: " + veniceClient.toString());
 

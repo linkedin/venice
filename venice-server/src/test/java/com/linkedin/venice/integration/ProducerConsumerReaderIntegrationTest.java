@@ -1,6 +1,7 @@
 package com.linkedin.venice.integration;
 
 import com.linkedin.venice.client.exceptions.VeniceClientHttpException;
+import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
 import com.linkedin.venice.utils.SslUtils;
@@ -8,7 +9,7 @@ import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
-import com.linkedin.venice.client.store.AvroStoreClientFactory;
+import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
@@ -71,8 +72,9 @@ public class ProducerConsumerReaderIntegrationTest {
     VeniceSerializer valueSerializer = new VeniceAvroGenericSerializer(stringSchema);
 
     veniceWriter = new VeniceWriter<>(clientProps, storeVersionName, keySerializer, valueSerializer);
-    storeClient = AvroStoreClientFactory.getAndStartAvroGenericSslStoreClient(routerUrl, storeName,
-        SslUtils.getLocalSslFactory());
+    storeClient =
+        ClientFactory.genericAvroClient(ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(routerUrl)
+                                                    .setSslEngineComponentFactory(SslUtils.getLocalSslFactory()));
   }
 
   @AfterMethod

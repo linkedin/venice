@@ -2,7 +2,8 @@ package com.linkedin.venice.router;
 
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
-import com.linkedin.venice.client.store.AvroStoreClientFactory;
+import com.linkedin.venice.client.store.ClientConfig;
+import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
@@ -96,7 +97,7 @@ public class TestMultiGet {
     /**
      * Test with {@link AvroGenericStoreClient}.
      */
-    AvroGenericStoreClient<String, CharSequence> storeClient = AvroStoreClientFactory.getAndStartAvroGenericStoreClient(routerAddr, storeName);
+    AvroGenericStoreClient<String, CharSequence> storeClient = ClientFactory.genericAvroClient(ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(routerAddr));
     Set<String> keySet = new HashSet<>();
     for (int i = 0; i < 10; ++i) {
       keySet.add(keyPrefix + i);

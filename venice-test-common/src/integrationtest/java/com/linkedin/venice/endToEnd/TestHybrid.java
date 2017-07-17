@@ -1,7 +1,8 @@
 package com.linkedin.venice.endToEnd;
 
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
-import com.linkedin.venice.client.store.AvroStoreClientFactory;
+import com.linkedin.venice.client.store.ClientConfig;
+import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.controllerapi.ControllerApiConstants;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.StoreResponse;
@@ -77,8 +78,8 @@ public class TestHybrid {
     runH2V(h2vProperties, 1, controllerClient);
 
     //Verify some records (note, records 1-100 have been pushed)
-    AvroGenericStoreClient
-        client = AvroStoreClientFactory.getAndStartAvroGenericStoreClient(venice.getRandomRouterURL(), storeName);
+    AvroGenericStoreClient client =
+        ClientFactory.genericAvroClient(ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(venice.getRandomRouterURL()));
     for (int i=1;i<10;i++){
       String key = Integer.toString(i);
       Assert.assertEquals(client.get(key).get().toString(), "test_name_" + key);

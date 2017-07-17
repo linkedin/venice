@@ -2,7 +2,8 @@ package com.linkedin.venice.samza;
 
 import com.linkedin.cfg.impl.Utils;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
-import com.linkedin.venice.client.store.AvroStoreClientFactory;
+import com.linkedin.venice.client.store.ClientConfig;
+import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.controllerapi.ControllerApiConstants;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.integration.utils.ServiceFactory;
@@ -77,7 +78,8 @@ public class VeniceSystemFactoryTest {
     TestUtils.waitForNonDeterministicCompletion(5, TimeUnit.SECONDS, () -> client.getStore(storeName).getStore().getCurrentVersion() == 1);
 
     //read the record out of Venice
-    AvroGenericStoreClient<String, GenericRecord> storeClient = AvroStoreClientFactory.getAndStartAvroGenericStoreClient(venice.getRandomRouterURL(), storeName);
+    AvroGenericStoreClient<String, GenericRecord> storeClient =
+        ClientFactory.genericAvroClient(ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(venice.getRandomRouterURL()));
     GenericRecord recordFromVenice = storeClient.get("keystring").get(1, TimeUnit.SECONDS);
 
     //verify we got the right record
@@ -118,7 +120,7 @@ public class VeniceSystemFactoryTest {
     client.writeEndOfPush(storeName, 1);
     TestUtils.waitForNonDeterministicCompletion(5, TimeUnit.SECONDS, () -> client.getStore(storeName).getStore().getCurrentVersion() == 1);
 
-    AvroGenericStoreClient<K2, V2> storeClient = AvroStoreClientFactory.getAndStartAvroGenericStoreClient(venice.getRandomRouterURL(), storeName);
+    AvroGenericStoreClient<K2, V2> storeClient = ClientFactory.genericAvroClient(ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(venice.getRandomRouterURL()));
     V2 valueFromStore = storeClient.get(readKey).get(1, TimeUnit.SECONDS);
     Assert.assertEquals(valueFromStore, expectedValue,
         valueFromStore.toString() + " of type: " + valueFromStore.getClass()

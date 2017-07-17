@@ -20,9 +20,6 @@ import java.util.concurrent.TimeUnit;
  * {@link D2Client} based TransportClient implementation.
  */
 public class D2TransportClient extends TransportClient {
-  public static final String DEFAULT_D2_ZK_BASE_PATH = "/d2";
-  public static final int DEFAULT_ZK_TIMEOUT_IN_MS = 5000;
-
   private Logger logger = Logger.getLogger(D2TransportClient.class);
 
   private final D2Client d2Client;
@@ -30,7 +27,7 @@ public class D2TransportClient extends TransportClient {
   //indicate whether it is a private d2 created by TransportClient or it is a public
   //d2 shared by multiply TransportClient. The TransportClient only takes care of
   //start/shutdown a d2 client if is is private.
-  private final Boolean privateD2Client;
+  private final boolean privateD2Client;
   private final String d2ServiceName;
 
   /**
@@ -43,15 +40,6 @@ public class D2TransportClient extends TransportClient {
     this.d2ServiceName = d2ServiceName;
     this.d2Client = d2Client;
     this.privateD2Client = false;
-  }
-
-  /**
-   * Construct by a custom specified zookeeper cluster
-   * @param zkConnection
-   * @param d2ServiceName
-   */
-  public D2TransportClient(String zkConnection, String d2ServiceName) throws VeniceClientException {
-    this(zkConnection, d2ServiceName, DEFAULT_D2_ZK_BASE_PATH, DEFAULT_ZK_TIMEOUT_IN_MS);
   }
 
   /**
