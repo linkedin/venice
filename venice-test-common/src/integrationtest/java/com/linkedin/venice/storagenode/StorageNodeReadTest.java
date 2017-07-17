@@ -3,7 +3,8 @@ package com.linkedin.venice.storagenode;
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
-import com.linkedin.venice.client.store.AvroStoreClientFactory;
+import com.linkedin.venice.client.store.ClientConfig;
+import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.common.PartitionOffsetMapUtils;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
@@ -222,7 +223,7 @@ public class StorageNodeReadTest {
     /**
      * Test with {@link AvroGenericStoreClient}.
      */
-    AvroGenericStoreClient<String, CharSequence> storeClient = AvroStoreClientFactory.getAndStartAvroGenericStoreClient(routerAddr, storeName);
+    AvroGenericStoreClient<String, CharSequence> storeClient = ClientFactory.genericAvroClient(ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(routerAddr));
     Set<String> keySet = new HashSet<>();
     for (int i = 0; i < 10; ++i) {
       keySet.add(keyPrefix + i);

@@ -1,7 +1,8 @@
 package com.linkedin.venice.throttle;
 
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
-import com.linkedin.venice.client.store.AvroStoreClientFactory;
+import com.linkedin.venice.client.store.ClientConfig;
+import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
 import com.linkedin.venice.integration.utils.ServiceFactory;
@@ -101,7 +102,7 @@ public class TestThrottleReadRequestPerStore {
     // Get one of the router
     String routerURL = cluster.getRandomRouterURL();
     AvroGenericStoreClient<String, Object> storeClient =
-        AvroStoreClientFactory.getAndStartAvroGenericStoreClient(routerURL, storeName);
+        ClientFactory.genericAvroClient(ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(routerURL));
     try {
       for (int i = 0; i < totalQuota / numberOfRouter; i++) {
         storeClient.get("empty-key").get();
@@ -122,7 +123,7 @@ public class TestThrottleReadRequestPerStore {
         () -> cluster.getRandomVeniceRouter().getRoutersClusterManager().getRoutersCount() == 1);
     routerURL = cluster.getRandomRouterURL();
     storeClient =
-        AvroStoreClientFactory.getAndStartAvroGenericStoreClient(routerURL, storeName);
+        ClientFactory.genericAvroClient(ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(routerURL));
     // now one router has the entire quota.
     try {
       for (int i = 0; i < totalQuota; i++) {

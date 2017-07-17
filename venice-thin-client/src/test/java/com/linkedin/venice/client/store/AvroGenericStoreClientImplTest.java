@@ -70,15 +70,16 @@ public class AvroGenericStoreClientImplTest {
     FullHttpResponse schemaResponse = StoreClientTestUtils.constructHttpSchemaResponse(storeName, 1, defaultKeySchemaStr);
     String keySchemaPath = "/" + SchemaReader.TYPE_KEY_SCHEMA + "/" + storeName;
     routerServer.addResponseForUri(keySchemaPath, schemaResponse);
-
     // http based client
     String routerUrl = "http://" + routerHost + ":" + port + "/";
-    AvroGenericStoreClient<String, Object> httpStoreClient = AvroStoreClientFactory.getAndStartAvroGenericStoreClient(routerUrl, storeName);
+    AvroGenericStoreClient<String, Object> httpStoreClient =
+        ClientFactory.genericAvroClient(ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(routerUrl));
     storeClients.put(HttpTransportClient.class.getSimpleName(), httpStoreClient);
     // d2 based client
     d2Client = D2TestUtils.getAndStartD2Client(routerServer.getZkAddress());
-    AvroGenericStoreClient<String, Object> d2StoreClient = AvroStoreClientFactory.getAndStartAvroGenericStoreClient(
-      D2TestUtils.DEFAULT_TEST_SERVICE_NAME, d2Client, storeName);
+    AvroGenericStoreClient<String, Object> d2StoreClient =
+        ClientFactory.genericAvroClient(ClientConfig.defaultGenericClientConfig(storeName)
+            .setD2ServiceName(D2TestUtils.DEFAULT_TEST_SERVICE_NAME).setD2Client(d2Client));
     storeClients.put(D2TransportClient.class.getSimpleName(), d2StoreClient);
     DelegatingStoreClient<String, Object> delegatingStoreClient = (DelegatingStoreClient<String, Object>)httpStoreClient;
     someStoreClient = (AbstractAvroStoreClient<String, Object>)delegatingStoreClient.getInnerStoreClient();

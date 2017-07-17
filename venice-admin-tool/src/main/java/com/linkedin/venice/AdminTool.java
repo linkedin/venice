@@ -4,8 +4,8 @@ import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.schema.SchemaReader;
 import com.linkedin.venice.client.store.AbstractAvroStoreClient;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
-import com.linkedin.venice.client.store.AvroGenericStoreClientImpl;
-import com.linkedin.venice.client.store.AvroStoreClientFactory;
+import com.linkedin.venice.client.store.ClientConfig;
+import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.client.store.StatTrackingStoreClient;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
@@ -55,8 +55,6 @@ import org.apache.commons.cli.ParseException;
 import org.codehaus.jackson.map.ObjectMapper;
 import org.codehaus.jackson.map.ObjectWriter;
 import org.codehaus.jackson.type.TypeReference;
-
-import static com.linkedin.venice.controllerapi.ControllerApiConstants.*;
 
 
 public class AdminTool {
@@ -230,7 +228,8 @@ public class AdminTool {
     Schema keySchema = null;
     SchemaReader schemaReader = null;
     try {
-      AvroGenericStoreClient<Object, Object> schemaClient = AvroStoreClientFactory.getAndStartAvroGenericStoreClient(routerHosts, store);
+      AvroGenericStoreClient<Object, Object> schemaClient =
+          ClientFactory.genericAvroClient(ClientConfig.defaultGenericClientConfig(store).setVeniceURL(routerHosts));
       AbstractAvroStoreClient<Object, Object> castClient = (AbstractAvroStoreClient<Object, Object> )((StatTrackingStoreClient<Object,Object>)schemaClient).getInnerStoreClient();
       schemaReader = new SchemaReader(castClient);
       keySchema = schemaReader.getKeySchema();
@@ -272,7 +271,9 @@ public class AdminTool {
     outputMap.put("key", keyString);
 
     Object value;
-    try(AvroGenericStoreClient<Object, Object> client = AvroStoreClientFactory.getAndStartAvroGenericStoreClient(routerHosts, store)) {
+
+    try(AvroGenericStoreClient<Object, Object> client =
+        ClientFactory.genericAvroClient(ClientConfig.defaultGenericClientConfig(store).setVeniceURL(routerHosts))) {
       // Add request path into output for further testing, E.g. use wget to query.
       AbstractAvroStoreClient<Object, Object> castClient = (AbstractAvroStoreClient<Object, Object> )((StatTrackingStoreClient<Object,Object>)client).getInnerStoreClient();
       outputMap.put("request-path", castClient.getRequestPathByKey(key));

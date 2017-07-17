@@ -61,13 +61,14 @@ public class AvroSpecificStoreClientImplTest {
 
     // http based client
     String routerUrl = "http://" + routerHost + ":" + port + "/";
-    AvroSpecificStoreClient<TestKeyRecord, TestValueRecord> httpStoreClient = AvroStoreClientFactory.getAndStartAvroSpecificStoreClient(
-      routerUrl, storeName, TestValueRecord.class);
+    AvroSpecificStoreClient<TestKeyRecord, TestValueRecord> httpStoreClient =
+        ClientFactory.specificAvroClient(ClientConfig.defaultSpecificClientConfig(storeName, TestValueRecord.class).setVeniceURL(routerUrl));
     storeClients.put(HttpTransportClient.class.getSimpleName(),httpStoreClient);
     // d2 based client
     d2Client = D2TestUtils.getAndStartD2Client(routerServer.getZkAddress());
-    AvroSpecificStoreClient<TestKeyRecord, TestValueRecord> d2StoreClient = AvroStoreClientFactory.getAndStartAvroSpecificStoreClient(
-      D2TestUtils.DEFAULT_TEST_SERVICE_NAME, d2Client, storeName, TestValueRecord.class);
+    AvroSpecificStoreClient<TestKeyRecord, TestValueRecord> d2StoreClient =
+        ClientFactory.specificAvroClient(ClientConfig.defaultSpecificClientConfig(storeName, TestValueRecord.class)
+            .setD2ServiceName(D2TestUtils.DEFAULT_TEST_SERVICE_NAME).setD2Client(d2Client));
     storeClients.put(D2TransportClient.class.getSimpleName(),d2StoreClient);
 
     DelegatingStoreClient<TestKeyRecord, TestValueRecord> delegatingStoreClient =
