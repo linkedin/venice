@@ -189,7 +189,10 @@ public class HelixOfflinePushMonitorAccessor implements OfflinePushAccessor {
           return currentData;
         });
     logger.info(
-        "Updated replica status for topic:" + topic + " partition:" + partitionId + " in cluster:" + clusterName);
+        "Updated replica status for topic:" + topic
+            + " partition:" + partitionId
+            + " status: " + status
+            + " in cluster:" + clusterName);
   }
 
   @Override

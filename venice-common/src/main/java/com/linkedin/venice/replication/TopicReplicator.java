@@ -15,7 +15,10 @@ import com.linkedin.venice.writer.VeniceWriterFactory;
 
 import java.io.Closeable;
 import java.util.*;
+import java.util.concurrent.TimeUnit;
+import static java.util.concurrent.TimeUnit.*;
 import java.util.stream.Collectors;
+import org.apache.log4j.Logger;
 
 
 /**
@@ -23,6 +26,9 @@ import java.util.stream.Collectors;
  * within the same kafka cluster.
  */
 public abstract class TopicReplicator implements Closeable {
+
+  private static final Logger LOGGER = Logger.getLogger(TopicReplicator.class);
+
   public static final String TOPIC_REPLICATOR_CONFIG_PREFIX = "topic.replicator.";
   public static final String TOPIC_REPLICATOR_CLASS_NAME = TOPIC_REPLICATOR_CONFIG_PREFIX + "class.name";
   public static final String TOPIC_REPLICATOR_SOURCE_KAFKA_CLUSTER = TOPIC_REPLICATOR_CONFIG_PREFIX + "source.kafka.cluster";
@@ -61,6 +67,7 @@ public abstract class TopicReplicator implements Closeable {
 
   public void beginReplication(String sourceTopic, String destinationTopic, Optional<Map<Integer, Long>> startingOffsets)
       throws TopicException {
+    LOGGER.info("Starting topic replication from: " + sourceTopic + " to " + destinationTopic);
     String errorPrefix = "Cannot create replication datastream from " + sourceTopic + " to " + destinationTopic + " because";
     if (sourceTopic.equals(destinationTopic)){
       throw new DuplicateTopicException(errorPrefix + " they are the same topic.");
@@ -78,6 +85,7 @@ public abstract class TopicReplicator implements Closeable {
           + " and topic " + destinationTopic + " has " + destinationPartitionCount + " partitions."  );
     }
     beginReplicationInternal(sourceTopic, destinationTopic, sourcePartitionCount, startingOffsets);
+    LOGGER.info("Successfully started topic replication from: " + sourceTopic + " to " + destinationTopic);
   }
 
   public void terminateReplication(String sourceTopic, String destinationTopic){
@@ -97,7 +105,8 @@ public abstract class TopicReplicator implements Closeable {
       int replicationFactor = getTopicManager().getReplicationFactor(destTopicName);
       getTopicManager().createTopic(srcTopicName, partitionCount, replicationFactor, false);
     }
-    long bufferReplayStartTime = getTimer().getMilliseconds() - store.getHybridStoreConfig().getRewindTimeInSeconds();
+    long bufferReplayStartTime = getTimer().getMilliseconds()
+        - MILLISECONDS.convert(store.getHybridStoreConfig().getRewindTimeInSeconds(), SECONDS);
     Map<Integer, Long> startingOffsetsMap = getTopicManager().getOffsetsByTime(srcTopicName, bufferReplayStartTime);
     List<Long> startingOffsets = startingOffsetsMap.entrySet().stream()
         .sorted((o1, o2) -> o1.getKey().compareTo(o2.getKey()))

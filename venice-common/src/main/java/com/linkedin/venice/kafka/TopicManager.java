@@ -25,7 +25,10 @@ import org.I0Itec.zkclient.ZkClient;
 import org.I0Itec.zkclient.ZkConnection;
 import org.apache.commons.io.IOUtils;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
+import org.apache.kafka.clients.consumer.ConsumerRecord;
+import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
+import org.apache.kafka.clients.consumer.OffsetAndTimestamp;
 import org.apache.kafka.common.errors.TopicExistsException;
 import org.apache.kafka.common.PartitionInfo;
 import org.apache.kafka.common.TopicPartition;
@@ -193,7 +196,7 @@ public class TopicManager implements Closeable {
     return getLatestOffset(getConsumer(), topic, partition, true);
   }
 
-  private Long getLatestOffset(KafkaConsumer<byte[], byte[]> consumer, String topic, Integer partition, boolean doTopicCheck) throws TopicDoesNotExistException {
+  private synchronized Long getLatestOffset(KafkaConsumer<byte[], byte[]> consumer, String topic, Integer partition, boolean doTopicCheck) throws TopicDoesNotExistException {
     if (doTopicCheck && !containsTopic(topic)) {
       throw new TopicDoesNotExistException("Topic " + topic + " does not exist!");
     }
@@ -208,7 +211,7 @@ public class TopicManager implements Closeable {
     return latestOffset;
   }
 
-  public Map<Integer, Long> getOffsetsByTime(String topic, long timestamp) {
+  public synchronized Map<Integer, Long> getOffsetsByTime(String topic, long timestamp) {
     int remainingAttempts = 5;
     List<PartitionInfo> partitionInfoList = getConsumer().partitionsFor(topic);
     // N.B.: During unit test development, getting a null happened occasionally without apparent
@@ -230,9 +233,49 @@ public class TopicManager implements Closeable {
       return getConsumer().offsetsForTimes(timestampsToSearch)
           .entrySet()
           .stream()
-          .collect(Collectors.toMap(partitionToOffset -> Utils.notNull(partitionToOffset.getKey(),
-              "Got a null TopicPartition key out of the offsetsForTime API").partition(),
-              partitionToOffset -> Optional.ofNullable(partitionToOffset.getValue()).map(offset -> offset.offset()).orElse(0L)));
+          .collect(Collectors.toMap(
+              partitionToOffset ->
+                  Utils.notNull(partitionToOffset.getKey(),"Got a null TopicPartition key out of the offsetsForTime API")
+                      .partition(),
+              partitionToOffset -> {
+                Optional<Long> offsetOptional = Optional.ofNullable(partitionToOffset.getValue()).map(offset -> offset.offset());
+                if (offsetOptional.isPresent()){
+                  return offsetOptional.get();
+                } else {
+                  return getOffsetByTimeIfOutOfRange(partitionToOffset, timestamp);
+                }
+              }
+          ));
+    }
+  }
+
+  /**
+   * Kafka's get offset by time API returns null if the requested time is before the first record OR after
+   * the last record.  This method queries the time of the last message and compares it to the requested
+   * timestamp in order to return either offset 0 or the last offset.
+   */
+  private synchronized long getOffsetByTimeIfOutOfRange(Map.Entry<TopicPartition, OffsetAndTimestamp> partitionToOffset, long timestamp){
+    TopicPartition topicPartition = partitionToOffset.getKey();
+    long latestOffset = getLatestOffset(topicPartition.topic(), topicPartition.partition());
+    if (latestOffset <= 0) {
+      return 0L;
+    }
+    KafkaConsumer consumer = getConsumer();
+    try {
+      consumer.assign(Arrays.asList(topicPartition));
+      consumer.seek(topicPartition, latestOffset - 1);
+      ConsumerRecords records = consumer.poll(1000L);
+      if (records.isEmpty()) {
+        return 0L;
+      }
+      ConsumerRecord record = (ConsumerRecord) records.iterator().next();
+      if (timestamp > record.timestamp()) {
+        return latestOffset;
+      } else {
+        return 0L;
+      }
+    } finally {
+      consumer.assign(Arrays.asList());
     }
   }
 
@@ -248,6 +291,9 @@ public class TopicManager implements Closeable {
 
   /**
    * The first time this is called, it lazily initializes {@link #kafkaConsumer}.
+   * Any method that uses this consumer must be synchronized.  Since the same
+   * consumer is returned each time and some methods modify the consumer's state
+   * we must guard against concurrent modifications.
    *
    * @return The internal {@link KafkaConsumer} instance.
    */

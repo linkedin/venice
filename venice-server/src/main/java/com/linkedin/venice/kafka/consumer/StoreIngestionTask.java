@@ -279,7 +279,8 @@ public class StoreIngestionTask implements Runnable, Closeable {
 
     // Looks like none of the short-circuitry fired, so we need to measure lag!
     int partition = partitionConsumptionState.getPartition();
-    long sourceTopicMaxOffset = topicManager.getLatestOffset(topic, partition);
+    String sourceTopic = storeVersionStateOptional.get().startOfBufferReplay.sourceTopicName.toString();
+    long sourceTopicMaxOffset = topicManager.getLatestOffset(sourceTopic, partition);
     long sobrSourceOffset = storeVersionStateOptional.get().startOfBufferReplay.sourceOffsets.get(partition);
     long currentOffset = partitionConsumptionState.getOffsetRecord().getOffset();
     long sobrDestinationOffset = sobrDestinationOffsetOptional.get();
@@ -288,7 +289,7 @@ public class StoreIngestionTask implements Runnable, Closeable {
     long lag = (sourceTopicMaxOffset - sobrSourceOffset) - (currentOffset - sobrDestinationOffset);
     boolean lagging = lag > threshold;
 
-    logger.info(consumerTaskId + " Partition " + partition + " is " + (lagging ? "" : "not") + " lagging:\n" +
+    logger.info(consumerTaskId + " Partition " + partition + " is " + (lagging ? "" : "not") + " lagging: " +
         "(Source Max [" + sourceTopicMaxOffset + "] -" +
         " SOBR Source [" + sobrSourceOffset + "]) - " +
         "(Dest Current [" + currentOffset + "] -" +

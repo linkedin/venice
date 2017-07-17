@@ -14,16 +14,16 @@ import org.apache.samza.util.SinglePartitionWithoutOffsetsSystemAdmin;
 
 
 public class VeniceSystemFactory implements SystemFactory {
-  protected static final String SYSTEMS_PREFIX = "systems.";
-  protected static final String DOT = ".";
-  protected static final String JOB_ID = "job.id";
+  public static final String SYSTEMS_PREFIX = "systems.";
+  public static final String DOT = ".";
+  public static final String JOB_ID = "job.id";
   /**
    * Http Venice URL (router or controller).  Used by producer to query controller.
    * TODO: integrate sdwu's work so we can also use D2 here.
    */
-  protected static final String VENICE_URL = "url";
-  protected static final String VENICE_CLUSTER = "cluster";
-  protected static final String VENICE_PUSH_TYPE = "push.type";
+  public static final String VENICE_URL = "url";
+  public static final String VENICE_CLUSTER = "cluster";
+  public static final String VENICE_PUSH_TYPE = "push.type";
 
   @Override
   public SystemAdmin getAdmin(String systemName, Config config) {

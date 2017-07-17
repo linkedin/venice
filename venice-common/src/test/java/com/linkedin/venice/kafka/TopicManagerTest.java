@@ -145,6 +145,9 @@ public class TopicManagerTest {
       long returnedOffset = offsetsByMessageNumber[messageNumber].offset();
       assertOffsetsByTime(topicName, messageTime, returnedOffset);
     }
+
+    long futureTime = 1000*1000*1000;
+    assertOffsetsByTime(topicName, futureTime, NUMBER_OF_MESSAGES + 1);
   }
 
   private void assertOffsetsByTime(String topicName, long time, long expectedOffset) {
