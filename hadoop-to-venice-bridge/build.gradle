@@ -47,7 +47,7 @@ dependencies {
     runtime libraries.httpCore
     runtime libraries.httpClient
 
-  testCompile project(':venice-brooklin')
+    testCompile project(':venice-brooklin')
 }
 
 configurations {

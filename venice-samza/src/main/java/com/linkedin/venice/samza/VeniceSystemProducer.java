@@ -29,7 +29,9 @@ import static com.linkedin.venice.ConfigKeys.*;
 public class VeniceSystemProducer implements SystemProducer {
 
   private static final Schema STRING_SCHEMA = Schema.parse("\"string\"");
+  private static final Schema INT_SCHEMA = Schema.parse("\"int\"");
   private static final DatumWriter<Utf8> STRING_DATUM_WRITER = new GenericDatumWriter<>(STRING_SCHEMA);
+  private static final DatumWriter<Integer> INT_DATUM_WRITER = new GenericDatumWriter<>(INT_SCHEMA);
 
   //TODO:  A lot of these maps use store as the key, we could build a VeniceContext object that has all the value info
 
@@ -162,10 +164,12 @@ public class VeniceSystemProducer implements SystemProducer {
     if (object instanceof IndexedRecord) {
       IndexedRecord keyAvro = (IndexedRecord) object;
       return keyAvro.getSchema();
-    } else if (object instanceof String) { // convenience option.
+    } else if (object instanceof CharSequence) { // convenience option.
       return STRING_SCHEMA;
+    } else if (object instanceof Integer) {
+      return INT_SCHEMA;
     } else {
-      throw new SamzaException("Venice System Producer only supports Avro objects and Strings, found object of class: " + object.getClass().toString());
+      throw new SamzaException("Venice System Producer only supports Avro objects, CharSequences, and Integers, found object of class: " + object.getClass().toString());
     }
   }
 
@@ -174,19 +178,26 @@ public class VeniceSystemProducer implements SystemProducer {
       VeniceAvroGenericSerializer serializer = serializers.computeIfAbsent(
           ((IndexedRecord) input).getSchema().toString(), VeniceAvroGenericSerializer::new);
       return serializer.serialize(topic, input);
-    } else if (input instanceof String) {
-      return serializeString((String) input);
+    } else if (input instanceof CharSequence) {
+      return serializePrimitive(new Utf8(input.toString()), STRING_DATUM_WRITER);
+    } else if (input instanceof Integer) {
+      return serializePrimitive((Integer) input, INT_DATUM_WRITER);
     } else {
-      throw new SamzaException("Can only serialize avro objects and string, cannot serialize: " + input.getClass().toString());
+      throw new SamzaException("Can only serialize avro objects, character strings, and integers, cannot serialize: " + input.getClass().toString());
     }
   }
 
-  private static byte[] serializeString(String input) {
-    Utf8 utf = new Utf8(input);
+  /**
+   * @param input primitive object to be serialized (Utf8, int, ...)
+   * @param writer DatumWriter to use for the serialization
+   * @param <T> type of the input
+   * @return avro binary serialized byte[]
+   */
+  private static <T> byte[] serializePrimitive(T input, DatumWriter<T> writer) {
     ByteArrayOutputStream out = new ByteArrayOutputStream();
     BinaryEncoder encoder = new BinaryEncoder(out);
     try {
-      STRING_DATUM_WRITER.write(utf, encoder);
+      writer.write(input, encoder);
     } catch (IOException e) {
       throw new RuntimeException("Failed to write intput: " + input + " to binary encoder", e);
     }
