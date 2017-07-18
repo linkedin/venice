@@ -135,7 +135,7 @@ public abstract class TopicReplicator implements Closeable {
    */
   public static Optional<TopicReplicator> getTopicReplicator(TopicManager topicManager,
                                                              VeniceProperties veniceProperties) {
-    boolean enableTopicReplicator = veniceProperties.getBoolean(ConfigKeys.ENABLE_TOPIC_REPLICATOR);
+    boolean enableTopicReplicator = veniceProperties.getBoolean(ConfigKeys.ENABLE_TOPIC_REPLICATOR, false);
     if (!enableTopicReplicator) {
       return Optional.empty();
     }
