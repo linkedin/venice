@@ -28,8 +28,12 @@ dependencies {
   compile libraries.zkclient // It's necessary to pull in the most recent version of zkclient explicitly, otherwise Helix won't have it...
   compile libraries.kafka
 
-  compile libraries.brooklinKafkaTransport
-  compile libraries.brooklinKafka
+  compile (libraries.brooklinKafkaTransport) {
+    exclude group: 'org.apache.kafka'
+  }
+  compile (libraries.brooklinKafka) {
+    exclude group : 'org.apache.kafka'
+  }
   compile libraries.brooklinCommon
 
   compile project(':venice-common')
