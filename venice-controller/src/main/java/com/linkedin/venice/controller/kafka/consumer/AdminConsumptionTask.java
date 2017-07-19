@@ -165,6 +165,8 @@ public class AdminConsumptionTask implements Runnable, Closeable {
             consumer.subscribe(topic, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID, lastOffset);
             isSubscribed = true;
             logger.info("Subscribe to topic name: " + topic + ", offset: " + lastOffset.getOffset());
+            makeSureAdminTopicUsingInfiniteRetentionPolicy(topic);
+            logger.info("Admin topic: " + topic + " has been updated to use infinite retention policy");
           }
           ConsumerRecords records = consumer.poll(READ_CYCLE_DELAY_MS);
           if (null == records) {
@@ -231,6 +233,12 @@ public class AdminConsumptionTask implements Runnable, Closeable {
     // Check it again if it is false
     topicExists = admin.getTopicManager().containsTopic(topicName);
     return topicExists;
+  }
+
+  private void makeSureAdminTopicUsingInfiniteRetentionPolicy(String topicName) {
+    if (whetherTopicExists(topicName)) {
+      admin.getTopicManager().updateTopicRetention(topicName, Long.MAX_VALUE);
+    }
   }
 
   /**

@@ -38,7 +38,6 @@ import org.codehaus.jackson.map.ObjectMapper;
 
 
 public class TopicManager implements Closeable {
-
   private static final Logger LOGGER = Logger.getLogger(TopicManager.class);
 
   // Immutable state
@@ -126,6 +125,37 @@ public class TopicManager implements Closeable {
 
   public int getReplicationFactor(String topicName){
     return AdminUtils.fetchTopicMetadataFromZk(topicName, getZkUtils()).partitionMetadata().get(0).replicas().size();
+  }
+
+  /**
+   * Update retention for the given topic.
+   * If the topic doesn't exist, this operation will throw {@link TopicDoesNotExistException}
+   * @param topicName
+   * @param retentionInMS
+   */
+  public synchronized void updateTopicRetention(String topicName, long retentionInMS) {
+    Properties topicProperties = getTopicConfig(topicName);
+    String retentionInMSStr = Long.toString(retentionInMS);
+    if (!topicProperties.containsKey(LogConfig.RetentionMsProp()) || // config doesn't exist
+        !topicProperties.getProperty(LogConfig.RetentionMsProp()).equals(retentionInMSStr)) { // config is different
+      topicProperties.put(LogConfig.RetentionMsProp(), Long.toString(retentionInMS));
+      AdminUtils.changeTopicConfig(getZkUtils(), topicName, topicProperties);
+    }
+  }
+
+  /**
+   * This operation is a little heavy, since it will pull the configs for all the topics.
+   * @param topicName
+   * @return
+   */
+  public Properties getTopicConfig(String topicName) {
+    scala.collection.Map<String, Properties> allTopicConfigs = AdminUtils.fetchAllTopicConfigs(getZkUtils());
+    if (allTopicConfigs.contains(topicName)) {
+      Properties topicProperties = allTopicConfigs.get(topicName).get();
+      return topicProperties;
+    } else {
+      throw new TopicDoesNotExistException("Topic: " + topicName + " doesn't exist");
+    }
   }
 
   /**

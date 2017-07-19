@@ -39,6 +39,8 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
 
   private final long topicCreationThrottlingTimeWindowMs;
 
+  private final long failedJobTopicRetentionMs;
+
   public VeniceControllerConfig(VeniceProperties props) {
     super(props);
     this.adminPort = props.getInt(ADMIN_PORT);
@@ -65,6 +67,9 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
 
     this.enableTopicReplicator = props.getBoolean(ENABLE_TOPIC_REPLICATOR, true);
     this.storageEngineOverheadRatio = props.getDouble(STORAGE_ENGINE_OVERHEAD_RATIO, 0.85d);
+
+    // The default retention '0' will allow Kafka remove as much data as possible.
+    this.failedJobTopicRetentionMs = props.getLong(FAILED_JOB_TOPIC_RETENTION_MS, 0);
   }
 
   public int getAdminPort() {
@@ -91,6 +96,10 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
 
   public long getTopicCreationThrottlingTimeWindowMs() {
     return topicCreationThrottlingTimeWindowMs;
+  }
+
+  public long getFailedJobTopicRetentionMs() {
+    return failedJobTopicRetentionMs;
   }
 
   /**

@@ -68,6 +68,14 @@ public class ConfigKeys {
   public static final String CONTROLLER_CLUSTER_ZK_ADDRESSS = "controller.cluster.zk.address";
   /** Cluster name for all parent controllers */
   public static final String CONTROLLER_CLUSTER = "controller.cluster.name";
+  /**
+   * The retention policy for the topic, whose corresponding job fails.
+   * This config is used to reduce the Kafka disk footprint for unused topics.
+   * Once we come up with a good way to delete unused topics without crashing Kafka MM,
+   * this config and related logic could be removed.
+   */
+  public static final String FAILED_JOB_TOPIC_RETENTION_MS = "failed.job.topic.retention.ms";
+
   public static final String ENABLE_TOPIC_REPLICATOR = "controller.enable.topic.replicator";
 
   // Server specific configs
