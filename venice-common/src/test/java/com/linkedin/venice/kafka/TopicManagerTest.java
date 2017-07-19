@@ -14,6 +14,7 @@ import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.ApacheKafkaProducer;
 import com.linkedin.venice.writer.VeniceWriter;
+import kafka.log.LogConfig;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.clients.producer.RecordMetadata;
@@ -157,4 +158,30 @@ public class TopicManagerTest {
         "When asking for timestamp " + time + ", partition " + partition + " has an unexpected offset."));
 
   }
+
+  @Test
+  public void testGetTopicConfig() {
+    String topic = TestUtils.getUniqueString("topic");
+    manager.createTopic(topic, 1, 1, true);
+    Properties topicProperties = manager.getTopicConfig(topic);
+    Assert.assertTrue(topicProperties.containsKey(LogConfig.RetentionMsProp()));
+    Assert.assertTrue(Long.parseLong(topicProperties.getProperty(LogConfig.RetentionMsProp())) > 0,
+        "retention.ms should be positive");
+  }
+
+  @Test (expectedExceptions = TopicDoesNotExistException.class)
+  public void testGetTopicConfigWithUnknownTopic() {
+    String topic = TestUtils.getUniqueString("topic");
+    manager.getTopicConfig(topic);
+  }
+
+  @Test
+  public void testUpdateTopicRetention() throws InterruptedException {
+    String topic = TestUtils.getUniqueString("topic");
+    manager.createTopic(topic, 1, 1, true);
+    manager.updateTopicRetention(topic, 0);
+    Properties topicProperties = manager.getTopicConfig(topic);
+    Assert.assertEquals(topicProperties.getProperty(LogConfig.RetentionMsProp()), "0");
+  }
+
 }

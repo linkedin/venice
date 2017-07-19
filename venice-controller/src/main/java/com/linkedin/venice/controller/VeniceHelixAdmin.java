@@ -97,6 +97,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     private final ZkWhitelistAccessor whitelistAccessor;
     private final ExecutionIdAccessor executionIdAccessor;
     private final Optional<TopicReplicator> topicReplicator;
+    private final long failedJobTopicRetentionMs;
 
 
   /**
@@ -113,6 +114,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         this.controllerClusterName = config.getControllerClusterName();
         this.controllerClusterReplica = config.getControllerClusterReplica();
         this.kafkaBootstrapServers =  config.getKafkaBootstrapServers();
+        this.failedJobTopicRetentionMs = config.getFailedJobTopicRetentionMs();
 
         // TODO: Re-use the internal zkClient for the ZKHelixAdmin and TopicManager.
         this.admin = new ZKHelixAdmin(config.getZkAddress());
@@ -555,6 +557,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             logger.warn("Could not delete Kafka topic: " + kafkaTopicName
                 + "Because the offline push for this version has not been completed, and topic deletion for uncompleted push is disabled. Version status:"
                 + version.getStatus());
+            logger.info("Will update topic: " + kafkaTopicName + " with retention.ms: " + failedJobTopicRetentionMs);
+            getTopicManager().updateTopicRetention(kafkaTopicName, failedJobTopicRetentionMs);
+
         }
     }
 
