@@ -6,6 +6,7 @@ import com.linkedin.venice.client.store.AbstractAvroStoreClient;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.AvroGenericStoreClientImpl;
 import com.linkedin.venice.client.store.AvroStoreClientFactory;
+import com.linkedin.venice.client.store.StatTrackingStoreClient;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
@@ -25,6 +26,7 @@ import com.linkedin.venice.controllerapi.routes.AdminCommandExecutionResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.Utils;
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -39,6 +41,8 @@ import java.util.StringJoiner;
 import java.util.concurrent.ExecutionException;
 import java.util.function.Consumer;
 import org.apache.avro.Schema;
+import org.apache.avro.generic.GenericDatumReader;
+import org.apache.avro.io.JsonDecoder;
 import org.apache.commons.cli.BasicParser;
 import org.apache.commons.cli.CommandLine;
 import org.apache.commons.cli.CommandLineParser;
@@ -227,7 +231,7 @@ public class AdminTool {
     SchemaReader schemaReader = null;
     try {
       AvroGenericStoreClient<Object, Object> schemaClient = AvroStoreClientFactory.getAndStartAvroGenericStoreClient(routerHosts, store);
-      AbstractAvroStoreClient<Object, Object> castClient = (AvroGenericStoreClientImpl<Object, Object>) schemaClient;
+      AbstractAvroStoreClient<Object, Object> castClient = (AbstractAvroStoreClient<Object, Object> )((StatTrackingStoreClient<Object,Object>)schemaClient).getInnerStoreClient();
       schemaReader = new SchemaReader(castClient);
       keySchema = schemaReader.getKeySchema();
     } catch (VeniceClientException e) {
@@ -249,12 +253,16 @@ public class AdminTool {
       case STRING:
         key = keyString;
         break;
-      /*
+
       case RECORD: // This probably wont work, we can revisit with future testing
-        key = new GenericDatumReader<>(keySchema)
-            .read(null, new JsonDecoder(keySchema, new ByteArrayInputStream(keyString.getBytes())));
+        try {
+          key = new GenericDatumReader<>(keySchema)
+              .read(null, new JsonDecoder(keySchema, new ByteArrayInputStream(keyString.getBytes())));
+        } catch (IOException e) {
+          throw new VeniceException("Invalid input key:" + key, e);
+        }
         break;
-      */
+
       default:
         throw new VeniceException("Cannot handle key type, found key schema: " + keySchema.toString());
     }
@@ -265,6 +273,9 @@ public class AdminTool {
 
     Object value;
     try(AvroGenericStoreClient<Object, Object> client = AvroStoreClientFactory.getAndStartAvroGenericStoreClient(routerHosts, store)) {
+      // Add request path into output for further testing, E.g. use wget to query.
+      AbstractAvroStoreClient<Object, Object> castClient = (AbstractAvroStoreClient<Object, Object> )((StatTrackingStoreClient<Object,Object>)client).getInnerStoreClient();
+      outputMap.put("request-path", castClient.getRequestPathByKey(key));
       value = client.get(key).get();
     }
     outputMap.put("value-class", value == null ? "null" : value.getClass().getCanonicalName());
