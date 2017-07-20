@@ -73,7 +73,6 @@ public class TestPushUtils {
     props.put(KafkaPushJob.KAFKA_URL_PROP, veniceCluster.getKafka().getAddress());
     props.put(KafkaPushJob.VENICE_CLUSTER_NAME_PROP, veniceCluster.getClusterName());
     props.put(VENICE_STORE_NAME_PROP, storeName);
-    props.put(KafkaPushJob.VENICE_STORE_OWNERS_PROP, "test@linkedin.com");
     props.put(KafkaPushJob.INPUT_PATH_PROP, inputDirPath);
     props.put(KafkaPushJob.AVRO_KEY_FIELD_PROP, "id");
     props.put(KafkaPushJob.AVRO_VALUE_FIELD_PROP, "name");
@@ -89,7 +88,7 @@ public class TestPushUtils {
     Schema keySchema = recordSchema.getField(props.getProperty(KafkaPushJob.AVRO_KEY_FIELD_PROP)).schema();
     Schema valueSchema = recordSchema.getField(props.getProperty(KafkaPushJob.AVRO_VALUE_FIELD_PROP)).schema();
     controllerClient.createNewStore(props.getProperty(VENICE_STORE_NAME_PROP),
-        props.getProperty(KafkaPushJob.VENICE_STORE_OWNERS_PROP), keySchema.toString(), valueSchema.toString());
+        "test@linkedin.com", keySchema.toString(), valueSchema.toString());
     controllerClient.updateStore(props.getProperty(VENICE_STORE_NAME_PROP), Optional.empty(), Optional.empty(),
         Optional.empty(), Optional.empty(), Optional.empty(), Optional.of(Store.UNLIMITED_STORAGE_QUOTA), Optional.empty(),
         Optional.empty(), Optional.empty());
