@@ -16,6 +16,7 @@ import com.linkedin.venice.helix.HelixAdapterSerializer;
 import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
 import com.linkedin.venice.helix.HelixReadOnlyStoreRepository;
 import com.linkedin.venice.helix.HelixRoutingDataRepository;
+import com.linkedin.venice.helix.ZkRoutersClusterManager;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.router.api.RouterExceptionAndTrackingUtils;
 import com.linkedin.venice.router.api.RouterHeartbeat;
@@ -62,8 +63,6 @@ public class RouterServer extends AbstractVeniceService {
   private static final Logger logger = Logger.getLogger(RouterServer.class);
 
   // Immutable state
-  private final HelixRoutingDataRepository routingDataRepository;
-  private final HelixReadOnlyStoreRepository metadataRepository;
   private final List<D2Server> d2ServerList;
   private final AggRouterHttpRequestStats statsForSingleGet;
   private final AggRouterHttpRequestStats statsForMultiGet;
@@ -76,6 +75,8 @@ public class RouterServer extends AbstractVeniceService {
   private ZkClient zkClient;
   private HelixManager manager;
   private HelixReadOnlySchemaRepository schemaRepository;
+  private HelixRoutingDataRepository routingDataRepository;
+  private HelixReadOnlyStoreRepository metadataRepository;
 
   // These are initialized in startInner()... TODO: Consider refactoring this to be immutable as well.
   private AsyncFuture<SocketAddress> serverFuture = null;
@@ -84,6 +85,7 @@ public class RouterServer extends AbstractVeniceService {
   private VeniceDispatcher dispatcher;
   private RouterHeartbeat heartbeat;
   private VeniceDelegateMode scatterGatherMode;
+  private  HelixAdapterSerializer adapter;
   private ZkRoutersClusterManager routersClusterManager;
 
   private final static String ROUTER_SERVICE_NAME = "venice-router";
@@ -144,38 +146,40 @@ public class RouterServer extends AbstractVeniceService {
   public RouterServer(VeniceProperties properties, List<D2Server> d2Servers,
       Optional<SSLEngineComponentFactory> sslEngineComponentFactory) {
     this(properties, d2Servers, sslEngineComponentFactory, TehutiUtils.getMetricsRepository(ROUTER_SERVICE_NAME));
-  }
-
-  public RouterServer(VeniceProperties properties, List<D2Server> d2Servers,
-      Optional<SSLEngineComponentFactory> sslEngineComponentFactory, MetricsRepository metricsRepository) {
-    config = new VeniceRouterConfig(properties);
-    zkClient = new ZkClient(config.getZkConnection());
-    manager = new ZKHelixManager(config.getClusterName(), null, InstanceType.SPECTATOR, config.getZkConnection());
-    this.statsForSingleGet = new AggRouterHttpRequestStats(metricsRepository, RequestType.SINGLE_GET);
-    this.statsForMultiGet = new AggRouterHttpRequestStats(metricsRepository, RequestType.MULTI_GET);
-    HelixAdapterSerializer adapter = new HelixAdapterSerializer();
+    this.manager = new ZKHelixManager(config.getClusterName(), null, InstanceType.SPECTATOR, config.getZkConnection());
     this.metadataRepository = new HelixReadOnlyStoreRepository(zkClient, adapter, config.getClusterName());
     this.schemaRepository =
         new HelixReadOnlySchemaRepository(this.metadataRepository, this.zkClient, adapter, config.getClusterName());
     this.routingDataRepository = new HelixRoutingDataRepository(manager);
-    this.d2ServerList = d2Servers;
-    this.sslFactory = sslEngineComponentFactory;
+  }
+
+  /**
+   * CTOR maintain the common logic for both test and normal CTOR.
+   */
+  private RouterServer(
+      VeniceProperties properties,
+      List<D2Server> d2ServerList,
+      Optional<SSLEngineComponentFactory> sslFactory,
+      MetricsRepository metricsRepository) {
+    config = new VeniceRouterConfig(properties);
+    zkClient = new ZkClient(config.getZkConnection());
+    this.adapter = new HelixAdapterSerializer();
+
+    this.statsForSingleGet = new AggRouterHttpRequestStats(metricsRepository, RequestType.SINGLE_GET);
+    this.statsForMultiGet = new AggRouterHttpRequestStats(metricsRepository, RequestType.MULTI_GET);
+
+    this.d2ServerList = d2ServerList;
+    this.sslFactory = sslFactory;
     verifySslOk();
   }
+
+
 
   /**
    * Only use this constructor for testing when you want to pass mock repositories
    *
-   * TODO: This needs to be cleaned up. These constructors should be telescopic.
-   *
    * Having separate constructors just for tests is hard to maintain, especially since in this case,
    * the test constructor does not initialize manager...
-   *
-   * @param properties
-   * @param routingDataRepository
-   * @param metadataRepository
-   * @param schemaRepository
-   * @param d2ServerList
    */
   public RouterServer(
       VeniceProperties properties,
@@ -184,17 +188,11 @@ public class RouterServer extends AbstractVeniceService {
       HelixReadOnlySchemaRepository schemaRepository,
       List<D2Server> d2ServerList,
       Optional<SSLEngineComponentFactory> sslFactory){
-    this.config= new VeniceRouterConfig(properties);
+    this(properties, d2ServerList, sslFactory, new MetricsRepository());
+    this.manager = null;
+    this.routingDataRepository = routingDataRepository;
     this.metadataRepository = metadataRepository;
     this.schemaRepository = schemaRepository;
-    this.routingDataRepository = routingDataRepository;
-    this.d2ServerList = d2ServerList;
-    MetricsRepository metricsRepository = new MetricsRepository();
-    this.statsForSingleGet = new AggRouterHttpRequestStats(metricsRepository, RequestType.SINGLE_GET);
-    this.statsForMultiGet = new AggRouterHttpRequestStats(metricsRepository, RequestType.MULTI_GET);
-    this.sslFactory = sslFactory;
-    this.zkClient = new ZkClient(config.getZkConnection());
-    verifySslOk();
   }
 
 
@@ -310,7 +308,8 @@ public class RouterServer extends AbstractVeniceService {
     }
     registry.shutdown();
     registry.waitForShutdown();
-    routersClusterManager.unregisterCurrentRouter();
+    routersClusterManager.unregisterRouter(Utils.getHelixNodeIdentifier(config.getPort()));
+    routersClusterManager.clear();
     dispatcher.close();
     routingDataRepository.clear();
     metadataRepository.clear();
@@ -355,17 +354,17 @@ public class RouterServer extends AbstractVeniceService {
 
         System.exit(1);
       }
-
       // Register current router into ZK.
-      routersClusterManager = new ZkRoutersClusterManager(zkClient, config.getClusterName(), Utils.getHelixNodeIdentifier(config.getPort()));
-      routersClusterManager.registerCurrentRouter();
+      routersClusterManager = new ZkRoutersClusterManager(zkClient, adapter, config.getClusterName());
+      routersClusterManager.refresh();
+      routersClusterManager.registerRouter(Utils.getHelixNodeIdentifier(config.getPort()));
       routingDataRepository.refresh();
 
       // Setup read requests throttler.
       ReadRequestThrottler throttler =
-          new ReadRequestThrottler(routersClusterManager, metadataRepository, routingDataRepository, config.getMaxReadCapacityCu());
+          new ReadRequestThrottler(routersClusterManager, metadataRepository, routingDataRepository,
+              config.getMaxReadCapacityCu());
       scatterGatherMode.initReadRequestThrottler(throttler);
-
       for (D2Server d2Server : d2ServerList) {
         logger.info("Starting d2 announcer: " + d2Server);
         d2Server.forceStart();

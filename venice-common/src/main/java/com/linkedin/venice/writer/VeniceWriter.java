@@ -11,7 +11,7 @@ import com.linkedin.venice.kafka.validation.checksum.CheckSumType;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.partitioner.DefaultVenicePartitioner;
 import com.linkedin.venice.partitioner.VenicePartitioner;
-import com.linkedin.venice.serialization.VeniceSerializer;
+import com.linkedin.venice.serialization.VeniceKafkaSerializer;
 import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
@@ -50,8 +50,8 @@ public class VeniceWriter<K, V> extends AbstractVeniceWriter<K, V> {
   public static final String DEFAULT_CHECK_SUM_TYPE = CheckSumType.MD5.name();
 
   // Immutable state
-  private final VeniceSerializer<K> keySerializer;
-  private final VeniceSerializer<V> valueSerializer;
+  private final VeniceKafkaSerializer<K> keySerializer;
+  private final VeniceKafkaSerializer<V> valueSerializer;
   private final KafkaProducerWrapper producer;
   private final GUID producerGUID;
   private final Time time;
@@ -65,8 +65,8 @@ public class VeniceWriter<K, V> extends AbstractVeniceWriter<K, V> {
   public VeniceWriter(
       VeniceProperties props,
       String topicName,
-      VeniceSerializer<K> keySerializer,
-      VeniceSerializer<V> valueSerializer,
+      VeniceKafkaSerializer<K> keySerializer,
+      VeniceKafkaSerializer<V> valueSerializer,
       VenicePartitioner partitioner,
       Time time,
       Supplier<KafkaProducerWrapper> producerWrapperSupplier) {
@@ -92,8 +92,8 @@ public class VeniceWriter<K, V> extends AbstractVeniceWriter<K, V> {
   public VeniceWriter(
       VeniceProperties props,
       String topicName,
-      VeniceSerializer<K> keySerializer,
-      VeniceSerializer<V> valueSerializer,
+      VeniceKafkaSerializer<K> keySerializer,
+      VeniceKafkaSerializer<V> valueSerializer,
       Time time) {
     this(
         props,
@@ -109,8 +109,8 @@ public class VeniceWriter<K, V> extends AbstractVeniceWriter<K, V> {
   public VeniceWriter(
       VeniceProperties props,
       String topicName,
-      VeniceSerializer<K> keySerializer,
-      VeniceSerializer<V> valueSerializer) {
+      VeniceKafkaSerializer<K> keySerializer,
+      VeniceKafkaSerializer<V> valueSerializer) {
     this(props, topicName, keySerializer, valueSerializer, SystemTime.INSTANCE);
   }
 

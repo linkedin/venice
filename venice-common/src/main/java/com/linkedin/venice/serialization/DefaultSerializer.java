@@ -6,9 +6,9 @@ import org.apache.kafka.common.serialization.ByteArraySerializer;
 
 
 /**
- * Default Kafka VeniceSerializer
+ * Default Kafka VeniceKafkaSerializer
  */
-public class DefaultSerializer implements VeniceSerializer<byte[]> {
+public class DefaultSerializer implements VeniceKafkaSerializer<byte[]> {
   ByteArraySerializer serializer;
   ByteArrayDeserializer deserializer;
 

@@ -3,7 +3,7 @@ package com.linkedin.venice.serialization;
 import java.util.Map;
 
 
-public class StringSerializer implements VeniceSerializer<String> {
+public class StringSerializer implements VeniceKafkaSerializer<String> {
 
   public StringSerializer() {
     /* This constructor is not used, but is required for compilation */

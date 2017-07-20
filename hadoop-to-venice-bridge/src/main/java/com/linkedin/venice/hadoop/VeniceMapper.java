@@ -3,7 +3,7 @@ package com.linkedin.venice.hadoop;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.utils.HadoopUtils;
 import com.linkedin.venice.meta.Store;
-import com.linkedin.venice.serialization.VeniceSerializer;
+import com.linkedin.venice.serialization.VeniceKafkaSerializer;
 import com.linkedin.venice.serialization.avro.VeniceAvroGenericSerializer;
 import com.linkedin.venice.utils.VeniceProperties;
 import javafx.util.Pair;
@@ -34,8 +34,8 @@ public class VeniceMapper implements Mapper<AvroWrapper<IndexedRecord>, NullWrit
   private String valueField;
   private int keyFieldPos;
   private int valueFieldPos;
-  private VeniceSerializer keySerializer;
-  private VeniceSerializer valueSerializer;
+  private VeniceKafkaSerializer keySerializer;
+  private VeniceKafkaSerializer valueSerializer;
   private boolean checkingRecordSize;
 
   @Override
@@ -101,7 +101,7 @@ public class VeniceMapper implements Mapper<AvroWrapper<IndexedRecord>, NullWrit
 
   }
 
-  private VeniceSerializer getSerializer(String schemaStr, String field) {
+  private VeniceKafkaSerializer getSerializer(String schemaStr, String field) {
     // The upstream has already checked that the key/value fields must exist in the given schema,
     // so we won't check it again here
     Schema schema = Schema.parse(schemaStr).getField(field).schema();
