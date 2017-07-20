@@ -78,7 +78,6 @@ public class KafkaPushJob extends AbstractJob {
   public static final String ENABLE_PUSH = "venice.push.enable";
   public static final String VENICE_CLUSTER_NAME_PROP = "cluster.name";
   public static final String VENICE_STORE_NAME_PROP = "venice.store.name";
-  public static final String VENICE_STORE_OWNERS_PROP = "venice.store.owners";
   public static final String INPUT_PATH_PROP = "input.path";
   public static final String BATCH_NUM_BYTES_PROP = "batch.num.bytes";
 
@@ -125,7 +124,6 @@ public class KafkaPushJob extends AbstractJob {
   private final String veniceRouterUrl;
   private final String clusterName;
   private final String storeName;
-  private final String storeOwners;
   private final int batchNumBytes;
   private final boolean mapOnly;
   private final boolean enablePBNJ;
@@ -179,11 +177,6 @@ public class KafkaPushJob extends AbstractJob {
             .withRequiredArg()
             .describedAs("store-name")
             .ofType(String.class);
-    OptionSpec<String> storeOwnersOpt =
-        parser.accepts("store-owners", "REQUIRED: store owners that should be a comma-separated list of email addresses")
-            .withRequiredArg()
-            .describedAs("store-owners")
-            .ofType(String.class);
     OptionSpec<String> keyFieldOpt =
         parser.accepts("key-field", "REQUIRED: key field")
             .withRequiredArg()
@@ -203,13 +196,12 @@ public class KafkaPushJob extends AbstractJob {
 
     OptionSet options = parser.parse(args);
     validateExpectedArguments(new OptionSpec[] {inputPathOpt,  keyFieldOpt, valueFieldOpt, clusterNameOpt,
-        veniceUrlOpt, storeNameOpt, storeOwnersOpt}, options, parser);
+        veniceUrlOpt, storeNameOpt}, options, parser);
 
     Properties props = new Properties();
     props.put(VENICE_CLUSTER_NAME_PROP, options.valueOf(clusterNameOpt));
     props.put(VENICE_URL_PROP, options.valueOf(veniceUrlOpt));
     props.put(VENICE_STORE_NAME_PROP, options.valueOf(storeNameOpt));
-    props.put(VENICE_STORE_OWNERS_PROP, options.valueOf(storeOwnersOpt));
     props.put(INPUT_PATH_PROP, options.valueOf(inputPathOpt));
     props.put(AVRO_KEY_FIELD_PROP, options.valueOf(keyFieldOpt));
     props.put(AVRO_VALUE_FIELD_PROP, options.valueOf(valueFieldOpt));
@@ -268,7 +260,6 @@ public class KafkaPushJob extends AbstractJob {
     this.clusterName = props.getString(VENICE_CLUSTER_NAME_PROP);
     this.veniceControllerUrl = props.getString(VENICE_URL_PROP);
     this.storeName = props.getString(VENICE_STORE_NAME_PROP);
-    this.storeOwners = props.getString(VENICE_STORE_OWNERS_PROP);
     this.inputDirectory = props.getString(INPUT_PATH_PROP);
     this.keyField = props.getString(AVRO_KEY_FIELD_PROP);
     this.valueField = props.getString(AVRO_VALUE_FIELD_PROP);
