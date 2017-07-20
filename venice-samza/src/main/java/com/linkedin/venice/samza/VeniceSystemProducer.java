@@ -10,6 +10,7 @@ import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.VeniceWriter;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.nio.ByteBuffer;
 import java.util.Properties;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
@@ -28,13 +29,22 @@ import static com.linkedin.venice.ConfigKeys.*;
 
 public class VeniceSystemProducer implements SystemProducer {
 
-  private static final Schema STRING_SCHEMA = Schema.parse("\"string\"");
-  private static final Schema INT_SCHEMA = Schema.parse("\"int\"");
+  private static final Schema STRING_SCHEMA = Schema.create(Schema.Type.STRING);
+  private static final Schema INT_SCHEMA = Schema.create(Schema.Type.INT);
+  private static final Schema LONG_SCHEMA = Schema.create(Schema.Type.LONG);
+  private static final Schema FLOAT_SCHEMA = Schema.create(Schema.Type.FLOAT);
+  private static final Schema DOUBLE_SCHEMA = Schema.create(Schema.Type.DOUBLE);
+  private static final Schema BYTES_SCHEMA = Schema.create(Schema.Type.BYTES);
+  private static final Schema BOOL_SCHEMA = Schema.create(Schema.Type.BOOLEAN);
   private static final DatumWriter<Utf8> STRING_DATUM_WRITER = new GenericDatumWriter<>(STRING_SCHEMA);
   private static final DatumWriter<Integer> INT_DATUM_WRITER = new GenericDatumWriter<>(INT_SCHEMA);
+  private static final DatumWriter<Long> LONG_DATUM_WRITER = new GenericDatumWriter<>(LONG_SCHEMA);
+  private static final DatumWriter<Float> FLOAT_DATUM_WRITER = new GenericDatumWriter<>(FLOAT_SCHEMA);
+  private static final DatumWriter<Double> DOUBLE_DATUM_WRITER = new GenericDatumWriter<>(DOUBLE_SCHEMA);
+  private static final DatumWriter<ByteBuffer> BYTES_DATUM_WRITER = new GenericDatumWriter<>(BYTES_SCHEMA);
+  private static final DatumWriter<Boolean> BOOL_DATUM_WRITER = new GenericDatumWriter<>(BOOL_SCHEMA);
 
   //TODO:  A lot of these maps use store as the key, we could build a VeniceContext object that has all the value info
-
   /**
    * key is Venice store name (same as Samza stream name)
    * value is VeniceWriter to use for writing to that store
@@ -168,12 +178,22 @@ public class VeniceSystemProducer implements SystemProducer {
       return STRING_SCHEMA;
     } else if (object instanceof Integer) {
       return INT_SCHEMA;
+    } else if (object instanceof Long) {
+      return LONG_SCHEMA;
+    } else if (object instanceof Double) {
+      return DOUBLE_SCHEMA;
+    } else if (object instanceof Float) {
+      return FLOAT_SCHEMA;
+    } else if (object instanceof byte[] || object instanceof ByteBuffer) {
+      return BYTES_SCHEMA;
+    } else if (object instanceof Boolean) {
+      return BOOL_SCHEMA;
     } else {
-      throw new SamzaException("Venice System Producer only supports Avro objects, CharSequences, and Integers, found object of class: " + object.getClass().toString());
+      throw new SamzaException("Venice System Producer only supports Avro objects, and primitives, found object of class: " + object.getClass().toString());
     }
   }
 
-  private byte[] serializeObject(String topic, Object input) {
+  protected byte[] serializeObject(String topic, Object input) {
     if (input instanceof IndexedRecord) {
       VeniceAvroGenericSerializer serializer = serializers.computeIfAbsent(
           ((IndexedRecord) input).getSchema().toString(), VeniceAvroGenericSerializer::new);
@@ -182,8 +202,20 @@ public class VeniceSystemProducer implements SystemProducer {
       return serializePrimitive(new Utf8(input.toString()), STRING_DATUM_WRITER);
     } else if (input instanceof Integer) {
       return serializePrimitive((Integer) input, INT_DATUM_WRITER);
+    } else if (input instanceof Long) {
+      return serializePrimitive((Long) input, LONG_DATUM_WRITER);
+    } else if (input instanceof Double) {
+      return serializePrimitive((Double) input, DOUBLE_DATUM_WRITER);
+    } else if (input instanceof Float) {
+      return serializePrimitive((Float) input, FLOAT_DATUM_WRITER);
+    } else if (input instanceof ByteBuffer) {
+      return serializePrimitive((ByteBuffer) input, BYTES_DATUM_WRITER);
+    } else if (input instanceof byte[]) {
+      return serializePrimitive(ByteBuffer.wrap((byte[]) input), BYTES_DATUM_WRITER);
+    } else if (input instanceof Boolean) {
+      return serializePrimitive((Boolean) input, BOOL_DATUM_WRITER);
     } else {
-      throw new SamzaException("Can only serialize avro objects, character strings, and integers, cannot serialize: " + input.getClass().toString());
+      throw new SamzaException("Can only serialize avro objects, and primitives, cannot serialize: " + input.getClass().toString());
     }
   }
 
