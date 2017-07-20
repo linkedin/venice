@@ -10,7 +10,7 @@ import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.meta.Version;
-import com.linkedin.venice.serialization.VeniceSerializer;
+import com.linkedin.venice.serialization.VeniceKafkaSerializer;
 import com.linkedin.venice.serialization.avro.VeniceAvroGenericSerializer;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.SslUtils;
@@ -39,8 +39,8 @@ public class TestRead {
   private String storeName;
 
   private String routerAddr;
-  private VeniceSerializer keySerializer;
-  private VeniceSerializer valueSerializer;
+  private VeniceKafkaSerializer keySerializer;
+  private VeniceKafkaSerializer valueSerializer;
   private VeniceWriter<Object, Object> veniceWriter;
 
 

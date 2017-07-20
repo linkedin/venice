@@ -2,9 +2,8 @@ package com.linkedin.venice.serialization.avro;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceMessageException;
-import com.linkedin.venice.serialization.VeniceSerializer;
+import com.linkedin.venice.serialization.VeniceKafkaSerializer;
 import com.linkedin.venice.utils.ByteUtils;
-import com.linkedin.venice.utils.ReflectUtils;
 import com.linkedin.venice.utils.Utils;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -34,7 +33,7 @@ import org.apache.log4j.Logger;
  *    with a writer schema determined by the protocol version specified in #2.
  */
 public class InternalAvroSpecificSerializer<SPECIFIC_RECORD extends SpecificRecord>
-    implements VeniceSerializer<SPECIFIC_RECORD> {
+    implements VeniceKafkaSerializer<SPECIFIC_RECORD> {
 
   private static final Logger logger = Logger.getLogger(InternalAvroSpecificSerializer.class);
 

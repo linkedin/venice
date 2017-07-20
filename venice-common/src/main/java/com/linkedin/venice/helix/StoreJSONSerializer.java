@@ -17,35 +17,17 @@ import org.codehaus.jackson.map.ObjectMapper;
 /**
  * Serializer used to convert the data between Store and json.
  */
-public class StoreJSONSerializer implements VeniceSerializer<Store> {
-    private final ObjectMapper mapper = new ObjectMapper();
+public class StoreJSONSerializer extends VeniceJsonSerializer<Store> {
 
     public StoreJSONSerializer() {
+        super(Store.class);
         addMixin(Store.class, StoreSerializerMixin.class);
         addMixin(Version.class, VersionSerializerMixin.class);
         addMixin(HybridStoreConfig.class, HybridStoreConfigSerializerMixin.class);
-        // Ignore unknown properties
-        mapper.configure(DeserializationConfig.Feature.FAIL_ON_UNKNOWN_PROPERTIES, false);
     }
 
     private void addMixin(Class veniceClass, Class serializerClass) {
         mapper.getDeserializationConfig().addMixInAnnotations(veniceClass, serializerClass);
-    }
-
-    @Override
-    public byte[] serialize(Store store, String path)
-        throws IOException {
-        return mapper.writeValueAsBytes(store);
-    }
-
-    @Override
-    public Store deserialize(byte[] bytes, String path)
-        throws IOException {
-        return mapper.readValue(bytes, Store.class);
-    }
-
-    public ObjectMapper getMapper() {
-        return mapper;
     }
 
     /**

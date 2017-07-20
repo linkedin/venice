@@ -7,7 +7,7 @@ import java.nio.ByteBuffer;
 import java.util.Map;
 
 /**
- * {@link VeniceSerializer} to encode/decode {@link KafkaKey} for Venice customized kafka message
+ * {@link VeniceKafkaSerializer} to encode/decode {@link KafkaKey} for Venice customized kafka message
  * Used by Kafka to convert to/from byte arrays.
  *
  * {@link KafkaKey} Schema (in order)
@@ -15,7 +15,7 @@ import java.util.Map;
  * - Payload (Key Object)
  *
  */
-public class KafkaKeySerializer implements VeniceSerializer<KafkaKey> {
+public class KafkaKeySerializer implements VeniceKafkaSerializer<KafkaKey> {
 
   private static final int KEY_HEADER_OFFSET = 0;
   private static final int KEY_HEADER_SIZE = 1;

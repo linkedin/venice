@@ -10,7 +10,7 @@ import org.apache.kafka.common.serialization.Serializer;
  *
  * @param <T> The type of the object that is mapped by this serializer
  */
-public interface VeniceSerializer<T> extends Serializer<T>, Deserializer<T> {
+public interface VeniceKafkaSerializer<T> extends Serializer<T>, Deserializer<T> {
 
     /**
      * Close this serializer.

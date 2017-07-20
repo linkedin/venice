@@ -4,6 +4,7 @@ import com.linkedin.venice.client.exceptions.VeniceClientHttpException;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
+import com.linkedin.venice.serialization.VeniceKafkaSerializer;
 import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.writer.VeniceWriter;
@@ -14,7 +15,6 @@ import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.meta.Version;
-import com.linkedin.venice.serialization.VeniceSerializer;
 import com.linkedin.venice.serialization.avro.VeniceAvroGenericSerializer;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.TestUtils;
@@ -69,8 +69,8 @@ public class ProducerConsumerReaderIntegrationTest {
 
     // TODO: Make serializers parameterized so we test them all.
     String stringSchema = "\"string\"";
-    VeniceSerializer keySerializer = new VeniceAvroGenericSerializer(stringSchema);
-    VeniceSerializer valueSerializer = new VeniceAvroGenericSerializer(stringSchema);
+    VeniceKafkaSerializer keySerializer = new VeniceAvroGenericSerializer(stringSchema);
+    VeniceKafkaSerializer valueSerializer = new VeniceAvroGenericSerializer(stringSchema);
 
     veniceWriter = new VeniceWriter<>(clientProps, storeVersionName, keySerializer, valueSerializer);
     storeClient =

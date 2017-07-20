@@ -3,7 +3,7 @@ package com.linkedin.venice.integration.utils;
 import com.linkedin.venice.helix.HelixReadOnlyStoreRepository;
 import com.linkedin.venice.helix.HelixRoutingDataRepository;
 import com.linkedin.venice.router.RouterServer;
-import com.linkedin.venice.router.ZkRoutersClusterManager;
+import com.linkedin.venice.helix.ZkRoutersClusterManager;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.TestUtils;

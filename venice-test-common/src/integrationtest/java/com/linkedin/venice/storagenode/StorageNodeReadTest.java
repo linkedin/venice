@@ -17,7 +17,7 @@ import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.read.protocol.request.router.MultiGetRouterRequestKeyV1;
 import com.linkedin.venice.read.protocol.response.MultiGetResponseRecordV1;
 import com.linkedin.venice.schema.avro.ReadAvroProtocolDefinition;
-import com.linkedin.venice.serialization.VeniceSerializer;
+import com.linkedin.venice.serialization.VeniceKafkaSerializer;
 import com.linkedin.venice.serialization.avro.VeniceAvroGenericSerializer;
 import com.linkedin.venice.serializer.AvroSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordDeserializer;
@@ -66,8 +66,8 @@ public class StorageNodeReadTest {
 
   private String serverAddr;
   private String routerAddr;
-  private VeniceSerializer keySerializer;
-  private VeniceSerializer valueSerializer;
+  private VeniceKafkaSerializer keySerializer;
+  private VeniceKafkaSerializer valueSerializer;
 
   private VeniceWriter<Object, Object> veniceWriter;
 

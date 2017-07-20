@@ -8,7 +8,7 @@ import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.meta.Store;
-import com.linkedin.venice.serialization.VeniceSerializer;
+import com.linkedin.venice.serialization.VeniceKafkaSerializer;
 import com.linkedin.venice.serialization.avro.VeniceAvroGenericSerializer;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.TestUtils;
@@ -56,8 +56,8 @@ public class TestThrottleReadRequestPerStore {
         .build();
 
     String stringSchema = "\"string\"";
-    VeniceSerializer keySerializer = new VeniceAvroGenericSerializer(stringSchema);
-    VeniceSerializer valueSerializer = new VeniceAvroGenericSerializer(stringSchema);
+    VeniceKafkaSerializer keySerializer = new VeniceAvroGenericSerializer(stringSchema);
+    VeniceKafkaSerializer valueSerializer = new VeniceAvroGenericSerializer(stringSchema);
 
     int valueSchemaId = HelixReadOnlySchemaRepository.VALUE_SCHEMA_STARTING_ID;
     veniceWriter = new VeniceWriter<>(clientProps, response.getKafkaTopic(), keySerializer, valueSerializer);
@@ -120,7 +120,7 @@ public class TestThrottleReadRequestPerStore {
     // fail one router
     cluster.stopVeniceRouter(cluster.getRandomVeniceRouter().getPort());
     TestUtils.waitForNonDeterministicCompletion(testTimeOutMS, TimeUnit.MILLISECONDS,
-        () -> cluster.getRandomVeniceRouter().getRoutersClusterManager().getRoutersCount() == 1);
+        () -> cluster.getRandomVeniceRouter().getRoutersClusterManager().getLiveRoutersCount() == 1);
     routerURL = cluster.getRandomRouterURL();
     storeClient =
         ClientFactory.getAndStartGenericAvroClient(ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(routerURL));

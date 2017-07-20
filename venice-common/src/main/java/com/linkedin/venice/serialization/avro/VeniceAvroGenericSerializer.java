@@ -1,7 +1,7 @@
 package com.linkedin.venice.serialization.avro;
 
 import com.linkedin.venice.exceptions.VeniceMessageException;
-import com.linkedin.venice.serialization.VeniceSerializer;
+import com.linkedin.venice.serialization.VeniceKafkaSerializer;
 import java.util.Map;
 import org.apache.avro.generic.GenericDatumReader;
 import org.apache.avro.io.Decoder;
@@ -15,7 +15,7 @@ import org.apache.log4j.Logger;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 
-public class VeniceAvroGenericSerializer implements VeniceSerializer<Object> {
+public class VeniceAvroGenericSerializer implements VeniceKafkaSerializer<Object> {
     private final Schema typeDef;
     private GenericDatumWriter<Object> datumWriter;
     private GenericDatumReader<Object> reader;
