@@ -325,7 +325,7 @@ public class VeniceParentHelixAdmin implements Admin {
     Set<String> topics = topicManager.listTopics();
     String storeNameForCurrentTopic;
     for (String topic: topics) {
-      if (AdminTopicUtils.isAdminTopic(topic)) {
+      if (AdminTopicUtils.isAdminTopic(topic) || AdminTopicUtils.isKafkaInternalTopic(topic)) {
         continue;
       }
       try {
