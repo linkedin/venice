@@ -23,24 +23,25 @@ import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
-
 /**
  * Separate the tests from {@link TestAdminSparkServer}, because we need start more storage nodes to execute the
  * resource with bunch of partitions.
+ * TODO: Since {@link TestAdminSparkServer} has adapted to have multi-servers. It's better to merge test cases.
  */
 public class TestAdminSparkServerWithMultiServers {
   private VeniceClusterWrapper venice;
-  private String routerUrl;
+  private ControllerClient controllerClient;
   private final int numberOfServer = 6;
 
   @BeforeClass
   public void setUp() {
     venice = ServiceFactory.getVeniceCluster(1, numberOfServer, 1);
-    routerUrl = venice.getRandomRouterURL();
+    controllerClient = new ControllerClient(venice.getClusterName(), venice.getRandomRouterURL());
   }
 
   @AfterClass
   public void tearDown() {
+    controllerClient.close();
     venice.close();
   }
 
@@ -54,7 +55,7 @@ public class TestAdminSparkServerWithMultiServers {
       storeNames.add(Version.parseStoreFromKafkaTopicName(venice.getNewStoreVersion().getKafkaTopic()));
     }
 
-    MultiStoreResponse storeResponse = ControllerClient.listStores(routerUrl, venice.getClusterName());
+    MultiStoreResponse storeResponse = controllerClient.queryStoreList();
     Assert.assertFalse(storeResponse.isError());
     List<String> returnedStoreNames = Arrays.asList(storeResponse.getStores());
     for (String expectedStore : storeNames) {
@@ -69,15 +70,13 @@ public class TestAdminSparkServerWithMultiServers {
     String pushOne = TestUtils.getUniqueString("pushId");
     String pushTwo = TestUtils.getUniqueString("pushId");
 
-    ControllerClient client = new ControllerClient(venice.getClusterName(), routerUrl);
-
     venice.getNewStore(storeName);
     VersionCreationResponse
-        responseOneA = client.requestTopicForWrites(storeName, 1, ControllerApiConstants.PushType.BATCH, pushOne);
+        responseOneA = controllerClient.requestTopicForWrites(storeName, 1, ControllerApiConstants.PushType.BATCH, pushOne);
     if (responseOneA.isError()){
       Assert.fail(responseOneA.getError());
     }
-    VersionCreationResponse responseTwo = client.requestTopicForWrites(storeName, 1, ControllerApiConstants.PushType.BATCH, pushTwo);
+    VersionCreationResponse responseTwo = controllerClient.requestTopicForWrites(storeName, 1, ControllerApiConstants.PushType.BATCH, pushTwo);
     if (responseTwo.isError()){
       Assert.fail(responseOneA.getError());
     }
@@ -121,12 +120,11 @@ public class TestAdminSparkServerWithMultiServers {
               "Idempotent topic requests failed under concurrency on attempt " + i + ".  If this test ever fails, investigate! Don't just run it again and hope it passes");
         }
         //close the new version so the next iteration gets a new version.
-        try (ControllerClient client = new ControllerClient(venice.getClusterName(), routerUrl)) {
-          client.writeEndOfPush(storeName, responses.get(0).getVersion());
-          while (client.getStore(storeName).getStore().getCurrentVersion() < responses.get(0).getVersion()) {
-            Utils.sleep(200);
-          }
+        controllerClient.writeEndOfPush(storeName, responses.get(0).getVersion());
+        while (controllerClient.getStore(storeName).getStore().getCurrentVersion() < responses.get(0).getVersion()) {
+          Utils.sleep(200);
         }
+
       }
     } catch (Exception e){
       e.printStackTrace();
@@ -137,8 +135,8 @@ public class TestAdminSparkServerWithMultiServers {
   private Thread requestTopicThread(String pushId, String storeName, List<VersionCreationResponse> output, CountDownLatch latch, AtomicReference<String> errString) {
     return new Thread(() -> {
       final VersionCreationResponse vcr = new VersionCreationResponse();
-      try (ControllerClient client = new ControllerClient(venice.getClusterName(), routerUrl)) {
-        VersionCreationResponse thisVcr = client.requestTopicForWrites(storeName, 1, ControllerApiConstants.PushType.BATCH, pushId);
+      try {
+        VersionCreationResponse thisVcr = controllerClient.requestTopicForWrites(storeName, 1, ControllerApiConstants.PushType.BATCH, pushId);
         vcr.setKafkaTopic(thisVcr.getKafkaTopic());
         vcr.setVersion(thisVcr.getVersion());
       } catch (Throwable t) {
@@ -155,18 +153,17 @@ public class TestAdminSparkServerWithMultiServers {
   public void endOfPushEndpointTriggersVersionSwap(){
     String storeName = TestUtils.getUniqueString("store");
     String pushId = TestUtils.getUniqueString("pushId");
-    ControllerClient client = new ControllerClient(venice.getClusterName(), routerUrl);
     venice.getNewStore(storeName);
-    StoreResponse freshStore = client.getStore(storeName);
+    StoreResponse freshStore = controllerClient.getStore(storeName);
     int oldVersion = freshStore.getStore().getCurrentVersion();
-    VersionCreationResponse versionResponse = client.requestTopicForWrites(storeName, 1, ControllerApiConstants.PushType.BATCH, pushId);
+    VersionCreationResponse versionResponse = controllerClient.requestTopicForWrites(storeName, 1, ControllerApiConstants.PushType.BATCH, pushId);
     int newVersion = versionResponse.getVersion();
     Assert.assertNotEquals(newVersion, oldVersion, "Requesting a new version must not return the current version number");
-    client.writeEndOfPush(storeName, newVersion);
+    controllerClient.writeEndOfPush(storeName, newVersion);
     TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
-      StoreResponse storeResponse = client.getStore(storeName);
+      StoreResponse storeResponse = controllerClient.getStore(storeName);
       Assert.assertEquals(storeResponse.getStore().getCurrentVersion(), newVersion, "Writing end of push must flip the version to current");
     });
-    client.close();
+    controllerClient.close();
   }
 }

@@ -36,6 +36,7 @@ import static com.linkedin.venice.ConfigKeys.ZOOKEEPER_ADDRESS;
  * This class spins up ZK and Kafka, and a complete Venice cluster, and tests that
  * messages produced into Kafka can be read back out of the storage node.
  * All over SSL from the thin client through the router to the storage node.
+ * TODO: it'd be probably better to move it into integration test
  */
 public class ProducerConsumerReaderIntegrationTest {
 
@@ -129,6 +130,5 @@ public class ProducerConsumerReaderIntegrationTest {
     Object newValue = storeClient.get(key).get();
     Assert.assertEquals(newValue.toString(), value, "The key '" + key + "' does not contain the expected value!");
   }
-
   // TODO: Add tests with more complex scenarios (multiple records, record overwrites, multiple partitions, multiple storage nodes, etc.)
 }

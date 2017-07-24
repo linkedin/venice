@@ -18,6 +18,7 @@ import com.linkedin.venice.server.VeniceConfigLoader;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.stats.AggBdbStorageEngineStats;
 import com.linkedin.venice.stats.AggStoreIngestionStats;
+import com.linkedin.venice.stats.AggVersionedDIVStats;
 import com.linkedin.venice.stats.StoreBufferServiceStats;
 import com.linkedin.venice.storage.StorageMetadataService;
 import com.linkedin.venice.store.AbstractStorageEngine;
@@ -64,6 +65,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
 
   private final AggStoreIngestionStats ingestionStats;
   private final AggBdbStorageEngineStats storageEngineStats;
+  private final AggVersionedDIVStats versionedDIVStats;
 
   /**
    * Store buffer service to persist data into local bdb for all the stores.
@@ -94,21 +96,22 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     this.schemaRepo = schemaRepo;
 
     this.topicNameToIngestionTaskMap = Collections.synchronizedMap(new HashMap<>());
-    isRunning = new AtomicBoolean(false);
+    this.isRunning = new AtomicBoolean(false);
 
     this.veniceConfigLoader = veniceConfigLoader;
 
     VeniceServerConfig serverConfig = veniceConfigLoader.getVeniceServerConfig();
 
     long maxKafkaFetchBytesPerSecond = serverConfig.getMaxKafkaFetchBytesPerSecond();
-    throttler = new EventThrottler(maxKafkaFetchBytesPerSecond);
-    topicManager = new TopicManager(veniceConfigLoader.getVeniceClusterConfig().getKafkaZkAddress());
+    this.throttler = new EventThrottler(maxKafkaFetchBytesPerSecond);
+    this.topicManager = new TopicManager(veniceConfigLoader.getVeniceClusterConfig().getKafkaZkAddress());
 
     VeniceNotifier notifier = new LogNotifier();
-    notifiers.add(notifier);
+    this.notifiers.add(notifier);
 
-    ingestionStats = new AggStoreIngestionStats(metricsRepository);
-    storageEngineStats = new AggBdbStorageEngineStats(metricsRepository);
+    this.ingestionStats = new AggStoreIngestionStats(metricsRepository);
+    this.storageEngineStats = new AggBdbStorageEngineStats(metricsRepository);
+    this.versionedDIVStats = new AggVersionedDIVStats(metricsRepository, metadataRepo);
 
     this.storeBufferService = new StoreBufferService(
         serverConfig.getStoreWriterNumber(),
@@ -150,7 +153,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
 
     return new StoreIngestionTask(new VeniceConsumerFactory(), getKafkaConsumerProperties(veniceStore), storeRepository,
         storageMetadataService, notifiers, throttler, veniceStore.getStoreName(), schemaRepo, topicManager, ingestionStats,
-        storeBufferService, isStoreVersionCurrent, hybridStoreConfig);
+        versionedDIVStats, storeBufferService, isStoreVersionCurrent, hybridStoreConfig);
   }
 
   /**
