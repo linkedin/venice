@@ -20,7 +20,7 @@
       "name": "startOfBufferReplayDestinationOffset",
       "doc": "This is the offset at which the StartOfBufferReplay control message was consumed in the current partition of the destination topic. This is not the same value as the source offsets contained in the StartOfBufferReplay control message itself. The source and destination offsets act together as a synchronization marker. N.B.: null means that the SOBR control message was not received yet.",
       "type": ["null", "long"],
-      "default": "null"
+      "default": null
     }, {
       "name": "producerStates",
       "doc": "A map of producer GUID -> producer state.",
