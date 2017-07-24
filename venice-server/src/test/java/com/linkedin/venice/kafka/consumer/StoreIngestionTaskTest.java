@@ -22,6 +22,8 @@ import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.serialization.DefaultSerializer;
 import com.linkedin.venice.server.StoreRepository;
 import com.linkedin.venice.stats.AggStoreIngestionStats;
+import com.linkedin.venice.stats.AggVersionedDIVStats;
+import com.linkedin.venice.stats.VersionedDIVStats;
 import com.linkedin.venice.storage.StorageMetadataService;
 import com.linkedin.venice.store.AbstractStorageEngine;
 import com.linkedin.venice.store.StoragePartitionConfig;
@@ -123,7 +125,8 @@ public class StoreIngestionTaskTest {
   /** N.B.: This mock can be used to verify() calls, but not to return arbitrary things. */
   private KafkaConsumerWrapper mockKafkaConsumer;
   private TopicManager mockTopicManager;
-  private AggStoreIngestionStats mockStats;
+  private AggStoreIngestionStats mockStoreIngestionStats;
+  private AggVersionedDIVStats mockVersionedDIVStats;
   private StoreIngestionTask storeIngestionTaskUnderTest;
   private ExecutorService taskPollingService;
   private StoreBufferService storeBufferService;
@@ -182,7 +185,8 @@ public class StoreIngestionTaskTest {
     mockSchemaRepo = mock(ReadOnlySchemaRepository.class);
     mockKafkaConsumer = mock(KafkaConsumerWrapper.class);
     mockTopicManager = mock(TopicManager.class);
-    mockStats = mock(AggStoreIngestionStats.class);
+    mockStoreIngestionStats = mock(AggStoreIngestionStats.class);
+    mockVersionedDIVStats = mock(AggVersionedDIVStats.class);
     isCurrentVersion = () -> false;
     hybridStoreConfig = Optional.<HybridStoreConfig>empty();
   }
@@ -249,7 +253,7 @@ public class StoreIngestionTaskTest {
     Queue<VeniceNotifier> notifiers = new ConcurrentLinkedQueue<>(Arrays.asList(mockNotifier, new LogNotifier()));
     storeIngestionTaskUnderTest = new StoreIngestionTask(
         mockFactory, kafkaProps, mockStoreRepository, offsetManager, notifiers, mockThrottler, topic, mockSchemaRepo,
-        mockTopicManager, mockStats, storeBufferService, isCurrentVersion, hybridStoreConfig);
+        mockTopicManager, mockStoreIngestionStats, mockVersionedDIVStats, storeBufferService, isCurrentVersion, hybridStoreConfig);
     doReturn(mockAbstractStorageEngine).when(mockStoreRepository).getLocalStorageEngine(topic);
 
     Future testSubscribeTaskFuture = null;

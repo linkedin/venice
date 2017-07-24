@@ -5,6 +5,8 @@ import com.linkedin.venice.exceptions.PersistenceFailureException;
 import com.linkedin.venice.exceptions.UnsubscribedTopicPartitionException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceMessageException;
+import com.linkedin.venice.exceptions.validation.CorruptDataException;
+import com.linkedin.venice.exceptions.validation.MissingDataException;
 import com.linkedin.venice.exceptions.validation.UnsupportedMessageTypeException;
 import com.linkedin.venice.guid.GuidUtils;
 import com.linkedin.venice.kafka.TopicManager;
@@ -29,6 +31,7 @@ import com.linkedin.venice.notifier.VeniceNotifier;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.server.StoreRepository;
 import com.linkedin.venice.stats.AggStoreIngestionStats;
+import com.linkedin.venice.stats.AggVersionedDIVStats;
 import com.linkedin.venice.storage.StorageMetadataService;
 import com.linkedin.venice.store.AbstractStorageEngine;
 import com.linkedin.venice.store.StoragePartitionConfig;
@@ -90,6 +93,7 @@ public class StoreIngestionTask implements Runnable, Closeable {
   private final StoreRepository storeRepository;
   private final String topic;
   private final String storeNameWithoutVersionInfo;
+  private final int storeVersion;
   private final ReadOnlySchemaRepository schemaRepo;
   private final String consumerTaskId;
   private final Properties kafkaProps;
@@ -107,7 +111,8 @@ public class StoreIngestionTask implements Runnable, Closeable {
   private Exception lastDrainerException = null;
   /** Keeps track of every upstream producer this consumer task has seen so far. */
   private final ConcurrentMap<GUID, ProducerTracker> producerTrackerMap;
-  private final AggStoreIngestionStats stats;
+  private final AggStoreIngestionStats storeIngestionStats;
+  private final AggVersionedDIVStats versionedDIVStats;
   private final BooleanSupplier isCurrentVersion;
   private final Optional<HybridStoreConfig> hybridStoreConfig;
   private final IngestionNotificationDispatcher notificationDispatcher;
@@ -116,6 +121,10 @@ public class StoreIngestionTask implements Runnable, Closeable {
   private KafkaConsumerWrapper consumer;
   private Set<Integer> schemaIdSet;
   private int idleCounter = 0;
+
+  //this indicates whether it polls nothing from Kafka
+  //It's for stats measuring purpose
+  private boolean recordsPolled = true;
 
 
   public StoreIngestionTask(@NotNull VeniceConsumerFactory factory,
@@ -127,7 +136,8 @@ public class StoreIngestionTask implements Runnable, Closeable {
                             @NotNull String topic,
                             @NotNull ReadOnlySchemaRepository schemaRepo,
                             @NotNull TopicManager topicManager,
-                            @NotNull AggStoreIngestionStats stats,
+                            @NotNull AggStoreIngestionStats storeIngestionStats,
+                            @NotNull AggVersionedDIVStats versionedDIVStats,
                             @NotNull StoreBufferService storeBufferService,
                             @NotNull BooleanSupplier isCurrentVersion,
                             @NotNull Optional<HybridStoreConfig> hybridStoreConfig) {
@@ -139,6 +149,7 @@ public class StoreIngestionTask implements Runnable, Closeable {
     this.topic = topic;
     this.schemaRepo = schemaRepo;
     this.storeNameWithoutVersionInfo = Version.parseStoreFromKafkaTopicName(topic);
+    this.storeVersion = Version.parseVersionFromKafkaTopicName(topic);
     this.schemaIdSet = new HashSet<>();
     this.consumerActionsQueue = new PriorityBlockingQueue<>(CONSUMER_ACTION_QUEUE_INIT_CAPACITY,
         new ConsumerAction.ConsumerActionPriorityComparator());
@@ -151,8 +162,10 @@ public class StoreIngestionTask implements Runnable, Closeable {
     this.consumerTaskId = String.format(CONSUMER_TASK_ID_FORMAT, topic);
     this.topicManager = topicManager;
 
-    this.stats = stats;
-    stats.updateStoreConsumptionTask(storeNameWithoutVersionInfo, this);
+    this.storeIngestionStats = storeIngestionStats;
+    this.versionedDIVStats = versionedDIVStats;
+
+    storeIngestionStats.updateStoreConsumptionTask(storeNameWithoutVersionInfo, this);
 
     this.isRunning = new AtomicBoolean(true);
     this.emitMetrics = new AtomicBoolean(true);
@@ -327,12 +340,21 @@ public class StoreIngestionTask implements Runnable, Closeable {
         pollResultNum = records.count();
       }
       if (emitMetrics.get()) {
-        stats.recordPollRequestLatency(storeNameWithoutVersionInfo, afterPollingTimestamp - beforePollingTimestamp);
-        stats.recordPollResultNum(storeNameWithoutVersionInfo, pollResultNum);
+        storeIngestionStats.recordPollRequestLatency(storeNameWithoutVersionInfo, afterPollingTimestamp - beforePollingTimestamp);
+        storeIngestionStats.recordPollResultNum(storeNameWithoutVersionInfo, pollResultNum);
       }
 
-      if (null == records) {
+      if (pollResultNum == 0) {
+        //This is the first time we polled and got an empty response set
+        if (recordsPolled) {
+          versionedDIVStats.resetCurrentIdleTime(storeNameWithoutVersionInfo, storeVersion);
+        }
+        recordsPolled = false;
+        versionedDIVStats.recordCurrentIdleTime(storeNameWithoutVersionInfo, storeVersion);
+        versionedDIVStats.recordOverallIdleTime(storeNameWithoutVersionInfo, storeVersion);
         return;
+      } else {
+        recordsPolled = true;
       }
       for (ConsumerRecord<KafkaKey, KafkaMessageEnvelope> record : records) {
         // blocking call
@@ -340,7 +362,7 @@ public class StoreIngestionTask implements Runnable, Closeable {
       }
       long afterPutTimestamp = System.currentTimeMillis();
       if (emitMetrics.get()) {
-        stats.recordConsumerRecordsQueuePutLatency(storeNameWithoutVersionInfo, afterPutTimestamp - afterPollingTimestamp);
+        storeIngestionStats.recordConsumerRecordsQueuePutLatency(storeNameWithoutVersionInfo, afterPutTimestamp - afterPollingTimestamp);
       }
     } else {
       idleCounter ++;
@@ -701,8 +723,8 @@ public class StoreIngestionTask implements Runnable, Closeable {
       throttler.maybeThrottle(processedRecordSize);
       // Report metrics
       if (emitMetrics.get()) {
-        stats.recordBytesConsumed(storeNameWithoutVersionInfo, processedRecordSize);
-        stats.recordRecordsConsumed(storeNameWithoutVersionInfo, processedRecordNum);
+        storeIngestionStats.recordBytesConsumed(storeNameWithoutVersionInfo, processedRecordSize);
+        storeIngestionStats.recordRecordsConsumed(storeNameWithoutVersionInfo, processedRecordNum);
       }
 
       partitionConsumptionState.resetProcessedRecordNum();
@@ -840,6 +862,7 @@ public class StoreIngestionTask implements Runnable, Closeable {
     Optional<OffsetRecordTransformer> offsetRecordTransformer = Optional.empty();
     try {
       offsetRecordTransformer = Optional.of(validateMessage(consumerRecord.partition(), kafkaKey, kafkaValue));
+      versionedDIVStats.recordSuccessMsg(storeNameWithoutVersionInfo, storeVersion);
 
       if (kafkaKey.isControlMessage()) {
         ControlMessage controlMessage = (ControlMessage) kafkaValue.payloadUnion;
@@ -851,13 +874,20 @@ public class StoreIngestionTask implements Runnable, Closeable {
         int keySize = kafkaKey.getKeyLength();
         int valueSize = processVeniceMessage(kafkaKey, kafkaValue, consumerRecord.partition());
         if (emitMetrics.get()) {
-          stats.recordKeySize(storeNameWithoutVersionInfo, keySize);
-          stats.recordValueSize(storeNameWithoutVersionInfo, valueSize);
+          storeIngestionStats.recordKeySize(storeNameWithoutVersionInfo, keySize);
+          storeIngestionStats.recordValueSize(storeNameWithoutVersionInfo, valueSize);
         }
         sizeOfPersistedData = keySize + valueSize;
       }
     } catch (DuplicateDataException e) {
+      versionedDIVStats.recordDuplicateMsg(storeNameWithoutVersionInfo, storeVersion);
       logger.info("Skipping a duplicate record in topic: '" + topic + "', offset: " + consumerRecord.offset());
+    } catch (MissingDataException me) {
+      versionedDIVStats.recordMissingMsg(storeNameWithoutVersionInfo, storeVersion);
+      throw me;
+    } catch (CorruptDataException ce) {
+      versionedDIVStats.recordCorruptedMsg(storeNameWithoutVersionInfo, storeVersion);
+      throw ce;
     } catch (PersistenceFailureException ex) {
       if (partitionConsumptionStateMap.containsKey(consumerRecord.partition())) {
         // If we actually intend to be consuming this partition, then we need to bubble up the failure to persist.

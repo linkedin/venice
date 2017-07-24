@@ -3,6 +3,8 @@ import io.tehuti.TehutiException;
 import io.tehuti.metrics.MetricsReporter;
 import io.tehuti.metrics.TehutiMetric;
 
+import java.util.Collection;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -43,5 +45,9 @@ public class MockTehutiReporter implements MetricsReporter{
         } else {
             throw new TehutiException("metrics: " + name + " does not exist.");
         }
+    }
+
+    public Map<String, TehutiMetric> getAllMetrics() {
+        return Collections.unmodifiableMap(metrics);
     }
 }
