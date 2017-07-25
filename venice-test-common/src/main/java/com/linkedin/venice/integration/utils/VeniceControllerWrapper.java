@@ -119,7 +119,9 @@ public class VeniceControllerWrapper extends ProcessWrapper {
    * @param version
    */
   public void setActiveVersion(String clusterName, String storeName, int version) {
-    ControllerClient.overrideSetActiveVersion(getControllerUrl(), clusterName, storeName, version);
+    try(ControllerClient controllerClient = new ControllerClient(clusterName, getControllerUrl())) {
+      controllerClient.overrideSetActiveVersion(storeName, version);
+    }
   }
 
   /***

@@ -720,24 +720,24 @@ public class TestVeniceParentHelixAdmin {
     Assert.assertEquals(stores[0], storeName);
 
     // Adding key schema
-    SchemaResponse keySchemaResponse = ControllerClient.getKeySchema(controllerUrl, clusterName, storeName);
+    SchemaResponse keySchemaResponse = controllerClient.getKeySchema(storeName);
     Assert.assertEquals(keySchemaResponse.getSchemaStr(), keySchemaStr);
 
     // Adding value schema
-    ControllerClient.addValueSchema(controllerUrl, clusterName, storeName, valueSchemaStr);
-    MultiSchemaResponse valueSchemaResponse = ControllerClient.getAllValueSchema(controllerUrl, clusterName, storeName);
+    controllerClient.addValueSchema(storeName, valueSchemaStr);
+    MultiSchemaResponse valueSchemaResponse = controllerClient.getAllValueSchema(storeName);
     MultiSchemaResponse.Schema[] schemas = valueSchemaResponse.getSchemas();
     Assert.assertEquals(schemas.length, 1);
     Assert.assertEquals(schemas[0].getId(), 1);
     Assert.assertEquals(schemas[0].getSchemaStr(), valueSchemaStr);
 
     // Disable store write
-    ControllerClient.enableStoreWrites(controllerUrl, clusterName, storeName, false);
+    controllerClient.enableStoreWrites(storeName, false);
     StoreResponse storeResponse = ControllerClient.getStore(controllerUrl, clusterName, storeName);
     Assert.assertFalse(storeResponse.getStore().isEnableStoreWrites());
 
     // Enable store write
-    ControllerClient.enableStoreWrites(controllerUrl, clusterName, storeName, true);
+    controllerClient.enableStoreWrites(storeName, true);
     storeResponse = ControllerClient.getStore(controllerUrl, clusterName, storeName);
     Assert.assertTrue(storeResponse.getStore().isEnableStoreWrites());
 
