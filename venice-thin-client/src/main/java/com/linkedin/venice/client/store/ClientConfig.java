@@ -2,6 +2,7 @@ package com.linkedin.venice.client.store;
 
 import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.security.ssl.access.control.SSLEngineComponentFactory;
+import io.tehuti.metrics.MetricsRepository;
 import org.apache.avro.specific.SpecificRecord;
 
 
@@ -23,6 +24,7 @@ public class ClientConfig<T extends SpecificRecord> {
   private String d2BasePath = DEFAULT_D2_ZK_BASE_PATH;
   private int d2ZkTimeout = DEFAULT_ZK_TIMEOUT_MS;
   private D2Client d2Client = null;
+  private MetricsRepository metricsRepository = null;
 
   //https specific settings
   private boolean isHttps = false;
@@ -152,5 +154,14 @@ public class ClientConfig<T extends SpecificRecord> {
 
   public boolean isSpecificClient() {
     return specificValueClass != null;
+  }
+
+  public ClientConfig<T> setMetricsRepository(MetricsRepository metricsRepository) {
+    this.metricsRepository = metricsRepository;
+    return this;
+  }
+
+  public MetricsRepository getMetricsRepository() {
+    return metricsRepository;
   }
 }
