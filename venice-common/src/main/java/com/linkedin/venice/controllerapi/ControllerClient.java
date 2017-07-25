@@ -231,15 +231,6 @@ public class ControllerClient implements Closeable {
     }
   }
 
-  @Deprecated
-  public static VersionResponse overrideSetActiveVersion(String urlsToFindMasterController, String clusterName, String storeName, int version){
-    try (ControllerClient client = new ControllerClient(clusterName, urlsToFindMasterController)){
-      return client.overrideSetActiveVersion(storeName, version);
-    } catch(Exception e){
-      return handleError(new VeniceException("Error setting version.  Storename: " + storeName + " Version: " + version), new VersionResponse());
-    }
-  }
-
   public ControllerResponse killOfflinePushJob(String kafkaTopic) {
     try {
       List<NameValuePair> queryParams = newParams(clusterName);
@@ -403,18 +394,6 @@ public class ControllerClient implements Closeable {
     }
   }
 
-  @Deprecated
-  public static ControllerResponse enableStoreWrites(String urlsToFindMasterController, String clusterName, String storeName, boolean enable){
-    try (ControllerClient client = new ControllerClient(clusterName, urlsToFindMasterController)){
-      return client.enableStoreWrites(storeName, enable);
-    } catch (Exception e){
-      String msg = enable ?
-          "Could not enable store: " + storeName :
-          "Could not disable store: " + storeName;
-      return handleError(new VeniceException(msg, e), new ControllerResponse());
-    }
-  }
-
   public MultiVersionResponse deleteAllVersions(String storeName) {
     try {
       List<NameValuePair> queryParams = newParams(clusterName);
@@ -429,15 +408,6 @@ public class ControllerClient implements Closeable {
 
   public NodeStatusResponse isNodeRemovable(String instanceId) {
     return singleNodeOperation(instanceId, ControllerRoute.NODE_REMOVABLE.getPath(), HttpGet.METHOD_NAME, NodeStatusResponse.class);
-  }
-
-  @Deprecated
-  public static ControllerResponse isNodeRemovable(String urlsToFindMasterController, String clusterName, String instanceId){
-    try (ControllerClient client = new ControllerClient(clusterName, urlsToFindMasterController)){
-      return client.isNodeRemovable(instanceId);
-    } catch (Exception e){
-      return handleError(new VeniceException("Could not identify if node: " + instanceId + " is removable", e), new ControllerResponse());
-    }
   }
 
   public ControllerResponse addNodeIntoWhiteList(String instanceId) {
@@ -491,30 +461,11 @@ public class ControllerClient implements Closeable {
     }
   }
 
-  @Deprecated
-  public static MultiNodeResponse listStorageNodes(String urlsToFindMasterController, String clusterName){
-    try (ControllerClient client = new ControllerClient(clusterName, urlsToFindMasterController)){
-      return client.listStorageNodes();
-    } catch (Exception e){
-      return handleError(new VeniceException("Error listing nodes", e), new MultiNodeResponse());
-    }
-  }
-
   public MultiNodesStatusResponse listInstancesStatuses() {
     try {
       List<NameValuePair> queryParams = newParams(clusterName);
       String responseJson = getRequest(ControllerRoute.ClUSTER_HEALTH_INSTANCES.getPath(), queryParams);
       return mapper.readValue(responseJson, MultiNodesStatusResponse.class);
-    } catch (Exception e) {
-      return handleError(new VeniceException("Error listing nodes", e), new MultiNodesStatusResponse());
-    }
-  }
-
-  @Deprecated
-  public static MultiNodesStatusResponse listInstancesStatuses(String urlsToFindMasterController,
-      String clusterName) {
-    try (ControllerClient client = new ControllerClient(clusterName, urlsToFindMasterController)) {
-      return client.listInstancesStatuses();
     } catch (Exception e) {
       return handleError(new VeniceException("Error listing nodes", e), new MultiNodesStatusResponse());
     }
@@ -532,30 +483,12 @@ public class ControllerClient implements Closeable {
     }
   }
 
-  @Deprecated
-  public static MultiReplicaResponse listReplicas(String urlsToFindMasterController, String clusterName, String storeName, int version){
-    try (ControllerClient client = new ControllerClient(clusterName, urlsToFindMasterController)){
-      return client.listReplicas(storeName, version);
-    } catch (Exception e){
-      return handleError(new VeniceException("Error listing replicas for store: " + storeName + " version: " + version, e), new MultiReplicaResponse());
-    }
-  }
-
   public MultiReplicaResponse listStorageNodeReplicas(String instanceId) {
     try {
       List<NameValuePair> params = newParams(clusterName);
       params.add(new BasicNameValuePair(ControllerApiConstants.STORAGE_NODE_ID, instanceId));
       String responseJson = getRequest(ControllerRoute.NODE_REPLICAS.getPath(), params);
       return mapper.readValue(responseJson, MultiReplicaResponse.class);
-    } catch (Exception e){
-      return handleError(new VeniceException("Error listing replicas for storage node: " + instanceId, e), new MultiReplicaResponse());
-    }
-  }
-
-  @Deprecated
-  public static MultiReplicaResponse listStorageNodeReplicas(String urlsToFindMasterController, String clusterName, String instanceId){
-    try (ControllerClient client = new ControllerClient(clusterName, urlsToFindMasterController)){
-      return client.listStorageNodeReplicas(instanceId);
     } catch (Exception e){
       return handleError(new VeniceException("Error listing replicas for storage node: " + instanceId, e), new MultiReplicaResponse());
     }
@@ -573,15 +506,6 @@ public class ControllerClient implements Closeable {
     }
   }
 
-  @Deprecated
-  public static SchemaResponse getKeySchema(String urlsToFindMasterController, String clusterName, String storeName) {
-    try (ControllerClient client = new ControllerClient(clusterName, urlsToFindMasterController)){
-      return client.getKeySchema(storeName);
-    } catch (Exception e){
-      return handleError(new VeniceException("Error getting key schema for store: " + storeName, e), new SchemaResponse());
-    }
-  }
-
   public SchemaResponse addValueSchema(String storeName, String valueSchemaStr) {
     try {
       List<NameValuePair> queryParams = newParams(clusterName);
@@ -589,15 +513,6 @@ public class ControllerClient implements Closeable {
       queryParams.add(new BasicNameValuePair(ControllerApiConstants.VALUE_SCHEMA, valueSchemaStr));
       String responseJson = postRequest(ControllerRoute.ADD_VALUE_SCHEMA.getPath(), queryParams);
       return mapper.readValue(responseJson, SchemaResponse.class);
-    } catch (Exception e){
-      return handleError(new VeniceException("Error adding value schema: " + valueSchemaStr + " for store: " + storeName, e), new SchemaResponse());
-    }
-  }
-
-  @Deprecated
-  public static SchemaResponse addValueSchema(String urlsToFindMasterController, String clusterName, String storeName, String valueSchemaStr) {
-    try (ControllerClient client = new ControllerClient(clusterName, urlsToFindMasterController)){
-      return client.addValueSchema(storeName, valueSchemaStr);
     } catch (Exception e){
       return handleError(new VeniceException("Error adding value schema: " + valueSchemaStr + " for store: " + storeName, e), new SchemaResponse());
     }
@@ -689,15 +604,6 @@ public class ControllerClient implements Closeable {
     }
   }
 
-  @Deprecated
-  public static SchemaResponse getValueSchema(String urlsToFindMasterController, String clusterName, String storeName, int valueSchemaId) {
-    try (ControllerClient client = new ControllerClient(clusterName, urlsToFindMasterController)){
-      return client.getValueSchema(storeName, valueSchemaId);
-    } catch (Exception e){
-      return handleError(new VeniceException("Error getting value schema for schema id: " + valueSchemaId + " for store: " + storeName, e), new SchemaResponse());
-    }
-  }
-
   public SchemaResponse getValueSchemaID(String storeName, String valueSchemaStr) {
     try {
       List<NameValuePair> queryParams = newParams(clusterName);
@@ -710,30 +616,12 @@ public class ControllerClient implements Closeable {
     }
   }
 
-  @Deprecated
-  public static SchemaResponse getValueSchemaID(String urlsToFindMasterController, String clusterName, String storeName, String valueSchemaStr) {
-    try (ControllerClient client = new ControllerClient(clusterName, urlsToFindMasterController)){
-      return client.getValueSchemaID(storeName, valueSchemaStr);
-    } catch (Exception e){
-      return handleError(new VeniceException("Error getting value schema for schema: " + valueSchemaStr + " for store: " + storeName, e), new SchemaResponse());
-    }
-  }
-
   public MultiSchemaResponse getAllValueSchema(String storeName) {
     try {
       List<NameValuePair> queryParams = newParams(clusterName);
       queryParams.add(new BasicNameValuePair(ControllerApiConstants.NAME, storeName));
       String responseJson = getRequest(ControllerRoute.GET_ALL_VALUE_SCHEMA.getPath(), queryParams);
       return mapper.readValue(responseJson, MultiSchemaResponse.class);
-    } catch (Exception e){
-      return handleError(new VeniceException("Error getting value schema for store: " + storeName, e), new MultiSchemaResponse());
-    }
-  }
-
-  @Deprecated
-  public static MultiSchemaResponse getAllValueSchema(String urlsToFindMasterController, String clusterName, String storeName) {
-    try (ControllerClient client = new ControllerClient(clusterName, urlsToFindMasterController)){
-      return client.getAllValueSchema(storeName);
     } catch (Exception e){
       return handleError(new VeniceException("Error getting value schema for store: " + storeName, e), new MultiSchemaResponse());
     }

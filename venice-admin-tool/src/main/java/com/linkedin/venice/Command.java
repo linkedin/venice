@@ -54,6 +54,8 @@ public enum Command {
       new Arg[] {Arg.URL, Arg.CLUSTER, Arg.STORAGE_NODE}),
   QUERY("query", "Query a store that has a simple key schema",
       new Arg[] {Arg.URL, Arg.CLUSTER, Arg.STORE, Arg.KEY}),
+  SHOW_SCHEMAS("schemas", "Show the key and value schemas for a store",
+      new Arg[] {Arg.URL, Arg.CLUSTER, Arg.STORE}),
   DELETE_ALL_VERSIONS("delete-all-versions", "Delete all versions in given store.",
       new Arg[]{Arg.URL, Arg.CLUSTER, Arg.STORE}),
   GET_EXECUTION("get-execution", "Get the execution status for an async admin command.",
