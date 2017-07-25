@@ -14,7 +14,14 @@ public class ClientFactory {
     TransportClient transportClient = getTransportClient(clientConfig);
     InternalAvroStoreClient<K, V> avroClient =
         new AvroGenericStoreClientImpl<>(transportClient, clientConfig.getStoreName());
-    StatTrackingStoreClient<K, V> client = new StatTrackingStoreClient<>(avroClient);
+
+    StatTrackingStoreClient<K, V> client;
+    if (clientConfig.getMetricsRepository() != null) {
+      client = new StatTrackingStoreClient<>(avroClient, clientConfig.getMetricsRepository());
+    } else {
+      client = new StatTrackingStoreClient<>(avroClient);
+    }
+
     client.start();
 
     return client;
@@ -24,7 +31,14 @@ public class ClientFactory {
     TransportClient transportClient = getTransportClient(clientConfig);
     InternalAvroStoreClient<K, V> avroClient =
         new AvroSpecificStoreClientImpl<>(transportClient, clientConfig.getStoreName(), clientConfig.getSpecificValueClass());
-    SpecificStatTrackingStoreClient<K, V> client = new SpecificStatTrackingStoreClient<K, V>(avroClient);
+
+    SpecificStatTrackingStoreClient<K, V> client;
+    if (clientConfig.getMetricsRepository() != null) {
+      client = new SpecificStatTrackingStoreClient<>(avroClient, clientConfig.getMetricsRepository());
+    } else {
+      client = new SpecificStatTrackingStoreClient<>(avroClient);
+    }
+
     client.start();
 
     return client;
