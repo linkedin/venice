@@ -37,6 +37,7 @@ import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.Executor;
 import javax.annotation.Nonnull;
 import org.apache.commons.io.IOUtils;
+import org.apache.http.HttpHeaders;
 import org.apache.http.HttpStatus;
 import org.apache.http.client.methods.HttpUriRequest;
 import org.apache.http.concurrent.FutureCallback;
@@ -200,7 +201,7 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
         int valueSchemaId = Integer.parseInt(result.getFirstHeader(HttpConstants.VENICE_SCHEMA_ID).getValue());
         response.headers()
             .set(HttpHeaderNames.CONTENT_LENGTH, content.readableBytes())
-            .set(HttpHeaderNames.CONTENT_TYPE, HttpConstants.APPLICATION_OCTET)
+            .set(HttpHeaderNames.CONTENT_TYPE, result.getFirstHeader(HttpHeaders.CONTENT_TYPE).getValue())
             .set(HttpConstants.VENICE_SCHEMA_ID, valueSchemaId);
         if (path.getRequestType().equals(RequestType.SINGLE_GET)) {
           // For multi-get, the partition is not returned to client
