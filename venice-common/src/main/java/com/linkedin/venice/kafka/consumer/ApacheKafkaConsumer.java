@@ -87,9 +87,15 @@ public class ApacheKafkaConsumer implements KafkaConsumerWrapper {
   }
 
   @Override
+  public boolean hasSubscription() {
+    return !kafkaConsumer.assignment().isEmpty();
+  }
+
+  @Override
   public void close() {
     if (kafkaConsumer != null) {
       kafkaConsumer.close();
     }
   }
+
 }

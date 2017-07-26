@@ -16,4 +16,6 @@ public interface KafkaConsumerWrapper extends AutoCloseable {
   void close();
 
   ConsumerRecords<KafkaKey, KafkaMessageEnvelope> poll(long timeout);
+
+  boolean hasSubscription();
 }

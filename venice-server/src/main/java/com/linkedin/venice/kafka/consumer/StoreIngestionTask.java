@@ -312,7 +312,11 @@ public class StoreIngestionTask implements Runnable, Closeable {
       // Interrupt the whole ingestion task
       throw new VeniceException("Exception thrown by store buffer drainer", lastDrainerException);
     }
-    if (partitionConsumptionStateMap.size() > 0) {
+    /**
+     * Check whether current consumer has any subscription or not since 'poll' function will throw
+     * {@link IllegalStateException} with empty subscription.
+     */
+    if (consumer.hasSubscription()) {
       idleCounter = 0;
       long beforePollingTimestamp = System.currentTimeMillis();
       ConsumerRecords<KafkaKey, KafkaMessageEnvelope> records = consumer.poll(READ_CYCLE_DELAY_MS);
@@ -495,6 +499,22 @@ public class StoreIngestionTask implements Runnable, Closeable {
           adjustStorageEngine(partition, sorted, newPartitionConsumptionState);
           notificationDispatcher.reportRestarted(newPartitionConsumptionState);
         }
+        /**
+         * TODO: The behavior for completed partition is not consistent here.
+         *
+         * When processing subscription action for restart scenario, {@link #consumer} won't subscribe the topic
+         * partition if it is already completed.
+         * In normal case (not completed right away), {@link #consumer} will continue subscribing the topic partition
+         * even after receiving the 'EOP' control message (no auto-unsubscription happens).
+         *
+         * From my understanding, at least we should keep them consistent to avoid confusion.
+         *
+         * Possible proposals:
+         * 1. (Preferred) Auto-unsubscription when receiving EOP for batch store. With this way,
+         * the unused consumer thread (not processing any kafka message) will be collected.
+         * 2. Always keep subscription no matter what happens.
+         *
+         */
         // Second, take care of informing the controller about our status, and starting consumption
         if (record.isEndOfPushReceived() && !hybridStoreConfig.isPresent()) {
           /**

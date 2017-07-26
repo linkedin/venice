@@ -66,6 +66,11 @@ public class MockInMemoryConsumer implements KafkaConsumerWrapper {
     return pollStrategy.poll(broker, offsets, timeout);
   }
 
+  @Override
+  public boolean hasSubscription() {
+    return !offsets.isEmpty();
+  }
+
   public Map<TopicPartition, OffsetRecord> getOffsets() {
     return offsets;
   }
