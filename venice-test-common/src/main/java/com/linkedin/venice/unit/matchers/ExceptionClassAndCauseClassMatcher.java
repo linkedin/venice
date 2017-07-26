@@ -3,7 +3,7 @@ package com.linkedin.venice.unit.matchers;
 import org.mockito.ArgumentMatcher;
 
 
-public class ExceptionClassAndCauseClassMatcher extends ArgumentMatcher<Exception> {
+public class ExceptionClassAndCauseClassMatcher implements ArgumentMatcher<Exception> {
   private final Class exceptionClass;
   private final Class causeClass;
 
@@ -13,7 +13,7 @@ public class ExceptionClassAndCauseClassMatcher extends ArgumentMatcher<Exceptio
   }
 
   @Override
-  public boolean matches(Object argument) {
+  public boolean matches(Exception argument) {
     return exceptionClass.isInstance(argument) && causeClass.isInstance(((Exception) argument).getCause());
   }
 }

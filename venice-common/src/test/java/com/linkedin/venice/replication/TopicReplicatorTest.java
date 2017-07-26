@@ -1,8 +1,5 @@
 package com.linkedin.venice.replication;
 
-import static org.mockito.Mockito.*;
-import static org.testng.Assert.*;
-
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.TopicException;
 import com.linkedin.venice.kafka.TopicManager;
@@ -14,9 +11,16 @@ import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import org.mockito.AdditionalMatchers;
 import org.testng.annotations.Test;
 
-import java.util.*;
+import static org.mockito.Mockito.*;
+import static org.testng.Assert.*;
 
 public class TopicReplicatorTest {
   @Test
@@ -42,7 +46,11 @@ public class TopicReplicatorTest {
     when(topicReplicator.getVeniceWriterFactory()).thenReturn(veniceWriterFactory);
     when(topicReplicator.getTimer()).thenReturn(new MockTime());
     when(topicManager.getOffsetsByTime(anyString(), anyLong())).thenReturn(startingOffsets);
-    when(veniceWriterFactory.getBasicVeniceWriter(anyString(), anyString(), any(ReflectUtils.loadClass(Time.class.getName())))).thenReturn(veniceWriter);
+    when(veniceWriterFactory.getBasicVeniceWriter(
+        AdditionalMatchers.or(anyString(), isNull()),
+        anyString(),
+        any(ReflectUtils.loadClass(Time.class.getName()))))
+        .thenReturn(veniceWriter);
 
     // Method under test
     when(topicReplicator.startBufferReplay(anyString(), anyString(), any())).thenCallRealMethod();

@@ -50,6 +50,8 @@ import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.KafkaProducerWrapper;
 import com.linkedin.venice.writer.VeniceWriter;
+import java.net.URL;
+import java.net.URLClassLoader;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
@@ -655,7 +657,7 @@ public class StoreIngestionTaskTest {
    * including a corrupt message followed by a good one. We expect the Notifier to not report any errors after the
    * EOP.
    */
-  @Test()
+  @Test
   public void testCorruptMessagesDoNotFailFastAfterEOP() throws Exception {
     VeniceWriter veniceWriterForDataDuringPush = getVeniceWriter(() -> new MockInMemoryProducer(inMemoryKafkaBroker));
     VeniceWriter veniceWriterForDataAfterPush = getCorruptedVeniceWriter(putValueToCorrupt);
@@ -676,16 +678,24 @@ public class StoreIngestionTaskTest {
 
     logger.info("lastOffsetBeforeEOP: " + lastOffsetBeforeEOP + ", lastOffset: " + lastOffset);
 
-    runTest(getSet(PARTITION_BAR), () -> {
-      verify(mockNotifier, timeout(TEST_TIMEOUT).atLeastOnce())
-          .progress(eq(topic), eq(PARTITION_BAR), LongEqualOrGreaterThanMatcher.get(lastOffsetBeforeEOP));
+    try {
+      runTest(getSet(PARTITION_BAR), () -> {
+        verify(mockNotifier, timeout(TEST_TIMEOUT).atLeastOnce()).progress(eq(topic), eq(PARTITION_BAR),
+            LongEqualOrGreaterThanMatcher.get(lastOffsetBeforeEOP));
 
-      verify(mockNotifier, timeout(TEST_TIMEOUT).times(1))
-          .completed(eq(topic), eq(PARTITION_BAR), LongEqualOrGreaterThanMatcher.get(lastOffsetBeforeEOP));
+        verify(mockNotifier, timeout(TEST_TIMEOUT).times(1)).completed(eq(topic), eq(PARTITION_BAR),
+            LongEqualOrGreaterThanMatcher.get(lastOffsetBeforeEOP));
 
-      verify(mockNotifier, never()).error(eq(topic), eq(PARTITION_BAR), argThat(new NonEmptyStringMatcher()),
-          argThat(new ExceptionClassMatcher(CorruptDataException.class)));
-    });
+        verify(mockNotifier, never()).error(eq(topic), eq(PARTITION_BAR), argThat(new NonEmptyStringMatcher()), argThat(new ExceptionClassMatcher(CorruptDataException.class)));
+      });
+    } catch (VerifyError e) {
+      StringBuilder msg = new StringBuilder();
+      ClassLoader cl = ClassLoader.getSystemClassLoader();
+      URL[] urls = ((URLClassLoader)cl).getURLs();
+      msg.append("VerifyError, possibly from junit version conflict.  Printing junit on classpath: \n");
+      Arrays.asList(urls).stream().filter(url -> url.getFile().contains("junit")).forEach(url -> msg.append(url + "\n"));
+      throw new VeniceException(msg.toString(), e);
+    }
   }
 
   /**
