@@ -2,9 +2,9 @@ package com.linkedin.venice.unit.matchers;
 
 import org.mockito.ArgumentMatcher;
 
-public class NonEmptyStringMatcher extends ArgumentMatcher<String> {
+public class NonEmptyStringMatcher implements ArgumentMatcher<String> {
   @Override
-  public boolean matches(Object argument) {
+  public boolean matches(String argument) {
     return argument instanceof String && !((String) argument).isEmpty();
   }
 }

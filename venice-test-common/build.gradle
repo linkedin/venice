@@ -70,7 +70,7 @@ dependencies {
   compile project(':venice-thin-client')
   compile project(':hadoop-to-venice-bridge')
 
-  compile 'org.mockito:mockito-all:1.9.5'
+  compile libraries.mockito
   compile project(':venice-brooklin')
   compile project(':venice-samza')
 

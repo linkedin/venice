@@ -11,6 +11,7 @@ import org.apache.hadoop.io.NullWritable;
 import org.apache.hadoop.mapred.JobConf;
 import org.apache.hadoop.mapred.OutputCollector;
 import org.mockito.ArgumentCaptor;
+import org.mockito.Mockito;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -93,6 +94,6 @@ public class TestVeniceMapper extends AbstractTestVeniceMR {
     mapper.configure(setupJobConf());
     mapper.map(wrapper, NullWritable.get(), output, null);
 
-    verify(output, never()).collect(any(), any());
+    verify(output, never()).collect(Mockito.any(), Mockito.any());
   }
 }

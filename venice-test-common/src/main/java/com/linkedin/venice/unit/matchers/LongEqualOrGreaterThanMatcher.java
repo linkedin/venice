@@ -1,9 +1,10 @@
 package com.linkedin.venice.unit.matchers;
 
 import org.mockito.ArgumentMatcher;
+import org.mockito.ArgumentMatchers;
 import org.mockito.Matchers;
 
-public class LongEqualOrGreaterThanMatcher extends ArgumentMatcher<Long> {
+public class LongEqualOrGreaterThanMatcher implements ArgumentMatcher<Long> {
   private final long lowerBound;
 
   public LongEqualOrGreaterThanMatcher(long lowerBound) {
@@ -11,7 +12,7 @@ public class LongEqualOrGreaterThanMatcher extends ArgumentMatcher<Long> {
   }
 
   @Override
-  public boolean matches(Object argument) {
+  public boolean matches(Long argument) {
     return argument instanceof Long && ((Long) argument) >= lowerBound;
   }
 
@@ -20,6 +21,6 @@ public class LongEqualOrGreaterThanMatcher extends ArgumentMatcher<Long> {
   }
 
   public static long get(long lowerBound) {
-    return Matchers.longThat(new LongEqualOrGreaterThanMatcher(lowerBound));
+    return ArgumentMatchers.longThat(new LongEqualOrGreaterThanMatcher(lowerBound));
   }
 }

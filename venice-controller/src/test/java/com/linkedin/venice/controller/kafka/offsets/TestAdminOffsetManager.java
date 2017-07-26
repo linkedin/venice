@@ -37,11 +37,11 @@ public class TestAdminOffsetManager {
     adapterSerializer = Mockito.mock(HelixAdapterSerializer.class);
   }
 
-  static class OffsetRecordSerializerMatcher extends ArgumentMatcher<OffsetRecordSerializer> {
+  static class OffsetRecordSerializerMatcher implements ArgumentMatcher<OffsetRecordSerializer> {
     public OffsetRecordSerializerMatcher() {
     }
     @Override
-    public boolean matches(Object argument) {
+    public boolean matches(OffsetRecordSerializer argument) {
       return argument instanceof OffsetRecordSerializer;
     }
   }

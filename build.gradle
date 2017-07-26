@@ -45,6 +45,7 @@ ext.libraries = [ // Groovy map literal
                   kafkaClients: internalKafkaGroup + ':kafka-clients:' + internalKafkaVersion,
                   // kafka: ossKafkaGroup + ':kafka_2.10:' + ossKafkaVersion,
                   // kafkaClients: ossKafkaGroup + ':kafka-clients:' + ossKafkaVersion,
+                  mockito: 'org.mockito:mockito-core:2.8.47',
                   netty: 'io.netty:netty-all:4.1.4.Final',
                   zkclient: 'com.101tec:zkclient:0.7', //for Kafka AdminUtils
                   d2: 'com.linkedin.container:pegasus-d2-server-factory:25.1.75',
@@ -69,7 +70,7 @@ ext.libraries = [ // Groovy map literal
                   joptSimple: 'net.sf.jopt-simple:jopt-simple:3.2',
                   log4j: 'log4j:log4j:1.2.17',
                   snappy: 'org.xerial.snappy:snappy-java:1.0.4.1',
-                  testng: 'org.testng:testng:6.8.8',
+                  testng: 'org.testng:testng:6.11',
                   tehuti: 'com.linkedin.tehuti:tehuti:0.7.1.1',
                   // Resolves java.lang.UnsupportedOperationException:  setXIncludeAware is not supported on this JAXP implementation or earlier: class org.apache.xerces.jaxp.DocumentBuilderFactoryImpl
                   xalan: 'xalan:xalan:2.7.1',
@@ -113,7 +114,7 @@ subprojects {
     compile 'javax.validation:validation-api:1.0.0.GA'
 
     testCompile libraries.testng
-    testCompile 'org.mockito:mockito-all:1.10.19'
+    testCompile libraries.mockito
     // Test utils and framework for all unit tests and integration tests.
     testCompile project(':venice-test-common')
   }

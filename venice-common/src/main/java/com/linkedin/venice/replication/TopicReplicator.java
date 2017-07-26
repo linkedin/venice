@@ -15,7 +15,6 @@ import com.linkedin.venice.writer.VeniceWriterFactory;
 
 import java.io.Closeable;
 import java.util.*;
-import java.util.concurrent.TimeUnit;
 import static java.util.concurrent.TimeUnit.*;
 import java.util.stream.Collectors;
 import org.apache.log4j.Logger;
