@@ -61,7 +61,8 @@ public class TestRouter {
     }
 
     URI requestUri = new URI("d2://" + D2TestUtils.DEFAULT_TEST_SERVICE_NAME + "/storage/myStore/myKey"); /* D2 client only supports d2:// scheme */
-    RestRequest request = new RestRequestBuilder(requestUri).setMethod(RestMethod.GET).build();
+    // "get" method name is put on purpose, since we would like Venice Router to support both 'get' and 'GET'
+    RestRequest request = new RestRequestBuilder(requestUri).setMethod("get").build();
     RestResponse response;
     try {
       response = d2Client.restRequest(request).get();

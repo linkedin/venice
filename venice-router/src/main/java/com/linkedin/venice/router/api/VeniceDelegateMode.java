@@ -107,7 +107,7 @@ public class VeniceDelegateMode extends ScatterGatherMode {
             veniceInstance.getNodeId());
       } catch (QuotaExceededException e) {
         throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(Optional.of(storeName), Optional.of(venicePath.getRequestType()),
-            TOO_MANY_REQUESTS, "Quota exceeds!");
+            TOO_MANY_REQUESTS, "Quota exceeds! msg: " + e.getMessage());
       }
     }
 
