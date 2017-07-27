@@ -37,6 +37,9 @@ public class VenicePathParser<HTTP_REQUEST extends BasicHttpRequest>
 
   private static final Logger LOGGER = Logger.getLogger(VenicePathParser.class);
 
+  public static final String METHOD_GET = HttpMethod.GET.name();
+  public static final String METHOD_POST = HttpMethod.POST.name();
+
   public static final String STORE_VERSION_SEP = "_v";
   public static final Pattern STORE_PATTERN = Pattern.compile("\\A[a-zA-Z][a-zA-Z0-9_-]*\\z"); // \A and \z are start and end of string
   public static final int STORE_MAX_LENGTH = 128;
@@ -88,20 +91,20 @@ public class VenicePathParser<HTTP_REQUEST extends BasicHttpRequest>
     }
     String resourceName = getResourceFromStoreName(storeName);
 
-    HttpMethod method = fullHttpRequest.method();
+    String method = fullHttpRequest.method().name();
     VenicePath path = null;
     AggRouterHttpRequestStats stats = null;
-    if (method.equals(HttpMethod.GET)) {
+    if (method.equalsIgnoreCase(METHOD_GET)) {
       // single-get request
       path = new VeniceSingleGetPath(resourceName, pathHelper.getKey(), uri, partitionFinder);
       stats = statsForSingleGet;
-    } else if (method.equals(HttpMethod.POST)) {
+    } else if (method.equalsIgnoreCase(METHOD_POST)) {
       // multi-get request
       path = new VeniceMultiGetPath(resourceName, fullHttpRequest, partitionFinder, maxKeyCountInMultiGetReq);
       stats = statsForMultiGet;
     } else {
       throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(Optional.empty(), Optional.empty(),
-          BAD_REQUEST, "Method: " + method.name() + " is not allowed");
+          BAD_REQUEST, "Method: " + method + " is not allowed");
     }
     stats.recordRequest(storeName);
     stats.recordRequestSize(storeName, path.getRequestSize());

@@ -29,7 +29,7 @@ import org.testng.annotations.Test;
 
 import static com.linkedin.venice.ConfigKeys.*;
 
-public class TestMultiGet {
+public class TestRead {
   private VeniceClusterWrapper veniceCluster;
   private String storeVersionName;
   private int valueSchemaId;
@@ -108,5 +108,13 @@ public class TestMultiGet {
     for (int i = 0; i < 10; ++i) {
       Assert.assertEquals(result.get(keyPrefix + i).toString(), valuePrefix + i);
     }
+
+    /**
+     * Test simple get
+     */
+    String key = keyPrefix + 2;
+    String expectedValue = valuePrefix + 2;
+    CharSequence value = storeClient.get(key).get();
+    Assert.assertEquals(value.toString(), expectedValue);
   }
 }
