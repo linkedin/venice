@@ -103,7 +103,7 @@ public class TestMultiGet {
       keySet.add(keyPrefix + i);
     }
     keySet.add("unknown_key");
-    Map<String, CharSequence> result = storeClient.multiGet(keySet).get();
+    Map<String, CharSequence> result = storeClient.batchGet(keySet).get();
     Assert.assertEquals(result.size(), 10);
     for (int i = 0; i < 10; ++i) {
       Assert.assertEquals(result.get(keyPrefix + i).toString(), valuePrefix + i);

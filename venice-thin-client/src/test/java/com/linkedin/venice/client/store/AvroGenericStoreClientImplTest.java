@@ -370,7 +370,7 @@ public class AvroGenericStoreClientImplTest {
 
     for (Map.Entry<String, AvroGenericStoreClient<String, Object>> entry : storeClients.entrySet()) {
       logger.info("Execute test for transport client: " + entry.getKey());
-      Map<String, Object> result = entry.getValue().multiGet(keys).get();
+      Map<String, Object> result = entry.getValue().batchGet(keys).get();
       Assert.assertFalse(result.containsKey("key0"));
       Assert.assertFalse(result.containsKey("key2"));
       Assert.assertFalse(result.containsKey("key4"));
@@ -406,7 +406,7 @@ public class AvroGenericStoreClientImplTest {
     for (Map.Entry<String, AvroGenericStoreClient<String, Object>> entry : storeClients.entrySet()) {
       logger.info("Execute test for transport client: " + entry.getKey());
       try {
-        Map<String, Object> result = entry.getValue().multiGet(keys).get();
+        Map<String, Object> result = entry.getValue().batchGet(keys).get();
         Assert.fail("Should receive exception here because of non-existing data schema id");
       } catch (ExecutionException e) {
         // expected
