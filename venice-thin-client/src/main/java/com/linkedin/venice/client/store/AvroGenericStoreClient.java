@@ -35,7 +35,7 @@ public interface AvroGenericStoreClient<K, V> extends Closeable {
    * @return
    * @throws VeniceClientException
    */
-  CompletableFuture<Map<K, V>> multiGet(Set<K> keys) throws VeniceClientException;
+  CompletableFuture<Map<K, V>> batchGet(Set<K> keys) throws VeniceClientException;
 
   void start() throws VeniceClientException;
 

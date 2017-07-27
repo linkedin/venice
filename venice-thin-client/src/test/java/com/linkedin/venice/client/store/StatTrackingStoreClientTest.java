@@ -73,12 +73,12 @@ public class StatTrackingStoreClientTest {
       return value;
 
     });
-    doReturn(mockInnerFuture).when(mockStoreClient).multiGet(any());
+    doReturn(mockInnerFuture).when(mockStoreClient).batchGet(any());
 
     MetricsRepository repository = new MetricsRepository();
 
     StatTrackingStoreClient<String, Object> statTrackingStoreClient = new StatTrackingStoreClient<>(mockStoreClient, repository);
-    statTrackingStoreClient.multiGet(keySet).get();
+    statTrackingStoreClient.batchGet(keySet).get();
 
     Map<String, ? extends Metric> metrics = repository.metrics();
     Metric requestMetric = metrics.get(".venice_client--multiget_request.OccurrenceRate");

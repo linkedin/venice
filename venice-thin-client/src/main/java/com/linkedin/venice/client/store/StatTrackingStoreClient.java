@@ -101,10 +101,10 @@ public class StatTrackingStoreClient<K, V> extends DelegatingStoreClient<K, V> {
   }
 
   @Override
-  public CompletableFuture<Map<K, V>> multiGet(Set<K> keys) throws VeniceClientException
+  public CompletableFuture<Map<K, V>> batchGet(Set<K> keys) throws VeniceClientException
   {
     long startTime = System.currentTimeMillis();
-    CompletableFuture<Map<K, V>> innerFuture = super.multiGet(keys);
+    CompletableFuture<Map<K, V>> innerFuture = super.batchGet(keys);
     multiGetStats.recordRequestKeyCount(keys.size());
     CompletableFuture<Map<K, V>> statFuture = innerFuture.handle(
         (BiFunction<? super Map<K, V>, Throwable, ? extends Map<K, V>>) getStatCallback(

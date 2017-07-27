@@ -139,7 +139,7 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
   }
 
   @Override
-  public CompletableFuture<Map<K, V>> multiGet(Set<K> keys) throws VeniceClientException
+  public CompletableFuture<Map<K, V>> batchGet(Set<K> keys) throws VeniceClientException
   {
     List<K> keyList = new ArrayList<>(keys);
     List<ByteBuffer> serializedKeyList = new ArrayList<>();

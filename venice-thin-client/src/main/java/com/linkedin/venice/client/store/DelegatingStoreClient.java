@@ -24,8 +24,8 @@ public class DelegatingStoreClient<K, V> extends InternalAvroStoreClient<K, V> {
   }
 
   @Override
-  public CompletableFuture<Map<K, V>> multiGet(Set<K> keys) throws VeniceClientException {
-    return innerStoreClient.multiGet(keys);
+  public CompletableFuture<Map<K, V>> batchGet(Set<K> keys) throws VeniceClientException {
+    return innerStoreClient.batchGet(keys);
   }
 
   @Override
