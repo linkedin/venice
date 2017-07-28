@@ -121,6 +121,11 @@ public abstract class TopicReplicator implements Closeable {
   abstract void terminateReplicationInternal(String sourceTopic, String destinationTopic);
 
   /**
+   * Only used by tests
+   */
+  abstract public boolean doesReplicationExist(String sourceTopic, String destinationTopic);
+
+  /**
    * Reflectively instantiates a {@link TopicManager} based on the passed in {@param veniceProperties}.
    *
    * The properties must contain {@value #TOPIC_REPLICATOR_CLASS_NAME}, otherwise, instantiation is not
