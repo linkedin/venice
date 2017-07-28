@@ -3,6 +3,7 @@ package com.linkedin.venice.endToEnd;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
+import com.linkedin.venice.controller.VeniceHelixAdmin;
 import com.linkedin.venice.controllerapi.ControllerApiConstants;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.StoreResponse;
@@ -10,10 +11,14 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.KafkaPushJob;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
+import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
+import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.replication.TopicReplicator;
 import com.linkedin.venice.samza.VeniceSystemFactory;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import java.io.File;
+import java.lang.reflect.Field;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -147,6 +152,25 @@ public class TestHybrid {
     Assert.assertFalse(versions.contains(1), "After version 3 comes online, version 1 should be retired");
     Assert.assertTrue(versions.contains(2));
     Assert.assertTrue(versions.contains(3));
+
+    // Verify replication exists for versions 2 and 3, but not for version 1
+    VeniceHelixAdmin veniceHelixAdmin = (VeniceHelixAdmin) venice.getMasterVeniceController().getVeniceAdmin();
+    Field topicReplicatorField = veniceHelixAdmin.getClass().getDeclaredField("topicReplicator");
+    topicReplicatorField.setAccessible(true);
+    Optional<TopicReplicator> topicReplicatorOptional = (Optional<TopicReplicator>) topicReplicatorField.get(veniceHelixAdmin);
+    if (topicReplicatorOptional.isPresent()){
+      TopicReplicator topicReplicator = topicReplicatorOptional.get();
+      String realtimeTopic = Version.composeRealTimeTopic(storeName);
+      String versionOneTopic = Version.composeKafkaTopic(storeName, 1);
+      String versionTwoTopic = Version.composeKafkaTopic(storeName, 2);
+      String versionThreeTopic = Version.composeKafkaTopic(storeName, 3);
+
+      Assert.assertFalse(topicReplicator.doesReplicationExist(realtimeTopic, versionOneTopic), "Replication stream must not exist for retired version 1");
+      Assert.assertTrue(topicReplicator.doesReplicationExist(realtimeTopic, versionTwoTopic), "Replication stream must still exist for backup version 2");
+      Assert.assertTrue(topicReplicator.doesReplicationExist(realtimeTopic, versionThreeTopic), "Replication stream must still exist for current version 3");
+    } else {
+      Assert.fail("Venice cluster must have a topic replicator for hybrid to be operational"); //this shouldn't happen
+    }
 
 
     veniceProducer.stop();

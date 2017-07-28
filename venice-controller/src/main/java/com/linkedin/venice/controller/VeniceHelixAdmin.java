@@ -29,7 +29,6 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.pushmonitor.OfflinePushMonitor;
 import com.linkedin.venice.replication.TopicReplicator;
-import com.linkedin.venice.kafka.TopicException;
 import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.status.StatusMessageChannel;
@@ -482,18 +481,26 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         return deletingVersionSnapshot;
     }
 
+    /**
+     * Delete version from cluster, removing all related resources
+     */
     @Override
     public void deleteOneStoreVersion(String clusterName, String storeName, int versionNumber) {
-        String resourceName = new Version(storeName, versionNumber).kafkaTopicName();
+        String resourceName = Version.composeKafkaTopic(storeName, versionNumber);
         logger.info("Deleting helix resource:" + resourceName + " in cluster:" + clusterName);
         deleteHelixResource(clusterName, resourceName);
         logger.info("Killing offline push for:" + resourceName + " in cluster:" + clusterName);
         killOfflinePush(clusterName, resourceName);
-        Optional<Version> deletedVersion = deleteVersion(clusterName, storeName, versionNumber);
+        if (topicReplicator.isPresent()) {
+            String realTimeTopic = Version.composeRealTimeTopic(storeName);
+            topicReplicator.get().terminateReplication(realTimeTopic, resourceName);
+        }
+        Optional<Version> deletedVersion = deleteVersionFromStoreRepository(clusterName, storeName, versionNumber);
         if (deletedVersion.isPresent()) {
             deleteKafkaTopicForVersion(clusterName, deletedVersion.get());
         }
         stopMonitorOfflinePush(clusterName, resourceName);
+
     }
 
     @Override
@@ -512,7 +519,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     /***
      * Delete the version specified from the store and return the deleted version.
      */
-    protected Optional<Version> deleteVersion(String clusterName, String storeName, int versionNumber) {
+    protected Optional<Version> deleteVersionFromStoreRepository(String clusterName, String storeName, int versionNumber) {
         HelixReadWriteStoreRepository storeRepository = getVeniceHelixResource(clusterName).getMetadataRepository();
         logger.info("Deleting version " + versionNumber + " in Store:" + storeName + " in cluster:" + clusterName);
         Version deletedVersion = null;

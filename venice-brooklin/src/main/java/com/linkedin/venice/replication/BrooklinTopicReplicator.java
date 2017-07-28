@@ -140,6 +140,15 @@ public class BrooklinTopicReplicator extends TopicReplicator {
   }
 
   /**
+   * Only used by tests
+   */
+  @Override
+  public boolean doesReplicationExist(String sourceTopic, String destinationTopic) {
+    String name = datastreamName(sourceTopic, destinationTopic);
+    return client.datastreamExists(name);
+  }
+
+  /**
    * Callers to begin or terminate replication should be able to just specify the source and destination topics.
    * This method lets us use a reliable convention for turning source and destination into a datastream name
    * to use for referring to the datastream.
