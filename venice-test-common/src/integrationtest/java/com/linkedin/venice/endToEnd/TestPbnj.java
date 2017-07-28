@@ -67,7 +67,7 @@ public class TestPbnj {
     // Verify the data in Venice Store
     String routerUrl = veniceCluster.getRandomRouterURL();
     try(AvroGenericStoreClient<String, Object> client =
-        ClientFactory.genericAvroClient(ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(routerUrl))) {
+        ClientFactory.getAndStartGenericAvroClient(ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(routerUrl))) {
       for (int i = 1; i <= 100; ++i) {
         String expected = "test_name_" + i;
         String actual = client.get(Integer.toString(i)).get().toString(); /* client.get().get() returns a Utf8 object */

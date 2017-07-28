@@ -73,7 +73,7 @@ public class ProducerConsumerReaderIntegrationTest {
 
     veniceWriter = new VeniceWriter<>(clientProps, storeVersionName, keySerializer, valueSerializer);
     storeClient =
-        ClientFactory.genericAvroClient(ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(routerUrl)
+        ClientFactory.getAndStartGenericAvroClient(ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(routerUrl)
                                                     .setSslEngineComponentFactory(SslUtils.getLocalSslFactory()));
   }
 

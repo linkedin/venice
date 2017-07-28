@@ -259,7 +259,7 @@ public class AdminTool {
     Object value;
 
     try(AvroGenericStoreClient<Object, Object> client =
-        ClientFactory.genericAvroClient(ClientConfig.defaultGenericClientConfig(store).setVeniceURL(routerHosts))) {
+        ClientFactory.getAndStartGenericAvroClient(ClientConfig.defaultGenericClientConfig(store).setVeniceURL(routerHosts))) {
       // Add request path into output for further testing, E.g. use wget to query.
       AbstractAvroStoreClient<Object, Object> castClient = (AbstractAvroStoreClient<Object, Object> )((StatTrackingStoreClient<Object,Object>)client).getInnerStoreClient();
       outputMap.put("request-path", castClient.getRequestPathByKey(key));

@@ -97,7 +97,7 @@ public class TestRead {
     /**
      * Test with {@link AvroGenericStoreClient}.
      */
-    AvroGenericStoreClient<String, CharSequence> storeClient = ClientFactory.genericAvroClient(ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(routerAddr));
+    AvroGenericStoreClient<String, CharSequence> storeClient = ClientFactory.getAndStartGenericAvroClient(ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(routerAddr));
     Set<String> keySet = new HashSet<>();
     for (int i = 0; i < 10; ++i) {
       keySet.add(keyPrefix + i);

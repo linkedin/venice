@@ -73,12 +73,12 @@ public class AvroGenericStoreClientImplTest {
     // http based client
     String routerUrl = "http://" + routerHost + ":" + port + "/";
     AvroGenericStoreClient<String, Object> httpStoreClient =
-        ClientFactory.genericAvroClient(ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(routerUrl));
+        ClientFactory.getAndStartGenericAvroClient(ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(routerUrl));
     storeClients.put(HttpTransportClient.class.getSimpleName(), httpStoreClient);
     // d2 based client
     d2Client = D2TestUtils.getAndStartD2Client(routerServer.getZkAddress());
     AvroGenericStoreClient<String, Object> d2StoreClient =
-        ClientFactory.genericAvroClient(ClientConfig.defaultGenericClientConfig(storeName)
+        ClientFactory.getAndStartGenericAvroClient(ClientConfig.defaultGenericClientConfig(storeName)
             .setD2ServiceName(D2TestUtils.DEFAULT_TEST_SERVICE_NAME).setD2Client(d2Client));
     storeClients.put(D2TransportClient.class.getSimpleName(), d2StoreClient);
     DelegatingStoreClient<String, Object> delegatingStoreClient = (DelegatingStoreClient<String, Object>)httpStoreClient;
