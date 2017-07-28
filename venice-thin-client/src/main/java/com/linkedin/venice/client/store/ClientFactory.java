@@ -10,7 +10,13 @@ import com.linkedin.venice.client.store.transport.TransportClient;
 import org.apache.avro.specific.SpecificRecord;
 
 public class ClientFactory {
-  public static <K, V> AvroGenericStoreClient<K, V> genericAvroClient(ClientConfig clientConfig) {
+  public static <K, V> AvroGenericStoreClient<K, V> getAndStartGenericAvroClient(ClientConfig clientConfig) {
+    AvroGenericStoreClient<K, V> client = getGenericAvroClient(clientConfig);
+    client.start();
+    return client;
+  }
+
+  public static <K, V> AvroGenericStoreClient<K, V> getGenericAvroClient(ClientConfig clientConfig) {
     TransportClient transportClient = getTransportClient(clientConfig);
     InternalAvroStoreClient<K, V> avroClient =
         new AvroGenericStoreClientImpl<>(transportClient, clientConfig.getStoreName());
@@ -22,12 +28,16 @@ public class ClientFactory {
       client = new StatTrackingStoreClient<>(avroClient);
     }
 
-    client.start();
-
     return client;
   }
 
-  public static <K, V extends SpecificRecord> AvroSpecificStoreClient<K, V> specificAvroClient(ClientConfig<V> clientConfig) {
+  public static <K, V extends SpecificRecord> AvroSpecificStoreClient<K, V> getAndStartSpecificAvroClient(ClientConfig<V> clientConfig) {
+    AvroSpecificStoreClient<K, V> client = getSpecificAvroClient(clientConfig);
+    client.start();
+    return client;
+  }
+
+  public static <K, V extends SpecificRecord> AvroSpecificStoreClient<K, V> getSpecificAvroClient(ClientConfig<V> clientConfig) {
     TransportClient transportClient = getTransportClient(clientConfig);
     InternalAvroStoreClient<K, V> avroClient =
         new AvroSpecificStoreClientImpl<>(transportClient, clientConfig.getStoreName(), clientConfig.getSpecificValueClass());
@@ -38,8 +48,6 @@ public class ClientFactory {
     } else {
       client = new SpecificStatTrackingStoreClient<>(avroClient);
     }
-
-    client.start();
 
     return client;
   }

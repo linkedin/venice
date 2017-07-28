@@ -102,7 +102,7 @@ public class TestThrottleReadRequestPerStore {
     // Get one of the router
     String routerURL = cluster.getRandomRouterURL();
     AvroGenericStoreClient<String, Object> storeClient =
-        ClientFactory.genericAvroClient(ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(routerURL));
+        ClientFactory.getAndStartGenericAvroClient(ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(routerURL));
     try {
       for (int i = 0; i < totalQuota / numberOfRouter; i++) {
         storeClient.get("empty-key").get();
@@ -123,7 +123,7 @@ public class TestThrottleReadRequestPerStore {
         () -> cluster.getRandomVeniceRouter().getRoutersClusterManager().getRoutersCount() == 1);
     routerURL = cluster.getRandomRouterURL();
     storeClient =
-        ClientFactory.genericAvroClient(ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(routerURL));
+        ClientFactory.getAndStartGenericAvroClient(ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(routerURL));
     // now one router has the entire quota.
     try {
       for (int i = 0; i < totalQuota; i++) {

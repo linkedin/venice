@@ -11,7 +11,6 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.KafkaPushJob;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
-import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.replication.TopicReplicator;
 import com.linkedin.venice.samza.VeniceSystemFactory;
@@ -84,7 +83,7 @@ public class TestHybrid {
 
     //Verify some records (note, records 1-100 have been pushed)
     AvroGenericStoreClient client =
-        ClientFactory.genericAvroClient(ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(venice.getRandomRouterURL()));
+        ClientFactory.getAndStartGenericAvroClient(ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(venice.getRandomRouterURL()));
     for (int i=1;i<10;i++){
       String key = Integer.toString(i);
       Assert.assertEquals(client.get(key).get().toString(), "test_name_" + key);

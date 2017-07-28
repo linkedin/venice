@@ -86,7 +86,7 @@ public class PostBulkLoadAnalysisMapper implements Mapper<AvroWrapper<IndexedRec
       throw new VeniceException("Async mode not currently supported in PBNJ.");
     }
 
-    this.veniceClient = ClientFactory.genericAvroClient(ClientConfig.defaultGenericClientConfig(
+    this.veniceClient = ClientFactory.getAndStartGenericAvroClient(ClientConfig.defaultGenericClientConfig(
         props.getString(KafkaPushJob.VENICE_STORE_NAME_PROP))
         .setVeniceURL(props.getString(KafkaPushJob.PBNJ_ROUTER_URL_PROP)));
 
