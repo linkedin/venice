@@ -137,6 +137,9 @@ public class D2TransportClient extends TransportClient {
           schemaId = Integer.parseInt(schemaIdHeader);
         }
       }
+      /**
+       * TODO: consider to pass back {@link java.io.InputStream} instead of making a copy of response bytes
+       */
       byte[] body = result.getEntity().copyBytes();
       completeFuture(statusCode, body, schemaId);
     }

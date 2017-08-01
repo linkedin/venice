@@ -13,7 +13,10 @@ import com.linkedin.venice.schema.avro.ReadAvroProtocolDefinition;
 import com.linkedin.venice.serializer.AvroSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.serializer.RecordSerializer;
+import io.netty.buffer.ByteBufInputStream;
 import java.io.ByteArrayInputStream;
+import java.io.IOException;
+import java.io.InputStream;
 import java.nio.ByteBuffer;
 import java.util.Collection;
 import java.util.Optional;
@@ -47,9 +50,14 @@ public class VeniceMultiGetPath extends VenicePath {
     }
 
     this.routerKeyMap = new TreeMap<>();
-    byte[] content = request.content().copy().array();
-    // Deserialization
-    Iterable<ByteBuffer> keys = deserialize(content);
+    Iterable<ByteBuffer> keys = null;
+    try (InputStream is = new ByteBufInputStream(request.content())) {
+      keys = deserialize(is);
+    } catch (IOException ioe) {
+      throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(Optional.of(getStoreName()), Optional.of(getRequestType()),
+          INTERNAL_SERVER_ERROR, "Failed to close ByteBufInputStream: " + ioe.getMessage());
+    }
+
     int keyIdx = 0;
     for (ByteBuffer key : keys) {
       byte[] keyBytes = key.array();
@@ -162,9 +170,9 @@ public class VeniceMultiGetPath extends VenicePath {
     return serializer.serializeObjects(routerKeyMap.values());
   }
 
-  private static Iterable<ByteBuffer> deserialize(byte[] bytes) {
+  private static Iterable<ByteBuffer> deserialize(InputStream is) {
     RecordDeserializer<ByteBuffer> deserializer = AvroSerializerDeserializerFactory.getAvroGenericDeserializer(
         EXPECTED_PROTOCOL.getSchema());
-    return deserializer.deserializeObjects(bytes);
+    return deserializer.deserializeObjects(is);
   }
 }
