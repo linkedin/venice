@@ -93,8 +93,8 @@ public class VeniceResponseAggregator implements ResponseAggregatorFactory<Basic
      * 1. {@link ROUTER_PARSE_URI}
      * 2. {@link ROUTER_ROUTING_TIME}
      */
-    if (allMetrics.containsKey(ROUTER_SERVER_TIME)) {
-      long latency = allMetrics.get(ROUTER_SERVER_TIME).getRawValue(TimeUnit.MILLISECONDS);
+    if (allMetrics.containsKey(ROUTER_SERVER_TIME.name())) {
+      long latency = allMetrics.get(ROUTER_SERVER_TIME.name()).getRawValue(TimeUnit.MILLISECONDS);
       stats.recordLatency(storeName, latency);
       if (latency <= TIMEOUT_THRESHOLD_IN_MS && HEALTHY_STATUSES.contains(responseStatus)) {
         stats.recordHealthyRequest(storeName);
@@ -102,8 +102,8 @@ public class VeniceResponseAggregator implements ResponseAggregatorFactory<Basic
         stats.recordUnhealthyRequest(storeName);
       }
     }
-    if (allMetrics.containsKey(ROUTER_RESPONSE_WAIT_TIME)) {
-      stats.recordResponseWaitingTime(storeName, allMetrics.get(ROUTER_RESPONSE_WAIT_TIME).getRawValue(TimeUnit.MILLISECONDS));
+    if (allMetrics.containsKey(ROUTER_RESPONSE_WAIT_TIME.name())) {
+      stats.recordResponseWaitingTime(storeName, allMetrics.get(ROUTER_RESPONSE_WAIT_TIME.name()).getRawValue(TimeUnit.MILLISECONDS));
     }
     if (HEALTHY_STATUSES.contains(responseStatus)) {
       // Only record successful response

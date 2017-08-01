@@ -6,7 +6,7 @@ import com.linkedin.venice.listener.request.MultiGetRouterRequestWrapper;
 import com.linkedin.venice.listener.response.HttpShortcutResponse;
 import com.linkedin.venice.meta.QueryAction;
 import io.netty.channel.ChannelHandlerContext;
-import io.netty.channel.ChannelInboundHandlerAdapter;
+import io.netty.channel.SimpleChannelInboundHandler;
 import io.netty.handler.codec.http.FullHttpRequest;
 import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpRequest;
@@ -20,9 +20,12 @@ import java.net.URI;
 /**
  * Monitors the stream, when it gets enough bytes that form a genuine object,
  * it deserializes the object and passes it along the stack.
+ *
+ * {@link SimpleChannelInboundHandler#channelRead(ChannelHandlerContext, Object)} will release the incoming request object:
+ * {@link FullHttpRequest} for each request.
+ * The downstream handler is not expected to use this object any more.
  */
-
-public class GetRequestHttpHandler extends ChannelInboundHandlerAdapter {
+public class GetRequestHttpHandler extends SimpleChannelInboundHandler<FullHttpRequest> {
   private static final String API_VERSION = "1";
   private final StatsHandler statsHandler;
 
@@ -43,44 +46,41 @@ public class GetRequestHttpHandler extends ChannelInboundHandlerAdapter {
   }
 
   @Override
-  public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
-    if (msg instanceof HttpRequest) {
-      FullHttpRequest req = (FullHttpRequest) msg;
-      try {
-        QueryAction action = getQueryActionFromRequest(req);
-        switch (action){
-          case STORAGE:  // GET /storage/store/partition/key
-            HttpMethod requestMethod = req.method();
-            if (requestMethod.equals(HttpMethod.GET)) {
-              // TODO: evaluate whether we can replace single-get by multi-get
-              GetRouterRequest getRouterRequest = GetRouterRequest.parseGetHttpRequest(req);
-              statsHandler.setStoreName(getRouterRequest.getStoreName());
-              statsHandler.setRequestType(getRouterRequest.getRequestType());
-              ctx.fireChannelRead(getRouterRequest);
-            } else if (requestMethod.equals(HttpMethod.POST)){
-              // Multi-get
-              MultiGetRouterRequestWrapper multiGetRouterReq = MultiGetRouterRequestWrapper.parseMultiGetHttpRequest(req);
-              statsHandler.setStoreName(multiGetRouterReq.getStoreName());
-              statsHandler.setRequestType(multiGetRouterReq.getRequestType());
-              statsHandler.setRequestKeyCount(multiGetRouterReq.getKeyCount());
-              ctx.fireChannelRead(multiGetRouterReq);
-            } else {
-              throw new VeniceException("Unknown request method: " + requestMethod + " for " + QueryAction.STORAGE);
-            }
-            break;
-          case HEALTH:
-            statsHandler.setHealthCheck(true);
-            ctx.writeAndFlush(new HttpShortcutResponse("OK", HttpResponseStatus.OK));
-            break;
-          default:
-            throw new VeniceException("Unrecognized query action");
-        }
-      } catch (VeniceException e){
-        ctx.writeAndFlush(new HttpShortcutResponse(
-            e.getMessage(),
-            HttpResponseStatus.BAD_REQUEST
-        ));
+  protected void channelRead0(ChannelHandlerContext ctx, FullHttpRequest req) throws Exception {
+    try {
+      QueryAction action = getQueryActionFromRequest(req);
+      switch (action){
+        case STORAGE:  // GET /storage/store/partition/key
+          HttpMethod requestMethod = req.method();
+          if (requestMethod.equals(HttpMethod.GET)) {
+            // TODO: evaluate whether we can replace single-get by multi-get
+            GetRouterRequest getRouterRequest = GetRouterRequest.parseGetHttpRequest(req);
+            statsHandler.setStoreName(getRouterRequest.getStoreName());
+            statsHandler.setRequestType(getRouterRequest.getRequestType());
+            ctx.fireChannelRead(getRouterRequest);
+          } else if (requestMethod.equals(HttpMethod.POST)){
+            // Multi-get
+            MultiGetRouterRequestWrapper multiGetRouterReq = MultiGetRouterRequestWrapper.parseMultiGetHttpRequest(req);
+            statsHandler.setStoreName(multiGetRouterReq.getStoreName());
+            statsHandler.setRequestType(multiGetRouterReq.getRequestType());
+            statsHandler.setRequestKeyCount(multiGetRouterReq.getKeyCount());
+            ctx.fireChannelRead(multiGetRouterReq);
+          } else {
+            throw new VeniceException("Unknown request method: " + requestMethod + " for " + QueryAction.STORAGE);
+          }
+          break;
+        case HEALTH:
+          statsHandler.setHealthCheck(true);
+          ctx.writeAndFlush(new HttpShortcutResponse("OK", HttpResponseStatus.OK));
+          break;
+        default:
+          throw new VeniceException("Unrecognized query action");
       }
+    } catch (VeniceException e){
+      ctx.writeAndFlush(new HttpShortcutResponse(
+          e.getMessage(),
+          HttpResponseStatus.BAD_REQUEST
+      ));
     }
   }
 

@@ -72,6 +72,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
    */
   private final int maxRequestSize;
 
+
   public VeniceServerConfig(VeniceProperties serverProperties) throws ConfigurationException {
     super(serverProperties);
     listenerPort = serverProperties.getInt(LISTENER_PORT);

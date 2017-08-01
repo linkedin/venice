@@ -1,6 +1,7 @@
 package com.linkedin.venice.serializer;
 
 import com.linkedin.venice.exceptions.VeniceException;
+import java.io.InputStream;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericDatumReader;
 import org.apache.avro.io.BinaryDecoder;
@@ -32,10 +33,7 @@ public class AvroGenericDeserializer<V> implements RecordDeserializer<V> {
     }
   }
 
-  @Override
-  public Iterable<V> deserializeObjects(byte[] bytes) throws VeniceException {
-    // This param is to re-use a decoder instance. TODO: explore GC tuning later.
-    BinaryDecoder decoder = DecoderFactory.defaultFactory().createBinaryDecoder(bytes, null);
+  private Iterable<V> deserializeObjects(BinaryDecoder decoder) {
     List<V> objects = new ArrayList();
     try {
       while (!decoder.isEnd()) {
@@ -46,5 +44,16 @@ public class AvroGenericDeserializer<V> implements RecordDeserializer<V> {
     }
 
     return objects;
+  }
+
+  @Override
+  public Iterable<V> deserializeObjects(byte[] bytes) throws VeniceException {
+    // This param is to re-use a decoder instance. TODO: explore GC tuning later.
+    return deserializeObjects(DecoderFactory.defaultFactory().createBinaryDecoder(bytes, null));
+  }
+
+  @Override
+  public Iterable<V> deserializeObjects(InputStream is) throws VeniceException {
+    return deserializeObjects(DecoderFactory.defaultFactory().createBinaryDecoder(is, null));
   }
 }

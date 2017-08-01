@@ -7,9 +7,13 @@ import com.linkedin.venice.read.protocol.request.router.MultiGetRouterRequestKey
 import com.linkedin.venice.schema.avro.ReadAvroProtocolDefinition;
 import com.linkedin.venice.serializer.AvroSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordDeserializer;
+import io.netty.buffer.ByteBufInputStream;
 import io.netty.handler.codec.http.FullHttpRequest;
 
+import java.io.IOException;
+import java.io.InputStream;
 import java.net.URI;
+
 
 public class MultiGetRouterRequestWrapper extends RouterRequest {
   private final Iterable<MultiGetRouterRequestKeyV1> keys;
@@ -40,14 +44,18 @@ public class MultiGetRouterRequestWrapper extends RouterRequest {
     if (Integer.parseInt(apiVersion) != expectedApiVersion) {
       throw new VeniceException("Expected API version: " + expectedApiVersion + ", but received: " + apiVersion);
     }
-
     Iterable<MultiGetRouterRequestKeyV1> keys;
-    keys = parseKeys(httpRequest.content().copy().array());
+
+    try (InputStream is = new ByteBufInputStream(httpRequest.content())) {
+      keys = parseKeys(is);
+    } catch (IOException e) {
+      throw new VeniceException("Failed to close ByteBufInputStream", e);
+    }
 
     return new MultiGetRouterRequestWrapper(resourceName, keys);
   }
 
-  public static Iterable<MultiGetRouterRequestKeyV1> parseKeys(byte[] content) {
+  public static Iterable<MultiGetRouterRequestKeyV1> parseKeys(InputStream content) {
     RecordDeserializer<MultiGetRouterRequestKeyV1> deserializer =
         AvroSerializerDeserializerFactory.getAvroSpecificDeserializer(MultiGetRouterRequestKeyV1.class);
 

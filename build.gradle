@@ -46,7 +46,7 @@ ext.libraries = [ // Groovy map literal
                   // kafka: ossKafkaGroup + ':kafka_2.10:' + ossKafkaVersion,
                   // kafkaClients: ossKafkaGroup + ':kafka-clients:' + ossKafkaVersion,
                   mockito: 'org.mockito:mockito-core:2.8.47',
-                  netty: 'io.netty:netty-all:4.1.4.Final',
+                  netty: 'io.netty:netty-all:4.1.6.Final',
                   zkclient: 'com.101tec:zkclient:0.7', //for Kafka AdminUtils
                   d2: 'com.linkedin.container:pegasus-d2-server-factory:25.1.75',
                   d2Client: 'com.linkedin.container:pegasus-d2-client-factory:25.1.75',

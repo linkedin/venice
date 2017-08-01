@@ -13,12 +13,15 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.serialization.VeniceSerializer;
 import com.linkedin.venice.serialization.avro.VeniceAvroGenericSerializer;
 import com.linkedin.venice.utils.PropertyBuilder;
+import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.VeniceWriter;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
@@ -43,14 +46,31 @@ public class TestRead {
 
   @BeforeClass
   public void setUp() throws InterruptedException, ExecutionException, VeniceClientException {
-    veniceCluster = ServiceFactory.getVeniceCluster(1, 3, 1);
-    routerAddr = "http://" + veniceCluster.getVeniceRouters().get(0).getAddress();
+    /**
+     * The following config is used to detect Netty resource leaking.
+     * If memory leak happens, you will see the following log message:
+     *
+     *  ERROR io.netty.util.ResourceLeakDetector - LEAK: ByteBuf.release() was not called before it's garbage-collected.
+     *  See http://netty.io/wiki/reference-counted-objects.html for more information.
+     **/
+
+    System.setProperty("io.netty.leakDetection.maxRecords", "50");
+    System.setProperty("io.netty.leakDetection.level", "paranoid");
+
+    Utils.thisIsLocalhost();
+    veniceCluster = ServiceFactory.getVeniceCluster(1, 3, 1, 1, 100, true);
+    routerAddr = veniceCluster.getRandomRouterSslURL();
 
     // Create test store
     VersionCreationResponse creationResponse = veniceCluster.getNewStoreVersion();
     storeVersionName = creationResponse.getKafkaTopic();
     storeName = Version.parseStoreFromKafkaTopicName(storeVersionName);
     valueSchemaId = HelixReadOnlySchemaRepository.VALUE_SCHEMA_STARTING_ID;
+
+    // Update default quota
+    ControllerClient controllerClient = new ControllerClient(veniceCluster.getClusterName(), veniceCluster.getAllControllersURLs());
+    controllerClient.updateStore(storeName, Optional.empty(), Optional.empty(),Optional.empty(),
+        Optional.empty(),Optional.empty(), Optional.empty(), Optional.of(10000l), Optional.empty(), Optional.empty());
 
     VeniceProperties clientProps =
         new PropertyBuilder().put(KAFKA_BOOTSTRAP_SERVERS, veniceCluster.getKafka().getAddress())
@@ -72,7 +92,7 @@ public class TestRead {
     }
   }
 
-  @Test(timeOut = 10000)
+  @Test(timeOut = 20000)
   public void testRead() throws Exception {
     final int pushVersion = Version.parseVersionFromKafkaTopicName(storeVersionName);
 
@@ -97,24 +117,33 @@ public class TestRead {
     /**
      * Test with {@link AvroGenericStoreClient}.
      */
-    AvroGenericStoreClient<String, CharSequence> storeClient = ClientFactory.getAndStartGenericAvroClient(ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(routerAddr));
-    Set<String> keySet = new HashSet<>();
-    for (int i = 0; i < 10; ++i) {
-      keySet.add(keyPrefix + i);
-    }
-    keySet.add("unknown_key");
-    Map<String, CharSequence> result = storeClient.batchGet(keySet).get();
-    Assert.assertEquals(result.size(), 10);
-    for (int i = 0; i < 10; ++i) {
-      Assert.assertEquals(result.get(keyPrefix + i).toString(), valuePrefix + i);
-    }
+    AvroGenericStoreClient<String, CharSequence> storeClient = ClientFactory.getAndStartGenericAvroClient(
+        ClientConfig.defaultGenericClientConfig(storeName)
+            .setVeniceURL(routerAddr)
+            .setSslEngineComponentFactory(SslUtils.getLocalSslFactory())
+    );
+    // Run multiple rounds
+    int rounds = 50;
+    int cur = 0;
+    while (++cur <= rounds) {
+      Set<String> keySet = new HashSet<>();
+      for (int i = 0; i < 10; ++i) {
+        keySet.add(keyPrefix + i);
+      }
+      keySet.add("unknown_key");
+      Map<String, CharSequence> result = storeClient.batchGet(keySet).get();
+      Assert.assertEquals(result.size(), 10);
+      for (int i = 0; i < 10; ++i) {
+        Assert.assertEquals(result.get(keyPrefix + i).toString(), valuePrefix + i);
+      }
 
-    /**
-     * Test simple get
-     */
-    String key = keyPrefix + 2;
-    String expectedValue = valuePrefix + 2;
-    CharSequence value = storeClient.get(key).get();
-    Assert.assertEquals(value.toString(), expectedValue);
+      /**
+       * Test simple get
+       */
+      String key = keyPrefix + 2;
+      String expectedValue = valuePrefix + 2;
+      CharSequence value = storeClient.get(key).get();
+      Assert.assertEquals(value.toString(), expectedValue);
+    }
   }
 }
