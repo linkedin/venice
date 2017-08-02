@@ -403,8 +403,8 @@ public class KafkaPushJob extends AbstractJob {
       String briefErrorMessage = "Key schema mis-match for store " + storeName;
       logger.error(briefErrorMessage +
           "\n\t\tController URLs: " + veniceControllerUrl +
-          "\n\t\texpected: \t" + keySchemaString +
-          "\n\t\tactual: \t" + keySchemaResponse.getSchemaStr());
+          "\n\t\tschema defined in HDFS: \t" + keySchemaString +
+          "\n\t\tschema defined in Venice: \t" + keySchemaResponse.getSchemaStr());
       throw new VeniceException(briefErrorMessage);
     }
   }
