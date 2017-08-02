@@ -25,13 +25,6 @@ public class BdbStorageEngineStats extends AbstractVeniceStats {
   private  CachedCallable<EnvironmentStats> fastStats;
   private  CachedCallable<BdbSpaceUtilizationSummary> fastSpaceStats;
 
-  //Tehuti Sensor
-  private final Sensor cacheMissesRatioSensor;
-  private final Sensor spaceUtilizationRatioSensor;
-  private final Sensor cacheSizeSensor;
-  private final Sensor spaceSizeSensor;
-  private final Sensor diskCleanerSensor;
-
   public BdbStorageEngineStats(MetricsRepository metricsRepository, String name) {
     this(metricsRepository, name, 5 * Time.MS_PER_SECOND);
   }
@@ -49,15 +42,15 @@ public class BdbStorageEngineStats extends AbstractVeniceStats {
         new CachedCallable<>(() -> bdbEnvironment == null ?
             null : new BdbSpaceUtilizationSummary(bdbEnvironment), ttlMs);
 
-    cacheMissesRatioSensor = registerSensor("bdb_cache_misses_ratio",
+    registerSensor("bdb_cache_misses_ratio",
         new CacheMissesRatioStat(this));
-    spaceUtilizationRatioSensor = registerSensor("bdb_space_utilization_ratio",
+    registerSensor("bdb_space_utilization_ratio",
         new SpaceUtilizationRatioStat(this));
-    cacheSizeSensor = registerSensor("bdb_allotted_cache_size_in_bytes",
+    registerSensor("bdb_allotted_cache_size_in_bytes",
         new AllottedCacheSizeStat(this));
-    spaceSizeSensor = registerSensor("bdb_space_size_in_bytes",
+    registerSensor("bdb_space_size_in_bytes",
         new SpaceSizeStat(this));
-    diskCleanerSensor = registerSensor("bdb_disk_cleaner",
+    registerSensor("bdb_disk_cleaner",
         new NumCleanerRunsStat(this));
   }
 
@@ -124,7 +117,8 @@ public class BdbStorageEngineStats extends AbstractVeniceStats {
   }
 
   public long getNumCacheMiss() {
-    return getFastStats().getNCacheMiss();
+    EnvironmentStats stats = getFastStats();
+    return stats == null ? 0l : stats.getNCacheMiss();
   }
 
   public long getNumReadsTotal() {
@@ -176,6 +170,7 @@ public class BdbStorageEngineStats extends AbstractVeniceStats {
 
   //cleaning
   public long getNumCleanerRuns() {
-    return getFastStats().getNCleanerRuns();
+    EnvironmentStats stats = getFastStats();
+    return stats == null ? 0l : stats.getNCleanerRuns();
   }
 }
