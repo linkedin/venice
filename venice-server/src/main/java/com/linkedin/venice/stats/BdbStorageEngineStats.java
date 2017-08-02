@@ -151,7 +151,8 @@ public class BdbStorageEngineStats extends AbstractVeniceStats {
 
   //Disk
   public long getAllottedCacheSize() {
-    return getFastStats().getCacheTotalBytes();
+    EnvironmentStats stats = getFastStats();
+    return stats == null ? 0l : stats.getCacheTotalBytes();
   }
 
   public double getPercentageSpaceUtilization() {
