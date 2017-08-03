@@ -178,7 +178,7 @@ public class VeniceParentHelixAdmin implements Admin {
       waitingLastOffsetToBeConsumed(clusterName);
       adminCommandExecutionTracker.startTrackingExecution(execution);
     } catch (Exception e) {
-      throw new VeniceException("Got exception during sending message to Kafka", e);
+      throw new VeniceException("Got exception during sending message to Kafka -- " + e.getMessage(), e);
     }
   }
 
@@ -401,7 +401,7 @@ public class VeniceParentHelixAdmin implements Admin {
 
   @Override
   public Version incrementVersionIdempotent(String clusterName, String storeName, String pushJobId,
-      int numberOfPartitions, int replicationFactor) {
+      int numberOfPartitions, int replicationFactor, boolean offlinePush) {
     List<String> existingTopicsForStore = existingTopicsForStore(storeName);
     List<Version> storeVersions = veniceHelixAdmin.getStore(clusterName, storeName).getVersions();
     for (String topic : existingTopicsForStore){
@@ -424,7 +424,8 @@ public class VeniceParentHelixAdmin implements Admin {
         "starting another push");
       }
     }
-    Version newVersion = veniceHelixAdmin.incrementVersionIdempotent(clusterName, storeName, pushJobId, numberOfPartitions, replicationFactor);
+    // This is a ParentAdmin, so ignore the passed in offlinePush parameter and DO NOT try to start an offline push
+    Version newVersion = veniceHelixAdmin.incrementVersionIdempotent(clusterName, storeName, pushJobId, numberOfPartitions, replicationFactor, false);
     cleanupHistoricalVersions(clusterName, storeName);
     return newVersion;
   }

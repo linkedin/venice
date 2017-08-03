@@ -338,7 +338,7 @@ public class OfflinePushMonitor implements OfflinePushAccessor.PartitionStatusLi
   }
 
   private void handleCompletedPush(OfflinePushStatus pushStatus) {
-    logger.info("Updating offline push status, push for: " + pushStatus.getKafkaTopic() + " is now "
+    logger.info("Updating offline push status, push for: " + pushStatus.getKafkaTopic() + " old status: "
         + pushStatus.getCurrentStatus() + ", new status: " + ExecutionStatus.COMPLETED);
     routingDataRepository.unSubscribeRoutingDataChange(pushStatus.getKafkaTopic(), this);
     OfflinePushStatus clonedPushStatus = pushStatus.clonePushStatus();

@@ -541,8 +541,8 @@ public class TestVeniceHelixAdmin {
     veniceAdmin.setStoreCurrentVersion(clusterName, storeName, 101); // set version 101 to be current;
 
     String pushJobId = TestUtils.getUniqueString("pushJobId");
-    Version idempotentOne = veniceAdmin.incrementVersionIdempotent(clusterName, storeName, pushJobId, 1, 1);
-    Version idempotentTwo = veniceAdmin.incrementVersionIdempotent(clusterName, storeName, pushJobId, 1, 1);
+    Version idempotentOne = veniceAdmin.incrementVersionIdempotent(clusterName, storeName, pushJobId, 1, 1, true);
+    Version idempotentTwo = veniceAdmin.incrementVersionIdempotent(clusterName, storeName, pushJobId, 1, 1, true);
     Assert.assertEquals(idempotentOne.getNumber(), idempotentTwo.getNumber(), "Idempotent version increment with same pushId must return same version number");
     Assert.assertEquals(idempotentOne.kafkaTopicName(), idempotentTwo.kafkaTopicName(), "Idempotent version increment with same pushId must return same kafka topic");
   }

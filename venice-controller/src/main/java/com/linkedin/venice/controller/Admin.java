@@ -47,7 +47,7 @@ public interface Admin {
         int replicationFactor);
 
     /**
-     * Use {@link #incrementVersionIdempotent(String, String, String, int, int)} instead
+     * Use {@link #incrementVersionIdempotent(String, String, String, int, int, boolean)} instead
      */
     @Deprecated
     Version incrementVersion(String clusterName, String storeName, int numberOfPartition, int replicationFactor);
@@ -59,7 +59,7 @@ public interface Admin {
      * first task triggers a new Version, all subsequent tasks identify with the same jobPushId, and should be provided
      * with the same Version object.
      */
-    Version incrementVersionIdempotent(String clusterName, String storeName, String pushJobId, int numberOfPartions, int replicationFactor);
+    Version incrementVersionIdempotent(String clusterName, String storeName, String pushJobId, int numberOfPartions, int replicationFactor, boolean offlinePush);
 
     String getRealTimeTopic(String clusterName, String storeName);
 

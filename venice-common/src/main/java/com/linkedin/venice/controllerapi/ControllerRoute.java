@@ -11,6 +11,7 @@ public enum ControllerRoute {
 
   CREATE_VERSION("/create_version", Arrays.asList(NAME, STORE_SIZE)),
   REQUEST_TOPIC("/request_topic", Arrays.asList(NAME, STORE_SIZE, PUSH_TYPE, PUSH_JOB_ID)), // topic that writer should produce to
+  EMPTY_PUSH("/empty_push", Arrays.asList(NAME, STORE_SIZE, PUSH_JOB_ID)), // do an empty push into a new version for this store
   END_OF_PUSH("/end_of_push", Arrays.asList(NAME, VERSION)), // write an END OF PUSH message into the topic
   STORE("/store", Arrays.asList(NAME)), // get all information about that store
   NEW_STORE("/new_store", Arrays.asList(NAME, KEY_SCHEMA, VALUE_SCHEMA), OWNER),

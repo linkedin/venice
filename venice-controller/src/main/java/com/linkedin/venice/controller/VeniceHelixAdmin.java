@@ -244,6 +244,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         return addVersion(clusterName, storeName, Version.guidBasedDummyPushId(), versionNumber, numberOfPartition, replicationFactor, true);
     }
 
+    /**
+     * Note, versionNumber may be VERSION_ID_UNSET, which must be accounted for
+     */
     protected synchronized Version addVersion(String clusterName, String storeName, String pushJobId, int versionNumber, int numberOfPartition, int replicationFactor, boolean whetherStartOfflinePush) {
         checkControllerMastership(clusterName);
         HelixReadWriteStoreRepository repository = getVeniceHelixResource(clusterName).getMetadataRepository();
@@ -295,11 +298,13 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             return version;
         } catch (Throwable e) {
             // Clean up resources because add version failed.
+            int failedVersionNumber = versionNumber;
             if (version != null) {
-                deleteOneStoreVersion(clusterName, storeName, versionNumber);
+                failedVersionNumber = version.getNumber();
+                deleteOneStoreVersion(clusterName, storeName, failedVersionNumber);
             }
             throw new VeniceException(
-                "Failed to create helix resource:" + Version.composeKafkaTopic(storeName, versionNumber), e);
+                "Failed to create helix resource:" + Version.composeKafkaTopic(storeName, failedVersionNumber), e);
         }
     }
 
@@ -314,7 +319,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
      * batch jobs push to the same store at the same time.
      */
     @Override
-    public synchronized Version incrementVersionIdempotent(String clusterName, String storeName, String pushJobId, int numberOfPartitions, int replicationFactor){
+    public synchronized Version incrementVersionIdempotent(String clusterName, String storeName, String pushJobId, int numberOfPartitions, int replicationFactor, boolean offlinePush) {
         checkControllerMastership(clusterName);
         HelixReadWriteStoreRepository repository = getVeniceHelixResource(clusterName).getMetadataRepository();
         repository.lock();
@@ -334,7 +339,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         } finally {
             repository.unLock();
         }
-        return addVersion(clusterName, storeName, pushJobId, VERSION_ID_UNSET, numberOfPartitions, replicationFactor, true);
+        return addVersion(clusterName, storeName, pushJobId, VERSION_ID_UNSET, numberOfPartitions, replicationFactor, offlinePush);
     }
 
     /**

@@ -6,17 +6,24 @@ import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.controller.VeniceHelixAdmin;
 import com.linkedin.venice.controllerapi.ControllerApiConstants;
 import com.linkedin.venice.controllerapi.ControllerClient;
+import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
+import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.KafkaPushJob;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
+import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
+import com.linkedin.venice.integration.utils.ZkServerWrapper;
+import com.linkedin.venice.kafka.TopicManager;
+import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.replication.TopicReplicator;
 import com.linkedin.venice.samza.VeniceSystemFactory;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import java.io.File;
+import java.io.IOException;
 import java.lang.reflect.Field;
 import java.util.HashMap;
 import java.util.List;
@@ -26,39 +33,86 @@ import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import org.apache.avro.Schema;
+import org.apache.commons.io.IOUtils;
 import org.apache.log4j.Logger;
 import org.apache.samza.config.MapConfig;
 import org.apache.samza.system.OutgoingMessageEnvelope;
 import org.apache.samza.system.SystemProducer;
 import org.apache.samza.system.SystemStream;
+import org.codehaus.jackson.map.ObjectMapper;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
+import static com.linkedin.venice.hadoop.KafkaPushJob.*;
 import static com.linkedin.venice.samza.VeniceSystemFactory.*;
+import static com.linkedin.venice.samza.VeniceSystemFactory.JOB_ID;
 import static com.linkedin.venice.utils.TestPushUtils.*;
 
 
 public class TestHybrid {
   private static final Logger logger = Logger.getLogger(TestHybrid.class);
 
-  // This test validates the hybrid batch + streaming semantics and verifies that configured rewind time works as expected.
-  // TODO: The test fails if the rewind drops us inside of a DIV segment.  This is because the DIV consumption logic needs to be improved.
-  // set `multiDivStream` to false to test rewind inside a DIV segment.  Example stack trace below:
+  @Test
+  public void testHybridInitializationOnMultiColo(){
+    VeniceClusterWrapper venice = ServiceFactory.getVeniceCluster(1,2,1,1, 1000000, false);
+    ZkServerWrapper parentZk = ServiceFactory.getZkServer();
+    VeniceControllerWrapper parentController = ServiceFactory.getVeniceParentController(
+        venice.getClusterName(), parentZk.getAddress(), venice.getKafka(), venice.getMasterVeniceController());
 
-  // 2017-07-17 10:42:34,691 ERROR StoreBufferService$StoreBufferDrainer:122 - Got exception during processing consumer record: ConsumerRecord(topic = hybrid-store-1500313298602-1681399193_v3, partition = 0, offset = 110, LogAppendTime = 1500313354689, checksum = 3095490156, serialized key size = 4, serialized value size = 40, key = KafkaKey(PUT or DELETE, 043132), value = {"messageType": 0, "producerMetadata": {"producerGUID": [116, 105, -116, 64, -16, 121, 71, -8, -113, -126, -17, -63, 56, 91, -108, 2], "segmentNumber": 0, "messageSequenceNumber": 13, "messageTimestamp": 1500313349198}, "payloadUnion": {"schemaId": 1, "putValue": {"bytes": "stream_12"}}})
-  // java.lang.IllegalStateException: Cannot initialize a new segment on anything else but a START_OF_SEGMENT control message.
-  // at com.linkedin.venice.kafka.validation.ProducerTracker.initializeNewSegment(ProducerTracker.java:193)
-  // at com.linkedin.venice.kafka.validation.ProducerTracker.trackSegment(ProducerTracker.java:145)
-  // at com.linkedin.venice.kafka.validation.ProducerTracker.addMessage(ProducerTracker.java:93)
-  // at com.linkedin.venice.kafka.consumer.StoreIngestionTask.validateMessage(StoreIngestionTask.java:880)
-  // at com.linkedin.venice.kafka.consumer.StoreIngestionTask.internalProcessConsumerRecord(StoreIngestionTask.java:822)
-  // at com.linkedin.venice.kafka.consumer.StoreIngestionTask.processConsumerRecord(StoreIngestionTask.java:655)
-  // at com.linkedin.venice.kafka.consumer.StoreBufferService$StoreBufferDrainer.run(StoreBufferService.java:120)
+    long streamingRewindSeconds = 25L;
+    long streamingMessageLag = 2L;
+    final String storeName = TestUtils.getUniqueString("multi-colo-hybrid-store");
 
+    //Create store at parent, make it a hybrid store
+    ControllerClient controllerClient = new ControllerClient(venice.getClusterName(), parentController.getControllerUrl());
+    controllerClient.createNewStore(storeName, "owner", STRING_SCHEMA, STRING_SCHEMA);
+    controllerClient.updateStore(storeName, Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(),
+        Optional.empty(), Optional.of(Store.UNLIMITED_STORAGE_QUOTA), Optional.empty(),
+        Optional.of(streamingRewindSeconds), Optional.of(streamingMessageLag));
+
+    // There should be no version on the store yet
+    Assert.assertEquals(controllerClient.getStore(storeName).getStore().getCurrentVersion(),
+        0, "The newly created store must have a current version of 0");
+
+    // Create a new version, and do an empty push for that version
+    VersionCreationResponse vcr = controllerClient.emptyPush(storeName, TestUtils.getUniqueString("empty-hybrid-push"), 1L);
+    int versionNumber = vcr.getVersion();
+    Assert.assertNotEquals(versionNumber, 0, "requesting a topic for a push should provide a non zero version number");
+
+    TestUtils.waitForNonDeterministicAssertion(1, TimeUnit.SECONDS, () -> {
+      // Now the store should have version 1
+      JobStatusQueryResponse jobStatus = controllerClient.queryJobStatus(Version.composeKafkaTopic(storeName, versionNumber));
+      Assert.assertEquals(jobStatus.getStatus(), "COMPLETED");
+    });
+
+    //And real-time topic should exist now.
+    TopicManager topicManager = new TopicManager(venice.getZk().getAddress());
+    Assert.assertTrue(topicManager.containsTopic(Version.composeRealTimeTopic(storeName)));
+    IOUtils.closeQuietly(topicManager);
+
+    parentController.close();
+    parentZk.close();
+    venice.close();
+  }
+
+  /**
+   * This test validates the hybrid batch + streaming semantics and verifies that configured rewind time works as expected.
+   * TODO: The test fails if the rewind drops us inside of a DIV segment.  This is because the DIV consumption logic needs to be improved.
+   * set `multiDivStream` to false to test rewind inside a DIV segment.  Example stack trace below:
+   *
+   * 2017-07-17 10:42:34,691 ERROR StoreBufferService$StoreBufferDrainer:122 - Got exception during processing consumer record: ConsumerRecord(topic = hybrid-store-1500313298602-1681399193_v3, partition = 0, offset = 110, LogAppendTime = 1500313354689, checksum = 3095490156, serialized key size = 4, serialized value size = 40, key = KafkaKey(PUT or DELETE, 043132), value = {"messageType": 0, "producerMetadata": {"producerGUID": [116, 105, -116, 64, -16, 121, 71, -8, -113, -126, -17, -63, 56, 91, -108, 2], "segmentNumber": 0, "messageSequenceNumber": 13, "messageTimestamp": 1500313349198}, "payloadUnion": {"schemaId": 1, "putValue": {"bytes": "stream_12"}}})
+   * java.lang.IllegalStateException: Cannot initialize a new segment on anything else but a START_OF_SEGMENT control message.
+   * at com.linkedin.venice.kafka.validation.ProducerTracker.initializeNewSegment(ProducerTracker.java:193)
+   * at com.linkedin.venice.kafka.validation.ProducerTracker.trackSegment(ProducerTracker.java:145)
+   * at com.linkedin.venice.kafka.validation.ProducerTracker.addMessage(ProducerTracker.java:93)
+   * at com.linkedin.venice.kafka.consumer.StoreIngestionTask.validateMessage(StoreIngestionTask.java:880)
+   * at com.linkedin.venice.kafka.consumer.StoreIngestionTask.internalProcessConsumerRecord(StoreIngestionTask.java:822)
+   * at com.linkedin.venice.kafka.consumer.StoreIngestionTask.processConsumerRecord(StoreIngestionTask.java:655)
+   * at com.linkedin.venice.kafka.consumer.StoreBufferService$StoreBufferDrainer.run(StoreBufferService.java:120)
+   */
   @Test
   public void testHybridEndToEnd() throws Exception {
-    Utils.thisIsLocalhost(); //required for development certificates which are registered to 'localhost' hostname
-    VeniceClusterWrapper venice = ServiceFactory.getVeniceCluster(1,1,1,1, 1000000, true);
+    VeniceClusterWrapper venice = ServiceFactory.getVeniceCluster(1,1,1,1, 1000000, false);
     long streamingRewindSeconds = 25L;
     long streamingMessageLag = 2L;
     // this test needs to be able to pass with this set to false
