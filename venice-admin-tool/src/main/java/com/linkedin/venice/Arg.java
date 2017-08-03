@@ -6,6 +6,8 @@ public enum Arg {
   CLUSTER("cluster", "c", true, "Name of Venice cluster"),
   STORE("store", "s", true, "Name of Venice store"),
   VERSION("version", "v", true, "Venice store version number"),
+  PUSH_ID("push-id", "pid", true, "Push Id"),
+  STORE_SIZE("store-size", "ss", true, "Size of the store in bytes, used to calculate partitioning"),
   KEY_SCHEMA("key-schema-file", "ks", true, "Path to text file with key schema"),
   VALUE_SCHEMA("value-schema-file", "vs", true, "Path to text file with value schema"),
   OWNER("owner", "o", true, "Owner email for new store creation"),

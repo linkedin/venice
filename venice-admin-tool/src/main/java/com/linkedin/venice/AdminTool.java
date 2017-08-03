@@ -21,6 +21,7 @@ import com.linkedin.venice.controllerapi.OwnerResponse;
 import com.linkedin.venice.controllerapi.PartitionResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
+import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.controllerapi.VersionResponse;
 import com.linkedin.venice.controllerapi.routes.AdminCommandExecutionResponse;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -150,6 +151,8 @@ public class AdminTool {
         printObject(response);
       } else if (cmd.hasOption(Command.NEW_STORE.toString())) {
         createNewStore(cmd);
+      } else if (cmd.hasOption(Command.EMPTY_PUSH.toString())) {
+        emptyPush(cmd);
       } else if (cmd.hasOption(Command.DISABLE_STORE_WRITE.toString())) {
         setEnableStoreWrites(cmd, false);
       } else if (cmd.hasOption(Command.ENABLE_STORE_WRITE.toString())){
@@ -290,6 +293,18 @@ public class AdminTool {
     verifyValidSchema(valueSchema);
     verifyStoreExistence(store, false);
     NewStoreResponse response = controllerClient.createNewStore(store, owner, keySchema, valueSchema);
+    printObject(response);
+  }
+
+  private static void emptyPush(CommandLine cmd)
+      throws IOException {
+    String store = getRequiredArgument(cmd, Arg.STORE, Command.EMPTY_PUSH);
+    String pushId = getRequiredArgument(cmd, Arg.PUSH_ID, Command.EMPTY_PUSH);
+    String storeSizeString = getRequiredArgument(cmd, Arg.STORE_SIZE, Command.EMPTY_PUSH);
+    long storeSize = Utils.parseLongFromString(storeSizeString, Arg.STORE_SIZE.name());
+
+    verifyStoreExistence(store, true);
+    VersionCreationResponse response = controllerClient.emptyPush(store, pushId, storeSize);
     printObject(response);
   }
 

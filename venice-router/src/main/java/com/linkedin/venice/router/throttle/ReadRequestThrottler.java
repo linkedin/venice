@@ -104,7 +104,12 @@ public class ReadRequestThrottler implements RoutersClusterManager.RouterCountCh
   }
 
   protected long calculateIdealTotalQuotaPerRouter() {
-    return storeRepository.getTotalStoreReadQuota() / zkRoutersManager.getRoutersCount();
+    int routerCount = zkRoutersManager.getRoutersCount();
+    if (0 == routerCount){
+      return 0;
+    } else {
+      return storeRepository.getTotalStoreReadQuota() / zkRoutersManager.getRoutersCount();
+    }
   }
 
   protected StoreReadThrottler getStoreReadThrottler(String storeName) {
@@ -238,7 +243,7 @@ public class ReadRequestThrottler implements RoutersClusterManager.RouterCountCh
       if (store.getCurrentVersion() != storeReadThrottler.getCurrentVersion()) {
         // Handle current version has been changed.
         //TODO
-        logger.info("Current version has been changed for store: " + store.getName() + " Qld Current Version: "
+        logger.info("Current version has been changed for store: " + store.getName() + " Old Current Version: "
             + storeReadThrottler.getCurrentVersion() + ", New Current Version: " + store.getCurrentVersion()
             + ", Update the storage nodes throttlers only.");
         // Unsubscribe the routing data changed event for the old current version.

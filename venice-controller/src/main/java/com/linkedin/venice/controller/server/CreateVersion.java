@@ -6,6 +6,7 @@ import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceHttpException;
+import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
@@ -104,7 +105,7 @@ public class CreateVersion {
 
         switch(pushType) {
           case BATCH:
-            Version version = admin.incrementVersionIdempotent(clusterName, storeName, pushJobId, partitionCount, replicationFactor);
+            Version version = admin.incrementVersionIdempotent(clusterName, storeName, pushJobId, partitionCount, replicationFactor, true);
             responseObject.setVersion(version.getNumber());
             responseObject.setKafkaTopic(Version.composeKafkaTopic(storeName, version.getNumber()));
             break;
@@ -139,7 +140,7 @@ public class CreateVersion {
         responseObject.setCluster(clusterName);
         responseObject.setName(storeName);
 
-        writeEndOfPush(admin, clusterName, storeName, versionNumber);
+        writeEndOfPush(admin, clusterName, storeName, versionNumber, false);
 
       } catch (Throwable e) {
         responseObject.setError(e.getMessage());
@@ -150,9 +151,46 @@ public class CreateVersion {
     };
   }
 
-  protected static void writeEndOfPush(Admin admin, String clusterName, String storeName, int versionNumber) {
+  public static Route emptyPush(Admin admin) {
+    return (request, response) -> {
+      VersionCreationResponse responseObject = new VersionCreationResponse();
+      try {
+        AdminSparkServer.validateParams(request, EMPTY_PUSH.getParams(), admin);
+
+        //Query params
+        String clusterName = request.queryParams(CLUSTER);
+        String storeName = request.queryParams(NAME);
+        long storeSize = Utils.parseLongFromString(request.queryParams(STORE_SIZE), STORE_SIZE);
+        String pushJobId = request.queryParams(PUSH_JOB_ID);
+        int partitionNum = admin.calculateNumberOfPartitions(clusterName, storeName, storeSize);
+        int replicationFactor = admin.getReplicationFactor(clusterName, storeName);
+        Version version = admin.incrementVersionIdempotent(clusterName, storeName, pushJobId, partitionNum, replicationFactor, true);
+        int versionNumber = version.getNumber();
+
+        responseObject.setCluster(clusterName);
+        responseObject.setName(storeName);
+        responseObject.setVersion(versionNumber);
+        responseObject.setPartitions(partitionNum);
+        responseObject.setReplicas(replicationFactor);
+
+        writeEndOfPush(admin, clusterName, storeName, versionNumber, true);
+
+      } catch (Throwable e) {
+        responseObject.setError(e.getMessage());
+        AdminSparkServer.handleError(e, request, response);
+      }
+      response.type(HttpConstants.JSON);
+      return AdminSparkServer.mapper.writeValueAsString(responseObject);
+    };
+  }
+
+  protected static void writeEndOfPush(Admin admin, String clusterName, String storeName, int versionNumber, boolean alsoWriteStartOfPush) {
     //validate store and version exist
     Store store = admin.getStore(clusterName, storeName);
+
+    if (null == store) {
+      throw new VeniceNoStoreException(storeName);
+    }
 
     if (store.getCurrentVersion() == versionNumber){
       throw new VeniceHttpException(HttpStatus.SC_CONFLICT, "Cannot end push for version " + versionNumber + " that is currently being served");
@@ -165,6 +203,9 @@ public class CreateVersion {
 
     //write EOP message
     try (VeniceWriter writer = getVeniceWriterForEndOfPush(admin.getKafkaBootstrapServers(), Version.composeKafkaTopic(storeName, versionNumber))) {
+      if (alsoWriteStartOfPush){
+        writer.broadcastStartOfPush(new HashMap<>());
+      }
       writer.broadcastEndOfPush(new HashMap<>());
     }
   }

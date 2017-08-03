@@ -103,7 +103,12 @@ public class ControllerClient implements Closeable {
         lastException = e;
       }
     }
-    throw new VeniceException("Could not get controller url from urls: " + urlsToFindMasterController, lastException);
+    String errMessage = "Could not get controller url from urls: " + urlsToFindMasterController;
+    if (null != lastException) {
+      throw new VeniceException(errMessage + " -- " + lastException.getMessage(), lastException);
+    } else {
+      throw new VeniceException(errMessage);
+    }
   }
 
   public StoreResponse getStore(String storeName) {
@@ -191,6 +196,19 @@ public class ControllerClient implements Closeable {
     } catch (Exception e){
       return handleError(
           new VeniceException("Error generating End Of Push for store: " + storeName, e), new ControllerResponse());
+    }
+  }
+
+  public VersionCreationResponse emptyPush(String storeName, String pushJobId, long storeSize) {
+    try {
+      List<NameValuePair> params = newParams(clusterName);
+      params.add(new BasicNameValuePair(ControllerApiConstants.NAME, storeName));
+      params.add(new BasicNameValuePair(ControllerApiConstants.PUSH_JOB_ID, pushJobId));
+      params.add(new BasicNameValuePair(ControllerApiConstants.STORE_SIZE, Long.toString(storeSize)));
+      String responseJson = postRequest(ControllerRoute.EMPTY_PUSH.getPath(), params);
+      return mapper.readValue(responseJson, VersionCreationResponse.class);
+    } catch (Exception e) {
+      return handleError(new VeniceException("Error generating empty push for store: " + storeName, e), new VersionCreationResponse());
     }
   }
 

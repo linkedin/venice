@@ -31,6 +31,8 @@ public class TestPushUtils {
       "  ] " +
       " } ";
 
+  public static final String STRING_SCHEMA = "\"string\"";
+
   public static File getTempDataDirectory() {
     String tmpDirectory = System.getProperty("java.io.tmpdir");
     String directoryName = TestUtils.getUniqueString("Venice-Data");
