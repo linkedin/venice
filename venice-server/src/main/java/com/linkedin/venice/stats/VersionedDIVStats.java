@@ -3,6 +3,7 @@ package com.linkedin.venice.stats;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 import org.apache.log4j.Logger;
@@ -83,9 +84,13 @@ public class VersionedDIVStats {
     reporters.setBackupStats(version, getStats(version));
   }
 
-  public synchronized Set<Integer> getAllVersionNumbers() {
-    return Collections.unmodifiableSet(versionedStats.keySet());
-
+  /**
+   * return a deep copy of all version numbers
+   */
+  public synchronized Set<Integer>  getAllVersionNumbers() {
+    Set<Integer> versionNums = new HashSet<>();
+    versionedStats.keySet().forEach(key -> versionNums.add(key));
+    return versionNums;
   }
 
   private DIVStats getStats(int version) {

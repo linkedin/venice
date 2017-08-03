@@ -68,41 +68,61 @@ public class AggVersionedDIVStatsTest {
     String storeName = mockStore.getName();
     Assert.assertEquals(reporter.query("." + storeName + "--future_version.VersionStat").value(), 0d);
 
-    //increase the version with VersionStatus "STARTED"
+    //v1 starts pushing
     Version version = new Version(storeName, 1);
     mockStore.addVersion(version);
     stats.handleStoreChanged(mockStore);
 
+    //expect to see v1's stats on future reporter
     Assert.assertEquals(reporter.query("." + storeName + "--future_version.VersionStat").value(), 1d);
 
     stats.recordCurrentIdleTime(storeName, 1);
     Assert.assertEquals(reporter.query("." + storeName + "_future--current_idle_time.DIVStatsCounter").value(), 1d);
 
+    //v1 becomes the current version and v2 starts pushing
     version.setStatus(VersionStatus.ONLINE);
     mockStore.setCurrentVersionWithoutCheck(1);
-    Version newVersion = new Version(storeName, 2);
-    mockStore.addVersion(newVersion);
+    Version version2 = new Version(storeName, 2);
+    mockStore.addVersion(version2);
 
 
     stats.recordCurrentIdleTime(storeName, 1);
     stats.recordDuplicateMsg(storeName, 2);
     stats.handleStoreChanged(mockStore);
 
+    //expect to see v1's stats on current reporter and v2's stats on future reporter
     Assert.assertEquals(reporter.query("." + storeName + "--future_version.VersionStat").value(), 2d);
     Assert.assertEquals(reporter.query("." + storeName + "--current_version.VersionStat").value(), 1d);
     Assert.assertEquals(reporter.query("." + storeName + "_future--duplicate_msg.DIVStatsCounter").value(), 1d);
     Assert.assertEquals(reporter.query("." + storeName + "_current--current_idle_time.DIVStatsCounter").value(), 2d);
 
-    newVersion.setStatus(VersionStatus.ONLINE);
+    //v2 finishes pushing
+    version2.setStatus(VersionStatus.ONLINE);
     stats.handleStoreChanged(mockStore);
+    //since turning Version status to be online and becoming current version are two separated operations, expect to see
+    //v2's stats on backup reporter
     Assert.assertEquals(reporter.query("." + storeName + "_current--current_idle_time.DIVStatsCounter").value(), 2d);
     Assert.assertEquals(reporter.query("." + storeName + "_future--duplicate_msg.DIVStatsCounter").value(), 0d);
     Assert.assertEquals(reporter.query("." + storeName + "_backup--duplicate_msg.DIVStatsCounter").value(), 1d);
 
+    //v2 becomes the current version
     mockStore.setCurrentVersionWithoutCheck(2);
     stats.handleStoreChanged(mockStore);
+
+    //expect to see v2's stats on current reporter and v1's stats on backup reporter
     Assert.assertEquals(reporter.query("." + storeName + "_current--duplicate_msg.DIVStatsCounter").value(), 1d);
     Assert.assertEquals(reporter.query("." + storeName + "_backup--current_idle_time.DIVStatsCounter").value(), 2d);
+
+    //v3 finishes pushing and the status becomes to be online
+    Version version3 = new Version(storeName, 3);
+    version3.setStatus(VersionStatus.ONLINE);
+    mockStore.addVersion(version3);
+    mockStore.deleteVersion(1);
+    stats.handleStoreChanged(mockStore);
+    stats.recordMissingMsg(storeName, 3);
+
+    //expect to see v1 stats being removed from reporters
+    Assert.assertEquals(reporter.query("." + storeName + "_backup--missing_msg.DIVStatsCounter").value(), 1d);
   }
 
 
