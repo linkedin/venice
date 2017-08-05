@@ -8,6 +8,7 @@ import com.linkedin.venice.controller.kafka.consumer.AdminConsumerService;
 
 import com.linkedin.venice.controller.kafka.protocol.admin.AdminOperation;
 import com.linkedin.venice.controller.kafka.protocol.admin.DeleteAllVersions;
+import com.linkedin.venice.controller.kafka.protocol.admin.DeleteStore;
 import com.linkedin.venice.controller.kafka.protocol.admin.DisableStoreRead;
 import com.linkedin.venice.controller.kafka.protocol.admin.EnableStoreRead;
 import com.linkedin.venice.controller.kafka.protocol.admin.HybridStoreConfigRecord;
@@ -259,6 +260,26 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   @Override
+  public void deleteStore(String clusterName, String storeName, int largestUsedVerisionNumber) {
+    acquireLock(clusterName);
+    try {
+      Store store = veniceHelixAdmin.checkPreConditionForDeletion(clusterName, storeName);
+      DeleteStore deleteStore = (DeleteStore) AdminMessageType.DELETE_STORE.getNewInstance();
+      deleteStore.clusterName = clusterName;
+      deleteStore.storeName = storeName;
+      // Tell each prod colo the largest used version number in corp to make it consistent.
+      deleteStore.largestUsedVersionNumber = store.getLargestUsedVersionNumber();
+      AdminOperation message = new AdminOperation();
+      message.operationType = AdminMessageType.DELETE_STORE.ordinal();
+      message.payloadUnion = deleteStore;
+
+      sendAdminMessageAndWaitForConsumed(clusterName, message);
+    } finally {
+      releaseLock();
+    }
+  }
+
+  @Override
   public Version addVersion(String clusterName,
                             String storeName,
                             int versionNumber,
@@ -449,7 +470,7 @@ public class VeniceParentHelixAdmin implements Admin {
   public List<Version> deleteAllVersionsInStore(String clusterName, String storeName) {
     acquireLock(clusterName);
     try {
-      veniceHelixAdmin.checkPreConditionForUpdateStoreMetadata(clusterName, storeName);
+      veniceHelixAdmin.checkPreConditionForDeletion(clusterName, storeName);
 
       DeleteAllVersions deleteAllVersions = (DeleteAllVersions) AdminMessageType.DELETE_ALL_VERSIONS.getNewInstance();
       deleteAllVersions.clusterName = clusterName;

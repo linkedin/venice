@@ -4,6 +4,7 @@ import com.linkedin.venice.controller.kafka.AdminTopicUtils;
 import com.linkedin.venice.controller.kafka.consumer.AdminConsumptionTask;
 import com.linkedin.venice.controller.kafka.offsets.AdminOffsetManager;
 import com.linkedin.venice.controller.kafka.protocol.admin.AdminOperation;
+import com.linkedin.venice.controller.kafka.protocol.admin.DeleteStore;
 import com.linkedin.venice.controller.kafka.protocol.admin.DisableStoreRead;
 import com.linkedin.venice.controller.kafka.protocol.admin.EnableStoreRead;
 import com.linkedin.venice.controller.kafka.protocol.admin.KillOfflinePushJob;
@@ -1043,5 +1044,48 @@ public class TestVeniceParentHelixAdmin {
     Assert.assertNotNull(updateStore.hybridStoreConfig, "Hybrid store config should result in something not null in the avro object");
     Assert.assertEquals(updateStore.hybridStoreConfig.rewindTimeInSeconds, 135L);
     Assert.assertEquals(updateStore.hybridStoreConfig.offsetLagThresholdToGoOnline, 2000L);
+  }
+
+  @Test
+  public void testDeleteStore()
+      throws ExecutionException, InterruptedException {
+    parentAdmin.start(clusterName);
+    String storeName = "test-testReCreateStore";
+    String owner = "unittest";
+    Store store = TestUtils.createTestStore(storeName, owner, System.currentTimeMillis());
+    Mockito.doReturn(store).when(internalAdmin).getStore(eq(clusterName), eq(storeName));
+    Mockito.doReturn(store).when(internalAdmin).checkPreConditionForDeletion(eq(clusterName), eq(storeName));
+    Future future = mock(Future.class);
+    doReturn(new RecordMetadata(topicPartition, 0, 1, -1, -1, -1, -1))
+        .when(future).get();
+    doReturn(future)
+        .when(veniceWriter)
+        .put(any(), any(), anyInt());
+
+    when(zkClient.readData(zkOffsetNodePath, null))
+        .thenReturn(new OffsetRecord())
+        .thenReturn(TestUtils.getOffsetRecord(1));
+
+    parentAdmin.deleteStore(clusterName, storeName, 0);
+    verify(veniceWriter)
+        .put(any(), any(), anyInt());
+    verify(zkClient, times(2))
+        .readData(zkOffsetNodePath, null);
+    ArgumentCaptor<byte[]> keyCaptor = ArgumentCaptor.forClass(byte[].class);
+    ArgumentCaptor<byte[]> valueCaptor = ArgumentCaptor.forClass(byte[].class);
+    ArgumentCaptor<Integer> schemaCaptor = ArgumentCaptor.forClass(Integer.class);
+    verify(veniceWriter).put(keyCaptor.capture(), valueCaptor.capture(), schemaCaptor.capture());
+    byte[] keyBytes = keyCaptor.getValue();
+    byte[] valueBytes = valueCaptor.getValue();
+    int schemaId = schemaCaptor.getValue();
+    Assert.assertEquals(schemaId, AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
+    Assert.assertEquals(keyBytes.length, 0);
+    AdminOperation adminMessage = adminOperationSerializer.deserialize(valueBytes, schemaId);
+    Assert.assertEquals(adminMessage.operationType, AdminMessageType.DELETE_STORE.ordinal());
+    DeleteStore deleteStore = (DeleteStore) adminMessage.payloadUnion;
+    Assert.assertEquals(deleteStore.clusterName.toString(), clusterName);
+    Assert.assertEquals(deleteStore.storeName.toString(), storeName);
+    Assert.assertEquals(deleteStore.largestUsedVersionNumber, 0);
+
   }
 }

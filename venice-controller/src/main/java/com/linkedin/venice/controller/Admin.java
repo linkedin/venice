@@ -43,6 +43,12 @@ public interface Admin {
 
     void addStore(String clusterName, String storeName, String owner, String keySchema, String valueSchema);
 
+    /**
+    * Delete the entire store includeing both metadata and real user's data. Before deleting a store, we should disable
+    * the store manually to ensure there is no reading/writing request hitting this tore.
+    */
+    void deleteStore(String clusterName, String storeName, int largestUsedVerisonNumber);
+
     Version addVersion(String clusterName, String storeName, int versionNumber, int numberOfPartition,
         int replicationFactor);
 

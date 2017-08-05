@@ -12,8 +12,11 @@ import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.PartitionAssignment;
+import com.linkedin.venice.meta.PersistenceType;
+import com.linkedin.venice.meta.ReadStrategy;
 import com.linkedin.venice.meta.ReadWriteStoreRepository;
 import com.linkedin.venice.meta.RoutingDataRepository;
+import com.linkedin.venice.meta.RoutingStrategy;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
@@ -964,7 +967,7 @@ public class TestVeniceHelixAdmin {
   }
 
   @Test
-  public void testDeleteAllVersions()
+  public void testDeleteAllVersionsInStore()
       throws Exception {
     stopParticipants();
     startParticipant(true, nodeId);
@@ -1040,7 +1043,7 @@ public class TestVeniceHelixAdmin {
   }
 
   @Test
-  public void testDeleteVersionInWithoutJobAndResource() {
+  public void testDeleteAllVersionsInStoreWithoutJobAndResource() {
     String storeName = "testDeleteVersionInWithoutJobAndResource";
     Store store = TestUtils.createTestStore(storeName, "unittest", System.currentTimeMillis());
     Version version = store.increaseVersion();
@@ -1053,5 +1056,119 @@ public class TestVeniceHelixAdmin {
 
     veniceAdmin.deleteAllVersionsInStore(clusterName, storeName);
     Assert.assertEquals(veniceAdmin.getStore(clusterName, storeName).getVersions().size(), 0);
+  }
+
+  @Test
+  public void testDeleteStore() {
+    String storeName = "testDeleteStore";
+    TestUtils.createTestStore(storeName, "unittest", System.currentTimeMillis());
+    for (HelixManager manager : this.participants.values()) {
+      HelixStatusMessageChannel channel = new HelixStatusMessageChannel(manager);
+      channel.registerHandler(KillOfflinePushMessage.class, new StatusMessageHandler<KillOfflinePushMessage>() {
+        @Override
+        public void handleMessage(KillOfflinePushMessage message) {
+          stateModelFactory.makeTransitionCompleted(message.getKafkaTopic(), 0);
+        }
+      });
+    }
+    veniceAdmin.addStore(clusterName, storeName, "unittest", "\"string\"", "\"string\"");
+    Version version = veniceAdmin.incrementVersion(clusterName, storeName, 1,1);
+    TestUtils.waitForNonDeterministicCompletion(TOTAL_TIMEOUT_FOR_SHORT_TEST, TimeUnit.MILLISECONDS,
+        () -> veniceAdmin.getCurrentVersion(clusterName, storeName) == version.getNumber());
+    Assert.assertTrue(
+        veniceAdmin.getTopicManager().containsTopic(Version.composeKafkaTopic(storeName, version.getNumber())),
+        "Kafka topic should be created.");
+
+    // Store has not been disabled.
+    try {
+      veniceAdmin.deleteStore(clusterName, storeName, Store.IGNORE_VERSION);
+      Assert.fail("Store has not been disabled.");
+    } catch (VeniceException e) {
+    }
+    veniceAdmin.setStoreReadability(clusterName, storeName, false);
+    veniceAdmin.setStoreWriteability(clusterName, storeName, false);
+    veniceAdmin.deleteStore(clusterName, storeName, Store.IGNORE_VERSION);
+    Assert.assertNull(veniceAdmin.getStore(clusterName, storeName), "Store should be deleted before.");
+    Assert.assertEquals(
+        veniceAdmin.getVeniceHelixResource(clusterName).getStoreGraveyard().getLargestUsedVersionNumber(storeName),
+        version.getNumber(), "LargestUsedVersionNumber should be kept in graveyard.");
+    TestUtils.waitForNonDeterministicCompletion(TOTAL_TIMEOUT_FOR_LONG_TEST, TimeUnit.MILLISECONDS,
+        () -> !veniceAdmin.getTopicManager().containsTopic(Version.composeKafkaTopic(storeName, version.getNumber())));
+  }
+
+  @Test
+  public void testDeleteStoreWithLargestUsedVersionNumberOverwritten() {
+    String storeName = "testDeleteStore";
+    int largestUsedVersionNumber = 1000;
+    TestUtils.createTestStore(storeName, "unittest", System.currentTimeMillis());
+    for (HelixManager manager : this.participants.values()) {
+      HelixStatusMessageChannel channel = new HelixStatusMessageChannel(manager);
+      channel.registerHandler(KillOfflinePushMessage.class, new StatusMessageHandler<KillOfflinePushMessage>() {
+        @Override
+        public void handleMessage(KillOfflinePushMessage message) {
+          stateModelFactory.makeTransitionCompleted(message.getKafkaTopic(), 0);
+        }
+      });
+    }
+    veniceAdmin.addStore(clusterName, storeName, "unittest", "\"string\"", "\"string\"");
+    Version version = veniceAdmin.incrementVersion(clusterName, storeName, 1,1);
+    TestUtils.waitForNonDeterministicCompletion(TOTAL_TIMEOUT_FOR_SHORT_TEST, TimeUnit.MILLISECONDS,
+        () -> veniceAdmin.getCurrentVersion(clusterName, storeName) == version.getNumber());
+    Assert.assertTrue(
+        veniceAdmin.getTopicManager().containsTopic(Version.composeKafkaTopic(storeName, version.getNumber())),
+        "Kafka topic should be created.");
+
+    veniceAdmin.setStoreReadability(clusterName, storeName, false);
+    veniceAdmin.setStoreWriteability(clusterName, storeName, false);
+    veniceAdmin.deleteStore(clusterName, storeName, largestUsedVersionNumber);
+    Assert.assertNull(veniceAdmin.getStore(clusterName, storeName), "Store should be deleted before.");
+    Assert.assertEquals(
+        veniceAdmin.getVeniceHelixResource(clusterName).getStoreGraveyard().getLargestUsedVersionNumber(storeName),
+        largestUsedVersionNumber, "LargestUsedVersionNumber should be overwritten and kept in graveyard.");
+  }
+
+  @Test
+  public void testReCreateStore() {
+    String storeName = "testReCreateStore";
+    int largestUsedVersionNumber = 100;
+    veniceAdmin.addStore(clusterName, storeName, "unittest", "\"string\"", "\"string\"");
+
+    Store store = veniceAdmin.getStore(clusterName, storeName);
+    store.setLargestUsedVersionNumber(largestUsedVersionNumber);
+    store.setEnableReads(false);
+    store.setEnableWrites(false);
+    veniceAdmin.getVeniceHelixResource(clusterName).getMetadataRepository().updateStore(store);
+    veniceAdmin.deleteStore(clusterName, storeName, Store.IGNORE_VERSION);
+
+    //Re-create store with incompatible schema
+    veniceAdmin.addStore(clusterName, storeName, "unittest", "\"long\"", "\"long\"");
+    veniceAdmin.incrementVersion(clusterName, storeName, 1, 1);
+    Assert.assertEquals(veniceAdmin.getKeySchema(clusterName, storeName).getSchema().toString(), "\"long\"");
+    Assert.assertEquals(veniceAdmin.getValueSchema(clusterName, storeName, 1).getSchema().toString(), "\"long\"");
+    Assert.assertEquals(veniceAdmin.getStore(clusterName, storeName).getLargestUsedVersionNumber(),
+        largestUsedVersionNumber + 1);
+  }
+
+  @Test
+  public void testReCreateStoreWithLegacyStore(){
+    String storeName = "testReCreateStore";
+    int largestUsedVersionNumber = 100;
+    veniceAdmin.addStore(clusterName, storeName, "unittest", "\"string\"", "\"string\"");
+
+
+    Store store = veniceAdmin.getStore(clusterName, storeName);
+    store.setLargestUsedVersionNumber(largestUsedVersionNumber);
+    store.setEnableWrites(false);
+    store.setEnableReads(false);
+    // Legacy store
+    store.setDeleting(true);
+    veniceAdmin.getVeniceHelixResource(clusterName).getMetadataRepository().updateStore(store);
+    //Re-create store with incompatible schema
+    veniceAdmin.addStore(clusterName, storeName, "unittest", "\"long\"", "\"long\"");
+    veniceAdmin.incrementVersion(clusterName, storeName, 1, 1);
+    Assert.assertEquals(veniceAdmin.getKeySchema(clusterName, storeName).getSchema().toString(), "\"long\"");
+    Assert.assertEquals(veniceAdmin.getValueSchema(clusterName, storeName, 1).getSchema().toString(), "\"long\"");
+    Assert.assertEquals(veniceAdmin.getStore(clusterName, storeName).getLargestUsedVersionNumber(),
+        largestUsedVersionNumber + 1);
   }
 }

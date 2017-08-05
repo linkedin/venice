@@ -7,12 +7,14 @@ import com.linkedin.venice.exceptions.VeniceStoreAlreadyExistsException;
 import com.linkedin.venice.helix.HelixAdapterSerializer;
 import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
 import com.linkedin.venice.helix.HelixReadWriteSchemaRepository;
+import com.linkedin.venice.helix.HelixStoreGraveyard;
 import com.linkedin.venice.helix.Replica;
 import com.linkedin.venice.helix.ResourceAssignment;
 import com.linkedin.venice.helix.ZkWhitelistAccessor;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.InstanceStatus;
 import com.linkedin.venice.meta.RoutingDataRepository;
+import com.linkedin.venice.meta.StoreGraveyard;
 import com.linkedin.venice.pushmonitor.KillOfflinePushMessage;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -211,30 +213,130 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
 
     @Override
-    public synchronized void addStore(String clusterName, String storeName, String owner, String keySchema, String valueSchema) {
+    public synchronized void addStore(String clusterName, String storeName, String owner, String keySchema,
+        String valueSchema) {
         VeniceHelixResources resources = getVeniceHelixResource(clusterName);
+        logger.info("Start creating store: " + storeName);
         synchronized (resources) { // Sloppy solution to race condition between add store and LEADER -> STANDBY controller state change
             checkPreConditionForAddStore(clusterName, storeName, keySchema, valueSchema);
             VeniceControllerClusterConfig config = getVeniceHelixResource(clusterName).getConfig();
-            Store store = new Store(storeName, owner, System.currentTimeMillis(), config.getPersistenceType(), config.getRoutingStrategy(), config.getReadStrategy(), config.getOfflinePushStrategy());
+            Store newStore = new Store(storeName, owner, System.currentTimeMillis(), config.getPersistenceType(),
+                config.getRoutingStrategy(), config.getReadStrategy(), config.getOfflinePushStrategy());
             HelixReadWriteStoreRepository storeRepo = resources.getMetadataRepository();
-            storeRepo.addStore(store);
+            storeRepo.lock();
+            try {
+                Store existingStore = storeRepo.getStore(storeName);
+                if(existingStore != null){
+                    if(existingStore.isDeleting()){
+                        // Controller was trying to delete the old store but failed.
+                        // Delete again before re-creating.
+                        // We lock the resource during deletion, so it's impossible to access the store which is being
+                        // deleted from here. So the only possible case is the deletion failed before.
+                        logger.info(
+                            "Found a legacy store:" + storeName + ", will attempt to delete it before re-creating.");
+                        deleteStore(clusterName, storeName, existingStore.getLargestUsedVersionNumber());
+                        logger.info("Successfully delete a legacy store: " + storeName);
+                    } else {
+                        // We should eliminate this possibility in checkPreConditionForAddStore, so if we reach this line it means we have some bugs.
+                        logger.error("Unable to re-create a store while the original one is still active.");
+                        throwStoreAlreadyExists(clusterName, storeName);
+                    }
+                }
+                // Now there is not store exists in the store repository, we will try to retrieve the info from the graveyard.
+                // Get the largestUsedVersionNumber from graveyard to avoid resource conflict.
+                StoreGraveyard storeGraveyard = resources.getStoreGraveyard();
+                int largestUsedVersionNumber = storeGraveyard.getLargestUsedVersionNumber(storeName);
+                newStore.setLargestUsedVersionNumber(largestUsedVersionNumber);
+                storeRepo.addStore(newStore);
+                logger.info("Store: " + storeName +
+                    " has been created with largestUsedVersionNumber: " + newStore.getLargestUsedVersionNumber());
+            } finally {
+                storeRepo.unLock();
+            }
             // Add schema
             HelixReadWriteSchemaRepository schemaRepo = resources.getSchemaRepository();
             schemaRepo.initKeySchema(storeName, keySchema);
             schemaRepo.addValueSchema(storeName, valueSchema, HelixReadOnlySchemaRepository.VALUE_SCHEMA_STARTING_ID);
+            logger.info("Completed creating Store: " + storeName);
+        }
+    }
+
+    @Override
+    public synchronized void deleteStore(String clusterName, String storeName, int largestUsedVersionNumber) {
+        checkControllerMastership(clusterName);
+        logger.info("Start deleting store: " + storeName);
+        VeniceHelixResources resources = getVeniceHelixResource(clusterName);
+        synchronized (resources) {
+            HelixReadWriteStoreRepository storeRepository = resources.getMetadataRepository();
+            storeRepository.lock();
+            try {
+                Store store = storeRepository.getStore(storeName);
+                checkPreConditionForDeletion(clusterName, storeName, store);
+                if (largestUsedVersionNumber == Store.IGNORE_VERSION) {
+                    // ignore and use the local largest used version number.
+                    logger.info("Give largest used version number is: " + largestUsedVersionNumber
+                        + " will skip overwriting the local store.");
+                } else if (largestUsedVersionNumber < store.getLargestUsedVersionNumber()) {
+                    throw new VeniceException("Given largest used version number: " + largestUsedVersionNumber
+                        + " is smaller than the largest used version number: " + store.getLargestUsedVersionNumber() +
+                        " found in repository.");
+                } else {
+                    store.setLargestUsedVersionNumber(largestUsedVersionNumber);
+                }
+                // Update deletion flag in Store to start deleting. In case of any failures during the deletion, the store
+                // could be deleted later after controller is recovered.
+                // A worse case is deletion succeeded in parent controller but failed in production controller. After skip
+                // the admin message offset, a store was left in some prod colos. While user re-create the store, we will
+                // delete this legacy store if isDeleting is true for this store.
+                store.setDeleting(true);
+                storeRepository.updateStore(store);
+            } finally {
+                storeRepository.unLock();
+            }
+            // Delete All versions
+            deleteAllVersionsInStore(clusterName, storeName);
+            // Move the store to graveyard. It will only re-create the znode for store's metadata excluding key and
+            // value schemas.
+            logger.info("Putting store:" + storeName + " into graveyard");
+            HelixStoreGraveyard storeGraveyard = resources.getStoreGraveyard();
+            storeGraveyard.putStoreIntoGraveyard(storeRepository.getStore(storeName));
+            // Helix will remove all data under this store's znode including key and value schemas.
+            resources.getMetadataRepository().deleteStore(storeName);
+            logger.info("Store:" + storeName + "has been deleted.");
         }
     }
 
     protected void checkPreConditionForAddStore(String clusterName, String storeName, String keySchema, String valueSchema) {
         checkControllerMastership(clusterName);
         HelixReadWriteStoreRepository repository = getVeniceHelixResource(clusterName).getMetadataRepository();
-        if (repository.getStore(storeName) != null) {
+        Store  store= repository.getStore(storeName);
+        // If the store exists in store repository and it's still active(not being deleted), we don't allow to re-create it.
+        if (store != null && !store.isDeleting()) {
             throwStoreAlreadyExists(clusterName, storeName);
         }
         // Check whether the schema is valid or not
         new SchemaEntry(SchemaData.INVALID_VALUE_SCHEMA_ID, keySchema);
         new SchemaEntry(SchemaData.INVALID_VALUE_SCHEMA_ID, valueSchema);
+    }
+
+    protected Store checkPreConditionForDeletion(String clusterName, String storeName) {
+        checkControllerMastership(clusterName);
+        HelixReadWriteStoreRepository repository = getVeniceHelixResource(clusterName).getMetadataRepository();
+        Store store = repository.getStore(storeName);
+        checkPreConditionForDeletion(clusterName, storeName, store);
+        return store;
+    }
+
+    private void checkPreConditionForDeletion(String clusterName, String storeName, Store store) {
+        if (store == null) {
+            throwStoreDoesNotExist(clusterName, storeName);
+        }
+        if (store.isEnableReads() || store.isEnableWrites()) {
+            String errorMsg = "Unable to delete the entire store or versions for store:" + storeName
+                + ". Store has not been disabled. Both read and write need to be disabled before deleting.";
+            logger.error(errorMsg);
+            throw new VeniceException(errorMsg);
+        }
     }
 
     protected final static int VERSION_ID_UNSET = -1;
@@ -449,24 +551,15 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
 
     @Override
-    public List<Version> deleteAllVersionsInStore(String clusterName, String storeName) {
+    public synchronized List<Version> deleteAllVersionsInStore(String clusterName, String storeName) {
         checkControllerMastership(clusterName);
         HelixReadWriteStoreRepository repository = getVeniceHelixResource(clusterName).getMetadataRepository();
         List<Version> deletingVersionSnapshot = new ArrayList<>();
         repository.lock();
         try {
             Store store = repository.getStore(storeName);
-            if (store == null) {
-                logger.error("Unable to delete all of version in store:" + storeName + ". Store can not be found.");
-                throw new VeniceNoStoreException(storeName);
-            }
-            if (store.isEnableReads() || store.isEnableWrites()) {
-                String errorMsg = "Unable to delete all versions in store:" + storeName
-                    + ". Store has not been disabled. Both read and write need to be disabled before deleting.";
-                logger.error(errorMsg);
-                throw new VeniceException(errorMsg);
-            }
-            logger.info("Deleting all versions in store: "+store+" in cluster: "+clusterName);
+            checkPreConditionForDeletion(clusterName, storeName, store);
+            logger.info("Deleting all versions in store: " + store + " in cluster: " + clusterName);
             // Set current version to NON_VERSION_AVAILABLE. Otherwise after this store is enabled again, as all of
             // version were deleted, router will get a current version which does not exist actually.
             store.setEnableWrites(true);
