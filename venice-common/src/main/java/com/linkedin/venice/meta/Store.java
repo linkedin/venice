@@ -23,6 +23,8 @@ public class Store {
    * Special version number indicates none of version is available to read.
    */
   public static final int NON_EXISTING_VERSION = 0;
+
+  public static final int IGNORE_VERSION = -1;
   /**
    * Default storage quota 20GB
    */
@@ -101,6 +103,11 @@ public class Store {
    * Properties related to Hybrid Store behavior. If absent (null), then the store is not hybrid.
    */
   private HybridStoreConfig hybridStoreConfig;
+
+  /**
+   * The flag reflect store's status. True means this store being deleted.
+   */
+  private boolean isDeleting = false;
 
   public Store(@NotNull String name, @NotNull String owner, long createdTime, @NotNull PersistenceType persistenceType,
       @NotNull RoutingStrategy routingStrategy, @NotNull ReadStrategy readStrategy,
@@ -277,6 +284,14 @@ public class Store {
 
   public boolean isHybrid() {
     return null != hybridStoreConfig;
+  }
+
+  public boolean isDeleting() {
+    return isDeleting;
+  }
+
+  public void setDeleting(boolean deleting) {
+    isDeleting = deleting;
   }
 
   /**
@@ -467,6 +482,7 @@ public class Store {
     result = 31 * result + largestUsedVersionNumber;
     result = 31 * result + (int) (readQuotaInCU ^ (readQuotaInCU >>> 32));
     result = 31 * result + (hybridStoreConfig != null ? hybridStoreConfig.hashCode() : 0);
+    result = 31 * result + (isDeleting()? 1: 0);
     return result;
   }
 
@@ -492,6 +508,7 @@ public class Store {
     if (readStrategy != store.readStrategy) return false;
     if (offLinePushStrategy != store.offLinePushStrategy) return false;
     if (!versions.equals(store.versions)) return false;
+    if (isDeleting != store.isDeleting) return false;
     return !(hybridStoreConfig != null ? !hybridStoreConfig.equals(store.hybridStoreConfig) : store.hybridStoreConfig != null);
   }
 
@@ -521,6 +538,7 @@ public class Store {
     clonedStore.setEnableWrites(enableWrites);
     clonedStore.setPartitionCount(partitionCount);
     clonedStore.setLargestUsedVersionNumber(largestUsedVersionNumber);
+    clonedStore.setDeleting(isDeleting);
 
     for (Version v : this.versions) {
       clonedStore.forceAddVersion(v.cloneVersion());

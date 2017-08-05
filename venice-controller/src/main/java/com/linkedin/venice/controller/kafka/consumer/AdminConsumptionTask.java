@@ -6,6 +6,7 @@ import com.linkedin.venice.controller.VeniceControllerService;
 import com.linkedin.venice.controller.kafka.AdminTopicUtils;
 import com.linkedin.venice.controller.kafka.protocol.admin.AdminOperation;
 import com.linkedin.venice.controller.kafka.protocol.admin.DeleteAllVersions;
+import com.linkedin.venice.controller.kafka.protocol.admin.DeleteStore;
 import com.linkedin.venice.controller.kafka.protocol.admin.DisableStoreRead;
 import com.linkedin.venice.controller.kafka.protocol.admin.EnableStoreRead;
 import com.linkedin.venice.controller.kafka.protocol.admin.KillOfflinePushJob;
@@ -347,6 +348,8 @@ public class AdminConsumptionTask implements Runnable, Closeable {
       case UPDATE_STORE:
         handleSetStore((UpdateStore) adminMessage.payloadUnion);
         break;
+      case DELETE_STORE:
+        handleDeleteStore((DeleteStore) adminMessage.payloadUnion);
       default:
         throw new VeniceException("Unknown admin operation type: " + adminMessage.operationType);
     }
@@ -550,5 +553,14 @@ public class AdminConsumptionTask implements Runnable, Closeable {
                           : Optional.of(message.hybridStoreConfig.offsetLagThresholdToGoOnline));
 
     logger.info("Set store: " + storeName + " in cluster: " + clusterName);
+  }
+
+  private void handleDeleteStore(DeleteStore message) {
+    String clusterName = message.clusterName.toString();
+    String storeName = message.storeName.toString();
+    int largestUsedVersionNumber = message.largestUsedVersionNumber;
+    admin.deleteStore(clusterName, storeName, largestUsedVersionNumber);
+
+    logger.info("Deleted store: " + storeName + " in cluster: " + clusterName);
   }
 }

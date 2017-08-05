@@ -4,7 +4,9 @@ import com.linkedin.venice.VeniceResource;
 import com.linkedin.venice.controller.stats.AggPartitionHealthStats;
 import com.linkedin.venice.helix.HelixOfflinePushMonitorAccessor;
 import com.linkedin.venice.helix.HelixStatusMessageChannel;
+import com.linkedin.venice.helix.HelixStoreGraveyard;
 import com.linkedin.venice.meta.StoreCleaner;
+import com.linkedin.venice.meta.StoreGraveyard;
 import com.linkedin.venice.pushmonitor.OfflinePushMonitor;
 import com.linkedin.venice.helix.HelixAdapterSerializer;
 import com.linkedin.venice.helix.HelixReadWriteSchemaRepository;
@@ -25,6 +27,7 @@ public class VeniceHelixResources implements VeniceResource {
   private final HelixStatusMessageChannel messageChannel;
   private final VeniceControllerClusterConfig config;
   private final OfflinePushMonitor OfflinePushMonitor;
+  private final HelixStoreGraveyard storeGraveyard;
 
   public VeniceHelixResources(String clusterName,
                               ZkClient zkClient,
@@ -42,10 +45,10 @@ public class VeniceHelixResources implements VeniceResource {
     this.messageChannel = new HelixStatusMessageChannel(helixManager, HelixStatusMessageChannel.DEFAULT_BROAD_CAST_MESSAGES_TIME_OUT);
     this.OfflinePushMonitor = new OfflinePushMonitor(clusterName, routingDataRepository,
         new HelixOfflinePushMonitorAccessor(clusterName, zkClient, adapterSerializer), storeCleaner, metadataRepository);
+    storeGraveyard = new HelixStoreGraveyard(zkClient, adapterSerializer, clusterName);
     AggPartitionHealthStats aggPartitionHealthStats =
         new AggPartitionHealthStats(metricsRepository, routingDataRepository, metadataRepository,
             config.getReplicaFactor());
-
   }
 
   @Override
@@ -91,4 +94,8 @@ public class VeniceHelixResources implements VeniceResource {
   public OfflinePushMonitor getOfflinePushMonitor() {
     return OfflinePushMonitor;
   }
+  public HelixStoreGraveyard getStoreGraveyard() {
+    return storeGraveyard;
+  }
+
 }
