@@ -11,6 +11,7 @@ import com.linkedin.datastream.server.CoordinatorConfig;
 import com.linkedin.datastream.server.DatastreamServer;
 import com.linkedin.datastream.server.EmbeddedDatastreamCluster;
 import com.linkedin.datastream.server.assignment.BroadcastStrategyFactory;
+import com.linkedin.venice.replication.BrooklinTopicReplicator;
 import com.linkedin.venice.utils.Utils;
 import java.io.File;
 import java.io.IOException;
@@ -23,8 +24,8 @@ import org.apache.kafka.clients.producer.ProducerConfig;
 
 
 public class BrooklinWrapper extends ProcessWrapper {
-  public static final String TPNAME = "kafka"; //Kafka transport provider
-
+  public static final String TPNAME = BrooklinTopicReplicator.TRANSPORT_PROVIDER_NAME; //Kafka transport provider
+  public static final String CONNECTOR = BrooklinTopicReplicator.BROOKLIN_CONNECTOR_NAME;
   public static final String SERVICE_NAME = "brooklin";
 
   /**
@@ -55,7 +56,7 @@ public class BrooklinWrapper extends ProcessWrapper {
       kafkaConnectorProperties.put("consumer.client.id", "venice-controller-war");
 
       Map<String, Properties> connectorProperties = new HashMap<>();
-      connectorProperties.put("kafka", kafkaConnectorProperties);
+      connectorProperties.put(CONNECTOR, kafkaConnectorProperties);
       Properties overrides = createOverrideProperties(kafka);
       brooklin = EmbeddedDatastreamCluster.newTestDatastreamCluster(connectorProperties, overrides);
     } catch (IOException e) {
