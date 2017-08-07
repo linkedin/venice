@@ -7,10 +7,10 @@ import com.linkedin.datastream.common.Datastream;
 import com.linkedin.datastream.common.DatastreamDestination;
 import com.linkedin.datastream.common.DatastreamMetadataConstants;
 import com.linkedin.datastream.common.DatastreamSource;
-import com.linkedin.datastream.connectors.kafka.KafkaConnector;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.TopicManager;
+import com.linkedin.venice.utils.VeniceProperties;
 import java.io.IOException;
 import java.time.Duration;
 import java.time.Instant;
@@ -19,8 +19,6 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Collectors;
-
-import com.linkedin.venice.utils.VeniceProperties;
 import org.apache.log4j.Logger;
 import org.codehaus.jackson.map.ObjectMapper;
 
@@ -36,7 +34,8 @@ public class BrooklinTopicReplicator extends TopicReplicator {
   private final String applicationId;
   private static final ObjectMapper mapper = new ObjectMapper();
 
-  public static final String TRANSPORT_PROVIDER_NAME = "kafka";
+  public static final String TRANSPORT_PROVIDER_NAME = "rawkafkakac";
+  public static final String BROOKLIN_CONNECTOR_NAME = "RawKafka";
 
   private static final Logger logger = Logger.getLogger(TopicManager.class);
 
@@ -82,7 +81,7 @@ public class BrooklinTopicReplicator extends TopicReplicator {
 
     Datastream datastream = new Datastream();
     datastream.setName(name);
-    datastream.setConnectorName(KafkaConnector.CONNECTOR_NAME);
+    datastream.setConnectorName(BROOKLIN_CONNECTOR_NAME);
 
     StringMap metadata = new StringMap();
 

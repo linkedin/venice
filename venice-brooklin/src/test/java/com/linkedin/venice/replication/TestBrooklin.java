@@ -108,6 +108,12 @@ public class TestBrooklin {
 
     assertEquals(buffer.get(0).key(), key);
     assertEquals(buffer.get(0).value(), value);
+
+    try {
+      replicator.terminateReplication(sourceTopic, destinationTopic);
+    } catch (TopicException e) {
+      throw new VeniceException(e);
+    }
   }
 
   private static Producer<byte[], byte[]> getKafkaProducer(KafkaBrokerWrapper kafka){
