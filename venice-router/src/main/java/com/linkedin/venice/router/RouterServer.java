@@ -146,7 +146,14 @@ public class RouterServer extends AbstractVeniceService {
   public RouterServer(VeniceProperties properties, List<D2Server> d2Servers,
       Optional<SSLEngineComponentFactory> sslEngineComponentFactory) {
     this(properties, d2Servers, sslEngineComponentFactory, TehutiUtils.getMetricsRepository(ROUTER_SERVICE_NAME));
-    this.manager = new ZKHelixManager(config.getClusterName(), null, InstanceType.SPECTATOR, config.getZkConnection());
+  }
+
+  public RouterServer(
+      VeniceProperties properties,
+      List<D2Server> d2ServerList,
+      Optional<SSLEngineComponentFactory> sslFactory,
+      MetricsRepository metricsRepository) {
+    this(properties, d2ServerList, sslFactory, metricsRepository, true);
     this.metadataRepository = new HelixReadOnlyStoreRepository(zkClient, adapter, config.getClusterName());
     this.schemaRepository =
         new HelixReadOnlySchemaRepository(this.metadataRepository, this.zkClient, adapter, config.getClusterName());
@@ -160,10 +167,13 @@ public class RouterServer extends AbstractVeniceService {
       VeniceProperties properties,
       List<D2Server> d2ServerList,
       Optional<SSLEngineComponentFactory> sslFactory,
-      MetricsRepository metricsRepository) {
+      MetricsRepository metricsRepository, boolean isCreateHelixManager) {
     config = new VeniceRouterConfig(properties);
     zkClient = new ZkClient(config.getZkConnection());
     this.adapter = new HelixAdapterSerializer();
+    if(isCreateHelixManager) {
+      this.manager = new ZKHelixManager(config.getClusterName(), null, InstanceType.SPECTATOR, config.getZkConnection());
+    }
 
     this.statsForSingleGet = new AggRouterHttpRequestStats(metricsRepository, RequestType.SINGLE_GET);
     this.statsForMultiGet = new AggRouterHttpRequestStats(metricsRepository, RequestType.MULTI_GET);
@@ -188,8 +198,7 @@ public class RouterServer extends AbstractVeniceService {
       HelixReadOnlySchemaRepository schemaRepository,
       List<D2Server> d2ServerList,
       Optional<SSLEngineComponentFactory> sslFactory){
-    this(properties, d2ServerList, sslFactory, new MetricsRepository());
-    this.manager = null;
+    this(properties, d2ServerList, sslFactory, new MetricsRepository(), false);
     this.routingDataRepository = routingDataRepository;
     this.metadataRepository = metadataRepository;
     this.schemaRepository = schemaRepository;
