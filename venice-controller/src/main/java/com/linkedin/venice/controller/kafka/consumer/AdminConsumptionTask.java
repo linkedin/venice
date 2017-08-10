@@ -350,6 +350,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
         break;
       case DELETE_STORE:
         handleDeleteStore((DeleteStore) adminMessage.payloadUnion);
+        break;
       default:
         throw new VeniceException("Unknown admin operation type: " + adminMessage.operationType);
     }

@@ -5,7 +5,8 @@ For directly affecting administrative actions and queries on a Venice cluster
 
 ```
 usage: java -jar venice-admin-tool-0.1.jar --<command> [parameters]
-            Commands:
+
+Commands:
     --add-schema                 Requires: --url, --cluster, --store,
                                  --value-schema-file
     --cluster-health-instances   List the status for every instance.
@@ -13,6 +14,9 @@ usage: java -jar venice-admin-tool-0.1.jar --<command> [parameters]
     --cluster-health-stores      List the status for every store.
                                  Requires: --url, --cluster
     --delete-all-versions        Delete all versions in given store..
+                                 Requires: --url, --cluster, --store
+    --delete-store               Delete the given store including both
+                                 metadata and all versions in this store..
                                  Requires: --url, --cluster, --store
     --describe-store             Requires: --url, --cluster, --store
     --describe-stores            Requires: --url, --cluster
@@ -25,6 +29,9 @@ usage: java -jar venice-admin-tool-0.1.jar --<command> [parameters]
     --disable-store-write        Prevent a store from accepting new
                                  versions.  Requires: --url, --cluster,
                                  --store
+    --empty-push                 Do an empty push into an existing store.
+                                 Requires: --url, --cluster, --store,
+                                 --push-id, --store-size
     --enable-store               Enable a store in both read and write
                                  path.  Requires: --url, --cluster,
                                  --store
@@ -46,8 +53,8 @@ usage: java -jar venice-admin-tool-0.1.jar --<command> [parameters]
     --list-storage-nodes         Requires: --url, --cluster
     --list-stores                Requires: --url, --cluster
     --new-store                  Requires: --url, --cluster, --store,
-                                 --owner, --principles, --key-schema-file,
-                                 --value-schema-file
+                                 --key-schema-file, --value-schema-file,
+                                 --owner
     --node-removable             A node is removable if all replicas it is
                                  serving are available on other nodes.
                                  Requires: --url, --cluster,
@@ -64,6 +71,9 @@ usage: java -jar venice-admin-tool-0.1.jar --<command> [parameters]
     --replicas-on-storage-node   List the store and status of all replicas
                                  on a storage node.  Requires: --url,
                                  --cluster, --storage-node
+    --schemas                    Show the key and value schemas for a
+                                 store.  Requires: --url, --cluster,
+                                 --store
     --set-owner                  Update owner info of an existing store.
                                  Requires: --url, --cluster, --store,
                                  --owner
@@ -75,6 +85,11 @@ usage: java -jar venice-admin-tool-0.1.jar --<command> [parameters]
                                  --version
     --skip-admin                 Skip an admin message.  Requires: --url,
                                  --cluster, --offset
+    --update-store               update store metadata.  Requires: --url,
+                                 --cluster, --store, --owner,
+                                 --partition-count, --version,
+                                 --readability, --writeability,
+                                 --storage-quota, --read-quota
     --white-list-add-node        Add a storage node into the white list..
                                  Requires: --url, --cluster,
                                  --storage-node
@@ -82,36 +97,48 @@ usage: java -jar venice-admin-tool-0.1.jar --<command> [parameters]
                                  list..  Requires: --url, --cluster,
                                  --storage-node
 usage: Parameters:
- -c,--cluster <arg>              Name of Venice cluster
- -e,--execution <arg>            Execution ID of async admin command
- -f,--filter-json <arg>          Comma-delimited list of fields to display
-                                 from the json output.  Omit to display
-                                 all fields
- -fj,--flat-json                 Display output as flat json, without
-                                 pretty-print indentation and line breaks
- -h,--help                       Show usage
- -k,--key <arg>                  Plain-text key for identifying a record
-                                 in a store
- -ks,--key-schema-file <arg>     Path to text file with key schema
- -n,--storage-node <arg>         Helix instance ID for a storage node, eg.
-                                 lva1-app1234_1690
- -o,--owner <arg>                Owner email for new store creation
- -of,--offset <arg>              Kafka offset number
- -pn,--partition-count <arg>     number of partitions a store has
- -pr,--principles <arg>          A value used to certificate the access to
-                                 a store.
- -s,--store <arg>                Name of Venice store
- -u,--url <arg>                  Venice url, eg. http://localhost:1689
-                                 This can be a router or a controller
- -v,--version <arg>              Venice store version number
- -vs,--value-schema-file <arg>   Path to text file with value schema
+ -c,--cluster <arg>                  Name of Venice cluster
+ -e,--execution <arg>                Execution ID of async admin command
+ -f,--filter-json <arg>              Comma-delimited list of fields to
+                                     display from the json output.  Omit
+                                     to display all fields
+ -fj,--flat-json                     Display output as flat json, without
+                                     pretty-print indentation and line
+                                     breaks
+ -h,--help                           Show usage
+ -ho,--hybrid-offset-lag <arg>       for hybrid stores, what is the offset
+                                     lag threshold for the storage nodes'
+                                     consumption to be considered ONLINE
+ -hr,--hybrid-rewind-seconds <arg>   for hybrid stores, how far back to
+                                     rewind in the nearline stream after a
+                                     batch push completes
+ -k,--key <arg>                      Plain-text key for identifying a
+                                     record in a store
+ -ks,--key-schema-file <arg>         Path to text file with key schema
+ -n,--storage-node <arg>             Helix instance ID for a storage node,
+                                     eg. lva1-app1234_1690
+ -o,--owner <arg>                    Owner email for new store creation
+ -of,--offset <arg>                  Kafka offset number
+ -pid,--push-id <arg>                Push Id
+ -pn,--partition-count <arg>         number of partitions a store has
+ -rb,--readability <arg>             store's readability
+ -rq,--read-quota <arg>              quota for read request hit this
+                                     store. Measurement is capacity unit
+ -s,--store <arg>                    Name of Venice store
+ -sq,--storage-quota <arg>           maximum capacity a store version
+                                     could have
+ -ss,--store-size <arg>              Size of the store in bytes, used to
+                                     calculate partitioning
+ -u,--url <arg>                      Venice url, eg. http://localhost:1689
+                                     This can be a router or a controller
+ -v,--version <arg>                  Venice store version number
+ -vs,--value-schema-file <arg>       Path to text file with value schema
+ -wb,--writeability <arg>            store's writeability
 
 Examples:
 java -jar venice-admin-tool-0.1.jar --list-stores --url <url> --cluster <cluster>
 java -jar venice-admin-tool-0.1.jar --describe-store --url <url> --cluster <cluster> --store <store>
 java -jar venice-admin-tool-0.1.jar --describe-stores --url <url> --cluster <cluster>
-java -jar venice-admin-tool-0.1.jar --disable-store-write --url <url> --cluster <cluster> --store <store>
-java -jar venice-admin-tool-0.1.jar --enable-store-write --url <url> --cluster <cluster> --store <store>
 java -jar venice-admin-tool-0.1.jar --disable-store-read --url <url> --cluster <cluster> --store <store>
 java -jar venice-admin-tool-0.1.jar --enable-store-read --url <url> --cluster <cluster> --store <store>
 java -jar venice-admin-tool-0.1.jar --disable-store --url <url> --cluster <cluster> --store <store>
@@ -119,7 +146,8 @@ java -jar venice-admin-tool-0.1.jar --enable-store --url <url> --cluster <cluste
 java -jar venice-admin-tool-0.1.jar --job-status --url <url> --cluster <cluster> --store <store> --version <version>
 java -jar venice-admin-tool-0.1.jar --kill-job --url <url> --cluster <cluster> --store <store> --version <version>
 java -jar venice-admin-tool-0.1.jar --skip-admin --url <url> --cluster <cluster> --offset <offset>
-java -jar venice-admin-tool-0.1.jar --new-store --url <url> --cluster <cluster> --store <store> --owner <owner> --principles <principles> --key-schema-file <key-schema-file> --value-schema-file <value-schema-file>
+java -jar venice-admin-tool-0.1.jar --new-store --url <url> --cluster <cluster> --store <store> --key-schema-file <key-schema-file> --value-schema-file <value-schema-file>
+java -jar venice-admin-tool-0.1.jar --delete-store --url <url> --cluster <cluster> --store <store>
 java -jar venice-admin-tool-0.1.jar --set-version --url <url> --cluster <cluster> --store <store> --version <version>
 java -jar venice-admin-tool-0.1.jar --add-schema --url <url> --cluster <cluster> --store <store> --value-schema-file <value-schema-file>
 java -jar venice-admin-tool-0.1.jar --list-storage-nodes --url <url> --cluster <cluster>
@@ -132,10 +160,13 @@ java -jar venice-admin-tool-0.1.jar --remove-node --url <url> --cluster <cluster
 java -jar venice-admin-tool-0.1.jar --replicas-of-store --url <url> --cluster <cluster> --store <store> --version <version>
 java -jar venice-admin-tool-0.1.jar --replicas-on-storage-node --url <url> --cluster <cluster> --storage-node <storage-node>
 java -jar venice-admin-tool-0.1.jar --query --url <url> --cluster <cluster> --store <store> --key <key>
+java -jar venice-admin-tool-0.1.jar --schemas --url <url> --cluster <cluster> --store <store>
 java -jar venice-admin-tool-0.1.jar --delete-all-versions --url <url> --cluster <cluster> --store <store>
 java -jar venice-admin-tool-0.1.jar --get-execution --url <url> --cluster <cluster> --execution <execution>
 java -jar venice-admin-tool-0.1.jar --set-owner --url <url> --cluster <cluster> --store <store> --owner <owner>
 java -jar venice-admin-tool-0.1.jar --set-partition-count --url <url> --cluster <cluster> --store <store> --partition-count <partition-count>
+java -jar venice-admin-tool-0.1.jar --update-store --url <url> --cluster <cluster> --store <store>
+java -jar venice-admin-tool-0.1.jar --empty-push --url <url> --cluster <cluster> --store <store> --push-id <push-id> --store-size <store-size>
 
 
 

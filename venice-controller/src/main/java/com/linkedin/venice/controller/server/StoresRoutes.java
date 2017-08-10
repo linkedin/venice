@@ -6,11 +6,14 @@ import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.MultiStoreResponse;
 import com.linkedin.venice.controllerapi.MultiStoreStatusResponse;
 import com.linkedin.venice.controllerapi.MultiVersionResponse;
+import com.linkedin.venice.controllerapi.NewStoreResponse;
 import com.linkedin.venice.controllerapi.OwnerResponse;
 import com.linkedin.venice.controllerapi.PartitionResponse;
 import com.linkedin.venice.controllerapi.StorageEngineOverheadRatioResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
+import com.linkedin.venice.controllerapi.TrackableControllerResponse;
 import com.linkedin.venice.controllerapi.VersionResponse;
+import com.linkedin.venice.controllerapi.routes.AdminCommandExecutionResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.meta.HybridStoreConfig;
@@ -73,6 +76,32 @@ public class StoresRoutes {
           throw new VeniceNoStoreException(veniceResponse.getName());
         }
         veniceResponse.setStore(StoreInfo.fromStore(store));
+      }
+    };
+  }
+
+  public static Route deleteStore(Admin admin) {
+    return new VeniceRouteHandler<TrackableControllerResponse>(TrackableControllerResponse.class) {
+      @Override
+      public void internalHandle(Request request, TrackableControllerResponse veniceResponse) {
+        AdminSparkServer.validateParams(request, DELETE_STORE.getParams(), admin);
+        String clusterName = request.queryParams(CLUSTER);
+        String storeName = request.queryParams(NAME);
+
+        veniceResponse.setCluster(clusterName);
+        veniceResponse.setName(storeName);
+
+        Optional<AdminCommandExecutionTracker> adminCommandExecutionTracker = admin.getAdminCommandExecutionTracker();
+        if (adminCommandExecutionTracker.isPresent()) {
+          // Lock the tracker to get the execution id for the last admin command.
+          // If will not make our performance worse, because we lock the whole cluster while handling the admin operation in parent admin.
+          synchronized (adminCommandExecutionTracker) {
+            admin.deleteStore(clusterName, storeName, Store.IGNORE_VERSION);
+            veniceResponse.setExecutionId(adminCommandExecutionTracker.get().getLastExecutionId());
+          }
+        } else {
+          admin.deleteStore(clusterName, storeName, Store.IGNORE_VERSION);
+        }
       }
     };
   }

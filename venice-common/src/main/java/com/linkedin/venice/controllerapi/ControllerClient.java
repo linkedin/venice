@@ -236,6 +236,18 @@ public class ControllerClient implements Closeable {
     }
   }
 
+  public TrackableControllerResponse deleteStore(String storeName) {
+    try {
+      List<NameValuePair> queryParams = newParams(clusterName);
+      queryParams.add(new BasicNameValuePair(ControllerApiConstants.NAME, storeName));
+      String responseJson = postRequest(ControllerRoute.DELETE_STORE.getPath(), queryParams);
+      return mapper.readValue(responseJson, TrackableControllerResponse.class);
+    } catch (Exception e) {
+      return handleError(new VeniceException("Error deleting store : " + storeName, e),
+          new TrackableControllerResponse());
+    }
+  }
+
 
   public VersionResponse overrideSetActiveVersion(String storeName, int version) {
     try {
