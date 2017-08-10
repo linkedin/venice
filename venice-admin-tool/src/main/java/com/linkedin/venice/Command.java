@@ -31,6 +31,8 @@ public enum Command {
   NEW_STORE("new-store", "",
       new Arg[]{Arg.URL, Arg.CLUSTER, Arg.STORE, Arg.KEY_SCHEMA, Arg.VALUE_SCHEMA},
       new Arg[]{Arg.OWNER}),
+  DELETE_STORE("delete-store", "Delete the given store including both metadata and all versions in this store",
+      new Arg[]{Arg.URL, Arg.CLUSTER, Arg.STORE}),
   SET_VERSION("set-version", "Set the version that will be served",
       new Arg[] {Arg.URL, Arg.CLUSTER, Arg.STORE, Arg.VERSION}),
   ADD_SCHEMA("add-schema", "",

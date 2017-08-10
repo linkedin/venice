@@ -21,6 +21,7 @@ import com.linkedin.venice.controllerapi.OwnerResponse;
 import com.linkedin.venice.controllerapi.PartitionResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
+import com.linkedin.venice.controllerapi.TrackableControllerResponse;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.controllerapi.VersionResponse;
 import com.linkedin.venice.controllerapi.routes.AdminCommandExecutionResponse;
@@ -151,6 +152,8 @@ public class AdminTool {
         printObject(response);
       } else if (cmd.hasOption(Command.NEW_STORE.toString())) {
         createNewStore(cmd);
+      }else if (cmd.hasOption(Command.DELETE_STORE.toString())) {
+        deleteStore(cmd);
       } else if (cmd.hasOption(Command.EMPTY_PUSH.toString())) {
         emptyPush(cmd);
       } else if (cmd.hasOption(Command.DISABLE_STORE_WRITE.toString())) {
@@ -293,6 +296,14 @@ public class AdminTool {
     verifyValidSchema(valueSchema);
     verifyStoreExistence(store, false);
     NewStoreResponse response = controllerClient.createNewStore(store, owner, keySchema, valueSchema);
+    printObject(response);
+  }
+
+  private static void deleteStore(CommandLine cmd)
+      throws IOException {
+    String store = getRequiredArgument(cmd, Arg.STORE, Command.DELETE_STORE);
+    verifyStoreExistence(store, true);
+    TrackableControllerResponse response = controllerClient.deleteStore(store);
     printObject(response);
   }
 

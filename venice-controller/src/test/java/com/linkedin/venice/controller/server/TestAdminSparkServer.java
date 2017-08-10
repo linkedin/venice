@@ -18,8 +18,10 @@ import com.linkedin.venice.controllerapi.PartitionResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.controllerapi.StorageEngineOverheadRatioResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
+import com.linkedin.venice.controllerapi.TrackableControllerResponse;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.controllerapi.routes.AdminCommandExecutionResponse;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
@@ -561,5 +563,44 @@ public class TestAdminSparkServer {
     Assert.assertFalse(response.isError(), response.getError());
     Assert.assertEquals(response.getStorageEngineOverheadRatio(),
                         VeniceControllerWrapper.DEFAULT_STORAGE_ENGINE_OVERHEAD_RATIO);
+  }
+
+  @Test
+  public void controllerClientCanDeleteStore() {
+    String storeName = "controllerClientCanDeleteStore";
+    venice.getNewStore(storeName);
+    venice.getNewVersion(storeName, 100);
+
+    controllerClient.enableStoreReads(storeName, false);
+    controllerClient.enableStoreWrites(storeName, false);
+    TrackableControllerResponse response = controllerClient.deleteStore(storeName);
+    Assert.assertEquals(response.getExecutionId(), 0,
+        "The command executed in non-parent controller should have an execution id 0");
+    StoreResponse storeResponse = controllerClient.getStore(storeName);
+    Assert.assertTrue(storeResponse.isError(), "Store should already be deleted.");
+  }
+
+  @Test
+  public void controllerClientCanGetExecutionOfDeleteStore()
+      throws InterruptedException {
+    String cluster = venice.getClusterName();
+    ZkServerWrapper parentZk = ServiceFactory.getZkServer();
+    VeniceControllerWrapper parentController =
+        ServiceFactory.getVeniceParentController(cluster, parentZk.getAddress(), ServiceFactory.getKafkaBroker(),
+            venice.getMasterVeniceController());
+    String storeName = "controllerClientCanGetExecutionOfDeleteStore";
+    parentController.getVeniceAdmin().addStore(cluster, storeName, "test", "\"string\"", "\"string\"");
+    parentController.getVeniceAdmin().incrementVersionIdempotent(cluster, storeName, "test", 1, 1, true);
+
+    ControllerClient controllerClient = new ControllerClient(cluster, parentController.getControllerUrl());
+    controllerClient.enableStoreReads(storeName, false);
+    controllerClient.enableStoreWrites(storeName, false);
+    TrackableControllerResponse trackableControllerResponse = controllerClient.deleteStore(storeName);
+    long executionId = trackableControllerResponse.getExecutionId();
+    AdminCommandExecutionResponse response =
+        controllerClient.getAdminCommandExecution(executionId);
+    AdminCommandExecution execution = response.getExecution();
+    // Command would not be executed in child controller because we don't have Kafka MM in the local box.
+    Assert.assertFalse(execution.isSucceedInAllFabric());
   }
 }
