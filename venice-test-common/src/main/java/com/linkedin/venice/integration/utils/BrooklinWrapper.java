@@ -12,6 +12,7 @@ import com.linkedin.datastream.server.DatastreamServer;
 import com.linkedin.datastream.server.EmbeddedDatastreamCluster;
 import com.linkedin.datastream.server.assignment.BroadcastStrategyFactory;
 import com.linkedin.venice.replication.BrooklinTopicReplicator;
+import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import java.io.File;
 import java.io.IOException;
@@ -57,8 +58,43 @@ public class BrooklinWrapper extends ProcessWrapper {
 
       Map<String, Properties> connectorProperties = new HashMap<>();
       connectorProperties.put(CONNECTOR, kafkaConnectorProperties);
-      Properties overrides = createOverrideProperties(kafka);
-      brooklin = EmbeddedDatastreamCluster.newTestDatastreamCluster(connectorProperties, overrides);
+
+      /**
+       * The intent of this abstraction is to re-use ZK, otherwise Brooklin starts its own embedded ZK...
+       */
+      KafkaCluster brooklinKafkaCluster = new KafkaCluster() {
+        @Override
+        public String getBrokers() {
+          return kafka.getAddress();
+        }
+
+        @Override
+        public String getZkConnection() {
+          return kafka.getZkAddress();
+        }
+
+        @Override
+        public boolean isStarted() {
+          return kafka.isRunning();
+        }
+
+        @Override
+        public void startup() {
+          // no op
+        }
+
+        @Override
+        public void shutdown() {
+          // no op
+        }
+      };
+
+      Properties overrides = createOverrideProperties(brooklinKafkaCluster);
+
+      // This call, which does not pass the KafkaCluster created above, will generate its own embedded ZK internally
+      // brooklin = EmbeddedDatastreamCluster.newTestDatastreamCluster(connectorProperties, overrides);
+
+      brooklin = EmbeddedDatastreamCluster.newTestDatastreamCluster(brooklinKafkaCluster, connectorProperties, overrides);
     } catch (IOException e) {
       throw new RuntimeException("IO Exception when creating embedded brooklin", e);
     } catch (DatastreamException e) {
@@ -116,10 +152,10 @@ public class BrooklinWrapper extends ProcessWrapper {
 
   /**
    * copied from EmbeddedDatastreamClusterFactory
-   * @param kafkaCluster
+   * @param brooklinKafkaCluster
    * @return
    */
-  private static Properties createOverrideProperties(KafkaBrokerWrapper kafkaCluster) {
+  private static Properties createOverrideProperties(KafkaCluster brooklinKafkaCluster) {
     Properties overrideProperties = new Properties();
 
     overrideProperties.put(CoordinatorConfig.CONFIG_DEFAULT_TRANSPORT_PROVIDER, TPNAME);
@@ -128,10 +164,10 @@ public class BrooklinWrapper extends ProcessWrapper {
     overrideProperties.put(tpPrefix + DatastreamServer.CONFIG_FACTORY_CLASS_NAME,
         KafkaTransportProviderAdminFactory.class.getName());
 
-    overrideProperties.put(tpPrefix + ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, kafkaCluster.getAddress());
+    overrideProperties.put(tpPrefix + ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, brooklinKafkaCluster.getBrokers());
     overrideProperties.put(tpPrefix + ProducerConfig.CLIENT_ID_CONFIG, "testProducerClientId");
     overrideProperties.put(tpPrefix + KafkaTransportProviderAdmin.CONFIG_ZK_CONNECT,
-        kafkaCluster.getZkAddress());
+        brooklinKafkaCluster.getZkConnection());
 
     return overrideProperties;
   }

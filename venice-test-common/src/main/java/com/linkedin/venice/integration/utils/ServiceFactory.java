@@ -222,8 +222,13 @@ public class ServiceFactory {
         S wrapper = serviceProvider.get(serviceName, IntegrationTestUtils.getFreePort());
 
         if (wrapper instanceof ProcessWrapper) {
+          LOGGER.info("Starting ProcessWrapper: " + serviceName);
+
           // N.B.: The contract for start() is that it should block until the wrapped service is fully started.
-          ((ProcessWrapper) wrapper).start();
+          ProcessWrapper processWrapper = (ProcessWrapper) wrapper;
+          processWrapper.start();
+
+          LOGGER.info("Started ProcessWrapper: " + serviceName);
         }
         return wrapper;
       } catch (Exception e) {

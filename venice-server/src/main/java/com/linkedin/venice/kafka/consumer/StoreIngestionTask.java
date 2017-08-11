@@ -53,6 +53,7 @@ import java.util.concurrent.PriorityBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BooleanSupplier;
+import java.util.function.Function;
 import javax.validation.constraints.NotNull;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
@@ -302,7 +303,7 @@ public class StoreIngestionTask implements Runnable, Closeable {
     long lag = (sourceTopicMaxOffset - sobrSourceOffset) - (currentOffset - sobrDestinationOffset);
     boolean lagging = lag > threshold;
 
-    logger.info(consumerTaskId + " Partition " + partition + " is " + (lagging ? "" : "not") + " lagging: " +
+    logger.info(consumerTaskId + " Partition " + partition + " is " + (lagging ? "" : "not ") + "lagging: " +
         "(Source Max [" + sourceTopicMaxOffset + "] -" +
         " SOBR Source [" + sobrSourceOffset + "]) - " +
         "(Dest Current [" + currentOffset + "] -" +
@@ -853,7 +854,8 @@ public class StoreIngestionTask implements Runnable, Closeable {
    * @param consumerRecord {@link ConsumerRecord} consumed from Kafka.
    * @return the size of the data written to persistent storage.
    */
-  private int internalProcessConsumerRecord(ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord, PartitionConsumptionState partitionConsumptionState) {
+  private int internalProcessConsumerRecord(ConsumerRecord<KafkaKey, KafkaMessageEnvelope> consumerRecord,
+                                            PartitionConsumptionState partitionConsumptionState) {
     // De-serialize payload into Venice Message format
     KafkaKey kafkaKey = consumerRecord.key();
     KafkaMessageEnvelope kafkaValue = consumerRecord.value();
@@ -861,8 +863,19 @@ public class StoreIngestionTask implements Runnable, Closeable {
 
     Optional<OffsetRecordTransformer> offsetRecordTransformer = Optional.empty();
     try {
-      offsetRecordTransformer = Optional.of(validateMessage(consumerRecord.partition(), kafkaKey, kafkaValue));
-      versionedDIVStats.recordSuccessMsg(storeNameWithoutVersionInfo, storeVersion);
+      FatalDataValidationException e = null;
+      boolean endOfPushReceived = partitionConsumptionState.isEndOfPushReceived();
+      try {
+        offsetRecordTransformer = Optional.of(validateMessage(consumerRecord.partition(), kafkaKey, kafkaValue, endOfPushReceived));
+        versionedDIVStats.recordSuccessMsg(storeNameWithoutVersionInfo, storeVersion);
+      } catch (FatalDataValidationException fatalException) {
+        versionedDIVStats.recordException(storeNameWithoutVersionInfo, storeVersion, fatalException);
+        if (endOfPushReceived) {
+          e = fatalException;
+        } else {
+          throw fatalException;
+        }
+      }
 
       if (kafkaKey.isControlMessage()) {
         ControlMessage controlMessage = (ControlMessage) kafkaValue.payloadUnion;
@@ -879,15 +892,13 @@ public class StoreIngestionTask implements Runnable, Closeable {
         }
         sizeOfPersistedData = keySize + valueSize;
       }
+
+      if (e != null) {
+        throw e;
+      }
     } catch (DuplicateDataException e) {
       versionedDIVStats.recordDuplicateMsg(storeNameWithoutVersionInfo, storeVersion);
-      logger.info("Skipping a duplicate record in topic: '" + topic + "', offset: " + consumerRecord.offset());
-    } catch (MissingDataException me) {
-      versionedDIVStats.recordMissingMsg(storeNameWithoutVersionInfo, storeVersion);
-      throw me;
-    } catch (CorruptDataException ce) {
-      versionedDIVStats.recordCorruptedMsg(storeNameWithoutVersionInfo, storeVersion);
-      throw ce;
+      logger.info(consumerTaskId + " : Skipping a duplicate record at offset: " + consumerRecord.offset());
     } catch (PersistenceFailureException ex) {
       if (partitionConsumptionStateMap.containsKey(consumerRecord.partition())) {
         // If we actually intend to be consuming this partition, then we need to bubble up the failure to persist.
@@ -922,12 +933,14 @@ public class StoreIngestionTask implements Runnable, Closeable {
     return sizeOfPersistedData;
   }
 
-  private OffsetRecordTransformer validateMessage(int partition, KafkaKey key, KafkaMessageEnvelope message) {
+  private static final Function<GUID, ProducerTracker> producerTrackerFunction = guid -> new ProducerTracker(guid);
+
+  private OffsetRecordTransformer validateMessage(int partition, KafkaKey key, KafkaMessageEnvelope message, boolean endOfPushReceived) {
     final GUID producerGUID = message.producerMetadata.producerGUID;
-    producerTrackerMap.putIfAbsent(producerGUID, new ProducerTracker(producerGUID));
+    producerTrackerMap.computeIfAbsent(producerGUID, producerTrackerFunction);
     ProducerTracker producerTracker = producerTrackerMap.get(producerGUID);
 
-    return producerTracker.addMessage(partition, key, message);
+    return producerTracker.addMessage(partition, key, message, endOfPushReceived);
   }
 
   /**

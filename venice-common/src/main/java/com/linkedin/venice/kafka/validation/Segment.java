@@ -44,18 +44,18 @@ public class Segment {
   private boolean ended;
   private boolean finalSegment;
 
-  public Segment(int partition, int segmentNumber, CheckSumType checkSumType) {
-    this(partition, segmentNumber, CheckSum.getInstance(checkSumType));
-  }
-
-  public Segment(int partition, int segmentNumber, Optional<CheckSum> checkSum) {
+  public Segment(int partition, int segmentNumber, int sequenceNumber, CheckSumType checkSumType) {
     this.partition = partition;
     this.segmentNumber = segmentNumber;
-    this.checkSum = checkSum;
-    this.sequenceNumber = new AtomicInteger(0);
-    this.started = false;
+    this.checkSum = CheckSum.getInstance(checkSumType);
+    this.sequenceNumber = new AtomicInteger(sequenceNumber);
+    this.started = (sequenceNumber > 0);
     this.ended = false;
     this.finalSegment = false;
+  }
+
+  public Segment(int partition, int segmentNumber, CheckSumType checkSumType) {
+    this(partition, segmentNumber, 0, checkSumType);
   }
 
   public Segment(int partition, ProducerPartitionState state) {

@@ -747,6 +747,9 @@ public class ControllerClient implements Closeable {
             .build())
         .build()){
       httpClient.start();
+      if (!httpClient.isRunning()) {
+        throw new VeniceException("httpClient is not running!");
+      }
       response = httpClient.execute(httpRequest, null).get();
     } catch (Exception e) {
       String msg = "Exception making HTTP request: " + e.getMessage();

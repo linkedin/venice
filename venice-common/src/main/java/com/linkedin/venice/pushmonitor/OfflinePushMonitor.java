@@ -303,6 +303,19 @@ public class OfflinePushMonitor implements OfflinePushAccessor.PartitionStatusLi
   private void checkHybridPushStatus(OfflinePushStatus offlinePushStatus) {
     String storeName = Version.parseStoreFromKafkaTopicName(offlinePushStatus.getKafkaTopic());
     Store store = metadataRepository.getStore(storeName);
+    if (null == store) {
+      logger.info("Got a null store from metadataRepository for store name: '" + storeName +
+          "'. Will attempt a refresh().");
+      metadataRepository.refresh();
+
+      store = metadataRepository.getStore(storeName);
+      if (null == store) {
+        throw new IllegalStateException("checkHybridPushStatus could not find a store named '" + storeName +
+            "' in the metadataRepository, even after refresh()!");
+      } else {
+        logger.info("metadataRepository.refresh() allowed us to retrieve store: '" + storeName + "'!");
+      }
+    }
     if (store.isHybrid()) {
       if (offlinePushStatus.isReadyToStartBufferReplay()) {
         Optional<TopicReplicator> topicReplicatorOptional = getTopicReplicator();

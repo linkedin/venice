@@ -104,7 +104,6 @@ class PartitionConsumptionState {
         ", errorReported=" + errorReported +
         ", started=" + isStarted() +
         (hybrid ? ", lagCaughtUp=" + lagCaughtUp : "") +
-        ", completed=" + isEndOfPushReceived() +
         ", processedRecordNum=" + processedRecordNum +
         ", processedRecordSize=" + processedRecordSize +
         '}';
