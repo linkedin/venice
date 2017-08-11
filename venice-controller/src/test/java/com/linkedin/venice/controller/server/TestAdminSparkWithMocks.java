@@ -5,6 +5,11 @@ import com.linkedin.venice.controllerapi.ControllerApiConstants;
 import com.linkedin.venice.controllerapi.ControllerRoute;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.integration.utils.ServiceFactory;
+import com.linkedin.venice.meta.OfflinePushStrategy;
+import com.linkedin.venice.meta.PersistenceType;
+import com.linkedin.venice.meta.ReadStrategy;
+import com.linkedin.venice.meta.RoutingStrategy;
+import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.utils.SslUtils;
 import java.util.ArrayList;
 import java.util.List;
@@ -33,6 +38,8 @@ public class TestAdminSparkWithMocks {
   public void testGetRealTimeTopicUsesAdmin() throws Exception {
     //setup server with mock admin, note returns topic "store_rt"
     VeniceHelixAdmin admin = Mockito.mock(VeniceHelixAdmin.class);
+    Store mockStore = new Store("store", "owner", System.currentTimeMillis(), PersistenceType.IN_MEMORY, RoutingStrategy.CONSISTENT_HASH, ReadStrategy.ANY_OF_ONLINE, OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);
+    doReturn(mockStore).when(admin).getStore(anyString(), anyString());
     doReturn(true).when(admin).isMasterController(anyString());
     doReturn(1).when(admin).getReplicationFactor(anyString(), anyString());
     doReturn(1).when(admin).calculateNumberOfPartitions(anyString(), anyString(), anyLong());

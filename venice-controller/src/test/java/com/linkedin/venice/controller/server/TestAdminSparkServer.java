@@ -6,8 +6,8 @@ import com.linkedin.venice.controllerapi.ControllerApiConstants;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.ControllerRoute;
-import com.linkedin.venice.controllerapi.MultiNodesStatusResponse;
 import com.linkedin.venice.controllerapi.MultiNodeResponse;
+import com.linkedin.venice.controllerapi.MultiNodesStatusResponse;
 import com.linkedin.venice.controllerapi.MultiReplicaResponse;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.controllerapi.MultiStoreStatusResponse;
@@ -21,7 +21,6 @@ import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.TrackableControllerResponse;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.controllerapi.routes.AdminCommandExecutionResponse;
-import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
@@ -49,6 +48,7 @@ import org.apache.http.client.entity.UrlEncodedFormEntity;
 import org.apache.http.client.methods.HttpPost;
 import org.apache.http.impl.nio.client.CloseableHttpAsyncClient;
 import org.apache.http.message.BasicNameValuePair;
+import org.codehaus.jackson.map.ObjectMapper;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
@@ -597,10 +597,18 @@ public class TestAdminSparkServer {
     controllerClient.enableStoreWrites(storeName, false);
     TrackableControllerResponse trackableControllerResponse = controllerClient.deleteStore(storeName);
     long executionId = trackableControllerResponse.getExecutionId();
-    AdminCommandExecutionResponse response =
-        controllerClient.getAdminCommandExecution(executionId);
+    AdminCommandExecutionResponse response = controllerClient.getAdminCommandExecution(executionId);
     AdminCommandExecution execution = response.getExecution();
     // Command would not be executed in child controller because we don't have Kafka MM in the local box.
     Assert.assertFalse(execution.isSucceedInAllFabric());
+  }
+
+  @Test
+  public void controllerClientProvidesErrorWhenRequestingTopicForStoreThatDoesNotExist() throws IOException {
+    String storeNameDoesNotExist = TestUtils.getUniqueString("no-store");
+    String pushId = TestUtils.getUniqueString("no-store-push");
+    VersionCreationResponse vcr = controllerClient.requestTopicForWrites(storeNameDoesNotExist, 1L, ControllerApiConstants.PushType.STREAM, pushId);
+    Assert.assertTrue(vcr.isError(), "Request topic for store that has not been created must return error, instead it returns: "
+        + new ObjectMapper().writeValueAsString(vcr));
   }
 }

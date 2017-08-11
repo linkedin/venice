@@ -93,6 +93,11 @@ public class CreateVersion {
           throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, pushTypeString + " is an invalid " + PUSH_TYPE, e);
         }
 
+        Store store = admin.getStore(clusterName, storeName);
+        if (null == store) {
+          throw new VeniceNoStoreException(storeName);
+        }
+
         //looked up params
         int replicationFactor = admin.getReplicationFactor(clusterName, storeName);
         int partitionCount = admin.calculateNumberOfPartitions(clusterName, storeName, storeSize);
