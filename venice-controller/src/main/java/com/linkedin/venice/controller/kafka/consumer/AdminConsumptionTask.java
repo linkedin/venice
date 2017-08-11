@@ -268,7 +268,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
         producerTracker = new ProducerTracker(producerGUID);
         producerTrackerMap.put(producerGUID, producerTracker);
       }
-      offsetRecordTransformer = Optional.of(producerTracker.addMessage(AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID, kafkaKey, kafkaValue));
+      offsetRecordTransformer = Optional.of(producerTracker.addMessage(AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID, kafkaKey, kafkaValue, false));
     } catch (DuplicateDataException e) {
       if (isRetry) {
         // When retrying, it is valid to receive DuplicateDataException,

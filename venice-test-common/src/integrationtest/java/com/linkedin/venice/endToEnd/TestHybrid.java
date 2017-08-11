@@ -7,6 +7,7 @@ import com.linkedin.venice.controller.VeniceHelixAdmin;
 import com.linkedin.venice.controllerapi.ControllerApiConstants;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
+import com.linkedin.venice.controllerapi.NewStoreResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -23,8 +24,8 @@ import com.linkedin.venice.samza.VeniceSystemFactory;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import java.io.File;
-import java.io.IOException;
 import java.lang.reflect.Field;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -39,14 +40,13 @@ import org.apache.samza.config.MapConfig;
 import org.apache.samza.system.OutgoingMessageEnvelope;
 import org.apache.samza.system.SystemProducer;
 import org.apache.samza.system.SystemStream;
-import org.codehaus.jackson.map.ObjectMapper;
-import org.testng.Assert;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
-import static com.linkedin.venice.hadoop.KafkaPushJob.*;
+import static org.testng.Assert.*;
 import static com.linkedin.venice.samza.VeniceSystemFactory.*;
 import static com.linkedin.venice.samza.VeniceSystemFactory.JOB_ID;
-import static com.linkedin.venice.utils.TestPushUtils.*;
+import static com.linkedin.venice.utils.TestPushUtils.*; // remove this static access
 
 
 public class TestHybrid {
@@ -71,23 +71,23 @@ public class TestHybrid {
         Optional.of(streamingRewindSeconds), Optional.of(streamingMessageLag));
 
     // There should be no version on the store yet
-    Assert.assertEquals(controllerClient.getStore(storeName).getStore().getCurrentVersion(),
+    assertEquals(controllerClient.getStore(storeName).getStore().getCurrentVersion(),
         0, "The newly created store must have a current version of 0");
 
     // Create a new version, and do an empty push for that version
     VersionCreationResponse vcr = controllerClient.emptyPush(storeName, TestUtils.getUniqueString("empty-hybrid-push"), 1L);
     int versionNumber = vcr.getVersion();
-    Assert.assertNotEquals(versionNumber, 0, "requesting a topic for a push should provide a non zero version number");
+    assertNotEquals(versionNumber, 0, "requesting a topic for a push should provide a non zero version number");
 
     TestUtils.waitForNonDeterministicAssertion(1, TimeUnit.SECONDS, () -> {
       // Now the store should have version 1
       JobStatusQueryResponse jobStatus = controllerClient.queryJobStatus(Version.composeKafkaTopic(storeName, versionNumber));
-      Assert.assertEquals(jobStatus.getStatus(), "COMPLETED");
+      assertEquals(jobStatus.getStatus(), "COMPLETED");
     });
 
     //And real-time topic should exist now.
     TopicManager topicManager = new TopicManager(venice.getZk().getAddress());
-    Assert.assertTrue(topicManager.containsTopic(Version.composeRealTimeTopic(storeName)));
+    assertTrue(topicManager.containsTopic(Version.composeRealTimeTopic(storeName)));
     IOUtils.closeQuietly(topicManager);
 
     parentController.close();
@@ -95,30 +95,36 @@ public class TestHybrid {
     venice.close();
   }
 
+  @DataProvider(name = "yesAndNo")
+  public static Object[][] yesAndNo() {
+    // Lots of boiler plate for TestNG data providers, unfortunately...
+    List<Boolean[]> returnList = new ArrayList<>();
+    returnList.add(new Boolean[]{false});
+    returnList.add(new Boolean[]{true});
+    Boolean[][] booleansToReturn= new Boolean[returnList.size()][1];
+    return returnList.toArray(booleansToReturn);
+  }
+
   /**
    * This test validates the hybrid batch + streaming semantics and verifies that configured rewind time works as expected.
-   * TODO: The test fails if the rewind drops us inside of a DIV segment.  This is because the DIV consumption logic needs to be improved.
-   * set `multiDivStream` to false to test rewind inside a DIV segment.  Example stack trace below:
    *
-   * 2017-07-17 10:42:34,691 ERROR StoreBufferService$StoreBufferDrainer:122 - Got exception during processing consumer record: ConsumerRecord(topic = hybrid-store-1500313298602-1681399193_v3, partition = 0, offset = 110, LogAppendTime = 1500313354689, checksum = 3095490156, serialized key size = 4, serialized value size = 40, key = KafkaKey(PUT or DELETE, 043132), value = {"messageType": 0, "producerMetadata": {"producerGUID": [116, 105, -116, 64, -16, 121, 71, -8, -113, -126, -17, -63, 56, 91, -108, 2], "segmentNumber": 0, "messageSequenceNumber": 13, "messageTimestamp": 1500313349198}, "payloadUnion": {"schemaId": 1, "putValue": {"bytes": "stream_12"}}})
-   * java.lang.IllegalStateException: Cannot initialize a new segment on anything else but a START_OF_SEGMENT control message.
-   * at com.linkedin.venice.kafka.validation.ProducerTracker.initializeNewSegment(ProducerTracker.java:193)
-   * at com.linkedin.venice.kafka.validation.ProducerTracker.trackSegment(ProducerTracker.java:145)
-   * at com.linkedin.venice.kafka.validation.ProducerTracker.addMessage(ProducerTracker.java:93)
-   * at com.linkedin.venice.kafka.consumer.StoreIngestionTask.validateMessage(StoreIngestionTask.java:880)
-   * at com.linkedin.venice.kafka.consumer.StoreIngestionTask.internalProcessConsumerRecord(StoreIngestionTask.java:822)
-   * at com.linkedin.venice.kafka.consumer.StoreIngestionTask.processConsumerRecord(StoreIngestionTask.java:655)
-   * at com.linkedin.venice.kafka.consumer.StoreBufferService$StoreBufferDrainer.run(StoreBufferService.java:120)
+   * TODO: This test needs to be refactored in order to leverage {@link com.linkedin.venice.utils.MockTime},
+   *       which woulc allow the test to run faster and more deterministically.
+
+   * @param multiDivStream if false, rewind will happen in the middle of a DIV Segment, which was originally broken.
+   *                       if true, two independent DIV Segments will be placed before and after the start of buffer replay.
+   *
+   *                       If this test succeeds with {@param multiDivStream} set to true, but fails with it set to false,
+   *                       then there is a regression in the DIV partial segment tolerance after EOP.
    */
-  @Test
-  public void testHybridEndToEnd() throws Exception {
+  @Test(dataProvider = "yesAndNo")
+  public void testHybridEndToEnd(boolean multiDivStream) throws Exception {
+    logger.info("About to create VeniceClusterWrapper");
     VeniceClusterWrapper venice = ServiceFactory.getVeniceCluster(1,1,1,1, 1000000, false);
+    logger.info("Finished creating VeniceClusterWrapper");
+
     long streamingRewindSeconds = 25L;
     long streamingMessageLag = 2L;
-    // this test needs to be able to pass with this set to false
-    // because in real-usage the rewind will start replicating a portion of a DIV segment
-    // and that portion will NOT begin with a START OF SEGMENT control message.
-    boolean multiDivStream = true;
 
     String storeName = TestUtils.getUniqueString("hybrid-store");
     File inputDir = getTempDataDirectory();
@@ -126,9 +132,8 @@ public class TestHybrid {
     Schema recordSchema = writeSimpleAvroFileWithUserSchema(inputDir); // records 1-100
     Properties h2vProperties = defaultH2VProps(venice, inputDirPath, storeName);
 
-    //Create store and make it a hybrid store
-    createStoreForJob(venice, recordSchema, h2vProperties);
-    ControllerClient controllerClient = new ControllerClient(venice.getClusterName(), venice.getRandomRouterURL());
+    ControllerClient controllerClient = createStoreForJob(venice, recordSchema, h2vProperties);
+
     controllerClient.updateStore(storeName, Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(),
         Optional.empty(), Optional.empty(), Optional.empty(), Optional.of(streamingRewindSeconds), Optional.of(streamingMessageLag));
 
@@ -140,7 +145,7 @@ public class TestHybrid {
         ClientFactory.getAndStartGenericAvroClient(ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(venice.getRandomRouterURL()));
     for (int i=1;i<10;i++){
       String key = Integer.toString(i);
-      Assert.assertEquals(client.get(key).get().toString(), "test_name_" + key);
+      assertEquals(client.get(key).get().toString(), "test_name_" + key);
     }
 
     //write streaming records
@@ -154,7 +159,7 @@ public class TestHybrid {
 
     TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
       try {
-        Assert.assertEquals(client.get("2").get().toString(),"stream_2");
+        assertEquals(client.get("2").get().toString(),"stream_2");
       } catch (Exception e) {
         throw new VeniceException(e);
       }
@@ -163,8 +168,8 @@ public class TestHybrid {
     runH2V(h2vProperties, 2, controllerClient);
 
     // Verify streaming record in second version
-    Assert.assertEquals(client.get("2").get().toString(),"stream_2");
-    Assert.assertEquals(client.get("19").get().toString(), "test_name_19");
+    assertEquals(client.get("2").get().toString(),"stream_2");
+    assertEquals(client.get("19").get().toString(), "test_name_19");
 
     logger.info("***** Sleeping to get outside of rewind time: " + streamingRewindSeconds + " seconds");
     Utils.sleep(TimeUnit.MILLISECONDS.convert(streamingRewindSeconds, TimeUnit.SECONDS));
@@ -178,7 +183,7 @@ public class TestHybrid {
     }
     TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
       try {
-        Assert.assertEquals(client.get("19").get().toString(),"stream_19");
+        assertEquals(client.get("19").get().toString(),"stream_19");
       } catch (Exception e) {
         throw new VeniceException(e);
       }
@@ -190,21 +195,21 @@ public class TestHybrid {
     // Verify new streaming record in third version
     TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
       try {
-        Assert.assertEquals(client.get("19").get().toString(),"stream_19");
+        assertEquals(client.get("19").get().toString(),"stream_19");
       } catch (Exception e) {
         throw new VeniceException(e);
       }
     });
     // But not old streaming record (because we waited the rewind time)
-    Assert.assertEquals(client.get("2").get().toString(),"test_name_2");
+    assertEquals(client.get("2").get().toString(),"test_name_2");
 
     StoreResponse storeResponse = controllerClient.getStore(storeName);
     List<Integer> versions = storeResponse.getStore().getVersions()
         .stream().map(version -> version.getNumber()).collect(Collectors.toList());
 
-    Assert.assertFalse(versions.contains(1), "After version 3 comes online, version 1 should be retired");
-    Assert.assertTrue(versions.contains(2));
-    Assert.assertTrue(versions.contains(3));
+    assertFalse(versions.contains(1), "After version 3 comes online, version 1 should be retired");
+    assertTrue(versions.contains(2));
+    assertTrue(versions.contains(3));
 
     // Verify replication exists for versions 2 and 3, but not for version 1
     VeniceHelixAdmin veniceHelixAdmin = (VeniceHelixAdmin) venice.getMasterVeniceController().getVeniceAdmin();
@@ -218,11 +223,11 @@ public class TestHybrid {
       String versionTwoTopic = Version.composeKafkaTopic(storeName, 2);
       String versionThreeTopic = Version.composeKafkaTopic(storeName, 3);
 
-      Assert.assertFalse(topicReplicator.doesReplicationExist(realtimeTopic, versionOneTopic), "Replication stream must not exist for retired version 1");
-      Assert.assertTrue(topicReplicator.doesReplicationExist(realtimeTopic, versionTwoTopic), "Replication stream must still exist for backup version 2");
-      Assert.assertTrue(topicReplicator.doesReplicationExist(realtimeTopic, versionThreeTopic), "Replication stream must still exist for current version 3");
+      assertFalse(topicReplicator.doesReplicationExist(realtimeTopic, versionOneTopic), "Replication stream must not exist for retired version 1");
+      assertTrue(topicReplicator.doesReplicationExist(realtimeTopic, versionTwoTopic), "Replication stream must still exist for backup version 2");
+      assertTrue(topicReplicator.doesReplicationExist(realtimeTopic, versionThreeTopic), "Replication stream must still exist for current version 3");
     } else {
-      Assert.fail("Venice cluster must have a topic replicator for hybrid to be operational"); //this shouldn't happen
+      fail("Venice cluster must have a topic replicator for hybrid to be operational"); //this shouldn't happen
     }
 
 

@@ -395,8 +395,16 @@ public class VeniceWriter<K, V> extends AbstractVeniceWriter<K, V> {
   }
 
   /**
+   * This function ensures there is a valid {@link Segment} for the provided partition and that
+   * it is started.
+   *
+   * If the segment does not already exist, or if the current segment has already been ended,
+   * then this function creates a new segment. If necessary, this function also triggers the
+   * production of the {@link ControlMessageType#START_OF_SEGMENT}. If the current segment has
+   * already been started, then no redundant control message is sent.
+   *
    * @param partition in which to start a new segment
-   * @return the number of the new segment which was just begun
+   * @return the {@link Segment} which was just started
    */
   private synchronized Segment startSegment(int partition) {
     Segment currentSegment = segmentsMap.get(partition);

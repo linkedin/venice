@@ -1,5 +1,9 @@
 package com.linkedin.venice.stats;
 
+import com.linkedin.venice.exceptions.validation.CorruptDataException;
+import com.linkedin.venice.exceptions.validation.DataValidationException;
+import com.linkedin.venice.exceptions.validation.DuplicateDataException;
+import com.linkedin.venice.exceptions.validation.MissingDataException;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreDataChangedListener;
@@ -28,6 +32,16 @@ public class AggVersionedDIVStats implements StoreDataChangedListener {
     aggStats = new HashMap<>();
     metaRepository.registerStoreDataChangedListener(this);
     loadAllStats();
+  }
+
+  public void recordException(String storeName, int version, DataValidationException e) {
+    if (e instanceof DuplicateDataException) {
+      recordDuplicateMsg(storeName, version);
+    } else if (e instanceof MissingDataException) {
+      recordMissingMsg(storeName, version);
+    } else if (e instanceof CorruptDataException) {
+      recordCorruptedMsg(storeName, version);
+    }
   }
 
   public void recordDuplicateMsg(String storeName, int version) {

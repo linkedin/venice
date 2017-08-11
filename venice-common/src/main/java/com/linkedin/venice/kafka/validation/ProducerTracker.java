@@ -5,6 +5,7 @@ import com.linkedin.venice.exceptions.validation.CorruptDataException;
 import com.linkedin.venice.exceptions.validation.DataValidationException;
 import com.linkedin.venice.exceptions.validation.DuplicateDataException;
 import com.linkedin.venice.exceptions.validation.MissingDataException;
+import com.linkedin.venice.exceptions.validation.ImproperlyStartedSegmentException;
 import com.linkedin.venice.kafka.protocol.*;
 import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
@@ -17,9 +18,10 @@ import com.linkedin.venice.utils.ByteUtils;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
 import java.util.HashMap;
-import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.function.Function;
 
 import org.apache.log4j.Logger;
 
@@ -33,7 +35,7 @@ import org.apache.log4j.Logger;
  */
 @NotThreadsafe
 public class ProducerTracker {
-  private static final Logger LOGGER = Logger.getLogger(ProducerTracker.class);
+  private final Logger logger;
 
   private final GUID producerGUID;
   // This will allow to create segments for different partitions in parallel.
@@ -41,6 +43,7 @@ public class ProducerTracker {
 
   public ProducerTracker(GUID producerGUID) {
     this.producerGUID = producerGUID;
+    this.logger = Logger.getLogger(this.toString());
   }
 
   public String toString() {
@@ -61,11 +64,11 @@ public class ProducerTracker {
   public void setPartitionState(int partition, ProducerPartitionState state) {
     Segment segment = new Segment(partition, state);
     if (segments.containsKey(partition)) {
-      LOGGER.info(this.toString() + " will overwrite previous state for partition: " + partition +
+      logger.info(this.toString() + " will overwrite previous state for partition: " + partition +
           "\nPrevious state: " + segments.get(partition) +
           "\nNew state: " + segment);
     } else {
-      LOGGER.info(this.toString() + " will set state for partition: " + partition +
+      logger.info(this.toString() + " will set state for partition: " + partition +
           "\nNew state: " + segment);
     }
     segments.put(partition, segment);
@@ -87,11 +90,11 @@ public class ProducerTracker {
    *         chances that a state change may be partially applied, which could cause weird bugs if it happened.
    * @throws DataValidationException
    */
-  public OffsetRecordTransformer addMessage(int partition, KafkaKey key, KafkaMessageEnvelope messageEnvelope)
+  public OffsetRecordTransformer addMessage(int partition, KafkaKey key, KafkaMessageEnvelope messageEnvelope, boolean endOfPushReceived)
       throws DataValidationException {
 
-    Segment segment = trackSegment(partition, messageEnvelope);
-    trackSequenceNumber(segment, messageEnvelope);
+    Segment segment = trackSegment(partition, messageEnvelope, endOfPushReceived);
+    trackSequenceNumber(segment, messageEnvelope, endOfPushReceived);
 
     // This is the last step, because we want failures in the previous steps to short-circuit execution.
     trackCheckSum(segment, key, messageEnvelope);
@@ -115,9 +118,7 @@ public class ProducerTracker {
 
       offsetRecord.setProducerPartitionState(producerGUID, state);
 
-      if (LOGGER.isTraceEnabled()) {
-        LOGGER.trace("ProducerPartitionState updated.");
-      }
+      logger.trace("ProducerPartitionState updated.");
 
       return offsetRecord;
     };
@@ -131,35 +132,38 @@ public class ProducerTracker {
    * 1. The previous segment does not exist, or
    * 2. The incoming segment is exactly one greater than the previous one, and the previous segment is ended.
    *
-   * @see #initializeNewSegment(int, KafkaMessageEnvelope)
+   * @see #initializeNewSegment(int, KafkaMessageEnvelope, boolean, boolean)
    *
    * @param partition for which the incoming message belongs to
    * @param messageEnvelope of the incoming message
    * @throws DuplicateDataException if the incoming segment is lower than the previously seen segment.
    */
-  private Segment trackSegment(int partition, KafkaMessageEnvelope messageEnvelope) throws DuplicateDataException {
+  private Segment trackSegment(int partition, KafkaMessageEnvelope messageEnvelope, boolean endOfPushReceived) throws DuplicateDataException {
     int incomingSegment = messageEnvelope.producerMetadata.segmentNumber;
     Segment previousSegment = segments.get(partition);
     if (previousSegment == null) {
-      if (incomingSegment == 0) {
-        return initializeNewSegment(partition, messageEnvelope);
-      } else {
-        throw new MissingDataException(exceptionMessage(DataFaultType.MISSING, null, messageEnvelope));
+      if (incomingSegment != 0) {
+        handleUnregisteredProducer("track new segment with non-zero incomingSegment=" + incomingSegment,
+            messageEnvelope, null, endOfPushReceived);
       }
+
+      Segment newSegment = initializeNewSegment(partition, messageEnvelope, endOfPushReceived, true);
+      return newSegment;
     } else {
       int previousSegmentNumber = previousSegment.getSegmentNumber();
       if (incomingSegment == previousSegmentNumber) {
         return previousSegment;
       } else if (incomingSegment == previousSegmentNumber + 1) {
         if (previousSegment.isEnded()) {
-          return initializeNewSegment(partition, messageEnvelope);
+          /** tolerateAnyMessageType should always be false in this scenario, regardless of {@param endOfPushReceived} */
+          return initializeNewSegment(partition, messageEnvelope, endOfPushReceived, false);
         } else {
-          throw new MissingDataException(exceptionMessage(DataFaultType.MISSING, previousSegment, messageEnvelope));
+          throw DataFaultType.MISSING.getNewException(previousSegment, messageEnvelope);
         }
       } else if (incomingSegment > previousSegmentNumber + 1) {
-        throw new MissingDataException(exceptionMessage(DataFaultType.MISSING, previousSegment, messageEnvelope));
+        throw DataFaultType.MISSING.getNewException(previousSegment, messageEnvelope);
       } else if (incomingSegment < previousSegmentNumber) {
-        throw new DuplicateDataException(exceptionMessage(DataFaultType.DUPLICATE, previousSegment, messageEnvelope));
+        throw DataFaultType.DUPLICATE.getNewException(previousSegment, messageEnvelope);
       } else {
         // Defensive code.
         throw new IllegalStateException("This condition should never happen. " +
@@ -171,26 +175,66 @@ public class ProducerTracker {
   /**
    * @param partition for which we are initializing a new {@link Segment}
    * @param messageEnvelope which triggered this function call.
+   * @param tolerateAnyMessageType if true, we will tolerate initializing the Segment on any message
+   *                               if false, we will only tolerate initializing on a {@link ControlMessageType#START_OF_SEGMENT}
    * @return the newly initialized {@link Segment}
    * @throws IllegalStateException if called for a message other than a {@link ControlMessageType#START_OF_SEGMENT}
    */
-  private Segment initializeNewSegment(int partition, KafkaMessageEnvelope messageEnvelope) {
+  private Segment initializeNewSegment(int partition,
+                                       KafkaMessageEnvelope messageEnvelope,
+                                       boolean endOfPushReceived,
+                                       boolean tolerateAnyMessageType) {
+    CheckSumType checkSumType = CheckSumType.NONE;
+    boolean unregisteredProducer = true;
+
     switch (MessageType.valueOf(messageEnvelope)) {
       case CONTROL_MESSAGE:
         ControlMessage controlMessage = (ControlMessage) messageEnvelope.payloadUnion;
         switch (ControlMessageType.valueOf(controlMessage)) {
           case START_OF_SEGMENT:
             StartOfSegment startOfSegment = (StartOfSegment) controlMessage.controlMessageUnion;
-            Segment newSegment = new Segment(
-                partition,
-                messageEnvelope.producerMetadata.segmentNumber,
-                CheckSumType.valueOf(startOfSegment.checksumType)
-            );
-            segments.put(partition, newSegment);
-            return newSegment;
+            checkSumType = CheckSumType.valueOf(startOfSegment.checksumType);
+            unregisteredProducer = false;
         }
     }
-    throw new IllegalStateException("Cannot initialize a new segment on anything else but a START_OF_SEGMENT control message.");
+
+    Segment newSegment = new Segment(
+        partition,
+        messageEnvelope.producerMetadata.segmentNumber,
+        messageEnvelope.producerMetadata.messageSequenceNumber,
+        checkSumType);
+    segments.put(partition, newSegment);
+
+    if (unregisteredProducer) {
+      handleUnregisteredProducer(
+          "initialize new segment with a non-" + ControlMessageType.START_OF_SEGMENT.name() + " message",
+          messageEnvelope, null, endOfPushReceived, Optional.of(tolerateAnyMessageType));
+    }
+
+    return newSegment;
+  }
+
+  private void handleUnregisteredProducer(String scenario,
+                                          KafkaMessageEnvelope messageEnvelope,
+                                          Segment segment,
+                                          boolean endOfPushReceived) {
+    handleUnregisteredProducer(scenario, messageEnvelope, segment, endOfPushReceived, Optional.empty());
+  }
+
+  private void handleUnregisteredProducer(String scenario,
+                                          KafkaMessageEnvelope messageEnvelope,
+                                          Segment segment,
+                                          boolean endOfPushReceived,
+                                          Optional<Boolean> tolerateAnyMessageType) {
+    String extraInfoWithEndOfPush = scenario + ", endOfPushReceived=" + endOfPushReceived;
+    if (tolerateAnyMessageType.isPresent()) {
+      extraInfoWithEndOfPush += ", tolerateAnyMessageType=" + tolerateAnyMessageType;
+    }
+    if (endOfPushReceived && tolerateAnyMessageType.orElse(true)) {
+      logger.info("Will " + extraInfoWithEndOfPush);
+    } else {
+      throw DataFaultType.UNREGISTERED_PRODUCER.getNewException(segment, messageEnvelope, Optional.of("Cannot " + extraInfoWithEndOfPush));
+    }
   }
 
   /**
@@ -204,31 +248,37 @@ public class ProducerTracker {
    * @throws MissingDataException if the incoming sequence number is greater than the previous sequence number + 1
    * @throws DuplicateDataException if the incoming sequence number is equal to or smaller than the previous sequence number
    */
-  private void trackSequenceNumber(Segment segment, KafkaMessageEnvelope messageEnvelope)
+  private void trackSequenceNumber(Segment segment, KafkaMessageEnvelope messageEnvelope, boolean endOfPushReceived)
       throws MissingDataException, DuplicateDataException {
 
     int previousSequenceNumber = segment.getSequenceNumber();
     int incomingSequenceNumber = messageEnvelope.producerMetadata.messageSequenceNumber;
 
-    if (!segment.isStarted() && previousSequenceNumber == 0) {
-      // Expected case, at the start of a segment
+    if (!segment.isStarted()) {
+      if (previousSequenceNumber != 0) {
+        handleUnregisteredProducer(
+            "mark segment as started with non-zero previousSequenceNumber=" + previousSequenceNumber, messageEnvelope,
+            segment, endOfPushReceived);
+      }
       segment.start();
     } else if (incomingSequenceNumber == previousSequenceNumber + 1) {
       // Expected case, in steady state
       segment.getAndIncrementSequenceNumber();
-      // TODO: Record metrics for messages consumed as expected.
     } else if (incomingSequenceNumber <= previousSequenceNumber) {
       // This is a duplicate message, which we can safely ignore.
-      // TODO: Record metrics for duplicate messages.
 
       // Although data duplication is a benign fault, we need to bubble up for two reasons:
       // 1. We want to short-circuit data validation, because the running checksum depends on exactly-once guarantees.
       // 2. The upstream caller can choose to avoid writing duplicate data, as an optimization.
-      throw new DuplicateDataException(exceptionMessage(DataFaultType.DUPLICATE, segment, messageEnvelope));
+      throw DataFaultType.DUPLICATE.getNewException(segment, messageEnvelope);
     } else if (incomingSequenceNumber > previousSequenceNumber + 1) {
       // There is a gap in the sequence, so we are missing some data!
-      // TODO: Record metrics for missing messages.
-      throw new MissingDataException(exceptionMessage(DataFaultType.MISSING, segment, messageEnvelope));
+
+      if (endOfPushReceived) {
+        // TODO: In this branch of the if, we need to adjust the sequence number, otherwise, this will cause spurious missing data metrics on further events...
+      }
+
+      throw DataFaultType.MISSING.getNewException(segment, messageEnvelope);
     } else {
       // Defensive coding, to prevent regressions in the above code from causing silent failures
       throw new IllegalStateException("Unreachable code!");
@@ -264,42 +314,90 @@ public class ProducerTracker {
       } else {
         // Uh oh. Checksums don't match.
         // TODO: Record metrics for bad checksums.
-        throw new CorruptDataException(exceptionMessage(DataFaultType.CORRUPT, segment, messageEnvelope));
+        throw DataFaultType.CORRUPT.getNewException( segment, messageEnvelope);
       }
     }
   }
 
-  private String exceptionMessage(DataFaultType fault, Segment segment, KafkaMessageEnvelope messageEnvelope) {
-    ProducerMetadata producerMetadata = messageEnvelope.producerMetadata;
-    MessageType messageType = MessageType.valueOf(messageEnvelope);
-    String messageTypeString = messageType.name();
-    if (MessageType.CONTROL_MESSAGE.equals(messageType)) {
-      ControlMessage controlMessage = (ControlMessage) messageEnvelope.payloadUnion;
-      messageTypeString += " (" + ControlMessageType.valueOf(controlMessage).name() + ")";
-    }
-
-    String partition, previousSegment, previousSequenceNumber;
-
-    if (null == segment) {
-      partition = previousSegment = previousSequenceNumber = "N/A (null segment)";
-    } else {
-      partition = String.valueOf(segment.getPartition());
-      previousSegment = String.valueOf(segment.getSegmentNumber());
-      previousSequenceNumber = String.valueOf(segment.getSequenceNumber());
-    }
-
-    return fault.toString() + " data detected for producer GUID: " + producerMetadata.producerGUID + ",\n"
-        + "message type: " + messageTypeString + ",\n"
-        + "partition: " + partition + ",\n"
-        + "previous segment: " + previousSegment + ",\n"
-        + "incoming segment: " + producerMetadata.segmentNumber + ",\n"
-        + "previous sequence number: " + previousSequenceNumber + ",\n"
-        + "incoming sequence number: " + producerMetadata.messageSequenceNumber;
-  }
-
   enum DataFaultType {
-    DUPLICATE,
-    MISSING,
-    CORRUPT
+    /**
+     * A given producer sent a message with a sequence number smaller or equal to the previously received
+     * sequence number, rather than being exactly one greater than the previous.
+     */
+    DUPLICATE(msg -> new DuplicateDataException(msg)),
+
+    /**
+     * A given producer sent a message with a sequence number more than one greater than the previously
+     * received sequence number, rather than being exactly one greater than the previous.
+     *
+     * N.B.: Out-of-order data can manifest as missing data, since the Venice Transport Protocol only
+     *       keeps track of a high-water mark (the sequence number). Dealing gracefully with out-of-order
+     *       data and reconstructing the proper order would require buffering arbitrarily large amounts
+     *       of data would be more complex, hence why it is not supported at this time.
+     */
+    MISSING(msg -> new MissingDataException(msg)),
+
+    /**
+     * A given producer sent a {@link ControlMessageType#END_OF_SEGMENT} which included a checksum that
+     * did not match to the data received by the same producer.
+     */
+    CORRUPT(msg -> new CorruptDataException(msg)),
+
+    /**
+     * Received a message from a given producer without first receiving a {@link
+     * ControlMessageType#START_OF_SEGMENT}.
+     *
+     * N.B.: This used to show up as {@link DataFaultType#MISSING} data. This new fault type was
+     *       introduced in order to disambiguate these two cases, because in some cases, the upstream
+     *       code may want to be more lenient with this specific type of failure (such as when a {@link
+     *       ControlMessageType#START_OF_BUFFER_REPLAY} was received).
+     */
+    UNREGISTERED_PRODUCER(msg -> new ImproperlyStartedSegmentException(msg));
+
+    final Function<String, DataValidationException> exceptionSupplier;
+
+    DataFaultType(Function<String, DataValidationException> exceptionSupplier) {
+      this.exceptionSupplier = exceptionSupplier;
+    }
+
+    DataValidationException getNewException(Segment segment, KafkaMessageEnvelope messageEnvelope) {
+      return getNewException(segment, messageEnvelope, Optional.<String>empty());
+    }
+
+
+    DataValidationException getNewException(Segment segment, KafkaMessageEnvelope messageEnvelope, Optional<String> extraInfo) {
+      ProducerMetadata producerMetadata = messageEnvelope.producerMetadata;
+      MessageType messageType = MessageType.valueOf(messageEnvelope);
+      String messageTypeString = messageType.name();
+      if (MessageType.CONTROL_MESSAGE.equals(messageType)) {
+        ControlMessage controlMessage = (ControlMessage) messageEnvelope.payloadUnion;
+        messageTypeString += " (" + ControlMessageType.valueOf(controlMessage).name() + ")";
+      }
+
+      String partition, previousSegment, previousSequenceNumber;
+
+      if (null == segment) {
+        partition = previousSegment = previousSequenceNumber = "N/A (null segment)";
+      } else {
+        partition = String.valueOf(segment.getPartition());
+        previousSegment = String.valueOf(segment.getSegmentNumber());
+        previousSequenceNumber = String.valueOf(segment.getSequenceNumber());
+      }
+
+      String exceptionMsg = name() + " data detected for producer GUID: "
+          + producerMetadata.producerGUID + ",\n"
+          + "message type: " + messageTypeString + ",\n"
+          + "partition: " + partition + ",\n"
+          + "previous segment: " + previousSegment + ",\n"
+          + "incoming segment: " + producerMetadata.segmentNumber + ",\n"
+          + "previous sequence number: " + previousSequenceNumber + ",\n"
+          + "incoming sequence number: " + producerMetadata.messageSequenceNumber;
+
+      if (extraInfo.isPresent()) {
+        exceptionMsg += ",\n" + "extra info: " + extraInfo.get();
+      }
+
+      return exceptionSupplier.apply(exceptionMsg);
+    }
   }
 }

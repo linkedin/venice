@@ -1,6 +1,8 @@
 package com.linkedin.venice.utils;
 
 import com.linkedin.venice.controllerapi.ControllerClient;
+import com.linkedin.venice.controllerapi.ControllerResponse;
+import com.linkedin.venice.controllerapi.NewStoreResponse;
 import com.linkedin.venice.hadoop.KafkaPushJob;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.meta.Store;
@@ -15,6 +17,7 @@ import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericDatumWriter;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.io.DatumWriter;
+import org.testng.Assert;
 
 import static com.linkedin.venice.hadoop.KafkaPushJob.*;
 
@@ -84,15 +87,22 @@ public class TestPushUtils {
     return props;
   }
 
-  public static void createStoreForJob(VeniceClusterWrapper veniceCluster, Schema recordSchema, Properties props) {
+  public static ControllerClient createStoreForJob(VeniceClusterWrapper veniceCluster, Schema recordSchema, Properties props) {
     ControllerClient controllerClient =
         new ControllerClient(veniceCluster.getClusterName(), props.getProperty(KafkaPushJob.VENICE_URL_PROP));
     Schema keySchema = recordSchema.getField(props.getProperty(KafkaPushJob.AVRO_KEY_FIELD_PROP)).schema();
     Schema valueSchema = recordSchema.getField(props.getProperty(KafkaPushJob.AVRO_VALUE_FIELD_PROP)).schema();
-    controllerClient.createNewStore(props.getProperty(VENICE_STORE_NAME_PROP),
+    NewStoreResponse newStoreResponse = controllerClient.createNewStore(props.getProperty(VENICE_STORE_NAME_PROP),
         "test@linkedin.com", keySchema.toString(), valueSchema.toString());
-    controllerClient.updateStore(props.getProperty(VENICE_STORE_NAME_PROP), Optional.empty(), Optional.empty(),
+
+    Assert.assertFalse(newStoreResponse.isError(), "The NewStoreResponse returned an error: " + newStoreResponse.getError());
+
+    ControllerResponse controllerResponse = controllerClient.updateStore(props.getProperty(VENICE_STORE_NAME_PROP), Optional.empty(), Optional.empty(),
         Optional.empty(), Optional.empty(), Optional.empty(), Optional.of(Store.UNLIMITED_STORAGE_QUOTA), Optional.empty(),
         Optional.empty(), Optional.empty());
+
+    Assert.assertFalse(controllerResponse.isError(), "The UpdateStore response returned an error: " + controllerResponse.getError());
+
+    return controllerClient;
   }
 }
