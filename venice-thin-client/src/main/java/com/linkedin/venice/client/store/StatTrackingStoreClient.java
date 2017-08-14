@@ -35,9 +35,10 @@ public class StatTrackingStoreClient<K, V> extends DelegatingStoreClient<K, V> {
 
   public StatTrackingStoreClient(InternalAvroStoreClient<K, V> innerStoreClient, MetricsRepository metricsRepository) {
     super(innerStoreClient);
-    this.singleGetStats = new ClientStats(metricsRepository, STAT_VENICE_CLIENT_NAME, RequestType.SINGLE_GET);
-    this.multiGetStats = new ClientStats(metricsRepository, STAT_VENICE_CLIENT_NAME, RequestType.MULTI_GET);
-    this.schemaReaderStats = new ClientStats(metricsRepository, STAT_SCHEMA_READER, RequestType.SINGLE_GET);
+    this.singleGetStats = new ClientStats(metricsRepository, getStoreName(), RequestType.SINGLE_GET);
+    this.multiGetStats = new ClientStats(metricsRepository, getStoreName(), RequestType.MULTI_GET);
+    this.schemaReaderStats =
+        new ClientStats(metricsRepository, getStoreName() + "_" + STAT_SCHEMA_READER, RequestType.SINGLE_GET);
   }
 
   @Override
