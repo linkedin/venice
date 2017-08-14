@@ -143,8 +143,16 @@ public class VeniceSystemProducer implements SystemProducer {
     });
 
     if (!remoteKeySchema.equals(keySchema)) {
+      String serializedObject;
+      if (keyObject instanceof byte[]){
+        serializedObject = new String((byte[]) keyObject);
+      } else if (keyObject instanceof ByteBuffer){
+        serializedObject = new String(((ByteBuffer) keyObject).array());
+      } else {
+        serializedObject = keyObject.toString();
+      }
       throw new SamzaException("Cannot write record to Venice store " + store + ", key object has schema " + keySchema
-          + " which does not match Venice key schema " + remoteKeySchema);
+          + " which does not match Venice key schema " + remoteKeySchema + ".  Key object: " + serializedObject);
     }
 
     Schema valueSchema = getSchemaFromObject(valueObject);

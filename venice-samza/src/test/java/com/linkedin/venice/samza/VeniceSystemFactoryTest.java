@@ -39,14 +39,17 @@ public class VeniceSystemFactoryTest {
   private static final String KEY_SCHEMA = "\"string\"";
   private static final String VENICE_SYSTEM_NAME = "venice"; //This is the Samza system name for use by the Samza API.
   private VeniceClusterWrapper venice;
+  private ControllerClient client;
 
   @BeforeClass
   private void setUp() {
     venice = ServiceFactory.getVeniceCluster();
+    client = new ControllerClient(venice.getClusterName(), venice.getRandomRouterURL());
   }
 
   @AfterClass
   private void tearDown() {
+    client.close();
     Utils.close(venice);
   }
 
@@ -57,7 +60,7 @@ public class VeniceSystemFactoryTest {
   public void testGetProducer() throws Exception {
 
     String storeName = TestUtils.getUniqueString("store");
-    ControllerClient client = new ControllerClient(venice.getClusterName(), venice.getRandomRouterURL());
+
     client.createNewStore(storeName, "owner", KEY_SCHEMA, VALUE_SCHEMA);
 
     //Configure and create a SystemProducer for Venice
@@ -86,7 +89,6 @@ public class VeniceSystemFactoryTest {
     assertEquals(recordFromVenice.get("string").toString(), "somestring");
     assertEquals(recordFromVenice.get("number"), 3.14);
 
-    client.close();
     veniceProducer.stop();
   }
 
@@ -101,6 +103,27 @@ public class VeniceSystemFactoryTest {
     testSerialization(ByteBuffer.wrap(new byte[] {0x1, 0x2, 0x3}), ByteBuffer.wrap(new byte[] {0xb, 0xc, 0xd}),"\"bytes\"");
     testSerializationCast(new byte[] {0x3, 0x4, 0x5}, ByteBuffer.wrap(new byte[] {0x3, 0x4, 0x5}), new byte[] {0xd, 0xe, 0xf}, ByteBuffer.wrap(new byte[] {0xd, 0xe, 0xf}),"\"bytes\"");
     testSerialization(true, false,"\"boolean\"");
+  }
+
+  @Test
+  public void testSchemaMismatchError() {
+    String storeName = TestUtils.getUniqueString("store");
+    client.createNewStore(storeName, "owner", KEY_SCHEMA, VALUE_SCHEMA);
+    SystemProducer veniceProducer = getVeniceProducer();
+    //Create an AVRO record
+    GenericRecord record = new GenericData.Record(Schema.parse(VALUE_SCHEMA));
+    record.put("string", "somestring");
+    record.put("number", 3.14);
+    OutgoingMessageEnvelope envelope = new OutgoingMessageEnvelope(
+        new SystemStream(VENICE_SYSTEM_NAME, storeName),
+        new byte[] {49, 50, 51}, //wrong schema, this is byte[] of chars "1", "2", "3", expects string
+        record);
+    try {
+      veniceProducer.send(storeName, envelope);
+      Assert.fail("Sending message with byte[] key when String expected must fail");
+    } catch (Exception e) {
+      Assert.assertTrue(e.getMessage().contains("Key object: 123"));
+    }
   }
 
   /**
