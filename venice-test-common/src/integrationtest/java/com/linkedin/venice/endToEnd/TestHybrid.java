@@ -7,6 +7,7 @@ import com.linkedin.venice.controller.VeniceHelixAdmin;
 import com.linkedin.venice.controllerapi.ControllerApiConstants;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
+import com.linkedin.venice.controllerapi.MultiStoreStatusResponse;
 import com.linkedin.venice.controllerapi.NewStoreResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
@@ -17,7 +18,9 @@ import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.kafka.TopicManager;
+import com.linkedin.venice.meta.InstanceStatus;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.StoreStatus;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.replication.TopicReplicator;
 import com.linkedin.venice.samza.VeniceSystemFactory;
@@ -229,11 +232,32 @@ public class TestHybrid {
     } else {
       fail("Venice cluster must have a topic replicator for hybrid to be operational"); //this shouldn't happen
     }
+    // TODO will move this test case to a single fail-over integration test.
+    //Stop one server
+    int port = venice.getVeniceServers().get(0).getPort();
+    venice.stopVeniceServer(port);
+    TestUtils.waitForNonDeterministicCompletion(10, TimeUnit.SECONDS, ()->{
+      Map<String,String> instanceStatus = controllerClient.listInstancesStatuses().getInstancesStatusMap();
+      // Make sure Helix know the instance is completed shutdown
+      if(instanceStatus.values().iterator().next().equals(InstanceStatus.DISCONNECTED.toString())){
+        return true;
+      }
+      return false;
+    });
 
-
+    //Restart one server
+    venice.restartVeniceServer(port);
+    TestUtils.waitForNonDeterministicCompletion(10, TimeUnit.SECONDS, () -> {
+      Map<String, String> storeStatus =
+          controllerClient.listStoresStatuses(venice.getClusterName()).getStoreStatusMap();
+      // Make sure Helix know the instance is completed shutdown
+      if (storeStatus.values().iterator().next().equals(StoreStatus.FULLLY_REPLICATED.toString())) {
+        return true;
+      }
+      return false;
+    });
     veniceProducer.stop();
     venice.close();
-
   }
 
   /**
@@ -270,5 +294,4 @@ public class TestHybrid {
         "stream_" + recordId);
     producer.send(storeName, envelope);
   }
-
 }

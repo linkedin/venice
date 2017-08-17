@@ -66,6 +66,11 @@ public abstract class TopicReplicator implements Closeable {
 
   public void beginReplication(String sourceTopic, String destinationTopic, Optional<Map<Integer, Long>> startingOffsets)
       throws TopicException {
+    if (doesReplicationExist(sourceTopic, destinationTopic)) {
+      LOGGER.info("Replication already exists from src: " + sourceTopic + " to dest: " + destinationTopic
+          + ". Skip starting replication.");
+      return;
+    }
     LOGGER.info("Starting topic replication from: " + sourceTopic + " to " + destinationTopic);
     String errorPrefix = "Cannot create replication datastream from " + sourceTopic + " to " + destinationTopic + " because";
     if (sourceTopic.equals(destinationTopic)){

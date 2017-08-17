@@ -71,6 +71,7 @@ public class OfflinePushMonitor implements OfflinePushAccessor.PartitionStatusLi
       Map<String, OfflinePushStatus> newTopicToPushMap = new HashMap<>();
       for (OfflinePushStatus status : offlinePushes) {
         newTopicToPushMap.put(status.getKafkaTopic(), status);
+        accessor.subscribePartitionStatusChange(status, this);
       }
       topicToPushMap = newTopicToPushMap;
 

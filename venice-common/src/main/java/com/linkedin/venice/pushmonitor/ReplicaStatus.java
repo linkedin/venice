@@ -49,8 +49,17 @@ public class ReplicaStatus {
    *   <li>PROGRESS->ERROR</li>
    *   <li>PROGRESS->COMPLETED</li>
    *   <li>PROGRESS->START</li>
+   *   <li>PROGRESS->END_OF_PUSH_RECEIVED</li>
+   *   <li>PROGRESS->START_OF_BUFFER_REPLAY_RECEIVED</li>
    *   <li>ERROR->START</li>
    *   <li>COMPLETED->START</li>
+   *   <li>END_OF_PUSH_RECEIVED->START</li>
+   *   <li>END_OF_PUSH_RECEIVED->START_OF_BUFFER_REPLAY_RECEIVED</li>
+   *   <li>END_OF_PUSH_RECEIVED->ERROR</li>
+   *   <li>END_OF_PUSH_RECEIVED->COMPLETED</li>
+   *   <li>START_OF_BUFFER_REPLAY_RECEIVED->STARTED</li>
+   *   <li>START_OF_BUFFER_REPLAY_RECEIVED->ERROR</li>
+   *   <li>START_OF_BUFFER_REPLAY_RECEIVED->COMPLETED</li>
    * </ul>
    * @param newStatus
    * @return
@@ -67,10 +76,10 @@ public class ReplicaStatus {
         isValid = Utils.verifyTransition(newStatus, STARTED);
         break;
       case END_OF_PUSH_RECEIVED:
-        isValid = Utils.verifyTransition(newStatus, START_OF_BUFFER_REPLAY_RECEIVED, ERROR, COMPLETED);
+        isValid = Utils.verifyTransition(newStatus, STARTED, START_OF_BUFFER_REPLAY_RECEIVED, ERROR, COMPLETED);
         break;
       case START_OF_BUFFER_REPLAY_RECEIVED:
-        isValid = Utils.verifyTransition(newStatus, ERROR, COMPLETED);
+        isValid = Utils.verifyTransition(newStatus, STARTED, ERROR, COMPLETED);
         break;
       default:
         isValid = false;
