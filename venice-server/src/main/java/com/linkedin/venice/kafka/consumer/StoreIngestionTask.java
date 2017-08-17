@@ -552,8 +552,16 @@ public class StoreIngestionTask implements Runnable, Closeable {
           logger.info(consumerTaskId + " Partition " + partition + " is already consumed and the store is" +
               " batch-only, so consumption will not be started.");
         } else {
+          // For hybrid case, if it's ready to server, report complete to let BOOTSTRAP->ONLINE state transition
+          // complete at first then keep consuming because message might be replicated from RT topic cotinually.
+          if (hybridStoreConfig.isPresent() && isReadyToServe(newPartitionConsumptionState)) {
+            notificationDispatcher.reportCompleted(newPartitionConsumptionState);
+            logger.info(consumerTaskId + " Partition " + partition + " is already ready to serve and the store is" +
+                " hybrid, so consumption will be started.");
+          }
           consumer.subscribe(topic, partition, record);
-          logger.info(consumerTaskId + " subscribed to: Topic " + topic + " Partition Id " + partition + " Offset " + record.getOffset());
+          logger.info(consumerTaskId + " subscribed to: Topic " + topic + " Partition Id " + partition + " Offset "
+              + record.getOffset());
         }
         break;
       case UNSUBSCRIBE:

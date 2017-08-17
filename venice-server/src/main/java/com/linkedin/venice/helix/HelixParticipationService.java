@@ -152,6 +152,13 @@ public class HelixParticipationService extends AbstractVeniceService implements 
    * check RouterServer#asyncStart() for details about asyncStart
    */
   private void asyncStart() {
+    // Record replica status in Zookeeper.
+    // Need to be started before connecting to ZK, otherwise some notification will not be sent by this notifier.
+    PushMonitorNotifier pushMonitorNotifier = new PushMonitorNotifier(
+        new HelixOfflinePushMonitorAccessor(clusterName, new ZkClient(zkAddress), new HelixAdapterSerializer()),
+        instance.getNodeId());
+
+    ingestionService.addNotifier(pushMonitorNotifier);
     CompletableFuture.runAsync(() -> {
       try {
         // Check node status before joining the cluster.
@@ -170,11 +177,6 @@ public class HelixParticipationService extends AbstractVeniceService implements 
         System.exit(1);
       }
 
-      // Record replica status in Zookeeper.
-      PushMonitorNotifier pushMonitorNotifier = new PushMonitorNotifier(
-          new HelixOfflinePushMonitorAccessor(clusterName, new ZkClient(zkAddress), new HelixAdapterSerializer()),
-          instance.getNodeId());
-      ingestionService.addNotifier(pushMonitorNotifier);
 
       serviceState.set(ServiceState.STARTED);
 
