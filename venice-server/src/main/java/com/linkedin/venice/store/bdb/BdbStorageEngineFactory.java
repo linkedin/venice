@@ -314,6 +314,11 @@ public class BdbStorageEngineFactory implements StorageEngineFactory {
 
         // Try to delete the BDB directory associated
         File bdbDir = environment.getHome();
+
+        // The environment should be closed before deleting the log files in it;
+        // otherwise, exceptions may be thrown by the BDB cleaner thread because
+        // the cleaner thread finds that some log files are missing.
+        environment.close();
         if (bdbDir.exists() && bdbDir.isDirectory()) {
           String bdbDirPath = bdbDir.getPath();
           try {
@@ -326,7 +331,6 @@ public class BdbStorageEngineFactory implements StorageEngineFactory {
           }
         }
 
-        environment.close();
         this.environments.remove(storeName);
         logger.info("Successfully closed the environment for store name : " + storeName);
       }
