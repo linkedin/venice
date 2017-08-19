@@ -35,6 +35,7 @@ import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
 import com.linkedin.venice.helix.HelixReadWriteStoreRepository;
 import com.linkedin.venice.helix.Replica;
 import com.linkedin.venice.meta.HybridStoreConfig;
+import com.linkedin.venice.meta.RoutersClusterConfig;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.meta.Instance;
@@ -1073,6 +1074,18 @@ public class VeniceParentHelixAdmin implements Admin {
   @Override
   public Optional<AdminCommandExecutionTracker> getAdminCommandExecutionTracker() {
     return Optional.of(adminCommandExecutionTracker);
+  }
+
+  @Override
+  public RoutersClusterConfig getRoutersClusterConfig(String clusterName) {
+    throw new VeniceUnsupportedOperationException("getRoutersClusterConfig");
+  }
+
+  @Override
+  public void updateRoutersClusterConfig(String clusterName, Optional<Boolean> isThrottlingEnable,
+      Optional<Boolean> isQuotaRebalancedEnable, Optional<Boolean> isMaxCapaictyProtectionEnabled,
+      Optional<Integer> expectedRouterCount) {
+    throw new VeniceUnsupportedOperationException("updateRoutersClusterConfig");
   }
 
   @Override

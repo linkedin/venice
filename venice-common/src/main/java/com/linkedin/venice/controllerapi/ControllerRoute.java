@@ -48,7 +48,12 @@ public enum ControllerRoute {
   EXECUTION("/execution", Arrays.asList(EXECUTION_ID)),
   LAST_SUCCEED_EXECUTION_ID("/last_succeed_execution_id", Arrays.asList()),
 
-  STORAGE_ENGINE_OVERHEAD_RATIO("/storage_engine_overhead_ratio", Arrays.asList(NAME));
+  STORAGE_ENGINE_OVERHEAD_RATIO("/storage_engine_overhead_ratio", Arrays.asList(NAME)),
+
+  ENABLE_THROTTLING("/enable_throttling", Arrays.asList(STATUS)),
+  ENABLE_MAX_CAPACITY_PROTECTION("/enable_max_capacity_protection", Arrays.asList(STATUS)),
+  ENABLE_QUOTA_REBALANCED("/enable_quota_rebalanced", Arrays.asList(STATUS, EXPECTED_ROUTER_COUNT)),
+  GET_ROUTERS_CLUSTER_CONFIG("/get_routers_cluster_config", Arrays.asList());
 
   private final String path;
   private final List<String> params;

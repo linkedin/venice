@@ -19,6 +19,7 @@ import com.linkedin.venice.controllerapi.MultiVersionResponse;
 import com.linkedin.venice.controllerapi.NewStoreResponse;
 import com.linkedin.venice.controllerapi.OwnerResponse;
 import com.linkedin.venice.controllerapi.PartitionResponse;
+import com.linkedin.venice.controllerapi.RoutersClusterConfigResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.TrackableControllerResponse;
@@ -204,6 +205,20 @@ public class AdminTool {
         showSchemas(cmd);
       } else if(cmd.hasOption(Command.GET_EXECUTION.toString())){
         getExecution(cmd, clusterName);
+      } else if (cmd.hasOption(Command.ENABLE_THROTTLING.toString())) {
+        enableThrottling(true);
+      } else if (cmd.hasOption(Command.DISABLE_THROTTLING.toString())) {
+        enableThrottling(false);
+      } else if (cmd.hasOption(Command.ENABLE_MAX_CAPACITY_PROTECTION.toString())) {
+        enableMaxCapacityProtection(true);
+      } else if (cmd.hasOption(Command.DIABLE_MAX_CAPACITY_PROTECTION.toString())) {
+        enableMaxCapacityProtection(false);
+      } else if (cmd.hasOption(Command.ENABLE_QUTOA_REBALANCE.toString())) {
+        enableQuotaRebalance(cmd, true);
+      } else if (cmd.hasOption(Command.DISABLE_QUTOA_REBALANCE.toString())) {
+        enableQuotaRebalance(cmd, false);
+      } else if (cmd.hasOption(Command.GET_ROUTERS_CLUSTER_CONFIG.toString())) {
+        getRoutersClusterConfig();
       } else {
         StringJoiner availableCommands = new StringJoiner(", ");
         for (Command c : Command.values()){
@@ -498,6 +513,33 @@ public class AdminTool {
     ControllerResponse response = controllerClient.removeNodeFromCluster(storageNodeId);
     printSuccess(response);
   }
+
+  private static void enableThrottling(boolean enable) {
+    ControllerResponse response = controllerClient.enableThrotting(enable);
+    printSuccess(response);
+  }
+
+  private static void enableMaxCapacityProtection(boolean enable) {
+    ControllerResponse response = controllerClient.enableMaxCapacityProtection(enable);
+    printSuccess(response);
+  }
+
+  private static void enableQuotaRebalance(CommandLine cmd, boolean enable) {
+    int expectedRouterCount = 0;
+    if (enable) {
+      expectedRouterCount = Integer.valueOf(getRequiredArgument(cmd, Arg.EXPECTED_ROUTER_COUNT));
+    }
+    ControllerResponse response = controllerClient.enableQuotaRebalanced(enable, expectedRouterCount);
+    printSuccess(response);
+  }
+
+  private static void getRoutersClusterConfig() {
+    RoutersClusterConfigResponse response = controllerClient.getRoutersClusterConfig();
+    printObject(response);
+  }
+
+
+
 
 
   /* Things that are not commands */

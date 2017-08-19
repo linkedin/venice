@@ -11,9 +11,11 @@ import com.linkedin.venice.helix.HelixReadWriteSchemaRepository;
 import com.linkedin.venice.helix.HelixStoreGraveyard;
 import com.linkedin.venice.helix.Replica;
 import com.linkedin.venice.helix.ResourceAssignment;
+import com.linkedin.venice.helix.ZkRoutersClusterManager;
 import com.linkedin.venice.helix.ZkWhitelistAccessor;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.InstanceStatus;
+import com.linkedin.venice.meta.RoutersClusterConfig;
 import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.meta.StoreGraveyard;
 import com.linkedin.venice.pushmonitor.KillOfflinePushMessage;
@@ -1521,6 +1523,31 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     @Override
     public Optional<AdminCommandExecutionTracker> getAdminCommandExecutionTracker() {
         return Optional.empty();
+    }
+
+    @Override
+    public RoutersClusterConfig getRoutersClusterConfig(String clusterName) {
+        checkControllerMastership(clusterName);
+        ZkRoutersClusterManager routersClusterManager = getVeniceHelixResource(clusterName).getRoutersClusterManager();
+        return routersClusterManager.getRoutersClusterConfig();
+    }
+
+    @Override
+    public void updateRoutersClusterConfig(String clusterName, Optional<Boolean> isThrottlingEnable,
+        Optional<Boolean> isQuotaRebalancedEnable, Optional<Boolean> isMaxCapaictyProtectionEnabled,
+        Optional<Integer> expectedRouterCount) {
+        ZkRoutersClusterManager routersClusterManager = getVeniceHelixResource(clusterName).getRoutersClusterManager();
+
+        checkControllerMastership(clusterName);
+        if (isThrottlingEnable.isPresent()) {
+            routersClusterManager.enableThrottling(isThrottlingEnable.get());
+        }
+        if (isMaxCapaictyProtectionEnabled.isPresent()) {
+            routersClusterManager.enableMaxCapacityProtection(isMaxCapaictyProtectionEnabled.get());
+        }
+        if (isQuotaRebalancedEnable.isPresent() && expectedRouterCount.isPresent()) {
+            routersClusterManager.enableQuotaRebalance(isQuotaRebalancedEnable.get(), expectedRouterCount.get());
+        }
     }
 
     protected void startMonitorOfflinePush(String clusterName, String kafkaTopic, int numberOfPartition,

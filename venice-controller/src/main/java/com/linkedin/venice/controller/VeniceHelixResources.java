@@ -5,6 +5,7 @@ import com.linkedin.venice.controller.stats.AggPartitionHealthStats;
 import com.linkedin.venice.helix.HelixOfflinePushMonitorAccessor;
 import com.linkedin.venice.helix.HelixStatusMessageChannel;
 import com.linkedin.venice.helix.HelixStoreGraveyard;
+import com.linkedin.venice.helix.ZkRoutersClusterManager;
 import com.linkedin.venice.meta.StoreCleaner;
 import com.linkedin.venice.meta.StoreGraveyard;
 import com.linkedin.venice.pushmonitor.OfflinePushMonitor;
@@ -28,6 +29,8 @@ public class VeniceHelixResources implements VeniceResource {
   private final VeniceControllerClusterConfig config;
   private final OfflinePushMonitor OfflinePushMonitor;
   private final HelixStoreGraveyard storeGraveyard;
+  private final ZkRoutersClusterManager routersClusterManager;
+  private final AggPartitionHealthStats aggPartitionHealthStats;
 
   public VeniceHelixResources(String clusterName,
                               ZkClient zkClient,
@@ -46,7 +49,8 @@ public class VeniceHelixResources implements VeniceResource {
     this.OfflinePushMonitor = new OfflinePushMonitor(clusterName, routingDataRepository,
         new HelixOfflinePushMonitorAccessor(clusterName, zkClient, adapterSerializer), storeCleaner, metadataRepository);
     storeGraveyard = new HelixStoreGraveyard(zkClient, adapterSerializer, clusterName);
-    AggPartitionHealthStats aggPartitionHealthStats =
+    routersClusterManager = new ZkRoutersClusterManager(zkClient, adapterSerializer, clusterName);
+    aggPartitionHealthStats =
         new AggPartitionHealthStats(metricsRepository, routingDataRepository, metadataRepository,
             config.getReplicaFactor());
   }
@@ -58,6 +62,7 @@ public class VeniceHelixResources implements VeniceResource {
     schemaRepository.refresh();
     routingDataRepository.refresh();
     OfflinePushMonitor.loadAllPushes();
+    routersClusterManager.refresh();
   }
 
   @Override
@@ -65,6 +70,7 @@ public class VeniceHelixResources implements VeniceResource {
     metadataRepository.clear();
     schemaRepository.clear();
     routingDataRepository.clear();
+    routersClusterManager.clear();
   }
 
   public HelixReadWriteStoreRepository getMetadataRepository() {
@@ -98,4 +104,11 @@ public class VeniceHelixResources implements VeniceResource {
     return storeGraveyard;
   }
 
+  public ZkRoutersClusterManager getRoutersClusterManager() {
+    return routersClusterManager;
+  }
+
+  public AggPartitionHealthStats getAggPartitionHealthStats() {
+    return aggPartitionHealthStats;
+  }
 }

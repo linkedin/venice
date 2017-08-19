@@ -84,4 +84,13 @@ public class RoutersClusterConfig {
     result = 31 * result + (maxCapacityProtectionEnabled ? 1 : 0);
     return result;
   }
+
+  public RoutersClusterConfig cloneRoutesClusterConfig(){
+    RoutersClusterConfig config = new RoutersClusterConfig();
+    config.setThrottlingEnabled(isThrottlingEnabled());
+    config.setQuotaRebalanceEnabled(isQuotaRebalanceEnabled());
+    config.setMaxCapacityProtectionEnabled(isMaxCapacityProtectionEnabled());
+    config.setExpectedRouterCount(getExpectedRouterCount());
+    return config;
+  }
 }

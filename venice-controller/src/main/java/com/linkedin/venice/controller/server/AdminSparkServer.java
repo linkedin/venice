@@ -135,6 +135,13 @@ public class AdminSparkServer extends AbstractVeniceService {
 
     httpService.get(STORAGE_ENGINE_OVERHEAD_RATIO.getPath(), StoresRoutes.getStorageEngineOverheadRatio(admin));
 
+    httpService.post(ENABLE_THROTTLING.getPath(), RoutersClusterConfigRoutes.enableThrottling(admin));
+    httpService.post(ENABLE_MAX_CAPACITY_PROTECTION.getPath(), RoutersClusterConfigRoutes.enableMaxCapacityProtection(admin));
+    httpService.post(ENABLE_QUOTA_REBALANCED.getPath(), RoutersClusterConfigRoutes.enableQuotaRebalanced(admin));
+
+    httpService.get(GET_ROUTERS_CLUSTER_CONFIG.getPath(), RoutersClusterConfigRoutes.getRoutersClusterConfig(admin));
+
+
     httpService.awaitInitialization(); // Wait for server to be initialized
 
     // There is no async process in this function, so we are completely finished with the start up process.

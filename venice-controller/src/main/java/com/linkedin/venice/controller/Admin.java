@@ -2,6 +2,7 @@ package com.linkedin.venice.controller;
 
 import com.linkedin.venice.controller.kafka.consumer.AdminConsumerService;
 import com.linkedin.venice.helix.Replica;
+import com.linkedin.venice.meta.RoutersClusterConfig;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.meta.Instance;
@@ -302,6 +303,18 @@ public interface Admin {
     * Get the tracker used to track the execution of the admin command.
     */
     Optional<AdminCommandExecutionTracker> getAdminCommandExecutionTracker();
+
+    /**
+     * Get the cluster level config for all routers.
+     */
+    RoutersClusterConfig getRoutersClusterConfig(String clusterName);
+
+    /**
+     * Update the cluster level for all routers.
+     */
+    void updateRoutersClusterConfig(String clusterName, Optional<Boolean> isThrottlingEnable,
+        Optional<Boolean> isQuotaRebalancedEnable, Optional<Boolean> isMaxCapaictyProtectionEnabled,
+        Optional<Integer> expectedRouterCount);
 
     void close();
 }

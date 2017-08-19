@@ -603,12 +603,41 @@ public class TestAdminSparkServer {
     Assert.assertFalse(execution.isSucceedInAllFabric());
   }
 
-  @Test
   public void controllerClientProvidesErrorWhenRequestingTopicForStoreThatDoesNotExist() throws IOException {
     String storeNameDoesNotExist = TestUtils.getUniqueString("no-store");
     String pushId = TestUtils.getUniqueString("no-store-push");
-    VersionCreationResponse vcr = controllerClient.requestTopicForWrites(storeNameDoesNotExist, 1L, ControllerApiConstants.PushType.STREAM, pushId);
-    Assert.assertTrue(vcr.isError(), "Request topic for store that has not been created must return error, instead it returns: "
-        + new ObjectMapper().writeValueAsString(vcr));
+    VersionCreationResponse vcr =
+        controllerClient.requestTopicForWrites(storeNameDoesNotExist, 1L, ControllerApiConstants.PushType.STREAM, pushId);
+    Assert.assertTrue(vcr.isError(),
+        "Request topic for store that has not been created must return error, instead it returns: " + new ObjectMapper()
+            .writeValueAsString(vcr));
+  }
+
+  public void controllerClientCanEnableThrottling(){
+    controllerClient.enableThrotting(false);
+    Assert.assertFalse(controllerClient.getRoutersClusterConfig().getConfig().isThrottlingEnabled());
+    controllerClient.enableThrotting(true);
+    Assert.assertTrue(controllerClient.getRoutersClusterConfig().getConfig().isThrottlingEnabled());
+
+  }
+
+  @Test
+  public void controllerClientCanEnableMaxCapacityProtection(){
+    controllerClient.enableMaxCapacityProtection(false);
+    Assert.assertFalse(controllerClient.getRoutersClusterConfig().getConfig().isMaxCapacityProtectionEnabled());
+    controllerClient.enableMaxCapacityProtection(true);
+    Assert.assertTrue(controllerClient.getRoutersClusterConfig().getConfig().isMaxCapacityProtectionEnabled());
+  }
+
+  @Test
+  public void controllerClientCanEnableQuotaRebalance() {
+    int expectedRouterCount = 100;
+    controllerClient.enableQuotaRebalanced(false, expectedRouterCount);
+    Assert.assertFalse(controllerClient.getRoutersClusterConfig().getConfig().isQuotaRebalanceEnabled());
+    Assert.assertEquals(controllerClient.getRoutersClusterConfig().getConfig().getExpectedRouterCount(),
+        expectedRouterCount);
+    // Afte enable this feature, Venice don't need expected router count, because it will use the live router count, so could give any expected router count here.
+    controllerClient.enableQuotaRebalanced(true, 0);
+    Assert.assertTrue(controllerClient.getRoutersClusterConfig().getConfig().isQuotaRebalanceEnabled());
   }
 }
