@@ -360,42 +360,6 @@ public class ControllerClient implements Closeable {
     }
   }
 
-  @Deprecated // use getStore
-  private VersionResponse queryCurrentVersion(String clusterName, String storeName)
-      throws ExecutionException, InterruptedException, IOException {
-    List<NameValuePair> queryParams = newParams(clusterName);
-    queryParams.add(new BasicNameValuePair(ControllerApiConstants.NAME, storeName));
-    String responseJson = getRequest(ControllerRoute.CURRENT_VERSION.getPath(), queryParams);
-    return mapper.readValue(responseJson, VersionResponse.class);
-  }
-
-  @Deprecated // use getStore
-  public static VersionResponse queryCurrentVersion(String urlsToFindMasterController, String clusterName, String storeName){
-    try (ControllerClient client = new ControllerClient(clusterName, urlsToFindMasterController)){
-      return client.queryCurrentVersion(clusterName, storeName);
-    } catch (Exception e){
-      return handleError(new VeniceException("Error querying current version for store: " + storeName, e), new VersionResponse());
-    }
-  }
-
-  @Deprecated // use getStore
-  private MultiVersionResponse queryActiveVersions(String clusterName, String storeName)
-      throws ExecutionException, InterruptedException, IOException {
-    List<NameValuePair> queryParams = newParams(clusterName);
-    queryParams.add(new BasicNameValuePair(ControllerApiConstants.NAME, storeName));
-    String responseJson = getRequest(ControllerRoute.ACTIVE_VERSIONS.getPath(), queryParams);
-    return mapper.readValue(responseJson, MultiVersionResponse.class);
-  }
-
-  @Deprecated // use getStore
-  public static MultiVersionResponse queryActiveVersions(String urlsToFindMasterController, String clusterName, String storeName){
-    try (ControllerClient client = new ControllerClient(clusterName, urlsToFindMasterController)){
-      return client.queryActiveVersions(clusterName, storeName);
-    } catch (Exception e){
-      return handleError(new VeniceException("Error querying active version for store: " + storeName, e), new MultiVersionResponse());
-    }
-  }
-
   public ControllerResponse enableStoreWrites(String storeName, boolean enable) {
     return enableStore(storeName, enable, ControllerApiConstants.WRITE_OPERATION);
   }

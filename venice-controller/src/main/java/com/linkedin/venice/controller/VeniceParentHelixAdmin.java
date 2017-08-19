@@ -29,6 +29,7 @@ import com.linkedin.venice.controllerapi.AdminCommandExecution;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.D2ControllerClient;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
+import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
 import com.linkedin.venice.helix.HelixReadWriteStoreRepository;
@@ -458,7 +459,34 @@ public class VeniceParentHelixAdmin implements Admin {
 
   @Override
   public int getCurrentVersion(String clusterName, String storeName) {
-    throw new VeniceUnsupportedOperationException("getCurrentVersion");
+    throw new VeniceUnsupportedOperationException("Please use getCurrentVersionsForMultiColos in Parent controller.");
+  }
+
+  /**
+   * Query the current version for the given store. In parent colo, Venice do not update the current version because
+   * there is not offline push monitor. So parent controller will query each prod controller and return the map.
+   */
+  @Override
+  public Map<String, Integer> getCurrentVersionsForMultiColos(String clusterName, String storeName) {
+    Map<String, ControllerClient> controllerClients = getControllerClientMap(clusterName);
+    return getCurrentVersionForMultiColos(clusterName, storeName, controllerClients);
+  }
+
+  protected Map<String, Integer> getCurrentVersionForMultiColos(String clusterName, String storeName,
+      Map<String, ControllerClient> controllerClients) {
+    Set<String> prodColos = controllerClients.keySet();
+    Map<String, Integer> result = new HashMap<>();
+    for (String colo : prodColos) {
+      StoreResponse response = controllerClients.get(colo).getStore(storeName);
+      if (response.isError()) {
+        logger.error(
+            "Could not query store from colo: " + colo + " for cluster: " + clusterName + ". " + response.getError());
+        result.put(colo, AdminConsumptionTask.IGNORED_CURRENT_VERSION);
+      } else {
+        result.put(colo,response.getStore().getCurrentVersion());
+      }
+    }
+    return result;
   }
 
   @Override
@@ -631,7 +659,8 @@ public class VeniceParentHelixAdmin implements Admin {
 
   @Override
   public void setStoreReadWriteability(String clusterName, String storeName, boolean isAccessible) {
-    throw new VeniceUnsupportedOperationException("setStoreReadWriteability");
+    setStoreReadability(clusterName, storeName, isAccessible);
+    setStoreWriteability(clusterName, storeName, isAccessible);
   }
 
   @Override

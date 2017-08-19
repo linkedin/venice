@@ -88,9 +88,6 @@ public class AdminSparkServer extends AbstractVeniceService {
     httpService.get(LIST_STORES.getPath(), StoresRoutes.getAllStores(admin));
     httpService.get(CLUSTER_HELATH_STORES.getPath(), StoresRoutes.getAllStoresStatuses(admin));
     httpService.get(STORE.getPath(), StoresRoutes.getStore(admin));
-    // With the get STORE endpoint above, the following endpoints can be deprecated.
-    httpService.get(CURRENT_VERSION.getPath(), CurrentVersion.getRoute(admin));
-    httpService.get(ACTIVE_VERSIONS.getPath(), ActiveVersions.getRoute(admin));
 
     httpService.get(JOB.getPath(), JobRoutes.jobStatus(admin));
     httpService.post(KILL_OFFLINE_PUSH_JOB.getPath(), JobRoutes.killOfflinePushJob(admin));
