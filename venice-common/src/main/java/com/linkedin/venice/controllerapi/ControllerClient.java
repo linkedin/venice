@@ -644,6 +644,54 @@ public class ControllerClient implements Closeable {
     }
   }
 
+  public ControllerResponse enableThrotting(boolean isThrottlingEnabled) {
+    try {
+      List<NameValuePair> queryParams = newParams(clusterName);
+      queryParams.add(new BasicNameValuePair(ControllerApiConstants.STATUS, String.valueOf(isThrottlingEnabled)));
+      String responseJson = postRequest(ControllerRoute.ENABLE_THROTTLING.getPath(), queryParams);
+      return mapper.readValue(responseJson, ControllerResponse.class);
+    } catch (Exception e) {
+      return handleError(new VeniceException("Error enabling the throttling feature.", e), new ControllerResponse());
+    }
+  }
+
+  public ControllerResponse enableMaxCapacityProtection(boolean isMaxCapacityProtion) {
+    try {
+      List<NameValuePair> queryParams = newParams(clusterName);
+      queryParams.add(new BasicNameValuePair(ControllerApiConstants.STATUS, String.valueOf(isMaxCapacityProtion)));
+      String responseJson = postRequest(ControllerRoute.ENABLE_MAX_CAPACITY_PROTECTION.getPath(), queryParams);
+      return mapper.readValue(responseJson, ControllerResponse.class);
+    } catch (Exception e) {
+      return handleError(new VeniceException("Error enabling the max capacity protection feature.", e),
+          new ControllerResponse());
+    }
+  }
+
+  public ControllerResponse enableQuotaRebalanced(boolean isQuotaRebalanced, int expectRouterCount) {
+    try {
+      List<NameValuePair> queryParams = newParams(clusterName);
+      queryParams.add(new BasicNameValuePair(ControllerApiConstants.STATUS, String.valueOf(isQuotaRebalanced)));
+      queryParams.add(
+          new BasicNameValuePair(ControllerApiConstants.EXPECTED_ROUTER_COUNT, String.valueOf(expectRouterCount)));
+      String responseJson = postRequest(ControllerRoute.ENABLE_QUOTA_REBALANCED.getPath(), queryParams);
+      return mapper.readValue(responseJson, ControllerResponse.class);
+    } catch (Exception e) {
+      return handleError(new VeniceException("Error enabling the quota rebalanced feature.", e),
+          new ControllerResponse());
+    }
+  }
+
+  public RoutersClusterConfigResponse getRoutersClusterConfig() {
+    try {
+      List<NameValuePair> queryParams = newParams(clusterName);
+      String responseJson = getRequest(ControllerRoute.GET_ROUTERS_CLUSTER_CONFIG.getPath(), queryParams);
+      return mapper.readValue(responseJson, RoutersClusterConfigResponse.class);
+    } catch (Exception e) {
+      return handleError(new VeniceException("Error getting the routers cluster config.", e),
+          new RoutersClusterConfigResponse());
+    }
+  }
+
   /***
    * Add all global parameters in this method. Always use a form of this method to generate
    * a new list of NameValuePair objects for making HTTP requests.

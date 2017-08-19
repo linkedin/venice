@@ -71,7 +71,27 @@ public enum Command {
       new Arg[] {Arg.OWNER, Arg.PARTITION_COUNT, Arg.VERSION, Arg.READABILITY,
                  Arg.WRITEABILITY,Arg.STORAGE_QUOTA, Arg.READ_QUOTA}),
   EMPTY_PUSH("empty-push", "Do an empty push into an existing store",
-      new Arg[] {Arg.URL, Arg.CLUSTER, Arg.STORE, Arg.PUSH_ID, Arg.STORE_SIZE});
+      new Arg[]{Arg.URL, Arg.CLUSTER, Arg.STORE, Arg.PUSH_ID, Arg.STORE_SIZE}),
+  ENABLE_THROTTLING("enable-throttling", "Enable the feature that throttling read request on all routers.",
+      new Arg[]{Arg.URL, Arg.CLUSTER}),
+  DISABLE_THROTTLING("disable-throttling", "Disable the feature that throttling read request on all routers.",
+      new Arg[]{Arg.URL, Arg.CLUSTER}),
+  ENABLE_MAX_CAPACITY_PROTECTION("enable-max-capacity-protection",
+      "Enable the feature that prevent read request usage exceeding the max capacity on all routers.",
+      new Arg[]{Arg.URL, Arg.CLUSTER}),
+  DIABLE_MAX_CAPACITY_PROTECTION("disable-max-capacity-protection",
+      "Disable the feature that prevent read request usage exceeding the max capacity on all routers..",
+      new Arg[]{Arg.URL, Arg.CLUSTER}),
+  ENABLE_QUTOA_REBALANCE("enable-quota-rebalance",
+      "Enable the feature that quota could be rebalanced once live router count is changed on all routers.",
+      new Arg[]{Arg.URL, Arg.CLUSTER, Arg.EXPECTED_ROUTER_COUNT}),
+  DISABLE_QUTOA_REBALANCE("disable-quota-rebalance",
+      "Disable the feature that quota could be rebalanced once live router count is changed on all routers.",
+      new Arg[]{Arg.URL, Arg.CLUSTER}),
+  GET_ROUTERS_CLUSTER_CONFIG("get-routers-cluster-config", "Get cluster level router's config.",
+      new Arg[]{Arg.URL, Arg.CLUSTER});
+
+
 
   private final String commandName;
   private final String description;

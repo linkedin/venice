@@ -56,6 +56,7 @@ public class ZkRoutersClusterManager implements RoutersClusterManager, IZkChildL
     routersClusterConfig = dataAccessor.get(getRouterRootPath(), null, AccessOption.PERSISTENT);
     // No config found in ZK, use the default config.
     if (routersClusterConfig == null) {
+      createRouterClusterConfig();
       routersClusterConfig = new RoutersClusterConfig();
     }
   }
@@ -174,6 +175,7 @@ public class ZkRoutersClusterManager implements RoutersClusterManager, IZkChildL
       currentData.setThrottlingEnabled(enable);
       return currentData;
     });
+    routersClusterConfig.setThrottlingEnabled(enable);
   }
 
   @Override
@@ -188,6 +190,8 @@ public class ZkRoutersClusterManager implements RoutersClusterManager, IZkChildL
       }
       return currentData;
     });
+    routersClusterConfig.setQuotaRebalanceEnabled(enable);
+    routersClusterConfig.setExpectedRouterCount(expectRouterCount);
   }
 
   private void validateExpectRouterCount(int expectedRouterCount) {
@@ -203,6 +207,7 @@ public class ZkRoutersClusterManager implements RoutersClusterManager, IZkChildL
       currentData.setMaxCapacityProtectionEnabled(enable);
       return currentData;
     });
+    routersClusterConfig.setMaxCapacityProtectionEnabled(enable);
   }
 
   @Override
@@ -219,11 +224,8 @@ public class ZkRoutersClusterManager implements RoutersClusterManager, IZkChildL
     }
   }
 
-  /**
-   * Only for test usage.
-   */
-  protected RoutersClusterConfig getRoutersClusterConfig() {
-    return this.routersClusterConfig;
+  public RoutersClusterConfig getRoutersClusterConfig() {
+    return routersClusterConfig.cloneRoutesClusterConfig();
   }
 
   protected void changeLiveRouterCount(int newRouterCount) {
