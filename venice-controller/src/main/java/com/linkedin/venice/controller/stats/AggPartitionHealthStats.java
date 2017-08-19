@@ -21,7 +21,6 @@ import org.apache.log4j.Logger;
  * our metrics.
  */
 public class AggPartitionHealthStats extends AbstractVeniceAggStats<PartitionHealthStats> implements RoutingDataRepository.RoutingDataChangedListener {
-  public static final String DEFAULT_PARTITION_HEALTH_METRIC_NAME = "controller_partition_health";
 
   private static final Logger logger = Logger.getLogger(AggPartitionHealthStats.class);
 

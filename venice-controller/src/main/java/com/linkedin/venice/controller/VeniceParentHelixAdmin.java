@@ -88,9 +88,9 @@ public class VeniceParentHelixAdmin implements Admin {
   private final OffsetManager offsetManager;
   private final byte[] emptyKeyByteArr = new byte[0];
   private final AdminOperationSerializer adminOperationSerializer = new AdminOperationSerializer();
-  private final VeniceControllerConfig veniceControllerConfig;
+  private final VeniceControllerMultiClusterConfig multiClusterConfigs;
   private final Lock lock = new ReentrantLock();
-  private final AdminCommandExecutionTracker adminCommandExecutionTracker;
+  private final Map<String, AdminCommandExecutionTracker> adminCommandExecutionTrackers;
   private long lastTopicCreationTime = -1;
   private Time timer = new SystemTime();
 
@@ -112,15 +112,19 @@ public class VeniceParentHelixAdmin implements Admin {
 
   private final int waitingTimeForConsumptionMs;
 
-  public VeniceParentHelixAdmin(VeniceHelixAdmin veniceHelixAdmin, VeniceControllerConfig config) {
+  public VeniceParentHelixAdmin(VeniceHelixAdmin veniceHelixAdmin, VeniceControllerMultiClusterConfig multiClusterConfigs) {
     this.veniceHelixAdmin = veniceHelixAdmin;
-    this.veniceControllerConfig = config;
-    this.waitingTimeForConsumptionMs = config.getParentControllerWaitingTimeForConsumptionMs();
+    this.multiClusterConfigs = multiClusterConfigs;
+    this.waitingTimeForConsumptionMs = multiClusterConfigs.getParentControllerWaitingTimeForConsumptionMs();
     this.veniceWriterMap = new ConcurrentHashMap<>();
     this.offsetManager = new AdminOffsetManager(this.veniceHelixAdmin.getZkClient(), this.veniceHelixAdmin.getAdapterSerializer());
-    this.adminCommandExecutionTracker =
-        new AdminCommandExecutionTracker(config.getClusterName(), veniceHelixAdmin.getExecutionIdAccessor(),
-            getControllerClientMap(config.getClusterName()));
+    this.adminCommandExecutionTrackers = new HashMap<>();
+    for (String cluster : multiClusterConfigs.getClusters()) {
+      VeniceControllerConfig config = multiClusterConfigs.getConfigForCluster(cluster);
+      adminCommandExecutionTrackers.put(cluster,
+          new AdminCommandExecutionTracker(config.getClusterName(), veniceHelixAdmin.getExecutionIdAccessor(),
+              getControllerClientMap(config.getClusterName())));
+    }
     this.pushStrategyZKAccessor = new MigrationPushStrategyZKAccessor(veniceHelixAdmin.getZkClient(),
         veniceHelixAdmin.getAdapterSerializer());
   }
@@ -146,7 +150,7 @@ public class VeniceParentHelixAdmin implements Admin {
       logger.info("Admin topic: " + topicName + " for cluster: " + clusterName + " already exists.");
     } else {
       // Create Kafka topic
-      topicManager.createTopic(topicName, AdminTopicUtils.PARTITION_NUM_FOR_ADMIN_TOPIC, veniceControllerConfig.getKafkaReplicaFactor());
+      topicManager.createTopic(topicName, AdminTopicUtils.PARTITION_NUM_FOR_ADMIN_TOPIC, multiClusterConfigs.getKafkaReplicaFactor());
       logger.info("Created admin topic: " + topicName + " for cluster: " + clusterName);
     }
 
@@ -159,7 +163,7 @@ public class VeniceParentHelixAdmin implements Admin {
        * 2. Data out of order;
        * 3. Data duplication;
        */
-      return VeniceWriterFactory.get().getBasicVeniceWriter(veniceControllerConfig.getKafkaBootstrapServers(), topicName, getTimer());
+      return VeniceWriterFactory.get().getBasicVeniceWriter(multiClusterConfigs.getKafkaBootstrapServers(), topicName, getTimer());
     });
   }
 
@@ -172,6 +176,7 @@ public class VeniceParentHelixAdmin implements Admin {
     if (!veniceWriterMap.containsKey(clusterName)) {
       throw new VeniceException("Cluster: " + clusterName + " is not started yet!");
     }
+    AdminCommandExecutionTracker adminCommandExecutionTracker = adminCommandExecutionTrackers.get(clusterName);
     AdminCommandExecution execution =
         adminCommandExecutionTracker.createExecution(AdminMessageType.valueOf(message).name());
     message.executionId = execution.getExecutionId();
@@ -208,8 +213,8 @@ public class VeniceParentHelixAdmin implements Admin {
         String errMsg = "Timeout " + waitingTimeForConsumptionMs + "ms waiting for admin consumption to catch up.";
         errMsg += "  consumedOffset=" + consumedOffset + " lastOffset=" + lastOffset;
         errMsg += "  Last exception: " + exceptionMsg;
-        if (getAdminCommandExecutionTracker().isPresent()){
-          errMsg += "  RunningExecutions: " + getAdminCommandExecutionTracker().get().executionsAsString();
+        if (getAdminCommandExecutionTracker(clusterName).isPresent()){
+          errMsg += "  RunningExecutions: " + getAdminCommandExecutionTracker(clusterName).get().executionsAsString();
         }
         throw new VeniceException(errMsg, lastException);
       }
@@ -416,9 +421,9 @@ public class VeniceParentHelixAdmin implements Admin {
       // So we should sleep at least TopicCreationThrottlingTimeWindowMs here to prevent creating topic too frequently.
       timeSinceLastTopicCreation = 0;
     }
-    if (timeSinceLastTopicCreation < veniceControllerConfig.getTopicCreationThrottlingTimeWindowMs()) {
+    if (timeSinceLastTopicCreation < multiClusterConfigs.getTopicCreationThrottlingTimeWindowMs()) {
       try {
-        timer.sleep(veniceControllerConfig.getTopicCreationThrottlingTimeWindowMs() - timeSinceLastTopicCreation);
+        timer.sleep(multiClusterConfigs.getTopicCreationThrottlingTimeWindowMs() - timeSinceLastTopicCreation);
       } catch (InterruptedException e) {
         throw new VeniceException(
             "Topic creation throttler is interrupted while blocking too frequent topic creation operation.", e);
@@ -723,8 +728,8 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   @Override
-  public double getStorageEngineOverheadRatio() {
-    return veniceHelixAdmin.getStorageEngineOverheadRatio();
+  public double getStorageEngineOverheadRatio(String clusterName) {
+    return veniceHelixAdmin.getStorageEngineOverheadRatio(clusterName);
   }
 
   @Override
@@ -802,7 +807,7 @@ public class VeniceParentHelixAdmin implements Admin {
 
   private Map<String, ControllerClient> getControllerClientMap(String clusterName){
     Map<String, ControllerClient> controllerClients = new HashMap<>();
-
+    VeniceControllerConfig veniceControllerConfig = multiClusterConfigs.getConfigForCluster(clusterName);
     veniceControllerConfig.getChildClusterMap().entrySet().
       forEach(entry -> controllerClients.put(entry.getKey(), new ControllerClient(clusterName, entry.getValue())));
     veniceControllerConfig.getChildClusterD2Map().entrySet().
@@ -951,7 +956,7 @@ public class VeniceParentHelixAdmin implements Admin {
 
   @Override
   public int getDatacenterCount(String clusterName){
-    return veniceControllerConfig.getChildClusterMap().size();
+    return multiClusterConfigs.getConfigForCluster(clusterName).getChildClusterMap().size();
   }
 
   @Override
@@ -1084,8 +1089,12 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   @Override
-  public Optional<AdminCommandExecutionTracker> getAdminCommandExecutionTracker() {
-    return Optional.of(adminCommandExecutionTracker);
+  public Optional<AdminCommandExecutionTracker> getAdminCommandExecutionTracker(String clusterName) {
+    if(adminCommandExecutionTrackers.containsKey(clusterName)){
+      return Optional.of(adminCommandExecutionTrackers.get(clusterName));
+    }else{
+      return Optional.empty();
+    }
   }
 
   @Override
@@ -1108,6 +1117,11 @@ public class VeniceParentHelixAdmin implements Admin {
   @Override
   public void setStorePushStrategyForMigration(String voldemortStoreName, String strategy) {
     pushStrategyZKAccessor.setPushStrategy(voldemortStoreName, strategy);
+  }
+
+  @Override
+  public Optional<String> getClusterOfStoreInMasterController(String storeName) {
+    return veniceHelixAdmin.getClusterOfStoreInMasterController(storeName);
   }
 
   @Override

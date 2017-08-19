@@ -1,5 +1,7 @@
 package com.linkedin.venice.utils;
 
+import com.linkedin.venice.controller.VeniceControllerConfig;
+import com.linkedin.venice.controller.VeniceControllerMultiClusterConfig;
 import com.linkedin.venice.helix.HelixInstanceConverter;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.OfflinePushStrategy;
@@ -9,6 +11,9 @@ import com.linkedin.venice.meta.RoutingStrategy;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.offsets.OffsetRecord;
 
+import io.tehuti.metrics.MetricsRepository;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 import java.util.function.BooleanSupplier;
@@ -120,6 +125,25 @@ public class TestUtils {
       offsetRecord.endOfPushReceived(endOfPushOffset.get());
     }
     return offsetRecord;
+  }
+
+  public static VeniceControllerMultiClusterConfig getMultiClusterConfigFromOneCluster(
+      VeniceControllerConfig controllerConfig) {
+    Map<String,VeniceControllerConfig> configMap = new HashMap<>();
+    configMap.put(controllerConfig.getClusterName(),controllerConfig);
+    return new VeniceControllerMultiClusterConfig(configMap);
+  }
+
+  public static Map<String, MetricsRepository> getMetricRepositories(String cluster){
+    Map<String, MetricsRepository> map = new HashMap<>();
+    map.put(cluster, new MetricsRepository());
+    return map;
+  }
+
+  public static Map<String, MetricsRepository> getMetricRepositories(String cluster, MetricsRepository repo){
+    Map<String, MetricsRepository> map = new HashMap<>();
+    map.put(cluster, repo);
+    return map;
   }
 
 }

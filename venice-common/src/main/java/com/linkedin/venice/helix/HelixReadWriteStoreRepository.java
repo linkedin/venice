@@ -27,9 +27,6 @@ import org.apache.log4j.Logger;
 public class HelixReadWriteStoreRepository extends HelixReadOnlyStoreRepository implements ReadWriteStoreRepository {
   private static final Logger logger = Logger.getLogger(HelixReadWriteStoreRepository.class);
 
-  //TODO get retry count from configuration.
-  private int retryCount = 2;
-
   public HelixReadWriteStoreRepository(@NotNull ZkClient zkClient, @NotNull HelixAdapterSerializer adapter,
       @NotNull String clusterName) {
     super(zkClient, adapter, clusterName);
@@ -47,7 +44,7 @@ public class HelixReadWriteStoreRepository extends HelixReadOnlyStoreRepository 
       if (!storeMap.containsKey(store.getName())) {
         throw new VeniceNoStoreException("Store:" + store.getName() + " does not exist.");
       }
-      HelixUtils.update(dataAccessor,composeStorePath(store.getName()),store,retryCount);
+      HelixUtils.update(dataAccessor,composeStorePath(store.getName()),store);
       storeMap.put(store.getName(), store);
     } finally {
       unLock();
@@ -59,7 +56,7 @@ public class HelixReadWriteStoreRepository extends HelixReadOnlyStoreRepository 
     lock();
     try {
       if (storeMap.containsKey(name)) {
-        HelixUtils.remove(dataAccessor,composeStorePath(name),retryCount);
+        HelixUtils.remove(dataAccessor,composeStorePath(name));
         storeMap.remove(name);
         triggerStoreDeletionListener(name);
         logger.info("Store:" + name + " is deleted.");
@@ -76,7 +73,7 @@ public class HelixReadWriteStoreRepository extends HelixReadOnlyStoreRepository 
       if (storeMap.containsKey(store.getName())) {
         throw new VeniceStoreAlreadyExistsException(store.getName());
       }
-      HelixUtils.update(dataAccessor,composeStorePath(store.getName()),store,retryCount);
+      HelixUtils.update(dataAccessor,composeStorePath(store.getName()),store);
       storeMap.put(store.getName(), store);
       triggerStoreCreationListener(store);
       logger.info("Store:" + store.getName() + " is added.");

@@ -9,8 +9,8 @@ import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.utils.Utils;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Properties;
-import java.util.stream.Collectors;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.common.PartitionInfo;
@@ -20,22 +20,20 @@ import org.apache.log4j.Logger;
 /**
  * Kicks off a new thread to poll kafka for new topics
  * When it discovers new topics, it creates a corresponding helix resource so storage nodes start consuming
+ * <p>
+ * TopicMonitor is shared by multiple cluster's controllers running in one physical Venice controller instance.
  */
 public class TopicMonitor extends AbstractVeniceService {
   private static final Logger logger = Logger.getLogger(TopicMonitor.class);
 
   private Admin admin;
-  private String clusterName;  /* to support multiple clusters we'll need a topic to cluster mapping instead */
   private long pollIntervalMs;
   private TopicMonitorRunnable monitor;
   private Thread runner;
-  private int replicationFactor;
 
 
-  public TopicMonitor(Admin admin, String clusterName, int replicationFactor, long pollIntervalMs) {
+  public TopicMonitor(Admin admin, long pollIntervalMs) {
     this.admin = admin;
-    this.clusterName = clusterName;
-    this.replicationFactor = replicationFactor;
     this.pollIntervalMs = pollIntervalMs;
   }
 
@@ -90,10 +88,6 @@ public class TopicMonitor extends AbstractVeniceService {
         while (!stop) {
           try {
             Thread.sleep(pollIntervalMs);
-            // No need to do anything if it is not master controller
-            if (!admin.isMasterController(clusterName)) {
-              continue;
-            }
             if (logger.isDebugEnabled()) {
               logger.debug("Polling kafka: " + admin.getKafkaBootstrapServers() + " for new topics");
             }
@@ -111,14 +105,31 @@ public class TopicMonitor extends AbstractVeniceService {
               if (Version.topicIsValidStoreVersion(topic)) {
                 String storeName = Version.parseStoreFromKafkaTopicName(topic);
                 int version = Version.parseVersionFromKafkaTopicName(topic);
+                Optional<String> clusterName = admin.getClusterOfStoreInMasterController(storeName);
+                if (!clusterName.isPresent()) {
+                  logger.debug(
+                      "Could not handle topic: " + topic + " in this controller. Store does not exist in any cluster."
+                          + " Or current controller is not the lead controller of the cluster owned that store.");
+                  continue;
+                } else if (!admin.isMasterController(clusterName.get())) {
+                  // double check the master controller.
+                  logger.debug("Could not handle topic: " + topic
+                      + " in this controller. Current controller is not the lead controller of cluster: "
+                      + clusterName.get());
+                  continue;
+                }
+                // Found the cluster for store, and this controller is the master controller for that cluster.
+                // So we could continue to create version.
                 try {
-                  Store store = admin.getStore(clusterName, storeName);
+                  Store store = admin.getStore(clusterName.get(), storeName);
                   if (null == store) {
                     throw new VeniceNoStoreException(storeName);
                   }
                   if (version > store.getLargestUsedVersionNumber()) {
                     int partitions = entry.getValue().size();
-                    admin.addVersion(clusterName, storeName, version, partitions, replicationFactor);
+
+                    admin.addVersion(clusterName.get(), storeName, version, partitions,
+                        admin.getReplicationFactor(clusterName.get(), storeName));
                   }
                 } catch (VeniceNoStoreException e) {
                   logger.warn("There is a topic " + topic + " for store " + storeName + " but that store is not initialized in Venice");
@@ -127,6 +138,9 @@ public class TopicMonitor extends AbstractVeniceService {
                   logger.info("There is a topic " + topic + " for store " + storeName + ". But store has been paused.", se);
                   continue;
                 }
+              } else {
+                logger.warn("The topic name: " + topic + " is not valid fomrat for $storeName_V$vesion");
+                continue;
               }
             }
           } catch (Exception e) {
@@ -142,13 +156,5 @@ public class TopicMonitor extends AbstractVeniceService {
         logger.info("Topic monitor stopped");
       }
     }
-  }
-
-
-  private static String logVersionNumbers(List<Version> version){
-    return version.stream()
-        .map(v -> v.getNumber())
-        .map(n -> Integer.toString(n))
-        .collect(Collectors.joining(", "));
   }
 }

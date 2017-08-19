@@ -431,7 +431,7 @@ public class TestAdminSparkServer {
     }
 
     MultiStoreStatusResponse storeResponse =
-        controllerClient.listStoresStatuses(venice.getClusterName());
+        controllerClient.listStoresStatuses();
     Assert.assertFalse(storeResponse.isError());
     //since all test cases share VeniceClusterWrapper, we get the total number of stores from the Wrapper.
     List<String> storesInCluster = storeResponse.getStoreStatusMap().entrySet()

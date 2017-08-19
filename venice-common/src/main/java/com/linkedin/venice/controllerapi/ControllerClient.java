@@ -349,7 +349,7 @@ public class ControllerClient implements Closeable {
     }
   }
 
-  public MultiStoreStatusResponse listStoresStatuses(String clusterName) {
+  public MultiStoreStatusResponse listStoresStatuses() {
     try {
       List<NameValuePair> queryParams = newParams(clusterName);
       String responseJson = getRequest(ControllerRoute.CLUSTER_HELATH_STORES.getPath(), queryParams);

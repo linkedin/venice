@@ -83,19 +83,11 @@ public class VeniceClusterWrapper extends ProcessWrapper {
     this.sslToStorageNodes = sslToStorageNodes;
   }
 
-  static ServiceProvider<VeniceClusterWrapper> generateService(int numberOfControllers, int numberOfServers,
-      int numberOfRouters, int replicaFactor, int partitionSize, boolean enableWhitelist,
-      boolean enableAutoJoinWhitelist, long delayToReblanceMS, int minActiveReplica, boolean sslToStorageNodes) {
-    /**
-     * We get the various dependencies outside of the lambda, to avoid having a time
-     * complexity of O(N^2) on the amount of retries. The calls have their own retries,
-     * so we can assume they're reliable enough.
-     */
-    String clusterName = TestUtils.getUniqueString("venice-cluster");
-    ZkServerWrapper zkServerWrapper = ServiceFactory.getZkServer();
-    KafkaBrokerWrapper kafkaBrokerWrapper = ServiceFactory.getKafkaBroker(zkServerWrapper);
-    BrooklinWrapper brooklinWrapper = ServiceFactory.getBrooklinWrapper(kafkaBrokerWrapper);
-
+  static ServiceProvider<VeniceClusterWrapper> generateService(ZkServerWrapper zkServerWrapper,
+      KafkaBrokerWrapper kafkaBrokerWrapper, BrooklinWrapper brooklinWrapper, String clusterName,
+      int numberOfControllers, int numberOfServers, int numberOfRouters, int replicaFactor, int partitionSize,
+      boolean enableWhitelist, boolean enableAutoJoinWhitelist, long delayToReblanceMS, int minActiveReplica,
+      boolean sslToStorageNodes) {
     Map<Integer, VeniceControllerWrapper> veniceControllerWrappers = new HashMap<>();
     for (int i = 0; i < numberOfControllers; i++) {
       VeniceControllerWrapper veniceControllerWrapper =
@@ -107,18 +99,39 @@ public class VeniceClusterWrapper extends ProcessWrapper {
     Map<Integer, VeniceServerWrapper> veniceServerWrappers = new HashMap<>();
     for (int i = 0; i < numberOfServers; i++) {
       VeniceServerWrapper veniceServerWrapper =
-          ServiceFactory.getVeniceServer(clusterName, kafkaBrokerWrapper, enableWhitelist, enableAutoJoinWhitelist, sslToStorageNodes);
+          ServiceFactory.getVeniceServer(clusterName, kafkaBrokerWrapper, enableWhitelist, enableAutoJoinWhitelist,
+              sslToStorageNodes);
       veniceServerWrappers.put(veniceServerWrapper.getPort(), veniceServerWrapper);
     }
 
     Map<Integer, VeniceRouterWrapper> veniceRouterWrappers = new HashMap<>();
     for (int i = 0; i < numberOfRouters; i++) {
-      VeniceRouterWrapper veniceRouterWrapper = ServiceFactory.getVeniceRouter(clusterName, kafkaBrokerWrapper, sslToStorageNodes);
+      VeniceRouterWrapper veniceRouterWrapper =
+          ServiceFactory.getVeniceRouter(clusterName, kafkaBrokerWrapper, sslToStorageNodes);
       veniceRouterWrappers.put(veniceRouterWrapper.getPort(), veniceRouterWrapper);
     }
 
-    return (serviceName, port) -> new VeniceClusterWrapper(null, clusterName, zkServerWrapper, kafkaBrokerWrapper, brooklinWrapper,
-        veniceControllerWrappers, veniceServerWrappers, veniceRouterWrappers, replicaFactor, partitionSize, delayToReblanceMS, minActiveReplica, sslToStorageNodes);
+    return (serviceName, port) -> new VeniceClusterWrapper(null, clusterName, zkServerWrapper, kafkaBrokerWrapper,
+        brooklinWrapper, veniceControllerWrappers, veniceServerWrappers, veniceRouterWrappers, replicaFactor,
+        partitionSize, delayToReblanceMS, minActiveReplica, sslToStorageNodes);
+  }
+
+  static ServiceProvider<VeniceClusterWrapper> generateService(int numberOfControllers, int numberOfServers,
+      int numberOfRouters, int replicaFactor, int partitionSize, boolean enableWhitelist,
+      boolean enableAutoJoinWhitelist, long delayToReblanceMS, int minActiveReplica, boolean sslToStorageNodes) {
+    ZkServerWrapper zkServerWrapper = ServiceFactory.getZkServer();
+    KafkaBrokerWrapper kafkaBrokerWrapper = ServiceFactory.getKafkaBroker(zkServerWrapper);
+    BrooklinWrapper brooklinWrapper = ServiceFactory.getBrooklinWrapper(kafkaBrokerWrapper);
+
+    /**
+     * We get the various dependencies outside of the lambda, to avoid having a time
+     * complexity of O(N^2) on the amount of retries. The calls have their own retries,
+     * so we can assume they're reliable enough.
+     */
+    String clusterName = TestUtils.getUniqueString("venice-cluster");
+    return generateService(zkServerWrapper, kafkaBrokerWrapper, brooklinWrapper, clusterName, numberOfControllers,
+        numberOfServers, numberOfRouters, replicaFactor, partitionSize, enableWhitelist, enableAutoJoinWhitelist,
+        delayToReblanceMS, minActiveReplica, sslToStorageNodes);
   }
 
   public String getClusterName() {

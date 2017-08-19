@@ -92,7 +92,7 @@ public class StoresRoutes {
         veniceResponse.setCluster(clusterName);
         veniceResponse.setName(storeName);
 
-        Optional<AdminCommandExecutionTracker> adminCommandExecutionTracker = admin.getAdminCommandExecutionTracker();
+        Optional<AdminCommandExecutionTracker> adminCommandExecutionTracker = admin.getAdminCommandExecutionTracker(clusterName);
         if (adminCommandExecutionTracker.isPresent()) {
           // Lock the tracker to get the execution id for the last admin command.
           // If will not make our performance worse, because we lock the whole cluster while handling the admin operation in parent admin.
@@ -264,7 +264,7 @@ public class StoresRoutes {
         veniceResponse.setCluster(clusterName);
         veniceResponse.setName(storeName);
         List<Version> deletedVersions = Collections.emptyList();
-        Optional<AdminCommandExecutionTracker> adminCommandExecutionTracker = admin.getAdminCommandExecutionTracker();
+        Optional<AdminCommandExecutionTracker> adminCommandExecutionTracker = admin.getAdminCommandExecutionTracker(clusterName);
         if (adminCommandExecutionTracker.isPresent()) {
           // Lock the tracker to get the execution id for the last admin command.
           // If will not make our performance worse, because we lock the whole cluster while handling the admin operation in parent admin.
@@ -294,7 +294,7 @@ public class StoresRoutes {
 
         veniceResponse.setCluster(request.queryParams(CLUSTER));
         veniceResponse.setName(request.queryParams(NAME));
-        veniceResponse.setStorageEngineOverheadRatio(admin.getStorageEngineOverheadRatio());
+        veniceResponse.setStorageEngineOverheadRatio(admin.getStorageEngineOverheadRatio(request.queryParams(CLUSTER)));
       }
     };
   }

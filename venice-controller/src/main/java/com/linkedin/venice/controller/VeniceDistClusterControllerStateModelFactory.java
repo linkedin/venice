@@ -3,9 +3,10 @@ package com.linkedin.venice.controller;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixAdapterSerializer;
 import com.linkedin.venice.helix.HelixState;
-import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreCleaner;
 import io.tehuti.metrics.MetricsRepository;
+import java.util.Collection;
+import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import org.apache.helix.manager.zk.ZkClient;
@@ -23,15 +24,15 @@ public class VeniceDistClusterControllerStateModelFactory extends StateModelFact
   private final ConcurrentMap<String, VeniceDistClusterControllerStateModel> clusterToStateModelsMap =
       new ConcurrentHashMap<>();
   private final StoreCleaner storeCleaner;
-  private final MetricsRepository metricsRepository;
+  private final ConcurrentMap<String, MetricsRepository> metricsRepositories;
 
   public VeniceDistClusterControllerStateModelFactory(ZkClient zkClient, HelixAdapterSerializer adapterSerializer,
-      StoreCleaner storeCleaner, MetricsRepository metricsRepository) {
+      StoreCleaner storeCleaner) {
     this.zkClient = zkClient;
     this.adapterSerializer = adapterSerializer;
     this.clusterToConfigsMap = new ConcurrentHashMap<>();
     this.storeCleaner = storeCleaner;
-    this.metricsRepository = metricsRepository;
+    this.metricsRepositories = new ConcurrentHashMap<>();
   }
 
   @Override
@@ -41,13 +42,14 @@ public class VeniceDistClusterControllerStateModelFactory extends StateModelFact
 
     VeniceDistClusterControllerStateModel model =
         new VeniceDistClusterControllerStateModel(zkClient, adapterSerializer, clusterToConfigsMap, storeCleaner,
-            metricsRepository);
+            metricsRepositories);
     clusterToStateModelsMap.put(veniceClusterName, model);
     return model;
   }
 
-  public void addClusterConfig(String veniceClusterName, VeniceControllerClusterConfig config) {
+  public void addClusterConfig(String veniceClusterName, VeniceControllerClusterConfig config, MetricsRepository metricsRepository) {
     clusterToConfigsMap.put(veniceClusterName, config);
+    metricsRepositories.put(veniceClusterName, metricsRepository);
   }
 
   public VeniceControllerClusterConfig getClusterConfig(String veniceClusterName) {
@@ -60,6 +62,10 @@ public class VeniceDistClusterControllerStateModelFactory extends StateModelFact
 
   public VeniceDistClusterControllerStateModel getModel(String veniceClusterName) {
     return clusterToStateModelsMap.get(veniceClusterName);
+  }
+
+  public Collection<VeniceDistClusterControllerStateModel> getAllModels(){
+    return clusterToStateModelsMap.values();
   }
 
   /**

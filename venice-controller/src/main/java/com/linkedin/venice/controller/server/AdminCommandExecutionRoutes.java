@@ -24,7 +24,7 @@ public class AdminCommandExecutionRoutes {
       String cluster = request.queryParams(CLUSTER);
       long executionId = Long.valueOf(request.queryParams(EXECUTION_ID));
       responseObject.setCluster(cluster);
-      Optional<AdminCommandExecutionTracker> adminCommandExecutionTracker = admin.getAdminCommandExecutionTracker();
+      Optional<AdminCommandExecutionTracker> adminCommandExecutionTracker = admin.getAdminCommandExecutionTracker(cluster);
       if (adminCommandExecutionTracker.isPresent()) {
         AdminCommandExecution execution = adminCommandExecutionTracker.get().checkExecutionStatus(executionId);
         if (execution == null) {

@@ -141,7 +141,7 @@ public interface Admin {
         Optional<Long> hybridRewindSeconds,
         Optional<Long> hybridOffsetLagThreshold);
 
-    double getStorageEngineOverheadRatio();
+    double getStorageEngineOverheadRatio(String clusterName);
 
     List<String> getStorageNodes(String clusterName);
 
@@ -300,9 +300,9 @@ public interface Admin {
     Exception getLastException(String clusterName);
 
     /**
-    * Get the tracker used to track the execution of the admin command.
+    * Get the tracker used to track the execution of the admin command for the given cluster.
     */
-    Optional<AdminCommandExecutionTracker> getAdminCommandExecutionTracker();
+    Optional<AdminCommandExecutionTracker> getAdminCommandExecutionTracker(String clusterName);
 
     /**
      * Get the cluster level config for all routers.
@@ -319,6 +319,13 @@ public interface Admin {
     Map<String, String> getAllStorePushStrategyForMigration();
 
     void setStorePushStrategyForMigration(String voldemortStoreName, String strategy);
+
+    /**
+     * Return the cluster which the given store belongs to. And it will only work in the master controller of that
+     * cluster. For example, storeA belongs to Cluster1, but the current controller is not hte master controller of
+     * cluster1, it will not return cluster name for that store.
+     */
+    Optional<String> getClusterOfStoreInMasterController(String storeName);
 
     void close();
 }

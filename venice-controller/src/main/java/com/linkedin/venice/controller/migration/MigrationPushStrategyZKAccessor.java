@@ -17,7 +17,6 @@ public class MigrationPushStrategyZKAccessor {
   private static Logger LOGGER = Logger.getLogger(MigrationPushStrategy.class);
 
   public static final String MIGRATION_PUSH_STRATEGY_PATH = "/migration-push-strategy";
-  private static final int ZK_RETRY_COUNT = 3;
 
   private final ZkBaseDataAccessor<Map<String, String>> zkAccessor;
 
@@ -58,7 +57,7 @@ public class MigrationPushStrategyZKAccessor {
     }
     LOGGER.info("Setup push strategy: " + pushStrategyStr + "for Voldemort store: " + voldemortStoreName);
 
-    HelixUtils.compareAndUpdate(zkAccessor, MIGRATION_PUSH_STRATEGY_PATH, ZK_RETRY_COUNT, oldData -> {
+    HelixUtils.compareAndUpdate(zkAccessor, MIGRATION_PUSH_STRATEGY_PATH, oldData -> {
       if (null == oldData) {
         // Doesn't exist
         oldData = new HashMap<>();

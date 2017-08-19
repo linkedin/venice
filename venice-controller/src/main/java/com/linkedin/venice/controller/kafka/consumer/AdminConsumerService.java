@@ -11,6 +11,7 @@ import com.linkedin.venice.offsets.OffsetManager;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import io.tehuti.metrics.MetricsRepository;
+import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import org.apache.log4j.Logger;
 
@@ -24,19 +25,19 @@ public class AdminConsumerService extends AbstractVeniceService {
   private final VeniceHelixAdmin admin;
   private final AdminOffsetManager offsetManager;
   private final VeniceConsumerFactory consumerFactory;
-  private final MetricsRepository metricsRepository;
+  private final Map<String, MetricsRepository> metricsRepositories;
   // Only support single cluster right now
   private AdminConsumptionTask consumerTask;
   private ThreadFactory threadFactory = new DaemonThreadFactory("AdminTopicConsumer");
   private Thread consumerThread;
 
 
-  public AdminConsumerService(VeniceHelixAdmin admin, VeniceControllerConfig config, MetricsRepository metricsRepository) {
+  public AdminConsumerService(VeniceHelixAdmin admin, VeniceControllerConfig config, Map<String, MetricsRepository> metricsRepositories) {
     this.config = config;
     this.admin = admin;
     this.offsetManager = new AdminOffsetManager(admin.getZkClient(), admin.getAdapterSerializer());
     this.consumerFactory = new VeniceConsumerFactory();
-    this.metricsRepository = metricsRepository;
+    this.metricsRepositories = metricsRepositories;
   }
 
   @Override
@@ -67,7 +68,7 @@ public class AdminConsumerService extends AbstractVeniceService {
         admin.getExecutionIdAccessor(),
         TimeUnit.MINUTES.toMillis(config.getAdminConsumptionTimeoutMinutes()),
         config.isParent(),
-        new AdminConsumptionStats(metricsRepository, "admin_consumption_task"));
+        new AdminConsumptionStats(metricsRepositories.get(clusterName), "admin_consumption_task"));
   }
 
   public void setOffsetToSkip(String clusterName, long offset){

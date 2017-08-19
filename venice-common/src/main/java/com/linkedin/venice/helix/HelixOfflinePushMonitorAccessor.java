@@ -53,8 +53,6 @@ public class HelixOfflinePushMonitorAccessor implements OfflinePushAccessor {
   private final ListenerManager<PartitionStatusListener> listenerManager;
   private final PartitionStatusZkListener partitionStatusZkListener;
 
-  private final int retryCount = 3;
-
   public HelixOfflinePushMonitorAccessor(String clusterName, ZkClient zkClient, HelixAdapterSerializer adapter) {
     this.clusterName = clusterName;
     this.offlinePushStatusParentPath = getOfflinePushStatuesParentPath();
@@ -93,8 +91,7 @@ public class HelixOfflinePushMonitorAccessor implements OfflinePushAccessor {
           logger.info(
               "Found invalid push statues:" + pushStatus.getCurrentStatus() + " for topic:" + pushStatus.getKafkaTopic()
                   + "in cluster:" + clusterName + ". Will delete it from ZK.");
-          HelixUtils.remove(offlinePushStatusAccessor, getOfflinePushStatusPath(pushStatus.getKafkaTopic()),
-              retryCount);
+          HelixUtils.remove(offlinePushStatusAccessor, getOfflinePushStatusPath(pushStatus.getKafkaTopic()));
           iterator.remove();
       }
     }
@@ -116,8 +113,7 @@ public class HelixOfflinePushMonitorAccessor implements OfflinePushAccessor {
 
   @Override
   public void updateOfflinePushStatus(OfflinePushStatus pushStatus) {
-    HelixUtils.update(offlinePushStatusAccessor, getOfflinePushStatusPath(pushStatus.getKafkaTopic()), pushStatus,
-        retryCount);
+    HelixUtils.update(offlinePushStatusAccessor, getOfflinePushStatusPath(pushStatus.getKafkaTopic()), pushStatus);
     logger.info(
         "Updated push status for topic+" + pushStatus.getKafkaTopic() + " in cluster:" + clusterName + " to status:"
             + pushStatus.getCurrentStatus());
@@ -127,8 +123,7 @@ public class HelixOfflinePushMonitorAccessor implements OfflinePushAccessor {
   public void createOfflinePushStatusAndItsPartitionStatuses(OfflinePushStatus pushStatus) {
     logger.info(
         "Start creating offline push status for topic:" + pushStatus.getKafkaTopic() + " in cluster:" + clusterName);
-    HelixUtils.create(offlinePushStatusAccessor, getOfflinePushStatusPath(pushStatus.getKafkaTopic()), pushStatus,
-        retryCount);
+    HelixUtils.create(offlinePushStatusAccessor, getOfflinePushStatusPath(pushStatus.getKafkaTopic()), pushStatus);
     logger.info("Created offline push status ZNode. Start creating partition statuses.");
     List<String> partitionPathes = new ArrayList<>(pushStatus.getNumberOfPartition());
     List<PartitionStatus> partitionStatuses = new ArrayList<>(pushStatus.getNumberOfPartition());
@@ -136,7 +131,7 @@ public class HelixOfflinePushMonitorAccessor implements OfflinePushAccessor {
       partitionPathes.add(getPartitionStatusPath(pushStatus.getKafkaTopic(), partitionId));
       partitionStatuses.add(new PartitionStatus(partitionId));
     }
-    HelixUtils.updateChildren(partitionStatusAccessor, partitionPathes, partitionStatuses, retryCount);
+    HelixUtils.updateChildren(partitionStatusAccessor, partitionPathes, partitionStatuses);
     logger.info("Created " + pushStatus.getNumberOfPartition() + " partition status Znodes.");
   }
 
@@ -144,7 +139,7 @@ public class HelixOfflinePushMonitorAccessor implements OfflinePushAccessor {
   public void deleteOfflinePushStatusAndItsPartitionStatuses(OfflinePushStatus pushStatus) {
     logger.info(
         "Start deleting offline push status for topic: " + pushStatus.getKafkaTopic() + " in cluster: " + clusterName);
-    HelixUtils.remove(offlinePushStatusAccessor, getOfflinePushStatusPath(pushStatus.getKafkaTopic()), retryCount);
+    HelixUtils.remove(offlinePushStatusAccessor, getOfflinePushStatusPath(pushStatus.getKafkaTopic()));
     logger.info("Deleted offline push status for topic: " + pushStatus.getKafkaTopic() + " in cluster: " + clusterName);
   }
 
@@ -180,7 +175,7 @@ public class HelixOfflinePushMonitorAccessor implements OfflinePushAccessor {
     }
     logger.info(
         "Start update replica status for topic:" + topic + " partition:" + partitionId + " in cluster:" + clusterName);
-    HelixUtils.compareAndUpdate(partitionStatusAccessor, getPartitionStatusPath(topic, partitionId), retryCount,
+    HelixUtils.compareAndUpdate(partitionStatusAccessor, getPartitionStatusPath(topic, partitionId),
         currentData -> {
           currentData.updateReplicaStatus(instanceId, status);
           if (progress != Integer.MIN_VALUE) {

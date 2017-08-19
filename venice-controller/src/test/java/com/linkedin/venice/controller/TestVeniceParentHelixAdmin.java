@@ -123,6 +123,7 @@ public class TestVeniceParentHelixAdmin {
         .getLastSucceedExecutionId(any());
 
     config = mock(VeniceControllerConfig.class);
+    doReturn(clusterName).when(config).getClusterName();
     doReturn(KAFKA_REPLICA_FACTOR).when(config)
         .getKafkaReplicaFactor();
     doReturn(10000).when(config)
@@ -143,8 +144,8 @@ public class TestVeniceParentHelixAdmin {
     doReturn(storeRepo).when(resources)
         .getMetadataRepository();
 
-    parentAdmin = new VeniceParentHelixAdmin(internalAdmin, config);
-    parentAdmin.getAdminCommandExecutionTracker()
+    parentAdmin = new VeniceParentHelixAdmin(internalAdmin, TestUtils.getMultiClusterConfigFromOneCluster(config));
+    parentAdmin.getAdminCommandExecutionTracker(clusterName)
         .get()
         .getFabricToControllerClientsMap()
         .put("test-fabric", Mockito.mock(ControllerClient.class));
@@ -567,7 +568,7 @@ public class TestVeniceParentHelixAdmin {
     private ExecutionStatus offlineJobStatus = ExecutionStatus.NOT_CREATED;
 
     public PartialMockVeniceParentHelixAdmin(VeniceHelixAdmin veniceHelixAdmin, VeniceControllerConfig config) {
-      super(veniceHelixAdmin, config);
+      super(veniceHelixAdmin, TestUtils.getMultiClusterConfigFromOneCluster(config));
     }
 
     public void setOfflineJobStatus(ExecutionStatus executionStatus) {
@@ -946,7 +947,7 @@ public class TestVeniceParentHelixAdmin {
   public void testMayThrottleTopicCreation() {
     long timeWindowMs = 1000;
     doReturn(timeWindowMs).when(config).getTopicCreationThrottlingTimeWindowMs();
-    VeniceParentHelixAdmin throttledParentAdmin = new VeniceParentHelixAdmin(internalAdmin, config);
+    VeniceParentHelixAdmin throttledParentAdmin = new VeniceParentHelixAdmin(internalAdmin, TestUtils.getMultiClusterConfigFromOneCluster(config));
     long start = System.currentTimeMillis();
     MockTime timer = new MockTime(start);
     throttledParentAdmin.mayThrottleTopicCreation(timer);
@@ -962,9 +963,9 @@ public class TestVeniceParentHelixAdmin {
     String storeName = "testCreateTopicConcurrently";
     Time timer = new MockTime();
     doReturn(timeWindowMs).when(config).getTopicCreationThrottlingTimeWindowMs();
-    VeniceParentHelixAdmin throttledParentAdmin = new VeniceParentHelixAdmin(internalAdmin, config);
+    VeniceParentHelixAdmin throttledParentAdmin = new VeniceParentHelixAdmin(internalAdmin, TestUtils.getMultiClusterConfigFromOneCluster(config));
     throttledParentAdmin.setTimer(timer);
-    throttledParentAdmin.getAdminCommandExecutionTracker()
+    throttledParentAdmin.getAdminCommandExecutionTracker(clusterName)
         .get()
         .getFabricToControllerClientsMap()
         .put("test-fabric", Mockito.mock(ControllerClient.class));

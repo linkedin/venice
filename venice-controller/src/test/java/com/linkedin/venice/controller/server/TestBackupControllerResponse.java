@@ -9,6 +9,7 @@ import com.linkedin.venice.integration.utils.KafkaBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.utils.PropertyBuilder;
+import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import io.tehuti.metrics.MetricsRepository;
@@ -59,7 +60,7 @@ public class TestBackupControllerResponse {
         .put(ConfigKeys.ADMIN_PORT, bogusPort)
         .build();
     VeniceControllerConfig config = new VeniceControllerConfig(controllerOneProps);
-    veniceAdmin = new VeniceHelixAdmin(config, new MetricsRepository());
+    veniceAdmin = new VeniceHelixAdmin(TestUtils.getMultiClusterConfigFromOneCluster(config), TestUtils.getMetricRepositories(clusterName));
     veniceAdmin.start(clusterName);
 
     /* ControllerWrapper is second controller, comes up as inactive standby controller */

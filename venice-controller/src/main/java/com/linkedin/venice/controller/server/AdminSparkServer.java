@@ -9,7 +9,9 @@ import com.linkedin.venice.exceptions.VeniceHttpException;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.utils.Utils;
 import io.tehuti.metrics.MetricsRepository;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import org.apache.http.HttpStatus;
 import org.apache.log4j.Logger;
 import org.codehaus.jackson.map.ObjectMapper;
@@ -23,6 +25,8 @@ import static com.linkedin.venice.controllerapi.ControllerRoute.*;
 
 /**
  * Controller admin API leveraging sparkjava: http://sparkjava.com/documentation.html
+ * <p>
+ * AdminSparkServer is shared by multiple cluster'scontroller controllers running in one physical Venice controller instance.
  */
 public class AdminSparkServer extends AbstractVeniceService {
   private static final Logger logger = Logger.getLogger(AdminSparkServer.class);
@@ -30,7 +34,7 @@ public class AdminSparkServer extends AbstractVeniceService {
   private final int port;
   private final Admin admin;
   protected static final ObjectMapper mapper = new ObjectMapper();
-  final private SparkServerStats stats;
+  final private Map<String, SparkServerStats> statsMap;
 
   private static String REQUEST_START_TIME =  "startTime";
   private static String REQUEST_SUCCEED = "succeed";
@@ -39,12 +43,15 @@ public class AdminSparkServer extends AbstractVeniceService {
   private final Service httpService;
 
 
-  public AdminSparkServer(int port, Admin admin, MetricsRepository metricsRepository) {
+  public AdminSparkServer(int port, Admin admin, Map<String, MetricsRepository> metricsRepositories) {
     this.port = port;
     //Note: admin is passed in as a reference.  The expectation is the source of the admin will
     //      close it so we don't close it in stopInner()
     this.admin = admin;
-    stats = new SparkServerStats(metricsRepository, "controller_spark_server");
+    statsMap = new HashMap<>();
+    for(String cluster : metricsRepositories.keySet()){
+      statsMap.put(cluster, new SparkServerStats(metricsRepositories.get(cluster), "controller_spark_server"));
+    }
     httpService = Service.ignite();
   }
 
@@ -55,7 +62,7 @@ public class AdminSparkServer extends AbstractVeniceService {
     httpService.before((request, response) -> {
       AuditInfo audit = new AuditInfo(request);
       logger.info(audit.toString());
-
+      SparkServerStats stats = statsMap.get(request.queryParams(CLUSTER));
       stats.recordRequest();
       request.attribute(REQUEST_START_TIME, System.currentTimeMillis());
       request.attribute(REQUEST_SUCCEED, true);
@@ -63,6 +70,7 @@ public class AdminSparkServer extends AbstractVeniceService {
 
     httpService.after((request, response) -> {
       AuditInfo audit = new AuditInfo(request);
+      SparkServerStats stats = statsMap.get(request.queryParams(CLUSTER));
       long latency = System.currentTimeMillis() - (long)request.attribute(REQUEST_START_TIME);
       if ((boolean)request.attribute(REQUEST_SUCCEED)) {
         logger.info(audit.successString());

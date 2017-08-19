@@ -60,7 +60,12 @@ public class CreateVersion {
         responseObject.setKafkaTopic(version.kafkaTopicName());
         responseObject.setKafkaBootstrapServers(admin.getKafkaBootstrapServers());
       } catch (Throwable e) {
-        responseObject.setError(e.getMessage());
+        // TODO use the VeniceRouterHandler.handle
+        if (e.getMessage() != null) {
+          responseObject.setError(e.getMessage());
+        } else {
+          responseObject.setError(e.getClass().getName());
+        }
         AdminSparkServer.handleError(e, request, response);
       }
       response.type(HttpConstants.JSON);
