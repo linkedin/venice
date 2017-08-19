@@ -37,8 +37,6 @@ public class ZkRoutersClusterManager implements RoutersClusterManager, IZkChildL
 
   private final Set<RouterClusterConfigChangedListener> configListeners;
 
-  private final int retryCount = 3;
-
   public ZkRoutersClusterManager(ZkClient zkClient, HelixAdapterSerializer adaper, String clusterName) {
     this.zkClient = zkClient;
     this.clusterName = clusterName;
@@ -308,7 +306,7 @@ public class ZkRoutersClusterManager implements RoutersClusterManager, IZkChildL
 
   private void compareAndSetClusterConfig(DataUpdater<RoutersClusterConfig> updater) {
     // Compare and update the config in ZK because it might be updated by other router/controller at the same time.
-    HelixUtils.compareAndUpdate(dataAccessor, getRouterRootPath(), retryCount, updater);
+    HelixUtils.compareAndUpdate(dataAccessor, getRouterRootPath(), updater);
     // Read latest version from ZK to update local config. If we just do routerClusterConfig.addRouterConfig only,
     // this update might be overwritten by the change from other router/controller in a short time.
     // For example:

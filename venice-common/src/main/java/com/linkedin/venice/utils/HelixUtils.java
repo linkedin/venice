@@ -30,6 +30,11 @@ public class HelixUtils {
   private static final Logger logger = Logger.getLogger(HelixUtils.class);
 
   /**
+   * Retry 3 times for each helix operation in case of getting the error by default.
+   */
+  public static final int DEFAULT_HELIX_OP_RETRY_COUNT = 3;
+
+  /**
    * The constraint that helix would apply on CRUSH alg. Based on this constraint, Helix would NOT allocate replicas in
    * same partition to same instance. If we need rack aware ability in the future, we could add rack constraint as
    * well.
@@ -82,6 +87,10 @@ public class HelixUtils {
     return new Instance(helixInstanceName, hostname, port);
   }
 
+  public static <T> void create(ZkBaseDataAccessor<T> dataAccessor, String path, T data){
+    create(dataAccessor, path, data, DEFAULT_HELIX_OP_RETRY_COUNT);
+  }
+
   public static <T> void create(ZkBaseDataAccessor<T> dataAccessor, String path, T data, int retryCount) {
     int retry = 0;
     while (retry < retryCount) {
@@ -93,6 +102,10 @@ public class HelixUtils {
     throw new ZkDataAccessException(path, "create", retryCount);
   }
 
+  public static <T> void update(ZkBaseDataAccessor<T> dataAccessor, String path, T data) {
+    update(dataAccessor, path, data, DEFAULT_HELIX_OP_RETRY_COUNT);
+  }
+
   public static <T> void update(ZkBaseDataAccessor<T> dataAccessor, String path, T data, int retryCount) {
     int retry = 0;
     while (retry < retryCount) {
@@ -102,6 +115,10 @@ public class HelixUtils {
       retry++;
     }
     throw new ZkDataAccessException(path, "set", retryCount);
+  }
+
+  public static <T> void updateChildren(ZkBaseDataAccessor<T> dataAccessor, List<String> pathes, List<T> data){
+    updateChildren(dataAccessor,pathes, data, DEFAULT_HELIX_OP_RETRY_COUNT);
   }
 
   //TODO there is not atomic operations to update multiple node to ZK. We should ask Helix library to rollback if it's only partial successful.
@@ -128,6 +145,10 @@ public class HelixUtils {
     }
   }
 
+  public static <T> void remove(ZkBaseDataAccessor<T> dataAccessor, String path) {
+    remove(dataAccessor, path, DEFAULT_HELIX_OP_RETRY_COUNT);
+  }
+
   public static <T> void remove(ZkBaseDataAccessor<T> dataAccessor, String path, int retryCount) {
     int retry = 0;
     while (retry < retryCount) {
@@ -137,7 +158,11 @@ public class HelixUtils {
       retry++;
     }
     throw new ZkDataAccessException(path, "remove", retryCount);
- }
+  }
+
+  public static <T> void compareAndUpdate(ZkBaseDataAccessor<T> dataAccessor, String path, DataUpdater<T> dataUpdater) {
+    compareAndUpdate(dataAccessor, path, DEFAULT_HELIX_OP_RETRY_COUNT, dataUpdater);
+  }
 
   public static <T> void compareAndUpdate(ZkBaseDataAccessor<T> dataAccessor, String path, int retryCount,
       DataUpdater<T> dataUpdater) {

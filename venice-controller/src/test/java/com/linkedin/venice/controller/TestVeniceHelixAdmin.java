@@ -2,7 +2,9 @@ package com.linkedin.venice.controller;
 
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.exceptions.VeniceNoClusterException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
+import com.linkedin.venice.helix.HelixReadWriteStoreRepository;
 import com.linkedin.venice.helix.HelixRoutingDataRepository;
 import com.linkedin.venice.helix.HelixState;
 import com.linkedin.venice.helix.HelixStatusMessageChannel;
@@ -18,6 +20,7 @@ import com.linkedin.venice.meta.ReadWriteStoreRepository;
 import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.meta.RoutingStrategy;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.StoreConfig;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
@@ -112,7 +115,7 @@ public class TestVeniceHelixAdmin {
     controllerProps = builder.build();
 
     config = new VeniceControllerConfig(controllerProps);
-    veniceAdmin = new VeniceHelixAdmin(config, new MetricsRepository());
+    veniceAdmin = new VeniceHelixAdmin(TestUtils.getMultiClusterConfigFromOneCluster(config), TestUtils.getMetricRepositories(clusterName));
     veniceAdmin.start(clusterName);
     startParticipant();
     waitUntilIsMaster(veniceAdmin, clusterName, MASTER_CHANGE_TIMEOUT);
@@ -189,7 +192,7 @@ public class TestVeniceHelixAdmin {
 
     VeniceProperties newControllerProps = builder.build();
     VeniceControllerConfig newConfig = new VeniceControllerConfig(newControllerProps);
-    VeniceHelixAdmin newMasterAdmin = new VeniceHelixAdmin(newConfig, new MetricsRepository());
+    VeniceHelixAdmin newMasterAdmin = new VeniceHelixAdmin(TestUtils.getMultiClusterConfigFromOneCluster(newConfig), TestUtils.getMetricRepositories(clusterName));
     //Start stand by controller
     newMasterAdmin.start(clusterName);
     List<VeniceHelixAdmin> allAdmins = new ArrayList<>();
@@ -199,9 +202,8 @@ public class TestVeniceHelixAdmin {
     try {
       newMasterAdmin.addStore(clusterName, "failedStore", "dev", keySchema, valueSchema);
       Assert.fail("Can not add store through a standby controller");
-    } catch (VeniceException e) {
-      Assert.assertTrue(e.getMessage().contains("Can not get the resources, current controller is not the leader"),
-          "Wrong error message, got: " + e.getMessage());
+    } catch (VeniceNoClusterException e) {
+      //expect
     }
     TestUtils.waitForNonDeterministicCompletion(TOTAL_TIMEOUT_FOR_SHORT_TEST, TimeUnit.MILLISECONDS,
         () -> veniceAdmin.getOffLinePushStatus(clusterName, version.kafkaTopicName())
@@ -255,7 +257,7 @@ public class TestVeniceHelixAdmin {
 
     VeniceProperties newControllerProps = builder.build();
     VeniceControllerConfig newConfig = new VeniceControllerConfig(newControllerProps);
-    VeniceHelixAdmin newMasterAdmin = new VeniceHelixAdmin(newConfig, new MetricsRepository());
+    VeniceHelixAdmin newMasterAdmin = new VeniceHelixAdmin(TestUtils.getMultiClusterConfigFromOneCluster(newConfig), TestUtils.getMetricRepositories(clusterName));
     //Start stand by controller
     newMasterAdmin.start(clusterName);
     Assert.assertFalse(newMasterAdmin.isMasterController(clusterName),
@@ -284,7 +286,7 @@ public class TestVeniceHelixAdmin {
     VeniceProperties newClusterProps = builder.build();
     VeniceControllerConfig newClusterConfig = new VeniceControllerConfig(newClusterProps);
 
-    veniceAdmin.addConfig(newClusterName, newClusterConfig);
+    veniceAdmin.addConfig(newClusterName, newClusterConfig, new MetricsRepository());
     veniceAdmin.start(newClusterName);
     waitUntilIsMaster(veniceAdmin, newClusterName, MASTER_CHANGE_TIMEOUT);
 
@@ -780,7 +782,7 @@ public class TestVeniceHelixAdmin {
 
     VeniceProperties newControllerProps = builder.build();
     VeniceControllerConfig newConfig = new VeniceControllerConfig(newControllerProps);
-    VeniceHelixAdmin newMasterAdmin = new VeniceHelixAdmin(newConfig, new MetricsRepository());
+    VeniceHelixAdmin newMasterAdmin = new VeniceHelixAdmin(TestUtils.getMultiClusterConfigFromOneCluster(newConfig), TestUtils.getMetricRepositories(clusterName));
     List<VeniceHelixAdmin> admins = new ArrayList<>();
     admins.add(veniceAdmin);
     admins.add(newMasterAdmin);
@@ -1161,7 +1163,9 @@ public class TestVeniceHelixAdmin {
     store.setEnableWrites(false);
     store.setEnableReads(false);
     // Legacy store
-    store.setDeleting(true);
+    StoreConfig storeConfig = veniceAdmin.getStoreConfigAccessor().getConfig(storeName);
+    storeConfig.setDeleting(true);
+    veniceAdmin.getStoreConfigAccessor().updateConfig(storeConfig);
     veniceAdmin.getVeniceHelixResource(clusterName).getMetadataRepository().updateStore(store);
     //Re-create store with incompatible schema
     veniceAdmin.addStore(clusterName, storeName, "unittest", "\"long\"", "\"long\"");
@@ -1170,5 +1174,24 @@ public class TestVeniceHelixAdmin {
     Assert.assertEquals(veniceAdmin.getValueSchema(clusterName, storeName, 1).getSchema().toString(), "\"long\"");
     Assert.assertEquals(veniceAdmin.getStore(clusterName, storeName).getLargestUsedVersionNumber(),
         largestUsedVersionNumber + 1);
+  }
+
+  // Test the scenairo that some old store exists before we introduce the store config mapping feature.
+  // So they do not exist in the mapping, but once we refresh the helix resources, this issue should be repaired.
+  @Test
+  public void testRepairStoreConfigMapping() {
+    HelixReadWriteStoreRepository repo = veniceAdmin.getVeniceHelixResource(clusterName).getMetadataRepository();
+    int storeCount = 3;
+    for (int i = 0; i < storeCount; i++) {
+      repo.addStore(TestUtils.createTestStore("testRepair" + i, "test", System.currentTimeMillis()));
+      Assert.assertFalse(veniceAdmin.getStoreConfigAccessor().containsConfig("testRepair" + i), "Store should not exist in the mapping.");
+    }
+
+    veniceAdmin.getVeniceHelixResource(clusterName).clear();
+    veniceAdmin.getVeniceHelixResource(clusterName).refresh();
+    for (int i = 0; i < storeCount; i++) {
+      Assert.assertEquals(veniceAdmin.getStoreConfigAccessor().getConfig("testRepair"+i).getCluster(), clusterName, "Mapping should be repaired by refresh.");
+    }
+
   }
 }

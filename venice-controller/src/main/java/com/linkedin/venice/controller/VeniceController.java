@@ -1,5 +1,6 @@
 package com.linkedin.venice.controller;
 
+import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.controller.kafka.TopicMonitor;
 import com.linkedin.venice.controller.server.AdminSparkServer;
 import com.linkedin.venice.service.AbstractVeniceService;
@@ -8,9 +9,12 @@ import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.Utils;
 import io.tehuti.metrics.MetricsRepository;
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import org.apache.log4j.Logger;
 
-import javax.validation.constraints.NotNull;
 
 /**
  * Venice Controller to manage the cluster. Internally wraps Helix Controller.
@@ -24,8 +28,8 @@ public class VeniceController {
   AdminSparkServer adminServer;
   TopicMonitor topicMonitor;
 
-  private final VeniceControllerConfig config;
-  private final MetricsRepository metricsRepository;
+  private final VeniceControllerMultiClusterConfig multiClusterConfigs;
+  private final Map<String, MetricsRepository> metricsRepositories;
 
   private final static String CONTROLLER_SERVICE_NAME = "venice-controller";
 
@@ -33,35 +37,53 @@ public class VeniceController {
     this(props, TehutiUtils.getMetricsRepository(CONTROLLER_SERVICE_NAME));
   }
 
-  public VeniceController(VeniceProperties props, MetricsRepository metricsRepository){
-    config = new VeniceControllerConfig(props);
+  public VeniceController(List<VeniceProperties> propertiesList) {
+    multiClusterConfigs = new VeniceControllerMultiClusterConfig(propertiesList);
+    this.metricsRepositories = new HashMap<>();
+    for(String cluster:multiClusterConfigs.getClusters()){
+      this.metricsRepositories.put(cluster, TehutiUtils.getMetricsRepository(CONTROLLER_SERVICE_NAME+"-"+cluster));
+    }
+    createServices();
+  }
 
-    this.metricsRepository = metricsRepository;
+  public VeniceController(VeniceProperties props, MetricsRepository metricsRepository) {
+    this(Arrays.asList(new VeniceProperties[]{props}), generateMetricRepositories(props, metricsRepository));
+  }
 
+  private static Map<String, MetricsRepository> generateMetricRepositories(VeniceProperties properties,
+      MetricsRepository metricsRepository) {
+    String cluster = properties.getString(ConfigKeys.CLUSTER_NAME);
+    Map<String, MetricsRepository> map = new HashMap<>();
+    map.put(cluster, metricsRepository);
+    return map;
+  }
+
+  public VeniceController(List<VeniceProperties> propertiesList, Map<String, MetricsRepository> metricsRepositories) {
+    multiClusterConfigs = new VeniceControllerMultiClusterConfig(propertiesList);
+    this.metricsRepositories = metricsRepositories;
     createServices();
   }
 
   public void createServices(){
-    controllerService = new VeniceControllerService(config, metricsRepository);
+    controllerService = new VeniceControllerService(multiClusterConfigs, metricsRepositories);
     adminServer = new AdminSparkServer(
-        config.getAdminPort(),
+        multiClusterConfigs.getAdminPort(),
         controllerService.getVeniceHelixAdmin(),
-        metricsRepository);
+        metricsRepositories);
     // TODO: disable TopicMonitor in Corp cluster for now.
     // If we decide to continue to use TopicMonitor for version creation, we need to update the existing VeniceParentHelixAdmin to support it
-    if (!config.isParent())
+    if (!multiClusterConfigs.isParent())
     {
       topicMonitor = new TopicMonitor(
           controllerService.getVeniceHelixAdmin(),
-          config.getClusterName(),
-          config.getReplicaFactor(),
-          config.getTopicMonitorPollIntervalMs());
+          multiClusterConfigs.getTopicMonitorPollIntervalMs());
     }
   }
 
-  public void start(){
-    logger.info("Starting controller: " + config.getControllerName() + " for cluster: " + config.getClusterName()
-        + " with ZKAddress: " + config.getZkAddress());
+  public void start() {
+    logger.info(
+        "Starting controller: " + multiClusterConfigs.getControllerName() + " for clusters: " + multiClusterConfigs
+            .getClusters().toString() + " with ZKAddress: " + multiClusterConfigs.getZkAddress());
     controllerService.start();
     adminServer.start();
     if (null != topicMonitor) {

@@ -249,7 +249,7 @@ public class TestHybrid {
     venice.restartVeniceServer(port);
     TestUtils.waitForNonDeterministicCompletion(10, TimeUnit.SECONDS, () -> {
       Map<String, String> storeStatus =
-          controllerClient.listStoresStatuses(venice.getClusterName()).getStoreStatusMap();
+          controllerClient.listStoresStatuses().getStoreStatusMap();
       // Make sure Helix know the instance is completed shutdown
       if (storeStatus.values().iterator().next().equals(StoreStatus.FULLLY_REPLICATED.toString())) {
         return true;

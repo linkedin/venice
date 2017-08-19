@@ -3,8 +3,11 @@ package com.linkedin.venice.controller;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixAdapterSerializer;
 import com.linkedin.venice.helix.HelixState;
+import com.linkedin.venice.helix.ZkStoreConfigAccessor;
 import com.linkedin.venice.meta.StoreCleaner;
 import io.tehuti.metrics.MetricsRepository;
+import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.ConcurrentMap;
 import org.apache.helix.HelixManager;
 import org.apache.helix.HelixManagerFactory;
@@ -38,19 +41,20 @@ public class VeniceDistClusterControllerStateModel extends StateModel {
   private final HelixAdapterSerializer adapterSerializer;
   private final StoreCleaner storeCleaner;
   private String clusterName;
-  private MetricsRepository metricsRepository;
+  private Map<String, MetricsRepository> metricsRepositories;
 
   private final ConcurrentMap<String, VeniceControllerClusterConfig> clusterToConfigsMap;
 
   public VeniceDistClusterControllerStateModel(ZkClient zkClient, HelixAdapterSerializer adapterSerializer,
-      ConcurrentMap<String, VeniceControllerClusterConfig> clusterToConfigsMap, StoreCleaner storeCleaner, MetricsRepository metricsRepository) {
+      ConcurrentMap<String, VeniceControllerClusterConfig> clusterToConfigsMap, StoreCleaner storeCleaner,
+      Map<String, MetricsRepository> metricsRepositories) {
     StateModelParser parser = new StateModelParser();
     _currentState = parser.getInitialState(VeniceDistClusterControllerStateModel.class);
     this.zkClient = zkClient;
     this.adapterSerializer = adapterSerializer;
     this.clusterToConfigsMap = clusterToConfigsMap;
     this.storeCleaner = storeCleaner;
-    this.metricsRepository = metricsRepository;
+    this.metricsRepositories = metricsRepositories;
   }
 
   @Transition(to = HelixState.LEADER_STATE, from = "STANDBY")
@@ -65,18 +69,12 @@ public class VeniceDistClusterControllerStateModel extends StateModel {
     String controllerName = message.getTgtName();
     logger.info(controllerName + " becoming leader from standby for " + clusterName);
     if (controller == null) {
-      controller = HelixManagerFactory
-          .getZKHelixManager(clusterName, controllerName, InstanceType.CONTROLLER, zkClient.getServers());
+      controller = HelixManagerFactory.getZKHelixManager(clusterName, controllerName, InstanceType.CONTROLLER,
+          zkClient.getServers());
       controller.connect();
       controller.startTimerTasks();
-      resources = new VeniceHelixResources(
-          clusterName,
-          zkClient,
-          adapterSerializer,
-          controller,
-          clusterToConfigsMap.get(clusterName),
-          storeCleaner,
-          metricsRepository);
+      resources = new VeniceHelixResources(clusterName, zkClient, adapterSerializer, controller,
+          clusterToConfigsMap.get(clusterName), storeCleaner, metricsRepositories);
       resources.refresh();
       logger.info(controllerName + " is the leader of " + clusterName);
     } else {
@@ -151,10 +149,15 @@ public class VeniceDistClusterControllerStateModel extends StateModel {
     return veniceClusterName + PARTITION_SUBFIX;
   }
 
-  public VeniceHelixResources getResources() {
+  public Optional<VeniceHelixResources> getResources() {
     if (resources == null) {
-      throw new VeniceException("Can not get the resources, current controller is not the leader of " + clusterName);
+      return Optional.empty();
+    } else {
+      return Optional.of(resources);
     }
-    return resources;
+  }
+
+  public String getClusterName() {
+    return clusterName;
   }
 }

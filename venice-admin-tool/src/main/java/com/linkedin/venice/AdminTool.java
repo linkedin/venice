@@ -139,11 +139,11 @@ public class AdminTool {
         String versionString = getRequiredArgument(cmd, Arg.VERSION, Command.KILL_JOB);
         int version = Integer.parseInt(versionString);
         String topicName = Version.composeKafkaTopic(storeName, version);
-        ControllerResponse response = new ControllerClient(clusterName, routerHosts).killOfflinePushJob(topicName);
+        ControllerResponse response = controllerClient.killOfflinePushJob(topicName);
         printObject(response);
       } else if (cmd.hasOption(Command.SKIP_ADMIN.toString())){
         String offset = getRequiredArgument(cmd, Arg.OFFSET, Command.SKIP_ADMIN);
-        ControllerResponse response = new ControllerClient(clusterName, routerHosts).skipAdminMessage(offset);
+        ControllerResponse response = controllerClient.skipAdminMessage(offset);
         printObject(response);
       } else if (cmd.hasOption(Command.NEW_STORE.toString())) {
         createNewStore(cmd);
@@ -164,7 +164,7 @@ public class AdminTool {
       } else if (cmd.hasOption(Command.ENABLE_STORE.toString())) {
         setEnableStoreReadWrites(cmd, true);
       } else if (cmd.hasOption(Command.DELETE_ALL_VERSIONS.toString())) {
-        deleteAllVersions(cmd, clusterName);
+        deleteAllVersions(cmd);
       } else if (cmd.hasOption(Command.SET_VERSION.toString())) {
         applyVersionToStore(cmd);
       } else if (cmd.hasOption(Command.SET_OWNER.toString())) {
@@ -180,7 +180,7 @@ public class AdminTool {
       } else if (cmd.hasOption(Command.CLUSTER_HEALTH_INSTANCES.toString())) {
         printInstancesStatuses();
       }  else if (cmd.hasOption(Command.CLUSTER_HEALTH_STORES.toString())) {
-        printStoresStatuses(clusterName);
+        printStoresStatuses();
       } else if (cmd.hasOption(Command.NODE_REMOVABLE.toString())){
         isNodeRemovable(cmd);
       } else if (cmd.hasOption(Command.REMOVE_NODE.toString())) {
@@ -198,7 +198,7 @@ public class AdminTool {
       } else if (cmd.hasOption(Command.SHOW_SCHEMAS.toString())){
         showSchemas(cmd);
       } else if(cmd.hasOption(Command.GET_EXECUTION.toString())){
-        getExecution(cmd, clusterName);
+        getExecution(cmd);
       } else if (cmd.hasOption(Command.ENABLE_THROTTLING.toString())) {
         enableThrottling(true);
       } else if (cmd.hasOption(Command.DISABLE_THROTTLING.toString())) {
@@ -315,25 +315,25 @@ public class AdminTool {
   }
 
   private static void applyVersionToStore(CommandLine cmd){
-    String store = getRequiredArgument(cmd, Arg.STORE, Command.SET_VERSION);
+    String storeName = getRequiredArgument(cmd, Arg.STORE, Command.SET_VERSION);
     String version = getRequiredArgument(cmd, Arg.VERSION, Command.SET_VERSION);
     int intVersion = Utils.parseIntFromString(version, Arg.VERSION.name());
     boolean versionExists = false;
-    StoreResponse storeResponse = controllerClient.getStore(store);
+    StoreResponse storeResponse = controllerClient.getStore(storeName);
     if (storeResponse.isError()){
-      throw new VeniceException("Error querying store: " + store + " -- " + storeResponse.getError());
+      throw new VeniceException("Error querying versions for store: " + storeName + " -- " + storeResponse.getError());
     }
-    int[] allVersions = storeResponse.getStore().getVersions().stream().mapToInt(v->v.getNumber()).toArray();
-    for (int v : allVersions) {
+    int[] versionNumbers = storeResponse.getStore().getVersions().stream().mapToInt(v -> v.getNumber()).toArray();
+    for(int v: versionNumbers) {
       if (v == intVersion){
         versionExists = true;
         break;
       }
     }
     if (!versionExists){
-      throw new VeniceException("Version " + version + " does not exist for store " + store + ".  Store only has versions: " + Arrays.toString(allVersions));
+     throw new VeniceException("Version " + version + " does not exist for store " + storeName + ".  Store only has versions: " + Arrays.toString(versionNumbers));
     }
-    VersionResponse response = controllerClient.overrideSetActiveVersion(store, intVersion);
+    VersionResponse response = controllerClient.overrideSetActiveVersion(storeName, intVersion);
     printSuccess(response);
   }
 
@@ -432,8 +432,8 @@ public class AdminTool {
     printObject(nodeResponse);
   }
 
-  private static void printStoresStatuses(String clusterName) {
-    MultiStoreStatusResponse storeResponse = controllerClient.listStoresStatuses(clusterName);
+  private static void printStoresStatuses() {
+    MultiStoreStatusResponse storeResponse = controllerClient.listStoresStatuses();
     printObject(storeResponse);
   }
 
@@ -617,13 +617,13 @@ public class AdminTool {
     }
   }
 
-  private static void deleteAllVersions(CommandLine cmd, String clusterName) {
+  private static void deleteAllVersions(CommandLine cmd) {
     String store = getRequiredArgument(cmd, Arg.STORE, Command.DELETE_ALL_VERSIONS);
     MultiVersionResponse response = controllerClient.deleteAllVersions(store);
     printObject(response);
   }
 
-  private static void getExecution(CommandLine cmd, String clusterName) {
+  private static void getExecution(CommandLine cmd) {
     long executionId = Long.valueOf(getRequiredArgument(cmd, Arg.EXECUTION, Command.GET_EXECUTION));
     AdminCommandExecutionResponse response = controllerClient.getAdminCommandExecution(executionId);
     printObject(response);

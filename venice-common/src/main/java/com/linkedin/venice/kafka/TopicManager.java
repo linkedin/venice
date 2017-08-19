@@ -37,6 +37,9 @@ import org.apache.log4j.Logger;
 import org.codehaus.jackson.map.ObjectMapper;
 
 
+/**
+ * Topic Manager is shared by multiple cluster's controllers running in one physical Venice controller instance.
+ */
 public class TopicManager implements Closeable {
   private static final Logger LOGGER = Logger.getLogger(TopicManager.class);
 

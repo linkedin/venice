@@ -30,8 +30,6 @@ public class HelixStoreGraveyard implements StoreGraveyard {
 
   private final String clusterName;
 
-  private final int retryCount = 3;
-
   public HelixStoreGraveyard(ZkClient zkClient, HelixAdapterSerializer adapterSerializer, String clusterName){
     this(zkClient, adapterSerializer,clusterName, new StoreJSONSerializer());
   }
@@ -91,7 +89,7 @@ public class HelixStoreGraveyard implements StoreGraveyard {
     }
     // Store does not exist in graveyard OR store already exists but the re-created store is deleted again so we need to
     // update the ZNode.
-    HelixUtils.update(dataAccessor, getDeletedStorePath(store.getName()), store, retryCount);
+    HelixUtils.update(dataAccessor, getDeletedStorePath(store.getName()), store);
     logger.info("Put store: " + store.getName() + " into graveyard.");
   }
 

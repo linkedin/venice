@@ -28,7 +28,11 @@ public abstract class VeniceRouteHandler<T extends ControllerResponse> implement
     try {
       internalHandle(request, veniceResponse);
     } catch (Throwable e) {
-      veniceResponse.setError(e.getMessage());
+      if (e.getMessage() != null) {
+        veniceResponse.setError(e.getMessage());
+      } else {
+        veniceResponse.setError(e.getClass().getName());
+      }
       AdminSparkServer.handleError(e, request, response);
     }
     response.type(HttpConstants.JSON);

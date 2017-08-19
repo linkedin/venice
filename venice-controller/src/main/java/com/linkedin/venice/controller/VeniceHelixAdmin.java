@@ -3,6 +3,7 @@ package com.linkedin.venice.controller;
 import com.linkedin.venice.controller.kafka.StoreStatusDecider;
 import com.linkedin.venice.controller.kafka.consumer.AdminConsumerService;
 import com.linkedin.venice.exceptions.SchemaIncompatibilityException;
+import com.linkedin.venice.exceptions.VeniceNoClusterException;
 import com.linkedin.venice.exceptions.VeniceStoreAlreadyExistsException;
 import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
 import com.linkedin.venice.helix.HelixAdapterSerializer;
@@ -12,11 +13,13 @@ import com.linkedin.venice.helix.HelixStoreGraveyard;
 import com.linkedin.venice.helix.Replica;
 import com.linkedin.venice.helix.ResourceAssignment;
 import com.linkedin.venice.helix.ZkRoutersClusterManager;
+import com.linkedin.venice.helix.ZkStoreConfigAccessor;
 import com.linkedin.venice.helix.ZkWhitelistAccessor;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.InstanceStatus;
 import com.linkedin.venice.meta.RoutersClusterConfig;
 import com.linkedin.venice.meta.RoutingDataRepository;
+import com.linkedin.venice.meta.StoreConfig;
 import com.linkedin.venice.meta.StoreGraveyard;
 import com.linkedin.venice.pushmonitor.KillOfflinePushMessage;
 import com.linkedin.venice.kafka.TopicManager;
@@ -74,13 +77,17 @@ import org.apache.log4j.Logger;
  *
  * <p>
  * After using controller as service mode. There are two levels of cluster and controllers. Each venice controller will
- * hold a parent helix controller, which will always connecting to ZK. And there is a cluster only used for all of these
- * parent controllers. The second level is our venice clusters. Like prod cluster, dev cluster etc. Each of cluster will
- * be Helix resource in the controller's cluster. So that Helix will choose one of parent controller becoming the leader
- * of our venice cluster. In the state transition handler, we will create sub-controller for this venice cluster only.
+ * hold a level1 helix controller which will keep connecting to Helix, there is a cluster only used for all of these
+ * level1 controllers(controller's cluster). The second level is our venice clusters. Like prod cluster, dev cluster
+ * etc. Each of cluster will be Helix resource in the controller's cluster. Helix will choose one of level1 controller
+ * becoming the master of our venice cluster. In our distributed controllers state transition handler, a level2 controller
+ * will be initialized to manage this venice cluster only. If this level1 controller is chosen as the master controller
+ * of multiple Venice clusters, multiple level2 controller will be created based on cluster specific config.
+ * <p>
+ * Admin is shared by multiple cluster's controllers running in one physical Venice controller instance.
  */
 public class VeniceHelixAdmin implements Admin, StoreCleaner {
-    private final VeniceControllerConfig config;
+    private final VeniceControllerMultiClusterConfig multiClusterConfigs;
     private final String controllerClusterName;
     private final int controllerClusterReplica;
     private final String controllerName;
@@ -102,6 +109,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     private final ExecutionIdAccessor executionIdAccessor;
     private final Optional<TopicReplicator> topicReplicator;
     private final long failedJobTopicRetentionMs;
+    private final ZkStoreConfigAccessor storeConfigAccessor;
 
 
   /**
@@ -112,39 +120,53 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
     private VeniceDistClusterControllerStateModelFactory controllerStateModelFactory;
     //TODO Use different configs for different clusters when creating helix admin.
-    public VeniceHelixAdmin(VeniceControllerConfig config, MetricsRepository metricsRepository) {
-        this.config = config;
-        this.controllerName = Utils.getHelixNodeIdentifier(config.getAdminPort());
-        this.controllerClusterName = config.getControllerClusterName();
-        this.controllerClusterReplica = config.getControllerClusterReplica();
-        this.kafkaBootstrapServers =  config.getKafkaBootstrapServers();
-        this.failedJobTopicRetentionMs = config.getFailedJobTopicRetentionMs();
+    public VeniceHelixAdmin(VeniceControllerMultiClusterConfig multiClusterConfigs, Map<String,MetricsRepository> metricsRepositories) {
+        this.multiClusterConfigs = multiClusterConfigs;
+        this.controllerName = Utils.getHelixNodeIdentifier(multiClusterConfigs.getAdminPort());
+        this.controllerClusterName = multiClusterConfigs.getControllerClusterName();
+        this.controllerClusterReplica = multiClusterConfigs.getControllerClusterReplica();
+        this.kafkaBootstrapServers =  multiClusterConfigs.getKafkaBootstrapServers();
+        this.failedJobTopicRetentionMs = multiClusterConfigs.getFailedJobTopicRetentionMs();
 
         // TODO: Re-use the internal zkClient for the ZKHelixAdmin and TopicManager.
-        this.admin = new ZKHelixAdmin(config.getZkAddress());
+        this.admin = new ZKHelixAdmin(multiClusterConfigs.getZkAddress());
         //There is no way to get the internal zkClient from HelixManager or HelixAdmin. So create a new one here.
-        this.zkClient = new ZkClient(config.getZkAddress(), ZkClient.DEFAULT_SESSION_TIMEOUT, ZkClient.DEFAULT_CONNECTION_TIMEOUT);
+        this.zkClient = new ZkClient(multiClusterConfigs.getZkAddress(), ZkClient.DEFAULT_SESSION_TIMEOUT,
+            ZkClient.DEFAULT_CONNECTION_TIMEOUT);
         this.adapterSerializer = new HelixAdapterSerializer();
-        this.topicManager = new TopicManager(config.getKafkaZkAddress());
+        this.topicManager = new TopicManager(multiClusterConfigs.getKafkaZkAddress());
         this.whitelistAccessor = new ZkWhitelistAccessor(zkClient, adapterSerializer);
         this.executionIdAccessor = new ZkExecutionIdAccessor(zkClient, adapterSerializer);
-        this.topicReplicator = TopicReplicator.getTopicReplicator(topicManager, config.getProps());
+        this.storeConfigAccessor =
+            new ZkStoreConfigAccessor(zkClient, adapterSerializer);
+        // TODO should pass a config instance instead of properties to get topic replicator.
+        this.topicReplicator =
+            TopicReplicator.getTopicReplicator(topicManager, multiClusterConfigs.getCommonConfig().getProps());
 
         // Create the parent controller and related cluster if required.
         createControllerClusterIfRequired();
         controllerStateModelFactory =
-            new VeniceDistClusterControllerStateModelFactory(zkClient, adapterSerializer, this, metricsRepository);
-        controllerStateModelFactory.addClusterConfig(config.getClusterName(), config);
-        // TODO should the Manager initialization be part of start method instead of the constructor.
+            new VeniceDistClusterControllerStateModelFactory(zkClient, adapterSerializer, this);
+        // Preset the configs for all known clusters.
+        for (String cluster : multiClusterConfigs.getClusters()) {
+            controllerStateModelFactory.addClusterConfig(cluster, multiClusterConfigs.getConfigForCluster(cluster), metricsRepositories.get(cluster));
+        }
+
+        // Initialized the helix manger for the level1 controller.
+        initLevel1Controller();
+    }
+
+    private void initLevel1Controller() {
         manager = HelixManagerFactory
-            .getZKHelixManager(controllerClusterName, controllerName, InstanceType.CONTROLLER_PARTICIPANT, config.getControllerClusterZkAddresss());
+            .getZKHelixManager(controllerClusterName, controllerName, InstanceType.CONTROLLER_PARTICIPANT,
+                multiClusterConfigs.getControllerClusterZkAddresss());
         StateMachineEngine stateMachine = manager.getStateMachineEngine();
         stateMachine.registerStateModelFactory(LeaderStandbySMD.name, controllerStateModelFactory);
         try {
             manager.connect();
         } catch (Exception ex) {
-            String errorMessage = " Error starting Helix controller cluster "
-                + controllerClusterName + " controller " + controllerName;
+            String errorMessage =
+                " Error starting Helix controller cluster " + controllerClusterName + " controller " + controllerName;
             logger.error(errorMessage, ex);
             throw new VeniceException(errorMessage, ex);
         }
@@ -229,21 +251,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             storeRepo.lock();
             try {
                 Store existingStore = storeRepo.getStore(storeName);
-                if(existingStore != null){
-                    if(existingStore.isDeleting()){
-                        // Controller was trying to delete the old store but failed.
-                        // Delete again before re-creating.
-                        // We lock the resource during deletion, so it's impossible to access the store which is being
-                        // deleted from here. So the only possible case is the deletion failed before.
-                        logger.info(
-                            "Found a legacy store:" + storeName + ", will attempt to delete it before re-creating.");
-                        deleteStore(clusterName, storeName, existingStore.getLargestUsedVersionNumber());
-                        logger.info("Successfully delete a legacy store: " + storeName);
-                    } else {
-                        // We should eliminate this possibility in checkPreConditionForAddStore, so if we reach this line it means we have some bugs.
-                        logger.error("Unable to re-create a store while the original one is still active.");
-                        throwStoreAlreadyExists(clusterName, storeName);
-                    }
+                if (existingStore != null) {
+                    // We already check the pre-condition before, so if we could find a store with the same name,
+                    // it means the store is a legacy store which is left by a failed deletion. So we should delete it.
+                    deleteStore(clusterName, storeName, existingStore.getLargestUsedVersionNumber());
                 }
                 // Now there is not store exists in the store repository, we will try to retrieve the info from the graveyard.
                 // Get the largestUsedVersionNumber from graveyard to avoid resource conflict.
@@ -251,6 +262,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 int largestUsedVersionNumber = storeGraveyard.getLargestUsedVersionNumber(storeName);
                 newStore.setLargestUsedVersionNumber(largestUsedVersionNumber);
                 storeRepo.addStore(newStore);
+                // Create global config for that store.
+                storeConfigAccessor.createConfig(storeName, clusterName);
                 logger.info("Store: " + storeName +
                     " has been created with largestUsedVersionNumber: " + newStore.getLargestUsedVersionNumber());
             } finally {
@@ -291,7 +304,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 // A worse case is deletion succeeded in parent controller but failed in production controller. After skip
                 // the admin message offset, a store was left in some prod colos. While user re-create the store, we will
                 // delete this legacy store if isDeleting is true for this store.
-                store.setDeleting(true);
+                StoreConfig storeConfig = storeConfigAccessor.getConfig(storeName);
+                storeConfig.setDeleting(true);
+                storeConfigAccessor.updateConfig(storeConfig);
                 storeRepository.updateStore(store);
             } finally {
                 storeRepository.unLock();
@@ -305,16 +320,35 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             storeGraveyard.putStoreIntoGraveyard(storeRepository.getStore(storeName));
             // Helix will remove all data under this store's znode including key and value schemas.
             resources.getMetadataRepository().deleteStore(storeName);
+            // Delete the config for this store after deleting the store.
+            storeConfigAccessor.deleteConfig(storeName);
             logger.info("Store:" + storeName + "has been deleted.");
         }
     }
 
     protected void checkPreConditionForAddStore(String clusterName, String storeName, String keySchema, String valueSchema) {
         checkControllerMastership(clusterName);
+        // Before creating store, check the global stores configs at first.
+        // TODO As some store had already been created before we introduced global store config
+        // TODO so we need a way to sync up the data. For example, while we loading all stores from ZK for a cluster,
+        // TODO put them into global store configs.
+        boolean isLagecyStore = false;
+        if(storeConfigAccessor.containsConfig(storeName)){
+            // Controller was trying to delete the old store but failed.
+            // Delete again before re-creating.
+            // We lock the resource during deletion, so it's impossible to access the store which is being
+            // deleted from here. So the only possible case is the deletion failed before.
+            if(!storeConfigAccessor.getConfig(storeName).isDeleting()) {
+                throw new VeniceStoreAlreadyExistsException(storeName);
+            } else {
+                isLagecyStore = true;
+            }
+        }
+
         HelixReadWriteStoreRepository repository = getVeniceHelixResource(clusterName).getMetadataRepository();
         Store  store= repository.getStore(storeName);
         // If the store exists in store repository and it's still active(not being deleted), we don't allow to re-create it.
-        if (store != null && !store.isDeleting()) {
+        if (store != null && !isLagecyStore) {
             throwStoreAlreadyExists(clusterName, storeName);
         }
         // Check whether the schema is valid or not
@@ -388,8 +422,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 repository.unLock();
             }
 
-            VeniceControllerClusterConfig clusterConfig =
-                controllerStateModelFactory.getModel(clusterName).getResources().getConfig();
+            VeniceControllerClusterConfig clusterConfig = getVeniceHelixResource(clusterName).getConfig();
             createKafkaTopic(clusterName, version.kafkaTopicName(), newTopicPartitionCount, clusterConfig.getKafkaReplicaFactor(), true);
             if (whetherStartOfflinePush) {
                 // TODO: there could be some problem here since topic creation is an async op, which means the new topic
@@ -526,7 +559,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                     // partitions, or setting the number of partitions at store creation time instead of at first version
                     throw new VeniceException("Store: " + storeName + " is not initialized with a version yet");
                 }
-                VeniceControllerClusterConfig clusterConfig = controllerStateModelFactory.getModel(clusterName).getResources().getConfig();
+                VeniceControllerClusterConfig clusterConfig = getVeniceHelixResource(clusterName).getConfig();
                 createKafkaTopic(clusterName, realTimeTopic, partitionCount, clusterConfig.getKafkaReplicaFactor(), false);
             } finally {
                 repository.unLock();
@@ -987,8 +1020,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
 
     @Override
-    public double getStorageEngineOverheadRatio() {
-        return config.getStorageEngineOverheadRatio();
+    public double getStorageEngineOverheadRatio(String clusterName) {
+        return multiClusterConfigs.getConfigForCluster(clusterName).getStorageEngineOverheadRatio();
     }
 
     // TODO: Though controller can control, multiple Venice-clusters, kafka topic name needs to be unique
@@ -1274,8 +1307,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
     private void throwClusterNotInitialized(String clusterName) {
         String errorMessage = "Cluster " + clusterName + " is not initialized.";
-        logger.info(errorMessage);
-        throw new VeniceException(errorMessage);
+        throw new VeniceNoClusterException(clusterName);
     }
 
     @Override
@@ -1521,7 +1553,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
 
     @Override
-    public Optional<AdminCommandExecutionTracker> getAdminCommandExecutionTracker() {
+    public Optional<AdminCommandExecutionTracker> getAdminCommandExecutionTracker(String clusterName) {
         return Optional.empty();
     }
 
@@ -1558,6 +1590,19 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     @Override
     public void setStorePushStrategyForMigration(String voldemortStoreName, String strategy) {
         throw new VeniceUnsupportedOperationException("setStorePushStrategyForMigration");
+    }
+
+    @Override
+    public Optional<String> getClusterOfStoreInMasterController(String storeName) {
+        for (VeniceDistClusterControllerStateModel model : controllerStateModelFactory.getAllModels()) {
+            Optional<VeniceHelixResources> resources = model.getResources();
+            if (resources.isPresent()) {
+                if (resources.get().getMetadataRepository().hasStore(storeName)) {
+                    return Optional.of(model.getClusterName());
+                }
+            }
+        }
+        return Optional.empty();
     }
 
     protected void startMonitorOfflinePush(String clusterName, String kafkaTopic, int numberOfPartition,
@@ -1607,15 +1652,19 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
 
     protected VeniceHelixResources getVeniceHelixResource(String cluster){
-        VeniceHelixResources resources = controllerStateModelFactory.getModel(cluster).getResources();
-        if(resources == null){
+        Optional<VeniceHelixResources> resources = controllerStateModelFactory.getModel(cluster).getResources();
+        if (!resources.isPresent()) {
             throwClusterNotInitialized(cluster);
         }
-        return resources;
+        return resources.get();
     }
 
-    public void addConfig(String clusterName,VeniceControllerConfig config){
-        controllerStateModelFactory.addClusterConfig(clusterName, config);
+    public void addConfig(String clusterName,VeniceControllerConfig config, MetricsRepository metricsRepository){
+        controllerStateModelFactory.addClusterConfig(clusterName, config, metricsRepository);
+    }
+
+    public void addMetric(String clusterName, MetricsRepository metricsRepository){
+
     }
 
     public ZkWhitelistAccessor getWhitelistAccessor() {
@@ -1624,6 +1673,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
     public String getControllerName(){
         return controllerName;
+    }
+
+    public ZkStoreConfigAccessor getStoreConfigAccessor() {
+        return storeConfigAccessor;
     }
 
     private interface StoreMetadataOperation {

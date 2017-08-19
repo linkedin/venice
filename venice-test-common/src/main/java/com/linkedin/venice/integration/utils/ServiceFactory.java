@@ -83,13 +83,20 @@ public class ServiceFactory {
    * @return an instance of {@link com.linkedin.venice.controller.VeniceControllerService}
    */
   public static VeniceControllerWrapper getVeniceController(String clusterName, KafkaBrokerWrapper kafkaBrokerWrapper,
-      int replicaFactor, int partitionSize, long delayToRebalanceMS, int minActiveReplica, BrooklinWrapper brooklinWrapper) {
+      int replicaFactor, int partitionSize, long delayToRebalanceMS, int minActiveReplica,
+      BrooklinWrapper brooklinWrapper) {
+    return getVeniceController(new String[]{clusterName}, kafkaBrokerWrapper, replicaFactor, partitionSize,
+        delayToRebalanceMS, minActiveReplica, brooklinWrapper);
+  }
+
+  public static VeniceControllerWrapper getVeniceController(String[] clusterNames,
+      KafkaBrokerWrapper kafkaBrokerWrapper, int replicaFactor, int partitionSize, long delayToRebalanceMS,
+      int minActiveReplica, BrooklinWrapper brooklinWrapper) {
     VeniceProperties extraProperties;
     if (null == brooklinWrapper) {
       extraProperties = EMPTY_VENICE_PROPS;
     } else {
-      extraProperties = new PropertyBuilder()
-          .put(ConfigKeys.ENABLE_TOPIC_REPLICATOR, "true")
+      extraProperties = new PropertyBuilder().put(ConfigKeys.ENABLE_TOPIC_REPLICATOR, "true")
           .put(TopicReplicator.TOPIC_REPLICATOR_CLASS_NAME, "com.linkedin.venice.replication.BrooklinTopicReplicator")
           .put(TopicReplicator.TOPIC_REPLICATOR_SOURCE_KAFKA_CLUSTER, kafkaBrokerWrapper.getAddress())
           .put(TopicReplicator.TOPIC_REPLICATOR_CONFIG_PREFIX + "brooklin.connection.string", brooklinWrapper.getBrooklinDmsUri())
@@ -97,7 +104,7 @@ public class ServiceFactory {
           .build();
     }
     return getStatefulService(VeniceControllerWrapper.SERVICE_NAME,
-        VeniceControllerWrapper.generateService(clusterName, kafkaBrokerWrapper.getZkAddress(), kafkaBrokerWrapper, false, replicaFactor, partitionSize,
+        VeniceControllerWrapper.generateService(clusterNames, kafkaBrokerWrapper.getZkAddress(), kafkaBrokerWrapper, false, replicaFactor, partitionSize,
             delayToRebalanceMS, minActiveReplica, null, extraProperties));
   }
 
@@ -116,9 +123,9 @@ public class ServiceFactory {
    * @param admin
    * @return
    */
-  public static AdminSparkServer getMockAdminSparkServer(Admin admin) {
+  public static AdminSparkServer getMockAdminSparkServer(Admin admin, String cluster) {
     return getService("MockAdminSparkServer", (serviceName, port) -> {
-      AdminSparkServer server = new AdminSparkServer(port, admin, new MetricsRepository());
+      AdminSparkServer server = new AdminSparkServer(port, admin, TestUtils.getMetricRepositories(cluster));
       server.start();
       return server;
     });
@@ -206,6 +213,34 @@ public class ServiceFactory {
     return getService(VeniceClusterWrapper.SERVICE_NAME,
         VeniceClusterWrapper.generateService(numberOfControllers, numberOfServers, numberOfRouter, replicaFactor,
             partitionSize, enableWhitelist, enableAutoJoinWhitelist, delayToRebalanceMS, minActiveReplica, sslToStorageNodes));
+  }
+
+  protected static VeniceClusterWrapper getVeniceClusterWrapperForMultiCluster(ZkServerWrapper zkServerWrapper,
+      KafkaBrokerWrapper kafkaBrokerWrapper, BrooklinWrapper brooklinWrapper, String clusterName,
+      int numberOfControllers, int numberOfServers, int numberOfRouter, int replicaFactor, int partitionSize,
+      boolean enableWhitelist, boolean enableAutoJoinWhitelist, long delayToRebalanceMS, int minActiveReplica,
+      boolean sslToStorageNodes) {
+    return getService(VeniceClusterWrapper.SERVICE_NAME,
+        VeniceClusterWrapper.generateService(zkServerWrapper, kafkaBrokerWrapper, brooklinWrapper, clusterName,
+            numberOfControllers, numberOfServers, numberOfRouter, replicaFactor, partitionSize, enableWhitelist,
+            enableAutoJoinWhitelist, delayToRebalanceMS, minActiveReplica, sslToStorageNodes));
+  }
+
+  public static VeniceMultiClusterWrapper getVeniceMultiClusterWrapper(int numberOfClusters, int numberOfControllers,
+      int numberOfServers, int numberOfRouter) {
+    return getService(VeniceMultiClusterWrapper.SERVICE_NAME,
+        VeniceMultiClusterWrapper.generateService(numberOfClusters, numberOfControllers,
+            numberOfServers, numberOfRouter, DEFAULT_REPLICATION_FACTOR, DEFAULT_PARTITION_SIZE_BYTES, false, false,
+            DEFAULT_DELAYED_TO_REBALANCE_MS, DEFAULT_REPLICATION_FACTOR - 1, DEFAULT_SSL));
+  }
+
+  public static VeniceMultiClusterWrapper getVeniceMultiClusterWrapper(int numberOfClusters, int numberOfControllers,
+      int numberOfServers, int numberOfRouter, int replicaFactor, int partitionSize, boolean enableWhitelist,
+      boolean enableAutoJoinWhitelist, long delayToRebalanceMS, int minActiveReplica, boolean sslToStorageNodes) {
+    return getService(VeniceMultiClusterWrapper.SERVICE_NAME,
+        VeniceMultiClusterWrapper.generateService(numberOfClusters, numberOfControllers,
+            numberOfServers, numberOfRouter, replicaFactor, partitionSize, enableWhitelist, enableAutoJoinWhitelist,
+            delayToRebalanceMS, minActiveReplica, sslToStorageNodes));
   }
 
   private static <S extends ProcessWrapper> S getStatefulService(String serviceName, StatefulServiceProvider<S> serviceProvider) {

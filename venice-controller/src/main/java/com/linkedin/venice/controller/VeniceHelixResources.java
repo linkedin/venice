@@ -6,6 +6,8 @@ import com.linkedin.venice.helix.HelixOfflinePushMonitorAccessor;
 import com.linkedin.venice.helix.HelixStatusMessageChannel;
 import com.linkedin.venice.helix.HelixStoreGraveyard;
 import com.linkedin.venice.helix.ZkRoutersClusterManager;
+import com.linkedin.venice.helix.ZkStoreConfigAccessor;
+import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreCleaner;
 import com.linkedin.venice.meta.StoreGraveyard;
 import com.linkedin.venice.pushmonitor.OfflinePushMonitor;
@@ -14,11 +16,15 @@ import com.linkedin.venice.helix.HelixReadWriteSchemaRepository;
 import com.linkedin.venice.helix.HelixReadWriteStoreRepository;
 import com.linkedin.venice.helix.HelixRoutingDataRepository;
 import io.tehuti.metrics.MetricsRepository;
+import java.util.Map;
+import java.util.Optional;
 import org.apache.helix.HelixManager;
 import org.apache.helix.manager.zk.ZkClient;
 
 /**
  * Aggregate all of essentials resources which is required by controller in one place.
+ * <p>
+ * All resources in this class is dedicated for one Venice cluster.
  */
 public class VeniceHelixResources implements VeniceResource {
   private final HelixManager controller;
@@ -31,6 +37,7 @@ public class VeniceHelixResources implements VeniceResource {
   private final HelixStoreGraveyard storeGraveyard;
   private final ZkRoutersClusterManager routersClusterManager;
   private final AggPartitionHealthStats aggPartitionHealthStats;
+  private final ZkStoreConfigAccessor storeConfigAccessor;
 
   public VeniceHelixResources(String clusterName,
                               ZkClient zkClient,
@@ -38,7 +45,7 @@ public class VeniceHelixResources implements VeniceResource {
                               HelixManager helixManager,
                               VeniceControllerClusterConfig config,
                               StoreCleaner storeCleaner,
-                              MetricsRepository metricsRepository) {
+                              Map<String, MetricsRepository> metricsRepositories) {
     this.config = config;
     this.controller = helixManager;
     this.metadataRepository = new HelixReadWriteStoreRepository(zkClient, adapterSerializer, clusterName);
@@ -51,8 +58,9 @@ public class VeniceHelixResources implements VeniceResource {
     storeGraveyard = new HelixStoreGraveyard(zkClient, adapterSerializer, clusterName);
     routersClusterManager = new ZkRoutersClusterManager(zkClient, adapterSerializer, clusterName);
     aggPartitionHealthStats =
-        new AggPartitionHealthStats(metricsRepository, routingDataRepository, metadataRepository,
+        new AggPartitionHealthStats(metricsRepositories.get(clusterName), routingDataRepository, metadataRepository,
             config.getReplicaFactor());
+    this.storeConfigAccessor = new ZkStoreConfigAccessor(zkClient, adapterSerializer);
   }
 
   @Override
@@ -63,6 +71,7 @@ public class VeniceHelixResources implements VeniceResource {
     routingDataRepository.refresh();
     OfflinePushMonitor.loadAllPushes();
     routersClusterManager.refresh();
+    repairStoreConfigs();
   }
 
   @Override
@@ -110,5 +119,23 @@ public class VeniceHelixResources implements VeniceResource {
 
   public AggPartitionHealthStats getAggPartitionHealthStats() {
     return aggPartitionHealthStats;
+  }
+
+  /**
+   * As the old store has not been added into store config map. So we repair the mapping here.
+   * // TODO this code should be removed after we do a successful deployment and repair all stores.
+   */
+  private void repairStoreConfigs() {
+    metadataRepository.lock();
+    try {
+      metadataRepository.getAllStores()
+          .stream()
+          .filter(store -> !storeConfigAccessor.containsConfig(store.getName()))
+          .forEach(store -> {
+            storeConfigAccessor.createConfig(store.getName(), config.getClusterName());
+          });
+    } finally {
+      metadataRepository.unLock();
+    }
   }
 }
