@@ -171,7 +171,7 @@ public class AdminTool {
       } else if (cmd.hasOption(Command.DELETE_ALL_VERSIONS.toString())) {
         deleteAllVersions(cmd, clusterName);
       } else if (cmd.hasOption(Command.SET_VERSION.toString())) {
-        applyVersionToStore(cmd, routerHosts, clusterName);
+        applyVersionToStore(cmd);
       } else if (cmd.hasOption(Command.SET_OWNER.toString())) {
         setStoreOwner(cmd);
       } else if (cmd.hasOption(Command.SET_PARTITION_COUNT.toString())) {
@@ -337,23 +337,24 @@ public class AdminTool {
     printSuccess(response);
   }
 
-  private static void applyVersionToStore(CommandLine cmd, String routerHosts, String clusterName){
+  private static void applyVersionToStore(CommandLine cmd){
     String store = getRequiredArgument(cmd, Arg.STORE, Command.SET_VERSION);
     String version = getRequiredArgument(cmd, Arg.VERSION, Command.SET_VERSION);
     int intVersion = Utils.parseIntFromString(version, Arg.VERSION.name());
     boolean versionExists = false;
-    MultiVersionResponse allVersions = ControllerClient.queryActiveVersions(routerHosts, clusterName, store);
-    if (allVersions.isError()){
-      throw new VeniceException("Error querying versions for store: " + store + " -- " + allVersions.getError());
+    StoreResponse storeResponse = controllerClient.getStore(store);
+    if (storeResponse.isError()){
+      throw new VeniceException("Error querying store: " + store + " -- " + storeResponse.getError());
     }
-    for (int v : allVersions.getVersions()){
+    int[] allVersions = storeResponse.getStore().getVersions().stream().mapToInt(v->v.getNumber()).toArray();
+    for (int v : allVersions) {
       if (v == intVersion){
         versionExists = true;
         break;
       }
     }
     if (!versionExists){
-      throw new VeniceException("Version " + version + " does not exist for store " + store + ".  Store only has versions: " + Arrays.toString(allVersions.getVersions()));
+      throw new VeniceException("Version " + version + " does not exist for store " + store + ".  Store only has versions: " + Arrays.toString(allVersions));
     }
     VersionResponse response = controllerClient.overrideSetActiveVersion(store, intVersion);
     printSuccess(response);

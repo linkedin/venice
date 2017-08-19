@@ -71,6 +71,8 @@ public interface Admin {
 
     int getCurrentVersion(String clusterName, String storeName);
 
+    Map<String, Integer> getCurrentVersionsForMultiColos(String clusterName, String storeName);
+
     Version peekNextVersion(String clusterName, String storeName);
 
     /**

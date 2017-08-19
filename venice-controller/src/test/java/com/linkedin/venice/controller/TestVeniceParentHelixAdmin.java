@@ -22,6 +22,7 @@ import com.linkedin.venice.controllerapi.MultiStoreResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
+import com.linkedin.venice.controllerapi.VersionResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.helix.HelixAdapterSerializer;
@@ -30,6 +31,7 @@ import com.linkedin.venice.integration.utils.KafkaBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
+import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.meta.OfflinePushStrategy;
@@ -1088,4 +1090,51 @@ public class TestVeniceParentHelixAdmin {
     Assert.assertEquals(deleteStore.largestUsedVersionNumber, 0);
 
   }
+
+  @Test
+  public void testGetCurrentVersionForMultiColos() {
+    int coloCount = 4;
+    Map<String, ControllerClient> controllerClientMap = prepareForCurrentVersionTest(coloCount);
+    Map<String, Integer> result = parentAdmin.getCurrentVersionForMultiColos(clusterName, "test", controllerClientMap);
+    Assert.assertEquals(result.size(), coloCount, "Should return the current versions for all colos.");
+    for (int i = 0; i < coloCount; i++) {
+      Assert.assertEquals(result.get("colo" + i).intValue(), i);
+    }
+  }
+
+
+  @Test
+  public void testGetCurrentVersionForMultiColosWithError() {
+    int coloCount = 4;
+    Map<String, ControllerClient> controllerClientMap = prepareForCurrentVersionTest(coloCount - 1);
+    ControllerClient errorClient = Mockito.mock(ControllerClient.class);
+    StoreResponse errorResponse = new StoreResponse();
+    errorResponse.setError("Error getting store for testing.");
+    Mockito.doReturn(errorResponse).when(errorClient).getStore(Mockito.anyString());
+    controllerClientMap.put("colo4", errorClient);
+
+    Map<String, Integer> result = parentAdmin.getCurrentVersionForMultiColos(clusterName, "test", controllerClientMap);
+    Assert.assertEquals(result.size(), coloCount, "Should return the current versions for all colos.");
+    for (int i = 0; i < coloCount - 1; i++) {
+      Assert.assertEquals(result.get("colo" + i).intValue(), i);
+    }
+    Assert.assertEquals(result.get("colo4").intValue(), AdminConsumptionTask.IGNORED_CURRENT_VERSION,
+        "Met an error while querying a current version from a colo, should return -1.");
+  }
+
+  private Map<String, ControllerClient> prepareForCurrentVersionTest(int coloCount){
+    Map<String, ControllerClient> controllerClientMap = new HashMap<>();
+
+    for (int i = 0; i < coloCount; i++) {
+      ControllerClient client = Mockito.mock(ControllerClient.class);
+      StoreResponse storeResponse = new StoreResponse();
+      Store s = TestUtils.createTestStore("s" + i, "test", System.currentTimeMillis());
+      s.setCurrentVersion(i);
+      storeResponse.setStore(StoreInfo.fromStore(s));
+      Mockito.doReturn(storeResponse).when(client).getStore(Mockito.anyString());
+      controllerClientMap.put("colo" + i, client);
+    }
+    return controllerClientMap;
+  }
+
 }

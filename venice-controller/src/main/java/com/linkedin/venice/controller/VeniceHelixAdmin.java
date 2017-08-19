@@ -4,6 +4,7 @@ import com.linkedin.venice.controller.kafka.StoreStatusDecider;
 import com.linkedin.venice.controller.kafka.consumer.AdminConsumerService;
 import com.linkedin.venice.exceptions.SchemaIncompatibilityException;
 import com.linkedin.venice.exceptions.VeniceStoreAlreadyExistsException;
+import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
 import com.linkedin.venice.helix.HelixAdapterSerializer;
 import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
 import com.linkedin.venice.helix.HelixReadWriteSchemaRepository;
@@ -540,6 +541,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         } else {
             return Store.NON_EXISTING_VERSION;
         }
+    }
+
+    @Override
+    public Map<String, Integer> getCurrentVersionsForMultiColos(String clusterName, String storeName) {
+        return null;
     }
 
     @Override

@@ -1,6 +1,9 @@
 package com.linkedin.venice.meta;
 
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+
 
 /**
  * Json-serializable class for sending store information to the controller client
@@ -36,6 +39,12 @@ public class StoreInfo {
    * The number of version which is used currently.
    */
   private int currentVersion = 0;
+
+  /**
+   * The map represent the current versions in different colos.
+   */
+  private Map<String, Integer> coloToCurrentVersions;
+
   /**
    * Highest version number that has been claimed by an upstream (H2V) system which will create the corresponding kafka topic.
    */
@@ -109,6 +118,14 @@ public class StoreInfo {
 
   public void setCurrentVersion(int currentVersion) {
     this.currentVersion = currentVersion;
+  }
+
+  public Map<String, Integer> getColoToCurrentVersions() {
+    return coloToCurrentVersions;
+  }
+
+  public void setColoToCurrentVersions(Map<String, Integer> coloToCurrentVersions) {
+    this.coloToCurrentVersions = coloToCurrentVersions;
   }
 
   /**
