@@ -15,6 +15,7 @@ import com.linkedin.venice.read.protocol.response.MultiGetResponseRecordV1;
 import com.linkedin.venice.serializer.AvroSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordSerializer;
 import io.netty.handler.codec.http.FullHttpResponse;
+import java.util.HashSet;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.log4j.Logger;
@@ -411,6 +412,36 @@ public class AvroGenericStoreClientImplTest {
       } catch (ExecutionException e) {
         // expected
       }
+    }
+  }
+
+  @Test
+  public void testMultiGetWithEmptyKeySet() throws IOException, ExecutionException, InterruptedException {
+    int valueSchemaId = 1;
+    String valueSchemaStr = "\"string\"";
+    Set<String> keys = new HashSet<>();
+    // Construct MultiGetResponse
+    RecordSerializer<Object> keySerializer = AvroSerializerDeserializerFactory.getAvroGenericSerializer(Schema.parse(valueSchemaStr));
+    List<Object> records = new ArrayList<>();
+    MultiGetResponseRecordV1 dataRecord1 = new MultiGetResponseRecordV1();
+    dataRecord1.keyIndex = 1;
+    dataRecord1.schemaId = valueSchemaId;
+    dataRecord1.value = ByteBuffer.wrap(keySerializer.serialize("value1"));
+    records.add(dataRecord1);
+
+    // Serialize MultiGetResponse
+    RecordSerializer<Object> responseSerializer = AvroSerializerDeserializerFactory.getAvroGenericSerializer(MultiGetResponseRecordV1.SCHEMA$);
+    byte[] responseBytes = responseSerializer.serializeObjects(records);
+    int responseSchemaId = 1;
+
+    FullHttpResponse httpResponse = StoreClientTestUtils.constructStoreResponse(responseSchemaId, responseBytes);
+    routerServer.addResponseForUri("/" + AbstractAvroStoreClient.TYPE_STORAGE + "/" + storeName, httpResponse);
+
+    for (Map.Entry<String, AvroGenericStoreClient<String, Object>> entry : storeClients.entrySet()) {
+      logger.info("Execute test for transport client: " + entry.getKey());
+      Map<String, Object> result = entry.getValue().batchGet(keys).get();
+      // Batch get request with empty key set shouldn't be sent to server side
+      Assert.assertTrue(result.isEmpty());
     }
   }
 }
