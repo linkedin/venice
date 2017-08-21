@@ -82,6 +82,17 @@ public class VeniceMultiGetPath extends VenicePath {
       throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(Optional.of(getStoreName()), Optional.of(getRequestType()),
           BAD_REQUEST, "Key count in multi-get request exceeds the threshold: " + maxKeyCount);
     }
+    if (0 == keyCount) {
+      /**
+       * TODO: Right now, there is no good way to return empty response if the key set is empty.
+       * The logic to handle empty key here is different from client side, since the client will return empty map
+       * instead of throwing an exception.
+       *
+       * If application is using Venice client to send batch-get request, this piece of logic shouldn't be triggered.
+       */
+      throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(Optional.of(getStoreName()), Optional.of(getRequestType()),
+          BAD_REQUEST, "Key count in multi-get request should not be zero");
+    }
   }
 
   private VeniceMultiGetPath(String resourceName, SortedMap<RouterKey, MultiGetRouterRequestKeyV1> routerKeyMap) {

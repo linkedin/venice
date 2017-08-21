@@ -43,6 +43,8 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
         Integer.toString(ReadAvroProtocolDefinition.MULTI_GET_CLIENT_REQUEST_V1.getProtocolVersion()));
   }
 
+  private final CompletableFuture<Map<K, V>> COMPLETABLE_FUTURE_FOR_EMPTY_KEY_IN_BATCH_GET = CompletableFuture.completedFuture(new HashMap<>());
+
   private final Boolean needSchemaReader;
   /** Used to communicate with Venice backend to retrieve necessary store schemas */
   private SchemaReader schemaReader;
@@ -141,6 +143,9 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
   @Override
   public CompletableFuture<Map<K, V>> batchGet(Set<K> keys) throws VeniceClientException
   {
+    if (keys.isEmpty()) {
+      return COMPLETABLE_FUTURE_FOR_EMPTY_KEY_IN_BATCH_GET;
+    }
     List<K> keyList = new ArrayList<>(keys);
     List<ByteBuffer> serializedKeyList = new ArrayList<>();
     keyList.stream().forEach( key -> serializedKeyList.add(ByteBuffer.wrap(keySerializer.serialize(key))) );
