@@ -32,8 +32,8 @@ public class TestVeniceControllerConfig {
   @Test
   public void canParseD2ClusterMap() {
     PropertyBuilder builder = new PropertyBuilder();
-    builder.put("child.cluster.d2.dc1", "zkAddress1")
-        .put("child.cluster.d2.dc2", "zkAddress2");
+    builder.put("child.cluster.d2.zkHost.dc1", "zkAddress1")
+        .put("child.cluster.d2.zkHost.dc2", "zkAddress2");
 
     Map<String, String> map = VeniceControllerConfig.parseClusterMap(builder.build(), WHITE_LIST, true);
     Assert.assertEquals(map.get("dc1").split(DELIMITER).length, 1);

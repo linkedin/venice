@@ -146,7 +146,7 @@ public class ConfigKeys {
   /**
    * Similar to {@link ConfigKeys#CHILD_CLUSTER_URL_PREFIX} but with D2 url.
    */
-  public static final String CHILD_CLUSTER_D2_PREFIX = "child.cluster.d2";
+  public static final String CHILD_CLUSTER_D2_PREFIX = "child.cluster.d2.zkHost";
 
   public static final String CHILD_CLUSTER_D2_SERVICE_NAME = "child.cluster.d2.service.name";
 
