@@ -23,7 +23,8 @@ public class VeniceJsonSerializer<T> implements VeniceSerializer<T> {
   @Override
   public byte[] serialize(T object, String path)
       throws IOException {
-    return mapper.writeValueAsBytes(object);
+    // Use pretty JSON format, easy to read.
+    return mapper.writerWithDefaultPrettyPrinter().writeValueAsBytes(object);
   }
 
   @Override

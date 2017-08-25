@@ -58,9 +58,21 @@ public class ReplicaStatusTest {
   }
 
   @Test
+  public void testUpdateStatusFromEndOfPushReceived() {
+    testValidTargetStatuses(END_OF_PUSH_RECEIVED, STARTED, ERROR, COMPLETED, START_OF_BUFFER_REPLAY_RECEIVED);
+    testInvalidTargetStatuses(END_OF_PUSH_RECEIVED, END_OF_PUSH_RECEIVED, PROGRESS);
+  }
+
+  @Test
+  public void testUpdateStatusFromStartOfBufferReplayReceived() {
+    testValidTargetStatuses(START_OF_BUFFER_REPLAY_RECEIVED, STARTED, ERROR, PROGRESS, COMPLETED);
+    testInvalidTargetStatuses(START_OF_BUFFER_REPLAY_RECEIVED, END_OF_PUSH_RECEIVED, START_OF_BUFFER_REPLAY_RECEIVED );
+  }
+
+  @Test
   public void testUpdateStatusFromCOMPLETED() {
-    testValidTargetStatuses(COMPLETED, STARTED);
-    testInvalidTargetStatuses(COMPLETED, PROGRESS, ERROR, COMPLETED);
+    testValidTargetStatuses(COMPLETED, STARTED, ERROR);
+    testInvalidTargetStatuses(COMPLETED, PROGRESS, COMPLETED);
   }
 
   @Test
