@@ -1,5 +1,6 @@
 package com.linkedin.venice.kafka.consumer;
 
+import com.linkedin.venice.exceptions.VeniceIngestionTaskKilledException;
 import com.linkedin.venice.notifier.VeniceNotifier;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import org.apache.log4j.Logger;
@@ -171,4 +172,28 @@ class IngestionNotificationDispatcher {
     }
   }
 
+  /**
+   * Report the consumption is stopped by the kill signal. As kill and error are orthogonal features, so separate it
+   * from report error.
+   */
+  void reportKilled(Collection<PartitionConsumptionState> pcsList, VeniceIngestionTaskKilledException ke) {
+    for (PartitionConsumptionState pcs : pcsList) {
+      report(pcs, ExecutionStatus.ERROR, notifier -> {
+        notifier.error(topic, pcs.getPartition(), ke.getMessage(), ke);
+        pcs.errorReported();
+      }, () -> {
+        if (pcs.isErrorReported()) {
+          logger.warn("Partition:" + pcs.getPartition() + " has been reported as error before.");
+          return false;
+        }
+        // Once a replica is completed, there is not need to kill the state transition.
+        if(pcs.isCompletionReported()){
+          logger.warn("Partition:" + pcs.getPartition()
+              + " has been marked as completed, so an error will not be reported...");
+          return false;
+        }
+        return true;
+      });
+    }
+  }
 }

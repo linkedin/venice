@@ -95,6 +95,10 @@ class PartitionConsumptionState {
     this.processedRecordSize = 0;
   }
 
+  public boolean isHybrid() {
+    return hybrid;
+  }
+
   @Override
   public String toString() {
     return "PartitionConsumptionState{" +

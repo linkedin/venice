@@ -4,6 +4,7 @@ import com.google.common.collect.Lists;
 import com.linkedin.venice.exceptions.PersistenceFailureException;
 import com.linkedin.venice.exceptions.UnsubscribedTopicPartitionException;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.exceptions.VeniceIngestionTaskKilledException;
 import com.linkedin.venice.exceptions.VeniceMessageException;
 import com.linkedin.venice.exceptions.validation.CorruptDataException;
 import com.linkedin.venice.exceptions.validation.MissingDataException;
@@ -394,6 +395,9 @@ public class StoreIngestionTask implements Runnable, Closeable {
         processConsumerActions();
         processMessages();
       }
+    } catch (VeniceIngestionTaskKilledException ke){
+      logger.info(consumerTaskId+"is killed, start to report to notifier.", ke);
+      notificationDispatcher.reportKilled(partitionConsumptionStateMap.values(), ke);
     } catch (Exception e) {
       // After reporting error to controller, controller will ignore the message from this replica if job is aborted.
       // So even this storage node recover eventually, controller will not confused.
@@ -447,7 +451,7 @@ public class StoreIngestionTask implements Runnable, Closeable {
         processConsumerAction(message);
       } catch (InterruptedException e){
         // task is killed
-        throw new VeniceException("Consumption task is killed", e);
+        throw new VeniceIngestionTaskKilledException(topic, e);
       } catch (Exception ex) {
         if (message.getAttemptsCount() < MAX_CONTROL_MESSAGE_RETRIES) {
           logger.info("Error Processing message will retry later" + message , ex);
