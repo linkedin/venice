@@ -1,5 +1,6 @@
 package com.linkedin.venice.hadoop.pbnj;
 
+import com.linkedin.venice.client.exceptions.VeniceClientHttpException;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
@@ -38,6 +39,7 @@ public class PostBulkLoadAnalysisMapper implements Mapper<AvroWrapper<IndexedRec
 
   private static final int NUM_THREADS = 200;
   private static final int REQUEST_TIME_OUT_MS = 10000;
+  private static final int THROTTLE_SLEEP_TIME_ON_QUOTA_EXCEPTION_MS = 200;
   private static final int CLOSE_LOOP_TIME_OUT_MS = 1000;
   private static final int SAMPLE_LOGGING_INTERVAL = 1000;
 
@@ -47,21 +49,23 @@ public class PostBulkLoadAnalysisMapper implements Mapper<AvroWrapper<IndexedRec
   private CompletionService<Data> completionService;
   private AvroGenericStoreClient<Object, Object> veniceClient;
 
-  // Immutable state
+  /** Immutable state (not final because it is set by {@link #configure(JobConf)} */
   private String keyField;
   private String valueField;
   private int keyFieldPos;
   private int valueFieldPos;
   private boolean failFast;
   private boolean async;
+  private double samplingRatio;
+  private Sampler sampler;
 
   // Mutable state
   private final AtomicBoolean closeCalled = new AtomicBoolean(false);
   private final AtomicReference<Exception> sendException = new AtomicReference<>();
   private final AtomicLong goodRecords = new AtomicLong();
-  private final AtomicLong totalRecords = new AtomicLong();
+  private final AtomicLong queriedRecords = new AtomicLong();
+  private final AtomicLong skippedRecords = new AtomicLong(); // Skipped because of sampling
   private final AtomicLong badRecords = new AtomicLong();
-
 
   @Override
   public void configure(JobConf job) {
@@ -71,6 +75,7 @@ public class PostBulkLoadAnalysisMapper implements Mapper<AvroWrapper<IndexedRec
     // Set up config
     this.failFast = props.getBoolean(KafkaPushJob.PBNJ_FAIL_FAST);
     this.async = props.getBoolean(KafkaPushJob.PBNJ_ASYNC);
+    this.samplingRatio = props.getDouble(KafkaPushJob.PBNJ_SAMPLING_RATIO_PROP);
     this.keyField = props.getString(KafkaPushJob.AVRO_KEY_FIELD_PROP);
     this.valueField = props.getString(KafkaPushJob.AVRO_VALUE_FIELD_PROP);
     String schemaStr = props.getString(KafkaPushJob.SCHEMA_STRING_PROP);
@@ -89,6 +94,8 @@ public class PostBulkLoadAnalysisMapper implements Mapper<AvroWrapper<IndexedRec
     this.veniceClient = ClientFactory.getAndStartGenericAvroClient(ClientConfig.defaultGenericClientConfig(
         props.getString(KafkaPushJob.VENICE_STORE_NAME_PROP))
         .setVeniceURL(props.getString(KafkaPushJob.PBNJ_ROUTER_URL_PROP)));
+
+    this.sampler = new Sampler(samplingRatio);
 
     logger.info("veniceClient started: " + veniceClient.toString());
 
@@ -109,7 +116,7 @@ public class PostBulkLoadAnalysisMapper implements Mapper<AvroWrapper<IndexedRec
     if (null != sendException.get() && failFast) {
       return false;
     } else if (closeCalled.get()) {
-      return totalRecords.get() < goodRecords.get() + badRecords.get();
+      return queriedRecords.get() < goodRecords.get() + badRecords.get();
     } else {
       return true;
     }
@@ -139,8 +146,8 @@ public class PostBulkLoadAnalysisMapper implements Mapper<AvroWrapper<IndexedRec
     maybePropagateCallbackException();
     logger.info("Records progress after flushing and closing producer:");
     logMessageProgress();
-    if (goodRecords.get() != totalRecords.get()) {
-      throw new VeniceException("Good records: " + goodRecords + " don't match total records: " + totalRecords);
+    if (goodRecords.get() != queriedRecords.get()) {
+      throw new VeniceException("Good records: " + goodRecords + " don't match total records: " + queriedRecords);
     }
   }
 
@@ -148,6 +155,11 @@ public class PostBulkLoadAnalysisMapper implements Mapper<AvroWrapper<IndexedRec
   public void map(AvroWrapper<IndexedRecord> record, NullWritable value, OutputCollector<NullWritable, NullWritable> output, Reporter reporter) throws IOException {
     if (failFast) {
       maybePropagateCallbackException();
+    }
+
+    if (sampler.checkWhetherToSkip(queriedRecords.get(), skippedRecords.get())) {
+      skippedRecords.incrementAndGet();
+      return;
     }
 
     // Initialize once
@@ -164,14 +176,29 @@ public class PostBulkLoadAnalysisMapper implements Mapper<AvroWrapper<IndexedRec
 
     Object valueDatumFromHdfs = datum.get(valueFieldPos);
 
-    if (totalRecords.get() % SAMPLE_LOGGING_INTERVAL == 0) {
+    if (queriedRecords.get() % SAMPLE_LOGGING_INTERVAL == 0) {
       logMessageProgress();
     }
 
-    Callable<Data> callable = () -> new Data(
-        keyDatum,
-        valueDatumFromHdfs,
-        veniceClient.get(keyDatum).get(REQUEST_TIME_OUT_MS, TimeUnit.MILLISECONDS));
+    Callable<Data> callable = () -> {
+      long timeSlept = 0;
+      while (true) {
+        try {
+          return new Data(
+              keyDatum,
+              valueDatumFromHdfs,
+              veniceClient.get(keyDatum).get(REQUEST_TIME_OUT_MS, TimeUnit.MILLISECONDS));
+        } catch (VeniceClientHttpException e) {
+          if (timeSlept > REQUEST_TIME_OUT_MS) {
+            throw new VeniceException(
+                "Could not successfully complete query because of VeniceClientHttpException even after sleeping a total of " +
+                    REQUEST_TIME_OUT_MS + " in-between requests.", e);
+          }
+          Thread.sleep(THROTTLE_SLEEP_TIME_ON_QUOTA_EXCEPTION_MS);
+          timeSlept += THROTTLE_SLEEP_TIME_ON_QUOTA_EXCEPTION_MS;
+        }
+      }
+    };
 
     if (async) {
       completionService.submit(callable);
@@ -183,9 +210,8 @@ public class PostBulkLoadAnalysisMapper implements Mapper<AvroWrapper<IndexedRec
         sendException.set(new VeniceException("Exception!", e));
       }
     }
-    totalRecords.incrementAndGet();
+    queriedRecords.incrementAndGet();
   }
-
 
   private void maybePropagateCallbackException() {
     if (null != sendException.get()) {
@@ -196,7 +222,8 @@ public class PostBulkLoadAnalysisMapper implements Mapper<AvroWrapper<IndexedRec
   private void logMessageProgress() {
     logger.info("Good records: " + goodRecords.get() +
         ",\t Bad records: " + badRecords.get() +
-        ",\t Total records: " + totalRecords.get());
+        ",\t Queried records: " + queriedRecords.get() +
+        ",\t Skipped records: " + skippedRecords.get());
   }
 
   private static class CompletionTask implements Runnable {

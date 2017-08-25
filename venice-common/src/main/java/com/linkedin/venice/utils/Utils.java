@@ -387,4 +387,14 @@ public class Utils {
   public static double getRatio(long rawNum, long total) {
     return total == 0 ? 0.0d : rawNum / (double) total;
   }
+
+  /**
+   * @param value the double value to be rounded
+   * @param precision the number of decimal places by which to round
+   * @return {@param value} rounded by {@param precision} decimal places
+   */
+  public static double round(double value, int precision) {
+    int scale = (int) Math.pow(10, precision);
+    return (double) Math.round(value * scale) / scale;
+  }
 }
