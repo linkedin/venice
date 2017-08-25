@@ -96,6 +96,7 @@ public class KafkaPushJob extends AbstractJob {
   public static final String PBNJ_FAIL_FAST = "pbnj.fail.fast";
   public static final String PBNJ_ASYNC = "pbnj.async";
   public static final String PBNJ_ROUTER_URL_PROP = "pbnj.router.urls";
+  public static final String PBNJ_SAMPLING_RATIO_PROP = "pbnj.sampling.ratio";
 
   public static final String STORAGE_QUOTA_PROP = "storage.quota";
   public static final String STORAGE_ENGINE_OVERHEAD_RATIO = "storage_engine_overhead_ratio";
@@ -129,6 +130,7 @@ public class KafkaPushJob extends AbstractJob {
   private final boolean enablePBNJ;
   private final boolean pbnjFailFast;
   private final boolean pbnjAsync;
+  private final double pbnjSamplingRatio;
 
   private final ControllerClient controllerClient;
 
@@ -248,6 +250,7 @@ public class KafkaPushJob extends AbstractJob {
     this.enablePBNJ = props.getBoolean(PBNJ_ENABLE, false);
     this.pbnjFailFast = props.getBoolean(PBNJ_FAIL_FAST, false);
     this.pbnjAsync = props.getBoolean(PBNJ_ASYNC, false);
+    this.pbnjSamplingRatio = props.getDouble(PBNJ_SAMPLING_RATIO_PROP, 1.0);
 
     if (enablePBNJ) {
       // If PBNJ is enabled, then the router URL config is mandatory
@@ -601,6 +604,7 @@ public class KafkaPushJob extends AbstractJob {
     conf.set(PBNJ_ROUTER_URL_PROP, veniceRouterUrl);
     conf.set(PBNJ_FAIL_FAST, Boolean.toString(pbnjFailFast));
     conf.set(PBNJ_ASYNC, Boolean.toString(pbnjAsync));
+    conf.set(PBNJ_SAMPLING_RATIO_PROP, Double.toString(pbnjSamplingRatio));
 
     return setupHadoopJob(conf, "VenicePBNJ", PostBulkLoadAnalysisMapper.class, null, null);
   }
