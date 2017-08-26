@@ -11,16 +11,16 @@ import static com.linkedin.venice.pushmonitor.ExecutionStatus.*;
 public class OfflinePushStatusTest {
   private String kafkaTopic = "testTopic";
   private int numberOfPartition = 3;
-  private int replciationFactor = 2;
+  private int replicationFactor = 2;
   private OfflinePushStrategy strategy = OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION;
 
   @Test
   public void testCreateOfflinePushStatus() {
     OfflinePushStatus offlinePushStatus =
-        new OfflinePushStatus(kafkaTopic, numberOfPartition, replciationFactor, strategy);
+        new OfflinePushStatus(kafkaTopic, numberOfPartition, replicationFactor, strategy);
     Assert.assertEquals(offlinePushStatus.getKafkaTopic(), kafkaTopic);
     Assert.assertEquals(offlinePushStatus.getNumberOfPartition(), numberOfPartition);
-    Assert.assertEquals(offlinePushStatus.getReplicationFactor(), replciationFactor);
+    Assert.assertEquals(offlinePushStatus.getReplicationFactor(), replicationFactor);
     Assert.assertEquals(offlinePushStatus.getCurrentStatus(), STARTED,
         "Once offline push status is created, it should in STARTED status by default.");
     Assert.assertEquals(offlinePushStatus.getStatusHistory().get(0).getStatus(), STARTED,
@@ -32,7 +32,7 @@ public class OfflinePushStatusTest {
   @Test
   public void testUpdatePartitionStatus() {
     OfflinePushStatus offlinePushStatus =
-        new OfflinePushStatus(kafkaTopic, numberOfPartition, replciationFactor, strategy);
+        new OfflinePushStatus(kafkaTopic, numberOfPartition, replicationFactor, strategy);
     PartitionStatus partitionStatus = new PartitionStatus(1);
     partitionStatus.updateReplicaStatus("testInstance", PROGRESS);
     offlinePushStatus.setPartitionStatus(partitionStatus);
@@ -49,8 +49,14 @@ public class OfflinePushStatusTest {
 
   @Test
   public void testUpdateStatusFromSTARTED() {
-    testValidTargetStatuses(STARTED, COMPLETED, ERROR);
+    testValidTargetStatuses(STARTED, COMPLETED, ERROR, END_OF_PUSH_RECEIVED);
     testInvalidTargetStatuses(STARTED, STARTED, ARCHIVED, STARTED);
+  }
+
+  @Test
+  public void testUpdateStatusFromEndOfPushReceived(){
+    testValidTargetStatuses(END_OF_PUSH_RECEIVED, COMPLETED, ERROR);
+    testInvalidTargetStatuses(END_OF_PUSH_RECEIVED, STARTED, ARCHIVED);
   }
 
   @Test
@@ -73,7 +79,7 @@ public class OfflinePushStatusTest {
   @Test
   public void testCloneOfflinePushStatus() {
     OfflinePushStatus offlinePushStatus =
-        new OfflinePushStatus(kafkaTopic, numberOfPartition, replciationFactor, strategy);
+        new OfflinePushStatus(kafkaTopic, numberOfPartition, replicationFactor, strategy);
     OfflinePushStatus clonedPush = offlinePushStatus.clonePushStatus();
     Assert.assertEquals(clonedPush, offlinePushStatus);
 
@@ -86,17 +92,17 @@ public class OfflinePushStatusTest {
   private void testValidTargetStatuses(ExecutionStatus from, ExecutionStatus... statuses) {
     for (ExecutionStatus status : statuses) {
       OfflinePushStatus offlinePushStatus =
-          new OfflinePushStatus(kafkaTopic, numberOfPartition, replciationFactor, strategy);
+          new OfflinePushStatus(kafkaTopic, numberOfPartition, replicationFactor, strategy);
       offlinePushStatus.setCurrentStatus(from);
       offlinePushStatus.updateStatus(status);
       Assert.assertEquals(offlinePushStatus.getCurrentStatus(), status, status + " should be valid from:" + from);
     }
   }
 
-  public void testInvalidTargetStatuses(ExecutionStatus from, ExecutionStatus... statuses) {
+  private void testInvalidTargetStatuses(ExecutionStatus from, ExecutionStatus... statuses) {
     for (ExecutionStatus status : statuses) {
       OfflinePushStatus offlinePushStatus =
-          new OfflinePushStatus(kafkaTopic, numberOfPartition, replciationFactor, strategy);
+          new OfflinePushStatus(kafkaTopic, numberOfPartition, replicationFactor, strategy);
       offlinePushStatus.setCurrentStatus(from);
       try {
         offlinePushStatus.updateStatus(status);

@@ -302,11 +302,14 @@ public class OfflinePushMonitor implements OfflinePushAccessor.PartitionStatusLi
   }
 
   private void checkHybridPushStatus(OfflinePushStatus offlinePushStatus) {
+    // As the outer method already locked on this instance, so this method is thread-safe.
     String storeName = Version.parseStoreFromKafkaTopicName(offlinePushStatus.getKafkaTopic());
     Store store = metadataRepository.getStore(storeName);
     if (null == store) {
       logger.info("Got a null store from metadataRepository for store name: '" + storeName +
           "'. Will attempt a refresh().");
+      // TODO refresh is a very expensive operation, because it will read all stores' metadata from ZK,
+      // TODO Do we really need to do this here?
       metadataRepository.refresh();
 
       store = metadataRepository.getStore(storeName);
@@ -326,6 +329,7 @@ public class OfflinePushMonitor implements OfflinePushAccessor.PartitionStatusLi
                 Version.composeRealTimeTopic(storeName),
                 offlinePushStatus.getKafkaTopic(),
                 store);
+            updatePushStatus(offlinePushStatus, ExecutionStatus.END_OF_PUSH_RECEIVED);
             logger.info("Successfully kicked off buffer replay for offlinePushStatus: " + offlinePushStatus.toString());
           } catch (Exception e) {
             // TODO: Figure out a better error handling...
@@ -355,12 +359,7 @@ public class OfflinePushMonitor implements OfflinePushAccessor.PartitionStatusLi
     logger.info("Updating offline push status, push for: " + pushStatus.getKafkaTopic() + " old status: "
         + pushStatus.getCurrentStatus() + ", new status: " + ExecutionStatus.COMPLETED);
     routingDataRepository.unSubscribeRoutingDataChange(pushStatus.getKafkaTopic(), this);
-    OfflinePushStatus clonedPushStatus = pushStatus.clonePushStatus();
-    clonedPushStatus.updateStatus(ExecutionStatus.COMPLETED);
-    // Update remote storage
-    accessor.updateOfflinePushStatus(clonedPushStatus);
-    // Update local copy
-    topicToPushMap.put(pushStatus.getKafkaTopic(), clonedPushStatus);
+    updatePushStatus(pushStatus, ExecutionStatus.COMPLETED);
     String storeName = Version.parseStoreFromKafkaTopicName(pushStatus.getKafkaTopic());
     int versionNumber = Version.parseVersionFromKafkaTopicName(pushStatus.getKafkaTopic());
     updateStoreVersionStatus(storeName, versionNumber, VersionStatus.ONLINE);
@@ -372,12 +371,7 @@ public class OfflinePushMonitor implements OfflinePushAccessor.PartitionStatusLi
     logger.info("Updating offline push status, push for: " + pushStatus.getKafkaTopic() + " is now "
         + pushStatus.getCurrentStatus() + ", new status: " + ExecutionStatus.ERROR);
     routingDataRepository.unSubscribeRoutingDataChange(pushStatus.getKafkaTopic(), this);
-    OfflinePushStatus clonedPushStatus = pushStatus.clonePushStatus();
-    clonedPushStatus.updateStatus(ExecutionStatus.ERROR);
-    // Update remote storage
-    accessor.updateOfflinePushStatus(clonedPushStatus);
-    // Update local copy
-    topicToPushMap.put(pushStatus.getKafkaTopic(), clonedPushStatus);
+    updatePushStatus(pushStatus, ExecutionStatus.ERROR);
     String storeName = Version.parseStoreFromKafkaTopicName(pushStatus.getKafkaTopic());
     int versionNumber = Version.parseVersionFromKafkaTopicName(pushStatus.getKafkaTopic());
     updateStoreVersionStatus(storeName, versionNumber, VersionStatus.ERROR);
@@ -413,6 +407,15 @@ public class OfflinePushMonitor implements OfflinePushAccessor.PartitionStatusLi
     } finally {
       metadataRepository.unLock();
     }
+  }
+
+  private void updatePushStatus(OfflinePushStatus pushStatus, ExecutionStatus status){
+    OfflinePushStatus clonedPushStatus = pushStatus.clonePushStatus();
+    clonedPushStatus.updateStatus(status);
+    // Update remote storage
+    accessor.updateOfflinePushStatus(clonedPushStatus);
+    // Update local copy
+    topicToPushMap.put(pushStatus.getKafkaTopic(), clonedPushStatus);
   }
 
   public OfflinePushAccessor getAccessor() {
