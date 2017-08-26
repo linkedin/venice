@@ -1,6 +1,7 @@
 package com.linkedin.venice.pushmonitor;
 
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.PartitionAssignment;
 import com.linkedin.venice.meta.ReadWriteStoreRepository;
@@ -9,14 +10,18 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreCleaner;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
+import com.linkedin.venice.replication.TopicReplicator;
 import com.linkedin.venice.utils.TestUtils;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import org.mockito.Mockito;
 import org.testng.Assert;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
+import static org.mockito.Mockito.eq;
+import static org.mockito.Mockito.any;
 
 
 public class OfflinePushMonitorTest {
@@ -148,6 +153,95 @@ public class OfflinePushMonitorTest {
     Assert.assertEquals(monitor.getOfflinePush(topic).getCurrentStatus(), ExecutionStatus.COMPLETED);
     // After offline push completed, bump up the current version of this store.
     Assert.assertEquals(store.getCurrentVersion(), 1);
+  }
+
+  @Test
+  public void testOnPartitionStatusChangeForHybridStore(){
+    String topic = "hybridTestStore_v1";
+    // Prepare a hybrid store.
+    Store store = prepareMockStore(topic);
+    store.setHybridStoreConfig(new HybridStoreConfig(100,100));
+    // Prepare a mock topic replicator
+    TopicReplicator mockReplicator = Mockito.mock(TopicReplicator.class);
+    monitor.setTopicReplicator(Optional.of(mockReplicator));
+    // Start a push
+    monitor.startMonitorOfflinePush(topic, numberOfPartition, replicationFactor,
+        OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);
+
+    // Prepare the new partition status
+    List<ReplicaStatus> replicaStatuses = new ArrayList<>();
+    for(int i=0;i<replicationFactor;i++){
+      ReplicaStatus replicaStatus = new ReplicaStatus("test"+i);
+      replicaStatuses.add(replicaStatus);
+    }
+    // All replicas are in STARTED status
+    ReadOnlyPartitionStatus partitionStatus = new ReadOnlyPartitionStatus(0, replicaStatuses);
+
+    // Check hybrid push status
+    monitor.onPartitionStatusChange(topic, partitionStatus);
+    // Not ready to send SOBR
+    Mockito.verify(mockReplicator, Mockito.never()).startBufferReplay(any(), any(), any());
+    Assert.assertEquals(monitor.getOfflinePush(topic).getCurrentStatus(), ExecutionStatus.STARTED,
+        "Hybrid push is not ready to send SOBR.");
+
+    // One replica received end of push
+    replicaStatuses.get(0).updateStatus(ExecutionStatus.END_OF_PUSH_RECEIVED);
+    monitor.onPartitionStatusChange(topic, partitionStatus);
+    Mockito.verify(mockReplicator, Mockito.times(1))
+        .startBufferReplay(eq(Version.composeRealTimeTopic(store.getName())), eq(topic), eq(store));
+    Assert.assertEquals(monitor.getOfflinePush(topic).getCurrentStatus(), ExecutionStatus.END_OF_PUSH_RECEIVED,
+        "At least one replica already received end_of_push, so we send SOBR and update push status to END_OF_PUSH_RECEIVED");
+
+    // Another replica received end of push
+    replicaStatuses.get(1).updateStatus(ExecutionStatus.END_OF_PUSH_RECEIVED);
+    mockReplicator = Mockito.mock(TopicReplicator.class);
+    monitor.setTopicReplicator(Optional.of(mockReplicator));
+    monitor.onPartitionStatusChange(topic, partitionStatus);
+    // Should not send SOBR again
+    Mockito.verify(mockReplicator, Mockito.never()).startBufferReplay(any(), any(), any());
+  }
+
+  @Test
+  public void testOnPartitionStatusChangeForHybridStoreParallel()
+      throws InterruptedException {
+    String topic = "hybridTestStore_v2";
+    // Prepare a hybrid store.
+    Store store = prepareMockStore(topic);
+    store.setHybridStoreConfig(new HybridStoreConfig(100,100));
+    // Prepare a mock topic replicator
+    TopicReplicator mockReplicator = Mockito.mock(TopicReplicator.class);
+    monitor.setTopicReplicator(Optional.of(mockReplicator));
+    // Start a push
+    monitor.startMonitorOfflinePush(topic, numberOfPartition, replicationFactor,
+        OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);
+
+    int threadCount = 8;
+    Thread[] threads = new Thread[threadCount];
+    for(int i = 0;i<threadCount;i++ ) {
+      Thread t = new Thread(()->{
+        List<ReplicaStatus> replicaStatuses = new ArrayList<>();
+        for (int r = 0; r < replicationFactor; r++) {
+          ReplicaStatus replicaStatus = new ReplicaStatus("test" + r);
+          replicaStatus.updateStatus(ExecutionStatus.END_OF_PUSH_RECEIVED);
+          replicaStatuses.add(replicaStatus);
+        }
+        // All replicas are in END_OF_PUSH_RECEIVED status
+        ReadOnlyPartitionStatus partitionStatus = new ReadOnlyPartitionStatus(0, replicaStatuses);
+        // Check hybrid push status
+        monitor.onPartitionStatusChange(topic, partitionStatus);
+      });
+      threads[i]=t;
+      t.start();
+    }
+    // After all thread was completely executed.
+    for(int i=0;i<threadCount;i++){
+      threads[i].join();
+    }
+    // Only send one SOBR
+    Mockito.verify(mockReplicator, Mockito.only())
+        .startBufferReplay(eq(Version.composeRealTimeTopic(store.getName())), eq(topic), eq(store));
+    Assert.assertEquals(monitor.getOfflinePush(topic).getCurrentStatus(), ExecutionStatus.END_OF_PUSH_RECEIVED,
+        "At least one replica already received end_of_push, so we send SOBR and update push status to END_OF_PUSH_RECEIVED");
   }
 
   @DataProvider(name = "pushStatues")

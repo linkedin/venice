@@ -61,6 +61,9 @@ public class OfflinePushStatus {
    * <ul>
    *   <li>STARTED->COMPLETED</li>
    *   <li>STARTED->ERROR</li>
+   *   <li>STARTED->END_OF_PUSH_RECEIVED</li>
+   *   <li>END_OF_PUSH_RECEIVED->COMPLETED</li>
+   *   <li>END_OF_PUSH_RECEIVED->ERROR</li>
    *   <li>COMPLETED->ARCHIVED</li>
    *   <li>ERROR->ARCHIVED</li>
    * </ul>
@@ -71,11 +74,14 @@ public class OfflinePushStatus {
     boolean isValid;
     switch (currentStatus) {
       case STARTED:
-        isValid = Utils.verifyTransition(newStatus, ERROR, COMPLETED);
+        isValid = Utils.verifyTransition(newStatus, ERROR, COMPLETED, END_OF_PUSH_RECEIVED);
         break;
       case ERROR:
       case COMPLETED:
         isValid = Utils.verifyTransition(newStatus, ARCHIVED);
+        break;
+      case END_OF_PUSH_RECEIVED:
+        isValid = Utils.verifyTransition(newStatus, COMPLETED, ERROR);
         break;
       default:
         isValid = false;
@@ -200,6 +206,12 @@ public class OfflinePushStatus {
    * @return true if at least one replica of each partition has consumed an EOP control message, false otherwise
    */
   public boolean isReadyToStartBufferReplay() {
+    // Only allow the push in STARTED status to start buffer replay. It could avoid:
+    //   1. Send duplicated start buffer replay message.
+    //   2. Send start buffer replay message when a push had already been terminated.
+    if(!getCurrentStatus().equals(ExecutionStatus.STARTED)) {
+      return false;
+    }
     return getPartitionStatuses().stream()
         // For all partitions
         .allMatch(partitionStatus -> partitionStatus.getReplicaStatuses().stream()
