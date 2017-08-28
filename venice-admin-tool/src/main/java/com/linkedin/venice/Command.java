@@ -79,7 +79,7 @@ public enum Command {
   ENABLE_MAX_CAPACITY_PROTECTION("enable-max-capacity-protection",
       "Enable the feature that prevent read request usage exceeding the max capacity on all routers.",
       new Arg[]{Arg.URL, Arg.CLUSTER}),
-  DIABLE_MAX_CAPACITY_PROTECTION("disable-max-capacity-protection",
+  DISABLE_MAX_CAPACITY_PROTECTION("disable-max-capacity-protection",
       "Disable the feature that prevent read request usage exceeding the max capacity on all routers..",
       new Arg[]{Arg.URL, Arg.CLUSTER}),
   ENABLE_QUTOA_REBALANCE("enable-quota-rebalance",
@@ -89,8 +89,14 @@ public enum Command {
       "Disable the feature that quota could be rebalanced once live router count is changed on all routers.",
       new Arg[]{Arg.URL, Arg.CLUSTER}),
   GET_ROUTERS_CLUSTER_CONFIG("get-routers-cluster-config", "Get cluster level router's config.",
-      new Arg[]{Arg.URL, Arg.CLUSTER});
+      new Arg[]{Arg.URL, Arg.CLUSTER}),
 
+  GET_ALL_MIGRATION_PUSH_STRATEGIES("get-all-migration-push-strategies", "Get migration push strategies for all the"
+      + " voldemort stores", new Arg[] {Arg.URL, Arg.CLUSTER}),
+  GET_MIGRATION_PUSH_STRATEGY("get-migration-push-strategy", "Get migration push strategy for the specified voldemort"
+      + " store", new Arg[] {Arg.URL, Arg.CLUSTER, Arg.VOLDEMORT_STORE}),
+  SET_MIGRATION_PUSH_STRATEGY("set-migration-push-strategy", "Setup migration push strategy for the specified voldemort"
+      + " store", new Arg[] {Arg.URL, Arg.CLUSTER, Arg.VOLDEMORT_STORE, Arg.MIGRATION_PUSH_STRATEGY});
 
 
   private final String commandName;

@@ -53,7 +53,12 @@ public enum ControllerRoute {
   ENABLE_THROTTLING("/enable_throttling", Arrays.asList(STATUS)),
   ENABLE_MAX_CAPACITY_PROTECTION("/enable_max_capacity_protection", Arrays.asList(STATUS)),
   ENABLE_QUOTA_REBALANCED("/enable_quota_rebalanced", Arrays.asList(STATUS, EXPECTED_ROUTER_COUNT)),
-  GET_ROUTERS_CLUSTER_CONFIG("/get_routers_cluster_config", Arrays.asList());
+  GET_ROUTERS_CLUSTER_CONFIG("/get_routers_cluster_config", Arrays.asList()),
+
+  // TODO: those operations don't require param: cluster.
+  // This could be resolved in multi-cluster support project.
+  GET_ALL_MIGRATION_PUSH_STRATEGIES("/get_all_push_strategies", Arrays.asList()),
+  SET_MIGRATION_PUSH_STRATEGY("/set_push_strategy", Arrays.asList(VOLDEMORT_STORE_NAME, PUSH_STRATEGY));
 
   private final String path;
   private final List<String> params;

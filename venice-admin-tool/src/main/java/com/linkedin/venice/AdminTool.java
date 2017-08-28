@@ -5,6 +5,7 @@ import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
+import com.linkedin.venice.controllerapi.MigrationPushStrategyResponse;
 import com.linkedin.venice.controllerapi.MultiNodeResponse;
 import com.linkedin.venice.controllerapi.MultiNodesStatusResponse;
 import com.linkedin.venice.controllerapi.MultiReplicaResponse;
@@ -204,7 +205,7 @@ public class AdminTool {
         enableThrottling(false);
       } else if (cmd.hasOption(Command.ENABLE_MAX_CAPACITY_PROTECTION.toString())) {
         enableMaxCapacityProtection(true);
-      } else if (cmd.hasOption(Command.DIABLE_MAX_CAPACITY_PROTECTION.toString())) {
+      } else if (cmd.hasOption(Command.DISABLE_MAX_CAPACITY_PROTECTION.toString())) {
         enableMaxCapacityProtection(false);
       } else if (cmd.hasOption(Command.ENABLE_QUTOA_REBALANCE.toString())) {
         enableQuotaRebalance(cmd, true);
@@ -212,6 +213,12 @@ public class AdminTool {
         enableQuotaRebalance(cmd, false);
       } else if (cmd.hasOption(Command.GET_ROUTERS_CLUSTER_CONFIG.toString())) {
         getRoutersClusterConfig();
+      } else if (cmd.hasOption(Command.GET_ALL_MIGRATION_PUSH_STRATEGIES.toString())) {
+        getAllMigrationPushStrategies();
+      } else if (cmd.hasOption(Command.GET_MIGRATION_PUSH_STRATEGY.toString())) {
+        getMigrationPushStrategy(cmd);
+      } else if (cmd.hasOption(Command.SET_MIGRATION_PUSH_STRATEGY.toString())) {
+        setMigrationPushStrategy(cmd);
       } else {
         StringJoiner availableCommands = new StringJoiner(", ");
         for (Command c : Command.values()){
@@ -493,6 +500,35 @@ public class AdminTool {
     printObject(response);
   }
 
+  private static void getAllMigrationPushStrategies() {
+    MigrationPushStrategyResponse response = controllerClient.getMigrationPushStrategies();
+    printObject(response);
+  }
+
+  private static void getMigrationPushStrategy(CommandLine cmd) {
+    String voldemortStoreName = getRequiredArgument(cmd, Arg.VOLDEMORT_STORE);
+    MigrationPushStrategyResponse response = controllerClient.getMigrationPushStrategies();
+    if (response.isError()) {
+      printObject(response);
+    } else {
+      Map<String, String> resultMap = new HashMap<>();
+      Map<String, String> migrationStrategies = response.getStrategies();
+      String pushStrategy = "Unknown in Venice";
+      if (migrationStrategies.containsKey(voldemortStoreName)) {
+        pushStrategy = migrationStrategies.get(voldemortStoreName);
+      }
+      resultMap.put("voldemortStoreName", voldemortStoreName);
+      resultMap.put("pushStrategy", pushStrategy);
+      printObject(resultMap);
+    }
+  }
+
+  private static void setMigrationPushStrategy(CommandLine cmd) {
+    String voldemortStoreName = getRequiredArgument(cmd, Arg.VOLDEMORT_STORE);
+    String pushStrategy = getRequiredArgument(cmd, Arg.MIGRATION_PUSH_STRATEGY);
+    ControllerResponse response = controllerClient.setMigrationPushStrategy(voldemortStoreName, pushStrategy);
+    printSuccess(response);
+  }
 
 
 

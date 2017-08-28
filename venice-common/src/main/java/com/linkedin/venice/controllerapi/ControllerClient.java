@@ -692,6 +692,30 @@ public class ControllerClient implements Closeable {
     }
   }
 
+  public MigrationPushStrategyResponse getMigrationPushStrategies() {
+    try {
+      List<NameValuePair> queryParams = newParams(clusterName);
+      String responseJson = getRequest(ControllerRoute.GET_ALL_MIGRATION_PUSH_STRATEGIES.getPath(), queryParams);
+      return mapper.readValue(responseJson, MigrationPushStrategyResponse.class);
+    } catch (Exception e) {
+      return handleError(new VeniceException("Error getting migration push strategies.", e),
+          new MigrationPushStrategyResponse());
+    }
+  }
+
+  public ControllerResponse setMigrationPushStrategy(String voldemortStoreName, String pushStrategy) {
+    try {
+      List<NameValuePair> queryParams = newParams(clusterName);
+      queryParams.add(new BasicNameValuePair(ControllerApiConstants.VOLDEMORT_STORE_NAME, voldemortStoreName));
+      queryParams.add(new BasicNameValuePair(ControllerApiConstants.PUSH_STRATEGY, pushStrategy));
+      String responseJson = getRequest(ControllerRoute.SET_MIGRATION_PUSH_STRATEGY.getPath(), queryParams);
+      return mapper.readValue(responseJson, MigrationPushStrategyResponse.class);
+    } catch (Exception e) {
+      return handleError(new VeniceException("Error getting migration push strategies.", e),
+          new ControllerResponse());
+    }
+  }
+
   /***
    * Add all global parameters in this method. Always use a form of this method to generate
    * a new list of NameValuePair objects for making HTTP requests.

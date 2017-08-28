@@ -1,5 +1,8 @@
 package com.linkedin.venice;
 
+import com.linkedin.venice.migration.MigrationPushStrategy;
+
+
 public enum Arg {
 
   URL("url", "u", true, "Venice url, eg. http://localhost:1689  This can be a router or a controller"),
@@ -23,6 +26,10 @@ public enum Arg {
   HYBRID_REWIND_SECONDS("hybrid-rewind-seconds", "hr", true, "for hybrid stores, how far back to rewind in the nearline stream after a batch push completes"),
   HYBRID_OFFSET_LAG("hybrid-offset-lag", "ho", true, "for hybrid stores, what is the offset lag threshold for the storage nodes' consumption to be considered ONLINE"),
   EXPECTED_ROUTER_COUNT("expected-router-count", "erc", true, "How many routers that a cluster should have."),
+
+  VOLDEMORT_STORE("voldemort-store", "vs", true, "Voldemort store name"),
+  MIGRATION_PUSH_STRATEGY("migration-push-strategy", "ps", true, "Migration push strategy, valid values: ["
+      + MigrationPushStrategy.getAllEnumString() + "]"),
 
   FILTER_JSON("filter-json", "f", true, "Comma-delimited list of fields to display from the json output.  Omit to display all fields"),
   FLAT_JSON("flat-json", "fj", false, "Display output as flat json, without pretty-print indentation and line breaks"),
