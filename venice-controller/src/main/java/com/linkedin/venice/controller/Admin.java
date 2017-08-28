@@ -316,5 +316,9 @@ public interface Admin {
         Optional<Boolean> isQuotaRebalancedEnable, Optional<Boolean> isMaxCapaictyProtectionEnabled,
         Optional<Integer> expectedRouterCount);
 
+    Map<String, String> getAllStorePushStrategyForMigration();
+
+    void setStorePushStrategyForMigration(String voldemortStoreName, String strategy);
+
     void close();
 }

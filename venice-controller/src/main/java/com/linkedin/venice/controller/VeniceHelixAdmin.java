@@ -1550,6 +1550,16 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         }
     }
 
+    @Override
+    public Map<String, String> getAllStorePushStrategyForMigration() {
+        throw new VeniceUnsupportedOperationException("getAllStorePushStrategyForMigration");
+    }
+
+    @Override
+    public void setStorePushStrategyForMigration(String voldemortStoreName, String strategy) {
+        throw new VeniceUnsupportedOperationException("setStorePushStrategyForMigration");
+    }
+
     protected void startMonitorOfflinePush(String clusterName, String kafkaTopic, int numberOfPartition,
         int replicationFactor, OfflinePushStrategy strategy) {
         OfflinePushMonitor offlinePushMonitor = getVeniceHelixResource(clusterName).getOfflinePushMonitor();

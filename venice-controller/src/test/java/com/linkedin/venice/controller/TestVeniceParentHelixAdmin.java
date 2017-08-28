@@ -17,6 +17,7 @@ import com.linkedin.venice.controller.kafka.protocol.enums.AdminMessageType;
 import com.linkedin.venice.controller.kafka.protocol.serializer.AdminOperationSerializer;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
+import com.linkedin.venice.controllerapi.MigrationPushStrategyResponse;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.controllerapi.MultiStoreResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
@@ -32,6 +33,7 @@ import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.meta.StoreInfo;
+import com.linkedin.venice.migration.MigrationPushStrategy;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.meta.OfflinePushStrategy;
@@ -748,6 +750,14 @@ public class TestVeniceParentHelixAdmin {
     VersionCreationResponse versionCreationResponse = ControllerClient.createNewStoreVersion(controllerUrl,
         clusterName, storeName, 10 * 1024 * 1024);
     Assert.assertFalse(versionCreationResponse.isError());
+
+    // Set up migration push strategy
+    String voldemortStoreName = TestUtils.getUniqueString("voldemort_store_name");
+    String pushStrategy = MigrationPushStrategy.RunBnPAndH2VWaitForBothStrategy.name();
+    controllerClient.setMigrationPushStrategy(voldemortStoreName, pushStrategy);
+    // Retrieve migration push strategy
+    MigrationPushStrategyResponse pushStrategyResponse = controllerClient.getMigrationPushStrategies();
+    Assert.assertEquals(pushStrategyResponse.getStrategies().get(voldemortStoreName), pushStrategy);
 
     controllerWrapper.close();
     kafkaBrokerWrapper.close();

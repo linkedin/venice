@@ -36,6 +36,9 @@ public class ControllerApiConstants {
 
   public static final String EXPECTED_ROUTER_COUNT = "expected_router_count";
 
+  public static final String VOLDEMORT_STORE_NAME = "voldemort_store_name";
+  public static final String PUSH_STRATEGY = "push_strategy";
+
   private ControllerApiConstants(){}
 
   /**

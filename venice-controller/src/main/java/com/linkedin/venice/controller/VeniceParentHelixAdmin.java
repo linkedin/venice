@@ -25,6 +25,7 @@ import com.linkedin.venice.controller.kafka.protocol.admin.ValueSchemaCreation;
 import com.linkedin.venice.controller.kafka.protocol.enums.AdminMessageType;
 import com.linkedin.venice.controller.kafka.protocol.enums.SchemaType;
 import com.linkedin.venice.controller.kafka.protocol.serializer.AdminOperationSerializer;
+import com.linkedin.venice.controller.migration.MigrationPushStrategyZKAccessor;
 import com.linkedin.venice.controllerapi.AdminCommandExecution;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.D2ControllerClient;
@@ -93,6 +94,8 @@ public class VeniceParentHelixAdmin implements Admin {
   private long lastTopicCreationTime = -1;
   private Time timer = new SystemTime();
 
+  private final MigrationPushStrategyZKAccessor pushStrategyZKAccessor;
+
   /**
    * Variable to store offset of last message.
    * Before executing any request, this class will check whether last offset has been consumed or not:
@@ -118,6 +121,8 @@ public class VeniceParentHelixAdmin implements Admin {
     this.adminCommandExecutionTracker =
         new AdminCommandExecutionTracker(config.getClusterName(), veniceHelixAdmin.getExecutionIdAccessor(),
             getControllerClientMap(config.getClusterName()));
+    this.pushStrategyZKAccessor = new MigrationPushStrategyZKAccessor(veniceHelixAdmin.getZkClient(),
+        veniceHelixAdmin.getAdapterSerializer());
   }
 
   public void setVeniceWriterForCluster(String clusterName, VeniceWriter writer) {
@@ -1086,6 +1091,16 @@ public class VeniceParentHelixAdmin implements Admin {
       Optional<Boolean> isQuotaRebalancedEnable, Optional<Boolean> isMaxCapaictyProtectionEnabled,
       Optional<Integer> expectedRouterCount) {
     throw new VeniceUnsupportedOperationException("updateRoutersClusterConfig");
+  }
+
+  @Override
+  public Map<String, String> getAllStorePushStrategyForMigration() {
+    return pushStrategyZKAccessor.getAllPushStrategies();
+  }
+
+  @Override
+  public void setStorePushStrategyForMigration(String voldemortStoreName, String strategy) {
+    pushStrategyZKAccessor.setPushStrategy(voldemortStoreName, strategy);
   }
 
   @Override
