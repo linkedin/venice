@@ -74,7 +74,7 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
   }
 
   @NotNull
-  protected SchemaReader getSchemaReader() {
+  public SchemaReader getSchemaReader() {
     return schemaReader;
   }
 

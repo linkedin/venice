@@ -1,10 +1,14 @@
 task buildJar(type: Jar) {
   manifest {
     attributes 'Implementation-Title': 'Venice Thin Client',
-            'Implementation-Version': version
+            'Implementation-Version': version,
+            'Main-Class': 'com.linkedin.venice.client.QueryTool'
   }
   baseName = project.name
-  from { configurations.compile.collect { it.isDirectory() ? it : zipTree(it) } }
+  from { configurations.compile
+    .filter {!it.absolutePath.endsWith(".xml")} // Resolves Could not expand ZIP '.../pegasus-d2-client-factory-cmpt-def-16.0.23.xml'.
+    .collect { it.isDirectory() ? it : zipTree(it) } }
+  exclude 'META-INF/*.RSA', 'META-INF/*.SF','META-INF/*.DSA'
   with jar
 }
 
