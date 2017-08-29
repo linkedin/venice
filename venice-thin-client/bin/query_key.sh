@@ -24,4 +24,4 @@ ROUTER_URL=`echo $FIND_ROUTER_RESULT | jq '.uris[0].URI'`
 
 echo "Send a request to $ROUTER_URL, Store $STORE_NAME, Key string: $KEY_STRING..."
 
-java -jar ../build/libs/venice-admin-tool-0.1.jar --query --cluster $VENICE_CLUSTER --url $ROUTER_URL --store $STORE_NAME --key $KEY_STRING
+java -jar ../build/libs/venice-thin-client-0.1.jar $VENICE_CLUSTER $STORE_NAME $KEY_STRING $ROUTER_URL

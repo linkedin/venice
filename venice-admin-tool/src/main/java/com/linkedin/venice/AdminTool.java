@@ -1,5 +1,6 @@
 package com.linkedin.venice;
 
+import com.linkedin.venice.client.QueryTool;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.store.AbstractAvroStoreClient;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
@@ -247,48 +248,10 @@ public class AdminTool {
 
   private static void queryStoreForKey(CommandLine cmd, String routerHosts)
       throws VeniceClientException, ExecutionException, InterruptedException {
+    String cluster = getRequiredArgument(cmd, Arg.CLUSTER);
     String store = getRequiredArgument(cmd, Arg.STORE);
-    Schema keySchema = Schema.parse(controllerClient.getKeySchema(store).getSchemaStr());
     String keyString = getRequiredArgument(cmd, Arg.KEY);
-    Object key = null;
-    switch (keySchema.getType()){
-      case DOUBLE:
-        key = Double.parseDouble(keyString);
-        break;
-      case LONG:
-        key = Long.parseLong(keyString);
-        break;
-      case STRING:
-        key = keyString;
-        break;
-      case RECORD: // This probably wont work, we can revisit with future testing
-        try {
-          key = new GenericDatumReader<>(keySchema)
-              .read(null, new JsonDecoder(keySchema, new ByteArrayInputStream(keyString.getBytes())));
-        } catch (IOException e) {
-          throw new VeniceException("Invalid input key:" + key, e);
-        }
-        break;
-      default:
-        throw new VeniceException("Cannot handle key type, found key schema: " + keySchema.toString());
-    }
-
-    Map<String, String> outputMap = new HashMap<>();
-    outputMap.put("key-class", key.getClass().getCanonicalName());
-    outputMap.put("key", keyString);
-
-    Object value;
-
-    try(AvroGenericStoreClient<Object, Object> client =
-        ClientFactory.getAndStartGenericAvroClient(ClientConfig.defaultGenericClientConfig(store).setVeniceURL(routerHosts))) {
-      // Add request path into output for further testing, E.g. use wget to query.
-      AbstractAvroStoreClient<Object, Object> castClient = (AbstractAvroStoreClient<Object, Object> )((StatTrackingStoreClient<Object,Object>)client).getInnerStoreClient();
-      outputMap.put("request-path", castClient.getRequestPathByKey(key));
-      value = client.get(key).get();
-    }
-    outputMap.put("value-class", value == null ? "null" : value.getClass().getCanonicalName());
-    outputMap.put("value", value == null ? "null" : value.toString());
-    printObject(outputMap);
+    printObject(QueryTool.queryStoreForKey(cluster, store, keyString, routerHosts));
   }
 
   private static void showSchemas(CommandLine cmd){
