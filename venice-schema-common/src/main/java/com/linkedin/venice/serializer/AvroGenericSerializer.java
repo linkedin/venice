@@ -10,6 +10,7 @@ import org.apache.log4j.Logger;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 
+
 public class AvroGenericSerializer<K> implements RecordSerializer<K> {
   private final Logger logger = Logger.getLogger(AvroGenericSerializer.class);
   private final GenericDatumWriter<K> datumWriter;

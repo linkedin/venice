@@ -25,15 +25,12 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 
+
 /**
- * A {@link Mapper} implementation which queries Venice using a thin client.
- *
- * N.B.: Even though there are commonalities between this code and the
- * {@link com.linkedin.venice.hadoop.KafkaOutputMapper}, it is intentional to
- * NOT leverage any common code between the two. Since one is a watch dog for the
- * other, it is important to minimize the risk that a change which causes a bug in
- * one does not simultaneously cause a bug in the other.
+ * This class only supports Avro input because Avro and Vson have different input format.
+ * You'd better refactor it before using it for Vson input :D
  */
+
 public class PostBulkLoadAnalysisMapper implements Mapper<AvroWrapper<IndexedRecord>, NullWritable, NullWritable, NullWritable> {
   private static Logger logger = Logger.getLogger(PostBulkLoadAnalysisMapper.class);
 
@@ -76,8 +73,8 @@ public class PostBulkLoadAnalysisMapper implements Mapper<AvroWrapper<IndexedRec
     this.failFast = props.getBoolean(KafkaPushJob.PBNJ_FAIL_FAST);
     this.async = props.getBoolean(KafkaPushJob.PBNJ_ASYNC);
     this.samplingRatio = props.getDouble(KafkaPushJob.PBNJ_SAMPLING_RATIO_PROP);
-    this.keyField = props.getString(KafkaPushJob.AVRO_KEY_FIELD_PROP);
-    this.valueField = props.getString(KafkaPushJob.AVRO_VALUE_FIELD_PROP);
+    this.keyField = props.getString(KafkaPushJob.KEY_FIELD_PROP);
+    this.valueField = props.getString(KafkaPushJob.VALUE_FIELD_PROP);
     String schemaStr = props.getString(KafkaPushJob.SCHEMA_STRING_PROP);
     this.keyFieldPos = getFieldPos(schemaStr, keyField);
     this.valueFieldPos = getFieldPos(schemaStr, valueField);

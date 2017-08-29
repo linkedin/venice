@@ -2,7 +2,6 @@ package com.linkedin.venice.schema.vson;
 
 import com.linkedin.venice.serializer.VsonSerializationException;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import org.apache.avro.Schema;
@@ -14,7 +13,9 @@ import org.codehaus.jackson.JsonNode;
  */
 
 public class VsonAvroSchemaAdapter extends AbstractVsonSchemaAdapter<Schema> {
+  private static final String DEFAULT_RECORD_NAME = "record";
   private static final String DEFAULT_DOC = null;
+  private static final String DEFAULT_NAMESPACE = null;
   private static final JsonNode DEFAULT_VALUE = null;
 
   public static Schema parse(String vsonSchemaStr) {
@@ -31,7 +32,10 @@ public class VsonAvroSchemaAdapter extends AbstractVsonSchemaAdapter<Schema> {
     List<Schema.Field> fields = new ArrayList<>();
     vsonMap.forEach((key, value) -> fields.add(new Schema.Field(key, fromVsonObjects(value), DEFAULT_DOC, DEFAULT_VALUE)));
 
-    return Schema.createRecord(fields);
+    Schema recordSchema = Schema.createRecord(DEFAULT_RECORD_NAME, DEFAULT_DOC, DEFAULT_NAMESPACE, false);
+    recordSchema.setFields(fields);
+
+    return recordSchema;
   }
 
   @Override

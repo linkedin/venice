@@ -9,6 +9,7 @@ import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.hadoop.pbnj.PostBulkLoadAnalysisMapper;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
+import com.linkedin.venice.schema.vson.VsonAvroSchemaAdapter;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.hadoop.exceptions.VeniceInconsistentSchemaException;
@@ -22,6 +23,8 @@ import com.linkedin.venice.utils.Utils;
 import java.util.Arrays;
 
 import com.linkedin.venice.exceptions.VeniceException;
+import java.util.TreeMap;
+import javafx.util.Pair;
 import joptsimple.OptionParser;
 import joptsimple.OptionSet;
 import joptsimple.OptionSpec;
@@ -38,12 +41,10 @@ import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.fs.PathFilter;
 import org.apache.hadoop.io.BytesWritable;
 import org.apache.hadoop.io.NullWritable;
+import org.apache.hadoop.io.SequenceFile;
 import org.apache.hadoop.mapred.FileInputFormat;
 import org.apache.hadoop.mapred.JobClient;
 import org.apache.hadoop.mapred.JobConf;
-import org.apache.hadoop.mapred.Mapper;
-import org.apache.hadoop.mapred.Partitioner;
-import org.apache.hadoop.mapred.Reducer;
 import org.apache.hadoop.mapred.RunningJob;
 import org.apache.hadoop.mapred.lib.NullOutputFormat;
 import org.apache.log4j.Logger;
@@ -61,13 +62,23 @@ import static org.apache.hadoop.security.UserGroupInformation.HADOOP_TOKEN_FILE_
 
 /**
  * This class sets up the Hadoop job used to push data to Venice.
- * The job reads the input data off HDFS and pushes it to venice using Mapper tasks.
- * The job spawns only Mappers, and there are no Reducers.
+ * The job reads the input data off HDFS. It supports 2 kinds of
+ * input -- Avro / Binary Json (Vson).
  */
 public class KafkaPushJob extends AbstractJob {
-  // Job Properties
-  public static final String AVRO_KEY_FIELD_PROP = "avro.key.field";
-  public static final String AVRO_VALUE_FIELD_PROP = "avro.value.field";
+  //Avro input configs
+  public static final String LEGACY_AVRO_KEY_FIELD_PROP = "avro.key.field";
+  public static final String LEGACY_AVRO_VALUE_FIELD_PROP = "avro.value.field";
+
+  public static final String KEY_FIELD_PROP = "key.field";
+  public static final String VALUE_FIELD_PROP = "value.field";
+  public static final String SCHEMA_STRING_PROP = "schema";
+
+  //Vson input configs
+  //Vson files store key/value schema on file header. key / value fields are optional
+  //and should be specified only when key / value schema is the partial of the files.
+  public final static String FILE_KEY_SCHEMA = "key.schema";
+  public final static String FILE_VALUE_SCHEMA = "value.schema";
 
   /**
    * In single-colo mode, this can be either a controller or router.
@@ -84,7 +95,6 @@ public class KafkaPushJob extends AbstractJob {
   // Map-only job or a Map-Reduce job for data push, by default it is a map-reduce job.
   public static final String VENICE_MAP_ONLY = "venice.map.only";
 
-  public static final String SCHEMA_STRING_PROP = "schema";
   public static final String VALUE_SCHEMA_ID_PROP = "value.schema.id";
   public static final String KAFKA_URL_PROP = "venice.kafka.url";
   public static final String TOPIC_PROP = "venice.kafka.topic";
@@ -119,14 +129,12 @@ public class KafkaPushJob extends AbstractJob {
   private final VeniceProperties props;
   private final String id;
   private final boolean enablePush;
-  private final String keyField;
-  private final String valueField;
   private final String veniceControllerUrl;
   private final String veniceRouterUrl;
   private final String clusterName;
   private final String storeName;
   private final int batchNumBytes;
-  private final boolean mapOnly;
+  private final boolean isMapOnly;
   private final boolean enablePBNJ;
   private final boolean pbnjFailFast;
   private final boolean pbnjAsync;
@@ -134,6 +142,10 @@ public class KafkaPushJob extends AbstractJob {
 
   private final ControllerClient controllerClient;
 
+  boolean isAvro = true;
+
+  private String keyField;
+  private String valueField;
   // Mutable state
   // Kafka url will get from Venice backend for store push
   private String kafkaUrl;
@@ -145,7 +157,6 @@ public class KafkaPushJob extends AbstractJob {
   private String valueSchemaString;
   // Value schema id retrieved from backend for valueSchemaString
   private int valueSchemaId;
-  private Schema parsedFileSchema;
   // Kafka topic for new data push
   private String topic;
   // Kafka topic partition count
@@ -157,6 +168,7 @@ public class KafkaPushJob extends AbstractJob {
   private VeniceWriter<KafkaKey, byte[]> veniceWriter; // Lazily initialized
 
   // This main method is not called by azkaban, this is only for testing purposes.
+  //TODO: the main method is out-of-dated. We should remove
   public static void main(String[] args) throws Exception {
     OptionParser parser = new OptionParser();
     OptionSpec<String> veniceUrlOpt =
@@ -205,8 +217,8 @@ public class KafkaPushJob extends AbstractJob {
     props.put(VENICE_URL_PROP, options.valueOf(veniceUrlOpt));
     props.put(VENICE_STORE_NAME_PROP, options.valueOf(storeNameOpt));
     props.put(INPUT_PATH_PROP, options.valueOf(inputPathOpt));
-    props.put(AVRO_KEY_FIELD_PROP, options.valueOf(keyFieldOpt));
-    props.put(AVRO_VALUE_FIELD_PROP, options.valueOf(valueFieldOpt));
+    props.put(KEY_FIELD_PROP, options.valueOf(keyFieldOpt));
+    props.put(VALUE_FIELD_PROP, options.valueOf(valueFieldOpt));
     // Optional ones
     props.put(BATCH_NUM_BYTES_PROP, options.valueOf(queueBytesOpt));
 
@@ -240,13 +252,27 @@ public class KafkaPushJob extends AbstractJob {
   public KafkaPushJob(String jobId, Properties vanillaProps) throws Exception {
     super(jobId, logger);
     this.id = jobId;
+
+    if (vanillaProps.contains(LEGACY_AVRO_KEY_FIELD_PROP)) {
+      if (vanillaProps.contains(KEY_FIELD_PROP)) {
+        throw new VeniceException("Duplicate key filed found in config. Both avro.key.field and key.field are set up.");
+      }
+      vanillaProps.setProperty(KEY_FIELD_PROP, vanillaProps.getProperty(LEGACY_AVRO_KEY_FIELD_PROP));
+    }
+    if (vanillaProps.contains(LEGACY_AVRO_VALUE_FIELD_PROP)) {
+      if (vanillaProps.contains(VALUE_FIELD_PROP)) {
+        throw new VeniceException("Duplicate value filed found in config. Both avro.value.field and value.field are set up.");
+      }
+      vanillaProps.setProperty(VALUE_FIELD_PROP, vanillaProps.getProperty(LEGACY_AVRO_VALUE_FIELD_PROP));
+    }
+
     this.props = new VeniceProperties(vanillaProps);
     logger.info("Constructing " + KafkaPushJob.class.getSimpleName() + ": " + props.toString(true));
 
     // Optional configs:
     this.enablePush = props.getBoolean(ENABLE_PUSH, true);
     this.batchNumBytes = props.getInt(BATCH_NUM_BYTES_PROP, DEFAULT_BATCH_BYTES_SIZE);
-    this.mapOnly = props.getBoolean(VENICE_MAP_ONLY, false);
+    this.isMapOnly = props.getBoolean(VENICE_MAP_ONLY, false);
     this.enablePBNJ = props.getBoolean(PBNJ_ENABLE, false);
     this.pbnjFailFast = props.getBoolean(PBNJ_FAIL_FAST, false);
     this.pbnjAsync = props.getBoolean(PBNJ_ASYNC, false);
@@ -264,8 +290,7 @@ public class KafkaPushJob extends AbstractJob {
     this.veniceControllerUrl = props.getString(VENICE_URL_PROP);
     this.storeName = props.getString(VENICE_STORE_NAME_PROP);
     this.inputDirectory = props.getString(INPUT_PATH_PROP);
-    this.keyField = props.getString(AVRO_KEY_FIELD_PROP);
-    this.valueField = props.getString(AVRO_VALUE_FIELD_PROP);
+
 
     if (!enablePush && !enablePBNJ) {
       throw new VeniceException("At least one of the following config properties must be true: " + ENABLE_PUSH + " or " + PBNJ_ENABLE);
@@ -313,18 +338,11 @@ public class KafkaPushJob extends AbstractJob {
         logPushJobProperties();
 
         // Setup the hadoop job
-        JobConf pushJobConf = null;
+        JobConf pushJobConf = setupMRConf();
         // Whether the messages in one single topic partition is lexicographically sorted by key bytes.
         // If reducer phase is enabled, each reducer will sort all the messages inside one single
         // topic partition.
-        boolean sortedMessageInTopicPartition = !mapOnly;
-        if (mapOnly) {
-          pushJobConf = setupPushMapOnlyJob(conf);
-          logger.info("Venice push job for topic: " + topic + " will be a map-only job");
-        } else {
-          pushJobConf = setupPushMRJob(conf);
-          logger.info("Venice push job for topic: " + topic + " will be a map-reduce job");
-        }
+        boolean sortedMessageInTopicPartition = !isMapOnly;
         jc = new JobClient(pushJobConf);
         getVeniceWriter().broadcastStartOfPush(sortedMessageInTopicPartition, new HashMap<>());
         // submit the job for execution and wait for completion
@@ -343,7 +361,7 @@ public class KafkaPushJob extends AbstractJob {
 
       if (enablePBNJ) {
         logger.info("Post-Bulkload Analysis Job is about to run.");
-        JobConf pbnjJobConf = setupPBNJ(conf);
+        JobConf pbnjJobConf = setupPBNJConf();
         jc = new JobClient(pbnjJobConf);
         runningJob = jc.runJob(pbnjJobConf);
       }
@@ -433,6 +451,9 @@ public class KafkaPushJob extends AbstractJob {
     }
 
     storeStorageQuota = storeResponse.getStore().getStorageQuotaInByte();
+    if (storeStorageQuota != Store.UNLIMITED_STORAGE_QUOTA && isMapOnly) {
+      throw new VeniceException("Can't run this mapper only job since storage quota is not unlimited. " + "Store: " + storeName);
+    }
 
     StorageEngineOverheadRatioResponse storageEngineOverheadRatioResponse =
         controllerClient.getStorageEngineOverheadRatio(storeName);
@@ -564,77 +585,41 @@ public class KafkaPushJob extends AbstractJob {
     }
   }
 
-  /**
-   * Calls {@link #setupHadoopJob(Configuration, String, Class, Class, Class)} and adds some extra properties required
-   * by the {@link VeniceWriter} used by the push MR job.
-   */
-  private JobConf setupPushMRJob(Configuration conf) {
-    conf.set(BATCH_NUM_BYTES_PROP, Integer.toString(batchNumBytes));
-    conf.set(TOPIC_PROP, topic);
-    conf.set(KAFKA_BOOTSTRAP_SERVERS, kafkaUrl);
-
-    return setupHadoopJob(conf, "VenicePushMRJob", VeniceMapper.class, VeniceMRPartitioner.class, VeniceReducer.class);
+  private JobConf setupMRConf() {
+    return setupReducerConf(setupInputFormatConf(setupDefaultJobConf(), isAvro), isMapOnly);
   }
 
-  /**
-   * Calls {@link #setupHadoopJob(Configuration, String, Class, Class, Class)} and adds some extra properties required
-   * by the {@link VeniceWriter} used by the push job.
-   *
-   * As H2V has fully adapt to Map & Reduce mode, this is really a special scenario. H2V strictly ask storeStorageQuota to be unlimited
-   * in order to perform Mapper only mode. Thus, prevents customers run it from mis-configuring job properties.
-   */
-  private JobConf setupPushMapOnlyJob(Configuration conf) throws IOException {
-    if (storeStorageQuota != Store.UNLIMITED_STORAGE_QUOTA) {
-      throw new VeniceException("Can't run this mapper only job since storage quota is not unlimited. "
-          + "Store: " + storeName);
+  private JobConf setupPBNJConf() {
+    if (!isAvro) {
+      throw new VeniceException("PBNJ only supports Avro input format");
     }
-    conf.set(BATCH_NUM_BYTES_PROP, Integer.toString(batchNumBytes));
-    conf.set(TOPIC_PROP, topic);
-    conf.set(KAFKA_BOOTSTRAP_SERVERS, kafkaUrl);
 
-    return setupHadoopJob(conf, "VenicePushMapOnlyJob", KafkaOutputMapper.class, null, null);
-  }
-
-  /**
-   * Calls {@link #setupHadoopJob(Configuration, String, Class, Class, Class)} and adds some extra properties required
-   * by the {@link com.linkedin.venice.hadoop.pbnj.PostBulkLoadAnalysisMapper}.
-   */
-  //TODO: PNBJ is for testing purpose. We might want to remove it from this class in case it's used by customers
-  private JobConf setupPBNJ(Configuration conf) throws IOException {
+    JobConf conf = setupReducerConf(setupInputFormatConf(setupDefaultJobConf(), true), true);
     conf.set(VENICE_STORE_NAME_PROP, storeName);
     conf.set(PBNJ_ROUTER_URL_PROP, veniceRouterUrl);
     conf.set(PBNJ_FAIL_FAST, Boolean.toString(pbnjFailFast));
     conf.set(PBNJ_ASYNC, Boolean.toString(pbnjAsync));
     conf.set(PBNJ_SAMPLING_RATIO_PROP, Double.toString(pbnjSamplingRatio));
+    conf.set(STORAGE_QUOTA_PROP, Long.toString(Store.UNLIMITED_STORAGE_QUOTA));
+    conf.setMapperClass(PostBulkLoadAnalysisMapper.class);
 
-    return setupHadoopJob(conf, "VenicePBNJ", PostBulkLoadAnalysisMapper.class, null, null);
+    return conf;
   }
 
-  /**
-   * Set up a Hadoop {@link JobConf} used to trigger a job.
-   *
-   * Should not be called directly. Instead, use:
-   *
-   * @see #setupPushMapOnlyJob(Configuration)
-   * @see #setupPBNJ(Configuration)
-   */
-  private JobConf setupHadoopJob(Configuration conf,
-                                 String jobName,
-                                 Class<? extends Mapper> mapperClass,
-                                 Class<? extends Partitioner> partitionerClass,
-                                 Class<? extends Reducer> reducerClass) {
+  private JobConf setupDefaultJobConf() {
+    JobConf conf = new JobConf();
+
+    conf.set(BATCH_NUM_BYTES_PROP, Integer.toString(batchNumBytes));
+    conf.set(TOPIC_PROP, topic);
+    conf.set(KAFKA_BOOTSTRAP_SERVERS, kafkaUrl);
+    conf.setBoolean(VENICE_MAP_ONLY, isMapOnly);
+
     // Hadoop2 dev cluster provides a newer version of an avro dependency.
     // Set mapreduce.job.classloader to true to force the use of the older avro dependency.
     conf.setBoolean(MAPREDUCE_JOB_CLASSLOADER, true);
     logger.info("**************** " + MAPREDUCE_JOB_CLASSLOADER + ": " + conf.get(MAPREDUCE_JOB_CLASSLOADER));
 
-    if (enablePBNJ) {
-      //pre-push quota checking is disabled since PBNJ mapper doesn't report record size
-      conf.set(STORAGE_QUOTA_PROP, Long.toString(Store.UNLIMITED_STORAGE_QUOTA));
-    } else {
-      conf.set(STORAGE_QUOTA_PROP, Long.toString(storeStorageQuota));
-    }
-
+    conf.set(STORAGE_QUOTA_PROP, Long.toString(storeStorageQuota));
     conf.set(STORAGE_ENGINE_OVERHEAD_RATIO, Double.toString(storageEngineOverheadRatio));
 
     /** Allow overriding properties if their names start with {@link HADOOP_PREFIX}. */
@@ -646,59 +631,65 @@ public class KafkaPushJob extends AbstractJob {
       }
     }
 
-    // Following properties are for Avro schema validation
-    conf.set(SCHEMA_STRING_PROP, fileSchemaString);
-    conf.set(AVRO_KEY_FIELD_PROP, keyField);
-    conf.set(AVRO_VALUE_FIELD_PROP, valueField);
     conf.setInt(VALUE_SCHEMA_ID_PROP, valueSchemaId);
-
-    // Set data serialization model. Default is ReflectData.class.
-    // The default causes reading records as SpecificRecords. This fails in reading records of type fixes, eg. Guid.
-    conf.setClass("avro.serialization.data.model", GenericData.class, GenericData.class);
 
     if (System.getenv(HADOOP_TOKEN_FILE_LOCATION) != null) {
       conf.set(MAPREDUCE_JOB_CREDENTIALS_BINARY, System.getenv(HADOOP_TOKEN_FILE_LOCATION));
     }
 
-    // Create job.
-    JobConf job = new JobConf(conf);
+    conf.setJobName(id + ":" + "hadoop_to_venice_bridge" + "-" + topic);
+    conf.setJarByClass(this.getClass());
 
-    // Set the job name and the main jar.
-    job.setJobName(id + ":" + jobName + "-" + topic);
-    job.setJarByClass(this.getClass());
-
-    // Setting up the Input format for the mapper
-    job.setInputFormat(AvroInputFormat.class);
 
     // TODO:The job is using path-filter to check the consistency of avro file schema ,
     // but doesn't specify the path filter for the input directory of map-reduce job.
     // We need to revisit it if any failure because of this happens.
-    FileInputFormat.setInputPaths(job, new Path(inputDirectory));
-    job.set(AvroJob.INPUT_SCHEMA, fileSchemaString);
+    FileInputFormat.setInputPaths(conf, new Path(inputDirectory));
 
-    job.setMapperClass(mapperClass);
-    if (null != partitionerClass) {
-      job.setPartitionerClass(partitionerClass);
-    }
-    if (null != reducerClass) {
-      job.setMapOutputKeyClass(BytesWritable.class);
-      job.setMapOutputValueClass(BytesWritable.class);
-      job.setReducerClass(reducerClass);
-      // TODO: Consider turning speculative execution on later.
-      job.setReduceSpeculativeExecution(false);
-      job.setNumReduceTasks(partitionCount);
-    } else {
-      job.setMapSpeculativeExecution(false);
-      job.setNumReduceTasks(0);
-    }
-
-    job.setOutputKeyClass(NullWritable.class);
-    job.setOutputValueClass(NullWritable.class);
+    //do we need these two configs?
+    conf.setOutputKeyClass(NullWritable.class);
+    conf.setOutputValueClass(NullWritable.class);
 
     // Setting up the Output format
-    job.setOutputFormat(NullOutputFormat.class);
+    conf.setOutputFormat(NullOutputFormat.class);
 
-    return job;
+    return conf;
+  }
+
+  private JobConf setupInputFormatConf(JobConf jobConf, boolean isAvro) {
+    jobConf.set(KEY_FIELD_PROP, keyField);
+    jobConf.set(VALUE_FIELD_PROP, valueField);
+
+    if (isAvro) {
+      jobConf.set(SCHEMA_STRING_PROP, fileSchemaString);
+      jobConf.set(AvroJob.INPUT_SCHEMA, fileSchemaString);
+      jobConf.setClass("avro.serialization.data.model", GenericData.class, GenericData.class);
+      jobConf.setInputFormat(AvroInputFormat.class);
+      jobConf.setMapperClass(VeniceAvroMapper.class);
+    } else {
+      jobConf.setInputFormat(VsonSequenceFileInputFormat.class);
+      jobConf.setMapperClass(VeniceVsonMapper.class);
+    }
+
+    return jobConf;
+  }
+
+  private JobConf setupReducerConf(JobConf jobConf, boolean isMapOnly) {
+    if (isMapOnly) {
+      jobConf.setMapSpeculativeExecution(false);
+      jobConf.setNumReduceTasks(0);
+    } else {
+      jobConf.setPartitionerClass(VeniceMRPartitioner.class);
+
+      jobConf.setMapOutputKeyClass(BytesWritable.class);
+      jobConf.setMapOutputValueClass(BytesWritable.class);
+      jobConf.setReducerClass(VeniceReducer.class);
+      // TODO: Consider turning speculative execution on later.
+      jobConf.setReduceSpeculativeExecution(false);
+      jobConf.setNumReduceTasks(partitionCount);
+    }
+
+    return jobConf;
   }
 
   private void logPushJobProperties() {
@@ -748,59 +739,63 @@ public class KafkaPushJob extends AbstractJob {
    * This function will do the following tasks as well:
    * 1. Check whether we have sub-directory in inputDirectory or not;
    * 2. Calculate total data size of input directory;
-   * 3. Check schema consistency;
-   * 4. Populate key schema, value schema;
+   * 3. Check whether it's Vson input or Avro input
+   * 4. Check schema consistency;
+   * 5. Populate key schema, value schema;
    */
   private void inspectHdfsSource(Path srcPath) throws IOException {
-    parsedFileSchema = null;
     inputFileDataSize = 0;
-    FileStatus[] fileStatus = fs.listStatus(srcPath, PATH_FILTER);
+    FileStatus[] fileStatuses = fs.listStatus(srcPath, PATH_FILTER);
 
-    if (fileStatus == null || fileStatus.length == 0) {
+    if (fileStatuses == null || fileStatuses.length == 0) {
       throw new RuntimeException("No data found at source path: " + srcPath);
     }
 
-    for (FileStatus status : fileStatus) {
-      logger.info("Processing file " + status.getPath());
-      if (status.isDirectory()) {
-        // Map-reduce job will fail if the input directory has sub-directory and 'recursive' is not specified.
-        throw new VeniceException("Input directory: " + srcPath.getName() +
-                " should not have sub directory: " + status.getPath().getName());
-      }
-
-      Path path = status.getPath();
-      Schema newSchema = getAvroFileHeader(path);
-      if (newSchema == null) {
-        logger.error("Was not able to grab file schema for " + path);
-        throw new RuntimeException("Invalid Avro file: " + path.getName());
-      } else {
-        if (parsedFileSchema == null) {
-          parsedFileSchema = newSchema;
-        } else {
-          // Need to check whether schema is consistent or not
-          if (!parsedFileSchema.equals(newSchema)) {
-            throw new VeniceInconsistentSchemaException("Avro schema is not consistent in the input directory: schema 1: " +
-                    parsedFileSchema.toString() + ", schema 2: " + newSchema.toString());
-          }
-        }
-      }
-      inputFileDataSize += status.getLen();
-    }
+    inputFileDataSize = validateInputDir(fileStatuses);
     // Since the job is calculating the raw data file size, which is not accurate because of compression, key/value schema and backend storage overhead,
     // we are applying this factor to provide a more reasonable estimation.
     inputFileDataSize *= INPUT_DATA_SIZE_FACTOR;
 
-    fileSchemaString = parsedFileSchema.toString();
-    Schema.Field keyField = parsedFileSchema.getField(this.keyField);
-    if (keyField == null) {
-      throw new VeniceSchemaFieldNotFoundException(this.keyField, "The configured key field: " + this.keyField + " is not found in the input data");
+    //try reading the file via sequence file reader. It indicates Vson input if it is succeeded.
+    Map<String, String> fileMetadata = getMetadataFromSequenceFile(fs, fileStatuses[0].getPath());
+    if (fileMetadata.containsKey(FILE_KEY_SCHEMA) && fileMetadata.containsKey(FILE_VALUE_SCHEMA)) {
+      isAvro = false;
     }
-    keySchemaString = keyField.schema().toString();
-    Schema.Field valueField = parsedFileSchema.getField(this.valueField);
-    if (valueField == null) {
-      throw new VeniceSchemaFieldNotFoundException(this.valueField, "The configured value field: " + this.valueField + " is not found in the input data");
+
+    if (isAvro) {
+      logger.info("Detected Avro input format.");
+      keyField = props.getString(KEY_FIELD_PROP);
+      valueField = props.getString(VALUE_FIELD_PROP);
+
+      Schema avroSchema = checkAvroSchemaConsistency(fileStatuses);
+
+      fileSchemaString = avroSchema.toString();
+      keySchemaString = extractSubSchema(avroSchema, this.keyField).toString();
+      valueSchemaString = extractSubSchema(avroSchema, this.valueField).toString();
+    } else {
+      logger.info("Detected Vson input format, will convert to Avro automatically.");
+      //key / value fields are optional for Vson input
+      keyField = props.getString(KEY_FIELD_PROP, "");
+      valueField = props.getString(VALUE_FIELD_PROP, "");
+
+      Pair<Schema, Schema> vsonSchemaPair = checkVsonSchemaConsistency(fileStatuses);
+
+      keySchemaString = extractSubSchema(vsonSchemaPair.getKey(), this.keyField).toString();
+      valueSchemaString = extractSubSchema(vsonSchemaPair.getValue(), this.valueField).toString();
     }
-    valueSchemaString = valueField.schema().toString();
+  }
+
+  private Schema extractSubSchema(Schema origin, String fieldName) {
+    if (Utils.isNullOrEmpty(fieldName)) {
+      return origin;
+    }
+
+    Schema.Field field = origin.getField(fieldName);
+    if (field == null) {
+      throw new VeniceSchemaFieldNotFoundException(fieldName, "Could not find field: " + fieldName + " from " + origin.toString());
+    }
+
+    return field.schema();
   }
 
   private Schema getAvroFileHeader(Path path) throws IOException {
@@ -808,7 +803,7 @@ public class KafkaPushJob extends AbstractJob {
 
     GenericDatumReader<Object> avroReader = new GenericDatumReader<Object>();
     DataFileStream<Object> avroDataFileStream = null;
-    Schema schema = null;
+    Schema schema;
     try (InputStream hdfsInputStream = fs.open(path)) {
       avroDataFileStream = new DataFileStream<>(hdfsInputStream, avroReader);
       schema = avroDataFileStream.getSchema();
@@ -819,6 +814,77 @@ public class KafkaPushJob extends AbstractJob {
     }
 
     return schema;
+  }
+
+  private Pair<Schema, Schema> getVsonFileHeader(Path path) {
+    Map<String, String> fileMetadata = getMetadataFromSequenceFile(fs, path);
+    if (!fileMetadata.containsKey(FILE_KEY_SCHEMA) || !fileMetadata.containsKey(FILE_VALUE_SCHEMA)) {
+      throw new VeniceException("Can't find Vson schema from file: " + path.getName());
+    }
+
+    return new Pair<>(VsonAvroSchemaAdapter.parse(fileMetadata.get(FILE_KEY_SCHEMA)),
+                      VsonAvroSchemaAdapter.parse(fileMetadata.get(FILE_VALUE_SCHEMA)));
+  }
+
+  //Vson-based file store key / value schema string as separated properties in file header
+  private Pair<Schema, Schema> checkVsonSchemaConsistency(FileStatus[] fileStatusList) {
+    Pair<Schema, Schema> vsonSchema = null;
+    for (FileStatus status : fileStatusList) {
+      Pair newSchema = getVsonFileHeader(status.getPath());
+      if (vsonSchema == null) {
+        vsonSchema = newSchema;
+      } else {
+        if (!vsonSchema.getKey().equals(newSchema.getKey()) || !vsonSchema.getValue().equals(newSchema.getValue())) {
+          throw new VeniceInconsistentSchemaException(String.format("Inconsistent file Vson schema found. File: %s.\n Expected key schema: %s.\n"
+                          + "Expected value schema: %s.\n File key schema: %s.\n File value schema: %s.", status.getPath().getName(),
+                  vsonSchema.getKey().toString(), vsonSchema.getValue().toString(), newSchema.getKey().toString(), newSchema.getValue().toString()));
+        }
+      }
+    }
+
+    return vsonSchema;
+  }
+
+  //Avro-based file composes key and value schema as a whole
+  private Schema checkAvroSchemaConsistency(FileStatus[] fileStatusList) throws IOException{
+    Schema avroSchema = null;
+    for (FileStatus status : fileStatusList) {
+      Schema newSchema = getAvroFileHeader(status.getPath());
+      if (avroSchema == null) {
+        avroSchema = newSchema;
+      } else {
+        if (!avroSchema.equals(newSchema)) {
+          throw new VeniceInconsistentSchemaException(String.format("Inconsistent file Avro schema found. File: %s.\n"
+              + "Expected file schema: %s.\n Real File schema: %s.", status.getPath().getName(),
+              avroSchema.toString(), newSchema.toString()));
+        }
+      }
+    }
+    return avroSchema;
+  }
+
+  private long validateInputDir(FileStatus[] fileStatuses) {
+    long inputFileDataSize = 0;
+    for (FileStatus status : fileStatuses) {
+      if (status.isDirectory()) {
+        // Map-reduce job will fail if the input directory has sub-directory and 'recursive' is not specified.
+        throw new VeniceException("Input directory: " + status.getPath().getParent().getName() +
+            " should not have sub directory: " + status.getPath().getName());
+      }
+
+      inputFileDataSize += status.getLen();
+    }
+    return inputFileDataSize;
+  }
+
+  private Map<String, String> getMetadataFromSequenceFile(FileSystem fs, Path path) {
+    TreeMap<String, String> metadataMap = new TreeMap<>();
+    try (SequenceFile.Reader reader = new SequenceFile.Reader(fs, path, new Configuration())) {
+      reader.getMetadata().getMetadata().forEach((key, value) -> metadataMap.put(key.toString(), value.toString()));
+    } catch (IOException e) {
+      logger.info("Path: " + path.getName() + " is not a sequence file.");
+    }
+    return metadataMap;
   }
 
   protected static Path getLatestPathOfInputDirectory(String inputDirectory, FileSystem fs) throws IOException{

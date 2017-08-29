@@ -11,10 +11,7 @@ import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import java.io.File;
 import java.io.IOException;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
-import java.util.Properties;
+import java.util.*;
 import org.apache.avro.Schema;
 import org.apache.avro.file.DataFileWriter;
 import org.apache.avro.generic.GenericData;
@@ -24,7 +21,6 @@ import org.apache.avro.io.DatumWriter;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
-import org.apache.log4j.Logger;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
@@ -36,11 +32,7 @@ import static com.linkedin.venice.utils.TestPushUtils.*;
 
 //TODO: we shall probably move it to integration test
 public class TestKafkaPushJob {
-  private static final Logger LOGGER = Logger.getLogger(TestKafkaPushJob.class);
   private static final int TEST_TIMEOUT = 60 * Time.MS_PER_SECOND;
-  private static final String STRING_SCHEMA = "\"string\"";
-
-  private static List<File> tempDirectories = Collections.synchronizedList(new ArrayList<File>());
 
   private VeniceClusterWrapper veniceCluster;
   private ControllerClient controllerClient;
@@ -179,7 +171,7 @@ public class TestKafkaPushJob {
    * This is a fast test as long as @BeforeMethod doesn't create a cluster
    * @throws Exception
    */
-  @Test(expectedExceptions = VeniceSchemaFieldNotFoundException.class, expectedExceptionsMessageRegExp = ".*key field: id1 is not found.*")
+  @Test(expectedExceptions = VeniceSchemaFieldNotFoundException.class, expectedExceptionsMessageRegExp = ".*Could not find field: id1.*")
   public void testRunJobWithInvalidKeyField() throws Exception {
     File inputDir = getTempDataDirectory();
     writeSimpleAvroFileWithUserSchema(inputDir);
@@ -188,7 +180,7 @@ public class TestKafkaPushJob {
     String inputDirPath = "file://" + inputDir.getAbsolutePath();
     Properties props = defaultH2VProps(veniceCluster, inputDirPath, storeName);
     // Override with not-existing key field
-    props.put(AVRO_KEY_FIELD_PROP, "id1");
+    props.put(KEY_FIELD_PROP, "id1");
 
     KafkaPushJob job = new KafkaPushJob("Test push job", props);
     job.run();
@@ -202,7 +194,7 @@ public class TestKafkaPushJob {
    */
   @Test(timeOut = TEST_TIMEOUT,
       expectedExceptions = VeniceSchemaFieldNotFoundException.class,
-      expectedExceptionsMessageRegExp = ".*value field: name1 is not found.*")
+      expectedExceptionsMessageRegExp = ".*Could not find field: name1.*")
   public void testRunJobWithInvalidValueField() throws Exception {
     File inputDir = getTempDataDirectory();
     writeSimpleAvroFileWithUserSchema(inputDir);
@@ -212,7 +204,7 @@ public class TestKafkaPushJob {
     String storeName = TestUtils.getUniqueString("store");
     Properties props = defaultH2VProps(veniceCluster, inputDirPath, storeName);
     // Override with not-existing value field
-    props.put(AVRO_VALUE_FIELD_PROP, "name1");
+    props.put(VALUE_FIELD_PROP, "name1");
 
     KafkaPushJob job = new KafkaPushJob("Test push job", props);
     job.run();
@@ -226,7 +218,7 @@ public class TestKafkaPushJob {
    */
   @Test(timeOut = TEST_TIMEOUT,
       expectedExceptions = VeniceException.class,
-      expectedExceptionsMessageRegExp = ".*should not have sub directory: sub-dir.*")
+      expectedExceptionsMessageRegExp = ".*should not have sub directory.*")
   public void testRunJobWithSubDirInInputDir() throws Exception {
     File inputDir = getTempDataDirectory();
     writeSimpleAvroFileWithUserSchema(inputDir);
@@ -285,7 +277,7 @@ public class TestKafkaPushJob {
     String jobName = "Test push job";
 
     // Run job with different key schema (from 'string' to 'int')
-    props.setProperty(AVRO_KEY_FIELD_PROP, "age");
+    props.setProperty(KEY_FIELD_PROP, "age");
     KafkaPushJob job = new KafkaPushJob(jobName, props);
     job.run();
   }
@@ -306,7 +298,7 @@ public class TestKafkaPushJob {
     createStoreForJob(veniceCluster, recordSchema, props);
     String jobName = "Test push job";
     // Run job with different value schema (from 'string' to 'int')
-    props.setProperty(AVRO_VALUE_FIELD_PROP, "age");
+    props.setProperty(VALUE_FIELD_PROP, "age");
     KafkaPushJob job = new KafkaPushJob(jobName, props);
     job.run();
   }

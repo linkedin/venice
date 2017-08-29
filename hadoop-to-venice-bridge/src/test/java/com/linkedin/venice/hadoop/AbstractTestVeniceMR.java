@@ -27,12 +27,13 @@ public class AbstractTestVeniceMR {
   protected JobConf setupJobConf() {
     Configuration config = new Configuration();
     config.set(TOPIC_PROP, TOPIC_NAME);
-    config.set(AVRO_KEY_FIELD_PROP, KEY_FIELD);
-    config.set(AVRO_VALUE_FIELD_PROP, VALUE_FIELD);
+    config.set(KEY_FIELD_PROP, KEY_FIELD);
+    config.set(VALUE_FIELD_PROP, VALUE_FIELD);
     config.set(SCHEMA_STRING_PROP, SCHEMA_STR);
     config.setInt(VALUE_SCHEMA_ID_PROP, VALUE_SCHEMA_ID);
     config.setLong(STORAGE_QUOTA_PROP, Store.UNLIMITED_STORAGE_QUOTA);
     config.setDouble(STORAGE_ENGINE_OVERHEAD_RATIO, VeniceControllerWrapper.DEFAULT_STORAGE_ENGINE_OVERHEAD_RATIO);
+    config.setBoolean(VENICE_MAP_ONLY, false);
     return new JobConf(config);
   }
 

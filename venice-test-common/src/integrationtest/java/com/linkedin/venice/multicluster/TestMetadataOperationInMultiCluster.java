@@ -101,9 +101,9 @@ public class TestMetadataOperationInMultiCluster {
       VeniceClusterWrapper clusterWrapper = multiClusterWrapper.getClusters().get(clusterName);
       Properties h2vProperties = defaultH2VProps(clusterWrapper, inputDirPath, storeName);
       propertiesMap.put(clusterName, h2vProperties);
-      Schema keySchema = recordSchema.getField(h2vProperties.getProperty(KafkaPushJob.AVRO_KEY_FIELD_PROP)).schema();
+      Schema keySchema = recordSchema.getField(h2vProperties.getProperty(KafkaPushJob.KEY_FIELD_PROP)).schema();
       Schema valueSchema =
-          recordSchema.getField(h2vProperties.getProperty(KafkaPushJob.AVRO_VALUE_FIELD_PROP)).schema();
+          recordSchema.getField(h2vProperties.getProperty(KafkaPushJob.VALUE_FIELD_PROP)).schema();
 
       ControllerClient controllerClient =
           new ControllerClient(clusterName, multiClusterWrapper.getRandomController().getControllerUrl());

@@ -9,6 +9,8 @@ import com.linkedin.venice.hadoop.KafkaPushJob;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.samza.VeniceSystemFactory;
+import com.linkedin.venice.schema.vson.VsonAvroSchemaAdapter;
+import com.linkedin.venice.schema.vson.VsonAvroSerializer;
 import com.linkedin.venice.writer.VeniceWriter;
 import java.io.File;
 import java.io.IOException;
@@ -16,6 +18,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
+
 import org.apache.avro.Schema;
 import org.apache.avro.file.DataFileWriter;
 import org.apache.avro.generic.GenericData;
@@ -26,6 +29,11 @@ import org.apache.samza.config.MapConfig;
 import org.apache.samza.system.OutgoingMessageEnvelope;
 import org.apache.samza.system.SystemProducer;
 import org.apache.samza.system.SystemStream;
+import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.io.BytesWritable;
+import org.apache.hadoop.io.SequenceFile;
+import org.apache.hadoop.io.Text;
 import org.testng.Assert;
 
 import static com.linkedin.venice.hadoop.KafkaPushJob.*;
@@ -83,6 +91,30 @@ public class TestPushUtils {
     return schema;
   }
 
+  public static javafx.util.Pair<Schema, Schema> writeSimpleVsonFile(File parentDir) throws IOException {
+    String vsonInteger = "\"int32\"";
+    String vsonString = "\"string\"";
+    VsonAvroSerializer keySerializer = VsonAvroSerializer.fromSchemaStr(vsonInteger);
+    VsonAvroSerializer valueSerializer = VsonAvroSerializer.fromSchemaStr(vsonString);
+
+    SequenceFile.Metadata metadata = new SequenceFile.Metadata();
+    metadata.set(new Text("key.schema"), new Text(vsonInteger));
+    metadata.set(new Text("value.schema"), new Text(vsonString));
+
+    try(SequenceFile.Writer writer = SequenceFile.createWriter(new Configuration(),
+        SequenceFile.Writer.file(new Path(parentDir.toString(), "simple_vson_file")),
+        SequenceFile.Writer.keyClass(BytesWritable.class),
+        SequenceFile.Writer.valueClass(BytesWritable.class),
+        SequenceFile.Writer.metadata(metadata))) {
+      for (int i = 0; i < 100; i ++) {
+        writer.append(new BytesWritable(keySerializer.toBytes(i)),
+            new BytesWritable(valueSerializer.toBytes(String.valueOf(i + 100))));
+      }
+    }
+
+    return new javafx.util.Pair<>(VsonAvroSchemaAdapter.parse(vsonInteger), VsonAvroSchemaAdapter.parse(vsonString));
+  }
+
   public static Properties defaultH2VProps(VeniceClusterWrapper veniceCluster, String inputDirPath, String storeName) {
     Properties props = new Properties();
     props.put(KafkaPushJob.VENICE_URL_PROP, veniceCluster.getRandomRouterURL());
@@ -90,8 +122,8 @@ public class TestPushUtils {
     props.put(KafkaPushJob.VENICE_CLUSTER_NAME_PROP, veniceCluster.getClusterName());
     props.put(VENICE_STORE_NAME_PROP, storeName);
     props.put(KafkaPushJob.INPUT_PATH_PROP, inputDirPath);
-    props.put(KafkaPushJob.AVRO_KEY_FIELD_PROP, "id");
-    props.put(KafkaPushJob.AVRO_VALUE_FIELD_PROP, "name");
+    props.put(KafkaPushJob.KEY_FIELD_PROP, "id");
+    props.put(KafkaPushJob.VALUE_FIELD_PROP, "name");
     // No need for a big close timeout in tests. This is just to speed up discovery of certain regressions.
     props.put(VeniceWriter.CLOSE_TIMEOUT_MS, 500);
 
@@ -99,12 +131,18 @@ public class TestPushUtils {
   }
 
   public static ControllerClient createStoreForJob(VeniceClusterWrapper veniceCluster, Schema recordSchema, Properties props) {
+    String keySchemaStr = recordSchema.getField(props.getProperty(KafkaPushJob.KEY_FIELD_PROP)).schema().toString();
+    String valueSchemaStr = recordSchema.getField(props.getProperty(KafkaPushJob.VALUE_FIELD_PROP)).schema().toString();
+
+    return createStoreForJob(veniceCluster, keySchemaStr, valueSchemaStr, props);
+  }
+
+  public static ControllerClient createStoreForJob(VeniceClusterWrapper veniceCluster,
+                                                   String keySchemaStr, String valueSchemaStr, Properties props) {
     ControllerClient controllerClient =
         new ControllerClient(veniceCluster.getClusterName(), props.getProperty(KafkaPushJob.VENICE_URL_PROP));
-    Schema keySchema = recordSchema.getField(props.getProperty(KafkaPushJob.AVRO_KEY_FIELD_PROP)).schema();
-    Schema valueSchema = recordSchema.getField(props.getProperty(KafkaPushJob.AVRO_VALUE_FIELD_PROP)).schema();
     NewStoreResponse newStoreResponse = controllerClient.createNewStore(props.getProperty(VENICE_STORE_NAME_PROP),
-        "test@linkedin.com", keySchema.toString(), valueSchema.toString());
+        "test@linkedin.com", keySchemaStr, valueSchemaStr);
 
     Assert.assertFalse(newStoreResponse.isError(), "The NewStoreResponse returned an error: " + newStoreResponse.getError());
 

@@ -65,7 +65,7 @@ public class TestVsonSchemaAdapter {
   }
 
   private VsonSchema readStrToVsonSchema(String schemaStr) {
-    return VsonSchema.fromJson(schemaStr);
+    return VsonSchema.parse(schemaStr);
   }
 }
 

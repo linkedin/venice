@@ -15,22 +15,61 @@ import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import java.io.File;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Properties;
-import java.util.concurrent.atomic.AtomicLong;
+import java.util.*;
+
+import javafx.util.Pair;
 import org.apache.avro.Schema;
 import org.apache.log4j.Logger;
 import org.testng.Assert;
-import org.testng.annotations.DataProvider;
-import org.testng.annotations.Test;
+import org.testng.annotations.*;
 
+import static com.linkedin.venice.hadoop.KafkaPushJob.*;
 import static com.linkedin.venice.utils.TestPushUtils.*; // TODO: remove this static import.
 
-public class TestPbnj {
-  private static final Logger LOGGER = Logger.getLogger(TestPbnj.class);
+public class TestBatch {
+  private static final Logger LOGGER = Logger.getLogger(TestBatch.class);
   private static final int TEST_TIMEOUT = 60 * Time.MS_PER_SECOND;
   private static final String STRING_SCHEMA = "\"string\"";
+
+  private VeniceClusterWrapper veniceCluster;
+
+  @BeforeClass
+  public void setup() {
+    veniceCluster = ServiceFactory.getVeniceCluster();
+  }
+
+  @AfterClass
+  public void cleanup() {
+    if (veniceCluster != null) {
+      veniceCluster.close();
+    }
+  }
+
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testVsonStoreBnP() throws Exception {
+    File inputDir = getTempDataDirectory();
+    Pair<Schema, Schema> schemas = writeSimpleVsonFile(inputDir);
+    String storeName = TestUtils.getUniqueString("store");
+
+    String inputDirPath = "file://" + inputDir.getAbsolutePath();
+    Properties props = defaultH2VProps(veniceCluster, inputDirPath, storeName);
+
+    //remove key/value fields from props
+    props.setProperty(KEY_FIELD_PROP, "");
+    props.setProperty(VALUE_FIELD_PROP, "");
+
+    createStoreForJob(veniceCluster, schemas.getKey().toString(), schemas.getValue().toString(), props);
+
+    KafkaPushJob job = new KafkaPushJob("test Vson push job", props);
+    job.run();
+
+    AvroGenericStoreClient client = ClientFactory.getAndStartGenericAvroClient(ClientConfig.defaultGenericClientConfig(storeName)
+        .setVeniceURL(veniceCluster.getRandomRouterURL()));
+
+    for (int i = 0; i < 100; i ++) {
+      Assert.assertEquals(client.get(i).get().toString(), String.valueOf(i + 100));
+    }
+  }
 
   @Test(timeOut = TEST_TIMEOUT)
   public void testRunMRJobAndPBNJ() throws Exception {
@@ -44,7 +83,7 @@ public class TestPbnj {
 
   private void testRunPushJobAndPBNJ(boolean mapOnly) throws Exception {
     Utils.thisIsLocalhost();
-    VeniceClusterWrapper veniceCluster = ServiceFactory.getVeniceCluster();
+    //VeniceClusterWrapper veniceCluster = ServiceFactory.getVeniceCluster();
 
     File inputDir = getTempDataDirectory();
     Schema recordSchema = writeSimpleAvroFileWithUserSchema(inputDir);
@@ -88,8 +127,6 @@ public class TestPbnj {
       Assert.assertTrue(jobStatus.getMessagesConsumed()*1.5 > jobStatus.getMessagesAvailable(),
           "Complete job should have progress");
     }
-
-    veniceCluster.close();
   }
 
   @DataProvider(name = "samplingRatios")

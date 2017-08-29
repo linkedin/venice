@@ -59,6 +59,9 @@ public class QueryTool {
 
       Object key = null;
       switch (keySchema.getType()) {
+        case INT:
+          key = Integer.parseInt(keyString);
+          break;
         case DOUBLE:
           key = Double.parseDouble(keyString);
           break;
