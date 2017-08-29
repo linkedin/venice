@@ -13,14 +13,16 @@ public class VsonSchema implements Serializable {
 
   private static final long serialVersionUID = 1;
 
+  private String schemaStr;
   private Object type;
 
   protected VsonSchema(Object type) {
     this.type = createValidType(type);
   }
 
-  public static VsonSchema fromJson(String typeSig) {
-    return new VsonSchema(VsonSchemaAdapter.parse(typeSig));
+  public static VsonSchema parse(String vsonSchemaStr) {
+
+    return new VsonSchema(VsonSchemaAdapter.parse(vsonSchemaStr));
   }
 
   /**
@@ -43,7 +45,15 @@ public class VsonSchema implements Serializable {
     }
   }
 
-  public VsonSchema subtype(String field) {
+  public VsonSchema listSubtype() {
+    if (type instanceof List) {
+      return new VsonSchema(((List) type).get(0));
+    } else {
+      throw new IllegalArgumentException("listSubtype can be only used on List schema");
+    }
+  }
+
+  public VsonSchema recordSubtype(String field) {
     if(this.getType() instanceof Map<?, ?>) {
       Map<?, ?> type = (Map<?, ?>) getType();
       return new VsonSchema(type.get(field));

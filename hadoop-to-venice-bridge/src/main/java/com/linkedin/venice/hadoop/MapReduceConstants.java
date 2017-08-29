@@ -7,6 +7,7 @@ public class MapReduceConstants {
 
   public static final String COUNTER_GROUP_KAFKA = "Kafka";
   public static final String COUNTER_OUTPUT_RECORDS = "Output Records";
+  public static final String EMPTY_RECORD = "empty record";
 
   private MapReduceConstants() {}
 }

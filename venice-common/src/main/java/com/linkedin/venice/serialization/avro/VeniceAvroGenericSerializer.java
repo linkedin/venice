@@ -15,6 +15,11 @@ import org.apache.log4j.Logger;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 
+/**
+ * this is duplicate with {@link com.linkedin.venice.serializer.AvroGenericSerializer}
+ * TODO: kill either one :(
+ */
+
 public class VeniceAvroGenericSerializer implements VeniceKafkaSerializer<Object> {
     private final Schema typeDef;
     private GenericDatumWriter<Object> datumWriter;

@@ -10,6 +10,7 @@ import org.apache.hadoop.io.BytesWritable;
 import org.apache.hadoop.io.NullWritable;
 import org.apache.hadoop.mapred.JobConf;
 import org.apache.hadoop.mapred.OutputCollector;
+import org.apache.hadoop.mapred.Reporter;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mockito;
 import org.testng.Assert;
@@ -17,19 +18,18 @@ import org.testng.annotations.Test;
 
 import java.io.IOException;
 
-import static org.mockito.Matchers.*;
 import static org.mockito.Mockito.*;
 
-public class TestVeniceMapper extends AbstractTestVeniceMR {
+public class TestVeniceAvroMapper extends AbstractTestVeniceMR {
 
   @Test
   public void testConfigure() {
     JobConf job = setupJobConf();
-    VeniceMapper mapper = new VeniceMapper();
+    VeniceAvroMapper mapper = new VeniceAvroMapper();
     try {
       mapper.configure(job);
     } catch (Exception e) {
-      Assert.fail("VeniceMapper#configure should not throw any exception when all the required props are there");
+      Assert.fail("VeniceAvroMapper#configure should not throw any exception when all the required props are there");
     }
   }
 
@@ -37,7 +37,7 @@ public class TestVeniceMapper extends AbstractTestVeniceMR {
   public void testConfigureWithMissingProps() {
     JobConf job = setupJobConf();
     job.unset(KafkaPushJob.TOPIC_PROP);
-    VeniceMapper mapper = new VeniceMapper();
+    VeniceAvroMapper mapper = new VeniceAvroMapper();
     mapper.configure(job);
   }
 
@@ -52,7 +52,7 @@ public class TestVeniceMapper extends AbstractTestVeniceMR {
     AvroWrapper<IndexedRecord> wrapper = new AvroWrapper(record);
     OutputCollector<BytesWritable, BytesWritable> output = mock(OutputCollector.class);
 
-    VeniceMapper mapper = new VeniceMapper();
+    VeniceAvroMapper mapper = new VeniceAvroMapper();
     mapper.configure(setupJobConf());
     mapper.map(wrapper, NullWritable.get(), output, null);
 
@@ -75,7 +75,7 @@ public class TestVeniceMapper extends AbstractTestVeniceMR {
     AvroWrapper<IndexedRecord> wrapper = new AvroWrapper(record);
     OutputCollector<BytesWritable, BytesWritable> output = mock(OutputCollector.class);
 
-    VeniceMapper mapper = new VeniceMapper();
+    VeniceAvroMapper mapper = new VeniceAvroMapper();
     mapper.configure(setupJobConf());
     mapper.map(wrapper, NullWritable.get(), output, null);
   }
@@ -90,9 +90,9 @@ public class TestVeniceMapper extends AbstractTestVeniceMR {
     AvroWrapper<IndexedRecord> wrapper = new AvroWrapper(record);
     OutputCollector<BytesWritable, BytesWritable> output = mock(OutputCollector.class);
 
-    VeniceMapper mapper = new VeniceMapper();
+    VeniceAvroMapper mapper = new VeniceAvroMapper();
     mapper.configure(setupJobConf());
-    mapper.map(wrapper, NullWritable.get(), output, null);
+    mapper.map(wrapper, NullWritable.get(), output, mock(Reporter.class));
 
     verify(output, never()).collect(Mockito.any(), Mockito.any());
   }
