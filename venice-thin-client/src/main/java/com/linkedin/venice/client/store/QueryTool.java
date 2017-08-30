@@ -1,4 +1,4 @@
-package com.linkedin.venice.client;
+package com.linkedin.venice.client.store;
 
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.schema.SchemaReader;

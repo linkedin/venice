@@ -2,7 +2,7 @@ task buildJar(type: Jar) {
   manifest {
     attributes 'Implementation-Title': 'Venice Thin Client',
             'Implementation-Version': version,
-            'Main-Class': 'com.linkedin.venice.client.QueryTool'
+            'Main-Class': 'com.linkedin.venice.client.store.QueryTool'
   }
   baseName = project.name
   from { configurations.compile
