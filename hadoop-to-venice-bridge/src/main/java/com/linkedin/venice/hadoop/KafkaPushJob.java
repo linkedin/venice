@@ -520,6 +520,7 @@ public class KafkaPushJob extends AbstractJob {
         case NOT_CREATED:
         case NEW:
         case STARTED:
+        case END_OF_PUSH_RECEIVED:
         case PROGRESS:
           /* This could take 90 seconds if connection is down.  30 second timeout with 3 attempts */
           JobStatusQueryResponse response = ControllerClient.queryJobStatusWithRetry(veniceControllerUrl, clusterName, topic, 3);

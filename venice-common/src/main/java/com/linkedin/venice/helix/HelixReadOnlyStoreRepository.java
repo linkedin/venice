@@ -287,7 +287,7 @@ public class HelixReadOnlyStoreRepository implements ReadOnlyStoreRepository {
         // Find new stores and useless stores.
         for (String storeName : storeNameList) {
           if (!storeMap.containsKey(storeName)) {
-            addedChildren.add(composeStorePath(storeName));
+            addedChildren.add(storeName);
           } else {
             deletedChildren.remove(storeName);
           }
@@ -296,7 +296,8 @@ public class HelixReadOnlyStoreRepository implements ReadOnlyStoreRepository {
         // Add new stores to local copy and add listeners.
         if (!addedChildren.isEmpty()) {
           // Get new stores from ZK.
-          List<Store> addedStores = dataAccessor.get(addedChildren, null, AccessOption.PERSISTENT);
+          List<Store> addedStores = dataAccessor.get(addedChildren.stream().map(storeName->composeStorePath(storeName)).collect(
+              Collectors.toList()), null, AccessOption.PERSISTENT);
           for (Store store : addedStores) {
             if (store == null) {
               // The store has been deleted before we got the zk notification.
@@ -366,9 +367,9 @@ public class HelixReadOnlyStoreRepository implements ReadOnlyStoreRepository {
               + store.getName() + "We might miss some zk notifications before.");
           dataAccessor.subscribeDataChanges(composeStorePath(store.getName()), storeUpdateListener);
           triggerStoreCreationListener(store);
-        } else if (oldStore.equals(store)) {
+        } else if (oldStore.get().equals(store)) {
           logger.warn("Received a ZK notification for a store change, but the old and new stores are equal!" +
-              "\nOld store: " + oldStore.toString() +
+              "\nOld store: " + oldStore.get().toString() +
               "\nNew store: " + store.toString());
         } else { // not equal
           triggerStoreChangeListener(store);
