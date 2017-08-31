@@ -276,7 +276,8 @@ public class OfflinePushMonitor implements OfflinePushAccessor.PartitionStatusLi
       logger.info("Received the routing data changed notification for topic:" + partitionAssignment.getTopic());
       String kafkaTopic = partitionAssignment.getTopic();
       OfflinePushStatus pushStatus = topicToPushMap.get(kafkaTopic);
-      if (pushStatus != null && pushStatus.getCurrentStatus().equals(ExecutionStatus.STARTED)) {
+      if (pushStatus != null && pushStatus.getCurrentStatus().equals(ExecutionStatus.STARTED)
+          || pushStatus.getCurrentStatus().equals(ExecutionStatus.END_OF_PUSH_RECEIVED)) {
         ExecutionStatus status = checkPushStatus(pushStatus, partitionAssignment);
         if (!status.equals(pushStatus.getCurrentStatus())) {
           logger.info("Offline push status will be changed to " + status.toString() + " for topic: " + kafkaTopic + " from status: " + pushStatus.getCurrentStatus());
