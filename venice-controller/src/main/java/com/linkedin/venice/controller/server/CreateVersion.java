@@ -7,6 +7,7 @@ import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceHttpException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
+import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
@@ -16,6 +17,7 @@ import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.VeniceWriter;
 import java.util.HashMap;
+import java.util.Map;
 import java.util.Properties;
 import org.apache.http.HttpStatus;
 import org.apache.log4j.Logger;
@@ -179,6 +181,8 @@ public class CreateVersion {
         responseObject.setReplicas(replicationFactor);
 
         writeEndOfPush(admin, clusterName, storeName, versionNumber, true);
+
+        /** TODO: Poll {@link com.linkedin.venice.controller.VeniceParentHelixAdmin#getOffLineJobStatus(String, String, Map, TopicManager)} until it is terminal... */
 
       } catch (Throwable e) {
         responseObject.setError(e.getMessage());
