@@ -881,6 +881,11 @@ public class VeniceParentHelixAdmin implements Admin {
       if (failCount > 0){
         currentReturnStatus = ExecutionStatus.ERROR;
       }
+
+      // TODO: Set parent controller's version status based on currentReturnStatus
+      // COMPLETED -> ONLINE
+      // ERROR -> ERROR
+
       logger.info("Deleting kafka topic: " + kafkaTopic + " with job status: " + currentReturnStatus);
       topicManager.syncDeleteTopic(kafkaTopic);
     }
@@ -1009,6 +1014,8 @@ public class VeniceParentHelixAdmin implements Admin {
       TopicManager topicManager = getTopicManager();
       logger.info("Deleting topic when kill offline push job, topic: " + kafkaTopic);
       topicManager.syncDeleteTopic(kafkaTopic);
+
+      // TODO: Set parent controller's version status (to ERROR, most likely?)
 
       KillOfflinePushJob killJob = (KillOfflinePushJob) AdminMessageType.KILL_OFFLINE_PUSH_JOB.getNewInstance();
       killJob.clusterName = clusterName;

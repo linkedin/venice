@@ -85,6 +85,7 @@ public class ApacheKafkaProducer implements KafkaProducerWrapper {
    * @return the number of partitions for this topic.
    */
   public int getNumberOfPartitions(String topic) {
+    // TODO: This blocks forever. We need to be able to interrupt it and throw if it "times out".
     return producer.partitionsFor(topic).size();
   }
 
