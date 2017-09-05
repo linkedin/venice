@@ -1,4 +1,5 @@
 #!/bin/bash
+BASE_DIR="`dirname ${BASH_SOURCE[0]}`/.."
 
 if [ $# -gt 4 ] || [ $# -lt 3 ]; then
 	echo "Usage: $0 <fabric> <store_name> <key_string> [venice_cluster]"
@@ -24,4 +25,4 @@ ROUTER_URL=`echo $FIND_ROUTER_RESULT | jq '.uris[0].URI'`
 
 echo "Send a request to $ROUTER_URL, Store $STORE_NAME, Key string: $KEY_STRING..."
 
-java -jar ../build/libs/venice-thin-client-0.1.jar $VENICE_CLUSTER $STORE_NAME $KEY_STRING $ROUTER_URL
+java -jar $BASE_DIR/build/libs/venice-thin-client-0.1.jar $VENICE_CLUSTER $STORE_NAME $KEY_STRING $ROUTER_URL
