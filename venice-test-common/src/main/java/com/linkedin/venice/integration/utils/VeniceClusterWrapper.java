@@ -20,6 +20,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.StringJoiner;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
@@ -465,5 +466,14 @@ public class VeniceClusterWrapper extends ProcessWrapper {
 
   public void increaseStoreCount() {
     storeCount.getAndIncrement();
+  }
+
+  public String clusterConnectionInformation() {
+    StringJoiner joiner = new StringJoiner("\n*****", "*****", "");
+    joiner.add("Zookeeper: " + zkServerWrapper.getAddress());
+    joiner.add("Kafka: " + kafkaBrokerWrapper.getAddress());
+    joiner.add("Router: " + getRandomRouterURL());
+    joiner.add("Cluster: " + clusterName);
+    return joiner.toString();
   }
 }

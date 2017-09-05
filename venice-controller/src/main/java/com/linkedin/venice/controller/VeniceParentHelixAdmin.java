@@ -892,7 +892,7 @@ public class VeniceParentHelixAdmin implements Admin {
       // ERROR -> ERROR
 
       logger.info("Deleting kafka topic: " + kafkaTopic + " with job status: " + currentReturnStatus);
-      topicManager.syncDeleteTopic(kafkaTopic);
+      topicManager.ensureTopicIsDeletedAndBlock(kafkaTopic);
     }
 
     return new OfflinePushStatusInfo(currentReturnStatus, extraInfo);
@@ -1018,7 +1018,7 @@ public class VeniceParentHelixAdmin implements Admin {
       // Remove Kafka topic
       TopicManager topicManager = getTopicManager();
       logger.info("Deleting topic when kill offline push job, topic: " + kafkaTopic);
-      topicManager.syncDeleteTopic(kafkaTopic);
+      topicManager.ensureTopicIsDeletedAndBlock(kafkaTopic);
 
       // TODO: Set parent controller's version status (to ERROR, most likely?)
 

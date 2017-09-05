@@ -167,7 +167,7 @@ public class AggVersionedDIVStats implements StoreDataChangedListener {
       logger.warn("Trying to delete versionedDIVStats but store: " + storeName + "is not in the metric list. Something might be wrong.");
     }
 
-    aggStats.remove(storeName);
+    //aggStats.remove(storeName); //TODO: sdwu to make a more permanent solution
   }
 
   @Override

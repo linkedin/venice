@@ -93,9 +93,15 @@ public class ReadRequestThrottler implements RoutersClusterManager.RouterCountCh
   }
 
   protected long calculateStoreQuotaPerRouter(long storeQuota) {
-    long idealStoreQuotaPerRouter =
-        storeQuota / (zkRoutersManager.isQuotaRebalanceEnabled() ? zkRoutersManager.getLiveRoutersCount()
-            : zkRoutersManager.getExpectedRoutersCount());
+
+    int routerCount = zkRoutersManager.isQuotaRebalanceEnabled()
+        ? zkRoutersManager.getLiveRoutersCount()
+        : zkRoutersManager.getExpectedRoutersCount();
+
+    long idealStoreQuotaPerRouter = routerCount > 0
+        ? storeQuota / routerCount
+        : 0;
+
     if (!zkRoutersManager.isMaxCapacityProtectionEnabled()
         || idealTotalQuotaPerRouter <= maxRouterReadCapacity) {
       // Current router's capacity is big enough to be allocated to each store's quota.

@@ -5,6 +5,7 @@ import com.linkedin.venice.controllerapi.ControllerApiConstants;
 import com.linkedin.venice.controllerapi.ControllerRoute;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.integration.utils.ServiceFactory;
+import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.ReadStrategy;
@@ -14,7 +15,6 @@ import com.linkedin.venice.utils.SslUtils;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
-import junit.framework.Assert;
 import org.apache.commons.io.IOUtils;
 import org.apache.http.HttpResponse;
 import org.apache.http.NameValuePair;
@@ -25,6 +25,8 @@ import org.apache.http.message.BasicNameValuePair;
 import org.codehaus.jackson.map.ObjectMapper;
 import org.mockito.Mockito;
 import static org.mockito.Mockito.*;
+
+import org.testng.Assert;
 import org.testng.annotations.Test;
 
 
@@ -39,6 +41,7 @@ public class TestAdminSparkWithMocks {
     //setup server with mock admin, note returns topic "store_rt"
     VeniceHelixAdmin admin = Mockito.mock(VeniceHelixAdmin.class);
     Store mockStore = new Store("store", "owner", System.currentTimeMillis(), PersistenceType.IN_MEMORY, RoutingStrategy.CONSISTENT_HASH, ReadStrategy.ANY_OF_ONLINE, OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);
+    mockStore.setHybridStoreConfig(new HybridStoreConfig(25L, 100L));
     doReturn(mockStore).when(admin).getStore(anyString(), anyString());
     doReturn(true).when(admin).isMasterController(anyString());
     doReturn(1).when(admin).getReplicationFactor(anyString(), anyString());
@@ -69,7 +72,7 @@ public class TestAdminSparkWithMocks {
     }
 
     //verify response, note we expect same topic, "store_rt"
-    Assert.assertFalse(responseObject.isError());
+    Assert.assertFalse(responseObject.isError(), "unexpected error: " + responseObject.getError());
     Assert.assertEquals(responseObject.getKafkaTopic(), "store_rt");
 
     server.stop();

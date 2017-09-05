@@ -563,12 +563,15 @@ public class TestVeniceHelixAdmin {
     }
 
     veniceAdmin.addStore(clusterName, storeName, "owner", keySchema, valueSchema);
+    veniceAdmin.updateStore(clusterName, storeName, Optional.empty(), Optional.empty(),
+        Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(),
+        Optional.of(25L), Optional.of(100L)); //make store hybrid
 
     try {
       veniceAdmin.getRealTimeTopic(clusterName, storeName);
       Assert.fail("Must not be able to get a real time topic until the store is initialized with a version");
     } catch (VeniceException e){
-      Assert.assertTrue(e.getMessage().contains("is not initialized with a version"));
+      Assert.assertTrue(e.getMessage().contains("is not initialized with a version"), "Got unexpected error message: " + e.getMessage());
     }
 
     int partitions = 2; //TODO verify partition count for RT topic.

@@ -104,6 +104,10 @@ public class CreateVersion {
         if (null == store) {
           throw new VeniceNoStoreException(storeName);
         }
+        if (pushType.equals(PushType.STREAM) && !store.isHybrid()){
+          throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, "requesting topic for streaming writes to store "
+              + storeName + " which is not configured to be a hybrid store");
+        }
 
         //looked up params
         int replicationFactor = admin.getReplicationFactor(clusterName, storeName);

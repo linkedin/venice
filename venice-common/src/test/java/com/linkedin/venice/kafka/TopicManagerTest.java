@@ -72,7 +72,7 @@ public class TopicManagerTest {
   @Test
   public void testDeleteTopic() throws InterruptedException {
     String topicName = getTopic();
-    manager.deleteTopic(topicName);
+    manager.ensureTopicIsDeletedAsync(topicName);
     // (delete is async)
     TestUtils.waitForNonDeterministicAssertion(WAIT_TIME, TimeUnit.SECONDS,
         () -> Assert.assertFalse(manager.containsTopic(topicName)));
@@ -82,7 +82,7 @@ public class TopicManagerTest {
   public void testSyncDeleteTopic() throws InterruptedException {
     String topicName = getTopic();
     // Delete that topic
-    manager.syncDeleteTopic(topicName);
+    manager.ensureTopicIsDeletedAndBlock(topicName);
     Assert.assertFalse(manager.containsTopic(topicName));
   }
 

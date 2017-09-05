@@ -4,11 +4,8 @@ import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.controller.VeniceHelixAdmin;
-import com.linkedin.venice.controllerapi.ControllerApiConstants;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
-import com.linkedin.venice.controllerapi.MultiStoreStatusResponse;
-import com.linkedin.venice.controllerapi.NewStoreResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -23,13 +20,11 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreStatus;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.replication.TopicReplicator;
-import com.linkedin.venice.samza.VeniceSystemFactory;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import java.io.File;
 import java.lang.reflect.Field;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -39,17 +34,14 @@ import java.util.stream.Collectors;
 import org.apache.avro.Schema;
 import org.apache.commons.io.IOUtils;
 import org.apache.log4j.Logger;
-import org.apache.samza.config.MapConfig;
 import org.apache.samza.system.OutgoingMessageEnvelope;
 import org.apache.samza.system.SystemProducer;
 import org.apache.samza.system.SystemStream;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
+import static com.linkedin.venice.utils.TestPushUtils.*;
 import static org.testng.Assert.*;
-import static com.linkedin.venice.samza.VeniceSystemFactory.*;
-import static com.linkedin.venice.samza.VeniceSystemFactory.JOB_ID;
-import static com.linkedin.venice.utils.TestPushUtils.*; // remove this static access
 
 
 public class TestHybrid {
@@ -82,7 +74,7 @@ public class TestHybrid {
     int versionNumber = vcr.getVersion();
     assertNotEquals(versionNumber, 0, "requesting a topic for a push should provide a non zero version number");
 
-    TestUtils.waitForNonDeterministicAssertion(1, TimeUnit.SECONDS, () -> {
+    TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
       // Now the store should have version 1
       JobStatusQueryResponse jobStatus = controllerClient.queryJobStatus(Version.composeKafkaTopic(storeName, versionNumber));
       assertEquals(jobStatus.getStatus(), "COMPLETED");
@@ -100,19 +92,17 @@ public class TestHybrid {
 
   @DataProvider(name = "yesAndNo")
   public static Object[][] yesAndNo() {
-    // Lots of boiler plate for TestNG data providers, unfortunately...
-    List<Boolean[]> returnList = new ArrayList<>();
-    returnList.add(new Boolean[]{false});
-    returnList.add(new Boolean[]{true});
-    Boolean[][] booleansToReturn= new Boolean[returnList.size()][1];
-    return returnList.toArray(booleansToReturn);
+    return new Object[][]{
+        new Boolean[]{false},
+        new Boolean[]{true}
+    };
   }
 
   /**
    * This test validates the hybrid batch + streaming semantics and verifies that configured rewind time works as expected.
    *
    * TODO: This test needs to be refactored in order to leverage {@link com.linkedin.venice.utils.MockTime},
-   *       which woulc allow the test to run faster and more deterministically.
+   *       which would allow the test to run faster and more deterministically.
 
    * @param multiDivStream if false, rewind will happen in the middle of a DIV Segment, which was originally broken.
    *                       if true, two independent DIV Segments will be placed before and after the start of buffer replay.
@@ -232,6 +222,7 @@ public class TestHybrid {
     } else {
       fail("Venice cluster must have a topic replicator for hybrid to be operational"); //this shouldn't happen
     }
+
     // TODO will move this test case to a single fail-over integration test.
     //Stop one server
     int port = venice.getVeniceServers().get(0).getPort();
@@ -272,26 +263,5 @@ public class TestHybrid {
         () -> controllerClient.getStore((String) h2vProperties.get(KafkaPushJob.VENICE_STORE_NAME_PROP))
             .getStore().getCurrentVersion() == expectedVersionNumber);
     logger.info("**TIME** H2V" + expectedVersionNumber + " takes " + (System.currentTimeMillis() - h2vStart));
-  }
-
-  private static SystemProducer getSamzaProducer(VeniceClusterWrapper venice){
-    Map<String, String> samzaConfig = new HashMap<>();
-    String configPrefix = SYSTEMS_PREFIX + "venice" + DOT;
-    samzaConfig.put(configPrefix + VENICE_PUSH_TYPE, ControllerApiConstants.PushType.STREAM.toString());
-    samzaConfig.put(configPrefix + VENICE_URL, venice.getRandomRouterURL());
-    samzaConfig.put(configPrefix + VENICE_CLUSTER, venice.getClusterName());
-    samzaConfig.put(JOB_ID, TestUtils.getUniqueString("venice-push-id"));
-    VeniceSystemFactory factory = new VeniceSystemFactory();
-    SystemProducer veniceProducer = factory.getProducer("venice", new MapConfig(samzaConfig), null);
-    return veniceProducer;
-  }
-
-  private static void sendStreamingRecord(SystemProducer producer, String storeName, int recordId){
-    //Send an AVRO record
-    OutgoingMessageEnvelope envelope = new OutgoingMessageEnvelope(
-        new SystemStream("venice", storeName),
-        Integer.toString(recordId),
-        "stream_" + recordId);
-    producer.send(storeName, envelope);
   }
 }
