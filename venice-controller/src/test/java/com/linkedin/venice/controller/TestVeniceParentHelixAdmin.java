@@ -23,7 +23,6 @@ import com.linkedin.venice.controllerapi.MultiStoreResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
-import com.linkedin.venice.controllerapi.VersionResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.helix.HelixAdapterSerializer;
@@ -52,11 +51,9 @@ import java.util.HashMap;
 import java.util.Map;
 
 import java.util.Optional;
-import org.apache.commons.cli.Option;
 import org.apache.helix.manager.zk.ZkClient;
 import org.apache.kafka.clients.producer.RecordMetadata;
 import org.apache.kafka.common.TopicPartition;
-import org.apache.tools.ant.taskdefs.Apt;
 import org.mockito.ArgumentCaptor;
 import static org.mockito.Mockito.*;
 
@@ -531,7 +528,7 @@ public class TestVeniceParentHelixAdmin {
     verify(internalAdmin)
         .checkPreConditionForKillOfflinePush(clusterName, kafkaTopic);
     verify(topicManager)
-        .syncDeleteTopic(kafkaTopic);
+        .ensureTopicIsDeletedAndBlock(kafkaTopic);
     verify(veniceWriter)
         .put(any(), any(), anyInt());
     verify(zkClient, times(2))
@@ -812,7 +809,7 @@ public class TestVeniceParentHelixAdmin {
         offlineJobStatus = VeniceParentHelixAdmin.getOffLineJobStatus("mycluster", "topic1", completeMap, topicManager);
     Map<String, String> extraInfo = offlineJobStatus.getExtraInfo();
     Assert.assertEquals(offlineJobStatus.getExecutionStatus(), ExecutionStatus.COMPLETED);
-    verify(topicManager, timeout(TIMEOUT_IN_MS)).syncDeleteTopic("topic1");
+    verify(topicManager, timeout(TIMEOUT_IN_MS)).ensureTopicIsDeletedAndBlock("topic1");
     Assert.assertEquals(extraInfo.get("cluster"), ExecutionStatus.COMPLETED.toString());
     Assert.assertEquals(extraInfo.get("cluster2"), ExecutionStatus.COMPLETED.toString());
     Assert.assertEquals(extraInfo.get("cluster3"), ExecutionStatus.COMPLETED.toString());
@@ -821,7 +818,7 @@ public class TestVeniceParentHelixAdmin {
     offlineJobStatus = VeniceParentHelixAdmin.getOffLineJobStatus("mycluster", "topic2", completeMap, topicManager);
     extraInfo = offlineJobStatus.getExtraInfo();
     Assert.assertEquals(offlineJobStatus.getExecutionStatus(), ExecutionStatus.NOT_CREATED);  // Do we want this to be Progress?  limitation of ordering used in aggregation code
-    verify(topicManager, never()).syncDeleteTopic("topic2");
+    verify(topicManager, never()).ensureTopicIsDeletedAndBlock("topic2");
     Assert.assertEquals(extraInfo.get("cluster"), ExecutionStatus.COMPLETED.toString());
     Assert.assertEquals(extraInfo.get("cluster2"), ExecutionStatus.COMPLETED.toString());
     Assert.assertEquals(extraInfo.get("cluster3"), ExecutionStatus.COMPLETED.toString());
@@ -833,7 +830,7 @@ public class TestVeniceParentHelixAdmin {
     offlineJobStatus = VeniceParentHelixAdmin.getOffLineJobStatus("mycluster", "topic3", progressMap, topicManager);
     extraInfo = offlineJobStatus.getExtraInfo();
     Assert.assertEquals(offlineJobStatus.getExecutionStatus(), ExecutionStatus.NOT_CREATED);
-    verify(topicManager, never()).syncDeleteTopic("topic3");
+    verify(topicManager, never()).ensureTopicIsDeletedAndBlock("topic3");
     Assert.assertEquals(extraInfo.get("cluster"), ExecutionStatus.NOT_CREATED.toString());
     Assert.assertEquals(extraInfo.get("cluster3"), ExecutionStatus.NOT_CREATED.toString());
 
@@ -841,7 +838,7 @@ public class TestVeniceParentHelixAdmin {
     offlineJobStatus = VeniceParentHelixAdmin.getOffLineJobStatus("mycluster", "topic4", progressMap, topicManager);
     extraInfo = offlineJobStatus.getExtraInfo();
     Assert.assertEquals(offlineJobStatus.getExecutionStatus(), ExecutionStatus.NEW);
-    verify(topicManager, never()).syncDeleteTopic("topic4");
+    verify(topicManager, never()).ensureTopicIsDeletedAndBlock("topic4");
     Assert.assertEquals(extraInfo.get("cluster"), ExecutionStatus.NOT_CREATED.toString());
     Assert.assertEquals(extraInfo.get("cluster3"), ExecutionStatus.NOT_CREATED.toString());
     Assert.assertEquals(extraInfo.get("cluster5"), ExecutionStatus.NEW.toString());
@@ -850,21 +847,21 @@ public class TestVeniceParentHelixAdmin {
     offlineJobStatus = VeniceParentHelixAdmin.getOffLineJobStatus("mycluster", "topic5", progressMap, topicManager);
     extraInfo = offlineJobStatus.getExtraInfo();
     Assert.assertEquals(offlineJobStatus.getExecutionStatus(), ExecutionStatus.PROGRESS);
-    verify(topicManager, never()).syncDeleteTopic("topic5");;
+    verify(topicManager, never()).ensureTopicIsDeletedAndBlock("topic5");;
     Assert.assertEquals(extraInfo.get("cluster7"), ExecutionStatus.PROGRESS.toString());
 
     progressMap.put("cluster9", clientMap.get(ExecutionStatus.STARTED));
     offlineJobStatus = VeniceParentHelixAdmin.getOffLineJobStatus("mycluster", "topic6", progressMap, topicManager);
     extraInfo = offlineJobStatus.getExtraInfo();
     Assert.assertEquals(offlineJobStatus.getExecutionStatus(), ExecutionStatus.PROGRESS);
-    verify(topicManager, never()).syncDeleteTopic("topic6");
+    verify(topicManager, never()).ensureTopicIsDeletedAndBlock("topic6");
     Assert.assertEquals(extraInfo.get("cluster9"), ExecutionStatus.STARTED.toString());
 
     progressMap.put("cluster11", clientMap.get(ExecutionStatus.COMPLETED));
     offlineJobStatus = VeniceParentHelixAdmin.getOffLineJobStatus("mycluster", "topic7", progressMap, topicManager);
     extraInfo = offlineJobStatus.getExtraInfo();
     Assert.assertEquals(offlineJobStatus.getExecutionStatus(), ExecutionStatus.PROGRESS);
-    verify(topicManager, never()).syncDeleteTopic("topic7");
+    verify(topicManager, never()).ensureTopicIsDeletedAndBlock("topic7");
     Assert.assertEquals(extraInfo.get("cluster11"), ExecutionStatus.COMPLETED.toString());
 
     // 1 in 4 failures is ERROR
@@ -876,7 +873,7 @@ public class TestVeniceParentHelixAdmin {
     offlineJobStatus = VeniceParentHelixAdmin.getOffLineJobStatus("mycluster", "topic8", failCompleteMap, topicManager);
     extraInfo = offlineJobStatus.getExtraInfo();
     Assert.assertEquals(offlineJobStatus.getExecutionStatus(), ExecutionStatus.ERROR);
-    verify(topicManager, timeout(TIMEOUT_IN_MS)).syncDeleteTopic("topic8");
+    verify(topicManager, timeout(TIMEOUT_IN_MS)).ensureTopicIsDeletedAndBlock("topic8");
     Assert.assertEquals(extraInfo.get("cluster"), ExecutionStatus.COMPLETED.toString());
     Assert.assertEquals(extraInfo.get("cluster2"), ExecutionStatus.COMPLETED.toString());
     Assert.assertEquals(extraInfo.get("cluster3"), ExecutionStatus.COMPLETED.toString());

@@ -313,6 +313,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             }
             // Delete All versions
             deleteAllVersionsInStore(clusterName, storeName);
+            topicManager.ensureTopicIsDeletedAndBlock(Version.composeRealTimeTopic(storeName));
             // Move the store to graveyard. It will only re-create the znode for store's metadata excluding key and
             // value schemas.
             logger.info("Putting store:" + storeName + " into graveyard");
@@ -552,6 +553,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 if (store == null) {
                     throwStoreDoesNotExist(clusterName, storeName);
                 }
+                if (!store.isHybrid()){
+                    logAndThrow("Store " + storeName + " is not hybrid, refusing to return a realtime topic");
+                }
                 int partitionCount = store.getPartitionCount();
                 if (partitionCount == 0){
                     //TODO:  partitioning is currently decided on first version push, and we need to match that versioning
@@ -561,6 +565,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 }
                 VeniceControllerClusterConfig clusterConfig = getVeniceHelixResource(clusterName).getConfig();
                 createKafkaTopic(clusterName, realTimeTopic, partitionCount, clusterConfig.getKafkaReplicaFactor(), false);
+                //TODO: if there is an online version from a batch push before this store was hybrid then we won't start
+                // replicating to it.  A new version must be created.
+                logger.warn("Creating real time topic per topic request for store " + storeName + ".  "
+                  + "Buffer replay wont start for any existing versions");
             } finally {
                 repository.unLock();
             }
@@ -696,7 +704,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         if (isCompleted || getVeniceHelixResource(clusterName).getConfig()
             .isEnableTopicDeletionForUncompletedJob()) {
             logger.info("Deleting topic: " + kafkaTopicName);
-            getTopicManager().deleteTopic(kafkaTopicName);
+            getTopicManager().ensureTopicIsDeletedAsync(kafkaTopicName);
             logger.info("Deleted topic: " + kafkaTopicName);
         } else {
             // TODO an async task is needed to collect topics later to prevent resource leaking.
@@ -1294,20 +1302,22 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
     private void throwResourceAlreadyExists(String resourceName) {
         String errorMessage = "Resource:" + resourceName + " already exists, Can not add it to Helix.";
-        logger.info(errorMessage);
-        throw new VeniceException(errorMessage);
+        logAndThrow(errorMessage);
     }
 
     private void throwVersionAlreadyExists(String storeName, int version) {
         String errorMessage =
             "Version" + version + " already exists in Store:" + storeName + ". Can not add it to store.";
-        logger.info(errorMessage);
-        throw new VeniceException(errorMessage);
+        logAndThrow(errorMessage);
     }
 
     private void throwClusterNotInitialized(String clusterName) {
-        String errorMessage = "Cluster " + clusterName + " is not initialized.";
         throw new VeniceNoClusterException(clusterName);
+    }
+
+    private void logAndThrow(String msg){
+        logger.info(msg);
+        throw new VeniceException(msg);
     }
 
     @Override

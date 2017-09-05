@@ -116,7 +116,12 @@ public class TopicManager implements Closeable {
     }
   }
 
-  public void deleteTopic(String topicName) {
+  /**
+   * If the topic exists, this method sends a delete command to Kafka and immediately returns.  Deletion will
+   * occur asynchronously.
+   * @param topicName
+   */
+  public void ensureTopicIsDeletedAsync(String topicName) {
     if (containsTopic(topicName)) {
       // TODO: Stop using Kafka APIs which depend on ZK.
       logger.info("Deleting topic: " + topicName);
@@ -169,11 +174,11 @@ public class TopicManager implements Closeable {
    * By using this function, the topic deletion is a sync op, which bypasses the hanging issue of
    * non-existing topic operations.
    * Once Kafka addresses the hanging issue of non-existing topic operations, we can safely revert back
-   * to use the async version: {@link #deleteTopic(String)}
+   * to use the async version: {@link #ensureTopicIsDeletedAsync(String)}
    * @param topicName
    */
-  public synchronized void syncDeleteTopic(String topicName) {
-    deleteTopic(topicName);
+  public synchronized void ensureTopicIsDeletedAndBlock(String topicName) {
+    ensureTopicIsDeletedAsync(topicName);
     if (containsTopic(topicName)) {
       // Since topic deletion is async, we would like to poll until topic doesn't exist any more
       final int SLEEP_MS = 100;

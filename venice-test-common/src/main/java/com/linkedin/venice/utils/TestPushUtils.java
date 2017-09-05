@@ -1,14 +1,19 @@
 package com.linkedin.venice.utils;
 
+import com.linkedin.venice.controllerapi.ControllerApiConstants;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.NewStoreResponse;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.KafkaPushJob;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.samza.VeniceSystemFactory;
 import com.linkedin.venice.writer.VeniceWriter;
 import java.io.File;
 import java.io.IOException;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
 import org.apache.avro.Schema;
@@ -17,9 +22,15 @@ import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericDatumWriter;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.io.DatumWriter;
+import org.apache.samza.config.MapConfig;
+import org.apache.samza.system.OutgoingMessageEnvelope;
+import org.apache.samza.system.SystemProducer;
+import org.apache.samza.system.SystemStream;
 import org.testng.Assert;
 
 import static com.linkedin.venice.hadoop.KafkaPushJob.*;
+import static com.linkedin.venice.samza.VeniceSystemFactory.*;
+import static com.linkedin.venice.samza.VeniceSystemFactory.JOB_ID;
 
 
 public class TestPushUtils {
@@ -104,5 +115,41 @@ public class TestPushUtils {
     Assert.assertFalse(controllerResponse.isError(), "The UpdateStore response returned an error: " + controllerResponse.getError());
 
     return controllerClient;
+  }
+
+  public static void makeStoreHybrid(VeniceClusterWrapper venice, String storeName, long rewindSeconds, long offsetLag) {
+    try(ControllerClient controllerClient = new ControllerClient(venice.getClusterName(), venice.getRandomRouterURL())){
+      ControllerResponse response = controllerClient.updateStore(storeName, Optional.empty(), Optional.empty(),
+          Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(),
+          Optional.of(rewindSeconds), Optional.of(offsetLag));
+      if (response.isError()){
+        throw new VeniceException(response.getError());
+      }
+    }
+  }
+
+  public static SystemProducer getSamzaProducer(VeniceClusterWrapper venice){
+    Map<String, String> samzaConfig = new HashMap<>();
+    String configPrefix = SYSTEMS_PREFIX + "venice" + DOT;
+    samzaConfig.put(configPrefix + VENICE_PUSH_TYPE, ControllerApiConstants.PushType.STREAM.toString());
+    samzaConfig.put(configPrefix + VENICE_URL, venice.getRandomRouterURL());
+    samzaConfig.put(configPrefix + VENICE_CLUSTER, venice.getClusterName());
+    samzaConfig.put(JOB_ID, TestUtils.getUniqueString("venice-push-id"));
+    VeniceSystemFactory factory = new VeniceSystemFactory();
+    SystemProducer veniceProducer = factory.getProducer("venice", new MapConfig(samzaConfig), null);
+    return veniceProducer;
+  }
+
+  /**
+   * Generate a streaming record using the provided producer to the specified store
+   * key and value schema of the store must both be "string", the record produced is
+   * based on the provided recordId
+   */
+  public static void sendStreamingRecord(SystemProducer producer, String storeName, int recordId){
+    OutgoingMessageEnvelope envelope = new OutgoingMessageEnvelope(
+        new SystemStream("venice", storeName),
+        Integer.toString(recordId),
+        "stream_" + recordId);
+    producer.send(storeName, envelope);
   }
 }
