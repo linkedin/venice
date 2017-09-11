@@ -1,5 +1,7 @@
 package com.linkedin.venice.kafka.consumer;
 
+import com.linkedin.venice.utils.TestUtils;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.testng.Assert;
 import org.testng.annotations.Test;
@@ -78,9 +80,10 @@ public class MemoryBoundBlockingQueueTest {
       }
     });
     t.start();
-    Thread.sleep(50);
-    Assert.assertTrue(t.isAlive());
-    Assert.assertEquals(queue.size(), objectCntAtMost);
+    TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
+      Assert.assertTrue(t.isAlive());
+      Assert.assertEquals(queue.size(), objectCntAtMost);
+    });
 
     int previousQueueSize = queue.size();
     // Here we need to take out some objects to allow more put

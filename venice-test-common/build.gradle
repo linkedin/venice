@@ -59,7 +59,9 @@ task jacocoIntegrationTestReport(type:JacocoReport){
 dependencies {
   compile libraries.testng
 
-  compile libraries.brooklinTest
+  compile (libraries.brooklinTest) {
+    exclude group: 'org.mockito' //brooklin tries to pull in Mockito 1, we depend on Mockito 2
+  }
   compile libraries.brooklinKafkaTransport
 
   compile project(':venice-schema-common')

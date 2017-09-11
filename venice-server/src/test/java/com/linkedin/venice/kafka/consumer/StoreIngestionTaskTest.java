@@ -23,7 +23,6 @@ import com.linkedin.venice.serialization.DefaultSerializer;
 import com.linkedin.venice.server.StoreRepository;
 import com.linkedin.venice.stats.AggStoreIngestionStats;
 import com.linkedin.venice.stats.AggVersionedDIVStats;
-import com.linkedin.venice.stats.VersionedDIVStats;
 import com.linkedin.venice.storage.StorageMetadataService;
 import com.linkedin.venice.store.AbstractStorageEngine;
 import com.linkedin.venice.store.StoragePartitionConfig;
@@ -49,6 +48,7 @@ import com.linkedin.venice.unit.matchers.NonEmptyStringMatcher;
 import com.linkedin.venice.utils.ByteArray;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.SystemTime;
+import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.KafkaProducerWrapper;
 import com.linkedin.venice.writer.VeniceWriter;
@@ -79,6 +79,7 @@ import java.util.function.Supplier;
 import org.apache.kafka.clients.producer.RecordMetadata;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.log4j.Logger;
+import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.BeforeMethod;
@@ -118,6 +119,9 @@ public class StoreIngestionTaskTest {
   private VeniceWriter veniceWriter;
   private StoreRepository mockStoreRepository;
   private VeniceNotifier mockNotifier;
+  private List<Object[]> mockNotifierProgress;
+  private List<Object[]> mockNotifierCompleted;
+  private List<Object[]> mockNotifierError;
   private StorageMetadataService mockStorageMetadataService;
   private AbstractStorageEngine mockAbstractStorageEngine;
   private EventThrottler mockThrottler;
@@ -178,7 +182,27 @@ public class StoreIngestionTaskTest {
     inMemoryKafkaBroker.createTopic(topic, PARTITION_COUNT);
     veniceWriter = getVeniceWriter(() -> new MockInMemoryProducer(inMemoryKafkaBroker));
     mockStoreRepository = mock(StoreRepository.class);
+
     mockNotifier = mock(LogNotifier.class);
+    mockNotifierProgress = new ArrayList<>();
+    doAnswer(invocation -> {
+      Object[] args = invocation.getArguments();
+      mockNotifierProgress.add(args);
+      return null;
+    }).when(mockNotifier).progress(anyString(), anyInt(), anyLong());
+    mockNotifierCompleted = new ArrayList<>();
+    doAnswer(invocation -> {
+      Object[] args = invocation.getArguments();
+      mockNotifierCompleted.add(args);
+      return null;
+    }).when(mockNotifier).completed(anyString(), anyInt(), anyLong());
+    mockNotifierError = new ArrayList<>();
+    doAnswer(invocation -> {
+      Object[] args = invocation.getArguments();
+      mockNotifierError.add(args);
+      return null;
+    }).when(mockNotifier).error(anyString(), anyInt(), anyString(), any());
+
     mockAbstractStorageEngine = mock(AbstractStorageEngine.class);
     mockStorageMetadataService = mock(StorageMetadataService.class);
     mockThrottler = mock(EventThrottler.class);
@@ -240,7 +264,7 @@ public class StoreIngestionTaskTest {
     MockInMemoryConsumer inMemoryKafkaConsumer = new MockInMemoryConsumer(inMemoryKafkaBroker, pollStrategy, mockKafkaConsumer);
     Properties kafkaProps = new Properties();
     VeniceConsumerFactory mockFactory = mock(VeniceConsumerFactory.class);
-    doReturn(inMemoryKafkaConsumer).when(mockFactory).getConsumer(kafkaProps);
+    doReturn(inMemoryKafkaConsumer).when(mockFactory).getConsumer(any());
     StorageMetadataService offsetManager;
     logger.info("mockStorageMetadataService: " + mockStorageMetadataService.getClass().getName());
     if (mockStorageMetadataService.getClass() != InMemoryStorageMetadataService.class) {
@@ -684,20 +708,42 @@ public class StoreIngestionTaskTest {
 
     try {
       runTest(getSet(PARTITION_BAR), () -> {
-        verify(mockNotifier, timeout(TEST_TIMEOUT).atLeastOnce()).progress(eq(topic), eq(PARTITION_BAR),
-            LongEqualOrGreaterThanMatcher.get(lastOffsetBeforeEOP));
 
-        verify(mockNotifier, timeout(TEST_TIMEOUT).times(1)).completed(eq(topic), eq(PARTITION_BAR),
-            LongEqualOrGreaterThanMatcher.get(lastOffsetBeforeEOP));
+        TestUtils.waitForNonDeterministicCompletion(TEST_TIMEOUT, TimeUnit.MILLISECONDS, () -> {
+          for (Object[] args : mockNotifierProgress) {
+            if (args[0].equals(topic) && args[1].equals(PARTITION_BAR) && ((long) args[2]) >= lastOffsetBeforeEOP) {
+              return true;
+            }
+          }
+          return false;
+        });
 
-        verify(mockNotifier, never()).error(eq(topic), eq(PARTITION_BAR), argThat(new NonEmptyStringMatcher()), argThat(new ExceptionClassMatcher(CorruptDataException.class)));
+        TestUtils.waitForNonDeterministicCompletion(TEST_TIMEOUT, TimeUnit.MILLISECONDS, () -> {
+          for (Object[] args : mockNotifierCompleted) {
+            if (args[0].equals(topic) && args[1].equals(PARTITION_BAR) && ((long) args[2]) >= lastOffsetBeforeEOP) {
+              return true;
+            }
+          }
+          return false;
+        });
+
+        for (Object[] args : mockNotifierError) {
+          Assert.assertFalse(
+              args[0].equals(topic)
+                  && args[1].equals(PARTITION_BAR)
+                  && ((String)args[2]).length() > 0
+          && args[3] instanceof CorruptDataException);
+        }
+
       });
     } catch (VerifyError e) {
       StringBuilder msg = new StringBuilder();
       ClassLoader cl = ClassLoader.getSystemClassLoader();
       URL[] urls = ((URLClassLoader)cl).getURLs();
-      msg.append("VerifyError, possibly from junit version conflict.  Printing junit on classpath: \n");
+      msg.append("VerifyError, possibly from junit or mockito version conflict. \nPrinting junit on classpath:\n");
       Arrays.asList(urls).stream().filter(url -> url.getFile().contains("junit")).forEach(url -> msg.append(url + "\n"));
+      msg.append("Printing mockito on classpath:\n");
+      Arrays.asList(urls).stream().filter(url -> url.getFile().contains("mockito")).forEach(url -> msg.append(url + "\n"));
       throw new VeniceException(msg.toString(), e);
     }
   }
