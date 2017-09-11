@@ -2,7 +2,7 @@ apply plugin: 'application'
 
 mainClassName = "com.linkedin.venice.server.VeniceServer"
 
-installApp.dependsOn test
+installDist.dependsOn test
 
 task buildJar(type: Jar) {
   manifest {
