@@ -20,6 +20,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
 
+import java.util.function.Consumer;
 import org.apache.avro.Schema;
 import org.apache.avro.file.DataFileWriter;
 import org.apache.avro.generic.GenericData;
@@ -92,28 +93,58 @@ public class TestPushUtils {
     return schema;
   }
 
-  public static javafx.util.Pair<Schema, Schema> writeSimpleVsonFile(File parentDir) throws IOException {
+  public static javafx.util.Pair<Schema, Schema> writeSimpleVsonFile(File parentDir) throws IOException{
     String vsonInteger = "\"int32\"";
     String vsonString = "\"string\"";
-    VsonAvroSerializer keySerializer = VsonAvroSerializer.fromSchemaStr(vsonInteger);
-    VsonAvroSerializer valueSerializer = VsonAvroSerializer.fromSchemaStr(vsonString);
 
+    writeVsonFile(vsonInteger, vsonString, parentDir,  "simple_vson_file",
+        (keySerializer, valueSerializer, writer) ->{
+          for (int i = 0; i < 100; i++) {
+            writer.append(new BytesWritable(keySerializer.toBytes(i)),
+                new BytesWritable(valueSerializer.toBytes(String.valueOf(i + 100))));
+          }
+        });
+    return new javafx.util.Pair<>(VsonAvroSchemaAdapter.parse(vsonInteger), VsonAvroSchemaAdapter.parse(vsonString));
+  }
+
+  public static javafx.util.Pair<Schema, Schema> writeComplexVsonFile(File parentDir) throws IOException{
+    String vsonInteger = "\"int32\"";
+    String vsonString = "{\"member_id\":\"int32\", \"score\":\"float32\"}";;
+
+    Map<String, Object> record = new HashMap<>();
+    writeVsonFile(vsonInteger, vsonString, parentDir,  "complex_vson-file",
+        (keySerializer, valueSerializer, writer) ->{
+          for (int i = 0; i < 100; i++) {
+            record.put("member_id", i + 100);
+            record.put("score", i % 10 != 0 ? (float) i : null); //allow to have optional field
+            writer.append(new BytesWritable(keySerializer.toBytes(i)),
+                new BytesWritable(valueSerializer.toBytes(record)));
+          }
+        });
+    return new javafx.util.Pair<>(VsonAvroSchemaAdapter.parse(vsonInteger), VsonAvroSchemaAdapter.parse(vsonString));
+  }
+
+  private static javafx.util.Pair<Schema, Schema> writeVsonFile(String keySchemaStr,
+      String valueSchemStr,  File parentDir, String fileName, VsonFileWriter fileWriter) throws IOException {
     SequenceFile.Metadata metadata = new SequenceFile.Metadata();
-    metadata.set(new Text("key.schema"), new Text(vsonInteger));
-    metadata.set(new Text("value.schema"), new Text(vsonString));
+    metadata.set(new Text("key.schema"), new Text(keySchemaStr));
+    metadata.set(new Text("value.schema"), new Text(valueSchemStr));
+
+    VsonAvroSerializer keySerializer = VsonAvroSerializer.fromSchemaStr(keySchemaStr);
+    VsonAvroSerializer valueSerializer = VsonAvroSerializer.fromSchemaStr(valueSchemStr);
 
     try(SequenceFile.Writer writer = SequenceFile.createWriter(new Configuration(),
-        SequenceFile.Writer.file(new Path(parentDir.toString(), "simple_vson_file")),
+        SequenceFile.Writer.file(new Path(parentDir.toString(), fileName)),
         SequenceFile.Writer.keyClass(BytesWritable.class),
         SequenceFile.Writer.valueClass(BytesWritable.class),
         SequenceFile.Writer.metadata(metadata))) {
-      for (int i = 0; i < 100; i ++) {
-        writer.append(new BytesWritable(keySerializer.toBytes(i)),
-            new BytesWritable(valueSerializer.toBytes(String.valueOf(i + 100))));
-      }
+      fileWriter.write(keySerializer, valueSerializer, writer);
     }
+    return new javafx.util.Pair<>(VsonAvroSchemaAdapter.parse(keySchemaStr), VsonAvroSchemaAdapter.parse(valueSchemStr));
+  }
 
-    return new javafx.util.Pair<>(VsonAvroSchemaAdapter.parse(vsonInteger), VsonAvroSchemaAdapter.parse(vsonString));
+  private interface VsonFileWriter {
+    void write(VsonAvroSerializer keySerializer, VsonAvroSerializer valueSerializer, SequenceFile.Writer writer) throws IOException;
   }
 
   public static Properties defaultH2VProps(VeniceClusterWrapper veniceCluster, String inputDirPath, String storeName) {

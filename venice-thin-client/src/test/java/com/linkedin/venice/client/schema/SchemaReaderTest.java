@@ -1,7 +1,6 @@
 package com.linkedin.venice.client.schema;
 
 import com.linkedin.venice.client.exceptions.VeniceClientException;
-import com.linkedin.venice.client.exceptions.VeniceClientHttpException;
 import com.linkedin.venice.client.store.AbstractAvroStoreClient;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;

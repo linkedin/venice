@@ -3,7 +3,7 @@ package com.linkedin.venice.listener.response;
 import com.linkedin.venice.common.PartitionOffsetMapUtils;
 import com.linkedin.venice.read.protocol.response.MultiGetResponseRecordV1;
 import com.linkedin.venice.schema.avro.ReadAvroProtocolDefinition;
-import com.linkedin.venice.serializer.AvroSerializerDeserializerFactory;
+import com.linkedin.venice.serializer.SerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordSerializer;
 import java.io.IOException;
 
@@ -11,8 +11,6 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import org.codehaus.jackson.map.ObjectMapper;
-import org.codehaus.jackson.type.TypeReference;
 
 
 public class MultiGetResponseWrapper extends ReadResponse {
@@ -38,7 +36,7 @@ public class MultiGetResponseWrapper extends ReadResponse {
 
   public byte[] serializedMultiGetResponse() {
     RecordSerializer<MultiGetResponseRecordV1> serializer =
-        AvroSerializerDeserializerFactory.getAvroGenericSerializer(MultiGetResponseRecordV1.SCHEMA$);
+        SerializerDeserializerFactory.getAvroGenericSerializer(MultiGetResponseRecordV1.SCHEMA$);
 
     return serializer.serializeObjects(records);
   }

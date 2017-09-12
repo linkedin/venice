@@ -16,7 +16,11 @@ public class AvroGenericSerializer<K> implements RecordSerializer<K> {
   private final GenericDatumWriter<K> datumWriter;
 
   public AvroGenericSerializer(Schema schema) {
-    this.datumWriter = new GenericDatumWriter<>(schema);
+    this(new GenericDatumWriter<>(schema));
+  }
+
+  protected AvroGenericSerializer(GenericDatumWriter datumWriter) {
+    this.datumWriter = datumWriter;
   }
 
   @Override

@@ -72,7 +72,7 @@ public class TestVeniceVsonMapper extends AbstractTestVeniceMR {
     ArgumentCaptor<BytesWritable> keyCaptor = ArgumentCaptor.forClass(BytesWritable.class);
     ArgumentCaptor<BytesWritable> valueCaptor = ArgumentCaptor.forClass(BytesWritable.class);
 
-    Schema schema = VsonAvroSchemaAdapter.parse(fileValueSchemaStr);
+    Schema schema = VsonAvroSchemaAdapter.stripFromUnion(VsonAvroSchemaAdapter.parse(fileValueSchemaStr));
     VeniceAvroGenericSerializer valueSerializer =
         new VeniceAvroGenericSerializer(schema.getField("userId").schema().toString());
 

@@ -15,7 +15,6 @@ import java.io.InputStream;
 import java.nio.ByteBuffer;
 import java.util.*;
 
-
 /**
  * VsonAvroSerializer is in charge of de/serializing between Vson binary and Vson object.
  * It's also able to deserialize Vson binary to Avro object.
@@ -172,9 +171,11 @@ public class VsonAvroSerializer {
         case FLOAT64:
           return readFloat64(stream);
         case BYTES:
-          return ByteBuffer.wrap(readBytes(stream));
+          byte[] bytes = readBytes(stream);
+          return bytes == null ? null : ByteBuffer.wrap(bytes);
         case STRING:
-          return new Utf8(readString(stream));
+          String string = readString(stream);
+          return string == null ? null : new Utf8(string);
         case DATE:
           throw new VsonSerializationException("Converting Date to Avro is not supported");
           default:
@@ -190,7 +191,8 @@ public class VsonAvroSerializer {
     }
 
     String vsonSchemaStr = vsonSchema.toString();
-    Schema avroSchema = cachedSchemaMap.computeIfAbsent(vsonSchemaStr, schemaStr -> VsonAvroSchemaAdapter.parse(schemaStr));
+    Schema avroSchema = cachedSchemaMap.computeIfAbsent(vsonSchemaStr, schemaStr ->
+        VsonAvroSchemaAdapter.stripFromUnion(VsonAvroSchemaAdapter.parse(schemaStr)));
 
     GenericData.Record record = new GenericData.Record(avroSchema);
 
@@ -210,7 +212,8 @@ public class VsonAvroSerializer {
     }
 
     String vsonSchemaStr = vsonSchema.toString();
-    Schema avroSchema = cachedSchemaMap.computeIfAbsent(vsonSchemaStr, schemaStr -> VsonAvroSchemaAdapter.parse(schemaStr));
+    Schema avroSchema = cachedSchemaMap.computeIfAbsent(vsonSchemaStr,
+        schemaStr -> VsonAvroSchemaAdapter.stripFromUnion(VsonAvroSchemaAdapter.parse(schemaStr)));
 
     GenericData.Array array = new GenericData.Array(size, avroSchema);
     for (int i = 0; i < size; i ++) {

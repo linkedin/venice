@@ -9,7 +9,7 @@ import com.linkedin.venice.client.store.transport.HttpTransportClient;
 import com.linkedin.venice.client.store.transport.TransportClient;
 import com.linkedin.venice.read.protocol.response.MultiGetResponseRecordV1;
 import com.linkedin.venice.schema.avro.ReadAvroProtocolDefinition;
-import com.linkedin.venice.serializer.AvroSerializerDeserializerFactory;
+import com.linkedin.venice.serializer.SerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.serializer.RecordSerializer;
 import com.linkedin.venice.utils.DaemonThreadFactory;
@@ -57,7 +57,6 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
 
   private TransportClient transportClient;
   private String storeName;
-
   /**
    * Here is the details about the deadlock issue if deserialization logic is executed in the same R2 callback thread:
    * 1. A bunch of regular get requests are sent to Venice backend at the same time;
@@ -128,10 +127,20 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
       if (null != keySerializer) {
         return keySerializer;
       }
-      keySerializer = AvroSerializerDeserializerFactory.getAvroGenericSerializer(schemaReader.getKeySchema());
+
+      initKeySerializer();
 
       return keySerializer;
     }
+  }
+
+  protected void initKeySerializer() {
+    // init key serializer
+    this.keySerializer =
+        SerializerDeserializerFactory.getAvroGenericSerializer(schemaReader.getKeySchema());
+    // init multi-get request serializer
+    this.multiGetRequestSerializer = SerializerDeserializerFactory.getAvroGenericSerializer(
+        ReadAvroProtocolDefinition.MULTI_GET_CLIENT_REQUEST_V1.getSchema());
   }
 
   // For testing
@@ -252,10 +261,6 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
       } else {
         this.schemaReader = new SchemaReader(this.getStoreClientForSchemaReader());
       }
-
-      // init multi-get request serializer
-      this.multiGetRequestSerializer = AvroSerializerDeserializerFactory.getAvroGenericSerializer(
-          ReadAvroProtocolDefinition.MULTI_GET_CLIENT_REQUEST_V1.getSchema());
     } else {
       this.schemaReader = null;
     }
@@ -280,7 +285,7 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
     if (protocolVersion != schemaId) {
       throw new VeniceClientException("schemaId: " + schemaId + " is not expected, should be " + protocolVersion);
     }
-    return AvroSerializerDeserializerFactory.getAvroSpecificDeserializer(MultiGetResponseRecordV1.class);
+    return SerializerDeserializerFactory.getAvroSpecificDeserializer(MultiGetResponseRecordV1.class);
   }
 
   public String toString() {

@@ -1,6 +1,6 @@
 package com.linkedin.venice.schema;
 
-import com.linkedin.venice.serializer.AvroSerializerDeserializerFactory;
+import com.linkedin.venice.serializer.SerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.serializer.RecordSerializer;
 import com.linkedin.venice.utils.Utils;
@@ -23,11 +23,11 @@ public class TestAvroSchema {
     v1Record.put("lastUpdate", new Long(-1));
     v1Record.put("producerStates", new HashMap<>());
 
-    RecordSerializer<Object> serializer = AvroSerializerDeserializerFactory.getAvroGenericSerializer(v1Schema);
+    RecordSerializer<Object> serializer = SerializerDeserializerFactory.getAvroGenericSerializer(v1Schema);
     byte[] bytes = serializer.serialize(v1Record);
 
     // No exception should be thrown here
-    RecordDeserializer<Object> deserializer = AvroSerializerDeserializerFactory.getAvroGenericDeserializer(v1Schema, v3Schema);
+    RecordDeserializer<Object> deserializer = SerializerDeserializerFactory.getAvroGenericDeserializer(v1Schema, v3Schema);
     deserializer.deserialize(bytes);
   }
 }

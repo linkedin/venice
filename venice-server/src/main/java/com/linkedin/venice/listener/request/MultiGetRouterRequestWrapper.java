@@ -5,7 +5,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.read.protocol.request.router.MultiGetRouterRequestKeyV1;
 import com.linkedin.venice.schema.avro.ReadAvroProtocolDefinition;
-import com.linkedin.venice.serializer.AvroSerializerDeserializerFactory;
+import com.linkedin.venice.serializer.SerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import io.netty.buffer.ByteBufInputStream;
 import io.netty.handler.codec.http.FullHttpRequest;
@@ -57,7 +57,7 @@ public class MultiGetRouterRequestWrapper extends RouterRequest {
 
   public static Iterable<MultiGetRouterRequestKeyV1> parseKeys(InputStream content) {
     RecordDeserializer<MultiGetRouterRequestKeyV1> deserializer =
-        AvroSerializerDeserializerFactory.getAvroSpecificDeserializer(MultiGetRouterRequestKeyV1.class);
+        SerializerDeserializerFactory.getAvroSpecificDeserializer(MultiGetRouterRequestKeyV1.class);
 
     return deserializer.deserializeObjects(content);
   }

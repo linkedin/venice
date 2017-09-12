@@ -2,6 +2,7 @@ package com.linkedin.venice.schema.vson;
 
 import com.linkedin.venice.serializer.VsonSerializationException;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import org.apache.avro.Schema;
@@ -18,6 +19,8 @@ public class VsonAvroSchemaAdapter extends AbstractVsonSchemaAdapter<Schema> {
   private static final String DEFAULT_NAMESPACE = null;
   private static final JsonNode DEFAULT_VALUE = null;
 
+  private int recordCount = 1;
+
   public static Schema parse(String vsonSchemaStr) {
     VsonAvroSchemaAdapter adapter = new VsonAvroSchemaAdapter(vsonSchemaStr);
     return adapter.fromVsonObjects();
@@ -32,15 +35,15 @@ public class VsonAvroSchemaAdapter extends AbstractVsonSchemaAdapter<Schema> {
     List<Schema.Field> fields = new ArrayList<>();
     vsonMap.forEach((key, value) -> fields.add(new Schema.Field(key, fromVsonObjects(value), DEFAULT_DOC, DEFAULT_VALUE)));
 
-    Schema recordSchema = Schema.createRecord(DEFAULT_RECORD_NAME, DEFAULT_DOC, DEFAULT_NAMESPACE, false);
+    Schema recordSchema = Schema.createRecord(DEFAULT_RECORD_NAME + (recordCount++), DEFAULT_DOC, DEFAULT_NAMESPACE, false);
     recordSchema.setFields(fields);
 
-    return recordSchema;
+    return nullableUnion(recordSchema);
   }
 
   @Override
   Schema readList(List<Schema> vsonList){
-    return Schema.createArray(fromVsonObjects(vsonList.get(0)));
+    return nullableUnion(Schema.createArray(fromVsonObjects(vsonList.get(0))));
   }
 
   @Override
@@ -50,34 +53,53 @@ public class VsonAvroSchemaAdapter extends AbstractVsonSchemaAdapter<Schema> {
 
     switch(type) {
       case BOOLEAN:
-        avroSchema = Schema.create(Schema.Type.BOOLEAN);
+        avroSchema = nullableUnion(Schema.create(Schema.Type.BOOLEAN));
         break;
       case STRING:
-        avroSchema = Schema.create(Schema.Type.STRING);
+        avroSchema = nullableUnion(Schema.create(Schema.Type.STRING));
+        break;
+      case INT32:
+        avroSchema = nullableUnion(Schema.create(Schema.Type.INT));
+        break;
+      case INT64:
+        avroSchema = nullableUnion(Schema.create(Schema.Type.LONG));
+        break;
+      case FLOAT32:
+        avroSchema = nullableUnion(Schema.create(Schema.Type.FLOAT));
+        break;
+      case FLOAT64:
+        avroSchema = nullableUnion(Schema.create(Schema.Type.DOUBLE));
+        break;
+      case BYTES:
+        avroSchema = nullableUnion(Schema.create(Schema.Type.BYTES));
         break;
       case INT8:
       case INT16:
-      case INT32:
-        avroSchema = Schema.create(Schema.Type.INT);
-        break;
-      case INT64:
-        avroSchema = Schema.create(Schema.Type.LONG);
-        break;
-      case FLOAT32:
-        avroSchema = Schema.create(Schema.Type.FLOAT);
-        break;
-      case FLOAT64:
-        avroSchema = Schema.create(Schema.Type.DOUBLE);
-        break;
-      case BYTES:
-        avroSchema = Schema.create(Schema.Type.BYTES);
-        break;
       case DATE:
+        throw new VsonSerializationException("Vson type: " + type.toDisplay() + " is not supported to convert to Avro");
       default:
         throw new VsonSerializationException("Can't parse string to Avro schema. String: "
             + vsonString + " is not a valid Vson String.");
     }
 
     return avroSchema;
+  }
+
+  /**
+   * Wrap a schema with a union so that it could return null if necessary
+   * From Vson's point of view, all fields can be optional (null is allowed to be return).
+   */
+  public static Schema nullableUnion(Schema schema) {
+    return Schema.createUnion(Arrays.asList(schema, Schema.create(Schema.Type.NULL)));
+  }
+
+  public static Schema stripFromUnion(Schema schema) {
+    if (schema.getType() != Schema.Type.UNION) {
+      throw new IllegalArgumentException("Schema: " + schema.toString() + "has to be Union");
+    }
+
+    List<Schema> subtypes = schema.getTypes();
+
+    return subtypes.get(0).getType() != Schema.Type.NULL ? subtypes.get(0) : subtypes.get(1);
   }
 }

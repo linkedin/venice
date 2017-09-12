@@ -4,7 +4,7 @@ import com.linkedin.ddsstorage.netty4.misc.BasicFullHttpRequest;
 import com.linkedin.ddsstorage.router.api.RouterException;
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.router.api.VenicePartitionFinder;
-import com.linkedin.venice.serializer.AvroSerializerDeserializerFactory;
+import com.linkedin.venice.serializer.SerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordSerializer;
 import com.linkedin.venice.utils.TestUtils;
 import io.netty.buffer.Unpooled;
@@ -22,7 +22,7 @@ import static org.mockito.Mockito.*;
 public class TestVeniceMultiGetPath {
 
   private byte[] serializeKeys(Iterable<ByteBuffer> keys) {
-    RecordSerializer<ByteBuffer> serializer = AvroSerializerDeserializerFactory.getAvroGenericSerializer(VeniceMultiGetPath.EXPECTED_PROTOCOL.getSchema());
+    RecordSerializer<ByteBuffer> serializer = SerializerDeserializerFactory.getAvroGenericSerializer(VeniceMultiGetPath.EXPECTED_PROTOCOL.getSchema());
     return serializer.serializeObjects(keys);
   }
 

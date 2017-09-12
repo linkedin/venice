@@ -10,16 +10,16 @@ import org.testng.annotations.Test;
 
 import java.io.IOException;
 
-public class AvroSerializerDeserializerFactoryTest {
+public class SerializerDeserializerFactoryTest {
   @Test
   public void getAvroGenericSerializerTest() throws VeniceClientException {
     String schemaStr = "\"string\"";
     Schema schema = Schema.parse(schemaStr);
     String stringValue = "abc";
-    RecordSerializer<Object> serializer = AvroSerializerDeserializerFactory.getAvroGenericSerializer(schema);
+    RecordSerializer<Object> serializer = SerializerDeserializerFactory.getAvroGenericSerializer(schema);
     Assert.assertNotEquals(serializer.serialize(stringValue), stringValue.getBytes());
 
-    RecordSerializer<Object> anotherSerializer = AvroSerializerDeserializerFactory.getAvroGenericSerializer(schema);
+    RecordSerializer<Object> anotherSerializer = SerializerDeserializerFactory.getAvroGenericSerializer(schema);
     Assert.assertTrue(anotherSerializer == serializer);
   }
 
@@ -31,11 +31,11 @@ public class AvroSerializerDeserializerFactoryTest {
     GenericData.Record actualObject = new GenericData.Record(actualSchema);
     actualObject.put("long_field", 1000l);
     actualObject.put("string_field", "abc");
-    RecordSerializer<Object> serializer = AvroSerializerDeserializerFactory.getAvroGenericSerializer(actualSchema);
+    RecordSerializer<Object> serializer = SerializerDeserializerFactory.getAvroGenericSerializer(actualSchema);
     byte[] serializedValue = serializer.serialize(actualObject);
 
     RecordDeserializer<GenericData.Record> deserializer =
-        AvroSerializerDeserializerFactory.getAvroGenericDeserializer(actualSchema, expectedSchema);
+        SerializerDeserializerFactory.getAvroGenericDeserializer(actualSchema, expectedSchema);
 
     GenericData.Record expectedRecord = deserializer.deserialize(serializedValue);
     Assert.assertNotNull(expectedRecord);
@@ -44,7 +44,7 @@ public class AvroSerializerDeserializerFactoryTest {
     Assert.assertEquals(expectedRecord.get("int_field"), 10);
 
     RecordDeserializer<GenericData.Record> anotherDeserializer =
-        AvroSerializerDeserializerFactory.getAvroGenericDeserializer(actualSchema, expectedSchema);
+        SerializerDeserializerFactory.getAvroGenericDeserializer(actualSchema, expectedSchema);
     Assert.assertTrue(anotherDeserializer == deserializer);
   }
 
@@ -56,11 +56,11 @@ public class AvroSerializerDeserializerFactoryTest {
     actualObject.put("long_field", 1000l);
     actualObject.put("string_field", "abc");
 
-    RecordSerializer<Object> serializer = AvroSerializerDeserializerFactory.getAvroGenericSerializer(actualSchema);
+    RecordSerializer<Object> serializer = SerializerDeserializerFactory.getAvroGenericSerializer(actualSchema);
     byte[] serializedValue = serializer.serialize(actualObject);
 
     RecordDeserializer<TestValueRecordWithMoreFields> deserializer =
-        AvroSerializerDeserializerFactory.getAvroSpecificDeserializer(actualSchema, TestValueRecordWithMoreFields.class);
+        SerializerDeserializerFactory.getAvroSpecificDeserializer(actualSchema, TestValueRecordWithMoreFields.class);
 
     TestValueRecordWithMoreFields expectedObject = deserializer.deserialize(serializedValue);
     Assert.assertEquals(expectedObject.long_field, 1000l);
@@ -68,7 +68,7 @@ public class AvroSerializerDeserializerFactoryTest {
     Assert.assertEquals(expectedObject.int_field, 10);
 
     RecordDeserializer<TestValueRecordWithMoreFields> anotherDeserializer =
-        AvroSerializerDeserializerFactory.getAvroSpecificDeserializer(actualSchema, TestValueRecordWithMoreFields.class);
+        SerializerDeserializerFactory.getAvroSpecificDeserializer(actualSchema, TestValueRecordWithMoreFields.class);
     Assert.assertTrue(anotherDeserializer == deserializer);
   }
 }

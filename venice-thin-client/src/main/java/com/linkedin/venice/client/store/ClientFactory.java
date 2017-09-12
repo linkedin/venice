@@ -23,14 +23,19 @@ public class ClientFactory {
 
   public static <K, V> AvroGenericStoreClient<K, V> getGenericAvroClient(ClientConfig clientConfig) {
     TransportClient transportClient = getTransportClient(clientConfig);
-    InternalAvroStoreClient<K, V> avroClient =
-        new AvroGenericStoreClientImpl<>(transportClient, clientConfig.getStoreName());
+
+    InternalAvroStoreClient<K, V> internalClient;
+    if (clientConfig.isVsonClient()) {
+      internalClient = new VsonGenericStoreClientImpl<>(transportClient, clientConfig.getStoreName());
+    } else {
+      internalClient = new AvroGenericStoreClientImpl<>(transportClient, clientConfig.getStoreName());
+    }
 
     StatTrackingStoreClient<K, V> client;
     if (clientConfig.getMetricsRepository() != null) {
-      client = new StatTrackingStoreClient<>(avroClient, clientConfig.getMetricsRepository());
+      client = new StatTrackingStoreClient<>(internalClient, clientConfig.getMetricsRepository());
     } else {
-      client = new StatTrackingStoreClient<>(avroClient);
+      client = new StatTrackingStoreClient<>(internalClient);
     }
 
     return client;

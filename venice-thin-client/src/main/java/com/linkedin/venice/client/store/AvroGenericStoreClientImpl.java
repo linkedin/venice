@@ -3,7 +3,7 @@ package com.linkedin.venice.client.store;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.schema.SchemaReader;
 import com.linkedin.venice.client.store.transport.TransportClient;
-import com.linkedin.venice.serializer.AvroSerializerDeserializerFactory;
+import com.linkedin.venice.serializer.SerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import org.apache.avro.Schema;
 
@@ -15,7 +15,7 @@ public class AvroGenericStoreClientImpl<K, V> extends AbstractAvroStoreClient<K,
   public AvroGenericStoreClientImpl(TransportClient transportClient, String storeName) {
     this(transportClient, storeName, true);
   }
-  private AvroGenericStoreClientImpl(TransportClient transportClient, String storeName,
+  protected AvroGenericStoreClientImpl(TransportClient transportClient, String storeName,
                                      boolean needSchemaReader) {
     super(transportClient, storeName, needSchemaReader);
   }
@@ -42,7 +42,12 @@ public class AvroGenericStoreClientImpl<K, V> extends AbstractAvroStoreClient<K,
     if (null == writerSchema) {
       throw new VeniceClientException("Failed to get value schema for store: " + getStoreName() + " and id: " + schemaId);
     }
-    return AvroSerializerDeserializerFactory.getAvroGenericDeserializer(writerSchema, readerSchema);
+
+    return getDeserializerFromFactory(writerSchema, readerSchema);
+  }
+
+  protected RecordDeserializer<V> getDeserializerFromFactory(Schema writer, Schema reader) {
+    return SerializerDeserializerFactory.getAvroGenericDeserializer(writer, reader);
   }
 
   public String toString() {
