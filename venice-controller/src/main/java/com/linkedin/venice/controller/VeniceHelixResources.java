@@ -45,7 +45,7 @@ public class VeniceHelixResources implements VeniceResource {
                               HelixManager helixManager,
                               VeniceControllerClusterConfig config,
                               StoreCleaner storeCleaner,
-                              Map<String, MetricsRepository> metricsRepositories) {
+                              MetricsRepository metricsRepository) {
     this.config = config;
     this.controller = helixManager;
     this.metadataRepository = new HelixReadWriteStoreRepository(zkClient, adapterSerializer, clusterName);
@@ -58,7 +58,7 @@ public class VeniceHelixResources implements VeniceResource {
     storeGraveyard = new HelixStoreGraveyard(zkClient, adapterSerializer, clusterName);
     routersClusterManager = new ZkRoutersClusterManager(zkClient, adapterSerializer, clusterName);
     aggPartitionHealthStats =
-        new AggPartitionHealthStats(metricsRepositories.get(clusterName), routingDataRepository, metadataRepository,
+        new AggPartitionHealthStats(clusterName, metricsRepository, routingDataRepository, metadataRepository,
             config.getReplicaFactor());
     this.storeConfigAccessor = new ZkStoreConfigAccessor(zkClient, adapterSerializer);
   }

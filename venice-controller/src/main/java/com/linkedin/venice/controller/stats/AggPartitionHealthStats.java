@@ -31,15 +31,15 @@ public class AggPartitionHealthStats extends AbstractVeniceAggStats<PartitionHea
   /**
    * Only for test usage.
    */
-  protected AggPartitionHealthStats(ReadOnlyStoreRepository storeRepository, int requiredReplicationFactor) {
-    super(null, (metricRepo, resourceName) -> new PartitionHealthStats(resourceName));
+  protected AggPartitionHealthStats(String clusterName, ReadOnlyStoreRepository storeRepository, int requiredReplicationFactor) {
+    super(clusterName, null, (metricRepo, resourceName) -> new PartitionHealthStats(resourceName));
     this.requiredReplicaFactor = requiredReplicationFactor;
     this.storeRepository = storeRepository;
   }
 
-  public AggPartitionHealthStats(MetricsRepository metricsRepository, RoutingDataRepository routingDataRepository,
+  public AggPartitionHealthStats(String clusterName, MetricsRepository metricsRepository, RoutingDataRepository routingDataRepository,
       ReadOnlyStoreRepository storeRepository, int requiredReplicationFactor) {
-    super(metricsRepository, (metricsRepo, resourceName) -> new PartitionHealthStats(metricsRepo, resourceName));
+    super(clusterName, metricsRepository, (metricsRepo, resourceName) -> new PartitionHealthStats(metricsRepo, resourceName));
     this.requiredReplicaFactor = requiredReplicationFactor;
     this.storeRepository = storeRepository;
     // Monitor changes for all topics.

@@ -26,9 +26,9 @@ public class VeniceControllerService extends AbstractVeniceService {
   private final Map<String, AdminConsumerService> consumerServices;
 
   public VeniceControllerService(VeniceControllerMultiClusterConfig mutliClusterConfigs,
-      Map<String, MetricsRepository> metricsRepositories) {
+      MetricsRepository metricsRepository) {
     this.mutliClusterConfigs = mutliClusterConfigs;
-    VeniceHelixAdmin internalAdmin = new VeniceHelixAdmin(mutliClusterConfigs, metricsRepositories);
+    VeniceHelixAdmin internalAdmin = new VeniceHelixAdmin(mutliClusterConfigs, metricsRepository);
     if (mutliClusterConfigs.isParent()) {
       this.admin = new VeniceParentHelixAdmin(internalAdmin, mutliClusterConfigs);
       logger.info("Controller works as a parent controller.");
@@ -40,7 +40,7 @@ public class VeniceControllerService extends AbstractVeniceService {
     consumerServices = new HashMap<>();
     for (String cluster : mutliClusterConfigs.getClusters()) {
       AdminConsumerService adminConsumerService =
-          new AdminConsumerService(internalAdmin, mutliClusterConfigs.getConfigForCluster(cluster), metricsRepositories);
+          new AdminConsumerService(internalAdmin, mutliClusterConfigs.getConfigForCluster(cluster), metricsRepository);
       this.consumerServices.put(cluster, adminConsumerService);
 
       this.admin.setAdminConsumerService(cluster, adminConsumerService);

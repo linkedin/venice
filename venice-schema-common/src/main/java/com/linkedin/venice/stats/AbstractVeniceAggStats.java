@@ -19,6 +19,14 @@ public abstract class AbstractVeniceAggStats<T extends AbstractVeniceStats> {
     storeStats = new ConcurrentHashMap<>();
   }
 
+  public AbstractVeniceAggStats(String clusterName, MetricsRepository metricsRepository, StatsSupplier<T> statsSupplier) {
+    this.metricsRepository = metricsRepository;
+    this.statsFactory = statsSupplier;
+
+    this.totalStats = statsSupplier.get(metricsRepository, "total." + clusterName);
+    storeStats = new ConcurrentHashMap<>();
+  }
+
   protected T getStoreStats(String storeName) {
     return storeStats.computeIfAbsent(storeName,
         k -> statsFactory.get(metricsRepository, storeName));

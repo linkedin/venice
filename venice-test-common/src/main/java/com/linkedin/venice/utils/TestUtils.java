@@ -134,16 +134,4 @@ public class TestUtils {
     return new VeniceControllerMultiClusterConfig(configMap);
   }
 
-  public static Map<String, MetricsRepository> getMetricRepositories(String cluster){
-    Map<String, MetricsRepository> map = new HashMap<>();
-    map.put(cluster, new MetricsRepository());
-    return map;
-  }
-
-  public static Map<String, MetricsRepository> getMetricRepositories(String cluster, MetricsRepository repo){
-    Map<String, MetricsRepository> map = new HashMap<>();
-    map.put(cluster, repo);
-    return map;
-  }
-
 }

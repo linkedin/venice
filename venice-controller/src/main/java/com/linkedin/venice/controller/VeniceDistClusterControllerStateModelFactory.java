@@ -24,15 +24,15 @@ public class VeniceDistClusterControllerStateModelFactory extends StateModelFact
   private final ConcurrentMap<String, VeniceDistClusterControllerStateModel> clusterToStateModelsMap =
       new ConcurrentHashMap<>();
   private final StoreCleaner storeCleaner;
-  private final ConcurrentMap<String, MetricsRepository> metricsRepositories;
+  private final MetricsRepository metricsRepository;
 
   public VeniceDistClusterControllerStateModelFactory(ZkClient zkClient, HelixAdapterSerializer adapterSerializer,
-      StoreCleaner storeCleaner) {
+      StoreCleaner storeCleaner, MetricsRepository metricsRepository) {
     this.zkClient = zkClient;
     this.adapterSerializer = adapterSerializer;
     this.clusterToConfigsMap = new ConcurrentHashMap<>();
     this.storeCleaner = storeCleaner;
-    this.metricsRepositories = new ConcurrentHashMap<>();
+    this.metricsRepository = metricsRepository;
   }
 
   @Override
@@ -42,14 +42,13 @@ public class VeniceDistClusterControllerStateModelFactory extends StateModelFact
 
     VeniceDistClusterControllerStateModel model =
         new VeniceDistClusterControllerStateModel(zkClient, adapterSerializer, clusterToConfigsMap, storeCleaner,
-            metricsRepositories);
+            metricsRepository);
     clusterToStateModelsMap.put(veniceClusterName, model);
     return model;
   }
 
-  public void addClusterConfig(String veniceClusterName, VeniceControllerClusterConfig config, MetricsRepository metricsRepository) {
+  public void addClusterConfig(String veniceClusterName, VeniceControllerClusterConfig config) {
     clusterToConfigsMap.put(veniceClusterName, config);
-    metricsRepositories.put(veniceClusterName, metricsRepository);
   }
 
   public VeniceControllerClusterConfig getClusterConfig(String veniceClusterName) {
