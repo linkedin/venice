@@ -219,9 +219,9 @@ public interface Admin {
      *
      * @param helixNodeId nodeId of helix participant. HOST_PORT.
      */
-    boolean isInstanceRemovable(String clusterName, String helixNodeId);
+    NodeRemovableResult isInstanceRemovable(String clusterName, String helixNodeId);
 
-    boolean isInstanceRemovable(String clusterName, String helixNodeId, int minActiveReplicas);
+    NodeRemovableResult isInstanceRemovable(String clusterName, String helixNodeId, int minActiveReplicas);
 
     /**
      * Get instance of master controller. If there is no master controller for the given cluster, throw a

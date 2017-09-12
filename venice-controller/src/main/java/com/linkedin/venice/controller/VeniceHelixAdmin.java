@@ -1413,14 +1413,14 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
 
     @Override
-    public boolean isInstanceRemovable(String clusterName, String helixNodeId) {
+    public NodeRemovableResult isInstanceRemovable(String clusterName, String helixNodeId) {
         checkControllerMastership(clusterName);
         int minActiveReplicas = getVeniceHelixResource(clusterName).getConfig().getMinActiveReplica();
         return isInstanceRemovable(clusterName, helixNodeId, minActiveReplicas);
     }
 
     @Override
-    public boolean isInstanceRemovable(String clusterName, String helixNodeId, int minActiveReplicas) {
+    public NodeRemovableResult isInstanceRemovable(String clusterName, String helixNodeId, int minActiveReplicas) {
         checkControllerMastership(clusterName);
         return InstanceStatusDecider
             .isRemovable(getVeniceHelixResource(clusterName), clusterName, helixNodeId, minActiveReplicas);
