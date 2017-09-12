@@ -12,6 +12,7 @@ import io.tehuti.metrics.MetricsRepository;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import org.apache.http.HttpStatus;
 import org.apache.log4j.Logger;
 import org.codehaus.jackson.map.ObjectMapper;
@@ -43,14 +44,14 @@ public class AdminSparkServer extends AbstractVeniceService {
   private final Service httpService;
 
 
-  public AdminSparkServer(int port, Admin admin, Map<String, MetricsRepository> metricsRepositories) {
+  public AdminSparkServer(int port, Admin admin, MetricsRepository metricsRepository, Set<String> clusters) {
     this.port = port;
     //Note: admin is passed in as a reference.  The expectation is the source of the admin will
     //      close it so we don't close it in stopInner()
     this.admin = admin;
     statsMap = new HashMap<>();
-    for(String cluster : metricsRepositories.keySet()){
-      statsMap.put(cluster, new SparkServerStats(metricsRepositories.get(cluster), "controller_spark_server"));
+    for(String cluster : clusters){
+      statsMap.put(cluster, new SparkServerStats(metricsRepository, cluster + ".controller_spark_server"));
     }
     httpService = Service.ignite();
   }

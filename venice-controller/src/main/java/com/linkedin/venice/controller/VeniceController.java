@@ -29,7 +29,7 @@ public class VeniceController {
   TopicMonitor topicMonitor;
 
   private final VeniceControllerMultiClusterConfig multiClusterConfigs;
-  private final Map<String, MetricsRepository> metricsRepositories;
+  private final MetricsRepository metricsRepository;
 
   private final static String CONTROLLER_SERVICE_NAME = "venice-controller";
 
@@ -39,37 +39,27 @@ public class VeniceController {
 
   public VeniceController(List<VeniceProperties> propertiesList) {
     multiClusterConfigs = new VeniceControllerMultiClusterConfig(propertiesList);
-    this.metricsRepositories = new HashMap<>();
-    for(String cluster:multiClusterConfigs.getClusters()){
-      this.metricsRepositories.put(cluster, TehutiUtils.getMetricsRepository(CONTROLLER_SERVICE_NAME+"-"+cluster));
-    }
+    metricsRepository = TehutiUtils.getMetricsRepository(CONTROLLER_SERVICE_NAME);
     createServices();
   }
 
   public VeniceController(VeniceProperties props, MetricsRepository metricsRepository) {
-    this(Arrays.asList(new VeniceProperties[]{props}), generateMetricRepositories(props, metricsRepository));
+    this(Arrays.asList(new VeniceProperties[]{props}), metricsRepository);
   }
 
-  private static Map<String, MetricsRepository> generateMetricRepositories(VeniceProperties properties,
-      MetricsRepository metricsRepository) {
-    String cluster = properties.getString(ConfigKeys.CLUSTER_NAME);
-    Map<String, MetricsRepository> map = new HashMap<>();
-    map.put(cluster, metricsRepository);
-    return map;
-  }
-
-  public VeniceController(List<VeniceProperties> propertiesList, Map<String, MetricsRepository> metricsRepositories) {
+  public VeniceController(List<VeniceProperties> propertiesList, MetricsRepository metricsRepository) {
     multiClusterConfigs = new VeniceControllerMultiClusterConfig(propertiesList);
-    this.metricsRepositories = metricsRepositories;
+    this.metricsRepository = metricsRepository;
     createServices();
   }
 
   public void createServices(){
-    controllerService = new VeniceControllerService(multiClusterConfigs, metricsRepositories);
+    controllerService = new VeniceControllerService(multiClusterConfigs, metricsRepository);
     adminServer = new AdminSparkServer(
         multiClusterConfigs.getAdminPort(),
         controllerService.getVeniceHelixAdmin(),
-        metricsRepositories);
+        metricsRepository,
+        multiClusterConfigs.getClusters());
     // TODO: disable TopicMonitor in Corp cluster for now.
     // If we decide to continue to use TopicMonitor for version creation, we need to update the existing VeniceParentHelixAdmin to support it
     if (!multiClusterConfigs.isParent())

@@ -66,7 +66,7 @@ public class PartitionHealthStatsTest {
     int underReplicatedPartitionNumber = 0;
 
     public MockPartitionHealthStats(ReadOnlyStoreRepository storeRepository, int requriedReplicaFactor) {
-      super(storeRepository, requriedReplicaFactor);
+      super("testUnderReplicatedPartitionStats", storeRepository, requriedReplicaFactor);
     }
 
     @Override

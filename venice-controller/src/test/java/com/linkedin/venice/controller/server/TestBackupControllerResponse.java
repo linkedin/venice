@@ -60,7 +60,7 @@ public class TestBackupControllerResponse {
         .put(ConfigKeys.ADMIN_PORT, bogusPort)
         .build();
     VeniceControllerConfig config = new VeniceControllerConfig(controllerOneProps);
-    veniceAdmin = new VeniceHelixAdmin(TestUtils.getMultiClusterConfigFromOneCluster(config), TestUtils.getMetricRepositories(clusterName));
+    veniceAdmin = new VeniceHelixAdmin(TestUtils.getMultiClusterConfigFromOneCluster(config), new MetricsRepository());
     veniceAdmin.start(clusterName);
 
     /* ControllerWrapper is second controller, comes up as inactive standby controller */

@@ -12,7 +12,9 @@ import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.VeniceProperties;
 import io.tehuti.metrics.MetricsRepository;
+import java.util.HashSet;
 import java.util.Properties;
+import java.util.Set;
 import org.apache.log4j.Logger;
 
 import java.util.Optional;
@@ -125,7 +127,9 @@ public class ServiceFactory {
    */
   public static AdminSparkServer getMockAdminSparkServer(Admin admin, String cluster) {
     return getService("MockAdminSparkServer", (serviceName, port) -> {
-      AdminSparkServer server = new AdminSparkServer(port, admin, TestUtils.getMetricRepositories(cluster));
+      Set<String> clusters = new HashSet<String>();
+      clusters.add(cluster);
+      AdminSparkServer server = new AdminSparkServer(port, admin, new MetricsRepository(), clusters);
       server.start();
       return server;
     });

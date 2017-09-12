@@ -115,7 +115,7 @@ public class TestVeniceHelixAdmin {
     controllerProps = builder.build();
 
     config = new VeniceControllerConfig(controllerProps);
-    veniceAdmin = new VeniceHelixAdmin(TestUtils.getMultiClusterConfigFromOneCluster(config), TestUtils.getMetricRepositories(clusterName));
+    veniceAdmin = new VeniceHelixAdmin(TestUtils.getMultiClusterConfigFromOneCluster(config), new MetricsRepository());
     veniceAdmin.start(clusterName);
     startParticipant();
     waitUntilIsMaster(veniceAdmin, clusterName, MASTER_CHANGE_TIMEOUT);
@@ -192,7 +192,7 @@ public class TestVeniceHelixAdmin {
 
     VeniceProperties newControllerProps = builder.build();
     VeniceControllerConfig newConfig = new VeniceControllerConfig(newControllerProps);
-    VeniceHelixAdmin newMasterAdmin = new VeniceHelixAdmin(TestUtils.getMultiClusterConfigFromOneCluster(newConfig), TestUtils.getMetricRepositories(clusterName));
+    VeniceHelixAdmin newMasterAdmin = new VeniceHelixAdmin(TestUtils.getMultiClusterConfigFromOneCluster(newConfig), new MetricsRepository());
     //Start stand by controller
     newMasterAdmin.start(clusterName);
     List<VeniceHelixAdmin> allAdmins = new ArrayList<>();
@@ -257,7 +257,7 @@ public class TestVeniceHelixAdmin {
 
     VeniceProperties newControllerProps = builder.build();
     VeniceControllerConfig newConfig = new VeniceControllerConfig(newControllerProps);
-    VeniceHelixAdmin newMasterAdmin = new VeniceHelixAdmin(TestUtils.getMultiClusterConfigFromOneCluster(newConfig), TestUtils.getMetricRepositories(clusterName));
+    VeniceHelixAdmin newMasterAdmin = new VeniceHelixAdmin(TestUtils.getMultiClusterConfigFromOneCluster(newConfig), new MetricsRepository());
     //Start stand by controller
     newMasterAdmin.start(clusterName);
     Assert.assertFalse(newMasterAdmin.isMasterController(clusterName),
@@ -286,7 +286,7 @@ public class TestVeniceHelixAdmin {
     VeniceProperties newClusterProps = builder.build();
     VeniceControllerConfig newClusterConfig = new VeniceControllerConfig(newClusterProps);
 
-    veniceAdmin.addConfig(newClusterName, newClusterConfig, new MetricsRepository());
+    veniceAdmin.addConfig(newClusterName, newClusterConfig);
     veniceAdmin.start(newClusterName);
     waitUntilIsMaster(veniceAdmin, newClusterName, MASTER_CHANGE_TIMEOUT);
 
@@ -785,7 +785,7 @@ public class TestVeniceHelixAdmin {
 
     VeniceProperties newControllerProps = builder.build();
     VeniceControllerConfig newConfig = new VeniceControllerConfig(newControllerProps);
-    VeniceHelixAdmin newMasterAdmin = new VeniceHelixAdmin(TestUtils.getMultiClusterConfigFromOneCluster(newConfig), TestUtils.getMetricRepositories(clusterName));
+    VeniceHelixAdmin newMasterAdmin = new VeniceHelixAdmin(TestUtils.getMultiClusterConfigFromOneCluster(newConfig), new MetricsRepository());
     List<VeniceHelixAdmin> admins = new ArrayList<>();
     admins.add(veniceAdmin);
     admins.add(newMasterAdmin);

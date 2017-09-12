@@ -41,20 +41,20 @@ public class VeniceDistClusterControllerStateModel extends StateModel {
   private final HelixAdapterSerializer adapterSerializer;
   private final StoreCleaner storeCleaner;
   private String clusterName;
-  private Map<String, MetricsRepository> metricsRepositories;
+  private MetricsRepository metricsRepository;
 
   private final ConcurrentMap<String, VeniceControllerClusterConfig> clusterToConfigsMap;
 
   public VeniceDistClusterControllerStateModel(ZkClient zkClient, HelixAdapterSerializer adapterSerializer,
       ConcurrentMap<String, VeniceControllerClusterConfig> clusterToConfigsMap, StoreCleaner storeCleaner,
-      Map<String, MetricsRepository> metricsRepositories) {
+      MetricsRepository metricsRepository) {
     StateModelParser parser = new StateModelParser();
     _currentState = parser.getInitialState(VeniceDistClusterControllerStateModel.class);
     this.zkClient = zkClient;
     this.adapterSerializer = adapterSerializer;
     this.clusterToConfigsMap = clusterToConfigsMap;
     this.storeCleaner = storeCleaner;
-    this.metricsRepositories = metricsRepositories;
+    this.metricsRepository = metricsRepository;
   }
 
   @Transition(to = HelixState.LEADER_STATE, from = "STANDBY")
@@ -74,7 +74,7 @@ public class VeniceDistClusterControllerStateModel extends StateModel {
       controller.connect();
       controller.startTimerTasks();
       resources = new VeniceHelixResources(clusterName, zkClient, adapterSerializer, controller,
-          clusterToConfigsMap.get(clusterName), storeCleaner, metricsRepositories);
+          clusterToConfigsMap.get(clusterName), storeCleaner, metricsRepository);
       resources.refresh();
       logger.info(controllerName + " is the leader of " + clusterName);
     } else {

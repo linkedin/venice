@@ -25,19 +25,19 @@ public class AdminConsumerService extends AbstractVeniceService {
   private final VeniceHelixAdmin admin;
   private final AdminOffsetManager offsetManager;
   private final VeniceConsumerFactory consumerFactory;
-  private final Map<String, MetricsRepository> metricsRepositories;
+  private final MetricsRepository metricsRepository;
   // Only support single cluster right now
   private AdminConsumptionTask consumerTask;
   private ThreadFactory threadFactory = new DaemonThreadFactory("AdminTopicConsumer");
   private Thread consumerThread;
 
 
-  public AdminConsumerService(VeniceHelixAdmin admin, VeniceControllerConfig config, Map<String, MetricsRepository> metricsRepositories) {
+  public AdminConsumerService(VeniceHelixAdmin admin, VeniceControllerConfig config, MetricsRepository metricsRepository) {
     this.config = config;
     this.admin = admin;
     this.offsetManager = new AdminOffsetManager(admin.getZkClient(), admin.getAdapterSerializer());
     this.consumerFactory = new VeniceConsumerFactory();
-    this.metricsRepositories = metricsRepositories;
+    this.metricsRepository = metricsRepository;
   }
 
   @Override
@@ -68,7 +68,7 @@ public class AdminConsumerService extends AbstractVeniceService {
         admin.getExecutionIdAccessor(),
         TimeUnit.MINUTES.toMillis(config.getAdminConsumptionTimeoutMinutes()),
         config.isParent(),
-        new AdminConsumptionStats(metricsRepositories.get(clusterName), "admin_consumption_task"));
+        new AdminConsumptionStats(metricsRepository, clusterName + ".admin_consumption_task"));
   }
 
   public void setOffsetToSkip(String clusterName, long offset){
