@@ -2,6 +2,7 @@ package com.linkedin.venice.controller.server;
 
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.controller.Admin;
+import com.linkedin.venice.controller.NodeRemovableResult;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.MultiNodesStatusResponse;
 import com.linkedin.venice.controllerapi.MultiNodeResponse;
@@ -112,7 +113,15 @@ public class NodesAndReplicas {
         AdminSparkServer.validateParams(request, NODE_REMOVABLE.getParams(), admin);
         responseObject.setCluster(request.queryParams(CLUSTER));
         String nodeId = request.queryParams(STORAGE_NODE_ID);
-        responseObject.setRemovable(admin.isInstanceRemovable(responseObject.getCluster(), nodeId));
+        NodeRemovableResult result = admin.isInstanceRemovable(responseObject.getCluster(), nodeId);
+        responseObject.setRemovable(result.isRemovable());
+        // Add detail reason why this instance could not be removed.
+        if (!result.isRemovable()) {
+          responseObject.setDetails(
+              nodeId + "could not be removed from cluster: " + responseObject.getCluster() + ", because resource: "
+                  + result.getBlockingResource() + " will " + result.getBlockingReason()
+                  + " after removing this node. Details: " + result.getDetails());
+        }
       } catch (Throwable e) {
         responseObject.setError(e.getMessage());
         AdminSparkServer.handleError(e, request, response);

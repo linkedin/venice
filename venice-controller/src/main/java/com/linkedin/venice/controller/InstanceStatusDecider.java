@@ -13,6 +13,7 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.pushmonitor.OfflinePushMonitor;
 import com.linkedin.venice.utils.HelixUtils;
+import com.linkedin.venice.utils.Pair;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
@@ -50,14 +51,20 @@ public class InstanceStatusDecider {
   }
 
   /**
-   * Decide whether the given instance could be move out from the cluster.
+   * Decide whether the given instance could be moved out from the cluster. An instance is removable if:
+   * 1. It's not a live instance any more.
+   * 2. For each online version exists in this instance:
+   *  2.1 No data loss after removing this node from the cluster.
+   *  2.2 No Helix load re-balance after removing this node from cluster
+   * 3. For each ongoing version(during the push) exists in this instance:
+   *  3.1 Push will not fail after removing this node from the cluster.
    */
-  protected static boolean isRemovable(VeniceHelixResources resources, String clusterName, String instanceId,
+  protected static NodeRemovableResult isRemovable(VeniceHelixResources resources, String clusterName, String instanceId,
       int minActiveReplicas) {
     try {
       // If instance is not alive, it's removable.
       if (!HelixUtils.isLiveInstance(clusterName, instanceId, resources.getController())) {
-        return true;
+        return NodeRemovableResult.removableResult();
       }
 
       RoutingDataRepository routingDataRepository = resources.getRoutingDataRepository();
@@ -87,15 +94,21 @@ public class InstanceStatusDecider {
             // BOOTSTRAP and ERROR replicas), helix will do re-balance immediately even we enabled delayed re-balance.
             // In that case partition would be moved to other instances and might cause the consumption from the begin
             // of topic.
-            if (willLoseData(partitionAssignmentAfterRemoving)) {
+            Pair<Boolean, String> result = willLoseData(partitionAssignmentAfterRemoving);
+            if (result.getFirst()) {
               logger.info("Instance:" + instanceId + " is not removable because Version:" + resourceName
-                  + " would lose data if this instance was removed from cluster:" + clusterName);
-              return false;
+                  + " would lose data if this instance was removed from cluster:" + clusterName + " details: "
+                  + result.getSecond());
+              return NodeRemovableResult.nonremoveableResult(resourceName,
+                  NodeRemovableResult.BlockingRemoveReason.WILL_LOSE_DATA, result.getSecond());
             }
-            if (willTriggerRebalance(partitionAssignmentAfterRemoving, minActiveReplicas)) {
+            result = willTriggerRebalance(partitionAssignmentAfterRemoving, minActiveReplicas);
+            if (result.getFirst()) {
               logger.info("Instance:" + instanceId + " is not removable because Version:" + resourceName
-                  + " would be re-balanced if this instance was removed from cluster:" + clusterName);
-              return false;
+                  + " would be re-balanced if this instance was removed from cluster:" + clusterName + " details: "
+                  + result.getSecond());
+              return NodeRemovableResult.nonremoveableResult(resourceName,
+                  NodeRemovableResult.BlockingRemoveReason.WILL_TRIGGER_LOAD_REBALANCE, result.getSecond());
             }
           } else if (versionStatus.equals(VersionStatus.STARTED)) {
             // Push is still running
@@ -104,7 +117,8 @@ public class InstanceStatusDecider {
               logger.info(
                   "Instance:" + instanceId + " is not removable because the offline push for topic:" + resourceName
                       + " would fail if this instance was removed from cluster:" + clusterName);
-              return false;
+              return NodeRemovableResult.nonremoveableResult(resourceName,
+                  NodeRemovableResult.BlockingRemoveReason.WILL_FAIL_PUSH, null);
             }
           } else {
             if (logger.isDebugEnabled()) {
@@ -117,7 +131,7 @@ public class InstanceStatusDecider {
           }
         }
       }
-      return true;
+      return NodeRemovableResult.removableResult();
     } catch (Exception e) {
       String errorMsg = "Can not get current states for instance:" + instanceId + " from Zookeeper";
       logger.error(errorMsg, e);
@@ -125,28 +139,30 @@ public class InstanceStatusDecider {
     }
   }
 
-  private static boolean willLoseData(PartitionAssignment partitionAssignmentAfterRemoving) {
+  private static Pair<Boolean, String> willLoseData(PartitionAssignment partitionAssignmentAfterRemoving) {
     for (Partition partitionAfterRemoving : partitionAssignmentAfterRemoving.getAllPartitions()) {
       int onlineReplicasCount = partitionAfterRemoving.getReadyToServeInstances().size();
       if (onlineReplicasCount < 1) {
         // After removing the instance, no online replica exists. Venice will lose data in this case.
-        return true;
+        return new Pair<>(true,
+            "Partition: " + partitionAfterRemoving.getId() + " will have no online replicas after removing the node.");
       }
     }
-    return false;
+    return new Pair<>(false, null);
   }
 
-  private static boolean willTriggerRebalance(PartitionAssignment partitionAssignmentAfterRemoving,
+  private static Pair<Boolean, String> willTriggerRebalance(PartitionAssignment partitionAssignmentAfterRemoving,
       int minActiveReplicas) {
     for (Partition partitionAfterRemoving : partitionAssignmentAfterRemoving.getAllPartitions()) {
       int activeReplicaCount = partitionAfterRemoving.getBootstrapAndReadyToServeInstances().size();
       activeReplicaCount += partitionAfterRemoving.getErrorInstances().size();
       if (activeReplicaCount < minActiveReplicas) {
         // After removing the instance, Venice would not have enough active replicas so a rebalance would be triggered..
-        return true;
+        return new Pair<>(true, "Partition: " + partitionAfterRemoving.getId() + " will only have " + activeReplicaCount
+            + " active replicas which is smaller than required minimum active replicas: " + minActiveReplicas);
       }
     }
-    return false;
+    return new Pair<>(false, null);
   }
 
   private static PartitionAssignment getPartitionAssignmentAfterRemoving(String instanceId,

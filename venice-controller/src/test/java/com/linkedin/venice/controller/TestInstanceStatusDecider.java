@@ -57,7 +57,7 @@ public class TestInstanceStatusDecider {
   @Test
   public void testIsRemovableNonLiveInstance() {
     Mockito.doReturn(null).when(accessor).getProperty(Mockito.any(PropertyKey.class));
-    Assert.assertTrue(InstanceStatusDecider.isRemovable(resources, clusterName, "test", 1),
+    Assert.assertTrue(InstanceStatusDecider.isRemovable(resources, clusterName, "test", 1).isRemovable(),
         "A non-alive instance should be removable from cluster");
   }
 
@@ -83,9 +83,9 @@ public class TestInstanceStatusDecider {
     VersionStatus[] statuses = new VersionStatus[]{VersionStatus.ONLINE, VersionStatus.PUSHED};
     for (VersionStatus status : statuses) {
       prepareStoreAndVersion(storeName, version, status);
-      Assert.assertTrue(InstanceStatusDecider.isRemovable(resources, clusterName, bootstrapInstanceId, 1),
+      Assert.assertTrue(InstanceStatusDecider.isRemovable(resources, clusterName, bootstrapInstanceId, 1).isRemovable(),
           bootstrapInstanceId + "could be removed because it's not the last online copy.");
-      Assert.assertFalse(InstanceStatusDecider.isRemovable(resources, clusterName, onlineInstanceId, 1),
+      Assert.assertFalse(InstanceStatusDecider.isRemovable(resources, clusterName, onlineInstanceId, 1).isRemovable(),
           onlineInstanceId + "could NOT be removed because it the last online copy.");
     }
   }
@@ -107,11 +107,14 @@ public class TestInstanceStatusDecider {
     prepareStoreAndVersion(storeName, version, VersionStatus.STARTED);
 
     Mockito.doReturn(true).when(mockMontior).wouldJobFail(Mockito.eq(resourceName), Mockito.any());
-    Assert.assertFalse(InstanceStatusDecider.isRemovable(resources, clusterName, instanceId, 1),
+    NodeRemovableResult result = InstanceStatusDecider.isRemovable(resources, clusterName, instanceId, 1);
+    Assert.assertFalse(result.isRemovable(),
+        "Can not remove instance because job would fail.");
+    Assert.assertEquals(result.getBlockingReason(), NodeRemovableResult.BlockingRemoveReason.WILL_FAIL_PUSH.toString(),
         "Can not remove instance because job would fail.");
 
     Mockito.doReturn(false).when(mockMontior).wouldJobFail(Mockito.eq(resourceName), Mockito.any());
-    Assert.assertTrue(InstanceStatusDecider.isRemovable(resources, clusterName, instanceId, 1),
+    Assert.assertTrue(InstanceStatusDecider.isRemovable(resources, clusterName, instanceId, 1).isRemovable(),
         "Instance could be removed because it will not fail the job.");
   }
 
@@ -134,7 +137,7 @@ public class TestInstanceStatusDecider {
     VersionStatus[] statuses = new VersionStatus[]{VersionStatus.ONLINE, VersionStatus.PUSHED};
     for (VersionStatus status : statuses) {
       prepareStoreAndVersion(storeName, version, status);
-      Assert.assertTrue(InstanceStatusDecider.isRemovable(resources, clusterName, "localhost_1", 2),
+      Assert.assertTrue(InstanceStatusDecider.isRemovable(resources, clusterName, "localhost_1", 2).isRemovable(),
           "Instance should be removable because after removing one instance, there are still 2 active replicas, it will not trigger re-balance.");
     }
 
@@ -144,7 +147,11 @@ public class TestInstanceStatusDecider {
     partitionAssignment.addPartition(new Partition(0, statusToInstancesMap));
     for (VersionStatus status : statuses) {
       prepareStoreAndVersion(storeName, version, status);
-      Assert.assertFalse(InstanceStatusDecider.isRemovable(resources, clusterName, "localhost_1", 2),
+      NodeRemovableResult result = InstanceStatusDecider.isRemovable(resources, clusterName, "localhost_1", 2);
+      Assert.assertFalse(result.isRemovable(),
+          "Instance should NOT be removable because after removing one instance, there are only 1 active replica, it will not trigger re-balance.");
+      Assert.assertEquals(result.getBlockingReason(),
+          NodeRemovableResult.BlockingRemoveReason.WILL_TRIGGER_LOAD_REBALANCE.toString(),
           "Instance should NOT be removable because after removing one instance, there are only 1 active replica, it will not trigger re-balance.");
     }
   }
