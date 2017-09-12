@@ -7,7 +7,7 @@ import java.util.concurrent.CompletionException;
 import java.util.concurrent.ExecutionException;
 import java.util.function.BiFunction;
 
-public abstract class InternalAvroStoreClient<K, V> implements AvroGenericStoreClient<K, V>{
+public abstract class InternalAvroStoreClient<K, V> implements AvroGenericStoreClient<K, V> {
 
   public abstract CompletableFuture<byte[]> getRaw(String requestPath);
 

@@ -15,7 +15,7 @@ public class AvroGenericDeserializer<V> implements RecordDeserializer<V> {
   private final DatumReader<V> datumReader;
 
   public AvroGenericDeserializer(Schema writer, Schema reader) {
-    datumReader = new GenericDatumReader<>(writer, reader);
+    this(new GenericDatumReader<>(writer, reader));
   }
 
   protected AvroGenericDeserializer(DatumReader<V> datumReader) {

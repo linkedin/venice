@@ -7,14 +7,15 @@ import org.apache.avro.Schema;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
+import static com.linkedin.venice.schema.vson.VsonAvroSchemaAdapter.stripFromUnion;
 
 public class TestVsonSchemaAdapter {
   @Test
   public void adapterCanReadPrimitiveType() {
-    Assert.assertEquals(readStrToAvroSchema("\"int32\"").getType(), Schema.Type.INT);
-    Assert.assertEquals(readStrToAvroSchema("\"float32\"").getType(), Schema.Type.FLOAT);
-    Assert.assertEquals(readStrToAvroSchema("\"float64\"").getType(), Schema.Type.DOUBLE);
-    Assert.assertEquals(readStrToAvroSchema("\"string\"").getType(), Schema.Type.STRING);
+    Assert.assertEquals(readStrToAvroSchema("\"int32\""), Schema.create(Schema.Type.INT));
+    Assert.assertEquals(readStrToAvroSchema("\"float32\""), Schema.create(Schema.Type.FLOAT));
+    Assert.assertEquals(readStrToAvroSchema("\"float64\""), Schema.create(Schema.Type.DOUBLE));
+    Assert.assertEquals(readStrToAvroSchema("\"string\""), Schema.create(Schema.Type.STRING));
 
     Assert.assertEquals(readStrToVsonSchema("\"int32\"").getType(), VsonTypes.INT32);
     Assert.assertEquals(readStrToVsonSchema("\"float32\"").getType(), VsonTypes.FLOAT32);
@@ -29,12 +30,14 @@ public class TestVsonSchemaAdapter {
 
     Schema avroSchema = readStrToAvroSchema(listStr);
 
-    Assert.assertEquals(avroSchema.getType(), Schema.Type.ARRAY);
-    Assert.assertEquals(avroSchema.getElementType().getType(), Schema.Type.RECORD);
+    Assert.assertEquals((avroSchema).getType(), Schema.Type.ARRAY);
+    Assert.assertEquals(avroSchema.getElementType().getType(), Schema.Type.UNION);
 
-    Assert.assertEquals(avroSchema.getElementType().getField("email").schema().getType(), Schema.Type.STRING);
-    Assert.assertEquals(avroSchema.getElementType().getField("metadata").schema().getType(), Schema.Type.ARRAY);
-    Assert.assertEquals(avroSchema.getElementType().getField("score").schema().getType(), Schema.Type.FLOAT);
+    Schema strippedElementSchema = stripFromUnion(avroSchema.getElementType());
+    Assert.assertEquals(strippedElementSchema.getType(), Schema.Type.RECORD);
+    Assert.assertEquals(stripFromUnion(strippedElementSchema.getField("email").schema()).getType(), Schema.Type.STRING);
+    Assert.assertEquals(stripFromUnion(strippedElementSchema.getField("metadata").schema()).getType(), Schema.Type.ARRAY);
+    Assert.assertEquals(stripFromUnion(strippedElementSchema.getField("score").schema()).getType(), Schema.Type.FLOAT);
 
     VsonSchema vsonSchema = readStrToVsonSchema(listStr);
 
@@ -61,7 +64,7 @@ public class TestVsonSchemaAdapter {
   }
 
   private Schema readStrToAvroSchema(String schemaStr) {
-    return VsonAvroSchemaAdapter.parse(schemaStr);
+    return stripFromUnion(VsonAvroSchemaAdapter.parse(schemaStr));
   }
 
   private VsonSchema readStrToVsonSchema(String schemaStr) {

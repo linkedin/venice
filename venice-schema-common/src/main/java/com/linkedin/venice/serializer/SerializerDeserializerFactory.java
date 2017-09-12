@@ -14,8 +14,8 @@ import java.util.concurrent.ConcurrentHashMap;
  * By using this implementation, we can reuse the serializer/deserializer to improve the
  * performance of key serialization/value deserialization.
  */
-public class AvroSerializerDeserializerFactory {
-  // Class works as the key of caching map for AvroSerializerDeserializerFactory
+public class SerializerDeserializerFactory {
+  // Class works as the key of caching map for SerializerDeserializerFactory
   private static class SchemaPairAndClassContainer {
     public Schema writer;
     public Schema reader;
@@ -36,39 +36,60 @@ public class AvroSerializerDeserializerFactory {
 
       if (!writer.equals(that.writer)) return false;
       if (!reader.equals(that.reader)) return false;
-      return c.equals(that.c);
 
+      if (c == null) {
+        return that.c == null;
+      }
+
+      return c.equals(that.c);
     }
 
     @Override
     public int hashCode() {
       int result = writer.hashCode();
       result = 31 * result + reader.hashCode();
-      result = 31 * result + c.hashCode();
+      if (c != null) {
+        result = 31 * result + c.hashCode();
+      }
       return result;
     }
   }
 
-  private static Map<Schema, AvroGenericSerializer> genericSerializerMap = new ConcurrentHashMap<>();
-  private static Map<SchemaPairAndClassContainer, AvroGenericDeserializer<Object>> genericDeserializerMap =
+  private static Map<Schema, AvroGenericSerializer> avroGenericSerializerMap = new ConcurrentHashMap<>();
+  private static Map<Schema, VsonAvroGenericSerializer> vsonGenericSerializerMap = new ConcurrentHashMap<>();
+
+  private static Map<SchemaPairAndClassContainer, AvroGenericDeserializer<Object>> avroGenericDeserializerMap =
       new ConcurrentHashMap<>();
   private static Map<SchemaPairAndClassContainer, AvroSpecificDeserializer<? extends SpecificRecord>>
-      specificDeserializerMap = new ConcurrentHashMap<>();
+      avroSpecificDeserializerMap = new ConcurrentHashMap<>();
+  private static Map<SchemaPairAndClassContainer, VsonAvroGenericDeserializer> vsonGenericDeserializerMap =
+      new ConcurrentHashMap<>();
 
   public static <K> RecordSerializer<K> getAvroGenericSerializer(Schema schema) {
-    genericSerializerMap.computeIfAbsent(schema,
+    avroGenericSerializerMap.computeIfAbsent(schema,
         key -> {
           return new AvroGenericSerializer(key);
         });
-    return genericSerializerMap.get(schema);
+    return avroGenericSerializerMap.get(schema);
+  }
+
+  public static <K> RecordSerializer<K> getVsonSerializer(Schema schema) {
+     return vsonGenericSerializerMap.computeIfAbsent(schema,
+        key -> new VsonAvroGenericSerializer<> (key));
+  }
+
+  public static <K> RecordDeserializer<K> getVsonDeserializer(Schema writer, Schema reader) {
+    SchemaPairAndClassContainer container = new SchemaPairAndClassContainer(writer, reader, null);
+    return vsonGenericDeserializerMap.
+        computeIfAbsent(container, key -> new VsonAvroGenericDeserializer<> (key.writer, key.reader));
   }
 
   public static <V> RecordDeserializer<V> getAvroGenericDeserializer(Schema writer, Schema reader) {
     SchemaPairAndClassContainer container = new SchemaPairAndClassContainer(writer, reader, Object.class);
-    genericDeserializerMap.computeIfAbsent(container, key -> {
+    avroGenericDeserializerMap.computeIfAbsent(container, key -> {
       return new AvroGenericDeserializer<Object>(key.writer, key.reader);
     });
-    return (AvroGenericDeserializer<V>)genericDeserializerMap.get(container);
+    return (AvroGenericDeserializer<V>) avroGenericDeserializerMap.get(container);
   }
 
   /**
@@ -84,11 +105,11 @@ public class AvroSerializerDeserializerFactory {
   public static <V extends SpecificRecord> RecordDeserializer<V> getAvroSpecificDeserializer(Schema writer, Class<V> c) {
     Schema reader = SpecificData.get().getSchema(c);
     SchemaPairAndClassContainer container = new SchemaPairAndClassContainer(writer, reader, c);
-    specificDeserializerMap.computeIfAbsent(container, key -> {
+    avroSpecificDeserializerMap.computeIfAbsent(container, key -> {
       return new AvroSpecificDeserializer<V>(key.writer, key.c);
     });
 
-    return (AvroSpecificDeserializer<V>)specificDeserializerMap.get(container);
+    return (AvroSpecificDeserializer<V>) avroSpecificDeserializerMap.get(container);
   }
 
   /**

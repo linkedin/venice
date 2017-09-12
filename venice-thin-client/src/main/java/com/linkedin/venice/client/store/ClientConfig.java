@@ -30,8 +30,14 @@ public class ClientConfig<T extends SpecificRecord> {
   private boolean isHttps = false;
   private SSLEngineComponentFactory sslEngineComponentFactory = null;
 
+  private boolean isVsonClient = false;
+
   public static ClientConfig defaultGenericClientConfig(String storeName) {
     return new ClientConfig(storeName);
+  }
+
+  public static ClientConfig defaultVsonGenericClientConfig(String storeName) {
+    return new ClientConfig(storeName).setVsonClient(true);
   }
 
   public static <V extends SpecificRecord> ClientConfig<V> defaultSpecificClientConfig(String storeName,
@@ -163,5 +169,14 @@ public class ClientConfig<T extends SpecificRecord> {
 
   public MetricsRepository getMetricsRepository() {
     return metricsRepository;
+  }
+
+  public boolean isVsonClient() {
+    return isVsonClient;
+  }
+
+  public ClientConfig<T> setVsonClient(boolean isAvroClient) {
+    this.isVsonClient = isAvroClient;
+    return this;
   }
 }

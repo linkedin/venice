@@ -3,7 +3,7 @@ package com.linkedin.venice.client.store;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.schema.SchemaReader;
 import com.linkedin.venice.client.store.transport.TransportClient;
-import com.linkedin.venice.serializer.AvroSerializerDeserializerFactory;
+import com.linkedin.venice.serializer.SerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import org.apache.avro.Schema;
 import org.apache.avro.specific.SpecificRecord;
@@ -37,7 +37,7 @@ public class AvroSpecificStoreClientImpl<K, V extends SpecificRecord>
     if (null == writeSchema) {
       throw new VeniceClientException("Failed to get value schema for store: " + getStoreName() + " and id: " + schemaId);
     }
-    return AvroSerializerDeserializerFactory.getAvroSpecificDeserializer(writeSchema, valueClass);
+    return SerializerDeserializerFactory.getAvroSpecificDeserializer(writeSchema, valueClass);
   }
 
   /**

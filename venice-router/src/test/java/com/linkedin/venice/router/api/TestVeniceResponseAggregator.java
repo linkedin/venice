@@ -2,19 +2,16 @@ package com.linkedin.venice.router.api;
 
 import com.linkedin.ddsstorage.base.misc.Metrics;
 import com.linkedin.ddsstorage.netty4.misc.BasicFullHttpRequest;
-import com.linkedin.ddsstorage.router.api.RouterException;
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.router.api.path.VenicePath;
 import com.linkedin.venice.router.stats.AggRouterHttpRequestStats;
-import com.linkedin.venice.serializer.AvroSerializerDeserializerFactory;
+import com.linkedin.venice.serializer.SerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.serializer.RecordSerializer;
 import com.linkedin.venice.utils.TestUtils;
-import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
-import io.netty.handler.codec.http.DefaultFullHttpRequest;
 import io.netty.handler.codec.http.DefaultFullHttpResponse;
 import io.netty.handler.codec.http.FullHttpResponse;
 import io.netty.handler.codec.http.HttpHeaderNames;
@@ -72,12 +69,12 @@ public class TestVeniceResponseAggregator {
   }
 
   private byte[] getResponseContentWithSchemaString(String value) {
-    RecordSerializer<Object> serializer = AvroSerializerDeserializerFactory.getAvroGenericSerializer(STRING_SCHEMA);
+    RecordSerializer<Object> serializer = SerializerDeserializerFactory.getAvroGenericSerializer(STRING_SCHEMA);
     return serializer.serialize(value);
   }
 
   private Iterable<CharSequence> deserializeResponse(byte[] content) {
-    RecordDeserializer<CharSequence> deserializer = AvroSerializerDeserializerFactory.getAvroGenericDeserializer(
+    RecordDeserializer<CharSequence> deserializer = SerializerDeserializerFactory.getAvroGenericDeserializer(
         STRING_SCHEMA);
 
     return deserializer.deserializeObjects(content);

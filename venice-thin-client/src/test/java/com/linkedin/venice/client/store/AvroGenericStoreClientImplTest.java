@@ -12,7 +12,7 @@ import com.linkedin.venice.integration.utils.D2TestUtils;
 import com.linkedin.venice.integration.utils.MockD2ServerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.read.protocol.response.MultiGetResponseRecordV1;
-import com.linkedin.venice.serializer.AvroSerializerDeserializerFactory;
+import com.linkedin.venice.serializer.SerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordSerializer;
 import io.netty.handler.codec.http.FullHttpResponse;
 import java.util.HashSet;
@@ -351,7 +351,7 @@ public class AvroGenericStoreClientImplTest {
     String valueSchemaStr = "\"string\"";
     Set<String> keys = setupSchemaAndRequest(valueSchemaId, valueSchemaStr);
     // Construct MultiGetResponse
-    RecordSerializer<Object> keySerializer = AvroSerializerDeserializerFactory.getAvroGenericSerializer(Schema.parse(valueSchemaStr));
+    RecordSerializer<Object> keySerializer = SerializerDeserializerFactory.getAvroGenericSerializer(Schema.parse(valueSchemaStr));
     List<Object> records = new ArrayList<>();
     MultiGetResponseRecordV1 dataRecord1 = new MultiGetResponseRecordV1();
     dataRecord1.keyIndex = 1;
@@ -365,7 +365,7 @@ public class AvroGenericStoreClientImplTest {
     dataRecord3.value = ByteBuffer.wrap(keySerializer.serialize("value3"));
     records.add(dataRecord3);
     // Serialize MultiGetResponse
-    RecordSerializer<Object> responseSerializer = AvroSerializerDeserializerFactory.getAvroGenericSerializer(MultiGetResponseRecordV1.SCHEMA$);
+    RecordSerializer<Object> responseSerializer = SerializerDeserializerFactory.getAvroGenericSerializer(MultiGetResponseRecordV1.SCHEMA$);
     byte[] responseBytes = responseSerializer.serializeObjects(records);
     int responseSchemaId = 1;
 
@@ -391,7 +391,7 @@ public class AvroGenericStoreClientImplTest {
 
     int nonExistingDataSchemaId = 100;
     // Construct MultiGetResponse
-    RecordSerializer<Object> keySerializer = AvroSerializerDeserializerFactory.getAvroGenericSerializer(Schema.parse(valueSchemaStr));
+    RecordSerializer<Object> keySerializer = SerializerDeserializerFactory.getAvroGenericSerializer(Schema.parse(valueSchemaStr));
     List<Object> records = new ArrayList<>();
     MultiGetResponseRecordV1 dataRecord1 = new MultiGetResponseRecordV1();
     dataRecord1.keyIndex = 1;
@@ -400,7 +400,7 @@ public class AvroGenericStoreClientImplTest {
     records.add(dataRecord1);
 
     // Serialize MultiGetResponse
-    RecordSerializer<Object> responseSerializer = AvroSerializerDeserializerFactory.getAvroGenericSerializer(MultiGetResponseRecordV1.SCHEMA$);
+    RecordSerializer<Object> responseSerializer = SerializerDeserializerFactory.getAvroGenericSerializer(MultiGetResponseRecordV1.SCHEMA$);
     byte[] responseBytes = responseSerializer.serializeObjects(records);
     int responseSchemaId = 1;
 
@@ -424,7 +424,7 @@ public class AvroGenericStoreClientImplTest {
     String valueSchemaStr = "\"string\"";
     Set<String> keys = new HashSet<>();
     // Construct MultiGetResponse
-    RecordSerializer<Object> keySerializer = AvroSerializerDeserializerFactory.getAvroGenericSerializer(Schema.parse(valueSchemaStr));
+    RecordSerializer<Object> keySerializer = SerializerDeserializerFactory.getAvroGenericSerializer(Schema.parse(valueSchemaStr));
     List<Object> records = new ArrayList<>();
     MultiGetResponseRecordV1 dataRecord1 = new MultiGetResponseRecordV1();
     dataRecord1.keyIndex = 1;
@@ -433,7 +433,7 @@ public class AvroGenericStoreClientImplTest {
     records.add(dataRecord1);
 
     // Serialize MultiGetResponse
-    RecordSerializer<Object> responseSerializer = AvroSerializerDeserializerFactory.getAvroGenericSerializer(MultiGetResponseRecordV1.SCHEMA$);
+    RecordSerializer<Object> responseSerializer = SerializerDeserializerFactory.getAvroGenericSerializer(MultiGetResponseRecordV1.SCHEMA$);
     byte[] responseBytes = responseSerializer.serializeObjects(records);
     int responseSchemaId = 1;
 

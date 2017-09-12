@@ -19,7 +19,7 @@ import com.linkedin.venice.read.protocol.response.MultiGetResponseRecordV1;
 import com.linkedin.venice.schema.avro.ReadAvroProtocolDefinition;
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
 import com.linkedin.venice.serialization.avro.VeniceAvroGenericSerializer;
-import com.linkedin.venice.serializer.AvroSerializerDeserializerFactory;
+import com.linkedin.venice.serializer.SerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.serializer.RecordSerializer;
 import com.linkedin.venice.utils.PropertyBuilder;
@@ -171,7 +171,7 @@ public class StorageNodeReadTest {
         partitionIdSet.add(requestKey.partitionId);
         keys.add(requestKey);
       }
-      RecordSerializer<MultiGetRouterRequestKeyV1> serializer = AvroSerializerDeserializerFactory.getAvroGenericSerializer(MultiGetRouterRequestKeyV1.SCHEMA$);
+      RecordSerializer<MultiGetRouterRequestKeyV1> serializer = SerializerDeserializerFactory.getAvroGenericSerializer(MultiGetRouterRequestKeyV1.SCHEMA$);
       byte[] postBody = serializer.serializeObjects(keys);
       StringBuilder multiGetUri = new StringBuilder().append("http://")
           .append(serverAddr)
@@ -187,7 +187,7 @@ public class StorageNodeReadTest {
           Integer.toString(ReadAvroProtocolDefinition.MULTI_GET_ROUTER_REQUEST_V1.getProtocolVersion()));
 
       RecordDeserializer<MultiGetResponseRecordV1> deserializer =
-          AvroSerializerDeserializerFactory.getAvroSpecificDeserializer(MultiGetResponseRecordV1.class);
+          SerializerDeserializerFactory.getAvroSpecificDeserializer(MultiGetResponseRecordV1.class);
 
       Future<HttpResponse> multiGetFuture = client.execute(httpPost, null);
       HttpResponse multiGetResponse = multiGetFuture.get();
@@ -223,7 +223,8 @@ public class StorageNodeReadTest {
     /**
      * Test with {@link AvroGenericStoreClient}.
      */
-    AvroGenericStoreClient<String, CharSequence> storeClient = ClientFactory.getAndStartGenericAvroClient(ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(routerAddr));
+    AvroGenericStoreClient<String, CharSequence>
+        storeClient = ClientFactory.getAndStartGenericAvroClient(ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(routerAddr));
     Set<String> keySet = new HashSet<>();
     for (int i = 0; i < 10; ++i) {
       keySet.add(keyPrefix + i);

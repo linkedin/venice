@@ -2,11 +2,6 @@ package com.linkedin.venice.client.store;
 
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.schema.SchemaReader;
-import com.linkedin.venice.client.store.AbstractAvroStoreClient;
-import com.linkedin.venice.client.store.AvroGenericStoreClient;
-import com.linkedin.venice.client.store.ClientConfig;
-import com.linkedin.venice.client.store.ClientFactory;
-import com.linkedin.venice.client.store.StatTrackingStoreClient;
 import com.linkedin.venice.exceptions.VeniceException;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;

@@ -143,7 +143,8 @@ public class VeniceSystemFactoryTest {
     client.writeEndOfPush(storeName, 1);
     TestUtils.waitForNonDeterministicCompletion(5, TimeUnit.SECONDS, () -> client.getStore(storeName).getStore().getCurrentVersion() == 1);
 
-    AvroGenericStoreClient<K2, V2> storeClient = ClientFactory.getAndStartGenericAvroClient(ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(venice.getRandomRouterURL()));
+    AvroGenericStoreClient<K2, V2> storeClient =
+        ClientFactory.getAndStartGenericAvroClient(ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(venice.getRandomRouterURL()));
     V2 valueFromStore = storeClient.get(readKey).get(1, TimeUnit.SECONDS);
     Assert.assertEquals(valueFromStore, expectedValue,
         valueFromStore.toString() + " of type: " + valueFromStore.getClass()

@@ -771,8 +771,8 @@ public class KafkaPushJob extends AbstractJob {
       Schema avroSchema = checkAvroSchemaConsistency(fileStatuses);
 
       fileSchemaString = avroSchema.toString();
-      keySchemaString = extractSubSchema(avroSchema, this.keyField).toString();
-      valueSchemaString = extractSubSchema(avroSchema, this.valueField).toString();
+      keySchemaString = extractSubSchema(avroSchema, this.keyField, false).toString();
+      valueSchemaString = extractSubSchema(avroSchema, this.valueField, false).toString();
     } else {
       logger.info("Detected Vson input format, will convert to Avro automatically.");
       //key / value fields are optional for Vson input
@@ -781,17 +781,19 @@ public class KafkaPushJob extends AbstractJob {
 
       Pair<Schema, Schema> vsonSchemaPair = checkVsonSchemaConsistency(fileStatuses);
 
-      keySchemaString = extractSubSchema(vsonSchemaPair.getKey(), this.keyField).toString();
-      valueSchemaString = extractSubSchema(vsonSchemaPair.getValue(), this.valueField).toString();
+      keySchemaString = extractSubSchema(vsonSchemaPair.getKey(), this.keyField, true).toString();
+      valueSchemaString = extractSubSchema(vsonSchemaPair.getValue(), this.valueField, true).toString();
     }
   }
 
-  private Schema extractSubSchema(Schema origin, String fieldName) {
+  private Schema extractSubSchema(Schema origin, String fieldName, boolean isVsonSchema) {
     if (Utils.isNullOrEmpty(fieldName)) {
       return origin;
     }
 
-    Schema.Field field = origin.getField(fieldName);
+    Schema.Field field =
+        isVsonSchema ? VsonAvroSchemaAdapter.stripFromUnion(origin).getField(fieldName) : origin.getField(fieldName);
+
     if (field == null) {
       throw new VeniceSchemaFieldNotFoundException(fieldName, "Could not find field: " + fieldName + " from " + origin.toString());
     }
