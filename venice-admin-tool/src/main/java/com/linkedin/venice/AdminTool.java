@@ -25,6 +25,7 @@ import com.linkedin.venice.controllerapi.VersionResponse;
 import com.linkedin.venice.controllerapi.routes.AdminCommandExecutionResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.schema.vson.VsonAvroSchemaAdapter;
 import com.linkedin.venice.utils.Utils;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -269,6 +270,11 @@ public class AdminTool {
     String valueSchemaFile = getRequiredArgument(cmd, Arg.VALUE_SCHEMA, Command.NEW_STORE);
     String valueSchema = readFile(valueSchemaFile);
     String owner = getOptionalArgument(cmd, Arg.OWNER, "");
+    boolean isVsonStore = Utils.parseBooleanFromString(getOptionalArgument(cmd, Arg.VSON_STORE, "false"), "isVsonStore");
+    if (isVsonStore) {
+      keySchema = VsonAvroSchemaAdapter.parse(keySchema).toString();
+      valueSchema = VsonAvroSchemaAdapter.parse(valueSchema).toString();
+    }
     verifyValidSchema(keySchema);
     verifyValidSchema(valueSchema);
     verifyStoreExistence(store, false);
