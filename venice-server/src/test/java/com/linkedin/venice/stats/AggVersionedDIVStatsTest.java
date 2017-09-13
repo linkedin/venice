@@ -17,7 +17,8 @@ import org.testng.Assert;
 import org.testng.annotations.BeforeTest;
 import org.testng.annotations.Test;
 
-import static org.apache.hadoop.yarn.webapp.hamlet.HamletSpec.Media.*;
+import static org.mockito.Mockito.*;
+
 
 public class AggVersionedDIVStatsTest {
   private AggVersionedDIVStats stats;
@@ -33,11 +34,12 @@ public class AggVersionedDIVStatsTest {
     this.reporter = new MockTehutiReporter();
     metricsRepository.addReporter(reporter);
 
-    mockMetaRepository = Mockito.mock(ReadOnlyStoreRepository.class);
+    mockMetaRepository = mock(ReadOnlyStoreRepository.class);
     mockStore = createStore(TestUtils.getUniqueString("store"));
     Mockito.doReturn(Arrays.asList(mockStore)).when(mockMetaRepository).getAllStores();
 
     stats = new AggVersionedDIVStats(metricsRepository, mockMetaRepository);
+    stats.loadAllStats();
   }
 
   @Test

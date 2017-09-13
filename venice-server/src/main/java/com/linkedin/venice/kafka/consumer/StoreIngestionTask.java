@@ -1093,4 +1093,12 @@ public class StoreIngestionTask implements Runnable, Closeable {
   public void disableMetricsEmission() {
     this.emitMetrics.set(false);
   }
+
+  public Optional<Long> getCurrentOffset(int partitionId) {
+    PartitionConsumptionState consumptionState = partitionConsumptionStateMap.get(partitionId);
+    if (null == consumptionState) {
+      return Optional.empty();
+    }
+    return Optional.of(consumptionState.getOffsetRecord().getOffset());
+  }
 }

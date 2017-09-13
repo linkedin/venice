@@ -11,11 +11,8 @@ import java.nio.file.Files;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 import javax.net.ssl.SSLContext;
-import org.apache.http.client.config.RequestConfig;
 import org.apache.http.config.RegistryBuilder;
-import org.apache.http.impl.DefaultConnectionReuseStrategy;
 import org.apache.http.impl.nio.client.CloseableHttpAsyncClient;
-import org.apache.http.impl.nio.client.HttpAsyncClientBuilder;
 import org.apache.http.impl.nio.client.HttpAsyncClients;
 import org.apache.http.impl.nio.conn.PoolingNHttpClientConnectionManager;
 import org.apache.http.impl.nio.reactor.DefaultConnectingIOReactor;
@@ -83,36 +80,16 @@ public class SslUtils {
     return sslSessionStrategy;
   }
 
-  public static CloseableHttpAsyncClient getMinimalHttpClient(int maxConnPerRoute, int maxConnTotal, Optional<SSLEngineComponentFactory> sslFactory) {
-    PoolingNHttpClientConnectionManager connectionManager = createConnectionManager(maxConnPerRoute, maxConnTotal, sslFactory);
+  public static CloseableHttpAsyncClient getMinimalHttpClient(int ioThreadNum, int maxConnPerRoute, int maxConnTotal, Optional<SSLEngineComponentFactory> sslFactory) {
+    PoolingNHttpClientConnectionManager connectionManager = createConnectionManager(ioThreadNum, maxConnPerRoute, maxConnTotal, sslFactory);
     reapIdleConnections(connectionManager, 10, TimeUnit.MINUTES, 2, TimeUnit.HOURS);
     return HttpAsyncClients.createMinimal(connectionManager);
   }
 
-  public static CloseableHttpAsyncClient getHttpClient(int maxConnPerRoute, int maxConnTotal, Optional<SSLEngineComponentFactory> sslFactory) {
-    HttpAsyncClientBuilder clientBuilder = HttpAsyncClients.custom()
-        .setConnectionReuseStrategy(new DefaultConnectionReuseStrategy())  //Supports connection re-use if able
-        .setConnectionManager(createConnectionManager(maxConnPerRoute, maxConnTotal, sslFactory))
-        .setDefaultRequestConfig(
-            RequestConfig.custom()
-                .setConnectTimeout((int) TimeUnit.SECONDS.toMillis(10)).build() // 10 second sanity timeout.
-        );
-    if (sslFactory.isPresent()){
-      clientBuilder = clientBuilder.setSSLStrategy(SslUtils.getSslStrategy(sslFactory.get()));
-    }
-    return clientBuilder.build();
-  }
-
-  /**
-   * Creates and returns a new connection manager on every invocation.
-   *
-   * Client level SSL Strategies get blown away when you specify a connection manager, so we need to specify
-   * scheme-specific strategies in the connection manager in order to make HTTPS requests.
-   * @return
-   */
-  public static PoolingNHttpClientConnectionManager createConnectionManager(int perRoute, int total, Optional<SSLEngineComponentFactory> sslFactory) {
+  public static PoolingNHttpClientConnectionManager createConnectionManager(int ioThreadNum, int perRoute, int total, Optional<SSLEngineComponentFactory> sslFactory) {
     IOReactorConfig ioReactorConfig = IOReactorConfig.custom()
         .setSoKeepAlive(true)
+        .setIoThreadCount(ioThreadNum)
         .build();
     ConnectingIOReactor ioReactor = null;
     try {
@@ -136,6 +113,10 @@ public class SslUtils {
     reapIdleConnections(connMgr, 10, TimeUnit.MINUTES, 2, TimeUnit.HOURS);
 
     return connMgr;
+  }
+
+  public static CloseableHttpAsyncClient getMinimalHttpClient(int maxConnPerRoute, int maxConnTotal, Optional<SSLEngineComponentFactory> sslFactory) {
+    return getMinimalHttpClient(1, maxConnPerRoute, maxConnTotal, sslFactory);
   }
 
   /**

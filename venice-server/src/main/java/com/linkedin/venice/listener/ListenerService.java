@@ -32,7 +32,7 @@ public class ListenerService extends AbstractVeniceService{
   private static int nettyBacklogSize = 1000;
 
   public ListenerService(StoreRepository storeRepository,
-                         OffsetManager offsetManager,
+                         InMemoryOffsetRetriever offsetRetriever,
                          VeniceConfigLoader veniceConfigLoader,
                          MetricsRepository metricsRepository,
                          Optional<SSLEngineComponentFactory> sslFactory) {
@@ -45,7 +45,7 @@ public class ListenerService extends AbstractVeniceService{
 
     bootstrap = new ServerBootstrap();
     bootstrap.group(bossGroup, workerGroup).channel(NioServerSocketChannel.class)
-        .childHandler(new HttpChannelInitializer(storeRepository, offsetManager, metricsRepository, sslFactory, serverConfig))
+        .childHandler(new HttpChannelInitializer(storeRepository, offsetRetriever, metricsRepository, sslFactory, serverConfig))
         .option(ChannelOption.SO_BACKLOG, nettyBacklogSize)
         .childOption(ChannelOption.SO_KEEPALIVE, true)
         .option(ChannelOption.SO_REUSEADDR, true)

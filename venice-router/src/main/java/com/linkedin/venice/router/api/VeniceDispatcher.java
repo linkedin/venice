@@ -12,6 +12,7 @@ import com.linkedin.venice.common.PartitionOffsetMapUtils;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.read.RequestType;
+import com.linkedin.venice.router.VeniceRouterConfig;
 import com.linkedin.venice.router.api.path.VenicePath;
 import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.SslUtils;
@@ -26,11 +27,13 @@ import java.io.Closeable;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Random;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
@@ -54,7 +57,9 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
   private static final Logger logger = Logger.getLogger(VeniceDispatcher.class);
 
   // see: https://hc.apache.org/httpcomponents-asyncclient-dev/quickstart.html
-  private final CloseableHttpAsyncClient httpClient;
+  private final int clientPoolSize;
+  private final ArrayList<CloseableHttpAsyncClient> clientPool;
+  private final Random random = new Random();
 
   // key is (resource + "_" + partition)
   private final ConcurrentMap<String, Long> offsets = new ConcurrentHashMap<>();
@@ -66,16 +71,31 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
   /**
    *
    * @param healthMonitor
-   * @param clientTimeoutMillis
    * @param sslFactory if this is present, it will be used to make SSL requests to storage nodes.
    */
-  public VeniceDispatcher(VeniceHostHealth healthMonitor, int clientTimeoutMillis,
+  public VeniceDispatcher(VeniceRouterConfig config, VeniceHostHealth healthMonitor,
       Optional<SSLEngineComponentFactory> sslFactory) {
-    this.httpClient = SslUtils.getMinimalHttpClient(50, 1000, sslFactory);
-    this.httpClient.start();
     this.healthMontior = healthMonitor;
-
     this.scheme = sslFactory.isPresent() ? HTTPS_PREFIX : HTTP_PREFIX;
+
+    this.clientPoolSize = config.getHttpClientPoolSize();
+    int totalIOThreadNum = Runtime.getRuntime().availableProcessors();
+    int maxConnPerRoute = config.getMaxOutgoingConnPerRoute();
+    int maxConn = config.getMaxOutgoingConn();
+
+    /**
+     * Using a client pool to reduce lock contention introduced by {@link org.apache.http.impl.nio.conn.PoolingNHttpClientConnectionManager#requestConnection}
+     * and {@link org.apache.http.impl.nio.conn.PoolingNHttpClientConnectionManager#releaseConnection}.
+     */
+    int ioThreadNumPerClient = (int)Math.ceil(((double)totalIOThreadNum) / clientPoolSize);
+    int maxConnPerRoutePerClient = (int)Math.ceil(((double)maxConnPerRoute) / clientPoolSize);
+    int totalMaxConnPerClient = (int)Math.ceil(((double)maxConn) / clientPoolSize);
+    clientPool = new ArrayList<>();
+    for (int i = 0; i < clientPoolSize; ++i) {
+      CloseableHttpAsyncClient client = SslUtils.getMinimalHttpClient(ioThreadNumPerClient, maxConnPerRoutePerClient, totalMaxConnPerClient, sslFactory);
+      client.start();
+      clientPool.add(client);
+    }
   }
 
   @Override
@@ -111,7 +131,8 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
     String address = scheme + host.getHost() + ":" + host.getPort() + "/";
     final HttpUriRequest routerRequest = path.composeRouterRequest(address);
 
-    httpClient.execute(routerRequest, new FutureCallback<org.apache.http.HttpResponse>() {
+    CloseableHttpAsyncClient selectedClient = clientPool.get(Math.abs(random.nextInt() % clientPoolSize));
+    selectedClient.execute(routerRequest, new FutureCallback<org.apache.http.HttpResponse>() {
 
       @Override
       public void completed(org.apache.http.HttpResponse result) {
@@ -255,9 +276,12 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
       long diff = prevOffset - offset;
       if (diff > acceptableOffsetLag) {
         // TODO: we should find a better way to mark host as unhealthy and still maintain high availability
-        logger.info(
-            "Host: " + host + ", partition: " + partitionName + " is slower than other replica, offset diff: " + diff +
-                ", and acceptable lag: " + acceptableOffsetLag);
+        // TODO: this piece of log could impact the router performance if it gets printed log file every time
+        if (logger.isDebugEnabled()) {
+          logger.debug(
+              "Host: " + host + ", partition: " + partitionName + " is slower than other replica, offset diff: " + diff
+                  + ", and acceptable lag: " + acceptableOffsetLag);
+        }
       }
       if (diff < 0) {
         offsets.put(offsetKey, offset);
@@ -268,7 +292,7 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
   }
 
   public void close(){
-    IOUtils.closeQuietly(httpClient);
+    clientPool.stream().forEach( client -> IOUtils.closeQuietly(client));
   }
 
   protected static String numberFromPartitionName(String partitionName){
