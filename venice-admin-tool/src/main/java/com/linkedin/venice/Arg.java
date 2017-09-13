@@ -30,6 +30,7 @@ public enum Arg {
   VOLDEMORT_STORE("voldemort-store", "vs", true, "Voldemort store name"),
   MIGRATION_PUSH_STRATEGY("migration-push-strategy", "ps", true, "Migration push strategy, valid values: ["
       + MigrationPushStrategy.getAllEnumString() + "]"),
+  VSON_STORE("vson_store", "vson", true, "indicate whether it is Vson store or Avro store"),
 
   FILTER_JSON("filter-json", "f", true, "Comma-delimited list of fields to display from the json output.  Omit to display all fields"),
   FLAT_JSON("flat-json", "fj", false, "Display output as flat json, without pretty-print indentation and line breaks"),
