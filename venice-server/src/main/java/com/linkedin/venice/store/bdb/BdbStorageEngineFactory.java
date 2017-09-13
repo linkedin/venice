@@ -387,9 +387,10 @@ public class BdbStorageEngineFactory implements StorageEngineFactory {
           newEnvironmentConfig.setSharedCache(false);
           newEnvironmentConfig.setCacheSize(reservedBytes);
         } else {
+          /**
+           * Will use shared cache across all the {@link Environment}, by default it will use up to 60% of JVM memory.
+           */
           newEnvironmentConfig.setSharedCache(true);
-          newEnvironmentConfig.setCacheSize(bdbServerConfig.getBdbCacheSize()
-            - this.reservedCacheSize);
         }
 
         Environment environment = new Environment(bdbDir, newEnvironmentConfig);

@@ -18,6 +18,11 @@ public class TehutiUtils {
 
   }
 
+  /**
+   * TODO: need to investigate why percentiles with big values (> 10^6) won't show in InGraph.
+   * @param name
+   * @return
+   */
   public static Percentiles getPercentileStat(@NotNull String name) {
     return getPercentileStat(name, 40000, 10000);
   }

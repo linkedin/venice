@@ -158,7 +158,7 @@ public class SchemaReader implements Closeable {
   }
 
   private String getExceptionDetails(String requestPath) {
-    return "Store: " + storeName + ", path: " + requestPath + " , storeClient: " + storeClient;
+    return "Store: " + storeName + ", path: " + requestPath + ", storeClient: " + storeClient;
   }
 
   private SchemaEntry fetchKeySchema() throws VeniceClientException {

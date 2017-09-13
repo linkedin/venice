@@ -24,6 +24,9 @@ public class VeniceRouterConfig {
   private int longTailRetryThresholdMs;
   private int maxKeyCountInMultiGetReq;
   private int connectionLimit;
+  private int httpClientPoolSize;
+  private int maxOutgoingConnPerRoute;
+  private int maxOutgoingConn;
 
   public VeniceRouterConfig(VeniceProperties props) {
     try {
@@ -48,6 +51,9 @@ public class VeniceRouterConfig {
     longTailRetryThresholdMs = props.getInt(ROUTER_LONG_TAIL_RETRY_THRESHOLD_MS, 30); //30 ms
     maxKeyCountInMultiGetReq = props.getInt(ROUTER_MAX_KEY_COUNT_IN_MULTIGET_REQ, 500);
     connectionLimit = props.getInt(ROUTER_CONNECTION_LIMIT, 10000);
+    httpClientPoolSize = props.getInt(ROUTER_HTTP_CLIENT_POOL_SIZE, 12);
+    maxOutgoingConnPerRoute = props.getInt(ROUTER_MAX_OUTGOING_CONNECTION_PER_ROUTE, 120);
+    maxOutgoingConn = props.getInt(ROUTER_MAX_OUTGOING_CONNECTION, 1200);
   }
 
   public String getClusterName() {
@@ -92,5 +98,17 @@ public class VeniceRouterConfig {
 
   public int getConnectionLimit() {
     return connectionLimit;
+  }
+
+  public int getHttpClientPoolSize() {
+    return httpClientPoolSize;
+  }
+
+  public int getMaxOutgoingConnPerRoute() {
+    return maxOutgoingConnPerRoute;
+  }
+
+  public int getMaxOutgoingConn() {
+    return maxOutgoingConn;
   }
 }

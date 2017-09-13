@@ -16,6 +16,7 @@ import io.netty.handler.codec.http.HttpRequest;
 import io.netty.handler.codec.http.HttpVersion;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
@@ -49,10 +50,8 @@ public class StorageExecutionHandlerTest {
     StoreRepository testRepository = mock(StoreRepository.class);
     doReturn(testStore).when(testRepository).getLocalStorageEngine(topic);
 
-    OffsetRecord mockOffset = mock(OffsetRecord.class);
-    doReturn(expectedOffset).when(mockOffset).getOffset();
-    OffsetManager mockOffsetManager = mock(BdbStorageMetadataService.class);
-    doReturn(mockOffset).when(mockOffsetManager).getLastOffset(Mockito.anyString(), Mockito.anyInt());
+    InMemoryOffsetRetriever mockOffsetRetriever = mock(InMemoryOffsetRetriever.class);
+    doReturn(Optional.of(expectedOffset)).when(mockOffsetRetriever).getOffset(Mockito.anyString(), Mockito.anyInt());
 
     ChannelHandlerContext mockCtx = mock(ChannelHandlerContext.class);
     doReturn(new UnpooledByteBufAllocator(true)).when(mockCtx).alloc();
@@ -65,7 +64,7 @@ public class StorageExecutionHandlerTest {
         new LinkedBlockingQueue<>(2));
 
     //Actual test
-    StorageExecutionHandler testHandler = new StorageExecutionHandler(threadPoolExecutor, testRepository, mockOffsetManager);
+    StorageExecutionHandler testHandler = new StorageExecutionHandler(threadPoolExecutor, testRepository, mockOffsetRetriever);
     testHandler.channelRead(mockCtx, testRequest);
 
     //Wait for async stuff to finish

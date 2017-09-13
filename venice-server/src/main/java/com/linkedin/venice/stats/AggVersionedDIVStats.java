@@ -1,5 +1,6 @@
 package com.linkedin.venice.stats;
 
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.validation.CorruptDataException;
 import com.linkedin.venice.exceptions.validation.DataValidationException;
 import com.linkedin.venice.exceptions.validation.DuplicateDataException;
@@ -31,7 +32,14 @@ public class AggVersionedDIVStats implements StoreDataChangedListener {
 
     aggStats = new HashMap<>();
     metaRepository.registerStoreDataChangedListener(this);
-    loadAllStats();
+    /**
+     * TODO: load could be very slow, need more investigation,
+     * and it might be caused by registering too many sensors/metrics with Tehuti.
+     *
+     * For now, we will disable the preload, and let {@link AggVersionedDIVStats} users gradually
+     * load/register metrics for the stores when necessary
+     */
+    //loadAllStats();
   }
 
   public void recordException(String storeName, int version, DataValidationException e) {
@@ -72,7 +80,7 @@ public class AggVersionedDIVStats implements StoreDataChangedListener {
     getVersionedStats(storeName).resetCurrentIdleTime(version);
   }
 
-  private synchronized void loadAllStats() {
+  protected synchronized void loadAllStats() {
     metadataRepository.getAllStores().forEach(store -> {
       addStore(store.getName());
       updateStatsVersionInfo(store);
@@ -82,6 +90,11 @@ public class AggVersionedDIVStats implements StoreDataChangedListener {
   private VersionedDIVStats getVersionedStats(String storeName) {
     if (!aggStats.containsKey(storeName)) {
       addStore(storeName);
+      Store store = metadataRepository.getStore(storeName);
+      if (null == store) {
+        throw new VeniceException("Unknown store: " + storeName);
+      }
+      updateStatsVersionInfo(store);
     }
 
     return aggStats.get(storeName);

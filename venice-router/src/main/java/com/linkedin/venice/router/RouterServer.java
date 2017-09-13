@@ -87,22 +87,24 @@ public class RouterServer extends AbstractVeniceService {
   private VeniceDelegateMode scatterGatherMode;
   private  HelixAdapterSerializer adapter;
   private ZkRoutersClusterManager routersClusterManager;
+  private Router router;
+  private Router secureRouter;
 
   private final static String ROUTER_SERVICE_NAME = "venice-router";
+
+  /**
+   * Thread number used to monitor the listening port;
+   */
+  private final static int ROUTER_BOSS_THREAD_NUM = 1;
   /**
    * How many threads should be used by router for directly handling requests
    */
-  private final static int ROUTER_THREADS;
+  private final static int ROUTER_IO_THREAD_NUM = Runtime.getRuntime().availableProcessors();;
   /**
    * How big should the thread pool used by the router be.  This is the number of threads used for handling
    * requests plus the threads used by the boss thread pool per bound socket (ie 1 for SSL and 1 for non-SSL)
    */
-  private final static int ROUTER_THREAD_POOL_SIZE;
-  static {
-    int cores = Runtime.getRuntime().availableProcessors();
-    ROUTER_THREADS = cores > 2 ? cores : 2;
-    ROUTER_THREAD_POOL_SIZE = ROUTER_THREADS + 2;
-  }
+  private final static int ROUTER_THREAD_POOL_SIZE = 2 * (ROUTER_IO_THREAD_NUM + ROUTER_BOSS_THREAD_NUM);;
 
   public static void main(String args[]) throws Exception {
 
@@ -183,8 +185,6 @@ public class RouterServer extends AbstractVeniceService {
     verifySslOk();
   }
 
-
-
   /**
    * Only use this constructor for testing when you want to pass mock repositories
    *
@@ -222,7 +222,7 @@ public class RouterServer extends AbstractVeniceService {
     VenicePartitionFinder partitionFinder = new VenicePartitionFinder(routingDataRepository);
     VeniceHostHealth healthMonitor = new VeniceHostHealth();
     scatterGatherMode = new VeniceDelegateMode();
-    dispatcher = new VeniceDispatcher(healthMonitor, config.getClientTimeoutMs(), sslFactoryForRequests);
+    dispatcher = new VeniceDispatcher(config, healthMonitor, sslFactoryForRequests);
     heartbeat = new RouterHeartbeat(manager, healthMonitor, 10, TimeUnit.SECONDS, config.getHeartbeatTimeoutMs(), sslFactoryForRequests);
     heartbeat.startInner();
     MetaDataHandler metaDataHandler = new MetaDataHandler(routingDataRepository, schemaRepository, config.getClusterName());
@@ -245,15 +245,18 @@ public class RouterServer extends AbstractVeniceService {
         .scatterMode(scatterGatherMode)
         .responseAggregatorFactory(new VeniceResponseAggregator(statsForSingleGet, statsForMultiGet))
         .metricsProvider(new VeniceMetricsProvider())
-        .longTailRetrySupplier((resourceName, methodName) -> retryFuture) // TODO: add metric to track retries
+        /**
+         * TODO: need to figure out a proper way to enable long-tail retry
+         */
+        //.longTailRetrySupplier((resourceName, methodName) -> retryFuture) // TODO: add metric to track retries
         .build();
 
-    Router router = Router.builder(scatterGather)
+    router = Router.builder(scatterGather)
         .name("VeniceRouterHttp")
         .resourceRegistry(registry)
         .executor(executor) // Executor provides the
-        .bossPoolSize(1) // One boss thread to monitor the socket for new connections.  Netty only uses one thread from this pool
-        .ioWorkerPoolSize(ROUTER_THREADS / 2) // While they're shared between http router and https router
+        .bossPoolSize(ROUTER_BOSS_THREAD_NUM) // One boss thread to monitor the socket for new connections.  Netty only uses one thread from this pool
+        .ioWorkerPoolSize(ROUTER_IO_THREAD_NUM)  // While they're shared between http router and https router
         .workerExecutor(workerExecutor)
         .connectionLimit(config.getConnectionLimit())
         .timeoutProcessor(timeoutProcessor)
@@ -265,12 +268,12 @@ public class RouterServer extends AbstractVeniceService {
         .build();
 
     VerifySslHandler verifySsl = new VerifySslHandler();
-    Router secureRouter = Router.builder(scatterGather)
+    secureRouter = Router.builder(scatterGather)
         .name("SecureVeniceRouterHttps")
         .resourceRegistry(registry)
         .executor(executor) // Executor provides the
-        .bossPoolSize(1) // One boss thread to monitor the socket for new connections.  Netty only uses one thread from this pool
-        .ioWorkerPoolSize(ROUTER_THREADS / 2) // While they're shared between http router and https router
+        .bossPoolSize(ROUTER_BOSS_THREAD_NUM) // One boss thread to monitor the socket for new connections.  Netty only uses one thread from this pool
+        .ioWorkerPoolSize(ROUTER_IO_THREAD_NUM) // While they're shared between http router and https router
         .workerExecutor(workerExecutor)
         .connectionLimit(config.getConnectionLimit())
         .timeoutProcessor(timeoutProcessor)
@@ -286,11 +289,6 @@ public class RouterServer extends AbstractVeniceService {
         })
         .idleTimeout(3, TimeUnit.HOURS)
         .build();
-
-    serverFuture = router.start(new InetSocketAddress(config.getPort()));
-    secureServerFuture = secureRouter.start(new InetSocketAddress(config.getSslPort()));
-    serverFuture.await();
-    secureServerFuture.await();
 
     asyncStart();
 
@@ -374,6 +372,20 @@ public class RouterServer extends AbstractVeniceService {
           new ReadRequestThrottler(routersClusterManager, metadataRepository, routingDataRepository,
               config.getMaxReadCapacityCu(), statsForSingleGet);
       scatterGatherMode.initReadRequestThrottler(throttler);
+
+      /**
+       * When the listen port is open, we would like to have current Router to be fully ready.
+       */
+      serverFuture = router.start(new InetSocketAddress(config.getPort()));
+      secureServerFuture = secureRouter.start(new InetSocketAddress(config.getSslPort()));
+      try {
+        serverFuture.await();
+        secureServerFuture.await();
+      } catch (InterruptedException e) {
+        logger.error("Received InterruptedException, will exit", e);
+        System.exit(1);
+      }
+
       for (D2Server d2Server : d2ServerList) {
         logger.info("Starting d2 announcer: " + d2Server);
         d2Server.forceStart();

@@ -4,6 +4,7 @@ import com.linkedin.venice.config.VeniceServerConfig;
 import com.linkedin.venice.config.VeniceStoreConfig;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.TopicManager;
+import com.linkedin.venice.listener.InMemoryOffsetRetriever;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
@@ -28,6 +29,7 @@ import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.Utils;
 
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -48,7 +50,7 @@ import org.apache.log4j.Logger;
  *
  * Uses the "new" Kafka Consumer.
  */
-public class KafkaStoreIngestionService extends AbstractVeniceService implements StoreIngestionService {
+public class KafkaStoreIngestionService extends AbstractVeniceService implements StoreIngestionService, InMemoryOffsetRetriever {
   private static final String GROUP_ID_FORMAT = "%s_%s";
 
   private static final Logger logger = Logger.getLogger(KafkaStoreIngestionService.class);
@@ -95,7 +97,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     this.metadataRepo = metadataRepo;
     this.schemaRepo = schemaRepo;
 
-    this.topicNameToIngestionTaskMap = Collections.synchronizedMap(new HashMap<>());
+    this.topicNameToIngestionTaskMap = new ConcurrentHashMap<>();
     this.isRunning = new AtomicBoolean(false);
 
     this.veniceConfigLoader = veniceConfigLoader;
@@ -112,7 +114,6 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     this.ingestionStats = new AggStoreIngestionStats(metricsRepository);
     this.storageEngineStats = new AggBdbStorageEngineStats(metricsRepository);
     this.versionedDIVStats = new AggVersionedDIVStats(metricsRepository, metadataRepo);
-
     this.storeBufferService = new StoreBufferService(
         serverConfig.getStoreWriterNumber(),
         serverConfig.getStoreWriterBufferMemoryCapacity(),
@@ -341,4 +342,12 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     return kafkaConsumerProperties;
   }
 
+  @Override
+  public Optional<Long> getOffset(String topicName, int partitionId) {
+    StoreIngestionTask ingestionTask = topicNameToIngestionTaskMap.get(topicName);
+    if (null == ingestionTask) {
+      return Optional.empty();
+    }
+    return ingestionTask.getCurrentOffset(partitionId);
+  }
 }

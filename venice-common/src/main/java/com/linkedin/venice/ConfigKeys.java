@@ -114,6 +114,18 @@ public class ConfigKeys {
    */
   public static final String ROUTER_MAX_KEY_COUNT_IN_MULTIGET_REQ = "router.max.key_count.in.multiget.req";
   public static final String ROUTER_CONNECTION_LIMIT = "router.connection.limit";
+  /**
+   * The http client pool size being used in one Router;
+   */
+  public static final String ROUTER_HTTP_CLIENT_POOL_SIZE = "router.http.client.pool.size";
+  /**
+   * The max connection number per route (to one storage node);
+   */
+  public static final String ROUTER_MAX_OUTGOING_CONNECTION_PER_ROUTE = "router.max.outgoing.connection.per.route";
+  /**
+   * The max connection number in one Router to storage nodes;
+   */
+  public static final String ROUTER_MAX_OUTGOING_CONNECTION = "router.max.outgoing.connection";
 
 
   /**

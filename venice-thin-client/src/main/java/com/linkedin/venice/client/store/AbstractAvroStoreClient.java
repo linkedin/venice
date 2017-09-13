@@ -172,7 +172,11 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
   @Override
   public CompletableFuture<byte[]> getRaw(String requestPath) {
     CompletableFuture<TransportClientResponse> transportFuture = transportClient.get(requestPath);
-    // No need to use another thread pool since there is no deserialization logic here.
+    /**
+     * We shouldn't use this thread pool: {@link #DESERIALIZATION_EXECUTOR} here.
+     * Otherwise, it could cause the deadlock issue.
+      */
+
     CompletableFuture<byte[]> valueFuture = transportFuture.handle(
         (clientResponse, throwable) -> {
           if (null != throwable) {

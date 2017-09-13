@@ -17,7 +17,7 @@ public class StatsHandler extends ChannelDuplexHandler {
   private HttpResponseStatus responseStatus;
   private String storeName;
   private boolean isHealthCheck;
-  private long bdbQueryLatency = -1;
+  private double bdbQueryLatency = -1;
   private int requestKeyCount = -1;
   private int successRequestKeyCount = -1;
   private final AggServerHttpRequestStats singleGetStats;
@@ -27,6 +27,11 @@ public class StatsHandler extends ChannelDuplexHandler {
   //a flag that indicates if this is a new HttpRequest. Netty is TCP-based, so a HttpRequest is chunked into packages.
   //Set the startTime in ChannelRead if it is the first package within a HttpRequest.
   private boolean newRequest = true;
+  /**
+   * To indicate whether the stat callback has been triggered or not for a given request.
+   * This is mostly to bypass the issue that stat callback could be triggered multiple times for one single request.
+   */
+  private boolean statCallbackExecuted = false;
 
   public void setResponseStatus(HttpResponseStatus status) {
     this.responseStatus = status;
@@ -56,7 +61,7 @@ public class StatsHandler extends ChannelDuplexHandler {
     this.successRequestKeyCount = successKeyCount;
   }
 
-  public void setBdbQueryLatency(long latency) {
+  public void setBdbQueryLatency(double latency) {
     this.bdbQueryLatency = latency;
   }
 
@@ -73,6 +78,7 @@ public class StatsHandler extends ChannelDuplexHandler {
       startTime = System.currentTimeMillis();
       isHealthCheck = false;
       responseStatus = null;
+      statCallbackExecuted = false;
 
       newRequest = false;
     }
@@ -81,8 +87,6 @@ public class StatsHandler extends ChannelDuplexHandler {
 
   @Override
   public void write(ChannelHandlerContext ctx, Object msg, ChannelPromise promise) throws VeniceException {
-    recordBasicMetrics();
-
     ChannelFuture future = ctx.writeAndFlush(msg);
     future.addListener((result) -> {
       if (responseStatus == null) {
@@ -94,15 +98,22 @@ public class StatsHandler extends ChannelDuplexHandler {
         return;
       }
 
-      long elapsedTime = System.currentTimeMillis() - startTime;
+      /**
+       * TODO: Need to do more investigation to figure out why this callback could be triggered
+       * multiple times for a single request
+       */
+      if (!statCallbackExecuted) {
+        recordBasicMetrics();
 
-      //if ResponseStatus is either OK or NOT_FOUND and the channel write is succeed,
-      //records a successRequest in stats. Otherwise, records a errorRequest in stats;
-      if (result.isSuccess()
-        && (responseStatus == OK || responseStatus == NOT_FOUND)) {
-        successRequest(elapsedTime);
-      } else {
-        errorRequest(elapsedTime);
+        long elapsedTime = System.currentTimeMillis() - startTime;
+        //if ResponseStatus is either OK or NOT_FOUND and the channel write is succeed,
+        //records a successRequest in stats. Otherwise, records a errorRequest in stats;
+        if (result.isSuccess() && (responseStatus == OK || responseStatus == NOT_FOUND)) {
+          successRequest(elapsedTime);
+        } else {
+          errorRequest(elapsedTime);
+        }
+        statCallbackExecuted = true;
       }
 
       //reset the StatsHandler for the new request. This is necessary since instances are channel-based

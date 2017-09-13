@@ -137,8 +137,8 @@ public class VeniceServer {
     }
 
     //create and add ListenerServer for handling GET requests
-    ListenerService listenerService =
-        new ListenerService(storageService.getStoreRepository(), storageMetadataService, veniceConfigLoader, metricsRepository, sslFactory);
+    ListenerService listenerService = new ListenerService(storageService.getStoreRepository(),
+        kafkaStoreIngestionService, veniceConfigLoader, metricsRepository, sslFactory);
     services.add(listenerService);
 
 
