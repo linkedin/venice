@@ -1,6 +1,8 @@
 package com.linkedin.venice;
 
 import java.util.StringJoiner;
+import org.apache.commons.lang.ArrayUtils;
+
 
 public enum Command {
 
@@ -30,7 +32,7 @@ public enum Command {
       new Arg[] {Arg.URL, Arg.CLUSTER, Arg.OFFSET}),
   NEW_STORE("new-store", "",
       new Arg[]{Arg.URL, Arg.CLUSTER, Arg.STORE, Arg.KEY_SCHEMA, Arg.VALUE_SCHEMA},
-      new Arg[]{Arg.OWNER}),
+      new Arg[]{Arg.OWNER, Arg.VSON_STORE}),
   DELETE_STORE("delete-store", "Delete the given store including both metadata and all versions in this store",
       new Arg[]{Arg.URL, Arg.CLUSTER, Arg.STORE}),
   SET_VERSION("set-version", "Set the version that will be served",
@@ -90,6 +92,8 @@ public enum Command {
       new Arg[]{Arg.URL, Arg.CLUSTER}),
   GET_ROUTERS_CLUSTER_CONFIG("get-routers-cluster-config", "Get cluster level router's config.",
       new Arg[]{Arg.URL, Arg.CLUSTER}),
+  CONVERT_VSON_SCHEMA("convert-vson-schema", "Convert and print out Avro schemas based on input Vson schemas.",
+      new Arg[] {Arg.KEY_SCHEMA, Arg.VALUE_SCHEMA}),
 
   GET_ALL_MIGRATION_PUSH_STRATEGIES("get-all-migration-push-strategies", "Get migration push strategies for all the"
       + " voldemort stores", new Arg[] {Arg.URL, Arg.CLUSTER}),
@@ -128,22 +132,29 @@ public enum Command {
     return optionalArgs;
   }
 
+  public Arg[] getAllArgs() {
+    return (Arg[]) ArrayUtils.addAll(requiredArgs, optionalArgs);
+  }
+
   public String getDesc(){
     StringJoiner sj = new StringJoiner(".  ");
     if (!description.isEmpty()){
       sj.add(description);
     }
 
-    StringJoiner arguments = new StringJoiner(", ");
+    StringJoiner requiredArgs = new StringJoiner(", ");
     for (Arg arg : getRequiredArgs()){
-      arguments.add("--" + arg.toString());
+      requiredArgs.add("--" + arg.toString());
     }
 
+    sj.add("Requires: " + requiredArgs);
+
+    StringJoiner optionalArgs = new StringJoiner(", ");
     for (Arg arg : getOptionalArgs()) {
-      arguments.add("--" + arg.toString());
+      optionalArgs.add("--" + arg.toString());
     }
 
-    sj.add("Requires: " + arguments.toString());
+    sj.add("Optional args: " + optionalArgs.toString());
 
     return sj.toString();
   }

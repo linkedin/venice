@@ -95,10 +95,12 @@ public class AdminTool {
     try {
       if (cmd.hasOption(Arg.HELP.first())) {
         printUsageAndExit(commandGroup, parameterOptionsForHelp);
+      } else if (cmd.hasOption(Command.CONVERT_VSON_SCHEMA.toString())) {
+        convertVsonSchemaAndExit(cmd);
       }
 
 
-      cmd = parser.parse(options, args);
+      //cmd = parser.parse(options, args);
 
       ensureOnlyOneCommand(cmd);
 
@@ -536,7 +538,15 @@ public class AdminTool {
     printSuccess(response);
   }
 
+  private static void convertVsonSchemaAndExit(CommandLine cmd) throws IOException{
+    String keySchemaStr = readFile(getRequiredArgument(cmd, Arg.KEY_SCHEMA));
+    String valueSchemaStr = readFile(getRequiredArgument(cmd, Arg.VALUE_SCHEMA));
 
+    System.out.println("Avro key schema: " + VsonAvroSchemaAdapter.parse(keySchemaStr));
+    System.out.println("Avro value schema: " + VsonAvroSchemaAdapter.parse(valueSchemaStr));
+
+    System.exit(1);
+  }
 
 
   /* Things that are not commands */
@@ -559,7 +569,7 @@ public class AdminTool {
     System.err.println("\nExamples:");
     for (Command c : Command.values()){
       StringJoiner exampleArgs = new StringJoiner(" ");
-      for (Arg a : c.getRequiredArgs()){
+      for (Arg a : c.getAllArgs()){
         exampleArgs.add("--" + a.toString());
         exampleArgs.add("<" + a.toString() + ">");
       }
