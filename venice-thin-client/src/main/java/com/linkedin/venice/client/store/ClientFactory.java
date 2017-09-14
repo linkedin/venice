@@ -1,15 +1,20 @@
 package com.linkedin.venice.client.store;
 
-import com.linkedin.d2.balancer.D2Client;
-import com.linkedin.security.ssl.access.control.SSLEngineComponentFactory;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.store.transport.D2TransportClient;
 import com.linkedin.venice.client.store.transport.HttpTransportClient;
 import com.linkedin.venice.client.store.transport.HttpsTransportClient;
 import com.linkedin.venice.client.store.transport.TransportClient;
+import com.linkedin.venice.client.store.transport.TransportClientResponse;
+import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponse;
+import java.util.concurrent.CompletableFuture;
 import org.apache.avro.specific.SpecificRecord;
+import org.codehaus.jackson.map.ObjectMapper;
+
 
 public class ClientFactory {
+  public static final String TYPE_D2_SERVICE_DISCOVERY = "discover_cluster";
+
   public static <K, V> AvroGenericStoreClient<K, V> getAndStartGenericAvroClient(ClientConfig clientConfig) {
     AvroGenericStoreClient<K, V> client = getGenericAvroClient(clientConfig);
     client.start();
@@ -52,6 +57,35 @@ public class ClientFactory {
     return client;
   }
 
+  protected static String discoverD2Service(ClientConfig clientConfig) {
+    try (D2TransportClient client = generateTransportClient(clientConfig);) {
+      CompletableFuture<TransportClientResponse> response = client.get(TYPE_D2_SERVICE_DISCOVERY+"/"+clientConfig.getStoreName());
+      byte[] body = response.get().getBody();
+      ObjectMapper mapper = new ObjectMapper();
+      D2ServiceDiscoveryResponse d2ServiceDiscoveryResponse = mapper.readValue(body, D2ServiceDiscoveryResponse.class);
+      if (d2ServiceDiscoveryResponse.isError()) {
+        throw new VeniceClientException("Could not found d2 service for store: " + clientConfig.getStoreName() + ". "
+            + d2ServiceDiscoveryResponse.getError());
+      }
+      return d2ServiceDiscoveryResponse.getD2Service();
+    } catch (Exception e) {
+      throw new VeniceClientException("Could not found d2 service for store: " + clientConfig.getStoreName(), e);
+    }
+  }
+
+  private static D2TransportClient generateTransportClient(ClientConfig clientConfig){
+    String d2ServiceName = clientConfig.getD2ServiceName();
+
+    if (clientConfig.getD2Client() != null) {
+      return new D2TransportClient(d2ServiceName, clientConfig.getD2Client());
+    }
+
+    return new D2TransportClient(clientConfig.getVeniceURL(),
+        d2ServiceName,
+        clientConfig.getD2BasePath(),
+        clientConfig.getD2ZkTimeout());
+  }
+
   private static TransportClient getTransportClient(ClientConfig clientConfig) {
     String bootstrapUrl = clientConfig.getVeniceURL();
 
@@ -59,17 +93,10 @@ public class ClientFactory {
       if (clientConfig.getD2ServiceName() == null ) {
         throw new VeniceClientException("D2 Server name can't be null");
       }
-
-      String d2ServiceName = clientConfig.getD2ServiceName();
-
-      if (clientConfig.getD2Client() != null) {
-        return new D2TransportClient(d2ServiceName, clientConfig.getD2Client());
-      }
-
-      return new D2TransportClient(bootstrapUrl,
-                                   d2ServiceName,
-                                   clientConfig.getD2BasePath(),
-                                   clientConfig.getD2ZkTimeout());
+      // Find the d2 services that could serve read requests of the store.
+      String d2Service = discoverD2Service(clientConfig);
+      clientConfig.setD2ServiceName(d2Service);
+      return generateTransportClient(clientConfig);
     } else if (clientConfig.isHttps()){
       if (clientConfig.getSslEngineComponentFactory() == null) {
         throw new VeniceClientException("Must use SSL factory method for client to communicate with https");

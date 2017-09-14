@@ -6,6 +6,7 @@ import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.ReadStrategy;
 import com.linkedin.venice.meta.RoutingStrategy;
 import com.linkedin.venice.utils.VeniceProperties;
+import java.util.Map;
 import org.apache.log4j.Logger;
 
 import static com.linkedin.venice.ConfigKeys.*;
@@ -30,6 +31,7 @@ public class VeniceControllerClusterConfig {
   private long partitionSize;
   private long offLineJobWaitTimeInMilliseconds;
   private boolean enableTopicDeletionForUncompletedJob;
+  private Map<String, String> clusterToD2Map;
 
   /**
    * After server disconnecting for delayToRebalanceMS, helix would trigger the re-balance immediately.
@@ -105,6 +107,7 @@ public class VeniceControllerClusterConfig {
     } else {
       routingStrategy = RoutingStrategy.CONSISTENT_HASH;
     }
+    clusterToD2Map = props.getMap(CLUSTER_TO_D2);
   }
 
   public VeniceProperties getProps() {
@@ -184,4 +187,7 @@ public class VeniceControllerClusterConfig {
    */
   public String getKafkaBootstrapServers() { return kafkaBootstrapServers; }
 
+  public Map<String, String> getClusterToD2Map() {
+    return clusterToD2Map;
+  }
 }

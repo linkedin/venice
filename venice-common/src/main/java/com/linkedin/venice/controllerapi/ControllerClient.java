@@ -716,6 +716,44 @@ public class ControllerClient implements Closeable {
     }
   }
 
+  public static D2ServiceDiscoveryResponse discoverCluster(String veniceUrls, String storeName) {
+    List<String> urlList = Arrays.asList(veniceUrls.split(","));
+    Exception lastException = null;
+    for (String url : urlList) {
+      try {
+        List<NameValuePair> queryParams = new ArrayList<>();
+        // Cluster name is not required for cluster discovery request. But could not null otherwise an exception will be
+        // thrown on server side.
+        queryParams.add(new BasicNameValuePair(ControllerApiConstants.CLUSTER, "*"));
+        queryParams.add(new BasicNameValuePair(ControllerApiConstants.HOSTNAME, Utils.getHostName()));
+        queryParams.add(new BasicNameValuePair(ControllerApiConstants.NAME, storeName));
+        String responseJson = getRequest(url, ControllerRoute.CLUSTER_DISCOVERY.getPath(), queryParams);
+        return mapper.readValue(responseJson, D2ServiceDiscoveryResponse.class);
+      } catch (Exception e) {
+        try {
+          logger.info("Met error to discover cluster from: " + ControllerRoute.CLUSTER_DISCOVERY + ", try "
+              + ControllerRoute.CLUSTER_DISCOVERY + "/" + storeName + "...", e);
+          // Because the way to get parameter is different between controller and router, in order to support query cluster
+          // from both cluster and router, we send the path "/discover_cluster?storename=$storename" at first, if it does
+          // not work, try "/discover_cluster/$storeName"
+          String responseJson =
+              getRequest(url, ControllerRoute.CLUSTER_DISCOVERY.getPath() + "/" + storeName, new ArrayList<>());
+          return mapper.readValue(responseJson, D2ServiceDiscoveryResponse.class);
+        } catch (Exception exception) {
+          lastException = exception;
+          continue;
+        }
+      }
+    }
+    String errorMsg = "Error discovering cluster from urls: " + veniceUrls;
+    if (lastException != null) {
+      lastException = new VeniceException(errorMsg, lastException);
+    } else {
+      lastException = new VeniceException(errorMsg);
+    }
+    return handleError(lastException, new D2ServiceDiscoveryResponse());
+  }
+
   /***
    * Add all global parameters in this method. Always use a form of this method to generate
    * a new list of NameValuePair objects for making HTTP requests.
@@ -745,7 +783,7 @@ public class ControllerClient implements Closeable {
 
   }
 
-  private String getRequest(String url, String path, List<NameValuePair> params)
+  private static String getRequest(String url, String path, List<NameValuePair> params)
       throws ExecutionException, InterruptedException {
     url = url.trim();
     String queryString = URLEncodedUtils.format(params, StandardCharsets.UTF_8);

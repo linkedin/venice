@@ -6,6 +6,8 @@ import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.meta.Version;
 
 import com.linkedin.venice.utils.PropertyBuilder;
+import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.io.File;
 import java.util.ArrayList;
@@ -36,7 +38,8 @@ public class VeniceControllerWrapper extends ProcessWrapper {
 
   static StatefulServiceProvider<VeniceControllerWrapper> generateService(String[] clusterNames, String zkAddress,
       KafkaBrokerWrapper kafkaBrokerWrapper, boolean isParent, int replicaFactor, int partitionSize,
-      long delayToReblanceMS, int minActiveReplica, VeniceControllerWrapper childController, VeniceProperties extraProps) {
+      long delayToReblanceMS, int minActiveReplica, VeniceControllerWrapper childController,
+      VeniceProperties extraProps, String clusterToD2) {
     return (serviceName, port, dataDirectory) -> {
       List<VeniceProperties> propertiesList = new ArrayList<>();
       int adminPort = IntegrationTestUtils.getFreePort();
@@ -63,7 +66,11 @@ public class VeniceControllerWrapper extends ProcessWrapper {
             .put(DELAY_TO_REBALANCE_MS, delayToReblanceMS)
             .put(MIN_ACTIVE_REPLICA, minActiveReplica)
             .put(TOPIC_CREATION_THROTTLING_TIME_WINDOW_MS, 100)
-            .put(STORAGE_ENGINE_OVERHEAD_RATIO, DEFAULT_STORAGE_ENGINE_OVERHEAD_RATIO);
+            .put(STORAGE_ENGINE_OVERHEAD_RATIO, DEFAULT_STORAGE_ENGINE_OVERHEAD_RATIO)
+            .put(CLUSTER_TO_D2,
+                Utils.isNullOrEmpty(clusterToD2) ? TestUtils.getClusterToDefaultD2String(clusterName)
+                    : clusterToD2);
+
         if (!extraProps.containsKey(ENABLE_TOPIC_REPLICATOR)) {
           builder.put(ENABLE_TOPIC_REPLICATOR, false);
         }
@@ -90,7 +97,7 @@ public class VeniceControllerWrapper extends ProcessWrapper {
       VeniceProperties extraProps) {
 
     return generateService(new String[]{clusterName}, zkAddress, kafkaBrokerWrapper, isParent, replicaFactor,
-        partitionSize, delayToReblanceMS, minActiveReplica, childController, extraProps);
+        partitionSize, delayToReblanceMS, minActiveReplica, childController, extraProps, null);
   }
 
   @Override

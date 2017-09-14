@@ -63,6 +63,7 @@ public class ConfigKeys {
   public static final String MIN_ACTIVE_REPLICA = "min.active.replica";
   public static final String DEFAULT_STORAGE_QUOTA = "default.storage.quota";
   public static final String DEFAULT_READ_QUOTA = "default.read.quota";
+  public static final String CLUSTER_TO_D2 = "cluster.to.d2";
 
   // Controller specific configs
   public static final String CONTROLLER_CLUSTER_ZK_ADDRESSS = "controller.cluster.zk.address";

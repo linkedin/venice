@@ -6,7 +6,6 @@ import com.linkedin.venice.controllerapi.NewStoreResponse;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.hadoop.KafkaPushJob;
 import com.linkedin.venice.integration.utils.ServiceFactory;
-import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
 import com.linkedin.venice.meta.Store;
@@ -23,8 +22,7 @@ import org.testng.Assert;
 import org.testng.annotations.Test;
 
 import static com.linkedin.venice.hadoop.KafkaPushJob.VENICE_STORE_NAME_PROP;
-import static com.linkedin.venice.utils.TestPushUtils.createStoreForJob;
-import static com.linkedin.venice.utils.TestPushUtils.defaultH2VProps;
+import static com.linkedin.venice.utils.TestPushUtils.multiClusterH2VProps;
 import static com.linkedin.venice.utils.TestPushUtils.getTempDataDirectory;
 import static com.linkedin.venice.utils.TestPushUtils.writeSimpleAvroFileWithUserSchema;
 
@@ -98,8 +96,8 @@ public class TestMetadataOperationInMultiCluster {
     Map<String, Properties> propertiesMap = new HashMap<>();
     for (String clusterName : clusterNames) {
       String storeName = clusterName + storeNameSuffix;
-      VeniceClusterWrapper clusterWrapper = multiClusterWrapper.getClusters().get(clusterName);
-      Properties h2vProperties = defaultH2VProps(clusterWrapper, inputDirPath, storeName);
+      // Use th first cluster in config, and test could h2v find the correct cluster.
+      Properties h2vProperties = multiClusterH2VProps(multiClusterWrapper, clusterNames[0], inputDirPath, storeName);
       propertiesMap.put(clusterName, h2vProperties);
       Schema keySchema = recordSchema.getField(h2vProperties.getProperty(KafkaPushJob.KEY_FIELD_PROP)).schema();
       Schema valueSchema =
@@ -127,6 +125,7 @@ public class TestMetadataOperationInMultiCluster {
 
     long h2vStart = System.currentTimeMillis();
     String jobName = TestUtils.getUniqueString("job-" + expectedVersionNumber);
+    // job will talk to any controller to do cluster discover then do the push.
     KafkaPushJob job = new KafkaPushJob(jobName, h2vProperties);
     job.run();
     TestUtils.waitForNonDeterministicCompletion(5, TimeUnit.SECONDS, () ->

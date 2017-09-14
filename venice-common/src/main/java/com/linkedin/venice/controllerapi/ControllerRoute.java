@@ -58,7 +58,9 @@ public enum ControllerRoute {
   // TODO: those operations don't require param: cluster.
   // This could be resolved in multi-cluster support project.
   GET_ALL_MIGRATION_PUSH_STRATEGIES("/get_all_push_strategies", Arrays.asList()),
-  SET_MIGRATION_PUSH_STRATEGY("/set_push_strategy", Arrays.asList(VOLDEMORT_STORE_NAME, PUSH_STRATEGY));
+  SET_MIGRATION_PUSH_STRATEGY("/set_push_strategy", Arrays.asList(VOLDEMORT_STORE_NAME, PUSH_STRATEGY)),
+
+  CLUSTER_DISCOVERY("/discover_cluster", Arrays.asList(NAME));
 
   private final String path;
   private final List<String> params;

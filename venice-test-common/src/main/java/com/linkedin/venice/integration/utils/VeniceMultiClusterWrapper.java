@@ -33,17 +33,21 @@ public class VeniceMultiClusterWrapper extends ProcessWrapper {
     ZkServerWrapper zkServerWrapper = ServiceFactory.getZkServer();
     KafkaBrokerWrapper kafkaBrokerWrapper = ServiceFactory.getKafkaBroker(zkServerWrapper);
     BrooklinWrapper brooklinWrapper = ServiceFactory.getBrooklinWrapper(kafkaBrokerWrapper);
-
+    String clusterToD2="";
     String[] clusterNames = new String[numberOfClusters];
     for (int i = 0; i < numberOfClusters; i++) {
       String clusterName = TestUtils.getUniqueString("venice-cluster");
       clusterNames[i] = clusterName;
+      clusterToD2+=TestUtils.getClusterToDefaultD2String(clusterName)+",";
     }
+    clusterToD2 = clusterToD2.substring(0, clusterToD2.length()-1);
+
     // Create controllers for multi-cluster
     Map<Integer, VeniceControllerWrapper> controllerMap = new HashMap<>();
+
     for (int i = 0; i < numberOfControllers; i++) {
       VeniceControllerWrapper controllerWrapper = ServiceFactory.getVeniceController(clusterNames, kafkaBrokerWrapper, replicaFactor, partitionSize,
-          delayToReblanceMS, minActiveReplica, brooklinWrapper);
+          delayToReblanceMS, minActiveReplica, brooklinWrapper, clusterToD2);
       controllerMap.put(controllerWrapper.getPort(), controllerWrapper);
     }
     Map<String, VeniceClusterWrapper> clusterWrapperMap = new HashMap<>();
@@ -110,6 +114,18 @@ public class VeniceMultiClusterWrapper extends ProcessWrapper {
 
   public VeniceControllerWrapper getRandomController() {
     return this.controllers.values().stream().filter(controller -> controller.isRunning()).findAny().get();
+  }
+
+  public String getControllerConnectString(){
+    StringBuilder connectStr=new StringBuilder("");
+    for(VeniceControllerWrapper controllerWrapper:controllers.values()){
+      connectStr.append(controllerWrapper.getControllerUrl());
+      connectStr.append(',');
+    }
+    if(connectStr.length() != 0){
+      connectStr.deleteCharAt(connectStr.length()-1);
+    }
+    return connectStr.toString();
   }
 
   public String[] getClusterNames() {

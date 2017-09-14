@@ -3,6 +3,7 @@ package com.linkedin.venice.client.utils;
 import com.google.common.net.HttpHeaders;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.store.transport.TransportClientCallback;
+import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponse;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
 import io.netty.buffer.ByteBuf;
@@ -28,6 +29,24 @@ public class StoreClientTestUtils {
   public static FullHttpResponse constructHttpSchemaResponse(String storeName, int schemaId, String schemaStr)
   throws IOException {
     ByteBuf body = Unpooled.wrappedBuffer(constructSchemaResponseInBytes(storeName, schemaId, schemaStr));
+    FullHttpResponse response = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK, body);
+    response.headers().set(HttpHeaders.CONTENT_TYPE, "application/json");
+    // We must specify content_length header, otherwise netty will keep polling, since it
+    // doesn't know when to finish writing the response.
+    response.headers().set(HttpHeaders.CONTENT_LENGTH, response.content().readableBytes());
+
+    return response;
+  }
+
+  public static FullHttpResponse constructHttpClusterDiscoveryResponse(String storeName, String clusterName, String d2Service)
+      throws IOException {
+    D2ServiceDiscoveryResponse responseObject = new D2ServiceDiscoveryResponse();
+    responseObject.setCluster(clusterName);
+    responseObject.setName(storeName);
+    responseObject.setD2Service(d2Service);
+    ObjectMapper mapper = new ObjectMapper();
+    byte[] bytes = mapper.writeValueAsBytes(responseObject);
+    ByteBuf body = Unpooled.wrappedBuffer(bytes);
     FullHttpResponse response = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK, body);
     response.headers().set(HttpHeaders.CONTENT_TYPE, "application/json");
     // We must specify content_length header, otherwise netty will keep polling, since it

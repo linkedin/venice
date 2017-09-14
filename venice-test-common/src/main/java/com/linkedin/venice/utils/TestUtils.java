@@ -3,6 +3,7 @@ package com.linkedin.venice.utils;
 import com.linkedin.venice.controller.VeniceControllerConfig;
 import com.linkedin.venice.controller.VeniceControllerMultiClusterConfig;
 import com.linkedin.venice.helix.HelixInstanceConverter;
+import com.linkedin.venice.integration.utils.D2TestUtils;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.PersistenceType;
@@ -132,6 +133,10 @@ public class TestUtils {
     Map<String,VeniceControllerConfig> configMap = new HashMap<>();
     configMap.put(controllerConfig.getClusterName(),controllerConfig);
     return new VeniceControllerMultiClusterConfig(configMap);
+  }
+
+  public static String getClusterToDefaultD2String(String cluster) {
+    return cluster + ":" + D2TestUtils.DEFAULT_TEST_SERVICE_NAME;
   }
 
 }

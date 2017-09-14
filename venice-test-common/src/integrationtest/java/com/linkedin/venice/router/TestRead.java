@@ -5,11 +5,14 @@ import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.controllerapi.ControllerClient;
+import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponse;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.router.api.VenicePathParser;
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
 import com.linkedin.venice.serialization.avro.VeniceAvroGenericSerializer;
 import com.linkedin.venice.utils.PropertyBuilder;
@@ -18,6 +21,8 @@ import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.VeniceWriter;
+import java.io.IOException;
+import java.io.InputStream;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
@@ -25,6 +30,14 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
+import org.apache.commons.httpclient.HttpStatus;
+import org.apache.commons.io.IOUtils;
+import org.apache.http.HttpResponse;
+import org.apache.http.client.config.RequestConfig;
+import org.apache.http.client.methods.HttpGet;
+import org.apache.http.impl.nio.client.CloseableHttpAsyncClient;
+import org.apache.http.impl.nio.client.HttpAsyncClients;
+import org.codehaus.jackson.map.ObjectMapper;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
@@ -144,6 +157,38 @@ public class TestRead {
       String expectedValue = valuePrefix + 2;
       CharSequence value = storeClient.get(key).get();
       Assert.assertEquals(value.toString(), expectedValue);
+    }
+  }
+
+  @Test
+  public void testD2ServiceDiscovery() {
+    String routerUrl = veniceCluster.getRandomRouterURL();
+    try (CloseableHttpAsyncClient client = HttpAsyncClients.custom()
+        .setDefaultRequestConfig(RequestConfig.custom().setSocketTimeout(1000).build())
+        .build()) {
+      client.start();
+      HttpGet routerRequest =
+          new HttpGet(routerUrl + "/" + VenicePathParser.TYPE_CLUSTER_DISCOVERY + "/" + storeName);
+      HttpResponse response = client.execute(routerRequest, null).get();
+      String responseBody;
+      try (InputStream bodyStream = response.getEntity().getContent()) {
+        responseBody = IOUtils.toString(bodyStream);
+      } catch (IOException e) {
+        throw new VeniceException(e);
+      }
+      Assert.assertEquals(response.getStatusLine().getStatusCode(), HttpStatus.SC_OK,
+          "Could not get d2 service correctly. Response:" + responseBody);
+
+      ObjectMapper mapper = new ObjectMapper();
+      D2ServiceDiscoveryResponse d2ServiceDiscoveryResponse =
+          mapper.readValue(responseBody.getBytes(), D2ServiceDiscoveryResponse.class);
+      Assert.assertFalse(d2ServiceDiscoveryResponse.isError());
+      Assert.assertEquals(d2ServiceDiscoveryResponse.getD2Service(),
+          veniceCluster.getRandomVeniceRouter().getD2Service());
+      Assert.assertEquals(d2ServiceDiscoveryResponse.getCluster(), veniceCluster.getClusterName());
+      Assert.assertEquals(d2ServiceDiscoveryResponse.getName(), storeName);
+    } catch (Exception e) {
+      Assert.fail("Met an exception.", e);
     }
   }
 }

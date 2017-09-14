@@ -9,16 +9,14 @@ import com.linkedin.venice.helix.HelixRoutingDataRepository;
 import com.linkedin.venice.helix.HelixState;
 import com.linkedin.venice.helix.HelixStatusMessageChannel;
 import com.linkedin.venice.helix.Replica;
+import com.linkedin.venice.integration.utils.D2TestUtils;
 import com.linkedin.venice.integration.utils.KafkaBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.PartitionAssignment;
-import com.linkedin.venice.meta.PersistenceType;
-import com.linkedin.venice.meta.ReadStrategy;
 import com.linkedin.venice.meta.ReadWriteStoreRepository;
 import com.linkedin.venice.meta.RoutingDataRepository;
-import com.linkedin.venice.meta.RoutingStrategy;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreConfig;
 import com.linkedin.venice.meta.Version;
@@ -110,7 +108,8 @@ public class TestVeniceHelixAdmin {
         .put(CLUSTER_NAME, clusterName)
         .put(KAFKA_BOOTSTRAP_SERVERS, kafkaBrokerWrapper.getAddress())
         .put(DEFAULT_MAX_NUMBER_OF_PARTITIONS, maxNumberOfPartition)
-        .put(DEFAULT_PARTITION_SIZE, 100);
+        .put(DEFAULT_PARTITION_SIZE, 100)
+        .put(CLUSTER_TO_D2, TestUtils.getClusterToDefaultD2String(clusterName));
 
     controllerProps = builder.build();
 
@@ -1166,7 +1165,7 @@ public class TestVeniceHelixAdmin {
     store.setEnableWrites(false);
     store.setEnableReads(false);
     // Legacy store
-    StoreConfig storeConfig = veniceAdmin.getStoreConfigAccessor().getConfig(storeName);
+    StoreConfig storeConfig = veniceAdmin.getStoreConfigAccessor().getStoreConfig(storeName);
     storeConfig.setDeleting(true);
     veniceAdmin.getStoreConfigAccessor().updateConfig(storeConfig);
     veniceAdmin.getVeniceHelixResource(clusterName).getMetadataRepository().updateStore(store);
@@ -1193,7 +1192,7 @@ public class TestVeniceHelixAdmin {
     veniceAdmin.getVeniceHelixResource(clusterName).clear();
     veniceAdmin.getVeniceHelixResource(clusterName).refresh();
     for (int i = 0; i < storeCount; i++) {
-      Assert.assertEquals(veniceAdmin.getStoreConfigAccessor().getConfig("testRepair"+i).getCluster(), clusterName, "Mapping should be repaired by refresh.");
+      Assert.assertEquals(veniceAdmin.getStoreConfigAccessor().getStoreConfig("testRepair"+i).getCluster(), clusterName, "Mapping should be repaired by refresh.");
     }
 
   }
