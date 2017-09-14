@@ -12,9 +12,12 @@ import com.linkedin.venice.schema.avro.ReadAvroProtocolDefinition;
 import com.linkedin.venice.serializer.AvroSerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.serializer.RecordSerializer;
+import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.EncodingUtils;
 import io.netty.buffer.ByteBuf;
 import java.nio.ByteBuffer;
+import java.util.concurrent.Executor;
+import java.util.concurrent.Executors;
 import org.apache.commons.io.IOUtils;
 
 import javax.validation.constraints.NotNull;
@@ -55,6 +58,35 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
 
   private TransportClient transportClient;
   private String storeName;
+
+  /**
+   * Here is the details about the deadlock issue if deserialization logic is executed in the same R2 callback thread:
+   * 1. A bunch of regular get requests are sent to Venice backend at the same time;
+   * 2. All those requests return almost at the same time;
+   * 3. All those requests will be blocked by the {@link SchemaReader#fetchValueSchema(int)}
+   *    if the value schema is not in local cache;
+   * 4. At this moment, each request will occupy one internal R2 callback thread, and the R2 callback threads will be
+   *    exhausted if there are a lot of simultaneous regular get requests;
+   * 5. Since all the R2 callback threads are blocked by the schema request, then there is no more R2 callback thread could
+   *    handle the callback of the schema request;
+   * 6. The deadlock issue happens;
+   *
+   * Loading all the value schemas during start won't solve this problem since the value schema could involve when store
+   * client is running.
+   * So we have to use a different set of threads in {@link SchemaReader} to avoid this issue.
+   * Also, we don't want to use the default thread pool: {@link CompletableFuture#useCommonPool} since it is being shared,
+   * and the deserialization could be blocked by the logic not belonging to Venice Client.
+   **/
+  private static final int DESERIALIZATION_THREAD_NUM;
+  private static final Executor DESERIALIZATION_EXECUTOR;
+
+  static {
+    // Half of process number of threads should be good enough
+    int halfOfAvailableProcessors = Runtime.getRuntime().availableProcessors() / 2;
+    DESERIALIZATION_THREAD_NUM = halfOfAvailableProcessors > 0 ? halfOfAvailableProcessors : 1;
+    DESERIALIZATION_EXECUTOR = Executors.newFixedThreadPool(DESERIALIZATION_THREAD_NUM,
+        new DaemonThreadFactory("Venice-Store-Deserialization"));
+  }
 
   public AbstractAvroStoreClient(TransportClient transportClient,
                                  String storeName,
@@ -102,7 +134,7 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
     CompletableFuture<TransportClientResponse> transportFuture = transportClient.get(requestPath, GET_HEADER_MAP);
 
     // Deserialization
-    CompletableFuture<V> valueFuture = transportFuture.handle(
+    CompletableFuture<V> valueFuture = transportFuture.handleAsync(
         (clientResponse, throwable) -> {
           if (null != throwable) {
             handleStoreExceptionInternally(throwable);
@@ -116,7 +148,8 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
           }
           RecordDeserializer<V> deserializer = getDataRecordDeserializer(clientResponse.getSchemaId());
           return deserializer.deserialize(clientResponse.getBody());
-        }
+        },
+        DESERIALIZATION_EXECUTOR
     );
 
     return valueFuture;
@@ -125,6 +158,7 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
   @Override
   public CompletableFuture<byte[]> getRaw(String requestPath) {
     CompletableFuture<TransportClientResponse> transportFuture = transportClient.get(requestPath);
+    // No need to use another thread pool since there is no deserialization logic here.
     CompletableFuture<byte[]> valueFuture = transportFuture.handle(
         (clientResponse, throwable) -> {
           if (null != throwable) {
@@ -154,7 +188,7 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
 
     CompletableFuture<TransportClientResponse> transportFuture = transportClient.post(requestPath, MULTI_GET_HEADER_MAP,
         multiGetBody);
-    CompletableFuture<Map<K, V>> valueFuture = transportFuture.handle(
+    CompletableFuture<Map<K, V>> valueFuture = transportFuture.handleAsync(
         (clientResponse, throwable) -> {
           if (null != throwable) {
             handleStoreExceptionInternally(throwable);
@@ -183,7 +217,8 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
           }
 
           return resultMap;
-        }
+        },
+        DESERIALIZATION_EXECUTOR
     );
 
 
