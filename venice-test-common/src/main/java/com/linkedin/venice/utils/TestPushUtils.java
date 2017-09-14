@@ -7,6 +7,7 @@ import com.linkedin.venice.controllerapi.NewStoreResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.KafkaPushJob;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
+import com.linkedin.venice.integration.utils.VeniceMultiClusterWrapper;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.samza.VeniceSystemFactory;
 import com.linkedin.venice.schema.vson.VsonAvroSchemaAdapter;
@@ -125,6 +126,21 @@ public class TestPushUtils {
     props.put(KafkaPushJob.KEY_FIELD_PROP, "id");
     props.put(KafkaPushJob.VALUE_FIELD_PROP, "name");
     // No need for a big close timeout in tests. This is just to speed up discovery of certain regressions.
+    props.put(VeniceWriter.CLOSE_TIMEOUT_MS, 500);
+
+    return props;
+  }
+
+  public static Properties multiClusterH2VProps(VeniceMultiClusterWrapper veniceMultiClusterWrapper, String clusterName, String inputDirPath, String storeName){
+    Properties props = new Properties();
+    // Let h2v talk to multiple controllers.
+    props.put(KafkaPushJob.VENICE_URL_PROP, veniceMultiClusterWrapper.getControllerConnectString());
+    props.put(KafkaPushJob.KAFKA_URL_PROP, veniceMultiClusterWrapper.getKafkaBrokerWrapper().getAddress());
+    props.put(KafkaPushJob.VENICE_CLUSTER_NAME_PROP, clusterName);
+    props.put(VENICE_STORE_NAME_PROP, storeName);
+    props.put(KafkaPushJob.INPUT_PATH_PROP, inputDirPath);
+    props.put(KafkaPushJob.KEY_FIELD_PROP, "id");
+    props.put(KafkaPushJob.VALUE_FIELD_PROP, "name");
     props.put(VeniceWriter.CLOSE_TIMEOUT_MS, 500);
 
     return props;

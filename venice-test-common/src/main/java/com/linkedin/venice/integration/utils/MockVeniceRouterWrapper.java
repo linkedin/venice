@@ -2,10 +2,12 @@ package com.linkedin.venice.integration.utils;
 
 import com.linkedin.d2.server.factory.D2Server;
 import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
+import com.linkedin.venice.helix.HelixReadOnlyStoreConfigRepository;
 import com.linkedin.venice.helix.HelixReadOnlyStoreRepository;
 import com.linkedin.venice.helix.HelixRoutingDataRepository;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.meta.StoreConfig;
 import com.linkedin.venice.router.RouterServer;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.SslUtils;
@@ -20,15 +22,10 @@ import java.util.concurrent.TimeUnit;
 
 import com.linkedin.venice.schema.SchemaEntry;
 
-import org.apache.helix.manager.zk.ZkClient;
 import org.mockito.Matchers;
 import org.mockito.Mockito;
 
-import static com.linkedin.venice.ConfigKeys.CLUSTER_NAME;
-import static com.linkedin.venice.ConfigKeys.LISTENER_PORT;
-import static com.linkedin.venice.ConfigKeys.LISTENER_SSL_PORT;
-import static com.linkedin.venice.ConfigKeys.SSL_TO_STORAGE_NODES;
-import static com.linkedin.venice.ConfigKeys.ZOOKEEPER_ADDRESS;
+import static com.linkedin.venice.ConfigKeys.*;
 import static org.mockito.Mockito.doReturn;
 
 
@@ -71,6 +68,9 @@ public class MockVeniceRouterWrapper extends ProcessWrapper {
     doReturn(CONTROLLER).when(mockControllerInstance).getUrl();
     doReturn(mockControllerInstance).when(mockRepo).getMasterController();
 
+    HelixReadOnlyStoreConfigRepository mockStoreConfigRepository = Mockito.mock(HelixReadOnlyStoreConfigRepository.class);
+
+
     return (serviceName, port, dataDirectory) -> {
       List<D2Server> d2ServerList;
       if (Utils.isNullOrEmpty(zkAddress)) {
@@ -84,10 +84,14 @@ public class MockVeniceRouterWrapper extends ProcessWrapper {
           .put(LISTENER_PORT, port)
           .put(LISTENER_SSL_PORT, sslPortFromPort(port))
           .put(ZOOKEEPER_ADDRESS, zkAddress)
-          .put(SSL_TO_STORAGE_NODES, sslToStorageNodes);
-      RouterServer router =
-          new RouterServer(builder.build(), mockRepo, mockMetadataRepository, mockSchemaRepository, d2ServerList,
-              Optional.of(SslUtils.getLocalSslFactory()));
+          .put(SSL_TO_STORAGE_NODES, sslToStorageNodes)
+          .put(CLUSTER_TO_D2, TestUtils.getClusterToDefaultD2String(clusterName));
+      StoreConfig storeConfig = new StoreConfig("test");
+      storeConfig.setCluster(clusterName);
+      doReturn(Optional.of(storeConfig)).when(mockStoreConfigRepository).getStoreConfig(Mockito.anyString());
+
+      RouterServer router = new RouterServer(builder.build(), mockRepo, mockMetadataRepository, mockSchemaRepository,
+          mockStoreConfigRepository, d2ServerList, Optional.of(SslUtils.getLocalSslFactory()));
       return new MockVeniceRouterWrapper(serviceName, dataDirectory, router, clusterName, port, sslToStorageNodes);
     };
   }
@@ -129,6 +133,14 @@ public class MockVeniceRouterWrapper extends ProcessWrapper {
   protected void newProcess()
       throws Exception {
     throw new UnsupportedOperationException("Mock venice router does not support restart.");
+  }
+
+  public String getRouterD2Service(){
+    return D2TestUtils.DEFAULT_TEST_SERVICE_NAME;
+  }
+
+  public String getD2ServiceNameForCluster(String clusterName){
+    return service.getConfig().getClusterToD2Map().get(clusterName);
   }
 
   private static int sslPortFromPort(int port) {

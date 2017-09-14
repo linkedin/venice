@@ -13,6 +13,7 @@ import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.VeniceProperties;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.HashSet;
+import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
 import org.apache.log4j.Logger;
@@ -88,12 +89,12 @@ public class ServiceFactory {
       int replicaFactor, int partitionSize, long delayToRebalanceMS, int minActiveReplica,
       BrooklinWrapper brooklinWrapper) {
     return getVeniceController(new String[]{clusterName}, kafkaBrokerWrapper, replicaFactor, partitionSize,
-        delayToRebalanceMS, minActiveReplica, brooklinWrapper);
+        delayToRebalanceMS, minActiveReplica, brooklinWrapper, null);
   }
 
   public static VeniceControllerWrapper getVeniceController(String[] clusterNames,
       KafkaBrokerWrapper kafkaBrokerWrapper, int replicaFactor, int partitionSize, long delayToRebalanceMS,
-      int minActiveReplica, BrooklinWrapper brooklinWrapper) {
+      int minActiveReplica, BrooklinWrapper brooklinWrapper, String clusterToD2) {
     VeniceProperties extraProperties;
     if (null == brooklinWrapper) {
       extraProperties = EMPTY_VENICE_PROPS;
@@ -107,7 +108,7 @@ public class ServiceFactory {
     }
     return getStatefulService(VeniceControllerWrapper.SERVICE_NAME,
         VeniceControllerWrapper.generateService(clusterNames, kafkaBrokerWrapper.getZkAddress(), kafkaBrokerWrapper, false, replicaFactor, partitionSize,
-            delayToRebalanceMS, minActiveReplica, null, extraProperties));
+            delayToRebalanceMS, minActiveReplica, null, extraProperties, clusterToD2));
   }
 
   /**

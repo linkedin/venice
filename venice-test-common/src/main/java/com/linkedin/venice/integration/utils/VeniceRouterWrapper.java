@@ -28,6 +28,7 @@ public class VeniceRouterWrapper extends ProcessWrapper {
   private final String zkAddress;
   private final boolean sslToStorageNode;
 
+
   VeniceRouterWrapper(String serviceName, File dataDirectory, RouterServer service, String clusterName, int port, String zkAddress, boolean sslToStorageNode) {
     super(serviceName, dataDirectory);
     this.service = service;
@@ -47,7 +48,8 @@ public class VeniceRouterWrapper extends ProcessWrapper {
           .put(LISTENER_PORT, port)
           .put(LISTENER_SSL_PORT, sslPortFromPort(port))
           .put(ZOOKEEPER_ADDRESS, kafkaBrokerWrapper.getZkAddress())
-          .put(SSL_TO_STORAGE_NODES, sslToStorageNodes);
+          .put(SSL_TO_STORAGE_NODES, sslToStorageNodes)
+          .put(CLUSTER_TO_D2, TestUtils.getClusterToDefaultD2String(clusterName));
       RouterServer router = new RouterServer(builder.build(), new ArrayList<>(), Optional.of(SslUtils.getLocalSslFactory()));
       return new VeniceRouterWrapper(serviceName, dataDirectory, router, clusterName, port, zkAddress, sslToStorageNodes);
     };
@@ -67,6 +69,9 @@ public class VeniceRouterWrapper extends ProcessWrapper {
     return sslPortFromPort(port);
   }
 
+  public String getD2Service() {
+    return D2TestUtils.DEFAULT_TEST_SERVICE_NAME;
+  }
   @Override
   protected void internalStart() throws Exception {
     service.start();
@@ -90,7 +95,8 @@ public class VeniceRouterWrapper extends ProcessWrapper {
         .put(LISTENER_PORT, port)
         .put(LISTENER_SSL_PORT, sslPortFromPort(port))
         .put(ZOOKEEPER_ADDRESS, zkAddress)
-        .put(SSL_TO_STORAGE_NODES, sslToStorageNode);
+        .put(SSL_TO_STORAGE_NODES, sslToStorageNode)
+        .put(CLUSTER_TO_D2, TestUtils.getClusterToDefaultD2String(clusterName));
     service = new RouterServer(builder.build(), new ArrayList<>(), Optional.of(SslUtils.getLocalSslFactory()));
   }
 

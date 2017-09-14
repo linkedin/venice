@@ -5,6 +5,7 @@ import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.controller.VeniceControllerConfig;
 import com.linkedin.venice.controller.VeniceHelixAdmin;
 import com.linkedin.venice.controllerapi.ControllerApiConstants;
+import com.linkedin.venice.integration.utils.D2TestUtils;
 import com.linkedin.venice.integration.utils.KafkaBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
@@ -58,6 +59,7 @@ public class TestBackupControllerResponse {
         .put(CLUSTER_NAME, clusterName)
         .put(CONTROLLER_NAME, controllerName)
         .put(ConfigKeys.ADMIN_PORT, bogusPort)
+        .put(CLUSTER_TO_D2, TestUtils.getClusterToDefaultD2String(clusterName))
         .build();
     VeniceControllerConfig config = new VeniceControllerConfig(controllerOneProps);
     veniceAdmin = new VeniceHelixAdmin(TestUtils.getMultiClusterConfigFromOneCluster(config), new MetricsRepository());

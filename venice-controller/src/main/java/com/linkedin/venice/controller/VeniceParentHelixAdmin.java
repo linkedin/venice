@@ -44,6 +44,7 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.offsets.OffsetManager;
 import com.linkedin.venice.schema.SchemaEntry;
+import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
@@ -1122,6 +1123,11 @@ public class VeniceParentHelixAdmin implements Admin {
   @Override
   public Optional<String> getClusterOfStoreInMasterController(String storeName) {
     return veniceHelixAdmin.getClusterOfStoreInMasterController(storeName);
+  }
+
+  @Override
+  public Pair<String, String> discoverCluster(String storeName) {
+    return veniceHelixAdmin.discoverCluster(storeName);
   }
 
   @Override

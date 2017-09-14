@@ -35,7 +35,7 @@ public class ZkStoreConfigAccessorTest {
     String cluster = "testCreateConfig-cluster";
     accessor.createConfig(store, cluster);
 
-    StoreConfig config = accessor.getConfig(store);
+    StoreConfig config = accessor.getStoreConfig(store);
     Assert.assertEquals(config.getStoreName(), store, "Config should be created in ZK correctly");
     Assert.assertEquals(config.getCluster(), cluster, "Config should be created in ZK correctly");
   }
@@ -56,14 +56,14 @@ public class ZkStoreConfigAccessorTest {
     String cluster = "testContainsConfig-cluster";
     accessor.createConfig(store, cluster);
 
-    StoreConfig config = accessor.getConfig(store);
+    StoreConfig config = accessor.getStoreConfig(store);
     String newCluster = "testContainsConfig-new-cluster";
     config.setCluster(newCluster);
     config.setDeleting(true);
     accessor.updateConfig(config);
-    Assert.assertEquals(accessor.getConfig(store).getCluster(), newCluster,
+    Assert.assertEquals(accessor.getStoreConfig(store).getCluster(), newCluster,
         "Store config should be updated correctly.");
-    Assert.assertTrue(accessor.getConfig(store).isDeleting(), "Store config should be updated correctly.");
+    Assert.assertTrue(accessor.getStoreConfig(store).isDeleting(), "Store config should be updated correctly.");
   }
 
   @Test

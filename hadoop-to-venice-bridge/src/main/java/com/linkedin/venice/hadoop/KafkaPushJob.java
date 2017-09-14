@@ -1,6 +1,7 @@
 package com.linkedin.venice.hadoop;
 
 import azkaban.jobExecutor.AbstractJob;
+import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.controllerapi.StorageEngineOverheadRatioResponse;
@@ -131,7 +132,6 @@ public class KafkaPushJob extends AbstractJob {
   private final boolean enablePush;
   private final String veniceControllerUrl;
   private final String veniceRouterUrl;
-  private final String clusterName;
   private final String storeName;
   private final int batchNumBytes;
   private final boolean isMapOnly;
@@ -140,8 +140,9 @@ public class KafkaPushJob extends AbstractJob {
   private final boolean pbnjAsync;
   private final double pbnjSamplingRatio;
 
-  private final ControllerClient controllerClient;
+  private ControllerClient controllerClient;
 
+  private String clusterName;
   boolean isAvro = true;
 
   private String keyField;
@@ -286,7 +287,6 @@ public class KafkaPushJob extends AbstractJob {
     }
 
     // Mandatory configs:
-    this.clusterName = props.getString(VENICE_CLUSTER_NAME_PROP);
     this.veniceControllerUrl = props.getString(VENICE_URL_PROP);
     this.storeName = props.getString(VENICE_STORE_NAME_PROP);
     this.inputDirectory = props.getString(INPUT_PATH_PROP);
@@ -296,7 +296,6 @@ public class KafkaPushJob extends AbstractJob {
       throw new VeniceException("At least one of the following config properties must be true: " + ENABLE_PUSH + " or " + PBNJ_ENABLE);
     }
 
-    this.controllerClient = new ControllerClient(this.clusterName, this.veniceControllerUrl);
   }
 
   /**
@@ -324,7 +323,8 @@ public class KafkaPushJob extends AbstractJob {
 
       // Check Avro file schema consistency, data size
       inspectHdfsSource(sourcePath);
-
+      // Discover the cluster based on the store name and re-initialized controller client.
+      discoverCluster();
       validateKeySchema();
       validateValueSchema();
       checkStoreStorageQuota();
@@ -332,6 +332,7 @@ public class KafkaPushJob extends AbstractJob {
       JobClient jc;
 
       if (enablePush) {
+
         // Create new store version, topic and fetch Kafka url from backend
         createNewStoreVersion();
         // Log Venice data push job related info
@@ -903,6 +904,18 @@ public class KafkaPushJob extends AbstractJob {
     }
 
     return sourcePath;
+  }
+
+  private void discoverCluster(){
+    logger.info("Discover cluster for store:" +storeName);
+    ControllerResponse clusterDiscoveryResponse = ControllerClient.discoverCluster(veniceControllerUrl, storeName);
+    if(clusterDiscoveryResponse.isError()){
+      throw new VeniceException("Get error in clusterDiscoveryResponse:"+clusterDiscoveryResponse.getError());
+    } else {
+      clusterName = clusterDiscoveryResponse.getCluster();
+      controllerClient = new ControllerClient(clusterName, veniceControllerUrl);
+      logger.info("Found cluster: "+clusterName+" for store: "+storeName);
+    }
   }
 
   public String getKafkaTopic() {

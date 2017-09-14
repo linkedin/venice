@@ -304,7 +304,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 // A worse case is deletion succeeded in parent controller but failed in production controller. After skip
                 // the admin message offset, a store was left in some prod colos. While user re-create the store, we will
                 // delete this legacy store if isDeleting is true for this store.
-                StoreConfig storeConfig = storeConfigAccessor.getConfig(storeName);
+                StoreConfig storeConfig = storeConfigAccessor.getStoreConfig(storeName);
                 storeConfig.setDeleting(true);
                 storeConfigAccessor.updateConfig(storeConfig);
                 storeRepository.updateStore(store);
@@ -339,7 +339,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             // Delete again before re-creating.
             // We lock the resource during deletion, so it's impossible to access the store which is being
             // deleted from here. So the only possible case is the deletion failed before.
-            if(!storeConfigAccessor.getConfig(storeName).isDeleting()) {
+            if(!storeConfigAccessor.getStoreConfig(storeName).isDeleting()) {
                 throw new VeniceStoreAlreadyExistsException(storeName);
             } else {
                 isLagecyStore = true;
@@ -1613,6 +1613,20 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             }
         }
         return Optional.empty();
+    }
+
+    @Override
+    public Pair<String, String> discoverCluster(String storeName) {
+        StoreConfig config = storeConfigAccessor.getStoreConfig(storeName);
+        if (config == null || Utils.isNullOrEmpty(config.getCluster())) {
+            throw new VeniceException("Could not find the cluster by given store: " + storeName);
+        }
+        String clusterName = config.getCluster();
+        String d2Service = multiClusterConfigs.getClusterToD2Map().get(clusterName);
+        if (d2Service == null) {
+            throw new VeniceException("Could not find d2 service by given cluster: " + clusterName);
+        }
+        return new Pair<>(clusterName, d2Service);
     }
 
     protected void startMonitorOfflinePush(String clusterName, String kafkaTopic, int numberOfPartition,

@@ -17,6 +17,7 @@ import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
 import com.linkedin.venice.helix.HelixReadOnlyStoreRepository;
 import com.linkedin.venice.helix.HelixRoutingDataRepository;
 import com.linkedin.venice.helix.ZkRoutersClusterManager;
+import com.linkedin.venice.helix.HelixReadOnlyStoreConfigRepository;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.router.api.RouterExceptionAndTrackingUtils;
 import com.linkedin.venice.router.api.RouterHeartbeat;
@@ -77,6 +78,7 @@ public class RouterServer extends AbstractVeniceService {
   private HelixReadOnlySchemaRepository schemaRepository;
   private HelixRoutingDataRepository routingDataRepository;
   private HelixReadOnlyStoreRepository metadataRepository;
+  private HelixReadOnlyStoreConfigRepository storeConfigRepository;
 
   // These are initialized in startInner()... TODO: Consider refactoring this to be immutable as well.
   private AsyncFuture<SocketAddress> serverFuture = null;
@@ -160,6 +162,7 @@ public class RouterServer extends AbstractVeniceService {
     this.schemaRepository =
         new HelixReadOnlySchemaRepository(this.metadataRepository, this.zkClient, adapter, config.getClusterName());
     this.routingDataRepository = new HelixRoutingDataRepository(manager);
+    this.storeConfigRepository = new HelixReadOnlyStoreConfigRepository(zkClient, adapter);
   }
 
   /**
@@ -196,12 +199,14 @@ public class RouterServer extends AbstractVeniceService {
       HelixRoutingDataRepository routingDataRepository,
       HelixReadOnlyStoreRepository metadataRepository,
       HelixReadOnlySchemaRepository schemaRepository,
+      HelixReadOnlyStoreConfigRepository storeConfigRepository,
       List<D2Server> d2ServerList,
       Optional<SSLEngineComponentFactory> sslFactory){
     this(properties, d2ServerList, sslFactory, new MetricsRepository(), false);
     this.routingDataRepository = routingDataRepository;
     this.metadataRepository = metadataRepository;
     this.schemaRepository = schemaRepository;
+    this.storeConfigRepository = storeConfigRepository;
   }
 
 
@@ -209,6 +214,7 @@ public class RouterServer extends AbstractVeniceService {
   @Override
   public boolean startInner() throws Exception {
     metadataRepository.refresh();
+    storeConfigRepository.refresh();
     // No need to call schemaRepository.refresh() since it will do nothing.
     registry = new ResourceRegistry();
     ExecutorService executor = registry
@@ -225,7 +231,9 @@ public class RouterServer extends AbstractVeniceService {
     dispatcher = new VeniceDispatcher(config, healthMonitor, sslFactoryForRequests);
     heartbeat = new RouterHeartbeat(manager, healthMonitor, 10, TimeUnit.SECONDS, config.getHeartbeatTimeoutMs(), sslFactoryForRequests);
     heartbeat.startInner();
-    MetaDataHandler metaDataHandler = new MetaDataHandler(routingDataRepository, schemaRepository, config.getClusterName());
+    MetaDataHandler metaDataHandler =
+        new MetaDataHandler(routingDataRepository, schemaRepository, config.getClusterName(), storeConfigRepository,
+            config.getClusterToD2Map());
     VenicePathParser pathParser = new VenicePathParser(new VeniceVersionFinder(metadataRepository), partitionFinder,
         statsForSingleGet, statsForMultiGet, config.getMaxKeyCountInMultiGetReq());
     // Setup stat tracking for exceptional case
@@ -320,6 +328,7 @@ public class RouterServer extends AbstractVeniceService {
     dispatcher.close();
     routingDataRepository.clear();
     metadataRepository.clear();
+    storeConfigRepository.clear();
     if (manager != null) {
       manager.disconnect();
     }
@@ -412,5 +421,9 @@ public class RouterServer extends AbstractVeniceService {
 
   public ZkRoutersClusterManager getRoutersClusterManager() {
     return routersClusterManager;
+  }
+
+  public VeniceRouterConfig getConfig() {
+    return config;
   }
 }

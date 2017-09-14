@@ -36,6 +36,7 @@ public class AdminSparkServer extends AbstractVeniceService {
   private final Admin admin;
   protected static final ObjectMapper mapper = new ObjectMapper();
   final private Map<String, SparkServerStats> statsMap;
+  final private SparkServerStats nonclusterSpecificStats;
 
   private static String REQUEST_START_TIME =  "startTime";
   private static String REQUEST_SUCCEED = "succeed";
@@ -53,6 +54,7 @@ public class AdminSparkServer extends AbstractVeniceService {
     for(String cluster : clusters){
       statsMap.put(cluster, new SparkServerStats(metricsRepository, cluster + ".controller_spark_server"));
     }
+    nonclusterSpecificStats = new SparkServerStats(metricsRepository, ".controller_spark_server");
     httpService = Service.ignite();
   }
 
@@ -64,6 +66,9 @@ public class AdminSparkServer extends AbstractVeniceService {
       AuditInfo audit = new AuditInfo(request);
       logger.info(audit.toString());
       SparkServerStats stats = statsMap.get(request.queryParams(CLUSTER));
+      if (stats == null) {
+        stats = nonclusterSpecificStats;
+      }
       stats.recordRequest();
       request.attribute(REQUEST_START_TIME, System.currentTimeMillis());
       request.attribute(REQUEST_SUCCEED, true);
@@ -72,6 +77,10 @@ public class AdminSparkServer extends AbstractVeniceService {
     httpService.after((request, response) -> {
       AuditInfo audit = new AuditInfo(request);
       SparkServerStats stats = statsMap.get(request.queryParams(CLUSTER));
+      if (stats == null) {
+        stats = nonclusterSpecificStats;
+      }
+      stats.recordRequest();
       long latency = System.currentTimeMillis() - (long)request.attribute(REQUEST_START_TIME);
       if ((boolean)request.attribute(REQUEST_SUCCEED)) {
         logger.info(audit.successString());
@@ -153,6 +162,8 @@ public class AdminSparkServer extends AbstractVeniceService {
     httpService.get(GET_ALL_MIGRATION_PUSH_STRATEGIES.getPath(), MigrationRoutes.getAllMigrationPushStrategies(admin));
     httpService.get(SET_MIGRATION_PUSH_STRATEGY.getPath(), MigrationRoutes.setMigrationPushStrategy(admin));
 
+    httpService.get(CLUSTER_DISCOVERY.getPath(), ClusterDiscovery.discoverCluster(admin));
+
     httpService.awaitInitialization(); // Wait for server to be initialized
 
     // There is no async process in this function, so we are completely finished with the start up process.
@@ -192,17 +203,18 @@ public class AdminSparkServer extends AbstractVeniceService {
     return sb.toString();
   }
 
-  protected static void validateParams(Request request, List<String> requiredParams, Admin admin){
+  protected static void validateParams(Request request, List<String> requiredParams, Admin admin) {
     String clusterName = request.queryParams(CLUSTER);
-    if (Utils.isNullOrEmpty(clusterName)){
+    if (Utils.isNullOrEmpty(clusterName)) {
       throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, CLUSTER + " is a required parameter");
     }
-    if (!request.pathInfo().equals(MASTER_CONTROLLER.getPath()) && !admin.isMasterController(clusterName)){
-      // Skip master controller check for '/master_controller' request
+    if (!request.pathInfo().equals(MASTER_CONTROLLER.getPath())
+        && !request.pathInfo().equals(CLUSTER_DISCOVERY.getPath()) && !admin.isMasterController(clusterName)) {
+      // Skip master controller check for '/master_controller' and '/discover_cluster' request
       throw new VeniceHttpException(HttpConstants.SC_MISDIRECTED_REQUEST, "This is not the active controller");
     }
-    for (String param : requiredParams){
-      if (Utils.isNullOrEmpty(request.queryParams(param))){
+    for (String param : requiredParams) {
+      if (Utils.isNullOrEmpty(request.queryParams(param))) {
         throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, param + " is a required parameter");
       }
     }

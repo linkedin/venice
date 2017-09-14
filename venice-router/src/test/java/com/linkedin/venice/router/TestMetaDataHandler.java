@@ -1,12 +1,15 @@
 package com.linkedin.venice.router;
 
+import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponse;
 import com.linkedin.venice.controllerapi.MasterControllerResponse;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.helix.HelixReadOnlyStoreConfigRepository;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.RoutingDataRepository;
+import com.linkedin.venice.meta.StoreConfig;
 import com.linkedin.venice.schema.SchemaEntry;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.handler.codec.http.FullHttpResponse;
@@ -14,6 +17,9 @@ import io.netty.handler.codec.http.HttpRequest;
 import java.io.IOException;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Optional;
 import org.codehaus.jackson.map.ObjectMapper;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mockito;
@@ -26,6 +32,11 @@ public class TestMetaDataHandler {
   private static ObjectMapper mapper = new ObjectMapper();
 
   public FullHttpResponse passRequestToMetadataHandler(String requestUri, RoutingDataRepository routing, ReadOnlySchemaRepository schemaRepo)
+      throws IOException {
+    return passRequestToMetadataHandler(requestUri, routing, schemaRepo, Mockito.mock(HelixReadOnlyStoreConfigRepository.class), Collections.emptyMap());
+  }
+
+  public FullHttpResponse passRequestToMetadataHandler(String requestUri, RoutingDataRepository routing, ReadOnlySchemaRepository schemaRepo, HelixReadOnlyStoreConfigRepository storeConfigRepository, Map<String,String> clusterToD2ServiceMap)
       throws IOException {
     ChannelHandlerContext ctx = Mockito.mock(ChannelHandlerContext.class);
 
@@ -42,7 +53,7 @@ public class TestMetaDataHandler {
       schemaRepoToUse = schemaRepo;
     }
 
-    MetaDataHandler handler = new MetaDataHandler(routing, schemaRepoToUse, "test-cluster");
+    MetaDataHandler handler = new MetaDataHandler(routing, schemaRepoToUse, "test-cluster", storeConfigRepository , clusterToD2ServiceMap);
     handler.channelRead0(ctx, httpRequest);
     ArgumentCaptor<Object> captor = ArgumentCaptor.forClass(Object.class);
     Mockito.verify(ctx).writeAndFlush(captor.capture());
@@ -197,6 +208,45 @@ public class TestMetaDataHandler {
   }
 
   @Test
+  public void testD2ServiceLookup()
+      throws IOException {
+    String storeName = "test-store";
+    String clusterName = "test-cluster";
+    String d2Service = "test-d2-service";
+    HelixReadOnlyStoreConfigRepository storeConfigRepository = Mockito.mock(HelixReadOnlyStoreConfigRepository.class);
+    StoreConfig storeConfig = new StoreConfig(storeName);
+    storeConfig.setCluster(clusterName);
+    Mockito.doReturn(Optional.of(storeConfig)).when(storeConfigRepository).getStoreConfig(storeName);
+    Map<String, String> clusterToD2Map = new HashMap<>();
+    clusterToD2Map.put(clusterName, d2Service);
+    FullHttpResponse response =
+        passRequestToMetadataHandler("http://myRouterHost:4567/discover_cluster/" + storeName, null, null,
+            storeConfigRepository, clusterToD2Map);
+
+    Assert.assertEquals(response.status().code(), 200);
+    Assert.assertEquals(response.headers().get(CONTENT_TYPE), "application/json");
+    D2ServiceDiscoveryResponse d2ServiceResponse = mapper.readValue(response.content().array(), D2ServiceDiscoveryResponse.class);
+    Assert.assertEquals(d2ServiceResponse.getCluster(), clusterName);
+    Assert.assertEquals(d2ServiceResponse.getD2Service(), d2Service);
+    Assert.assertEquals(d2ServiceResponse.getName(), storeName);
+    Assert.assertFalse(d2ServiceResponse.isError());
+  }
+
+  @Test
+  public void testD2ServiceLoopNoClusterFound()
+      throws IOException {
+    String storeName = "test-store";
+    HelixReadOnlyStoreConfigRepository storeConfigRepository = Mockito.mock(HelixReadOnlyStoreConfigRepository.class);
+    Mockito.doReturn(Optional.empty()).when(storeConfigRepository).getStoreConfig(storeName);
+    Map<String, String> clusterToD2Map = new HashMap<>();
+    FullHttpResponse response =
+        passRequestToMetadataHandler("http://myRouterHost:4567/discover_cluster/" + storeName, null, null,
+            storeConfigRepository, Collections.emptyMap());
+
+    Assert.assertEquals(response.status().code(), 404);
+  }
+
+  @Test
   public void testStorageRequest() throws IOException {
     String storeName = "test_store";
     String clusterName = "test-cluster";
@@ -208,7 +258,7 @@ public class TestMetaDataHandler {
     // Mock ChannelHandlerContext
     ChannelHandlerContext ctx = Mockito.mock(ChannelHandlerContext.class);
 
-    MetaDataHandler handler = new MetaDataHandler(null, null, clusterName);
+    MetaDataHandler handler = new MetaDataHandler(null, null, clusterName, null, Collections.emptyMap());
     handler.channelRead0(ctx, httpRequest);
     // '/storage' request should be handled by upstream, instead of current MetaDataHandler
     Mockito.verify(ctx, Mockito.times(1)).fireChannelRead(Mockito.any());

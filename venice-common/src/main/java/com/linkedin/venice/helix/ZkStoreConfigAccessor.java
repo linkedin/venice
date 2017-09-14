@@ -1,15 +1,25 @@
 package com.linkedin.venice.helix;
 
+import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.listener.ListenerManager;
 import com.linkedin.venice.meta.StoreConfig;
 import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.PathResourceRegistry;
 import java.util.List;
+import java.util.stream.Collectors;
+import org.I0Itec.zkclient.IZkChildListener;
+import org.I0Itec.zkclient.IZkDataListener;
 import org.apache.helix.AccessOption;
 import org.apache.helix.manager.zk.ZkBaseDataAccessor;
 import org.apache.helix.manager.zk.ZkClient;
 import org.apache.log4j.Logger;
 
 
+/**
+ * The class is used to access the store configs in Zookeeper.
+ * <p/>
+ * This class is non-cluster specified.
+ */
 public class ZkStoreConfigAccessor {
   public static final Logger logger = Logger.getLogger(ZkStoreConfigAccessor.class);
   private static final String ROOT_PATH = "/storeConfigs";
@@ -19,8 +29,8 @@ public class ZkStoreConfigAccessor {
 
   public ZkStoreConfigAccessor(ZkClient zkClient, HelixAdapterSerializer adapterSerializer) {
     this.zkClient = zkClient;
-    adapterSerializer.registerSerializer(ROOT_PATH + "/" + PathResourceRegistry.WILDCARD_MATCH_ANY,
-        new StoreConfigJsonSerializer());
+    adapterSerializer
+        .registerSerializer(ROOT_PATH + "/" + PathResourceRegistry.WILDCARD_MATCH_ANY, new StoreConfigJsonSerializer());
     this.zkClient.setZkSerializer(adapterSerializer);
     dataAccessor = new ZkBaseDataAccessor<>(this.zkClient);
   }
@@ -29,12 +39,21 @@ public class ZkStoreConfigAccessor {
     return dataAccessor.getChildNames(ROOT_PATH, AccessOption.PERSISTENT);
   }
 
+  public List<StoreConfig> getAllStoreConfigs() {
+    return dataAccessor.getChildren(ROOT_PATH, null, AccessOption.PERSISTENT);
+  }
+
   public synchronized boolean containsConfig(String store) {
     return dataAccessor.exists(getStoreConfigPath(store), AccessOption.PERSISTENT);
   }
 
-  public synchronized StoreConfig getConfig(String store) {
+  public synchronized StoreConfig getStoreConfig(String store) {
     return dataAccessor.get(getStoreConfigPath(store), null, AccessOption.PERSISTENT);
+  }
+
+  public synchronized List<StoreConfig> getStoreConfigs(List<String> stores) {
+    List<String> pathes = stores.stream().map(store -> getStoreConfigPath(store)).collect(Collectors.toList());
+    return dataAccessor.get(pathes, null, AccessOption.PERSISTENT);
   }
 
   public synchronized void createConfig(String store, String cluster) {
@@ -45,6 +64,22 @@ public class ZkStoreConfigAccessor {
 
   public synchronized void updateConfig(StoreConfig config) {
     HelixUtils.compareAndUpdate(dataAccessor, getStoreConfigPath(config.getStoreName()), currentData -> config);
+  }
+
+  public void subscribeStoreConfigDataChangedListener(String storeName, IZkDataListener listener) {
+    dataAccessor.subscribeDataChanges(getStoreConfigPath(storeName), listener);
+  }
+
+  public void unsubscribeStoreConfigDataChangedListener(String storeName, IZkDataListener listener) {
+    dataAccessor.unsubscribeDataChanges(getStoreConfigPath(storeName), listener);
+  }
+
+  public void subscribeStoreConfigAddedOrDeletedListener(IZkChildListener listener) {
+    dataAccessor.subscribeChildChanges(ROOT_PATH, listener);
+  }
+
+  public void unsubscribeStoreConfigAddedOrDeletedListener(IZkChildListener listener) {
+    dataAccessor.unsubscribeChildChanges(ROOT_PATH, listener);
   }
 
   public synchronized void deleteConfig(String store) {

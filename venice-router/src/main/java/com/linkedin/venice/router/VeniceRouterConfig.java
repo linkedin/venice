@@ -2,6 +2,9 @@ package com.linkedin.venice.router;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.utils.VeniceProperties;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import org.apache.log4j.Logger;
 
 import static com.linkedin.venice.ConfigKeys.*;
@@ -27,6 +30,7 @@ public class VeniceRouterConfig {
   private int httpClientPoolSize;
   private int maxOutgoingConnPerRoute;
   private int maxOutgoingConn;
+  private Map<String, String> clusterToD2Map;
 
   public VeniceRouterConfig(VeniceProperties props) {
     try {
@@ -54,6 +58,7 @@ public class VeniceRouterConfig {
     httpClientPoolSize = props.getInt(ROUTER_HTTP_CLIENT_POOL_SIZE, 12);
     maxOutgoingConnPerRoute = props.getInt(ROUTER_MAX_OUTGOING_CONNECTION_PER_ROUTE, 120);
     maxOutgoingConn = props.getInt(ROUTER_MAX_OUTGOING_CONNECTION, 1200);
+    clusterToD2Map = props.getMap(CLUSTER_TO_D2);
   }
 
   public String getClusterName() {
@@ -94,6 +99,10 @@ public class VeniceRouterConfig {
 
   public int getMaxKeyCountInMultiGetReq() {
     return maxKeyCountInMultiGetReq;
+  }
+
+  public Map<String, String> getClusterToD2Map() {
+    return clusterToD2Map;
   }
 
   public int getConnectionLimit() {

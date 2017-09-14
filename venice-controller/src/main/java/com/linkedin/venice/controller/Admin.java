@@ -10,6 +10,7 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.schema.SchemaEntry;
 
+import com.linkedin.venice.utils.Pair;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
@@ -326,6 +327,14 @@ public interface Admin {
      * cluster1, it will not return cluster name for that store.
      */
     Optional<String> getClusterOfStoreInMasterController(String storeName);
+
+    /**
+     * Find the cluster which the given store belongs to. Return the pair of the cluster name and the d2 service
+     * associated with that cluster.
+     *
+     * @throws com.linkedin.venice.exceptions.VeniceException if not cluster is found.
+     */
+    Pair<String, String> discoverCluster(String storeName);
 
     void close();
 }

@@ -1,16 +1,20 @@
 package com.linkedin.venice.router;
 
 import com.linkedin.venice.HttpConstants;
+import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponse;
 import com.linkedin.venice.controllerapi.MasterControllerResponse;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
+import com.linkedin.venice.meta.ReadOnlyStoreConfigRepository;
 import com.linkedin.venice.meta.RoutingDataRepository;
+import com.linkedin.venice.meta.StoreConfig;
 import com.linkedin.venice.router.api.VenicePathParser;
 import com.linkedin.venice.router.api.VenicePathParserHelper;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.utils.ExceptionUtils;
+import com.linkedin.venice.utils.Utils;
 import io.netty.buffer.Unpooled;
 import io.netty.channel.ChannelHandler;
 import io.netty.channel.ChannelHandlerContext;
@@ -25,6 +29,8 @@ import java.net.URL;
 import java.net.URLClassLoader;
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.Map;
+import java.util.Optional;
 import org.apache.log4j.Logger;
 import org.codehaus.jackson.map.ObjectMapper;
 
@@ -51,13 +57,17 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
   private static final ObjectMapper mapper = new ObjectMapper();
   private final RoutingDataRepository routing;
   private final ReadOnlySchemaRepository schemaRepo;
+  private final ReadOnlyStoreConfigRepository storeConfigRepo;
   private final String clusterName;
+  private final Map<String, String> clusterToD2Map;
 
-  public MetaDataHandler(RoutingDataRepository routing, ReadOnlySchemaRepository schemaRepo, String clusterName){
+  public MetaDataHandler(RoutingDataRepository routing, ReadOnlySchemaRepository schemaRepo, String clusterName, ReadOnlyStoreConfigRepository storeConfigRepo, Map<String, String> clusterToD2Map){
     super();
     this.routing = routing;
     this.schemaRepo = schemaRepo;
     this.clusterName = clusterName;
+    this.storeConfigRepo = storeConfigRepo;
+    this.clusterToD2Map = clusterToD2Map;
   }
 
   public static void setupResponseAndFlush(HttpResponseStatus status, byte[] body, boolean isJson,
@@ -96,6 +106,9 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
       // URI: /value_schema/{$storeName} - Get all the value schema
       // URI: /value_schema/{$storeName}/{$valueSchemaId} - Get single value schema
       handleValueSchemaLookup(ctx, helper);
+    } else if (VenicePathParser.TYPE_CLUSTER_DISCOVERY.equals(resourceType)) {
+      // URI: /cluster/${storeName}
+      hanldeD2ServiceLookup(ctx, helper);
     } else {
       // SimpleChannelInboundHandler automatically releases the request after channelRead0 is done.
       // since we're passing it on to the next handler, we need to retain an extra reference.
@@ -114,10 +127,7 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
 
   private void handleKeySchemaLookup(ChannelHandlerContext ctx, VenicePathParserHelper helper) throws IOException {
     String storeName = helper.getResourceName();
-    if (null == storeName || storeName.isEmpty()) {
-      throw new VeniceException("storeName required, valid path should be : /"
-          + VenicePathParser.TYPE_KEY_SCHEMA + "/${storeName}");
-    }
+    checkStoreName(storeName, "/" + VenicePathParser.TYPE_KEY_SCHEMA + "/${storeName}");
     SchemaEntry keySchema = schemaRepo.getKeySchema(storeName);
     if (null == keySchema) {
       byte[] errBody = new String("Key schema for store: " + storeName + " doesn't exist").getBytes();
@@ -134,10 +144,9 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
 
   private void handleValueSchemaLookup(ChannelHandlerContext ctx, VenicePathParserHelper helper) throws IOException {
     String storeName = helper.getResourceName();
-    if (null == storeName || storeName.isEmpty()) {
-      throw new VeniceException("storeName required, valid path should be : /" + VenicePathParser.TYPE_VALUE_SCHEMA
-          + "/${storeName} or /" + VenicePathParser.TYPE_VALUE_SCHEMA + "/${storeName}/${valueSchemaId}");
-    }
+    checkStoreName(storeName,
+        "/" + VenicePathParser.TYPE_VALUE_SCHEMA + "/${storeName} or /" + VenicePathParser.TYPE_VALUE_SCHEMA
+            + "/${storeName}/${valueSchemaId}");
     String id = helper.getKey();
     if (null == id || id.isEmpty()) {
       // URI: /value_schema/{$storeName}
@@ -173,6 +182,40 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
       responseObject.setId(valueSchema.getId());
       responseObject.setSchemaStr(valueSchema.getSchema().toString());
       setupResponseAndFlush(OK, mapper.writeValueAsBytes(responseObject), true, ctx);
+    }
+  }
+
+  private void hanldeD2ServiceLookup(ChannelHandlerContext ctx, VenicePathParserHelper helper)
+      throws IOException {
+    String storeName = helper.getResourceName();
+    checkStoreName(storeName, "/" + VenicePathParser.TYPE_CLUSTER_DISCOVERY + "/${storeName}");
+    Optional<StoreConfig> config = storeConfigRepo.getStoreConfig(storeName);
+    if (!config.isPresent() || Utils.isNullOrEmpty(config.get().getCluster())) {
+      byte[] errBody = new String("Cluster for store: " + storeName + " doesn't exist").getBytes();
+      setupResponseAndFlush(NOT_FOUND, errBody, false, ctx);
+      return;
+    }
+    String clusterName = config.get().getCluster();
+    String d2Service = getD2ServiceByClusterName(clusterName);
+    if (Utils.isNullOrEmpty(d2Service)) {
+      byte[] errBody = new String("D2 service for store: " + storeName + " doesn't exist").getBytes();
+      setupResponseAndFlush(NOT_FOUND, errBody, false, ctx);
+      return;
+    }
+    D2ServiceDiscoveryResponse responseObject = new D2ServiceDiscoveryResponse();
+    responseObject.setCluster(config.get().getCluster());
+    responseObject.setName(config.get().getStoreName());
+    responseObject.setD2Service(d2Service);
+    setupResponseAndFlush(OK, mapper.writeValueAsBytes(responseObject), true, ctx);
+  }
+
+  private String getD2ServiceByClusterName(String clusterName) {
+    return clusterToD2Map.get(clusterName);
+  }
+
+  private void checkStoreName(String storeName, String path) {
+    if (Utils.isNullOrEmpty(storeName)) {
+      throw new VeniceException("storeName required, valid path should be : " + path);
     }
   }
 

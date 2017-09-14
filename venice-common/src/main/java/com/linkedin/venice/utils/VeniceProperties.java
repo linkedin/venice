@@ -1,6 +1,7 @@
 package com.linkedin.venice.utils;
 
 import com.linkedin.venice.exceptions.UndefinedPropertyException;
+import com.linkedin.venice.exceptions.VeniceException;
 import java.io.BufferedOutputStream;
 import java.io.File;
 import java.io.FileOutputStream;
@@ -326,6 +327,25 @@ public class VeniceProperties {
       throw new UndefinedPropertyException(key);
     }
     return getList(key, null);
+  }
+
+  public Map<String, String> getMap(String key) {
+    if (!containsKey(key)) {
+      throw new UndefinedPropertyException(key);
+    }
+    Map<String, String> map = new HashMap<>();
+    List<String> pairs = this.getList(key);
+
+    for (String pair : pairs) {
+      String[] pairAy = pair.split(":");
+      if (pairAy.length != 2) {
+        throw new VeniceException("Invalid config. Each pair should be $first:$second. But what we get is: " + pair);
+      }
+      String first = pairAy[0];
+      String second = pairAy[1];
+      map.put(first, second);
+    }
+    return map;
   }
 
   public Properties toProperties() {

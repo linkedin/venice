@@ -39,6 +39,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import org.apache.avro.Schema;
 import org.apache.commons.io.IOUtils;
@@ -639,5 +640,14 @@ public class TestAdminSparkServer {
     // Afte enable this feature, Venice don't need expected router count, because it will use the live router count, so could give any expected router count here.
     controllerClient.enableQuotaRebalanced(true, 0);
     Assert.assertTrue(controllerClient.getRoutersClusterConfig().getConfig().isQuotaRebalanceEnabled());
+  }
+
+  @Test
+  public void controllerClientCanDiscoverCluster() {
+    String storeName = "controllerClientCanDiscoverCluster";
+    controllerClient.createNewStore(storeName, "test", "\"string\"", "\"string\"");
+    Assert.assertEquals(
+        ControllerClient.discoverCluster(venice.getMasterVeniceController().getControllerUrl(), storeName).getCluster(),
+        venice.getClusterName(), "Should be able to find the cluster which the given store belongs to.");
   }
 }
