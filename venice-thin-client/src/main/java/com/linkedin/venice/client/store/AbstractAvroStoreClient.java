@@ -14,7 +14,6 @@ import com.linkedin.venice.serializer.RecordDeserializer;
 import com.linkedin.venice.serializer.RecordSerializer;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.EncodingUtils;
-import io.netty.buffer.ByteBuf;
 import java.nio.ByteBuffer;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
@@ -52,7 +51,7 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
   /** Used to communicate with Venice backend to retrieve necessary store schemas */
   private SchemaReader schemaReader;
   // Key serializer
-  protected RecordSerializer<K> keySerializer;
+  protected RecordSerializer<K> keySerializer = null;
   // Multi-get request serializer
   protected RecordSerializer<ByteBuffer> multiGetRequestSerializer;
 
@@ -120,15 +119,30 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
     return TYPE_STORAGE + "/" + storeName;
   }
 
+  private RecordSerializer<K> getKeySerializer() {
+    if (null != keySerializer) {
+      return keySerializer;
+    }
+    // Delay the key schema retrieval until it is necessary
+    synchronized (this) {
+      if (null != keySerializer) {
+        return keySerializer;
+      }
+      keySerializer = AvroSerializerDeserializerFactory.getAvroGenericSerializer(schemaReader.getKeySchema());
+
+      return keySerializer;
+    }
+  }
+
   // For testing
   public String getRequestPathByKey(K key) throws VeniceClientException {
-    byte[] serializedKey = keySerializer.serialize(key);
+    byte[] serializedKey = getKeySerializer().serialize(key);
     return getStorageRequestPathForSingleKey(serializedKey);
   }
 
   @Override
   public CompletableFuture<V> get(K key) throws VeniceClientException {
-    byte[] serializedKey = keySerializer.serialize(key);
+    byte[] serializedKey = getKeySerializer().serialize(key);
     String requestPath = getStorageRequestPathForSingleKey(serializedKey);
 
     CompletableFuture<TransportClientResponse> transportFuture = transportClient.get(requestPath, GET_HEADER_MAP);
@@ -182,7 +196,7 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
     }
     List<K> keyList = new ArrayList<>(keys);
     List<ByteBuffer> serializedKeyList = new ArrayList<>();
-    keyList.stream().forEach( key -> serializedKeyList.add(ByteBuffer.wrap(keySerializer.serialize(key))) );
+    keyList.stream().forEach( key -> serializedKeyList.add(ByteBuffer.wrap(getKeySerializer().serialize(key))) );
     byte[] multiGetBody = multiGetRequestSerializer.serializeObjects(serializedKeyList);
     String requestPath = getStorageRequestPath();
 
@@ -235,9 +249,6 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
         this.schemaReader = new SchemaReader(this.getStoreClientForSchemaReader());
       }
 
-      // init key serializer
-      this.keySerializer =
-        AvroSerializerDeserializerFactory.getAvroGenericSerializer(schemaReader.getKeySchema());
       // init multi-get request serializer
       this.multiGetRequestSerializer = AvroSerializerDeserializerFactory.getAvroGenericSerializer(
           ReadAvroProtocolDefinition.MULTI_GET_CLIENT_REQUEST_V1.getSchema());

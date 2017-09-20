@@ -50,7 +50,8 @@ public class SchemaReaderTest {
     CompletableFuture<byte[]> mockFuture = Mockito.mock(CompletableFuture.class);
     Mockito.doReturn(null).when(mockFuture).get();
     Mockito.doReturn(mockFuture).when(mockClient).getRaw("key_schema/" + storeName);
-    new SchemaReader(mockClient);
+    SchemaReader schemaReader = new SchemaReader(mockClient);
+    schemaReader.getKeySchema();
   }
 
   @Test (expectedExceptions = VeniceClientException.class)
@@ -61,7 +62,8 @@ public class SchemaReaderTest {
     CompletableFuture<byte[]> mockFuture = Mockito.mock(CompletableFuture.class);
     Mockito.doThrow(new ExecutionException(new VeniceClientException("Server error"))).when(mockFuture).get();
     Mockito.doReturn(mockFuture).when(mockClient).getRaw("key_schema/" + storeName);
-    new SchemaReader(mockClient);
+    SchemaReader schemaReader = new SchemaReader(mockClient);
+    schemaReader.getKeySchema();
   }
 
   @Test
@@ -93,7 +95,7 @@ public class SchemaReaderTest {
     // Must be the same Schema instance
     Assert.assertTrue(schema == cachedSchema);
     Assert.assertEquals(schemaReader.getLatestValueSchema().toString(), valueSchemaStr);
-    Mockito.verify(mockClient, Mockito.timeout(TIMEOUT).times(2)).getRaw(Mockito.anyString());
+    Mockito.verify(mockClient, Mockito.timeout(TIMEOUT).times(1)).getRaw(Mockito.anyString());
   }
 
   @Test
@@ -119,7 +121,7 @@ public class SchemaReaderTest {
     Assert.assertNull(schema);
     Schema cachedSchema = schemaReader.getValueSchema(valueSchemaId);
     Assert.assertNull(cachedSchema);
-    Mockito.verify(mockClient, Mockito.timeout(TIMEOUT).times(3)).getRaw(Mockito.anyString());
+    Mockito.verify(mockClient, Mockito.timeout(TIMEOUT).times(2)).getRaw(Mockito.anyString());
 
     schemaResponse = new SchemaResponse();
     schemaResponse.setId(valueSchemaId);
@@ -188,7 +190,7 @@ public class SchemaReaderTest {
     Assert.assertEquals(schemaReader.getValueSchema(valueSchemaId1).toString(), valueSchemaStr1);
     Assert.assertEquals(schemaReader.getValueSchema(valueSchemaId2).toString(), valueSchemaStr2);
     schemaReader.getLatestValueSchema();
-    Mockito.verify(mockClient, Mockito.timeout(TIMEOUT).times(2)).getRaw(Mockito.anyString());
+    Mockito.verify(mockClient, Mockito.timeout(TIMEOUT).times(1)).getRaw(Mockito.anyString());
   }
 
   @Test
@@ -213,7 +215,7 @@ public class SchemaReaderTest {
     Mockito.doReturn(storeName).when(mockClient).getStoreName();
     Mockito.doReturn(mockFuture).when(mockClient).getRaw("value_schema/" + storeName);;
     Assert.assertNull(schemaReader.getLatestValueSchema());
-    Mockito.verify(mockClient, Mockito.timeout(TIMEOUT).times(2)).getRaw(Mockito.anyString());
+    Mockito.verify(mockClient, Mockito.timeout(TIMEOUT).times(1)).getRaw(Mockito.anyString());
   }
 
   @Test (expectedExceptions = VeniceClientException.class)

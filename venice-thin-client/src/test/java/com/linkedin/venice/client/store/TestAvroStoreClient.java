@@ -13,7 +13,6 @@ import static org.mockito.Mockito.*;
 
 import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.serializer.RecordDeserializer;
-import java.util.Collections;
 import org.apache.avro.generic.GenericData;
 import org.testng.Assert;
 import org.testng.annotations.AfterMethod;
@@ -69,7 +68,6 @@ public class TestAvroStoreClient {
   @Test
   public void testStartClient() throws VeniceClientException {
     genericStoreClient.start();
-    verify(mockTransportClient).get(SchemaReader.TYPE_KEY_SCHEMA + "/" + STORE_NAME);
   }
 
   @Test(dependsOnMethods = { "testStartClient" })
