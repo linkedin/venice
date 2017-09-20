@@ -42,17 +42,23 @@ public class SchemaReader implements Closeable {
   public SchemaReader(AbstractAvroStoreClient client) throws VeniceClientException {
     this.storeClient = client;
     this.storeName = client.getStoreName();
-
-    // Initialize key schema
-    SchemaEntry keySchemaEntry = fetchKeySchema();
-    if (null == keySchemaEntry) {
-      throw new VeniceClientException("Key Schema of store: " + this.storeName + " doesn't exist");
-    }
-    keySchema = keySchemaEntry.getSchema();
   }
 
   public Schema getKeySchema() {
-    return keySchema;
+    if (null != keySchema) {
+      return keySchema;
+    }
+    synchronized (this) {
+      if (null != keySchema) {
+        return keySchema;
+      }
+      SchemaEntry keySchemaEntry = fetchKeySchema();
+      if (null == keySchemaEntry) {
+        throw new VeniceClientException("Key Schema of store: " + this.storeName + " doesn't exist");
+      }
+      keySchema = keySchemaEntry.getSchema();
+      return keySchema;
+    }
   }
 
   public Schema getValueSchema(int id) {
