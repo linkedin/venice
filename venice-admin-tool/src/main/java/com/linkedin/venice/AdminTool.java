@@ -567,7 +567,9 @@ public class AdminTool {
 
     /* Examples */
     System.err.println("\nExamples:");
-    for (Command c : Command.values()){
+    Command[] commands = Command.values();
+    Arrays.sort(commands, Command.commandComparator);
+    for (Command c : commands){
       StringJoiner exampleArgs = new StringJoiner(" ");
       for (Arg a : c.getAllArgs()){
         exampleArgs.add("--" + a.toString());

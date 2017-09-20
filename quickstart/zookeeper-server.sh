@@ -25,7 +25,10 @@ else
         exit 1
 fi
 
-CLASSPATH="$LIB_DIR/zookeeper-3.4.6.jar:$LIB_DIR/slf4j-log4j12-1.7.14.jar:$LIB_DIR/slf4j-api-1.7.14.jar:$LIB_DIR/slf4j-simple-1.7.12.jar:$LIB_DIR/log4j-1.2.17.jar"
+deps=`ls $LIB_DIR | egrep "(zookeeper|slf4j|log4j)"`
+for jar in $deps; do
+    CLASSPATH="$CLASSPATH:$LIB_DIR/$jar"
+done
 
 BASE_SCRIPT="java -classpath $CLASSPATH org.apache.zookeeper.server.quorum.QuorumPeerMain"
 

@@ -1,5 +1,6 @@
 package com.linkedin.venice;
 
+import java.util.Comparator;
 import java.util.StringJoiner;
 import org.apache.commons.lang.ArrayUtils;
 
@@ -158,4 +159,10 @@ public enum Command {
 
     return sj.toString();
   }
+
+  public static Comparator<Command> commandComparator = new Comparator<Command>() {
+    public int compare(Command c1,Command c2) {
+      return c1.commandName.compareTo(c2.commandName);
+    }
+  };
 }
