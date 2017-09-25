@@ -209,8 +209,6 @@ public class RouterServer extends AbstractVeniceService {
     this.storeConfigRepository = storeConfigRepository;
   }
 
-
-
   @Override
   public boolean startInner() throws Exception {
     metadataRepository.refresh();
@@ -240,6 +238,9 @@ public class RouterServer extends AbstractVeniceService {
     RouterExceptionAndTrackingUtils.setStatsForSingleGet(statsForSingleGet);
     RouterExceptionAndTrackingUtils.setStatsForMultiGet(statsForMultiGet);
 
+    VeniceHostFinder hostFinder = new VeniceHostFinder(routingDataRepository,
+        config.isStickyRoutingEnabledForSingleGet(), config.isStickyRoutingEnabledForMultiGet());
+
     // Fixed retry future
     AsyncFuture<LongSupplier> retryFuture = new SuccessAsyncFuture<>(() -> config.getLongTailRetryThresholdMs());
 
@@ -247,7 +248,7 @@ public class RouterServer extends AbstractVeniceService {
         .roleFinder(new VeniceRoleFinder())
         .pathParserExtended(pathParser)
         .partitionFinder(partitionFinder)
-        .hostFinder(new VeniceHostFinder(routingDataRepository))
+        .hostFinder(hostFinder)
         .hostHealthMonitor(healthMonitor)
         .dispatchHandler(dispatcher)
         .scatterMode(scatterGatherMode)

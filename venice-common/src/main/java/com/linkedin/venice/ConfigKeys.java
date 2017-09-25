@@ -127,7 +127,19 @@ public class ConfigKeys {
    * The max connection number in one Router to storage nodes;
    */
   public static final String ROUTER_MAX_OUTGOING_CONNECTION = "router.max.outgoing.connection";
+  /**
+   * Whether sticky routing for single-get is enabled in Router.
+   * Basically, sticky routing will ensure that the requests belonging to the same partition will always go to
+   * the same storage node if rebalance/deployment doesn't happen.
+   * With this way, the cache efficiency will be improved a lot in storage node since each storage node only needs
+   * to serve 1/3 of key space in the most scenarios.
+   */
+  public static final String ROUTER_ENABLE_STICKY_ROUTING_FOR_SINGLE_GET = "router.enable.sticky.routing.for.single.get";
 
+  /**
+   * Whether sticky routing for multi-get is enabled in Router.
+   */
+  public static final String ROUTER_ENABLE_STICKY_ROUTING_FOR_MULTI_GET = "router.enable.sticky.routing.for.multi.get";
 
   /**
    * Venice uses a helix cluster to assign controllers to each named venice cluster.  This is the number of controllers

@@ -20,7 +20,6 @@ import javax.annotation.Nonnull;
 import static io.netty.handler.codec.http.HttpResponseStatus.*;
 
 public class VeniceDelegateMode extends ScatterGatherMode {
-
   /**
    * This mode will initiate a request per partition, which is suitable for single-get, and it could be the default mode
    * for all other requests.
@@ -80,12 +79,17 @@ public class VeniceDelegateMode extends ScatterGatherMode {
 
     Scatter finalScatter = scatterMode.scatter(scatter, requestMethod, resourceName, partitionFinder, hostFinder,
         hostHealthMonitor, roles, metrics);
+    int offlineRequestNum = scatter.getOfflineRequestCount();
+    if (offlineRequestNum > 0) {
+      throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(Optional.of(storeName), Optional.of(venicePath.getRequestType()),
+          SERVICE_UNAVAILABLE, "Some partition is not available for store: " + storeName + " with request type: " + venicePath.getRequestType());
+    }
 
     for (ScatterGatherRequest<H, K> part : scatter.getOnlineRequests()) {
       int hostCount = part.getHosts().size();
       if (0 == hostCount) {
         throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(Optional.of(storeName), Optional.of(venicePath.getRequestType()),
-            INTERNAL_SERVER_ERROR, "Could not find ready-to-serve replica for request: " + part);
+            SERVICE_UNAVAILABLE, "Could not find ready-to-serve replica for request: " + part);
       }
       H host = part.getHosts().get(0);
       if (hostCount > 1) {
