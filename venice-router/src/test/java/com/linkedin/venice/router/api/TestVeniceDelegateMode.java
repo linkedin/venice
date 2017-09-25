@@ -18,6 +18,7 @@ import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -103,7 +104,7 @@ public class TestVeniceDelegateMode {
         if (partitionHostMap.containsKey(partitionName)) {
           return partitionHostMap.get(partitionName);
         }
-        throw new VeniceException("Unknown partition name: " + partitionName);
+        return Collections.EMPTY_LIST;
       }
 
       @Nonnull
@@ -187,6 +188,33 @@ public class TestVeniceDelegateMode {
       RouterException routerException = (RouterException)e;
       Assert.assertEquals(routerException.code(), HttpResponseStatus.TOO_MANY_REQUESTS.code());
     }
+  }
+
+  @Test (expectedExceptions = RouterException.class, expectedExceptionsMessageRegExp = ".*Some partition is not available for store.*")
+  public void testScatterWithSingleGetWithNotAvailablePartition() throws RouterException {
+    String storeName = TestUtils.getUniqueString("test_store");
+    String resourceName = storeName + "_v1";
+    RouterKey key = new RouterKey("key_1".getBytes());
+    List<RouterKey> keys = new ArrayList<>();
+    keys.add(key);
+    VenicePath path = getVenicePath(resourceName, RequestType.SINGLE_GET, keys);
+    Scatter<Instance, VenicePath, RouterKey> scatter = new Scatter(path, getPathParser());
+    String requestMethod = HttpMethod.GET.name();
+    Map<RouterKey, String> keyPartitionMap = new HashMap<>();
+    String partitionName = "p1";
+    keyPartitionMap.put(key, partitionName);
+    PartitionFinder partitionFinder = getPartitionFinder(keyPartitionMap);
+
+    Map<String, List<Instance>> partitionInstanceMap = new HashMap<>();
+    HostFinder<Instance, VeniceRole> hostFinder = getHostFinder(partitionInstanceMap);
+    HostHealthMonitor monitor = getHostHealthMonitor();
+    ReadRequestThrottler throttler = getReadRequestThrottle(false);
+
+    VeniceDelegateMode scatterMode = new VeniceDelegateMode();
+    scatterMode.initReadRequestThrottler(throttler);
+
+    scatterMode.scatter(scatter, requestMethod, resourceName,
+        partitionFinder, hostFinder, monitor, VeniceRole.REPLICA, new Metrics());
   }
 
   /**

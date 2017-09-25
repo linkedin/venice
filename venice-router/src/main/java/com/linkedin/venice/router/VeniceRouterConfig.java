@@ -2,8 +2,6 @@ package com.linkedin.venice.router;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.utils.VeniceProperties;
-import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 import org.apache.log4j.Logger;
 
@@ -31,6 +29,8 @@ public class VeniceRouterConfig {
   private int maxOutgoingConnPerRoute;
   private int maxOutgoingConn;
   private Map<String, String> clusterToD2Map;
+  private boolean stickyRoutingEnabledForSingleGet;
+  private boolean stickyRoutingEnabledForMultiGet;
 
   public VeniceRouterConfig(VeniceProperties props) {
     try {
@@ -59,6 +59,8 @@ public class VeniceRouterConfig {
     maxOutgoingConnPerRoute = props.getInt(ROUTER_MAX_OUTGOING_CONNECTION_PER_ROUTE, 120);
     maxOutgoingConn = props.getInt(ROUTER_MAX_OUTGOING_CONNECTION, 1200);
     clusterToD2Map = props.getMap(CLUSTER_TO_D2);
+    stickyRoutingEnabledForSingleGet = props.getBoolean(ROUTER_ENABLE_STICKY_ROUTING_FOR_SINGLE_GET, true);
+    stickyRoutingEnabledForMultiGet = props.getBoolean(ROUTER_ENABLE_STICKY_ROUTING_FOR_MULTI_GET, true);
   }
 
   public String getClusterName() {
@@ -79,6 +81,14 @@ public class VeniceRouterConfig {
 
   public int getClientTimeoutMs() {
     return clientTimeoutMs;
+  }
+
+  public boolean isStickyRoutingEnabledForSingleGet() {
+    return stickyRoutingEnabledForSingleGet;
+  }
+
+  public boolean isStickyRoutingEnabledForMultiGet() {
+    return stickyRoutingEnabledForMultiGet;
   }
 
   public int getHeartbeatTimeoutMs() {

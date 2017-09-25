@@ -9,6 +9,7 @@ import com.linkedin.venice.router.api.path.VeniceSingleGetPath;
 import com.linkedin.venice.router.api.path.VeniceMultiGetPath;
 import com.linkedin.venice.router.api.path.VenicePath;
 import com.linkedin.venice.router.stats.AggRouterHttpRequestStats;
+import com.linkedin.venice.router.utils.VeniceRouterUtils;
 import com.linkedin.venice.utils.Utils;
 import io.netty.handler.codec.http.HttpMethod;
 import java.util.Collection;
@@ -34,11 +35,7 @@ import static io.netty.handler.codec.rtsp.RtspResponseStatuses.*;
  */
 public class VenicePathParser<HTTP_REQUEST extends BasicHttpRequest>
     implements ExtendedResourcePathParser<VenicePath, RouterKey, HTTP_REQUEST> {
-
   private static final Logger LOGGER = Logger.getLogger(VenicePathParser.class);
-
-  public static final String METHOD_GET = HttpMethod.GET.name();
-  public static final String METHOD_POST = HttpMethod.POST.name();
 
   public static final String STORE_VERSION_SEP = "_v";
   public static final Pattern STORE_PATTERN = Pattern.compile("\\A[a-zA-Z][a-zA-Z0-9_-]*\\z"); // \A and \z are start and end of string
@@ -95,11 +92,11 @@ public class VenicePathParser<HTTP_REQUEST extends BasicHttpRequest>
     String method = fullHttpRequest.method().name();
     VenicePath path = null;
     AggRouterHttpRequestStats stats = null;
-    if (method.equalsIgnoreCase(METHOD_GET)) {
+    if (VeniceRouterUtils.isHttpGet(method)) {
       // single-get request
       path = new VeniceSingleGetPath(resourceName, pathHelper.getKey(), uri, partitionFinder);
       stats = statsForSingleGet;
-    } else if (method.equalsIgnoreCase(METHOD_POST)) {
+    } else if (VeniceRouterUtils.isHttpPost(method)) {
       // multi-get request
       path = new VeniceMultiGetPath(resourceName, fullHttpRequest, partitionFinder, maxKeyCountInMultiGetReq);
       stats = statsForMultiGet;
