@@ -159,11 +159,13 @@ class IngestionNotificationDispatcher {
             pcs.errorReported();
           }, () -> {
             if (pcs.isEndOfPushReceived()) {
-              logger.warn("Partition:" + pcs.getPartition() + " has been marked as completed, so an error will not be reported...");
+              logger.warn("Partition:" + pcs.getPartition() + " has been marked as completed,"
+                  + "so an error will not be reported. Current error message: " + message);
               return false;
             }
             if (pcs.isErrorReported()) {
-              logger.warn("Partition:" + pcs.getPartition() + " has been reported as error before.");
+              logger.warn("Partition:" + pcs.getPartition() + " has been reported as error before."
+              + "Current error message: " + message);
               return false;
             }
             return true;

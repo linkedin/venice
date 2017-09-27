@@ -4,6 +4,8 @@ import com.linkedin.venice.config.VeniceStoreConfig;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.consumer.StoreIngestionService;
 import com.linkedin.venice.storage.StorageService;
+import com.linkedin.venice.utils.SystemTime;
+import com.linkedin.venice.utils.Time;
 import javax.validation.constraints.NotNull;
 import org.apache.helix.NotificationContext;
 import org.apache.helix.model.Message;
@@ -36,16 +38,25 @@ public class VenicePartitionStateModel extends StateModel {
     private final StorageService storageService;
     private final String storePartitionDescription;
     private final VeniceStateModelFactory.StateModelNotifier notifier;
+    private final Time time;
 
     public VenicePartitionStateModel(@NotNull StoreIngestionService storeIngestionService,
-            @NotNull StorageService storageService, @NotNull VeniceStoreConfig storeConfig, int partition, VeniceStateModelFactory.StateModelNotifier notifer) {
+        @NotNull StorageService storageService, @NotNull VeniceStoreConfig storeConfig, int partition,
+        VeniceStateModelFactory.StateModelNotifier notifier) {
+        this(storeIngestionService, storageService, storeConfig, partition, notifier, new SystemTime());
+    }
+
+    public VenicePartitionStateModel(@NotNull StoreIngestionService storeIngestionService,
+        @NotNull StorageService storageService, @NotNull VeniceStoreConfig storeConfig, int partition,
+        VeniceStateModelFactory.StateModelNotifier notifier, Time time) {
         this.storeConfig = storeConfig;
         this.partition = partition;
         this.storageService = storageService;
         this.storeIngestionService = storeIngestionService;
         this.storePartitionDescription = String
             .format(STORE_PARTITION_DESCRIPTION_FORMAT, storeConfig.getStoreName(), partition);
-        this.notifier = notifer;
+        this.notifier = notifier;
+        this.time = time;
     }
 
     @Transition(to = HelixState.ONLINE_STATE, from = HelixState.BOOTSTRAP_STATE)
@@ -87,6 +98,18 @@ public class VenicePartitionStateModel extends StateModel {
     }
 
     private void removePartitionFromStore() {
+        try {
+            /**
+             * Since un-subscription is an asynchronous process, so we would like to make sure current partition is not
+             * being consuming before dropping store partition.
+             *
+             * Otherwise, a {@link com.linkedin.venice.exceptions.PersistenceFailureException} could be thrown here:
+             * {@link com.linkedin.venice.store.AbstractStorageEngine#put(Integer, byte[], byte[])}.
+             */
+            makeSurePartitionIsNotConsuming();
+        } catch (Exception e) {
+            logger.error("Met error while waiting for partition to stop consuming", e);
+        }
         // Catch exception separately to ensure reset consumption offset would be executed for sure.
         try {
             storageService.dropStorePartition(storeConfig, partition);
@@ -168,5 +191,22 @@ public class VenicePartitionStateModel extends StateModel {
         logger.info(storePartitionDescription + " completed transition from " + from.toString() + " to "
                 + to.toString() + " Store " + storeConfig.getStoreName() + " Partition " + partition +
                 " invoked with Message " + message + " and context " + context);
+    }
+
+    /**
+     * This function is trying to wait for current partition of store stop consuming.
+     */
+    private void makeSurePartitionIsNotConsuming() throws InterruptedException {
+        final int SLEEP_SECONDS = 3;
+        final int RETRY_NUM = 100; // 5 mins
+        int current = 0;
+        while (current++ < RETRY_NUM) {
+            if (!storeIngestionService.isPartitionConsuming(storeConfig, partition)) {
+                return;
+            }
+            time.sleep(SLEEP_SECONDS * Time.MS_PER_SECOND);
+        }
+        throw new VeniceException("Partition: " + partition + " of store: " + storeConfig.getStoreName() +
+            " is still being consuming after waiting for it to stop a total of" + RETRY_NUM * SLEEP_SECONDS + " seconds.");
     }
 }

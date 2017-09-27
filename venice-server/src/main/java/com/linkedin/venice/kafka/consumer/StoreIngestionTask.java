@@ -86,9 +86,10 @@ public class StoreIngestionTask implements Runnable, Closeable {
   private static final int CONSUMER_ACTION_QUEUE_INIT_CAPACITY = 11;
   private static final long KILL_WAIT_TIME_MS = 5000l;
   private static final int MAX_KILL_CHECKING_ATTEMPTS = 10;
+  /** Interval before querying Kafka broker about the source topic offset */
+  public static long SOURCE_TOPIC_OFFSET_CHECK_INTERVAL_MS = TimeUnit.SECONDS.toMillis(10); // 10 sec
 
-  // Final stuffz
-
+  // Final stuff
   /** storage destination for consumption */
   private final StoreRepository storeRepository;
   private final String topic;
@@ -257,9 +258,15 @@ public class StoreIngestionTask implements Runnable, Closeable {
    *
    * Lag = (Source Max Offset - SOBR Source Offset) - (Current Offset - SOBR Destination Offset)
    *
+   * @param partitionConsumptionState
+   * @param forceSourceTopicOffsetLookup
+   *    If true, this function will check the max offset of source topic to decide whether it is ready to serve;
+   *    Otherwise, this function will do actual lookup after the pre-fined interval: {@link #SOURCE_TOPIC_OFFSET_CHECK_INTERVAL_MS}
+   *  The reason behind this is that offset up against Kafka broker is an expensive operation.
+   *
    * @return true if EOP was received and (for hybrid stores) if lag <= threshold
    */
-  private boolean isReadyToServe(PartitionConsumptionState partitionConsumptionState) {
+  private boolean isReadyToServe(PartitionConsumptionState partitionConsumptionState, boolean forceSourceTopicOffsetLookup) {
     // Check various short-circuit conditions first.
 
     if (!partitionConsumptionState.isEndOfPushReceived()) {
@@ -277,6 +284,18 @@ public class StoreIngestionTask implements Runnable, Closeable {
       // rather than possibly flip flopping
       return true;
     }
+    /**
+     * Max offset lookup of source topic is an expensive operation, so here will only do the actual lookup
+     * after the predefined interval.
+     */
+    long currentTime = System.currentTimeMillis();
+    if (!forceSourceTopicOffsetLookup) {
+      long lastTimeOfLookup = partitionConsumptionState.getLastTimeOfSourceTopicOffsetLookup();
+      if (currentTime - lastTimeOfLookup <= SOURCE_TOPIC_OFFSET_CHECK_INTERVAL_MS) {
+        return false;
+      }
+    }
+    partitionConsumptionState.setLastTimeOfSourceTopicOffsetLookup(currentTime);
 
     Optional<StoreVersionState> storeVersionStateOptional = storageMetadataService.getStoreVersionState(topic);
     Optional<Long> sobrDestinationOffsetOptional = partitionConsumptionState.getOffsetRecord().getStartOfBufferReplayDestinationOffset();
@@ -394,6 +413,9 @@ public class StoreIngestionTask implements Runnable, Closeable {
    */
   @Override
   public void run() {
+    // Update thread name to include topic to make it easy debugging
+    Thread.currentThread().setName("venice-consumer-" + topic);
+
     logger.info("Running " + consumerTaskId);
     try {
       this.consumer = factory.getConsumer(kafkaProps);
@@ -568,7 +590,7 @@ public class StoreIngestionTask implements Runnable, Closeable {
         } else {
           // For hybrid case, if it's ready to server, report complete to let BOOTSTRAP->ONLINE state transition
           // complete at first then keep consuming because message might be replicated from RT topic cotinually.
-          if (hybridStoreConfig.isPresent() && isReadyToServe(newPartitionConsumptionState)) {
+          if (hybridStoreConfig.isPresent() && isReadyToServe(newPartitionConsumptionState, true)) {
             notificationDispatcher.reportCompleted(newPartitionConsumptionState);
             logger.info(consumerTaskId + " Partition " + partition + " is already ready to serve and the store is" +
                 " hybrid, so consumption will be started.");
@@ -758,23 +780,24 @@ public class StoreIngestionTask implements Runnable, Closeable {
     int offsetPersistInterval = partitionConsumptionState.isDeferredWrite() ?
         OFFSET_UPDATE_INTERNAL_PER_PARTITION_FOR_DEFERRED_WRITE : OFFSET_UPDATE_INTERVAL_PER_PARTITION_FOR_TRANSACTION_MODE;
 
-    // If any of these conditions is true, then we want to sync to disk and dispatch notifications:
+    // If the following condition is true, then we want to sync to disk.
     boolean recordsProcessedAboveSyncIntervalThreshold = partitionConsumptionState.getProcessedRecordNumSinceLastSync() >= offsetPersistInterval;
-    boolean endOfPushReceived = partitionConsumptionState.isEndOfPushReceived();
-
-    if (recordsProcessedAboveSyncIntervalThreshold || endOfPushReceived) {
+    if (recordsProcessedAboveSyncIntervalThreshold) {
       AbstractStorageEngine storageEngine = storeRepository.getLocalStorageEngine(topic);
       storageEngine.sync(partition);
       OffsetRecord offsetRecord = partitionConsumptionState.getOffsetRecord();
       storageMetadataService.put(this.topic, partition, offsetRecord);
+      partitionConsumptionState.resetProcessedRecordNumSinceLastSync();
+    }
 
-      if (isReadyToServe(partitionConsumptionState)) {
+    boolean endOfPushReceived = partitionConsumptionState.isEndOfPushReceived();
+    boolean isCompletionReported = partitionConsumptionState.isCompletionReported();
+    if (recordsProcessedAboveSyncIntervalThreshold || (endOfPushReceived && !isCompletionReported)) {
+      if (isReadyToServe(partitionConsumptionState, false)) {
         notificationDispatcher.reportCompleted(partitionConsumptionState);
       } else {
         notificationDispatcher.reportProgress(partitionConsumptionState);
       }
-
-      partitionConsumptionState.resetProcessedRecordNumSinceLastSync();
     }
   }
 
@@ -1145,5 +1168,14 @@ public class StoreIngestionTask implements Runnable, Closeable {
       return Optional.empty();
     }
     return Optional.of(consumptionState.getOffsetRecord().getOffset());
+  }
+
+  /**
+   * To check whether the given partition is still consuming message from Kafka
+   * @param partitionId
+   * @return
+   */
+  public boolean isPartitionConsuming(int partitionId) {
+    return partitionConsumptionStateMap.containsKey(partitionId);
   }
 }

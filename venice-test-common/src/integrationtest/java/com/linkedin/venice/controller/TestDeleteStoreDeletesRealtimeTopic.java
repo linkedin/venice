@@ -8,6 +8,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.kafka.TopicManager;
+import com.linkedin.venice.kafka.consumer.StoreIngestionTask;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.TestUtils;
 import java.util.Optional;
@@ -27,6 +28,12 @@ public class TestDeleteStoreDeletesRealtimeTopic {
 
   @Test
   public void deletingHybridStoreDeletesRealtimeTopic(){
+    /**
+     * Since the message in hybrid store is not infinite, so we need to check the source topic offset every time
+     * to decide whether current store version should become 'ONLINE' or not.
+     */
+    StoreIngestionTask.SOURCE_TOPIC_OFFSET_CHECK_INTERVAL_MS = 0;
+
     VeniceClusterWrapper venice = ServiceFactory.getVeniceCluster();
     ControllerClient controllerClient = new ControllerClient(venice.getClusterName(), venice.getRandomRouterURL());
 
