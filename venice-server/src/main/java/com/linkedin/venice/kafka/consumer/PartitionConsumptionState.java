@@ -22,6 +22,8 @@ class PartitionConsumptionState {
   private int processedRecordSize;
   private int processedRecordNumSinceLastSync;
 
+  private long lastTimeOfSourceTopicOffsetLookup;
+
   public PartitionConsumptionState(int partition, OffsetRecord offsetRecord, boolean hybrid) {
     this.partition = partition;
     this.hybrid = hybrid;
@@ -32,6 +34,7 @@ class PartitionConsumptionState {
     this.processedRecordNum = 0;
     this.processedRecordSize = 0;
     this.processedRecordNumSinceLastSync = 0;
+    this.lastTimeOfSourceTopicOffsetLookup = -1;
   }
 
   public int getPartition() {
@@ -93,6 +96,14 @@ class PartitionConsumptionState {
   }
   public void resetProcessedRecordSize() {
     this.processedRecordSize = 0;
+  }
+
+  public long getLastTimeOfSourceTopicOffsetLookup() {
+    return lastTimeOfSourceTopicOffsetLookup;
+  }
+
+  public void setLastTimeOfSourceTopicOffsetLookup(long lastTimeOfSourceTopicOffsetLookup) {
+    this.lastTimeOfSourceTopicOffsetLookup = lastTimeOfSourceTopicOffsetLookup;
   }
 
   public boolean isHybrid() {

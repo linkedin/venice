@@ -132,7 +132,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
   @Override
   public boolean startInner() {
     logger.info("Enabling consumerExecutorService and kafka consumer tasks ");
-    consumerExecutorService = Executors.newCachedThreadPool(new DaemonThreadFactory("venice-consumer"));
+    consumerExecutorService = Executors.newCachedThreadPool();
     topicNameToIngestionTaskMap.values().forEach(consumerExecutorService::submit);
     isRunning.set(true);
 
@@ -309,6 +309,13 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       return true;
     }
     return false;
+  }
+
+  @Override
+  public synchronized boolean isPartitionConsuming(VeniceStoreConfig veniceStore, int partitionId) {
+    String topic = veniceStore.getStoreName();
+    StoreIngestionTask consumerTask = topicNameToIngestionTaskMap.get(topic);
+    return consumerTask != null && consumerTask.isRunning() && consumerTask.isPartitionConsuming(partitionId);
   }
 
   /**

@@ -3,9 +3,6 @@ package com.linkedin.venice.kafka.consumer;
 import com.linkedin.venice.config.VeniceStoreConfig;
 import com.linkedin.venice.notifier.VeniceNotifier;
 
-import java.util.List;
-
-
 /**
  * An interface for Store Ingestion Service for Venice.
  */
@@ -54,4 +51,9 @@ public interface StoreIngestionService {
    * Judge whether there is a running consumption task for given store.
    */
   boolean containsRunningConsumption(VeniceStoreConfig veniceStore);
+
+  /**
+   * Check whether the specified partition is still being consumed
+   */
+  boolean isPartitionConsuming(VeniceStoreConfig veniceStore, int partitionId);
 }
