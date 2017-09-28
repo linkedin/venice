@@ -6,8 +6,6 @@ import com.linkedin.venice.exceptions.UnsubscribedTopicPartitionException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceIngestionTaskKilledException;
 import com.linkedin.venice.exceptions.VeniceMessageException;
-import com.linkedin.venice.exceptions.validation.CorruptDataException;
-import com.linkedin.venice.exceptions.validation.MissingDataException;
 import com.linkedin.venice.exceptions.validation.UnsupportedMessageTypeException;
 import com.linkedin.venice.guid.GuidUtils;
 import com.linkedin.venice.kafka.TopicManager;
@@ -101,7 +99,7 @@ public class StoreIngestionTask implements Runnable, Closeable {
   private final Properties kafkaProps;
   private final VeniceConsumerFactory factory;
   private final AtomicBoolean isRunning;
-  private final AtomicBoolean emitMetrics;
+  private final AtomicBoolean emitMetrics; //TODO: remove this once we migrate to versioned stats
   private final PriorityBlockingQueue<ConsumerAction> consumerActionsQueue;
   private final StorageMetadataService storageMetadataService;
   private final TopicManager topicManager;
@@ -293,25 +291,12 @@ public class StoreIngestionTask implements Runnable, Closeable {
     }
 
     // Looks like none of the short-circuitry fired, so we need to measure lag!
-    int partition = partitionConsumptionState.getPartition();
-    String sourceTopic = storeVersionStateOptional.get().startOfBufferReplay.sourceTopicName.toString();
-    long sourceTopicMaxOffset = topicManager.getLatestOffset(sourceTopic, partition);
-    long sobrSourceOffset = storeVersionStateOptional.get().startOfBufferReplay.sourceOffsets.get(partition);
-    long currentOffset = partitionConsumptionState.getOffsetRecord().getOffset();
-    long sobrDestinationOffset = sobrDestinationOffsetOptional.get();
+    long lag = measureHybridOffsetLag(storeVersionStateOptional.get().startOfBufferReplay, partitionConsumptionState);
     long threshold = hybridStoreConfig.get().getOffsetLagThresholdToGoOnline();
-
-    long lag = (sourceTopicMaxOffset - sobrSourceOffset) - (currentOffset - sobrDestinationOffset);
     boolean lagging = lag > threshold;
 
-    logger.info(consumerTaskId + " Partition " + partition + " is " + (lagging ? "" : "not ") + "lagging: " +
-        "(Source Max [" + sourceTopicMaxOffset + "] -" +
-        " SOBR Source [" + sobrSourceOffset + "]) - " +
-        "(Dest Current [" + currentOffset + "] -" +
-        " SOBR Dest [" + sobrDestinationOffset + "]) =" +
-        " Lag [" + lag + "] " +
-        (lagging ? ">" : "<") +
-        " Threshold ["+ threshold + "]");
+    logger.info(String.format("%s partition %d is %slagging. Lag: [%d] %s Threshold [%d]", consumerTaskId,
+        partitionConsumptionState.getPartition(), (lagging ? "" : "not "), lag, (lagging ? ">" : "<"), threshold));
 
     boolean lagIsAcceptable = !lagging;
 
@@ -320,6 +305,31 @@ public class StoreIngestionTask implements Runnable, Closeable {
     }
 
     return lagIsAcceptable;
+  }
+
+  /**
+   * A private method that has the formula to calculate real-time buffer lag. This method assumes every factor is
+   * not null or presented in Optional. Pre-check should be done if necessary
+   */
+  private long measureHybridOffsetLag(StartOfBufferReplay sobr, PartitionConsumptionState pcs) {
+    int partition = pcs.getPartition();
+    long sourceTopicMaxOffset = topicManager.getLatestOffset(sobr.sourceTopicName.toString(), partition);
+    long sobrSourceOffset = sobr.sourceOffsets.get(partition);
+    long currentOffset = pcs.getOffsetRecord().getOffset();
+
+    if (!pcs.getOffsetRecord().getStartOfBufferReplayDestinationOffset().isPresent()) {
+      throw new  IllegalArgumentException("SOBR DestinationOffset is not presented.");
+    }
+
+    long sobrDestinationOffset = pcs.getOffsetRecord().getStartOfBufferReplayDestinationOffset().get();
+
+    long lag = (sourceTopicMaxOffset - sobrSourceOffset) - (currentOffset - sobrDestinationOffset);
+
+    logger.info(String.format("%s partition %d real-time buffer lag offset is: "
+        + "(Source Max [%d] - SOBR Source [%d]) - (Dest Current [%d] - SOBR Dest [%d]) = Lag [%d]",
+        consumerTaskId, partition, sourceTopicMaxOffset, sobrSourceOffset, currentOffset, sobrDestinationOffset, lag));
+
+    return lag;
   }
 
   private void processMessages() throws InterruptedException {
@@ -783,6 +793,41 @@ public class StoreIngestionTask implements Runnable, Closeable {
         .reduce(0l, (lag1, lag2) -> lag1 + lag2);
 
     return offsetLag > 0 ? offsetLag : 0;
+  }
+
+  public long getRealTimeBufferOffsetLag() {
+    if (!emitMetrics.get()) {
+      return 0;
+    }
+
+    if (!hybridStoreConfig.isPresent()) {
+      return 0;
+    }
+
+    Optional<StoreVersionState> svs = storageMetadataService.getStoreVersionState(topic);
+    if (!svs.isPresent()) {
+      return 0;
+    }
+
+    long offsetLag = partitionConsumptionStateMap.values().parallelStream()
+        .filter(pcs -> pcs.isEndOfPushReceived() &&
+            pcs.getOffsetRecord().getStartOfBufferReplayDestinationOffset().isPresent())
+        .mapToLong(pcs -> measureHybridOffsetLag(svs.get().startOfBufferReplay, pcs))
+        .sum();
+
+    return offsetLag > 0 ? offsetLag : 0;
+  }
+
+  /**
+   * Indicate the number of partitions that haven't received SOBR yet. This method is for Hybrid store
+   */
+  public long getNumOfPartitionsNotReceiveSOBR() {
+    return partitionConsumptionStateMap.values().parallelStream()
+        .filter(pcs -> !pcs.getOffsetRecord().getStartOfBufferReplayDestinationOffset().isPresent()).count();
+  }
+
+  public boolean isHybridMode() {
+    return hybridStoreConfig != null && hybridStoreConfig.isPresent();
   }
 
   private void processControlMessage(ControlMessage controlMessage, int partition, long offset, PartitionConsumptionState partitionConsumptionState) {
