@@ -9,14 +9,14 @@ import io.tehuti.metrics.stats.Max;
 import io.tehuti.metrics.stats.Min;
 import io.tehuti.metrics.stats.Rate;
 import io.tehuti.metrics.stats.Total;
+import java.util.function.Supplier;
+
 
 public class StoreIngestionStats extends AbstractVeniceStats{
   private StoreIngestionTask storeIngestionTask;
 
   private final Sensor bytesConsumedSensor;
   private final Sensor recordsConsumedSensor;
-
-  private final Sensor kafkaOffsetLagSensor;
 
   private final Sensor pollRequestSensor;
   private final Sensor pollRequestLatencySensor;
@@ -37,7 +37,7 @@ public class StoreIngestionStats extends AbstractVeniceStats{
     //KafkaOffsetLag is the lag of the most recent offsets between local kafka and storage node.
     //If a storage node has multiple partitions for a store, they will be aggregated.
     //Agg store doesn't have offset lag
-    kafkaOffsetLagSensor = registerSensor("kafka_offset_lag", new OffsetLagStat(this));
+    registerSensor("kafka_offset_lag", new StoreIngestionStatsCounter(this, () -> storeIngestionTask.getOffsetLag()));
 
     // Measure latency of Kafka consumer poll request and processing returned consumer records
     pollRequestSensor = registerSensor("kafka_poll_request", new Count());
@@ -58,6 +58,12 @@ public class StoreIngestionStats extends AbstractVeniceStats{
 
   public void updateStoreConsumptionTask(StoreIngestionTask task) {
     storeIngestionTask = task;
+
+    if (task.isHybridMode())
+    registerSensor("kafka_real_time_buffer_offset_lag", new StoreIngestionStatsCounter(this,
+        () -> storeIngestionTask.getRealTimeBufferOffsetLag()));
+    registerSensor("number_of_partitions_not_receive_SOBR", new StoreIngestionStatsCounter(this,
+        () -> storeIngestionTask.getNumOfPartitionsNotReceiveSOBR()));
   }
 
   public StoreIngestionTask getStoreIngestionTask() {
@@ -93,15 +99,13 @@ public class StoreIngestionStats extends AbstractVeniceStats{
     valueSizeSensor.record(bytes);
   }
 
-  private static class OffsetLagStat extends LambdaStat {
-    public OffsetLagStat(StoreIngestionStats stats) {
+  private static class StoreIngestionStatsCounter extends LambdaStat {
+    StoreIngestionStatsCounter(StoreIngestionStats stats, Supplier<Long> supplier) {
       super(() -> {
         StoreIngestionTask task = stats.getStoreIngestionTask();
         if (task != null && task.isRunning()) {
-          double a = task.getOffsetLag();
-          return a;
-        }
-        else {
+          return (double) supplier.get();
+        } else {
           return 0d;
         }
       });
