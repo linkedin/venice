@@ -7,38 +7,66 @@ import io.tehuti.metrics.stats.Percentiles;
 
 import io.tehuti.metrics.stats.Rate;
 import io.tehuti.metrics.stats.SampledCount;
+import java.util.Arrays;
 import javax.validation.constraints.NotNull;
 
 /**
  * Utils for venice metrics
  */
 public class TehutiUtils {
-  public static Percentiles getPercentileStat(String sensorName, String storeName) {
-    return getPercentileStat(sensorName + AbstractVeniceStats.DELIMITER + storeName);
 
-  }
+  private static final int DEFAULT_HISTOGRAM_SIZE_IN_BYTES = 40000;
+  private static final double DEFAULT_HISTOGRAM_MAX_VALUE = 10000;
+  private static final double[] DEFAULT_HISTOGRAM_PERCENTILES = new double[]{50, 95, 99};
+  private static final double[] HISTOGRAM_PERCENTILES_FOR_NETWORK_LATENCY = new double[]{50, 77, 90, 95, 99, 99.9};
+  private static final String ROUND_NUMBER_SUFFIX = ".0";
 
   /**
    * TODO: need to investigate why percentiles with big values (> 10^6) won't show in InGraph.
-   * @param name
-   * @return
    */
-  public static Percentiles getPercentileStat(@NotNull String name) {
-    return getPercentileStat(name, 40000, 10000);
+  public static Percentiles getPercentileStat(String sensorName, String storeName) {
+    String name = sensorName + AbstractVeniceStats.DELIMITER + storeName;
+    return getPercentileStat(name, DEFAULT_HISTOGRAM_SIZE_IN_BYTES, DEFAULT_HISTOGRAM_MAX_VALUE);
   }
 
   /**
-   *Generate a histogram stat that emits P50, P95, and P99 values.
+   * Generate a histogram stat that emits P50, P77, P90, P95, P99 and P99.9 values.
+   *
+   * N.B.: These are useful percentiles to estimate the latency we would get with speculative queries:
+   *
+   * P77 latency with one query would become: P95 with the fastest of two queries, and P99 with the fastest of three
+   * P90 latency with one query would become: P99 with the fastest of two queries, and P99.9 with the fastest of three
+   */
+  public static Percentiles getPercentileStatForNetworkLatency(String sensorName, String storeName) {
+    String name = sensorName + AbstractVeniceStats.DELIMITER + storeName;
+    return getPercentileStat(name, DEFAULT_HISTOGRAM_SIZE_IN_BYTES, DEFAULT_HISTOGRAM_MAX_VALUE, HISTOGRAM_PERCENTILES_FOR_NETWORK_LATENCY);
+  }
+
+  /**
+   * Generate a histogram stat that emits P50, P95, and P99 values.
    * @param name
    * @param sizeInBytes Histogram's memory consumption
    * @param max Histogram's max value
    * @return 3 sub stats that emit p50, P95, and P99 values.
    */
   public static Percentiles getPercentileStat(@NotNull String name, int sizeInBytes, double max) {
-    return new Percentiles(sizeInBytes, max, Percentiles.BucketSizing.LINEAR,
-        new Percentile(name + ".50thPercentile", 50),
-        new Percentile(name + ".95thPercentile", 95),
-        new Percentile(name + ".99thPercentile", 99));
+    return getPercentileStat(name, sizeInBytes, max, DEFAULT_HISTOGRAM_PERCENTILES);
+  }
+
+  public static Percentiles getPercentileStat(@NotNull String name, int sizeInBytes, double max, double... percentiles) {
+    Percentile[] percentileObjectsArray = Arrays.stream(percentiles)
+        .mapToObj(percentile -> getPercentile(name, percentile))
+        .toArray(value -> new Percentile[percentiles.length]);
+    return new Percentiles(sizeInBytes, max, Percentiles.BucketSizing.LINEAR, percentileObjectsArray);
+  }
+
+  private static Percentile getPercentile(String name, double percentile) {
+    String stringPercentile = Double.toString(percentile);
+    // Clip decimals for round numbers.
+    if (stringPercentile.endsWith(ROUND_NUMBER_SUFFIX)) {
+      stringPercentile = stringPercentile.substring(0, stringPercentile.length() - ROUND_NUMBER_SUFFIX.length());
+    }
+    return new Percentile(name + "." + stringPercentile + "thPercentile", percentile);
   }
 
   /**
@@ -46,7 +74,6 @@ public class TehutiUtils {
    * @param serviceName Prefix name of all emitted metrics
    * @return
    */
-
   public static MetricsRepository getMetricsRepository(String serviceName) {
     MetricsRepository metricsRepository = new MetricsRepository();
     metricsRepository.addReporter(new JmxReporter(serviceName));

@@ -45,9 +45,9 @@ public class ClientStats extends AbstractVeniceHttpStats {
     healthySensor = registerSensor("healthy_request", healthyRequest);
     unhealthySensor = registerSensor("unhealthy_request", new OccurrenceRate());
     healthyRequestLatencySensor = registerSensor("healthy_request_latency",
-        TehutiUtils.getPercentileStat(getName(), getFullMetricName("healthy_request_latency")));
+        TehutiUtils.getPercentileStatForNetworkLatency(getName(), getFullMetricName("healthy_request_latency")));
     unhealthyRequestLatencySensor = registerSensor("unhealthy_request_latency",
-        TehutiUtils.getPercentileStat(getName(), getFullMetricName("unhealthy_request_latency")));
+        TehutiUtils.getPercentileStatForNetworkLatency(getName(), getFullMetricName("unhealthy_request_latency")));
 
     successRequestRatioSensor = registerSensor("success_request_ratio",
         new TehutiUtils.SimpleRatioStat(healthyRequest, request));
