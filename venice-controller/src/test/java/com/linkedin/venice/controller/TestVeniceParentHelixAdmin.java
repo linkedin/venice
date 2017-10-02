@@ -58,6 +58,8 @@ import org.mockito.ArgumentCaptor;
 import static org.mockito.Mockito.*;
 
 import org.mockito.Mockito;
+import org.mockito.invocation.InvocationOnMock;
+import org.mockito.stubbing.Answer;
 import org.testng.Assert;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
@@ -119,20 +121,9 @@ public class TestVeniceParentHelixAdmin {
         .when(executionIdAccessor)
         .getLastSucceedExecutionId(any());
 
-    config = mock(VeniceControllerConfig.class);
-    doReturn(clusterName).when(config).getClusterName();
-    doReturn(KAFKA_REPLICA_FACTOR).when(config)
-        .getKafkaReplicaFactor();
-    doReturn(10000).when(config)
-        .getParentControllerWaitingTimeForConsumptionMs();
-    doReturn("fake_kafka_bootstrap_servers").when(config)
-        .getKafkaBootstrapServers();
+    config = mockConfig(clusterName);
 
-    resources = mock(VeniceHelixResources.class);
-    doReturn(config).when(resources)
-        .getConfig();
-    doReturn(resources).when(internalAdmin)
-        .getVeniceHelixResource(clusterName);
+    resources = mockResources(config, clusterName);
 
     Store mockStore = mock(Store.class);
     HelixReadWriteStoreRepository storeRepo = mock(HelixReadWriteStoreRepository.class);
@@ -149,6 +140,27 @@ public class TestVeniceParentHelixAdmin {
     veniceWriter = mock(VeniceWriter.class);
     // Need to bypass VeniceWriter initialization
     parentAdmin.setVeniceWriterForCluster(clusterName, veniceWriter);
+  }
+
+  private VeniceControllerConfig mockConfig(String clusterName){
+    VeniceControllerConfig config = mock(VeniceControllerConfig.class);
+    doReturn(clusterName).when(config).getClusterName();
+    doReturn(KAFKA_REPLICA_FACTOR).when(config)
+        .getKafkaReplicaFactor();
+    doReturn(10000).when(config)
+        .getParentControllerWaitingTimeForConsumptionMs();
+    doReturn("fake_kafka_bootstrap_servers").when(config)
+        .getKafkaBootstrapServers();
+    return config;
+  }
+
+  private VeniceHelixResources mockResources(VeniceControllerConfig config, String clusterName){
+    VeniceHelixResources resources = mock(VeniceHelixResources.class);
+    doReturn(config).when(resources)
+        .getConfig();
+    doReturn(resources).when(internalAdmin)
+        .getVeniceHelixResource(clusterName);
+    return resources;
   }
 
   @Test
@@ -216,6 +228,80 @@ public class TestVeniceParentHelixAdmin {
     Assert.assertEquals(storeCreationMessage.owner.toString(), owner);
     Assert.assertEquals(storeCreationMessage.keySchema.definition.toString(), keySchemaStr);
     Assert.assertEquals(storeCreationMessage.valueSchema.definition.toString(), valueSchemaStr);
+  }
+
+  @Test
+  public void testAddStoreForMultiCluster()
+      throws ExecutionException, InterruptedException {
+    String secondCluster = "testAddStoreForMultiCluster";
+    VeniceControllerConfig configForSecondCluster = mockConfig(secondCluster);
+    mockResources(configForSecondCluster, secondCluster);
+    Map<String, VeniceControllerConfig> configMap = new HashMap<>();
+    configMap.put(clusterName, config);
+    configMap.put(secondCluster, configForSecondCluster);
+    parentAdmin = new VeniceParentHelixAdmin(internalAdmin, new VeniceControllerMultiClusterConfig(configMap));
+    Map<String, VeniceWriter> writerMap = new HashMap<>();
+    for(String cluster:configMap.keySet()) {
+      parentAdmin.getAdminCommandExecutionTracker(cluster).get().getFabricToControllerClientsMap()
+          .put("test-fabric", Mockito.mock(ControllerClient.class));
+      VeniceWriter veniceWriter = mock(VeniceWriter.class);
+      // Need to bypass VeniceWriter initialization
+      parentAdmin.setVeniceWriterForCluster(cluster, veniceWriter);
+      writerMap.put(cluster,veniceWriter);
+      parentAdmin.start(cluster);
+    }
+
+    for(String cluster:configMap.keySet()){
+      String adminTopic =  AdminTopicUtils.getTopicNameFromClusterName(cluster);
+      String offsetPath = AdminOffsetManager.getAdminTopicOffsetNodePathForCluster(cluster);
+
+      VeniceWriter veniceWriter = writerMap.get(cluster);
+
+      // Return offset -1 before writing any data into topic.
+      when(zkClient.readData(offsetPath, null))
+          .thenReturn(null);
+
+      String storeName = "test-store-"+cluster;
+      String owner = "test-owner-"+cluster;
+      String keySchemaStr = "\"string\"";
+      String valueSchemaStr = "\"string\"";
+      when(veniceWriter.put(any(),any(),anyInt())).then(invocation -> {
+        // Once we send message to topic through venice writer, return offset 1
+        when(zkClient.readData(offsetPath, null))
+            .thenReturn(TestUtils.getOffsetRecord(1));
+        Future future = mock(Future.class);
+        doReturn(new RecordMetadata(new TopicPartition(adminTopic, partitionId), 0, 1, -1, -1, -1, -1))
+            .when(future).get();
+        return future;
+      });
+
+      parentAdmin.addStore(cluster, storeName, owner, keySchemaStr, valueSchemaStr);
+
+      verify(internalAdmin)
+          .checkPreConditionForAddStore(cluster, storeName, keySchemaStr, valueSchemaStr);
+      verify(veniceWriter)
+          .put(any(), any(), anyInt());
+      verify(zkClient, times(2))
+          .readData(offsetPath, null);
+      ArgumentCaptor<byte[]> keyCaptor = ArgumentCaptor.forClass(byte[].class);
+      ArgumentCaptor<byte[]> valueCaptor = ArgumentCaptor.forClass(byte[].class);
+      ArgumentCaptor<Integer> schemaCaptor = ArgumentCaptor.forClass(Integer.class);
+      verify(veniceWriter).put(keyCaptor.capture(), valueCaptor.capture(), schemaCaptor.capture());
+      byte[] keyBytes = keyCaptor.getValue();
+      byte[] valueBytes = valueCaptor.getValue();
+      int schemaId = schemaCaptor.getValue();
+      Assert.assertEquals(schemaId, AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
+      Assert.assertEquals(keyBytes.length, 0);
+      AdminOperation adminMessage = adminOperationSerializer.deserialize(valueBytes, schemaId);
+      Assert.assertEquals(adminMessage.operationType, AdminMessageType.STORE_CREATION.ordinal());
+      StoreCreation storeCreationMessage = (StoreCreation) adminMessage.payloadUnion;
+      Assert.assertEquals(storeCreationMessage.clusterName.toString(), cluster);
+      Assert.assertEquals(storeCreationMessage.storeName.toString(), storeName);
+      Assert.assertEquals(storeCreationMessage.owner.toString(), owner);
+      Assert.assertEquals(storeCreationMessage.keySchema.definition.toString(), keySchemaStr);
+      Assert.assertEquals(storeCreationMessage.valueSchema.definition.toString(), valueSchemaStr);
+    }
+
   }
 
   @Test (expectedExceptions = VeniceException.class, expectedExceptionsMessageRegExp = ".* already exists.*")

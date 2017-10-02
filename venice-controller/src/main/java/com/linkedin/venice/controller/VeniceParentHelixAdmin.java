@@ -98,7 +98,7 @@ public class VeniceParentHelixAdmin implements Admin {
   private final MigrationPushStrategyZKAccessor pushStrategyZKAccessor;
 
   /**
-   * Variable to store offset of last message.
+   * Variable to store offset of last message for each cluster.
    * Before executing any request, this class will check whether last offset has been consumed or not:
    * If not, the current request will return with error after some time;
    * If yes, execute current request;
@@ -109,7 +109,7 @@ public class VeniceParentHelixAdmin implements Admin {
    *
    * TODO: Maybe we can initialize lastOffset to be the correct value when startup.
    */
-  private long lastOffset = -1;
+  private Map<String, Long> clusterToLastOffsetMap;
 
   private final int waitingTimeForConsumptionMs;
 
@@ -120,11 +120,13 @@ public class VeniceParentHelixAdmin implements Admin {
     this.veniceWriterMap = new ConcurrentHashMap<>();
     this.offsetManager = new AdminOffsetManager(this.veniceHelixAdmin.getZkClient(), this.veniceHelixAdmin.getAdapterSerializer());
     this.adminCommandExecutionTrackers = new HashMap<>();
+    this.clusterToLastOffsetMap = new HashMap<>();
     for (String cluster : multiClusterConfigs.getClusters()) {
       VeniceControllerConfig config = multiClusterConfigs.getConfigForCluster(cluster);
       adminCommandExecutionTrackers.put(cluster,
           new AdminCommandExecutionTracker(config.getClusterName(), veniceHelixAdmin.getExecutionIdAccessor(),
               getControllerClientMap(config.getClusterName())));
+      clusterToLastOffsetMap.put(cluster, -1L);
     }
     this.pushStrategyZKAccessor = new MigrationPushStrategyZKAccessor(veniceHelixAdmin.getZkClient(),
         veniceHelixAdmin.getAdapterSerializer());
@@ -187,7 +189,8 @@ public class VeniceParentHelixAdmin implements Admin {
       Future<RecordMetadata> future = veniceWriter.put(emptyKeyByteArr, serializedValue, AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
       RecordMetadata meta = future.get();
 
-      lastOffset = meta.offset();
+      long lastOffset = meta.offset();
+      clusterToLastOffsetMap.put(clusterName, lastOffset);
       logger.info("Sent message: " + message + " to kafka, offset: " + lastOffset);
       waitingLastOffsetToBeConsumed(clusterName);
       adminCommandExecutionTracker.startTrackingExecution(execution);
@@ -201,6 +204,7 @@ public class VeniceParentHelixAdmin implements Admin {
 
     // Blocking until consumer consumes the new message or timeout
     long startTime = SystemTime.INSTANCE.getMilliseconds();
+    long lastOffset = clusterToLastOffsetMap.get(clusterName);
     while (true) {
       long consumedOffset = offsetManager.getLastOffset(topicName, AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID).getOffset();
       if (consumedOffset >= lastOffset) {
