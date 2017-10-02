@@ -46,6 +46,26 @@ public class ClientConfig<T extends SpecificRecord> {
         .setSpecificValueClass(specificValueClass);
   }
 
+  public static <V extends SpecificRecord> ClientConfig<V> cloneConfig(ClientConfig<V> config) {
+    ClientConfig<V> newConfig = new ClientConfig<>();
+    newConfig.setSpecificValueClass(config.getSpecificValueClass())
+             .setStoreName(config.getStoreName())
+             .setVeniceURL(config.getVeniceURL())
+             .setD2Routing(config.isD2Routing())
+             .setD2ServiceName(config.getD2ServiceName())
+             .setD2BasePath(config.getD2BasePath())
+             .setD2ZkTimeout(config.getD2ZkTimeout())
+             .setD2Client(config.getD2Client())
+             .setHttps(config.isHttps)
+             .setSslEngineComponentFactory(config.getSslEngineComponentFactory())
+             .setMetricsRepository(config.getMetricsRepository())
+             .setVsonClient(config.isVsonClient);
+
+    return newConfig;
+  }
+
+  private ClientConfig() {}
+
   private ClientConfig(String storeName) {
     this.storeName = storeName;
   }
@@ -85,6 +105,10 @@ public class ClientConfig<T extends SpecificRecord> {
   public ClientConfig<T> setSpecificValueClass(Class<T> specificValueClass) {
     this.specificValueClass = specificValueClass;
     return this;
+  }
+
+  public boolean isSpecificClient() {
+    return specificValueClass != null;
   }
 
   public boolean isD2Routing() {
@@ -158,10 +182,6 @@ public class ClientConfig<T extends SpecificRecord> {
     return this;
   }
 
-  public boolean isSpecificClient() {
-    return specificValueClass != null;
-  }
-
   public ClientConfig<T> setMetricsRepository(MetricsRepository metricsRepository) {
     this.metricsRepository = metricsRepository;
     return this;
@@ -175,8 +195,8 @@ public class ClientConfig<T extends SpecificRecord> {
     return isVsonClient;
   }
 
-  public ClientConfig<T> setVsonClient(boolean isAvroClient) {
-    this.isVsonClient = isAvroClient;
+  public ClientConfig<T> setVsonClient(boolean isVonClient) {
+    this.isVsonClient = isVonClient;
     return this;
   }
 }
