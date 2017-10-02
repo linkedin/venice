@@ -7,6 +7,7 @@ import com.linkedin.venice.helix.Replica;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
+import com.linkedin.venice.utils.FlakyTestRetryAnalyzer;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.writer.VeniceWriter;
@@ -20,7 +21,7 @@ import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
-
+@Test(singleThreaded = true)
 public class TestRebalanceByDefaultStrategy {
   private static final Logger logger = Logger.getLogger(TestRebalanceByDefaultStrategy.class);
   private static final long TIMEOUT_MS = 30000l;
@@ -33,8 +34,8 @@ public class TestRebalanceByDefaultStrategy {
   private VeniceClusterWrapper cluster;
   private int numberOfController = 1;
   private int numberOfRouter = 0;
-  private int numberOfServer = 15;
-  private int partitionNumber = 8;
+  private int numberOfServer = 5;
+  private int partitionNumber = 2;
   private int replicationFactor = 3;
   private int partitionSize = 256;
 

@@ -360,17 +360,17 @@ public class VeniceClusterWrapper extends ProcessWrapper {
   protected void internalStop() throws Exception {
     // Stop called in reverse order of dependency
     for (VeniceRouterWrapper veniceRouterWrapper : veniceRouterWrappers.values()) {
-      veniceRouterWrapper.stop();
+      veniceRouterWrapper.close();
     }
     for (VeniceServerWrapper veniceServerWrapper : veniceServerWrappers.values()) {
-      veniceServerWrapper.stop();
+      veniceServerWrapper.close();
     }
     for (VeniceControllerWrapper veniceControllerWrapper : veniceControllerWrappers.values()) {
-      veniceControllerWrapper.stop();
+      veniceControllerWrapper.close();
     }
     brooklinWrapper.close();
-    kafkaBrokerWrapper.stop();
-    zkServerWrapper.stop();
+    kafkaBrokerWrapper.close();
+    zkServerWrapper.close();
   }
 
   @Override

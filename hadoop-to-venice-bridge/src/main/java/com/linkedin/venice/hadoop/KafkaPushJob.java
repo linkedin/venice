@@ -451,9 +451,10 @@ public class KafkaPushJob extends AbstractJob {
   private void validateValueSchema() {
     SchemaResponse valueSchemaResponse = controllerClient.getValueSchemaID(storeName, valueSchemaString);
     if (valueSchemaResponse.isError()) {
-      throw new VeniceException("Fail to validate value schema: " + valueSchemaString
-          + " for store: " + storeName
-          + ", error: " + valueSchemaResponse.getError());
+      throw new VeniceException("Fail to validate value schema for store: " + storeName
+          + "\nError from the server: " + valueSchemaResponse.getError()
+          + "\nSchema in data file: " + valueSchemaString
+      );
     }
     valueSchemaId = valueSchemaResponse.getId();
     logger.info("Got schema id: " + valueSchemaId + " for value schema: " + valueSchemaString + " of store: " + storeName);

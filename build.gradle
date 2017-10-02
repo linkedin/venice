@@ -132,7 +132,13 @@ subprojects {
     useTestNG()
 
     // Tests should run in parallel (this controls the number of parallel tests within a single module)
-    maxParallelForks 10
+    maxParallelForks = 10
+
+    testLogging {
+      events "started", "failed", "passed", "skipped"
+      showStandardStreams = false // to mute the DDS Router's noisy behavior...
+      exceptionFormat = 'full'
+    }
   }
 
   jacoco {
@@ -149,22 +155,9 @@ subprojects {
   }
 
   build.dependsOn jacocoTestReport
-
-  // Add Logging on what is running and passed, Sometimes the test hangs
-  // and is not possible to debug what is going on.
-  // uncomment to enable - bloats log output if we don't need it.
-/*
-  tasks.withType(Test) {
-    testLogging {
-      events "started", "passed", "skipped", "failed"
-      exceptionFormat = 'full'
-    }
-  }
-*/
-
 }
 
-task buildAll {
+task unitTests {
   dependsOn 'venice-common:build'
   dependsOn 'venice-thin-client:build'
   dependsOn 'venice-server:build'
@@ -183,10 +176,20 @@ task buildAll {
   dependsOn 'venice-samza:build'
 }
 
-task integrationtest {
+task integrationTests {
   dependsOn 'venice-test-common:integrationtest'
 }
 
+task integrationtest {
+  // just a rename to the new syntax, while maintaining backwards compat
+  dependsOn integrationTests 
+}
+
+task buildAll {
+  dependsOn unitTests
+  dependsOn integrationTests 
+}
+
 task wrapper(type: Wrapper) {
-    gradleVersion = '2.14'
+  gradleVersion = '2.14'
 }

@@ -32,6 +32,7 @@ import org.apache.helix.participant.statemachine.StateModelFactory;
 public class TestUtils {
   /** In milliseconds */
   private static final int WAIT_TIME_FOR_NON_DETERMINISTIC_ACTIONS = 30;
+  private static final int MAX_WAIT_TIME_FOR_NON_DETERMINISTIC_ACTIONS = WAIT_TIME_FOR_NON_DETERMINISTIC_ACTIONS * 100;
 
   public static String getUniqueString(String base) {
     return base + "-" + System.currentTimeMillis() + "-" + RandomGenUtils.getRandomIntWithIn(Integer.MAX_VALUE);
@@ -70,7 +71,15 @@ public class TestUtils {
   public static void waitForNonDeterministicAssertion(long timeout,
                                                       TimeUnit timeoutUnits,
                                                       NonDeterministicAssertion assertionToWaitFor) throws AssertionError {
+    waitForNonDeterministicAssertion(timeout, timeoutUnits, false, assertionToWaitFor);
+  }
+
+  public static void waitForNonDeterministicAssertion(long timeout,
+                                                      TimeUnit timeoutUnits,
+                                                      boolean exponentialBackOff,
+                                                      NonDeterministicAssertion assertionToWaitFor) throws AssertionError {
     long timeoutTime = System.currentTimeMillis() + timeoutUnits.toMillis(timeout);
+    long waitTime = WAIT_TIME_FOR_NON_DETERMINISTIC_ACTIONS;
     while (true) {
       try {
         assertionToWaitFor.execute();
@@ -79,7 +88,10 @@ public class TestUtils {
         if (System.currentTimeMillis() > timeoutTime) {
           throw ae;
         }
-        Utils.sleep(WAIT_TIME_FOR_NON_DETERMINISTIC_ACTIONS);
+        Utils.sleep(waitTime);
+        if (exponentialBackOff) {
+          waitTime = Math.min(waitTime * 2, MAX_WAIT_TIME_FOR_NON_DETERMINISTIC_ACTIONS);
+        }
       }
     }
   }

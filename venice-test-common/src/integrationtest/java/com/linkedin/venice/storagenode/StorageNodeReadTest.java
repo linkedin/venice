@@ -57,6 +57,7 @@ import static com.linkedin.venice.ConfigKeys.*;
 import static com.linkedin.venice.router.api.VenicePathParser.*;
 
 
+@Test(singleThreaded = true)
 public class StorageNodeReadTest {
   private VeniceClusterWrapper veniceCluster;
   private String storeVersionName;

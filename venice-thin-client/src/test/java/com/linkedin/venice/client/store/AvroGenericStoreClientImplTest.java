@@ -21,6 +21,7 @@ import java.util.StringJoiner;
 import java.util.stream.Collectors;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
+import org.apache.commons.io.IOUtils;
 import org.apache.log4j.Logger;
 import org.codehaus.jackson.map.ObjectMapper;
 import org.testng.Assert;
@@ -40,6 +41,7 @@ import java.util.Set;
 import java.util.TreeSet;
 import java.util.concurrent.ExecutionException;
 
+@Test(singleThreaded = true)
 public class AvroGenericStoreClientImplTest {
   private Logger logger = Logger.getLogger(AvroGenericStoreClientImplTest.class);
   private MockD2ServerWrapper routerServer;
@@ -95,9 +97,7 @@ public class AvroGenericStoreClientImplTest {
   @AfterMethod
   public void closeStoreClient() {
     for (AvroGenericStoreClient<String, Object> storeClient : storeClients.values()) {
-      if (null != storeClient) {
-        storeClient.close();
-      }
+      IOUtils.closeQuietly(storeClient);
     }
     storeClients.clear();
   }
@@ -216,6 +216,15 @@ public class AvroGenericStoreClientImplTest {
 
   @Test
   public void getByStoreKeyTestWithNoSchemaAvailable() throws Throwable {
+    /**
+     * Bump up to 20K iterations to reliably trigger a {@link com.linkedin.r2.RemoteInvocationException}
+     *
+     * This only seems to happen with the D2 client. The HTTP client is stable.
+     *
+     * TODO: Fix flaky D2 client.
+     */
+    final int TEST_ITERATIONS = 100;
+
     String keyStr = "test_key";
     int valueSchemaId = 1;
     String valueStr = "test_value";
@@ -227,17 +236,28 @@ public class AvroGenericStoreClientImplTest {
     FullHttpResponse valueResponse = StoreClientTestUtils.constructStoreResponse(nonExistingSchemaId, valueStr.getBytes());
     String storeRequestPath = "/" + someStoreClient.getRequestPathByKey(keyStr);
     routerServer.addResponseForUri(storeRequestPath, valueResponse);
-    for (Map.Entry<String, AvroGenericStoreClient<String, Object>> entry : storeClients.entrySet()) {
-      logger.info("Execute test for transport client: " + entry.getKey());
-      try {
-        entry.getValue().get(keyStr).get();
-      } catch (ExecutionException e) {
-        Assert.assertTrue(e.getCause() instanceof VeniceClientException);
-        Assert.assertTrue(e.getCause().getMessage().contains("Failed to get latest value schema for store: test_store"), "Wrong message, actual message: " + e.getCause().getMessage());
-        continue;
-      } catch (Throwable t) {
+    for (int i = 0; i < TEST_ITERATIONS; i++) {
+      logger.info("Iteration: " + i);
+      for (Map.Entry<String, AvroGenericStoreClient<String, Object>> entry : storeClients.entrySet()) {
+        logger.trace("Execute test for transport client: " + entry.getKey());
+        try {
+          entry.getValue().get(keyStr).get();
+        } catch (ExecutionException e) {
+          Throwable cause = e.getCause();
+          boolean causeOfCorrectType = cause instanceof VeniceClientException;
+          boolean correctMessage = cause.getMessage().contains("Failed to get latest value schema for store: test_store");
+          if (!causeOfCorrectType || !correctMessage) {
+            logger.error("Received ExecutionException, as expected, but it doesn't have the right characteristics. Logging stacktrace. Client: " + entry.getKey(), e);
+          }
+          Assert.assertTrue(causeOfCorrectType, "Expected to get a VeniceClientException but instead got a " + cause.getClass().getSimpleName());
+          Assert.assertTrue(correctMessage,"Expected to get an exception message containing '[...] latest value schema [...]', but instead got the following message:" + cause.getMessage());
+          continue;
+        } catch (Throwable t) {
+          logger.error("Received a Throwable other than an ExecutionException from " + entry.getKey(), t);
+          Assert.fail("Received a Throwable other than an ExecutionException! Type: " + t.getClass().getSimpleName());
+        }
+        Assert.fail("There should have been a VeniceClientException by now, but did not receive any from " + entry.getKey());
       }
-      Assert.assertTrue(false, "There should be a VeniceClientException here");
     }
   }
 

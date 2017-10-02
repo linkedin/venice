@@ -227,7 +227,7 @@ public class ZkServerWrapper extends ProcessWrapper {
     while (!zkServer.isRunning() && zkThread.exception == null) {
       long currentTime = System.currentTimeMillis();
       if ((currentTime - startTime) > MAX_WAIT_TIME_DURING_STARTUP) {
-        stop();
+        close();
         throw new VeniceException("Unable to start ZK within the maximum allotted time (" + MAX_WAIT_TIME_DURING_STARTUP + " ms).");
       } else {
         Thread.sleep(100);

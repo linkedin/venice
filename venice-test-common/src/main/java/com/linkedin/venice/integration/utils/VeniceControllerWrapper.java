@@ -59,7 +59,12 @@ public class VeniceControllerWrapper extends ProcessWrapper {
             .put(DEFAULT_REPLICA_FACTOR, replicaFactor)
             .put(DEFAULT_NUMBER_OF_PARTITION, 1)
             .put(ADMIN_PORT, adminPort)
-            .put(DEFAULT_MAX_NUMBER_OF_PARTITIONS, 10)
+            /**
+             * Running with just one partition may not fully exercise the distributed nature of the system,
+             * but we do want to minimize the number as each partition results in files, connections, threads, etc.
+             * in the whole system. 3 seems like a reasonable tradeoff between these concerns.
+             */
+            .put(DEFAULT_MAX_NUMBER_OF_PARTITIONS, 3)
             .put(DEFAULT_PARTITION_SIZE, partitionSize)
             .put(TOPIC_MONITOR_POLL_INTERVAL_MS, 100)
             .put(CONTROLLER_PARENT_MODE, isParent)

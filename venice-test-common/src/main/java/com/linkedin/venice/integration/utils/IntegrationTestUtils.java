@@ -1,5 +1,6 @@
 package com.linkedin.venice.integration.utils;
 
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.PersistenceType;
 
 import static com.linkedin.venice.ConfigKeys.*;
@@ -9,8 +10,10 @@ import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.io.File;
+import java.io.FileWriter;
 import java.io.IOException;
 import java.net.ServerSocket;
+import java.util.Properties;
 
 
 /**
@@ -58,7 +61,7 @@ class IntegrationTestUtils {
 
     VeniceProperties clusterProperties = new PropertyBuilder()
 
-        // Helix-related config
+    // Helix-related config
     .put(HELIX_ENABLED, true)
     .put(ZOOKEEPER_ADDRESS, zkAddress)
 
@@ -70,7 +73,7 @@ class IntegrationTestUtils {
     .put(KAFKA_BOOTSTRAP_SERVERS, kafkaBrokerWrapper.getAddress())
     .put(KAFKA_ZK_ADDRESS, kafkaBrokerWrapper.getZkAddress())
 
-        // Other configs
+    // Other configs
     .put(CLUSTER_NAME, clusterName)
     .put(OFFSET_MANAGER_TYPE, PersistenceType.BDB.toString())
     .put(OFFSET_MANAGER_FLUSH_INTERVAL_MS, 1000)
@@ -80,4 +83,30 @@ class IntegrationTestUtils {
     return clusterProperties;
   }
 
+  /**
+   * N.B.: Visibility is package-private on purpose.
+   *
+   * @param directory where to create the file
+   * @param fileName for the new config file
+   * @param content of the new config file
+   * @return a handle on the newly-created config file.
+   */
+  static File getConfigFile(File directory, String fileName, Properties content) {
+    if (!directory.exists()) {
+      directory.mkdir();
+    } else if (!directory.isDirectory()) {
+      throw new VeniceException("Can only create a config file in a directory, not in a file: " + directory.getAbsolutePath());
+    }
+    File propsFile = new File(directory, fileName);
+    if (propsFile.exists()) {
+      throw new VeniceException("The file already exists: " + propsFile.getAbsolutePath());
+    }
+    try {
+      propsFile.createNewFile();
+      content.store(new FileWriter(propsFile), "Config file: " + fileName);
+    } catch (IOException e) {
+      throw new VeniceException("Fot an IOExpcetion while trying to create or write to the file: " + propsFile.getAbsolutePath(), e);
+    }
+    return propsFile;
+  }
 }

@@ -15,12 +15,12 @@ import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
-
+@Test(singleThreaded = true)
 public class TestRestartServer {
   private VeniceClusterWrapper cluster;
   int replicaFactor = 2;
   int partitionSize = 1000;
-  long testTimeOutMS = 3000;
+  long testTimeOutMS = 20000;
 
   @BeforeClass
   public void setup() {

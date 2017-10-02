@@ -473,4 +473,8 @@ public class VeniceWriter<K, V> extends AbstractVeniceWriter<K, V> {
       }
     }
   }
+
+  public Time getTime() {
+    return time;
+  }
 }

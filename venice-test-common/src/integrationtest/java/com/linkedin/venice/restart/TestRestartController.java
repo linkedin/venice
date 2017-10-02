@@ -16,7 +16,7 @@ import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
-
+@Test(singleThreaded = true)
 public class TestRestartController {
   private VeniceClusterWrapper cluster;
   int testTimeOutMS = 3000;

@@ -77,6 +77,8 @@ public class TestMetadataOperationInMultiCluster {
     // Create version in wrong cluster
     versionCreationResponse = controllerClient.createNewStoreVersion(sceondStoreName, 1000);
     Assert.assertTrue(versionCreationResponse.isError());
+
+    multiClusterWrapper.close();
   }
 
   @Test
@@ -118,6 +120,8 @@ public class TestMetadataOperationInMultiCluster {
       runH2V(propertiesMap.get(clusterName), 1,
           new ControllerClient(clusterName, multiClusterWrapper.getRandomController().getControllerUrl()));
     }
+
+    multiClusterWrapper.close();
   }
 
   private static void runH2V(Properties h2vProperties, int expectedVersionNumber, ControllerClient controllerClient)

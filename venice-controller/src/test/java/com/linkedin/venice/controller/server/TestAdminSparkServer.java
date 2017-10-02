@@ -33,6 +33,7 @@ import com.linkedin.venice.meta.StoreStatus;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import java.io.IOException;
 import java.util.ArrayList;
@@ -55,22 +56,28 @@ import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
+/**
+ * Slow test class, given fast priority
+ */
+@Test(singleThreaded = true, priority = -6)
 public class TestAdminSparkServer {
+  /**
+   * Seems that Helix has limit on the number of resource each node is able to handle.
+   * You might want to increase the number of SN in the future if new tests are kept adding
+   * to this class. In the current, 2 nodes seems to be enough.
+   *
+   * A typical exception for the short of SN looks like "Failed to create helix resource."
+   */
+  private static final int STORAGE_NODE_COUNT = 6;
+  private static final int TIME_OUT = 10 * Time.MS_PER_SECOND;
+
   private VeniceClusterWrapper venice;
   private String routerUrl;
   private ControllerClient controllerClient;
 
   @BeforeClass
   public void setUp() {
-    /*
-     * Seems that Helix has limit on the number of resource each node is able to handle.
-     * You might want to increase the number of SN in the future if new tests are kept adding
-     * to this class. In the current, 2 nodes seems to be enough.
-     *
-     * A typical exception for the short of SN looks like "Failed to create helix resource."
-     */
-
-    venice = ServiceFactory.getVeniceCluster(1, 4, 1); //Controllers, Servers, Routers
+    venice = ServiceFactory.getVeniceCluster(1, STORAGE_NODE_COUNT, 1); //Controllers, Servers, Routers
     routerUrl = venice.getRandomRouterURL();
     controllerClient = new ControllerClient(venice.getClusterName(), routerUrl);
   }
@@ -80,23 +87,23 @@ public class TestAdminSparkServer {
     venice.close();
   }
 
-  @Test
+  @Test(timeOut = TIME_OUT)
   public void controllerClientCanQueryNodesInCluster(){
     MultiNodeResponse nodeResponse = controllerClient.listStorageNodes();
     Assert.assertFalse(nodeResponse.isError(), nodeResponse.getError());
-    Assert.assertEquals(nodeResponse.getNodes().length, 4, "Node count does not match");
+    Assert.assertEquals(nodeResponse.getNodes().length, STORAGE_NODE_COUNT, "Node count does not match");
   }
 
-  @Test
+  @Test(timeOut = TIME_OUT)
   public void controllerClientCanQueryInstanceStatusInCluster() {
     MultiNodesStatusResponse nodeResponse = controllerClient.listInstancesStatuses();
     Assert.assertFalse(nodeResponse.isError(), nodeResponse.getError());
-    Assert.assertEquals(nodeResponse.getInstancesStatusMap().size(), 4, "Node count does not match");
+    Assert.assertEquals(nodeResponse.getInstancesStatusMap().size(), STORAGE_NODE_COUNT, "Node count does not match");
     Assert.assertEquals(nodeResponse.getInstancesStatusMap().values().iterator().next(),
         InstanceStatus.CONNECTED.toString(), "Node status does not match.");
   }
 
-  @Test
+  @Test(timeOut = TIME_OUT)
   public void controllerClientCanQueryReplicasOnAStorageNode(){
     venice.getNewStoreVersion();
     MultiNodeResponse nodeResponse = controllerClient.listStorageNodes();
@@ -105,22 +112,22 @@ public class TestAdminSparkServer {
     Assert.assertFalse(replicas.isError(), replicas.getError());
   }
 
-  @Test
+  @Test(timeOut = TIME_OUT)
   public void controllerClientCanQueryReplicasForTopic(){
     VersionCreationResponse versionCreationResponse = venice.getNewStoreVersion();
     Assert.assertFalse(versionCreationResponse.isError(), versionCreationResponse.getError());
     String kafkaTopic = venice.getNewStoreVersion().getKafkaTopic();
     Assert.assertNotNull(kafkaTopic, "venice.getNewStoreVersion() should not return a null topic name\n" + versionCreationResponse.toString());
 
-
     String store = Version.parseStoreFromKafkaTopicName(kafkaTopic);
     int version = Version.parseVersionFromKafkaTopicName(kafkaTopic);
     MultiReplicaResponse response = controllerClient.listReplicas( store, version);
     Assert.assertFalse(response.isError(), response.getError());
-    Assert.assertEquals(response.getReplicas().length, 10, "Replica count does not match"); /* 10 partitions, replication factor 1 */
+    int totalReplicasCount = versionCreationResponse.getPartitions() * versionCreationResponse.getReplicas();
+    Assert.assertEquals(response.getReplicas().length, totalReplicasCount, "Replica count does not match");
   }
 
-  @Test
+  @Test(timeOut = TIME_OUT)
   public void controllerClientCanCreateNewStore() throws IOException, ExecutionException, InterruptedException {
     String storeToCreate = "newTestStore123";
     String keySchema = "\"string\"";
@@ -154,7 +161,7 @@ public class TestAdminSparkServer {
     httpClient.close();
   }
 
-  @Test
+  @Test(timeOut = TIME_OUT)
   public void controllerClientGetKeySchema() {
     String storeToCreate = TestUtils.getUniqueString("newTestStore125");
     String keySchemaStr = "\"string\"";
@@ -172,7 +179,7 @@ public class TestAdminSparkServer {
     Assert.assertEquals(sr1.getSchemaStr(), keySchemaStr);
   }
 
-  @Test
+  @Test(timeOut = TIME_OUT)
   public void controllerClientManageValueSchema() {
     String storeToCreate = TestUtils.getUniqueString("newTestStore");
     String keySchemaStr = "\"string\"";
@@ -270,7 +277,7 @@ public class TestAdminSparkServer {
     Assert.assertEquals(schemas[1].getSchemaStr(), formattedSchemaStr2);
   }
 
-  @Test
+  @Test(timeOut = TIME_OUT)
   public void controllerClientSchemaOperationsAgainstInvalidStore() {
     String schema1 = "\"string\"";
     // Verify getting operations against non-existed store
@@ -283,7 +290,7 @@ public class TestAdminSparkServer {
     Assert.assertTrue(msr1.isError());
   }
 
-  @Test
+  @Test(timeOut = TIME_OUT)
   public void controllerClientCanGetStoreInfo(){
     String topic = venice.getNewStoreVersion().getKafkaTopic();
     String storeName = Version.parseStoreFromKafkaTopicName(topic);
@@ -298,7 +305,7 @@ public class TestAdminSparkServer {
     Assert.assertEquals(versions.size(), 1, "Store from new store-version should only have one version");
   }
 
-  @Test
+  @Test(timeOut = TIME_OUT)
   public void controllerClientCanDisableStoresWrite()
       throws InterruptedException {
     String topic = venice.getNewStoreVersion().getKafkaTopic();
@@ -314,7 +321,7 @@ public class TestAdminSparkServer {
     Assert.assertFalse(store.isEnableStoreWrites(), "Store should be disabled after setting disabled status to true");
   }
 
-  @Test
+  @Test(timeOut = TIME_OUT)
   public void controllerClientCanDisableStoresRead()
       throws InterruptedException {
     String topic = venice.getNewStoreVersion().getKafkaTopic();
@@ -331,7 +338,7 @@ public class TestAdminSparkServer {
     Assert.assertFalse(store.isEnableStoreReads(), "Store should be disabled after setting disabled status to true");
   }
 
-  @Test
+  @Test(timeOut = TIME_OUT)
   public void controllerClientCanDisableStoresReadWrite()
       throws InterruptedException {
     String topic = venice.getNewStoreVersion().getKafkaTopic();
@@ -350,7 +357,7 @@ public class TestAdminSparkServer {
     Assert.assertFalse(store.isEnableStoreWrites(), "Store should be disabled after setting disabled status to true");
   }
 
-  @Test
+  @Test(timeOut = TIME_OUT)
   public void controllerClientCanSetStoreMetadata() {
     String storeName = TestUtils.getUniqueString("store");
     String owner = TestUtils.getUniqueString("owner");
@@ -368,7 +375,7 @@ public class TestAdminSparkServer {
     Assert.assertEquals(partitionRes.getPartitionCount(), partitionCount);
   }
 
-  @Test
+  @Test(timeOut = TIME_OUT)
   public void controllerClientCanQueryRemovability(){
     VeniceServerWrapper server = venice.getVeniceServers().get(0);
     String nodeId = Utils.getHelixNodeIdentifier(server.getPort());
@@ -377,7 +384,7 @@ public class TestAdminSparkServer {
     Assert.assertFalse(response.isError(), response.getError());
   }
 
-  @Test
+  @Test(timeOut = TIME_OUT)
   public void controllerClientCanDeleteAllVersion() {
     String storeName = "controllerClientCanDeleteAllVersion";
     venice.getNewStore(storeName);
@@ -393,13 +400,13 @@ public class TestAdminSparkServer {
     Assert.assertEquals(store.getVersions().size(), 0);
   }
 
-  @Test
+  @Test(timeOut = TIME_OUT)
   public void controllerClientCanGetLastSucceedExecutionId() {
     Assert.assertEquals(controllerClient.getLastSucceedExecutionId().getLastSucceedExecutionId(),
         -1);
   }
 
-  @Test
+  @Test(timeOut = TIME_OUT)
   public void controllerClientCanGetExecutionOfDeleteAllVersions()
       throws InterruptedException {
     String cluster = venice.getClusterName();
@@ -423,7 +430,7 @@ public class TestAdminSparkServer {
     Assert.assertFalse(execution.isSucceedInAllFabric());
   }
 
-  @Test
+  @Test(timeOut = TIME_OUT)
   public void controllerClientCanListStoresStatuses() {
     List<String> storeNames = new ArrayList<>();
     int storeCount = 2;
@@ -450,7 +457,7 @@ public class TestAdminSparkServer {
     }
   }
 
-  @Test
+  @Test(timeOut = TIME_OUT)
   public void controllerClientCanRemoveNodeFromCluster() {
     Admin admin = venice.getMasterVeniceController().getVeniceAdmin();
     VeniceServerWrapper server = venice.getVeniceServers().get(0);
@@ -467,7 +474,7 @@ public class TestAdminSparkServer {
         "Node should be removed from the cluster.");
   }
 
-  @Test
+  @Test(timeOut = TIME_OUT)
   public void controllerClientCanUpdateWhiteList() {
     Admin admin = venice.getMasterVeniceController().getVeniceAdmin();
 
@@ -482,7 +489,7 @@ public class TestAdminSparkServer {
         nodeId + " has been removed from white list.");
   }
 
-  @Test
+  @Test(timeOut = TIME_OUT)
   public void controllerClientCanSetStore() {
     //mutable store metadata
     String owner = TestUtils.getUniqueString("owner");
@@ -527,29 +534,36 @@ public class TestAdminSparkServer {
     Assert.assertEquals(store.isAccessControlled(), accessControlled);
   }
 
-  @Test
+  @Test(timeOut = TIME_OUT)
   public void controllerClientCanSetStoreMissingSomeFields() {
-    //partial metadata
-    int partitionCount = 2;
-    int current = 1;
-    boolean enableReads = false;
+    String storeName = null;
+    try {
+      //partial metadata
+      int partitionCount = 2;
+      int current = 1;
+      boolean enableReads = false;
 
-    String storeName = venice.getNewStoreVersion().getName();
-    ControllerClient controllerClient = new ControllerClient(venice.getClusterName(), routerUrl);
+      storeName = venice.getNewStoreVersion().getName();
+      ControllerClient controllerClient = new ControllerClient(venice.getClusterName(), routerUrl);
 
-    ControllerResponse response =
-        controllerClient.updateStore(storeName, Optional.empty(), Optional.of(partitionCount),
-            Optional.of(current), Optional.of(enableReads), Optional.empty(), Optional.empty(), Optional.empty(),
-            Optional.empty(), Optional.empty(), Optional.empty());
+      ControllerResponse response =
+          controllerClient.updateStore(storeName, Optional.empty(), Optional.of(partitionCount),
+              Optional.of(current), Optional.of(enableReads), Optional.empty(), Optional.empty(), Optional.empty(),
+              Optional.empty(), Optional.empty(), Optional.empty());
 
-    Assert.assertFalse(response.isError(), response.getError());
-    Store store = venice.getMasterVeniceController().getVeniceAdmin().getStore(venice.getClusterName(), storeName);
-    Assert.assertEquals(store.getPartitionCount(), partitionCount);
-    Assert.assertEquals(store.getCurrentVersion(), current);
-    Assert.assertEquals(store.isEnableReads(), enableReads);
+      Assert.assertFalse(response.isError(), response.getError());
+      Store store = venice.getMasterVeniceController().getVeniceAdmin().getStore(venice.getClusterName(), storeName);
+      Assert.assertEquals(store.getPartitionCount(), partitionCount);
+      Assert.assertEquals(store.getCurrentVersion(), current);
+      Assert.assertEquals(store.isEnableReads(), enableReads);
+    } finally {
+      if (null != storeName) {
+        controllerClient.deleteStore(storeName);
+      }
+    }
   }
 
-  @Test
+  @Test(timeOut = TIME_OUT)
   public void canCreateAHybridStore() {
     String storeName = TestUtils.getUniqueString("store");
     String owner = TestUtils.getUniqueString("owner");
@@ -561,7 +575,7 @@ public class TestAdminSparkServer {
     Assert.assertEquals(storeResponse.getStore().getHybridStoreConfig().getOffsetLagThresholdToGoOnline(), 1515L);
   }
 
-  @Test
+  @Test(timeOut = TIME_OUT)
   public void controllerClientCanGetStorageEngineOverheadRatio() {
     String storeName = venice.getNewStoreVersion().getName();
     StorageEngineOverheadRatioResponse response =
@@ -572,7 +586,7 @@ public class TestAdminSparkServer {
                         VeniceControllerWrapper.DEFAULT_STORAGE_ENGINE_OVERHEAD_RATIO);
   }
 
-  @Test
+  @Test(timeOut = TIME_OUT)
   public void controllerClientCanDeleteStore() {
     String storeName = "controllerClientCanDeleteStore";
     venice.getNewStore(storeName);
@@ -587,7 +601,7 @@ public class TestAdminSparkServer {
     Assert.assertTrue(storeResponse.isError(), "Store should already be deleted.");
   }
 
-  @Test
+  @Test(timeOut = TIME_OUT)
   public void controllerClientCanGetExecutionOfDeleteStore()
       throws InterruptedException {
     String cluster = venice.getClusterName();
@@ -610,6 +624,7 @@ public class TestAdminSparkServer {
     Assert.assertFalse(execution.isSucceedInAllFabric());
   }
 
+  @Test(timeOut = TIME_OUT)
   public void controllerClientProvidesErrorWhenRequestingTopicForStoreThatDoesNotExist() throws IOException {
     String storeNameDoesNotExist = TestUtils.getUniqueString("no-store");
     String pushId = TestUtils.getUniqueString("no-store-push");
@@ -620,6 +635,7 @@ public class TestAdminSparkServer {
             .writeValueAsString(vcr));
   }
 
+  @Test(timeOut = TIME_OUT)
   public void controllerClientCanEnableThrottling(){
     controllerClient.enableThrotting(false);
     Assert.assertFalse(controllerClient.getRoutersClusterConfig().getConfig().isThrottlingEnabled());
@@ -628,7 +644,7 @@ public class TestAdminSparkServer {
 
   }
 
-  @Test
+  @Test(timeOut = TIME_OUT)
   public void controllerClientCanEnableMaxCapacityProtection(){
     controllerClient.enableMaxCapacityProtection(false);
     Assert.assertFalse(controllerClient.getRoutersClusterConfig().getConfig().isMaxCapacityProtectionEnabled());
@@ -636,7 +652,7 @@ public class TestAdminSparkServer {
     Assert.assertTrue(controllerClient.getRoutersClusterConfig().getConfig().isMaxCapacityProtectionEnabled());
   }
 
-  @Test
+  @Test(timeOut = TIME_OUT)
   public void controllerClientCanEnableQuotaRebalance() {
     int expectedRouterCount = 100;
     controllerClient.enableQuotaRebalanced(false, expectedRouterCount);
@@ -648,7 +664,7 @@ public class TestAdminSparkServer {
     Assert.assertTrue(controllerClient.getRoutersClusterConfig().getConfig().isQuotaRebalanceEnabled());
   }
 
-  @Test
+  @Test(timeOut = TIME_OUT)
   public void controllerClientCanDiscoverCluster() {
     String storeName = "controllerClientCanDiscoverCluster";
     controllerClient.createNewStore(storeName, "test", "\"string\"", "\"string\"");

@@ -4,8 +4,11 @@ import com.linkedin.venice.controllerapi.ControllerApiConstants;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.serialization.DefaultSerializer;
 import com.linkedin.venice.serialization.avro.VeniceAvroGenericSerializer;
+import com.linkedin.venice.utils.SystemTime;
+import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.VeniceWriter;
 import java.io.ByteArrayOutputStream;
@@ -85,19 +88,24 @@ public class VeniceSystemProducer implements SystemProducer {
   private String samzaJobId;
   private ControllerApiConstants.PushType pushType;
   private ControllerClient veniceControllerClient;
-
+  private final Time time;
 
   public VeniceSystemProducer(String veniceUrl, String veniceCluster, ControllerApiConstants.PushType pushType, String samzaJobId) {
+    this(veniceUrl, veniceCluster, pushType, samzaJobId, SystemTime.INSTANCE);
+  }
+
+  public VeniceSystemProducer(String veniceUrl, String veniceCluster, ControllerApiConstants.PushType pushType, String samzaJobId, Time time) {
     this.veniceClusterName = veniceCluster;
     this.pushType = pushType;
     this.samzaJobId = samzaJobId;
     this.veniceControllerClient = new ControllerClient(veniceCluster, veniceUrl);
+    this.time = time;
   }
 
   private VeniceWriter<byte[], byte[]> getVeniceWriter(String topic, String kafkaBootstrapServers) {
     Properties veniceWriterProperties = new Properties();
     veniceWriterProperties.put(KAFKA_BOOTSTRAP_SERVERS, kafkaBootstrapServers);
-    return new VeniceWriter<>(new VeniceProperties(veniceWriterProperties), topic, new DefaultSerializer(), new DefaultSerializer());
+    return new VeniceWriter<>(new VeniceProperties(veniceWriterProperties), topic, new DefaultSerializer(), new DefaultSerializer(), time);
   }
 
   @Override
@@ -121,12 +129,21 @@ public class VeniceSystemProducer implements SystemProducer {
   public void send(String source, OutgoingMessageEnvelope outgoingMessageEnvelope) {
     String store = outgoingMessageEnvelope.getSystemStream().getStream();
     String topic = storeToTopic.computeIfAbsent(store, s -> {
-      VersionCreationResponse versionCreationResponse = veniceControllerClient.requestTopicForWrites(s, 1, pushType, samzaJobId); // TODO, store size?
-      if (versionCreationResponse.isError()) { //TODO: retry
-        throw new SamzaException("Failed to get target version from Venice for store " + s + ": " + versionCreationResponse.getError());
+      VersionCreationResponse versionCreationResponse = null;
+      for (int currentAttempt = 0; currentAttempt < 10; currentAttempt++) {
+        versionCreationResponse = veniceControllerClient.requestTopicForWrites(s, 1, pushType, samzaJobId); // TODO, store size?
+        if (!versionCreationResponse.isError()) {
+          storeToKafkaServers.put(s, versionCreationResponse.getKafkaBootstrapServers());
+          return versionCreationResponse.getKafkaTopic();
+        } else {
+          try {
+            time.sleep(1000);
+          } catch (InterruptedException e) {
+            throw new VeniceException(e);
+          }
+        }
       }
-      storeToKafkaServers.put(s, versionCreationResponse.getKafkaBootstrapServers());
-      return versionCreationResponse.getKafkaTopic();
+      throw new SamzaException("Failed to get target version from Venice for store " + s + ": " + versionCreationResponse.getError());
     });
     Object keyObject = outgoingMessageEnvelope.getKey();
     Object valueObject = outgoingMessageEnvelope.getMessage();
@@ -134,12 +151,21 @@ public class VeniceSystemProducer implements SystemProducer {
     Schema keySchema = getSchemaFromObject(keyObject);
 
     Schema remoteKeySchema = keySchemas.computeIfAbsent(store, s -> {
-      SchemaResponse keySchemaResponse = veniceControllerClient.getKeySchema(s);
-      if (keySchemaResponse.isError()) { //TODO: retry
-        throw new SamzaException("Failed to get Venice key schema for store " + s + ": " + keySchemaResponse.getError());
+      SchemaResponse keySchemaResponse = null;
+      for (int currentAttempt = 0; currentAttempt < 10; currentAttempt++) {
+        keySchemaResponse = veniceControllerClient.getKeySchema(s);
+        if (!keySchemaResponse.isError()) {
+          String schemaString = keySchemaResponse.getSchemaStr();
+          return Schema.parse(schemaString);
+        } else {
+          try {
+            time.sleep(1000);
+          } catch (InterruptedException e) {
+            throw new VeniceException(e);
+          }
+        }
       }
-      String schemaString = keySchemaResponse.getSchemaStr();
-      return Schema.parse(schemaString);
+      throw new SamzaException("Failed to get Venice key schema for store " + s + ": " + keySchemaResponse.getError());
     });
 
     if (!remoteKeySchema.equals(keySchema)) {
@@ -165,12 +191,21 @@ public class VeniceSystemProducer implements SystemProducer {
     } else {
       Schema valueSchema = getSchemaFromObject(valueObject);
       int valueSchemaId = schemaIds.computeIfAbsent(new StoreAndSchema(store, valueSchema), storeAndSchema -> {
-        SchemaResponse valueSchemaResponse = veniceControllerClient.getValueSchemaID(storeAndSchema.getStoreName(),
-            storeAndSchema.getSchema().toString());
-        if (valueSchemaResponse.isError()) { //TODO: retry
-          throw new SamzaException("Failed to get Venice schema ID for store " + store + ": " + valueSchemaResponse.getError());
+        SchemaResponse valueSchemaResponse = null;
+        for (int currentAttempt = 0; currentAttempt < 10; currentAttempt++) {
+          valueSchemaResponse =  veniceControllerClient.getValueSchemaID(storeAndSchema.getStoreName(),
+              storeAndSchema.getSchema().toString());
+          if (!valueSchemaResponse.isError()) {
+            return valueSchemaResponse.getId();
+          } else {
+            try {
+              time.sleep(1000);
+            } catch (InterruptedException e) {
+              throw new VeniceException(e);
+            }
+          }
         }
-        return valueSchemaResponse.getId();
+        throw new SamzaException("Failed to get Venice schema ID for store " + store + ": " + valueSchemaResponse.getError());
       });
 
       byte[] value = serializeObject(topic, valueObject);

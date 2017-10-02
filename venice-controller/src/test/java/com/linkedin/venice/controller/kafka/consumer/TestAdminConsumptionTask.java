@@ -67,11 +67,17 @@ import org.apache.kafka.clients.producer.RecordMetadata;
 import org.apache.kafka.common.TopicPartition;
 import org.mockito.Mockito;
 import org.testng.Assert;
+import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
 import static org.mockito.Mockito.*;
 
+
+/**
+ * Slow test class, given fast priority
+ */
+@Test(priority = -5)
 public class TestAdminConsumptionTask {
   private static final int TIMEOUT = 10000;
 
@@ -120,6 +126,11 @@ public class TestAdminConsumptionTask {
     doReturn(new HashSet<>(Arrays.asList(topicName))).when(topicManager).listTopics();
     doReturn(topicManager).when(admin).getTopicManager();
     doReturn(true).when(topicManager).containsTopic(topicName);
+  }
+
+  @AfterMethod
+  public void cleanUp() {
+    executor.shutdownNow();
   }
 
   private VeniceWriter getVeniceWriter(InMemoryKafkaBroker inMemoryKafkaBroker) {
