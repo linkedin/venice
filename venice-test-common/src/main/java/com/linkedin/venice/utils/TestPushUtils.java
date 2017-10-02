@@ -202,7 +202,7 @@ public class TestPushUtils {
     return props;
   }
 
-  public static Properties multiClusterH2VProps(VeniceMultiClusterWrapper veniceMultiClusterWrapper, String clusterName, String inputDirPath, String storeName){
+  public static Properties multiClusterH2VProps(VeniceMultiClusterWrapper veniceMultiClusterWrapper, String clusterName, String inputDirPath, String storeName) {
     Properties props = new Properties();
     // Let h2v talk to multiple controllers.
     props.put(KafkaPushJob.VENICE_URL_PROP, veniceMultiClusterWrapper.getControllerConnectString());

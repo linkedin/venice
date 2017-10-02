@@ -33,6 +33,15 @@ configurations {
 }
 
 task integrationtest(type: Test) {
+  String forkEveryConfigName = "integrationTest.forkEvery"
+  if (project.hasProperty(forkEveryConfigName)) {
+    println "$forkEveryConfigName set to ${project.getProperty(forkEveryConfigName)}"
+    // Can help isolation of tests
+    forkEvery = project.getProperty(forkEveryConfigName)
+  } else {
+    println forkEveryConfigName + ' not set. Will recycle the same JVM(s).'
+  }
+
   description = "Run integration tests for " + project.name;
   useTestNG()
   testClassesDir = sourceSets.integrationtest.output.classesDir
@@ -42,6 +51,22 @@ task integrationtest(type: Test) {
   jacoco {
     append = false
     destinationFile = file("$buildDir/jacoco/integrationtest.exec")
+  }
+
+  String maxParallelForksConfigName = "integrationTest.maxParallelForks"
+  if (project.hasProperty(maxParallelForksConfigName)) {
+    println "$maxParallelForksConfigName set to ${project.getProperty(maxParallelForksConfigName)}"
+    // Can help isolation of tests
+    maxParallelForks = project.getProperty(maxParallelForksConfigName)
+  } else {
+    maxParallelForks = 10
+    println maxParallelForksConfigName + ' not set. Will default to 10 parallel forks.'
+  }
+
+  testLogging {
+    events "started", "failed", "passed", "skipped"
+    exceptionFormat "full"
+    showStandardStreams = false // to mute the DDS Router's noisy behavior...
   }
 }
 

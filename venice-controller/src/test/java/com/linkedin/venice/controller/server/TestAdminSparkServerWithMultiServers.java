@@ -10,6 +10,7 @@ import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.FlakyTestRetryAnalyzer;
 import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import io.tehuti.metrics.stats.Count;
 import java.util.ArrayList;
@@ -28,7 +29,10 @@ import org.testng.annotations.Test;
  * resource with bunch of partitions.
  * TODO: Since {@link TestAdminSparkServer} has adapted to have multi-servers. It's better to merge test cases.
  */
+@Test(singleThreaded = true)
 public class TestAdminSparkServerWithMultiServers {
+  private static final int TIME_OUT = 10 * Time.MS_PER_SECOND;
+
   private VeniceClusterWrapper venice;
   private ControllerClient controllerClient;
   private final int numberOfServer = 6;
@@ -48,7 +52,7 @@ public class TestAdminSparkServerWithMultiServers {
   /**
    * TODO: This test should be fixed. It is flaky, especially on a slow or heavily loaded machine.
    */
-  @Test(retryAnalyzer = FlakyTestRetryAnalyzer.class)
+  @Test(retryAnalyzer = FlakyTestRetryAnalyzer.class, timeOut = TIME_OUT)
   public void controllerClientShouldListStores() {
     List<String> storeNames = new ArrayList<>();
     for (int i = 0; i < 10; i++) { //add 10 stores;
@@ -64,7 +68,7 @@ public class TestAdminSparkServerWithMultiServers {
   }
 
 
-  @Test
+  @Test(timeOut = TIME_OUT)
   public void requestTopicIsIdempotent() {
     String storeName = TestUtils.getUniqueString("store");
     String pushOne = TestUtils.getUniqueString("pushId");
@@ -89,7 +93,7 @@ public class TestAdminSparkServerWithMultiServers {
    * After the attempt, the version is made current so the next attempt generates a new version.
    * @throws InterruptedException
    */
-  @Test
+  @Test(timeOut = TIME_OUT * 6) // Long test, often times out.
   public void requestTopicIsIdempotentWithConcurrency() throws InterruptedException {
     String storeName = TestUtils.getUniqueString("store");
     venice.getNewStore(storeName);
@@ -149,7 +153,7 @@ public class TestAdminSparkServerWithMultiServers {
     });
   }
 
-  @Test
+  @Test(timeOut = TIME_OUT)
   public void endOfPushEndpointTriggersVersionSwap(){
     String storeName = TestUtils.getUniqueString("store");
     String pushId = TestUtils.getUniqueString("pushId");

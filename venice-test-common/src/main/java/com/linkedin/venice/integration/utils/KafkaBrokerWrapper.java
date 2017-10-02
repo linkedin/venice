@@ -1,6 +1,8 @@
 package com.linkedin.venice.integration.utils;
 
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.utils.MockTime;
+import java.util.Properties;
 import kafka.metrics.KafkaMetricsReporter;
 import kafka.server.KafkaConfig;
 import kafka.server.KafkaServer;
@@ -118,6 +120,10 @@ public class KafkaBrokerWrapper extends ProcessWrapper {
 
   @Override
   protected void internalStart() throws Exception {
+    Properties properties = System.getProperties();
+    if (properties.contains("kafka_mx4jenable") ) {
+      throw new VeniceException("kafka_mx4jenable should not be set! kafka_mx4jenable = " + properties.getProperty("kafka_mx4jenable"));
+    }
     kafkaServer.startup();
   }
 

@@ -1,6 +1,5 @@
 package com.linkedin.venice.samza;
 
-import com.linkedin.cfg.impl.Utils;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
@@ -19,6 +18,7 @@ import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.util.Utf8;
+import org.apache.commons.io.IOUtils;
 import org.apache.samza.config.MapConfig;
 import org.apache.samza.system.OutgoingMessageEnvelope;
 import org.apache.samza.system.SystemProducer;
@@ -50,7 +50,7 @@ public class VeniceSystemFactoryTest {
   @AfterClass
   private void tearDown() {
     client.close();
-    Utils.close(venice);
+    IOUtils.closeQuietly(venice);
   }
 
   /**

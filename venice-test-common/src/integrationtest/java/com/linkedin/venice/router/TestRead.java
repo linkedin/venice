@@ -45,6 +45,7 @@ import org.testng.annotations.Test;
 
 import static com.linkedin.venice.ConfigKeys.*;
 
+@Test(singleThreaded = true)
 public class TestRead {
   private VeniceClusterWrapper veniceCluster;
   private String storeVersionName;
@@ -100,9 +101,8 @@ public class TestRead {
 
   @AfterClass
   public void cleanUp() {
-    if (veniceCluster != null) {
-      veniceCluster.close();
-    }
+    IOUtils.closeQuietly(veniceCluster);
+    IOUtils.closeQuietly(veniceWriter);
   }
 
   @Test(timeOut = 20000)
@@ -164,7 +164,7 @@ public class TestRead {
   public void testD2ServiceDiscovery() {
     String routerUrl = veniceCluster.getRandomRouterURL();
     try (CloseableHttpAsyncClient client = HttpAsyncClients.custom()
-        .setDefaultRequestConfig(RequestConfig.custom().setSocketTimeout(1000).build())
+        .setDefaultRequestConfig(RequestConfig.custom().setSocketTimeout(2000).build())
         .build()) {
       client.start();
       HttpGet routerRequest =

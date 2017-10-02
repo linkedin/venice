@@ -148,21 +148,21 @@ public class  MockHttpServerWrapper extends ProcessWrapper {
         //stripe URI scheme, host and port
         String uriStr = uri.getPath();
         uriStr = uri.getQuery() == null ? uriStr : uriStr + "?" + uri.getQuery();
-        logger.info("Receive request uri: " + uriStr);
+        logger.trace("Receive request uri: " + uriStr);
 
         if (responseMap.containsKey(uriStr)) {
-          logger.info("Found matched response");
+          logger.trace("Found matched response");
           ctx.writeAndFlush(responseMap.get(uriStr).copy()).addListener(ChannelFutureListener.CLOSE);
         } else {
           for (Map.Entry<String, FullHttpResponse> entry : uriPatternToResponseMap.entrySet()) {
             String uriPattern = entry.getKey();
             if (uriStr.matches(uriPattern)) {
-              logger.info("Found matched response by uri pattern: " + uriPattern);
+              logger.trace("Found matched response by uri pattern: " + uriPattern);
               ctx.writeAndFlush(entry.getValue().copy()).addListener(ChannelFutureListener.CLOSE);
               return;
             }
           }
-          logger.info("No matched response");
+          logger.trace("No matched response");
           ctx.writeAndFlush(notFoundResponse.copy()).addListener(ChannelFutureListener.CLOSE);
         }
       } else {

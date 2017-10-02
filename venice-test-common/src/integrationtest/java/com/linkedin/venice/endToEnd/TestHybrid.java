@@ -71,7 +71,7 @@ public class TestHybrid {
     int versionNumber = vcr.getVersion();
     assertNotEquals(versionNumber, 0, "requesting a topic for a push should provide a non zero version number");
 
-    TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
+    TestUtils.waitForNonDeterministicAssertion(100, TimeUnit.SECONDS, true, () -> {
       // Now the store should have version 1
       JobStatusQueryResponse jobStatus = controllerClient.queryJobStatus(Version.composeKafkaTopic(storeName, versionNumber));
       assertEquals(jobStatus.getStatus(), "COMPLETED");
@@ -87,12 +87,14 @@ public class TestHybrid {
     venice.close();
   }
 
-  @DataProvider(name = "yesAndNo")
-  public static Object[][] yesAndNo() {
-    return new Object[][]{
-        new Boolean[]{false},
-        new Boolean[]{true}
-    };
+  @Test
+  public void testHybridEndToEndWithMultiDivStream() throws Exception {
+    testHybridEndToEnd(true);
+  }
+
+  @Test
+  public void testHybridEndToEnd() throws Exception {
+    testHybridEndToEnd(false);
   }
 
   /**
@@ -100,6 +102,8 @@ public class TestHybrid {
    *
    * TODO: This test needs to be refactored in order to leverage {@link com.linkedin.venice.utils.MockTime},
    *       which would allow the test to run faster and more deterministically.
+   *
+   * This is a slow test, so it is given priority -10 so that it starts first.
 
    * @param multiDivStream if false, rewind will happen in the middle of a DIV Segment, which was originally broken.
    *                       if true, two independent DIV Segments will be placed before and after the start of buffer replay.
@@ -107,7 +111,6 @@ public class TestHybrid {
    *                       If this test succeeds with {@param multiDivStream} set to true, but fails with it set to false,
    *                       then there is a regression in the DIV partial segment tolerance after EOP.
    */
-  @Test(dataProvider = "yesAndNo")
   public void testHybridEndToEnd(boolean multiDivStream) throws Exception {
     logger.info("About to create VeniceClusterWrapper");
     VeniceClusterWrapper venice = ServiceFactory.getVeniceCluster(1,1,1,1, 1000000, false);

@@ -142,6 +142,9 @@ public class TopicMonitor extends AbstractVeniceService {
                   logger.info("There is a topic " + topic + " for store " + storeName + ". But store has been paused.", se);
                   continue;
                 }
+              } else if (Version.isRealTimeTopic(topic)) {
+                logger.debug("Skip real-time buffer topic: " + topic + " in Topic Monitor thread");
+                continue;
               } else {
                 logger.warn("The topic name: " + topic + " is not valid fomrat for $storeName_V$vesion");
                 continue;

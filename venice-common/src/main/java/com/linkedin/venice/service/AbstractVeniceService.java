@@ -1,6 +1,7 @@
 package com.linkedin.venice.service;
 
 import com.linkedin.venice.exceptions.VeniceException;
+import java.io.Closeable;
 import java.util.concurrent.atomic.AtomicReference;
 
 import org.apache.log4j.Logger;
@@ -11,7 +12,7 @@ import org.apache.log4j.Logger;
  *
  *
  */
-public abstract class AbstractVeniceService {
+public abstract class AbstractVeniceService implements Closeable {
 
   protected enum ServiceState {
     STOPPED,
@@ -95,6 +96,15 @@ public abstract class AbstractVeniceService {
       } catch (Exception e) {
         logger.error("Unable to stop service: " + service.getName(), e);
       }
+    }
+  }
+
+  @Override
+  public void close() {
+    try {
+      stop();
+    } catch (Exception e) {
+      throw new VeniceException(e);
     }
   }
 }

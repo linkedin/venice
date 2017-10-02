@@ -33,6 +33,7 @@ import static com.linkedin.venice.utils.TestPushUtils.*; // TODO: remove this st
 
 //TODO: write a H2VWrapper that can handle the whole flow
 
+@Test(singleThreaded = true)
 public class TestBatch {
   private static final Logger LOGGER = Logger.getLogger(TestBatch.class);
   private static final int TEST_TIMEOUT = 60 * Time.MS_PER_SECOND;
@@ -230,68 +231,5 @@ public class TestBatch {
       Assert.assertTrue(jobStatus.getMessagesConsumed()*1.5 > jobStatus.getMessagesAvailable(),
           "Complete job should have progress");
     }
-  }
-
-  @DataProvider(name = "samplingRatios")
-  public static Object[][] samplingRatios() {
-    List<Object[]> returnList = new ArrayList<>();
-
-    final long deterministicTotalRecords = 1000000;
-
-    // Some decent values which should definitely work.
-    returnList.add(new Object[]{deterministicTotalRecords, 0.001});
-    returnList.add(new Object[]{deterministicTotalRecords, 0.002});
-    returnList.add(new Object[]{deterministicTotalRecords, 0.005});
-    returnList.add(new Object[]{deterministicTotalRecords, 0.01});
-    returnList.add(new Object[]{deterministicTotalRecords, 0.02});
-    returnList.add(new Object[]{deterministicTotalRecords, 0.05});
-    returnList.add(new Object[]{deterministicTotalRecords, 0.1});
-    returnList.add(new Object[]{deterministicTotalRecords, 0.2});
-    returnList.add(new Object[]{deterministicTotalRecords, 0.5});
-    returnList.add(new Object[]{deterministicTotalRecords, 0.9});
-    returnList.add(new Object[]{deterministicTotalRecords, 1.0});
-
-    // A few random record counts and ratios as well, just for the heck of it.
-    while (returnList.size() < 20) {
-      double randomRatio = Utils.round(Math.random(), 4);
-      if (randomRatio > 0 && randomRatio < 1 && !returnList.contains(randomRatio)) {
-        long nonDeterministicTotalRecords = (long) (1000000 * (1 + Math.random())); // 1M to 2M
-        returnList.add(new Object[]{nonDeterministicTotalRecords, randomRatio});
-      }
-    }
-
-    Object[][] valuesToReturn= new Object[returnList.size()][2];
-    return returnList.toArray(valuesToReturn);
-  }
-
-  @Test(dataProvider = "samplingRatios")
-  public void testSampler(long totalRecords, double expectedRatio) {
-    LOGGER.info("totalRecords: " + totalRecords + ", expectedRatio: " + expectedRatio);
-
-    long skippedRecords = 0, queriedRecords = 0;
-
-    Sampler sampler = new Sampler(expectedRatio);
-
-    Assert.assertFalse(sampler.checkWhetherToSkip(queriedRecords, skippedRecords),
-        "The first call to checkWhetherToSkip should always allow the query.");
-    queriedRecords++;
-    for (int i = 1; i < totalRecords; i++) {
-      long totalRecordsSoFar = queriedRecords + skippedRecords;
-      Assert.assertEquals(totalRecordsSoFar, i,
-          "A sampler should never increment the queriedRecords counter on its own.");
-
-      boolean skip = sampler.checkWhetherToSkip(queriedRecords, skippedRecords);
-      // LOGGER.info("Record " + i + " should skip: " + skip);
-      if (skip) {
-        skippedRecords++;
-      } else {
-        queriedRecords++;
-      }
-    }
-
-    double actualRatio = 1.0 - ((double) skippedRecords) / ((double) totalRecords);
-    double roundedActualRatio = Utils.round(actualRatio, 5);
-
-    Assert.assertEquals(roundedActualRatio, expectedRatio, "The actual ratio does not match the expected ratio.");
   }
 }

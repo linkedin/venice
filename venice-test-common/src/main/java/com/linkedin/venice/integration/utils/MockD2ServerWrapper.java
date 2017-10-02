@@ -37,7 +37,7 @@ public class MockD2ServerWrapper extends MockHttpServerWrapper {
       logger.error("D2 announcer " + d2Server + " failed to shutdown properly", e);
     }
 
-    zkServer.stop();
+    zkServer.close();
   }
 
   public String getZkAddress() {

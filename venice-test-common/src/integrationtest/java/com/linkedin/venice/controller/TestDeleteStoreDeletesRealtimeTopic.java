@@ -9,6 +9,7 @@ import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.utils.FlakyTestRetryAnalyzer;
 import com.linkedin.venice.utils.TestUtils;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
@@ -24,7 +25,7 @@ import static org.testng.Assert.*;
 
 public class TestDeleteStoreDeletesRealtimeTopic {
 
-  @Test
+  @Test(retryAnalyzer = FlakyTestRetryAnalyzer.class)
   public void deletingHybridStoreDeletesRealtimeTopic(){
     VeniceClusterWrapper venice = ServiceFactory.getVeniceCluster();
     ControllerClient controllerClient = new ControllerClient(venice.getClusterName(), venice.getRandomRouterURL());

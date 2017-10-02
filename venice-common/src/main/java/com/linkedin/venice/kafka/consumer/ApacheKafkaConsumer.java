@@ -3,6 +3,7 @@ package com.linkedin.venice.kafka.consumer;
 import com.linkedin.venice.annotation.NotThreadsafe;
 import com.linkedin.venice.exceptions.UnsubscribedTopicPartitionException;
 import com.linkedin.venice.offsets.OffsetRecord;
+import com.linkedin.venice.utils.VeniceProperties;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -23,6 +24,10 @@ public class ApacheKafkaConsumer implements KafkaConsumerWrapper {
   private final Consumer kafkaConsumer;
   public ApacheKafkaConsumer(Properties props) {
     this.kafkaConsumer = new KafkaConsumer(props);
+  }
+
+  public ApacheKafkaConsumer(VeniceProperties props) {
+    this(props.toProperties());
   }
 
   private void seek(TopicPartition topicPartition, OffsetRecord offset) {
@@ -83,6 +88,8 @@ public class ApacheKafkaConsumer implements KafkaConsumerWrapper {
 
   @Override
   public ConsumerRecords poll(long timeout) {
+    // The timeout is not respected when hitting UNKNOWN_TOPIC_OR_PARTITION,
+    // TODO: we may want to wrap this call in our own thread to enforce the timeout...
     return kafkaConsumer.poll(timeout);
   }
 

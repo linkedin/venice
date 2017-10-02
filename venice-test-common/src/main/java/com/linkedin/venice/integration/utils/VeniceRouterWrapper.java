@@ -49,7 +49,12 @@ public class VeniceRouterWrapper extends ProcessWrapper {
           .put(LISTENER_SSL_PORT, sslPortFromPort(port))
           .put(ZOOKEEPER_ADDRESS, kafkaBrokerWrapper.getZkAddress())
           .put(SSL_TO_STORAGE_NODES, sslToStorageNodes)
-          .put(CLUSTER_TO_D2, TestUtils.getClusterToDefaultD2String(clusterName));
+          .put(CLUSTER_TO_D2, TestUtils.getClusterToDefaultD2String(clusterName))
+          // Below configs are to attempt to minimize resource utilization in tests
+          .put(ROUTER_CONNECTION_LIMIT, 20)
+          .put(ROUTER_HTTP_CLIENT_POOL_SIZE, 2)
+          .put(ROUTER_MAX_OUTGOING_CONNECTION_PER_ROUTE, 2)
+          .put(ROUTER_MAX_OUTGOING_CONNECTION, 10);
       RouterServer router = new RouterServer(builder.build(), new ArrayList<>(), Optional.empty(), Optional.of(SslUtils.getLocalSslFactory()));
       return new VeniceRouterWrapper(serviceName, dataDirectory, router, clusterName, port, zkAddress, sslToStorageNodes);
     };

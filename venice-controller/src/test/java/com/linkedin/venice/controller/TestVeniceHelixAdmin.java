@@ -1022,7 +1022,7 @@ public class TestVeniceHelixAdmin {
             .containsKafkaTopic(version.kafkaTopicName()));
   }
 
-  @Test
+  @Test(retryAnalyzer = FlakyTestRetryAnalyzer.class)
   public void testDeleteAllVersionsInStore()
       throws Exception {
     stopParticipants();

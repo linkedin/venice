@@ -85,7 +85,7 @@ public class VeniceMultiClusterWrapper extends ProcessWrapper {
     Iterator<String> clusterIter = clusters.keySet().iterator();
     while (clusterIter.hasNext()) {
       String cluster = clusterIter.next();
-      clusters.get(cluster).stop();
+      clusters.get(cluster).close();
       clusterIter.remove();
     }
   }

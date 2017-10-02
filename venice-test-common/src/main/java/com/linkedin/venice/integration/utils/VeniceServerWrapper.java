@@ -52,10 +52,13 @@ public class VeniceServerWrapper extends ProcessWrapper {
       // Generate server.properties in config directory
       int listenPort = IntegrationTestUtils.getFreePort();
       VeniceProperties serverProps = new PropertyBuilder()
-      .put(LISTENER_PORT, listenPort)
-      .put(ADMIN_PORT, IntegrationTestUtils.getFreePort())
-      .put(DATA_BASE_PATH, dataDirectory.getAbsolutePath())
-      .put(ENABLE_SERVER_WHITE_LIST, enableServerWhitelist).build();
+          .put(LISTENER_PORT, listenPort)
+          .put(ADMIN_PORT, IntegrationTestUtils.getFreePort())
+          .put(DATA_BASE_PATH, dataDirectory.getAbsolutePath())
+          .put(ENABLE_SERVER_WHITE_LIST, enableServerWhitelist)
+          .put(SERVER_REST_SERVICE_STORAGE_THREAD_NUM, 4)
+          .put(MAX_STATE_TRANSITION_THREAD_NUMBER, 10)
+          .build();
 
       File serverConfigFile = new File(configDirectory, VeniceConfigLoader.SERVER_PROPERTIES_FILE);
       serverProps.storeFlattened(serverConfigFile);

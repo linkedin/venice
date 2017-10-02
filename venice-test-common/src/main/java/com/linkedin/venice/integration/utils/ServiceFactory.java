@@ -12,13 +12,15 @@ import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.VeniceProperties;
 import io.tehuti.metrics.MetricsRepository;
+import java.io.Closeable;
 import java.util.HashSet;
-import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
+import org.apache.commons.io.IOUtils;
 import org.apache.log4j.Logger;
 
 import java.util.Optional;
+
 
 /**
  * A factory for generating Venice services and external service instances
@@ -68,6 +70,10 @@ public class ServiceFactory {
 
   static KafkaBrokerWrapper getKafkaBroker(ZkServerWrapper zkServerWrapper, Optional<MockTime> mockTime) {
     return getStatefulService(KafkaBrokerWrapper.SERVICE_NAME, KafkaBrokerWrapper.generateService(zkServerWrapper, mockTime));
+  }
+
+  static MirrorMakerWrapper getKafkaMirrorMaker(KafkaBrokerWrapper sourceKafka, KafkaBrokerWrapper destinationKafka) {
+    return getService(MirrorMakerWrapper.SERVICE_NAME, MirrorMakerWrapper.generateService(sourceKafka, destinationKafka));
   }
 
   public static BrooklinWrapper getBrooklinWrapper(KafkaBrokerWrapper kafka){
@@ -252,14 +258,15 @@ public class ServiceFactory {
     return getService(serviceName, serviceProvider);
   }
 
-  private static <S> S getService(String serviceName, ArbitraryServiceProvider<S> serviceProvider) {
+  private static <S extends Closeable> S getService(String serviceName, ArbitraryServiceProvider<S> serviceProvider) {
     // Just some initial state. If the fabric of space-time holds up, you should never see these strings.
     Exception lastException = new VeniceException("There is no spoon.");
     String errorMessage = "If you see this message, something went horribly wrong.";
 
     for (int attempt = 1; attempt <= MAX_ATTEMPT; attempt++) {
+      S wrapper = null;
       try {
-        S wrapper = serviceProvider.get(serviceName, IntegrationTestUtils.getFreePort());
+        wrapper = serviceProvider.get(serviceName, IntegrationTestUtils.getFreePort());
 
         if (wrapper instanceof ProcessWrapper) {
           LOGGER.info("Starting ProcessWrapper: " + serviceName);
@@ -276,6 +283,7 @@ public class ServiceFactory {
         errorMessage = "Got " + e.getClass().getSimpleName() + " while trying to start " + serviceName +
             ". Attempt #" + attempt + "/" + MAX_ATTEMPT + ".";
         LOGGER.info(errorMessage, e);
+        IOUtils.closeQuietly(wrapper);
       }
     }
 
