@@ -37,7 +37,7 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
 
     //we have to explicitly pass the name again for PercentilesStat here.
     //TODO: remove the redundancy once Tehuti library is updated.
-    latencySensor = registerSensor("latency", TehutiUtils.getPercentileStat(getName(), getFullMetricName("latency")));
+    latencySensor = registerSensor("latency", TehutiUtils.getPercentileStatForNetworkLatency(getName(), getFullMetricName("latency")));
     routerResponseWaitingTimeSensor = registerSensor("response_waiting_time",
         TehutiUtils.getPercentileStat(getName(), getFullMetricName("response_waiting_time")));
     requestSizeSensor = registerSensor("request_size", TehutiUtils.getPercentileStat(getName(), getFullMetricName("request_size")));

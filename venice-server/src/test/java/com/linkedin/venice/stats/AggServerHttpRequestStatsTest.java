@@ -3,6 +3,7 @@ package com.linkedin.venice.stats;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.tehuti.MockTehutiReporter;
 import io.tehuti.metrics.MetricsRepository;
+import io.tehuti.metrics.stats.Percentiles;
 import org.testng.Assert;
 import org.testng.annotations.AfterTest;
 import org.testng.annotations.BeforeTest;
@@ -43,5 +44,22 @@ public class AggServerHttpRequestStatsTest {
         "error_request rate should be positive");
     Assert.assertTrue(reporter.query(".total--success_request_ratio.RatioStat").value() > 0,
         "success_request_ratio should be positive");
+  }
+
+  @Test
+  public void testPercentileNamePattern() {
+    String sensorName = "sensorName";
+    String storeName = "storeName";
+    Percentiles percentiles = TehutiUtils.getPercentileStatForNetworkLatency(sensorName, storeName);
+    percentiles.stats().stream().map(namedMeasurable -> namedMeasurable.name()).forEach(System.out::println);
+    String[] percentileStrings = new String[]{"50", "77", "90", "95", "99", "99.9"};
+
+    for (int i = 0; i < percentileStrings.length; i++) {
+      String expectedName = sensorName + "--" + storeName + "." + percentileStrings[i] + "thPercentile";
+      Assert.assertTrue(percentiles.stats().stream()
+              .map(namedMeasurable -> namedMeasurable.name())
+              .anyMatch(s -> s.equals(expectedName)),
+          "The Percentiles don't contain the expected name! Missing percentile with name: " + expectedName);
+    }
   }
 }
