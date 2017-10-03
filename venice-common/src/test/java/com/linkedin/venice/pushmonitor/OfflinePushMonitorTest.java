@@ -156,6 +156,29 @@ public class OfflinePushMonitorTest {
   }
 
   @Test
+  public void testLoadRunningPushWhichIsNotUpdateToDateAndDeletionError() {
+    String topic = "testLoadRunningPushWhichIsNotUpdateToDate_v1";
+    Store store = prepareMockStore(topic);
+    List<OfflinePushStatus> statusList = new ArrayList<>();
+    OfflinePushStatus pushStatus = new OfflinePushStatus(topic, numberOfPartition, replicationFactor,
+        OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);
+    statusList.add(pushStatus);
+    Mockito.doReturn(statusList).when(mockAccessor).loadOfflinePushStatusesAndPartitionStatuses();
+    PartitionAssignment partitionAssignment = new PartitionAssignment(topic, numberOfPartition);
+    Mockito.doReturn(partitionAssignment).when(mockRoutingDataRepo).getPartitionAssignments(topic);
+    PushStatusDecider decider = Mockito.mock(PushStatusDecider.class);
+    Mockito.doReturn(ExecutionStatus.ERROR).when(decider).checkPushStatus(pushStatus, partitionAssignment);
+    PushStatusDecider.updateDecider(OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION, decider);
+    Mockito.doThrow(new VeniceException("Could not delete.")).when(mockStoreCleaner).deleteOneStoreVersion(Mockito.anyString(), Mockito.anyString(), Mockito.anyInt());
+
+
+    monitor.loadAllPushes();
+    Mockito.verify(mockStoreRepo, Mockito.atLeastOnce()).updateStore(store);
+    Mockito.verify(mockStoreCleaner, Mockito.atLeastOnce()).deleteOneStoreVersion(Mockito.anyString(), Mockito.anyString(), Mockito.anyInt());
+    Assert.assertEquals(monitor.getOfflinePush(topic).getCurrentStatus(), ExecutionStatus.ERROR);
+  }
+
+  @Test
   public void testOnPartitionStatusChangeForHybridStore(){
     String topic = "hybridTestStore_v1";
     // Prepare a hybrid store.
