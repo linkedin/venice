@@ -364,7 +364,13 @@ public class OfflinePushMonitor implements OfflinePushAccessor.PartitionStatusLi
     String storeName = Version.parseStoreFromKafkaTopicName(pushStatus.getKafkaTopic());
     int versionNumber = Version.parseVersionFromKafkaTopicName(pushStatus.getKafkaTopic());
     updateStoreVersionStatus(storeName, versionNumber, VersionStatus.ONLINE);
-    storeCleaner.retireOldStoreVersions(clusterName, storeName);
+    // If we met some error to retire the old version, we should not throw the exception out to fail this operation,
+    // because it will be collected once a new push is completed for this store.
+    try {
+      storeCleaner.retireOldStoreVersions(clusterName, storeName);
+    } catch (Exception e) {
+      logger.warn("Could not retire the old versions for store: " + storeName + " in cluster: " + clusterName);
+    }
     logger.info("Offline push for topic: " + pushStatus.getKafkaTopic() + " is completed.");
   }
 
@@ -376,7 +382,14 @@ public class OfflinePushMonitor implements OfflinePushAccessor.PartitionStatusLi
     String storeName = Version.parseStoreFromKafkaTopicName(pushStatus.getKafkaTopic());
     int versionNumber = Version.parseVersionFromKafkaTopicName(pushStatus.getKafkaTopic());
     updateStoreVersionStatus(storeName, versionNumber, VersionStatus.ERROR);
-    storeCleaner.deleteOneStoreVersion(clusterName, storeName, versionNumber);
+    // If we met some error to delete error version, we should not throw the exception out to fail this operation,
+    // because it will be collected once a new push is completed for this store.
+    try {
+      storeCleaner.deleteOneStoreVersion(clusterName, storeName, versionNumber);
+    } catch (Exception e) {
+      logger.warn("Could not delete error version: " + versionNumber + " for store: " + storeName + " in cluster: "
+          + clusterName);
+    }
     logger.info("Offline push for topic: " + pushStatus.getKafkaTopic() + " fails.");
   }
 
