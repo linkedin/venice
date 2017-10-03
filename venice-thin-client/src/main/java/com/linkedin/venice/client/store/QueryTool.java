@@ -19,30 +19,28 @@ import org.codehaus.jackson.map.ObjectWriter;
  * A tool use thin client to query the value from a store by the specified key.
  */
 public class QueryTool {
-  private static final int CLUSTER = 0;
-  private static final int STORE = 1;
-  private static final int KEY_STRING = 2;
-  private static final int URL = 3;
-  private static final int REQUIRED_ARGS_COUNT = 4;
+  private static final int STORE = 0;
+  private static final int KEY_STRING = 1;
+  private static final int URL = 2;
+  private static final int REQUIRED_ARGS_COUNT = 3;
 
   public static void main(String[] args)
       throws IOException, ExecutionException, InterruptedException {
     if (args.length < REQUIRED_ARGS_COUNT) {
-      System.out.println("Usage: java -jar venice-thin-client-0.1.jar <cluster> <store> <key_string> <url>");
+      System.out.println("Usage: java -jar venice-thin-client-0.1.jar <store> <key_string> <url>");
       System.exit(1);
     }
-    String cluster = removeQuotes(args[CLUSTER]);
     String store = removeQuotes(args[STORE]);
     String keyString = removeQuotes(args[KEY_STRING]);
     String url = removeQuotes(args[URL]);
-    Map<String, String> outputMap = queryStoreForKey(cluster, store, keyString, url);
+    Map<String, String> outputMap = queryStoreForKey(store, keyString, url);
     ObjectMapper mapper = new ObjectMapper();
     ObjectWriter plainJsonWriter = mapper.writer();
     String jsonString = plainJsonWriter.writeValueAsString(outputMap);
     System.out.println(jsonString);
   }
 
-  public static Map<String, String> queryStoreForKey(String cluster, String store, String keyString, String url)
+  public static Map<String, String> queryStoreForKey(String store, String keyString, String url)
       throws VeniceClientException, ExecutionException, InterruptedException {
     Map<String, String> outputMap = new HashMap<>();
     try (AvroGenericStoreClient<Object, Object> client = ClientFactory.getAndStartGenericAvroClient(
