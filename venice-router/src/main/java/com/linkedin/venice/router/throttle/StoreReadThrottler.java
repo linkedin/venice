@@ -28,6 +28,7 @@ public class StoreReadThrottler {
   private final long localQuota;
   private final EventThrottlingStrategy throttlingStrategy;
   private final EventThrottler storeThrottler;
+  private final double perStorageNodeReadQuotaBuffer;
 
   private int currentVersion = Store.NON_EXISTING_VERSION;
 
@@ -39,12 +40,13 @@ public class StoreReadThrottler {
   private ConcurrentMap<String, EventThrottler> storageNodesThrottlers;
 
   public StoreReadThrottler(String storeName, long localQuota, EventThrottlingStrategy throttlingStrategy,
-      Optional<PartitionAssignment> partitionAssignment) {
+      Optional<PartitionAssignment> partitionAssignment, double perStorageNodeReadQuotaBuffer) {
     this.storeName = storeName;
     this.localQuota = localQuota;
     this.throttlingStrategy = throttlingStrategy;
+    this.perStorageNodeReadQuotaBuffer = perStorageNodeReadQuotaBuffer;
     storageNodesThrottlers = new ConcurrentHashMap<>();
-    storeThrottler = new EventThrottler(localQuota, true, throttlingStrategy);
+    storeThrottler = new EventThrottler(localQuota, storeName+"-throttler", true, throttlingStrategy);
     if (partitionAssignment.isPresent()) {
       updateStorageNodesThrottlers(partitionAssignment.get());
     }
@@ -79,13 +81,15 @@ public class StoreReadThrottler {
     }
 
     // Update throttler for the storage node which is a new node or the its quota has been changed.
+    // Add a buffer to per storage node quota to make our throttler more lenient, particularly once we enable sticky routing.
     storageNodeQuotaMap.entrySet()
         .stream()
         .filter(entry -> !storageNodesThrottlers.containsKey(entry.getKey())
-            || storageNodesThrottlers.get(entry.getKey()).getMaxRatePerSecond() != entry.getValue())
+            || storageNodesThrottlers.get(entry.getKey()).getMaxRatePerSecond() != (long) (entry.getValue() * (1
+            + perStorageNodeReadQuotaBuffer)))
         .forEach(entry -> storageNodesThrottlers.put(entry.getKey(),
-            // We could add a buffer to the quota per storage node if needed in the future.
-            new EventThrottler(entry.getValue(), true, throttlingStrategy)));
+            new EventThrottler((long) (entry.getValue() * (1 + perStorageNodeReadQuotaBuffer)),
+                storeName + "-" + entry.getKey() + "-throttler", true, throttlingStrategy)));
 
     // Delete the throttler for the storage node which has been deleted from the latest partition assignment.
     Iterator<String> iterator = storageNodesThrottlers.keySet().iterator();

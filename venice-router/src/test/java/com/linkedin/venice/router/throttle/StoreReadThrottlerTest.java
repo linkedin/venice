@@ -25,6 +25,7 @@ public class StoreReadThrottlerTest {
     long quota = 100;
     String storeName = "StoreReadThrottlerTest";
     int versionNumber = 1;
+    double perStorageNodeReadQuotaBuffer = 1.0;
 
     Instance instance1 = new Instance(Utils.getHelixNodeIdentifier(10001), "localhost", 10001);
     Instance instance2 = new Instance(Utils.getHelixNodeIdentifier(10002), "localhost", 10002);
@@ -41,7 +42,7 @@ public class StoreReadThrottlerTest {
     assignment.addPartition(new Partition(1, p1StateToInstance));
 
     StoreReadThrottler throttler =
-        new StoreReadThrottler(storeName, quota, EventThrottler.REJECT_STRATEGY, Optional.of(assignment));
+        new StoreReadThrottler(storeName, quota, EventThrottler.REJECT_STRATEGY, Optional.of(assignment), perStorageNodeReadQuotaBuffer);
 
     Assert.assertEquals(throttler.getCurrentVersion(), versionNumber);
 
@@ -49,10 +50,10 @@ public class StoreReadThrottlerTest {
     // Instance1 holds 1 of 2 online replicas for partition 0 and 1 of 1 online replicas for partition 1. So it should
     // be assigned the quota value which equals to quota/partitionCount * 1.5
     Assert.assertEquals(throttler.getQuotaForStorageNode(Utils.getHelixNodeIdentifier(10001)),
-        (long) (quota / partitionCount * 1.5));
+        (long) (quota / partitionCount * 1.5 * (1 + perStorageNodeReadQuotaBuffer)));
     // Instance 2 hold 1 of 2 online prelicas for partition 0 and 0 of 1 online replicas for partition 1.
     Assert.assertEquals(throttler.getQuotaForStorageNode(Utils.getHelixNodeIdentifier(10002)),
-        (long) (quota / partitionCount * 0.5));
+        (long) (quota / partitionCount * 0.5 * (1 + perStorageNodeReadQuotaBuffer)));
 
     // Bootstrap replica in partition2 and instance2 become online.
     p1StateToInstance = new HashMap<>();
@@ -60,9 +61,11 @@ public class StoreReadThrottlerTest {
     assignment.addPartition(new Partition(1, p1StateToInstance));
     throttler.updateStorageNodesThrottlers(assignment);
     // Instance1 holds 1 of 2 online replicas for partition 0 and 1 of 2 online replicas for partition 1.
-    Assert.assertEquals(throttler.getQuotaForStorageNode(Utils.getHelixNodeIdentifier(10001)), quota / partitionCount);
-    // Instance 2 hold 1 of 2 online prelicas for partition 0 and 1 of 2 online replicas for partition 1.
-    Assert.assertEquals(throttler.getQuotaForStorageNode(Utils.getHelixNodeIdentifier(10002)), quota / partitionCount);
+    Assert.assertEquals(throttler.getQuotaForStorageNode(Utils.getHelixNodeIdentifier(10001)),
+        (long) (quota / partitionCount * (1 + perStorageNodeReadQuotaBuffer)));
+    // Instance 2 hold 1 of 2 online replicas for partition 0 and 1 of 2 online replicas for partition 1.
+    Assert.assertEquals(throttler.getQuotaForStorageNode(Utils.getHelixNodeIdentifier(10002)),
+        (long) (quota / partitionCount * (1 + perStorageNodeReadQuotaBuffer)));
 
     // All replicas in Partition 1 failed.
     p1StateToInstance.remove(HelixState.ONLINE_STATE);
@@ -70,10 +73,10 @@ public class StoreReadThrottlerTest {
     throttler.updateStorageNodesThrottlers(assignment);
     // Instance1 holds 1 of 2 online replicas for partition 0 and 0 of 0 online replicas for partition 1.
     Assert.assertEquals(throttler.getQuotaForStorageNode(Utils.getHelixNodeIdentifier(10001)),
-        quota / partitionCount / 2);
+        (long) (quota / partitionCount / 2 * (1 + perStorageNodeReadQuotaBuffer)));
     // Instance 2 hold 1 of 2 online prelicas for partition 0 and 0 of 0 online replicas for partition 1.
     Assert.assertEquals(throttler.getQuotaForStorageNode(Utils.getHelixNodeIdentifier(10002)),
-        quota / partitionCount / 2);
+        (long) (quota / partitionCount / 2 * (1 + perStorageNodeReadQuotaBuffer)));
   }
 
   @Test
@@ -97,7 +100,7 @@ public class StoreReadThrottlerTest {
     }
     // each storage node holds 4 online replicas, so the quota of each storage node is 1200/4/3*4=400
     StoreReadThrottler throttler =
-        new StoreReadThrottler(storeName, quota, EventThrottler.REJECT_STRATEGY, Optional.of(assignment));
+        new StoreReadThrottler(storeName, quota, EventThrottler.REJECT_STRATEGY, Optional.of(assignment), 0.0);
     throttler.mayThrottleRead(400, Utils.getHelixNodeIdentifier(10000));
     try {
       throttler.mayThrottleRead(100, Utils.getHelixNodeIdentifier(10000));
