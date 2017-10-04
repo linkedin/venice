@@ -3,6 +3,14 @@ package com.linkedin.venice.kafka.consumer;
 import com.linkedin.venice.exceptions.VeniceIngestionTaskKilledException;
 import com.linkedin.venice.notifier.VeniceNotifier;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
+import com.linkedin.venice.utils.Time;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
+import java.util.stream.Collectors;
 import org.apache.log4j.Logger;
 
 import java.util.Collection;
@@ -20,6 +28,7 @@ class IngestionNotificationDispatcher {
   private final Queue<VeniceNotifier> notifiers;
   private final String topic;
   private final BooleanSupplier isCurrentVersion;
+  private final ConcurrentMap<String, Long> alreadyPrintedErrors;
 
   private long lastProgressReportTime = 0;
 
@@ -28,6 +37,7 @@ class IngestionNotificationDispatcher {
     this.notifiers = notifiers;
     this.topic = topic;
     this.isCurrentVersion = isCurrentVersion;
+    this.alreadyPrintedErrors = new ConcurrentHashMap<>();
   }
 
   @FunctionalInterface
@@ -151,6 +161,18 @@ class IngestionNotificationDispatcher {
         notifier -> notifier.startOfBufferReplayReceived(topic, pcs.getPartition(), pcs.getOffsetRecord().getOffset()));
   }
 
+  /**
+   * Evict already-printed errors that are older than one day.
+   */
+  private void evictOldAlreadyPrintedErrors() {
+    long evictionThreshold = System.currentTimeMillis() - 1 * Time.MS_PER_DAY;
+    Set<String> errorMessagesToEvict = alreadyPrintedErrors.entrySet().stream()
+        .filter(entry -> entry.getValue() < evictionThreshold)
+        .map(entry -> entry.getKey())
+        .collect(Collectors.toSet());
+    errorMessagesToEvict.stream().forEach(alreadyPrintedErrors::remove);
+  }
+
   void reportError(Collection<PartitionConsumptionState> pcsList, String message, Exception consumerEx) {
     for(PartitionConsumptionState pcs: pcsList) {
       report(pcs, ExecutionStatus.ERROR,
@@ -158,17 +180,29 @@ class IngestionNotificationDispatcher {
             notifier.error(topic, pcs.getPartition(), message, consumerEx);
             pcs.errorReported();
           }, () -> {
+            String logMessage = "Partition: " + pcs.getPartition() + " has already been ";
+            boolean report = true;
+
             if (pcs.isEndOfPushReceived()) {
-              logger.warn("Partition:" + pcs.getPartition() + " has been marked as completed,"
-                  + "so an error will not be reported. Current error message: " + message);
-              return false;
+              logMessage += "marked as completed so an error will not be reported.";
+              report = false;
             }
             if (pcs.isErrorReported()) {
-              logger.warn("Partition:" + pcs.getPartition() + " has been reported as error before."
-              + "Current error message: " + message);
-              return false;
+              logMessage += "reported as an error before so it will not be reported again.";
+              report = false;
             }
-            return true;
+
+            if (!report) {
+              evictOldAlreadyPrintedErrors();
+              if (alreadyPrintedErrors.containsKey(message)) {
+                logger.warn(logMessage + " The full stacktrace for this error message has already been printed earlier,"
+                    + " so it will not be re-printed again. Current error message: " + message);
+              } else {
+                alreadyPrintedErrors.put(message, System.currentTimeMillis());
+                logger.warn(logMessage + " Full stacktrace below: ", consumerEx);
+              }
+            }
+            return report;
           }
       );
     }
