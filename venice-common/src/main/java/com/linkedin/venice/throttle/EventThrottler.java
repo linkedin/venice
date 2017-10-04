@@ -42,7 +42,6 @@ public class EventThrottler {
 
   // Tehuti stuff
   private final io.tehuti.utils.Time time;
-  private static final MetricsRepository sharedMetricsRepository = new MetricsRepository();
   private final Rate rate;
   private final Sensor rateSensor;
   private final MetricConfig rateConfig;
@@ -56,12 +55,16 @@ public class EventThrottler {
   }
 
   /**
-   * @param maxRatePerSecond Maximum rate that this throttler should allow (0 is unlimited)
-   * @param throttlingStrategy the strategy how throttler handle the quota exceeding case.
-   * @param checkQuotaBeforeRecording if true throttler will check the quota before recording usage, otherwise throttler will record usage then check the quota.
+   * @param maxRatePerSecond          Maximum rate that this throttler should allow (0 is unlimited)
+   * @param throttlerName             if specified, the throttler will share its limit with others named the same
+   *                                  if null, the throttler will be independent of the others
+   * @param throttlingStrategy        the strategy how throttler handle the quota exceeding case.
+   * @param checkQuotaBeforeRecording if true throttler will check the quota before recording usage, otherwise throttler
+   *                                  will record usage then check the quota.
    */
-  public EventThrottler(long maxRatePerSecond, boolean checkQuotaBeforeRecording, EventThrottlingStrategy throttlingStrategy) {
-    this(maxRatePerSecond, DEFAULT_CHECK_INTERVAL_MS, null, checkQuotaBeforeRecording, throttlingStrategy);
+  public EventThrottler(long maxRatePerSecond, String throttlerName, boolean checkQuotaBeforeRecording,
+      EventThrottlingStrategy throttlingStrategy) {
+    this(maxRatePerSecond, DEFAULT_CHECK_INTERVAL_MS, throttlerName, checkQuotaBeforeRecording, throttlingStrategy);
   }
 
   /**
@@ -103,23 +106,12 @@ public class EventThrottler {
           .quota(Quota.lessThan(maxRatePerSecond, checkQuotaBeforeRecording));
       this.rate = new Rate(TimeUnit.SECONDS);
       if (throttlerName == null) {
-        // Then we want this EventThrottler to be independent.
-        MetricsRepository metricsRepository = new MetricsRepository(time);
-        this.rateSensor = metricsRepository.sensor(THROTTLER_NAME, rateConfig);
-        rateSensor.add(THROTTLER_NAME + ".rate", rate, rateConfig);
-      } else {
-        // Then we want to share the EventThrottler's limit with other instances having the same name.
-        synchronized (sharedMetricsRepository) {
-          Sensor existingSensor = sharedMetricsRepository.getSensor(throttlerName);
-          if (existingSensor != null) {
-            this.rateSensor = existingSensor;
-          } else {
-            // Create it once for all EventThrottlers sharing that name
-            this.rateSensor = sharedMetricsRepository.sensor(throttlerName);
-            this.rateSensor.add(throttlerName + ".rate", rate, rateConfig);
-          }
-        }
+        throttlerName = THROTTLER_NAME;
       }
+      // Then we want this EventThrottler to be independent.
+      MetricsRepository metricsRepository = new MetricsRepository(time);
+      this.rateSensor = metricsRepository.sensor(throttlerName, rateConfig);
+      rateSensor.add(THROTTLER_NAME + ".rate", rate, rateConfig);
     } else {
       // DISABLED, no point in allocating anything...
       this.time = null;

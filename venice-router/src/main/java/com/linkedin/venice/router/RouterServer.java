@@ -380,7 +380,7 @@ public class RouterServer extends AbstractVeniceService {
       // Setup read requests throttler.
       ReadRequestThrottler throttler =
           new ReadRequestThrottler(routersClusterManager, metadataRepository, routingDataRepository,
-              config.getMaxReadCapacityCu(), statsForSingleGet);
+              config.getMaxReadCapacityCu(), statsForSingleGet, config.getPerStorageNodeReadQuotaBuffer());
       scatterGatherMode.initReadRequestThrottler(throttler);
 
       /**

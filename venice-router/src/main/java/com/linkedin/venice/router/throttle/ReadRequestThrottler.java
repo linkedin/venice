@@ -51,8 +51,11 @@ public class ReadRequestThrottler implements RoutersClusterManager.RouterCountCh
 
   private final AggRouterHttpRequestStats stats;
 
+  private final double perStorageNodeReadQuotaBuffer;
+
   public ReadRequestThrottler(ZkRoutersClusterManager zkRoutersManager, ReadOnlyStoreRepository storeRepository,
-      RoutingDataRepository routingDataRepository, long maxRouterReadCapacity, AggRouterHttpRequestStats stats) {
+      RoutingDataRepository routingDataRepository, long maxRouterReadCapacity, AggRouterHttpRequestStats stats,
+      double perStorageNodeReadQuotaBuffer) {
     this.zkRoutersManager = zkRoutersManager;
     this.storeRepository = storeRepository;
     this.routingDataRepository = routingDataRepository;
@@ -61,6 +64,7 @@ public class ReadRequestThrottler implements RoutersClusterManager.RouterCountCh
     this.stats = stats;
     this.idealTotalQuotaPerRouter = calculateIdealTotalQuotaPerRouter();
     this.maxRouterReadCapacity = maxRouterReadCapacity;
+    this.perStorageNodeReadQuotaBuffer = perStorageNodeReadQuotaBuffer;
     this.storesThrottlers = new AtomicReference<>(buildAllStoreReadThrottlers());
   }
 
@@ -150,7 +154,7 @@ public class ReadRequestThrottler implements RoutersClusterManager.RouterCountCh
           + ", it might be caused by the delay of the routing data. Only create per store level throttler.");
     }
     stats.recordQuota(storeName, storeQuotaPerRouter);
-    return new StoreReadThrottler(storeName, storeQuotaPerRouter, EventThrottler.REJECT_STRATEGY, partitionAssignment);
+    return new StoreReadThrottler(storeName, storeQuotaPerRouter, EventThrottler.REJECT_STRATEGY, partitionAssignment, perStorageNodeReadQuotaBuffer);
   }
 
   private ConcurrentMap<String, StoreReadThrottler> buildAllStoreReadThrottlers() {

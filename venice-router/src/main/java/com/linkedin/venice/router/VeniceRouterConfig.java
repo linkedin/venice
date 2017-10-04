@@ -31,6 +31,7 @@ public class VeniceRouterConfig {
   private Map<String, String> clusterToD2Map;
   private boolean stickyRoutingEnabledForSingleGet;
   private boolean stickyRoutingEnabledForMultiGet;
+  private double perStorageNodeReadQuotaBuffer;
 
   public VeniceRouterConfig(VeniceProperties props) {
     try {
@@ -61,6 +62,7 @@ public class VeniceRouterConfig {
     clusterToD2Map = props.getMap(CLUSTER_TO_D2);
     stickyRoutingEnabledForSingleGet = props.getBoolean(ROUTER_ENABLE_STICKY_ROUTING_FOR_SINGLE_GET, true);
     stickyRoutingEnabledForMultiGet = props.getBoolean(ROUTER_ENABLE_STICKY_ROUTING_FOR_MULTI_GET, true);
+    perStorageNodeReadQuotaBuffer = props.getDouble(ROUTER_PER_STORAGE_NODE_READ_QUOTA_BUFFER, 1.0);
   }
 
   public String getClusterName() {
@@ -129,5 +131,9 @@ public class VeniceRouterConfig {
 
   public int getMaxOutgoingConn() {
     return maxOutgoingConn;
+  }
+
+  public double getPerStorageNodeReadQuotaBuffer() {
+    return perStorageNodeReadQuotaBuffer;
   }
 }
