@@ -250,10 +250,9 @@ public class AdminTool {
 
   private static void queryStoreForKey(CommandLine cmd, String routerHosts)
       throws VeniceClientException, ExecutionException, InterruptedException {
-    String cluster = getRequiredArgument(cmd, Arg.CLUSTER);
     String store = getRequiredArgument(cmd, Arg.STORE);
     String keyString = getRequiredArgument(cmd, Arg.KEY);
-    printObject(QueryTool.queryStoreForKey(cluster, store, keyString, routerHosts));
+    printObject(QueryTool.queryStoreForKey(store, keyString, routerHosts));
   }
 
   private static void showSchemas(CommandLine cmd){
