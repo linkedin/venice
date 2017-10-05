@@ -27,7 +27,7 @@ public class VsonGenericStoreClientImpl<K, V> extends AvroGenericStoreClientImpl
   }
 
   @Override
-  protected void initKeySerializer() {
+  protected void init() {
     this.keySerializer =
         SerializerDeserializerFactory.getVsonSerializer(getSchemaReader().getKeySchema());
     this.multiGetRequestSerializer =

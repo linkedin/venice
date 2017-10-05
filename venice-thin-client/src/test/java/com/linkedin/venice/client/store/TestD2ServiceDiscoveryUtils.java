@@ -1,5 +1,6 @@
 package com.linkedin.venice.client.store;
 
+import com.linkedin.venice.client.store.transport.D2TransportClient;
 import com.linkedin.venice.integration.utils.D2TestUtils;
 import com.linkedin.venice.integration.utils.MockVeniceRouterWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
@@ -8,7 +9,7 @@ import org.testng.Assert;
 import org.testng.annotations.Test;
 
 
-public class TestClientFactory {
+public class TestD2ServiceDiscoveryUtils {
   @Test
   public void testD2ServiceDiscovery() {
     String storeName = "test";
@@ -21,7 +22,10 @@ public class TestClientFactory {
     // Set up client config to use the d2 service that router serving for
     clientConfig.setD2ServiceName(router.getRouterD2Service()).setVeniceURL(zk.getAddress());
     // Find the d2 service for that store.
-    String d2ServiceName = ClientFactory.discoverD2Service(clientConfig);
+    D2TransportClient client =new D2TransportClient(zk.getAddress(), router.getRouterD2Service(),
+        clientConfig.getD2BasePath(),
+        clientConfig.getD2ZkTimeout());
+    String d2ServiceName = D2ServiceDiscoveryUtils.discoverD2Service(client, storeName);
     Assert.assertEquals(d2ServiceName, router.getD2ServiceNameForCluster(router.getClusterName()),
         "Should find the correct d2 service associated with the given cluster.");
   }

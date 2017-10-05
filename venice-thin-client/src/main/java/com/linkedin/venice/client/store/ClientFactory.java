@@ -13,7 +13,6 @@ import org.codehaus.jackson.map.ObjectMapper;
 
 
 public class ClientFactory {
-  public static final String TYPE_D2_SERVICE_DISCOVERY = "discover_cluster";
 
   public static <K, V> AvroGenericStoreClient<K, V> getAndStartGenericAvroClient(ClientConfig clientConfig) {
     AvroGenericStoreClient<K, V> client = getGenericAvroClient(clientConfig);
@@ -62,22 +61,6 @@ public class ClientFactory {
     return client;
   }
 
-  protected static String discoverD2Service(ClientConfig clientConfig) {
-    try (D2TransportClient client = generateTransportClient(clientConfig);) {
-      CompletableFuture<TransportClientResponse> response = client.get(TYPE_D2_SERVICE_DISCOVERY+"/"+clientConfig.getStoreName());
-      byte[] body = response.get().getBody();
-      ObjectMapper mapper = new ObjectMapper();
-      D2ServiceDiscoveryResponse d2ServiceDiscoveryResponse = mapper.readValue(body, D2ServiceDiscoveryResponse.class);
-      if (d2ServiceDiscoveryResponse.isError()) {
-        throw new VeniceClientException("Could not found d2 service for store: " + clientConfig.getStoreName() + ". "
-            + d2ServiceDiscoveryResponse.getError());
-      }
-      return d2ServiceDiscoveryResponse.getD2Service();
-    } catch (Exception e) {
-      throw new VeniceClientException("Could not found d2 service for store: " + clientConfig.getStoreName(), e);
-    }
-  }
-
   private static D2TransportClient generateTransportClient(ClientConfig clientConfig){
     String d2ServiceName = clientConfig.getD2ServiceName();
 
@@ -98,9 +81,6 @@ public class ClientFactory {
       if (clientConfig.getD2ServiceName() == null ) {
         throw new VeniceClientException("D2 Server name can't be null");
       }
-      // Find the d2 services that could serve read requests of the store.
-      String d2Service = discoverD2Service(clientConfig);
-      clientConfig.setD2ServiceName(d2Service);
       return generateTransportClient(clientConfig);
     } else if (clientConfig.isHttps()){
       if (clientConfig.getSslEngineComponentFactory() == null) {

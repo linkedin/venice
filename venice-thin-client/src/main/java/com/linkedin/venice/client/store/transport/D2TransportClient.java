@@ -28,7 +28,7 @@ public class D2TransportClient extends TransportClient {
   //d2 shared by multiply TransportClient. The TransportClient only takes care of
   //start/shutdown a d2 client if is is private.
   private final boolean privateD2Client;
-  private final String d2ServiceName;
+  private String d2ServiceName;
 
   /**
    * Construct by an existing D2Client (such as from the pegasus-d2-client-default-cmpt).
@@ -143,6 +143,10 @@ public class D2TransportClient extends TransportClient {
       byte[] body = result.getEntity().copyBytes();
       completeFuture(statusCode, body, schemaId);
     }
+  }
+
+  public D2Client getD2Client() {
+    return this.d2Client;
   }
 
   public String toString() {
