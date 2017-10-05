@@ -81,6 +81,9 @@ public class KafkaPushJob extends AbstractJob {
   public final static String FILE_KEY_SCHEMA = "key.schema";
   public final static String FILE_VALUE_SCHEMA = "value.schema";
 
+  //veniceReducer will not fail fast and override the previous key if this is true and duplicate keys incur.
+  public final static String ALLOW_DUPLICATE_KEY = "allow.duplicate.key";
+
   /**
    * In single-colo mode, this can be either a controller or router.
    * In multi-colo mode, it must be a parent controller.
@@ -139,6 +142,7 @@ public class KafkaPushJob extends AbstractJob {
   private final boolean pbnjFailFast;
   private final boolean pbnjAsync;
   private final double pbnjSamplingRatio;
+  private final boolean isDuplicateKeyAllowed;
 
   private ControllerClient controllerClient;
 
@@ -254,14 +258,16 @@ public class KafkaPushJob extends AbstractJob {
     super(jobId, logger);
     this.id = jobId;
 
-    if (vanillaProps.contains(LEGACY_AVRO_KEY_FIELD_PROP)) {
-      if (vanillaProps.contains(KEY_FIELD_PROP)) {
+    if (vanillaProps.containsKey(LEGACY_AVRO_KEY_FIELD_PROP)) {
+      if (vanillaProps.containsKey(KEY_FIELD_PROP) &&
+          !vanillaProps.getProperty(KEY_FIELD_PROP).equals(vanillaProps.getProperty(LEGACY_AVRO_KEY_FIELD_PROP))) {
         throw new VeniceException("Duplicate key filed found in config. Both avro.key.field and key.field are set up.");
       }
       vanillaProps.setProperty(KEY_FIELD_PROP, vanillaProps.getProperty(LEGACY_AVRO_KEY_FIELD_PROP));
     }
-    if (vanillaProps.contains(LEGACY_AVRO_VALUE_FIELD_PROP)) {
-      if (vanillaProps.contains(VALUE_FIELD_PROP)) {
+    if (vanillaProps.containsKey(LEGACY_AVRO_VALUE_FIELD_PROP)) {
+      if (vanillaProps.containsKey(VALUE_FIELD_PROP) &&
+          !vanillaProps.getProperty(VALUE_FIELD_PROP).equals(vanillaProps.getProperty(LEGACY_AVRO_VALUE_FIELD_PROP))) {
         throw new VeniceException("Duplicate value filed found in config. Both avro.value.field and value.field are set up.");
       }
       vanillaProps.setProperty(VALUE_FIELD_PROP, vanillaProps.getProperty(LEGACY_AVRO_VALUE_FIELD_PROP));
@@ -278,6 +284,7 @@ public class KafkaPushJob extends AbstractJob {
     this.pbnjFailFast = props.getBoolean(PBNJ_FAIL_FAST, false);
     this.pbnjAsync = props.getBoolean(PBNJ_ASYNC, false);
     this.pbnjSamplingRatio = props.getDouble(PBNJ_SAMPLING_RATIO_PROP, 1.0);
+    this.isDuplicateKeyAllowed = props.getBoolean(ALLOW_DUPLICATE_KEY, false);
 
     if (enablePBNJ) {
       // If PBNJ is enabled, then the router URL config is mandatory
@@ -614,6 +621,8 @@ public class KafkaPushJob extends AbstractJob {
     conf.set(TOPIC_PROP, topic);
     conf.set(KAFKA_BOOTSTRAP_SERVERS, kafkaUrl);
     conf.setBoolean(VENICE_MAP_ONLY, isMapOnly);
+
+    conf.setBoolean(ALLOW_DUPLICATE_KEY, isDuplicateKeyAllowed);
 
     // Hadoop2 dev cluster provides a newer version of an avro dependency.
     // Set mapreduce.job.classloader to true to force the use of the older avro dependency.

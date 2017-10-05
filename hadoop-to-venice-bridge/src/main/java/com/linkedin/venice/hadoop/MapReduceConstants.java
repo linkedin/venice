@@ -8,6 +8,8 @@ public class MapReduceConstants {
   public static final String COUNTER_GROUP_KAFKA = "Kafka";
   public static final String COUNTER_OUTPUT_RECORDS = "Output Records";
   public static final String EMPTY_RECORD = "empty record";
+  public static final String DUPLICATE_KEY_WITH_IDENTICAL_VALUE = "duplicate key with identical value";
+  public static final String DUPLICATE_KEY_WITH_DISTINCT_VALUE = "duplicate key with distinct value";
 
   private MapReduceConstants() {}
 }

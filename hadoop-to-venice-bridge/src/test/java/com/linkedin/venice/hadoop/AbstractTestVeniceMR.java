@@ -34,6 +34,7 @@ public class AbstractTestVeniceMR {
     config.setLong(STORAGE_QUOTA_PROP, Store.UNLIMITED_STORAGE_QUOTA);
     config.setDouble(STORAGE_ENGINE_OVERHEAD_RATIO, VeniceControllerWrapper.DEFAULT_STORAGE_ENGINE_OVERHEAD_RATIO);
     config.setBoolean(VENICE_MAP_ONLY, false);
+    config.setBoolean(ALLOW_DUPLICATE_KEY, false);
     return new JobConf(config);
   }
 
