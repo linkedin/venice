@@ -122,19 +122,26 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
     if (null != keySerializer) {
       return keySerializer;
     }
-    // Delay the key schema retrieval until it is necessary
+    // Delay the dynamic d2 service discovery and key schema retrieval until it is necessary
     synchronized (this) {
       if (null != keySerializer) {
         return keySerializer;
       }
 
-      initKeySerializer();
+      init();
 
       return keySerializer;
     }
   }
 
-  protected void initKeySerializer() {
+  protected void init() {
+    // Discover the proper d2 service name for this store.
+    if(transportClient instanceof  D2TransportClient) {
+      // Use the new d2 transport client which will talk to the cluster own the given store.
+      // Do not need to close the original one, because if we use global d2 client, close will do nothing. If we use
+      // private d2, we could not close it as we share this d2 client in the new transport client.
+      transportClient = D2ServiceDiscoveryUtils.getD2TransportClientForStore((D2TransportClient) transportClient, storeName);
+    }
     // init key serializer
     this.keySerializer =
         SerializerDeserializerFactory.getAvroGenericSerializer(schemaReader.getKeySchema());

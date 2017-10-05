@@ -58,7 +58,7 @@ public class AvroSpecificStoreClientImplTest {
     FullHttpResponse schemaResponse = StoreClientTestUtils.constructHttpSchemaResponse(storeName, 1, defaultKeySchemaStr);
     String keySchemaPath = "/" + SchemaReader.TYPE_KEY_SCHEMA + "/" + storeName;
     routerServer.addResponseForUri(keySchemaPath, schemaResponse);
-    String clusterDiscoveryPath = "/"+ClientFactory.TYPE_D2_SERVICE_DISCOVERY+"/"+storeName;
+    String clusterDiscoveryPath = "/"+D2ServiceDiscoveryUtils.TYPE_D2_SERVICE_DISCOVERY+"/"+storeName;
 
     routerServer.addResponseForUri(clusterDiscoveryPath, StoreClientTestUtils.constructHttpClusterDiscoveryResponse(storeName, "test_cluster", D2TestUtils.DEFAULT_TEST_SERVICE_NAME));
 
