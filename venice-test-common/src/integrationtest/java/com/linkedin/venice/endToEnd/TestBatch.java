@@ -5,6 +5,7 @@ import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.KafkaPushJob;
 import com.linkedin.venice.hadoop.pbnj.Sampler;
 import com.linkedin.venice.integration.utils.ServiceFactory;
@@ -16,6 +17,7 @@ import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import java.io.File;
+import java.io.IOException;
 import java.util.*;
 
 import java.util.function.Consumer;
@@ -28,6 +30,8 @@ import org.testng.annotations.*;
 
 import static com.linkedin.venice.hadoop.KafkaPushJob.*;
 import static com.linkedin.venice.utils.TestPushUtils.*; // TODO: remove this static import.
+
+//TODO: write a H2VWrapper that can handle the whole flow
 
 public class TestBatch {
   private static final Logger LOGGER = Logger.getLogger(TestBatch.class);
@@ -50,24 +54,24 @@ public class TestBatch {
 
   @Test(timeOut = TEST_TIMEOUT)
   public void testVsonStoreWithSimpleRecords() throws Exception {
-    testVsonStore(false, props -> {
-      props.setProperty(KEY_FIELD_PROP, "");
-      props.setProperty(VALUE_FIELD_PROP, "");
-    }, (avroClient, vsonClient) -> {
-      for (int i = 0; i < 100; i ++) {
-        //we need to explicitly call toString() because avro actually returns Utf8
-        Assert.assertEquals(avroClient.get(i).get().toString(), String.valueOf(i + 100));
-        Assert.assertEquals(vsonClient.get(i).get(), String.valueOf(i + 100));
-      }
-    });
+    testBatchStore(inputDir -> writeSimpleVsonFile(inputDir), props -> {
+          props.setProperty(KEY_FIELD_PROP, "");
+          props.setProperty(VALUE_FIELD_PROP, "");
+        }, (avroClient, vsonClient) -> {
+          for (int i = 0; i < 100; i++) {
+            //we need to explicitly call toString() because avro actually returns Utf8
+            Assert.assertEquals(avroClient.get(i).get().toString(), String.valueOf(i + 100));
+            Assert.assertEquals(vsonClient.get(i).get(), String.valueOf(i + 100));
+          }
+        });
   }
 
   @Test(timeOut = TEST_TIMEOUT)
   public void testVsonStoreWithComplexRecords() throws Exception {
-    testVsonStore(true, props -> {
+    testBatchStore(inputDir -> writeComplexVsonFile(inputDir), props -> {
       props.setProperty(KEY_FIELD_PROP, "");
       props.setProperty(VALUE_FIELD_PROP, "");
-    }, (AvroGenericStoreClient avroClient, AvroGenericStoreClient vsonClient) -> {
+    }, (avroClient, vsonClient) -> {
       for (int i = 0; i < 100; i ++) {
         GenericData.Record avroObject = (GenericData.Record) avroClient.get(i).get();
         Map vsonObject = (Map) vsonClient.get(i).get();
@@ -84,10 +88,15 @@ public class TestBatch {
 
   @Test(timeOut = TEST_TIMEOUT)
   public void testVsonStoreWithSelectedField() throws Exception {
-    testVsonStore(true, props -> {
+    testBatchStore(inputDir -> {
+      Pair<Schema, Schema> schemas = writeComplexVsonFile(inputDir);
+      //strip the value schema since this is selected filed
+      Schema selectedValueSchema = VsonAvroSchemaAdapter.stripFromUnion(schemas.getValue()).getField("score").schema();
+      return new Pair<>(schemas.getKey(), selectedValueSchema);
+    }, props -> {
       props.setProperty(KEY_FIELD_PROP, "");
       props.setProperty(VALUE_FIELD_PROP, "score");
-    }, (AvroGenericStoreClient avroClient, AvroGenericStoreClient vsonClient) -> {
+    }, (avroClient, vsonClient) -> {
       for (int i = 0; i < 100; i ++) {
         Assert.assertEquals(avroClient.get(i).get(), i % 10 != 0 ? (float) i : null);
         Assert.assertEquals(vsonClient.get(i).get(), i % 10 != 0 ? (float) i : null);
@@ -95,23 +104,43 @@ public class TestBatch {
     });
   }
 
-  private void testVsonStore(boolean complexRecord, Consumer<Properties> extraProps, VsonStoreDataValidator dataValidator) throws Exception {
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testDuplicateKey() throws Exception {
+    try {
+      testStoreWithDuplicateKeys(false);
+      Assert.fail();
+    } catch (VeniceException e) {
+      //push is expected to fail because of duplicate key
+    }
+
+    testStoreWithDuplicateKeys(true);
+  }
+
+  private void testStoreWithDuplicateKeys(boolean isDuplicateKeyAllowed) throws Exception {
+    testBatchStore(inputDir -> {
+      Schema recordSchema = writeSimpleAvroFileWithDuplicateKey(inputDir);
+      return new Pair<>(recordSchema.getField("id").schema(),
+                        recordSchema.getField("name").schema());
+        }, props -> {
+          if (isDuplicateKeyAllowed) {
+            props.setProperty(ALLOW_DUPLICATE_KEY, "true");
+          }
+        },
+        (avroClient, vsonClient) -> {});
+  }
+
+  private void testBatchStore(InputFileWriter inputFileWriter, Consumer<Properties> extraProps, H2VValidator dataValidator) throws Exception {
     File inputDir = getTempDataDirectory();
-    Pair<Schema, Schema> schemas = complexRecord ? writeComplexVsonFile(inputDir) : writeSimpleVsonFile(inputDir);
+    Pair<Schema, Schema> schemas = inputFileWriter.write(inputDir);
     String storeName = TestUtils.getUniqueString("store");
 
     String inputDirPath = "file://" + inputDir.getAbsolutePath();
     Properties props = defaultH2VProps(veniceCluster, inputDirPath, storeName);
     extraProps.accept(props);
 
-    if (!props.getProperty(VALUE_FIELD_PROP).isEmpty()) {
-      Schema selectedValueSchema = VsonAvroSchemaAdapter.stripFromUnion(schemas.getValue()).getField(props.getProperty(VALUE_FIELD_PROP)).schema();
-      schemas = new Pair<>(schemas.getKey(), selectedValueSchema);
-    }
-
     createStoreForJob(veniceCluster, schemas.getKey().toString(), schemas.getValue().toString(), props);
 
-    KafkaPushJob job = new KafkaPushJob(String.format("test %s Vson push job", complexRecord ? "complex" : "simple"), props);
+    KafkaPushJob job = new KafkaPushJob("Test Batch push job", props);
     job.run();
 
     AvroGenericStoreClient avroClient = ClientFactory.getAndStartGenericAvroClient(ClientConfig.defaultGenericClientConfig(storeName)
@@ -122,7 +151,11 @@ public class TestBatch {
     dataValidator.validate(avroClient, vsonClient);
   }
 
-  private interface VsonStoreDataValidator {
+  private interface InputFileWriter {
+    Pair<Schema, Schema> write(File inputDir) throws IOException;
+  }
+
+  private interface H2VValidator {
     void validate(AvroGenericStoreClient avroClient, AvroGenericStoreClient vsonClient) throws Exception;
   }
 
@@ -138,7 +171,6 @@ public class TestBatch {
 
   private void testRunPushJobAndPBNJ(boolean mapOnly) throws Exception {
     Utils.thisIsLocalhost();
-    //VeniceClusterWrapper veniceCluster = ServiceFactory.getVeniceCluster();
 
     File inputDir = getTempDataDirectory();
     Schema recordSchema = writeSimpleAvroFileWithUserSchema(inputDir);

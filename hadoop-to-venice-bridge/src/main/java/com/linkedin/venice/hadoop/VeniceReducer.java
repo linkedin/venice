@@ -52,6 +52,8 @@ public class VeniceReducer implements Reducer<BytesWritable, BytesWritable, Null
   private AbstractVeniceWriter<byte[], byte[]> veniceWriter = null;
   private int valueSchemaId = -1;
 
+  private boolean isDuplicateKeyAllowed;
+
   private Exception sendException = null;
 
   private KafkaMessageCallback callback = null;
@@ -78,8 +80,18 @@ public class VeniceReducer implements Reducer<BytesWritable, BytesWritable, Null
 
     sendMessageToKafka(keyBytes, valueBytes, reporter);
 
-    if (values.hasNext()) {
-      throw new VeniceException("There are mulitple records for key: " + DatatypeConverter.printHexBinary(keyBytes));
+    //encounter duplicate key issue
+    while (values.hasNext()) {
+      if (values.next().copyBytes() == valueBytes) {
+        //the data should be fine since both values are identical, only does logging here
+        reporter.incrCounter(COUNTER_GROUP_KAFKA, DUPLICATE_KEY_WITH_IDENTICAL_VALUE, 1);
+      } else {
+        if (!isDuplicateKeyAllowed) {
+          throw new VeniceException("There are multiple records for key: " + DatatypeConverter.printHexBinary(keyBytes));
+        } else {
+          reporter.incrCounter(COUNTER_GROUP_KAFKA, DUPLICATE_KEY_WITH_DISTINCT_VALUE, 1);
+        }
+      }
     }
   }
 
@@ -132,6 +144,7 @@ public class VeniceReducer implements Reducer<BytesWritable, BytesWritable, Null
 
 
     this.valueSchemaId = props.getInt(VALUE_SCHEMA_ID_PROP);
+    this.isDuplicateKeyAllowed = props.getBoolean(ALLOW_DUPLICATE_KEY);
     if (null == this.veniceWriter) {
       this.veniceWriter = new VeniceWriter<>(
           props,

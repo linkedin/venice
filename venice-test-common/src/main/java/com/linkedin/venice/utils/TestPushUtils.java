@@ -74,23 +74,44 @@ public class TestPushUtils {
    * @throws IOException
    */
   public static Schema writeSimpleAvroFileWithUserSchema(File parentDir) throws IOException {
-    Schema schema = Schema.parse(USER_SCHEMA_STRING);
-    File file = new File(parentDir, "simple_user.avro");
-    DatumWriter<GenericRecord> datumWriter = new GenericDatumWriter<>(schema);
+    return writeAvroFile(parentDir, "simple_user.avro", USER_SCHEMA_STRING,
+        (recordSchema, writer) -> {
+          String name = "test_name_";
+          for (int i = 1; i <= 100; ++i) {
+            GenericRecord user = new GenericData.Record(recordSchema);
+            user.put("id", Integer.toString(i));
+            user.put("name", name + i);
+            user.put("age", i);
+            writer.append(user);
+          }
+        });
+  }
+
+  public static Schema writeSimpleAvroFileWithDuplicateKey(File parentDir) throws IOException {
+    return writeAvroFile(parentDir, "duplicate_key_user.avro", USER_SCHEMA_STRING,
+        (recordSchema, avroFileWriter) -> {
+          for (int i = 0; i < 100; i ++) {
+            GenericRecord user = new GenericData.Record(recordSchema);
+            user.put("id", i %10 == 0 ? "0" : Integer.toString(i)); //"id" is the key
+            user.put("name", "test_name" + i);
+            user.put("age", i);
+            avroFileWriter.append(user);
+          }
+        });
+  }
+
+  private static Schema writeAvroFile(File parentDir, String fileName,
+      String RecordSchemaStr, AvroFileWriter fileWriter) throws IOException {
+    Schema recordSchema = Schema.parse(RecordSchemaStr);
+    File file = new File(parentDir, fileName);
+
+    DatumWriter<GenericRecord> datumWriter = new GenericDatumWriter<>(recordSchema);
     DataFileWriter<GenericRecord> dataFileWriter = new DataFileWriter<>(datumWriter);
-    dataFileWriter.create(schema, file);
-
-    String name = "test_name_";
-    for (int i = 1; i <= 100; ++i) { // DEBUG this should be 100
-      GenericRecord user = new GenericData.Record(schema);
-      user.put("id", Integer.toString(i));
-      user.put("name", name + i);
-      user.put("age", i);
-      dataFileWriter.append(user);
-    }
-
+    dataFileWriter.create(recordSchema, file);
+    fileWriter.write(recordSchema, dataFileWriter);
     dataFileWriter.close();
-    return schema;
+
+    return recordSchema;
   }
 
   public static javafx.util.Pair<Schema, Schema> writeSimpleVsonFile(File parentDir) throws IOException{
@@ -145,6 +166,10 @@ public class TestPushUtils {
 
   private interface VsonFileWriter {
     void write(VsonAvroSerializer keySerializer, VsonAvroSerializer valueSerializer, SequenceFile.Writer writer) throws IOException;
+  }
+
+  private interface AvroFileWriter {
+    void write(Schema recordSchema, DataFileWriter writer) throws IOException;
   }
 
   public static Properties defaultH2VProps(VeniceClusterWrapper veniceCluster, String inputDirPath, String storeName) {
