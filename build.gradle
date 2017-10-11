@@ -39,6 +39,7 @@ ext.libraries = [ // Groovy map literal
                   bouncyCastle: 'org.bouncycastle:bcprov-jdk15on:1.55',
                   commonsCodec: 'commons-codec:commons-codec:1.4',
                   commonsIo: 'commons-io:commons-io:2.4',
+                  //TODO: remove guava library dependency since it could cause a lot of indirect dependency conflicts.
                   guava: 'com.google.guava:guava:18.0',
                   helix: 'org.apache.helix:helix-core:0.6.7.3',
                   kafka: internalKafkaGroup + ':kafka_2.10:' + internalKafkaVersion,
