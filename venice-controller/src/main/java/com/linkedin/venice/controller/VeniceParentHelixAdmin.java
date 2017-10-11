@@ -862,6 +862,9 @@ public class VeniceParentHelixAdmin implements Admin {
       }
     }
 
+    /**
+     * TODO: remove guava library dependency since it could cause a lot of indirect dependency conflicts.
+     */
     // Sort the per-datacenter status in this order, and return the first one in the list
     // Edge case example: if one cluster is stuck in NOT_CREATED, then
     //   as another cluster goes from PROGRESS to COMPLETED
@@ -871,6 +874,7 @@ public class VeniceParentHelixAdmin implements Admin {
         ExecutionStatus.STARTED,
         ExecutionStatus.NEW,
         ExecutionStatus.NOT_CREATED,
+        ExecutionStatus.END_OF_PUSH_RECEIVED,
         ExecutionStatus.ERROR,
         ExecutionStatus.COMPLETED,
         ExecutionStatus.ARCHIVED));

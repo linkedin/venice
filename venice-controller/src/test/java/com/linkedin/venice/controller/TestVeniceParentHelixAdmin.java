@@ -943,12 +943,19 @@ public class TestVeniceParentHelixAdmin {
     verify(topicManager, never()).ensureTopicIsDeletedAndBlock("topic6");
     Assert.assertEquals(extraInfo.get("cluster9"), ExecutionStatus.STARTED.toString());
 
-    progressMap.put("cluster11", clientMap.get(ExecutionStatus.COMPLETED));
+    progressMap.put("cluster11", clientMap.get(ExecutionStatus.END_OF_PUSH_RECEIVED));
     offlineJobStatus = VeniceParentHelixAdmin.getOffLineJobStatus("mycluster", "topic7", progressMap, topicManager);
     extraInfo = offlineJobStatus.getExtraInfo();
     Assert.assertEquals(offlineJobStatus.getExecutionStatus(), ExecutionStatus.PROGRESS);
     verify(topicManager, never()).ensureTopicIsDeletedAndBlock("topic7");
-    Assert.assertEquals(extraInfo.get("cluster11"), ExecutionStatus.COMPLETED.toString());
+    Assert.assertEquals(extraInfo.get("cluster11"), ExecutionStatus.END_OF_PUSH_RECEIVED.toString());
+
+    progressMap.put("cluster13", clientMap.get(ExecutionStatus.COMPLETED));
+    offlineJobStatus = VeniceParentHelixAdmin.getOffLineJobStatus("mycluster", "topic8", progressMap, topicManager);
+    extraInfo = offlineJobStatus.getExtraInfo();
+    Assert.assertEquals(offlineJobStatus.getExecutionStatus(), ExecutionStatus.PROGRESS);
+    verify(topicManager, never()).ensureTopicIsDeletedAndBlock("topic8");
+    Assert.assertEquals(extraInfo.get("cluster13"), ExecutionStatus.COMPLETED.toString());
 
     // 1 in 4 failures is ERROR
     Map<String, ControllerClient> failCompleteMap = new HashMap<>();

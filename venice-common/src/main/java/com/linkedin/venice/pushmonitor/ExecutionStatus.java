@@ -23,7 +23,7 @@ public enum ExecutionStatus {
   PROGRESS(false, true, false, false),
 
   /** Tasks belonging to a Hybrid Store emits this instead of {@link ExecutionStatus#COMPLETED} when it consumes a EOP message */
-  END_OF_PUSH_RECEIVED(false, true, true, false),
+  END_OF_PUSH_RECEIVED(true, true, true, false),
 
   /** Tasks belonging to a Hybrid Store emits this instead when it consumes a SOBR message */
   START_OF_BUFFER_REPLAY_RECEIVED(false, true, true, false),
