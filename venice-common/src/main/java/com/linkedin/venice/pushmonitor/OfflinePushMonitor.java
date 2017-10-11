@@ -77,14 +77,30 @@ public class OfflinePushMonitor implements OfflinePushAccessor.PartitionStatusLi
 
       // Check the status for the running push. In case controller missed some notification during the failover, we
       // need to update it based on current routing data.
+      List<OfflinePushStatus> legacyOfflinePushes = new ArrayList<>();
       topicToPushMap.values()
           .stream()
           .filter(offlinePush -> offlinePush.getCurrentStatus().equals(ExecutionStatus.STARTED))
           .forEach(offlinePush -> {
-            routingDataRepository.subscribeRoutingDataChange(offlinePush.getKafkaTopic(), this);
-            ExecutionStatus status = checkPushStatus(offlinePush, routingDataRepository.getPartitionAssignments(offlinePush.getKafkaTopic()));
-            terminateOfflinePush(offlinePush, status);
+            if(routingDataRepository.containsKafkaTopic(offlinePush.getKafkaTopic())) {
+              routingDataRepository.subscribeRoutingDataChange(offlinePush.getKafkaTopic(), this);
+              ExecutionStatus status = checkPushStatus(offlinePush, routingDataRepository.getPartitionAssignments(offlinePush.getKafkaTopic()));
+              terminateOfflinePush(offlinePush, status);
+            } else {
+              // In any case, we found the offline push status is STARTED, but the related version could not be found.
+              // We should collect this legacy offline push status.
+              legacyOfflinePushes.add(offlinePush);
+            }
           });
+      //Clear all legacy offline push status.
+      for(OfflinePushStatus legacyOfflinePush : legacyOfflinePushes){
+        try {
+          topicToPushMap.remove(legacyOfflinePush.getKafkaTopic());
+          accessor.deleteOfflinePushStatusAndItsPartitionStatuses(legacyOfflinePush);
+        }catch(Exception e){
+          logger.warn("Could not delete legacy push status: "+legacyOfflinePush.getKafkaTopic());
+        }
+      }
     }
   }
 
@@ -254,6 +270,16 @@ public class OfflinePushMonitor implements OfflinePushAccessor.PartitionStatusLi
     }
   }
 
+  public void markOfflinePushAsError(String topic){
+    OfflinePushStatus status = topicToPushMap.get(topic);
+    if(status == null){
+      logger.warn("Could not found offline push status for topic: "+topic+". Ignore the request of marking status as ERROR.");
+      return;
+    }
+    routingDataRepository.unSubscribeRoutingDataChange(topic, this);
+    updatePushStatus(status, ExecutionStatus.ERROR);
+  }
+
   @Override
   public void onPartitionStatusChange(String topic, ReadOnlyPartitionStatus partitionStatus) {
     synchronized (lock) {
@@ -381,10 +407,10 @@ public class OfflinePushMonitor implements OfflinePushAccessor.PartitionStatusLi
     updatePushStatus(pushStatus, ExecutionStatus.ERROR);
     String storeName = Version.parseStoreFromKafkaTopicName(pushStatus.getKafkaTopic());
     int versionNumber = Version.parseVersionFromKafkaTopicName(pushStatus.getKafkaTopic());
-    updateStoreVersionStatus(storeName, versionNumber, VersionStatus.ERROR);
-    // If we met some error to delete error version, we should not throw the exception out to fail this operation,
-    // because it will be collected once a new push is completed for this store.
     try {
+      updateStoreVersionStatus(storeName, versionNumber, VersionStatus.ERROR);
+      // If we met some error to delete error version, we should not throw the exception out to fail this operation,
+      // because it will be collected once a new push is completed for this store.
       storeCleaner.deleteOneStoreVersion(clusterName, storeName, versionNumber);
     } catch (Exception e) {
       logger.warn("Could not delete error version: " + versionNumber + " for store: " + storeName + " in cluster: "

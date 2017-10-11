@@ -436,15 +436,24 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             }
             return version;
         } catch (Throwable e) {
-            // Clean up resources because add version failed.
+
             int failedVersionNumber = versionNumber;
             if (version != null) {
                 failedVersionNumber = version.getNumber();
-                deleteOneStoreVersion(clusterName, storeName, failedVersionNumber);
+                handleVersionCreationFailure(clusterName, storeName, failedVersionNumber);
             }
             throw new VeniceException(
-                "Failed to create helix resource:" + Version.composeKafkaTopic(storeName, failedVersionNumber), e);
+                "Failed to add a version: " + failedVersionNumber + " to store: " + storeName + " in cluster:"
+                    + clusterName);
         }
+    }
+
+
+    protected void handleVersionCreationFailure(String clusterName, String storeName, int versionNumber){
+        // Mark offline push job as Error and clean up resources because add version failed.
+        OfflinePushMonitor offlinePushMonitor = getVeniceHelixResource(clusterName).getOfflinePushMonitor();
+        offlinePushMonitor.markOfflinePushAsError(Version.composeKafkaTopic(storeName, versionNumber));
+        deleteOneStoreVersion(clusterName, storeName, versionNumber);
     }
 
     @Override

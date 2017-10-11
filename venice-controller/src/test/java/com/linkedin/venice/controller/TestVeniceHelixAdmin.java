@@ -377,6 +377,27 @@ public class TestVeniceHelixAdmin {
     Assert.fail("No VeniceHelixAdmin became master for cluster: " + cluster + " after timeout: " + timeout);
   }
 
+  @Test
+  public void testHandleVersionCreationFailure() {
+    String storeName = "test";
+    veniceAdmin.addStore(clusterName, storeName, "owner", keySchema, valueSchema);
+    // Register the handle for kill message. Otherwise, when job manager collect the old version, it would meet error
+    // after sending kill job message. Because, participant can not handle message correctly.
+    HelixStatusMessageChannel channel = new HelixStatusMessageChannel(participants.get(nodeId));
+    channel.registerHandler(KillOfflinePushMessage.class, new StatusMessageHandler<KillOfflinePushMessage>() {
+      @Override
+      public void handleMessage(KillOfflinePushMessage message) {
+        //ignore.
+      }
+    });
+
+    Version version = veniceAdmin.incrementVersion(clusterName, storeName, 1, 1);
+    int versionNumber = version.getNumber();
+    veniceAdmin.handleVersionCreationFailure(clusterName, storeName, versionNumber);
+    Assert.assertEquals(veniceAdmin.getStore(clusterName, storeName).getVersions().size(), 0);
+    Assert.assertEquals(veniceAdmin.getOffLinePushStatus(clusterName, Version.composeKafkaTopic(storeName, versionNumber)).getExecutionStatus(), ExecutionStatus.ERROR);
+  }
+
   @Test(retryAnalyzer = FlakyTestRetryAnalyzer.class)
   public void testDeleteOldVersions()
       throws InterruptedException {
