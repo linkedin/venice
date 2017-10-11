@@ -133,6 +133,25 @@ public class OfflinePushMonitorTest {
   }
 
   @Test
+  public void testLoadLegacyPushes() {
+    String topic = "testLoadLegacyPushes";
+    List<OfflinePushStatus> statusList = new ArrayList<>();
+    OfflinePushStatus pushStatus = new OfflinePushStatus(topic, numberOfPartition, replicationFactor,
+        OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);
+    pushStatus.setCurrentStatus(ExecutionStatus.STARTED);
+    statusList.add(pushStatus);
+    Mockito.doReturn(statusList).when(mockAccessor).loadOfflinePushStatusesAndPartitionStatuses();
+    Mockito.doReturn(false).when(mockRoutingDataRepo).containsKafkaTopic(Mockito.eq(topic));
+    monitor.loadAllPushes();
+    try {
+      monitor.getOfflinePush(topic);
+      Assert.fail("An exception should be thrown, because we did NOT load this push status.");
+    } catch (VeniceException e) {
+      //expected
+    }
+  }
+
+  @Test
   public void testLoadRunningPushWhichIsNotUpdateToDate() {
     String topic = "testLoadRunningPushWhichIsNotUpdateToDate_v1";
     Store store = prepareMockStore(topic);
@@ -142,6 +161,7 @@ public class OfflinePushMonitorTest {
     statusList.add(pushStatus);
     Mockito.doReturn(statusList).when(mockAccessor).loadOfflinePushStatusesAndPartitionStatuses();
     PartitionAssignment partitionAssignment = new PartitionAssignment(topic, numberOfPartition);
+    Mockito.doReturn(true).when(mockRoutingDataRepo).containsKafkaTopic(Mockito.eq(topic));
     Mockito.doReturn(partitionAssignment).when(mockRoutingDataRepo).getPartitionAssignments(topic);
     PushStatusDecider decider = Mockito.mock(PushStatusDecider.class);
     Mockito.doReturn(ExecutionStatus.COMPLETED).when(decider).checkPushStatus(pushStatus, partitionAssignment);
@@ -165,6 +185,7 @@ public class OfflinePushMonitorTest {
     statusList.add(pushStatus);
     Mockito.doReturn(statusList).when(mockAccessor).loadOfflinePushStatusesAndPartitionStatuses();
     PartitionAssignment partitionAssignment = new PartitionAssignment(topic, numberOfPartition);
+    Mockito.doReturn(true).when(mockRoutingDataRepo).containsKafkaTopic(Mockito.eq(topic));
     Mockito.doReturn(partitionAssignment).when(mockRoutingDataRepo).getPartitionAssignments(topic);
     PushStatusDecider decider = Mockito.mock(PushStatusDecider.class);
     Mockito.doReturn(ExecutionStatus.ERROR).when(decider).checkPushStatus(pushStatus, partitionAssignment);
