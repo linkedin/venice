@@ -32,6 +32,20 @@ public class TestVsonAvroDatumReader {
     testReader(byteSchema, () -> ByteBuffer.wrap(randomBytes),
         (vsonObject) -> Assert.assertEquals(vsonObject, randomBytes));
     testReadNullValue(byteSchema);
+
+    //single byte
+    byte[] singleByteArray = {randomBytes[0]};
+    GenericData.Fixed fixedByte = new GenericData.Fixed(singleByteArray);
+    testReader("\"int8\"", () -> fixedByte,
+        vsonObject -> Assert.assertEquals(vsonObject, randomBytes[0]));
+    testReadNullValue("\"int8\"");
+
+    //short
+    byte[] shortBytesArray = {(byte) 0xFF, (byte) 0xFE}; //0xFFFE = -2
+    GenericData.Fixed fixedShort = new GenericData.Fixed(shortBytesArray);
+    testReader("\"int16\"", () -> fixedShort,
+        vsonObject -> Assert.assertEquals(vsonObject, (short) -2));
+    testReadNullValue("\"int16\"");
   }
 
   @Test

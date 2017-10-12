@@ -29,6 +29,27 @@ public class VsonAvroDatumReader<D> extends GenericDatumReader<D> {
   }
 
   @Override
+  protected Object readFixed(Object old, Schema expected, Decoder in) throws IOException {
+    if (expected.getFixedSize() == 1) {
+      return readByte(new byte[1], in);
+    } else if (expected.getFixedSize() == 2) {
+      return readShort(new byte[2], in);
+    } else {
+      throw illegalFixedLength(expected.getFixedSize());
+    }
+  }
+
+  private Byte readByte(byte[] bytes, Decoder in) throws IOException {
+    in.readFixed(bytes, 0, 1);
+    return bytes[0];
+  }
+
+  private Short readShort(byte[] bytes, Decoder in) throws IOException {
+    in.readFixed(bytes, 0, 2);
+    return (short)(((bytes[0] & 0xFF) << 8) | (bytes[1] & 0xFF));
+  }
+
+  @Override
   protected Object readString(Object old, Schema expected, Decoder in) throws IOException {
     return super.readString(old, expected, in).toString();
   }
@@ -51,12 +72,13 @@ public class VsonAvroDatumReader<D> extends GenericDatumReader<D> {
     throw notSupportType(expected.getType());
   }
 
-  @Override
-  protected Object readFixed(Object old, Schema expected, Decoder in) throws IOException {
-    throw notSupportType(expected.getType());
-  }
-
   static VsonSerializationException notSupportType(Schema.Type type) {
     return new VsonSerializationException(String.format("Does not support casting type: %s between Vson and Avro", type.toString()));
+  }
+
+  //this should not happen. If the program goes to here, bad thing happened
+  static VsonSerializationException illegalFixedLength(int len) {
+    return new VsonSerializationException("illegal Fixed type length: " + len +
+        "Fixed type is only for single byte or short and should not have size greater than 2");
   }
 }

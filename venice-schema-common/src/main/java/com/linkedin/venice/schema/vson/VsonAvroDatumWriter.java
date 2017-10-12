@@ -26,6 +26,7 @@ public class VsonAvroDatumWriter<K> extends GenericDatumWriter<K> {
         case UNION:   writeUnion(schema, datum, out);   break;
         case STRING:  writeString(schema, datum, out);  break;
         case BYTES:   writeBytes(datum, out);           break;
+        case FIXED:   writeFixed(schema, datum, out);   break;
         case INT:     out.writeInt((Integer)datum);     break;
         case LONG:    out.writeLong((Long)datum);       break;
         case FLOAT:   out.writeFloat((Float)datum);     break;
@@ -34,7 +35,6 @@ public class VsonAvroDatumWriter<K> extends GenericDatumWriter<K> {
         case NULL:    out.writeNull();                  break;
         case MAP:
         case ENUM:
-        case FIXED:
         default:
           throw VsonAvroDatumReader.notSupportType(schema.getType());
       }
@@ -46,6 +46,32 @@ public class VsonAvroDatumWriter<K> extends GenericDatumWriter<K> {
       Object value = ((Map) datum).get(field.name());
       write(field.schema(), value, out);
     }
+  }
+
+  /**
+   * In Vson-Avro conversion, Fixed type is specialized for representing
+   * 'single byte' or 'short'.
+   */
+  @Override
+  protected void writeFixed(Schema schema, Object datum, Encoder out) throws IOException{
+    if (schema.getFixedSize() == 1) {
+      writeFixedByte(datum, out);
+    } else if (schema.getFixedSize() == 2) {
+      writeFixedShort(datum, out);
+    } else {
+      throw VsonAvroDatumReader.illegalFixedLength(schema.getFixedSize());
+    }
+  }
+
+  private void writeFixedByte(Object datum, Encoder out) throws IOException {
+    byte[] byteArray = {(byte) datum};
+    out.writeFixed(byteArray, 0, 1);
+  }
+
+  private void writeFixedShort(Object datum, Encoder out) throws IOException {
+    Short s = (Short) datum;
+    byte[] byteArray = {(byte) ((s >>> 8) & 0xff), (byte) (s & 0xff)};
+    out.writeFixed(byteArray, 0, 2);
   }
 
   /**

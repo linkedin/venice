@@ -55,7 +55,7 @@ public class TestVsonAvroSerializer {
         });
     testSerializerWithNullValue("\"string\"");
 
-    //test byte. 'bytes' is stored as ByteBuffer in Avro
+    //test bytes. 'bytes' is stored as ByteBuffer in Avro
     byte[] randomBytes = new byte[10];
     new Random().nextBytes(randomBytes);
     testSerializer("\"bytes\"", () -> randomBytes,
@@ -64,6 +64,34 @@ public class TestVsonAvroSerializer {
           Assert.assertEquals(serializer.bytesToAvro(bytes), ByteBuffer.wrap(randomBytes));
         });
     testSerializerWithNullValue("\"bytes\"");
+
+    //test single byte. 'byte' is represented as 'int8' in Vson
+    //and it is represented as Fixed (with 1 length) in Avro
+    testSerializer("\"int8\"", () -> randomBytes[0],
+        (serializer, bytes) -> {
+          Assert.assertEquals(serializer.toObject(bytes), randomBytes[0]);
+          Object avroByte = serializer.bytesToAvro(bytes);
+          Assert.assertTrue(avroByte instanceof GenericData.Fixed);
+          byte[] avroByteArray = ((GenericData.Fixed) avroByte).bytes();
+          Assert.assertEquals(avroByteArray.length, 1);
+          Assert.assertEquals(avroByteArray[0], randomBytes[0]);
+        });
+    testSerializerWithNullValue("\"int8\"");
+
+    //test short. 'short' is represented as 'int16' in Vson
+    //and it is represented as Fixed (with 2 length) in Avro
+    testSerializer("\"int16\"", () -> (short) -2,
+        (serializer, bytes) ->{
+          Assert.assertEquals(serializer.toObject(bytes), (short) -2);
+          Object avroShort = serializer.bytesToAvro(bytes);
+          Assert.assertTrue(avroShort instanceof GenericData.Fixed);
+          byte[] avroByteArray = ((GenericData.Fixed) avroShort).bytes();
+          Assert.assertEquals(avroByteArray.length, 2);
+          // -2 is equal to 11111110 (0xFFFE)
+          Assert.assertEquals(avroByteArray[0], (byte) 0xFF);
+          Assert.assertEquals(avroByteArray[1], (byte) 0xFE);
+        });
+    testSerializerWithNullValue("\"int16\"");
   }
 
   @Test

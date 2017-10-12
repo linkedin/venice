@@ -128,6 +128,21 @@ public class TestPushUtils {
     return new javafx.util.Pair<>(VsonAvroSchemaAdapter.parse(vsonInteger), VsonAvroSchemaAdapter.parse(vsonString));
   }
 
+  //write vson byte (int 8) and short (int16) to a file
+  public static javafx.util.Pair<Schema, Schema> writeVsonByteAndShort(File parentDir) throws IOException{
+    String vsonByte = "\"int8\"";
+    String vsonShort = "\"int16\"";
+
+    writeVsonFile(vsonByte, vsonShort, parentDir,  "vson_byteAndShort_file",
+        (keySerializer, valueSerializer, writer) ->{
+          for (int i = 0; i < 100; i++) {
+            writer.append(new BytesWritable(keySerializer.toBytes((byte) i)),
+                new BytesWritable(valueSerializer.toBytes((short) (i - 50))));
+          }
+        });
+    return new javafx.util.Pair<>(VsonAvroSchemaAdapter.parse(vsonByte), VsonAvroSchemaAdapter.parse(vsonShort));
+  }
+
   public static javafx.util.Pair<Schema, Schema> writeComplexVsonFile(File parentDir) throws IOException{
     String vsonInteger = "\"int32\"";
     String vsonString = "{\"member_id\":\"int32\", \"score\":\"float32\"}";;

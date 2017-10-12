@@ -541,8 +541,10 @@ public class AdminTool {
     String keySchemaStr = readFile(getRequiredArgument(cmd, Arg.KEY_SCHEMA));
     String valueSchemaStr = readFile(getRequiredArgument(cmd, Arg.VALUE_SCHEMA));
 
-    System.out.println("Avro key schema: " + VsonAvroSchemaAdapter.parse(keySchemaStr));
-    System.out.println("Avro value schema: " + VsonAvroSchemaAdapter.parse(valueSchemaStr));
+    System.out.println(
+        String.format("{\n  \"Avro key schema\": \"%s\",\n  \"Avro value schema\": \"%s\"\n}",
+            VsonAvroSchemaAdapter.parse(keySchemaStr).toString(),
+            VsonAvroSchemaAdapter.parse(valueSchemaStr).toString()));
 
     System.exit(1);
   }
