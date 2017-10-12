@@ -45,7 +45,6 @@ public class VeniceReducer implements Reducer<BytesWritable, BytesWritable, Null
   private static final Logger LOGGER = Logger.getLogger(VeniceReducer.class);
 
   private static final int COUNTER_STATEMENT_COUNT = 100000;
-  private static final int STORAGE_NODE_REPLICA_FACTOR = 3;
 
   private long lastTimeChecked = System.currentTimeMillis();
 
@@ -189,7 +188,7 @@ public class VeniceReducer implements Reducer<BytesWritable, BytesWritable, Null
   }
 
   private long estimatedVeniceDiskUsage(long inputFileSize, double storageEngineOverheadRatio) {
-    return (long) (inputFileSize * STORAGE_NODE_REPLICA_FACTOR / storageEngineOverheadRatio);
+    return (long) (inputFileSize / storageEngineOverheadRatio);
   }
 
   private void maybePropagateCallbackException() {
