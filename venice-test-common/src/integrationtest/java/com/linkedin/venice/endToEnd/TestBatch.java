@@ -86,6 +86,22 @@ public class TestBatch {
     });
   }
 
+  /**
+   * single byte (int8) and short (int16) are represented as Fixed in Avro.
+   * This test case make sure Venice can write and read them properly.
+   */
+  @Test(timeOut = TEST_TIMEOUT)
+  public void testVsonStoreCanProcessByteAndShort() throws Exception {
+    testBatchStore(inputDir -> writeVsonByteAndShort(inputDir), props -> {
+      props.setProperty(KEY_FIELD_PROP, "");
+      props.setProperty(VALUE_FIELD_PROP, "");
+    }, (avroClient, vsonClient) -> {
+      for (int i = 0; i < 100; i ++) {
+        Assert.assertEquals(vsonClient.get((byte) i).get(), (short) (i - 50));
+      }
+    });
+  }
+
   @Test(timeOut = TEST_TIMEOUT)
   public void testVsonStoreWithSelectedField() throws Exception {
     testBatchStore(inputDir -> {

@@ -19,6 +19,10 @@ public class VsonAvroSchemaAdapter extends AbstractVsonSchemaAdapter<Schema> {
   private static final String DEFAULT_NAMESPACE = null;
   private static final JsonNode DEFAULT_VALUE = null;
 
+  //both vson int8 and int16 would be wrapped as Avro fixed.
+  private static final String BYTE_WRAPPER = "byteWrapper";
+  private static final String SHORT_WRAPPER = "shortWrapper";
+
   private int recordCount = 1;
 
   public static Schema parse(String vsonSchemaStr) {
@@ -74,7 +78,11 @@ public class VsonAvroSchemaAdapter extends AbstractVsonSchemaAdapter<Schema> {
         avroSchema = nullableUnion(Schema.create(Schema.Type.BYTES));
         break;
       case INT8:
+        avroSchema = nullableUnion(constructFixedType(BYTE_WRAPPER, 1));
+        break;
       case INT16:
+        avroSchema = nullableUnion(constructFixedType(SHORT_WRAPPER, 2));
+        break;
       case DATE:
         throw new VsonSerializationException("Vson type: " + type.toDisplay() + " is not supported to convert to Avro");
       default:
@@ -83,6 +91,10 @@ public class VsonAvroSchemaAdapter extends AbstractVsonSchemaAdapter<Schema> {
     }
 
     return avroSchema;
+  }
+
+  private Schema constructFixedType(String name, int size) {
+    return Schema.createFixed(name, DEFAULT_DOC, DEFAULT_NAMESPACE, size);
   }
 
   /**

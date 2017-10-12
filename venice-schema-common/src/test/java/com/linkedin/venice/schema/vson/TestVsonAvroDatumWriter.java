@@ -29,6 +29,24 @@ public class TestVsonAvroDatumWriter {
     byte[] randomBytes = new byte[10];
     new Random().nextBytes(randomBytes);
     testWriter("\"bytes\"", () -> ByteBuffer.wrap(randomBytes));
+
+    testWriter("\"int8\"", () -> randomBytes[0], avroObject -> {
+      Assert.assertTrue(avroObject instanceof GenericData.Fixed);
+      byte[] byteArray = ((GenericData.Fixed) avroObject).bytes();
+      Assert.assertEquals(byteArray.length, 1);
+      Assert.assertEquals(byteArray[0], randomBytes[0]);
+    });
+    testWriteNullValue("\"int8\"");
+
+    testWriter("\"int16\"", () -> (short) -2, avroObject -> {
+      Assert.assertTrue(avroObject instanceof  GenericData.Fixed);
+      byte[] byteArray = ((GenericData.Fixed) avroObject).bytes();
+      Assert.assertEquals(byteArray.length, 2);
+      // -2 is equal to 11111110 (0xFFFE)
+      Assert.assertEquals(byteArray[0], (byte) 0xFF);
+      Assert.assertEquals(byteArray[1], (byte) 0xFE);
+    });
+    testWriteNullValue("\"int16\"");
   }
 
   @Test

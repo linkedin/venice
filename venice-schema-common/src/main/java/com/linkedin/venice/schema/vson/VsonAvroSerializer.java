@@ -159,9 +159,9 @@ public class VsonAvroSerializer {
         case BOOLEAN:
           return readBoolean(stream);
         case INT8:
-          return readInt8(stream);
+          return readByteToAvro(stream);
         case INT16:
-          return readInt16(stream);
+          return readShortToAvro(stream);
         case INT32:
           return readInt32(stream);
         case INT64:
@@ -221,6 +221,25 @@ public class VsonAvroSerializer {
     }
 
     return array;
+  }
+
+  private GenericData.Fixed readByteToAvro(DataInputStream stream) throws IOException {
+    byte b = stream.readByte();
+    if(b == Byte.MIN_VALUE) {
+      return null;
+    }
+
+    byte[] byteArray = {b};
+    return new GenericData.Fixed(byteArray);
+  }
+
+  private GenericData.Fixed readShortToAvro(DataInputStream stream) throws IOException {
+    short s = stream.readShort();
+    if (s == Short.MIN_VALUE) return null;
+
+    //big-endian encoding
+    byte[] byteArray = {(byte) ((s >>> 8) & 0xff), (byte) (s & 0xff)};
+    return new GenericData.Fixed(byteArray);
   }
 
   @SuppressWarnings("unchecked")
