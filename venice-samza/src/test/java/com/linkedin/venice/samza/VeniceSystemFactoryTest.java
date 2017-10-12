@@ -89,7 +89,26 @@ public class VeniceSystemFactoryTest {
     assertEquals(recordFromVenice.get("string").toString(), "somestring");
     assertEquals(recordFromVenice.get("number"), 3.14);
 
+    //delete the record
+    OutgoingMessageEnvelope deleteEnvelope = new OutgoingMessageEnvelope(
+        new SystemStream(VENICE_SYSTEM_NAME, storeName),
+        "keystring",
+        null);
+    veniceProducer.send(storeName, deleteEnvelope);
+
+    //verify the delete
+    TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
+      GenericRecord deletedRecord = null;
+      try {
+        deletedRecord = storeClient.get("keystring").get(1, TimeUnit.SECONDS);
+      } catch (Exception e) {
+        throw new RuntimeException(e);
+      }
+      Assert.assertNull(deletedRecord);
+    });
+
     veniceProducer.stop();
+    storeClient.close();
   }
 
   @Test

@@ -155,23 +155,28 @@ public class VeniceSystemProducer implements SystemProducer {
           + " which does not match Venice key schema " + remoteKeySchema + ".  Key object: " + serializedObject);
     }
 
-    Schema valueSchema = getSchemaFromObject(valueObject);
-    int valueSchemaId = schemaIds.computeIfAbsent(new StoreAndSchema(store, valueSchema), storeAndSchema -> {
-      SchemaResponse valueSchemaResponse = veniceControllerClient
-          .getValueSchemaID(storeAndSchema.getStoreName(), storeAndSchema.getSchema().toString());
-      if (valueSchemaResponse.isError()) { //TODO: retry
-        throw new SamzaException("Failed to get Venice schema ID for store " + store + ": " + valueSchemaResponse.getError());
-      }
-      return valueSchemaResponse.getId();
-    });
-
-    VeniceWriter<byte[], byte[]> writer = writerMap.computeIfAbsent(store,
-        s -> getVeniceWriter(storeToTopic.get(s), storeToKafkaServers.get(s)));
+    VeniceWriter<byte[], byte[]> writer =
+        writerMap.computeIfAbsent(store, s -> getVeniceWriter(storeToTopic.get(s), storeToKafkaServers.get(s)));
 
     byte[] key = serializeObject(topic, keyObject);
-    byte[] value = serializeObject(topic, valueObject);
 
-    writer.put(key, value, valueSchemaId);
+    if (null == valueObject) {
+      writer.delete(key);
+    } else {
+      Schema valueSchema = getSchemaFromObject(valueObject);
+      int valueSchemaId = schemaIds.computeIfAbsent(new StoreAndSchema(store, valueSchema), storeAndSchema -> {
+        SchemaResponse valueSchemaResponse = veniceControllerClient.getValueSchemaID(storeAndSchema.getStoreName(),
+            storeAndSchema.getSchema().toString());
+        if (valueSchemaResponse.isError()) { //TODO: retry
+          throw new SamzaException("Failed to get Venice schema ID for store " + store + ": " + valueSchemaResponse.getError());
+        }
+        return valueSchemaResponse.getId();
+      });
+
+      byte[] value = serializeObject(topic, valueObject);
+
+      writer.put(key, value, valueSchemaId);
+    }
   }
 
   @Override
