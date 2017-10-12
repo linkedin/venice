@@ -152,9 +152,8 @@ public class VeniceWriter<K, V> extends AbstractVeniceWriter<K, V> {
   public Future<RecordMetadata> delete(K key) {
     KafkaKey kafkaKey = new KafkaKey(MessageType.DELETE, keySerializer.serialize(topicName, key));
     int partition = getPartition(kafkaKey);
-
     KafkaMessageEnvelope kafkaValue = getKafkaMessageEnvelope(MessageType.DELETE, partition);
-
+    kafkaValue.payloadUnion = new Delete();
     return sendMessage(kafkaKey, kafkaValue, partition);
   }
 
@@ -354,8 +353,10 @@ public class VeniceWriter<K, V> extends AbstractVeniceWriter<K, V> {
    * {@link org.apache.avro.specific.SpecificRecord} classes holding the content of our
    * Kafka values.
    *
+   * Note: the payloadUnion must be set on the return object before producing into Kafka.
+   *
    * @param messageType an instance of the {@link MessageType} enum.
-   * @return A {@link KafkaMessageEnvelope} suitable for producing into Kafka
+   * @return A {@link KafkaMessageEnvelope} for producing into Kafka
    */
   private KafkaMessageEnvelope getKafkaMessageEnvelope(MessageType messageType, int partition) {
     // If single-threaded, the kafkaValue could be re-used (and clobbered). TODO: explore GC tuning later.
