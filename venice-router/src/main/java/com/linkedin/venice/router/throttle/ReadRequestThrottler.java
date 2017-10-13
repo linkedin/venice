@@ -17,6 +17,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import org.apache.log4j.Logger;
 
@@ -29,6 +30,10 @@ import org.apache.log4j.Logger;
  * level quota then accept or reject it.
  */
 public class ReadRequestThrottler implements RoutersClusterManager.RouterCountChangedListener, RoutingDataRepository.RoutingDataChangedListener, StoreDataChangedListener, RoutersClusterManager.RouterClusterConfigChangedListener {
+  // We want to give more tight restriction for store-level quota to protect router but more lienent restriction for storage node level quota. Because in some case per-storage node qutoa is too samall to user.
+  public static final long DEFAULT_STORE_QUOTA_TIME_WINDOW = TimeUnit.SECONDS.toMillis(10); // 10sec
+  public static final long DEFAULT_STORAGE_NODE_QUOTA_TIME_WINDOW = TimeUnit.SECONDS.toMillis(30);; // 30sec
+
   private static final Logger logger = Logger.getLogger(ReadRequestThrottler.class);
   private final ZkRoutersClusterManager zkRoutersManager;
   private final ReadOnlyStoreRepository storeRepository;
@@ -53,12 +58,24 @@ public class ReadRequestThrottler implements RoutersClusterManager.RouterCountCh
 
   private final double perStorageNodeReadQuotaBuffer;
 
+  private final long storeQuotaCheckTimeWindow;
+  private final long storageNodeQuotaCheckTimeWindow;
+
   public ReadRequestThrottler(ZkRoutersClusterManager zkRoutersManager, ReadOnlyStoreRepository storeRepository,
       RoutingDataRepository routingDataRepository, long maxRouterReadCapacity, AggRouterHttpRequestStats stats,
       double perStorageNodeReadQuotaBuffer) {
+    this(zkRoutersManager, storeRepository, routingDataRepository, maxRouterReadCapacity, stats,
+        perStorageNodeReadQuotaBuffer, DEFAULT_STORE_QUOTA_TIME_WINDOW, DEFAULT_STORAGE_NODE_QUOTA_TIME_WINDOW);
+  }
+
+  public ReadRequestThrottler(ZkRoutersClusterManager zkRoutersManager, ReadOnlyStoreRepository storeRepository,
+      RoutingDataRepository routingDataRepository, long maxRouterReadCapacity, AggRouterHttpRequestStats stats,
+      double perStorageNodeReadQuotaBuffer, long storeQuotaCheckTimeWindow, long storageNodeQuotaCheckTimeWindow) {
     this.zkRoutersManager = zkRoutersManager;
     this.storeRepository = storeRepository;
     this.routingDataRepository = routingDataRepository;
+    this.storeQuotaCheckTimeWindow = storeQuotaCheckTimeWindow;
+    this.storageNodeQuotaCheckTimeWindow = storageNodeQuotaCheckTimeWindow;
     this.zkRoutersManager.subscribeRouterCountChangedEvent(this);
     this.storeRepository.registerStoreDataChangedListener(this);
     this.stats = stats;
@@ -154,7 +171,8 @@ public class ReadRequestThrottler implements RoutersClusterManager.RouterCountCh
           + ", it might be caused by the delay of the routing data. Only create per store level throttler.");
     }
     stats.recordQuota(storeName, storeQuotaPerRouter);
-    return new StoreReadThrottler(storeName, storeQuotaPerRouter, EventThrottler.REJECT_STRATEGY, partitionAssignment, perStorageNodeReadQuotaBuffer);
+    return new StoreReadThrottler(storeName, storeQuotaPerRouter, EventThrottler.REJECT_STRATEGY, partitionAssignment,
+        perStorageNodeReadQuotaBuffer, storeQuotaCheckTimeWindow, storageNodeQuotaCheckTimeWindow);
   }
 
   private ConcurrentMap<String, StoreReadThrottler> buildAllStoreReadThrottlers() {

@@ -42,7 +42,8 @@ public class StoreReadThrottlerTest {
     assignment.addPartition(new Partition(1, p1StateToInstance));
 
     StoreReadThrottler throttler =
-        new StoreReadThrottler(storeName, quota, EventThrottler.REJECT_STRATEGY, Optional.of(assignment), perStorageNodeReadQuotaBuffer);
+        new StoreReadThrottler(storeName, quota, EventThrottler.REJECT_STRATEGY, Optional.of(assignment),
+            perStorageNodeReadQuotaBuffer, 1000, 1000);
 
     Assert.assertEquals(throttler.getCurrentVersion(), versionNumber);
 
@@ -100,7 +101,7 @@ public class StoreReadThrottlerTest {
     }
     // each storage node holds 4 online replicas, so the quota of each storage node is 1200/4/3*4=400
     StoreReadThrottler throttler =
-        new StoreReadThrottler(storeName, quota, EventThrottler.REJECT_STRATEGY, Optional.of(assignment), 0.0);
+        new StoreReadThrottler(storeName, quota, EventThrottler.REJECT_STRATEGY, Optional.of(assignment), 0.0, 1000, 1000);
     throttler.mayThrottleRead(400, Utils.getHelixNodeIdentifier(10000));
     try {
       throttler.mayThrottleRead(100, Utils.getHelixNodeIdentifier(10000));
