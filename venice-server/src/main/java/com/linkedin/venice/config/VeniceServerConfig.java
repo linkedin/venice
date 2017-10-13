@@ -72,6 +72,11 @@ public class VeniceServerConfig extends VeniceClusterConfig {
    */
   private final int maxRequestSize;
 
+  /**
+   * Time interval for offset check of source topic in Hybrid Store lag measurement.
+   */
+  private final int sourceTopicOffsetCheckIntervalMs;
+
 
   public VeniceServerConfig(VeniceProperties serverProperties) throws ConfigurationException {
     super(serverProperties);
@@ -87,6 +92,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     restServiceStorageThreadNum = serverProperties.getInt(SERVER_REST_SERVICE_STORAGE_THREAD_NUM, 16);
     nettyIdleTimeInSeconds = serverProperties.getInt(SERVER_NETTY_IDLE_TIME_SECONDS, (int) TimeUnit.HOURS.toSeconds(3)); // 3 hours
     maxRequestSize = (int)serverProperties.getSizeInBytes(SERVER_MAX_REQUEST_SIZE, 256 * 1024); // 256KB
+    sourceTopicOffsetCheckIntervalMs = serverProperties.getInt(SERVER_SOURCE_TOPIC_OFFSET_CHECK_INTERVAL_MS, (int)TimeUnit.SECONDS.toMillis(10)); // 10s
   }
 
   public int getListenerPort() {
@@ -141,5 +147,9 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public int getMaxRequestSize() {
     return maxRequestSize;
+  }
+
+  public int getSourceTopicOffsetCheckIntervalMs() {
+    return sourceTopicOffsetCheckIntervalMs;
   }
 }

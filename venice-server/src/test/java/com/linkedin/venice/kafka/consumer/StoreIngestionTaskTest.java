@@ -113,7 +113,6 @@ public class StoreIngestionTaskTest {
     StoreIngestionTask.OFFSET_THROTTLE_INTERVAL = 1;
     StoreIngestionTask.OFFSET_UPDATE_INTERVAL_PER_PARTITION_FOR_TRANSACTION_MODE = 1;
     StoreIngestionTask.OFFSET_UPDATE_INTERNAL_PER_PARTITION_FOR_DEFERRED_WRITE = 2;
-    StoreIngestionTask.SOURCE_TOPIC_OFFSET_CHECK_INTERVAL_MS = 0;
     TEST_TIMEOUT = 500 * StoreIngestionTask.READ_CYCLE_DELAY_MS;
   }
 
@@ -279,7 +278,7 @@ public class StoreIngestionTaskTest {
     Queue<VeniceNotifier> notifiers = new ConcurrentLinkedQueue<>(Arrays.asList(mockNotifier, new LogNotifier()));
     storeIngestionTaskUnderTest = new StoreIngestionTask(
         mockFactory, kafkaProps, mockStoreRepository, offsetManager, notifiers, mockThrottler, topic, mockSchemaRepo,
-        mockTopicManager, mockStoreIngestionStats, mockVersionedDIVStats, storeBufferService, isCurrentVersion, hybridStoreConfig);
+        mockTopicManager, mockStoreIngestionStats, mockVersionedDIVStats, storeBufferService, isCurrentVersion, hybridStoreConfig, 0);
     doReturn(mockAbstractStorageEngine).when(mockStoreRepository).getLocalStorageEngine(topic);
 
     Future testSubscribeTaskFuture = null;
