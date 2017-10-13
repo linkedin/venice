@@ -75,6 +75,20 @@ public class ProducerTracker {
   }
 
   /**
+   * This function is intended to be used in AdminConsumptionTask, not StoreIngestionTask.
+   * @param partition
+   * @param key
+   * @param messageEnvelope
+   * @param endOfPushReceived
+   * @return
+   * @throws DataValidationException
+   */
+  public OffsetRecordTransformer addMessage(int partition, KafkaKey key, KafkaMessageEnvelope messageEnvelope,
+      boolean endOfPushReceived) throws DataValidationException {
+    return addMessage(partition, key, messageEnvelope, endOfPushReceived, Optional.empty());
+  }
+
+  /**
    * Ensures the integrity of the data by maintaining state about all of the data produced by a specific
    * upstream producer:
    *
@@ -85,16 +99,18 @@ public class ProducerTracker {
    * @param partition from which the message was consumed
    * @param key of the consumed message
    * @param messageEnvelope which was consumed
+   * @param errorMetricCallback metricCallback for DIV error when not throwing exception (hacky, need refactoring)
    * @return A closure which will apply the appropriate state change to a {@link OffsetRecord}. This allows
    *         the caller to decide whether to apply the state change or not. Furthermore, it minimizes the
    *         chances that a state change may be partially applied, which could cause weird bugs if it happened.
    * @throws DataValidationException
    */
-  public OffsetRecordTransformer addMessage(int partition, KafkaKey key, KafkaMessageEnvelope messageEnvelope, boolean endOfPushReceived)
+  public OffsetRecordTransformer addMessage(int partition, KafkaKey key, KafkaMessageEnvelope messageEnvelope,
+      boolean endOfPushReceived, Optional<DIVErrorMetricCallback> errorMetricCallback)
       throws DataValidationException {
 
     Segment segment = trackSegment(partition, messageEnvelope, endOfPushReceived);
-    trackSequenceNumber(segment, messageEnvelope, endOfPushReceived);
+    trackSequenceNumber(segment, messageEnvelope, endOfPushReceived, errorMetricCallback);
 
     // This is the last step, because we want failures in the previous steps to short-circuit execution.
     trackCheckSum(segment, key, messageEnvelope);
@@ -105,7 +121,7 @@ public class ProducerTracker {
       if (null == state) {
         state = new ProducerPartitionState();
 
-        // TOOD: Set these maps properly from the beginning of segment record.
+        // TODO: Set these maps properly from the beginning of segment record.
         state.aggregates = new HashMap<>();
         state.debugInfo = new HashMap<>();
         state.checksumType = segment.getCheckSumType().getValue();
@@ -245,10 +261,12 @@ public class ProducerTracker {
    *
    * @param segment for which the incoming message belongs to
    * @param messageEnvelope of the incoming message
+   * @param errorMetricCallback metricCallback for DIV error when not throwing exception (hacky, need refactoring)
    * @throws MissingDataException if the incoming sequence number is greater than the previous sequence number + 1
    * @throws DuplicateDataException if the incoming sequence number is equal to or smaller than the previous sequence number
    */
-  private void trackSequenceNumber(Segment segment, KafkaMessageEnvelope messageEnvelope, boolean endOfPushReceived)
+  private void trackSequenceNumber(Segment segment, KafkaMessageEnvelope messageEnvelope, boolean endOfPushReceived,
+      Optional<DIVErrorMetricCallback> errorMetricCallback)
       throws MissingDataException, DuplicateDataException {
 
     int previousSequenceNumber = segment.getSequenceNumber();
@@ -274,11 +292,22 @@ public class ProducerTracker {
     } else if (incomingSequenceNumber > previousSequenceNumber + 1) {
       // There is a gap in the sequence, so we are missing some data!
 
-      if (endOfPushReceived) {
-        // TODO: In this branch of the if, we need to adjust the sequence number, otherwise, this will cause spurious missing data metrics on further events...
-      }
+      DataValidationException dataMissingException = DataFaultType.MISSING.getNewException(segment, messageEnvelope);
 
-      throw DataFaultType.MISSING.getNewException(segment, messageEnvelope);
+      if (endOfPushReceived) {
+        /**
+         * In this branch of the if, we need to adjust the sequence number, otherwise,
+         * this will cause spurious missing data metrics on further events...
+         * and the partition won't become 'ONLINE' if it is not 'ONLINE' yet.
+          */
+        logger.error("Encountered missing data message", dataMissingException);
+        segment.setSequenceNumber(incomingSequenceNumber);
+        if (errorMetricCallback.isPresent()) {
+          errorMetricCallback.get().execute(dataMissingException);
+        }
+      } else {
+        throw dataMissingException;
+      }
     } else {
       // Defensive coding, to prevent regressions in the above code from causing silent failures
       throw new IllegalStateException("Unreachable code!");
@@ -302,19 +331,16 @@ public class ProducerTracker {
 
     if (segment.addToCheckSum(key, messageEnvelope)) {
       // The running checksum was updated successfully. Moving on.
-      // TODO: Record metrics for messages added into checksum?
     } else {
       /** We have consumed an {@link ControlMessageType#END_OF_SEGMENT}. Time to verify the checksum. */
       ControlMessage controlMessage = (ControlMessage) messageEnvelope.payloadUnion;
       EndOfSegment incomingEndOfSegment = (EndOfSegment) controlMessage.controlMessageUnion;
       if (Arrays.equals(segment.getFinalCheckSum(), incomingEndOfSegment.checksumValue.array())) {
         // We're good, the expected checksum matches the one we computed on the receiving end (:
-        // TODO: Record metrics for successfully ended segments.
         segment.end(incomingEndOfSegment.finalSegment);
       } else {
         // Uh oh. Checksums don't match.
-        // TODO: Record metrics for bad checksums.
-        throw DataFaultType.CORRUPT.getNewException( segment, messageEnvelope);
+        throw DataFaultType.CORRUPT.getNewException(segment, messageEnvelope);
       }
     }
   }
@@ -399,5 +425,8 @@ public class ProducerTracker {
 
       return exceptionSupplier.apply(exceptionMsg);
     }
+  }
+  public interface DIVErrorMetricCallback {
+    void execute(DataValidationException exception);
   }
 }

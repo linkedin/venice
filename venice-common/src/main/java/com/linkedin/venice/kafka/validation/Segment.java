@@ -83,6 +83,14 @@ public class Segment {
     return this.sequenceNumber.getAndIncrement();
   }
 
+  /**
+   * This function should only be used for hybrid store after receiving 'EOP' when skipping a message in the sequence.
+   * @param sequenceNum
+   */
+  public void setSequenceNumber(int sequenceNum) {
+    this.sequenceNumber.set(sequenceNum);
+  }
+
   public int getSequenceNumber() {
     return this.sequenceNumber.get();
   }

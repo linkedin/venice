@@ -86,8 +86,6 @@ public class StoreIngestionTask implements Runnable, Closeable {
   private static final int CONSUMER_ACTION_QUEUE_INIT_CAPACITY = 11;
   private static final long KILL_WAIT_TIME_MS = 5000l;
   private static final int MAX_KILL_CHECKING_ATTEMPTS = 10;
-  /** Interval before querying Kafka broker about the source topic offset */
-  public static long SOURCE_TOPIC_OFFSET_CHECK_INTERVAL_MS = TimeUnit.SECONDS.toMillis(10); // 10 sec
 
   // Final stuff
   /** storage destination for consumption */
@@ -117,6 +115,10 @@ public class StoreIngestionTask implements Runnable, Closeable {
   private final BooleanSupplier isCurrentVersion;
   private final Optional<HybridStoreConfig> hybridStoreConfig;
   private final IngestionNotificationDispatcher notificationDispatcher;
+  private final Optional<ProducerTracker.DIVErrorMetricCallback> divErrorMetricCallback;
+
+  /** Interval before querying Kafka broker about the source topic offset */
+  private final int sourceTopicOffsetCheckInterval;
 
   // Non-final
   private KafkaConsumerWrapper consumer;
@@ -141,7 +143,8 @@ public class StoreIngestionTask implements Runnable, Closeable {
                             @NotNull AggVersionedDIVStats versionedDIVStats,
                             @NotNull StoreBufferService storeBufferService,
                             @NotNull BooleanSupplier isCurrentVersion,
-                            @NotNull Optional<HybridStoreConfig> hybridStoreConfig) {
+                            @NotNull Optional<HybridStoreConfig> hybridStoreConfig,
+                            int sourceTopicOffsetCheckIntervalMs) {
     this.factory = factory;
     this.kafkaProps = kafkaConsumerProperties;
     this.storeRepository = storeRepository;
@@ -175,6 +178,10 @@ public class StoreIngestionTask implements Runnable, Closeable {
     this.isCurrentVersion = isCurrentVersion;
     this.hybridStoreConfig = hybridStoreConfig;
     this.notificationDispatcher = new IngestionNotificationDispatcher(notifiers, topic, isCurrentVersion);
+
+    this.sourceTopicOffsetCheckInterval = sourceTopicOffsetCheckIntervalMs;
+
+    this.divErrorMetricCallback = Optional.of(e -> versionedDIVStats.recordException(storeNameWithoutVersionInfo, storeVersion, e));
   }
 
   private void validateState() {
@@ -259,14 +266,10 @@ public class StoreIngestionTask implements Runnable, Closeable {
    * Lag = (Source Max Offset - SOBR Source Offset) - (Current Offset - SOBR Destination Offset)
    *
    * @param partitionConsumptionState
-   * @param forceSourceTopicOffsetLookup
-   *    If true, this function will check the max offset of source topic to decide whether it is ready to serve;
-   *    Otherwise, this function will do actual lookup after the pre-fined interval: {@link #SOURCE_TOPIC_OFFSET_CHECK_INTERVAL_MS}
-   *  The reason behind this is that offset up against Kafka broker is an expensive operation.
    *
    * @return true if EOP was received and (for hybrid stores) if lag <= threshold
    */
-  private boolean isReadyToServe(PartitionConsumptionState partitionConsumptionState, boolean forceSourceTopicOffsetLookup) {
+  private boolean isReadyToServe(PartitionConsumptionState partitionConsumptionState) {
     // Check various short-circuit conditions first.
 
     if (!partitionConsumptionState.isEndOfPushReceived()) {
@@ -284,18 +287,6 @@ public class StoreIngestionTask implements Runnable, Closeable {
       // rather than possibly flip flopping
       return true;
     }
-    /**
-     * Max offset lookup of source topic is an expensive operation, so here will only do the actual lookup
-     * after the predefined interval.
-     */
-    long currentTime = System.currentTimeMillis();
-    if (!forceSourceTopicOffsetLookup) {
-      long lastTimeOfLookup = partitionConsumptionState.getLastTimeOfSourceTopicOffsetLookup();
-      if (currentTime - lastTimeOfLookup <= SOURCE_TOPIC_OFFSET_CHECK_INTERVAL_MS) {
-        return false;
-      }
-    }
-    partitionConsumptionState.setLastTimeOfSourceTopicOffsetLookup(currentTime);
 
     Optional<StoreVersionState> storeVersionStateOptional = storageMetadataService.getStoreVersionState(topic);
     Optional<Long> sobrDestinationOffsetOptional = partitionConsumptionState.getOffsetRecord().getStartOfBufferReplayDestinationOffset();
@@ -332,7 +323,23 @@ public class StoreIngestionTask implements Runnable, Closeable {
    */
   private long measureHybridOffsetLag(StartOfBufferReplay sobr, PartitionConsumptionState pcs) {
     int partition = pcs.getPartition();
-    long sourceTopicMaxOffset = topicManager.getLatestOffset(sobr.sourceTopicName.toString(), partition);
+    /**
+     * Since get real-time topic offset is expensive, so we will only retrieve source topic offset after the predefined
+     * interval: {@link sourceTopicOffsetCheckInterval}
+     *
+     * We still allow the upstream to check whether it could become 'ONLINE' for every message since it is possible
+     * that there is no messages after rewinding, which causes partition won't be 'ONLINE' in the future.
+     *
+     * With this strategy, it is possible that partition could become 'ONLINE' at most {@link sourceTopicOffsetCheckInterval}
+     * earlier.
+     */
+    long currentTime = System.currentTimeMillis();
+    long sourceTopicMaxOffset = pcs.getSourceTopicMaxOffset();
+    if (currentTime - pcs.getLastTimeOfSourceTopicOffsetLookup() > sourceTopicOffsetCheckInterval) {
+      sourceTopicMaxOffset = topicManager.getLatestOffset(sobr.sourceTopicName.toString(), partition);
+      pcs.setLastTimeOfSourceTopicOffsetLookup(currentTime);
+      pcs.setSourceTopicMaxOffset(sourceTopicMaxOffset);
+    }
     long sobrSourceOffset = sobr.sourceOffsets.get(partition);
     long currentOffset = pcs.getOffsetRecord().getOffset();
 
@@ -590,7 +597,7 @@ public class StoreIngestionTask implements Runnable, Closeable {
         } else {
           // For hybrid case, if it's ready to server, report complete to let BOOTSTRAP->ONLINE state transition
           // complete at first then keep consuming because message might be replicated from RT topic cotinually.
-          if (hybridStoreConfig.isPresent() && isReadyToServe(newPartitionConsumptionState, true)) {
+          if (hybridStoreConfig.isPresent() && isReadyToServe(newPartitionConsumptionState)) {
             notificationDispatcher.reportCompleted(newPartitionConsumptionState);
             logger.info(consumerTaskId + " Partition " + partition + " is already ready to serve and the store is" +
                 " hybrid, so consumption will be started.");
@@ -793,7 +800,7 @@ public class StoreIngestionTask implements Runnable, Closeable {
     boolean endOfPushReceived = partitionConsumptionState.isEndOfPushReceived();
     boolean isCompletionReported = partitionConsumptionState.isCompletionReported();
     if (recordsProcessedAboveSyncIntervalThreshold || (endOfPushReceived && !isCompletionReported)) {
-      if (isReadyToServe(partitionConsumptionState, false)) {
+      if (isReadyToServe(partitionConsumptionState)) {
         notificationDispatcher.reportCompleted(partitionConsumptionState);
       } else {
         notificationDispatcher.reportProgress(partitionConsumptionState);
@@ -949,7 +956,7 @@ public class StoreIngestionTask implements Runnable, Closeable {
         offsetRecordTransformer = Optional.of(validateMessage(consumerRecord.partition(), kafkaKey, kafkaValue, endOfPushReceived));
         versionedDIVStats.recordSuccessMsg(storeNameWithoutVersionInfo, storeVersion);
       } catch (FatalDataValidationException fatalException) {
-        versionedDIVStats.recordException(storeNameWithoutVersionInfo, storeVersion, fatalException);
+        divErrorMetricCallback.get().execute(fatalException);
         if (endOfPushReceived) {
           e = fatalException;
         } else {
@@ -1020,7 +1027,7 @@ public class StoreIngestionTask implements Runnable, Closeable {
     producerTrackerMap.computeIfAbsent(producerGUID, producerTrackerFunction);
     ProducerTracker producerTracker = producerTrackerMap.get(producerGUID);
 
-    return producerTracker.addMessage(partition, key, message, endOfPushReceived);
+    return producerTracker.addMessage(partition, key, message, endOfPushReceived, divErrorMetricCallback);
   }
 
   /**

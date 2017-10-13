@@ -23,6 +23,16 @@ class PartitionConsumptionState {
   private int processedRecordNumSinceLastSync;
 
   private long lastTimeOfSourceTopicOffsetLookup;
+  private long sourceTopicMaxOffset;
+
+  public void setSourceTopicMaxOffset(long sourceTopicMaxOffset) {
+    this.sourceTopicMaxOffset = sourceTopicMaxOffset;
+  }
+
+  public long getSourceTopicMaxOffset() {
+
+    return sourceTopicMaxOffset;
+  }
 
   public PartitionConsumptionState(int partition, OffsetRecord offsetRecord, boolean hybrid) {
     this.partition = partition;
@@ -35,6 +45,7 @@ class PartitionConsumptionState {
     this.processedRecordSize = 0;
     this.processedRecordNumSinceLastSync = 0;
     this.lastTimeOfSourceTopicOffsetLookup = -1;
+    this.sourceTopicMaxOffset = -1;
   }
 
   public int getPartition() {
