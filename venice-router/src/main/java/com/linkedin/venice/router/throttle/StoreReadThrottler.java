@@ -29,6 +29,7 @@ public class StoreReadThrottler {
   private final EventThrottlingStrategy throttlingStrategy;
   private final EventThrottler storeThrottler;
   private final double perStorageNodeReadQuotaBuffer;
+  private final long storageNodeQuotaCheckTimeWindow;
 
   private int currentVersion = Store.NON_EXISTING_VERSION;
 
@@ -40,13 +41,15 @@ public class StoreReadThrottler {
   private ConcurrentMap<String, EventThrottler> storageNodesThrottlers;
 
   public StoreReadThrottler(String storeName, long localQuota, EventThrottlingStrategy throttlingStrategy,
-      Optional<PartitionAssignment> partitionAssignment, double perStorageNodeReadQuotaBuffer) {
+      Optional<PartitionAssignment> partitionAssignment, double perStorageNodeReadQuotaBuffer,
+      long storeQuotaCheckTimeWindow, long storageNodeQuotaCheckTimeWindow) {
     this.storeName = storeName;
     this.localQuota = localQuota;
     this.throttlingStrategy = throttlingStrategy;
     this.perStorageNodeReadQuotaBuffer = perStorageNodeReadQuotaBuffer;
     storageNodesThrottlers = new ConcurrentHashMap<>();
-    storeThrottler = new EventThrottler(localQuota, storeName+"-throttler", true, throttlingStrategy);
+    storeThrottler = new EventThrottler(localQuota, storeQuotaCheckTimeWindow, storeName+"-throttler", true, throttlingStrategy);
+    this.storageNodeQuotaCheckTimeWindow = storageNodeQuotaCheckTimeWindow;
     if (partitionAssignment.isPresent()) {
       updateStorageNodesThrottlers(partitionAssignment.get());
     }
@@ -89,7 +92,8 @@ public class StoreReadThrottler {
             + perStorageNodeReadQuotaBuffer)))
         .forEach(entry -> storageNodesThrottlers.put(entry.getKey(),
             new EventThrottler((long) (entry.getValue() * (1 + perStorageNodeReadQuotaBuffer)),
-                storeName + "-" + entry.getKey() + "-throttler", true, throttlingStrategy)));
+                storageNodeQuotaCheckTimeWindow, storeName + "-" + entry.getKey() + "-throttler", true,
+                throttlingStrategy)));
 
     // Delete the throttler for the storage node which has been deleted from the latest partition assignment.
     Iterator<String> iterator = storageNodesThrottlers.keySet().iterator();

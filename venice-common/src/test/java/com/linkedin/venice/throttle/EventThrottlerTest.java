@@ -61,6 +61,25 @@ public class EventThrottlerTest {
   }
 
   @Test
+  public void testThrottlerWithSpike() {
+    long quota = 10;
+    long timeWindowMS = 30000l; //30sec
+    EventThrottler throttler = new EventThrottler(testTime, quota, timeWindowMS, "testRejectExpansiveRequest", true,
+        EventThrottler.REJECT_STRATEGY);
+    // we could use the quota for 30 sec.
+    throttler.maybeThrottle((int) quota * 30);
+    // Sleep 1.5 time window
+    testTime.sleep((long) (timeWindowMS * 1.5));
+    // Now we could use the quota for 15 sec
+    throttler.maybeThrottle((int) quota * 30 / 2);
+    try {
+      throttler.maybeThrottle(1);
+      Assert.fail("Usage exceeds the quota, throttler should reject them.");
+    } catch (QuotaExceededException e) {
+    }
+  }
+
+  @Test
   public void testThrottlerWithCheckingQuotaBeforeRecording() {
     long quota = 10;
     long timeWindowMS = 1000l;

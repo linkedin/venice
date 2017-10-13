@@ -44,7 +44,7 @@ public class ReadRequestThrottlerTest {
     Mockito.doReturn(true).when(zkRoutersClusterManager).isThrottlingEnabled();
     Mockito.doReturn(true).when(zkRoutersClusterManager).isMaxCapacityProtectionEnabled();
     stats = Mockito.mock(AggRouterHttpRequestStats.class);
-    throttler = new ReadRequestThrottler(zkRoutersClusterManager, storeRepository, routingDataRepository, maxCapacity, stats, 0.0);
+    throttler = new ReadRequestThrottler(zkRoutersClusterManager, storeRepository, routingDataRepository, maxCapacity, stats, 0.0, 1000, 1000);
   }
 
   @Test
