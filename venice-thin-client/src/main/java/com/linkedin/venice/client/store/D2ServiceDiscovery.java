@@ -14,16 +14,16 @@ import org.codehaus.jackson.map.ObjectMapper;
  * This class is used to find the proper d2 service name for the given store through default D2 service
  * d2://VeniceRouter. Then build the transport client based on the d2 service it found.
  */
-public class D2ServiceDiscoveryUtils {
-  private static final Logger LOGGER = Logger.getLogger(D2ServiceDiscoveryUtils.class);
+public class D2ServiceDiscovery {
+  private static final Logger LOGGER = Logger.getLogger(D2ServiceDiscovery.class);
   public static final String TYPE_D2_SERVICE_DISCOVERY = "discover_cluster";
 
-  public static TransportClient getD2TransportClientForStore(D2TransportClient client, String storeName) {
+  public TransportClient getD2TransportClientForStore(D2TransportClient client, String storeName) {
     String d2ServiceNameForStore = discoverD2Service(client, storeName);
     return new D2TransportClient(d2ServiceNameForStore, client.getD2Client());
   }
 
-  protected static String discoverD2Service(D2TransportClient client, String storeName) {
+  protected String discoverD2Service(D2TransportClient client, String storeName) {
     try {
       CompletableFuture<TransportClientResponse> response = client.get(TYPE_D2_SERVICE_DISCOVERY + "/" + storeName);
       byte[] body = response.get().getBody();
