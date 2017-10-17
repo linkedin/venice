@@ -57,6 +57,7 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
 
   private TransportClient transportClient;
   private String storeName;
+  private D2ServiceDiscovery d2ServiceDiscovery = new D2ServiceDiscovery();
   /**
    * Here is the details about the deadlock issue if deserialization logic is executed in the same R2 callback thread:
    * 1. A bunch of regular get requests are sent to Venice backend at the same time;
@@ -134,14 +135,23 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
     }
   }
 
+  /**
+   * During the initialization, we do the cluster discovery at first to find the real end point this client need to talk
+   * to, before initializing the serializer.
+   * So if sub-implementation need to have its own serializer, please override the initSerializer method.
+   */
   protected void init() {
     // Discover the proper d2 service name for this store.
     if(transportClient instanceof  D2TransportClient) {
       // Use the new d2 transport client which will talk to the cluster own the given store.
       // Do not need to close the original one, because if we use global d2 client, close will do nothing. If we use
       // private d2, we could not close it as we share this d2 client in the new transport client.
-      transportClient = D2ServiceDiscoveryUtils.getD2TransportClientForStore((D2TransportClient) transportClient, storeName);
+      transportClient = d2ServiceDiscovery.getD2TransportClientForStore((D2TransportClient) transportClient, storeName);
     }
+    initSerializer();
+  }
+
+  protected void initSerializer() {
     // init key serializer
     this.keySerializer =
         SerializerDeserializerFactory.getAvroGenericSerializer(schemaReader.getKeySchema());
@@ -299,5 +309,10 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
     return this.getClass().getSimpleName() +
         "(storeName: " + storeName +
         ", transportClient: " + transportClient.toString() + ")";
+  }
+
+  // For testing usage.
+  protected void setD2ServiceDiscovery(D2ServiceDiscovery d2ServiceDiscovery){
+    this.d2ServiceDiscovery = d2ServiceDiscovery;
   }
 }
