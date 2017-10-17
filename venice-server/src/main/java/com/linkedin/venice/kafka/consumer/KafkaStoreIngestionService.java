@@ -25,7 +25,6 @@ import com.linkedin.venice.storage.StorageMetadataService;
 import com.linkedin.venice.store.AbstractStorageEngine;
 import com.linkedin.venice.store.bdb.BdbStorageEngine;
 import com.linkedin.venice.throttle.EventThrottler;
-import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.Utils;
 
 import java.util.*;
@@ -212,13 +211,13 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     //Only the task with largest version would emit it stats.
     String storeName = Version.parseStoreFromKafkaTopicName(topic);
     int maxVersionNumber = getStoreMaximumVersionNumber(storeName);
-    disableOldTopicMetricsEmission(topicNameToIngestionTaskMap, storeName, maxVersionNumber);
+    updateStatsEmission(topicNameToIngestionTaskMap, storeName, maxVersionNumber);
 
     consumerTask.subscribePartition(topic, partitionId);
     logger.info("Started Consuming - Kafka Partition: " + topic + "-" + partitionId + ".");
   }
 
-  public void disableOldTopicMetricsEmission(Map<String, StoreIngestionTask> taskMap, String storeName, int maximumVersion) {
+  void updateStatsEmission(Map<String, StoreIngestionTask> taskMap, String storeName, int maximumVersion) {
     taskMap.forEach((topicName, task) -> {
       if (Version.parseStoreFromKafkaTopicName(topicName).equals(storeName)) {
         if (Version.parseVersionFromKafkaTopicName(topicName) < maximumVersion) {
@@ -229,6 +228,8 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
           if (engine instanceof BdbStorageEngine) {
             storageEngineStats.setBdbEnvironment(storeName, ((BdbStorageEngine) engine).getBdbEnvironment());
           }
+
+          ingestionStats.updateStoreConsumptionTask(storeName, task);
         }
       }
     });

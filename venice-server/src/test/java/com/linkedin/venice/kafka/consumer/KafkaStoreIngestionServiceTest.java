@@ -81,7 +81,7 @@ public class KafkaStoreIngestionServiceTest {
    VeniceStoreConfig mockStoreConfig = mock(VeniceStoreConfig.class);
    doReturn(mockStoreName + "_v" + String.valueOf(taskNum)).when(mockStoreConfig).getStoreName();
 
-   kafkaStoreIngestionService.disableOldTopicMetricsEmission(topicNameToIngestionTaskMap, mockStoreName, 3);
+   kafkaStoreIngestionService.updateStatsEmission(topicNameToIngestionTaskMap, mockStoreName, 3);
 
 
    String mostRecentTopic = mockStoreName + "_v" +taskNum;

@@ -169,8 +169,6 @@ public class StoreIngestionTask implements Runnable, Closeable {
     this.storeIngestionStats = storeIngestionStats;
     this.versionedDIVStats = versionedDIVStats;
 
-    storeIngestionStats.updateStoreConsumptionTask(storeNameWithoutVersionInfo, this);
-
     this.isRunning = new AtomicBoolean(true);
     this.emitMetrics = new AtomicBoolean(true);
 
@@ -826,10 +824,6 @@ public class StoreIngestionTask implements Runnable, Closeable {
   }
 
   public long getRealTimeBufferOffsetLag() {
-    if (!emitMetrics.get()) {
-      return 0;
-    }
-
     if (!hybridStoreConfig.isPresent()) {
       return 0;
     }
@@ -857,6 +851,9 @@ public class StoreIngestionTask implements Runnable, Closeable {
   }
 
   public boolean isHybridMode() {
+    if (hybridStoreConfig == null) {
+      logger.error("hybrid config shouldn't be null. Something bad happened. Topic: " + getTopic());
+    }
     return hybridStoreConfig != null && hybridStoreConfig.isPresent();
   }
 

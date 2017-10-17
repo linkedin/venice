@@ -59,11 +59,13 @@ public class StoreIngestionStats extends AbstractVeniceStats{
   public void updateStoreConsumptionTask(StoreIngestionTask task) {
     storeIngestionTask = task;
 
-    if (task.isHybridMode())
-    registerSensor("kafka_real_time_buffer_offset_lag", new StoreIngestionStatsCounter(this,
-        () -> storeIngestionTask.getRealTimeBufferOffsetLag()));
-    registerSensor("number_of_partitions_not_receive_SOBR", new StoreIngestionStatsCounter(this,
-        () -> storeIngestionTask.getNumOfPartitionsNotReceiveSOBR()));
+    //TODO: It would be much better to apply versioned stats pattern for these metrics.
+    if (task.isHybridMode()) {
+      registerSensor("largest_version_kafka_real_time_buffer_offset_lag", new StoreIngestionStatsCounter(this,
+          () -> storeIngestionTask.getRealTimeBufferOffsetLag()));
+      registerSensor("largest_version_number_of_partitions_not_receive_SOBR", new StoreIngestionStatsCounter(this,
+          () -> storeIngestionTask.getNumOfPartitionsNotReceiveSOBR()));
+    }
   }
 
   public StoreIngestionTask getStoreIngestionTask() {
