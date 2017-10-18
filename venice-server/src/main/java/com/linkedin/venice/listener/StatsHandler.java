@@ -3,6 +3,7 @@ package com.linkedin.venice.listener;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.stats.AggServerHttpRequestStats;
+import com.linkedin.venice.utils.LatencyUtils;
 import io.netty.channel.ChannelDuplexHandler;
 import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelHandlerContext;
@@ -13,7 +14,7 @@ import static io.netty.handler.codec.http.HttpResponseStatus.NOT_FOUND;
 import static io.netty.handler.codec.http.HttpResponseStatus.OK;
 
 public class StatsHandler extends ChannelDuplexHandler {
-  private long startTime;
+  private long startTimeInNS;
   private HttpResponseStatus responseStatus;
   private String storeName;
   private boolean isHealthCheck;
@@ -25,7 +26,7 @@ public class StatsHandler extends ChannelDuplexHandler {
   private AggServerHttpRequestStats currentStats;
 
   //a flag that indicates if this is a new HttpRequest. Netty is TCP-based, so a HttpRequest is chunked into packages.
-  //Set the startTime in ChannelRead if it is the first package within a HttpRequest.
+  //Set the startTimeInNS in ChannelRead if it is the first package within a HttpRequest.
   private boolean newRequest = true;
   /**
    * To indicate whether the stat callback has been triggered or not for a given request.
@@ -76,7 +77,7 @@ public class StatsHandler extends ChannelDuplexHandler {
   public void channelRead(ChannelHandlerContext ctx, Object msg) {
     if (newRequest) {
       // Reset for every request
-      startTime = System.currentTimeMillis();
+      startTimeInNS = System.nanoTime();
       isHealthCheck = false;
       responseStatus = null;
       statCallbackExecuted = false;
@@ -109,7 +110,7 @@ public class StatsHandler extends ChannelDuplexHandler {
       if (!statCallbackExecuted) {
         recordBasicMetrics();
 
-        long elapsedTime = System.currentTimeMillis() - startTime;
+        double elapsedTime = LatencyUtils.getLatencyInMS(startTimeInNS);
         //if ResponseStatus is either OK or NOT_FOUND and the channel write is succeed,
         //records a successRequest in stats. Otherwise, records a errorRequest in stats;
         if (result.isSuccess() && (responseStatus == OK || responseStatus == NOT_FOUND)) {
@@ -142,7 +143,7 @@ public class StatsHandler extends ChannelDuplexHandler {
 
   //This method does not have to be synchronised since operations in Tehuti are already synchronised.
   //Please re-consider the race condition if new logic is added.
-  private void successRequest(long elapsedTime) {
+  private void successRequest(double elapsedTime) {
     if (storeName != null) {
       currentStats.recordSuccessRequest(storeName);
       currentStats.recordSuccessRequestLatency(storeName, elapsedTime);
@@ -151,7 +152,7 @@ public class StatsHandler extends ChannelDuplexHandler {
     }
   }
 
-  private void errorRequest(long elapsedTime) {
+  private void errorRequest(double elapsedTime) {
     if (storeName == null) {
       currentStats.recordErrorRequest();
       currentStats.recordErrorRequestLatency(elapsedTime);

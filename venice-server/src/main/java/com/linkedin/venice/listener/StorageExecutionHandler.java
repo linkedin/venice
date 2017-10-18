@@ -13,6 +13,7 @@ import com.linkedin.venice.read.protocol.response.MultiGetResponseRecordV1;
 import com.linkedin.venice.server.StoreRepository;
 import com.linkedin.venice.store.AbstractStorageEngine;
 import com.linkedin.venice.store.record.ValueRecord;
+import com.linkedin.venice.utils.LatencyUtils;
 import io.netty.channel.ChannelHandler;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
@@ -82,9 +83,9 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
       Optional<Long> offsetObj = offsetRetriever.getOffset(topic, partition);
       long offset = offsetObj.isPresent() ? offsetObj.get() : OffsetRecord.LOWEST_OFFSET;
 
-      long queryStartTime = System.nanoTime();
+      long queryStartTimeInNS = System.nanoTime();
       byte[] value = store.get(partition, key);
-      double bdbQueryLatency = ((double)((System.nanoTime() - queryStartTime)) / Time.NS_PER_MS);
+      double bdbQueryLatency = LatencyUtils.getLatencyInMS(queryStartTimeInNS);
       StorageResponseObject response;
       if( value != null) {
         response = new StorageResponseObject(value, offset);
@@ -102,7 +103,7 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
     Iterable<MultiGetRouterRequestKeyV1> keys = request.getKeys();
     AbstractStorageEngine store = storeRepository.getLocalStorageEngine(topic);
 
-    long queryStartTime = System.nanoTime();
+    long queryStartTimeInNS = System.nanoTime();
     List<CompletableFuture<Optional<MultiGetResponseRecordV1>>> futureList = new ArrayList<>();
     for (MultiGetRouterRequestKeyV1 key : keys) {
       futureList.add(CompletableFuture.supplyAsync(() -> {
@@ -135,7 +136,7 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
           break;
         }
       }
-      double bdbQueryLatency = ((double)((System.nanoTime() - queryStartTime)) / Time.NS_PER_MS);
+      double bdbQueryLatency = LatencyUtils.getLatencyInMS(queryStartTimeInNS);
       responseWrapper.setBdbQueryLatency(bdbQueryLatency);
 
       // Offset data
