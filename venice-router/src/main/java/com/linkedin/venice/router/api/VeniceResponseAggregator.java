@@ -9,6 +9,7 @@ import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.router.api.path.VenicePath;
 import com.linkedin.venice.router.stats.AggRouterHttpRequestStats;
 import com.linkedin.venice.schema.avro.ReadAvroProtocolDefinition;
+import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.Time;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
@@ -94,7 +95,7 @@ public class VeniceResponseAggregator implements ResponseAggregatorFactory<Basic
      * 2. {@link ROUTER_ROUTING_TIME}
      */
     if (allMetrics.containsKey(ROUTER_SERVER_TIME.name())) {
-      long latency = allMetrics.get(ROUTER_SERVER_TIME.name()).getRawValue(TimeUnit.MILLISECONDS);
+      double latency = LatencyUtils.convertLatencyFromNSToMS(allMetrics.get(ROUTER_SERVER_TIME.name()).getRawValue(TimeUnit.NANOSECONDS));
       stats.recordLatency(storeName, latency);
       if (latency <= TIMEOUT_THRESHOLD_IN_MS && HEALTHY_STATUSES.contains(responseStatus)) {
         stats.recordHealthyRequest(storeName);
@@ -103,7 +104,8 @@ public class VeniceResponseAggregator implements ResponseAggregatorFactory<Basic
       }
     }
     if (allMetrics.containsKey(ROUTER_RESPONSE_WAIT_TIME.name())) {
-      stats.recordResponseWaitingTime(storeName, allMetrics.get(ROUTER_RESPONSE_WAIT_TIME.name()).getRawValue(TimeUnit.MILLISECONDS));
+      double waitingTime = LatencyUtils.convertLatencyFromNSToMS(allMetrics.get(ROUTER_RESPONSE_WAIT_TIME.name()).getRawValue(TimeUnit.NANOSECONDS));
+      stats.recordResponseWaitingTime(storeName, waitingTime);
     }
     if (HEALTHY_STATUSES.contains(responseStatus)) {
       // Only record successful response
