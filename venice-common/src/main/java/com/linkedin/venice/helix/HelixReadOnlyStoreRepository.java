@@ -97,8 +97,9 @@ public class HelixReadOnlyStoreRepository implements ReadOnlyStoreRepository {
   public Store getStore(String name) {
     metadataLock.readLock().lock();
     try {
-      if (storeMap.containsKey(name)) {
-        return storeMap.get(name).cloneStore();
+      Store store = storeMap.get(name);
+      if (store != null) {
+        return store.cloneStore();
       } else {
         return null;
       }

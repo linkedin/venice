@@ -19,6 +19,8 @@ import com.linkedin.venice.helix.HelixRoutingDataRepository;
 import com.linkedin.venice.helix.ZkRoutersClusterManager;
 import com.linkedin.venice.helix.HelixReadOnlyStoreConfigRepository;
 import com.linkedin.venice.read.RequestType;
+import com.linkedin.venice.router.acl.AccessController;
+import com.linkedin.venice.router.acl.AclHandler;
 import com.linkedin.venice.router.api.RouterExceptionAndTrackingUtils;
 import com.linkedin.venice.router.api.RouterHeartbeat;
 import com.linkedin.venice.router.api.VeniceDispatcher;
@@ -52,6 +54,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Consumer;
 import java.util.function.LongSupplier;
 import org.apache.helix.HelixManager;
 import org.apache.helix.InstanceType;
@@ -68,6 +71,7 @@ public class RouterServer extends AbstractVeniceService {
   private final AggRouterHttpRequestStats statsForSingleGet;
   private final AggRouterHttpRequestStats statsForMultiGet;
   private final Optional<SSLEngineComponentFactory> sslFactory;
+  private final Optional<AccessController> accessController;
 
   private final VeniceRouterConfig config;
 
@@ -87,7 +91,7 @@ public class RouterServer extends AbstractVeniceService {
   private VeniceDispatcher dispatcher;
   private RouterHeartbeat heartbeat;
   private VeniceDelegateMode scatterGatherMode;
-  private  HelixAdapterSerializer adapter;
+  private HelixAdapterSerializer adapter;
   private ZkRoutersClusterManager routersClusterManager;
   private Router router;
   private Router secureRouter;
@@ -126,7 +130,7 @@ public class RouterServer extends AbstractVeniceService {
     logger.info("Thread count: " + ROUTER_THREAD_POOL_SIZE);
 
     Optional<SSLEngineComponentFactory> sslFactory = Optional.of(SslUtils.getLocalSslFactory());
-    RouterServer server = new RouterServer(props, new ArrayList<>(), sslFactory);
+    RouterServer server = new RouterServer(props, new ArrayList<>(), Optional.ofNullable(null), sslFactory);
     server.start();
 
     Runtime.getRuntime().addShutdownHook(new Thread() {
@@ -147,17 +151,18 @@ public class RouterServer extends AbstractVeniceService {
     }
   }
 
-  public RouterServer(VeniceProperties properties, List<D2Server> d2Servers,
+  public RouterServer(VeniceProperties properties, List<D2Server> d2Servers, Optional<AccessController> accessController,
       Optional<SSLEngineComponentFactory> sslEngineComponentFactory) {
-    this(properties, d2Servers, sslEngineComponentFactory, TehutiUtils.getMetricsRepository(ROUTER_SERVICE_NAME));
+    this(properties, d2Servers, accessController, sslEngineComponentFactory, TehutiUtils.getMetricsRepository(ROUTER_SERVICE_NAME));
   }
 
   public RouterServer(
       VeniceProperties properties,
       List<D2Server> d2ServerList,
+      Optional<AccessController> accessController,
       Optional<SSLEngineComponentFactory> sslFactory,
       MetricsRepository metricsRepository) {
-    this(properties, d2ServerList, sslFactory, metricsRepository, true);
+    this(properties, d2ServerList, accessController, sslFactory, metricsRepository, true);
     this.metadataRepository = new HelixReadOnlyStoreRepository(zkClient, adapter, config.getClusterName());
     this.schemaRepository =
         new HelixReadOnlySchemaRepository(this.metadataRepository, this.zkClient, adapter, config.getClusterName());
@@ -171,6 +176,7 @@ public class RouterServer extends AbstractVeniceService {
   private RouterServer(
       VeniceProperties properties,
       List<D2Server> d2ServerList,
+      Optional<AccessController> accessController,
       Optional<SSLEngineComponentFactory> sslFactory,
       MetricsRepository metricsRepository, boolean isCreateHelixManager) {
     config = new VeniceRouterConfig(properties);
@@ -184,6 +190,7 @@ public class RouterServer extends AbstractVeniceService {
     this.statsForMultiGet = new AggRouterHttpRequestStats(metricsRepository, RequestType.MULTI_GET);
 
     this.d2ServerList = d2ServerList;
+    this.accessController= accessController;
     this.sslFactory = sslFactory;
     verifySslOk();
   }
@@ -202,7 +209,7 @@ public class RouterServer extends AbstractVeniceService {
       HelixReadOnlyStoreConfigRepository storeConfigRepository,
       List<D2Server> d2ServerList,
       Optional<SSLEngineComponentFactory> sslFactory){
-    this(properties, d2ServerList, sslFactory, new MetricsRepository(), false);
+    this(properties, d2ServerList, Optional.empty(), sslFactory, new MetricsRepository(), false);
     this.routingDataRepository = routingDataRepository;
     this.metadataRepository = metadataRepository;
     this.schemaRepository = schemaRepository;
@@ -277,6 +284,20 @@ public class RouterServer extends AbstractVeniceService {
         .build();
 
     VerifySslHandler verifySsl = new VerifySslHandler();
+    AclHandler aclHandler = accessController.isPresent() ? new AclHandler(accessController.get(), metadataRepository) : null;
+    SSLInitializer sslInitializer = sslFactory.isPresent() ? new SSLInitializer(sslFactory.get()) : null;
+    Consumer<ChannelPipeline> noop = pipeline -> {;};
+    Consumer<ChannelPipeline> addSslInitializer = pipeline -> {pipeline.addFirst("SSL Initializer", sslInitializer);};
+    Consumer<ChannelPipeline> withoutAcl = pipeline -> {
+      pipeline.addLast("SSL Verifier", verifySsl);
+      pipeline.addLast("MetadataHandler", metaDataHandler);
+    };
+    Consumer<ChannelPipeline> withAcl = pipeline -> {
+      pipeline.addLast("SSL Verifier", verifySsl);
+      pipeline.addLast("AclHandler", aclHandler);
+      pipeline.addLast("MetadataHandler", metaDataHandler);
+    };
+
     secureRouter = Router.builder(scatterGather)
         .name("SecureVeniceRouterHttps")
         .resourceRegistry(registry)
@@ -287,15 +308,8 @@ public class RouterServer extends AbstractVeniceService {
         .connectionLimit(config.getConnectionLimit())
         .timeoutProcessor(timeoutProcessor)
         .serverSocketOptions(serverSocketOptions)
-        .beforeHttpServerCodec(ChannelPipeline.class, (pipeline) -> {
-          if (sslFactory.isPresent()) {
-            pipeline.addFirst("SSL Initializer", new SSLInitializer(sslFactory.get()));
-          }
-        })
-        .beforeHttpRequestHandler(ChannelPipeline.class, (pipeline) -> {
-          pipeline.addLast("SSL Verifier", verifySsl);
-          pipeline.addLast("MetadataHandler", metaDataHandler);
-        })
+        .beforeHttpServerCodec(ChannelPipeline.class, sslFactory.isPresent() ? addSslInitializer : noop)  // Compare once per router. Previously compared once per request.
+        .beforeHttpRequestHandler(ChannelPipeline.class, accessController.isPresent() ? withAcl : withoutAcl) // Compare once per router. Previously compared once per request.
         .idleTimeout(3, TimeUnit.HOURS)
         .build();
 

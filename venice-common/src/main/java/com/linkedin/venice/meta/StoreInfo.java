@@ -1,6 +1,5 @@
 package com.linkedin.venice.meta;
 
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -22,6 +21,7 @@ public class StoreInfo {
     storeInfo.setStorageQuotaInByte(store.getStorageQuotaInByte());
     storeInfo.setReadQuotaInCU(store.getReadQuotaInCU());
     storeInfo.setVersions(store.getVersions());
+    storeInfo.setAccessControlled(store.isAccessControlled());
     if (store.isHybrid()) {
       storeInfo.setHybridStoreConfig(store.getHybridStoreConfig());
     }
@@ -80,6 +80,11 @@ public class StoreInfo {
    * Configurations for hybrid stores.
    */
   private HybridStoreConfig hybridStoreConfig;
+
+  /**
+   * Store-level ACL switch. When disabled, Venice Router should access every request.
+   */
+  private boolean accessControlled = false;
 
   public StoreInfo() {
   }
@@ -207,5 +212,13 @@ public class StoreInfo {
 
   public void setHybridStoreConfig(HybridStoreConfig hybridStoreConfig) {
     this.hybridStoreConfig = hybridStoreConfig;
+  }
+
+  public boolean isAccessControlled() {
+    return accessControlled;
+  }
+
+  public void setAccessControlled(boolean accessControlled) {
+    this.accessControlled = accessControlled;
   }
 }
