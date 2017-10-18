@@ -50,7 +50,7 @@ public class VeniceRouterWrapper extends ProcessWrapper {
           .put(ZOOKEEPER_ADDRESS, kafkaBrokerWrapper.getZkAddress())
           .put(SSL_TO_STORAGE_NODES, sslToStorageNodes)
           .put(CLUSTER_TO_D2, TestUtils.getClusterToDefaultD2String(clusterName));
-      RouterServer router = new RouterServer(builder.build(), new ArrayList<>(), Optional.of(SslUtils.getLocalSslFactory()));
+      RouterServer router = new RouterServer(builder.build(), new ArrayList<>(), Optional.empty(), Optional.of(SslUtils.getLocalSslFactory()));
       return new VeniceRouterWrapper(serviceName, dataDirectory, router, clusterName, port, zkAddress, sslToStorageNodes);
     };
   }
@@ -97,7 +97,7 @@ public class VeniceRouterWrapper extends ProcessWrapper {
         .put(ZOOKEEPER_ADDRESS, zkAddress)
         .put(SSL_TO_STORAGE_NODES, sslToStorageNode)
         .put(CLUSTER_TO_D2, TestUtils.getClusterToDefaultD2String(clusterName));
-    service = new RouterServer(builder.build(), new ArrayList<>(), Optional.of(SslUtils.getLocalSslFactory()));
+    service = new RouterServer(builder.build(), new ArrayList<>(), Optional.empty(), Optional.of(SslUtils.getLocalSslFactory()));
   }
 
   public HelixRoutingDataRepository getRoutingDataRepository(){

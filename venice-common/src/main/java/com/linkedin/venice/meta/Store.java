@@ -104,6 +104,11 @@ public class Store {
    */
   private HybridStoreConfig hybridStoreConfig;
 
+  /**
+   * Store-level ACL switch. When disabled, Venice Router should accept every request.
+   */
+  private boolean accessControlled = false;
+
   public Store(@NotNull String name, @NotNull String owner, long createdTime, @NotNull PersistenceType persistenceType,
       @NotNull RoutingStrategy routingStrategy, @NotNull ReadStrategy readStrategy,
       @NotNull OfflinePushStrategy offlinePushStrategy) {
@@ -469,6 +474,7 @@ public class Store {
     result = 31 * result + largestUsedVersionNumber;
     result = 31 * result + (int) (readQuotaInCU ^ (readQuotaInCU >>> 32));
     result = 31 * result + (hybridStoreConfig != null ? hybridStoreConfig.hashCode() : 0);
+    result = 31 * result + (accessControlled ? 1 : 0);
     return result;
   }
 
@@ -494,6 +500,7 @@ public class Store {
     if (readStrategy != store.readStrategy) return false;
     if (offLinePushStrategy != store.offLinePushStrategy) return false;
     if (!versions.equals(store.versions)) return false;
+    if (accessControlled != store.accessControlled) return false;
     return !(hybridStoreConfig != null ? !hybridStoreConfig.equals(store.hybridStoreConfig) : store.hybridStoreConfig != null);
   }
 
@@ -523,6 +530,7 @@ public class Store {
     clonedStore.setEnableWrites(enableWrites);
     clonedStore.setPartitionCount(partitionCount);
     clonedStore.setLargestUsedVersionNumber(largestUsedVersionNumber);
+    clonedStore.setAccessControlled(accessControlled);
 
     for (Version v : this.versions) {
       clonedStore.forceAddVersion(v.cloneVersion());
@@ -542,5 +550,13 @@ public class Store {
 
   public static void setDefaultReadQuota(long readQuota) {
     Store.DEFAULT_READ_QUOTA = readQuota;
+  }
+
+  public boolean isAccessControlled() {
+    return accessControlled;
+  }
+
+  public void setAccessControlled(boolean accessControlled) {
+    this.accessControlled = accessControlled;
   }
 }
