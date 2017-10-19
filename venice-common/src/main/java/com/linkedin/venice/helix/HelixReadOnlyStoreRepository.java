@@ -238,6 +238,11 @@ public class HelixReadOnlyStoreRepository implements ReadOnlyStoreRepository {
     }
   }
 
+  @Override
+  public ReadWriteLock getInternalReadWriteLock() {
+    return this.metadataLock;
+  }
+
   protected void triggerStoreCreationListener(Store store) {
     for (StoreDataChangedListener listener : dataChangedListenerSet) {
       try {

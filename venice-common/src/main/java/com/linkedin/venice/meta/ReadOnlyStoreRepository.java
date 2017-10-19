@@ -2,6 +2,7 @@ package com.linkedin.venice.meta;
 
 import com.linkedin.venice.VeniceResource;
 import java.util.List;
+import java.util.concurrent.locks.ReadWriteLock;
 
 
 /**
@@ -15,7 +16,7 @@ public interface ReadOnlyStoreRepository extends VeniceResource {
    *
    * @return Store for given name.
    */
-  public Store getStore(String name);
+  Store getStore(String name);
 
   /**
    * Whether the store exists or not.
@@ -48,4 +49,9 @@ public interface ReadOnlyStoreRepository extends VeniceResource {
    * @param listener
    */
   void unregisterStoreDataChangedListener(StoreDataChangedListener listener);
+
+  /**
+   * Return the internal lock, so that {@link ReadOnlySchemaRepository} will reuse it to avoid deadlock issue
+   */
+  ReadWriteLock getInternalReadWriteLock();
 }
