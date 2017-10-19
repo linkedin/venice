@@ -22,7 +22,7 @@ import static com.linkedin.venice.hadoop.MapReduceConstants.*;
 /**
  * An abstraction of the mapper that would return serialized Avro key/value pairs.
  * The class read config {@link KafkaPushJob#VENICE_MAP_ONLY} to determine whether
- * send the output to reducer or Kafka straightly.
+ * it will send the output to reducer or Kafka straightly.
  *
  * @param <INPUT_KEY> type of the input key read from InputFormat
  * @param <INPUT_VALUE> type of the input value read from InputFormat
@@ -87,12 +87,12 @@ public abstract class AbstractVeniceMapper<INPUT_KEY, INPUT_VALUE>
   /**
    * Return an Avro key schema string that will be used to init key serializer
    */
-  protected abstract String getKeySchemaStr();
+  abstract String getKeySchemaStr();
 
   /**
    * Return an Avro value schema string that will be used to init value serializer
    */
-  protected abstract String getValueSchemaStr();
+  abstract String getValueSchemaStr();
 
   /**
    * An optional method in case when child classes want to setup anything. It will be called before
@@ -103,6 +103,17 @@ public abstract class AbstractVeniceMapper<INPUT_KEY, INPUT_VALUE>
   @Override
   public void close() throws IOException {
     //no-op
+  }
+
+  /**
+   * This is a helper that will be called in {@link VeniceReducer} to deserialize binary key
+   */
+  VeniceKafkaSerializer getKeySerializer() {
+    if (keySerializer == null) {
+      LOGGER.warn("key serializer has not been initialized yet. Please call configure().");
+    }
+
+    return keySerializer;
   }
 
   @Override

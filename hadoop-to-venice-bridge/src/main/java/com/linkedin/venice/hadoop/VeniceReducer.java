@@ -5,9 +5,16 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.utils.HadoopUtils;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.serialization.DefaultSerializer;
+import com.linkedin.venice.serialization.VeniceKafkaSerializer;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.AbstractVeniceWriter;
 import com.linkedin.venice.writer.VeniceWriter;
+
+import java.util.Arrays;
+import org.apache.avro.Schema;
+import org.apache.avro.generic.GenericDatumWriter;
+import org.apache.avro.io.Encoder;
+import org.apache.avro.io.JsonEncoder;
 import org.apache.hadoop.io.BytesWritable;
 import org.apache.hadoop.io.NullWritable;
 import org.apache.hadoop.mapred.Counters;
@@ -23,6 +30,7 @@ import org.apache.kafka.clients.producer.RecordMetadata;
 import org.apache.log4j.Logger;
 
 import javax.xml.bind.DatatypeConverter;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.util.Iterator;
 import java.util.concurrent.atomic.AtomicLong;
@@ -51,7 +59,7 @@ public class VeniceReducer implements Reducer<BytesWritable, BytesWritable, Null
   private AbstractVeniceWriter<byte[], byte[]> veniceWriter = null;
   private int valueSchemaId = -1;
 
-  private boolean isDuplicateKeyAllowed;
+  private DuplicateKeyPrinter duplicateKeyPrinter;
 
   private Exception sendException = null;
 
@@ -79,19 +87,7 @@ public class VeniceReducer implements Reducer<BytesWritable, BytesWritable, Null
 
     sendMessageToKafka(keyBytes, valueBytes, reporter);
 
-    //encounter duplicate key issue
-    while (values.hasNext()) {
-      if (values.next().copyBytes() == valueBytes) {
-        //the data should be fine since both values are identical, only does logging here
-        reporter.incrCounter(COUNTER_GROUP_KAFKA, DUPLICATE_KEY_WITH_IDENTICAL_VALUE, 1);
-      } else {
-        if (!isDuplicateKeyAllowed) {
-          throw new VeniceException("There are multiple records for key: " + DatatypeConverter.printHexBinary(keyBytes));
-        } else {
-          reporter.incrCounter(COUNTER_GROUP_KAFKA, DUPLICATE_KEY_WITH_DISTINCT_VALUE, 1);
-        }
-      }
-    }
+    duplicateKeyPrinter.handleDuplicateKeys(keyBytes, valueBytes, values, reporter);
   }
 
   protected void sendMessageToKafka(byte[] keyBytes, byte[] valueBytes, Reporter reporter) {
@@ -143,7 +139,6 @@ public class VeniceReducer implements Reducer<BytesWritable, BytesWritable, Null
 
 
     this.valueSchemaId = props.getInt(VALUE_SCHEMA_ID_PROP);
-    this.isDuplicateKeyAllowed = props.getBoolean(ALLOW_DUPLICATE_KEY);
     if (null == this.veniceWriter) {
       this.veniceWriter = new VeniceWriter<>(
           props,
@@ -152,6 +147,8 @@ public class VeniceReducer implements Reducer<BytesWritable, BytesWritable, Null
           new DefaultSerializer()
       );
     }
+
+    this.duplicateKeyPrinter = new DuplicateKeyPrinter(job);
   }
 
   private void prepushStorageQuotaCheck(JobConf job, long maxStorageQuota, double storageEngineOverheadRatio) {
@@ -231,6 +228,88 @@ public class VeniceReducer implements Reducer<BytesWritable, BytesWritable, Null
 
     protected Progressable getProgressable() {
       return progress;
+    }
+  }
+
+  /**
+   * Using Avro Json encoder to print duplicate keys
+   * in case there are tons of duplicate keys, only print first {@link #MAX_NUM_OF_LOG}
+   * of them so that it won't pollute Reducer's log.
+   *
+   * N.B. We assume that this is an Avro record here. (Vson is considered as
+   * Avro as well from Reducer's perspective) We should update this method once
+   * Venice supports other format in the future
+   */
+  static class DuplicateKeyPrinter {
+    private static int MAX_NUM_OF_LOG = 10;
+
+    private boolean isDupKeyAllowed;
+
+    private String topic;
+    private Schema  keySchema;
+    private VeniceKafkaSerializer keySerializer;
+    private GenericDatumWriter writer;
+
+    private int numOfDupKey = 0;
+
+    DuplicateKeyPrinter(JobConf jobConf) {
+      this.topic = jobConf.get(TOPIC_PROP);
+      this.isDupKeyAllowed = jobConf.getBoolean(ALLOW_DUPLICATE_KEY, false);
+
+      AbstractVeniceMapper mapper = jobConf.getBoolean(VSON_PUSH, false) ?
+          new VeniceVsonMapper() : new VeniceAvroMapper();
+      mapper.configure(jobConf);
+
+      this.keySchema = Schema.parse(mapper.getKeySchemaStr());
+
+      if (mapper.getKeySerializer() == null) {
+        throw new VeniceException("key serializer can not be null.");
+      }
+
+      this.keySerializer = mapper.getKeySerializer();
+      this.writer = new GenericDatumWriter(keySchema);
+    }
+
+    void handleDuplicateKeys(byte[] keyBytes, byte[] valueBytes, Iterator<BytesWritable> values, Reporter reporter) {
+      if (values.hasNext() && numOfDupKey <= MAX_NUM_OF_LOG) {
+        boolean shouldPrint = true; //in case there are lots of duplicate keys with the same value, only print once
+
+        while (values.hasNext()) {
+          if (Arrays.equals(values.next().copyBytes(), valueBytes)) {
+            reporter.incrCounter(COUNTER_GROUP_KAFKA, DUPLICATE_KEY_WITH_IDENTICAL_VALUE, 1);
+
+            if (shouldPrint) {
+              shouldPrint = false;
+              LOGGER.warn(printDuplicateKey(keyBytes));
+            }
+          } else {
+            reporter.incrCounter(COUNTER_GROUP_KAFKA, DUPLICATE_KEY_WITH_DISTINCT_VALUE, 1);
+
+            if (!isDupKeyAllowed) {
+              throw new VeniceException(printDuplicateKey(keyBytes));
+            } else {
+              LOGGER.warn(printDuplicateKey(keyBytes));
+            }
+          }
+        }
+      }
+    }
+
+    private String printDuplicateKey(byte[] keyBytes) {
+      Object keyRecord = keySerializer.deserialize(topic, keyBytes);
+      ByteArrayOutputStream output = new ByteArrayOutputStream();
+
+      try {
+        Encoder jsonEncoder = new JsonEncoder(keySchema, output);
+        writer.write(keyRecord, jsonEncoder);
+        jsonEncoder.flush();
+        output.flush();
+
+        numOfDupKey ++;
+        return String.format("There are multiple records for key:\n%s", new String(output.toByteArray()));
+      } catch (IOException exception) {
+        throw new VeniceException(exception);
+      }
     }
   }
 }
