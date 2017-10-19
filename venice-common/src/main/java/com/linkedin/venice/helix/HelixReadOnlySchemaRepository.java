@@ -71,7 +71,7 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository {
   private IZkChildListener valueSchemaChildListener = new ValueSchemaChildListener();
 
   // Mutex for local cache
-  private final ReadWriteLock schemaLock = new ReentrantReadWriteLock();
+  private final ReadWriteLock schemaLock;
 
   public HelixReadOnlySchemaRepository(@NotNull ReadOnlyStoreRepository storeRepository,
                                        @NotNull ZkClient zkClient,
@@ -89,6 +89,11 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository {
 
     // Register store data change listener
     storeRepository.registerStoreDataChangedListener(this);
+    /**
+     * Will reuse the same lock being used by {@link ReadOnlyStoreRepository} to avoid deadlock issue.
+     */
+    this.schemaLock = storeRepository.getInternalReadWriteLock() != null ? storeRepository.getInternalReadWriteLock() :
+        new ReentrantReadWriteLock();
     zkStateListener = new CachedResourceZkStateListener(this);
   }
 
@@ -517,5 +522,10 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository {
         schemaLock.writeLock().unlock();
       }
     }
+  }
+
+  // For test purpose
+  protected ReadWriteLock getInternalReadWriteLock() {
+    return this.schemaLock;
   }
 }
