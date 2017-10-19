@@ -55,16 +55,15 @@ public class MigrationPushStrategyZKAccessor {
       throw new VeniceException("Invalid push strategy: " + pushStrategyStr + ", should be one of the following: ["
       + MigrationPushStrategy.getAllEnumString() + "]");
     }
-    LOGGER.info("Setup push strategy: " + pushStrategyStr + "for Voldemort store: " + voldemortStoreName);
+    LOGGER.info("Setup push strategy: " + pushStrategyStr + " for Voldemort store: " + voldemortStoreName);
 
     HelixUtils.compareAndUpdate(zkAccessor, MIGRATION_PUSH_STRATEGY_PATH, oldData -> {
       if (null == oldData) {
         // Doesn't exist
         oldData = new HashMap<>();
       }
-      if (!oldData.containsKey(voldemortStoreName)) {
-        oldData.put(voldemortStoreName, pushStrategyStr);
-      }
+      oldData.put(voldemortStoreName, pushStrategyStr);
+
       return oldData;
     });
   }
