@@ -124,6 +124,7 @@ public class TestKafkaPushJob {
       dataFileWriter.append(user);
     }
 
+
     dataFileWriter.close();
     return schema;
   }

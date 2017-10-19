@@ -115,6 +115,8 @@ public class KafkaPushJob extends AbstractJob {
   public static final String STORAGE_QUOTA_PROP = "storage.quota";
   public static final String STORAGE_ENGINE_OVERHEAD_RATIO = "storage_engine_overhead_ratio";
 
+  public static final String VSON_PUSH = "vson.push";
+
   private static Logger logger = Logger.getLogger(KafkaPushJob.class);
 
   public static int DEFAULT_BATCH_BYTES_SIZE = 1000000;
@@ -676,9 +678,11 @@ public class KafkaPushJob extends AbstractJob {
       jobConf.setClass("avro.serialization.data.model", GenericData.class, GenericData.class);
       jobConf.setInputFormat(AvroInputFormat.class);
       jobConf.setMapperClass(VeniceAvroMapper.class);
+      jobConf.setBoolean(VSON_PUSH, false);
     } else {
       jobConf.setInputFormat(VsonSequenceFileInputFormat.class);
       jobConf.setMapperClass(VeniceVsonMapper.class);
+      jobConf.setBoolean(VSON_PUSH, true);
     }
 
     return jobConf;
