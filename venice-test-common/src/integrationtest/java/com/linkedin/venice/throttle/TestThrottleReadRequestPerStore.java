@@ -8,6 +8,7 @@ import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.router.throttle.ReadRequestThrottler;
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
 import com.linkedin.venice.serialization.avro.VeniceAvroGenericSerializer;
 import com.linkedin.venice.utils.PropertyBuilder;
@@ -78,7 +79,7 @@ public class TestThrottleReadRequestPerStore {
   @Test
   public void testReadRequestBeThrottled()
       throws InterruptedException {
-
+    long timeWindowInSec = TimeUnit.MILLISECONDS.toSeconds(ReadRequestThrottler.DEFAULT_STORE_QUOTA_TIME_WINDOW);
     // Setup read quota for the store.
     long totalQuota = 10;
     cluster.getMasterVeniceController()
@@ -104,14 +105,17 @@ public class TestThrottleReadRequestPerStore {
     AvroGenericStoreClient<String, Object> storeClient =
         ClientFactory.getAndStartGenericAvroClient(ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(routerURL));
     try {
-      for (int i = 0; i < totalQuota / numberOfRouter; i++) {
+      for (int i = 0; i < totalQuota / numberOfRouter * timeWindowInSec; i++) {
         storeClient.get("empty-key").get();
       }
     } catch (ExecutionException e) {
       Assert.fail("Usage has not exceeded the quota.");
     }
     try {
-      storeClient.get("empty-key").get();
+      // Send more requests to avoid flaky test.
+      for (int i = 0; i < 5; i++) {
+        storeClient.get("empty-key").get();
+      }
       Assert.fail("Usage has exceeded the quota, should get the QuotaExceededException.");
     } catch (ExecutionException e) {
       //expected
@@ -126,14 +130,17 @@ public class TestThrottleReadRequestPerStore {
         ClientFactory.getAndStartGenericAvroClient(ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(routerURL));
     // now one router has the entire quota.
     try {
-      for (int i = 0; i < totalQuota; i++) {
+      for (int i = 0; i < totalQuota * timeWindowInSec; i++) {
         storeClient.get("empty-key").get();
       }
     } catch (ExecutionException e) {
       Assert.fail("Usage has not exceeded the quota.");
     }
     try {
-      storeClient.get("empty-key").get();
+      // Send more requests to avoid flaky test.
+      for (int i = 0; i < 5; i++) {
+        storeClient.get("empty-key").get();
+      }
       Assert.fail("Usage has exceeded the quota, should get the QuotaExceededException.");
     } catch (ExecutionException e) {
       //expected
