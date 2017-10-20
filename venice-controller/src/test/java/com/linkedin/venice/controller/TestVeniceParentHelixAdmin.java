@@ -58,8 +58,6 @@ import org.mockito.ArgumentCaptor;
 import static org.mockito.Mockito.*;
 
 import org.mockito.Mockito;
-import org.mockito.invocation.InvocationOnMock;
-import org.mockito.stubbing.Answer;
 import org.testng.Assert;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
@@ -131,6 +129,9 @@ public class TestVeniceParentHelixAdmin {
     // Please override this default mock implementation if you need special store repo logic for your test
     doReturn(storeRepo).when(resources)
         .getMetadataRepository();
+
+    // enable topic deletion by default
+    doReturn(true).when(config).isParentControllerEnableTopicDeletion();
 
     parentAdmin = new VeniceParentHelixAdmin(internalAdmin, TestUtils.getMultiClusterConfigFromOneCluster(config));
     parentAdmin.getAdminCommandExecutionTracker(clusterName)
@@ -892,7 +893,7 @@ public class TestVeniceParentHelixAdmin {
     doReturn(topicList).when(topicManager).listTopics();
 
     Admin.OfflinePushStatusInfo
-        offlineJobStatus = VeniceParentHelixAdmin.getOffLineJobStatus("mycluster", "topic1", completeMap, topicManager);
+        offlineJobStatus = parentAdmin.getOffLineJobStatus("mycluster", "topic1", completeMap, topicManager);
     Map<String, String> extraInfo = offlineJobStatus.getExtraInfo();
     Assert.assertEquals(offlineJobStatus.getExecutionStatus(), ExecutionStatus.COMPLETED);
     verify(topicManager, timeout(TIMEOUT_IN_MS)).ensureTopicIsDeletedAndBlock("topic1");
@@ -901,7 +902,7 @@ public class TestVeniceParentHelixAdmin {
     Assert.assertEquals(extraInfo.get("cluster3"), ExecutionStatus.COMPLETED.toString());
 
     completeMap.put("cluster-slow", clientMap.get(ExecutionStatus.NOT_CREATED));
-    offlineJobStatus = VeniceParentHelixAdmin.getOffLineJobStatus("mycluster", "topic2", completeMap, topicManager);
+    offlineJobStatus = parentAdmin.getOffLineJobStatus("mycluster", "topic2", completeMap, topicManager);
     extraInfo = offlineJobStatus.getExtraInfo();
     Assert.assertEquals(offlineJobStatus.getExecutionStatus(), ExecutionStatus.NOT_CREATED);  // Do we want this to be Progress?  limitation of ordering used in aggregation code
     verify(topicManager, never()).ensureTopicIsDeletedAndBlock("topic2");
@@ -913,7 +914,7 @@ public class TestVeniceParentHelixAdmin {
     Map<String, ControllerClient> progressMap = new HashMap<>();
     progressMap.put("cluster", clientMap.get(ExecutionStatus.NOT_CREATED));
     progressMap.put("cluster3", clientMap.get(ExecutionStatus.NOT_CREATED));
-    offlineJobStatus = VeniceParentHelixAdmin.getOffLineJobStatus("mycluster", "topic3", progressMap, topicManager);
+    offlineJobStatus = parentAdmin.getOffLineJobStatus("mycluster", "topic3", progressMap, topicManager);
     extraInfo = offlineJobStatus.getExtraInfo();
     Assert.assertEquals(offlineJobStatus.getExecutionStatus(), ExecutionStatus.NOT_CREATED);
     verify(topicManager, never()).ensureTopicIsDeletedAndBlock("topic3");
@@ -921,7 +922,7 @@ public class TestVeniceParentHelixAdmin {
     Assert.assertEquals(extraInfo.get("cluster3"), ExecutionStatus.NOT_CREATED.toString());
 
     progressMap.put("cluster5", clientMap.get(ExecutionStatus.NEW));
-    offlineJobStatus = VeniceParentHelixAdmin.getOffLineJobStatus("mycluster", "topic4", progressMap, topicManager);
+    offlineJobStatus = parentAdmin.getOffLineJobStatus("mycluster", "topic4", progressMap, topicManager);
     extraInfo = offlineJobStatus.getExtraInfo();
     Assert.assertEquals(offlineJobStatus.getExecutionStatus(), ExecutionStatus.NEW);
     verify(topicManager, never()).ensureTopicIsDeletedAndBlock("topic4");
@@ -930,28 +931,28 @@ public class TestVeniceParentHelixAdmin {
     Assert.assertEquals(extraInfo.get("cluster5"), ExecutionStatus.NEW.toString());
 
     progressMap.put("cluster7", clientMap.get(ExecutionStatus.PROGRESS));
-    offlineJobStatus = VeniceParentHelixAdmin.getOffLineJobStatus("mycluster", "topic5", progressMap, topicManager);
+    offlineJobStatus = parentAdmin.getOffLineJobStatus("mycluster", "topic5", progressMap, topicManager);
     extraInfo = offlineJobStatus.getExtraInfo();
     Assert.assertEquals(offlineJobStatus.getExecutionStatus(), ExecutionStatus.PROGRESS);
     verify(topicManager, never()).ensureTopicIsDeletedAndBlock("topic5");;
     Assert.assertEquals(extraInfo.get("cluster7"), ExecutionStatus.PROGRESS.toString());
 
     progressMap.put("cluster9", clientMap.get(ExecutionStatus.STARTED));
-    offlineJobStatus = VeniceParentHelixAdmin.getOffLineJobStatus("mycluster", "topic6", progressMap, topicManager);
+    offlineJobStatus = parentAdmin.getOffLineJobStatus("mycluster", "topic6", progressMap, topicManager);
     extraInfo = offlineJobStatus.getExtraInfo();
     Assert.assertEquals(offlineJobStatus.getExecutionStatus(), ExecutionStatus.PROGRESS);
     verify(topicManager, never()).ensureTopicIsDeletedAndBlock("topic6");
     Assert.assertEquals(extraInfo.get("cluster9"), ExecutionStatus.STARTED.toString());
 
     progressMap.put("cluster11", clientMap.get(ExecutionStatus.END_OF_PUSH_RECEIVED));
-    offlineJobStatus = VeniceParentHelixAdmin.getOffLineJobStatus("mycluster", "topic7", progressMap, topicManager);
+    offlineJobStatus = parentAdmin.getOffLineJobStatus("mycluster", "topic7", progressMap, topicManager);
     extraInfo = offlineJobStatus.getExtraInfo();
     Assert.assertEquals(offlineJobStatus.getExecutionStatus(), ExecutionStatus.PROGRESS);
     verify(topicManager, never()).ensureTopicIsDeletedAndBlock("topic7");
     Assert.assertEquals(extraInfo.get("cluster11"), ExecutionStatus.END_OF_PUSH_RECEIVED.toString());
 
     progressMap.put("cluster13", clientMap.get(ExecutionStatus.COMPLETED));
-    offlineJobStatus = VeniceParentHelixAdmin.getOffLineJobStatus("mycluster", "topic8", progressMap, topicManager);
+    offlineJobStatus = parentAdmin.getOffLineJobStatus("mycluster", "topic8", progressMap, topicManager);
     extraInfo = offlineJobStatus.getExtraInfo();
     Assert.assertEquals(offlineJobStatus.getExecutionStatus(), ExecutionStatus.PROGRESS);
     verify(topicManager, never()).ensureTopicIsDeletedAndBlock("topic8");
@@ -963,7 +964,7 @@ public class TestVeniceParentHelixAdmin {
     failCompleteMap.put("cluster2", clientMap.get(ExecutionStatus.COMPLETED));
     failCompleteMap.put("cluster3", clientMap.get(ExecutionStatus.COMPLETED));
     failCompleteMap.put("failcluster", clientMap.get(null));
-    offlineJobStatus = VeniceParentHelixAdmin.getOffLineJobStatus("mycluster", "topic8", failCompleteMap, topicManager);
+    offlineJobStatus = parentAdmin.getOffLineJobStatus("mycluster", "topic8", failCompleteMap, topicManager);
     extraInfo = offlineJobStatus.getExtraInfo();
     Assert.assertEquals(offlineJobStatus.getExecutionStatus(), ExecutionStatus.ERROR);
     verify(topicManager, timeout(TIMEOUT_IN_MS)).ensureTopicIsDeletedAndBlock("topic8");
@@ -975,7 +976,7 @@ public class TestVeniceParentHelixAdmin {
     // 3 in 6 failures is PROGRESS (so it keeps trying)
     failCompleteMap.put("failcluster2", clientMap.get(null));
     failCompleteMap.put("failcluster3", clientMap.get(null));
-    offlineJobStatus = VeniceParentHelixAdmin.getOffLineJobStatus("mycluster", "atopic", failCompleteMap, topicManager);
+    offlineJobStatus = parentAdmin.getOffLineJobStatus("mycluster", "atopic", failCompleteMap, topicManager);
     extraInfo = offlineJobStatus.getExtraInfo();
     Assert.assertEquals(offlineJobStatus.getExecutionStatus(), ExecutionStatus.PROGRESS);
     Assert.assertEquals(extraInfo.get("failcluster2"), ExecutionStatus.UNKNOWN.toString());
@@ -983,19 +984,19 @@ public class TestVeniceParentHelixAdmin {
 
     Map<String, ControllerClient> errorMap = new HashMap<>();
     errorMap.put("cluster-err", clientMap.get(ExecutionStatus.ERROR));
-    offlineJobStatus = VeniceParentHelixAdmin.getOffLineJobStatus("mycluster", "atopic", errorMap, topicManager);
+    offlineJobStatus = parentAdmin.getOffLineJobStatus("mycluster", "atopic", errorMap, topicManager);
     extraInfo = offlineJobStatus.getExtraInfo();
     Assert.assertEquals(offlineJobStatus.getExecutionStatus(), ExecutionStatus.ERROR);
     Assert.assertEquals(extraInfo.get("cluster-err"), ExecutionStatus.ERROR.toString());
 
     errorMap.put("cluster-complete", clientMap.get(ExecutionStatus.COMPLETED));
-    offlineJobStatus = VeniceParentHelixAdmin.getOffLineJobStatus("mycluster", "atopic", errorMap, topicManager);
+    offlineJobStatus = parentAdmin.getOffLineJobStatus("mycluster", "atopic", errorMap, topicManager);
     extraInfo = offlineJobStatus.getExtraInfo();
     Assert.assertEquals(offlineJobStatus.getExecutionStatus(), ExecutionStatus.ERROR);
     Assert.assertEquals(extraInfo.get("cluster-complete"), ExecutionStatus.COMPLETED.toString());
 
     errorMap.put("cluster-new", clientMap.get(ExecutionStatus.NEW));
-    offlineJobStatus = VeniceParentHelixAdmin.getOffLineJobStatus("mycluster", "atopic", errorMap, topicManager);
+    offlineJobStatus = parentAdmin.getOffLineJobStatus("mycluster", "atopic", errorMap, topicManager);
     extraInfo = offlineJobStatus.getExtraInfo();
     Assert.assertEquals(offlineJobStatus.getExecutionStatus(), ExecutionStatus.NEW); // Do we want this to be Progress?  limitation of ordering used in aggregation code
     Assert.assertEquals(extraInfo.get("cluster-new"), ExecutionStatus.NEW.toString());
@@ -1238,4 +1239,99 @@ public class TestVeniceParentHelixAdmin {
     return controllerClientMap;
   }
 
+  @Test
+  public void testGetLargestKafkaTopic() {
+    String storeName = TestUtils.getUniqueString("test-store");
+    Optional<String> latestTopic = parentAdmin.getLatestKafkaTopic(storeName);
+    Assert.assertFalse(latestTopic.isPresent());
+
+    Set<String> topicList = new HashSet<>();
+    topicList.add(storeName + "_v1");
+    topicList.add(storeName + "_v2");
+    topicList.add(storeName + "_v3");
+    doReturn(topicList).when(topicManager).listTopics();
+    latestTopic = parentAdmin.getLatestKafkaTopic(storeName);
+    Assert.assertTrue(latestTopic.isPresent());
+    Assert.assertEquals(latestTopic.get(), storeName + "_v3");
+  }
+
+  @Test
+  public void testGetCurrentPushJob() {
+    String storeName = TestUtils.getUniqueString("test-store");
+    VeniceParentHelixAdmin mockParentAdmin = mock(VeniceParentHelixAdmin.class);
+    doReturn(Optional.empty()).when(mockParentAdmin).getLatestKafkaTopic(any());
+    doCallRealMethod().when(mockParentAdmin).getCurrentPushJob(clusterName, storeName);
+    Assert.assertFalse(mockParentAdmin.getCurrentPushJob(clusterName, storeName).isPresent());
+
+    String latestTopic = storeName + "_v1";
+    doReturn(Optional.of(latestTopic)).when(mockParentAdmin).getLatestKafkaTopic(storeName);
+    doReturn(topicManager).when(mockParentAdmin).getTopicManager();
+
+    // When there is a topic with zero retention policy
+    doReturn(true).when(topicManager).isTopicRetentionZero(latestTopic);
+    Assert.assertFalse(mockParentAdmin.getCurrentPushJob(clusterName, storeName).isPresent());
+    verify(mockParentAdmin, never()).getOffLinePushStatus(clusterName, latestTopic);
+
+    // When there is a topic with non-zero retention policy and the job status is terminal
+    doReturn(new Admin.OfflinePushStatusInfo(ExecutionStatus.COMPLETED))
+        .when(mockParentAdmin)
+        .getOffLinePushStatus(clusterName, latestTopic);
+    doReturn(false).when(topicManager).isTopicRetentionZero(latestTopic);
+    Assert.assertFalse(mockParentAdmin.getCurrentPushJob(clusterName, storeName).isPresent());
+    verify(mockParentAdmin).getOffLinePushStatus(clusterName, latestTopic);
+
+    // When there is a topic with non-zero retention policy and the job status is not terminal
+    doReturn(new Admin.OfflinePushStatusInfo(ExecutionStatus.PROGRESS))
+        .when(mockParentAdmin)
+        .getOffLinePushStatus(clusterName, latestTopic);
+    Optional<String> currentPush = mockParentAdmin.getCurrentPushJob(clusterName, storeName);
+    Assert.assertTrue(currentPush.isPresent());
+    Assert.assertEquals(currentPush.get(), latestTopic);
+    verify(mockParentAdmin, times(2)).getOffLinePushStatus(clusterName, latestTopic);
+
+    // When there is a topic with non-zero retention policy and the job status is 'UNKNOWN' in some colo,
+    // but overall status is 'COMPLETED'
+    Map<String, String> extraInfo = new HashMap<>();
+    extraInfo.put("cluster1", ExecutionStatus.UNKNOWN.toString());
+    doReturn(new Admin.OfflinePushStatusInfo(ExecutionStatus.COMPLETED, extraInfo))
+        .when(mockParentAdmin)
+        .getOffLinePushStatus(clusterName, latestTopic);
+    doCallRealMethod().when(mockParentAdmin).setTimer(any());
+    mockParentAdmin.setTimer(new MockTime());
+    currentPush = mockParentAdmin.getCurrentPushJob(clusterName, storeName);
+    Assert.assertFalse(currentPush.isPresent());
+    verify(mockParentAdmin, times(7)).getOffLinePushStatus(clusterName, latestTopic);
+
+    // When there is a topic with non-zero retention policy and the job status is 'UNKNOWN' in some colo,
+    // but overall status is 'PROGRESS'
+    doReturn(new Admin.OfflinePushStatusInfo(ExecutionStatus.PROGRESS, extraInfo))
+        .when(mockParentAdmin)
+        .getOffLinePushStatus(clusterName, latestTopic);
+    currentPush = mockParentAdmin.getCurrentPushJob(clusterName, storeName);
+    Assert.assertTrue(currentPush.isPresent());
+    Assert.assertEquals(currentPush.get(), latestTopic);
+    verify(mockParentAdmin, times(12)).getOffLinePushStatus(clusterName, latestTopic);
+
+    // When there is a topic with non-zero retention policy and the job status is 'UNKNOWN' in some colo for the first time,
+    // but overall status is 'PROGRESS'
+    doReturn(new Admin.OfflinePushStatusInfo(ExecutionStatus.PROGRESS, extraInfo))
+        .when(mockParentAdmin)
+        .getOffLinePushStatus(clusterName, latestTopic);
+    when(mockParentAdmin.getOffLinePushStatus(clusterName, latestTopic))
+        .thenReturn(new Admin.OfflinePushStatusInfo(ExecutionStatus.PROGRESS, extraInfo))
+        .thenReturn(new Admin.OfflinePushStatusInfo(ExecutionStatus.PROGRESS));
+    currentPush = mockParentAdmin.getCurrentPushJob(clusterName, storeName);
+    Assert.assertTrue(currentPush.isPresent());
+    Assert.assertEquals(currentPush.get(), latestTopic);
+    verify(mockParentAdmin, times(14)).getOffLinePushStatus(clusterName, latestTopic);
+  }
+
+  @Test (expectedExceptions = VeniceException.class)
+  public void testIncrementVersionWithParallelPush() {
+    String storeName = TestUtils.getUniqueString("test-store");
+    VeniceParentHelixAdmin mockParentAdmin = mock(VeniceParentHelixAdmin.class);
+    doReturn(Optional.of(storeName + "v1")).when(mockParentAdmin).getCurrentPushJob(clusterName, storeName);
+    doCallRealMethod().when(mockParentAdmin).incrementVersion(any(), any(), any(), anyInt(), anyInt());
+    mockParentAdmin.incrementVersion(clusterName, storeName, "", 64, 3);
+  }
 }

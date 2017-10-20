@@ -88,6 +88,10 @@ public class VeniceControllerMultiClusterConfig {
     return getCommonConfig().getTopicCreationThrottlingTimeWindowMs();
   }
 
+  public boolean isParentControllerEnableTopicDeletion() {
+    return getCommonConfig().isParentControllerEnableTopicDeletion();
+  }
+
   public Map<String,String> getClusterToD2Map(){
     return getCommonConfig().getClusterToD2Map();
   }

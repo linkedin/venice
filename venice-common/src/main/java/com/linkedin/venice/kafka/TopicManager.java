@@ -151,6 +151,24 @@ public class TopicManager implements Closeable {
     }
   }
 
+  public void updateTopicRetentionToBeZero(String topicName) {
+    updateTopicRetention(topicName, 0);
+  }
+
+  /**
+   * Check whether current topic retention is 0
+   * @param topicName
+   * @return
+   */
+  public synchronized boolean isTopicRetentionZero(String topicName) {
+    Properties topicProperties = getTopicConfig(topicName);
+    if (topicProperties.containsKey(LogConfig.RetentionMsProp())) {
+      long retention = Long.parseLong(topicProperties.getProperty(LogConfig.RetentionMsProp()));
+      return retention == 0;
+    }
+    return false;
+  }
+
   /**
    * This operation is a little heavy, since it will pull the configs for all the topics.
    * @param topicName

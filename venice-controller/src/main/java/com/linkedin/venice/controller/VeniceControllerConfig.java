@@ -41,6 +41,8 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
 
   private final long failedJobTopicRetentionMs;
 
+  private final boolean parentControllerEnableTopicDeletion;
+
   public VeniceControllerConfig(VeniceProperties props) {
     super(props);
     this.adminPort = props.getInt(ADMIN_PORT);
@@ -70,6 +72,9 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
 
     // The default retention '0' will allow Kafka remove as much data as possible.
     this.failedJobTopicRetentionMs = props.getLong(FAILED_JOB_TOPIC_RETENTION_MS, 0);
+
+    // disable topic deletion in parent controller by default
+    this.parentControllerEnableTopicDeletion = props.getBoolean(PARENT_CONTROLLER_ENABLE_TOPIC_DELETION, false);
   }
 
   public int getAdminPort() {
@@ -124,6 +129,10 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
 
   public int getParentControllerWaitingTimeForConsumptionMs() {
     return parentControllerWaitingTimeForConsumptionMs;
+  }
+
+  public boolean isParentControllerEnableTopicDeletion() {
+    return parentControllerEnableTopicDeletion;
   }
 
   public long getAdminConsumptionTimeoutMinutes(){

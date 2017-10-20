@@ -181,6 +181,10 @@ public class Version implements Comparable<Version> {
     return storeName + REAL_TIME_TOPIC_SUFFIX;
   }
 
+  public static boolean isRealTimeTopic(String kafkaTopic) {
+    return kafkaTopic.endsWith(REAL_TIME_TOPIC_SUFFIX);
+  }
+
   public static boolean topicIsValidStoreVersion(String kafkaTopic){
     try{
       parseVersionFromKafkaTopicName(kafkaTopic);

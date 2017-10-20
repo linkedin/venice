@@ -162,6 +162,10 @@ public class ConfigKeys {
   public static final String TOPIC_CREATION_THROTTLING_TIME_WINDOW_MS = "topic.creation.throttling.time.window.ms";
   /** Whether current controller is parent or not */
   public static final String CONTROLLER_PARENT_MODE = "controller.parent.mode";
+  /**
+   * Whether enable topic deletion after job finishes in parent controller
+   */
+  public static final String PARENT_CONTROLLER_ENABLE_TOPIC_DELETION = "parent.controller.enable.topic.deletion";
 
   /**
    * Only required when controller.parent.mode=true

@@ -102,6 +102,10 @@ public class TopicMonitor extends AbstractVeniceService {
                 logger.debug("Skip kafka internal topic: " + topic + " in Topic Monitor thread");
                 continue;
               }
+              if (Version.isRealTimeTopic(topic)) {
+                logger.debug("Skip real-time kafka topic: " + topic + " in Topic Monitor thread");
+                continue;
+              }
               if (Version.topicIsValidStoreVersion(topic)) {
                 String storeName = Version.parseStoreFromKafkaTopicName(topic);
                 int version = Version.parseVersionFromKafkaTopicName(topic);
