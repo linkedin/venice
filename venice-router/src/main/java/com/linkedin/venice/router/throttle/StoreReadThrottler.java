@@ -83,6 +83,8 @@ public class StoreReadThrottler {
       }
     }
 
+    int[] addedOrUpdated = new int[1];
+
     // Update throttler for the storage node which is a new node or the its quota has been changed.
     // Add a buffer to per storage node quota to make our throttler more lenient, particularly once we enable sticky routing.
     storageNodeQuotaMap.entrySet()
@@ -90,20 +92,25 @@ public class StoreReadThrottler {
         .filter(entry -> !storageNodesThrottlers.containsKey(entry.getKey())
             || storageNodesThrottlers.get(entry.getKey()).getMaxRatePerSecond() != (long) (entry.getValue() * (1
             + perStorageNodeReadQuotaBuffer)))
-        .forEach(entry -> storageNodesThrottlers.put(entry.getKey(),
-            new EventThrottler((long) (entry.getValue() * (1 + perStorageNodeReadQuotaBuffer)),
-                storageNodeQuotaCheckTimeWindow, storeName + "-" + entry.getKey() + "-throttler", true,
-                throttlingStrategy)));
-
+        .forEach(entry -> {
+          storageNodesThrottlers.put(entry.getKey(),
+              new EventThrottler((long) (entry.getValue() * (1 + perStorageNodeReadQuotaBuffer)),
+                  storageNodeQuotaCheckTimeWindow, storeName + "-" + entry.getKey() + "-throttler", true,
+                  throttlingStrategy));
+          addedOrUpdated[0]++;
+        });
+    int deleted = 0;
     // Delete the throttler for the storage node which has been deleted from the latest partition assignment.
     Iterator<String> iterator = storageNodesThrottlers.keySet().iterator();
     while (iterator.hasNext()) {
       if (!storageNodeQuotaMap.containsKey(iterator.next())) {
         iterator.remove();
+        deleted++;
       }
     }
 
-    logger.info("Updated throttlers for each storage. Store: " + storeName + " currentVersion:" + currentVersion);
+    logger.info("Added or Updated throttlers for " + addedOrUpdated[0] + " storage nodes.  Deleted: " + deleted
+        + "throttlers for storage nodes. Store: " + storeName + " currentVersion:" + currentVersion);
   }
 
   /**
