@@ -113,6 +113,11 @@ public class VeniceParentHelixAdmin implements Admin {
 
   private final int waitingTimeForConsumptionMs;
 
+  /**
+   * Whether parent controller should delete topic when job finishes.
+   */
+  private final boolean enableTopicDeletion;
+
   public VeniceParentHelixAdmin(VeniceHelixAdmin veniceHelixAdmin, VeniceControllerMultiClusterConfig multiClusterConfigs) {
     this.veniceHelixAdmin = veniceHelixAdmin;
     this.multiClusterConfigs = multiClusterConfigs;
@@ -130,6 +135,7 @@ public class VeniceParentHelixAdmin implements Admin {
     }
     this.pushStrategyZKAccessor = new MigrationPushStrategyZKAccessor(veniceHelixAdmin.getZkClient(),
         veniceHelixAdmin.getAdapterSerializer());
+    this.enableTopicDeletion = multiClusterConfigs.isParentControllerEnableTopicDeletion();
   }
 
   public void setVeniceWriterForCluster(String clusterName, VeniceWriter writer) {
@@ -363,7 +369,7 @@ public class VeniceParentHelixAdmin implements Admin {
     Set<String> topics = topicManager.listTopics();
     String storeNameForCurrentTopic;
     for (String topic: topics) {
-      if (AdminTopicUtils.isAdminTopic(topic) || AdminTopicUtils.isKafkaInternalTopic(topic)) {
+      if (AdminTopicUtils.isAdminTopic(topic) || AdminTopicUtils.isKafkaInternalTopic(topic) || Version.isRealTimeTopic(topic)) {
         continue;
       }
       try {
@@ -379,6 +385,82 @@ public class VeniceParentHelixAdmin implements Admin {
     return outputList;
   }
 
+  /**
+   * Get the latest existing Kafka topic for the specified store
+   * @param storeName
+   * @return
+   */
+  protected Optional<String> getLatestKafkaTopic(String storeName) {
+    List<String> existingTopics = existingTopicsForStore(storeName);
+    if (existingTopics.isEmpty()) {
+      return Optional.empty();
+    }
+    existingTopics.sort((t1, t2) -> {
+      int v1 = Version.parseVersionFromKafkaTopicName(t1);
+      int v2 = Version.parseVersionFromKafkaTopicName(t2);
+      return v2 - v1;
+    });
+    return Optional.of(existingTopics.get(0));
+  }
+
+  /**
+   * If there is no ongoing push for specified store currently, this function will return {@link Optional#empty()},
+   * else will return the ongoing Kafka topic
+   * @param clusterName
+   * @param storeName
+   * @return
+   */
+  protected Optional<String> getCurrentPushJob(String clusterName, String storeName) {
+    Optional<String> latestKafkaTopic = getLatestKafkaTopic(storeName);
+    /**
+     * Check current topic retention to decide whether the previous job is already done or not
+     */
+    if (latestKafkaTopic.isPresent()) {
+      logger.debug("Latest kafka topic for store: " + storeName + " is " + latestKafkaTopic.get());
+      if (!getTopicManager().isTopicRetentionZero(latestKafkaTopic.get())) {
+        /**
+         * If Parent Controller could not infer the job status from topic retention policy, it will check the actual
+         * job status by sending requests to each individual datacenter.
+         * If the job is still running, Parent Controller will block current push.
+         */
+        final long SLEEP_MS_BETWEEN_RETRY = TimeUnit.SECONDS.toMillis(10);
+        ExecutionStatus jobStatus = ExecutionStatus.PROGRESS;
+        Map<String, String> extraInfo = new HashMap<>();
+
+        int retryTimes = 5;
+        int current = 0;
+        while (current++ < retryTimes) {
+          OfflinePushStatusInfo offlineJobStatus = getOffLinePushStatus(clusterName, latestKafkaTopic.get());
+          jobStatus = offlineJobStatus.getExecutionStatus();
+          extraInfo = offlineJobStatus.getExtraInfo();
+          if (!extraInfo.containsValue(ExecutionStatus.UNKNOWN.toString())) {
+            break;
+          }
+          // Retry since there is a connection failure when querying job status against each datacenter
+          try {
+            timer.sleep(SLEEP_MS_BETWEEN_RETRY);
+          } catch (InterruptedException e) {
+            throw new VeniceException("Received InterruptedException during sleep between 'getOffLinePushStatus' calls");
+          }
+        }
+        if (extraInfo.containsValue(ExecutionStatus.UNKNOWN.toString())) {
+          // TODO: Do we need to throw exception here??
+          logger.error("Failed to get job status for topic: " + latestKafkaTopic.get() + " after retrying " + retryTimes
+              + " times, extra info: " + extraInfo);
+        }
+        if (!jobStatus.isTerminal()) {
+          logger.info(
+              "Job status: " + jobStatus + " for Kafka topic: " + latestKafkaTopic + " is not terminal, extra info: " + extraInfo);
+          return latestKafkaTopic;
+        } else {
+          logger.info("Job status: " + jobStatus + " for Kafka topic: " + latestKafkaTopic + " is terminal, so just ignore it");
+        }
+      }
+    }
+    return Optional.empty();
+  }
+
+  // TODO: this function isn't able to block parallel push in theory since it is not synchronized.
   public Version incrementVersion(String clusterName,
                                   String storeName,
                                   String pushJobId,
@@ -396,16 +478,13 @@ public class VeniceParentHelixAdmin implements Admin {
      * {@link #getOffLinePushStatus(String, String)} will remove the topic if the offline job has been terminated,
      * so we don't need to explicitly remove it here.
      */
-    for (String topic : existingTopicsForStore(storeName)){
-      OfflinePushStatusInfo offlineJobStatus = getOffLinePushStatus(clusterName, topic);
-      if (offlineJobStatus.getExecutionStatus().isTerminal()) {
-        logger.info("Offline job for the existing topic: " + topic + " is already done, just skip it");
-        continue;
-      }
-      throw new VeniceException("Topic: " + topic + " exists for store: " + storeName +
+    Optional<String> currentPush = getCurrentPushJob(clusterName, storeName);
+    if (currentPush.isPresent()) {
+      throw new VeniceException("Topic: " + currentPush.get() + " exists for store: " + storeName +
           ", please wait for previous job to be finished, and reach out Venice team if it is" +
           " not this case");
     }
+
     mayThrottleTopicCreation(timer);
     Version newVersion = veniceHelixAdmin.addVersion(clusterName, storeName, pushJobId, VeniceHelixAdmin.VERSION_ID_UNSET,
         numberOfPartition, replicationFactor, false);
@@ -822,6 +901,18 @@ public class VeniceParentHelixAdmin implements Admin {
     return controllerClients;
   }
 
+  private void internalDeleteTopic(TopicManager topicManager, String topicName) {
+    if (enableTopicDeletion) {
+      topicManager.ensureTopicIsDeletedAndBlock(topicName);
+      logger.info("Topic: " + topicName + " is deleted");
+    } else {
+      // Update retention to be 0 to free Kafka disk space
+      topicManager.updateTopicRetentionToBeZero(topicName);
+      logger.info("Topic deletion is disabled in parent controller, "
+          + "so it will just update topic retention for topic: " + topicName + " to be 0 to free Kafka disk space");
+    }
+  }
+
   /**
    * Queries child clusters for status.
    * Of all responses, return highest of (in order) NOT_CREATED, NEW, STARTED, PROGRESS.
@@ -842,7 +933,7 @@ public class VeniceParentHelixAdmin implements Admin {
     return getOffLineJobStatus(clusterName, kafkaTopic, controllerClients, getTopicManager());
   }
 
-  protected static OfflinePushStatusInfo getOffLineJobStatus(String clusterName, String kafkaTopic,
+  protected OfflinePushStatusInfo getOffLineJobStatus(String clusterName, String kafkaTopic,
       Map<String, ControllerClient> controllerClients, TopicManager topicManager) {
     Set<String> childClusters = controllerClients.keySet();
     ExecutionStatus currentReturnStatus = ExecutionStatus.NOT_CREATED;
@@ -901,7 +992,7 @@ public class VeniceParentHelixAdmin implements Admin {
       // ERROR -> ERROR
 
       logger.info("Deleting kafka topic: " + kafkaTopic + " with job status: " + currentReturnStatus);
-      topicManager.ensureTopicIsDeletedAndBlock(kafkaTopic);
+      internalDeleteTopic(topicManager, kafkaTopic);
     }
 
     return new OfflinePushStatusInfo(currentReturnStatus, extraInfo);
@@ -1027,7 +1118,7 @@ public class VeniceParentHelixAdmin implements Admin {
       // Remove Kafka topic
       TopicManager topicManager = getTopicManager();
       logger.info("Deleting topic when kill offline push job, topic: " + kafkaTopic);
-      topicManager.ensureTopicIsDeletedAndBlock(kafkaTopic);
+      internalDeleteTopic(topicManager, kafkaTopic);
 
       // TODO: Set parent controller's version status (to ERROR, most likely?)
 

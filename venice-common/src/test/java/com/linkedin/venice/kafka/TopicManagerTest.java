@@ -184,4 +184,14 @@ public class TopicManagerTest {
     Assert.assertEquals(topicProperties.getProperty(LogConfig.RetentionMsProp()), "0");
   }
 
+  @Test
+  public void testUpdateTopicRetentionToBeZero() throws InterruptedException {
+    String topic = TestUtils.getUniqueString("topic");
+    manager.createTopic(topic, 1, 1, true);
+    manager.updateTopicRetentionToBeZero(topic);
+    Properties topicProperties = manager.getTopicConfig(topic);
+    Assert.assertEquals(topicProperties.getProperty(LogConfig.RetentionMsProp()), "0");
+    Assert.assertTrue(manager.isTopicRetentionZero(topic));
+  }
+
 }
