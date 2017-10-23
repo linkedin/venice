@@ -4,6 +4,7 @@ import com.linkedin.venice.meta.StoreConfig;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
+import org.apache.helix.manager.zk.ZkClient;
 import org.mockito.Mockito;
 import org.testng.Assert;
 import org.testng.annotations.BeforeMethod;
@@ -17,7 +18,7 @@ public class TestHelixReadOnlyStoreConfigRepository {
   @BeforeMethod
   public void setup() {
     mockAccessor = Mockito.mock(ZkStoreConfigAccessor.class);
-    storeConfigRepository = new HelixReadOnlyStoreConfigRepository(mockAccessor);
+    storeConfigRepository = new HelixReadOnlyStoreConfigRepository(Mockito.mock(ZkClient.class), mockAccessor, 1, 1000);
   }
 
   @Test
@@ -28,7 +29,7 @@ public class TestHelixReadOnlyStoreConfigRepository {
     config.setCluster(clusterName);
     List<StoreConfig> list = new ArrayList<>();
     list.add(config);
-    Mockito.doReturn(list).when(mockAccessor).getAllStoreConfigs();
+    Mockito.doReturn(list).when(mockAccessor).getAllStoreConfigs(1, 1000);
     storeConfigRepository.refresh();
     Assert.assertEquals(storeConfigRepository.getStoreConfig(storeName).get().getCluster(), clusterName,
         "Should get the cluster from config correctly.");
@@ -45,7 +46,7 @@ public class TestHelixReadOnlyStoreConfigRepository {
       config.setCluster("testRefreshAndClearCluster" + i);
       list.add(config);
     }
-    Mockito.doReturn(list).when(mockAccessor).getAllStoreConfigs();
+    Mockito.doReturn(list).when(mockAccessor).getAllStoreConfigs(1, 1000);
 
     storeConfigRepository.refresh();
     for (int i = 0; i < storeCount; i++) {
@@ -71,7 +72,7 @@ public class TestHelixReadOnlyStoreConfigRepository {
       config.setCluster("testRefreshAndClearCluster" + i);
       list.add(config);
     }
-    Mockito.doReturn(list).when(mockAccessor).getAllStoreConfigs();
+    Mockito.doReturn(list).when(mockAccessor).getAllStoreConfigs(1, 1000);
     storeConfigRepository.refresh();
 
     List<String> storeNames = list.stream().map(config -> config.getStoreName()).collect(Collectors.toList());
@@ -102,7 +103,7 @@ public class TestHelixReadOnlyStoreConfigRepository {
     StoreConfig config = new StoreConfig(storeNAme);
     config.setCluster("testCluster");
     list.add(config);
-    Mockito.doReturn(list).when(mockAccessor).getAllStoreConfigs();
+    Mockito.doReturn(list).when(mockAccessor).getAllStoreConfigs(1, 1000);
     storeConfigRepository.refresh();
 
     HelixReadOnlyStoreConfigRepository.StoreConfigChangedListener listener = storeConfigRepository.getStoreConfigChangedListener();

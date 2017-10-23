@@ -40,7 +40,7 @@ public class TestHelixReadWriteSchemaRepository {
     zkClient.create(clusterPath, null, CreateMode.PERSISTENT);
     zkClient.create(clusterPath + storesPath, null, CreateMode.PERSISTENT);
 
-    storeRepo = new HelixReadWriteStoreRepository(zkClient, adapter, cluster);
+    storeRepo = new HelixReadWriteStoreRepository(zkClient, adapter, cluster, 1, 1000);
     storeRepo.refresh();
     schemaRepo = new HelixReadWriteSchemaRepository(storeRepo, zkClient, adapter, cluster);
   }

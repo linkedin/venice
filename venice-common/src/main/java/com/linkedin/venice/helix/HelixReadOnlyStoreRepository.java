@@ -7,6 +7,7 @@ import com.linkedin.venice.meta.StoreDataChangedListener;
 import com.linkedin.venice.meta.VeniceSerializer;
 import com.linkedin.venice.utils.HelixUtils;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -74,23 +75,33 @@ public class HelixReadOnlyStoreRepository implements ReadOnlyStoreRepository {
 
   private volatile long totalStoreReadQuota = 0;
 
+  private final int refreshAttemptsForZkReconnect;
+
+  private final long refreshIntervalForZkReconnectInMs;
+
   public HelixReadOnlyStoreRepository(@NotNull ZkClient zkClient, @NotNull HelixAdapterSerializer adapter,
-                                      @NotNull String clusterName) {
-    this(zkClient, adapter, clusterName, new StoreJSONSerializer());
+                                      @NotNull String clusterName, int refreshAttemptsForZkReconnect,
+                                      long refreshIntervalForZkReconnectInMs ) {
+    this(zkClient, adapter, clusterName, new StoreJSONSerializer(),refreshAttemptsForZkReconnect, refreshIntervalForZkReconnectInMs);
   }
 
   public HelixReadOnlyStoreRepository(@NotNull ZkClient zkClient, @NotNull HelixAdapterSerializer adapter,
-                                      @NotNull String clusterName, @NotNull VeniceSerializer<Store> serializer) {
+                                      @NotNull String clusterName, @NotNull VeniceSerializer<Store> serializer,
+                                      int refreshAttemptsForZkReconnect, long refreshIntervalForZkReconnectInMs) {
     this.rootPath = HelixUtils.getHelixClusterZkPath(clusterName) + STORES_PATH;
     // TODO: Considering serializer should be thread-safe, we can share serializer across multiple
     // clusters, which means we can register the following paths:
     // Store serializer: /*/Stores/*
     String storesPath = rootPath + "/" + PathResourceRegistry.WILDCARD_MATCH_ANY;
     adapter.registerSerializer(storesPath, serializer);
+    adapter.registerSerializer(rootPath, new VeniceJsonSerializer<>(Integer.TYPE));
     zkClient.setZkSerializer(adapter);
     this.zkClient = zkClient;
     dataAccessor = new ZkBaseDataAccessor<>(zkClient);
+    // This repository already retry on getChildren, so do not need extra retry in listener.
     zkStateListener = new CachedResourceZkStateListener(this);
+    this.refreshAttemptsForZkReconnect = refreshAttemptsForZkReconnect;
+    this.refreshIntervalForZkReconnectInMs = refreshIntervalForZkReconnectInMs;
   }
 
   @Override
@@ -135,20 +146,38 @@ public class HelixReadOnlyStoreRepository implements ReadOnlyStoreRepository {
     }
   }
 
+  private int getStoreNamesCountFromZk(){
+    List<String> storeNames = dataAccessor.getChildNames(rootPath, AccessOption.PERSISTENT);
+    if (storeNames == null) {
+      return 0;
+    } else {
+      return storeNames.size();
+    }
+  }
+
   @Override
   public void refresh() {
     metadataLock.writeLock().lock();
     try {
       Map<String, Store> oldStoreMap = new HashMap<>(storeMap);
       Map<String, Store> newStoreMap = new HashMap();
-      List<Store> stores = dataAccessor.getChildren(rootPath, null, AccessOption.PERSISTENT);
-      logger.info("Load " + stores.size() + " stores from Helix");
+
+      List<Store> stores = HelixUtils.getChildren(dataAccessor, rootPath, refreshAttemptsForZkReconnect, refreshIntervalForZkReconnectInMs);
+      logger.info(
+          "Loading " + stores.size() + " stores from Helix. Previous we had: " + storeMap.size() + " stores.");
       // Add stores to local copy.
       long newTotalStoreReadQuota = 0;
+      int loadedStores = 0;
       for (Store s : stores) {
-        newStoreMap.put(s.getName(), s);
-        newTotalStoreReadQuota += s.getReadQuotaInCU();
+        if (s != null) {
+          newStoreMap.put(s.getName(), s);
+          newTotalStoreReadQuota += s.getReadQuotaInCU();
+          loadedStores++;
+        }
       }
+
+      logger.info("Loaded " + loadedStores + " stores from Helix. Previous we had: " + storeMap.size() + " stores.");
+
       clear(); // clear local copy only if loading from ZK successfully.
       // replace the original map
       storeMap = newStoreMap;
@@ -209,14 +238,12 @@ public class HelixReadOnlyStoreRepository implements ReadOnlyStoreRepository {
     return this.rootPath + "/" + name;
   }
 
-  protected String parseStoreNameFromPath(String path) {
-    if (path.startsWith(rootPath + "/") && path.lastIndexOf('/') == rootPath.length()
-        && path.lastIndexOf('/') < path.length() - 1) {
-      return path.substring(path.lastIndexOf('/') + 1);
-    } else {
-      throw new VeniceException("Data path is invalid, expected:" + rootPath + "/${storename}");
-    }
+  protected List<String> composeStorePaths(List<String> storeNames){
+    return storeNames.stream()
+        .map(storeName -> composeStorePath(storeName))
+        .collect(Collectors.toList());
   }
+
 
   @Override
   public void registerStoreDataChangedListener(StoreDataChangedListener listener) {
@@ -302,8 +329,8 @@ public class HelixReadOnlyStoreRepository implements ReadOnlyStoreRepository {
         // Add new stores to local copy and add listeners.
         if (!addedChildren.isEmpty()) {
           // Get new stores from ZK.
-          List<Store> addedStores = dataAccessor.get(addedChildren.stream().map(storeName->composeStorePath(storeName)).collect(
-              Collectors.toList()), null, AccessOption.PERSISTENT);
+          List<String> paths = composeStorePaths(addedChildren);
+          List<Store> addedStores = dataAccessor.get(paths, null, AccessOption.PERSISTENT);
           for (Store store : addedStores) {
             if (store == null) {
               // The store has been deleted before we got the zk notification.

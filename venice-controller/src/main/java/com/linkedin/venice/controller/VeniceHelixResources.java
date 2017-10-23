@@ -7,17 +7,13 @@ import com.linkedin.venice.helix.HelixStatusMessageChannel;
 import com.linkedin.venice.helix.HelixStoreGraveyard;
 import com.linkedin.venice.helix.ZkRoutersClusterManager;
 import com.linkedin.venice.helix.ZkStoreConfigAccessor;
-import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreCleaner;
-import com.linkedin.venice.meta.StoreGraveyard;
 import com.linkedin.venice.pushmonitor.OfflinePushMonitor;
 import com.linkedin.venice.helix.HelixAdapterSerializer;
 import com.linkedin.venice.helix.HelixReadWriteSchemaRepository;
 import com.linkedin.venice.helix.HelixReadWriteStoreRepository;
 import com.linkedin.venice.helix.HelixRoutingDataRepository;
 import io.tehuti.metrics.MetricsRepository;
-import java.util.Map;
-import java.util.Optional;
 import org.apache.helix.HelixManager;
 import org.apache.helix.manager.zk.ZkClient;
 
@@ -44,19 +40,24 @@ public class VeniceHelixResources implements VeniceResource {
                               HelixAdapterSerializer adapterSerializer,
                               HelixManager helixManager,
                               VeniceControllerClusterConfig config,
-                              StoreCleaner storeCleaner,
-                              MetricsRepository metricsRepository) {
+                              StoreCleaner storeCleaner, MetricsRepository metricsRepository) {
     this.config = config;
     this.controller = helixManager;
-    this.metadataRepository = new HelixReadWriteStoreRepository(zkClient, adapterSerializer, clusterName);
-    this.schemaRepository = new HelixReadWriteSchemaRepository(this.metadataRepository,
-        zkClient, adapterSerializer, clusterName);
+    this.metadataRepository = new HelixReadWriteStoreRepository(zkClient, adapterSerializer, clusterName,
+        config.getRefreshAttemptsForZkReconnect(), config.getRefreshIntervalForZkReconnectInMs());
+    this.schemaRepository =
+        new HelixReadWriteSchemaRepository(this.metadataRepository, zkClient, adapterSerializer, clusterName);
     this.routingDataRepository = new HelixRoutingDataRepository(helixManager);
     this.messageChannel = new HelixStatusMessageChannel(helixManager, config.getHelixSendMessageTimeoutMs());
     this.OfflinePushMonitor = new OfflinePushMonitor(clusterName, routingDataRepository,
-        new HelixOfflinePushMonitorAccessor(clusterName, zkClient, adapterSerializer), storeCleaner, metadataRepository);
+        new HelixOfflinePushMonitorAccessor(clusterName, zkClient, adapterSerializer,
+            config.getRefreshAttemptsForZkReconnect(), config.getRefreshIntervalForZkReconnectInMs()), storeCleaner,
+        metadataRepository);
     storeGraveyard = new HelixStoreGraveyard(zkClient, adapterSerializer, clusterName);
-    routersClusterManager = new ZkRoutersClusterManager(zkClient, adapterSerializer, clusterName);
+    // On controller side, router cluster manager is used as an accessor without maintaining any cache, so do not need to refresh once zk reconnected.
+    routersClusterManager =
+        new ZkRoutersClusterManager(zkClient, adapterSerializer, clusterName, config.getRefreshAttemptsForZkReconnect(),
+            config.getRefreshIntervalForZkReconnectInMs());
     aggPartitionHealthStats =
         new AggPartitionHealthStats(clusterName, metricsRepository, routingDataRepository, metadataRepository,
             config.getReplicaFactor());

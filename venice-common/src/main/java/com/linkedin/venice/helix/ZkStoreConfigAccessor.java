@@ -5,8 +5,11 @@ import com.linkedin.venice.listener.ListenerManager;
 import com.linkedin.venice.meta.StoreConfig;
 import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.PathResourceRegistry;
+import java.util.Collections;
 import java.util.List;
+import java.util.stream.Collector;
 import java.util.stream.Collectors;
+import org.I0Itec.zkclient.DataUpdater;
 import org.I0Itec.zkclient.IZkChildListener;
 import org.I0Itec.zkclient.IZkDataListener;
 import org.apache.helix.AccessOption;
@@ -31,6 +34,7 @@ public class ZkStoreConfigAccessor {
     this.zkClient = zkClient;
     adapterSerializer
         .registerSerializer(ROOT_PATH + "/" + PathResourceRegistry.WILDCARD_MATCH_ANY, new StoreConfigJsonSerializer());
+    adapterSerializer.registerSerializer(ROOT_PATH, new VeniceJsonSerializer<>(Integer.TYPE));
     this.zkClient.setZkSerializer(adapterSerializer);
     dataAccessor = new ZkBaseDataAccessor<>(this.zkClient);
   }
@@ -39,8 +43,17 @@ public class ZkStoreConfigAccessor {
     return dataAccessor.getChildNames(ROOT_PATH, AccessOption.PERSISTENT);
   }
 
-  public List<StoreConfig> getAllStoreConfigs() {
-    return dataAccessor.getChildren(ROOT_PATH, null, AccessOption.PERSISTENT);
+  public List<StoreConfig> getAllStoreConfigs(int refreshAttemptsForZkReconnect,
+      long refreshIntervalForZkReconnectInMs) {
+    // Only return not null configs.
+    List<StoreConfig> configs = HelixUtils.getChildren(dataAccessor, ROOT_PATH, refreshAttemptsForZkReconnect,
+        refreshIntervalForZkReconnectInMs)
+        .stream()
+        .filter(storeConfig -> storeConfig != null)
+        .collect(Collectors.toList());
+
+    logger.info("Read " + configs.size() + " store configs from path:" + ROOT_PATH);
+    return configs;
   }
 
   public synchronized boolean containsConfig(String store) {

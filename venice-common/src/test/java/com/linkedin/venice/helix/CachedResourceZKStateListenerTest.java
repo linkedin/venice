@@ -1,6 +1,7 @@
 package com.linkedin.venice.helix;
 
 import com.linkedin.venice.VeniceResource;
+import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.utils.TestUtils;
@@ -34,10 +35,12 @@ public class CachedResourceZKStateListenerTest {
   }
 
   @Test
-  public void testReconnect()
+  public void testReconnectWithRefreshFailed()
       throws Exception {
-    MockVeniceResource resource = new MockVeniceResource();
-    CachedResourceZkStateListener listener = new CachedResourceZkStateListener(resource);
+    MockVeniceResourceWillThrowExceptionWhileRefreshing
+        resource = new MockVeniceResourceWillThrowExceptionWhileRefreshing();
+    int retryAttempts = 3;
+    CachedResourceZkStateListener listener = new CachedResourceZkStateListener(resource, retryAttempts, 100);
     zkClient.subscribeStateChanges(listener);
     // zkClient.close();
     //zkClient.connect(WAIT_TIME, zkClient);
@@ -50,18 +53,44 @@ public class CachedResourceZKStateListenerTest {
     TestUtils.waitForNonDeterministicCompletion(WAIT_TIME, TimeUnit.MILLISECONDS, new BooleanSupplier() {
       @Override
       public boolean getAsBoolean() {
-        return resource.isRefreshed;
+        return resource.refreshCount == retryAttempts;
+      }
+    });
+    Assert.assertFalse(listener.isDisconnected(), "Client should be reconnected");
+    Assert.assertFalse(resource.isRefreshed, "Reconnected, resource should not be refreshed correctly.");
+    Assert.assertEquals(resource.refreshCount, retryAttempts, "Should retry +" + retryAttempts
+        + " to avoid non-deterministic issue that zk could return partial result after getting reconnected. ");
+  }
+
+  @Test
+  public void testReconnectWithRefresh(){
+     MockVeniceResource resource = new MockVeniceResource();
+    int retryAttempts = 3;
+    CachedResourceZkStateListener listener = new CachedResourceZkStateListener(resource, retryAttempts, 100);
+    zkClient.subscribeStateChanges(listener);
+    WatchedEvent disconnectEvent = new WatchedEvent(null, Watcher.Event.KeeperState.Disconnected, null);
+    WatchedEvent connectEvent = new WatchedEvent(null, Watcher.Event.KeeperState.SyncConnected, null);
+    // process disconnect event
+    zkClient.process(disconnectEvent);
+    // process connect event
+    zkClient.process(connectEvent);
+    TestUtils.waitForNonDeterministicCompletion(WAIT_TIME, TimeUnit.MILLISECONDS, new BooleanSupplier() {
+      @Override
+      public boolean getAsBoolean() {
+        return resource.isRefreshed && resource.refreshCount == 1;
       }
     });
     Assert.assertFalse(listener.isDisconnected(), "Client should be reconnected");
     Assert.assertTrue(resource.isRefreshed, "Reconnected, resource should be refreshed.");
+    Assert.assertEquals(resource.refreshCount, 1, "Should only refresh once. Because is refresh succeed, we should not keep retrying. ");
   }
 
   @Test
   public void testHandleStateChanged()
       throws Exception {
-    MockVeniceResource resource = new MockVeniceResource();
-    CachedResourceZkStateListener listener = new CachedResourceZkStateListener(resource);
+    MockVeniceResourceWillThrowExceptionWhileRefreshing
+        resource = new MockVeniceResourceWillThrowExceptionWhileRefreshing();
+    CachedResourceZkStateListener listener = new CachedResourceZkStateListener(resource, 1, 100);
 
     listener.handleStateChanged(Watcher.Event.KeeperState.SyncConnected);
     Assert.assertFalse(listener.isDisconnected(), "It's the first to connect, but not the reconnecting.");
@@ -74,16 +103,28 @@ public class CachedResourceZKStateListenerTest {
   }
 
   private static class MockVeniceResource implements VeniceResource {
-    private volatile boolean isRefreshed;
+    protected volatile boolean isRefreshed;
+    protected volatile int refreshCount = 0;
 
     @Override
     public void refresh() {
       isRefreshed = true;
+      refreshCount++;
     }
 
     @Override
     public void clear() {
       isRefreshed = false;
+    }
+  }
+
+  private static class MockVeniceResourceWillThrowExceptionWhileRefreshing extends MockVeniceResource {
+
+    @Override
+    public void refresh() {
+      super.refresh();
+      isRefreshed = false;
+      throw new VeniceException();
     }
   }
 }

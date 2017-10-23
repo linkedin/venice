@@ -36,7 +36,7 @@ public class TestHelixReadWriteStoreRepository {
         zkClient.create(clusterPath, null, CreateMode.PERSISTENT);
         zkClient.create(clusterPath + storesPath, null, CreateMode.PERSISTENT);
 
-        repo = new HelixReadWriteStoreRepository(zkClient, adapter, cluster);
+        repo = new HelixReadWriteStoreRepository(zkClient, adapter, cluster, 1, 0);
         repo.refresh();
     }
 
@@ -90,7 +90,7 @@ public class TestHelixReadWriteStoreRepository {
         s2.setReadQuotaInCU(200);
         repo.addStore(s2);
 
-        HelixReadWriteStoreRepository newRepo = new HelixReadWriteStoreRepository(zkClient, adapter, cluster);
+        HelixReadWriteStoreRepository newRepo = new HelixReadWriteStoreRepository(zkClient, adapter, cluster, 1, 0);
         newRepo.refresh();
         Assert.assertEquals(newRepo.getStore(s1.getName()), s1, "Can not load stores from ZK successfully");
         Assert.assertEquals(newRepo.getStore(s2.getName()), s2, "Can not load stores from ZK successfully");

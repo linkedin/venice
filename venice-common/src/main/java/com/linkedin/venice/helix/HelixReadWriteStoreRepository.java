@@ -28,13 +28,14 @@ public class HelixReadWriteStoreRepository extends HelixReadOnlyStoreRepository 
   private static final Logger logger = Logger.getLogger(HelixReadWriteStoreRepository.class);
 
   public HelixReadWriteStoreRepository(@NotNull ZkClient zkClient, @NotNull HelixAdapterSerializer adapter,
-      @NotNull String clusterName) {
-    super(zkClient, adapter, clusterName);
+      @NotNull String clusterName, int refreshAttemptsForZkReconnect, long refreshIntervalForZkReconnectInMs) {
+    super(zkClient, adapter, clusterName, refreshAttemptsForZkReconnect, refreshIntervalForZkReconnectInMs);
   }
 
   public HelixReadWriteStoreRepository(@NotNull ZkClient zkClient, @NotNull HelixAdapterSerializer adapter,
-      @NotNull String clusterName, @NotNull VeniceSerializer<Store> serializer) {
-    super(zkClient, adapter, clusterName, serializer);
+      @NotNull String clusterName, @NotNull VeniceSerializer<Store> serializer, int refreshAttemptsForZkReconnect,
+      long refreshIntervalForZkReconnectInMs) {
+    super(zkClient, adapter, clusterName, serializer, refreshAttemptsForZkReconnect, refreshIntervalForZkReconnectInMs);
   }
 
   @Override
@@ -113,6 +114,7 @@ public class HelixReadWriteStoreRepository extends HelixReadOnlyStoreRepository 
       unLock();
     }
   }
+
 
   @Override
   public void clear() {

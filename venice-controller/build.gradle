@@ -4,6 +4,7 @@ mainClassName = "com.linkedin.venice.controller.VeniceController"
 
 installDist.dependsOn test
 
+//the mortbay jetty will introduce servlet 2.5 which will cause the NoSuchMethodException while admin spark server is trying to read head from request.
 configurations.compile {
   exclude group: 'org.mortbay.jetty', module:'servlet-api'
 }

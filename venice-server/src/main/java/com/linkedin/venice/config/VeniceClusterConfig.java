@@ -35,6 +35,8 @@ public class VeniceClusterConfig {
   private int statusMessageRetryCount;
   private long statusMessageRetryDurationMs ;
   private int offsetManagerLogFileMaxBytes;
+  private int refreshAttemptsForZkReconnect;
+  private long refreshIntervalForZkReconnectInMs;
 
   private String kafkaSecurityProtocol;
   // SSL related config
@@ -88,6 +90,9 @@ public class VeniceClusterConfig {
     } else {
       sslConfig = Optional.empty();
     }
+    refreshAttemptsForZkReconnect = clusterProps.getInt(REFRESH_ATTEMPTS_FOR_ZK_RECONNECT, 3);
+    refreshIntervalForZkReconnectInMs =
+        clusterProps.getLong(REFRESH_INTERVAL_FOR_ZK_RECONNECT_MS, java.util.concurrent.TimeUnit.SECONDS.toMillis(10));
   }
 
   public int getStatusMessageRetryCount() {
@@ -146,5 +151,13 @@ public class VeniceClusterConfig {
 
   public Optional<SSLConfig> getSslConfig() {
     return sslConfig;
+  }
+
+  public long getRefreshIntervalForZkReconnectInMs() {
+    return refreshIntervalForZkReconnectInMs;
+  }
+
+  public int getRefreshAttemptsForZkReconnect() {
+    return refreshAttemptsForZkReconnect;
   }
 }
