@@ -7,6 +7,7 @@ import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.schema.SchemaEntry;
 import java.io.Closeable;
+import java.util.concurrent.ExecutionException;
 import org.apache.avro.Schema;
 import org.apache.commons.io.IOUtils;
 import org.apache.log4j.Logger;
@@ -17,6 +18,8 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicReference;
+import org.xeril.util.Utils;
+
 
 /**
  * This class is used to fetch key/value schema for a given store.
@@ -101,8 +104,7 @@ public class SchemaReader implements Closeable {
   private void refreshAllValueSchema() throws VeniceClientException {
     String requestPath = TYPE_VALUE_SCHEMA + "/" + storeName;
     try {
-      Future<byte[]> future = storeClient.getRaw(requestPath);
-      byte[] response = future.get();
+      byte[] response = storeClientGetRawWithRetry(requestPath);
       if (null == response) {
         logger.info("Got null for request path: " + requestPath);
         return;
@@ -134,8 +136,7 @@ public class SchemaReader implements Closeable {
   private SchemaEntry fetchSingleSchema(String requestPath) throws VeniceClientException {
     SchemaEntry schemaEntry = null;
     try {
-      Future<byte[]> future = storeClient.getRaw(requestPath);
-      byte[] response = future.get();
+      byte[] response = storeClientGetRawWithRetry(requestPath);
       if (null == response) {
         logger.info("Requested schema doesn't exist for request path: " + requestPath);
         return null;
@@ -173,5 +174,27 @@ public class SchemaReader implements Closeable {
   @Override
   public void close() {
     IOUtils.closeQuietly(storeClient);
+  }
+
+  //TODO merge this retry logic with something in Utils?
+  private byte[] storeClientGetRawWithRetry(String requestPath) throws ExecutionException, InterruptedException {
+    int attempt = 0;
+    boolean retry = true;
+    byte[] response = null;
+    while (retry) {
+      retry = false;
+      try {
+        Future<byte[]> future = storeClient.getRaw(requestPath);
+        response = future.get();
+      } catch (ExecutionException ee){
+        if (attempt++ > 3){
+          throw ee;
+        } else {
+          retry = true;
+          logger.warn("Failed to get from path: " + requestPath + " retrying...", ee);
+        }
+      }
+    }
+    return response;
   }
 }

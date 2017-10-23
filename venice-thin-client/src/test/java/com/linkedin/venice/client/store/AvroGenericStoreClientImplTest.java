@@ -15,7 +15,10 @@ import com.linkedin.venice.read.protocol.response.MultiGetResponseRecordV1;
 import com.linkedin.venice.serializer.SerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordSerializer;
 import io.netty.handler.codec.http.FullHttpResponse;
+import java.util.Arrays;
 import java.util.HashSet;
+import java.util.StringJoiner;
+import java.util.stream.Collectors;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.log4j.Logger;
@@ -230,7 +233,7 @@ public class AvroGenericStoreClientImplTest {
         entry.getValue().get(keyStr).get();
       } catch (ExecutionException e) {
         Assert.assertTrue(e.getCause() instanceof VeniceClientException);
-        Assert.assertTrue(e.getCause().getMessage().contains("Failed to get latest value schema for store: test_store"));
+        Assert.assertTrue(e.getCause().getMessage().contains("Failed to get latest value schema for store: test_store"), "Wrong message, actual message: " + e.getCause().getMessage());
         continue;
       } catch (Throwable t) {
       }
