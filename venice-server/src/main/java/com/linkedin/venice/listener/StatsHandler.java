@@ -75,10 +75,14 @@ public class StatsHandler extends ChannelDuplexHandler {
   @Override
   public void channelRead(ChannelHandlerContext ctx, Object msg) {
     if (newRequest) {
+      // Reset for every request
       startTime = System.currentTimeMillis();
       isHealthCheck = false;
       responseStatus = null;
       statCallbackExecuted = false;
+      bdbQueryLatency = -1;
+      requestKeyCount = -1;
+      successRequestKeyCount = -1;
 
       newRequest = false;
     }

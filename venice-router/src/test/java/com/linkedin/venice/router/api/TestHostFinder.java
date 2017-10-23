@@ -1,7 +1,9 @@
 package com.linkedin.venice.router.api;
 
+import com.linkedin.ddsstorage.router.api.HostHealthMonitor;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.RoutingDataRepository;
+import com.linkedin.venice.router.stats.AggRouterHttpRequestStats;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -24,7 +26,7 @@ public class TestHostFinder {
     dummyList.add(dummyInstance2);
     doReturn(dummyList).when(mockRepo).getReadyToServeInstances(anyString(), anyInt());
 
-    VeniceHostFinder finder = new VeniceHostFinder(mockRepo, false, false);
+    VeniceHostFinder finder = new VeniceHostFinder(mockRepo, false, false, null, null);
 
     List<Instance> hosts = finder.findHosts("get", "store_v0", "store_v0_3", null, null);
     Assert.assertEquals(hosts.size(), 2);
@@ -33,7 +35,7 @@ public class TestHostFinder {
   }
 
   @Test
-  public void testStickyRouting() {
+  public void testStickyRoutingWhenAllInstancesAreHealthy() {
     RoutingDataRepository mockRepo = Mockito.mock(RoutingDataRepository.class);
     List<Instance> dummyList = new ArrayList<>();
     int hostCount = 3;
@@ -42,7 +44,9 @@ public class TestHostFinder {
     }
     doReturn(dummyList).when(mockRepo).getReadyToServeInstances(anyString(), anyInt());
 
-    VeniceHostFinder finder = new VeniceHostFinder(mockRepo, true, true);
+    HostHealthMonitor mockHostHealthMonitor = mock(HostHealthMonitor.class);
+    doReturn(true).when(mockHostHealthMonitor).isHostHealthy(any(), any());
+    VeniceHostFinder finder = new VeniceHostFinder(mockRepo, true, true, null, null);
 
     Map<Integer, String> partitionHostMapping = new HashMap<>();
     partitionHostMapping.put(0, "host_0");
@@ -52,9 +56,44 @@ public class TestHostFinder {
     partitionHostMapping.put(4, "host_1");
     partitionHostMapping.put(5, "host_2");
     partitionHostMapping.forEach((partitionId, expectedHost) -> {
-      List<Instance> hosts = finder.findHosts("get", "store_v0", "store_v0_" + partitionId, null, null);
+      List<Instance> hosts = finder.findHosts("get", "store_v0", "store_v0_" + partitionId, mockHostHealthMonitor, null);
       Assert.assertEquals(hosts.size(), 1);
       Assert.assertEquals(hosts.get(0).getHost(), expectedHost);
     });
+  }
+
+  @Test
+  public void testStickyRoutingWhenSomeInstancesAreUnhealthy() {
+    RoutingDataRepository mockRepo = Mockito.mock(RoutingDataRepository.class);
+    List<Instance> dummyList = new ArrayList<>();
+    int hostCount = 3;
+    for (int i = hostCount - 1; i >= 0; --i) {
+      dummyList.add(new Instance("node_id_" + i, "host_" + i, 1234));
+    }
+    doReturn(dummyList).when(mockRepo).getReadyToServeInstances(anyString(), anyInt());
+
+    HostHealthMonitor mockHostHealthMonitor = mock(HostHealthMonitor.class);
+    doReturn(true).when(mockHostHealthMonitor).isHostHealthy(any(), any());
+    doReturn(false).when(mockHostHealthMonitor).isHostHealthy(eq(new Instance("node_id_1", "host_1", 1234)), any());
+
+    AggRouterHttpRequestStats mockSingleGetStats = mock(AggRouterHttpRequestStats.class);
+    AggRouterHttpRequestStats mockMultiGetStats = mock(AggRouterHttpRequestStats.class);
+
+    VeniceHostFinder finder = new VeniceHostFinder(mockRepo, true, true, mockSingleGetStats, mockMultiGetStats);
+
+    Map<Integer, String> partitionHostMapping = new HashMap<>();
+    partitionHostMapping.put(0, "host_0");
+    partitionHostMapping.put(1, "host_2");
+    partitionHostMapping.put(2, "host_0");
+    partitionHostMapping.put(3, "host_2");
+    partitionHostMapping.put(4, "host_0");
+    partitionHostMapping.put(5, "host_2");
+    partitionHostMapping.forEach((partitionId, expectedHost) -> {
+      List<Instance> hosts = finder.findHosts("get", "store_v0", "store_v0_" + partitionId, mockHostHealthMonitor, null);
+      Assert.assertEquals(hosts.size(), 1);
+      Assert.assertEquals(hosts.get(0).getHost(), expectedHost);
+    });
+    verify(mockSingleGetStats, times(partitionHostMapping.size())).recordFindUnhealthyHostRequest("store");
+    verify(mockMultiGetStats, never()).recordFindUnhealthyHostRequest("store");
   }
 }

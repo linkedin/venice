@@ -74,4 +74,9 @@ public class AggRouterHttpRequestStats extends AbstractVeniceAggStats<RouterHttp
   public void recordTotalQuota(double totalQuota) {
     totalStats.recordQuota(totalQuota);
   }
+
+  public void recordFindUnhealthyHostRequest(String storeName) {
+    totalStats.recordFindUnhealthyHostRequest();
+    getStoreStats(storeName).recordFindUnhealthyHostRequest();
+  }
 }

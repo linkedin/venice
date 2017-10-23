@@ -57,6 +57,7 @@ public class GetRequestHttpHandler extends SimpleChannelInboundHandler<FullHttpR
             GetRouterRequest getRouterRequest = GetRouterRequest.parseGetHttpRequest(req);
             statsHandler.setStoreName(getRouterRequest.getStoreName());
             statsHandler.setRequestType(getRouterRequest.getRequestType());
+            statsHandler.setRequestKeyCount(1);
             ctx.fireChannelRead(getRouterRequest);
           } else if (requestMethod.equals(HttpMethod.POST)){
             // Multi-get
