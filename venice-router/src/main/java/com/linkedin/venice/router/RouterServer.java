@@ -246,7 +246,8 @@ public class RouterServer extends AbstractVeniceService {
     RouterExceptionAndTrackingUtils.setStatsForMultiGet(statsForMultiGet);
 
     VeniceHostFinder hostFinder = new VeniceHostFinder(routingDataRepository,
-        config.isStickyRoutingEnabledForSingleGet(), config.isStickyRoutingEnabledForMultiGet());
+        config.isStickyRoutingEnabledForSingleGet(), config.isStickyRoutingEnabledForMultiGet(),
+        statsForSingleGet, statsForMultiGet);
 
     // Fixed retry future
     AsyncFuture<LongSupplier> retryFuture = new SuccessAsyncFuture<>(() -> config.getLongTailRetryThresholdMs());
