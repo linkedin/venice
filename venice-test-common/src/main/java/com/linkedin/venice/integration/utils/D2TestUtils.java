@@ -147,7 +147,7 @@ public class D2TestUtils {
   public static D2Client getAndStartD2Client(String zkHosts, boolean https) {
     int sessionTimeout = 5000;
     String basePath = "/d2";
-    SSLEngineComponentFactory sslFactory = SslUtils.getLocalSslFactory();
+
     Map<String, TransportClientFactory> transportClients = new HashMap<>();
     TransportClientFactory httpTransport = new HttpClientFactory();
     transportClients.put("http", httpTransport);
@@ -162,6 +162,7 @@ public class D2TestUtils {
         .setClientFactories(transportClients);
 
     if (https) {
+      SSLEngineComponentFactory sslFactory = SslUtils.getLocalSslFactory();
       builder.setSSLContext(sslFactory.getSSLContext())
           .setSSLParameters(sslFactory.getSSLParameters())
           .setIsSSLEnabled(true);
