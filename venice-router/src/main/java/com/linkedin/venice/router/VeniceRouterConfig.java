@@ -32,6 +32,8 @@ public class VeniceRouterConfig {
   private boolean stickyRoutingEnabledForSingleGet;
   private boolean stickyRoutingEnabledForMultiGet;
   private double perStorageNodeReadQuotaBuffer;
+  private int refreshAttemptsForZkReconnect;
+  private long refreshIntervalForZkReconnectInMs;
 
   public VeniceRouterConfig(VeniceProperties props) {
     try {
@@ -63,6 +65,9 @@ public class VeniceRouterConfig {
     stickyRoutingEnabledForSingleGet = props.getBoolean(ROUTER_ENABLE_STICKY_ROUTING_FOR_SINGLE_GET, true);
     stickyRoutingEnabledForMultiGet = props.getBoolean(ROUTER_ENABLE_STICKY_ROUTING_FOR_MULTI_GET, true);
     perStorageNodeReadQuotaBuffer = props.getDouble(ROUTER_PER_STORAGE_NODE_READ_QUOTA_BUFFER, 1.0);
+    refreshAttemptsForZkReconnect = props.getInt(REFRESH_ATTEMPTS_FOR_ZK_RECONNECT, 3);
+    refreshIntervalForZkReconnectInMs =
+        props.getLong(REFRESH_INTERVAL_FOR_ZK_RECONNECT_MS, java.util.concurrent.TimeUnit.SECONDS.toMillis(10));
   }
 
   public String getClusterName() {
@@ -135,5 +140,13 @@ public class VeniceRouterConfig {
 
   public double getPerStorageNodeReadQuotaBuffer() {
     return perStorageNodeReadQuotaBuffer;
+  }
+
+  public long getRefreshIntervalForZkReconnectInMs() {
+    return refreshIntervalForZkReconnectInMs;
+  }
+
+  public int getRefreshAttemptsForZkReconnect() {
+    return refreshAttemptsForZkReconnect;
   }
 }

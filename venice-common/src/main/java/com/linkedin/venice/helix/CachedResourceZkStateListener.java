@@ -2,6 +2,8 @@ package com.linkedin.venice.helix;
 
 import com.linkedin.venice.VeniceResource;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.utils.Utils;
+import java.util.concurrent.TimeUnit;
 import org.I0Itec.zkclient.IZkStateListener;
 import org.apache.log4j.Logger;
 import org.apache.zookeeper.Watcher;
@@ -17,14 +19,29 @@ import org.apache.zookeeper.Watcher;
  */
 public class CachedResourceZkStateListener implements IZkStateListener {
   private final Logger logger;
+  public static final int DEFAULT_RETRY_LOAD_ATTEMPTS = 1;
+  public static final long DEFAULT_RETRY_LOAD_INTERVAL_IN_MS = TimeUnit.SECONDS.toMillis(10);
   private final VeniceResource resource;
+  private final int retryLoadAttempts;
+  private final long retryLoadIntervalInMs;
   private volatile boolean disconnected = false;
 
   public CachedResourceZkStateListener(VeniceResource resource) {
-    this.resource = resource;
-    this.logger = Logger.getLogger(this.getClass().getSimpleName() + " [" + getResourceName() + "]");
+    // By default, we only retry once after connection is reconnected.
+    this(resource, DEFAULT_RETRY_LOAD_ATTEMPTS, DEFAULT_RETRY_LOAD_INTERVAL_IN_MS);
   }
 
+  public CachedResourceZkStateListener(VeniceResource resource, int retryLoadAttempts, long retryLoadIntervalInMs) {
+    this.resource = resource;
+    this.logger = Logger.getLogger(this.getClass().getSimpleName() + " [" + getResourceName() + "]");
+    this.retryLoadAttempts = retryLoadAttempts;
+    this.retryLoadIntervalInMs = retryLoadIntervalInMs;
+  }
+
+  /**
+   * Once the state of zk connection is changed, this function will be called. So it could not be called twice for the
+   * same state change.
+   */
   @Override
   public void handleStateChanged(Watcher.Event.KeeperState state)
       throws Exception {
@@ -41,10 +58,29 @@ public class CachedResourceZkStateListener implements IZkStateListener {
         synchronized (this) {
           // If connection is disconnected during refreshing and reconnect again. Synchronized block guarantee that
           // there is only one refresh operation on the fly.
-          try {
-            resource.refresh();
-          } catch (VeniceException e) {
-            logger.error("Can not refresh resource after client reconnected.", e);
+          // As we met the issue that ZK could return partial result just after connection is reconnected.
+          // In order to reduce the possibility that we get not-up-to-date data, we keep loading data for
+          // retryLoadAttempts with retryLoadIntervalInMs between each two loading.
+          // Sleep a random time(no more than retryLoadIntervalInMs) to avoid thunderstorm issue that all nodes are
+          // trying to refresh resource at the same time if there is a network issue in that DC.
+          Utils.sleep((long) (Math.random() * retryLoadIntervalInMs));
+          int attempt = 1;
+          while (attempt <= retryLoadAttempts) {
+            logger.info("Attempt #" + attempt + " of " + retryLoadAttempts
+                + ": Refresh resource after connection is reconnected.");
+            try {
+              resource.refresh();
+              logger.info("Attempt #" + attempt + " of " + retryLoadAttempts + ": Refresh completed.");
+              return;
+            } catch (Exception e) {
+              logger.error("Can not refresh resource correctly after client is reconnected", e);
+              if (attempt < retryLoadAttempts) {
+                logger.info("Will retry after " + retryLoadIntervalInMs + " ms");
+                Utils.sleep(retryLoadIntervalInMs);
+              }
+              attempt++;
+            }
+            logger.fatal("Could not refresh resource correctly after "+attempt+" attempts.");
           }
         }
       } else {

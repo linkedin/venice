@@ -162,10 +162,12 @@ public class VeniceServer {
     ZkClient zkClient = new ZkClient(clusterConfig.getZookeeperAddress(), ZkClient.DEFAULT_SESSION_TIMEOUT, ZkClient.DEFAULT_CONNECTION_TIMEOUT);
     HelixAdapterSerializer adapter = new HelixAdapterSerializer();
     String clusterName = clusterConfig.getClusterName();
-    this.metadataRepo = new HelixReadOnlyStoreRepository(zkClient, adapter, clusterName);
+    this.metadataRepo = new HelixReadOnlyStoreRepository(zkClient, adapter, clusterName,
+        clusterConfig.getRefreshAttemptsForZkReconnect(), clusterConfig.getRefreshIntervalForZkReconnectInMs());
     // Load existing store config and setup watches
     metadataRepo.refresh();
-    this.schemaRepo = new HelixReadOnlySchemaRepository(metadataRepo, zkClient, adapter, clusterName);
+    this.schemaRepo = new HelixReadOnlySchemaRepository(metadataRepo, zkClient, adapter, clusterName,
+        clusterConfig.getRefreshAttemptsForZkReconnect(), clusterConfig.getRefreshIntervalForZkReconnectInMs());
     schemaRepo.refresh();
   }
 

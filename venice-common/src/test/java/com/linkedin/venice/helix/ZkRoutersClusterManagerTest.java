@@ -203,7 +203,7 @@ public class ZkRoutersClusterManagerTest {
   }
 
   private ZkRoutersClusterManager createManager(ZkClient zkClient) {
-    ZkRoutersClusterManager manager = new ZkRoutersClusterManager(zkClient, adapter, clusterName);
+    ZkRoutersClusterManager manager = new ZkRoutersClusterManager(zkClient, adapter, clusterName, 1, 1000);
     manager.refresh();
     manager.createRouterClusterConfig();
     return manager;

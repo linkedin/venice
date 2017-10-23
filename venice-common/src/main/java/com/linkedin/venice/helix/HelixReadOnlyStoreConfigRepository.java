@@ -4,6 +4,7 @@ import com.linkedin.venice.VeniceResource;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.ReadOnlyStoreConfigRepository;
 import com.linkedin.venice.meta.StoreConfig;
+import com.linkedin.venice.utils.HelixUtils;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -36,28 +37,43 @@ public class HelixReadOnlyStoreConfigRepository implements ReadOnlyStoreConfigRe
   private StoreConfigChangedListener storeConfigChangedListener;
   private StoreConfigAddedOrDeletedChangedListener storeConfigAddedOrDeletedListener;
 
-  public HelixReadOnlyStoreConfigRepository(ZkClient zkClient, HelixAdapterSerializer adapterSerializer) {
-    this(new ZkStoreConfigAccessor(zkClient, adapterSerializer));
+  private ZkClient zkClient;
+  private final CachedResourceZkStateListener zkStateListener;
+  private final int refreshAttemptsForZkReconnect;
+  private final long refreshIntervalForZkReconnectInMs;
+
+  public HelixReadOnlyStoreConfigRepository(ZkClient zkClient, HelixAdapterSerializer adapterSerializer,
+      int refreshAttemptsForZkReconnect, long refreshIntervalForZkReconnectInMs) {
+    this(zkClient, new ZkStoreConfigAccessor(zkClient, adapterSerializer), refreshAttemptsForZkReconnect,
+        refreshIntervalForZkReconnectInMs);
   }
 
-  public HelixReadOnlyStoreConfigRepository(ZkStoreConfigAccessor accessor) {
+  public HelixReadOnlyStoreConfigRepository(ZkClient zkClient, ZkStoreConfigAccessor accessor,
+      int refreshAttemptsForZkReconnect, long refreshIntervalForZkReconnectInMs) {
+    this.zkClient = zkClient;
     this.accessor = accessor;
     this.storeConfigMap = new AtomicReference<>(new HashMap<>());
     storeConfigChangedListener = new StoreConfigChangedListener();
     storeConfigAddedOrDeletedListener = new StoreConfigAddedOrDeletedChangedListener();
+    this.refreshAttemptsForZkReconnect = refreshAttemptsForZkReconnect;
+    this.refreshIntervalForZkReconnectInMs = refreshIntervalForZkReconnectInMs;
+    // This repository already retry on getChildren, so do not need extra retry in listener.
+    zkStateListener =
+        new CachedResourceZkStateListener(this);
   }
 
   @Override
   public void refresh() {
     logger.info("Loading all store configs from zk.");
     accessor.subscribeStoreConfigAddedOrDeletedListener(storeConfigAddedOrDeletedListener);
-    List<StoreConfig> configList = accessor.getAllStoreConfigs();
+    List<StoreConfig> configList = accessor.getAllStoreConfigs(refreshAttemptsForZkReconnect, refreshIntervalForZkReconnectInMs);
     logger.info("Found " + configList.size() + " store configs.");
     Map<String, StoreConfig> configMap = new HashMap<>();
     for (StoreConfig config : configList) {
       configMap.put(config.getStoreName(), config);
     }
     storeConfigMap.set(configMap);
+    zkClient.subscribeStateChanges(zkStateListener);
     logger.info("All store configs are loaded.");
   }
 
@@ -66,6 +82,7 @@ public class HelixReadOnlyStoreConfigRepository implements ReadOnlyStoreConfigRe
     logger.info("Clearing all store configs in local");
     accessor.unsubscribeStoreConfigAddedOrDeletedListener(storeConfigAddedOrDeletedListener);
     this.storeConfigMap.set(Collections.emptyMap());
+    zkClient.unsubscribeStateChanges(zkStateListener);
     logger.info("Cleared all store configs in local");
   }
 

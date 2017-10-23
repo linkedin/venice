@@ -158,7 +158,9 @@ public class HelixParticipationService extends AbstractVeniceService implements 
     // Record replica status in Zookeeper.
     // Need to be started before connecting to ZK, otherwise some notification will not be sent by this notifier.
     PushMonitorNotifier pushMonitorNotifier = new PushMonitorNotifier(
-        new HelixOfflinePushMonitorAccessor(clusterName, new ZkClient(zkAddress), new HelixAdapterSerializer()),
+        new HelixOfflinePushMonitorAccessor(clusterName, new ZkClient(zkAddress), new HelixAdapterSerializer(),
+            veniceConfigLoader.getVeniceClusterConfig().getRefreshAttemptsForZkReconnect(),
+            veniceConfigLoader.getVeniceClusterConfig().getRefreshIntervalForZkReconnectInMs()),
         instance.getNodeId());
 
     ingestionService.addNotifier(pushMonitorNotifier);

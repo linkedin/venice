@@ -37,7 +37,13 @@ public class ZkRoutersClusterManager implements RoutersClusterManager, IZkChildL
 
   private final Set<RouterClusterConfigChangedListener> configListeners;
 
-  public ZkRoutersClusterManager(ZkClient zkClient, HelixAdapterSerializer adaper, String clusterName) {
+  private final CachedResourceZkStateListener zkStateListener;
+
+  private final int refreshAttemptsForZkReconnect;
+  private final long refreshIntervalForZkReconnectInMs;
+
+  public ZkRoutersClusterManager(ZkClient zkClient, HelixAdapterSerializer adaper, String clusterName, int refreshAttemptsForZkReconnect,
+      long refreshIntervalForZkReconnectInMs) {
     this.zkClient = zkClient;
     this.clusterName = clusterName;
     routerCountListeners = new HashSet<>();
@@ -45,6 +51,9 @@ public class ZkRoutersClusterManager implements RoutersClusterManager, IZkChildL
     adaper.registerSerializer(getRouterRootPath(), new RouterClusterConfigJSONSerializer());
     zkClient.setZkSerializer(adaper);
     dataAccessor = new ZkBaseDataAccessor<>(zkClient);
+    zkStateListener = new CachedResourceZkStateListener(this, refreshAttemptsForZkReconnect, refreshIntervalForZkReconnectInMs);
+    this.refreshAttemptsForZkReconnect = refreshAttemptsForZkReconnect;
+    this.refreshIntervalForZkReconnectInMs = refreshIntervalForZkReconnectInMs;
   }
 
   @Override
@@ -57,6 +66,7 @@ public class ZkRoutersClusterManager implements RoutersClusterManager, IZkChildL
       createRouterClusterConfig();
       routersClusterConfig = new RoutersClusterConfig();
     }
+    zkClient.subscribeStateChanges(zkStateListener);
   }
 
   @Override
@@ -64,6 +74,7 @@ public class ZkRoutersClusterManager implements RoutersClusterManager, IZkChildL
     zkClient.unsubscribeDataChanges(getRouterRootPath(), this);
     zkClient.unsubscribeChildChanges(getRouterRootPath(), this);
     routersClusterConfig = null;
+    zkClient.unsubscribeStateChanges(zkStateListener);
   }
 
   /**

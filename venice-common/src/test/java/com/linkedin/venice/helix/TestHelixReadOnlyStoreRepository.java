@@ -43,8 +43,8 @@ public class TestHelixReadOnlyStoreRepository {
     zkClient.create(clusterPath, null, CreateMode.PERSISTENT);
     zkClient.create(clusterPath + storesPath, null, CreateMode.PERSISTENT);
 
-    repo = new HelixReadOnlyStoreRepository(zkClient, adapter, cluster);
-    writeRepo = new HelixReadWriteStoreRepository(zkClient, adapter, cluster);
+    repo = new HelixReadOnlyStoreRepository(zkClient, adapter, cluster, 1, 1000);
+    writeRepo = new HelixReadWriteStoreRepository(zkClient, adapter, cluster, 1, 1000);
     repo.refresh();
     writeRepo.refresh();
   }

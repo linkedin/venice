@@ -87,6 +87,34 @@ public class HelixUtils {
     return new Instance(helixInstanceName, hostname, port);
   }
 
+  public static <T> List<T> getChildren(ZkBaseDataAccessor<T> dataAccessor, String path, int retryCount,
+      long retryInterval) {
+    int attempt = 1;
+    while (attempt <= retryCount) {
+      attempt++;
+      List<String> childrenNames = dataAccessor.getChildNames(path, AccessOption.PERSISTENT);
+      int expectedCount = 0;
+      if (childrenNames == null) {
+        logger.warn("Get child names for path: " + path + " return null.");
+      } else {
+        expectedCount = childrenNames.size();
+      }
+      List<T> children = dataAccessor.getChildren(path, null, AccessOption.PERSISTENT);
+      if (children.size() != expectedCount) {
+        // Data is inconsistent
+        if (attempt < retryCount) {
+          logger.info("dataAccessor.getChildNames() did not return the expected number of elements from path: " + path
+              + "\nExpected: " + expectedCount + ", but got: " + children.size() + ". Attempt:" + attempt + "/"
+              + retryCount + ", will sleep " + retryInterval + " and retry.");
+          Utils.sleep(retryInterval);
+        }
+      } else {
+        return children;
+      }
+    }
+    throw new VeniceException("Got partial children from zk after retry " + attempt + " times.");
+  }
+
   public static <T> void create(ZkBaseDataAccessor<T> dataAccessor, String path, T data){
     create(dataAccessor, path, data, DEFAULT_HELIX_OP_RETRY_COUNT);
   }

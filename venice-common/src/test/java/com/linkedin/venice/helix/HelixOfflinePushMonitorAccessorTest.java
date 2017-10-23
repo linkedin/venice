@@ -32,7 +32,7 @@ public class HelixOfflinePushMonitorAccessorTest {
     zk = ServiceFactory.getZkServer();
     String zkAddress = zk.getAddress();
     ZkClient zkClient = new ZkClient(zkAddress);
-    accessor = new HelixOfflinePushMonitorAccessor(clusterName, zkClient, new HelixAdapterSerializer());
+    accessor = new HelixOfflinePushMonitorAccessor(clusterName, zkClient, new HelixAdapterSerializer(), 1, 0);
   }
 
   @AfterMethod

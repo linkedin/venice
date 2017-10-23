@@ -44,6 +44,8 @@ public class VeniceControllerClusterConfig {
   private String kafkaSecurityProtocol;
   // SSL related config
   Optional<SSLConfig> sslConfig;
+  private int refreshAttemptsForZkReconnect;
+  private long refreshIntervalForZkReconnectInMs;
 
   /**
    * After server disconnecting for delayToRebalanceMS, helix would trigger the re-balance immediately.
@@ -140,6 +142,9 @@ public class VeniceControllerClusterConfig {
     } else {
       sslConfig = Optional.empty();
     }
+    refreshAttemptsForZkReconnect = props.getInt(REFRESH_ATTEMPTS_FOR_ZK_RECONNECT, 3);
+    refreshIntervalForZkReconnectInMs =
+        props.getLong(REFRESH_INTERVAL_FOR_ZK_RECONNECT_MS, java.util.concurrent.TimeUnit.SECONDS.toMillis(10));
   }
 
   public VeniceProperties getProps() {
@@ -245,5 +250,13 @@ public class VeniceControllerClusterConfig {
 
   public Optional<SSLConfig> getSslConfig() {
     return sslConfig;
+  }
+
+  public int getRefreshAttemptsForZkReconnect() {
+    return refreshAttemptsForZkReconnect;
+  }
+
+  public long getRefreshIntervalForZkReconnectInMs() {
+    return refreshIntervalForZkReconnectInMs;
   }
 }

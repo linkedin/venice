@@ -79,6 +79,8 @@ public class ConfigKeys {
   public static final String CLUSTER_TO_D2 = "cluster.to.d2";
   public static final String HELIX_SEND_MESSAGE_TIMEOUT_MS = "helix.send.message.timeout.ms";
   public static final String ADMIN_CONSUMPTION_RETRY_DELAY_MS = "admin.consumption.retry.delay.ms";
+  public static final String REFRESH_ATTEMPTS_FOR_ZK_RECONNECT = "refresh.attempts.for.zk.reconnect";
+  public static final String REFRESH_INTERVAL_FOR_ZK_RECONNECT_MS = "refresh.interval.for.zk.reconnect.ms";
 
   // Controller specific configs
   public static final String CONTROLLER_CLUSTER_ZK_ADDRESSS = "controller.cluster.zk.address";

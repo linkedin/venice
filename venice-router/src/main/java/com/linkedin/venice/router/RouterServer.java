@@ -166,11 +166,15 @@ public class RouterServer extends AbstractVeniceService {
       Optional<SSLEngineComponentFactory> sslFactory,
       MetricsRepository metricsRepository) {
     this(properties, d2ServerList, accessController, sslFactory, metricsRepository, true);
-    this.metadataRepository = new HelixReadOnlyStoreRepository(zkClient, adapter, config.getClusterName());
+    this.metadataRepository = new HelixReadOnlyStoreRepository(zkClient, adapter, config.getClusterName(),
+        config.getRefreshAttemptsForZkReconnect(), config.getRefreshIntervalForZkReconnectInMs());
     this.schemaRepository =
-        new HelixReadOnlySchemaRepository(this.metadataRepository, this.zkClient, adapter, config.getClusterName());
+        new HelixReadOnlySchemaRepository(this.metadataRepository, this.zkClient, adapter, config.getClusterName(),
+            config.getRefreshAttemptsForZkReconnect(), config.getRefreshIntervalForZkReconnectInMs());
     this.routingDataRepository = new HelixRoutingDataRepository(manager);
-    this.storeConfigRepository = new HelixReadOnlyStoreConfigRepository(zkClient, adapter);
+    this.storeConfigRepository =
+        new HelixReadOnlyStoreConfigRepository(zkClient, adapter, config.getRefreshAttemptsForZkReconnect(),
+            config.getRefreshIntervalForZkReconnectInMs());
     this.liveInstanceMonitor = new HelixLiveInstanceMonitor(this.zkClient, config.getClusterName());
   }
 
@@ -402,7 +406,8 @@ public class RouterServer extends AbstractVeniceService {
       liveInstanceMonitor.refresh();
 
       // Register current router into ZK.
-      routersClusterManager = new ZkRoutersClusterManager(zkClient, adapter, config.getClusterName());
+      routersClusterManager = new ZkRoutersClusterManager(zkClient, adapter, config.getClusterName(),
+          config.getRefreshAttemptsForZkReconnect(), config.getRefreshIntervalForZkReconnectInMs());
       routersClusterManager.refresh();
       routersClusterManager.registerRouter(Utils.getHelixNodeIdentifier(config.getPort()));
       routingDataRepository.refresh();

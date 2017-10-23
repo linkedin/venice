@@ -53,7 +53,12 @@ public class HelixOfflinePushMonitorAccessor implements OfflinePushAccessor {
   private final ListenerManager<PartitionStatusListener> listenerManager;
   private final PartitionStatusZkListener partitionStatusZkListener;
 
-  public HelixOfflinePushMonitorAccessor(String clusterName, ZkClient zkClient, HelixAdapterSerializer adapter) {
+  private final int refreshAttemptsForZkReconnect;
+
+  private final long refreshIntervalForZkReconnectInMs;
+
+  public HelixOfflinePushMonitorAccessor(String clusterName, ZkClient zkClient, HelixAdapterSerializer adapter,
+      int refreshAttemptsForZkReconnect, long refreshIntervalForZkReconnectInMs) {
     this.clusterName = clusterName;
     this.offlinePushStatusParentPath = getOfflinePushStatuesParentPath();
     this.zkClient = zkClient;
@@ -63,6 +68,8 @@ public class HelixOfflinePushMonitorAccessor implements OfflinePushAccessor {
     this.partitionStatusAccessor = new ZkBaseDataAccessor<>(zkClient);
     this.listenerManager = new ListenerManager<>();
     this.partitionStatusZkListener = new PartitionStatusZkListener();
+    this.refreshAttemptsForZkReconnect = refreshAttemptsForZkReconnect;
+    this.refreshIntervalForZkReconnectInMs = refreshIntervalForZkReconnectInMs;
   }
 
   private void registerSerializers(HelixAdapterSerializer adapter) {
@@ -76,9 +83,10 @@ public class HelixOfflinePushMonitorAccessor implements OfflinePushAccessor {
   public List<OfflinePushStatus> loadOfflinePushStatusesAndPartitionStatuses() {
     logger.info("Start loading all offline pushes statuses from ZK in cluster:" + clusterName);
     List<OfflinePushStatus> offlinePushStatuses =
-        offlinePushStatusAccessor.getChildren(offlinePushStatusParentPath, null, AccessOption.PERSISTENT);
+        HelixUtils.getChildren(offlinePushStatusAccessor, offlinePushStatusParentPath, refreshAttemptsForZkReconnect,
+            refreshIntervalForZkReconnectInMs);
     Iterator<OfflinePushStatus> iterator = offlinePushStatuses.iterator();
-    while(iterator.hasNext()){
+    while (iterator.hasNext()) {
       OfflinePushStatus pushStatus = iterator.next();
       switch (pushStatus.getCurrentStatus()) {
         case ERROR:
@@ -175,19 +183,15 @@ public class HelixOfflinePushMonitorAccessor implements OfflinePushAccessor {
     }
     logger.info(
         "Start update replica status for topic:" + topic + " partition:" + partitionId + " in cluster:" + clusterName);
-    HelixUtils.compareAndUpdate(partitionStatusAccessor, getPartitionStatusPath(topic, partitionId),
-        currentData -> {
-          currentData.updateReplicaStatus(instanceId, status);
-          if (progress != Integer.MIN_VALUE) {
-            currentData.updateProgress(instanceId, progress);
-          }
-          return currentData;
-        });
-    logger.info(
-        "Updated replica status for topic:" + topic
-            + " partition:" + partitionId
-            + " status: " + status
-            + " in cluster:" + clusterName);
+    HelixUtils.compareAndUpdate(partitionStatusAccessor, getPartitionStatusPath(topic, partitionId), currentData -> {
+      currentData.updateReplicaStatus(instanceId, status);
+      if (progress != Integer.MIN_VALUE) {
+        currentData.updateProgress(instanceId, progress);
+      }
+      return currentData;
+    });
+    logger.info("Updated replica status for topic:" + topic + " partition:" + partitionId + " status: " + status
+        + " in cluster:" + clusterName);
   }
 
   @Override
@@ -225,7 +229,8 @@ public class HelixOfflinePushMonitorAccessor implements OfflinePushAccessor {
   protected List<PartitionStatus> getPartitionStatuses(String topic) {
     logger.debug("Start reading partition status from ZK for topic:" + topic + " in cluster:" + clusterName);
     List<PartitionStatus> result =
-        partitionStatusAccessor.getChildren(getOfflinePushStatusPath(topic), null, AccessOption.PERSISTENT);
+        HelixUtils.getChildren(partitionStatusAccessor, getOfflinePushStatusPath(topic), refreshAttemptsForZkReconnect,
+            refreshIntervalForZkReconnectInMs);
     logger.debug(
         "Read " + result.size() + " partition status from ZK for topic:" + topic + " in cluster:" + clusterName);
     return result;

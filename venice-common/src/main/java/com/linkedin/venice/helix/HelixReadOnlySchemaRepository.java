@@ -76,7 +76,9 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository {
   public HelixReadOnlySchemaRepository(@NotNull ReadOnlyStoreRepository storeRepository,
                                        @NotNull ZkClient zkClient,
                                        @NotNull HelixAdapterSerializer adapter,
-                                       @NotNull String clusterName) {
+                                       @NotNull String clusterName,
+                                       int refreshAttemptsForZkReconnect,
+                                       long refreshIntervalForZkReconnectInMs) {
     // Comment out store repo refresh for now, need to revisit it later.
     // Initialize local store cache
     //storeRepository.refresh();
@@ -94,7 +96,8 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository {
      */
     this.schemaLock = storeRepository.getInternalReadWriteLock() != null ? storeRepository.getInternalReadWriteLock() :
         new ReentrantReadWriteLock();
-    zkStateListener = new CachedResourceZkStateListener(this);
+    zkStateListener =
+        new CachedResourceZkStateListener(this, refreshAttemptsForZkReconnect, refreshIntervalForZkReconnectInMs);
   }
 
   public static void registerSerializerForSchema(String clusterName,

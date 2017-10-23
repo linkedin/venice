@@ -50,12 +50,12 @@ public class TestHelixReadOnlySchemaRepository {
     zkClient.create(clusterPath, null, CreateMode.PERSISTENT);
     zkClient.create(clusterPath + storesPath, null, CreateMode.PERSISTENT);
 
-    storeRWRepo = new HelixReadWriteStoreRepository(zkClient, adapter, cluster);
+    storeRWRepo = new HelixReadWriteStoreRepository(zkClient, adapter, cluster, 1, 0);
     storeRWRepo.refresh();
-    storeRORepo = new HelixReadOnlyStoreRepository(zkClient, adapter, cluster);
+    storeRORepo = new HelixReadOnlyStoreRepository(zkClient, adapter, cluster, 1, 1000);
     storeRORepo.refresh();
     schemaRWRepo = new HelixReadWriteSchemaRepository(storeRWRepo, zkClient, adapter, cluster);
-    schemaRORepo = new HelixReadOnlySchemaRepository(storeRORepo, zkClient, adapter, cluster);
+    schemaRORepo = new HelixReadOnlySchemaRepository(storeRORepo, zkClient, adapter, cluster, 1, 1000);
   }
 
   @AfterMethod
@@ -218,13 +218,13 @@ public class TestHelixReadOnlySchemaRepository {
     ReadWriteLock storeRepoLock = new ReentrantReadWriteLock();
     doReturn(storeRepoLock).when(mockStoreRepository).getInternalReadWriteLock();
     HelixReadOnlySchemaRepository schemaRepository = new HelixReadOnlySchemaRepository(mockStoreRepository,
-        mock(ZkClient.class), mock(HelixAdapterSerializer.class), "test-cluster");
+        mock(ZkClient.class), mock(HelixAdapterSerializer.class), "test-cluster", 1, 1000l);
     Assert.assertEquals(schemaRepository.getInternalReadWriteLock(), storeRepoLock);
 
     // When StoreRepo is not using any lock, SchemaRepo should generate its own lock
     doReturn(null).when(mockStoreRepository).getInternalReadWriteLock();
     schemaRepository = new HelixReadOnlySchemaRepository(mockStoreRepository,
-        mock(ZkClient.class), mock(HelixAdapterSerializer.class), "test-cluster");
+        mock(ZkClient.class), mock(HelixAdapterSerializer.class), "test-cluster", 1, 1000l);
     Assert.assertNotNull(schemaRepository.getInternalReadWriteLock(), "HelixReadOnlySchemaRepository should"
         + " generate its own lock when ReadOnlyStoreRepository is not using any lock");
   }
