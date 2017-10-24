@@ -93,6 +93,7 @@ public class TestThrottleReadRequestPerStore {
                      Optional.of(totalQuota),
                      Optional.empty(),
                      Optional.empty(),
+                     Optional.empty(),
                      Optional.empty());
 
     TestUtils.waitForNonDeterministicCompletion(testTimeOutMS, TimeUnit.MILLISECONDS, () -> {
