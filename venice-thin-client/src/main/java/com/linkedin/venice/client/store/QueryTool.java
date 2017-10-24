@@ -3,6 +3,7 @@ package com.linkedin.venice.client.store;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.schema.SchemaReader;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.schema.vson.VsonAvroSchemaAdapter;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.util.HashMap;
@@ -22,35 +23,41 @@ public class QueryTool {
   private static final int STORE = 0;
   private static final int KEY_STRING = 1;
   private static final int URL = 2;
-  private static final int REQUIRED_ARGS_COUNT = 3;
+  private static final int IS_VSON_STORE = 3;
+  private static final int REQUIRED_ARGS_COUNT = 4;
 
   public static void main(String[] args)
       throws IOException, ExecutionException, InterruptedException {
     if (args.length < REQUIRED_ARGS_COUNT) {
-      System.out.println("Usage: java -jar venice-thin-client-0.1.jar <store> <key_string> <url>");
+      System.out.println("Usage: java -jar venice-thin-client-0.1.jar <store> <key_string> <url> <is_vson_store>");
       System.exit(1);
     }
     String store = removeQuotes(args[STORE]);
     String keyString = removeQuotes(args[KEY_STRING]);
     String url = removeQuotes(args[URL]);
-    Map<String, String> outputMap = queryStoreForKey(store, keyString, url);
+    boolean isVsonStore = Boolean.parseBoolean(removeQuotes(args[IS_VSON_STORE]));
+    Map<String, String> outputMap = queryStoreForKey(store, keyString, url, isVsonStore);
     ObjectMapper mapper = new ObjectMapper();
     ObjectWriter plainJsonWriter = mapper.writer();
     String jsonString = plainJsonWriter.writeValueAsString(outputMap);
     System.out.println(jsonString);
   }
 
-  public static Map<String, String> queryStoreForKey(String store, String keyString, String url)
+  public static Map<String, String> queryStoreForKey(String store, String keyString, String url, boolean isVsonStore)
       throws VeniceClientException, ExecutionException, InterruptedException {
     Map<String, String> outputMap = new HashMap<>();
     try (AvroGenericStoreClient<Object, Object> client = ClientFactory.getAndStartGenericAvroClient(
-        ClientConfig.defaultGenericClientConfig(store).setVeniceURL(url))) {
+        ClientConfig.defaultGenericClientConfig(store).setVeniceURL(url).setVsonClient(isVsonStore))) {
       AbstractAvroStoreClient<Object, Object> castClient =
           (AbstractAvroStoreClient<Object, Object>) ((StatTrackingStoreClient<Object, Object>) client).getInnerStoreClient();
       SchemaReader schemaReader = castClient.getSchemaReader();
       Schema keySchema = schemaReader.getKeySchema();
 
       Object key = null;
+      // Transfer vson schema to avro schema.
+      while(keySchema.getType().equals(Schema.Type.UNION)) {
+        keySchema = VsonAvroSchemaAdapter.stripFromUnion(keySchema);
+      }
       switch (keySchema.getType()) {
         case INT:
           key = Integer.parseInt(keyString);
@@ -75,6 +82,7 @@ public class QueryTool {
         default:
           throw new VeniceException("Cannot handle key type, found key schema: " + keySchema.toString());
       }
+
 
       outputMap.put("key-class", key.getClass().getCanonicalName());
       outputMap.put("key", keyString);
