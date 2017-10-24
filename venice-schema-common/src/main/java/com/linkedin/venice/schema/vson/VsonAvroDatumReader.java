@@ -3,7 +3,10 @@ package com.linkedin.venice.schema.vson;
 import com.linkedin.venice.serializer.VsonSerializationException;
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.util.Arrays;
 import java.util.HashMap;
+import java.util.Iterator;
+import java.util.Map;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericDatumReader;
 import org.apache.avro.io.Decoder;
@@ -20,7 +23,7 @@ public class VsonAvroDatumReader<D> extends GenericDatumReader<D> {
 
   @Override
   protected Object readRecord(Object old, Schema expected, ResolvingDecoder in) throws IOException {
-    HashMap<String, Object> record = new HashMap<>();
+    HashMap<String, Object> record = new DeepEqualsHashMap();
     for (Schema.Field field : in.readFieldOrder()) {
       record.put(field.name(), read(null, field.schema(), in));
     }
@@ -80,5 +83,57 @@ public class VsonAvroDatumReader<D> extends GenericDatumReader<D> {
   static VsonSerializationException illegalFixedLength(int len) {
     return new VsonSerializationException("illegal Fixed type length: " + len +
         "Fixed type is only for single byte or short and should not have size greater than 2");
+  }
+
+  /**
+   * This class supports the special byte[] check.
+   * With this class, you can compare the map result retrieved from VSON store.
+   *
+   * Most of the logic is copied from {@link java.util.AbstractMap#equals(Object)}
+   */
+  public static class DeepEqualsHashMap extends HashMap<String, Object> {
+    @Override
+    public boolean equals(Object o) {
+      if (o == this)
+        return true;
+
+      if (!(o instanceof Map))
+        return false;
+      Map<?,?> m = (Map<?,?>) o;
+      if (m.size() != size())
+        return false;
+
+      try {
+        Iterator<Entry<String, Object>> i = entrySet().iterator();
+        while (i.hasNext()) {
+          Entry<String, Object> e = i.next();
+          String key = e.getKey();
+          Object value = e.getValue();
+          if (value == null) {
+            if (!(m.get(key)==null && m.containsKey(key)))
+              return false;
+          } else {
+            /**
+             * Special check for byte[].
+             */
+            Object rightValue = m.get(key);
+            if (value.getClass().equals(byte[].class) && rightValue.getClass().equals(byte[].class)) {
+              return Arrays.equals((byte[])value, (byte[])rightValue);
+            }
+            /**
+             * We should not use 'rightValue.equals(value)' here since the right value may not support deep equals check.
+             */
+            if (!value.equals(rightValue))
+              return false;
+          }
+        }
+      } catch (ClassCastException unused) {
+        return false;
+      } catch (NullPointerException unused) {
+        return false;
+      }
+
+      return true;
+    }
   }
 }

@@ -110,4 +110,33 @@ public class TestVsonAvroDatumReader {
     Object vsonObject = reader.read(null, decoder);
     valueValidator.accept(vsonObject);
   }
+
+  @Test
+  public void testDeepEqualsHashMap() {
+    Map<String, Object> deMap1 = new VsonAvroDatumReader.DeepEqualsHashMap();
+    deMap1.put("key1", "value1");
+    deMap1.put("key2", "value2".getBytes());
+
+    Map<String, Object> deMap2 = new VsonAvroDatumReader.DeepEqualsHashMap();
+    deMap2.put("key1", "value1");
+    deMap2.put("key2", "value2".getBytes());
+
+    Map<String, Object> regularMap1 = new HashMap<>();
+    regularMap1.put("key1", "value1");
+    regularMap1.put("key2", "value2".getBytes());
+
+    Map<String, Object> regularMap2 = new HashMap<>();
+    regularMap2.put("key1", "value1");
+    regularMap2.put("key2", "value2".getBytes());
+
+    String assertMessageForDeepEqualsHashMap = "DeepEqualsHashMap should implement deep equal properly even"
+        + " it contains array elements.";
+    String assertMessageForRegularHashMap = "HashMap supports deep equals() properly even it contains array elements so"
+        + " the DeepEqualsHashMap is not necessary anymore.";
+
+    Assert.assertTrue(deMap1.equals(deMap2), assertMessageForDeepEqualsHashMap);
+    Assert.assertTrue(deMap1.equals(regularMap1), assertMessageForDeepEqualsHashMap);
+    Assert.assertFalse(regularMap1.equals(deMap1), assertMessageForRegularHashMap);
+    Assert.assertFalse(regularMap1.equals(regularMap2), assertMessageForRegularHashMap);
+  }
 }
