@@ -396,6 +396,10 @@ public class AdminTool {
         ? Optional.empty()
         : Optional.of(Utils.parseLongFromString(hybridOffsetLagStr, Arg.HYBRID_OFFSET_LAG.name()));
 
+    String accessControlStr = getOptionalArgument(cmd, Arg.ACCESS_CONTROL);
+    Optional<Boolean> accessControlled = accessControlStr == null ? Optional.empty() :
+        Optional.of(Utils.parseBooleanFromString(accessControlStr, "access control"));
+
     ControllerResponse response = controllerClient.updateStore(
         storeName,
         owner,
@@ -406,7 +410,8 @@ public class AdminTool {
         storageQuotaInByte,
         readQuotaInCU,
         hybridRewindSeconds,
-        hybridOffsetLag);
+        hybridOffsetLag,
+        accessControlled);
 
     printSuccess(response);
   }

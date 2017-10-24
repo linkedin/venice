@@ -16,7 +16,6 @@ import com.linkedin.venice.controller.kafka.protocol.admin.UpdateStore;
 import com.linkedin.venice.controller.kafka.protocol.admin.ValueSchemaCreation;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceMessageException;
-
 import java.util.HashMap;
 import java.util.Map;
 
@@ -26,7 +25,7 @@ public enum AdminMessageType {
   DISABLE_STORE_WRITE(2),
   ENABLE_STORE_WRITE(3),
   KILL_OFFLINE_PUSH_JOB(4),
-  DIABLE_STORE_READ(5),
+  DISABLE_STORE_READ(5),
   ENABLE_STORE_READ(6),
   DELETE_ALL_VERSIONS(7),
   SET_STORE_OWNER(8),
@@ -49,7 +48,7 @@ public enum AdminMessageType {
       case DISABLE_STORE_WRITE: return new PauseStore();
       case ENABLE_STORE_WRITE: return new ResumeStore();
       case KILL_OFFLINE_PUSH_JOB: return new KillOfflinePushJob();
-      case DIABLE_STORE_READ: return new DisableStoreRead();
+      case DISABLE_STORE_READ: return new DisableStoreRead();
       case ENABLE_STORE_READ: return new EnableStoreRead();
       case DELETE_ALL_VERSIONS: return new DeleteAllVersions();
       case SET_STORE_OWNER: return new SetStoreOwner();

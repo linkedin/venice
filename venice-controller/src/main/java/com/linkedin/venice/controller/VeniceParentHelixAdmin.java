@@ -711,8 +711,8 @@ public class VeniceParentHelixAdmin implements Admin {
         enableStoreRead.storeName = storeName;
         message.payloadUnion = enableStoreRead;
       } else {
-        message.operationType = AdminMessageType.DIABLE_STORE_READ.ordinal();
-        DisableStoreRead disableStoreRead = (DisableStoreRead) AdminMessageType.DIABLE_STORE_READ.getNewInstance();
+        message.operationType = AdminMessageType.DISABLE_STORE_READ.ordinal();
+        DisableStoreRead disableStoreRead = (DisableStoreRead) AdminMessageType.DISABLE_STORE_READ.getNewInstance();
         disableStoreRead.clusterName = clusterName;
         disableStoreRead.storeName = storeName;
         message.payloadUnion = disableStoreRead;
@@ -770,7 +770,8 @@ public class VeniceParentHelixAdmin implements Admin {
       Optional<Long> readQuotaInCU,
       Optional<Integer> currentVersion,
       Optional<Long> hybridRewindSeconds,
-      Optional<Long> hybridOffsetLagThreshold) {
+      Optional<Long> hybridOffsetLagThreshold,
+      Optional<Boolean> accessControlled) {
     acquireLock(clusterName);
 
     try {
@@ -801,6 +802,8 @@ public class VeniceParentHelixAdmin implements Admin {
         hybridStoreConfigRecord.rewindTimeInSeconds = hybridStoreConfig.getRewindTimeInSeconds();
         setStore.hybridStoreConfig = hybridStoreConfigRecord;
       }
+
+      setStore.accessControlled = accessControlled.isPresent() ? accessControlled.get() : store.isAccessControlled();
 
       AdminOperation message = new AdminOperation();
       message.operationType = AdminMessageType.UPDATE_STORE.ordinal();

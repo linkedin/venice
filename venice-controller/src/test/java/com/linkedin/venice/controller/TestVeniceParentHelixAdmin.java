@@ -439,7 +439,7 @@ public class TestVeniceParentHelixAdmin {
     Assert.assertEquals(schemaId, AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION);
     Assert.assertEquals(keyBytes.length, 0);
     AdminOperation adminMessage = adminOperationSerializer.deserialize(valueBytes, schemaId);
-    Assert.assertEquals(adminMessage.operationType, AdminMessageType.DIABLE_STORE_READ.ordinal());
+    Assert.assertEquals(adminMessage.operationType, AdminMessageType.DISABLE_STORE_READ.ordinal());
     DisableStoreRead disableStoreRead = (DisableStoreRead) adminMessage.payloadUnion;
 
     Assert.assertEquals(disableStoreRead.clusterName.toString(), clusterName);
@@ -1118,8 +1118,9 @@ public class TestVeniceParentHelixAdmin {
     Optional<String> owner = Optional.empty();
     Optional<Long> readQuota = Optional.of(100l);
     Optional<Long> storageQuota = Optional.empty();
+    Optional<Boolean> accessControlled = Optional.of(true);
     parentAdmin.updateStore(clusterName, storeName, owner, readability, writebility, partitionCount, storageQuota,
-        readQuota, Optional.empty(), Optional.of(135L), Optional.of(2000L));
+        readQuota, Optional.empty(), Optional.of(135L), Optional.of(2000L), accessControlled);
 
     verify(veniceWriter)
         .put(any(), any(), anyInt());
@@ -1136,6 +1137,7 @@ public class TestVeniceParentHelixAdmin {
     Assert.assertEquals(keyBytes.length, 0);
     AdminOperation adminMessage = adminOperationSerializer.deserialize(valueBytes, schemaId);
     Assert.assertEquals(adminMessage.operationType, AdminMessageType.UPDATE_STORE.ordinal());
+
     UpdateStore updateStore = (UpdateStore) adminMessage.payloadUnion;
     Assert.assertEquals(updateStore.clusterName.toString(), clusterName);
     Assert.assertEquals(updateStore.storeName.toString(), storeName);
@@ -1148,6 +1150,18 @@ public class TestVeniceParentHelixAdmin {
     Assert.assertNotNull(updateStore.hybridStoreConfig, "Hybrid store config should result in something not null in the avro object");
     Assert.assertEquals(updateStore.hybridStoreConfig.rewindTimeInSeconds, 135L);
     Assert.assertEquals(updateStore.hybridStoreConfig.offsetLagThresholdToGoOnline, 2000L);
+    Assert.assertEquals(updateStore.accessControlled, accessControlled.get().booleanValue());
+
+    // Disable Access Control
+    accessControlled = Optional.of(false);
+    parentAdmin.updateStore(clusterName, storeName, owner, readability, writebility, partitionCount, storageQuota,
+        readQuota, Optional.empty(), Optional.of(135L), Optional.of(2000L), accessControlled);
+    verify(veniceWriter, times(2)).put(keyCaptor.capture(), valueCaptor.capture(), schemaCaptor.capture());
+    valueBytes = valueCaptor.getValue();
+    schemaId = schemaCaptor.getValue();
+    adminMessage = adminOperationSerializer.deserialize(valueBytes, schemaId);
+    updateStore = (UpdateStore) adminMessage.payloadUnion;
+    Assert.assertEquals(updateStore.accessControlled, accessControlled.get().booleanValue());
   }
 
   @Test

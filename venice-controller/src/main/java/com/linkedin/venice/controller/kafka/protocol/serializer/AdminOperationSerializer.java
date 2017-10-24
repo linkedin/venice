@@ -18,7 +18,7 @@ import java.util.Map;
 
 public class AdminOperationSerializer {
   // Latest schema id, and it needs to be updated whenever we add a new version
-  public static int LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION = 8;
+  public static int LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION = 9;
 
   private static SpecificDatumWriter<AdminOperation> SPECIFIC_DATUM_WRITER = new SpecificDatumWriter<>(AdminOperation.SCHEMA$);
   /** Used to generate decoders. */

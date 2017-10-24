@@ -546,7 +546,8 @@ public class ControllerClient implements Closeable {
       Optional<Long> storageQuotaInByte,
       Optional<Long> readQuotaInCU,
       Optional<Long> hybridRewindSeconds,
-      Optional<Long> hybridOffsetLagThreshold) {
+      Optional<Long> hybridOffsetLagThreshold,
+      Optional<Boolean> accessControlled) {
 
     try {
       List<NameValuePair> queryParams = newParams(clusterName);
@@ -577,6 +578,9 @@ public class ControllerClient implements Closeable {
       }
       if (hybridOffsetLagThreshold.isPresent()) {
         queryParams.add(new BasicNameValuePair(ControllerApiConstants.OFFSET_LAG_TO_GO_ONLINE, hybridOffsetLagThreshold.get().toString()));
+      }
+      if (accessControlled.isPresent()) {
+        queryParams.add(new BasicNameValuePair(ControllerApiConstants.ACCESS_CONTROLLED, accessControlled.get().toString()));
       }
 
       String responseJson = postRequest(ControllerRoute.UPDATE_STORE.getPath(), queryParams);
