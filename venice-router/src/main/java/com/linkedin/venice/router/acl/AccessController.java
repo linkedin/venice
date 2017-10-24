@@ -11,9 +11,9 @@ import java.util.Set;
 public interface AccessController {
 
   /**
-   * Init access controller.
+   * Initialize access controller.
    *
-   * @param stores the stores
+   * @param stores the existing stores
    * @return the access controller
    */
   AccessController init(List<String> stores);
@@ -39,6 +39,7 @@ public interface AccessController {
   boolean hasAcl(String storeName) throws AclException;
 
   /**
+   * Add a store to the access control list.
    * Call this method when a new store gets created.
    *
    * @param storeName the store name
@@ -46,6 +47,7 @@ public interface AccessController {
   void addAcl(String storeName) throws AclException;
 
   /**
+   * Remove a store from the access control list.
    * Call this method when a existing store gets deleted.
    *
    * @param storeName the store name

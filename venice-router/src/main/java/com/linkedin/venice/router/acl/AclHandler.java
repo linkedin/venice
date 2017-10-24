@@ -45,34 +45,34 @@ public class AclHandler extends SimpleChannelInboundHandler<HttpRequest> {
     String storeName = new VenicePathParserHelper(req.uri()).getResourceName();
     String method = req.method().name();
 
-    try {
-      if (_accessController.hasAccess(clientCert, storeName, method)) {  // Keep this the outmost layer to maximize performance
-        // Client has permission. Proceed
-        ReferenceCountUtil.retain(req);
-        ctx.fireChannelRead(req);
-      } else {
-        // Fact:
-        //   Request gets rejected.
-        // Possible Reasons:
-        //   A. ACL not found. OR,
-        //   B. ACL exists but caller does not have permission.
-        //
-        //   More specificly for case A, ACL not found because:
-        //    *1. Requested resource does not exist, therefore the ACL is missing also. OR,
-        //     2. Requested resource exists but does not have ACL for some reason.
-        //
-        // * In such case, the request will eventually fail regardless of ACL enabled or not, permission granted or not,
-        //   therefore should fail fast.
+    if (!_metadataRepository.getStore(storeName).isAccessControlled()) {
+      // Ignore permission. Proceed
+      ReferenceCountUtil.retain(req);
+      ctx.fireChannelRead(req);
+    } else {
+      try {
+        if (_accessController.hasAccess(clientCert, storeName, method)) {  // Keep this the outmost layer to maximize performance
+          // Client has permission. Proceed
+          ReferenceCountUtil.retain(req);
+          ctx.fireChannelRead(req);
+        } else {
+          // Fact:
+          //   Request gets rejected.
+          // Possible Reasons:
+          //   A. ACL not found. OR,
+          //   B. ACL exists but caller does not have permission.
+          //
+          //   More specificly for case A, ACL not found because:
+          //    *1. Requested resource does not exist, therefore the ACL is missing also. OR,
+          //     2. Requested resource exists but does not have ACL for some reason.
+          //
+          // * In such case, the request will eventually fail regardless of ACL enabled or not, permission granted or not,
+          //   therefore should fail fast.
 
-        String client = ctx.channel().remoteAddress().toString(); //ip and port
-        String errLine = String.format("%s requested %s %s", client, method, req.uri());
+          String client = ctx.channel().remoteAddress().toString(); //ip and port
+          String errLine = String.format("%s requested %s %s", client, method, req.uri());
 
-        if (_metadataRepository.hasStore(storeName)) {
-          if (!_metadataRepository.getStore(storeName).isAccessControlled()) {
-            // Ignore permission. Proceed
-            ReferenceCountUtil.retain(req);
-            ctx.fireChannelRead(req);
-          } else {
+          if (_metadataRepository.hasStore(storeName)) {
             if (!_accessController.isFailOpen() && !_accessController.hasAcl(storeName)) {  // short circuit, order matters
               // Case A2
               // Conditions:
@@ -89,8 +89,8 @@ public class AclHandler extends SimpleChannelInboundHandler<HttpRequest> {
               logger.warn("\nExisting stores: " + _metadataRepository.getAllStores().stream().map(Store::getName).sorted()
                   .collect(Collectors.toList()) + "\nAccess-controlled stores: "
                   + _accessController.getAccessControlledStores().stream().sorted().collect(Collectors.toList()));
-              MetaDataHandler.setupResponseAndFlush(HttpResponseStatus.INTERNAL_SERVER_ERROR, "ACL not found!\nPlease report the error!"
-                  .getBytes(), false, ctx);
+              MetaDataHandler.setupResponseAndFlush(HttpResponseStatus.INTERNAL_SERVER_ERROR,
+                  "ACL not found!\nPlease report the error!".getBytes(), false, ctx);
             } else {
               // Case B
               // Conditions:
@@ -102,7 +102,8 @@ public class AclHandler extends SimpleChannelInboundHandler<HttpRequest> {
               //       Since the request has been rejected, it must be due to lack of permission.
               //   (2) ACL exists, therefore result is determined by ACL.
               //       Since the request has been rejected, it must be due to lack of permission.
-              //   (3) In such case, request would NOT be rejected in the first place.
+              //   (3) In such case, request would NOT be rejected in the first place,
+              //       according to the definition in AccessController interface.
               //       Contradiction to the fact, therefore this case is impossible.
               // Root cause:
               //   Caller does not have permission to access the resource.
@@ -111,23 +112,17 @@ public class AclHandler extends SimpleChannelInboundHandler<HttpRequest> {
               logger.debug("Unauthorized access rejected: " + errLine);
               MetaDataHandler.setupResponseAndFlush(HttpResponseStatus.FORBIDDEN, new byte[0], false, ctx);
             }
+          } else {
+            // Case A1
+            logger.debug("Requested store does not exist: " + errLine);
+            MetaDataHandler.setupResponseAndFlush(HttpResponseStatus.BAD_REQUEST, ("Invalid Venice store name: " + storeName).getBytes(), false, ctx);
           }
-        } else {
-          // Case A1
-          logger.debug("Requested store does not exist: " + errLine);
-          MetaDataHandler.setupResponseAndFlush(HttpResponseStatus.BAD_REQUEST, ("Invalid Venice store name: " + storeName).getBytes(), false, ctx);
         }
-      }
-    } catch (AclException e) {
-      String client = ctx.channel().remoteAddress().toString(); //ip and port
-      String errLine = String.format("%s requested %s %s", client, method, req.uri());
+      } catch (AclException e) {
+        String client = ctx.channel().remoteAddress().toString(); //ip and port
+        String errLine = String.format("%s requested %s %s", client, method, req.uri());
 
-      if (_metadataRepository.hasStore(storeName)) {
-        if (!_metadataRepository.getStore(storeName).isAccessControlled()) {
-          // Ignore permission. Proceed
-          ReferenceCountUtil.retain(req);
-          ctx.fireChannelRead(req);
-        } else {
+        if (_metadataRepository.hasStore(storeName)) {
           if (_accessController.isFailOpen()) {
             logger.warn("Exception occurred! Access granted: " + errLine + "\n" + e);
             ReferenceCountUtil.retain(req);
@@ -136,11 +131,11 @@ public class AclHandler extends SimpleChannelInboundHandler<HttpRequest> {
             logger.warn("Exception occurred! Access rejected: " + errLine + "\n" + e);
             MetaDataHandler.setupResponseAndFlush(HttpResponseStatus.FORBIDDEN, new byte[0], false, ctx);
           }
+        } else {
+          // Case A1
+          logger.debug("Requested store does not exist: " + errLine);
+          MetaDataHandler.setupResponseAndFlush(HttpResponseStatus.BAD_REQUEST, ("Invalid Venice store name: " + storeName).getBytes(), false, ctx);
         }
-      } else {
-        // Case A1
-        logger.debug("Requested store does not exist: " + errLine);
-        MetaDataHandler.setupResponseAndFlush(HttpResponseStatus.BAD_REQUEST, ("Invalid Venice store name: " + storeName).getBytes(), false, ctx);
       }
     }
   }
