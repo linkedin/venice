@@ -17,7 +17,7 @@ public enum ControllerRoute {
   NEW_STORE("/new_store", Arrays.asList(NAME, KEY_SCHEMA, VALUE_SCHEMA), OWNER),
   DELETE_STORE("/delete_store", Arrays.asList(NAME)),
   // Beside store name, others are all optional parameters for flexibility and compatibility.
-  UPDATE_STORE("/update_store", Arrays.asList(NAME),OWNER, VERSION, PARTITION_COUNT, ENABLE_READS, ENABLE_WRITES),
+  UPDATE_STORE("/update_store", Arrays.asList(NAME),OWNER, VERSION, PARTITION_COUNT, ENABLE_READS, ENABLE_WRITES, ACCESS_CONTROLLED),
   SET_VERSION("/set_version", Arrays.asList(NAME, VERSION)),
   ENABLE_STORE("/enable_store", Arrays.asList(NAME, OPERATION, STATUS)), // status "true" or "false", operation "read" or "write" or "readwrite".
   DELETE_ALL_VERSIONS("/delete_all_versions", Arrays.asList(NAME)),

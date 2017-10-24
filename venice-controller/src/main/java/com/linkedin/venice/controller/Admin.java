@@ -140,7 +140,8 @@ public interface Admin {
         Optional<Long> readQuotaInCU,
         Optional<Integer> currentVersion,
         Optional<Long> hybridRewindSeconds,
-        Optional<Long> hybridOffsetLagThreshold);
+        Optional<Long> hybridOffsetLagThreshold,
+        Optional<Boolean> accessControlled);
 
     double getStorageEngineOverheadRatio(String clusterName);
 

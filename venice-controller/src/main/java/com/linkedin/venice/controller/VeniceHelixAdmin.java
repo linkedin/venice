@@ -916,6 +916,14 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         });
     }
 
+    public synchronized void setAccessControl(String clusterName, String storeName, boolean accessControlled) {
+        storeMetadataUpdate(clusterName, storeName, store -> {
+            store.setAccessControlled(accessControlled);
+
+            return store;
+        });
+    }
+
     @Override
     public synchronized void updateStore(
         String clusterName,
@@ -928,7 +936,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         Optional<Long> readQuotaInCU,
         Optional<Integer> currentVersion,
         Optional<Long> hybridRewindSeconds,
-        Optional<Long> hybridOffsetLagThreshold) {
+        Optional<Long> hybridOffsetLagThreshold,
+        Optional<Boolean> accessControlled) {
         Store originalStore = getStore(clusterName, storeName).cloneStore();
 
         try {
@@ -969,6 +978,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                         return store;
                     });
                 }
+            }
+
+            if (accessControlled.isPresent()) {
+                setAccessControl(clusterName, storeName, accessControlled.get());
             }
 
         } catch (VeniceException e) {

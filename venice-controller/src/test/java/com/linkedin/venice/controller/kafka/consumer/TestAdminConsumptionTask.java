@@ -638,6 +638,7 @@ public class TestAdminConsumptionTask {
     int currentVersion = 100;
     boolean enableReads = false;
     boolean enableWrites = true;
+    boolean accessControlled = true;
     UpdateStore setStore = (UpdateStore) AdminMessageType.UPDATE_STORE.getNewInstance();
     setStore.clusterName = clusterName;
     setStore.storeName = storeName;
@@ -646,6 +647,7 @@ public class TestAdminConsumptionTask {
     setStore.currentVersion = currentVersion;
     setStore.enableReads = enableReads;
     setStore.enableWrites = enableWrites;
+    setStore.accessControlled = accessControlled;
 
     HybridStoreConfigRecord hybridConfig = new HybridStoreConfigRecord();
     hybridConfig.rewindTimeInSeconds = 123L;
@@ -670,7 +672,7 @@ public class TestAdminConsumptionTask {
 
     verify(admin, timeout(TIMEOUT).atLeastOnce())
         .updateStore(eq(clusterName), eq(storeName), any(), any(), any(), any(), any(), any(), any(),
-            eq(Optional.of(123L)), eq(Optional.of(1000L)));
+            eq(Optional.of(123L)), eq(Optional.of(1000L)), eq(Optional.of(accessControlled)));
   }
 
   private byte[] getStoreCreationMessage(String clusterName, String storeName, String owner, String keySchema, String valueSchema) {

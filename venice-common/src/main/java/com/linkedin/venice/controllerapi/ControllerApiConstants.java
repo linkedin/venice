@@ -39,6 +39,8 @@ public class ControllerApiConstants {
   public static final String VOLDEMORT_STORE_NAME = "voldemort_store_name";
   public static final String PUSH_STRATEGY = "push_strategy";
 
+  public static final String ACCESS_CONTROLLED = "access_controlled";
+
   private ControllerApiConstants(){}
 
   /**

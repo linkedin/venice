@@ -152,6 +152,10 @@ public class StoresRoutes {
             ? Optional.empty()
             : Optional.of(Utils.parseLongFromString(hybridOffsetLagStr, OFFSET_LAG_TO_GO_ONLINE));
 
+        String accessControlStr = AdminSparkServer.getOptionalParameterValue(request, ACCESS_CONTROLLED);
+        Optional<Boolean> accessControlled = accessControlStr == null ? Optional.empty() :
+            Optional.of(Utils.parseBooleanFromString(accessControlStr, ACCESS_CONTROLLED));
+
         admin.updateStore(veniceResponse.getCluster(),
                           veniceResponse.getName(),
                           owner,
@@ -162,7 +166,8 @@ public class StoresRoutes {
                           readQuotaInCU,
                           currentVersion,
                           hybridRewind,
-                          hybridOffsetLag);
+                          hybridOffsetLag,
+                          accessControlled);
       }
     };
   }

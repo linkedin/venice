@@ -72,7 +72,7 @@ public enum Command {
   UPDATE_STORE("update-store","update store metadata",
       new Arg[] {Arg.URL, Arg.CLUSTER, Arg.STORE},
       new Arg[] {Arg.OWNER, Arg.PARTITION_COUNT, Arg.VERSION, Arg.READABILITY,
-                 Arg.WRITEABILITY,Arg.STORAGE_QUOTA, Arg.READ_QUOTA}),
+                 Arg.WRITEABILITY,Arg.STORAGE_QUOTA, Arg.READ_QUOTA, Arg.ACCESS_CONTROL}),
   EMPTY_PUSH("empty-push", "Do an empty push into an existing store",
       new Arg[]{Arg.URL, Arg.CLUSTER, Arg.STORE, Arg.PUSH_ID, Arg.STORE_SIZE}),
   ENABLE_THROTTLING("enable-throttling", "Enable the feature that throttling read request on all routers.",
