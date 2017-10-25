@@ -25,8 +25,9 @@ public interface AccessController {
    *
    * @param clientCert the X509Certificate submitted by client
    * @param storeName the Venice store name
-   * @param method the operation (GET, POST, ...) to perform on the store
-   * @return  {@code false} if access is denied or ACL not found
+   * @param method the operation (GET, POST, ...) to perform against the store
+   * @return  {@code true} if client has permission to access, otherwise {@code false}.
+   *          When {@link #hasAcl(String)} == false, return {@link #isFailOpen()}.
    */
   boolean hasAccess(X509Certificate clientCert, String storeName, String method) throws AclException;
 
@@ -64,8 +65,8 @@ public interface AccessController {
   Set<String> getAccessControlledStores();
 
   /**
-   * Use this method to determine if clients will be allowed
-   * to access to a resource when the corresponding ACL is missing.
+   * Use this method to determine if clients will be granted access
+   * to a resource when the corresponding ACL of the resource is missing.
    *
    * @return whether or not the implementation uses a fail-open policy
    */
