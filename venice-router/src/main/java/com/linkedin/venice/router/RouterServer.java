@@ -295,8 +295,8 @@ public class RouterServer extends AbstractVeniceService {
     };
     Consumer<ChannelPipeline> withAcl = pipeline -> {
       pipeline.addLast("SSL Verifier", verifySsl);
-      pipeline.addLast("AclHandler", aclHandler);
       pipeline.addLast("MetadataHandler", metaDataHandler);
+      pipeline.addLast("AclHandler", aclHandler);
     };
 
     secureRouter = Router.builder(scatterGather)
