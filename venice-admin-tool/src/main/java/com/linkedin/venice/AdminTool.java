@@ -252,7 +252,8 @@ public class AdminTool {
       throws VeniceClientException, ExecutionException, InterruptedException {
     String store = getRequiredArgument(cmd, Arg.STORE);
     String keyString = getRequiredArgument(cmd, Arg.KEY);
-    printObject(QueryTool.queryStoreForKey(store, keyString, routerHosts));
+    boolean isVsonStore = Boolean.parseBoolean(getOptionalArgument(cmd, Arg.VSON_STORE, "false"));
+    printObject(QueryTool.queryStoreForKey(store, keyString, routerHosts, isVsonStore));
   }
 
   private static void showSchemas(CommandLine cmd){
