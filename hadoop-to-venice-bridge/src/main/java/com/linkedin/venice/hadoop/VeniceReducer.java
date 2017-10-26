@@ -59,6 +59,12 @@ public class VeniceReducer implements Reducer<BytesWritable, BytesWritable, Null
   private AbstractVeniceWriter<byte[], byte[]> veniceWriter = null;
   private int valueSchemaId = -1;
 
+  /**
+   * Having dup key checking does not make sense in Mapper only mode
+   * and would even cause a circular dependency issue between Mapper and reducer.
+   * This flag helps disable it when running in that
+   */
+  private final boolean checkDupKey;
   private DuplicateKeyPrinter duplicateKeyPrinter;
 
   private Exception sendException = null;
@@ -72,6 +78,13 @@ public class VeniceReducer implements Reducer<BytesWritable, BytesWritable, Null
   private final AtomicLong messageCompleted = new AtomicLong();
   private final AtomicLong messageErrored = new AtomicLong();
 
+  public VeniceReducer() {
+    this(true);
+  }
+
+  VeniceReducer(boolean checkDupKey) {
+    this.checkDupKey = checkDupKey;
+  }
 
   @Override
   public void reduce(BytesWritable key, Iterator<BytesWritable> values, OutputCollector<NullWritable, NullWritable> output, Reporter reporter) throws IOException {
@@ -87,7 +100,9 @@ public class VeniceReducer implements Reducer<BytesWritable, BytesWritable, Null
 
     sendMessageToKafka(keyBytes, valueBytes, reporter);
 
-    duplicateKeyPrinter.handleDuplicateKeys(keyBytes, valueBytes, values, reporter);
+    if(checkDupKey) {
+      duplicateKeyPrinter.handleDuplicateKeys(keyBytes, valueBytes, values, reporter);
+    }
   }
 
   protected void sendMessageToKafka(byte[] keyBytes, byte[] valueBytes, Reporter reporter) {
@@ -148,7 +163,9 @@ public class VeniceReducer implements Reducer<BytesWritable, BytesWritable, Null
       );
     }
 
-    this.duplicateKeyPrinter = new DuplicateKeyPrinter(job);
+    if (checkDupKey) {
+      this.duplicateKeyPrinter = new DuplicateKeyPrinter(job);
+    }
   }
 
   private void prepushStorageQuotaCheck(JobConf job, long maxStorageQuota, double storageEngineOverheadRatio) {
