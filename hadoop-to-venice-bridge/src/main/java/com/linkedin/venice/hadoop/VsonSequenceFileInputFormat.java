@@ -30,37 +30,6 @@ public class VsonSequenceFileInputFormat extends SequenceFileInputFormat<BytesWr
   protected static final Logger log = Logger.getLogger(VsonSequenceFileInputFormat.class.getName());
 
   @Override
-  public RecordReader<BytesWritable, BytesWritable> getRecordReader(InputSplit split,
-      JobConf conf,
-      Reporter reporter)
-      throws IOException {
-    String inputPathString = ((FileSplit) split).getPath().toUri().getPath();
-    log.info("Input file path:" + inputPathString);
-    Path inputPath = new Path(inputPathString);
-
-    SequenceFile.Reader reader = new SequenceFile.Reader(inputPath.getFileSystem(conf),
-        inputPath,
-        conf);
-    SequenceFile.Metadata meta = reader.getMetadata();
-
-    try {
-      Text keySchema = meta.get(new Text(FILE_KEY_SCHEMA));
-      Text valueSchema = meta.get(new Text(FILE_VALUE_SCHEMA));
-
-      if(0 == keySchema.getLength() || 0 == valueSchema.getLength()) {
-        throw new Exception();
-      }
-
-      // update Joboconf with schemas
-      conf.set(FILE_KEY_SCHEMA, keySchema.toString());
-      conf.set(FILE_VALUE_SCHEMA, valueSchema.toString());
-    } catch(Exception e) {
-      throw new IOException("Failed to Load Schema from file:" + inputPathString + "\n");
-    }
-    return super.getRecordReader(split, conf, reporter);
-  }
-
-  @Override
   protected FileStatus[] listStatus(JobConf job) throws IOException {
     String dirs = job.get("mapred.input.dir", "");
     String[] list = StringUtils.split(dirs);

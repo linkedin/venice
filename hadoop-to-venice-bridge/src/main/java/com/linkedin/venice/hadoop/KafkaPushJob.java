@@ -43,6 +43,7 @@ import org.apache.hadoop.fs.PathFilter;
 import org.apache.hadoop.io.BytesWritable;
 import org.apache.hadoop.io.NullWritable;
 import org.apache.hadoop.io.SequenceFile;
+import org.apache.hadoop.io.Text;
 import org.apache.hadoop.mapred.FileInputFormat;
 import org.apache.hadoop.mapred.JobClient;
 import org.apache.hadoop.mapred.JobConf;
@@ -153,6 +154,10 @@ public class KafkaPushJob extends AbstractJob {
 
   private String keyField;
   private String valueField;
+
+  private String vsonFileKeySchema;
+  private String vsonFileValueSchema;
+
   // Mutable state
   // Kafka url will get from Venice backend for store push
   private String kafkaUrl;
@@ -683,6 +688,8 @@ public class KafkaPushJob extends AbstractJob {
       jobConf.setInputFormat(VsonSequenceFileInputFormat.class);
       jobConf.setMapperClass(VeniceVsonMapper.class);
       jobConf.setBoolean(VSON_PUSH, true);
+      jobConf.set(FILE_KEY_SCHEMA, vsonFileKeySchema);
+      jobConf.set(FILE_VALUE_SCHEMA, vsonFileValueSchema);
     }
 
     return jobConf;
@@ -774,6 +781,8 @@ public class KafkaPushJob extends AbstractJob {
     Map<String, String> fileMetadata = getMetadataFromSequenceFile(fs, fileStatuses[0].getPath());
     if (fileMetadata.containsKey(FILE_KEY_SCHEMA) && fileMetadata.containsKey(FILE_VALUE_SCHEMA)) {
       isAvro = false;
+      vsonFileKeySchema = fileMetadata.get(FILE_KEY_SCHEMA);
+      vsonFileValueSchema = fileMetadata.get(FILE_VALUE_SCHEMA);
     }
 
     if (isAvro) {

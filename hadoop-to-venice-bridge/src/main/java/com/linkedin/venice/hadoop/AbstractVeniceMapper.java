@@ -128,7 +128,7 @@ public abstract class AbstractVeniceMapper<INPUT_KEY, INPUT_VALUE>
 
     this.isMapperOnly = props.getBoolean(VENICE_MAP_ONLY);
     if (isMapperOnly) {
-      this.reducer = new VeniceReducer();
+      this.reducer = new VeniceReducer(false);
       reducer.configure(job);
     }
 
