@@ -44,7 +44,7 @@ public class ResourceAssignment {
   private void checkResource(String resourceName) {
     if (!resourceToAssignmentsMap.containsKey(resourceName)) {
       String errorMessage = "Resource '" + resourceName + "' does not exist";
-      logger.warn(errorMessage);
+      logger.trace(errorMessage);
       // TODO: Might want to add some (configurable) retries here or higher up the stack. If the Helix spectator is out of sync, this fails...
       throw new VeniceException(errorMessage);
     }
