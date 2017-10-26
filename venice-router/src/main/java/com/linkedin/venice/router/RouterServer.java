@@ -130,7 +130,7 @@ public class RouterServer extends AbstractVeniceService {
     logger.info("Thread count: " + ROUTER_THREAD_POOL_SIZE);
 
     Optional<SSLEngineComponentFactory> sslFactory = Optional.of(SslUtils.getLocalSslFactory());
-    RouterServer server = new RouterServer(props, new ArrayList<>(), Optional.ofNullable(null), sslFactory);
+    RouterServer server = new RouterServer(props, new ArrayList<>(), Optional.empty(), sslFactory);
     server.start();
 
     Runtime.getRuntime().addShutdownHook(new Thread() {
