@@ -262,6 +262,38 @@ public class TestHelixStatusMessageChannel {
   }
 
   @Test
+  public void testSendMessageToAllLiveInstances()
+      throws Exception {
+    int timeoutCount = 0;
+    // register handler for the channel of storage node
+    channel.registerHandler(StoreStatusMessage.class, new TimeoutTestStoreStatusMessageHandler(timeoutCount));
+
+    // Start a new participant
+    HelixManager newParticipant =
+        TestUtils.getParticipant(cluster, Utils.getHelixNodeIdentifier(port + 1), zkAddress, port + 1,
+            MockTestStateModel.UNIT_TEST_STATE_MODEL);
+    newParticipant.connect();
+    HelixStatusMessageChannel newChannel = new HelixStatusMessageChannel(newParticipant);
+    boolean [] received = new boolean[1];
+    received[0] = false;
+    newChannel.registerHandler(StoreStatusMessage.class, message -> received[0] = true);
+    // Wait until new instance is connected to zk.
+    TestUtils.waitForNonDeterministicCompletion(WAIT_ZK_TIME, TimeUnit.MILLISECONDS,
+        () -> routingDataRepository.getLiveInstancesMap().containsKey(Utils.getHelixNodeIdentifier(port + 1)));
+
+    HelixStatusMessageChannel controllerChannel =
+        getControllerChannel(new TimeoutTestStoreStatusMessageHandler(timeoutCount));
+    StoreStatusMessage veniceMessage = new StoreStatusMessage(kafkaTopic, partitionId, instanceId, status);
+    try {
+      controllerChannel.sendToStorageNodes(veniceMessage, kafkaTopic, timeoutCount);
+      Assert.assertTrue(received[0], "We should send message to all live instance regardless it's assigned to resource or not.");
+    } catch (VeniceException e) {
+      Assert.fail("Sending should be successful after retry " + timeoutCount + " times", e);
+    } finally {
+      newParticipant.disconnect();
+    }
+  }
+  @Test
   public void testSendMessageToNodeWithoutRegisteringHandler()
       throws Exception {
     int timeoutCount = 1;

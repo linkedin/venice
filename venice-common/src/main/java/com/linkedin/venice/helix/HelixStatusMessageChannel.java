@@ -131,9 +131,9 @@ public class HelixStatusMessageChannel implements StatusMessageChannel {
     helixMessage.setTgtSessionId("*");
     Criteria criteria = new Criteria();
     criteria.setRecipientInstanceType(InstanceType.PARTICIPANT);
-    criteria.setResource(resourceName);
     criteria.setSessionSpecific(false);
     // Broad messages to all alive storage nodes.
+    criteria.setDataSource(Criteria.DataSource.LIVEINSTANCES);
     criteria.setInstanceName("%");
 
     ControlMessageCallback callBack = new ControlMessageCallback();

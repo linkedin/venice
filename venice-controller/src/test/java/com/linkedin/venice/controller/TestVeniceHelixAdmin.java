@@ -990,12 +990,12 @@ public class TestVeniceHelixAdmin {
     final CopyOnWriteArrayList<KillOfflinePushMessage> processedMessage = new CopyOnWriteArrayList<>();
     for (HelixManager manager : this.participants.values()) {
       HelixStatusMessageChannel channel = new HelixStatusMessageChannel(manager);
-      channel.registerHandler(KillOfflinePushMessage.class, new StatusMessageHandler<KillOfflinePushMessage>() {
-        @Override
-        public void handleMessage(KillOfflinePushMessage message) {
-          processedMessage.add(message);
-          //make ST error to simulate kill consumption task.
-          stateModelFactory.makeTransitionError(message.getKafkaTopic(), nodesToPartitionMap.get(manager.getInstanceName()));
+      channel.registerHandler(KillOfflinePushMessage.class, message -> {
+        processedMessage.add(message);
+        //make ST error to simulate kill consumption task.
+        if (nodesToPartitionMap.containsKey(manager.getInstanceName())) {
+          stateModelFactory.makeTransitionError(message.getKafkaTopic(),
+              nodesToPartitionMap.get(manager.getInstanceName()));
         }
       });
     }

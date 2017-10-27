@@ -444,7 +444,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             }
             throw new VeniceException(
                 "Failed to add a version: " + failedVersionNumber + " to store: " + storeName + " in cluster:"
-                    + clusterName);
+                    + clusterName, e);
         }
     }
 
