@@ -6,6 +6,9 @@ import com.linkedin.venice.kafka.consumer.StoreIngestionService;
 import com.linkedin.venice.storage.StorageService;
 import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.Time;
+import java.util.function.Function;
+import java.util.function.Predicate;
+import java.util.function.Supplier;
 import javax.validation.constraints.NotNull;
 import org.apache.helix.NotificationContext;
 import org.apache.helix.model.Message;
@@ -59,42 +62,58 @@ public class VenicePartitionStateModel extends StateModel {
         this.time = time;
     }
 
+    private void executeStateTransition(Message message, NotificationContext context,
+        Runnable handler) {
+        String from = message.getFromState();
+        String to = message.getToState();
+        logEntry(from, to, message, context);
+        // Change name to indicate which st is occupied this thread.
+        Thread.currentThread()
+            .setName("Helix-ST-" + message.getResourceName() + "-" + partition + "-" + from + "->" + to);
+        try {
+            handler.run();
+            logCompletion(from, to, message, context);
+        } finally {
+            // Once st is terminated, change the name to indicate this thread will not be occupied by this st.
+            Thread.currentThread().setName("Inactive ST thread.");
+        }
+    }
+
     @Transition(to = HelixState.ONLINE_STATE, from = HelixState.BOOTSTRAP_STATE)
     public void onBecomeOnlineFromBootstrap(Message message, NotificationContext context) {
-        logEntry(HelixState.BOOTSTRAP, HelixState.ONLINE, message, context);
-        try {
-            notifier.waitConsumptionCompleted(message.getResourceName(), partition);
-        } catch (InterruptedException e) {
-            String errorMsg =
-                "Can not complete consumption for resource:" + message.getResourceName() + "par" + " partition:"
-                    + partition;
-            logger.error(errorMsg, e);
-            // Please note, after throwing this exception, this node will become ERROR for this resource.
-            throw new VeniceException(errorMsg, e);
-        }
-        logCompletion(HelixState.BOOTSTRAP, HelixState.ONLINE, message, context);
+        executeStateTransition(message, context, () -> {
+            try {
+                notifier.waitConsumptionCompleted(message.getResourceName(), partition);
+            } catch (InterruptedException e) {
+                String errorMsg =
+                    "Can not complete consumption for resource:" + message.getResourceName() + "par" + " partition:"
+                        + partition;
+                logger.error(errorMsg, e);
+                // Please note, after throwing this exception, this node will become ERROR for this resource.
+                throw new VeniceException(errorMsg, e);
+            }
+        });
     }
 
     @Transition(to = HelixState.BOOTSTRAP_STATE, from = HelixState.OFFLINE_STATE)
     public void onBecomeBootstrapFromOffline(Message message, NotificationContext context) {
-        logEntry(HelixState.OFFLINE, HelixState.BOOTSTRAP, message, context);
-        // If given store and partition have already exist in this node, openStoreForNewPartition is idempotent so it
-        // will not create them again.
-        storageService.openStoreForNewPartition(storeConfig , partition);
-        storeIngestionService.startConsumption(storeConfig, partition);
-        notifier.startConsumption(message.getResourceName(), partition);
-        logCompletion(HelixState.OFFLINE, HelixState.BOOTSTRAP, message, context);
-       }
+        executeStateTransition(message, context, () -> {
+            // If given store and partition have already exist in this node, openStoreForNewPartition is idempotent so it
+            // will not create them again.
+            storageService.openStoreForNewPartition(storeConfig, partition);
+            storeIngestionService.startConsumption(storeConfig, partition);
+            notifier.startConsumption(message.getResourceName(), partition);
+        });
+    }
 
     /**
      * Handles ONLINE->OFFLINE transition. Unsubscribes to the partition as part of the transition.
      */
     @Transition(to = HelixState.OFFLINE_STATE, from = HelixState.ONLINE_STATE)
     public void onBecomeOfflineFromOnline(Message message, NotificationContext context) {
-        logEntry(HelixState.ONLINE, HelixState.OFFLINE, message, context);
-        storeIngestionService.stopConsumption(storeConfig, partition);
-        logCompletion(HelixState.ONLINE, HelixState.OFFLINE, message, context);
-
+        executeStateTransition(message, context, ()-> {
+            storeIngestionService.stopConsumption(storeConfig, partition);
+        });
     }
 
     private void removePartitionFromStore() {
@@ -127,9 +146,9 @@ public class VenicePartitionStateModel extends StateModel {
     @Transition(to = HelixState.DROPPED_STATE, from = HelixState.OFFLINE_STATE)
     public void onBecomeDroppedFromOffline(Message message, NotificationContext context) {
         //TODO Add some control logic here to maintain storage engine to avoid mistake operations.
-        logEntry(HelixState.OFFLINE, HelixState.DROPPED, message, context);
-        removePartitionFromStore();
-        logCompletion(HelixState.OFFLINE, HelixState.DROPPED, message, context);
+        executeStateTransition(message, context, ()-> {
+            removePartitionFromStore();
+        });
     }
 
     /**
@@ -137,9 +156,11 @@ public class VenicePartitionStateModel extends StateModel {
      */
     @Override
     public void rollbackOnError(Message message, NotificationContext context, StateTransitionError error) {
-        logger.info(storePartitionDescription
-            + " met an error during state transition. Stop the running consumption. Caused by:", error.getException());
-        storeIngestionService.stopConsumption(storeConfig, partition);
+        executeStateTransition(message, context, ()-> {
+            logger.info(storePartitionDescription + " met an error during state transition. Stop the running consumption. Caused by:",
+                error.getException());
+            storeIngestionService.stopConsumption(storeConfig, partition);
+        });
     }
 
     /**
@@ -147,9 +168,9 @@ public class VenicePartitionStateModel extends StateModel {
      */
     @Transition(to = HelixState.OFFLINE_STATE, from = HelixState.ERROR_STATE)
     public void onBecomeOfflineFromError(Message message, NotificationContext context) {
-        logEntry(HelixState.ERROR, HelixState.OFFLINE, message, context);
-        storeIngestionService.stopConsumption(storeConfig, partition);
-        logCompletion(HelixState.ERROR, HelixState.OFFLINE, message, context);
+        executeStateTransition(message, context, ()->{
+            storeIngestionService.stopConsumption(storeConfig, partition);
+        });
     }
 
     /**
@@ -157,10 +178,10 @@ public class VenicePartitionStateModel extends StateModel {
      */
     @Transition(to = HelixState.OFFLINE_STATE, from = HelixState.BOOTSTRAP_STATE)
     public void onBecomeOfflineFromBootstrap(Message message, NotificationContext context) {
-        logEntry(HelixState.BOOTSTRAP, HelixState.OFFLINE, message, context);
-        // TODO stop is an async operation, we need to ensure that it's really stopped before state transition is completed.
-        storeIngestionService.stopConsumption(storeConfig, partition);
-        logCompletion(HelixState.BOOTSTRAP, HelixState.OFFLINE, message, context);
+        executeStateTransition(message, context, ()-> {
+            // TODO stop is an async operation, we need to ensure that it's really stopped before state transition is completed.
+            storeIngestionService.stopConsumption(storeConfig, partition);
+        });
     }
 
     /**
@@ -170,27 +191,27 @@ public class VenicePartitionStateModel extends StateModel {
     @Override
     @Transition(to = HelixState.DROPPED_STATE, from = HelixState.ERROR_STATE)
     public void onBecomeDroppedFromError(Message message, NotificationContext context) {
-        logEntry(HelixState.ERROR, HelixState.DROPPED, message, context);
-        try {
-            storeIngestionService.stopConsumption(storeConfig, partition);
-            removePartitionFromStore();
-        } catch (Throwable e) {
-            // Catch throwable here to ensure state transition is completed to avoid enter into the infinite loop error->dropped->error->....
-            logger.error("Met error during the  transition.", e);
-        }
-        logCompletion(HelixState.ERROR, HelixState.DROPPED, message, context);
+        executeStateTransition(message, context, ()-> {
+                try {
+                    storeIngestionService.stopConsumption(storeConfig, partition);
+                    removePartitionFromStore();
+                } catch (Throwable e) {
+                    // Catch throwable here to ensure state transition is completed to avoid enter into the infinite loop error->dropped->error->....
+                    logger.error("Met error during the  transition.", e);
+                }
+        });
     }
 
-    private void logEntry(HelixState from, HelixState to, Message message, NotificationContext context) {
-        logger.info(storePartitionDescription + " initiating transition from " + from.toString() + " to " + to
-                .toString() + " Store" + storeConfig.getStoreName() + " Partition " + partition +
-                " invoked with Message " + message + " and context " + context);
+    private void logEntry(String from, String to, Message message, NotificationContext context) {
+        logger.info(storePartitionDescription + " initiating transition from " + from + " to " + to + " Store"
+            + storeConfig.getStoreName() + " Partition " + partition +
+            " invoked with Message " + message + " and context " + context);
     }
 
-    private void logCompletion(HelixState from, HelixState to, Message message, NotificationContext context) {
-        logger.info(storePartitionDescription + " completed transition from " + from.toString() + " to "
-                + to.toString() + " Store " + storeConfig.getStoreName() + " Partition " + partition +
-                " invoked with Message " + message + " and context " + context);
+    private void logCompletion(String from, String to, Message message, NotificationContext context) {
+        logger.info(storePartitionDescription + " completed transition from " + from + " to " + to + " Store "
+            + storeConfig.getStoreName() + " Partition " + partition +
+            " invoked with Message " + message + " and context " + context);
     }
 
     /**
