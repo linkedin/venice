@@ -62,7 +62,6 @@ class IntegrationTestUtils {
     VeniceProperties clusterProperties = new PropertyBuilder()
 
     // Helix-related config
-    .put(HELIX_ENABLED, true)
     .put(ZOOKEEPER_ADDRESS, zkAddress)
 
     // Kafka-related config

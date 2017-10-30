@@ -246,18 +246,22 @@ public class RouterServer extends AbstractVeniceService {
     RouterExceptionAndTrackingUtils.setStatsForMultiGet(statsForMultiGet);
 
     VeniceHostFinder hostFinder = new VeniceHostFinder(routingDataRepository,
-        config.isStickyRoutingEnabledForSingleGet(), config.isStickyRoutingEnabledForMultiGet(),
+        config.isStickyRoutingEnabledForSingleGet(),
+        config.isStickyRoutingEnabledForMultiGet(),
         statsForSingleGet, statsForMultiGet);
 
     // Fixed retry future
     AsyncFuture<LongSupplier> retryFuture = new SuccessAsyncFuture<>(() -> config.getLongTailRetryThresholdMs());
 
+    /**
+     * No need to setup {@link com.linkedin.ddsstorage.router.api.HostHealthMonitor} here since
+     * {@link VeniceHostFinder} will always do health check.
+     */
     ScatterGatherHelper scatterGather = ScatterGatherHelper.builder()
         .roleFinder(new VeniceRoleFinder())
         .pathParserExtended(pathParser)
         .partitionFinder(partitionFinder)
         .hostFinder(hostFinder)
-        .hostHealthMonitor(healthMonitor)
         .dispatchHandler(dispatcher)
         .scatterMode(scatterGatherMode)
         .responseAggregatorFactory(new VeniceResponseAggregator(statsForSingleGet, statsForMultiGet))
