@@ -8,12 +8,14 @@ import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.notifier.PushMonitorNotifier;
 import com.linkedin.venice.server.VeniceConfigLoader;
 import com.linkedin.venice.service.AbstractVeniceService;
+import com.linkedin.venice.stats.ThreadPoolStats;
 import com.linkedin.venice.status.StatusMessageHandler;
 import com.linkedin.venice.storage.StorageService;
 import com.linkedin.venice.utils.DaemonThreadFactory;
 import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
+import io.tehuti.metrics.MetricsRepository;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.LinkedBlockingQueue;
@@ -67,6 +69,7 @@ public class HelixParticipationService extends AbstractVeniceService implements 
   public HelixParticipationService(@NotNull StoreIngestionService storeIngestionService,
           @NotNull StorageService storageService,
           @NotNull VeniceConfigLoader veniceConfigLoader,
+          @NotNull MetricsRepository metricsRepository,
           @NotNull String zkAddress,
           @NotNull String clusterName,
           int port) {
@@ -87,7 +90,7 @@ public class HelixParticipationService extends AbstractVeniceService implements 
             veniceConfigLoader.getVeniceServerConfig().getMaxStateTransitionThreadNumber(), 300L, TimeUnit.SECONDS,
             new LinkedBlockingQueue<>(), new DaemonThreadFactory("venice-state-transition"));
     helixStateTransitionExecutorService.allowCoreThreadTimeOut(true);
-
+    new ThreadPoolStats(metricsRepository, helixStateTransitionExecutorService, "Venice_ST_thread_pool");
     stateModelFactory = new VeniceStateModelFactory(storeIngestionService, storageService, veniceConfigLoader,
         helixStateTransitionExecutorService);
   }
