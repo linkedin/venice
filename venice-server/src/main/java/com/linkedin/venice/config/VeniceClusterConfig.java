@@ -14,7 +14,7 @@ import java.io.File;
 
 /**
  * class that maintains config very specific to a Venice cluster
- */ 
+ */
 public class VeniceClusterConfig {
   private String clusterName;
   //TODO: shouldn't the following configs be moved to VeniceServerConfig??
@@ -41,7 +41,6 @@ public class VeniceClusterConfig {
   protected void checkProperties(VeniceProperties clusterProps) throws ConfigurationException {
     clusterName = clusterProps.getString(CLUSTER_NAME);
 
-    helixEnabled = clusterProps.getBoolean(HELIX_ENABLED);
     zookeeperAddress = clusterProps.getString(ZOOKEEPER_ADDRESS);
     offsetManagerType = clusterProps.getString(OFFSET_MANAGER_TYPE, PersistenceType.BDB.toString()); // Default "bdb"
     offsetDatabasePath = clusterProps.getString(OFFSET_DATA_BASE_PATH,
@@ -102,10 +101,6 @@ public class VeniceClusterConfig {
 
   public long getOffsetDatabaseCacheSizeInBytes() {
     return offsetDatabaseCacheSize;
-  }
-
-  public boolean isHelixEnabled() {
-    return helixEnabled;
   }
 
   public String getZookeeperAddress() {

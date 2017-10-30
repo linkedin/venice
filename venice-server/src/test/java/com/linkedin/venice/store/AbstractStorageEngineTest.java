@@ -32,7 +32,6 @@ public abstract class AbstractStorageEngineTest extends AbstractStoreTest {
         .put(ENABLE_KAFKA_CONSUMER_OFFSET_MANAGEMENT, "true")
         .put(OFFSET_MANAGER_TYPE, "bdb")
         .put(OFFSET_MANAGER_FLUSH_INTERVAL_MS, flushIntervalMs)
-        .put(HELIX_ENABLED, "false")
         .put(ZOOKEEPER_ADDRESS, "localhost:2181")
         .put(PERSISTENCE_TYPE, persistenceType.toString())
         .put(KAFKA_BROKERS, "localhost")

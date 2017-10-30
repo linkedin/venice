@@ -15,12 +15,11 @@ public class ConfigKeys {
   public static final String OFFSET_DATA_BASE_PATH = "offsets.data.base.path";
   public static final String OFFSET_MANAGER_FLUSH_INTERVAL_MS = "offset.manager.flush.interval.ms";
   public static final String OFFSET_MANAGER_LOG_FILE_MAX_BYTES = "offset.manager.log.file.max.bytes";
-  public static final String HELIX_ENABLED = "helix.enabled";
   public static final String ZOOKEEPER_ADDRESS = "zookeeper.address";
   public static final Set<String> clusterSpecificProperties = new HashSet<String>(Arrays
       .asList(CLUSTER_NAME, PARTITION_NODE_ASSIGNMENT_SCHEME,
           ENABLE_KAFKA_CONSUMER_OFFSET_MANAGEMENT, OFFSET_MANAGER_TYPE, OFFSET_DATA_BASE_PATH,
-          OFFSET_MANAGER_FLUSH_INTERVAL_MS, HELIX_ENABLED, ZOOKEEPER_ADDRESS));
+          OFFSET_MANAGER_FLUSH_INTERVAL_MS, ZOOKEEPER_ADDRESS));
 
   public static final String ADMIN_PORT="admin.port";
 

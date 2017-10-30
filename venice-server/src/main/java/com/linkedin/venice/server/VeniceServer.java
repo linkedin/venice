@@ -121,25 +121,24 @@ public class VeniceServer {
     this.kafkaStoreIngestionService =
         new KafkaStoreIngestionService(storageService.getStoreRepository(), veniceConfigLoader, storageMetadataService, metadataRepo,schemaRepo, metricsRepository);
 
-    // start venice participant service if Helix is enabled.
-    if(clusterConfig.isHelixEnabled()) {
-      HelixParticipationService helixParticipationService =
-          new HelixParticipationService(kafkaStoreIngestionService, storageService, veniceConfigLoader,
-              clusterConfig.getZookeeperAddress(), clusterConfig.getClusterName(),
-              veniceConfigLoader.getVeniceServerConfig().getListenerPort());
-      services.add(helixParticipationService);
-      // Add kafka consumer service last so when shutdown the server, it will be stopped first to avoid the case
-      // that helix is disconnected but consumption service try to send message by helix.
-      services.add(kafkaStoreIngestionService);
-    } else {
-      // Note: Only required when NOT using Helix.
-      throw new UnsupportedOperationException("Only Helix mode of operation is supported");
-    }
-
     //create and add ListenerServer for handling GET requests
     ListenerService listenerService = new ListenerService(storageService.getStoreRepository(),
         kafkaStoreIngestionService, veniceConfigLoader, metricsRepository, sslFactory);
     services.add(listenerService);
+
+    /**
+     * Helix participator service should start last since we need to make sure current Storage Node is ready to take
+     * read requests if it claims to be available in Helix.
+     */
+    // start venice participant service if Helix is enabled.
+    HelixParticipationService helixParticipationService =
+        new HelixParticipationService(kafkaStoreIngestionService, storageService, veniceConfigLoader,
+            clusterConfig.getZookeeperAddress(), clusterConfig.getClusterName(),
+            veniceConfigLoader.getVeniceServerConfig().getListenerPort());
+    services.add(helixParticipationService);
+    // Add kafka consumer service last so when shutdown the server, it will be stopped first to avoid the case
+    // that helix is disconnected but consumption service try to send message by helix.
+    services.add(kafkaStoreIngestionService);
 
 
     /**
