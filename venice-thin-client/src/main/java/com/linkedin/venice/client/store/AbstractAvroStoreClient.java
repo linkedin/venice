@@ -58,6 +58,7 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
   private TransportClient transportClient;
   private String storeName;
   private D2ServiceDiscovery d2ServiceDiscovery = new D2ServiceDiscovery();
+  private Executor deserializationExecutor;
   /**
    * Here is the details about the deadlock issue if deserialization logic is executed in the same R2 callback thread:
    * 1. A bunch of regular get requests are sent to Venice backend at the same time;
@@ -76,23 +77,31 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
    * Also, we don't want to use the default thread pool: {@link CompletableFuture#useCommonPool} since it is being shared,
    * and the deserialization could be blocked by the logic not belonging to Venice Client.
    **/
-  private static final int DESERIALIZATION_THREAD_NUM;
-  private static final Executor DESERIALIZATION_EXECUTOR;
+  private static Executor DESERIALIZATION_EXECUTOR = null;
 
-  static {
-    // Half of process number of threads should be good enough
-    int halfOfAvailableProcessors = Runtime.getRuntime().availableProcessors() / 2;
-    DESERIALIZATION_THREAD_NUM = halfOfAvailableProcessors > 0 ? halfOfAvailableProcessors : 1;
-    DESERIALIZATION_EXECUTOR = Executors.newFixedThreadPool(DESERIALIZATION_THREAD_NUM,
-        new DaemonThreadFactory("Venice-Store-Deserialization"));
+  public static synchronized Executor getDefaultDeserializationExecutor() {
+    if (DESERIALIZATION_EXECUTOR == null) {
+      // Half of process number of threads should be good enough
+      int threadNum = Runtime.getRuntime().availableProcessors() / 2;
+      if (threadNum <= 0) {
+        threadNum = 1;
+      }
+
+      DESERIALIZATION_EXECUTOR = Executors.newFixedThreadPool(threadNum,
+          new DaemonThreadFactory("Venice-Store-Deserialization"));
+    }
+
+    return DESERIALIZATION_EXECUTOR;
   }
 
   public AbstractAvroStoreClient(TransportClient transportClient,
-                                 String storeName,
-                                 boolean needSchemaReader) {
+                                String storeName,
+                                boolean needSchemaReader,
+                                Executor deserializationExecutor) {
     this.transportClient = transportClient;
     this.storeName = storeName;
     this.needSchemaReader = needSchemaReader;
+    this.deserializationExecutor = deserializationExecutor;
   }
 
   @Override
@@ -107,6 +116,10 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
   @NotNull
   protected SchemaReader getSchemaReader() {
     return schemaReader;
+  }
+
+  protected Executor getDeserializationExecutor() {
+    return deserializationExecutor;
   }
 
   private String getStorageRequestPathForSingleKey(byte[] key) {
@@ -189,7 +202,7 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
           RecordDeserializer<V> deserializer = getDataRecordDeserializer(clientResponse.getSchemaId());
           return deserializer.deserialize(clientResponse.getBody());
         },
-        DESERIALIZATION_EXECUTOR
+        deserializationExecutor
     );
 
     return valueFuture;
@@ -199,9 +212,9 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
   public CompletableFuture<byte[]> getRaw(String requestPath) {
     CompletableFuture<TransportClientResponse> transportFuture = transportClient.get(requestPath);
     /**
-     * We shouldn't use this thread pool: {@link #DESERIALIZATION_EXECUTOR} here.
+     * We shouldn't use this thread pool: {@link #deserializationExecutor} here.
      * Otherwise, it could cause the deadlock issue.
-      */
+     */
 
     CompletableFuture<byte[]> valueFuture = transportFuture.handle(
         (clientResponse, throwable) -> {
@@ -262,7 +275,7 @@ public abstract class AbstractAvroStoreClient<K, V> extends InternalAvroStoreCli
 
           return resultMap;
         },
-        DESERIALIZATION_EXECUTOR
+        deserializationExecutor
     );
 
 

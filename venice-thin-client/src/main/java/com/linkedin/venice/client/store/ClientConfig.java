@@ -3,6 +3,7 @@ package com.linkedin.venice.client.store;
 import com.linkedin.d2.balancer.D2Client;
 import com.linkedin.security.ssl.access.control.SSLEngineComponentFactory;
 import io.tehuti.metrics.MetricsRepository;
+import java.util.concurrent.Executor;
 import org.apache.avro.specific.SpecificRecord;
 
 
@@ -25,6 +26,7 @@ public class ClientConfig<T extends SpecificRecord> {
   private int d2ZkTimeout = DEFAULT_ZK_TIMEOUT_MS;
   private D2Client d2Client = null;
   private MetricsRepository metricsRepository = null;
+  private Executor deserializationExecutor = null;
 
   //https specific settings
   private boolean isHttps = false;
@@ -182,13 +184,28 @@ public class ClientConfig<T extends SpecificRecord> {
     return this;
   }
 
+
+  public MetricsRepository getMetricsRepository() {
+    return metricsRepository;
+  }
   public ClientConfig<T> setMetricsRepository(MetricsRepository metricsRepository) {
     this.metricsRepository = metricsRepository;
     return this;
   }
 
-  public MetricsRepository getMetricsRepository() {
-    return metricsRepository;
+  public Executor getDeserializationExecutor() {
+    return deserializationExecutor;
+  }
+
+  /**
+   * Provide an arbitrary executor to execute client requests in,
+   * rather than letting the client use its own internally-generated executor.
+   * If null, or unset, the client will use {@link java.util.concurrent.Executors#newFixedThreadPool(int)}
+   * with a thread limit equal to half the CPU cores.
+   */
+  public ClientConfig<T> setDeserializationExecutor(Executor deserializationExecutor) {
+    this.deserializationExecutor = deserializationExecutor;
+    return this;
   }
 
   public boolean isVsonClient() {

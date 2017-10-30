@@ -8,6 +8,7 @@ import com.linkedin.venice.client.store.transport.TransportClient;
 import com.linkedin.venice.client.store.transport.TransportClientResponse;
 import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponse;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executor;
 import org.apache.avro.specific.SpecificRecord;
 import org.codehaus.jackson.map.ObjectMapper;
 
@@ -23,11 +24,16 @@ public class ClientFactory {
   public static <K, V> AvroGenericStoreClient<K, V> getGenericAvroClient(ClientConfig clientConfig) {
     TransportClient transportClient = getTransportClient(clientConfig);
 
+    Executor deserializationExecutor = clientConfig.getDeserializationExecutor();
+    if (deserializationExecutor == null) {
+      deserializationExecutor = AbstractAvroStoreClient.getDefaultDeserializationExecutor();
+    }
     InternalAvroStoreClient<K, V> internalClient;
+
     if (clientConfig.isVsonClient()) {
-      internalClient = new VsonGenericStoreClientImpl<>(transportClient, clientConfig.getStoreName());
+      internalClient = new VsonGenericStoreClientImpl<>(transportClient, clientConfig.getStoreName(), deserializationExecutor);
     } else {
-      internalClient = new AvroGenericStoreClientImpl<>(transportClient, clientConfig.getStoreName());
+      internalClient = new AvroGenericStoreClientImpl<>(transportClient, clientConfig.getStoreName(), deserializationExecutor);
     }
 
     StatTrackingStoreClient<K, V> client;
@@ -48,8 +54,12 @@ public class ClientFactory {
 
   public static <K, V extends SpecificRecord> AvroSpecificStoreClient<K, V> getSpecificAvroClient(ClientConfig<V> clientConfig) {
     TransportClient transportClient = getTransportClient(clientConfig);
+    Executor deserializationExecutor = clientConfig.getDeserializationExecutor();
+    if (deserializationExecutor == null) {
+      deserializationExecutor = AbstractAvroStoreClient.getDefaultDeserializationExecutor();
+    }
     InternalAvroStoreClient<K, V> avroClient =
-        new AvroSpecificStoreClientImpl<>(transportClient, clientConfig.getStoreName(), clientConfig.getSpecificValueClass());
+        new AvroSpecificStoreClientImpl<>(transportClient, clientConfig.getStoreName(), clientConfig.getSpecificValueClass(), deserializationExecutor);
 
     SpecificStatTrackingStoreClient<K, V> client;
     if (clientConfig.getMetricsRepository() != null) {
