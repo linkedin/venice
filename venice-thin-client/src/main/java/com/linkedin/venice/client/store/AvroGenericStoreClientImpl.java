@@ -5,6 +5,7 @@ import com.linkedin.venice.client.schema.SchemaReader;
 import com.linkedin.venice.client.store.transport.TransportClient;
 import com.linkedin.venice.serializer.SerializerDeserializerFactory;
 import com.linkedin.venice.serializer.RecordDeserializer;
+import java.util.concurrent.Executor;
 import org.apache.avro.Schema;
 
 /**
@@ -13,11 +14,16 @@ import org.apache.avro.Schema;
  */
 public class AvroGenericStoreClientImpl<K, V> extends AbstractAvroStoreClient<K, V> {
   public AvroGenericStoreClientImpl(TransportClient transportClient, String storeName) {
-    this(transportClient, storeName, true);
+    this(transportClient, storeName, true, AbstractAvroStoreClient.getDefaultDeserializationExecutor());
   }
+
+  public AvroGenericStoreClientImpl(TransportClient transportClient, String storeName, Executor deserializationExecutor) {
+    this(transportClient, storeName, true, deserializationExecutor);
+  }
+
   protected AvroGenericStoreClientImpl(TransportClient transportClient, String storeName,
-                                     boolean needSchemaReader) {
-    super(transportClient, storeName, needSchemaReader);
+                                     boolean needSchemaReader, Executor deserializationExecutor) {
+    super(transportClient, storeName, needSchemaReader, deserializationExecutor);
   }
 
   /**
@@ -27,7 +33,8 @@ public class AvroGenericStoreClientImpl<K, V> extends AbstractAvroStoreClient<K,
    */
   @Override
   protected AbstractAvroStoreClient<K, V> getStoreClientForSchemaReader() {
-    return new AvroGenericStoreClientImpl<K, V>(getTransportClient().getCopyIfNotUsableInCallback(), getStoreName(), false);
+    return new AvroGenericStoreClientImpl<K, V>(getTransportClient().getCopyIfNotUsableInCallback(),
+        getStoreName(), false, getDeserializationExecutor());
   }
 
   @Override
