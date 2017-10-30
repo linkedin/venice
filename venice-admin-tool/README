@@ -186,3 +186,14 @@ java -jar venice-admin-tool-0.1.jar --set-migration-push-strategy --url <url> --
 
 
 ```
+
+Summarize the replicas status from the result of command "--replicas-on-storage-node" or "--replicas-of-store":
+1. Get number of ${status} replicas from the result of either commands, ${status} could be ONLINE/BOOTSTRAP/ERROR/OFFLINE
+> output | jq '[.replicas[].status == "${status}"]|length'
+2. Get number of ${status replicas} replicas for specific ${store_version} from the result of "--replicas-on-storage-node".
+> output | jq '[.replicas[]| select(.resource == "${store_version}" and .status=="${status}")]|length'
+3. Get number of replicas per node from result of "--replicas-of-store"
+> output | jq '.replicas | group_by(.instance)[]|.[0].instance.nodeId, length'
+4. Get number of ${status} replicas per node from result of "--replicas-of-store"
+> output | jq '[.replicas[]|select(.status=="${status}")] | group_by(.instance)[]|.[0].instance.nodeId, length'
+
