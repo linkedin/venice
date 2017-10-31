@@ -77,6 +77,8 @@ public class TestVsonAvroDatumReader {
     List<Integer> record = Arrays.asList(1, 2, null);
 
     testReader(vsonSchemaStr, () -> record, (vsonObject) -> {
+      Assert.assertTrue(vsonObject instanceof ArrayList, "VsonAvroDatumReader should return an ArrayList for 'Array' schema");
+
       Assert.assertEquals(((List) vsonObject).get(0), 1);
       Assert.assertEquals(((List) vsonObject).get(1), 2);
       Assert.assertEquals(((List) vsonObject).get(2), null);
@@ -84,10 +86,18 @@ public class TestVsonAvroDatumReader {
       try {
         ((List) vsonObject).get(3);
         Assert.fail();
-      } catch (ArrayIndexOutOfBoundsException e) {}
+      } catch (IndexOutOfBoundsException e) {}
     });
 
     testReadNullValue(vsonSchemaStr);
+  }
+
+
+  @Test
+  public void testListCompare() {
+    List<Integer> list1 = Arrays.asList(1, 2, 3);
+    List<Integer> list2 = Arrays.asList(1, 2, 3);
+    Assert.assertEquals(list1, list2, "ArrayList should support equal function properly");
   }
 
   private void testReader(String vsonSchemaStr, Supplier valueSupplier) throws IOException {
