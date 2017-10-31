@@ -3,11 +3,14 @@ package com.linkedin.venice.schema.vson;
 import com.linkedin.venice.serializer.VsonSerializationException;
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map;
 import org.apache.avro.Schema;
+import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericDatumReader;
 import org.apache.avro.io.Decoder;
 import org.apache.avro.io.ResolvingDecoder;
@@ -73,6 +76,18 @@ public class VsonAvroDatumReader<D> extends GenericDatumReader<D> {
   @Override
   protected Object readMap(Object old, Schema expected, ResolvingDecoder in) throws IOException {
     throw notSupportType(expected.getType());
+  }
+
+  /**
+   * The reason to override this function is that VSON would like to use {@link java.util.ArrayList} instead of
+   * {@link GenericData.Array} to support comparison against another {@link java.util.AbstractList}.
+   */
+  @Override
+  protected Object newArray(Object old, int size, Schema schema) {
+    if (old instanceof Collection) {
+      ((Collection) old).clear();
+      return old;
+    } else return new ArrayList(size);
   }
 
   static VsonSerializationException notSupportType(Schema.Type type) {
