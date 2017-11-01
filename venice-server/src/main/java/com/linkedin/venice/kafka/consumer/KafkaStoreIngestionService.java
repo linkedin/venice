@@ -207,10 +207,22 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       consumerExecutorService.submit(consumerTask);
     }
 
-    //Since Venice metric is store-level and it would have multiply topics tasks exist in the same time.
-    //Only the task with largest version would emit it stats.
+    /**
+     * Since Venice metric is store-level and it would have multiply topics tasks exist in the same time.
+     * Only the task with largest version would emit it stats. That being said, relying on the {@link #metadataRepo}
+     * to get the max version may be unreliable, since the information in this object is not guaranteed
+     * to be up to date. As a sanity check, we will also look at the version in the topic name, and
+     * pick whichever number is highest as the max version number.
+     */
     String storeName = Version.parseStoreFromKafkaTopicName(topic);
-    int maxVersionNumber = getStoreMaximumVersionNumber(storeName);
+    int maxVersionNumberFromTopicName = Version.parseVersionFromKafkaTopicName(topic);
+    int maxVersionNumberFromMetadataRepo = getStoreMaximumVersionNumber(storeName);
+    if (maxVersionNumberFromTopicName > maxVersionNumberFromMetadataRepo) {
+      logger.warn("Got stale info from metadataRepo. maxVersionNumberFromTopicName: " + maxVersionNumberFromTopicName +
+          ", maxVersionNumberFromMetadataRepo: " + maxVersionNumberFromMetadataRepo +
+          ". Will rely on the topic name's version.");
+    }
+    int maxVersionNumber = Math.max(maxVersionNumberFromMetadataRepo, maxVersionNumberFromTopicName);
     updateStatsEmission(topicNameToIngestionTaskMap, storeName, maxVersionNumber);
 
     consumerTask.subscribePartition(topic, partitionId);

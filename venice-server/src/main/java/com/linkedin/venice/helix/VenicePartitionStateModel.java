@@ -21,12 +21,17 @@ import org.apache.log4j.Logger;
 
 /**
  * Venice Partition's State model to manage state transitions.
+ *
+ * The scope of this state model is one replica of one partition, hosted on one storage node.
  * <p>
- * The States along with their assumptions are as follows: Offline (Initial State): The partition messages are not being
- * consumed from Kafka. Online (Ideal State): The partition messages are being consumed from Kafka. Dropped (Implicit
- * State): The partition has been unsubscribed from Kafka, the kafka offset for the partition has been reset to the
- * beginning, Data related to Partition has been removed from local storage. Error: A partition enters this state if
- * there was some error while transitioning from one state to another.
+ * The States along with their assumptions are as follows:
+ *
+ * - Offline (Initial State): The partition messages are not being consumed from Kafka.
+ * - Bootstrap (Intermediary State): The partition messages are being consumed from Kafka.
+ * - Online (Ideal State): The partition messages are fully consumed from Kafka and checksumming has succeeded.
+ * - Dropped (Implicit State): The partition has been unsubscribed from Kafka, the kafka offset for the partition
+ *   has been reset to the beginning, Data related to Partition has been removed from local storage.
+ * - Error: A partition enters this state if there was some error while transitioning from one state to another.
  */
 
 @StateModelInfo(initialState = HelixState.OFFLINE_STATE, states = {HelixState.ONLINE_STATE, HelixState.BOOTSTRAP_STATE})

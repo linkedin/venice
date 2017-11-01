@@ -10,7 +10,11 @@ import io.tehuti.metrics.MetricConfig;
  * store and ratio.
  */
 public class LambdaStat implements MeasurableStat{
-  private TehutiOps ops;
+  private ParameteredTehutiOps ops;
+
+  public LambdaStat(ParameteredTehutiOps ops) {
+    this.ops = ops;
+  }
 
   public LambdaStat(TehutiOps ops) {
     this.ops = ops;
@@ -21,10 +25,17 @@ public class LambdaStat implements MeasurableStat{
 
   @Override
   public double measure(MetricConfig config, long now) {
-    return ops.measure();
+    return ops.measure(config, now);
   }
 
-  public interface TehutiOps {
+  public interface TehutiOps extends ParameteredTehutiOps {
+    default double measure(MetricConfig config, long now) {
+      return measure();
+    }
     double measure();
+  }
+
+  public interface ParameteredTehutiOps {
+    double measure(MetricConfig config, long now);
   }
 }

@@ -99,14 +99,12 @@ public class TehutiUtils {
    */
   public static class RatioStat extends LambdaStat {
     public RatioStat(Rate one, Rate two) {
-      this(one, new MetricConfig(), two, new MetricConfig());
-    }
-    public RatioStat(Rate one, MetricConfig c1, Rate two, MetricConfig c2) {
-      super(() -> {
-        double numerator = one.measure(c1, 0);
-        double denominator = two.measure(c2, 0);
+      super((config, now) -> {
+        double numerator = one.measure(config, now);
+        double denominator = two.measure(config, now);
 
         if (numerator + denominator == 0) {
+          /** TODO: Consider whether we should use a {@link StatsErrorCode} here */
           return Double.NaN;
         }
 
@@ -121,15 +119,12 @@ public class TehutiUtils {
    */
   public static class SimpleRatioStat extends LambdaStat {
     public SimpleRatioStat(Rate numeratorStat, Rate denominatorStat) {
-      this(numeratorStat, new MetricConfig(), denominatorStat, new MetricConfig());
-    }
-    public SimpleRatioStat(Rate numeratorStat, MetricConfig numeatorConfig,
-        Rate denominatorStat, MetricConfig demoniatorConfig) {
-      super(() -> {
-        double numerator = numeratorStat.measure(numeatorConfig, 0);
-        double denominator = denominatorStat.measure(demoniatorConfig, 0);
+      super((config, now) -> {
+        double numerator = numeratorStat.measure(config, now);
+        double denominator = denominatorStat.measure(config, now);
 
         if (denominator == 0) {
+          /** TODO: Consider whether we should use a {@link StatsErrorCode} here */
           return Double.NaN;
         }
 

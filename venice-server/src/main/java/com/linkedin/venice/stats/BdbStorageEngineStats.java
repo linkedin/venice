@@ -9,7 +9,8 @@ import com.sleepycat.je.Environment;
 import com.sleepycat.je.EnvironmentStats;
 import com.sleepycat.je.StatsConfig;
 import io.tehuti.metrics.MetricsRepository;
-import io.tehuti.metrics.Sensor;
+
+import static com.linkedin.venice.stats.StatsErrorCode.*;
 
 /**
  * Specific metrics for BDB.
@@ -118,7 +119,7 @@ public class BdbStorageEngineStats extends AbstractVeniceStats {
 
   public long getNumCacheMiss() {
     EnvironmentStats stats = getFastStats();
-    return stats == null ? 0l : stats.getNCacheMiss();
+    return stats == null ? NULL_BDB_ENVIRONMENT.code : stats.getNCacheMiss();
   }
 
   public long getNumReadsTotal() {
@@ -127,12 +128,12 @@ public class BdbStorageEngineStats extends AbstractVeniceStats {
 
   public long getNumRandomReads() {
     EnvironmentStats stats = getFastStats();
-    return stats == null ? 0l : stats.getNRandomReads();
+    return stats == null ? NULL_BDB_ENVIRONMENT.code : stats.getNRandomReads();
   }
 
   public long getNumSequentialReads() {
     EnvironmentStats stats = getFastStats();
-    return stats == null ? 0l : stats.getNSequentialReads();
+    return stats == null ? NULL_BDB_ENVIRONMENT.code : stats.getNSequentialReads();
   }
 
   public long getNumWritesTotal() {
@@ -141,18 +142,18 @@ public class BdbStorageEngineStats extends AbstractVeniceStats {
 
   public long getNumRandomWrites() {
     EnvironmentStats stats = getFastStats();
-    return stats == null ? 0l : stats.getNRandomWrites();
+    return stats == null ? NULL_BDB_ENVIRONMENT.code : stats.getNRandomWrites();
   }
 
   public long getNumSequentialWrites() {
     EnvironmentStats stats = getFastStats();
-    return stats == null ? 0l : stats.getNSequentialWrites();
+    return stats == null ? NULL_BDB_ENVIRONMENT.code : stats.getNSequentialWrites();
   }
 
   //Disk
   public long getAllottedCacheSize() {
     EnvironmentStats stats = getFastStats();
-    return stats == null ? 0l : stats.getCacheTotalBytes();
+    return stats == null ? NULL_BDB_ENVIRONMENT.code : stats.getCacheTotalBytes();
   }
 
   public double getPercentageSpaceUtilization() {
@@ -161,17 +162,17 @@ public class BdbStorageEngineStats extends AbstractVeniceStats {
 
   public long getTotalSpaceUtilized() {
     BdbSpaceUtilizationSummary summary = getFastSpaceUtilizationSummary();
-    return summary == null ? 0l : summary.getTotalSpaceUtilized();
+    return summary == null ? NULL_BDB_ENVIRONMENT.code : summary.getTotalSpaceUtilized();
   }
 
   public long getTotalSpace() {
     BdbSpaceUtilizationSummary summary = getFastSpaceUtilizationSummary();
-    return summary == null ? 0l : summary.getTotalSpaceUsed();
+    return summary == null ? NULL_BDB_ENVIRONMENT.code : summary.getTotalSpaceUsed();
   }
 
   //cleaning
   public long getNumCleanerRuns() {
     EnvironmentStats stats = getFastStats();
-    return stats == null ? 0l : stats.getNCleanerRuns();
+    return stats == null ? NULL_BDB_ENVIRONMENT.code : stats.getNCleanerRuns();
   }
 }

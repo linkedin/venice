@@ -93,7 +93,7 @@ public class TestAdminSparkServerWithMultiServers {
    * After the attempt, the version is made current so the next attempt generates a new version.
    * @throws InterruptedException
    */
-  @Test(timeOut = TIME_OUT * 6) // Long test, often times out.
+  @Test(timeOut = TIME_OUT, retryAnalyzer = FlakyTestRetryAnalyzer.class) // TODO: Fix this flaky test.
   public void requestTopicIsIdempotentWithConcurrency() throws InterruptedException {
     String storeName = TestUtils.getUniqueString("store");
     venice.getNewStore(storeName);
