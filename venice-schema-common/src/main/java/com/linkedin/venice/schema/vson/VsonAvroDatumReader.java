@@ -8,6 +8,8 @@ import java.util.Arrays;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.Iterator;
+import java.util.List;
+import java.util.ListIterator;
 import java.util.Map;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
@@ -87,7 +89,7 @@ public class VsonAvroDatumReader<D> extends GenericDatumReader<D> {
     if (old instanceof Collection) {
       ((Collection) old).clear();
       return old;
-    } else return new ArrayList(size);
+    } else return new DeepEqualsArrayList(size);
   }
 
   static VsonSerializationException notSupportType(Schema.Type type) {
@@ -149,6 +151,48 @@ public class VsonAvroDatumReader<D> extends GenericDatumReader<D> {
       }
 
       return true;
+    }
+  }
+
+  /**
+   * This class supports the special byte[] check.
+   * With this class, you can compare the array result retrieved from VSON store.
+   *
+   * Most of the logic is copied from {@link java.util.AbstractList#equals(Object)}
+   */
+  public static class DeepEqualsArrayList extends ArrayList<Object> {
+    public DeepEqualsArrayList() {
+      super();
+    }
+    public DeepEqualsArrayList(int size) {
+      super(size);
+    }
+    @Override
+    public boolean equals(Object o) {
+      if (o == this)
+        return true;
+      if (!(o instanceof List))
+        return false;
+
+      ListIterator<Object> e1 = listIterator();
+      ListIterator<?> e2 = ((List<?>) o).listIterator();
+      while (e1.hasNext() && e2.hasNext()) {
+        Object o1 = e1.next();
+        Object o2 = e2.next();
+        // Special check for byte[]
+        if (o1 != null && o2 != null && o1.getClass().equals(byte[].class) && o2.getClass().equals(byte[].class)) {
+          if (!Arrays.equals((byte[])o1, (byte[])o2)) {
+            return false;
+          }
+        }
+        /**
+         * We should not use 'o2.equals(o1)' here since the right value may not support deep equals check.
+         */
+        else if (!(o1==null ? o2==null : o1.equals(o2))) {
+          return false;
+        }
+      }
+      return !(e1.hasNext() || e2.hasNext());
     }
   }
 }
