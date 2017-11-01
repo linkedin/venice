@@ -6,6 +6,8 @@ import io.tehuti.metrics.MetricsRepository;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
+import static com.linkedin.venice.stats.StatsErrorCode.*;
+
 
 public class VersionedDIVStatsReporterTest {
   @Test
@@ -28,7 +30,7 @@ public class VersionedDIVStatsReporterTest {
     stats.recordCurrentIdleTime();
     statsReporter.setCurrentStats(1, stats);
     Assert.assertEquals(reporter.query("." + storeName + "--future_version.VersionStat").value(), 0d);
-    Assert.assertEquals(reporter.query("." + storeName + "_future--current_idle_time.DIVStatsCounter").value(), 0d);
+    Assert.assertEquals(reporter.query("." + storeName + "_future--current_idle_time.DIVStatsCounter").value(), (double) NULL_DIV_STATS.code);
     Assert.assertEquals(reporter.query("." + storeName + "--current_version.VersionStat").value(), 1d);
     Assert.assertEquals(reporter.query("." + storeName + "_current--current_idle_time.DIVStatsCounter").value(), 2d);
   }

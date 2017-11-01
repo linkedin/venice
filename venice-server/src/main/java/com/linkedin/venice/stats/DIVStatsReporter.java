@@ -3,6 +3,7 @@ package com.linkedin.venice.stats;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.function.Supplier;
 
+import static com.linkedin.venice.stats.StatsErrorCode.*;
 
 public class DIVStatsReporter extends AbstractVeniceStats {
   private DIVStats stats;
@@ -34,7 +35,7 @@ public class DIVStatsReporter extends AbstractVeniceStats {
 
   private static class DIVStatsCounter extends LambdaStat {
     DIVStatsCounter(DIVStatsReporter divStatsReporter, Supplier<Long> supplier) {
-      super(() -> divStatsReporter.getDIVStats() == null ? 0d : supplier.get());
+      super(() -> divStatsReporter.getDIVStats() == null ? NULL_DIV_STATS.code : supplier.get());
     }
   }
 }

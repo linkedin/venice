@@ -6,6 +6,8 @@ import io.tehuti.metrics.MetricsRepository;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
+import static com.linkedin.venice.stats.StatsErrorCode.*;
+
 
 public class DIVStatsReporterTest {
   @Test
@@ -17,7 +19,7 @@ public class DIVStatsReporterTest {
     String storeName = TestUtils.getUniqueString("store");
     DIVStatsReporter divStatsReporter = new DIVStatsReporter(metricsRepository, storeName);
 
-    Assert.assertEquals(reporter.query("." + storeName + "--success_msg.DIVStatsCounter").value(), 0d);
+    Assert.assertEquals(reporter.query("." + storeName + "--success_msg.DIVStatsCounter").value(), (double) NULL_DIV_STATS.code);
 
     DIVStats stats = new DIVStats();
     stats.recordSuccessMsg();
@@ -25,6 +27,6 @@ public class DIVStatsReporterTest {
     Assert.assertEquals(reporter.query("." + storeName + "--success_msg.DIVStatsCounter").value(), 1d);
 
     divStatsReporter.setDIVStats(null);
-    Assert.assertEquals(reporter.query("." + storeName + "--success_msg.DIVStatsCounter").value(), 0d);
+    Assert.assertEquals(reporter.query("." + storeName + "--success_msg.DIVStatsCounter").value(), (double) NULL_DIV_STATS.code);
   }
 }

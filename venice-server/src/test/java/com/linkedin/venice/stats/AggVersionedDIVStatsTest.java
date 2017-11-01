@@ -18,7 +18,7 @@ import org.testng.annotations.BeforeTest;
 import org.testng.annotations.Test;
 
 import static org.mockito.Mockito.*;
-
+import static com.linkedin.venice.stats.StatsErrorCode.*;
 
 public class AggVersionedDIVStatsTest {
   private AggVersionedDIVStats stats;
@@ -46,10 +46,15 @@ public class AggVersionedDIVStatsTest {
   public void testStatsCanLoadStores() {
     String storeName = mockStore.getName();
 
-    Assert.assertEquals(reporter.query("." + storeName + "_future--success_msg.DIVStatsCounter").value(), 0d);
-    Assert.assertEquals(reporter.query("." + storeName + "_current--duplicate_msg.DIVStatsCounter").value(), 0d);
-    Assert.assertEquals(reporter.query("." + storeName + "_backup--missing_msg.DIVStatsCounter").value(), 0d);
-    Assert.assertEquals(reporter.query("." + storeName + "_future--corrupted_msg.DIVStatsCounter").value(), 0d);
+    /**
+     * Since this is a brand new store, it does not yet contain any versions, which means we should get
+     * {@link NULL_DIV_STATS} on the version-specific stats...
+     */
+
+    Assert.assertEquals(reporter.query("." + storeName + "_future--success_msg.DIVStatsCounter").value(), (double) NULL_DIV_STATS.code);
+    Assert.assertEquals(reporter.query("." + storeName + "_current--duplicate_msg.DIVStatsCounter").value(), (double) NULL_DIV_STATS.code);
+    Assert.assertEquals(reporter.query("." + storeName + "_backup--missing_msg.DIVStatsCounter").value(), (double) NULL_DIV_STATS.code);
+    Assert.assertEquals(reporter.query("." + storeName + "_future--corrupted_msg.DIVStatsCounter").value(), (double) NULL_DIV_STATS.code);
   }
 
   @Test
@@ -59,8 +64,13 @@ public class AggVersionedDIVStatsTest {
 
     String storeName = newStore.getName();
 
-    Assert.assertEquals(reporter.query("." + storeName + "_current--current_idle_time.DIVStatsCounter").value(), 0d);
-    Assert.assertEquals(reporter.query("." + storeName + "_backup--overall_idle_time.DIVStatsCounter").value(), 0d);
+    /**
+     * Since this is a brand new store, it does not yet contain any versions, which means we should get
+     * {@link NULL_DIV_STATS} on the version-specific stats...
+     */
+
+    Assert.assertEquals(reporter.query("." + storeName + "_current--current_idle_time.DIVStatsCounter").value(), (double) NULL_DIV_STATS.code);
+    Assert.assertEquals(reporter.query("." + storeName + "_backup--overall_idle_time.DIVStatsCounter").value(), (double) NULL_DIV_STATS.code);
     Assert.assertEquals(reporter.query("." + storeName + "_total--corrupted_msg.DIVStatsCounter").value(), 0d);
     Assert.assertEquals(reporter.query("." + storeName + "_total--success_msg.DIVStatsCounter").value(), 0d);
   }

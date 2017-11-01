@@ -58,6 +58,7 @@ import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.log4j.Logger;
 
+import static com.linkedin.venice.stats.StatsErrorCode.*;
 
 /**
  * Assumes: One to One mapping between a Venice Store and Kafka Topic.
@@ -810,9 +811,16 @@ public class StoreIngestionTask implements Runnable, Closeable {
     lastDrainerException = e;
   }
 
+  /**
+   * @return the total lag for all subscribed partitions between store-version topic and this consumption task.
+   */
   public long getOffsetLag() {
     if (!emitMetrics.get()) {
-      return 0;
+      return STORE_VERSION_SHOULD_NOT_EMIT_METRICS.code;
+    }
+
+    if (partitionConsumptionStateMap.isEmpty()) {
+      return NO_SUBSCRIBED_PARTITION.code;
     }
 
     Map<Integer, Long> latestOffsets = topicManager.getLatestOffsets(topic);
@@ -820,17 +828,24 @@ public class StoreIngestionTask implements Runnable, Closeable {
         .map(entry -> latestOffsets.get(entry.getKey()) - entry.getValue().getOffsetRecord().getOffset())
         .reduce(0l, (lag1, lag2) -> lag1 + lag2);
 
-    return offsetLag > 0 ? offsetLag : 0;
+    return minZeroLag(offsetLag);
   }
 
+  /**
+   * @return the total lag for all subscribed partitions between the real-time buffer topic and this consumption task.
+   */
   public long getRealTimeBufferOffsetLag() {
     if (!hybridStoreConfig.isPresent()) {
-      return 0;
+      return METRIC_ONLY_AVAILABLE_FOR_HYBRID_STORES.code;
     }
 
     Optional<StoreVersionState> svs = storageMetadataService.getStoreVersionState(topic);
     if (!svs.isPresent()) {
-      return 0;
+      return STORE_VERSION_STATE_UNAVAILABLE.code;
+    }
+
+    if (partitionConsumptionStateMap.isEmpty()) {
+      return NO_SUBSCRIBED_PARTITION.code;
     }
 
     long offsetLag = partitionConsumptionStateMap.values().parallelStream()
@@ -839,7 +854,21 @@ public class StoreIngestionTask implements Runnable, Closeable {
         .mapToLong(pcs -> measureHybridOffsetLag(svs.get().startOfBufferReplay, pcs))
         .sum();
 
-    return offsetLag > 0 ? offsetLag : 0;
+    return minZeroLag(offsetLag);
+  }
+
+  /**
+   * Because of timing considerations, it is possible that some lag metrics could compute negative
+   * values. Negative lag does not make sense so the intent is to ease interpretation by applying a
+   * lower bound of zero on these metrics...
+   */
+  private long minZeroLag(long value) {
+    if (value < 0) {
+      logger.debug("Got a negative value for a lag metric. Will report zero.");
+      return 0;
+    } else {
+      return value;
+    }
   }
 
   /**
