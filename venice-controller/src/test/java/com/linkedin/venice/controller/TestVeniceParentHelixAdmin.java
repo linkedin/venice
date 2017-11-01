@@ -31,16 +31,10 @@ import com.linkedin.venice.integration.utils.KafkaBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
-import com.linkedin.venice.meta.StoreInfo;
+import com.linkedin.venice.meta.*;
 import com.linkedin.venice.migration.MigrationPushStrategy;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.kafka.TopicManager;
-import com.linkedin.venice.meta.OfflinePushStrategy;
-import com.linkedin.venice.meta.PersistenceType;
-import com.linkedin.venice.meta.ReadStrategy;
-import com.linkedin.venice.meta.RoutingStrategy;
-import com.linkedin.venice.meta.Store;
-import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.utils.MockTime;
 import com.linkedin.venice.utils.TestUtils;
@@ -1119,8 +1113,9 @@ public class TestVeniceParentHelixAdmin {
     Optional<Long> readQuota = Optional.of(100l);
     Optional<Long> storageQuota = Optional.empty();
     Optional<Boolean> accessControlled = Optional.of(true);
+    Optional<CompressionStrategy> compressionStrategy = Optional.of(CompressionStrategy.GZIP);
     parentAdmin.updateStore(clusterName, storeName, owner, readability, writebility, partitionCount, storageQuota,
-        readQuota, Optional.empty(), Optional.of(135L), Optional.of(2000L), accessControlled);
+        readQuota, Optional.empty(), Optional.of(135L), Optional.of(2000L), accessControlled, compressionStrategy);
 
     verify(veniceWriter)
         .put(any(), any(), anyInt());
@@ -1155,7 +1150,7 @@ public class TestVeniceParentHelixAdmin {
     // Disable Access Control
     accessControlled = Optional.of(false);
     parentAdmin.updateStore(clusterName, storeName, owner, readability, writebility, partitionCount, storageQuota,
-        readQuota, Optional.empty(), Optional.of(135L), Optional.of(2000L), accessControlled);
+        readQuota, Optional.empty(), Optional.of(135L), Optional.of(2000L), accessControlled, compressionStrategy);
     verify(veniceWriter, times(2)).put(keyCaptor.capture(), valueCaptor.capture(), schemaCaptor.capture());
     valueBytes = valueCaptor.getValue();
     schemaId = schemaCaptor.getValue();

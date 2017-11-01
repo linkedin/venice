@@ -254,7 +254,7 @@ public class TestPushUtils {
 
     ControllerResponse controllerResponse = controllerClient.updateStore(props.getProperty(VENICE_STORE_NAME_PROP), Optional.empty(), Optional.empty(),
         Optional.empty(), Optional.empty(), Optional.empty(), Optional.of(Store.UNLIMITED_STORAGE_QUOTA), Optional.empty(),
-        Optional.empty(), Optional.empty(), Optional.empty());
+        Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty());
 
     Assert.assertFalse(controllerResponse.isError(), "The UpdateStore response returned an error: " + controllerResponse.getError());
 
@@ -265,7 +265,7 @@ public class TestPushUtils {
     try(ControllerClient controllerClient = new ControllerClient(venice.getClusterName(), venice.getRandomRouterURL())){
       ControllerResponse response = controllerClient.updateStore(storeName, Optional.empty(), Optional.empty(),
           Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(),
-          Optional.of(rewindSeconds), Optional.of(offsetLag), Optional.empty());
+          Optional.of(rewindSeconds), Optional.of(offsetLag), Optional.empty(), Optional.empty());
       if (response.isError()){
         throw new VeniceException(response.getError());
       }

@@ -14,6 +14,7 @@ import com.linkedin.venice.controllerapi.TrackableControllerResponse;
 import com.linkedin.venice.controllerapi.VersionResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
+import com.linkedin.venice.meta.CompressionStrategy;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
@@ -156,6 +157,10 @@ public class StoresRoutes {
         Optional<Boolean> accessControlled = accessControlStr == null ? Optional.empty() :
             Optional.of(Utils.parseBooleanFromString(accessControlStr, ACCESS_CONTROLLED));
 
+        String compressionStrategyStr = AdminSparkServer.getOptionalParameterValue(request, COMPRESSION_STRATEGY);
+        Optional<CompressionStrategy> compressionStrategy = compressionStrategyStr == null ? Optional.empty() :
+            Optional.of(CompressionStrategy.valueOf(compressionStrategyStr));
+
         admin.updateStore(veniceResponse.getCluster(),
                           veniceResponse.getName(),
                           owner,
@@ -167,7 +172,8 @@ public class StoresRoutes {
                           currentVersion,
                           hybridRewind,
                           hybridOffsetLag,
-                          accessControlled);
+                          accessControlled,
+                          compressionStrategy);
       }
     };
   }

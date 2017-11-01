@@ -2,12 +2,9 @@ package com.linkedin.venice.controller;
 
 import com.linkedin.venice.controller.kafka.consumer.AdminConsumerService;
 import com.linkedin.venice.helix.Replica;
-import com.linkedin.venice.meta.RoutersClusterConfig;
+import com.linkedin.venice.meta.*;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.kafka.TopicManager;
-import com.linkedin.venice.meta.Instance;
-import com.linkedin.venice.meta.Store;
-import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.schema.SchemaEntry;
 
 import com.linkedin.venice.utils.Pair;
@@ -131,17 +128,18 @@ public interface Admin {
 
     //TODO: using Optional here is a bit of cumbersome, might want to change it if we find better way to pass those params.
     void updateStore(String clusterName,
-        String storeName,
-        Optional<String> owner,
-        Optional<Boolean> readability,
-        Optional<Boolean> writeability,
-        Optional<Integer> partitionCount,
-        Optional<Long> storageQuotaInByte,
-        Optional<Long> readQuotaInCU,
-        Optional<Integer> currentVersion,
-        Optional<Long> hybridRewindSeconds,
-        Optional<Long> hybridOffsetLagThreshold,
-        Optional<Boolean> accessControlled);
+                     String storeName,
+                     Optional<String> owner,
+                     Optional<Boolean> readability,
+                     Optional<Boolean> writeability,
+                     Optional<Integer> partitionCount,
+                     Optional<Long> storageQuotaInByte,
+                     Optional<Long> readQuotaInCU,
+                     Optional<Integer> currentVersion,
+                     Optional<Long> hybridRewindSeconds,
+                     Optional<Long> hybridOffsetLagThreshold,
+                     Optional<Boolean> accessControlled,
+                     Optional<CompressionStrategy> compressionStrategy);
 
     double getStorageEngineOverheadRatio(String clusterName);
 

@@ -33,6 +33,10 @@ public class Version implements Comparable<Version> {
   private VersionStatus status = VersionStatus.STARTED;
 
   private final String pushJobId;
+  /**
+   * strategies used to compress/decompress Record's value
+   */
+  private CompressionStrategy compressionStrategy = CompressionStrategy.NO_OP;
 
   /**
    * Use the constructor that specifies a pushJobId instead
@@ -71,6 +75,14 @@ public class Version implements Comparable<Version> {
 
   public void setStatus(@NotNull VersionStatus status) {
     this.status = status;
+  }
+
+  public CompressionStrategy getCompressionStrategy() {
+    return compressionStrategy;
+  }
+
+  public void setCompressionStrategy(CompressionStrategy compressionStrategy) {
+    this.compressionStrategy = compressionStrategy;
   }
 
   public String getStoreName() {
@@ -125,6 +137,9 @@ public class Version implements Comparable<Version> {
     if (status != version.status) {
       return false;
     }
+    if (compressionStrategy != version.compressionStrategy) {
+      return false;
+    }
     return pushJobId.equals(version.pushJobId);
   }
 
@@ -135,6 +150,7 @@ public class Version implements Comparable<Version> {
     result = 31 * result + (int) (createdTime ^ (createdTime >>> 32));
     result = 31 * result + status.hashCode();
     result = 31 * result + pushJobId.hashCode();
+    result = 31 * result + compressionStrategy.hashCode();
     return result;
   }
 
@@ -149,6 +165,7 @@ public class Version implements Comparable<Version> {
   public Version cloneVersion() {
     Version clonedVersion = new Version(storeName, number, createdTime, pushJobId);
     clonedVersion.setStatus(status);
+    clonedVersion.setCompressionStrategy(compressionStrategy);
     return clonedVersion;
   }
 
