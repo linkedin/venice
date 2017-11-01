@@ -77,7 +77,7 @@ public class TestVsonAvroDatumReader {
     List<Integer> record = Arrays.asList(1, 2, null);
 
     testReader(vsonSchemaStr, () -> record, (vsonObject) -> {
-      Assert.assertTrue(vsonObject instanceof ArrayList, "VsonAvroDatumReader should return an ArrayList for 'Array' schema");
+      Assert.assertTrue(vsonObject instanceof VsonAvroDatumReader.DeepEqualsArrayList, "VsonAvroDatumReader should return a DeepEqualsArrayList for 'Array' schema");
 
       Assert.assertEquals(((List) vsonObject).get(0), 1);
       Assert.assertEquals(((List) vsonObject).get(1), 2);
@@ -90,14 +90,6 @@ public class TestVsonAvroDatumReader {
     });
 
     testReadNullValue(vsonSchemaStr);
-  }
-
-
-  @Test
-  public void testListCompare() {
-    List<Integer> list1 = Arrays.asList(1, 2, 3);
-    List<Integer> list2 = Arrays.asList(1, 2, 3);
-    Assert.assertEquals(list1, list2, "ArrayList should support equal function properly");
   }
 
   private void testReader(String vsonSchemaStr, Supplier valueSupplier) throws IOException {
@@ -140,13 +132,61 @@ public class TestVsonAvroDatumReader {
     regularMap2.put("key2", "value2".getBytes());
 
     String assertMessageForDeepEqualsHashMap = "DeepEqualsHashMap should implement deep equal properly even"
-        + " it contains array elements.";
-    String assertMessageForRegularHashMap = "HashMap supports deep equals() properly even it contains array elements so"
+        + " it contains byte[] value.";
+    String assertMessageForRegularHashMap = "HashMap supports deep equals() properly even it contains byte[] value so"
         + " the DeepEqualsHashMap is not necessary anymore.";
 
     Assert.assertTrue(deMap1.equals(deMap2), assertMessageForDeepEqualsHashMap);
     Assert.assertTrue(deMap1.equals(regularMap1), assertMessageForDeepEqualsHashMap);
     Assert.assertFalse(regularMap1.equals(deMap1), assertMessageForRegularHashMap);
     Assert.assertFalse(regularMap1.equals(regularMap2), assertMessageForRegularHashMap);
+  }
+
+
+  @Test
+  public void testDeepEqualsArrayList() {
+    List<Object> deList1 = new VsonAvroDatumReader.DeepEqualsArrayList();
+    deList1.add("value1".getBytes());
+    deList1.add("value2".getBytes());
+
+    List<Object> deList2 = new VsonAvroDatumReader.DeepEqualsArrayList();
+    deList2.add("value1".getBytes());
+    deList2.add("value2".getBytes());
+
+    List<Object> regularList1 = new ArrayList<>();
+    regularList1.add("value1".getBytes());
+    regularList1.add("value2".getBytes());
+
+    List<Object> regularList2 = new ArrayList<>();
+    regularList2.add("value1".getBytes());
+    regularList2.add("value2".getBytes());
+
+
+    String assertMessageForDeepEqualsArrayList = "DeepEqualsArrayList should implement deep equal properly even"
+        + " it contains byte[] elements.";
+    String assertMessageForRegularArrayList = "ArrayList supports deep equals() properly even it contains byte[] elements so"
+        + " the DeepEqualsArrayList is not necessary anymore.";
+
+    Assert.assertTrue(deList1.equals(deList2), assertMessageForDeepEqualsArrayList);
+    Assert.assertTrue(deList1.equals(regularList1), assertMessageForDeepEqualsArrayList);
+    Assert.assertFalse(regularList1.equals(deList1), assertMessageForRegularArrayList);
+    Assert.assertFalse(regularList1.equals(regularList2), assertMessageForRegularArrayList);
+
+    // Test map with array element
+    Map<String, Object> deMap = new VsonAvroDatumReader.DeepEqualsHashMap();
+    Map<String, Object> regularMap = new HashMap<>();
+    deMap.put("key1", deList1);
+    deMap.put("key2", "value".getBytes());
+    regularMap.put("key1", regularList1);
+    regularMap.put("key2", "value".getBytes());
+
+    Assert.assertTrue(deMap.equals(regularMap), "DeepEqualsHashMap should support proper equal recursively");
+
+    // Test array with map element
+    List<Object> deList = new VsonAvroDatumReader.DeepEqualsArrayList();
+    List<Object> regularList = new ArrayList<>();
+    deList.add(deMap);
+    regularList.add(regularMap);
+    Assert.assertTrue(deList.equals(regularList), "DeepEqualsArrayList should support proper equal recursively");
   }
 }
