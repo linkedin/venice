@@ -109,6 +109,11 @@ public class Store {
    */
   private boolean accessControlled = false;
 
+  /**
+   * strategies used to compress/decompress Record's value
+   */
+  private CompressionStrategy compressionStrategy = CompressionStrategy.GZIP;
+
   public Store(@NotNull String name, @NotNull String owner, long createdTime, @NotNull PersistenceType persistenceType,
       @NotNull RoutingStrategy routingStrategy, @NotNull ReadStrategy readStrategy,
       @NotNull OfflinePushStrategy offlinePushStrategy) {
@@ -135,6 +140,7 @@ public class Store {
     this.currentVersion = currentVersion;
     this.readQuotaInCU = readQuotaInCU;
     this.hybridStoreConfig = hybridStoreConfig;
+    this.compressionStrategy = compressionStrategy;
   }
 
   /**
@@ -286,6 +292,14 @@ public class Store {
     return null != hybridStoreConfig;
   }
 
+  public CompressionStrategy getCompressionStrategy() {
+    return compressionStrategy;
+  }
+
+  public void setCompressionStrategy(CompressionStrategy compressionStrategy) {
+    this.compressionStrategy = compressionStrategy;
+  }
+
   /**
    * Add a version into store.
    *
@@ -320,6 +334,10 @@ public class Store {
         break;
       }
     }
+
+    //update version compression type
+    version.setCompressionStrategy(compressionStrategy);
+
     versions.add(index, version);
     if (version.getNumber() > largestUsedVersionNumber) {
       largestUsedVersionNumber = version.getNumber();
@@ -475,6 +493,7 @@ public class Store {
     result = 31 * result + (int) (readQuotaInCU ^ (readQuotaInCU >>> 32));
     result = 31 * result + (hybridStoreConfig != null ? hybridStoreConfig.hashCode() : 0);
     result = 31 * result + (accessControlled ? 1 : 0);
+    result = 31 * result + (compressionStrategy.hashCode());
     return result;
   }
 
@@ -501,6 +520,7 @@ public class Store {
     if (offLinePushStrategy != store.offLinePushStrategy) return false;
     if (!versions.equals(store.versions)) return false;
     if (accessControlled != store.accessControlled) return false;
+    if (compressionStrategy != store.compressionStrategy) return false;
     return !(hybridStoreConfig != null ? !hybridStoreConfig.equals(store.hybridStoreConfig) : store.hybridStoreConfig != null);
   }
 
@@ -531,6 +551,7 @@ public class Store {
     clonedStore.setPartitionCount(partitionCount);
     clonedStore.setLargestUsedVersionNumber(largestUsedVersionNumber);
     clonedStore.setAccessControlled(accessControlled);
+    clonedStore.setCompressionStrategy(compressionStrategy);
 
     for (Version v : this.versions) {
       clonedStore.forceAddVersion(v.cloneVersion());

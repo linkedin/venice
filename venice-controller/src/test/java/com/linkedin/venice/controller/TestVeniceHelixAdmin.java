@@ -534,7 +534,7 @@ public class TestVeniceHelixAdmin {
     HybridStoreConfig hybridConfig = new HybridStoreConfig(TimeUnit.SECONDS.convert(2, TimeUnit.DAYS), 1000);
     veniceAdmin.updateStore(clusterName, storeName, Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(),
         Optional.empty(), Optional.empty(), Optional.empty(), Optional.of(hybridConfig.getRewindTimeInSeconds()),
-        Optional.of(hybridConfig.getOffsetLagThresholdToGoOnline()), Optional.empty());
+        Optional.of(hybridConfig.getOffsetLagThresholdToGoOnline()), Optional.empty(), Optional.empty());
     Assert.assertTrue(veniceAdmin.getStore(clusterName, storeName).isHybrid());
   }
 
@@ -585,7 +585,7 @@ public class TestVeniceHelixAdmin {
     veniceAdmin.addStore(clusterName, storeName, "owner", keySchema, valueSchema);
     veniceAdmin.updateStore(clusterName, storeName, Optional.empty(), Optional.empty(),
         Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(),
-        Optional.of(25L), Optional.of(100L), Optional.empty()); //make store hybrid
+        Optional.of(25L), Optional.of(100L), Optional.empty(), Optional.empty()); //make store hybrid
 
     try {
       veniceAdmin.getRealTimeTopic(clusterName, storeName);
@@ -919,13 +919,13 @@ public class TestVeniceHelixAdmin {
 
     veniceAdmin.updateStore(clusterName, storeName, Optional.empty(), Optional.empty(), Optional.empty(),
         Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(),
-        Optional.empty(), Optional.of(false));
+        Optional.empty(), Optional.of(false), Optional.empty());
     store = veniceAdmin.getStore(clusterName, storeName);
     Assert.assertEquals(store.isAccessControlled(), false);
 
     veniceAdmin.updateStore(clusterName, storeName, Optional.empty(), Optional.empty(), Optional.empty(),
         Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(),
-        Optional.empty(), Optional.of(true));
+        Optional.empty(), Optional.of(true), Optional.empty());
     store = veniceAdmin.getStore(clusterName, storeName);
     Assert.assertEquals(store.isAccessControlled(), true);
   }

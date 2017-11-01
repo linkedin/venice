@@ -5,6 +5,7 @@ import com.linkedin.venice.LastSucceedExecutionIdResponse;
 import com.linkedin.venice.controllerapi.routes.AdminCommandExecutionResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
+import com.linkedin.venice.meta.CompressionStrategy;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.Utils;
 import java.io.Closeable;
@@ -547,7 +548,8 @@ public class ControllerClient implements Closeable {
       Optional<Long> readQuotaInCU,
       Optional<Long> hybridRewindSeconds,
       Optional<Long> hybridOffsetLagThreshold,
-      Optional<Boolean> accessControlled) {
+      Optional<Boolean> accessControlled,
+      Optional<CompressionStrategy> compressionStrategy) {
 
     try {
       List<NameValuePair> queryParams = newParams(clusterName);
@@ -581,6 +583,9 @@ public class ControllerClient implements Closeable {
       }
       if (accessControlled.isPresent()) {
         queryParams.add(new BasicNameValuePair(ControllerApiConstants.ACCESS_CONTROLLED, accessControlled.get().toString()));
+      }
+      if (compressionStrategy.isPresent()) {
+        queryParams.add(new BasicNameValuePair(ControllerApiConstants.COMPRESSION_STRATEGY, compressionStrategy.get().toString()));
       }
 
       String responseJson = postRequest(ControllerRoute.UPDATE_STORE.getPath(), queryParams);

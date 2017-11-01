@@ -34,6 +34,7 @@ import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.kafka.validation.OffsetRecordTransformer;
 import com.linkedin.venice.kafka.validation.ProducerTracker;
 import com.linkedin.venice.message.KafkaKey;
+import com.linkedin.venice.meta.CompressionStrategy;
 import com.linkedin.venice.offsets.OffsetManager;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.schema.SchemaEntry;
@@ -551,7 +552,8 @@ public class AdminConsumptionTask implements Runnable, Closeable {
                       message.hybridStoreConfig == null
                           ? Optional.empty()
                           : Optional.of(message.hybridStoreConfig.offsetLagThresholdToGoOnline),
-                      Optional.of(message.accessControlled));
+                      Optional.of(message.accessControlled),
+                      CompressionStrategy.optionalValueOf(message.compressionStrategy));
 
     logger.info("Set store: " + storeName + " in cluster: " + clusterName);
   }

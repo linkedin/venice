@@ -15,26 +15,13 @@ import com.linkedin.venice.helix.ResourceAssignment;
 import com.linkedin.venice.helix.ZkRoutersClusterManager;
 import com.linkedin.venice.helix.ZkStoreConfigAccessor;
 import com.linkedin.venice.helix.ZkWhitelistAccessor;
-import com.linkedin.venice.meta.HybridStoreConfig;
-import com.linkedin.venice.meta.InstanceStatus;
-import com.linkedin.venice.meta.RoutersClusterConfig;
-import com.linkedin.venice.meta.RoutingDataRepository;
-import com.linkedin.venice.meta.StoreConfig;
-import com.linkedin.venice.meta.StoreGraveyard;
+import com.linkedin.venice.meta.*;
 import com.linkedin.venice.pushmonitor.KillOfflinePushMessage;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.helix.HelixReadWriteStoreRepository;
 import com.linkedin.venice.helix.HelixState;
-import com.linkedin.venice.meta.Instance;
-import com.linkedin.venice.meta.OfflinePushStrategy;
-import com.linkedin.venice.meta.Partition;
-import com.linkedin.venice.meta.PartitionAssignment;
-import com.linkedin.venice.meta.Store;
-import com.linkedin.venice.meta.StoreCleaner;
-import com.linkedin.venice.meta.Version;
-import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.pushmonitor.OfflinePushMonitor;
 import com.linkedin.venice.replication.TopicReplicator;
 import com.linkedin.venice.schema.SchemaData;
@@ -926,6 +913,15 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         });
     }
 
+    public synchronized  void setStoreCompressionStrategy(String clusterName, String storeName,
+                                                          CompressionStrategy compressionStrategy) {
+        storeMetadataUpdate(clusterName, storeName, store -> {
+            store.setCompressionStrategy(compressionStrategy);
+
+            return store;
+        });
+    }
+
     @Override
     public synchronized void updateStore(
         String clusterName,
@@ -939,7 +935,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         Optional<Integer> currentVersion,
         Optional<Long> hybridRewindSeconds,
         Optional<Long> hybridOffsetLagThreshold,
-        Optional<Boolean> accessControlled) {
+        Optional<Boolean> accessControlled,
+        Optional<CompressionStrategy> compressionStrategy) {
         Store originalStore = getStore(clusterName, storeName).cloneStore();
 
         try {
@@ -984,6 +981,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
             if (accessControlled.isPresent()) {
                 setAccessControl(clusterName, storeName, accessControlled.get());
+            }
+
+            if (compressionStrategy.isPresent()) {
+                setStoreCompressionStrategy(clusterName, storeName, compressionStrategy.get());
             }
 
         } catch (VeniceException e) {

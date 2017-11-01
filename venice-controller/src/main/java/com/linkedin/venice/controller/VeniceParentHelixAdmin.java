@@ -36,13 +36,9 @@ import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
 import com.linkedin.venice.helix.HelixReadWriteStoreRepository;
 import com.linkedin.venice.helix.Replica;
 import com.linkedin.venice.kafka.VeniceOperationAgainstKafkaTimedOut;
-import com.linkedin.venice.meta.HybridStoreConfig;
-import com.linkedin.venice.meta.RoutersClusterConfig;
+import com.linkedin.venice.meta.*;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.kafka.TopicManager;
-import com.linkedin.venice.meta.Instance;
-import com.linkedin.venice.meta.Store;
-import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.offsets.OffsetManager;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.utils.Pair;
@@ -774,7 +770,8 @@ public class VeniceParentHelixAdmin implements Admin {
       Optional<Integer> currentVersion,
       Optional<Long> hybridRewindSeconds,
       Optional<Long> hybridOffsetLagThreshold,
-      Optional<Boolean> accessControlled) {
+      Optional<Boolean> accessControlled,
+      Optional<CompressionStrategy> compressionStrategy) {
     acquireLock(clusterName);
 
     try {
@@ -807,6 +804,8 @@ public class VeniceParentHelixAdmin implements Admin {
       }
 
       setStore.accessControlled = accessControlled.isPresent() ? accessControlled.get() : store.isAccessControlled();
+      setStore.compressionStrategy = compressionStrategy.isPresent()
+          ? compressionStrategy.get().getValue() : store.getCompressionStrategy().getValue();
 
       AdminOperation message = new AdminOperation();
       message.operationType = AdminMessageType.UPDATE_STORE.ordinal();

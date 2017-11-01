@@ -24,6 +24,7 @@ import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.controllerapi.VersionResponse;
 import com.linkedin.venice.controllerapi.routes.AdminCommandExecutionResponse;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.meta.CompressionStrategy;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.schema.vson.VsonAvroSchemaAdapter;
 import com.linkedin.venice.utils.Utils;
@@ -401,6 +402,11 @@ public class AdminTool {
     Optional<Boolean> accessControlled = accessControlStr == null ? Optional.empty() :
         Optional.of(Utils.parseBooleanFromString(accessControlStr, "access control"));
 
+    String compressionStrategyStr = getOptionalArgument(cmd, Arg.COMPRESSION_STRATEGY);
+    Optional<CompressionStrategy> compressionStrategy = compressionStrategyStr == null
+        ? Optional.empty()
+        : Optional.of(CompressionStrategy.valueOf(compressionStrategyStr));
+
     ControllerResponse response = controllerClient.updateStore(
         storeName,
         owner,
@@ -412,7 +418,8 @@ public class AdminTool {
         readQuotaInCU,
         hybridRewindSeconds,
         hybridOffsetLag,
-        accessControlled);
+        accessControlled,
+        compressionStrategy);
 
     printSuccess(response);
   }
