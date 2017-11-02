@@ -59,6 +59,7 @@ public class CreateVersion {
         responseObject.setVersion(version.getNumber());
         responseObject.setKafkaTopic(version.kafkaTopicName());
         responseObject.setKafkaBootstrapServers(admin.getKafkaBootstrapServers());
+        responseObject.setEnableSSL(admin.isSslToKafka());
       } catch (Throwable e) {
         // TODO use the VeniceRouterHandler.handle
         if (e.getMessage() != null) {

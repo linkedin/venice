@@ -164,6 +164,8 @@ public class VeniceParentHelixAdmin implements Admin {
     }
 
     // Initialize producer
+    String kafkaBrokerServers = multiClusterConfigs.isSslToKafka() ? multiClusterConfigs.getSslKafkaBootstrapServers()
+        : multiClusterConfigs.getKafkaBootstrapServers();
     veniceWriterMap.computeIfAbsent(clusterName, (key) -> {
       /**
        * No need to do checksum validation since Kafka will do message-level checksum validation by default.
@@ -1035,6 +1037,11 @@ public class VeniceParentHelixAdmin implements Admin {
   @Override
   public String getKafkaBootstrapServers() {
     return veniceHelixAdmin.getKafkaBootstrapServers();
+  }
+
+  @Override
+  public boolean isSslToKafka() {
+    return veniceHelixAdmin.isSslToKafka();
   }
 
   @Override

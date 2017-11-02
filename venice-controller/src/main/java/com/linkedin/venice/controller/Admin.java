@@ -183,6 +183,8 @@ public interface Admin {
      */
     String getKafkaBootstrapServers();
 
+    boolean isSslToKafka();
+
     TopicManager getTopicManager();
 
     /**

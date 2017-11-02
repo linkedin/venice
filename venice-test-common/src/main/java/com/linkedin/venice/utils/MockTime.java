@@ -12,8 +12,8 @@ import java.util.concurrent.TimeUnit;
  * Useful for tests which are timing-dependent.
  */
 public class MockTime
-    extends kafka.utils.MockTime // For interop with the Kafka Broker's Time abstraction
-    implements kafka.utils.Time, // For interop with the Kafka Broker's Time abstraction
+    extends kafka.utils.MockTime
+    implements org.apache.kafka.common.utils.Time, // For interop with the Kafka Broker's Time abstraction
                Time {
 
   private static final Logger LOGGER = Logger.getLogger(MockTime.class);
@@ -71,6 +71,13 @@ public class MockTime
   public long milliseconds() {
     long time = getMilliseconds();
     LOGGER.info("Kafka asked for milliseconds. Returned: " + time);
+    return time;
+  }
+
+  @Override
+  public long hiResClockMs() {
+    long time = TimeUnit.NANOSECONDS.toMillis(getNanoseconds());
+    LOGGER.info("Kafka asked for high resolution milliseconds. Returned: " + time);
     return time;
   }
 

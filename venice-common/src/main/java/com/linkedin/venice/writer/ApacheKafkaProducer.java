@@ -12,11 +12,13 @@ import java.util.Properties;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 
+import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.kafka.clients.producer.Callback;
 import org.apache.kafka.clients.producer.KafkaProducer;
 import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.clients.producer.ProducerRecord;
 import org.apache.kafka.clients.producer.RecordMetadata;
+import org.apache.kafka.common.config.SslConfigs;
 import org.apache.log4j.Logger;
 
 
@@ -49,6 +51,19 @@ public class ApacheKafkaProducer implements KafkaProducerWrapper {
     ensureMandatoryProp(properties, ProducerConfig.RETRY_BACKOFF_MS_CONFIG, "1000");
     // Block if buffer is full
     ensureMandatoryProp(properties, ProducerConfig.MAX_BLOCK_MS_CONFIG, String.valueOf(Long.MAX_VALUE));
+
+    //Setup ssl config if needed.
+    setPropertiesFromVeniceProps(props,properties,CommonClientConfigs.SECURITY_PROTOCOL_CONFIG,"PLAINTEXT");
+    setPropertiesFromVeniceProps(props,properties,SslConfigs.SSL_KEYSTORE_LOCATION_CONFIG,"");
+    setPropertiesFromVeniceProps(props,properties,SslConfigs.SSL_KEYSTORE_PASSWORD_CONFIG,"");
+    setPropertiesFromVeniceProps(props,properties,SslConfigs.SSL_KEYSTORE_TYPE_CONFIG,"");
+    setPropertiesFromVeniceProps(props,properties,SslConfigs.SSL_KEY_PASSWORD_CONFIG,"");
+    setPropertiesFromVeniceProps(props,properties,SslConfigs.SSL_TRUSTSTORE_LOCATION_CONFIG,"");
+    setPropertiesFromVeniceProps(props,properties,SslConfigs.SSL_TRUSTSTORE_PASSWORD_CONFIG,"");
+    setPropertiesFromVeniceProps(props,properties,SslConfigs.SSL_TRUSTSTORE_TYPE_CONFIG,"");
+    setPropertiesFromVeniceProps(props,properties,SslConfigs.SSL_KEYMANAGER_ALGORITHM_CONFIG,"");
+    setPropertiesFromVeniceProps(props,properties,SslConfigs.SSL_TRUSTMANAGER_ALGORITHM_CONFIG,"");
+    setPropertiesFromVeniceProps(props,properties,SslConfigs.SSL_SECURE_RANDOM_IMPLEMENTATION_CONFIG,"");
 
     if (!properties.containsKey(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG)) {
       throw new ConfigurationException("Props key not found: " + PROPERTIES_KAFKA_PREFIX + ProducerConfig.BOOTSTRAP_SERVERS_CONFIG);
@@ -138,5 +153,12 @@ public class ApacheKafkaProducer implements KafkaProducerWrapper {
   private Properties getKafkaPropertiesFromVeniceProps(VeniceProperties props) {
     VeniceProperties kafkaProps = props.clipAndFilterNamespace(PROPERTIES_KAFKA_PREFIX);
     return kafkaProps.toProperties();
+  }
+
+  /**
+   * Get the given property from Venice Properties then put it into the target properites.
+   */
+  private void setPropertiesFromVeniceProps(VeniceProperties sourceProps, Properties targetProps, String key, String defaultValue){
+    targetProps.put(key, sourceProps.getString(key, defaultValue));
   }
 }

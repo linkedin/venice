@@ -46,7 +46,7 @@ public class TestHybrid {
 
   @Test
   public void testHybridInitializationOnMultiColo(){
-    VeniceClusterWrapper venice = ServiceFactory.getVeniceCluster(1,2,1,1, 1000000, false);
+    VeniceClusterWrapper venice = ServiceFactory.getVeniceCluster(1,2,1,1, 1000000, false, false);
     ZkServerWrapper parentZk = ServiceFactory.getZkServer();
     VeniceControllerWrapper parentController = ServiceFactory.getVeniceParentController(
         venice.getClusterName(), parentZk.getAddress(), venice.getKafka(), venice.getMasterVeniceController());
@@ -113,7 +113,7 @@ public class TestHybrid {
    */
   public void testHybridEndToEnd(boolean multiDivStream) throws Exception {
     logger.info("About to create VeniceClusterWrapper");
-    VeniceClusterWrapper venice = ServiceFactory.getVeniceCluster(1,1,1,1, 1000000, false);
+    VeniceClusterWrapper venice = ServiceFactory.getVeniceCluster(1,1,1,1, 1000000, false, false);
     logger.info("Finished creating VeniceClusterWrapper");
 
     long streamingRewindSeconds = 25L;

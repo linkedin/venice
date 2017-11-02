@@ -107,7 +107,7 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
       // URI: /value_schema/{$storeName}/{$valueSchemaId} - Get single value schema
       handleValueSchemaLookup(ctx, helper);
     } else if (VenicePathParser.TYPE_CLUSTER_DISCOVERY.equals(resourceType)) {
-      // URI: /cluster/${storeName}
+      // URI: /discover_cluster/${storeName}
       hanldeD2ServiceLookup(ctx, helper);
     } else {
       // SimpleChannelInboundHandler automatically releases the request after channelRead0 is done.

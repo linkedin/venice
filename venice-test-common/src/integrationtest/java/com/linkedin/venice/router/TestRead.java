@@ -72,7 +72,7 @@ public class TestRead {
     System.setProperty("io.netty.leakDetection.level", "paranoid");
 
     Utils.thisIsLocalhost();
-    veniceCluster = ServiceFactory.getVeniceCluster(1, 3, 1, 2, 100, true);
+    veniceCluster = ServiceFactory.getVeniceCluster(1, 3, 1, 2, 100, true, false);
     routerAddr = veniceCluster.getRandomRouterSslURL();
 
     // Create test store

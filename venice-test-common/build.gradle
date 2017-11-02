@@ -8,6 +8,11 @@ task buildJar(type: Jar) {
   with jar
 }
 
+configurations.compile {
+  exclude group: "org.apache.kafka"
+  exclude group: 'org.mortbay.jetty', module:'servlet-api'
+}
+
 jar {
   manifest {
     attributes 'Implementation-Title': 'Venice Test Common',
@@ -100,6 +105,10 @@ dependencies {
   compile libraries.mockito
   compile project(':venice-brooklin')
   compile project(':venice-samza')
+  compile libraries.kafka
+  compile libraries.kafkaClients
+  compile libraries.kafkaTest
+  compile libraries.kafkaClientsTest
 
   runtime libraries.commonsConfiguration
   runtime libraries.commonsLang

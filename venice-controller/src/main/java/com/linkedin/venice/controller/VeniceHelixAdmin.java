@@ -125,7 +125,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         this.controllerName = Utils.getHelixNodeIdentifier(multiClusterConfigs.getAdminPort());
         this.controllerClusterName = multiClusterConfigs.getControllerClusterName();
         this.controllerClusterReplica = multiClusterConfigs.getControllerClusterReplica();
-        this.kafkaBootstrapServers =  multiClusterConfigs.getKafkaBootstrapServers();
+        this.kafkaBootstrapServers =
+            multiClusterConfigs.isSslToKafka() ? multiClusterConfigs.getSslKafkaBootstrapServers()
+                : multiClusterConfigs.getKafkaBootstrapServers();
         this.failedJobTopicRetentionMs = multiClusterConfigs.getFailedJobTopicRetentionMs();
 
         // TODO: Re-use the internal zkClient for the ZKHelixAdmin and TopicManager.
@@ -1345,6 +1347,11 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     @Override
     public String getKafkaBootstrapServers() {
         return this.kafkaBootstrapServers;
+    }
+
+    @Override
+    public boolean isSslToKafka() {
+        return this.multiClusterConfigs.isSslToKafka();
     }
 
     @Override
