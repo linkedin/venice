@@ -105,7 +105,7 @@ public class VeniceDelegateMode extends ScatterGatherMode {
             INTERNAL_SERVER_ERROR, "Ready-to-serve host must be an 'Instance'");
       }
       Instance veniceInstance = (Instance)host;
-      int keyCount = path.getPartitionKeys().size();
+      int keyCount = part.getPartitionKeys().size();
       try {
         readRequestThrottler.mayThrottleRead(storeName, keyCount * readRequestThrottler.getReadCapacity(),
             veniceInstance.getNodeId());

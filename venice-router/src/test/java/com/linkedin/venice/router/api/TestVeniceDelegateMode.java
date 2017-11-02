@@ -123,6 +123,7 @@ public class TestVeniceDelegateMode {
 
   private ReadRequestThrottler getReadRequestThrottle(boolean throttle) {
     ReadRequestThrottler throttler = mock(ReadRequestThrottler.class);
+    doReturn(1).when(throttler).getReadCapacity();
     if (throttle) {
       doThrow(new QuotaExceededException("test", "10", "5")).when(throttler).mayThrottleRead(any(), anyInt(), any());
     }
@@ -167,6 +168,7 @@ public class TestVeniceDelegateMode {
     Scatter<Instance, VenicePath, RouterKey> finalScatter = scatterMode.scatter(scatter, requestMethod, resourceName,
         partitionFinder, hostFinder, monitor, VeniceRole.REPLICA, new Metrics());
 
+    verify(throttler).mayThrottleRead(eq(storeName), eq(1), any());
     Collection<ScatterGatherRequest<Instance, RouterKey>> requests = finalScatter.getOnlineRequests();
     Assert.assertEquals(requests.size(), 1, "There should be only one online request since there is only one key");
     ScatterGatherRequest<Instance, RouterKey> request = requests.iterator().next();
@@ -302,6 +304,10 @@ public class TestVeniceDelegateMode {
 
     Collection<ScatterGatherRequest<Instance, RouterKey>> requests = finalScatter.getOnlineRequests();
     Assert.assertEquals(requests.size(), 3);
+
+    // Verify throttling
+    verify(throttler).mayThrottleRead(storeName, 4, instance1.getNodeId());
+    verify(throttler, times(2)).mayThrottleRead(eq(storeName), eq(1), any());
 
     // each request should only have one 'Instance'
     requests.stream().forEach(request -> Assert.assertEquals(request.getHosts().size(), 1,
