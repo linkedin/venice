@@ -32,6 +32,7 @@ public class VeniceControllerClusterConfig {
   private long offLineJobWaitTimeInMilliseconds;
   private boolean enableTopicDeletionForUncompletedJob;
   private Map<String, String> clusterToD2Map;
+  private boolean sslToKafka;
 
   /**
    * After server disconnecting for delayToRebalanceMS, helix would trigger the re-balance immediately.
@@ -46,6 +47,8 @@ public class VeniceControllerClusterConfig {
    * kafka Bootstrap Urls . IF there is more than one url, they are separated by commas
    */
   private String kafkaBootstrapServers;
+
+  private String sslKafkaBootStrapServers;
   /**
    * Number of replication for each kafka topic. It should be different from venice data replica factor.
    */
@@ -108,6 +111,12 @@ public class VeniceControllerClusterConfig {
       routingStrategy = RoutingStrategy.CONSISTENT_HASH;
     }
     clusterToD2Map = props.getMap(CLUSTER_TO_D2);
+    this.sslToKafka = props.getBoolean(SSL_TO_KAFKA, false);
+    // Enable ssl to kafka
+    if (sslToKafka) {
+      // In that case , ssl kafka broker list is an mandatory field
+      sslKafkaBootStrapServers = props.getString(SSL_KAFKA_BOOTSTRAP_SERVERS);
+    }
   }
 
   public VeniceProperties getProps() {
@@ -189,5 +198,13 @@ public class VeniceControllerClusterConfig {
 
   public Map<String, String> getClusterToD2Map() {
     return clusterToD2Map;
+  }
+
+  public boolean isSslToKafka() {
+    return sslToKafka;
+  }
+
+  public String getSslKafkaBootStrapServers() {
+    return sslKafkaBootStrapServers;
   }
 }

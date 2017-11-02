@@ -43,12 +43,12 @@ import org.apache.hadoop.fs.PathFilter;
 import org.apache.hadoop.io.BytesWritable;
 import org.apache.hadoop.io.NullWritable;
 import org.apache.hadoop.io.SequenceFile;
-import org.apache.hadoop.io.Text;
 import org.apache.hadoop.mapred.FileInputFormat;
 import org.apache.hadoop.mapred.JobClient;
 import org.apache.hadoop.mapred.JobConf;
 import org.apache.hadoop.mapred.RunningJob;
 import org.apache.hadoop.mapred.lib.NullOutputFormat;
+import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.log4j.Logger;
 
 import java.io.IOException;
@@ -106,6 +106,8 @@ public class KafkaPushJob extends AbstractJob {
 
   private static final String HADOOP_PREFIX = "hadoop-conf.";
 
+  private static final String SSL_PREFIX = "ssl";
+
   // PBNJ-related configs are all optional
   public static final String PBNJ_ENABLE = "pbnj.enable";
   public static final String PBNJ_FAIL_FAST = "pbnj.fail.fast";
@@ -117,6 +119,8 @@ public class KafkaPushJob extends AbstractJob {
   public static final String STORAGE_ENGINE_OVERHEAD_RATIO = "storage_engine_overhead_ratio";
 
   public static final String VSON_PUSH = "vson.push";
+
+  public static final String KAFKA_SECURITY_PROTOCOL = "SSL";
 
   private static Logger logger = Logger.getLogger(KafkaPushJob.class);
 
@@ -161,6 +165,7 @@ public class KafkaPushJob extends AbstractJob {
   // Mutable state
   // Kafka url will get from Venice backend for store push
   private String kafkaUrl;
+  private boolean sslToKafka;
   private String inputDirectory;
   private FileSystem fs;
   private RunningJob runningJob;
@@ -381,6 +386,7 @@ public class KafkaPushJob extends AbstractJob {
         runningJob = jc.runJob(pbnjJobConf);
       }
     } catch (Exception e) {
+      logger.error("Failed to run job.", e);
       closeVeniceWriter();
       try {
         cancel();
@@ -498,6 +504,7 @@ public class KafkaPushJob extends AbstractJob {
     topic = versionCreationResponse.getKafkaTopic();
     kafkaUrl = versionCreationResponse.getKafkaBootstrapServers();
     partitionCount = versionCreationResponse.getPartitions();
+    sslToKafka = versionCreationResponse.isEnableSSL();
   }
 
   private synchronized VeniceWriter<KafkaKey, byte[]> getVeniceWriter() {
@@ -507,6 +514,12 @@ public class KafkaPushJob extends AbstractJob {
       veniceWriterProperties.put(KAFKA_BOOTSTRAP_SERVERS, kafkaUrl);
       if (props.containsKey(VeniceWriter.CLOSE_TIMEOUT_MS)){ /* Writer uses default if not specified */
         veniceWriterProperties.put(VeniceWriter.CLOSE_TIMEOUT_MS, props.getInt(VeniceWriter.CLOSE_TIMEOUT_MS));
+      }
+      if(sslToKafka){
+        veniceWriterProperties.setProperty(CommonClientConfigs.SECURITY_PROTOCOL_CONFIG, KAFKA_SECURITY_PROTOCOL);
+        props.keySet().stream().filter(key -> key.toLowerCase().startsWith(SSL_PREFIX)).forEach(key -> {
+          veniceWriterProperties.setProperty(key, props.getString(key));
+        });
       }
       VeniceWriter<KafkaKey, byte[]> newVeniceWriter = new VeniceWriter<>(
           new VeniceProperties(veniceWriterProperties),
@@ -627,10 +640,15 @@ public class KafkaPushJob extends AbstractJob {
 
   private JobConf setupDefaultJobConf() {
     JobConf conf = new JobConf();
-
     conf.set(BATCH_NUM_BYTES_PROP, Integer.toString(batchNumBytes));
     conf.set(TOPIC_PROP, topic);
     conf.set(KAFKA_BOOTSTRAP_SERVERS, kafkaUrl);
+    if( sslToKafka ){
+      conf.set(CommonClientConfigs.SECURITY_PROTOCOL_CONFIG, KAFKA_SECURITY_PROTOCOL);
+      props.keySet().stream().filter(key -> key.toLowerCase().startsWith(SSL_PREFIX)).forEach(key -> {
+        conf.set(key, props.getString(key));
+      });
+    }
     conf.setBoolean(VENICE_MAP_ONLY, isMapOnly);
 
     conf.setBoolean(ALLOW_DUPLICATE_KEY, isDuplicateKeyAllowed);

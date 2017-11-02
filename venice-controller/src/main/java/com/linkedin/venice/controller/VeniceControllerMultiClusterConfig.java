@@ -64,6 +64,14 @@ public class VeniceControllerMultiClusterConfig {
     return getCommonConfig().getKafkaBootstrapServers();
   }
 
+  public String getSslKafkaBootstrapServers() {
+    return getCommonConfig().getSslKafkaBootStrapServers();
+  }
+
+  public boolean isSslToKafka(){
+    return getCommonConfig().isSslToKafka();
+  }
+
   public String getKafkaZkAddress() {
     return getCommonConfig().getKafkaZkAddress();
   }

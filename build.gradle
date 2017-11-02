@@ -21,7 +21,7 @@ apply plugin: 'eclipse'
 
 // Internal LinkedIn Kafka release
 def internalKafkaGroup = "kafka"
-def internalKafkaVersion = "0.10.1.75"
+def internalKafkaVersion = "0.10.2.48"
 
 // OSS Kafka release (currently not used)
 def ossKafkaGroup = "org.apache.kafka"
@@ -43,7 +43,9 @@ ext.libraries = [ // Groovy map literal
                   guava: 'com.google.guava:guava:18.0',
                   helix: 'org.apache.helix:helix-core:0.6.7.3',
                   kafka: internalKafkaGroup + ':kafka_2.10:' + internalKafkaVersion,
+                  kafkaTest: internalKafkaGroup + ':kafka_2.10:' + internalKafkaVersion+":test",
                   kafkaClients: internalKafkaGroup + ':kafka-clients:' + internalKafkaVersion,
+                  kafkaClientsTest: internalKafkaGroup + ':kafka-clients:' + internalKafkaVersion+":test",
                   // kafka: ossKafkaGroup + ':kafka_2.10:' + ossKafkaVersion,
                   // kafkaClients: ossKafkaGroup + ':kafka-clients:' + ossKafkaVersion,
                   mockito: 'org.mockito:mockito-core:2.8.47',

@@ -4,6 +4,10 @@ mainClassName = "com.linkedin.venice.controller.VeniceController"
 
 installDist.dependsOn test
 
+configurations.compile {
+  exclude group: 'org.mortbay.jetty', module:'servlet-api'
+}
+
 task buildJar(type: Jar) {
   manifest {
     attributes 'Main-Class': 'com.linkedin.venice.controller.VeniceController',

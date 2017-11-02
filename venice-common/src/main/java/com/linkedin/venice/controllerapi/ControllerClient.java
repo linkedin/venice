@@ -735,8 +735,8 @@ public class ControllerClient implements Closeable {
         return mapper.readValue(responseJson, D2ServiceDiscoveryResponse.class);
       } catch (Exception e) {
         try {
-          logger.info("Met error to discover cluster from: " + ControllerRoute.CLUSTER_DISCOVERY + ", try "
-              + ControllerRoute.CLUSTER_DISCOVERY + "/" + storeName + "...", e);
+          logger.info("Met error to discover cluster from: " + ControllerRoute.CLUSTER_DISCOVERY.getPath().toString() + ", try "
+              + ControllerRoute.CLUSTER_DISCOVERY.getPath().toString() + "/" + storeName + "...", e);
           // Because the way to get parameter is different between controller and router, in order to support query cluster
           // from both cluster and router, we send the path "/discover_cluster?storename=$storename" at first, if it does
           // not work, try "/discover_cluster/$storeName"

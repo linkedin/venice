@@ -42,7 +42,6 @@ import org.codehaus.jackson.map.ObjectMapper;
  * Topic Manager is shared by multiple cluster's controllers running in one physical Venice controller instance.
  */
 public class TopicManager implements Closeable {
-  private static final Logger LOGGER = Logger.getLogger(TopicManager.class);
 
   // Immutable state
   private final String zkConnection;
@@ -291,7 +290,7 @@ public class TopicManager implements Closeable {
       Map<TopicPartition, Long> timestampsToSearch = partitionInfoList.stream()
           .collect(Collectors.toMap(partitionInfo -> new TopicPartition(topic, partitionInfo.partition()), ignoredParam -> timestamp));
 
-      return getConsumer().offsetsForTimes(timestampsToSearch)
+      Map<Integer, Long>  result = getConsumer().offsetsForTimes(timestampsToSearch)
           .entrySet()
           .stream()
           .collect(Collectors.toMap(
@@ -305,8 +304,17 @@ public class TopicManager implements Closeable {
                 } else {
                   return getOffsetByTimeIfOutOfRange(partitionToOffset, timestamp);
                 }
-              }
-          ));
+              }));
+      // The given timestamp exceed the timestamp of the last message. So return the last offset.
+      // TODO we might get partial result that the map does not have offset for some partition, we need a way to fix it.
+      if (result.isEmpty()) {
+        result = getConsumer().endOffsets(timestampsToSearch.keySet())
+            .entrySet()
+            .stream()
+            .collect(Collectors.toMap(partitionToOffset -> Utils.notNull(partitionToOffset).getKey().partition(),
+                partitionToOffset -> partitionToOffset.getValue()));
+      }
+      return result;
     }
   }
 

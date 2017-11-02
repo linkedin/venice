@@ -1,5 +1,6 @@
 package com.linkedin.venice.utils;
 
+import com.linkedin.security.ssl.access.control.SSLEngineComponentFactoryImpl;
 import com.linkedin.venice.controllerapi.ControllerApiConstants;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
@@ -12,6 +13,7 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.samza.VeniceSystemFactory;
 import com.linkedin.venice.schema.vson.VsonAvroSchemaAdapter;
 import com.linkedin.venice.schema.vson.VsonAvroSerializer;
+import com.linkedin.venice.writer.ApacheKafkaProducer;
 import com.linkedin.venice.writer.VeniceWriter;
 import java.io.File;
 import java.io.IOException;
@@ -27,6 +29,8 @@ import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericDatumWriter;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.io.DatumWriter;
+import org.apache.kafka.clients.CommonClientConfigs;
+import org.apache.kafka.common.config.SslConfigs;
 import org.apache.samza.config.MapConfig;
 import org.apache.samza.system.OutgoingMessageEnvelope;
 import org.apache.samza.system.SystemProducer;
@@ -199,6 +203,21 @@ public class TestPushUtils {
     // No need for a big close timeout in tests. This is just to speed up discovery of certain regressions.
     props.put(VeniceWriter.CLOSE_TIMEOUT_MS, 500);
 
+    return props;
+  }
+
+  public static Properties sslH2VProps(VeniceClusterWrapper veniceCluster, String inputDirPath, String storeName) {
+    Properties props = new Properties();
+    props.put(KafkaPushJob.VENICE_URL_PROP, veniceCluster.getRandomRouterURL());
+    props.put(KafkaPushJob.KAFKA_URL_PROP, veniceCluster.getKafka().getSSLAddress());
+    props.put(KafkaPushJob.VENICE_CLUSTER_NAME_PROP, veniceCluster.getClusterName());
+    props.put(VENICE_STORE_NAME_PROP, storeName);
+    props.put(KafkaPushJob.INPUT_PATH_PROP, inputDirPath);
+    props.put(KafkaPushJob.KEY_FIELD_PROP, "id");
+    props.put(KafkaPushJob.VALUE_FIELD_PROP, "name");
+    props.putAll(SslUtils.getLocalKafkaClientSSLConfig());
+    // No need for a big close timeout in tests. This is just to speed up discovery of certain regressions.
+    props.put(VeniceWriter.CLOSE_TIMEOUT_MS, 500);
     return props;
   }
 

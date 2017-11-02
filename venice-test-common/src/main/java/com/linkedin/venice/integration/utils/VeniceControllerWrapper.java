@@ -39,7 +39,7 @@ public class VeniceControllerWrapper extends ProcessWrapper {
   static StatefulServiceProvider<VeniceControllerWrapper> generateService(String[] clusterNames, String zkAddress,
       KafkaBrokerWrapper kafkaBrokerWrapper, boolean isParent, int replicaFactor, int partitionSize,
       long delayToReblanceMS, int minActiveReplica, VeniceControllerWrapper childController,
-      VeniceProperties extraProps, String clusterToD2) {
+      VeniceProperties extraProps, String clusterToD2, boolean sslToKafka) {
     return (serviceName, port, dataDirectory) -> {
       List<VeniceProperties> propertiesList = new ArrayList<>();
       int adminPort = IntegrationTestUtils.getFreePort();
@@ -74,7 +74,9 @@ public class VeniceControllerWrapper extends ProcessWrapper {
             .put(STORAGE_ENGINE_OVERHEAD_RATIO, DEFAULT_STORAGE_ENGINE_OVERHEAD_RATIO)
             .put(CLUSTER_TO_D2,
                 Utils.isNullOrEmpty(clusterToD2) ? TestUtils.getClusterToDefaultD2String(clusterName)
-                    : clusterToD2);
+                    : clusterToD2)
+            .put(SSL_TO_KAFKA, sslToKafka)
+            .put(SSL_KAFKA_BOOTSTRAP_SERVERS, kafkaBrokerWrapper.getSSLAddress());
 
         if (!extraProps.containsKey(ENABLE_TOPIC_REPLICATOR)) {
           builder.put(ENABLE_TOPIC_REPLICATOR, false);
@@ -102,7 +104,7 @@ public class VeniceControllerWrapper extends ProcessWrapper {
       VeniceProperties extraProps) {
 
     return generateService(new String[]{clusterName}, zkAddress, kafkaBrokerWrapper, isParent, replicaFactor,
-        partitionSize, delayToReblanceMS, minActiveReplica, childController, extraProps, null);
+        partitionSize, delayToReblanceMS, minActiveReplica, childController, extraProps, null, false);
   }
 
   @Override

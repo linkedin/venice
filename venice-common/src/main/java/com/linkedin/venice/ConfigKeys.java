@@ -41,7 +41,9 @@ public class ConfigKeys {
   public static final String KAFKA_CONSUMER_METADATA_REFRESH_BACKOFF_MS = "kafka.consumer.metadata.refresh.backoff.ms";
 
   public static final String KAFKA_BOOTSTRAP_SERVERS = "kafka.bootstrap.servers";
+  public static final String SSL_KAFKA_BOOTSTRAP_SERVERS = "ssl.kafka.bootstrap.servers";
   public static final String MAX_KAFKA_FETCH_BYTES_PER_SECOND = "max.kafka.fetch.bytes.per.second";
+  public static final String KAFKA_SECURITY_PROTOCOL = "kafka.security.protocol";
 
   // Cluster specific configs for controller
   public static final String CONTROLLER_NAME = "controller.name";
@@ -93,6 +95,7 @@ public class ConfigKeys {
   public static final String SERVER_MAX_REQUEST_SIZE = "server.max.request.size";
   public static final String SERVER_SOURCE_TOPIC_OFFSET_CHECK_INTERVAL_MS = "server.source.topic.offset.check.interval.ms";
   public static final String SERVER_NETTY_GRACEFUL_SHUTDOWN_PERIOD_SECONDS = "server.netty.graceful.shutdown.period.seconds";
+  public static final String SSL_TO_KAFKA = "ssl.to.kakfa";
 
 
   // Router specific configs
