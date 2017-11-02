@@ -575,11 +575,14 @@ public class KafkaPushJob extends AbstractJob {
             ExecutionStatus status = ExecutionStatus.valueOf(response.getStatus());
             long messagesConsumed = response.getMessagesConsumed();
             long messagesAvailable = response.getMessagesAvailable();
-            logger.info("Consumed " + messagesConsumed + " out of " + messagesAvailable + " records.  Status: " + status);
+            String logMessage = "Overall status: " + status;
             Map<String, String> extraInfo = response.getExtraInfo();
             if (null != extraInfo && !extraInfo.isEmpty()) {
-              logger.info("Extra info: " + extraInfo);
+              logMessage += ". Specific status: " + extraInfo;
             }
+            logMessage += ". Consumed approximately " + messagesConsumed + " out of " + messagesAvailable + " total records.";
+            logger.info(logMessage);
+
             /* Status of ERROR means that the job status was queried, and the job is in an error status */
             if (status.equals(ExecutionStatus.ERROR)){
               throw new RuntimeException("Push job triggered error for: " + veniceControllerUrl);
