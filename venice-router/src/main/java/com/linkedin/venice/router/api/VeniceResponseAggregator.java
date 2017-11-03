@@ -26,6 +26,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 import javax.annotation.Nonnull;
+import org.apache.log4j.Logger;
 
 import static com.linkedin.ddsstorage.router.api.MetricNames.*;
 import static io.netty.handler.codec.http.HttpResponseStatus.*;
@@ -36,6 +37,8 @@ public class VeniceResponseAggregator implements ResponseAggregatorFactory<Basic
   private static final int TIMEOUT_THRESHOLD_IN_MS = 50 * Time.MS_PER_SECOND;
 
   private static final List<HttpResponseStatus> HEALTHY_STATUSES = Arrays.asList(OK, NOT_FOUND);
+
+  private static final Logger LOGGER = Logger.getLogger(VeniceResponseAggregator.class);
 
   // Headers expected in each storage node multi-get response
   private static final Map<CharSequence, String> MULTI_GET_VALID_HEADER_MAP = new HashMap<>();
@@ -100,6 +103,7 @@ public class VeniceResponseAggregator implements ResponseAggregatorFactory<Basic
       if (latency <= TIMEOUT_THRESHOLD_IN_MS && HEALTHY_STATUSES.contains(responseStatus)) {
         stats.recordHealthyRequest(storeName);
       } else {
+        LOGGER.error("Unhealthy request detected, latency: " + latency + "ms, response status: " + responseStatus);
         stats.recordUnhealthyRequest(storeName);
       }
     }

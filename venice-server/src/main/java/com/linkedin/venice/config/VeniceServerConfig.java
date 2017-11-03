@@ -77,6 +77,13 @@ public class VeniceServerConfig extends VeniceClusterConfig {
    */
   private final int sourceTopicOffsetCheckIntervalMs;
 
+  /**
+   * Graceful shutdown period.
+   * Venice SN needs to explicitly do graceful shutdown since Netty's graceful shutdown logic
+   * will close all the connections right away, which is not expected.
+   */
+  private final int nettyGracefulShutdownPeriodSeconds;
+
 
   public VeniceServerConfig(VeniceProperties serverProperties) throws ConfigurationException {
     super(serverProperties);
@@ -93,6 +100,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     nettyIdleTimeInSeconds = serverProperties.getInt(SERVER_NETTY_IDLE_TIME_SECONDS, (int) TimeUnit.HOURS.toSeconds(3)); // 3 hours
     maxRequestSize = (int)serverProperties.getSizeInBytes(SERVER_MAX_REQUEST_SIZE, 256 * 1024); // 256KB
     sourceTopicOffsetCheckIntervalMs = serverProperties.getInt(SERVER_SOURCE_TOPIC_OFFSET_CHECK_INTERVAL_MS, (int)TimeUnit.SECONDS.toMillis(10)); // 10s
+    nettyGracefulShutdownPeriodSeconds = serverProperties.getInt(SERVER_NETTY_GRACEFUL_SHUTDOWN_PERIOD_SECONDS, 30); //30 seconds
   }
 
   public int getListenerPort() {
@@ -151,5 +159,9 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public int getSourceTopicOffsetCheckIntervalMs() {
     return sourceTopicOffsetCheckIntervalMs;
+  }
+
+  public int getNettyGracefulShutdownPeriodSeconds() {
+    return nettyGracefulShutdownPeriodSeconds;
   }
 }

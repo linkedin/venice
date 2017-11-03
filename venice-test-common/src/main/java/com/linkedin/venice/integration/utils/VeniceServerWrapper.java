@@ -58,6 +58,7 @@ public class VeniceServerWrapper extends ProcessWrapper {
           .put(ENABLE_SERVER_WHITE_LIST, enableServerWhitelist)
           .put(SERVER_REST_SERVICE_STORAGE_THREAD_NUM, 4)
           .put(MAX_STATE_TRANSITION_THREAD_NUMBER, 10)
+          .put(SERVER_NETTY_GRACEFUL_SHUTDOWN_PERIOD_SECONDS, 0)
           .build();
 
       File serverConfigFile = new File(configDirectory, VeniceConfigLoader.SERVER_PROPERTIES_FILE);
