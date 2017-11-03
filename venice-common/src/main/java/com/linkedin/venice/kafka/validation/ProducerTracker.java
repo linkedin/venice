@@ -40,14 +40,16 @@ public class ProducerTracker {
   private final GUID producerGUID;
   // This will allow to create segments for different partitions in parallel.
   private final ConcurrentMap<Integer, Segment> segments = new ConcurrentHashMap<>();
+  private final String topicName;
 
-  public ProducerTracker(GUID producerGUID) {
+  public ProducerTracker(GUID producerGUID, String topicName) {
     this.producerGUID = producerGUID;
+    this.topicName = topicName;
     this.logger = Logger.getLogger(this.toString());
   }
 
   public String toString() {
-    return ProducerTracker.class.getSimpleName() + "(GUID: " + ByteUtils.toHexString(producerGUID.bytes()) + ")";
+    return ProducerTracker.class.getSimpleName() + "(GUID: " + ByteUtils.toHexString(producerGUID.bytes()) + ", topic: " + topicName + ")";
   }
 
   /**
@@ -300,7 +302,7 @@ public class ProducerTracker {
          * this will cause spurious missing data metrics on further events...
          * and the partition won't become 'ONLINE' if it is not 'ONLINE' yet.
           */
-        logger.error("Encountered missing data message", dataMissingException);
+        logger.error("Encountered missing data message after EOP.", dataMissingException);
         segment.setSequenceNumber(incomingSequenceNumber);
         if (errorMetricCallback.isPresent()) {
           errorMetricCallback.get().execute(dataMissingException);

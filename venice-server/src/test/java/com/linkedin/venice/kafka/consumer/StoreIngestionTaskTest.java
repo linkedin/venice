@@ -993,17 +993,6 @@ public class StoreIngestionTaskTest {
       });
     });
   }
-//
-//  @Test (invocationCount = 3, skipFailedInvocations = true)
-//  public void testDataValidationCheckPointingWithUnsortedInput() throws Exception {
-//    testDataValidationCheckPointing(false);
-//  }
-//
-//  // Test DIV checkpointing and deferred-write ingestion
-//  @Test (invocationCount = 3, skipFailedInvocations = true)
-//  public void testDataValidationCheckPointingWithSortedInput() throws Exception {
-//    testDataValidationCheckPointing(true);
-//  }
 
   @Test
   public void testKillAfterPartitionIsCompleted()

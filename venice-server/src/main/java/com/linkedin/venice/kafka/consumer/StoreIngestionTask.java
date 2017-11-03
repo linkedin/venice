@@ -117,9 +117,9 @@ public class StoreIngestionTask implements Runnable, Closeable {
   private final Optional<HybridStoreConfig> hybridStoreConfig;
   private final IngestionNotificationDispatcher notificationDispatcher;
   private final Optional<ProducerTracker.DIVErrorMetricCallback> divErrorMetricCallback;
-
   /** Interval before querying Kafka broker about the source topic offset */
   private final int sourceTopicOffsetCheckInterval;
+  private final Function<GUID, ProducerTracker> producerTrackerCreator;
 
   // Non-final
   private KafkaConsumerWrapper consumer;
@@ -181,6 +181,7 @@ public class StoreIngestionTask implements Runnable, Closeable {
     this.sourceTopicOffsetCheckInterval = sourceTopicOffsetCheckIntervalMs;
 
     this.divErrorMetricCallback = Optional.of(e -> versionedDIVStats.recordException(storeNameWithoutVersionInfo, storeVersion, e));
+    this.producerTrackerCreator = guid -> new ProducerTracker(guid, topic);
   }
 
   private void validateState() {
@@ -521,7 +522,7 @@ public class StoreIngestionTask implements Runnable, Closeable {
               GUID producerGuid = GuidUtils.getGuidFromCharSequence(entry.getKey());
               ProducerTracker producerTracker = producerTrackerMap.get(producerGuid);
               if (null == producerTracker) {
-                producerTracker = new ProducerTracker(producerGuid);
+                producerTracker = producerTrackerCreator.apply(producerGuid);
               }
               producerTracker.setPartitionState(partition, entry.getValue());
               producerTrackerMap.put(producerGuid, producerTracker);
@@ -1046,11 +1047,9 @@ public class StoreIngestionTask implements Runnable, Closeable {
     return sizeOfPersistedData;
   }
 
-  private static final Function<GUID, ProducerTracker> producerTrackerFunction = guid -> new ProducerTracker(guid);
-
   private OffsetRecordTransformer validateMessage(int partition, KafkaKey key, KafkaMessageEnvelope message, boolean endOfPushReceived) {
     final GUID producerGUID = message.producerMetadata.producerGUID;
-    producerTrackerMap.computeIfAbsent(producerGUID, producerTrackerFunction);
+    producerTrackerMap.computeIfAbsent(producerGUID, producerTrackerCreator);
     ProducerTracker producerTracker = producerTrackerMap.get(producerGUID);
 
     return producerTracker.addMessage(partition, key, message, endOfPushReceived, divErrorMetricCallback);
