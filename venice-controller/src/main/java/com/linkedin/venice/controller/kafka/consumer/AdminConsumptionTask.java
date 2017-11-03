@@ -155,7 +155,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
                   GUID producerGuid = GuidUtils.getGuidFromCharSequence(entry.getKey());
                   ProducerTracker producerTracker = producerTrackerMap.get(producerGuid);
                   if (null == producerTracker) {
-                    producerTracker = new ProducerTracker(producerGuid);
+                    producerTracker = new ProducerTracker(producerGuid, topic);
                   }
                   producerTracker.setPartitionState(AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID, entry.getValue());
                   producerTrackerMap.put(producerGuid, producerTracker);
@@ -264,7 +264,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
       final GUID producerGUID = kafkaValue.producerMetadata.producerGUID;
       ProducerTracker producerTracker = producerTrackerMap.get(producerGUID);
       if (producerTracker == null) {
-        producerTracker = new ProducerTracker(producerGUID);
+        producerTracker = new ProducerTracker(producerGUID, topic);
         producerTrackerMap.put(producerGUID, producerTracker);
       }
       offsetRecordTransformer = Optional.of(producerTracker.addMessage(AdminTopicUtils.ADMIN_TOPIC_PARTITION_ID, kafkaKey, kafkaValue, false));

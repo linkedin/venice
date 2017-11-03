@@ -82,7 +82,7 @@ public class TestProducerTracker {
     int partitionId = 0;
     GUID guid = new GUID();
     guid.bytes(testGuid.getBytes());
-    ProducerTracker producerTracker = new ProducerTracker(guid);
+    ProducerTracker producerTracker = new ProducerTracker(guid, "test-topic-name");
     Segment currentSegment = new Segment(partitionId, 0, CheckSumType.NONE);
 
     ProducerTracker.DIVErrorMetricCallback mockCallback = mock(ProducerTracker.DIVErrorMetricCallback.class);
