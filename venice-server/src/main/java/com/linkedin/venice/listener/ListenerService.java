@@ -14,6 +14,7 @@ import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.nio.NioServerSocketChannel;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.Optional;
+import java.util.concurrent.TimeUnit;
 import org.apache.log4j.Logger;
 
 /**
@@ -22,11 +23,13 @@ import org.apache.log4j.Logger;
 public class ListenerService extends AbstractVeniceService{
   private static final Logger logger = Logger.getLogger(ListenerService.class);
 
-  private ServerBootstrap bootstrap;
-  private EventLoopGroup bossGroup;
-  private EventLoopGroup workerGroup;
+  private final ServerBootstrap bootstrap;
+  private final EventLoopGroup bossGroup;
+  private final EventLoopGroup workerGroup;
   private ChannelFuture serverFuture;
-  int port;
+  private final int port;
+
+  private final VeniceServerConfig serverConfig;
 
   //TODO: move netty config to a config file
   private static int nettyBacklogSize = 1000;
@@ -36,7 +39,7 @@ public class ListenerService extends AbstractVeniceService{
                          VeniceConfigLoader veniceConfigLoader,
                          MetricsRepository metricsRepository,
                          Optional<SSLEngineComponentFactory> sslFactory) {
-    VeniceServerConfig serverConfig = veniceConfigLoader.getVeniceServerConfig();
+    serverConfig = veniceConfigLoader.getVeniceServerConfig();
     this.port = serverConfig.getListenerPort();
 
     //TODO: configurable worker group
@@ -65,6 +68,15 @@ public class ListenerService extends AbstractVeniceService{
   @Override
   public void stopInner() throws Exception {
     ChannelFuture shutdown = serverFuture.channel().closeFuture();
+    /**
+     * Netty shutdown gracefully is NOT working well for us since it will close all the connections right away.
+     * By sleeping the configured period, Storage Node could serve all the requests, which are already received.
+     *
+     * Since Storage Node will stop {@link com.linkedin.venice.helix.HelixParticipationService}
+     * (disconnect from Zookeeper, which makes it unavailable in Venice Router) before Netty,
+     * there shouldn't be a lot of requests coming during this grace period, otherwise, we need to tune the config.
+     */
+    Thread.sleep(TimeUnit.SECONDS.toMillis(serverConfig.getNettyGracefulShutdownPeriodSeconds()));
     workerGroup.shutdownGracefully();
     bossGroup.shutdownGracefully();
     shutdown.sync();
