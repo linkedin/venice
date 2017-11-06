@@ -15,7 +15,6 @@ import org.testng.Assert;
 import org.testng.annotations.Test;
 
 public class TestHostFinder {
-
   @Test
   public void hostFinderShouldFindHosts(){
     RoutingDataRepository mockRepo = Mockito.mock(RoutingDataRepository.class);

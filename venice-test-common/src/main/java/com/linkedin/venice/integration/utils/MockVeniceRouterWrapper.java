@@ -1,6 +1,7 @@
 package com.linkedin.venice.integration.utils;
 
 import com.linkedin.d2.server.factory.D2Server;
+import com.linkedin.venice.helix.HelixLiveInstanceMonitor;
 import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
 import com.linkedin.venice.helix.HelixReadOnlyStoreConfigRepository;
 import com.linkedin.venice.helix.HelixReadOnlyStoreRepository;
@@ -26,6 +27,7 @@ import org.mockito.Matchers;
 import org.mockito.Mockito;
 
 import static com.linkedin.venice.ConfigKeys.*;
+import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.doReturn;
 
 
@@ -70,6 +72,9 @@ public class MockVeniceRouterWrapper extends ProcessWrapper {
 
     HelixReadOnlyStoreConfigRepository mockStoreConfigRepository = Mockito.mock(HelixReadOnlyStoreConfigRepository.class);
 
+    HelixLiveInstanceMonitor mockLiveInstanceMonitor = Mockito.mock(HelixLiveInstanceMonitor.class);
+    doReturn(true).when(mockLiveInstanceMonitor).isInstanceAlive(any());
+
 
     return (serviceName, port, dataDirectory) -> {
       List<D2Server> d2ServerList;
@@ -91,7 +96,7 @@ public class MockVeniceRouterWrapper extends ProcessWrapper {
       doReturn(Optional.of(storeConfig)).when(mockStoreConfigRepository).getStoreConfig(Mockito.anyString());
 
       RouterServer router = new RouterServer(builder.build(), mockRepo, mockMetadataRepository, mockSchemaRepository,
-          mockStoreConfigRepository, d2ServerList, Optional.of(SslUtils.getLocalSslFactory()));
+          mockStoreConfigRepository, d2ServerList, Optional.of(SslUtils.getLocalSslFactory()), mockLiveInstanceMonitor);
       return new MockVeniceRouterWrapper(serviceName, dataDirectory, router, clusterName, port, sslToStorageNodes);
     };
   }

@@ -2,14 +2,12 @@ package com.linkedin.venice.router.api;
 
 import com.linkedin.ddsstorage.router.api.HostHealthMonitor;
 import com.linkedin.venice.meta.Instance;
+import com.linkedin.venice.meta.LiveInstanceMonitor;
 import com.linkedin.venice.utils.ExpiringSet;
 import java.util.concurrent.TimeUnit;
 import org.apache.log4j.Logger;
 
 
-/**
- * Created by mwise on 4/8/16.
- */
 public class VeniceHostHealth implements HostHealthMonitor<Instance> {
 
   private static final Logger logger = Logger.getLogger(VeniceHostHealth.class);
@@ -17,6 +15,12 @@ public class VeniceHostHealth implements HostHealthMonitor<Instance> {
 
   private ExpiringSet<String> slowPartitionHosts = new ExpiringSet<>(UNHEALTHY_SECONDS, TimeUnit.SECONDS);
   private ExpiringSet<String> unhealthyHosts = new ExpiringSet<>(UNHEALTHY_SECONDS, TimeUnit.SECONDS);
+
+  private final LiveInstanceMonitor liveInstanceMonitor;
+
+  public VeniceHostHealth(LiveInstanceMonitor liveInstanceMonitor) {
+    this.liveInstanceMonitor = liveInstanceMonitor;
+  }
 
   /**
    * Indicate that a partition on a host has fallen behind in consumption and should not be used
@@ -44,7 +48,9 @@ public class VeniceHostHealth implements HostHealthMonitor<Instance> {
 
   @Override
   public boolean isHostHealthy(Instance hostName, String partitionName) {
-    if (slowPartitionHosts.contains(hostPartitionString(hostName, partitionName)) || unhealthyHosts.contains(hostName.getUrl())){
+    if (!liveInstanceMonitor.isInstanceAlive(hostName) // not alive
+        || slowPartitionHosts.contains(hostPartitionString(hostName, partitionName))
+        || unhealthyHosts.contains(hostName.getUrl())){
       return false; /* can't check-then-get, would cause a race condition and might get null */
     } else {
       return true;

@@ -4,6 +4,7 @@ import com.linkedin.ddsstorage.router.api.HostFinder;
 import com.linkedin.ddsstorage.router.api.HostHealthMonitor;
 import com.linkedin.ddsstorage.router.api.RouterException;
 import com.linkedin.venice.meta.Instance;
+import com.linkedin.venice.meta.LiveInstanceMonitor;
 import com.linkedin.venice.meta.RoutingDataRepository;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.router.stats.AggRouterHttpRequestStats;
@@ -29,9 +30,10 @@ public class VeniceHostFinder implements HostFinder<Instance, VeniceRole> {
       boolean isStickyRoutingEnabledForSingleGet,
       boolean isStickyRoutingEnabledForMultiGet,
       AggRouterHttpRequestStats statsForSingleGet,
-      AggRouterHttpRequestStats statsForMultiGet) {
+      AggRouterHttpRequestStats statsForMultiGet,
+      LiveInstanceMonitor liveInstanceMonitor) {
     this(dataRepository, isStickyRoutingEnabledForSingleGet, isStickyRoutingEnabledForMultiGet,
-        statsForSingleGet, statsForMultiGet, new VeniceHostHealth());
+        statsForSingleGet, statsForMultiGet, new VeniceHostHealth(liveInstanceMonitor));
   }
 
   /**
