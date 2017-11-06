@@ -118,4 +118,9 @@ public class Instance {
     }
     return !(getHost() != null ? !getHost().equalsIgnoreCase(instance.getHost()) : instance.getHost() != null);
   }
+
+  @Override
+  public String toString() {
+    return nodeId;
+  }
 }

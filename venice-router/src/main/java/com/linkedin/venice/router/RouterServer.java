@@ -13,6 +13,7 @@ import com.linkedin.security.ssl.access.control.SSLEngineComponentFactory;
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixAdapterSerializer;
+import com.linkedin.venice.helix.HelixLiveInstanceMonitor;
 import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
 import com.linkedin.venice.helix.HelixReadOnlyStoreRepository;
 import com.linkedin.venice.helix.HelixRoutingDataRepository;
@@ -83,6 +84,8 @@ public class RouterServer extends AbstractVeniceService {
   private HelixRoutingDataRepository routingDataRepository;
   private HelixReadOnlyStoreRepository metadataRepository;
   private HelixReadOnlyStoreConfigRepository storeConfigRepository;
+
+  private HelixLiveInstanceMonitor liveInstanceMonitor;
 
   // These are initialized in startInner()... TODO: Consider refactoring this to be immutable as well.
   private AsyncFuture<SocketAddress> serverFuture = null;
@@ -168,6 +171,7 @@ public class RouterServer extends AbstractVeniceService {
         new HelixReadOnlySchemaRepository(this.metadataRepository, this.zkClient, adapter, config.getClusterName());
     this.routingDataRepository = new HelixRoutingDataRepository(manager);
     this.storeConfigRepository = new HelixReadOnlyStoreConfigRepository(zkClient, adapter);
+    this.liveInstanceMonitor = new HelixLiveInstanceMonitor(this.zkClient, config.getClusterName());
   }
 
   /**
@@ -208,18 +212,21 @@ public class RouterServer extends AbstractVeniceService {
       HelixReadOnlySchemaRepository schemaRepository,
       HelixReadOnlyStoreConfigRepository storeConfigRepository,
       List<D2Server> d2ServerList,
-      Optional<SSLEngineComponentFactory> sslFactory){
+      Optional<SSLEngineComponentFactory> sslFactory,
+      HelixLiveInstanceMonitor liveInstanceMonitor){
     this(properties, d2ServerList, Optional.empty(), sslFactory, new MetricsRepository(), false);
     this.routingDataRepository = routingDataRepository;
     this.metadataRepository = metadataRepository;
     this.schemaRepository = schemaRepository;
     this.storeConfigRepository = storeConfigRepository;
+    this.liveInstanceMonitor = liveInstanceMonitor;
   }
 
   @Override
   public boolean startInner() throws Exception {
     metadataRepository.refresh();
     storeConfigRepository.refresh();
+    liveInstanceMonitor.refresh();
     // No need to call schemaRepository.refresh() since it will do nothing.
     registry = new ResourceRegistry();
     ExecutorService executor = registry
@@ -231,10 +238,10 @@ public class RouterServer extends AbstractVeniceService {
 
     Optional<SSLEngineComponentFactory> sslFactoryForRequests = config.isSslToStorageNodes()? sslFactory : Optional.empty();
     VenicePartitionFinder partitionFinder = new VenicePartitionFinder(routingDataRepository);
-    VeniceHostHealth healthMonitor = new VeniceHostHealth();
+    VeniceHostHealth healthMonitor = new VeniceHostHealth(liveInstanceMonitor);
     scatterGatherMode = new VeniceDelegateMode();
     dispatcher = new VeniceDispatcher(config, healthMonitor, sslFactoryForRequests);
-    heartbeat = new RouterHeartbeat(manager, healthMonitor, 10, TimeUnit.SECONDS, config.getHeartbeatTimeoutMs(), sslFactoryForRequests);
+    heartbeat = new RouterHeartbeat(liveInstanceMonitor, healthMonitor, 10, TimeUnit.SECONDS, config.getHeartbeatTimeoutMs(), sslFactoryForRequests);
     heartbeat.startInner();
     MetaDataHandler metaDataHandler =
         new MetaDataHandler(routingDataRepository, schemaRepository, config.getClusterName(), storeConfigRepository,
@@ -248,7 +255,8 @@ public class RouterServer extends AbstractVeniceService {
     VeniceHostFinder hostFinder = new VeniceHostFinder(routingDataRepository,
         config.isStickyRoutingEnabledForSingleGet(),
         config.isStickyRoutingEnabledForMultiGet(),
-        statsForSingleGet, statsForMultiGet);
+        statsForSingleGet, statsForMultiGet,
+        liveInstanceMonitor);
 
     // Fixed retry future
     AsyncFuture<LongSupplier> retryFuture = new SuccessAsyncFuture<>(() -> config.getLongTailRetryThresholdMs());
@@ -349,6 +357,7 @@ public class RouterServer extends AbstractVeniceService {
     routingDataRepository.clear();
     metadataRepository.clear();
     storeConfigRepository.clear();
+    liveInstanceMonitor.clear();
     if (manager != null) {
       manager.disconnect();
     }
@@ -390,11 +399,13 @@ public class RouterServer extends AbstractVeniceService {
 
         System.exit(1);
       }
+
       // Register current router into ZK.
       routersClusterManager = new ZkRoutersClusterManager(zkClient, adapter, config.getClusterName());
       routersClusterManager.refresh();
       routersClusterManager.registerRouter(Utils.getHelixNodeIdentifier(config.getPort()));
       routingDataRepository.refresh();
+
 
       // Setup read requests throttler.
       ReadRequestThrottler throttler =
