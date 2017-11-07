@@ -18,6 +18,7 @@ import java.util.stream.Collectors;
 
 import kafka.admin.AdminUtils;
 import kafka.admin.RackAwareMode;
+import kafka.common.TopicAlreadyMarkedForDeletionException;
 import kafka.log.LogConfig;
 import kafka.utils.ZKStringSerializer$;
 import kafka.utils.ZkUtils;
@@ -125,7 +126,11 @@ public class TopicManager implements Closeable {
     if (containsTopic(topicName)) {
       // TODO: Stop using Kafka APIs which depend on ZK.
       logger.info("Deleting topic: " + topicName);
-      AdminUtils.deleteTopic(getZkUtils(), topicName);
+      try {
+        AdminUtils.deleteTopic(getZkUtils(), topicName);
+      } catch (TopicAlreadyMarkedForDeletionException e) {
+        logger.warn("Topic delete requested, but topic already marked for deletion");
+      }
     } else {
       logger.info("Topic: " +  topicName + " to be deleted doesn't exist");
     }
