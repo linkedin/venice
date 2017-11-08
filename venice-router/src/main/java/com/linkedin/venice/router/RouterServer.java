@@ -226,7 +226,6 @@ public class RouterServer extends AbstractVeniceService {
   public boolean startInner() throws Exception {
     metadataRepository.refresh();
     storeConfigRepository.refresh();
-    liveInstanceMonitor.refresh();
     // No need to call schemaRepository.refresh() since it will do nothing.
     registry = new ResourceRegistry();
     ExecutorService executor = registry
@@ -399,6 +398,8 @@ public class RouterServer extends AbstractVeniceService {
 
         System.exit(1);
       }
+      // Should refresh after Helix cluster is setup
+      liveInstanceMonitor.refresh();
 
       // Register current router into ZK.
       routersClusterManager = new ZkRoutersClusterManager(zkClient, adapter, config.getClusterName());
