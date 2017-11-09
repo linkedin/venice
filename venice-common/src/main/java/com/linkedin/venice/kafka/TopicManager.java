@@ -47,6 +47,7 @@ public class TopicManager implements Closeable {
   private final String zkConnection;
   private final int sessionTimeoutMs;
   private final int connectionTimeoutMs;
+  private final int kafkaOperationTimeoutMs;
 
   // Mutable, lazily initialized, state
   private ZkClient zkClient;
@@ -57,20 +58,26 @@ public class TopicManager implements Closeable {
   private static final ObjectMapper mapper = new ObjectMapper();
   private static final int DEFAULT_SESSION_TIMEOUT_MS = 10 * Time.MS_PER_SECOND;
   private static final int DEFAULT_CONNECTION_TIMEOUT_MS = 8 * Time.MS_PER_SECOND;
+  private static final int DEFAULT_KAFKA_OPERATION_TIMEOUT_MS = 30 * Time.MS_PER_SECOND;
 
-  public TopicManager(String zkConnection, int sessionTimeoutMs, int connectionTimeoutMs) {
+  public TopicManager(String zkConnection, int sessionTimeoutMs, int connectionTimeoutMs, int kafkaOperationTimeoutMs) {
     this.zkConnection = zkConnection;
     this.sessionTimeoutMs = sessionTimeoutMs;
     this.connectionTimeoutMs = connectionTimeoutMs;
+    this.kafkaOperationTimeoutMs = kafkaOperationTimeoutMs;
+  }
+
+  public TopicManager(String zkConnection, int kafkaOperationTimeoutMs) {
+    this(zkConnection, DEFAULT_SESSION_TIMEOUT_MS, DEFAULT_CONNECTION_TIMEOUT_MS, kafkaOperationTimeoutMs);
   }
 
   public TopicManager(String zkConnection) {
-    this(zkConnection, DEFAULT_SESSION_TIMEOUT_MS, DEFAULT_CONNECTION_TIMEOUT_MS);
+    this(zkConnection, DEFAULT_SESSION_TIMEOUT_MS, DEFAULT_CONNECTION_TIMEOUT_MS, DEFAULT_KAFKA_OPERATION_TIMEOUT_MS);
   }
 
   /** for tests */
   protected TopicManager(String zkConnection, KafkaConsumer<byte[], byte[]> consumer){
-    this(zkConnection, DEFAULT_SESSION_TIMEOUT_MS, DEFAULT_CONNECTION_TIMEOUT_MS);
+    this(zkConnection, DEFAULT_SESSION_TIMEOUT_MS, DEFAULT_CONNECTION_TIMEOUT_MS, DEFAULT_KAFKA_OPERATION_TIMEOUT_MS);
     this.kafkaConsumer = consumer;
   }
 
@@ -104,10 +111,9 @@ public class TopicManager implements Closeable {
       topicProperties.put(LogConfig.MessageTimestampTypeProp(), "LogAppendTime"); // Just in case the Kafka cluster isn't configured as expected.
       AdminUtils.createTopic(getZkUtils(), topicName, numPartitions, replication, topicProperties, RackAwareMode.Safe$.MODULE$);
       long startTime = System.currentTimeMillis();
-      long timeout = TimeUnit.MILLISECONDS.convert(25, TimeUnit.SECONDS);
-      while (!containsTopic(topicName)){
-        if (System.currentTimeMillis() > startTime + timeout){
-          throw new VeniceException("Timeout while creating topic: " + topicName + ".  Topic still does not exist after " + timeout + "ms.");
+      while (!containsTopic(topicName)) {
+        if (System.currentTimeMillis() > startTime + kafkaOperationTimeoutMs) {
+          throw new VeniceOperationAgainstKafkaTimedOut("Timeout while creating topic: " + topicName + ".  Topic still does not exist after " + kafkaOperationTimeoutMs + "ms.");
         }
         Utils.sleep(200);
       }
@@ -204,7 +210,7 @@ public class TopicManager implements Closeable {
     if (containsTopic(topicName)) {
       // Since topic deletion is async, we would like to poll until topic doesn't exist any more
       final int SLEEP_MS = 100;
-      final int MAX_TIMES = 300; // At most, we will wait 30s (300 * 100ms)
+      final int MAX_TIMES = kafkaOperationTimeoutMs / SLEEP_MS;
       int current = 0;
       while (++current <= MAX_TIMES) {
         Utils.sleep(SLEEP_MS);
@@ -213,7 +219,7 @@ public class TopicManager implements Closeable {
           return;
         }
       }
-      throw new VeniceException("Failed to delete kafka topic: " + topicName + " after 30 seconds");
+      throw new VeniceOperationAgainstKafkaTimedOut("Failed to delete kafka topic: " + topicName + " after " + kafkaOperationTimeoutMs + " ms (" + current + " attempts).");
     }
   }
 
