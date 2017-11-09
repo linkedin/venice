@@ -163,6 +163,10 @@ public class ConfigKeys {
    * be created.
    */
   public static final String TOPIC_CREATION_THROTTLING_TIME_WINDOW_MS = "topic.creation.throttling.time.window.ms";
+
+  /** Timeout for create topic and delete topic operations. */
+  public static final String TOPIC_MANAGER_KAFKA_OPERATION_TIMEOUT_MS = "topic.manager.kafka.operation.timeout.ms";
+
   /** Whether current controller is parent or not */
   public static final String CONTROLLER_PARENT_MODE = "controller.parent.mode";
   /**

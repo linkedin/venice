@@ -27,21 +27,16 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
   private final int topicMonitorPollIntervalMs;
   private final boolean parent;
   private final boolean enableTopicReplicator;
-
   private Map<String, String> childClusterMap = null;
   private String d2ServiceName;
   private Map<String, String> childClusterD2Map = null;
-
   private final int parentControllerWaitingTimeForConsumptionMs;
   private final long adminConsumptionTimeoutMinutes;
-
   private final double storageEngineOverheadRatio;
-
   private final long topicCreationThrottlingTimeWindowMs;
-
   private final long failedJobTopicRetentionMs;
-
   private final boolean parentControllerEnableTopicDeletion;
+  private final int topicManagerKafkaOperationTimeOutMs;
 
   public VeniceControllerConfig(VeniceProperties props) {
     super(props);
@@ -75,6 +70,8 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
 
     // disable topic deletion in parent controller by default
     this.parentControllerEnableTopicDeletion = props.getBoolean(PARENT_CONTROLLER_ENABLE_TOPIC_DELETION, false);
+
+    this.topicManagerKafkaOperationTimeOutMs = props.getInt(TOPIC_MANAGER_KAFKA_OPERATION_TIMEOUT_MS, 30 * Time.MS_PER_SECOND);
   }
 
   public int getAdminPort() {
@@ -149,6 +146,10 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
 
   public double getStorageEngineOverheadRatio() {
     return storageEngineOverheadRatio;
+  }
+
+  public int getTopicManagerKafkaOperationTimeOutMs() {
+    return topicManagerKafkaOperationTimeOutMs;
   }
 
   /**

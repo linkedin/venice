@@ -136,7 +136,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         this.zkClient = new ZkClient(multiClusterConfigs.getZkAddress(), ZkClient.DEFAULT_SESSION_TIMEOUT,
             ZkClient.DEFAULT_CONNECTION_TIMEOUT);
         this.adapterSerializer = new HelixAdapterSerializer();
-        this.topicManager = new TopicManager(multiClusterConfigs.getKafkaZkAddress());
+        this.topicManager = new TopicManager(multiClusterConfigs.getKafkaZkAddress(), multiClusterConfigs.getTopicManagerKafkaOperationTimeOutMs());
         this.whitelistAccessor = new ZkWhitelistAccessor(zkClient, adapterSerializer);
         this.executionIdAccessor = new ZkExecutionIdAccessor(zkClient, adapterSerializer);
         this.storeConfigAccessor =

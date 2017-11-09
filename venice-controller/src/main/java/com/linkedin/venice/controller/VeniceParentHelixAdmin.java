@@ -35,6 +35,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
 import com.linkedin.venice.helix.HelixReadWriteStoreRepository;
 import com.linkedin.venice.helix.Replica;
+import com.linkedin.venice.kafka.VeniceOperationAgainstKafkaTimedOut;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.RoutersClusterConfig;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
@@ -908,8 +909,12 @@ public class VeniceParentHelixAdmin implements Admin {
 
   private void internalDeleteTopic(TopicManager topicManager, String topicName) {
     if (enableTopicDeletion) {
-      topicManager.ensureTopicIsDeletedAndBlock(topicName);
-      logger.info("Topic: " + topicName + " is deleted");
+      try {
+        topicManager.ensureTopicIsDeletedAndBlock(topicName);
+        logger.info("Topic: " + topicName + " is deleted");
+      } catch (VeniceOperationAgainstKafkaTimedOut e) {
+        logger.error("Timed out during internalDeleteTopic. Will proceed.", e);
+      }
     } else {
       // Update retention to be 0 to free Kafka disk space
       topicManager.updateTopicRetentionToBeZero(topicName);
