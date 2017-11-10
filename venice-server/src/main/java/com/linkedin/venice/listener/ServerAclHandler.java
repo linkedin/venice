@@ -1,6 +1,7 @@
 package com.linkedin.venice.listener;
 
 import com.linkedin.venice.acl.StaticAccessController;
+import com.linkedin.venice.acl.VeniceComponent;
 import com.linkedin.venice.utils.NettyUtils;
 import io.netty.channel.ChannelHandler;
 import io.netty.channel.ChannelHandlerContext;
