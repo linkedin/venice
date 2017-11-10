@@ -142,7 +142,7 @@ public class VeniceServerTest {
     new Thread(new Runnable() {
       @Override
       public void run() {
-        servers[0] = ServiceFactory.getVeniceServer(clusterName, kafka, false, true, false);
+        servers[0] = ServiceFactory.getVeniceServer(clusterName, kafka, false, true, false, false);
       }
     }).start();
     Utils.sleep(1000);

@@ -55,7 +55,8 @@ class IntegrationTestUtils {
   /**
    * N.B.: Visibility is package-private on purpose.
    */
-  static VeniceProperties getClusterProps(String clusterName, File dataDirectory, String zkAddress, KafkaBrokerWrapper kafkaBrokerWrapper) {
+  static VeniceProperties getClusterProps(String clusterName, File dataDirectory, String zkAddress,
+      KafkaBrokerWrapper kafkaBrokerWrapper, boolean sslToKafka) {
     // TODO: Validate that these configs are all still used.
     // TODO: Centralize default config values in a single place
 
@@ -69,7 +70,7 @@ class IntegrationTestUtils {
     .put(KAFKA_CONSUMER_SOCKET_TIMEOUT_MS, 100)
     .put(KAFKA_CONSUMER_NUM_METADATA_REFRESH_RETRIES, 3)
     .put(KAFKA_CONSUMER_METADATA_REFRESH_BACKOFF_MS, 1000)
-    .put(KAFKA_BOOTSTRAP_SERVERS, kafkaBrokerWrapper.getAddress())
+    .put(KAFKA_BOOTSTRAP_SERVERS, sslToKafka ? kafkaBrokerWrapper.getSSLAddress() : kafkaBrokerWrapper.getAddress())
     .put(KAFKA_ZK_ADDRESS, kafkaBrokerWrapper.getZkAddress())
 
     // Other configs

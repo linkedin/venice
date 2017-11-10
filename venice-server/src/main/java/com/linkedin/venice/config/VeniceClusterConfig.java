@@ -2,14 +2,18 @@ package com.linkedin.venice.config;
 
 import static com.linkedin.venice.ConfigKeys.*;
 
+import com.linkedin.venice.SSLConfig;
 import com.linkedin.venice.exceptions.ConfigurationException;
 import com.linkedin.venice.exceptions.UndefinedPropertyException;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.storage.BdbStorageMetadataService;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.VeniceProperties;
 
 import java.io.File;
+import java.util.Optional;
+import org.apache.kafka.common.protocol.SecurityProtocol;
 
 
 /**
@@ -23,7 +27,6 @@ public class VeniceClusterConfig {
   private String offsetDatabasePath = null;
   private long offsetManagerFlushIntervalMs;
   private long offsetDatabaseCacheSize;
-  private boolean helixEnabled;
   private String zookeeperAddress;
   private PersistenceType persistenceType;
   private String kafkaBootstrapServers;
@@ -32,6 +35,10 @@ public class VeniceClusterConfig {
   private int statusMessageRetryCount;
   private long statusMessageRetryDurationMs ;
   private int offsetManagerLogFileMaxBytes;
+
+  private String kafkaSecurityProtocol;
+  // SSL related config
+  Optional<SSLConfig> sslConfig;
 
   public VeniceClusterConfig(VeniceProperties clusterProperties)
       throws ConfigurationException {
@@ -70,6 +77,16 @@ public class VeniceClusterConfig {
     }
     if (clusterProps.containsKey(DEFAULT_READ_QUOTA)) {
       Store.setDefaultReadQuota(clusterProps.getLong(DEFAULT_READ_QUOTA));
+    }
+
+    kafkaSecurityProtocol = clusterProps.getString(KAFKA_SECURITY_PROTOCOL, SecurityProtocol.PLAINTEXT.name());
+    if (!SslUtils.isKafkaProtocolValid(kafkaSecurityProtocol)) {
+      throw new ConfigurationException("Invalid kafka security protocol: " + kafkaSecurityProtocol);
+    }
+    if (SslUtils.isKafkaSSLProtocol(kafkaSecurityProtocol)) {
+      sslConfig = Optional.of(new SSLConfig(clusterProps));
+    } else {
+      sslConfig = Optional.empty();
     }
   }
 
@@ -121,5 +138,13 @@ public class VeniceClusterConfig {
 
   public int getOffsetManagerLogFileMaxBytes() {
     return offsetManagerLogFileMaxBytes;
+  }
+
+  public String getKafkaSecurityProtocol() {
+    return kafkaSecurityProtocol;
+  }
+
+  public Optional<SSLConfig> getSslConfig() {
+    return sslConfig;
   }
 }

@@ -43,7 +43,19 @@ public class ConfigKeys {
   public static final String KAFKA_BOOTSTRAP_SERVERS = "kafka.bootstrap.servers";
   public static final String SSL_KAFKA_BOOTSTRAP_SERVERS = "ssl.kafka.bootstrap.servers";
   public static final String MAX_KAFKA_FETCH_BYTES_PER_SECOND = "max.kafka.fetch.bytes.per.second";
+  // Kafka security protocol
   public static final String KAFKA_SECURITY_PROTOCOL = "kafka.security.protocol";
+  // ssl config
+  public static final String SSL_KEYSTORE_LOCATION = "ssl.keystore.location";
+  public static final String SSL_KEYSTORE_PASSWORD = "ssl.keystore.password";
+  public static final String SSL_KEYSTORE_TYPE = "ssl.keystore.type";
+  public static final String SSL_KEY_PASSWORD = "ssl.key.password";
+  public static final String SSL_TRUSTSTORE_LOCATION = "ssl.truststore.location";
+  public static final String SSL_TRUSTSTORE_PASSWORD = "ssl.truststore.password";
+  public static final String SSL_TRUSTSTORE_TYPE = "ssl.truststore.type";
+  public static final String SSL_KEYMANAGER_ALGORITHM = "ssl.keymanager.algorithm";
+  public static final String SSL_TRUSTMANAGER_ALGORITHM = "ssl.trustmanager.algorithm";
+  public static final String SSL_SECURE_RANDOM_IMPLEMENTATION = "ssl.secure.random.implementation";
 
   // Cluster specific configs for controller
   public static final String CONTROLLER_NAME = "controller.name";

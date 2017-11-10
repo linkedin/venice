@@ -20,6 +20,8 @@ import org.apache.commons.io.FileUtils;
 
 import java.io.File;
 import java.util.concurrent.TimeUnit;
+import org.apache.kafka.common.protocol.SecurityProtocol;
+
 
 /**
  * A wrapper for the {@link com.linkedin.venice.server.VeniceServer}.
@@ -38,28 +40,39 @@ public class VeniceServerWrapper extends ProcessWrapper {
     this.config = config;
   }
 
-  static StatefulServiceProvider<VeniceServerWrapper> generateService(String clusterName, KafkaBrokerWrapper kafkaBrokerWrapper, boolean enableServerWhitelist, boolean isAutoJoin, boolean ssl) {
+  static StatefulServiceProvider<VeniceServerWrapper> generateService(String clusterName,
+      KafkaBrokerWrapper kafkaBrokerWrapper,
+      boolean enableServerWhitelist,
+      boolean isAutoJoin,
+      boolean ssl,
+      boolean sslToKafka) {
     return (serviceName, port, dataDirectory) -> {
       /** Create config directory under {@link dataDirectory} */
       File configDirectory = new File(dataDirectory.getAbsolutePath(), "config");
       FileUtils.forceMkdir(configDirectory);
 
       // Generate cluster.properties in config directory
-      VeniceProperties clusterProps = IntegrationTestUtils.getClusterProps(clusterName, dataDirectory, kafkaBrokerWrapper.getZkAddress(), kafkaBrokerWrapper);
+      VeniceProperties clusterProps = IntegrationTestUtils.getClusterProps(clusterName, dataDirectory,
+          kafkaBrokerWrapper.getZkAddress(), kafkaBrokerWrapper, sslToKafka);
       File clusterConfigFile = new File(configDirectory, VeniceConfigLoader.CLUSTER_PROPERTIES_FILE);
       clusterProps.storeFlattened(clusterConfigFile);
 
       // Generate server.properties in config directory
       int listenPort = IntegrationTestUtils.getFreePort();
-      VeniceProperties serverProps = new PropertyBuilder()
+      PropertyBuilder serverPropsBuilder = new PropertyBuilder()
           .put(LISTENER_PORT, listenPort)
           .put(ADMIN_PORT, IntegrationTestUtils.getFreePort())
           .put(DATA_BASE_PATH, dataDirectory.getAbsolutePath())
           .put(ENABLE_SERVER_WHITE_LIST, enableServerWhitelist)
           .put(SERVER_REST_SERVICE_STORAGE_THREAD_NUM, 4)
           .put(MAX_STATE_TRANSITION_THREAD_NUMBER, 10)
-          .put(SERVER_NETTY_GRACEFUL_SHUTDOWN_PERIOD_SECONDS, 0)
-          .build();
+          .put(SERVER_NETTY_GRACEFUL_SHUTDOWN_PERIOD_SECONDS, 0);
+      if (sslToKafka) {
+        serverPropsBuilder.put(KAFKA_SECURITY_PROTOCOL, SecurityProtocol.SSL.name);
+        serverPropsBuilder.put(SslUtils.getLocalCommonKafkaSSLConfig());
+      }
+
+      VeniceProperties serverProps = serverPropsBuilder.build();
 
       File serverConfigFile = new File(configDirectory, VeniceConfigLoader.SERVER_PROPERTIES_FILE);
       serverProps.storeFlattened(serverConfigFile);

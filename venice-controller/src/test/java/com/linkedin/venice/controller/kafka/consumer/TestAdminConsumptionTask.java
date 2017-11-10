@@ -84,8 +84,6 @@ public class TestAdminConsumptionTask {
   private String clusterName;
   private String topicName;
   private final byte[] emptyKeyBytes = new byte[]{'a'};
-  private final VeniceConsumerFactory consumerFactory = mock(VeniceConsumerFactory.class);
-  private final String kafkaBootstrapServers = "fake_kafka_servers";
   private final AdminOperationSerializer adminOperationSerializer = new AdminOperationSerializer();
 
   private final String storeName = TestUtils.getUniqueString("test_store");
@@ -160,12 +158,9 @@ public class TestAdminConsumptionTask {
                                                        boolean isParent,
                                                        AdminConsumptionStats stats) {
     MockInMemoryConsumer inMemoryKafkaConsumer = new MockInMemoryConsumer(inMemoryKafkaBroker, pollStrategy, mockKafkaConsumer);
-    doReturn(inMemoryKafkaConsumer)
-        .when(consumerFactory)
-        .getConsumer(any());
     DeepCopyOffsetManager deepCopyOffsetManager = new DeepCopyOffsetManager(offsetManager);
 
-    return new AdminConsumptionTask(clusterName, consumerFactory, kafkaBootstrapServers, admin, deepCopyOffsetManager,
+    return new AdminConsumptionTask(clusterName, inMemoryKafkaConsumer, admin, deepCopyOffsetManager,
         executionIdAccessor, failureRetryTimeout, isParent, stats, 1000);
   }
 
