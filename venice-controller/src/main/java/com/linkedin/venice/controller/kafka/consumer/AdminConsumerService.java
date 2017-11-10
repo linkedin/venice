@@ -1,5 +1,6 @@
 package com.linkedin.venice.controller.kafka.consumer;
 
+import com.linkedin.venice.SSLConfig;
 import com.linkedin.venice.controller.VeniceControllerConfig;
 import com.linkedin.venice.controller.VeniceHelixAdmin;
 import com.linkedin.venice.controller.kafka.offsets.AdminOffsetManager;
@@ -7,12 +8,17 @@ import com.linkedin.venice.controller.stats.AdminConsumptionStats;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.consumer.KafkaConsumerWrapper;
 import com.linkedin.venice.kafka.consumer.VeniceConsumerFactory;
-import com.linkedin.venice.offsets.OffsetManager;
+import com.linkedin.venice.serialization.KafkaKeySerializer;
+import com.linkedin.venice.serialization.avro.KafkaValueSerializer;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.utils.DaemonThreadFactory;
+import com.linkedin.venice.utils.SslUtils;
 import io.tehuti.metrics.MetricsRepository;
-import java.util.Map;
+import java.util.Optional;
+import java.util.Properties;
 import java.util.concurrent.TimeUnit;
+import org.apache.kafka.clients.CommonClientConfigs;
+import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.log4j.Logger;
 
 import java.util.concurrent.ThreadFactory;
@@ -61,8 +67,7 @@ public class AdminConsumerService extends AbstractVeniceService {
 
   private AdminConsumptionTask getAdminConsumptionTaskForCluster(String clusterName) {
     return new AdminConsumptionTask(clusterName,
-        consumerFactory,
-        config.getKafkaBootstrapServers(),
+        createKafkaConsumer(clusterName),
         admin,
         offsetManager,
         admin.getExecutionIdAccessor(),
@@ -88,5 +93,40 @@ public class AdminConsumerService extends AbstractVeniceService {
       throw new VeniceException("This AdminConsumptionService is for cluster " + config.getClusterName()
           + ".  Cannot get the last succeed execution Id for cluster " + clusterName);
     }
+  }
+
+  private KafkaConsumerWrapper createKafkaConsumer(String clusterName) {
+    Properties kafkaConsumerProperties = new Properties();
+    /**
+     * {@link ConsumerConfig.CLIENT_ID_CONFIG} can be used to identify different consumers while checking Kafka related metrics.
+     */
+    kafkaConsumerProperties.setProperty(ConsumerConfig.CLIENT_ID_CONFIG, clusterName);
+    kafkaConsumerProperties.setProperty(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
+    /**
+     * Reason to disable auto_commit
+     * 1. {@link AdminConsumptionTask} is persisting {@link com.linkedin.venice.offsets.OffsetRecord} in Zookeeper.
+     */
+    kafkaConsumerProperties.setProperty(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, "false");
+    kafkaConsumerProperties.setProperty(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG,
+        KafkaKeySerializer.class.getName());
+    kafkaConsumerProperties.setProperty(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG,
+        KafkaValueSerializer.class.getName());
+
+    /**
+     * Setup SSL related config
+     */
+    if (SslUtils.isKafkaSSLProtocol(config.getKafkaSecurityProtocol())) {
+      Optional<SSLConfig> sslConfig = config.getSslConfig();
+      if (!sslConfig.isPresent()) {
+        throw new VeniceException("SSLConfig should be present when Kafka SSL is enabled");
+      }
+      kafkaConsumerProperties.putAll(sslConfig.get().getKafkaSSLConfig());
+      kafkaConsumerProperties.setProperty(CommonClientConfigs.SECURITY_PROTOCOL_CONFIG, config.getKafkaSecurityProtocol());
+      kafkaConsumerProperties.setProperty(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, config.getSslKafkaBootStrapServers());
+    } else {
+      kafkaConsumerProperties.setProperty(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, config.getKafkaBootstrapServers());
+    }
+
+    return consumerFactory.getConsumer(kafkaConsumerProperties);
   }
 }

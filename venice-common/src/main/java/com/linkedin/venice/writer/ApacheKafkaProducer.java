@@ -6,8 +6,11 @@ import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.serialization.KafkaKeySerializer;
 import com.linkedin.venice.serialization.avro.KafkaValueSerializer;
+import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.VeniceProperties;
 
+import java.util.Arrays;
+import java.util.List;
 import java.util.Properties;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
@@ -29,11 +32,27 @@ public class ApacheKafkaProducer implements KafkaProducerWrapper {
   public static final String PROPERTIES_KAFKA_PREFIX = "kafka.";
   private static final Logger LOGGER = Logger.getLogger(ApacheKafkaProducer.class);
 
+  /**
+   * Mandatory Kafka SSL configs when SSL is enabled.
+   */
+  private static final List<String> KAFKA_SSL_MANDATORY_CONFIGS = Arrays.asList(
+      CommonClientConfigs.SECURITY_PROTOCOL_CONFIG,
+      SslConfigs.SSL_KEYSTORE_LOCATION_CONFIG,
+      SslConfigs.SSL_KEYSTORE_PASSWORD_CONFIG,
+      SslConfigs.SSL_KEYSTORE_TYPE_CONFIG,
+      SslConfigs.SSL_KEY_PASSWORD_CONFIG,
+      SslConfigs.SSL_TRUSTSTORE_LOCATION_CONFIG,
+      SslConfigs.SSL_TRUSTSTORE_PASSWORD_CONFIG,
+      SslConfigs.SSL_TRUSTSTORE_TYPE_CONFIG,
+      SslConfigs.SSL_KEYMANAGER_ALGORITHM_CONFIG,
+      SslConfigs.SSL_TRUSTMANAGER_ALGORITHM_CONFIG,
+      SslConfigs.SSL_SECURE_RANDOM_IMPLEMENTATION_CONFIG
+  );
+
   private final KafkaProducer<KafkaKey, KafkaMessageEnvelope> producer;
 
   public ApacheKafkaProducer(VeniceProperties props) {
     /** TODO: Consider making these default settings part of {@link VeniceWriter} or {@link KafkaProducerWrapper} */
-
     Properties properties = getKafkaPropertiesFromVeniceProps(props);
 
     // TODO : For sending control message, this is not required. Move this higher in the stack.
@@ -53,17 +72,11 @@ public class ApacheKafkaProducer implements KafkaProducerWrapper {
     ensureMandatoryProp(properties, ProducerConfig.MAX_BLOCK_MS_CONFIG, String.valueOf(Long.MAX_VALUE));
 
     //Setup ssl config if needed.
-    setPropertiesFromVeniceProps(props,properties,CommonClientConfigs.SECURITY_PROTOCOL_CONFIG,"PLAINTEXT");
-    setPropertiesFromVeniceProps(props,properties,SslConfigs.SSL_KEYSTORE_LOCATION_CONFIG,"");
-    setPropertiesFromVeniceProps(props,properties,SslConfigs.SSL_KEYSTORE_PASSWORD_CONFIG,"");
-    setPropertiesFromVeniceProps(props,properties,SslConfigs.SSL_KEYSTORE_TYPE_CONFIG,"");
-    setPropertiesFromVeniceProps(props,properties,SslConfigs.SSL_KEY_PASSWORD_CONFIG,"");
-    setPropertiesFromVeniceProps(props,properties,SslConfigs.SSL_TRUSTSTORE_LOCATION_CONFIG,"");
-    setPropertiesFromVeniceProps(props,properties,SslConfigs.SSL_TRUSTSTORE_PASSWORD_CONFIG,"");
-    setPropertiesFromVeniceProps(props,properties,SslConfigs.SSL_TRUSTSTORE_TYPE_CONFIG,"");
-    setPropertiesFromVeniceProps(props,properties,SslConfigs.SSL_KEYMANAGER_ALGORITHM_CONFIG,"");
-    setPropertiesFromVeniceProps(props,properties,SslConfigs.SSL_TRUSTMANAGER_ALGORITHM_CONFIG,"");
-    setPropertiesFromVeniceProps(props,properties,SslConfigs.SSL_SECURE_RANDOM_IMPLEMENTATION_CONFIG,"");
+    if (validateAndCopyKafakaSSLConfig(props, properties)) {
+      LOGGER.info("Will initialize an SSL Kafka producer");
+    } else {
+      LOGGER.info("Will initialize a non-SSL Kafka producer");
+    }
 
     if (!properties.containsKey(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG)) {
       throw new ConfigurationException("Props key not found: " + PROPERTIES_KAFKA_PREFIX + ProducerConfig.BOOTSTRAP_SERVERS_CONFIG);
@@ -156,9 +169,32 @@ public class ApacheKafkaProducer implements KafkaProducerWrapper {
   }
 
   /**
-   * Get the given property from Venice Properties then put it into the target properites.
+   * This function will extract SSL related config if Kafka SSL is enabled.
+   *
+   * @param veniceProperties
+   * @param properties
+   * @return whether Kafka SSL is enabled or not
    */
-  private void setPropertiesFromVeniceProps(VeniceProperties sourceProps, Properties targetProps, String key, String defaultValue){
-    targetProps.put(key, sourceProps.getString(key, defaultValue));
+  public static boolean validateAndCopyKafakaSSLConfig(VeniceProperties veniceProperties, Properties properties) {
+    if (!veniceProperties.containsKey(CommonClientConfigs.SECURITY_PROTOCOL_CONFIG)) {
+      // No security protocol specified
+      return false;
+    }
+    String kafkaProtocol = veniceProperties.getString(CommonClientConfigs.SECURITY_PROTOCOL_CONFIG);
+    if (!SslUtils.isKafkaProtocolValid(kafkaProtocol)) {
+      throw new VeniceException("Invalid Kafka protocol specified: " + kafkaProtocol);
+    }
+    if (!SslUtils.isKafkaSSLProtocol(kafkaProtocol)) {
+      // TLS/SSL is not enabled
+      return false;
+    }
+    // Since SSL is enabled, the following configs are mandatory
+    KAFKA_SSL_MANDATORY_CONFIGS.forEach( config -> {
+      if (!veniceProperties.containsKey(config)) {
+        throw new VeniceException(config + " is required when Kafka SSL is enabled");
+      }
+      properties.setProperty(config, veniceProperties.getString(config));
+    });
+    return true;
   }
 }

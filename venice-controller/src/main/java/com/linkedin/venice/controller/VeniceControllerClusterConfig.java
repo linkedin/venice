@@ -1,18 +1,23 @@
 package com.linkedin.venice.controller;
 
+import com.linkedin.venice.SSLConfig;
+import com.linkedin.venice.exceptions.ConfigurationException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.ReadStrategy;
 import com.linkedin.venice.meta.RoutingStrategy;
+import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.util.Map;
+import java.util.Optional;
+import org.apache.kafka.common.protocol.SecurityProtocol;
 import org.apache.log4j.Logger;
 
 import static com.linkedin.venice.ConfigKeys.*;
 
 /**
- * Configuration which is sepcific to a Venice cluster used by Venice controller.
+ * Configuration which is specific to a Venice cluster used by Venice controller.
  */
 public class VeniceControllerClusterConfig {
   private static final Logger logger = Logger.getLogger(VeniceControllerClusterConfig.class);
@@ -35,6 +40,10 @@ public class VeniceControllerClusterConfig {
   private boolean sslToKafka;
   private int helixSendMessageTimeoutMilliseconds;
   private int adminConsumptionRetryDelayMs;
+
+  private String kafkaSecurityProtocol;
+  // SSL related config
+  Optional<SSLConfig> sslConfig;
 
   /**
    * After server disconnecting for delayToRebalanceMS, helix would trigger the re-balance immediately.
@@ -121,6 +130,16 @@ public class VeniceControllerClusterConfig {
     }
     helixSendMessageTimeoutMilliseconds = props.getInt(HELIX_SEND_MESSAGE_TIMEOUT_MS, 10000);
     adminConsumptionRetryDelayMs = props.getInt(ADMIN_CONSUMPTION_RETRY_DELAY_MS, 15000);
+
+    kafkaSecurityProtocol = props.getString(KAFKA_SECURITY_PROTOCOL, SecurityProtocol.PLAINTEXT.name());
+    if (!SslUtils.isKafkaProtocolValid(kafkaSecurityProtocol)) {
+      throw new ConfigurationException("Invalid kafka security protocol: " + kafkaSecurityProtocol);
+    }
+    if (SslUtils.isKafkaSSLProtocol(kafkaSecurityProtocol)) {
+      sslConfig = Optional.of(new SSLConfig(props));
+    } else {
+      sslConfig = Optional.empty();
+    }
   }
 
   public VeniceProperties getProps() {
@@ -218,5 +237,13 @@ public class VeniceControllerClusterConfig {
 
   public int getAdminConsumptionRetryDelayMs() {
     return adminConsumptionRetryDelayMs;
+  }
+
+  public String getKafkaSecurityProtocol() {
+    return kafkaSecurityProtocol;
+  }
+
+  public Optional<SSLConfig> getSslConfig() {
+    return sslConfig;
   }
 }

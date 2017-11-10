@@ -111,7 +111,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
     for (int i = 0; i < numberOfServers; i++) {
       VeniceServerWrapper veniceServerWrapper =
           ServiceFactory.getVeniceServer(clusterName, kafkaBrokerWrapper, enableWhitelist, enableAutoJoinWhitelist,
-              sslToStorageNodes);
+              sslToStorageNodes, sslToKafka);
       veniceServerWrappers.put(veniceServerWrapper.getPort(), veniceServerWrapper);
     }
 

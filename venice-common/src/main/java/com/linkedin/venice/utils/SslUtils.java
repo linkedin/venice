@@ -8,8 +8,6 @@ import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
-import java.util.HashMap;
-import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
@@ -28,6 +26,7 @@ import org.apache.http.nio.reactor.ConnectingIOReactor;
 import org.apache.http.nio.reactor.IOReactorException;
 import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.kafka.common.config.SslConfigs;
+import org.apache.kafka.common.protocol.SecurityProtocol;
 
 import static com.linkedin.venice.HttpConstants.*;
 
@@ -45,7 +44,6 @@ public class SslUtils {
    * @return factory that corresponds to self-signed development certificate
    */
   public static SSLEngineComponentFactory getLocalSslFactory() {
-
     SSLEngineComponentFactoryImpl.Config sslConfig = getLocalSslConfig();
     try {
       return new SSLEngineComponentFactoryImpl(sslConfig);
@@ -93,9 +91,26 @@ public class SslUtils {
 
   public static Properties getLocalKafkaClientSSLConfig(){
     Properties properties = new Properties();
-    properties.put(CommonClientConfigs.SECURITY_PROTOCOL_CONFIG, "SSL");
+    properties.put(CommonClientConfigs.SECURITY_PROTOCOL_CONFIG, SecurityProtocol.SSL.name());
     properties.putAll(getLocalCommonKafkaSSLConfig());
     return properties;
+  }
+
+  /**
+   * Right now, Venice only supports two Kafka protocols:
+   * {@link SecurityProtocol#PLAINTEXT}
+   * {@link SecurityProtocol#SSL}
+   *
+   * @param kafkaProtocol
+   * @return
+   */
+  public static boolean isKafkaProtocolValid(String kafkaProtocol) {
+    return kafkaProtocol.equals(SecurityProtocol.PLAINTEXT.name())
+        || kafkaProtocol.equals(SecurityProtocol.SSL.name());
+  }
+
+  public static boolean isKafkaSSLProtocol(String kafkaProtocol) {
+    return kafkaProtocol.equals(SecurityProtocol.SSL.name());
   }
 
   protected static String getPathForResource(String resource) {

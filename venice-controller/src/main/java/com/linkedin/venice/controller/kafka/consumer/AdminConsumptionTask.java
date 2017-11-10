@@ -2,7 +2,6 @@ package com.linkedin.venice.controller.kafka.consumer;
 
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.ExecutionIdAccessor;
-import com.linkedin.venice.controller.VeniceControllerService;
 import com.linkedin.venice.controller.kafka.AdminTopicUtils;
 import com.linkedin.venice.controller.kafka.protocol.admin.AdminOperation;
 import com.linkedin.venice.controller.kafka.protocol.admin.DeleteAllVersions;
@@ -26,7 +25,6 @@ import com.linkedin.venice.exceptions.validation.DataValidationException;
 import com.linkedin.venice.exceptions.validation.DuplicateDataException;
 import com.linkedin.venice.guid.GuidUtils;
 import com.linkedin.venice.kafka.consumer.KafkaConsumerWrapper;
-import com.linkedin.venice.kafka.consumer.VeniceConsumerFactory;
 import com.linkedin.venice.kafka.protocol.GUID;
 import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.Put;
@@ -46,7 +44,6 @@ import java.util.Iterator;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
-import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -98,8 +95,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
   private final Map<GUID, ProducerTracker> producerTrackerMap;
 
   public AdminConsumptionTask(String clusterName,
-                              VeniceConsumerFactory consumerFactory,
-                              String kafkaBootstrapServers,
+                              KafkaConsumerWrapper consumer,
                               Admin admin,
                               OffsetManager offsetManager,
                               ExecutionIdAccessor executionIdAccessor,
@@ -124,8 +120,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
     this.stats = stats;
     this.readRetryDelayMs = readRetryDelayMs;
 
-    Properties kafkaConsumerProperties = VeniceControllerService.getKafkaConsumerProperties(kafkaBootstrapServers, clusterName);
-    this.consumer = consumerFactory.getConsumer(kafkaConsumerProperties);
+    this.consumer = consumer;
     this.offsetManager = offsetManager;
     this.executionIdAccessor = executionIdAccessor;
     this.producerTrackerMap = new HashMap<>();

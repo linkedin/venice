@@ -27,6 +27,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.helix.HelixAdapterSerializer;
 import com.linkedin.venice.helix.HelixReadWriteStoreRepository;
+import com.linkedin.venice.integration.utils.BrooklinWrapper;
 import com.linkedin.venice.integration.utils.KafkaBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
@@ -45,6 +46,7 @@ import java.util.HashMap;
 import java.util.Map;
 
 import java.util.Optional;
+import java.util.concurrent.TimeUnit;
 import org.apache.helix.manager.zk.ZkClient;
 import org.apache.kafka.clients.producer.RecordMetadata;
 import org.apache.kafka.common.TopicPartition;
@@ -839,9 +841,9 @@ public class TestVeniceParentHelixAdmin {
     Assert.assertEquals(pushStrategyResponse.getStrategies().get(voldemortStoreName), pushStrategy);
 
     controllerWrapper.close();
+    childControllerWrapper.close();
     kafkaBrokerWrapper.close();
   }
-
 
   @Test
   public void testGetExecutionStatus(){
