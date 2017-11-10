@@ -1,5 +1,6 @@
 package com.linkedin.venice.router;
 
+import com.linkedin.venice.utils.NettyUtils;
 import io.netty.channel.ChannelHandler;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
@@ -30,7 +31,7 @@ public class VerifySslHandler extends SimpleChannelInboundHandler<HttpRequest> {
       String method = req.method().name();
       String errLine = remote + " requested " + method + " " + req.uri();
       logger.error("Got a non-ssl request on what should be an ssl only port: " + errLine);
-      MetaDataHandler.setupResponseAndFlush(HttpResponseStatus.FORBIDDEN, new byte[0], false, ctx);
+      NettyUtils.setupResponseAndFlush(HttpResponseStatus.FORBIDDEN, new byte[0], false, ctx);
     } else {
       ReferenceCountUtil.retain(req);
       ctx.fireChannelRead(req);

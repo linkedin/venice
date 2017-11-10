@@ -3,7 +3,6 @@ package com.linkedin.venice.listener;
 import com.linkedin.ddsstorage.router.lnkd.netty4.SSLInitializer;
 import com.linkedin.security.ssl.access.control.SSLEngineComponentFactory;
 import com.linkedin.venice.config.VeniceServerConfig;
-import com.linkedin.venice.offsets.OffsetManager;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.server.StoreRepository;
 import com.linkedin.venice.stats.AggServerHttpRequestStats;
@@ -14,11 +13,9 @@ import io.netty.handler.codec.http.HttpObjectAggregator;
 import io.netty.handler.codec.http.HttpServerCodec;
 import io.netty.handler.timeout.IdleStateHandler;
 import io.tehuti.metrics.MetricsRepository;
-
 import java.util.Optional;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
 
 
 public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
@@ -28,12 +25,13 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
   private final AggServerHttpRequestStats singleGetStats;
   private final AggServerHttpRequestStats multiGetStats;
   private final Optional<SSLEngineComponentFactory> sslFactory;
+  private final Optional<StaticAclHandler> aclHandler;
   private final VerifySslHandler verifySsl = new VerifySslHandler();
   private final VeniceServerConfig serverConfig;
 
   public HttpChannelInitializer(StoreRepository storeRepository, InMemoryOffsetRetriever offsetRetriever,
       MetricsRepository metricsRepository, Optional<SSLEngineComponentFactory> sslFactory,
-      VeniceServerConfig serverConfig) {
+      VeniceServerConfig serverConfig, Optional<StaticAccessController> accessController) {
     this.serverConfig = serverConfig;
 
     this.executor = Executors.newFixedThreadPool(
@@ -48,6 +46,9 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
         offsetRetriever);
 
     this.sslFactory = sslFactory;
+    this.aclHandler = accessController.isPresent()
+        ? Optional.of(new StaticAclHandler(accessController.get(), VeniceComponent.SERVER))
+        : Optional.empty();
   }
 
   @Override
@@ -66,8 +67,10 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
         .addLast(new IdleStateHandler(0, 0, serverConfig.getNettyIdleTimeInSeconds()));
 
     if (sslFactory.isPresent()){
-      ch.pipeline()
-          .addLast(verifySsl);
+      ch.pipeline().addLast(verifySsl);
+      if (aclHandler.isPresent()) {
+        ch.pipeline().addLast(aclHandler.get());
+      }
     }
     ch.pipeline()
         .addLast(new GetRequestHttpHandler(statsHandler))

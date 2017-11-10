@@ -19,7 +19,7 @@ public interface AccessController {
   AccessController init(List<String> stores);
 
   /**
-   * Check if client has has permission to access a particular store.
+   * Check if client has permission to access a particular store.
    * This method is invoked by every single request, therefore
    * minimized execution time will result the best latency and throughput.
    *

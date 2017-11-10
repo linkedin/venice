@@ -1,6 +1,5 @@
 package com.linkedin.venice.router;
 
-import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponse;
 import com.linkedin.venice.controllerapi.MasterControllerResponse;
 import com.linkedin.venice.controllerapi.MultiSchemaResponse;
@@ -15,28 +14,20 @@ import com.linkedin.venice.router.api.VenicePathParserHelper;
 import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.utils.ExceptionUtils;
 import com.linkedin.venice.utils.Utils;
-import io.netty.buffer.Unpooled;
 import io.netty.channel.ChannelHandler;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
-import io.netty.handler.codec.http.DefaultFullHttpResponse;
-import io.netty.handler.codec.http.FullHttpResponse;
 import io.netty.handler.codec.http.HttpRequest;
-import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.util.ReferenceCountUtil;
 import java.io.IOException;
-import java.net.URL;
-import java.net.URLClassLoader;
-import java.util.Arrays;
 import java.util.Collection;
 import java.util.Map;
 import java.util.Optional;
 import org.apache.log4j.Logger;
 import org.codehaus.jackson.map.ObjectMapper;
 
-import static io.netty.handler.codec.http.HttpHeaderNames.*;
+import static com.linkedin.venice.utils.NettyUtils.*;
 import static io.netty.handler.codec.http.HttpResponseStatus.*;
-import static io.netty.handler.codec.http.HttpVersion.*;
 
 
 /**
@@ -68,26 +59,6 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
     this.clusterName = clusterName;
     this.storeConfigRepo = storeConfigRepo;
     this.clusterToD2Map = clusterToD2Map;
-  }
-
-  public static void setupResponseAndFlush(HttpResponseStatus status, byte[] body, boolean isJson,
-                                     ChannelHandlerContext ctx) {
-    FullHttpResponse response = new DefaultFullHttpResponse(HTTP_1_1, status, Unpooled.wrappedBuffer(body));
-    try {
-      if (!isJson) {
-        response.headers().set(CONTENT_TYPE, HttpConstants.TEXT_PLAIN);
-      } else {
-        response.headers().set(CONTENT_TYPE, HttpConstants.JSON);
-      }
-    } catch (NoSuchMethodError e){ // netty version conflict
-      ClassLoader cl = ClassLoader.getSystemClassLoader();
-      URL[] urls = ((URLClassLoader)cl).getURLs();
-      logger.warn("NoSuchMethodError, probably from netty version conflict.  Printing netty on classpath: ", e);
-      Arrays.asList(urls).stream().filter(url -> url.getFile().contains("netty")).forEach(logger::warn);
-      throw e;
-    }
-    response.headers().set(CONTENT_LENGTH, response.content().readableBytes());
-    ctx.writeAndFlush(response);
   }
 
   @Override

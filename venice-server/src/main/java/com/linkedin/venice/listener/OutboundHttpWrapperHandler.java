@@ -63,6 +63,9 @@ public class OutboundHttpWrapperHandler extends ChannelOutboundHandlerAdapter {
       responseStatus = ((HttpShortcutResponse) msg).getStatus();
       body = Unpooled.wrappedBuffer(((HttpShortcutResponse) msg).getMessage().getBytes(StandardCharsets.UTF_8));
       contentType = HttpConstants.TEXT_PLAIN;
+    } else if (msg instanceof DefaultFullHttpResponse){
+      ctx.writeAndFlush(msg);
+      return;
     } else {
       responseStatus = INTERNAL_SERVER_ERROR;
       body = Unpooled.wrappedBuffer("Unrecognized object in OutboundHttpWrapperHandler".getBytes(StandardCharsets.UTF_8));

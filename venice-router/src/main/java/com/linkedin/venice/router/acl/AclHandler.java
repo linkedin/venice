@@ -3,8 +3,8 @@ package com.linkedin.venice.router.acl;
 import com.linkedin.venice.helix.HelixReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreDataChangedListener;
-import com.linkedin.venice.router.MetaDataHandler;
 import com.linkedin.venice.router.api.VenicePathParserHelper;
+import com.linkedin.venice.utils.NettyUtils;
 import io.netty.channel.ChannelHandler;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
@@ -12,7 +12,6 @@ import io.netty.handler.codec.http.HttpRequest;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.handler.ssl.SslHandler;
 import io.netty.util.ReferenceCountUtil;
-import java.io.IOException;
 import java.security.cert.X509Certificate;
 import java.util.stream.Collectors;
 import javax.net.ssl.SSLPeerUnverifiedException;
@@ -37,7 +36,7 @@ public class AclHandler extends SimpleChannelInboundHandler<HttpRequest> {
    *
    * @param ctx
    * @param req
-   * @throws IOException
+   * @throws SSLPeerUnverifiedException
    */
   @Override
   public void channelRead0(ChannelHandlerContext ctx, HttpRequest req) throws SSLPeerUnverifiedException {
@@ -82,7 +81,7 @@ public class AclHandler extends SimpleChannelInboundHandler<HttpRequest> {
               logger.warn("\nExisting stores: " + _metadataRepository.getAllStores().stream().map(Store::getName).sorted()
                   .collect(Collectors.toList()) + "\nAccess-controlled stores: "
                   + _accessController.getAccessControlledStores().stream().sorted().collect(Collectors.toList()));
-              MetaDataHandler.setupResponseAndFlush(HttpResponseStatus.INTERNAL_SERVER_ERROR,
+              NettyUtils.setupResponseAndFlush(HttpResponseStatus.INTERNAL_SERVER_ERROR,
                   "ACL not found!\nPlease report the error!".getBytes(), false, ctx);
             } else {
               // Case B
@@ -103,7 +102,7 @@ public class AclHandler extends SimpleChannelInboundHandler<HttpRequest> {
               // Action:
               //   return 403 Forbidden
               logger.debug("Unauthorized access rejected: " + errLine);
-              MetaDataHandler.setupResponseAndFlush(HttpResponseStatus.FORBIDDEN, new byte[0], false, ctx);
+              NettyUtils.setupResponseAndFlush(HttpResponseStatus.FORBIDDEN, new byte[0], false, ctx);
             }
           }
         } catch (AclException e) {
@@ -116,7 +115,7 @@ public class AclHandler extends SimpleChannelInboundHandler<HttpRequest> {
             ctx.fireChannelRead(req);
           } else {
             logger.warn("Exception occurred! Access rejected: " + errLine + "\n" + e);
-            MetaDataHandler.setupResponseAndFlush(HttpResponseStatus.FORBIDDEN, new byte[0], false, ctx);
+            NettyUtils.setupResponseAndFlush(HttpResponseStatus.FORBIDDEN, new byte[0], false, ctx);
           }
         }
       }
@@ -124,7 +123,7 @@ public class AclHandler extends SimpleChannelInboundHandler<HttpRequest> {
       String client = ctx.channel().remoteAddress().toString(); //ip and port
       String errLine = String.format("%s requested %s %s", client, method, req.uri());
       logger.debug("Requested store does not exist: " + errLine);
-      MetaDataHandler.setupResponseAndFlush(HttpResponseStatus.BAD_REQUEST,
+      NettyUtils.setupResponseAndFlush(HttpResponseStatus.BAD_REQUEST,
           ("Invalid Venice store name: " + storeName).getBytes(), false, ctx);
     }
   }
