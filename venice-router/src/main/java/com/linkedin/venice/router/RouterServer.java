@@ -11,19 +11,20 @@ import com.linkedin.ddsstorage.router.impl.Router;
 import com.linkedin.ddsstorage.router.lnkd.netty4.SSLInitializer;
 import com.linkedin.security.ssl.access.control.SSLEngineComponentFactory;
 import com.linkedin.venice.ConfigKeys;
+import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixAdapterSerializer;
 import com.linkedin.venice.helix.HelixLiveInstanceMonitor;
 import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
+import com.linkedin.venice.helix.HelixReadOnlyStoreConfigRepository;
 import com.linkedin.venice.helix.HelixReadOnlyStoreRepository;
 import com.linkedin.venice.helix.HelixRoutingDataRepository;
 import com.linkedin.venice.helix.ZkRoutersClusterManager;
-import com.linkedin.venice.helix.HelixReadOnlyStoreConfigRepository;
 import com.linkedin.venice.read.RequestType;
-import com.linkedin.venice.router.acl.AccessController;
-import com.linkedin.venice.router.acl.AclHandler;
+import com.linkedin.venice.router.acl.RouterAclHandler;
 import com.linkedin.venice.router.api.RouterExceptionAndTrackingUtils;
 import com.linkedin.venice.router.api.RouterHeartbeat;
+import com.linkedin.venice.router.api.VeniceDelegateMode;
 import com.linkedin.venice.router.api.VeniceDispatcher;
 import com.linkedin.venice.router.api.VeniceHostFinder;
 import com.linkedin.venice.router.api.VeniceHostHealth;
@@ -32,7 +33,6 @@ import com.linkedin.venice.router.api.VenicePartitionFinder;
 import com.linkedin.venice.router.api.VenicePathParser;
 import com.linkedin.venice.router.api.VeniceResponseAggregator;
 import com.linkedin.venice.router.api.VeniceRoleFinder;
-import com.linkedin.venice.router.api.VeniceDelegateMode;
 import com.linkedin.venice.router.api.VeniceVersionFinder;
 import com.linkedin.venice.router.stats.AggRouterHttpRequestStats;
 import com.linkedin.venice.router.throttle.ReadRequestThrottler;
@@ -72,7 +72,7 @@ public class RouterServer extends AbstractVeniceService {
   private final AggRouterHttpRequestStats statsForSingleGet;
   private final AggRouterHttpRequestStats statsForMultiGet;
   private final Optional<SSLEngineComponentFactory> sslFactory;
-  private final Optional<AccessController> accessController;
+  private final Optional<DynamicAccessController> accessController;
 
   private final VeniceRouterConfig config;
 
@@ -154,7 +154,7 @@ public class RouterServer extends AbstractVeniceService {
     }
   }
 
-  public RouterServer(VeniceProperties properties, List<D2Server> d2Servers, Optional<AccessController> accessController,
+  public RouterServer(VeniceProperties properties, List<D2Server> d2Servers, Optional<DynamicAccessController> accessController,
       Optional<SSLEngineComponentFactory> sslEngineComponentFactory) {
     this(properties, d2Servers, accessController, sslEngineComponentFactory, TehutiUtils.getMetricsRepository(ROUTER_SERVICE_NAME));
   }
@@ -162,7 +162,7 @@ public class RouterServer extends AbstractVeniceService {
   public RouterServer(
       VeniceProperties properties,
       List<D2Server> d2ServerList,
-      Optional<AccessController> accessController,
+      Optional<DynamicAccessController> accessController,
       Optional<SSLEngineComponentFactory> sslFactory,
       MetricsRepository metricsRepository) {
     this(properties, d2ServerList, accessController, sslFactory, metricsRepository, true);
@@ -180,7 +180,7 @@ public class RouterServer extends AbstractVeniceService {
   private RouterServer(
       VeniceProperties properties,
       List<D2Server> d2ServerList,
-      Optional<AccessController> accessController,
+      Optional<DynamicAccessController> accessController,
       Optional<SSLEngineComponentFactory> sslFactory,
       MetricsRepository metricsRepository, boolean isCreateHelixManager) {
     config = new VeniceRouterConfig(properties);
@@ -296,7 +296,7 @@ public class RouterServer extends AbstractVeniceService {
         .build();
 
     VerifySslHandler verifySsl = new VerifySslHandler();
-    AclHandler aclHandler = accessController.isPresent() ? new AclHandler(accessController.get(), metadataRepository) : null;
+    RouterAclHandler aclHandler = accessController.isPresent() ? new RouterAclHandler(accessController.get(), metadataRepository) : null;
     SSLInitializer sslInitializer = sslFactory.isPresent() ? new SSLInitializer(sslFactory.get()) : null;
     Consumer<ChannelPipeline> noop = pipeline -> {;};
     Consumer<ChannelPipeline> addSslInitializer = pipeline -> {pipeline.addFirst("SSL Initializer", sslInitializer);};
@@ -307,7 +307,7 @@ public class RouterServer extends AbstractVeniceService {
     Consumer<ChannelPipeline> withAcl = pipeline -> {
       pipeline.addLast("SSL Verifier", verifySsl);
       pipeline.addLast("MetadataHandler", metaDataHandler);
-      pipeline.addLast("AclHandler", aclHandler);
+      pipeline.addLast("RouterAclHandler", aclHandler);
     };
 
     secureRouter = Router.builder(scatterGather)

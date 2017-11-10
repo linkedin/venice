@@ -1,8 +1,9 @@
 package com.linkedin.venice.router.acl;
 
+import com.linkedin.venice.acl.AclException;
+import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.helix.HelixReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
-import com.linkedin.venice.meta.StoreDataChangedListener;
 import com.linkedin.venice.router.api.VenicePathParserHelper;
 import com.linkedin.venice.utils.NettyUtils;
 import io.netty.channel.ChannelHandler;
@@ -19,16 +20,19 @@ import javax.validation.constraints.NotNull;
 import org.apache.log4j.Logger;
 
 @ChannelHandler.Sharable
-public class AclHandler extends SimpleChannelInboundHandler<HttpRequest> {
-  private static final Logger logger = Logger.getLogger(AclHandler.class);
-  private HelixReadOnlyStoreRepository _metadataRepository;
-  private AccessController _accessController;
+public class RouterAclHandler extends SimpleChannelInboundHandler<HttpRequest> {
+  private static final Logger logger = Logger.getLogger(RouterAclHandler.class);
+  private HelixReadOnlyStoreRepository metadataRepository;
+  private DynamicAccessController accessController;
 
-  public AclHandler(@NotNull AccessController accessController, @NotNull HelixReadOnlyStoreRepository metadataRepository) {
-    _metadataRepository = metadataRepository;
-    _accessController = accessController.init(
+  public RouterAclHandler(@NotNull DynamicAccessController accessController,
+      @NotNull HelixReadOnlyStoreRepository metadataRepository) {
+
+    this.metadataRepository = metadataRepository;
+    this.accessController = accessController.init(
         metadataRepository.getAllStores().stream().map(Store::getName).collect(Collectors.toList()));
-    _metadataRepository.registerStoreDataChangedListener(new StoreCreationDeletionListener());
+    this.metadataRepository.registerStoreDataChangedListener(
+        new AclCreationDeletionListener(accessController, metadataRepository));
   }
 
   /**
@@ -44,14 +48,14 @@ public class AclHandler extends SimpleChannelInboundHandler<HttpRequest> {
     String storeName = new VenicePathParserHelper(req.uri()).getResourceName();
     String method = req.method().name();
 
-    if (_metadataRepository.hasStore(storeName)) {
-      if (!_metadataRepository.getStore(storeName).isAccessControlled()) {
+    if (metadataRepository.hasStore(storeName)) {
+      if (!metadataRepository.getStore(storeName).isAccessControlled()) {
         // Ignore permission. Proceed
         ReferenceCountUtil.retain(req);
         ctx.fireChannelRead(req);
       } else {
         try {
-          if (_accessController.hasAccess(clientCert, storeName, method)) {
+          if (accessController.hasAccess(clientCert, storeName, method)) {
             // Client has permission. Proceed
             ReferenceCountUtil.retain(req);
             ctx.fireChannelRead(req);
@@ -65,22 +69,22 @@ public class AclHandler extends SimpleChannelInboundHandler<HttpRequest> {
             String client = ctx.channel().remoteAddress().toString(); //ip and port
             String errLine = String.format("%s requested %s %s", client, method, req.uri());
 
-            if (!_accessController.isFailOpen() && !_accessController.hasAcl(storeName)) {  // short circuit, order matters
+            if (!accessController.isFailOpen() && !accessController.hasAcl(storeName)) {  // short circuit, order matters
               // Case A
               // Conditions:
               //   0. (outside) Store exists and is being access controlled. AND,
               //   1. (left) The following policy is applied: if ACL not found, reject the request. AND,
               //   2. (right) ACL not found.
               // Result:
-              //   Request is rejected by AccessController#hasAccess()
+              //   Request is rejected by DynamicAccessController#hasAccess()
               // Root cause:
               //   Requested resource exists but does not have ACL.
               // Action:
               //   return 500 Internal Server Error
               logger.error("Requested store does not have ACL: " + errLine);
-              logger.warn("\nExisting stores: " + _metadataRepository.getAllStores().stream().map(Store::getName).sorted()
+              logger.warn("\nExisting stores: " + metadataRepository.getAllStores().stream().map(Store::getName).sorted()
                   .collect(Collectors.toList()) + "\nAccess-controlled stores: "
-                  + _accessController.getAccessControlledStores().stream().sorted().collect(Collectors.toList()));
+                  + accessController.getAccessControlledResources().stream().sorted().collect(Collectors.toList()));
               NettyUtils.setupResponseAndFlush(HttpResponseStatus.INTERNAL_SERVER_ERROR,
                   "ACL not found!\nPlease report the error!".getBytes(), false, ctx);
             } else {
@@ -95,7 +99,7 @@ public class AclHandler extends SimpleChannelInboundHandler<HttpRequest> {
               //   (2) ACL exists, therefore result is determined by ACL.
               //       Since the request has been rejected, it must be due to lack of permission.
               //   (3) In such case, request would NOT be rejected in the first place,
-              //       according to the definition of hasAccess() in AccessController interface.
+              //       according to the definition of hasAccess() in DynamicAccessController interface.
               //       Contradiction to the fact, therefore this case is impossible.
               // Root cause:
               //   Caller does not have permission to access the resource.
@@ -109,7 +113,7 @@ public class AclHandler extends SimpleChannelInboundHandler<HttpRequest> {
           String client = ctx.channel().remoteAddress().toString(); //ip and port
           String errLine = String.format("%s requested %s %s", client, method, req.uri());
 
-          if (_accessController.isFailOpen()) {
+          if (accessController.isFailOpen()) {
             logger.warn("Exception occurred! Access granted: " + errLine + "\n" + e);
             ReferenceCountUtil.retain(req);
             ctx.fireChannelRead(req);
@@ -125,40 +129,6 @@ public class AclHandler extends SimpleChannelInboundHandler<HttpRequest> {
       logger.debug("Requested store does not exist: " + errLine);
       NettyUtils.setupResponseAndFlush(HttpResponseStatus.BAD_REQUEST,
           ("Invalid Venice store name: " + storeName).getBytes(), false, ctx);
-    }
-  }
-
-  class StoreCreationDeletionListener implements StoreDataChangedListener {
-
-    @Override
-    public void handleStoreCreated(Store store) {
-      logger.debug("Added \"" + store.getName() + "\" to store list. New store list: " +
-          _metadataRepository.getAllStores().stream().map(Store::getName).sorted().collect(Collectors.toList()));
-      logger.debug("Previous ACL list: " + _accessController.getAccessControlledStores());
-      try {
-        _accessController.addAcl(store.getName());
-      } catch (AclException e) {
-        logger.error("Cannot add store to resource list: " + store.getName());
-      }
-      logger.debug("*EXPECTED* current ACL list: " + _accessController.getAccessControlledStores() +
-          " + " + store.getName() ); // Actual ACL list cannot be determined yet
-    }
-
-    @Override
-    public void handleStoreDeleted(String storeName) {
-      logger.debug("Removed \"" + storeName + "\" from store list. New store list: " +
-          _metadataRepository.getAllStores().stream().map(Store::getName).sorted().collect(Collectors.toList()));
-      logger.debug("Previous ACL list: " + _accessController.getAccessControlledStores());
-      try {
-        _accessController.removeAcl(storeName);
-      } catch (AclException e) {
-        logger.error("Cannot remove store from resource list: " + storeName);
-      }
-      logger.debug("Current ACL list: " + _accessController.getAccessControlledStores());
-    }
-
-    @Override
-    public void handleStoreChanged(Store store) {
     }
   }
 }

@@ -1,4 +1,4 @@
-package com.linkedin.venice.router.acl;
+package com.linkedin.venice.acl;
 
 public class AclException extends Exception {
   public AclException() {

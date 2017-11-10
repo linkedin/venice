@@ -13,7 +13,7 @@ import com.linkedin.venice.helix.WhitelistAccessor;
 import com.linkedin.venice.helix.ZkWhitelistAccessor;
 import com.linkedin.venice.kafka.consumer.KafkaStoreIngestionService;
 import com.linkedin.venice.listener.ListenerService;
-import com.linkedin.venice.listener.StaticAccessController;
+import com.linkedin.venice.acl.StaticAccessController;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.service.AbstractVeniceService;
