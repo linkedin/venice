@@ -1,5 +1,6 @@
 package com.linkedin.venice.listener;
 
+import com.linkedin.venice.acl.StaticAccessController;
 import com.linkedin.venice.utils.NettyUtils;
 import io.netty.channel.ChannelHandler;
 import io.netty.channel.ChannelHandlerContext;
@@ -14,14 +15,12 @@ import org.apache.log4j.Logger;
 
 
 @ChannelHandler.Sharable
-public class StaticAclHandler extends SimpleChannelInboundHandler<HttpRequest> {
-  private static final Logger logger = Logger.getLogger(StaticAclHandler.class);
-  private final String resource;
+public class ServerAclHandler extends SimpleChannelInboundHandler<HttpRequest> {
+  private static final Logger logger = Logger.getLogger(ServerAclHandler.class);
   private final StaticAccessController accessController;
 
-  public StaticAclHandler(StaticAccessController accessController, String resource) {
+  public ServerAclHandler(StaticAccessController accessController) {
     this.accessController = accessController;
-    this.resource = resource;
   }
 
   /**
@@ -36,7 +35,7 @@ public class StaticAclHandler extends SimpleChannelInboundHandler<HttpRequest> {
     X509Certificate clientCert = (X509Certificate) ctx.pipeline().get(SslHandler.class).engine().getSession().getPeerCertificates()[0];
     String method = req.method().name();
 
-    if (accessController.hasAccess(clientCert, resource, method)) {
+    if (accessController.hasAccess(clientCert, VeniceComponent.SERVER, method)) {
       ReferenceCountUtil.retain(req);
       ctx.fireChannelRead(req);
     } else {

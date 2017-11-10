@@ -1,6 +1,7 @@
 package com.linkedin.venice.listener;
 
 import com.linkedin.security.ssl.access.control.SSLEngineComponentFactory;
+import com.linkedin.venice.acl.StaticAccessController;
 import com.linkedin.venice.config.VeniceServerConfig;
 import com.linkedin.venice.server.StoreRepository;
 import com.linkedin.venice.server.VeniceConfigLoader;

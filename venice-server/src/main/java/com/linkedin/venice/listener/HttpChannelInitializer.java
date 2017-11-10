@@ -2,6 +2,7 @@ package com.linkedin.venice.listener;
 
 import com.linkedin.ddsstorage.router.lnkd.netty4.SSLInitializer;
 import com.linkedin.security.ssl.access.control.SSLEngineComponentFactory;
+import com.linkedin.venice.acl.StaticAccessController;
 import com.linkedin.venice.config.VeniceServerConfig;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.server.StoreRepository;
@@ -25,7 +26,7 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
   private final AggServerHttpRequestStats singleGetStats;
   private final AggServerHttpRequestStats multiGetStats;
   private final Optional<SSLEngineComponentFactory> sslFactory;
-  private final Optional<StaticAclHandler> aclHandler;
+  private final Optional<ServerAclHandler> aclHandler;
   private final VerifySslHandler verifySsl = new VerifySslHandler();
   private final VeniceServerConfig serverConfig;
 
@@ -47,7 +48,7 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
 
     this.sslFactory = sslFactory;
     this.aclHandler = accessController.isPresent()
-        ? Optional.of(new StaticAclHandler(accessController.get(), VeniceComponent.SERVER))
+        ? Optional.of(new ServerAclHandler(accessController.get()))
         : Optional.empty();
   }
 

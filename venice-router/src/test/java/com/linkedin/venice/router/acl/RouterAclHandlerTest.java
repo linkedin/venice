@@ -1,7 +1,9 @@
 package com.linkedin.venice.router.acl;
 
+import com.linkedin.venice.acl.DynamicAccessController;
 import com.linkedin.venice.helix.HelixReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
+import com.linkedin.venice.router.acl.RouterAclHandler;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelPipeline;
@@ -23,12 +25,12 @@ import org.testng.annotations.Test;
 import static org.mockito.Mockito.*;
 
 
-public class AclHandlerTest {
-  private AccessController accessController;
+public class RouterAclHandlerTest {
+  private DynamicAccessController accessController;
   private HelixReadOnlyStoreRepository metadataRepo;
   private ChannelHandlerContext ctx;
   private HttpRequest req;
-  private AclHandler aclHandler;
+  private RouterAclHandler aclHandler;
   private Store store;
 
   private boolean[] _hasAccess = {false};
@@ -39,14 +41,14 @@ public class AclHandlerTest {
 
   @BeforeMethod
   public void setup() throws Exception {
-    accessController = mock(AccessController.class);
+    accessController = mock(DynamicAccessController.class);
     metadataRepo = mock(HelixReadOnlyStoreRepository.class);
     ctx = mock(ChannelHandlerContext.class);
     req = mock(HttpRequest.class);
     store = mock(Store.class);
 
     when(accessController.init(any())).thenReturn(accessController);
-    aclHandler = spy(new AclHandler(accessController, metadataRepo));
+    aclHandler = spy(new RouterAclHandler(accessController, metadataRepo));
 
     when(metadataRepo.getStore(any())).then((Answer<Store>) invocation -> metadataRepo.hasStore("storename") ? store : null);
 
@@ -149,7 +151,7 @@ public class AclHandlerTest {
 
     verify(ctx, times(1)).writeAndFlush(argThat(new ContextMatcher(HttpResponseStatus.INTERNAL_SERVER_ERROR)));
 
-    // One of the cases is impossible in reality. See AclHandler.java comments
+    // One of the cases is impossible in reality. See RouterAclHandler.java comments
     verify(ctx, times(3)).writeAndFlush(argThat(new ContextMatcher(HttpResponseStatus.FORBIDDEN)));
   }
 

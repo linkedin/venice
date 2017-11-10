@@ -1,5 +1,6 @@
 package com.linkedin.venice.listener;
 
+import com.linkedin.venice.acl.StaticAccessController;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelPipeline;
@@ -18,14 +19,13 @@ import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
 import static org.mockito.Mockito.*;
-import static org.testng.Assert.*;
 
 
-public class StaticAclHandlerTest {
+public class ServerAclHandlerTest {
   private StaticAccessController accessController;
   private ChannelHandlerContext ctx;
   private HttpRequest req;
-  private StaticAclHandler aclHandler;
+  private ServerAclHandler aclHandler;
 
   @BeforeMethod
   public void setup() throws Exception {
@@ -33,7 +33,7 @@ public class StaticAclHandlerTest {
     req = mock(HttpRequest.class);
 
     accessController = mock(StaticAccessController.class);
-    aclHandler = spy(new StaticAclHandler(accessController, VeniceComponent.SERVER));
+    aclHandler = spy(new ServerAclHandler(accessController));
 
     // Certificate
     ChannelPipeline pipe = mock(ChannelPipeline.class);
