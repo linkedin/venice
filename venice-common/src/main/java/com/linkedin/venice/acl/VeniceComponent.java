@@ -1,4 +1,4 @@
-package com.linkedin.venice.listener;
+package com.linkedin.venice.acl;
 
 public class VeniceComponent {
   public static final String CONTROLLER = "VeniceController";
