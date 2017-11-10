@@ -44,4 +44,5 @@ dependencies {
   testCompile 'commons-io:commons-io:2.4'
   testCompile libraries.tehuti
 
+  testCompile project(':venice-test-common')
 }

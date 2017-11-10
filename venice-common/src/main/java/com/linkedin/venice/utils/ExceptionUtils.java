@@ -2,6 +2,11 @@ package com.linkedin.venice.utils;
 
 import java.io.PrintWriter;
 import java.io.StringWriter;
+import java.net.URL;
+import java.net.URLClassLoader;
+import java.util.Arrays;
+import org.apache.log4j.Logger;
+
 
 /**
  * Static utility functions to deal with exceptions.
@@ -10,6 +15,7 @@ import java.io.StringWriter;
  * https://github.com/voldemort/voldemort/blob/ea37ef67fa7724180608510c6d4237167b78dd63/src/java/voldemort/utils/ExceptionUtils.java
  */
 public class ExceptionUtils {
+  private static final Logger logger = Logger.getLogger(ExceptionUtils.class);
   /**
    * Inspects a given {@link Throwable} as well as its nested causes, in order to look
    * for a specific set of exception classes. The function also detects if the throwable
@@ -44,5 +50,11 @@ public class ExceptionUtils {
     PrintWriter pw = new PrintWriter(sw);
     throwable.printStackTrace(pw);
     return sw.toString(); // stack trace as a string
+  }
+
+  public static void logClassLoaderContent(String packageName) {
+    ClassLoader cl = ClassLoader.getSystemClassLoader();
+    URL[] urls = ((URLClassLoader)cl).getURLs();
+    Arrays.asList(urls).stream().filter(url -> url.getFile().contains(packageName)).forEach(logger::warn);
   }
 }

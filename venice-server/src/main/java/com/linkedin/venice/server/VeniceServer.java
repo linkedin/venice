@@ -13,6 +13,7 @@ import com.linkedin.venice.helix.WhitelistAccessor;
 import com.linkedin.venice.helix.ZkWhitelistAccessor;
 import com.linkedin.venice.kafka.consumer.KafkaStoreIngestionService;
 import com.linkedin.venice.listener.ListenerService;
+import com.linkedin.venice.listener.StaticAccessController;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.service.AbstractVeniceService;
@@ -37,6 +38,7 @@ public class VeniceServer {
   private static final Logger logger = Logger.getLogger(VeniceServer.class);
   private final VeniceConfigLoader veniceConfigLoader;
   private final Optional<SSLEngineComponentFactory> sslFactory;
+  private final Optional<StaticAccessController> accessController;
   private final AtomicBoolean isStarted;
 
   private StorageService storageService;
@@ -58,14 +60,15 @@ public class VeniceServer {
   }
 
   public VeniceServer(VeniceConfigLoader veniceConfigLoader, MetricsRepository  metricsRepository) {
-    this(veniceConfigLoader, metricsRepository, Optional.empty());
+    this(veniceConfigLoader, metricsRepository, Optional.empty(), Optional.empty());
   }
 
-  public VeniceServer(VeniceConfigLoader veniceConfigLoader, MetricsRepository  metricsRepository, Optional<SSLEngineComponentFactory> sslFactory) {
+  public VeniceServer(VeniceConfigLoader veniceConfigLoader, MetricsRepository  metricsRepository, Optional<SSLEngineComponentFactory> sslFactory, Optional<StaticAccessController> accessController) {
     this.isStarted = new AtomicBoolean(false);
     this.veniceConfigLoader = veniceConfigLoader;
     this.metricsRepository = metricsRepository;
     this.sslFactory = sslFactory;
+    this.accessController = accessController;
     if (!isServerInWhiteList(veniceConfigLoader.getVeniceClusterConfig().getZookeeperAddress(),
                              veniceConfigLoader.getVeniceClusterConfig().getClusterName(),
                              veniceConfigLoader.getVeniceServerConfig().getListenerPort(),
@@ -123,7 +126,7 @@ public class VeniceServer {
 
     //create and add ListenerServer for handling GET requests
     ListenerService listenerService = new ListenerService(storageService.getStoreRepository(),
-        kafkaStoreIngestionService, veniceConfigLoader, metricsRepository, sslFactory);
+        kafkaStoreIngestionService, veniceConfigLoader, metricsRepository, sslFactory, accessController);
     services.add(listenerService);
 
     /**

@@ -77,7 +77,7 @@ public class VeniceServerWrapper extends ProcessWrapper {
         sslFactory = Optional.of(SslUtils.getLocalSslFactory());
       }
 
-      VeniceServer server = new VeniceServer(veniceConfigLoader, new MetricsRepository(), sslFactory);
+      VeniceServer server = new VeniceServer(veniceConfigLoader, new MetricsRepository(), sslFactory, Optional.empty());
       return new VeniceServerWrapper(serviceName, dataDirectory, server, serverProps, veniceConfigLoader);
     };
   }
