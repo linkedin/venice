@@ -111,7 +111,7 @@ public class TopicManager implements Closeable {
       topicProperties.put(LogConfig.MessageTimestampTypeProp(), "LogAppendTime"); // Just in case the Kafka cluster isn't configured as expected.
       AdminUtils.createTopic(getZkUtils(), topicName, numPartitions, replication, topicProperties, RackAwareMode.Safe$.MODULE$);
       long startTime = System.currentTimeMillis();
-      while (!containsTopic(topicName)) {
+      while (!containsTopic(topicName, numPartitions)) {
         if (System.currentTimeMillis() > startTime + kafkaOperationTimeoutMs) {
           throw new VeniceOperationAgainstKafkaTimedOut("Timeout while creating topic: " + topicName + ".  Topic still does not exist after " + kafkaOperationTimeoutMs + "ms.");
         }
@@ -228,8 +228,51 @@ public class TopicManager implements Closeable {
     return topics;
   }
 
+  /**
+   * @see {@link #containsTopic(String, Integer)}
+   */
   public boolean containsTopic(String topic) {
-    return AdminUtils.topicExists(getZkUtils(), topic);
+    return containsTopic(topic, null);
+  }
+
+  /**
+   * This is an extensive check to mitigate an edge-case where a topic is only created in ZK but not in the brokers.
+   *
+   * @return true if the topic exists and all its partitions have at least one in-sync replica
+   */
+  public boolean containsTopic(String topic, Integer expectedPartitionCount) {
+    // TODO: Decide if we should get rid of this first ZK check.
+    // For now, we leave it just for increased visibility into the system.
+    boolean zkMetadataCreatedForTopic = AdminUtils.topicExists(getZkUtils(), topic);
+    if (!zkMetadataCreatedForTopic) {
+      logger.info("AdminUtils.topicExists() returned false because the ZK path doesn't exist yet for topic: " + topic);
+      return false;
+    }
+
+    List<PartitionInfo> partitionInfoList = getConsumer().partitionsFor(topic);
+    if (partitionInfoList == null) {
+      logger.error("getConsumer().partitionsFor() returned null for topic: " + topic);
+      return false;
+    }
+
+    if (expectedPartitionCount != null && partitionInfoList.size() != expectedPartitionCount) {
+      // Unexpected. Should perhaps even throw...
+      logger.error("getConsumer().partitionsFor() returned the wrong number of partitions for topic: " + topic +
+          ", expectedPartitionCount: " + expectedPartitionCount +
+          ", actual size: " + partitionInfoList.size() +
+          ", partitionInfoList: " + Arrays.toString(partitionInfoList.toArray()));
+      return false;
+    }
+
+    boolean allPartitionsHaveAnInSyncReplica = partitionInfoList.stream()
+        .allMatch(partitionInfo -> partitionInfo.inSyncReplicas().length > 0);
+    if (!allPartitionsHaveAnInSyncReplica) {
+      logger.info("getConsumer().partitionsFor() returned some partitionInfo with no in-sync replica for topic: " + topic +
+          ", partitionInfoList: " + Arrays.toString(partitionInfoList.toArray()));
+    } else {
+      logger.info("The following topic has the at least one in-sync replica for each partition: " + topic);
+    }
+    return allPartitionsHaveAnInSyncReplica;
   }
 
   /**
