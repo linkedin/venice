@@ -1,5 +1,8 @@
 package com.linkedin.venice.hadoop;
 
+import com.linkedin.venice.compression.CompressionStrategy;
+import com.linkedin.venice.compression.CompressorFactory;
+import com.linkedin.venice.compression.VeniceCompressor;
 import com.linkedin.venice.exceptions.QuotaExceededException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.utils.HadoopUtils;
@@ -67,6 +70,8 @@ public class VeniceReducer implements Reducer<BytesWritable, BytesWritable, Null
   private final boolean checkDupKey;
   private DuplicateKeyPrinter duplicateKeyPrinter;
 
+  private VeniceCompressor compressor;
+
   private Exception sendException = null;
 
   private KafkaMessageCallback callback = null;
@@ -77,6 +82,7 @@ public class VeniceReducer implements Reducer<BytesWritable, BytesWritable, Null
   private long messageSent = 0;
   private final AtomicLong messageCompleted = new AtomicLong();
   private final AtomicLong messageErrored = new AtomicLong();
+
 
   public VeniceReducer() {
     this(true);
@@ -114,7 +120,12 @@ public class VeniceReducer implements Reducer<BytesWritable, BytesWritable, Null
       callback = new KafkaMessageCallback(reporter);
       previousReporter = reporter;
     }
-    veniceWriter.put(keyBytes, valueBytes, valueSchemaId, callback);
+    try {
+      veniceWriter.put(keyBytes, compressor.compress(valueBytes), valueSchemaId, callback);
+    } catch (IOException e) {
+      throw new VeniceException("Caught an IO exception.", e);
+    }
+
     ++messageSent;
 
     if (messageSent % COUNTER_STATEMENT_COUNT == 0) {
@@ -166,6 +177,9 @@ public class VeniceReducer implements Reducer<BytesWritable, BytesWritable, Null
     if (checkDupKey) {
       this.duplicateKeyPrinter = new DuplicateKeyPrinter(job);
     }
+
+    this.compressor =
+        CompressorFactory.getCompressor(CompressionStrategy.valueOf(props.getString(COMPRESSION_STRATEGY)));
   }
 
   private void prepushStorageQuotaCheck(JobConf job, long maxStorageQuota, double storageEngineOverheadRatio) {

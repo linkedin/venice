@@ -1,5 +1,6 @@
 package com.linkedin.venice.controllerapi;
 
+import com.linkedin.venice.compression.CompressionStrategy;
 import org.codehaus.jackson.annotate.JsonIgnore;
 
 public class VersionCreationResponse extends VersionResponse {
@@ -10,6 +11,8 @@ public class VersionCreationResponse extends VersionResponse {
   private String kafkaBootstrapServers = null;
   // As controller client will ignore the unknown field in json so we could add a field here without break the backward compatibility.
   private boolean enableSSL = false;
+
+  private CompressionStrategy compressionStrategy = CompressionStrategy.NO_OP;
 
   public void setPartitions(int partitions) {
     this.partitions = partitions;
@@ -51,6 +54,14 @@ public class VersionCreationResponse extends VersionResponse {
     this.enableSSL = enableSSL;
   }
 
+  public CompressionStrategy getCompressionStrategy() {
+    return compressionStrategy;
+  }
+
+  public void setCompressionStrategy(CompressionStrategy compressionStrategy) {
+    this.compressionStrategy = compressionStrategy;
+  }
+
   @JsonIgnore
   public String toString() {
     return VersionCreationResponse.class.getSimpleName() + "(partitions: " + partitions +
@@ -58,6 +69,7 @@ public class VersionCreationResponse extends VersionResponse {
         ", kafkaTopic: " + kafkaTopic +
         ", kafkaBootstrapServers: " + kafkaBootstrapServers +
         ", enableSSL: " + enableSSL +
+        ", compressionStrategy: " + compressionStrategy.toString() +
         ", super: " + super.toString() + ")";
   }
 }

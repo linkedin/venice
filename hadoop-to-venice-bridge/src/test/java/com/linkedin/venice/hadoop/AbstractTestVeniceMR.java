@@ -1,5 +1,6 @@
 package com.linkedin.venice.hadoop;
 
+import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.meta.Store;
 import org.apache.hadoop.conf.Configuration;
@@ -35,6 +36,7 @@ public class AbstractTestVeniceMR {
     config.setDouble(STORAGE_ENGINE_OVERHEAD_RATIO, VeniceControllerWrapper.DEFAULT_STORAGE_ENGINE_OVERHEAD_RATIO);
     config.setBoolean(VENICE_MAP_ONLY, false);
     config.setBoolean(ALLOW_DUPLICATE_KEY, false);
+    config.set(COMPRESSION_STRATEGY, CompressionStrategy.NO_OP.toString());
     return new JobConf(config);
   }
 

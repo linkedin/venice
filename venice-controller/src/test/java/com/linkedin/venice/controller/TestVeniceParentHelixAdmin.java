@@ -1,5 +1,6 @@
 package com.linkedin.venice.controller;
 
+import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controller.kafka.AdminTopicUtils;
 import com.linkedin.venice.controller.kafka.consumer.AdminConsumptionTask;
 import com.linkedin.venice.controller.kafka.offsets.AdminOffsetManager;

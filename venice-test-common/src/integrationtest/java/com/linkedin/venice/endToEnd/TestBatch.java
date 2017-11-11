@@ -24,6 +24,7 @@ import java.util.function.Consumer;
 import javafx.util.Pair;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
+import org.apache.avro.util.Utf8;
 import org.apache.log4j.Logger;
 import org.testng.Assert;
 import org.testng.annotations.*;
@@ -146,7 +147,40 @@ public class TestBatch {
         (avroClient, vsonClient) -> {});
   }
 
+  @Test(timeOut =  TEST_TIMEOUT)
+  public void testCompressingRecord() throws Exception {
+    testBatchStore(inputDir -> {
+      Schema recordSchema = writeSimpleAvroFileWithUserSchema(inputDir);
+      return new Pair<>(recordSchema.getField("id").schema(),
+                        recordSchema.getField("name").schema());
+    }, properties -> {}, (avroClient, vsonClient) -> {
+      //test single get
+      for (int i = 1; i <= 100; i ++) {
+        Assert.assertEquals(avroClient.get(Integer.toString(i)).get().toString(), "test_name_" + i);
+      }
+
+      //test batch get
+      for (int i = 0; i < 10; i ++) {
+        Set<String> keys = new HashSet<>();
+        for (int j = 1; j <= 10; j ++) {
+          keys.add(Integer.toString(i * 10 + j));
+        }
+
+        Map<CharSequence, CharSequence> values = (Map<CharSequence, CharSequence>) avroClient.batchGet(keys).get();
+        Assert.assertEquals(values.size(), 10);
+
+        for (int j = 1; j <= 10; j ++) {
+          Assert.assertEquals(values.get(Integer.toString(i * 10 + j)).toString(), "test_name_" + ((i * 10) + j));
+        }
+      }
+    }, true);
+  }
+
   private void testBatchStore(InputFileWriter inputFileWriter, Consumer<Properties> extraProps, H2VValidator dataValidator) throws Exception {
+    testBatchStore(inputFileWriter, extraProps, dataValidator, false);
+  }
+
+  private void testBatchStore(InputFileWriter inputFileWriter, Consumer<Properties> extraProps, H2VValidator dataValidator, boolean isCompressed) throws Exception {
     File inputDir = getTempDataDirectory();
     Pair<Schema, Schema> schemas = inputFileWriter.write(inputDir);
     String storeName = TestUtils.getUniqueString("store");
@@ -155,7 +189,7 @@ public class TestBatch {
     Properties props = defaultH2VProps(veniceCluster, inputDirPath, storeName);
     extraProps.accept(props);
 
-    createStoreForJob(veniceCluster, schemas.getKey().toString(), schemas.getValue().toString(), props);
+    createStoreForJob(veniceCluster, schemas.getKey().toString(), schemas.getValue().toString(), props, isCompressed);
 
     KafkaPushJob job = new KafkaPushJob("Test Batch push job", props);
     job.run();

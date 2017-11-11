@@ -275,7 +275,7 @@ public class RouterServer extends AbstractVeniceService {
         .hostFinder(hostFinder)
         .dispatchHandler(dispatcher)
         .scatterMode(scatterGatherMode)
-        .responseAggregatorFactory(new VeniceResponseAggregator(statsForSingleGet, statsForMultiGet))
+        .responseAggregatorFactory(new VeniceResponseAggregator(statsForSingleGet, statsForMultiGet, metadataRepository))
         .metricsProvider(new VeniceMetricsProvider())
         /**
          * TODO: need to figure out a proper way to enable long-tail retry

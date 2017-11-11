@@ -5,7 +5,7 @@ import com.linkedin.venice.LastSucceedExecutionIdResponse;
 import com.linkedin.venice.controllerapi.routes.AdminCommandExecutionResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
-import com.linkedin.venice.meta.CompressionStrategy;
+import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.Utils;
 import java.io.Closeable;
