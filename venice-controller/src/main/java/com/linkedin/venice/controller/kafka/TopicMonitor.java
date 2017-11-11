@@ -109,7 +109,7 @@ public class TopicMonitor extends AbstractVeniceService {
               if (Version.topicIsValidStoreVersion(topic)) {
                 String storeName = Version.parseStoreFromKafkaTopicName(topic);
                 int version = Version.parseVersionFromKafkaTopicName(topic);
-                Optional<String> clusterName = admin.getClusterOfStoreInMasterController(storeName);
+                  Optional<String> clusterName = admin.getClusterOfStoreInMasterController(storeName);
                 if (!clusterName.isPresent()) {
                   logger.debug(
                       "Could not handle topic: " + topic + " in this controller. Store does not exist in any cluster."

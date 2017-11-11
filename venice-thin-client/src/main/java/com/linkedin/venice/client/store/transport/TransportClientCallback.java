@@ -1,6 +1,5 @@
 package com.linkedin.venice.client.store.transport;
 
-import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.exceptions.VeniceClientHttpException;
 import org.apache.http.HttpStatus;
 

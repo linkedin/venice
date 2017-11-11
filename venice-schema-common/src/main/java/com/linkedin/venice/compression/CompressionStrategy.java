@@ -1,6 +1,6 @@
-package com.linkedin.venice.meta;
+package com.linkedin.venice.compression;
 
-import com.linkedin.venice.exceptions.VeniceMessageException;
+import com.linkedin.venice.exceptions.VeniceException;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -38,7 +38,7 @@ public enum CompressionStrategy {
   public static CompressionStrategy valueOf(int value) {
     CompressionStrategy strategy = COMPRESSION_STRATEGY_MAP.get(value);
     if (strategy == null) {
-      throw new VeniceMessageException("Invalid compression type: " + value);
+      throw new VeniceException("Invalid compression type: " + value);
     }
 
     return strategy;

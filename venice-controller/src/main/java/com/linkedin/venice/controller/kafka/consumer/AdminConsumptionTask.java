@@ -32,7 +32,7 @@ import com.linkedin.venice.kafka.protocol.enums.MessageType;
 import com.linkedin.venice.kafka.validation.OffsetRecordTransformer;
 import com.linkedin.venice.kafka.validation.ProducerTracker;
 import com.linkedin.venice.message.KafkaKey;
-import com.linkedin.venice.meta.CompressionStrategy;
+import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.offsets.OffsetManager;
 import com.linkedin.venice.offsets.OffsetRecord;
 import com.linkedin.venice.schema.SchemaEntry;

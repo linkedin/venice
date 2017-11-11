@@ -14,7 +14,7 @@ import com.linkedin.venice.controllerapi.TrackableControllerResponse;
 import com.linkedin.venice.controllerapi.VersionResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
-import com.linkedin.venice.meta.CompressionStrategy;
+import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;

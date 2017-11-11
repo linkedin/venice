@@ -1,6 +1,5 @@
 package com.linkedin.venice.utils;
 
-import com.linkedin.security.ssl.access.control.SSLEngineComponentFactoryImpl;
 import com.linkedin.venice.controllerapi.ControllerApiConstants;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
@@ -13,7 +12,6 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.samza.VeniceSystemFactory;
 import com.linkedin.venice.schema.vson.VsonAvroSchemaAdapter;
 import com.linkedin.venice.schema.vson.VsonAvroSerializer;
-import com.linkedin.venice.writer.ApacheKafkaProducer;
 import com.linkedin.venice.writer.VeniceWriter;
 import java.io.File;
 import java.io.IOException;
@@ -22,15 +20,12 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
 
-import java.util.function.Consumer;
 import org.apache.avro.Schema;
 import org.apache.avro.file.DataFileWriter;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericDatumWriter;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.io.DatumWriter;
-import org.apache.kafka.clients.CommonClientConfigs;
-import org.apache.kafka.common.config.SslConfigs;
 import org.apache.samza.config.MapConfig;
 import org.apache.samza.system.OutgoingMessageEnvelope;
 import org.apache.samza.system.SystemProducer;
@@ -243,8 +238,13 @@ public class TestPushUtils {
     return createStoreForJob(veniceCluster, keySchemaStr, valueSchemaStr, props);
   }
 
+  public static ControllerClient createStoreForJob(VeniceClusterWrapper veniceClusterWrapper,
+                                                   String keySchemaStr, String valueSchema, Properties props) {
+    return createStoreForJob(veniceClusterWrapper, keySchemaStr, valueSchema, props, false);
+  }
+
   public static ControllerClient createStoreForJob(VeniceClusterWrapper veniceCluster,
-                                                   String keySchemaStr, String valueSchemaStr, Properties props) {
+                                                   String keySchemaStr, String valueSchemaStr, Properties props, boolean isCompressed) {
     ControllerClient controllerClient =
         new ControllerClient(veniceCluster.getClusterName(), props.getProperty(KafkaPushJob.VENICE_URL_PROP));
     NewStoreResponse newStoreResponse = controllerClient.createNewStore(props.getProperty(VENICE_STORE_NAME_PROP),

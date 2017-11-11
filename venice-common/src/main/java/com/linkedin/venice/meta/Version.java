@@ -1,9 +1,9 @@
 package com.linkedin.venice.meta;
 
+import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.guid.GuidUtils;
 import javax.validation.constraints.NotNull;
 import org.codehaus.jackson.annotate.JsonIgnore;
-import org.codehaus.jackson.annotate.JsonIgnoreProperties;
 import org.codehaus.jackson.annotate.JsonProperty;
 
 

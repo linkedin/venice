@@ -2,9 +2,8 @@ package com.linkedin.venice.serializer;
 
 
 import com.linkedin.venice.exceptions.VeniceException;
-
 import java.io.InputStream;
-import java.util.Iterator;
+
 
 public interface RecordDeserializer<T> {
 

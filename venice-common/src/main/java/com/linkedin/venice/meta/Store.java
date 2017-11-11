@@ -1,10 +1,12 @@
 package com.linkedin.venice.meta;
 
+import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.exceptions.StoreDisabledException;
 import com.linkedin.venice.exceptions.VeniceException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Optional;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import javax.validation.constraints.NotNull;
@@ -24,7 +26,8 @@ import org.codehaus.jackson.annotate.JsonProperty;
  * specify {@link org.codehaus.jackson.annotate.JsonIgnore} to ignore the method, whose name is starting with 'get'.
  *
  * TODO: we need to refactor this class to separate Store operations from Store POJO, which is being used by JSON
- * serialization/de-serialization.
+ * TODO: Since metadata keeps increasing, maybe we would like to refactor it to builder pattern.
+ * TODO: It's handy to make {@link #versions} as a hash map.
  */
 public class Store {
   /**
@@ -154,7 +157,6 @@ public class Store {
     this.currentVersion = currentVersion;
     this.readQuotaInCU = readQuotaInCU;
     this.hybridStoreConfig = hybridStoreConfig;
-    this.compressionStrategy = compressionStrategy;
   }
 
   /**
@@ -188,6 +190,14 @@ public class Store {
 
   public int getCurrentVersion() {
     return currentVersion;
+  }
+
+  public Optional<CompressionStrategy> getVersionCompressionStrategy(int versionNumber) {
+    if (versionNumber == NON_EXISTING_VERSION) {
+      return Optional.empty();
+    }
+
+    return getVersion(versionNumber).map(version -> version.getCompressionStrategy());
   }
 
   /**
@@ -418,13 +428,17 @@ public class Store {
     return increaseVersion(Version.guidBasedDummyPushId(), false);
   }
 
+  private Optional<Version> getVersion(int versionNumber) {
+    return versions.stream().filter(version -> version.getNumber() == versionNumber).findAny();
+  }
+
   public VersionStatus getVersionStatus(int versionNumber) {
-    for (int i = 0; i < versions.size(); i++) {
-      if (versions.get(i).getNumber() == versionNumber) {
-        return versions.get(i).getStatus();
-      }
+    Optional<Version> version = getVersion(versionNumber);
+    if (!version.isPresent()) {
+      return VersionStatus.ERROR.NOT_CREATED;
     }
-    return VersionStatus.NOT_CREATED;
+
+    return version.get().getStatus();
   }
 
   private Version increaseVersion(String pushJobId, boolean createNewVersion) {

@@ -3,7 +3,10 @@ package com.linkedin.venice.router.api;
 import com.linkedin.ddsstorage.base.misc.Metrics;
 import com.linkedin.ddsstorage.netty4.misc.BasicFullHttpRequest;
 import com.linkedin.venice.HttpConstants;
+import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.meta.ReadOnlyStoreRepository;
+import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.router.api.path.VenicePath;
 import com.linkedin.venice.router.stats.AggRouterHttpRequestStats;
@@ -18,15 +21,12 @@ import io.netty.handler.codec.http.HttpHeaderNames;
 import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.handler.codec.http.HttpVersion;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.Iterator;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+
+import java.util.*;
+
 import org.apache.avro.Schema;
 import org.testng.Assert;
+import org.testng.annotations.BeforeTest;
 import org.testng.annotations.Test;
 
 import static io.netty.handler.codec.http.HttpResponseStatus.*;
@@ -36,11 +36,22 @@ import static org.mockito.Mockito.*;
 public class TestVeniceResponseAggregator {
   private static Schema STRING_SCHEMA = Schema.parse("\"string\"");
 
+  private ReadOnlyStoreRepository mockMetadataRepository;
+
   private VenicePath getPath(String storeName, RequestType requestType) {
     VenicePath path = mock(VenicePath.class);
     doReturn(requestType).when(path).getRequestType();
     doReturn(storeName).when(path).getStoreName();
     return path;
+  }
+
+  @BeforeTest
+  public void setup() {
+    mockMetadataRepository = mock(ReadOnlyStoreRepository.class);
+    Store mockStore = mock(Store.class);
+    doReturn(mockStore).when(mockMetadataRepository).getStore(any());
+    doReturn(Optional.of(CompressionStrategy.NO_OP)).when(mockStore).getVersionCompressionStrategy(anyInt());
+
   }
 
   @Test
@@ -60,7 +71,8 @@ public class TestVeniceResponseAggregator {
     AggRouterHttpRequestStats mockStatsForSingleGet = mock(AggRouterHttpRequestStats.class);
     AggRouterHttpRequestStats mockStatsForMultiGet = mock(AggRouterHttpRequestStats.class);
 
-    VeniceResponseAggregator responseAggregator = new VeniceResponseAggregator(mockStatsForSingleGet, mockStatsForMultiGet);
+    VeniceResponseAggregator responseAggregator =
+        new VeniceResponseAggregator(mockStatsForSingleGet, mockStatsForMultiGet, mockMetadataRepository);
     FullHttpResponse finalResponse = responseAggregator.buildResponse(request, metrics, gatheredResponses);
     Assert.assertEquals(finalResponse.status(), OK);
     Assert.assertEquals(finalResponse.content().array(), fakeContent);
@@ -114,7 +126,8 @@ public class TestVeniceResponseAggregator {
     AggRouterHttpRequestStats mockStatsForSingleGet = mock(AggRouterHttpRequestStats.class);
     AggRouterHttpRequestStats mockStatsForMultiGet = mock(AggRouterHttpRequestStats.class);
 
-    VeniceResponseAggregator responseAggregator = new VeniceResponseAggregator(mockStatsForSingleGet, mockStatsForMultiGet);
+    VeniceResponseAggregator responseAggregator =
+        new VeniceResponseAggregator(mockStatsForSingleGet, mockStatsForMultiGet, mockMetadataRepository);
     FullHttpResponse finalResponse = responseAggregator.buildResponse(request, metrics, gatheredResponses);
     Assert.assertEquals(finalResponse.status(), OK);
     byte[] finalContent = finalResponse.content().array();

@@ -1,6 +1,7 @@
 package com.linkedin.venice.hadoop;
 
 import azkaban.jobExecutor.AbstractJob;
+import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
@@ -122,6 +123,8 @@ public class KafkaPushJob extends AbstractJob {
 
   public static final String KAFKA_SECURITY_PROTOCOL = "SSL";
 
+  public static final String COMPRESSION_STRATEGY = "compression.strategy";
+
   private static Logger logger = Logger.getLogger(KafkaPushJob.class);
 
   public static int DEFAULT_BATCH_BYTES_SIZE = 1000000;
@@ -182,6 +185,8 @@ public class KafkaPushJob extends AbstractJob {
   private long inputFileDataSize;
   private long storeStorageQuota;
   private double storageEngineOverheadRatio;
+
+  private CompressionStrategy compressionStrategy;
   private VeniceWriter<KafkaKey, byte[]> veniceWriter; // Lazily initialized
 
   // This main method is not called by azkaban, this is only for testing purposes.
@@ -505,6 +510,7 @@ public class KafkaPushJob extends AbstractJob {
     kafkaUrl = versionCreationResponse.getKafkaBootstrapServers();
     partitionCount = versionCreationResponse.getPartitions();
     sslToKafka = versionCreationResponse.isEnableSSL();
+    compressionStrategy = versionCreationResponse.getCompressionStrategy();
   }
 
   private synchronized VeniceWriter<KafkaKey, byte[]> getVeniceWriter() {
@@ -643,6 +649,7 @@ public class KafkaPushJob extends AbstractJob {
     conf.set(BATCH_NUM_BYTES_PROP, Integer.toString(batchNumBytes));
     conf.set(TOPIC_PROP, topic);
     conf.set(KAFKA_BOOTSTRAP_SERVERS, kafkaUrl);
+    conf.set(COMPRESSION_STRATEGY, compressionStrategy.toString());
     if( sslToKafka ){
       conf.set(CommonClientConfigs.SECURITY_PROTOCOL_CONFIG, KAFKA_SECURITY_PROTOCOL);
       props.keySet().stream().filter(key -> key.toLowerCase().startsWith(SSL_PREFIX)).forEach(key -> {

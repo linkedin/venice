@@ -25,7 +25,7 @@ import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.controllerapi.VersionResponse;
 import com.linkedin.venice.controllerapi.routes.AdminCommandExecutionResponse;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.meta.CompressionStrategy;
+import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.schema.vson.VsonAvroSchemaAdapter;
 import com.linkedin.venice.utils.Utils;

@@ -18,8 +18,10 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
   private final Sensor throttleSensor;
   private final Sensor latencySensor;
   private final Sensor requestSizeSensor;
+  private final Sensor compressedResponseSizeSensor;
   private final Sensor responseSizeSensor;
   private final Sensor badRequestSensor;
+  private final Sensor decompressionTimeSensor;
   private final Sensor routerResponseWaitingTimeSensor;
   private final Sensor fanoutRequestCountSensor;
   private final Sensor quotaSensor;
@@ -41,8 +43,12 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
     latencySensor = registerSensor("latency", TehutiUtils.getPercentileStatForNetworkLatency(getName(), getFullMetricName("latency")));
     routerResponseWaitingTimeSensor = registerSensor("response_waiting_time",
         TehutiUtils.getPercentileStat(getName(), getFullMetricName("response_waiting_time")));
-    requestSizeSensor = registerSensor("request_size", TehutiUtils.getPercentileStat(getName(), getFullMetricName("request_size")));
-    responseSizeSensor = registerSensor("response_size", TehutiUtils.getPercentileStat(getName(), getFullMetricName("response_size")));
+    requestSizeSensor = registerSensor("request_size", TehutiUtils.getPercentileStat(getName(), getFullMetricName("request_size")), new Avg());
+    compressedResponseSizeSensor = registerSensor("compressed_response_size",
+        TehutiUtils.getPercentileStat(getName(), getFullMetricName("compressed_response_size")), new Avg());
+    responseSizeSensor = registerSensor("response_size", TehutiUtils.getPercentileStat(getName(), getFullMetricName("response_size")), new Avg());
+    decompressionTimeSensor = registerSensor("decompression_time",
+        TehutiUtils.getPercentileStat(getName(), getFullMetricName("decompression_time")), new Avg());
     quotaSensor = registerSensor("read_quota_per_router", new Gauge());
     findUnhealthyHostRequestSensor = registerSensor("find_unhealthy_host_request", new OccurrenceRate());
   }
@@ -85,9 +91,17 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
     requestSizeSensor.record(requestSize);
   }
 
+  public void recordCompressedResponseSize(double compressedResponseSize) {
+    compressedResponseSizeSensor.record(compressedResponseSize);
+  }
+
   public void recordResponseSize(double responseSize) {
     responseSizeSensor.record(responseSize);
   };
+
+  public void recordDecompressionTime(double decompressionTime) {
+    decompressionTimeSensor.record(decompressionTime);
+  }
 
   public void recordQuota(double quota){
     quotaSensor.record(quota);
