@@ -71,20 +71,20 @@ public abstract class PushStatusDecider {
   public boolean hasEnoughNodesToStartPush(OfflinePushStatus offlinePushStatus, ResourceAssignment resourceAssignment) {
     if (!resourceAssignment.containsResource(offlinePushStatus.getKafkaTopic())) {
       logger.info(
-          "Routing data repository has not create assignment for resource:" + offlinePushStatus.getKafkaTopic());
+          "Routing data repository has not create assignment for resource: " + offlinePushStatus.getKafkaTopic());
       return false;
     }
     PartitionAssignment partitionAssignment =
         resourceAssignment.getPartitionAssignment(offlinePushStatus.getKafkaTopic());
     if (!partitionAssignment.hasEnoughAssignedPartitions()) {
-      logger.info("There are not enough partitions assigned to resource:" + offlinePushStatus.getKafkaTopic());
+      logger.info("There are not enough partitions assigned to resource: " + offlinePushStatus.getKafkaTopic());
       return false;
     }
     boolean hasEnoughNodes = true;
     for (Partition partition : partitionAssignment.getAllPartitions()) {
       if (!this.hasEnoughReplicasForOnePartition(partition.getBootstrapAndReadyToServeInstances().size(),
           offlinePushStatus.getReplicationFactor())) {
-        logger.info("Partition: " + partition.getId() + " does not have enough replica.");
+        logger.info("Partition: " + partition.getId() + " does not have enough replica for resource: " + offlinePushStatus.getKafkaTopic());
         hasEnoughNodes = false;
         break;
       }

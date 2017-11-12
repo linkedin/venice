@@ -58,11 +58,11 @@ import org.apache.log4j.Logger;
  * This class is used to create a task, which will consume the admin messages from the special admin topics.
  */
 public class AdminConsumptionTask implements Runnable, Closeable {
-  private static final String CONSUMER_TASK_ID_FORMAT = AdminConsumptionTask.class.getSimpleName() + " for [ Topic: %s ]";
+  private static final String CONSUMER_TASK_ID_FORMAT = AdminConsumptionTask.class.getSimpleName() + " [Topic: %s] ";
   public static int READ_CYCLE_DELAY_MS = 1000;
   public static int IGNORED_CURRENT_VERSION = -1;
 
-  private final Logger logger = Logger.getLogger(AdminConsumptionTask.class);
+  private final Logger logger;
 
   private final String clusterName;
   private final String topic;
@@ -108,6 +108,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
     this.clusterName = clusterName;
     this.topic = AdminTopicUtils.getTopicNameFromClusterName(clusterName);
     this.consumerTaskId = String.format(CONSUMER_TASK_ID_FORMAT, this.topic);
+    this.logger = Logger.getLogger(consumerTaskId);
     this.admin = admin;
     this.isParentController = isParentController;
     this.failureRetryTimeoutMs = failureRetryTimeoutMs;
@@ -134,7 +135,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
 
   @Override
   public void run() { //TODO: clean up this method.  We've got nested loops checking the same conditions
-    logger.info("Running consumer: " + consumerTaskId);
+    logger.info("Running " + this.getClass().getSimpleName());
     int noTopicCounter = 0;
     while (isRunning.get()) {
       try {
@@ -414,8 +415,8 @@ public class AdminConsumptionTask implements Runnable, Closeable {
     }
     // check offset
     if (lastOffset.getOffset() >= recordOffset) {
-      logger.error(consumerTaskId + ", current record has been processed, " +
-          "last known offset: " + lastOffset.getOffset() + ", current offset: " + recordOffset);
+      logger.error("Current record has been processed, last known offset: " + lastOffset.getOffset() +
+          ", current offset: " + recordOffset);
       return false;
     }
 

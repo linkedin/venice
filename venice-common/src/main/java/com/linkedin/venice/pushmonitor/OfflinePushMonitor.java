@@ -254,19 +254,19 @@ public class OfflinePushMonitor implements OfflinePushAccessor.PartitionStatusLi
         if(System.currentTimeMillis() - startTime >= offlinePushWaitTimeInMilliseconds){
           // Time out, after waiting offlinePushWaitTimeInMilliseconds, there are not enough nodes assigned.
           throw new VeniceException(
-              "After waiting: " + offlinePushWaitTimeInMilliseconds + ", resource still could not get enough nodes.");
+              "After waiting: " + offlinePushWaitTimeInMilliseconds + ", resource '" + topic + "' still could not get enough nodes.");
         }
         // How long we spent on waiting and calculating totally.
         long spentTime = System.currentTimeMillis() - startTime;
         // The rest of time we could spent on waiting.
         nextWaitTime = offlinePushWaitTimeInMilliseconds - spentTime;
-        logger.info("Resource does not have enough nodes, start waiting: "+nextWaitTime+"ms");
+        logger.info("Resource '" + topic + "' does not have enough nodes, start waiting: "+nextWaitTime+"ms");
         lock.wait(nextWaitTime);
         resourceAssignment = routingDataRepository.getResourceAssignment();
       }
       // TODO add a metric to track waiting time.
       logger.info(
-          "After waiting: " + (System.currentTimeMillis() - startTime) + "ms, resource allocation is completed.");
+          "After waiting: " + (System.currentTimeMillis() - startTime) + "ms, resource allocation is completed for '" + topic + "'.");
     }
   }
 
