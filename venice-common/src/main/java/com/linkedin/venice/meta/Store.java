@@ -112,7 +112,7 @@ public class Store {
   /**
    * strategies used to compress/decompress Record's value
    */
-  private CompressionStrategy compressionStrategy = CompressionStrategy.GZIP;
+  private CompressionStrategy compressionStrategy = CompressionStrategy.NO_OP;
 
   public Store(@NotNull String name, @NotNull String owner, long createdTime, @NotNull PersistenceType persistenceType,
       @NotNull RoutingStrategy routingStrategy, @NotNull ReadStrategy readStrategy,
