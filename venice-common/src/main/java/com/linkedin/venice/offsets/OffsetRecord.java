@@ -6,6 +6,7 @@ import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.kafka.protocol.state.ProducerPartitionState;
 import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
+import org.apache.avro.Schema;
 import org.apache.avro.util.Utf8;
 
 import java.util.HashMap;
@@ -130,6 +131,40 @@ public class OffsetRecord {
         ", processingTimeEpochMs=" + getProcessingTimeEpochMs() +
         ", isEndOfPushReceived=" + isEndOfPushReceived() +
         '}';
+  }
+
+  /**
+   * This function will print out detailed offset info, which including info per producerGuid.
+   * The reason is not using the default {@link PartitionState#toString} since it won't print GUID properly.
+   *
+   * This function is mostly used in AdminOffsetManager since the offset record update frequency for
+   * admin topic is very low.
+   */
+  public String toDetailedString() {
+    final String producerStatesFieldName = "producerStates";
+    StringBuilder sb = new StringBuilder();
+    sb.append("OffsetRecord{");
+    for (Schema.Field f : partitionState.getSchema().getFields()) {
+      if (f.name().equals(producerStatesFieldName)) {
+        sb.append("\n" + producerStatesFieldName + ":");
+        if (partitionState.producerStates != null) {
+          sb.append("{");
+          partitionState.producerStates.forEach((charSeq, producerState) -> {
+            sb.append("\n{")
+                .append(GuidUtils.getGuidFromCharSequence(charSeq))
+                .append(":")
+                .append(producerState);
+          });
+          sb.append("\n}");
+        } else {
+          sb.append("null");
+        }
+      } else {
+        sb.append("\n" + f.name() + ": " + partitionState.get(f.pos()));
+      }
+    }
+    sb.append("\n}");
+    return sb.toString();
   }
 
   @Override

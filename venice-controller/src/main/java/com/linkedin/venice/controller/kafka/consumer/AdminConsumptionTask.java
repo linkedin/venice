@@ -307,9 +307,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
     }
     Put put = (Put) kafkaValue.payloadUnion;
     AdminOperation adminMessage = deserializer.deserialize(put.putValue.array(), put.schemaId);
-    if (logger.isDebugEnabled()) {
-      logger.debug("Received message: " + adminMessage);
-    }
+    logger.info("Received message: " + adminMessage);
     long executionId = adminMessage.executionId;
     switch (AdminMessageType.valueOf(adminMessage)) {
       case STORE_CREATION:
