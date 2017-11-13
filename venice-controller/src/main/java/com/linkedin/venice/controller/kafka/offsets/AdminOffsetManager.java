@@ -3,26 +3,18 @@ package com.linkedin.venice.controller.kafka.offsets;
 import com.linkedin.venice.controller.kafka.AdminTopicUtils;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixAdapterSerializer;
-import com.linkedin.venice.kafka.consumer.KafkaConsumerWrapper;
-import com.linkedin.venice.kafka.consumer.VeniceConsumerFactory;
 import com.linkedin.venice.kafka.protocol.state.ProducerPartitionState;
 import com.linkedin.venice.offsets.OffsetManager;
 import com.linkedin.venice.offsets.OffsetRecord;
-import com.linkedin.venice.schema.SchemaEntry;
-import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.TrieBasedPathResourceRegistry;
 import org.apache.helix.AccessOption;
-import org.apache.helix.manager.zk.PathBasedZkSerializer;
 import org.apache.helix.manager.zk.ZkBaseDataAccessor;
 import org.apache.helix.manager.zk.ZkClient;
-import org.apache.kafka.clients.consumer.OffsetAndMetadata;
 import org.apache.log4j.Logger;
 
-import java.io.Closeable;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.Properties;
 import java.util.stream.Collectors;
 
 /**
@@ -114,7 +106,8 @@ public class AdminOffsetManager implements OffsetManager {
     filterOldStates(record, STATE_PERSIST_NUM);
     // Persist offset to Zookeeper
     HelixUtils.update(dataAccessor, nodePath, record, ZK_UPDATE_RETRY);
-    LOGGER.debug("Set offset: " + record + " for topic: " + topicName);
+    LOGGER.info("Persisted offset record to ZK for topic: " + topicName + ", partition id: " + partitionId +
+        ", record: " + record.toDetailedString());
   }
 
   @Override
@@ -133,6 +126,8 @@ public class AdminOffsetManager implements OffsetManager {
     if (null == offsetRecord) {
       offsetRecord = new OffsetRecord();
     }
+    LOGGER.info("Looked up last offset record from ZK for topic:" + topicName + ", partition id: " + partitionId +
+        ", record: " + offsetRecord.toDetailedString());
     return offsetRecord;
   }
 }
