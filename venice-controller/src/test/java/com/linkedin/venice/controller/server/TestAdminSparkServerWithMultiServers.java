@@ -31,7 +31,7 @@ import org.testng.annotations.Test;
  */
 @Test(singleThreaded = true)
 public class TestAdminSparkServerWithMultiServers {
-  private static final int TIME_OUT = 10 * Time.MS_PER_SECOND;
+  private static final int TIME_OUT = 20 * Time.MS_PER_SECOND;
 
   private VeniceClusterWrapper venice;
   private ControllerClient controllerClient;

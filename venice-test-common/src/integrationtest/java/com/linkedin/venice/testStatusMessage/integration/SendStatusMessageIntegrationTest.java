@@ -85,7 +85,7 @@ public class SendStatusMessageIntegrationTest {
    *
    * @throws Exception
    */
-  @Test
+  @Test // TODO, this test is flaky, which probably reflects something that needs fixing.
   public void testReceiveMessageFromThreeParticipants()
       throws Exception {
     // channel1 delay 6ms

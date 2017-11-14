@@ -74,6 +74,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
   private final AdminOperationSerializer deserializer;
   private final AdminConsumptionStats stats;
   private final long failureRetryTimeoutMs;
+  private final int readRetryDelayMs;
 
   private boolean isSubscribed;
   private KafkaConsumerWrapper consumer;
@@ -104,7 +105,8 @@ public class AdminConsumptionTask implements Runnable, Closeable {
                               ExecutionIdAccessor executionIdAccessor,
                               long failureRetryTimeoutMs,
                               boolean isParentController,
-                              AdminConsumptionStats stats) {
+                              AdminConsumptionStats stats,
+                              int readRetryDelayMs) {
     this.clusterName = clusterName;
     this.topic = AdminTopicUtils.getTopicNameFromClusterName(clusterName);
     this.consumerTaskId = String.format(CONSUMER_TASK_ID_FORMAT, this.topic);
@@ -120,6 +122,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
     this.lastOffset = new OffsetRecord();
     this.topicExists = false;
     this.stats = stats;
+    this.readRetryDelayMs = readRetryDelayMs;
 
     Properties kafkaConsumerProperties = VeniceControllerService.getKafkaConsumerProperties(kafkaBootstrapServers, clusterName);
     this.consumer = consumerFactory.getConsumer(kafkaConsumerProperties);
@@ -198,7 +201,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
                   skipMessage(record);
                   break;
                 }
-                Utils.sleep(READ_CYCLE_DELAY_MS);
+                Utils.sleep(readRetryDelayMs);
               }
             }
           }
