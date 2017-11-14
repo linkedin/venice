@@ -6,15 +6,12 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.schema.vson.VsonAvroSchemaAdapter;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
-import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.concurrent.ExecutionException;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericDatumReader;
 import org.apache.avro.io.JsonDecoder;
-import org.codehaus.jackson.map.ObjectMapper;
-import org.codehaus.jackson.map.ObjectWriter;
-
 
 /**
  * A tool use thin client to query the value from a store by the specified key.
@@ -36,16 +33,16 @@ public class QueryTool {
     String keyString = removeQuotes(args[KEY_STRING]);
     String url = removeQuotes(args[URL]);
     boolean isVsonStore = Boolean.parseBoolean(removeQuotes(args[IS_VSON_STORE]));
+
+    System.out.println();
+
     Map<String, String> outputMap = queryStoreForKey(store, keyString, url, isVsonStore);
-    ObjectMapper mapper = new ObjectMapper();
-    ObjectWriter plainJsonWriter = mapper.writer();
-    String jsonString = plainJsonWriter.writeValueAsString(outputMap);
-    System.out.println(jsonString);
+    outputMap.entrySet().stream().forEach(System.out::println);
   }
 
   public static Map<String, String> queryStoreForKey(String store, String keyString, String url, boolean isVsonStore)
       throws VeniceClientException, ExecutionException, InterruptedException {
-    Map<String, String> outputMap = new HashMap<>();
+    Map<String, String> outputMap = new LinkedHashMap<>();
     try (AvroGenericStoreClient<Object, Object> client = ClientFactory.getAndStartGenericAvroClient(
         ClientConfig.defaultGenericClientConfig(store).setVeniceURL(url).setVsonClient(isVsonStore))) {
       AbstractAvroStoreClient<Object, Object> castClient =
@@ -83,12 +80,12 @@ public class QueryTool {
           throw new VeniceException("Cannot handle key type, found key schema: " + keySchema.toString());
       }
 
+      Object value = client.get(key).get();
 
       outputMap.put("key-class", key.getClass().getCanonicalName());
-      outputMap.put("key", keyString);
-      outputMap.put("request-path", castClient.getRequestPathByKey(key));
-      Object value = client.get(key).get();
       outputMap.put("value-class", value == null ? "null" : value.getClass().getCanonicalName());
+      outputMap.put("request-path", castClient.getRequestPathByKey(key));
+      outputMap.put("key", keyString);
       outputMap.put("value", value == null ? "null" : value.toString());
       return outputMap;
     }
