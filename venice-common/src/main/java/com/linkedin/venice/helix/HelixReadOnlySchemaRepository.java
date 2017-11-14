@@ -172,16 +172,15 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository {
    *  2.2 If local cache has related schema entry, return directly;
    * In this way, we can slowly fill local cache triggered by request to reduce peak qps of Zookeeper;
    *
-   * @param storeName
    */
   private void fetchStoreSchemaIfNotInCache(String storeName) {
-    schemaLock.writeLock().lock();
-    try {
-      if (!storeRepository.hasStore(storeName)) {
-        // It could be a non-existed store or deleted store,
-        // remove the corresponding schemas from local map
-        removeStoreSchemaFromLocal(storeName);
-      } else if (!schemaMap.containsKey(storeName)) {
+    if (storeRepository.hasStore(storeName) && !schemaMap.containsKey(storeName)) {
+      /**
+       * Use {@link ConcurrentHashMap#computeIfAbsent} here instead of {@link #schemaLock} to avoid the complication of
+       * readlock/writelock switching/degrading.
+       * You can get more details from the 'CachedData' example in {@link ReentrantReadWriteLock}.
+       */
+      schemaMap.computeIfAbsent(storeName, k -> {
         // Gradually warm up
         logger.info("Try to fetch schema data for store: " + storeName);
         // If the local cache doesn't have the schema entry for this store,
@@ -201,10 +200,8 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository {
         logger.info("Setup watcher for path: " + valueSchemaParentPath);
         List<SchemaEntry> valueSchemas = dataAccessor.getChildren(valueSchemaParentPath, null, AccessOption.PERSISTENT);
         valueSchemas.forEach(schemaData::addValueSchema);
-        schemaMap.put(storeName, schemaData);
-      }
-    } finally {
-      schemaLock.writeLock().unlock();
+        return schemaData;
+      });
     }
   }
 
@@ -223,9 +220,15 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository {
    */
   @Override
   public SchemaEntry getKeySchema(String storeName) {
-    fetchStoreSchemaIfNotInCache(storeName);
     schemaLock.readLock().lock();
     try {
+      /**
+       * {@link #fetchStoreSchemaIfNotInCache(String)} must be wrapped inside the read lock scope since it is possible
+       * that some other thread could update the schema map asynchronously in between,
+       * such as clearing the map during {@link #refresh()},
+       * which could cause this function throw {@link VeniceNoStoreException}.
+       */
+      fetchStoreSchemaIfNotInCache(storeName);
       SchemaData schemaData = schemaMap.get(storeName);
       if (null == schemaData) {
         throw new VeniceNoStoreException(storeName);
@@ -262,9 +265,15 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository {
   }
 
   private SchemaEntry getValueSchemaInternally(String storeName, int id) {
-    fetchStoreSchemaIfNotInCache(storeName);
     schemaLock.readLock().lock();
     try {
+      /**
+       * {@link #fetchStoreSchemaIfNotInCache(String)} must be wrapped inside the read lock scope since it is possible
+       * that some other thread could update the schema map asynchronously in between,
+       * such as clearing the map during {@link #refresh()},
+       * which could cause this function throw {@link VeniceNoStoreException}.
+       */
+      fetchStoreSchemaIfNotInCache(storeName);
       SchemaData schemaData = schemaMap.get(storeName);
       if (null == schemaData) {
         throw new VeniceNoStoreException(storeName);
@@ -306,9 +315,15 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository {
    */
   @Override
   public int getValueSchemaId(String storeName, String valueSchemaStr) {
-    fetchStoreSchemaIfNotInCache(storeName);
     schemaLock.readLock().lock();
     try {
+      /**
+       * {@link #fetchStoreSchemaIfNotInCache(String)} must be wrapped inside the read lock scope since it is possible
+       * that some other thread could update the schema map asynchronously in between,
+       * such as clearing the map during {@link #refresh()},
+       * which could cause this function throw {@link VeniceNoStoreException}.
+       */
+      fetchStoreSchemaIfNotInCache(storeName);
       SchemaData schemaData = schemaMap.get(storeName);
       if (null == schemaData) {
         throw new VeniceNoStoreException(storeName);
@@ -332,9 +347,15 @@ public class HelixReadOnlySchemaRepository implements ReadOnlySchemaRepository {
    */
   @Override
   public Collection<SchemaEntry> getValueSchemas(String storeName) {
-    fetchStoreSchemaIfNotInCache(storeName);
     schemaLock.readLock().lock();
     try {
+      /**
+       * {@link #fetchStoreSchemaIfNotInCache(String)} must be wrapped inside the read lock scope since it is possible
+       * that some other thread could update the schema map asynchronously in between,
+       * such as clearing the map during {@link #refresh()},
+       * which could cause this function throw {@link VeniceNoStoreException}.
+       */
+      fetchStoreSchemaIfNotInCache(storeName);
       SchemaData schemaData = schemaMap.get(storeName);
       if (null == schemaData) {
         throw new VeniceNoStoreException(storeName);
