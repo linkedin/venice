@@ -3,6 +3,7 @@ package com.linkedin.venice.kafka;
 import com.linkedin.venice.integration.utils.KafkaBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 
+import com.linkedin.venice.writer.VeniceWriterFactory;
 import java.io.IOException;
 import java.util.*;
 import java.util.concurrent.ExecutionException;
@@ -53,7 +54,7 @@ public class TopicManagerTest {
   public void setup() {
     mockTime = new MockTime();
     kafka = ServiceFactory.getKafkaBroker(mockTime);
-    manager = new TopicManager(kafka.getZkAddress());
+    manager = new TopicManager(kafka.getZkAddress(), TestUtils.getVeniceConsumerFactory(kafka.getAddress()));
   }
 
   @AfterClass
@@ -117,7 +118,8 @@ public class TopicManagerTest {
     String topicName = getTopic();
     Properties properties = new Properties();
     properties.put(ApacheKafkaProducer.PROPERTIES_KAFKA_PREFIX + ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, kafka.getAddress());
-    VeniceWriter<byte[], byte[]> veniceWriter = new VeniceWriter<>(new VeniceProperties(properties), topicName, new DefaultSerializer(), new DefaultSerializer());
+    VeniceWriterFactory veniceWriterFactory = TestUtils.getVeniceTestWriterFactory(kafka.getAddress());
+    VeniceWriter<byte[], byte[]> veniceWriter = veniceWriterFactory.getBasicVeniceWriter(topicName);
 
     // Test starting conditions
     assertOffsetsByTime(topicName, 0, 0);

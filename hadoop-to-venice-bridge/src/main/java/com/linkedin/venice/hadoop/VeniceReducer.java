@@ -13,6 +13,7 @@ import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.AbstractVeniceWriter;
 import com.linkedin.venice.writer.VeniceWriter;
 
+import com.linkedin.venice.writer.VeniceWriterFactory;
 import java.util.Arrays;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericDatumWriter;
@@ -166,12 +167,8 @@ public class VeniceReducer implements Reducer<BytesWritable, BytesWritable, Null
 
     this.valueSchemaId = props.getInt(VALUE_SCHEMA_ID_PROP);
     if (null == this.veniceWriter) {
-      this.veniceWriter = new VeniceWriter<>(
-          props,
-          props.getString(TOPIC_PROP),
-          new DefaultSerializer(),
-          new DefaultSerializer()
-      );
+      VeniceWriterFactory factory = new VeniceWriterFactory(props.toProperties());
+      this.veniceWriter = factory.getBasicVeniceWriter(props.getString(TOPIC_PROP));
     }
 
     if (checkDupKey) {

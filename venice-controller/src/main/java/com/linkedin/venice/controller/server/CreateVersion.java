@@ -13,9 +13,11 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.serialization.DefaultSerializer;
 import com.linkedin.venice.serialization.KafkaKeySerializer;
+import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.VeniceWriter;
+import com.linkedin.venice.writer.VeniceWriterFactory;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Properties;
@@ -222,22 +224,12 @@ public class CreateVersion {
     }
 
     //write EOP message
-    try (VeniceWriter writer = getVeniceWriterForEndOfPush(admin.getKafkaBootstrapServers(), Version.composeKafkaTopic(storeName, versionNumber))) {
-      if (alsoWriteStartOfPush){
+    try (VeniceWriter writer = admin.getVeniceWriterFactory()
+        .getVeniceWriter(Version.composeKafkaTopic(storeName, versionNumber))) {
+      if (alsoWriteStartOfPush) {
         writer.broadcastStartOfPush(new HashMap<>());
       }
       writer.broadcastEndOfPush(new HashMap<>());
     }
-  }
-
-  private static VeniceWriter<KafkaKey, byte[]> getVeniceWriterForEndOfPush(String kafkaServers, String topic) {
-    Properties veniceWriterProperties = new Properties();
-    veniceWriterProperties.put(KAFKA_BOOTSTRAP_SERVERS, kafkaServers);
-    VeniceWriter<KafkaKey, byte[]> newVeniceWriter = new VeniceWriter<>(
-      new VeniceProperties(veniceWriterProperties),
-      topic,
-      new KafkaKeySerializer(),
-      new DefaultSerializer());
-    return newVeniceWriter;
   }
 }

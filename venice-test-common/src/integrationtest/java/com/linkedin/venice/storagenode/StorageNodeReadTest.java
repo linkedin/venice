@@ -88,17 +88,14 @@ public class StorageNodeReadTest {
     valueSchemaId = HelixReadOnlySchemaRepository.VALUE_SCHEMA_STARTING_ID;
     partitionCount = creationResponse.getPartitions();
 
-    VeniceProperties clientProps =
-        new PropertyBuilder().put(KAFKA_BOOTSTRAP_SERVERS, veniceCluster.getKafka().getAddress())
-            .put(ZOOKEEPER_ADDRESS, veniceCluster.getZk().getAddress())
-            .put(CLUSTER_NAME, veniceCluster.getClusterName()).build();
 
     // TODO: Make serializers parameterized so we test them all.
     String stringSchema = "\"string\"";
     keySerializer = new VeniceAvroGenericSerializer(stringSchema);
     valueSerializer = new VeniceAvroGenericSerializer(stringSchema);
 
-    veniceWriter = new VeniceWriter<>(clientProps, storeVersionName, keySerializer, valueSerializer);
+    veniceWriter = TestUtils.getVeniceTestWriterFactory(veniceCluster.getKafka().getAddress())
+        .getVeniceWriter(storeVersionName, keySerializer, valueSerializer);
   }
 
   @AfterClass

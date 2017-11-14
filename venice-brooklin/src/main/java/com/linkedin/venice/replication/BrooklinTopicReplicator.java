@@ -11,6 +11,7 @@ import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.utils.VeniceProperties;
+import com.linkedin.venice.writer.VeniceWriterFactory;
 import java.io.IOException;
 import java.time.Duration;
 import java.time.Instant;
@@ -28,7 +29,6 @@ public class BrooklinTopicReplicator extends TopicReplicator {
   public static final String BROOKLIN_CONNECTION_STRING = BROOKLIN_CONFIG_PREFIX + "connection.string";
   public static final String BROOKLIN_CONNECTION_APPLICATION_ID = BROOKLIN_CONFIG_PREFIX + "application.id";
 
-  private final String brooklinConnectionString; // TODO: Clean up, this is never used.
   private final DatastreamRestClient client;
   private final String veniceCluster;
   private final String applicationId;
@@ -45,7 +45,7 @@ public class BrooklinTopicReplicator extends TopicReplicator {
    * @param topicManager
    * @param veniceProperties
    */
-  public BrooklinTopicReplicator(TopicManager topicManager, VeniceProperties veniceProperties) {
+  public BrooklinTopicReplicator(TopicManager topicManager, VeniceProperties veniceProperties, VeniceWriterFactory veniceWriterFactory) {
     this(veniceProperties.getString(BROOKLIN_CONNECTION_STRING),
         veniceProperties.getString(
             TopicReplicator.TOPIC_REPLICATOR_SOURCE_KAFKA_CLUSTER, // default
@@ -53,7 +53,8 @@ public class BrooklinTopicReplicator extends TopicReplicator {
         ),
         topicManager,
         veniceProperties.getString(ConfigKeys.CLUSTER_NAME),
-        veniceProperties.getString(BROOKLIN_CONNECTION_APPLICATION_ID));
+        veniceProperties.getString(BROOKLIN_CONNECTION_APPLICATION_ID),
+        veniceWriterFactory);
   }
 
     /**
@@ -65,9 +66,8 @@ public class BrooklinTopicReplicator extends TopicReplicator {
      * @param veniceCluster Name of the venice cluster, used to create unique datastream names
      * @param applicationId The name of the service using the BrooklinTopicReplicator, this gets used as the "owner" for any created datastreams
      */
-  public BrooklinTopicReplicator(String brooklinConnectionString, String destKafkaBootstrapServers, TopicManager topicManager, String veniceCluster, String applicationId){
-    super(topicManager, destKafkaBootstrapServers);
-    this.brooklinConnectionString = brooklinConnectionString;
+  public BrooklinTopicReplicator(String brooklinConnectionString, String destKafkaBootstrapServers, TopicManager topicManager, String veniceCluster, String applicationId, VeniceWriterFactory veniceWriterFactory){
+    super(topicManager, destKafkaBootstrapServers, veniceWriterFactory);
     this.client = DatastreamRestClientFactory.getClient(brooklinConnectionString);
     this.veniceCluster = veniceCluster;
     this.applicationId = applicationId;

@@ -47,7 +47,6 @@ public class TopicReplicatorTest {
     when(topicReplicator.getTimer()).thenReturn(new MockTime());
     when(topicManager.getOffsetsByTime(anyString(), anyLong())).thenReturn(startingOffsets);
     when(veniceWriterFactory.getBasicVeniceWriter(
-        AdditionalMatchers.or(anyString(), isNull()),
         anyString(),
         any(ReflectUtils.loadClass(Time.class.getName()))))
         .thenReturn(veniceWriter);

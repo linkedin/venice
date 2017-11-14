@@ -1,6 +1,9 @@
 package com.linkedin.venice.kafka;
 
+import com.linkedin.venice.SSLConfig;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.kafka.consumer.VeniceConsumerFactory;
+import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import java.io.Closeable;
@@ -13,7 +16,6 @@ import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
 import java.util.StringJoiner;
-import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 import kafka.admin.AdminUtils;
@@ -25,6 +27,7 @@ import kafka.utils.ZkUtils;
 import org.I0Itec.zkclient.ZkClient;
 import org.I0Itec.zkclient.ZkConnection;
 import org.apache.commons.io.IOUtils;
+import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
@@ -33,6 +36,7 @@ import org.apache.kafka.clients.consumer.OffsetAndTimestamp;
 import org.apache.kafka.common.errors.TopicExistsException;
 import org.apache.kafka.common.PartitionInfo;
 import org.apache.kafka.common.TopicPartition;
+import org.apache.kafka.common.protocol.SecurityProtocol;
 import org.apache.kafka.common.serialization.ByteArrayDeserializer;
 import org.apache.log4j.Logger;
 import org.codehaus.jackson.map.ObjectMapper;
@@ -48,6 +52,7 @@ public class TopicManager implements Closeable {
   private final int sessionTimeoutMs;
   private final int connectionTimeoutMs;
   private final int kafkaOperationTimeoutMs;
+  private final VeniceConsumerFactory veniceConsumerFactory;
 
   // Mutable, lazily initialized, state
   private ZkClient zkClient;
@@ -60,25 +65,23 @@ public class TopicManager implements Closeable {
   private static final int DEFAULT_CONNECTION_TIMEOUT_MS = 8 * Time.MS_PER_SECOND;
   private static final int DEFAULT_KAFKA_OPERATION_TIMEOUT_MS = 30 * Time.MS_PER_SECOND;
 
-  public TopicManager(String zkConnection, int sessionTimeoutMs, int connectionTimeoutMs, int kafkaOperationTimeoutMs) {
+  public TopicManager(String zkConnection, int sessionTimeoutMs, int connectionTimeoutMs, int kafkaOperationTimeoutMs,
+      VeniceConsumerFactory veniceConsumerFactory) {
     this.zkConnection = zkConnection;
     this.sessionTimeoutMs = sessionTimeoutMs;
     this.connectionTimeoutMs = connectionTimeoutMs;
     this.kafkaOperationTimeoutMs = kafkaOperationTimeoutMs;
+    this.veniceConsumerFactory = veniceConsumerFactory;
   }
 
-  public TopicManager(String zkConnection, int kafkaOperationTimeoutMs) {
-    this(zkConnection, DEFAULT_SESSION_TIMEOUT_MS, DEFAULT_CONNECTION_TIMEOUT_MS, kafkaOperationTimeoutMs);
+  public TopicManager(String zkConnection, int kafkaOperationTimeoutMs, VeniceConsumerFactory veniceConsumerFactory) {
+    this(zkConnection, DEFAULT_SESSION_TIMEOUT_MS, DEFAULT_CONNECTION_TIMEOUT_MS, kafkaOperationTimeoutMs,
+        veniceConsumerFactory);
   }
 
-  public TopicManager(String zkConnection) {
-    this(zkConnection, DEFAULT_SESSION_TIMEOUT_MS, DEFAULT_CONNECTION_TIMEOUT_MS, DEFAULT_KAFKA_OPERATION_TIMEOUT_MS);
-  }
-
-  /** for tests */
-  protected TopicManager(String zkConnection, KafkaConsumer<byte[], byte[]> consumer){
-    this(zkConnection, DEFAULT_SESSION_TIMEOUT_MS, DEFAULT_CONNECTION_TIMEOUT_MS, DEFAULT_KAFKA_OPERATION_TIMEOUT_MS);
-    this.kafkaConsumer = consumer;
+  public TopicManager(String zkConnection, VeniceConsumerFactory veniceConsumerFactory) {
+    this(zkConnection, DEFAULT_SESSION_TIMEOUT_MS, DEFAULT_CONNECTION_TIMEOUT_MS, DEFAULT_KAFKA_OPERATION_TIMEOUT_MS,
+        veniceConsumerFactory);
   }
 
   @Deprecated
@@ -418,31 +421,13 @@ public class TopicManager implements Closeable {
   private synchronized KafkaConsumer<byte[], byte[]> getConsumer() {
     if (this.kafkaConsumer == null) {
       Properties props = new Properties();
-      props.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, brokerListFromZk());
       props.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, ByteArrayDeserializer.class.getName());
       props.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, ByteArrayDeserializer.class.getName());
       // Increase receive buffer to 1MB to check whether it can solve the metadata timing out issue
       props.put(ConsumerConfig.RECEIVE_BUFFER_CONFIG, 1024 * 1024);
-      this.kafkaConsumer = new KafkaConsumer<>(props);
+      this.kafkaConsumer = veniceConsumerFactory.getKafkaConsumer(props);
     }
     return this.kafkaConsumer;
-  }
-
-  private String brokerListFromZk() {
-    StringJoiner brokers = new StringJoiner(",");
-    List<String> brokerIds = getZkClient().getChildren(ZkUtils.BrokerIdsPath());
-    for (String brokerId : brokerIds) {
-      String brokerJson = getZkClient().readData(ZkUtils.BrokerIdsPath() + "/" + brokerId);
-
-      try {
-        Map<String, Object> brokerData = mapper.readValue(brokerJson, Map.class);
-        brokers.add(brokerData.get("host") + ":" + brokerData.get("port"));
-      } catch (IOException e) {
-        System.err.println("Cannot parse broker data: " + brokerJson);
-        continue;
-      }
-    }
-    return brokers.toString();
   }
 
   /**

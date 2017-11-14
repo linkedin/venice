@@ -13,7 +13,7 @@ import org.testng.Assert;
 import org.testng.annotations.Test;
 
 
-public class AdminConsumerWithSSL {
+public class AdminChannelWithSSL {
   private final String clusterName = "test-cluster";
 
   /**
@@ -28,7 +28,7 @@ public class AdminConsumerWithSSL {
     ZkServerWrapper parentZk = ServiceFactory.getZkServer();
     VeniceControllerWrapper controllerWrapper =
         ServiceFactory.getVeniceParentController(clusterName, parentZk.getAddress(), kafkaBrokerWrapper,
-            childControllerWrapper);
+            childControllerWrapper, true);
 
     String controllerUrl = controllerWrapper.getControllerUrl();
     // Adding store

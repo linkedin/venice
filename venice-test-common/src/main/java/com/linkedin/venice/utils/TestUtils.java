@@ -1,9 +1,12 @@
 package com.linkedin.venice.utils;
 
+import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.controller.VeniceControllerConfig;
 import com.linkedin.venice.controller.VeniceControllerMultiClusterConfig;
 import com.linkedin.venice.helix.HelixInstanceConverter;
 import com.linkedin.venice.integration.utils.D2TestUtils;
+import com.linkedin.venice.kafka.consumer.VeniceConsumerFactory;
+import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.meta.Instance;
 import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.PersistenceType;
@@ -12,10 +15,17 @@ import com.linkedin.venice.meta.RoutingStrategy;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.offsets.OffsetRecord;
 
+import com.linkedin.venice.serialization.DefaultSerializer;
+import com.linkedin.venice.serialization.KafkaKeySerializer;
+import com.linkedin.venice.serialization.VeniceKafkaSerializer;
+import com.linkedin.venice.serialization.avro.VeniceAvroGenericSerializer;
+import com.linkedin.venice.writer.VeniceWriter;
+import com.linkedin.venice.writer.VeniceWriterFactory;
 import io.tehuti.metrics.MetricsRepository;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 import java.util.function.BooleanSupplier;
 import javax.validation.constraints.NotNull;
@@ -24,6 +34,7 @@ import org.apache.helix.HelixManagerFactory;
 import org.apache.helix.InstanceType;
 import org.apache.helix.participant.statemachine.StateModel;
 import org.apache.helix.participant.statemachine.StateModelFactory;
+import org.apache.kafka.clients.CommonClientConfigs;
 
 
 /**
@@ -151,4 +162,30 @@ public class TestUtils {
     return cluster + ":" + D2TestUtils.DEFAULT_TEST_SERVICE_NAME;
   }
 
+  public static VeniceTestWriterFactory getVeniceTestWriterFactory(String kafakBootstrapServer){
+    Properties properties =new Properties();
+    properties.put(ConfigKeys.KAFKA_BOOTSTRAP_SERVERS, kafakBootstrapServer);
+    return new VeniceTestWriterFactory(properties);
+  }
+
+
+  public static class VeniceTestWriterFactory extends VeniceWriterFactory {
+    public VeniceTestWriterFactory(Properties properties) {
+      super(properties);
+    }
+
+    public <K, V> VeniceWriter<K, V> getVeniceWriter(String topic, VeniceKafkaSerializer<K> keySer,  VeniceKafkaSerializer<V>  valSer) {
+      return getVeniceWriter(topic, keySer, valSer, SystemTime.INSTANCE);
+    }
+  }
+
+  public static VeniceConsumerFactory getVeniceConsumerFactory(String kafakBootstrapServer) {
+    return new VeniceConsumerFactory() {
+      @Override
+      public Properties setupSSL(Properties properties) {
+        properties.put(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, kafakBootstrapServer);
+        return properties;
+      }
+    };
+  }
 }

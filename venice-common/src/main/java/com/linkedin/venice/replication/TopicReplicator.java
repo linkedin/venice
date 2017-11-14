@@ -60,8 +60,8 @@ public abstract class TopicReplicator implements Closeable {
     this.timer = timer;
   }
 
-  public TopicReplicator(TopicManager topicManager, String destKafkaBootstrapServers) {
-    this(topicManager, destKafkaBootstrapServers, VeniceWriterFactory.get(), new SystemTime());
+  public TopicReplicator(TopicManager topicManager, String destKafkaBootstrapServers, VeniceWriterFactory veniceWriterFactory) {
+    this(topicManager, destKafkaBootstrapServers, veniceWriterFactory, new SystemTime());
   }
 
   public void beginReplication(String sourceTopic, String destinationTopic, Optional<Map<Integer, Long>> startingOffsets)
@@ -116,7 +116,7 @@ public abstract class TopicReplicator implements Closeable {
         .sorted((o1, o2) -> o1.getKey().compareTo(o2.getKey()))
         .map(entry -> entry.getValue())
         .collect(Collectors.toList());
-    VeniceWriter<byte[], byte[]> veniceWriter = getVeniceWriterFactory().getBasicVeniceWriter(destKafkaBootstrapServers, destTopicName, getTimer());
+    VeniceWriter<byte[], byte[]> veniceWriter = getVeniceWriterFactory().getBasicVeniceWriter(destTopicName, getTimer());
     veniceWriter.broadcastStartOfBufferReplay(startingOffsets, srcKafkaBootstrapServers, srcTopicName, new HashMap<>());
     beginReplication(srcTopicName, destTopicName, Optional.of(startingOffsetsMap));
     return startingOffsetsMap;
@@ -143,7 +143,8 @@ public abstract class TopicReplicator implements Closeable {
    * @return an instance of {@link Optional<TopicReplicator>}, or empty if {@param veniceProperties} is empty.
    */
   public static Optional<TopicReplicator> getTopicReplicator(TopicManager topicManager,
-                                                             VeniceProperties veniceProperties) {
+                                                             VeniceProperties veniceProperties,
+                                                             VeniceWriterFactory veniceWriterFactory) {
     boolean enableTopicReplicator = veniceProperties.getBoolean(ConfigKeys.ENABLE_TOPIC_REPLICATOR, false);
     if (!enableTopicReplicator) {
       return Optional.empty();
@@ -155,10 +156,11 @@ public abstract class TopicReplicator implements Closeable {
       Class<? extends TopicReplicator> topicReplicatorClass = ReflectUtils.loadClass(className);
       Class<TopicManager> param1Class = ReflectUtils.loadClass(TopicManager.class.getName());
       Class<VeniceProperties> param2Class = ReflectUtils.loadClass(VeniceProperties.class.getName());
+      Class<VeniceWriterFactory> param3Class = ReflectUtils.loadClass(VeniceWriterFactory.class.getName());
       TopicReplicator topicReplicator = ReflectUtils.callConstructor(
           topicReplicatorClass,
-          new Class[]{param1Class, param2Class},
-          new Object[]{topicManager, veniceProperties});
+          new Class[]{param1Class, param2Class, param3Class},
+          new Object[]{topicManager, veniceProperties, veniceWriterFactory});
 
       return Optional.of(topicReplicator);
     } catch (Exception e) {

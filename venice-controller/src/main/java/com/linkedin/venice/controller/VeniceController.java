@@ -64,9 +64,9 @@ public class VeniceController {
     // If we decide to continue to use TopicMonitor for version creation, we need to update the existing VeniceParentHelixAdmin to support it
     if (!multiClusterConfigs.isParent())
     {
-      topicMonitor = new TopicMonitor(
-          controllerService.getVeniceHelixAdmin(),
-          multiClusterConfigs.getTopicMonitorPollIntervalMs());
+      topicMonitor =
+          new TopicMonitor(controllerService.getVeniceHelixAdmin(), multiClusterConfigs.getTopicMonitorPollIntervalMs(),
+              controllerService.getVeniceHelixAdmin().getVeniceConsumerFactory());
     }
   }
 

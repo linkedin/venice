@@ -107,10 +107,10 @@ public class VeniceControllerWrapper extends ProcessWrapper {
   static StatefulServiceProvider<VeniceControllerWrapper> generateService(String clusterName, String zkAddress,
       KafkaBrokerWrapper kafkaBrokerWrapper, boolean isParent, int replicaFactor, int partitionSize,
       long delayToReblanceMS, int minActiveReplica, VeniceControllerWrapper childController,
-      VeniceProperties extraProps) {
+      VeniceProperties extraProps, boolean sslToKafak) {
 
     return generateService(new String[]{clusterName}, zkAddress, kafkaBrokerWrapper, isParent, replicaFactor,
-        partitionSize, delayToReblanceMS, minActiveReplica, childController, extraProps, null, false);
+        partitionSize, delayToReblanceMS, minActiveReplica, childController, extraProps, null, sslToKafak);
   }
 
   @Override

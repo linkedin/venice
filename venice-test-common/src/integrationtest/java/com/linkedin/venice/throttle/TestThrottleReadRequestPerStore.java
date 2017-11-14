@@ -52,17 +52,13 @@ public class TestThrottleReadRequestPerStore {
     storeName = response.getName();
     currentVersion = response.getVersion();
 
-    VeniceProperties clientProps = new PropertyBuilder().put(KAFKA_BOOTSTRAP_SERVERS, cluster.getKafka().getAddress())
-        .put(ZOOKEEPER_ADDRESS, cluster.getZk().getAddress())
-        .put(CLUSTER_NAME, cluster.getClusterName())
-        .build();
 
     String stringSchema = "\"string\"";
     VeniceKafkaSerializer keySerializer = new VeniceAvroGenericSerializer(stringSchema);
     VeniceKafkaSerializer valueSerializer = new VeniceAvroGenericSerializer(stringSchema);
 
     int valueSchemaId = HelixReadOnlySchemaRepository.VALUE_SCHEMA_STARTING_ID;
-    veniceWriter = new VeniceWriter<>(clientProps, response.getKafkaTopic(), keySerializer, valueSerializer);
+    veniceWriter = TestUtils.getVeniceTestWriterFactory(cluster.getKafka().getAddress()).getVeniceWriter(response.getKafkaTopic(), keySerializer, valueSerializer);
     String key = TestUtils.getUniqueString("key");
     String value = TestUtils.getUniqueString("value");
     veniceWriter.broadcastStartOfPush(new HashMap<>());

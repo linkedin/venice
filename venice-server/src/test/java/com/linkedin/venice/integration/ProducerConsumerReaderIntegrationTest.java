@@ -62,17 +62,13 @@ public class ProducerConsumerReaderIntegrationTest {
     valueSchemaId = HelixReadOnlySchemaRepository.VALUE_SCHEMA_STARTING_ID;
     String routerUrl = veniceCluster.getRandomRouterSslURL();
 
-    VeniceProperties clientProps =
-            new PropertyBuilder().put(KAFKA_BOOTSTRAP_SERVERS, veniceCluster.getKafka().getAddress())
-                    .put(ZOOKEEPER_ADDRESS, veniceCluster.getZk().getAddress())
-                    .put(CLUSTER_NAME, veniceCluster.getClusterName()).build();
 
     // TODO: Make serializers parameterized so we test them all.
     String stringSchema = "\"string\"";
     VeniceKafkaSerializer keySerializer = new VeniceAvroGenericSerializer(stringSchema);
     VeniceKafkaSerializer valueSerializer = new VeniceAvroGenericSerializer(stringSchema);
 
-    veniceWriter = new VeniceWriter<>(clientProps, storeVersionName, keySerializer, valueSerializer);
+    veniceWriter = TestUtils.getVeniceTestWriterFactory(veniceCluster.getKafka().getAddress()).getVeniceWriter(storeVersionName, keySerializer, valueSerializer);
     storeClient =
         ClientFactory.getAndStartGenericAvroClient(ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(routerUrl)
                                                     .setSslEngineComponentFactory(SslUtils.getLocalSslFactory()));

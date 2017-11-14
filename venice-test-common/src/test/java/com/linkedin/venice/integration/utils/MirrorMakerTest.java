@@ -18,6 +18,7 @@ import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.ApacheKafkaProducer;
 import java.util.HashMap;
+import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
@@ -26,6 +27,7 @@ import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.producer.ProducerConfig;
+import org.apache.kafka.common.protocol.SecurityProtocol;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
@@ -59,7 +61,8 @@ public class MirrorMakerTest {
     try {
       mirrorMaker = ServiceFactory.getKafkaMirrorMaker(sourceKafka, destinationKafka);
 
-      TopicManager topicManager = new TopicManager(sourceKafka.getZkAddress());
+      TopicManager topicManager =
+          new TopicManager(sourceKafka.getZkAddress(), TestUtils.getVeniceConsumerFactory(sourceKafka.getAddress()));
 
       String topicName = TestUtils.getUniqueString("topic");
       topicManager.createTopic(topicName, 2, 1, false);

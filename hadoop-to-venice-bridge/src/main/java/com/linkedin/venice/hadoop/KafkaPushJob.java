@@ -22,6 +22,7 @@ import com.linkedin.venice.serialization.DefaultSerializer;
 import com.linkedin.venice.serialization.KafkaKeySerializer;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.Utils;
+import com.linkedin.venice.writer.VeniceWriterFactory;
 import java.util.Arrays;
 
 import com.linkedin.venice.exceptions.VeniceException;
@@ -527,11 +528,9 @@ public class KafkaPushJob extends AbstractJob {
           veniceWriterProperties.setProperty(key, props.getString(key));
         });
       }
-      VeniceWriter<KafkaKey, byte[]> newVeniceWriter = new VeniceWriter<>(
-          new VeniceProperties(veniceWriterProperties),
-          topic,
-          new KafkaKeySerializer(),
-          new DefaultSerializer());
+      VeniceWriterFactory veniceWriterFactory = new VeniceWriterFactory(veniceWriterProperties);
+
+      VeniceWriter<KafkaKey, byte[]> newVeniceWriter = veniceWriterFactory.getVeniceWriter(topic);
       logger.info("Created VeniceWriter: " + newVeniceWriter.toString());
       this.veniceWriter = newVeniceWriter;
     }

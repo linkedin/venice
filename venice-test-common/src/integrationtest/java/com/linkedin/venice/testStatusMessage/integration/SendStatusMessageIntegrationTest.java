@@ -85,13 +85,14 @@ public class SendStatusMessageIntegrationTest {
    *
    * @throws Exception
    */
-  @Test // TODO, this test is flaky, which probably reflects something that needs fixing.
+  @Test
   public void testReceiveMessageFromThreeParticipants()
       throws Exception {
-    // channel1 delay 6ms
-    final HelixStatusMessageChannel channel1 = getParticipantDelayedChannel(50123, 2, 2);
-    // channel2 delay 9ms;
-    final HelixStatusMessageChannel channel2 = getParticipantDelayedChannel(50223, 3, 3);
+    // Enlarge the delay to fix the flaky test.
+    // channel1 delay 40ms
+    final HelixStatusMessageChannel channel1 = getParticipantDelayedChannel(50123, 10, 2);
+    // channel2 delay 48ms;
+    final HelixStatusMessageChannel channel2 = getParticipantDelayedChannel(50223, 12, 3);
     // channel3 delay 150ms
     final HelixStatusMessageChannel channel3 = getParticipantDelayedChannel(50323, 50, 50);
 

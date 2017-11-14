@@ -106,7 +106,7 @@ public class TestRead {
     keySerializer = new VeniceAvroGenericSerializer(stringSchema);
     valueSerializer = new VeniceAvroGenericSerializer(stringSchema);
 
-    veniceWriter = new VeniceWriter<>(clientProps, storeVersionName, keySerializer, valueSerializer);
+    veniceWriter = TestUtils.getVeniceTestWriterFactory(veniceCluster.getKafka().getAddress()).getVeniceWriter(storeVersionName, keySerializer, valueSerializer);
   }
 
   @AfterClass

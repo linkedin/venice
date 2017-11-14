@@ -75,6 +75,8 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
    */
   private final StoreBufferService storeBufferService;
 
+  private final VeniceServerConsumerFactory veniceConsumerFactory;
+
   /**
    * A repository mapping each Kafka Topic to it corresponding Ingestion task responsible
    * for consuming messages and making changes to the local store accordingly.
@@ -104,10 +106,10 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     this.veniceConfigLoader = veniceConfigLoader;
 
     VeniceServerConfig serverConfig = veniceConfigLoader.getVeniceServerConfig();
-
+    veniceConsumerFactory = new VeniceServerConsumerFactory(serverConfig);
     long maxKafkaFetchBytesPerSecond = serverConfig.getMaxKafkaFetchBytesPerSecond();
     this.throttler = new EventThrottler(maxKafkaFetchBytesPerSecond);
-    this.topicManager = new TopicManager(veniceConfigLoader.getVeniceClusterConfig().getKafkaZkAddress());
+    this.topicManager = new TopicManager(serverConfig.getKafkaZkAddress(), veniceConsumerFactory);
 
     VeniceNotifier notifier = new LogNotifier();
     this.notifiers.add(notifier);
@@ -153,7 +155,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     BooleanSupplier isStoreVersionCurrent = () -> store.getCurrentVersion() == storeVersion;
     Optional<HybridStoreConfig> hybridStoreConfig = Optional.ofNullable(store.getHybridStoreConfig());
 
-    return new StoreIngestionTask(new VeniceConsumerFactory(), getKafkaConsumerProperties(veniceStore), storeRepository,
+    return new StoreIngestionTask(veniceConsumerFactory, getKafkaConsumerProperties(veniceStore), storeRepository,
         storageMetadataService, notifiers, throttler, veniceStore.getStoreName(), schemaRepo, topicManager, ingestionStats,
         versionedDIVStats, storeBufferService, isStoreVersionCurrent, hybridStoreConfig, veniceStore.getSourceTopicOffsetCheckIntervalMs());
   }
@@ -361,17 +363,6 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         KafkaKeySerializer.class.getName());
     kafkaConsumerProperties.setProperty(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG,
         KafkaValueSerializer.class.getName());
-    /**
-     * Setup SSL related config
-     */
-    if (SslUtils.isKafkaSSLProtocol(storeConfig.getKafkaSecurityProtocol())) {
-      Optional<SSLConfig> sslConfig = storeConfig.getSslConfig();
-      if (!sslConfig.isPresent()) {
-        throw new VeniceException("SSLConfig should be present when Kafka SSL is enabled");
-      }
-      kafkaConsumerProperties.put(CommonClientConfigs.SECURITY_PROTOCOL_CONFIG, storeConfig.getKafkaSecurityProtocol());
-      kafkaConsumerProperties.putAll(sslConfig.get().getKafkaSSLConfig());
-    }
     return kafkaConsumerProperties;
   }
 

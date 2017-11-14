@@ -9,6 +9,7 @@ import com.linkedin.venice.kafka.TopicException;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.writer.VeniceWriterFactory;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -43,9 +44,10 @@ public class TestBrooklin {
     String dummyVeniceClusterName = TestUtils.getUniqueString("venice");
     KafkaBrokerWrapper kafka = ServiceFactory.getKafkaBroker();
     BrooklinWrapper brooklin = ServiceFactory.getBrooklinWrapper(kafka);
-    TopicManager topicManager = new TopicManager(kafka.getZkAddress());
-    TopicReplicator
-        replicator = new BrooklinTopicReplicator(brooklin.getBrooklinDmsUri(), kafka.getAddress(), topicManager, dummyVeniceClusterName, "venice-test-service");
+    TopicManager topicManager = new TopicManager(kafka.getZkAddress(), TestUtils.getVeniceConsumerFactory(kafka.getAddress()));
+    TopicReplicator replicator =
+        new BrooklinTopicReplicator(brooklin.getBrooklinDmsUri(), kafka.getAddress(), topicManager,
+            dummyVeniceClusterName, "venice-test-service", TestUtils.getVeniceTestWriterFactory(kafka.getAddress()));
 
     //Create topics
     int partitionCount = 1;
@@ -144,7 +146,7 @@ public class TestBrooklin {
   @Test
   public void testReflectiveInstantiation() {
 
-    TopicManager topicManager = new TopicManager("some zk connection");
+    TopicManager topicManager = new TopicManager("some zk connection", TestUtils.getVeniceConsumerFactory("test"));
 
     // Main case: trying to instantiate the BrooklinTopicReplicator
     String brooklinReplicatorClassName = BrooklinTopicReplicator.class.getName();
@@ -156,7 +158,8 @@ public class TestBrooklin {
         .put(ConfigKeys.CLUSTER_NAME, "Venice cluster name")
         .put(BrooklinTopicReplicator.BROOKLIN_CONNECTION_APPLICATION_ID, "some app id")
         .build();
-    Optional<TopicReplicator> topicReplicator = TopicReplicator.getTopicReplicator(topicManager, props);
+    VeniceWriterFactory veniceWriterFactory = TestUtils.getVeniceTestWriterFactory("some Kafka connection");
+    Optional<TopicReplicator> topicReplicator = TopicReplicator.getTopicReplicator(topicManager, props, veniceWriterFactory);
 
     assertTrue(topicReplicator.isPresent());
     assertEquals(topicReplicator.get().getClass().getName(), brooklinReplicatorClassName);
@@ -166,7 +169,7 @@ public class TestBrooklin {
         .put(ConfigKeys.ENABLE_TOPIC_REPLICATOR, true)
         .build();
     try {
-      TopicReplicator.getTopicReplicator(topicManager, badPropsWithNoClassName);
+      TopicReplicator.getTopicReplicator(topicManager, badPropsWithNoClassName, veniceWriterFactory);
       fail("TopicReplicator.get() should fail fast if no class name is specified.");
     } catch (Exception e) {
       logger.info("Got an exception, as expected: ", e);
@@ -179,7 +182,7 @@ public class TestBrooklin {
         .put(TopicReplicator.TOPIC_REPLICATOR_CLASS_NAME, "fake.package.name." + brooklinReplicatorClassName)
         .build();
     try {
-      TopicReplicator.getTopicReplicator(topicManager, badPropsWithBadClassName);
+      TopicReplicator.getTopicReplicator(topicManager, badPropsWithBadClassName, veniceWriterFactory);
       fail("TopicReplicator.get() should fail fast if a bad class name is specified.");
     } catch (Exception e) {
       logger.info("Got an exception, as expected: ", e);
@@ -190,7 +193,7 @@ public class TestBrooklin {
     VeniceProperties emptyProps = new PropertyBuilder()
         .put(ConfigKeys.ENABLE_TOPIC_REPLICATOR, false)
         .build();
-    Optional<TopicReplicator> emptyTopicReplicator = TopicReplicator.getTopicReplicator(topicManager, emptyProps);
+    Optional<TopicReplicator> emptyTopicReplicator = TopicReplicator.getTopicReplicator(topicManager, emptyProps, veniceWriterFactory);
 
     assertFalse(emptyTopicReplicator.isPresent());
   }
