@@ -33,6 +33,8 @@ public class VeniceControllerClusterConfig {
   private boolean enableTopicDeletionForUncompletedJob;
   private Map<String, String> clusterToD2Map;
   private boolean sslToKafka;
+  private int helixSendMessageTimeoutMilliseconds;
+  private int adminConsumptionRetryDelayMs;
 
   /**
    * After server disconnecting for delayToRebalanceMS, helix would trigger the re-balance immediately.
@@ -117,6 +119,8 @@ public class VeniceControllerClusterConfig {
       // In that case , ssl kafka broker list is an mandatory field
       sslKafkaBootStrapServers = props.getString(SSL_KAFKA_BOOTSTRAP_SERVERS);
     }
+    helixSendMessageTimeoutMilliseconds = props.getInt(HELIX_SEND_MESSAGE_TIMEOUT_MS, 10000);
+    adminConsumptionRetryDelayMs = props.getInt(ADMIN_CONSUMPTION_RETRY_DELAY_MS, 15000);
   }
 
   public VeniceProperties getProps() {
@@ -206,5 +210,13 @@ public class VeniceControllerClusterConfig {
 
   public String getSslKafkaBootStrapServers() {
     return sslKafkaBootStrapServers;
+  }
+
+  public int getHelixSendMessageTimeoutMs() {
+    return helixSendMessageTimeoutMilliseconds;
+  }
+
+  public int getAdminConsumptionRetryDelayMs() {
+    return adminConsumptionRetryDelayMs;
   }
 }

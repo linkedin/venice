@@ -68,7 +68,8 @@ public class AdminConsumerService extends AbstractVeniceService {
         admin.getExecutionIdAccessor(),
         TimeUnit.MINUTES.toMillis(config.getAdminConsumptionTimeoutMinutes()),
         config.isParent(),
-        new AdminConsumptionStats(metricsRepository, clusterName + ".admin_consumption_task"));
+        new AdminConsumptionStats(metricsRepository, clusterName + ".admin_consumption_task"),
+        config.getAdminConsumptionRetryDelayMs());
   }
 
   public void setOffsetToSkip(String clusterName, long offset){

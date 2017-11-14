@@ -166,7 +166,7 @@ public class TestAdminConsumptionTask {
     DeepCopyOffsetManager deepCopyOffsetManager = new DeepCopyOffsetManager(offsetManager);
 
     return new AdminConsumptionTask(clusterName, consumerFactory, kafkaBootstrapServers, admin, deepCopyOffsetManager,
-        executionIdAccessor, failureRetryTimeout, isParent, stats);
+        executionIdAccessor, failureRetryTimeout, isParent, stats, 1000);
   }
 
   private Pair<TopicPartition, OffsetRecord> getTopicPartitionOffsetPair(RecordMetadata recordMetadata) {

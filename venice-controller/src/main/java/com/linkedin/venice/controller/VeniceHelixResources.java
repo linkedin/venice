@@ -52,7 +52,7 @@ public class VeniceHelixResources implements VeniceResource {
     this.schemaRepository = new HelixReadWriteSchemaRepository(this.metadataRepository,
         zkClient, adapterSerializer, clusterName);
     this.routingDataRepository = new HelixRoutingDataRepository(helixManager);
-    this.messageChannel = new HelixStatusMessageChannel(helixManager, HelixStatusMessageChannel.DEFAULT_BROAD_CAST_MESSAGES_TIME_OUT);
+    this.messageChannel = new HelixStatusMessageChannel(helixManager, config.getHelixSendMessageTimeoutMs());
     this.OfflinePushMonitor = new OfflinePushMonitor(clusterName, routingDataRepository,
         new HelixOfflinePushMonitorAccessor(clusterName, zkClient, adapterSerializer), storeCleaner, metadataRepository);
     storeGraveyard = new HelixStoreGraveyard(zkClient, adapterSerializer, clusterName);
