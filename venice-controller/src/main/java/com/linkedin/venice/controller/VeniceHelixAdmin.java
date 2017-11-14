@@ -425,15 +425,19 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             }
             return version;
         } catch (Throwable e) {
-
             int failedVersionNumber = versionNumber;
-            if (version != null) {
-                failedVersionNumber = version.getNumber();
-                handleVersionCreationFailure(clusterName, storeName, failedVersionNumber);
+            try {
+                if (version != null) {
+                    failedVersionNumber = version.getNumber();
+                    handleVersionCreationFailure(clusterName, storeName, failedVersionNumber);
+                }
+            } catch (Throwable e1) {
+                logger.error("Exception occured while handling version creation failure!", e1);
+            } finally {
+                throw new VeniceException(
+                    "Failed to add a version: " + failedVersionNumber + " to store: " + storeName + " in cluster:"
+                        + clusterName, e);
             }
-            throw new VeniceException(
-                "Failed to add a version: " + failedVersionNumber + " to store: " + storeName + " in cluster:"
-                    + clusterName, e);
         }
     }
 
