@@ -51,11 +51,11 @@ public class TestTopicMonitor {
     int replicationFactor = 1;
     doReturn(replicationFactor).when(mockAdmin).getReplicationFactor(clusterName, storeName);
     doReturn(Optional.of(clusterName)).when(mockAdmin).getClusterOfStoreInMasterController(storeName);
-    TopicMonitor mon = new TopicMonitor(mockAdmin, pollIntervalMs);
+    TopicMonitor mon = new TopicMonitor(mockAdmin, pollIntervalMs, TestUtils.getVeniceConsumerFactory(kafka.getAddress()));
     mon.start();
 
     int partitionNumber = 4;
-    TopicManager topicManager = new TopicManager(kafka.getZkAddress());
+    TopicManager topicManager = new TopicManager(kafka.getZkAddress(), TestUtils.getVeniceConsumerFactory(kafka.getAddress()));
     topicManager.createTopic(storeName + "_v1", partitionNumber, 1); /* topic, partitions, replication */
     topicManager.createTopic(storeName + "_v2", partitionNumber, 1); /* topic, partitions, replication */
     KafkaConsumer<String, String> kafkaClient = getKafkaConsumer(kafka.getAddress());
@@ -91,11 +91,11 @@ public class TestTopicMonitor {
     int pollIntervalMs = 1; /* ms */
     int replicationFactor = 1;
     doReturn(replicationFactor).when(mockAdmin).getReplicationFactor(clusterName, storeName);
-    TopicMonitor mon = new TopicMonitor(mockAdmin, pollIntervalMs);
+    TopicMonitor mon = new TopicMonitor(mockAdmin, pollIntervalMs, TestUtils.getVeniceConsumerFactory(kafka.getAddress()));
     mon.start();
 
     int partitionNumber = 4;
-    TopicManager topicManager = new TopicManager(kafka.getZkAddress());
+    TopicManager topicManager = new TopicManager(kafka.getZkAddress(), TestUtils.getVeniceConsumerFactory(kafka.getAddress()));
     topicManager.createTopic(storeName + "_v2", partitionNumber, 1); /* topic, partitions, replication */
 
     KafkaConsumer<String, String> kafkaClient = getKafkaConsumer(kafka.getAddress());

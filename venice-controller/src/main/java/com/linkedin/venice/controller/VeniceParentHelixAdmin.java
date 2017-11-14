@@ -4,6 +4,7 @@ import com.google.common.collect.Ordering;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controller.kafka.AdminTopicUtils;
 import com.linkedin.venice.controller.kafka.consumer.AdminConsumptionTask;
+import com.linkedin.venice.controller.kafka.consumer.VeniceControllerConsumerFactotry;
 import com.linkedin.venice.controller.kafka.offsets.AdminOffsetManager;
 import com.linkedin.venice.controller.kafka.consumer.AdminConsumerService;
 
@@ -162,17 +163,14 @@ public class VeniceParentHelixAdmin implements Admin {
     }
 
     // Initialize producer
-    String kafkaBrokerServers = multiClusterConfigs.isSslToKafka() ? multiClusterConfigs.getSslKafkaBootstrapServers()
-        : multiClusterConfigs.getKafkaBootstrapServers();
     veniceWriterMap.computeIfAbsent(clusterName, (key) -> {
       /**
-       * No need to do checksum validation since Kafka will do message-level checksum validation by default.
        * Venice just needs to check seq id in {@link com.linkedin.venice.controller.kafka.consumer.AdminConsumptionTask} to catch the following scenarios:
        * 1. Data missing;
        * 2. Data out of order;
        * 3. Data duplication;
        */
-      return VeniceWriterFactory.get().getBasicVeniceWriter(multiClusterConfigs.getKafkaBootstrapServers(), topicName, getTimer());
+      return getVeniceWriterFactory().getBasicVeniceWriter(topicName, getTimer());
     });
   }
 
@@ -1249,6 +1247,15 @@ public class VeniceParentHelixAdmin implements Admin {
   @Override
   public Map<String, String> findAllBootstrappingVersions(String clusterName) {
     throw new VeniceUnsupportedOperationException("findAllBootstrappingVersions");
+  }
+
+  public VeniceWriterFactory getVeniceWriterFactory() {
+    return veniceHelixAdmin.getVeniceWriterFactory();
+  }
+
+  @Override
+  public VeniceControllerConsumerFactotry getVeniceConsumerFactory() {
+    return veniceHelixAdmin.getVeniceConsumerFactory();
   }
 
   @Override

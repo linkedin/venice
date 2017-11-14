@@ -62,7 +62,7 @@ public class VeniceWriter<K, V> extends AbstractVeniceWriter<K, V> {
   private final int closeTimeOut;
   private final CheckSumType checkSumType;
 
-  public VeniceWriter(
+  protected VeniceWriter(
       VeniceProperties props,
       String topicName,
       VeniceKafkaSerializer<K> keySerializer,
@@ -89,7 +89,7 @@ public class VeniceWriter<K, V> extends AbstractVeniceWriter<K, V> {
     }
   }
 
-  public VeniceWriter(
+  protected VeniceWriter(
       VeniceProperties props,
       String topicName,
       VeniceKafkaSerializer<K> keySerializer,
@@ -105,14 +105,6 @@ public class VeniceWriter<K, V> extends AbstractVeniceWriter<K, V> {
         () -> new ApacheKafkaProducer(props));
   }
 
-
-  public VeniceWriter(
-      VeniceProperties props,
-      String topicName,
-      VeniceKafkaSerializer<K> keySerializer,
-      VeniceKafkaSerializer<V> valueSerializer) {
-    this(props, topicName, keySerializer, valueSerializer, SystemTime.INSTANCE);
-  }
 
   public void close() {
     /**

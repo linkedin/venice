@@ -3,6 +3,7 @@ package com.linkedin.venice.controller.kafka;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.exceptions.StoreDisabledException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
+import com.linkedin.venice.kafka.consumer.VeniceConsumerFactory;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.service.AbstractVeniceService;
@@ -30,11 +31,13 @@ public class TopicMonitor extends AbstractVeniceService {
   private long pollIntervalMs;
   private TopicMonitorRunnable monitor;
   private Thread runner;
+  private VeniceConsumerFactory veniceConsumerFactory;
 
 
-  public TopicMonitor(Admin admin, long pollIntervalMs) {
+  public TopicMonitor(Admin admin, long pollIntervalMs, VeniceConsumerFactory veniceConsumerFactory) {
     this.admin = admin;
     this.pollIntervalMs = pollIntervalMs;
+    this.veniceConsumerFactory = veniceConsumerFactory;
   }
 
   @Override
@@ -67,7 +70,6 @@ public class TopicMonitor extends AbstractVeniceService {
     TopicMonitorRunnable(Admin admin){
       this.admin = admin;
       Properties kafkaProps = new Properties();
-      kafkaProps.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, admin.getKafkaBootstrapServers());
       kafkaProps.put(ConsumerConfig.GROUP_ID_CONFIG, "controller-topic-monitor;" + Utils.getHostName());
       kafkaProps.put(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, "false");
       kafkaProps.put(ConsumerConfig.AUTO_COMMIT_INTERVAL_MS_CONFIG, "1000");
@@ -75,7 +77,7 @@ public class TopicMonitor extends AbstractVeniceService {
       kafkaProps.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, "org.apache.kafka.common.serialization.StringDeserializer");
       kafkaProps.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, "org.apache.kafka.common.serialization.StringDeserializer");
       /* Only using consumer to list topics, key and value type are bogus */
-      kafkaClient = new KafkaConsumer<String, String>(kafkaProps);
+      this.kafkaClient = veniceConsumerFactory.getKafkaConsumer(kafkaProps);
     }
 
     protected void setStop(){

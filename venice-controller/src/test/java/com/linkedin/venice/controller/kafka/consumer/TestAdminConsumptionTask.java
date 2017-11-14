@@ -1,7 +1,6 @@
 package com.linkedin.venice.controller.kafka.consumer;
 
 import com.google.common.collect.Sets;
-import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.controller.Admin;
 import com.linkedin.venice.controller.ExecutionIdAccessor;
 import com.linkedin.venice.controller.kafka.AdminTopicUtils;
@@ -23,17 +22,17 @@ import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.kafka.consumer.KafkaConsumerWrapper;
-import com.linkedin.venice.kafka.consumer.VeniceConsumerFactory;
 import com.linkedin.venice.kafka.protocol.state.PartitionState;
 import com.linkedin.venice.kafka.protocol.state.ProducerPartitionState;
 import com.linkedin.venice.kafka.validation.SegmentStatus;
 import com.linkedin.venice.kafka.validation.checksum.CheckSumType;
-import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.offsets.DeepCopyOffsetManager;
 import com.linkedin.venice.offsets.InMemoryOffsetManager;
 import com.linkedin.venice.offsets.OffsetManager;
 import com.linkedin.venice.offsets.OffsetRecord;
+import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.serialization.DefaultSerializer;
+import com.linkedin.venice.serialization.VeniceKafkaSerializer;
 import com.linkedin.venice.unit.kafka.InMemoryKafkaBroker;
 import com.linkedin.venice.unit.kafka.SimplePartitioner;
 import com.linkedin.venice.unit.kafka.consumer.MockInMemoryConsumer;
@@ -47,6 +46,7 @@ import com.linkedin.venice.unit.kafka.producer.MockInMemoryProducer;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.VeniceWriter;
@@ -63,6 +63,7 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Supplier;
 import org.apache.kafka.clients.producer.RecordMetadata;
 import org.apache.kafka.common.TopicPartition;
 import org.mockito.Mockito;
@@ -134,7 +135,7 @@ public class TestAdminConsumptionTask {
   private VeniceWriter getVeniceWriter(InMemoryKafkaBroker inMemoryKafkaBroker) {
     Properties props = new Properties();
     props.put(VeniceWriter.CHECK_SUM_TYPE, CheckSumType.NONE.name());
-    return new VeniceWriter(new VeniceProperties(props),
+    return new TestVeniceWriter(new VeniceProperties(props),
         topicName,
         new DefaultSerializer(),
         new DefaultSerializer(),
@@ -329,16 +330,12 @@ public class TestAdminConsumptionTask {
   @Test (timeOut = TIMEOUT * 6)
   public void testSkipMessageEndToEnd() throws ExecutionException, InterruptedException {
     KafkaBrokerWrapper kafka = ServiceFactory.getKafkaBroker();
-    TopicManager topicManager = new TopicManager(kafka.getZkAddress());
+    TopicManager topicManager = new TopicManager(kafka.getZkAddress(), TestUtils.getVeniceConsumerFactory(kafka.getAddress()));
     String adminTopic = AdminTopicUtils.getTopicNameFromClusterName(clusterName);
     topicManager.createTopic(adminTopic, 1, 1);
     VeniceControllerWrapper controller = ServiceFactory.getVeniceController(clusterName, kafka);
 
-    Properties props = new Properties();
-    props.put(ConfigKeys.KAFKA_BOOTSTRAP_SERVERS, kafka.getAddress());
-    props.put(VeniceWriter.CHECK_SUM_TYPE, CheckSumType.NONE.name());
-    VeniceProperties veniceWriterProperties = new VeniceProperties(props);
-    VeniceWriter<byte[], byte[]> writer = new VeniceWriter<>(veniceWriterProperties, adminTopic, new DefaultSerializer(), new DefaultSerializer());
+    VeniceWriter<byte[], byte[]> writer = TestUtils.getVeniceTestWriterFactory(kafka.getAddress()).getBasicVeniceWriter(adminTopic);
 
     byte[] message = getStoreCreationMessage(clusterName, "store-that-fails", owner, "invalid_key_schema", valueSchema); // This name is special
     long badOffset = writer.put(new byte[0], message, AdminOperationSerializer.LATEST_SCHEMA_ID_FOR_ADMIN_OPERATION).get().offset();
@@ -707,5 +704,17 @@ public class TestAdminConsumptionTask {
     adminMessage.payloadUnion = killJob;
     adminMessage.executionId = executionId;
     return adminOperationSerializer.serialize(adminMessage);
+  }
+
+  /**
+   * Used for test only. As the CTOR of VeniceWriter is protected, so the only way to create an instance is extend it
+   * and create an instance of this sub-class.
+   */
+  private static class TestVeniceWriter<K,V> extends VeniceWriter{
+
+    protected TestVeniceWriter(VeniceProperties props, String topicName, VeniceKafkaSerializer keySerializer,
+        VeniceKafkaSerializer valueSerializer, VenicePartitioner partitioner, Time time, Supplier supplier) {
+      super(props, topicName, keySerializer, valueSerializer, partitioner, time, supplier);
+    }
   }
 }

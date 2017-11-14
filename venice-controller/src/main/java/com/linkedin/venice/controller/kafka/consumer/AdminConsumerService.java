@@ -1,6 +1,7 @@
 package com.linkedin.venice.controller.kafka.consumer;
 
 import com.linkedin.venice.SSLConfig;
+import com.linkedin.venice.controller.VeniceController;
 import com.linkedin.venice.controller.VeniceControllerConfig;
 import com.linkedin.venice.controller.VeniceHelixAdmin;
 import com.linkedin.venice.controller.kafka.offsets.AdminOffsetManager;
@@ -42,8 +43,8 @@ public class AdminConsumerService extends AbstractVeniceService {
     this.config = config;
     this.admin = admin;
     this.offsetManager = new AdminOffsetManager(admin.getZkClient(), admin.getAdapterSerializer());
-    this.consumerFactory = new VeniceConsumerFactory();
     this.metricsRepository = metricsRepository;
+    this.consumerFactory = admin.getVeniceConsumerFactory();
   }
 
   @Override
@@ -111,21 +112,6 @@ public class AdminConsumerService extends AbstractVeniceService {
         KafkaKeySerializer.class.getName());
     kafkaConsumerProperties.setProperty(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG,
         KafkaValueSerializer.class.getName());
-
-    /**
-     * Setup SSL related config
-     */
-    if (SslUtils.isKafkaSSLProtocol(config.getKafkaSecurityProtocol())) {
-      Optional<SSLConfig> sslConfig = config.getSslConfig();
-      if (!sslConfig.isPresent()) {
-        throw new VeniceException("SSLConfig should be present when Kafka SSL is enabled");
-      }
-      kafkaConsumerProperties.putAll(sslConfig.get().getKafkaSSLConfig());
-      kafkaConsumerProperties.setProperty(CommonClientConfigs.SECURITY_PROTOCOL_CONFIG, config.getKafkaSecurityProtocol());
-      kafkaConsumerProperties.setProperty(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, config.getSslKafkaBootStrapServers());
-    } else {
-      kafkaConsumerProperties.setProperty(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, config.getKafkaBootstrapServers());
-    }
 
     return consumerFactory.getConsumer(kafkaConsumerProperties);
   }

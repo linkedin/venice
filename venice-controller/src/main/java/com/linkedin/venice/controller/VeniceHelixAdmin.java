@@ -3,6 +3,7 @@ package com.linkedin.venice.controller;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controller.kafka.StoreStatusDecider;
 import com.linkedin.venice.controller.kafka.consumer.AdminConsumerService;
+import com.linkedin.venice.controller.kafka.consumer.VeniceControllerConsumerFactotry;
 import com.linkedin.venice.exceptions.SchemaIncompatibilityException;
 import com.linkedin.venice.exceptions.VeniceNoClusterException;
 import com.linkedin.venice.exceptions.VeniceStoreAlreadyExistsException;
@@ -30,6 +31,7 @@ import com.linkedin.venice.schema.SchemaEntry;
 import com.linkedin.venice.stats.AbstractVeniceAggStats;
 import com.linkedin.venice.status.StatusMessageChannel;
 import com.linkedin.venice.utils.*;
+import com.linkedin.venice.writer.VeniceWriterFactory;
 import io.tehuti.metrics.MetricsRepository;
 
 import java.util.*;
@@ -101,6 +103,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     private final Optional<TopicReplicator> topicReplicator;
     private final long failedJobTopicRetentionMs;
     private final ZkStoreConfigAccessor storeConfigAccessor;
+    private final VeniceWriterFactory veniceWriterFactory;
+    private final VeniceControllerConsumerFactotry veniceConsumerFactory;
 
 
   /**
@@ -113,6 +117,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     //TODO Use different configs for different clusters when creating helix admin.
     public VeniceHelixAdmin(VeniceControllerMultiClusterConfig multiClusterConfigs, MetricsRepository metricsRepository) {
         this.multiClusterConfigs = multiClusterConfigs;
+        VeniceControllerConfig commonConfig = multiClusterConfigs.getCommonConfig();
         this.controllerName = Utils.getHelixNodeIdentifier(multiClusterConfigs.getAdminPort());
         this.controllerClusterName = multiClusterConfigs.getControllerClusterName();
         this.controllerClusterReplica = multiClusterConfigs.getControllerClusterReplica();
@@ -127,14 +132,16 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         this.zkClient = new ZkClient(multiClusterConfigs.getZkAddress(), ZkClient.DEFAULT_SESSION_TIMEOUT,
             ZkClient.DEFAULT_CONNECTION_TIMEOUT);
         this.adapterSerializer = new HelixAdapterSerializer();
-        this.topicManager = new TopicManager(multiClusterConfigs.getKafkaZkAddress(), multiClusterConfigs.getTopicManagerKafkaOperationTimeOutMs());
+        veniceConsumerFactory = new VeniceControllerConsumerFactotry(commonConfig);
+        this.topicManager = new TopicManager(multiClusterConfigs.getKafkaZkAddress(),
+            multiClusterConfigs.getTopicManagerKafkaOperationTimeOutMs(), veniceConsumerFactory);
         this.whitelistAccessor = new ZkWhitelistAccessor(zkClient, adapterSerializer);
         this.executionIdAccessor = new ZkExecutionIdAccessor(zkClient, adapterSerializer);
         this.storeConfigAccessor =
             new ZkStoreConfigAccessor(zkClient, adapterSerializer);
-        // TODO should pass a config instance instead of properties to get topic replicator.
+        veniceWriterFactory = new VeniceWriterFactory(commonConfig.getProps().toProperties());
         this.topicReplicator =
-            TopicReplicator.getTopicReplicator(topicManager, multiClusterConfigs.getCommonConfig().getProps());
+            TopicReplicator.getTopicReplicator(topicManager, commonConfig.getProps(), veniceWriterFactory);
 
         // Create the parent controller and related cluster if required.
         createControllerClusterIfRequired();
@@ -144,7 +151,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         for (String cluster : multiClusterConfigs.getClusters()) {
             controllerStateModelFactory.addClusterConfig(cluster, multiClusterConfigs.getConfigForCluster(cluster));
         }
-
         // Initialized the helix manger for the level1 controller.
         initLevel1Controller();
     }
@@ -1728,6 +1734,15 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             }
         }
         return result;
+    }
+
+    public VeniceWriterFactory getVeniceWriterFactory() {
+        return veniceWriterFactory;
+    }
+
+    @Override
+    public VeniceControllerConsumerFactotry getVeniceConsumerFactory() {
+        return veniceConsumerFactory;
     }
 
     protected void startMonitorOfflinePush(String clusterName, String kafkaTopic, int numberOfPartition,

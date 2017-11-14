@@ -2,6 +2,7 @@ package com.linkedin.venice.controller;
 
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controller.kafka.consumer.AdminConsumerService;
+import com.linkedin.venice.controller.kafka.consumer.VeniceControllerConsumerFactotry;
 import com.linkedin.venice.helix.Replica;
 import com.linkedin.venice.meta.*;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
@@ -9,6 +10,7 @@ import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.schema.SchemaEntry;
 
 import com.linkedin.venice.utils.Pair;
+import com.linkedin.venice.writer.VeniceWriterFactory;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
@@ -344,6 +346,10 @@ public interface Admin {
      * Find the store versions which have at least one bootstrap replica.
      */
     Map<String, String> findAllBootstrappingVersions(String clusterName);
+
+    VeniceWriterFactory getVeniceWriterFactory();
+
+    VeniceControllerConsumerFactotry getVeniceConsumerFactory();
 
     void close();
 }

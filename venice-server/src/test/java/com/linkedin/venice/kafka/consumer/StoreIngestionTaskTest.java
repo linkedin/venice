@@ -19,7 +19,9 @@ import com.linkedin.venice.notifier.VeniceNotifier;
 import com.linkedin.venice.offsets.DeepCopyStorageMetadataService;
 import com.linkedin.venice.offsets.InMemoryStorageMetadataService;
 import com.linkedin.venice.offsets.OffsetRecord;
+import com.linkedin.venice.partitioner.VenicePartitioner;
 import com.linkedin.venice.serialization.DefaultSerializer;
+import com.linkedin.venice.serialization.VeniceKafkaSerializer;
 import com.linkedin.venice.server.StoreRepository;
 import com.linkedin.venice.stats.AggStoreIngestionStats;
 import com.linkedin.venice.stats.AggVersionedDIVStats;
@@ -50,6 +52,7 @@ import com.linkedin.venice.utils.FlakyTestRetryAnalyzer;
 import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.KafkaProducerWrapper;
 import com.linkedin.venice.writer.VeniceWriter;
@@ -217,7 +220,7 @@ public class StoreIngestionTaskTest {
   }
 
   private VeniceWriter getVeniceWriter(Supplier<KafkaProducerWrapper> producerSupplier) {
-    return new VeniceWriter(new VeniceProperties(new Properties()), topic, new DefaultSerializer(),
+    return new TestVeniceWriter(new VeniceProperties(new Properties()), topic, new DefaultSerializer(),
         new DefaultSerializer(), new SimplePartitioner(), SystemTime.INSTANCE, producerSupplier);
   }
 
@@ -1103,4 +1106,13 @@ public class StoreIngestionTaskTest {
         }
     );
   }
+
+  private static class TestVeniceWriter<K,V> extends VeniceWriter{
+
+    protected TestVeniceWriter(VeniceProperties props, String topicName, VeniceKafkaSerializer keySerializer,
+        VeniceKafkaSerializer valueSerializer, VenicePartitioner partitioner, Time time, Supplier supplier) {
+      super(props, topicName, keySerializer, valueSerializer, partitioner, time, supplier);
+    }
+  }
+
 }

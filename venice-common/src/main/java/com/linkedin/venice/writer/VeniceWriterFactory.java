@@ -1,41 +1,67 @@
 package com.linkedin.venice.writer;
 
-import com.linkedin.security.ssl.access.control.SSLEngineComponentFactoryImpl;
 import com.linkedin.venice.ConfigKeys;
-import com.linkedin.venice.kafka.validation.checksum.CheckSumType;
+import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.serialization.DefaultSerializer;
-import com.linkedin.venice.utils.SslUtils;
+import com.linkedin.venice.serialization.KafkaKeySerializer;
+import com.linkedin.venice.serialization.VeniceKafkaSerializer;
+import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.VeniceProperties;
 
 import java.util.Properties;
-import org.apache.kafka.clients.CommonClientConfigs;
-import org.apache.kafka.common.config.SslConfigs;
+
 
 /**
- *
+ * Factory used to create the venice writer.
  */
 public class VeniceWriterFactory {
-  private static final VeniceWriterFactory FACTORY = new VeniceWriterFactory();
+  private final Properties properties;
+  private final String kafkaBootstrapServers;
 
-  private VeniceWriterFactory() {
-    // singleton
+  public VeniceWriterFactory(Properties properties) {
+    this.properties = properties;
+    boolean sslToKafka = Boolean.valueOf(properties.getProperty(ConfigKeys.SSL_TO_KAFKA, "false"));
+    if (!sslToKafka) {
+      checkProperty(ConfigKeys.KAFKA_BOOTSTRAP_SERVERS);
+      kafkaBootstrapServers = properties.getProperty(ConfigKeys.KAFKA_BOOTSTRAP_SERVERS);
+    } else {
+      checkProperty(ConfigKeys.SSL_KAFKA_BOOTSTRAP_SERVERS);
+      kafkaBootstrapServers = properties.getProperty(ConfigKeys.SSL_KAFKA_BOOTSTRAP_SERVERS);
+    }
   }
 
-  public static VeniceWriterFactory get() {
-    return FACTORY;
+  /**
+   * Create a basic venice writer with default serializer.
+   */
+  public VeniceWriter<byte[], byte[]> getBasicVeniceWriter(String topicName, Time time) {
+    return getVeniceWriter(topicName, new DefaultSerializer(), new DefaultSerializer(), time);
   }
 
-  public VeniceWriter<byte[], byte[]> getBasicVeniceWriter(String kafkaBootstrapServers, String topicName, Time time) {
-    Properties props = new Properties();
-    props.put(ConfigKeys.KAFKA_BOOTSTRAP_SERVERS, kafkaBootstrapServers);
-    props.put(VeniceWriter.CHECK_SUM_TYPE, CheckSumType.NONE.name());
-    VeniceProperties veniceWriterProperties = new VeniceProperties(props);
-    return new VeniceWriter<>(veniceWriterProperties, topicName, new DefaultSerializer(), new DefaultSerializer(), time);
+  public VeniceWriter<byte[], byte[]> getBasicVeniceWriter(String topicName) {
+    return getBasicVeniceWriter(topicName, SystemTime.INSTANCE);
   }
 
-  public VeniceWriter<byte[], byte[]> getSslVeniceWriter(String kafkaBootstrapServers, String topicName, Time time,String securityProtocol, SslConfigs sslConfigs){
-    // TODO Create ssl enabled venice writer for admin topic used by parent controller.
-    return null;
+  /**
+   * Create a venice writer which is used to communicated with the topic contains real data.
+   */
+  protected <K, V> VeniceWriter<K, V> getVeniceWriter(String topic, VeniceKafkaSerializer<K> keySerializer,
+      VeniceKafkaSerializer<V> valueSerializer, Time time) {
+    Properties writerProperties = new Properties();
+    writerProperties.putAll(this.properties);
+    writerProperties.put(ConfigKeys.KAFKA_BOOTSTRAP_SERVERS, kafkaBootstrapServers);
+    return new VeniceWriter<>(new VeniceProperties(writerProperties), topic, keySerializer, valueSerializer, time);
+  }
+
+  public VeniceWriter<KafkaKey, byte[]> getVeniceWriter(String topic) {
+    return getVeniceWriter(topic, new KafkaKeySerializer(), new DefaultSerializer(), SystemTime.INSTANCE);
+  }
+
+  private void checkProperty(String key) {
+    if (!properties.containsKey(key)) {
+      throw new VeniceException(
+          "Invalid properties for Venice writer factory. Required property: " + key + " is missing.");
+    }
   }
 }

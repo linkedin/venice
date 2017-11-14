@@ -56,7 +56,7 @@ public class TestDeleteStoreDeletesRealtimeTopic {
     });
 
     //verify realtime topic exists
-    TopicManager topicManager = new TopicManager(venice.getKafka().getZkAddress());
+    TopicManager topicManager = new TopicManager(venice.getKafka().getZkAddress(), TestUtils.getVeniceConsumerFactory(venice.getKafka().getAddress()));
     Assert.assertTrue(topicManager.containsTopic(Version.composeRealTimeTopic(storeName)));
 
     //disable store

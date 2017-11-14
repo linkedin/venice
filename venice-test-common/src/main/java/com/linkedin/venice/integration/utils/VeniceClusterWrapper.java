@@ -18,6 +18,7 @@ import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.ApacheKafkaProducer;
 import com.linkedin.venice.writer.VeniceWriter;
+import com.linkedin.venice.writer.VeniceWriterFactory;
 import java.io.File;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -420,31 +421,33 @@ public class VeniceClusterWrapper extends ProcessWrapper {
    * @return
    */
   public VeniceWriter<String, String> getVeniceWriter(String storeVersionName) {
-    VeniceProperties clientProps = new PropertyBuilder().put(KAFKA_BOOTSTRAP_SERVERS, kafkaBrokerWrapper.getAddress())
-        .put(ZOOKEEPER_ADDRESS, zkServerWrapper.getAddress())
-        .put(CLUSTER_NAME, clusterName)
-        .build();
-
+    Properties properties = new Properties();
+    properties.put(KAFKA_BOOTSTRAP_SERVERS, kafkaBrokerWrapper.getAddress());
+    properties.put(ZOOKEEPER_ADDRESS, zkServerWrapper.getAddress());
+    properties.put(CLUSTER_NAME, clusterName);
+    TestUtils.VeniceTestWriterFactory factory = new TestUtils.VeniceTestWriterFactory(properties);
     String stringSchema = "\"string\"";
     VeniceKafkaSerializer keySerializer = new VeniceAvroGenericSerializer(stringSchema);
     VeniceKafkaSerializer valueSerializer = new VeniceAvroGenericSerializer(stringSchema);
 
-    return new VeniceWriter<>(clientProps, storeVersionName, keySerializer, valueSerializer);
+    return factory.getVeniceWriter(storeVersionName, keySerializer, valueSerializer);
+
   }
 
   public VeniceWriter<String, String> getSslVeniceWriter(String storeVersionName) {
-    VeniceProperties clientProps =
-        new PropertyBuilder().put(KAFKA_BOOTSTRAP_SERVERS, kafkaBrokerWrapper.getSSLAddress())
-            .put(ZOOKEEPER_ADDRESS, zkServerWrapper.getAddress())
-            .put(CLUSTER_NAME, clusterName)
-            .put(SslUtils.getLocalKafkaClientSSLConfig())
-            .build();
+
+    Properties properties = new Properties();
+    properties.put(KAFKA_BOOTSTRAP_SERVERS, kafkaBrokerWrapper.getSSLAddress());
+    properties.put(ZOOKEEPER_ADDRESS, zkServerWrapper.getAddress());
+    properties.put(CLUSTER_NAME, clusterName);
+    properties.putAll(SslUtils.getLocalKafkaClientSSLConfig());
+    TestUtils.VeniceTestWriterFactory factory = new TestUtils.VeniceTestWriterFactory(properties);
 
     String stringSchema = "\"string\"";
     VeniceKafkaSerializer keySerializer = new VeniceAvroGenericSerializer(stringSchema);
     VeniceKafkaSerializer valueSerializer = new VeniceAvroGenericSerializer(stringSchema);
 
-    return new VeniceWriter<>(clientProps, storeVersionName, keySerializer, valueSerializer);
+    return factory.getVeniceWriter(storeVersionName, keySerializer, valueSerializer);
   }
 
   public NewStoreResponse getNewStore(String storeName) {

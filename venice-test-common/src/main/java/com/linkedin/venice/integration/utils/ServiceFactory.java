@@ -121,11 +121,11 @@ public class ServiceFactory {
   /**
    * @return an instance of {@link com.linkedin.venice.controller.VeniceControllerService}, which will be working in parent mode.
    */
-  public static VeniceControllerWrapper getVeniceParentController(String clusterName, String zkAddress, KafkaBrokerWrapper kafkaBrokerWrapper, VeniceControllerWrapper childController) {
+  public static VeniceControllerWrapper getVeniceParentController(String clusterName, String zkAddress, KafkaBrokerWrapper kafkaBrokerWrapper, VeniceControllerWrapper childController, boolean sslToKafka) {
     return getStatefulService(
         VeniceControllerWrapper.SERVICE_NAME,
         VeniceControllerWrapper.generateService(clusterName, zkAddress, kafkaBrokerWrapper, true, DEFAULT_REPLICATION_FACTOR,
-            DEFAULT_PARTITION_SIZE_BYTES, DEFAULT_DELAYED_TO_REBALANCE_MS, DEFAULT_REPLICATION_FACTOR, childController, EMPTY_VENICE_PROPS));
+            DEFAULT_PARTITION_SIZE_BYTES, DEFAULT_DELAYED_TO_REBALANCE_MS, DEFAULT_REPLICATION_FACTOR, childController, EMPTY_VENICE_PROPS, sslToKafka));
   }
 
   /**

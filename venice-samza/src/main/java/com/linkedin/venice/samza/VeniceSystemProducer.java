@@ -11,6 +11,7 @@ import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.VeniceWriter;
+import com.linkedin.venice.writer.VeniceWriterFactory;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -105,7 +106,8 @@ public class VeniceSystemProducer implements SystemProducer {
   private VeniceWriter<byte[], byte[]> getVeniceWriter(String topic, String kafkaBootstrapServers) {
     Properties veniceWriterProperties = new Properties();
     veniceWriterProperties.put(KAFKA_BOOTSTRAP_SERVERS, kafkaBootstrapServers);
-    return new VeniceWriter<>(new VeniceProperties(veniceWriterProperties), topic, new DefaultSerializer(), new DefaultSerializer(), time);
+    VeniceWriterFactory veniceWriterFactory = new VeniceWriterFactory(veniceWriterProperties);
+    return veniceWriterFactory.getBasicVeniceWriter(topic, time);
   }
 
   @Override

@@ -137,7 +137,7 @@ public class TestTopicRequestOnHybridDelete {
   public void deleteStoreAfterStartedPushAllowsNewPush(){
     VeniceClusterWrapper venice = ServiceFactory.getVeniceCluster();
     ControllerClient controllerClient = new ControllerClient(venice.getClusterName(), venice.getRandomRouterURL());
-    TopicManager topicManager = new TopicManager(venice.getKafka().getZkAddress());
+    TopicManager topicManager = new TopicManager(venice.getKafka().getZkAddress(), TestUtils.getVeniceConsumerFactory(venice.getKafka().getAddress()));
 
     String storeName = TestUtils.getUniqueString("hybrid-store");
     venice.getNewStore(storeName);

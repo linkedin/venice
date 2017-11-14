@@ -789,7 +789,7 @@ public class TestVeniceParentHelixAdmin {
     ZkServerWrapper parentZk = ServiceFactory.getZkServer();
     VeniceControllerWrapper controllerWrapper =
         ServiceFactory.getVeniceParentController(clusterName, parentZk.getAddress(), kafkaBrokerWrapper,
-            childControllerWrapper);
+            childControllerWrapper, false);
 
     String controllerUrl = controllerWrapper.getControllerUrl();
     String childControllerUrl = childControllerWrapper.getControllerUrl();

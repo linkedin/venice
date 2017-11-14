@@ -49,7 +49,7 @@ public class TestHybrid {
     VeniceClusterWrapper venice = ServiceFactory.getVeniceCluster(1,2,1,1, 1000000, false, false);
     ZkServerWrapper parentZk = ServiceFactory.getZkServer();
     VeniceControllerWrapper parentController = ServiceFactory.getVeniceParentController(
-        venice.getClusterName(), parentZk.getAddress(), venice.getKafka(), venice.getMasterVeniceController());
+        venice.getClusterName(), parentZk.getAddress(), venice.getKafka(), venice.getMasterVeniceController(), false);
 
     long streamingRewindSeconds = 25L;
     long streamingMessageLag = 2L;
@@ -79,7 +79,7 @@ public class TestHybrid {
     });
 
     //And real-time topic should exist now.
-    TopicManager topicManager = new TopicManager(venice.getZk().getAddress());
+    TopicManager topicManager = new TopicManager(venice.getZk().getAddress(), TestUtils.getVeniceConsumerFactory(venice.getKafka().getAddress()));
     assertTrue(topicManager.containsTopic(Version.composeRealTimeTopic(storeName)));
     IOUtils.closeQuietly(topicManager);
 
