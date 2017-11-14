@@ -16,12 +16,13 @@ import org.apache.zookeeper.Watcher;
  * resources to sync up local cache with ZK.
  */
 public class CachedResourceZkStateListener implements IZkStateListener {
-  private final static Logger logger = Logger.getLogger(CachedResourceZkStateListener.class);
+  private final Logger logger;
   private final VeniceResource resource;
   private volatile boolean disconnected = false;
 
   public CachedResourceZkStateListener(VeniceResource resource) {
     this.resource = resource;
+    this.logger = Logger.getLogger(this.getClass().getSimpleName() + " [" + getResourceName() + "]");
   }
 
   @Override
@@ -36,34 +37,41 @@ public class CachedResourceZkStateListener implements IZkStateListener {
         // refreshing. Then Set to false after refresh is completed. But the correct value should be true because client
         // is disconnected.
         disconnected = false;
-        logger.info("ZK connection is reconnected. Refresh resource:" + resource.getClass().getSimpleName());
+        logger.info("ZK connection is reconnected. Will refresh resource.");
         synchronized (this) {
           // If connection is disconnected during refreshing and reconnect again. Synchronized block guarantee that
           // there is only one refresh operation on the fly.
           try {
             resource.refresh();
           } catch (VeniceException e) {
-            logger.error(
-                "Can not refresh resource:" + resource.getClass().getSimpleName() + " after client is reconnected.", e);
+            logger.error("Can not refresh resource after client reconnected.", e);
           }
         }
       } else {
-        logger.info("ZK connection is connected in first time. Do not refresh resource.");
+        logger.info("ZK connection is connected for the first time for resource. Not going to refresh.");
       }
+    } else {
+      logger.error("handleStateChanged() called with an unexpected state: " + state.toString());
     }
   }
 
   @Override
   public void handleNewSession()
       throws Exception {
+    logger.info("handleNewSession() called.");
   }
 
   @Override
   public void handleSessionEstablishmentError(Throwable error)
       throws Exception {
+    logger.info("handleSessionEstablishmentError() called.", error);
   }
 
   protected boolean isDisconnected() {
     return disconnected;
+  }
+
+  private String getResourceName() {
+    return resource.getClass().getSimpleName();
   }
 }
