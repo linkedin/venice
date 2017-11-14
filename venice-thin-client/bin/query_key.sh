@@ -31,6 +31,7 @@ echo $FIND_ROUTER_RESULT
 # choose a router from d2 cluster
 ROUTER_URL=`echo $FIND_ROUTER_RESULT | jq '.uris[0].URI'`
 
-echo "Send a request to $ROUTER_URL, Store $STORE_NAME, Key string: $KEY_STRING..."
+echo ""
+echo "Will send a request to $ROUTER_URL, Store $STORE_NAME, Key string: $KEY_STRING..."
 
 java -jar $BASE_DIR/build/libs/venice-thin-client-0.1.jar $STORE_NAME $KEY_STRING $ROUTER_URL $IS_VSON_STORE
