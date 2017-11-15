@@ -66,6 +66,11 @@ public class TehutiUtils {
     if (stringPercentile.endsWith(ROUND_NUMBER_SUFFIX)) {
       stringPercentile = stringPercentile.substring(0, stringPercentile.length() - ROUND_NUMBER_SUFFIX.length());
     }
+
+    // If there are still any dots left, replace them (i.e.: this is for the 99.9th percentile)
+    if (stringPercentile.contains(".")) {
+      stringPercentile = stringPercentile.replace(".", "_");
+    }
     return new Percentile(name + "." + stringPercentile + "thPercentile", percentile);
   }
 
