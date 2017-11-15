@@ -52,7 +52,7 @@ public class AggServerHttpRequestStatsTest {
     String storeName = "storeName";
     Percentiles percentiles = TehutiUtils.getPercentileStatForNetworkLatency(sensorName, storeName);
     percentiles.stats().stream().map(namedMeasurable -> namedMeasurable.name()).forEach(System.out::println);
-    String[] percentileStrings = new String[]{"50", "77", "90", "95", "99", "99.9"};
+    String[] percentileStrings = new String[]{"50", "77", "90", "95", "99", "99_9"};
 
     for (int i = 0; i < percentileStrings.length; i++) {
       String expectedName = sensorName + "--" + storeName + "." + percentileStrings[i] + "thPercentile";
