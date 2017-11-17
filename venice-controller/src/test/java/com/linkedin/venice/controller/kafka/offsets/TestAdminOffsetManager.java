@@ -3,6 +3,7 @@ package com.linkedin.venice.controller.kafka.offsets;
 import com.linkedin.venice.controller.kafka.AdminTopicUtils;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixAdapterSerializer;
+import com.linkedin.venice.kafka.protocol.GUID;
 import com.linkedin.venice.kafka.protocol.state.ProducerPartitionState;
 import com.linkedin.venice.kafka.validation.SegmentStatus;
 import com.linkedin.venice.kafka.validation.checksum.CheckSumType;
@@ -187,5 +188,44 @@ public class TestAdminOffsetManager {
     Assert.assertTrue(producerStates.containsKey("test_guid4"));
     Assert.assertTrue(producerStates.containsKey("test_guid0"));
     Assert.assertTrue(producerStates.containsKey("test_guid7"));
+  }
+
+  private ProducerPartitionState getProducerPartitionStateByMessageSeqNum(int messageSeqNum) {
+    ProducerPartitionState ppState = new ProducerPartitionState();
+    ppState.messageTimestamp = 1510885071400l;
+    ppState.segmentStatus = 1;
+    ppState.messageSequenceNumber = messageSeqNum;
+    ppState.aggregates = new HashMap<>();
+    ppState.debugInfo = new HashMap<>();
+    ppState.checksumState = ByteBuffer.wrap(new byte[]{0});
+    ppState.checksumType = CheckSumType.NONE.getValue();
+
+    return ppState;
+  }
+
+  @Test
+  public void testOffsetRecordSerialization() {
+    byte[] guidBytes = new byte[]{-26, -57, -66, 25, 26, -123, 65, -127, -83, -51, 3, -63, -89, -89, -54, 14};
+    GUID guid = new GUID();
+    guid.bytes(guidBytes);
+    OffsetRecord offsetRecord = new OffsetRecord();
+    offsetRecord.setOffset(782);
+    ProducerPartitionState oldPPState = getProducerPartitionStateByMessageSeqNum(0);
+    offsetRecord.setProducerPartitionState(guid, oldPPState);
+
+    byte[] serializedOffsetRecord = offsetRecord.toBytes();
+    OffsetRecord newOffsetRecord = new OffsetRecord(serializedOffsetRecord);
+
+    ProducerPartitionState newPPState = getProducerPartitionStateByMessageSeqNum(10);
+    newOffsetRecord.setProducerPartitionState(guid, newPPState);
+
+    // Same GUID, so there should be only one entry in ProducerPartitionStateMap
+    Assert.assertEquals(newOffsetRecord.getProducerPartitionStateMap().size(), 1);
+    /**
+     * The following assertion is trying to validate the later update against the same GUID should be applied properly.
+     */
+    ProducerPartitionState producerPartitionState = newOffsetRecord.getProducerPartitionState(guid);
+    Assert.assertEquals(producerPartitionState.messageSequenceNumber, newPPState.messageSequenceNumber,
+        "The message sequence number update should be applied properly");
   }
 }
