@@ -42,7 +42,7 @@ public class GuidUtils {
     return guid;
   }
 
-  public static CharSequence getCharSequenceFromGuid(GUID guid) {
+  public static String getCharSequenceFromGuid(GUID guid) {
     return new String(guid.bytes(), CHARSET); // TODO: Optimize this. It's probably expensive...
   }
 
