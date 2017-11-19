@@ -14,6 +14,7 @@ import com.linkedin.venice.controllerapi.MultiStoreResponse;
 import com.linkedin.venice.controllerapi.MultiStoreStatusResponse;
 import com.linkedin.venice.controllerapi.MultiVersionResponse;
 import com.linkedin.venice.controllerapi.NewStoreResponse;
+import com.linkedin.venice.controllerapi.NodeStatusResponse;
 import com.linkedin.venice.controllerapi.OwnerResponse;
 import com.linkedin.venice.controllerapi.PartitionResponse;
 import com.linkedin.venice.controllerapi.RoutersClusterConfigResponse;
@@ -474,8 +475,8 @@ public class AdminTool {
 
   private static void isNodeRemovable(CommandLine cmd){
     String storageNodeId = getRequiredArgument(cmd, Arg.STORAGE_NODE);
-    ControllerResponse response = controllerClient.isNodeRemovable(storageNodeId);
-    printSuccess(response);
+    NodeStatusResponse response = controllerClient.isNodeRemovable(storageNodeId);
+    printObject(response);
   }
 
   private static void addNodeIntoWhiteList(CommandLine cmd){
