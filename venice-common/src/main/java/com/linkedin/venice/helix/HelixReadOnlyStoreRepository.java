@@ -198,18 +198,20 @@ public class HelixReadOnlyStoreRepository implements ReadOnlyStoreRepository {
 
   private void triggerAllListeners(Map<String, Store> oldStores, Map<String, Store> newStores) {
     // Store change
-    newStores.entrySet().parallelStream()
+    newStores.entrySet().stream()
         .filter(entry -> oldStores.containsKey(entry.getKey()))
         .filter(entry -> !entry.getValue().equals(oldStores.get(entry.getKey())))
         .forEach(entry -> triggerStoreChangeListener(entry.getValue()));
 
     // Store creation
+    // Once first time we start server, all stores read from zk are new store, so it might be worth for leaving
+    // "parallelStream" here. Checked all implementation, no dead lock issue.
     newStores.entrySet().parallelStream()
         .filter(entry -> !oldStores.containsKey(entry.getKey()))
         .forEach(entry -> triggerStoreCreationListener(entry.getValue()));
 
     // Store deletion
-    oldStores.keySet().parallelStream()
+    oldStores.keySet().stream()
         .filter(storeName -> !newStores.containsKey(storeName))
         .forEach(this::triggerStoreDeletionListener);
   }

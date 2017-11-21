@@ -1,5 +1,6 @@
 package com.linkedin.venice.stats;
 
+import com.linkedin.venice.helix.HelixReadOnlyStoreRepository;
 import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
