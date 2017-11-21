@@ -25,29 +25,37 @@ public class AclCreationDeletionListener implements StoreDataChangedListener {
 
   @Override
   public void handleStoreCreated(Store store) {
-    logger.debug("Added \"" + store.getName() + "\" to store list. New store list: " +
-        metadataRepository.getAllStores().stream().map(Store::getName).sorted().collect(Collectors.toList()));
-    logger.debug("Previous ACL list: " + accessController.getAccessControlledResources());
+    if (logger.isDebugEnabled()) {
+      // Should not access to metadata repo again, might cause dead lock issue.
+      logger.debug("Added \"" + store.getName() + "\" to store list.");
+      logger.debug("Previous ACL list: " + accessController.getAccessControlledResources());
+    }
     try {
       accessController.addAcl(store.getName());
     } catch (AclException e) {
       logger.error("Cannot add store to resource list: " + store.getName());
     }
-    logger.debug("*EXPECTED* current ACL list: " + accessController.getAccessControlledResources() +
-        " + " + store.getName() ); // Actual ACL list cannot be determined yet
+    if (logger.isDebugEnabled()) {
+      logger.debug("*EXPECTED* current ACL list: " + accessController.getAccessControlledResources() +
+          " + " + store.getName()); // Actual ACL list cannot be determined yet
+    }
   }
 
   @Override
   public void handleStoreDeleted(String storeName) {
-    logger.debug("Removed \"" + storeName + "\" from store list. New store list: " +
-        metadataRepository.getAllStores().stream().map(Store::getName).sorted().collect(Collectors.toList()));
-    logger.debug("Previous ACL list: " + accessController.getAccessControlledResources());
+    if (logger.isDebugEnabled()) {
+      // Should not access to metadata repo again, might cause dead lock issue.
+      logger.debug("Removed \"" + storeName + "\" from store list.");
+      logger.debug("Previous ACL list: " + accessController.getAccessControlledResources());
+    }
     try {
       accessController.removeAcl(storeName);
     } catch (AclException e) {
       logger.error("Cannot remove store from resource list: " + storeName);
     }
-    logger.debug("Current ACL list: " + accessController.getAccessControlledResources());
+    if (logger.isDebugEnabled()) {
+      logger.debug("Current ACL list: " + accessController.getAccessControlledResources());
+    }
   }
 
   @Override
