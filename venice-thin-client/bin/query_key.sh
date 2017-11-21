@@ -27,9 +27,8 @@ D2_CLUSTER=`echo $FIND_CLUSTER_RESULT | jq '.d2Service'| tr -d '"'`
 
 echo "Find a Venice router in d2 cluster: $D2_CLUSTER in fabric: $FABRIC through D2..."
 FIND_ROUTER_RESULT=`curli --fabric $FABRIC d2://d2Clusters/$D2_CLUSTER`
-echo $FIND_ROUTER_RESULT
 # choose a router from d2 cluster
-ROUTER_URL=`echo $FIND_ROUTER_RESULT | jq '.uris[0].URI'`
+ROUTER_URL=`echo $FIND_ROUTER_RESULT | jq '[.uris[]| select(.URI|contains("http:"))][0].URI'`
 
 echo ""
 echo "Will send a request to $ROUTER_URL, Store $STORE_NAME, Key string: $KEY_STRING..."
