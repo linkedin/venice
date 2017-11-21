@@ -1,0 +1,34 @@
+{
+  "name": "ChunkedValueManifest",
+  "namespace": "com.linkedin.venice.storage.protocol",
+  "doc": "This record maintains chunking information in order to re-assemble a value value that was split in many chunks. The version of this schema is intentionally set to -1 because this is what will be used in the schema part of the value field, representing a special system-type schema, as opposed to a user-defined schema.",
+  "type": "record",
+  "fields": [
+    {
+      "name": "producerGUID",
+      "doc": "The GUID belonging to the producer of this value.",
+      "type": {
+        "name": "GUID",
+        "namespace": "com.linkedin.venice.kafka.protocol",
+        "type": "fixed",
+        "size": 16
+      }
+    }, {
+      "name": "segmentNumber",
+      "doc": "The segment number of the first chunk sent as part of this multi-chunk value.",
+      "type": "int"
+    }, {
+      "name": "messageSequenceNumber",
+      "doc": "The sequence number of the first chunk sent as part of this multi-chunk value.",
+      "type": "int"
+    }, {
+      "name": "numberOfChunks",
+      "doc": "The number of chunks this message was split into. The chunk indices will start from zero and go up to numberOfChunks - 1.",
+      "type": "int"
+    }, {
+      "name": "schemaId",
+      "doc": "An identifier used to determine how the full value (after chunk re-assembly) can be deserialized. This is the ID of the user-defined schema.",
+      "type": "int"
+    }
+  ]
+}
