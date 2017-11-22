@@ -101,6 +101,10 @@ public class OfflinePushMonitor implements OfflinePushAccessor.PartitionStatusLi
           logger.warn("Could not delete legacy push status: "+legacyOfflinePush.getKafkaTopic());
         }
       }
+      //Delete old error pushes.
+      Set<String> storeNames =
+          topicToPushMap.keySet().stream().map(Version::parseStoreFromKafkaTopicName).collect(Collectors.toSet());
+      storeNames.forEach(this::cleanOlderErrorPushes);
     }
   }
 
@@ -137,7 +141,8 @@ public class OfflinePushMonitor implements OfflinePushAccessor.PartitionStatusLi
       routingDataRepository.unSubscribeRoutingDataChange(kafkaTopic, this);
       accessor.unsubscribePartitionsStatusChange(pushStatus, this);
       if (pushStatus.getCurrentStatus().equals(ExecutionStatus.ERROR)) {
-        cleanOlderErrorPushes(pushStatus);
+        String storeName = Version.parseStoreFromKafkaTopicName(pushStatus.getKafkaTopic());
+        cleanOlderErrorPushes(storeName);
       } else {
         accessor.deleteOfflinePushStatusAndItsPartitionStatuses(pushStatus);
         topicToPushMap.remove(kafkaTopic);
@@ -149,8 +154,7 @@ public class OfflinePushMonitor implements OfflinePushAccessor.PartitionStatusLi
   /**
    * Once offline push failed, we want to keep some latest offline push in ZK for debug.
    */
-  private void cleanOlderErrorPushes(OfflinePushStatus pushStatus) {
-    String storeName = Version.parseStoreFromKafkaTopicName(pushStatus.getKafkaTopic());
+  private void cleanOlderErrorPushes(String storeName) {
     List<Integer> versionNumbers = topicToPushMap.keySet()
         .stream()
         .filter(topic -> Version.parseStoreFromKafkaTopicName(topic).equals(storeName))
@@ -162,6 +166,7 @@ public class OfflinePushMonitor implements OfflinePushAccessor.PartitionStatusLi
       versionNumbers.remove(Integer.valueOf(oldestVersionNumber));
 
       String topicName = Version.composeKafkaTopic(storeName, oldestVersionNumber);
+      accessor.deleteOfflinePushStatusAndItsPartitionStatuses(topicToPushMap.get(topicName));
       topicToPushMap.remove(topicName);
     }
   }
