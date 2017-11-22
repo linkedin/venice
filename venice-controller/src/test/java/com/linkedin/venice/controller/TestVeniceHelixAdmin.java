@@ -9,7 +9,6 @@ import com.linkedin.venice.helix.HelixRoutingDataRepository;
 import com.linkedin.venice.helix.HelixState;
 import com.linkedin.venice.helix.HelixStatusMessageChannel;
 import com.linkedin.venice.helix.Replica;
-import com.linkedin.venice.integration.utils.D2TestUtils;
 import com.linkedin.venice.integration.utils.KafkaBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
@@ -551,7 +550,7 @@ public class TestVeniceHelixAdmin {
     HybridStoreConfig hybridConfig = new HybridStoreConfig(TimeUnit.SECONDS.convert(2, TimeUnit.DAYS), 1000);
     veniceAdmin.updateStore(clusterName, storeName, Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(),
         Optional.empty(), Optional.empty(), Optional.empty(), Optional.of(hybridConfig.getRewindTimeInSeconds()),
-        Optional.of(hybridConfig.getOffsetLagThresholdToGoOnline()), Optional.empty(), Optional.empty());
+        Optional.of(hybridConfig.getOffsetLagThresholdToGoOnline()), Optional.empty(), Optional.empty(), Optional.empty());
     Assert.assertTrue(veniceAdmin.getStore(clusterName, storeName).isHybrid());
   }
 
@@ -602,7 +601,7 @@ public class TestVeniceHelixAdmin {
     veniceAdmin.addStore(clusterName, storeName, "owner", keySchema, valueSchema);
     veniceAdmin.updateStore(clusterName, storeName, Optional.empty(), Optional.empty(),
         Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(),
-        Optional.of(25L), Optional.of(100L), Optional.empty(), Optional.empty()); //make store hybrid
+        Optional.of(25L), Optional.of(100L), Optional.empty(), Optional.empty(), Optional.empty()); //make store hybrid
 
     try {
       veniceAdmin.getRealTimeTopic(clusterName, storeName);
@@ -936,13 +935,13 @@ public class TestVeniceHelixAdmin {
 
     veniceAdmin.updateStore(clusterName, storeName, Optional.empty(), Optional.empty(), Optional.empty(),
         Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(),
-        Optional.empty(), Optional.of(false), Optional.empty());
+        Optional.empty(), Optional.of(false), Optional.empty(), Optional.empty());
     store = veniceAdmin.getStore(clusterName, storeName);
     Assert.assertEquals(store.isAccessControlled(), false);
 
     veniceAdmin.updateStore(clusterName, storeName, Optional.empty(), Optional.empty(), Optional.empty(),
         Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(),
-        Optional.empty(), Optional.of(true), Optional.empty());
+        Optional.empty(), Optional.of(true), Optional.empty(), Optional.empty());
     store = veniceAdmin.getStore(clusterName, storeName);
     Assert.assertEquals(store.isAccessControlled(), true);
   }
@@ -1255,6 +1254,20 @@ public class TestVeniceHelixAdmin {
     for (int i = 0; i < storeCount; i++) {
       Assert.assertEquals(veniceAdmin.getStoreConfigAccessor().getStoreConfig("testRepair"+i).getCluster(), clusterName, "Mapping should be repaired by refresh.");
     }
+  }
 
+  @Test
+  public void testChunkingEnabled() {
+    String storeName = TestUtils.getUniqueString("test_store");
+    veniceAdmin.addStore(clusterName, storeName, "unittest", "\"string\"", "\"string\"");
+
+    Store store = veniceAdmin.getStore(clusterName, storeName);
+    Assert.assertFalse(store.isChunkingEnabled());
+
+    veniceAdmin.updateStore(clusterName, storeName, Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(),
+        Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(),
+        Optional.empty(), Optional.empty(), Optional.empty(), Optional.of(Boolean.TRUE));
+    store = veniceAdmin.getStore(clusterName, storeName);
+    Assert.assertTrue(store.isChunkingEnabled());
   }
 }

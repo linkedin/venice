@@ -928,6 +928,15 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         });
     }
 
+    public synchronized  void setChunkingEnabled(String clusterName, String storeName,
+        boolean chunkingEnabled) {
+        storeMetadataUpdate(clusterName, storeName, store -> {
+            store.setChunkingEnabled(chunkingEnabled);
+
+            return store;
+        });
+    }
+
     @Override
     public synchronized void updateStore(
         String clusterName,
@@ -942,7 +951,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         Optional<Long> hybridRewindSeconds,
         Optional<Long> hybridOffsetLagThreshold,
         Optional<Boolean> accessControlled,
-        Optional<CompressionStrategy> compressionStrategy) {
+        Optional<CompressionStrategy> compressionStrategy,
+        Optional<Boolean> chunkingEnabled) {
         Store originalStore = getStore(clusterName, storeName).cloneStore();
 
         try {
@@ -991,6 +1001,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
             if (compressionStrategy.isPresent()) {
                 setStoreCompressionStrategy(clusterName, storeName, compressionStrategy.get());
+            }
+
+            if (chunkingEnabled.isPresent()) {
+                setChunkingEnabled(clusterName, storeName, chunkingEnabled.get());
             }
 
         } catch (VeniceException e) {

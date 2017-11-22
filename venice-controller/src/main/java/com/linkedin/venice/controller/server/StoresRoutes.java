@@ -161,6 +161,10 @@ public class StoresRoutes {
         Optional<CompressionStrategy> compressionStrategy = compressionStrategyStr == null ? Optional.empty() :
             Optional.of(CompressionStrategy.valueOf(compressionStrategyStr));
 
+        String chunkingEnabledStr = AdminSparkServer.getOptionalParameterValue(request, CHUNKING_ENABLED);
+        Optional<Boolean> chunkingEnabled = Utils.isNullOrEmpty(chunkingEnabledStr) ? Optional.empty() :
+            Optional.of(Utils.parseBooleanFromString(chunkingEnabledStr, CHUNKING_ENABLED));
+
         admin.updateStore(veniceResponse.getCluster(),
                           veniceResponse.getName(),
                           owner,
@@ -173,7 +177,8 @@ public class StoresRoutes {
                           hybridRewind,
                           hybridOffsetLag,
                           accessControlled,
-                          compressionStrategy);
+                          compressionStrategy,
+                          chunkingEnabled);
       }
     };
   }

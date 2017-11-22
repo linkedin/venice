@@ -139,7 +139,9 @@ public interface Admin {
                      Optional<Long> hybridRewindSeconds,
                      Optional<Long> hybridOffsetLagThreshold,
                      Optional<Boolean> accessControlled,
-                     Optional<CompressionStrategy> compressionStrategy);
+                     Optional<CompressionStrategy> compressionStrategy,
+                     Optional<Boolean> chunkingEnabled
+        );
 
     double getStorageEngineOverheadRatio(String clusterName);
 
