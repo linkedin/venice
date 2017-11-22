@@ -167,4 +167,20 @@ public class ByteUtils {
   public static boolean readBoolean(byte[] bytes, int offset) {
     return bytes[offset] == 0x01;
   }
+
+  /**
+   * A comparator for byte arrays.
+   *
+   * Taken from: https://stackoverflow.com/a/5108711/791758 (and originally coming for Apache HBase)
+   */
+  public static int compare(byte[] left, byte[] right) {
+    for (int i = 0, j = 0; i < left.length && j < right.length; i++, j++) {
+      int a = (left[i] & 0xff);
+      int b = (right[j] & 0xff);
+      if (a != b) {
+        return a - b;
+      }
+    }
+    return left.length - right.length;
+  }
 }

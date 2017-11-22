@@ -6,7 +6,7 @@
 package com.linkedin.venice.storage.protocol;
 
 @SuppressWarnings("all")
-/** This record is prepended before each key in a store-version where chunking is enabled. This is an optional record which, if null, means that it is followed by a normal key (not corresponding to a chunk of a value). N.B.: This schema cannot be evolved. If there is a need for evolution in the future, it needs to be considered carefully... */
+/** This record contains chunking information to uniquely identify each chunk. */
 public class ChunkId extends org.apache.avro.specific.SpecificRecordBase implements org.apache.avro.specific.SpecificRecord {
   public static final org.apache.avro.Schema SCHEMA$ = org.apache.avro.Schema.parse("{\"type\":\"record\",\"name\":\"ChunkId\",\"namespace\":\"com.linkedin.venice.storage.protocol\",\"fields\":[{\"name\":\"producerGUID\",\"type\":{\"type\":\"fixed\",\"name\":\"GUID\",\"namespace\":\"com.linkedin.venice.kafka.protocol\",\"size\":16},\"doc\":\"The GUID belonging to the producer of this value.\"},{\"name\":\"segmentNumber\",\"type\":\"int\",\"doc\":\"The segment number of the first chunk sent as part of this multi-chunk value.\"},{\"name\":\"messageSequenceNumber\",\"type\":\"int\",\"doc\":\"The sequence number of the first chunk sent as part of this multi-chunk value.\"},{\"name\":\"chunkIndex\",\"type\":\"int\",\"doc\":\"The index of the current chunk. Valid values are between zero and numberOfChunks - 1.\"}]}");
   /** The GUID belonging to the producer of this value. */
