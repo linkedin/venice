@@ -678,7 +678,7 @@ public class TestAdminConsumptionTask {
 
     verify(admin, timeout(TIMEOUT).atLeastOnce())
         .updateStore(eq(clusterName), eq(storeName), any(), any(), any(), any(), any(), any(), any(),
-            eq(Optional.of(123L)), eq(Optional.of(1000L)), eq(Optional.of(accessControlled)), any());
+            eq(Optional.of(123L)), eq(Optional.of(1000L)), eq(Optional.of(accessControlled)), any(), any());
   }
 
   private byte[] getStoreCreationMessage(String clusterName, String storeName, String owner, String keySchema, String valueSchema) {

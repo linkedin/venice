@@ -549,7 +549,8 @@ public class ControllerClient implements Closeable {
       Optional<Long> hybridRewindSeconds,
       Optional<Long> hybridOffsetLagThreshold,
       Optional<Boolean> accessControlled,
-      Optional<CompressionStrategy> compressionStrategy) {
+      Optional<CompressionStrategy> compressionStrategy,
+      Optional<Boolean> chunkingEnabled) {
 
     try {
       List<NameValuePair> queryParams = newParams(clusterName);
@@ -586,6 +587,9 @@ public class ControllerClient implements Closeable {
       }
       if (compressionStrategy.isPresent()) {
         queryParams.add(new BasicNameValuePair(ControllerApiConstants.COMPRESSION_STRATEGY, compressionStrategy.get().toString()));
+      }
+      if (chunkingEnabled.isPresent()) {
+        queryParams.add(new BasicNameValuePair(ControllerApiConstants.CHUNKING_ENABLED, chunkingEnabled.get().toString()));
       }
 
       String responseJson = postRequest(ControllerRoute.UPDATE_STORE.getPath(), queryParams);

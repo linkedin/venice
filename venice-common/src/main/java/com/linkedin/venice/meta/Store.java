@@ -17,6 +17,14 @@ import org.codehaus.jackson.annotate.JsonProperty;
  * This class is NOT thread safe. Concurrency request to Store instance should be controlled in repository level.
  * When adding fields to this method, make sure to update equals, hashcode, clone,
  * and make sure json serialization still works
+ *
+ * When you want to add a simple field to Store metadata, you just need to create getter/setter for the new field.
+ * When you try to add a method starting with 'get', the default json serialization will do serialization by this
+ * method, which could produce some unexpected serialization result, so if it is not for serialization purpose, please
+ * specify {@link org.codehaus.jackson.annotate.JsonIgnore} to ignore the method, whose name is starting with 'get'.
+ *
+ * TODO: we need to refactor this class to separate Store operations from Store POJO, which is being used by JSON
+ * serialization/de-serialization.
  */
 public class Store {
   /**
@@ -113,6 +121,12 @@ public class Store {
    * strategies used to compress/decompress Record's value
    */
   private CompressionStrategy compressionStrategy = CompressionStrategy.NO_OP;
+
+  /**
+   * Whether current store supports large value (typically more than 1MB).
+   * By default, the chunking feature is disabled.
+   */
+  private boolean chunkingEnabled = false;
 
   public Store(@NotNull String name, @NotNull String owner, long createdTime, @NotNull PersistenceType persistenceType,
       @NotNull RoutingStrategy routingStrategy, @NotNull ReadStrategy readStrategy,
@@ -298,6 +312,14 @@ public class Store {
 
   public void setCompressionStrategy(CompressionStrategy compressionStrategy) {
     this.compressionStrategy = compressionStrategy;
+  }
+
+  public boolean isChunkingEnabled() {
+    return chunkingEnabled;
+  }
+
+  public void setChunkingEnabled(boolean chunkingEnabled) {
+    this.chunkingEnabled = chunkingEnabled;
   }
 
   /**
@@ -494,6 +516,7 @@ public class Store {
     result = 31 * result + (hybridStoreConfig != null ? hybridStoreConfig.hashCode() : 0);
     result = 31 * result + (accessControlled ? 1 : 0);
     result = 31 * result + (compressionStrategy.hashCode());
+    result = 31 * result + (chunkingEnabled ? 1 : 0);
     return result;
   }
 
@@ -521,6 +544,7 @@ public class Store {
     if (!versions.equals(store.versions)) return false;
     if (accessControlled != store.accessControlled) return false;
     if (compressionStrategy != store.compressionStrategy) return false;
+    if (chunkingEnabled != store.chunkingEnabled) return false;
     return !(hybridStoreConfig != null ? !hybridStoreConfig.equals(store.hybridStoreConfig) : store.hybridStoreConfig != null);
   }
 
@@ -552,6 +576,7 @@ public class Store {
     clonedStore.setLargestUsedVersionNumber(largestUsedVersionNumber);
     clonedStore.setAccessControlled(accessControlled);
     clonedStore.setCompressionStrategy(compressionStrategy);
+    clonedStore.setChunkingEnabled(chunkingEnabled);
 
     for (Version v : this.versions) {
       clonedStore.forceAddVersion(v.cloneVersion());

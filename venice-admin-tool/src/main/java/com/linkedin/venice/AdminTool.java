@@ -401,12 +401,16 @@ public class AdminTool {
 
     String accessControlStr = getOptionalArgument(cmd, Arg.ACCESS_CONTROL);
     Optional<Boolean> accessControlled = accessControlStr == null ? Optional.empty() :
-        Optional.of(Utils.parseBooleanFromString(accessControlStr, "access control"));
+        Optional.of(Utils.parseBooleanFromString(accessControlStr, Arg.ACCESS_CONTROL.name()));
 
     String compressionStrategyStr = getOptionalArgument(cmd, Arg.COMPRESSION_STRATEGY);
     Optional<CompressionStrategy> compressionStrategy = compressionStrategyStr == null
         ? Optional.empty()
         : Optional.of(CompressionStrategy.valueOf(compressionStrategyStr));
+
+    String chunkingEnabledStr = getOptionalArgument(cmd, Arg.CHUNKING_ENABLED);
+    Optional<Boolean> chunkingEnabled = Utils.isNullOrEmpty(chunkingEnabledStr) ? Optional.empty() :
+        Optional.of(Utils.parseBooleanFromString(chunkingEnabledStr, Arg.CHUNKING_ENABLED.name()));
 
     ControllerResponse response = controllerClient.updateStore(
         storeName,
@@ -420,7 +424,8 @@ public class AdminTool {
         hybridRewindSeconds,
         hybridOffsetLag,
         accessControlled,
-        compressionStrategy);
+        compressionStrategy,
+        chunkingEnabled);
 
     printSuccess(response);
   }

@@ -85,7 +85,7 @@ public class TestRead {
     ControllerClient controllerClient = new ControllerClient(veniceCluster.getClusterName(), veniceCluster.getAllControllersURLs());
     controllerClient.updateStore(storeName, Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(),
         Optional.empty(), Optional.empty(), Optional.of(10000l), Optional.empty(), Optional.empty(), Optional.empty(),
-        Optional.empty());
+        Optional.empty(), Optional.empty());
 
     VeniceProperties clientProps =
         new PropertyBuilder().put(KAFKA_BOOTSTRAP_SERVERS, veniceCluster.getKafka().getAddress())

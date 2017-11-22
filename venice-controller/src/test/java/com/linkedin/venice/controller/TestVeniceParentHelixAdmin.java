@@ -27,7 +27,6 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.helix.HelixAdapterSerializer;
 import com.linkedin.venice.helix.HelixReadWriteStoreRepository;
-import com.linkedin.venice.integration.utils.BrooklinWrapper;
 import com.linkedin.venice.integration.utils.KafkaBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
@@ -792,6 +791,7 @@ public class TestVeniceParentHelixAdmin {
             childControllerWrapper);
 
     String controllerUrl = controllerWrapper.getControllerUrl();
+    String childControllerUrl = childControllerWrapper.getControllerUrl();
     // Adding store
     String storeName = "test_store";
     String owner = "test_owner";
@@ -839,6 +839,28 @@ public class TestVeniceParentHelixAdmin {
     // Retrieve migration push strategy
     MigrationPushStrategyResponse pushStrategyResponse = controllerClient.getMigrationPushStrategies();
     Assert.assertEquals(pushStrategyResponse.getStrategies().get(voldemortStoreName), pushStrategy);
+
+    // Update chunking
+    controllerClient.updateStore(storeName,
+        Optional.empty(),
+        Optional.empty(),
+        Optional.empty(),
+        Optional.empty(),
+        Optional.empty(),
+        Optional.empty(),
+        Optional.empty(),
+        Optional.empty(),
+        Optional.empty(),
+        Optional.empty(),
+        Optional.empty(),
+        Optional.of(Boolean.TRUE));
+    storeResponse = controllerClient.getStore(storeName);
+    Assert.assertTrue(storeResponse.getStore().isChunkingEnabled());
+    // Child controller will be updated asynchronously
+    TestUtils.waitForNonDeterministicAssertion(TIMEOUT_IN_MS, TimeUnit.MILLISECONDS, () -> {
+      StoreResponse childStoreResponse = controllerClient.getStore(storeName);
+      Assert.assertTrue(childStoreResponse.getStore().isChunkingEnabled());
+    });
 
     controllerWrapper.close();
     childControllerWrapper.close();
@@ -1117,7 +1139,8 @@ public class TestVeniceParentHelixAdmin {
     Optional<Boolean> accessControlled = Optional.of(true);
     Optional<CompressionStrategy> compressionStrategy = Optional.of(CompressionStrategy.GZIP);
     parentAdmin.updateStore(clusterName, storeName, owner, readability, writebility, partitionCount, storageQuota,
-        readQuota, Optional.empty(), Optional.of(135L), Optional.of(2000L), accessControlled, compressionStrategy);
+        readQuota, Optional.empty(), Optional.of(135L), Optional.of(2000L), accessControlled, compressionStrategy,
+        Optional.empty());
 
     verify(veniceWriter)
         .put(any(), any(), anyInt());
@@ -1152,7 +1175,8 @@ public class TestVeniceParentHelixAdmin {
     // Disable Access Control
     accessControlled = Optional.of(false);
     parentAdmin.updateStore(clusterName, storeName, owner, readability, writebility, partitionCount, storageQuota,
-        readQuota, Optional.empty(), Optional.of(135L), Optional.of(2000L), accessControlled, compressionStrategy);
+        readQuota, Optional.empty(), Optional.of(135L), Optional.of(2000L), accessControlled, compressionStrategy,
+        Optional.empty());
     verify(veniceWriter, times(2)).put(keyCaptor.capture(), valueCaptor.capture(), schemaCaptor.capture());
     valueBytes = valueCaptor.getValue();
     schemaId = schemaCaptor.getValue();

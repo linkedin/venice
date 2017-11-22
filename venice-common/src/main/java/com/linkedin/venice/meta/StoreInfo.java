@@ -25,6 +25,7 @@ public class StoreInfo {
     if (store.isHybrid()) {
       storeInfo.setHybridStoreConfig(store.getHybridStoreConfig());
     }
+    storeInfo.setChunkingEnabled(store.isChunkingEnabled());
     return storeInfo;
   }
   /**
@@ -85,6 +86,11 @@ public class StoreInfo {
    * Store-level ACL switch. When disabled, Venice Router should access every request.
    */
   private boolean accessControlled = false;
+
+  /**
+   * Whether the chunking is enabled, and this is for large value store.
+   */
+  private boolean chunkingEnabled = false;
 
   public StoreInfo() {
   }
@@ -220,5 +226,13 @@ public class StoreInfo {
 
   public void setAccessControlled(boolean accessControlled) {
     this.accessControlled = accessControlled;
+  }
+
+  public boolean isChunkingEnabled() {
+    return chunkingEnabled;
+  }
+
+  public void setChunkingEnabled(boolean chunkingEnabled) {
+    this.chunkingEnabled = chunkingEnabled;
   }
 }
