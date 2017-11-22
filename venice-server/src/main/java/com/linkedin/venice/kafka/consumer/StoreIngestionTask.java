@@ -28,6 +28,7 @@ import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.notifier.VeniceNotifier;
 import com.linkedin.venice.offsets.OffsetRecord;
+import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.server.StoreRepository;
 import com.linkedin.venice.stats.AggStoreIngestionStats;
 import com.linkedin.venice.stats.AggVersionedDIVStats;
@@ -910,11 +911,16 @@ public class StoreIngestionTask implements Runnable, Closeable {
           // No other partition of the same topic has started yet, let's initialize the StoreVersionState
           StoreVersionState newStoreVersionState = new StoreVersionState();
           newStoreVersionState.sorted = startOfPush.sorted;
+          newStoreVersionState.chunked = startOfPush.chunked;
           storageMetadataService.put(topic, newStoreVersionState);
         } else if (storeVersionState.get().sorted != startOfPush.sorted) {
           // Something very wrong is going on ): ...
           throw new VeniceException("Unexpected: received multiple " + type.name() +
               " control messages with inconsistent 'sorted' fields within the same topic!");
+        } else if (storeVersionState.get().chunked != startOfPush.chunked) {
+          // Something very wrong is going on ): ...
+          throw new VeniceException("Unexpected: received multiple " + type.name() +
+              " control messages with inconsistent 'chunked' fields within the same topic!");
         } // else, no need to persist it once more.
         break;
       case END_OF_PUSH:
@@ -1140,6 +1146,17 @@ public class StoreIngestionTask implements Runnable, Closeable {
       // TODO: Once Venice Client (VeniceShellClient) finish the integration with schema registry,
       // we need to remove this check here.
       return;
+    }
+    if (schemaId == AvroProtocolDefinition.CHUNK.getCurrentProtocolVersion() ||
+        schemaId == AvroProtocolDefinition.CHUNKED_VALUE_MANIFEST.getCurrentProtocolVersion()) {
+      Optional<StoreVersionState> storeVersionState = storageMetadataService.getStoreVersionState(topic);
+      if (storeVersionState.isPresent() && storeVersionState.get().chunked) {
+        // We're good!
+        // TODO: Record metric for chunk ingestion?
+        return;
+      } else {
+        throw new VeniceException("Detected chunking in a store-version where chunking is NOT enabled. Will abort ingestion.");
+      }
     }
     // Considering value schema is immutable for an existing store, we can cache it locally
     if (schemaIdSet.contains(schemaId)) {

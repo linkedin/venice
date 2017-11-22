@@ -1,6 +1,7 @@
 package com.linkedin.venice.message;
 
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
+import com.linkedin.venice.storage.protocol.ChunkId;
 import com.linkedin.venice.utils.ByteUtils;
 import com.linkedin.venice.utils.Utils;
 
@@ -10,16 +11,26 @@ import com.linkedin.venice.utils.Utils;
  */
 public class KafkaKey {
 
-  private byte keyHeaderByte;
-  private byte[] key; // TODO: Consider whether we may want to use a ByteBuffer here
+  private final byte keyHeaderByte;
+  private final byte[] key; // TODO: Consider whether we may want to use a ByteBuffer here
+  private final ChunkId chunkId;
+
+  public KafkaKey(ChunkId chunkId, byte[] key) {
+    this(MessageType.PUT.getKeyHeaderByte(), key, chunkId);
+  }
 
   public KafkaKey(MessageType messageType, byte[] key) {
     this(Utils.notNull(messageType).getKeyHeaderByte(), key);
   }
 
   public KafkaKey(byte keyHeaderByte, byte[] key) {
+    this(keyHeaderByte, key, null);
+  }
+
+  public KafkaKey(byte keyHeaderByte, byte[] key, ChunkId chunkId) {
     this.keyHeaderByte = keyHeaderByte;
     this.key = key;
+    this.chunkId = chunkId;
   }
 
   /**
@@ -43,11 +54,18 @@ public class KafkaKey {
     return keyHeaderByte == MessageType.CONTROL_MESSAGE.getKeyHeaderByte();
   }
 
+  public boolean hasChunkId() {
+    return null != chunkId;
+  }
   /**
    * @return the content of the key (everything beyond the first byte)
    */
   public byte[] getKey() {
     return key;
+  }
+
+  public ChunkId getChunkId() {
+    return chunkId;
   }
 
   public int getKeyLength() {

@@ -13,6 +13,7 @@ import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.schema.vson.VsonAvroSchemaAdapter;
+import com.linkedin.venice.utils.Pair;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
@@ -20,8 +21,8 @@ import java.io.File;
 import java.io.IOException;
 import java.util.*;
 
+import java.util.Optional;
 import java.util.function.Consumer;
-import javafx.util.Pair;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.util.Utf8;
@@ -109,8 +110,8 @@ public class TestBatch {
     testBatchStore(inputDir -> {
       Pair<Schema, Schema> schemas = writeComplexVsonFile(inputDir);
       //strip the value schema since this is selected filed
-      Schema selectedValueSchema = VsonAvroSchemaAdapter.stripFromUnion(schemas.getValue()).getField("score").schema();
-      return new Pair<>(schemas.getKey(), selectedValueSchema);
+      Schema selectedValueSchema = VsonAvroSchemaAdapter.stripFromUnion(schemas.getSecond()).getField("score").schema();
+      return new Pair<>(schemas.getFirst(), selectedValueSchema);
     }, props -> {
       props.setProperty(KEY_FIELD_PROP, "");
       props.setProperty(VALUE_FIELD_PROP, "score");
@@ -181,6 +182,10 @@ public class TestBatch {
   }
 
   private void testBatchStore(InputFileWriter inputFileWriter, Consumer<Properties> extraProps, H2VValidator dataValidator, boolean isCompressed) throws Exception {
+    testBatchStore(inputFileWriter, extraProps, dataValidator, isCompressed, Optional.empty());
+  }
+
+  private void testBatchStore(InputFileWriter inputFileWriter, Consumer<Properties> extraProps, H2VValidator dataValidator, boolean isCompressed, Optional<Boolean> chunkingEnabled) throws Exception {
     File inputDir = getTempDataDirectory();
     Pair<Schema, Schema> schemas = inputFileWriter.write(inputDir);
     String storeName = TestUtils.getUniqueString("store");
@@ -189,7 +194,7 @@ public class TestBatch {
     Properties props = defaultH2VProps(veniceCluster, inputDirPath, storeName);
     extraProps.accept(props);
 
-    createStoreForJob(veniceCluster, schemas.getKey().toString(), schemas.getValue().toString(), props, isCompressed);
+    createStoreForJob(veniceCluster, schemas.getFirst().toString(), schemas.getSecond().toString(), props, isCompressed, chunkingEnabled);
 
     KafkaPushJob job = new KafkaPushJob("Test Batch push job", props);
     job.run();
@@ -208,6 +213,84 @@ public class TestBatch {
 
   private interface H2VValidator {
     void validate(AvroGenericStoreClient avroClient, AvroGenericStoreClient vsonClient) throws Exception;
+  }
+
+  @Test //(timeOut = TEST_TIMEOUT)
+  public void testLargeValues() throws Exception {
+    try {
+      testStoreWithLargeValues(false);
+      Assert.fail("Pushing large values with chunking disabled should fail.");
+    } catch (VeniceException e) {
+      //push is expected to fail because of large values
+    }
+
+    // TODO: Enable test once large value read path is coded!
+    testStoreWithLargeValues(true);
+  }
+
+  private void testStoreWithLargeValues(boolean isChunkingAllowed) throws Exception {
+    int maxValueSize = 3 * 1024 * 1024; // 3 MB apiece
+    int numberOfRecords = 10;
+    testBatchStore(inputDir -> {
+          Schema recordSchema = writeSimpleAvroFileWithLargeValues(inputDir, numberOfRecords, maxValueSize);
+          return new Pair<>(recordSchema.getField("id").schema(),
+                            recordSchema.getField("name").schema());
+        }, props -> {},
+        (avroClient, vsonClient) -> {
+          Set<String> keys = new HashSet(10);
+
+          // Single gets
+          for (int i = 0; i < numberOfRecords; i++) {
+            int expectedSize = maxValueSize / numberOfRecords * (i + 1);
+            String key = new Integer(i).toString();
+            keys.add(key);
+            char[] chars = new char[expectedSize];
+            Arrays.fill(chars, Integer.toString(i).charAt(0));
+            String expectedString = new String(chars);
+            Utf8 expectedUtf8 = new Utf8(expectedString);
+
+            LOGGER.info("About to query key: " + i);
+            Utf8 returnedUtf8Value = (Utf8) avroClient.get(key).get();
+            Assert.assertNotNull(returnedUtf8Value, "Avro client returned null value for key: " + key + ".");
+            LOGGER.info("Received value of size: " + returnedUtf8Value.length() + " for key: " + key);
+            Assert.assertEquals(returnedUtf8Value.toString().substring(0, 1), key, "Avro value does not begin with the expected prefix.");
+            Assert.assertEquals(returnedUtf8Value.length(), expectedSize, "Avro value does not have the expected size.");
+            Assert.assertEquals(returnedUtf8Value, expectedUtf8, "The entire large value should be filled with the same char: " + key);
+
+            String jsonValue = (String) vsonClient.get(key).get();
+            Assert.assertNotNull(jsonValue, "VSON client returned null value for key: " + key + ".");
+            Assert.assertEquals(jsonValue.substring(0, 1), key, "VSON value does not begin with the expected prefix.");
+            Assert.assertEquals(jsonValue.length(), expectedSize, "VSON value does not have the expected size.");
+            Assert.assertEquals(jsonValue, expectedString, "The entire large value should be filled with the same char: " + key);
+          }
+
+          // Batch-get
+          Map<String, Utf8> utf8Results = (Map<String, Utf8>) avroClient.batchGet(keys).get();
+          Map<String, String> jsonResults = (Map<String, String>) vsonClient.batchGet(keys).get();
+          for (String key: keys) {
+            int i = Integer.parseInt(key);
+            int expectedSize = maxValueSize / numberOfRecords * (i + 1);
+            char[] chars = new char[expectedSize];
+            Arrays.fill(chars, key.charAt(0));
+            String expectedString = new String(chars);
+            Utf8 expectedUtf8 = new Utf8(expectedString);
+
+            Utf8 returnedUtf8Value = utf8Results.get(key);
+            Assert.assertNotNull(returnedUtf8Value, "Avro client returned null value for key: " + key + ".");
+            LOGGER.info("Received value of size: " + returnedUtf8Value.length() + " for key: " + key);
+            Assert.assertEquals(returnedUtf8Value.toString().substring(0, 1), key, "Avro value does not begin with the expected prefix.");
+            Assert.assertEquals(returnedUtf8Value.length(), expectedSize, "Avro value does not have the expected size.");
+            Assert.assertEquals(returnedUtf8Value, expectedUtf8, "The entire large value should be filled with the same char: " + key);
+
+            String jsonValue = jsonResults.get(key);
+            Assert.assertNotNull(jsonValue, "VSON client returned null value for key: " + key + ".");
+            Assert.assertEquals(jsonValue.substring(0, 1), key, "VSON value does not begin with the expected prefix.");
+            Assert.assertEquals(jsonValue.length(), expectedSize, "VSON value does not have the expected size.");
+            Assert.assertEquals(jsonValue, expectedString, "The entire large value should be filled with the same char: " + key);
+          }
+        },
+        false,
+        Optional.of(isChunkingAllowed));
   }
 
   @Test(timeOut = TEST_TIMEOUT)

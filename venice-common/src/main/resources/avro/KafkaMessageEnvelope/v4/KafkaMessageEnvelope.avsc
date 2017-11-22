@@ -93,7 +93,7 @@
                       "default": false
                     }, {
                       "name": "chunked",
-                      "doc": "Whether the messages inside the current push are encoded with chunking support. If true, this means keys will be prefixed with ChunkId, and values may contain a ChunkedValueManifest (if schema is defined as -1).",
+                      "doc": "Whether the messages inside the current push are encoded with chunking support. If true, this means keys will be prefixed with ChunkId, and values may contain a ChunkedValueManifest (if schema is defined as -20).",
                       "type": "boolean",
                       "default": false
                     }

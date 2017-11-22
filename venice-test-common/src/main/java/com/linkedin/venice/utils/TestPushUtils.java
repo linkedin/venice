@@ -15,6 +15,7 @@ import com.linkedin.venice.schema.vson.VsonAvroSerializer;
 import com.linkedin.venice.writer.VeniceWriter;
 import java.io.File;
 import java.io.IOException;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
@@ -26,6 +27,9 @@ import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericDatumWriter;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.io.DatumWriter;
+import org.apache.avro.util.Utf8;
+import org.apache.kafka.clients.CommonClientConfigs;
+import org.apache.kafka.common.config.SslConfigs;
 import org.apache.samza.config.MapConfig;
 import org.apache.samza.system.OutgoingMessageEnvelope;
 import org.apache.samza.system.SystemProducer;
@@ -99,6 +103,23 @@ public class TestPushUtils {
         });
   }
 
+  public static Schema writeSimpleAvroFileWithLargeValues(File parentDir, int numberOfRecords, int maxValueSize) throws IOException {
+    return writeAvroFile(parentDir, "large_values.avro", USER_SCHEMA_STRING,
+        (recordSchema, avroFileWriter) -> {
+          for (int i = 0; i < numberOfRecords; i++) {
+            int sizeForThisRecord = maxValueSize / numberOfRecords * (i + 1);
+            GenericRecord user = new GenericData.Record(recordSchema);
+            user.put("id", Integer.toString(i)); //"id" is the key
+            char[] chars = new char[sizeForThisRecord];
+            Arrays.fill(chars, Integer.toString(i).charAt(0));
+            Utf8 utf8Value = new Utf8(new String(chars));
+            user.put("name", utf8Value);
+            user.put("age", i);
+            avroFileWriter.append(user);
+          }
+        });
+  }
+
   private static Schema writeAvroFile(File parentDir, String fileName,
       String RecordSchemaStr, AvroFileWriter fileWriter) throws IOException {
     Schema recordSchema = Schema.parse(RecordSchemaStr);
@@ -113,7 +134,7 @@ public class TestPushUtils {
     return recordSchema;
   }
 
-  public static javafx.util.Pair<Schema, Schema> writeSimpleVsonFile(File parentDir) throws IOException{
+  public static Pair<Schema, Schema> writeSimpleVsonFile(File parentDir) throws IOException{
     String vsonInteger = "\"int32\"";
     String vsonString = "\"string\"";
 
@@ -124,11 +145,11 @@ public class TestPushUtils {
                 new BytesWritable(valueSerializer.toBytes(String.valueOf(i + 100))));
           }
         });
-    return new javafx.util.Pair<>(VsonAvroSchemaAdapter.parse(vsonInteger), VsonAvroSchemaAdapter.parse(vsonString));
+    return new Pair<>(VsonAvroSchemaAdapter.parse(vsonInteger), VsonAvroSchemaAdapter.parse(vsonString));
   }
 
   //write vson byte (int 8) and short (int16) to a file
-  public static javafx.util.Pair<Schema, Schema> writeVsonByteAndShort(File parentDir) throws IOException{
+  public static Pair<Schema, Schema> writeVsonByteAndShort(File parentDir) throws IOException{
     String vsonByte = "\"int8\"";
     String vsonShort = "\"int16\"";
 
@@ -139,10 +160,10 @@ public class TestPushUtils {
                 new BytesWritable(valueSerializer.toBytes((short) (i - 50))));
           }
         });
-    return new javafx.util.Pair<>(VsonAvroSchemaAdapter.parse(vsonByte), VsonAvroSchemaAdapter.parse(vsonShort));
+    return new Pair<>(VsonAvroSchemaAdapter.parse(vsonByte), VsonAvroSchemaAdapter.parse(vsonShort));
   }
 
-  public static javafx.util.Pair<Schema, Schema> writeComplexVsonFile(File parentDir) throws IOException{
+  public static Pair<Schema, Schema> writeComplexVsonFile(File parentDir) throws IOException{
     String vsonInteger = "\"int32\"";
     String vsonString = "{\"member_id\":\"int32\", \"score\":\"float32\"}";;
 
@@ -156,10 +177,10 @@ public class TestPushUtils {
                 new BytesWritable(valueSerializer.toBytes(record)));
           }
         });
-    return new javafx.util.Pair<>(VsonAvroSchemaAdapter.parse(vsonInteger), VsonAvroSchemaAdapter.parse(vsonString));
+    return new Pair<>(VsonAvroSchemaAdapter.parse(vsonInteger), VsonAvroSchemaAdapter.parse(vsonString));
   }
 
-  private static javafx.util.Pair<Schema, Schema> writeVsonFile(String keySchemaStr,
+  private static Pair<Schema, Schema> writeVsonFile(String keySchemaStr,
       String valueSchemStr,  File parentDir, String fileName, VsonFileWriter fileWriter) throws IOException {
     SequenceFile.Metadata metadata = new SequenceFile.Metadata();
     metadata.set(new Text("key.schema"), new Text(keySchemaStr));
@@ -175,7 +196,7 @@ public class TestPushUtils {
         SequenceFile.Writer.metadata(metadata))) {
       fileWriter.write(keySerializer, valueSerializer, writer);
     }
-    return new javafx.util.Pair<>(VsonAvroSchemaAdapter.parse(keySchemaStr), VsonAvroSchemaAdapter.parse(valueSchemStr));
+    return new Pair<>(VsonAvroSchemaAdapter.parse(keySchemaStr), VsonAvroSchemaAdapter.parse(valueSchemStr));
   }
 
   private interface VsonFileWriter {
@@ -240,11 +261,16 @@ public class TestPushUtils {
 
   public static ControllerClient createStoreForJob(VeniceClusterWrapper veniceClusterWrapper,
                                                    String keySchemaStr, String valueSchema, Properties props) {
-    return createStoreForJob(veniceClusterWrapper, keySchemaStr, valueSchema, props, false);
+    return createStoreForJob(veniceClusterWrapper, keySchemaStr, valueSchema, props, false, Optional.empty());
   }
 
   public static ControllerClient createStoreForJob(VeniceClusterWrapper veniceCluster,
                                                    String keySchemaStr, String valueSchemaStr, Properties props, boolean isCompressed) {
+    return createStoreForJob(veniceCluster, keySchemaStr, valueSchemaStr, props, isCompressed, Optional.empty());
+  }
+
+  public static ControllerClient createStoreForJob(VeniceClusterWrapper veniceCluster,
+        String keySchemaStr, String valueSchemaStr, Properties props, boolean isCompressed, Optional<Boolean> chunkingEnabled) {
     ControllerClient controllerClient =
         new ControllerClient(veniceCluster.getClusterName(), props.getProperty(KafkaPushJob.VENICE_URL_PROP));
     NewStoreResponse newStoreResponse = controllerClient.createNewStore(props.getProperty(VENICE_STORE_NAME_PROP),
@@ -254,7 +280,7 @@ public class TestPushUtils {
 
     ControllerResponse controllerResponse = controllerClient.updateStore(props.getProperty(VENICE_STORE_NAME_PROP), Optional.empty(), Optional.empty(),
         Optional.empty(), Optional.empty(), Optional.empty(), Optional.of(Store.UNLIMITED_STORAGE_QUOTA), Optional.empty(),
-        Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty());
+        Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), chunkingEnabled, Optional.empty(), Optional.empty());
 
     Assert.assertFalse(controllerResponse.isError(), "The UpdateStore response returned an error: " + controllerResponse.getError());
 
