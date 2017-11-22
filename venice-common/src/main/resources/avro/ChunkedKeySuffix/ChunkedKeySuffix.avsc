@@ -1,0 +1,49 @@
+{
+  "name": "ChunkedKeySuffix",
+  "namespace": "com.linkedin.venice.storage.protocol",
+  "doc": "This record is appended to the end of keys in a store-version where chunking is enabled. N.B.: This is NOT a versioned protocol, hence, it does not support evolution. Special care should be taken if there is ever a need to evolve this.",
+  "type": "record",
+  "fields": [
+    {
+      "name": "chunkId",
+      "doc": "This is an optional record which, if null, means that the value associated to this key does not correspond to a chunk (i.e.: it is associated to a normal non-chunked fully self-contained value, or to a ChunkedValueManifest).",
+      "type": [
+        {
+          "name": "ChunkId",
+          "namespace": "com.linkedin.venice.storage.protocol",
+          "doc": "This record contains chunking information to uniquely identify each chunk.",
+          "type": "record",
+          "fields": [
+            {
+              "name": "producerGUID",
+              "doc": "The GUID belonging to the producer of this value.",
+              "type": {
+                "name": "GUID",
+                "namespace": "com.linkedin.venice.kafka.protocol",
+                "type": "fixed",
+                "size": 16
+              }
+            }, {
+              "name": "segmentNumber",
+              "doc": "The segment number of the first chunk sent as part of this multi-chunk value.",
+              "type": "int"
+            }, {
+              "name": "messageSequenceNumber",
+              "doc": "The sequence number of the first chunk sent as part of this multi-chunk value.",
+              "type": "int"
+            }, {
+              "name": "chunkIndex",
+              "doc": "The index of the current chunk. Valid values are between zero and numberOfChunks - 1.",
+              "type": "int"
+            }
+          ]
+        },
+        "null"
+      ]
+    }, {
+      "name": "isChunk",
+      "doc": "This is used to reliably disambiguate between chunks and non-chunks. If false, it means that the value associated to this key does not correspond to a chunk (i.e.: it is associated to a normal non-chunked fully self-contained value, or to a ChunkedValueManifest).",
+      "type": "boolean"
+    }
+  ]
+}

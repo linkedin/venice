@@ -7,7 +7,7 @@ AVRO_SCHEMAS_PATH=(
   "venice-common/src/main/resources/avro/PartitionState/v3/*"
   "venice-common/src/main/resources/avro/StoreVersionState/v1/*"
   "venice-common/src/main/resources/avro/ChunkedValueManifest/v-1/*"
-  "venice-common/src/main/resources/avro/ChunkId/*"
+  "venice-common/src/main/resources/avro/ChunkedKeySuffix/*"
   "venice-controller/src/main/resources/avro/AdminOperation/v10/*"
   "venice-schema-common/src/main/resources/avro/MultiGetResponseRecord/*"
   "venice-schema-common/src/main/resources/avro/MultiGetClientRequestKey/*"
