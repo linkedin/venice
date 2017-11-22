@@ -185,64 +185,63 @@ public class TestVeniceHelixAdmin {
     String storeName = TestUtils.getUniqueString("test");
     veniceAdmin.addStore(clusterName, storeName, "dev", keySchema, valueSchema);
     Version version = veniceAdmin.incrementVersion(clusterName, storeName, 1, 1);
-
     int newAdminPort = config.getAdminPort() + 1; /* Note: this is a dummy port */
     PropertyBuilder builder = new PropertyBuilder().put(controllerProps.toProperties()).put("admin.port", newAdminPort);
 
     VeniceProperties newControllerProps = builder.build();
     VeniceControllerConfig newConfig = new VeniceControllerConfig(newControllerProps);
-    VeniceHelixAdmin newMasterAdmin = new VeniceHelixAdmin(TestUtils.getMultiClusterConfigFromOneCluster(newConfig), new MetricsRepository());
+    VeniceHelixAdmin newAdmin= new VeniceHelixAdmin(TestUtils.getMultiClusterConfigFromOneCluster(newConfig), new MetricsRepository());
     //Start stand by controller
-    newMasterAdmin.start(clusterName);
+    newAdmin.start(clusterName);
     List<VeniceHelixAdmin> allAdmins = new ArrayList<>();
     allAdmins.add(veniceAdmin);
-    allAdmins.add(newMasterAdmin);
+    allAdmins.add(newAdmin);
     waitForAMaster(allAdmins, clusterName, MASTER_CHANGE_TIMEOUT);
     try {
-      newMasterAdmin.addStore(clusterName, "failedStore", "dev", keySchema, valueSchema);
+      VeniceHelixAdmin slave = getSlave(allAdmins, clusterName);
+      slave.addStore(clusterName, "failedStore", "dev", keySchema, valueSchema);
       Assert.fail("Can not add store through a standby controller");
     } catch (VeniceNoClusterException e) {
       //expect
     }
+    //Stop current master.
+    final VeniceHelixAdmin curMaster = getMaster(allAdmins, clusterName);
     TestUtils.waitForNonDeterministicCompletion(TOTAL_TIMEOUT_FOR_SHORT_TEST, TimeUnit.MILLISECONDS,
-        () -> veniceAdmin.getOffLinePushStatus(clusterName, version.kafkaTopicName())
+        () -> curMaster.getOffLinePushStatus(clusterName, version.kafkaTopicName())
             .getExecutionStatus()
             .equals(ExecutionStatus.COMPLETED));
 
-    //Stop original master.
-    veniceAdmin.stop(clusterName);
+    curMaster.stop(clusterName);
+    Thread.sleep(1000);
+    VeniceHelixAdmin oldMaster = curMaster;
     //wait master change event
-    waitUntilIsMaster(newMasterAdmin, clusterName, MASTER_CHANGE_TIMEOUT);
+    waitForAMaster(allAdmins, clusterName, MASTER_CHANGE_TIMEOUT);
     //Now get status from new master controller.
-    Assert.assertEquals(newMasterAdmin.getOffLinePushStatus(clusterName, version.kafkaTopicName()).getExecutionStatus(), ExecutionStatus.COMPLETED,
+    VeniceHelixAdmin newMaster = getMaster(allAdmins, clusterName);
+    Assert.assertEquals(newMaster.getOffLinePushStatus(clusterName, version.kafkaTopicName()).getExecutionStatus(), ExecutionStatus.COMPLETED,
         "Offline push should be completed");
-
     // Stop and start participant to use new master to trigger state transition.
     stopParticipants();
-    HelixRoutingDataRepository routing = newMasterAdmin.getVeniceHelixResource(clusterName).getRoutingDataRepository();
-    //Assert routing data repository can find the new master controller.
-    Assert.assertEquals(routing.getMasterController().getPort(), newAdminPort,
-        "Master controller is changed, now" + newAdminPort + " is used.");
-    Thread.sleep(1000l);
-    Assert.assertTrue(routing.getReadyToServeInstances(version.kafkaTopicName(), 0).isEmpty(),
-        "Participant became offline. No instance should be living in test_v1");
+    HelixRoutingDataRepository routing = newMaster.getVeniceHelixResource(clusterName).getRoutingDataRepository();
+    Assert.assertEquals(routing.getMasterController().getPort(),
+        Utils.parsePortFromHelixNodeIdentifier(newMaster.getControllerName()),
+        "Master controller is changed.");
+    TestUtils.waitForNonDeterministicCompletion(TOTAL_TIMEOUT_FOR_SHORT_TEST, TimeUnit.MILLISECONDS,
+        () -> routing.getReadyToServeInstances(version.kafkaTopicName(), 0).isEmpty());
     startParticipant(true, nodeId);
     Thread.sleep(1000l);
     //New master controller create resource and trigger state transition on participant.
-    newMasterAdmin.incrementVersion(clusterName, storeName, 1, 1);
+    newMaster.incrementVersion(clusterName, storeName, 1, 1);
     Version newVersion = new Version(storeName, 2);
-    Assert.assertEquals(newMasterAdmin.getOffLinePushStatus(clusterName, newVersion.kafkaTopicName()).getExecutionStatus(),
+    Assert.assertEquals(newMaster.getOffLinePushStatus(clusterName, newVersion.kafkaTopicName()).getExecutionStatus(),
         ExecutionStatus.STARTED, "Can not trigger state transition from new master");
     //Start original controller again, now it should become leader again based on Helix's logic.
-    veniceAdmin.start(clusterName);
-    newMasterAdmin.stop(clusterName);
+    oldMaster.start(clusterName);
+    newMaster.stop(clusterName);
+    Thread.sleep(1000l);
     waitForAMaster(allAdmins, clusterName, MASTER_CHANGE_TIMEOUT);
     // find the leader controller and test it could continue to add store as normal.
-    if (veniceAdmin.isMasterController(clusterName)) {
-      veniceAdmin.addStore(clusterName, "failedStore", "dev", keySchema, valueSchema);
-    } else {
-      Assert.fail("No leader controller is found for cluster" + clusterName);
-    }
+    getMaster(allAdmins, clusterName).addStore(clusterName, "failedStore", "dev", keySchema, valueSchema);
   }
 
   @Test(timeOut = TOTAL_TIMEOUT_FOR_LONG_TEST)
@@ -350,6 +349,24 @@ public class TestVeniceHelixAdmin {
   void waitUntilIsMaster(VeniceHelixAdmin admin, String cluster, long timeout) {
     List<VeniceHelixAdmin> admins = Collections.singletonList(admin);
     waitForAMaster(admins, cluster, timeout);
+  }
+
+  VeniceHelixAdmin getMaster(List<VeniceHelixAdmin> admins, String cluster){
+    for (VeniceHelixAdmin admin : admins) {
+      if (admin.isMasterController(cluster)) {
+        return admin;
+      }
+    }
+    throw new VeniceException("no master found for cluster: "+cluster);
+  }
+
+  VeniceHelixAdmin getSlave(List<VeniceHelixAdmin> admins, String cluster){
+    for (VeniceHelixAdmin admin : admins) {
+      if (!admin.isMasterController(cluster)) {
+        return admin;
+      }
+    }
+    throw new VeniceException("no slave found for cluster: "+cluster);
   }
 
   void waitForAMaster(List<VeniceHelixAdmin> admins, String cluster, long timeout) {
@@ -999,21 +1016,13 @@ public class TestVeniceHelixAdmin {
         }
       });
     }
-
     veniceAdmin.deleteHelixResource(clusterName, version.kafkaTopicName());
     Thread.sleep(2000);
-    //Make sure the resource has not been deleted due to blocking on ST.
-    Assert.assertTrue(veniceAdmin.getVeniceHelixResource(clusterName)
+    //Make sure the resource has been deleted, because after registering handler, kill message should be processed.
+    Assert.assertFalse(veniceAdmin.getVeniceHelixResource(clusterName)
         .getRoutingDataRepository()
         .containsKafkaTopic(version.kafkaTopicName()));
-
-    try {
-      veniceAdmin.killOfflinePush(clusterName, version.kafkaTopicName());
-      TestUtils.waitForNonDeterministicCompletion(TOTAL_TIMEOUT_FOR_SHORT_TEST, TimeUnit.MILLISECONDS,
-          () -> processedMessage.size() == 2);
-    } catch (VeniceException e) {
-      Assert.fail("Sending message should not fail.", e);
-    }
+    Assert.assertTrue(processedMessage.size() >=2 );
 
     // Ensure that after killing, resource could continue to be deleted.
     TestUtils.waitForNonDeterministicCompletion(5000, TimeUnit.MILLISECONDS,

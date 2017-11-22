@@ -36,11 +36,13 @@ import java.util.concurrent.ConcurrentHashMap;
 
 import java.util.stream.Collectors;
 import org.apache.commons.io.IOUtils;
+import org.apache.helix.ConfigAccessor;
 import org.apache.helix.HelixAdmin;
 import org.apache.helix.HelixManager;
 import org.apache.helix.HelixManagerFactory;
 import org.apache.helix.InstanceType;
 import org.apache.helix.PropertyKey;
+import org.apache.helix.controller.rebalancer.AutoRebalancer;
 import org.apache.helix.controller.rebalancer.DelayedAutoRebalancer;
 import org.apache.helix.controller.rebalancer.strategy.AutoRebalanceStrategy;
 import org.apache.helix.controller.rebalancer.strategy.CrushRebalanceStrategy;
@@ -1275,6 +1277,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             forCluster(controllerClusterName).build();
         Map<String, String> helixClusterProperties = new HashMap<String, String>();
         helixClusterProperties.put(ZKHelixManager.ALLOW_PARTICIPANT_AUTO_JOIN, String.valueOf(true));
+        // Topology and fault zone type fields are used by CRUSH alg. Helix would apply the constrains on CRUSH alg to choose proper instance to hold the replica.
+        helixClusterProperties.put(ClusterConfig.ClusterConfigProperty.TOPOLOGY_AWARE_ENABLED.name(), String.valueOf(false));
         admin.setConfig(configScope, helixClusterProperties);
         admin.addStateModelDef(controllerClusterName, LeaderStandbySMD.name, LeaderStandbySMD.build());
     }
@@ -1313,7 +1317,13 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
         admin
             .addResource(controllerClusterName, clusterName, CONTROLLER_CLUSTER_NUMBER_OF_PARTITION, LeaderStandbySMD.name,
-                IdealState.RebalanceMode.FULL_AUTO.toString());
+                IdealState.RebalanceMode.FULL_AUTO.toString(), AutoRebalanceStrategy.class.getName());
+        IdealState idealState = admin.getResourceIdealState(controllerClusterName, clusterName);
+        // Use crush alg to allocate controller as well.
+        idealState.setMinActiveReplicas(controllerClusterReplica);
+        idealState.setRebalancerClassName(DelayedAutoRebalancer.class.getName());
+        idealState.setRebalanceStrategy(CrushRebalanceStrategy.class.getName());
+        admin.setResourceIdealState(controllerClusterName, clusterName, idealState);
         admin.rebalance(controllerClusterName, clusterName, controllerClusterReplica);
     }
 
@@ -1499,7 +1509,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     public void killOfflinePush(String clusterName, String kafkaTopic) {
         checkPreConditionForKillOfflinePush(clusterName, kafkaTopic);
         StatusMessageChannel messageChannel = getVeniceHelixResource(clusterName).getMessageChannel();
-        int retryCount = 3;
+        // As we should already have retry outside of this function call, so we do not need to retry again inside.
+        int retryCount = 1;
         // Broadcast kill message to all of storage nodes assigned to given resource. Helix will help us to only send
         // message to the live instances.
         // The alternative way here is that get the storage nodes in BOOTSTRAP state of given resource, then send the

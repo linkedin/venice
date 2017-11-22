@@ -118,7 +118,7 @@ public class OfflinePushMonitorTest {
     int statusCount = 3;
     List<OfflinePushStatus> statusList = new ArrayList<>(statusCount);
     for (int i = 0; i < statusCount; i++) {
-      OfflinePushStatus pushStatus = new OfflinePushStatus("testLoadAllPushes" + i, numberOfPartition,
+      OfflinePushStatus pushStatus = new OfflinePushStatus("testLoadAllPushes_v" + i, numberOfPartition,
           replicationFactor,
           OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);
       pushStatus.setCurrentStatus(ExecutionStatus.COMPLETED);
@@ -127,7 +127,7 @@ public class OfflinePushMonitorTest {
     Mockito.doReturn(statusList).when(mockAccessor).loadOfflinePushStatusesAndPartitionStatuses();
     monitor.loadAllPushes();
     for (int i = 0; i < statusCount; i++) {
-      Assert.assertEquals(monitor.getOfflinePush("testLoadAllPushes" + i).getCurrentStatus(),
+      Assert.assertEquals(monitor.getOfflinePush("testLoadAllPushes_v" + i).getCurrentStatus(),
           ExecutionStatus.COMPLETED);
     }
   }
@@ -197,6 +197,36 @@ public class OfflinePushMonitorTest {
     Mockito.verify(mockStoreRepo, Mockito.atLeastOnce()).updateStore(store);
     Mockito.verify(mockStoreCleaner, Mockito.atLeastOnce()).deleteOneStoreVersion(Mockito.anyString(), Mockito.anyString(), Mockito.anyInt());
     Assert.assertEquals(monitor.getOfflinePush(topic).getCurrentStatus(), ExecutionStatus.ERROR);
+  }
+
+  @Test
+  public void testClearOldErrorVersion(){
+    int statusCount = OfflinePushMonitor.MAX_ERROR_PUSH_TO_KEEP * 2;
+    List<OfflinePushStatus> statusList = new ArrayList<>(statusCount);
+    for (int i = 0; i < statusCount; i++) {
+      OfflinePushStatus pushStatus = new OfflinePushStatus("testLoadAllPushes_v" + i, numberOfPartition,
+          replicationFactor,
+          OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);
+      pushStatus.setCurrentStatus(ExecutionStatus.ERROR);
+      statusList.add(pushStatus);
+    }
+    Mockito.doReturn(statusList).when(mockAccessor).loadOfflinePushStatusesAndPartitionStatuses();
+    monitor.loadAllPushes();
+    // Make sure we delete old error pushes from accessor.
+    Mockito.verify(mockAccessor, Mockito.times(statusCount - OfflinePushMonitor.MAX_ERROR_PUSH_TO_KEEP))
+        .deleteOfflinePushStatusAndItsPartitionStatuses(Mockito.any());
+    int i = 0;
+    for (; i < statusCount- OfflinePushMonitor.MAX_ERROR_PUSH_TO_KEEP ; i++) {
+      try{
+        monitor.getOfflinePush("testLoadAllPushes_v" + i);
+        Assert.fail("Old error pushes should be collected after loading.");
+      }catch (VeniceException e){
+        //expected
+      }
+    }
+    for (; i < statusCount; i++) {
+      Assert.assertEquals(monitor.getOfflinePushStatus("testLoadAllPushes_v" + i), ExecutionStatus.ERROR);
+    }
   }
 
   @Test
