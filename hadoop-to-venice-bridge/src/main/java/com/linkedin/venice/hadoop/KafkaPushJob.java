@@ -189,6 +189,7 @@ public class KafkaPushJob extends AbstractJob {
 
   private CompressionStrategy compressionStrategy;
   private VeniceWriter<KafkaKey, byte[]> veniceWriter; // Lazily initialized
+  private boolean isChunkingEnabled;
 
   // This main method is not called by azkaban, this is only for testing purposes.
   //TODO: the main method is out-of-dated. We should remove
@@ -352,7 +353,7 @@ public class KafkaPushJob extends AbstractJob {
       discoverCluster();
       validateKeySchema();
       validateValueSchema();
-      checkStoreStorageQuota();
+      getSettingsFromController();
 
       JobClient jc;
 
@@ -368,9 +369,9 @@ public class KafkaPushJob extends AbstractJob {
         // Whether the messages in one single topic partition is lexicographically sorted by key bytes.
         // If reducer phase is enabled, each reducer will sort all the messages inside one single
         // topic partition.
-        boolean sortedMessageInTopicPartition = !isMapOnly;
+        boolean sorted = !isMapOnly;
         jc = new JobClient(pushJobConf);
-        getVeniceWriter().broadcastStartOfPush(sortedMessageInTopicPartition, new HashMap<>());
+        getVeniceWriter().broadcastStartOfPush(sorted, isChunkingEnabled, new HashMap<>());
         // submit the job for execution and wait for completion
         runningJob = jc.runJob(pushJobConf);
         //TODO: send a failure END OF PUSH message if something went wrong
@@ -472,7 +473,7 @@ public class KafkaPushJob extends AbstractJob {
     logger.info("Got schema id: " + valueSchemaId + " for value schema: " + valueSchemaString + " of store: " + storeName);
   }
 
-  private void checkStoreStorageQuota() {
+  private void getSettingsFromController() {
     StoreResponse storeResponse = controllerClient.getStore(storeName);
     if (storeResponse.isError()) {
       throw new VeniceException("Can't get store info. " + storeResponse.getError());
@@ -491,6 +492,8 @@ public class KafkaPushJob extends AbstractJob {
     }
 
     storageEngineOverheadRatio = storageEngineOverheadRatioResponse.getStorageEngineOverheadRatio();
+
+    this.isChunkingEnabled = storeResponse.getStore().isChunkingEnabled();
   }
 
   /**
@@ -658,6 +661,7 @@ public class KafkaPushJob extends AbstractJob {
     conf.setBoolean(VENICE_MAP_ONLY, isMapOnly);
 
     conf.setBoolean(ALLOW_DUPLICATE_KEY, isDuplicateKeyAllowed);
+    conf.setBoolean(VeniceWriter.ENABLE_CHUNKING, isChunkingEnabled);
 
     // Hadoop2 dev cluster provides a newer version of an avro dependency.
     // Set mapreduce.job.classloader to true to force the use of the older avro dependency.

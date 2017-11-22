@@ -57,6 +57,9 @@ dependencies {
     exclude group: 'com.oracle', module: 'ojdbc14' // unused transitive dependency, doesnt exist in repo
     exclude group: 'xerces', module: 'xerces' // resolve conflicting transitive dependency
     exclude group: 'com.fasterxml.jackson.core', module: 'jackson-core'// resolve conflicting transitive dependency
+    exclude group: 'com.google.guava', module: 'guava' // Keepin' it clean.
+    exclude group: 'com.github.rholder', module: 'guava-retrying' // Keepin' it clean.
+    exclude group: 'com.linkedin.container', module: 'container-eventbus-factory' // Keepin' it clean.
   }
 
   // Test dependencies are allowed to be bulkier.

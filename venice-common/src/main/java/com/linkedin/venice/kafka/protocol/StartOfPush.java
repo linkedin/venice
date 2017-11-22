@@ -8,14 +8,17 @@ package com.linkedin.venice.kafka.protocol;
 @SuppressWarnings("all")
 /** This ControlMessage is sent once per partition, at the beginning of a bulk load, before any of the data producers come online. This does not contain any data beyond the one which is common to all ControlMessageType. */
 public class StartOfPush extends org.apache.avro.specific.SpecificRecordBase implements org.apache.avro.specific.SpecificRecord {
-  public static final org.apache.avro.Schema SCHEMA$ = org.apache.avro.Schema.parse("{\"type\":\"record\",\"name\":\"StartOfPush\",\"namespace\":\"com.linkedin.venice.kafka.protocol\",\"fields\":[{\"name\":\"sorted\",\"type\":\"boolean\",\"doc\":\"Whether the messages inside current topic partition between 'StartOfPush' control message and 'EndOfPush' control message is lexicographically sorted by key bytes\",\"default\":false}]}");
+  public static final org.apache.avro.Schema SCHEMA$ = org.apache.avro.Schema.parse("{\"type\":\"record\",\"name\":\"StartOfPush\",\"namespace\":\"com.linkedin.venice.kafka.protocol\",\"fields\":[{\"name\":\"sorted\",\"type\":\"boolean\",\"doc\":\"Whether the messages inside current topic partition between 'StartOfPush' control message and 'EndOfPush' control message is lexicographically sorted by key bytes\",\"default\":false},{\"name\":\"chunked\",\"type\":\"boolean\",\"doc\":\"Whether the messages inside the current push are encoded with chunking support. If true, this means keys will be prefixed with ChunkId, and values may contain a ChunkedValueManifest (if schema is defined as -20).\",\"default\":false}]}");
   /** Whether the messages inside current topic partition between 'StartOfPush' control message and 'EndOfPush' control message is lexicographically sorted by key bytes */
   public boolean sorted;
+  /** Whether the messages inside the current push are encoded with chunking support. If true, this means keys will be prefixed with ChunkId, and values may contain a ChunkedValueManifest (if schema is defined as -20). */
+  public boolean chunked;
   public org.apache.avro.Schema getSchema() { return SCHEMA$; }
   // Used by DatumWriter.  Applications should not call. 
   public java.lang.Object get(int field$) {
     switch (field$) {
     case 0: return sorted;
+    case 1: return chunked;
     default: throw new org.apache.avro.AvroRuntimeException("Bad index");
     }
   }
@@ -24,6 +27,7 @@ public class StartOfPush extends org.apache.avro.specific.SpecificRecordBase imp
   public void put(int field$, java.lang.Object value$) {
     switch (field$) {
     case 0: sorted = (java.lang.Boolean)value$; break;
+    case 1: chunked = (java.lang.Boolean)value$; break;
     default: throw new org.apache.avro.AvroRuntimeException("Bad index");
     }
   }

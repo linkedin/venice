@@ -7,6 +7,9 @@ import java.util.Optional;
 import org.apache.avro.Schema;
 import org.apache.avro.specific.SpecificRecord;
 
+/**
+ * TDOO: Consider merging with AvroProtocolDefinition
+ */
 public enum ReadAvroProtocolDefinition {
   /**
    * Client request for single-get v1.

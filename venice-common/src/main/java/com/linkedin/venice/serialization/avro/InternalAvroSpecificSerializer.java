@@ -36,21 +36,23 @@ public class InternalAvroSpecificSerializer<SPECIFIC_RECORD extends SpecificReco
     implements VeniceKafkaSerializer<SPECIFIC_RECORD> {
 
   private static final Logger logger = Logger.getLogger(InternalAvroSpecificSerializer.class);
+  private static final int SENTINEL_PROTOCOL_VERSION_USED_FOR_UNDETECTABLE_COMPILED_SCHEMA = -1;
+  private static final int SENTINEL_PROTOCOL_VERSION_USED_FOR_UNVERSIONED_PROTOCOL = 0;
 
   // Constants related to the protocol definition:
 
-  // 1st byte: Magic Byte
+  // (Optional 1st byte) Magic Byte
   private static final int MAGIC_BYTE_OFFSET = 0;
-  private static final int MAGIC_BYTE_LENGTH = 1;
+  private final int MAGIC_BYTE_LENGTH;
   private final byte magicByte;
 
-  // 2nd byte: Protocol version
-  private static final int PROTOCOL_VERSION_OFFSET = MAGIC_BYTE_OFFSET + MAGIC_BYTE_LENGTH;
-  private static final int PROTOCOL_VERSION_LENGTH = 1;
+  // (Optional 2nd byte) Protocol version
+  private final int PROTOCOL_VERSION_OFFSET;
+  private final int PROTOCOL_VERSION_LENGTH;
   private final byte currentProtocolVersion;
 
-  // 3rd byte and onward: Payload (a single binary-encoded Avro record)
-  private static final int PAYLOAD_OFFSET = PROTOCOL_VERSION_OFFSET + PROTOCOL_VERSION_LENGTH;
+  // 1st or 3rd byte and onward: Payload (a single binary-encoded Avro record)
+  private final int PAYLOAD_OFFSET;
 
   // Re-usable Avro facilities. Can be shared across multiple threads, so we only need one per process.
 
@@ -61,11 +63,50 @@ public class InternalAvroSpecificSerializer<SPECIFIC_RECORD extends SpecificReco
   private final SpecificDatumWriter writer;
 
   /** Maintains the mapping between protocol version and the corresponding {@link SpecificDatumReader<SPECIFIC_RECORD>} */
-  private final Map<Byte, SpecificDatumReader<SPECIFIC_RECORD>> readerMap = new HashMap<>();
+  private final Map<Integer, SpecificDatumReader<SPECIFIC_RECORD>> readerMap = new HashMap<>();
 
   protected InternalAvroSpecificSerializer(AvroProtocolDefinition protocolDef) {
-    this.magicByte = protocolDef.magicByte;
-    this.currentProtocolVersion = protocolDef.currentProtocolVersion;
+    this(protocolDef, null);
+  }
+  protected InternalAvroSpecificSerializer(AvroProtocolDefinition protocolDef, Integer payloadOffsetOverride) {
+
+    // Magic byte handling
+    if (protocolDef.magicByte.isPresent()) {
+      this.magicByte = protocolDef.magicByte.get();
+      this.MAGIC_BYTE_LENGTH = 1;
+    } else {
+      this.magicByte = 0;
+      this.MAGIC_BYTE_LENGTH = 0;
+    }
+
+    // Protocol version handling
+    this.PROTOCOL_VERSION_OFFSET = MAGIC_BYTE_OFFSET + MAGIC_BYTE_LENGTH;
+    if (protocolDef.protocolVersionStoredInHeader) {
+      this.PROTOCOL_VERSION_LENGTH = 1;
+    } else {
+      this.PROTOCOL_VERSION_LENGTH = 0;
+    }
+    if (protocolDef.currentProtocolVersion.isPresent()) {
+      int currentProtocolVersionAsInt = protocolDef.currentProtocolVersion.get();
+      if (currentProtocolVersionAsInt == SENTINEL_PROTOCOL_VERSION_USED_FOR_UNDETECTABLE_COMPILED_SCHEMA ||
+          currentProtocolVersionAsInt == SENTINEL_PROTOCOL_VERSION_USED_FOR_UNVERSIONED_PROTOCOL ||
+          currentProtocolVersionAsInt > Byte.MAX_VALUE) {
+        throw new IllegalArgumentException("Improperly defined protocol! Invalid currentProtocolVersion: " + currentProtocolVersionAsInt);
+      }
+      this.currentProtocolVersion = (byte) currentProtocolVersionAsInt;
+    } else {
+      this.currentProtocolVersion = SENTINEL_PROTOCOL_VERSION_USED_FOR_UNVERSIONED_PROTOCOL;
+    }
+
+    // Payload handling
+    if (null == payloadOffsetOverride) {
+      this.PAYLOAD_OFFSET = PROTOCOL_VERSION_OFFSET + PROTOCOL_VERSION_LENGTH;
+    } else {
+      if (protocolDef.magicByte.isPresent() || protocolDef.protocolVersionStoredInHeader) {
+        throw new VeniceMessageException("The payload offset override is not intended to be used for protocols which have explicitly defined magic bytes or which protocol versions stored in their header.");
+      }
+      this.PAYLOAD_OFFSET = payloadOffsetOverride;
+    }
     this.writer = initializeAvroSpecificDatumReaderAndWriter(protocolDef);
   }
 
@@ -107,18 +148,26 @@ public class InternalAvroSpecificSerializer<SPECIFIC_RECORD extends SpecificReco
       Encoder encoder = new BinaryEncoder(byteArrayOutputStream);
 
       // We write according to the latest protocol version.
-      byteArrayOutputStream.write(magicByte);
-      byteArrayOutputStream.write(currentProtocolVersion);
+      if (MAGIC_BYTE_LENGTH == 1) {
+        byteArrayOutputStream.write(magicByte);
+      }
+      if (PROTOCOL_VERSION_LENGTH == 1) {
+        byteArrayOutputStream.write(currentProtocolVersion);
+      }
       writer.write(object, encoder);
 
       return byteArrayOutputStream.toByteArray();
     } catch (IOException e) {
-      throw new VeniceMessageException("Failed to encode message from topic '" + topic + "': " + object.toString(), e);
+      throw new VeniceMessageException(this.getClass().getSimpleName() + " failed to encode message: " + object.toString(), e);
     }
   }
 
   /**
    * Create an object from an array of bytes
+   *
+   * This method is used by the Kafka consumer. These calls are always intended to be for protocols
+   * which use a magic byte and a protocol version, both of which are stored in the header, before
+   * the payload.
    *
    * @param topic Topic to which the array of bytes belongs.
    * @param bytes An array of bytes representing the object's data serialized in Avro binary format.
@@ -126,30 +175,49 @@ public class InternalAvroSpecificSerializer<SPECIFIC_RECORD extends SpecificReco
    */
   @Override
   public SPECIFIC_RECORD deserialize(String topic, byte[] bytes) {
+    if (bytes == null || bytes.length < PAYLOAD_OFFSET) {
+      throw new IllegalArgumentException("Invalid byte array for serialization - no bytes to read");
+    }
+
+    if (magicByte == 0) {
+      throw new VeniceMessageException("This protocol cannot be used as a Kafka deserializer: " + this.getClass().getSimpleName());
+    }
+
+    // Sanity check on the magic byte to make sure we understand the protocol itself
+    if (bytes[MAGIC_BYTE_OFFSET] != magicByte) {
+      throw new VeniceMessageException(
+          "Received Magic Byte '" + new String(bytes, MAGIC_BYTE_OFFSET, MAGIC_BYTE_LENGTH)
+              + "' which is not supported by " + this.getClass().getSimpleName()
+              + ". The only supported Magic Byte for this implementation is '" + magicByte + "'.");
+    }
+
+    if (PROTOCOL_VERSION_LENGTH == 0) {
+      throw new VeniceMessageException("This protocol cannot be used as a Kafka deserializer: " + this.getClass().getSimpleName());
+    }
+
+    // If the data looks valid, then we deploy the Avro machinery to decode the payload
+
+    return deserialize(bytes, bytes[PROTOCOL_VERSION_OFFSET]);
+  }
+
+  public SPECIFIC_RECORD deserialize(byte[] bytes, int protocolVersion) {
+    if (bytes == null || bytes.length < PAYLOAD_OFFSET) {
+      throw new IllegalArgumentException("Invalid byte array for serialization - no bytes to read");
+    }
+
+    // Sanity check to make sure the writer's protocol (i.e.: Avro schema) version is known to us
+    if (!readerMap.containsKey(protocolVersion)) {
+      throw new VeniceMessageException(
+          "Received Protocol Version '" + protocolVersion
+              + "' which is not supported by " + this.getClass().getSimpleName()
+              + ". The only supported Protocol Versions are [" + readerMap.keySet()
+              .stream()
+              .sorted()
+              .map(b -> b.toString())
+              .collect(Collectors.joining(", ")) + "].");
+    }
+
     try {
-      if (bytes == null || bytes.length < PAYLOAD_OFFSET) {
-        throw new IllegalArgumentException("Invalid byte array for serialization - no bytes to read");
-      }
-
-      // Sanity check on the magic byte to make sure we understand the protocol itself
-      if (bytes[MAGIC_BYTE_OFFSET] != magicByte) {
-        throw new VeniceMessageException("Received Magic Byte '" +
-            new String(bytes, MAGIC_BYTE_OFFSET, MAGIC_BYTE_LENGTH) +
-            "' which is not supported by " + this.getClass().getSimpleName() +
-            ". The only supported Magic Byte for this implementation is '" + magicByte + "'.");
-      }
-
-      // Sanity check to make sure the writer's protocol (i.e.: Avro schema) version is known to us
-      if (!readerMap.containsKey(bytes[PROTOCOL_VERSION_OFFSET])) {
-        throw new VeniceMessageException("Received Protocol Version '" +
-            new String(bytes, PROTOCOL_VERSION_OFFSET, PROTOCOL_VERSION_LENGTH) +
-            "' which is not supported by " + this.getClass().getSimpleName() +
-            ". The only supported Protocol Versions are [" +
-            readerMap.keySet().stream().sorted().map(b -> b.toString()).collect(Collectors.joining(", ")) + "].");
-      }
-
-      // If the data looks valid, then we deploy the Avro machinery to decode the payload
-
       /**
        * Reuse SpecificDatumReader since it is thread-safe, and generating a brand new SpecificDatumReader is very slow
        * sometimes.
@@ -160,9 +228,9 @@ public class InternalAvroSpecificSerializer<SPECIFIC_RECORD extends SpecificReco
        *
        * TODO: investigate why {@link ThreadLocal} operations (internally {@link java.lang.ThreadLocal.ThreadLocalMap})
        * are so slow sometimes.
-        */
+       */
 
-      SpecificDatumReader<SPECIFIC_RECORD> specificDatumReader = readerMap.get(bytes[PROTOCOL_VERSION_OFFSET]);
+      SpecificDatumReader<SPECIFIC_RECORD> specificDatumReader = readerMap.get(protocolVersion);
 
       Decoder decoder = DECODER_FACTORY.createBinaryDecoder(
           bytes,                         // The bytes array we wish to decode
@@ -178,7 +246,7 @@ public class InternalAvroSpecificSerializer<SPECIFIC_RECORD extends SpecificReco
 
       return record;
     } catch (IOException e) {
-      throw new VeniceMessageException("Failed to decode message from '" + topic + "': " + ByteUtils.toHexString(bytes), e);
+      throw new VeniceMessageException(this.getClass().getSimpleName() + " failed to decode message from: " + ByteUtils.toHexString(bytes), e);
     }
   }
 
@@ -188,22 +256,39 @@ public class InternalAvroSpecificSerializer<SPECIFIC_RECORD extends SpecificReco
    * @param protocolDef
    */
   private SpecificDatumWriter initializeAvroSpecificDatumReaderAndWriter(AvroProtocolDefinition protocolDef) {
-    Schema compiledProtocol = SpecificData.get().getSchema(protocolDef.specificRecordClass); // protocolSchemaMap.get(this.currentProtocolVersion);
-    byte compiledProtocolVersion = -1;
-    String className = protocolDef.specificRecordClass.getSimpleName();
-    Map<Byte, Schema> protocolSchemaMap = new HashMap<>();
-    final int initialVersion = 1; // TODO: Consider making configurable if we ever need to fully deprecate some old versions
+    Schema compiledProtocol = protocolDef.schema;
+    byte compiledProtocolVersion = SENTINEL_PROTOCOL_VERSION_USED_FOR_UNDETECTABLE_COMPILED_SCHEMA;
+    String className = protocolDef.className;
+    Map<Integer, Schema> protocolSchemaMap = new HashMap<>();
+    int initialVersion;
+    if (currentProtocolVersion > 0) {
+      initialVersion = 1; // TODO: Consider making configurable if we ever need to fully deprecate some old versions
+    } else {
+      initialVersion = currentProtocolVersion;
+    }
     final String sep = "/"; // TODO: Make sure that jar resources are always forward-slash delimited, even on Windows
     int version = initialVersion;
     while (true) {
-      String versionPath = "avro" + sep + className + sep + "v" + version + sep + className + ".avsc";
+      String versionPath = "avro" + sep + className + sep;
+      if (this.currentProtocolVersion != SENTINEL_PROTOCOL_VERSION_USED_FOR_UNVERSIONED_PROTOCOL) {
+        versionPath += "v" + version + sep;
+      }
+      versionPath += className + ".avsc";
       try {
         Schema schema = Utils.getSchemaFromResource(versionPath);
-        protocolSchemaMap.put((byte) version, schema);
+        protocolSchemaMap.put(version, schema);
         if (schema.equals(compiledProtocol)) {
           compiledProtocolVersion = (byte) version;
         }
-        version++;
+        if (this.currentProtocolVersion == SENTINEL_PROTOCOL_VERSION_USED_FOR_UNVERSIONED_PROTOCOL) {
+          break;
+        } else if (this.currentProtocolVersion > 0) {
+          // Positive version protocols should continue looking "up" for the next version
+          version++;
+        } else {
+          // And vice-versa for negative version protocols
+          version--;
+        }
       } catch (IOException e) {
         // Then the schema was not found at the requested path
         if (version == initialVersion) {
@@ -215,7 +300,7 @@ public class InternalAvroSpecificSerializer<SPECIFIC_RECORD extends SpecificReco
     }
 
     /** Ensure that we are using Avro properly. */
-    if (compiledProtocolVersion == -1) {
+    if (compiledProtocolVersion == SENTINEL_PROTOCOL_VERSION_USED_FOR_UNDETECTABLE_COMPILED_SCHEMA) {
       throw new VeniceException("Failed to identify which version is currently compiled for " + protocolDef.name() +
           ". This could happen if the avro schemas have been altered without recompiling the auto-generated classes" +
           ", or if the auto-generated classes were edited directly instead of generating them from the schemas.");
@@ -229,7 +314,7 @@ public class InternalAvroSpecificSerializer<SPECIFIC_RECORD extends SpecificReco
      * are instead making this a very explicit choice by requiring the change in both places and failing loudly
      * when there is an inconsistency.
      */
-    Schema intendedCurrentProtocol = protocolSchemaMap.get(this.currentProtocolVersion);
+    Schema intendedCurrentProtocol = protocolSchemaMap.get((int) this.currentProtocolVersion);
     if (null == intendedCurrentProtocol) {
       throw new VeniceException("Failed to get schema for current version: " + this.currentProtocolVersion
           + " class: " + className);
@@ -239,7 +324,7 @@ public class InternalAvroSpecificSerializer<SPECIFIC_RECORD extends SpecificReco
     }
 
     /** Initialize {@link #readerMap} based on known protocol versions */
-    for (Map.Entry<Byte, Schema> entry : protocolSchemaMap.entrySet()) {
+    for (Map.Entry<Integer, Schema> entry : protocolSchemaMap.entrySet()) {
       SpecificDatumReader<SPECIFIC_RECORD> specificDatumReader = new SpecificDatumReader<>();
       specificDatumReader.setSchema(entry.getValue()); // Writer's schema
       try {
@@ -250,6 +335,6 @@ public class InternalAvroSpecificSerializer<SPECIFIC_RECORD extends SpecificReco
       this.readerMap.put(entry.getKey(), specificDatumReader);
     }
 
-    return new SpecificDatumWriter(protocolDef.specificRecordClass);
+    return new SpecificDatumWriter(protocolDef.schema);
   }
 }

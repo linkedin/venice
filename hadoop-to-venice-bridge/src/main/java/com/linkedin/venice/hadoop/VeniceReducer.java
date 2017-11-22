@@ -7,11 +7,9 @@ import com.linkedin.venice.exceptions.QuotaExceededException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.utils.HadoopUtils;
 import com.linkedin.venice.meta.Store;
-import com.linkedin.venice.serialization.DefaultSerializer;
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.AbstractVeniceWriter;
-import com.linkedin.venice.writer.VeniceWriter;
 
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import java.util.Arrays;
@@ -121,11 +119,15 @@ public class VeniceReducer implements Reducer<BytesWritable, BytesWritable, Null
       callback = new KafkaMessageCallback(reporter);
       previousReporter = reporter;
     }
+
     try {
-      veniceWriter.put(keyBytes, compressor.compress(valueBytes), valueSchemaId, callback);
+      valueBytes = compressor.compress(valueBytes);
     } catch (IOException e) {
-      throw new VeniceException("Caught an IO exception.", e);
+      throw new VeniceException("Caught an IO exception while trying to to use compression strategy: "
+          + compressor.getCompressionStrategy().name(), e);
     }
+
+    veniceWriter.put(keyBytes, valueBytes, valueSchemaId, callback);
 
     ++messageSent;
 

@@ -35,12 +35,15 @@ import org.apache.helix.InstanceType;
 import org.apache.helix.participant.statemachine.StateModel;
 import org.apache.helix.participant.statemachine.StateModelFactory;
 import org.apache.kafka.clients.CommonClientConfigs;
+import org.apache.log4j.Logger;
 
 
 /**
  * General-purpose utility functions for tests.
  */
 public class TestUtils {
+  private static final Logger LOGGER = Logger.getLogger(TestUtils.class);
+
   /** In milliseconds */
   private static final int WAIT_TIME_FOR_NON_DETERMINISTIC_ACTIONS = 30;
   private static final int MAX_WAIT_TIME_FOR_NON_DETERMINISTIC_ACTIONS = WAIT_TIME_FOR_NON_DETERMINISTIC_ACTIONS * 100;
@@ -98,6 +101,9 @@ public class TestUtils {
       } catch (AssertionError ae) {
         if (System.currentTimeMillis() > timeoutTime) {
           throw ae;
+        } else {
+          LOGGER.info("waitForNonDeterministicAssertion caught an AssertionError. Will retry again in: " + waitTime
+              + " ms. Assertion message: " + ae.getMessage());
         }
         Utils.sleep(waitTime);
         if (exponentialBackOff) {

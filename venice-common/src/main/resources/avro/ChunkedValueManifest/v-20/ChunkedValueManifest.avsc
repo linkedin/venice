@@ -15,6 +15,10 @@
       "name": "schemaId",
       "doc": "An identifier used to determine how the full value (after chunk re-assembly) can be deserialized. This is the ID of the user-defined schema.",
       "type": "int"
+    }, {
+      "name": "size",
+      "doc": "The number of bytes of the entire value, once all chunks are assembled.",
+      "type": "int"
     }
   ]
 }

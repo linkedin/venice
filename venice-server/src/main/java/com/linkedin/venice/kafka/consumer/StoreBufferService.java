@@ -120,7 +120,14 @@ public class StoreBufferService extends AbstractVeniceService {
         try {
           ingestionTask.processConsumerRecord(consumerRecord);
         } catch (Exception e) {
-          LOGGER.error("Got exception during processing consumer record: " + consumerRecord, e);
+          String consumerRecordString = consumerRecord.toString();
+          if (consumerRecordString.length() > 1024) {
+            // Careful not to flood the logs with too much random BS...
+            LOGGER.error("Got exception during processing consumer record (truncated at 1024 characters) : "
+                + consumerRecordString.substring(0, 1024), e);
+          } else {
+            LOGGER.error("Got exception during processing consumer record: " + consumerRecord, e);
+          }
           /**
            * Catch all the thrown exception and store it in {@link StoreIngestionTask#lastWorkerException}.
            */
