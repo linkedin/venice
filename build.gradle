@@ -75,7 +75,7 @@ ext.libraries = [ // Groovy map literal
                   snappy: 'org.xerial.snappy:snappy-java:1.0.4.1',
                   testng: 'org.testng:testng:6.11',
                   // TODO remove this linkedin MP dependency, instead depends on the opensource tehuti lib.
-                  tehuti: 'com.linkedin.tehuti:tehuti:0.7.1.4',
+                  tehuti: 'com.linkedin.tehuti:tehuti:0.7.1.6',
                   // Resolves java.lang.UnsupportedOperationException:  setXIncludeAware is not supported on this JAXP implementation or earlier: class org.apache.xerces.jaxp.DocumentBuilderFactoryImpl
                   xalan: 'xalan:xalan:2.7.1',
                   xerces: 'xerces:xercesImpl:2.9.1',
@@ -184,12 +184,12 @@ task integrationTests {
 
 task integrationtest {
   // just a rename to the new syntax, while maintaining backwards compat
-  dependsOn integrationTests 
+  dependsOn integrationTests
 }
 
 task buildAll {
   dependsOn unitTests
-  dependsOn integrationTests 
+  dependsOn integrationTests
 }
 
 task wrapper(type: Wrapper) {

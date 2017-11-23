@@ -11,8 +11,11 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.meta.VersionStatus;
 import com.linkedin.venice.tehuti.MockTehutiReporter;
 import com.linkedin.venice.utils.TestUtils;
+import com.linkedin.venice.utils.Time;
 import io.tehuti.metrics.MetricsRepository;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
 import org.mockito.Mockito;
 import org.testng.Assert;
 import org.testng.annotations.BeforeTest;
@@ -22,12 +25,15 @@ import static org.mockito.Mockito.*;
 import static com.linkedin.venice.stats.StatsErrorCode.*;
 
 public class AggVersionedDIVStatsTest {
+  private static final int TEST_TIME = 2 *Time.MS_PER_SECOND;
+
   private AggVersionedDIVStats stats;
   protected MetricsRepository metricsRepository;
   protected MockTehutiReporter reporter;
 
   private ReadOnlyStoreRepository mockMetaRepository;
   private Store mockStore;
+  List<Store> storeList;
 
   @BeforeTest
   public void setup() {
@@ -36,14 +42,26 @@ public class AggVersionedDIVStatsTest {
     metricsRepository.addReporter(reporter);
 
     mockMetaRepository = mock(ReadOnlyStoreRepository.class);
+
     mockStore = createStore(TestUtils.getUniqueString("store"));
-    Mockito.doReturn(Arrays.asList(mockStore)).when(mockMetaRepository).getAllStores();
+    storeList = new ArrayList<>();
+    storeList.add(mockStore);
 
     stats = new AggVersionedDIVStats(metricsRepository, mockMetaRepository);
-    stats.loadAllStats();
   }
 
-  @Test
+  @Test(timeOut = TEST_TIME)
+  public void  testStatsCanLoadAllStoresInTime() {
+    //try to load 5000 stores
+    for (int i = 0; i < 5000; i ++) {
+      storeList.add(createStore("store" + i));
+    }
+
+    Mockito.doReturn(storeList).when(mockMetaRepository).getAllStores();
+    stats.loadAllStats();;
+  }
+
+  @Test(dependsOnMethods = { "testStatsCanLoadAllStoresInTime" })
   public void testStatsCanLoadStores() {
     String storeName = mockStore.getName();
 
@@ -58,7 +76,7 @@ public class AggVersionedDIVStatsTest {
     Assert.assertEquals(reporter.query("." + storeName + "_future--corrupted_msg.DIVStatsCounter").value(), (double) NULL_DIV_STATS.code);
   }
 
-  @Test
+  @Test(dependsOnMethods = { "testStatsCanLoadAllStoresInTime" })
   public void testStatsCanAddStore() {
     Store newStore = createStore("store2");
     stats.handleStoreCreated(newStore);
@@ -76,7 +94,7 @@ public class AggVersionedDIVStatsTest {
     Assert.assertEquals(reporter.query("." + storeName + "_total--success_msg.DIVStatsCounter").value(), 0d);
   }
 
-  @Test
+  @Test(dependsOnMethods = { "testStatsCanLoadAllStoresInTime" })
   public void testStatsCanUpdateVersionStatus() {
     String storeName = mockStore.getName();
     Assert.assertEquals(reporter.query("." + storeName + "--future_version.VersionStat").value(), 0d);
