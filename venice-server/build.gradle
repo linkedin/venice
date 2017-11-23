@@ -5,6 +5,7 @@ mainClassName = "com.linkedin.venice.server.VeniceServer"
 installDist.dependsOn test
 
 task buildJar(type: Jar) {
+  zip64 true
   manifest {
     attributes 'Main-Class': 'com.linkedin.venice.server.VeniceServer',
         'Implementation-Title': 'Venice Server',
@@ -29,6 +30,9 @@ dependencies {
   compile libraries.netty
   compile libraries.asyncHttpClient
   compile libraries.tehuti
+  compile (libraries.netty4Lnkd){
+    exclude group: 'javax.servlet'
+  }
 
   compile project(':venice-common')
   compile project(':venice-controller')

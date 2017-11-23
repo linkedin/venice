@@ -1,6 +1,7 @@
 apply plugin: 'java'
 
 jar {
+    zip64 true
     manifest {
         attributes 'Implementation-Title': 'Venice Admin Tool',
             'Implementation-Version': version,
