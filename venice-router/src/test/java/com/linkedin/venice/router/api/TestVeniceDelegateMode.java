@@ -143,7 +143,7 @@ public class TestVeniceDelegateMode {
     List<RouterKey> keys = new ArrayList<>();
     keys.add(key);
     VenicePath path = getVenicePath(resourceName, RequestType.SINGLE_GET, keys);
-    Scatter<Instance, VenicePath, RouterKey> scatter = new Scatter(path, getPathParser());
+    Scatter<Instance, VenicePath, RouterKey> scatter = new Scatter(path, getPathParser(), VeniceRole.REPLICA);
     String requestMethod = HttpMethod.GET.name();
     Map<RouterKey, String> keyPartitionMap = new HashMap<>();
     String partitionName = "p1";
@@ -200,7 +200,7 @@ public class TestVeniceDelegateMode {
     List<RouterKey> keys = new ArrayList<>();
     keys.add(key);
     VenicePath path = getVenicePath(resourceName, RequestType.SINGLE_GET, keys);
-    Scatter<Instance, VenicePath, RouterKey> scatter = new Scatter(path, getPathParser());
+    Scatter<Instance, VenicePath, RouterKey> scatter = new Scatter(path, getPathParser(), VeniceRole.REPLICA);
     String requestMethod = HttpMethod.GET.name();
     Map<RouterKey, String> keyPartitionMap = new HashMap<>();
     String partitionName = "p1";
@@ -243,7 +243,7 @@ public class TestVeniceDelegateMode {
     keys.add(key5);
     keys.add(key6);
     VenicePath path = getVenicePath(resourceName, RequestType.MULTI_GET, keys);
-    Scatter<Instance, VenicePath, RouterKey> scatter = new Scatter(path, getPathParser());
+    Scatter<Instance, VenicePath, RouterKey> scatter = new Scatter(path, getPathParser(), VeniceRole.REPLICA);
     String requestMethod = HttpMethod.POST.name();
 
     Map<RouterKey, String> keyPartitionMap = new HashMap<>();

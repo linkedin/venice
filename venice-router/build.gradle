@@ -5,6 +5,7 @@ mainClassName = "com.linkedin.venice.router.RouterServer"
 installDist.dependsOn test
 
 task buildJar(type: Jar) {
+    zip64 true
     manifest {
         attributes 'Main-Class': 'com.linkedin.venice.router.RouterServer',
             'Implementation-Title': 'Venice Router',
@@ -27,6 +28,9 @@ dependencies {
     compile libraries.routerApi
     compile libraries.routerImpl
     compile libraries.routerNetty4
+    compile (libraries.netty4Lnkd){
+        exclude group: 'javax.servlet'
+    }
     compile (libraries.routerLnkd){ // for SSL Initializer
         exclude group: 'com.oracle', module: 'ojdbc14' // unused transitive dependency, doesnt exist in repo
 

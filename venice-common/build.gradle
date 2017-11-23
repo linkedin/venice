@@ -1,5 +1,6 @@
 
 task buildJar(type: Jar) {
+  zip64 true
   manifest {
     attributes 'Implementation-Title': 'Venice Common',
         'Implementation-Version': version
@@ -30,6 +31,7 @@ dependencies {
     exclude group: 'org.mortbay.jetty' // jetty 6 conflicts with spark-java used in controller api
     exclude group: 'org.slf4j'        // Avro pulls in slf4j 1.5 which is API incompatible with 1.6
   }
+  compile libraries.oss
   compile libraries.bouncyCastle
   compile libraries.commonsIo // IntelliJ gets confused when running tests unless we explicitly depend on a recent version of commons-io
   compile libraries.commonsCodec
