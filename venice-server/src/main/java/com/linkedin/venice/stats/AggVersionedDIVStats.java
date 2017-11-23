@@ -32,14 +32,7 @@ public class AggVersionedDIVStats implements StoreDataChangedListener {
 
     aggStats = new HashMap<>();
     metaRepository.registerStoreDataChangedListener(this);
-    /**
-     * TODO: load could be very slow, need more investigation,
-     * and it might be caused by registering too many sensors/metrics with Tehuti.
-     *
-     * For now, we will disable the preload, and let {@link AggVersionedDIVStats} users gradually
-     * load/register metrics for the stores when necessary
-     */
-    //loadAllStats();
+    loadAllStats();
   }
 
   public void recordException(String storeName, int version, DataValidationException e) {
