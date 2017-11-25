@@ -792,7 +792,8 @@ public class VeniceParentHelixAdmin implements Admin {
       Optional<Long> hybridOffsetLagThreshold,
       Optional<Boolean> accessControlled,
       Optional<CompressionStrategy> compressionStrategy,
-      Optional<Boolean> chunkingEnabled) {
+      Optional<Boolean> chunkingEnabled,
+      Optional<Boolean> routerCacheEnabled) {
     acquireLock(clusterName);
 
     try {
@@ -828,6 +829,12 @@ public class VeniceParentHelixAdmin implements Admin {
       setStore.compressionStrategy = compressionStrategy.isPresent()
           ? compressionStrategy.get().getValue() : store.getCompressionStrategy().getValue();
       setStore.chunkingEnabled = chunkingEnabled.isPresent() ? chunkingEnabled.get() : store.isChunkingEnabled();
+      setStore.routerCacheEnabled = routerCacheEnabled.isPresent() ? routerCacheEnabled.get() : store.isRouterCacheEnabled();
+
+      veniceHelixAdmin.checkWhetherStoreWillHaveConflictConfigForCaching(store,
+          null == hybridStoreConfig ? Optional.empty() : Optional.of(hybridStoreConfig),
+          compressionStrategy,
+          routerCacheEnabled);
 
       AdminOperation message = new AdminOperation();
       message.operationType = AdminMessageType.UPDATE_STORE.ordinal();

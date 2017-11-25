@@ -34,6 +34,10 @@ public class VeniceRouterConfig {
   private double perStorageNodeReadQuotaBuffer;
   private int refreshAttemptsForZkReconnect;
   private long refreshIntervalForZkReconnectInMs;
+  private boolean cacheEnabled;
+  private long cacheSizeBytes;
+  private int cacheConcurrency;
+  private double cacheHitRequestThrottleWeight;
 
   public VeniceRouterConfig(VeniceProperties props) {
     try {
@@ -68,6 +72,20 @@ public class VeniceRouterConfig {
     refreshAttemptsForZkReconnect = props.getInt(REFRESH_ATTEMPTS_FOR_ZK_RECONNECT, 3);
     refreshIntervalForZkReconnectInMs =
         props.getLong(REFRESH_INTERVAL_FOR_ZK_RECONNECT_MS, java.util.concurrent.TimeUnit.SECONDS.toMillis(10));
+    cacheEnabled = props.getBoolean(ROUTER_CACHE_ENABLED, false);
+    cacheSizeBytes = props.getSizeInBytes(ROUTER_CACHE_SIZE_IN_BYTES, 500 * 1024 * 1024l); // 500MB
+    cacheConcurrency = props.getInt(ROUTER_CACHE_CONCURRENCY, 16);
+    /**
+     * Make the default value for the throttle weight of cache hit request to be 1, which is same as the regular request.
+     * The reason behind this:
+     * 1. Easy to reason w/o cache on both customer and Venice side;
+     * 2. Hot key problem is still being alleviated since cache hit request is only being counted when calculating
+     * store-level quota, not storage-node level quota, which means the hot keys routing to the same router at most
+     * could use (total_quota / total_router_number);
+     *
+     * If it is not working well, we could adjust this config later on.
+     */
+    cacheHitRequestThrottleWeight = props.getDouble(ROUTER_CACHE_HIT_REQUEST_THROTTLE_WEIGHT, 1);
   }
 
   public String getClusterName() {
@@ -148,5 +166,21 @@ public class VeniceRouterConfig {
 
   public int getRefreshAttemptsForZkReconnect() {
     return refreshAttemptsForZkReconnect;
+  }
+
+  public boolean isCacheEnabled() {
+    return cacheEnabled;
+  }
+
+  public long getCacheSizeBytes() {
+    return cacheSizeBytes;
+  }
+
+  public int getCacheConcurrency() {
+    return cacheConcurrency;
+  }
+
+  public double getCacheHitRequestThrottleWeight() {
+    return cacheHitRequestThrottleWeight;
   }
 }

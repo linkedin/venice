@@ -1,6 +1,7 @@
 package com.linkedin.venice.helix;
 
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.exceptions.VeniceNoStoreException;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreDataChangedListener;
@@ -270,6 +271,20 @@ public class HelixReadOnlyStoreRepository implements ReadOnlyStoreRepository {
   @Override
   public ReadWriteLock getInternalReadWriteLock() {
     return this.metadataLock;
+  }
+
+  @Override
+  public boolean isRouterCacheEnabled(String name) {
+    metadataLock.readLock().lock();
+    try {
+       Store store = storeMap.get(name);
+       if (null == store) {
+         throw new VeniceNoStoreException(name);
+       }
+       return store.isRouterCacheEnabled();
+    } finally {
+      metadataLock.readLock().unlock();
+    }
   }
 
   protected void triggerStoreCreationListener(Store store) {

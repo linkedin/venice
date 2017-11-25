@@ -20,6 +20,10 @@ public class VeniceVersionFinder {
 
   public int getVersion(@NotNull String store)
       throws RouterException {
+    /**
+     * TODO: clone a store object is too expensive, and we could choose to expose the necessary methods
+     * in {@link ReadOnlyStoreRepository}, such as 'isEnableReads' and others.
+     */
     Store veniceStore = metadataRepository.getStore(store);
     if (null == veniceStore){
       throw new RouterException(HttpResponseStatus.class, HttpResponseStatus.BAD_REQUEST, HttpResponseStatus.BAD_REQUEST.getCode(),

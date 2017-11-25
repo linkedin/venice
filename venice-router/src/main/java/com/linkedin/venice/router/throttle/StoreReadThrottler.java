@@ -55,12 +55,14 @@ public class StoreReadThrottler {
     }
   }
 
-  public void mayThrottleRead(int readCapacityUnit, String storageNodeId) {
-    EventThrottler storageNodeThrottler = storageNodesThrottlers.get(storageNodeId);
-    // TODO While updating storage nodes' throttlers, there might be a very short period that we haven't create a
-    // TODO throttler for the given storage node. Right now just accept this request, could add a default quota later.
-    if (storageNodeThrottler != null) {
-      storageNodeThrottler.maybeThrottle(readCapacityUnit);
+  public void mayThrottleRead(double readCapacityUnit, Optional<String> storageNodeId) {
+    if (storageNodeId.isPresent()) {
+      EventThrottler storageNodeThrottler = storageNodesThrottlers.get(storageNodeId.get());
+      // TODO While updating storage nodes' throttlers, there might be a very short period that we haven't create a
+      // TODO throttler for the given storage node. Right now just accept this request, could add a default quota later.
+      if (storageNodeThrottler != null) {
+        storageNodeThrottler.maybeThrottle(readCapacityUnit);
+      }
     }
     storeThrottler.maybeThrottle(readCapacityUnit);
   }

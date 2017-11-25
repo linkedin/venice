@@ -62,7 +62,7 @@ public class TestDeleteStoreDeletesRealtimeTopic {
     //disable store
     controllerClient.updateStore(storeName, Optional.empty(), Optional.empty(), Optional.empty(), Optional.of(false),
         Optional.of(false), Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(),
-        Optional.empty(), Optional.empty());
+        Optional.empty(), Optional.empty(), Optional.empty());
     //delete store
     controllerClient.deleteStore(storeName);
     TestUtils.waitForNonDeterministicCompletion(10, TimeUnit.SECONDS, () -> {

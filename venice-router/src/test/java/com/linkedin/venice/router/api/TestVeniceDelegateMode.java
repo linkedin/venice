@@ -23,6 +23,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import javax.annotation.Nonnull;
 import org.apache.http.client.methods.HttpUriRequest;
@@ -168,7 +169,8 @@ public class TestVeniceDelegateMode {
     Scatter<Instance, VenicePath, RouterKey> finalScatter = scatterMode.scatter(scatter, requestMethod, resourceName,
         partitionFinder, hostFinder, monitor, VeniceRole.REPLICA, new Metrics());
 
-    verify(throttler).mayThrottleRead(eq(storeName), eq(1), any());
+    // Throttling for single-get request is not happening in VeniceDelegateMode
+    verify(throttler, never()).mayThrottleRead(eq(storeName), eq(1), any());
     Collection<ScatterGatherRequest<Instance, RouterKey>> requests = finalScatter.getOnlineRequests();
     Assert.assertEquals(requests.size(), 1, "There should be only one online request since there is only one key");
     ScatterGatherRequest<Instance, RouterKey> request = requests.iterator().next();
@@ -176,20 +178,6 @@ public class TestVeniceDelegateMode {
     Assert.assertEquals(hosts.size(), 1, "There should be only one chose host");
     Instance selectedHost = hosts.get(0);
     Assert.assertTrue(instanceList.contains(selectedHost));
-
-    // test throttling
-    throttler = getReadRequestThrottle(true);
-    scatterMode = new VeniceDelegateMode();
-    scatterMode.initReadRequestThrottler(throttler);
-    try {
-      scatterMode.scatter(scatter, requestMethod, resourceName,
-          partitionFinder, hostFinder, monitor, VeniceRole.REPLICA, new Metrics());
-      Assert.fail("RouterException expected since the request should be throttled!");
-    } catch (Exception e) {
-      Assert.assertTrue(e instanceof RouterException);
-      RouterException routerException = (RouterException)e;
-      Assert.assertEquals(routerException.code(), HttpResponseStatus.TOO_MANY_REQUESTS.code());
-    }
   }
 
   @Test (expectedExceptions = RouterException.class, expectedExceptionsMessageRegExp = ".*Some partition is not available for store.*")
@@ -306,8 +294,8 @@ public class TestVeniceDelegateMode {
     Assert.assertEquals(requests.size(), 3);
 
     // Verify throttling
-    verify(throttler).mayThrottleRead(storeName, 4, instance1.getNodeId());
-    verify(throttler, times(2)).mayThrottleRead(eq(storeName), eq(1), any());
+    verify(throttler).mayThrottleRead(storeName, 4, Optional.of(instance1.getNodeId()));
+    verify(throttler, times(2)).mayThrottleRead(eq(storeName), eq(1.0d), any());
 
     // each request should only have one 'Instance'
     requests.stream().forEach(request -> Assert.assertEquals(request.getHosts().size(), 1,

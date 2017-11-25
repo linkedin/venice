@@ -54,4 +54,10 @@ public interface ReadOnlyStoreRepository extends VeniceResource {
    * Return the internal lock, so that {@link ReadOnlySchemaRepository} will reuse it to avoid deadlock issue
    */
   ReadWriteLock getInternalReadWriteLock();
+
+  /**
+   * Whether Router cache is enabled for the specified store
+   * @return
+   */
+  boolean isRouterCacheEnabled(String name);
 }

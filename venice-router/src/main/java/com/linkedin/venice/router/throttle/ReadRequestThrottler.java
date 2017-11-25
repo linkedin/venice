@@ -94,7 +94,7 @@ public class ReadRequestThrottler implements RoutersClusterManager.RouterCountCh
    *
    * @throws QuotaExceededException if the usage exceeded the quota throw this exception to reject the request.
    */
-  public void mayThrottleRead(String storeName, int readCapacityUnit, String storageNodeId)
+  public void mayThrottleRead(String storeName, double readCapacityUnit, Optional<String> storageNodeId)
       throws QuotaExceededException {
     if (!zkRoutersManager.isThrottlingEnabled()) {
       return;

@@ -77,7 +77,7 @@ public class TestTopicRequestOnHybridDelete {
     //disable store
     controllerClient.updateStore(storeName, Optional.empty(), Optional.empty(), Optional.empty(), Optional.of(false),
         Optional.of(false), Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(),
-        Optional.empty(), Optional.empty());
+        Optional.empty(), Optional.empty(), Optional.empty());
     //delete store
     controllerClient.deleteStore(storeName);
     TestUtils.waitForNonDeterministicCompletion(10, TimeUnit.SECONDS, () -> {
@@ -151,13 +151,13 @@ public class TestTopicRequestOnHybridDelete {
     //disable store
     controllerClient.updateStore(storeName, Optional.empty(), Optional.empty(), Optional.empty(), Optional.of(false),
         Optional.of(false), Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(),
-        Optional.empty(), Optional.empty());
+        Optional.empty(), Optional.empty(), Optional.empty());
     //delete versions
     controllerClient.deleteAllVersions(storeName);
     //enable store
     controllerClient.updateStore(storeName, Optional.empty(), Optional.empty(), Optional.empty(), Optional.of(true),
         Optional.of(true), Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(),
-        Optional.empty(), Optional.empty());
+        Optional.empty(), Optional.empty(), Optional.empty());
 
     controllerClient.emptyPush(storeName, TestUtils.getUniqueString("push-id3"), 1L);
 

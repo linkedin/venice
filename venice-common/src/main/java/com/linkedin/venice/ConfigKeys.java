@@ -168,6 +168,26 @@ public class ConfigKeys {
   public static final String ROUTER_PER_STORAGE_NODE_READ_QUOTA_BUFFER = "router.per.storage.node.read.quota.buffer";
 
   /**
+   * Whether router cache is enabled or not.
+   */
+  public static final String ROUTER_CACHE_ENABLED = "router.cache.enabled";
+
+  /**
+   * Router cache size, and this cache is for all the stores, which enables cache feature.
+   */
+  public static final String ROUTER_CACHE_SIZE_IN_BYTES = "router.cache.size.in.bytes";
+
+  /**
+   * Concurrency setup for router cache
+   */
+  public static final String ROUTER_CACHE_CONCURRENCY = "router.cache.concurrency";
+
+  /**
+   * The request is still being throttled even it is a cache hit, but just with smaller weight.
+   */
+  public static final String ROUTER_CACHE_HIT_REQUEST_THROTTLE_WEIGHT = "router.cache.hit.request.throttle.weight";
+
+  /**
    * Venice uses a helix cluster to assign controllers to each named venice cluster.  This is the number of controllers
    * assigned to each venice cluster.  Should normally be 3; one master controller and 2 standby controllers.
    * */

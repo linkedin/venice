@@ -35,6 +35,7 @@ import com.linkedin.venice.router.api.VenicePathParser;
 import com.linkedin.venice.router.api.VeniceResponseAggregator;
 import com.linkedin.venice.router.api.VeniceRoleFinder;
 import com.linkedin.venice.router.api.VeniceVersionFinder;
+import com.linkedin.venice.router.cache.RouterCache;
 import com.linkedin.venice.router.stats.AggRouterHttpRequestStats;
 import com.linkedin.venice.router.throttle.ReadRequestThrottler;
 import com.linkedin.venice.router.utils.VeniceRouterUtils;
@@ -72,9 +73,9 @@ public class RouterServer extends AbstractVeniceService {
 
   // Immutable state
   private final List<D2Server> d2ServerList;
+  private final MetricsRepository metricsRepository;
   private final AggRouterHttpRequestStats statsForSingleGet;
   private final AggRouterHttpRequestStats statsForMultiGet;
-  private final MetricsRepository metricsRepository;
   private final Optional<SSLEngineComponentFactory> sslFactory;
   private final Optional<DynamicAccessController> accessController;
 
@@ -163,6 +164,11 @@ public class RouterServer extends AbstractVeniceService {
     this(properties, d2Servers, accessController, sslEngineComponentFactory, TehutiUtils.getMetricsRepository(ROUTER_SERVICE_NAME));
   }
 
+  // for test purpose
+  public MetricsRepository getMetricsRepository() {
+    return this.metricsRepository;
+  }
+
   public RouterServer(
       VeniceProperties properties,
       List<D2Server> d2ServerList,
@@ -208,10 +214,6 @@ public class RouterServer extends AbstractVeniceService {
     verifySslOk();
   }
 
-  public MetricsRepository getMetricsRepository() {
-    return this.metricsRepository;
-  }
-
   /**
    * Only use this constructor for testing when you want to pass mock repositories
    *
@@ -252,7 +254,13 @@ public class RouterServer extends AbstractVeniceService {
     VenicePartitionFinder partitionFinder = new VenicePartitionFinder(routingDataRepository);
     VeniceHostHealth healthMonitor = new VeniceHostHealth(liveInstanceMonitor);
     scatterGatherMode = new VeniceDelegateMode();
-    dispatcher = new VeniceDispatcher(config, healthMonitor, sslFactoryForRequests);
+    Optional<RouterCache> routerCache = Optional.empty();
+    if (config.isCacheEnabled()) {
+      logger.info("Router cache size: " + config.getCacheSizeBytes() + ", concurrency: " + config.getCacheConcurrency());
+      routerCache = Optional.of(new RouterCache(config.getCacheSizeBytes(), config.getCacheConcurrency()));
+    }
+    dispatcher = new VeniceDispatcher(config, healthMonitor, sslFactoryForRequests, metadataRepository, routerCache,
+        statsForSingleGet);
     heartbeat = new RouterHeartbeat(liveInstanceMonitor, healthMonitor, 10, TimeUnit.SECONDS, config.getHeartbeatTimeoutMs(), sslFactoryForRequests);
     heartbeat.startInner();
     MetaDataHandler metaDataHandler =
@@ -442,6 +450,7 @@ public class RouterServer extends AbstractVeniceService {
           new ReadRequestThrottler(routersClusterManager, metadataRepository, routingDataRepository,
               config.getMaxReadCapacityCu(), statsForSingleGet, config.getPerStorageNodeReadQuotaBuffer());
       scatterGatherMode.initReadRequestThrottler(throttler);
+      dispatcher.initReadRequestThrottler(throttler);
 
       /**
        * When the listen port is open, we would like to have current Router to be fully ready.

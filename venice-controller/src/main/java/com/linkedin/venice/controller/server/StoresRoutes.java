@@ -165,6 +165,10 @@ public class StoresRoutes {
         Optional<Boolean> chunkingEnabled = Utils.isNullOrEmpty(chunkingEnabledStr) ? Optional.empty() :
             Optional.of(Utils.parseBooleanFromString(chunkingEnabledStr, CHUNKING_ENABLED));
 
+        String routerCacheEnabledStr = AdminSparkServer.getOptionalParameterValue(request, ROUTER_CACHE_ENABLED);
+        Optional<Boolean> routerCacheEnabled = Utils.isNullOrEmpty(routerCacheEnabledStr) ? Optional.empty() :
+            Optional.of(Utils.parseBooleanFromString(routerCacheEnabledStr, ROUTER_CACHE_ENABLED));
+
         admin.updateStore(veniceResponse.getCluster(),
                           veniceResponse.getName(),
                           owner,
@@ -178,7 +182,9 @@ public class StoresRoutes {
                           hybridOffsetLag,
                           accessControlled,
                           compressionStrategy,
-                          chunkingEnabled);
+                          chunkingEnabled,
+                          routerCacheEnabled
+            );
       }
     };
   }

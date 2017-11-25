@@ -12,6 +12,8 @@ import io.tehuti.metrics.stats.Count;
 import io.tehuti.metrics.stats.Max;
 import io.tehuti.metrics.stats.Gauge;
 import io.tehuti.metrics.stats.OccurrenceRate;
+import io.tehuti.metrics.stats.Rate;
+
 
 public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
   private final Sensor requestSensor;
@@ -28,6 +30,12 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
   private final Sensor fanoutRequestCountSensor;
   private final Sensor quotaSensor;
   private final Sensor findUnhealthyHostRequestSensor;
+  private final Sensor cacheLookupRequestSensor;
+  private final Sensor cacheHitRequestSensor;
+  private final Sensor cacheHitRatioSensor;
+  private final Sensor cacheLookupLatencySensor;
+  private final Sensor cachePutRequestSensor;
+  private final Sensor cachePutLatencySensor;
 
   //QPS metrics
   public RouterHttpRequestStats(MetricsRepository metricsRepository, String storeName, RequestType requestType,
@@ -43,7 +51,8 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
 
     //we have to explicitly pass the name again for PercentilesStat here.
     //TODO: remove the redundancy once Tehuti library is updated.
-    latencySensor = registerSensor("latency", TehutiUtils.getPercentileStatForNetworkLatency(getName(), getFullMetricName("latency")));
+    latencySensor = registerSensor("latency", TehutiUtils.getPercentileStatForNetworkLatency(getName(),
+        getFullMetricName("latency")));
     routerResponseWaitingTimeSensor = registerSensor("response_waiting_time",
         TehutiUtils.getPercentileStat(getName(), getFullMetricName("response_waiting_time")));
     requestSizeSensor = registerSensor("request_size", TehutiUtils.getPercentileStat(getName(), getFullMetricName("request_size")), new Avg());
@@ -59,6 +68,18 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
     registerSensor("retry_slower_than_original_count", new LambdaStat( () -> scatterGatherStats.getTotalRetriesDiscarded()));
     registerSensor("retry_error_count", new LambdaStat( () -> scatterGatherStats.getTotalRetriesError()));
     registerSensor("retry_faster_than_original_count", new LambdaStat( () -> scatterGatherStats.getTotalRetriesWinner()));
+
+    Rate cacheLookupRequestRate = new OccurrenceRate();
+    Rate cacheHitRequestRate = new OccurrenceRate();
+    cacheLookupRequestSensor = registerSensor("cache_lookup_request", new Count(), cacheLookupRequestRate);
+    cacheHitRequestSensor = registerSensor("cache_hit_request", new Count(), cacheHitRequestRate);
+    cacheHitRatioSensor = registerSensor("cache_hit_ratio",
+        new TehutiUtils.SimpleRatioStat(cacheHitRequestRate, cacheLookupRequestRate));
+    cacheLookupLatencySensor = registerSensor("cache_lookup_latency",
+        TehutiUtils.getPercentileStat(getName(), getFullMetricName("cache_lookup_latency")));
+    cachePutRequestSensor = registerSensor("cache_put_request", new Count());
+    cachePutLatencySensor = registerSensor("cache_put_latency",
+        TehutiUtils.getPercentileStat(getName(), getFullMetricName("cache_put_latency")));
   }
 
   public void recordRequest() {
@@ -117,5 +138,25 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
 
   public void recordFindUnhealthyHostRequest() {
     findUnhealthyHostRequestSensor.record();
+  }
+
+  public void recordCacheHitRequest() {
+    cacheHitRequestSensor.record();
+  }
+
+  public void recordCacheLookupRequest() {
+    cacheLookupRequestSensor.record();
+  }
+
+  public void recordCacheLookupLatency(double latency) {
+    cacheLookupLatencySensor.record(latency);
+  }
+
+  public void recordCachePutRequest() {
+    cachePutRequestSensor.record();
+  }
+
+  public void recordCachePutLatency(double latency) {
+    cachePutLatencySensor.record(latency);
   }
 }

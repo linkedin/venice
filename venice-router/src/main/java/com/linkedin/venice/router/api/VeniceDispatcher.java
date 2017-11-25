@@ -9,12 +9,19 @@ import com.linkedin.ddsstorage.router.api.ScatterGatherRequest;
 import com.linkedin.security.ssl.access.control.SSLEngineComponentFactory;
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.common.PartitionOffsetMapUtils;
+import com.linkedin.venice.exceptions.QuotaExceededException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Instance;
+import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.router.VeniceRouterConfig;
 import com.linkedin.venice.router.api.path.VenicePath;
+import com.linkedin.venice.router.api.path.VeniceSingleGetPath;
+import com.linkedin.venice.router.cache.RouterCache;
+import com.linkedin.venice.router.stats.AggRouterHttpRequestStats;
+import com.linkedin.venice.router.throttle.ReadRequestThrottler;
 import com.linkedin.venice.utils.HelixUtils;
+import com.linkedin.venice.utils.LatencyUtils;
 import com.linkedin.venice.utils.SslUtils;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
@@ -63,10 +70,22 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
 
   // key is (resource + "_" + partition)
   private final ConcurrentMap<String, Long> offsets = new ConcurrentHashMap<>();
-  private final VeniceHostHealth healthMontior;
+  private final VeniceHostHealth healthMonitor;
 
    // How many offsets behind can a storage node be for a partition and still be considered 'caught up'
   private long acceptableOffsetLag = 10000; /* TODO: make this configurable for streaming use-case */
+
+  private final ReadOnlyStoreRepository storeRepository;
+  private final Optional<RouterCache> routerCache;
+  private final double cacheHitRequestThrottleWeight;
+  private static final ByteBuf NOT_FOUND_CONTENT = Unpooled.wrappedBuffer(new byte[0]);
+
+  private final AggRouterHttpRequestStats statsForSingleGet;
+
+  /**
+   * Single-get throttling needs to happen here because of caching.
+   */
+  private ReadRequestThrottler readRequestThrottler;
 
   /**
    *
@@ -74,9 +93,14 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
    * @param sslFactory if this is present, it will be used to make SSL requests to storage nodes.
    */
   public VeniceDispatcher(VeniceRouterConfig config, VeniceHostHealth healthMonitor,
-      Optional<SSLEngineComponentFactory> sslFactory) {
-    this.healthMontior = healthMonitor;
+      Optional<SSLEngineComponentFactory> sslFactory, ReadOnlyStoreRepository storeRepository,
+      Optional<RouterCache> routerCache, AggRouterHttpRequestStats statsForSingleGet) {
+    this.healthMonitor = healthMonitor;
     this.scheme = sslFactory.isPresent() ? HTTPS_PREFIX : HTTP_PREFIX;
+    this.storeRepository = storeRepository;
+    this.routerCache = routerCache;
+    this.cacheHitRequestThrottleWeight = config.getCacheHitRequestThrottleWeight();
+    this.statsForSingleGet = statsForSingleGet;
 
     this.clientPoolSize = config.getHttpClientPoolSize();
     int totalIOThreadNum = Runtime.getRuntime().availableProcessors();
@@ -98,6 +122,14 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
     }
   }
 
+  public void initReadRequestThrottler(ReadRequestThrottler requestThrottler) {
+    if (null != this.readRequestThrottler) {
+      throw RouterExceptionAndTrackingUtils.newVeniceExceptionAndTracking(Optional.empty(), Optional.empty(), INTERNAL_SERVER_ERROR,
+          "ReadRequestThrottle has already been initialized before, and no further update expected!");
+    }
+    this.readRequestThrottler = requestThrottler;
+  }
+
   @Override
   public void dispatch(
       @Nonnull Scatter<Instance, VenicePath, RouterKey> scatter,
@@ -109,6 +141,11 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
       @Nonnull AsyncPromise<HttpResponseStatus> retryFuture,
       @Nonnull AsyncFuture<Void> timeoutFuture,
       @Nonnull Executor contextExecutor) {
+    if (null == readRequestThrottler) {
+      throw RouterExceptionAndTrackingUtils.newVeniceExceptionAndTracking(Optional.empty(), Optional.empty(), INTERNAL_SERVER_ERROR,
+          "Read request throttle has not been setup yet");
+    }
+
     String storeName = path.getStoreName();
     Instance host;
     try {
@@ -123,6 +160,13 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
       hostSelected.setFailure(e);
       throw e;
     }
+
+    if (path.getRequestType().equals(RequestType.SINGLE_GET) &&
+        handleCacheLookupAndThrottlingForSingleGetRequest((VeniceSingleGetPath)path, host, responseFuture, contextExecutor)) {
+      // Cache hit
+      return;
+    }
+
     if (logger.isDebugEnabled()) {
       logger.debug("Routing request to host: " + host.getHost() + ":" + host.getPort());
     }
@@ -157,7 +201,7 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
               // And right now there is no logic to randomly return one host if none is available;
               // TODO: find a way to mark host slow safely.
 
-              healthMontior.setPartitionAsSlow(host, partitionName);
+              healthMonitor.setPartitionAsSlow(host, partitionName);
               contextExecutor.execute(() -> {
                 // Triggers an immediate router retry excluding the host we selected.
                 retryFuture.setSuccess(HttpResponseStatus.SERVICE_UNAVAILABLE);
@@ -226,7 +270,15 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
             .set(HttpConstants.VENICE_SCHEMA_ID, valueSchemaId);
         if (path.getRequestType().equals(RequestType.SINGLE_GET)) {
           // For multi-get, the partition is not returned to client
-          response.headers().set(HttpConstants.VENICE_PARTITION, numberFromPartitionName(partitionNames.iterator().next()));
+          String partitionIdStr = numberFromPartitionName(partitionNames.iterator().next());
+          response.headers().set(HttpConstants.VENICE_PARTITION, partitionIdStr);
+
+          // Update cache for single-get request
+          if (responseStatus == HttpStatus.SC_OK) {
+            updateCacheForSingleGetRequest((VeniceSingleGetPath) path, Optional.of(contentToByte), Optional.of(valueSchemaId));
+          } else if (responseStatus == HttpStatus.SC_NOT_FOUND) {
+            updateCacheForSingleGetRequest((VeniceSingleGetPath) path, Optional.empty(), Optional.empty());
+          }
         }
 
         contextExecutor.execute(() -> {
@@ -263,6 +315,106 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
         });
       }
     });
+  }
+
+  /**
+   * Handle cache lookup for single-get request, and this function is handling throttling as well.
+   * Here is the throttling logic for cache lookup request:
+   * 1. If it is a cache hit, the request won't be counted when calculating per storage node throttler
+   * since there is no request sent out to any storage node;
+   * 2. If it is a cache miss or cache is not enabled, the request will be counted when calculating store throttler
+   * and per storage node throttler as before;
+   *
+   * @param path
+   * @param selectedHost
+   * @param responseFuture
+   * @param contextExecutor
+   * @return whether cache lookup is succeed or not.
+   */
+  protected boolean handleCacheLookupAndThrottlingForSingleGetRequest(VeniceSingleGetPath path, Instance selectedHost,
+      AsyncPromise<List<FullHttpResponse>> responseFuture, Executor contextExecutor) {
+    String storeName = path.getStoreName();
+    try {
+      if (routerCache.isPresent() && storeRepository.isRouterCacheEnabled(storeName)) {
+        /**
+         * Cache throttling first
+         * Only throttle in store level since the cache lookup request is not actually sending to any storage node
+         */
+        readRequestThrottler.mayThrottleRead(storeName,
+            cacheHitRequestThrottleWeight * readRequestThrottler.getReadCapacity(), Optional.empty());
+
+        long startTimeInNS = System.nanoTime();
+        statsForSingleGet.recordCacheLookupRequest(storeName);
+        Optional<RouterCache.CacheValue> cacheValue =
+            routerCache.get().get(storeName, path.getVersionNumber(), path.getPartitionKey().getBytes());
+        statsForSingleGet.recordCacheLookupLatency(storeName, LatencyUtils.getLatencyInMS(startTimeInNS));
+        if (cacheValue != null) {
+          // Cache hit
+          statsForSingleGet.recordCacheHitRequest(storeName);
+          FullHttpResponse response;
+          if (cacheValue.isPresent()) {
+            response = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK,
+                Unpooled.wrappedBuffer(cacheValue.get().getValue()));
+            response.headers()
+                .set(HttpConstants.VENICE_PARTITION, path.getPartition())
+                .set(HttpConstants.VENICE_SCHEMA_ID, cacheValue.get().getSchemaId())
+                .set(HttpHeaderNames.CONTENT_LENGTH, cacheValue.get().getValue().length)
+                .set(HttpHeaderNames.CONTENT_TYPE, HttpConstants.AVRO_BINARY);
+          } else {
+            response =
+                new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.NOT_FOUND, NOT_FOUND_CONTENT);
+            response.headers()
+                .set(HttpHeaderNames.CONTENT_LENGTH, 0)
+                .set(HttpConstants.VENICE_PARTITION, path.getPartition());
+          }
+
+          contextExecutor.execute(() -> {
+            responseFuture.setSuccess(Collections.singletonList(response));
+          });
+          return true;
+        } else {
+          /**
+           * Cache miss
+           * Unset the previous per-store throttler
+           */
+          readRequestThrottler.mayThrottleRead(storeName,
+               -cacheHitRequestThrottleWeight * readRequestThrottler.getReadCapacity(), Optional.empty());
+        }
+      }
+      // Caching is not enabled or cache miss
+      readRequestThrottler.mayThrottleRead(storeName, readRequestThrottler.getReadCapacity(), Optional.of(selectedHost.getNodeId()));
+    } catch (QuotaExceededException e) {
+      throw RouterExceptionAndTrackingUtils.newVeniceExceptionAndTracking(Optional.of(storeName), Optional.of(RequestType.SINGLE_GET),
+          TOO_MANY_REQUESTS, "Quota exceeds! msg: " + e.getMessage());
+    }
+
+    return false;
+  }
+
+  /**
+   * Update cache for single-get request
+   * @param path
+   * @param content If not found, this field will be {@link Optional#empty()}
+   * @param valueSchemaId If not found, this field will be {@link Optional#empty()}
+   */
+  protected void updateCacheForSingleGetRequest(VeniceSingleGetPath path, Optional<byte[]> content, Optional<Integer> valueSchemaId) {
+    String storeName = path.getStoreName();
+    // Setup cache for single-get
+    if (routerCache.isPresent() && storeRepository.isRouterCacheEnabled(storeName)) {
+      long startTimeInNS = System.nanoTime();
+      statsForSingleGet.recordCachePutRequest(storeName);
+      try {
+        if (content.isPresent() && valueSchemaId.isPresent()) {
+          RouterCache.CacheValue cacheValue = new RouterCache.CacheValue(content.get(), valueSchemaId.get());
+          routerCache.get().put(storeName, path.getVersionNumber(), path.getPartitionKey().getBytes(), cacheValue);
+        } else {
+          routerCache.get().putNullValue(storeName, path.getVersionNumber(), path.getPartitionKey().getBytes());
+        }
+      } catch (Exception e) {
+        logger.error("Received exception during updating cache", e);
+      }
+      statsForSingleGet.recordCachePutLatency(storeName, LatencyUtils.getLatencyInMS(startTimeInNS));
+    }
   }
 
   private String getOffsetKey(String resourceName, String partitionName) {
