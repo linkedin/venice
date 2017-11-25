@@ -102,24 +102,24 @@ public class StoreReadThrottlerTest {
     // each storage node holds 4 online replicas, so the quota of each storage node is 1200/4/3*4=400
     StoreReadThrottler throttler =
         new StoreReadThrottler(storeName, quota, EventThrottler.REJECT_STRATEGY, Optional.of(assignment), 0.0, 1000, 1000);
-    throttler.mayThrottleRead(400, Utils.getHelixNodeIdentifier(10000));
+    throttler.mayThrottleRead(400, Optional.of(Utils.getHelixNodeIdentifier(10000)));
     try {
-      throttler.mayThrottleRead(100, Utils.getHelixNodeIdentifier(10000));
+      throttler.mayThrottleRead(100, Optional.of(Utils.getHelixNodeIdentifier(10000)));
       Assert.fail("Usage(500) exceed the quota(400) of Instance localhost_10000 ");
     } catch (QuotaExceededException e) {
       //expected
     }
 
     try {
-      throttler.mayThrottleRead(400, Utils.getHelixNodeIdentifier(10001));
-      throttler.mayThrottleRead(100, Utils.getHelixNodeIdentifier(10002));
+      throttler.mayThrottleRead(400, Optional.of(Utils.getHelixNodeIdentifier(10001)));
+      throttler.mayThrottleRead(100, Optional.of(Utils.getHelixNodeIdentifier(10002)));
     } catch (QuotaExceededException e) {
       Assert.fail("Usage has not exceeded the quota, should accept requests.", e);
     }
 
     throttler.clearStorageNodesThrottlers();
     try {
-      throttler.mayThrottleRead(100, Utils.getHelixNodeIdentifier(10000));
+      throttler.mayThrottleRead(100, Optional.of(Utils.getHelixNodeIdentifier(10000)));
     } catch (QuotaExceededException e) {
       Assert.fail("Throttler for storage node has been cleared, this store still have quota to accept this request.");
     }

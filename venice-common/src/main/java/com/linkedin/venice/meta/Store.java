@@ -131,6 +131,11 @@ public class Store {
    */
   private boolean chunkingEnabled = false;
 
+  /**
+   * Whether cache in Router is enabled for current store.
+   */
+  private boolean routerCacheEnabled = false;
+
   public Store(@NotNull String name, @NotNull String owner, long createdTime, @NotNull PersistenceType persistenceType,
       @NotNull RoutingStrategy routingStrategy, @NotNull ReadStrategy readStrategy,
       @NotNull OfflinePushStrategy offlinePushStrategy) {
@@ -332,6 +337,14 @@ public class Store {
     this.chunkingEnabled = chunkingEnabled;
   }
 
+  public boolean isRouterCacheEnabled() {
+    return routerCacheEnabled;
+  }
+
+  public void setRouterCacheEnabled(boolean routerCacheEnabled) {
+    this.routerCacheEnabled = routerCacheEnabled;
+  }
+
   /**
    * Add a version into store.
    *
@@ -531,6 +544,7 @@ public class Store {
     result = 31 * result + (accessControlled ? 1 : 0);
     result = 31 * result + (compressionStrategy.hashCode());
     result = 31 * result + (chunkingEnabled ? 1 : 0);
+    result = 31 * result + (routerCacheEnabled ? 1 : 0);
     return result;
   }
 
@@ -559,6 +573,7 @@ public class Store {
     if (accessControlled != store.accessControlled) return false;
     if (compressionStrategy != store.compressionStrategy) return false;
     if (chunkingEnabled != store.chunkingEnabled) return false;
+    if (routerCacheEnabled != store.routerCacheEnabled) return false;
     return !(hybridStoreConfig != null ? !hybridStoreConfig.equals(store.hybridStoreConfig) : store.hybridStoreConfig != null);
   }
 
@@ -591,6 +606,7 @@ public class Store {
     clonedStore.setAccessControlled(accessControlled);
     clonedStore.setCompressionStrategy(compressionStrategy);
     clonedStore.setChunkingEnabled(chunkingEnabled);
+    clonedStore.setRouterCacheEnabled(routerCacheEnabled);
 
     for (Version v : this.versions) {
       clonedStore.forceAddVersion(v.cloneVersion());

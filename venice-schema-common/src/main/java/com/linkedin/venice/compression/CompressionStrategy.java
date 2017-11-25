@@ -11,19 +11,25 @@ import java.util.Optional;
  * Enums of the strategies used to compress/decompress Record's value
  */
 public enum CompressionStrategy {
-  NO_OP(0),
-  GZIP(1);
+  NO_OP(0, false),
+  GZIP(1, true);
 
   private final int value;
+  private final boolean compressionEnabled;
 
   private static final Map<Integer, CompressionStrategy> COMPRESSION_STRATEGY_MAP = getCompressionStrategyMap();
 
-  CompressionStrategy(int value) {
+  CompressionStrategy(int value, boolean compressionEnabled) {
     this.value = value;
+    this.compressionEnabled = compressionEnabled;
   }
 
   public int getValue() {
     return value;
+  }
+
+  public boolean isCompressionEnabled() {
+    return compressionEnabled;
   }
 
   private static Map<Integer, CompressionStrategy> getCompressionStrategyMap() {

@@ -1,5 +1,6 @@
 package com.linkedin.venice.kafka.consumer;
 
+import com.linkedin.venice.common.Measurable;
 import com.linkedin.venice.exceptions.VeniceException;
 import org.apache.log4j.Logger;
 

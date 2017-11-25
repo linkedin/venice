@@ -102,4 +102,8 @@ public class VeniceSingleGetPath extends VenicePath {
     }
     return format.equals(RequestConstants.B64_FORMAT);
   }
+
+  public String getPartition() {
+    return this.partition;
+  }
 }

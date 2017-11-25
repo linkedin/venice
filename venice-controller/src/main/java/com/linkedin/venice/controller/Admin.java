@@ -148,7 +148,8 @@ public interface Admin {
                      Optional<Long> hybridOffsetLagThreshold,
                      Optional<Boolean> accessControlled,
                      Optional<CompressionStrategy> compressionStrategy,
-                     Optional<Boolean> chunkingEnabled
+                     Optional<Boolean> chunkingEnabled,
+                     Optional<Boolean> routerCacheEnabled
         );
 
     double getStorageEngineOverheadRatio(String clusterName);

@@ -40,13 +40,11 @@ import java.util.concurrent.ConcurrentHashMap;
 
 import java.util.stream.Collectors;
 import org.apache.commons.io.IOUtils;
-import org.apache.helix.ConfigAccessor;
 import org.apache.helix.HelixAdmin;
 import org.apache.helix.HelixManager;
 import org.apache.helix.HelixManagerFactory;
 import org.apache.helix.InstanceType;
 import org.apache.helix.PropertyKey;
-import org.apache.helix.controller.rebalancer.AutoRebalancer;
 import org.apache.helix.controller.rebalancer.DelayedAutoRebalancer;
 import org.apache.helix.controller.rebalancer.strategy.AutoRebalanceStrategy;
 import org.apache.helix.controller.rebalancer.strategy.CrushRebalanceStrategy;
@@ -991,6 +989,56 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         });
     }
 
+    public synchronized  void setRouterCacheEnabled(String clusterName, String storeName,
+        boolean routerCacheEnabled) {
+        storeMetadataUpdate(clusterName, storeName, store -> {
+            store.setRouterCacheEnabled(routerCacheEnabled);
+
+            return store;
+        });
+    }
+
+    /**
+     * This function will check whether the store update will cause the case that a hybrid store will have router-cache enabled
+     * or a compressed store will have router-cache enabled.
+     *
+     * For now, router cache shouldn't be enabled for a hybrid store.
+     * For the time-being, we should not enable cache for store, which enables 'compression' feature, since compression
+     * could break router-caching.
+     * TODO: need to remove this check when the proper fix (cross-colo race condition) is implemented.
+     *
+     * Right now, this function doesn't check whether the hybrid config and router-cache flag will be updated at the same time:
+     * 1. Current store originally is a hybrid store;
+     * 2. The update operation will turn this store to be a batch-only store, and enable router-cache at the same time;
+     * The reason not to check the above scenario is that the hybrid config/router-cache update is not atomic, so admin should
+     * update the store to be batch-only store first and turn on the router-cache feature after.
+     *
+     * BTW, it seems no way to update a hybrid store to be a batch-only store.
+     *
+     * @param store
+     * @param newHybridStoreConfig
+     * @param newCompressionStrategy
+     * @param newRouterCacheEnabled
+     */
+    protected void checkWhetherStoreWillHaveConflictConfigForCaching(Store store,
+        Optional<HybridStoreConfig> newHybridStoreConfig,
+        Optional<CompressionStrategy> newCompressionStrategy,
+        Optional<Boolean> newRouterCacheEnabled) {
+        String storeName = store.getName();
+        if (store.isHybrid() && newRouterCacheEnabled.isPresent() && newRouterCacheEnabled.get()) {
+            throw new VeniceException("Router cache couldn't be enabled for store: " + storeName + " since it is a hybrid store");
+        }
+        if (store.isRouterCacheEnabled() && newHybridStoreConfig.isPresent()) {
+            throw new VeniceException("Hybrid couldn't be enabled for store: " + storeName + " since it enables router-cache");
+        }
+        if (store.getCompressionStrategy().isCompressionEnabled() && newRouterCacheEnabled.isPresent() && newRouterCacheEnabled.get()) {
+            throw new VeniceException("Router cache couldn't enabled for store: " + storeName + " since it enables compression");
+        }
+        if (store.isRouterCacheEnabled() && newCompressionStrategy.isPresent() && newCompressionStrategy.get().isCompressionEnabled()) {
+            throw new VeniceException("Compression couldn't be enabled for store: " + storeName + " since it enables router-cache");
+        }
+    }
+
     @Override
     public synchronized void updateStore(
         String clusterName,
@@ -1006,8 +1054,20 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         Optional<Long> hybridOffsetLagThreshold,
         Optional<Boolean> accessControlled,
         Optional<CompressionStrategy> compressionStrategy,
-        Optional<Boolean> chunkingEnabled) {
+        Optional<Boolean> chunkingEnabled,
+        Optional<Boolean> routerCacheEnabled) {
         Store originalStore = getStore(clusterName, storeName).cloneStore();
+
+        Optional<HybridStoreConfig> hybridStoreConfig = Optional.empty();
+        if (hybridRewindSeconds.isPresent() || hybridOffsetLagThreshold.isPresent()) {
+            HybridStoreConfig hybridConfig = mergeNewSettingsIntoOldHybridStoreConfig(
+                originalStore, hybridRewindSeconds, hybridOffsetLagThreshold);
+            if (null != hybridConfig) {
+                hybridStoreConfig = Optional.of(hybridConfig);
+            }
+        }
+
+        checkWhetherStoreWillHaveConflictConfigForCaching(originalStore, hybridStoreConfig, compressionStrategy, routerCacheEnabled);
 
         try {
             if (owner.isPresent()) {
@@ -1038,15 +1098,17 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 setStoreCurrentVersion(clusterName, storeName, currentVersion.get());
             }
 
-            if (hybridRewindSeconds.isPresent() || hybridOffsetLagThreshold.isPresent()) {
-                HybridStoreConfig hybridConfig = mergeNewSettingsIntoOldHybridStoreConfig(
-                    originalStore, hybridRewindSeconds, hybridOffsetLagThreshold);
-                if (null != hybridConfig) {
-                    storeMetadataUpdate(clusterName, storeName, store -> {
-                        store.setHybridStoreConfig(hybridConfig);
-                        return store;
-                    });
-                }
+            if (hybridStoreConfig.isPresent()) {
+                // To fix the final variable problem in the lambda expression
+                final HybridStoreConfig finalHybridConfig = hybridStoreConfig.get();
+                storeMetadataUpdate(clusterName, storeName, store -> {
+                    store.setHybridStoreConfig(finalHybridConfig);
+                    return store;
+                });
+            }
+
+            if (routerCacheEnabled.isPresent()) {
+                setRouterCacheEnabled(clusterName, storeName, routerCacheEnabled.get());
             }
 
             if (accessControlled.isPresent()) {

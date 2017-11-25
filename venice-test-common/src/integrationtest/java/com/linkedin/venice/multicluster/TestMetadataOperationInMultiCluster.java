@@ -111,7 +111,7 @@ public class TestMetadataOperationInMultiCluster {
       ControllerResponse
           controllerResponse = controllerClient.updateStore(h2vProperties.getProperty(VENICE_STORE_NAME_PROP), Optional.empty(), Optional.empty(),
           Optional.empty(), Optional.empty(), Optional.empty(), Optional.of(Store.UNLIMITED_STORAGE_QUOTA), Optional.empty(),
-          Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty());
+          Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty());
       Assert.assertFalse(controllerResponse.isError());
 
     }

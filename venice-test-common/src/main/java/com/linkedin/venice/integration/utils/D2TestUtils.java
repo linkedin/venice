@@ -42,10 +42,15 @@ public class D2TestUtils {
     setupD2Config(zkHosts, true);
   }
   public static void setupD2Config(String zkHosts, boolean https){
-    setupD2Config(zkHosts, https, DEFAULT_TEST_CLUSTER_NAME, DEFAULT_TEST_SERVICE_NAME);
+    setupD2Config(zkHosts, https, DEFAULT_TEST_CLUSTER_NAME, DEFAULT_TEST_SERVICE_NAME, false);
   }
 
-  public static void setupD2Config(String zkHosts, boolean https, String clusterName, String serviceName) {
+  public static void setupD2Config(String zkHosts, boolean https, boolean stickyRoutingForSingleGet){
+    setupD2Config(zkHosts, https, DEFAULT_TEST_CLUSTER_NAME, DEFAULT_TEST_SERVICE_NAME, stickyRoutingForSingleGet);
+  }
+
+  public static void setupD2Config(String zkHosts, boolean https, String clusterName, String serviceName,
+      boolean stickyRoutingForSingleGet) {
     int sessionTimeout = 5000;
     String basePath = "/d2";
     int retryLimit = 10;
@@ -54,7 +59,7 @@ public class D2TestUtils {
     try {
       Map<String, Object> clusterDefaults = Collections.EMPTY_MAP;
       Map<String, Object> serviceDefaults = getD2ServiceDefaults();
-      Map<String, Object> clusterServiceConfigurations = getD2ServiceConfig(clusterName, serviceName, https);
+      Map<String, Object> clusterServiceConfigurations = getD2ServiceConfig(clusterName, serviceName, https, stickyRoutingForSingleGet);
       Map<String, Object> extraClusterServiceConfigurations = Collections.EMPTY_MAP;
       Map<String, Object> serviceVariants = Collections.EMPTY_MAP;
 
@@ -203,9 +208,10 @@ public class D2TestUtils {
     prioritizedSchemes.add("http");
     prioritizedSchemes.add("https");
 
-    Map<String, String> loadBalancerStrategyProperties = new HashMap<>();
+    Map<String, Object> loadBalancerStrategyProperties = new HashMap<>();
     loadBalancerStrategyProperties.put("http.loadBalancer.updateIntervalMs", "5000");
     loadBalancerStrategyProperties.put("http.loadBalancer.pointsPerWeight", "100");
+    loadBalancerStrategyProperties.put("http.loadBalancer.consistentHashAlgorithm", "pointBased");
 
     Map<String, String> transportClientProperties = new HashMap<>();
     transportClientProperties.put("http.requestTimeout", "10000");
@@ -242,18 +248,34 @@ public class D2TestUtils {
    * @param cluster D2 name for the cluster of servers that provide a common set of services (this function only supports one service)
    * @param service Name of the service provided by this cluster
    * @param https true if this service should only be queried with https
+   * @param stickyRouting if the service enables the sticky routing for single-get
    * @return
    *
    * @see <a href="https://github.com/linkedin/rest.li/blob/master/examples/d2-quickstart/config/src/main/d2Config/d2Config.json">D2 Quickstart</a>
    */
-  public static Map<String, Object> getD2ServiceConfig(String cluster, String service, boolean https) {
+  public static Map<String, Object> getD2ServiceConfig(String cluster, String service, boolean https, boolean stickyRouting) {
     Map<String, Object> serviceMap = new HashMap<>();
     serviceMap.put("path", "/");
     if (https) {
-      System.err.println("DEBUG using https ssl");
       serviceMap.put("prioritizedSchemes", Arrays.asList("https"));
     } else {
       serviceMap.put("prioritizedSchemes", Arrays.asList("http"));
+    }
+
+    if (stickyRouting) {
+      /**
+       * Check this doc:
+       * https://iwww.corp.linkedin.com/wiki/cf/display/ENGS/D2+User+Manual#D2UserManual-Stickiness(howtoconfigureanduse)
+       */
+      Map<String, Object> loadBalancerStrategyProperties = new HashMap<>();
+      loadBalancerStrategyProperties.put("http.loadBalancer.hashMethod", "uriRegex");
+      Map<String, Object> hashConfig = new HashMap<>();
+      List<String> regexes = new ArrayList<>();
+      regexes.add("/storage/(.*)\\?f=b64");
+      hashConfig.put("regexes", regexes);
+      hashConfig.put("warnOnNoMatch", "false");
+      loadBalancerStrategyProperties.put("http.loadBalancer.hashConfig", hashConfig);
+      serviceMap.put("loadBalancerStrategyProperties", loadBalancerStrategyProperties);
     }
 
     Map<String, Object> servicesMap = new HashMap<>();
@@ -267,5 +289,4 @@ public class D2TestUtils {
 
     return serviceConfig;
   }
-
 }

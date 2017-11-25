@@ -26,6 +26,7 @@ public class StoreInfo {
       storeInfo.setHybridStoreConfig(store.getHybridStoreConfig());
     }
     storeInfo.setChunkingEnabled(store.isChunkingEnabled());
+    storeInfo.setRouterCacheEnabled(store.isRouterCacheEnabled());
     return storeInfo;
   }
   /**
@@ -91,6 +92,11 @@ public class StoreInfo {
    * Whether the chunking is enabled, and this is for large value store.
    */
   private boolean chunkingEnabled = false;
+
+  /**
+   * Whether cache is enabled in Router.
+   */
+  private boolean routerCacheEnabled = false;
 
   public StoreInfo() {
   }
@@ -234,5 +240,13 @@ public class StoreInfo {
 
   public void setChunkingEnabled(boolean chunkingEnabled) {
     this.chunkingEnabled = chunkingEnabled;
+  }
+
+  public boolean isRouterCacheEnabled() {
+    return routerCacheEnabled;
+  }
+
+  public void setRouterCacheEnabled(boolean routerCacheEnabled) {
+    this.routerCacheEnabled = routerCacheEnabled;
   }
 }

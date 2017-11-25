@@ -417,6 +417,10 @@ public class AdminTool {
     Optional<Boolean> chunkingEnabled = Utils.isNullOrEmpty(chunkingEnabledStr) ? Optional.empty() :
         Optional.of(Utils.parseBooleanFromString(chunkingEnabledStr, Arg.CHUNKING_ENABLED.name()));
 
+    String routerCacheEnabledStr = getOptionalArgument(cmd, Arg.ROUTER_CACHE_ENABLED);
+    Optional<Boolean> routerCacheEnabled = Utils.isNullOrEmpty(routerCacheEnabledStr) ? Optional.empty() :
+        Optional.of(Utils.parseBooleanFromString(routerCacheEnabledStr, Arg.ROUTER_CACHE_ENABLED.name()));
+
     ControllerResponse response = controllerClient.updateStore(
         storeName,
         owner,
@@ -430,7 +434,8 @@ public class AdminTool {
         hybridOffsetLag,
         accessControlled,
         compressionStrategy,
-        chunkingEnabled);
+        chunkingEnabled,
+        routerCacheEnabled);
 
     printSuccess(response);
   }

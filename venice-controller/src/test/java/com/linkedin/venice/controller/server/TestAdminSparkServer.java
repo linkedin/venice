@@ -525,7 +525,7 @@ public class TestAdminSparkServer {
         controllerClient.updateStore(storeName, Optional.of(owner), Optional.of(partitionCount),
             Optional.of(current), Optional.of(enableReads), Optional.of(enableWrite),
             Optional.of(storageQuotaInByte), Optional.of(readQuotaInCU), Optional.empty(),
-            Optional.empty(), Optional.of(accessControlled), Optional.empty(), Optional.empty());
+            Optional.empty(), Optional.of(accessControlled), Optional.empty(), Optional.empty(), Optional.empty());
 
     Assert.assertFalse(response.isError(), response.getError());
     Store store = venice.getMasterVeniceController().getVeniceAdmin().getStore(venice.getClusterName(), storeName);
@@ -542,7 +542,7 @@ public class TestAdminSparkServer {
             .updateStore(storeName, Optional.of(owner), Optional.of(partitionCount),
                 Optional.empty(), Optional.of(enableReads), Optional.of(enableWrite),
                 Optional.of(storageQuotaInByte), Optional.of(readQuotaInCU), Optional.empty(),
-                Optional.empty(), Optional.of(accessControlled), Optional.empty(), Optional.empty()).isError(),
+                Optional.empty(), Optional.of(accessControlled), Optional.empty(), Optional.empty(), Optional.empty()).isError(),
         "We should be able to disable store writes again.");
 
     store = venice.getMasterVeniceController().getVeniceAdmin().getStore(venice.getClusterName(), storeName);
@@ -564,7 +564,7 @@ public class TestAdminSparkServer {
       ControllerResponse response =
           controllerClient.updateStore(storeName, Optional.empty(), Optional.of(partitionCount),
               Optional.of(current), Optional.of(enableReads), Optional.empty(), Optional.empty(), Optional.empty(),
-              Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty());
+              Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty());
 
       Assert.assertFalse(response.isError(), response.getError());
       Store store = venice.getMasterVeniceController().getVeniceAdmin().getStore(venice.getClusterName(), storeName);
@@ -584,7 +584,8 @@ public class TestAdminSparkServer {
     String owner = TestUtils.getUniqueString("owner");
     NewStoreResponse newStoreResponse = controllerClient.createNewStore(storeName, owner, "\"string\"", "\"string\"");
     controllerClient.updateStore(storeName, Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(),
-        Optional.empty(), Optional.empty(), Optional.of(123L), Optional.of(1515L), Optional.empty(), Optional.empty(), Optional.empty());
+        Optional.empty(), Optional.empty(), Optional.of(123L), Optional.of(1515L), Optional.empty(), Optional.empty(),
+        Optional.empty(), Optional.empty());
     StoreResponse storeResponse = controllerClient.getStore(storeName);
     Assert.assertEquals(storeResponse.getStore().getHybridStoreConfig().getRewindTimeInSeconds(), 123L);
     Assert.assertEquals(storeResponse.getStore().getHybridStoreConfig().getOffsetLagThresholdToGoOnline(), 1515L);

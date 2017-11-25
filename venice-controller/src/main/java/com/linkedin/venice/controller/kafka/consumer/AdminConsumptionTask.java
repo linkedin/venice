@@ -563,7 +563,9 @@ public class AdminConsumptionTask implements Runnable, Closeable {
                           : Optional.of(message.hybridStoreConfig.offsetLagThresholdToGoOnline),
                       Optional.of(message.accessControlled),
                       CompressionStrategy.optionalValueOf(message.compressionStrategy),
-                      Optional.of(message.chunkingEnabled));
+                      Optional.of(message.chunkingEnabled),
+                      Optional.of(message.routerCacheEnabled)
+        );
 
     logger.info("Set store: " + storeName + " in cluster: " + clusterName);
   }
