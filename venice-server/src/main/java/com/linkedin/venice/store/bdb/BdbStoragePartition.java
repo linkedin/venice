@@ -54,13 +54,17 @@ public class BdbStoragePartition extends AbstractStoragePartition {
     this.databaseConfig.setAllowCreate(true);
     this.databaseConfig.setSortedDuplicates(false);
     this.databaseConfig.setNodeMaxEntries(bdbServerConfig.getBdbBtreeFanout());
+    this.databaseConfig.setKeyPrefixing(bdbServerConfig.isBdbDatabaseKeyPrefixing());
+    if (bdbServerConfig.isBdbDatabaseKeyPrefixing()) {
+      logger.info("Opening database for store: " + getBdbDatabaseName() + " with key-prefixing enabled");
+    }
     if (storagePartitionConfig.isDeferredWrite()) {
       // Non-transactional
       this.databaseConfig.setDeferredWrite(true);
-      logger.info("Opened database for store: " + getBdbDatabaseName() + " in deferred-write mode");
+      logger.info("Opening database for store: " + getBdbDatabaseName() + " in deferred-write mode");
     } else {
       this.databaseConfig.setTransactional(true);
-      logger.info("Opened database for store: " + getBdbDatabaseName() + " in transactional mode");
+      logger.info("Opening database for store: " + getBdbDatabaseName() + " in transactional mode");
     }
 
     this.database = this.environment.openDatabase(null, getBdbDatabaseName(), databaseConfig);

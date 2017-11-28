@@ -42,6 +42,7 @@ public class BdbServerConfig {
   public static final String BDB_CLEANER_ADJUST_UTILIZATION = "bdb.cleaner.adjust.utilization";
   public static final String BDB_RECOVERY_FORCE_CHECKPOINT = "bdb.recovery.force.checkpoint";
   public static final String BDB_RAW_PROPERTY_STRING = "bdb.raw.property.string";
+  public static final String BDB_DATABASE_KEY_PREFIXING = "bdb.database.key.prefixing";
 
   // bdb config parameters
   private long bdbCacheSize;
@@ -79,6 +80,7 @@ public class BdbServerConfig {
   private boolean bdbCleanerFetchObsoleteSize;
   private boolean bdbCleanerAdjustUtilization;
   private boolean bdbRecoveryForceCheckpoint;
+  private boolean bdbDatabaseKeyPrefixing;
   private String bdbRawPropertyString;
 
   public BdbServerConfig(VeniceProperties props) {
@@ -121,6 +123,7 @@ public class BdbServerConfig {
     this.bdbCleanerFetchObsoleteSize = props.getBoolean(BDB_CLEANER_FETCH_OBSOLETE_SIZE, true);
     this.bdbCleanerAdjustUtilization = props.getBoolean(BDB_CLEANER_ADJUST_UTILIZATION, false);
     this.bdbRecoveryForceCheckpoint = props.getBoolean(BDB_RECOVERY_FORCE_CHECKPOINT, false);
+    this.bdbDatabaseKeyPrefixing = props.getBoolean(BDB_DATABASE_KEY_PREFIXING, false);
     this.bdbRawPropertyString = props.getString(BDB_RAW_PROPERTY_STRING, () -> null);
   }
 
@@ -768,5 +771,18 @@ public class BdbServerConfig {
     this.bdbLevelBasedEviction = bdbLevelBasedEviction;
   }
 
+  /**
+   * Controls if BDB database enables key-prefixing.
+   * With key-prefixing, B+ tree index size could be reduced, but it will introduce some overhead,
+   * such as which could cause higher cpu usage, memory pressure, when the common prefix changes
+   * inside an IN/BIN during ingestion.
+   * @return
+   */
+  public boolean isBdbDatabaseKeyPrefixing() {
+    return bdbDatabaseKeyPrefixing;
+  }
 
+  public void setBdbDatabaseKeyPrefixing(boolean bdbDatabaseKeyPrefixing) {
+    this.bdbDatabaseKeyPrefixing = bdbDatabaseKeyPrefixing;
+  }
 }
