@@ -1270,4 +1270,27 @@ public class TestVeniceHelixAdmin {
     store = veniceAdmin.getStore(clusterName, storeName);
     Assert.assertTrue(store.isChunkingEnabled());
   }
+
+  @Test
+  public void testFindAllBootstrappingVersions()
+      throws Exception {
+    stopParticipants();
+    startParticipant(true, nodeId);
+    String storeName = TestUtils.getUniqueString("test_store");
+    veniceAdmin.addStore(clusterName, storeName, "unittest", "\"string\"", "\"string\"");
+    veniceAdmin.incrementVersion(clusterName, storeName, 1, 1);
+    stateModelFactory.makeTransitionCompleted(Version.composeKafkaTopic(storeName, 1), 0);
+    // Wait version 1 become online.
+    TestUtils.waitForNonDeterministicCompletion(TOTAL_TIMEOUT_FOR_SHORT_TEST, TimeUnit.MILLISECONDS, ()->veniceAdmin.getCurrentVersion(clusterName, storeName) == 1);
+    // Restart participant
+    stopParticipants();
+    startParticipant(true, nodeId);
+    veniceAdmin.incrementVersion(clusterName, storeName, 1, 1);
+    Thread.sleep(1000l);
+    Map<String, String> result =veniceAdmin.findAllBootstrappingVersions(clusterName);
+    Assert.assertEquals(result.size(), 2, "We should have 2 versions which have bootstrapping replicas.");
+    Assert.assertEquals(result.get(Version.composeKafkaTopic(storeName, 1)), VersionStatus.ONLINE.toString(), "version 1 has been ONLINE, but we stopped participant which will ask replica to bootstrap again.");
+    Assert.assertEquals(result.get(Version.composeKafkaTopic(storeName, 2)), VersionStatus.STARTED.toString(), "version 2 has been started, replica is bootstrapping.");
+
+  }
 }

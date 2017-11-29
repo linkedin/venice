@@ -55,7 +55,7 @@ public class MockTestStateModelFactory extends StateModelFactory<StateModel> {
   public static class OnlineOfflineStateModel extends StateModel {
     private boolean isDelay;
     private boolean isError;
-    private CountDownLatch latch = new CountDownLatch(1);
+    private CountDownLatch latch;
 
     OnlineOfflineStateModel(boolean isDelay) {
       this.isDelay = isDelay;
@@ -63,6 +63,7 @@ public class MockTestStateModelFactory extends StateModelFactory<StateModel> {
 
     @Transition(from = "OFFLINE", to = "BOOTSTRAP")
     public void onBecomeBootstrapFromOffline(Message message, NotificationContext context) {
+      latch = new CountDownLatch(1);
     }
 
     @Transition(from = "BOOTSTRAP", to = "ONLINE")

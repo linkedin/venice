@@ -14,6 +14,7 @@ import org.apache.kafka.clients.consumer.Consumer;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.common.TopicPartition;
+import org.apache.log4j.Logger;
 
 
 /**
@@ -21,6 +22,7 @@ import org.apache.kafka.common.TopicPartition;
  */
 @NotThreadsafe
 public class ApacheKafkaConsumer implements KafkaConsumerWrapper {
+  private static final Logger logger = Logger.getLogger(ApacheKafkaConsumer.class);
   private final Consumer kafkaConsumer;
   public ApacheKafkaConsumer(Properties props) {
     this.kafkaConsumer = new KafkaConsumer(props);
@@ -59,6 +61,10 @@ public class ApacheKafkaConsumer implements KafkaConsumerWrapper {
       topicPartitionList.add(topicPartition);
       kafkaConsumer.assign(topicPartitionList);
       seek(topicPartition, offset);
+      logger.info("Subscribed to Topic: " + topic + " Partition: " + partition + " Offset: " + offset.toString());
+    } else {
+      logger.warn("Already subscribed on Topic: " + topic + " Partition: " + partition
+          + ", ignore the request of subscription.");
     }
   }
 

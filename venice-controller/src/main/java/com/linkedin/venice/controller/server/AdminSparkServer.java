@@ -163,6 +163,7 @@ public class AdminSparkServer extends AbstractVeniceService {
     httpService.get(SET_MIGRATION_PUSH_STRATEGY.getPath(), MigrationRoutes.setMigrationPushStrategy(admin));
 
     httpService.get(CLUSTER_DISCOVERY.getPath(), ClusterDiscovery.discoverCluster(admin));
+    httpService.get(LIST_BOOTSTRAPPING_VERSIONS.getPath(), VersionRoute.listBootstrappingVersions(admin));
 
     httpService.awaitInitialization(); // Wait for server to be initialized
 
