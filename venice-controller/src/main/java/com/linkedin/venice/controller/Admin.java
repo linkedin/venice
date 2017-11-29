@@ -340,5 +340,10 @@ public interface Admin {
      */
     Pair<String, String> discoverCluster(String storeName);
 
+    /**
+     * Find the store versions which have at least one bootstrap replica.
+     */
+    Map<String, String> findAllBootstrappingVersions(String clusterName);
+
     void close();
 }

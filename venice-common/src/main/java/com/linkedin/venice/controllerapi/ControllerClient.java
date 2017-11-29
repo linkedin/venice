@@ -729,6 +729,17 @@ public class ControllerClient implements Closeable {
     }
   }
 
+  public MultiVersionStatusResponse listBootstrappingVersions(){
+    try {
+      List<NameValuePair> queryParams = newParams(clusterName);
+      String responseJson = getRequest(ControllerRoute.LIST_BOOTSTRAPPING_VERSIONS.getPath(), queryParams);
+      return mapper.readValue(responseJson, MultiVersionStatusResponse.class);
+    }catch (Exception e){
+      return handleError(new VeniceException("Error listing bootstrapping versions.", e),
+          new MultiVersionStatusResponse());
+    }
+  }
+
   public static D2ServiceDiscoveryResponse discoverCluster(String veniceUrls, String storeName) {
     List<String> urlList = Arrays.asList(veniceUrls.split(","));
     Exception lastException = null;

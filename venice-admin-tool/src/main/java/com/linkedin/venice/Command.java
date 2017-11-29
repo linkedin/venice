@@ -103,7 +103,9 @@ public enum Command {
   GET_MIGRATION_PUSH_STRATEGY("get-migration-push-strategy", "Get migration push strategy for the specified voldemort"
       + " store", new Arg[] {Arg.URL, Arg.CLUSTER, Arg.VOLDEMORT_STORE}),
   SET_MIGRATION_PUSH_STRATEGY("set-migration-push-strategy", "Setup migration push strategy for the specified voldemort"
-      + " store", new Arg[] {Arg.URL, Arg.CLUSTER, Arg.VOLDEMORT_STORE, Arg.MIGRATION_PUSH_STRATEGY});
+      + " store", new Arg[] {Arg.URL, Arg.CLUSTER, Arg.VOLDEMORT_STORE, Arg.MIGRATION_PUSH_STRATEGY}),
+  LIST_BOOTSTRAPPING_VERSIONS("list-bootstrapping-versions",
+      "List all versions which have at least one bootstrapping replica.", new Arg[]{Arg.URL, Arg.CLUSTER});
 
 
   private final String commandName;

@@ -1247,6 +1247,11 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   @Override
+  public Map<String, String> findAllBootstrappingVersions(String clusterName) {
+    throw new VeniceUnsupportedOperationException("findAllBootstrappingVersions");
+  }
+
+  @Override
   public synchronized void stop(String clusterName) {
     veniceHelixAdmin.stop(clusterName);
     // Close the admin producer for this cluster

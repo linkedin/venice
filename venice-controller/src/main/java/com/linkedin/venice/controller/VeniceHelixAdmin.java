@@ -1693,6 +1693,43 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         return new Pair<>(clusterName, d2Service);
     }
 
+    @Override
+    public Map<String, String> findAllBootstrappingVersions(String clusterName) {
+        checkControllerMastership(clusterName);
+        Map<String, String> result = new HashMap<>();
+        // Find all ongoing offline pushes at first.
+        OfflinePushMonitor monitor = getVeniceHelixResource(clusterName).getOfflinePushMonitor();
+        monitor.getTopicsOfOngoingOfflinePushes().forEach(topic -> result.put(topic, VersionStatus.STARTED.toString()));
+        // Find the versions which had been ONLINE, but some of replicas are still bootstrapping due to:
+        // 1. As we use N-1 strategy, so there might be some slow replicas caused by kafka or other issues.
+        // 2. Storage node was added/removed/disconnected, so replicas need to bootstrap again on the same or orther node.
+        RoutingDataRepository routingDataRepository = getVeniceHelixResource(clusterName).getRoutingDataRepository();
+        ReadWriteStoreRepository storeRepository = getVeniceHelixResource(clusterName).getMetadataRepository();
+        ResourceAssignment resourceAssignment = routingDataRepository.getResourceAssignment();
+        for (String topic : resourceAssignment.getAssignedResources()) {
+            if (result.containsKey(topic)) {
+                continue;
+            }
+            PartitionAssignment partitionAssignment = resourceAssignment.getPartitionAssignment(topic);
+            for (Partition p : partitionAssignment.getAllPartitions()) {
+                if (p.getBootstrapInstances().size() > 0) {
+                    String storeName = Version.parseStoreFromKafkaTopicName(topic);
+                    VersionStatus status;
+                    Store store = storeRepository.getStore(storeName);
+                    if (store != null) {
+                        status = store.getVersionStatus(Version.parseVersionFromKafkaTopicName(topic));
+                    } else {
+                        status = VersionStatus.NOT_CREATED;
+                    }
+                    result.put(topic, status.toString());
+                    // Found at least one bootstrap replica, skip to next topic.
+                    break;
+                }
+            }
+        }
+        return result;
+    }
+
     protected void startMonitorOfflinePush(String clusterName, String kafkaTopic, int numberOfPartition,
         int replicationFactor, OfflinePushStrategy strategy) {
         OfflinePushMonitor offlinePushMonitor = getVeniceHelixResource(clusterName).getOfflinePushMonitor();

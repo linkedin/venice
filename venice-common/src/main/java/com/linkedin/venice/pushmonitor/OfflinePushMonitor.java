@@ -185,6 +185,21 @@ public class OfflinePushMonitor implements OfflinePushAccessor.PartitionStatusLi
   }
 
   /**
+   * Find all ongoing offline pushes then return the topics associated to those pushes.
+   */
+  public List<String> getTopicsOfOngoingOfflinePushes(){
+    List<String> result = new ArrayList<>();
+    synchronized (lock) {
+      result.addAll(topicToPushMap.values()
+          .stream()
+          .filter(status -> status.getCurrentStatus().equals(ExecutionStatus.STARTED))
+          .map(OfflinePushStatus::getKafkaTopic)
+          .collect(Collectors.toList()));
+    }
+    return result;
+  }
+
+  /**
    * Get the status for the given offline push E.g. STARTED, COMPLETED.
    */
   public ExecutionStatus getOfflinePushStatus(String topic) {

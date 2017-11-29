@@ -13,6 +13,7 @@ import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.controllerapi.MultiStoreResponse;
 import com.linkedin.venice.controllerapi.MultiStoreStatusResponse;
 import com.linkedin.venice.controllerapi.MultiVersionResponse;
+import com.linkedin.venice.controllerapi.MultiVersionStatusResponse;
 import com.linkedin.venice.controllerapi.NewStoreResponse;
 import com.linkedin.venice.controllerapi.NodeStatusResponse;
 import com.linkedin.venice.controllerapi.OwnerResponse;
@@ -224,6 +225,8 @@ public class AdminTool {
         getMigrationPushStrategy(cmd);
       } else if (cmd.hasOption(Command.SET_MIGRATION_PUSH_STRATEGY.toString())) {
         setMigrationPushStrategy(cmd);
+      } else if (cmd.hasOption(Command.LIST_BOOTSTRAPPING_VERSIONS.toString())) {
+        listBootstrappingVersions(cmd);
       } else {
         StringJoiner availableCommands = new StringJoiner(", ");
         for (Command c : Command.values()){
@@ -566,6 +569,11 @@ public class AdminTool {
             VsonAvroSchemaAdapter.parse(valueSchemaStr).toString()));
 
     System.exit(1);
+  }
+
+  private static void listBootstrappingVersions(CommandLine cmd) {
+    MultiVersionStatusResponse response = controllerClient.listBootstrappingVersions();
+    printObject(response);
   }
 
 
