@@ -71,6 +71,12 @@ public class ApacheKafkaProducer implements KafkaProducerWrapper {
     // Block if buffer is full
     ensureMandatoryProp(properties, ProducerConfig.MAX_BLOCK_MS_CONFIG, String.valueOf(Long.MAX_VALUE));
 
+    if (properties.contains(ProducerConfig.COMPRESSION_TYPE_CONFIG)) {
+      LOGGER.info("Compression type explicitly specified by config: " + properties.getProperty(ProducerConfig.COMPRESSION_TYPE_CONFIG));
+    } else {
+      properties.put(ProducerConfig.COMPRESSION_TYPE_CONFIG, "lz4");
+    }
+
     //Setup ssl config if needed.
     if (validateAndCopyKafakaSSLConfig(props, properties)) {
       LOGGER.info("Will initialize an SSL Kafka producer");
