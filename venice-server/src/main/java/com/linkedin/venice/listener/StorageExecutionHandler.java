@@ -18,7 +18,6 @@ import io.netty.channel.ChannelHandler;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
 import io.netty.handler.codec.http.HttpResponseStatus;
-import io.tehuti.utils.Time;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;

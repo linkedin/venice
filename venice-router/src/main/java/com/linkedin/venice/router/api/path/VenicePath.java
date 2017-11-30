@@ -14,6 +14,7 @@ public abstract class VenicePath implements ResourcePath<RouterKey> {
   private Collection<RouterKey> partitionKeys;
   private final String storeName;
   private int versionNumber;
+  private String selectedHost;
 
   public VenicePath(String resourceName) {
     this.resourceName = resourceName;
@@ -23,6 +24,18 @@ public abstract class VenicePath implements ResourcePath<RouterKey> {
 
   protected void setPartitionKeys(Collection<RouterKey> keys) {
     this.partitionKeys = keys;
+  }
+
+  public void setSelectedHost(String selectedHost) {
+    this.selectedHost = selectedHost;
+  }
+
+  public String getSelectedHost() {
+    return this.selectedHost;
+  }
+
+  public boolean isFirstTry() {
+    return this.selectedHost == null;
   }
 
   @Nonnull

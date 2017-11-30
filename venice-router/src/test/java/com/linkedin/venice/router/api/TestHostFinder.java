@@ -15,6 +15,7 @@ import org.testng.Assert;
 import org.testng.annotations.Test;
 
 public class TestHostFinder {
+  public static final HostHealthMonitor NULL_HOST_HEALTH_MONITOR = (hostName, partitionName) -> true;
   @Test
   public void hostFinderShouldFindHosts(){
     RoutingDataRepository mockRepo = Mockito.mock(RoutingDataRepository.class);
@@ -28,12 +29,19 @@ public class TestHostFinder {
     HostHealthMonitor mockHostHealthMonitor = mock(HostHealthMonitor.class);
     doReturn(true).when(mockHostHealthMonitor).isHostHealthy(any(), any());
 
-    VeniceHostFinder finder = new VeniceHostFinder(mockRepo, false, false, null, null, mockHostHealthMonitor);
+    VeniceHostFinder finder = new VeniceHostFinder(mockRepo, false, false,
+        mock(AggRouterHttpRequestStats.class), mock(AggRouterHttpRequestStats.class), mockHostHealthMonitor);
 
-    List<Instance> hosts = finder.findHosts("get", "store_v0", "store_v0_3", null, null);
+    List<Instance> hosts = finder.findHosts("get", "store_v0", "store_v0_3", NULL_HOST_HEALTH_MONITOR, null);
     Assert.assertEquals(hosts.size(), 2);
     Assert.assertEquals(hosts.get(0).getHost(), "localhost1");
     Assert.assertEquals(hosts.get(1).getHost(), "localhost2");
+
+    // Mark dummyInstance1 as unhealthy
+    HostHealthMonitor<Instance> anotherHostHealthyMonitor = ((hostName, partitionName) -> !hostName.equals(dummyInstance1));
+    hosts = finder.findHosts("get", "store_v0", "store_v0_3", anotherHostHealthyMonitor, null);
+    Assert.assertEquals(hosts.size(), 1);
+    Assert.assertEquals(hosts.get(0).getHost(), "localhost2");
   }
 
   @Test
@@ -58,7 +66,7 @@ public class TestHostFinder {
     partitionHostMapping.put(4, "host_1");
     partitionHostMapping.put(5, "host_2");
     partitionHostMapping.forEach((partitionId, expectedHost) -> {
-      List<Instance> hosts = finder.findHosts("get", "store_v0", "store_v0_" + partitionId, null, null);
+      List<Instance> hosts = finder.findHosts("get", "store_v0", "store_v0_" + partitionId, NULL_HOST_HEALTH_MONITOR, null);
       Assert.assertEquals(hosts.size(), 1);
       Assert.assertEquals(hosts.get(0).getHost(), expectedHost);
     });
@@ -91,7 +99,7 @@ public class TestHostFinder {
     partitionHostMapping.put(4, "host_0");
     partitionHostMapping.put(5, "host_2");
     partitionHostMapping.forEach((partitionId, expectedHost) -> {
-      List<Instance> hosts = finder.findHosts("get", "store_v0", "store_v0_" + partitionId, null, null);
+      List<Instance> hosts = finder.findHosts("get", "store_v0", "store_v0_" + partitionId, NULL_HOST_HEALTH_MONITOR, null);
       Assert.assertEquals(hosts.size(), 1);
       Assert.assertEquals(hosts.get(0).getHost(), expectedHost);
     });

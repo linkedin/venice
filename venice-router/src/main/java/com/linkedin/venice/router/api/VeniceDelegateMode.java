@@ -11,6 +11,7 @@ import com.linkedin.ddsstorage.router.api.ScatterGatherMode;
 import com.linkedin.ddsstorage.router.api.ScatterGatherRequest;
 import com.linkedin.venice.exceptions.QuotaExceededException;
 import com.linkedin.venice.meta.Instance;
+import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.router.api.path.VenicePath;
 import com.linkedin.venice.router.throttle.ReadRequestThrottler;
 import java.util.List;
@@ -77,8 +78,23 @@ public class VeniceDelegateMode extends ScatterGatherMode {
             INTERNAL_SERVER_ERROR, "Unknown request type: " + venicePath.getRequestType());
     }
 
+    HostHealthMonitor<H> actualHostHealthMonitor = venicePath.isFirstTry() ? hostHealthMonitor :
+        (host, partitionName) -> {
+          /**
+           * Skip previously selected host
+           * Here we could not use the logic inside here: {@link com.linkedin.ddsstorage.router.ScatterGatherRequestHandlerImpl#prepareRetry}
+           * to filter out the previous selected host because the filtering logic in DDS Router framework is happening
+           * after scattering, but Venice needs to decide the selected one inside scatter/gather mode for throttling.
+           */
+          Instance instance = (Instance)host;
+          if (instance.getNodeId().equals(venicePath.getSelectedHost())) {
+            return false;
+          }
+
+          return hostHealthMonitor.isHostHealthy(host, partitionName);
+        };
     Scatter finalScatter = scatterMode.scatter(scatter, requestMethod, resourceName, partitionFinder, hostFinder,
-        hostHealthMonitor, roles, metrics);
+        actualHostHealthMonitor, roles, metrics);
     int offlineRequestNum = scatter.getOfflineRequestCount();
     if (offlineRequestNum > 0) {
       throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(Optional.of(storeName), Optional.of(venicePath.getRequestType()),
@@ -105,6 +121,18 @@ public class VeniceDelegateMode extends ScatterGatherMode {
             INTERNAL_SERVER_ERROR, "Ready-to-serve host must be an 'Instance'");
       }
       Instance veniceInstance = (Instance)host;
+      if (venicePath.getRequestType().equals(RequestType.SINGLE_GET)) {
+        venicePath.setSelectedHost(veniceInstance.getNodeId());
+      } else {
+        /**
+         * TODO: batch-get
+         *
+         * For batch-get, the difficult part is to persist the previous selected host for each part when doing retry.
+         * And we don't know whether the retry will make it better since the retry request could scatter out several
+         * storage node requests.
+          */
+      }
+
       int keyCount = part.getPartitionKeys().size();
       try {
         readRequestThrottler.mayThrottleRead(storeName, keyCount * readRequestThrottler.getReadCapacity(),

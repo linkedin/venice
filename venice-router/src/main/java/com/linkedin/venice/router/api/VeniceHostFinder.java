@@ -121,7 +121,7 @@ public class VeniceHostFinder implements HostFinder<Instance, VeniceRole> {
        *
        * TODO: Sticky routing might be more preferable for hybrid store than measuring offset lag.
        */
-      if (instanceHealthMonitor.isHostHealthy(instance, partitionName)) {
+      if (instanceHealthMonitor.isHostHealthy(instance, partitionName) && hostHealthMonitor.isHostHealthy(instance, partitionName)) {
         newHosts.add(instance);
       } else {
         currentStats.recordFindUnhealthyHostRequest(storeName);
@@ -131,6 +131,7 @@ public class VeniceHostFinder implements HostFinder<Instance, VeniceRole> {
     if (hostCount <= 1 ||
         isSingleGet && !isStickyRoutingEnabledForSingleGet || // single-get but sticky routing is not enabled
         !isSingleGet && !isStickyRoutingEnabledForMultiGet) { // multi-get but sticky routing is not enabled
+
       /**
        * Zero available host issue is handled by {@link VeniceDelegateMode} by checking whether there is any 'offline request'.
        */

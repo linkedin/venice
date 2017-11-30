@@ -7,9 +7,11 @@ import com.linkedin.venice.helix.ZkRoutersClusterManager;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.TestUtils;
+import io.tehuti.metrics.MetricsRepository;
 import java.io.File;
 import java.util.ArrayList;
 import java.util.Optional;
+import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 
 import static com.linkedin.venice.ConfigKeys.*;
@@ -38,7 +40,8 @@ public class VeniceRouterWrapper extends ProcessWrapper {
     this.sslToStorageNode = sslToStorageNode;
   }
 
-  static StatefulServiceProvider<VeniceRouterWrapper> generateService(String clusterName, KafkaBrokerWrapper kafkaBrokerWrapper, boolean sslToStorageNodes) {
+  static StatefulServiceProvider<VeniceRouterWrapper> generateService(String clusterName,
+      KafkaBrokerWrapper kafkaBrokerWrapper, boolean sslToStorageNodes, Properties properties) {
     // TODO: Once the ZK address used by Controller and Kafka are decoupled, change this
     String zkAddress = kafkaBrokerWrapper.getZkAddress();
 
@@ -54,7 +57,8 @@ public class VeniceRouterWrapper extends ProcessWrapper {
           .put(ROUTER_CONNECTION_LIMIT, 20)
           .put(ROUTER_HTTP_CLIENT_POOL_SIZE, 2)
           .put(ROUTER_MAX_OUTGOING_CONNECTION_PER_ROUTE, 2)
-          .put(ROUTER_MAX_OUTGOING_CONNECTION, 10);
+          .put(ROUTER_MAX_OUTGOING_CONNECTION, 10)
+          .put(properties);
       RouterServer router = new RouterServer(builder.build(), new ArrayList<>(), Optional.empty(), Optional.of(SslUtils.getLocalSslFactory()));
       return new VeniceRouterWrapper(serviceName, dataDirectory, router, clusterName, port, zkAddress, sslToStorageNodes);
     };
@@ -115,6 +119,10 @@ public class VeniceRouterWrapper extends ProcessWrapper {
 
   public ZkRoutersClusterManager getRoutersClusterManager() {
     return service.getRoutersClusterManager();
+  }
+
+  public MetricsRepository getMetricsRepository() {
+    return service.getMetricsRepository();
   }
 
   private static int sslPortFromPort(int port) {

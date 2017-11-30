@@ -6,6 +6,7 @@ import com.linkedin.ddsstorage.base.concurrency.TimeoutProcessor;
 import com.linkedin.ddsstorage.base.concurrency.impl.SuccessAsyncFuture;
 import com.linkedin.ddsstorage.base.registry.ResourceRegistry;
 import com.linkedin.ddsstorage.base.registry.ShutdownableExecutors;
+import com.linkedin.ddsstorage.router.api.LongTailRetrySupplier;
 import com.linkedin.ddsstorage.router.api.ScatterGatherHelper;
 import com.linkedin.ddsstorage.router.impl.Router;
 import com.linkedin.ddsstorage.router.lnkd.netty4.SSLInitializer;
@@ -36,6 +37,7 @@ import com.linkedin.venice.router.api.VeniceRoleFinder;
 import com.linkedin.venice.router.api.VeniceVersionFinder;
 import com.linkedin.venice.router.stats.AggRouterHttpRequestStats;
 import com.linkedin.venice.router.throttle.ReadRequestThrottler;
+import com.linkedin.venice.router.utils.VeniceRouterUtils;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.stats.TehutiUtils;
 import com.linkedin.venice.utils.DaemonThreadFactory;
@@ -57,6 +59,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import java.util.function.LongSupplier;
+import javax.annotation.Nonnull;
 import org.apache.helix.HelixManager;
 import org.apache.helix.InstanceType;
 import org.apache.helix.manager.zk.ZKHelixManager;
@@ -71,6 +74,7 @@ public class RouterServer extends AbstractVeniceService {
   private final List<D2Server> d2ServerList;
   private final AggRouterHttpRequestStats statsForSingleGet;
   private final AggRouterHttpRequestStats statsForMultiGet;
+  private final MetricsRepository metricsRepository;
   private final Optional<SSLEngineComponentFactory> sslFactory;
   private final Optional<DynamicAccessController> accessController;
 
@@ -194,6 +198,7 @@ public class RouterServer extends AbstractVeniceService {
       this.manager = new ZKHelixManager(config.getClusterName(), null, InstanceType.SPECTATOR, config.getZkConnection());
     }
 
+    this.metricsRepository = metricsRepository;
     this.statsForSingleGet = new AggRouterHttpRequestStats(metricsRepository, RequestType.SINGLE_GET);
     this.statsForMultiGet = new AggRouterHttpRequestStats(metricsRepository, RequestType.MULTI_GET);
 
@@ -201,6 +206,10 @@ public class RouterServer extends AbstractVeniceService {
     this.accessController= accessController;
     this.sslFactory = sslFactory;
     verifySslOk();
+  }
+
+  public MetricsRepository getMetricsRepository() {
+    return this.metricsRepository;
   }
 
   /**
@@ -262,7 +271,24 @@ public class RouterServer extends AbstractVeniceService {
         liveInstanceMonitor);
 
     // Fixed retry future
-    AsyncFuture<LongSupplier> retryFuture = new SuccessAsyncFuture<>(() -> config.getLongTailRetryThresholdMs());
+    AsyncFuture<LongSupplier> singleGetRetryFuture = new SuccessAsyncFuture<>(() -> config.getLongTailRetryForSingleGetThresholdMs());
+    LongTailRetrySupplier retrySupplier = new LongTailRetrySupplier() {
+      @Nonnull
+      @Override
+      public AsyncFuture<LongSupplier> getLongTailRetryMilliseconds(@Nonnull String resourceName,
+          @Nonnull String methodName) {
+        if (VeniceRouterUtils.isHttpGet(methodName)) {
+          // single-get
+          return singleGetRetryFuture;
+        } else {
+          /**
+           * Long tail retry is not enabled for batch-get.
+           * TODO: figure out a proper way to enable long-tail retry for batch-get.
+           */
+          return AsyncFuture.cancelled();
+        }
+      }
+    };
 
     /**
      * No need to setup {@link com.linkedin.ddsstorage.router.api.HostHealthMonitor} here since
@@ -277,10 +303,8 @@ public class RouterServer extends AbstractVeniceService {
         .scatterMode(scatterGatherMode)
         .responseAggregatorFactory(new VeniceResponseAggregator(statsForSingleGet, statsForMultiGet, metadataRepository))
         .metricsProvider(new VeniceMetricsProvider())
-        /**
-         * TODO: need to figure out a proper way to enable long-tail retry
-         */
-        //.longTailRetrySupplier((resourceName, methodName) -> retryFuture) // TODO: add metric to track retries
+        .longTailRetrySupplier(retrySupplier)
+        .scatterGatherStatsProvider(statsForSingleGet) // TODO: need to check this logic when enabling batch-get retry
         .build();
 
     router = Router.builder(scatterGather)

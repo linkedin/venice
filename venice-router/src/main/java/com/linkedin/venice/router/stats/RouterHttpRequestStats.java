@@ -1,7 +1,9 @@
 package com.linkedin.venice.router.stats;
 
+import com.linkedin.ddsstorage.router.monitoring.ScatterGatherStats;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.stats.AbstractVeniceHttpStats;
+import com.linkedin.venice.stats.LambdaStat;
 import com.linkedin.venice.stats.TehutiUtils;
 import io.tehuti.metrics.MetricsRepository;
 import io.tehuti.metrics.Sensor;
@@ -28,7 +30,8 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
   private final Sensor findUnhealthyHostRequestSensor;
 
   //QPS metrics
-  public RouterHttpRequestStats(MetricsRepository metricsRepository, String storeName, RequestType requestType) {
+  public RouterHttpRequestStats(MetricsRepository metricsRepository, String storeName, RequestType requestType,
+      ScatterGatherStats scatterGatherStats) {
     super(metricsRepository, storeName, requestType);
 
     requestSensor = registerSensor("request", new Count(), new OccurrenceRate());
@@ -51,6 +54,11 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
         TehutiUtils.getPercentileStat(getName(), getFullMetricName("decompression_time")), new Avg());
     quotaSensor = registerSensor("read_quota_per_router", new Gauge());
     findUnhealthyHostRequestSensor = registerSensor("find_unhealthy_host_request", new OccurrenceRate());
+
+    registerSensor("retry_count", new LambdaStat(() -> scatterGatherStats.getTotalRetries()));
+    registerSensor("retry_slower_than_original_count", new LambdaStat( () -> scatterGatherStats.getTotalRetriesDiscarded()));
+    registerSensor("retry_error_count", new LambdaStat( () -> scatterGatherStats.getTotalRetriesError()));
+    registerSensor("retry_faster_than_original_count", new LambdaStat( () -> scatterGatherStats.getTotalRetriesWinner()));
   }
 
   public void recordRequest() {
