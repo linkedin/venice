@@ -170,7 +170,13 @@ public class ServiceFactory {
    */
   static VeniceRouterWrapper getVeniceRouter(String clusterName, KafkaBrokerWrapper kafkaBrokerWrapper, boolean sslToStorageNodes){
     return getService(VeniceRouterWrapper.SERVICE_NAME,
-      VeniceRouterWrapper.generateService(clusterName, kafkaBrokerWrapper, sslToStorageNodes));
+      VeniceRouterWrapper.generateService(clusterName, kafkaBrokerWrapper, sslToStorageNodes, new Properties()));
+  }
+
+  static VeniceRouterWrapper getVeniceRouter(String clusterName, KafkaBrokerWrapper kafkaBrokerWrapper,
+      boolean sslToStorageNodes, Properties properties){
+    return getService(VeniceRouterWrapper.SERVICE_NAME,
+        VeniceRouterWrapper.generateService(clusterName, kafkaBrokerWrapper, sslToStorageNodes, properties));
   }
 
   public static MockVeniceRouterWrapper getMockVeniceRouter(String zkAddress, boolean sslToStorageNodes){

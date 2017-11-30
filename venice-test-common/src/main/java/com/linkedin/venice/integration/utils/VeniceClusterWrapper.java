@@ -23,6 +23,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Properties;
 import java.util.StringJoiner;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -231,8 +232,9 @@ public class VeniceClusterWrapper extends ProcessWrapper {
     return veniceControllerWrapper;
   }
 
-  public VeniceRouterWrapper addVeniceRouter() {
-    VeniceRouterWrapper veniceRouterWrapper = ServiceFactory.getVeniceRouter(clusterName, kafkaBrokerWrapper, sslToStorageNodes);
+  public VeniceRouterWrapper addVeniceRouter(Properties properties) {
+    VeniceRouterWrapper veniceRouterWrapper = ServiceFactory.getVeniceRouter(clusterName, kafkaBrokerWrapper,
+        sslToStorageNodes, properties);
     veniceRouterWrappers.put(veniceRouterWrapper.getPort(), veniceRouterWrapper);
     return veniceRouterWrapper;
   }

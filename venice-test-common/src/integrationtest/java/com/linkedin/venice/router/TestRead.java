@@ -1,5 +1,6 @@
 package com.linkedin.venice.router;
 
+import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
@@ -11,6 +12,7 @@ import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
+import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.router.api.VenicePathParser;
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
@@ -21,12 +23,15 @@ import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.VeniceWriter;
+import io.tehuti.Metric;
+import io.tehuti.metrics.MetricsRepository;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
@@ -72,7 +77,11 @@ public class TestRead {
     System.setProperty("io.netty.leakDetection.level", "paranoid");
 
     Utils.thisIsLocalhost();
-    veniceCluster = ServiceFactory.getVeniceCluster(1, 3, 1, 2, 100, true, false);
+    veniceCluster = ServiceFactory.getVeniceCluster(1, 3, 0, 2, 100, true, false);
+    // To trigger long-tail retry
+    Properties routerProperties = new Properties();
+    routerProperties.put(ConfigKeys.ROUTER_LONG_TAIL_RETRY_FOR_SINGLE_GET_THRESHOLD_MS, 2);
+    veniceCluster.addVeniceRouter(routerProperties);
     routerAddr = veniceCluster.getRandomRouterSslURL();
 
     // Create test store
@@ -106,7 +115,7 @@ public class TestRead {
     IOUtils.closeQuietly(veniceWriter);
   }
 
-  @Test(timeOut = 20000)
+  @Test(timeOut = 50000)
   public void testRead() throws Exception {
     final int pushVersion = Version.parseVersionFromKafkaTopicName(storeVersionName);
 
@@ -150,7 +159,6 @@ public class TestRead {
       for (int i = 0; i < 10; ++i) {
         Assert.assertEquals(result.get(keyPrefix + i).toString(), valuePrefix + i);
       }
-
       /**
        * Test simple get
        */
@@ -159,6 +167,17 @@ public class TestRead {
       CharSequence value = storeClient.get(key).get();
       Assert.assertEquals(value.toString(), expectedValue);
     }
+
+    // Check retry requests
+    double singleGetRetries = 0;
+    for (VeniceRouterWrapper veniceRouterWrapper : veniceCluster.getVeniceRouters()) {
+      MetricsRepository metricsRepository = veniceRouterWrapper.getMetricsRepository();
+      Map<String, ? extends Metric> metrics = metricsRepository.metrics();
+      if (metrics.containsKey(".total--retry_count.LambdaStat")) {
+        singleGetRetries += metrics.get(".total--retry_count.LambdaStat").value();
+      }
+    }
+    Assert.assertTrue(singleGetRetries > 0, "After " + rounds + " reads, there should be some retry requests");
   }
 
   @Test

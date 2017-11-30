@@ -22,7 +22,7 @@ public class VeniceRouterConfig {
   private int heartbeatTimeoutMs;
   private boolean sslToStorageNodes;
   private long maxReadCapacityCu;
-  private int longTailRetryThresholdMs;
+  private int longTailRetryForSingleGetThresholdMs;
   private int maxKeyCountInMultiGetReq;
   private int connectionLimit;
   private int httpClientPoolSize;
@@ -55,7 +55,7 @@ public class VeniceRouterConfig {
     heartbeatTimeoutMs = props.getInt(HEARTBEAT_TIMEOUT, 1000); //1s
     sslToStorageNodes = props.getBoolean(SSL_TO_STORAGE_NODES, false); // disable ssl on path to stroage node by default.
     maxReadCapacityCu = props.getLong(MAX_READ_CAPCITY, 100000); //100000 CU
-    longTailRetryThresholdMs = props.getInt(ROUTER_LONG_TAIL_RETRY_THRESHOLD_MS, 30); //30 ms
+    longTailRetryForSingleGetThresholdMs = props.getInt(ROUTER_LONG_TAIL_RETRY_FOR_SINGLE_GET_THRESHOLD_MS, 15); //15 ms
     maxKeyCountInMultiGetReq = props.getInt(ROUTER_MAX_KEY_COUNT_IN_MULTIGET_REQ, 500);
     connectionLimit = props.getInt(ROUTER_CONNECTION_LIMIT, 10000);
     httpClientPoolSize = props.getInt(ROUTER_HTTP_CLIENT_POOL_SIZE, 12);
@@ -110,8 +110,8 @@ public class VeniceRouterConfig {
     return maxReadCapacityCu;
   }
 
-  public int getLongTailRetryThresholdMs() {
-    return longTailRetryThresholdMs;
+  public int getLongTailRetryForSingleGetThresholdMs() {
+    return longTailRetryForSingleGetThresholdMs;
   }
 
   public int getMaxKeyCountInMultiGetReq() {

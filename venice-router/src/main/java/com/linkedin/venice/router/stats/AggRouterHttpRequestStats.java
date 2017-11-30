@@ -1,13 +1,34 @@
 package com.linkedin.venice.router.stats;
 
+import com.linkedin.ddsstorage.router.monitoring.ScatterGatherStats;
+import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.stats.AbstractVeniceAggStats;
 import io.tehuti.metrics.MetricsRepository;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Function;
 
-public class AggRouterHttpRequestStats extends AbstractVeniceAggStats<RouterHttpRequestStats>{
+
+public class AggRouterHttpRequestStats extends AbstractVeniceAggStats<RouterHttpRequestStats> implements Function<String, ScatterGatherStats> {
+  private final Map<String, ScatterGatherStats> scatterGatherStatsMap = new ConcurrentHashMap<>();
+
   public AggRouterHttpRequestStats(MetricsRepository metricsRepository, RequestType requestType) {
-    super(metricsRepository,
-        (metricsRepo, storeName) -> new RouterHttpRequestStats(metricsRepo, storeName, requestType));
+    super(metricsRepository);
+    /**
+     * Use a setter function to bypass the restriction that the supertype constructor could not
+     * touch member fields of current object.
+     */
+    setStatsSupplier((metricsRepo, storeName) -> {
+      ScatterGatherStats stats;
+      if (storeName.equals(AbstractVeniceAggStats.STORE_NAME_FOR_TOTAL_STAT)) {
+        stats = new AggScatterGatherStats();
+      } else {
+        stats = scatterGatherStatsMap.computeIfAbsent(storeName, k -> new ScatterGatherStats());
+      }
+
+      return new RouterHttpRequestStats(metricsRepo, storeName, requestType, stats);
+    });
   }
 
   public void recordRequest(String storeName) {
@@ -88,5 +109,42 @@ public class AggRouterHttpRequestStats extends AbstractVeniceAggStats<RouterHttp
   public void recordFindUnhealthyHostRequest(String storeName) {
     totalStats.recordFindUnhealthyHostRequest();
     getStoreStats(storeName).recordFindUnhealthyHostRequest();
+  }
+
+  @Override
+  public ScatterGatherStats apply(String resourceName) {
+    String storeName = Version.parseStoreFromKafkaTopicName(resourceName);
+    return scatterGatherStatsMap.computeIfAbsent(storeName, k -> new ScatterGatherStats());
+  }
+
+  private class AggScatterGatherStats extends ScatterGatherStats {
+
+    private long getAggStats(Function<ScatterGatherStats, Long> func) {
+      long total = 0;
+      for (ScatterGatherStats stats : scatterGatherStatsMap.values()) {
+        total += func.apply(stats);
+      }
+      return total;
+    }
+
+    @Override
+    public long getTotalRetries() {
+      return getAggStats(stats -> stats.getTotalRetries());
+    }
+
+    @Override
+    public long getTotalRetriesDiscarded() {
+      return getAggStats(stats -> stats.getTotalRetriesDiscarded());
+    }
+
+    @Override
+    public long getTotalRetriesWinner() {
+      return getAggStats(stats -> stats.getTotalRetriesWinner());
+    }
+
+    @Override
+    public long getTotalRetriesError() {
+      return getAggStats(stats -> stats.getTotalRetriesError());
+    }
   }
 }

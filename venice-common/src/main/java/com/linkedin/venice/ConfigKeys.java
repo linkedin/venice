@@ -124,11 +124,11 @@ public class ConfigKeys {
   public static final String SSL_TO_STORAGE_NODES = "sslToStorageNodes";
   /**
    * After this amount of time, DDS Router will retry once for the slow storage node request.
-   * We could explore specifying different thresholds for single-get and multi-get later on.
    *
    * Practically, we need to manually select the threshold (e.g. P95) for retrying based on latency metrics.
    */
-  public static final String ROUTER_LONG_TAIL_RETRY_THRESHOLD_MS = "router.long.tail.retry.threshold.ms";
+  public static final String ROUTER_LONG_TAIL_RETRY_FOR_SINGLE_GET_THRESHOLD_MS = "router.long.tail.retry.for.single.get.threshold.ms";
+
   /**
    * The max key count allowed in one multi-get request.
    * For now, it is configured in host level, and we could consider to configure it in store level.

@@ -27,6 +27,7 @@ import com.linkedin.venice.pushmonitor.OfflinePushMonitor;
 import com.linkedin.venice.replication.TopicReplicator;
 import com.linkedin.venice.schema.SchemaData;
 import com.linkedin.venice.schema.SchemaEntry;
+import com.linkedin.venice.stats.AbstractVeniceAggStats;
 import com.linkedin.venice.status.StatusMessageChannel;
 import com.linkedin.venice.utils.*;
 import io.tehuti.metrics.MetricsRepository;
@@ -321,6 +322,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
     protected void checkPreConditionForAddStore(String clusterName, String storeName, String keySchema, String valueSchema) {
         checkControllerMastership(clusterName);
+        if (storeName.equals(AbstractVeniceAggStats.STORE_NAME_FOR_TOTAL_STAT)) {
+            throw new VeniceException("Store name: " + storeName + " clashes with the internal usage, please change it");
+        }
         // Before creating store, check the global stores configs at first.
         // TODO As some store had already been created before we introduced global store config
         // TODO so we need a way to sync up the data. For example, while we loading all stores from ZK for a cluster,
