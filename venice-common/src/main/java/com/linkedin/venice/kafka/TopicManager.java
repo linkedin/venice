@@ -270,7 +270,7 @@ public class TopicManager implements Closeable {
       logger.info("getConsumer().partitionsFor() returned some partitionInfo with no in-sync replica for topic: " + topic +
           ", partitionInfoList: " + Arrays.toString(partitionInfoList.toArray()));
     } else {
-      logger.info("The following topic has the at least one in-sync replica for each partition: " + topic);
+      logger.trace("The following topic has the at least one in-sync replica for each partition: " + topic);
     }
     return allPartitionsHaveAnInSyncReplica;
   }

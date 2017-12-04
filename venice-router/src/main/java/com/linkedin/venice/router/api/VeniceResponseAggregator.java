@@ -126,7 +126,7 @@ public class VeniceResponseAggregator implements ResponseAggregatorFactory<Basic
       if (latency <= TIMEOUT_THRESHOLD_IN_MS && HEALTHY_STATUSES.contains(responseStatus)) {
         stats.recordHealthyRequest(storeName);
       } else {
-        LOGGER.error("Unhealthy request detected, latency: " + latency + "ms, response status: " + responseStatus);
+        LOGGER.debug("Unhealthy request detected, latency: " + latency + "ms, response status: " + responseStatus);
         stats.recordUnhealthyRequest(storeName);
       }
     }
