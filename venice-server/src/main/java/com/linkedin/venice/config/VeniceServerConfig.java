@@ -84,6 +84,10 @@ public class VeniceServerConfig extends VeniceClusterConfig {
    */
   private final int nettyGracefulShutdownPeriodSeconds;
 
+  /**
+   * number of worker threads for the netty listener.  If not specified, netty uses twice cpu count.
+   */
+  private final int nettyWorkerThreadCount;
 
   public VeniceServerConfig(VeniceProperties serverProperties) throws ConfigurationException {
     super(serverProperties);
@@ -101,6 +105,7 @@ public class VeniceServerConfig extends VeniceClusterConfig {
     maxRequestSize = (int)serverProperties.getSizeInBytes(SERVER_MAX_REQUEST_SIZE, 256 * 1024); // 256KB
     sourceTopicOffsetCheckIntervalMs = serverProperties.getInt(SERVER_SOURCE_TOPIC_OFFSET_CHECK_INTERVAL_MS, (int)TimeUnit.SECONDS.toMillis(10)); // 10s
     nettyGracefulShutdownPeriodSeconds = serverProperties.getInt(SERVER_NETTY_GRACEFUL_SHUTDOWN_PERIOD_SECONDS, 30); //30 seconds
+    nettyWorkerThreadCount = serverProperties.getInt(SERVER_NETTY_WORKER_THREADS, 0);
   }
 
   public int getListenerPort() {
@@ -163,5 +168,9 @@ public class VeniceServerConfig extends VeniceClusterConfig {
 
   public int getNettyGracefulShutdownPeriodSeconds() {
     return nettyGracefulShutdownPeriodSeconds;
+  }
+
+  public int getNettyWorkerThreadCount() {
+    return nettyWorkerThreadCount;
   }
 }

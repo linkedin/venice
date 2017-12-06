@@ -120,8 +120,9 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
         return Optional.empty();
       }, executor));
     }
+
     MultiGetResponseWrapper responseWrapper = new MultiGetResponseWrapper();
-    // Wait for all the lookup requests to complete
+    // Wait for all the lookup requests to complete (note: this is completed in the last future's thread)
     CompletableFuture<Void> allDoneFuture = CompletableFuture.allOf(futureList.toArray(new CompletableFuture[futureList.size()]));
     allDoneFuture.handle( (aVoid, throwable) -> {
       for (CompletableFuture<Optional<MultiGetResponseRecordV1>> future : futureList) {

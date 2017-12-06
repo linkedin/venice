@@ -45,7 +45,7 @@ public class ListenerService extends AbstractVeniceService{
 
     //TODO: configurable worker group
     bossGroup = new NioEventLoopGroup(1);
-    workerGroup = new NioEventLoopGroup();
+    workerGroup = new NioEventLoopGroup(serverConfig.getNettyWorkerThreadCount()); //if 0, defaults to 2*cpu count
 
     bootstrap = new ServerBootstrap();
     bootstrap.group(bossGroup, workerGroup).channel(NioServerSocketChannel.class)
