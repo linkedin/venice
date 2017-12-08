@@ -379,6 +379,27 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         }
     }
 
+    protected Store checkPreConditionForSingleVersionDeletion(String clusterName, String storeName, int versionNum) {
+        checkControllerMastership(clusterName);
+        HelixReadWriteStoreRepository repository = getVeniceHelixResource(clusterName).getMetadataRepository();
+        Store store = repository.getStore(storeName);
+        checkPreConditionForSingleVersionDeletion(clusterName, storeName, store, versionNum);
+        return store;
+    }
+
+    private void checkPreConditionForSingleVersionDeletion(String clusterName, String storeName, Store store, int versionNum) {
+        if (store == null) {
+            throwStoreDoesNotExist(clusterName, storeName);
+        }
+        if (store.getCurrentVersion() == versionNum) {
+            String errorMsg =
+                "Unable to delete the version: " + versionNum + ". The current version could be deleted from store: "
+                    + storeName;
+            logger.error(errorMsg);
+            throw new VeniceException(errorMsg);
+        }
+    }
+
     protected final static int VERSION_ID_UNSET = -1;
 
     @Override
@@ -643,6 +664,28 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         return deletingVersionSnapshot;
     }
 
+    @Override
+    public void deleteOldVersionInStore(String clusterName, String storeName, int versionNum) {
+        checkControllerMastership(clusterName);
+        HelixReadWriteStoreRepository repository = getVeniceHelixResource(clusterName).getMetadataRepository();
+        Store store = repository.getStore(storeName);
+        // Here we do not require the store be disabled. So it might impact reads
+        // The thing is a new version is just online, now we delete the old version. So some of routers
+        // might still use the old one as the current version, so when they send the request to that version,
+        // they will get error response.
+        // TODO the way to solve this could be: Introduce a timestamp to represent when the version is online.
+        // TOOD And only allow to delete the old version that the newer version has been online for a while.
+        checkPreConditionForSingleVersionDeletion(clusterName, storeName, store, versionNum);
+        if (!store.containsVersion(versionNum)) {
+            logger.warn("Ignore the deletion request. Could not find version: " + versionNum + " in store: " + storeName
+                + " in cluster: " + clusterName);
+            return;
+        }
+        logger.info("Deleting version: " + versionNum + " in store: " + storeName + " in cluster: " + clusterName);
+        deleteOneStoreVersion(clusterName, storeName, versionNum);
+        logger.info("Deleted version: " + versionNum + " in store: " + storeName + " in cluster: " + clusterName);
+    }
+
     /**
      * Delete version from cluster, removing all related resources
      */
@@ -728,7 +771,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 + version.getStatus());
             logger.info("Will update topic: " + kafkaTopicName + " with retention.ms: " + failedJobTopicRetentionMs);
             getTopicManager().updateTopicRetention(kafkaTopicName, failedJobTopicRetentionMs);
-
+            logger.info("Updated topic: " + kafkaTopicName + " with retention.ms: " + failedJobTopicRetentionMs);
         }
     }
 

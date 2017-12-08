@@ -300,6 +300,22 @@ public class StoresRoutes {
     };
   }
 
+  public static Route deleteOldVersions(Admin admin) {
+    return new VeniceRouteHandler<VersionResponse>(VersionResponse.class) {
+      @Override
+      public void internalHandle(Request request, VersionResponse veniceResponse) {
+        AdminSparkServer.validateParams(request, DELETE_ALL_VERSIONS.getParams(), admin);
+        String clusterName = request.queryParams(CLUSTER);
+        String storeName = request.queryParams(NAME);
+        int versionNum = Integer.valueOf(request.queryParams(VERSION));
+        veniceResponse.setCluster(clusterName);
+        veniceResponse.setName(storeName);
+        veniceResponse.setVersion(versionNum);
+        admin.deleteOldVersionInStore(clusterName, storeName, versionNum);
+      }
+    };
+  }
+
   public static Route getStorageEngineOverheadRatio(Admin admin) {
     return new VeniceRouteHandler<StorageEngineOverheadRatioResponse>(StorageEngineOverheadRatioResponse.class) {
 

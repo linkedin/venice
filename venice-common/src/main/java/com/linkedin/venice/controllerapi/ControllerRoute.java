@@ -22,6 +22,7 @@ public enum ControllerRoute {
   SET_VERSION("/set_version", Arrays.asList(NAME, VERSION)),
   ENABLE_STORE("/enable_store", Arrays.asList(NAME, OPERATION, STATUS)), // status "true" or "false", operation "read" or "write" or "readwrite".
   DELETE_ALL_VERSIONS("/delete_all_versions", Arrays.asList(NAME)),
+  DELETE_OLD_VERSION("/delete_old_version", Arrays.asList(NAME, VERSION)),
 
   JOB("/job", Arrays.asList(NAME, VERSION)),
   KILL_OFFLINE_PUSH_JOB("/kill_offline_push_job", Arrays.asList(TOPIC)),

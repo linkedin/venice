@@ -1123,6 +1123,36 @@ public class TestVeniceHelixAdmin {
   }
 
   @Test
+  public void testDeleteOldVersionInStore() {
+    String storeName = TestUtils.getUniqueString("testDeleteOldVersion");
+    for (HelixManager manager : this.participants.values()) {
+      HelixStatusMessageChannel channel = new HelixStatusMessageChannel(manager);
+      channel.registerHandler(KillOfflinePushMessage.class, message -> {
+      });
+    }
+    veniceAdmin.addStore(clusterName, storeName, "testOwner", keySchema, valueSchema);
+    // Add two versions.
+    veniceAdmin.incrementVersion(clusterName, storeName, 1, 1);
+    veniceAdmin.incrementVersion(clusterName, storeName, 1, 1);
+    TestUtils.waitForNonDeterministicCompletion(TOTAL_TIMEOUT_FOR_SHORT_TEST, TimeUnit.MILLISECONDS,
+        () -> veniceAdmin.getStore(clusterName, storeName).getCurrentVersion() == 2);
+    veniceAdmin.setStoreReadability(clusterName, storeName, false);
+    veniceAdmin.deleteOldVersionInStore(clusterName, storeName, 1);
+    Assert.assertEquals(veniceAdmin.getStore(clusterName, storeName).getVersions().size(), 1,
+        " Version 1 should be deleted.");
+    try{
+      veniceAdmin.deleteOldVersionInStore(clusterName, storeName, 2);
+      Assert.fail("Current version should not be deleted.");
+    }catch (VeniceException e){
+    }
+    try{
+      veniceAdmin.deleteOldVersionInStore(clusterName,storeName, 3);
+    }catch (VeniceException e){
+      Assert.fail("Version 3 does not exist, so deletion request should be skipped without throwing any exception.");
+    }
+  }
+
+  @Test
   public void testDeleteStore() {
     String storeName = "testDeleteStore";
     TestUtils.createTestStore(storeName, "unittest", System.currentTimeMillis());

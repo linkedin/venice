@@ -86,6 +86,11 @@ public interface Admin {
      */
     List<Version> deleteAllVersionsInStore(String clusterName, String storeName);
 
+    /**
+    * Delete the given version from the store. If the given version is the current version, an exception will be thrown.
+    */
+    void deleteOldVersionInStore(String clusterName, String storeName, int versionNum);
+
     List<Version> versionsForStore(String clusterName, String storeName);
 
     List<Store> getAllStores(String clusterName);

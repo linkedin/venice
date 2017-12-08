@@ -401,6 +401,19 @@ public class ControllerClient implements Closeable {
     }
   }
 
+  public VersionResponse deleteOldVersion(String storeName, int versionNum) {
+    try {
+      List<NameValuePair> queryParams = newParams(clusterName);
+      queryParams.add(new BasicNameValuePair(ControllerApiConstants.NAME, storeName));
+      queryParams.add(new BasicNameValuePair(ControllerApiConstants.VERSION, String.valueOf(versionNum)));
+      String responseJson = postRequest(ControllerRoute.DELETE_OLD_VERSION.getPath(), queryParams);
+      return mapper.readValue(responseJson, VersionResponse.class);
+    } catch (Exception e) {
+      return handleError(new VeniceException("Error deleting version:" + versionNum + " for store : " + storeName, e),
+          new VersionResponse());
+    }
+  }
+
   public NodeStatusResponse isNodeRemovable(String instanceId) {
     return singleNodeOperation(instanceId, ControllerRoute.NODE_REMOVABLE.getPath(), HttpGet.METHOD_NAME, NodeStatusResponse.class);
   }
