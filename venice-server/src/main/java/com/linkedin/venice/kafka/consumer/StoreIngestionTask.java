@@ -790,11 +790,7 @@ public class StoreIngestionTask implements Runnable, Closeable {
     // If the following condition is true, then we want to sync to disk.
     boolean recordsProcessedAboveSyncIntervalThreshold = partitionConsumptionState.getProcessedRecordNumSinceLastSync() >= offsetPersistInterval;
     if (recordsProcessedAboveSyncIntervalThreshold) {
-      AbstractStorageEngine storageEngine = storeRepository.getLocalStorageEngine(topic);
-      storageEngine.sync(partition);
-      OffsetRecord offsetRecord = partitionConsumptionState.getOffsetRecord();
-      storageMetadataService.put(this.topic, partition, offsetRecord);
-      partitionConsumptionState.resetProcessedRecordNumSinceLastSync();
+      syncOffset(topic, partitionConsumptionState);
     }
 
     boolean endOfPushReceived = partitionConsumptionState.isEndOfPushReceived();
@@ -806,6 +802,15 @@ public class StoreIngestionTask implements Runnable, Closeable {
         notificationDispatcher.reportProgress(partitionConsumptionState);
       }
     }
+  }
+
+  private void syncOffset(String topic,PartitionConsumptionState ps) {
+    int partition = ps.getPartition();
+    AbstractStorageEngine storageEngine = storeRepository.getLocalStorageEngine(topic);
+    storageEngine.sync(partition);
+    OffsetRecord offsetRecord = ps.getOffsetRecord();
+    storageMetadataService.put(this.topic, partition, offsetRecord);
+    ps.resetProcessedRecordNumSinceLastSync();
   }
 
   public void setLastDrainerException(Exception e) {
@@ -887,7 +892,11 @@ public class StoreIngestionTask implements Runnable, Closeable {
     return hybridStoreConfig != null && hybridStoreConfig.isPresent();
   }
 
-  private void processControlMessage(ControlMessage controlMessage, int partition, long offset, PartitionConsumptionState partitionConsumptionState) {
+  /**
+   * In this method, we pass both offset and partitionConsumptionState(ps). The reason behind it is that ps's
+   * offset is stale and is not updated until the very end
+   */
+  private ControlMessageType processControlMessage(ControlMessage controlMessage, int partition, long offset, PartitionConsumptionState partitionConsumptionState) {
     Optional<StoreVersionState> storeVersionState;
     ControlMessageType type = ControlMessageType.valueOf(controlMessage);
     logger.info(consumerTaskId + " : Received " + type.name() + " control message. Partition: " + partition + ", Offset: " + offset);
@@ -914,7 +923,6 @@ public class StoreIngestionTask implements Runnable, Closeable {
          * TODO: if this behavior changes in the future, the logic needs to be adjusted as well.
          */
         adjustStorageEngine(partition, false, partitionConsumptionState);
-
         // We need to keep track of when the EOP happened, as that is used within Hybrid Stores' lag measurement
         partitionConsumptionState.getOffsetRecord().endOfPushReceived(offset);
 
@@ -960,6 +968,8 @@ public class StoreIngestionTask implements Runnable, Closeable {
       default:
         throw new UnsupportedMessageTypeException("Unrecognized Control message type " + controlMessage.controlMessageType);
     }
+
+    return type;
   }
 
   /**
@@ -974,6 +984,7 @@ public class StoreIngestionTask implements Runnable, Closeable {
     KafkaKey kafkaKey = consumerRecord.key();
     KafkaMessageEnvelope kafkaValue = consumerRecord.value();
     int sizeOfPersistedData = 0;
+    boolean syncOffset = false;
 
     Optional<OffsetRecordTransformer> offsetRecordTransformer = Optional.empty();
     try {
@@ -993,7 +1004,11 @@ public class StoreIngestionTask implements Runnable, Closeable {
 
       if (kafkaKey.isControlMessage()) {
         ControlMessage controlMessage = (ControlMessage) kafkaValue.payloadUnion;
-        processControlMessage(controlMessage, consumerRecord.partition(), consumerRecord.offset(), partitionConsumptionState);
+        ControlMessageType messageType =
+            processControlMessage(controlMessage, consumerRecord.partition(), consumerRecord.offset(), partitionConsumptionState);
+        if (messageType == ControlMessageType.END_OF_PUSH) {
+          syncOffset = true;
+        }
       } else if (null == kafkaValue) {
         throw new VeniceMessageException(consumerTaskId + " : Given null Venice Message. Partition " +
               consumerRecord.partition() + " Offset " + consumerRecord.offset());
@@ -1043,6 +1058,9 @@ public class StoreIngestionTask implements Runnable, Closeable {
 
       offsetRecord.setOffset(consumerRecord.offset());
       partitionConsumptionState.setOffsetRecord(offsetRecord);
+      if (syncOffset) {
+        syncOffset(topic, partitionConsumptionState);
+      }
     }
     return sizeOfPersistedData;
   }

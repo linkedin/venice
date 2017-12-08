@@ -80,6 +80,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BooleanSupplier;
 import java.util.function.Supplier;
+
 import org.apache.kafka.clients.producer.RecordMetadata;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.log4j.Logger;
@@ -695,7 +696,6 @@ public class StoreIngestionTaskTest {
     VeniceWriter veniceWriterForDataAfterPush = getCorruptedVeniceWriter(putValueToCorrupt);
 
     veniceWriter.broadcastStartOfPush(new HashMap<>());
-    //long fooLastOffset = getOffset(veniceWriterForDataDuringPush.put(putKeyFoo, putValue, SCHEMA_ID));
     long lastOffsetBeforeEOP = getOffset(veniceWriterForDataDuringPush.put(putKeyBar, putValue, SCHEMA_ID));
     veniceWriterForDataDuringPush.close();
     veniceWriter.broadcastEndOfPush(new HashMap<>());
@@ -1034,7 +1034,7 @@ public class StoreIngestionTaskTest {
     veniceWriter.broadcastEndOfPush(new HashMap<>());
 
     runTest(getSet(PARTITION_FOO), () -> {
-      // Verify it retrieves the offset from the OffSet Manager
+      // Verify it retrieves the offset from the Offset Manager
       verify(mockStorageMetadataService, timeout(TEST_TIMEOUT)).getLastOffset(topic, PARTITION_FOO);
 
       // Verify StorageEngine#put is invoked only once and with appropriate key & value.
@@ -1046,7 +1046,11 @@ public class StoreIngestionTaskTest {
 
       // Verify it commits the offset to Offset Manager after receiving EOP control message
       OffsetRecord expectedOffsetRecordForDeleteMessage = getOffsetRecord(deleteMetadata.offset() + 1, true);
-      verify(mockStorageMetadataService, timeout(TEST_TIMEOUT))
+      /**
+       * it's checked twice since {@link StoreIngestionTask.OFFSET_UPDATE_INTERVAL_PER_PARTITION_FOR_TRANSACTION_MODE}
+       * is set to 1 in unit test
+       */
+      verify(mockStorageMetadataService, timeout(TEST_TIMEOUT).times(2))
           .put(topic, PARTITION_FOO, expectedOffsetRecordForDeleteMessage);
       // Deferred write is not going to commit offset for every message
       verify(mockStorageMetadataService, never())

@@ -58,7 +58,7 @@ public class AggVersionedDIVStatsTest {
     }
 
     Mockito.doReturn(storeList).when(mockMetaRepository).getAllStores();
-    stats.loadAllStats();;
+    stats.loadAllStats();
   }
 
   @Test(dependsOnMethods = { "testStatsCanLoadAllStoresInTime" })
