@@ -1,19 +1,10 @@
 package com.linkedin.venice.controller.server;
 
-import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.HttpConstants;
-import com.linkedin.venice.controller.VeniceControllerConfig;
-import com.linkedin.venice.controller.VeniceHelixAdmin;
 import com.linkedin.venice.controllerapi.ControllerApiConstants;
-import com.linkedin.venice.integration.utils.D2TestUtils;
 import com.linkedin.venice.integration.utils.KafkaBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
-import com.linkedin.venice.utils.PropertyBuilder;
-import com.linkedin.venice.utils.TestUtils;
-import com.linkedin.venice.utils.Utils;
-import com.linkedin.venice.utils.VeniceProperties;
-import io.tehuti.metrics.MetricsRepository;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
@@ -29,7 +20,6 @@ import org.apache.http.message.BasicNameValuePair;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
-import static com.linkedin.venice.ConfigKeys.*;
 import static com.linkedin.venice.controllerapi.ControllerRoute.CREATE_VERSION;
 import static com.linkedin.venice.controllerapi.ControllerRoute.JOB;
 
