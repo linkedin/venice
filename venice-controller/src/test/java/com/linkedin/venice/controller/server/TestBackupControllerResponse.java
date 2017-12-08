@@ -40,37 +40,18 @@ public class TestBackupControllerResponse {
 
     String clusterName = "backupControllerThrows421";
     KafkaBrokerWrapper kafka = ServiceFactory.getKafkaBroker();
-    String kafkaBootstrap = kafka.getHost() + ":" + kafka.getPort();
 
 
-    VeniceHelixAdmin veniceAdmin; /* First controller, comes up as active controller */
-    int bogusPort = 21; /* nothing runs here, doesn't need to bind.since not launching AdminSparkServer */
-    String controllerName = Utils.getHelixNodeIdentifier(bogusPort);
-    VeniceProperties controllerOneProps = new PropertyBuilder()
-        .put(ENABLE_TOPIC_REPLICATOR, false)
-        .put(KAFKA_ZK_ADDRESS, kafka.getZkAddress())
-        .put(KAFKA_REPLICA_FACTOR, 1)
-        .put(DEFAULT_REPLICA_FACTOR, 1)
-        .put(DEFAULT_NUMBER_OF_PARTITION, 3)
-        .put(DEFAULT_MAX_NUMBER_OF_PARTITIONS, 10)
-        .put(DEFAULT_PARTITION_SIZE, 100)
-        .put(KAFKA_BOOTSTRAP_SERVERS, kafkaBootstrap)
-        .put(ZOOKEEPER_ADDRESS, kafka.getZkAddress())
-        .put(CLUSTER_NAME, clusterName)
-        .put(CONTROLLER_NAME, controllerName)
-        .put(ConfigKeys.ADMIN_PORT, bogusPort)
-        .put(CLUSTER_TO_D2, TestUtils.getClusterToDefaultD2String(clusterName))
-        .build();
-    VeniceControllerConfig config = new VeniceControllerConfig(controllerOneProps);
-    veniceAdmin = new VeniceHelixAdmin(TestUtils.getMultiClusterConfigFromOneCluster(config), new MetricsRepository());
-    veniceAdmin.start(clusterName);
 
-    /* ControllerWrapper is second controller, comes up as inactive standby controller */
-    VeniceControllerWrapper controller = ServiceFactory.getVeniceController(clusterName, kafka);
+    //Start 2 controllers.
+    VeniceControllerWrapper controller1 = ServiceFactory.getVeniceController(clusterName, kafka);
+    VeniceControllerWrapper controller2 = ServiceFactory.getVeniceController(clusterName, kafka);
+
     Thread.sleep(2000);
     CloseableHttpAsyncClient httpClient = HttpAsyncClients.createDefault();
     httpClient.start();
-    String controllerUrl = controller.getControllerUrl();
+    // Find the url for slave controller
+    String controllerUrl = controller1.isMasterController(clusterName)?controller2.getControllerUrl():controller1.getControllerUrl();
 
     final HttpPost post = new HttpPost(controllerUrl + CREATE_VERSION.getPath());
     List<NameValuePair> params = new ArrayList<NameValuePair>();
@@ -91,8 +72,8 @@ public class TestBackupControllerResponse {
     Assert.assertEquals(responseStatus2, HttpConstants.SC_MISDIRECTED_REQUEST);
 
     httpClient.close();
-    controller.close();
-    veniceAdmin.close();
+    controller1.close();
+    controller2.close();
     kafka.close();
   }
 }

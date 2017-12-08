@@ -194,10 +194,11 @@ public class HelixParticipationService extends AbstractVeniceService implements 
     VeniceStoreConfig storeConfig = veniceConfigLoader.getStoreConfig(message.getKafkaTopic());
     if (ingestionService.containsRunningConsumption(storeConfig)) {
       //push is failed, stop consumption.
-      logger.info("Receive the message to kill consumption for topic:" + message.getKafkaTopic());
+      logger.info("Receive the message to kill consumption for topic:" + message.getKafkaTopic() + ", msgId: " + message
+          .getMessageId());
       ingestionService.killConsumptionTask(storeConfig);
-      logger.info("Killed Consumption for topic:" + message.getKafkaTopic());
-    }else{
+      logger.info("Killed Consumption for topic:" + message.getKafkaTopic() + ", msgId: " + message.getMessageId());
+    } else {
       logger.info("Ignore the kill message for topic:" + message.getKafkaTopic());
     }
   }

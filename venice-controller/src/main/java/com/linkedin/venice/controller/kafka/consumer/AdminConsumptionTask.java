@@ -5,6 +5,7 @@ import com.linkedin.venice.controller.ExecutionIdAccessor;
 import com.linkedin.venice.controller.kafka.AdminTopicUtils;
 import com.linkedin.venice.controller.kafka.protocol.admin.AdminOperation;
 import com.linkedin.venice.controller.kafka.protocol.admin.DeleteAllVersions;
+import com.linkedin.venice.controller.kafka.protocol.admin.DeleteOldVersion;
 import com.linkedin.venice.controller.kafka.protocol.admin.DeleteStore;
 import com.linkedin.venice.controller.kafka.protocol.admin.DisableStoreRead;
 import com.linkedin.venice.controller.kafka.protocol.admin.EnableStoreRead;
@@ -348,6 +349,9 @@ public class AdminConsumptionTask implements Runnable, Closeable {
       case DELETE_STORE:
         handleDeleteStore((DeleteStore) adminMessage.payloadUnion);
         break;
+      case DELETE_OLD_VERSION:
+        handleDeleteOldVersion((DeleteOldVersion) adminMessage.payloadUnion);
+        break;
       default:
         throw new VeniceException("Unknown admin operation type: " + adminMessage.operationType);
     }
@@ -501,6 +505,14 @@ public class AdminConsumptionTask implements Runnable, Closeable {
     String storeName = message.storeName.toString();
     admin.deleteAllVersionsInStore(clusterName, storeName);
     logger.info("Deleted all of version in store:" + storeName + " in cluster: " + clusterName);
+  }
+
+  private void handleDeleteOldVersion(DeleteOldVersion message) {
+    String clusterName = message.clusterName.toString();
+    String storeName = message.storeName.toString();
+    int versionNum = message.versionNum;
+    admin.deleteOldVersionInStore(clusterName, storeName, versionNum);
+    logger.info("Deleted version: " + versionNum + " in store:" + storeName + " in cluster: " + clusterName);
   }
 
   private void handleSetStoreCurrentVersion(SetStoreCurrentVersion message) {

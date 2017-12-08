@@ -132,6 +132,7 @@ public class OfflinePushMonitor implements OfflinePushAccessor.PartitionStatusLi
    * Stop monitoring the given offline push and collect the push and its partitions statuses from remote storage.
    */
   public void stopMonitorOfflinePush(String kafkaTopic) {
+    logger.info("Stopping monitoring push on topic:" + kafkaTopic);
     synchronized (lock) {
       if (!topicToPushMap.containsKey(kafkaTopic)) {
         logger.warn("Push status does not exist for topic:" + kafkaTopic + " in cluster:" + clusterName);
@@ -147,7 +148,7 @@ public class OfflinePushMonitor implements OfflinePushAccessor.PartitionStatusLi
         accessor.deleteOfflinePushStatusAndItsPartitionStatuses(pushStatus);
         topicToPushMap.remove(kafkaTopic);
       }
-      logger.info("Stop monitoring push on topic:" + kafkaTopic);
+      logger.info("Stopped monitoring push on topic:" + kafkaTopic);
     }
   }
 

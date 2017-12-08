@@ -171,6 +171,8 @@ public class AdminTool {
         setEnableStoreReadWrites(cmd, true);
       } else if (cmd.hasOption(Command.DELETE_ALL_VERSIONS.toString())) {
         deleteAllVersions(cmd);
+      } else if (cmd.hasOption(Command.DELETE_OLD_VERSION.toString())) {
+        deleteOldVersion(cmd);
       } else if (cmd.hasOption(Command.SET_VERSION.toString())) {
         applyVersionToStore(cmd);
       } else if (cmd.hasOption(Command.SET_OWNER.toString())) {
@@ -666,6 +668,13 @@ public class AdminTool {
   private static void deleteAllVersions(CommandLine cmd) {
     String store = getRequiredArgument(cmd, Arg.STORE, Command.DELETE_ALL_VERSIONS);
     MultiVersionResponse response = controllerClient.deleteAllVersions(store);
+    printObject(response);
+  }
+
+  private static void deleteOldVersion(CommandLine cmd) {
+    String store = getRequiredArgument(cmd, Arg.STORE, Command.DELETE_OLD_VERSION);
+    int version = Integer.valueOf(getRequiredArgument(cmd, Arg.VERSION, Command.DELETE_OLD_VERSION));
+    VersionResponse response = controllerClient.deleteOldVersion(store, version);
     printObject(response);
   }
 

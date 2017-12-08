@@ -64,6 +64,8 @@ public enum Command {
       new Arg[] {Arg.URL, Arg.CLUSTER, Arg.STORE}),
   DELETE_ALL_VERSIONS("delete-all-versions", "Delete all versions in given store.",
       new Arg[]{Arg.URL, Arg.CLUSTER, Arg.STORE}),
+  DELETE_OLD_VERSION("delete-old-version", "Delete the given version(non current version) in the given store.",
+      new Arg[]{Arg.URL, Arg.CLUSTER, Arg.STORE, Arg.VERSION}),
   GET_EXECUTION("get-execution", "Get the execution status for an async admin command.",
       new Arg[]{Arg.URL, Arg.CLUSTER, Arg.EXECUTION}),
   SET_OWNER("set-owner", "Update owner info of an existing store",

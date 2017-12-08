@@ -10,6 +10,7 @@ import com.linkedin.venice.controller.kafka.consumer.AdminConsumerService;
 
 import com.linkedin.venice.controller.kafka.protocol.admin.AdminOperation;
 import com.linkedin.venice.controller.kafka.protocol.admin.DeleteAllVersions;
+import com.linkedin.venice.controller.kafka.protocol.admin.DeleteOldVersion;
 import com.linkedin.venice.controller.kafka.protocol.admin.DeleteStore;
 import com.linkedin.venice.controller.kafka.protocol.admin.DisableStoreRead;
 import com.linkedin.venice.controller.kafka.protocol.admin.EnableStoreRead;
@@ -602,6 +603,26 @@ public class VeniceParentHelixAdmin implements Admin {
 
       sendAdminMessageAndWaitForConsumed(clusterName, message);
       return Collections.emptyList();
+    } finally {
+      releaseLock();
+    }
+  }
+
+  @Override
+  public void deleteOldVersionInStore(String clusterName, String storeName, int versionNum) {
+    acquireLock(clusterName);
+    try {
+      veniceHelixAdmin.checkPreConditionForSingleVersionDeletion(clusterName, storeName, versionNum);
+
+      DeleteOldVersion deleteOldVersion = (DeleteOldVersion) AdminMessageType.DELETE_OLD_VERSION.getNewInstance();
+      deleteOldVersion.clusterName = clusterName;
+      deleteOldVersion.storeName = storeName;
+      deleteOldVersion.versionNum = versionNum;
+      AdminOperation message = new AdminOperation();
+      message.operationType = AdminMessageType.DELETE_OLD_VERSION.ordinal();
+      message.payloadUnion = deleteOldVersion;
+
+      sendAdminMessageAndWaitForConsumed(clusterName, message);
     } finally {
       releaseLock();
     }

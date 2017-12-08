@@ -20,6 +20,7 @@ import com.linkedin.venice.controllerapi.StorageEngineOverheadRatioResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.TrackableControllerResponse;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
+import com.linkedin.venice.controllerapi.VersionResponse;
 import com.linkedin.venice.controllerapi.routes.AdminCommandExecutionResponse;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
@@ -40,6 +41,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import org.apache.avro.Schema;
 import org.apache.commons.io.IOUtils;
@@ -395,6 +397,19 @@ public class TestAdminSparkServer {
     Assert.assertEquals(response.getExecutionId(), 0,
         "The command executed in non-parent controller should have an execution id 0");
 
+    StoreInfo store = controllerClient.getStore(storeName).getStore();
+    Assert.assertEquals(store.getVersions().size(), 0);
+  }
+
+
+  @Test(timeOut = TIME_OUT)
+  public void controllerClientCanDeleteOldVersion() {
+    String storeName = "controllerClientCanDeleteOldVersion";
+    venice.getNewStore(storeName);
+    venice.getNewVersion(storeName, 100);
+
+    VersionResponse response = controllerClient.deleteOldVersion(storeName, 1);
+    Assert.assertEquals(response.getVersion(), 1);
     StoreInfo store = controllerClient.getStore(storeName).getStore();
     Assert.assertEquals(store.getVersions().size(), 0);
   }
