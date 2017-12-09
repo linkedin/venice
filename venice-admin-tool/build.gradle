@@ -10,6 +10,7 @@ jar {
     baseName = project.name
     from { configurations.compile
         .filter {!it.absolutePath.endsWith(".xml")} // Resolves Could not expand ZIP '.../pegasus-d2-client-factory-cmpt-def-16.0.23.xml'.
+        .filter {!it.absolutePath.endsWith(".ivy")} // Exclude the ivy file which is introduced by new helix version.
         .collect { it.isDirectory() ? it : zipTree(it) }
     }
     exclude 'META-INF/*.RSA', 'META-INF/*.SF','META-INF/*.DSA'
