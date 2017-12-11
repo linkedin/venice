@@ -172,4 +172,9 @@ public class AggRouterHttpRequestStats extends AbstractVeniceAggStats<RouterHttp
     totalStats.recordCachePutLatency(latency);
     getStoreStats(storeName).recordCachePutLatency(latency);
   }
+
+  public void recordKeyNum(String storeName, int keyNum) {
+    totalStats.recordKeyNum(keyNum);
+    getStoreStats(storeName).recordKeyNum(keyNum);
+  }
 }

@@ -92,6 +92,13 @@ public class VeniceResponseAggregator implements ResponseAggregatorFactory<Basic
           INTERNAL_SERVER_ERROR, "'metrics' should not be null");
     }
     VenicePath venicePath = metrics.getPath();
+    if (null == venicePath) {
+      /**
+       * This is necessary since the exception could be thrown when parsing request path.
+       * If it happens, here will just return the response, which contains exception stacktrace.
+       */
+      return gatheredResponses.get(0);
+    }
     RequestType requestType = venicePath.getRequestType();
     String storeName = venicePath.getStoreName();
     int version = venicePath.getVersionNumber();

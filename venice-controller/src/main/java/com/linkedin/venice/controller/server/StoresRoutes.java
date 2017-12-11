@@ -169,7 +169,11 @@ public class StoresRoutes {
         Optional<Boolean> routerCacheEnabled = Utils.isNullOrEmpty(routerCacheEnabledStr) ? Optional.empty() :
             Optional.of(Utils.parseBooleanFromString(routerCacheEnabledStr, ROUTER_CACHE_ENABLED));
 
-        admin.updateStore(veniceResponse.getCluster(),
+        String batchGetLimitStr = AdminSparkServer.getOptionalParameterValue(request, BATCH_GET_LIMIT);
+        Optional<Integer> batchGetLimit = Utils.isNullOrEmpty(batchGetLimitStr) ? Optional.empty() :
+            Optional.of(Utils.parseIntFromString(batchGetLimitStr, BATCH_GET_LIMIT));
+
+            admin.updateStore(veniceResponse.getCluster(),
                           veniceResponse.getName(),
                           owner,
                           readability,
@@ -183,8 +187,9 @@ public class StoresRoutes {
                           accessControlled,
                           compressionStrategy,
                           chunkingEnabled,
-                          routerCacheEnabled
-            );
+                          routerCacheEnabled,
+                          batchGetLimit
+                );
       }
     };
   }

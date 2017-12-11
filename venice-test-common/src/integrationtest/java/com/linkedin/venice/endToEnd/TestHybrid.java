@@ -61,7 +61,7 @@ public class TestHybrid {
     controllerClient.updateStore(storeName, Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(),
         Optional.empty(), Optional.of(Store.UNLIMITED_STORAGE_QUOTA), Optional.empty(),
         Optional.of(streamingRewindSeconds), Optional.of(streamingMessageLag), Optional.empty(), Optional.empty(),
-        Optional.empty(), Optional.empty());
+        Optional.empty(), Optional.empty(), Optional.empty());
 
     // There should be no version on the store yet
     assertEquals(controllerClient.getStore(storeName).getStore().getCurrentVersion(),
@@ -130,7 +130,8 @@ public class TestHybrid {
 
     controllerClient.updateStore(storeName, Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(),
         Optional.empty(), Optional.empty(), Optional.empty(), Optional.of(streamingRewindSeconds),
-        Optional.of(streamingMessageLag), Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty());
+        Optional.of(streamingMessageLag), Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(),
+        Optional.empty());
 
     //Do an H2V push
     runH2V(h2vProperties, 1, controllerClient);

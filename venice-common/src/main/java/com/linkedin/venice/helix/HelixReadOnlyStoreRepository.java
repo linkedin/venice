@@ -287,6 +287,20 @@ public class HelixReadOnlyStoreRepository implements ReadOnlyStoreRepository {
     }
   }
 
+  @Override
+  public int getBatchGetLimit(String name) {
+    metadataLock.readLock().lock();
+    try {
+      Store store = storeMap.get(name);
+      if (null == store) {
+        throw new VeniceNoStoreException(name);
+      }
+      return store.getBatchGetLimit();
+    } finally {
+      metadataLock.readLock().unlock();
+    }
+  }
+
   protected void triggerStoreCreationListener(Store store) {
     for (StoreDataChangedListener listener : dataChangedListenerSet) {
       try {

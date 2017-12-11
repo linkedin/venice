@@ -52,6 +52,7 @@ import static com.linkedin.venice.ConfigKeys.*;
 
 @Test(singleThreaded = true)
 public class TestRead {
+  private static final int MAX_KEY_LIMIT = 10;
   private VeniceClusterWrapper veniceCluster;
   private String storeVersionName;
   private int valueSchemaId;
@@ -81,6 +82,7 @@ public class TestRead {
     // To trigger long-tail retry
     Properties routerProperties = new Properties();
     routerProperties.put(ConfigKeys.ROUTER_LONG_TAIL_RETRY_FOR_SINGLE_GET_THRESHOLD_MS, 2);
+    routerProperties.put(ConfigKeys.ROUTER_MAX_KEY_COUNT_IN_MULTIGET_REQ, MAX_KEY_LIMIT); // 10 keys at most in a batch-get request
     veniceCluster.addVeniceRouter(routerProperties);
     routerAddr = veniceCluster.getRandomRouterSslURL();
 
@@ -94,7 +96,7 @@ public class TestRead {
     ControllerClient controllerClient = new ControllerClient(veniceCluster.getClusterName(), veniceCluster.getAllControllersURLs());
     controllerClient.updateStore(storeName, Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(),
         Optional.empty(), Optional.empty(), Optional.of(10000l), Optional.empty(), Optional.empty(), Optional.empty(),
-        Optional.empty(), Optional.empty(), Optional.empty());
+        Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty());
 
     VeniceProperties clientProps =
         new PropertyBuilder().put(KAFKA_BOOTSTRAP_SERVERS, veniceCluster.getKafka().getAddress())
@@ -150,13 +152,13 @@ public class TestRead {
     int cur = 0;
     while (++cur <= rounds) {
       Set<String> keySet = new HashSet<>();
-      for (int i = 0; i < 10; ++i) {
+      for (int i = 0; i < MAX_KEY_LIMIT - 1; ++i) {
         keySet.add(keyPrefix + i);
       }
       keySet.add("unknown_key");
       Map<String, CharSequence> result = storeClient.batchGet(keySet).get();
-      Assert.assertEquals(result.size(), 10);
-      for (int i = 0; i < 10; ++i) {
+      Assert.assertEquals(result.size(), MAX_KEY_LIMIT - 1);
+      for (int i = 0; i < MAX_KEY_LIMIT - 1; ++i) {
         Assert.assertEquals(result.get(keyPrefix + i).toString(), valuePrefix + i);
       }
       /**
@@ -178,6 +180,35 @@ public class TestRead {
       }
     }
     Assert.assertTrue(singleGetRetries > 0, "After " + rounds + " reads, there should be some retry requests");
+
+    /**
+     * Test batch get limit
+     */
+    Set<String> keySet = new HashSet<>();
+    for (int i = 0; i < MAX_KEY_LIMIT + 1; ++i) {
+      keySet.add(keyPrefix + i);
+    }
+    try {
+      storeClient.batchGet(keySet).get();
+      Assert.fail("Should receive exception since the batch request key count exceeds cluster-level threshold");
+    } catch (Exception e) {
+    }
+    // Bump up store-level max key count in batch-get request
+    ControllerClient controllerClient = new ControllerClient(veniceCluster.getClusterName(), veniceCluster.getAllControllersURLs());
+    controllerClient.updateStore(storeName, Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(),
+        Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(),
+        Optional.empty(), Optional.empty(), Optional.empty(), Optional.of(MAX_KEY_LIMIT + 1));
+
+    // It will take some time to let Router receive the store update.
+    TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
+      try {
+        storeClient.batchGet(keySet).get();
+      } catch (Exception e) {
+        Assert.fail("StoreClient should not throw exception since we have bumped up store-level batch-get key count limit");
+      }
+    });
+
+    storeClient.batchGet(keySet).get();
   }
 
   @Test

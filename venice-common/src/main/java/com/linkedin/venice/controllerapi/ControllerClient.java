@@ -564,7 +564,8 @@ public class ControllerClient implements Closeable {
       Optional<Boolean> accessControlled,
       Optional<CompressionStrategy> compressionStrategy,
       Optional<Boolean> chunkingEnabled,
-      Optional<Boolean> routerCacheEnabled) {
+      Optional<Boolean> routerCacheEnabled,
+      Optional<Integer> batchGetLimit) {
 
     try {
       List<NameValuePair> queryParams = newParams(clusterName);
@@ -607,6 +608,9 @@ public class ControllerClient implements Closeable {
       }
       if (routerCacheEnabled.isPresent()) {
         queryParams.add(new BasicNameValuePair(ControllerApiConstants.ROUTER_CACHE_ENABLED, routerCacheEnabled.get().toString()));
+      }
+      if (batchGetLimit.isPresent()) {
+        queryParams.add(new BasicNameValuePair(ControllerApiConstants.BATCH_GET_LIMIT, batchGetLimit.get().toString()));
       }
 
       String responseJson = postRequest(ControllerRoute.UPDATE_STORE.getPath(), queryParams);

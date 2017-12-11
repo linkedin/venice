@@ -27,6 +27,8 @@ public class StoreInfo {
     }
     storeInfo.setChunkingEnabled(store.isChunkingEnabled());
     storeInfo.setRouterCacheEnabled(store.isRouterCacheEnabled());
+    storeInfo.setBatchGetLimit(store.getBatchGetLimit());
+
     return storeInfo;
   }
   /**
@@ -97,6 +99,11 @@ public class StoreInfo {
    * Whether cache is enabled in Router.
    */
   private boolean routerCacheEnabled = false;
+
+  /**
+   * Batch get limit for current store.
+   */
+  private int batchGetLimit;
 
   public StoreInfo() {
   }
@@ -248,5 +255,13 @@ public class StoreInfo {
 
   public void setRouterCacheEnabled(boolean routerCacheEnabled) {
     this.routerCacheEnabled = routerCacheEnabled;
+  }
+
+  public int getBatchGetLimit() {
+    return batchGetLimit;
+  }
+
+  public void setBatchGetLimit(int batchGetLimit) {
+    this.batchGetLimit = batchGetLimit;
   }
 }

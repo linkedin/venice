@@ -136,6 +136,11 @@ public class Store {
    */
   private boolean routerCacheEnabled = false;
 
+  /**
+   * Batch get key number limit, and Venice will use cluster-level config if it is not positive.
+   */
+  private int batchGetLimit = -1;
+
   public Store(@NotNull String name, @NotNull String owner, long createdTime, @NotNull PersistenceType persistenceType,
       @NotNull RoutingStrategy routingStrategy, @NotNull ReadStrategy readStrategy,
       @NotNull OfflinePushStrategy offlinePushStrategy) {
@@ -345,6 +350,14 @@ public class Store {
     this.routerCacheEnabled = routerCacheEnabled;
   }
 
+  public int getBatchGetLimit() {
+    return batchGetLimit;
+  }
+
+  public void setBatchGetLimit(int batchGetLimit) {
+    this.batchGetLimit = batchGetLimit;
+  }
+
   /**
    * Add a version into store.
    *
@@ -545,6 +558,7 @@ public class Store {
     result = 31 * result + (compressionStrategy.hashCode());
     result = 31 * result + (chunkingEnabled ? 1 : 0);
     result = 31 * result + (routerCacheEnabled ? 1 : 0);
+    result = 31 * result + batchGetLimit;
     return result;
   }
 
@@ -574,6 +588,7 @@ public class Store {
     if (compressionStrategy != store.compressionStrategy) return false;
     if (chunkingEnabled != store.chunkingEnabled) return false;
     if (routerCacheEnabled != store.routerCacheEnabled) return false;
+    if (batchGetLimit != store.batchGetLimit) return false;
     return !(hybridStoreConfig != null ? !hybridStoreConfig.equals(store.hybridStoreConfig) : store.hybridStoreConfig != null);
   }
 
@@ -607,6 +622,7 @@ public class Store {
     clonedStore.setCompressionStrategy(compressionStrategy);
     clonedStore.setChunkingEnabled(chunkingEnabled);
     clonedStore.setRouterCacheEnabled(routerCacheEnabled);
+    clonedStore.setBatchGetLimit(batchGetLimit);
 
     for (Version v : this.versions) {
       clonedStore.forceAddVersion(v.cloneVersion());
