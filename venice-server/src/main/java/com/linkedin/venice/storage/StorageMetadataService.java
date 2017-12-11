@@ -33,4 +33,13 @@ public interface StorageMetadataService extends OffsetManager {
    * @return an instance of {@link StoreVersionState} corresponding to this topic.
    */
   Optional<StoreVersionState> getStoreVersionState(String topicName) throws VeniceException;
+
+  /**
+   * Tailored function for retrieving chunking setting. Specific implementations can optionally
+   * implement a more optimized version of this API, since it is expected to be used at greater
+   * frequency than the others.
+   */
+  default boolean isStoreVersionChunked(String topicName) {
+    return getStoreVersionState(topicName).map(storeVersionState -> storeVersionState.chunked).orElse(false);
+  }
 }

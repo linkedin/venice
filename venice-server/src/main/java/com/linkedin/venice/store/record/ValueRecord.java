@@ -3,6 +3,7 @@ package com.linkedin.venice.store.record;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.utils.ByteUtils;
 import io.netty.buffer.ByteBuf;
+import io.netty.buffer.CompositeByteBuf;
 import io.netty.buffer.Unpooled;
 import java.nio.ByteBuffer;
 
@@ -24,23 +25,28 @@ import java.nio.ByteBuffer;
  *
  */
 public class ValueRecord {
+  public static final int SCHEMA_HEADER_LENGTH = ByteUtils.SIZE_OF_INT;
+
   private final int schemaId;
   private final ByteBuf data;
   private byte[] serializedArr;
 
   private ValueRecord(int schemaId, byte[] data) {
+    this(schemaId, Unpooled.wrappedBuffer(data));
+  }
+
+  private ValueRecord(int schemaId, ByteBuf data) {
     this.schemaId = schemaId;
-    this.data = Unpooled.wrappedBuffer(data);
+    this.data = data;
   }
 
   private ValueRecord(byte[] combinedData) {
     int dataLen = combinedData.length;
-    if (dataLen < ByteUtils.SIZE_OF_INT) {
-      throw new VeniceException("Invalid combined data array, the length should be bigger than " + ByteUtils.SIZE_OF_INT);
+    if (dataLen < SCHEMA_HEADER_LENGTH) {
+      throw new VeniceException("Invalid combined data array, the length should be bigger than " + SCHEMA_HEADER_LENGTH);
     }
-    this.schemaId = ByteUtils.readInt(combinedData, 0);
-    // Unpooled.wrappedBuffer will return an SlicedByteBuf backed by the original byte array
-    this.data = Unpooled.wrappedBuffer(combinedData, ByteUtils.SIZE_OF_INT, dataLen - ByteUtils.SIZE_OF_INT);
+    this.schemaId = parseSchemaId(combinedData);
+    this.data = parseDataAsByteBuf(combinedData);
     this.serializedArr = combinedData;
   }
 
@@ -48,8 +54,26 @@ public class ValueRecord {
     return new ValueRecord(schemaId, data);
   }
 
+  public static ValueRecord create(int schemaId, ByteBuf data) {
+    return new ValueRecord(schemaId, data);
+  }
+
   public static ValueRecord parseAndCreate(byte[] combinedData) {
     return new ValueRecord(combinedData);
+  }
+
+  public static int parseSchemaId(byte[] combinedData) {
+    return ByteUtils.readInt(combinedData, 0);
+  }
+
+  public static ByteBuf parseDataAsByteBuf(byte[] combinedData) {
+    // Unpooled.wrappedBuffer will return an SlicedByteBuf backed by the original byte array
+    return Unpooled.wrappedBuffer(combinedData, SCHEMA_HEADER_LENGTH, combinedData.length - SCHEMA_HEADER_LENGTH);
+  }
+
+  public static ByteBuffer parseDataAsNIOByteBuffer(byte[] combinedData) {
+    // Unpooled.wrappedBuffer will return an SlicedByteBuf backed by the original byte array
+    return ByteBuffer.wrap(combinedData, SCHEMA_HEADER_LENGTH, combinedData.length - SCHEMA_HEADER_LENGTH);
   }
 
   public int getSchemaId() {
@@ -61,7 +85,13 @@ public class ValueRecord {
   }
 
   public ByteBuffer getDataNIOByteBuf() {
-    return ByteBuffer.wrap(data.array(), data.arrayOffset(), data.readableBytes());
+    return data.nioBuffer();
+//    try {
+//      return ByteBuffer.wrap(data.array(), data.arrayOffset(), data.readableBytes());
+//    } catch (UnsupportedOperationException e) {
+//      /** Then {@link data} is a {@link io.netty.buffer.CompositeByteBuf}... */
+//      return data.nioBuffer();
+//    }
   }
 
   // This function normally should only be used in testing,
@@ -81,9 +111,9 @@ public class ValueRecord {
     }
     byte[] dataArr = data.array();
 
-    serializedArr = new byte[ByteUtils.SIZE_OF_INT + dataArr.length];
+    serializedArr = new byte[SCHEMA_HEADER_LENGTH + dataArr.length];
     ByteUtils.writeInt(serializedArr, schemaId, 0);
-    System.arraycopy(dataArr, 0, serializedArr, ByteUtils.SIZE_OF_INT, dataArr.length);
+    System.arraycopy(dataArr, 0, serializedArr, SCHEMA_HEADER_LENGTH, dataArr.length);
 
     return serializedArr;
   }

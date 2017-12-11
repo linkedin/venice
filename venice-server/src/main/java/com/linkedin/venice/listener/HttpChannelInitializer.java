@@ -4,6 +4,7 @@ import com.linkedin.ddsstorage.router.lnkd.netty4.SSLInitializer;
 import com.linkedin.security.ssl.access.control.SSLEngineComponentFactory;
 import com.linkedin.venice.acl.StaticAccessController;
 import com.linkedin.venice.config.VeniceServerConfig;
+import com.linkedin.venice.storage.MetadataRetriever;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.server.StoreRepository;
 import com.linkedin.venice.stats.AggServerHttpRequestStats;
@@ -30,7 +31,7 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
   private final VerifySslHandler verifySsl = new VerifySslHandler();
   private final VeniceServerConfig serverConfig;
 
-  public HttpChannelInitializer(StoreRepository storeRepository, InMemoryOffsetRetriever offsetRetriever,
+  public HttpChannelInitializer(StoreRepository storeRepository, MetadataRetriever metadataRetriever,
       MetricsRepository metricsRepository, Optional<SSLEngineComponentFactory> sslFactory,
       VeniceServerConfig serverConfig, Optional<StaticAccessController> accessController) {
     this.serverConfig = serverConfig;
@@ -42,9 +43,7 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
     singleGetStats = new AggServerHttpRequestStats(metricsRepository, RequestType.SINGLE_GET);
     multiGetStats = new AggServerHttpRequestStats(metricsRepository, RequestType.MULTI_GET);
 
-    storageExecutionHandler = new StorageExecutionHandler(executor,
-        storeRepository,
-        offsetRetriever);
+    storageExecutionHandler = new StorageExecutionHandler(executor, storeRepository, metadataRetriever);
 
     this.sslFactory = sslFactory;
     this.aclHandler = accessController.isPresent()

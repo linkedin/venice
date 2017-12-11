@@ -25,7 +25,7 @@ import org.testng.annotations.Test;
  */
 public class StorageServiceTest {
 
-  @Test
+  @Test(invocationCount = 100)
   public void testMultiThreadedBDB() throws Throwable {
     final int NUM_THREADS = 15;
     final int TOTAL_THREAD_JOIN_TIME = 30 * Time.MS_PER_SECOND;

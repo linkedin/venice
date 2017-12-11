@@ -19,6 +19,7 @@ public class StatsHandler extends ChannelDuplexHandler {
   private String storeName;
   private boolean isHealthCheck;
   private double bdbQueryLatency = -1;
+  private int multiChunkLargeValueCount = -1;
   private int requestKeyCount = -1;
   private int successRequestKeyCount = -1;
   private final AggServerHttpRequestStats singleGetStats;
@@ -66,6 +67,14 @@ public class StatsHandler extends ChannelDuplexHandler {
     this.bdbQueryLatency = latency;
   }
 
+  public boolean isAssembledMultiChunkLargeValue() {
+    return multiChunkLargeValueCount > 0;
+  }
+
+  public void setMultiChunkLargeValueCount(int multiChunkLargeValueCount) {
+    this.multiChunkLargeValueCount = multiChunkLargeValueCount;
+  }
+
   public StatsHandler(AggServerHttpRequestStats singleGetStats, AggServerHttpRequestStats multiGetStats) {
     this.singleGetStats = singleGetStats;
     this.multiGetStats = multiGetStats;
@@ -84,6 +93,7 @@ public class StatsHandler extends ChannelDuplexHandler {
       bdbQueryLatency = -1;
       requestKeyCount = -1;
       successRequestKeyCount = -1;
+      multiChunkLargeValueCount = -1;
 
       newRequest = false;
     }
@@ -130,7 +140,11 @@ public class StatsHandler extends ChannelDuplexHandler {
   private void recordBasicMetrics() {
     if (null != storeName) {
       if (bdbQueryLatency >= 0) {
-        currentStats.recordBdbQueryLatency(storeName, bdbQueryLatency);
+        currentStats.recordBdbQueryLatency(storeName, bdbQueryLatency, isAssembledMultiChunkLargeValue());
+      }
+      if (multiChunkLargeValueCount > 0) {
+        // We only record this metric for requests where large values occurred
+        currentStats.recordMultiChunkLargeValueCount(storeName, multiChunkLargeValueCount);
       }
       if (requestKeyCount > 0) {
         currentStats.recordRequestKeyCount(storeName, requestKeyCount);

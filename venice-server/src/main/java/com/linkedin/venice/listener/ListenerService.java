@@ -3,6 +3,7 @@ package com.linkedin.venice.listener;
 import com.linkedin.security.ssl.access.control.SSLEngineComponentFactory;
 import com.linkedin.venice.acl.StaticAccessController;
 import com.linkedin.venice.config.VeniceServerConfig;
+import com.linkedin.venice.storage.MetadataRetriever;
 import com.linkedin.venice.server.StoreRepository;
 import com.linkedin.venice.server.VeniceConfigLoader;
 import com.linkedin.venice.service.AbstractVeniceService;
@@ -35,7 +36,7 @@ public class ListenerService extends AbstractVeniceService{
   private static int nettyBacklogSize = 1000;
 
   public ListenerService(StoreRepository storeRepository,
-                         InMemoryOffsetRetriever offsetRetriever,
+                         MetadataRetriever metadataRetriever,
                          VeniceConfigLoader veniceConfigLoader,
                          MetricsRepository metricsRepository,
                          Optional<SSLEngineComponentFactory> sslFactory,
@@ -49,7 +50,7 @@ public class ListenerService extends AbstractVeniceService{
 
     bootstrap = new ServerBootstrap();
     bootstrap.group(bossGroup, workerGroup).channel(NioServerSocketChannel.class)
-        .childHandler(new HttpChannelInitializer(storeRepository, offsetRetriever, metricsRepository, sslFactory, serverConfig, accessController))
+        .childHandler(new HttpChannelInitializer(storeRepository, metadataRetriever, metricsRepository, sslFactory, serverConfig, accessController))
         .option(ChannelOption.SO_BACKLOG, nettyBacklogSize)
         .childOption(ChannelOption.SO_KEEPALIVE, true)
         .option(ChannelOption.SO_REUSEADDR, true)

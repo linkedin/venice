@@ -8,6 +8,7 @@ import com.linkedin.venice.serialization.avro.AvroProtocolDefinition;
 import com.linkedin.venice.serialization.avro.InternalAvroSpecificSerializer;
 import com.linkedin.venice.service.AbstractVeniceService;
 import com.linkedin.venice.utils.Time;
+import com.sleepycat.je.CacheMode;
 import com.sleepycat.je.Database;
 import com.sleepycat.je.DatabaseConfig;
 import com.sleepycat.je.DatabaseEntry;
@@ -16,6 +17,8 @@ import com.sleepycat.je.Environment;
 import com.sleepycat.je.EnvironmentConfig;
 import com.sleepycat.je.LockMode;
 import com.sleepycat.je.OperationStatus;
+import java.util.HashMap;
+import java.util.Map;
 import org.apache.log4j.Logger;
 
 import java.io.File;
@@ -47,7 +50,7 @@ public class BdbStorageMetadataService extends AbstractVeniceService implements 
   private static final String OFFSET_RECORD_DESCRIPTOR_PREFIX = "OffsetRecord on Topic: ";
   private static final String OFFSET_RECORD_DESCRIPTOR_PART_2 =  " PartitionId: ";
   private final Environment offsetsBdbEnvironment;
-
+  private final Map<String, Boolean> chunkingEnabledCache = new HashMap<>();
   private AtomicBoolean isOpen;
   private Database offsetsBdbDatabase;
   private final InternalAvroSpecificSerializer<StoreVersionState> storeVersionStateSerializer;
@@ -71,6 +74,7 @@ public class BdbStorageMetadataService extends AbstractVeniceService implements 
     envConfig.setConfigParam(EnvironmentConfig.LOG_FILE_MAX, Integer.toString(veniceClusterConfig.getOffsetManagerLogFileMaxBytes()));
     envConfig.setConfigParam(EnvironmentConfig.ENV_RECOVERY_FORCE_CHECKPOINT, Boolean.toString(true));
     envConfig.setCacheSize(veniceClusterConfig.getOffsetDatabaseCacheSizeInBytes());
+    envConfig.setCacheMode(CacheMode.DEFAULT); // We don't want to evict LN for the metadata service.
 
     this.offsetsBdbEnvironment = new Environment(bdbDir, envConfig);
     this.storeVersionStateSerializer = AvroProtocolDefinition.STORE_VERSION_STATE.getSerializer();
@@ -132,6 +136,7 @@ public class BdbStorageMetadataService extends AbstractVeniceService implements 
     DatabaseEntry keyEntry = getBDBKey(topicName, PARTITION_FOR_STORE_VERSION_STATE);
     byte[] value = storeVersionStateSerializer.serialize(topicName, record);
     put(keyEntry, value, getStoreVersionStateDescriptor(topicName));
+    chunkingEnabledCache.put(topicName, record.chunked);
   }
 
   @Override
@@ -151,6 +156,7 @@ public class BdbStorageMetadataService extends AbstractVeniceService implements 
   @Override
   public void clearStoreVersionState(String topicName) {
     DatabaseEntry keyEntry = getBDBKey(topicName, PARTITION_FOR_STORE_VERSION_STATE);
+    chunkingEnabledCache.remove(topicName);
     clear(keyEntry, getStoreVersionStateDescriptor(topicName));
   }
 
@@ -187,8 +193,19 @@ public class BdbStorageMetadataService extends AbstractVeniceService implements 
     if (null == value) {
       return Optional.empty();
     } else {
-      return Optional.of(storeVersionStateSerializer.deserialize(topicName, value));
+      StoreVersionState storeVersionState = storeVersionStateSerializer.deserialize(topicName, value);
+      chunkingEnabledCache.put(topicName, storeVersionState.chunked);
+      return Optional.of(storeVersionState);
     }
+  }
+
+  @Override
+  public boolean isStoreVersionChunked(String topicName) {
+    Boolean chunkingEnabled = chunkingEnabledCache.get(topicName);
+    if (null == chunkingEnabled) {
+      return StorageMetadataService.super.isStoreVersionChunked(topicName);
+    }
+    return chunkingEnabled;
   }
 
   // PRIVATE FUNCTIONS
