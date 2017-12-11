@@ -2,10 +2,8 @@ package com.linkedin.venice.listener;
 
 import com.linkedin.venice.listener.request.GetRouterRequest;
 import com.linkedin.venice.listener.response.StorageResponseObject;
-import com.linkedin.venice.offsets.OffsetManager;
-import com.linkedin.venice.offsets.OffsetRecord;
+import com.linkedin.venice.storage.MetadataRetriever;
 import com.linkedin.venice.server.StoreRepository;
-import com.linkedin.venice.storage.BdbStorageMetadataService;
 import com.linkedin.venice.store.AbstractStorageEngine;
 import com.linkedin.venice.store.record.ValueRecord;
 import io.netty.buffer.UnpooledByteBufAllocator;
@@ -50,8 +48,8 @@ public class StorageExecutionHandlerTest {
     StoreRepository testRepository = mock(StoreRepository.class);
     doReturn(testStore).when(testRepository).getLocalStorageEngine(topic);
 
-    InMemoryOffsetRetriever mockOffsetRetriever = mock(InMemoryOffsetRetriever.class);
-    doReturn(Optional.of(expectedOffset)).when(mockOffsetRetriever).getOffset(Mockito.anyString(), Mockito.anyInt());
+    MetadataRetriever mockMetadataRetriever = mock(MetadataRetriever.class);
+    doReturn(Optional.of(expectedOffset)).when(mockMetadataRetriever).getOffset(Mockito.anyString(), Mockito.anyInt());
 
     ChannelHandlerContext mockCtx = mock(ChannelHandlerContext.class);
     doReturn(new UnpooledByteBufAllocator(true)).when(mockCtx).alloc();
@@ -64,7 +62,8 @@ public class StorageExecutionHandlerTest {
         new LinkedBlockingQueue<>(2));
 
     //Actual test
-    StorageExecutionHandler testHandler = new StorageExecutionHandler(threadPoolExecutor, testRepository, mockOffsetRetriever);
+    StorageExecutionHandler testHandler = new StorageExecutionHandler(threadPoolExecutor, testRepository,
+        mockMetadataRetriever);
     testHandler.channelRead(mockCtx, testRequest);
 
     //Wait for async stuff to finish

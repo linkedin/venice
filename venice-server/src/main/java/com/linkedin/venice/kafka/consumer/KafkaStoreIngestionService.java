@@ -5,7 +5,7 @@ import com.linkedin.venice.config.VeniceServerConfig;
 import com.linkedin.venice.config.VeniceStoreConfig;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.TopicManager;
-import com.linkedin.venice.listener.InMemoryOffsetRetriever;
+import com.linkedin.venice.storage.MetadataRetriever;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.ReadOnlyStoreRepository;
@@ -51,7 +51,7 @@ import org.apache.log4j.Logger;
  *
  * Uses the "new" Kafka Consumer.
  */
-public class KafkaStoreIngestionService extends AbstractVeniceService implements StoreIngestionService, InMemoryOffsetRetriever {
+public class KafkaStoreIngestionService extends AbstractVeniceService implements StoreIngestionService, MetadataRetriever {
   private static final String GROUP_ID_FORMAT = "%s_%s";
 
   private static final Logger logger = Logger.getLogger(KafkaStoreIngestionService.class);
@@ -373,5 +373,10 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
       return Optional.empty();
     }
     return ingestionTask.getCurrentOffset(partitionId);
+  }
+
+  @Override
+  public boolean isStoreVersionChunked(String topicName) {
+    return storageMetadataService.isStoreVersionChunked(topicName);
   }
 }

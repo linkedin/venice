@@ -3,7 +3,9 @@ package com.linkedin.venice.listener;
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.listener.response.MultiGetResponseWrapper;
 import com.linkedin.venice.listener.response.HttpShortcutResponse;
+import com.linkedin.venice.listener.response.ReadResponse;
 import com.linkedin.venice.listener.response.StorageResponseObject;
+import com.linkedin.venice.utils.ExceptionUtils;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 import io.netty.channel.ChannelHandlerContext;
@@ -36,48 +38,49 @@ public class OutboundHttpWrapperHandler extends ChannelOutboundHandlerAdapter {
     ByteBuf body;
     String contentType = HttpConstants.AVRO_BINARY;
     HttpResponseStatus responseStatus = OK;
-    String offset = "-1";
-    int schemaId = -1;
-    String partitionOffsets = null;
-    if (msg instanceof StorageResponseObject) {
-      StorageResponseObject obj = (StorageResponseObject) msg;
-      statsHandler.setBdbQueryLatency(obj.getBdbQueryLatency());
-      offset = Long.toString(obj.getOffset());
-      if (obj.isFound()) {
-        body = obj.getValueRecord().getData();
-        schemaId = obj.getValueRecord().getSchemaId();
-        statsHandler.setSuccessRequestKeyCount(1);
+    String offsetHeader = "-1";
+    int schemaIdHeader = -1;
+    try {
+      if (msg instanceof ReadResponse) {
+        ReadResponse obj = (ReadResponse) msg;
+        statsHandler.setBdbQueryLatency(obj.getBdbQueryLatency());
+        statsHandler.setSuccessRequestKeyCount(obj.getRecordCount());
+        statsHandler.setMultiChunkLargeValueCount(obj.getMultiChunkLargeValueCount());
+        if (obj.isFound()) {
+          body = obj.getResponseBody();
+          offsetHeader = obj.getResponseOffsetHeader();
+          schemaIdHeader = obj.getResponseSchemaIdHeader();
+        } else {
+          body = Unpooled.EMPTY_BUFFER;
+          responseStatus = NOT_FOUND;
+        }
+      } else if (msg instanceof HttpShortcutResponse) {
+        responseStatus = ((HttpShortcutResponse) msg).getStatus();
+        body = Unpooled.wrappedBuffer(((HttpShortcutResponse) msg).getMessage().getBytes(StandardCharsets.UTF_8));
+        contentType = HttpConstants.TEXT_PLAIN;
+      } else if (msg instanceof DefaultFullHttpResponse){
+        ctx.writeAndFlush(msg);
+        return;
       } else {
-        // not found
-        body = Unpooled.EMPTY_BUFFER;
-        responseStatus = NOT_FOUND;
+        responseStatus = INTERNAL_SERVER_ERROR;
+        body = Unpooled.wrappedBuffer(
+            "Internal Server Error: Unrecognized object in OutboundHttpWrapperHandler".getBytes(StandardCharsets.UTF_8));
+        contentType = HttpConstants.TEXT_PLAIN;
       }
-    } else if (msg instanceof MultiGetResponseWrapper) {
-      MultiGetResponseWrapper response = (MultiGetResponseWrapper) msg;
-      statsHandler.setBdbQueryLatency(response.getBdbQueryLatency());
-      statsHandler.setSuccessRequestKeyCount(response.getRecordCount());
-      body = Unpooled.wrappedBuffer(response.serializedMultiGetResponse());
-      schemaId = response.getResponseSchemaId();
-      offset = response.serializedPartitionOffsetMap();
-    } else if (msg instanceof HttpShortcutResponse) {
-      responseStatus = ((HttpShortcutResponse) msg).getStatus();
-      body = Unpooled.wrappedBuffer(((HttpShortcutResponse) msg).getMessage().getBytes(StandardCharsets.UTF_8));
-      contentType = HttpConstants.TEXT_PLAIN;
-    } else if (msg instanceof DefaultFullHttpResponse){
-      ctx.writeAndFlush(msg);
-      return;
-    } else {
+    } catch (Exception e) {
       responseStatus = INTERNAL_SERVER_ERROR;
-      body = Unpooled.wrappedBuffer("Unrecognized object in OutboundHttpWrapperHandler".getBytes(StandardCharsets.UTF_8));
+      body = Unpooled.wrappedBuffer(("Internal Server Error:\n\n" + ExceptionUtils.stackTraceToString(e)
+          + "\n(End of server-side stacktrace)\n").getBytes(StandardCharsets.UTF_8));
       contentType = HttpConstants.TEXT_PLAIN;
+    } finally {
+      statsHandler.setResponseStatus(responseStatus);
     }
 
-    statsHandler.setResponseStatus(responseStatus);
     FullHttpResponse response = new DefaultFullHttpResponse(HTTP_1_1, responseStatus, body);
     response.headers().set(CONTENT_TYPE, contentType);
     response.headers().set(CONTENT_LENGTH, body.readableBytes());
-    response.headers().set(HttpConstants.VENICE_OFFSET, offset);
-    response.headers().set(HttpConstants.VENICE_SCHEMA_ID, schemaId);
+    response.headers().set(HttpConstants.VENICE_OFFSET, offsetHeader);
+    response.headers().set(HttpConstants.VENICE_SCHEMA_ID, schemaIdHeader);
 
     /** {@link io.netty.handler.timeout.IdleStateHandler} is in charge of detecting the state
      *  of connection, and {@link GetRequestHttpHandler} will close the connection if necessary.

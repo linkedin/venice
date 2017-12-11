@@ -38,9 +38,9 @@ public class AggServerHttpRequestStats extends AbstractVeniceAggStats<ServerHttp
     getStoreStats(storeName).recordErrorRequestLatency(latency);
   }
 
-  public void recordBdbQueryLatency(String storeName, double latency) {
-    totalStats.recordBdbQueryLatency(latency);
-    getStoreStats(storeName).recordBdbQueryLatency(latency);
+  public void recordBdbQueryLatency(String storeName, double latency, boolean assembledMultiChunkLargeValue) {
+    totalStats.recordBdbQueryLatency(latency, assembledMultiChunkLargeValue);
+    getStoreStats(storeName).recordBdbQueryLatency(latency, assembledMultiChunkLargeValue);
   }
 
   public void recordRequestKeyCount(String storeName, int keyNum) {
@@ -51,5 +51,10 @@ public class AggServerHttpRequestStats extends AbstractVeniceAggStats<ServerHttp
   public void recordSuccessRequestKeyCount(String storeName, int keyNum) {
     totalStats.recordSuccessRequestKeyCount(keyNum);
     getStoreStats(storeName).recordSuccessRequestKeyCount(keyNum);
+  }
+
+  public void recordMultiChunkLargeValueCount(String storeName, int multiChunkLargeValueCount) {
+    totalStats.recordMultiChunkLargeValueCount(multiChunkLargeValueCount);
+    getStoreStats(storeName).recordMultiChunkLargeValueCount(multiChunkLargeValueCount);
   }
 }
