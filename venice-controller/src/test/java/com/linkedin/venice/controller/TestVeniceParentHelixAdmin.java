@@ -855,6 +855,7 @@ public class TestVeniceParentHelixAdmin {
         Optional.empty(),
         Optional.empty(),
         Optional.of(Boolean.TRUE),
+        Optional.empty(),
         Optional.empty());
     storeResponse = controllerClient.getStore(storeName);
     Assert.assertTrue(storeResponse.getStore().isChunkingEnabled());
@@ -879,13 +880,39 @@ public class TestVeniceParentHelixAdmin {
         Optional.empty(),
         Optional.empty(),
         Optional.empty(),
-        Optional.of(Boolean.TRUE));
+        Optional.of(Boolean.TRUE),
+        Optional.empty());
     storeResponse = controllerClient.getStore(storeName);
     Assert.assertTrue(storeResponse.getStore().isRouterCacheEnabled());
     // Child controller will be updated asynchronously
     TestUtils.waitForNonDeterministicAssertion(TIMEOUT_IN_MS, TimeUnit.MILLISECONDS, () -> {
       StoreResponse childStoreResponse = controllerClient.getStore(storeName);
       Assert.assertTrue(childStoreResponse.getStore().isRouterCacheEnabled());
+    });
+
+    // Update batchGetLimit
+    Assert.assertEquals(storeResponse.getStore().getBatchGetLimit(), -1);
+    controllerClient.updateStore(storeName,
+        Optional.empty(),
+        Optional.empty(),
+        Optional.empty(),
+        Optional.empty(),
+        Optional.empty(),
+        Optional.empty(),
+        Optional.empty(),
+        Optional.empty(),
+        Optional.empty(),
+        Optional.empty(),
+        Optional.empty(),
+        Optional.empty(),
+        Optional.empty(),
+        Optional.of(100));
+    storeResponse = controllerClient.getStore(storeName);
+    Assert.assertEquals(storeResponse.getStore().getBatchGetLimit(), 100);
+    // Child controller will be updated asynchronously
+    TestUtils.waitForNonDeterministicAssertion(TIMEOUT_IN_MS, TimeUnit.MILLISECONDS, () -> {
+      StoreResponse childStoreResponse = controllerClient.getStore(storeName);
+      Assert.assertEquals(childStoreResponse.getStore().getBatchGetLimit(), 100);
     });
 
     controllerWrapper.close();
@@ -1166,7 +1193,7 @@ public class TestVeniceParentHelixAdmin {
     Optional<CompressionStrategy> compressionStrategy = Optional.of(CompressionStrategy.GZIP);
     parentAdmin.updateStore(clusterName, storeName, owner, readability, writebility, partitionCount, storageQuota,
         readQuota, Optional.empty(), Optional.of(135L), Optional.of(2000L), accessControlled, compressionStrategy,
-        Optional.empty(), Optional.empty());
+        Optional.empty(), Optional.empty(), Optional.empty());
 
     verify(veniceWriter)
         .put(any(), any(), anyInt());
@@ -1202,7 +1229,7 @@ public class TestVeniceParentHelixAdmin {
     accessControlled = Optional.of(false);
     parentAdmin.updateStore(clusterName, storeName, owner, readability, writebility, partitionCount, storageQuota,
         readQuota, Optional.empty(), Optional.of(135L), Optional.of(2000L), accessControlled, compressionStrategy,
-        Optional.empty(), Optional.empty());
+        Optional.empty(), Optional.empty(), Optional.empty());
     verify(veniceWriter, times(2)).put(keyCaptor.capture(), valueCaptor.capture(), schemaCaptor.capture());
     valueBytes = valueCaptor.getValue();
     schemaId = schemaCaptor.getValue();

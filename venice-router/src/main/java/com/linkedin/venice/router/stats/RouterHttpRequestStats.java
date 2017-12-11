@@ -36,6 +36,7 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
   private final Sensor cacheLookupLatencySensor;
   private final Sensor cachePutRequestSensor;
   private final Sensor cachePutLatencySensor;
+  private final Sensor keyNumSensor;
 
   //QPS metrics
   public RouterHttpRequestStats(MetricsRepository metricsRepository, String storeName, RequestType requestType,
@@ -80,6 +81,8 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
     cachePutRequestSensor = registerSensor("cache_put_request", new Count());
     cachePutLatencySensor = registerSensor("cache_put_latency",
         TehutiUtils.getPercentileStat(getName(), getFullMetricName("cache_put_latency")));
+
+    keyNumSensor = registerSensor("key_num", new Avg(), new Max());
   }
 
   public void recordRequest() {
@@ -158,5 +161,9 @@ public class RouterHttpRequestStats extends AbstractVeniceHttpStats {
 
   public void recordCachePutLatency(double latency) {
     cachePutLatencySensor.record(latency);
+  }
+
+  public void recordKeyNum(int keyNum) {
+    keyNumSensor.record(keyNum);
   }
 }

@@ -5,6 +5,7 @@ import com.linkedin.ddsstorage.netty4.misc.BasicHttpRequest;
 import com.linkedin.ddsstorage.router.api.ExtendedResourcePathParser;
 import com.linkedin.ddsstorage.router.api.RouterException;
 import com.linkedin.venice.controllerapi.ControllerRoute;
+import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.router.api.path.VeniceSingleGetPath;
 import com.linkedin.venice.router.api.path.VeniceMultiGetPath;
 import com.linkedin.venice.router.api.path.VenicePath;
@@ -56,17 +57,18 @@ public class VenicePathParser<HTTP_REQUEST extends BasicHttpRequest>
   private final VenicePartitionFinder partitionFinder;
   private final AggRouterHttpRequestStats statsForSingleGet;
   private final AggRouterHttpRequestStats statsForMultiGet;
-
   private final int maxKeyCountInMultiGetReq;
+  private final ReadOnlyStoreRepository storeRepository;
 
   public VenicePathParser(VeniceVersionFinder versionFinder, VenicePartitionFinder partitionFinder,
       AggRouterHttpRequestStats statsForSingleGet, AggRouterHttpRequestStats statsForMultiGet,
-      int maxKeyCountInMultiGetReq){
+      int maxKeyCountInMultiGetReq, ReadOnlyStoreRepository storeRepository){
     this.versionFinder = versionFinder;
     this.partitionFinder = partitionFinder;
     this.statsForSingleGet = statsForSingleGet;
     this.statsForMultiGet = statsForMultiGet;
     this.maxKeyCountInMultiGetReq = maxKeyCountInMultiGetReq;
+    this.storeRepository = storeRepository;
   };
 
   @Override
@@ -98,8 +100,12 @@ public class VenicePathParser<HTTP_REQUEST extends BasicHttpRequest>
       stats = statsForSingleGet;
     } else if (VeniceRouterUtils.isHttpPost(method)) {
       // multi-get request
-      path = new VeniceMultiGetPath(resourceName, fullHttpRequest, partitionFinder, maxKeyCountInMultiGetReq);
+      path = new VeniceMultiGetPath(resourceName, fullHttpRequest, partitionFinder, getBatchGetLimit(storeName));
       stats = statsForMultiGet;
+      /**
+       * Here we only track key num for batch-get request, since single-get request will be always 1.
+       */
+      stats.recordKeyNum(storeName, path.getPartitionKeys().size());
     } else {
       throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(Optional.empty(), Optional.empty(),
           BAD_REQUEST, "Method: " + method + " is not allowed");
@@ -145,6 +151,14 @@ public class VenicePathParser<HTTP_REQUEST extends BasicHttpRequest>
     }
     Matcher m = STORE_PATTERN.matcher(storeName);
     return m.matches();
+  }
+
+  private int getBatchGetLimit(String storeName) {
+    int batchGetLimit = storeRepository.getBatchGetLimit(storeName);
+    if (batchGetLimit <= 0) {
+      batchGetLimit = maxKeyCountInMultiGetReq;
+    }
+    return batchGetLimit;
   }
 
 }

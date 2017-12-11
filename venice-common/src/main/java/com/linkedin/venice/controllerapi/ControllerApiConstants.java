@@ -33,6 +33,7 @@ public class ControllerApiConstants {
   public static final String COMPRESSION_STRATEGY = "compression_strategy";
   public static final String CHUNKING_ENABLED = "chunking_enabled";
   public static final String ROUTER_CACHE_ENABLED = "router_cache_enabled";
+  public static final String BATCH_GET_LIMIT = "batch_get_limit";
 
   public static final String PUSH_TYPE = "push_type";
   public static final String PUSH_JOB_ID = "push_job_id";

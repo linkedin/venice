@@ -267,7 +267,7 @@ public class RouterServer extends AbstractVeniceService {
         new MetaDataHandler(routingDataRepository, schemaRepository, config.getClusterName(), storeConfigRepository,
             config.getClusterToD2Map());
     VenicePathParser pathParser = new VenicePathParser(new VeniceVersionFinder(metadataRepository), partitionFinder,
-        statsForSingleGet, statsForMultiGet, config.getMaxKeyCountInMultiGetReq());
+        statsForSingleGet, statsForMultiGet, config.getMaxKeyCountInMultiGetReq(), metadataRepository);
     // Setup stat tracking for exceptional case
     RouterExceptionAndTrackingUtils.setStatsForSingleGet(statsForSingleGet);
     RouterExceptionAndTrackingUtils.setStatsForMultiGet(statsForMultiGet);

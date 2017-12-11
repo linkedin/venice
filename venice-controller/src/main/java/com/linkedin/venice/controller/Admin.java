@@ -149,7 +149,8 @@ public interface Admin {
                      Optional<Boolean> accessControlled,
                      Optional<CompressionStrategy> compressionStrategy,
                      Optional<Boolean> chunkingEnabled,
-                     Optional<Boolean> routerCacheEnabled
+                     Optional<Boolean> routerCacheEnabled,
+                     Optional<Integer> batchGetLimit
         );
 
     double getStorageEngineOverheadRatio(String clusterName);

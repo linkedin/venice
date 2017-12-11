@@ -793,7 +793,8 @@ public class VeniceParentHelixAdmin implements Admin {
       Optional<Boolean> accessControlled,
       Optional<CompressionStrategy> compressionStrategy,
       Optional<Boolean> chunkingEnabled,
-      Optional<Boolean> routerCacheEnabled) {
+      Optional<Boolean> routerCacheEnabled,
+      Optional<Integer> batchGetLimit) {
     acquireLock(clusterName);
 
     try {
@@ -835,6 +836,7 @@ public class VeniceParentHelixAdmin implements Admin {
           null == hybridStoreConfig ? Optional.empty() : Optional.of(hybridStoreConfig),
           compressionStrategy,
           routerCacheEnabled);
+      setStore.batchGetLimit = batchGetLimit.isPresent() ? batchGetLimit.get() : store.getBatchGetLimit();
 
       AdminOperation message = new AdminOperation();
       message.operationType = AdminMessageType.UPDATE_STORE.ordinal();

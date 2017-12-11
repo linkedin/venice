@@ -421,6 +421,10 @@ public class AdminTool {
     Optional<Boolean> routerCacheEnabled = Utils.isNullOrEmpty(routerCacheEnabledStr) ? Optional.empty() :
         Optional.of(Utils.parseBooleanFromString(routerCacheEnabledStr, Arg.ROUTER_CACHE_ENABLED.name()));
 
+    String batchGetLimitStr = getOptionalArgument(cmd, Arg.BATCH_GET_LIMIT);
+    Optional<Integer> batchGetLimit = Utils.isNullOrEmpty(batchGetLimitStr) ? Optional.empty() :
+        Optional.of(Utils.parseIntFromString(batchGetLimitStr, Arg.BATCH_GET_LIMIT.name()));
+
     ControllerResponse response = controllerClient.updateStore(
         storeName,
         owner,
@@ -435,7 +439,8 @@ public class AdminTool {
         accessControlled,
         compressionStrategy,
         chunkingEnabled,
-        routerCacheEnabled);
+        routerCacheEnabled,
+        batchGetLimit);
 
     printSuccess(response);
   }

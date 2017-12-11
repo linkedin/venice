@@ -998,6 +998,15 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         });
     }
 
+    public synchronized  void setBatchGetLimit(String clusterName, String storeName,
+        int batchGetLimit) {
+        storeMetadataUpdate(clusterName, storeName, store -> {
+            store.setBatchGetLimit(batchGetLimit);
+
+            return store;
+        });
+    }
+
     /**
      * This function will check whether the store update will cause the case that a hybrid store will have router-cache enabled
      * or a compressed store will have router-cache enabled.
@@ -1055,7 +1064,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         Optional<Boolean> accessControlled,
         Optional<CompressionStrategy> compressionStrategy,
         Optional<Boolean> chunkingEnabled,
-        Optional<Boolean> routerCacheEnabled) {
+        Optional<Boolean> routerCacheEnabled,
+        Optional<Integer> batchGetLimit) {
         Store originalStore = getStore(clusterName, storeName).cloneStore();
 
         Optional<HybridStoreConfig> hybridStoreConfig = Optional.empty();
@@ -1121,6 +1131,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
 
             if (chunkingEnabled.isPresent()) {
                 setChunkingEnabled(clusterName, storeName, chunkingEnabled.get());
+            }
+
+            if (batchGetLimit.isPresent()) {
+                setBatchGetLimit(clusterName, storeName, batchGetLimit.get());
             }
 
         } catch (VeniceException e) {
