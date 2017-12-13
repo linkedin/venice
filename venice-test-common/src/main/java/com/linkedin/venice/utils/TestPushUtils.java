@@ -28,7 +28,6 @@ import org.apache.avro.generic.GenericDatumWriter;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.io.DatumWriter;
 import org.apache.avro.util.Utf8;
-import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.kafka.common.config.SslConfigs;
 import org.apache.samza.config.MapConfig;
 import org.apache.samza.system.OutgoingMessageEnvelope;
@@ -232,6 +231,9 @@ public class TestPushUtils {
     props.put(KafkaPushJob.KEY_FIELD_PROP, "id");
     props.put(KafkaPushJob.VALUE_FIELD_PROP, "name");
     props.putAll(SslUtils.getLocalKafkaClientSSLConfig());
+    // remove the path for certs, because we will get them from hadoop user credentials.
+    props.remove(SslConfigs.SSL_KEYSTORE_LOCATION_CONFIG);
+    props.remove(SslConfigs.SSL_TRUSTSTORE_LOCATION_CONFIG);
     // No need for a big close timeout in tests. This is just to speed up discovery of certain regressions.
     props.put(VeniceWriter.CLOSE_TIMEOUT_MS, 500);
     return props;

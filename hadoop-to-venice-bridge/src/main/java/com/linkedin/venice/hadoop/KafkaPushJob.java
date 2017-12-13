@@ -9,6 +9,8 @@ import com.linkedin.venice.controllerapi.StorageEngineOverheadRatioResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.hadoop.pbnj.PostBulkLoadAnalysisMapper;
+import com.linkedin.venice.hadoop.ssl.SSLConfigurator;
+import com.linkedin.venice.hadoop.ssl.TempFileSSLConfigurator;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.schema.vson.VsonAvroSchemaAdapter;
@@ -18,8 +20,6 @@ import com.linkedin.venice.hadoop.exceptions.VeniceInconsistentSchemaException;
 import com.linkedin.venice.hadoop.exceptions.VeniceSchemaFieldNotFoundException;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.schema.SchemaEntry;
-import com.linkedin.venice.serialization.DefaultSerializer;
-import com.linkedin.venice.serialization.KafkaKeySerializer;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.utils.Utils;
 import com.linkedin.venice.writer.VeniceWriterFactory;
@@ -50,6 +50,7 @@ import org.apache.hadoop.mapred.JobClient;
 import org.apache.hadoop.mapred.JobConf;
 import org.apache.hadoop.mapred.RunningJob;
 import org.apache.hadoop.mapred.lib.NullOutputFormat;
+import org.apache.hadoop.security.UserGroupInformation;
 import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.log4j.Logger;
 
@@ -125,6 +126,11 @@ public class KafkaPushJob extends AbstractJob {
   public static final String KAFKA_SECURITY_PROTOCOL = "SSL";
 
   public static final String COMPRESSION_STRATEGY = "compression.strategy";
+
+  public static final String SSL_CONFIGURATOR_CLASS_CONFIG = "ssl.configurator.class";
+
+  public static final String SSL_KEY_STORE_PROPERTY_NAME = "ssl.key.store.property.name";
+  public static final String SSL_TRUST_STORE_PROPERTY_NAME = "ssl.trust.store.property.name";
 
   private static Logger logger = Logger.getLogger(KafkaPushJob.class);
 
@@ -525,11 +531,20 @@ public class KafkaPushJob extends AbstractJob {
       if (props.containsKey(VeniceWriter.CLOSE_TIMEOUT_MS)){ /* Writer uses default if not specified */
         veniceWriterProperties.put(VeniceWriter.CLOSE_TIMEOUT_MS, props.getInt(VeniceWriter.CLOSE_TIMEOUT_MS));
       }
-      if(sslToKafka){
+      if (sslToKafka) {
         veniceWriterProperties.setProperty(CommonClientConfigs.SECURITY_PROTOCOL_CONFIG, KAFKA_SECURITY_PROTOCOL);
         props.keySet().stream().filter(key -> key.toLowerCase().startsWith(SSL_PREFIX)).forEach(key -> {
           veniceWriterProperties.setProperty(key, props.getString(key));
         });
+        try {
+          SSLConfigurator sslConfigurator = SSLConfigurator.getSSLConfigurator(
+              props.getString(SSL_CONFIGURATOR_CLASS_CONFIG, TempFileSSLConfigurator.class.getName()));
+          Properties sslWriterProperties = sslConfigurator.setupSSLConfig(veniceWriterProperties,
+              UserGroupInformation.getCurrentUser().getCredentials());
+          veniceWriterProperties.putAll(sslWriterProperties);
+        } catch (IOException e) {
+          throw new VeniceException("Could not get user credential for kafka push job for topic" + topic);
+        }
       }
       VeniceWriterFactory veniceWriterFactory = new VeniceWriterFactory(veniceWriterProperties);
 
@@ -701,6 +716,11 @@ public class KafkaPushJob extends AbstractJob {
 
     // Setting up the Output format
     conf.setOutputFormat(NullOutputFormat.class);
+
+    conf.set(SSL_CONFIGURATOR_CLASS_CONFIG, props.getString(SSL_CONFIGURATOR_CLASS_CONFIG, TempFileSSLConfigurator.class.getName()));
+    //TODO remove the default name
+    conf.set(SSL_KEY_STORE_PROPERTY_NAME, props.getString(SSL_KEY_STORE_PROPERTY_NAME, "li.datavault.identity"));
+    conf.set(SSL_TRUST_STORE_PROPERTY_NAME, props.getString(SSL_TRUST_STORE_PROPERTY_NAME, "li.datavault.truststore"));
 
     return conf;
   }

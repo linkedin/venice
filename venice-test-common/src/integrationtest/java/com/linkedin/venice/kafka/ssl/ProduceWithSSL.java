@@ -12,11 +12,19 @@ import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.writer.VeniceWriter;
 import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileNotFoundException;
+import java.io.IOException;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Properties;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import org.apache.avro.Schema;
+import org.apache.hadoop.io.Text;
+import org.apache.hadoop.security.Credentials;
+import org.apache.hadoop.security.UserGroupInformation;
+import org.apache.kafka.common.config.SslConfigs;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
@@ -74,6 +82,15 @@ public class ProduceWithSSL {
     Assert.assertEquals(storeClient.get(testKey).get().toString(), testVal);
 
   }
+  private byte[] readFile(String path)
+      throws IOException {
+    File file = new File(path);
+    try (FileInputStream fis = new FileInputStream(file)) {
+      byte[] data = new byte[(int)file.length()];
+      fis.read(data);
+      return data;
+    }
+  }
 
   @Test
   public void testKafkaPushJobSupportSSL()
@@ -83,6 +100,21 @@ public class ProduceWithSSL {
     Schema recordSchema = writeSimpleAvroFileWithUserSchema(inputDir);
     String inputDirPath = "file://" + inputDir.getAbsolutePath();
     Properties props = sslH2VProps(cluster, inputDirPath, storeName);
+
+    String keyStorePropertyName = "li.datavault.identity";
+    String trustStorePropertyName = "li.datavault.truststore";
+    props.put(KafkaPushJob.SSL_KEY_STORE_PROPERTY_NAME, keyStorePropertyName);
+    props.put(KafkaPushJob.SSL_TRUST_STORE_PROPERTY_NAME, trustStorePropertyName);
+
+    // put cert into hadoop user credentials.
+    Properties sslProps = SslUtils.getLocalCommonKafkaSSLConfig();
+    byte[] keyStoreCert = readFile(sslProps.getProperty(SslConfigs.SSL_KEYSTORE_LOCATION_CONFIG));
+    byte[] trustStoreCert = readFile(sslProps.getProperty(SslConfigs.SSL_TRUSTSTORE_LOCATION_CONFIG));
+    Credentials credentials = new Credentials();
+    credentials.addSecretKey(new Text(keyStorePropertyName), keyStoreCert);
+    credentials.addSecretKey(new Text(trustStorePropertyName), trustStoreCert);
+    UserGroupInformation.getCurrentUser().addCredentials(credentials);
+
     createStoreForJob(cluster, recordSchema, props);
     String controllerUrl = cluster.getAllControllersURLs();
     ControllerClient controllerClient = new ControllerClient(cluster.getClusterName(), controllerUrl);
