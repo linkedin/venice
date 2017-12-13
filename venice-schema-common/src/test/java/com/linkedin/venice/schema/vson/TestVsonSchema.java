@@ -1,6 +1,6 @@
 package com.linkedin.venice.schema.vson;
 
-import org.junit.Assert;
+import org.testng.Assert;
 import org.testng.annotations.Test;
 
 
