@@ -1012,8 +1012,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
      * or a compressed store will have router-cache enabled.
      *
      * For now, router cache shouldn't be enabled for a hybrid store.
-     * For the time-being, we should not enable cache for store, which enables 'compression' feature, since compression
-     * could break router-caching.
      * TODO: need to remove this check when the proper fix (cross-colo race condition) is implemented.
      *
      * Right now, this function doesn't check whether the hybrid config and router-cache flag will be updated at the same time:
@@ -1026,12 +1024,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
      *
      * @param store
      * @param newHybridStoreConfig
-     * @param newCompressionStrategy
      * @param newRouterCacheEnabled
      */
     protected void checkWhetherStoreWillHaveConflictConfigForCaching(Store store,
         Optional<HybridStoreConfig> newHybridStoreConfig,
-        Optional<CompressionStrategy> newCompressionStrategy,
         Optional<Boolean> newRouterCacheEnabled) {
         String storeName = store.getName();
         if (store.isHybrid() && newRouterCacheEnabled.isPresent() && newRouterCacheEnabled.get()) {
@@ -1039,12 +1035,6 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         }
         if (store.isRouterCacheEnabled() && newHybridStoreConfig.isPresent()) {
             throw new VeniceException("Hybrid couldn't be enabled for store: " + storeName + " since it enables router-cache");
-        }
-        if (store.getCompressionStrategy().isCompressionEnabled() && newRouterCacheEnabled.isPresent() && newRouterCacheEnabled.get()) {
-            throw new VeniceException("Router cache couldn't enabled for store: " + storeName + " since it enables compression");
-        }
-        if (store.isRouterCacheEnabled() && newCompressionStrategy.isPresent() && newCompressionStrategy.get().isCompressionEnabled()) {
-            throw new VeniceException("Compression couldn't be enabled for store: " + storeName + " since it enables router-cache");
         }
     }
 
@@ -1077,7 +1067,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             }
         }
 
-        checkWhetherStoreWillHaveConflictConfigForCaching(originalStore, hybridStoreConfig, compressionStrategy, routerCacheEnabled);
+        checkWhetherStoreWillHaveConflictConfigForCaching(originalStore, hybridStoreConfig, routerCacheEnabled);
 
         try {
             if (owner.isPresent()) {

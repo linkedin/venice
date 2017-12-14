@@ -20,7 +20,7 @@ public enum AvroProtocolDefinition {
   /**
    * Used for the Kafka topics, including the main data topics as well as the admin topic.
    */
-  KAFKA_MESSAGE_ENVELOPE(23, 4, KafkaMessageEnvelope.class),
+  KAFKA_MESSAGE_ENVELOPE(23, 5, KafkaMessageEnvelope.class),
 
   /**
    * Used to persist the state of a partition in Storage Nodes, including offset,
@@ -32,7 +32,7 @@ public enum AvroProtocolDefinition {
    * Used to persist state related to a store-version, including Start of Buffer Replay
    * offsets and whether the input is sorted.
    */
-  STORE_VERSION_STATE(25, 2, StoreVersionState.class),
+  STORE_VERSION_STATE(25, 3, StoreVersionState.class),
 
   /**
    * Used to encode metadata changes about the system as a whole. Records of this type

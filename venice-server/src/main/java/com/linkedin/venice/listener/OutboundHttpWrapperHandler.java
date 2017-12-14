@@ -1,10 +1,9 @@
 package com.linkedin.venice.listener;
 
 import com.linkedin.venice.HttpConstants;
-import com.linkedin.venice.listener.response.MultiGetResponseWrapper;
+import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.listener.response.HttpShortcutResponse;
 import com.linkedin.venice.listener.response.ReadResponse;
-import com.linkedin.venice.listener.response.StorageResponseObject;
 import com.linkedin.venice.utils.ExceptionUtils;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
@@ -40,12 +39,14 @@ public class OutboundHttpWrapperHandler extends ChannelOutboundHandlerAdapter {
     HttpResponseStatus responseStatus = OK;
     String offsetHeader = "-1";
     int schemaIdHeader = -1;
+    CompressionStrategy compressionStrategy = CompressionStrategy.NO_OP;
     try {
       if (msg instanceof ReadResponse) {
         ReadResponse obj = (ReadResponse) msg;
         statsHandler.setBdbQueryLatency(obj.getBdbQueryLatency());
         statsHandler.setSuccessRequestKeyCount(obj.getRecordCount());
         statsHandler.setMultiChunkLargeValueCount(obj.getMultiChunkLargeValueCount());
+        compressionStrategy = obj.getCompressionStrategy();
         if (obj.isFound()) {
           body = obj.getResponseBody();
           offsetHeader = obj.getResponseOffsetHeader();
@@ -79,6 +80,7 @@ public class OutboundHttpWrapperHandler extends ChannelOutboundHandlerAdapter {
     FullHttpResponse response = new DefaultFullHttpResponse(HTTP_1_1, responseStatus, body);
     response.headers().set(CONTENT_TYPE, contentType);
     response.headers().set(CONTENT_LENGTH, body.readableBytes());
+    response.headers().set(HttpConstants.VENICE_COMPRESSION_STRATEGY, compressionStrategy.getValue());
     response.headers().set(HttpConstants.VENICE_OFFSET, offsetHeader);
     response.headers().set(HttpConstants.VENICE_SCHEMA_ID, schemaIdHeader);
 

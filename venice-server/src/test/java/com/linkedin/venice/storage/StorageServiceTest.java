@@ -84,7 +84,8 @@ public class StorageServiceTest {
     private final VeniceStoreConfig storeConfig;
     private final byte MAX_ENTRIES = 100;
 
-    public BDBPerformOperation(StorageService service, VeniceStoreConfig storeConfig, int partitionId) {
+    public
+    BDBPerformOperation(StorageService service, VeniceStoreConfig storeConfig, int partitionId) {
       this.service = service;
       this.storeConfig = storeConfig;
       this.partitionId = partitionId;

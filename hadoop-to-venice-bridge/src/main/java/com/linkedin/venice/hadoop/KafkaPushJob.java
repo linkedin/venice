@@ -377,7 +377,7 @@ public class KafkaPushJob extends AbstractJob {
         // topic partition.
         boolean sorted = !isMapOnly;
         jc = new JobClient(pushJobConf);
-        getVeniceWriter().broadcastStartOfPush(sorted, isChunkingEnabled, new HashMap<>());
+        getVeniceWriter().broadcastStartOfPush(sorted, isChunkingEnabled, compressionStrategy, new HashMap<>());
         // submit the job for execution and wait for completion
         runningJob = jc.runJob(pushJobConf);
         //TODO: send a failure END OF PUSH message if something went wrong

@@ -1,6 +1,7 @@
 package com.linkedin.venice.kafka.consumer;
 
 import com.linkedin.venice.SSLConfig;
+import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.config.VeniceServerConfig;
 import com.linkedin.venice.config.VeniceStoreConfig;
 import com.linkedin.venice.exceptions.VeniceException;
@@ -26,7 +27,6 @@ import com.linkedin.venice.storage.StorageMetadataService;
 import com.linkedin.venice.store.AbstractStorageEngine;
 import com.linkedin.venice.store.bdb.BdbStorageEngine;
 import com.linkedin.venice.throttle.EventThrottler;
-import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.Utils;
 
 import java.util.*;
@@ -378,5 +378,10 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
   @Override
   public boolean isStoreVersionChunked(String topicName) {
     return storageMetadataService.isStoreVersionChunked(topicName);
+  }
+
+  @Override
+  public CompressionStrategy getStoreVersionCompressionStrategy(String topicName) {
+    return storageMetadataService.getStoreVersionCompressionStrategy(topicName);
   }
 }

@@ -31,9 +31,9 @@ public class HttpChannelInitializer extends ChannelInitializer<SocketChannel> {
   private final VerifySslHandler verifySsl = new VerifySslHandler();
   private final VeniceServerConfig serverConfig;
 
-  public HttpChannelInitializer(StoreRepository storeRepository, MetadataRetriever metadataRetriever,
-      MetricsRepository metricsRepository, Optional<SSLEngineComponentFactory> sslFactory,
-      VeniceServerConfig serverConfig, Optional<StaticAccessController> accessController) {
+  public HttpChannelInitializer(StoreRepository storeRepository, MetadataRetriever metadataRetriever, MetricsRepository metricsRepository,
+      Optional<SSLEngineComponentFactory> sslFactory, VeniceServerConfig serverConfig,
+      Optional<StaticAccessController> accessController) {
     this.serverConfig = serverConfig;
 
     this.executor = Executors.newFixedThreadPool(

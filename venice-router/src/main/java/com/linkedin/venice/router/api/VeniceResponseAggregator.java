@@ -8,7 +8,6 @@ import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.compression.CompressorFactory;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.meta.ReadOnlyStoreRepository;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.read.protocol.response.MultiGetResponseRecordV1;
 import com.linkedin.venice.router.api.path.VenicePath;
@@ -42,6 +41,7 @@ import org.apache.log4j.Logger;
 
 import static com.linkedin.ddsstorage.router.api.MetricNames.*;
 import static io.netty.handler.codec.http.HttpResponseStatus.*;
+import static com.linkedin.venice.HttpConstants.VENICE_COMPRESSION_STRATEGY;
 
 public class VeniceResponseAggregator implements ResponseAggregatorFactory<BasicFullHttpRequest, FullHttpResponse> {
   //TODO: timeout should be configurable and be defined by the HttpAysncClient
@@ -63,17 +63,13 @@ public class VeniceResponseAggregator implements ResponseAggregatorFactory<Basic
   private final AggRouterHttpRequestStats statsForSingleGet;
   private final AggRouterHttpRequestStats statsForMultiGet;
 
-  private final ReadOnlyStoreRepository metadataRepository;
-
   private final RecordSerializer<MultiGetResponseRecordV1> recordSerializer;
   private final RecordDeserializer<MultiGetResponseRecordV1> recordDeserializer;
 
   public VeniceResponseAggregator(AggRouterHttpRequestStats statsForSingleGet,
-                                  AggRouterHttpRequestStats statsForMultiGet,
-                                  ReadOnlyStoreRepository metadataRepository) {
+                                  AggRouterHttpRequestStats statsForMultiGet) {
     this.statsForSingleGet = statsForSingleGet;
     this.statsForMultiGet = statsForMultiGet;
-    this.metadataRepository = metadataRepository;
 
     this.recordSerializer = SerializerDeserializerFactory.getAvroGenericSerializer(MultiGetResponseRecordV1.SCHEMA$);
     this.recordDeserializer = SerializerDeserializerFactory.getAvroSpecificDeserializer(MultiGetResponseRecordV1.class);
@@ -154,15 +150,15 @@ public class VeniceResponseAggregator implements ResponseAggregatorFactory<Basic
       return response;
     }
 
-    byte[] compressedData = response.content().array();
-    stats.recordCompressedResponseSize(storeName, compressedData.length);
+    CompressionStrategy compressionStrategy = response.headers().contains(VENICE_COMPRESSION_STRATEGY) ?
+        CompressionStrategy.valueOf(Integer.valueOf(response.headers().get(VENICE_COMPRESSION_STRATEGY))) : CompressionStrategy.NO_OP;
 
-    long decompressionStartTimeInNs = System.nanoTime();
-    ByteBuf decompressedData = Unpooled.wrappedBuffer(decompressRecord(storeName, version, RequestType.SINGLE_GET, response.content().array()));
-    stats.recordDecompressionTime(storeName, LatencyUtils.getLatencyInMS(decompressionStartTimeInNs));
+    ByteBuf decompressedData = Unpooled.wrappedBuffer(decompressRecord(storeName, version, compressionStrategy,
+        response.content().array(), stats));
 
     FullHttpResponse fullHttpResponse = response.replace(decompressedData);
     fullHttpResponse.headers().set(HttpHeaderNames.CONTENT_LENGTH, decompressedData.readableBytes());
+    fullHttpResponse.headers().set(HttpConstants.VENICE_COMPRESSION_STRATEGY, CompressionStrategy.NO_OP.getValue());
     return fullHttpResponse;
   }
 
@@ -181,8 +177,6 @@ public class VeniceResponseAggregator implements ResponseAggregatorFactory<Basic
      * 2. {@link HttpConstants.VENICE_SCHEMA_ID}
      */
     List<byte[]> contentList = new ArrayList<>();
-    int compressedRecordSize = 0;
-    double decompressionTime = 0d;
 
     int resultLen = 0;
     for (FullHttpResponse response : responses) {
@@ -202,17 +196,16 @@ public class VeniceResponseAggregator implements ResponseAggregatorFactory<Basic
         }
       });
 
-      CompressionStrategy compressionStrategy = getVersionCompressionStrategy(storeName, version, RequestType.MULTI_GET);
+      CompressionStrategy compressionStrategy = response.headers().contains(VENICE_COMPRESSION_STRATEGY) ?
+          CompressionStrategy.valueOf(Integer.valueOf(response.headers().get(VENICE_COMPRESSION_STRATEGY))) : CompressionStrategy.NO_OP;
+
       if (compressionStrategy != CompressionStrategy.NO_OP) {
         Iterable<MultiGetResponseRecordV1> records = recordDeserializer.deserializeObjects(response.content().array());
 
         for (MultiGetResponseRecordV1 record : records) {
           byte[] compressedRecord = record.value.array();
-          compressedRecordSize += compressedRecord.length;
 
-          long decompressionStartTime = System.nanoTime();
-          record.value = ByteBuffer.wrap(decompressRecord(storeName, version, RequestType.MULTI_GET, compressedRecord));
-          decompressionTime += LatencyUtils.getLatencyInMS(decompressionStartTime);
+          record.value = ByteBuffer.wrap(decompressRecord(storeName, version, compressionStrategy, compressedRecord, stats));
         }
 
         byte[] decompressedRecords = recordSerializer.serializeObjects(records);
@@ -225,9 +218,6 @@ public class VeniceResponseAggregator implements ResponseAggregatorFactory<Basic
       }
     }
 
-    stats.recordCompressedResponseSize(storeName, compressedRecordSize);
-    stats.recordDecompressionTime(storeName, decompressionTime);
-
     // Concat all the responses
     // TODO: explore how to reuse the buffer: Pooled??
     ByteBuf result = Unpooled.buffer(resultLen);
@@ -238,33 +228,22 @@ public class VeniceResponseAggregator implements ResponseAggregatorFactory<Basic
       multiGetResponse.headers().add(headerName, headerValue);
     });
     multiGetResponse.headers().add(HttpHeaderNames.CONTENT_LENGTH, result.readableBytes());
+    multiGetResponse.headers().add(VENICE_COMPRESSION_STRATEGY, CompressionStrategy.NO_OP.getValue());
 
     return multiGetResponse;
   }
 
-  private byte[] decompressRecord(String storeName, int version, RequestType requestType, byte[] compressedData) {
-    CompressionStrategy compressionStrategy = getVersionCompressionStrategy(storeName, version,requestType);
-    return decompressRecord(storeName, version, compressionStrategy, compressedData);
-  }
-
-  private byte[] decompressRecord(String storeName, int version, CompressionStrategy compressionStrategy, byte[] compressedData) {
+  private byte[] decompressRecord(String storeName, int version, CompressionStrategy compressionStrategy, byte[] compressedData, AggRouterHttpRequestStats stats) {
     try {
+      long decompressionStartTimeInNs = System.nanoTime();
       byte[] decompressed = CompressorFactory.getCompressor(compressionStrategy).decompress(compressedData);
+
+      stats.recordDecompressionTime(storeName, LatencyUtils.getLatencyInMS(decompressionStartTimeInNs));
+      stats.recordCompressedResponseSize(storeName, compressedData.length);
+
       return decompressed;
     } catch (IOException e) {
       throw new VeniceException(String.format("failed to decompress data. Store: %s; Version: %d", storeName, version), e);
     }
-  }
-
-  private CompressionStrategy getVersionCompressionStrategy(String storeName, int version, RequestType requestType) {
-    Optional<CompressionStrategy> compressionStrategy =
-        metadataRepository.getStore(storeName).getVersionCompressionStrategy(version);
-
-    if (!compressionStrategy.isPresent()) {
-      throw RouterExceptionAndTrackingUtils.newVeniceExceptionAndTracking(Optional.of(storeName), Optional.of(requestType),
-          BAD_GATEWAY, String.format("Can't find compression strategy. Store: %s; Version: %d", storeName, version));
-    }
-
-    return compressionStrategy.get();
   }
 }

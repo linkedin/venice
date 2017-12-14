@@ -1,5 +1,6 @@
 package com.linkedin.venice.storage;
 
+import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.offsets.OffsetManager;
@@ -41,5 +42,14 @@ public interface StorageMetadataService extends OffsetManager {
    */
   default boolean isStoreVersionChunked(String topicName) {
     return getStoreVersionState(topicName).map(storeVersionState -> storeVersionState.chunked).orElse(false);
+  }
+
+  /**
+   * Tailored function for retrieving version's compression strategy setting.
+   */
+  default CompressionStrategy getStoreVersionCompressionStrategy(String topicName) {
+    return getStoreVersionState(topicName)
+        .map(storeVersionState -> CompressionStrategy.valueOf(storeVersionState.compressionStrategy))
+        .orElse(CompressionStrategy.NO_OP);
   }
 }

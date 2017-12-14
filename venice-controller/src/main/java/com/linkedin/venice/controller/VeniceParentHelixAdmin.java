@@ -834,7 +834,6 @@ public class VeniceParentHelixAdmin implements Admin {
 
       veniceHelixAdmin.checkWhetherStoreWillHaveConflictConfigForCaching(store,
           null == hybridStoreConfig ? Optional.empty() : Optional.of(hybridStoreConfig),
-          compressionStrategy,
           routerCacheEnabled);
       setStore.batchGetLimit = batchGetLimit.isPresent() ? batchGetLimit.get() : store.getBatchGetLimit();
 

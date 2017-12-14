@@ -1,0 +1,181 @@
+{
+  "name": "KafkaMessageEnvelope",
+  "namespace": "com.linkedin.venice.kafka.protocol",
+  "type": "record",
+  "fields": [
+    {
+      "name": "messageType",
+      "doc": "Using int because Avro Enums are not evolvable. Readers should always handle the 'unknown' value edge case, to account for future evolutions of this protocol. The mapping is the following: 0 => Put, 1 => Delete, 2 => ControlMessage.",
+      "type": "int"
+    }, {
+      "name": "producerMetadata",
+      "doc": "ProducerMetadata contains information that the consumer can use to identify an upstream producer. This is common for all MessageType.",
+      "type": {
+        "name": "ProducerMetadata",
+        "type": "record",
+        "fields": [
+          {
+            "name": "producerGUID",
+            "doc": "A unique identifier for this producer.",
+            "type": {
+              "name": "GUID",
+              "type": "fixed",
+              "size": 16
+            }
+          }, {
+            "name": "segmentNumber",
+            "doc": "A number used to disambiguate between sequential segments sent into a given partition by a given producer. An incremented SegmentNumber should only be sent following an EndOfSegment control message. For finite streams (such as those bulk-loaded from Hadoop), it can be acceptable to have a single SegmentNumber per producer/partition combination, though that is not something that the downstream consumer should assume. For infinite streams, segments should be terminated and begun anew periodically. This number begins at 0.",
+            "type": "int"
+          }, {
+            "name": "messageSequenceNumber",
+            "doc": "A monotonically increasing number with no gaps used to distinguish unique messages produced in this segment (i.e.: by this producer into a given partition). This number begins at 0 (with a StartOfSegment ControlMessage) and subsequent messages (such as Put) will have a SequenceNumber of 1 and so forth.",
+            "type": "int"
+          }, {
+            "name": "messageTimestamp",
+            "doc": "The time of the producer's local system clock, at the time the message was submitted for production. This is the number of milliseconds from the unix epoch, 1 January 1970 00:00:00.000 UTC.",
+            "type": "long"
+          }
+        ]
+      }
+    }, {
+      "name": "payloadUnion",
+      "doc": "This contains the main payload of the message. Which branch of the union is present is based on the previously-defined MessageType field.",
+      "type": [
+        {
+          "name": "Put",
+          "doc": "Put payloads contain a record value, and information on how to deserialize it.",
+          "type": "record",
+          "fields": [
+            {
+              "name": "schemaId",
+              "doc": "An identifier used to determine how the PutValue can be deserialized.",
+              "type": "int"
+            }, {
+              "name": "putValue",
+              "doc": "The record's value to be persisted in the storage engine.",
+              "type": "bytes"
+            }
+          ]
+        }, {
+          "name": "Delete",
+          "doc": "Delete payloads contain no extra fields.",
+          "type": "record",
+          "fields": []
+        }, {
+          "name": "ControlMessage",
+          "doc": "ControlMessage payloads contain metadata about the stream of data, for validation and debuggability purposes.",
+          "type": "record",
+          "fields": [
+            {
+              "name": "controlMessageType",
+              "doc": "Using int because Avro Enums are not evolvable. Readers should always handle the 'unknown' value edge case, to account for future evolutions of this protocol. The mapping is the following: 0 => StartOfPush, 1 => EndOfPush, 2 => StartOfSegment, 3 => EndOfSegment, 4 => StartOfBufferReplay.",
+              "type": "int"
+            }, {
+              "name": "debugInfo",
+              "doc": "This metadata is for logging and traceability purposes. It can be used to propagate information about the producer, the environment it runs in, or the source of data being produced into Venice. There should be no assumptions that any of this data will be used (or even looked at) by the downstream consumer in any particular way.",
+              "type": {
+                "type": "map",
+                "values": "string"
+              }
+            }, {
+              "name": "controlMessageUnion",
+              "doc": "This contains the ControlMessage data which is specific to each type of ControlMessage. Which branch of the union is present is based on the previously-defined MessageType field.",
+              "type": [
+                {
+                  "name": "StartOfPush",
+                  "doc": "This ControlMessage is sent once per partition, at the beginning of a bulk load, before any of the data producers come online. This does not contain any data beyond the one which is common to all ControlMessageType.",
+                  "type": "record",
+                  "fields": [
+                    {
+                      "name": "sorted",
+                      "doc": "Whether the messages inside current topic partition between 'StartOfPush' control message and 'EndOfPush' control message is lexicographically sorted by key bytes",
+                      "type": "boolean",
+                      "default": false
+                    }, {
+                      "name": "chunked",
+                      "doc": "Whether the messages inside the current push are encoded with chunking support. If true, this means keys will be prefixed with ChunkId, and values may contain a ChunkedValueManifest (if schema is defined as -20).",
+                      "type": "boolean",
+                      "default": false
+                    }, {
+                      "name": "compressionStrategy",
+                      "doc": "What type of compression strategy the current push are used. Using int because Avro Enums are not evolvable. The mapping is the following: 0 => NO_OP, 1 => GZIP",
+                      "type": "int",
+                      "default": 0
+                    }
+                  ]
+                }, {
+                  "name": "EndOfPush",
+                  "doc": "This ControlMessage is sent once per partition, at the end of a bulk load, after all of the data producers come online. This does not contain any data beyond the one which is common to all ControlMessageType.",
+                  "type": "record",
+                  "fields": []
+                }, {
+                  "name": "StartOfSegment",
+                  "doc": "This ControlMessage is sent at least once per partition per producer. It may be sent more than once per partition/producer, but only after the producer has sent an EndOfSegment into that partition to terminate the previously started segment.",
+                  "type": "record",
+                  "fields": [
+                    {
+                      "name": "checksumType",
+                      "doc": "Using int because Avro Enums are not evolvable. Readers should always handle the 'unknown' value edge case, to account for future evolutions of this protocol. The downstream consumer is expected to compute this checksum and use it to validate the incoming stream of data. The current mapping is the following: 0 => None, 1 => MD5, 2 => Adler32, 3 => CRC32.",
+                      "type": "int"
+                    }, {
+                      "name": "upcomingAggregates",
+                      "doc": "An array of names of aggregate computation strategies for which there will be a value percolated in the corresponding EndOfSegment ControlMessage. The downstream consumer may choose to compute these aggregates on its own and use them as additional validation safeguards, or it may choose to merely log them, or even ignore them altogether.",
+                      "type": {
+                        "type": "array",
+                        "items": "string"
+                      }
+                    }
+                  ]
+                }, {
+                  "name": "EndOfSegment",
+                  "doc": "This ControlMessage is sent at least once per partition per producer. It may be sent more than once per partition/producer, but only after the producer has sent a StartOfSegment into that partition. There should be an equal number of StartOfSegment and EndOfSegment messages in each producer/partition pair.",
+                  "type": "record",
+                  "fields": [
+                    {
+                      "name": "checksumValue",
+                      "doc": "The value of the checksum computed since the last StartOfSegment ControlMessage.",
+                      "type": "bytes"
+                    }, {
+                      "name": "computedAggregates",
+                      "doc": "A map containing the results of the aggregate computation strategies that were promised in the previous StartOfSegment ControlMessage. The downstream consumer may choose to compare the value of these aggregates against those that it computed on its own ir oder to use them as additional validation safeguards, or it may choose to merely log them, or even ignore them altogether.",
+                      "type": {
+                        "type": "array",
+                        "items": "long"
+                      }
+                    }, {
+                      "name": "finalSegment",
+                      "doc": "This field is set to true when the producer knows that there is no more data coming from its data source after this EndOfSegment. This happens at the time the producer is closed.",
+                      "type": "boolean"
+                    }
+                  ]
+                }, {
+                  "name": "StartOfBufferReplay",
+                  "doc": "This ControlMessage is sent by the Controller, once per partition, after the EndOfPush ControlMessage, in Hybrid Stores that ingest from both offline and nearline sources. It contains information about the the offsets from which the Buffer Replay Service started replaying data from the real-time buffer topic onto the store-version topic. This can be used as a synchronization marker between the real-time buffer topic and the store-version topic, akin to how a clapperboard is used to synchronize sound and image in filmmaking. This synchronization marker can in turn be used by the consumer to compute an offset lag.",
+                  "type": "record",
+                  "fields": [
+                    {
+                      "name": "sourceOffsets",
+                      "doc": "Array of offsets from the real-time buffer topic at which the Buffer Replay Service started replaying data. The index position of the array corresponds to the partition number in the real-time buffer.",
+                      "type": {
+                        "type": "array",
+                        "items": "long"
+                      }
+                    }, {
+                      "name": "sourceKafkaCluster",
+                      "doc": "Kafka bootstrap servers URL of the cluster where the source buffer exists.",
+                      "type": "string"
+                    }, {
+                      "name": "sourceTopicName",
+                      "doc": "Name of the source buffer topic.",
+                      "type": "string"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

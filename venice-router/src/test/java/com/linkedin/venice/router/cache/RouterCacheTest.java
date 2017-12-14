@@ -1,5 +1,7 @@
 package com.linkedin.venice.router.cache;
 
+import com.linkedin.venice.meta.RoutingDataRepository;
+import org.mockito.Mockito;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -7,7 +9,7 @@ import org.testng.annotations.Test;
 public class RouterCacheTest {
   @Test
   public void testCache() {
-    RouterCache routerCache = new RouterCache(200, 2);
+    RouterCache routerCache = new RouterCache(200, 2, Mockito.mock(RoutingDataRepository.class));
     String storeName1 = "test_store_2";
     String storeName2 = "test_store_1";
     byte[] testKey1 = "test_key1".getBytes();

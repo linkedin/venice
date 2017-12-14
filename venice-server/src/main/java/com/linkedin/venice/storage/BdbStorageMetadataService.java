@@ -1,5 +1,6 @@
 package com.linkedin.venice.storage;
 
+import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.config.VeniceClusterConfig;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
@@ -19,6 +20,7 @@ import com.sleepycat.je.LockMode;
 import com.sleepycat.je.OperationStatus;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import org.apache.log4j.Logger;
 
 import java.io.File;
@@ -51,6 +53,7 @@ public class BdbStorageMetadataService extends AbstractVeniceService implements 
   private static final String OFFSET_RECORD_DESCRIPTOR_PART_2 =  " PartitionId: ";
   private final Environment offsetsBdbEnvironment;
   private final Map<String, Boolean> chunkingEnabledCache = new HashMap<>();
+  private final Map<String, CompressionStrategy> compressionStrategyCache = new ConcurrentHashMap<>();
   private AtomicBoolean isOpen;
   private Database offsetsBdbDatabase;
   private final InternalAvroSpecificSerializer<StoreVersionState> storeVersionStateSerializer;
@@ -157,6 +160,7 @@ public class BdbStorageMetadataService extends AbstractVeniceService implements 
   public void clearStoreVersionState(String topicName) {
     DatabaseEntry keyEntry = getBDBKey(topicName, PARTITION_FOR_STORE_VERSION_STATE);
     chunkingEnabledCache.remove(topicName);
+    compressionStrategyCache.remove(topicName);
     clear(keyEntry, getStoreVersionStateDescriptor(topicName));
   }
 
@@ -206,6 +210,12 @@ public class BdbStorageMetadataService extends AbstractVeniceService implements 
       return StorageMetadataService.super.isStoreVersionChunked(topicName);
     }
     return chunkingEnabled;
+  }
+
+  @Override
+  public CompressionStrategy getStoreVersionCompressionStrategy(String topicName) {
+    return compressionStrategyCache.computeIfAbsent(topicName,
+    k -> StorageMetadataService.super.getStoreVersionCompressionStrategy(k));
   }
 
   // PRIVATE FUNCTIONS
