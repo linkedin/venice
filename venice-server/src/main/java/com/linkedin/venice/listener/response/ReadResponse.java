@@ -1,5 +1,6 @@
 package com.linkedin.venice.listener.response;
 
+import com.linkedin.venice.compression.CompressionStrategy;
 import io.netty.buffer.ByteBuf;
 import io.netty.handler.codec.http.HttpResponseStatus;
 
@@ -8,8 +9,18 @@ import io.netty.handler.codec.http.HttpResponseStatus;
  * This class is used to store common fields shared by various read responses.
  */
 public abstract class ReadResponse {
+  private String resourceName;
   private double bdbQueryLatency;
   private int multiChunkLargeValueCount = 0;
+  private CompressionStrategy compressionStrategy = CompressionStrategy.NO_OP;
+
+  public void setCompressionStrategy(CompressionStrategy compressionStrategy) {
+    this.compressionStrategy = compressionStrategy;
+  }
+
+  public CompressionStrategy getCompressionStrategy() {
+    return compressionStrategy;
+  }
 
   public void setBdbQueryLatency(double latency) {
     this.bdbQueryLatency = latency;

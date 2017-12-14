@@ -1,6 +1,7 @@
 package com.linkedin.venice.writer;
 
 import com.linkedin.venice.annotation.NotThreadsafe;
+import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.guid.GuidUtils;
 import com.linkedin.venice.kafka.protocol.*;
@@ -242,7 +243,7 @@ public class VeniceWriter<K, V> extends AbstractVeniceWriter<K, V> {
   }
 
   public void broadcastStartOfPush(boolean sorted, Map<String, String> debugInfo) {
-    broadcastStartOfPush(sorted, false, debugInfo);
+    broadcastStartOfPush(sorted,false, CompressionStrategy.NO_OP, debugInfo);
   }
 
   /**
@@ -254,11 +255,13 @@ public class VeniceWriter<K, V> extends AbstractVeniceWriter<K, V> {
    *                values.
    * @param debugInfo arbitrary key/value pairs of information that will be propagated alongside the control message.
    */
-  public void broadcastStartOfPush(boolean sorted, boolean chunked, Map<String, String> debugInfo) {
+  public void broadcastStartOfPush(boolean sorted, boolean chunked,
+                                   CompressionStrategy compressionStrategy, Map<String, String> debugInfo) {
     ControlMessage controlMessage = getEmptyControlMessage(ControlMessageType.START_OF_PUSH);
     StartOfPush startOfPush = new StartOfPush();
     startOfPush.sorted = sorted;
     startOfPush.chunked = chunked;
+    startOfPush.compressionStrategy = compressionStrategy.getValue();
     controlMessage.controlMessageUnion = startOfPush;
     broadcastControlMessage(controlMessage, debugInfo);
     // Flush start of push message to avoid data message arrives before it.

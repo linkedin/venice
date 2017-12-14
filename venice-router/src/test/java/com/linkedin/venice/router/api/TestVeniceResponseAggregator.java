@@ -36,22 +36,11 @@ import static org.mockito.Mockito.*;
 public class TestVeniceResponseAggregator {
   private static Schema STRING_SCHEMA = Schema.parse("\"string\"");
 
-  private ReadOnlyStoreRepository mockMetadataRepository;
-
   private VenicePath getPath(String storeName, RequestType requestType) {
     VenicePath path = mock(VenicePath.class);
     doReturn(requestType).when(path).getRequestType();
     doReturn(storeName).when(path).getStoreName();
     return path;
-  }
-
-  @BeforeTest
-  public void setup() {
-    mockMetadataRepository = mock(ReadOnlyStoreRepository.class);
-    Store mockStore = mock(Store.class);
-    doReturn(mockStore).when(mockMetadataRepository).getStore(any());
-    doReturn(Optional.of(CompressionStrategy.NO_OP)).when(mockStore).getVersionCompressionStrategy(anyInt());
-
   }
 
   @Test
@@ -72,7 +61,7 @@ public class TestVeniceResponseAggregator {
     AggRouterHttpRequestStats mockStatsForMultiGet = mock(AggRouterHttpRequestStats.class);
 
     VeniceResponseAggregator responseAggregator =
-        new VeniceResponseAggregator(mockStatsForSingleGet, mockStatsForMultiGet, mockMetadataRepository);
+        new VeniceResponseAggregator(mockStatsForSingleGet, mockStatsForMultiGet);
     FullHttpResponse finalResponse = responseAggregator.buildResponse(request, metrics, gatheredResponses);
     Assert.assertEquals(finalResponse.status(), OK);
     Assert.assertEquals(finalResponse.content().array(), fakeContent);
@@ -127,7 +116,7 @@ public class TestVeniceResponseAggregator {
     AggRouterHttpRequestStats mockStatsForMultiGet = mock(AggRouterHttpRequestStats.class);
 
     VeniceResponseAggregator responseAggregator =
-        new VeniceResponseAggregator(mockStatsForSingleGet, mockStatsForMultiGet, mockMetadataRepository);
+        new VeniceResponseAggregator(mockStatsForSingleGet, mockStatsForMultiGet);
     FullHttpResponse finalResponse = responseAggregator.buildResponse(request, metrics, gatheredResponses);
     Assert.assertEquals(finalResponse.status(), OK);
     byte[] finalContent = finalResponse.content().array();

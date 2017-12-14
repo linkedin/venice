@@ -21,6 +21,8 @@ public class HttpConstants {
   public static final String VENICE_API_VERSION = "X-VENICE-API-VERSION";
   public static final String VENICE_SCHEMA_ID = "X-VENICE-SCHEMA-ID";
 
+  public static final String VENICE_COMPRESSION_STRATEGY = "X-VENICE-COMPRESSION-STRATEGY";
+
   public static final int SC_MISDIRECTED_REQUEST = 421;
 
   private HttpConstants(){}

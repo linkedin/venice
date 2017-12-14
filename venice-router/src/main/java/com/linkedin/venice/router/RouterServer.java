@@ -257,7 +257,7 @@ public class RouterServer extends AbstractVeniceService {
     Optional<RouterCache> routerCache = Optional.empty();
     if (config.isCacheEnabled()) {
       logger.info("Router cache size: " + config.getCacheSizeBytes() + ", concurrency: " + config.getCacheConcurrency());
-      routerCache = Optional.of(new RouterCache(config.getCacheSizeBytes(), config.getCacheConcurrency()));
+      routerCache = Optional.of(new RouterCache(config.getCacheSizeBytes(), config.getCacheConcurrency(), routingDataRepository));
     }
     dispatcher = new VeniceDispatcher(config, healthMonitor, sslFactoryForRequests, metadataRepository, routerCache,
         statsForSingleGet);
@@ -309,7 +309,7 @@ public class RouterServer extends AbstractVeniceService {
         .hostFinder(hostFinder)
         .dispatchHandler(dispatcher)
         .scatterMode(scatterGatherMode)
-        .responseAggregatorFactory(new VeniceResponseAggregator(statsForSingleGet, statsForMultiGet, metadataRepository))
+        .responseAggregatorFactory(new VeniceResponseAggregator(statsForSingleGet, statsForMultiGet))
         .metricsProvider(new VeniceMetricsProvider())
         .longTailRetrySupplier(retrySupplier)
         .scatterGatherStatsProvider(statsForSingleGet) // TODO: need to check this logic when enabling batch-get retry

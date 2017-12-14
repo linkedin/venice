@@ -29,7 +29,6 @@ import io.netty.channel.ChannelInboundHandlerAdapter;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import java.nio.ByteBuffer;
 import java.util.HashSet;
-import java.util.Iterator;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
@@ -93,6 +92,7 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
       Optional<Long> offsetObj = metadataRetriever.getOffset(topic, partition);
       long offset = offsetObj.isPresent() ? offsetObj.get() : OffsetRecord.LOWEST_OFFSET;
       StorageResponseObject response = new StorageResponseObject();
+      response.setCompressionStrategy(metadataRetriever.getStoreVersionCompressionStrategy(topic));
 
       long queryStartTimeInNS = System.nanoTime();
       CompletableFuture<ValueRecord> valueRecordCompletableFuture = getValueRecord(store, partition, key, isChunked, response);
@@ -118,6 +118,7 @@ public class StorageExecutionHandler extends ChannelInboundHandlerAdapter {
 
     long queryStartTimeInNS = System.nanoTime();
     MultiGetResponseWrapper responseWrapper = new MultiGetResponseWrapper();
+    responseWrapper.setCompressionStrategy(metadataRetriever.getStoreVersionCompressionStrategy(topic));
     CompletableFuture<MultiGetResponseRecordV1>[] futureArray = new CompletableFuture[request.getKeyCount()];
     boolean isChunked = metadataRetriever.isStoreVersionChunked(topic);
     int i = 0;

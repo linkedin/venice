@@ -1,5 +1,6 @@
 package com.linkedin.venice.utils;
 
+import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controllerapi.ControllerApiConstants;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
@@ -282,7 +283,8 @@ public class TestPushUtils {
 
     ControllerResponse controllerResponse = controllerClient.updateStore(props.getProperty(VENICE_STORE_NAME_PROP), Optional.empty(), Optional.empty(),
         Optional.empty(), Optional.empty(), Optional.empty(), Optional.of(Store.UNLIMITED_STORAGE_QUOTA), Optional.empty(),
-        Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), chunkingEnabled, Optional.empty(), Optional.empty());
+        Optional.empty(), Optional.empty(), Optional.empty(), isCompressed ? Optional.of(CompressionStrategy.GZIP) : Optional.empty(),
+        chunkingEnabled, Optional.empty(), Optional.empty());
 
     Assert.assertFalse(controllerResponse.isError(), "The UpdateStore response returned an error: " + controllerResponse.getError());
 

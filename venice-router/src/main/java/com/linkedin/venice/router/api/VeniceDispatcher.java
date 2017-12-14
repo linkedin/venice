@@ -9,6 +9,7 @@ import com.linkedin.ddsstorage.router.api.ScatterGatherRequest;
 import com.linkedin.security.ssl.access.control.SSLEngineComponentFactory;
 import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.common.PartitionOffsetMapUtils;
+import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.exceptions.QuotaExceededException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.meta.Instance;
@@ -264,20 +265,23 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
         }
 
         int valueSchemaId = Integer.parseInt(result.getFirstHeader(HttpConstants.VENICE_SCHEMA_ID).getValue());
+        CompressionStrategy compressionStrategy = result.containsHeader(VENICE_COMPRESSION_STRATEGY)
+            ? CompressionStrategy.valueOf(Integer.valueOf(result.getFirstHeader(VENICE_COMPRESSION_STRATEGY).getValue()))
+            : CompressionStrategy.NO_OP;
         response.headers()
             .set(HttpHeaderNames.CONTENT_LENGTH, content.readableBytes())
             .set(HttpHeaderNames.CONTENT_TYPE, result.getFirstHeader(HttpHeaders.CONTENT_TYPE).getValue())
-            .set(HttpConstants.VENICE_SCHEMA_ID, valueSchemaId);
+            .set(HttpConstants.VENICE_SCHEMA_ID, valueSchemaId)
+            .set(HttpConstants.VENICE_COMPRESSION_STRATEGY, compressionStrategy.getValue());
         if (path.getRequestType().equals(RequestType.SINGLE_GET)) {
           // For multi-get, the partition is not returned to client
           String partitionIdStr = numberFromPartitionName(partitionNames.iterator().next());
           response.headers().set(HttpConstants.VENICE_PARTITION, partitionIdStr);
-
           // Update cache for single-get request
           if (responseStatus == HttpStatus.SC_OK) {
-            updateCacheForSingleGetRequest((VeniceSingleGetPath) path, Optional.of(contentToByte), Optional.of(valueSchemaId));
+            updateCacheForSingleGetRequest((VeniceSingleGetPath) path, Optional.of(contentToByte), Optional.of(valueSchemaId), compressionStrategy);
           } else if (responseStatus == HttpStatus.SC_NOT_FOUND) {
-            updateCacheForSingleGetRequest((VeniceSingleGetPath) path, Optional.empty(), Optional.empty());
+            updateCacheForSingleGetRequest((VeniceSingleGetPath) path, Optional.empty(), Optional.empty(), compressionStrategy);
           }
         }
 
@@ -368,6 +372,8 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
                 .set(HttpConstants.VENICE_PARTITION, path.getPartition());
           }
 
+          response.headers().set(VENICE_COMPRESSION_STRATEGY, routerCache.get().getCompressionStrategy(path.getResourceName()).getValue());
+
           contextExecutor.execute(() -> {
             responseFuture.setSuccess(Collections.singletonList(response));
           });
@@ -397,7 +403,8 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
    * @param content If not found, this field will be {@link Optional#empty()}
    * @param valueSchemaId If not found, this field will be {@link Optional#empty()}
    */
-  protected void updateCacheForSingleGetRequest(VeniceSingleGetPath path, Optional<byte[]> content, Optional<Integer> valueSchemaId) {
+  protected void updateCacheForSingleGetRequest(VeniceSingleGetPath path, Optional<byte[]> content,
+                                                Optional<Integer> valueSchemaId, CompressionStrategy compressionStrategy) {
     String storeName = path.getStoreName();
     // Setup cache for single-get
     if (routerCache.isPresent() && storeRepository.isRouterCacheEnabled(storeName)) {
@@ -410,6 +417,7 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
         } else {
           routerCache.get().putNullValue(storeName, path.getVersionNumber(), path.getPartitionKey().getBytes());
         }
+        routerCache.get().setCompressionType(path.getResourceName(), compressionStrategy);
       } catch (Exception e) {
         logger.error("Received exception during updating cache", e);
       }

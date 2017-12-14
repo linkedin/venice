@@ -7,6 +7,9 @@ import com.linkedin.venice.client.exceptions.VeniceClientException;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
+import com.linkedin.venice.compression.CompressionStrategy;
+import com.linkedin.venice.compression.CompressorFactory;
+import com.linkedin.venice.compression.VeniceCompressor;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
@@ -14,13 +17,11 @@ import com.linkedin.venice.integration.utils.D2TestUtils;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
 import com.linkedin.venice.integration.utils.VeniceRouterWrapper;
-import com.linkedin.venice.meta.Version;
+import com.linkedin.venice.serialization.DefaultSerializer;
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
 import com.linkedin.venice.serialization.avro.VeniceAvroGenericSerializer;
-import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
-import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.VeniceWriter;
 import io.tehuti.Metric;
 import io.tehuti.metrics.MetricsRepository;
@@ -36,29 +37,26 @@ import java.util.concurrent.TimeUnit;
 import org.apache.commons.io.IOUtils;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
+import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeClass;
+import org.testng.annotations.BeforeMethod;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
-
-import static com.linkedin.venice.ConfigKeys.*;
 
 @Test(singleThreaded = true)
 public class TestRouterCache {
   private VeniceClusterWrapper veniceCluster;
-  private String storeVersionName;
-  private int valueSchemaId;
-  private String storeName;
-
-  private VeniceKafkaSerializer keySerializer;
-  private VeniceKafkaSerializer valueSerializer;
-  private VeniceWriter<Object, Object> veniceWriter;
+  private ControllerClient controllerClient;
 
   private String zkAddress;
 
-
-  @BeforeClass
+  //We're instantiate Venice cluster before the method since MetricsRepository can't reset.
+  //TODO: optimize it if any chances
+  @BeforeMethod
   public void setUp() throws InterruptedException, ExecutionException, VeniceClientException {
     Utils.thisIsLocalhost();
     veniceCluster = ServiceFactory.getVeniceCluster(1, 3, 0, 2, 100, true, false);
+    controllerClient = new ControllerClient(veniceCluster.getClusterName(), veniceCluster.getAllControllersURLs());
 
     // Need to start 3 routers with cache enabled
     int routerNum = 3;
@@ -79,50 +77,61 @@ public class TestRouterCache {
         D2TestUtils.DEFAULT_TEST_SERVICE_NAME, true);
     List<D2Server> d2Servers = D2TestUtils.getD2Servers(zkAddress, routerUrls);
     d2Servers.forEach(d2Server -> d2Server.forceStart());
+  }
 
-    // Create test store
-    VersionCreationResponse creationResponse = veniceCluster.getNewStoreVersion();
-    storeVersionName = creationResponse.getKafkaTopic();
-    storeName = Version.parseStoreFromKafkaTopicName(storeVersionName);
-    valueSchemaId = HelixReadOnlySchemaRepository.VALUE_SCHEMA_STARTING_ID;
-
+  private VersionCreationResponse createStore(boolean isCompressed) {
+    VersionCreationResponse response = veniceCluster.getNewStoreVersion();
     // Update default quota and enable router cache
-    ControllerClient controllerClient = new ControllerClient(veniceCluster.getClusterName(), veniceCluster.getAllControllersURLs());
-    controllerClient.updateStore(storeName, Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(),
-        Optional.empty(), Optional.empty(), Optional.of(10000l), Optional.empty(), Optional.empty(), Optional.empty(),
-        Optional.empty(), Optional.empty(), Optional.of(Boolean.TRUE), Optional.empty());
+    controllerClient.updateStore(response.getName(), Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(),
+        Optional.empty(), Optional.empty(), Optional.of(10000l), Optional.empty(), Optional.empty(),
+        Optional.empty(), isCompressed ? Optional.of(CompressionStrategy.GZIP) : Optional.empty(), Optional.empty(),
+        Optional.of(Boolean.TRUE), Optional.empty());
 
-    VeniceProperties clientProps =
-        new PropertyBuilder().put(KAFKA_BOOTSTRAP_SERVERS, veniceCluster.getKafka().getAddress())
-            .put(ZOOKEEPER_ADDRESS, veniceCluster.getZk().getAddress())
-            .put(CLUSTER_NAME, veniceCluster.getClusterName()).build();
+    return response;
+  }
+
+  @AfterMethod
+  public void cleanUp() {
+    IOUtils.closeQuietly(controllerClient);
+    IOUtils.closeQuietly(veniceCluster);
+  }
+
+  @DataProvider(name = "isCompressed")
+  public static Object[][] pushStatues() {
+    return new Object[][]{{false}, {true}};
+  }
+
+  @Test(timeOut = 20000, dataProvider = "isCompressed")
+  public void testRead(boolean isCompressed) throws Exception {
+    // Create test store
+    VersionCreationResponse creationResponse = createStore(isCompressed);
+    String topic = creationResponse.getKafkaTopic();
+    String storeName = creationResponse.getName();
+    int pushVersion = creationResponse.getVersion();
+    int valueSchemaId = HelixReadOnlySchemaRepository.VALUE_SCHEMA_STARTING_ID;
 
     // TODO: Make serializers parameterized so we test them all.
     String stringSchema = "\"string\"";
-    keySerializer = new VeniceAvroGenericSerializer(stringSchema);
-    valueSerializer = new VeniceAvroGenericSerializer(stringSchema);
+    VeniceAvroGenericSerializer keySerializer = new VeniceAvroGenericSerializer(stringSchema);
+    DefaultSerializer valueSerializer = new DefaultSerializer();
+    //since compressor only takes bytes. Manually serialize the value to bytes first
+    VeniceAvroGenericSerializer avroSerializer = new VeniceAvroGenericSerializer(stringSchema);
 
-    veniceWriter = TestUtils.getVeniceTestWriterFactory(veniceCluster.getKafka().getAddress())
-        .getVeniceWriter(storeVersionName, keySerializer, valueSerializer);
-  }
+    CompressionStrategy compressionStrategy = isCompressed ? CompressionStrategy.GZIP : CompressionStrategy.NO_OP;
+    VeniceCompressor compressor = CompressorFactory.getCompressor(compressionStrategy);
 
-  @AfterClass
-  public void cleanUp() {
-    IOUtils.closeQuietly(veniceCluster);
-    IOUtils.closeQuietly(veniceWriter);
-  }
+    VeniceWriter<Object, byte[]> veniceWriter = TestUtils.getVeniceTestWriterFactory(veniceCluster.getKafka().getAddress())
+        .getVeniceWriter(topic, keySerializer, valueSerializer);
 
-  @Test(timeOut = 20000)
-  public void testRead() throws Exception {
-    final int pushVersion = Version.parseVersionFromKafkaTopicName(storeVersionName);
+
 
     String keyPrefix = "key_";
     String valuePrefix = "value_";
 
-    veniceWriter.broadcastStartOfPush(new HashMap<>());
+    veniceWriter.broadcastStartOfPush(true, false, compressionStrategy, new HashMap<>());
     // Insert test record and wait synchronously for it to succeed
     for (int i = 0; i < 100; ++i) {
-      veniceWriter.put(keyPrefix + i, valuePrefix + i, valueSchemaId).get();
+      veniceWriter.put(keyPrefix + i, compressor.compress(avroSerializer.serialize(topic,valuePrefix + i)), valueSchemaId).get();
     }
     // Write end of push message to make node become ONLINE from BOOTSTRAP
     veniceWriter.broadcastEndOfPush(new HashMap<>());
@@ -133,6 +142,8 @@ public class TestRouterCache {
       int currentVersion = ControllerClient.getStore(controllerUrl, veniceCluster.getClusterName(), storeName).getStore().getCurrentVersion();
       return currentVersion == pushVersion;
     });
+
+    IOUtils.closeQuietly(veniceWriter);
 
     // Test with D2 Client
     D2Client d2Client = D2TestUtils.getAndStartD2Client(zkAddress);
