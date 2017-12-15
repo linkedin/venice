@@ -31,4 +31,8 @@ public enum SchemaType {
     return type;
   }
 
+  public int getValue() {
+    return value;
+  }
+
 }
