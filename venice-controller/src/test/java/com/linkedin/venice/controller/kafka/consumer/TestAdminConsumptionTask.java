@@ -685,10 +685,10 @@ public class TestAdminConsumptionTask {
     storeCreation.owner = owner;
     storeCreation.keySchema = new SchemaMeta();
     storeCreation.keySchema.definition = keySchema;
-    storeCreation.keySchema.schemaType = SchemaType.AVRO_1_4.ordinal();
+    storeCreation.keySchema.schemaType = SchemaType.AVRO_1_4.getValue();
     storeCreation.valueSchema = new SchemaMeta();
     storeCreation.valueSchema.definition = valueSchema;
-    storeCreation.valueSchema.schemaType = SchemaType.AVRO_1_4.ordinal();
+    storeCreation.valueSchema.schemaType = SchemaType.AVRO_1_4.getValue();
     AdminOperation adminMessage = new AdminOperation();
     adminMessage.operationType = AdminMessageType.STORE_CREATION.getValue();
     adminMessage.payloadUnion = storeCreation;

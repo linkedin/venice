@@ -265,14 +265,14 @@ public class VeniceParentHelixAdmin implements Admin {
       storeCreation.storeName = storeName;
       storeCreation.owner = owner;
       storeCreation.keySchema = new SchemaMeta();
-      storeCreation.keySchema.schemaType = SchemaType.AVRO_1_4.ordinal();
+      storeCreation.keySchema.schemaType = SchemaType.AVRO_1_4.getValue();
       storeCreation.keySchema.definition = keySchema;
       storeCreation.valueSchema = new SchemaMeta();
-      storeCreation.valueSchema.schemaType = SchemaType.AVRO_1_4.ordinal();
+      storeCreation.valueSchema.schemaType = SchemaType.AVRO_1_4.getValue();
       storeCreation.valueSchema.definition = valueSchema;
 
       AdminOperation message = new AdminOperation();
-      message.operationType = AdminMessageType.STORE_CREATION.ordinal();
+      message.operationType = AdminMessageType.STORE_CREATION.getValue();
       message.payloadUnion = storeCreation;
 
       sendAdminMessageAndWaitForConsumed(clusterName, message);
@@ -292,7 +292,7 @@ public class VeniceParentHelixAdmin implements Admin {
       // Tell each prod colo the largest used version number in corp to make it consistent.
       deleteStore.largestUsedVersionNumber = store.getLargestUsedVersionNumber();
       AdminOperation message = new AdminOperation();
-      message.operationType = AdminMessageType.DELETE_STORE.ordinal();
+      message.operationType = AdminMessageType.DELETE_STORE.getValue();
       message.payloadUnion = deleteStore;
 
       sendAdminMessageAndWaitForConsumed(clusterName, message);
@@ -598,7 +598,7 @@ public class VeniceParentHelixAdmin implements Admin {
       deleteAllVersions.clusterName = clusterName;
       deleteAllVersions.storeName = storeName;
       AdminOperation message = new AdminOperation();
-      message.operationType = AdminMessageType.DELETE_ALL_VERSIONS.ordinal();
+      message.operationType = AdminMessageType.DELETE_ALL_VERSIONS.getValue();
       message.payloadUnion = deleteAllVersions;
 
       sendAdminMessageAndWaitForConsumed(clusterName, message);
@@ -619,7 +619,7 @@ public class VeniceParentHelixAdmin implements Admin {
       deleteOldVersion.storeName = storeName;
       deleteOldVersion.versionNum = versionNum;
       AdminOperation message = new AdminOperation();
-      message.operationType = AdminMessageType.DELETE_OLD_VERSION.ordinal();
+      message.operationType = AdminMessageType.DELETE_OLD_VERSION.getValue();
       message.payloadUnion = deleteOldVersion;
 
       sendAdminMessageAndWaitForConsumed(clusterName, message);
@@ -666,7 +666,7 @@ public class VeniceParentHelixAdmin implements Admin {
       setStoreCurrentVersion.storeName = storeName;
       setStoreCurrentVersion.currentVersion = versionNumber;
       AdminOperation message = new AdminOperation();
-      message.operationType = AdminMessageType.SET_STORE_CURRENT_VERSION.ordinal();
+      message.operationType = AdminMessageType.SET_STORE_CURRENT_VERSION.getValue();
       message.payloadUnion = setStoreCurrentVersion;
 
       sendAdminMessageAndWaitForConsumed(clusterName, message);
@@ -686,7 +686,7 @@ public class VeniceParentHelixAdmin implements Admin {
       setStoreOwner.storeName = storeName;
       setStoreOwner.owner = owner;
       AdminOperation message = new AdminOperation();
-      message.operationType = AdminMessageType.SET_STORE_OWNER.ordinal();
+      message.operationType = AdminMessageType.SET_STORE_OWNER.getValue();
       message.payloadUnion = setStoreOwner;
 
       sendAdminMessageAndWaitForConsumed(clusterName, message);
@@ -706,7 +706,7 @@ public class VeniceParentHelixAdmin implements Admin {
       setStorePartition.storeName = storeName;
       setStorePartition.partitionNum = partitionCount;
       AdminOperation message = new AdminOperation();
-      message.operationType = AdminMessageType.SET_STORE_OWNER.ordinal();
+      message.operationType = AdminMessageType.SET_STORE_PARTITION.getValue();
       message.payloadUnion = setStorePartition;
 
       sendAdminMessageAndWaitForConsumed(clusterName, message);
@@ -724,13 +724,13 @@ public class VeniceParentHelixAdmin implements Admin {
       AdminOperation message = new AdminOperation();
 
       if (desiredReadability) {
-        message.operationType = AdminMessageType.ENABLE_STORE_READ.ordinal();
+        message.operationType = AdminMessageType.ENABLE_STORE_READ.getValue();
         EnableStoreRead enableStoreRead = (EnableStoreRead) AdminMessageType.ENABLE_STORE_READ.getNewInstance();
         enableStoreRead.clusterName = clusterName;
         enableStoreRead.storeName = storeName;
         message.payloadUnion = enableStoreRead;
       } else {
-        message.operationType = AdminMessageType.DISABLE_STORE_READ.ordinal();
+        message.operationType = AdminMessageType.DISABLE_STORE_READ.getValue();
         DisableStoreRead disableStoreRead = (DisableStoreRead) AdminMessageType.DISABLE_STORE_READ.getNewInstance();
         disableStoreRead.clusterName = clusterName;
         disableStoreRead.storeName = storeName;
@@ -752,13 +752,13 @@ public class VeniceParentHelixAdmin implements Admin {
       AdminOperation message = new AdminOperation();
 
       if (desiredWriteability) {
-        message.operationType = AdminMessageType.ENABLE_STORE_WRITE.ordinal();
+        message.operationType = AdminMessageType.ENABLE_STORE_WRITE.getValue();
         ResumeStore resumeStore = (ResumeStore) AdminMessageType.ENABLE_STORE_WRITE.getNewInstance();
         resumeStore.clusterName = clusterName;
         resumeStore.storeName = storeName;
         message.payloadUnion = resumeStore;
       } else {
-        message.operationType = AdminMessageType.DISABLE_STORE_WRITE.ordinal();
+        message.operationType = AdminMessageType.DISABLE_STORE_WRITE.getValue();
         PauseStore pauseStore = (PauseStore) AdminMessageType.DISABLE_STORE_WRITE.getNewInstance();
         pauseStore.clusterName = clusterName;
         pauseStore.storeName = storeName;
@@ -839,7 +839,7 @@ public class VeniceParentHelixAdmin implements Admin {
       setStore.batchGetLimit = batchGetLimit.isPresent() ? batchGetLimit.get() : store.getBatchGetLimit();
 
       AdminOperation message = new AdminOperation();
-      message.operationType = AdminMessageType.UPDATE_STORE.ordinal();
+      message.operationType = AdminMessageType.UPDATE_STORE.getValue();
       message.payloadUnion = setStore;
       sendAdminMessageAndWaitForConsumed(clusterName, message);
     } finally {
@@ -884,12 +884,12 @@ public class VeniceParentHelixAdmin implements Admin {
       valueSchemaCreation.storeName = storeName;
       SchemaMeta schemaMeta = new SchemaMeta();
       schemaMeta.definition = valueSchemaStr;
-      schemaMeta.schemaType = SchemaType.AVRO_1_4.ordinal();
+      schemaMeta.schemaType = SchemaType.AVRO_1_4.getValue();
       valueSchemaCreation.schema = schemaMeta;
       valueSchemaCreation.schemaId = newValueSchemaId;
 
       AdminOperation message = new AdminOperation();
-      message.operationType = AdminMessageType.VALUE_SCHEMA_CREATION.ordinal();
+      message.operationType = AdminMessageType.VALUE_SCHEMA_CREATION.getValue();
       message.payloadUnion = valueSchemaCreation;
 
       sendAdminMessageAndWaitForConsumed(clusterName, message);
@@ -1171,7 +1171,7 @@ public class VeniceParentHelixAdmin implements Admin {
       killJob.clusterName = clusterName;
       killJob.kafkaTopic = kafkaTopic;
       AdminOperation message = new AdminOperation();
-      message.operationType = AdminMessageType.KILL_OFFLINE_PUSH_JOB.ordinal();
+      message.operationType = AdminMessageType.KILL_OFFLINE_PUSH_JOB.getValue();
       message.payloadUnion = killJob;
 
       sendAdminMessageAndWaitForConsumed(clusterName, message);

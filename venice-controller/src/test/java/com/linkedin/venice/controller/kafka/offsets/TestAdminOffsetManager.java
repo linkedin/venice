@@ -105,11 +105,11 @@ public class TestAdminOffsetManager {
 
   private ProducerPartitionState getProducerPartitionState(long messageTimestamp) {
     ProducerPartitionState state = new ProducerPartitionState();
-    state.segmentNumber = SegmentStatus.IN_PROGRESS.ordinal();
+    state.segmentNumber = SegmentStatus.IN_PROGRESS.getValue();
     state.segmentNumber = 1;
     state.messageSequenceNumber = 1;
     state.messageTimestamp = messageTimestamp;
-    state.checksumType = CheckSumType.NONE.ordinal();
+    state.checksumType = CheckSumType.NONE.getValue();
     state.checksumState = ByteBuffer.wrap(new byte[0]);
     state.aggregates = new HashMap<>();
     state.debugInfo = new HashMap<>();
