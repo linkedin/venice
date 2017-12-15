@@ -1,6 +1,7 @@
 package com.linkedin.venice.hadoop;
 
 import com.linkedin.venice.compression.CompressionStrategy;
+import com.linkedin.venice.hadoop.ssl.TempFileSSLConfigurator;
 import com.linkedin.venice.integration.utils.VeniceControllerWrapper;
 import com.linkedin.venice.meta.Store;
 import org.apache.hadoop.conf.Configuration;
@@ -37,6 +38,10 @@ public class AbstractTestVeniceMR {
     config.setBoolean(VENICE_MAP_ONLY, false);
     config.setBoolean(ALLOW_DUPLICATE_KEY, false);
     config.set(COMPRESSION_STRATEGY, CompressionStrategy.NO_OP.toString());
+    config.set(SSL_CONFIGURATOR_CLASS_CONFIG, TempFileSSLConfigurator.class.getName().toString());
+    config.set(SSL_KEY_STORE_PROPERTY_NAME, "li.datavault.identity");
+    config.set(SSL_TRUST_STORE_PROPERTY_NAME, "li.datavault.truststore");
+
     return new JobConf(config);
   }
 

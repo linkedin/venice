@@ -32,12 +32,47 @@ import org.apache.kafka.common.TopicPartition;
 import static org.testng.Assert.*;
 
 import org.apache.log4j.Logger;
+import org.testng.Assert;
 import org.testng.annotations.Test;
 
 
 public class TestBrooklin {
 
   private static final Logger logger = Logger.getLogger(TestBrooklin.class);
+
+  @Test
+  public void testGetKafkaURL() {
+    String dummyVeniceClusterName = TestUtils.getUniqueString("venice");
+    KafkaBrokerWrapper kafka = ServiceFactory.getKafkaBroker();
+    BrooklinWrapper brooklin = ServiceFactory.getBrooklinWrapper(kafka);
+    TopicManager topicManager =
+        new TopicManager(kafka.getZkAddress(), TestUtils.getVeniceConsumerFactory(kafka.getAddress()));
+    Properties sslProps = new Properties();
+    sslProps.setProperty(BrooklinTopicReplicator.BROOKLIN_CONNECTION_STRING, brooklin.getBrooklinDmsUri());
+    sslProps.setProperty(ConfigKeys.ENABLE_TOPIC_REPLICATOR_SSL, "true");
+    sslProps.setProperty(TopicReplicator.TOPIC_REPLICATOR_SOURCE_SSL_KAFKA_CLUSTER, kafka.getSSLAddress());
+    sslProps.setProperty(ConfigKeys.CLUSTER_NAME, dummyVeniceClusterName);
+    sslProps.setProperty(BrooklinTopicReplicator.BROOKLIN_CONNECTION_APPLICATION_ID, "venice-test-service");
+    sslProps.setProperty(TopicReplicator.TOPIC_REPLICATOR_SOURCE_KAFKA_CLUSTER, kafka.getAddress());
+
+    VeniceProperties properties = new VeniceProperties(sslProps);
+    //enable ssl
+    BrooklinTopicReplicator replicator =
+        new BrooklinTopicReplicator(topicManager, properties, TestUtils.getVeniceTestWriterFactory(kafka.getAddress()));
+    String topic = "test-topic";
+    Assert.assertEquals(replicator.getKafkaURL(topic),
+        "kafkassl://" + kafka.getSSLAddress() + "/" + topic);
+    //disable ssl
+    Properties nonSslProps = new Properties();
+    nonSslProps.putAll(sslProps);
+    nonSslProps.setProperty(ConfigKeys.ENABLE_TOPIC_REPLICATOR_SSL, "false");
+    properties = new VeniceProperties(nonSslProps);
+
+    replicator =
+        new BrooklinTopicReplicator(topicManager, properties, TestUtils.getVeniceTestWriterFactory(kafka.getAddress()));
+    Assert.assertEquals(replicator.getKafkaURL(topic),
+        "kafka://" + kafka.getAddress() + "/" + topic);
+  }
 
   @Test
   public void canReplicateKafkaWithBrooklinTopicReplicator() throws InterruptedException {
@@ -47,7 +82,7 @@ public class TestBrooklin {
     TopicManager topicManager = new TopicManager(kafka.getZkAddress(), TestUtils.getVeniceConsumerFactory(kafka.getAddress()));
     TopicReplicator replicator =
         new BrooklinTopicReplicator(brooklin.getBrooklinDmsUri(), kafka.getAddress(), topicManager,
-            dummyVeniceClusterName, "venice-test-service", TestUtils.getVeniceTestWriterFactory(kafka.getAddress()));
+            dummyVeniceClusterName, "venice-test-service", TestUtils.getVeniceTestWriterFactory(kafka.getAddress()), false);
 
     //Create topics
     int partitionCount = 1;
@@ -152,6 +187,7 @@ public class TestBrooklin {
     String brooklinReplicatorClassName = BrooklinTopicReplicator.class.getName();
     VeniceProperties props = new PropertyBuilder()
         .put(ConfigKeys.ENABLE_TOPIC_REPLICATOR, true)
+        .put(ConfigKeys.ENABLE_TOPIC_REPLICATOR_SSL, false)
         .put(TopicReplicator.TOPIC_REPLICATOR_CLASS_NAME, brooklinReplicatorClassName)
         .put(BrooklinTopicReplicator.BROOKLIN_CONNECTION_STRING, "useless...")
         .put(TopicReplicator.TOPIC_REPLICATOR_SOURCE_KAFKA_CLUSTER, "some Kafka connection")

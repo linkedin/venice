@@ -37,6 +37,7 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
   private final long failedJobTopicRetentionMs;
   private final boolean parentControllerEnableTopicDeletion;
   private final int topicManagerKafkaOperationTimeOutMs;
+  private final boolean enableTopicReplicatorSSL;
 
   public VeniceControllerConfig(VeniceProperties props) {
     super(props);
@@ -63,6 +64,7 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
     this.adminConsumptionTimeoutMinutes = props.getLong(ADMIN_CONSUMPTION_TIMEOUT_MINUTES, TimeUnit.DAYS.toMinutes(5));
 
     this.enableTopicReplicator = props.getBoolean(ENABLE_TOPIC_REPLICATOR, true);
+    this.enableTopicReplicatorSSL = props.getBoolean(ENABLE_TOPIC_REPLICATOR_SSL, false);
     this.storageEngineOverheadRatio = props.getDouble(STORAGE_ENGINE_OVERHEAD_RATIO, 0.85d);
 
     // The default retention '0' will allow Kafka remove as much data as possible.

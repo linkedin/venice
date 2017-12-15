@@ -95,7 +95,7 @@ public class ConfigKeys {
   public static final String FAILED_JOB_TOPIC_RETENTION_MS = "failed.job.topic.retention.ms";
 
   public static final String ENABLE_TOPIC_REPLICATOR = "controller.enable.topic.replicator";
-
+  public static final String ENABLE_TOPIC_REPLICATOR_SSL = "controller.enable.topic.replicator.ssl";
   // Server specific configs
   public static final String LISTENER_PORT = "listener.port";
   public static final String DATA_BASE_PATH = "data.base.path";
@@ -113,6 +113,7 @@ public class ConfigKeys {
   public static final String SERVER_NETTY_GRACEFUL_SHUTDOWN_PERIOD_SECONDS = "server.netty.graceful.shutdown.period.seconds";
   public static final String SERVER_NETTY_WORKER_THREADS = "server.netty.worker.threads";
   public static final String SSL_TO_KAFKA = "ssl.to.kakfa";
+
 
 
   // Router specific configs

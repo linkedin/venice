@@ -31,6 +31,7 @@ public abstract class TopicReplicator implements Closeable {
   public static final String TOPIC_REPLICATOR_CONFIG_PREFIX = "topic.replicator.";
   public static final String TOPIC_REPLICATOR_CLASS_NAME = TOPIC_REPLICATOR_CONFIG_PREFIX + "class.name";
   public static final String TOPIC_REPLICATOR_SOURCE_KAFKA_CLUSTER = TOPIC_REPLICATOR_CONFIG_PREFIX + "source.kafka.cluster";
+  public static final String TOPIC_REPLICATOR_SOURCE_SSL_KAFKA_CLUSTER = TOPIC_REPLICATOR_CONFIG_PREFIX + "source.ssl.kafka.cluster";
 
   private final TopicManager topicManager;
   protected final String destKafkaBootstrapServers;
