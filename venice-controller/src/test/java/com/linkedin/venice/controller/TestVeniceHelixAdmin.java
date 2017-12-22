@@ -43,6 +43,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Properties;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.TimeUnit;
 import org.apache.helix.HelixManager;
@@ -92,26 +93,8 @@ public class TestVeniceHelixAdmin {
     kafkaBrokerWrapper = ServiceFactory.getKafkaBroker();
     kafkaZkAddress = kafkaBrokerWrapper.getZkAddress();
     stateModelFactory = new MockTestStateModelFactory();
-    String currentPath = Paths.get("").toAbsolutePath().toString();
-    if (currentPath.endsWith("venice-controller")) {
-      currentPath += "/..";
-    }
-    VeniceProperties clusterProps = Utils.parseProperties(currentPath + "/venice-server/config/cluster.properties");
-    VeniceProperties baseControllerProps = Utils.parseProperties(currentPath + "/venice-controller/config/controller.properties");
     clusterName = TestUtils.getUniqueString("test-cluster");
-    clusterProps.getString(ConfigKeys.CLUSTER_NAME);
-    PropertyBuilder builder = new PropertyBuilder().put(clusterProps.toProperties())
-        .put(baseControllerProps.toProperties())
-        .put(ENABLE_TOPIC_REPLICATOR, false)
-        .put(KAFKA_ZK_ADDRESS, kafkaZkAddress)
-        .put(ZOOKEEPER_ADDRESS, zkAddress)
-        .put(CLUSTER_NAME, clusterName)
-        .put(KAFKA_BOOTSTRAP_SERVERS, kafkaBrokerWrapper.getAddress())
-        .put(DEFAULT_MAX_NUMBER_OF_PARTITIONS, maxNumberOfPartition)
-        .put(DEFAULT_PARTITION_SIZE, 100)
-        .put(CLUSTER_TO_D2, TestUtils.getClusterToDefaultD2String(clusterName));
-
-    controllerProps = builder.build();
+    controllerProps = new VeniceProperties(getControllerProperties(clusterName));
 
     config = new VeniceControllerConfig(controllerProps);
     veniceAdmin = new VeniceHelixAdmin(TestUtils.getMultiClusterConfigFromOneCluster(config), new MetricsRepository());
@@ -1407,5 +1390,69 @@ public class TestVeniceHelixAdmin {
         Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), Optional.of(100));
     store = veniceAdmin.getStore(clusterName, storeName);
     Assert.assertEquals(store.getBatchGetLimit(), 100);
+  }
+
+  @Test
+  public void testEnableSSLForPush()
+      throws IOException {
+
+    veniceAdmin.stop(clusterName);
+    veniceAdmin.close();
+    String storeName1 = "testEnableSSLForPush1";
+    String storeName2 = "testEnableSSLForPush2";
+    String storeName3 = "testEnableSSLForPush3";
+    Properties properties = getControllerProperties(clusterName);
+    properties.put(ConfigKeys.SSL_TO_KAFKA, true);
+    properties.put(ConfigKeys.SSL_KAFKA_BOOTSTRAP_SERVERS, kafkaBrokerWrapper.getSSLAddress());
+    properties.put(ConfigKeys.ENABLE_OFFLINE_PUSH_SSL_WHITELIST, true);
+    properties.put(ConfigKeys.ENABLE_HYBRID_PUSH_SSL_WHITELIST,  false);
+    properties.put(ConfigKeys.PUSH_SSL_WHITELIST, storeName1);
+
+    veniceAdmin = new VeniceHelixAdmin(
+        TestUtils.getMultiClusterConfigFromOneCluster(new VeniceControllerConfig(new VeniceProperties(properties))),
+        new MetricsRepository());
+
+    veniceAdmin.start(clusterName);
+
+    TestUtils.waitForNonDeterministicCompletion(1000, TimeUnit.MILLISECONDS, ()->veniceAdmin.isMasterController(clusterName));
+    veniceAdmin.addStore(clusterName, storeName1, "test", keySchema,valueSchema);
+    veniceAdmin.addStore(clusterName, storeName2, "test", keySchema,valueSchema);
+    veniceAdmin.addStore(clusterName, storeName3, "test", keySchema,valueSchema);
+    //store3 is hybrid store.
+    veniceAdmin.updateStore(clusterName, storeName3, Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), Optional.of(1000l), Optional.of(1000l), Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty() );
+
+    Assert.assertTrue(veniceAdmin.isSSLEnabledForPush(clusterName, storeName1),
+        "Store1 is in the whitelist, ssl should be enabled.");
+    Assert.assertFalse(veniceAdmin.isSSLEnabledForPush(clusterName, storeName2),
+        "Store2 is not in the whitelist, ssl should be disabled.");
+    Assert.assertTrue(veniceAdmin.isSSLEnabledForPush(clusterName, storeName3),
+        "Store3 is hybrid store, and ssl for nearline push is disabled, so by default ssl should be enabled because we turned on the cluster level ssl switcher.");
+
+
+  }
+
+  private Properties getControllerProperties(String clusterName)
+      throws IOException {
+    String currentPath = Paths.get("").toAbsolutePath().toString();
+    if (currentPath.endsWith("venice-controller")) {
+      currentPath += "/..";
+    }
+    VeniceProperties clusterProps = Utils.parseProperties(currentPath + "/venice-server/config/cluster.properties");
+    VeniceProperties baseControllerProps =
+        Utils.parseProperties(currentPath + "/venice-controller/config/controller.properties");
+    clusterProps.getString(ConfigKeys.CLUSTER_NAME);
+    Properties properties = new Properties();
+    properties.putAll(clusterProps.toProperties());
+    properties.putAll(baseControllerProps.toProperties());
+    properties.put(ENABLE_TOPIC_REPLICATOR, false);
+    properties.put(KAFKA_ZK_ADDRESS, kafkaZkAddress);
+    properties.put(ZOOKEEPER_ADDRESS, zkAddress);
+    properties.put(CLUSTER_NAME, clusterName);
+    properties.put(KAFKA_BOOTSTRAP_SERVERS, kafkaBrokerWrapper.getAddress());
+    properties.put(DEFAULT_MAX_NUMBER_OF_PARTITIONS, maxNumberOfPartition);
+    properties.put(DEFAULT_PARTITION_SIZE, 100);
+    properties.put(CLUSTER_TO_D2, TestUtils.getClusterToDefaultD2String(clusterName));
+
+    return properties;
   }
 }

@@ -46,7 +46,7 @@ public class TestAdminSparkWithMocks {
     doReturn(true).when(admin).isMasterController(anyString());
     doReturn(1).when(admin).getReplicationFactor(anyString(), anyString());
     doReturn(1).when(admin).calculateNumberOfPartitions(anyString(), anyString(), anyLong());
-    doReturn("kafka-bootstrap").when(admin).getKafkaBootstrapServers();
+    doReturn("kafka-bootstrap").when(admin).getKafkaBootstrapServers(anyBoolean());
     doReturn("store_rt").when(admin).getRealTimeTopic(anyString(), anyString());
     AdminSparkServer server = ServiceFactory.getMockAdminSparkServer(admin, "clustername");
     int port = server.getPort();

@@ -1070,8 +1070,13 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   @Override
-  public String getKafkaBootstrapServers() {
-    return veniceHelixAdmin.getKafkaBootstrapServers();
+  public String getKafkaBootstrapServers(boolean isSSL) {
+    return veniceHelixAdmin.getKafkaBootstrapServers(isSSL);
+  }
+
+  @Override
+  public boolean isSSLEnabledForPush(String clusterName, String storeName) {
+    return veniceHelixAdmin.isSSLEnabledForPush(clusterName, storeName);
   }
 
   @Override

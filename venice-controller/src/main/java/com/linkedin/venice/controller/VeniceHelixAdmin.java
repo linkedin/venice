@@ -83,6 +83,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     private final int controllerClusterReplica;
     private final String controllerName;
     private final String kafkaBootstrapServers;
+    private final String kafkaSSLBootstrapServers;
     private final Map<String, AdminConsumerService> adminConsumerServices = new HashMap<>();
     // Track last exception when necessary
     private Map<String, Exception> lastExceptionMap = new ConcurrentHashMap<String, Exception>();
@@ -119,9 +120,8 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         this.controllerName = Utils.getHelixNodeIdentifier(multiClusterConfigs.getAdminPort());
         this.controllerClusterName = multiClusterConfigs.getControllerClusterName();
         this.controllerClusterReplica = multiClusterConfigs.getControllerClusterReplica();
-        this.kafkaBootstrapServers =
-            multiClusterConfigs.isSslToKafka() ? multiClusterConfigs.getSslKafkaBootstrapServers()
-                : multiClusterConfigs.getKafkaBootstrapServers();
+        this.kafkaBootstrapServers = multiClusterConfigs.getKafkaBootstrapServers();
+        this.kafkaSSLBootstrapServers = multiClusterConfigs.getSslKafkaBootstrapServers();
         this.failedJobTopicRetentionMs = multiClusterConfigs.getFailedJobTopicRetentionMs();
 
         // TODO: Re-use the internal zkClient for the ZKHelixAdmin and TopicManager.
@@ -1504,8 +1504,39 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
 
     @Override
-    public String getKafkaBootstrapServers() {
-        return this.kafkaBootstrapServers;
+    public String getKafkaBootstrapServers(boolean isSSL) {
+        if(isSSL) {
+            return kafkaSSLBootstrapServers;
+        } else {
+            return kafkaBootstrapServers;
+        }
+    }
+
+    @Override
+    public boolean isSSLEnabledForPush(String clusterName, String storeName) {
+        if (isSslToKafka()) {
+            Store store = getStore(clusterName, storeName);
+            if (store == null) {
+                throw new VeniceNoStoreException(storeName);
+            }
+            if (store.isHybrid()) {
+                if (multiClusterConfigs.getCommonConfig().isEnableNearlinePushSSLWhitelist()
+                    && (!multiClusterConfigs.getCommonConfig().getPushSSLWhitelist().contains(storeName))) {
+                    // whitelist is enabled but the given store is not in that list, so ssl is not enabled for this store.
+                    return false;
+                }
+            } else {
+                if (multiClusterConfigs.getCommonConfig().isEnableOfflinePushSSLWhitelist()
+                    && (!multiClusterConfigs.getCommonConfig().getPushSSLWhitelist().contains(storeName))) {
+                    // whitelist is enabled but the given store is not in that list, so ssl is not enabled for this store.
+                    return false;
+                }
+            }
+            // whitelist is not enabled, or whitelist is enabled and the given store is in that list, so ssl is enabled for this store for push.
+            return true;
+        } else {
+            return false;
+        }
     }
 
     @Override

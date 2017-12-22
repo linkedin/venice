@@ -42,7 +42,7 @@ public class TopicMonitor extends AbstractVeniceService {
 
   @Override
   public boolean startInner() throws Exception {
-    String kafkaString = admin.getKafkaBootstrapServers();
+    String kafkaString = admin.getKafkaBootstrapServers(admin.isSslToKafka());
     monitor = new TopicMonitorRunnable(admin);
     runner = new Thread(monitor);
     runner.setName("TopicMonitor - " + kafkaString);
@@ -91,7 +91,7 @@ public class TopicMonitor extends AbstractVeniceService {
           try {
             Thread.sleep(pollIntervalMs);
             if (logger.isDebugEnabled()) {
-              logger.debug("Polling kafka: " + admin.getKafkaBootstrapServers() + " for new topics");
+              logger.debug("Polling kafka: " + admin.getKafkaBootstrapServers(admin.isSslToKafka()) + " for new topics");
             }
             Map<String, List<PartitionInfo>> topics = kafkaClient.listTopics();
             for (Map.Entry<String, List<PartitionInfo>> entry : topics.entrySet()) {

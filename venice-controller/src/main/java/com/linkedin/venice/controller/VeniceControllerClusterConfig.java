@@ -9,6 +9,8 @@ import com.linkedin.venice.meta.ReadStrategy;
 import com.linkedin.venice.meta.RoutingStrategy;
 import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.VeniceProperties;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import org.apache.kafka.common.protocol.SecurityProtocol;
@@ -46,6 +48,9 @@ public class VeniceControllerClusterConfig {
   Optional<SSLConfig> sslConfig;
   private int refreshAttemptsForZkReconnect;
   private long refreshIntervalForZkReconnectInMs;
+  private boolean enableOfflinePushSSLWhitelist;
+  private boolean enableNearlinePushSSLWhitelist;
+  private List<String> pushSSLWhitelist;
 
   /**
    * After server disconnecting for delayToRebalanceMS, helix would trigger the re-balance immediately.
@@ -145,6 +150,9 @@ public class VeniceControllerClusterConfig {
     refreshAttemptsForZkReconnect = props.getInt(REFRESH_ATTEMPTS_FOR_ZK_RECONNECT, 3);
     refreshIntervalForZkReconnectInMs =
         props.getLong(REFRESH_INTERVAL_FOR_ZK_RECONNECT_MS, java.util.concurrent.TimeUnit.SECONDS.toMillis(10));
+    enableOfflinePushSSLWhitelist = props.getBoolean(ENABLE_OFFLINE_PUSH_SSL_WHITELIST, true);
+    enableNearlinePushSSLWhitelist = props.getBoolean(ENABLE_HYBRID_PUSH_SSL_WHITELIST, true);
+    pushSSLWhitelist = props.getList(PUSH_SSL_WHITELIST, new ArrayList<>());
   }
 
   public VeniceProperties getProps() {
@@ -258,5 +266,17 @@ public class VeniceControllerClusterConfig {
 
   public long getRefreshIntervalForZkReconnectInMs() {
     return refreshIntervalForZkReconnectInMs;
+  }
+
+  public boolean isEnableOfflinePushSSLWhitelist() {
+    return enableOfflinePushSSLWhitelist;
+  }
+
+  public List<String> getPushSSLWhitelist() {
+    return pushSSLWhitelist;
+  }
+
+  public boolean isEnableNearlinePushSSLWhitelist() {
+    return enableNearlinePushSSLWhitelist;
   }
 }

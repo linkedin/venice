@@ -60,8 +60,9 @@ public class CreateVersion {
         responseObject.setReplicas(replicaFactor);
         responseObject.setVersion(version.getNumber());
         responseObject.setKafkaTopic(version.kafkaTopicName());
-        responseObject.setKafkaBootstrapServers(admin.getKafkaBootstrapServers());
-        responseObject.setEnableSSL(admin.isSslToKafka());
+        boolean isSSL = admin.isSSLEnabledForPush(clusterName, storeName);
+        responseObject.setKafkaBootstrapServers(admin.getKafkaBootstrapServers(isSSL));
+        responseObject.setEnableSSL(isSSL);
         responseObject.setCompressionStrategy(version.getCompressionStrategy());
       } catch (Throwable e) {
         // TODO use the VeniceRouterHandler.handle
@@ -121,7 +122,9 @@ public class CreateVersion {
         responseObject.setName(storeName);
         responseObject.setPartitions(partitionCount);
         responseObject.setReplicas(replicationFactor);
-        responseObject.setKafkaBootstrapServers(admin.getKafkaBootstrapServers());
+        boolean isSSL = admin.isSSLEnabledForPush(clusterName, storeName);
+        responseObject.setKafkaBootstrapServers(admin.getKafkaBootstrapServers(isSSL));
+        responseObject.setEnableSSL(isSSL);
 
         switch(pushType) {
           case BATCH:
