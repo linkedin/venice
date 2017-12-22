@@ -184,14 +184,15 @@ public interface Admin {
     Map<String, Long> getOfflinePushProgress(String clusterName, String kafkaTopic);
 
     /**
-     * TODO : Currently bootstrap servers are common per Venice Controller cluster
-     * This needs to be configured at per store level or per version level.
-     * The Kafka bootstrap servers should also be dynamically sent to the Storage Nodes
-     * and only controllers should be aware of them.
-     *
+     * Return the ssl or non-ssl bootstrap servers based on the given flag.
      * @return kafka bootstrap servers url, if there are multiple will be comma separated.
      */
-    String getKafkaBootstrapServers();
+    String getKafkaBootstrapServers(boolean isSSL);
+
+    /**
+     * Return whether ssl is enabled for the given store for push.
+     */
+    boolean isSSLEnabledForPush(String clusterName, String storeName);
 
     boolean isSslToKafka();
 

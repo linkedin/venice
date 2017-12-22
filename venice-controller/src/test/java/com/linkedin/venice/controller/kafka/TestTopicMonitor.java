@@ -45,7 +45,7 @@ public class TestTopicMonitor {
     Admin mockAdmin = Mockito.mock(VeniceHelixAdmin.class);
     doReturn(true).when(mockAdmin).isMasterController(clusterName);
     doReturn(mockStore).when(mockAdmin).getStore(clusterName, storeName);
-    doReturn(kafka.getAddress()).when(mockAdmin).getKafkaBootstrapServers();
+    doReturn(kafka.getAddress()).when(mockAdmin).getKafkaBootstrapServers(Mockito.anyBoolean());
 
     int pollIntervalMs = 1; /* ms */
     int replicationFactor = 1;
@@ -86,7 +86,7 @@ public class TestTopicMonitor {
     Admin mockAdmin = Mockito.mock(VeniceHelixAdmin.class);
     doReturn(Optional.empty()).when(mockAdmin).getClusterOfStoreInMasterController(storeName);
     doReturn(mockStore).when(mockAdmin).getStore(clusterName, storeName);
-    doReturn(kafka.getAddress()).when(mockAdmin).getKafkaBootstrapServers();
+    doReturn(kafka.getAddress()).when(mockAdmin).getKafkaBootstrapServers(Mockito.anyBoolean());
 
     int pollIntervalMs = 1; /* ms */
     int replicationFactor = 1;

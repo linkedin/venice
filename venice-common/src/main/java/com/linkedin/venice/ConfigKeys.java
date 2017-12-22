@@ -274,4 +274,21 @@ public class ConfigKeys {
    * Env variable for setting keystore when running Venice with quickstart.
    */
   public static final String KEYSTORE_ENV = "VENICE_KEYSTORE";
+
+  /**
+   * The switcher to enable/disable the whitelist of ssl offline pushes. If we disable the whitelist here, depends on
+   * the config "SSL_TO_KAFKA", all pushes will be secured by SSL or none of pushes will be secured by SSL.
+   */
+  public static final String ENABLE_OFFLINE_PUSH_SSL_WHITELIST = "enable.offline.push.ssl.whitelist";
+  /**
+   * The switcher to enable/disable the whitelist of ssl hybrid pushes including both batch and near-line pushes for
+   * that store. If we disable the whitelist here, depends on the config "SSL_TO_KAFKA", all pushes will be secured by
+   * SSL or none of pushes will be secured by SSL.
+   */
+  public static final String ENABLE_HYBRID_PUSH_SSL_WHITELIST = "enable.hybrid.push.ssl.whitelist";
+
+  /**
+   * Whitelist of stores which are allowed to push data with SSL.
+   */
+  public static final String PUSH_SSL_WHITELIST = "push.ssl.whitelist";
 }

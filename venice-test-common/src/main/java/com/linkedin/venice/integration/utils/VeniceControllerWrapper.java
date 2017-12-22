@@ -77,6 +77,8 @@ public class VeniceControllerWrapper extends ProcessWrapper {
                     : clusterToD2)
             .put(SSL_TO_KAFKA, sslToKafka)
             .put(SSL_KAFKA_BOOTSTRAP_SERVERS, kafkaBrokerWrapper.getSSLAddress())
+            .put(ENABLE_OFFLINE_PUSH_SSL_WHITELIST, false)
+            .put(ENABLE_HYBRID_PUSH_SSL_WHITELIST, false)
             .put(KAFKA_BOOTSTRAP_SERVERS, kafkaBrokerWrapper.getAddress()
             );
         if (sslToKafka) {
