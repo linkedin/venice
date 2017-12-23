@@ -1,5 +1,6 @@
 package com.linkedin.venice;
 
+import com.linkedin.venice.exceptions.VeniceException;
 import java.util.Comparator;
 import java.util.StringJoiner;
 import org.apache.commons.lang.ArrayUtils;
@@ -21,7 +22,7 @@ public enum Command {
       new Arg[] {Arg.URL, Arg.CLUSTER, Arg.STORE}),
   ENABLE_STORE_READ("enable-store-read", "Allow a store to serve read requests again after reads have been disabled",
       new Arg[] {Arg.URL, Arg.CLUSTER, Arg.STORE}),
-  DISABLE_STORE("disable-store", "Disable store in both read and write path.",
+  DISABLE_STORE("disable-store", "Disable store in both read and write path",
       new Arg[] {Arg.URL, Arg.CLUSTER, Arg.STORE}),
   ENABLE_STORE("enable-store", "Enable a store in both read and write path",
       new Arg[] {Arg.URL, Arg.CLUSTER, Arg.STORE}),
@@ -47,9 +48,9 @@ public enum Command {
   CLUSTER_HEALTH_STORES("cluster-health-stores", "List the status for every store", new Arg[]{Arg.URL, Arg.CLUSTER}),
   NODE_REMOVABLE("node-removable", "A node is removable if all replicas it is serving are available on other nodes",
       new Arg[] {Arg.URL, Arg.CLUSTER, Arg.STORAGE_NODE}),
-  WHITE_LIST_ADD_NODE("white-list-add-node", "Add a storage node into the white list.",
+  WHITE_LIST_ADD_NODE("white-list-add-node", "Add a storage node into the white list",
       new Arg[]{Arg.URL, Arg.CLUSTER, Arg.STORAGE_NODE}),
-  WHITE_LIST_REMOVE_NODE("white-list-remove-node", "Remove a storage node from the white list.",
+  WHITE_LIST_REMOVE_NODE("white-list-remove-node", "Remove a storage node from the white list",
       new Arg[]{Arg.URL, Arg.CLUSTER, Arg.STORAGE_NODE}),
   REMOVE_NODE("remove-node", "Remove a storage node from the cluster",
       new Arg[]{Arg.URL, Arg.CLUSTER, Arg.STORAGE_NODE}),
@@ -62,11 +63,11 @@ public enum Command {
       new Arg[]{Arg.VSON_STORE}),
   SHOW_SCHEMAS("schemas", "Show the key and value schemas for a store",
       new Arg[] {Arg.URL, Arg.CLUSTER, Arg.STORE}),
-  DELETE_ALL_VERSIONS("delete-all-versions", "Delete all versions in given store.",
+  DELETE_ALL_VERSIONS("delete-all-versions", "Delete all versions in given store",
       new Arg[]{Arg.URL, Arg.CLUSTER, Arg.STORE}),
-  DELETE_OLD_VERSION("delete-old-version", "Delete the given version(non current version) in the given store.",
+  DELETE_OLD_VERSION("delete-old-version", "Delete the given version(non current version) in the given store",
       new Arg[]{Arg.URL, Arg.CLUSTER, Arg.STORE, Arg.VERSION}),
-  GET_EXECUTION("get-execution", "Get the execution status for an async admin command.",
+  GET_EXECUTION("get-execution", "Get the execution status for an async admin command",
       new Arg[]{Arg.URL, Arg.CLUSTER, Arg.EXECUTION}),
   SET_OWNER("set-owner", "Update owner info of an existing store",
       new Arg[] {Arg.URL, Arg.CLUSTER, Arg.STORE, Arg.OWNER}),
@@ -79,25 +80,25 @@ public enum Command {
                   Arg.CHUNKING_ENABLED}),
   EMPTY_PUSH("empty-push", "Do an empty push into an existing store",
       new Arg[]{Arg.URL, Arg.CLUSTER, Arg.STORE, Arg.PUSH_ID, Arg.STORE_SIZE}),
-  ENABLE_THROTTLING("enable-throttling", "Enable the feature that throttling read request on all routers.",
+  ENABLE_THROTTLING("enable-throttling", "Enable the feature that throttling read request on all routers",
       new Arg[]{Arg.URL, Arg.CLUSTER}),
-  DISABLE_THROTTLING("disable-throttling", "Disable the feature that throttling read request on all routers.",
+  DISABLE_THROTTLING("disable-throttling", "Disable the feature that throttling read request on all routers",
       new Arg[]{Arg.URL, Arg.CLUSTER}),
   ENABLE_MAX_CAPACITY_PROTECTION("enable-max-capacity-protection",
-      "Enable the feature that prevent read request usage exceeding the max capacity on all routers.",
+      "Enable the feature that prevent read request usage exceeding the max capacity on all routers",
       new Arg[]{Arg.URL, Arg.CLUSTER}),
   DISABLE_MAX_CAPACITY_PROTECTION("disable-max-capacity-protection",
-      "Disable the feature that prevent read request usage exceeding the max capacity on all routers..",
+      "Disable the feature that prevent read request usage exceeding the max capacity on all routers.",
       new Arg[]{Arg.URL, Arg.CLUSTER}),
   ENABLE_QUTOA_REBALANCE("enable-quota-rebalance",
-      "Enable the feature that quota could be rebalanced once live router count is changed on all routers.",
+      "Enable the feature that quota could be rebalanced once live router count is changed on all routers",
       new Arg[]{Arg.URL, Arg.CLUSTER, Arg.EXPECTED_ROUTER_COUNT}),
   DISABLE_QUTOA_REBALANCE("disable-quota-rebalance",
-      "Disable the feature that quota could be rebalanced once live router count is changed on all routers.",
+      "Disable the feature that quota could be rebalanced once live router count is changed on all routers",
       new Arg[]{Arg.URL, Arg.CLUSTER}),
-  GET_ROUTERS_CLUSTER_CONFIG("get-routers-cluster-config", "Get cluster level router's config.",
+  GET_ROUTERS_CLUSTER_CONFIG("get-routers-cluster-config", "Get cluster level router's config",
       new Arg[]{Arg.URL, Arg.CLUSTER}),
-  CONVERT_VSON_SCHEMA("convert-vson-schema", "Convert and print out Avro schemas based on input Vson schemas.",
+  CONVERT_VSON_SCHEMA("convert-vson-schema", "Convert and print out Avro schemas based on input Vson schemas",
       new Arg[] {Arg.KEY_SCHEMA, Arg.VALUE_SCHEMA}),
 
   GET_ALL_MIGRATION_PUSH_STRATEGIES("get-all-migration-push-strategies", "Get migration push strategies for all the"
@@ -107,7 +108,10 @@ public enum Command {
   SET_MIGRATION_PUSH_STRATEGY("set-migration-push-strategy", "Setup migration push strategy for the specified voldemort"
       + " store", new Arg[] {Arg.URL, Arg.CLUSTER, Arg.VOLDEMORT_STORE, Arg.MIGRATION_PUSH_STRATEGY}),
   LIST_BOOTSTRAPPING_VERSIONS("list-bootstrapping-versions",
-      "List all versions which have at least one bootstrapping replica.", new Arg[]{Arg.URL, Arg.CLUSTER});
+      "List all versions which have at least one bootstrapping replica", new Arg[]{Arg.URL, Arg.CLUSTER}),
+  DELETE_KAFKA_TOPIC("delete-kafka-topic", "Delete a Kafka topic directly (without interaction with the Venice Controller",
+      new Arg[]{Arg.KAFKA_BOOTSTRAP_SERVERS, Arg.KAFKA_ZOOKEEPER_CONNECTION_URL, Arg.KAFKA_TOPIC_NAME},
+      new Arg[]{Arg.KAFKA_OPERATION_TIMEOUT, Arg.KAFKA_SSL_CONFIG_FILE});
 
 
   private final String commandName;
@@ -139,29 +143,28 @@ public enum Command {
     return optionalArgs;
   }
 
-  public Arg[] getAllArgs() {
-    return (Arg[]) ArrayUtils.addAll(requiredArgs, optionalArgs);
-  }
-
   public String getDesc(){
-    StringJoiner sj = new StringJoiner(".  ");
+    StringJoiner sj = new StringJoiner("");
     if (!description.isEmpty()){
       sj.add(description);
+      sj.add(". ");
     }
 
-    StringJoiner requiredArgs = new StringJoiner(", ");
+    StringJoiner requiredArgs = new StringJoiner("\n");
     for (Arg arg : getRequiredArgs()){
       requiredArgs.add("--" + arg.toString());
     }
 
-    sj.add("Requires: " + requiredArgs);
+    sj.add("Requires: \n" + requiredArgs);
 
-    StringJoiner optionalArgs = new StringJoiner(", ");
+    StringJoiner optionalArgs = new StringJoiner("\n");
     for (Arg arg : getOptionalArgs()) {
       optionalArgs.add("--" + arg.toString());
     }
 
-    sj.add("Optional args: " + optionalArgs.toString());
+    if (getOptionalArgs().length > 0) {
+      sj.add("\nOptional args: \n" + optionalArgs.toString());
+    }
 
     return sj.toString();
   }
@@ -171,4 +174,13 @@ public enum Command {
       return c1.commandName.compareTo(c2.commandName);
     }
   };
+
+  public static Command getCommand(String name) {
+    for (Command cmd: values()) {
+      if (cmd.commandName.equals(name)) {
+        return cmd;
+      }
+    }
+    throw new VeniceException("No Command found with name: " + name);
+  }
 }

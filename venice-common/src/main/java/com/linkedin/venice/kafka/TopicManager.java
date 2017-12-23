@@ -1,9 +1,7 @@
 package com.linkedin.venice.kafka;
 
-import com.linkedin.venice.SSLConfig;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.kafka.consumer.VeniceConsumerFactory;
-import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
 import java.io.Closeable;
@@ -15,7 +13,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
-import java.util.StringJoiner;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 import kafka.admin.AdminUtils;
@@ -27,7 +25,6 @@ import kafka.utils.ZkUtils;
 import org.I0Itec.zkclient.ZkClient;
 import org.I0Itec.zkclient.ZkConnection;
 import org.apache.commons.io.IOUtils;
-import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
@@ -36,7 +33,6 @@ import org.apache.kafka.clients.consumer.OffsetAndTimestamp;
 import org.apache.kafka.common.errors.TopicExistsException;
 import org.apache.kafka.common.PartitionInfo;
 import org.apache.kafka.common.TopicPartition;
-import org.apache.kafka.common.protocol.SecurityProtocol;
 import org.apache.kafka.common.serialization.ByteArrayDeserializer;
 import org.apache.log4j.Logger;
 import org.codehaus.jackson.map.ObjectMapper;
@@ -131,7 +127,7 @@ public class TopicManager implements Closeable {
    * @param topicName
    */
   public void ensureTopicIsDeletedAsync(String topicName) {
-    if (containsTopic(topicName)) {
+    if (!isTopicFullyDeleted(topicName, false)) {
       // TODO: Stop using Kafka APIs which depend on ZK.
       logger.info("Deleting topic: " + topicName);
       try {
@@ -210,20 +206,20 @@ public class TopicManager implements Closeable {
    */
   public synchronized void ensureTopicIsDeletedAndBlock(String topicName) {
     ensureTopicIsDeletedAsync(topicName);
-    if (containsTopic(topicName)) {
-      // Since topic deletion is async, we would like to poll until topic doesn't exist any more
-      final int SLEEP_MS = 100;
-      final int MAX_TIMES = kafkaOperationTimeoutMs / SLEEP_MS;
-      int current = 0;
-      while (++current <= MAX_TIMES) {
-        Utils.sleep(SLEEP_MS);
-        if (!containsTopic(topicName)) {
-          logger.info("Topic: " + topicName + " has been deleted after polling " + current + " times");
-          return;
-        }
+    // Since topic deletion is async, we would like to poll until topic doesn't exist any more
+    final int SLEEP_MS = 100;
+    final int MAX_TIMES = kafkaOperationTimeoutMs / SLEEP_MS;
+    int current = 0;
+    while (++current <= MAX_TIMES) {
+      Utils.sleep(SLEEP_MS);
+      // Re-create consumer every ten seconds during the procedure, in case it's wedged on some stale state.
+      boolean closeAndRecreateConsumer = current % 100 == 0;
+      if (isTopicFullyDeleted(topicName, closeAndRecreateConsumer)) {
+        logger.info("Topic: " + topicName + " has been deleted after polling " + current + " times");
+        return;
       }
-      throw new VeniceOperationAgainstKafkaTimedOut("Failed to delete kafka topic: " + topicName + " after " + kafkaOperationTimeoutMs + " ms (" + current + " attempts).");
     }
+    throw new VeniceOperationAgainstKafkaTimedOut("Failed to delete kafka topic: " + topicName + " after " + kafkaOperationTimeoutMs + " ms (" + current + " attempts).");
   }
 
   public synchronized Set<String> listTopics() {
@@ -242,10 +238,9 @@ public class TopicManager implements Closeable {
    * This is an extensive check to mitigate an edge-case where a topic is only created in ZK but not in the brokers.
    *
    * @return true if the topic exists and all its partitions have at least one in-sync replica
+   *         false if the topic does not exist at all or if it exists but isn't completely available
    */
   public boolean containsTopic(String topic, Integer expectedPartitionCount) {
-    // TODO: Decide if we should get rid of this first ZK check.
-    // For now, we leave it just for increased visibility into the system.
     boolean zkMetadataCreatedForTopic = AdminUtils.topicExists(getZkUtils(), topic);
     if (!zkMetadataCreatedForTopic) {
       logger.info("AdminUtils.topicExists() returned false because the ZK path doesn't exist yet for topic: " + topic);
@@ -269,13 +264,43 @@ public class TopicManager implements Closeable {
 
     boolean allPartitionsHaveAnInSyncReplica = partitionInfoList.stream()
         .allMatch(partitionInfo -> partitionInfo.inSyncReplicas().length > 0);
-    if (!allPartitionsHaveAnInSyncReplica) {
+    if (allPartitionsHaveAnInSyncReplica) {
+      logger.trace("The following topic has the at least one in-sync replica for each partition: " + topic);
+    } else {
       logger.info("getConsumer().partitionsFor() returned some partitionInfo with no in-sync replica for topic: " + topic +
           ", partitionInfoList: " + Arrays.toString(partitionInfoList.toArray()));
-    } else {
-      logger.trace("The following topic has the at least one in-sync replica for each partition: " + topic);
     }
     return allPartitionsHaveAnInSyncReplica;
+  }
+
+  /**
+   * This is an extensive check to verify that a topic is fully cleaned up.
+   *
+   * @return true if the topic exists neither in ZK nor in the brokers
+   *         false if the topic exists fully or partially
+   */
+  public boolean isTopicFullyDeleted(String topic, boolean closeAndRecreateConsumer) {
+    boolean zkMetadataExistsForTopic = AdminUtils.topicExists(getZkUtils(), topic);
+    if (zkMetadataExistsForTopic) {
+      logger.info("AdminUtils.topicExists() returned true, meaning that the ZK path still exists for topic: " + topic);
+      return false;
+    }
+
+    List<PartitionInfo> partitionInfoList = getConsumer(closeAndRecreateConsumer).partitionsFor(topic);
+    if (partitionInfoList == null) {
+      logger.trace("getConsumer().partitionsFor() returned null for topic: " + topic);
+      return true;
+    }
+
+    boolean noPartitionStillHasAnyReplica = partitionInfoList.stream()
+        .noneMatch(partitionInfo -> partitionInfo.replicas().length > 0);
+    if (noPartitionStillHasAnyReplica) {
+      logger.trace("getConsumer().partitionsFor() returned no partitionInfo still containing a replica for topic: " + topic);
+    } else {
+      logger.info("The following topic still has at least one replica in at least one partition: " + topic
+          + ", partitionInfoList: " + Arrays.toString(partitionInfoList.toArray()));
+    }
+    return noPartitionStillHasAnyReplica;
   }
 
   /**
@@ -418,16 +443,28 @@ public class TopicManager implements Closeable {
    *
    * @return The internal {@link KafkaConsumer} instance.
    */
-  private synchronized KafkaConsumer<byte[], byte[]> getConsumer() {
+  private KafkaConsumer<byte[], byte[]> getConsumer() {
+    return getConsumer(false);
+  }
+
+  private synchronized KafkaConsumer<byte[], byte[]> getConsumer(boolean closeAndRecreate) {
     if (this.kafkaConsumer == null) {
-      Properties props = new Properties();
-      props.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, ByteArrayDeserializer.class.getName());
-      props.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, ByteArrayDeserializer.class.getName());
-      // Increase receive buffer to 1MB to check whether it can solve the metadata timing out issue
-      props.put(ConsumerConfig.RECEIVE_BUFFER_CONFIG, 1024 * 1024);
-      this.kafkaConsumer = veniceConsumerFactory.getKafkaConsumer(props);
+      this.kafkaConsumer = veniceConsumerFactory.getKafkaConsumer(getKafkaConsumerProps());
+    } else if (closeAndRecreate) {
+      this.kafkaConsumer.close(kafkaOperationTimeoutMs, TimeUnit.MILLISECONDS);
+      this.kafkaConsumer = veniceConsumerFactory.getKafkaConsumer(getKafkaConsumerProps());
+      logger.info("Closed and recreated consumer.");
     }
     return this.kafkaConsumer;
+  }
+
+  private Properties getKafkaConsumerProps() {
+    Properties props = new Properties();
+    props.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, ByteArrayDeserializer.class.getName());
+    props.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, ByteArrayDeserializer.class.getName());
+    // Increase receive buffer to 1MB to check whether it can solve the metadata timing out issue
+    props.put(ConsumerConfig.RECEIVE_BUFFER_CONFIG, 1024 * 1024);
+    return props;
   }
 
   /**
