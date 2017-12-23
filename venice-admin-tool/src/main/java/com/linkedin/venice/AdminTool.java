@@ -27,9 +27,16 @@ import com.linkedin.venice.controllerapi.VersionResponse;
 import com.linkedin.venice.controllerapi.routes.AdminCommandExecutionResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.compression.CompressionStrategy;
+import com.linkedin.venice.kafka.TopicManager;
+import com.linkedin.venice.kafka.VeniceOperationAgainstKafkaTimedOut;
+import com.linkedin.venice.kafka.consumer.VeniceAdminToolConsumerFactory;
+import com.linkedin.venice.kafka.consumer.VeniceConsumerFactory;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.schema.vson.VsonAvroSchemaAdapter;
+import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.Utils;
+import com.linkedin.venice.utils.VeniceProperties;
+import java.io.FileInputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -40,6 +47,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Properties;
 import java.util.StringJoiner;
 import java.util.concurrent.ExecutionException;
 import java.util.function.Consumer;
@@ -53,6 +61,7 @@ import org.apache.commons.cli.OptionBuilder;
 import org.apache.commons.cli.OptionGroup;
 import org.apache.commons.cli.Options;
 import org.apache.commons.cli.ParseException;
+import org.apache.kafka.clients.CommonClientConfigs;
 import org.codehaus.jackson.map.ObjectMapper;
 import org.codehaus.jackson.map.ObjectWriter;
 import org.codehaus.jackson.type.TypeReference;
@@ -102,147 +111,193 @@ public class AdminTool {
         convertVsonSchemaAndExit(cmd);
       }
 
+      Command foundCommand = ensureOnlyOneCommand(cmd);
 
-      //cmd = parser.parse(options, args);
+      // Variables used within the switch case need to be defined in advance
+      String routerHosts = null, clusterName, storeName, versionString, topicName;
+      int version;
+      MultiStoreResponse storeResponse;
+      ControllerResponse response;
 
-      ensureOnlyOneCommand(cmd);
-
-      String routerHosts = getRequiredArgument(cmd, Arg.URL);
-      String clusterName = getRequiredArgument(cmd, Arg.CLUSTER);
-
-      controllerClient = new ControllerClient(clusterName, routerHosts);
-
-      if (cmd.hasOption(Arg.FLAT_JSON.toString())){
-        jsonWriter = new ObjectMapper().writer();
-      }
-      if (cmd.hasOption(Arg.FILTER_JSON.toString())){
-        fieldsToDisplay = Arrays.asList(
-            cmd.getOptionValue(Arg.FILTER_JSON.first()).split(","));
+      // Almost all commands require both URL and Cluster, but some don't, so we check whether they do.
+      // N.B.: There are no commands which require only one of these two params, but not the other.
+      if (Arrays.stream(foundCommand.getRequiredArgs()).anyMatch(arg -> arg.equals(Arg.URL) || arg.equals(Arg.CLUSTER))) {
+        routerHosts = getRequiredArgument(cmd, Arg.URL);
+        clusterName = getRequiredArgument(cmd, Arg.CLUSTER);
+        controllerClient = new ControllerClient(clusterName, routerHosts);
       }
 
-      if (cmd.hasOption(Command.LIST_STORES.toString())){
-        MultiStoreResponse storeResponse = controllerClient.queryStoreList();
-        printObject(storeResponse);
-      } else if (cmd.hasOption(Command.DESCRIBE_STORE.toString())){
-        String storeName = getRequiredArgument(cmd, Arg.STORE, Command.DESCRIBE_STORE);
-        for (String store : storeName.split(",")) {
-          printStoreDescription(store);
-        }
-      } else if (cmd.hasOption(Command.DESCRIBE_STORES.toString())){
-        MultiStoreResponse storeResponse = controllerClient.queryStoreList();
-        for (String store : storeResponse.getStores()) {
-          printStoreDescription(store);
-        }
-      } else if (cmd.hasOption(Command.JOB_STATUS.toString())) {
-        String storeName = getRequiredArgument(cmd, Arg.STORE, Command.JOB_STATUS);
-        String versionString = getRequiredArgument(cmd, Arg.VERSION, Command.JOB_STATUS);
-        int version = Integer.parseInt(versionString);
-        String topicName = Version.composeKafkaTopic(storeName, version);
-        JobStatusQueryResponse jobStatus = controllerClient.queryJobStatus(topicName);
-        printObject(jobStatus);
-      } else if (cmd.hasOption(Command.KILL_JOB.toString())){
-        String storeName = getRequiredArgument(cmd, Arg.STORE, Command.KILL_JOB);
-        String versionString = getRequiredArgument(cmd, Arg.VERSION, Command.KILL_JOB);
-        int version = Integer.parseInt(versionString);
-        String topicName = Version.composeKafkaTopic(storeName, version);
-        ControllerResponse response = controllerClient.killOfflinePushJob(topicName);
-        printObject(response);
-      } else if (cmd.hasOption(Command.SKIP_ADMIN.toString())){
-        String offset = getRequiredArgument(cmd, Arg.OFFSET, Command.SKIP_ADMIN);
-        ControllerResponse response = controllerClient.skipAdminMessage(offset);
-        printObject(response);
-      } else if (cmd.hasOption(Command.NEW_STORE.toString())) {
-        createNewStore(cmd);
-      }else if (cmd.hasOption(Command.DELETE_STORE.toString())) {
-        deleteStore(cmd);
-      } else if (cmd.hasOption(Command.EMPTY_PUSH.toString())) {
-        emptyPush(cmd);
-      } else if (cmd.hasOption(Command.DISABLE_STORE_WRITE.toString())) {
-        setEnableStoreWrites(cmd, false);
-      } else if (cmd.hasOption(Command.ENABLE_STORE_WRITE.toString())){
-        setEnableStoreWrites(cmd, true);
-      } else if (cmd.hasOption(Command.DISABLE_STORE_READ.toString())) {
-        setEnableStoreReads(cmd, false);
-      } else if (cmd.hasOption(Command.ENABLE_STORE_READ.toString())) {
-        setEnableStoreReads(cmd, true);
-      } else if (cmd.hasOption(Command.DISABLE_STORE.toString())) {
-        setEnableStoreReadWrites(cmd, false);
-      } else if (cmd.hasOption(Command.ENABLE_STORE.toString())) {
-        setEnableStoreReadWrites(cmd, true);
-      } else if (cmd.hasOption(Command.DELETE_ALL_VERSIONS.toString())) {
-        deleteAllVersions(cmd);
-      } else if (cmd.hasOption(Command.DELETE_OLD_VERSION.toString())) {
-        deleteOldVersion(cmd);
-      } else if (cmd.hasOption(Command.SET_VERSION.toString())) {
-        applyVersionToStore(cmd);
-      } else if (cmd.hasOption(Command.SET_OWNER.toString())) {
-        setStoreOwner(cmd);
-      } else if (cmd.hasOption(Command.SET_PARTITION_COUNT.toString())) {
-        setStorePartition(cmd);
-      } else if (cmd.hasOption(Command.UPDATE_STORE.toString())) {
-        updateStore(cmd);
-      } else if (cmd.hasOption(Command.ADD_SCHEMA.toString())){
-        applyValueSchemaToStore(cmd);
-      } else if (cmd.hasOption(Command.LIST_STORAGE_NODES.toString())) {
-        printStorageNodeList();
-      } else if (cmd.hasOption(Command.CLUSTER_HEALTH_INSTANCES.toString())) {
-        printInstancesStatuses();
-      }  else if (cmd.hasOption(Command.CLUSTER_HEALTH_STORES.toString())) {
-        printStoresStatuses();
-      } else if (cmd.hasOption(Command.NODE_REMOVABLE.toString())){
-        isNodeRemovable(cmd);
-      } else if (cmd.hasOption(Command.REMOVE_NODE.toString())) {
-        removeNodeFromCluster(cmd);
-      } else if (cmd.hasOption(Command.WHITE_LIST_ADD_NODE.toString())) {
-        addNodeIntoWhiteList(cmd);
-      } else if (cmd.hasOption(Command.WHITE_LIST_REMOVE_NODE.toString())) {
-        removeNodeFromWhiteList(cmd);
-      } else if (cmd.hasOption(Command.REPLICAS_OF_STORE.toString())) {
-        printReplicaListForStoreVersion(cmd);
-      } else if (cmd.hasOption(Command.REPLICAS_ON_STORAGE_NODE.toString())) {
-        printReplicaListForStorageNode(cmd);
-      } else if (cmd.hasOption(Command.QUERY.toString())) {
-        queryStoreForKey(cmd, routerHosts);
-      } else if (cmd.hasOption(Command.SHOW_SCHEMAS.toString())){
-        showSchemas(cmd);
-      } else if(cmd.hasOption(Command.GET_EXECUTION.toString())){
-        getExecution(cmd);
-      } else if (cmd.hasOption(Command.ENABLE_THROTTLING.toString())) {
-        enableThrottling(true);
-      } else if (cmd.hasOption(Command.DISABLE_THROTTLING.toString())) {
-        enableThrottling(false);
-      } else if (cmd.hasOption(Command.ENABLE_MAX_CAPACITY_PROTECTION.toString())) {
-        enableMaxCapacityProtection(true);
-      } else if (cmd.hasOption(Command.DISABLE_MAX_CAPACITY_PROTECTION.toString())) {
-        enableMaxCapacityProtection(false);
-      } else if (cmd.hasOption(Command.ENABLE_QUTOA_REBALANCE.toString())) {
-        enableQuotaRebalance(cmd, true);
-      } else if (cmd.hasOption(Command.DISABLE_QUTOA_REBALANCE.toString())) {
-        enableQuotaRebalance(cmd, false);
-      } else if (cmd.hasOption(Command.GET_ROUTERS_CLUSTER_CONFIG.toString())) {
-        getRoutersClusterConfig();
-      } else if (cmd.hasOption(Command.GET_ALL_MIGRATION_PUSH_STRATEGIES.toString())) {
-        getAllMigrationPushStrategies();
-      } else if (cmd.hasOption(Command.GET_MIGRATION_PUSH_STRATEGY.toString())) {
-        getMigrationPushStrategy(cmd);
-      } else if (cmd.hasOption(Command.SET_MIGRATION_PUSH_STRATEGY.toString())) {
-        setMigrationPushStrategy(cmd);
-      } else if (cmd.hasOption(Command.LIST_BOOTSTRAPPING_VERSIONS.toString())) {
-        listBootstrappingVersions(cmd);
-      } else {
-        StringJoiner availableCommands = new StringJoiner(", ");
-        for (Command c : Command.values()){
-          availableCommands.add("--" + c.toString());
-        }
-        throw new VeniceException("Must supply one of the following commands: " + availableCommands.toString());
+      switch (foundCommand) {
+        case LIST_STORES:
+          storeResponse = controllerClient.queryStoreList();
+          printObject(storeResponse);
+          break;
+        case DESCRIBE_STORE:
+          storeName = getRequiredArgument(cmd, Arg.STORE, Command.DESCRIBE_STORE);
+          for (String store : storeName.split(",")) {
+            printStoreDescription(store);
+          }
+          break;
+        case DESCRIBE_STORES:
+          storeResponse = controllerClient.queryStoreList();
+          for (String store : storeResponse.getStores()) {
+            printStoreDescription(store);
+          }
+          break;
+        case JOB_STATUS:
+          storeName = getRequiredArgument(cmd, Arg.STORE, Command.JOB_STATUS);
+          versionString = getRequiredArgument(cmd, Arg.VERSION, Command.JOB_STATUS);
+          version = Integer.parseInt(versionString);
+          topicName = Version.composeKafkaTopic(storeName, version);
+          JobStatusQueryResponse jobStatus = controllerClient.queryJobStatus(topicName);
+          printObject(jobStatus);
+          break;
+        case KILL_JOB:
+          storeName = getRequiredArgument(cmd, Arg.STORE, Command.KILL_JOB);
+          versionString = getRequiredArgument(cmd, Arg.VERSION, Command.KILL_JOB);
+          version = Integer.parseInt(versionString);
+          topicName = Version.composeKafkaTopic(storeName, version);
+          response = controllerClient.killOfflinePushJob(topicName);
+          printObject(response);
+          break;
+        case SKIP_ADMIN:
+          String offset = getRequiredArgument(cmd, Arg.OFFSET, Command.SKIP_ADMIN);
+          response = controllerClient.skipAdminMessage(offset);
+          printObject(response);
+          break;
+        case NEW_STORE:
+          createNewStore(cmd);
+          break;
+        case DELETE_STORE:
+          deleteStore(cmd);
+          break;
+        case EMPTY_PUSH:
+          emptyPush(cmd);
+          break;
+        case DISABLE_STORE_WRITE:
+          setEnableStoreWrites(cmd, false);
+          break;
+        case ENABLE_STORE_WRITE:
+          setEnableStoreWrites(cmd, true);
+          break;
+        case DISABLE_STORE_READ:
+          setEnableStoreReads(cmd, false);
+          break;
+        case ENABLE_STORE_READ:
+          setEnableStoreReads(cmd, true);
+          break;
+        case DISABLE_STORE:
+          setEnableStoreReadWrites(cmd, false);
+          break;
+        case ENABLE_STORE:
+          setEnableStoreReadWrites(cmd, true);
+          break;
+        case DELETE_ALL_VERSIONS:
+          deleteAllVersions(cmd);
+          break;
+        case DELETE_OLD_VERSION:
+          deleteOldVersion(cmd);
+          break;
+        case SET_VERSION:
+          applyVersionToStore(cmd);
+          break;
+        case SET_OWNER:
+          setStoreOwner(cmd);
+          break;
+        case SET_PARTITION_COUNT:
+          setStorePartition(cmd);
+          break;
+        case UPDATE_STORE:
+          updateStore(cmd);
+          break;
+        case ADD_SCHEMA:
+          applyValueSchemaToStore(cmd);
+          break;
+        case LIST_STORAGE_NODES:
+          printStorageNodeList();
+          break;
+        case CLUSTER_HEALTH_INSTANCES:
+          printInstancesStatuses();
+          break;
+        case CLUSTER_HEALTH_STORES:
+          printStoresStatuses();
+          break;
+        case NODE_REMOVABLE:
+          isNodeRemovable(cmd);
+          break;
+        case REMOVE_NODE:
+          removeNodeFromCluster(cmd);
+          break;
+        case WHITE_LIST_ADD_NODE:
+          addNodeIntoWhiteList(cmd);
+          break;
+        case WHITE_LIST_REMOVE_NODE:
+          removeNodeFromWhiteList(cmd);
+          break;
+        case REPLICAS_OF_STORE:
+          printReplicaListForStoreVersion(cmd);
+          break;
+        case REPLICAS_ON_STORAGE_NODE:
+          printReplicaListForStorageNode(cmd);
+          break;
+        case QUERY:
+          queryStoreForKey(cmd, routerHosts);
+          break;
+        case SHOW_SCHEMAS:
+          showSchemas(cmd);
+          break;
+        case GET_EXECUTION:
+          getExecution(cmd);
+          break;
+        case ENABLE_THROTTLING:
+          enableThrottling(true);
+          break;
+        case DISABLE_THROTTLING:
+          enableThrottling(false);
+          break;
+        case ENABLE_MAX_CAPACITY_PROTECTION:
+          enableMaxCapacityProtection(true);
+          break;
+        case DISABLE_MAX_CAPACITY_PROTECTION:
+          enableMaxCapacityProtection(false);
+          break;
+        case ENABLE_QUTOA_REBALANCE:
+          enableQuotaRebalance(cmd, true);
+          break;
+        case DISABLE_QUTOA_REBALANCE:
+          enableQuotaRebalance(cmd, false);
+          break;
+        case GET_ROUTERS_CLUSTER_CONFIG:
+          getRoutersClusterConfig();
+          break;
+        case GET_ALL_MIGRATION_PUSH_STRATEGIES:
+          getAllMigrationPushStrategies();
+          break;
+        case GET_MIGRATION_PUSH_STRATEGY:
+          getMigrationPushStrategy(cmd);
+          break;
+        case SET_MIGRATION_PUSH_STRATEGY:
+          setMigrationPushStrategy(cmd);
+          break;
+        case LIST_BOOTSTRAPPING_VERSIONS:
+          listBootstrappingVersions(cmd);
+          break;
+        case DELETE_KAFKA_TOPIC:
+          deleteKafkaTopic(cmd);
+          break;
+        default:
+          StringJoiner availableCommands = new StringJoiner(", ");
+          for (Command c : Command.values()){
+            availableCommands.add("--" + c.toString());
+          }
+          throw new VeniceException("Must supply one of the following commands: " + availableCommands.toString());
       }
-
     } catch (VeniceException e){
       printErrAndExit(e.getMessage());
     }
   }
 
-  private static void ensureOnlyOneCommand(CommandLine cmd){
+  private static Command ensureOnlyOneCommand(CommandLine cmd){
     String foundCommand = null;
     for (Command c : Command.values()){
       if (cmd.hasOption(c.toString())){
@@ -253,6 +308,7 @@ public class AdminTool {
         }
       }
     }
+    return Command.getCommand(foundCommand);
   }
 
   private static void queryStoreForKey(CommandLine cmd, String routerHosts)
@@ -588,6 +644,38 @@ public class AdminTool {
     printObject(response);
   }
 
+  private static void deleteKafkaTopic(CommandLine cmd) {
+    long startTime = System.currentTimeMillis();
+    String kafkaBootstrapServer = getRequiredArgument(cmd, Arg.KAFKA_BOOTSTRAP_SERVERS);
+    Properties properties = new Properties();
+    if (cmd.hasOption(Arg.KAFKA_SSL_CONFIG_FILE.toString())) {
+      String configFilePath = getRequiredArgument(cmd, Arg.KAFKA_SSL_CONFIG_FILE);
+      try {
+        properties.load(new FileInputStream(configFilePath));
+      } catch (IOException e) {
+        throw new VeniceException("Cannot read file: " + configFilePath);
+      }
+    }
+    properties.put(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, kafkaBootstrapServer);
+    VeniceProperties veniceProperties = new VeniceProperties(properties);
+    VeniceConsumerFactory veniceConsumerFactory = new VeniceAdminToolConsumerFactory(veniceProperties);
+    String zkConnectionString = getRequiredArgument(cmd, Arg.KAFKA_ZOOKEEPER_CONNECTION_URL);
+    int zkSessionTimeoutMs = 30 * Time.MS_PER_SECOND;
+    int zkConnectionTimeoutMs = 60 * Time.MS_PER_SECOND;
+    int kafkaTimeOut = 30 * Time.MS_PER_SECOND;
+    if (cmd.hasOption(Arg.KAFKA_OPERATION_TIMEOUT.toString())) {
+      kafkaTimeOut = Integer.parseInt(getRequiredArgument(cmd, Arg.KAFKA_OPERATION_TIMEOUT)) * Time.MS_PER_SECOND;
+    }
+    TopicManager topicManager = new TopicManager(zkConnectionString, zkSessionTimeoutMs, zkConnectionTimeoutMs, kafkaTimeOut, veniceConsumerFactory);
+    String topicName = getRequiredArgument(cmd, Arg.KAFKA_TOPIC_NAME);
+    try {
+      topicManager.ensureTopicIsDeletedAndBlock(topicName);
+      long runTime = System.currentTimeMillis() - startTime;
+      printObject("Topic '" + topicName + "' is deleted. Run time: " + runTime + " ms.");
+    } catch (VeniceOperationAgainstKafkaTimedOut e) {
+      printErrAndExit("Topic deletion timed out for: '" + topicName + "' after " + kafkaTimeOut + " ms.");
+    }
+  }
 
   /* Things that are not commands */
 
@@ -611,9 +699,13 @@ public class AdminTool {
     Arrays.sort(commands, Command.commandComparator);
     for (Command c : commands){
       StringJoiner exampleArgs = new StringJoiner(" ");
-      for (Arg a : c.getAllArgs()){
+      for (Arg a : c.getRequiredArgs()){
         exampleArgs.add("--" + a.toString());
         exampleArgs.add("<" + a.toString() + ">");
+      }
+      for (Arg a : c.getOptionalArgs()){
+        exampleArgs.add("[--" + a.toString());
+        exampleArgs.add("<" + a.toString() + ">]");
       }
 
       System.err.println(command + " --" + c.toString() + " " + exampleArgs.toString());
@@ -738,7 +830,7 @@ public class AdminTool {
             });
         printFunction.accept(jsonWriter.writeValueAsString(filteredPrintMap));
       }
-
+      printFunction.accept("\n");
     } catch (IOException e) {
       printFunction.accept("{\"" + ERROR + "\":\"" + e.getMessage() + "\"}");
       System.exit(1);
