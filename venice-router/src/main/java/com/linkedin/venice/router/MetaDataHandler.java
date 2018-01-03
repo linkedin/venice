@@ -20,6 +20,7 @@ import io.netty.channel.SimpleChannelInboundHandler;
 import io.netty.handler.codec.http.HttpRequest;
 import io.netty.util.ReferenceCountUtil;
 import java.io.IOException;
+import java.net.InetSocketAddress;
 import java.util.Collection;
 import java.util.Map;
 import java.util.Optional;
@@ -192,7 +193,9 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
 
   @Override
   public void exceptionCaught(ChannelHandlerContext ctx, Throwable e) throws Exception {
-    logger.error("Got exception while handling meta data request: " + e.getMessage(), e);
+    InetSocketAddress sockAddr = (InetSocketAddress)(ctx.channel().remoteAddress());
+    String remoteAddr = sockAddr.getHostName() + ":" + sockAddr.getPort();
+    logger.error("Got exception while handling meta data request from " + remoteAddr + ": " + e.getMessage(), e);
     try {
       if (null != e.getCause() && ExceptionUtils.recursiveClassEquals(e.getCause(), IOException.class)) {
         logger.warn("Caught exception is IOException, not sending response");
