@@ -21,6 +21,7 @@ import io.netty.handler.codec.http.HttpRequest;
 import io.netty.util.ReferenceCountUtil;
 import java.io.IOException;
 import java.net.InetSocketAddress;
+import java.security.cert.CertificateExpiredException;
 import java.util.Collection;
 import java.util.Map;
 import java.util.Optional;
@@ -196,15 +197,16 @@ public class MetaDataHandler extends SimpleChannelInboundHandler<HttpRequest> {
     InetSocketAddress sockAddr = (InetSocketAddress)(ctx.channel().remoteAddress());
     String remoteAddr = sockAddr.getHostName() + ":" + sockAddr.getPort();
     logger.error("Got exception while handling meta data request from " + remoteAddr + ": " + e.getMessage(), e);
+
     try {
-      if (null != e.getCause() && ExceptionUtils.recursiveClassEquals(e.getCause(), IOException.class)) {
-        logger.warn("Caught exception is IOException, not sending response");
-        // No need to send back error response since the connection has some issue.
-        return;
+      if (ExceptionUtils.recursiveClassEquals(e, CertificateExpiredException.class)) {
+        String errorMsg = "Your certificate has expired. Please renew.";
+        setupResponseAndFlush(UNAUTHORIZED, errorMsg.getBytes(), false, ctx);
+        logger.info("Sent an error message to client about expired certificate");
+      } else {
+        String stackTraceStr = ExceptionUtils.stackTraceToString(e);
+        setupResponseAndFlush(INTERNAL_SERVER_ERROR, stackTraceStr.getBytes(), false, ctx);
       }
-      String stackTraceStr = ExceptionUtils.stackTraceToString(e);
-      setupResponseAndFlush(INTERNAL_SERVER_ERROR, stackTraceStr.getBytes(),
-          false, ctx);
     } catch (Exception ex) {
       logger.error("Got exception while trying to send error response", ex);
     } finally {
