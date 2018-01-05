@@ -19,7 +19,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
-import java.util.function.BooleanSupplier;
 import java.util.stream.Collectors;
 
 import com.linkedin.venice.replication.TopicReplicator;
@@ -267,6 +266,9 @@ public class OfflinePushMonitor implements OfflinePushAccessor.PartitionStatusLi
       throws InterruptedException {
     synchronized (lock) {
       final OfflinePushStatus pushStatus = getOfflinePush(topic);
+      if(pushStatus.getCurrentStatus().equals(ExecutionStatus.ERROR)) {
+        throw new VeniceException("The push is already failed. Status: "+pushStatus.getCurrentStatus().toString()+". Stop waiting.");
+      }
       long startTime = System.currentTimeMillis();
       long nextWaitTime = offlinePushWaitTimeInMilliseconds;
       PushStatusDecider decider = PushStatusDecider.getDecider(pushStatus.getStrategy());
@@ -340,6 +342,12 @@ public class OfflinePushMonitor implements OfflinePushAccessor.PartitionStatusLi
 
   @Override
   public void onRoutingDataDeleted(String kafkaTopic) {
+    // Beside the external view, we also care about the ideal state here. If the resource was deleted from the externalview by mistake,
+    // as long as the resource exists in the ideal state, helix will recover it automatically, thus push will keep working.
+    if(routingDataRepository.doseResourcesExistInIdealState(kafkaTopic)){
+      logger.warn("Resource is remaining in the ideal state. Ignore the deletion in the external view.");
+      return;
+    }
     synchronized (lock) {
       OfflinePushStatus pushStatus = topicToPushMap.get(kafkaTopic);
       if (pushStatus != null && pushStatus.getCurrentStatus().equals(ExecutionStatus.STARTED)) {

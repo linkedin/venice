@@ -289,6 +289,18 @@ public class HelixRoutingDataRepository extends RoutingTableProvider implements 
     }
 
     @Override
+    public boolean doseResourcesExistInIdealState(String resource) {
+        PropertyKey key = keyBuilder.idealStates(resource);
+        // Try to get the helix property for the given resource, if result is null means the resource does not exist in
+        // ideal states.
+        if (manager.getHelixDataAccessor().getProperty(key) == null) {
+            return false;
+        } else {
+            return true;
+        }
+    }
+
+    @Override
     public void onLiveInstanceChange(List<LiveInstance> helixLiveInstances, NotificationContext changeContext) {
         HashMap<String, Instance> instancesMap = new HashMap<>();
         for (LiveInstance helixLiveInstance : helixLiveInstances) {
