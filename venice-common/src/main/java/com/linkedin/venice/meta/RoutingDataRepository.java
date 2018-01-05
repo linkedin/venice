@@ -56,6 +56,11 @@ public interface RoutingDataRepository extends VeniceResource {
 
   public ResourceAssignment getResourceAssignment();
 
+  /**
+   * Whether the resources names exist in ideal state or not.
+   */
+  boolean doseResourcesExistInIdealState(String resource);
+
   interface RoutingDataChangedListener {
     /**
      * Handle routing data changed event.

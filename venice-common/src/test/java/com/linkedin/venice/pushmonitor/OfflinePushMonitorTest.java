@@ -20,6 +20,7 @@ import org.testng.Assert;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
+
 import static org.mockito.Mockito.eq;
 import static org.mockito.Mockito.any;
 
@@ -118,9 +119,9 @@ public class OfflinePushMonitorTest {
     int statusCount = 3;
     List<OfflinePushStatus> statusList = new ArrayList<>(statusCount);
     for (int i = 0; i < statusCount; i++) {
-      OfflinePushStatus pushStatus = new OfflinePushStatus("testLoadAllPushes_v" + i, numberOfPartition,
-          replicationFactor,
-          OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);
+      OfflinePushStatus pushStatus =
+          new OfflinePushStatus("testLoadAllPushes_v" + i, numberOfPartition, replicationFactor,
+              OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);
       pushStatus.setCurrentStatus(ExecutionStatus.COMPLETED);
       statusList.add(pushStatus);
     }
@@ -169,7 +170,8 @@ public class OfflinePushMonitorTest {
 
     monitor.loadAllPushes();
     Mockito.verify(mockStoreRepo, Mockito.atLeastOnce()).updateStore(store);
-    Mockito.verify(mockStoreCleaner, Mockito.atLeastOnce()).retireOldStoreVersions(Mockito.anyString(), Mockito.anyString());
+    Mockito.verify(mockStoreCleaner, Mockito.atLeastOnce())
+        .retireOldStoreVersions(Mockito.anyString(), Mockito.anyString());
     Assert.assertEquals(monitor.getOfflinePush(topic).getCurrentStatus(), ExecutionStatus.COMPLETED);
     // After offline push completed, bump up the current version of this store.
     Assert.assertEquals(store.getCurrentVersion(), 1);
@@ -190,23 +192,24 @@ public class OfflinePushMonitorTest {
     PushStatusDecider decider = Mockito.mock(PushStatusDecider.class);
     Mockito.doReturn(ExecutionStatus.ERROR).when(decider).checkPushStatus(pushStatus, partitionAssignment);
     PushStatusDecider.updateDecider(OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION, decider);
-    Mockito.doThrow(new VeniceException("Could not delete.")).when(mockStoreCleaner).deleteOneStoreVersion(Mockito.anyString(), Mockito.anyString(), Mockito.anyInt());
-
+    Mockito.doThrow(new VeniceException("Could not delete.")).when(mockStoreCleaner)
+        .deleteOneStoreVersion(Mockito.anyString(), Mockito.anyString(), Mockito.anyInt());
 
     monitor.loadAllPushes();
     Mockito.verify(mockStoreRepo, Mockito.atLeastOnce()).updateStore(store);
-    Mockito.verify(mockStoreCleaner, Mockito.atLeastOnce()).deleteOneStoreVersion(Mockito.anyString(), Mockito.anyString(), Mockito.anyInt());
+    Mockito.verify(mockStoreCleaner, Mockito.atLeastOnce())
+        .deleteOneStoreVersion(Mockito.anyString(), Mockito.anyString(), Mockito.anyInt());
     Assert.assertEquals(monitor.getOfflinePush(topic).getCurrentStatus(), ExecutionStatus.ERROR);
   }
 
   @Test
-  public void testClearOldErrorVersion(){
+  public void testClearOldErrorVersion() {
     int statusCount = OfflinePushMonitor.MAX_ERROR_PUSH_TO_KEEP * 2;
     List<OfflinePushStatus> statusList = new ArrayList<>(statusCount);
     for (int i = 0; i < statusCount; i++) {
-      OfflinePushStatus pushStatus = new OfflinePushStatus("testLoadAllPushes_v" + i, numberOfPartition,
-          replicationFactor,
-          OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);
+      OfflinePushStatus pushStatus =
+          new OfflinePushStatus("testLoadAllPushes_v" + i, numberOfPartition, replicationFactor,
+              OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);
       pushStatus.setCurrentStatus(ExecutionStatus.ERROR);
       statusList.add(pushStatus);
     }
@@ -216,11 +219,11 @@ public class OfflinePushMonitorTest {
     Mockito.verify(mockAccessor, Mockito.times(statusCount - OfflinePushMonitor.MAX_ERROR_PUSH_TO_KEEP))
         .deleteOfflinePushStatusAndItsPartitionStatuses(Mockito.any());
     int i = 0;
-    for (; i < statusCount- OfflinePushMonitor.MAX_ERROR_PUSH_TO_KEEP ; i++) {
-      try{
+    for (; i < statusCount - OfflinePushMonitor.MAX_ERROR_PUSH_TO_KEEP; i++) {
+      try {
         monitor.getOfflinePush("testLoadAllPushes_v" + i);
         Assert.fail("Old error pushes should be collected after loading.");
-      }catch (VeniceException e){
+      } catch (VeniceException e) {
         //expected
       }
     }
@@ -230,11 +233,11 @@ public class OfflinePushMonitorTest {
   }
 
   @Test
-  public void testOnPartitionStatusChangeForHybridStore(){
+  public void testOnPartitionStatusChangeForHybridStore() {
     String topic = "hybridTestStore_v1";
     // Prepare a hybrid store.
     Store store = prepareMockStore(topic);
-    store.setHybridStoreConfig(new HybridStoreConfig(100,100));
+    store.setHybridStoreConfig(new HybridStoreConfig(100, 100));
     // Prepare a mock topic replicator
     TopicReplicator mockReplicator = Mockito.mock(TopicReplicator.class);
     monitor.setTopicReplicator(Optional.of(mockReplicator));
@@ -244,8 +247,8 @@ public class OfflinePushMonitorTest {
 
     // Prepare the new partition status
     List<ReplicaStatus> replicaStatuses = new ArrayList<>();
-    for(int i=0;i<replicationFactor;i++){
-      ReplicaStatus replicaStatus = new ReplicaStatus("test"+i);
+    for (int i = 0; i < replicationFactor; i++) {
+      ReplicaStatus replicaStatus = new ReplicaStatus("test" + i);
       replicaStatuses.add(replicaStatus);
     }
     // All replicas are in STARTED status
@@ -281,7 +284,7 @@ public class OfflinePushMonitorTest {
     String topic = "hybridTestStore_v2";
     // Prepare a hybrid store.
     Store store = prepareMockStore(topic);
-    store.setHybridStoreConfig(new HybridStoreConfig(100,100));
+    store.setHybridStoreConfig(new HybridStoreConfig(100, 100));
     // Prepare a mock topic replicator
     TopicReplicator mockReplicator = Mockito.mock(TopicReplicator.class);
     monitor.setTopicReplicator(Optional.of(mockReplicator));
@@ -291,8 +294,8 @@ public class OfflinePushMonitorTest {
 
     int threadCount = 8;
     Thread[] threads = new Thread[threadCount];
-    for(int i = 0;i<threadCount;i++ ) {
-      Thread t = new Thread(()->{
+    for (int i = 0; i < threadCount; i++) {
+      Thread t = new Thread(() -> {
         List<ReplicaStatus> replicaStatuses = new ArrayList<>();
         for (int r = 0; r < replicationFactor; r++) {
           ReplicaStatus replicaStatus = new ReplicaStatus("test" + r);
@@ -304,11 +307,11 @@ public class OfflinePushMonitorTest {
         // Check hybrid push status
         monitor.onPartitionStatusChange(topic, partitionStatus);
       });
-      threads[i]=t;
+      threads[i] = t;
       t.start();
     }
     // After all thread was completely executed.
-    for(int i=0;i<threadCount;i++){
+    for (int i = 0; i < threadCount; i++) {
       threads[i].join();
     }
     // Only send one SOBR
@@ -339,11 +342,53 @@ public class OfflinePushMonitorTest {
     Assert.assertEquals(monitor.getOfflinePush(topic).getCurrentStatus(), expectedStatus);
   }
 
+  @Test
+  public void testOnRoutingDataDeleted() {
+    String topic = "testOnRoutingDataDeleted_v1";
+    prepareMockStore(topic);
+    monitor.startMonitorOfflinePush(topic, numberOfPartition, numberOfPartition,
+        OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);
+    // Resource has been deleted from the external view but still existing in the ideal state.
+    Mockito.doReturn(true).when(mockRoutingDataRepo).doseResourcesExistInIdealState(topic);
+    monitor.onRoutingDataDeleted(topic);
+    // Job should keep running.
+    Assert.assertEquals(monitor.getOfflinePush(topic).getCurrentStatus(), ExecutionStatus.STARTED);
 
-  private Store prepareMockStore(String topic){
+    // Resource has been deleted from both external view and ideal state.
+    Mockito.doReturn(false).when(mockRoutingDataRepo).doseResourcesExistInIdealState(topic);
+    monitor.onRoutingDataDeleted(topic);
+    // Job should be terminated in error status.
+    Assert.assertEquals(monitor.getOfflinePush(topic).getCurrentStatus(), ExecutionStatus.ERROR);
+
+   }
+
+  @Test
+  public void testWaitUntilNodesAreAssignedForResource()
+      throws InterruptedException {
+    String topic = "testWaitUntilNodesAreAssignedForResource";
+    monitor.startMonitorOfflinePush(topic, numberOfPartition, replicationFactor,
+        OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);
+    // Make push failed after 1s.
+    new Thread(() -> {
+      try {
+        Thread.sleep(1000l);
+      } catch (InterruptedException e) {
+      }
+      monitor.markOfflinePushAsError(topic);
+    }).run();
+
+    try {
+      monitor.waitUntilNodesAreAssignedForResource(topic, 3000l);
+      Assert.fail("The waiting should be interrupted. As the push will fail.");
+    } catch (VeniceException e) {
+      //expected
+    }
+  }
+
+  private Store prepareMockStore(String topic) {
     String storeName = Version.parseStoreFromKafkaTopicName(topic);
     int versionNumber = Version.parseVersionFromKafkaTopicName(topic);
-    Store store = TestUtils.createTestStore(storeName, "test",System.currentTimeMillis());
+    Store store = TestUtils.createTestStore(storeName, "test", System.currentTimeMillis());
     Version version = new Version(storeName, versionNumber);
     version.setStatus(VersionStatus.STARTED);
     store.addVersion(version);
