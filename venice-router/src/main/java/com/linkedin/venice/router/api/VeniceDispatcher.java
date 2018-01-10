@@ -327,7 +327,7 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
    * 1. If it is a cache hit, the request won't be counted when calculating per storage node throttler
    * since there is no request sent out to any storage node;
    * 2. If it is a cache miss or cache is not enabled, the request will be counted when calculating store throttler
-   * and per storage node throttler as before;
+   * and per storage node throttler as before;cacheHitRequestThrottleWeight
    *
    * @param path
    * @param selectedHost
@@ -344,8 +344,14 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
          * Cache throttling first
          * Only throttle in store level since the cache lookup request is not actually sending to any storage node
          */
-        readRequestThrottler.mayThrottleRead(storeName,
-            cacheHitRequestThrottleWeight * readRequestThrottler.getReadCapacity(), Optional.empty());
+        /**
+         * comment all read quota check in {@link VeniceDispatcher} temporarily since dds router library swallows
+         * all kinds of exceptions thrown by this class and wrap them to a misleading http response (internal error).
+         *
+         * TODO: move read quota check out of this class or update the dds router library.
+         */
+        //readRequestThrottler.mayThrottleRead(storeName,
+        //    cacheHitRequestThrottleWeight * readRequestThrottler.getReadCapacity(), Optional.empty());
 
         long startTimeInNS = System.nanoTime();
         statsForSingleGet.recordCacheLookupRequest(storeName);
@@ -383,12 +389,12 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
            * Cache miss
            * Unset the previous per-store throttler
            */
-          readRequestThrottler.mayThrottleRead(storeName,
-               -cacheHitRequestThrottleWeight * readRequestThrottler.getReadCapacity(), Optional.empty());
+          //readRequestThrottler.mayThrottleRead(storeName,
+          //     -cacheHitRequestThrottleWeight * readRequestThrottler.getReadCapacity(), Optional.empty());
         }
       }
       // Caching is not enabled or cache miss
-      readRequestThrottler.mayThrottleRead(storeName, readRequestThrottler.getReadCapacity(), Optional.of(selectedHost.getNodeId()));
+      //readRequestThrottler.mayThrottleRead(storeName, readRequestThrottler.getReadCapacity(), Optional.of(selectedHost.getNodeId()));
     } catch (QuotaExceededException e) {
       throw RouterExceptionAndTrackingUtils.newVeniceExceptionAndTracking(Optional.of(storeName), Optional.of(RequestType.SINGLE_GET),
           TOO_MANY_REQUESTS, "Quota exceeds! msg: " + e.getMessage());

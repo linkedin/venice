@@ -2,6 +2,7 @@ package com.linkedin.venice.router;
 
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.client.exceptions.VeniceClientException;
+import com.linkedin.venice.client.exceptions.VeniceClientHttpException;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
@@ -17,11 +18,9 @@ import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.router.api.VenicePathParser;
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
 import com.linkedin.venice.serialization.avro.VeniceAvroGenericSerializer;
-import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
-import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.VeniceWriter;
 import io.tehuti.Metric;
 import io.tehuti.metrics.MetricsRepository;
@@ -50,10 +49,12 @@ import org.testng.annotations.Test;
 
 import static com.linkedin.venice.ConfigKeys.*;
 
+//TODO: merge TestRead and TestRouterCache.
 @Test(singleThreaded = true)
 public class TestRead {
   private static final int MAX_KEY_LIMIT = 10;
   private VeniceClusterWrapper veniceCluster;
+  private ControllerClient controllerClient;
   private String storeVersionName;
   private int valueSchemaId;
   private String storeName;
@@ -93,15 +94,8 @@ public class TestRead {
     valueSchemaId = HelixReadOnlySchemaRepository.VALUE_SCHEMA_STARTING_ID;
 
     // Update default quota
-    ControllerClient controllerClient = new ControllerClient(veniceCluster.getClusterName(), veniceCluster.getAllControllersURLs());
-    controllerClient.updateStore(storeName, Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(),
-        Optional.empty(), Optional.empty(), Optional.of(10000l), Optional.empty(), Optional.empty(), Optional.empty(),
-        Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty());
-
-    VeniceProperties clientProps =
-        new PropertyBuilder().put(KAFKA_BOOTSTRAP_SERVERS, veniceCluster.getKafka().getAddress())
-            .put(ZOOKEEPER_ADDRESS, veniceCluster.getZk().getAddress())
-            .put(CLUSTER_NAME, veniceCluster.getClusterName()).build();
+    controllerClient = new ControllerClient(veniceCluster.getClusterName(), veniceCluster.getAllControllersURLs());
+    updateStore(0, MAX_KEY_LIMIT);
 
     // TODO: Make serializers parameterized so we test them all.
     String stringSchema = "\"string\"";
@@ -109,6 +103,12 @@ public class TestRead {
     valueSerializer = new VeniceAvroGenericSerializer(stringSchema);
 
     veniceWriter = TestUtils.getVeniceTestWriterFactory(veniceCluster.getKafka().getAddress()).getVeniceWriter(storeVersionName, keySerializer, valueSerializer);
+  }
+
+  private void updateStore(long readQuota, int maxKeyLimit) {
+    controllerClient.updateStore(storeName, Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(),
+        Optional.empty(), Optional.empty(), Optional.of(readQuota), Optional.empty(), Optional.empty(),
+        Optional.empty(), Optional.empty() ,Optional.empty(), Optional.of(Boolean.TRUE), Optional.of(maxKeyLimit));
   }
 
   @AfterClass
@@ -194,10 +194,7 @@ public class TestRead {
     } catch (Exception e) {
     }
     // Bump up store-level max key count in batch-get request
-    ControllerClient controllerClient = new ControllerClient(veniceCluster.getClusterName(), veniceCluster.getAllControllersURLs());
-    controllerClient.updateStore(storeName, Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(),
-        Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(),
-        Optional.empty(), Optional.empty(), Optional.empty(), Optional.of(MAX_KEY_LIMIT + 1));
+    updateStore(10000l, MAX_KEY_LIMIT + 1);
 
     // It will take some time to let Router receive the store update.
     TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
@@ -208,7 +205,16 @@ public class TestRead {
       }
     });
 
-    storeClient.batchGet(keySet).get();
+    //check client can receive quota exceeding message if it is exceeded.
+    updateStore(1l, MAX_KEY_LIMIT);
+    try {
+      for (int i = 0; i < 100; i++) {
+        storeClient.get(keyPrefix + i).get();
+      }
+    } catch (ExecutionException e) {
+      Assert.assertTrue(e.getCause() instanceof VeniceClientHttpException);
+      Assert.assertTrue(e.getCause().getMessage().contains("Quota exceeds!"));
+    }
   }
 
   @Test
