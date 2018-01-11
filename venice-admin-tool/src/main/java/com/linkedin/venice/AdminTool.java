@@ -585,7 +585,7 @@ public class AdminTool {
 
   private static void enableQuotaRebalance(CommandLine cmd, boolean enable) {
     int expectedRouterCount = 0;
-    if (enable) {
+    if (!enable) {
       expectedRouterCount = Integer.valueOf(getRequiredArgument(cmd, Arg.EXPECTED_ROUTER_COUNT));
     }
     ControllerResponse response = controllerClient.enableQuotaRebalanced(enable, expectedRouterCount);
