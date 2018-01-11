@@ -181,6 +181,9 @@ public class ZkRoutersClusterManager implements RoutersClusterManager, IZkChildL
   @Override
   public void enableThrottling(boolean enable) {
     compareAndSetClusterConfig(currentData -> {
+      if(currentData == null){
+        currentData = new RoutersClusterConfig();
+      }
       currentData.setThrottlingEnabled(enable);
       return currentData;
     });
@@ -190,6 +193,9 @@ public class ZkRoutersClusterManager implements RoutersClusterManager, IZkChildL
   @Override
   public void enableQuotaRebalance(boolean enable, int expectRouterCount) {
     compareAndSetClusterConfig(currentData -> {
+      if(currentData == null){
+        currentData = new RoutersClusterConfig();
+      }
       currentData.setQuotaRebalanceEnabled(enable);
       // While disabling the quota re-balance feature, an expected router count should be defined so that each router
       // could use this count to calculate quota per router instead of depending on the live routers count.
@@ -213,6 +219,9 @@ public class ZkRoutersClusterManager implements RoutersClusterManager, IZkChildL
   @Override
   public void enableMaxCapacityProtection(boolean enable) {
     compareAndSetClusterConfig(currentData -> {
+      if(currentData == null){
+        currentData = new RoutersClusterConfig();
+      }
       currentData.setMaxCapacityProtectionEnabled(enable);
       return currentData;
     });
