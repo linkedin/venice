@@ -1013,7 +1013,7 @@ public class StoreIngestionTask implements Runnable, Closeable {
         ControlMessage controlMessage = (ControlMessage) kafkaValue.payloadUnion;
         ControlMessageType messageType =
             processControlMessage(controlMessage, consumerRecord.partition(), consumerRecord.offset(), partitionConsumptionState);
-        if (messageType == ControlMessageType.END_OF_PUSH) {
+        if (messageType == ControlMessageType.END_OF_PUSH || messageType == ControlMessageType.START_OF_BUFFER_REPLAY) {
           syncOffset = true;
         }
       } else if (null == kafkaValue) {
