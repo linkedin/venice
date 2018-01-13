@@ -11,6 +11,7 @@ import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.kafka.protocol.Put;
 import com.linkedin.venice.kafka.protocol.enums.ControlMessageType;
 import com.linkedin.venice.kafka.protocol.enums.MessageType;
+import com.linkedin.venice.kafka.protocol.state.StoreVersionState;
 import com.linkedin.venice.meta.HybridStoreConfig;
 import com.linkedin.venice.meta.ReadOnlySchemaRepository;
 import com.linkedin.venice.meta.Version;
@@ -101,6 +102,7 @@ import static org.testng.Assert.*;
  * Be ware that most of the test cases in this suite depend on {@link StoreIngestionTaskTest#TEST_TIMEOUT}
  * Adjust it based on environment if timeout failure occurs.
  */
+@Test(singleThreaded = true)
 public class StoreIngestionTaskTest {
 
   private static final Logger logger = Logger.getLogger(StoreIngestionTaskTest.class);
@@ -256,16 +258,26 @@ public class StoreIngestionTaskTest {
     runTest(partitions, () -> {}, assertions);
   }
 
+  private void runHybridTest(Set<Integer> partitions, Runnable assertions) throws Exception {
+    runTest(new RandomPollStrategy(), partitions, () -> {}, assertions, Optional.of(new HybridStoreConfig(100,100)));
+  }
+
   private void runTest(Set<Integer> partitions,
                        Runnable beforeStartingConsumption,
                        Runnable assertions) throws Exception {
     runTest(new RandomPollStrategy(), partitions, beforeStartingConsumption, assertions);
   }
 
+  private void runTest(PollStrategy pollStrategy, Set<Integer> partitions, Runnable beforeStartingConsumption,
+                       Runnable assertions) throws Exception {
+    runTest(pollStrategy, partitions, beforeStartingConsumption, assertions, this.hybridStoreConfig);
+  }
+
   private void runTest(PollStrategy pollStrategy,
                        Set<Integer> partitions,
                        Runnable beforeStartingConsumption,
-                       Runnable assertions) throws Exception {
+                       Runnable assertions,
+                       Optional<HybridStoreConfig> hybridStoreConfig) throws Exception {
     MockInMemoryConsumer inMemoryKafkaConsumer = new MockInMemoryConsumer(inMemoryKafkaBroker, pollStrategy, mockKafkaConsumer);
     Properties kafkaProps = new Properties();
     VeniceConsumerFactory mockFactory = mock(VeniceConsumerFactory.class);
@@ -275,7 +287,11 @@ public class StoreIngestionTaskTest {
     if (mockStorageMetadataService.getClass() != InMemoryStorageMetadataService.class) {
       for (int partition : partitions) {
         doReturn(new OffsetRecord()).when(mockStorageMetadataService).getLastOffset(topic, partition);
-        doReturn(Optional.empty()).when(mockStorageMetadataService).getStoreVersionState(topic);
+        if(hybridStoreConfig.isPresent()){
+          doReturn(Optional.of(new StoreVersionState())).when(mockStorageMetadataService).getStoreVersionState(topic);
+        }else {
+          doReturn(Optional.empty()).when(mockStorageMetadataService).getStoreVersionState(topic);
+        }
       }
     }
     offsetManager = new DeepCopyStorageMetadataService(mockStorageMetadataService);
@@ -1024,6 +1040,27 @@ public class StoreIngestionTaskTest {
       // Because we have to report progress before receiving start of push, so the progress here should be 1 instead of 0.
       verify(mockNotifier, timeout(TEST_TIMEOUT).atLeastOnce()).progress(topic, PARTITION_FOO, 1);
     });
+  }
+
+  @Test
+  public void testOffsetPersistent()
+      throws Exception {
+    // Do not persist every message.
+    StoreIngestionTask.OFFSET_UPDATE_INTERVAL_PER_PARTITION_FOR_TRANSACTION_MODE = 1000;
+    List<Long> offsets = new ArrayList<>();
+    offsets.add(5l);
+    try {
+      veniceWriter.broadcastStartOfPush(new HashMap<>());
+      veniceWriter.broadcastEndOfPush(new HashMap<>());
+      veniceWriter.broadcastStartOfBufferReplay(offsets, "t", topic, new HashMap<>());
+      // Should persist twice. One for end of push and another one for start of buffer replay
+      runHybridTest(getSet(PARTITION_FOO), () -> {
+        verify(mockStorageMetadataService, timeout(TEST_TIMEOUT).times(2)).put(eq(topic), eq(PARTITION_FOO), any());
+      });
+    }finally {
+      StoreIngestionTask.OFFSET_UPDATE_INTERVAL_PER_PARTITION_FOR_TRANSACTION_MODE = 1;
+    }
+
   }
 
   @Test
