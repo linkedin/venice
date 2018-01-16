@@ -1,6 +1,7 @@
 package com.linkedin.venice.router.cache;
 
 import com.linkedin.venice.common.Measurable;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
@@ -11,7 +12,7 @@ import java.util.Optional;
 /**
  * Concurrent LRU Cache on heap
  */
-public class LRUCache<K extends Measurable, V extends Measurable> implements Cache<K, V> {
+public class OnHeapCache<K extends Measurable, V extends Measurable> implements Cache<K, V> {
   /**
    * Map node overhead estimation for each node in {@link LinkedHashMap}.
    */
@@ -19,7 +20,7 @@ public class LRUCache<K extends Measurable, V extends Measurable> implements Cac
 
   private ArrayList<InternalLRUCache<K, V>> caches;
 
-  public LRUCache(long capacityInBytes, int concurrency) {
+  public OnHeapCache(long capacityInBytes, int concurrency) {
     long perCacheCapacityInBytes = capacityInBytes / concurrency;
 
     caches = new ArrayList<>(concurrency);
@@ -34,7 +35,7 @@ public class LRUCache<K extends Measurable, V extends Measurable> implements Cac
   }
 
   @Override
-  public Optional<V> put(K key, V value) {
+  public boolean put(K key, Optional<V> value) {
     return getCache(key).put(key, value);
   }
 
@@ -44,7 +45,7 @@ public class LRUCache<K extends Measurable, V extends Measurable> implements Cac
   }
 
   @Override
-  public Optional<V> remove(K key) {
+  public boolean remove(K key) {
     return getCache(key).remove(key);
   }
 
@@ -94,9 +95,12 @@ public class LRUCache<K extends Measurable, V extends Measurable> implements Cac
 
     return maxCacheSize - minCacheSize;
   }
+  public void close() throws IOException {
+    clear();
+  }
 
   /**
-   * Thread-safe LRUCache
+   * Thread-safe OnHeapCache
    */
   private static class InternalLRUCache<K extends Measurable, V extends Measurable> implements Cache<K, V> {
     private LinkedHashMap<K, Optional<V>> map = new LinkedHashMap<>(100, 0.75f, true);
@@ -112,14 +116,7 @@ public class LRUCache<K extends Measurable, V extends Measurable> implements Cac
       this.spaceLeft = this.capacityInBytes;
     }
 
-    public synchronized Optional<V> put(K key, V value) {
-      if (null == value) {
-        return putInternal(key, Optional.empty());
-      }
-      return putInternal(key, Optional.of(value));
-    }
-
-    private Optional<V> putInternal(K key, Optional<V> value) {
+    public synchronized boolean put(K key, Optional<V> value) {
       int nodeSize = getMapNodeSize(key, value);
       if (nodeSize > capacityInBytes) {
         throw new RuntimeException(
@@ -136,21 +133,23 @@ public class LRUCache<K extends Measurable, V extends Measurable> implements Cac
         }
       }
       spaceLeft -= nodeSize;
-      return map.put(key, value);
+      map.put(key, value);
+      return true;
     }
 
     public synchronized Optional<V> get(K key) {
       return map.get(key);
     }
 
-    public synchronized Optional<V> remove(K key) {
+    public synchronized boolean remove(K key) {
       Optional<V> value = map.remove(key);
       if (null != value) {
         int nodeSize = getMapNodeSize(key, value);
         spaceLeft += nodeSize;
+        return true;
       }
 
-      return value;
+      return false;
     }
 
     @Override
@@ -177,6 +176,8 @@ public class LRUCache<K extends Measurable, V extends Measurable> implements Cac
     @Override
     public long getCacheSizeMaxDiffBetweenBuckets() {
       return 0;
+    }
+    public void close() throws IOException {
     }
   }
 }

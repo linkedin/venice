@@ -184,9 +184,26 @@ public class ConfigKeys {
   public static final String ROUTER_CACHE_SIZE_IN_BYTES = "router.cache.size.in.bytes";
 
   /**
-   * Concurrency setup for router cache
+   * Concurrency setup for router cache, and this is must be power of 2 when using 'OFF_HEAP_CACHE'.
    */
   public static final String ROUTER_CACHE_CONCURRENCY = "router.cache.concurrency";
+
+  /**
+   * Valid cache types: 'ON_HEAP_CACHE', 'OFF_HEAP_CACHE'.
+   */
+  public static final String ROUTER_CACHE_TYPE = "router.cache.type";
+
+  /**
+   * Valid cache eviction algorithms: 'LRU', 'W_TINY_LFU'.
+   *
+   * For 'ON_HEAP_CACHE', 'LRU' is the only available cache eviction for now.
+   */
+  public static final String ROUTER_CACHE_EVICTION = "router.cache.eviction";
+
+  /**
+   * Max hash table size per cache segment, and it must be power of 2, and it is only useful when using 'OFF_HEAP_CACHE'.
+   */
+  public static final String ROUTER_CACHE_HASH_TABLE_SIZE = "router.cache.hash.table.size";
 
   /**
    * The request is still being throttled even it is a cache hit, but just with smaller weight.

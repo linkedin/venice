@@ -86,7 +86,10 @@ ext.libraries = [ // Groovy map literal
                   mapreduceClientJobClient: 'org.apache.hadoop:hadoop-mapreduce-client-jobclient:2.3.0',
 
                   // Samza dependencies
-                  samzaApi: 'com.linkedin.samza-li:samza-api:207.13.2.31' //equivalent to org.apache.samza 0.13
+                  samzaApi: 'com.linkedin.samza-li:samza-api:207.13.2.31', //equivalent to org.apache.samza 0.13
+
+                  // off-heap cache
+                  ohcCoreJ8: 'org.caffinitas.ohc:ohc-core-j8:0.6.1'
 ]
 
 subprojects {

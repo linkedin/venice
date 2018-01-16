@@ -3,16 +3,12 @@ package com.linkedin.venice.router.cache;
 import java.util.Optional;
 
 
-public interface Cache<K, V> {
-  Optional<V> put(K key, V value);
-
-  default Optional<V> putNullValue(K key) {
-    return put(key, null);
-  }
+public interface Cache<K, V> extends AutoCloseable {
+  boolean put(K key, Optional<V> value);
 
   Optional<V> get(K key);
 
-  Optional<V> remove(K key);
+  boolean remove(K key);
 
   void clear();
 

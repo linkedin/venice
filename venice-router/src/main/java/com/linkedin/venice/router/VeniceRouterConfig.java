@@ -1,6 +1,8 @@
 package com.linkedin.venice.router;
 
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.router.cache.CacheEviction;
+import com.linkedin.venice.router.cache.CacheType;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.util.Map;
 import org.apache.log4j.Logger;
@@ -37,6 +39,9 @@ public class VeniceRouterConfig {
   private boolean cacheEnabled;
   private long cacheSizeBytes;
   private int cacheConcurrency;
+  private CacheType cacheType;
+  private CacheEviction cacheEviction;
+  private int cacheHashTableSize;
   private double cacheHitRequestThrottleWeight;
   private int routerNettyGracefulShutdownPeriodSeconds;
   private boolean enforceSecureOnly;
@@ -77,6 +82,9 @@ public class VeniceRouterConfig {
     cacheEnabled = props.getBoolean(ROUTER_CACHE_ENABLED, false);
     cacheSizeBytes = props.getSizeInBytes(ROUTER_CACHE_SIZE_IN_BYTES, 500 * 1024 * 1024l); // 500MB
     cacheConcurrency = props.getInt(ROUTER_CACHE_CONCURRENCY, 16);
+    cacheType = CacheType.valueOf(props.getString(ROUTER_CACHE_TYPE, CacheType.OFF_HEAP_CACHE.name()));
+    cacheEviction = CacheEviction.valueOf(props.getString(ROUTER_CACHE_EVICTION, CacheEviction.W_TINY_LFU.name()));
+    cacheHashTableSize = props.getInt(ROUTER_CACHE_HASH_TABLE_SIZE, 1024 * 1024); // 1M
     /**
      * Make the default value for the throttle weight of cache hit request to be 1, which is same as the regular request.
      * The reason behind this:
@@ -194,5 +202,17 @@ public class VeniceRouterConfig {
 
   public boolean isEnforcingSecureOnly() {
     return enforceSecureOnly;
+  }
+
+  public CacheType getCacheType() {
+    return cacheType;
+  }
+
+  public CacheEviction getCacheEviction() {
+    return cacheEviction;
+  }
+
+  public int getCacheHashTableSize() {
+    return cacheHashTableSize;
   }
 }

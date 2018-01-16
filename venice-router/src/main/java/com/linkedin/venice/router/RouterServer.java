@@ -35,6 +35,8 @@ import com.linkedin.venice.router.api.VenicePathParser;
 import com.linkedin.venice.router.api.VeniceResponseAggregator;
 import com.linkedin.venice.router.api.VeniceRoleFinder;
 import com.linkedin.venice.router.api.VeniceVersionFinder;
+import com.linkedin.venice.router.cache.CacheEviction;
+import com.linkedin.venice.router.cache.CacheType;
 import com.linkedin.venice.router.cache.RouterCache;
 import com.linkedin.venice.router.stats.AggRouterHttpRequestStats;
 import com.linkedin.venice.router.stats.RouterCacheStats;
@@ -104,6 +106,7 @@ public class RouterServer extends AbstractVeniceService {
   private ZkRoutersClusterManager routersClusterManager;
   private Router router;
   private Router secureRouter;
+  private Optional<RouterCache> routerCache;
 
   private final static String ROUTER_SERVICE_NAME = "venice-router";
 
@@ -261,10 +264,13 @@ public class RouterServer extends AbstractVeniceService {
     VenicePartitionFinder partitionFinder = new VenicePartitionFinder(routingDataRepository);
     VeniceHostHealth healthMonitor = new VeniceHostHealth(liveInstanceMonitor);
     scatterGatherMode = new VeniceDelegateMode();
-    Optional<RouterCache> routerCache = Optional.empty();
+    routerCache = Optional.empty();
     if (config.isCacheEnabled()) {
-      logger.info("Router cache size: " + config.getCacheSizeBytes() + ", concurrency: " + config.getCacheConcurrency());
-      routerCache = Optional.of(new RouterCache(config.getCacheSizeBytes(), config.getCacheConcurrency(), routingDataRepository));
+      logger.info("Router cache type: " + config.getCacheType() + ", cache eviction: " + config.getCacheEviction() +
+      ", cache size: " + config.getCacheSizeBytes() + ", cache concurrency: " + config.getCacheConcurrency() +
+      ", cache hash table size: " + config.getCacheHashTableSize());
+      routerCache = Optional.of(new RouterCache(config.getCacheType(), config.getCacheEviction(),
+              config.getCacheSizeBytes(), config.getCacheConcurrency(), config.getCacheHashTableSize(), routingDataRepository));
       // Tracking cache metrics
       new RouterCacheStats(metricsRepository, "router_cache", routerCache.get());
     }
@@ -414,6 +420,9 @@ public class RouterServer extends AbstractVeniceService {
       zkClient.close();
     }
     heartbeat.stopInner();
+    if (routerCache.isPresent()) {
+      routerCache.get().close();
+    }
     logger.info(this.toString() + " is stopped");
   }
 

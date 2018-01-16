@@ -6,7 +6,7 @@ import org.testng.Assert;
 import org.testng.annotations.Test;
 
 
-public class LRUCacheTest {
+public class OnHeapCacheTest {
   private static class MeasurableObject implements Measurable {
     private final String content;
 
@@ -50,11 +50,11 @@ public class LRUCacheTest {
 
   @Test
   public void testSingleCache() {
-    Cache<MeasurableObject, MeasurableObject> singleCache = new LRUCache<>(200, 1);
+    Cache<MeasurableObject, MeasurableObject> singleCache = new OnHeapCache<>(200, 1);
     String keyPrefix = "test_key_";
     String valuePrefix = "test_value_";
     for (int i = 0; i < 100; ++i) {
-      singleCache.put(new MeasurableObject(keyPrefix + i), new MeasurableObject(valuePrefix + i));
+      singleCache.put(new MeasurableObject(keyPrefix + i), Optional.of(new MeasurableObject(valuePrefix + i)));
     }
     for (int i = 0; i < 100; ++i) {
       Optional<MeasurableObject> value = singleCache.get(new MeasurableObject(keyPrefix + i));
@@ -71,7 +71,7 @@ public class LRUCacheTest {
         + "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 
     try {
-      singleCache.put(new MeasurableObject(largeKey), new MeasurableObject(largeValue));
+      singleCache.put(new MeasurableObject(largeKey), Optional.of(new MeasurableObject(largeValue)));
       Assert.fail("An exception should be thrown when putting record, which is larger than capacity");
     } catch (Exception e) {
 
@@ -80,7 +80,7 @@ public class LRUCacheTest {
     // Put one more record, then the eldest one should be evicted
     String newKey = keyPrefix + 100;
     String newValue = valuePrefix + 100;
-    singleCache.put(new MeasurableObject(newKey), new MeasurableObject(newValue));
+    singleCache.put(new MeasurableObject(newKey), Optional.of(new MeasurableObject(newValue)));
     Assert.assertNull(singleCache.get(new MeasurableObject(keyPrefix + 98)), "Eldest key should be evicted");
     // With the following access pattern, 100 should the eldest key
     Assert.assertEquals(singleCache.get(new MeasurableObject(newKey)).get(), new MeasurableObject(newValue));
@@ -89,7 +89,7 @@ public class LRUCacheTest {
     // Right now, 99 and 100 are in the cache, and we will put a 'null' inside
     // 100 is the eldest key because of the previous access pattern
     String keyWithNull = keyPrefix + 101;
-    singleCache.putNullValue(new MeasurableObject(keyWithNull));
+    singleCache.put(new MeasurableObject(keyWithNull), Optional.empty());
     Assert.assertNull(singleCache.get(new MeasurableObject(keyPrefix + 100)), "Eldest key should be evicted");
     Optional<MeasurableObject> valueWithNull = singleCache.get(new MeasurableObject(keyWithNull));
     Assert.assertNotNull(valueWithNull, "NULL record should receive non-null object from cache");
@@ -108,11 +108,11 @@ public class LRUCacheTest {
 
   @Test
   public void testConcurrentCache() {
-    Cache concurrentCache = new LRUCache(400, 2);
+    Cache concurrentCache = new OnHeapCache(400, 2);
     String keyPrefix = "test_key_";
     String valuePrefix = "test_value_";
     for (int i = 0; i < 100; ++i) {
-      concurrentCache.put(new MeasurableObject(keyPrefix + i), new MeasurableObject(valuePrefix + i));
+      concurrentCache.put(new MeasurableObject(keyPrefix + i), Optional.of(new MeasurableObject(valuePrefix + i)));
     }
 
     // The records are distributed in two caches, and we should have 4 records in the cache.
