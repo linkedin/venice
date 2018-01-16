@@ -414,9 +414,10 @@ public class VeniceDispatcher implements PartitionDispatchHandler4<Instance, Ven
       try {
         if (content.isPresent() && valueSchemaId.isPresent()) {
           RouterCache.CacheValue cacheValue = new RouterCache.CacheValue(content.get(), valueSchemaId.get());
-          routerCache.get().put(storeName, path.getVersionNumber(), path.getPartitionKey().getBytes(), cacheValue);
+          routerCache.get().put(storeName, path.getVersionNumber(), path.getPartitionKey().getBytes(), Optional.of(cacheValue));
         } else {
-          routerCache.get().putNullValue(storeName, path.getVersionNumber(), path.getPartitionKey().getBytes());
+          routerCache.get().put(storeName, path.getVersionNumber(), path.getPartitionKey().getBytes(),
+              Optional.empty());
         }
         routerCache.get().setCompressionType(path.getResourceName(), compressionStrategy);
       } catch (Exception e) {

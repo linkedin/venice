@@ -44,6 +44,7 @@ dependencies {
         // this will introduce another different mockito-all version
         exclude group: 'org.mockito', module: 'mockito-all'
     }
+    compile libraries.ohcCoreJ8
 
     testCompile project(':venice-router')
     testCompile project(':venice-thin-client')
