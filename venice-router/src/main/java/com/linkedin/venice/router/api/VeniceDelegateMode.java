@@ -123,21 +123,28 @@ public class VeniceDelegateMode extends ScatterGatherMode {
       Instance veniceInstance = (Instance)host;
       if (venicePath.getRequestType().equals(RequestType.SINGLE_GET)) {
         venicePath.setSelectedHost(veniceInstance.getNodeId());
-      }
-      /**
-       * TODO: batch-get
-       *
-       * For batch-get, the difficult part is to persist the previous selected host for each part when doing retry.
-       * And we don't know whether the retry will make it better since the retry request could scatter out several
-       * storage node requests.
-        */
-      int keyCount = part.getPartitionKeys().size();
-      try {
-        readRequestThrottler.mayThrottleRead(storeName, keyCount * readRequestThrottler.getReadCapacity(),
-            Optional.of(veniceInstance.getNodeId()));
-      } catch (QuotaExceededException e) {
-        throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(Optional.of(storeName), Optional.of(venicePath.getRequestType()),
-            TOO_MANY_REQUESTS, "Quota exceeds! msg: " + e.getMessage());
+      } else {
+        /**
+         * TODO: batch-get
+         *
+         * For batch-get, the difficult part is to persist the previous selected host for each part when doing retry.
+         * And we don't know whether the retry will make it better since the retry request could scatter out several
+         * storage node requests.
+         */
+
+        /**
+         * Here is the only suitable place to throttle multi-get request since we want to fail the whole request if
+         * some scatter request gets throttled.
+         *
+         * For single-get request, the throttling logic is happening in {@link VeniceDispatcher} because of caching logic.
+         */
+        int keyCount = part.getPartitionKeys().size();
+        try {
+          readRequestThrottler.mayThrottleRead(storeName, keyCount * readRequestThrottler.getReadCapacity(), Optional.of(veniceInstance.getNodeId()));
+        } catch (QuotaExceededException e) {
+          throw RouterExceptionAndTrackingUtils.newRouterExceptionAndTracking(Optional.of(storeName), Optional.of(venicePath.getRequestType()),
+              TOO_MANY_REQUESTS, "Quota exceeds! msg: " + e.getMessage());
+        }
       }
     }
 
