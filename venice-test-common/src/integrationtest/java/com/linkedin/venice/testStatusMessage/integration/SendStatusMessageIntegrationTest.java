@@ -85,7 +85,7 @@ public class SendStatusMessageIntegrationTest {
    *
    * @throws Exception
    */
-  @Test
+  @Test (enabled = false) //TODO: Yan to take a look at this test, it is flaky, Yan says it isn't guaranteed by Helix
   public void testReceiveMessageFromThreeParticipants()
       throws Exception {
     // Enlarge the delay to fix the flaky test.

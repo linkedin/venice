@@ -320,7 +320,7 @@ public class RouterServer extends AbstractVeniceService {
         .resourceRegistry(registry)
         .executor(executor) // Executor provides the
         .bossPoolSize(ROUTER_BOSS_THREAD_NUM) // One boss thread to monitor the socket for new connections.  Netty only uses one thread from this pool
-        .ioWorkerPoolSize(ROUTER_IO_THREAD_NUM)  // While they're shared between http router and https router
+        .ioWorkerPoolSize(ROUTER_IO_THREAD_NUM)
         .workerExecutor(workerExecutor)
         .connectionLimit(config.getConnectionLimit())
         .timeoutProcessor(timeoutProcessor)
@@ -351,7 +351,7 @@ public class RouterServer extends AbstractVeniceService {
         .resourceRegistry(registry)
         .executor(executor) // Executor provides the
         .bossPoolSize(ROUTER_BOSS_THREAD_NUM) // One boss thread to monitor the socket for new connections.  Netty only uses one thread from this pool
-        .ioWorkerPoolSize(ROUTER_IO_THREAD_NUM) // While they're shared between http router and https router
+        .ioWorkerPoolSize(ROUTER_IO_THREAD_NUM)
         .workerExecutor(workerExecutor)
         .connectionLimit(config.getConnectionLimit())
         .timeoutProcessor(timeoutProcessor)
