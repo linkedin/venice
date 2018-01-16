@@ -1,15 +1,14 @@
 package com.linkedin.venice.samza;
 
+
 import com.linkedin.venice.controllerapi.ControllerApiConstants;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.serialization.DefaultSerializer;
 import com.linkedin.venice.serialization.avro.VeniceAvroGenericSerializer;
 import com.linkedin.venice.utils.SystemTime;
 import com.linkedin.venice.utils.Time;
-import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.VeniceWriter;
 import com.linkedin.venice.writer.VeniceWriterFactory;
 import java.io.ByteArrayOutputStream;
@@ -29,10 +28,10 @@ import org.apache.samza.system.OutgoingMessageEnvelope;
 import org.apache.samza.system.SystemProducer;
 
 import static com.linkedin.venice.ConfigKeys.*;
+import static org.apache.kafka.clients.CommonClientConfigs.SECURITY_PROTOCOL_CONFIG;
 
 
 public class VeniceSystemProducer implements SystemProducer {
-
   private static final Schema STRING_SCHEMA = Schema.create(Schema.Type.STRING);
   private static final Schema INT_SCHEMA = Schema.create(Schema.Type.INT);
   private static final Schema LONG_SCHEMA = Schema.create(Schema.Type.LONG);
@@ -74,18 +73,11 @@ public class VeniceSystemProducer implements SystemProducer {
   private ConcurrentMap<String, VeniceAvroGenericSerializer> serializers = new ConcurrentHashMap<>();
 
   /**
-   * key is Venice store name (same as Samza stream name)
-   * value is Venice Kafka topic to write to
-   */
-  private ConcurrentMap<String, String> storeToTopic = new ConcurrentHashMap<>();
-
-  /**
    * key is Venice store name
    * value is Kafka bootstrap server
    */
-  private ConcurrentMap<String, String> storeToKafkaServers = new ConcurrentHashMap<>();
+  private ConcurrentMap<String, VersionCreationResponse> storeInfo = new ConcurrentHashMap<>();
 
-  private String veniceClusterName;
   private String samzaJobId;
   private ControllerApiConstants.PushType pushType;
   private ControllerClient veniceControllerClient;
@@ -96,18 +88,35 @@ public class VeniceSystemProducer implements SystemProducer {
   }
 
   public VeniceSystemProducer(String veniceUrl, String veniceCluster, ControllerApiConstants.PushType pushType, String samzaJobId, Time time) {
-    this.veniceClusterName = veniceCluster;
     this.pushType = pushType;
     this.samzaJobId = samzaJobId;
     this.veniceControllerClient = new ControllerClient(veniceCluster, veniceUrl);
     this.time = time;
   }
 
-  private VeniceWriter<byte[], byte[]> getVeniceWriter(String topic, String kafkaBootstrapServers) {
+  //TODO: this shall not be open-sourced. Move it out once Samza plugin MP is created
+  private VeniceWriter<byte[], byte[]> getVeniceWriter(VersionCreationResponse store) {
     Properties veniceWriterProperties = new Properties();
-    veniceWriterProperties.put(KAFKA_BOOTSTRAP_SERVERS, kafkaBootstrapServers);
-    VeniceWriterFactory veniceWriterFactory = new VeniceWriterFactory(veniceWriterProperties);
-    return veniceWriterFactory.getBasicVeniceWriter(topic, time);
+
+    if (store.isEnableSSL()) {
+      veniceWriterProperties.put(SSL_TO_KAFKA, "true");
+      veniceWriterProperties.put(SSL_KAFKA_BOOTSTRAP_SERVERS, store.getKafkaBootstrapServers());
+      veniceWriterProperties.put(SECURITY_PROTOCOL_CONFIG, "SSL");
+      veniceWriterProperties.put(SSL_KEYSTORE_LOCATION, "./identity.p12");
+      veniceWriterProperties.put(SSL_KEYSTORE_PASSWORD, "work_around_jdk-6879539");
+      veniceWriterProperties.put(SSL_KEYSTORE_TYPE, "pkcs12");
+      veniceWriterProperties.put(SSL_KEY_PASSWORD, "work_around_jdk-6879539");
+      veniceWriterProperties.put(SSL_TRUSTSTORE_LOCATION, "/etc/riddler/cacerts");
+      veniceWriterProperties.put(SSL_TRUSTSTORE_PASSWORD, "changeit");
+      veniceWriterProperties.put(SSL_TRUSTSTORE_TYPE, "JKS");
+      veniceWriterProperties.put(SSL_KEYMANAGER_ALGORITHM, "SunX509");
+      veniceWriterProperties.put(SSL_TRUSTMANAGER_ALGORITHM, "SunX509");
+      veniceWriterProperties.put(SSL_SECURE_RANDOM_IMPLEMENTATION, "SHA1PRNG");
+    } else {
+      veniceWriterProperties.put(KAFKA_BOOTSTRAP_SERVERS, store.getKafkaBootstrapServers());
+    }
+
+    return new VeniceWriterFactory(veniceWriterProperties).getBasicVeniceWriter(store.getKafkaTopic(), time);
   }
 
   @Override
@@ -130,13 +139,12 @@ public class VeniceSystemProducer implements SystemProducer {
   @Override
   public void send(String source, OutgoingMessageEnvelope outgoingMessageEnvelope) {
     String store = outgoingMessageEnvelope.getSystemStream().getStream();
-    String topic = storeToTopic.computeIfAbsent(store, s -> {
+    String topic = storeInfo.computeIfAbsent(store, s -> {
       VersionCreationResponse versionCreationResponse = null;
       for (int currentAttempt = 0; currentAttempt < 10; currentAttempt++) {
         versionCreationResponse = veniceControllerClient.requestTopicForWrites(s, 1, pushType, samzaJobId); // TODO, store size?
         if (!versionCreationResponse.isError()) {
-          storeToKafkaServers.put(s, versionCreationResponse.getKafkaBootstrapServers());
-          return versionCreationResponse.getKafkaTopic();
+          return versionCreationResponse;
         } else {
           try {
             time.sleep(1000);
@@ -146,7 +154,8 @@ public class VeniceSystemProducer implements SystemProducer {
         }
       }
       throw new SamzaException("Failed to get target version from Venice for store " + s + ": " + versionCreationResponse.getError());
-    });
+    }).getKafkaTopic();
+
     Object keyObject = outgoingMessageEnvelope.getKey();
     Object valueObject = outgoingMessageEnvelope.getMessage();
 
@@ -184,7 +193,7 @@ public class VeniceSystemProducer implements SystemProducer {
     }
 
     VeniceWriter<byte[], byte[]> writer =
-        writerMap.computeIfAbsent(store, s -> getVeniceWriter(storeToTopic.get(s), storeToKafkaServers.get(s)));
+        writerMap.computeIfAbsent(store, s -> getVeniceWriter(storeInfo.get(s)));
 
     byte[] key = serializeObject(topic, keyObject);
 
