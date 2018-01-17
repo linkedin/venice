@@ -5,6 +5,7 @@ import com.linkedin.venice.hadoop.KafkaPushJob;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
+import java.nio.charset.Charset;
 import java.util.Arrays;
 import java.util.Properties;
 import org.apache.hadoop.io.Text;
@@ -53,12 +54,18 @@ public class TestTempFileSSLConfigurator {
     Properties properties = new Properties();
     properties.put(KafkaPushJob.SSL_KEY_STORE_PROPERTY_NAME, "linkedin.keystore");
     properties.put(KafkaPushJob.SSL_TRUST_STORE_PROPERTY_NAME, "linkedin.truststore");
+    properties.put(KafkaPushJob.SSL_KEY_STORE_PASSWORD_PROPERTY_NAME, "linkedin.keystorepassword");
+    properties.put(KafkaPushJob.SSL_KEY_PASSWORD_PROPERTY_NAME, "linkedin.keypassword");
+    properties.put(ConfigKeys.KAFKA_SECURITY_PROTOCOL, "ssl");
 
     String testCertStr = "test123";
     byte[] testCert = testCertStr.getBytes();
+    String testPwd = "testpwd123";
     Credentials credentials = new Credentials();
     credentials.addSecretKey(new Text("linkedin.keystore"), testCert);
     credentials.addSecretKey(new Text("linkedin.truststore"), testCert);
+    credentials.addSecretKey(new Text("linkedin.keystorepassword"), testPwd.getBytes(Charset.forName("UTF-8")));
+    credentials.addSecretKey(new Text("linkedin.keypassword"), testPwd.getBytes(Charset.forName("UTF-8")));
     UserGroupInformation.getCurrentUser().addCredentials(credentials);
 
     TempFileSSLConfigurator configurator =
@@ -74,5 +81,7 @@ public class TestTempFileSSLConfigurator {
         Assert.assertTrue(Arrays.equals(testCert, result));
       }
     }
+    Assert.assertEquals(testPwd, properties.get(ConfigKeys.SSL_KEY_PASSWORD));
+    Assert.assertEquals(testPwd, properties.get(ConfigKeys.SSL_KEYSTORE_PASSWORD));
   }
 }

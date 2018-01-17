@@ -6,6 +6,7 @@ import com.linkedin.venice.compression.VeniceCompressor;
 import com.linkedin.venice.exceptions.QuotaExceededException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.ssl.SSLConfigurator;
+import com.linkedin.venice.hadoop.ssl.UserCredentialsFactory;
 import com.linkedin.venice.hadoop.utils.HadoopUtils;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
@@ -28,7 +29,6 @@ import org.apache.hadoop.mapred.JobID;
 import org.apache.hadoop.mapred.OutputCollector;
 import org.apache.hadoop.mapred.Reducer;
 import org.apache.hadoop.mapred.Reporter;
-import org.apache.hadoop.security.UserGroupInformation;
 import org.apache.hadoop.util.Progressable;
 import org.apache.kafka.clients.producer.Callback;
 import org.apache.kafka.clients.producer.RecordMetadata;
@@ -168,8 +168,7 @@ public class VeniceReducer implements Reducer<BytesWritable, BytesWritable, Null
     SSLConfigurator configurator = SSLConfigurator.getSSLConfigurator(job.get(SSL_CONFIGURATOR_CLASS_CONFIG));
     VeniceProperties props;
     try {
-      Properties javaProps = configurator.setupSSLConfig(HadoopUtils.getProps(job),
-          UserGroupInformation.getCurrentUser().getCredentials());
+      Properties javaProps = configurator.setupSSLConfig(HadoopUtils.getProps(job), UserCredentialsFactory.getHadoopUserCredentials());
       props = new VeniceProperties(javaProps);
     } catch (IOException e) {
       throw new VeniceException("Could not get user credential for job:" + job.getJobName(), e);

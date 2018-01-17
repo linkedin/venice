@@ -2,10 +2,10 @@ package com.linkedin.venice.hadoop.ssl;
 
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.KafkaPushJob;
-import com.linkedin.venice.utils.VeniceProperties;
 import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.io.IOException;
+import java.nio.charset.Charset;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Properties;
@@ -14,9 +14,7 @@ import org.apache.hadoop.io.Text;
 import org.apache.hadoop.security.Credentials;
 import org.apache.log4j.Logger;
 
-import static com.linkedin.venice.ConfigKeys.SSL_TRUSTSTORE_LOCATION;
-import static com.linkedin.venice.ConfigKeys.SSL_KEYSTORE_LOCATION;
-import static com.linkedin.venice.ConfigKeys.KAFKA_SECURITY_PROTOCOL;
+import static com.linkedin.venice.ConfigKeys.*;
 
 
 public class TempFileSSLConfigurator implements SSLConfigurator {
@@ -26,30 +24,61 @@ public class TempFileSSLConfigurator implements SSLConfigurator {
   public Properties setupSSLConfig(Properties props, Credentials userCredentials) {
     Properties properties = new Properties();
     properties.putAll(props);
-    try {
-      // Setup keystore certification
-      byte[] keyStoreCert =
-          getCertification(userCredentials, new Text(properties.getProperty(KafkaPushJob.SSL_KEY_STORE_PROPERTY_NAME)));
-      logger.info("Found key store cert from credentials.");
-      String keyStoreLocation = writeToTempFile(keyStoreCert);
-      logger.info("Write key store cert to file: " + keyStoreLocation);
-      properties.put(SSL_KEYSTORE_LOCATION, keyStoreLocation);
-      // Setup truststore certification
-      byte[] truestStoreCert =
-          getCertification(userCredentials, new Text(properties.getProperty(KafkaPushJob.SSL_TRUST_STORE_PROPERTY_NAME)));
-      logger.info("Found trust store cert from credentials.");
-      String trustStoreLocation = writeToTempFile(truestStoreCert);
-      logger.info("Write trust store cert to file: " + trustStoreLocation);
-      properties.put(SSL_TRUSTSTORE_LOCATION, trustStoreLocation);
-    } catch (VeniceException e) {
-      if(properties.containsKey(KAFKA_SECURITY_PROTOCOL) && properties.getProperty(KAFKA_SECURITY_PROTOCOL).toLowerCase().equals("ssl")) {
+    if (properties.containsKey(KAFKA_SECURITY_PROTOCOL) && properties.getProperty(KAFKA_SECURITY_PROTOCOL)
+        .toLowerCase()
+        .equals("ssl")) {
+      logger.info("Start setting up the ssl properties.");
+      try {
+        // Setup keystore certification
+        byte[] keyStoreCert = getCertification(userCredentials,
+            new Text(properties.getProperty(KafkaPushJob.SSL_KEY_STORE_PROPERTY_NAME)));
+        logger.info("Found key store cert from credentials.");
+        String keyStoreLocation = writeToTempFile(keyStoreCert);
+        logger.info("Write key store cert to file: " + keyStoreLocation);
+        properties.put(SSL_KEYSTORE_LOCATION, keyStoreLocation);
+        // Setup truststore certification
+        byte[] truestStoreCert = getCertification(userCredentials,
+            new Text(properties.getProperty(KafkaPushJob.SSL_TRUST_STORE_PROPERTY_NAME)));
+        logger.info("Found trust store cert from credentials.");
+        String trustStoreLocation = writeToTempFile(truestStoreCert);
+        logger.info("Write trust store cert to file: " + trustStoreLocation);
+        properties.put(SSL_TRUSTSTORE_LOCATION, trustStoreLocation);
+
+        // Setup keystore password.
+        String keyStorePassword = getPassword(userCredentials,
+            new Text(properties.getProperty(KafkaPushJob.SSL_KEY_STORE_PASSWORD_PROPERTY_NAME)));
+        properties.put(SSL_KEYSTORE_PASSWORD, keyStorePassword);
+
+        // Setup key password.
+        String keyPassword =
+            getPassword(userCredentials, new Text(properties.getProperty(KafkaPushJob.SSL_KEY_PASSWORD_PROPERTY_NAME)));
+        properties.put(SSL_KEY_PASSWORD, keyPassword);
+        if(!properties.containsKey(SSL_KEYSTORE_TYPE)) {
+          properties.put(SSL_KEYSTORE_TYPE, "pkcs12");
+        }
+        if(!properties.containsKey(SSL_TRUSTSTORE_TYPE)) {
+          properties.put(SSL_TRUSTSTORE_TYPE, "JKS");
+        }
+        if(!properties.containsKey(SSL_TRUSTSTORE_PASSWORD)){
+          properties.put(SSL_TRUSTSTORE_PASSWORD, "changeit");
+        }
+        if(!properties.containsKey(SSL_TRUSTMANAGER_ALGORITHM)){
+          properties.put(SSL_TRUSTMANAGER_ALGORITHM, "SunX509");
+        }
+        if(!properties.containsKey(SSL_KEYMANAGER_ALGORITHM)){
+          properties.put(SSL_KEYMANAGER_ALGORITHM, "SunX509");
+        }
+        logger.info("Complete setting up the ssl properties.");
+      } catch (VeniceException e) {
         throw e;
-      } else {
-        logger.warn("Ignore the error because we are using non-ssl protocol.", e);
       }
     }
 
     return properties;
+  }
+
+  protected String getPassword(Credentials credentials, Text propertyName) {
+    return new String(credentials.getSecretKey(propertyName), Charset.forName("UTF-8"));
   }
 
   protected byte[] getCertification(Credentials credentials, Text certName) {
