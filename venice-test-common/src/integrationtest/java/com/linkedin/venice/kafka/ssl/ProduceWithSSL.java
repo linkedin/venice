@@ -15,12 +15,17 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.IOException;
+import java.lang.reflect.Field;
+import java.nio.charset.Charset;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import org.apache.avro.Schema;
+import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.io.Text;
 import org.apache.hadoop.security.Credentials;
 import org.apache.hadoop.security.UserGroupInformation;
@@ -103,8 +108,13 @@ public class ProduceWithSSL {
 
     String keyStorePropertyName = "li.datavault.identity";
     String trustStorePropertyName = "li.datavault.truststore";
-    props.put(KafkaPushJob.SSL_KEY_STORE_PROPERTY_NAME, keyStorePropertyName);
-    props.put(KafkaPushJob.SSL_TRUST_STORE_PROPERTY_NAME, trustStorePropertyName);
+    String keyStorePwdPropertyName = "li.datavault.identity.keystore.password";
+    String keyPwdPropertyName="li.datavault.identity.key.password";
+
+    props.setProperty(KafkaPushJob.SSL_KEY_STORE_PROPERTY_NAME, keyStorePropertyName);
+    props.setProperty(KafkaPushJob.SSL_TRUST_STORE_PROPERTY_NAME,trustStorePropertyName);
+    props.setProperty(KafkaPushJob.SSL_KEY_STORE_PASSWORD_PROPERTY_NAME,keyStorePwdPropertyName);
+    props.setProperty(KafkaPushJob.SSL_KEY_PASSWORD_PROPERTY_NAME,keyPwdPropertyName);
 
     // put cert into hadoop user credentials.
     Properties sslProps = SslUtils.getLocalCommonKafkaSSLConfig();
@@ -113,7 +123,17 @@ public class ProduceWithSSL {
     Credentials credentials = new Credentials();
     credentials.addSecretKey(new Text(keyStorePropertyName), keyStoreCert);
     credentials.addSecretKey(new Text(trustStorePropertyName), trustStoreCert);
+    credentials.addSecretKey(new Text(keyStorePwdPropertyName), sslProps.getProperty(SslConfigs.SSL_KEYSTORE_PASSWORD_CONFIG).getBytes(
+        Charset.forName("UTF-8")));
+    credentials.addSecretKey(new Text(keyPwdPropertyName), sslProps.getProperty(SslConfigs.SSL_KEY_PASSWORD_CONFIG).getBytes(
+        Charset.forName("UTF-8")));
     UserGroupInformation.getCurrentUser().addCredentials(credentials);
+    // Setup token file
+    String filePath = getTempDataDirectory().getAbsolutePath() + "/testHadoopToken";
+    credentials.writeTokenStorageFile(new Path(filePath), new Configuration());
+    System.setProperty(UserGroupInformation.HADOOP_TOKEN_FILE_LOCATION, filePath);
+
+    Assert.assertEquals(System.getProperty(UserGroupInformation.HADOOP_TOKEN_FILE_LOCATION), filePath);
 
     createStoreForJob(cluster, recordSchema, props);
     String controllerUrl = cluster.getAllControllersURLs();

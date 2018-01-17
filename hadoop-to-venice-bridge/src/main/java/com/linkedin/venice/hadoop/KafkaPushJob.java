@@ -11,6 +11,7 @@ import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.hadoop.pbnj.PostBulkLoadAnalysisMapper;
 import com.linkedin.venice.hadoop.ssl.SSLConfigurator;
 import com.linkedin.venice.hadoop.ssl.TempFileSSLConfigurator;
+import com.linkedin.venice.hadoop.ssl.UserCredentialsFactory;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
 import com.linkedin.venice.schema.vson.VsonAvroSchemaAdapter;
@@ -50,7 +51,6 @@ import org.apache.hadoop.mapred.JobClient;
 import org.apache.hadoop.mapred.JobConf;
 import org.apache.hadoop.mapred.RunningJob;
 import org.apache.hadoop.mapred.lib.NullOutputFormat;
-import org.apache.hadoop.security.UserGroupInformation;
 import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.log4j.Logger;
 
@@ -131,6 +131,8 @@ public class KafkaPushJob extends AbstractJob {
 
   public static final String SSL_KEY_STORE_PROPERTY_NAME = "ssl.key.store.property.name";
   public static final String SSL_TRUST_STORE_PROPERTY_NAME = "ssl.trust.store.property.name";
+  public static final String SSL_KEY_STORE_PASSWORD_PROPERTY_NAME = "ssl.key.store.password.property.name";
+  public static final String SSL_KEY_PASSWORD_PROPERTY_NAME= "ssl.key.password.property.name";
 
   private static Logger logger = Logger.getLogger(KafkaPushJob.class);
 
@@ -296,6 +298,13 @@ public class KafkaPushJob extends AbstractJob {
         throw new VeniceException("Duplicate value filed found in config. Both avro.value.field and value.field are set up.");
       }
       vanillaProps.setProperty(VALUE_FIELD_PROP, vanillaProps.getProperty(LEGACY_AVRO_VALUE_FIELD_PROP));
+    }
+
+    String[] requiredSSLPropertiesNames = new String[]{SSL_KEY_PASSWORD_PROPERTY_NAME,SSL_KEY_STORE_PASSWORD_PROPERTY_NAME, SSL_KEY_STORE_PROPERTY_NAME,SSL_TRUST_STORE_PROPERTY_NAME};
+    for(String sslPropertyName:requiredSSLPropertiesNames){
+      if(!vanillaProps.containsKey(sslPropertyName)){
+        throw new VeniceException("Miss the require ssl property name: "+sslPropertyName);
+      }
     }
 
     this.props = new VeniceProperties(vanillaProps);
@@ -540,8 +549,9 @@ public class KafkaPushJob extends AbstractJob {
           SSLConfigurator sslConfigurator = SSLConfigurator.getSSLConfigurator(
               props.getString(SSL_CONFIGURATOR_CLASS_CONFIG, TempFileSSLConfigurator.class.getName()));
           Properties sslWriterProperties = sslConfigurator.setupSSLConfig(veniceWriterProperties,
-              UserGroupInformation.getCurrentUser().getCredentials());
+              UserCredentialsFactory.getUserCredentialsFromTokenFile());
           veniceWriterProperties.putAll(sslWriterProperties);
+          // Get the certs from Azkaban executor's file system.
         } catch (IOException e) {
           throw new VeniceException("Could not get user credential for kafka push job for topic" + topic);
         }
@@ -718,9 +728,10 @@ public class KafkaPushJob extends AbstractJob {
     conf.setOutputFormat(NullOutputFormat.class);
 
     conf.set(SSL_CONFIGURATOR_CLASS_CONFIG, props.getString(SSL_CONFIGURATOR_CLASS_CONFIG, TempFileSSLConfigurator.class.getName()));
-    //TODO remove the default name
-    conf.set(SSL_KEY_STORE_PROPERTY_NAME, props.getString(SSL_KEY_STORE_PROPERTY_NAME, "li.datavault.identity"));
-    conf.set(SSL_TRUST_STORE_PROPERTY_NAME, props.getString(SSL_TRUST_STORE_PROPERTY_NAME, "li.datavault.truststore"));
+    conf.set(SSL_KEY_STORE_PROPERTY_NAME, props.getString(SSL_KEY_STORE_PROPERTY_NAME));
+    conf.set(SSL_TRUST_STORE_PROPERTY_NAME, props.getString(SSL_TRUST_STORE_PROPERTY_NAME));
+    conf.set(SSL_KEY_PASSWORD_PROPERTY_NAME, props.getString(SSL_KEY_PASSWORD_PROPERTY_NAME));
+    conf.set(SSL_KEY_PASSWORD_PROPERTY_NAME, props.getString(SSL_KEY_PASSWORD_PROPERTY_NAME));
 
     return conf;
   }
