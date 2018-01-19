@@ -1,6 +1,5 @@
 package com.linkedin.venice.samza;
 
-
 import com.linkedin.venice.controllerapi.ControllerApiConstants;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.SchemaResponse;
@@ -28,7 +27,6 @@ import org.apache.samza.system.OutgoingMessageEnvelope;
 import org.apache.samza.system.SystemProducer;
 
 import static com.linkedin.venice.ConfigKeys.*;
-import static org.apache.kafka.clients.CommonClientConfigs.SECURITY_PROTOCOL_CONFIG;
 
 
 public class VeniceSystemProducer implements SystemProducer {
@@ -94,27 +92,9 @@ public class VeniceSystemProducer implements SystemProducer {
     this.time = time;
   }
 
-  //TODO: this shall not be open-sourced. Move it out once Samza plugin MP is created
-  private VeniceWriter<byte[], byte[]> getVeniceWriter(VersionCreationResponse store) {
+  protected VeniceWriter<byte[], byte[]> getVeniceWriter(VersionCreationResponse store) {
     Properties veniceWriterProperties = new Properties();
-
-    if (store.isEnableSSL()) {
-      veniceWriterProperties.put(SSL_TO_KAFKA, "true");
-      veniceWriterProperties.put(SSL_KAFKA_BOOTSTRAP_SERVERS, store.getKafkaBootstrapServers());
-      veniceWriterProperties.put(SECURITY_PROTOCOL_CONFIG, "SSL");
-      veniceWriterProperties.put(SSL_KEYSTORE_LOCATION, "./identity.p12");
-      veniceWriterProperties.put(SSL_KEYSTORE_PASSWORD, "work_around_jdk-6879539");
-      veniceWriterProperties.put(SSL_KEYSTORE_TYPE, "pkcs12");
-      veniceWriterProperties.put(SSL_KEY_PASSWORD, "work_around_jdk-6879539");
-      veniceWriterProperties.put(SSL_TRUSTSTORE_LOCATION, "/etc/riddler/cacerts");
-      veniceWriterProperties.put(SSL_TRUSTSTORE_PASSWORD, "changeit");
-      veniceWriterProperties.put(SSL_TRUSTSTORE_TYPE, "JKS");
-      veniceWriterProperties.put(SSL_KEYMANAGER_ALGORITHM, "SunX509");
-      veniceWriterProperties.put(SSL_TRUSTMANAGER_ALGORITHM, "SunX509");
-      veniceWriterProperties.put(SSL_SECURE_RANDOM_IMPLEMENTATION, "SHA1PRNG");
-    } else {
-      veniceWriterProperties.put(KAFKA_BOOTSTRAP_SERVERS, store.getKafkaBootstrapServers());
-    }
+    veniceWriterProperties.put(KAFKA_BOOTSTRAP_SERVERS, store.getKafkaBootstrapServers());
 
     return new VeniceWriterFactory(veniceWriterProperties).getBasicVeniceWriter(store.getKafkaTopic(), time);
   }
@@ -192,8 +172,7 @@ public class VeniceSystemProducer implements SystemProducer {
           + " which does not match Venice key schema " + remoteKeySchema + ".  Key object: " + serializedObject);
     }
 
-    VeniceWriter<byte[], byte[]> writer =
-        writerMap.computeIfAbsent(store, s -> getVeniceWriter(storeInfo.get(s)));
+    VeniceWriter<byte[], byte[]> writer = writerMap.computeIfAbsent(store, s -> getVeniceWriter(storeInfo.get(s)));
 
     byte[] key = serializeObject(topic, keyObject);
 
