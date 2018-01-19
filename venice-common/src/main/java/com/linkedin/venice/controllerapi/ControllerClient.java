@@ -4,6 +4,7 @@ import com.linkedin.venice.HttpConstants;
 import com.linkedin.venice.LastSucceedExecutionIdResponse;
 import com.linkedin.venice.controllerapi.routes.AdminCommandExecutionResponse;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.exceptions.VeniceHttpException;
 import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.meta.Version;
@@ -833,15 +834,39 @@ public class ControllerClient implements Closeable {
     url = url.trim();
     String queryString = URLEncodedUtils.format(params, StandardCharsets.UTF_8);
     final HttpGet get = new HttpGet(url + path + "?" + queryString);
-    return getJsonFromHttp(get);
+    return getJsonFromHttp(get, false);
   }
 
   private String postRequest(String path, List<NameValuePair> params)
       throws UnsupportedEncodingException, ExecutionException, InterruptedException {
-    refreshControllerUrl();
+    return postRequest(path, params, 10);
+  }
+
+  private String postRequest(String path, List<NameValuePair> params, int retriesLeftForNonMasterController)
+      throws UnsupportedEncodingException, ExecutionException, InterruptedException {
+    try {
+      refreshControllerUrl();
+    } catch (VeniceException e) {
+      if (retriesLeftForNonMasterController > 0) {
+        Utils.sleep(500);
+        logger.warn("Failed to refresh master controller URL. Will retry up to " + retriesLeftForNonMasterController + " more times.", e);
+        return postRequest(path, params, retriesLeftForNonMasterController - 1);
+      }
+      throw e;
+    }
     final HttpPost post = new HttpPost(masterControllerUrl + path);
     post.setEntity(new UrlEncodedFormEntity(params));
-    return getJsonFromHttp(post);
+    try {
+      boolean throwForNonMasterController = retriesLeftForNonMasterController > 0;
+      return getJsonFromHttp(post, throwForNonMasterController);
+    } catch (VeniceHttpException e) {
+      if (e.getHttpStatusCode() == HttpConstants.SC_MISDIRECTED_REQUEST && retriesLeftForNonMasterController > 0) {
+        logger.warn("Failed to reach master controller. Will retry up to " + retriesLeftForNonMasterController + " more times.", e);
+        Utils.sleep(500);
+        return postRequest(path, params, retriesLeftForNonMasterController - 1);
+      }
+      throw e;
+    }
   }
 
   private static <R extends ControllerResponse> R handleError(Exception e, R errorResponse){
@@ -854,7 +879,7 @@ public class ControllerClient implements Closeable {
     return errorResponse;
   }
 
-  private static String getJsonFromHttp(HttpRequestBase httpRequest) {
+  private static String getJsonFromHttp(HttpRequestBase httpRequest, boolean throwForNonMasterController) {
     HttpResponse response = null;
     try(CloseableHttpAsyncClient httpClient =
         HttpAsyncClients
@@ -874,6 +899,9 @@ public class ControllerClient implements Closeable {
       String msg = "Exception making HTTP request: " + e.getMessage();
       logger.error(msg, e);
       throw new VeniceException(msg, e);
+    }
+    if (response.getStatusLine().getStatusCode() == HttpConstants.SC_MISDIRECTED_REQUEST && throwForNonMasterController) {
+      throw new VeniceHttpException(HttpConstants.SC_MISDIRECTED_REQUEST);
     }
     String responseBody;
     try (InputStream bodyStream = response.getEntity().getContent()) {

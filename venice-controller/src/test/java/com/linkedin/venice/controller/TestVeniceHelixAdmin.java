@@ -2,6 +2,7 @@ package com.linkedin.venice.controller;
 
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.compression.CompressionStrategy;
+import com.linkedin.venice.controller.kafka.consumer.VeniceControllerConsumerFactotry;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoClusterException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
@@ -13,10 +14,15 @@ import com.linkedin.venice.helix.Replica;
 import com.linkedin.venice.integration.utils.KafkaBrokerWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
+import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.meta.HybridStoreConfig;
+import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.PartitionAssignment;
+import com.linkedin.venice.meta.PersistenceType;
+import com.linkedin.venice.meta.ReadStrategy;
 import com.linkedin.venice.meta.ReadWriteStoreRepository;
 import com.linkedin.venice.meta.RoutingDataRepository;
+import com.linkedin.venice.meta.RoutingStrategy;
 import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.meta.StoreConfig;
 import com.linkedin.venice.meta.Version;
@@ -46,9 +52,11 @@ import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 import org.apache.helix.HelixManager;
 import org.apache.helix.PropertyKey;
 import org.apache.helix.model.IdealState;
+import org.apache.log4j.Logger;
 import org.testng.Assert;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
@@ -63,6 +71,9 @@ import static com.linkedin.venice.ConfigKeys.*;
  * TODO: separate out tests that can share environment to save time when running tests
  */
 public class TestVeniceHelixAdmin {
+
+  private static final Logger LOGGER = Logger.getLogger(TestVeniceHelixAdmin.class);
+
   private VeniceHelixAdmin veniceAdmin;
   private String clusterName;
   private VeniceControllerConfig config;
@@ -1429,6 +1440,75 @@ public class TestVeniceHelixAdmin {
         "Store3 is hybrid store, and ssl for nearline push is disabled, so by default ssl should be enabled because we turned on the cluster level ssl switcher.");
 
 
+  }
+
+  @Test
+  public void leakyTopicDeletion() {
+    TopicManager topicManager = veniceAdmin.getTopicManager();
+
+    // 5 stores, 10 topics and 2 active versions each.
+    final int NUMBER_OF_VERSIONS = 10;
+    final int NUMBER_OF_STORES = 5;
+    List<Store> stores = new ArrayList<>();
+    for (int storeNumber = 1; storeNumber <= NUMBER_OF_STORES; storeNumber++) {
+      String storeName = TestUtils.getUniqueString("store-" + storeNumber);
+      Store store = new Store(storeName, "owner", System.currentTimeMillis(), PersistenceType.BDB,
+          RoutingStrategy.CONSISTENT_HASH, ReadStrategy.ANY_OF_ONLINE,
+          OfflinePushStrategy.WAIT_N_MINUS_ONE_REPLCIA_PER_PARTITION);
+
+      // Two active versions, selected at random
+      List<Integer> activeVersions = new ArrayList<>();
+      int firstActiveVersion = (int) Math.ceil(Math.random() * NUMBER_OF_VERSIONS);
+      activeVersions.add(firstActiveVersion);
+      int secondActiveVersion = 0;
+      while (secondActiveVersion == 0 || firstActiveVersion == secondActiveVersion) {
+        secondActiveVersion = (int) Math.ceil(Math.random() * NUMBER_OF_VERSIONS);
+      }
+      activeVersions.add(secondActiveVersion);
+
+      LOGGER.info("Active versions for '" + storeName + "': " + activeVersions);
+
+      // Create ten topics and keep track of the active versions in the Store instance
+      for (int versionNumber = 1; versionNumber <= NUMBER_OF_VERSIONS; versionNumber++) {
+        Version version = new Version(storeName, versionNumber, TestUtils.getUniqueString(storeName));
+        String topicName = version.kafkaTopicName();
+        topicManager.createTopic(topicName, 1, 1, true);
+        if (activeVersions.contains(versionNumber)) {
+          store.addVersion(version);
+        }
+      }
+      stores.add(store);
+    }
+
+    // Sanity check...
+    for (Store store: stores) {
+      for (int versionNumber = 1; versionNumber <= NUMBER_OF_VERSIONS; versionNumber++) {
+        String topicName = Version.composeKafkaTopic(store.getName(), versionNumber);
+        Assert.assertTrue(topicManager.containsTopic(topicName), "Topic '" + topicName + "' should exist.");
+      }
+    }
+
+    Store storeToCleanUp = stores.get(0);
+    veniceAdmin.deleteOldKafkaTopics(storeToCleanUp);
+
+    int unusedKafkaTopicsToKeep = 2; // hard-coded... if we change the default, we would need to update this test...
+    int maxTopicToDelete = NUMBER_OF_VERSIONS - unusedKafkaTopicsToKeep;
+
+    // verify that the storeToCleanUp has its topics cleaned up, and the others don't
+    for (Store store: stores) {
+      for (int versionNumber = 1; versionNumber <= NUMBER_OF_VERSIONS; versionNumber++) {
+        String topicName = Version.composeKafkaTopic(store.getName(), versionNumber);
+        if (store.equals(storeToCleanUp) && !store.containsVersion(versionNumber) && versionNumber <= maxTopicToDelete) {
+          Assert.assertFalse(topicManager.containsTopic(topicName), "Topic '" + topicName + "' should NOT exist.");
+        } else {
+          Assert.assertTrue(topicManager.containsTopic(topicName),
+              "Topic '" + topicName + "' should exist when active versions are: " +
+                  store.getVersions().stream()
+                      .map(version -> Integer.toString(version.getNumber()))
+                      .collect(Collectors.joining(", ")) + ".");
+        }
+      }
+    }
   }
 
   private Properties getControllerProperties(String clusterName)

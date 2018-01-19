@@ -205,6 +205,54 @@ public class ConfigKeys {
   /** Timeout for create topic and delete topic operations. */
   public static final String TOPIC_MANAGER_KAFKA_OPERATION_TIMEOUT_MS = "topic.manager.kafka.operation.timeout.ms";
 
+  /**
+   * This enables a routine which cleans up leaked Kafka topics. This routine is kicked off when:
+   *
+   * 1. Old store-versions are retired following the end of a push job.
+   * 2. A store is deleted.
+   *
+   * Leaky topics can arise accidentally due to Kafka issues, or can be left behind intentionally in order to
+   * side-step a bug in Mirror Maker. Mirror Maker can fail when its destination topic gets deleted while
+   * there is still some data in its buffer. This behavior of intentionally leaking topics occurs when the
+   * following setting is set to false:
+   *
+   * {@link #ENABLE_TOPIC_DELETION_FOR_UNCOMPLETED_JOB}
+   *
+   * In order to control how aggressively the leaky topic clean up routine works, configure the following
+   * setting:
+   *
+   * @see #MIN_NUMBER_OF_UNUSED_KAFKA_TOPICS_TO_PRESERVE
+   */
+  public static final String ENABLE_LEAKY_KAFKA_TOPIC_CLEAN_UP = "enable.leaky.kafka.topic.cleanup";
+
+  /**
+   * This is the minimum number of Kafka topics that are guaranteed to be preserved by the leaky topic clean
+   * up routine. The topics with the highest version numbers will be favored by this preservative behavior.
+   * All other topics (i.e.: those with smaller version numbers) which Venice does not otherwise know about
+   * from its metadata will be considered leaked resources and thus be eligible for clean up.
+   *
+   * A value greater than zero is recommended for Mirror Maker stability.
+   *
+   * N.B.: A known limitation of this preservation setting is that during store deletion, if a topic has been
+   * leaked recently due to an aborted push, then there is an edge case where that topic may leak forever.
+   * This leak does not happen if the latest store-versions are successful pushes, rather than failed ones.
+   * Furthermore, if a store with the same name is ever re-created, then the clean up routine would resume
+   * and clean up the older leaky topics successfully. This edge case is deemed a small enough concern for
+   * now, though it could be addressed with a more significant redesign of the replication pipeline.
+   *
+   * @see #ENABLE_LEAKY_KAFKA_TOPIC_CLEAN_UP
+   */
+  public static final String MIN_NUMBER_OF_UNUSED_KAFKA_TOPICS_TO_PRESERVE = "min.number.of.unused.kafka.topics.to.preserve";
+
+  /**
+   * This is the number of fully-functional store-versions we wish to maintain. All resources of these versions
+   * will be preserved (Helix resource, Storage Node data, Kafka topic, replication streams, etc.), and a swap
+   * to these versions should be possible at all times.
+   *
+   * This setting must be set to 1 or greater.
+   */
+  public static final String MIN_NUMBER_OF_STORE_VERSIONS_TO_PRESERVE = "min.number.of.store.versions.to.preserve";
+
   /** Whether current controller is parent or not */
   public static final String CONTROLLER_PARENT_MODE = "controller.parent.mode";
   /**

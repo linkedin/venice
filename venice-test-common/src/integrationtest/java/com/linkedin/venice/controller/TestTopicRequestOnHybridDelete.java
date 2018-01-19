@@ -19,8 +19,11 @@ import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 import org.apache.avro.util.Utf8;
+import org.apache.commons.io.IOUtils;
 import org.apache.samza.system.SystemProducer;
 import org.testng.Assert;
+import org.testng.annotations.AfterClass;
+import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
 import static com.linkedin.venice.utils.TestPushUtils.*;
@@ -29,113 +32,132 @@ import static org.testng.Assert.*;
 
 public class TestTopicRequestOnHybridDelete {
 
+  VeniceClusterWrapper venice = null;
+
+  @BeforeClass
+  public void setUp() {
+    venice = ServiceFactory.getVeniceCluster();
+  }
+
+  @AfterClass
+  public void cleanUp() {
+    IOUtils.closeQuietly(venice);
+  }
 
   @Test
-  public void serverRestartOnHybridStoreKeepsVersionOnline(){
-    VeniceClusterWrapper venice = ServiceFactory.getVeniceCluster();
-    ControllerClient controllerClient = new ControllerClient(venice.getClusterName(), venice.getRandomRouterURL());
-
-    String storeName = TestUtils.getUniqueString("hybrid-store");
-    venice.getNewStore(storeName);
-    makeStoreHybrid(venice, storeName, 100L, 5L);
-    controllerClient.emptyPush(storeName, TestUtils.getUniqueString("push-id"), 1L);
-
-    //write streaming records
-    SystemProducer veniceProducer = getSamzaProducer(venice);
-    for (int i=1; i<=10; i++) {
-      sendStreamingRecord(veniceProducer, storeName, i);
-    }
-    veniceProducer.stop();
-
-    System.out.println(venice.clusterConnectionInformation());
-
-    AvroGenericStoreClient client =
-        ClientFactory.getAndStartGenericAvroClient(
-            ClientConfig.defaultGenericClientConfig(storeName)
-                .setVeniceURL(venice.getRandomRouterURL()));
-    TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
-      try {
-        assertEquals(client.get("9").get(),new Utf8("stream_9"));
-      } catch (Exception e) {
-        throw new VeniceException(e);
-      }
-    });
-
-    controllerClient.emptyPush(storeName, TestUtils.getUniqueString("push-id"), 1L);
-    TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
-      StoreResponse storeResponse = controllerClient.getStore(storeName);
-      Assert.assertEquals(storeResponse.getStore().getCurrentVersion(), 2);
-    });
-
+  public void serverRestartOnHybridStoreKeepsVersionOnline() {
+    AvroGenericStoreClient client = null;
+    ControllerClient controllerClient = null;
+    SystemProducer veniceProducer = null;
     try {
+      controllerClient = new ControllerClient(venice.getClusterName(), venice.getRandomRouterURL());
+      final ControllerClient finalControllerClient = controllerClient;
+
+      String storeName = TestUtils.getUniqueString("hybrid-store");
       venice.getNewStore(storeName);
-      Assert.fail("Must not be able to create a store that already exists");
-    } catch (VeniceException e){
-      //expected
-    }
+      makeStoreHybrid(venice, storeName, 100L, 5L);
+      controllerClient.emptyPush(storeName, TestUtils.getUniqueString("push-id"), 1L);
 
-    //disable store
-    controllerClient.updateStore(storeName, Optional.empty(), Optional.empty(), Optional.empty(), Optional.of(false),
-        Optional.of(false), Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(),
-        Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty());
-    //delete store
-    controllerClient.deleteStore(storeName);
-    TestUtils.waitForNonDeterministicCompletion(10, TimeUnit.SECONDS, () -> {
-      return controllerClient.getStore(storeName).isError(); //error because store no longer exists
-    });
+      //write streaming records
+      veniceProducer = getSamzaProducer(venice);
+      for (int i=1; i<=10; i++) {
+        sendStreamingRecord(veniceProducer, storeName, i);
+      }
+      veniceProducer.stop();
 
-    //recreate store
-    venice.getNewStore(storeName);
-    Assert.assertEquals(controllerClient.getStore(storeName).getStore().getVersions().size(), 0);
-    makeStoreHybrid(venice, storeName, 100L, 5L);
-    controllerClient.emptyPush(storeName, TestUtils.getUniqueString("push-id3"), 1L);
+      System.out.println(venice.clusterConnectionInformation());
 
-    int expectedCurrentVersion = 3;
+      client = ClientFactory.getAndStartGenericAvroClient(
+          ClientConfig.defaultGenericClientConfig(storeName).setVeniceURL(venice.getRandomRouterURL()));
+      final AvroGenericStoreClient finalClient = client;
+      TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
+        try {
+          assertEquals(finalClient.get("9").get(),new Utf8("stream_9"));
+        } catch (Exception e) {
+          fail("Got an exception while querying Venice!", e);
+          // throw new VeniceException(e);
+        }
+      });
 
-    TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
-      StoreResponse storeResponse = controllerClient.getStore(storeName);
-      Assert.assertEquals(storeResponse.getStore().getCurrentVersion(), expectedCurrentVersion);
-    });
+      controllerClient.emptyPush(storeName, TestUtils.getUniqueString("push-id"), 1L);
+      TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
+        StoreResponse storeResponse = finalControllerClient.getStore(storeName);
+        Assert.assertEquals(storeResponse.getStore().getCurrentVersion(), 2);
+      });
 
-
-    //write more streaming records
-    veniceProducer = getSamzaProducer(venice);
-    for (int i=11; i<=20; i++) {
-      sendStreamingRecord(veniceProducer, storeName, i);
-    }
-    veniceProducer.stop();
-
-    //verify new records appear
-    TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
       try {
-        assertEquals(client.get("19").get(),new Utf8("stream_19"));
-      } catch (Exception e) {
-        throw new VeniceException(e);
+        venice.getNewStore(storeName);
+        Assert.fail("Must not be able to create a store that already exists");
+      } catch (VeniceException e){
+        //expected
       }
-    });
 
-    StoreResponse storeResponseBeforeRestart = controllerClient.getStore(storeName);
-    List<Version> beforeRestartVersions = storeResponseBeforeRestart.getStore().getVersions();
+      //disable store
+      controllerClient.updateStore(storeName, Optional.empty(), Optional.empty(), Optional.empty(), Optional.of(false),
+          Optional.of(false), Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(),
+          Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty());
+      //delete store
+      controllerClient.deleteStore(storeName);
+      TestUtils.waitForNonDeterministicCompletion(10, TimeUnit.SECONDS, () -> {
+        return finalControllerClient.getStore(storeName).isError(); //error because store no longer exists
+      });
 
-    boolean foundCurrent = false;
-    for (Version version : beforeRestartVersions){
-      if (version.getNumber() == expectedCurrentVersion) {
-        Assert.assertEquals(version.getStatus(), VersionStatus.ONLINE);
-        foundCurrent = true;
+      //recreate store
+      venice.getNewStore(storeName);
+      Assert.assertEquals(controllerClient.getStore(storeName).getStore().getVersions().size(), 0);
+      makeStoreHybrid(venice, storeName, 100L, 5L);
+      controllerClient.emptyPush(storeName, TestUtils.getUniqueString("push-id3"), 1L);
+
+      int expectedCurrentVersion = 3;
+
+      TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
+        StoreResponse storeResponse = finalControllerClient.getStore(storeName);
+        Assert.assertEquals(storeResponse.getStore().getCurrentVersion(), expectedCurrentVersion);
+      });
+
+
+      //write more streaming records
+      veniceProducer = getSamzaProducer(venice);
+      for (int i=11; i<=20; i++) {
+        sendStreamingRecord(veniceProducer, storeName, i);
+      }
+      veniceProducer.stop();
+
+      //verify new records appear
+      TestUtils.waitForNonDeterministicAssertion(5, TimeUnit.SECONDS, () -> {
+        try {
+          assertEquals(finalClient.get("19").get(),new Utf8("stream_19"));
+        } catch (Exception e) {
+          throw new VeniceException(e);
+        }
+      });
+
+      StoreResponse storeResponseBeforeRestart = controllerClient.getStore(storeName);
+      List<Version> beforeRestartVersions = storeResponseBeforeRestart.getStore().getVersions();
+
+      boolean foundCurrent = false;
+      for (Version version : beforeRestartVersions){
+        if (version.getNumber() == expectedCurrentVersion) {
+          Assert.assertEquals(version.getStatus(), VersionStatus.ONLINE);
+          foundCurrent = true;
+        }
+      }
+      Assert.assertTrue(foundCurrent, "Store's versions must contain the current version " + expectedCurrentVersion);
+
+      //TODO restart a storage node, and verify version is still online.
+
+    } finally {
+      IOUtils.closeQuietly(client);
+      IOUtils.closeQuietly(controllerClient);
+      if (veniceProducer != null) {
+        veniceProducer.stop();
       }
     }
-    Assert.assertTrue(foundCurrent, "Store's versions must contain the current version " + expectedCurrentVersion);
-
-    //TODO restart a storage node, and verify version is still online.
-
-    client.close();
-    venice.close();
   }
 
   //TODO this test passes, but the same workflow should be tested in a multi-colo simulation
   @Test
   public void deleteStoreAfterStartedPushAllowsNewPush(){
-    VeniceClusterWrapper venice = ServiceFactory.getVeniceCluster();
     ControllerClient controllerClient = new ControllerClient(venice.getClusterName(), venice.getRandomRouterURL());
     TopicManager topicManager = new TopicManager(venice.getKafka().getZkAddress(), TestUtils.getVeniceConsumerFactory(venice.getKafka().getAddress()));
 
@@ -167,7 +189,5 @@ public class TestTopicRequestOnHybridDelete {
       StoreResponse storeResponse = controllerClient.getStore(storeName);
       Assert.assertEquals(storeResponse.getStore().getCurrentVersion(), expectedCurrentVersion);
     });
-
-    venice.close();
   }
 }

@@ -108,6 +108,17 @@ public class VeniceControllerMultiClusterConfig {
     return getCommonConfig().getTopicManagerKafkaOperationTimeOutMs();
   }
 
+  public boolean isLeakyKafkaTopicCleanupEnabled() {
+    return getCommonConfig().isLeakyKafkaTopicCleanupEnabled();
+  }
+
+  public int getMinNumberOfUnusedKafkaTopicsToPreserve() {
+    return getCommonConfig().getMinNumberOfUnusedKafkaTopicsToPreserve();
+  }
+
+  public int getMinNumberOfStoreVersionsToPreserve() {
+    return getCommonConfig().getMinNumberOfStoreVersionsToPreserve();
+  }
 
   public VeniceControllerConfig getCommonConfig() {
     return clusterToConfigMap.values().iterator().next();

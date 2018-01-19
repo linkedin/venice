@@ -27,6 +27,7 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
   private final int topicMonitorPollIntervalMs;
   private final boolean parent;
   private final boolean enableTopicReplicator;
+  private final boolean enableLeakyKafkaTopicCleanup;
   private Map<String, String> childClusterMap = null;
   private String d2ServiceName;
   private Map<String, String> childClusterD2Map = null;
@@ -38,6 +39,8 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
   private final boolean parentControllerEnableTopicDeletion;
   private final int topicManagerKafkaOperationTimeOutMs;
   private final boolean enableTopicReplicatorSSL;
+  private int minNumberOfUnusedKafkaTopicsToPreserve;
+  private int minNumberOfStoreVersionsToPreserve;
 
   public VeniceControllerConfig(VeniceProperties props) {
     super(props);
@@ -74,6 +77,13 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
     this.parentControllerEnableTopicDeletion = props.getBoolean(PARENT_CONTROLLER_ENABLE_TOPIC_DELETION, false);
 
     this.topicManagerKafkaOperationTimeOutMs = props.getInt(TOPIC_MANAGER_KAFKA_OPERATION_TIMEOUT_MS, 30 * Time.MS_PER_SECOND);
+
+    this.enableLeakyKafkaTopicCleanup = props.getBoolean(ENABLE_LEAKY_KAFKA_TOPIC_CLEAN_UP, true);
+    this.minNumberOfUnusedKafkaTopicsToPreserve = props.getInt(MIN_NUMBER_OF_UNUSED_KAFKA_TOPICS_TO_PRESERVE, 2);
+    this.minNumberOfStoreVersionsToPreserve = props.getInt(MIN_NUMBER_OF_STORE_VERSIONS_TO_PRESERVE, 2);
+    if (minNumberOfStoreVersionsToPreserve < 1) {
+      throw new VeniceException("The minimal acceptable value for '" + MIN_NUMBER_OF_STORE_VERSIONS_TO_PRESERVE + "' is 1.");
+    }
   }
 
   public int getAdminPort() {
@@ -152,6 +162,18 @@ public class VeniceControllerConfig extends VeniceControllerClusterConfig {
 
   public int getTopicManagerKafkaOperationTimeOutMs() {
     return topicManagerKafkaOperationTimeOutMs;
+  }
+
+  public boolean isLeakyKafkaTopicCleanupEnabled() {
+    return enableLeakyKafkaTopicCleanup;
+  }
+
+  public int getMinNumberOfUnusedKafkaTopicsToPreserve() {
+    return minNumberOfUnusedKafkaTopicsToPreserve;
+  }
+
+  public int getMinNumberOfStoreVersionsToPreserve() {
+    return minNumberOfStoreVersionsToPreserve;
   }
 
   /**
