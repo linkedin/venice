@@ -8,7 +8,7 @@ import com.linkedin.venice.exceptions.UndefinedPropertyException;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.storage.BdbStorageMetadataService;
 import com.linkedin.venice.meta.Store;
-import com.linkedin.venice.utils.SslUtils;
+import com.linkedin.venice.utils.KafkaSSLUtils;
 import com.linkedin.venice.utils.VeniceProperties;
 
 import java.io.File;
@@ -82,10 +82,10 @@ public class VeniceClusterConfig {
     }
 
     kafkaSecurityProtocol = clusterProps.getString(KAFKA_SECURITY_PROTOCOL, SecurityProtocol.PLAINTEXT.name());
-    if (!SslUtils.isKafkaProtocolValid(kafkaSecurityProtocol)) {
+    if (!KafkaSSLUtils.isKafkaProtocolValid(kafkaSecurityProtocol)) {
       throw new ConfigurationException("Invalid kafka security protocol: " + kafkaSecurityProtocol);
     }
-    if (SslUtils.isKafkaSSLProtocol(kafkaSecurityProtocol)) {
+    if (KafkaSSLUtils.isKafkaSSLProtocol(kafkaSecurityProtocol)) {
       sslConfig = Optional.of(new SSLConfig(clusterProps));
     } else {
       sslConfig = Optional.empty();

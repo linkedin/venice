@@ -3,7 +3,7 @@ package com.linkedin.venice.kafka.consumer;
 import com.linkedin.venice.SSLConfig;
 import com.linkedin.venice.config.VeniceServerConfig;
 import com.linkedin.venice.exceptions.VeniceException;
-import com.linkedin.venice.utils.SslUtils;
+import com.linkedin.venice.utils.KafkaSSLUtils;
 import java.util.Optional;
 import java.util.Properties;
 import org.apache.kafka.clients.CommonClientConfigs;
@@ -17,7 +17,7 @@ public class VeniceServerConsumerFactory extends VeniceConsumerFactory {
   }
 
   public Properties setupSSL(Properties properties) {
-    if (SslUtils.isKafkaSSLProtocol(serverConfig.getKafkaSecurityProtocol())) {
+    if (KafkaSSLUtils.isKafkaSSLProtocol(serverConfig.getKafkaSecurityProtocol())) {
       Optional<SSLConfig> sslConfig = serverConfig.getSslConfig();
       if (!sslConfig.isPresent()) {
         throw new VeniceException("SSLConfig should be present when Kafka SSL is enabled");

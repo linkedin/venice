@@ -68,6 +68,9 @@ public class TempFileSSLConfigurator implements SSLConfigurator {
         if(!properties.containsKey(SSL_KEYMANAGER_ALGORITHM)){
           properties.put(SSL_KEYMANAGER_ALGORITHM, "SunX509");
         }
+        if(!properties.containsKey(SSL_SECURE_RANDOM_IMPLEMENTATION)) {
+          properties.put(SSL_SECURE_RANDOM_IMPLEMENTATION, "SHA1PRNG");
+        }
         logger.info("Complete setting up the ssl properties.");
       } catch (VeniceException e) {
         throw e;

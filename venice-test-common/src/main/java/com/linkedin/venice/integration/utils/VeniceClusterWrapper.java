@@ -10,6 +10,7 @@ import com.linkedin.venice.helix.HelixState;
 import com.linkedin.venice.helix.Replica;
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
 import com.linkedin.venice.serialization.avro.VeniceAvroGenericSerializer;
+import com.linkedin.venice.utils.KafkaSSLUtils;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.TestUtils;
@@ -433,7 +434,7 @@ public class VeniceClusterWrapper extends ProcessWrapper {
     properties.put(KAFKA_BOOTSTRAP_SERVERS, kafkaBrokerWrapper.getSSLAddress());
     properties.put(ZOOKEEPER_ADDRESS, zkServerWrapper.getAddress());
     properties.put(CLUSTER_NAME, clusterName);
-    properties.putAll(SslUtils.getLocalKafkaClientSSLConfig());
+    properties.putAll(KafkaSSLUtils.getLocalKafkaClientSSLConfig());
     TestUtils.VeniceTestWriterFactory factory = new TestUtils.VeniceTestWriterFactory(properties);
 
     String stringSchema = "\"string\"";
