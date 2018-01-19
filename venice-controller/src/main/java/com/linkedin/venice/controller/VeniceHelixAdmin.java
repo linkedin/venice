@@ -91,7 +91,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     public static final int CONTROLLER_CLUSTER_NUMBER_OF_PARTITION = 1;
     public static final long CONTROLLER_JOIN_CLUSTER_TIMEOUT_MS = 1000*300l; // 5min
     public static final long CONTROLLER_JOIN_CLUSTER_RETRY_DURATION_MS = 500l;
-    public final int NUM_VERSIONS_TO_PRESERVE = 2;
+
     private static final Logger logger = Logger.getLogger(VeniceHelixAdmin.class);
     private final HelixAdmin admin;
     private TopicManager topicManager;
@@ -104,6 +104,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     private final ZkStoreConfigAccessor storeConfigAccessor;
     private final VeniceWriterFactory veniceWriterFactory;
     private final VeniceControllerConsumerFactotry veniceConsumerFactory;
+    private final boolean isLeakyKafkaTopicCleanupEnabled;
+    private final int minNumberOfUnusedKafkaTopicsToPreserve;
+    private final int minNumberOfStoreVersionsToPreserve;
 
 
   /**
@@ -123,6 +126,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         this.kafkaBootstrapServers = multiClusterConfigs.getKafkaBootstrapServers();
         this.kafkaSSLBootstrapServers = multiClusterConfigs.getSslKafkaBootstrapServers();
         this.failedJobTopicRetentionMs = multiClusterConfigs.getFailedJobTopicRetentionMs();
+        this.isLeakyKafkaTopicCleanupEnabled = multiClusterConfigs.isLeakyKafkaTopicCleanupEnabled();
+        this.minNumberOfUnusedKafkaTopicsToPreserve = multiClusterConfigs.getMinNumberOfUnusedKafkaTopicsToPreserve();
+        this.minNumberOfStoreVersionsToPreserve = multiClusterConfigs.getMinNumberOfStoreVersionsToPreserve();
 
         // TODO: Re-use the internal zkClient for the ZKHelixAdmin and TopicManager.
         this.admin = new ZKHelixAdmin(multiClusterConfigs.getZkAddress());
@@ -282,8 +288,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         synchronized (resources) {
             HelixReadWriteStoreRepository storeRepository = resources.getMetadataRepository();
             storeRepository.lock();
+            Store store = null;
             try {
-                Store store = storeRepository.getStore(storeName);
+                store = storeRepository.getStore(storeName);
                 checkPreConditionForDeletion(clusterName, storeName, store);
                 if (largestUsedVersionNumber == Store.IGNORE_VERSION) {
                     // ignore and use the local largest used version number.
@@ -311,6 +318,12 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             // Delete All versions
             deleteAllVersionsInStore(clusterName, storeName);
             topicManager.ensureTopicIsDeletedAndBlock(Version.composeRealTimeTopic(storeName));
+            if (store != null) {
+                deleteOldKafkaTopics(store);
+            } else {
+                // Defensive coding: This should never happen, unless someone adds a catch block to the above try/finally clause...
+                logger.error("Unexpected null store instance...!");
+            }
             // Move the store to graveyard. It will only re-create the znode for store's metadata excluding key and
             // value schemas.
             logger.info("Putting store:" + storeName + " into graveyard");
@@ -711,12 +724,14 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         logger.info("Retiring old versions for store: " + storeName);
         HelixReadWriteStoreRepository storeRepository = getVeniceHelixResource(clusterName).getMetadataRepository();
         Store store = storeRepository.getStore(storeName);
-        List<Version> versionsToDelete = store.retrieveVersionsToDelete(NUM_VERSIONS_TO_PRESERVE);
+        List<Version> versionsToDelete = store.retrieveVersionsToDelete(minNumberOfStoreVersionsToPreserve);
         for (Version version : versionsToDelete) {
             deleteOneStoreVersion(clusterName, storeName, version.getNumber());
             logger.info("Retired store:" + store.getName() + " version:" + version.getNumber());
         }
         logger.info("Retired " + versionsToDelete.size() + " versions for store: " + storeName);
+
+        deleteOldKafkaTopics(store);
     }
 
     /***
@@ -770,6 +785,61 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
             logger.info("Will update topic: " + kafkaTopicName + " with retention.ms: " + failedJobTopicRetentionMs);
             getTopicManager().updateTopicRetention(kafkaTopicName, failedJobTopicRetentionMs);
             logger.info("Updated topic: " + kafkaTopicName + " with retention.ms: " + failedJobTopicRetentionMs);
+        }
+    }
+
+    /**
+     * Clean up old unused Kafka topics. These could arise from resource leaking of topics during certain
+     * scenarios.
+     *
+     * N.B.: visibility is package-private to ease testing...
+     *
+     * @param store for which to clean up old topics
+     */
+    void deleteOldKafkaTopics(Store store) {
+        if (!isLeakyKafkaTopicCleanupEnabled) {
+            logger.info("Leaky topic clean up is disabled.");
+            return;
+        }
+
+        Set<Integer> currentlyKnownVersionNumbers = store.getVersions().stream()
+            .map(version -> version.getNumber())
+            .collect(Collectors.toSet());
+
+        Set<String> allTopics = topicManager.listTopics();
+        List<String> allTopicsRelatedToThisStore = allTopics.stream()
+            /** Exclude RT buffer topics, admin topics and all other special topics */
+            .filter(t -> Version.topicIsValidStoreVersion(t))
+            /** Keep only those topics pertaining to the store in question */
+            .filter(t -> Version.parseStoreFromKafkaTopicName(t).equals(store.getName()))
+            .collect(Collectors.toList());
+
+        if (allTopicsRelatedToThisStore.isEmpty()) {
+            logger.info("Searched for old topics belonging to store '" + store.getName() + "', and did not find any.");
+            return;
+        }
+
+        int maxVersion = allTopicsRelatedToThisStore.stream()
+            .map(t -> Version.parseVersionFromKafkaTopicName(t))
+            .max(Integer::compare)
+            .get();
+
+        final long maxVersionNumberToDelete = maxVersion - minNumberOfUnusedKafkaTopicsToPreserve;
+
+        List<String> oldTopicsToDelete = allTopicsRelatedToThisStore.stream()
+            /** Consider only topics Venice doesn't know about */
+            .filter(t -> !currentlyKnownVersionNumbers.contains(Version.parseVersionFromKafkaTopicName(t)))
+            /** Always preserve the last {@link #minNumberOfUnusedKafkaTopicsToPreserve} topics, whether they are healthy or not */
+            .filter(t -> Version.parseVersionFromKafkaTopicName(t) <= maxVersionNumberToDelete)
+            .collect(Collectors.toList());
+
+        if (oldTopicsToDelete.isEmpty()) {
+            logger.info("Searched for old topics belonging to store '" + store.getName() + "', and did not find any.");
+        } else {
+            logger.info("Detected the following old topics to delete: " + String.join(", ", oldTopicsToDelete));
+            oldTopicsToDelete.stream()
+                .forEach(t -> topicManager.ensureTopicIsDeletedAndBlock(t));
+            logger.info("Finished deleting old topics for store '" + store.getName() + "'.");
         }
     }
 

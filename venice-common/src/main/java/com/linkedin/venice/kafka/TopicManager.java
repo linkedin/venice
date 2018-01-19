@@ -214,11 +214,19 @@ public class TopicManager implements Closeable {
     // Since topic deletion is async, we would like to poll until topic doesn't exist any more
     final int SLEEP_MS = 100;
     final int MAX_TIMES = kafkaOperationTimeoutMs / SLEEP_MS;
+    final int MAX_CONSUMER_RECREATION_INTERVAL = 100;
     int current = 0;
+    int lastConsumerRecreation = 0;
+    int consumerRecreationInterval = 5;
     while (++current <= MAX_TIMES) {
       Utils.sleep(SLEEP_MS);
-      // Re-create consumer every ten seconds during the procedure, in case it's wedged on some stale state.
-      boolean closeAndRecreateConsumer = current % 100 == 0;
+      // Re-create consumer every once in a while, in case it's wedged on some stale state.
+      boolean closeAndRecreateConsumer = (current - lastConsumerRecreation) == consumerRecreationInterval;
+      if (closeAndRecreateConsumer) {
+        // Exponential back-off: 0.5s, 1s, 2s, 4s, 8s, 10s (max)
+        lastConsumerRecreation = current;
+        consumerRecreationInterval = Math.max(consumerRecreationInterval * 2, MAX_CONSUMER_RECREATION_INTERVAL);
+      }
       if (isTopicFullyDeleted(topicName, closeAndRecreateConsumer)) {
         logger.info("Topic: " + topicName + " has been deleted after polling " + current + " times");
         return;
