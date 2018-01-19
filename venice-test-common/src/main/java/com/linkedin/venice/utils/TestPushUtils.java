@@ -218,6 +218,10 @@ public class TestPushUtils {
     props.put(KafkaPushJob.VALUE_FIELD_PROP, "name");
     // No need for a big close timeout in tests. This is just to speed up discovery of certain regressions.
     props.put(VeniceWriter.CLOSE_TIMEOUT_MS, 500);
+    props.setProperty(KafkaPushJob.SSL_KEY_STORE_PROPERTY_NAME, "test");
+    props.setProperty(KafkaPushJob.SSL_TRUST_STORE_PROPERTY_NAME,"test");
+    props.setProperty(KafkaPushJob.SSL_KEY_STORE_PASSWORD_PROPERTY_NAME,"test");
+    props.setProperty(KafkaPushJob.SSL_KEY_PASSWORD_PROPERTY_NAME,"test");
 
     return props;
   }
@@ -231,7 +235,7 @@ public class TestPushUtils {
     props.put(KafkaPushJob.INPUT_PATH_PROP, inputDirPath);
     props.put(KafkaPushJob.KEY_FIELD_PROP, "id");
     props.put(KafkaPushJob.VALUE_FIELD_PROP, "name");
-    props.putAll(SslUtils.getLocalKafkaClientSSLConfig());
+    props.putAll(KafkaSSLUtils.getLocalKafkaClientSSLConfig());
     // remove the path for certs and pwd, because we will get them from hadoop user credentials.
     props.remove(SslConfigs.SSL_KEYSTORE_LOCATION_CONFIG);
     props.remove(SslConfigs.SSL_TRUSTSTORE_LOCATION_CONFIG);
@@ -253,6 +257,11 @@ public class TestPushUtils {
     props.put(KafkaPushJob.KEY_FIELD_PROP, "id");
     props.put(KafkaPushJob.VALUE_FIELD_PROP, "name");
     props.put(VeniceWriter.CLOSE_TIMEOUT_MS, 500);
+    props.setProperty(KafkaPushJob.SSL_KEY_STORE_PROPERTY_NAME, "test");
+    props.setProperty(KafkaPushJob.SSL_TRUST_STORE_PROPERTY_NAME,"test");
+    props.setProperty(KafkaPushJob.SSL_KEY_STORE_PASSWORD_PROPERTY_NAME,"test");
+    props.setProperty(KafkaPushJob.SSL_KEY_PASSWORD_PROPERTY_NAME,"test");
+
 
     return props;
   }

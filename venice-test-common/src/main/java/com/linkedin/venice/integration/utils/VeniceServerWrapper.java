@@ -7,6 +7,7 @@ import com.linkedin.venice.helix.WhitelistAccessor;
 import com.linkedin.venice.helix.ZkWhitelistAccessor;
 import com.linkedin.venice.server.VeniceConfigLoader;
 import com.linkedin.venice.server.VeniceServer;
+import com.linkedin.venice.utils.KafkaSSLUtils;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.TestUtils;
@@ -69,7 +70,7 @@ public class VeniceServerWrapper extends ProcessWrapper {
           .put(SERVER_NETTY_GRACEFUL_SHUTDOWN_PERIOD_SECONDS, 0);
       if (sslToKafka) {
         serverPropsBuilder.put(KAFKA_SECURITY_PROTOCOL, SecurityProtocol.SSL.name);
-        serverPropsBuilder.put(SslUtils.getLocalCommonKafkaSSLConfig());
+        serverPropsBuilder.put(KafkaSSLUtils.getLocalCommonKafkaSSLConfig());
       }
 
       VeniceProperties serverProps = serverPropsBuilder.build();

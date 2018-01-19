@@ -43,7 +43,7 @@ public class UserCredentialsFactory {
     if (credentials.numberOfSecretKeys() < REQUIRED_SECRET_KEY_COUNT) {
       logger.info("Number of tokens found: " + credentials.numberOfTokens());           // Currently is 4
       logger.warn("Number of secret keys found: " + credentials.numberOfSecretKeys());  // Currently should be 4
-      throw new VeniceException("The current credentials does not contain required secret keys!");
+      logger.warn("The current credentials does not contain required secret keys which are required by enabling Kafka SSL.");
     }
   }
 }

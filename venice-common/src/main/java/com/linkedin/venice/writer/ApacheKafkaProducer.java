@@ -6,6 +6,7 @@ import com.linkedin.venice.kafka.protocol.KafkaMessageEnvelope;
 import com.linkedin.venice.message.KafkaKey;
 import com.linkedin.venice.serialization.KafkaKeySerializer;
 import com.linkedin.venice.serialization.avro.KafkaValueSerializer;
+import com.linkedin.venice.utils.KafkaSSLUtils;
 import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.VeniceProperties;
 
@@ -187,10 +188,10 @@ public class ApacheKafkaProducer implements KafkaProducerWrapper {
       return false;
     }
     String kafkaProtocol = veniceProperties.getString(CommonClientConfigs.SECURITY_PROTOCOL_CONFIG);
-    if (!SslUtils.isKafkaProtocolValid(kafkaProtocol)) {
+    if (!KafkaSSLUtils.isKafkaProtocolValid(kafkaProtocol)) {
       throw new VeniceException("Invalid Kafka protocol specified: " + kafkaProtocol);
     }
-    if (!SslUtils.isKafkaSSLProtocol(kafkaProtocol)) {
+    if (!KafkaSSLUtils.isKafkaSSLProtocol(kafkaProtocol)) {
       // TLS/SSL is not enabled
       return false;
     }

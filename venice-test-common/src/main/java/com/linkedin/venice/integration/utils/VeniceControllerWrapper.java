@@ -5,6 +5,7 @@ import com.linkedin.venice.controller.VeniceController;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.meta.Version;
 
+import com.linkedin.venice.utils.KafkaSSLUtils;
 import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.TestUtils;
@@ -83,7 +84,7 @@ public class VeniceControllerWrapper extends ProcessWrapper {
             );
         if (sslToKafka) {
           builder.put(KAFKA_SECURITY_PROTOCOL, SecurityProtocol.SSL.name);
-          builder.put(SslUtils.getLocalCommonKafkaSSLConfig());
+          builder.put(KafkaSSLUtils.getLocalCommonKafkaSSLConfig());
         }
 
         if (!extraProps.containsKey(ENABLE_TOPIC_REPLICATOR)) {

@@ -4,6 +4,7 @@ import com.linkedin.security.ssl.access.control.SSLEngineComponentFactory;
 import com.linkedin.security.ssl.access.control.SSLEngineComponentFactoryImpl;
 import com.linkedin.venice.exceptions.UnsubscribedTopicPartitionException;
 import com.linkedin.venice.exceptions.VeniceException;
+import com.linkedin.venice.utils.KafkaSSLUtils;
 import com.linkedin.venice.utils.MockTime;
 import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.TestUtils;
@@ -63,12 +64,9 @@ public class KafkaBrokerWrapper extends ProcessWrapper {
       configMap.put(KafkaConfig.OffsetsTopicReplicationFactorProp(), OFFSET_TOPIC_REPLICATION_FACTOR);
       configMap.put(KafkaConfig.LogCleanerEnableProp(), LOG_CLEANER_ENABLE);
 
-      // init ssl support for kafka broker
-      // Create factory to generate certification in local box.
-      SslUtils.getLocalSslFactory();
       // Setup ssl related configs for kafka.
       int sslPort = IntegrationTestUtils.getFreePort();
-      Properties sslConfig = SslUtils.getLocalKafkaBrokerSSlConfig(DEFAULT_HOST_NAME, port, sslPort);
+      Properties sslConfig = KafkaSSLUtils.getLocalKafkaBrokerSSlConfig(DEFAULT_HOST_NAME, port, sslPort);
       sslConfig.entrySet().stream().forEach(entry->configMap.put((String)entry.getKey(), entry.getValue()));
       KafkaConfig kafkaConfig = new KafkaConfig(configMap, true);
       KafkaServer kafkaServer = instantiateNewKafkaServer(kafkaConfig, mockTime);

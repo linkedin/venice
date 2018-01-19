@@ -7,7 +7,7 @@ import com.linkedin.venice.meta.OfflinePushStrategy;
 import com.linkedin.venice.meta.PersistenceType;
 import com.linkedin.venice.meta.ReadStrategy;
 import com.linkedin.venice.meta.RoutingStrategy;
-import com.linkedin.venice.utils.SslUtils;
+import com.linkedin.venice.utils.KafkaSSLUtils;
 import com.linkedin.venice.utils.VeniceProperties;
 import java.util.ArrayList;
 import java.util.List;
@@ -139,10 +139,10 @@ public class VeniceControllerClusterConfig {
     adminConsumptionRetryDelayMs = props.getInt(ADMIN_CONSUMPTION_RETRY_DELAY_MS, 15000);
 
     kafkaSecurityProtocol = props.getString(KAFKA_SECURITY_PROTOCOL, SecurityProtocol.PLAINTEXT.name());
-    if (!SslUtils.isKafkaProtocolValid(kafkaSecurityProtocol)) {
+    if (!KafkaSSLUtils.isKafkaProtocolValid(kafkaSecurityProtocol)) {
       throw new ConfigurationException("Invalid kafka security protocol: " + kafkaSecurityProtocol);
     }
-    if (SslUtils.isKafkaSSLProtocol(kafkaSecurityProtocol)) {
+    if (KafkaSSLUtils.isKafkaSSLProtocol(kafkaSecurityProtocol)) {
       sslConfig = Optional.of(new SSLConfig(props));
     } else {
       sslConfig = Optional.empty();

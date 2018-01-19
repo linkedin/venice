@@ -8,6 +8,7 @@ import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.hadoop.KafkaPushJob;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
+import com.linkedin.venice.utils.KafkaSSLUtils;
 import com.linkedin.venice.utils.SslUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.writer.VeniceWriter;
@@ -117,7 +118,7 @@ public class ProduceWithSSL {
     props.setProperty(KafkaPushJob.SSL_KEY_PASSWORD_PROPERTY_NAME,keyPwdPropertyName);
 
     // put cert into hadoop user credentials.
-    Properties sslProps = SslUtils.getLocalCommonKafkaSSLConfig();
+    Properties sslProps = KafkaSSLUtils.getLocalCommonKafkaSSLConfig();
     byte[] keyStoreCert = readFile(sslProps.getProperty(SslConfigs.SSL_KEYSTORE_LOCATION_CONFIG));
     byte[] trustStoreCert = readFile(sslProps.getProperty(SslConfigs.SSL_TRUSTSTORE_LOCATION_CONFIG));
     Credentials credentials = new Credentials();

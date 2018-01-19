@@ -9,10 +9,8 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
 import java.util.Optional;
-import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 import javax.net.ssl.SSLContext;
-import kafka.server.KafkaConfig;
 import org.apache.http.config.RegistryBuilder;
 import org.apache.http.impl.nio.client.CloseableHttpAsyncClient;
 import org.apache.http.impl.nio.client.HttpAsyncClients;
@@ -24,9 +22,6 @@ import org.apache.http.nio.conn.SchemeIOSessionStrategy;
 import org.apache.http.nio.conn.ssl.SSLIOSessionStrategy;
 import org.apache.http.nio.reactor.ConnectingIOReactor;
 import org.apache.http.nio.reactor.IOReactorException;
-import org.apache.kafka.clients.CommonClientConfigs;
-import org.apache.kafka.common.config.SslConfigs;
-import org.apache.kafka.common.protocol.SecurityProtocol;
 
 import static com.linkedin.venice.HttpConstants.*;
 
@@ -64,54 +59,7 @@ public class SslUtils {
     return sslConfig;
   }
 
-  public static Properties getLocalKafkaBrokerSSlConfig(String host, int port, int sslPort) {
-    Properties properties = new Properties();
-    properties.put(KafkaConfig.SslProtocolProp(), "TLS");
-    //Listen on two ports, one for ssl one for non-ssl
-    properties.put(KafkaConfig.ListenersProp(), "PLAINTEXT://" + host + ":" + port + ",SSL://" + host + ":" + sslPort);
-    properties.putAll(getLocalCommonKafkaSSLConfig());
-    return properties;
-  }
 
-  public static Properties getLocalCommonKafkaSSLConfig(){
-    Properties properties = new Properties();
-    String keyStorePath = getPathForResource(LOCAL_KEYSTORE_JKS);
-    properties.put(SslConfigs.SSL_KEYSTORE_LOCATION_CONFIG, keyStorePath);
-    properties.put(SslConfigs.SSL_KEYSTORE_PASSWORD_CONFIG, LOCAL_PASSWORD);
-    properties.put(SslConfigs.SSL_TRUSTSTORE_LOCATION_CONFIG, keyStorePath);
-    properties.put(SslConfigs.SSL_TRUSTSTORE_PASSWORD_CONFIG, LOCAL_PASSWORD);
-    properties.put(SslConfigs.SSL_KEYSTORE_TYPE_CONFIG, "JKS");
-    properties.put(SslConfigs.SSL_TRUSTSTORE_TYPE_CONFIG, "JKS");
-    properties.put(SslConfigs.SSL_KEY_PASSWORD_CONFIG, LOCAL_PASSWORD);
-    properties.put(SslConfigs.SSL_SECURE_RANDOM_IMPLEMENTATION_CONFIG, "SHA1PRNG");
-    properties.put(SslConfigs.SSL_TRUSTMANAGER_ALGORITHM_CONFIG, "SunX509");
-    properties.put(SslConfigs.SSL_KEYMANAGER_ALGORITHM_CONFIG, "SunX509");
-    return properties;
-  }
-
-  public static Properties getLocalKafkaClientSSLConfig(){
-    Properties properties = new Properties();
-    properties.put(CommonClientConfigs.SECURITY_PROTOCOL_CONFIG, SecurityProtocol.SSL.name());
-    properties.putAll(getLocalCommonKafkaSSLConfig());
-    return properties;
-  }
-
-  /**
-   * Right now, Venice only supports two Kafka protocols:
-   * {@link SecurityProtocol#PLAINTEXT}
-   * {@link SecurityProtocol#SSL}
-   *
-   * @param kafkaProtocol
-   * @return
-   */
-  public static boolean isKafkaProtocolValid(String kafkaProtocol) {
-    return kafkaProtocol.equals(SecurityProtocol.PLAINTEXT.name())
-        || kafkaProtocol.equals(SecurityProtocol.SSL.name());
-  }
-
-  public static boolean isKafkaSSLProtocol(String kafkaProtocol) {
-    return kafkaProtocol.equals(SecurityProtocol.SSL.name());
-  }
 
   protected static String getPathForResource(String resource) {
     String systemTempDir = System.getProperty("java.io.tmpdir");
