@@ -95,7 +95,10 @@ public class VeniceSystemProducer implements SystemProducer {
   protected VeniceWriter<byte[], byte[]> getVeniceWriter(VersionCreationResponse store) {
     Properties veniceWriterProperties = new Properties();
     veniceWriterProperties.put(KAFKA_BOOTSTRAP_SERVERS, store.getKafkaBootstrapServers());
+    return getVeniceWriter(store, veniceWriterProperties);
+  }
 
+  protected VeniceWriter<byte[], byte[]> getVeniceWriter(VersionCreationResponse store, Properties veniceWriterProperties) {
     return new VeniceWriterFactory(veniceWriterProperties).getBasicVeniceWriter(store.getKafkaTopic(), time);
   }
 
