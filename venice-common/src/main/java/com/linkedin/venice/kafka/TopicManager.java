@@ -40,6 +40,11 @@ import org.codehaus.jackson.map.ObjectMapper;
 
 /**
  * Topic Manager is shared by multiple cluster's controllers running in one physical Venice controller instance.
+ *
+ * This class contains one global {@link KafkaConsumer}, which is not thread-safe, so when you add new functions,
+ * which is using this global consumer, please add 'synchronized' keyword, otherwise this {@link TopicManager}
+ * won't be thread-safe, and Kafka consumer will report the following error when multiple threads are trying to
+ * use the same consumer: KafkaConsumer is not safe for multi-threaded access.
  */
 public class TopicManager implements Closeable {
 
@@ -240,7 +245,7 @@ public class TopicManager implements Closeable {
    * @return true if the topic exists and all its partitions have at least one in-sync replica
    *         false if the topic does not exist at all or if it exists but isn't completely available
    */
-  public boolean containsTopic(String topic, Integer expectedPartitionCount) {
+  public synchronized boolean containsTopic(String topic, Integer expectedPartitionCount) {
     boolean zkMetadataCreatedForTopic = AdminUtils.topicExists(getZkUtils(), topic);
     if (!zkMetadataCreatedForTopic) {
       logger.info("AdminUtils.topicExists() returned false because the ZK path doesn't exist yet for topic: " + topic);
@@ -279,7 +284,7 @@ public class TopicManager implements Closeable {
    * @return true if the topic exists neither in ZK nor in the brokers
    *         false if the topic exists fully or partially
    */
-  public boolean isTopicFullyDeleted(String topic, boolean closeAndRecreateConsumer) {
+  public synchronized boolean isTopicFullyDeleted(String topic, boolean closeAndRecreateConsumer) {
     boolean zkMetadataExistsForTopic = AdminUtils.topicExists(getZkUtils(), topic);
     if (zkMetadataExistsForTopic) {
       logger.info("AdminUtils.topicExists() returned true, meaning that the ZK path still exists for topic: " + topic);
