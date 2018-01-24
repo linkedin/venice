@@ -24,8 +24,8 @@ public class RouterCacheTest {
 
     routerCache.put(storeName2, 1, testKey1, cacheValue1);
     routerCache.put(storeName2, 1, testKey2, cacheValue2);
-    Assert.assertEquals(routerCache.get(storeName2, 1, testKey1).get(), cacheValue1);
     Assert.assertEquals(routerCache.get(storeName2, 1, testKey2).get(), cacheValue2);
+    Assert.assertNull(routerCache.get(storeName2, 1, testKey1), "The old record should be evicted");
     Assert.assertNull(routerCache.get(storeName1, 1, testKey2), "The old record should be evicted");
   }
 }

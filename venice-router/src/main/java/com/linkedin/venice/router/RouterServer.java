@@ -37,6 +37,7 @@ import com.linkedin.venice.router.api.VeniceRoleFinder;
 import com.linkedin.venice.router.api.VeniceVersionFinder;
 import com.linkedin.venice.router.cache.RouterCache;
 import com.linkedin.venice.router.stats.AggRouterHttpRequestStats;
+import com.linkedin.venice.router.stats.RouterCacheStats;
 import com.linkedin.venice.router.throttle.ReadRequestThrottler;
 import com.linkedin.venice.router.utils.VeniceRouterUtils;
 import com.linkedin.venice.service.AbstractVeniceService;
@@ -264,6 +265,8 @@ public class RouterServer extends AbstractVeniceService {
     if (config.isCacheEnabled()) {
       logger.info("Router cache size: " + config.getCacheSizeBytes() + ", concurrency: " + config.getCacheConcurrency());
       routerCache = Optional.of(new RouterCache(config.getCacheSizeBytes(), config.getCacheConcurrency(), routingDataRepository));
+      // Tracking cache metrics
+      new RouterCacheStats(metricsRepository, "router_cache", routerCache.get());
     }
     dispatcher = new VeniceDispatcher(config, healthMonitor, sslFactoryForRequests, metadataRepository, routerCache,
         statsForSingleGet);
