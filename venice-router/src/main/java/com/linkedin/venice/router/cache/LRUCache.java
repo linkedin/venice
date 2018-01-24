@@ -53,6 +53,48 @@ public class LRUCache<K extends Measurable, V extends Measurable> implements Cac
     caches.forEach( cache -> cache.clear() );
   }
 
+  @Override
+  public long getEntryNum() {
+    long entryNum = 0;
+    for (Cache cache : caches) {
+      entryNum += cache.getEntryNum();
+    }
+    return entryNum;
+  }
+
+  @Override
+  public long getCacheSize() {
+    long cacheSize = 0;
+    for (Cache cache : caches) {
+      cacheSize += cache.getCacheSize();
+    }
+    return cacheSize;
+  }
+
+  @Override
+  public long getEntryNumMaxDiffBetweenBuckets() {
+    long maxEntryNum = 0;
+    long minEntryNum = Long.MAX_VALUE;
+    for (Cache cache : caches) {
+      maxEntryNum = Math.max(maxEntryNum, cache.getEntryNum());
+      minEntryNum = Math.min(minEntryNum, cache.getEntryNum());
+    }
+
+    return maxEntryNum - minEntryNum;
+  }
+
+  @Override
+  public long getCacheSizeMaxDiffBetweenBuckets() {
+    long maxCacheSize = 0;
+    long minCacheSize = Long.MAX_VALUE;
+    for (Cache cache : caches) {
+      maxCacheSize = Math.max(maxCacheSize, cache.getCacheSize());
+      minCacheSize = Math.min(minCacheSize, cache.getCacheSize());
+    }
+
+    return maxCacheSize - minCacheSize;
+  }
+
   /**
    * Thread-safe LRUCache
    */
@@ -115,6 +157,26 @@ public class LRUCache<K extends Measurable, V extends Measurable> implements Cac
     public synchronized void clear() {
       map.clear();
       spaceLeft = capacityInBytes;
+    }
+
+    @Override
+    public synchronized long getEntryNum() {
+      return map.size();
+    }
+
+    @Override
+    public synchronized long getCacheSize() {
+      return capacityInBytes - spaceLeft;
+    }
+
+    @Override
+    public long getEntryNumMaxDiffBetweenBuckets() {
+      return 0;
+    }
+
+    @Override
+    public long getCacheSizeMaxDiffBetweenBuckets() {
+      return 0;
     }
   }
 }

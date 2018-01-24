@@ -15,4 +15,12 @@ public interface Cache<K, V> {
   Optional<V> remove(K key);
 
   void clear();
+
+  long getEntryNum();
+
+  long getCacheSize();
+
+  long getEntryNumMaxDiffBetweenBuckets();
+
+  long getCacheSizeMaxDiffBetweenBuckets();
 }

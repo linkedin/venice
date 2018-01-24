@@ -6,6 +6,9 @@ import com.linkedin.venice.exceptions.VeniceException;
 
 import com.linkedin.venice.meta.PartitionAssignment;
 import com.linkedin.venice.meta.RoutingDataRepository;
+import java.math.BigInteger;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import org.apache.log4j.Logger;
 
 import java.util.Arrays;
@@ -19,10 +22,21 @@ public class RouterCache implements RoutingDataRepository.RoutingDataChangedList
 
   private final RoutingDataRepository routingDataRepository;
 
+  private static MessageDigest createMD5MessageDigest() throws NoSuchAlgorithmException {
+    return MessageDigest.getInstance("MD5");
+  }
+
   private static class CacheKey implements Measurable {
     private final int storeId;
     private final int version;
     private final byte[] key;
+    private static final ThreadLocal<MessageDigest> messageDigest = ThreadLocal.withInitial(() -> {
+      try {
+        return createMD5MessageDigest();
+      } catch (NoSuchAlgorithmException e) {
+        return null;
+      }
+    });
 
     public CacheKey(int storeId, int version, byte[] key) {
       this.storeId = storeId;
@@ -57,10 +71,24 @@ public class RouterCache implements RoutingDataRepository.RoutingDataChangedList
 
     @Override
     public int hashCode() {
-      int result = storeId;
-      result = 31 * result + version;
-      result = 31 * result + Arrays.hashCode(key);
-      return result;
+      MessageDigest m = messageDigest.get();
+      if (null == m) {
+        // MD5 is not supported, so use the simple one
+        int result = storeId;
+        result = 31 * result + version;
+        result = 31 * result + Arrays.hashCode(key);
+        return result;
+      } else {
+        /**
+         * Use MD5 digest to guarantee more even distribution.
+         * The overhead is slightly higher than the simple hashcode calculation.
+         */
+        m.reset();
+        m.update(key);
+        byte[] digest = m.digest();
+        BigInteger bigInt = new BigInteger(1, digest);
+        return bigInt.intValue();
+      }
     }
   }
 
@@ -122,6 +150,14 @@ public class RouterCache implements RoutingDataRepository.RoutingDataChangedList
     this.cache = new LRUCache<>(capacityInBytes, concurrency);
     this.compressionTypeCache = new ConcurrentHashMap<>();
     this.routingDataRepository = routingDataRepository;
+
+    // Check whether 'MD5' algorithm is available or not
+    try {
+      createMD5MessageDigest();
+    } catch (NoSuchAlgorithmException e) {
+      logger.error("MD5 algorithm is not available, it could impact the cache performance since the default"
+          + " hashCode algorithm of CacheKey couldn't guarantee even distribution");
+    }
   }
 
   private int getStoreId(String storeName) {
@@ -166,6 +202,22 @@ public class RouterCache implements RoutingDataRepository.RoutingDataChangedList
 
   public void clear() {
     cache.clear();
+  }
+
+  public long getCacheSize() {
+    return cache.getCacheSize();
+  }
+
+  public long getEntryNum() {
+    return cache.getEntryNum();
+  }
+
+  public long getEntryNumMaxDiffBetweenBuckets() {
+    return cache.getEntryNumMaxDiffBetweenBuckets();
+  }
+
+  public long getCacheSizeMaxDiffBetweenBuckets() {
+    return cache.getCacheSizeMaxDiffBetweenBuckets();
   }
 
   @Override
