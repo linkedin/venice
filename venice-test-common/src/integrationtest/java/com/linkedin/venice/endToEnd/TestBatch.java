@@ -20,7 +20,6 @@ import java.io.File;
 import java.io.IOException;
 import java.util.*;
 
-import java.util.Optional;
 import java.util.function.Consumer;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
@@ -181,10 +180,10 @@ public class TestBatch {
   }
 
   private void testBatchStore(InputFileWriter inputFileWriter, Consumer<Properties> extraProps, H2VValidator dataValidator, boolean isCompressed) throws Exception {
-    testBatchStore(inputFileWriter, extraProps, dataValidator, isCompressed, Optional.empty());
+    testBatchStore(inputFileWriter, extraProps, dataValidator, isCompressed, false);
   }
 
-  private void testBatchStore(InputFileWriter inputFileWriter, Consumer<Properties> extraProps, H2VValidator dataValidator, boolean isCompressed, Optional<Boolean> chunkingEnabled) throws Exception {
+  private void testBatchStore(InputFileWriter inputFileWriter, Consumer<Properties> extraProps, H2VValidator dataValidator, boolean isCompressed, boolean chunkingEnabled) throws Exception {
     File inputDir = getTempDataDirectory();
     Pair<Schema, Schema> schemas = inputFileWriter.write(inputDir);
     String storeName = TestUtils.getUniqueString("store");
@@ -289,7 +288,7 @@ public class TestBatch {
           }
         },
         false,
-        Optional.of(isChunkingAllowed));
+        isChunkingAllowed);
   }
 
   @Test(timeOut = TEST_TIMEOUT)

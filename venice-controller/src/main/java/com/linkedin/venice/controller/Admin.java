@@ -3,6 +3,7 @@ package com.linkedin.venice.controller;
 import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.controller.kafka.consumer.AdminConsumerService;
 import com.linkedin.venice.controller.kafka.consumer.VeniceControllerConsumerFactotry;
+import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.helix.Replica;
 import com.linkedin.venice.meta.*;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
@@ -124,6 +125,8 @@ public interface Admin {
 
     void setStoreCurrentVersion(String clusterName, String storeName, int versionNumber);
 
+    void setStoreLargestUsedVersion(String clusterName, String storeName, int versionNumber);
+
     void setStoreOwner(String clusterName, String storeName, String owner);
 
     void setStorePartitionCount(String clusterName, String storeName, int partitionCount);
@@ -144,14 +147,36 @@ public interface Admin {
                      Optional<Long> storageQuotaInByte,
                      Optional<Long> readQuotaInCU,
                      Optional<Integer> currentVersion,
+                     Optional<Integer> largestUsedVersionNumber,
                      Optional<Long> hybridRewindSeconds,
                      Optional<Long> hybridOffsetLagThreshold,
                      Optional<Boolean> accessControlled,
                      Optional<CompressionStrategy> compressionStrategy,
                      Optional<Boolean> chunkingEnabled,
                      Optional<Boolean> routerCacheEnabled,
-                     Optional<Integer> batchGetLimit
-        );
+                     Optional<Integer> batchGetLimit);
+
+
+    default void updateStore(String clusterName, String storeName, UpdateStoreQueryParams params) {
+        updateStore(
+            clusterName,
+            storeName,
+            params.getOwner(),
+            params.getEnableReads(),
+            params.getEnableWrites(),
+            params.getPartitionCount(),
+            params.getStorageQuotaInByte(),
+            params.getReadQuotaInCU(),
+            params.getCurrentVersion(),
+            params.getLargestUsedVersionNumber(),
+            params.getHybridRewindSeconds(),
+            params.getHybridOffsetLagThreshold(),
+            params.getAccessControlled(),
+            params.getCompressionStrategy(),
+            params.getChunkingEnabled(),
+            params.getRouterCacheEnabled(),
+            params.getBatchGetLimit());
+    }
 
     double getStorageEngineOverheadRatio(String clusterName);
 

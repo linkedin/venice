@@ -23,6 +23,7 @@ import com.linkedin.venice.controllerapi.MultiSchemaResponse;
 import com.linkedin.venice.controllerapi.MultiStoreResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
+import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
@@ -842,21 +843,7 @@ public class TestVeniceParentHelixAdmin {
     Assert.assertEquals(pushStrategyResponse.getStrategies().get(voldemortStoreName), pushStrategy);
 
     // Update chunking
-    controllerClient.updateStore(storeName,
-        Optional.empty(),
-        Optional.empty(),
-        Optional.empty(),
-        Optional.empty(),
-        Optional.empty(),
-        Optional.empty(),
-        Optional.empty(),
-        Optional.empty(),
-        Optional.empty(),
-        Optional.empty(),
-        Optional.empty(),
-        Optional.of(Boolean.TRUE),
-        Optional.empty(),
-        Optional.empty());
+    controllerClient.updateStore(storeName, new UpdateStoreQueryParams().setChunkingEnabled(true));
     storeResponse = controllerClient.getStore(storeName);
     Assert.assertTrue(storeResponse.getStore().isChunkingEnabled());
     // Child controller will be updated asynchronously
@@ -867,21 +854,7 @@ public class TestVeniceParentHelixAdmin {
 
     // Update routerCacheEnabled
     Assert.assertFalse(storeResponse.getStore().isRouterCacheEnabled());
-    controllerClient.updateStore(storeName,
-        Optional.empty(),
-        Optional.empty(),
-        Optional.empty(),
-        Optional.empty(),
-        Optional.empty(),
-        Optional.empty(),
-        Optional.empty(),
-        Optional.empty(),
-        Optional.empty(),
-        Optional.empty(),
-        Optional.empty(),
-        Optional.empty(),
-        Optional.of(Boolean.TRUE),
-        Optional.empty());
+    controllerClient.updateStore(storeName, new UpdateStoreQueryParams().setRouterCacheEnabled(true));
     storeResponse = controllerClient.getStore(storeName);
     Assert.assertTrue(storeResponse.getStore().isRouterCacheEnabled());
     // Child controller will be updated asynchronously
@@ -892,21 +865,7 @@ public class TestVeniceParentHelixAdmin {
 
     // Update batchGetLimit
     Assert.assertEquals(storeResponse.getStore().getBatchGetLimit(), -1);
-    controllerClient.updateStore(storeName,
-        Optional.empty(),
-        Optional.empty(),
-        Optional.empty(),
-        Optional.empty(),
-        Optional.empty(),
-        Optional.empty(),
-        Optional.empty(),
-        Optional.empty(),
-        Optional.empty(),
-        Optional.empty(),
-        Optional.empty(),
-        Optional.empty(),
-        Optional.empty(),
-        Optional.of(100));
+    controllerClient.updateStore(storeName, new UpdateStoreQueryParams().setBatchGetLimit(100));
     storeResponse = controllerClient.getStore(storeName);
     Assert.assertEquals(storeResponse.getStore().getBatchGetLimit(), 100);
     // Child controller will be updated asynchronously
@@ -1192,7 +1151,7 @@ public class TestVeniceParentHelixAdmin {
     Optional<Boolean> accessControlled = Optional.of(true);
     Optional<CompressionStrategy> compressionStrategy = Optional.of(CompressionStrategy.GZIP);
     parentAdmin.updateStore(clusterName, storeName, owner, readability, writebility, partitionCount, storageQuota,
-        readQuota, Optional.empty(), Optional.of(135L), Optional.of(2000L), accessControlled, compressionStrategy,
+        readQuota, Optional.empty(), Optional.empty(), Optional.of(135L), Optional.of(2000L), accessControlled, compressionStrategy,
         Optional.empty(), Optional.empty(), Optional.empty());
 
     verify(veniceWriter)
@@ -1228,7 +1187,7 @@ public class TestVeniceParentHelixAdmin {
     // Disable Access Control
     accessControlled = Optional.of(false);
     parentAdmin.updateStore(clusterName, storeName, owner, readability, writebility, partitionCount, storageQuota,
-        readQuota, Optional.empty(), Optional.of(135L), Optional.of(2000L), accessControlled, compressionStrategy,
+        readQuota, Optional.empty(), Optional.empty(), Optional.of(135L), Optional.of(2000L), accessControlled, compressionStrategy,
         Optional.empty(), Optional.empty(), Optional.empty());
     verify(veniceWriter, times(2)).put(keyCaptor.capture(), valueCaptor.capture(), schemaCaptor.capture());
     valueBytes = valueCaptor.getValue();

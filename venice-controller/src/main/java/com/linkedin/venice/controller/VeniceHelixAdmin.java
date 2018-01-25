@@ -299,7 +299,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 } else if (largestUsedVersionNumber < store.getLargestUsedVersionNumber()) {
                     throw new VeniceException("Given largest used version number: " + largestUsedVersionNumber
                         + " is smaller than the largest used version number: " + store.getLargestUsedVersionNumber() +
-                        " found in repository.");
+                        " found in repository. Cluster: " + clusterName + ", store: " + storeName);
                 } else {
                     store.setLargestUsedVersionNumber(largestUsedVersionNumber);
                 }
@@ -950,6 +950,14 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
     }
 
     @Override
+    public synchronized void setStoreLargestUsedVersion(String clusterName, String storeName, int versionNumber) {
+        storeMetadataUpdate(clusterName, storeName, store -> {
+            store.setLargestUsedVersionNumber(versionNumber);
+            return store;
+        });
+    }
+
+    @Override
     public synchronized void setStoreOwner(String clusterName, String storeName, String owner) {
         storeMetadataUpdate(clusterName, storeName, store -> {
             store.setOwner(owner);
@@ -1119,6 +1127,7 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         Optional<Long> storageQuotaInByte,
         Optional<Long> readQuotaInCU,
         Optional<Integer> currentVersion,
+        Optional<Integer> largestUsedVersionNumber,
         Optional<Long> hybridRewindSeconds,
         Optional<Long> hybridOffsetLagThreshold,
         Optional<Boolean> accessControlled,
@@ -1168,6 +1177,10 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 setStoreCurrentVersion(clusterName, storeName, currentVersion.get());
             }
 
+            if (largestUsedVersionNumber.isPresent()) {
+                setStoreLargestUsedVersion(clusterName, storeName, largestUsedVersionNumber.get());
+            }
+
             if (hybridStoreConfig.isPresent()) {
                 // To fix the final variable problem in the lambda expression
                 final HybridStoreConfig finalHybridConfig = hybridStoreConfig.get();
@@ -1197,9 +1210,14 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
                 setBatchGetLimit(clusterName, storeName, batchGetLimit.get());
             }
 
+            logger.info("Finished updating store: " + storeName + " in cluster: " + clusterName);
         } catch (VeniceException e) {
+            logger.error("Caught exception during update to store '" + storeName + "' in cluster: '" + clusterName
+                + "'. Will attempt to rollback changes.", e);
             //rollback to original store
             storeMetadataUpdate(clusterName, storeName, store -> originalStore);
+            logger.error("Successfully rolled back changes to store '" + storeName + "' in cluster: '" + clusterName
+                + "'. Will now throw the original exception (" + e.getClass().getSimpleName() + ").");
             throw e;
         }
     }
@@ -1249,6 +1267,9 @@ public class VeniceHelixAdmin implements Admin, StoreCleaner {
         try {
             Store store = repository.getStore(storeName);
             repository.updateStore(operation.update(store));
+        } catch (Exception e) {
+            logger.error("Failed to execute StoreMetadataOperation.", e);
+            throw e;
         } finally {
             repository.unLock();
         }

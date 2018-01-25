@@ -617,7 +617,6 @@ public class Store {
     clonedStore.setEnableReads(enableReads);
     clonedStore.setEnableWrites(enableWrites);
     clonedStore.setPartitionCount(partitionCount);
-    clonedStore.setLargestUsedVersionNumber(largestUsedVersionNumber);
     clonedStore.setAccessControlled(accessControlled);
     clonedStore.setCompressionStrategy(compressionStrategy);
     clonedStore.setChunkingEnabled(chunkingEnabled);
@@ -627,6 +626,14 @@ public class Store {
     for (Version v : this.versions) {
       clonedStore.forceAddVersion(v.cloneVersion());
     }
+
+    /**
+     * Add version can overwrite the value of {@link largestUsedVersionNumber}, so in order to clone the
+     * object properly, it's important to call the {@link #setLargestUsedVersionNumber(int)} setter after
+     * calling {@link #forceAddVersion(Version)}.
+     */
+    clonedStore.setLargestUsedVersionNumber(largestUsedVersionNumber);
+
     return clonedStore;
   }
 

@@ -22,6 +22,7 @@ import com.linkedin.venice.controllerapi.RoutersClusterConfigResponse;
 import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.TrackableControllerResponse;
+import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.controllerapi.VersionResponse;
 import com.linkedin.venice.controllerapi.routes.AdminCommandExecutionResponse;
@@ -46,11 +47,11 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Properties;
 import java.util.StringJoiner;
 import java.util.concurrent.ExecutionException;
 import java.util.function.Consumer;
+import java.util.function.Function;
 import org.apache.avro.Schema;
 import org.apache.commons.cli.CommandLine;
 import org.apache.commons.cli.CommandLineParser;
@@ -422,81 +423,46 @@ public class AdminTool {
     printSuccess(response);
   }
 
+  private static void integerParam(CommandLine cmd, Arg param, Consumer<Integer> setter) {
+    genericParam(cmd, param, s -> Utils.parseIntFromString(s, param.toString()), setter);
+  }
+
+
+  private static void longParam(CommandLine cmd, Arg param, Consumer<Long> setter) {
+    genericParam(cmd, param, s -> Utils.parseLongFromString(s, param.toString()), setter);
+  }
+
+  private static void booleanParam(CommandLine cmd, Arg param, Consumer<Boolean> setter) {
+    genericParam(cmd, param, s -> Utils.parseBooleanFromString(s, param.toString()), setter);
+  }
+
+  private static <TYPE> void genericParam(CommandLine cmd, Arg param, Function<String, TYPE> parser, Consumer<TYPE> setter) {
+    String paramStr = getOptionalArgument(cmd, param);
+    if (null != paramStr) {
+      setter.accept(parser.apply(paramStr));
+    }
+  }
+
   private static void updateStore(CommandLine cmd) {
     String storeName = getRequiredArgument(cmd, Arg.STORE, Command.UPDATE_STORE);
-    Optional<String> owner = Optional.ofNullable(getOptionalArgument(cmd, Arg.OWNER));
+    UpdateStoreQueryParams params = new UpdateStoreQueryParams();
+    genericParam(cmd, Arg.OWNER, s -> s, p -> params.setOwner(p));
+    integerParam(cmd, Arg.PARTITION_COUNT, p -> params.setPartitionCount(p));
+    integerParam(cmd, Arg.VERSION, p -> params.setCurrentVersion(p));
+    integerParam(cmd, Arg.LARGEST_USED_VERSION_NUMBER, p -> params.setLargestUsedVersionNumber(p));
+    booleanParam(cmd, Arg.READABILITY, p -> params.setEnableReads(p));
+    booleanParam(cmd, Arg.WRITEABILITY, p -> params.setEnableWrites(p));
+    longParam(cmd, Arg.STORAGE_QUOTA, p -> params.setStorageQuotaInByte(p));
+    longParam(cmd, Arg.READ_QUOTA, p -> params.setReadQuotaInCU(p));
+    longParam(cmd, Arg.HYBRID_REWIND_SECONDS, p -> params.setHybridRewindSeconds(p));
+    longParam(cmd, Arg.HYBRID_OFFSET_LAG, p -> params.setHybridOffsetLagThreshold(p));
+    booleanParam(cmd, Arg.ACCESS_CONTROL, p -> params.setAccessControlled(p));
+    genericParam(cmd, Arg.COMPRESSION_STRATEGY, s -> CompressionStrategy.valueOf(s), p -> params.setCompressionStrategy(p));
+    booleanParam(cmd, Arg.CHUNKING_ENABLED, p -> params.setChunkingEnabled(p));
+    booleanParam(cmd, Arg.ROUTER_CACHE_ENABLED, p -> params.setRouterCacheEnabled(p));
+    integerParam(cmd, Arg.BATCH_GET_LIMIT, p -> params.setBatchGetLimit(p));
 
-    String currentVersionStr = getOptionalArgument(cmd, Arg.VERSION);
-    Optional<Integer> currentVersion = currentVersionStr == null ? Optional.empty() :
-        Optional.of(Utils.parseIntFromString(currentVersionStr, "currentVersion"));
-
-    String partitionCountStr = getOptionalArgument(cmd, Arg.PARTITION_COUNT);
-    Optional<Integer> partitionCount = partitionCountStr == null ? Optional.empty() :
-        Optional.of(Utils.parseIntFromString(partitionCountStr, "partitionCount"));
-
-    String readabilityStr = getOptionalArgument(cmd, Arg.READABILITY);
-    Optional<Boolean> readability = readabilityStr == null ? Optional.empty() :
-        Optional.of(Utils.parseBooleanFromString(readabilityStr, "enableReads"));
-
-    String writeabilityStr = getOptionalArgument(cmd, Arg.WRITEABILITY);
-    Optional<Boolean> writeability = writeabilityStr == null ? Optional.empty() :
-        Optional.of(Utils.parseBooleanFromString(writeabilityStr, "enableWrites"));
-
-    String storageQuotaStr = getOptionalArgument(cmd, Arg.STORAGE_QUOTA);
-    Optional<Long> storageQuotaInByte = storageQuotaStr == null ? Optional.empty() :
-        Optional.of(Utils.parseLongFromString(storageQuotaStr, "storageQuotaInByte"));
-
-    String readQuotaStr = getOptionalArgument(cmd, Arg.READ_QUOTA);
-    Optional<Long> readQuotaInCU = readQuotaStr == null ? Optional.empty() :
-        Optional.of(Utils.parseLongFromString(readQuotaStr, "readQuotaInCU"));
-
-    String hybridRewindSecondsStr = getOptionalArgument(cmd, Arg.HYBRID_REWIND_SECONDS);
-    Optional<Long> hybridRewindSeconds = (null == hybridRewindSecondsStr)
-        ? Optional.empty()
-        : Optional.of(Utils.parseLongFromString(hybridRewindSecondsStr, Arg.HYBRID_REWIND_SECONDS.name()));
-
-    String hybridOffsetLagStr = getOptionalArgument(cmd, Arg.HYBRID_OFFSET_LAG);
-    Optional<Long> hybridOffsetLag = (null == hybridOffsetLagStr)
-        ? Optional.empty()
-        : Optional.of(Utils.parseLongFromString(hybridOffsetLagStr, Arg.HYBRID_OFFSET_LAG.name()));
-
-    String accessControlStr = getOptionalArgument(cmd, Arg.ACCESS_CONTROL);
-    Optional<Boolean> accessControlled = accessControlStr == null ? Optional.empty() :
-        Optional.of(Utils.parseBooleanFromString(accessControlStr, Arg.ACCESS_CONTROL.name()));
-
-    String compressionStrategyStr = getOptionalArgument(cmd, Arg.COMPRESSION_STRATEGY);
-    Optional<CompressionStrategy> compressionStrategy = compressionStrategyStr == null
-        ? Optional.empty()
-        : Optional.of(CompressionStrategy.valueOf(compressionStrategyStr));
-
-    String chunkingEnabledStr = getOptionalArgument(cmd, Arg.CHUNKING_ENABLED);
-    Optional<Boolean> chunkingEnabled = Utils.isNullOrEmpty(chunkingEnabledStr) ? Optional.empty() :
-        Optional.of(Utils.parseBooleanFromString(chunkingEnabledStr, Arg.CHUNKING_ENABLED.name()));
-
-    String routerCacheEnabledStr = getOptionalArgument(cmd, Arg.ROUTER_CACHE_ENABLED);
-    Optional<Boolean> routerCacheEnabled = Utils.isNullOrEmpty(routerCacheEnabledStr) ? Optional.empty() :
-        Optional.of(Utils.parseBooleanFromString(routerCacheEnabledStr, Arg.ROUTER_CACHE_ENABLED.name()));
-
-    String batchGetLimitStr = getOptionalArgument(cmd, Arg.BATCH_GET_LIMIT);
-    Optional<Integer> batchGetLimit = Utils.isNullOrEmpty(batchGetLimitStr) ? Optional.empty() :
-        Optional.of(Utils.parseIntFromString(batchGetLimitStr, Arg.BATCH_GET_LIMIT.name()));
-
-    ControllerResponse response = controllerClient.updateStore(
-        storeName,
-        owner,
-        partitionCount,
-        currentVersion,
-        readability,
-        writeability,
-        storageQuotaInByte,
-        readQuotaInCU,
-        hybridRewindSeconds,
-        hybridOffsetLag,
-        accessControlled,
-        compressionStrategy,
-        chunkingEnabled,
-        routerCacheEnabled,
-        batchGetLimit);
+    ControllerResponse response = controllerClient.updateStore(storeName, params);
 
     printSuccess(response);
   }

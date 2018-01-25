@@ -1,6 +1,7 @@
 package com.linkedin.venice.controller.server;
 
 import com.linkedin.venice.controller.Admin;
+import com.linkedin.venice.controller.kafka.protocol.admin.UpdateStore;
 import com.linkedin.venice.controllerapi.AdminCommandExecution;
 import com.linkedin.venice.controllerapi.ControllerApiConstants;
 import com.linkedin.venice.controllerapi.ControllerClient;
@@ -19,6 +20,7 @@ import com.linkedin.venice.controllerapi.SchemaResponse;
 import com.linkedin.venice.controllerapi.StorageEngineOverheadRatioResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.TrackableControllerResponse;
+import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.controllerapi.VersionResponse;
 import com.linkedin.venice.controllerapi.routes.AdminCommandExecutionResponse;
@@ -41,7 +43,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.ExecutionException;
-import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import org.apache.avro.Schema;
 import org.apache.commons.io.IOUtils;
@@ -56,6 +57,8 @@ import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
+import scala.collection.script.Update;
+
 
 /**
  * Slow test class, given fast priority
@@ -521,12 +524,17 @@ public class TestAdminSparkServer {
     Assert.assertFalse(controllerClient.enableStoreReadWrites(storeName, false).isError(),
         "Disable writes should not fail.");
 
-    ControllerResponse response =
-        controllerClient.updateStore(storeName, Optional.of(owner), Optional.of(partitionCount),
-            Optional.of(current), Optional.of(enableReads), Optional.of(enableWrite),
-            Optional.of(storageQuotaInByte), Optional.of(readQuotaInCU), Optional.empty(),
-            Optional.empty(), Optional.of(accessControlled), Optional.empty(), Optional.empty(),
-            Optional.empty(), Optional.empty());
+    UpdateStoreQueryParams queryParams = new UpdateStoreQueryParams()
+        .setOwner(owner)
+        .setPartitionCount(partitionCount)
+        .setCurrentVersion(current)
+        .setEnableReads(enableReads)
+        .setEnableWrites(enableWrite)
+        .setStorageQuotaInByte(storageQuotaInByte)
+        .setReadQuotaInCU(readQuotaInCU)
+        .setAccessControlled(accessControlled);
+
+    ControllerResponse response = controllerClient.updateStore(storeName, queryParams);
 
     Assert.assertFalse(response.isError(), response.getError());
     Store store = venice.getMasterVeniceController().getVeniceAdmin().getStore(venice.getClusterName(), storeName);
@@ -539,12 +547,10 @@ public class TestAdminSparkServer {
 
     enableWrite = false;
     accessControlled = !accessControlled;
-    Assert.assertFalse(controllerClient
-            .updateStore(storeName, Optional.of(owner), Optional.of(partitionCount),
-                Optional.empty(), Optional.of(enableReads), Optional.of(enableWrite),
-                Optional.of(storageQuotaInByte), Optional.of(readQuotaInCU), Optional.empty(),
-                Optional.empty(), Optional.of(accessControlled), Optional.empty(), Optional.empty(),
-                Optional.empty(), Optional.empty()).isError(),
+    queryParams = new UpdateStoreQueryParams()
+        .setEnableWrites(enableWrite)
+        .setAccessControlled(accessControlled);
+    Assert.assertFalse(controllerClient.updateStore(storeName, queryParams).isError(),
         "We should be able to disable store writes again.");
 
     store = venice.getMasterVeniceController().getVeniceAdmin().getStore(venice.getClusterName(), storeName);
@@ -563,11 +569,10 @@ public class TestAdminSparkServer {
       storeName = venice.getNewStoreVersion().getName();
       ControllerClient controllerClient = new ControllerClient(venice.getClusterName(), routerUrl);
 
-      ControllerResponse response =
-          controllerClient.updateStore(storeName, Optional.empty(), Optional.of(partitionCount),
-              Optional.of(current), Optional.of(enableReads), Optional.empty(), Optional.empty(), Optional.empty(),
-              Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(),
-              Optional.empty(), Optional.empty());
+      ControllerResponse response = controllerClient.updateStore(storeName, new UpdateStoreQueryParams()
+          .setPartitionCount(partitionCount)
+          .setCurrentVersion(current)
+          .setEnableReads(enableReads));
 
       Assert.assertFalse(response.isError(), response.getError());
       Store store = venice.getMasterVeniceController().getVeniceAdmin().getStore(venice.getClusterName(), storeName);
@@ -586,9 +591,9 @@ public class TestAdminSparkServer {
     String storeName = TestUtils.getUniqueString("store");
     String owner = TestUtils.getUniqueString("owner");
     NewStoreResponse newStoreResponse = controllerClient.createNewStore(storeName, owner, "\"string\"", "\"string\"");
-    controllerClient.updateStore(storeName, Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(),
-        Optional.empty(), Optional.empty(), Optional.of(123L), Optional.of(1515L), Optional.empty(), Optional.empty(),
-        Optional.empty(), Optional.empty(), Optional.empty());
+    controllerClient.updateStore(storeName, new UpdateStoreQueryParams()
+        .setHybridRewindSeconds(123L)
+        .setHybridOffsetLagThreshold(1515L));
     StoreResponse storeResponse = controllerClient.getStore(storeName);
     Assert.assertEquals(storeResponse.getStore().getHybridStoreConfig().getRewindTimeInSeconds(), 123L);
     Assert.assertEquals(storeResponse.getStore().getHybridStoreConfig().getOffsetLagThresholdToGoOnline(), 1515L);

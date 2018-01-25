@@ -3,13 +3,17 @@ package com.linkedin.venice;
 import com.linkedin.venice.migration.MigrationPushStrategy;
 
 
+/**
+ * TODO: Merge this with {@link com.linkedin.venice.controllerapi.ControllerApiConstants}
+ */
 public enum Arg {
 
   ACCESS_CONTROL("access-control", "acl", true, "Enable/disable store-level access control"),
   URL("url", "u", true, "Venice url, eg. http://localhost:1689  This can be a router or a controller"),
   CLUSTER("cluster", "c", true, "Name of Venice cluster"),
   STORE("store", "s", true, "Name of Venice store"),
-  VERSION("version", "v", true, "Venice store version number"),
+  VERSION("version", "v", true, "Active store version number"),
+  LARGEST_USED_VERSION_NUMBER("largest-used-version", "luv", true, "Largest used store version number (whether active or not)"),
   PUSH_ID("push-id", "pid", true, "Push Id"),
   STORE_SIZE("store-size", "ss", true, "Size of the store in bytes, used to calculate partitioning"),
   KEY_SCHEMA("key-schema-file", "ks", true, "Path to text file with key schema"),

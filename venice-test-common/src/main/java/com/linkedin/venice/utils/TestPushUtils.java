@@ -5,6 +5,7 @@ import com.linkedin.venice.controllerapi.ControllerApiConstants;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.NewStoreResponse;
+import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.KafkaPushJob;
 import com.linkedin.venice.integration.utils.VeniceClusterWrapper;
@@ -19,7 +20,6 @@ import java.io.IOException;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Properties;
 
 import org.apache.avro.Schema;
@@ -275,16 +275,16 @@ public class TestPushUtils {
 
   public static ControllerClient createStoreForJob(VeniceClusterWrapper veniceClusterWrapper,
                                                    String keySchemaStr, String valueSchema, Properties props) {
-    return createStoreForJob(veniceClusterWrapper, keySchemaStr, valueSchema, props, false, Optional.empty());
+    return createStoreForJob(veniceClusterWrapper, keySchemaStr, valueSchema, props, false, false);
   }
 
   public static ControllerClient createStoreForJob(VeniceClusterWrapper veniceCluster,
                                                    String keySchemaStr, String valueSchemaStr, Properties props, boolean isCompressed) {
-    return createStoreForJob(veniceCluster, keySchemaStr, valueSchemaStr, props, isCompressed, Optional.empty());
+    return createStoreForJob(veniceCluster, keySchemaStr, valueSchemaStr, props, isCompressed, false);
   }
 
   public static ControllerClient createStoreForJob(VeniceClusterWrapper veniceCluster,
-        String keySchemaStr, String valueSchemaStr, Properties props, boolean isCompressed, Optional<Boolean> chunkingEnabled) {
+        String keySchemaStr, String valueSchemaStr, Properties props, boolean isCompressed, boolean chunkingEnabled) {
     ControllerClient controllerClient =
         new ControllerClient(veniceCluster.getClusterName(), props.getProperty(KafkaPushJob.VENICE_URL_PROP));
     NewStoreResponse newStoreResponse = controllerClient.createNewStore(props.getProperty(VENICE_STORE_NAME_PROP),
@@ -292,10 +292,12 @@ public class TestPushUtils {
 
     Assert.assertFalse(newStoreResponse.isError(), "The NewStoreResponse returned an error: " + newStoreResponse.getError());
 
-    ControllerResponse controllerResponse = controllerClient.updateStore(props.getProperty(VENICE_STORE_NAME_PROP), Optional.empty(), Optional.empty(),
-        Optional.empty(), Optional.empty(), Optional.empty(), Optional.of(Store.UNLIMITED_STORAGE_QUOTA), Optional.empty(),
-        Optional.empty(), Optional.empty(), Optional.empty(), isCompressed ? Optional.of(CompressionStrategy.GZIP) : Optional.empty(),
-        chunkingEnabled, Optional.empty(), Optional.empty());
+    ControllerResponse controllerResponse = controllerClient.updateStore(
+        props.getProperty(VENICE_STORE_NAME_PROP),
+        new UpdateStoreQueryParams()
+            .setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
+            .setCompressionStrategy(isCompressed ? CompressionStrategy.GZIP : CompressionStrategy.NO_OP)
+            .setChunkingEnabled(chunkingEnabled));
 
     Assert.assertFalse(controllerResponse.isError(), "The UpdateStore response returned an error: " + controllerResponse.getError());
 
@@ -304,10 +306,9 @@ public class TestPushUtils {
 
   public static void makeStoreHybrid(VeniceClusterWrapper venice, String storeName, long rewindSeconds, long offsetLag) {
     try(ControllerClient controllerClient = new ControllerClient(venice.getClusterName(), venice.getRandomRouterURL())){
-      ControllerResponse response = controllerClient.updateStore(storeName, Optional.empty(), Optional.empty(),
-          Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(),
-          Optional.of(rewindSeconds), Optional.of(offsetLag), Optional.empty(), Optional.empty(), Optional.empty(),
-          Optional.empty(), Optional.empty());
+      ControllerResponse response = controllerClient.updateStore(storeName, new UpdateStoreQueryParams()
+          .setHybridRewindSeconds(rewindSeconds)
+          .setHybridOffsetLagThreshold(offsetLag));
       if (response.isError()){
         throw new VeniceException(response.getError());
       }

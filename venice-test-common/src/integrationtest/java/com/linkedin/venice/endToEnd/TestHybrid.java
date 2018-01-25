@@ -7,6 +7,7 @@ import com.linkedin.venice.controller.VeniceHelixAdmin;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.JobStatusQueryResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
+import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.hadoop.KafkaPushJob;
@@ -34,7 +35,6 @@ import org.apache.avro.Schema;
 import org.apache.commons.io.IOUtils;
 import org.apache.log4j.Logger;
 import org.apache.samza.system.SystemProducer;
-import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 import static com.linkedin.venice.utils.TestPushUtils.*;
@@ -58,10 +58,10 @@ public class TestHybrid {
     //Create store at parent, make it a hybrid store
     ControllerClient controllerClient = new ControllerClient(venice.getClusterName(), parentController.getControllerUrl());
     controllerClient.createNewStore(storeName, "owner", STRING_SCHEMA, STRING_SCHEMA);
-    controllerClient.updateStore(storeName, Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(),
-        Optional.empty(), Optional.of(Store.UNLIMITED_STORAGE_QUOTA), Optional.empty(),
-        Optional.of(streamingRewindSeconds), Optional.of(streamingMessageLag), Optional.empty(), Optional.empty(),
-        Optional.empty(), Optional.empty(), Optional.empty());
+    controllerClient.updateStore(storeName, new UpdateStoreQueryParams()
+            .setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA)
+            .setHybridRewindSeconds(streamingRewindSeconds)
+            .setHybridOffsetLagThreshold(streamingMessageLag));
 
     // There should be no version on the store yet
     assertEquals(controllerClient.getStore(storeName).getStore().getCurrentVersion(),
@@ -128,10 +128,9 @@ public class TestHybrid {
 
     ControllerClient controllerClient = createStoreForJob(venice, recordSchema, h2vProperties);
 
-    controllerClient.updateStore(storeName, Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(),
-        Optional.empty(), Optional.empty(), Optional.empty(), Optional.of(streamingRewindSeconds),
-        Optional.of(streamingMessageLag), Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(),
-        Optional.empty());
+    controllerClient.updateStore(storeName, new UpdateStoreQueryParams()
+        .setHybridRewindSeconds(streamingRewindSeconds)
+        .setHybridOffsetLagThreshold(streamingMessageLag));
 
     //Do an H2V push
     runH2V(h2vProperties, 1, controllerClient);

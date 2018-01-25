@@ -555,6 +555,7 @@ public class AdminConsumptionTask implements Runnable, Closeable {
                       message.currentVersion == IGNORED_CURRENT_VERSION
                           ? Optional.empty()
                           : Optional.of(message.currentVersion),
+                      Optional.empty(), // We explicitly forbid setting the largestUsedVersionNumber globally, so it is not included in the admin protocol
                       message.hybridStoreConfig == null
                           ? Optional.empty()
                           : Optional.of(message.hybridStoreConfig.rewindTimeInSeconds),

@@ -27,7 +27,7 @@ public class D2ControllerClient extends ControllerClient{
   @Override
   protected String getMasterControllerUrl(String urlsToFindMasterController) {
     String path = ControllerRoute.MASTER_CONTROLLER.getPath();
-    String params = URLEncodedUtils.format(newParams(getClusterName()), StandardCharsets.UTF_8);
+    String params = URLEncodedUtils.format(newParams(getClusterName()).getNameValuePairs(), StandardCharsets.UTF_8);
     String requestPath = D2_SCHEME + d2ServiceName + path + "?" + params;
 
     try {
