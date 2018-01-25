@@ -11,6 +11,7 @@ import com.linkedin.venice.controllerapi.PartitionResponse;
 import com.linkedin.venice.controllerapi.StorageEngineOverheadRatioResponse;
 import com.linkedin.venice.controllerapi.StoreResponse;
 import com.linkedin.venice.controllerapi.TrackableControllerResponse;
+import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
@@ -20,9 +21,12 @@ import com.linkedin.venice.meta.StoreInfo;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.Utils;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 import spark.Request;
 import spark.Route;
 
@@ -117,79 +121,21 @@ public class StoresRoutes {
         veniceResponse.setCluster(request.queryParams(CLUSTER));
         veniceResponse.setName(request.queryParams(NAME));
 
-        Optional<String> owner = Optional.ofNullable(AdminSparkServer.getOptionalParameterValue(request, OWNER));
+        Map<String, String[]> sparkRequestParams = request.queryMap().toMap();
 
-        String currentVersionStr = AdminSparkServer.getOptionalParameterValue(request, VERSION);
-        Optional<Integer> currentVersion = currentVersionStr == null ? Optional.empty() :
-            Optional.of(Utils.parseIntFromString(currentVersionStr, "currentVersion"));
+        boolean anyParamContainsMoreThanOneValue = sparkRequestParams.values().stream()
+            .anyMatch(strings -> strings.length > 1);
 
-        String partitionCountStr = AdminSparkServer.getOptionalParameterValue(request, PARTITION_COUNT);
-        Optional<Integer> partitionCount = partitionCountStr == null ? Optional.empty() :
-            Optional.of(Utils.parseIntFromString(partitionCountStr, "partitionCount"));
+        if (anyParamContainsMoreThanOneValue) {
+          throw new VeniceException(
+              "Array parameters are not supported. Provided request parameters: " + sparkRequestParams.toString());
+        }
 
-        String readabilityStr = AdminSparkServer.getOptionalParameterValue(request, ENABLE_READS);
-        Optional<Boolean> readability = readabilityStr == null ? Optional.empty() :
-            Optional.of(Utils.parseBooleanFromString(readabilityStr, "enableReads"));
+        Map<String, String> params = sparkRequestParams.entrySet().stream()
+            // Extract the first (and only) value of each param
+            .collect(Collectors.toMap(e -> e.getKey(), e -> e.getValue()[0]));
 
-        String writeabilityStr = AdminSparkServer.getOptionalParameterValue(request, ENABLE_WRITES);
-        Optional<Boolean> writeability = writeabilityStr == null ? Optional.empty() :
-            Optional.of(Utils.parseBooleanFromString(writeabilityStr, "enableWrites"));
-
-        String storageQuotaStr = AdminSparkServer.getOptionalParameterValue(request, STORAGE_QUOTA_IN_BYTE);
-        Optional<Long> storageQuotaInByte = storageQuotaStr == null ? Optional.empty() :
-            Optional.of(Utils.parseLongFromString(storageQuotaStr, "storageQuotaInByte"));
-
-        String readQuotaStr = AdminSparkServer.getOptionalParameterValue(request, READ_QUOTA_IN_CU);
-        Optional<Long> readQuotaInCU = readQuotaStr == null ? Optional.empty() :
-            Optional.of(Utils.parseLongFromString(readQuotaStr, "readQuotaInCU"));
-
-        String hybridRewindTimeStr = AdminSparkServer.getOptionalParameterValue(request, REWIND_TIME_IN_SECONDS);
-        Optional<Long> hybridRewind = (null == hybridRewindTimeStr)
-            ? Optional.empty()
-            : Optional.of(Utils.parseLongFromString(hybridRewindTimeStr, REWIND_TIME_IN_SECONDS));
-
-        String hybridOffsetLagStr = AdminSparkServer.getOptionalParameterValue(request, OFFSET_LAG_TO_GO_ONLINE);
-        Optional<Long> hybridOffsetLag = (null == hybridOffsetLagStr)
-            ? Optional.empty()
-            : Optional.of(Utils.parseLongFromString(hybridOffsetLagStr, OFFSET_LAG_TO_GO_ONLINE));
-
-        String accessControlStr = AdminSparkServer.getOptionalParameterValue(request, ACCESS_CONTROLLED);
-        Optional<Boolean> accessControlled = accessControlStr == null ? Optional.empty() :
-            Optional.of(Utils.parseBooleanFromString(accessControlStr, ACCESS_CONTROLLED));
-
-        String compressionStrategyStr = AdminSparkServer.getOptionalParameterValue(request, COMPRESSION_STRATEGY);
-        Optional<CompressionStrategy> compressionStrategy = compressionStrategyStr == null ? Optional.empty() :
-            Optional.of(CompressionStrategy.valueOf(compressionStrategyStr));
-
-        String chunkingEnabledStr = AdminSparkServer.getOptionalParameterValue(request, CHUNKING_ENABLED);
-        Optional<Boolean> chunkingEnabled = Utils.isNullOrEmpty(chunkingEnabledStr) ? Optional.empty() :
-            Optional.of(Utils.parseBooleanFromString(chunkingEnabledStr, CHUNKING_ENABLED));
-
-        String routerCacheEnabledStr = AdminSparkServer.getOptionalParameterValue(request, ROUTER_CACHE_ENABLED);
-        Optional<Boolean> routerCacheEnabled = Utils.isNullOrEmpty(routerCacheEnabledStr) ? Optional.empty() :
-            Optional.of(Utils.parseBooleanFromString(routerCacheEnabledStr, ROUTER_CACHE_ENABLED));
-
-        String batchGetLimitStr = AdminSparkServer.getOptionalParameterValue(request, BATCH_GET_LIMIT);
-        Optional<Integer> batchGetLimit = Utils.isNullOrEmpty(batchGetLimitStr) ? Optional.empty() :
-            Optional.of(Utils.parseIntFromString(batchGetLimitStr, BATCH_GET_LIMIT));
-
-            admin.updateStore(veniceResponse.getCluster(),
-                          veniceResponse.getName(),
-                          owner,
-                          readability,
-                          writeability,
-                          partitionCount,
-                          storageQuotaInByte,
-                          readQuotaInCU,
-                          currentVersion,
-                          hybridRewind,
-                          hybridOffsetLag,
-                          accessControlled,
-                          compressionStrategy,
-                          chunkingEnabled,
-                          routerCacheEnabled,
-                          batchGetLimit
-                );
+        admin.updateStore(veniceResponse.getCluster(), veniceResponse.getName(), new UpdateStoreQueryParams(params));
       }
     };
   }

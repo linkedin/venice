@@ -8,6 +8,7 @@ import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.D2ServiceDiscoveryResponse;
+import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
@@ -29,7 +30,6 @@ import java.io.InputStream;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.ExecutionException;
@@ -47,7 +47,6 @@ import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
-import static com.linkedin.venice.ConfigKeys.*;
 
 //TODO: merge TestRead and TestRouterCache.
 @Test(singleThreaded = true)
@@ -106,9 +105,10 @@ public class TestRead {
   }
 
   private void updateStore(long readQuota, int maxKeyLimit) {
-    controllerClient.updateStore(storeName, Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(),
-        Optional.empty(), Optional.empty(), Optional.of(readQuota), Optional.empty(), Optional.empty(),
-        Optional.empty(), Optional.empty() ,Optional.empty(), Optional.of(Boolean.TRUE), Optional.of(maxKeyLimit));
+    controllerClient.updateStore(storeName, new UpdateStoreQueryParams()
+            .setReadQuotaInCU(readQuota)
+            .setRouterCacheEnabled(true)
+            .setBatchGetLimit(maxKeyLimit));
   }
 
   @AfterClass

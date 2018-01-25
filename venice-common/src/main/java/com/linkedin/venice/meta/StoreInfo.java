@@ -28,6 +28,7 @@ public class StoreInfo {
     storeInfo.setChunkingEnabled(store.isChunkingEnabled());
     storeInfo.setRouterCacheEnabled(store.isRouterCacheEnabled());
     storeInfo.setBatchGetLimit(store.getBatchGetLimit());
+    storeInfo.setLargestUsedVersionNumber(store.getLargestUsedVersionNumber());
 
     return storeInfo;
   }
@@ -104,6 +105,12 @@ public class StoreInfo {
    * Batch get limit for current store.
    */
   private int batchGetLimit;
+
+  /**
+   * Largest used version number. Topics corresponding to store-versions equal to or lesser than this
+   * version number will not trigger new OfflinePushJobs.
+   */
+  private int largestUsedVersionNumber;
 
   public StoreInfo() {
   }
@@ -263,5 +270,13 @@ public class StoreInfo {
 
   public void setBatchGetLimit(int batchGetLimit) {
     this.batchGetLimit = batchGetLimit;
+  }
+
+  public int getLargestUsedVersionNumber() {
+    return largestUsedVersionNumber;
+  }
+
+  public void setLargestUsedVersionNumber(int largestUsedVersionNumber) {
+    this.largestUsedVersionNumber = largestUsedVersionNumber;
   }
 }

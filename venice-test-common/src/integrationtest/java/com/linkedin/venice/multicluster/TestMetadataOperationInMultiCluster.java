@@ -3,6 +3,7 @@ package com.linkedin.venice.multicluster;
 import com.linkedin.venice.controllerapi.ControllerClient;
 import com.linkedin.venice.controllerapi.ControllerResponse;
 import com.linkedin.venice.controllerapi.NewStoreResponse;
+import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.hadoop.KafkaPushJob;
 import com.linkedin.venice.integration.utils.ServiceFactory;
@@ -13,7 +14,6 @@ import com.linkedin.venice.utils.TestUtils;
 import java.io.File;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 import org.apache.avro.Schema;
@@ -108,12 +108,11 @@ public class TestMetadataOperationInMultiCluster {
       ControllerClient controllerClient =
           new ControllerClient(clusterName, multiClusterWrapper.getRandomController().getControllerUrl());
       controllerClient.createNewStore(storeName, "test", keySchema.toString(), valueSchema.toString());
-      ControllerResponse
-          controllerResponse = controllerClient.updateStore(h2vProperties.getProperty(VENICE_STORE_NAME_PROP), Optional.empty(), Optional.empty(),
-          Optional.empty(), Optional.empty(), Optional.empty(), Optional.of(Store.UNLIMITED_STORAGE_QUOTA), Optional.empty(),
-          Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty());
-      Assert.assertFalse(controllerResponse.isError());
+      ControllerResponse controllerResponse = controllerClient.updateStore(
+          h2vProperties.getProperty(VENICE_STORE_NAME_PROP),
+          new UpdateStoreQueryParams().setStorageQuotaInByte(Store.UNLIMITED_STORAGE_QUOTA));
 
+      Assert.assertFalse(controllerResponse.isError());
     }
 
     for (String clusterName : clusterNames) {

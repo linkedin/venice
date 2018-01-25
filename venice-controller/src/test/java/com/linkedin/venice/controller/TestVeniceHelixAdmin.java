@@ -2,7 +2,7 @@ package com.linkedin.venice.controller;
 
 import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.compression.CompressionStrategy;
-import com.linkedin.venice.controller.kafka.consumer.VeniceControllerConsumerFactotry;
+import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceNoClusterException;
 import com.linkedin.venice.exceptions.VeniceNoStoreException;
@@ -543,10 +543,9 @@ public class TestVeniceHelixAdmin {
     // test hybrid config
     Assert.assertFalse(veniceAdmin.getStore(clusterName, storeName).isHybrid());
     HybridStoreConfig hybridConfig = new HybridStoreConfig(TimeUnit.SECONDS.convert(2, TimeUnit.DAYS), 1000);
-    veniceAdmin.updateStore(clusterName, storeName, Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(),
-        Optional.empty(), Optional.empty(), Optional.empty(), Optional.of(hybridConfig.getRewindTimeInSeconds()),
-        Optional.of(hybridConfig.getOffsetLagThresholdToGoOnline()), Optional.empty(), Optional.empty(), Optional.empty(),
-        Optional.empty(), Optional.empty());
+    veniceAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams()
+            .setHybridRewindSeconds(hybridConfig.getRewindTimeInSeconds())
+            .setHybridOffsetLagThreshold(hybridConfig.getOffsetLagThresholdToGoOnline()));
     Assert.assertTrue(veniceAdmin.getStore(clusterName, storeName).isHybrid());
   }
 
@@ -595,10 +594,9 @@ public class TestVeniceHelixAdmin {
     }
 
     veniceAdmin.addStore(clusterName, storeName, "owner", keySchema, valueSchema);
-    veniceAdmin.updateStore(clusterName, storeName, Optional.empty(), Optional.empty(),
-        Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(),
-        Optional.of(25L), Optional.of(100L), Optional.empty(), Optional.empty(), Optional.empty(),
-        Optional.empty(), Optional.empty()); //make store hybrid
+    veniceAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams()
+        .setHybridRewindSeconds(25L)
+        .setHybridOffsetLagThreshold(100L)); //make store hybrid
 
     try {
       veniceAdmin.getRealTimeTopic(clusterName, storeName);
@@ -930,15 +928,13 @@ public class TestVeniceHelixAdmin {
     store = veniceAdmin.getStore(clusterName, storeName);
     Assert.assertEquals(store.isAccessControlled(), true);
 
-    veniceAdmin.updateStore(clusterName, storeName, Optional.empty(), Optional.empty(), Optional.empty(),
-        Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(),
-        Optional.empty(), Optional.of(false), Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty());
+    veniceAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams()
+        .setAccessControlled(false));
     store = veniceAdmin.getStore(clusterName, storeName);
     Assert.assertEquals(store.isAccessControlled(), false);
 
-    veniceAdmin.updateStore(clusterName, storeName, Optional.empty(), Optional.empty(), Optional.empty(),
-        Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(),
-        Optional.empty(), Optional.of(true), Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty());
+    veniceAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams()
+        .setAccessControlled(true));
     store = veniceAdmin.getStore(clusterName, storeName);
     Assert.assertEquals(store.isAccessControlled(), true);
   }
@@ -1291,9 +1287,8 @@ public class TestVeniceHelixAdmin {
     Store store = veniceAdmin.getStore(clusterName, storeName);
     Assert.assertFalse(store.isChunkingEnabled());
 
-    veniceAdmin.updateStore(clusterName, storeName, Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(),
-        Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(),
-        Optional.empty(), Optional.empty(), Optional.empty(), Optional.of(Boolean.TRUE), Optional.empty(), Optional.empty());
+    veniceAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams()
+        .setChunkingEnabled(true));
     store = veniceAdmin.getStore(clusterName, storeName);
     Assert.assertTrue(store.isChunkingEnabled());
   }
@@ -1331,59 +1326,53 @@ public class TestVeniceHelixAdmin {
     Store store = veniceAdmin.getStore(clusterName, storeName);
     Assert.assertFalse(store.isRouterCacheEnabled());
 
-    veniceAdmin.updateStore(clusterName, storeName, Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(),
-        Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(),
-        Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), Optional.of(Boolean.TRUE), Optional.empty());
+    veniceAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams()
+        .setRouterCacheEnabled(true));
     store = veniceAdmin.getStore(clusterName, storeName);
     Assert.assertTrue(store.isRouterCacheEnabled());
 
     // Test enabling hybrid for a cache-enabled store
     try {
-      veniceAdmin.updateStore(clusterName, storeName, Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(),
-          Optional.empty(), Optional.empty(), Optional.empty(), Optional.of(1000l), Optional.of(1000l), Optional.empty(),
-          Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty());
+      veniceAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams()
+          .setHybridRewindSeconds(1000L)
+          .setHybridOffsetLagThreshold(1000L));
       Assert.fail("A VeniceException expected since we could not turn a cache-enabled batch-only store to be a hybrid store");
     } catch (VeniceException e) {
     }
 
     // Test enabling cache of a hybrid store
     // Disable cache first
-    veniceAdmin.updateStore(clusterName, storeName, Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(),
-        Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(),
-        Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), Optional.of(Boolean.FALSE), Optional.empty());
+    veniceAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams()
+        .setRouterCacheEnabled(false));
     store = veniceAdmin.getStore(clusterName, storeName);
     Assert.assertFalse(store.isRouterCacheEnabled());
     // Enable hybrid
-    veniceAdmin.updateStore(clusterName, storeName, Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(),
-        Optional.empty(), Optional.empty(), Optional.empty(), Optional.of(1000l), Optional.of(1000l), Optional.empty(),
-        Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty());
+    veniceAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams()
+        .setHybridRewindSeconds(1000L)
+        .setHybridOffsetLagThreshold(1000L));
     store = veniceAdmin.getStore(clusterName, storeName);
     Assert.assertTrue(store.isHybrid());
     try {
-      veniceAdmin.updateStore(clusterName, storeName, Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(),
-          Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(),
-          Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), Optional.of(Boolean.TRUE), Optional.empty());
+      veniceAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams()
+          .setRouterCacheEnabled(true));
       Assert.fail("A VeniceException expected since we could not enable cache of a hybrid store");
     } catch (VeniceException e) {
     }
 
     // Test enabling cache of a compressed store
     // Disable cache first
-    veniceAdmin.updateStore(clusterName, storeName, Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(),
-        Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(),
-        Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), Optional.of(Boolean.FALSE), Optional.empty());
+    veniceAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams()
+        .setRouterCacheEnabled(false));
     store = veniceAdmin.getStore(clusterName, storeName);
     Assert.assertFalse(store.isRouterCacheEnabled());
     // Enable compression
-    veniceAdmin.updateStore(clusterName, storeName, Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(),
-        Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(),
-        Optional.of(CompressionStrategy.GZIP), Optional.empty(), Optional.empty(), Optional.empty());
+    veniceAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams()
+        .setCompressionStrategy(CompressionStrategy.GZIP));
     store = veniceAdmin.getStore(clusterName, storeName);
     Assert.assertTrue(store.getCompressionStrategy().isCompressionEnabled());
     try {
-      veniceAdmin.updateStore(clusterName, storeName, Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(),
-          Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(),
-          Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), Optional.of(Boolean.TRUE), Optional.empty());
+      veniceAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams()
+          .setRouterCacheEnabled(true));
       Assert.fail("A VeniceException expected since we could not enable cache of a compressed store");
     } catch (VeniceException e) {
     }
@@ -1397,8 +1386,8 @@ public class TestVeniceHelixAdmin {
     Store store = veniceAdmin.getStore(clusterName, storeName);
     Assert.assertEquals(store.getBatchGetLimit(), -1);
 
-    veniceAdmin.updateStore(clusterName, storeName, Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(),
-        Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), Optional.of(100));
+    veniceAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams()
+        .setBatchGetLimit(100));
     store = veniceAdmin.getStore(clusterName, storeName);
     Assert.assertEquals(store.getBatchGetLimit(), 100);
   }
@@ -1430,7 +1419,9 @@ public class TestVeniceHelixAdmin {
     veniceAdmin.addStore(clusterName, storeName2, "test", keySchema,valueSchema);
     veniceAdmin.addStore(clusterName, storeName3, "test", keySchema,valueSchema);
     //store3 is hybrid store.
-    veniceAdmin.updateStore(clusterName, storeName3, Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), Optional.of(1000l), Optional.of(1000l), Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty() );
+    veniceAdmin.updateStore(clusterName, storeName3, new UpdateStoreQueryParams()
+        .setHybridRewindSeconds(1000L)
+        .setHybridOffsetLagThreshold(1000L));
 
     Assert.assertTrue(veniceAdmin.isSSLEnabledForPush(clusterName, storeName1),
         "Store1 is in the whitelist, ssl should be enabled.");
@@ -1438,8 +1429,6 @@ public class TestVeniceHelixAdmin {
         "Store2 is not in the whitelist, ssl should be disabled.");
     Assert.assertTrue(veniceAdmin.isSSLEnabledForPush(clusterName, storeName3),
         "Store3 is hybrid store, and ssl for nearline push is disabled, so by default ssl should be enabled because we turned on the cluster level ssl switcher.");
-
-
   }
 
   @Test
@@ -1509,6 +1498,23 @@ public class TestVeniceHelixAdmin {
         }
       }
     }
+  }
+
+  @Test
+  public void testSetLargestUsedVersion() {
+    String storeName = "testSetLargestUsedVersion";
+    veniceAdmin.addStore(clusterName, storeName, "unittestOwner", keySchema, valueSchema);
+    Store store = veniceAdmin.getStore(clusterName, storeName);
+    Assert.assertEquals(store.getLargestUsedVersionNumber(), 0);
+
+    Version version = veniceAdmin.incrementVersion(clusterName, storeName, 1, 1);
+    store = veniceAdmin.getStore(clusterName, storeName);
+    Assert.assertTrue(version.getNumber() > 0);
+    Assert.assertEquals(store.getLargestUsedVersionNumber(), version.getNumber());
+
+    veniceAdmin.setStoreLargestUsedVersion(clusterName, storeName, 0);
+    store = veniceAdmin.getStore(clusterName, storeName);
+    Assert.assertEquals(store.getLargestUsedVersionNumber(), 0);
   }
 
   private Properties getControllerProperties(String clusterName)

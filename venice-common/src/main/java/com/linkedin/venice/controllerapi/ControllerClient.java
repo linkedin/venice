@@ -6,7 +6,6 @@ import com.linkedin.venice.controllerapi.routes.AdminCommandExecutionResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.exceptions.VeniceHttpException;
 import com.linkedin.venice.exceptions.VeniceUnsupportedOperationException;
-import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.meta.Version;
 import com.linkedin.venice.utils.Utils;
 import java.io.Closeable;
@@ -18,7 +17,6 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
-import java.util.Optional;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import org.apache.commons.io.IOUtils;
@@ -33,10 +31,11 @@ import org.apache.http.client.methods.HttpRequestBase;
 import org.apache.http.client.utils.URLEncodedUtils;
 import org.apache.http.impl.nio.client.CloseableHttpAsyncClient;
 import org.apache.http.impl.nio.client.HttpAsyncClients;
-import org.apache.http.message.BasicNameValuePair;
 import org.apache.log4j.Logger;
 import org.codehaus.jackson.map.DeserializationConfig;
 import org.codehaus.jackson.map.ObjectMapper;
+
+import static com.linkedin.venice.controllerapi.ControllerApiConstants.*;
 
 public class ControllerClient implements Closeable {
   private String masterControllerUrl;
@@ -92,8 +91,7 @@ public class ControllerClient implements Closeable {
     Throwable lastException = null;
     for (String url : urlList) {
       try {
-        List<NameValuePair> params = newParams(clusterName);
-        String responseBody = getRequest(url, ControllerRoute.MASTER_CONTROLLER.getPath(), params);
+        String responseBody = getRequest(url, ControllerRoute.MASTER_CONTROLLER.getPath(), newParams());
         MasterControllerResponse controllerResponse = mapper.readValue(responseBody, MasterControllerResponse.class);
         if (controllerResponse.isError()) {
           throw new VeniceException("Received error response: [" + mapper.writeValueAsString(controllerResponse) + "] from url: " + url);
@@ -115,8 +113,8 @@ public class ControllerClient implements Closeable {
 
   public StoreResponse getStore(String storeName) {
     try {
-      List<NameValuePair> params = newParams(clusterName);
-      params.add(new BasicNameValuePair(ControllerApiConstants.NAME, storeName));
+      QueryParams params = newParams()
+          .add(NAME, storeName);
       String responseJson = getRequest(ControllerRoute.STORE.getPath(), params);
       return mapper.readValue(responseJson, StoreResponse.class);
     } catch (Exception e){
@@ -135,8 +133,8 @@ public class ControllerClient implements Closeable {
 
   public StorageEngineOverheadRatioResponse getStorageEngineOverheadRatio(String storeName) {
     try {
-      List<NameValuePair> params = newParams(clusterName);
-      params.add(new BasicNameValuePair(ControllerApiConstants.NAME, storeName));
+      QueryParams params = newParams()
+          .add(NAME, storeName);
       String responseJson = getRequest(ControllerRoute.STORAGE_ENGINE_OVERHEAD_RATIO.getPath(), params);
       return mapper.readValue(responseJson, StorageEngineOverheadRatioResponse.class);
     } catch (Exception e){
@@ -145,7 +143,7 @@ public class ControllerClient implements Closeable {
   }
 
   /**
-   * Use {@link #requestTopicForWrites(String, long, com.linkedin.venice.controllerapi.ControllerApiConstants.PushType, String) requestTopicForWrites} instead
+   * Use {@link #requestTopicForWrites(String, long, PushType, String)} instead
    * @param storeName
    * @param storeSize
    * @return
@@ -153,9 +151,9 @@ public class ControllerClient implements Closeable {
   @Deprecated //Marked deprecated, but we should keep using this for H2V until we can do push ID based idempotent topic requests
   public VersionCreationResponse createNewStoreVersion(String storeName, long storeSize) {
     try {
-      List<NameValuePair> params = newParams(clusterName);
-      params.add(new BasicNameValuePair(ControllerApiConstants.NAME, storeName));
-      params.add(new BasicNameValuePair(ControllerApiConstants.STORE_SIZE, Long.toString(storeSize)));
+      QueryParams params = newParams()
+          .add(NAME, storeName)
+          .add(STORE_SIZE, Long.toString(storeSize));
       String responseJson = postRequest(ControllerRoute.CREATE_VERSION.getPath(), params);
       return mapper.readValue(responseJson, VersionCreationResponse.class);
     } catch (Exception e){
@@ -173,13 +171,13 @@ public class ControllerClient implements Closeable {
    * @param pushJobId Unique Id for this job
    * @return VersionCreationResponse includes topic and partitioning
    */
-  public VersionCreationResponse requestTopicForWrites(String storeName, long storeSize, ControllerApiConstants.PushType pushType, String pushJobId) {
+  public VersionCreationResponse requestTopicForWrites(String storeName, long storeSize, PushType pushType, String pushJobId) {
     try {
-      List<NameValuePair> params = newParams(clusterName);
-      params.add(new BasicNameValuePair(ControllerApiConstants.NAME, storeName));
-      params.add(new BasicNameValuePair(ControllerApiConstants.STORE_SIZE, Long.toString(storeSize)));
-      params.add(new BasicNameValuePair(ControllerApiConstants.PUSH_JOB_ID, pushJobId));
-      params.add(new BasicNameValuePair(ControllerApiConstants.PUSH_TYPE, pushType.toString()));
+      QueryParams params = newParams()
+          .add(NAME, storeName)
+          .add(STORE_SIZE, Long.toString(storeSize))
+          .add(PUSH_JOB_ID, pushJobId)
+          .add(PUSH_TYPE, pushType.toString());
       String responseJson = postRequest(ControllerRoute.REQUEST_TOPIC.getPath(), params);
       return mapper.readValue(responseJson, VersionCreationResponse.class);
     } catch (Exception e){
@@ -190,9 +188,9 @@ public class ControllerClient implements Closeable {
 
   public ControllerResponse writeEndOfPush(String storeName, int version){
     try {
-      List<NameValuePair> params = newParams(clusterName);
-      params.add(new BasicNameValuePair(ControllerApiConstants.NAME, storeName));
-      params.add(new BasicNameValuePair(ControllerApiConstants.VERSION, Integer.toString(version)));
+      QueryParams params = newParams()
+          .add(NAME, storeName)
+          .add(VERSION, version);
       String responseJson = postRequest(ControllerRoute.END_OF_PUSH.getPath(), params);
       return mapper.readValue(responseJson, ControllerResponse.class);
     } catch (Exception e){
@@ -203,10 +201,10 @@ public class ControllerClient implements Closeable {
 
   public VersionCreationResponse emptyPush(String storeName, String pushJobId, long storeSize) {
     try {
-      List<NameValuePair> params = newParams(clusterName);
-      params.add(new BasicNameValuePair(ControllerApiConstants.NAME, storeName));
-      params.add(new BasicNameValuePair(ControllerApiConstants.PUSH_JOB_ID, pushJobId));
-      params.add(new BasicNameValuePair(ControllerApiConstants.STORE_SIZE, Long.toString(storeSize)));
+      QueryParams params = newParams()
+          .add(NAME, storeName)
+          .add(PUSH_JOB_ID, pushJobId)
+          .add(STORE_SIZE, Long.toString(storeSize));
       String responseJson = postRequest(ControllerRoute.EMPTY_PUSH.getPath(), params);
       return mapper.readValue(responseJson, VersionCreationResponse.class);
     } catch (Exception e) {
@@ -226,11 +224,11 @@ public class ControllerClient implements Closeable {
 
   public NewStoreResponse createNewStore(String storeName, String owner, String keySchema, String valueSchema) {
     try {
-      List<NameValuePair> params = newParams(clusterName);
-      params.add(new BasicNameValuePair(ControllerApiConstants.NAME, storeName));
-      params.add(new BasicNameValuePair(ControllerApiConstants.OWNER, owner));
-      params.add(new BasicNameValuePair(ControllerApiConstants.KEY_SCHEMA, keySchema));
-      params.add(new BasicNameValuePair(ControllerApiConstants.VALUE_SCHEMA, valueSchema));
+      QueryParams params = newParams()
+          .add(NAME, storeName)
+          .add(OWNER, owner)
+          .add(KEY_SCHEMA, keySchema)
+          .add(VALUE_SCHEMA, valueSchema);
       String responseJson = postRequest(ControllerRoute.NEW_STORE.getPath(), params);
       return mapper.readValue(responseJson, NewStoreResponse.class);
     } catch (Exception e){
@@ -240,8 +238,8 @@ public class ControllerClient implements Closeable {
 
   public TrackableControllerResponse deleteStore(String storeName) {
     try {
-      List<NameValuePair> queryParams = newParams(clusterName);
-      queryParams.add(new BasicNameValuePair(ControllerApiConstants.NAME, storeName));
+      QueryParams queryParams = newParams()
+          .add(NAME, storeName);
       String responseJson = postRequest(ControllerRoute.DELETE_STORE.getPath(), queryParams);
       return mapper.readValue(responseJson, TrackableControllerResponse.class);
     } catch (Exception e) {
@@ -253,9 +251,9 @@ public class ControllerClient implements Closeable {
 
   public VersionResponse overrideSetActiveVersion(String storeName, int version) {
     try {
-      List<NameValuePair> params = newParams(clusterName);
-      params.add(new BasicNameValuePair(ControllerApiConstants.NAME, storeName));
-      params.add(new BasicNameValuePair(ControllerApiConstants.VERSION, Integer.toString(version)));
+      QueryParams params = newParams()
+          .add(NAME, storeName)
+          .add(VERSION, version);
       String responseJson = postRequest(ControllerRoute.SET_VERSION.getPath(), params);
       return mapper.readValue(responseJson, VersionResponse.class);
     } catch(Exception e){
@@ -265,12 +263,13 @@ public class ControllerClient implements Closeable {
 
   public ControllerResponse killOfflinePushJob(String kafkaTopic) {
     try {
-      List<NameValuePair> queryParams = newParams(clusterName);
-      queryParams.add(new BasicNameValuePair(ControllerApiConstants.TOPIC, kafkaTopic)); // TODO: remove once the controller is deployed to handle store and version instead
       String store = Version.parseStoreFromKafkaTopicName(kafkaTopic);
       int versionNumber = Version.parseVersionFromKafkaTopicName(kafkaTopic);
-      queryParams.add(new BasicNameValuePair(ControllerApiConstants.NAME, store));
-      queryParams.add(new BasicNameValuePair(ControllerApiConstants.VERSION, Integer.toString(versionNumber)));
+
+      QueryParams queryParams = newParams()
+          .add(TOPIC, kafkaTopic) // TODO: remove once the controller is deployed to handle store and version instead
+          .add(NAME, store)
+          .add(VERSION, versionNumber);
       String responseJson = postRequest(ControllerRoute.KILL_OFFLINE_PUSH_JOB.getPath(), queryParams);
       return mapper.readValue(responseJson, ControllerResponse.class);
     } catch (Exception e) {
@@ -280,8 +279,8 @@ public class ControllerClient implements Closeable {
 
   public ControllerResponse skipAdminMessage(String offset){
     try {
-      List<NameValuePair> queryParams = newParams(clusterName);
-      queryParams.add(new BasicNameValuePair(ControllerApiConstants.OFFSET, offset));
+      QueryParams queryParams = newParams()
+          .add(OFFSET, offset);
       String responseJson = postRequest(ControllerRoute.SKIP_ADMIN.getPath(), queryParams);
       return mapper.readValue(responseJson, ControllerResponse.class);
     } catch (Exception e) {
@@ -293,9 +292,9 @@ public class ControllerClient implements Closeable {
     try {
       String storeName = Version.parseStoreFromKafkaTopicName(kafkaTopic);
       int version = Version.parseVersionFromKafkaTopicName(kafkaTopic);
-      List<NameValuePair> queryParams = newParams(clusterName);
-      queryParams.add(new BasicNameValuePair(ControllerApiConstants.NAME, storeName));
-      queryParams.add(new BasicNameValuePair(ControllerApiConstants.VERSION, Integer.toString(version)));
+      QueryParams queryParams = newParams()
+          .add(NAME, storeName)
+          .add(VERSION, version);
       String responseJson = getRequest(ControllerRoute.JOB.getPath(), queryParams);
       return mapper.readValue(responseJson, JobStatusQueryResponse.class);
     } catch (Exception e){
@@ -334,8 +333,7 @@ public class ControllerClient implements Closeable {
 
   public MultiStoreResponse queryStoreList() {
     try {
-      List<NameValuePair> queryParams = newParams(clusterName);
-      String responseJson = getRequest(ControllerRoute.LIST_STORES.getPath(), queryParams);
+      String responseJson = getRequest(ControllerRoute.LIST_STORES.getPath());
       return mapper.readValue(responseJson, MultiStoreResponse.class);
     } catch (Exception e){
       return handleError(new VeniceException("Error listing store for cluster: " + clusterName, e), new MultiStoreResponse());
@@ -353,8 +351,7 @@ public class ControllerClient implements Closeable {
 
   public MultiStoreStatusResponse listStoresStatuses() {
     try {
-      List<NameValuePair> queryParams = newParams(clusterName);
-      String responseJson = getRequest(ControllerRoute.CLUSTER_HELATH_STORES.getPath(), queryParams);
+      String responseJson = getRequest(ControllerRoute.CLUSTER_HELATH_STORES.getPath());
       return mapper.readValue(responseJson, MultiStoreStatusResponse.class);
     } catch (Exception e) {
       return handleError(new VeniceException("Error listing store status for cluster: " + clusterName, e),
@@ -363,23 +360,23 @@ public class ControllerClient implements Closeable {
   }
 
   public ControllerResponse enableStoreWrites(String storeName, boolean enable) {
-    return enableStore(storeName, enable, ControllerApiConstants.WRITE_OPERATION);
+    return enableStore(storeName, enable, WRITE_OPERATION);
   }
 
   public ControllerResponse enableStoreReads(String storeName, boolean enable) {
-    return enableStore(storeName, enable, ControllerApiConstants.READ_OPERATION);
+    return enableStore(storeName, enable, READ_OPERATION);
   }
 
   public ControllerResponse enableStoreReadWrites(String storeName, boolean enable) {
-    return enableStore(storeName, enable, ControllerApiConstants.READ_WRITE_OPERATION);
+    return enableStore(storeName, enable, READ_WRITE_OPERATION);
   }
 
   private ControllerResponse enableStore(String storeName, boolean enable, String operation){
     try {
-      List<NameValuePair> queryParams = newParams(clusterName);
-      queryParams.add(new BasicNameValuePair(ControllerApiConstants.NAME, storeName));
-      queryParams.add(new BasicNameValuePair(ControllerApiConstants.STATUS, Boolean.toString(enable)));
-      queryParams.add(new BasicNameValuePair(ControllerApiConstants.OPERATION, operation));
+      QueryParams queryParams = newParams()
+          .add(NAME, storeName)
+          .add(STATUS, enable)
+          .add(OPERATION, operation);
       String responseJson = postRequest(ControllerRoute.ENABLE_STORE.getPath(), queryParams);
       return mapper.readValue(responseJson, ControllerResponse.class);
     } catch (Exception e){
@@ -392,8 +389,8 @@ public class ControllerClient implements Closeable {
 
   public MultiVersionResponse deleteAllVersions(String storeName) {
     try {
-      List<NameValuePair> queryParams = newParams(clusterName);
-      queryParams.add(new BasicNameValuePair(ControllerApiConstants.NAME, storeName));
+      QueryParams queryParams = newParams()
+          .add(NAME, storeName);
       String responseJson = postRequest(ControllerRoute.DELETE_ALL_VERSIONS.getPath(), queryParams);
       return mapper.readValue(responseJson, MultiVersionResponse.class);
     } catch (Exception e) {
@@ -404,9 +401,9 @@ public class ControllerClient implements Closeable {
 
   public VersionResponse deleteOldVersion(String storeName, int versionNum) {
     try {
-      List<NameValuePair> queryParams = newParams(clusterName);
-      queryParams.add(new BasicNameValuePair(ControllerApiConstants.NAME, storeName));
-      queryParams.add(new BasicNameValuePair(ControllerApiConstants.VERSION, String.valueOf(versionNum)));
+      QueryParams queryParams = newParams()
+          .add(NAME, storeName)
+          .add(VERSION, versionNum);
       String responseJson = postRequest(ControllerRoute.DELETE_OLD_VERSION.getPath(), queryParams);
       return mapper.readValue(responseJson, VersionResponse.class);
     } catch (Exception e) {
@@ -437,8 +434,8 @@ public class ControllerClient implements Closeable {
   private <T extends ControllerResponse> T singleNodeOperation(String instanceId, String path, String method,
       Class<T> responseType) {
     try {
-      List<NameValuePair> queryParams = newParams(clusterName);
-      queryParams.add(new BasicNameValuePair(ControllerApiConstants.STORAGE_NODE_ID, instanceId));
+      QueryParams queryParams = newParams()
+          .add(STORAGE_NODE_ID, instanceId);
       String responseJson = null;
       if (method.equals(HttpGet.METHOD_NAME)) {
         responseJson = getRequest(path, queryParams);
@@ -462,8 +459,7 @@ public class ControllerClient implements Closeable {
 
   public MultiNodeResponse listStorageNodes() {
     try {
-      List<NameValuePair> queryParams = newParams(clusterName);
-      String responseJson = getRequest(ControllerRoute.LIST_NODES.getPath(), queryParams);
+      String responseJson = getRequest(ControllerRoute.LIST_NODES.getPath());
       return mapper.readValue(responseJson, MultiNodeResponse.class);
     } catch (Exception e){
       return handleError(new VeniceException("Error listing nodes", e), new MultiNodeResponse());
@@ -472,8 +468,7 @@ public class ControllerClient implements Closeable {
 
   public MultiNodesStatusResponse listInstancesStatuses() {
     try {
-      List<NameValuePair> queryParams = newParams(clusterName);
-      String responseJson = getRequest(ControllerRoute.ClUSTER_HEALTH_INSTANCES.getPath(), queryParams);
+      String responseJson = getRequest(ControllerRoute.ClUSTER_HEALTH_INSTANCES.getPath());
       return mapper.readValue(responseJson, MultiNodesStatusResponse.class);
     } catch (Exception e) {
       return handleError(new VeniceException("Error listing nodes", e), new MultiNodesStatusResponse());
@@ -482,9 +477,9 @@ public class ControllerClient implements Closeable {
 
   public MultiReplicaResponse listReplicas(String storeName, int version) {
     try {
-      List<NameValuePair> params = newParams(clusterName);
-      params.add(new BasicNameValuePair(ControllerApiConstants.NAME, storeName));
-      params.add(new BasicNameValuePair(ControllerApiConstants.VERSION, Integer.toString(version)));
+      QueryParams params = newParams()
+          .add(NAME, storeName)
+          .add(VERSION, version);
       String responseJson = getRequest(ControllerRoute.LIST_REPLICAS.getPath(), params);
       return mapper.readValue(responseJson, MultiReplicaResponse.class);
     } catch (Exception e){
@@ -494,8 +489,8 @@ public class ControllerClient implements Closeable {
 
   public MultiReplicaResponse listStorageNodeReplicas(String instanceId) {
     try {
-      List<NameValuePair> params = newParams(clusterName);
-      params.add(new BasicNameValuePair(ControllerApiConstants.STORAGE_NODE_ID, instanceId));
+      QueryParams params = newParams()
+          .add(STORAGE_NODE_ID, instanceId);
       String responseJson = getRequest(ControllerRoute.NODE_REPLICAS.getPath(), params);
       return mapper.readValue(responseJson, MultiReplicaResponse.class);
     } catch (Exception e){
@@ -506,8 +501,8 @@ public class ControllerClient implements Closeable {
   /* SCHEMA */
   public SchemaResponse getKeySchema(String storeName) {
     try {
-      List<NameValuePair> queryParams = newParams(clusterName);
-      queryParams.add(new BasicNameValuePair(ControllerApiConstants.NAME, storeName));
+      QueryParams queryParams = newParams()
+          .add(NAME, storeName);
       String responseJson = getRequest(ControllerRoute.GET_KEY_SCHEMA.getPath(), queryParams);
       return mapper.readValue(responseJson, SchemaResponse.class);
     } catch (Exception e){
@@ -517,9 +512,9 @@ public class ControllerClient implements Closeable {
 
   public SchemaResponse addValueSchema(String storeName, String valueSchemaStr) {
     try {
-      List<NameValuePair> queryParams = newParams(clusterName);
-      queryParams.add(new BasicNameValuePair(ControllerApiConstants.NAME, storeName));
-      queryParams.add(new BasicNameValuePair(ControllerApiConstants.VALUE_SCHEMA, valueSchemaStr));
+      QueryParams queryParams = newParams()
+          .add(NAME, storeName)
+          .add(VALUE_SCHEMA, valueSchemaStr);
       String responseJson = postRequest(ControllerRoute.ADD_VALUE_SCHEMA.getPath(), queryParams);
       return mapper.readValue(responseJson, SchemaResponse.class);
     } catch (Exception e){
@@ -529,9 +524,9 @@ public class ControllerClient implements Closeable {
 
   public PartitionResponse setStorePartitionCount(String storeName, String partitionNum) {
     try {
-      List<NameValuePair> queryParams = newParams(clusterName);
-      queryParams.add(new BasicNameValuePair(ControllerApiConstants.NAME, storeName));
-      queryParams.add(new BasicNameValuePair(ControllerApiConstants.PARTITION_COUNT, partitionNum));
+      QueryParams queryParams = newParams()
+          .add(NAME, storeName)
+          .add(PARTITION_COUNT, partitionNum);
       String responseJson = postRequest(ControllerRoute.SET_PARTITION_COUNT.getPath(), queryParams);
       return mapper.readValue(responseJson, PartitionResponse.class);
     } catch (Exception e) {
@@ -541,9 +536,9 @@ public class ControllerClient implements Closeable {
 
   public OwnerResponse setStoreOwner(String storeName, String owner) {
     try {
-      List<NameValuePair> queryParams = newParams(clusterName);
-      queryParams.add(new BasicNameValuePair(ControllerApiConstants.NAME, storeName));
-      queryParams.add(new BasicNameValuePair(ControllerApiConstants.OWNER, owner));
+      QueryParams queryParams = newParams()
+          .add(NAME, storeName)
+          .add(OWNER, owner);
       String responseJson = postRequest(ControllerRoute.SET_OWNER.getPath(), queryParams);
       return mapper.readValue(responseJson, OwnerResponse.class);
     } catch (Exception e) {
@@ -551,69 +546,10 @@ public class ControllerClient implements Closeable {
     }
   }
 
-  public ControllerResponse updateStore(
-      String storeName,
-      Optional<String> owner,
-      Optional<Integer> partitionCount,
-      Optional<Integer> currentVersion,
-      Optional<Boolean> enableReads,
-      Optional<Boolean> enableWrites,
-      Optional<Long> storageQuotaInByte,
-      Optional<Long> readQuotaInCU,
-      Optional<Long> hybridRewindSeconds,
-      Optional<Long> hybridOffsetLagThreshold,
-      Optional<Boolean> accessControlled,
-      Optional<CompressionStrategy> compressionStrategy,
-      Optional<Boolean> chunkingEnabled,
-      Optional<Boolean> routerCacheEnabled,
-      Optional<Integer> batchGetLimit) {
-
+  public ControllerResponse updateStore(String storeName, UpdateStoreQueryParams params) {
     try {
-      List<NameValuePair> queryParams = newParams(clusterName);
-      queryParams.add(new BasicNameValuePair(ControllerApiConstants.NAME, storeName));
-      if (owner.isPresent()) {
-        queryParams.add(new BasicNameValuePair(ControllerApiConstants.OWNER, owner.get()));
-      }
-      if (partitionCount.isPresent()) {
-        queryParams.add(new BasicNameValuePair(ControllerApiConstants.PARTITION_COUNT, partitionCount.get().toString()));
-      }
-      if (currentVersion.isPresent()) {
-        queryParams.add(new BasicNameValuePair(ControllerApiConstants.VERSION, currentVersion.get().toString()));
-      }
-      if (enableReads.isPresent()) {
-        queryParams.add(new BasicNameValuePair(ControllerApiConstants.ENABLE_READS, enableReads.get().toString()));
-      }
-      if (enableWrites.isPresent()) {
-        queryParams.add(new BasicNameValuePair(ControllerApiConstants.ENABLE_WRITES, enableWrites.get().toString()));
-      }
-      if (storageQuotaInByte.isPresent()) {
-        queryParams.add(new BasicNameValuePair(ControllerApiConstants.STORAGE_QUOTA_IN_BYTE, storageQuotaInByte.get().toString()));
-      }
-      if (readQuotaInCU.isPresent()) {
-        queryParams.add(new BasicNameValuePair(ControllerApiConstants.READ_QUOTA_IN_CU, readQuotaInCU.get().toString()));
-      }
-      if (hybridRewindSeconds.isPresent()) {
-        queryParams.add(new BasicNameValuePair(ControllerApiConstants.REWIND_TIME_IN_SECONDS, hybridRewindSeconds.get().toString()));
-      }
-      if (hybridOffsetLagThreshold.isPresent()) {
-        queryParams.add(new BasicNameValuePair(ControllerApiConstants.OFFSET_LAG_TO_GO_ONLINE, hybridOffsetLagThreshold.get().toString()));
-      }
-      if (accessControlled.isPresent()) {
-        queryParams.add(new BasicNameValuePair(ControllerApiConstants.ACCESS_CONTROLLED, accessControlled.get().toString()));
-      }
-      if (compressionStrategy.isPresent()) {
-        queryParams.add(new BasicNameValuePair(ControllerApiConstants.COMPRESSION_STRATEGY, compressionStrategy.get().toString()));
-      }
-      if (chunkingEnabled.isPresent()) {
-        queryParams.add(new BasicNameValuePair(ControllerApiConstants.CHUNKING_ENABLED, chunkingEnabled.get().toString()));
-      }
-      if (routerCacheEnabled.isPresent()) {
-        queryParams.add(new BasicNameValuePair(ControllerApiConstants.ROUTER_CACHE_ENABLED, routerCacheEnabled.get().toString()));
-      }
-      if (batchGetLimit.isPresent()) {
-        queryParams.add(new BasicNameValuePair(ControllerApiConstants.BATCH_GET_LIMIT, batchGetLimit.get().toString()));
-      }
-
+      QueryParams queryParams = addCommonParams(params)
+          .add(NAME, storeName);
       String responseJson = postRequest(ControllerRoute.UPDATE_STORE.getPath(), queryParams);
       return mapper.readValue(responseJson, ControllerResponse.class);
     } catch (Exception e) {
@@ -623,9 +559,9 @@ public class ControllerClient implements Closeable {
 
   public SchemaResponse getValueSchema(String storeName, int valueSchemaId) {
     try {
-      List<NameValuePair> queryParams = newParams(clusterName);
-      queryParams.add(new BasicNameValuePair(ControllerApiConstants.NAME, storeName));
-      queryParams.add(new BasicNameValuePair(ControllerApiConstants.SCHEMA_ID, Integer.toString(valueSchemaId)));
+      QueryParams queryParams = newParams()
+          .add(NAME, storeName)
+          .add(SCHEMA_ID, valueSchemaId);
       String responseJson = getRequest(ControllerRoute.GET_VALUE_SCHEMA.getPath(), queryParams);
       return mapper.readValue(responseJson, SchemaResponse.class);
     } catch (Exception e){
@@ -635,9 +571,9 @@ public class ControllerClient implements Closeable {
 
   public SchemaResponse getValueSchemaID(String storeName, String valueSchemaStr) {
     try {
-      List<NameValuePair> queryParams = newParams(clusterName);
-      queryParams.add(new BasicNameValuePair(ControllerApiConstants.NAME, storeName));
-      queryParams.add(new BasicNameValuePair(ControllerApiConstants.VALUE_SCHEMA, valueSchemaStr));
+      QueryParams queryParams = newParams()
+          .add(NAME, storeName)
+          .add(VALUE_SCHEMA, valueSchemaStr);
       String responseJson = postRequest(ControllerRoute.GET_VALUE_SCHEMA_ID.getPath(), queryParams);
       return mapper.readValue(responseJson, SchemaResponse.class);
     } catch (Exception e){
@@ -647,8 +583,8 @@ public class ControllerClient implements Closeable {
 
   public MultiSchemaResponse getAllValueSchema(String storeName) {
     try {
-      List<NameValuePair> queryParams = newParams(clusterName);
-      queryParams.add(new BasicNameValuePair(ControllerApiConstants.NAME, storeName));
+      QueryParams queryParams = newParams()
+          .add(NAME, storeName);
       String responseJson = getRequest(ControllerRoute.GET_ALL_VALUE_SCHEMA.getPath(), queryParams);
       return mapper.readValue(responseJson, MultiSchemaResponse.class);
     } catch (Exception e){
@@ -658,8 +594,8 @@ public class ControllerClient implements Closeable {
 
   public AdminCommandExecutionResponse getAdminCommandExecution(long executionId) {
     try {
-      List<NameValuePair> queryParams = newParams(clusterName);
-      queryParams.add(new BasicNameValuePair(ControllerApiConstants.EXECUTION_ID, String.valueOf(executionId)));
+      QueryParams queryParams = newParams()
+          .add(EXECUTION_ID, executionId);
       String responseJson = getRequest(ControllerRoute.EXECUTION.getPath(), queryParams);
       return mapper.readValue(responseJson, AdminCommandExecutionResponse.class);
     } catch (Exception e) {
@@ -670,8 +606,7 @@ public class ControllerClient implements Closeable {
 
   public LastSucceedExecutionIdResponse getLastSucceedExecutionId() {
     try {
-      List<NameValuePair> queryParams = newParams(clusterName);
-      String responseJson = getRequest(ControllerRoute.LAST_SUCCEED_EXECUTION_ID.getPath(), queryParams);
+      String responseJson = getRequest(ControllerRoute.LAST_SUCCEED_EXECUTION_ID.getPath());
       return mapper.readValue(responseJson, LastSucceedExecutionIdResponse.class);
     } catch (Exception e) {
       return handleError(new VeniceException("Error getting the last succeed execution Id", e),
@@ -681,8 +616,8 @@ public class ControllerClient implements Closeable {
 
   public ControllerResponse enableThrotting(boolean isThrottlingEnabled) {
     try {
-      List<NameValuePair> queryParams = newParams(clusterName);
-      queryParams.add(new BasicNameValuePair(ControllerApiConstants.STATUS, String.valueOf(isThrottlingEnabled)));
+      QueryParams queryParams = newParams()
+          .add(STATUS, isThrottlingEnabled);
       String responseJson = postRequest(ControllerRoute.ENABLE_THROTTLING.getPath(), queryParams);
       return mapper.readValue(responseJson, ControllerResponse.class);
     } catch (Exception e) {
@@ -692,8 +627,8 @@ public class ControllerClient implements Closeable {
 
   public ControllerResponse enableMaxCapacityProtection(boolean isMaxCapacityProtion) {
     try {
-      List<NameValuePair> queryParams = newParams(clusterName);
-      queryParams.add(new BasicNameValuePair(ControllerApiConstants.STATUS, String.valueOf(isMaxCapacityProtion)));
+      QueryParams queryParams = newParams()
+          .add(STATUS, isMaxCapacityProtion);
       String responseJson = postRequest(ControllerRoute.ENABLE_MAX_CAPACITY_PROTECTION.getPath(), queryParams);
       return mapper.readValue(responseJson, ControllerResponse.class);
     } catch (Exception e) {
@@ -704,10 +639,9 @@ public class ControllerClient implements Closeable {
 
   public ControllerResponse enableQuotaRebalanced(boolean isQuotaRebalanced, int expectRouterCount) {
     try {
-      List<NameValuePair> queryParams = newParams(clusterName);
-      queryParams.add(new BasicNameValuePair(ControllerApiConstants.STATUS, String.valueOf(isQuotaRebalanced)));
-      queryParams.add(
-          new BasicNameValuePair(ControllerApiConstants.EXPECTED_ROUTER_COUNT, String.valueOf(expectRouterCount)));
+      QueryParams queryParams = newParams()
+          .add(STATUS, isQuotaRebalanced)
+          .add(EXPECTED_ROUTER_COUNT, expectRouterCount);
       String responseJson = postRequest(ControllerRoute.ENABLE_QUOTA_REBALANCED.getPath(), queryParams);
       return mapper.readValue(responseJson, ControllerResponse.class);
     } catch (Exception e) {
@@ -718,8 +652,7 @@ public class ControllerClient implements Closeable {
 
   public RoutersClusterConfigResponse getRoutersClusterConfig() {
     try {
-      List<NameValuePair> queryParams = newParams(clusterName);
-      String responseJson = getRequest(ControllerRoute.GET_ROUTERS_CLUSTER_CONFIG.getPath(), queryParams);
+      String responseJson = getRequest(ControllerRoute.GET_ROUTERS_CLUSTER_CONFIG.getPath());
       return mapper.readValue(responseJson, RoutersClusterConfigResponse.class);
     } catch (Exception e) {
       return handleError(new VeniceException("Error getting the routers cluster config.", e),
@@ -729,8 +662,7 @@ public class ControllerClient implements Closeable {
 
   public MigrationPushStrategyResponse getMigrationPushStrategies() {
     try {
-      List<NameValuePair> queryParams = newParams(clusterName);
-      String responseJson = getRequest(ControllerRoute.GET_ALL_MIGRATION_PUSH_STRATEGIES.getPath(), queryParams);
+      String responseJson = getRequest(ControllerRoute.GET_ALL_MIGRATION_PUSH_STRATEGIES.getPath());
       return mapper.readValue(responseJson, MigrationPushStrategyResponse.class);
     } catch (Exception e) {
       return handleError(new VeniceException("Error getting migration push strategies.", e),
@@ -740,9 +672,9 @@ public class ControllerClient implements Closeable {
 
   public ControllerResponse setMigrationPushStrategy(String voldemortStoreName, String pushStrategy) {
     try {
-      List<NameValuePair> queryParams = newParams(clusterName);
-      queryParams.add(new BasicNameValuePair(ControllerApiConstants.VOLDEMORT_STORE_NAME, voldemortStoreName));
-      queryParams.add(new BasicNameValuePair(ControllerApiConstants.PUSH_STRATEGY, pushStrategy));
+      QueryParams queryParams = newParams()
+          .add(VOLDEMORT_STORE_NAME, voldemortStoreName)
+          .add(PUSH_STRATEGY, pushStrategy);
       String responseJson = getRequest(ControllerRoute.SET_MIGRATION_PUSH_STRATEGY.getPath(), queryParams);
       return mapper.readValue(responseJson, MigrationPushStrategyResponse.class);
     } catch (Exception e) {
@@ -753,8 +685,7 @@ public class ControllerClient implements Closeable {
 
   public MultiVersionStatusResponse listBootstrappingVersions(){
     try {
-      List<NameValuePair> queryParams = newParams(clusterName);
-      String responseJson = getRequest(ControllerRoute.LIST_BOOTSTRAPPING_VERSIONS.getPath(), queryParams);
+      String responseJson = getRequest(ControllerRoute.LIST_BOOTSTRAPPING_VERSIONS.getPath());
       return mapper.readValue(responseJson, MultiVersionStatusResponse.class);
     }catch (Exception e){
       return handleError(new VeniceException("Error listing bootstrapping versions.", e),
@@ -767,12 +698,12 @@ public class ControllerClient implements Closeable {
     Exception lastException = null;
     for (String url : urlList) {
       try {
-        List<NameValuePair> queryParams = new ArrayList<>();
+        QueryParams queryParams = new QueryParams()
         // Cluster name is not required for cluster discovery request. But could not null otherwise an exception will be
         // thrown on server side.
-        queryParams.add(new BasicNameValuePair(ControllerApiConstants.CLUSTER, "*"));
-        queryParams.add(new BasicNameValuePair(ControllerApiConstants.HOSTNAME, Utils.getHostName()));
-        queryParams.add(new BasicNameValuePair(ControllerApiConstants.NAME, storeName));
+            .add(CLUSTER, "*")
+            .add(HOSTNAME, Utils.getHostName())
+            .add(NAME, storeName);
         String responseJson = getRequest(url, ControllerRoute.CLUSTER_DISCOVERY.getPath(), queryParams);
         return mapper.readValue(responseJson, D2ServiceDiscoveryResponse.class);
       } catch (Exception e) {
@@ -783,7 +714,7 @@ public class ControllerClient implements Closeable {
           // from both cluster and router, we send the path "/discover_cluster?storename=$storename" at first, if it does
           // not work, try "/discover_cluster/$storeName"
           String responseJson =
-              getRequest(url, ControllerRoute.CLUSTER_DISCOVERY.getPath() + "/" + storeName, new ArrayList<>());
+              getRequest(url, ControllerRoute.CLUSTER_DISCOVERY.getPath() + "/" + storeName, new QueryParams());
           return mapper.readValue(responseJson, D2ServiceDiscoveryResponse.class);
         } catch (Exception exception) {
           lastException = exception;
@@ -805,10 +736,8 @@ public class ControllerClient implements Closeable {
    * a new list of NameValuePair objects for making HTTP requests.
    * @return
    */
-  private List<NameValuePair> newParams(){
-    List<NameValuePair> params = new ArrayList<>();
-    params.add(new BasicNameValuePair(ControllerApiConstants.HOSTNAME, localHostname));
-    return params;
+  private QueryParams newParams(){
+    return addCommonParams(new QueryParams());
   }
 
   /**
@@ -816,33 +745,45 @@ public class ControllerClient implements Closeable {
    * @param clusterName
    * @return
    */
-  protected List<NameValuePair> newParams(String clusterName){
-    List<NameValuePair> params = newParams();
-    params.add(new BasicNameValuePair(ControllerApiConstants.CLUSTER, clusterName));
-    return params;
+  protected QueryParams newParams(String clusterName){
+    return addCommonParams(new QueryParams(), clusterName);
   }
 
-  private String getRequest(String path, List<NameValuePair> params)
+  private QueryParams addCommonParams(QueryParams params) {
+    return addCommonParams(params, clusterName);
+  }
+
+  private QueryParams addCommonParams(QueryParams params, String clusterName) {
+    return params
+        .add(HOSTNAME, localHostname)
+        .add(CLUSTER, clusterName);
+  }
+
+  private String getRequest(String path)
+      throws ExecutionException, InterruptedException {
+    return getRequest(path, newParams());
+  }
+
+  private String getRequest(String path, QueryParams params)
       throws ExecutionException, InterruptedException {
     refreshControllerUrl();
     return getRequest(masterControllerUrl, path, params);
-
   }
 
-  private static String getRequest(String url, String path, List<NameValuePair> params)
+  private static String getRequest(String url, String path, QueryParams params)
       throws ExecutionException, InterruptedException {
     url = url.trim();
-    String queryString = URLEncodedUtils.format(params, StandardCharsets.UTF_8);
+    String queryString = URLEncodedUtils.format(params.getNameValuePairs(), StandardCharsets.UTF_8);
     final HttpGet get = new HttpGet(url + path + "?" + queryString);
     return getJsonFromHttp(get, false);
   }
 
-  private String postRequest(String path, List<NameValuePair> params)
+  private String postRequest(String path, QueryParams params)
       throws UnsupportedEncodingException, ExecutionException, InterruptedException {
     return postRequest(path, params, 10);
   }
 
-  private String postRequest(String path, List<NameValuePair> params, int retriesLeftForNonMasterController)
+  private String postRequest(String path, QueryParams params, int retriesLeftForNonMasterController)
       throws UnsupportedEncodingException, ExecutionException, InterruptedException {
     try {
       refreshControllerUrl();
@@ -855,7 +796,7 @@ public class ControllerClient implements Closeable {
       throw e;
     }
     final HttpPost post = new HttpPost(masterControllerUrl + path);
-    post.setEntity(new UrlEncodedFormEntity(params));
+    post.setEntity(new UrlEncodedFormEntity(params.getNameValuePairs()));
     try {
       boolean throwForNonMasterController = retriesLeftForNonMasterController > 0;
       return getJsonFromHttp(post, throwForNonMasterController);

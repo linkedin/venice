@@ -17,8 +17,10 @@ public enum ControllerRoute {
   NEW_STORE("/new_store", Arrays.asList(NAME, KEY_SCHEMA, VALUE_SCHEMA), OWNER),
   DELETE_STORE("/delete_store", Arrays.asList(NAME)),
   // Beside store name, others are all optional parameters for flexibility and compatibility.
-  UPDATE_STORE("/update_store", Arrays.asList(NAME),OWNER, VERSION, PARTITION_COUNT, ENABLE_READS, ENABLE_WRITES, ACCESS_CONTROLLED,
-      CHUNKING_ENABLED, ROUTER_CACHE_ENABLED, BATCH_GET_LIMIT),
+  UPDATE_STORE("/update_store", Arrays.asList(NAME),OWNER, VERSION, LARGEST_USED_VERSION_NUMBER, PARTITION_COUNT,
+      ENABLE_READS, ENABLE_WRITES, STORAGE_QUOTA_IN_BYTE, READ_QUOTA_IN_CU, REWIND_TIME_IN_SECONDS,
+      OFFSET_LAG_TO_GO_ONLINE, ACCESS_CONTROLLED, COMPRESSION_STRATEGY, CHUNKING_ENABLED, ROUTER_CACHE_ENABLED,
+      BATCH_GET_LIMIT),
   SET_VERSION("/set_version", Arrays.asList(NAME, VERSION)),
   ENABLE_STORE("/enable_store", Arrays.asList(NAME, OPERATION, STATUS)), // status "true" or "false", operation "read" or "write" or "readwrite".
   DELETE_ALL_VERSIONS("/delete_all_versions", Arrays.asList(NAME)),

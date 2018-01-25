@@ -11,6 +11,7 @@ import com.linkedin.venice.compression.CompressionStrategy;
 import com.linkedin.venice.compression.CompressorFactory;
 import com.linkedin.venice.compression.VeniceCompressor;
 import com.linkedin.venice.controllerapi.ControllerClient;
+import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
 import com.linkedin.venice.integration.utils.D2TestUtils;
@@ -28,7 +29,6 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.ExecutionException;
@@ -79,10 +79,10 @@ public class TestRouterCache {
   private VersionCreationResponse createStore(boolean isCompressed) {
     VersionCreationResponse response = veniceCluster.getNewStoreVersion();
     // Update default quota and enable router cache
-    controllerClient.updateStore(response.getName(), Optional.empty(), Optional.empty(), Optional.empty(), Optional.empty(),
-        Optional.empty(), Optional.empty(), Optional.of(10000l), Optional.empty(), Optional.empty(),
-        Optional.empty(), isCompressed ? Optional.of(CompressionStrategy.GZIP) : Optional.empty(), Optional.empty(),
-        Optional.of(Boolean.TRUE), Optional.empty());
+    controllerClient.updateStore(response.getName(), new UpdateStoreQueryParams()
+            .setReadQuotaInCU(10000l)
+            .setCompressionStrategy(isCompressed ? CompressionStrategy.GZIP : CompressionStrategy.NO_OP)
+            .setRouterCacheEnabled(true));
 
     return response;
   }

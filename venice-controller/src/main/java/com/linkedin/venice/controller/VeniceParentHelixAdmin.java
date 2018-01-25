@@ -553,7 +553,7 @@ public class VeniceParentHelixAdmin implements Admin {
 
   @Override
   public int getCurrentVersion(String clusterName, String storeName) {
-    throw new VeniceUnsupportedOperationException("Please use getCurrentVersionsForMultiColos in Parent controller.");
+    throw new VeniceUnsupportedOperationException("getCurrentVersion", "Please use getCurrentVersionsForMultiColos in Parent controller.");
   }
 
   /**
@@ -676,6 +676,12 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   @Override
+  public synchronized void setStoreLargestUsedVersion(String clusterName, String storeName, int versionNumber) {
+    throw new VeniceUnsupportedOperationException("setStoreLargestUsedVersion", "This is only supported in the Child Controller.");
+  }
+
+
+  @Override
   public void setStoreOwner(String clusterName, String storeName, String owner) {
     acquireLock(clusterName);
     try {
@@ -778,23 +784,13 @@ public class VeniceParentHelixAdmin implements Admin {
   }
 
   @Override
-  public void updateStore(
-      String clusterName,
-      String storeName,
-      Optional<String> owner,
-      Optional<Boolean> readability,
-      Optional<Boolean> writeability,
-      Optional<Integer> partitionCount,
-      Optional<Long> storageQuotaInByte,
-      Optional<Long> readQuotaInCU,
-      Optional<Integer> currentVersion,
+  public void updateStore(String clusterName, String storeName, Optional<String> owner, Optional<Boolean> readability,
+      Optional<Boolean> writeability, Optional<Integer> partitionCount, Optional<Long> storageQuotaInByte,
+      Optional<Long> readQuotaInCU, Optional<Integer> currentVersion, Optional<Integer> largestUsedVersionNumber,
       Optional<Long> hybridRewindSeconds,
-      Optional<Long> hybridOffsetLagThreshold,
-      Optional<Boolean> accessControlled,
-      Optional<CompressionStrategy> compressionStrategy,
-      Optional<Boolean> chunkingEnabled,
-      Optional<Boolean> routerCacheEnabled,
-      Optional<Integer> batchGetLimit) {
+      Optional<Long> hybridOffsetLagThreshold, Optional<Boolean> accessControlled,
+      Optional<CompressionStrategy> compressionStrategy, Optional<Boolean> chunkingEnabled,
+      Optional<Boolean> routerCacheEnabled, Optional<Integer> batchGetLimit) {
     acquireLock(clusterName);
 
     try {

@@ -3,6 +3,7 @@ package com.linkedin.venice.throttle;
 import com.linkedin.venice.client.store.AvroGenericStoreClient;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
+import com.linkedin.venice.controllerapi.UpdateStoreQueryParams;
 import com.linkedin.venice.controllerapi.VersionCreationResponse;
 import com.linkedin.venice.helix.HelixReadOnlySchemaRepository;
 import com.linkedin.venice.integration.utils.ServiceFactory;
@@ -11,10 +12,7 @@ import com.linkedin.venice.meta.Store;
 import com.linkedin.venice.router.throttle.ReadRequestThrottler;
 import com.linkedin.venice.serialization.VeniceKafkaSerializer;
 import com.linkedin.venice.serialization.avro.VeniceAvroGenericSerializer;
-import com.linkedin.venice.utils.FlakyTestRetryAnalyzer;
-import com.linkedin.venice.utils.PropertyBuilder;
 import com.linkedin.venice.utils.TestUtils;
-import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.VeniceWriter;
 import java.util.HashMap;
 import java.util.Optional;
@@ -24,10 +22,6 @@ import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
-
-import static com.linkedin.venice.ConfigKeys.CLUSTER_NAME;
-import static com.linkedin.venice.ConfigKeys.KAFKA_BOOTSTRAP_SERVERS;
-import static com.linkedin.venice.ConfigKeys.ZOOKEEPER_ADDRESS;
 
 
 public class TestThrottleReadRequestPerStore {
@@ -82,22 +76,8 @@ public class TestThrottleReadRequestPerStore {
     long totalQuota = 10;
     cluster.getMasterVeniceController()
         .getVeniceAdmin()
-        .updateStore(cluster.getClusterName(), storeName,
-                     Optional.empty(),
-                     Optional.empty(),
-                     Optional.empty(),
-                     Optional.empty(),
-                     Optional.empty(),
-                     Optional.of(totalQuota),
-                     Optional.empty(),
-                     Optional.empty(),
-                     Optional.empty(),
-                     Optional.empty(),
-                     Optional.empty(),
-                     Optional.empty(),
-                     Optional.empty(),
-                     Optional.empty()
-            );
+        .updateStore(cluster.getClusterName(), storeName, new UpdateStoreQueryParams()
+            .setReadQuotaInCU(totalQuota));
 
     TestUtils.waitForNonDeterministicCompletion(testTimeOutMS, TimeUnit.MILLISECONDS, () -> {
       Store store = cluster.getRandomVeniceRouter().getMetaDataRepository().getStore(storeName);
