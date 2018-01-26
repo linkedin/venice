@@ -1,11 +1,13 @@
 package com.linkedin.venice.router.api;
 
 import com.linkedin.ddsstorage.router.api.RouterException;
+import com.linkedin.venice.utils.RedundantExceptionFilter;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.read.RequestType;
 import com.linkedin.venice.router.stats.AggRouterHttpRequestStats;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import java.util.Optional;
+import org.apache.log4j.Logger;
 
 import static io.netty.handler.codec.http.HttpResponseStatus.*;
 
@@ -22,6 +24,10 @@ public class RouterExceptionAndTrackingUtils {
   private static AggRouterHttpRequestStats STATS_FOR_SINGLE_GET;
   private static AggRouterHttpRequestStats STATS_FOR_MULTI_GET;
 
+  private static Logger logger = Logger.getLogger(RouterExceptionAndTrackingUtils.class);
+
+  private static RedundantExceptionFilter filter = RedundantExceptionFilter.getRedundantExceptionFilter();
+
   @Deprecated
   public static void setStatsForSingleGet(AggRouterHttpRequestStats stats) {
     STATS_FOR_SINGLE_GET = stats;
@@ -36,14 +42,24 @@ public class RouterExceptionAndTrackingUtils {
   public static RouterException newRouterExceptionAndTracking(Optional<String> storeName,
       Optional<RequestType> requestType, HttpResponseStatus responseStatus, String msg) {
     metricTracking(storeName, requestType, responseStatus);
-    return new RouterException(HttpResponseStatus.class, responseStatus, responseStatus.code(), msg, true);
+    RouterException e = new RouterException(HttpResponseStatus.class, responseStatus, responseStatus.code(), msg, true);
+    String name = storeName.isPresent() ? storeName.get() : "";
+    if (!filter.isRedundantException(name, e)) {
+      logger.error("Got an exception for store:" + name, e);
+    }
+    return e;
   }
 
   @Deprecated
   public static VeniceException newVeniceExceptionAndTracking(Optional<String> storeName,
       Optional<RequestType> requestType, HttpResponseStatus responseStatus, String msg) {
     metricTracking(storeName, requestType, responseStatus);
-    return new VeniceException(msg);
+    String name = storeName.isPresent() ? storeName.get() : "";
+    VeniceException e = new VeniceException(msg);
+    if (!filter.isRedundantException(name, e)) {
+      logger.error("Got an exception for store:" + name, e);
+    }
+    return e;
   }
 
   private static void metricTracking(Optional<String> storeName, Optional<RequestType> requestType,

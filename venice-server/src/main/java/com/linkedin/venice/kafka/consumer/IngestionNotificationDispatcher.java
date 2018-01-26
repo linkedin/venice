@@ -3,6 +3,7 @@ package com.linkedin.venice.kafka.consumer;
 import com.linkedin.venice.exceptions.VeniceIngestionTaskKilledException;
 import com.linkedin.venice.notifier.VeniceNotifier;
 import com.linkedin.venice.pushmonitor.ExecutionStatus;
+import com.linkedin.venice.utils.RedundantExceptionFilter;
 import com.linkedin.venice.utils.Time;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -28,7 +29,7 @@ class IngestionNotificationDispatcher {
   private final Queue<VeniceNotifier> notifiers;
   private final String topic;
   private final BooleanSupplier isCurrentVersion;
-  private final ConcurrentMap<String, Long> alreadyPrintedErrors;
+  private final RedundantExceptionFilter filter = RedundantExceptionFilter.getDailyRedundantExceptioFilter();
 
   private long lastProgressReportTime = 0;
 
@@ -37,7 +38,6 @@ class IngestionNotificationDispatcher {
     this.notifiers = notifiers;
     this.topic = topic;
     this.isCurrentVersion = isCurrentVersion;
-    this.alreadyPrintedErrors = new ConcurrentHashMap<>();
   }
 
   @FunctionalInterface
@@ -161,18 +161,6 @@ class IngestionNotificationDispatcher {
         notifier -> notifier.startOfBufferReplayReceived(topic, pcs.getPartition(), pcs.getOffsetRecord().getOffset()));
   }
 
-  /**
-   * Evict already-printed errors that are older than one day.
-   */
-  private void evictOldAlreadyPrintedErrors() {
-    long evictionThreshold = System.currentTimeMillis() - 1 * Time.MS_PER_DAY;
-    Set<String> errorMessagesToEvict = alreadyPrintedErrors.entrySet().stream()
-        .filter(entry -> entry.getValue() < evictionThreshold)
-        .map(entry -> entry.getKey())
-        .collect(Collectors.toSet());
-    errorMessagesToEvict.stream().forEach(alreadyPrintedErrors::remove);
-  }
-
   void reportError(Collection<PartitionConsumptionState> pcsList, String message, Exception consumerEx) {
     for(PartitionConsumptionState pcs: pcsList) {
       report(pcs, ExecutionStatus.ERROR,
@@ -193,12 +181,10 @@ class IngestionNotificationDispatcher {
             }
 
             if (!report) {
-              evictOldAlreadyPrintedErrors();
-              if (alreadyPrintedErrors.containsKey(message)) {
+              if (filter.isRedundantException(message)) {
                 logger.warn(logMessage + " The full stacktrace for this error message has already been printed earlier,"
                     + " so it will not be re-printed again. Current error message: " + message);
               } else {
-                alreadyPrintedErrors.put(message, System.currentTimeMillis());
                 logger.warn(logMessage + " Full stacktrace below: ", consumerEx);
               }
             }
