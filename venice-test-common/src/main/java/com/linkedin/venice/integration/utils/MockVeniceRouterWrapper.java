@@ -19,6 +19,7 @@ import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 
 import com.linkedin.venice.schema.SchemaEntry;
@@ -52,7 +53,7 @@ public class MockVeniceRouterWrapper extends ProcessWrapper {
     this.sslToStorageNodes = sslToStorageNodes;
   }
 
-  static StatefulServiceProvider<MockVeniceRouterWrapper> generateService(String zkAddress, boolean sslToStorageNodes) {
+  static StatefulServiceProvider<MockVeniceRouterWrapper> generateService(String zkAddress, boolean sslToStorageNodes, Properties extraConfigs) {
 
     Store mockStore = Mockito.mock(Store.class);
     doReturn(true).when(mockStore).isEnableReads();
@@ -90,7 +91,9 @@ public class MockVeniceRouterWrapper extends ProcessWrapper {
           .put(LISTENER_SSL_PORT, sslPortFromPort(port))
           .put(ZOOKEEPER_ADDRESS, zkAddress)
           .put(SSL_TO_STORAGE_NODES, sslToStorageNodes)
-          .put(CLUSTER_TO_D2, TestUtils.getClusterToDefaultD2String(clusterName));
+          .put(CLUSTER_TO_D2, TestUtils.getClusterToDefaultD2String(clusterName))
+          .put(ROUTER_NETTY_GRACEFUL_SHUTDOWN_PERIOD_SECONDS, 0)
+          .put(extraConfigs);
       StoreConfig storeConfig = new StoreConfig("test");
       storeConfig.setCluster(clusterName);
       doReturn(Optional.of(storeConfig)).when(mockStoreConfigRepository).getStoreConfig(Mockito.anyString());

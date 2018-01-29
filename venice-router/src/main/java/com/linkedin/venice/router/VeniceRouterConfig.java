@@ -39,7 +39,7 @@ public class VeniceRouterConfig {
   private int cacheConcurrency;
   private double cacheHitRequestThrottleWeight;
   private int routerNettyGracefulShutdownPeriodSeconds;
-
+  private boolean enforceSecureOnly;
 
   public VeniceRouterConfig(VeniceProperties props) {
     try {
@@ -89,6 +89,7 @@ public class VeniceRouterConfig {
      */
     cacheHitRequestThrottleWeight = props.getDouble(ROUTER_CACHE_HIT_REQUEST_THROTTLE_WEIGHT, 1);
     routerNettyGracefulShutdownPeriodSeconds = props.getInt(ROUTER_NETTY_GRACEFUL_SHUTDOWN_PERIOD_SECONDS, 30); //30s
+    enforceSecureOnly = props.getBoolean(ENFORCE_SECURE_ROUTER, false);
   }
 
   public String getClusterName() {
@@ -189,5 +190,9 @@ public class VeniceRouterConfig {
 
   public int getRouterNettyGracefulShutdownPeriodSeconds() {
     return routerNettyGracefulShutdownPeriodSeconds;
+  }
+
+  public boolean isEnforcingSecureOnly() {
+    return enforceSecureOnly;
   }
 }

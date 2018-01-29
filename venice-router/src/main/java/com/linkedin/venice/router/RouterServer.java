@@ -321,6 +321,7 @@ public class RouterServer extends AbstractVeniceService {
         .scatterGatherStatsProvider(statsForSingleGet) // TODO: need to check this logic when enabling batch-get retry
         .build();
 
+    VerifySslHandler nonSecureSSLEnforcement = new VerifySslHandler(config.isEnforcingSecureOnly());
     router = Router.builder(scatterGather)
         .name("VeniceRouterHttp")
         .resourceRegistry(registry)
@@ -333,6 +334,7 @@ public class RouterServer extends AbstractVeniceService {
         .serverSocketOptions(serverSocketOptions)
         .beforeHttpRequestHandler(ChannelPipeline.class, (pipeline) -> {
           pipeline.addLast("MetadataHandler", metaDataHandler);
+          pipeline.addLast("VerifySSLHandler", nonSecureSSLEnforcement);
         })
         .idleTimeout(3, TimeUnit.HOURS)
         .build();

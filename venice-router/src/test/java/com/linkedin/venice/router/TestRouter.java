@@ -5,6 +5,7 @@ import com.linkedin.r2.message.rest.RestException;
 import com.linkedin.r2.message.rest.RestRequest;
 import com.linkedin.r2.message.rest.RestRequestBuilder;
 import com.linkedin.r2.message.rest.RestResponse;
+import com.linkedin.venice.ConfigKeys;
 import com.linkedin.venice.client.exceptions.VeniceClientHttpException;
 import com.linkedin.venice.client.store.ClientConfig;
 import com.linkedin.venice.client.store.ClientFactory;
@@ -18,6 +19,7 @@ import com.linkedin.venice.integration.utils.ZkServerWrapper;
 import com.linkedin.venice.utils.SslUtils;
 import java.io.IOException;
 import java.net.URI;
+import java.util.Properties;
 import java.util.concurrent.ExecutionException;
 import javax.net.ssl.SSLContext;
 import org.apache.commons.httpclient.HttpStatus;
@@ -36,22 +38,33 @@ public class TestRouter {
 
   @Test
   public void testRouterWithHttpD2() throws Exception {
-    testRouterWithD2(false);
+    testRouterWithD2(false, false);
+  }
+
+  @Test
+  public void testSecureRouterWithHttpD2() throws Exception {
+    testRouterWithD2(false, true);
   }
 
   @Test
   public void testRouterWithHttpsD2() throws Exception {
-    testRouterWithD2(true);
+    testRouterWithD2(true, false);
   }
 
-  public void testRouterWithD2(boolean https) throws Exception {
+  public void testRouterWithD2(boolean https, boolean secureOnly) throws Exception {
     ZkServerWrapper zk = ServiceFactory.getZkServer();
     if (https) {
       D2TestUtils.setupHttpsD2Config(zk.getAddress());
     } else {
       D2TestUtils.setupD2Config(zk.getAddress());
     }
-    MockVeniceRouterWrapper router = ServiceFactory.getMockVeniceRouter(zk.getAddress(), SSL_TO_STORAGE_NODES);
+
+    Properties extraConfigs = new Properties();
+    if (secureOnly){
+      extraConfigs.put(ConfigKeys.ENFORCE_SECURE_ROUTER, true);
+    }
+
+    MockVeniceRouterWrapper router = ServiceFactory.getMockVeniceRouter(zk.getAddress(), SSL_TO_STORAGE_NODES, extraConfigs);
     D2Client d2Client = null;
     if (https) {
       d2Client = D2TestUtils.getAndStartHttpsD2Client(zk.getAddress());
@@ -72,8 +85,13 @@ public class TestRouter {
         throw e;
       }
     }
-    Assert.assertEquals(response.getStatus(), HttpStatus.SC_SERVICE_UNAVAILABLE,
-      "Router with Mock components should return a 503 service unavailable error");
+    if (secureOnly){
+      Assert.assertEquals(response.getStatus(), HttpStatus.SC_FORBIDDEN,
+          "SecureRouter should return a 403 forbidden error");
+    } else {
+      Assert.assertEquals(response.getStatus(), HttpStatus.SC_SERVICE_UNAVAILABLE,
+          "Router with Mock components should return a 503 service unavailable error");
+    }
 
     InternalAvroStoreClient<Object, Object> storeClient =
         (InternalAvroStoreClient<Object, Object>) ClientFactory.getAndStartGenericAvroClient(ClientConfig.defaultGenericClientConfig(
@@ -98,7 +116,7 @@ public class TestRouter {
   @Test
   public void testRouterWithSsl() throws ExecutionException, InterruptedException, IOException {
     ZkServerWrapper zk = ServiceFactory.getZkServer();
-    MockVeniceRouterWrapper router = ServiceFactory.getMockVeniceRouter(zk.getAddress(), SSL_TO_STORAGE_NODES);
+    MockVeniceRouterWrapper router = ServiceFactory.getMockVeniceRouter(zk.getAddress(), SSL_TO_STORAGE_NODES, new Properties());
     SSLContext sslContext = SslUtils.getLocalSslFactory().getSSLContext();
     SSLIOSessionStrategy sslSessionStrategy = new SSLIOSessionStrategy(sslContext);
     CloseableHttpAsyncClient httpclient = HttpAsyncClients.custom()
@@ -123,7 +141,7 @@ public class TestRouter {
   @Test
   public void routerWithSslRefusesNonSecureCommunication() throws ExecutionException, InterruptedException, IOException {
     ZkServerWrapper zk = ServiceFactory.getZkServer();
-    MockVeniceRouterWrapper router = ServiceFactory.getMockVeniceRouter(zk.getAddress(), SSL_TO_STORAGE_NODES);
+    MockVeniceRouterWrapper router = ServiceFactory.getMockVeniceRouter(zk.getAddress(), SSL_TO_STORAGE_NODES, new Properties());
     CloseableHttpAsyncClient httpclient = HttpAsyncClients.custom().build();
     try {
       httpclient.start();
