@@ -179,10 +179,10 @@ public class ServiceFactory {
         VeniceRouterWrapper.generateService(clusterName, kafkaBrokerWrapper, sslToStorageNodes, properties));
   }
 
-  public static MockVeniceRouterWrapper getMockVeniceRouter(String zkAddress, boolean sslToStorageNodes){
+  public static MockVeniceRouterWrapper getMockVeniceRouter(String zkAddress, boolean sslToStorageNodes, Properties extraConfigs){
     return getService(
         MockVeniceRouterWrapper.SERVICE_NAME,
-        MockVeniceRouterWrapper.generateService(zkAddress, sslToStorageNodes));
+        MockVeniceRouterWrapper.generateService(zkAddress, sslToStorageNodes, extraConfigs));
   }
 
   public static MockD2ServerWrapper getMockD2Server(String serviceName) {

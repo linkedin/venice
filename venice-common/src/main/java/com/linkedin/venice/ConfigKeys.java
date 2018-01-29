@@ -348,4 +348,10 @@ public class ConfigKeys {
    * Whitelist of stores which are allowed to push data with SSL.
    */
   public static final String PUSH_SSL_WHITELIST = "push.ssl.whitelist";
+
+  /**
+   * Whether to block storage requests on the non-ssl port.  Will still allow metadata requests on the non-ssl port
+   * and will log storage requests on the non-ssl port even if set to false;
+   */
+  public static final String ENFORCE_SECURE_ROUTER = "router.enforce.ssl";
 }

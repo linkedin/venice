@@ -13,6 +13,16 @@ import org.apache.log4j.Logger;
 @ChannelHandler.Sharable
 public class VerifySslHandler extends SimpleChannelInboundHandler<HttpRequest> {
   private static final Logger logger = Logger.getLogger(VerifySslHandler.class);
+  private final boolean enforce;
+
+  public VerifySslHandler(){
+    enforce = true;
+  }
+
+  public VerifySslHandler(boolean enforce){
+    this.enforce = enforce;
+  }
+
 
   /**
    * If the SSL handler is not in the channel pipeline, then return 403
@@ -30,12 +40,13 @@ public class VerifySslHandler extends SimpleChannelInboundHandler<HttpRequest> {
       String remote = ctx.channel().remoteAddress().toString(); //ip and port
       String method = req.method().name();
       String errLine = remote + " requested " + method + " " + req.uri();
-      logger.error("Got a non-ssl request on what should be an ssl only port: " + errLine);
-      NettyUtils.setupResponseAndFlush(HttpResponseStatus.FORBIDDEN, new byte[0], false, ctx);
-    } else {
-      ReferenceCountUtil.retain(req);
-      ctx.fireChannelRead(req);
-      return;
+      logger.error("Got an unexpected non-ssl request: " + errLine);
+      if (enforce) {
+        NettyUtils.setupResponseAndFlush(HttpResponseStatus.FORBIDDEN, new byte[0], false, ctx);
+        return;
+      }
     }
+    ReferenceCountUtil.retain(req);
+    ctx.fireChannelRead(req);
   }
 }
