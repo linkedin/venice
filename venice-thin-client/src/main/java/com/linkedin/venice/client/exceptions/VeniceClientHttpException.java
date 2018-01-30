@@ -6,13 +6,17 @@ package com.linkedin.venice.client.exceptions;
 public class VeniceClientHttpException extends VeniceClientException {
   private int httpStatus;
 
+  private static String getMessageForHttpStatus(int httpStatus) {
+    return "http status: " + httpStatus;
+  }
+
   public VeniceClientHttpException(String msg, int httpStatus) {
-    super(msg);
+    super(getMessageForHttpStatus(httpStatus) + (msg.isEmpty() ? "" : ", " + msg));
     this.httpStatus = httpStatus;
   }
 
   public VeniceClientHttpException(int httpStatus){
-    super();
+    super(getMessageForHttpStatus(httpStatus));
     this.httpStatus = httpStatus;
   }
 

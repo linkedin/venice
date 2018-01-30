@@ -59,14 +59,14 @@ public class TestTransportClientHttpCallback {
 
     transportClientCallback.completeFuture(HttpStatus.SC_INTERNAL_SERVER_ERROR, emptyByteArray, SCHEMA_ID);
     verify(mockFuture).completeExceptionally(serverExceptionArgumentCaptor.capture());
-    Assert.assertEquals(serverExceptionArgumentCaptor.getValue().getMessage(), "");
+    Assert.assertEquals(serverExceptionArgumentCaptor.getValue().getMessage(), "http status: 500");
 
     transportClientCallback.completeFuture(HttpStatus.SC_SERVICE_UNAVAILABLE, mockResponseBody, SCHEMA_ID);
     verify(mockFuture, times(2)).completeExceptionally(serverExceptionArgumentCaptor.capture());
-    Assert.assertEquals(serverExceptionArgumentCaptor.getValue().getMessage(), RESPONSE_BODY_STR);
+    Assert.assertEquals(serverExceptionArgumentCaptor.getValue().getMessage(), "http status: 503, " + RESPONSE_BODY_STR);
 
     transportClientCallback.completeFuture(HttpStatus.SC_BAD_REQUEST, emptyByteArray, SCHEMA_ID);
     verify(mockFuture, times(3)).completeExceptionally(clientExceptionArgumentCaptor.capture());
-    Assert.assertEquals(clientExceptionArgumentCaptor.getValue().getMessage(), "");
+    Assert.assertEquals(clientExceptionArgumentCaptor.getValue().getMessage(), "http status: 400");
   }
 }
