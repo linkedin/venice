@@ -5,6 +5,7 @@ import com.linkedin.venice.integration.utils.D2TestUtils;
 import com.linkedin.venice.integration.utils.MockVeniceRouterWrapper;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
+import java.util.Properties;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -18,7 +19,7 @@ public class TestD2ServiceDiscovery {
     // Set up d2 config before announcing
     D2TestUtils.setupD2Config(zk.getAddress());
     // Start a mock server which will serve for the d2 service.
-    MockVeniceRouterWrapper router = ServiceFactory.getMockVeniceRouter(zk.getAddress(), false);
+    MockVeniceRouterWrapper router = ServiceFactory.getMockVeniceRouter(zk.getAddress(), false, new Properties());
     // Set up client config to use the d2 service that router serving for
     clientConfig.setD2ServiceName(router.getRouterD2Service()).setVeniceURL(zk.getAddress());
     // Find the d2 service for that store.
