@@ -239,6 +239,12 @@ public class RouterServer extends AbstractVeniceService {
 
   @Override
   public boolean startInner() throws Exception {
+    /**
+     * {@link ResourceRegistry#globalShutdown()} will be invoked automatically since {@link ResourceRegistry} registers
+     * runtime shutdown hook, so we need to make sure all the clean up work will be done before the actual shutdown.
+     */
+    ResourceRegistry.setGlobalShutdownDelayMillis(TimeUnit.SECONDS.toMillis(config.getRouterNettyGracefulShutdownPeriodSeconds()));
+
     metadataRepository.refresh();
     storeConfigRepository.refresh();
     // No need to call schemaRepository.refresh() since it will do nothing.
@@ -378,6 +384,8 @@ public class RouterServer extends AbstractVeniceService {
         logger.error("D2 announcer " + d2Server + " failed to shutdown properly", e);
       }
     }
+    // Graceful shutdown
+    Thread.sleep(TimeUnit.SECONDS.toMillis(config.getRouterNettyGracefulShutdownPeriodSeconds()));
     if (!serverFuture.cancel(false)){
       serverFuture.awaitUninterruptibly();
     }

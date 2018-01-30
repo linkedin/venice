@@ -189,6 +189,14 @@ public class ConfigKeys {
   public static final String ROUTER_CACHE_HIT_REQUEST_THROTTLE_WEIGHT = "router.cache.hit.request.throttle.weight";
 
   /**
+   * Netty graceful shutdown period considering the following factors:
+   * 1. D2 de-announcement could take some time;
+   * 2. Client could take some  time to receive/apply the zk update event from D2 server about router shutdown;
+   * 3. Router needs some time to handle already-received client requests;
+   */
+  public static final String ROUTER_NETTY_GRACEFUL_SHUTDOWN_PERIOD_SECONDS = "router.netty.graceful.shutdown.period.seconds";
+
+  /**
    * Venice uses a helix cluster to assign controllers to each named venice cluster.  This is the number of controllers
    * assigned to each venice cluster.  Should normally be 3; one master controller and 2 standby controllers.
    * */

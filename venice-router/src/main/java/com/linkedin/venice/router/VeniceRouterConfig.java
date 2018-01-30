@@ -38,6 +38,8 @@ public class VeniceRouterConfig {
   private long cacheSizeBytes;
   private int cacheConcurrency;
   private double cacheHitRequestThrottleWeight;
+  private int routerNettyGracefulShutdownPeriodSeconds;
+
 
   public VeniceRouterConfig(VeniceProperties props) {
     try {
@@ -86,6 +88,7 @@ public class VeniceRouterConfig {
      * If it is not working well, we could adjust this config later on.
      */
     cacheHitRequestThrottleWeight = props.getDouble(ROUTER_CACHE_HIT_REQUEST_THROTTLE_WEIGHT, 1);
+    routerNettyGracefulShutdownPeriodSeconds = props.getInt(ROUTER_NETTY_GRACEFUL_SHUTDOWN_PERIOD_SECONDS, 30); //30s
   }
 
   public String getClusterName() {
@@ -182,5 +185,9 @@ public class VeniceRouterConfig {
 
   public double getCacheHitRequestThrottleWeight() {
     return cacheHitRequestThrottleWeight;
+  }
+
+  public int getRouterNettyGracefulShutdownPeriodSeconds() {
+    return routerNettyGracefulShutdownPeriodSeconds;
   }
 }
