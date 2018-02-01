@@ -322,6 +322,7 @@ public class RouterServer extends AbstractVeniceService {
         .metricsProvider(new VeniceMetricsProvider())
         .longTailRetrySupplier(retrySupplier)
         .scatterGatherStatsProvider(statsForSingleGet) // TODO: need to check this logic when enabling batch-get retry
+        .enableStackTraceResponseForException(true)
         .build();
 
     VerifySslHandler nonSecureSSLEnforcement = new VerifySslHandler(config.isEnforcingSecureOnly());

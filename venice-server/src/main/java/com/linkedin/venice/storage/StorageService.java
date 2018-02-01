@@ -89,7 +89,7 @@ public class StorageService extends AbstractVeniceService {
   // TODO Later change to Guice instead of Java reflections
   // This method can also be called from an admin service to add new store.
 
-  public AbstractStorageEngine openStoreForNewPartition(VeniceStoreConfig storeConfig, int partitionId) {
+  public synchronized AbstractStorageEngine openStoreForNewPartition(VeniceStoreConfig storeConfig, int partitionId) {
     partitionAssignmentRepository.addPartition(storeConfig.getStoreName(), partitionId);
 
     AbstractStorageEngine engine = openStore(storeConfig);
