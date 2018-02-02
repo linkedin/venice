@@ -107,19 +107,18 @@ public class StoreIngestionTaskTest {
 
   private static final Logger logger = Logger.getLogger(StoreIngestionTaskTest.class);
 
-  private static final int TEST_TIMEOUT;
+  private static final long TEST_TIMEOUT;
   private static final int RUN_TEST_FUNCTION_TIMEOUT = 10;
+  private static final long READ_CYCLE_DELAY_MS = 5;
 
   static {
-    // TODO: Clean this up... mutating static state is not cool. We should make the StoreIngestionTask configurable...
-    StoreIngestionTask.READ_CYCLE_DELAY_MS = 5;
     StoreIngestionTask.POLLING_SCHEMA_DELAY_MS = 100;
     IngestionNotificationDispatcher.PROGRESS_REPORT_INTERVAL = -1; // Report all the time.
     // Report progress/throttling for every message
     StoreIngestionTask.OFFSET_THROTTLE_INTERVAL = 1;
     StoreIngestionTask.OFFSET_UPDATE_INTERVAL_PER_PARTITION_FOR_TRANSACTION_MODE = 1;
     StoreIngestionTask.OFFSET_UPDATE_INTERNAL_PER_PARTITION_FOR_DEFERRED_WRITE = 2;
-    TEST_TIMEOUT = 500 * StoreIngestionTask.READ_CYCLE_DELAY_MS;
+    TEST_TIMEOUT = 500 * READ_CYCLE_DELAY_MS;
   }
 
   private InMemoryKafkaBroker inMemoryKafkaBroker;
@@ -296,9 +295,10 @@ public class StoreIngestionTaskTest {
     }
     offsetManager = new DeepCopyStorageMetadataService(mockStorageMetadataService);
     Queue<VeniceNotifier> notifiers = new ConcurrentLinkedQueue<>(Arrays.asList(mockNotifier, new LogNotifier()));
-    storeIngestionTaskUnderTest = new StoreIngestionTask(
-        mockFactory, kafkaProps, mockStoreRepository, offsetManager, notifiers, mockThrottler, topic, mockSchemaRepo,
-        mockTopicManager, mockStoreIngestionStats, mockVersionedDIVStats, storeBufferService, isCurrentVersion, hybridStoreConfig, 0);
+    storeIngestionTaskUnderTest =
+        new StoreIngestionTask(mockFactory, kafkaProps, mockStoreRepository, offsetManager, notifiers, mockThrottler,
+            topic, mockSchemaRepo, mockTopicManager, mockStoreIngestionStats, mockVersionedDIVStats, storeBufferService,
+            isCurrentVersion, hybridStoreConfig, 0, READ_CYCLE_DELAY_MS);
     doReturn(mockAbstractStorageEngine).when(mockStoreRepository).getLocalStorageEngine(topic);
 
     Future testSubscribeTaskFuture = null;
@@ -841,7 +841,7 @@ public class StoreIngestionTaskTest {
         veniceWriter.put(putKeyFoo, putValue, SCHEMA_ID);
         veniceWriter.put(putKeyBar, putValue, SCHEMA_ID);
         try {
-          TimeUnit.MILLISECONDS.sleep(StoreIngestionTask.READ_CYCLE_DELAY_MS);
+          TimeUnit.MILLISECONDS.sleep(READ_CYCLE_DELAY_MS);
         } catch (InterruptedException e) {
           break;
         }

@@ -13,6 +13,7 @@ import com.linkedin.venice.utils.VeniceProperties;
 
 import java.io.File;
 import java.util.Optional;
+import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.common.protocol.SecurityProtocol;
 
 
@@ -31,12 +32,17 @@ public class VeniceClusterConfig {
   private PersistenceType persistenceType;
   private String kafkaBootstrapServers;
   private String kafkaZkAddress;
-  private long maxKafkaFetchBytesPerSecond = 0;
+  private long KafkaFetchQuotaBytesPerSecond = 0;
   private int statusMessageRetryCount;
   private long statusMessageRetryDurationMs ;
   private int offsetManagerLogFileMaxBytes;
   private int refreshAttemptsForZkReconnect;
   private long refreshIntervalForZkReconnectInMs;
+  private long kafkaReadCycleDelayMs;
+  private long kafkaFetchMinSizePerSecond;
+  private long kafkaFetchMaxSizePerSecond;
+  private long kafkaFetchMaxTimeMS;
+  private long kafkaFetchPartitionMaxSizePerSecond;
 
   private String kafkaSecurityProtocol;
   // SSL related config
@@ -70,7 +76,7 @@ public class VeniceClusterConfig {
       throw new ConfigurationException("kafkaBootstrapServers can't be empty");
     }
     kafkaZkAddress = clusterProps.getString(KAFKA_ZK_ADDRESS);
-    maxKafkaFetchBytesPerSecond = clusterProps.getSizeInBytes(MAX_KAFKA_FETCH_BYTES_PER_SECOND, 0);
+    KafkaFetchQuotaBytesPerSecond = clusterProps.getSizeInBytes(KAFKA_FETCH_QUOTA_BYTES_PER_SECOND, 0);
     statusMessageRetryCount = clusterProps.getInt(STATUS_MESSAGE_RETRY_COUNT, 5);
     statusMessageRetryDurationMs = clusterProps.getLong(STATUS_MESSAGE_RETRY_DURATION_MS, 1000l);
 
@@ -93,6 +99,12 @@ public class VeniceClusterConfig {
     refreshAttemptsForZkReconnect = clusterProps.getInt(REFRESH_ATTEMPTS_FOR_ZK_RECONNECT, 3);
     refreshIntervalForZkReconnectInMs =
         clusterProps.getLong(REFRESH_INTERVAL_FOR_ZK_RECONNECT_MS, java.util.concurrent.TimeUnit.SECONDS.toMillis(10));
+    kafkaReadCycleDelayMs = clusterProps.getLong(KAFKA_READ_CYCLE_DELAY_MS, 1000);
+    // get fetching related from config or use the kafka default values.
+    kafkaFetchMinSizePerSecond = clusterProps.getSizeInBytes(KAFKA_FETCH_MIN_SIZE_PER_SEC, 1);
+    kafkaFetchMinSizePerSecond = clusterProps.getSizeInBytes(KAFKA_FETCH_MAX_SIZE_PER_SEC, ConsumerConfig.DEFAULT_FETCH_MAX_BYTES);
+    kafkaFetchMaxTimeMS = clusterProps.getLong(KAFKA_FETCH_MAX_WAIT_TIME_MS, 500);
+    kafkaFetchPartitionMaxSizePerSecond = clusterProps.getSizeInBytes(KAFKA_FETCH_PARTITION_MAX_SIZE_PER_SEC, ConsumerConfig.DEFAULT_MAX_PARTITION_FETCH_BYTES);
   }
 
   public int getStatusMessageRetryCount() {
@@ -103,7 +115,9 @@ public class VeniceClusterConfig {
     return statusMessageRetryDurationMs;
   }
 
-  public long getMaxKafkaFetchBytesPerSecond() { return maxKafkaFetchBytesPerSecond; }
+  public long getKafkaFetchQuotaBytesPerSecond() {
+    return KafkaFetchQuotaBytesPerSecond;
+  }
 
   public String getClusterName() {
     return clusterName;
@@ -159,5 +173,25 @@ public class VeniceClusterConfig {
 
   public int getRefreshAttemptsForZkReconnect() {
     return refreshAttemptsForZkReconnect;
+  }
+
+  public long getKafkaReadCycleDelayMs() {
+    return kafkaReadCycleDelayMs;
+  }
+
+  public long getKafkaFetchMinSizePerSecond() {
+    return kafkaFetchMinSizePerSecond;
+  }
+
+  public long getKafkaFetchMaxSizePerSecond() {
+    return kafkaFetchMaxSizePerSecond;
+  }
+
+  public long getKafkaFetchMaxTimeMS() {
+    return kafkaFetchMaxTimeMS;
+  }
+
+  public long getKafkaFetchPartitionMaxSizePerSecond() {
+    return kafkaFetchPartitionMaxSizePerSecond;
   }
 }
