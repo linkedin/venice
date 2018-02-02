@@ -73,9 +73,7 @@ public class StoreIngestionTask implements Runnable, Closeable {
   // Constants
 
   private static final String CONSUMER_TASK_ID_FORMAT = StoreIngestionTask.class.getSimpleName() + " for [ Topic: %s ]";
-  // TODO: consider to make those delay time configurable for operability purpose. Some are non-final so tests can alter the values.
-  public static int READ_CYCLE_DELAY_MS = 1000;
-  public static int POLLING_SCHEMA_DELAY_MS = 5 * READ_CYCLE_DELAY_MS;
+  public static long POLLING_SCHEMA_DELAY_MS = TimeUnit.SECONDS.toMillis(5);
 //  public static long PROGRESS_REPORT_INTERVAL = TimeUnit.MILLISECONDS.convert(10, TimeUnit.MINUTES);
   /** After processing the following number of messages, Venice SN will invoke throttling. */
   public static int OFFSET_THROTTLE_INTERVAL = 1000;
@@ -121,6 +119,7 @@ public class StoreIngestionTask implements Runnable, Closeable {
   /** Interval before querying Kafka broker about the source topic offset */
   private final int sourceTopicOffsetCheckInterval;
   private final Function<GUID, ProducerTracker> producerTrackerCreator;
+  private final long readCycleDelayMs;
 
   // Non-final
   private KafkaConsumerWrapper consumer;
@@ -146,7 +145,9 @@ public class StoreIngestionTask implements Runnable, Closeable {
                             @NotNull StoreBufferService storeBufferService,
                             @NotNull BooleanSupplier isCurrentVersion,
                             @NotNull Optional<HybridStoreConfig> hybridStoreConfig,
-                            int sourceTopicOffsetCheckIntervalMs) {
+                            int sourceTopicOffsetCheckIntervalMs,
+                            long readCycleDelayMs) {
+    this.readCycleDelayMs = readCycleDelayMs;
     this.factory = factory;
     this.kafkaProps = kafkaConsumerProperties;
     this.storeRepository = storeRepository;
@@ -371,7 +372,7 @@ public class StoreIngestionTask implements Runnable, Closeable {
     if (consumer.hasSubscription()) {
       idleCounter = 0;
       long beforePollingTimestamp = System.currentTimeMillis();
-      ConsumerRecords<KafkaKey, KafkaMessageEnvelope> records = consumer.poll(READ_CYCLE_DELAY_MS);
+      ConsumerRecords<KafkaKey, KafkaMessageEnvelope> records = consumer.poll(readCycleDelayMs);
       long afterPollingTimestamp = System.currentTimeMillis();
 
       int pollResultNum = 0;
@@ -410,7 +411,7 @@ public class StoreIngestionTask implements Runnable, Closeable {
         complete();
       } else {
         logger.warn(consumerTaskId + " No Partitions are subscribed to for store attempt " + idleCounter);
-        Utils.sleep(READ_CYCLE_DELAY_MS);
+        Utils.sleep(readCycleDelayMs);
       }
     }
   }
@@ -668,7 +669,7 @@ public class StoreIngestionTask implements Runnable, Closeable {
       tempConsumer.subscribe(topic, partitionId, new OffsetRecord());
       ConsumerRecords<KafkaKey, KafkaMessageEnvelope> consumerRecords;
       while (consumptionAttempt < MAX_ATTEMPTS && recordsConsumed < MAX_RECORDS) {
-        consumerRecords = tempConsumer.poll(READ_CYCLE_DELAY_MS);
+        consumerRecords = tempConsumer.poll(readCycleDelayMs);
         if (consumerRecords.isEmpty()) {
           consumptionAttempt++;
           logger.info(consumerTaskId + " Got nothing out of Kafka while attempting to" +

@@ -43,7 +43,7 @@ public class KafkaStoreIngestionServiceTest {
     mockVeniceConfigLoader = mock(VeniceConfigLoader.class);
 
     VeniceServerConfig mockVeniceServerConfig = mock(VeniceServerConfig.class);
-    doReturn(0l).when(mockVeniceServerConfig).getMaxKafkaFetchBytesPerSecond();
+    doReturn(0l).when(mockVeniceServerConfig).getKafkaFetchQuotaBytesPerSecond();
 
     VeniceClusterConfig mockVeniceClusterConfig = mock(VeniceClusterConfig.class);
     doReturn("localhost:1234").when(mockVeniceClusterConfig).getKafkaZkAddress();

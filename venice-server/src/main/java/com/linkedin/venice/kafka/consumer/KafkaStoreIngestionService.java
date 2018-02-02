@@ -107,7 +107,7 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
 
     VeniceServerConfig serverConfig = veniceConfigLoader.getVeniceServerConfig();
     veniceConsumerFactory = new VeniceServerConsumerFactory(serverConfig);
-    long maxKafkaFetchBytesPerSecond = serverConfig.getMaxKafkaFetchBytesPerSecond();
+    long maxKafkaFetchBytesPerSecond = serverConfig.getKafkaFetchQuotaBytesPerSecond();
     this.throttler = new EventThrottler(maxKafkaFetchBytesPerSecond);
     this.topicManager = new TopicManager(serverConfig.getKafkaZkAddress(), veniceConsumerFactory);
 
@@ -156,8 +156,9 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
     Optional<HybridStoreConfig> hybridStoreConfig = Optional.ofNullable(store.getHybridStoreConfig());
 
     return new StoreIngestionTask(veniceConsumerFactory, getKafkaConsumerProperties(veniceStore), storeRepository,
-        storageMetadataService, notifiers, throttler, veniceStore.getStoreName(), schemaRepo, topicManager, ingestionStats,
-        versionedDIVStats, storeBufferService, isStoreVersionCurrent, hybridStoreConfig, veniceStore.getSourceTopicOffsetCheckIntervalMs());
+        storageMetadataService, notifiers, throttler, veniceStore.getStoreName(), schemaRepo, topicManager,
+        ingestionStats, versionedDIVStats, storeBufferService, isStoreVersionCurrent, hybridStoreConfig,
+        veniceStore.getSourceTopicOffsetCheckIntervalMs(), veniceStore.getKafkaReadCycleDelayMs());
   }
 
   /**
@@ -363,6 +364,14 @@ public class KafkaStoreIngestionService extends AbstractVeniceService implements
         KafkaKeySerializer.class.getName());
     kafkaConsumerProperties.setProperty(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG,
         KafkaValueSerializer.class.getName());
+    kafkaConsumerProperties.setProperty(ConsumerConfig.FETCH_MIN_BYTES_CONFIG,
+        String.valueOf(storeConfig.getKafkaFetchMinSizePerSecond()));
+    kafkaConsumerProperties.setProperty(ConsumerConfig.FETCH_MAX_BYTES_CONFIG,
+        String.valueOf(storeConfig.getKafkaFetchMaxSizePerSecond()));
+    kafkaConsumerProperties
+        .setProperty(ConsumerConfig.FETCH_MAX_WAIT_MS_CONFIG, String.valueOf(storeConfig.getKafkaFetchMaxTimeMS()));
+    kafkaConsumerProperties.setProperty(ConsumerConfig.MAX_PARTITION_FETCH_BYTES_CONFIG,
+        String.valueOf(storeConfig.getKafkaFetchPartitionMaxSizePerSecond()));
     return kafkaConsumerProperties;
   }
 
