@@ -28,7 +28,13 @@ public class VsonAvroDatumWriter<K> extends GenericDatumWriter<K> {
         case BYTES:   writeBytes(datum, out);           break;
         case FIXED:   writeFixed(schema, datum, out);   break;
         case INT:     out.writeInt((Integer)datum);     break;
-        case LONG:    out.writeLong((Long)datum);       break;
+        case LONG:
+          if (datum instanceof Integer){
+            out.writeLong(((Integer)datum).longValue());
+          } else {
+            out.writeLong((Long) datum);
+          }
+          break;
         case FLOAT:   out.writeFloat((Float)datum);     break;
         case DOUBLE:  out.writeDouble((Double)datum);   break;
         case BOOLEAN: out.writeBoolean((Boolean)datum); break;

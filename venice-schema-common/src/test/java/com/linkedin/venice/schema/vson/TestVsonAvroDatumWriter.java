@@ -21,6 +21,7 @@ public class TestVsonAvroDatumWriter {
   public void testWriterCanWritePrimitive() throws IOException {
     testWriter("\"int32\"", () -> 123);
     testWriter("\"int64\"", () -> 123l);
+    testWriter("\"int64\"", () -> 123, () -> 123l); //let integers be supplied for longs
     testWriter("\"float32\"", () -> 123f);
     testWriter("\"float64\"", () -> 123d);
     testWriter("\"boolean\"", () -> true);
@@ -94,7 +95,11 @@ public class TestVsonAvroDatumWriter {
   }
 
   private void testWriter(String vsonSchemaStr, Supplier valueSupplier) throws IOException {
-    testWriter(vsonSchemaStr, valueSupplier, (avroObject) -> Assert.assertEquals(avroObject, valueSupplier.get()));
+    testWriter(vsonSchemaStr, valueSupplier, valueSupplier);
+  }
+
+  private void testWriter(String vsonSchemaStr, Supplier valueSupplier, Supplier finalValueSupplier) throws IOException {
+    testWriter(vsonSchemaStr, valueSupplier, (avroObject) -> Assert.assertEquals(avroObject, finalValueSupplier.get()));
     testWriteNullValue(vsonSchemaStr);
   }
 
