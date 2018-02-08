@@ -517,6 +517,7 @@ public class TestAdminSparkServer {
     boolean accessControlled = true;
     long storageQuotaInByte = 100l;
     long readQuotaInCU = 200l;
+    int numVersionToPreserve = 100;
 
     String storeName = venice.getNewStoreVersion().getName();
     ControllerClient controllerClient = new ControllerClient(venice.getClusterName(), routerUrl);
@@ -532,7 +533,8 @@ public class TestAdminSparkServer {
         .setEnableWrites(enableWrite)
         .setStorageQuotaInByte(storageQuotaInByte)
         .setReadQuotaInCU(readQuotaInCU)
-        .setAccessControlled(accessControlled);
+        .setAccessControlled(accessControlled)
+        .setNumVersionsToPreserve(numVersionToPreserve);
 
     ControllerResponse response = controllerClient.updateStore(storeName, queryParams);
 
@@ -544,6 +546,7 @@ public class TestAdminSparkServer {
     Assert.assertEquals(store.isEnableReads(), enableReads);
     Assert.assertEquals(store.isEnableWrites(), enableWrite);
     Assert.assertEquals(store.isAccessControlled(), accessControlled);
+    Assert.assertEquals(store.getNumVersionsToPreserve(), numVersionToPreserve);
 
     enableWrite = false;
     accessControlled = !accessControlled;

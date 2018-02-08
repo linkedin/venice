@@ -122,6 +122,14 @@ public class UpdateStoreQueryParams extends QueryParams {
     return getInteger(BATCH_GET_LIMIT);
   }
 
+  public UpdateStoreQueryParams setNumVersionsToPreserve(int numVersionsToPreserve){
+    return putInteger(NUM_VERSIONS_TO_PRESERVE, numVersionsToPreserve);
+  }
+
+  public Optional<Integer> getNumVersionsToPreserve(){
+    return getInteger(NUM_VERSIONS_TO_PRESERVE);
+  }
+
   private UpdateStoreQueryParams putInteger(String name, int value) {
     return (UpdateStoreQueryParams) add(name, value);
   }

@@ -1393,6 +1393,21 @@ public class TestVeniceHelixAdmin {
   }
 
   @Test
+  public void testNumVersionsToPreserve() {
+    String storeName = TestUtils.getUniqueString("test_store");
+    veniceAdmin.addStore(clusterName, storeName, "unittest", "\"string\"", "\"string\"");
+
+    Store store = veniceAdmin.getStore(clusterName, storeName);
+    Assert.assertEquals(store.getNumVersionsToPreserve(), store.NUM_VERSION_PRESERVE_NOT_SET);
+    int numVersionsToPreserve = 100;
+
+    veniceAdmin.updateStore(clusterName, storeName,
+        new UpdateStoreQueryParams().setNumVersionsToPreserve(numVersionsToPreserve));
+    store = veniceAdmin.getStore(clusterName, storeName);
+    Assert.assertEquals(store.getNumVersionsToPreserve(), numVersionsToPreserve);
+  }
+
+  @Test
   public void testEnableSSLForPush()
       throws IOException {
 

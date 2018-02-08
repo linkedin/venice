@@ -787,10 +787,9 @@ public class VeniceParentHelixAdmin implements Admin {
   public void updateStore(String clusterName, String storeName, Optional<String> owner, Optional<Boolean> readability,
       Optional<Boolean> writeability, Optional<Integer> partitionCount, Optional<Long> storageQuotaInByte,
       Optional<Long> readQuotaInCU, Optional<Integer> currentVersion, Optional<Integer> largestUsedVersionNumber,
-      Optional<Long> hybridRewindSeconds,
-      Optional<Long> hybridOffsetLagThreshold, Optional<Boolean> accessControlled,
+      Optional<Long> hybridRewindSeconds, Optional<Long> hybridOffsetLagThreshold, Optional<Boolean> accessControlled,
       Optional<CompressionStrategy> compressionStrategy, Optional<Boolean> chunkingEnabled,
-      Optional<Boolean> routerCacheEnabled, Optional<Integer> batchGetLimit) {
+      Optional<Boolean> routerCacheEnabled, Optional<Integer> batchGetLimit, Optional<Integer> numVersionsToPreserve) {
     acquireLock(clusterName);
 
     try {
@@ -832,6 +831,8 @@ public class VeniceParentHelixAdmin implements Admin {
           null == hybridStoreConfig ? Optional.empty() : Optional.of(hybridStoreConfig),
           routerCacheEnabled);
       setStore.batchGetLimit = batchGetLimit.isPresent() ? batchGetLimit.get() : store.getBatchGetLimit();
+      setStore.numVersionsToPreserve =
+          numVersionsToPreserve.isPresent() ? numVersionsToPreserve.get() : store.getNumVersionsToPreserve();
 
       AdminOperation message = new AdminOperation();
       message.operationType = AdminMessageType.UPDATE_STORE.getValue();

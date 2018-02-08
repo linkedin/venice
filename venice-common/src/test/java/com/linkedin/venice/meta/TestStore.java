@@ -4,6 +4,7 @@ import com.linkedin.venice.exceptions.StoreDisabledException;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.utils.TestUtils;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import org.testng.Assert;
@@ -93,14 +94,14 @@ public class TestStore {
 
     Version version1 = new Version(store.getName(), 1);
     store.addVersion(version1);
-    Assert.assertEquals(store.retrieveVersionsToDelete(1).size(), 0, "all unfinished version returns empty array ");
+    Assert.assertEquals(store.retrieveVersionsToDelete(1).size(), 0, "only one version, it should be preserved.");
 
     Version version2 = new Version(store.getName(), 2);
     store.addVersion(version2);
-    Assert.assertEquals(store.retrieveVersionsToDelete(1).size(), 0, "all unfinished versions returns empty array ");
+    Assert.assertEquals(store.retrieveVersionsToDelete(1).size(), 1, "two versions, one should be deleted ");
 
     version1.setStatus(VersionStatus.ONLINE);
-    Assert.assertEquals(store.retrieveVersionsToDelete(1).size(), 0, "Only one active version there, nothing to delete");
+    Assert.assertEquals(store.retrieveVersionsToDelete(1).size(), 0, "one version is active and the last version should be preserved, nothing to delete.");
 
     version2.setStatus(VersionStatus.ONLINE);
     assertVersionsEquals(store, 1, Arrays.asList(version1), "two version active, one should be deleted");
@@ -131,6 +132,30 @@ public class TestStore {
     assertVersionsEquals( store, 5, Arrays.asList(version3 , version4),"delete all error versions");
   }
 
+  @Test
+  public void testRetrieveVersionsToDeleteWithStoreLevelConfig() {
+    Store store =
+        TestUtils.createTestStore("retrieveDeleteStoreWithStoreLevelConfig", "owner", System.currentTimeMillis());
+    int numVersionsToPreserve = 5;
+    store.setNumVersionsToPreserve(numVersionsToPreserve);
+    for (int i = 0; i < numVersionsToPreserve; i++) {
+      Version v = new Version(store.getName(), i + 1);
+      v.setStatus(VersionStatus.ONLINE);
+      store.addVersion(v);
+    }
+
+    Assert.assertEquals(store.retrieveVersionsToDelete(2).size(), 0,
+        "Once enable store level config, this store should preserve all current versions.");
+
+    int newNumVersionToPreserve = 1;
+    store.setNumVersionsToPreserve(1);
+    List<Version> versions = store.retrieveVersionsToDelete(numVersionsToPreserve);
+    Assert.assertEquals(versions.size(), numVersionsToPreserve - newNumVersionToPreserve);
+    for (Version v : versions) {
+      // we should keep the latest version.
+      Assert.assertTrue(v.getNumber() < numVersionsToPreserve + 1);
+    }
+  }
 
   @Test
   public void testDisableStoreWrite(){
