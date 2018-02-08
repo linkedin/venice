@@ -1139,20 +1139,19 @@ public class TestVeniceParentHelixAdmin {
     when(zkClient.readData(zkOffsetNodePath, null))
         .thenReturn(new OffsetRecord())
         .thenReturn(TestUtils.getOffsetRecord(1));
-
+    long readQuota = 100l;
+    boolean readability = true;
+    boolean accessControlled = true;
     Store store = TestUtils.createTestStore(storeName, "test", System.currentTimeMillis());
     doReturn(store).when(internalAdmin).getStore(clusterName,storeName);
-    Optional<Integer> partitionCount = Optional.of(64);
-    Optional<Boolean> readability = Optional.of(true);
-    Optional<Boolean> writebility = Optional.empty();
-    Optional<String> owner = Optional.empty();
-    Optional<Long> readQuota = Optional.of(100l);
-    Optional<Long> storageQuota = Optional.empty();
-    Optional<Boolean> accessControlled = Optional.of(true);
     Optional<CompressionStrategy> compressionStrategy = Optional.of(CompressionStrategy.GZIP);
-    parentAdmin.updateStore(clusterName, storeName, owner, readability, writebility, partitionCount, storageQuota,
-        readQuota, Optional.empty(), Optional.empty(), Optional.of(135L), Optional.of(2000L), accessControlled, compressionStrategy,
-        Optional.empty(), Optional.empty(), Optional.empty());
+    parentAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams().setEnableReads(readability)
+        .setPartitionCount(64)
+        .setReadQuotaInCU(readQuota)
+        .setAccessControlled(accessControlled)
+        .setCompressionStrategy(CompressionStrategy.GZIP)
+        .setHybridRewindSeconds(135l)
+        .setHybridOffsetLagThreshold(2000));
 
     verify(veniceWriter)
         .put(any(), any(), anyInt());
@@ -1173,28 +1172,26 @@ public class TestVeniceParentHelixAdmin {
     UpdateStore updateStore = (UpdateStore) adminMessage.payloadUnion;
     Assert.assertEquals(updateStore.clusterName.toString(), clusterName);
     Assert.assertEquals(updateStore.storeName.toString(), storeName);
-    Assert.assertEquals(updateStore.readQuotaInCU, readQuota.get().longValue(),
+    Assert.assertEquals(updateStore.readQuotaInCU, readQuota,
         "New read quota should be written into kafka message.");
-    Assert.assertEquals(updateStore.enableReads, readability.get().booleanValue(),
+    Assert.assertEquals(updateStore.enableReads, readability,
         "New read readability should be written into kafka message.");
     Assert.assertEquals(updateStore.currentVersion, AdminConsumptionTask.IGNORED_CURRENT_VERSION,
         "As we don't pass any current version into updateStore, a magic version number should be used to prevent current version being overrided in prod colo.");
     Assert.assertNotNull(updateStore.hybridStoreConfig, "Hybrid store config should result in something not null in the avro object");
     Assert.assertEquals(updateStore.hybridStoreConfig.rewindTimeInSeconds, 135L);
     Assert.assertEquals(updateStore.hybridStoreConfig.offsetLagThresholdToGoOnline, 2000L);
-    Assert.assertEquals(updateStore.accessControlled, accessControlled.get().booleanValue());
+    Assert.assertEquals(updateStore.accessControlled, accessControlled);
 
     // Disable Access Control
-    accessControlled = Optional.of(false);
-    parentAdmin.updateStore(clusterName, storeName, owner, readability, writebility, partitionCount, storageQuota,
-        readQuota, Optional.empty(), Optional.empty(), Optional.of(135L), Optional.of(2000L), accessControlled, compressionStrategy,
-        Optional.empty(), Optional.empty(), Optional.empty());
+    accessControlled = false;
+    parentAdmin.updateStore(clusterName, storeName, new UpdateStoreQueryParams().setAccessControlled(accessControlled));
     verify(veniceWriter, times(2)).put(keyCaptor.capture(), valueCaptor.capture(), schemaCaptor.capture());
     valueBytes = valueCaptor.getValue();
     schemaId = schemaCaptor.getValue();
     adminMessage = adminOperationSerializer.deserialize(valueBytes, schemaId);
     updateStore = (UpdateStore) adminMessage.payloadUnion;
-    Assert.assertEquals(updateStore.accessControlled, accessControlled.get().booleanValue());
+    Assert.assertEquals(updateStore.accessControlled, accessControlled);
   }
 
   @Test

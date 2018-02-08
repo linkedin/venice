@@ -46,6 +46,11 @@ public class Store {
    * Default read quota 1800 QPS per node
    */
   public static long DEFAULT_READ_QUOTA = 1800;
+
+  /**
+   * Default value of numVersionPreserve, by default we should use cluster level config instead of store level config.
+   */
+  public static int NUM_VERSION_PRESERVE_NOT_SET = 0;
   /**
    * Store name.
    */
@@ -140,6 +145,12 @@ public class Store {
    * Batch get key number limit, and Venice will use cluster-level config if it is not positive.
    */
   private int batchGetLimit = -1;
+
+  /**
+   * How many versions this store preserve at most. By default it's 0 means we use the cluster level config to
+   * determine how many version is preserved.
+   */
+  private int numVersionsToPreserve = NUM_VERSION_PRESERVE_NOT_SET;
 
   public Store(@NotNull String name, @NotNull String owner, long createdTime, @NotNull PersistenceType persistenceType,
       @NotNull RoutingStrategy routingStrategy, @NotNull ReadStrategy readStrategy,
@@ -479,11 +490,15 @@ public class Store {
     }
   }
 
-  public List<Version> retrieveVersionsToDelete(int numVersionsToPreserve) {
+  public List<Version> retrieveVersionsToDelete(int clusterNumVersionsToPreserve) {
+    int curNumVersionsToPreserve = clusterNumVersionsToPreserve;
+    if (numVersionsToPreserve != NUM_VERSION_PRESERVE_NOT_SET) {
+      curNumVersionsToPreserve = numVersionsToPreserve;
+    }
     // when numVersionsToPreserve is less than 1, it usually means a config issue.
     // Setting it to zero, will cause the store to be deleted as soon as push completes.
-    if(numVersionsToPreserve < 1) {
-      throw new IllegalArgumentException("At least 1 version should be preserved. Parameter " + numVersionsToPreserve);
+    if(curNumVersionsToPreserve < 1) {
+      throw new IllegalArgumentException("At least 1 version should be preserved. Parameter " + curNumVersionsToPreserve);
     }
 
     if(versions.size() == 0) {
@@ -505,7 +520,7 @@ public class Store {
     Version latestVersion = versions.get(lastElementIndex);
     if(VersionStatus.preserveLastFew(latestVersion.getStatus())) {
       // Last version is always preserved and it can be archived, reduce the number of versions to preserveLastFew by 1.
-      numVersionsToPreserve --;
+      curNumVersionsToPreserve --;
     }
 
     for(int i = lastElementIndex - 1;i >= 0 ; i --){
@@ -514,13 +529,21 @@ public class Store {
       if(VersionStatus.canDelete(version.getStatus())) {
         versionsToDelete.add(version);
       } else if (VersionStatus.preserveLastFew(version.getStatus())) {
-        if(numVersionsToPreserve > 0) {
-          numVersionsToPreserve --;
+        if(curNumVersionsToPreserve > 0) {
+          curNumVersionsToPreserve --;
         } else {
           versionsToDelete.add(version);
         }
+      } else if (VersionStatus.STARTED.equals(version.getStatus())){
+        // For the non-last started version, if it's not the current version(STARTED version should not be the current
+        // version, just prevent some edge cases here.), we should delete it. As on our logic, there should not be any
+        // concurrent push, so the non-last push is either completed or failed. If it's stuck in STARTED, it means
+        // somehow the controller did not update the version status properly.
+        if(version.getNumber() != currentVersion){
+          versionsToDelete.add(version);
+        }
       }
-      // TODO here we don't deal with the STARTED and PUSHED version, just keep all of them, need to consider collect them too in the future.
+      // TODO here we don't deal with the PUSHED version, just keep all of them, need to consider collect them too in the future.
     }
 
     return versionsToDelete;
@@ -559,6 +582,7 @@ public class Store {
     result = 31 * result + (chunkingEnabled ? 1 : 0);
     result = 31 * result + (routerCacheEnabled ? 1 : 0);
     result = 31 * result + batchGetLimit;
+    result = 31 * result + numVersionsToPreserve;
     return result;
   }
 
@@ -589,6 +613,7 @@ public class Store {
     if (chunkingEnabled != store.chunkingEnabled) return false;
     if (routerCacheEnabled != store.routerCacheEnabled) return false;
     if (batchGetLimit != store.batchGetLimit) return false;
+    if (numVersionsToPreserve != store.numVersionsToPreserve) return false;
     return !(hybridStoreConfig != null ? !hybridStoreConfig.equals(store.hybridStoreConfig) : store.hybridStoreConfig != null);
   }
 
@@ -622,6 +647,7 @@ public class Store {
     clonedStore.setChunkingEnabled(chunkingEnabled);
     clonedStore.setRouterCacheEnabled(routerCacheEnabled);
     clonedStore.setBatchGetLimit(batchGetLimit);
+    clonedStore.setNumVersionsToPreserve(numVersionsToPreserve);
 
     for (Version v : this.versions) {
       clonedStore.forceAddVersion(v.cloneVersion());
@@ -657,5 +683,13 @@ public class Store {
 
   public void setAccessControlled(boolean accessControlled) {
     this.accessControlled = accessControlled;
+  }
+
+  public int getNumVersionsToPreserve() {
+    return numVersionsToPreserve;
+  }
+
+  public void setNumVersionsToPreserve(int numVersionsToPreserve) {
+    this.numVersionsToPreserve = numVersionsToPreserve;
   }
 }

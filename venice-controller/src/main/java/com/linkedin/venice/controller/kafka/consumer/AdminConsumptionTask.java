@@ -566,7 +566,8 @@ public class AdminConsumptionTask implements Runnable, Closeable {
                       CompressionStrategy.optionalValueOf(message.compressionStrategy),
                       Optional.of(message.chunkingEnabled),
                       Optional.of(message.routerCacheEnabled),
-                      Optional.of(message.batchGetLimit)
+                      Optional.of(message.batchGetLimit),
+                      Optional.of(message.numVersionsToPreserve)
         );
 
     logger.info("Set store: " + storeName + " in cluster: " + clusterName);

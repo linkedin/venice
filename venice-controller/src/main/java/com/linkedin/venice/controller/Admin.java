@@ -154,7 +154,8 @@ public interface Admin {
                      Optional<CompressionStrategy> compressionStrategy,
                      Optional<Boolean> chunkingEnabled,
                      Optional<Boolean> routerCacheEnabled,
-                     Optional<Integer> batchGetLimit);
+                     Optional<Integer> batchGetLimit,
+                     Optional<Integer> numVersionsToPreserve);
 
 
     default void updateStore(String clusterName, String storeName, UpdateStoreQueryParams params) {
@@ -175,7 +176,8 @@ public interface Admin {
             params.getCompressionStrategy(),
             params.getChunkingEnabled(),
             params.getRouterCacheEnabled(),
-            params.getBatchGetLimit());
+            params.getBatchGetLimit(),
+            params.getNumVersionsToPreserve());
     }
 
     double getStorageEngineOverheadRatio(String clusterName);
