@@ -21,4 +21,5 @@ dependencies {
     exclude group: 'org.apache.kafka'
   }
   compile libraries.brooklinCommon
+  compile libraries.restliDocgen  // Added during dds-storage-core v2 => v3
 }
