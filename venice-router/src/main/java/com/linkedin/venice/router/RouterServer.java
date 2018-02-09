@@ -35,8 +35,6 @@ import com.linkedin.venice.router.api.VenicePathParser;
 import com.linkedin.venice.router.api.VeniceResponseAggregator;
 import com.linkedin.venice.router.api.VeniceRoleFinder;
 import com.linkedin.venice.router.api.VeniceVersionFinder;
-import com.linkedin.venice.router.cache.CacheEviction;
-import com.linkedin.venice.router.cache.CacheType;
 import com.linkedin.venice.router.cache.RouterCache;
 import com.linkedin.venice.router.stats.AggRouterHttpRequestStats;
 import com.linkedin.venice.router.stats.RouterCacheStats;

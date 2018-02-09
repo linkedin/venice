@@ -3,10 +3,14 @@ package com.linkedin.venice.helix;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.integration.utils.ZkServerWrapper;
+import com.linkedin.venice.meta.RoutersClusterConfig;
+import com.linkedin.venice.utils.HelixUtils;
 import com.linkedin.venice.utils.TestUtils;
 import com.linkedin.venice.utils.Utils;
 import java.util.concurrent.TimeUnit;
+import org.apache.helix.AccessOption;
 import org.apache.helix.manager.zk.ZkClient;
+import org.apache.zookeeper.CreateMode;
 import org.testng.Assert;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
@@ -207,5 +211,17 @@ public class ZkRoutersClusterManagerTest {
     manager.refresh();
     manager.createRouterClusterConfig();
     return manager;
+  }
+
+  @Test
+  public void testRouterClusterConfigCreationWhenZNodeAlreadyExistsWithEmptyContent() {
+    String myClusterName = TestUtils.getUniqueString("test-cluster");
+    ZkRoutersClusterManager manager = new ZkRoutersClusterManager(zkClient, adapter, myClusterName, 1, 1000);
+    zkClient.create(HelixUtils.getHelixClusterZkPath(myClusterName), null, CreateMode.PERSISTENT);
+    zkClient.create(manager.getRouterRootPath(), null, CreateMode.PERSISTENT);
+
+    manager.refresh();
+    Assert.assertNotNull(zkClient.readData(manager.getRouterRootPath()), "Routers ZNode should not be null"
+        + " after refresh");
   }
 }
