@@ -18,16 +18,17 @@ import com.linkedin.venice.utils.Time;
 import com.linkedin.venice.utils.VeniceProperties;
 import com.linkedin.venice.writer.ApacheKafkaProducer;
 import java.util.HashMap;
-import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
+import java.util.regex.Pattern;
+import kafka.consumer.Whitelist;
 import org.apache.commons.io.IOUtils;
 import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.producer.ProducerConfig;
-import org.apache.kafka.common.protocol.SecurityProtocol;
+import org.apache.log4j.Logger;
 import org.testng.Assert;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
@@ -35,6 +36,8 @@ import org.testng.annotations.Test;
 
 
 public class MirrorMakerTest {
+  private static final Logger LOGGER = Logger.getLogger(MirrorMakerTest.class);
+
   KafkaBrokerWrapper sourceKafka = null;
   KafkaBrokerWrapper destinationKafka = null;
 
@@ -54,11 +57,24 @@ public class MirrorMakerTest {
    * Unfortunately, MirrorMaker is a little flaky and sometimes fails. I have seen failures about 2% of the
    * time when running this test repeatedly, hence why I am adding the {@link FlakyTestRetryAnalyzer}. -FGV
    */
-  //@Test(retryAnalyzer = FlakyTestRetryAnalyzer.class, timeOut = 30 * Time.MS_PER_SECOND)
+  @Test(retryAnalyzer = FlakyTestRetryAnalyzer.class, timeOut = 30 * Time.MS_PER_SECOND)
   void testMirrorMakerProcessWrapper() throws ExecutionException, InterruptedException {
     MirrorMakerWrapper mirrorMaker = null;
 
     try {
+      LOGGER.info("Source Kafka: " + sourceKafka.getAddress());
+      LOGGER.info("Source Kafka's ZK: " + sourceKafka.getZkAddress());
+      LOGGER.info("Destination Kafka: " + destinationKafka.getAddress());
+      LOGGER.info("Destination Kafka's ZK: " + destinationKafka.getZkAddress());
+      String cliCommandParams = "--start-kafka-mirror-maker"
+          + " --kafka-zk-url-source " + sourceKafka.getZkAddress()
+          + " --kafka-zk-url-dest " + destinationKafka.getZkAddress()
+          + " --kafka-bootstrap-servers-dest " + destinationKafka.getAddress()
+          + " --kafka-topic-whitelist '.*'";
+      String cliCommand = "java -jar venice-admin-tool/build/libs/venice-admin-tool-0.1.jar " + cliCommandParams;
+      LOGGER.info("Manual MM params for admin-tool: \n" + cliCommand);
+
+      LOGGER.info("Starting MM!");
       mirrorMaker = ServiceFactory.getKafkaMirrorMaker(sourceKafka, destinationKafka);
 
       TopicManager topicManager =
@@ -75,14 +91,20 @@ public class MirrorMakerTest {
 
       // Test pre-conditions
       consumer.subscribe(topicName, 0, new OffsetRecord());
+
+      LOGGER.info("About to consume message from destination cluster (should be empty).");
       ConsumerRecords consumerRecordsBeforeTest = consumer.poll(1 * Time.MS_PER_SECOND);
       Assert.assertTrue(consumerRecordsBeforeTest.isEmpty(),
           "The destination Kafka cluster should be empty at the beginning of the test!");
 
+      LOGGER.info("About to produce message into source cluster.");
       producer.sendMessage(topicName, new KafkaKey(MessageType.CONTROL_MESSAGE, new byte[]{}), getValue(), 0, null).get();
 
+      LOGGER.info("About to consume message from destination cluster (should contain something).");
       TestUtils.waitForNonDeterministicAssertion(10, TimeUnit.SECONDS, () -> {
-        ConsumerRecords consumerRecords = consumer.poll(1 * Time.MS_PER_SECOND);
+        ApacheKafkaConsumer newConsumer = new ApacheKafkaConsumer(getKafkaConsumerProperties(destinationKafka.getAddress()));
+        newConsumer.subscribe(topicName, 0, new OffsetRecord());
+        ConsumerRecords consumerRecords = newConsumer.poll(1 * Time.MS_PER_SECOND);
         Assert.assertFalse(consumerRecords.isEmpty(), "The destination Kafka cluster should NOT be empty!");
       });
     } finally {
@@ -129,5 +151,37 @@ public class MirrorMakerTest {
     kafkaConsumerProperties.setProperty(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG,
         KafkaValueSerializer.class.getName());
     return kafkaConsumerProperties;
+  }
+
+  @Test
+  public void whitelistRegexTest() {
+    String topic1 = "topic1";
+    String topic2 = "topic_2";
+
+    String whitelistForTopic1 = topic1;
+    String whitelistForTopic2 = topic2;
+    String whitelistForBothTopics = topic1 + "|" + topic2;
+    String whitelistForBothTopicsWithCSV = topic1 + "," + topic2;
+
+    Assert.assertTrue(Pattern.matches(whitelistForTopic1, topic1));
+    Assert.assertFalse(Pattern.matches(whitelistForTopic2, topic1));
+    Assert.assertTrue(Pattern.matches(whitelistForTopic2, topic2));
+    Assert.assertFalse(Pattern.matches(whitelistForTopic1, topic2));
+    Assert.assertTrue(Pattern.matches(whitelistForBothTopics, topic1));
+    Assert.assertTrue(Pattern.matches(whitelistForBothTopics, topic2));
+
+    Whitelist kafkaWhiteListForTopic1 = new Whitelist(whitelistForTopic1);
+    Whitelist kafkaWhiteListForTopic2 = new Whitelist(whitelistForTopic2);
+    Whitelist kafkaWhiteListForBothTopics = new Whitelist(whitelistForBothTopics);
+    Whitelist kafkaWhiteListForBothTopicsWithCSV = new Whitelist(whitelistForBothTopicsWithCSV);
+
+    Assert.assertTrue(kafkaWhiteListForTopic1.isTopicAllowed(topic1, true));
+    Assert.assertFalse(kafkaWhiteListForTopic2.isTopicAllowed(topic1, true));
+    Assert.assertTrue(kafkaWhiteListForTopic2.isTopicAllowed(topic2, true));
+    Assert.assertFalse(kafkaWhiteListForTopic1.isTopicAllowed(topic2, true));
+    Assert.assertTrue(kafkaWhiteListForBothTopics.isTopicAllowed(topic1, true));
+    Assert.assertTrue(kafkaWhiteListForBothTopics.isTopicAllowed(topic2, true));
+    Assert.assertTrue(kafkaWhiteListForBothTopicsWithCSV.isTopicAllowed(topic1, true));
+    Assert.assertTrue(kafkaWhiteListForBothTopicsWithCSV.isTopicAllowed(topic2, true));
   }
 }

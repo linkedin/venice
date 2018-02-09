@@ -28,6 +28,8 @@ import com.linkedin.venice.controllerapi.VersionResponse;
 import com.linkedin.venice.controllerapi.routes.AdminCommandExecutionResponse;
 import com.linkedin.venice.exceptions.VeniceException;
 import com.linkedin.venice.compression.CompressionStrategy;
+import com.linkedin.venice.integration.utils.MirrorMakerWrapper;
+import com.linkedin.venice.integration.utils.ServiceFactory;
 import com.linkedin.venice.kafka.TopicManager;
 import com.linkedin.venice.kafka.VeniceOperationAgainstKafkaTimedOut;
 import com.linkedin.venice.kafka.consumer.VeniceAdminToolConsumerFactory;
@@ -287,6 +289,8 @@ public class AdminTool {
         case DELETE_KAFKA_TOPIC:
           deleteKafkaTopic(cmd);
           break;
+        case START_MIRROR_MAKER:
+          startMirrorMaker(cmd);
         default:
           StringJoiner availableCommands = new StringJoiner(", ");
           for (Command c : Command.values()){
@@ -618,15 +622,7 @@ public class AdminTool {
   private static void deleteKafkaTopic(CommandLine cmd) {
     long startTime = System.currentTimeMillis();
     String kafkaBootstrapServer = getRequiredArgument(cmd, Arg.KAFKA_BOOTSTRAP_SERVERS);
-    Properties properties = new Properties();
-    if (cmd.hasOption(Arg.KAFKA_SSL_CONFIG_FILE.toString())) {
-      String configFilePath = getRequiredArgument(cmd, Arg.KAFKA_SSL_CONFIG_FILE);
-      try {
-        properties.load(new FileInputStream(configFilePath));
-      } catch (IOException e) {
-        throw new VeniceException("Cannot read file: " + configFilePath);
-      }
-    }
+    Properties properties = loadProperties(cmd, Arg.KAFKA_CONSUMER_CONFIG_FILE);
     properties.put(CommonClientConfigs.BOOTSTRAP_SERVERS_CONFIG, kafkaBootstrapServer);
     VeniceProperties veniceProperties = new VeniceProperties(properties);
     VeniceConsumerFactory veniceConsumerFactory = new VeniceAdminToolConsumerFactory(veniceProperties);
@@ -648,6 +644,27 @@ public class AdminTool {
     }
   }
 
+  private static void startMirrorMaker(CommandLine cmd) {
+    Properties consumerProps = loadProperties(cmd, Arg.KAFKA_CONSUMER_CONFIG_FILE);
+    Properties producerProps = loadProperties(cmd, Arg.KAFKA_PRODUCER_CONFIG_FILE);
+    MirrorMakerWrapper mirrorMakerWrapper = ServiceFactory.getKafkaMirrorMaker(
+        getRequiredArgument(cmd, Arg.KAFKA_ZOOKEEPER_CONNECTION_URL_SOURCE),
+        getRequiredArgument(cmd, Arg.KAFKA_ZOOKEEPER_CONNECTION_URL_DESTINATION),
+        getRequiredArgument(cmd, Arg.KAFKA_BOOTSTRAP_SERVERS_DESTINATION),
+        getRequiredArgument(cmd, Arg.KAFKA_TOPIC_WHITELIST),
+        consumerProps,
+        producerProps);
+    Runtime.getRuntime().addShutdownHook(new Thread() {
+      public void run() {
+        mirrorMakerWrapper.close();
+        System.out.println("Closed MM.");
+      }
+    });
+    while (mirrorMakerWrapper.isRunning()) {
+      Utils.sleep(1000);
+    }
+  }
+
   /* Things that are not commands */
 
   private static void printUsageAndExit(OptionGroup commandGroup, Options options){
@@ -665,7 +682,7 @@ public class AdminTool {
     new HelpFormatter().printHelp("Parameters: ", options);
 
     /* Examples */
-    System.err.println("\nExamples:");
+    System.out.println("\nExamples:");
     Command[] commands = Command.values();
     Arrays.sort(commands, Command.commandComparator);
     for (Command c : commands){
@@ -679,7 +696,7 @@ public class AdminTool {
         exampleArgs.add("<" + a.toString() + ">]");
       }
 
-      System.err.println(command + " --" + c.toString() + " " + exampleArgs.toString());
+      System.out.println(command + " --" + c.toString() + " " + exampleArgs.toString());
     }
     System.exit(1);
   }
@@ -708,6 +725,19 @@ public class AdminTool {
     } else {
       return cmd.getOptionValue(arg.first());
     }
+  }
+
+  public static Properties loadProperties(CommandLine cmd, Arg arg) throws VeniceException {
+    Properties properties = new Properties();
+    if (cmd.hasOption(arg.toString())) {
+      String configFilePath = getRequiredArgument(cmd, arg);
+      try {
+        properties.load(new FileInputStream(configFilePath));
+      } catch (IOException e) {
+        throw new VeniceException("Cannot read file: " + configFilePath + " specified by: " + arg.toString());
+      }
+    }
+    return properties;
   }
 
   private static void verifyStoreExistence(String storename, boolean desiredExistence){

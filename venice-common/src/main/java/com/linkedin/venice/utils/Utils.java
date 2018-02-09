@@ -129,8 +129,7 @@ public class Utils {
    *  @param configFileName - String path to a properties file
    *  @return A @Props object with the given configurations
    * */
-  public static VeniceProperties parseProperties(String configFileName)
-      throws IOException {
+  public static VeniceProperties parseProperties(String configFileName) throws IOException {
     Properties props = new Properties();
     try (FileInputStream inputStream = new FileInputStream(configFileName)) {
       props.load(inputStream);
@@ -150,18 +149,16 @@ public class Utils {
    * @return
    * @throws Exception
    */
-  public static VeniceProperties parseProperties(String directory,
-          String fileName,
-          boolean isFileOptional) throws IOException {
+  public static VeniceProperties parseProperties(String directory, String fileName, boolean isFileOptional)
+      throws IOException {
     String propsFilePath = directory + File.separator + fileName;
 
     File propsFile = new File(propsFilePath);
     boolean fileExists = propsFile.exists();
-    if(!fileExists) {
-      if(isFileOptional) {
+    if (!fileExists) {
+      if (isFileOptional) {
         return new VeniceProperties(new Properties());
-      }
-      else {
+      } else {
         String fullFilePath = Utils.getCanonicalPath(propsFilePath);
         throw new ConfigurationException(fullFilePath + " does not exist.");
       }
@@ -181,8 +178,7 @@ public class Utils {
    * @return A @Props object with the given properties
    * @throws Exception  if File not found or not accessible
    */
-  public static VeniceProperties parseProperties(File propertyFile)
-      throws IOException {
+  public static VeniceProperties parseProperties(File propertyFile) throws IOException {
     Properties props = new Properties();
     FileInputStream inputStream = null;
     try {
@@ -244,12 +240,13 @@ public class Utils {
   public static String getCanonicalPath(String fileName) {
     try {
       return new File(fileName).getCanonicalPath();
-    } catch(IOException ex) {
+    } catch (IOException ex) {
       return fileName;
     }
   }
 
-  private static boolean localhost=false;
+  private static boolean localhost = false;
+
   /**
    * The ssl certificate we have for unit tests has the hostname "localhost".  Any tests that rely on this certificate
    * require that the hostname of the machine match the hostname of the certificate.  This method lets us globally assert
@@ -258,7 +255,7 @@ public class Utils {
    *
    * It's not ideal to put this as state in a Utils class, we can revisit if we come up with a better way to do it
    */
-  public static void thisIsLocalhost(){
+  public static void thisIsLocalhost() {
     localhost = true;
   }
 
@@ -268,7 +265,7 @@ public class Utils {
    */
   public static String getHostName() {
 
-    if (localhost){
+    if (localhost) {
       return LOCALHOST;
     }
 
@@ -281,7 +278,7 @@ public class Utils {
       throw new VeniceException("Unable to get the hostname.", e);
     }
 
-    if(StringUtils.isEmpty(hostName)) {
+    if (StringUtils.isEmpty(hostName)) {
       throw new VeniceException("Unable to get the hostname.");
     }
 
@@ -334,6 +331,7 @@ public class Utils {
       throw new VeniceHttpException(HttpStatus.SC_BAD_REQUEST, filedName + " must be a boolean, but value: " + value);
     }
   }
+
   public static String getHelixNodeIdentifier(int port) {
     return Utils.getHostName() + "_" + port;
   }
@@ -373,10 +371,10 @@ public class Utils {
     return Arrays.asList(allowed).contains(newStatus);
   }
 
-  public static List<String> parseCommaSeparatedStringToList(String rawString){
+  public static List<String> parseCommaSeparatedStringToList(String rawString) {
     String[] strArray = rawString.split(",");
-    if(strArray.length < 1){
-      throw new VeniceException("Invalid input: "+rawString);
+    if (strArray.length < 1) {
+      throw new VeniceException("Invalid input: " + rawString);
     }
     return Arrays.asList(strArray);
   }

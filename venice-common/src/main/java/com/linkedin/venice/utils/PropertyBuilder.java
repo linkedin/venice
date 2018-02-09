@@ -33,6 +33,13 @@ public class PropertyBuilder {
     return this;
   }
 
+  public PropertyBuilder putIfAbsent(String key, Object value) {
+    if (null == props.get(key)) {
+      props.put(key, value.toString());
+    }
+    return this;
+  }
+
   public PropertyBuilder put(File file)
           throws IOException {
     try (InputStream input = new BufferedInputStream(new FileInputStream(file))) {

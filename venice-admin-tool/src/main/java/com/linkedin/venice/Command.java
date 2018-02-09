@@ -119,8 +119,12 @@ public enum Command {
   DELETE_KAFKA_TOPIC("delete-kafka-topic",
       "Delete a Kafka topic directly (without interaction with the Venice Controller",
       new Arg[]{KAFKA_BOOTSTRAP_SERVERS, KAFKA_ZOOKEEPER_CONNECTION_URL, KAFKA_TOPIC_NAME},
-      new Arg[]{KAFKA_OPERATION_TIMEOUT, KAFKA_SSL_CONFIG_FILE});
-
+      new Arg[]{KAFKA_OPERATION_TIMEOUT, KAFKA_CONSUMER_CONFIG_FILE}),
+  START_MIRROR_MAKER("start-kafka-mirror-maker",
+      "Start a local Mirror Maker process, to forklift data between Kafka clusters.",
+      new Arg[]{KAFKA_ZOOKEEPER_CONNECTION_URL_SOURCE, KAFKA_ZOOKEEPER_CONNECTION_URL_DESTINATION,
+          KAFKA_BOOTSTRAP_SERVERS_DESTINATION, KAFKA_TOPIC_WHITELIST},
+      new Arg[]{KAFKA_CONSUMER_CONFIG_FILE, KAFKA_PRODUCER_CONFIG_FILE});
 
   private final String commandName;
   private final String description;

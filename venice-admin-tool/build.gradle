@@ -19,6 +19,11 @@ jar {
 
 dependencies {
     compile project(':venice-common')
+    compile(project(':venice-test-common')) {
+      // Used by the command that spins up a MirrorMaker
+      transitive = false
+    }
+
     compile project(':venice-thin-client')
     compile (libraries.avro) {
       exclude group: 'org.mortbay.jetty' // jetty 6 conflicts with spark-java used in controller api

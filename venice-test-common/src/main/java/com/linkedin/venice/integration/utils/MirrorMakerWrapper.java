@@ -11,6 +11,7 @@ import java.io.FileWriter;
 import java.io.IOException;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
+import kafka.api.OffsetRequest;
 import kafka.tools.MirrorMaker;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.producer.ProducerConfig;
@@ -21,39 +22,55 @@ import org.apache.log4j.Logger;
 public class MirrorMakerWrapper extends ProcessWrapper {
   public static final Logger LOGGER = Logger.getLogger(MirrorMakerWrapper.class);
   public static final String SERVICE_NAME = "MirrorMaker";
+  private static final String DEFAULT_WHITELIST = ".*";
 
   Process mmProcess = null;
   final File consumerPropsFile;
   final File producerPropsFile;
+  final String whitelist;
 
   static StatefulServiceProvider<MirrorMakerWrapper> generateService(KafkaBrokerWrapper sourceKafka, KafkaBrokerWrapper destinationKafka) {
+    return generateService(sourceKafka.getZkAddress(), destinationKafka.getZkAddress(), destinationKafka.getAddress(), DEFAULT_WHITELIST, new Properties(), new Properties());
+  }
+
+  static StatefulServiceProvider<MirrorMakerWrapper> generateService(
+      String sourceZkAdr,
+      String destinationZkAdr,
+      String destinationKafkaAdr,
+      String whitelist,
+      Properties consumerProps,
+      Properties producerProps) {
     return (serviceName, port, dataDirectory) -> {
       // Consumer configs
-      Properties consumerProps = new PropertyBuilder()
+      Properties combinedConsumerProps = new PropertyBuilder()
+          .put(consumerProps)
           // .put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, sourceKafka.getAddress()) // Used by the "new consumer"
-          .put("zookeeper.connect", sourceKafka.getZkAddress()) // Used by the "old consumer" and the IdentityOldConsumerRebalanceListener
-          .put("group.id", TestUtils.getUniqueString("mm"))
-          .put("security.protocol", SecurityProtocol.PLAINTEXT.name) // to simplify tests, though we may want to test SSL connectivity within integ tests later
+          .putIfAbsent("zookeeper.connect", sourceZkAdr) // Used by the "old consumer" and the IdentityOldConsumerRebalanceListener
+          .putIfAbsent("group.id", TestUtils.getUniqueString("mm"))
+          .putIfAbsent("security.protocol", SecurityProtocol.PLAINTEXT.name) // to simplify tests, though we may want to test SSL connectivity within integ tests later
+          .putIfAbsent("auto.offset.reset", OffsetRequest.SmallestTimeString()) // "smallest"
           .build().toProperties();
-      File consumerPropsFile = IntegrationTestUtils.getConfigFile(dataDirectory, "consumer.properties", consumerProps);
+      File consumerPropsFile = IntegrationTestUtils.getConfigFile(dataDirectory, "consumer.properties", combinedConsumerProps);
 
       // Producer configs
-      Properties producerProps = new PropertyBuilder()
-          .put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, destinationKafka.getAddress())
-          .put(ProducerConfig.LINGER_MS_CONFIG, "500")
-          .put("identityMirror.Version", "2")
-          .put("identityMirror.TargetZookeeper.connect", destinationKafka.getZkAddress())
+      Properties combinedProducerProps = new PropertyBuilder()
+          .put(producerProps)
+          .putIfAbsent(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, destinationKafkaAdr)
+          .putIfAbsent(ProducerConfig.LINGER_MS_CONFIG, "500")
+          .putIfAbsent("identityMirror.Version", "2")
+          .putIfAbsent("identityMirror.TargetZookeeper.connect", destinationZkAdr)
           .build().toProperties();
-      File producerPropsFile = IntegrationTestUtils.getConfigFile(dataDirectory, "producer.properties", producerProps);
+      File producerPropsFile = IntegrationTestUtils.getConfigFile(dataDirectory, "producer.properties", combinedProducerProps);
 
-      return new MirrorMakerWrapper(serviceName, dataDirectory, consumerPropsFile, producerPropsFile);
+      return new MirrorMakerWrapper(serviceName, dataDirectory, consumerPropsFile, producerPropsFile, whitelist);
     };
   }
 
-  MirrorMakerWrapper(String serviceName, File dataDirectory, File consumerPropsFile, File producerPropsFile) {
+  MirrorMakerWrapper(String serviceName, File dataDirectory, File consumerPropsFile, File producerPropsFile, String whitelist) {
     super(serviceName, dataDirectory);
     this.consumerPropsFile = consumerPropsFile;
     this.producerPropsFile = producerPropsFile;
+    this.whitelist = whitelist;
   }
 
   @Override
@@ -79,7 +96,7 @@ public class MirrorMakerWrapper extends ProcessWrapper {
     mmProcess = ForkedJavaProcess.exec(MirrorMaker.class,
         "--consumer.config", consumerPropsFile.getAbsolutePath(),
         "--producer.config", producerPropsFile.getAbsolutePath(),
-        "--whitelist", ".*",
+        "--whitelist", whitelist,
         "--message.handler", IdentityPartitioningMessageHandler.class.getName(),
         "--consumer.rebalance.listener", IdentityOldConsumerRebalanceListener.class.getName(),
         "--rebalance.listener.args", rebalanceListenerArgs,
